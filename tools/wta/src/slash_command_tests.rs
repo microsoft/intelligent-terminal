@@ -36,6 +36,46 @@ fn last_notice(app: &App) -> (NoticeKind, &str) {
     }
 }
 
+fn session_command(
+    name: &str,
+    description: &str,
+    input_hint: Option<&str>,
+) -> crate::app_contracts::AcpSessionCommand {
+    let completion_behavior = if input_hint.is_some() {
+        crate::app_contracts::CompletionBehavior::OptionalFreeText
+    } else {
+        crate::app_contracts::CompletionBehavior::ExecuteImmediately
+    };
+    session_command_with_behavior(name, description, input_hint, completion_behavior)
+}
+
+fn session_command_with_behavior(
+    name: &str,
+    description: &str,
+    input_hint: Option<&str>,
+    completion_behavior: crate::app_contracts::CompletionBehavior,
+) -> crate::app_contracts::AcpSessionCommand {
+    crate::app_contracts::AcpSessionCommand {
+        name: name.into(),
+        description: description.into(),
+        input_hint: input_hint.map(str::to_string),
+        completion_behavior,
+    }
+}
+
+fn popup_command_names(app: &App) -> Vec<String> {
+    match app.command_popup_state().expect("command popup").candidates {
+        crate::ui::PopupCandidates::Commands(candidates) => candidates
+            .into_iter()
+            .map(|candidate| match candidate {
+                crate::ui::CommandCandidate::Client(spec) => spec.name.to_string(),
+                crate::ui::CommandCandidate::Agent(command) => command.name.clone(),
+            })
+            .collect(),
+        _ => panic!("expected slash-command candidates"),
+    }
+}
+
 // ---- commands::classify — the pure input → intent mapping ----
 
 #[test]
@@ -84,6 +124,208 @@ fn classify_not_a_command() {
         commands::classify("run cmd /flag"),
         ParseOutcome::NotCommand
     );
+}
+
+#[test]
+fn agent_commands_merge_after_reserved_commands_and_replace_by_session() {
+    let mut app = test_app();
+    app.current_tab_mut().session_id = Some("session-1".into());
+    app.handle_event(AppEvent::SessionCommandsUpdated {
+        session_id: "session-1".into(),
+        commands: vec![
+            session_command("plan", "Build a plan", None),
+            session_command("clear", "Agent collision", None),
+        ],
+    });
+    app.handle_event(AppEvent::SessionCommandsUpdated {
+        session_id: "session-2".into(),
+        commands: vec![session_command("research", "Research", None)],
+    });
+    type_input(&mut app, "/");
+
+    let names = popup_command_names(&app);
+    assert_eq!(&names[..commands::REGISTRY.len()], {
+        &commands::REGISTRY
+            .iter()
+            .map(|spec| spec.name.to_string())
+            .collect::<Vec<_>>()[..]
+    });
+    assert_eq!(
+        names.iter().filter(|name| name.as_str() == "clear").count(),
+        1,
+        "an Agent command must not shadow a reserved WTA command"
+    );
+    assert!(names.contains(&"plan".to_string()));
+    assert!(!names.contains(&"research".to_string()));
+
+    app.current_tab_mut().clear_input();
+    app.handle_event(AppEvent::SessionCommandsUpdated {
+        session_id: "session-1".into(),
+        commands: vec![session_command("review", "Review changes", None)],
+    });
+    type_input(&mut app, "/");
+    let names = popup_command_names(&app);
+    assert!(!names.contains(&"plan".to_string()));
+    assert!(names.contains(&"review".to_string()));
+}
+
+#[test]
+fn agent_command_without_input_submits_as_a_normal_prompt() {
+    let mut app = test_app();
+    app.state = ConnectionState::Connected;
+    app.current_tab_mut().session_id = Some("session-1".into());
+    app.handle_event(AppEvent::SessionCommandsUpdated {
+        session_id: "session-1".into(),
+        commands: vec![session_command("plan", "Build a plan", None)],
+    });
+    type_input(&mut app, "/plan");
+
+    app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+
+    assert!(app.current_tab().input.is_empty());
+    assert!(app.current_tab().turn.is_in_flight());
+    assert!(!app.current_tab().messages.iter().any(|message| matches!(
+        message,
+        ChatMessage::Notice {
+            kind: NoticeKind::Warning,
+            ..
+        }
+    )));
+}
+
+#[test]
+fn agent_command_with_optional_input_enters_prepared_mode() {
+    let mut app = test_app();
+    app.state = ConnectionState::Connected;
+    app.current_tab_mut().session_id = Some("session-1".into());
+    app.handle_event(AppEvent::SessionCommandsUpdated {
+        session_id: "session-1".into(),
+        commands: vec![session_command(
+            "review",
+            "Review changes",
+            Some("focus area"),
+        )],
+    });
+    type_input(&mut app, "/rev");
+
+    app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+
+    assert_eq!(app.current_tab().input, "/review ");
+    assert_eq!(app.command_ghost_suffix(), Some("focus area"));
+    assert_eq!(app.prepared_command_range(), Some(0..7));
+    assert!(app.current_tab().turn.is_idle());
+}
+
+#[test]
+fn required_free_text_metadata_drives_the_complete_prepared_flow() {
+    let mut app = test_app();
+    app.state = ConnectionState::Connected;
+    app.current_tab_mut().session_id = Some("session-1".into());
+    app.handle_event(AppEvent::SessionCommandsUpdated {
+        session_id: "session-1".into(),
+        commands: vec![session_command_with_behavior(
+            "intent",
+            "Provide an intent",
+            None,
+            crate::app_contracts::CompletionBehavior::RequireFreeText,
+        )],
+    });
+    type_input(&mut app, "/int");
+
+    app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+
+    assert_eq!(app.current_tab().input, "/intent ");
+    assert_eq!(app.prepared_command_range(), Some(0..7));
+    assert!(app.current_tab().turn.is_idle());
+
+    app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+
+    assert_eq!(app.current_tab().input, "/intent ");
+    assert!(app.current_tab().turn.is_idle());
+    assert_eq!(
+        last_notice(&app),
+        (NoticeKind::Warning, "Provide an intent")
+    );
+
+    type_input(&mut app, "describe the task");
+    app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+
+    assert!(app.current_tab().input.is_empty());
+    assert!(app.current_tab().turn.is_in_flight());
+}
+
+#[test]
+fn agent_prefix_match_ranks_before_client_substring_match() {
+    let mut app = test_app();
+    app.current_tab_mut().session_id = Some("session-1".into());
+    app.model_picker_models = vec![AcpModelInfo {
+        id: "test-model".into(),
+        name: "Test model".into(),
+        description: None,
+    }];
+    app.handle_event(AppEvent::SessionCommandsUpdated {
+        session_id: "session-1".into(),
+        commands: vec![session_command("delta", "Synthetic command", None)],
+    });
+    type_input(&mut app, "/del");
+
+    let names = popup_command_names(&app);
+
+    assert_eq!(names, vec!["delegate", "delta", "model"]);
+
+    app.command_popup_down();
+    app.command_popup_down();
+    app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+
+    assert!(
+        app.current_tab().model_picker_open,
+        "the selected Client candidate must dispatch from the combined ranking"
+    );
+}
+
+#[test]
+fn optional_fix_completion_prepares_then_second_enter_runs() {
+    let mut app = test_app();
+    app.state = ConnectionState::Connected;
+    type_input(&mut app, "/fi");
+
+    app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+
+    assert_eq!(app.current_tab().input, "/fix ");
+    assert_eq!(app.prepared_command_range(), Some(0..4));
+    assert!(app.current_tab().turn.is_idle());
+
+    app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+
+    assert!(app.current_tab().input.is_empty());
+    assert!(!app.current_tab().turn.is_idle());
+}
+
+#[test]
+fn typed_agent_command_with_arguments_has_no_unknown_warning() {
+    let mut app = test_app();
+    app.state = ConnectionState::Connected;
+    app.current_tab_mut().session_id = Some("session-1".into());
+    app.handle_event(AppEvent::SessionCommandsUpdated {
+        session_id: "session-1".into(),
+        commands: vec![session_command(
+            "review",
+            "Review changes",
+            Some("focus area"),
+        )],
+    });
+    type_input(&mut app, "/review parser");
+
+    app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+
+    assert!(app.current_tab().turn.is_in_flight());
+    assert!(!app.current_tab().messages.iter().any(|message| matches!(
+        message,
+        ChatMessage::Notice {
+            kind: NoticeKind::Warning,
+            ..
+        }
+    )));
 }
 
 // ---- App dispatch — state effects via handle_slash_command ----

@@ -3,20 +3,24 @@ use std::borrow::Cow;
 use std::cell::Cell;
 
 use ratatui::prelude::*;
-use ratatui::widgets::{Block, Borders, Paragraph, Wrap};
+use ratatui::widgets::{
+    Block, Borders, Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState, Wrap,
+};
 use unicode_width::UnicodeWidthStr;
 
+#[cfg(test)]
+use crate::app::CompletedTurn;
 use crate::app::{
     App, ChatMessage, NoticeKind, PlanEntryStatus, ToolCallContent, ToolCallKind, ToolCallLocation,
     ToolCallOutput,
 };
-#[cfg(test)]
-use crate::app::CompletedTurn;
 use crate::theme;
 use crate::ui::shimmer;
 use crate::ui_trace;
 
-fn activity_label() -> String { t!("chat.activity_thinking").into_owned() }
+fn activity_label() -> String {
+    t!("chat.activity_thinking").into_owned()
+}
 
 const MAX_RENDER_LINE_CHARS: usize = 4096;
 const MAX_TOOL_OUTPUT_LINES: usize = 4;
@@ -123,7 +127,9 @@ fn tool_detail_lines(
     let mut omitted = false;
     if detailed {
         for location in locations.iter().take(MAX_TOOL_DETAIL_LINES) {
-            let suffix = location.line.map_or_else(String::new, |line| format!(":{line}"));
+            let suffix = location
+                .line
+                .map_or_else(String::new, |line| format!(":{line}"));
             lines.push(format!("    {}{suffix}", location.path));
         }
         omitted = locations.len() > MAX_TOOL_DETAIL_LINES;
@@ -168,7 +174,9 @@ fn tool_detail_lines(
                 }
             }
             ToolCallContent::Attachment { label, uri } => {
-                let target = uri.as_deref().map_or_else(String::new, |uri| format!(" · {uri}"));
+                let target = uri
+                    .as_deref()
+                    .map_or_else(String::new, |uri| format!(" · {uri}"));
                 lines.push(format!("    ↳ {label}{target}"));
             }
         }
@@ -184,56 +192,20 @@ fn tool_detail_lines(
     lines
 }
 
-/// Estimate the chat block's natural height (in visual rows) given the
-/// rendering width. Counts wraps for each message + completed turn. Used by
-/// `layout::render` to size the
-/// chat area so the rec panel sits directly below content instead of being
-/// pushed to the pane bottom by a `Min(1)` spacer.
-pub fn estimated_block_height(app: &App, area_width: u16) -> u16 {
+/// Estimate the chat block's natural height (in visual rows), saturated at
+/// `max_height`. Layout only needs an exact height while the content fits;
+/// once the chat fills the available rows, measuring older history cannot
+/// change the layout.
+pub fn estimated_block_height(app: &App, area_width: u16, max_height: u16) -> u16 {
     let tab = app.current_tab();
     let wrap_width = (area_width as usize).max(1);
+    let max_height = max_height.max(1) as usize;
     // Fetch once for the pending-height calculation.
     let pending_text = pending_render_text(tab);
 
     let streaming_index = tab.streaming_agent_message_index();
     let permission_tool_call_id = permission_tool_call_id(tab);
-    let messages: usize = tab
-        .messages
-        .iter()
-        .enumerate()
-        .filter(|(index, _)| Some(*index) != streaming_index)
-        .map(|(index, message)| {
-            rendered_lines_height(
-                &build_message_lines(
-                    message,
-                    index + 1 == tab.messages.len(),
-                    tab.turn.is_streaming(),
-                    permission_tool_call_id,
-                    tab.activity_frame,
-                    wrap_width,
-                ),
-                wrap_width,
-            )
-        })
-        .sum();
-    let turns: usize = tab
-        .completed_turns
-        .iter()
-        .enumerate()
-        .map(|(index, turn)| {
-            rendered_lines_height(
-                &build_completed_turn_lines_at_depth(
-                    turn,
-                    false,
-                    false,
-                    wrap_width,
-                    tab.command_revision_parents.contains_key(&index),
-                ),
-                wrap_width,
-            )
-        })
-        .sum();
-    let pending = pending_text
+    let mut height = pending_text
         .map(|_| rendered_lines_height(&build_pending_stream_lines(app, wrap_width), wrap_width))
         .unwrap_or(0);
     // Welcome overlay sits above all chat content when `show_welcome_hint`
@@ -241,15 +213,45 @@ pub fn estimated_block_height(app: &App, area_width: u16) -> u16 {
     // it off the top of the visible chat block. Always a single row —
     // terminal min-width guarantees the localized title fits without
     // wrapping.
-    let welcome = if app.show_welcome_hint
-        && app.state == crate::app::ConnectionState::Connected
-    {
+    let welcome = if app.show_welcome_hint && app.state == crate::app::ConnectionState::Connected {
         1
     } else {
         0
     };
 
-    (messages + turns + pending + welcome).max(1).min(u16::MAX as usize) as u16
+    height = height.saturating_add(welcome);
+    if height >= max_height {
+        return max_height as u16;
+    }
+
+    for (index, message) in tab.messages.iter().enumerate().rev() {
+        if Some(index) == streaming_index {
+            continue;
+        }
+        height = height.saturating_add(rendered_lines_height(
+            &build_message_lines(
+                message,
+                index + 1 == tab.messages.len(),
+                tab.turn.is_streaming(),
+                permission_tool_call_id,
+                tab.activity_frame,
+                wrap_width,
+            ),
+            wrap_width,
+        ));
+        if height >= max_height {
+            return max_height as u16;
+        }
+    }
+
+    for index in (0..tab.completed_turns.len()).rev() {
+        height = height.saturating_add(completed_turn_height(tab, index, wrap_width));
+        if height >= max_height {
+            return max_height as u16;
+        }
+    }
+
+    height.max(1) as u16
 }
 
 #[cfg(test)]
@@ -295,6 +297,27 @@ fn rendered_lines_height(lines: &[Line<'_>], wrap_width: usize) -> usize {
         .sum()
 }
 
+fn completed_turn_height(tab: &crate::app::TabSession, index: usize, wrap_width: usize) -> usize {
+    if let Some(height) = tab.cached_completed_turn_height(index, wrap_width) {
+        return height;
+    }
+    let Some(turn) = tab.completed_turns.get(index) else {
+        return 0;
+    };
+    let height = rendered_lines_height(
+        &build_completed_turn_lines_at_depth(
+            turn,
+            false,
+            false,
+            wrap_width,
+            tab.command_revision_parents.contains_key(&index),
+        ),
+        wrap_width,
+    );
+    tab.cache_completed_turn_height(index, wrap_width, height);
+    height
+}
+
 fn starts_with_ignore_ascii_case(value: &str, prefix: &str) -> bool {
     value
         .get(..prefix.len())
@@ -306,7 +329,8 @@ fn tool_call_presentation(status: &str) -> (&'static str, Style, Option<&str>) {
         ("○", theme::TOOL_CALL_PENDING, None)
     } else if status.eq_ignore_ascii_case("inprogress") || status.eq_ignore_ascii_case("running") {
         ("●", theme::TOOL_CALL_RUNNING, None)
-    } else if status.eq_ignore_ascii_case("completed") || status.eq_ignore_ascii_case("exited (0)") {
+    } else if status.eq_ignore_ascii_case("completed") || status.eq_ignore_ascii_case("exited (0)")
+    {
         ("✓", theme::TOOL_CALL_SUCCESS, None)
     } else if status.eq_ignore_ascii_case("failed") {
         ("✗", theme::TOOL_CALL_FAILURE, None)
@@ -355,7 +379,163 @@ fn breathing_dot(frame: usize) -> &'static str {
     }
 }
 
-pub fn render(frame: &mut Frame, app: &mut App, area: Rect) {
+const CHAT_RENDER_MARGIN_ROWS: usize = 32;
+
+struct CompletedTurnHitOffset {
+    turn_index: usize,
+    rows_below: usize,
+    turn_height: usize,
+    expanded: bool,
+    prompt_rows: Vec<PromptRowGeometry>,
+}
+
+struct PlannedCompletedTurn {
+    index: usize,
+    rows_below: usize,
+    height: usize,
+}
+
+struct CompletedTurnViewportPlan {
+    turns: Vec<PlannedCompletedTurn>,
+    skip_base_lines: bool,
+    skipped_rows_below: usize,
+    effective_offset: usize,
+    requested_rows: usize,
+    truncated: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct ScrollbarMetrics {
+    pub content_length: usize,
+    pub position: usize,
+}
+
+pub(crate) fn scrollbar_metrics(
+    total_rows: usize,
+    visible_rows: usize,
+    offset_from_bottom: usize,
+) -> Option<ScrollbarMetrics> {
+    if visible_rows == 0 || total_rows <= visible_rows {
+        return None;
+    }
+    let max_offset = total_rows - visible_rows;
+    Some(ScrollbarMetrics {
+        content_length: max_offset.saturating_add(1),
+        position: max_offset.saturating_sub(offset_from_bottom.min(max_offset)),
+    })
+}
+
+fn plan_completed_turn_viewport(
+    tab: &crate::app::TabSession,
+    base_rendered_rows: usize,
+    visible_height: usize,
+    wrap_width: usize,
+    mut effective_offset: usize,
+    selection_target_idx: Option<usize>,
+    viewport_anchor: Option<crate::app::CompletedTurnViewportAnchor>,
+) -> CompletedTurnViewportPlan {
+    let mut turns = Vec::new();
+    let mut skip_base_lines;
+    let mut skipped_rows_below;
+    let mut requested_rows;
+    let mut truncated;
+
+    let target_idx = viewport_anchor
+        .map(|anchor| anchor.index)
+        .or(selection_target_idx)
+        .filter(|index| *index < tab.completed_turns.len());
+    if let Some(target_idx) = target_idx {
+        let mut target_rows_below = base_rendered_rows;
+        for index in ((target_idx + 1)..tab.completed_turns.len()).rev() {
+            target_rows_below =
+                target_rows_below.saturating_add(completed_turn_height(tab, index, wrap_width));
+        }
+        let target_height = completed_turn_height(tab, target_idx, wrap_width);
+        if let Some(anchor) = viewport_anchor.filter(|anchor| anchor.index == target_idx) {
+            effective_offset = anchor
+                .row
+                .saturating_add(target_rows_below)
+                .saturating_add(target_height)
+                .saturating_sub(visible_height);
+        } else {
+            let target_end = target_rows_below.saturating_add(target_height);
+            let viewport_height = visible_height.max(1);
+            effective_offset = if target_rows_below < effective_offset {
+                target_rows_below
+            } else if target_end > effective_offset.saturating_add(viewport_height) {
+                target_end.saturating_sub(viewport_height)
+            } else {
+                effective_offset
+            };
+        }
+    }
+
+    loop {
+        turns.clear();
+        skipped_rows_below = 0;
+        truncated = false;
+        skip_base_lines = false;
+        let mut rendered_rows_below = base_rendered_rows;
+
+        if rendered_rows_below <= effective_offset {
+            skipped_rows_below = rendered_rows_below;
+            skip_base_lines = true;
+        }
+        requested_rows = visible_height
+            .saturating_add(effective_offset.saturating_sub(skipped_rows_below))
+            .saturating_add(CHAT_RENDER_MARGIN_ROWS);
+        let mut built_rows = if skip_base_lines {
+            0
+        } else {
+            base_rendered_rows
+        };
+
+        for index in (0..tab.completed_turns.len()).rev() {
+            let turn_height = completed_turn_height(tab, index, wrap_width);
+            let turn_end = rendered_rows_below.saturating_add(turn_height);
+            if turn_end <= effective_offset {
+                skipped_rows_below = turn_end;
+                rendered_rows_below = turn_end;
+                requested_rows = visible_height
+                    .saturating_add(effective_offset.saturating_sub(skipped_rows_below))
+                    .saturating_add(CHAT_RENDER_MARGIN_ROWS);
+                continue;
+            }
+
+            turns.push(PlannedCompletedTurn {
+                index,
+                rows_below: rendered_rows_below.saturating_sub(skipped_rows_below),
+                height: turn_height,
+            });
+            rendered_rows_below = turn_end;
+            built_rows = built_rows.saturating_add(turn_height);
+            if built_rows >= requested_rows && index > 0 {
+                truncated = true;
+                break;
+            }
+        }
+
+        if !truncated {
+            let max_offset = rendered_rows_below.saturating_sub(visible_height);
+            if effective_offset > max_offset {
+                effective_offset = max_offset;
+                continue;
+            }
+        }
+        break;
+    }
+
+    CompletedTurnViewportPlan {
+        turns,
+        skip_base_lines,
+        skipped_rows_below,
+        effective_offset,
+        requested_rows,
+        truncated,
+    }
+}
+
+pub fn render(frame: &mut Frame, app: &mut App, area: Rect, scrollbar_area: Rect) {
     let render_started = std::time::Instant::now();
 
     let inner = Block::default().borders(Borders::NONE);
@@ -367,15 +547,18 @@ pub fn render(frame: &mut Frame, app: &mut App, area: Rect) {
         .then_some(app.current_tab().selected_completed_turn_idx)
         .flatten()
         .filter(|index| *index < app.current_tab().completed_turns.len());
+    let viewport_anchor = app.current_tab().completed_turn_viewport_anchor();
     let mut effective_offset = app.current_tab().chat_scroll.offset;
-    let mut requested_lines = visible_height
+    let mut requested_rows = visible_height
         .saturating_add(effective_offset)
-        .saturating_add(32);
+        .saturating_add(CHAT_RENDER_MARGIN_ROWS);
 
     let mut reversed_lines: Vec<Line> = Vec::new();
     let mut turn_hit_offsets = Vec::new();
+    let mut skipped_rows_below = 0;
 
     let mut pending_lines = build_pending_stream_lines(app, wrap_width);
+    let mut newer_rows = rendered_lines_height(&pending_lines, wrap_width);
     reversed_lines.extend(pending_lines.drain(..).rev());
 
     let mut truncated = false;
@@ -396,82 +579,76 @@ pub fn render(frame: &mut Frame, app: &mut App, area: Rect) {
             tab.activity_frame,
             wrap_width,
         );
+        newer_rows = newer_rows.saturating_add(rendered_lines_height(&message_lines, wrap_width));
         reversed_lines.extend(message_lines.drain(..).rev());
-        if reversed_lines.len() >= requested_lines && selection_target_idx.is_none() {
+        if newer_rows >= requested_rows
+            && selection_target_idx.is_none()
+            && viewport_anchor.is_none()
+        {
             truncated = true;
             break;
         }
     }
 
     if !truncated {
-        let selected_idx = app.current_tab().selected_completed_turn_idx;
-        let pane_focused = app.pane_focused;
-        let mut selection_reached = selection_target_idx.is_none();
-        let mut rendered_rows_below = rendered_lines_height(&reversed_lines, wrap_width);
-        for (idx, turn) in app.current_tab().completed_turns.iter().enumerate().rev() {
-            let is_selected = selected_idx == Some(idx);
+        let plan = plan_completed_turn_viewport(
+            app.current_tab(),
+            newer_rows,
+            visible_height,
+            wrap_width,
+            effective_offset,
+            selection_target_idx,
+            viewport_anchor,
+        );
+        if plan.skip_base_lines {
+            reversed_lines.clear();
+        }
+        let tab = app.current_tab();
+        for planned in plan.turns {
+            let turn = &tab.completed_turns[planned.index];
             let (mut turn_lines, prompt_rows) =
                 build_completed_turn_lines_with_prompt_rows_at_depth(
                     turn,
-                    is_selected,
-                    pane_focused,
+                    tab.selected_completed_turn_idx == Some(planned.index),
+                    app.pane_focused,
                     wrap_width,
-                    app.current_tab()
-                        .command_revision_parents
-                        .contains_key(&idx),
+                    tab.command_revision_parents.contains_key(&planned.index),
                 );
-            let turn_height = rendered_lines_height(&turn_lines, wrap_width);
-            turn_hit_offsets.push((
-                idx,
-                rendered_rows_below,
-                turn_height,
-                turn.expanded,
+            turn_hit_offsets.push(CompletedTurnHitOffset {
+                turn_index: planned.index,
+                rows_below: planned.rows_below,
+                turn_height: planned.height,
+                expanded: turn.expanded,
                 prompt_rows,
-            ));
-            if selection_target_idx == Some(idx) {
-                let selected_end = rendered_rows_below.saturating_add(turn_height);
-                let viewport_height = visible_height.max(1);
-                effective_offset = if rendered_rows_below < effective_offset {
-                    rendered_rows_below
-                } else if selected_end > effective_offset.saturating_add(viewport_height) {
-                    selected_end.saturating_sub(viewport_height)
-                } else {
-                    effective_offset
-                };
-                requested_lines = visible_height
-                    .saturating_add(effective_offset)
-                    .saturating_add(32);
-                selection_reached = true;
-            }
+            });
             reversed_lines.extend(turn_lines.drain(..).rev());
-            rendered_rows_below = rendered_rows_below.saturating_add(turn_height);
-            if reversed_lines.len() >= requested_lines && selection_reached {
-                truncated = true;
-                break;
-            }
         }
+        skipped_rows_below = plan.skipped_rows_below;
+        effective_offset = plan.effective_offset;
+        requested_rows = plan.requested_rows;
+        truncated = plan.truncated;
     }
 
     // First-run welcome: shown once until user sends first message
-    if app.show_welcome_hint
-        && app.state == crate::app::ConnectionState::Connected
-    {
-        let mut welcome_lines = vec![
-            Line::from(vec![
-                Span::styled("● ", Style::new().fg(Color::Reset).add_modifier(Modifier::BOLD)),
-                Span::styled(
-                    t!("chat.welcome_title").into_owned(),
-                    Style::new().fg(Color::Reset).add_modifier(Modifier::BOLD),
-                ),
-            ]),
-        ];
+    if app.show_welcome_hint && app.state == crate::app::ConnectionState::Connected {
+        let mut welcome_lines = vec![Line::from(vec![
+            Span::styled(
+                "● ",
+                Style::new().fg(Color::Reset).add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(
+                t!("chat.welcome_title").into_owned(),
+                Style::new().fg(Color::Reset).add_modifier(Modifier::BOLD),
+            ),
+        ])];
         reversed_lines.extend(welcome_lines.drain(..).rev());
     }
 
     let lines: Vec<Line> = reversed_lines.into_iter().rev().collect();
 
     let total_lines = rendered_lines_height(&lines, wrap_width);
-    let scroll = total_lines.saturating_sub(visible_height.saturating_add(effective_offset));
+    let local_offset = effective_offset.saturating_sub(skipped_rows_below);
+    let scroll = total_lines.saturating_sub(visible_height.saturating_add(local_offset));
 
     let paragraph = Paragraph::new(lines)
         .block(inner)
@@ -482,15 +659,33 @@ pub fn render(frame: &mut Frame, app: &mut App, area: Rect) {
     frame.render_widget(paragraph, area);
 
     let mut completed_turn_hits = Vec::new();
+    let mut visible_completed_turn_anchors = Vec::with_capacity(turn_hit_offsets.len());
     let buffer = frame.buffer_mut();
-    for (turn_index, rows_below, turn_height, expanded, prompt_rows) in turn_hit_offsets {
+    for hit_offset in turn_hit_offsets {
+        let CompletedTurnHitOffset {
+            turn_index,
+            rows_below,
+            turn_height,
+            expanded,
+            prompt_rows,
+        } = hit_offset;
         let header_from_top = total_lines.saturating_sub(rows_below.saturating_add(turn_height));
-        if let Some(header_row) = header_from_top.checked_sub(scroll).filter(|row| *row < visible_height)
+        if let Some(header_row) = header_from_top
+            .checked_sub(scroll)
+            .filter(|row| *row < visible_height)
         {
+            visible_completed_turn_anchors.push(crate::app::CompletedTurnViewportAnchor {
+                index: turn_index,
+                row: header_row,
+            });
             let row = inner_area.y.saturating_add(header_row as u16);
             let symbol = if expanded { "▼" } else { "▶" };
             if let Some(column) = (inner_area.x..inner_area.x.saturating_add(inner_area.width))
-                .find(|column| buffer.cell((*column, row)).is_some_and(|cell| cell.symbol() == symbol))
+                .find(|column| {
+                    buffer
+                        .cell((*column, row))
+                        .is_some_and(|cell| cell.symbol() == symbol)
+                })
             {
                 completed_turn_hits.push(crate::app::CompletedTurnHitRegion {
                     start_column: column,
@@ -538,6 +733,8 @@ pub fn render(frame: &mut Frame, app: &mut App, area: Rect) {
         }
     }
     app.completed_turn_hits = completed_turn_hits;
+    app.current_tab_mut()
+        .finish_completed_turn_layout(visible_completed_turn_anchors);
 
     if selection_pending {
         let tab = app.current_tab_mut();
@@ -547,23 +744,56 @@ pub fn render(frame: &mut Frame, app: &mut App, area: Rect) {
 
     // Update the scroll bound only when the build saw all of history;
     // otherwise the true max is still unknown and the stored value (possibly
-    // stale) is the best we have. Either way `Scroll::by` itself doesn't
-    // clamp, so wheel-up keeps working even with a stale bound.
+    // stale) is the best we have.
     if !truncated {
-        app.current_tab_mut()
-            .chat_scroll
-            .set_max(total_lines.saturating_sub(visible_height));
+        app.current_tab_mut().chat_scroll.set_max(
+            total_lines
+                .saturating_add(effective_offset.saturating_sub(local_offset))
+                .saturating_sub(visible_height),
+        );
+    }
+
+    let rendered_total_rows = total_lines.saturating_add(skipped_rows_below);
+    let estimated_total_rows = if truncated {
+        newer_rows
+            .saturating_add(
+                app.current_tab()
+                    .estimated_completed_turn_height(wrap_width),
+            )
+            .max(rendered_total_rows)
+            .max(
+                effective_offset
+                    .saturating_add(visible_height)
+                    .saturating_add(1),
+            )
+    } else {
+        rendered_total_rows
+    };
+    if let Some(metrics) = scrollbar_metrics(estimated_total_rows, visible_height, effective_offset)
+        .filter(|_| scrollbar_area.width > 0)
+    {
+        let scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight)
+            .begin_symbol(None)
+            .end_symbol(None)
+            .track_symbol(Some("│"))
+            .thumb_symbol("┃")
+            .track_style(Style::default().fg(Color::DarkGray))
+            .thumb_style(Style::default().fg(Color::Gray));
+        let mut scrollbar_state = ScrollbarState::new(metrics.content_length)
+            .position(metrics.position)
+            .viewport_content_length(visible_height);
+        frame.render_stateful_widget(scrollbar, scrollbar_area, &mut scrollbar_state);
     }
 
     ui_trace::log_slow("chat_render", render_started.elapsed(), || {
         format!(
-            "messages={} pending_chars={} requested_lines={} visible_height={} area={}x{}",
+            "messages={} pending_chars={} requested_rows={} visible_height={} area={}x{}",
             app.current_tab().messages.len(),
             app.current_tab()
                 .streaming_agent_text()
                 .map(|text| text.chars().count())
                 .unwrap_or(0),
-            requested_lines,
+            requested_rows,
             visible_height,
             area.width,
             area.height
@@ -773,15 +1003,8 @@ fn build_completed_turn_lines_with_prompt_rows_at_depth<'a>(
         // `agent_streaming=false` together suppress the streaming-cursor
         // path; details are always finalized by the time they land here.
         for msg in turn.details.iter() {
-            let mut detail_lines = build_message_lines_with_details(
-                msg,
-                false,
-                false,
-                None,
-                0,
-                content_width,
-                true,
-            );
+            let mut detail_lines =
+                build_message_lines_with_details(msg, false, false, None, 0, content_width, true);
             if is_command_revision {
                 for line in &mut detail_lines {
                     if !line.spans.is_empty() {
@@ -830,10 +1053,7 @@ pub fn render_activity(frame: &mut Frame, app: &App, area: Rect) {
         return;
     }
     let label = activity_label();
-    let line = Line::from(shimmer::shimmer_spans(
-        &label,
-        tab.activity_frame,
-    ));
+    let line = Line::from(shimmer::shimmer_spans(&label, tab.activity_frame));
     frame.render_widget(Paragraph::new(line), area);
 }
 
@@ -1068,7 +1288,10 @@ fn build_message_lines_with_details<'a>(
             }
         }
         ChatMessage::Plan(entries) => {
-            lines.push(Line::from(Span::styled(t!("chat.plan_header").into_owned(), theme::PLAN_STYLE)));
+            lines.push(Line::from(Span::styled(
+                t!("chat.plan_header").into_owned(),
+                theme::PLAN_STYLE,
+            )));
             for entry in entries {
                 let marker = match entry.status {
                     PlanEntryStatus::Completed => t!("chat.plan_marker_completed").into_owned(),
@@ -1497,7 +1720,10 @@ mod tests {
         assert_eq!(line_text(line), expected_text);
         assert_eq!(line.spans[0].style, expected_marker_style);
         assert_eq!(line.spans[2].style, theme::TOOL_CALL_TITLE);
-        assert_eq!(line.spans.get(3).map(|span| span.style), expected_detail_style);
+        assert_eq!(
+            line.spans.get(3).map(|span| span.style),
+            expected_detail_style
+        );
     }
 
     /// A `location` hint renders as a dim `(path)` suffix right after the
@@ -1692,7 +1918,9 @@ mod tests {
 
         assert_eq!(lines.len(), MAX_TOOL_DETAIL_OUTPUT_LINES + 1);
         assert_eq!(lines[0], "    │ …");
-        assert!(lines.last().is_some_and(|line| line.ends_with("object-199.o")));
+        assert!(lines
+            .last()
+            .is_some_and(|line| line.ends_with("object-199.o")));
     }
 
     #[test]
@@ -1820,7 +2048,8 @@ mod tests {
             },
         };
         if !buf.is_empty() {
-            tab.messages.push(crate::app::ChatMessage::Agent(buf.to_string()));
+            tab.messages
+                .push(crate::app::ChatMessage::Agent(buf.to_string()));
         }
         tab.reveal_chars = reveal_chars;
         tab
@@ -1841,10 +2070,7 @@ mod tests {
         assert_eq!(breathing_dot(5), "•");
         assert_eq!(breathing_dot(9), "·");
         assert_eq!(breathing_dot(14), "•");
-        assert_eq!(
-            breathing_dot(crate::ui::ACTIVITY_CYCLE_FRAMES),
-            "●"
-        );
+        assert_eq!(breathing_dot(crate::ui::ACTIVITY_CYCLE_FRAMES), "●");
     }
 
     #[test]
@@ -1876,8 +2102,7 @@ mod tests {
             locations: Vec::new(),
         };
 
-        let matching_lines =
-            build_message_lines(&matching, false, false, Some("tool-2"), 9, 80);
+        let matching_lines = build_message_lines(&matching, false, false, Some("tool-2"), 9, 80);
         let other_lines = build_message_lines(&other, false, false, Some("tool-2"), 9, 80);
 
         assert_eq!(matching_lines[0].spans[0].content, "·");
@@ -1962,8 +2187,9 @@ mod tests {
         // must round-trip below the threshold.
         let under: String = std::iter::repeat('é').take(MAX_RENDER_LINE_CHARS).collect();
         assert!(matches!(truncate_render_text(&under), Cow::Borrowed(_)));
-        let over: String =
-            std::iter::repeat('é').take(MAX_RENDER_LINE_CHARS + 10).collect();
+        let over: String = std::iter::repeat('é')
+            .take(MAX_RENDER_LINE_CHARS + 10)
+            .collect();
         let _ = truncate_render_text(&over).into_owned(); // must not panic
     }
 
@@ -1974,7 +2200,13 @@ mod tests {
         // Models often prefix prose with \n / \n\n; the dot must land on the
         // first content row, not burn on an empty line.
         let mut lines = Vec::new();
-        push_dot_prefixed_lines(&mut lines, "\n\nHello", 40, theme::DOT_AGENT, theme::AGENT_TEXT);
+        push_dot_prefixed_lines(
+            &mut lines,
+            "\n\nHello",
+            40,
+            theme::DOT_AGENT,
+            theme::AGENT_TEXT,
+        );
         assert_eq!(lines.len(), 1, "leading blanks must be dropped");
         assert_eq!(line_text(&lines[0]), "● Hello");
     }
@@ -1982,9 +2214,18 @@ mod tests {
     #[test]
     fn dot_prefix_preserves_paragraph_break_and_indents_continuation() {
         let mut lines = Vec::new();
-        push_dot_prefixed_lines(&mut lines, "A\n\nB", 40, theme::DOT_AGENT, theme::AGENT_TEXT);
+        push_dot_prefixed_lines(
+            &mut lines,
+            "A\n\nB",
+            40,
+            theme::DOT_AGENT,
+            theme::AGENT_TEXT,
+        );
         let texts: Vec<String> = lines.iter().map(line_text).collect();
-        assert_eq!(texts, vec!["● A".to_string(), String::new(), "  B".to_string()]);
+        assert_eq!(
+            texts,
+            vec!["● A".to_string(), String::new(), "  B".to_string()]
+        );
     }
 
     #[test]
@@ -1999,7 +2240,10 @@ mod tests {
             theme::AGENT_TEXT,
         );
         assert!(lines.len() >= 2, "long paragraph must wrap");
-        assert!(line_text(&lines[0]).starts_with("● "), "first row gets the dot");
+        assert!(
+            line_text(&lines[0]).starts_with("● "),
+            "first row gets the dot"
+        );
         assert!(
             line_text(&lines[1]).starts_with("  "),
             "continuation rows get a 2-cell hanging indent"
@@ -2018,7 +2262,10 @@ mod tests {
         let mut lines = Vec::new();
         push_prompt_prefixed_lines(&mut lines, concat!("line one\n", "line two"), 40);
         let texts: Vec<String> = lines.iter().map(line_text).collect();
-        assert_eq!(texts, vec!["> line one".to_string(), "  line two".to_string()]);
+        assert_eq!(
+            texts,
+            vec!["> line one".to_string(), "  line two".to_string()]
+        );
     }
 
     #[test]
@@ -2034,7 +2281,10 @@ mod tests {
         let mut lines = Vec::new();
         push_prompt_prefixed_lines(&mut lines, "A\n\nB", 40);
         let texts: Vec<String> = lines.iter().map(line_text).collect();
-        assert_eq!(texts, vec!["> A".to_string(), String::new(), "  B".to_string()]);
+        assert_eq!(
+            texts,
+            vec!["> A".to_string(), String::new(), "  B".to_string()]
+        );
     }
 
     #[test]

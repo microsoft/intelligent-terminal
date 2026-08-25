@@ -298,18 +298,18 @@ pub async fn run_recommendation_executor(
         let delegate_agents = delegate_agents.lock().unwrap().clone();
         let result =
             match bind_choice_target(&mut exec.choice, exec.context.target_pane_id.as_deref()) {
-            Ok(()) => {
-                execute_choice(
-                    &exec.choice,
-                    exec.insert_only,
-                    &shell_mgr,
-                    &delegate_agents,
-                    &event_tx,
-                )
-                .await
-            }
-            Err(err) => Err(err),
-        };
+                Ok(()) => {
+                    execute_choice(
+                        &exec.choice,
+                        exec.insert_only,
+                        &shell_mgr,
+                        &delegate_agents,
+                        &event_tx,
+                    )
+                    .await
+                }
+                Err(err) => Err(err),
+            };
         match result {
             Ok(()) => {}
             Err(err) => {
@@ -1897,7 +1897,7 @@ mod tests {
             Some("Fix the build and report back"),
             None,
         )
-                .unwrap();
+        .unwrap();
 
         assert!(!commandline.contains("--model"));
         // May be wrapped as "cmd /c copilot ..." if copilot.exe isn't on PATH.
@@ -2202,7 +2202,7 @@ mod tests {
             Some("Inspect the repo and summarize"),
             None,
         )
-                .unwrap();
+        .unwrap();
 
         assert_eq!(
             commandline,

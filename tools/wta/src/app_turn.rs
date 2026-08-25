@@ -184,12 +184,12 @@ impl App {
                 return DirectProposalEvaluation::Duplicate(
                     "a card is already showing for this turn".to_string(),
                 );
-                }
+            }
             TurnState::Idle => {
                 return DirectProposalEvaluation::Stale(
                     "no turn is in flight for this session".to_string(),
-                    );
-                }
+                );
+            }
             TurnState::Submitted(_) | TurnState::Streaming { .. } => {}
         }
 
@@ -341,7 +341,7 @@ impl App {
                     retryable: false,
                 }
             }
-            }
+        }
     }
 
     pub(super) fn commit_terminal_action_proposal(&mut self, proposal_id: &str) -> bool {
@@ -388,12 +388,12 @@ impl App {
                 "direct_proposal_fix",
             );
         } else {
-                self.turn_surface_recommendation(
+            self.turn_surface_recommendation(
                 &pending.session_id,
                 pending.recommendations,
                 "direct_proposal",
-                );
-            }
+            );
+        }
         self.session_tab_mut(&pending.session_id)
             .active_prepared_mode = pending.prepared_mode;
         self.session_tab_mut(&pending.session_id)
@@ -880,8 +880,9 @@ impl App {
         } else {
             // AgentMessageEnd already committed this turn while the card was
             // visible, so only annotate that existing history entry.
-            if let Some(last) = tab.completed_turns.last_mut() {
+            if let Some((index, last)) = tab.completed_turns.iter_mut().enumerate().next_back() {
                 last.trailing_marker = Some(marker);
+                tab.invalidate_completed_turn_height(index);
             }
             TurnOutcome::Empty
         };
@@ -1000,8 +1001,9 @@ impl App {
             });
             tab.scroll_to_bottom();
         } else if annotate_card {
-            if let Some(last) = tab.completed_turns.last_mut() {
+            if let Some((index, last)) = tab.completed_turns.iter_mut().enumerate().next_back() {
                 last.trailing_marker = Some(canceled_marker);
+                tab.invalidate_completed_turn_height(index);
             }
         }
         tab.autofix.pane_id = None;

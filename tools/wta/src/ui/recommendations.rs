@@ -117,8 +117,7 @@ fn render_compact(frame: &mut Frame, app: &App, area: Rect) {
         let focused = if app.current_tab().command_adjustment.is_some() {
             Some(2)
         } else {
-            (app.current_tab().recommendation_focus
-                == crate::app::RecommendationFocus::Button)
+            (app.current_tab().recommendation_focus == crate::app::RecommendationFocus::Button)
                 .then_some(app.current_tab().selected_button)
         };
         if app.current_tab().command_adjustment.is_some() {

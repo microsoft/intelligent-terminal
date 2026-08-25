@@ -15,7 +15,9 @@ pub const CARD_MIN_SIZE: u16 = 5;
 /// Wrap width inside a card given the outer panel width. Floors at 1 so
 /// `div_ceil` callers don't divide by zero on absurdly narrow terminals.
 pub fn card_content_width(panel_width: u16) -> usize {
-    (panel_width as usize).saturating_sub(CARD_H_CHROME as usize).max(1)
+    (panel_width as usize)
+        .saturating_sub(CARD_H_CHROME as usize)
+        .max(1)
 }
 
 pub fn inset_horizontal(r: Rect, n: u16) -> Rect {
@@ -87,12 +89,7 @@ pub fn render_divider(buf: &mut Buffer, area: Rect, y: u16, border_style: Style)
 /// Render a left-aligned button row. `focused` is the index of the focused
 /// button (rendered with `BUTTON_FOCUSED`); pass `None` when the card has
 /// focus elsewhere — all buttons render with `BUTTON_PLAIN`.
-pub fn render_buttons(
-    frame: &mut Frame,
-    area: Rect,
-    buttons: &[String],
-    focused: Option<usize>,
-) {
+pub fn render_buttons(frame: &mut Frame, area: Rect, buttons: &[String], focused: Option<usize>) {
     render_buttons_with_style(frame, area, buttons, focused, theme::BUTTON_FOCUSED);
 }
 

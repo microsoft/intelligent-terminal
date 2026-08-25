@@ -68,21 +68,21 @@ fn test_app_with_prompt_rx() -> (
     let debug_capture = Arc::new(AtomicBool::new(false));
     let (master_tx, _master_rx) = tokio::sync::mpsc::unbounded_channel();
     (
-    App::new(
-        prompt_tx,
-        recommendation_tx,
-        permission_tx,
-        cancel_tx,
-        new_session_tx,
-        load_session_tx,
-        drop_session_tx,
-        rename_session_tx,
-        restart_tx,
-        master_tx,
-        debug_capture,
-        true,
-        false,
-        Arc::new(crate::shell::ShellManager::new()),
+        App::new(
+            prompt_tx,
+            recommendation_tx,
+            permission_tx,
+            cancel_tx,
+            new_session_tx,
+            load_session_tx,
+            drop_session_tx,
+            rename_session_tx,
+            restart_tx,
+            master_tx,
+            debug_capture,
+            true,
+            false,
+            Arc::new(crate::shell::ShellManager::new()),
         ),
         prompt_rx,
     )
@@ -923,7 +923,7 @@ fn empty_pane_session_start_does_not_evict_a_bound_session() {
 /// key in that map.
 #[test]
 fn empty_pane_session_start_is_not_registered_in_active_by_pane() {
-    use crate::agent_sessions::{AgentSessionRegistry, AgentStatus, CliSource, SessionEvent};
+    use crate::agent_sessions::{AgentSessionRegistry, AgentStatus, SessionEvent};
     let mut reg = AgentSessionRegistry::new();
     let params = json!({
         "event": "agent.session.start",
@@ -9375,6 +9375,56 @@ fn clicking_input_dialog_restores_input_navigation_after_mouse_turn_selection() 
 }
 
 #[test]
+fn double_click_in_input_dialog_preserves_word_selection() {
+    use crossterm::event::{KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
+
+    let mut app = test_app();
+    app.state = ConnectionState::Connected;
+    app.current_tab_mut().input = "INPUT_DOUBLE_CLICK_MARKER".into();
+    let rendered = render_to_text(&mut app, 80, 16);
+    let (row, column) = rendered
+        .lines()
+        .enumerate()
+        .find_map(|(row, line)| {
+            line.find("INPUT_DOUBLE_CLICK_MARKER")
+                .map(|column| (row as u16, column as u16 + 2))
+        })
+        .expect("input marker must be visible");
+
+    for kind in [
+        MouseEventKind::Down(MouseButton::Left),
+        MouseEventKind::Up(MouseButton::Left),
+    ] {
+        app.handle_event(AppEvent::Mouse(MouseEvent {
+            kind,
+            column,
+            row,
+            modifiers: KeyModifiers::NONE,
+        }));
+    }
+    assert_eq!(app.text_selection.selected_text(), None);
+    render_to_text(&mut app, 80, 16);
+
+    for kind in [
+        MouseEventKind::Down(MouseButton::Left),
+        MouseEventKind::Up(MouseButton::Left),
+    ] {
+        app.handle_event(AppEvent::Mouse(MouseEvent {
+            kind,
+            column,
+            row,
+            modifiers: KeyModifiers::NONE,
+        }));
+    }
+    render_to_text(&mut app, 80, 16);
+
+    assert_eq!(
+        app.text_selection.selected_text().as_deref(),
+        Some("INPUT_DOUBLE_CLICK_MARKER")
+    );
+}
+
+#[test]
 fn completed_turn_user_input_multi_click_preserves_turn_state_and_text_selection() {
     use crossterm::event::{KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
 
@@ -9895,6 +9945,13 @@ fn completed_turn_triangle_hits_follow_visible_scrolled_turns() {
         assert_eq!(turn.expanded, index == target.turn_index);
     }
 
+    render_to_text(&mut app, 80, 10);
+    let expanded_hits: Vec<_> = app
+        .completed_turn_hits
+        .iter()
+        .copied()
+        .filter(|hit| hit.kind == CompletedTurnHitKind::Triangle)
+        .collect();
     app.current_tab_mut().chat_scroll.by(3);
     let after_scroll = render_to_text(&mut app, 80, 10);
     let scrolled_hits: Vec<_> = app
@@ -9903,7 +9960,7 @@ fn completed_turn_triangle_hits_follow_visible_scrolled_turns() {
         .copied()
         .filter(|hit| hit.kind == CompletedTurnHitKind::Triangle)
         .collect();
-    assert_ne!(scrolled_hits, initial_hits);
+    assert_ne!(scrolled_hits, expanded_hits);
     for hit in &scrolled_hits {
         assert!(after_scroll.contains(&format!("MOUSE_VISIBLE_TURN_{:02}", hit.turn_index)));
         assert!(hit.row < 10);
@@ -10046,14 +10103,662 @@ fn fixed_activity_row_does_not_change_estimated_chat_height() {
         .push(ChatMessage::User("hello".into()));
 
     app.state = ConnectionState::Disconnected;
-    let without_activity = crate::ui::chat::estimated_block_height(&app, 80);
+    let without_activity = crate::ui::chat::estimated_block_height(&app, 80, 40);
     app.state = ConnectionState::Connecting("Starting agent".into());
-    let with_activity = crate::ui::chat::estimated_block_height(&app, 80);
+    let with_activity = crate::ui::chat::estimated_block_height(&app, 80, 40);
 
     assert_eq!(with_activity, without_activity);
     assert!(
         app.has_activity_indicator(),
         "Connecting must keep Tick redraws active for the shimmer"
+    );
+}
+
+#[test]
+fn estimated_chat_height_stops_after_filling_available_rows() {
+    let mut app = test_app();
+    for index in 0..100 {
+        app.current_tab_mut().completed_turns.push(CompletedTurn {
+            prompt: format!("prompt {index}"),
+            details: vec![ChatMessage::Agent(format!("response {index}"))],
+            expanded: true,
+            trailing_marker: None,
+        });
+    }
+
+    crate::ui::chat::reset_completed_turn_line_build_count();
+    let estimated = crate::ui::chat::estimated_block_height(&app, 80, 12);
+    let built_turns = crate::ui::chat::completed_turn_line_build_count();
+
+    assert_eq!(estimated, 12);
+    assert!(
+        built_turns < app.current_tab().completed_turns.len(),
+        "height estimation must not build history beyond the layout limit",
+    );
+}
+
+#[test]
+fn render_large_mixed_chat_keeps_latest_content_and_width_correct() {
+    use unicode_width::UnicodeWidthStr;
+
+    let mut app = test_app();
+    app.state = ConnectionState::Connected;
+    for index in 0..200 {
+        app.current_tab_mut().completed_turns.push(CompletedTurn {
+            prompt: format!("OLD_TURN_{index:03}"),
+            details: vec![
+                ChatMessage::Agent(format!("old response {index}")),
+                ChatMessage::ToolCall {
+                    id: format!("old-tool-{index}"),
+                    title: "Read old file".into(),
+                    status: "Completed".into(),
+                    kind: ToolCallKind::Read,
+                    location: Some(format!(r"C:\repo\old-{index}.txt")),
+                    location_is_command: false,
+                    cwd: None,
+                    output: Some(ToolCallOutput {
+                        text: format!("old output {index}"),
+                        truncated: false,
+                    }),
+                    exit_code: None,
+                    content: Vec::new(),
+                    locations: Vec::new(),
+                },
+            ],
+            expanded: true,
+            trailing_marker: None,
+        });
+    }
+    app.current_tab_mut().completed_turns.push(CompletedTurn {
+        prompt: "LATEST_MIXED_PROMPT".into(),
+        details: vec![
+            ChatMessage::Agent(
+                "最新回复包含宽字符，用来验证窄窗口中的换行；LATEST_AGENT_TAIL".into(),
+            ),
+            ChatMessage::ToolCall {
+                id: "latest-read".into(),
+                title: "Read latest file".into(),
+                status: "Completed".into(),
+                kind: ToolCallKind::Read,
+                location: Some(r"C:\repo\latest.txt".into()),
+                location_is_command: false,
+                cwd: None,
+                output: Some(ToolCallOutput {
+                    text: "LATEST_READ_OUTPUT".into(),
+                    truncated: false,
+                }),
+                exit_code: None,
+                content: Vec::new(),
+                locations: Vec::new(),
+            },
+            ChatMessage::ToolCall {
+                id: "latest-execute".into(),
+                title: "Run latest tests".into(),
+                status: "Completed".into(),
+                kind: ToolCallKind::Execute,
+                location: Some("cargo test --package latest".into()),
+                location_is_command: true,
+                cwd: Some(r"C:\repo".into()),
+                output: Some(ToolCallOutput {
+                    text: "LATEST_EXEC_OUTPUT".into(),
+                    truncated: false,
+                }),
+                exit_code: Some(0),
+                content: Vec::new(),
+                locations: Vec::new(),
+            },
+            ChatMessage::ToolCall {
+                id: "latest-edit".into(),
+                title: "Edit latest source".into(),
+                status: "Completed".into(),
+                kind: ToolCallKind::Edit,
+                location: Some(r"C:\repo\src\latest.rs".into()),
+                location_is_command: false,
+                cwd: None,
+                output: None,
+                exit_code: None,
+                content: vec![ToolCallContent::Diff {
+                    path: r"C:\repo\src\latest.rs".into(),
+                    old_text: Some(ToolCallOutput {
+                        text: "LATEST_OLD_LINE".into(),
+                        truncated: false,
+                    }),
+                    new_text: ToolCallOutput {
+                        text: "LATEST_NEW_LINE".into(),
+                        truncated: false,
+                    },
+                }],
+                locations: Vec::new(),
+            },
+            ChatMessage::Plan(vec![
+                PlanEntry {
+                    content: "LATEST_PLAN_DONE".into(),
+                    status: PlanEntryStatus::Completed,
+                },
+                PlanEntry {
+                    content: "LATEST_PLAN_NEXT".into(),
+                    status: PlanEntryStatus::Pending,
+                },
+            ]),
+        ],
+        expanded: true,
+        trailing_marker: None,
+    });
+
+    crate::ui::chat::reset_completed_turn_line_build_count();
+    let width = 56;
+    let buffer = render_to_buffer(&mut app, width, 38);
+    let rendered = buffer_to_text(&buffer);
+    let built_turns = crate::ui::chat::completed_turn_line_build_count();
+
+    for needle in [
+        "LATEST_MIXED_PROMPT",
+        "LATEST_AGENT_TAIL",
+        "Read latest file",
+        "LATEST_READ_OUTPUT",
+        "Run latest tests",
+        "LATEST_EXEC_OUTPUT",
+        "Edit latest source",
+        "LATEST_OLD_LINE",
+        "LATEST_NEW_LINE",
+        "LATEST_PLAN_DONE",
+        "LATEST_PLAN_NEXT",
+    ] {
+        assert!(
+            rendered.contains(needle),
+            "latest mixed content {needle:?} must remain visible; rendered:\n{rendered}",
+        );
+    }
+    assert!(!rendered.contains("OLD_TURN_000"));
+    assert!(
+        built_turns < 20,
+        "layout and bottom-up rendering must not build all 201 turns; built {built_turns}",
+    );
+
+    for row in buffer.content.chunks(width as usize) {
+        assert_eq!(row.len(), width as usize);
+        for (column, cell) in row.iter().enumerate() {
+            let symbol_width = UnicodeWidthStr::width(cell.symbol());
+            assert!(
+                column.saturating_add(symbol_width) <= width as usize,
+                "cell {:?} at column {column} must not overflow width {width}",
+                cell.symbol(),
+            );
+        }
+    }
+
+    app.current_tab_mut().chat_scroll.offset = 120;
+    let scrolled = render_to_text(&mut app, width, 38);
+    assert!(
+        scrolled.contains("OLD_TURN_"),
+        "older mixed history must remain renderable after lazy height estimation",
+    );
+}
+
+#[test]
+fn repeated_deep_scroll_reuses_intermediate_turn_heights() {
+    let mut app = test_app();
+    app.state = ConnectionState::Connected;
+    for index in 0..200 {
+        app.current_tab_mut().completed_turns.push(CompletedTurn {
+            prompt: format!("CACHED_SCROLL_TURN_{index:03}"),
+            details: vec![ChatMessage::Agent(format!(
+                "CACHED_SCROLL_DETAIL_{index:03}"
+            ))],
+            expanded: true,
+            trailing_marker: None,
+        });
+    }
+    app.current_tab_mut().chat_scroll.offset = 300;
+
+    crate::ui::chat::reset_completed_turn_line_build_count();
+    let first = render_to_text(&mut app, 80, 20);
+    let first_builds = crate::ui::chat::completed_turn_line_build_count();
+    assert!(first.contains("CACHED_SCROLL_TURN_"));
+    assert!(!first.contains("CACHED_SCROLL_TURN_199"));
+
+    crate::ui::chat::reset_completed_turn_line_build_count();
+    let second = render_to_text(&mut app, 80, 20);
+    let second_builds = crate::ui::chat::completed_turn_line_build_count();
+
+    assert_eq!(second, first);
+    assert!(
+        second_builds < first_builds,
+        "the second frame must reuse intermediate heights: first={first_builds}, second={second_builds}",
+    );
+    assert!(
+        second_builds < 20,
+        "deep-scroll redraw must only build viewport-adjacent turns; built {second_builds}",
+    );
+}
+
+#[test]
+fn wrapped_live_message_stops_before_completed_history() {
+    let mut app = test_app();
+    app.state = ConnectionState::Connected;
+    app.current_tab_mut()
+        .messages
+        .push(ChatMessage::Agent(format!(
+            "{}LIVE_WRAP_BOTTOM",
+            "word ".repeat(1_000),
+        )));
+    app.current_tab_mut().completed_turns.push(CompletedTurn {
+        prompt: "OLDER_COMPLETED_TURN".into(),
+        details: vec![ChatMessage::Agent("older detail".into())],
+        expanded: true,
+        trailing_marker: None,
+    });
+
+    crate::ui::chat::reset_completed_turn_line_build_count();
+    let rendered = render_to_text(&mut app, 40, 10);
+
+    assert!(rendered.contains("LIVE_WRAP_BOTTOM"));
+    assert!(!rendered.contains("OLDER_COMPLETED_TURN"));
+    assert_eq!(
+        crate::ui::chat::completed_turn_line_build_count(),
+        0,
+        "wrapped live rows that fill the viewport must stop before completed history",
+    );
+}
+
+#[test]
+fn completed_turn_height_cache_invalidates_for_width_and_expansion() {
+    let mut app = test_app();
+    app.current_tab_mut().completed_turns.push(CompletedTurn {
+        prompt: "CACHE_INVALIDATION_PROMPT".into(),
+        details: vec![ChatMessage::Agent(
+            "detail text that wraps differently after the pane becomes narrow".repeat(4),
+        )],
+        expanded: false,
+        trailing_marker: None,
+    });
+
+    let collapsed = crate::ui::chat::estimated_block_height(&app, 80, 100);
+    crate::ui::chat::reset_completed_turn_line_build_count();
+    assert_eq!(
+        crate::ui::chat::estimated_block_height(&app, 80, 100),
+        collapsed,
+    );
+    assert_eq!(
+        crate::ui::chat::completed_turn_line_build_count(),
+        0,
+        "unchanged width and content must use the cached height",
+    );
+
+    app.current_tab_mut().toggle_completed_turn(0);
+    crate::ui::chat::reset_completed_turn_line_build_count();
+    let expanded = crate::ui::chat::estimated_block_height(&app, 80, 100);
+    assert!(expanded > collapsed);
+    assert_eq!(crate::ui::chat::completed_turn_line_build_count(), 1);
+
+    crate::ui::chat::reset_completed_turn_line_build_count();
+    let narrow = crate::ui::chat::estimated_block_height(&app, 30, 100);
+    assert!(narrow > expanded);
+    assert_eq!(
+        crate::ui::chat::completed_turn_line_build_count(),
+        1,
+        "a width change must invalidate cached wrapping",
+    );
+}
+
+#[test]
+fn completed_turn_height_estimate_tracks_cache_updates_and_width() {
+    let mut tab = TabSession::default();
+    for index in 0..4 {
+        tab.completed_turns.push(CompletedTurn {
+            prompt: format!("ESTIMATED_HEIGHT_TURN_{index}"),
+            details: Vec::new(),
+            expanded: false,
+            trailing_marker: None,
+        });
+    }
+
+    assert_eq!(
+        tab.estimated_completed_turn_height(80),
+        4,
+        "without measurements, every turn contributes its one-row minimum",
+    );
+
+    tab.cache_completed_turn_height(0, 80, 3);
+    tab.cache_completed_turn_height(1, 80, 5);
+    assert_eq!(
+        tab.estimated_completed_turn_height(80),
+        16,
+        "unknown turns use the rounded-up mean of known heights",
+    );
+
+    tab.cache_completed_turn_height(1, 80, 7);
+    assert_eq!(
+        tab.estimated_completed_turn_height(80),
+        20,
+        "replacing a cached height must update rather than double-count it",
+    );
+
+    tab.invalidate_completed_turn_height(0);
+    assert_eq!(
+        tab.estimated_completed_turn_height(80),
+        28,
+        "invalidated heights must leave both aggregate count and sum",
+    );
+    assert_eq!(
+        tab.estimated_completed_turn_height(40),
+        4,
+        "changing wrap width must discard incompatible measurements",
+    );
+}
+
+#[test]
+fn scrollbar_metrics_map_bottom_based_offsets_to_ratatui_state() {
+    use crate::ui::chat::ScrollbarMetrics;
+
+    assert_eq!(crate::ui::chat::scrollbar_metrics(10, 10, 0), None);
+    assert_eq!(
+        crate::ui::chat::scrollbar_metrics(100, 20, 0),
+        Some(ScrollbarMetrics {
+            content_length: 81,
+            position: 80,
+        }),
+    );
+    assert_eq!(
+        crate::ui::chat::scrollbar_metrics(100, 20, 30),
+        Some(ScrollbarMetrics {
+            content_length: 81,
+            position: 50,
+        }),
+    );
+    assert_eq!(
+        crate::ui::chat::scrollbar_metrics(100, 20, 80),
+        Some(ScrollbarMetrics {
+            content_length: 81,
+            position: 0,
+        }),
+    );
+    assert_eq!(
+        crate::ui::chat::scrollbar_metrics(100, 20, usize::MAX),
+        Some(ScrollbarMetrics {
+            content_length: 81,
+            position: 0,
+        }),
+        "overscroll must clamp to the top",
+    );
+}
+
+#[test]
+fn collapsing_old_turn_immediately_restores_newer_collapsed_turn() {
+    let mut app = test_app();
+    app.state = ConnectionState::Connected;
+    for index in 0..2 {
+        app.current_tab_mut().completed_turns.push(CompletedTurn {
+            prompt: format!("COLLAPSE_SCROLL_TURN_{index}"),
+            details: vec![ChatMessage::Agent("detail\n".repeat(20))],
+            expanded: false,
+            trailing_marker: None,
+        });
+    }
+
+    let initial = render_to_text(&mut app, 80, 8);
+    assert!(initial.contains("COLLAPSE_SCROLL_TURN_0"));
+    assert!(initial.contains("COLLAPSE_SCROLL_TURN_1"));
+
+    app.current_tab_mut().select_completed_turn(0);
+    app.current_tab_mut().toggle_selected_completed_turn();
+    render_to_text(&mut app, 80, 8);
+    assert!(
+        app.current_tab().chat_scroll.offset > 0,
+        "expanding the old turn must scroll enough to keep its header visible",
+    );
+
+    app.current_tab_mut().toggle_selected_completed_turn();
+    let collapsed = render_to_text(&mut app, 80, 8);
+    assert!(collapsed.contains("COLLAPSE_SCROLL_TURN_0"));
+    assert!(
+        collapsed.contains("COLLAPSE_SCROLL_TURN_1"),
+        "the newer collapsed turn must return on the first frame after collapse:\n{collapsed}",
+    );
+    assert_eq!(
+        app.current_tab().chat_scroll.offset,
+        0,
+        "the collapsed two-row history fits in the viewport",
+    );
+}
+
+#[test]
+fn expanding_completed_turn_keeps_prompt_and_older_buffer_rows_anchored() {
+    let mut app = test_app();
+    app.state = ConnectionState::Connected;
+    for index in 0..4 {
+        app.current_tab_mut().completed_turns.push(CompletedTurn {
+            prompt: format!("ANCHOR_TOGGLE_TURN_{index}"),
+            details: vec![ChatMessage::Agent("expanded detail\n".repeat(20))],
+            expanded: false,
+            trailing_marker: None,
+        });
+    }
+
+    let initial = render_to_text(&mut app, 80, 16);
+    let row_of = |rendered: &str, index: usize| {
+        rendered
+            .lines()
+            .position(|line| line.contains(&format!("ANCHOR_TOGGLE_TURN_{index}")))
+            .expect("anchored prompt must be visible")
+    };
+    let anchored_rows = (0..=1)
+        .map(|index| row_of(&initial, index))
+        .collect::<Vec<_>>();
+
+    app.current_tab_mut().select_completed_turn(1);
+    render_to_text(&mut app, 80, 16);
+    app.current_tab_mut().toggle_selected_completed_turn();
+    let expanded = render_to_text(&mut app, 80, 16);
+    for (index, expected_row) in anchored_rows.iter().copied().enumerate() {
+        assert_eq!(
+            row_of(&expanded, index),
+            expected_row,
+            "expanding turn 1 must not move its prompt or older buffer row {index}",
+        );
+    }
+
+    app.current_tab_mut().toggle_selected_completed_turn();
+    let collapsed = render_to_text(&mut app, 80, 16);
+    for (index, expected_row) in anchored_rows.iter().copied().enumerate() {
+        assert_eq!(
+            row_of(&collapsed, index),
+            expected_row,
+            "collapsing turn 1 must restore without moving older buffer row {index}",
+        );
+    }
+}
+
+#[test]
+fn wheel_up_does_not_hide_collapsed_turns_when_history_fits() {
+    use crossterm::event::{KeyModifiers, MouseEvent, MouseEventKind};
+
+    let mut app = test_app();
+    app.state = ConnectionState::Connected;
+    for index in 0..2 {
+        app.current_tab_mut().completed_turns.push(CompletedTurn {
+            prompt: format!("FITTING_SCROLL_TURN_{index}"),
+            details: vec![ChatMessage::Agent("detail".into())],
+            expanded: false,
+            trailing_marker: None,
+        });
+    }
+
+    let initial = render_to_text(&mut app, 80, 8);
+    assert!(initial.contains("FITTING_SCROLL_TURN_0"));
+    assert!(initial.contains("FITTING_SCROLL_TURN_1"));
+
+    app.handle_event(AppEvent::Mouse(MouseEvent {
+        kind: MouseEventKind::ScrollUp,
+        column: 0,
+        row: 0,
+        modifiers: KeyModifiers::NONE,
+    }));
+    let after_scroll = render_to_text(&mut app, 80, 8);
+
+    assert_eq!(app.current_tab().chat_scroll.offset, 0);
+    assert!(after_scroll.contains("FITTING_SCROLL_TURN_0"));
+    assert!(
+        after_scroll.contains("FITTING_SCROLL_TURN_1"),
+        "overscroll must not virtualize a row when all history fits:\n{after_scroll}",
+    );
+}
+
+#[test]
+fn chat_scrollbar_appears_only_for_overflow_and_tracks_scroll_position() {
+    let mut fitting = test_app();
+    fitting.state = ConnectionState::Connected;
+    fitting
+        .current_tab_mut()
+        .completed_turns
+        .push(CompletedTurn {
+            prompt: "SCROLLBAR_FITTING_TURN".into(),
+            details: Vec::new(),
+            expanded: false,
+            trailing_marker: None,
+        });
+    let fitting_buffer = render_to_buffer(&mut fitting, 80, 16);
+    assert!(
+        !fitting_buffer
+            .content
+            .iter()
+            .any(|cell| cell.symbol() == "┃"),
+        "the scrollbar must stay hidden when all chat content fits",
+    );
+
+    let mut overflowing = test_app();
+    overflowing.state = ConnectionState::Connected;
+    for index in 0..80 {
+        overflowing
+            .current_tab_mut()
+            .completed_turns
+            .push(CompletedTurn {
+                prompt: format!("SCROLLBAR_OVERFLOW_TURN_{index}"),
+                details: Vec::new(),
+                expanded: false,
+                trailing_marker: None,
+            });
+    }
+
+    let thumb_rows = |buffer: &ratatui::buffer::Buffer| {
+        (0..buffer.area.height)
+            .filter(|row| {
+                buffer
+                    .cell((buffer.area.width - 1, *row))
+                    .is_some_and(|cell| cell.symbol() == "┃")
+            })
+            .collect::<Vec<_>>()
+    };
+
+    let bottom_buffer = render_to_buffer(&mut overflowing, 80, 16);
+    let bottom_thumb = thumb_rows(&bottom_buffer);
+    assert!(
+        !bottom_thumb.is_empty(),
+        "overflowing chat must paint a scrollbar in the right padding",
+    );
+    let input_top = (0..bottom_buffer.area.height)
+        .find(|row| {
+            bottom_buffer
+                .cell((bottom_buffer.area.width - 1, *row))
+                .is_some_and(|cell| cell.symbol() == "┐")
+        })
+        .expect("input dialog must paint its top-right corner");
+    assert_eq!(
+        bottom_thumb.last().copied(),
+        input_top.checked_sub(1),
+        "bottom scroll position must place the thumb against the end of the chat track",
+    );
+
+    overflowing.current_tab_mut().chat_scroll.offset = 30;
+    let scrolled_buffer = render_to_buffer(&mut overflowing, 80, 16);
+    let scrolled_thumb = thumb_rows(&scrolled_buffer);
+    assert!(!scrolled_thumb.is_empty());
+    assert!(
+        scrolled_thumb[0] < bottom_thumb[0],
+        "scrolling toward older turns must move the thumb upward",
+    );
+}
+
+#[test]
+fn completed_turn_toggle_render_is_stable_after_first_frame() {
+    for height in 6..=16 {
+        for selected_index in 0..4 {
+            let mut app = test_app();
+            app.state = ConnectionState::Connected;
+            for index in 0..4 {
+                app.current_tab_mut().completed_turns.push(CompletedTurn {
+                    prompt: format!("STABLE_TOGGLE_TURN_{index}"),
+                    details: vec![ChatMessage::Agent("detail\n".repeat(20))],
+                    expanded: false,
+                    trailing_marker: None,
+                });
+            }
+            render_to_text(&mut app, 80, height);
+
+            app.current_tab_mut().select_completed_turn(selected_index);
+            app.current_tab_mut().toggle_selected_completed_turn();
+            let first_expanded = render_to_text(&mut app, 80, height);
+            let second_expanded = render_to_text(&mut app, 80, height);
+            assert_eq!(
+                first_expanded, second_expanded,
+                "expanded render changed without an event at height={height}, turn={selected_index}",
+            );
+
+            app.current_tab_mut().toggle_selected_completed_turn();
+            let first_collapsed = render_to_text(&mut app, 80, height);
+            let second_collapsed = render_to_text(&mut app, 80, height);
+            assert_eq!(
+                first_collapsed, second_collapsed,
+                "collapsed render changed without an event at height={height}, turn={selected_index}",
+            );
+        }
+    }
+}
+
+#[test]
+fn completed_tool_output_update_invalidates_cached_turn_height() {
+    let mut app = test_app();
+    app.state = ConnectionState::Connected;
+    app.current_tab_mut().completed_turns.push(CompletedTurn {
+        prompt: "TERMINAL_CACHE_PROMPT".into(),
+        details: vec![ChatMessage::ToolCall {
+            id: "terminal-cache-tool".into(),
+            title: "Run cached command".into(),
+            status: "Completed".into(),
+            kind: ToolCallKind::Execute,
+            location: Some("echo cached".into()),
+            location_is_command: true,
+            cwd: None,
+            output: None,
+            exit_code: None,
+            content: vec![ToolCallContent::Terminal {
+                id: "terminal-cache-id".into(),
+                output: None,
+                exit_code: None,
+            }],
+            locations: Vec::new(),
+        }],
+        expanded: true,
+        trailing_marker: None,
+    });
+    render_to_text(&mut app, 80, 20);
+
+    app.handle_event(AppEvent::ToolTerminalOutput {
+        session_id: DEFAULT_TAB_ID.into(),
+        terminal_id: "terminal-cache-id".into(),
+        output: ToolCallOutput {
+            text: concat!("TERMINAL_CACHE_NEW_OUTPUT", "\n", "second line").into(),
+            truncated: false,
+        },
+        exit_code: Some(0),
+    });
+
+    crate::ui::chat::reset_completed_turn_line_build_count();
+    let rendered = render_to_text(&mut app, 80, 20);
+    assert!(rendered.contains("TERMINAL_CACHE_NEW_OUTPUT"));
+    assert!(
+        crate::ui::chat::completed_turn_line_build_count() > 0,
+        "completed tool updates must invalidate the cached turn",
     );
 }
 
@@ -11793,10 +12498,10 @@ fn render_chat_keeps_keyboard_selected_completed_turn_visible() {
 
     crate::ui::chat::reset_completed_turn_line_build_count();
     let after = render_to_text(&mut app, 80, 16);
-    assert_eq!(
-        crate::ui::chat::completed_turn_line_build_count(),
-        app.current_tab().completed_turns.len() * 2,
-        "selection-follow rendering must not add a third completed-turn layout pass",
+    let built_turns = crate::ui::chat::completed_turn_line_build_count();
+    assert!(
+        built_turns < app.current_tab().completed_turns.len(),
+        "selection-follow rendering must reuse cached heights for intermediate turns; built {built_turns}",
     );
     assert!(
         after.contains("SELECT_SCROLL_TURN_00"),
@@ -12695,7 +13400,9 @@ fn adjust_recompiles_the_command_without_changing_its_target() {
     app.submit_command_adjustment();
 
     let adjustment_prompt = prompt_rx.try_recv().expect("adjustment prompt");
-    assert!(adjustment_prompt.text.contains("## Original User Intent\nlist files"));
+    assert!(adjustment_prompt
+        .text
+        .contains("## Original User Intent\nlist files"));
     assert!(adjustment_prompt
         .text
         .contains("## Current Terminal Input\nGet-ChildItem"));

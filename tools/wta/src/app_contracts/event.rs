@@ -1,8 +1,8 @@
 use crossterm::event::{KeyEvent, MouseEvent};
 
 use super::{
-    AcpModelInfo, AcpSessionConfigOption, AvailableAgent, DebugMessage, PermOption, PlanEntry,
-    PreflightResult,
+    AcpModelInfo, AcpSessionCommand, AcpSessionConfigOption, AvailableAgent, DebugMessage,
+    PermOption, PlanEntry, PreflightResult,
 };
 
 pub enum AppEvent {
@@ -64,6 +64,10 @@ pub enum AppEvent {
     SessionConfigUpdated {
         session_id: String,
         options: Vec<AcpSessionConfigOption>,
+    },
+    SessionCommandsUpdated {
+        session_id: String,
+        commands: Vec<AcpSessionCommand>,
     },
     SessionConfigSetCompleted {
         session_id: String,

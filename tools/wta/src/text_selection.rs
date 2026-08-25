@@ -417,10 +417,7 @@ mod tests {
             ),
             None
         );
-        assert_eq!(
-            state.selected_text().as_deref(),
-            Some("beta\r\ngamma")
-        );
+        assert_eq!(state.selected_text().as_deref(), Some("beta\r\ngamma"));
     }
 
     #[test]
@@ -491,10 +488,7 @@ mod tests {
             ),
             now,
         );
-        assert_eq!(
-            state.selected_text().as_deref(),
-            Some("beta\r\ngamma")
-        );
+        assert_eq!(state.selected_text().as_deref(), Some("beta\r\ngamma"));
     }
 
     #[test]
@@ -565,10 +559,7 @@ mod tests {
             ),
             now,
         );
-        assert_eq!(
-            state.selected_text().as_deref(),
-            Some("beta\r\ngam")
-        );
+        assert_eq!(state.selected_text().as_deref(), Some("beta\r\ngam"));
     }
 
     #[test]
@@ -709,11 +700,9 @@ mod tests {
         let mut rendered = buffer();
         state.snapshot_and_render(&mut rendered);
         assert!(rendered[(0, 0)].modifier.contains(Modifier::REVERSED));
-        assert!(
-            !state.buffer.as_ref().unwrap()[(0, 0)]
-                .modifier
-                .contains(Modifier::REVERSED)
-        );
+        assert!(!state.buffer.as_ref().unwrap()[(0, 0)]
+            .modifier
+            .contains(Modifier::REVERSED));
     }
 
     #[test]

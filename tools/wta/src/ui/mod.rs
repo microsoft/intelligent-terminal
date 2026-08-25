@@ -21,7 +21,7 @@ pub mod shimmer;
 mod user_input;
 
 pub use agent_popup::AgentPopupState;
-pub use command_popup::{PopupCandidates, PopupState};
+pub use command_popup::{CommandCandidate, PopupCandidates, PopupState};
 pub use config_popup::ConfigPopupState;
 pub use delegate_popup::DelegatePopupState;
 #[cfg(test)]

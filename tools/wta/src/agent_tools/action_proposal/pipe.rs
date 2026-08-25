@@ -577,5 +577,4 @@ mod tests {
 
         tokio::join!(server_future, event_future, client_future);
     }
-
 }

@@ -35,6 +35,19 @@ Describe 'Feature: agent pane popup + menu' -Tag 'Feature' -Skip:(-not $script:R
         Send-AgentKey -App $script:app -Key Escape | Out-Null
     }
 
+    It 'Slash command search matches substrings and ranks the match' {
+        Open-AgentCommandMenu -App $script:app | Out-Null
+        Send-AgentPrompt -App $script:app -Text 'lear' -NoSubmit | Out-Null
+
+        $filtered = Wait-Until -TimeoutSec 10 -Because 'substring filtering to select /clear' -Condition {
+            $text = Get-AgentPaneText -App $script:app -MaxLines 40
+            if ($text -match '>\s*/clear\b') { $text }
+        }
+        $filtered | Should -Match '>\s*/clear\b'
+        $filtered | Should -Not -Match '/help\b' -Because 'nonmatching commands must be filtered out'
+        Send-AgentKey -App $script:app -Key Escape | Out-Null
+    }
+
     It 'TRIGGERS the selected option (/clear) and the popup closes' {
         Invoke-AgentMenuItem -App $script:app -Name '/clear'
         # After triggering /clear, the popup is gone (input returns to the prompt hint).

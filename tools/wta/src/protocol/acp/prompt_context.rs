@@ -288,15 +288,11 @@ async fn resolve_pane_by_session_id(
             let Some(panes_arr) = panes.get("panes").and_then(|v| v.as_array()) else {
                 continue;
             };
-            if let Some(pane) = panes_arr
-                .iter()
-                .find(|pane| {
-                    json_str_or_num(pane.get("session_id"))
-                        .is_some_and(|candidate| {
-                            normalize_pane_session_id(&candidate) == normalized_session_id
-                        })
+            if let Some(pane) = panes_arr.iter().find(|pane| {
+                json_str_or_num(pane.get("session_id")).is_some_and(|candidate| {
+                    normalize_pane_session_id(&candidate) == normalized_session_id
                 })
-            {
+            }) {
                 return Some(pane.clone());
             }
         }
@@ -307,8 +303,7 @@ async fn resolve_pane_by_session_id(
 struct PlannerTerminalContext {
     json: String,
     target_pane_id: String,
-    resolver_invocation:
-        Option<crate::agent_tools::command_resolution::CommandResolverInvocation>,
+    resolver_invocation: Option<crate::agent_tools::command_resolution::CommandResolverInvocation>,
 }
 
 async fn build_terminal_context(
@@ -642,9 +637,11 @@ pub(super) fn command_resolver_invocation(
         }
     }
 
-    Some(crate::agent_tools::command_resolution::CommandResolverInvocation::new(
-        executable, shell, cwd,
-    ))
+    Some(
+        crate::agent_tools::command_resolution::CommandResolverInvocation::new(
+            executable, shell, cwd,
+        ),
+    )
 }
 
 #[async_trait]
