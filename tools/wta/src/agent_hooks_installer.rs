@@ -379,6 +379,20 @@ impl CliStatus {
             detection_fallback: None,
         }
     }
+
+    /// Apply a parsed `plugin list` result to the row.
+    ///
+    /// The listing answers four fields at once, `installed_version` among
+    /// them. Applying them through one helper is what keeps a CLI from
+    /// silently dropping the version the CLI just reported and falling back
+    /// to the on-disk readers — which report what was *recorded*, not what is
+    /// loaded, and can disagree.
+    fn apply_presence(&mut self, presence: PluginPresence, marketplace_registered: bool) {
+        self.plugin_installed = presence.installed;
+        self.plugin_enabled = presence.enabled;
+        self.installed_version = presence.version.map(|v| v.to_string());
+        self.marketplace_registered = marketplace_registered;
+    }
 }
 
 /// Top-level shape of `wta hooks status --json`. `bundle_source`
@@ -1424,11 +1438,7 @@ fn status_for(cli: CliKind, home: Option<&Path>) -> CliStatus {
 fn installed_version_from_disk(cli: CliKind, home: Option<&Path>) -> Option<Version> {
     let home = home?;
     match cli {
-        CliKind::Copilot => read_installed_copilot(home)
-            .ok()
-            .flatten()
-            .and_then(|i| i.version)
-            .or_else(|| copilot_live_plugin_version(home)),
+        CliKind::Copilot => read_installed_copilot_any(home).ok().flatten()?.version,
         CliKind::Gemini => read_installed_gemini(home).ok().flatten()?.version,
         CliKind::OpenCode => read_installed_opencode(home).ok().flatten()?.version,
         // Claude and Codex both unpack into `<cache>/<plugin>/<version>/`.
@@ -1437,8 +1447,8 @@ fn installed_version_from_disk(cli: CliKind, home: Option<&Path>) -> Option<Vers
     }
 }
 
-/// Version a *live* Copilot plugin would load, read from the marketplace
-/// directory it is registered against.
+/// State of a *live* Copilot plugin, read from the marketplace directory it
+/// is registered against.
 ///
 /// Installing from a local marketplace directory makes Copilot load the plugin
 /// live: nothing is copied and no entry lands in `config.json`'s
@@ -1447,13 +1457,41 @@ fn installed_version_from_disk(cli: CliKind, home: Option<&Path>) -> Option<Vers
 /// says right now — which is also what makes it worth reporting, because a
 /// registration pointing at a stale worktree really is running a different
 /// version from the bundle this wta ships.
-fn copilot_live_plugin_version(home: &Path) -> Option<Version> {
+///
+/// `None` when the registration doesn't resolve to a readable manifest, so a
+/// pruned directory falls through to the copied record rather than masking it.
+fn read_live_copilot(home: &Path) -> Option<InstalledInfo> {
     let info = copilot_marketplace_info(home);
     if !info.valid {
         return None;
     }
     let dir = info.path?;
-    read_version_field(&Path::new(&dir).join(PLUGIN_NAME).join("plugin.json"))
+    let version = read_version_field(&Path::new(&dir).join(PLUGIN_NAME).join("plugin.json"))?;
+    Some(InstalledInfo {
+        version: Some(version),
+        enabled: copilot_plugin_enabled(home),
+        gemini_source: None,
+        gemini_type: None,
+    })
+}
+
+/// Whether `~/.copilot/settings.json` has our plugin switched on.
+///
+/// A live plugin records enablement here rather than on an `installedPlugins`
+/// entry. Absent means enabled: Copilot only writes the key once the plugin
+/// has been toggled.
+fn copilot_plugin_enabled(home: &Path) -> bool {
+    let path = home.join(".copilot").join("settings.json");
+    let Ok(text) = fs::read_to_string(&path) else {
+        return true;
+    };
+    let Ok(v) = serde_json::from_str::<Value>(&strip_jsonc_line_comments(&text)) else {
+        return true;
+    };
+    v.get("enabledPlugins")
+        .and_then(|m| m.get(format!("{}@{}", PLUGIN_NAME, MARKETPLACE_NAME)))
+        .and_then(Value::as_bool)
+        .unwrap_or(true)
 }
 
 /// Highest version directory under a plugin cache root that is still live.
@@ -1551,9 +1589,7 @@ fn copilot_status(on_path: bool, bin_path: Option<String>, home: Option<&Path>) 
         .map(|o| parse_copilot_marketplace_list(&o.stdout));
 
     if let (Some(p), Some(m)) = (plugin_presence, mkt_ok) {
-        out.plugin_installed = p.installed;
-        out.plugin_enabled = p.enabled;
-        out.marketplace_registered = m;
+        out.apply_presence(p, m);
     } else {
         copilot_fs_fallback(&mut out, home);
     }
@@ -1747,10 +1783,7 @@ fn claude_status(on_path: bool, bin_path: Option<String>, home: Option<&Path>) -
     .and_then(|o| parse_claude_marketplace_list_json(&o.stdout));
 
     if let (Some(p), Some(m)) = (plugin_json, mkt_json) {
-        out.plugin_installed = p.installed;
-        out.plugin_enabled = p.enabled;
-        out.installed_version = p.version.map(|v| v.to_string());
-        out.marketplace_registered = m;
+        out.apply_presence(p, m);
     } else {
         claude_fs_fallback(&mut out, home);
     }
@@ -3752,10 +3785,30 @@ struct InstalledInfo {
     gemini_type: Option<String>,
 }
 
-/// Read Copilot's installed-plugin entry directly from
-/// `~/.copilot/config.json`. Pure file IO — no spawn.
+/// Outcome of reading a CLI's installed-plugin state. `Ok(None)` means "no
+/// record found"; `Err` carries a user-facing reason the record was
+/// unreadable.
 type InstalledProbe = Result<Option<InstalledInfo>, String>;
 
+/// Copilot's installed-plugin state as its own on-disk records describe it.
+///
+/// A `wt-local` registration that still resolves to a readable plugin
+/// directory wins over `config.json`'s `installedPlugins`. Copilot loads a
+/// directory marketplace *live* and ignores any copied record for the same
+/// plugin: Copilot CLI 1.0.81-9 lists only the live entry even when
+/// `installedPlugins` still carries a populated `cache_path` for an older
+/// version. Preferring the copied record there would report a version the CLI
+/// stopped loading — the same wrong answer as the `v?` this replaced, only
+/// harder to notice because it looks like a real number.
+fn read_installed_copilot_any(home: &Path) -> InstalledProbe {
+    if let Some(live) = read_live_copilot(home) {
+        return Ok(Some(live));
+    }
+    read_installed_copilot(home)
+}
+
+/// Read Copilot's copied-install entry directly from
+/// `~/.copilot/config.json`. Pure file IO — no spawn.
 fn read_installed_copilot(home: &Path) -> InstalledProbe {
     let path = home.join(".copilot").join("config.json");
     let text = match fs::read_to_string(&path) {
@@ -4354,7 +4407,7 @@ pub fn installed_plugin_version(cli_name: &str) -> Option<String> {
 /// Per-CLI dispatch for reading installed-plugin state.
 fn probe_installed(cli: CliKind, home: &Path) -> InstalledProbe {
     match cli {
-        CliKind::Copilot => read_installed_copilot(home),
+        CliKind::Copilot => read_installed_copilot_any(home),
         CliKind::Claude => {
             // `claude plugin list --json` requires the CLI on PATH; if
             // it isn't, treat as "not installed" rather than spawning.

@@ -3244,10 +3244,13 @@ fn installed_version_from_disk_reads_live_copilot_marketplace() {
     );
 }
 
-/// The copied-install record wins when both exist: it is what the CLI
-/// actually loaded, whereas the marketplace directory may have moved on.
+/// The live marketplace wins when both records exist. Copilot ignores a
+/// copied record once the plugin loads live from a directory marketplace —
+/// CLI 1.0.81-9 lists only the live entry even with a fully populated
+/// `cache_path` for an older version — so reporting the copied version would
+/// name a build the CLI stopped loading.
 #[test]
-fn installed_version_from_disk_prefers_copilot_config_entry() {
+fn installed_version_from_disk_prefers_live_copilot_marketplace() {
     let home = unique_dir("copilot-copied-version");
     let cfg_dir = home.join(".copilot");
     fs::create_dir_all(&cfg_dir).unwrap();
@@ -3271,8 +3274,58 @@ fn installed_version_from_disk_prefers_copilot_config_entry() {
 
     assert_eq!(
         installed_version_from_disk(CliKind::Copilot, Some(&home)),
+        Some("0.1.6".parse().unwrap())
+    );
+}
+
+/// A registration pointing at a pruned worktree has no readable manifest, so
+/// it must not shadow a copied record that is still valid.
+#[test]
+fn installed_version_from_disk_falls_back_to_copied_copilot_record() {
+    let home = unique_dir("copilot-fallback-version");
+    let cfg_dir = home.join(".copilot");
+    fs::create_dir_all(&cfg_dir).unwrap();
+    fs::write(
+        cfg_dir.join("config.json"),
+        r#"{"installedPlugins":[
+{ "name": "wt-agent-hooks", "marketplace": "wt-local", "version": "0.1.2" }
+]}"#,
+    )
+    .unwrap();
+
+    let marketplace = unique_dir("copilot-fallback-bundle");
+    fs::remove_dir_all(&marketplace).ok();
+    write_copilot_marketplace_settings(&cfg_dir, &marketplace);
+
+    assert_eq!(
+        installed_version_from_disk(CliKind::Copilot, Some(&home)),
         Some("0.1.2".parse().unwrap())
     );
+}
+
+/// A live plugin records enablement in `settings.json`, not on an
+/// `installedPlugins` entry. Missing that would let `decide_upgrade` update a
+/// plugin the user switched off.
+#[test]
+fn read_installed_copilot_any_reads_live_enabled_flag() {
+    let home = unique_dir("copilot-live-disabled");
+    let cfg_dir = home.join(".copilot");
+    fs::create_dir_all(&cfg_dir).unwrap();
+    fs::write(cfg_dir.join("config.json"), r#"{"installedPlugins":[]}"#).unwrap();
+
+    let marketplace = unique_dir("copilot-live-disabled-bundle");
+    let plugin_dir = marketplace.join(PLUGIN_NAME);
+    fs::create_dir_all(&plugin_dir).unwrap();
+    fs::write(
+        plugin_dir.join("plugin.json"),
+        r#"{"name":"wt-agent-hooks","version":"0.1.6"}"#,
+    )
+    .unwrap();
+    write_copilot_settings(&cfg_dir, &marketplace, Some(false));
+
+    let info = read_installed_copilot_any(&home).unwrap().unwrap();
+    assert_eq!(info.version, Some("0.1.6".parse().unwrap()));
+    assert!(!info.enabled);
 }
 
 /// A registration pointing at a pruned worktree has no readable manifest, so
@@ -3297,7 +3350,13 @@ fn installed_version_from_disk_ignores_stale_copilot_marketplace() {
 /// Write a `~/.copilot/settings.json` registering `wt-local` against
 /// `marketplace`, including the JSONC banner Copilot emits.
 fn write_copilot_marketplace_settings(copilot_dir: &Path, marketplace: &Path) {
-    let settings = serde_json::json!({
+    write_copilot_settings(copilot_dir, marketplace, None);
+}
+
+/// As above, plus an explicit `enabledPlugins` entry. `None` omits the key,
+/// which is how Copilot leaves it until the plugin is toggled.
+fn write_copilot_settings(copilot_dir: &Path, marketplace: &Path, enabled: Option<bool>) {
+    let mut settings = serde_json::json!({
         "extraKnownMarketplaces": {
             MARKETPLACE_NAME: {
                 "source": {
@@ -3307,11 +3366,41 @@ fn write_copilot_marketplace_settings(copilot_dir: &Path, marketplace: &Path) {
             }
         }
     });
+    if let Some(enabled) = enabled {
+        let mut plugins = serde_json::Map::new();
+        plugins.insert(
+            format!("{}@{}", PLUGIN_NAME, MARKETPLACE_NAME),
+            serde_json::Value::Bool(enabled),
+        );
+        settings["enabledPlugins"] = serde_json::Value::Object(plugins);
+    }
     let body = format!(
         "// User settings belong in settings.json.\n{}\n",
         serde_json::to_string_pretty(&settings).unwrap()
     );
     fs::write(copilot_dir.join("settings.json"), body).unwrap();
+}
+
+/// The version a CLI's own listing reported has to land on the row. Dropping
+/// it silently demotes the row to the on-disk readers, which report what was
+/// recorded rather than what is loaded — that is how the Copilot row ended up
+/// rendering a stale `installedPlugins` version.
+#[test]
+fn apply_presence_carries_the_listed_version() {
+    let mut row = CliStatus::stub_skipped(CliKind::Copilot);
+    row.apply_presence(
+        PluginPresence {
+            installed: true,
+            enabled: true,
+            version: Some("0.1.6".parse().unwrap()),
+        },
+        true,
+    );
+
+    assert!(row.plugin_installed);
+    assert!(row.plugin_enabled);
+    assert!(row.marketplace_registered);
+    assert_eq!(row.installed_version.as_deref(), Some("0.1.6"));
 }
 
 // ---- auto-upgrade: read_installed_gemini ---------------------------
