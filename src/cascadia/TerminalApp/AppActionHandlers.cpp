@@ -500,7 +500,8 @@ namespace winrt::TerminalApp::implementation
                 return;
             }
 
-            LOG_IF_FAILED(_OpenNewTab(realArgs.ContentArgs()));
+            const auto result = _OpenNewTab(realArgs.ContentArgs());
+            LOG_IF_FAILED(result);
             args.Handled(true);
         }
     }

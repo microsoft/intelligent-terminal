@@ -5334,7 +5334,7 @@ impl App {
             .clone()
             .unwrap_or_else(|| DEFAULT_TAB_ID.to_string());
         let _ = self.new_session_tx.send(NewSessionForTab {
-            tab_id,
+            tab_id: tab_id.clone(),
             cwd: self.source_cwd.clone(),
         });
         if let Some(session_id) = self.current_tab().session_id.clone() {
@@ -5348,7 +5348,12 @@ impl App {
         tab.usage_staleness = crate::usage::UsageStaleness::default();
         tab.clear_completed_turns();
         tab.session_id = None;
+        tab.has_meaningful_conversation = false;
+        tab.meaningful_conversation_before_load = None;
+        tab.loading_session = false;
+        tab.loading_target_session_id = None;
         tab.scroll_to_bottom();
+        self.project_tab_state(&tab_id);
     }
 
     /// `/fix [hint]` — run the auto-fix prompt on demand against the active
@@ -5525,6 +5530,13 @@ impl App {
             tab.usage_staleness = crate::usage::UsageStaleness::default();
             tab.clear_completed_turns();
             tab.session_id = None;
+            tab.has_meaningful_conversation = false;
+            tab.meaningful_conversation_before_load = None;
+            tab.loading_session = false;
+            tab.loading_target_session_id = None;
+        }
+        for tab_id in self.tab_sessions.keys().cloned().collect::<Vec<_>>() {
+            self.project_tab_state(&tab_id);
         }
         let _ = self.restart_tx.send(AgentLifecycleRequest::RestartMaster);
         self.publish_agent_status();
@@ -5914,6 +5926,11 @@ impl App {
             tab.usage = None;
             tab.usage_staleness = crate::usage::UsageStaleness::default();
             tab.clear_completed_turns();
+            tab.selected_completed_turn_idx = None;
+            tab.has_meaningful_conversation = false;
+            tab.meaningful_conversation_before_load = None;
+            tab.loading_session = false;
+            tab.loading_target_session_id = None;
             tab.scroll_to_bottom();
         }
         if let Some(session_id) = removed_session_id {
@@ -5931,6 +5948,7 @@ impl App {
             tab_id: tab_id.to_string(),
             notify_master: false,
         });
+        self.project_tab_state(tab_id);
 
         tracing::info!(
             target: "tab_session",

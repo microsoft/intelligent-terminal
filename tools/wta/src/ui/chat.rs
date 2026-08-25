@@ -990,6 +990,19 @@ pub fn render_activity(frame: &mut Frame, app: &App, area: Rect) {
         return;
     }
     let tab = app.current_tab();
+    if tab.loading_session {
+        let short_id: String = tab
+            .loading_target_session_id
+            .as_deref()
+            .unwrap_or_default()
+            .chars()
+            .take(8)
+            .collect();
+        let label = t!("system.resuming_session", session_id = short_id).into_owned();
+        let line = Line::from(shimmer::shimmer_spans(&label, tab.activity_frame));
+        frame.render_widget(Paragraph::new(line), area);
+        return;
+    }
     if !should_show_turn_activity(tab) {
         return;
     }

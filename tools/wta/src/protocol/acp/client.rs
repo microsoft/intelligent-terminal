@@ -1397,9 +1397,11 @@ impl WtaClient {
                 // this branch only fires during a load replay. The
                 // App handler gates on `loading_session` and drops
                 // late-arrivers.
+                let message_id = chunk.message_id.map(|id| id.to_string());
                 if let acp::schema::v1::ContentBlock::Text(text_content) = chunk.content {
                     let _ = self.state.event_tx.send(AppEvent::UserMessageReplayChunk {
                         session_id: sid,
+                        message_id,
                         text: text_content.text,
                     });
                 }
@@ -2589,8 +2591,8 @@ pub async fn run_acp_client_over_pipe(
                 move |req: acp::schema::v1::AgentRequest, responder, _cx| {
                     let c = c.clone();
                     async move {
-            use acp::schema::v1::{AgentRequest as Q, ClientResponse as R};
-            match req {
+                        use acp::schema::v1::{AgentRequest as Q, ClientResponse as R};
+                        match req {
                             Q::RequestPermissionRequest(a) => conn::respond_enum(
                                 responder,
                                 c.request_permission(a)
@@ -2668,15 +2670,15 @@ pub async fn run_acp_client_over_pipe(
                 move |notif: acp::schema::v1::AgentNotification, _cx| {
                     let c = c.clone();
                     async move {
-            use acp::schema::v1::AgentNotification as N;
-            match notif {
-                N::SessionNotification(n) => c.dispatch_session_notification(n).await,
+                        use acp::schema::v1::AgentNotification as N;
+                        match notif {
+                            N::SessionNotification(n) => c.dispatch_session_notification(n).await,
                             N::ExtNotification(n) => {
                                 let _ = c.ext_notification(n).await;
                             }
-                _ => {}
-            }
-            Ok(())
+                            _ => {}
+                        }
+                        Ok(())
                     }
                 }
             },

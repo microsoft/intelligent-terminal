@@ -34,6 +34,8 @@ namespace winrt::TerminalApp::implementation
         // active, the next press closes the pane; otherwise it switches
         // into sessions view.
         bool IsSessionsView() const noexcept { return _isSessionsView; }
+        winrt::hstring AgentSessionId() const noexcept { return _agentSessionId; }
+        void SetAgentSessionId(const winrt::hstring& sessionId) noexcept { _agentSessionId = sessionId; }
 
         // --- Per-pane autofix / diagnostics state ---
         // Driven by inbound `autofix_state_changed` events for this pane's
@@ -158,6 +160,7 @@ namespace winrt::TerminalApp::implementation
         // and hides the agent logo. Driven by TerminalPage::OnAgentStateChanged
         // (the single writer for view-derived UI state).
         bool _isSessionsView{ false };
+        winrt::hstring _agentSessionId{};
 
         // --- Diagnostics / autofix state (projected by the window bottom bar) ---
         AutofixState _autofixState{ AutofixState::Idle };

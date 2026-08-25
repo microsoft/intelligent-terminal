@@ -5,8 +5,11 @@
 #include "TerminalWindow.h"
 
 #include "AppLogic.h"
+#include "AgentRestoreHelpers.h"
 
 #include <til/env.h>
+
+#include "../../types/inc/utils.hpp"
 
 #include "TerminalWindow.g.cpp"
 #include "SettingsLoadEventArgs.g.cpp"
@@ -170,7 +173,20 @@ namespace winrt::TerminalApp::implementation
         {
             // layout will only ever be non-null if there were >0 tabs persisted in
             // .TabLayout(). We can re-evaluate that as a part of TODO: GH#12633
-            _root->SetStartupActions(wil::to_vector(layout.TabLayout()));
+            auto actions = wil::to_vector(layout.TabLayout());
+            const auto settingsDir = CascadiaSettings::SettingsDirectory();
+            const auto filenamePrefix = ::Microsoft::Console::Utils::IsRunningElevated() ?
+                                            std::wstring_view{ L"elevated_" } :
+                                            std::wstring_view{ L"buffer_" };
+            SetPersistedLayoutAgentRestorePaths(actions, [&](const winrt::guid& sessionId) {
+                return winrt::hstring{ fmt::format(
+                    FMT_COMPILE(L"{}\\{}{}.txt"),
+                    settingsDir,
+                    filenamePrefix,
+                    sessionId) };
+            });
+
+            _root->SetStartupActions(std::move(actions));
         }
         else if (_appArgs)
         {

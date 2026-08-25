@@ -22,10 +22,12 @@
 #include "TabRowControl.h"
 #include "DebugTapConnection.h"
 #include "DesktopNotification.h"
+#include "AgentRestoreHelpers.h"
 #include "..\TerminalSettingsModel\FileUtils.h"
 #include "../TerminalSettingsAppAdapterLib/TerminalSettings.h"
 
 #include <shlobj.h>
+#include <sddl.h>
 
 using namespace winrt;
 using namespace winrt::Windows::Foundation::Collections;
@@ -92,7 +94,35 @@ namespace winrt::TerminalApp::implementation
 
         // This call to _MakePane won't return nullptr, we already checked that
         // case above with the _maybeElevate call.
-        _CreateNewTabFromPane(_MakePane(newContentArgs, nullptr), -1, openInBackground);
+        const auto newTab = _CreateNewTabFromPane(_MakePane(newContentArgs, nullptr), -1, openInBackground);
+        if (const auto newTerminalArgs{ newContentArgs.try_as<NewTerminalArgs>() })
+        {
+            if (const auto tabImpl = _GetTabImpl(newTab))
+            {
+                if (ShouldRestoreAgentPane(!newTerminalArgs.AgentPaneSessionId().empty(),
+                                           !newTerminalArgs.AgentPaneView().empty(),
+                                           newTerminalArgs.AgentPaneOpen()))
+                {
+                    _pendingAgentPaneRestores.insert_or_assign(
+                        tabImpl->StableId(),
+                        _PendingAgentPaneRestore{
+                            _currentStartupActionBatchId,
+                            winrt::to_string(newTerminalArgs.AgentPaneSessionId()),
+                            newTerminalArgs.AgentPaneAgent(),
+                            winrt::to_string(newTerminalArgs.StartingDirectory()),
+                            winrt::to_string(newTerminalArgs.AgentPaneView()),
+                            newTerminalArgs.AgentPaneOpen(),
+                            newTerminalArgs.AgentPanePosition(),
+                            // A size outside the split range means the record
+                            // predates size persistence, or is corrupt; either
+                            // way the even split is the safe restore.
+                            newTerminalArgs.AgentPaneSize() > 0.0f && newTerminalArgs.AgentPaneSize() < 1.0f ?
+                                newTerminalArgs.AgentPaneSize() :
+                                0.5f,
+                            newTerminalArgs.AgentPaneCustomCommand() });
+                }
+            }
+        }
         return S_OK;
     }
     CATCH_RETURN();
@@ -297,8 +327,16 @@ namespace winrt::TerminalApp::implementation
 
                 // Pre-warm a stashed agent pane on this tab so the helper is
                 // running from the start (autofix needs it). A transferred
-                // pane keeps its existing helper and skips this path.
-                if (agentLeavesSeen == 0)
+                // pane keeps its existing helper and skips this path, and a
+                // tab whose persisted agent pane is about to be restored skips
+                // it too so the restore is not raced by a blank pre-warm.
+                if (self->_pendingAgentPaneRestores.contains(newTabId))
+                {
+                    _agentPaneLog(
+                        std::string{ "_InitializeTab(deferred): agent pane restore pending for tab " } +
+                        winrt::to_string(newTabId));
+                }
+                else if (agentLeavesSeen == 0)
                 {
                     _agentPaneLog(
                         std::string{ "_InitializeTab(deferred): pre-warming stashed agent pane on tab " } +
@@ -312,6 +350,7 @@ namespace winrt::TerminalApp::implementation
             });
         }
     }
+
 
     // Method Description:
     // - Create a new tab using a specified pane as the root.
@@ -518,10 +557,68 @@ namespace winrt::TerminalApp::implementation
         _previouslyClosedPanesAndTabs.emplace_back(args);
     }
 
-    // Method Description:
-    // - If this window has a name, persist its current workspace layout to
-    //   ApplicationState. Intended to be called from the close-pane / close-tab
-    //   paths while tab/pane content is still alive (before it gets torn down).
+    // Stamps this tab's agent bindings onto its persisted actions, so a layout
+    // replayed at startup can resume the agent CLI a shell pane was running and
+    // rebuild the tab's agent pane with the conversation it had.
+    void TerminalPage::_AddAgentRestoreMetadata(Tab* const tab, std::vector<ActionAndArgs>& actions)
+    {
+        const auto getTerminalArgs = [](const ActionAndArgs& action) -> NewTerminalArgs {
+            INewContentArgs contentArgs{ nullptr };
+            if (const auto args = action.Args().try_as<NewTabArgs>())
+            {
+                contentArgs = args.ContentArgs();
+            }
+            else if (const auto args = action.Args().try_as<SplitPaneArgs>())
+            {
+                contentArgs = args.ContentArgs();
+            }
+
+            return contentArgs.try_as<NewTerminalArgs>();
+        };
+
+        for (const auto& action : actions)
+        {
+            if (const auto terminalArgs = getTerminalArgs(action))
+            {
+                if (const auto binding = _paneAgentSessions.find(terminalArgs.SessionId()); binding != _paneAgentSessions.end())
+                {
+                    terminalArgs.AgentSessionId(binding->second.sessionId);
+                    terminalArgs.AgentSessionAgent(binding->second.agent);
+                    terminalArgs.AgentResumeCommandline(binding->second.resumeCommandline);
+                }
+            }
+        }
+
+        if (const auto agentContent = tab->FindAgentPaneContent())
+        {
+            // Whether the pane is open, which view it shows, and where it sits
+            // are user intent and must survive a restore on their own. wta only
+            // projects an agent_session_id once the tab has a meaningful
+            // conversation, so gating this block on that id would silently drop
+            // the layout of every agent pane the user opened but never chatted
+            // in. An empty id simply means "restore the pane, load no session".
+            const auto agentSessionId = agentContent.AgentSessionId();
+            RemoveAgentPaneSessionFromShellBindings(actions, agentSessionId);
+            for (const auto& action : actions)
+            {
+                if (const auto newTabArgs = action.Args().try_as<NewTabArgs>())
+                {
+                    if (const auto terminalArgs = newTabArgs.ContentArgs().try_as<NewTerminalArgs>())
+                    {
+                        terminalArgs.AgentPaneSessionId(agentSessionId);
+                        terminalArgs.AgentPaneAgent(_GetAgentPaneIdentity(tab));
+                        terminalArgs.AgentPaneCustomCommand(_GetAgentPaneCustomCommand(tab));
+                        terminalArgs.AgentPaneView(agentContent.IsSessionsView() ? L"sessions" : L"chat");
+                        terminalArgs.AgentPaneOpen(!tab->HasStashedAgentPane());
+                        terminalArgs.AgentPanePosition(winrt::get_self<implementation::AgentPaneContent>(agentContent)->GetAgentPanePosition());
+                        terminalArgs.AgentPaneSize(tab->AgentPaneSize());
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
     void TerminalPage::_SaveWorkspaceIfNeeded()
     {
         const auto& windowName = _WindowProperties.WindowName();
@@ -585,11 +682,15 @@ namespace winrt::TerminalApp::implementation
         // takes its agent pane with it — no rescue needed.
 
         // If this is the last tab in a named window, persist the workspace
-        // layout now while tab content is still alive. After tab.Close()
-        // the pane content will be torn down by the time _RemoveTab runs.
+        // layout while tab content is still alive. After tab.Close() the pane
+        // content will be torn down by the time _RemoveTab runs.
         if (_tabs.Size() == 1)
         {
-            _SaveWorkspaceIfNeeded();
+            try
+            {
+                _SaveWorkspaceIfNeeded();
+            }
+            CATCH_LOG()
         }
 
         tab.Close();
@@ -770,7 +871,6 @@ namespace winrt::TerminalApp::implementation
             _rearrangeFrom = std::nullopt;
             _rearrangeTo = std::nullopt;
         }
-
     }
 
     // Method Description:
@@ -1046,28 +1146,48 @@ namespace winrt::TerminalApp::implementation
         }
         _AddPreviouslyClosedPaneOrTab(std::move(state.args));
 
+        winrt::com_ptr<Tab> owningTab;
+        for (const auto& tab : _tabs)
+        {
+            const auto tabImpl = _GetTabImpl(tab);
+            if (!tabImpl)
+            {
+                continue;
+            }
+
+            if (const auto rootPane = tabImpl->GetRootPane())
+            {
+                rootPane->WalkTree([&](const std::shared_ptr<Pane>& candidate) {
+                    if (candidate == pane)
+                    {
+                        owningTab = tabImpl;
+                    }
+                });
+            }
+            if (owningTab)
+            {
+                break;
+            }
+        }
+
+        const auto isLastPane = owningTab && owningTab->GetLeafPaneCount() == 1;
+        // If this is the last pane on the last tab of a named window, persist
+        // the workspace while the pane content is still alive.
+        if (isLastPane && _tabs.Size() == 1)
+        {
+            try
+            {
+                _SaveWorkspaceIfNeeded();
+            }
+            CATCH_LOG()
+        }
+
         // Notify wta of pane closure BEFORE destruction (see
         // `_NotifyPanesClosing` for the revoker-race rationale). Must
         // happen before `pane->Close()` since Close destroys the
         // TermControl and the SessionId becomes unresolvable.
         _NotifyPanesClosing(pane);
 
-        // If this is the last pane on the last tab of a named window, persist
-        // the workspace layout now while the pane content is still alive.
-        // We can't wait until _RemoveTab, because pane->Close() below will
-        // destroy the content before _RemoveTab is reached.
-        if (_tabs.Size() == 1)
-        {
-            if (const auto activeTab{ _GetFocusedTabImpl() })
-            {
-                if (activeTab->GetLeafPaneCount() == 1)
-                {
-                    _SaveWorkspaceIfNeeded();
-                }
-            }
-        }
-
-        // If specified, detach before closing to directly update the pane structure
         pane->Close();
     }
 
