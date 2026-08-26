@@ -49,6 +49,17 @@ chat.plan_marker_pending: "[ ]"  # {Locked}
 chat.autofix_prompt_label: "Azken komando-hutsegite bat automatikoki diagnostikatua"
 chat.turn_canceled: "(bertan behera utzita)"
 chat.turn_executed: "→ exekutatuta: %{title}"
+# Persistent tool-category labels shown after a status marker and before a subject.
+chat.tool_kind.run: "Exekutatu"
+chat.tool_kind.read: "Irakurri"
+chat.tool_kind.search: "Bilatu"
+chat.tool_kind.edit: "Editatu"
+chat.tool_kind.delete: "Ezabatu"
+chat.tool_kind.move: "Mugitu"
+chat.tool_kind.fetch: "Eskuratu"
+chat.tool_kind.think: "Pentsatu"
+chat.tool_kind.mode: "Modua"
+chat.tool_kind.other: "Tresna"
 
 # ── Sarrera-leku-markak (src/ui/input.rs) ────────────────────────────────────
 input.placeholder.connected: "Galdetu edozer, / komandoetarako.."  # {Locked="/"}

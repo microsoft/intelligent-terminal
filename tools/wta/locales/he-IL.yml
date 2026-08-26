@@ -49,6 +49,17 @@ chat.plan_marker_pending: "[ ]"  # {Locked}
 chat.autofix_prompt_label: "כשל פקודה אחרון אובחן אוטומטית"
 chat.turn_canceled: "(בוטל)"
 chat.turn_executed: "→ בוצע: %{title}"
+# תוויות קבועות של קטגוריות כלים, המוצגות אחרי סמן מצב ולפני הנושא.
+chat.tool_kind.run: "הפעלה"
+chat.tool_kind.read: "קריאה"
+chat.tool_kind.search: "חיפוש"
+chat.tool_kind.edit: "עריכה"
+chat.tool_kind.delete: "מחיקה"
+chat.tool_kind.move: "העברה"
+chat.tool_kind.fetch: "אחזור"
+chat.tool_kind.think: "חשיבה"
+chat.tool_kind.mode: "מצב"
+chat.tool_kind.other: "כלי"
 
 # ── מצייני מיקום לקלט (src/ui/input.rs) ────────────────────────────────────
 input.placeholder.connected: "שאל כל דבר, / לפקודות.."  # {Locked="/"}

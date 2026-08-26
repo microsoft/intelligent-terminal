@@ -49,6 +49,17 @@ chat.plan_marker_pending: "[ ]"  # {Locked}
 chat.autofix_prompt_label: "ସମ୍ପ୍ରତି କମାଣ୍ଡ ବିଫଳତା ସ୍ୱୟଂଚାଳିତ ଭାବେ ନିଦାନ କରାଯାଇଛି"
 chat.turn_canceled: "(ବାତିଲ କରାଗଲା)"
 chat.turn_executed: "→ କାର୍ଯ୍ୟକାରୀ ହୋଇଛି: %{title}"
+# Persistent tool-category labels shown after a status marker and before a subject.
+chat.tool_kind.run: "ଚଲାନ୍ତୁ"
+chat.tool_kind.read: "ପଢ଼ନ୍ତୁ"
+chat.tool_kind.search: "ସନ୍ଧାନ କରନ୍ତୁ"
+chat.tool_kind.edit: "ସମ୍ପାଦନ କରନ୍ତୁ"
+chat.tool_kind.delete: "ବିଲୋପ କରନ୍ତୁ"
+chat.tool_kind.move: "ସ୍ଥାନାନ୍ତର କରନ୍ତୁ"
+chat.tool_kind.fetch: "ଆଣନ୍ତୁ"
+chat.tool_kind.think: "ଚିନ୍ତା କରନ୍ତୁ"
+chat.tool_kind.mode: "ମୋଡ୍"
+chat.tool_kind.other: "ଉପକରଣ"
 
 # ── ଇନ୍‌ପୁଟ୍ ପ୍ଲେସହୋଲ୍ଡର (src/ui/input.rs) ────────────────────────────────────
 input.placeholder.connected: "କିଛି ବି ପଚାରନ୍ତୁ, / କମାଣ୍ଡ ପାଇଁ.."  # {Locked="/"}

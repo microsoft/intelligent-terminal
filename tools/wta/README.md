@@ -123,6 +123,9 @@ shell, so any pane-launched process — including wta and wtcli — inherits it.
 
 ## TUI Controls
 
+Tool rows keep a localized type label such as **Run**, **Read**, **Search**, or
+**Edit** visible across pending, running, and completed states.
+
 | Key | Action |
 |-----|--------|
 | Type + Enter | Send prompt to agent |

@@ -150,37 +150,27 @@ fn build_compact_tool_group_lines<'a>(messages: &'a [ChatMessage]) -> Vec<Line<'
         return Vec::new();
     };
     let (mut summary, represented) = if first.kind == ToolCallKind::Read {
-        let action = first.action_prefix();
         let presentations = messages
             .iter()
             .filter_map(tool_presentation_from_message)
             .collect::<Vec<_>>();
-        let same_action = action.is_some()
-            && presentations
-                .iter()
-                .all(|presentation| presentation.action_prefix() == action);
         let targets = presentations
             .iter()
             .filter_map(|presentation| presentation.target_name())
             .take(MAX_TARGETS)
             .collect::<Vec<_>>();
-        if same_action && targets.len() == messages.len().min(MAX_TARGETS) {
-            (
-                format!("{} {}", action.unwrap_or_default(), targets.join(", ")),
-                targets.len(),
-            )
+        if targets.len() == messages.len().min(MAX_TARGETS) {
+            (targets.join(", "), targets.len())
         } else {
-            (first.display_title().into_owned(), 1)
+            (first.primary_text(true).into_owned(), 1)
         }
     } else {
-        (first.display_title().into_owned(), 1)
+        (first.primary_text(true).into_owned(), 1)
     };
 
-    if !first.title_contains_target() {
-        if let Some(target) = first.display_target() {
-            summary.push_str(" · ");
-            summary.push_str(&target);
-        }
+    if let Some(target) = first.secondary_target() {
+        summary.push_str(" · ");
+        summary.push_str(&target);
     }
     let remaining = messages.len().saturating_sub(represented);
     if remaining > 0 {
@@ -190,6 +180,8 @@ fn build_compact_tool_group_lines<'a>(messages: &'a [ChatMessage]) -> Vec<Line<'
     vec![Line::from(vec![
         Span::styled("✓", theme::TOOL_CALL_SUCCESS),
         Span::raw(" "),
+        Span::styled(first.kind_label(), theme::TOOL_CALL_KIND),
+        Span::styled(" · ", theme::DIM),
         Span::styled(summary, theme::TOOL_CALL_TITLE),
     ])]
 }
@@ -1536,31 +1528,27 @@ fn build_message_lines_with_details<'a>(
                 permission_tool_call_id == Some(id.as_str()),
                 activity_frame,
             );
-            let display_title = match presentation.display_title() {
-                Cow::Borrowed(title) => truncate_render_text(title),
-                Cow::Owned(title) => Cow::Owned(truncate_render_text(&title).into_owned()),
-            };
+            let primary_text =
+                match presentation.primary_text(detail_level == ToolDetailLevel::Compact) {
+                    Cow::Borrowed(text) => truncate_render_text(text),
+                    Cow::Owned(text) => Cow::Owned(truncate_render_text(&text).into_owned()),
+                };
             let mut spans = vec![
                 Span::styled(marker, marker_style),
                 Span::raw(" "),
-                Span::styled(display_title, theme::TOOL_CALL_TITLE),
+                Span::styled(presentation.kind_label(), theme::TOOL_CALL_KIND),
             ];
+            if !primary_text.is_empty() {
+                spans.push(Span::styled(" · ", theme::DIM));
+                spans.push(Span::styled(primary_text, theme::TOOL_CALL_TITLE));
+            }
             let display_target = presentation.display_target();
             let target = display_target.as_deref();
-            if !presentation.target_is_command {
-                if let Some(target) = target.filter(|_| !presentation.title_contains_target()) {
-                    spans.push(Span::styled(
-                        format!(" · {}", truncate_render_text(target)),
-                        theme::DIM,
-                    ));
-                }
-            } else if detail_level == ToolDetailLevel::Compact {
-                if let Some(command) = presentation.inline_compact_command() {
-                    spans.push(Span::styled(
-                        format!(" · $ {}", truncate_render_text(command)),
-                        theme::DIM,
-                    ));
-                }
+            if let Some(target) = presentation.secondary_target() {
+                spans.push(Span::styled(
+                    format!(" · {}", truncate_render_text(&target)),
+                    theme::DIM,
+                ));
             }
             if presentation.kind == ToolCallKind::Execute
                 && detail_level != ToolDetailLevel::Compact
@@ -2098,9 +2086,10 @@ mod tests {
 
         assert_eq!(line_text(line), expected_text);
         assert_eq!(line.spans[0].style, expected_marker_style);
-        assert_eq!(line.spans[2].style, theme::TOOL_CALL_TITLE);
+        assert_eq!(line.spans[2].style, theme::TOOL_CALL_KIND);
+        assert_eq!(line.spans[4].style, theme::TOOL_CALL_TITLE);
         assert_eq!(
-            line.spans.get(3).map(|span| span.style),
+            line.spans.get(5).map(|span| span.style),
             expected_detail_style
         );
     }
@@ -2128,7 +2117,7 @@ mod tests {
 
         assert_eq!(
             line_text(line),
-            r"● Access paths outside trusted directories · C:\src\rust-app"
+            r"● Tool · Access paths outside trusted directories · C:\src\rust-app"
         );
         assert_eq!(
             lines.len(),
@@ -2164,7 +2153,7 @@ mod tests {
             3,
             "expected a title line, command line, and paragraph break"
         );
-        assert_eq!(line_text(&lines[0]), "● Run command");
+        assert_eq!(line_text(&lines[0]), "● Run · Run command");
         assert_eq!(line_text(&lines[1]), "  └ $ cargo test --workspace");
         assert_eq!(lines[1].spans[0].style, theme::CARD_CODE);
         assert!(lines[2].spans.is_empty());
@@ -2244,7 +2233,7 @@ mod tests {
         let lines = build_message_lines(&message, false, false, None, 0, 120);
         let rendered: Vec<String> = lines.iter().map(line_text).collect();
 
-        assert_eq!(rendered[0], format!("● bash · {cwd}"));
+        assert_eq!(rendered[0], format!("● Run · bash · {cwd}"));
         assert_eq!(rendered[1], "  └ $ cargo test");
         assert_eq!(rendered[2], "    …");
         assert_eq!(rendered[3], "    line 2");
@@ -2278,7 +2267,7 @@ mod tests {
             .map(line_text)
             .collect();
 
-        assert_eq!(rendered, vec!["✓ Run tests · $ cargo test"]);
+        assert_eq!(rendered, vec!["✓ Run · cargo test"]);
     }
 
     #[test]
@@ -2304,7 +2293,10 @@ mod tests {
             .map(line_text)
             .collect();
 
-        assert_eq!(rendered, vec!["✓ Resolve cargo in active terminal context"]);
+        assert_eq!(
+            rendered,
+            vec!["✓ Run · Resolve cargo in active terminal context"]
+        );
     }
 
     #[test]
@@ -2332,7 +2324,7 @@ mod tests {
             .map(line_text)
             .collect();
 
-        assert_eq!(rendered, vec![r"✓ Viewing src\main.rs"]);
+        assert_eq!(rendered, vec![r"✓ Read · src\main.rs"]);
     }
 
     #[test]
@@ -2358,7 +2350,7 @@ mod tests {
 
         assert_eq!(
             rendered,
-            vec!["✓ Finding files matching **/*.rs · rust-app"]
+            vec!["✓ Search · Finding files matching **/*.rs · rust-app"]
         );
     }
 
@@ -2393,7 +2385,7 @@ mod tests {
             .map(line_text)
             .collect();
 
-        assert_eq!(rendered, vec![r"✓ Update source · src\chat.rs"]);
+        assert_eq!(rendered, vec![r"✓ Edit · src\chat.rs"]);
     }
 
     #[test]
@@ -2444,7 +2436,7 @@ mod tests {
             .map(line_text)
             .collect();
 
-        assert_eq!(rendered[0], "✗ Run tests · exit 1");
+        assert_eq!(rendered[0], "✗ Run · Run tests · exit 1");
         assert_eq!(rendered[1], "  └ $ cargo test");
         assert!(rendered.iter().any(|line| line.contains("diagnostic")));
     }
@@ -2478,7 +2470,7 @@ mod tests {
                     .map(line_text)
                     .collect();
 
-            assert_eq!(rendered[0], "✓ Locate project directory");
+            assert_eq!(rendered[0], "✓ Run · Locate project directory");
             assert_eq!(rendered[1], "  └ $ Get-ChildItem");
             assert_eq!(rendered[2], "    …");
             assert_eq!(rendered[3], "    truncated output");
@@ -2553,37 +2545,37 @@ mod tests {
     fn tool_call_uses_semantic_status_markers() {
         assert_tool_call(
             "Pending",
-            "● Run: cargo test",
+            "● Tool · Run: cargo test",
             theme::TOOL_CALL_PENDING,
             None,
         );
         assert_tool_call(
             "running",
-            "● Run: cargo test",
+            "● Tool · Run: cargo test",
             theme::TOOL_CALL_RUNNING,
             None,
         );
         assert_tool_call(
             "Completed",
-            "✓ Run: cargo test",
+            "✓ Tool · Run: cargo test",
             theme::TOOL_CALL_SUCCESS,
             None,
         );
         assert_tool_call(
             "Failed: exit code 1",
-            "✗ Run: cargo test · exit code 1",
+            "✗ Tool · Run: cargo test · exit code 1",
             theme::TOOL_CALL_FAILURE,
             Some(theme::DIM),
         );
         assert_tool_call(
             "Canceled",
-            "− Run: cargo test",
+            "− Tool · Run: cargo test",
             theme::TOOL_CALL_CANCELED,
             None,
         );
         assert_tool_call(
             "Exited (1)",
-            "✗ Run: cargo test · Exited (1)",
+            "✗ Tool · Run: cargo test · Exited (1)",
             theme::TOOL_CALL_FAILURE,
             Some(theme::DIM),
         );
@@ -2591,20 +2583,20 @@ mod tests {
         // "exited (" failure prefix matched above) and carries no detail.
         assert_tool_call(
             "Exited (0)",
-            "✓ Run: cargo test",
+            "✓ Tool · Run: cargo test",
             theme::TOOL_CALL_SUCCESS,
             None,
         );
         // Status matching is case-insensitive across the success paths.
         assert_tool_call(
             "COMPLETED",
-            "✓ Run: cargo test",
+            "✓ Tool · Run: cargo test",
             theme::TOOL_CALL_SUCCESS,
             None,
         );
         assert_tool_call(
             "eXiTeD (0)",
-            "✓ Run: cargo test",
+            "✓ Tool · Run: cargo test",
             theme::TOOL_CALL_SUCCESS,
             None,
         );
@@ -2613,7 +2605,7 @@ mod tests {
         // silently dropping the status.
         assert_tool_call(
             "SomeFutureStatus",
-            "• Run: cargo test · SomeFutureStatus",
+            "• Tool · Run: cargo test · SomeFutureStatus",
             theme::DIM,
             Some(theme::DIM),
         );

@@ -10153,12 +10153,12 @@ fn adjacent_successful_reads_render_as_one_compact_group() {
 
     let rendered = render_to_text(&mut app, 100, 16);
 
-    assert_eq!(rendered.matches("Viewing").count(), 1);
-    assert!(rendered.contains("Viewing Cargo.toml, main.rs, index.html · +1"));
+    assert_eq!(rendered.matches("Read ·").count(), 1);
+    assert!(rendered.contains("Read · Cargo.toml, main.rs, index.html · +1"));
 }
 
 #[test]
-fn generic_read_group_counts_only_the_visible_fallback_member() {
+fn generic_read_group_lists_visible_targets_and_remaining_count() {
     let mut app = test_app();
     app.state = ConnectionState::Connected;
     app.current_tab_mut().messages = ["first.rs", "second.rs", "third.rs", "fourth.rs"]
@@ -10181,7 +10181,7 @@ fn generic_read_group_counts_only_the_visible_fallback_member() {
 
     let rendered = render_to_text(&mut app, 80, 16);
 
-    assert!(rendered.contains("Read file · first.rs · +3"));
+    assert!(rendered.contains("Read · first.rs, second.rs, third.rs · +1"));
 }
 
 #[test]
@@ -10276,7 +10276,7 @@ fn pending_tool_in_completed_turn_keeps_clickable_status_marker() {
     });
 
     let rendered = render_to_text(&mut app, 80, 16);
-    assert!(rendered.contains("● Pending operation"));
+    assert!(rendered.contains("● Tool · Pending operation"));
     let hit = app
         .completed_turn_hits
         .iter()
@@ -10488,11 +10488,11 @@ fn render_large_mixed_chat_keeps_latest_content_and_width_correct() {
     for needle in [
         "LATEST_MIXED_PROMPT",
         "LATEST_AGENT_TAIL",
-        "Read latest file",
+        r"Read · repo\latest.txt",
         "LATEST_READ_OUTPUT",
         "Run latest tests",
         "LATEST_EXEC_OUTPUT",
-        "Edit latest source",
+        r"Edit · src\latest.rs",
         "LATEST_OLD_LINE",
         "LATEST_NEW_LINE",
         "LATEST_PLAN_DONE",
@@ -11625,7 +11625,7 @@ fn completed_tool_call_defaults_compact_and_expands_independently() {
 
     crate::ui::chat::reset_tool_detail_build_count();
     let compact = render_to_text(&mut app, 100, 40);
-    assert!(compact.contains("✓ Edit source"));
+    assert!(compact.contains(r"✓ Edit · src\main.rs:42"));
     assert!(!compact.contains("OLD_TYPED_LINE"));
     assert_eq!(
         crate::ui::chat::tool_detail_build_count(),
@@ -11638,7 +11638,7 @@ fn completed_tool_call_defaults_compact_and_expands_independently() {
         "tool detail must be independently expandable",
     );
     let text = render_to_text(&mut app, 100, 40);
-    assert!(text.contains("✓ Edit source"));
+    assert!(text.contains(r"✓ Edit · src\main.rs:42"));
     for needle in [
         r"C:\src\main.rs:42",
         "OLD_TYPED_LINE",
@@ -11681,7 +11681,7 @@ fn failed_completed_tool_keeps_bounded_diagnostic_preview() {
     });
 
     let text = render_to_text(&mut app, 80, 20);
-    assert!(text.contains("✗ Run checks"));
+    assert!(text.contains("✗ Run · Run checks"));
     assert!(text.contains("tests failed"));
     assert!(text.contains("diagnostic one"));
     assert!(text.contains("diagnostic two"));
@@ -11769,7 +11769,7 @@ fn completed_tool_expansion_preserves_its_header_row_and_rebuilds_height() {
     let compact = render_to_text(&mut app, 60, 12);
     let compact_row = compact
         .lines()
-        .position(|line| line.contains("Run anchored command"))
+        .position(|line| line.contains("✓ Run ·"))
         .expect("compact tool header must be visible");
 
     assert!(app.current_tab_mut().toggle_completed_tool_call(0, 0));
@@ -11777,7 +11777,7 @@ fn completed_tool_expansion_preserves_its_header_row_and_rebuilds_height() {
     let expanded = render_to_text(&mut app, 60, 12);
     let expanded_row = expanded
         .lines()
-        .position(|line| line.contains("Run anchored command"))
+        .position(|line| line.contains("✓ Run ·"))
         .expect("expanded tool header must stay visible");
     assert_eq!(expanded_row, compact_row);
     assert!(

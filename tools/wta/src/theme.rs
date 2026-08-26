@@ -17,6 +17,7 @@ pub const NOTICE_SUCCESS: Style = Style::new().fg(Color::Green);
 pub const NOTICE_INFO: Style = Style::new().fg(Color::Cyan);
 pub const NOTICE_WARNING: Style = Style::new().fg(Color::Yellow);
 pub const NOTICE_ERROR: Style = Style::new().fg(Color::Red);
+pub const TOOL_CALL_KIND: Style = Style::new().fg(Color::Cyan);
 pub const TOOL_CALL_TITLE: Style = Style::new().fg(Color::Reset);
 pub const TOOL_CALL_PENDING: Style = Style::new().fg(Color::Yellow).add_modifier(Modifier::BOLD);
 pub const TOOL_CALL_RUNNING: Style = Style::new().fg(Color::Cyan).add_modifier(Modifier::BOLD);

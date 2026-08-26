@@ -49,6 +49,17 @@ chat.plan_marker_pending: "[ ]"  # {Locked}
 chat.autofix_prompt_label: "Automatiškai diagnozuotas neseniai įvykęs komandos sutrikimas"
 chat.turn_canceled: "(atšaukta)"
 chat.turn_executed: "→ įvykdyta: %{title}"
+# Persistent tool-category labels shown after a status marker and before a subject.
+chat.tool_kind.run: "Vykdyti"
+chat.tool_kind.read: "Skaityti"
+chat.tool_kind.search: "Ieškoti"
+chat.tool_kind.edit: "Redaguoti"
+chat.tool_kind.delete: "Naikinti"
+chat.tool_kind.move: "Perkelti"
+chat.tool_kind.fetch: "Gauti"
+chat.tool_kind.think: "Mąstyti"
+chat.tool_kind.mode: "Režimas"
+chat.tool_kind.other: "Įrankis"
 
 # ── Input placeholders (src/ui/input.rs) ────────────────────────────────────
 input.placeholder.connected: "Klauskite bet ko, / komandoms.."  # {Locked="/"}

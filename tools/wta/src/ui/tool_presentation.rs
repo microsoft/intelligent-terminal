@@ -109,17 +109,56 @@ impl<'a> ToolPresentation<'a> {
             .map(|target| compact_target(self.kind, target))
     }
 
+    pub(crate) fn kind_label(&self) -> Cow<'static, str> {
+        let key = match self.kind {
+            ToolCallKind::Execute => "chat.tool_kind.run",
+            ToolCallKind::Read => "chat.tool_kind.read",
+            ToolCallKind::Search => "chat.tool_kind.search",
+            ToolCallKind::Edit => "chat.tool_kind.edit",
+            ToolCallKind::Delete => "chat.tool_kind.delete",
+            ToolCallKind::Move => "chat.tool_kind.move",
+            ToolCallKind::Fetch => "chat.tool_kind.fetch",
+            ToolCallKind::Think => "chat.tool_kind.think",
+            ToolCallKind::SwitchMode => "chat.tool_kind.mode",
+            ToolCallKind::Other => "chat.tool_kind.other",
+        };
+        rust_i18n::t!(key)
+    }
+
+    pub(crate) fn primary_text(&self, compact: bool) -> Cow<'a, str> {
+        match self.kind {
+            ToolCallKind::Execute if compact => self
+                .inline_compact_command()
+                .map(Cow::Borrowed)
+                .unwrap_or_else(|| self.display_title()),
+            ToolCallKind::Read
+            | ToolCallKind::Edit
+            | ToolCallKind::Delete
+            | ToolCallKind::Fetch => self
+                .display_target()
+                .unwrap_or_else(|| self.display_title()),
+            _ => self.display_title(),
+        }
+    }
+
+    pub(crate) fn secondary_target(&self) -> Option<Cow<'a, str>> {
+        let kind_uses_title = matches!(
+            self.kind,
+            ToolCallKind::Search
+                | ToolCallKind::Move
+                | ToolCallKind::Think
+                | ToolCallKind::SwitchMode
+                | ToolCallKind::Other
+        );
+        (kind_uses_title && !self.title_contains_target())
+            .then(|| self.display_target())
+            .flatten()
+    }
+
     pub(crate) fn title_contains_target(&self) -> bool {
         self.target
             .filter(|target| !target.is_empty())
             .is_some_and(|target| self.title.contains(target))
-    }
-
-    pub(crate) fn action_prefix(&self) -> Option<&'a str> {
-        let target = self.target.filter(|target| !target.is_empty())?;
-        let start = self.title.find(target)?;
-        let prefix = self.title[..start].trim();
-        (!prefix.is_empty()).then_some(prefix)
     }
 
     pub(crate) fn target_name(&self) -> Option<&'a str> {
@@ -236,8 +275,8 @@ mod tests {
 
         assert_eq!(presentation.display_title(), r"Viewing src\main.rs");
         assert!(presentation.title_contains_target());
-        assert_eq!(presentation.action_prefix(), Some("Viewing"));
         assert_eq!(presentation.target_name(), Some("main.rs"));
+        assert_eq!(presentation.primary_text(true), r"src\main.rs");
     }
 
     #[test]
@@ -266,5 +305,38 @@ mod tests {
 
         assert_eq!(short.inline_compact_command(), Some("cargo test"));
         assert_eq!(long.inline_compact_command(), None);
+    }
+
+    #[test]
+    fn every_tool_kind_has_a_persistent_label() {
+        let _locale = crate::test_support::lock_locale();
+        rust_i18n::set_locale("en-US");
+        let locations = [];
+        let expected = [
+            (ToolCallKind::Execute, "Run"),
+            (ToolCallKind::Read, "Read"),
+            (ToolCallKind::Search, "Search"),
+            (ToolCallKind::Edit, "Edit"),
+            (ToolCallKind::Delete, "Delete"),
+            (ToolCallKind::Move, "Move"),
+            (ToolCallKind::Fetch, "Fetch"),
+            (ToolCallKind::Think, "Think"),
+            (ToolCallKind::SwitchMode, "Mode"),
+            (ToolCallKind::Other, "Tool"),
+        ];
+
+        for (kind, label) in expected {
+            let presentation = ToolPresentation::new(
+                "Provider title",
+                "Completed",
+                kind,
+                None,
+                false,
+                None,
+                None,
+                &locations,
+            );
+            assert_eq!(presentation.kind_label(), label);
+        }
     }
 }

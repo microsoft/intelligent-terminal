@@ -49,6 +49,17 @@ chat.plan_marker_pending: "[ ]"  # {Locked}
 chat.autofix_prompt_label: "Eșec recent al comenzii diagnosticat automat"
 chat.turn_canceled: "(anulat)"
 chat.turn_executed: "→ executat: %{title}"
+# Etichete persistente pentru categoriile de instrumente, afișate după un marcator de stare și înaintea subiectului.
+chat.tool_kind.run: "Rulare"
+chat.tool_kind.read: "Citire"
+chat.tool_kind.search: "Căutare"
+chat.tool_kind.edit: "Editare"
+chat.tool_kind.delete: "Ștergere"
+chat.tool_kind.move: "Mutare"
+chat.tool_kind.fetch: "Preluare"
+chat.tool_kind.think: "Gândire"
+chat.tool_kind.mode: "Mod"
+chat.tool_kind.other: "Instrument"
 
 # ── Input placeholders (src/ui/input.rs) ────────────────────────────────────
 input.placeholder.connected: "Întrebați orice, / pentru comenzi.."  # {Locked="/"}

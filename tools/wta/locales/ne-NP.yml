@@ -49,6 +49,17 @@ chat.plan_marker_pending: "[ ]"  # {Locked}
 chat.autofix_prompt_label: "हालैको आदेश असफलता स्वचालित रूपमा निदान गरियो"
 chat.turn_canceled: "(रद्द गरियो)"
 chat.turn_executed: "→ कार्यान्वयन गरियो: %{title}"
+# Persistent tool-category labels shown after a status marker and before a subject.
+chat.tool_kind.run: "चलाउनुहोस्"
+chat.tool_kind.read: "पढ्नुहोस्"
+chat.tool_kind.search: "खोज्नुहोस्"
+chat.tool_kind.edit: "सम्पादन गर्नुहोस्"
+chat.tool_kind.delete: "मेटाउनुहोस्"
+chat.tool_kind.move: "सार्नुहोस्"
+chat.tool_kind.fetch: "प्राप्त गर्नुहोस्"
+chat.tool_kind.think: "सोच्नुहोस्"
+chat.tool_kind.mode: "मोड"
+chat.tool_kind.other: "उपकरण"
 
 # ── इनपुट प्लेसहोल्डर (src/ui/input.rs) ────────────────────────────────────
 input.placeholder.connected: "जेसुकै सोध्नुहोस्, / कमाण्डहरूका लागि.."  # {Locked="/"}

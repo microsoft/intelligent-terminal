@@ -49,6 +49,17 @@ chat.plan_marker_pending: "[ ]"  # {Locked}
 chat.autofix_prompt_label: "يېقىنقى بۇيرۇق مەغلۇبىيىتى ئاپتوماتىك دىئاگنوز قىلىندى"
 chat.turn_canceled: "(ئەمەلدىن قالدۇرۇلدى)"
 chat.turn_executed: "→ ئىجرا قىلىندى: %{title}"
+# ھالەت بەلگىسىدىن كېيىن ۋە تېمىدىن بۇرۇن كۆرسىتىلىدىغان دائىملىق قورال تۈرى بەلگىلىرى.
+chat.tool_kind.run: "ئىجرا"
+chat.tool_kind.read: "ئوقۇش"
+chat.tool_kind.search: "ئىزدەش"
+chat.tool_kind.edit: "تەھرىرلەش"
+chat.tool_kind.delete: "ئۆچۈرۈش"
+chat.tool_kind.move: "يۆتكەش"
+chat.tool_kind.fetch: "ئېلىش"
+chat.tool_kind.think: "ئويلاش"
+chat.tool_kind.mode: "ھالەت"
+chat.tool_kind.other: "قورال"
 
 # ── Input placeholders (src/ui/input.rs) ────────────────────────────────────────────────────────────────────
 input.placeholder.connected: "ئىختىيارچە سوراڭ، / بۇيرۇقلار ئۈچۈن.."  # {Locked="/"}

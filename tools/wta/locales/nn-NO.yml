@@ -49,6 +49,17 @@ chat.plan_marker_pending: "[ ]"  # {Locked}
 chat.autofix_prompt_label: "Nyleg kommandofeil diagnostisert automatisk"
 chat.turn_canceled: "(avbroten)"
 chat.turn_executed: "→ utført: %{title}"
+# Persistent tool-category labels shown after a status marker and before a subject.
+chat.tool_kind.run: "Køyr"
+chat.tool_kind.read: "Les"
+chat.tool_kind.search: "Søk"
+chat.tool_kind.edit: "Rediger"
+chat.tool_kind.delete: "Slett"
+chat.tool_kind.move: "Flytt"
+chat.tool_kind.fetch: "Hent"
+chat.tool_kind.think: "Tenk"
+chat.tool_kind.mode: "Modus"
+chat.tool_kind.other: "Verktøy"
 
 # ── Input placeholders (src/ui/input.rs) ────────────────────────────────────
 input.placeholder.connected: "Spør om kva som helst, / for kommandoar.."  # {Locked="/"}

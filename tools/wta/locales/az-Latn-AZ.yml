@@ -49,6 +49,17 @@ chat.plan_marker_pending: "[ ]"  # {Locked}
 chat.autofix_prompt_label: "Son əmr xətası avtomatik diaqnoz edildi"
 chat.turn_canceled: "(ləğv edildi)"
 chat.turn_executed: "→ icra edildi: %{title}"
+# Persistent tool-category labels shown after a status marker and before a subject.
+chat.tool_kind.run: "İcra et"
+chat.tool_kind.read: "Oxu"
+chat.tool_kind.search: "Axtar"
+chat.tool_kind.edit: "Redaktə et"
+chat.tool_kind.delete: "Sil"
+chat.tool_kind.move: "Köçür"
+chat.tool_kind.fetch: "Gətir"
+chat.tool_kind.think: "Düşün"
+chat.tool_kind.mode: "Rejim"
+chat.tool_kind.other: "Alət"
 
 # ── Input placeholders (src/ui/input.rs) ────────────────────────────────────
 input.placeholder.connected: "Hər şeyi soruşun, / əmrlər üçün.."  # {Locked="/"}

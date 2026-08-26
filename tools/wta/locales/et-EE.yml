@@ -49,6 +49,17 @@ chat.plan_marker_pending: "[ ]"  # {Locked}
 chat.autofix_prompt_label: "Hiljutine käsutõrge automaatselt diagnoositud"
 chat.turn_canceled: "(tühistatud)"
 chat.turn_executed: "→ käivitatud: %{title}"
+# Persistent tool-category labels shown after a status marker and before a subject.
+chat.tool_kind.run: "Käivita"
+chat.tool_kind.read: "Loe"
+chat.tool_kind.search: "Otsi"
+chat.tool_kind.edit: "Muuda"
+chat.tool_kind.delete: "Kustuta"
+chat.tool_kind.move: "Teisalda"
+chat.tool_kind.fetch: "Too"
+chat.tool_kind.think: "Mõtle"
+chat.tool_kind.mode: "Režiim"
+chat.tool_kind.other: "Tööriist"
 
 # ── Input placeholders (src/ui/input.rs) ────────────────────────────────────
 input.placeholder.connected: "Küsi mida iganes, / käskude jaoks.."  # {Locked="/"}
