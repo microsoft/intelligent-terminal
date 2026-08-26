@@ -3640,12 +3640,12 @@ fn decide_repairs_a_registration_whose_directory_is_gone() {
 /// was never there.
 #[test]
 fn read_installed_copilot_any_ignores_a_gone_directory_without_an_install() {
-    let home = unique_dir("copilot-pruned-noinstall");
+    let home = unique_dir("copilot-pruned-no-install");
     let cfg_dir = home.join(".copilot");
     fs::create_dir_all(&cfg_dir).unwrap();
     fs::write(cfg_dir.join("config.json"), r#"{"installedPlugins":[]}"#).unwrap();
 
-    let old_pkg = unique_dir("copilot-old-package-noinstall");
+    let old_pkg = unique_dir("copilot-old-package-no-install");
     write_copilot_settings(&cfg_dir, &old_pkg, None);
     fs::remove_dir_all(&old_pkg).unwrap();
 
@@ -4164,7 +4164,7 @@ fn expected_registration_dir_is_the_bundle_outside_windows_apps() {
 /// reinstall on each upgrade check.
 #[cfg(windows)]
 #[test]
-fn paths_equivalent_folds_the_verbatim_prefix() {
+fn paths_equivalent_folds_the_verbatim_disk_prefix() {
     assert!(paths_equivalent(
         Path::new(r"\\?\C:\bundle\codex"),
         Path::new(r"C:\bundle\codex"),

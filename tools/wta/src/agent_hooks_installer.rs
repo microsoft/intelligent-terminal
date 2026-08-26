@@ -1588,8 +1588,13 @@ fn read_live_copilot(home: &Path) -> Option<InstalledInfo> {
 /// Whether `~/.copilot/settings.json` has our plugin switched on.
 ///
 /// A live plugin records enablement here rather than on an `installedPlugins`
-/// entry. Absent means enabled: Copilot only writes the key once the plugin
-/// has been toggled.
+/// entry. `copilot plugin install` writes the entry as `true` on its own —
+/// verified against CLI 1.0.81-9 with a fresh profile, where `marketplace add`
+/// alone leaves no `enabledPlugins` key and the install adds one without any
+/// toggle. Defaulting a missing key to enabled here is tolerance for a future
+/// CLI that stops writing it, not a claim that the key is normally absent:
+/// [`read_stale_live_copilot`] relies on the entry to tell an install from a
+/// marketplace that was only ever registered.
 fn copilot_plugin_enabled(home: &Path) -> bool {
     let path = home.join(".copilot").join("settings.json");
     let Ok(text) = fs::read_to_string(&path) else {
@@ -2455,7 +2460,7 @@ fn whitespace_tokens(line: &str) -> Vec<(usize, &str)> {
     let mut out = Vec::new();
     let mut cursor = 0;
     for token in line.split_whitespace() {
-        // `token` is a subslice of `line[cursor..]` and they are visited in
+        // `token` is a slice of `line[cursor..]` and they are visited in
         // order, so the search always succeeds; the offset is the point.
         if let Some(relative) = line[cursor..].find(token) {
             let start = cursor + relative;
@@ -3568,10 +3573,12 @@ fn cleanup_stale_copilot_marketplace(
 }
 
 /// Compare two filesystem paths for equivalence. Trailing path
-/// separators are normalized away, the Windows `\\?\` extended-length
-/// prefix is folded to its plain form, and on Windows the comparison is
+/// separators are normalized away, a Windows `\\?\C:` verbatim-disk prefix is
+/// folded to its plain `C:` form, and on Windows the comparison is
 /// case-insensitive (ASCII-fold; matches typical NTFS semantics for the
 /// kinds of paths we deal with — drive letters, ASCII directory names).
+/// Other verbatim prefixes (`\\?\UNC\…`) are compared as-is; no CLI we
+/// register with has been seen to record one.
 /// We avoid `canonicalize` because the stale path may no longer exist
 /// on disk, which is precisely the case we want to detect and rewrite.
 fn paths_equivalent(a: &Path, b: &Path) -> bool {
