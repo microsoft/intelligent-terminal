@@ -369,7 +369,9 @@ mod tests {
         assert!(
             semantic_adjustment.contains("## Current Terminal Input\nSet-Content output.txt ''")
         );
-        assert!(semantic_adjustment.contains("## Requested Adjustment\ncontent here"));
+        assert!(
+            semantic_adjustment.contains(&["## Requested Adjustment", "content here"].join("\n"))
+        );
         assert!(semantic_adjustment.contains("not as replacement terminal input"));
 
         let delegate = delegate_preparation_request("investigate flaky tests");
