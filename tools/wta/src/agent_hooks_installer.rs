@@ -709,22 +709,33 @@ pub enum InstallAction {
 
 /// Decide what an install pass should do for one CLI, from its status row.
 ///
-/// Pure — no IO, no spawns. Splits the three cases the Settings "Install
-/// hooks" button has to tell apart:
+/// Pure — no IO, no spawns. Splits the cases the Settings "Install hooks"
+/// button has to tell apart:
 ///
 ///   * incomplete in any way (not on PATH, marketplace missing or pointing at
 ///     a pruned path, plugin missing or disabled, or a verdict that came from
 ///     filesystem heuristics rather than the CLI itself) → [`InstallAction::Install`];
-///   * complete but a release behind the bundle → [`InstallAction::Upgrade`],
-///     because `install` cannot upgrade — that needs `plugin update` /
-///     `extensions update` / a Codex reinstall;
-///   * complete and not provably behind → [`InstallAction::Skip`].
+///   * complete but registered against a directory other than the bundle this
+///     wta ships, or a release behind it → [`InstallAction::Upgrade`], because
+///     `install` cannot do either: a second `plugin install` reports "already
+///     installed" and `marketplace add` no-ops on an already-registered name,
+///     so neither the version nor the path would move;
+///   * complete, current, and correctly registered → [`InstallAction::Skip`].
 ///
 /// An unreadable version on either side lands in `Skip`: we can't prove the
 /// bridge is stale, running `install` against it would no-op anyway, and
 /// [`upgrade_installed_hooks`] re-checks it at master startup with a richer
 /// probe than [`CliStatus`] carries.
-pub fn decide_install_action(status: &CliStatus) -> InstallAction {
+///
+/// `expected_dir` is the directory `cli`'s registration should name — see
+/// [`expected_registration_dir_for`]. `None` disables the path check, which is
+/// the right default when no bundle is resolvable: there is nothing to point a
+/// registration at.
+pub fn decide_install_action(
+    cli: CliKind,
+    status: &CliStatus,
+    expected_dir: Option<&Path>,
+) -> InstallAction {
     let complete = status.binary_on_path
         && status.marketplace_registered
         && status.marketplace_path_valid
@@ -734,6 +745,15 @@ pub fn decide_install_action(status: &CliStatus) -> InstallAction {
     if !complete {
         return InstallAction::Install;
     }
+    // A complete, current install can still be registered against the bundle
+    // a previous Intelligent Terminal build shipped. `marketplace_path_valid`
+    // above misses it whenever that directory still exists — another worktree,
+    // a package version not yet cleaned up — and the version comparison below
+    // misses it always, because both trees carry the same hook version. Route
+    // it to the upgrade flow, whose per-CLI probe picks the right repair.
+    if registration_moved(cli, status, expected_dir) {
+        return InstallAction::Upgrade;
+    }
     let parse = |v: &Option<String>| v.as_deref().and_then(|s| s.parse::<Version>().ok());
     match (
         parse(&status.installed_version),
@@ -742,6 +762,33 @@ pub fn decide_install_action(status: &CliStatus) -> InstallAction {
         (Some(installed), Some(bundled)) if installed < bundled => InstallAction::Upgrade,
         _ => InstallAction::Skip,
     }
+}
+
+/// True when the CLI's recorded `wt-local` registration names a directory
+/// outside the one this wta expects.
+///
+/// Only Copilot, Claude and Codex record a marketplace source in
+/// `marketplace_path`. Gemini and OpenCode reuse the field for the directory
+/// they install *into*, which is never the bundle, so comparing it would
+/// report them as moved on every pass.
+fn registration_moved(cli: CliKind, status: &CliStatus, expected_dir: Option<&Path>) -> bool {
+    if !matches!(cli, CliKind::Copilot | CliKind::Claude | CliKind::Codex) {
+        return false;
+    }
+    let (Some(recorded), Some(expected)) = (status.marketplace_path.as_deref(), expected_dir)
+    else {
+        return false;
+    };
+    !path_under_dir(Path::new(recorded), expected)
+}
+
+/// The directory `cli`'s `wt-local` registration is expected to name, or
+/// `None` when no bundle is resolvable.
+///
+/// Shared by the install planner and the startup upgrade check so both judge
+/// a registration against the same directory.
+pub fn expected_registration_dir_for(cli: CliKind) -> Option<PathBuf> {
+    bundle::resolve_cli_dir(cli).map(|dir| expected_registration_dir(cli, &dir))
 }
 
 /// Execute a per-CLI plan of [`InstallAction`]s.
@@ -1915,6 +1962,15 @@ struct MarketplaceInfo {
 /// the CLI's on-disk source-of-truth file. Side-effect free; missing /
 /// unreadable files leave the defaults (`None` / `false`) in place.
 fn populate_marketplace_path(out: &mut CliStatus, cli: CliKind, home: Option<&Path>) {
+    if let Some(recorded) = out.marketplace_path.as_deref() {
+        // The CLI itself already named the registered root. Its answer wins:
+        // for Codex the fallback reader below can only see the plugin cache
+        // directory, which is not the registration this field documents, and
+        // overwriting the CLI's answer with it loses the one path that says
+        // where the plugin was installed from.
+        out.marketplace_path_valid = Path::new(recorded).is_dir();
+        return;
+    }
     let Some(home) = home else { return };
     let info = match cli {
         CliKind::Copilot => copilot_marketplace_info(home),
@@ -4727,10 +4783,7 @@ fn upgrade_one_cli(
         }
     };
 
-    let current_bundle_dir = bundle::resolve_cli_dir(cli);
-    let expected_dir = current_bundle_dir
-        .as_deref()
-        .map(|dir| expected_registration_dir(cli, dir));
+    let expected_dir = expected_registration_dir_for(cli);
     let action = decide_upgrade(
         cli,
         bundle_version,

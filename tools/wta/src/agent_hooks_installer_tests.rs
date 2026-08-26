@@ -2231,6 +2231,14 @@ fn gemini_extensions_list_json_parser_reports_the_installed_version() {
 
 // ---- decide_install_action (`hooks install --only-missing`) ----------
 
+/// Most of these cases predate the registration check and carry no
+/// `marketplace_path`, so they are decided on completeness and version alone.
+/// The cases that do exercise the path check call `decide_install_action`
+/// directly.
+fn install_action(status: &CliStatus) -> InstallAction {
+    decide_install_action(CliKind::Copilot, status, None)
+}
+
 fn installed_status(name: &'static str) -> CliStatus {
     CliStatus {
         name,
@@ -2253,11 +2261,11 @@ fn installed_status(name: &'static str) -> CliStatus {
 #[test]
 fn install_action_skips_a_complete_current_bridge() {
     assert_eq!(
-        decide_install_action(&installed_status("copilot")),
+        install_action(&installed_status("copilot")),
         InstallAction::Skip
     );
     assert_eq!(
-        decide_install_action(&CliStatus {
+        install_action(&CliStatus {
             installed_version: Some("0.2.0".into()),
             ..installed_status("copilot")
         }),
@@ -2271,7 +2279,7 @@ fn install_action_skips_a_complete_current_bridge() {
 #[test]
 fn install_action_upgrades_a_complete_but_outdated_bridge() {
     assert_eq!(
-        decide_install_action(&CliStatus {
+        install_action(&CliStatus {
             installed_version: Some("0.1.5".into()),
             ..installed_status("copilot")
         }),
@@ -2299,11 +2307,7 @@ fn install_action_skips_when_a_version_is_unreadable() {
             ..installed_status("copilot")
         },
     ] {
-        assert_eq!(
-            decide_install_action(&status),
-            InstallAction::Skip,
-            "{status:?}"
-        );
+        assert_eq!(install_action(&status), InstallAction::Skip, "{status:?}");
     }
 }
 
@@ -2332,7 +2336,7 @@ fn install_action_installs_any_partial_bridge() {
     ];
     for status in partials {
         assert_eq!(
-            decide_install_action(&status),
+            install_action(&status),
             InstallAction::Install,
             "{status:?} must stay installable"
         );
@@ -2345,7 +2349,7 @@ fn install_action_installs_any_partial_bridge() {
 #[test]
 fn install_action_prefers_install_over_upgrade_for_a_broken_outdated_bridge() {
     assert_eq!(
-        decide_install_action(&CliStatus {
+        install_action(&CliStatus {
             plugin_enabled: false,
             installed_version: Some("0.1.5".into()),
             ..installed_status("copilot")
@@ -2360,7 +2364,7 @@ fn install_action_prefers_install_over_upgrade_for_a_broken_outdated_bridge() {
 #[test]
 fn install_action_installs_when_the_cli_is_not_on_path() {
     assert_eq!(
-        decide_install_action(&CliStatus {
+        install_action(&CliStatus {
             binary_on_path: false,
             ..installed_status("copilot")
         }),
@@ -2374,10 +2378,110 @@ fn install_action_installs_when_the_cli_is_not_on_path() {
 #[test]
 fn install_action_installs_when_the_verdict_came_from_the_fs_fallback() {
     assert_eq!(
-        decide_install_action(&CliStatus {
+        install_action(&CliStatus {
             detection_fallback: Some("fs"),
             ..installed_status("copilot")
         }),
+        InstallAction::Install
+    );
+}
+
+/// The gap this closes: an Intelligent Terminal upgrade leaves the
+/// registration naming the previous package directory, and while that
+/// directory still exists -- another worktree, a package version not yet
+/// cleaned up -- every field the Settings button looks at reads healthy.
+/// `install` cannot fix it either, because `marketplace add` no-ops against
+/// an already-registered name, so the plan has to route to the upgrade flow.
+#[test]
+fn install_action_upgrades_a_registration_naming_another_tree() {
+    let bundle = unique_dir("install-action-current");
+    let stale = unique_dir("install-action-stale");
+    for cli in [CliKind::Copilot, CliKind::Claude, CliKind::Codex] {
+        let status = CliStatus {
+            marketplace_path: Some(stale.display().to_string()),
+            ..installed_status(cli.name())
+        };
+        assert_eq!(
+            decide_install_action(cli, &status, Some(&bundle)),
+            InstallAction::Upgrade,
+            "{:?} must repair a registration pointing at {}",
+            cli,
+            stale.display(),
+        );
+    }
+}
+
+/// Codex reports the plugin directory under the marketplace root rather than
+/// the root itself, so the check has to accept a path below the expected
+/// directory or it would reinstall on every pass.
+#[test]
+fn install_action_skips_a_registration_under_the_expected_dir() {
+    let bundle = unique_dir("install-action-nested");
+    let status = CliStatus {
+        marketplace_path: Some(bundle.join("wt-agent-hooks").display().to_string()),
+        ..installed_status("codex")
+    };
+    assert_eq!(
+        decide_install_action(CliKind::Codex, &status, Some(&bundle)),
+        InstallAction::Skip
+    );
+}
+
+/// Gemini and OpenCode reuse `marketplace_path` for the directory they
+/// install *into*, which is never the bundle. Comparing it would report them
+/// as moved on every pass and reinstall forever.
+#[test]
+fn install_action_ignores_the_path_for_clis_without_a_marketplace() {
+    let bundle = unique_dir("install-action-no-marketplace");
+    for (cli, installed_into) in [
+        (
+            CliKind::Gemini,
+            r"C:\Users\someone\.gemini\extensions\wt-agent-hooks",
+        ),
+        (
+            CliKind::OpenCode,
+            r"C:\Users\someone\.config\opencode\plugins",
+        ),
+    ] {
+        let status = CliStatus {
+            marketplace_path: Some(installed_into.to_string()),
+            ..installed_status(cli.name())
+        };
+        assert_eq!(
+            decide_install_action(cli, &status, Some(&bundle)),
+            InstallAction::Skip,
+            "{cli:?} has no marketplace to compare",
+        );
+    }
+}
+
+/// No resolvable bundle means no directory to point a registration at, so the
+/// check must stay out of the way rather than declaring everything moved.
+#[test]
+fn install_action_ignores_the_path_when_no_bundle_resolves() {
+    let status = CliStatus {
+        marketplace_path: Some(r"C:\somewhere\else".to_string()),
+        ..installed_status("copilot")
+    };
+    assert_eq!(
+        decide_install_action(CliKind::Copilot, &status, None),
+        InstallAction::Skip
+    );
+}
+
+/// A partial bridge still needs the first-run install; the registration check
+/// must not divert it to an upgrade flow that refuses incomplete state.
+#[test]
+fn install_action_prefers_install_over_a_moved_registration() {
+    let bundle = unique_dir("install-action-partial");
+    let stale = unique_dir("install-action-partial-stale");
+    let status = CliStatus {
+        plugin_enabled: false,
+        marketplace_path: Some(stale.display().to_string()),
+        ..installed_status("copilot")
+    };
+    assert_eq!(
+        decide_install_action(CliKind::Copilot, &status, Some(&bundle)),
         InstallAction::Install
     );
 }
