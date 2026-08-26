@@ -3314,6 +3314,40 @@ fn parse_codex_plugin_list_entry_has_no_path_for_a_placeholder_column() {
 /// has to be removed before the new source can be added. The listing parser
 /// is what supplies the recorded root for that comparison, so it has to
 /// survive Codex's real column layout.
+/// The offsets are what let the PATH column keep its spaces, so they have to
+/// be the real byte positions in the line, not a running count that assumes
+/// single-space separators.
+#[test]
+fn whitespace_tokens_reports_real_byte_offsets() {
+    let line = "wt-agent-hooks@wt-local  installed, enabled   0.1.6  C:\\Program Files\\x";
+    let tokens = whitespace_tokens(line);
+    for (start, token) in &tokens {
+        assert_eq!(
+            &line[*start..*start + token.len()],
+            *token,
+            "offset {start} does not point at {token}",
+        );
+    }
+    assert_eq!(
+        tokens.iter().map(|(_, t)| *t).collect::<Vec<_>>(),
+        vec![
+            "wt-agent-hooks@wt-local",
+            "installed,",
+            "enabled",
+            "0.1.6",
+            "C:\\Program",
+            "Files\\x",
+        ],
+    );
+    // The remainder after the version token is what `parse_codex_plugin_list_entry`
+    // takes as the PATH column.
+    let (version_start, version) = tokens[3];
+    assert_eq!(
+        line[version_start + version.len()..].trim(),
+        "C:\\Program Files\\x"
+    );
+}
+
 #[test]
 fn parse_codex_marketplace_list_reads_the_registered_root() {
     let sample = "MARKETPLACE     ROOT\n\

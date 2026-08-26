@@ -2462,11 +2462,18 @@ fn whitespace_tokens(line: &str) -> Vec<(usize, &str)> {
     for token in line.split_whitespace() {
         // `token` is a slice of `line[cursor..]` and they are visited in
         // order, so the search always succeeds; the offset is the point.
-        if let Some(relative) = line[cursor..].find(token) {
-            let start = cursor + relative;
-            out.push((start, token));
-            cursor = start + token.len();
-        }
+        //
+        // Give up on the whole line rather than skipping a token if it ever
+        // doesn't: a dropped column shifts every reading after it, so the
+        // version and PATH would be taken from the wrong places and land as a
+        // confident but wrong upgrade decision. An empty list instead makes
+        // the caller read the row as absent, which is the conservative answer.
+        let Some(relative) = line[cursor..].find(token) else {
+            return Vec::new();
+        };
+        let start = cursor + relative;
+        out.push((start, token));
+        cursor = start + token.len();
     }
     out
 }
