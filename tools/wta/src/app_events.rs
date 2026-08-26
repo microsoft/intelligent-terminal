@@ -635,7 +635,8 @@ impl App {
                         .messages
                         .iter()
                         .any(|m| !matches!(m, ChatMessage::Disclaimer));
-                if !has_real_content
+                if !tab.disclaimer_cleared
+                    && !has_real_content
                     && !tab
                         .messages
                         .iter()

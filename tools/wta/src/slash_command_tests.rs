@@ -342,15 +342,46 @@ fn slash_help_toggles_overlay() {
 #[test]
 fn slash_clear_wipes_active_tab_history() {
     let mut app = test_app();
+    app.handle_event(AppEvent::AgentConnected {
+        name: "Test Agent".into(),
+        model: None,
+        version: None,
+        session_id: "session-1".into(),
+        available_models: Vec::new(),
+        current_model_id: None,
+        load_session_supported: false,
+        image_supported: false,
+    });
     app.current_tab_mut()
         .messages
         .push(ChatMessage::System("stale".into()));
     app.current_tab_mut().selected_completed_turn_idx = Some(0);
+    assert!(app
+        .current_tab()
+        .messages
+        .iter()
+        .any(|message| matches!(message, ChatMessage::Disclaimer)));
 
     run_slash(&mut app, "clear");
 
     assert!(app.current_tab().messages.is_empty());
     assert_eq!(app.current_tab().selected_completed_turn_idx, None);
+
+    app.handle_event(AppEvent::AgentConnected {
+        name: "Test Agent".into(),
+        model: None,
+        version: None,
+        session_id: "session-1".into(),
+        available_models: Vec::new(),
+        current_model_id: None,
+        load_session_supported: false,
+        image_supported: false,
+    });
+
+    assert!(
+        app.current_tab().messages.is_empty(),
+        "a repeated connection event must not restore content removed by /clear"
+    );
 }
 
 #[test]
