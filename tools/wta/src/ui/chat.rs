@@ -39,6 +39,16 @@ fn tool_content_truncated(content: &[ToolCallContent]) -> bool {
     })
 }
 
+fn tool_call_needs_preview(
+    status: &str,
+    output: Option<&ToolCallOutput>,
+    content: &[ToolCallContent],
+) -> bool {
+    !is_successful_tool_call_status(status)
+        || output.is_some_and(|output| output.truncated)
+        || tool_content_truncated(content)
+}
+
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum ToolDetailLevel {
     Compact,
@@ -48,7 +58,7 @@ enum ToolDetailLevel {
 
 #[derive(Clone, Copy)]
 enum ToolDisplay {
-    Live,
+    ActiveTurn,
     Completed { expanded: bool },
 }
 
@@ -60,16 +70,9 @@ impl ToolDisplay {
         content: &[ToolCallContent],
     ) -> ToolDetailLevel {
         match self {
-            Self::Live => ToolDetailLevel::Preview,
             Self::Completed { expanded: true } => ToolDetailLevel::Detailed,
-            Self::Completed { expanded: false }
-                if !is_successful_tool_call_status(status)
-                    || output.is_some_and(|output| output.truncated)
-                    || tool_content_truncated(content) =>
-            {
-                ToolDetailLevel::Preview
-            }
-            Self::Completed { expanded: false } => ToolDetailLevel::Compact,
+            _ if tool_call_needs_preview(status, output, content) => ToolDetailLevel::Preview,
+            _ => ToolDetailLevel::Compact,
         }
     }
 }
@@ -1128,7 +1131,7 @@ fn build_completed_turn_lines_with_geometry<'a>(
                     });
                     ToolDisplay::Completed { expanded }
                 }
-                _ => ToolDisplay::Live,
+                _ => ToolDisplay::ActiveTurn,
             };
             let message_lines =
                 build_message_lines_with_details(msg, false, false, None, 0, wrap_width, display);
@@ -1236,7 +1239,7 @@ fn build_message_lines<'a>(
         permission_tool_call_id,
         activity_frame,
         wrap_width,
-        ToolDisplay::Live,
+        ToolDisplay::ActiveTurn,
     )
 }
 
@@ -1965,7 +1968,7 @@ mod tests {
         let message = ChatMessage::ToolCall {
             id: "tool".into(),
             title: "Check installed PowerToys and Foundry Local packages".into(),
-            status: "Completed".into(),
+            status: "Running".into(),
             kind: ToolCallKind::Execute,
             location: Some(
                 "winget list --name PowerToys 2>$null; winget list --name Foundry 2>$null".into(),
@@ -2001,12 +2004,12 @@ mod tests {
     }
 
     #[test]
-    fn execute_tool_call_renders_cwd_reported_output_tail_and_exit_code() {
+    fn running_execute_tool_call_renders_cwd_reported_output_tail() {
         let cwd = concat!("C:", "\\", "repo");
         let message = ChatMessage::ToolCall {
             id: "tool".into(),
             title: "bash".into(),
-            status: "Completed".into(),
+            status: "Running".into(),
             kind: ToolCallKind::Execute,
             location: Some("cargo test".into()),
             location_is_command: true,
@@ -2022,7 +2025,7 @@ mod tests {
         let lines = build_message_lines(&message, false, false, None, 0, 120);
         let rendered: Vec<String> = lines.iter().map(line_text).collect();
 
-        assert_eq!(rendered[0], format!("✓ bash ({cwd}) · exit 0"));
+        assert_eq!(rendered[0], format!("● bash ({cwd}) · exit 0"));
         assert_eq!(rendered[1], "    $ cargo test");
         assert_eq!(rendered[2], "    │ …");
         assert_eq!(rendered[3], "    │ line 2");
@@ -2032,12 +2035,72 @@ mod tests {
     }
 
     #[test]
-    fn completed_non_execute_tool_call_shows_bounded_output_preview() {
+    fn successful_active_tool_call_collapses_immediately() {
+        let cwd = concat!("C:", "\\", "repo");
+        let message = ChatMessage::ToolCall {
+            id: "tool".into(),
+            title: "Run tests".into(),
+            status: "Completed".into(),
+            kind: ToolCallKind::Execute,
+            location: Some("cargo test".into()),
+            location_is_command: true,
+            cwd: Some(cwd.into()),
+            output: Some(ToolCallOutput {
+                text: ["line 1", "line 2", "line 3"].join("\n"),
+                truncated: false,
+            }),
+            exit_code: Some(0),
+            content: Vec::new(),
+            locations: Vec::new(),
+        };
+
+        let rendered: Vec<String> = build_message_lines(&message, false, false, None, 0, 120)
+            .iter()
+            .map(line_text)
+            .collect();
+
+        assert_eq!(
+            rendered,
+            vec![format!("✓ Run tests · cargo test ({cwd}) · exit 0")]
+        );
+    }
+
+    #[test]
+    fn active_tool_call_keeps_preview_for_failure_or_truncation() {
+        for (status, truncated) in [("Failed", false), ("Completed", true)] {
+            let message = ChatMessage::ToolCall {
+                id: "tool".into(),
+                title: "Run tests".into(),
+                status: status.into(),
+                kind: ToolCallKind::Execute,
+                location: Some("cargo test".into()),
+                location_is_command: true,
+                cwd: None,
+                output: Some(ToolCallOutput {
+                    text: "diagnostic".into(),
+                    truncated,
+                }),
+                exit_code: Some(1),
+                content: Vec::new(),
+                locations: Vec::new(),
+            };
+
+            let rendered: Vec<String> = build_message_lines(&message, false, false, None, 0, 120)
+                .iter()
+                .map(line_text)
+                .collect();
+
+            assert!(rendered.iter().any(|line| line.contains("diagnostic")));
+        }
+    }
+
+    #[test]
+    fn running_non_execute_tool_call_shows_bounded_output_preview() {
         let location = concat!("C:", "\\", "repo", "\\", "large.txt");
         let message = ChatMessage::ToolCall {
             id: "tool".into(),
             title: "Read file".into(),
-            status: "Completed".into(),
+            status: "Running".into(),
             kind: ToolCallKind::Read,
             location: Some(location.into()),
             location_is_command: false,
