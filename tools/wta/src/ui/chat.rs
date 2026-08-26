@@ -26,29 +26,6 @@ fn is_successful_tool_call_status(status: &str) -> bool {
     status.eq_ignore_ascii_case("completed") || status.eq_ignore_ascii_case("exited (0)")
 }
 
-fn tool_content_truncated(content: &[ToolCallContent]) -> bool {
-    content.iter().any(|item| match item {
-        ToolCallContent::Text(output) => output.truncated,
-        ToolCallContent::Diff {
-            old_text, new_text, ..
-        } => old_text.as_ref().is_some_and(|output| output.truncated) || new_text.truncated,
-        ToolCallContent::Terminal { output, .. } => {
-            output.as_ref().is_some_and(|output| output.truncated)
-        }
-        ToolCallContent::Attachment { .. } => false,
-    })
-}
-
-fn tool_call_needs_preview(
-    status: &str,
-    output: Option<&ToolCallOutput>,
-    content: &[ToolCallContent],
-) -> bool {
-    !is_successful_tool_call_status(status)
-        || output.is_some_and(|output| output.truncated)
-        || tool_content_truncated(content)
-}
-
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum ToolDetailLevel {
     Compact,
@@ -63,16 +40,11 @@ enum ToolDisplay {
 }
 
 impl ToolDisplay {
-    fn detail_level(
-        self,
-        status: &str,
-        output: Option<&ToolCallOutput>,
-        content: &[ToolCallContent],
-    ) -> ToolDetailLevel {
+    fn detail_level(self, status: &str) -> ToolDetailLevel {
         match self {
             Self::Completed { expanded: true } => ToolDetailLevel::Detailed,
-            _ if tool_call_needs_preview(status, output, content) => ToolDetailLevel::Preview,
-            _ => ToolDetailLevel::Compact,
+            _ if is_successful_tool_call_status(status) => ToolDetailLevel::Compact,
+            _ => ToolDetailLevel::Preview,
         }
     }
 }
@@ -1302,8 +1274,7 @@ fn build_message_lines_with_details<'a>(
             content,
             locations,
         } => {
-            let detail_level =
-                tool_display.detail_level(status, output.as_ref(), content.as_slice());
+            let detail_level = tool_display.detail_level(status);
             let (marker, marker_style, detail) = tool_call_presentation(status);
             let marker = if permission_tool_call_id == Some(id.as_str())
                 || is_active_tool_call_status(status)
@@ -2066,31 +2037,65 @@ mod tests {
     }
 
     #[test]
-    fn active_tool_call_keeps_preview_for_failure_or_truncation() {
-        for (status, truncated) in [("Failed", false), ("Completed", true)] {
-            let message = ChatMessage::ToolCall {
-                id: "tool".into(),
-                title: "Run tests".into(),
-                status: status.into(),
-                kind: ToolCallKind::Execute,
-                location: Some("cargo test".into()),
-                location_is_command: true,
-                cwd: None,
-                output: Some(ToolCallOutput {
-                    text: "diagnostic".into(),
-                    truncated,
-                }),
-                exit_code: Some(1),
-                content: Vec::new(),
-                locations: Vec::new(),
-            };
+    fn failed_active_tool_call_keeps_diagnostic_preview() {
+        let message = ChatMessage::ToolCall {
+            id: "tool".into(),
+            title: "Run tests".into(),
+            status: "Failed".into(),
+            kind: ToolCallKind::Execute,
+            location: Some("cargo test".into()),
+            location_is_command: true,
+            cwd: None,
+            output: Some(ToolCallOutput {
+                text: "diagnostic".into(),
+                truncated: false,
+            }),
+            exit_code: Some(1),
+            content: Vec::new(),
+            locations: Vec::new(),
+        };
 
-            let rendered: Vec<String> = build_message_lines(&message, false, false, None, 0, 120)
-                .iter()
-                .map(line_text)
-                .collect();
+        let rendered: Vec<String> = build_message_lines(&message, false, false, None, 0, 120)
+            .iter()
+            .map(line_text)
+            .collect();
 
-            assert!(rendered.iter().any(|line| line.contains("diagnostic")));
+        assert!(rendered.iter().any(|line| line.contains("diagnostic")));
+    }
+
+    #[test]
+    fn successful_truncated_tool_call_is_compact_before_and_after_turn_completion() {
+        let message = ChatMessage::ToolCall {
+            id: "tool".into(),
+            title: "Locate project directory".into(),
+            status: "Completed".into(),
+            kind: ToolCallKind::Execute,
+            location: Some("Get-ChildItem".into()),
+            location_is_command: true,
+            cwd: None,
+            output: Some(ToolCallOutput {
+                text: "truncated output".into(),
+                truncated: true,
+            }),
+            exit_code: Some(0),
+            content: Vec::new(),
+            locations: Vec::new(),
+        };
+
+        for display in [
+            ToolDisplay::ActiveTurn,
+            ToolDisplay::Completed { expanded: false },
+        ] {
+            let rendered: Vec<String> =
+                build_message_lines_with_details(&message, false, false, None, 0, 120, display)
+                    .iter()
+                    .map(line_text)
+                    .collect();
+
+            assert_eq!(
+                rendered,
+                vec!["✓ Locate project directory · Get-ChildItem · exit 0"]
+            );
         }
     }
 
