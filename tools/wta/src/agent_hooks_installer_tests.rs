@@ -1789,6 +1789,25 @@ Installed plugins:
     let presence = parse_copilot_plugin_list(stdout);
     assert!(presence.installed);
     assert!(presence.enabled);
+    assert_eq!(presence.version, Some("0.1.0".parse().unwrap()));
+}
+
+/// Live-plugin rendering: installing from a local marketplace directory makes
+/// Copilot load the plugin in place and print an explicit `(enabled)` marker
+/// plus a `from <path>` continuation line. The version still has to come off
+/// the entry line, because a live plugin leaves no `installedPlugins` record
+/// behind for the on-disk reader to find.
+#[test]
+fn copilot_plugin_list_parser_reads_live_entry_version() {
+    let stdout = "\
+Live Plugins (loaded from a local marketplace directory, never copied):
+  • wt-agent-hooks@wt-local (v0.1.6) (enabled)
+      from C:\\repo\\bin\\AppX\\wt-agent-hooks\\copilot
+";
+    let presence = parse_copilot_plugin_list(stdout);
+    assert!(presence.installed);
+    assert!(presence.enabled);
+    assert_eq!(presence.version, Some("0.1.6".parse().unwrap()));
 }
 
 #[test]
@@ -1800,6 +1819,33 @@ Installed plugins:
     let presence = parse_copilot_plugin_list(stdout);
     assert!(presence.installed);
     assert!(!presence.enabled);
+    assert_eq!(presence.version, Some("0.1.4".parse().unwrap()));
+}
+
+/// Live entries spell the state with parentheses rather than brackets.
+#[test]
+fn copilot_plugin_list_parser_reports_live_disabled() {
+    let stdout = "\
+Live Plugins (loaded from a local marketplace directory, never copied):
+  • wt-agent-hooks@wt-local (v0.1.6) (disabled)
+";
+    let presence = parse_copilot_plugin_list(stdout);
+    assert!(presence.installed);
+    assert!(!presence.enabled);
+}
+
+/// A listing without a version column is still a valid install — the caller
+/// falls back to the on-disk readers rather than treating it as missing.
+#[test]
+fn copilot_plugin_list_parser_tolerates_missing_version() {
+    let stdout = "\
+Installed plugins:
+  • wt-agent-hooks@wt-local
+";
+    let presence = parse_copilot_plugin_list(stdout);
+    assert!(presence.installed);
+    assert!(presence.enabled);
+    assert_eq!(presence.version, None);
 }
 
 #[test]
@@ -3154,6 +3200,243 @@ fn read_installed_copilot_returns_none_when_not_installed() {
     assert!(read_installed_copilot(&home).unwrap().is_none());
 }
 
+/// A live install leaves `installedPlugins` empty — the only record is the
+/// `wt-local` marketplace registration — so the version has to come from the
+/// `plugin.json` under the registered directory. Without this fallback
+/// `wta hooks status` renders a working install as `v?`.
+#[test]
+fn installed_version_from_disk_reads_live_copilot_marketplace() {
+    let home = unique_dir("copilot-live-version");
+    let cfg_dir = home.join(".copilot");
+    fs::create_dir_all(&cfg_dir).unwrap();
+    fs::write(cfg_dir.join("config.json"), r#"{"installedPlugins":[]}"#).unwrap();
+
+    let marketplace = unique_dir("copilot-live-bundle");
+    let plugin_dir = marketplace.join(PLUGIN_NAME);
+    fs::create_dir_all(&plugin_dir).unwrap();
+    fs::write(
+        plugin_dir.join("plugin.json"),
+        r#"{"name":"wt-agent-hooks","version":"0.1.6"}"#,
+    )
+    .unwrap();
+    write_copilot_marketplace_settings(&cfg_dir, &marketplace);
+
+    assert_eq!(
+        installed_version_from_disk(CliKind::Copilot, Some(&home)),
+        Some("0.1.6".parse().unwrap())
+    );
+}
+
+/// The live marketplace wins when both records exist. Copilot ignores a
+/// copied record once the plugin loads live from a directory marketplace —
+/// CLI 1.0.81-9 lists only the live entry even with a fully populated
+/// `cache_path` for an older version — so reporting the copied version would
+/// name a build the CLI stopped loading.
+#[test]
+fn installed_version_from_disk_prefers_live_copilot_marketplace() {
+    let home = unique_dir("copilot-copied-version");
+    let cfg_dir = home.join(".copilot");
+    fs::create_dir_all(&cfg_dir).unwrap();
+    fs::write(
+        cfg_dir.join("config.json"),
+        r#"{"installedPlugins":[
+{ "name": "wt-agent-hooks", "marketplace": "wt-local", "version": "0.1.2" }
+]}"#,
+    )
+    .unwrap();
+
+    let marketplace = unique_dir("copilot-copied-bundle");
+    let plugin_dir = marketplace.join(PLUGIN_NAME);
+    fs::create_dir_all(&plugin_dir).unwrap();
+    fs::write(
+        plugin_dir.join("plugin.json"),
+        r#"{"name":"wt-agent-hooks","version":"0.1.6"}"#,
+    )
+    .unwrap();
+    write_copilot_marketplace_settings(&cfg_dir, &marketplace);
+
+    assert_eq!(
+        installed_version_from_disk(CliKind::Copilot, Some(&home)),
+        Some("0.1.6".parse().unwrap())
+    );
+}
+
+/// A registration pointing at a pruned worktree has no readable manifest, so
+/// it must not shadow a copied record that is still valid.
+#[test]
+fn installed_version_from_disk_falls_back_to_copied_copilot_record() {
+    let home = unique_dir("copilot-fallback-version");
+    let cfg_dir = home.join(".copilot");
+    fs::create_dir_all(&cfg_dir).unwrap();
+    fs::write(
+        cfg_dir.join("config.json"),
+        r#"{"installedPlugins":[
+{ "name": "wt-agent-hooks", "marketplace": "wt-local", "version": "0.1.2" }
+]}"#,
+    )
+    .unwrap();
+
+    let marketplace = unique_dir("copilot-fallback-bundle");
+    fs::remove_dir_all(&marketplace).ok();
+    write_copilot_marketplace_settings(&cfg_dir, &marketplace);
+
+    assert_eq!(
+        installed_version_from_disk(CliKind::Copilot, Some(&home)),
+        Some("0.1.2".parse().unwrap())
+    );
+}
+
+/// A live plugin records enablement in `settings.json`, not on an
+/// `installedPlugins` entry. Missing that would let `decide_upgrade` update a
+/// plugin the user switched off.
+#[test]
+fn read_installed_copilot_any_reads_live_enabled_flag() {
+    let home = unique_dir("copilot-live-disabled");
+    let cfg_dir = home.join(".copilot");
+    fs::create_dir_all(&cfg_dir).unwrap();
+    fs::write(cfg_dir.join("config.json"), r#"{"installedPlugins":[]}"#).unwrap();
+
+    let marketplace = unique_dir("copilot-live-disabled-bundle");
+    let plugin_dir = marketplace.join(PLUGIN_NAME);
+    fs::create_dir_all(&plugin_dir).unwrap();
+    fs::write(
+        plugin_dir.join("plugin.json"),
+        r#"{"name":"wt-agent-hooks","version":"0.1.6"}"#,
+    )
+    .unwrap();
+    write_copilot_settings(&cfg_dir, &marketplace, Some(false));
+
+    let info = read_installed_copilot_any(&home).unwrap().unwrap();
+    assert_eq!(info.version, Some("0.1.6".parse().unwrap()));
+    assert!(!info.enabled);
+}
+
+/// The probe must mark a live install as such, so `decide_upgrade` can say
+/// "nothing to push here" instead of inferring it from the versions matching.
+#[test]
+fn read_installed_copilot_any_marks_live_installs() {
+    let home = unique_dir("copilot-live-marked");
+    let cfg_dir = home.join(".copilot");
+    fs::create_dir_all(&cfg_dir).unwrap();
+    fs::write(
+        cfg_dir.join("config.json"),
+        r#"{"installedPlugins":[
+{ "name": "wt-agent-hooks", "marketplace": "wt-local", "version": "0.1.2" }
+]}"#,
+    )
+    .unwrap();
+
+    let marketplace = unique_dir("copilot-live-marked-bundle");
+    let plugin_dir = marketplace.join(PLUGIN_NAME);
+    fs::create_dir_all(&plugin_dir).unwrap();
+    fs::write(
+        plugin_dir.join("plugin.json"),
+        r#"{"name":"wt-agent-hooks","version":"0.1.6"}"#,
+    )
+    .unwrap();
+    write_copilot_settings(&cfg_dir, &marketplace, Some(true));
+
+    let info = read_installed_copilot_any(&home).unwrap().unwrap();
+    assert!(info.loads_live);
+    assert_eq!(info.live_source.as_deref(), Some(marketplace.as_path()));
+    assert_eq!(info.version, Some("0.1.6".parse().unwrap()));
+}
+
+/// The copied record that a live install falls back to is not live, so it
+/// keeps driving the upgrade path.
+#[test]
+fn read_installed_copilot_any_leaves_copied_records_unmarked() {
+    let home = unique_dir("copilot-copied-unmarked");
+    let cfg_dir = home.join(".copilot");
+    fs::create_dir_all(&cfg_dir).unwrap();
+    fs::write(
+        cfg_dir.join("config.json"),
+        r#"{"installedPlugins":[
+{ "name": "wt-agent-hooks", "marketplace": "wt-local", "version": "0.1.2" }
+]}"#,
+    )
+    .unwrap();
+
+    let info = read_installed_copilot_any(&home).unwrap().unwrap();
+    assert!(!info.loads_live);
+    assert_eq!(info.version, Some("0.1.2".parse().unwrap()));
+}
+
+/// A registration pointing at a pruned worktree has no readable manifest, so
+/// the version stays unknown rather than being reported as the bundle's.
+#[test]
+fn installed_version_from_disk_ignores_stale_copilot_marketplace() {
+    let home = unique_dir("copilot-stale-version");
+    let cfg_dir = home.join(".copilot");
+    fs::create_dir_all(&cfg_dir).unwrap();
+    fs::write(cfg_dir.join("config.json"), r#"{"installedPlugins":[]}"#).unwrap();
+
+    let marketplace = unique_dir("copilot-stale-bundle");
+    fs::remove_dir_all(&marketplace).ok();
+    write_copilot_marketplace_settings(&cfg_dir, &marketplace);
+
+    assert_eq!(
+        installed_version_from_disk(CliKind::Copilot, Some(&home)),
+        None
+    );
+}
+
+/// Write a `~/.copilot/settings.json` registering `wt-local` against
+/// `marketplace`, including the JSONC banner Copilot emits.
+fn write_copilot_marketplace_settings(copilot_dir: &Path, marketplace: &Path) {
+    write_copilot_settings(copilot_dir, marketplace, None);
+}
+
+/// As above, plus an explicit `enabledPlugins` entry. `None` omits the key,
+/// which is how Copilot leaves it until the plugin is toggled.
+fn write_copilot_settings(copilot_dir: &Path, marketplace: &Path, enabled: Option<bool>) {
+    let mut settings = serde_json::json!({
+        "extraKnownMarketplaces": {
+            MARKETPLACE_NAME: {
+                "source": {
+                    "source": "directory",
+                    "path": marketplace.display().to_string(),
+                }
+            }
+        }
+    });
+    if let Some(enabled) = enabled {
+        let mut plugins = serde_json::Map::new();
+        plugins.insert(
+            format!("{}@{}", PLUGIN_NAME, MARKETPLACE_NAME),
+            serde_json::Value::Bool(enabled),
+        );
+        settings["enabledPlugins"] = serde_json::Value::Object(plugins);
+    }
+    let body = format!(
+        "// User settings belong in settings.json.\n{}\n",
+        serde_json::to_string_pretty(&settings).unwrap()
+    );
+    fs::write(copilot_dir.join("settings.json"), body).unwrap();
+}
+
+/// The version a CLI's own listing reported has to land on the row. Dropping
+/// it silently demotes the row to the on-disk readers, which report what was
+/// recorded rather than what is loaded — that is how the Copilot row ended up
+/// rendering a stale `installedPlugins` version.
+#[test]
+fn apply_presence_carries_the_listed_version() {
+    let mut row = CliStatus::stub_skipped(CliKind::Copilot);
+    row.apply_presence(
+        PluginPresence {
+            installed: true,
+            enabled: true,
+            version: Some("0.1.6".parse().unwrap()),
+        },
+        true,
+    );
+
+    assert!(row.plugin_installed);
+    assert!(row.plugin_enabled);
+    assert!(row.marketplace_registered);
+    assert_eq!(row.installed_version.as_deref(), Some("0.1.6"));
+}
+
 // ---- auto-upgrade: read_installed_gemini ---------------------------
 
 #[test]
@@ -3212,6 +3495,8 @@ fn installed(version: &str, enabled: bool) -> InstalledInfo {
     InstalledInfo {
         version: Some(version.parse().unwrap()),
         enabled,
+        loads_live: false,
+        live_source: None,
         gemini_source: None,
         gemini_type: None,
     }
@@ -3233,6 +3518,100 @@ fn decide_skip_when_disabled() {
         None,
     );
     assert_eq!(a, UpgradeAction::Skip(SkipReason::Disabled));
+}
+
+/// A live install loading the bundle we ship has no copy to push a newer
+/// version into. Reported distinctly from `UpToDate`, which would only be
+/// the two versions coinciding, and from `NotInstalled`, which is what this
+/// looked like before live installs were recognized at all.
+#[test]
+fn decide_skip_when_loaded_live_from_current_bundle() {
+    let bundle = unique_dir("live-current-bundle");
+    let mut info = installed("0.1.0", true);
+    info.loads_live = true;
+    info.live_source = Some(bundle.clone());
+    let a = decide_upgrade(
+        CliKind::Copilot,
+        Some("0.1.6".parse().unwrap()),
+        Some(&info),
+        Some(&bundle),
+    );
+    assert_eq!(a, UpgradeAction::Skip(SkipReason::LiveInstall));
+}
+
+/// A registration left pointing at another tree keeps loading *that* tree's
+/// hooks. The repoint in `upgrade_copilot` is what fixes it, so the decision
+/// must reach it — including when both trees carry the same hook version,
+/// which is the common case and the reason version comparison can't stand in
+/// for this.
+#[test]
+fn decide_updates_live_install_registered_against_another_tree() {
+    let bundle = unique_dir("live-current");
+    let other = unique_dir("live-stale");
+    let mut info = installed("0.1.6", true);
+    info.loads_live = true;
+    info.live_source = Some(other);
+    let a = decide_upgrade(
+        CliKind::Copilot,
+        Some("0.1.6".parse().unwrap()),
+        Some(&info),
+        Some(&bundle),
+    );
+    assert_eq!(a, UpgradeAction::UpdatePlugin);
+}
+
+/// Path comparison is case-insensitive on Windows, so a differently-cased
+/// registration is not mistaken for another tree.
+#[test]
+fn decide_skip_when_live_source_differs_only_by_case() {
+    let bundle = unique_dir("live-CASE-bundle");
+    let mut info = installed("0.1.6", true);
+    info.loads_live = true;
+    info.live_source = Some(PathBuf::from(
+        bundle.display().to_string().to_ascii_uppercase(),
+    ));
+    let a = decide_upgrade(
+        CliKind::Copilot,
+        Some("0.1.6".parse().unwrap()),
+        Some(&info),
+        Some(&bundle),
+    );
+    let expected = if cfg!(windows) {
+        UpgradeAction::Skip(SkipReason::LiveInstall)
+    } else {
+        UpgradeAction::UpdatePlugin
+    };
+    assert_eq!(a, expected);
+}
+
+/// Disabled wins over live: the user turned it off, and that is the more
+/// actionable thing to report.
+#[test]
+fn decide_skip_disabled_takes_precedence_over_live() {
+    let mut info = installed("0.1.0", false);
+    info.loads_live = true;
+    let a = decide_upgrade(
+        CliKind::Copilot,
+        Some("0.1.6".parse().unwrap()),
+        Some(&info),
+        None,
+    );
+    assert_eq!(a, UpgradeAction::Skip(SkipReason::Disabled));
+}
+
+/// A copied record must keep driving the upgrade path — that is the shape a
+/// pre-1.0.81-8 CLI still has.
+#[test]
+fn decide_upgrades_copied_copilot_install() {
+    let info = installed("0.1.0", true);
+    assert!(!info.loads_live);
+    let a = decide_upgrade(
+        CliKind::Copilot,
+        Some("0.1.6".parse().unwrap()),
+        Some(&info),
+        None,
+    );
+    assert_eq!(a, UpgradeAction::UpdatePlugin);
 }
 
 #[test]
@@ -3268,6 +3647,8 @@ fn decide_skip_when_bundle_or_installed_version_unknown() {
     let info = InstalledInfo {
         version: None,
         enabled: true,
+        loads_live: false,
+        live_source: None,
         gemini_source: None,
         gemini_type: None,
     };
@@ -3320,6 +3701,8 @@ fn decide_opencode_repairs_unknown_installed_version() {
     let info = InstalledInfo {
         version: None,
         enabled: true,
+        loads_live: false,
+        live_source: None,
         gemini_source: None,
         gemini_type: None,
     };
@@ -3370,6 +3753,8 @@ fn decide_gemini_in_place_when_source_under_current_bundle() {
     let info = InstalledInfo {
         version: Some("0.1.0".parse().unwrap()),
         enabled: true,
+        loads_live: false,
+        live_source: None,
         gemini_source: Some(nested_src.clone()),
         gemini_type: Some("local".into()),
     };
@@ -3391,6 +3776,8 @@ fn decide_gemini_reinstall_when_source_stale() {
     let info = InstalledInfo {
         version: Some("0.1.0".parse().unwrap()),
         enabled: true,
+        loads_live: false,
+        live_source: None,
         gemini_source: Some(stale_src),
         gemini_type: Some("local".into()),
     };
@@ -3411,6 +3798,8 @@ fn decide_gemini_reinstall_when_type_is_not_local() {
     let info = InstalledInfo {
         version: Some("0.1.0".parse().unwrap()),
         enabled: true,
+        loads_live: false,
+        live_source: None,
         gemini_source: Some(inside),
         gemini_type: Some("git".into()),
     };
