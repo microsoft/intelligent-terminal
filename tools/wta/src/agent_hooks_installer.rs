@@ -3965,7 +3965,17 @@ fn read_version_field(path: &Path) -> Option<Version> {
 /// / malformed.
 fn read_bundled_version(cli: CliKind) -> Option<Version> {
     let dir = bundle::resolve_cli_dir(cli)?;
-    let manifest = match cli {
+    read_version_field(&bundle_manifest_path(cli, &dir))
+}
+
+/// Path of the manifest carrying the bundle version, within a per-CLI bundle
+/// directory.
+///
+/// Doubles as the marker for a complete copy of that directory: it is the
+/// deepest file every layout has, so its presence is evidence a recursive
+/// copy reached the end rather than the shell of one that failed partway.
+fn bundle_manifest_path(cli: CliKind, dir: &Path) -> PathBuf {
+    match cli {
         CliKind::Copilot => dir.join("wt-agent-hooks").join("plugin.json"),
         CliKind::Claude => dir
             .join("wt-agent-hooks")
@@ -3977,8 +3987,19 @@ fn read_bundled_version(cli: CliKind) -> Option<Version> {
             .join("plugin.json"),
         CliKind::Gemini => dir.join("gemini-extension.json"),
         CliKind::OpenCode => dir.join(OPENCODE_MANIFEST),
-    };
-    read_version_field(&manifest)
+    }
+}
+
+/// Whether a staging directory holds a usable copy of the bundle.
+///
+/// `copy_dir_recursive` creates the destination before writing into it and
+/// `maybe_stage_bundle_for_*` falls back to the package path when the copy
+/// errors, so a half-written staging directory can outlive a failed staging
+/// attempt. Treating its mere existence as proof would point
+/// [`expected_registration_dir`] at a directory the install never registered
+/// against, and read a correct registration as moved on every check.
+fn staged_bundle_is_usable(cli: CliKind, staged: &Path) -> bool {
+    bundle_manifest_path(cli, staged).is_file()
 }
 
 // ---- Installed-state readers ----------------------------------------------
@@ -4433,8 +4454,10 @@ fn decide_upgrade(
 ///
 /// Staging is best-effort at install time and falls back to the original
 /// path, so the bundle itself stays acceptable: callers use
-/// [`path_under_dir`], and a registration naming the bundle is rejected
-/// only when staging actually happened and produced a directory.
+/// [`path_under_dir`], and a registration naming the bundle is rejected only
+/// when staging actually produced a usable copy — see
+/// [`staged_bundle_is_usable`], which is what keeps a failed staging attempt
+/// from making a correct registration look moved.
 fn expected_registration_dir(cli: CliKind, bundle_dir: &Path) -> PathBuf {
     if !matches!(cli, CliKind::Claude | CliKind::Codex) || !is_under_windows_apps(bundle_dir) {
         return bundle_dir.to_path_buf();
@@ -4442,7 +4465,7 @@ fn expected_registration_dir(cli: CliKind, bundle_dir: &Path) -> PathBuf {
     match crate::runtime_paths::intelligent_terminal_local_root() {
         Some(root) => {
             let staged = root.join(STAGING_SUBDIR).join(cli.dir_name());
-            if staged.is_dir() {
+            if staged_bundle_is_usable(cli, &staged) {
                 staged
             } else {
                 bundle_dir.to_path_buf()

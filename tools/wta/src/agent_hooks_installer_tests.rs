@@ -4193,6 +4193,38 @@ fn expected_registration_dir_is_the_bundle_outside_windows_apps() {
     }
 }
 
+/// `copy_dir_recursive` creates the destination before writing into it, so a
+/// staging attempt that fails partway leaves a directory the install never
+/// registered against. Preferring it would read a correct registration as
+/// moved on every check and repair it back and forth forever.
+#[test]
+fn a_half_written_staging_dir_is_not_usable() {
+    for cli in [CliKind::Claude, CliKind::Codex] {
+        let staged = unique_dir("staging-partial");
+        assert!(
+            !staged_bundle_is_usable(cli, &staged),
+            "{cli:?} must reject an empty staging dir",
+        );
+
+        // The plugin directory alone is not enough — the copy can stop
+        // anywhere inside it.
+        fs::create_dir_all(staged.join("wt-agent-hooks")).unwrap();
+        assert!(
+            !staged_bundle_is_usable(cli, &staged),
+            "{cli:?} must reject a staging dir without a manifest",
+        );
+
+        let manifest = bundle_manifest_path(cli, &staged);
+        fs::create_dir_all(manifest.parent().unwrap()).unwrap();
+        fs::write(&manifest, r#"{"version":"0.1.6"}"#).unwrap();
+        assert!(
+            staged_bundle_is_usable(cli, &staged),
+            "{cli:?} must accept a staging dir carrying {}",
+            manifest.display(),
+        );
+    }
+}
+
 /// Codex records the extended-length form of the path it was handed, so a
 /// literal comparison would read every Codex registration as moved and
 /// reinstall on each upgrade check.
