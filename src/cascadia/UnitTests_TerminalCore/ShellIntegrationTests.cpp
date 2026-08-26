@@ -603,7 +603,11 @@ void ShellIntegrationTests::PowerShell_ScriptContent_GuardsAgainstChainingPrompt
     // us — an unbounded mutual-delegation cycle without this guard.
     const auto reentryGuard = script.find("if ($Global:__ShellInteg_Rendering)", promptStart);
     const auto servePrev = script.find("return (& $Global:__ShellInteg_PrevPrompt)", reentryGuard);
-    const auto setFlag = script.find("$Global:__ShellInteg_Rendering = $true", servePrev);
+    // With nothing displaced left to serve, contribute an empty string — never
+    // fabricated prompt text. The chaining module renders its own text around
+    // whatever we return.
+    const auto emptyWhenExhausted = script.find("return ''", servePrev);
+    const auto setFlag = script.find("$Global:__ShellInteg_Rendering = $true", emptyWhenExhausted);
     const auto delegation = script.find("$originalOutput = & $Global:__ShellInteg_OriginalPrompt", setFlag);
     const auto clearFlag = script.find("finally { $Global:__ShellInteg_Rendering = $false }", delegation);
 
@@ -613,8 +617,9 @@ void ShellIntegrationTests::PowerShell_ScriptContent_GuardsAgainstChainingPrompt
 
     VERIFY_ARE_NOT_EQUAL(std::string::npos, clearFlag);
     VERIFY_ARE_NOT_EQUAL(std::string::npos, retainPrev);
-    VERIFY_IS_TRUE(promptStart < reentryGuard && reentryGuard < servePrev,
-                   L"reentry must be detected before any rendering work and serve the displaced prompt");
+    VERIFY_ARE_NOT_EQUAL(std::string::npos, emptyWhenExhausted);
+    VERIFY_IS_TRUE(promptStart < reentryGuard && reentryGuard < servePrev && servePrev < emptyWhenExhausted,
+                   L"reentry must be detected before any rendering work, serve the displaced prompt, then contribute nothing rather than fabricating text");
     VERIFY_IS_TRUE(setFlag < delegation && delegation < clearFlag,
                    L"The reentrancy flag must be set around the delegation and cleared in finally");
 }
@@ -632,7 +637,7 @@ void ShellIntegrationTests::PowerShell_ScriptContent_RendersFailSafe()
     const auto renderCatch = script.find("catch {", normalReturn);
     const auto failSafeFlag = script.find("$Global:__ShellInteg_Rendering = $true", renderCatch);
     const auto degradeToPrompt = script.find("try { return (& $Global:__ShellInteg_OriginalPrompt) }", failSafeFlag);
-    const auto lastResort = script.find("catch { return \"PS $($executionContext.SessionState.Path.CurrentLocation)> \" }", degradeToPrompt);
+    const auto lastResort = script.find("return ''", degradeToPrompt);
     const auto failSafeClear = script.find("finally { $Global:__ShellInteg_Rendering = $false }", lastResort);
 
     VERIFY_ARE_NOT_EQUAL(std::string::npos, failSafeClear);
@@ -643,6 +648,15 @@ void ShellIntegrationTests::PowerShell_ScriptContent_RendersFailSafe()
                        degradeToPrompt < lastResort &&
                        lastResort < failSafeClear,
                    L"The fail-safe must hold the reentrancy flag while degrading, or an adopted chaining prompt recurses to the call-depth limit");
+
+    // This wrapper must never invent visible prompt text. When the wrapped
+    // prompt itself throws there is nothing to show, so it returns an empty
+    // string and the HOST supplies its own default. Fabricating a lookalike
+    // "PS <cwd>> " would alter the visible prompt, which is exactly what this
+    // component promises not to do.
+    VERIFY_ARE_EQUAL(std::string::npos,
+                     script.find("return \"PS $($executionContext.SessionState.Path.CurrentLocation)> \""),
+                     L"The prompt path must not fabricate prompt text");
 }
 
 // ─── Install ──────────────────────────────────────────────────────────────────

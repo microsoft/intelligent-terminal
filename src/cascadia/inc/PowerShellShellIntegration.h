@@ -499,7 +499,11 @@ if (-not $Global:__ShellInteg_Installed) {
             if ($Global:__ShellInteg_PrevPrompt) {
                 return (& $Global:__ShellInteg_PrevPrompt)
             }
-            return "PS $($executionContext.SessionState.Path.CurrentLocation)> "
+            # Nothing displaced left to serve. Return an empty string rather
+            # than inventing prompt text: this wrapper never contributes
+            # visible output of its own, and the chaining module renders its
+            # own text around whatever we return.
+            return ''
         }
 
         try {
@@ -596,7 +600,14 @@ if (-not $Global:__ShellInteg_Installed) {
             # above exists to prevent.
             $Global:__ShellInteg_Rendering = $true
             try { return (& $Global:__ShellInteg_OriginalPrompt) }
-            catch { return "PS $($executionContext.SessionState.Path.CurrentLocation)> " }
+            catch {
+                # The wrapped prompt itself threw. Return an empty string and
+                # let the HOST fall back to its own built-in prompt. Do not
+                # fabricate one: this wrapper never alters the visible prompt,
+                # and a hand-rolled "PS <cwd>> " is only an imitation of the
+                # real default, which differs by host and edition.
+                return ''
+            }
             finally { $Global:__ShellInteg_Rendering = $false }
         }
     }
