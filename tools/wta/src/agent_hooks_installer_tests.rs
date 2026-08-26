@@ -456,11 +456,11 @@ fn read_installed_opencode_uses_managed_manifest_version() {
     assert!(read_installed_opencode(&home).unwrap().is_none());
 }
 
-/// Uninstall must sweep the active `hook-bundle-staging\claude\`
+/// Uninstall must sweep the active `hook-bundle-staging\<cli>\`
 /// directory in addition to the historical staging dirs, so a clean
 /// uninstall doesn't leave the MSIX workaround copy behind.
 #[test]
-fn legacy_staging_dirs_includes_active_claude_staging() {
+fn legacy_staging_dirs_includes_active_staging_for_staging_clis() {
     let Some(root) = crate::runtime_paths::intelligent_terminal_local_root() else {
         // No LOCALAPPDATA on this host (extremely unusual) — nothing to
         // assert. The function would return an empty Vec in that case
@@ -468,24 +468,58 @@ fn legacy_staging_dirs_includes_active_claude_staging() {
         // behaviour.
         return;
     };
-    let expected = root.join(STAGING_SUBDIR).join(CliKind::Claude.dir_name());
 
-    let claude_dirs = legacy_staging_dirs(CliKind::Claude);
-    assert!(
-        claude_dirs.iter().any(|p| p == &expected),
-        "Claude sweep list should contain the active staging dir {} but was {:?}",
-        expected.display(),
-        claude_dirs,
-    );
+    for cli in [CliKind::Claude, CliKind::Codex] {
+        let expected = root.join(STAGING_SUBDIR).join(cli.dir_name());
+        let dirs = legacy_staging_dirs(cli);
+        assert!(
+            dirs.iter().any(|p| p == &expected),
+            "{:?} sweep list should contain the active staging dir {} but was {:?}",
+            cli,
+            expected.display(),
+            dirs,
+        );
+    }
 
-    // Copilot and Gemini don't trigger the workaround, so the active
-    // staging path must NOT appear in their sweep lists.
+    // Copilot and Gemini don't trigger the workaround, so no active
+    // staging path may appear in their sweep lists.
+    let claude_staging = root.join(STAGING_SUBDIR).join(CliKind::Claude.dir_name());
     for cli in [CliKind::Copilot, CliKind::Gemini] {
         let dirs = legacy_staging_dirs(cli);
         assert!(
-            dirs.iter().all(|p| p != &expected),
+            dirs.iter().all(|p| p != &claude_staging),
             "{:?} sweep list must not include Claude's active staging dir but was {:?}",
             cli,
+            dirs,
+        );
+    }
+}
+
+/// Staging moved from the `LocalState` root to the `LocalCache\Local` root
+/// when it was reclassified as cache, and Codex kept writing to the old
+/// location until that was corrected. Uninstall has to sweep both or an
+/// install predating the fix leaves a materialized bundle behind.
+#[test]
+fn legacy_staging_dirs_includes_the_pre_cache_root_staging() {
+    let (Some(cache_root), Some(state_root)) = (
+        crate::runtime_paths::intelligent_terminal_local_root(),
+        crate::runtime_paths::intelligent_terminal_root(),
+    ) else {
+        return;
+    };
+    if paths_equivalent(&cache_root, &state_root) {
+        // Unpackaged: both roots collapse onto bare `%LOCALAPPDATA%`, so
+        // there is no second location to sweep.
+        return;
+    }
+    for cli in [CliKind::Claude, CliKind::Codex] {
+        let legacy = state_root.join(STAGING_SUBDIR).join(cli.dir_name());
+        let dirs = legacy_staging_dirs(cli);
+        assert!(
+            dirs.iter().any(|p| p == &legacy),
+            "{:?} sweep list should contain the pre-cache-root staging dir {} but was {:?}",
+            cli,
+            legacy.display(),
             dirs,
         );
     }

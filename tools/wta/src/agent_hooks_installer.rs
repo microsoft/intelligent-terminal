@@ -1023,7 +1023,8 @@ fn maybe_stage_bundle_for_codex(source: &Path) -> Option<PathBuf> {
     if !is_under_windows_apps(source) {
         return None;
     }
-    let root = crate::runtime_paths::intelligent_terminal_root()?;
+    // Staging copy is transient cache → the `LocalCache\Local` root.
+    let root = crate::runtime_paths::intelligent_terminal_local_root()?;
     let staged = root.join(STAGING_SUBDIR).join(CliKind::Codex.dir_name());
     match restage_bundle_dir(source, &staged) {
         Ok(()) => {
@@ -2799,10 +2800,20 @@ fn legacy_staging_dirs(cli: CliKind) -> Vec<PathBuf> {
     }
     // #20-first-commit-style embedded-fallback materialization.
     dirs.push(root.join("hook-bundle-fallback").join(cli.dir_name()));
-    // Active WindowsApps-workaround staging (Claude only — Copilot and
-    // Gemini don't trip the `cpSync` EPERM that motivated this).
-    if matches!(cli, CliKind::Claude) {
+    // Active WindowsApps-workaround staging (Claude and Codex only —
+    // Copilot and Gemini don't trip the `cpSync` EPERM that motivated this).
+    if matches!(cli, CliKind::Claude | CliKind::Codex) {
         dirs.push(root.join(STAGING_SUBDIR).join(cli.dir_name()));
+        // Pre-#124 staging lived under the `LocalState` root, before staging
+        // was reclassified as cache. Codex kept writing there until the root
+        // fix, so an install predating it leaves a copy behind that the cache
+        // root alone never sweeps.
+        if let Some(state_root) = crate::runtime_paths::intelligent_terminal_root() {
+            let legacy = state_root.join(STAGING_SUBDIR).join(cli.dir_name());
+            if !dirs.iter().any(|d| paths_equivalent(d, &legacy)) {
+                dirs.push(legacy);
+            }
+        }
     }
     dirs
 }
@@ -4298,13 +4309,7 @@ fn expected_registration_dir(cli: CliKind, bundle_dir: &Path) -> PathBuf {
     if !matches!(cli, CliKind::Claude | CliKind::Codex) || !is_under_windows_apps(bundle_dir) {
         return bundle_dir.to_path_buf();
     }
-    let root = match cli {
-        // Mirrors the per-CLI staging roots; Claude stages into the cache
-        // root and Codex into the state root.
-        CliKind::Claude => crate::runtime_paths::intelligent_terminal_local_root(),
-        _ => crate::runtime_paths::intelligent_terminal_root(),
-    };
-    match root {
+    match crate::runtime_paths::intelligent_terminal_local_root() {
         Some(root) => {
             let staged = root.join(STAGING_SUBDIR).join(cli.dir_name());
             if staged.is_dir() {
