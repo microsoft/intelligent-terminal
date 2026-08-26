@@ -26,6 +26,29 @@ fn is_successful_tool_call_status(status: &str) -> bool {
     status.eq_ignore_ascii_case("completed") || status.eq_ignore_ascii_case("exited (0)")
 }
 
+fn tool_content_truncated(content: &[ToolCallContent]) -> bool {
+    content.iter().any(|item| match item {
+        ToolCallContent::Text(output) => output.truncated,
+        ToolCallContent::Diff {
+            old_text, new_text, ..
+        } => old_text.as_ref().is_some_and(|output| output.truncated) || new_text.truncated,
+        ToolCallContent::Terminal { output, .. } => {
+            output.as_ref().is_some_and(|output| output.truncated)
+        }
+        ToolCallContent::Attachment { .. } => false,
+    })
+}
+
+fn tool_call_needs_preview(
+    status: &str,
+    output: Option<&ToolCallOutput>,
+    content: &[ToolCallContent],
+) -> bool {
+    !is_successful_tool_call_status(status)
+        || output.is_some_and(|output| output.truncated)
+        || tool_content_truncated(content)
+}
+
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum ToolDetailLevel {
     Compact,
@@ -40,11 +63,16 @@ enum ToolDisplay {
 }
 
 impl ToolDisplay {
-    fn detail_level(self, status: &str) -> ToolDetailLevel {
+    fn detail_level(
+        self,
+        status: &str,
+        output: Option<&ToolCallOutput>,
+        content: &[ToolCallContent],
+    ) -> ToolDetailLevel {
         match self {
             Self::Completed { expanded: true } => ToolDetailLevel::Detailed,
-            _ if is_successful_tool_call_status(status) => ToolDetailLevel::Compact,
-            _ => ToolDetailLevel::Preview,
+            _ if tool_call_needs_preview(status, output, content) => ToolDetailLevel::Preview,
+            _ => ToolDetailLevel::Compact,
         }
     }
 }
@@ -401,6 +429,18 @@ fn is_active_tool_call_status(status: &str) -> bool {
     status.eq_ignore_ascii_case("pending")
         || status.eq_ignore_ascii_case("inprogress")
         || status.eq_ignore_ascii_case("running")
+}
+
+fn rendered_tool_call_marker(
+    status: &str,
+    permission_active: bool,
+    activity_frame: usize,
+) -> &'static str {
+    if permission_active || is_active_tool_call_status(status) {
+        breathing_dot(activity_frame)
+    } else {
+        tool_call_presentation(status).0
+    }
 }
 
 fn should_show_turn_activity(tab: &crate::app::TabSession) -> bool {
@@ -1099,7 +1139,7 @@ fn build_completed_turn_lines_with_geometry<'a>(
                         detail_index,
                         row_offset: rendered_height,
                         expanded,
-                        marker: tool_call_presentation(status).0,
+                        marker: rendered_tool_call_marker(status, false, 0),
                     });
                     ToolDisplay::Completed { expanded }
                 }
@@ -1274,15 +1314,14 @@ fn build_message_lines_with_details<'a>(
             content,
             locations,
         } => {
-            let detail_level = tool_display.detail_level(status);
-            let (marker, marker_style, detail) = tool_call_presentation(status);
-            let marker = if permission_tool_call_id == Some(id.as_str())
-                || is_active_tool_call_status(status)
-            {
-                breathing_dot(activity_frame)
-            } else {
-                marker
-            };
+            let detail_level =
+                tool_display.detail_level(status, output.as_ref(), content.as_slice());
+            let (_, marker_style, detail) = tool_call_presentation(status);
+            let marker = rendered_tool_call_marker(
+                status,
+                permission_tool_call_id == Some(id.as_str()),
+                activity_frame,
+            );
             let mut spans = vec![
                 Span::styled(marker, marker_style),
                 Span::raw(" "),
@@ -2064,7 +2103,7 @@ mod tests {
     }
 
     #[test]
-    fn successful_truncated_tool_call_is_compact_before_and_after_turn_completion() {
+    fn successful_truncated_tool_call_keeps_preview_before_and_after_turn_completion() {
         let message = ChatMessage::ToolCall {
             id: "tool".into(),
             title: "Locate project directory".into(),
@@ -2092,10 +2131,10 @@ mod tests {
                     .map(line_text)
                     .collect();
 
-            assert_eq!(
-                rendered,
-                vec!["✓ Locate project directory · Get-ChildItem · exit 0"]
-            );
+            assert_eq!(rendered[0], "✓ Locate project directory · exit 0");
+            assert_eq!(rendered[1], "    $ Get-ChildItem");
+            assert_eq!(rendered[2], "    │ …");
+            assert_eq!(rendered[3], "    │ truncated output");
         }
     }
 

@@ -10120,6 +10120,37 @@ fn clicking_completed_tool_status_marker_toggles_only_that_tool() {
     assert!(app.current_tab().completed_turns[0].expanded);
 }
 
+#[test]
+fn pending_tool_in_completed_turn_keeps_clickable_status_marker() {
+    let mut app = test_app();
+    app.state = ConnectionState::Connected;
+    app.current_tab_mut().completed_turns.push(CompletedTurn {
+        prompt: "Interrupted turn".into(),
+        details: vec![ChatMessage::ToolCall {
+            id: "pending-tool".into(),
+            title: "Pending operation".into(),
+            status: "Pending".into(),
+            kind: ToolCallKind::Other,
+            location: None,
+            location_is_command: false,
+            cwd: None,
+            output: None,
+            exit_code: None,
+            content: Vec::new(),
+            locations: Vec::new(),
+        }],
+        expanded: true,
+        trailing_marker: None,
+    });
+
+    let rendered = render_to_text(&mut app, 80, 16);
+    assert!(rendered.contains("● Pending operation"));
+    assert!(app
+        .completed_turn_hits
+        .iter()
+        .any(|hit| matches!(hit.kind, CompletedTurnHitKind::ToolCall { detail_index: 0 })));
+}
+
 /// Render: while the helper is still connecting, the fixed activity row must
 /// paint the animated "Connecting…" label.
 #[test]
