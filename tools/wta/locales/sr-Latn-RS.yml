@@ -66,7 +66,7 @@ delegate_picker.panel: "Novi panel"
 delegate_picker.intent_required: "Opišite posao za delegiranje."
 delegate_picker.not_configured: "Nijedan delegatski agent nije konfigurisan."
 delegate_picker.no_parent_pane: "Nijedan radni okno nije dostupan za razdvajanje."
-delegate_picker.launch_failed: "Nije moguće pokrenuti delegata: __PH2__"
+delegate_picker.launch_failed: "Nije moguće pokrenuti delegata: %{error}"
 commands.help_title: " Pomoć "
 commands.help_header: "Komande sa kosom crtom — otkucajte / u polju za unos."
 commands.help_escape_hint: "  //text     Pošalji doslovno '/' (zaobilazi parser komandi)"  # {Locked="//text","/"}
@@ -84,7 +84,7 @@ commands.agent.summary: "Izaberite agent za ovu karticu (/agent <id> za direktno
 commands.command.summary: "Create a terminal command card from an intent (/command <intent>)"  # {Locked="/command","<intent>"}
 command_card.intent_required: "Describe the terminal command you want Copilot to prepare."
 command_card.adjustment_required: "Opišite kako želite da prilagodite komandu terminala."
-commands.delegate.summary: "Pripremite zadatak i otvorite agenta delegata (__PH0__ __PH1__)"
+commands.delegate.summary: "Pripremite zadatak i otvorite agenta delegata (/delegate <intent>)"
 # ── Recommendations panel (src/ui/recommendations.rs) ───────────────────────
 # {Locked="Enter","Esc","↵","↑","↓","←","→"} - key names and Return-key glyph, do not translate
 recommendations.nav_hint: "(↑ ↓ za navigaciju • ← → za prebacivanje dugmadi • Enter za izbor • Esc za otkazivanje)"

@@ -1199,7 +1199,7 @@ pub struct App {
     pub last_dispatched_command: Option<DispatchedCommand>,
     /// Source pane GUID (set from `WTA_SOURCE_SESSION_ID` by the launching
     /// pane). Ordinary prompts and deterministic commands use this immutable
-    /// binding instead of retargeting from focus.
+    /// binding instead of following focus changes.
     pub source_session_id: Option<String>,
     /// Source pane working directory (set from `WTA_SOURCE_CWD`).
     pub source_cwd: Option<String>,

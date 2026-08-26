@@ -33,8 +33,8 @@ model-prepared input to Windows Terminal.
 4. **Event-driven metadata.** Windows Terminal publishes pane snapshots and
    each helper maintains an in-memory catalog for source metadata, target
    validation, and exact invalidation.
-5. **No retargeting.** A submitted command and every later adjustment carry
-   the same snapshotted target GUID.
+5. **Stable target.** A submitted command and every later adjustment carry the
+   same snapshotted target GUID.
 6. **No silent fallback after submission.** If that target disappears, the
    command is canceled or its card expires. It never moves to the focused pane.
 
@@ -80,6 +80,13 @@ Adjust opens a natural-language refinement editor. Its request always contains:
 - the previous command;
 - the current adjustment;
 - the original command card's snapshotted target and metadata.
+
+The adjustment is semantic feedback about the previous command, not replacement
+terminal input. Relative wording such as "here", "this", or "that" is resolved
+against the original intent, previous command, and terminal context. The model
+must use the previous suggestion as the revision baseline, preserve every
+unaffected part, and return a complete revised command rather than regenerating
+from the feedback alone, echoing the feedback, or returning a diff.
 
 Changing source state while Adjust is open cannot redirect the revision.
 

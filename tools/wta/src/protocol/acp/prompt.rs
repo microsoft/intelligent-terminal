@@ -18,6 +18,10 @@ const EMBEDDED_PANE_INPUT_PREPARATION_PROMPT: &str = include_str!(concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/prompts/prepare-pane-input.md"
 ));
+const EMBEDDED_PANE_INPUT_ADJUSTMENT_PROMPT: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/prompts/adjust-pane-input.md"
+));
 const EMBEDDED_DELEGATE_PREPARATION_PROMPT: &str = include_str!(concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/prompts/prepare-delegate-prompt.md"
@@ -59,7 +63,7 @@ pub(crate) fn terminal_command_adjustment_request(
 ) -> String {
     format!(
         "{}\n\n## Original User Intent\n{}\n\n## Current Terminal Input\n{}\n\n## Requested Adjustment\n{}",
-        EMBEDDED_PANE_INPUT_PREPARATION_PROMPT.trim(),
+        EMBEDDED_PANE_INPUT_ADJUSTMENT_PROMPT.trim(),
         original_intent.trim(),
         current_command.trim_matches(['\r', '\n']),
         adjustment.trim()
@@ -346,8 +350,27 @@ mod tests {
             terminal_command_adjustment_request("list files", "Get-ChildItem", "include hidden");
         assert!(adjustment.contains("## Original User Intent\nlist files"));
         assert!(adjustment.contains("## Current Terminal Input\nGet-ChildItem"));
-        assert!(adjustment.contains("## Requested Adjustment\ninclude hidden"));
-        assert!(adjustment.contains("Return only that terminal input"));
+        assert!(adjustment.contains(&["## Requested Adjustment", "include hidden"].join("\n")));
+        assert!(adjustment.contains("natural-language feedback"));
+        assert!(adjustment.contains("not as replacement terminal input"));
+        assert!(adjustment.contains("previous suggestion"));
+        assert!(adjustment.contains("mandatory"));
+        assert!(adjustment.contains("baseline"));
+        assert!(adjustment.contains("do not discard it"));
+        assert!(adjustment.contains("Never return the adjustment text verbatim"));
+        assert!(adjustment.contains("complete revised terminal input"));
+        assert!(!adjustment.contains("Turn the user intent into"));
+
+        let semantic_adjustment = terminal_command_adjustment_request(
+            "write a file",
+            "Set-Content output.txt ''",
+            "content here",
+        );
+        assert!(
+            semantic_adjustment.contains("## Current Terminal Input\nSet-Content output.txt ''")
+        );
+        assert!(semantic_adjustment.contains("## Requested Adjustment\ncontent here"));
+        assert!(semantic_adjustment.contains("not as replacement terminal input"));
 
         let delegate = delegate_preparation_request("investigate flaky tests");
         assert!(delegate.contains("investigate flaky tests"));

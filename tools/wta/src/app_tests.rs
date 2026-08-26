@@ -13477,7 +13477,7 @@ fn adjust_recompiles_the_command_without_changing_its_target() {
         .contains("## Current Terminal Input\nGet-ChildItem"));
     assert!(adjustment_prompt
         .text
-        .contains("## Requested Adjustment\ninclude hidden files"));
+        .contains(&["## Requested Adjustment", "include hidden files"].join("\n")));
     assert_eq!(
         adjustment_prompt
             .pane_context
