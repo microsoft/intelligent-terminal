@@ -129,7 +129,7 @@ shell, so any pane-launched process — including wta and wtcli — inherits it.
 | Ctrl+C | Copy selected text; otherwise cancel streaming / quit |
 | Up / Down | Browse prompt input history |
 | Mouse wheel | Scroll chat (hold Alt to scroll one line) |
-| Click a completed tool status marker | Expand or collapse that tool's details |
+| Click a completed tool header | Expand or collapse that tool's details |
 | Ctrl+O | Expand or collapse all completed tool details |
 | Mouse drag | Select a continuous text range |
 | Double / triple click | Select a word / line |

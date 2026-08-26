@@ -1,0 +1,270 @@
+use std::borrow::Cow;
+
+use crate::app::{ToolCallKind, ToolCallLocation};
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum ToolPhase<'a> {
+    Pending,
+    Running,
+    Succeeded,
+    Failed(Option<&'a str>),
+    Canceled,
+    Unknown(&'a str),
+}
+
+impl<'a> ToolPhase<'a> {
+    pub(crate) fn from_status(status: &'a str) -> Self {
+        if status.eq_ignore_ascii_case("pending") {
+            Self::Pending
+        } else if status.eq_ignore_ascii_case("inprogress")
+            || status.eq_ignore_ascii_case("running")
+        {
+            Self::Running
+        } else if status.eq_ignore_ascii_case("completed")
+            || status.eq_ignore_ascii_case("exited (0)")
+        {
+            Self::Succeeded
+        } else if status.eq_ignore_ascii_case("failed") {
+            Self::Failed(None)
+        } else if let Some((kind, reason)) = status.split_once(':') {
+            if kind.eq_ignore_ascii_case("failed") {
+                Self::Failed(Some(reason.trim()))
+            } else {
+                Self::Unknown(status)
+            }
+        } else if status
+            .get(.."exited (".len())
+            .is_some_and(|prefix| prefix.eq_ignore_ascii_case("exited ("))
+        {
+            Self::Failed(Some(status))
+        } else if status.eq_ignore_ascii_case("cancelled")
+            || status.eq_ignore_ascii_case("canceled")
+        {
+            Self::Canceled
+        } else {
+            Self::Unknown(status)
+        }
+    }
+
+    pub(crate) fn is_active(self) -> bool {
+        matches!(self, Self::Pending | Self::Running)
+    }
+
+    pub(crate) fn is_successful(self) -> bool {
+        self == Self::Succeeded
+    }
+}
+
+pub(crate) struct ToolPresentation<'a> {
+    pub(crate) phase: ToolPhase<'a>,
+    pub(crate) kind: ToolCallKind,
+    pub(crate) title: &'a str,
+    pub(crate) target: Option<&'a str>,
+    pub(crate) target_is_command: bool,
+    pub(crate) cwd: Option<&'a str>,
+    pub(crate) exit_code: Option<i64>,
+}
+
+impl<'a> ToolPresentation<'a> {
+    pub(crate) fn new(
+        title: &'a str,
+        status: &'a str,
+        kind: ToolCallKind,
+        target: Option<&'a str>,
+        target_is_command: bool,
+        cwd: Option<&'a str>,
+        exit_code: Option<i64>,
+        locations: &'a [ToolCallLocation],
+    ) -> Self {
+        Self {
+            phase: ToolPhase::from_status(status),
+            kind,
+            title,
+            target: target.or_else(|| locations.first().map(|location| location.path.as_str())),
+            target_is_command,
+            cwd,
+            exit_code,
+        }
+    }
+
+    pub(crate) fn display_title(&self) -> Cow<'a, str> {
+        let Some(target) = self.target.filter(|target| !target.is_empty()) else {
+            return Cow::Borrowed(self.title);
+        };
+        let compact = compact_target(self.kind, target);
+        let Some(start) = self.title.find(target) else {
+            return Cow::Borrowed(self.title);
+        };
+        let mut title =
+            String::with_capacity(self.title.len().saturating_sub(target.len()) + compact.len());
+        title.push_str(&self.title[..start]);
+        title.push_str(&compact);
+        title.push_str(&self.title[start + target.len()..]);
+        Cow::Owned(title)
+    }
+
+    pub(crate) fn display_target(&self) -> Option<Cow<'a, str>> {
+        self.target
+            .filter(|target| !target.is_empty())
+            .map(|target| compact_target(self.kind, target))
+    }
+
+    pub(crate) fn title_contains_target(&self) -> bool {
+        self.target
+            .filter(|target| !target.is_empty())
+            .is_some_and(|target| self.title.contains(target))
+    }
+
+    pub(crate) fn action_prefix(&self) -> Option<&'a str> {
+        let target = self.target.filter(|target| !target.is_empty())?;
+        let start = self.title.find(target)?;
+        let prefix = self.title[..start].trim();
+        (!prefix.is_empty()).then_some(prefix)
+    }
+
+    pub(crate) fn target_name(&self) -> Option<&'a str> {
+        self.target
+            .filter(|target| !target.is_empty())
+            .and_then(|target| {
+                target
+                    .rsplit(['\\', '/'])
+                    .find(|component| !component.is_empty())
+            })
+    }
+
+    pub(crate) fn inline_compact_command(&self) -> Option<&'a str> {
+        let command = self
+            .target
+            .filter(|_| self.target_is_command)
+            .filter(|command| !command.is_empty())?;
+        (command.chars().count() <= 48 && !command.contains([';', '\n', '\r'])).then_some(command)
+    }
+
+    pub(crate) fn visible_exit_code(self: &Self) -> Option<i64> {
+        if self.kind != ToolCallKind::Execute && !self.target_is_command {
+            return None;
+        }
+        if matches!(
+            self.phase,
+            ToolPhase::Failed(Some(detail))
+                if detail
+                    .get(.."exited (".len())
+                    .is_some_and(|prefix| prefix.eq_ignore_ascii_case("exited ("))
+        ) {
+            return None;
+        }
+        self.exit_code.filter(|code| *code != 0)
+    }
+}
+
+fn compact_target(kind: ToolCallKind, target: &str) -> Cow<'_, str> {
+    if !matches!(
+        kind,
+        ToolCallKind::Read
+            | ToolCallKind::Edit
+            | ToolCallKind::Delete
+            | ToolCallKind::Move
+            | ToolCallKind::Search
+    ) {
+        return Cow::Borrowed(target);
+    }
+
+    let parts: Vec<&str> = target
+        .split(['\\', '/'])
+        .filter(|part| !part.is_empty())
+        .collect();
+    let keep = if kind == ToolCallKind::Search { 1 } else { 2 };
+    if parts.len() <= keep {
+        return Cow::Borrowed(target);
+    }
+    let separator = if target.contains('\\') { "\\" } else { "/" };
+    Cow::Owned(parts[parts.len() - keep..].join(separator))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn normalizes_provider_statuses() {
+        assert_eq!(ToolPhase::from_status("Pending"), ToolPhase::Pending);
+        assert_eq!(ToolPhase::from_status("running"), ToolPhase::Running);
+        assert_eq!(ToolPhase::from_status("Completed"), ToolPhase::Succeeded);
+        assert_eq!(
+            ToolPhase::from_status("Failed: denied"),
+            ToolPhase::Failed(Some("denied"))
+        );
+        assert_eq!(
+            ToolPhase::from_status("exited (2)"),
+            ToolPhase::Failed(Some("exited (2)"))
+        );
+        assert_eq!(ToolPhase::from_status("Cancelled"), ToolPhase::Canceled);
+    }
+
+    #[test]
+    fn compacts_file_and_search_targets() {
+        assert_eq!(
+            compact_target(ToolCallKind::Read, r"C:\repo\src\main.rs"),
+            r"src\main.rs"
+        );
+        assert_eq!(
+            compact_target(ToolCallKind::Search, r"C:\repo\rust-app"),
+            "rust-app"
+        );
+        assert_eq!(
+            compact_target(ToolCallKind::Execute, "cargo test"),
+            "cargo test"
+        );
+    }
+
+    #[test]
+    fn replaces_provider_embedded_path_with_compact_target() {
+        let locations = vec![ToolCallLocation {
+            path: r"C:\repo\src\main.rs".into(),
+            line: None,
+        }];
+        let presentation = ToolPresentation::new(
+            r"Viewing C:\repo\src\main.rs",
+            "Completed",
+            ToolCallKind::Read,
+            None,
+            false,
+            None,
+            None,
+            &locations,
+        );
+
+        assert_eq!(presentation.display_title(), r"Viewing src\main.rs");
+        assert!(presentation.title_contains_target());
+        assert_eq!(presentation.action_prefix(), Some("Viewing"));
+        assert_eq!(presentation.target_name(), Some("main.rs"));
+    }
+
+    #[test]
+    fn only_short_single_commands_fit_compact_headers() {
+        let locations = [];
+        let short = ToolPresentation::new(
+            "Run tests",
+            "Completed",
+            ToolCallKind::Execute,
+            Some("cargo test"),
+            true,
+            None,
+            Some(0),
+            &locations,
+        );
+        let long = ToolPresentation::new(
+            "Resolve cargo",
+            "Completed",
+            ToolCallKind::Execute,
+            Some("wta.exe resolve-command cargo --shell pwsh --cwd C:\\repo --json"),
+            true,
+            None,
+            Some(0),
+            &locations,
+        );
+
+        assert_eq!(short.inline_compact_command(), Some("cargo test"));
+        assert_eq!(long.inline_compact_command(), None);
+    }
+}

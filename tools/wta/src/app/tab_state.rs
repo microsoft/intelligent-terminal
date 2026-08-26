@@ -292,6 +292,7 @@ struct CompletedTurnHeightCache {
 pub(crate) struct CompletedTurnViewportAnchor {
     pub index: usize,
     pub row: usize,
+    pub row_offset: usize,
 }
 
 #[derive(Debug, Default)]
@@ -693,6 +694,49 @@ impl TabSession {
         true
     }
 
+    pub(crate) fn toggle_completed_tool_group(
+        &mut self,
+        turn_index: usize,
+        first_detail_index: usize,
+        detail_count: usize,
+    ) -> bool {
+        let Some(turn) = self.completed_turns.get(turn_index) else {
+            return false;
+        };
+        let ids = turn
+            .details
+            .iter()
+            .skip(first_detail_index)
+            .take(detail_count)
+            .filter_map(|message| match message {
+                ChatMessage::ToolCall { id, .. } => Some(id.clone()),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        if ids.len() != detail_count || ids.is_empty() {
+            return false;
+        }
+
+        self.completed_turn_layout.viewport_anchor = self
+            .completed_turn_layout
+            .visible_anchors
+            .iter()
+            .copied()
+            .find(|anchor| anchor.index == turn_index);
+        let expand = ids
+            .iter()
+            .any(|id| !self.expanded_completed_tool_calls.contains(id));
+        if expand {
+            self.expanded_completed_tool_calls.extend(ids);
+        } else {
+            for id in ids {
+                self.expanded_completed_tool_calls.remove(&id);
+            }
+        }
+        self.invalidate_completed_turn_height(turn_index);
+        true
+    }
+
     pub(crate) fn toggle_all_completed_tool_calls(&mut self) -> bool {
         let tool_calls = self
             .completed_turns
@@ -707,8 +751,13 @@ impl TabSession {
             return false;
         }
 
-        self.completed_turn_layout.viewport_anchor =
-            self.completed_turn_layout.visible_anchors.last().copied();
+        self.completed_turn_layout.viewport_anchor = self
+            .completed_turn_layout
+            .visible_anchors
+            .iter()
+            .copied()
+            .filter(|anchor| anchor.row_offset == 0)
+            .last();
         let expand = tool_calls
             .iter()
             .any(|id| !self.expanded_completed_tool_calls.contains(id));
@@ -961,7 +1010,7 @@ impl TabSession {
             .visible_anchors
             .iter()
             .copied()
-            .find(|anchor| anchor.index == index);
+            .find(|anchor| anchor.index == index && anchor.row_offset == 0);
         turn.expanded = !turn.expanded;
         self.completed_turn_layout
             .height_cache
