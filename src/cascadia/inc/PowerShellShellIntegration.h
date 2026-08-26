@@ -578,7 +578,12 @@ if (-not $Global:__ShellInteg_Installed) {
             if ($gle -eq 0) { $null = $true }
             else { Get-Variable '__ShellInteg_NoSuchVariable__' -ErrorAction Ignore }
             # ── Delegate to the user's ORIGINAL prompt — visual output is theirs ──
-            $originalOutput = & $Global:__ShellInteg_OriginalPrompt
+            # Failures are caught HERE, at the delegation, so the wrapped prompt
+            # is invoked exactly once per render. Letting it escape to the outer
+            # catch would run it a second time and duplicate its side effects.
+            # An empty result is correct: the host then supplies its own prompt.
+            try     { $originalOutput = & $Global:__ShellInteg_OriginalPrompt }
+            catch   { $originalOutput = '' }
             }
             finally { $Global:__ShellInteg_Rendering = $false }
 
@@ -589,9 +594,11 @@ if (-not $Global:__ShellInteg_Installed) {
             return "${prefix}${originalOutput}${suffix}"
             }
         catch {
-            # FAIL SAFE. Shell integration is a convenience; a broken prompt is
-            # not. Degrade to the wrapped prompt without marks rather than
-            # throwing on every prompt.
+            # FAIL SAFE for failures in OUR OWN code above (Get-History, the
+            # parser probe, string building). The wrapped prompt has its own
+            # catch at the delegation, so reaching here means it has NOT yet
+            # been invoked for this render - delegating now keeps it at exactly
+            # one invocation.
             #
             # The reentrancy flag must be held here too. The normal path clears
             # it in its finally before this catch runs, so an adopted CHAINING

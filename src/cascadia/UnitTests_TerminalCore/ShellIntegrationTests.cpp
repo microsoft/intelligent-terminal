@@ -657,6 +657,18 @@ void ShellIntegrationTests::PowerShell_ScriptContent_RendersFailSafe()
     VERIFY_ARE_EQUAL(std::string::npos,
                      script.find("return \"PS $($executionContext.SessionState.Path.CurrentLocation)> \""),
                      L"The prompt path must not fabricate prompt text");
+
+    // The wrapped prompt must be invoked at most ONCE per render. Its failure is
+    // caught at the delegation itself, so it cannot escape to the outer catch
+    // and be run a second time — which would duplicate any side effects the
+    // user's prompt has (git calls, logging, its own error reporting).
+    const auto delegation = script.find("try     { $originalOutput = & $Global:__ShellInteg_OriginalPrompt }", promptStart);
+    const auto delegationCatch = script.find("catch   { $originalOutput = '' }", delegation);
+
+    VERIFY_ARE_NOT_EQUAL(std::string::npos, delegationCatch,
+                         L"The delegation must catch its own failure so the wrapped prompt runs at most once per render");
+    VERIFY_IS_TRUE(delegation < delegationCatch && delegationCatch < normalReturn,
+                   L"The delegation's catch must precede the normal return");
 }
 
 // ─── Install ──────────────────────────────────────────────────────────────────
