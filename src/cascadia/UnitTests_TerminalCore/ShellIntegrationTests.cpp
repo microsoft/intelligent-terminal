@@ -651,7 +651,7 @@ void ShellIntegrationTests::PowerShell_ScriptContent_RendersFailSafe()
 
     // This wrapper must never invent visible prompt text. When the wrapped
     // prompt itself throws there is nothing to show, so it returns an empty
-    // string and the HOST supplies its own default. Fabricating a lookalike
+    // string and the HOST supplies its own default. Fabricating an imitation
     // "PS <cwd>> " would alter the visible prompt, which is exactly what this
     // component promises not to do.
     VERIFY_ARE_EQUAL(std::string::npos,
