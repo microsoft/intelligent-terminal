@@ -481,14 +481,15 @@ fn legacy_staging_dirs_includes_active_staging_for_staging_clis() {
         );
     }
 
-    // Copilot and Gemini don't trigger the workaround, so no active
-    // staging path may appear in their sweep lists.
-    let claude_staging = root.join(STAGING_SUBDIR).join(CliKind::Claude.dir_name());
-    for cli in [CliKind::Copilot, CliKind::Gemini] {
+    // Copilot, Gemini and OpenCode don't trigger the workaround, so no
+    // `hook-bundle-staging` entry may appear in their sweep lists at all —
+    // neither their own nor another CLI's.
+    for cli in [CliKind::Copilot, CliKind::Gemini, CliKind::OpenCode] {
         let dirs = legacy_staging_dirs(cli);
         assert!(
-            dirs.iter().all(|p| p != &claude_staging),
-            "{:?} sweep list must not include Claude's active staging dir but was {:?}",
+            dirs.iter()
+                .all(|p| !p.components().any(|c| c.as_os_str() == STAGING_SUBDIR)),
+            "{:?} sweep list must not include any active staging dir but was {:?}",
             cli,
             dirs,
         );
