@@ -482,9 +482,6 @@ pub struct TabSession {
     // Conversation history
     pub messages: Vec<ChatMessage>,
     pub completed_turns: Vec<CompletedTurn>,
-    /// Set by the local `/clear` command so a late or repeated
-    /// `AgentConnected` event cannot repopulate an explicitly cleared chat.
-    pub disclaimer_cleared: bool,
     pub(crate) completed_turn_layout: CompletedTurnLayoutState,
     /// Tab/Shift+Tab selects a past turn (most recent first). Enter then
     /// toggles `CompletedTurn.expanded`. None means no selection — Enter

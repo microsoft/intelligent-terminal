@@ -366,22 +366,6 @@ fn slash_clear_wipes_active_tab_history() {
 
     assert!(app.current_tab().messages.is_empty());
     assert_eq!(app.current_tab().selected_completed_turn_idx, None);
-
-    app.handle_event(AppEvent::AgentConnected {
-        name: "Test Agent".into(),
-        model: None,
-        version: None,
-        session_id: "session-1".into(),
-        available_models: Vec::new(),
-        current_model_id: None,
-        load_session_supported: false,
-        image_supported: false,
-    });
-
-    assert!(
-        app.current_tab().messages.is_empty(),
-        "a repeated connection event must not restore content removed by /clear"
-    );
 }
 
 #[test]

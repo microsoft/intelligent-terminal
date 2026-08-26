@@ -5290,7 +5290,6 @@ impl App {
         let tab = self.current_tab_mut();
         tab.clear_chat_history();
         tab.clear_completed_turns();
-        tab.disclaimer_cleared = true;
         tab.scroll_to_bottom();
     }
 
