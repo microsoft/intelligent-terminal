@@ -3310,6 +3310,34 @@ fn parse_codex_plugin_list_entry_has_no_path_for_a_placeholder_column() {
     assert!(info.registered_source.is_none());
 }
 
+/// Codex refuses to repoint an existing marketplace, so a stale registration
+/// has to be removed before the new source can be added. The listing parser
+/// is what supplies the recorded root for that comparison, so it has to
+/// survive Codex's real column layout.
+#[test]
+fn parse_codex_marketplace_list_reads_the_registered_root() {
+    let sample = "MARKETPLACE     ROOT\n\
+                  openai-curated  C:\\Users\\someone\\.codex\\.tmp\\plugins\n\
+                  wt-local        C:\\Program Files\\WindowsApps\\pkg\\wt-agent-hooks\\codex\n";
+    let (registered, root) = parse_codex_marketplace_list(sample);
+    assert!(registered);
+    assert_eq!(
+        root.as_deref(),
+        Some("C:\\Program Files\\WindowsApps\\pkg\\wt-agent-hooks\\codex")
+    );
+}
+
+/// No `wt-local` row means nothing to repoint, which must not be confused
+/// with "registered somewhere else".
+#[test]
+fn parse_codex_marketplace_list_reports_no_registration() {
+    let sample = "MARKETPLACE     ROOT\n\
+                  openai-curated  C:\\Users\\someone\\.codex\\.tmp\\plugins\n";
+    let (registered, root) = parse_codex_marketplace_list(sample);
+    assert!(!registered);
+    assert!(root.is_none());
+}
+
 #[test]
 fn uninstall_for_codex_skips_when_home_absent() {
     let parent = unique_dir("uninstall_codex_absent");

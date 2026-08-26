@@ -1034,12 +1034,7 @@ fn install_for_codex(_home: &Path) -> InstallOutcome {
     let bundle_dir = staged_dir.as_deref().unwrap_or(&bundle_dir);
 
     let bundle_path = bundle_dir.to_string_lossy().into_owned();
-    if let Err(e) = run_plugin_cli(
-        "codex",
-        &["plugin", "marketplace", "add", &bundle_path],
-        "agent_hooks",
-        &["already registered"],
-    ) {
+    if let Err(e) = codex_marketplace_add(&bundle_path) {
         tracing::warn!(
             target: "agent_hooks",
             err = %e,
@@ -1060,6 +1055,71 @@ fn install_for_codex(_home: &Path) -> InstallOutcome {
             );
             InstallOutcome::Failed(format!("codex plugin add {plugin_ref} failed: {e}"))
         }
+    }
+}
+
+/// `codex plugin marketplace add`, dropping a conflicting `wt-local`
+/// registration first.
+///
+/// Codex refuses to repoint an existing marketplace — "marketplace 'wt-local'
+/// is already added from a different source; remove it before adding this
+/// source" — where Copilot's entry is rewritten in place beforehand and Claude
+/// simply overwrites its own. That refusal is reached through the ordinary
+/// install flow whenever an Intelligent Terminal upgrade has pruned the
+/// package directory the old registration named: the status row reads
+/// incomplete, the plan says `Install`, and the add then fails, leaving Codex
+/// hooks broken with no path to recovery.
+///
+/// So do what the error asks. The registered root is read first rather than
+/// matched out of stderr, because the wording is Codex's to change and the
+/// listing is already parsed elsewhere. A registration that already names
+/// `bundle_path` is left alone — removing and re-adding it would drop the
+/// plugin's enabled state for no reason.
+fn codex_marketplace_add(bundle_path: &str) -> Result<(), std::io::Error> {
+    if let Some(registered) = codex_registered_marketplace_root() {
+        if !paths_equivalent(Path::new(&registered), Path::new(bundle_path)) {
+            tracing::info!(
+                target: "agent_hooks",
+                old = %registered,
+                new = %bundle_path,
+                "codex marketplace registered from another source; removing before re-adding",
+            );
+            // Best-effort: if the remove fails the add below reports the real
+            // problem, and there is nothing better to do with the error here.
+            let _ = run_plugin_cli(
+                "codex",
+                &["plugin", "marketplace", "remove", MARKETPLACE_NAME],
+                "agent_hooks",
+                &[
+                    "not registered",
+                    "not found",
+                    "not configured",
+                    "not installed",
+                ],
+            );
+        }
+    }
+    run_plugin_cli(
+        "codex",
+        &["plugin", "marketplace", "add", bundle_path],
+        "agent_hooks",
+        &["already registered"],
+    )
+}
+
+/// The directory Codex has `wt-local` registered against, per
+/// `codex plugin marketplace list`. `None` when the listing can't be read or
+/// carries no entry for us — both mean "nothing to repoint".
+fn codex_registered_marketplace_root() -> Option<String> {
+    let outcome = run_plugin_cli_capture("codex", &["plugin", "marketplace", "list"]).ok()?;
+    if !outcome.success {
+        return None;
+    }
+    let (registered, path) = parse_codex_marketplace_list(&outcome.stdout);
+    if registered {
+        path
+    } else {
+        None
     }
 }
 
