@@ -7801,6 +7801,7 @@ fn render_agent_input_accepts_non_ascii() {
     for c in sample.chars() {
         app.handle_key(KeyEvent::new(KeyCode::Char(c), KeyModifiers::NONE));
     }
+
     // The input buffer holds the exact non-ASCII string (the product contract: non-ASCII input
     // is accepted verbatim, multi-byte caret advance included)...
     assert_eq!(
@@ -7819,6 +7820,23 @@ fn render_agent_input_accepts_non_ascii() {
             "the agent input must paint the non-ASCII text {needle:?}; rendered:\n{text}"
         );
     }
+}
+
+#[test]
+fn unhandled_modified_characters_do_not_leak_into_agent_input() {
+    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+
+    let mut app = test_app();
+    app.state = ConnectionState::Connected;
+
+    app.handle_key(KeyEvent::new(KeyCode::Char('k'), KeyModifiers::CONTROL));
+    app.handle_key(KeyEvent::new(KeyCode::Char('x'), KeyModifiers::ALT));
+    app.handle_key(KeyEvent::new(KeyCode::Char('o'), KeyModifiers::CONTROL));
+
+    assert!(app.current_tab().input.is_empty());
+
+    app.handle_key(KeyEvent::new(KeyCode::Char('K'), KeyModifiers::SHIFT));
+    assert_eq!(app.current_tab().input, "K");
 }
 
 /// Render: a committed agent message must actually appear in the painted

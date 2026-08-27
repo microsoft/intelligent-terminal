@@ -967,7 +967,11 @@ impl App {
             {
                 self.handle_paste_image();
             }
-            KeyCode::Char(c) => {
+            KeyCode::Char(c)
+                if !key
+                    .modifiers
+                    .intersects(KeyModifiers::CONTROL | KeyModifiers::ALT) =>
+            {
                 // Only type into the input when it is the live caret target.
                 // When a card button, permission card, or past turn is
                 // highlighted the input is locked so the buffer cannot fill
