@@ -614,12 +614,11 @@ impl App {
         tab.active_prepared_mode = Some(PreparedActionMode::Command);
         tab.active_direct_proposal_id = None;
         self.turn_commit_recommendation_history(session_id, summary, None);
-        if let Some(root_index) = preparation.revision_root_index {
-            let tab = self.session_tab_mut(session_id);
-            if let Some(revision_index) = tab.completed_turns.len().checked_sub(1) {
-                tab.command_revision_parents
-                    .insert(revision_index, root_index);
-            }
+        let tab = self.session_tab_mut(session_id);
+        if let Some(revision_index) = tab.completed_turns.len().checked_sub(1) {
+            let root_index = preparation.revision_root_index.unwrap_or(revision_index);
+            tab.command_revision_parents
+                .insert(revision_index, root_index);
         }
         self.turn_release_end_pending_logged(session_id, "via=host_command+end");
         true

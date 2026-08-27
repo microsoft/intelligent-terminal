@@ -229,7 +229,8 @@ pub fn estimated_block_height(app: &App, area_width: u16, max_height: u16) -> u1
             continue;
         }
         height = height.saturating_add(rendered_lines_height(
-            &build_message_lines(
+            &build_tab_message_lines(
+                tab,
                 message,
                 index + 1 == tab.messages.len(),
                 tab.turn.is_streaming(),
@@ -304,13 +305,15 @@ fn completed_turn_height(tab: &crate::app::TabSession, index: usize, wrap_width:
     let Some(turn) = tab.completed_turns.get(index) else {
         return 0;
     };
+    let command_root = tab.command_revision_parents.get(&index).copied();
     let height = rendered_lines_height(
         &build_completed_turn_lines_at_depth(
             turn,
             false,
             false,
             wrap_width,
-            tab.command_revision_parents.contains_key(&index),
+            command_root == Some(index),
+            command_root.is_some_and(|root| root != index),
         ),
         wrap_width,
     );
@@ -571,7 +574,8 @@ pub fn render(frame: &mut Frame, app: &mut App, area: Rect, scrollbar_area: Rect
             continue;
         }
         let is_last_message = idx + 1 == tab.messages.len();
-        let mut message_lines = build_message_lines(
+        let mut message_lines = build_tab_message_lines(
+            tab,
             msg,
             is_last_message,
             tab.turn.is_streaming(),
@@ -606,13 +610,15 @@ pub fn render(frame: &mut Frame, app: &mut App, area: Rect, scrollbar_area: Rect
         let tab = app.current_tab();
         for planned in plan.turns {
             let turn = &tab.completed_turns[planned.index];
+            let command_root = tab.command_revision_parents.get(&planned.index).copied();
             let (mut turn_lines, prompt_rows) =
                 build_completed_turn_lines_with_prompt_rows_at_depth(
                     turn,
                     tab.selected_completed_turn_idx == Some(planned.index),
                     app.pane_focused,
                     wrap_width,
-                    tab.command_revision_parents.contains_key(&planned.index),
+                    command_root == Some(planned.index),
+                    command_root.is_some_and(|root| root != planned.index),
                 );
             turn_hit_offsets.push(CompletedTurnHitOffset {
                 turn_index: planned.index,
@@ -868,7 +874,7 @@ fn build_completed_turn_lines<'a>(
     pane_focused: bool,
     wrap_width: usize,
 ) -> Vec<Line<'a>> {
-    build_completed_turn_lines_at_depth(turn, is_selected, pane_focused, wrap_width, false)
+    build_completed_turn_lines_at_depth(turn, is_selected, pane_focused, wrap_width, false, false)
 }
 
 fn build_completed_turn_lines_at_depth<'a>(
@@ -876,6 +882,7 @@ fn build_completed_turn_lines_at_depth<'a>(
     is_selected: bool,
     pane_focused: bool,
     wrap_width: usize,
+    is_command_turn: bool,
     is_command_revision: bool,
 ) -> Vec<Line<'a>> {
     build_completed_turn_lines_with_prompt_rows_at_depth(
@@ -883,10 +890,13 @@ fn build_completed_turn_lines_at_depth<'a>(
         is_selected,
         pane_focused,
         wrap_width,
+        is_command_turn,
         is_command_revision,
     )
     .0
 }
+
+const COMMAND_TURN_BADGE: &str = "[Command] ";
 
 #[cfg(test)]
 fn build_completed_turn_lines_with_prompt_rows<'a>(
@@ -901,6 +911,7 @@ fn build_completed_turn_lines_with_prompt_rows<'a>(
         pane_focused,
         wrap_width,
         false,
+        false,
     )
 }
 
@@ -909,6 +920,7 @@ fn build_completed_turn_lines_with_prompt_rows_at_depth<'a>(
     is_selected: bool,
     pane_focused: bool,
     wrap_width: usize,
+    is_command_turn: bool,
     is_command_revision: bool,
 ) -> (Vec<Line<'a>>, Vec<PromptRowGeometry>) {
     #[cfg(test)]
@@ -939,14 +951,30 @@ fn build_completed_turn_lines_with_prompt_rows_at_depth<'a>(
     let content_width = wrap_width.saturating_sub(if is_command_revision { 4 } else { 0 });
     let mut lines = if turn.expanded {
         let mut prompt_lines = Vec::new();
+        let badge_width = if is_command_turn {
+            UnicodeWidthStr::width(COMMAND_TURN_BADGE)
+        } else {
+            0
+        };
         push_prompt_prefixed_lines(
             &mut prompt_lines,
             &turn.prompt,
-            content_width.saturating_sub(2).max(1),
+            content_width
+                .saturating_sub(2)
+                .saturating_sub(badge_width)
+                .max(1),
         );
         for (index, line) in prompt_lines.iter_mut().enumerate() {
             for span in &mut line.spans {
                 span.style = prompt_style;
+            }
+            if is_command_turn {
+                if index == 0 {
+                    line.spans
+                        .insert(1, Span::styled(COMMAND_TURN_BADGE, theme::COMMAND_TOKEN));
+                } else if let Some(prefix) = line.spans.first_mut() {
+                    prefix.content = Cow::Owned(format!("  {}", " ".repeat(badge_width)));
+                }
             }
             line.spans.insert(
                 0,
@@ -969,11 +997,15 @@ fn build_completed_turn_lines_with_prompt_rows_at_depth<'a>(
                 Cow::Owned(truncated) => Cow::Owned(truncated),
             },
         };
-        vec![Line::from(vec![
+        let mut spans = vec![
             Span::styled(chevron, chevron_style),
             Span::styled("> ", prompt_style),
-            Span::styled(prompt_text, prompt_style),
-        ])]
+        ];
+        if is_command_turn {
+            spans.push(Span::styled(COMMAND_TURN_BADGE, theme::COMMAND_TOKEN));
+        }
+        spans.push(Span::styled(prompt_text, prompt_style));
+        vec![Line::from(spans)]
     };
 
     if is_command_revision {
@@ -1118,6 +1150,80 @@ fn build_message_lines<'a>(
     )
 }
 
+fn build_tab_message_lines<'a>(
+    tab: &crate::app::TabSession,
+    msg: &'a ChatMessage,
+    is_last_message: bool,
+    agent_streaming: bool,
+    permission_tool_call_id: Option<&str>,
+    activity_frame: usize,
+    wrap_width: usize,
+) -> Vec<Line<'a>> {
+    let command_preparation = tab.pending_preparation.as_ref().filter(|preparation| {
+        preparation.mode == crate::app::PreparedActionMode::Command
+            && tab
+                .turn
+                .prompt()
+                .is_some_and(|prompt| prompt.id == preparation.prompt_id)
+    });
+    if let Some(preparation) = command_preparation {
+        if let ChatMessage::User(text) = msg {
+            let is_revision = preparation.revision_root_index.is_some();
+            return build_user_prompt_message_lines(text, wrap_width, !is_revision, is_revision);
+        }
+    }
+    build_message_lines(
+        msg,
+        is_last_message,
+        agent_streaming,
+        permission_tool_call_id,
+        activity_frame,
+        wrap_width,
+    )
+}
+
+fn build_user_prompt_message_lines<'a>(
+    text: &'a str,
+    wrap_width: usize,
+    is_command_prompt: bool,
+    is_command_revision: bool,
+) -> Vec<Line<'a>> {
+    let badge_width = if is_command_prompt {
+        UnicodeWidthStr::width(COMMAND_TURN_BADGE)
+    } else {
+        0
+    };
+    let mut lines = Vec::new();
+    push_prompt_prefixed_lines(
+        &mut lines,
+        text,
+        wrap_width
+            .saturating_sub(badge_width)
+            .saturating_sub(if is_command_revision { 4 } else { 0 })
+            .max(1),
+    );
+    if is_command_prompt {
+        for (index, line) in lines.iter_mut().enumerate() {
+            if index == 0 {
+                line.spans
+                    .insert(1, Span::styled(COMMAND_TURN_BADGE, theme::COMMAND_TOKEN));
+            } else if let Some(prefix) = line.spans.first_mut() {
+                prefix.content = Cow::Owned(format!("  {}", " ".repeat(badge_width)));
+            }
+        }
+    }
+    if is_command_revision {
+        for (index, line) in lines.iter_mut().enumerate() {
+            line.spans.insert(
+                0,
+                Span::styled(if index == 0 { "  ↳ " } else { "    " }, theme::DIM),
+            );
+        }
+    }
+    lines.push(Line::default());
+    lines
+}
+
 fn build_message_lines_with_details<'a>(
     msg: &'a ChatMessage,
     is_last_message: bool,
@@ -1130,8 +1236,7 @@ fn build_message_lines_with_details<'a>(
     let mut lines = Vec::new();
     match msg {
         ChatMessage::User(text) => {
-            push_prompt_prefixed_lines(&mut lines, text, wrap_width);
-            lines.push(Line::default());
+            lines = build_user_prompt_message_lines(text, wrap_width, false, false);
         }
         ChatMessage::Agent(text) => {
             push_dot_prefixed_lines(
@@ -1690,9 +1795,25 @@ mod tests {
             trailing_marker: None,
         };
 
-        let lines = build_completed_turn_lines_at_depth(&turn, false, true, 80, true);
+        let lines = build_completed_turn_lines_at_depth(&turn, false, true, 80, false, true);
         assert_eq!(line_text(&lines[0]), "  ↳ ▼ > only show folders");
         assert!(line_text(&lines[1]).starts_with("    "));
+    }
+
+    #[test]
+    fn command_root_renders_a_badge_without_revision_indentation() {
+        let turn = CompletedTurn {
+            prompt: "list processes count running".into(),
+            details: Vec::new(),
+            expanded: true,
+            trailing_marker: None,
+        };
+
+        let lines = build_completed_turn_lines_at_depth(&turn, false, true, 80, true, false);
+        assert_eq!(
+            line_text(&lines[0]),
+            "▼ > [Command] list processes count running"
+        );
     }
 
     fn assert_tool_call(

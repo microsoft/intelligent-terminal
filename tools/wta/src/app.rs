@@ -5707,7 +5707,11 @@ impl App {
         let tab = self.current_tab_mut();
         if let Some(turn) = tab.completed_turns.get_mut(adjustment.history_index) {
             turn.trailing_marker = Some(t!("chat.turn_adjusted").into_owned());
+            if let Some(ChatMessage::Agent(summary)) = turn.details.last_mut() {
+                *summary = format_adjusted_command_for_chat(&adjustment.current_command);
+            }
         }
+        tab.invalidate_completed_turn_height(adjustment.history_index);
         tab.pending_preparation = Some(PendingPreparation {
             prompt_id: prompt.id,
             target_session_id: adjustment.target_session_id,
@@ -6651,10 +6655,14 @@ fn format_recommendations_for_chat(set: &RecommendationSet) -> String {
             " "
         };
         out.push('\n');
-        out.push_str(&format!("  {} {}. {}", marker, choice.choice, action_text));
+        out.push_str(&format!("  {} {}", marker, action_text));
     }
 
     out
+}
+
+fn format_adjusted_command_for_chat(command: &str) -> String {
+    format!("Suggested 1 option:\n  ✎ {}", command)
 }
 
 #[path = "app_status_projection.rs"]

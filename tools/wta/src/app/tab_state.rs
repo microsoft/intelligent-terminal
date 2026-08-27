@@ -596,8 +596,8 @@ pub struct TabSession {
     // Conversation history
     pub messages: Vec<ChatMessage>,
     pub completed_turns: Vec<CompletedTurn>,
-    /// Maps each command revision to its root command turn. Revisions are
-    /// always rendered one level below the root, never nested recursively.
+    /// Maps each command turn to its root. Root turns map to themselves;
+    /// revisions map to the root and render one level below it.
     pub command_revision_parents: HashMap<usize, usize>,
     pub(crate) completed_turn_layout: CompletedTurnLayoutState,
     /// Tab/Shift+Tab selects a past turn (most recent first). Enter then

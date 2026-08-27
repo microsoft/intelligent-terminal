@@ -13360,6 +13360,10 @@ fn command_completion_deterministically_surfaces_a_host_bound_card() {
     );
     app.cmd_command("list files recursively".to_string());
     let _ = prompt_rx.try_recv().expect("command prompt");
+    assert!(
+        render_to_text(&mut app, 100, 30).contains("> [Command] list files recursively"),
+        "command badge must be visible as soon as the prompt is submitted"
+    );
     app.handle_event(AppEvent::AgentMessageChunk {
         session_id: DEFAULT_TAB_ID.to_string(),
         text: "Get-ChildItem ".to_string(),
@@ -13395,6 +13399,7 @@ fn command_completion_deterministically_surfaces_a_host_bound_card() {
     assert!(tab.pending_preparation.is_none());
     assert!(tab.active_direct_proposal_id.is_none());
     assert!(tab.messages.is_empty());
+    assert_eq!(tab.command_revision_parents.get(&0), Some(&0));
 }
 
 #[test]
@@ -13425,6 +13430,13 @@ fn adjust_recompiles_the_command_without_changing_its_target() {
     app.handle_event(AppEvent::AgentMessageEnd {
         session_id: DEFAULT_TAB_ID.to_string(),
     });
+
+    assert_eq!(
+        app.current_tab().completed_turns[0].details.last(),
+        Some(&ChatMessage::Agent(
+            "Suggested 1 option:\n  ✓ Run: Get-ChildItem".to_string()
+        ))
+    );
 
     app.focus_next_recommendation_action();
     app.focus_next_recommendation_action();
@@ -13468,6 +13480,16 @@ fn adjust_recompiles_the_command_without_changing_its_target() {
         .replace_input("include hidden files".to_string());
     app.submit_command_adjustment();
 
+    assert_eq!(
+        app.current_tab().completed_turns[0].details.last(),
+        Some(&ChatMessage::Agent(
+            "Suggested 1 option:\n  ✎ Get-ChildItem".to_string()
+        ))
+    );
+    assert!(
+        render_to_text(&mut app, 100, 30).contains("  ↳ > include hidden files"),
+        "an active adjustment must render as a child of its command root"
+    );
     let adjustment_prompt = prompt_rx.try_recv().expect("adjustment prompt");
     assert!(adjustment_prompt
         .text
@@ -13512,6 +13534,7 @@ fn adjust_recompiles_the_command_without_changing_its_target() {
         Some(adjusted_marker.as_str())
     );
     assert_eq!(tab.command_revision_parents.get(&1), Some(&0));
+    assert_eq!(tab.command_revision_parents.get(&0), Some(&0));
 
     app.current_tab_mut().selected_button = 2;
     app.turn_execute_card(DEFAULT_TAB_ID);
@@ -13535,6 +13558,7 @@ fn adjust_recompiles_the_command_without_changing_its_target() {
     );
     assert_eq!(tab.command_revision_parents.get(&1), Some(&0));
     assert_eq!(tab.command_revision_parents.get(&2), Some(&0));
+    assert_eq!(tab.command_revision_parents.get(&0), Some(&0));
 }
 
 #[test]
