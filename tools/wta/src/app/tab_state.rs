@@ -1,4 +1,5 @@
-use std::collections::VecDeque;
+use std::cell::RefCell;
+use std::collections::{HashSet, VecDeque};
 
 use serde::{Deserialize, Serialize};
 
@@ -272,11 +273,96 @@ pub enum RecommendationFocus {
 ///
 /// `by` deliberately does NOT clamp to `max` — the bound may be stale at
 /// input time (the lazy chat build only learns `max` after exhausting
-/// history). Clamping happens on the next `set_max`.
+/// history). Rendering clamps and retries in the same frame when it discovers
+/// that the requested offset exceeds the real history.
 #[derive(Debug, Default, Clone, Copy)]
 pub struct Scroll {
     pub offset: usize,
     pub max: usize,
+}
+
+#[derive(Debug, Default)]
+struct CompletedTurnHeightCache {
+    wrap_width: usize,
+    turn_count: usize,
+    heights: Vec<Option<usize>>,
+    known_height_sum: usize,
+    known_height_count: usize,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct CompletedTurnViewportAnchor {
+    pub index: usize,
+    pub row: usize,
+}
+
+#[derive(Debug, Default)]
+pub(crate) struct CompletedTurnLayoutState {
+    height_cache: RefCell<CompletedTurnHeightCache>,
+    visible_anchors: Vec<CompletedTurnViewportAnchor>,
+    viewport_anchor: Option<CompletedTurnViewportAnchor>,
+}
+
+impl CompletedTurnHeightCache {
+    fn clear(&mut self) {
+        *self = Self::default();
+    }
+
+    fn sync(&mut self, wrap_width: usize, turn_count: usize) {
+        if self.wrap_width != wrap_width || turn_count < self.turn_count {
+            self.wrap_width = wrap_width;
+            self.heights.clear();
+            self.known_height_sum = 0;
+            self.known_height_count = 0;
+        }
+        self.turn_count = turn_count;
+        self.heights.resize(turn_count, None);
+    }
+
+    fn get(&mut self, index: usize, wrap_width: usize, turn_count: usize) -> Option<usize> {
+        self.sync(wrap_width, turn_count);
+        self.heights.get(index).copied().flatten()
+    }
+
+    fn set(&mut self, index: usize, height: usize, wrap_width: usize, turn_count: usize) {
+        self.sync(wrap_width, turn_count);
+        if let Some(entry) = self.heights.get_mut(index) {
+            if let Some(previous) = entry.replace(height) {
+                self.known_height_sum = self
+                    .known_height_sum
+                    .saturating_sub(previous)
+                    .saturating_add(height);
+            } else {
+                self.known_height_sum = self.known_height_sum.saturating_add(height);
+                self.known_height_count = self.known_height_count.saturating_add(1);
+            }
+        }
+    }
+
+    fn invalidate(&mut self, index: usize) {
+        if let Some(entry) = self.heights.get_mut(index) {
+            if let Some(height) = entry.take() {
+                self.known_height_sum = self.known_height_sum.saturating_sub(height);
+                self.known_height_count = self.known_height_count.saturating_sub(1);
+            }
+        }
+    }
+
+    fn estimated_total(&mut self, wrap_width: usize, turn_count: usize) -> usize {
+        self.sync(wrap_width, turn_count);
+        if self.known_height_count == 0 {
+            return turn_count;
+        }
+        let average_height = self
+            .known_height_sum
+            .saturating_add(self.known_height_count - 1)
+            / self.known_height_count;
+        self.known_height_sum.saturating_add(
+            turn_count
+                .saturating_sub(self.known_height_count)
+                .saturating_mul(average_height),
+        )
+    }
 }
 
 impl Scroll {
@@ -402,6 +488,9 @@ pub struct TabSession {
     // Conversation history
     pub messages: Vec<ChatMessage>,
     pub completed_turns: Vec<CompletedTurn>,
+    /// UI-only disclosure state keyed by the ACP session's tool-call IDs.
+    pub(crate) expanded_completed_tool_calls: HashSet<String>,
+    pub(crate) completed_turn_layout: CompletedTurnLayoutState,
     /// Tab/Shift+Tab selects a past turn (most recent first). Enter then
     /// toggles `CompletedTurn.expanded`. None means no selection — Enter
     /// goes to the input/prompt path as before.
@@ -520,6 +609,122 @@ pub struct TabSession {
 }
 
 impl TabSession {
+    pub(crate) fn cached_completed_turn_height(
+        &self,
+        index: usize,
+        wrap_width: usize,
+    ) -> Option<usize> {
+        self.completed_turn_layout.height_cache.borrow_mut().get(
+            index,
+            wrap_width,
+            self.completed_turns.len(),
+        )
+    }
+
+    pub(crate) fn cache_completed_turn_height(
+        &self,
+        index: usize,
+        wrap_width: usize,
+        height: usize,
+    ) {
+        self.completed_turn_layout.height_cache.borrow_mut().set(
+            index,
+            height,
+            wrap_width,
+            self.completed_turns.len(),
+        );
+    }
+
+    pub(crate) fn invalidate_completed_turn_height(&self, index: usize) {
+        self.completed_turn_layout
+            .height_cache
+            .borrow_mut()
+            .invalidate(index);
+    }
+
+    pub(crate) fn estimated_completed_turn_height(&self, wrap_width: usize) -> usize {
+        self.completed_turn_layout
+            .height_cache
+            .borrow_mut()
+            .estimated_total(wrap_width, self.completed_turns.len())
+    }
+
+    pub(crate) fn completed_turn_viewport_anchor(&self) -> Option<CompletedTurnViewportAnchor> {
+        self.completed_turn_layout.viewport_anchor
+    }
+
+    pub(crate) fn finish_completed_turn_layout(
+        &mut self,
+        visible_anchors: Vec<CompletedTurnViewportAnchor>,
+    ) {
+        self.completed_turn_layout.visible_anchors = visible_anchors;
+        self.completed_turn_layout.viewport_anchor = None;
+    }
+
+    pub(crate) fn clear_completed_turns(&mut self) {
+        self.completed_turns.clear();
+        self.expanded_completed_tool_calls.clear();
+        self.completed_turn_layout = CompletedTurnLayoutState::default();
+    }
+
+    pub(crate) fn completed_tool_call_expanded(&self, id: &str) -> bool {
+        self.expanded_completed_tool_calls.contains(id)
+    }
+
+    pub(crate) fn toggle_completed_tool_call(
+        &mut self,
+        turn_index: usize,
+        detail_index: usize,
+    ) -> bool {
+        let Some(ChatMessage::ToolCall { id, .. }) = self
+            .completed_turns
+            .get(turn_index)
+            .and_then(|turn| turn.details.get(detail_index))
+        else {
+            return false;
+        };
+        let id = id.clone();
+        self.completed_turn_layout.viewport_anchor = self
+            .completed_turn_layout
+            .visible_anchors
+            .iter()
+            .copied()
+            .find(|anchor| anchor.index == turn_index);
+        if !self.expanded_completed_tool_calls.insert(id.clone()) {
+            self.expanded_completed_tool_calls.remove(&id);
+        }
+        self.invalidate_completed_turn_height(turn_index);
+        true
+    }
+
+    pub(crate) fn toggle_all_completed_tool_calls(&mut self) -> bool {
+        let tool_calls = self
+            .completed_turns
+            .iter()
+            .flat_map(|turn| &turn.details)
+            .filter_map(|message| match message {
+                ChatMessage::ToolCall { id, .. } => Some(id.clone()),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        if tool_calls.is_empty() {
+            return false;
+        }
+
+        self.completed_turn_layout.viewport_anchor =
+            self.completed_turn_layout.visible_anchors.last().copied();
+        let expand = tool_calls
+            .iter()
+            .any(|id| !self.expanded_completed_tool_calls.contains(id));
+        if expand {
+            self.expanded_completed_tool_calls.extend(tool_calls);
+        } else {
+            self.expanded_completed_tool_calls.clear();
+        }
+        self.completed_turn_layout.height_cache.get_mut().clear();
+        true
+    }
+
     pub(crate) fn invalidate_pending_paste(&mut self) {
         self.paste_pending = false;
         self.paste_generation = self.paste_generation.wrapping_add(1);
@@ -755,7 +960,17 @@ impl TabSession {
         let Some(turn) = self.completed_turns.get_mut(index) else {
             return false;
         };
+        self.completed_turn_layout.viewport_anchor = self
+            .completed_turn_layout
+            .visible_anchors
+            .iter()
+            .copied()
+            .find(|anchor| anchor.index == index);
         turn.expanded = !turn.expanded;
+        self.completed_turn_layout
+            .height_cache
+            .get_mut()
+            .invalidate(index);
         true
     }
 

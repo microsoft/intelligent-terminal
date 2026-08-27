@@ -393,6 +393,9 @@ function Invoke-UiMouseDrag {
         [int]$HoldMs = 50
     )
     process {
+        if (-not (Set-WtWindowForeground -App $App -Attempts 3 -DelayMs 150)) {
+            throw 'No interactive desktop is available for physical mouse injection.'
+        }
         $args = @('drag', "$FromX,$FromY", "$ToX,$ToY", '--hold-ms', $HoldMs)
         if ($Right) { $args += '--right' }
         $result = Invoke-WinAppUi -App $App -UiArgs $args

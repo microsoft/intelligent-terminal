@@ -5,17 +5,18 @@
 //! a filtered list of `CommandSpec`s. `/help` opens a centered overlay that
 //! lists every command with full descriptions.
 
-use std::borrow::Cow;
-
 use ratatui::prelude::*;
 use ratatui::widgets::{Clear, List, ListItem, ListState, Paragraph};
+use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
 use super::popup;
 use crate::app::{App, AvailableAgent};
+use crate::app_contracts::{AcpSessionCommand, CompletionBehavior};
 use crate::commands::{CommandSpec, MovePositionSpec, YoloOptionSpec, REGISTRY};
 use crate::theme;
 
 const POPUP_MAX_VISIBLE: usize = 6;
+const SOURCE_LABEL_MAX_WIDTH: usize = 12;
 
 /// Per-frame state captured from the [`App`] so callers don't need to know
 /// the popup internals.
@@ -31,13 +32,38 @@ pub struct PopupState<'a> {
     /// they're currently on while typing the command. `None` when no model
     /// is known yet.
     pub current_model: Option<String>,
+    /// Friendly name of the connected Agent, used to identify commands
+    /// advertised through ACP.
+    pub agent_label: &'a str,
 }
 
 pub enum PopupCandidates<'a> {
-    Commands(Cow<'a, [&'static CommandSpec]>),
+    Commands(Vec<CommandCandidate<'a>>),
     MovePositions(&'a [&'static MovePositionSpec]),
     YoloOptions(&'a [&'static YoloOptionSpec]),
     Agents(Vec<&'a AvailableAgent>),
+}
+
+#[derive(Clone, Copy)]
+pub enum CommandCandidate<'a> {
+    Client(&'static CommandSpec),
+    Agent(&'a AcpSessionCommand),
+}
+
+impl<'a> CommandCandidate<'a> {
+    pub fn name(self) -> &'a str {
+        match self {
+            Self::Client(spec) => spec.name,
+            Self::Agent(command) => command.name.as_str(),
+        }
+    }
+
+    pub fn completion_behavior(self) -> CompletionBehavior {
+        match self {
+            Self::Client(spec) => spec.completion_behavior,
+            Self::Agent(command) => command.completion_behavior,
+        }
+    }
 }
 
 /// Render the autocomplete popup just above `input_area`. If there isn't
@@ -61,22 +87,44 @@ pub fn render_popup(frame: &mut Frame, state: PopupState<'_>, input_area: Rect) 
     frame.render_widget(Clear, area);
 
     let items: Vec<ListItem> = match &state.candidates {
-        PopupCandidates::Commands(candidates) => candidates
-            .iter()
-            .map(|spec| {
-                let mut spans = command_name_spans(spec.name, state.command_query);
-                spans.push(Span::styled(spec.summary(), theme::DIM));
-                // The `/model` row shows the pane's current model so the user can
-                // see what they're on before opening the picker.
-                if spec.name == "model" {
-                    if let Some(model) = state.current_model.as_deref() {
-                        spans.push(Span::styled("  → ", theme::DIM));
-                        spans.push(Span::styled(model, theme::INPUT_TEXT));
+        PopupCandidates::Commands(candidates) => {
+            let agent_label = truncate_source_label(state.agent_label);
+            let source_width = candidates
+                .iter()
+                .map(|candidate| match candidate {
+                    CommandCandidate::Client(_) => UnicodeWidthStr::width("IT"),
+                    CommandCandidate::Agent(_) => UnicodeWidthStr::width(agent_label.as_str()),
+                })
+                .max()
+                .unwrap_or_default();
+            candidates
+                .iter()
+                .map(|candidate| {
+                    let (name, summary) = match candidate {
+                        CommandCandidate::Client(spec) => (spec.name, spec.summary()),
+                        CommandCandidate::Agent(command) => {
+                            (command.name.as_str(), command.description.clone().into())
+                        }
+                    };
+                    let mut spans = command_name_spans(name, state.command_query);
+                    spans.push(source_badge_span(
+                        candidate,
+                        agent_label.as_str(),
+                        source_width,
+                    ));
+                    spans.push(Span::styled(summary, theme::DIM));
+                    // The `/model` row shows the pane's current model so the user can
+                    // see what they're on before opening the picker.
+                    if matches!(candidate, CommandCandidate::Client(spec) if spec.name == "model") {
+                        if let Some(model) = state.current_model.as_deref() {
+                            spans.push(Span::styled("  → ", theme::DIM));
+                            spans.push(Span::styled(model, theme::INPUT_TEXT));
+                        }
                     }
-                }
-                ListItem::new(Line::from(spans))
-            })
-            .collect(),
+                    ListItem::new(Line::from(spans))
+                })
+                .collect()
+        }
         PopupCandidates::MovePositions(candidates) => candidates
             .iter()
             .map(|position| {
@@ -120,6 +168,41 @@ pub fn render_popup(frame: &mut Frame, state: PopupState<'_>, input_area: Rect) 
     list_state.select(popup_highlight(candidate_count, state.selected));
 
     frame.render_stateful_widget(list, area, &mut list_state);
+}
+
+fn source_badge_span(
+    candidate: &CommandCandidate<'_>,
+    agent_label: &str,
+    column_width: usize,
+) -> Span<'static> {
+    let label = match candidate {
+        CommandCandidate::Client(_) => "IT",
+        CommandCandidate::Agent(_) => agent_label,
+    };
+    let padding = column_width.saturating_sub(UnicodeWidthStr::width(label));
+    Span::styled(format!("[{label}]{}  ", " ".repeat(padding)), theme::DIM)
+}
+
+fn truncate_source_label(label: &str) -> String {
+    let label = label.trim();
+    let label = if label.is_empty() { "Agent" } else { label };
+    if UnicodeWidthStr::width(label) <= SOURCE_LABEL_MAX_WIDTH {
+        return label.to_string();
+    }
+
+    let budget = SOURCE_LABEL_MAX_WIDTH - 1;
+    let mut truncated = String::new();
+    let mut width = 0;
+    for character in label.chars() {
+        let character_width = UnicodeWidthChar::width(character).unwrap_or(0);
+        if width + character_width > budget {
+            break;
+        }
+        truncated.push(character);
+        width += character_width;
+    }
+    truncated.push('…');
+    truncated
 }
 
 fn command_name_spans(name: &str, query: &str) -> Vec<Span<'static>> {
@@ -199,9 +282,14 @@ pub fn render_help_overlay(frame: &mut Frame, app: &App, area: Rect) {
 
 #[cfg(test)]
 mod tests {
-    use super::{command_name_spans, popup_highlight};
+    use super::{
+        command_name_spans, popup_highlight, source_badge_span, truncate_source_label,
+        CommandCandidate,
+    };
+    use crate::app_contracts::{AcpSessionCommand, CompletionBehavior};
     use crate::commands;
     use crate::theme;
+    use unicode_width::UnicodeWidthStr;
 
     fn spec(name: &str) -> &'static commands::CommandSpec {
         commands::lookup(name).expect("registered command")
@@ -244,5 +332,33 @@ mod tests {
         assert_eq!(spans.len(), 1);
         assert_eq!(spans[0].content, " /clear    ");
         assert_eq!(spans[0].style, theme::INPUT_TEXT);
+    }
+
+    #[test]
+    fn source_badges_distinguish_client_and_agent_commands() {
+        let client = CommandCandidate::Client(spec("model"));
+        let agent_command = AcpSessionCommand {
+            name: "usage".into(),
+            description: "Show usage".into(),
+            input_hint: None,
+            completion_behavior: CompletionBehavior::ExecuteImmediately,
+        };
+        let agent = CommandCandidate::Agent(&agent_command);
+
+        assert_eq!(
+            source_badge_span(&client, "Copilot", 7).content,
+            "[IT]       "
+        );
+        assert_eq!(
+            source_badge_span(&agent, "Copilot", 7).content,
+            "[Copilot]  "
+        );
+    }
+
+    #[test]
+    fn source_label_is_width_limited() {
+        let label = truncate_source_label("Very Long Agent Name");
+        assert_eq!(label, "Very Long A…");
+        assert!(UnicodeWidthStr::width(label.as_str()) <= 12);
     }
 }

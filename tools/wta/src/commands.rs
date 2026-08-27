@@ -8,6 +8,8 @@
 //! See `tools/wta/src/app.rs` `App::handle_slash_command` for dispatch and
 //! `tools/wta/src/ui/command_popup.rs` for rendering.
 
+use crate::app_contracts::CompletionBehavior;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CommandKind {
     Help,
@@ -61,6 +63,7 @@ pub struct CommandSpec {
     /// time so the popup follows the current locale.
     pub summary_key: &'static str,
     pub kind: CommandKind,
+    pub completion_behavior: CompletionBehavior,
 }
 
 impl CommandSpec {
@@ -81,62 +84,74 @@ pub const REGISTRY: &[CommandSpec] = &[
         name: "help",
         summary_key: "commands.help.summary",
         kind: CommandKind::Help,
+        completion_behavior: CompletionBehavior::ExecuteImmediately,
     },
     CommandSpec {
         name: "clear",
         summary_key: "commands.clear.summary",
         kind: CommandKind::Clear,
+        completion_behavior: CompletionBehavior::ExecuteImmediately,
     },
     CommandSpec {
         name: "new",
         summary_key: "commands.new.summary",
         kind: CommandKind::New,
+        completion_behavior: CompletionBehavior::ExecuteImmediately,
     },
     CommandSpec {
         name: "fix",
         summary_key: "commands.fix.summary",
         kind: CommandKind::Fix,
+        completion_behavior: CompletionBehavior::OptionalFreeText,
     },
     CommandSpec {
         name: "restart",
         summary_key: "commands.restart.summary",
         kind: CommandKind::Restart,
+        completion_behavior: CompletionBehavior::ExecuteImmediately,
     },
     CommandSpec {
         name: "stop",
         summary_key: "commands.stop.summary",
         kind: CommandKind::Stop,
+        completion_behavior: CompletionBehavior::ExecuteImmediately,
     },
     CommandSpec {
         name: "sessions",
         summary_key: "commands.sessions.summary",
         kind: CommandKind::Sessions,
+        completion_behavior: CompletionBehavior::ExecuteImmediately,
     },
     CommandSpec {
         name: "agent",
         summary_key: "commands.agent.summary",
         kind: CommandKind::Agent,
+        completion_behavior: CompletionBehavior::OpenPicker,
     },
     CommandSpec {
         name: "model",
         summary_key: "commands.model.summary",
         // `/model <id>` switches directly; bare `/model` opens the picker.
         kind: CommandKind::Model,
+        completion_behavior: CompletionBehavior::OpenPicker,
     },
     CommandSpec {
         name: "config",
         summary_key: "commands.config.summary",
         kind: CommandKind::Config,
+        completion_behavior: CompletionBehavior::OpenPicker,
     },
     CommandSpec {
         name: "move",
         summary_key: "commands.move.summary",
         kind: CommandKind::Move,
+        completion_behavior: CompletionBehavior::OpenPicker,
     },
     CommandSpec {
         name: "yolo",
         summary_key: "commands.yolo.summary",
         kind: CommandKind::Yolo,
+        completion_behavior: CompletionBehavior::ExecuteImmediately,
     },
 ];
 
@@ -524,6 +539,41 @@ mod tests {
         let sessions = matches("IONS");
         assert_eq!(sessions.len(), 1);
         assert_eq!(sessions[0].name, "sessions");
+    }
+
+    #[test]
+    fn registry_declares_completion_behavior_for_every_command() {
+        use CompletionBehavior::{
+            ExecuteImmediately, OpenPicker, OptionalFreeText, RequireFreeText,
+        };
+
+        let actual = REGISTRY
+            .iter()
+            .map(|spec| (spec.name, spec.completion_behavior))
+            .collect::<Vec<_>>();
+
+        assert_eq!(
+            actual,
+            vec![
+                ("help", ExecuteImmediately),
+                ("clear", ExecuteImmediately),
+                ("new", ExecuteImmediately),
+                ("fix", OptionalFreeText),
+                ("restart", ExecuteImmediately),
+                ("stop", ExecuteImmediately),
+                ("sessions", ExecuteImmediately),
+                ("agent", OpenPicker),
+                ("model", OpenPicker),
+                ("config", OpenPicker),
+                ("move", OpenPicker),
+            ]
+        );
+        assert!(
+            !actual
+                .iter()
+                .any(|(_, behavior)| *behavior == RequireFreeText),
+            "required free-text commands currently come from the ACP session registry"
+        );
     }
 
     #[test]

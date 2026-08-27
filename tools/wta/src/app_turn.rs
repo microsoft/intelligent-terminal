@@ -703,8 +703,9 @@ impl App {
         } else {
             // AgentMessageEnd already committed this turn while the card was
             // visible, so only annotate that existing history entry.
-            if let Some(last) = tab.completed_turns.last_mut() {
+            if let Some((index, last)) = tab.completed_turns.iter_mut().enumerate().next_back() {
                 last.trailing_marker = Some(marker);
+                tab.invalidate_completed_turn_height(index);
             }
             TurnOutcome::Empty
         };
@@ -823,8 +824,9 @@ impl App {
             });
             tab.scroll_to_bottom();
         } else if annotate_card {
-            if let Some(last) = tab.completed_turns.last_mut() {
+            if let Some((index, last)) = tab.completed_turns.iter_mut().enumerate().next_back() {
                 last.trailing_marker = Some(canceled_marker);
+                tab.invalidate_completed_turn_height(index);
             }
         }
         tab.autofix.pane_id = None;

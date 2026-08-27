@@ -1,6 +1,6 @@
 use std::collections::VecDeque;
 
-use crate::commands::{self, CommandSpec, MovePositionSpec, YoloOptionSpec};
+use crate::commands::{self, MovePositionSpec, YoloOptionSpec};
 
 use super::tab_state::TabSession;
 
@@ -285,12 +285,6 @@ impl TabSession {
         if self.command_popup_selected > 0 {
             self.command_popup_selected -= 1;
         }
-    }
-
-    pub fn selected_command_spec(&self) -> Option<&'static CommandSpec> {
-        self.command_popup_candidates
-            .get(self.command_popup_selected)
-            .copied()
     }
 
     pub fn selected_move_position(&self) -> Option<&'static MovePositionSpec> {

@@ -233,10 +233,12 @@ impl App {
             return;
         };
         let tab = self.current_tab_mut();
-        let Some(turn) = tab.completed_turns.get_mut(click.turn_index) else {
+        let Some(turn) = tab.completed_turns.get(click.turn_index) else {
             return;
         };
-        turn.expanded = click.previous_expanded;
+        if turn.expanded != click.previous_expanded {
+            tab.toggle_completed_turn(click.turn_index);
+        }
         tab.selected_completed_turn_idx = click.previous_selected_index;
         tab.completed_turn_selection_visible_pending = click.previous_selection_pending;
     }
@@ -404,9 +406,9 @@ impl App {
                     if input_pressed.as_deref() == Some(active_tab_id.as_str())
                         && self.input_dialog_at(mouse.column, mouse.row)
                     {
+                        self.text_selection.handle_mouse(mouse);
                         self.pressed_completed_turn = None;
                         self.last_completed_turn_click = None;
-                        self.text_selection.clear();
                         self.current_tab_mut().clear_completed_turn_selection();
                         return;
                     }
@@ -415,9 +417,16 @@ impl App {
                     self.text_selection.handle_mouse(mouse);
                     if let Some(pressed) = pressed.filter(|pressed| {
                         pressed.tab_id == active_tab_id
-                            && released.is_some_and(|hit| hit.turn_index == pressed.hit.turn_index)
+                            && released.is_some_and(|hit| {
+                                hit.turn_index == pressed.hit.turn_index
+                                    && hit.kind == pressed.hit.kind
+                            })
                     }) {
                         let tab = self.current_tab_mut();
+                        if let CompletedTurnHitKind::ToolCall { detail_index } = pressed.hit.kind {
+                            tab.toggle_completed_tool_call(pressed.hit.turn_index, detail_index);
+                            return;
+                        }
                         let previous_selected_index = tab.selected_completed_turn_idx;
                         let previous_selection_pending =
                             tab.completed_turn_selection_visible_pending;
@@ -663,6 +672,7 @@ impl App {
                     self.session_model_configs.remove(&replaced_session_id);
                     self.clear_yolo_session_state(&replaced_session_id);
                     self.session_config_options.remove(&replaced_session_id);
+                    self.session_commands.remove(&replaced_session_id);
                 }
                 self.session_to_tab
                     .insert(session_id.clone(), tab_id.clone());
@@ -872,6 +882,12 @@ impl App {
                     .unwrap_or_default();
                 picker.reconcile(options);
                 self.tab_mut(&target_tab).config_picker = picker;
+            }
+            AppEvent::SessionCommandsUpdated {
+                session_id,
+                commands,
+            } => {
+                self.session_commands.insert(session_id, commands);
             }
             AppEvent::SessionConfigSetCompleted {
                 session_id,
@@ -1451,7 +1467,7 @@ impl App {
                 exit_code,
             } => {
                 let tab = self.session_tab_mut(&session_id);
-                let update_content = |message: &mut ChatMessage| {
+                let update_content = |message: &mut ChatMessage| -> bool {
                     let ChatMessage::ToolCall {
                         output: card_output,
                         exit_code: card_exit_code,
@@ -1459,7 +1475,7 @@ impl App {
                         ..
                     } = message
                     else {
-                        return;
+                        return false;
                     };
                     let mut contains_terminal = false;
                     for item in content {
@@ -1484,14 +1500,23 @@ impl App {
                             *card_exit_code = exit_code;
                         }
                     }
+                    contains_terminal
                 };
                 for message in &mut tab.messages {
                     update_content(message);
                 }
-                for turn in &mut tab.completed_turns {
+                let mut invalidated_turns = Vec::new();
+                for (index, turn) in tab.completed_turns.iter_mut().enumerate() {
+                    let mut changed = false;
                     for message in &mut turn.details {
-                        update_content(message);
+                        changed |= update_content(message);
                     }
+                    if changed {
+                        invalidated_turns.push(index);
+                    }
+                }
+                for index in invalidated_turns {
+                    tab.invalidate_completed_turn_height(index);
                 }
             }
             AppEvent::HideToolCall { session_id, id } => {
@@ -2369,7 +2394,7 @@ impl App {
                         tab.clear_chat_history();
                         tab.usage = None;
                         tab.usage_staleness = crate::usage::UsageStaleness::default();
-                        tab.completed_turns.clear();
+                        tab.clear_completed_turns();
                         // Open the replay window: chunk handlers will
                         // now accept session/update events for this
                         // tab even though `turn` stays Idle. Closed by

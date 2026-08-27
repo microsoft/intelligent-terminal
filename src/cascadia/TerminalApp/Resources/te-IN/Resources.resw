@@ -379,7 +379,7 @@
     <comment>Default title shown in the agent pane title bar before an agent reports its name. "AI assistant" refers to the built-in AI coding assistant, not a human assistant.</comment>
   </data>
   <data name="AgentPane_ConnectingTitle" xml:space="preserve">
-    <value>AI సహాయకుడు · కనెక్ట్ అవుతోంది</value>
-    <comment>Status shown in the agent pane title bar while the built-in AI coding assistant is connecting. Preserve the centered dot separator.</comment>
+    <value>ఏజెంట్ · కనెక్ట్ అవుతోంది</value>
+    <comment>Status shown in the agent pane title bar while the AI agent is connecting. Preserve the centered dot separator. Here "agent" means an AI intelligent agent, not a proxy or human agent.</comment>
   </data>
 </root>

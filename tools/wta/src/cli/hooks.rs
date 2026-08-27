@@ -125,7 +125,9 @@ fn plan_install(
     crate::agent_hooks_installer::CliKind,
     crate::agent_hooks_installer::InstallAction,
 )> {
-    use crate::agent_hooks_installer::{decide_install_action, CliKind, CliScope, InstallAction};
+    use crate::agent_hooks_installer::{
+        decide_install_action, expected_registration_dir_for, CliKind, CliScope, InstallAction,
+    };
 
     CliKind::ALL
         .iter()
@@ -138,11 +140,14 @@ fn plan_install(
             let Some(status) = pre_status else {
                 return Some((kind, InstallAction::Install));
             };
+            let expected_dir = expected_registration_dir_for(kind);
             let action = status
                 .clis
                 .iter()
                 .find(|c| c.name == kind.name())
-                .map_or(InstallAction::Install, decide_install_action);
+                .map_or(InstallAction::Install, |c| {
+                    decide_install_action(kind, c, expected_dir.as_deref())
+                });
             tracing::info!(
                 target: "agent_hooks",
                 cli = kind.name(),
