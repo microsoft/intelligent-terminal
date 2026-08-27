@@ -134,8 +134,8 @@ system.resuming_session: "Tiek atsākta sesija %{session_id}..."
 system.unknown_command: "Nezināma komanda \"%{command}\" — nosūtīta kā uzvedne. Sarakstam ierakstiet /help."  # {Locked="/help"}
 system.busy_use_stop: "Uzgaidiet, līdz pašreizējā uzvedne tiek pabeigta, vai vispirms izmantojiet /stop."  # {Locked="/stop"}
 system.cannot_focus_session: "Nevar fokusēt sesiju %{session_id}: tā šķiet aktīva, bet vēl nav piesaistīts neviens rūts GUID. Pēc brīža mēģiniet vēlreiz."
-system.cannot_resume_no_load_session: "Nevar atsākt aģenta rūtī: %{agent} nepaziņoja ACP `loadSession` iespēju. Nospiediet Enter (bez Shift), lai tā vietā atsāktu jaunā termināļa rūtī."  # {Locked="ACP","loadSession","Enter","Shift"}
-system.cannot_resume_no_resume_flag: "Nevar atsākt %{agent} sesiju: šim aģentam nav `--resume` stila karoga. Nospiediet Shift+Enter, lai mēģinātu atsākt aģenta rūtī, izmantojot ACP."  # {Locked="--resume","Shift","Enter","ACP"}
+system.cannot_resume_no_load_session: "Nevar atsākt aģenta rūtī: %{agent} nepaziņoja ACP `loadSession` iespēju."  # {Locked="ACP","loadSession"}
+system.cannot_resume_no_resume_flag: "Nevar atsākt %{agent} sesiju: šim aģentam nav `--resume` stila karoga."  # {Locked="--resume"}
 system.cannot_resume_unknown_agent: "Nevar atsākt sesiju %{session_id}: tās avota aģents šim WTA būvējumam nav zināms."
 system.cannot_resume_phantom_via_flag: "Nevar atsākt %{agent} sesiju %{session_id}: tā tika sākta, bet tajā nav uzkrāta neviena saruna, tāpēc pats %{agent} noraidītu atsākšanu. Rinda tiek noņemta."
 system.cannot_resume_phantom_via_load: "Nevar atsākt %{agent} sesiju %{session_id}: tā tika sākta, bet tajā nav uzkrāta neviena saruna, tāpēc %{agent} noraidītu ielādi. Rinda tiek noņemta."

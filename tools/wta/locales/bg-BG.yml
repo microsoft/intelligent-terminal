@@ -145,8 +145,8 @@ system.resuming_session: "Възобновяване на сесия %{session_i
 system.unknown_command: "Неизвестна команда \"%{command}\" — изпратена като подкана. Въведете /help за списъка."  # {Locked="/help"}
 system.busy_use_stop: "Изчакайте текущата подкана да завърши или първо използвайте /stop."  # {Locked="/stop"}
 system.cannot_focus_session: "Не може да се фокусира сесия %{session_id}: изглежда активна, но още няма свързан GUID на панел. Опитайте отново след малко."
-system.cannot_resume_no_load_session: "Не може да се възобнови в панела на агента: %{agent} не обяви възможността ACP `loadSession`. Натиснете Enter (без Shift), за да възобновите в нов терминален панел вместо това."  # {Locked="ACP","loadSession","Enter","Shift"}
-system.cannot_resume_no_resume_flag: "Не може да се възобнови сесията на %{agent}: този агент няма флаг в стил `--resume`. Натиснете Shift+Enter, за да опитате възобновяване в панела на агента чрез ACP вместо това."  # {Locked="--resume","Shift","Enter","ACP"}
+system.cannot_resume_no_load_session: "Не може да се възобнови в панела на агента: %{agent} не обяви възможността ACP `loadSession`."  # {Locked="ACP","loadSession"}
+system.cannot_resume_no_resume_flag: "Не може да се възобнови сесията на %{agent}: този агент няма флаг в стил `--resume`."  # {Locked="--resume"}
 system.cannot_resume_unknown_agent: "Не може да се възобнови сесия %{session_id}: изходният ѝ агент е неизвестен за тази компилация на WTA."
 system.cannot_resume_phantom_via_flag: "Не може да се възобнови сесията на %{agent} %{session_id}: тя е стартирана, но никога не е натрупала разговор, така че самият %{agent} би отхвърлил възобновяването. Редът се премахва."
 system.cannot_resume_phantom_via_load: "Не може да се възобнови сесията на %{agent} %{session_id}: тя е стартирана, но никога не е натрупала разговор, така че %{agent} би отхвърлил зареждането. Редът се премахва."

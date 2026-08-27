@@ -134,8 +134,8 @@ system.resuming_session: "Melanjutkan sesi %{session_id}..."
 system.unknown_command: "Perintah tidak dikenal \"%{command}\" — dikirim sebagai prompt. Ketik /help untuk daftar."  # {Locked="/help"}
 system.busy_use_stop: "Tunggu hingga prompt saat ini selesai, atau jalankan /stop terlebih dahulu."  # {Locked="/stop"}
 system.cannot_focus_session: "Tidak dapat memfokuskan sesi %{session_id}: sesi tampak aktif, tetapi GUID panel belum terikat. Coba lagi sebentar lagi."
-system.cannot_resume_no_load_session: "Tidak dapat melanjutkan di panel agen: %{agent} tidak mengiklankan kapabilitas ACP `loadSession`. Tekan Enter (tanpa Shift) untuk melanjutkan di panel terminal baru sebagai gantinya."  # {Locked="ACP","loadSession","Enter","Shift"}
-system.cannot_resume_no_resume_flag: "Tidak dapat melanjutkan sesi %{agent}: agen ini tidak memiliki flag bergaya `--resume`. Tekan Shift+Enter untuk mencoba melanjutkan di dalam panel agen melalui ACP sebagai gantinya."  # {Locked="--resume","Shift","Enter","ACP"}
+system.cannot_resume_no_load_session: "Tidak dapat melanjutkan di panel agen: %{agent} tidak mengiklankan kapabilitas ACP `loadSession`."  # {Locked="ACP","loadSession"}
+system.cannot_resume_no_resume_flag: "Tidak dapat melanjutkan sesi %{agent}: agen ini tidak memiliki flag bergaya `--resume`."  # {Locked="--resume"}
 system.cannot_resume_unknown_agent: "Tidak dapat melanjutkan sesi %{session_id}: agen sumbernya tidak dikenal oleh build ini."
 system.cannot_resume_phantom_via_flag: "Tidak dapat melanjutkan sesi %{agent} %{session_id}: sesi ini dimulai tetapi tidak pernah mengumpulkan percakapan apa pun, sehingga %{agent} sendiri akan menolak pelanjutan. Menghapus baris."
 system.cannot_resume_phantom_via_load: "Tidak dapat melanjutkan sesi %{agent} %{session_id}: sesi ini dimulai tetapi tidak pernah mengumpulkan percakapan apa pun, sehingga %{agent} akan menolak pemuatan. Menghapus baris."

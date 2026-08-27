@@ -84,7 +84,7 @@ Cannot resume session <id>: its source agent is unknown to this build.
 ```
 
 When this appears, inspect the helper log's
-`activate_agent_session_with_shift` entry. A known built-in showing
+`activate_agent_session_routed` entry. A known built-in showing
 `cli=Unknown("custom")` means a session conversion boundary is missing.
 
 ### `tools/wta/src/coordinator.rs`

@@ -955,8 +955,9 @@ pub enum DispatchedCommandKind {
     /// resuming a historical session is a "go open my session" action,
     /// not a "split my workspace" action.)
     NewTabResume,
-    /// Shift+Enter in the session management view — resume a historical
-    /// session in the agent pane of a new tab via WT-side coordination +
+    /// Enter on an agent-pane session row in the session management
+    /// view — resume a historical session in the agent pane of a new tab
+    /// via WT-side coordination +
     /// ACP session/load.
     ResumeInAgentPane,
     /// `decide_enter_action` returned `NotResumable` — a system message
@@ -1130,7 +1131,7 @@ pub struct App {
     pub agent_sessions: crate::agent_sessions::AgentSessionRegistry,
     /// Whether the connected ACP agent advertised the `loadSession`
     /// capability in its initialize response. Used by the
-    /// session management view's Shift+Enter handler to short-circuit
+    /// session management view's Enter handler to short-circuit
     /// with a clear error before opening a new tab when the agent
     /// can't rehydrate ACP sessions. Set on `AgentConnected`.
     pub agent_supports_load_session: bool,
@@ -2598,8 +2599,8 @@ impl App {
     }
 
     /// Extracted focus-pane dispatch for Live rows. Shared between the
-    /// legacy [`Self::activate_agent_session`] and the new
-    /// [`Self::activate_agent_session_with_shift`] dispatcher.
+    /// legacy [`Self::activate_agent_session`] and the
+    /// [`Self::activate_agent_session_routed`] dispatcher.
     ///
     /// Behavior:
     ///   * No-op if the row's pane GUID matches our own
@@ -2628,44 +2629,27 @@ impl App {
         self.dispatch_session_focus_rpc(log_key);
     }
 
-    /// B-10: state-machine-driven Enter / Shift+Enter dispatcher.
+    /// State-machine-driven Enter dispatcher.
     ///
     /// Routes through [`crate::session_mgmt::decide_enter_action`] —
     /// the pure-function core that closed-form maps
-    /// `(origin, liveness, cli, capabilities, shift)` to one of
+    /// `(origin, liveness, cli, capabilities)` to one of
     /// `Focus | ResumeInAgentPane | ResumeCliFlag | NotResumable`.
     /// All side effects (system messages, wtcli spawn, optimistic
     /// state flips) live on the dispatch side here
     /// or in the existing [`Self::dispatch_resume`] /
     /// [`Self::dispatch_resume_in_agent_pane`] helpers we call into.
     ///
-    /// Why this matters: today the Enter / Shift+Enter branches in the
-    /// key handler bake the routing rules inline (Shift on
-    /// Ended/Historical → resume_in_agent_pane; else → legacy
-    /// activate). That branch was correct for Class B (Unknown
-    /// origin) but flipped for Class A (AgentPane origin) — for a
-    /// session WE started in an agent pane, the natural Enter target
-    /// is the *same* agent pane (via ACP `session/load`), and the
-    /// escape hatch is the CLI `--resume` flag. This dispatcher
-    /// honors the per-origin default and treats Shift as "flip the
-    /// default".
-    ///
-    /// Live rows are unaffected: Shift on a Live row is the same as
-    /// Enter (agents forbid two clients on one session, so any
-    /// "force second copy" attempt would just error).
-    fn activate_agent_session_with_shift(
-        &mut self,
-        s: &crate::agent_sessions::AgentSession,
-        shift: bool,
-    ) {
+    /// Enter is the only activation gesture; modifiers do not select
+    /// an alternate resume style. A dead row resumes the way its
+    /// origin dictates — a session we started in an agent pane comes
+    /// back in an agent pane via ACP `session/load`, and a session
+    /// discovered in a shell pane comes back in a shell pane via the
+    /// CLI `--resume` flag.
+    fn activate_agent_session_routed(&mut self, s: &crate::agent_sessions::AgentSession) {
         use crate::session_mgmt::{
             decide_enter_action, liveness_from_status, EnterAction, NotResumableReason, RowSnapshot,
         };
-        // WSL rows can only resume via the CLI `--resume` flag *inside*
-        // the distro. ACP `session/load` (the Shift target for Class B
-        // dead rows) can't rehydrate a Linux session into a host agent
-        // pane, so collapse Shift to Enter — both route to ResumeCliFlag.
-        let shift = shift && !s.location.is_wsl();
         // Ambient: load_session capability is set during ACP init;
         // resume-flag support is a per-CLI profile constant — true for
         // Claude / Codex / Copilot / Gemini / OpenCode (all five CLIs accept some
@@ -2683,8 +2667,9 @@ impl App {
             cli_source: s.cli_source.clone(),
             load_session_supported: self.agent_supports_load_session,
             cli_supports_resume_flag,
+            is_wsl: s.location.is_wsl(),
         };
-        let action = decide_enter_action(&row, shift);
+        let action = decide_enter_action(&row);
 
         tracing::info!(
             target: "agents_view",
@@ -2693,9 +2678,8 @@ impl App {
             origin = ?s.origin,
             pane_session_id = ?s.pane_session_id,
             cli = ?s.cli_source,
-            shift = shift,
             action = ?action,
-            "activate_agent_session_with_shift: decided action",
+            "activate_agent_session_routed: decided action",
         );
 
         match action {
@@ -2755,7 +2739,7 @@ impl App {
                     target: "agents_view",
                     key = %s.key,
                     reason = ?reason,
-                    "activate_agent_session_with_shift: not resumable",
+                    "activate_agent_session_routed: not resumable",
                 );
                 let tab = self.current_tab_mut();
                 tab.messages.push(ChatMessage::warning(msg));
@@ -3036,11 +3020,11 @@ impl App {
         }
     }
 
-    /// Shift+Enter handler for terminal-state rows (Ended/Historical) in
-    /// the session management view. Rather than splitting a normal pane
-    /// (which `dispatch_resume` does for plain Enter), this resumes the
-    /// session **inside the agent pane of a new WT tab** via ACP
-    /// `session/load`.
+    /// Enter handler for agent-pane-origin terminal-state rows
+    /// (Ended/Historical) in the session management view. Rather than
+    /// splitting a normal pane (which `dispatch_resume` does for
+    /// shell-pane rows), this resumes the session **inside the agent pane
+    /// of a new WT tab** via ACP `session/load`.
     ///
     /// Flow:
     ///   1. Short-circuit with a system message in the current view when
@@ -3048,7 +3032,7 @@ impl App {
     ///      capability — opening a new tab would just dead-end on a
     ///      `JSON-RPC method not found` from the agent.
     ///   2. Optimistically apply `ResumeDispatched` to bump
-    ///      Historical/Ended -> Idle so a rapid second Shift+Enter on the
+    ///      Historical/Ended -> Idle so a rapid second Enter on the
     ///      same row no-ops (shared with `dispatch_resume`).
     ///   3. Emit a `resume_in_new_agent_tab` event to WT carrying the
     ///      session key + cwd. WT is responsible for:
@@ -3071,7 +3055,7 @@ impl App {
             status = ?s.status,
             cli = ?s.cli_source,
             supports_load = self.agent_supports_load_session,
-            "dispatch_resume_in_agent_pane: Shift+Enter on row",
+            "dispatch_resume_in_agent_pane: Enter on row",
         );
 
         // Capability gate. ACP's `session/load` is opt-in (initialize

@@ -301,15 +301,12 @@ impl App {
                     if let Some(idx) = self.current_tab().agents_list_state.selected() {
                         let selected = rows.get(idx).cloned();
                         if let Some(s) = selected {
-                            // B-10: route through the unified
-                            // state-machine dispatcher. Shift flips
-                            // the default per-origin (see
-                            // session_mgmt::decide_enter_action) —
-                            // Live rows ignore Shift; dead rows use
-                            // it as an escape hatch to the *other*
-                            // resume style.
-                            let shift = key.modifiers.contains(KeyModifiers::SHIFT);
-                            self.activate_agent_session_with_shift(&s, shift);
+                            // Enter is the only activation gesture:
+                            // session_mgmt::decide_enter_action picks
+                            // the single resume style the row's origin
+                            // dictates. Modifiers are deliberately
+                            // ignored — there is no alternate route.
+                            self.activate_agent_session_routed(&s);
                         }
                     }
                 }

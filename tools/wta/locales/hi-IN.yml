@@ -147,8 +147,8 @@ system.resuming_session: "सत्र %{session_id} फिर से शुर�
 system.unknown_command: "अज्ञात कमांड \"%{command}\" — प्रॉम्प्ट के रूप में भेजा गया। सूची के लिए /help लिखें।"  # {Locked="/help"} — slash-command name.
 system.busy_use_stop: "वर्तमान प्रॉम्प्ट समाप्त होने तक प्रतीक्षा करें, या पहले /stop करें।"  # {Locked="/stop"} — slash-command name.
 system.cannot_focus_session: "सत्र %{session_id} पर फ़ोकस नहीं किया जा सकता: यह live दिखता है लेकिन अभी तक कोई pane GUID बाउंड नहीं है। थोड़ी देर में फिर से कोशिश करें।"
-system.cannot_resume_no_load_session: "agent pane में फिर से शुरू नहीं किया जा सकता: %{agent} ने ACP `loadSession` क्षमता घोषित नहीं की। इसके बजाय नए terminal pane में फिर से शुरू करने के लिए Enter (Shift के बिना) दबाएँ।"  # {Locked="ACP","loadSession","Enter","Shift"} — protocol/UI terms.
-system.cannot_resume_no_resume_flag: "%{agent} सत्र फिर से शुरू नहीं किया जा सकता: इस agent में `--resume`-शैली का flag नहीं है। इसके बजाय ACP के माध्यम से agent pane के अंदर फिर से शुरू करने के लिए Shift+Enter दबाएँ।"  # {Locked="--resume","Shift","Enter","ACP"} — flag and UI terms.
+system.cannot_resume_no_load_session: "agent pane में फिर से शुरू नहीं किया जा सकता: %{agent} ने ACP `loadSession` क्षमता घोषित नहीं की।"  # {Locked="ACP","loadSession"} — protocol/UI terms.
+system.cannot_resume_no_resume_flag: "%{agent} सत्र फिर से शुरू नहीं किया जा सकता: इस agent में `--resume`-शैली का flag नहीं है।"  # {Locked="--resume"} — flag and UI terms.
 system.cannot_resume_unknown_agent: "सत्र %{session_id} फिर से शुरू नहीं किया जा सकता: इसका स्रोत agent इस WTA build के लिए अज्ञात है।"
 system.cannot_resume_phantom_via_flag: "%{agent} सत्र %{session_id} फिर से शुरू नहीं किया जा सकता: यह शुरू हुआ था लेकिन इसमें कोई बातचीत जमा नहीं हुई, इसलिए %{agent} स्वयं resume को अस्वीकार करेगा। पंक्ति हटाई जा रही है।"
 system.cannot_resume_phantom_via_load: "%{agent} सत्र %{session_id} फिर से शुरू नहीं किया जा सकता: यह शुरू हुआ था लेकिन इसमें कोई बातचीत जमा नहीं हुई, इसलिए %{agent} load को अस्वीकार करेगा। पंक्ति हटाई जा रही है।"

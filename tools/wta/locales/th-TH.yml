@@ -134,8 +134,8 @@ system.resuming_session: "กำลังดำเนินเซสชัน %{
 system.unknown_command: "ไม่รู้จักคำสั่ง \"%{command}\" — ส่งเป็นพรอมต์แล้ว พิมพ์ /help เพื่อดูรายการ"  # {Locked="/help"}
 system.busy_use_stop: "รอให้พรอมต์ปัจจุบันเสร็จ หรือใช้ /stop ก่อน"  # {Locked="/stop"}
 system.cannot_focus_session: "ไม่สามารถโฟกัสเซสชัน %{session_id}: ดูเหมือนว่ายังทำงานอยู่ แต่ยังไม่ได้ผูก GUID ของแผง ลองอีกครั้งในอีกสักครู่"
-system.cannot_resume_no_load_session: "ไม่สามารถดำเนินการต่อในแผงเอเจนต์: %{agent} ไม่ได้ประกาศความสามารถ ACP `loadSession` กด Enter (โดยไม่กด Shift) เพื่อดำเนินการต่อในแผงเทอร์มินัลใหม่แทน"  # {Locked="ACP","loadSession","Enter","Shift"}
-system.cannot_resume_no_resume_flag: "ไม่สามารถดำเนินเซสชัน %{agent} ต่อ: เอเจนต์นี้ไม่มีแฟล็กแบบ `--resume` กด Shift+Enter เพื่อลองดำเนินการต่อภายในแผงเอเจนต์ผ่าน ACP แทน"  # {Locked="--resume","Shift","Enter","ACP"}
+system.cannot_resume_no_load_session: "ไม่สามารถดำเนินการต่อในแผงเอเจนต์: %{agent} ไม่ได้ประกาศความสามารถ ACP `loadSession`"  # {Locked="ACP","loadSession"}
+system.cannot_resume_no_resume_flag: "ไม่สามารถดำเนินเซสชัน %{agent} ต่อ: เอเจนต์นี้ไม่มีแฟล็กแบบ `--resume`"  # {Locked="--resume"}
 system.cannot_resume_unknown_agent: "ไม่สามารถดำเนินเซสชัน %{session_id} ต่อ: ไม่รู้จักเอเจนต์ต้นทางในบิลด์นี้"
 system.cannot_resume_phantom_via_flag: "ไม่สามารถดำเนินเซสชัน %{agent} %{session_id} ต่อ: เซสชันนี้เริ่มแล้วแต่ไม่เคยมีการสนทนาสะสม ดังนั้น %{agent} เองจะปฏิเสธการดำเนินการต่อ กำลังลบแถว"
 system.cannot_resume_phantom_via_load: "ไม่สามารถดำเนินเซสชัน %{agent} %{session_id} ต่อ: เซสชันนี้เริ่มแล้วแต่ไม่เคยมีการสนทนาสะสม ดังนั้น %{agent} จะปฏิเสธการโหลด กำลังลบแถว"

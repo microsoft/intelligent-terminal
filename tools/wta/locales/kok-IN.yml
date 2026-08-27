@@ -147,8 +147,8 @@ system.resuming_session: "सत्र %{session_id} परत सुरू ज�
 system.unknown_command: "अज्ञात कमांड \"%{command}\" — प्रॉम्प्ट म्हूण धाडली. वळेरी खातीर /help टायप करात."  # {Locked="/help"}
 system.busy_use_stop: "सद्याचो प्रॉम्प्ट सोंप मेरेन रावात, वा पयलीं /stop वापरात."  # {Locked="/stop"}
 system.cannot_focus_session: "सत्र %{session_id} चेर फोकस करूंक शकना: तें live दिसता पूण अजून कसलेच पेन GUID बांदिलें ना. थोड्या वेळान परत प्रयत्न करात."
-system.cannot_resume_no_load_session: "एजंट पेनांत परत सुरू करूंक शकना: %{agent} नें ACP `loadSession` क्षमता जाहीर करूंक ना. त्याऐवजी नव्या टर्मिनल पेनांत परत सुरू करपाक Enter (Shift शिवाय) दामात."  # {Locked="ACP","loadSession","Enter","Shift"}
-system.cannot_resume_no_resume_flag: "%{agent} सत्र परत सुरू करूंक शकना: ह्या एजंटाक `--resume` सारको फ्लॅग ना. त्याऐवजी ACP वरवीं एजंट पेनांत परत सुरू करपाचो प्रयत्न करपाक Shift+Enter दामात."  # {Locked="--resume","Shift","Enter","ACP"}
+system.cannot_resume_no_load_session: "एजंट पेनांत परत सुरू करूंक शकना: %{agent} नें ACP `loadSession` क्षमता जाहीर करूंक ना."  # {Locked="ACP","loadSession"}
+system.cannot_resume_no_resume_flag: "%{agent} सत्र परत सुरू करूंक शकना: ह्या एजंटाक `--resume` सारको फ्लॅग ना."  # {Locked="--resume"}
 system.cannot_resume_unknown_agent: "सत्र %{session_id} परत सुरू करूंक शकना: ताचो स्रोत एजंट ह्या WTA बिल्डाक खबर ना."
 system.cannot_resume_phantom_via_flag: "%{agent} सत्र %{session_id} परत सुरू करूंक शकना: तें सुरू जालें पूण कसलोच संवाद जमा जालो ना, देखून %{agent} स्वतः resume नाकारतलो. ओळ काडटा."
 system.cannot_resume_phantom_via_load: "%{agent} सत्र %{session_id} परत सुरू करूंक शकना: तें सुरू जालें पूण कसलोच संवाद जमा जालो ना, देखून %{agent} load नाकारतलो. ओळ काडटा."

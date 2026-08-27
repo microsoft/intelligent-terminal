@@ -5143,21 +5143,24 @@ fn enter_on_history_row_with_missing_cwd_omits_d_flag() {
 }
 
 #[test]
-fn shift_enter_on_history_row_dispatches_resume_in_agent_pane() {
-    // Shift+Enter on a terminal-state row should route to the
-    // ResumeInAgentPane path, NOT the legacy NewTabResume — it
+fn enter_on_class_a_history_row_dispatches_resume_in_agent_pane() {
+    // Enter on a Class A (agent-pane origin) terminal-state row routes
+    // to the ResumeInAgentPane path, NOT the legacy NewTabResume — it
     // emits `resume_in_new_agent_tab` to WT instead of spawning a
     // normal terminal tab locally. The dispatched-command tape
     // captures the shape so downstream wiring can be
     // regression-checked.
-    use crate::agent_sessions::{CliSource, SessionEvent};
+    use crate::agent_sessions::{CliSource, OriginFilter, SessionEvent, SessionOrigin};
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
     // Use a real existing directory so cwd_util::validate_starting_directory
     // accepts it. A missing cwd would (correctly) be omitted —
-    // covered by `shift_enter_on_history_row_with_missing_cwd_omits_cwd`.
+    // covered by `enter_on_class_a_history_row_with_missing_cwd_omits_cwd`.
     let real_cwd = std::env::temp_dir();
     let real_cwd_str = real_cwd.to_string_lossy().to_string();
     let mut app = test_app();
+    // The MVP sessions filter hides AgentPane rows from the cursor;
+    // opt out so the Class A row under test is selectable.
+    app.sessions_origin_filter = OriginFilter::All;
     // Capability gate: dispatch is only attempted when the agent
     // advertised loadSession. Without this, the handler
     // short-circuits with a system message instead.
@@ -5173,10 +5176,12 @@ fn shift_enter_on_history_row_dispatches_resume_in_agent_pane() {
         key: "abc-123".into(),
         reason: "user_exit".into(),
     });
+    app.agent_sessions
+        .set_origin("abc-123", SessionOrigin::AgentPane);
 
     app.current_tab_mut().current_view = View::Agents;
     app.current_tab_mut().agents_list_state.select(Some(0));
-    app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::SHIFT));
+    app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
 
     let cmd = app
         .last_dispatched_command_for_test()
@@ -5195,21 +5200,21 @@ fn shift_enter_on_history_row_dispatches_resume_in_agent_pane() {
     );
 }
 
-/// Shift+Enter mirror of `enter_on_history_row_with_missing_cwd_omits_d_flag`:
+/// Class A mirror of `enter_on_history_row_with_missing_cwd_omits_d_flag`:
 /// when the stored cwd no longer exists, the resume-in-agent-pane
 /// path must omit the `cwd` field from the emitted
 /// `resume_in_new_agent_tab` event so WT's `_OpenNewTab` falls back
 /// to the profile's startingDirectory (otherwise the new tab opens
 /// with a broken connection).
 #[test]
-fn shift_enter_on_history_row_with_missing_cwd_omits_cwd() {
-    use crate::agent_sessions::{CliSource, SessionEvent};
+fn enter_on_class_a_history_row_with_missing_cwd_omits_cwd() {
+    use crate::agent_sessions::{CliSource, OriginFilter, SessionEvent, SessionOrigin};
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
     use std::path::PathBuf;
     let missing = {
         let mut p = std::env::temp_dir();
         p.push(format!(
-            "wta-missing-shift-cwd-{}-{}",
+            "wta-missing-agent-pane-cwd-{}-{}",
             std::process::id(),
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
@@ -5220,6 +5225,7 @@ fn shift_enter_on_history_row_with_missing_cwd_omits_cwd() {
     };
     assert!(!missing.exists());
     let mut app = test_app();
+    app.sessions_origin_filter = OriginFilter::All;
     app.agent_supports_load_session = true;
     app.agent_sessions.apply(SessionEvent::SessionStarted {
         key: "abc-stale".into(),
@@ -5232,9 +5238,11 @@ fn shift_enter_on_history_row_with_missing_cwd_omits_cwd() {
         key: "abc-stale".into(),
         reason: "user_exit".into(),
     });
+    app.agent_sessions
+        .set_origin("abc-stale", SessionOrigin::AgentPane);
     app.current_tab_mut().current_view = View::Agents;
     app.current_tab_mut().agents_list_state.select(Some(0));
-    app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::SHIFT));
+    app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
 
     let cmd = app
         .last_dispatched_command_for_test()
@@ -5259,16 +5267,17 @@ fn shift_enter_on_history_row_with_missing_cwd_omits_cwd() {
 }
 
 #[test]
-fn shift_enter_history_row_without_load_session_capability_shows_hint() {
+fn enter_on_class_a_history_row_without_load_session_capability_shows_hint() {
     // Capability gate: when the agent doesn't advertise loadSession,
-    // Shift+Enter must not open a new tab. Instead it pushes a
-    // system message in the session management view explaining the
-    // fallback (plain Enter). The dispatched-command tape captures
-    // the gated path so the regression is observable.
-    use crate::agent_sessions::{CliSource, SessionEvent};
+    // Enter on a Class A row must not open a new tab. Instead it
+    // pushes a system message in the session management view. The
+    // dispatched-command tape captures the gated path so the
+    // regression is observable.
+    use crate::agent_sessions::{CliSource, OriginFilter, SessionEvent, SessionOrigin};
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
     use std::path::PathBuf;
     let mut app = test_app();
+    app.sessions_origin_filter = OriginFilter::All;
     // No `agent_supports_load_session = true` — default is false.
     app.agent_sessions.apply(SessionEvent::SessionStarted {
         key: "abc-123".into(),
@@ -5281,21 +5290,22 @@ fn shift_enter_history_row_without_load_session_capability_shows_hint() {
         key: "abc-123".into(),
         reason: "user_exit".into(),
     });
+    app.agent_sessions
+        .set_origin("abc-123", SessionOrigin::AgentPane);
 
     app.current_tab_mut().current_view = View::Agents;
     app.current_tab_mut().agents_list_state.select(Some(0));
-    app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::SHIFT));
+    app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
 
     let cmd = app
         .last_dispatched_command_for_test()
         .expect("a command was dispatched");
-    // B-10: `decide_enter_action` short-circuits to NotResumable
+    // `decide_enter_action` short-circuits to NotResumable
     // before any side-effect dispatch when the agent doesn't
     // advertise loadSession. Previously this routed all the way
     // through `dispatch_resume_in_agent_pane`'s internal gate;
     // now the gate is hoisted into the pure state machine so
-    // there's one canonical path. The system hint message is
-    // unchanged.
+    // there's one canonical path.
     assert_eq!(cmd.kind, DispatchedCommandKind::NotResumable);
     let argv = cmd.argv.join(" ");
     assert!(argv.contains("LoadSessionNotSupported"), "argv: {}", argv);
@@ -5305,17 +5315,15 @@ fn shift_enter_history_row_without_load_session_capability_shows_hint() {
             kind: NoticeKind::Warning,
             text,
         }
-            if text.contains("loadSession")
-                && text.contains("Press Enter"))
+            if text.contains("loadSession"))
     });
     assert!(has_hint, "expected system hint message in the current tab");
 }
 
 #[test]
-fn shift_enter_on_live_row_falls_back_to_focus() {
-    // Live rows have no historical state to "load" — Shift+Enter on
-    // them must NOT trigger the resume-in-agent-pane flow. It falls
-    // through to the same FocusPane dispatch as plain Enter.
+fn shift_enter_on_live_row_still_focuses() {
+    // Shift is not an alternate activation gesture: Shift+Enter on a
+    // Live row dispatches the same FocusPane as plain Enter.
     use crate::agent_sessions::{CliSource, SessionEvent};
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
     use std::path::PathBuf;
@@ -5337,7 +5345,7 @@ fn shift_enter_on_live_row_falls_back_to_focus() {
     assert_eq!(cmd.kind, DispatchedCommandKind::FocusPane);
 }
 
-// -------- B-10: state-machine-driven Enter / Shift+Enter dispatch --------
+// -------- state-machine-driven Enter dispatch --------
 //
 // Pure routing rules are exhaustively tested in
 // `session_mgmt::tests`. Here we verify the *integration* — that the
@@ -5345,12 +5353,10 @@ fn shift_enter_on_live_row_falls_back_to_focus() {
 // selected AgentSession, hands it to `decide_enter_action`, and
 // dispatches each EnterAction variant through the correct side
 // effect (or NotResumable hint). One or two representative cases
-// per variant is enough; B-1 holds the truth table.
+// per variant is enough; session_mgmt holds the truth table.
 
 /// Class A (AgentPane origin) dead row + plain Enter:
-/// new state machine routes to ResumeInAgentPane (ACP load).
-/// This is the headline behavior change from B-10 — previously
-/// Class A dead + Enter ran the CLI --resume flag path.
+/// the state machine routes to ResumeInAgentPane (ACP load).
 #[test]
 fn enter_on_class_a_dead_row_dispatches_resume_in_agent_pane() {
     use crate::agent_sessions::{CliSource, OriginFilter, SessionEvent, SessionOrigin};
@@ -5390,10 +5396,11 @@ fn enter_on_class_a_dead_row_dispatches_resume_in_agent_pane() {
     assert!(argv.contains("--session-id abc-class-a"), "argv: {}", argv);
 }
 
-/// Class A (AgentPane origin) dead row + Shift+Enter:
-/// Shift flips the default → ResumeCliFlag (new tab CLI --resume).
+/// Class A (AgentPane origin) dead row + Shift+Enter: Shift is not an
+/// alternate gesture, so this is identical to plain Enter
+/// (ResumeInAgentPane), not the CLI `--resume` path.
 #[test]
-fn shift_enter_on_class_a_dead_row_dispatches_cli_resume() {
+fn shift_enter_on_class_a_dead_row_ignores_shift() {
     use crate::agent_sessions::{CliSource, OriginFilter, SessionEvent, SessionOrigin};
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
     use std::path::PathBuf;
@@ -5422,20 +5429,51 @@ fn shift_enter_on_class_a_dead_row_dispatches_cli_resume() {
     app.current_tab_mut().agents_list_state.select(Some(0));
     app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::SHIFT));
 
-    // What matters here is that Shift+Enter on
-    // Class A dead routed through dispatch_resume (the CLI flag
-    // path), NOT dispatch_resume_in_agent_pane.
+    let cmd = app
+        .last_dispatched_command_for_test()
+        .expect("a command was dispatched");
+    assert_eq!(cmd.kind, DispatchedCommandKind::ResumeInAgentPane);
+}
+
+/// Class B (Unknown origin) dead row + Shift+Enter: same as plain
+/// Enter — the CLI `--resume` flag in a new shell tab. This is the
+/// row class the picker shows by default, so it is the case a user
+/// would notice if Shift ever regained a meaning.
+#[test]
+fn shift_enter_on_class_b_dead_row_ignores_shift() {
+    use crate::agent_sessions::{CliSource, SessionEvent};
+    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+    use std::path::PathBuf;
+    let mut app = test_app();
+    // loadSession IS advertised: without the Shift escape hatch this
+    // must still not divert a Class B row into an agent pane.
+    app.agent_supports_load_session = true;
+    app.agent_sessions.apply(SessionEvent::SessionStarted {
+        key: "abc-class-b-shift".into(),
+        cli_source: CliSource::Claude,
+        pane_session_id: "p".into(),
+        cwd: PathBuf::from("/work/cls-b"),
+        title: "t".into(),
+    });
+    app.agent_sessions.apply(SessionEvent::SessionStopped {
+        key: "abc-class-b-shift".into(),
+        reason: "user_exit".into(),
+    });
+
+    app.current_tab_mut().current_view = View::Agents;
+    app.current_tab_mut().agents_list_state.select(Some(0));
+    app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::SHIFT));
+
     let cmd = app
         .last_dispatched_command_for_test()
         .expect("a command was dispatched");
     assert_eq!(cmd.kind, DispatchedCommandKind::NewTabResume);
 }
 
-/// Live row + Shift+Enter: identical to Enter (Shift is a no-op on
-/// live rows because agents forbid two clients on one session).
-/// This is implicitly the case for `shift_enter_on_live_row_falls_
-/// back_to_focus` above; here we additionally assert with a Class
-/// A origin to confirm origin doesn't matter for Live rows.
+/// Live row + Shift+Enter: identical to Enter. This is implicitly the
+/// case for `shift_enter_on_live_row_still_focuses` above; here we
+/// additionally assert with a Class A origin to confirm origin
+/// doesn't matter for Live rows.
 #[test]
 fn shift_enter_on_class_a_live_row_focuses() {
     use crate::agent_sessions::{CliSource, OriginFilter, SessionEvent, SessionOrigin};

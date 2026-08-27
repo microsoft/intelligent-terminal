@@ -161,8 +161,8 @@ system.resuming_session: "Վերսկսվում է աշխատաշրջանը %{ses
 system.unknown_command: "Անհայտ հրաման \"%{command}\" — ուղարկվել է որպես հուշում։ Ցանկի համար մուտքագրեք /help։"  # {Locked="/help"} — slash-command name.
 system.busy_use_stop: "Սպասեք, մինչև ընթացիկ հուշումն ավարտվի, կամ նախ օգտագործեք /stop։"  # {Locked="/stop"} — slash-command name.
 system.cannot_focus_session: "Չհաջողվեց կենտրոնանալ աշխատաշրջանի %{session_id} վրա. այն կարծես live է, բայց դեռ որևէ pane GUID կապված չէ։ Փորձեք մի փոքր հետո։"
-system.cannot_resume_no_load_session: "Չի կարող վերսկսվել agent pane-ում. %{agent}-ը չի հայտարարել ACP `loadSession` հնարավորության մասին։ Փոխարենը նոր terminal pane-ում վերսկսելու համար սեղմեք Enter (առանց Shift)։"  # {Locked="ACP","loadSession","Enter","Shift"} — protocol/UI terms.
-system.cannot_resume_no_resume_flag: "Չի կարող վերսկսվել %{agent} աշխատաշրջանը. այս agent-ը չունի `--resume` ոճի flag։ Փոխարենը ACP-ի միջոցով agent pane-ի ներսում վերսկսելու համար սեղմեք Shift+Enter։"  # {Locked="--resume","Shift","Enter","ACP"} — flag and UI terms.
+system.cannot_resume_no_load_session: "Չի կարող վերսկսվել agent pane-ում. %{agent}-ը չի հայտարարել ACP `loadSession` հնարավորության մասին։"  # {Locked="ACP","loadSession"} — protocol/UI terms.
+system.cannot_resume_no_resume_flag: "Չի կարող վերսկսվել %{agent} աշխատաշրջանը. այս agent-ը չունի `--resume` ոճի flag։"  # {Locked="--resume"} — flag and UI terms.
 system.cannot_resume_unknown_agent: "Չի կարող վերսկսվել աշխատաշրջանը %{session_id}. դրա աղբյուր agent-ը անհայտ է WTA-ի այս build-ին։"
 system.cannot_resume_phantom_via_flag: "Չի կարող վերսկսվել %{agent} աշխատաշրջանը %{session_id}. այն սկսվել էր, բայց որևէ զրույց չէր կուտակել, ուստի %{agent}-ն ինքը կմերժեր վերսկսումը։ Հեռացվում է տողը։"
 system.cannot_resume_phantom_via_load: "Չի կարող վերսկսվել %{agent} աշխատաշրջանը %{session_id}. այն սկսվել էր, բայց որևէ զրույց չէր կուտակել, ուստի %{agent}-ը կմերժեր բեռնումը։ Հեռացվում է տողը։"

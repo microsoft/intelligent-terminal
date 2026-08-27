@@ -134,8 +134,8 @@ system.resuming_session: "Menyambung semula sesi %{session_id}..."
 system.unknown_command: "Arahan tidak diketahui \"%{command}\" — dihantar sebagai prompt. Taip /help untuk senarai."  # {Locked="/help"}
 system.busy_use_stop: "Tunggu prompt semasa selesai, atau jalankan /stop dahulu."  # {Locked="/stop"}
 system.cannot_focus_session: "Tidak dapat memfokuskan sesi %{session_id}: sesi kelihatan aktif tetapi GUID anak tetingkap belum diikat lagi. Cuba lagi sebentar lagi."
-system.cannot_resume_no_load_session: "Tidak dapat menyambung semula dalam anak tetingkap ejen: %{agent} tidak mengiklankan keupayaan ACP `loadSession`. Tekan Enter (tanpa Shift) untuk menyambung semula dalam anak tetingkap terminal baharu sebaliknya."  # {Locked="ACP","loadSession","Enter","Shift"}
-system.cannot_resume_no_resume_flag: "Tidak dapat menyambung semula sesi %{agent}: ejen ini tiada bendera gaya `--resume`. Tekan Shift+Enter untuk cuba menyambung semula dalam anak tetingkap ejen melalui ACP sebaliknya."  # {Locked="--resume","Shift","Enter","ACP"}
+system.cannot_resume_no_load_session: "Tidak dapat menyambung semula dalam anak tetingkap ejen: %{agent} tidak mengiklankan keupayaan ACP `loadSession`."  # {Locked="ACP","loadSession"}
+system.cannot_resume_no_resume_flag: "Tidak dapat menyambung semula sesi %{agent}: ejen ini tiada bendera gaya `--resume`."  # {Locked="--resume"}
 system.cannot_resume_unknown_agent: "Tidak dapat menyambung semula sesi %{session_id}: ejen sumbernya tidak dikenali oleh binaan ini."
 system.cannot_resume_phantom_via_flag: "Tidak dapat menyambung semula sesi %{agent} %{session_id}: sesi ini telah dimulakan tetapi tidak pernah mengumpulkan sebarang perbualan, jadi %{agent} sendiri akan menolak sambungan semula. Mengalih keluar baris."
 system.cannot_resume_phantom_via_load: "Tidak dapat menyambung semula sesi %{agent} %{session_id}: sesi ini telah dimulakan tetapi tidak pernah mengumpulkan sebarang perbualan, jadi %{agent} akan menolak pemuatan. Mengalih keluar baris."

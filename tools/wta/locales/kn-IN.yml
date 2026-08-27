@@ -147,8 +147,8 @@ system.resuming_session: "ಸೆಷನ್ %{session_id} ಪುನರಾರಂಭ
 system.unknown_command: "ಅಪರಿಚಿತ ಆದೇಶ \"%{command}\" — ಪ್ರಾಂಪ್ಟ್ ಆಗಿ ಕಳುಹಿಸಲಾಗಿದೆ. ಪಟ್ಟಿಗಾಗಿ /help ಟೈಪ್ ಮಾಡಿ."  # {Locked="/help"} — slash-command name.
 system.busy_use_stop: "ಪ್ರಸ್ತುತ ಪ್ರಾಂಪ್ಟ್ ಮುಗಿಯುವವರೆಗೆ ಕಾಯಿರಿ, ಅಥವಾ ಮೊದಲು /stop ಮಾಡಿ."  # {Locked="/stop"} — slash-command name.
 system.cannot_focus_session: "ಸೆಷನ್ %{session_id} ಮೇಲೆ ಫೋಕಸ್ ಮಾಡಲಾಗುವುದಿಲ್ಲ: ಅದು live ಆಗಿರುವಂತೆ ಕಾಣುತ್ತದೆ ಆದರೆ ಇನ್ನೂ ಯಾವುದೇ pane GUID ಬದ್ಧವಾಗಿಲ್ಲ. ಸ್ವಲ್ಪ ಹೊತ್ತಿನಲ್ಲಿ ಮತ್ತೆ ಪ್ರಯತ್ನಿಸಿ."
-system.cannot_resume_no_load_session: "agent pane ನಲ್ಲಿ ಪುನರಾರಂಭಿಸಲಾಗುವುದಿಲ್ಲ: %{agent} ACP `loadSession` ಸಾಮರ್ಥ್ಯವನ್ನು ಪ್ರಕಟಿಸಿಲ್ಲ. ಬದಲಾಗಿ ಹೊಸ terminal pane ನಲ್ಲಿ ಪುನರಾರಂಭಿಸಲು Enter (Shift ಇಲ್ಲದೆ) ಒತ್ತಿರಿ."  # {Locked="ACP","loadSession","Enter","Shift"} — protocol/UI terms.
-system.cannot_resume_no_resume_flag: "%{agent} ಸೆಷನ್ ಅನ್ನು ಪುನರಾರಂಭಿಸಲಾಗುವುದಿಲ್ಲ: ಈ agent ಗೆ `--resume` ಶೈಲಿಯ flag ಇಲ್ಲ. ಬದಲಾಗಿ ACP ಮೂಲಕ agent pane ಒಳಗೆ ಪುನರಾರಂಭಿಸಲು Shift+Enter ಒತ್ತಿ ಪ್ರಯತ್ನಿಸಿ."  # {Locked="--resume","Shift","Enter","ACP"} — flag and UI terms.
+system.cannot_resume_no_load_session: "agent pane ನಲ್ಲಿ ಪುನರಾರಂಭಿಸಲಾಗುವುದಿಲ್ಲ: %{agent} ACP `loadSession` ಸಾಮರ್ಥ್ಯವನ್ನು ಪ್ರಕಟಿಸಿಲ್ಲ."  # {Locked="ACP","loadSession"} — protocol/UI terms.
+system.cannot_resume_no_resume_flag: "%{agent} ಸೆಷನ್ ಅನ್ನು ಪುನರಾರಂಭಿಸಲಾಗುವುದಿಲ್ಲ: ಈ agent ಗೆ `--resume` ಶೈಲಿಯ flag ಇಲ್ಲ."  # {Locked="--resume"} — flag and UI terms.
 system.cannot_resume_unknown_agent: "ಸೆಷನ್ %{session_id} ಪುನರಾರಂಭಿಸಲಾಗುವುದಿಲ್ಲ: ಇದರ ಮೂಲ agent ಈ WTA build ಗೆ ತಿಳಿದಿಲ್ಲ."
 system.cannot_resume_phantom_via_flag: "%{agent} ಸೆಷನ್ %{session_id} ಪುನರಾರಂಭಿಸಲಾಗುವುದಿಲ್ಲ: ಅದು ಪ್ರಾರಂಭವಾಗಿತ್ತು ಆದರೆ ಯಾವುದೇ ಸಂಭಾಷಣೆ ಸಂಗ್ರಹವಾಗಿಲ್ಲ, ಆದ್ದರಿಂದ %{agent} ಸ್ವತಃ resume ಅನ್ನು ತಿರಸ್ಕರಿಸುತ್ತದೆ. ಸಾಲನ್ನು ತೆಗೆದುಹಾಕಲಾಗುತ್ತಿದೆ."
 system.cannot_resume_phantom_via_load: "%{agent} ಸೆಷನ್ %{session_id} ಪುನರಾರಂಭಿಸಲಾಗುವುದಿಲ್ಲ: ಅದು ಪ್ರಾರಂಭವಾಗಿತ್ತು ಆದರೆ ಯಾವುದೇ ಸಂಭಾಷಣೆ ಸಂಗ್ರಹವಾಗಿಲ್ಲ, ಆದ್ದರಿಂದ %{agent} load ಅನ್ನು ತಿರಸ್ಕರಿಸುತ್ತದೆ. ಸಾಲನ್ನು ತೆಗೆದುಹಾಕಲಾಗುತ್ತಿದೆ."

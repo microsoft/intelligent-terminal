@@ -156,8 +156,8 @@ system.resuming_session: "سۆزلىشىش %{session_id} داۋاملاشتۇر�
 system.unknown_command: "نامەلۇم بۇيرۇق \"%{command}\" — prompt سۈپىتىدە يوللاندى. تىزىملىك ئۈچۈن /help نى كىرگۈزۈڭ."  # {Locked="/help"} — slash-command name.
 system.busy_use_stop: "ھازىرقى prompt تاماملانغۇچە كۈتۈڭ، ياكى ئالدى بىلەن /stop قىلىڭ."  # {Locked="/stop"} — slash-command name.
 system.cannot_focus_session: "سۆزلىشىش %{session_id} غا فوكۇسلىغىلى بولمايدۇ: ئۇ live كۆرۈنىدۇ، ئەمما تېخى ھېچقانداق pane GUID باغلانمىغان. بىر ئازدىن كېيىن قايتا سىناڭ."
-system.cannot_resume_no_load_session: "agent pane دا داۋاملاشتۇرغىلى بولمايدۇ: %{agent} ACP `loadSession` ئىقتىدارىنى ئېلان قىلمىغان. ئۇنىڭ ئورنىغا يېڭى terminal pane دا داۋاملاشتۇرۇش ئۈچۈن Enter (Shift يوق) بېسىڭ."  # {Locked="ACP","loadSession","Enter","Shift"} — protocol/UI terms.
-system.cannot_resume_no_resume_flag: "%{agent} سۆزلىشىشىنى داۋاملاشتۇرغىلى بولمايدۇ: بۇ agent دا `--resume` شەكلىدىكى flag يوق. ئۇنىڭ ئورنىغا ACP ئارقىلىق agent pane ئىچىدە داۋاملاشتۇرۇشنى سىناش ئۈچۈن Shift+Enter بېسىڭ."  # {Locked="--resume","Shift","Enter","ACP"} — flag and UI terms.
+system.cannot_resume_no_load_session: "agent pane دا داۋاملاشتۇرغىلى بولمايدۇ: %{agent} ACP `loadSession` ئىقتىدارىنى ئېلان قىلمىغان."  # {Locked="ACP","loadSession"} — protocol/UI terms.
+system.cannot_resume_no_resume_flag: "%{agent} سۆزلىشىشىنى داۋاملاشتۇرغىلى بولمايدۇ: بۇ agent دا `--resume` شەكلىدىكى flag يوق."  # {Locked="--resume"} — flag and UI terms.
 system.cannot_resume_unknown_agent: "سۆزلىشىش %{session_id} نى داۋاملاشتۇرغىلى بولمايدۇ: ئۇنىڭ مەنبە agent ى بۇ WTA build ئۈچۈن نامەلۇم."
 system.cannot_resume_phantom_via_flag: "%{agent} سۆزلىشىشى %{session_id} نى داۋاملاشتۇرغىلى بولمايدۇ: ئۇ باشلانغان، ئەمما ھېچقانداق سۆھبەت توپلانمىغان، شۇڭا %{agent} ئۆزى resume نى رەت قىلىدۇ. قۇر ئۆچۈرۈلۈۋاتىدۇ."
 system.cannot_resume_phantom_via_load: "%{agent} سۆزلىشىشى %{session_id} نى داۋاملاشتۇرغىلى بولمايدۇ: ئۇ باشلانغان، ئەمما ھېچقانداق سۆھبەت توپلانمىغان، شۇڭا %{agent} load نى رەت قىلىدۇ. قۇر ئۆچۈرۈلۈۋاتىدۇ."

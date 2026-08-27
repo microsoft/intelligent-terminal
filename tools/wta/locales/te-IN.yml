@@ -147,8 +147,8 @@ system.resuming_session: "సెషన్ %{session_id} మళ్లీ ప్�
 system.unknown_command: "తెలియని ఆదేశం \"%{command}\" — ప్రాంప్ట్‌గా పంపబడింది. జాబితా కోసం /help టైప్ చేయండి."  # {Locked="/help"} — slash-command name.
 system.busy_use_stop: "ప్రస్తుత ప్రాంప్ట్ పూర్తయ్యే వరకు వేచి ఉండండి, లేదా ముందుగా /stop చేయండి."  # {Locked="/stop"} — slash-command name.
 system.cannot_focus_session: "సెషన్ %{session_id} పై ఫోకస్ చేయలేరు: అది live గా కనిపిస్తోంది కానీ ఇంకా ఏ pane GUID బైండ్ కాలేదు. కొద్దిసేపట్లో మళ్లీ ప్రయత్నించండి."
-system.cannot_resume_no_load_session: "agent pane లో మళ్లీ ప్రారంభించలేరు: %{agent} ACP `loadSession` సామర్థ్యాన్ని ప్రకటించలేదు. బదులుగా కొత్త terminal pane లో మళ్లీ ప్రారంభించడానికి Enter (Shift లేకుండా) నొక్కండి."  # {Locked="ACP","loadSession","Enter","Shift"} — protocol/UI terms.
-system.cannot_resume_no_resume_flag: "%{agent} సెషన్‌ను మళ్లీ ప్రారంభించలేరు: ఈ agent కు `--resume` శైలి flag లేదు. బదులుగా ACP ద్వారా agent pane లోపల మళ్లీ ప్రారంభించడానికి Shift+Enter నొక్కి ప్రయత్నించండి."  # {Locked="--resume","Shift","Enter","ACP"} — flag and UI terms.
+system.cannot_resume_no_load_session: "agent pane లో మళ్లీ ప్రారంభించలేరు: %{agent} ACP `loadSession` సామర్థ్యాన్ని ప్రకటించలేదు."  # {Locked="ACP","loadSession"} — protocol/UI terms.
+system.cannot_resume_no_resume_flag: "%{agent} సెషన్‌ను మళ్లీ ప్రారంభించలేరు: ఈ agent కు `--resume` శైలి flag లేదు."  # {Locked="--resume"} — flag and UI terms.
 system.cannot_resume_unknown_agent: "సెషన్ %{session_id} మళ్లీ ప్రారంభించలేరు: దాని మూల agent ఈ WTA build కు తెలియదు."
 system.cannot_resume_phantom_via_flag: "%{agent} సెషన్ %{session_id} మళ్లీ ప్రారంభించలేరు: అది ప్రారంభమైంది కానీ ఏ సంభాషణను కూడగట్టలేదు, కాబట్టి %{agent} స్వయంగా resume ను తిరస్కరిస్తుంది. వరుసను తీసివేస్తోంది."
 system.cannot_resume_phantom_via_load: "%{agent} సెషన్ %{session_id} మళ్లీ ప్రారంభించలేరు: అది ప్రారంభమైంది కానీ ఏ సంభాషణను కూడగట్టలేదు, కాబట్టి %{agent} load ను తిరస్కరిస్తుంది. వరుసను తీసివేస్తోంది."

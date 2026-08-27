@@ -147,8 +147,8 @@ system.resuming_session: "מחדש את ההפעלה %{session_id}..."
 system.unknown_command: "פקודה לא ידועה \"%{command}\" — נשלחה כהנחיה. הקלד /help לקבלת הרשימה."  # {Locked="/help"} — slash-command name.
 system.busy_use_stop: "המתן עד שההנחיה הנוכחית תסתיים, או הפעל תחילה /stop."  # {Locked="/stop"} — slash-command name.
 system.cannot_focus_session: "לא ניתן להתמקד בהפעלה %{session_id}: היא נראית פעילה, אך עדיין לא משויך GUID של חלונית. נסה שוב בעוד רגע."
-system.cannot_resume_no_load_session: "לא ניתן לחדש בחלונית הסוכן: %{agent} לא פרסם את יכולת ACP `loadSession`. הקש Enter (ללא Shift) כדי לחדש בחלונית מסוף חדשה במקום זאת."  # {Locked="ACP","loadSession","Enter","Shift"} — protocol/UI terms.
-system.cannot_resume_no_resume_flag: "לא ניתן לחדש את ההפעלה של %{agent}: לסוכן זה אין דגל בסגנון `--resume`. הקש Shift+Enter כדי לנסות לחדש בתוך חלונית הסוכן דרך ACP במקום זאת."  # {Locked="--resume","Shift","Enter","ACP"} — flag and UI terms.
+system.cannot_resume_no_load_session: "לא ניתן לחדש בחלונית הסוכן: %{agent} לא פרסם את יכולת ACP `loadSession`."  # {Locked="ACP","loadSession"} — protocol/UI terms.
+system.cannot_resume_no_resume_flag: "לא ניתן לחדש את ההפעלה של %{agent}: לסוכן זה אין דגל בסגנון `--resume`."  # {Locked="--resume"} — flag and UI terms.
 system.cannot_resume_unknown_agent: "לא ניתן לחדש את ההפעלה %{session_id}: סוכן המקור שלה אינו מוכר לבנייה זו של WTA."
 system.cannot_resume_phantom_via_flag: "לא ניתן לחדש את ההפעלה %{agent} %{session_id}: היא הופעלה אך מעולם לא צברה שיחה כלשהי, ולכן %{agent} עצמו ידחה את החידוש. מסיר את השורה."
 system.cannot_resume_phantom_via_load: "לא ניתן לחדש את ההפעלה %{agent} %{session_id}: היא הופעלה אך מעולם לא צברה שיחה כלשהי, ולכן %{agent} ידחה את הטעינה. מסיר את השורה."

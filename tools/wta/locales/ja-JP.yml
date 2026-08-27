@@ -130,8 +130,8 @@ system.resuming_session: "セッション %{session_id} を再開しています
 system.unknown_command: "不明なコマンド \"%{command}\" — プロンプトとして送信しました。一覧を表示するには /help と入力してください。"  # {Locked="/help"}
 system.busy_use_stop: "現在のプロンプトが完了するまで待つか、先に /stop を実行してください。"  # {Locked="/stop"}
 system.cannot_focus_session: "セッション %{session_id} にフォーカスできません: ライブ状態のようですが、ペイン GUID がまだバインドされていません。しばらくしてからもう一度お試しください。"
-system.cannot_resume_no_load_session: "エージェント ペインで再開できません: %{agent} が ACP `loadSession` 機能を通知していません。代わりに Enter（Shift なし）を押して新しいターミナル ペインで再開してください。"  # {Locked="ACP","loadSession","Enter","Shift"}
-system.cannot_resume_no_resume_flag: "%{agent} セッションを再開できません: このエージェントには `--resume` 形式のフラグがありません。代わりに Shift+Enter を押して ACP 経由でエージェント ペイン内での再開を試してください。"  # {Locked="--resume","Shift","Enter","ACP"}
+system.cannot_resume_no_load_session: "エージェント ペインで再開できません: %{agent} が ACP `loadSession` 機能を通知していません。"  # {Locked="ACP","loadSession"}
+system.cannot_resume_no_resume_flag: "%{agent} セッションを再開できません: このエージェントには `--resume` 形式のフラグがありません。"  # {Locked="--resume"}
 system.cannot_resume_unknown_agent: "セッション %{session_id} を再開できません: ソース エージェントはこのビルドでは認識されません。"
 system.cannot_resume_phantom_via_flag: "%{agent} セッション %{session_id} を再開できません: 開始されましたが会話が一度も蓄積されていないため、%{agent} 自体が再開を拒否します。行を削除します。"
 system.cannot_resume_phantom_via_load: "%{agent} セッション %{session_id} を再開できません: 開始されましたが会話が一度も蓄積されていないため、%{agent} が読み込みを拒否します。行を削除します。"

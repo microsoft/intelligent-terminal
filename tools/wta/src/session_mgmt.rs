@@ -1,9 +1,9 @@
-//! Pure-function core of session management Enter / Shift+Enter routing for the agent
+//! Pure-function core of session management Enter routing for the agent
 //! session manager.
 //!
 //! `decide_enter_action` is a closed, side-effect-free mapping from a
 //! `RowSnapshot` (the relevant projection of an `AgentSession` row plus
-//! ambient capabilities) and a `shift` modifier to an `EnterAction` — a
+//! ambient capabilities) to an `EnterAction` — a
 //! description of *what* the caller should dispatch (Focus, resume in a
 //! new agent pane via ACP `session/load`, resume in a plain pane via CLI
 //! `--resume`, or surface a "not resumable" message).
@@ -15,29 +15,31 @@
 //! table can be exhaustively unit-tested without spinning up any
 //! runtime, futures, or mocks.
 //!
-//! State machine (matches the spec table in plan.md):
+//! State machine:
 //!
 //! ```text
-//! Live + has pane_session_id    -> Focus { pane_session_id }       (Enter == Shift)
+//! Live + has pane_session_id    -> Focus { pane_session_id }
 //! Live + no pane_session_id     -> NotResumable(LiveWithoutPane)
 //!
 //! Class A (origin=AgentPane), dead (Ended | Historical):
 //!   Enter -> ResumeInAgentPane (needs load_session_supported)
-//!   Shift -> ResumeCliFlag      (needs cli_supports_resume_flag)
 //!
 //! Class B (origin=Unknown), dead (Ended | Historical):
 //!   Enter -> ResumeCliFlag      (needs cli_supports_resume_flag)
-//!   Shift -> ResumeInAgentPane (needs load_session_supported)
+//!
+//! WSL rows, dead -> ResumeCliFlag regardless of origin (the agent
+//!                   pane is host-side, so ACP `session/load` can't
+//!                   rehydrate an in-distro session)
 //!
 //! Cli Unknown in any dead branch -> NotResumable(UnknownCli)
 //! Missing capability in the chosen branch -> NotResumable(<reason>)
 //! ```
 //!
-//! The "Shift flips the default" symmetry is the key UX promise: any
-//! `Live` row treats Shift as a no-op safety (agent backends don't
-//! permit two clients on the same session, so a second-copy attempt is
-//! useless), and any `Dead` row uses Shift as an escape hatch into the
-//! *other* resume style.
+//! Enter is the only activation gesture: a row has exactly one resume
+//! style, decided by where the session came from. Modifiers (Shift in
+//! particular) do not select an alternate path — there is no second
+//! route to fall back to, so a row whose single path is unavailable
+//! reports `NotResumable` instead.
 
 use crate::agent_sessions::{AgentKey, CliSource, SessionOrigin};
 
@@ -85,7 +87,7 @@ pub enum NotResumableReason {
     UnknownCli,
 }
 
-/// What the caller should actually do in response to Enter / Shift+Enter.
+/// What the caller should actually do in response to Enter.
 ///
 /// Pure data; no `Box<dyn FnOnce>` or futures. Dispatch (and its
 /// existing guard rails) lives in `app.rs`.
@@ -125,44 +127,41 @@ pub struct RowSnapshot {
     /// Claude/Copilot/Codex/Gemini (all four CLIs accept some form of
     /// `--resume`/`resume <id>` re-attach surface).
     pub cli_supports_resume_flag: bool,
+    /// Whether the session lives inside a WSL distro. The helper and
+    /// the agent run on the host, so ACP `session/load` can't rehydrate
+    /// a Linux session into a host agent pane — WSL rows always resume
+    /// through the in-distro CLI `--resume` flag.
+    pub is_wsl: bool,
 }
 
 /// The state machine. See the module docstring and plan.md for the
 /// table this implements.
-pub fn decide_enter_action(row: &RowSnapshot, shift: bool) -> EnterAction {
+pub fn decide_enter_action(row: &RowSnapshot) -> EnterAction {
     match &row.liveness {
-        Liveness::Live { pane_session_id } => {
-            // Shift on a Live row is *always* the same as Enter. Agents
-            // forbid two clients on one session, so any "force second
-            // copy" attempt would just error out — treat Shift as a
-            // safety alias of Enter here.
-            let _ = shift;
-            match pane_session_id {
-                Some(p) if !p.is_empty() => EnterAction::Focus {
-                    pane_session_id: p.clone(),
-                },
-                _ => EnterAction::NotResumable {
-                    reason: NotResumableReason::LiveWithoutPane,
-                },
-            }
-        }
+        Liveness::Live { pane_session_id } => match pane_session_id {
+            Some(p) if !p.is_empty() => EnterAction::Focus {
+                pane_session_id: p.clone(),
+            },
+            _ => EnterAction::NotResumable {
+                reason: NotResumableReason::LiveWithoutPane,
+            },
+        },
         Liveness::Ended | Liveness::Historical => {
             // Unknown CLI: we don't know how to spawn it for either
-            // path, regardless of shift or origin.
+            // path, regardless of origin.
             if matches!(row.cli_source, CliSource::Unknown(_)) {
                 return EnterAction::NotResumable {
                     reason: NotResumableReason::UnknownCli,
                 };
             }
 
-            // "Default" path per origin; Shift flips it.
-            //   Class A (AgentPane) default: ResumeInAgentPane.
-            //   Class B (Unknown)   default: ResumeCliFlag.
-            let want_agent_pane = match (&row.origin, shift) {
-                (SessionOrigin::AgentPane, false) => true,
-                (SessionOrigin::AgentPane, true) => false,
-                (SessionOrigin::Unknown, false) => false,
-                (SessionOrigin::Unknown, true) => true,
+            // One resume style per origin:
+            //   Class A (AgentPane): ResumeInAgentPane.
+            //   Class B (Unknown):   ResumeCliFlag.
+            // WSL rows are always CLI-flag: the agent pane is host-side.
+            let want_agent_pane = match row.origin {
+                SessionOrigin::AgentPane => !row.is_wsl,
+                SessionOrigin::Unknown => false,
             };
 
             if want_agent_pane {
@@ -228,6 +227,7 @@ mod tests {
             cli_source: cli,
             load_session_supported,
             cli_supports_resume_flag,
+            is_wsl: false,
         }
     }
 
@@ -245,27 +245,10 @@ mod tests {
             true,
         );
         assert_eq!(
-            decide_enter_action(&r, false),
+            decide_enter_action(&r),
             EnterAction::Focus {
                 pane_session_id: "pane-A".into()
             }
-        );
-    }
-
-    #[test]
-    fn class_a_live_with_pane_shift_same_as_enter() {
-        let r = row(
-            SessionOrigin::AgentPane,
-            Liveness::Live {
-                pane_session_id: Some("pane-A".into()),
-            },
-            CliSource::Copilot,
-            true,
-            true,
-        );
-        assert_eq!(
-            decide_enter_action(&r, true),
-            decide_enter_action(&r, false)
         );
     }
 
@@ -281,27 +264,10 @@ mod tests {
             true,
         );
         assert_eq!(
-            decide_enter_action(&r, false),
+            decide_enter_action(&r),
             EnterAction::Focus {
                 pane_session_id: "pane-A".into()
             }
-        );
-    }
-
-    #[test]
-    fn codex_class_a_live_with_pane_shift_same_as_enter() {
-        let r = row(
-            SessionOrigin::AgentPane,
-            Liveness::Live {
-                pane_session_id: Some("pane-A".into()),
-            },
-            CliSource::Codex,
-            true,
-            true,
-        );
-        assert_eq!(
-            decide_enter_action(&r, true),
-            decide_enter_action(&r, false)
         );
     }
 
@@ -317,27 +283,10 @@ mod tests {
             true,
         );
         assert_eq!(
-            decide_enter_action(&r, false),
+            decide_enter_action(&r),
             EnterAction::Focus {
                 pane_session_id: "pane-B".into()
             }
-        );
-    }
-
-    #[test]
-    fn class_b_live_with_pane_shift_same_as_enter() {
-        let r = row(
-            SessionOrigin::Unknown,
-            Liveness::Live {
-                pane_session_id: Some("pane-B".into()),
-            },
-            CliSource::Claude,
-            false,
-            true,
-        );
-        assert_eq!(
-            decide_enter_action(&r, true),
-            decide_enter_action(&r, false)
         );
     }
 
@@ -353,7 +302,7 @@ mod tests {
             true,
         );
         assert_eq!(
-            decide_enter_action(&r, false),
+            decide_enter_action(&r),
             EnterAction::NotResumable {
                 reason: NotResumableReason::LiveWithoutPane
             }
@@ -374,7 +323,7 @@ mod tests {
             true,
         );
         assert_eq!(
-            decide_enter_action(&r, false),
+            decide_enter_action(&r),
             EnterAction::NotResumable {
                 reason: NotResumableReason::LiveWithoutPane
             }
@@ -393,7 +342,7 @@ mod tests {
             true,
         );
         assert_eq!(
-            decide_enter_action(&r, false),
+            decide_enter_action(&r),
             EnterAction::ResumeInAgentPane {
                 key: "k".into(),
                 cli: CliSource::Copilot
@@ -411,7 +360,7 @@ mod tests {
             true,
         );
         assert_eq!(
-            decide_enter_action(&r, false),
+            decide_enter_action(&r),
             EnterAction::ResumeInAgentPane {
                 key: "k".into(),
                 cli: CliSource::Codex
@@ -429,7 +378,7 @@ mod tests {
             true,
         );
         assert_eq!(
-            decide_enter_action(&r, false),
+            decide_enter_action(&r),
             EnterAction::NotResumable {
                 reason: NotResumableReason::LoadSessionNotSupported
             }
@@ -446,79 +395,9 @@ mod tests {
             true,
         );
         assert_eq!(
-            decide_enter_action(&r, false),
+            decide_enter_action(&r),
             EnterAction::NotResumable {
                 reason: NotResumableReason::LoadSessionNotSupported
-            }
-        );
-    }
-
-    #[test]
-    fn class_a_ended_shift_resumes_via_cli_flag() {
-        let r = row(
-            SessionOrigin::AgentPane,
-            Liveness::Ended,
-            CliSource::Claude,
-            true,
-            true,
-        );
-        assert_eq!(
-            decide_enter_action(&r, true),
-            EnterAction::ResumeCliFlag {
-                key: "k".into(),
-                cli: CliSource::Claude
-            }
-        );
-    }
-
-    #[test]
-    fn codex_class_a_ended_shift_resumes_via_cli_flag() {
-        let r = row(
-            SessionOrigin::AgentPane,
-            Liveness::Ended,
-            CliSource::Codex,
-            true,
-            true,
-        );
-        assert_eq!(
-            decide_enter_action(&r, true),
-            EnterAction::ResumeCliFlag {
-                key: "k".into(),
-                cli: CliSource::Codex
-            }
-        );
-    }
-
-    #[test]
-    fn class_a_ended_shift_not_resumable_when_cli_has_no_flag() {
-        let r = row(
-            SessionOrigin::AgentPane,
-            Liveness::Ended,
-            CliSource::Claude,
-            true,
-            false, // no --resume flag
-        );
-        assert_eq!(
-            decide_enter_action(&r, true),
-            EnterAction::NotResumable {
-                reason: NotResumableReason::CliHasNoResumeFlag
-            }
-        );
-    }
-
-    #[test]
-    fn codex_class_a_ended_shift_not_resumable_when_cli_has_no_flag() {
-        let r = row(
-            SessionOrigin::AgentPane,
-            Liveness::Ended,
-            CliSource::Codex,
-            true,
-            false, // no --resume flag
-        );
-        assert_eq!(
-            decide_enter_action(&r, true),
-            EnterAction::NotResumable {
-                reason: NotResumableReason::CliHasNoResumeFlag
             }
         );
     }
@@ -533,7 +412,7 @@ mod tests {
             true,
         );
         assert_eq!(
-            decide_enter_action(&r, false),
+            decide_enter_action(&r),
             EnterAction::ResumeInAgentPane {
                 key: "k".into(),
                 cli: CliSource::Gemini
@@ -551,7 +430,7 @@ mod tests {
             true,
         );
         assert_eq!(
-            decide_enter_action(&r, false),
+            decide_enter_action(&r),
             EnterAction::ResumeInAgentPane {
                 key: "k".into(),
                 cli: CliSource::Codex
@@ -571,7 +450,7 @@ mod tests {
             true,
         );
         assert_eq!(
-            decide_enter_action(&r, false),
+            decide_enter_action(&r),
             EnterAction::ResumeCliFlag {
                 key: "k".into(),
                 cli: CliSource::Copilot
@@ -589,44 +468,9 @@ mod tests {
             false,
         );
         assert_eq!(
-            decide_enter_action(&r, false),
+            decide_enter_action(&r),
             EnterAction::NotResumable {
                 reason: NotResumableReason::CliHasNoResumeFlag
-            }
-        );
-    }
-
-    #[test]
-    fn class_b_historical_shift_resumes_in_agent_pane_when_supported() {
-        let r = row(
-            SessionOrigin::Unknown,
-            Liveness::Historical,
-            CliSource::Claude,
-            true,
-            true,
-        );
-        assert_eq!(
-            decide_enter_action(&r, true),
-            EnterAction::ResumeInAgentPane {
-                key: "k".into(),
-                cli: CliSource::Claude
-            }
-        );
-    }
-
-    #[test]
-    fn class_b_historical_shift_not_resumable_when_load_unsupported() {
-        let r = row(
-            SessionOrigin::Unknown,
-            Liveness::Historical,
-            CliSource::Claude,
-            false,
-            true,
-        );
-        assert_eq!(
-            decide_enter_action(&r, true),
-            EnterAction::NotResumable {
-                reason: NotResumableReason::LoadSessionNotSupported
             }
         );
     }
@@ -643,7 +487,7 @@ mod tests {
             true,
         );
         assert_eq!(
-            decide_enter_action(&r, false),
+            decide_enter_action(&r),
             EnterAction::ResumeCliFlag {
                 key: "k".into(),
                 cli: CliSource::Copilot
@@ -651,28 +495,49 @@ mod tests {
         );
     }
 
+    // --- Dead rows: WSL ----------------------------------------------
+
+    #[test]
+    fn wsl_dead_row_resumes_via_cli_flag_even_for_agent_pane_origin() {
+        // The helper and the agent are host-side, so ACP `session/load`
+        // can't rehydrate an in-distro session into an agent pane.
+        let mut r = row(
+            SessionOrigin::AgentPane,
+            Liveness::Ended,
+            CliSource::Claude,
+            true,
+            true,
+        );
+        r.is_wsl = true;
+        assert_eq!(
+            decide_enter_action(&r),
+            EnterAction::ResumeCliFlag {
+                key: "k".into(),
+                cli: CliSource::Claude
+            }
+        );
+    }
+
     // --- Dead rows: Unknown CLI --------------------------------------
 
     #[test]
-    fn unknown_cli_not_resumable_in_either_direction() {
-        for shift in [false, true] {
-            for origin in [SessionOrigin::AgentPane, SessionOrigin::Unknown] {
-                for liveness in [Liveness::Ended, Liveness::Historical] {
-                    let r = row(
-                        origin.clone(),
-                        liveness.clone(),
-                        CliSource::Unknown("weird".into()),
-                        true,
-                        true,
-                    );
-                    assert_eq!(
-                        decide_enter_action(&r, shift),
-                        EnterAction::NotResumable {
-                            reason: NotResumableReason::UnknownCli
-                        },
-                        "origin={origin:?} liveness={liveness:?} shift={shift}",
-                    );
-                }
+    fn unknown_cli_not_resumable_for_any_origin_or_liveness() {
+        for origin in [SessionOrigin::AgentPane, SessionOrigin::Unknown] {
+            for liveness in [Liveness::Ended, Liveness::Historical] {
+                let r = row(
+                    origin.clone(),
+                    liveness.clone(),
+                    CliSource::Unknown("weird".into()),
+                    true,
+                    true,
+                );
+                assert_eq!(
+                    decide_enter_action(&r),
+                    EnterAction::NotResumable {
+                        reason: NotResumableReason::UnknownCli
+                    },
+                    "origin={origin:?} liveness={liveness:?}",
+                );
             }
         }
     }
