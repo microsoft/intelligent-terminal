@@ -6611,12 +6611,7 @@ mod app_turn;
 fn format_recommendations_for_chat(set: &RecommendationSet) -> String {
     use crate::coordinator::{OpenTarget, RecommendedAction};
 
-    let header = if set.choices.len() == 1 {
-        "Suggested 1 option:".to_string()
-    } else {
-        format!("Suggested {} options:", set.choices.len())
-    };
-    let mut out = header;
+    let mut lines = Vec::with_capacity(set.choices.len());
 
     for choice in &set.choices {
         let action_text = choice
@@ -6661,15 +6656,22 @@ fn format_recommendations_for_chat(set: &RecommendationSet) -> String {
         } else {
             " "
         };
-        out.push('\n');
-        out.push_str(&format!("  {} {}", marker, action_text));
+        lines.push(format!("{} {}", marker, action_text));
     }
 
-    out
+    match lines.len() {
+        0 => "Suggested 0 options:".to_string(),
+        1 => lines.pop().unwrap_or_default(),
+        _ => format!(
+            "Suggested {} options:\n  {}",
+            lines.len(),
+            lines.join("\n  ")
+        ),
+    }
 }
 
 fn format_adjusted_command_for_chat(command: &str) -> String {
-    format!("Suggested 1 option:\n  ✎ {}", command)
+    format!("✎ {}", command)
 }
 
 #[path = "app_status_projection.rs"]

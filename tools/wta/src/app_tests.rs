@@ -13970,9 +13970,7 @@ fn adjust_recompiles_the_command_without_changing_its_target() {
 
     assert_eq!(
         app.current_tab().completed_turns[0].details.last(),
-        Some(&ChatMessage::Agent(
-            "Suggested 1 option:\n  ✓ Run: Get-ChildItem".to_string()
-        ))
+        Some(&ChatMessage::Agent("✓ Run: Get-ChildItem".to_string()))
     );
 
     app.focus_next_recommendation_action();
@@ -14019,9 +14017,7 @@ fn adjust_recompiles_the_command_without_changing_its_target() {
 
     assert_eq!(
         app.current_tab().completed_turns[0].details.last(),
-        Some(&ChatMessage::Agent(
-            "Suggested 1 option:\n  ✎ Get-ChildItem".to_string()
-        ))
+        Some(&ChatMessage::Agent("✎ Get-ChildItem".to_string()))
     );
     assert!(
         render_to_text(&mut app, 100, 30).contains("  ↳ > include hidden files"),
