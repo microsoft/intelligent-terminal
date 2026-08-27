@@ -16,13 +16,10 @@
     '/model works'                      = '/model opens the model picker'
     '/agent picker works'               = '/agent appears in the slash menu and opens a keyboard-operable picker'
     'Invalid /agent selection is safe'  = '/agent rejects an unavailable id without changing the pane or global setting'
-    # PR #505 provider-native Yolo. The cross-provider item deliberately matches all three
-    # matrix cases: one failed provider makes the release item fail, while unavailable providers
-    # remain visible as skipped prerequisites in the underlying E2E report.
+    # PR #505 provider-native Yolo. Publishable mappings are zero-token only. Real model/tool
+    # acceptance intentionally stays local-only and therefore has no release-report mapping.
     'Yolo setting persists'             = 'Feature provider-native Yolo with Copilot\.Yolo setting persists'
     'Provider-native Yolo toggles per live session' = 'Feature provider-native Yolo with Copilot\.Provider-native Yolo toggles per live session'
-    'Yolo completes a real tool task'   = 'Feature provider-native Yolo with Copilot\.Yolo completes a real tool task'
-    'Provider-native Yolo works across supported agents' = 'Feature provider-native Yolo matrix\.(Claude|Codex|Gemini) provider-native Yolo completes a real tool task'
     'Yolo never answers ACP permissions' = 'Feature Yolo mode permission boundary\.Yolo never answers ACP permissions'
     'Unsupported agents reject Yolo safely' = 'Feature unsupported provider Yolo behavior\.Unsupported agents reject Yolo safely'
     'AllowYoloMode policy blocks Yolo'  = 'Feature AllowYoloMode policy\.AllowYoloMode policy blocks Yolo'
