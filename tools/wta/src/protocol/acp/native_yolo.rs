@@ -5,11 +5,14 @@
 //! sequences RPCs so stale operations cannot win. The App owns desired Yolo
 //! state; ordinary permission requests always remain user-selected.
 
+mod providers;
+
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, RwLock};
 
 use agent_client_protocol as acp;
+use providers::{ConfigSpec, ModeSpec, ProviderSpec};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 enum NativeYoloAction {
@@ -38,26 +41,6 @@ enum SessionNativeYolo {
     Available(NativeYoloChannel),
     UnsupportedProvider { provider: String },
     MissingCapability { provider: String, loaded: bool },
-}
-
-#[derive(Clone, Copy)]
-struct ConfigSpec {
-    id: &'static str,
-    category: &'static str,
-    enable_value: &'static str,
-    default_restore_value: &'static str,
-}
-
-#[derive(Clone, Copy)]
-struct ModeSpec {
-    enable_mode_id: &'static str,
-    default_restore_mode_id: &'static str,
-}
-
-#[derive(Clone, Copy)]
-struct ProviderSpec {
-    config: Option<ConfigSpec>,
-    mode: Option<ModeSpec>,
 }
 
 #[derive(Clone, Debug)]
@@ -348,7 +331,7 @@ impl NativeYoloState {
             .clone()
             .unwrap_or_else(|| "current provider".to_string());
         let previous = self.sessions.read().unwrap().get(session_id).cloned();
-        let capability = match provider_spec(&provider) {
+        let capability = match providers::lookup(&provider).and_then(|adapter| adapter.spec()) {
             Some(spec) => {
                 let discovered = spec
                     .config
@@ -378,53 +361,8 @@ impl NativeYoloState {
             .read()
             .unwrap()
             .as_deref()
-            .and_then(provider_spec)
-    }
-}
-
-fn provider_spec(agent_id: &str) -> Option<ProviderSpec> {
-    match agent_id {
-        crate::agent_registry::COPILOT_AGENT_ID => Some(ProviderSpec {
-            config: Some(ConfigSpec {
-                id: "allow_all",
-                category: "permissions",
-                enable_value: "on",
-                default_restore_value: "off",
-            }),
-            mode: None,
-        }),
-        crate::agent_registry::CLAUDE_AGENT_ID => Some(ProviderSpec {
-            config: Some(ConfigSpec {
-                id: "mode",
-                category: "mode",
-                enable_value: "bypassPermissions",
-                default_restore_value: "default",
-            }),
-            mode: Some(ModeSpec {
-                enable_mode_id: "bypassPermissions",
-                default_restore_mode_id: "default",
-            }),
-        }),
-        crate::agent_registry::CODEX_AGENT_ID => Some(ProviderSpec {
-            config: Some(ConfigSpec {
-                id: "mode",
-                category: "mode",
-                enable_value: "agent-full-access",
-                default_restore_value: "agent",
-            }),
-            mode: Some(ModeSpec {
-                enable_mode_id: "agent-full-access",
-                default_restore_mode_id: "agent",
-            }),
-        }),
-        crate::agent_registry::GEMINI_AGENT_ID => Some(ProviderSpec {
-            config: None,
-            mode: Some(ModeSpec {
-                enable_mode_id: "yolo",
-                default_restore_mode_id: "default",
-            }),
-        }),
-        _ => None,
+            .and_then(providers::lookup)
+            .and_then(|adapter| adapter.spec())
     }
 }
 
