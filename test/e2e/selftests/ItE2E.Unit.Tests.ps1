@@ -251,4 +251,24 @@ Describe 'Agent readiness log boundary' -Tag 'Unit' {
             $script:observedOffset | Should -Be 100
         }
     }
+
+    It 'matches native Yolo updates by launch slice and ACP session' {
+        InModuleScope ItE2E {
+            $script:observedOffset = $null
+            $app = [pscustomobject]@{
+                LogStartOffset = @{ 'wta-main_helper-old.log' = 200 }
+                PreLaunchLogStartOffset = @{ 'wta-main_helper-old.log' = 100 }
+            }
+            Mock Get-ItLogText {
+                param($App)
+                $script:observedOffset = $App.LogStartOffset['wta-main_helper-old.log']
+                'session_id=session-a provider-native Yolo updated for live session enabled=true'
+            }
+
+            Test-AgentNativeYoloUpdate -App $app -AcpSessionId 'session-a' -Enabled $true | Should -BeTrue
+            Test-AgentNativeYoloUpdate -App $app -AcpSessionId 'session-b' -Enabled $true | Should -BeFalse
+            Test-AgentNativeYoloUpdate -App $app -AcpSessionId 'session-a' -Enabled $false | Should -BeFalse
+            $script:observedOffset | Should -Be 100
+        }
+    }
 }

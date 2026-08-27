@@ -3758,17 +3758,25 @@ fn dispatch_master_ext_request(
                 for ((session_id, enabled), operation) in
                     sessions.into_iter().zip(reserved_yolo_operations)
                 {
-                    if let Err(error) =
-                        apply_native_yolo_checked(&conn, &client_state, operation).await
-                    {
-                        tracing::warn!(
-                            target: "acp",
-                            session_id = %session_id.0,
-                            enabled,
-                            error = %error,
-                            "provider-native Yolo runtime reconciliation failed"
-                        );
-                        failure.get_or_insert_with(|| error.to_string());
+                    match apply_native_yolo_checked(&conn, &client_state, operation).await {
+                        Ok(()) => {
+                            tracing::info!(
+                                target: "acp",
+                                session_id = %session_id.0,
+                                enabled,
+                                "provider-native Yolo updated for live session"
+                            );
+                        }
+                        Err(error) => {
+                            tracing::warn!(
+                                target: "acp",
+                                session_id = %session_id.0,
+                                enabled,
+                                error = %error,
+                                "provider-native Yolo runtime reconciliation failed"
+                            );
+                            failure.get_or_insert_with(|| error.to_string());
+                        }
                     }
                 }
                 let _ = event_tx.send(AppEvent::RuntimeYoloReconcileCompleted {

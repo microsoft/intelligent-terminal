@@ -347,6 +347,27 @@ function Get-AgentAcpStatus {
     }
 }
 
+function Test-AgentNativeYoloUpdate {
+    [CmdletBinding()] param(
+        [Parameter(Mandatory)]$App,
+        [Parameter(Mandatory)][string]$AcpSessionId,
+        [Parameter(Mandatory)][bool]$Enabled
+    )
+
+    $sessionPattern = [regex]::Escape($AcpSessionId)
+    $enabledPattern = 'enabled=' + $Enabled.ToString().ToLowerInvariant()
+    $logApp = $App.PSObject.Copy()
+    if ($App.PSObject.Properties.Name -contains 'PreLaunchLogStartOffset') {
+        $logApp.LogStartOffset = $App.PreLaunchLogStartOffset
+    }
+    @((Get-ItLogText -App $logApp -Name 'wta-main_helper-*.log' -SinceStart) -split '\r?\n' |
+        Where-Object {
+            $_ -match $sessionPattern -and
+            $_ -match $enabledPattern -and
+            $_ -match 'provider-native Yolo updated for live session'
+        }).Count -gt 0
+}
+
 function Wait-AgentReady {
     <#
     .SYNOPSIS
