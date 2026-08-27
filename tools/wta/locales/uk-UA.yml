@@ -50,6 +50,17 @@ chat.autofix_prompt_label: "Автоматично діагностовано н
 chat.turn_canceled: "(скасовано)"
 chat.turn_adjusted: "(скориговано)"
 chat.turn_executed: "→ виконано: %{title}"
+# Постійні мітки категорій інструментів, що відображаються після маркера стану та перед об’єктом дії.
+chat.tool_kind.run: "Запуск"
+chat.tool_kind.read: "Читання"
+chat.tool_kind.search: "Пошук"
+chat.tool_kind.edit: "Редагування"
+chat.tool_kind.delete: "Видалення"
+chat.tool_kind.move: "Переміщення"
+chat.tool_kind.fetch: "Отримання"
+chat.tool_kind.think: "Міркування"
+chat.tool_kind.mode: "Режим"
+chat.tool_kind.other: "Інструмент"
 
 # ── Заповнювачі введення (src/ui/input.rs) ────────────────────────────────────────────
 input.placeholder.connected: "Запитайте будь-що, / для команд.."  # {Locked="/"}

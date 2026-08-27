@@ -50,6 +50,17 @@ chat.autofix_prompt_label: "Автоматично диагностициран 
 chat.turn_canceled: "(отменено)"
 chat.turn_adjusted: "(коригирано)"
 chat.turn_executed: "→ изпълнено: %{title}"
+# Persistent tool-category labels shown after a status marker and before a subject.
+chat.tool_kind.run: "Изпълнение"
+chat.tool_kind.read: "Четене"
+chat.tool_kind.search: "Търсене"
+chat.tool_kind.edit: "Редактиране"
+chat.tool_kind.delete: "Изтриване"
+chat.tool_kind.move: "Преместване"
+chat.tool_kind.fetch: "Извличане"
+chat.tool_kind.think: "Мислене"
+chat.tool_kind.mode: "Режим"
+chat.tool_kind.other: "Инструмент"
 
 # ── Input placeholders (src/ui/input.rs) ────────────────────────────────────
 input.placeholder.connected: "Попитайте каквото и да е, / за команди.."  # {Locked="/"}

@@ -50,6 +50,17 @@ chat.autofix_prompt_label: "Nýleg skipanavilla sjálfgreind"
 chat.turn_canceled: "(hætt við)"
 chat.turn_adjusted: "(aðlagað)"
 chat.turn_executed: "→ keyrt: %{title}"
+# Varanleg merki verkfæraflokka sem birtast á eftir stöðumerki og á undan viðfangsefninu.
+chat.tool_kind.run: "Keyra"
+chat.tool_kind.read: "Lesa"
+chat.tool_kind.search: "Leita"
+chat.tool_kind.edit: "Breyta"
+chat.tool_kind.delete: "Eyða"
+chat.tool_kind.move: "Færa"
+chat.tool_kind.fetch: "Sækja"
+chat.tool_kind.think: "Hugsa"
+chat.tool_kind.mode: "Hamur"
+chat.tool_kind.other: "Verkfæri"
 
 # ── Input placeholders (src/ui/input.rs) ────────────────────────────────────
 input.placeholder.connected: "Spurðu hvað sem er, / fyrir skipanir.."  # {Locked="/"}

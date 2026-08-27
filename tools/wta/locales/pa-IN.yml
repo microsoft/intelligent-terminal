@@ -50,6 +50,17 @@ chat.autofix_prompt_label: "ਹਾਲੀਆ ਕਮਾਂਡ ਅਸਫਲਤਾ �
 chat.turn_canceled: "(ਰੱਦ ਕੀਤਾ ਗਿਆ)"
 chat.turn_adjusted: "(ਸਮਾਇਤ ਕੀਤਾ ਗਿਆ)"
 chat.turn_executed: "→ ਚਲਾਇਆ ਗਿਆ: %{title}"
+# Persistent tool-category labels shown after a status marker and before a subject.
+chat.tool_kind.run: "ਚਲਾਓ"
+chat.tool_kind.read: "ਪੜ੍ਹੋ"
+chat.tool_kind.search: "ਖੋਜੋ"
+chat.tool_kind.edit: "ਸੰਪਾਦਿਤ ਕਰੋ"
+chat.tool_kind.delete: "ਮਿਟਾਓ"
+chat.tool_kind.move: "ਹਿਲਾਓ"
+chat.tool_kind.fetch: "ਪ੍ਰਾਪਤ ਕਰੋ"
+chat.tool_kind.think: "ਸੋਚੋ"
+chat.tool_kind.mode: "ਮੋਡ"
+chat.tool_kind.other: "ਟੂਲ"
 
 # ── ਇਨਪੁਟ ਪਲੇਸਹੋਲਡਰ (src/ui/input.rs) ────────────────────────────────────
 input.placeholder.connected: "ਕੁਝ ਵੀ ਪੁੱਛੋ, / ਕਮਾਂਡਾਂ ਲਈ.."  # {Locked="/"}

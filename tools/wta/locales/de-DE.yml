@@ -50,6 +50,17 @@ chat.autofix_prompt_label: "Kürzlicher Befehlsfehler automatisch diagnostiziert
 chat.turn_canceled: "(abgebrochen)"
 chat.turn_adjusted: "(angepasst)"
 chat.turn_executed: "→ ausgeführt: %{title}"
+# Persistent tool-category labels shown after a status marker and before a subject.
+chat.tool_kind.run: "Ausführen"
+chat.tool_kind.read: "Lesen"
+chat.tool_kind.search: "Suchen"
+chat.tool_kind.edit: "Bearbeiten"
+chat.tool_kind.delete: "Löschen"
+chat.tool_kind.move: "Verschieben"
+chat.tool_kind.fetch: "Abrufen"
+chat.tool_kind.think: "Denken"
+chat.tool_kind.mode: "Modus"
+chat.tool_kind.other: "Werkzeug"
 
 # ── Eingabeplatzhalter (src/ui/input.rs) ────────────────────────────────────────────
 input.placeholder.connected: "Frag etwas, / für Befehle.."  # {Locked="/"}

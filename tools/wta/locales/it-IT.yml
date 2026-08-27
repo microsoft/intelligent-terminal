@@ -50,6 +50,17 @@ chat.autofix_prompt_label: "Diagnosticato automaticamente un errore recente di u
 chat.turn_canceled: "(annullato)"
 chat.turn_adjusted: "(modificato)"
 chat.turn_executed: "→ eseguito: %{title}"
+# Etichette persistenti delle categorie di strumenti mostrate dopo un indicatore di stato e prima del soggetto.
+chat.tool_kind.run: "Esegui"
+chat.tool_kind.read: "Leggi"
+chat.tool_kind.search: "Cerca"
+chat.tool_kind.edit: "Modifica"
+chat.tool_kind.delete: "Elimina"
+chat.tool_kind.move: "Sposta"
+chat.tool_kind.fetch: "Recupera"
+chat.tool_kind.think: "Pensa"
+chat.tool_kind.mode: "Modalità"
+chat.tool_kind.other: "Strumento"
 
 # ── Segnaposto di input (src/ui/input.rs) ────────────────────────────────────────────
 input.placeholder.connected: "Chiedi qualsiasi cosa, / per i comandi.."  # {Locked="/"}

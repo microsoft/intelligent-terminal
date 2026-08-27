@@ -50,6 +50,17 @@ chat.autofix_prompt_label: "শেহতীয়া আদেশ বিফল�
 chat.turn_canceled: "(বাতিল কৰা হৈছে)"
 chat.turn_adjusted: "(সংশোধন কৰা হৈছে)"
 chat.turn_executed: "→ সম্পাদন কৰা হ’ল: %{title}"
+# Persistent tool-category labels shown after a status marker and before a subject.
+chat.tool_kind.run: "চলাও"
+chat.tool_kind.read: "পঢ়া"
+chat.tool_kind.search: "সন্ধান"
+chat.tool_kind.edit: "সম্পাদনা"
+chat.tool_kind.delete: "মচা"
+chat.tool_kind.move: "স্থানান্তৰ"
+chat.tool_kind.fetch: "আনয়ন"
+chat.tool_kind.think: "চিন্তা"
+chat.tool_kind.mode: "মোড"
+chat.tool_kind.other: "সঁজুলি"
 
 # ── ইনপুট প্লেচহ'ল্ডাৰ (src/ui/input.rs) ────────────────────────────────────
 input.placeholder.connected: "যিকোনো কথা সুধিব, / কমাণ্ডৰ বাবে.."  # {Locked="/"}

@@ -50,6 +50,17 @@ chat.autofix_prompt_label: "Son komut hatası otomatik olarak teşhis edildi"
 chat.turn_canceled: "(iptal edildi)"
 chat.turn_adjusted: "(ayarlandı)"
 chat.turn_executed: "→ yürütüldü: %{title}"
+# Durum işaretinden sonra ve konudan önce gösterilen kalıcı araç kategorisi etiketleri.
+chat.tool_kind.run: "Çalıştırma"
+chat.tool_kind.read: "Okuma"
+chat.tool_kind.search: "Arama"
+chat.tool_kind.edit: "Düzenleme"
+chat.tool_kind.delete: "Silme"
+chat.tool_kind.move: "Taşıma"
+chat.tool_kind.fetch: "Getirme"
+chat.tool_kind.think: "Düşünme"
+chat.tool_kind.mode: "Mod"
+chat.tool_kind.other: "Araç"
 
 # ── Input placeholders (src/ui/input.rs) ────────────────────────────────────
 input.placeholder.connected: "Herhangi bir şey sorun, / komutlar için.."  # {Locked="/"}

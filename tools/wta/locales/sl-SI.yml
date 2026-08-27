@@ -50,6 +50,17 @@ chat.autofix_prompt_label: "Samodejno diagnosticirana nedavna napaka ukaza"
 chat.turn_canceled: "(preklicano)"
 chat.turn_adjusted: "(prilagojeno)"
 chat.turn_executed: "→ izvedeno: %{title}"
+# Stalne oznake kategorij orodij, prikazane za oznako stanja in pred predmetom.
+chat.tool_kind.run: "Zagon"
+chat.tool_kind.read: "Branje"
+chat.tool_kind.search: "Iskanje"
+chat.tool_kind.edit: "Urejanje"
+chat.tool_kind.delete: "Brisanje"
+chat.tool_kind.move: "Premik"
+chat.tool_kind.fetch: "Pridobivanje"
+chat.tool_kind.think: "Razmišljanje"
+chat.tool_kind.mode: "Način"
+chat.tool_kind.other: "Orodje"
 
 # ── Input placeholders (src/ui/input.rs) ────────────────────────────────────
 input.placeholder.connected: "Vprašajte karkoli, / za ukaze.."  # {Locked="/"}

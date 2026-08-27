@@ -50,6 +50,17 @@ chat.autofix_prompt_label: "Diagnosticouse automaticamente un fallo recente dun 
 chat.turn_canceled: "(cancelado)"
 chat.turn_adjusted: "(axustado)"
 chat.turn_executed: "→ executado: %{title}"
+# Etiquetas persistentes de categoría de ferramenta mostradas tras un marcador de estado e antes do asunto.
+chat.tool_kind.run: "Executar"
+chat.tool_kind.read: "Ler"
+chat.tool_kind.search: "Buscar"
+chat.tool_kind.edit: "Editar"
+chat.tool_kind.delete: "Eliminar"
+chat.tool_kind.move: "Mover"
+chat.tool_kind.fetch: "Obter"
+chat.tool_kind.think: "Pensar"
+chat.tool_kind.mode: "Modo"
+chat.tool_kind.other: "Ferramenta"
 
 # ── Marcadores de entrada (src/ui/input.rs) ────────────────────────────────────
 input.placeholder.connected: "Pregunte o que queira, / para comandos.."  # {Locked="/"}

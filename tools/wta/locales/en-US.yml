@@ -45,6 +45,19 @@ auth.login_failed_help_default: "  Press Enter to retry, or Esc to go back."  # 
 chat.activity_thinking: "Thinking…"
 chat.welcome_title: "Welcome to Intelligent Terminal!"
 chat.welcome_disclaimer: "Intelligent Terminal uses AI."  # {Locked="AI"}
+# Persistent semantic type labels shown after a tool call's status marker.
+# These are action categories, not status words. "Run" means execute a shell
+# command, "Think" means internal AI reasoning, and "Tool" is the safe fallback.
+chat.tool_kind.run: "Run"
+chat.tool_kind.read: "Read"
+chat.tool_kind.search: "Search"
+chat.tool_kind.edit: "Edit"
+chat.tool_kind.delete: "Delete"
+chat.tool_kind.move: "Move"
+chat.tool_kind.fetch: "Fetch"
+chat.tool_kind.think: "Think"
+chat.tool_kind.mode: "Mode"
+chat.tool_kind.other: "Tool"
 # Header label for the AI agent's step-by-step plan section
 chat.plan_header: "Plan:"
 chat.plan_marker_completed: "[x]"  # {Locked}

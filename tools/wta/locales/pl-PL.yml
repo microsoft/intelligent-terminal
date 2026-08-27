@@ -50,6 +50,17 @@ chat.autofix_prompt_label: "Automatyczne zdiagnozowanie ostatniego błędu polec
 chat.turn_canceled: "(anulowano)"
 chat.turn_adjusted: "(dostosowano)"
 chat.turn_executed: "→ wykonano: %{title}"
+# Persistent tool-category labels shown after a status marker and before a subject.
+chat.tool_kind.run: "Uruchom"
+chat.tool_kind.read: "Odczytaj"
+chat.tool_kind.search: "Wyszukaj"
+chat.tool_kind.edit: "Edytuj"
+chat.tool_kind.delete: "Usuń"
+chat.tool_kind.move: "Przenieś"
+chat.tool_kind.fetch: "Pobierz"
+chat.tool_kind.think: "Pomyśl"
+chat.tool_kind.mode: "Tryb"
+chat.tool_kind.other: "Narzędzie"
 
 # ── Input placeholders (src/ui/input.rs) ────────────────────────────────────
 input.placeholder.connected: "Zapytaj o cokolwiek, / dla poleceń.."  # {Locked="/"}

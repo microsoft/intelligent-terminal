@@ -50,6 +50,17 @@ chat.autofix_prompt_label: "अलीकडील कमांड अपयश�
 chat.turn_canceled: "(रद्द केले)"
 chat.turn_adjusted: "(समायोजित केले)"
 chat.turn_executed: "→ अंमलात आणले: %{title}"
+# Persistent tool-category labels shown after a status marker and before a subject.
+chat.tool_kind.run: "चालवा"
+chat.tool_kind.read: "वाचा"
+chat.tool_kind.search: "शोधा"
+chat.tool_kind.edit: "संपादित करा"
+chat.tool_kind.delete: "हटवा"
+chat.tool_kind.move: "हलवा"
+chat.tool_kind.fetch: "आणा"
+chat.tool_kind.think: "विचार करा"
+chat.tool_kind.mode: "मोड"
+chat.tool_kind.other: "साधन"
 
 # ── इनपुट प्लेसहोल्डर (src/ui/input.rs) ────────────────────────────────────
 input.placeholder.connected: "काहीही विचारा, / कमांडसाठी.."  # {Locked="/"}

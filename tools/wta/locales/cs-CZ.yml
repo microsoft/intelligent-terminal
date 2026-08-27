@@ -50,6 +50,17 @@ chat.autofix_prompt_label: "Automaticky diagnostikováno nedávné selhání př
 chat.turn_canceled: "(zrušeno)"
 chat.turn_adjusted: "(upraveno)"
 chat.turn_executed: "→ provedeno: %{title}"
+# Persistent tool-category labels shown after a status marker and before a subject.
+chat.tool_kind.run: "Spustit"
+chat.tool_kind.read: "Číst"
+chat.tool_kind.search: "Hledat"
+chat.tool_kind.edit: "Upravit"
+chat.tool_kind.delete: "Odstranit"
+chat.tool_kind.move: "Přesunout"
+chat.tool_kind.fetch: "Načíst"
+chat.tool_kind.think: "Přemýšlet"
+chat.tool_kind.mode: "Režim"
+chat.tool_kind.other: "Nástroj"
 
 # ── Input placeholders (src/ui/input.rs) ────────────────────────────────────
 input.placeholder.connected: "Zeptejte se na cokoli, / pro příkazy.."  # {Locked="/"}

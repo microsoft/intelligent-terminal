@@ -50,6 +50,17 @@ chat.autofix_prompt_label: "Échec récent d'une commande diagnostiqué automati
 chat.turn_canceled: "(annulé)"
 chat.turn_adjusted: "(ajusté)"
 chat.turn_executed: "→ exécuté : %{title}"
+# Étiquettes persistantes de catégorie d’outil affichées après un marqueur d’état et avant le sujet.
+chat.tool_kind.run: "Exécuter"
+chat.tool_kind.read: "Lire"
+chat.tool_kind.search: "Rechercher"
+chat.tool_kind.edit: "Modifier"
+chat.tool_kind.delete: "Supprimer"
+chat.tool_kind.move: "Déplacer"
+chat.tool_kind.fetch: "Récupérer"
+chat.tool_kind.think: "Réfléchir"
+chat.tool_kind.mode: "Mode"
+chat.tool_kind.other: "Outil"
 
 # ── Espaces réservés de saisie (src/ui/input.rs) ────────────────────────────────────────────
 input.placeholder.connected: "Posez une question, / pour les commandes.."  # {Locked="/"}

@@ -50,6 +50,17 @@ chat.autofix_prompt_label: "የቅርብ ጊዜ ትዕዛዝ ብልሽት በራ
 chat.turn_canceled: "(ተሰርዟል)"
 chat.turn_adjusted: "(ተስተካክሏል)"
 chat.turn_executed: "→ ተፈጽሟል: %{title}"
+# Persistent tool-category labels shown after a status marker and before a subject.
+chat.tool_kind.run: "አሂድ"
+chat.tool_kind.read: "አንብብ"
+chat.tool_kind.search: "ፈልግ"
+chat.tool_kind.edit: "አርትዕ"
+chat.tool_kind.delete: "ሰርዝ"
+chat.tool_kind.move: "አንቀሳቅስ"
+chat.tool_kind.fetch: "አምጣ"
+chat.tool_kind.think: "አስብ"
+chat.tool_kind.mode: "ሁነታ"
+chat.tool_kind.other: "መሣሪያ"
 
 # ── Input placeholders (src/ui/input.rs) ────────────────────────────────────
 input.placeholder.connected: "Ask anything, / for commands.."  # {Locked="/"}

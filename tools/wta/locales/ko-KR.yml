@@ -46,6 +46,17 @@ chat.autofix_prompt_label: "최근 명령 실패를 자동으로 진단했습니
 chat.turn_canceled: "(취소됨)"
 chat.turn_adjusted: "(조정됨)"
 chat.turn_executed: "→ 실행됨: %{title}"
+# 상태 표시자 뒤와 대상 앞에 표시되는 영구적인 도구 범주 레이블입니다.
+chat.tool_kind.run: "실행"
+chat.tool_kind.read: "읽기"
+chat.tool_kind.search: "검색"
+chat.tool_kind.edit: "편집"
+chat.tool_kind.delete: "삭제"
+chat.tool_kind.move: "이동"
+chat.tool_kind.fetch: "가져오기"
+chat.tool_kind.think: "생각"
+chat.tool_kind.mode: "모드"
+chat.tool_kind.other: "도구"
 
 # ── 입력 자리 표시자 (src/ui/input.rs) ────────────────────────────────────────────
 input.placeholder.connected: "무엇이든 물어보세요, / 명령어.."  # {Locked="/"}

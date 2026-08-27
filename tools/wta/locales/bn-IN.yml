@@ -50,6 +50,17 @@ chat.autofix_prompt_label: "সাম্প্রতিক কমান্ড �
 chat.turn_canceled: "(বাতিল করা হয়েছে)"
 chat.turn_adjusted: "(সামঞ্জস্য করা হয়েছে)"
 chat.turn_executed: "→ সম্পন্ন: %{title}"
+# Persistent tool-category labels shown after a status marker and before a subject.
+chat.tool_kind.run: "চালান"
+chat.tool_kind.read: "পড়ুন"
+chat.tool_kind.search: "অনুসন্ধান"
+chat.tool_kind.edit: "সম্পাদনা"
+chat.tool_kind.delete: "মুছুন"
+chat.tool_kind.move: "সরান"
+chat.tool_kind.fetch: "আনুন"
+chat.tool_kind.think: "ভাবনা"
+chat.tool_kind.mode: "মোড"
+chat.tool_kind.other: "টুল"
 
 # ── ইনপুট প্লেসহোল্ডার (src/ui/input.rs) ────────────────────────────────────
 input.placeholder.connected: "যেকোনো কিছু জিজ্ঞাসা করুন, / কমান্ডের জন্য.."  # {Locked="/"}

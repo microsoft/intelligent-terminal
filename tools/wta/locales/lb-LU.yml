@@ -50,6 +50,17 @@ chat.autofix_prompt_label: "Rezent Kommandoversoen automatesch diagnostizéiert"
 chat.turn_canceled: "(ofgebrach)"
 chat.turn_adjusted: "(ugepasst)"
 chat.turn_executed: "→ ausgeféiert: %{title}"
+# Persistent tool-category labels shown after a status marker and before a subject.
+chat.tool_kind.run: "Ausféieren"
+chat.tool_kind.read: "Liesen"
+chat.tool_kind.search: "Sichen"
+chat.tool_kind.edit: "Änneren"
+chat.tool_kind.delete: "Läschen"
+chat.tool_kind.move: "Réckelen"
+chat.tool_kind.fetch: "Ofruffen"
+chat.tool_kind.think: "Denken"
+chat.tool_kind.mode: "Modus"
+chat.tool_kind.other: "Tool"
 
 # ── Input-Plazhalter (src/ui/input.rs) ────────────────────────────────────
 input.placeholder.connected: "Froen eppes, / fir Kommandoen.."  # {Locked="/"}

@@ -50,6 +50,17 @@ chat.autofix_prompt_label: "Methiant gorchymyn diweddar wedi'i ddiagnosio'n awto
 chat.turn_canceled: "(canslwyd)"
 chat.turn_adjusted: "(wedi'i addasu)"
 chat.turn_executed: "→ wedi'i weithredu: %{title}"
+# Persistent tool-category labels shown after a status marker and before a subject.
+chat.tool_kind.run: "Rhedeg"
+chat.tool_kind.read: "Darllen"
+chat.tool_kind.search: "Chwilio"
+chat.tool_kind.edit: "Golygu"
+chat.tool_kind.delete: "Dileu"
+chat.tool_kind.move: "Symud"
+chat.tool_kind.fetch: "Nôl"
+chat.tool_kind.think: "Meddwl"
+chat.tool_kind.mode: "Modd"
+chat.tool_kind.other: "Teclyn"
 
 # ── Dalfannau mewnbwn (src/ui/input.rs) ────────────────────────────────────
 input.placeholder.connected: "Gofynnwch unrhyw beth, / am orchmynion.."  # {Locked="/"}

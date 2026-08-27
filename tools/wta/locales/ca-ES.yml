@@ -50,6 +50,17 @@ chat.autofix_prompt_label: "Diagnosticada automàticament una fallada recent d'u
 chat.turn_canceled: "(cancel·lat)"
 chat.turn_adjusted: "(ajustat)"
 chat.turn_executed: "→ executat: %{title}"
+# Persistent tool-category labels shown after a status marker and before a subject.
+chat.tool_kind.run: "Executa"
+chat.tool_kind.read: "Llegeix"
+chat.tool_kind.search: "Cerca"
+chat.tool_kind.edit: "Edita"
+chat.tool_kind.delete: "Suprimeix"
+chat.tool_kind.move: "Mou"
+chat.tool_kind.fetch: "Obtén"
+chat.tool_kind.think: "Pensa"
+chat.tool_kind.mode: "Mode"
+chat.tool_kind.other: "Eina"
 
 # ── Marcadors d'entrada (src/ui/input.rs) ────────────────────────────────────
 input.placeholder.connected: "Pregunteu el que vulgueu, / per a ordres.."  # {Locked="/"}

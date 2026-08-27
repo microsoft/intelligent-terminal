@@ -50,6 +50,17 @@ chat.autofix_prompt_label: "[!! Auto-diagnosed_a_recent_command_failure !!]"
 chat.turn_canceled: "[!! (cancel_ed) !!]"
 chat.turn_adjusted: "[!!_(adjusted)_!!]"
 chat.turn_executed: "[!! → execu_ted: %{title} !!]"
+# Persistent tool-category labels shown after a status marker and before a subject.
+chat.tool_kind.run: "[!! Ru_n !!]"
+chat.tool_kind.read: "[!! Re_ad !!]"
+chat.tool_kind.search: "[!! Sea_rch !!]"
+chat.tool_kind.edit: "[!! Ed_it !!]"
+chat.tool_kind.delete: "[!! Del_ete !!]"
+chat.tool_kind.move: "[!! Mo_ve !!]"
+chat.tool_kind.fetch: "[!! Fet_ch !!]"
+chat.tool_kind.think: "[!! Thi_nk !!]"
+chat.tool_kind.mode: "[!! Mo_de !!]"
+chat.tool_kind.other: "[!! To_ol !!]"
 
 # ── Input placeholders (src/ui/input.rs) ────────────────────────────────────
 input.placeholder.connected: "[!! Ask_ anything, / for commands.. !!]"  # {Locked="/"}

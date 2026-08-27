@@ -1421,6 +1421,8 @@ reparenting
 REPH
 replatformed
 Replymessage
+repointed
+repointing
 reportfileaccesses
 repositorypath
 rerasterize

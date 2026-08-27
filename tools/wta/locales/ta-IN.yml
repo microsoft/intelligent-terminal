@@ -50,6 +50,17 @@ chat.autofix_prompt_label: "சமீபத்திய கட்டளை த�
 chat.turn_canceled: "(ரத்து செய்யப்பட்டது)"
 chat.turn_adjusted: "(சரிசெய்யப்பட்டது)"
 chat.turn_executed: "→ செயல்படுத்தப்பட்டது: %{title}"
+# நிலைக் குறிக்குப் பிறகும் பொருளுக்கு முன்பும் காட்டப்படும் நிலையான கருவி-வகை லேபிள்கள்.
+chat.tool_kind.run: "இயக்கு"
+chat.tool_kind.read: "படி"
+chat.tool_kind.search: "தேடு"
+chat.tool_kind.edit: "திருத்து"
+chat.tool_kind.delete: "நீக்கு"
+chat.tool_kind.move: "நகர்த்து"
+chat.tool_kind.fetch: "பெறு"
+chat.tool_kind.think: "சிந்தி"
+chat.tool_kind.mode: "பயன்முறை"
+chat.tool_kind.other: "கருவி"
 
 # ── உள்ளீடு இடப்பிடி (src/ui/input.rs) ────────────────────────────────────
 input.placeholder.connected: "எதையும் கேளுங்கள், / கட்டளைகளுக்கு.."  # {Locked="/"}

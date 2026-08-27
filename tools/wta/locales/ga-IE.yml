@@ -50,6 +50,17 @@ chat.autofix_prompt_label: "Diagnóisíodh teip ar ordú le déanaí go huathoib
 chat.turn_canceled: "(cealaithe)"
 chat.turn_adjusted: "(coigeartaithe)"
 chat.turn_executed: "→ rinneadh: %{title}"
+# Lipéid bhuana chatagóir uirlise a thaispeántar tar éis marcóir stádais agus roimh an ábhar.
+chat.tool_kind.run: "Rith"
+chat.tool_kind.read: "Léigh"
+chat.tool_kind.search: "Cuardaigh"
+chat.tool_kind.edit: "Cuir in eagar"
+chat.tool_kind.delete: "Scrios"
+chat.tool_kind.move: "Bog"
+chat.tool_kind.fetch: "Faigh"
+chat.tool_kind.think: "Smaoinigh"
+chat.tool_kind.mode: "Mód"
+chat.tool_kind.other: "Uirlis"
 
 # ── Ionadóirí ionchuir (src/ui/input.rs) ────────────────────────────────────
 input.placeholder.connected: "Cuir ceist ar bith, / le haghaidh orduithe.."  # {Locked="/"}

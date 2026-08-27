@@ -50,6 +50,17 @@ chat.autofix_prompt_label: "अद्ल्या आदेश अपयशा�
 chat.turn_canceled: "(रद्द केल्लें)"
 chat.turn_adjusted: "(समायोजित केल्लें)"
 chat.turn_executed: "→ निश्पादीत: %{title}"
+# स्थिती चिन्हा उपरांत आनी विशया आदीं दाखोवपी कायम साधन-वर्ग लेबलां.
+chat.tool_kind.run: "चलयात"
+chat.tool_kind.read: "वाचात"
+chat.tool_kind.search: "सोदात"
+chat.tool_kind.edit: "संपादन करात"
+chat.tool_kind.delete: "काडून उडयात"
+chat.tool_kind.move: "हालोवयात"
+chat.tool_kind.fetch: "मेळयात"
+chat.tool_kind.think: "विचार करात"
+chat.tool_kind.mode: "मोड"
+chat.tool_kind.other: "साधन"
 
 # ── इनपुट प्लेसहोल्डर (src/ui/input.rs) ────────────────────────────────────
 input.placeholder.connected: "कितेंय विचारात, / कमांडां खातीर.."  # {Locked="/"}

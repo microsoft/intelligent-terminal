@@ -50,6 +50,17 @@ chat.autofix_prompt_label: "Automatski dijagnostikovan nedavni neuspeh komande"
 chat.turn_canceled: "(otkazano)"
 chat.turn_adjusted: "(prilagođeno)"
 chat.turn_executed: "→ izvršeno: %{title}"
+# Trajne oznake kategorija alata prikazane posle oznake statusa i pre predmeta.
+chat.tool_kind.run: "Pokretanje"
+chat.tool_kind.read: "Čitanje"
+chat.tool_kind.search: "Pretraga"
+chat.tool_kind.edit: "Uređivanje"
+chat.tool_kind.delete: "Brisanje"
+chat.tool_kind.move: "Premeštanje"
+chat.tool_kind.fetch: "Preuzimanje"
+chat.tool_kind.think: "Razmišljanje"
+chat.tool_kind.mode: "Režim"
+chat.tool_kind.other: "Alat"
 
 # ── Input placeholders (src/ui/input.rs) ────────────────────────────────────
 input.placeholder.connected: "Pitajte bilo šta, / za komande.."  # {Locked="/"}

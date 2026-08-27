@@ -50,6 +50,17 @@ chat.autofix_prompt_label: "Kua tātaringia aunoatia te rahunga whakahau tata"
 chat.turn_canceled: "(whakakorea)"
 chat.turn_adjusted: "(whakatikaina)"
 chat.turn_executed: "→ kua mahia: %{title}"
+# Persistent tool-category labels shown after a status marker and before a subject.
+chat.tool_kind.run: "Whakahaere"
+chat.tool_kind.read: "Pānui"
+chat.tool_kind.search: "Rapu"
+chat.tool_kind.edit: "Whakatika"
+chat.tool_kind.delete: "Muku"
+chat.tool_kind.move: "Nuku"
+chat.tool_kind.fetch: "Tiki"
+chat.tool_kind.think: "Whakaaro"
+chat.tool_kind.mode: "Aratau"
+chat.tool_kind.other: "Taputapu"
 
 # ── Input placeholders (src/ui/input.rs) ────────────────────────────────────
 input.placeholder.connected: "Patai i tetahi mea, / mo nga whakahau.."  # {Locked="/"}

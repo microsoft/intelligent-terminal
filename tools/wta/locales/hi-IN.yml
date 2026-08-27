@@ -50,6 +50,17 @@ chat.autofix_prompt_label: "हाल की कमांड विफलता 
 chat.turn_canceled: "(रद्द कर दिया गया)"
 chat.turn_adjusted: "(समायोजित किया गया)"
 chat.turn_executed: "→ निष्पादित: %{title}"
+# स्थिति चिह्न के बाद और विषय से पहले दिखने वाले स्थायी टूल-श्रेणी लेबल।
+chat.tool_kind.run: "चलाएँ"
+chat.tool_kind.read: "पढ़ें"
+chat.tool_kind.search: "खोजें"
+chat.tool_kind.edit: "संपादित करें"
+chat.tool_kind.delete: "हटाएँ"
+chat.tool_kind.move: "ले जाएँ"
+chat.tool_kind.fetch: "प्राप्त करें"
+chat.tool_kind.think: "सोचें"
+chat.tool_kind.mode: "मोड"
+chat.tool_kind.other: "टूल"
 
 # ── इनपुट प्लेसहोल्डर (src/ui/input.rs) ────────────────────────────────────
 input.placeholder.connected: "कुछ भी पूछें, / कमांड के लिए.."  # {Locked="/"}

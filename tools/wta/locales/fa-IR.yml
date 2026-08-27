@@ -50,6 +50,17 @@ chat.autofix_prompt_label: "خرابی فرمان اخیر به‌طور خود�
 chat.turn_canceled: "(لغو شد)"
 chat.turn_adjusted: "(تنظیم شد)"
 chat.turn_executed: "→ اجرا شد: %{title}"
+# Persistent tool-category labels shown after a status marker and before a subject.
+chat.tool_kind.run: "اجرا"
+chat.tool_kind.read: "خواندن"
+chat.tool_kind.search: "جستجو"
+chat.tool_kind.edit: "ویرایش"
+chat.tool_kind.delete: "حذف"
+chat.tool_kind.move: "انتقال"
+chat.tool_kind.fetch: "واکشی"
+chat.tool_kind.think: "تفکر"
+chat.tool_kind.mode: "حالت"
+chat.tool_kind.other: "ابزار"
 
 # ── جای‌نگهدارهای ورودی (src/ui/input.rs) ────────────────────────────────────
 input.placeholder.connected: "هرچیزی بپرسید، / برای دستورات.."  # {Locked="/"}

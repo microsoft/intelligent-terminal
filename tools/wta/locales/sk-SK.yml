@@ -50,6 +50,17 @@ chat.autofix_prompt_label: "Automaticky diagnostikované nedávne zlyhanie prík
 chat.turn_canceled: "(zrušené)"
 chat.turn_adjusted: "(upravené)"
 chat.turn_executed: "→ vykonané: %{title}"
+# Trvalé označenia kategórií nástrojov zobrazené za značkou stavu a pred predmetom.
+chat.tool_kind.run: "Spustenie"
+chat.tool_kind.read: "Čítanie"
+chat.tool_kind.search: "Hľadanie"
+chat.tool_kind.edit: "Úprava"
+chat.tool_kind.delete: "Odstránenie"
+chat.tool_kind.move: "Presun"
+chat.tool_kind.fetch: "Načítanie"
+chat.tool_kind.think: "Premýšľanie"
+chat.tool_kind.mode: "Režim"
+chat.tool_kind.other: "Nástroj"
 
 # ── Input placeholders (src/ui/input.rs) ────────────────────────────────────
 input.placeholder.connected: "Opýtajte sa čokoľvek, / pre príkazy.."  # {Locked="/"}

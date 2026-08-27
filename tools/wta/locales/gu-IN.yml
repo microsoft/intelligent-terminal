@@ -50,6 +50,17 @@ chat.autofix_prompt_label: "તાજેતરની આદેશ નિષ્�
 chat.turn_canceled: "(રદ કરેલ)"
 chat.turn_adjusted: "(સમાયોજિત)"
 chat.turn_executed: "→ ચલાવાયું: %{title}"
+# સ્થિતિ ચિહ્ન પછી અને વિષય પહેલાં દર્શાવાતા કાયમી સાધન-શ્રેણી લેબલ.
+chat.tool_kind.run: "ચલાવો"
+chat.tool_kind.read: "વાંચો"
+chat.tool_kind.search: "શોધો"
+chat.tool_kind.edit: "સંપાદિત કરો"
+chat.tool_kind.delete: "કાઢી નાખો"
+chat.tool_kind.move: "ખસેડો"
+chat.tool_kind.fetch: "મેળવો"
+chat.tool_kind.think: "વિચારો"
+chat.tool_kind.mode: "મોડ"
+chat.tool_kind.other: "સાધન"
 
 # ── ઇનપુટ પ્લેસહોલ્ડર (src/ui/input.rs) ────────────────────────────────────
 input.placeholder.connected: "કંઈ પણ પૂછો, / કમાન્ડ માટે.."  # {Locked="/"}

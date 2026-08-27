@@ -50,6 +50,17 @@ chat.autofix_prompt_label: "Auto-diagnosed a recent command failure"
 chat.turn_canceled: "(cancelled)"
 chat.turn_adjusted: "(adjusted)"
 chat.turn_executed: "→ executed: %{title}"
+# Persistent tool-category labels shown after a status marker and before a subject.
+chat.tool_kind.run: "Run"
+chat.tool_kind.read: "Read"
+chat.tool_kind.search: "Search"
+chat.tool_kind.edit: "Edit"
+chat.tool_kind.delete: "Delete"
+chat.tool_kind.move: "Move"
+chat.tool_kind.fetch: "Fetch"
+chat.tool_kind.think: "Think"
+chat.tool_kind.mode: "Mode"
+chat.tool_kind.other: "Tool"
 
 # ── Input placeholders (src/ui/input.rs) ────────────────────────────────────
 input.placeholder.connected: "Ask anything, / for commands.."  # {Locked="/"}

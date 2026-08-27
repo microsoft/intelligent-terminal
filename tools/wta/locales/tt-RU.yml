@@ -50,6 +50,17 @@ chat.autofix_prompt_label: "Соңгы команда хатасы автома�
 chat.turn_canceled: "(гамәлдән чыгарылды)"
 chat.turn_adjusted: "(көйләнде)"
 chat.turn_executed: "→ үтәлде: %{title}"
+# Хәл билгесеннән соң һәм объект алдыннан күрсәтелә торган даими корал категориясе тамгалары.
+chat.tool_kind.run: "Эшләтү"
+chat.tool_kind.read: "Уку"
+chat.tool_kind.search: "Эзләү"
+chat.tool_kind.edit: "Үзгәртү"
+chat.tool_kind.delete: "Бетерү"
+chat.tool_kind.move: "Күчерү"
+chat.tool_kind.fetch: "Алу"
+chat.tool_kind.think: "Уйлау"
+chat.tool_kind.mode: "Режим"
+chat.tool_kind.other: "Корал"
 
 # ── Input placeholders (src/ui/input.rs) ────────────────────────────────────
 input.placeholder.connected: "Теләсә нәрсә сорагыз, / боерыклар өчен.."  # {Locked="/"}

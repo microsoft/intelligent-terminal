@@ -16,10 +16,142 @@ use crate::app::{
 };
 use crate::theme;
 use crate::ui::shimmer;
+use crate::ui::tool_presentation::{ToolPhase, ToolPresentation};
 use crate::ui_trace;
 
 fn activity_label() -> String {
     t!("chat.activity_thinking").into_owned()
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum ToolDetailLevel {
+    Compact,
+    Preview,
+    Detailed,
+}
+
+#[derive(Clone, Copy)]
+enum ToolDisplay {
+    ActiveTurn,
+    Completed { expanded: bool },
+}
+
+impl ToolDisplay {
+    fn detail_level(self, phase: ToolPhase<'_>) -> ToolDetailLevel {
+        match self {
+            Self::Completed { expanded: true } => ToolDetailLevel::Detailed,
+            _ if phase.is_successful() => ToolDetailLevel::Compact,
+            _ => ToolDetailLevel::Preview,
+        }
+    }
+}
+
+fn tool_presentation_from_message(message: &ChatMessage) -> Option<ToolPresentation<'_>> {
+    let ChatMessage::ToolCall {
+        title,
+        status,
+        kind,
+        location,
+        location_is_command,
+        cwd,
+        exit_code,
+        locations,
+        ..
+    } = message
+    else {
+        return None;
+    };
+    Some(ToolPresentation::new(
+        title,
+        status,
+        *kind,
+        location.as_deref(),
+        *location_is_command,
+        cwd.as_deref(),
+        *exit_code,
+        locations,
+    ))
+}
+
+fn compact_group_kind(message: &ChatMessage, expanded: bool) -> Option<ToolCallKind> {
+    if expanded {
+        return None;
+    }
+    let ChatMessage::ToolCall { status, kind, .. } = message else {
+        return None;
+    };
+    let groupable_kind = matches!(kind, ToolCallKind::Read | ToolCallKind::Search);
+    (groupable_kind && ToolPhase::from_status(status).is_successful()).then_some(*kind)
+}
+
+fn previous_message_group_start(messages: &[ChatMessage], end: usize) -> usize {
+    let last = end.saturating_sub(1);
+    let Some(kind) = messages
+        .get(last)
+        .and_then(|message| compact_group_kind(message, false))
+    else {
+        return last;
+    };
+    let mut start = last;
+    while start > 0
+        && messages
+            .get(start - 1)
+            .and_then(|message| compact_group_kind(message, false))
+            == Some(kind)
+    {
+        start -= 1;
+    }
+    start
+}
+
+fn build_compact_tool_group_lines<'a>(messages: &'a [ChatMessage]) -> Vec<Line<'a>> {
+    const MAX_TARGETS: usize = 3;
+
+    let Some(first) = messages.first().and_then(tool_presentation_from_message) else {
+        return Vec::new();
+    };
+    let (mut summary, represented) = if first.kind == ToolCallKind::Read {
+        let presentations = messages
+            .iter()
+            .filter_map(tool_presentation_from_message)
+            .collect::<Vec<_>>();
+        let mut targets = Vec::with_capacity(MAX_TARGETS);
+        for target in presentations
+            .iter()
+            .filter_map(|presentation| presentation.target_name())
+        {
+            if !targets.contains(&target) {
+                targets.push(target);
+                if targets.len() == MAX_TARGETS {
+                    break;
+                }
+            }
+        }
+        if !targets.is_empty() {
+            (targets.join(", "), targets.len())
+        } else {
+            (first.primary_text(true).into_owned(), 1)
+        }
+    } else {
+        (first.primary_text(true).into_owned(), 1)
+    };
+
+    if let Some(target) = first.secondary_target() {
+        summary.push_str(" · ");
+        summary.push_str(&target);
+    }
+    let remaining = messages.len().saturating_sub(represented);
+    if remaining > 0 {
+        summary.push_str(&format!(" · +{remaining}"));
+    }
+
+    vec![Line::from(vec![
+        Span::styled("✓", theme::TOOL_CALL_SUCCESS),
+        Span::raw(" "),
+        Span::styled(first.kind_label(), theme::TOOL_CALL_KIND),
+        Span::styled(" · ", theme::DIM),
+        Span::styled(summary, theme::TOOL_CALL_TITLE),
+    ])]
 }
 
 const MAX_RENDER_LINE_CHARS: usize = 4096;
@@ -32,6 +164,8 @@ const MAX_TOOL_DETAIL_LINES: usize = 32;
 #[cfg(test)]
 thread_local! {
     static COMPLETED_TURN_LINE_BUILD_COUNT: Cell<usize> = const { Cell::new(0) };
+    static TOOL_DETAIL_BUILD_COUNT: Cell<usize> = const { Cell::new(0) };
+    static RENDERED_HEIGHT_LINE_SCAN_COUNT: Cell<usize> = const { Cell::new(0) };
 }
 
 #[cfg(test)]
@@ -42,6 +176,26 @@ pub(crate) fn reset_completed_turn_line_build_count() {
 #[cfg(test)]
 pub(crate) fn completed_turn_line_build_count() -> usize {
     COMPLETED_TURN_LINE_BUILD_COUNT.with(Cell::get)
+}
+
+#[cfg(test)]
+pub(crate) fn reset_tool_detail_build_count() {
+    TOOL_DETAIL_BUILD_COUNT.with(|count| count.set(0));
+}
+
+#[cfg(test)]
+pub(crate) fn tool_detail_build_count() -> usize {
+    TOOL_DETAIL_BUILD_COUNT.with(Cell::get)
+}
+
+#[cfg(test)]
+fn reset_rendered_height_line_scan_count() {
+    RENDERED_HEIGHT_LINE_SCAN_COUNT.with(|count| count.set(0));
+}
+
+#[cfg(test)]
+fn rendered_height_line_scan_count() -> usize {
+    RENDERED_HEIGHT_LINE_SCAN_COUNT.with(Cell::get)
 }
 
 #[cfg(test)]
@@ -123,6 +277,9 @@ fn tool_detail_lines(
     locations: &[ToolCallLocation],
     detailed: bool,
 ) -> Vec<String> {
+    #[cfg(test)]
+    TOOL_DETAIL_BUILD_COUNT.with(|count| count.set(count.get() + 1));
+
     let mut lines = Vec::new();
     let mut omitted = false;
     if detailed {
@@ -192,6 +349,20 @@ fn tool_detail_lines(
     lines
 }
 
+fn restyle_tool_detail_lines(lines: &mut [String], has_prior_child: bool) {
+    let mut needs_branch = !has_prior_child;
+    for line in lines {
+        if let Some(content) = line.strip_prefix("    │ ").map(str::to_string) {
+            *line = format!("{}{content}", if needs_branch { "  └ " } else { "    " });
+        } else if needs_branch {
+            if let Some(content) = line.strip_prefix("    ").map(str::to_string) {
+                *line = format!("  └ {content}");
+            }
+        }
+        needs_branch = false;
+    }
+}
+
 /// Estimate the chat block's natural height (in visual rows), saturated at
 /// `max_height`. Layout only needs an exact height while the content fits;
 /// once the chat fills the available rows, measuring older history cannot
@@ -224,25 +395,32 @@ pub fn estimated_block_height(app: &App, area_width: u16, max_height: u16) -> u1
         return max_height as u16;
     }
 
-    for (index, message) in tab.messages.iter().enumerate().rev() {
+    let mut end = tab.messages.len();
+    while end > 0 {
+        let index = end - 1;
         if Some(index) == streaming_index {
+            end = index;
             continue;
         }
-        height = height.saturating_add(rendered_lines_height(
-            &build_tab_message_lines(
+        let start = previous_message_group_start(&tab.messages, end);
+        let message_lines = if end - start > 1 {
+            build_compact_tool_group_lines(&tab.messages[start..end])
+        } else {
+            build_tab_message_lines(
                 tab,
-                message,
-                index + 1 == tab.messages.len(),
+                &tab.messages[index],
+                end == tab.messages.len(),
                 tab.turn.is_streaming(),
                 permission_tool_call_id,
                 tab.activity_frame,
                 wrap_width,
-            ),
-            wrap_width,
-        ));
+            )
+        };
+        height = height.saturating_add(rendered_lines_height(&message_lines, wrap_width));
         if height >= max_height {
             return max_height as u16;
         }
+        end = start;
     }
 
     for index in (0..tab.completed_turns.len()).rev() {
@@ -272,6 +450,9 @@ fn turn_height(turn: &CompletedTurn, wrap_width: usize) -> usize {
 }
 
 fn rendered_lines_height(lines: &[Line<'_>], wrap_width: usize) -> usize {
+    #[cfg(test)]
+    RENDERED_HEIGHT_LINE_SCAN_COUNT.with(|count| count.set(count.get() + lines.len()));
+
     let width = wrap_width.max(1);
     lines
         .iter()
@@ -302,60 +483,38 @@ fn completed_turn_height(tab: &crate::app::TabSession, index: usize, wrap_width:
     if let Some(height) = tab.cached_completed_turn_height(index, wrap_width) {
         return height;
     }
-    let Some(turn) = tab.completed_turns.get(index) else {
+    if tab.completed_turns.get(index).is_none() {
         return 0;
-    };
-    let command_root = tab.command_revision_parents.get(&index).copied();
+    }
     let height = rendered_lines_height(
-        &build_completed_turn_lines_at_depth(
-            turn,
-            false,
-            false,
-            wrap_width,
-            command_root == Some(index),
-            command_root.is_some_and(|root| root != index),
-        ),
+        &build_completed_turn_lines_for_tab(tab, index, false, false, wrap_width).0,
         wrap_width,
     );
     tab.cache_completed_turn_height(index, wrap_width, height);
     height
 }
 
-fn starts_with_ignore_ascii_case(value: &str, prefix: &str) -> bool {
-    value
-        .get(..prefix.len())
-        .is_some_and(|start| start.eq_ignore_ascii_case(prefix))
-}
-
-fn tool_call_presentation(status: &str) -> (&'static str, Style, Option<&str>) {
-    if status.eq_ignore_ascii_case("pending") {
-        ("○", theme::TOOL_CALL_PENDING, None)
-    } else if status.eq_ignore_ascii_case("inprogress") || status.eq_ignore_ascii_case("running") {
-        ("●", theme::TOOL_CALL_RUNNING, None)
-    } else if status.eq_ignore_ascii_case("completed") || status.eq_ignore_ascii_case("exited (0)")
-    {
-        ("✓", theme::TOOL_CALL_SUCCESS, None)
-    } else if status.eq_ignore_ascii_case("failed") {
-        ("✗", theme::TOOL_CALL_FAILURE, None)
-    } else if let Some((kind, reason)) = status.split_once(':') {
-        if kind.eq_ignore_ascii_case("failed") {
-            ("✗", theme::TOOL_CALL_FAILURE, Some(reason.trim()))
-        } else {
-            ("•", theme::DIM, Some(status))
-        }
-    } else if starts_with_ignore_ascii_case(status, "exited (") {
-        ("✗", theme::TOOL_CALL_FAILURE, Some(status))
-    } else if status.eq_ignore_ascii_case("cancelled") || status.eq_ignore_ascii_case("canceled") {
-        ("−", theme::TOOL_CALL_CANCELED, None)
-    } else {
-        ("•", theme::DIM, Some(status))
+fn tool_call_presentation(phase: ToolPhase<'_>) -> (&'static str, Style, Option<&str>) {
+    match phase {
+        ToolPhase::Pending => ("○", theme::TOOL_CALL_PENDING, None),
+        ToolPhase::Running => ("●", theme::TOOL_CALL_RUNNING, None),
+        ToolPhase::Succeeded => ("✓", theme::TOOL_CALL_SUCCESS, None),
+        ToolPhase::Failed(detail) => ("✗", theme::TOOL_CALL_FAILURE, detail),
+        ToolPhase::Canceled => ("−", theme::TOOL_CALL_CANCELED, None),
+        ToolPhase::Unknown(status) => ("•", theme::DIM, Some(status)),
     }
 }
 
-fn is_active_tool_call_status(status: &str) -> bool {
-    status.eq_ignore_ascii_case("pending")
-        || status.eq_ignore_ascii_case("inprogress")
-        || status.eq_ignore_ascii_case("running")
+fn rendered_tool_call_marker(
+    phase: ToolPhase<'_>,
+    permission_active: bool,
+    activity_frame: usize,
+) -> &'static str {
+    if permission_active || phase.is_active() {
+        breathing_dot(activity_frame)
+    } else {
+        tool_call_presentation(phase).0
+    }
 }
 
 fn should_show_turn_activity(tab: &crate::app::TabSession) -> bool {
@@ -390,6 +549,15 @@ struct CompletedTurnHitOffset {
     turn_height: usize,
     expanded: bool,
     prompt_rows: Vec<PromptRowGeometry>,
+    tool_rows: Vec<ToolRowGeometry>,
+}
+
+struct ToolRowGeometry {
+    hit_kind: crate::app::CompletedTurnHitKind,
+    row_offset: usize,
+    header_width: usize,
+    expanded: bool,
+    marker: &'static str,
 }
 
 struct PlannedCompletedTurn {
@@ -459,6 +627,7 @@ fn plan_completed_turn_viewport(
                 .row
                 .saturating_add(target_rows_below)
                 .saturating_add(target_height)
+                .saturating_sub(anchor.row_offset)
                 .saturating_sub(visible_height);
         } else {
             let target_end = target_rows_below.saturating_add(target_height);
@@ -569,20 +738,27 @@ pub fn render(frame: &mut Frame, app: &mut App, area: Rect, scrollbar_area: Rect
     let tab = app.current_tab();
     let permission_tool_call_id = permission_tool_call_id(tab);
     let streaming_index = tab.streaming_agent_message_index();
-    for (idx, msg) in tab.messages.iter().enumerate().rev() {
+    let mut end = tab.messages.len();
+    while end > 0 {
+        let idx = end - 1;
         if Some(idx) == streaming_index {
+            end = idx;
             continue;
         }
-        let is_last_message = idx + 1 == tab.messages.len();
-        let mut message_lines = build_tab_message_lines(
-            tab,
-            msg,
-            is_last_message,
-            tab.turn.is_streaming(),
-            permission_tool_call_id,
-            tab.activity_frame,
-            wrap_width,
-        );
+        let start = previous_message_group_start(&tab.messages, end);
+        let mut message_lines = if end - start > 1 {
+            build_compact_tool_group_lines(&tab.messages[start..end])
+        } else {
+            build_tab_message_lines(
+                tab,
+                &tab.messages[idx],
+                end == tab.messages.len(),
+                tab.turn.is_streaming(),
+                permission_tool_call_id,
+                tab.activity_frame,
+                wrap_width,
+            )
+        };
         newer_rows = newer_rows.saturating_add(rendered_lines_height(&message_lines, wrap_width));
         reversed_lines.extend(message_lines.drain(..).rev());
         if newer_rows >= requested_rows
@@ -592,6 +768,7 @@ pub fn render(frame: &mut Frame, app: &mut App, area: Rect, scrollbar_area: Rect
             truncated = true;
             break;
         }
+        end = start;
     }
 
     if !truncated {
@@ -610,22 +787,20 @@ pub fn render(frame: &mut Frame, app: &mut App, area: Rect, scrollbar_area: Rect
         let tab = app.current_tab();
         for planned in plan.turns {
             let turn = &tab.completed_turns[planned.index];
-            let command_root = tab.command_revision_parents.get(&planned.index).copied();
-            let (mut turn_lines, prompt_rows) =
-                build_completed_turn_lines_with_prompt_rows_at_depth(
-                    turn,
-                    tab.selected_completed_turn_idx == Some(planned.index),
-                    app.pane_focused,
-                    wrap_width,
-                    command_root == Some(planned.index),
-                    command_root.is_some_and(|root| root != planned.index),
-                );
+            let (mut turn_lines, prompt_rows, tool_rows) = build_completed_turn_lines_for_tab(
+                tab,
+                planned.index,
+                tab.selected_completed_turn_idx == Some(planned.index),
+                app.pane_focused,
+                wrap_width,
+            );
             turn_hit_offsets.push(CompletedTurnHitOffset {
                 turn_index: planned.index,
                 rows_below: planned.rows_below,
                 turn_height: planned.height,
                 expanded: turn.expanded,
                 prompt_rows,
+                tool_rows,
             });
             reversed_lines.extend(turn_lines.drain(..).rev());
         }
@@ -674,15 +849,18 @@ pub fn render(frame: &mut Frame, app: &mut App, area: Rect, scrollbar_area: Rect
             turn_height,
             expanded,
             prompt_rows,
+            tool_rows,
         } = hit_offset;
         let header_from_top = total_lines.saturating_sub(rows_below.saturating_add(turn_height));
+        let mut visible_anchor = None;
         if let Some(header_row) = header_from_top
             .checked_sub(scroll)
             .filter(|row| *row < visible_height)
         {
-            visible_completed_turn_anchors.push(crate::app::CompletedTurnViewportAnchor {
+            visible_anchor = Some(crate::app::CompletedTurnViewportAnchor {
                 index: turn_index,
                 row: header_row,
+                row_offset: 0,
             });
             let row = inner_area.y.saturating_add(header_row as u16);
             let symbol = if expanded { "▼" } else { "▶" };
@@ -736,6 +914,54 @@ pub fn render(frame: &mut Frame, app: &mut App, area: Rect, scrollbar_area: Rect
                     },
                 );
             }
+        }
+
+        for tool_row in tool_rows {
+            let Some(visible_row) = header_from_top
+                .saturating_add(tool_row.row_offset)
+                .checked_sub(scroll)
+            else {
+                continue;
+            };
+            if visible_row >= visible_height {
+                continue;
+            }
+            visible_anchor.get_or_insert(crate::app::CompletedTurnViewportAnchor {
+                index: turn_index,
+                row: visible_row,
+                row_offset: tool_row.row_offset,
+            });
+            let row = inner_area.y.saturating_add(visible_row as u16);
+            if let Some((start_column, end_column)) = tool_header_hit_columns(
+                buffer,
+                inner_area,
+                row,
+                tool_row.marker,
+                tool_row.header_width,
+            ) {
+                completed_turn_hits.push(crate::app::CompletedTurnHitRegion {
+                    start_column,
+                    end_column,
+                    row,
+                    turn_index,
+                    kind: tool_row.hit_kind,
+                });
+                app.completed_turn_action_links.push(
+                    crate::action_links::CompletedTurnActionLink {
+                        start_column,
+                        end_column,
+                        row,
+                        action: if tool_row.expanded {
+                            crate::action_links::CompletedTurnAction::Collapse
+                        } else {
+                            crate::action_links::CompletedTurnAction::Expand
+                        },
+                    },
+                );
+            }
+        }
+        if let Some(anchor) = visible_anchor {
+            visible_completed_turn_anchors.push(anchor);
         }
     }
     app.completed_turn_hits = completed_turn_hits;
@@ -805,6 +1031,24 @@ pub fn render(frame: &mut Frame, app: &mut App, area: Rect, scrollbar_area: Rect
             area.height
         )
     });
+}
+
+fn tool_header_hit_columns(
+    buffer: &Buffer,
+    inner_area: Rect,
+    row: u16,
+    marker: &str,
+    header_width: usize,
+) -> Option<(u16, u16)> {
+    let inner_end = inner_area.x.saturating_add(inner_area.width);
+    let start_column = (inner_area.x..inner_end).find(|column| {
+        buffer
+            .cell((*column, row))
+            .is_some_and(|cell| cell.symbol() == marker)
+    })?;
+    let width = header_width.min(inner_end.saturating_sub(start_column) as usize) as u16;
+    let end_column = start_column.saturating_add(width);
+    (start_column < end_column).then_some((start_column, end_column))
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -885,13 +1129,14 @@ fn build_completed_turn_lines_at_depth<'a>(
     is_command_turn: bool,
     is_command_revision: bool,
 ) -> Vec<Line<'a>> {
-    build_completed_turn_lines_with_prompt_rows_at_depth(
+    build_completed_turn_lines_with_geometry(
         turn,
         is_selected,
         pane_focused,
         wrap_width,
         is_command_turn,
         is_command_revision,
+        |_| false,
     )
     .0
 }
@@ -905,24 +1150,47 @@ fn build_completed_turn_lines_with_prompt_rows<'a>(
     pane_focused: bool,
     wrap_width: usize,
 ) -> (Vec<Line<'a>>, Vec<PromptRowGeometry>) {
-    build_completed_turn_lines_with_prompt_rows_at_depth(
+    let (lines, prompt_rows, _) = build_completed_turn_lines_with_geometry(
         turn,
         is_selected,
         pane_focused,
         wrap_width,
         false,
         false,
+        |_| false,
+    );
+    (lines, prompt_rows)
+}
+
+fn build_completed_turn_lines_for_tab<'a>(
+    tab: &'a crate::app::TabSession,
+    turn_index: usize,
+    is_selected: bool,
+    pane_focused: bool,
+    wrap_width: usize,
+) -> (Vec<Line<'a>>, Vec<PromptRowGeometry>, Vec<ToolRowGeometry>) {
+    let turn = &tab.completed_turns[turn_index];
+    let command_root = tab.command_revision_parents.get(&turn_index).copied();
+    build_completed_turn_lines_with_geometry(
+        turn,
+        is_selected,
+        pane_focused,
+        wrap_width,
+        command_root == Some(turn_index),
+        command_root.is_some_and(|root| root != turn_index),
+        |id| tab.completed_tool_call_expanded(id),
     )
 }
 
-fn build_completed_turn_lines_with_prompt_rows_at_depth<'a>(
+fn build_completed_turn_lines_with_geometry<'a>(
     turn: &'a crate::app::CompletedTurn,
     is_selected: bool,
     pane_focused: bool,
     wrap_width: usize,
     is_command_turn: bool,
     is_command_revision: bool,
-) -> (Vec<Line<'a>>, Vec<PromptRowGeometry>) {
+    tool_expanded: impl Fn(&str) -> bool,
+) -> (Vec<Line<'a>>, Vec<PromptRowGeometry>, Vec<ToolRowGeometry>) {
     #[cfg(test)]
     record_completed_turn_line_build();
 
@@ -1028,23 +1296,109 @@ fn build_completed_turn_lines_with_prompt_rows_at_depth<'a>(
         Some(0)
     };
 
+    let mut tool_rows = Vec::new();
     if turn.expanded {
         // Render the captured details — the agent reply, tool calls,
         // plans, etc. — using the same builder as the active turn so the
         // formatting matches. `is_last_message=false` and
         // `agent_streaming=false` together suppress the streaming-cursor
         // path; details are always finalized by the time they land here.
-        for msg in turn.details.iter() {
-            let mut detail_lines =
-                build_message_lines_with_details(msg, false, false, None, 0, content_width, true);
+        let mut rendered_height = rendered_lines_height(&lines, wrap_width);
+        let mut detail_index = 0;
+        while detail_index < turn.details.len() {
+            let msg = &turn.details[detail_index];
+            let expanded = match msg {
+                ChatMessage::ToolCall { id, .. } => tool_expanded(id),
+                _ => false,
+            };
+            let group_kind = compact_group_kind(msg, expanded);
+            let mut group_end = detail_index + 1;
+            if let Some(group_kind) = group_kind {
+                while group_end < turn.details.len() {
+                    let next = &turn.details[group_end];
+                    let next_expanded = match next {
+                        ChatMessage::ToolCall { id, .. } => tool_expanded(id),
+                        _ => false,
+                    };
+                    if compact_group_kind(next, next_expanded) != Some(group_kind) {
+                        break;
+                    }
+                    group_end += 1;
+                }
+            }
+
+            if group_end - detail_index > 1 {
+                let mut message_lines =
+                    build_compact_tool_group_lines(&turn.details[detail_index..group_end]);
+                if is_command_revision {
+                    for line in &mut message_lines {
+                        if !line.spans.is_empty() {
+                            line.spans.insert(0, Span::raw("    "));
+                        }
+                    }
+                }
+                tool_rows.push(ToolRowGeometry {
+                    hit_kind: crate::app::CompletedTurnHitKind::ToolGroup {
+                        first_detail_index: detail_index,
+                        detail_count: group_end - detail_index,
+                    },
+                    row_offset: rendered_height,
+                    header_width: message_lines
+                        .first()
+                        .map_or(1, |line| line.width().min(wrap_width))
+                        .max(1),
+                    expanded: false,
+                    marker: "✓",
+                });
+                rendered_height = rendered_height
+                    .saturating_add(rendered_lines_height(&message_lines, wrap_width));
+                lines.extend(message_lines);
+                detail_index = group_end;
+                continue;
+            }
+
+            let tool_geometry = match msg {
+                ChatMessage::ToolCall { id, status, .. } => Some((
+                    tool_expanded(id),
+                    rendered_tool_call_marker(ToolPhase::from_status(status), false, 0),
+                )),
+                _ => None,
+            };
+            let display = tool_geometry.map_or(ToolDisplay::ActiveTurn, |(expanded, _)| {
+                ToolDisplay::Completed { expanded }
+            });
+            let mut message_lines = build_message_lines_with_details(
+                msg,
+                false,
+                false,
+                None,
+                0,
+                content_width,
+                display,
+            );
             if is_command_revision {
-                for line in &mut detail_lines {
+                for line in &mut message_lines {
                     if !line.spans.is_empty() {
                         line.spans.insert(0, Span::raw("    "));
                     }
                 }
             }
-            lines.extend(detail_lines);
+            if let Some((expanded, marker)) = tool_geometry {
+                tool_rows.push(ToolRowGeometry {
+                    hit_kind: crate::app::CompletedTurnHitKind::ToolCall { detail_index },
+                    row_offset: rendered_height,
+                    header_width: message_lines
+                        .first()
+                        .map_or(1, |line| line.width().min(wrap_width))
+                        .max(1),
+                    expanded,
+                    marker,
+                });
+            }
+            rendered_height =
+                rendered_height.saturating_add(rendered_lines_height(&message_lines, wrap_width));
+            lines.extend(message_lines);
+            detail_index += 1;
         }
     }
 
@@ -1063,7 +1417,7 @@ fn build_completed_turn_lines_with_prompt_rows_at_depth<'a>(
     if lines.last().map_or(true, |l| !l.spans.is_empty()) {
         lines.push(Line::default());
     }
-    (lines, prompt_rows)
+    (lines, prompt_rows, tool_rows)
 }
 
 pub fn render_activity(frame: &mut Frame, app: &App, area: Rect) {
@@ -1146,7 +1500,7 @@ fn build_message_lines<'a>(
         permission_tool_call_id,
         activity_frame,
         wrap_width,
-        false,
+        ToolDisplay::ActiveTurn,
     )
 }
 
@@ -1231,7 +1585,7 @@ fn build_message_lines_with_details<'a>(
     permission_tool_call_id: Option<&str>,
     activity_frame: usize,
     wrap_width: usize,
-    detailed_tools: bool,
+    tool_display: ToolDisplay,
 ) -> Vec<Line<'a>> {
     let mut lines = Vec::new();
     match msg {
@@ -1282,42 +1636,55 @@ fn build_message_lines_with_details<'a>(
             content,
             locations,
         } => {
-            let (marker, marker_style, detail) = tool_call_presentation(status);
-            let marker = if permission_tool_call_id == Some(id.as_str())
-                || is_active_tool_call_status(status)
-            {
-                breathing_dot(activity_frame)
-            } else {
-                marker
-            };
+            let presentation = ToolPresentation::new(
+                title,
+                status,
+                *kind,
+                location.as_deref(),
+                *location_is_command,
+                cwd.as_deref(),
+                *exit_code,
+                locations,
+            );
+            let detail_level = tool_display.detail_level(presentation.phase);
+            let (_, marker_style, detail) = tool_call_presentation(presentation.phase);
+            let marker = rendered_tool_call_marker(
+                presentation.phase,
+                permission_tool_call_id == Some(id.as_str()),
+                activity_frame,
+            );
+            let primary_text =
+                match presentation.primary_text(detail_level == ToolDetailLevel::Compact) {
+                    Cow::Borrowed(text) => truncate_render_text(text),
+                    Cow::Owned(text) => Cow::Owned(truncate_render_text(&text).into_owned()),
+                };
             let mut spans = vec![
                 Span::styled(marker, marker_style),
                 Span::raw(" "),
-                Span::styled(truncate_render_text(title), theme::TOOL_CALL_TITLE),
+                Span::styled(presentation.kind_label(), theme::TOOL_CALL_KIND),
             ];
-            let location = location.as_deref().filter(|l| !l.is_empty());
-            // Path hint pulled from the ACP `locations`/`raw_input` fields
-            // (see `client.rs::tool_call_location_hint`) — surfaces *what*
-            // the tool touched, which the agent's `title` alone often
-            // doesn't (e.g. a generic "Access paths outside trusted
-            // directories" permission title). Rendered inline since a
-            // path is normally short enough to fit on the title's line.
-            if !location_is_command {
-                if let Some(location) = location {
-                    spans.push(Span::styled(
-                        format!(" ({})", truncate_render_text(location)),
-                        theme::DIM,
-                    ));
-                }
+            if !primary_text.is_empty() {
+                spans.push(Span::styled(" · ", theme::DIM));
+                spans.push(Span::styled(primary_text, theme::TOOL_CALL_TITLE));
             }
-            if *kind == ToolCallKind::Execute {
-                if let Some(cwd) = cwd
-                    .as_deref()
+            let display_target = presentation.display_target();
+            let target = display_target.as_deref();
+            if let Some(target) = presentation.secondary_target() {
+                spans.push(Span::styled(
+                    format!(" · {}", truncate_render_text(&target)),
+                    theme::DIM,
+                ));
+            }
+            if presentation.kind == ToolCallKind::Execute
+                && detail_level != ToolDetailLevel::Compact
+            {
+                if let Some(cwd) = presentation
+                    .cwd
                     .filter(|cwd| !cwd.is_empty())
-                    .filter(|cwd| !title.contains(cwd))
+                    .filter(|cwd| !presentation.title.contains(cwd))
                 {
                     spans.push(Span::styled(
-                        format!(" ({})", truncate_render_text(cwd)),
+                        format!(" · {}", truncate_render_text(cwd)),
                         theme::DIM,
                     ));
                 }
@@ -1328,44 +1695,41 @@ fn build_message_lines_with_details<'a>(
                     theme::DIM,
                 ));
             }
-            if !detailed_tools && (*kind == ToolCallKind::Execute || *location_is_command) {
-                if let Some(exit_code) = exit_code.filter(|_| {
-                    !starts_with_ignore_ascii_case(status, "exited (")
-                        && !starts_with_ignore_ascii_case(status, "failed:")
-                }) {
-                    spans.push(Span::styled(format!(" · exit {exit_code}"), theme::DIM));
-                }
+            if let Some(exit_code) = presentation.visible_exit_code() {
+                spans.push(Span::styled(format!(" · exit {exit_code}"), theme::DIM));
             }
             lines.push(Line::from(spans));
-            // A command target can be several `;`-chained PowerShell
-            // statements crammed into one `raw_input.command` (agents
-            // commonly batch multiple checks into a single tool call) —
-            // rendering that as one long line, which then wraps at the
-            // terminal edge with no hanging indent, reads as an
-            // unreadable wall of text. Splitting on top-level `;`
-            // restores the sequence of discrete steps, one per code-
-            // styled line (mirrors how `execute`-kind cards look in Zed /
-            // opencode); a long remainder folds into a single "+N more"
-            // row instead of growing the card unboundedly.
             let mut rendered_command = false;
-            if *location_is_command {
-                if let Some(command) = location {
-                    for entry in crate::ui::command_format::command_display_lines(command) {
+            if presentation.target_is_command && detail_level != ToolDetailLevel::Compact {
+                if let Some(command) = target {
+                    for (index, entry) in crate::ui::command_format::command_display_lines(command)
+                        .into_iter()
+                        .enumerate()
+                    {
                         rendered_command = true;
                         lines.push(Line::from(Span::styled(
-                            entry.rendered_text("    "),
+                            entry.rendered_text(if index == 0 { "  └ " } else { "    " }),
                             theme::CARD_CODE,
                         )));
                     }
                 }
             }
             let mut rendered_output = false;
-            if !detailed_tools && (*kind == ToolCallKind::Execute || *location_is_command) {
+            if detail_level == ToolDetailLevel::Preview
+                && (*kind == ToolCallKind::Execute || *location_is_command)
+            {
                 if let Some(output) = output {
-                    for line in tool_output_lines(output) {
+                    for (index, line) in tool_output_lines(output).into_iter().enumerate() {
                         rendered_output = true;
                         lines.push(Line::from(Span::styled(
-                            format!("    │ {line}"),
+                            format!(
+                                "{}{line}",
+                                if index == 0 && !rendered_command {
+                                    "  └ "
+                                } else {
+                                    "    "
+                                }
+                            ),
                             theme::DIM,
                         )));
                     }
@@ -1374,16 +1738,21 @@ fn build_message_lines_with_details<'a>(
             let has_text_content = content
                 .iter()
                 .any(|item| matches!(item, ToolCallContent::Text(_)));
-            let mut detail_lines = tool_detail_lines(content, locations, detailed_tools);
-            if !has_text_content {
+            let mut detail_lines = match detail_level {
+                ToolDetailLevel::Compact => Vec::new(),
+                ToolDetailLevel::Preview => tool_detail_lines(content, locations, false),
+                ToolDetailLevel::Detailed => tool_detail_lines(content, locations, true),
+            };
+            if !has_text_content && detail_level != ToolDetailLevel::Compact {
                 if let Some(output) = output {
-                    if detailed_tools {
+                    if detail_level == ToolDetailLevel::Detailed {
                         detail_lines.extend(full_output_lines(output, "    │ "));
                     } else if *kind != ToolCallKind::Execute && !*location_is_command {
                         detail_lines.extend(preview_output_lines(output, "    │ "));
                     }
                 }
             }
+            restyle_tool_detail_lines(&mut detail_lines, rendered_command || rendered_output);
             let rendered_details = !detail_lines.is_empty();
             for line in detail_lines {
                 lines.push(Line::from(Span::styled(line, theme::DIM)));
@@ -1650,6 +2019,38 @@ mod tests {
     }
 
     #[test]
+    fn completed_tool_geometry_scans_rendered_lines_linearly() {
+        let turn = CompletedTurn {
+            prompt: "tools".into(),
+            details: (0..100)
+                .map(|index| ChatMessage::ToolCall {
+                    id: format!("tool-{index}"),
+                    title: format!("Read file {index}"),
+                    status: "Completed".into(),
+                    kind: ToolCallKind::Read,
+                    location: Some(format!(r"C:\repo\file-{index}.txt")),
+                    location_is_command: false,
+                    cwd: None,
+                    output: None,
+                    exit_code: None,
+                    content: Vec::new(),
+                    locations: Vec::new(),
+                })
+                .collect(),
+            expanded: true,
+            trailing_marker: None,
+        };
+
+        reset_rendered_height_line_scan_count();
+        build_completed_turn_lines_with_geometry(&turn, false, false, 80, false, false, |_| false);
+
+        assert!(
+            rendered_height_line_scan_count() <= 110,
+            "tool geometry must measure the prompt once and each message once",
+        );
+    }
+
+    #[test]
     fn notices_render_distinct_markers_and_hanging_indents() {
         let cases = [
             (NoticeKind::Success, "✓"),
@@ -1840,14 +2241,15 @@ mod tests {
 
         assert_eq!(line_text(line), expected_text);
         assert_eq!(line.spans[0].style, expected_marker_style);
-        assert_eq!(line.spans[2].style, theme::TOOL_CALL_TITLE);
+        assert_eq!(line.spans[2].style, theme::TOOL_CALL_KIND);
+        assert_eq!(line.spans[4].style, theme::TOOL_CALL_TITLE);
         assert_eq!(
-            line.spans.get(3).map(|span| span.style),
+            line.spans.get(5).map(|span| span.style),
             expected_detail_style
         );
     }
 
-    /// A `location` hint renders as a dim `(path)` suffix right after the
+    /// A `location` hint renders as a dim secondary subject right after the
     /// title, before the status detail — guards against the card silently
     /// dropping the path/command info that `client.rs` now forwards.
     #[test]
@@ -1870,7 +2272,7 @@ mod tests {
 
         assert_eq!(
             line_text(line),
-            r"● Access paths outside trusted directories (C:\src\rust-app)"
+            r"● Tool · Access paths outside trusted directories · C:\src\rust-app"
         );
         assert_eq!(
             lines.len(),
@@ -1881,7 +2283,7 @@ mod tests {
     }
 
     /// A command-kind location (`location_is_command`) must NOT be inlined
-    /// as a `(hint)` suffix on the title line — it gets its own
+    /// while the tool is active — it gets its own subordinate
     /// `CARD_CODE`-styled `$ command` line instead, since commands can be
     /// long one-liners that would overflow or wrap awkwardly inline.
     #[test]
@@ -1906,8 +2308,8 @@ mod tests {
             3,
             "expected a title line, command line, and paragraph break"
         );
-        assert_eq!(line_text(&lines[0]), "● Run command");
-        assert_eq!(line_text(&lines[1]), "    $ cargo test --workspace");
+        assert_eq!(line_text(&lines[0]), "● Run · Run command");
+        assert_eq!(line_text(&lines[1]), "  └ $ cargo test --workspace");
         assert_eq!(lines[1].spans[0].style, theme::CARD_CODE);
         assert!(lines[2].spans.is_empty());
 
@@ -1929,7 +2331,7 @@ mod tests {
         let message = ChatMessage::ToolCall {
             id: "tool".into(),
             title: "Check installed PowerToys and Foundry Local packages".into(),
-            status: "Completed".into(),
+            status: "Running".into(),
             kind: ToolCallKind::Execute,
             location: Some(
                 "winget list --name PowerToys 2>$null; winget list --name Foundry 2>$null".into(),
@@ -1950,7 +2352,7 @@ mod tests {
         );
         assert_eq!(
             line_text(&lines[1]),
-            "    $ winget list --name PowerToys 2>$null"
+            "  └ $ winget list --name PowerToys 2>$null"
         );
         assert_eq!(
             line_text(&lines[2]),
@@ -1965,12 +2367,12 @@ mod tests {
     }
 
     #[test]
-    fn execute_tool_call_renders_cwd_reported_output_tail_and_exit_code() {
+    fn running_execute_tool_call_renders_cwd_reported_output_tail() {
         let cwd = concat!("C:", "\\", "repo");
         let message = ChatMessage::ToolCall {
             id: "tool".into(),
             title: "bash".into(),
-            status: "Completed".into(),
+            status: "Running".into(),
             kind: ToolCallKind::Execute,
             location: Some("cargo test".into()),
             location_is_command: true,
@@ -1986,22 +2388,298 @@ mod tests {
         let lines = build_message_lines(&message, false, false, None, 0, 120);
         let rendered: Vec<String> = lines.iter().map(line_text).collect();
 
-        assert_eq!(rendered[0], format!("✓ bash ({cwd}) · exit 0"));
-        assert_eq!(rendered[1], "    $ cargo test");
-        assert_eq!(rendered[2], "    │ …");
-        assert_eq!(rendered[3], "    │ line 2");
-        assert_eq!(rendered[6], "    │ line 5");
+        assert_eq!(rendered[0], format!("● Run · bash · {cwd}"));
+        assert_eq!(rendered[1], "  └ $ cargo test");
+        assert_eq!(rendered[2], "    …");
+        assert_eq!(rendered[3], "    line 2");
+        assert_eq!(rendered[6], "    line 5");
         assert!(rendered[7].is_empty());
         assert_eq!(lines.len(), message_height(&message, 120));
     }
 
     #[test]
-    fn completed_non_execute_tool_call_shows_bounded_output_preview() {
+    fn successful_active_tool_call_collapses_immediately() {
+        let cwd = concat!("C:", "\\", "repo");
+        let message = ChatMessage::ToolCall {
+            id: "tool".into(),
+            title: "Run tests".into(),
+            status: "Completed".into(),
+            kind: ToolCallKind::Execute,
+            location: Some("cargo test".into()),
+            location_is_command: true,
+            cwd: Some(cwd.into()),
+            output: Some(ToolCallOutput {
+                text: ["line 1", "line 2", "line 3"].join("\n"),
+                truncated: false,
+            }),
+            exit_code: Some(0),
+            content: Vec::new(),
+            locations: Vec::new(),
+        };
+
+        let rendered: Vec<String> = build_message_lines(&message, false, false, None, 0, 120)
+            .iter()
+            .map(line_text)
+            .collect();
+
+        assert_eq!(rendered, vec!["✓ Run · cargo test"]);
+    }
+
+    #[test]
+    fn successful_long_command_stays_out_of_compact_header() {
+        let message = ChatMessage::ToolCall {
+            id: "tool".into(),
+            title: "Resolve cargo in active terminal context".into(),
+            status: "Completed".into(),
+            kind: ToolCallKind::Execute,
+            location: Some(
+                "wta.exe resolve-command cargo --shell pwsh --cwd C:\\repo --json".into(),
+            ),
+            location_is_command: true,
+            cwd: Some(r"C:\repo".into()),
+            output: None,
+            exit_code: Some(0),
+            content: Vec::new(),
+            locations: Vec::new(),
+        };
+
+        let rendered: Vec<String> = build_message_lines(&message, false, false, None, 0, 120)
+            .iter()
+            .map(line_text)
+            .collect();
+
+        assert_eq!(
+            rendered,
+            vec!["✓ Run · Resolve cargo in active terminal context"]
+        );
+    }
+
+    #[test]
+    fn successful_read_replaces_embedded_full_path_with_compact_subject() {
+        let path = r"C:\Users\kaitao\codes\rust-app\src\main.rs";
+        let message = ChatMessage::ToolCall {
+            id: "tool".into(),
+            title: format!("Viewing {path}"),
+            status: "Completed".into(),
+            kind: ToolCallKind::Read,
+            location: None,
+            location_is_command: false,
+            cwd: None,
+            output: None,
+            exit_code: None,
+            content: Vec::new(),
+            locations: vec![ToolCallLocation {
+                path: path.into(),
+                line: None,
+            }],
+        };
+
+        let rendered: Vec<String> = build_message_lines(&message, false, false, None, 0, 120)
+            .iter()
+            .map(line_text)
+            .collect();
+
+        assert_eq!(rendered, vec![r"✓ Read · src\main.rs"]);
+    }
+
+    #[test]
+    fn successful_search_compacts_workspace_subject() {
+        let message = ChatMessage::ToolCall {
+            id: "tool".into(),
+            title: "Finding files matching **/*.rs".into(),
+            status: "Completed".into(),
+            kind: ToolCallKind::Search,
+            location: Some(r"C:\Users\kaitao\codes\rust-app".into()),
+            location_is_command: false,
+            cwd: None,
+            output: None,
+            exit_code: None,
+            content: Vec::new(),
+            locations: Vec::new(),
+        };
+
+        let rendered: Vec<String> = build_message_lines(&message, false, false, None, 0, 120)
+            .iter()
+            .map(line_text)
+            .collect();
+
+        assert_eq!(
+            rendered,
+            vec!["✓ Search · Finding files matching **/*.rs · rust-app"]
+        );
+    }
+
+    #[test]
+    fn successful_edit_does_not_treat_snapshots_as_line_counts() {
+        let message = ChatMessage::ToolCall {
+            id: "tool".into(),
+            title: "Update source".into(),
+            status: "Completed".into(),
+            kind: ToolCallKind::Edit,
+            location: Some(r"C:\repo\src\chat.rs".into()),
+            location_is_command: false,
+            cwd: None,
+            output: None,
+            exit_code: None,
+            content: vec![ToolCallContent::Diff {
+                path: r"C:\repo\src\chat.rs".into(),
+                old_text: Some(ToolCallOutput {
+                    text: "old one\nold two".into(),
+                    truncated: false,
+                }),
+                new_text: ToolCallOutput {
+                    text: ["new one", "new two", "new three"].join("\n"),
+                    truncated: false,
+                },
+            }],
+            locations: Vec::new(),
+        };
+
+        let rendered: Vec<String> = build_message_lines(&message, false, false, None, 0, 120)
+            .iter()
+            .map(line_text)
+            .collect();
+
+        assert_eq!(rendered, vec![r"✓ Edit · src\chat.rs"]);
+    }
+
+    #[test]
+    fn tool_header_hit_uses_rendered_marker_offset_and_caps_to_inner_area() {
+        use ratatui::widgets::Paragraph;
+
+        let inner_area = Rect::new(3, 2, 20, 1);
+        let header = "✓ Edit file";
+        let header_width = UnicodeWidthStr::width(header);
+        let mut buffer = Buffer::empty(Rect::new(0, 0, 30, 5));
+        Paragraph::new(header)
+            .alignment(Alignment::Right)
+            .render(inner_area, &mut buffer);
+
+        let (start_column, end_column) =
+            tool_header_hit_columns(&buffer, inner_area, inner_area.y, "✓", header_width)
+                .expect("right-aligned marker should be found");
+
+        assert_eq!(
+            start_column,
+            inner_area.x + inner_area.width - header_width as u16
+        );
+        assert!(start_column > inner_area.x);
+        assert_eq!(end_column, inner_area.x + inner_area.width);
+    }
+
+    #[test]
+    fn failed_active_tool_call_keeps_diagnostic_preview() {
+        let message = ChatMessage::ToolCall {
+            id: "tool".into(),
+            title: "Run tests".into(),
+            status: "Failed".into(),
+            kind: ToolCallKind::Execute,
+            location: Some("cargo test".into()),
+            location_is_command: true,
+            cwd: None,
+            output: Some(ToolCallOutput {
+                text: "diagnostic".into(),
+                truncated: false,
+            }),
+            exit_code: Some(1),
+            content: Vec::new(),
+            locations: Vec::new(),
+        };
+
+        let rendered: Vec<String> = build_message_lines(&message, false, false, None, 0, 120)
+            .iter()
+            .map(line_text)
+            .collect();
+
+        assert_eq!(rendered[0], "✗ Run · Run tests · exit 1");
+        assert_eq!(rendered[1], "  └ $ cargo test");
+        assert!(rendered.iter().any(|line| line.contains("diagnostic")));
+    }
+
+    #[test]
+    fn successful_truncated_tool_call_stays_compact_until_expanded() {
+        let message = ChatMessage::ToolCall {
+            id: "tool".into(),
+            title: "Locate project directory".into(),
+            status: "Completed".into(),
+            kind: ToolCallKind::Execute,
+            location: Some("Get-ChildItem".into()),
+            location_is_command: true,
+            cwd: None,
+            output: Some(ToolCallOutput {
+                text: "truncated output".into(),
+                truncated: true,
+            }),
+            exit_code: Some(0),
+            content: Vec::new(),
+            locations: Vec::new(),
+        };
+
+        for display in [
+            ToolDisplay::ActiveTurn,
+            ToolDisplay::Completed { expanded: false },
+        ] {
+            let rendered: Vec<String> =
+                build_message_lines_with_details(&message, false, false, None, 0, 120, display)
+                    .iter()
+                    .map(line_text)
+                    .collect();
+
+            assert_eq!(rendered, vec!["✓ Run · Get-ChildItem"]);
+        }
+
+        let expanded: Vec<String> = build_message_lines_with_details(
+            &message,
+            false,
+            false,
+            None,
+            0,
+            120,
+            ToolDisplay::Completed { expanded: true },
+        )
+        .iter()
+        .map(line_text)
+        .collect();
+        assert_eq!(expanded[0], "✓ Run · Locate project directory");
+        assert_eq!(expanded[1], "  └ $ Get-ChildItem");
+        assert!(expanded
+            .iter()
+            .any(|line| line.contains("truncated output")));
+    }
+
+    #[test]
+    fn successful_truncated_reads_group_and_deduplicate_targets() {
+        let messages = (0..4)
+            .map(|index| ChatMessage::ToolCall {
+                id: format!("read-{index}"),
+                title: "Read project".into(),
+                status: "Completed".into(),
+                kind: ToolCallKind::Read,
+                location: Some(r"C:\codes\rust-app".into()),
+                location_is_command: false,
+                cwd: None,
+                output: Some(ToolCallOutput {
+                    text: "extension summary".into(),
+                    truncated: true,
+                }),
+                exit_code: None,
+                content: Vec::new(),
+                locations: Vec::new(),
+            })
+            .collect::<Vec<_>>();
+
+        assert_eq!(previous_message_group_start(&messages, messages.len()), 0);
+        let rendered = build_compact_tool_group_lines(&messages);
+        assert_eq!(line_text(&rendered[0]), "✓ Read · rust-app · +3");
+    }
+
+    #[test]
+    fn running_non_execute_tool_call_shows_bounded_output_preview() {
         let location = concat!("C:", "\\", "repo", "\\", "large.txt");
         let message = ChatMessage::ToolCall {
             id: "tool".into(),
             title: "Read file".into(),
-            status: "Completed".into(),
+            status: "Running".into(),
             kind: ToolCallKind::Read,
             location: Some(location.into()),
             location_is_command: false,
@@ -2017,9 +2695,9 @@ mod tests {
         let lines = build_message_lines(&message, false, false, None, 0, 120);
         let rendered: Vec<String> = lines.iter().map(line_text).collect();
 
-        assert_eq!(rendered[1], "    │ …");
-        assert_eq!(rendered[2], "    │ line 3");
-        assert_eq!(rendered[3], "    │ line 4");
+        assert_eq!(rendered[1], "  └ …");
+        assert_eq!(rendered[2], "    line 3");
+        assert_eq!(rendered[3], "    line 4");
         assert!(!rendered.iter().any(|line| line.contains("line 1")));
         assert!(!rendered[0].contains("exit 200"));
         assert!(rendered[4].is_empty());
@@ -2063,37 +2741,37 @@ mod tests {
     fn tool_call_uses_semantic_status_markers() {
         assert_tool_call(
             "Pending",
-            "● Run: cargo test",
+            "● Tool · Run: cargo test",
             theme::TOOL_CALL_PENDING,
             None,
         );
         assert_tool_call(
             "running",
-            "● Run: cargo test",
+            "● Tool · Run: cargo test",
             theme::TOOL_CALL_RUNNING,
             None,
         );
         assert_tool_call(
             "Completed",
-            "✓ Run: cargo test",
+            "✓ Tool · Run: cargo test",
             theme::TOOL_CALL_SUCCESS,
             None,
         );
         assert_tool_call(
             "Failed: exit code 1",
-            "✗ Run: cargo test · exit code 1",
+            "✗ Tool · Run: cargo test · exit code 1",
             theme::TOOL_CALL_FAILURE,
             Some(theme::DIM),
         );
         assert_tool_call(
             "Canceled",
-            "− Run: cargo test",
+            "− Tool · Run: cargo test",
             theme::TOOL_CALL_CANCELED,
             None,
         );
         assert_tool_call(
             "Exited (1)",
-            "✗ Run: cargo test · Exited (1)",
+            "✗ Tool · Run: cargo test · Exited (1)",
             theme::TOOL_CALL_FAILURE,
             Some(theme::DIM),
         );
@@ -2101,20 +2779,20 @@ mod tests {
         // "exited (" failure prefix matched above) and carries no detail.
         assert_tool_call(
             "Exited (0)",
-            "✓ Run: cargo test",
+            "✓ Tool · Run: cargo test",
             theme::TOOL_CALL_SUCCESS,
             None,
         );
         // Status matching is case-insensitive across the success paths.
         assert_tool_call(
             "COMPLETED",
-            "✓ Run: cargo test",
+            "✓ Tool · Run: cargo test",
             theme::TOOL_CALL_SUCCESS,
             None,
         );
         assert_tool_call(
             "eXiTeD (0)",
-            "✓ Run: cargo test",
+            "✓ Tool · Run: cargo test",
             theme::TOOL_CALL_SUCCESS,
             None,
         );
@@ -2123,7 +2801,7 @@ mod tests {
         // silently dropping the status.
         assert_tool_call(
             "SomeFutureStatus",
-            "• Run: cargo test · SomeFutureStatus",
+            "• Tool · Run: cargo test · SomeFutureStatus",
             theme::DIM,
             Some(theme::DIM),
         );

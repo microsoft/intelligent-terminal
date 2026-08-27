@@ -50,6 +50,17 @@ chat.autofix_prompt_label: "Falliment riċenti ta' kmand iddijanjostikat awtomat
 chat.turn_canceled: "(ikkanċellat)"
 chat.turn_adjusted: "(aġġustat)"
 chat.turn_executed: "→ ġie eżegwit: %{title}"
+# Persistent tool-category labels shown after a status marker and before a subject.
+chat.tool_kind.run: "Ħaddem"
+chat.tool_kind.read: "Aqra"
+chat.tool_kind.search: "Fittex"
+chat.tool_kind.edit: "Editja"
+chat.tool_kind.delete: "Ħassar"
+chat.tool_kind.move: "Mexxi"
+chat.tool_kind.fetch: "Ġib"
+chat.tool_kind.think: "Aħseb"
+chat.tool_kind.mode: "Modalità"
+chat.tool_kind.other: "Għodda"
 
 # ── Placeholders tal-input (src/ui/input.rs) ────────────────────────────────────
 input.placeholder.connected: "Staqsi kull ħaġa, / għall-kmandat.."  # {Locked="/"}

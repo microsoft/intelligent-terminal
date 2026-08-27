@@ -46,6 +46,17 @@ chat.autofix_prompt_label: "直近のコマンド失敗を自動診断しまし�
 chat.turn_canceled: "(キャンセル済み)"
 chat.turn_adjusted: "(調整済み)"
 chat.turn_executed: "→ 実行済み: %{title}"
+# ステータスマーカーの後、対象の前に表示される永続的なツールカテゴリラベル。
+chat.tool_kind.run: "実行"
+chat.tool_kind.read: "読み取り"
+chat.tool_kind.search: "検索"
+chat.tool_kind.edit: "編集"
+chat.tool_kind.delete: "削除"
+chat.tool_kind.move: "移動"
+chat.tool_kind.fetch: "取得"
+chat.tool_kind.think: "思考"
+chat.tool_kind.mode: "モード"
+chat.tool_kind.other: "ツール"
 
 # ── 入力プレースホルダー (src/ui/input.rs) ────────────────────────────────────────────
 input.placeholder.connected: "何でも聞いてください。/ でコマンド.."  # {Locked="/"}
