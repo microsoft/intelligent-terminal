@@ -11395,17 +11395,44 @@ fn first_message_chunk_transitions_to_streaming_with_transcript_text() {
 }
 
 #[test]
-fn thought_chunk_first_transitions_without_visible_text() {
+fn thought_chunks_stream_ephemerally_until_visible_message_text_arrives() {
     let mut app = test_app();
     submit_test_prompt(&mut app, "hi");
     let advanced = app.turn_observe_chunk(DEFAULT_TAB_ID, ChunkKind::Thought, "thinking…");
-    assert!(!advanced, "thought chunks never advance the buffer");
+    assert!(advanced, "visible thought chunks advance the live buffer");
     let tab = app.current_tab();
     assert!(tab.turn.is_streaming());
     assert_eq!(tab.streaming_agent_text(), None);
-    assert!(
-        tab.should_show_thinking(),
-        "hidden thought chunks are not user-visible feedback"
+    assert_eq!(tab.streaming_thought_text(), Some("thinking…"));
+    assert!(!tab.should_show_thinking());
+    assert!(render_to_text(&mut app, 80, 20).contains("Think · t"));
+
+    app.turn_observe_chunk(DEFAULT_TAB_ID, ChunkKind::Message, "Final answer");
+    let tab = app.current_tab();
+    assert_eq!(tab.streaming_thought_text(), None);
+    assert_eq!(tab.streaming_agent_text(), Some("Final answer"));
+    assert!(!app.turn_observe_chunk(DEFAULT_TAB_ID, ChunkKind::Thought, "late hidden thought"));
+    assert_eq!(app.current_tab().streaming_thought_text(), None);
+    app.current_tab_mut().reveal_chars = "Final answer".chars().count();
+    let rendered = render_to_text(&mut app, 80, 20);
+    assert!(rendered.contains("Final"));
+    assert!(!rendered.contains("thinking"));
+    assert!(!rendered.contains("late hidden thought"));
+}
+
+#[test]
+fn live_thought_buffer_is_bounded_without_splitting_unicode() {
+    let mut app = test_app();
+    submit_test_prompt(&mut app, "hi");
+    app.turn_observe_chunk(DEFAULT_TAB_ID, ChunkKind::Thought, &"思".repeat(4100));
+
+    assert_eq!(
+        app.current_tab()
+            .streaming_thought_text()
+            .expect("thought stream")
+            .chars()
+            .count(),
+        4000
     );
 }
 
@@ -11434,6 +11461,7 @@ fn structured_stream_hides_thinking_after_response_is_visible() {
 fn running_tool_replaces_thinking_until_tool_completes() {
     let mut app = test_app();
     submit_test_prompt(&mut app, "inspect");
+    app.turn_observe_chunk(DEFAULT_TAB_ID, ChunkKind::Thought, "Choosing files");
     app.handle_event(AppEvent::ToolCall {
         session_id: DEFAULT_TAB_ID.into(),
         id: "tool".into(),
@@ -11452,6 +11480,7 @@ fn running_tool_replaces_thinking_until_tool_completes() {
         !app.current_tab().should_show_thinking(),
         "the running tool card is already visible progress"
     );
+    assert_eq!(app.current_tab().streaming_thought_text(), None);
 
     app.handle_event(AppEvent::ToolCallUpdate {
         session_id: DEFAULT_TAB_ID.into(),

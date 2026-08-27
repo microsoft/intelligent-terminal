@@ -80,7 +80,10 @@ fn compact_group_kind(message: &ChatMessage, expanded: bool) -> Option<ToolCallK
     let ChatMessage::ToolCall { status, kind, .. } = message else {
         return None;
     };
-    let groupable_kind = matches!(kind, ToolCallKind::Read | ToolCallKind::Search);
+    let groupable_kind = matches!(
+        kind,
+        ToolCallKind::Read | ToolCallKind::Edit | ToolCallKind::Delete | ToolCallKind::Search
+    );
     (groupable_kind && ToolPhase::from_status(status).is_successful()).then_some(*kind)
 }
 
@@ -110,7 +113,10 @@ fn build_compact_tool_group_lines<'a>(messages: &'a [ChatMessage]) -> Vec<Line<'
     let Some(first) = messages.first().and_then(tool_presentation_from_message) else {
         return Vec::new();
     };
-    let (mut summary, represented) = if first.kind == ToolCallKind::Read {
+    let (mut summary, represented) = if matches!(
+        first.kind,
+        ToolCallKind::Read | ToolCallKind::Edit | ToolCallKind::Delete
+    ) {
         let presentations = messages
             .iter()
             .filter_map(tool_presentation_from_message)
@@ -1365,8 +1371,15 @@ pub(crate) fn user_visible_stream_text(text: &str) -> Option<Cow<'_, str>> {
     (!text.trim().is_empty()).then_some(Cow::Borrowed(text))
 }
 
-fn pending_render_text(tab: &crate::app::TabSession) -> Option<Cow<'_, str>> {
-    user_visible_stream_text(tab.streaming_agent_text()?)
+pub(crate) fn pending_render_text(tab: &crate::app::TabSession) -> Option<Cow<'_, str>> {
+    tab.streaming_agent_text()
+        .and_then(user_visible_stream_text)
+        .or_else(|| {
+            tab.should_show_streaming_thought()
+                .then(|| tab.streaming_thought_text())
+                .flatten()
+                .and_then(user_visible_stream_text)
+        })
 }
 
 fn build_pending_stream_lines<'a>(app: &App, wrap_width: usize) -> Vec<Line<'a>> {
@@ -1374,6 +1387,10 @@ fn build_pending_stream_lines<'a>(app: &App, wrap_width: usize) -> Vec<Line<'a>>
     let Some(text) = pending_render_text(tab) else {
         return Vec::new();
     };
+    let is_thought = tab
+        .streaming_agent_text()
+        .and_then(user_visible_stream_text)
+        .is_none();
     // Typewriter smoothing: only reveal the first `reveal_chars` characters of
     // the streaming text. The reveal cursor is advanced toward the full length
     // by the `RevealTick` animation (`App::advance_reveal`), turning the
@@ -1390,12 +1407,25 @@ fn build_pending_stream_lines<'a>(app: &App, wrap_width: usize) -> Vec<Line<'a>>
         }
     };
     let mut lines = Vec::new();
+    let rendered = if is_thought {
+        Cow::Owned(format!(
+            "{} · {}",
+            t!("chat.tool_kind.think"),
+            revealed.as_ref()
+        ))
+    } else {
+        revealed
+    };
     push_dot_prefixed_lines(
         &mut lines,
-        &revealed,
+        &rendered,
         wrap_width,
         theme::DOT_AGENT,
-        theme::AGENT_TEXT,
+        if is_thought {
+            theme::DIM
+        } else {
+            theme::AGENT_TEXT
+        },
     );
     lines
 }
@@ -1685,7 +1715,7 @@ fn push_dot_prefixed_lines<'a>(
     let body_width = wrap_width.saturating_sub(2).max(1);
     let mut first_row = true;
 
-    for paragraph in text.split('\n') {
+    for paragraph in text.trim_end_matches(['\r', '\n']).split('\n') {
         if paragraph.is_empty() {
             // Skip leading blanks so the dot lands on the first content row
             // — many models prefix prose with `\n` / `\n\n`, which would
@@ -2495,6 +2525,66 @@ mod tests {
     }
 
     #[test]
+    fn successful_file_mutations_group_by_kind_and_deduplicate_targets() {
+        for (kind, label) in [
+            (ToolCallKind::Edit, "Edit"),
+            (ToolCallKind::Delete, "Delete"),
+        ] {
+            let messages = [
+                (r"C:\repo\src\chat.rs", "Completed"),
+                (r"C:\repo\src\chat.rs", "Completed"),
+                (r"C:\repo\src\app.rs", "Completed"),
+            ]
+            .into_iter()
+            .enumerate()
+            .map(|(index, (path, status))| ChatMessage::ToolCall {
+                id: format!("mutation-{index}"),
+                title: "Mutate file".into(),
+                status: status.into(),
+                kind,
+                location: Some(path.into()),
+                location_is_command: false,
+                cwd: None,
+                output: None,
+                exit_code: None,
+                content: Vec::new(),
+                locations: Vec::new(),
+            })
+            .collect::<Vec<_>>();
+
+            assert_eq!(previous_message_group_start(&messages, messages.len()), 0);
+            let rendered = build_compact_tool_group_lines(&messages);
+            assert_eq!(
+                line_text(&rendered[0]),
+                format!("✓ {label} · chat.rs, app.rs · +1")
+            );
+        }
+    }
+
+    #[test]
+    fn failed_file_mutation_breaks_compact_group() {
+        let messages = ["Completed", "Failed", "Completed"]
+            .into_iter()
+            .enumerate()
+            .map(|(index, status)| ChatMessage::ToolCall {
+                id: format!("edit-{index}"),
+                title: "Edit file".into(),
+                status: status.into(),
+                kind: ToolCallKind::Edit,
+                location: Some(format!("file-{index}.rs")),
+                location_is_command: false,
+                cwd: None,
+                output: None,
+                exit_code: None,
+                content: Vec::new(),
+                locations: Vec::new(),
+            })
+            .collect::<Vec<_>>();
+
+        assert_eq!(previous_message_group_start(&messages, messages.len()), 2);
+    }
+
+    #[test]
     fn running_non_execute_tool_call_shows_bounded_output_preview() {
         let location = concat!("C:", "\\", "repo", "\\", "large.txt");
         let message = ChatMessage::ToolCall {
@@ -2846,6 +2936,15 @@ mod tests {
             texts,
             vec!["● A".to_string(), String::new(), "  B".to_string()]
         );
+    }
+
+    #[test]
+    fn dot_prefix_discards_trailing_blank_lines() {
+        let mut lines = Vec::new();
+        push_dot_prefixed_lines(&mut lines, "A\n\n", 40, theme::DOT_AGENT, theme::AGENT_TEXT);
+
+        assert_eq!(lines.len(), 1);
+        assert_eq!(line_text(&lines[0]), "● A");
     }
 
     #[test]

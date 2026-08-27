@@ -225,6 +225,9 @@ fn ascii_case_insensitive_range(haystack: &str, needle: &str) -> Option<Range<us
 }
 
 fn compact_target(kind: ToolCallKind, target: &str) -> Cow<'_, str> {
+    if kind == ToolCallKind::Fetch {
+        return compact_fetch_target(target);
+    }
     if !matches!(
         kind,
         ToolCallKind::Read
@@ -246,6 +249,41 @@ fn compact_target(kind: ToolCallKind, target: &str) -> Cow<'_, str> {
     }
     let separator = if target.contains('\\') { "\\" } else { "/" };
     Cow::Owned(parts[parts.len() - keep..].join(separator))
+}
+
+fn compact_fetch_target(target: &str) -> Cow<'_, str> {
+    let trimmed = target.trim();
+    let without_scheme = trimmed
+        .split_once("://")
+        .map_or(trimmed, |(_, remainder)| remainder);
+    let safe_end = without_scheme
+        .find(['?', '#'])
+        .unwrap_or(without_scheme.len());
+    let safe = &without_scheme[..safe_end];
+    let (authority, path) = safe.split_once('/').unwrap_or((safe, ""));
+    let authority = authority
+        .rsplit_once('@')
+        .map_or(authority, |(_, host)| host);
+    let path_parts = path
+        .split('/')
+        .filter(|part| !part.is_empty())
+        .collect::<Vec<_>>();
+
+    let compact = match path_parts.as_slice() {
+        [] => authority.to_string(),
+        [only] => format!("{authority}/{only}"),
+        [first, second] => format!("{authority}/{first}/{second}"),
+        parts => format!(
+            "{authority}/…/{}/{}",
+            parts[parts.len() - 2],
+            parts[parts.len() - 1]
+        ),
+    };
+    if compact == target {
+        Cow::Borrowed(target)
+    } else {
+        Cow::Owned(compact)
+    }
 }
 
 #[cfg(test)]
@@ -281,6 +319,21 @@ mod tests {
         assert_eq!(
             compact_target(ToolCallKind::Execute, "cargo test"),
             "cargo test"
+        );
+    }
+
+    #[test]
+    fn compacts_fetch_targets_without_credentials_or_query_data() {
+        assert_eq!(
+            compact_target(
+                ToolCallKind::Fetch,
+                "https://user:secret@api.example.com/v1/repos/terminal/issues?token=secret#result"
+            ),
+            "api.example.com/…/terminal/issues"
+        );
+        assert_eq!(
+            compact_target(ToolCallKind::Fetch, "https://example.com/status"),
+            "example.com/status"
         );
     }
 
