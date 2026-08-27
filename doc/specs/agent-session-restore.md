@@ -43,17 +43,35 @@ the ordinary layout, every existing writer picks it up for free:
 | `WindowEmperor::_finalizeSessionPersistence` | closing the last window, quitting, sign-out, shutdown |
 | `TerminalPage::_SaveWorkspaceIfNeeded` | named windows, which persist as workspaces |
 
-Two kinds of binding are recorded.
+Two kinds of binding are recorded, and both are designed to outlive the process
+they describe — the same property that lets an ordinary pane come back after its
+program was killed.
 
 **Shell panes.** `_paneAgentSessions` holds the most recent agent session seen in
 each shell pane, keyed by the pane's connection `SessionId`. The binding arrives
 either from the agent hooks or, when no hook is installed, from wta's own
-`pane_agent_session_changed` event. It is kept after the CLI exits, so a save
-that happens later can still describe how to resume it.
+`pane_agent_session_changed` event. A CLI that exits gracefully drops its binding
+— there is nothing left to resume, and `closeOnExit` closes that pane anyway. A
+CLI that was *killed* keeps it: the pane survives a failed exit, so a save that
+happens later can still describe how to bring the CLI back. The binding is
+dropped for good in `_NotifyPanesClosing`, when the pane itself goes away.
 
 **The agent pane.** Its ACP session, agent identity (including the WSL distro,
 folded into one `AgentPaneBackend` token), custom command, view, open state,
-position, and split size are recorded on the tab's first action.
+position, and split size live in `AgentPaneContent` — a XAML object that dies
+with its pane, and the Agent Pane profile is `closeOnExit: always`, so the pane
+dies the moment the helper does. A save that had to read the live pane would
+therefore describe no agent at all whenever the helper went down first, which is
+exactly what a system shutdown produces: it kills wta and the agent CLIs while
+Terminal's own `WM_ENDSESSION` save is still queued.
+
+So the pane does not own its restore data. `Tab::AgentRestoreRecord` does.
+`_RefreshAgentRestoreRecord` writes it whenever the live pane can be read — at
+creation, and after every `agent_state_changed` projection from wta — and
+`_AddAgentRestoreMetadata` stamps the record, never the pane. The record is
+cleared only when the agent pane is deliberately taken away: `_TeardownAgentPane`,
+a user closing the pane, or a move to another window. A pane lost to a dying
+helper keeps its record and comes back.
 
 `RemoveAgentPaneSessionFromShellBindings` then clears the agent pane's own ACP
 session from the shell pane that hosts the helper. Without it the restore would

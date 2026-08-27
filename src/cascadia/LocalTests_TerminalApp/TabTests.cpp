@@ -200,6 +200,8 @@ namespace TerminalAppLocalTests
         TEST_METHOD(PaneAgentSessionEndClearsAgentBinding);
         TEST_METHOD(ContentIdHandoffEndClearsAgentBinding);
         TEST_METHOD(GetWindowLayoutIncludesAgentRestoreMetadata);
+        TEST_METHOD(AgentRestoreRecordOutlivesTheAgentPane);
+        TEST_METHOD(KilledCliKeepsAgentBindingUntilPaneCloses);
         TEST_METHOD(PersistStateIncludesAgentRestoreMetadata);
         TEST_METHOD(NaturalClosedEventThenNotifyPanesClosingEmitsOnce);
         TEST_METHOD(NaturalFailedEventThenNotifyPanesClosingEmitsOnce);
@@ -631,6 +633,97 @@ namespace TerminalAppLocalTests
             {
                 VERIFY_FAIL(L"Expected the split pane to keep its agent session metadata.");
             }
+        });
+    }
+
+    // The Agent Pane profile is `closeOnExit: always`, so a helper that dies
+    // takes its pane — and everything AgentPaneContent knew — with it. The
+    // record on the Tab is what a save reads instead, so it still describes the
+    // agent after the pane is gone.
+    void TabTests::AgentRestoreRecordOutlivesTheAgentPane()
+    {
+        auto page = _commonSetup();
+        VERIFY_IS_NOT_NULL(page);
+
+        TestOnUIThread([&]() {
+            const auto tab = page->_GetFocusedTabImpl();
+            VERIFY_IS_NOT_NULL(tab);
+            // The premise: the pane is already gone, as it would be after a
+            // shutdown killed wta.
+            VERIFY_IS_NULL(tab->FindAgentPaneContent());
+
+            winrt::TerminalApp::implementation::Tab::AgentRestoreRecord record;
+            record.sessionId = L"agent-pane-session";
+            record.agent = L"copilot";
+            record.view = L"sessions";
+            record.open = true;
+            record.position = L"bottom";
+            record.size = 0.4f;
+            tab->SetAgentRestoreRecord(record);
+
+            const auto layout = page->GetWindowLayout();
+            VERIFY_IS_NOT_NULL(layout);
+            const auto terminalArgs = _getTerminalArgs(layout.TabLayout().GetAt(0));
+            VERIFY_IS_NOT_NULL(terminalArgs);
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"agent-pane-session" }, terminalArgs.AgentPaneSessionId());
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"copilot" }, terminalArgs.AgentPaneAgent());
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"sessions" }, terminalArgs.AgentPaneView());
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"bottom" }, terminalArgs.AgentPanePosition());
+            VERIFY_IS_TRUE(terminalArgs.AgentPaneOpen());
+            VERIFY_ARE_EQUAL(0.4f, terminalArgs.AgentPaneSize());
+        });
+
+        TestOnUIThread([&]() {
+            const auto tab = page->_GetFocusedTabImpl();
+            VERIFY_IS_NOT_NULL(tab);
+
+            // Taking the pane away on purpose drops the record, so a pane the
+            // user got rid of does not come back.
+            page->_ClearAgentRestoreRecord(tab.get());
+
+            const auto layout = page->GetWindowLayout();
+            VERIFY_IS_NOT_NULL(layout);
+            const auto terminalArgs = _getTerminalArgs(layout.TabLayout().GetAt(0));
+            VERIFY_IS_NOT_NULL(terminalArgs);
+            VERIFY_IS_TRUE(terminalArgs.AgentPaneSessionId().empty());
+            VERIFY_IS_FALSE(terminalArgs.AgentPaneOpen());
+        });
+    }
+
+    // A shell pane survives its CLI being killed (`closeOnExit` only closes on a
+    // graceful exit), so the binding that says how to resume that CLI has to
+    // survive with it — right up until the pane itself closes.
+    void TabTests::KilledCliKeepsAgentBindingUntilPaneCloses()
+    {
+        auto page = _commonSetup();
+        VERIFY_IS_NOT_NULL(page);
+
+        TestOnUIThread([&]() {
+            const auto tab = page->_GetFocusedTabImpl();
+            VERIFY_IS_NOT_NULL(tab);
+            const auto rootPane = tab->GetRootPane();
+            VERIFY_IS_NOT_NULL(rootPane);
+            const auto control = rootPane->GetTerminalControl();
+            VERIFY_IS_NOT_NULL(control);
+
+            const auto paneSessionId = control.Connection().SessionId();
+            const auto paneId = winrt::to_string(::Microsoft::Console::Utils::GuidToString(paneSessionId));
+
+            page->_paneAgentSessions.clear();
+            page->_panesWithEmittedTerminalEndState.clear();
+            auto& binding = page->_paneAgentSessions[paneSessionId];
+            binding.sessionId = L"agent-session-killed";
+            binding.agent = L"copilot";
+            binding.resumeCommandline = L"copilot --resume agent-session-killed";
+
+            // The CLI was killed, not ended. The pane is still here, so the
+            // binding must be too.
+            page->_TryRaiseTerminalEndStateEvent(paneId, "failed");
+            VERIFY_ARE_EQUAL(1u, static_cast<unsigned int>(page->_paneAgentSessions.count(paneSessionId)));
+
+            // The pane going away is what finally retires it.
+            page->_NotifyPanesClosing(rootPane);
+            VERIFY_ARE_EQUAL(0u, static_cast<unsigned int>(page->_paneAgentSessions.count(paneSessionId)));
         });
     }
 

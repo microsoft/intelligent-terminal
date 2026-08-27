@@ -2234,7 +2234,16 @@ namespace winrt::TerminalApp::implementation
 
         if (const auto paneSessionId = _TryParsePaneSessionId(paneId))
         {
-            _paneAgentSessions.erase(*paneSessionId);
+            // A CLI that exited on its own leaves nothing to resume. One that
+            // was killed does: `closeOnExit` only closes a pane on a graceful
+            // exit, so the pane outlives the failure and has to keep the
+            // binding that describes how to bring the CLI back.
+            // `_NotifyPanesClosing` is what drops a binding when the pane
+            // itself goes away.
+            if (state == "closed")
+            {
+                _paneAgentSessions.erase(*paneSessionId);
+            }
         }
 
         if (!_panesWithEmittedTerminalEndState.emplace(std::string{ paneId }).second)
@@ -2258,6 +2267,7 @@ namespace winrt::TerminalApp::implementation
         {
             return;
         }
+        _ClearAgentRestoreRecord(tab.get());
         if (const auto pane = tab->FindAgentPane())
         {
             _agentPaneLog("_TeardownAgentPane: closing agent pane on tab");
@@ -2712,6 +2722,13 @@ namespace winrt::TerminalApp::implementation
             }
             const auto stateStr = control.ConnectionState() == ConnectionState::Failed ? "failed" : "closed";
             _TryRaiseTerminalEndStateEvent(paneIdStr, stateStr);
+            // This pane is going away for good, so its agent binding goes with
+            // it — including the failed case that the call above deliberately
+            // keeps for panes that merely outlived their CLI.
+            if (const auto paneSessionId = _TryParsePaneSessionId(paneIdStr))
+            {
+                _paneAgentSessions.erase(*paneSessionId);
+            }
         });
     }
 
@@ -3342,6 +3359,7 @@ namespace winrt::TerminalApp::implementation
                 root.UpdateLayout();
             }
             tab->StashAgentPane();
+            _RefreshAgentRestoreRecord(tab.get());
             _UpdateBottomBarState();
             _agentPaneLog("_AutoCreateHiddenAgentPaneShared: done — helper pre-warmed + stashed");
             return true;
@@ -3349,6 +3367,7 @@ namespace winrt::TerminalApp::implementation
 
         if (!focusPane)
         {
+            _RefreshAgentRestoreRecord(tab.get());
             _agentPaneLog("_AutoCreateHiddenAgentPaneShared: done without changing pane focus");
             return true;
         }
@@ -3385,6 +3404,7 @@ namespace winrt::TerminalApp::implementation
         // The pane was just rooted into the active tab; refresh the
         // window-level bottom bar so the toggle/sessions buttons reflect
         // the new "agent pane open" state.
+        _RefreshAgentRestoreRecord(tab.get());
         _UpdateBottomBarState();
 
         _agentPaneLog("_AutoCreateHiddenAgentPaneShared: done — helper conpty child spawned");
@@ -6621,6 +6641,11 @@ namespace winrt::TerminalApp::implementation
             }
         }
 
+        // wta has finished projecting this tab's agent state, so the pane is
+        // now showing everything a restore has to reproduce. Record it while
+        // we can read it.
+        _RefreshAgentRestoreRecord(targetTab.get());
+
         // Bottom-bar catch-all. AgentPaneContent::SetSessionsView is idempotent
         // and skips `StateChanged` when the view didn't change — so a pure
         // `tab_changed` echo (same state, just routed to the now-focused tab)
@@ -8555,6 +8580,12 @@ namespace winrt::TerminalApp::implementation
             {
                 if (const auto pane{ tabImpl->GetActivePane() })
                 {
+                    // The agent pane is leaving for another window, which owns
+                    // its restore from here on.
+                    if (pane->IsAgentPane())
+                    {
+                        _ClearAgentRestoreRecord(tabImpl.get());
+                    }
                     auto startupActions = pane->BuildStartupActions(0, 1, BuildStartupKind::MovePane);
                     _DetachPaneFromWindow(pane);
                     _MoveContent(std::move(startupActions.args), windowId, tabIdx);

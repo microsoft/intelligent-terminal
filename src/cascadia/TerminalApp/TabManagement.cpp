@@ -589,7 +589,13 @@ namespace winrt::TerminalApp::implementation
             }
         }
 
-        if (const auto agentContent = tab->FindAgentPaneContent())
+        // The record, not the live pane, is what a save reads. Refresh it first
+        // so an agent pane that is still here contributes its current state,
+        // then stamp whatever the tab last knew — which is still there after
+        // the helper died and took the pane with it.
+        _RefreshAgentRestoreRecord(tab);
+
+        if (const auto& record = tab->GetAgentRestoreRecord())
         {
             // Whether the pane is open, which view it shows, and where it sits
             // are user intent and must survive a restore on their own. wta only
@@ -597,25 +603,63 @@ namespace winrt::TerminalApp::implementation
             // conversation, so gating this block on that id would silently drop
             // the layout of every agent pane the user opened but never chatted
             // in. An empty id simply means "restore the pane, load no session".
-            const auto agentSessionId = agentContent.AgentSessionId();
-            RemoveAgentPaneSessionFromShellBindings(actions, agentSessionId);
+            RemoveAgentPaneSessionFromShellBindings(actions, record->sessionId);
             for (const auto& action : actions)
             {
                 if (const auto newTabArgs = action.Args().try_as<NewTabArgs>())
                 {
                     if (const auto terminalArgs = newTabArgs.ContentArgs().try_as<NewTerminalArgs>())
                     {
-                        terminalArgs.AgentPaneSessionId(agentSessionId);
-                        terminalArgs.AgentPaneAgent(_GetAgentPaneIdentity(tab));
-                        terminalArgs.AgentPaneCustomCommand(_GetAgentPaneCustomCommand(tab));
-                        terminalArgs.AgentPaneView(agentContent.IsSessionsView() ? L"sessions" : L"chat");
-                        terminalArgs.AgentPaneOpen(!tab->HasStashedAgentPane());
-                        terminalArgs.AgentPanePosition(winrt::get_self<implementation::AgentPaneContent>(agentContent)->GetAgentPanePosition());
-                        terminalArgs.AgentPaneSize(tab->AgentPaneSize());
+                        terminalArgs.AgentPaneSessionId(record->sessionId);
+                        terminalArgs.AgentPaneAgent(record->agent);
+                        terminalArgs.AgentPaneCustomCommand(record->customCommand);
+                        terminalArgs.AgentPaneView(record->view);
+                        terminalArgs.AgentPaneOpen(record->open);
+                        terminalArgs.AgentPanePosition(record->position);
+                        terminalArgs.AgentPaneSize(record->size);
                         break;
                     }
                 }
             }
+        }
+    }
+
+    // Snapshot the live agent pane onto its tab. Everything a restore needs is
+    // read here, while the pane is available, so that no save ever has to find
+    // one.
+    void TerminalPage::_RefreshAgentRestoreRecord(Tab* const tab)
+    {
+        if (!tab)
+        {
+            return;
+        }
+
+        const auto agentContent = tab->FindAgentPaneContent();
+        if (!agentContent)
+        {
+            return;
+        }
+
+        Tab::AgentRestoreRecord record;
+        record.sessionId = agentContent.AgentSessionId();
+        record.agent = _GetAgentPaneIdentity(tab);
+        record.customCommand = _GetAgentPaneCustomCommand(tab);
+        record.view = agentContent.IsSessionsView() ? L"sessions" : L"chat";
+        record.open = !tab->HasStashedAgentPane();
+        record.position = winrt::get_self<implementation::AgentPaneContent>(agentContent)->GetAgentPanePosition();
+        record.size = tab->AgentPaneSize();
+        tab->SetAgentRestoreRecord(std::move(record));
+    }
+
+    // The agent pane is being taken away on purpose — torn down, closed by the
+    // user, or moved to another window — so there is nothing left to restore.
+    // A pane lost to a dying helper never comes through here, which is what
+    // keeps its record intact.
+    void TerminalPage::_ClearAgentRestoreRecord(Tab* const tab)
+    {
+        if (tab)
+        {
+            tab->SetAgentRestoreRecord(std::nullopt);
         }
     }
 
@@ -1171,6 +1215,15 @@ namespace winrt::TerminalApp::implementation
         }
 
         const auto isLastPane = owningTab && owningTab->GetLeafPaneCount() == 1;
+
+        // Closing the agent pane by hand is a decision, not an accident, so
+        // its restore record goes with it. (`_SaveWorkspaceIfNeeded` below
+        // reads that record, so clear it first.)
+        if (owningTab && pane->IsAgentPane())
+        {
+            _ClearAgentRestoreRecord(owningTab.get());
+        }
+
         // If this is the last pane on the last tab of a named window, persist
         // the workspace while the pane content is still alive.
         if (isLastPane && _tabs.Size() == 1)

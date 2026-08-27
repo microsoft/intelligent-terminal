@@ -821,6 +821,11 @@ namespace winrt::TerminalApp::implementation
 
         safe_void_coroutine _ExportTab(const Tab& tab, winrt::hstring filepath);
         void _AddAgentRestoreMetadata(Tab* tab, std::vector<winrt::Microsoft::Terminal::Settings::Model::ActionAndArgs>& actions);
+        // Refresh a tab's durable agent-pane restore record from the live pane.
+        // A no-op when the tab has no agent pane, which is what lets the record
+        // outlive a helper that died on its own.
+        void _RefreshAgentRestoreRecord(Tab* tab);
+        void _ClearAgentRestoreRecord(Tab* tab);
         // Pane ids whose terminal end event (`closed` / `failed`) already went
         // out on ProtocolVtSequenceReceived for the current TermControl
         // lifetime. `_SetupControl` clears any stale mark when a new control
