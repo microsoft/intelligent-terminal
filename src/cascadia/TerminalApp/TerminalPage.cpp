@@ -22,6 +22,7 @@
 #include "../inc/AgentRegistry.h"
 #include "../inc/AgentPolicy.h"
 #include "../inc/AgentPaneBackend.h"
+#include "../inc/AgentSourceUtils.h"
 #include "../TerminalSettingsAppAdapterLib/TerminalSettings.h"
 #include "../inc/CustomModelProviderUtils.h"
 #include "AgentPaneContent.h"
@@ -3114,9 +3115,10 @@ namespace winrt::TerminalApp::implementation
             }
         }
 
-        // Resolve cwd. Priority matches the legacy spawn:
-        //   a) VirtualWorkingDirectory (CLI-remoted commands like `wt agent`)
-        //   b) Active pane CWD of THIS tab (from shell integration / OSC 9;9)
+        // Resolve cwd:
+        //   a) Active pane CWD of THIS tab (pre-seeded from its starting directory,
+        //      then updated by shell integration / OSC 9;9)
+        //   b) VirtualWorkingDirectory (CLI-remoted commands like `wt agent`)
         //   c) Profile's configured starting directory
         //   d) User's home directory
         //
@@ -3127,32 +3129,33 @@ namespace winrt::TerminalApp::implementation
         // the helper would start in the wrong directory (autofix and
         // agent context would attribute to the wrong project). Reading
         // directly from `tab` resolves to whichever pane is active on
-        // this specific tab. If shell integration hasn't reported a cwd
-        // yet (common for a just-spawned background tab) we fall through
-        // to (c)/(d) below.
-        winrt::hstring startingDirectory = _WindowProperties.VirtualWorkingDirectory();
-        if (startingDirectory.empty())
+        // this specific tab. It must also win over the window cwd: deferred
+        // pre-warm runs after startup actions restore that property to the
+        // launcher directory, which is System32 for an AUMID activation.
+        winrt::hstring paneDirectory;
+        if (const auto activeControl = tab->GetActiveTerminalControl())
         {
-            if (const auto activeControl = tab->GetActiveTerminalControl())
-            {
-                startingDirectory = activeControl.WorkingDirectory();
-            }
+            paneDirectory = activeControl.WorkingDirectory();
         }
-        if (startingDirectory.empty())
+        const auto windowDirectory = _WindowProperties.VirtualWorkingDirectory();
+        winrt::hstring profileDirectory;
+        if (sourceProfile)
         {
-            if (sourceProfile)
-            {
-                startingDirectory = sourceProfile.EvaluatedStartingDirectory();
-            }
+            profileDirectory = sourceProfile.EvaluatedStartingDirectory();
         }
-        if (startingDirectory.empty())
+        winrt::hstring homeDirectory;
+        wchar_t homePath[MAX_PATH];
+        if (GetEnvironmentVariableW(L"USERPROFILE", homePath, MAX_PATH) > 0)
         {
-            wchar_t homePath[MAX_PATH];
-            if (GetEnvironmentVariableW(L"USERPROFILE", homePath, MAX_PATH) > 0)
-            {
-                startingDirectory = winrt::hstring{ homePath };
-            }
+            homeDirectory = winrt::hstring{ homePath };
         }
+        const winrt::hstring startingDirectory{
+            ::Microsoft::Terminal::AgentSource::ResolveCwd(
+                std::wstring_view{ paneDirectory },
+                std::wstring_view{ windowDirectory },
+                std::wstring_view{ profileDirectory },
+                std::wstring_view{ homeDirectory })
+        };
         if (!startingDirectory.empty())
         {
             appendHelperFlagValue(L"--agent-source-cwd", startingDirectory);
