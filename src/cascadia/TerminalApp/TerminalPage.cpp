@@ -3183,7 +3183,7 @@ namespace winrt::TerminalApp::implementation
                 startingDirectory = winrt::hstring{ homePath };
             }
         }
-        if (effectiveAgentSource == L"wsl" && !startingDirectory.empty())
+        if (!startingDirectory.empty())
         {
             appendHelperFlagValue(L"--agent-source-cwd", startingDirectory);
         }
