@@ -3075,13 +3075,13 @@ pub async fn run_acp_client_over_pipe(
     // bug: master used to register both the bootstrap and the loaded
     // sid (both bound to the same WT pane) and the session management view showed two
     // Live rows for the same agent pane.
-    let cwd = match &agent_source {
-        crate::agent_source::AgentSource::Host => std::env::current_dir().unwrap_or_default(),
-        crate::agent_source::AgentSource::Wsl { .. } => source_cwd
-            .as_deref()
-            .map(std::path::PathBuf::from)
-            .unwrap_or_else(|| std::path::PathBuf::from("/")),
-    };
+    let cwd = source_cwd
+        .as_deref()
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|| match &agent_source {
+            crate::agent_source::AgentSource::Host => std::env::current_dir().unwrap_or_default(),
+            crate::agent_source::AgentSource::Wsl { .. } => std::path::PathBuf::from("/"),
+        });
     let (session_id, mut available_models, mut current_model_id, mut session_config, has_bootstrap) =
         if let Some(load_sid) = initial_load_session_id.as_deref() {
             // No bootstrap. AgentConnected fires with the to-be-loaded
