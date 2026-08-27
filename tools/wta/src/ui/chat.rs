@@ -1706,7 +1706,7 @@ fn push_dot_prefixed_lines<'a>(
     let body_width = wrap_width.saturating_sub(2).max(1);
     let mut first_row = true;
 
-    for paragraph in text.split('\n') {
+    for paragraph in text.trim_end_matches(['\r', '\n']).split('\n') {
         if paragraph.is_empty() {
             // Skip leading blanks so the dot lands on the first content row
             // — many models prefix prose with `\n` / `\n\n`, which would
@@ -2927,6 +2927,15 @@ mod tests {
             texts,
             vec!["● A".to_string(), String::new(), "  B".to_string()]
         );
+    }
+
+    #[test]
+    fn dot_prefix_discards_trailing_blank_lines() {
+        let mut lines = Vec::new();
+        push_dot_prefixed_lines(&mut lines, "A\n\n", 40, theme::DOT_AGENT, theme::AGENT_TEXT);
+
+        assert_eq!(lines.len(), 1);
+        assert_eq!(line_text(&lines[0]), "● A");
     }
 
     #[test]
