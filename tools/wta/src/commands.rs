@@ -566,6 +566,7 @@ mod tests {
                 ("model", OpenPicker),
                 ("config", OpenPicker),
                 ("move", OpenPicker),
+                ("yolo", ExecuteImmediately),
             ]
         );
         assert!(
