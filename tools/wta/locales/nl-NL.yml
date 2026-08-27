@@ -49,6 +49,17 @@ chat.plan_marker_pending: "[ ]"  # {Locked}
 chat.autofix_prompt_label: "Recente opdrachtfout automatisch gediagnosticeerd"
 chat.turn_canceled: "(geannuleerd)"
 chat.turn_executed: "→ uitgevoerd: %{title}"
+# Persistent tool-category labels shown after a status marker and before a subject.
+chat.tool_kind.run: "Uitvoeren"
+chat.tool_kind.read: "Lezen"
+chat.tool_kind.search: "Zoeken"
+chat.tool_kind.edit: "Bewerken"
+chat.tool_kind.delete: "Verwijderen"
+chat.tool_kind.move: "Verplaatsen"
+chat.tool_kind.fetch: "Ophalen"
+chat.tool_kind.think: "Denken"
+chat.tool_kind.mode: "Modus"
+chat.tool_kind.other: "Hulpprogramma"
 
 # ── Invoertijdelijke aanduidingen (src/ui/input.rs) ────────────────────────────────────────────
 input.placeholder.connected: "Stel een vraag, / voor opdrachten.."  # {Locked="/"}

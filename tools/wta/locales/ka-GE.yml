@@ -49,6 +49,17 @@ chat.plan_marker_pending: "[ ]"  # {Locked}
 chat.autofix_prompt_label: "ბრძანების ბოლო შეცდომა ავტომატურად დიაგნოსტირებულია"
 chat.turn_canceled: "(გაუქმდა)"
 chat.turn_executed: "→ შესრულდა: %{title}"
+# ხელსაწყოს კატეგორიის მუდმივი წარწერები, რომლებიც გამოჩნდება სტატუსის ნიშნულის შემდეგ და თემის წინ.
+chat.tool_kind.run: "გაშვება"
+chat.tool_kind.read: "წაკითხვა"
+chat.tool_kind.search: "ძიება"
+chat.tool_kind.edit: "რედაქტირება"
+chat.tool_kind.delete: "წაშლა"
+chat.tool_kind.move: "გადატანა"
+chat.tool_kind.fetch: "მიღება"
+chat.tool_kind.think: "ფიქრი"
+chat.tool_kind.mode: "რეჟიმი"
+chat.tool_kind.other: "ხელსაწყო"
 
 # ── შეყვანის ადგილმჩვენებლები (src/ui/input.rs) ────────────────────────────────────
 input.placeholder.connected: "იკითხეთ რაც გნებავთ, / ბრძანებებისთვის.."  # {Locked="/"}

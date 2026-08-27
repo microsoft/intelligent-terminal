@@ -49,6 +49,17 @@ chat.plan_marker_pending: "[ ]"  # {Locked}
 chat.autofix_prompt_label: "Đã tự động chẩn đoán một lỗi lệnh gần đây"
 chat.turn_canceled: "(đã hủy)"
 chat.turn_executed: "→ đã thực thi: %{title}"
+# Nhãn danh mục công cụ cố định, hiển thị sau dấu trạng thái và trước đối tượng.
+chat.tool_kind.run: "Chạy"
+chat.tool_kind.read: "Đọc"
+chat.tool_kind.search: "Tìm kiếm"
+chat.tool_kind.edit: "Chỉnh sửa"
+chat.tool_kind.delete: "Xóa"
+chat.tool_kind.move: "Di chuyển"
+chat.tool_kind.fetch: "Truy xuất"
+chat.tool_kind.think: "Suy luận"
+chat.tool_kind.mode: "Chế độ"
+chat.tool_kind.other: "Công cụ"
 
 # ── Input placeholders (src/ui/input.rs) ────────────────────────────────────
 input.placeholder.connected: "Hỏi bất cứ điều gì, / cho lệnh.."  # {Locked="/"}

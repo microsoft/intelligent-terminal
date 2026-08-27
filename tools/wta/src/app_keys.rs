@@ -7,6 +7,13 @@
 
 use super::*;
 
+fn modifiers_allow_text_input(modifiers: KeyModifiers) -> bool {
+    let control = modifiers.contains(KeyModifiers::CONTROL);
+    let alt = modifiers.contains(KeyModifiers::ALT);
+    // Windows reports AltGr text entry as Ctrl+Alt.
+    control == alt
+}
+
 impl App {
     pub(super) fn handle_key(&mut self, key: KeyEvent) {
         // Per-keystroke and carries the raw `KeyCode` (the typed character for
@@ -260,11 +267,7 @@ impl App {
                         self.reset_agents_search_selection(&tab_id);
                         return;
                     }
-                    KeyCode::Char(character)
-                        if !key
-                            .modifiers
-                            .intersects(KeyModifiers::CONTROL | KeyModifiers::ALT) =>
-                    {
+                    KeyCode::Char(character) if modifiers_allow_text_input(key.modifiers) => {
                         self.current_tab_mut()
                             .agents_view
                             .search_query
@@ -400,9 +403,7 @@ impl App {
                     }
                     KeyCode::Char(character)
                         if request.request.allow_freeform
-                            && !key
-                                .modifiers
-                                .intersects(KeyModifiers::CONTROL | KeyModifiers::ALT)
+                            && modifiers_allow_text_input(key.modifiers)
                             && request.input.chars().count() < MAX_ANSWER_CHARS =>
                     {
                         request.selected = request.request.choices.len();
@@ -967,7 +968,7 @@ impl App {
             {
                 self.handle_paste_image();
             }
-            KeyCode::Char(c) => {
+            KeyCode::Char(c) if modifiers_allow_text_input(key.modifiers) => {
                 // Only type into the input when it is the live caret target.
                 // When a card button, permission card, or past turn is
                 // highlighted the input is locked so the buffer cannot fill

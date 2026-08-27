@@ -52,6 +52,17 @@ chat.plan_marker_pending: "[ ]"  # {Locked}
 chat.autofix_prompt_label: "Վերջին հրամանի ձախողումը ինքնաշխատ ախտորոշվել է"
 chat.turn_canceled: "(չեղարկվել է)"
 chat.turn_executed: "→ կատարվել է: %{title}"
+# Գործիքի կատեգորիայի մշտական պիտակներ, որոնք ցուցադրվում են վիճակի նշիչից հետո և թեմայից առաջ։
+chat.tool_kind.run: "Գործարկել"
+chat.tool_kind.read: "Կարդալ"
+chat.tool_kind.search: "Որոնել"
+chat.tool_kind.edit: "Խմբագրել"
+chat.tool_kind.delete: "Ջնջել"
+chat.tool_kind.move: "Տեղափոխել"
+chat.tool_kind.fetch: "Ստանալ"
+chat.tool_kind.think: "Մտածել"
+chat.tool_kind.mode: "Ռեժիմ"
+chat.tool_kind.other: "Գործիք"
 
 # ── Input placeholders (src/ui/input.rs) ──────────────────────────────────────────────────────────────────
 input.placeholder.connected: "Հարցրեք ցանկացած, / հրամանների համար.."  # {Locked="/"}

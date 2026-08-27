@@ -49,6 +49,17 @@ chat.plan_marker_pending: "[ ]"  # {Locked}
 chat.autofix_prompt_label: "Yaqindagi buyruq xatosi avtomatik tarzda tashxis qilindi"
 chat.turn_canceled: "(bekor qilindi)"
 chat.turn_executed: "→ bajarildi: %{title}"
+# Holat belgisidan keyin va mavzudan oldin ko‘rsatiladigan doimiy vosita turkumi yorliqlari.
+chat.tool_kind.run: "Ishga tushirish"
+chat.tool_kind.read: "O‘qish"
+chat.tool_kind.search: "Qidirish"
+chat.tool_kind.edit: "Tahrirlash"
+chat.tool_kind.delete: "O‘chirish"
+chat.tool_kind.move: "Ko‘chirish"
+chat.tool_kind.fetch: "Olish"
+chat.tool_kind.think: "Fikrlash"
+chat.tool_kind.mode: "Rejim"
+chat.tool_kind.other: "Vosita"
 
 # ── Input placeholders (src/ui/input.rs) ────────────────────────────────────
 input.placeholder.connected: "Istalgan narsa soʻrang, / buyruqlar uchun.."  # {Locked="/"}

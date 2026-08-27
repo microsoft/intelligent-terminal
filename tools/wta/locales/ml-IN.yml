@@ -49,6 +49,17 @@ chat.plan_marker_pending: "[ ]"  # {Locked}
 chat.autofix_prompt_label: "സമീപകാല കമാൻഡ് പരാജയം സ്വയം നിർണ്ണയിച്ചു"
 chat.turn_canceled: "(റദ്ദാക്കി)"
 chat.turn_executed: "→ നടപ്പിലാക്കി: %{title}"
+# Persistent tool-category labels shown after a status marker and before a subject.
+chat.tool_kind.run: "പ്രവർത്തിപ്പിക്കുക"
+chat.tool_kind.read: "വായിക്കുക"
+chat.tool_kind.search: "തിരയുക"
+chat.tool_kind.edit: "തിരുത്തുക"
+chat.tool_kind.delete: "ഇല്ലാതാക്കുക"
+chat.tool_kind.move: "നീക്കുക"
+chat.tool_kind.fetch: "കൊണ്ടുവരിക"
+chat.tool_kind.think: "ചിന്തിക്കുക"
+chat.tool_kind.mode: "മോഡ്"
+chat.tool_kind.other: "ഉപകരണം"
 
 # ── ഇന്‍പുട്ട് പ്ലേസ്‌ഹോള്‍ഡറുകള്‍ (src/ui/input.rs) ────────────────────────────────────
 input.placeholder.connected: "എന്തും ചോദിക്കൂ, / കമാന്‍ഡുകള്‍ക്ക്.."  # {Locked="/"}

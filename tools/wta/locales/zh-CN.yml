@@ -45,6 +45,17 @@ chat.plan_marker_pending: "[ ]"  # {Locked}
 chat.autofix_prompt_label: "已自动诊断最近的一次命令失败"
 chat.turn_canceled: "(已取消)"
 chat.turn_executed: "→ 已执行: %{title}"
+# 在状态标记之后、操作对象之前显示的持久工具类别标签。
+chat.tool_kind.run: "运行"
+chat.tool_kind.read: "读取"
+chat.tool_kind.search: "搜索"
+chat.tool_kind.edit: "编辑"
+chat.tool_kind.delete: "删除"
+chat.tool_kind.move: "移动"
+chat.tool_kind.fetch: "获取"
+chat.tool_kind.think: "思考"
+chat.tool_kind.mode: "模式"
+chat.tool_kind.other: "工具"
 
 # ── 输入占位符 (src/ui/input.rs) ────────────────────────────────────────────
 input.placeholder.connected: "随意提问，/ 查看命令.."  # {Locked="/"}

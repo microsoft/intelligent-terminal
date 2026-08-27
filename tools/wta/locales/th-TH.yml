@@ -49,6 +49,17 @@ chat.plan_marker_pending: "[ ]"  # {Locked}
 chat.autofix_prompt_label: "วินิจฉัยความล้มเหลวของคำสั่งล่าสุดโดยอัตโนมัติ"
 chat.turn_canceled: "(ยกเลิกแล้ว)"
 chat.turn_executed: "→ ดำเนินการแล้ว: %{title}"
+# ป้ายหมวดหมู่เครื่องมือแบบถาวรที่แสดงหลังเครื่องหมายสถานะและก่อนหัวข้อ
+chat.tool_kind.run: "เรียกใช้"
+chat.tool_kind.read: "อ่าน"
+chat.tool_kind.search: "ค้นหา"
+chat.tool_kind.edit: "แก้ไข"
+chat.tool_kind.delete: "ลบ"
+chat.tool_kind.move: "ย้าย"
+chat.tool_kind.fetch: "ดึงข้อมูล"
+chat.tool_kind.think: "คิด"
+chat.tool_kind.mode: "โหมด"
+chat.tool_kind.other: "เครื่องมือ"
 
 # ── Input placeholders (src/ui/input.rs) ────────────────────────────────────
 input.placeholder.connected: "ถามอะไรก็ได้, / สำหรับคำสั่ง.."  # {Locked="/"}

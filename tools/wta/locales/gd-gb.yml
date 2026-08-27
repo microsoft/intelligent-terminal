@@ -49,6 +49,17 @@ chat.plan_marker_pending: "[ ]"  # {Locked}
 chat.autofix_prompt_label: "Air breithneachadh gu fèin-obrachail air fàilligeadh àithne o chionn ghoirid"
 chat.turn_canceled: "(air a sgur)"
 chat.turn_executed: "→ air a chur an gnìomh: %{title}"
+# Leubailean maireannach roinn-seòrsa inneil a chithear às dèidh comharra inbhe agus ron chuspair.
+chat.tool_kind.run: "Ruith"
+chat.tool_kind.read: "Leugh"
+chat.tool_kind.search: "Lorg"
+chat.tool_kind.edit: "Deasaich"
+chat.tool_kind.delete: "Sguab às"
+chat.tool_kind.move: "Gluais"
+chat.tool_kind.fetch: "Faigh"
+chat.tool_kind.think: "Smaoinich"
+chat.tool_kind.mode: "Modh"
+chat.tool_kind.other: "Inneal"
 
 # ── Àiteachan-suidhe ion-chuir (src/ui/input.rs) ────────────────────────────────────
 input.placeholder.connected: "Faighnich rud sam bith, / airson òrdughan.."  # {Locked="/"}

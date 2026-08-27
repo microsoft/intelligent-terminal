@@ -7917,6 +7917,7 @@ fn render_agent_input_accepts_non_ascii() {
     for c in sample.chars() {
         app.handle_key(KeyEvent::new(KeyCode::Char(c), KeyModifiers::NONE));
     }
+
     // The input buffer holds the exact non-ASCII string (the product contract: non-ASCII input
     // is accepted verbatim, multi-byte caret advance included)...
     assert_eq!(
@@ -7935,6 +7936,27 @@ fn render_agent_input_accepts_non_ascii() {
             "the agent input must paint the non-ASCII text {needle:?}; rendered:\n{text}"
         );
     }
+}
+
+#[test]
+fn unhandled_modified_characters_do_not_leak_into_agent_input() {
+    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+
+    let mut app = test_app();
+    app.state = ConnectionState::Connected;
+
+    app.handle_key(KeyEvent::new(KeyCode::Char('k'), KeyModifiers::CONTROL));
+    app.handle_key(KeyEvent::new(KeyCode::Char('x'), KeyModifiers::ALT));
+    app.handle_key(KeyEvent::new(KeyCode::Char('o'), KeyModifiers::CONTROL));
+
+    assert!(app.current_tab().input.is_empty());
+
+    app.handle_key(KeyEvent::new(
+        KeyCode::Char('@'),
+        KeyModifiers::CONTROL | KeyModifiers::ALT,
+    ));
+    app.handle_key(KeyEvent::new(KeyCode::Char('K'), KeyModifiers::SHIFT));
+    assert_eq!(app.current_tab().input, "@K");
 }
 
 /// Render: a committed agent message must actually appear in the painted
@@ -10166,7 +10188,7 @@ fn completed_turn_triangle_hit_uses_header_glyph_not_prompt_glyphs() {
 }
 
 #[test]
-fn clicking_completed_tool_status_marker_toggles_only_that_tool() {
+fn clicking_completed_tool_header_toggles_only_that_tool() {
     use crossterm::event::{KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
 
     let mut app = test_app();
@@ -10178,7 +10200,7 @@ fn clicking_completed_tool_status_marker_toggles_only_that_tool() {
                 id: "first-tool".into(),
                 title: "Read first".into(),
                 status: "Completed".into(),
-                kind: ToolCallKind::Read,
+                kind: ToolCallKind::Other,
                 location: Some(r"C:\first.txt".into()),
                 location_is_command: false,
                 cwd: None,
@@ -10194,7 +10216,7 @@ fn clicking_completed_tool_status_marker_toggles_only_that_tool() {
                 id: "second-tool".into(),
                 title: "Read second".into(),
                 status: "Completed".into(),
-                kind: ToolCallKind::Read,
+                kind: ToolCallKind::Other,
                 location: Some(r"C:\second.txt".into()),
                 location_is_command: false,
                 cwd: None,
@@ -10217,7 +10239,140 @@ fn clicking_completed_tool_status_marker_toggles_only_that_tool() {
         .iter()
         .copied()
         .find(|hit| hit.kind == (CompletedTurnHitKind::ToolCall { detail_index: 0 }))
-        .expect("first tool status-marker hit must exist");
+        .expect("first tool header hit must exist");
+    assert!(hit.end_column.saturating_sub(hit.start_column) > 1);
+    for kind in [
+        MouseEventKind::Down(MouseButton::Left),
+        MouseEventKind::Up(MouseButton::Left),
+    ] {
+        app.handle_event(AppEvent::Mouse(MouseEvent {
+            kind,
+            column: hit.end_column.saturating_sub(1),
+            row: hit.row,
+            modifiers: KeyModifiers::NONE,
+        }));
+    }
+
+    let expanded = render_to_text(&mut app, 80, 20);
+    assert!(expanded.contains("FIRST_DETAIL"));
+    assert!(!expanded.contains("SECOND_DETAIL"));
+    assert!(app.current_tab().completed_turns[0].expanded);
+}
+
+#[test]
+fn adjacent_successful_reads_render_as_one_compact_group() {
+    let mut app = test_app();
+    app.state = ConnectionState::Connected;
+    app.current_tab_mut().messages = [
+        r"C:\project\Cargo.toml",
+        r"C:\project\src\main.rs",
+        r"C:\project\static\index.html",
+        r"C:\project\static\app.js",
+    ]
+    .into_iter()
+    .enumerate()
+    .map(|(index, path)| ChatMessage::ToolCall {
+        id: format!("read-{index}"),
+        title: format!("Viewing {path}"),
+        status: "Completed".into(),
+        kind: ToolCallKind::Read,
+        location: None,
+        location_is_command: false,
+        cwd: None,
+        output: None,
+        exit_code: None,
+        content: Vec::new(),
+        locations: vec![ToolCallLocation {
+            path: path.into(),
+            line: None,
+        }],
+    })
+    .collect();
+
+    let rendered = render_to_text(&mut app, 100, 16);
+
+    assert_eq!(rendered.matches("Read ·").count(), 1);
+    assert!(rendered.contains("Read · Cargo.toml, main.rs, index.html · +1"));
+}
+
+#[test]
+fn generic_read_group_lists_visible_targets_and_remaining_count() {
+    let mut app = test_app();
+    app.state = ConnectionState::Connected;
+    app.current_tab_mut().messages = ["first.rs", "second.rs", "third.rs", "fourth.rs"]
+        .into_iter()
+        .enumerate()
+        .map(|(index, path)| ChatMessage::ToolCall {
+            id: format!("read-{index}"),
+            title: "Read file".into(),
+            status: "Completed".into(),
+            kind: ToolCallKind::Read,
+            location: Some(path.into()),
+            location_is_command: false,
+            cwd: None,
+            output: None,
+            exit_code: None,
+            content: Vec::new(),
+            locations: Vec::new(),
+        })
+        .collect();
+
+    let rendered = render_to_text(&mut app, 80, 16);
+
+    assert!(rendered.contains("Read · first.rs, second.rs, third.rs · +1"));
+}
+
+#[test]
+fn clicking_completed_read_group_expands_every_member() {
+    use crossterm::event::{KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
+
+    let mut app = test_app();
+    app.state = ConnectionState::Connected;
+    let details = [r"C:\repo\a.rs", r"C:\repo\b.rs"]
+        .into_iter()
+        .enumerate()
+        .map(|(index, path)| ChatMessage::ToolCall {
+            id: format!("read-{index}"),
+            title: format!("Viewing {path}"),
+            status: "Completed".into(),
+            kind: ToolCallKind::Read,
+            location: None,
+            location_is_command: false,
+            cwd: None,
+            output: Some(ToolCallOutput {
+                text: format!("DETAIL_{index}"),
+                truncated: false,
+            }),
+            exit_code: None,
+            content: Vec::new(),
+            locations: vec![ToolCallLocation {
+                path: path.into(),
+                line: None,
+            }],
+        })
+        .collect();
+    app.current_tab_mut().completed_turns.push(CompletedTurn {
+        prompt: "Inspect".into(),
+        details,
+        expanded: true,
+        trailing_marker: None,
+    });
+
+    render_to_text(&mut app, 80, 20);
+    let hit = app
+        .completed_turn_hits
+        .iter()
+        .copied()
+        .find(|hit| {
+            matches!(
+                hit.kind,
+                CompletedTurnHitKind::ToolGroup {
+                    first_detail_index: 0,
+                    detail_count: 2
+                }
+            )
+        })
+        .expect("read group header hit must exist");
     for kind in [
         MouseEventKind::Down(MouseButton::Left),
         MouseEventKind::Up(MouseButton::Left),
@@ -10231,9 +10386,8 @@ fn clicking_completed_tool_status_marker_toggles_only_that_tool() {
     }
 
     let expanded = render_to_text(&mut app, 80, 20);
-    assert!(expanded.contains("FIRST_DETAIL"));
-    assert!(!expanded.contains("SECOND_DETAIL"));
-    assert!(app.current_tab().completed_turns[0].expanded);
+    assert!(expanded.contains("DETAIL_0"));
+    assert!(expanded.contains("DETAIL_1"));
 }
 
 #[test]
@@ -10260,11 +10414,17 @@ fn pending_tool_in_completed_turn_keeps_clickable_status_marker() {
     });
 
     let rendered = render_to_text(&mut app, 80, 16);
-    assert!(rendered.contains("● Pending operation"));
-    assert!(app
+    assert!(rendered.contains("● Tool · Pending operation"));
+    let hit = app
         .completed_turn_hits
         .iter()
-        .any(|hit| matches!(hit.kind, CompletedTurnHitKind::ToolCall { detail_index: 0 })));
+        .find(|hit| matches!(hit.kind, CompletedTurnHitKind::ToolCall { detail_index: 0 }))
+        .expect("pending tool header hit must exist");
+    let rendered_marker = rendered
+        .lines()
+        .nth(hit.row as usize)
+        .and_then(|line| line.chars().nth(hit.start_column as usize));
+    assert_eq!(rendered_marker, Some('●'));
 }
 
 /// Render: while the helper is still connecting, the fixed activity row must
@@ -10466,11 +10626,11 @@ fn render_large_mixed_chat_keeps_latest_content_and_width_correct() {
     for needle in [
         "LATEST_MIXED_PROMPT",
         "LATEST_AGENT_TAIL",
-        "Read latest file",
+        r"Read · repo\latest.txt",
         "LATEST_READ_OUTPUT",
         "Run latest tests",
         "LATEST_EXEC_OUTPUT",
-        "Edit latest source",
+        r"Edit · src\latest.rs",
         "LATEST_OLD_LINE",
         "LATEST_NEW_LINE",
         "LATEST_PLAN_DONE",
@@ -11603,7 +11763,7 @@ fn completed_tool_call_defaults_compact_and_expands_independently() {
 
     crate::ui::chat::reset_tool_detail_build_count();
     let compact = render_to_text(&mut app, 100, 40);
-    assert!(compact.contains("✓ Edit source"));
+    assert!(compact.contains(r"✓ Edit · src\main.rs:42"));
     assert!(!compact.contains("OLD_TYPED_LINE"));
     assert_eq!(
         crate::ui::chat::tool_detail_build_count(),
@@ -11616,7 +11776,7 @@ fn completed_tool_call_defaults_compact_and_expands_independently() {
         "tool detail must be independently expandable",
     );
     let text = render_to_text(&mut app, 100, 40);
-    assert!(text.contains("✓ Edit source"));
+    assert!(text.contains(r"✓ Edit · src\main.rs:42"));
     for needle in [
         r"C:\src\main.rs:42",
         "OLD_TYPED_LINE",
@@ -11659,8 +11819,9 @@ fn failed_completed_tool_keeps_bounded_diagnostic_preview() {
     });
 
     let text = render_to_text(&mut app, 80, 20);
-    assert!(text.contains("✗ Run checks"));
+    assert!(text.contains("✗ Run · Run checks"));
     assert!(text.contains("tests failed"));
+    assert!(!text.contains("exit 1"));
     assert!(text.contains("diagnostic one"));
     assert!(text.contains("diagnostic two"));
 }
@@ -11747,7 +11908,7 @@ fn completed_tool_expansion_preserves_its_header_row_and_rebuilds_height() {
     let compact = render_to_text(&mut app, 60, 12);
     let compact_row = compact
         .lines()
-        .position(|line| line.contains("Run anchored command"))
+        .position(|line| line.contains("✓ Run ·"))
         .expect("compact tool header must be visible");
 
     assert!(app.current_tab_mut().toggle_completed_tool_call(0, 0));
@@ -11755,7 +11916,7 @@ fn completed_tool_expansion_preserves_its_header_row_and_rebuilds_height() {
     let expanded = render_to_text(&mut app, 60, 12);
     let expanded_row = expanded
         .lines()
-        .position(|line| line.contains("Run anchored command"))
+        .position(|line| line.contains("✓ Run ·"))
         .expect("expanded tool header must stay visible");
     assert_eq!(expanded_row, compact_row);
     assert!(
@@ -11766,6 +11927,117 @@ fn completed_tool_expansion_preserves_its_header_row_and_rebuilds_height() {
         crate::ui::chat::completed_turn_line_build_count() > 0,
         "tool disclosure changes must invalidate the containing turn height",
     );
+}
+
+#[test]
+fn completed_tool_disclosures_anchor_visible_headers_below_clipped_prompts() {
+    use crossterm::event::{KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
+
+    let _locale = crate::test_support::lock_locale();
+    rust_i18n::set_locale("en-US");
+
+    const WIDTH: u16 = 60;
+    const HEIGHT: u16 = 8;
+
+    for grouped in [false, true] {
+        let mut app = test_app();
+        app.state = ConnectionState::Connected;
+        let details = if grouped {
+            [r"C:\repo\GROUP_A.rs", r"C:\repo\GROUP_B.rs"]
+                .into_iter()
+                .enumerate()
+                .map(|(index, path)| ChatMessage::ToolCall {
+                    id: format!("grouped-tool-{index}"),
+                    title: format!("Viewing {path}"),
+                    status: "Completed".into(),
+                    kind: ToolCallKind::Read,
+                    location: None,
+                    location_is_command: false,
+                    cwd: None,
+                    output: Some(ToolCallOutput {
+                        text: format!("GROUPED_DETAIL_{index}\n{}", "detail\n".repeat(8)),
+                        truncated: false,
+                    }),
+                    exit_code: None,
+                    content: Vec::new(),
+                    locations: vec![ToolCallLocation {
+                        path: path.into(),
+                        line: None,
+                    }],
+                })
+                .collect()
+        } else {
+            vec![ChatMessage::ToolCall {
+                id: "individual-tool".into(),
+                title: "Run INDIVIDUAL_ANCHORED_TOOL".into(),
+                status: "Completed".into(),
+                kind: ToolCallKind::Execute,
+                location: Some("run individual".into()),
+                location_is_command: true,
+                cwd: None,
+                output: Some(ToolCallOutput {
+                    text: format!("INDIVIDUAL_DETAIL\n{}", "detail\n".repeat(8)),
+                    truncated: false,
+                }),
+                exit_code: Some(0),
+                content: Vec::new(),
+                locations: Vec::new(),
+            }]
+        };
+        app.current_tab_mut().completed_turns.push(CompletedTurn {
+            prompt: (0..8)
+                .map(|index| format!("CLIPPED_TOOL_PROMPT_{index}"))
+                .collect::<Vec<_>>()
+                .join("\n"),
+            details,
+            expanded: true,
+            trailing_marker: None,
+        });
+
+        let compact = render_to_text(&mut app, WIDTH, HEIGHT);
+        assert!(!compact.contains("CLIPPED_TOOL_PROMPT_0"));
+        let expected_kind = if grouped {
+            CompletedTurnHitKind::ToolGroup {
+                first_detail_index: 0,
+                detail_count: 2,
+            }
+        } else {
+            CompletedTurnHitKind::ToolCall { detail_index: 0 }
+        };
+        let hit = app
+            .completed_turn_hits
+            .iter()
+            .copied()
+            .find(|hit| hit.kind == expected_kind)
+            .expect("tool header below the clipped prompt must be clickable");
+
+        for kind in [
+            MouseEventKind::Down(MouseButton::Left),
+            MouseEventKind::Up(MouseButton::Left),
+        ] {
+            app.handle_event(AppEvent::Mouse(MouseEvent {
+                kind,
+                column: hit.start_column,
+                row: hit.row,
+                modifiers: KeyModifiers::NONE,
+            }));
+        }
+
+        let expanded = render_to_text(&mut app, WIDTH, HEIGHT);
+        let marker = if grouped {
+            "GROUP_A.rs"
+        } else {
+            "INDIVIDUAL_ANCHORED_TOOL"
+        };
+        let expanded_row = expanded
+            .lines()
+            .position(|line| line.contains(marker))
+            .unwrap_or_else(|| panic!("expanded tool header must remain visible:\n{expanded}"));
+        assert_eq!(
+            expanded_row, hit.row as usize,
+            "{marker} must remain on its clicked row:\n{expanded}",
+        );
+    }
 }
 
 #[test]

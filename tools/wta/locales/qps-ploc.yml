@@ -51,6 +51,17 @@ chat.plan_marker_pending: "[ ]"  # {Locked}
 chat.autofix_prompt_label: "[(Åûţö-ðïåĝñöšéð å réçéñţ çöɱɱåñð ƒåïĺûré!!)]"
 chat.turn_canceled: "[(çåñçéĺéð!!)]"
 chat.turn_executed: "[→ éẋéçûţéð: %{title}!!]"
+# Persistent tool-category labels shown after a status marker and before a subject.
+chat.tool_kind.run: "[Ŕûñ!!]"
+chat.tool_kind.read: "[Ŕéåð!!]"
+chat.tool_kind.search: "[Ŝéåŕçĥ!!]"
+chat.tool_kind.edit: "[Éðïţ!!]"
+chat.tool_kind.delete: "[Ðéĺéţé!!]"
+chat.tool_kind.move: "[Ḿöṽé!!]"
+chat.tool_kind.fetch: "[Ƒéţçĥ!!]"
+chat.tool_kind.think: "[Ţĥïñķ!!]"
+chat.tool_kind.mode: "[Ḿöðé!!]"
+chat.tool_kind.other: "[Ţööĺ!!]"
 
 # ── Input placeholders (src/ui/input.rs) ────────────────────────────────────
 input.placeholder.connected: "[Àśķ åñÿţĥïñğ, / ƒöŕ çöḿḿåñďś..!!!! !!!!]"  # {Locked="/"}

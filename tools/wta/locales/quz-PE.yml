@@ -49,6 +49,17 @@ chat.plan_marker_pending: "[ ]"  # {Locked}
 chat.autofix_prompt_label: "Sapan kamachiykuq pantarisqa ñakaq qhawasqa"
 chat.turn_canceled: "(saqisqa)"
 chat.turn_executed: "→ ruwasqa: %{title}"
+# Persistent tool-category labels shown after a status marker and before a subject.
+chat.tool_kind.run: "Purichiy"
+chat.tool_kind.read: "Ñawinchay"
+chat.tool_kind.search: "Maskay"
+chat.tool_kind.edit: "Allichay"
+chat.tool_kind.delete: "Qulluy"
+chat.tool_kind.move: "Kuyuchiy"
+chat.tool_kind.fetch: "Apamuy"
+chat.tool_kind.think: "Yuyay"
+chat.tool_kind.mode: "Modo"
+chat.tool_kind.other: "Yanapakuy"
 
 # ── Input placeholders (src/ui/input.rs) ────────────────────────────────────
 input.placeholder.connected: "Imata tapukuy, / kamachiykunapaq.."  # {Locked="/"}
