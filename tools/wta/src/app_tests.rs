@@ -7835,8 +7835,12 @@ fn unhandled_modified_characters_do_not_leak_into_agent_input() {
 
     assert!(app.current_tab().input.is_empty());
 
+    app.handle_key(KeyEvent::new(
+        KeyCode::Char('@'),
+        KeyModifiers::CONTROL | KeyModifiers::ALT,
+    ));
     app.handle_key(KeyEvent::new(KeyCode::Char('K'), KeyModifiers::SHIFT));
-    assert_eq!(app.current_tab().input, "K");
+    assert_eq!(app.current_tab().input, "@K");
 }
 
 /// Render: a committed agent message must actually appear in the painted

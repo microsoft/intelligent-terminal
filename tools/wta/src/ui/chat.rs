@@ -23,10 +23,6 @@ fn activity_label() -> String {
     t!("chat.activity_thinking").into_owned()
 }
 
-fn tool_call_needs_preview(phase: ToolPhase<'_>) -> bool {
-    !phase.is_successful()
-}
-
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum ToolDetailLevel {
     Compact,
@@ -44,8 +40,8 @@ impl ToolDisplay {
     fn detail_level(self, phase: ToolPhase<'_>) -> ToolDetailLevel {
         match self {
             Self::Completed { expanded: true } => ToolDetailLevel::Detailed,
-            _ if tool_call_needs_preview(phase) => ToolDetailLevel::Preview,
-            _ => ToolDetailLevel::Compact,
+            _ if phase.is_successful() => ToolDetailLevel::Compact,
+            _ => ToolDetailLevel::Preview,
         }
     }
 }
