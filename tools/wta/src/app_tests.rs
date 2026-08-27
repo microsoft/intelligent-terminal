@@ -11058,6 +11058,7 @@ fn chat_scrollbar_appears_only_for_overflow_and_tracks_scroll_position() {
 
 #[test]
 fn completed_turn_toggle_render_is_stable_after_first_frame() {
+    let _locale = crate::test_support::lock_locale();
     for height in 6..=16 {
         for selected_index in 0..4 {
             let mut app = test_app();
