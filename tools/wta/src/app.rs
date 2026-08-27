@@ -2598,9 +2598,8 @@ impl App {
         self.current_agent_source.session_location()
     }
 
-    /// Extracted focus-pane dispatch for Live rows. Shared between the
-    /// legacy [`Self::activate_agent_session`] and the
-    /// [`Self::activate_agent_session_routed`] dispatcher.
+    /// Extracted focus-pane dispatch for Live rows. Used by
+    /// [`Self::activate_agent_session_routed`].
     ///
     /// Behavior:
     ///   * No-op if the row's pane GUID matches our own
@@ -2752,73 +2751,6 @@ impl App {
                         argv: vec!["not-resumable".to_string(), format!("{:?}", reason)],
                     });
                 }
-            }
-        }
-    }
-
-    /// Enter handler for the agent session view. For live rows (Idle / Working
-    /// / Attention / Error), focus the underlying WT pane. For terminal-
-    /// state rows (Ended / Historical), spawn a new pane that runs the
-    /// CLI's `--resume <session_id>` flow via [`Self::dispatch_resume`].
-    fn activate_agent_session(&mut self, s: &crate::agent_sessions::AgentSession) {
-        use crate::agent_sessions::AgentStatus::*;
-        tracing::info!(
-            target: "agents_view",
-            key = %s.key,
-            status = ?s.status,
-            pane_session_id = ?s.pane_session_id,
-            cli = ?s.cli_source,
-            "activate_agent_session: Enter on row",
-        );
-        match s.status {
-            Idle | Working | Attention | Error => {
-                if let Some(pane) = &s.pane_session_id {
-                    // Skip self-focus: if the user pressed Enter on the
-                    // row that represents the pane this WTA is already
-                    // running in, the focus call is a no-op for them and
-                    // can throw `winrt::hresult_error` (E_FAIL /
-                    // 0x80004005) on the WT side. Compare case-insensitively
-                    // because pane GUIDs arrive in mixed case (hooks emit
-                    // lowercase, WT-native events emit canonical
-                    // uppercase) and `self.pane_id` is populated from
-                    // whichever path discovered it first.
-                    let is_self = self
-                        .pane_id
-                        .as_deref()
-                        .map(|own| own.eq_ignore_ascii_case(pane.as_str()))
-                        .unwrap_or(false);
-                    if is_self {
-                        tracing::info!(
-                            target: "agents_view",
-                            key = %s.key,
-                            pane = %pane,
-                            "skipping focus_pane: row points at our own pane",
-                        );
-                    } else {
-                        self.dispatch_session_focus_rpc(&s.key);
-                    }
-                    #[cfg(test)]
-                    {
-                        self.last_dispatched_command = Some(DispatchedCommand {
-                            kind: DispatchedCommandKind::FocusPane,
-                            session_id: Some(s.key.clone()),
-                            argv: vec![
-                                "session_focus".to_string(),
-                                "--sid".to_string(),
-                                s.key.clone(),
-                            ],
-                        });
-                    }
-                } else {
-                    tracing::warn!(
-                        target: "agents_view",
-                        key = %s.key,
-                        "live row has no pane_session_id; Enter is a no-op",
-                    );
-                }
-            }
-            Ended | Historical => {
-                self.dispatch_resume(s);
             }
         }
     }

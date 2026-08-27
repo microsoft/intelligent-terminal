@@ -194,7 +194,7 @@ pub fn decide_enter_action(row: &RowSnapshot) -> EnterAction {
 /// fields. Collapses the legacy one-dimensional `AgentStatus` into a
 /// `Liveness`, carrying the `pane_session_id` through for `Live` rows.
 ///
-/// Mapping mirrors the existing `activate_agent_session` switch
+/// Mapping mirrors the `activate_agent_session_routed` dispatch
 /// (`Idle | Working | Attention | Error` are all "live"; `Ended` and
 /// `Historical` are the dead buckets).
 pub fn liveness_from_status(
