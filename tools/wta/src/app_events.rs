@@ -431,9 +431,16 @@ impl App {
                     self.text_selection.handle_mouse(mouse);
                     if let Some(pressed) = pressed.filter(|pressed| {
                         pressed.tab_id == active_tab_id
-                            && released.is_some_and(|hit| hit.turn_index == pressed.hit.turn_index)
+                            && released.is_some_and(|hit| {
+                                hit.turn_index == pressed.hit.turn_index
+                                    && hit.kind == pressed.hit.kind
+                            })
                     }) {
                         let tab = self.current_tab_mut();
+                        if let CompletedTurnHitKind::ToolCall { detail_index } = pressed.hit.kind {
+                            tab.toggle_completed_tool_call(pressed.hit.turn_index, detail_index);
+                            return;
+                        }
                         let previous_selected_index = tab.selected_completed_turn_idx;
                         let previous_selection_pending =
                             tab.completed_turn_selection_visible_pending;

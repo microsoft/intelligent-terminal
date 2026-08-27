@@ -22,6 +22,61 @@ fn activity_label() -> String {
     t!("chat.activity_thinking").into_owned()
 }
 
+fn is_successful_tool_call_status(status: &str) -> bool {
+    status.eq_ignore_ascii_case("completed") || status.eq_ignore_ascii_case("exited (0)")
+}
+
+fn tool_content_truncated(content: &[ToolCallContent]) -> bool {
+    content.iter().any(|item| match item {
+        ToolCallContent::Text(output) => output.truncated,
+        ToolCallContent::Diff {
+            old_text, new_text, ..
+        } => old_text.as_ref().is_some_and(|output| output.truncated) || new_text.truncated,
+        ToolCallContent::Terminal { output, .. } => {
+            output.as_ref().is_some_and(|output| output.truncated)
+        }
+        ToolCallContent::Attachment { .. } => false,
+    })
+}
+
+fn tool_call_needs_preview(
+    status: &str,
+    output: Option<&ToolCallOutput>,
+    content: &[ToolCallContent],
+) -> bool {
+    !is_successful_tool_call_status(status)
+        || output.is_some_and(|output| output.truncated)
+        || tool_content_truncated(content)
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum ToolDetailLevel {
+    Compact,
+    Preview,
+    Detailed,
+}
+
+#[derive(Clone, Copy)]
+enum ToolDisplay {
+    ActiveTurn,
+    Completed { expanded: bool },
+}
+
+impl ToolDisplay {
+    fn detail_level(
+        self,
+        status: &str,
+        output: Option<&ToolCallOutput>,
+        content: &[ToolCallContent],
+    ) -> ToolDetailLevel {
+        match self {
+            Self::Completed { expanded: true } => ToolDetailLevel::Detailed,
+            _ if tool_call_needs_preview(status, output, content) => ToolDetailLevel::Preview,
+            _ => ToolDetailLevel::Compact,
+        }
+    }
+}
+
 const MAX_RENDER_LINE_CHARS: usize = 4096;
 const MAX_TOOL_OUTPUT_LINES: usize = 4;
 const MAX_TOOL_OUTPUT_LINE_CHARS: usize = 240;
@@ -32,6 +87,8 @@ const MAX_TOOL_DETAIL_LINES: usize = 32;
 #[cfg(test)]
 thread_local! {
     static COMPLETED_TURN_LINE_BUILD_COUNT: Cell<usize> = const { Cell::new(0) };
+    static TOOL_DETAIL_BUILD_COUNT: Cell<usize> = const { Cell::new(0) };
+    static RENDERED_HEIGHT_LINE_SCAN_COUNT: Cell<usize> = const { Cell::new(0) };
 }
 
 #[cfg(test)]
@@ -42,6 +99,26 @@ pub(crate) fn reset_completed_turn_line_build_count() {
 #[cfg(test)]
 pub(crate) fn completed_turn_line_build_count() -> usize {
     COMPLETED_TURN_LINE_BUILD_COUNT.with(Cell::get)
+}
+
+#[cfg(test)]
+pub(crate) fn reset_tool_detail_build_count() {
+    TOOL_DETAIL_BUILD_COUNT.with(|count| count.set(0));
+}
+
+#[cfg(test)]
+pub(crate) fn tool_detail_build_count() -> usize {
+    TOOL_DETAIL_BUILD_COUNT.with(Cell::get)
+}
+
+#[cfg(test)]
+fn reset_rendered_height_line_scan_count() {
+    RENDERED_HEIGHT_LINE_SCAN_COUNT.with(|count| count.set(0));
+}
+
+#[cfg(test)]
+fn rendered_height_line_scan_count() -> usize {
+    RENDERED_HEIGHT_LINE_SCAN_COUNT.with(Cell::get)
 }
 
 #[cfg(test)]
@@ -123,6 +200,9 @@ fn tool_detail_lines(
     locations: &[ToolCallLocation],
     detailed: bool,
 ) -> Vec<String> {
+    #[cfg(test)]
+    TOOL_DETAIL_BUILD_COUNT.with(|count| count.set(count.get() + 1));
+
     let mut lines = Vec::new();
     let mut omitted = false;
     if detailed {
@@ -271,6 +351,9 @@ fn turn_height(turn: &CompletedTurn, wrap_width: usize) -> usize {
 }
 
 fn rendered_lines_height(lines: &[Line<'_>], wrap_width: usize) -> usize {
+    #[cfg(test)]
+    RENDERED_HEIGHT_LINE_SCAN_COUNT.with(|count| count.set(count.get() + lines.len()));
+
     let width = wrap_width.max(1);
     lines
         .iter()
@@ -301,11 +384,11 @@ fn completed_turn_height(tab: &crate::app::TabSession, index: usize, wrap_width:
     if let Some(height) = tab.cached_completed_turn_height(index, wrap_width) {
         return height;
     }
-    let Some(turn) = tab.completed_turns.get(index) else {
+    if tab.completed_turns.get(index).is_none() {
         return 0;
-    };
+    }
     let height = rendered_lines_height(
-        &build_completed_turn_lines(turn, false, false, wrap_width),
+        &build_completed_turn_lines_for_tab(tab, index, false, false, wrap_width).0,
         wrap_width,
     );
     tab.cache_completed_turn_height(index, wrap_width, height);
@@ -323,8 +406,7 @@ fn tool_call_presentation(status: &str) -> (&'static str, Style, Option<&str>) {
         ("○", theme::TOOL_CALL_PENDING, None)
     } else if status.eq_ignore_ascii_case("inprogress") || status.eq_ignore_ascii_case("running") {
         ("●", theme::TOOL_CALL_RUNNING, None)
-    } else if status.eq_ignore_ascii_case("completed") || status.eq_ignore_ascii_case("exited (0)")
-    {
+    } else if is_successful_tool_call_status(status) {
         ("✓", theme::TOOL_CALL_SUCCESS, None)
     } else if status.eq_ignore_ascii_case("failed") {
         ("✗", theme::TOOL_CALL_FAILURE, None)
@@ -347,6 +429,18 @@ fn is_active_tool_call_status(status: &str) -> bool {
     status.eq_ignore_ascii_case("pending")
         || status.eq_ignore_ascii_case("inprogress")
         || status.eq_ignore_ascii_case("running")
+}
+
+fn rendered_tool_call_marker(
+    status: &str,
+    permission_active: bool,
+    activity_frame: usize,
+) -> &'static str {
+    if permission_active || is_active_tool_call_status(status) {
+        breathing_dot(activity_frame)
+    } else {
+        tool_call_presentation(status).0
+    }
 }
 
 fn should_show_turn_activity(tab: &crate::app::TabSession) -> bool {
@@ -381,6 +475,14 @@ struct CompletedTurnHitOffset {
     turn_height: usize,
     expanded: bool,
     prompt_rows: Vec<PromptRowGeometry>,
+    tool_rows: Vec<ToolRowGeometry>,
+}
+
+struct ToolRowGeometry {
+    detail_index: usize,
+    row_offset: usize,
+    expanded: bool,
+    marker: &'static str,
 }
 
 struct PlannedCompletedTurn {
@@ -600,8 +702,9 @@ pub fn render(frame: &mut Frame, app: &mut App, area: Rect, scrollbar_area: Rect
         let tab = app.current_tab();
         for planned in plan.turns {
             let turn = &tab.completed_turns[planned.index];
-            let (mut turn_lines, prompt_rows) = build_completed_turn_lines_with_prompt_rows(
-                turn,
+            let (mut turn_lines, prompt_rows, tool_rows) = build_completed_turn_lines_for_tab(
+                tab,
+                planned.index,
                 tab.selected_completed_turn_idx == Some(planned.index),
                 app.pane_focused,
                 wrap_width,
@@ -612,6 +715,7 @@ pub fn render(frame: &mut Frame, app: &mut App, area: Rect, scrollbar_area: Rect
                 turn_height: planned.height,
                 expanded: turn.expanded,
                 prompt_rows,
+                tool_rows,
             });
             reversed_lines.extend(turn_lines.drain(..).rev());
         }
@@ -660,6 +764,7 @@ pub fn render(frame: &mut Frame, app: &mut App, area: Rect, scrollbar_area: Rect
             turn_height,
             expanded,
             prompt_rows,
+            tool_rows,
         } = hit_offset;
         let header_from_top = total_lines.saturating_sub(rows_below.saturating_add(turn_height));
         if let Some(header_row) = header_from_top
@@ -715,6 +820,48 @@ pub fn render(frame: &mut Frame, app: &mut App, area: Rect, scrollbar_area: Rect
                         end_column: end as u16,
                         row: inner_area.y.saturating_add(visible_row as u16),
                         action: if expanded {
+                            crate::action_links::CompletedTurnAction::Collapse
+                        } else {
+                            crate::action_links::CompletedTurnAction::Expand
+                        },
+                    },
+                );
+            }
+        }
+
+        for tool_row in tool_rows {
+            let Some(visible_row) = header_from_top
+                .saturating_add(tool_row.row_offset)
+                .checked_sub(scroll)
+            else {
+                continue;
+            };
+            if visible_row >= visible_height {
+                continue;
+            }
+            let row = inner_area.y.saturating_add(visible_row as u16);
+            if let Some(column) = (inner_area.x..inner_area.x.saturating_add(inner_area.width))
+                .find(|column| {
+                    buffer
+                        .cell((*column, row))
+                        .is_some_and(|cell| cell.symbol() == tool_row.marker)
+                })
+            {
+                completed_turn_hits.push(crate::app::CompletedTurnHitRegion {
+                    start_column: column,
+                    end_column: column.saturating_add(1),
+                    row,
+                    turn_index,
+                    kind: crate::app::CompletedTurnHitKind::ToolCall {
+                        detail_index: tool_row.detail_index,
+                    },
+                });
+                app.completed_turn_action_links.push(
+                    crate::action_links::CompletedTurnActionLink {
+                        start_column: column,
+                        end_column: column.saturating_add(1),
+                        row,
+                        action: if tool_row.expanded {
                             crate::action_links::CompletedTurnAction::Collapse
                         } else {
                             crate::action_links::CompletedTurnAction::Expand
@@ -853,6 +1000,7 @@ fn completed_turn_prompt_rows(lines: &[Line<'_>], wrap_width: usize) -> Vec<Prom
     rows
 }
 
+#[cfg(test)]
 fn build_completed_turn_lines<'a>(
     turn: &'a crate::app::CompletedTurn,
     is_selected: bool,
@@ -862,12 +1010,43 @@ fn build_completed_turn_lines<'a>(
     build_completed_turn_lines_with_prompt_rows(turn, is_selected, pane_focused, wrap_width).0
 }
 
+#[cfg(test)]
 fn build_completed_turn_lines_with_prompt_rows<'a>(
     turn: &'a crate::app::CompletedTurn,
     is_selected: bool,
     pane_focused: bool,
     wrap_width: usize,
 ) -> (Vec<Line<'a>>, Vec<PromptRowGeometry>) {
+    let (lines, prompt_rows, _) = build_completed_turn_lines_with_geometry(
+        turn,
+        is_selected,
+        pane_focused,
+        wrap_width,
+        |_| false,
+    );
+    (lines, prompt_rows)
+}
+
+fn build_completed_turn_lines_for_tab<'a>(
+    tab: &'a crate::app::TabSession,
+    turn_index: usize,
+    is_selected: bool,
+    pane_focused: bool,
+    wrap_width: usize,
+) -> (Vec<Line<'a>>, Vec<PromptRowGeometry>, Vec<ToolRowGeometry>) {
+    let turn = &tab.completed_turns[turn_index];
+    build_completed_turn_lines_with_geometry(turn, is_selected, pane_focused, wrap_width, |id| {
+        tab.completed_tool_call_expanded(id)
+    })
+}
+
+fn build_completed_turn_lines_with_geometry<'a>(
+    turn: &'a crate::app::CompletedTurn,
+    is_selected: bool,
+    pane_focused: bool,
+    wrap_width: usize,
+    tool_expanded: impl Fn(&str) -> bool,
+) -> (Vec<Line<'a>>, Vec<PromptRowGeometry>, Vec<ToolRowGeometry>) {
     #[cfg(test)]
     record_completed_turn_line_build();
 
@@ -944,16 +1123,33 @@ fn build_completed_turn_lines_with_prompt_rows<'a>(
         Some(0)
     };
 
+    let mut tool_rows = Vec::new();
     if turn.expanded {
         // Render the captured details — the agent reply, tool calls,
         // plans, etc. — using the same builder as the active turn so the
         // formatting matches. `is_last_message=false` and
         // `agent_streaming=false` together suppress the streaming-cursor
         // path; details are always finalized by the time they land here.
-        for msg in turn.details.iter() {
-            lines.extend(build_message_lines_with_details(
-                msg, false, false, None, 0, wrap_width, true,
-            ));
+        let mut rendered_height = rendered_lines_height(&lines, wrap_width);
+        for (detail_index, msg) in turn.details.iter().enumerate() {
+            let display = match msg {
+                ChatMessage::ToolCall { id, status, .. } => {
+                    let expanded = tool_expanded(id);
+                    tool_rows.push(ToolRowGeometry {
+                        detail_index,
+                        row_offset: rendered_height,
+                        expanded,
+                        marker: rendered_tool_call_marker(status, false, 0),
+                    });
+                    ToolDisplay::Completed { expanded }
+                }
+                _ => ToolDisplay::ActiveTurn,
+            };
+            let message_lines =
+                build_message_lines_with_details(msg, false, false, None, 0, wrap_width, display);
+            rendered_height =
+                rendered_height.saturating_add(rendered_lines_height(&message_lines, wrap_width));
+            lines.extend(message_lines);
         }
     }
 
@@ -972,7 +1168,7 @@ fn build_completed_turn_lines_with_prompt_rows<'a>(
     if lines.last().map_or(true, |l| !l.spans.is_empty()) {
         lines.push(Line::default());
     }
-    (lines, prompt_rows)
+    (lines, prompt_rows, tool_rows)
 }
 
 pub fn render_activity(frame: &mut Frame, app: &App, area: Rect) {
@@ -1068,7 +1264,7 @@ fn build_message_lines<'a>(
         permission_tool_call_id,
         activity_frame,
         wrap_width,
-        false,
+        ToolDisplay::ActiveTurn,
     )
 }
 
@@ -1079,7 +1275,7 @@ fn build_message_lines_with_details<'a>(
     permission_tool_call_id: Option<&str>,
     activity_frame: usize,
     wrap_width: usize,
-    detailed_tools: bool,
+    tool_display: ToolDisplay,
 ) -> Vec<Line<'a>> {
     let mut lines = Vec::new();
     match msg {
@@ -1131,14 +1327,14 @@ fn build_message_lines_with_details<'a>(
             content,
             locations,
         } => {
-            let (marker, marker_style, detail) = tool_call_presentation(status);
-            let marker = if permission_tool_call_id == Some(id.as_str())
-                || is_active_tool_call_status(status)
-            {
-                breathing_dot(activity_frame)
-            } else {
-                marker
-            };
+            let detail_level =
+                tool_display.detail_level(status, output.as_ref(), content.as_slice());
+            let (_, marker_style, detail) = tool_call_presentation(status);
+            let marker = rendered_tool_call_marker(
+                status,
+                permission_tool_call_id == Some(id.as_str()),
+                activity_frame,
+            );
             let mut spans = vec![
                 Span::styled(marker, marker_style),
                 Span::raw(" "),
@@ -1155,6 +1351,13 @@ fn build_message_lines_with_details<'a>(
                 if let Some(location) = location {
                     spans.push(Span::styled(
                         format!(" ({})", truncate_render_text(location)),
+                        theme::DIM,
+                    ));
+                }
+            } else if detail_level == ToolDetailLevel::Compact {
+                if let Some(command) = location {
+                    spans.push(Span::styled(
+                        format!(" · {}", truncate_render_text(command)),
                         theme::DIM,
                     ));
                 }
@@ -1177,7 +1380,9 @@ fn build_message_lines_with_details<'a>(
                     theme::DIM,
                 ));
             }
-            if !detailed_tools && (*kind == ToolCallKind::Execute || *location_is_command) {
+            if detail_level != ToolDetailLevel::Detailed
+                && (*kind == ToolCallKind::Execute || *location_is_command)
+            {
                 if let Some(exit_code) = exit_code.filter(|_| {
                     !starts_with_ignore_ascii_case(status, "exited (")
                         && !starts_with_ignore_ascii_case(status, "failed:")
@@ -1197,7 +1402,7 @@ fn build_message_lines_with_details<'a>(
             // opencode); a long remainder folds into a single "+N more"
             // row instead of growing the card unboundedly.
             let mut rendered_command = false;
-            if *location_is_command {
+            if *location_is_command && detail_level != ToolDetailLevel::Compact {
                 if let Some(command) = location {
                     for entry in crate::ui::command_format::command_display_lines(command) {
                         rendered_command = true;
@@ -1209,7 +1414,9 @@ fn build_message_lines_with_details<'a>(
                 }
             }
             let mut rendered_output = false;
-            if !detailed_tools && (*kind == ToolCallKind::Execute || *location_is_command) {
+            if detail_level == ToolDetailLevel::Preview
+                && (*kind == ToolCallKind::Execute || *location_is_command)
+            {
                 if let Some(output) = output {
                     for line in tool_output_lines(output) {
                         rendered_output = true;
@@ -1223,10 +1430,14 @@ fn build_message_lines_with_details<'a>(
             let has_text_content = content
                 .iter()
                 .any(|item| matches!(item, ToolCallContent::Text(_)));
-            let mut detail_lines = tool_detail_lines(content, locations, detailed_tools);
-            if !has_text_content {
+            let mut detail_lines = match detail_level {
+                ToolDetailLevel::Compact => Vec::new(),
+                ToolDetailLevel::Preview => tool_detail_lines(content, locations, false),
+                ToolDetailLevel::Detailed => tool_detail_lines(content, locations, true),
+            };
+            if !has_text_content && detail_level != ToolDetailLevel::Compact {
                 if let Some(output) = output {
-                    if detailed_tools {
+                    if detail_level == ToolDetailLevel::Detailed {
                         detail_lines.extend(full_output_lines(output, "    │ "));
                     } else if *kind != ToolCallKind::Execute && !*location_is_command {
                         detail_lines.extend(preview_output_lines(output, "    │ "));
@@ -1499,6 +1710,38 @@ mod tests {
     }
 
     #[test]
+    fn completed_tool_geometry_scans_rendered_lines_linearly() {
+        let turn = CompletedTurn {
+            prompt: "tools".into(),
+            details: (0..100)
+                .map(|index| ChatMessage::ToolCall {
+                    id: format!("tool-{index}"),
+                    title: format!("Read file {index}"),
+                    status: "Completed".into(),
+                    kind: ToolCallKind::Read,
+                    location: Some(format!(r"C:\repo\file-{index}.txt")),
+                    location_is_command: false,
+                    cwd: None,
+                    output: None,
+                    exit_code: None,
+                    content: Vec::new(),
+                    locations: Vec::new(),
+                })
+                .collect(),
+            expanded: true,
+            trailing_marker: None,
+        };
+
+        reset_rendered_height_line_scan_count();
+        build_completed_turn_lines_with_geometry(&turn, false, false, 80, |_| false);
+
+        assert!(
+            rendered_height_line_scan_count() <= 110,
+            "tool geometry must measure the prompt once and each message once",
+        );
+    }
+
+    #[test]
     fn notices_render_distinct_markers_and_hanging_indents() {
         let cases = [
             (NoticeKind::Success, "✓"),
@@ -1748,7 +1991,7 @@ mod tests {
         let message = ChatMessage::ToolCall {
             id: "tool".into(),
             title: "Check installed PowerToys and Foundry Local packages".into(),
-            status: "Completed".into(),
+            status: "Running".into(),
             kind: ToolCallKind::Execute,
             location: Some(
                 "winget list --name PowerToys 2>$null; winget list --name Foundry 2>$null".into(),
@@ -1784,12 +2027,12 @@ mod tests {
     }
 
     #[test]
-    fn execute_tool_call_renders_cwd_reported_output_tail_and_exit_code() {
+    fn running_execute_tool_call_renders_cwd_reported_output_tail() {
         let cwd = concat!("C:", "\\", "repo");
         let message = ChatMessage::ToolCall {
             id: "tool".into(),
             title: "bash".into(),
-            status: "Completed".into(),
+            status: "Running".into(),
             kind: ToolCallKind::Execute,
             location: Some("cargo test".into()),
             location_is_command: true,
@@ -1805,7 +2048,7 @@ mod tests {
         let lines = build_message_lines(&message, false, false, None, 0, 120);
         let rendered: Vec<String> = lines.iter().map(line_text).collect();
 
-        assert_eq!(rendered[0], format!("✓ bash ({cwd}) · exit 0"));
+        assert_eq!(rendered[0], format!("● bash ({cwd}) · exit 0"));
         assert_eq!(rendered[1], "    $ cargo test");
         assert_eq!(rendered[2], "    │ …");
         assert_eq!(rendered[3], "    │ line 2");
@@ -1815,12 +2058,106 @@ mod tests {
     }
 
     #[test]
-    fn completed_non_execute_tool_call_shows_bounded_output_preview() {
+    fn successful_active_tool_call_collapses_immediately() {
+        let cwd = concat!("C:", "\\", "repo");
+        let message = ChatMessage::ToolCall {
+            id: "tool".into(),
+            title: "Run tests".into(),
+            status: "Completed".into(),
+            kind: ToolCallKind::Execute,
+            location: Some("cargo test".into()),
+            location_is_command: true,
+            cwd: Some(cwd.into()),
+            output: Some(ToolCallOutput {
+                text: ["line 1", "line 2", "line 3"].join("\n"),
+                truncated: false,
+            }),
+            exit_code: Some(0),
+            content: Vec::new(),
+            locations: Vec::new(),
+        };
+
+        let rendered: Vec<String> = build_message_lines(&message, false, false, None, 0, 120)
+            .iter()
+            .map(line_text)
+            .collect();
+
+        assert_eq!(
+            rendered,
+            vec![format!("✓ Run tests · cargo test ({cwd}) · exit 0")]
+        );
+    }
+
+    #[test]
+    fn failed_active_tool_call_keeps_diagnostic_preview() {
+        let message = ChatMessage::ToolCall {
+            id: "tool".into(),
+            title: "Run tests".into(),
+            status: "Failed".into(),
+            kind: ToolCallKind::Execute,
+            location: Some("cargo test".into()),
+            location_is_command: true,
+            cwd: None,
+            output: Some(ToolCallOutput {
+                text: "diagnostic".into(),
+                truncated: false,
+            }),
+            exit_code: Some(1),
+            content: Vec::new(),
+            locations: Vec::new(),
+        };
+
+        let rendered: Vec<String> = build_message_lines(&message, false, false, None, 0, 120)
+            .iter()
+            .map(line_text)
+            .collect();
+
+        assert!(rendered.iter().any(|line| line.contains("diagnostic")));
+    }
+
+    #[test]
+    fn successful_truncated_tool_call_keeps_preview_before_and_after_turn_completion() {
+        let message = ChatMessage::ToolCall {
+            id: "tool".into(),
+            title: "Locate project directory".into(),
+            status: "Completed".into(),
+            kind: ToolCallKind::Execute,
+            location: Some("Get-ChildItem".into()),
+            location_is_command: true,
+            cwd: None,
+            output: Some(ToolCallOutput {
+                text: "truncated output".into(),
+                truncated: true,
+            }),
+            exit_code: Some(0),
+            content: Vec::new(),
+            locations: Vec::new(),
+        };
+
+        for display in [
+            ToolDisplay::ActiveTurn,
+            ToolDisplay::Completed { expanded: false },
+        ] {
+            let rendered: Vec<String> =
+                build_message_lines_with_details(&message, false, false, None, 0, 120, display)
+                    .iter()
+                    .map(line_text)
+                    .collect();
+
+            assert_eq!(rendered[0], "✓ Locate project directory · exit 0");
+            assert_eq!(rendered[1], "    $ Get-ChildItem");
+            assert_eq!(rendered[2], "    │ …");
+            assert_eq!(rendered[3], "    │ truncated output");
+        }
+    }
+
+    #[test]
+    fn running_non_execute_tool_call_shows_bounded_output_preview() {
         let location = concat!("C:", "\\", "repo", "\\", "large.txt");
         let message = ChatMessage::ToolCall {
             id: "tool".into(),
             title: "Read file".into(),
-            status: "Completed".into(),
+            status: "Running".into(),
             kind: ToolCallKind::Read,
             location: Some(location.into()),
             location_is_command: false,

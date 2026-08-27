@@ -1,5 +1,5 @@
 use std::cell::RefCell;
-use std::collections::VecDeque;
+use std::collections::{HashSet, VecDeque};
 
 use serde::{Deserialize, Serialize};
 
@@ -309,6 +309,10 @@ pub(crate) struct CompletedTurnLayoutState {
 }
 
 impl CompletedTurnHeightCache {
+    fn clear(&mut self) {
+        *self = Self::default();
+    }
+
     fn sync(&mut self, wrap_width: usize, turn_count: usize) {
         if self.wrap_width != wrap_width || turn_count < self.turn_count {
             self.wrap_width = wrap_width;
@@ -489,6 +493,8 @@ pub struct TabSession {
     // Conversation history
     pub messages: Vec<ChatMessage>,
     pub completed_turns: Vec<CompletedTurn>,
+    /// UI-only disclosure state keyed by the ACP session's tool-call IDs.
+    pub(crate) expanded_completed_tool_calls: HashSet<String>,
     pub(crate) completed_turn_layout: CompletedTurnLayoutState,
     /// Latched after the first prompt or session/load. A pre-warmed session/new
     /// alone must not become resumable; `/clear` keeps the same session resumable.
@@ -679,7 +685,66 @@ impl TabSession {
 
     pub(crate) fn clear_completed_turns(&mut self) {
         self.completed_turns.clear();
+        self.expanded_completed_tool_calls.clear();
         self.completed_turn_layout = CompletedTurnLayoutState::default();
+    }
+
+    pub(crate) fn completed_tool_call_expanded(&self, id: &str) -> bool {
+        self.expanded_completed_tool_calls.contains(id)
+    }
+
+    pub(crate) fn toggle_completed_tool_call(
+        &mut self,
+        turn_index: usize,
+        detail_index: usize,
+    ) -> bool {
+        let Some(ChatMessage::ToolCall { id, .. }) = self
+            .completed_turns
+            .get(turn_index)
+            .and_then(|turn| turn.details.get(detail_index))
+        else {
+            return false;
+        };
+        let id = id.clone();
+        self.completed_turn_layout.viewport_anchor = self
+            .completed_turn_layout
+            .visible_anchors
+            .iter()
+            .copied()
+            .find(|anchor| anchor.index == turn_index);
+        if !self.expanded_completed_tool_calls.insert(id.clone()) {
+            self.expanded_completed_tool_calls.remove(&id);
+        }
+        self.invalidate_completed_turn_height(turn_index);
+        true
+    }
+
+    pub(crate) fn toggle_all_completed_tool_calls(&mut self) -> bool {
+        let tool_calls = self
+            .completed_turns
+            .iter()
+            .flat_map(|turn| &turn.details)
+            .filter_map(|message| match message {
+                ChatMessage::ToolCall { id, .. } => Some(id.clone()),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        if tool_calls.is_empty() {
+            return false;
+        }
+
+        self.completed_turn_layout.viewport_anchor =
+            self.completed_turn_layout.visible_anchors.last().copied();
+        let expand = tool_calls
+            .iter()
+            .any(|id| !self.expanded_completed_tool_calls.contains(id));
+        if expand {
+            self.expanded_completed_tool_calls.extend(tool_calls);
+        } else {
+            self.expanded_completed_tool_calls.clear();
+        }
+        self.completed_turn_layout.height_cache.get_mut().clear();
+        true
     }
 
     pub(crate) fn invalidate_pending_paste(&mut self) {
