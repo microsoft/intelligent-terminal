@@ -804,11 +804,12 @@ impl App {
                 }
             }
             AppEvent::YoloModeChangeCompleted {
+                transaction_id,
                 session_id,
                 enabled,
                 result,
             } => {
-                self.complete_yolo_change(session_id, enabled, result);
+                self.complete_yolo_change(transaction_id, session_id, enabled, result);
             }
             AppEvent::RuntimeYoloReconcileCompleted {
                 fail_closed,

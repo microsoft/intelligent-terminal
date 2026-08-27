@@ -251,6 +251,7 @@ pub enum MasterExtRequest {
     /// Apply the provider-advertised ACP Yolo capability to a live session.
     /// The App commits local state only after the provider acknowledges it.
     SetSessionYolo {
+        transaction_id: u64,
         session_id: acp::schema::v1::SessionId,
         enabled: bool,
     },
@@ -3474,6 +3475,7 @@ fn dispatch_master_ext_request(
         MasterExtRequest::SetSessionYolo {
             session_id,
             enabled,
+            ..
         } => vec![client_state
             .native_yolo
             .reserve_operation(session_id.clone(), *enabled)],
@@ -3711,6 +3713,7 @@ fn dispatch_master_ext_request(
                 }
             }
             MasterExtRequest::SetSessionYolo {
+                transaction_id,
                 session_id,
                 enabled,
             } => {
@@ -3741,6 +3744,7 @@ fn dispatch_master_ext_request(
                     }
                 };
                 let _ = event_tx.send(AppEvent::YoloModeChangeCompleted {
+                    transaction_id,
                     session_id: session_id.to_string(),
                     enabled,
                     result,

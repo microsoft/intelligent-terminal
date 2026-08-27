@@ -830,11 +830,11 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
   </data>
   <data name="AIAgents_YoloMode.Header" xml:space="preserve">
     <value>Use provider Yolo mode</value>
-    <comment>{Locked="ACP","Yolo"} Header for the global setting that asks each AI agent provider to enable its advertised ACP session Yolo capability.</comment>
+    <comment>{Locked="Yolo"} Header for the global setting that asks each AI agent provider to enable its advertised ACP session Yolo capability.</comment>
   </data>
   <data name="AIAgents_YoloMode.HelpText" xml:space="preserve">
     <value>Uses the agent provider's ACP session mode to reduce or bypass confirmations. The provider defines the resulting permissions, sandbox, file access, and network access. Providers without a supported mode continue to ask for permission.</value>
-    <comment>{Locked="ACP","Yolo"} Risk warning shown under the Yolo toggle. Here provider means the selected AI agent provider, not a network provider.</comment>
+    <comment>{Locked="ACP"} Risk warning shown under the Yolo toggle. Here provider means the selected AI agent provider, not a network provider.</comment>
   </data>
   <data name="AIAgents_HooksInstall.Header" xml:space="preserve">
     <value>Agent session tracking (hooks)</value>

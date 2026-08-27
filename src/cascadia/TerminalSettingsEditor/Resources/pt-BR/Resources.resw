@@ -2888,8 +2888,8 @@
   <data name="AIAgents_HooksGroupHeader.Text" xml:space="preserve">
     <value>Hooks de agente</value>
   </data>
-  <data name="AIAgents_YoloMode.Header" xml:space="preserve"><value>Usar o modo Yolo do provedor</value><comment>{Locked=&quot;ACP&quot;,&quot;Yolo&quot;} Header for the global setting that asks each AI agent provider to enable its advertised ACP session Yolo capability.</comment></data>
-  <data name="AIAgents_YoloMode.HelpText" xml:space="preserve"><value>Usa o modo de sessão ACP do provedor do agente para reduzir ou ignorar confirmações. O provedor define as permissões, o sandbox e o acesso a arquivos e à rede resultantes. Provedores sem um modo compatível continuarão solicitando permissão.</value><comment>{Locked=&quot;ACP&quot;,&quot;Yolo&quot;} Risk warning shown under the Yolo toggle. Here provider means the selected AI agent provider, not a network provider.</comment></data>
+  <data name="AIAgents_YoloMode.Header" xml:space="preserve"><value>Usar o modo Yolo do provedor</value><comment>{Locked=&quot;Yolo&quot;} Header for the global setting that asks each AI agent provider to enable its advertised ACP session Yolo capability.</comment></data>
+  <data name="AIAgents_YoloMode.HelpText" xml:space="preserve"><value>Usa o modo de sessão ACP do provedor do agente para reduzir ou ignorar confirmações. O provedor define as permissões, o sandbox e o acesso a arquivos e à rede resultantes. Provedores sem um modo compatível continuarão solicitando permissão.</value><comment>{Locked=&quot;ACP&quot;} Risk warning shown under the Yolo toggle. Here provider means the selected AI agent provider, not a network provider.</comment></data>
   <data name="AIAgents_HooksInstall.Header" xml:space="preserve">
     <value>Instalar scripts de hook do agente</value>
   </data>

@@ -228,7 +228,7 @@ system.agent_switch_unavailable: "[!! Ag_ent switching is unavailable outside a 
 commands.model.summary: "[!! Pic_k the model for this pane (/model <id> to switch directly) !!]"  # {Locked="/model","<id>"}
 commands.config.summary: "[!! Con_figure this agent session !!]"  # Agent means an AI coding agent; shown for the /config command. {Locked="/config"}
 commands.move.summary: "[!! Mo_ve this tab's agent pane (/move <position>) !!]"  # {Locked="/move","<position>"}
-commands.yolo.summary: "[!! Use_ the provider's ACP Yolo mode for this ses_sion (until /new) !!]"  # {Locked="ACP","Yolo","/yolo","/new"}
+commands.yolo.summary: "[!! Use_ the provider's ACP Yolo mode for this ses_sion (until /new) !!]"  # {Locked="ACP","Yolo","/new"}
 
 model_picker.title: "[!! Sel_ect model (↑ ↓ • Enter • Esc) !!]"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "[!! The_ connected agent did not advertise any selectable models. !!]"

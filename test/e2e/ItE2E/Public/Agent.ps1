@@ -293,6 +293,60 @@ function Get-AgentCliStatus {
     if ($out -match 'AUTHOK') { 'authed' } else { 'installed-unauthenticated' }
 }
 
+function Get-AgentAcpStatus {
+    <#
+    .SYNOPSIS
+        Classify whether an agent can establish an ACP session without sending a model prompt.
+    #>
+    [CmdletBinding()] param(
+        [Parameter(Mandatory)]$App,
+        [Parameter(Mandatory)][string]$AgentCommand,
+        [int]$TimeoutSec = 75
+    )
+
+    $wta = Get-RunnableWtaPath -App $App
+    $startInfo = [System.Diagnostics.ProcessStartInfo]::new()
+    $startInfo.FileName = $wta
+    $startInfo.ArgumentList.Add('probe-models')
+    $startInfo.ArgumentList.Add('--agent')
+    $startInfo.ArgumentList.Add($AgentCommand)
+    $startInfo.UseShellExecute = $false
+    $startInfo.CreateNoWindow = $true
+    $startInfo.RedirectStandardOutput = $true
+    $startInfo.RedirectStandardError = $true
+
+    $process = [System.Diagnostics.Process]::new()
+    $process.StartInfo = $startInfo
+    try {
+        if (-not $process.Start()) { return 'probe-failed' }
+        $stdoutTask = $process.StandardOutput.ReadToEndAsync()
+        $stderrTask = $process.StandardError.ReadToEndAsync()
+        if (-not $process.WaitForExit($TimeoutSec * 1000)) {
+            try { $process.Kill($true) } catch { }
+            try { $null = $process.WaitForExit(5000) } catch { }
+            return 'probe-timeout'
+        }
+
+        $stdout = $stdoutTask.GetAwaiter().GetResult()
+        $stderr = $stderrTask.GetAwaiter().GetResult()
+        if ($process.ExitCode -eq 0) {
+            try {
+                $payload = $stdout | ConvertFrom-Json -ErrorAction Stop
+                if ($payload.PSObject.Properties.Name -contains 'available_models') { return 'ready' }
+            }
+            catch { }
+        }
+        $probeOutput = "$stdout`n$stderr"
+        if ($probeOutput -match '(?i)authentication required|not logged in|unauthorized|\b401\b|api ?key is missing') {
+            return 'installed-unauthenticated'
+        }
+        return 'probe-failed'
+    }
+    finally {
+        $process.Dispose()
+    }
+}
+
 function Wait-AgentReady {
     <#
     .SYNOPSIS
@@ -332,33 +386,18 @@ function Wait-AgentReady {
             # 500ms): Get-ItLogText re-reads the whole appended slice each call and the helper log
             # grows while connecting, so reading it every loop would be O(n²) IO on long waits.
             if ((Get-Date) -ge $nextLogCheck) {
-                # Read the NEWEST helper log file in FULL (not -SinceStart). The helper is pre-warmed
-                # during tab init, so an auth/fatal failure can be logged BEFORE Start-Terminal
-                # captures the -SinceStart offset — -SinceStart would then miss it and we'd burn the
-                # whole timeout. The newest wta-main_helper-*.log is this launch's helper (fresh PID
-                # → fresh file, since Stop-StaleItInstances killed any prior terminal), so reading it
-                # from the top catches the early failure without false-matching a previous run's log.
-                $log = ''
-                $dir = Get-ItLogDir -App $App
-                if ($dir) {
-                    $helperLog = Get-ChildItem $dir -Filter 'wta-main_helper-*.log' -ErrorAction SilentlyContinue |
-                        Sort-Object LastWriteTime -Descending | Select-Object -First 1
-                    if ($helperLog) {
-                        # Shared read: the helper has the file open for writing, so use a
-                        # FileShare.ReadWrite stream (plain Get-Content -Raw can hit a sharing
-                        # violation), matching how Get-ItLogText reads live logs. Disposing the
-                        # StreamReader also disposes the underlying FileStream.
-                        try {
-                            $fs = [System.IO.FileStream]::new($helperLog.FullName, 'Open', 'Read', 'ReadWrite')
-                            try {
-                                $sr = [System.IO.StreamReader]::new($fs)
-                                try { $log = $sr.ReadToEnd() } finally { $sr.Dispose() }
-                            }
-                            finally { $fs.Dispose() }  # also disposes $fs if the StreamReader ctor threw
-                        }
-                        catch { $log = '' }
-                    }
+                # Pre-warm can log a startup failure before Start-Terminal captures its normal
+                # end-of-launch offsets. Use the earlier boundary captured immediately after stale
+                # instances were stopped, so current-launch startup is included while prior-run
+                # auth failures cannot make this launch fail.
+                $logApp = $App.PSObject.Copy()
+                if ($App.PSObject.Properties.Name -contains 'PreLaunchLogStartOffset') {
+                    $logApp.LogStartOffset = $App.PreLaunchLogStartOffset
                 }
+                $log = try {
+                    Get-ItLogText -App $logApp -Name 'wta-main_helper-*.log' -SinceStart
+                }
+                catch { '' }
                 # Fail-fast on a logged fatal connect failure. Match the STRUCTURED tracing fields,
                 # not bare substrings: the helper logs the typed failure as `class=auth_required`
                 # (app.rs; tracing may quote the &str value → `class="auth_required"`, so the quote

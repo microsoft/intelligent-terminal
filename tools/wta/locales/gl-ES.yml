@@ -230,7 +230,7 @@ system.agent_switch_unavailable: "O cambio de axente non está dispoñible fóra
 commands.model.summary: "Escolla o modelo para este panel (/model <id> para cambiar directamente)"  # {Locked="/model","<id>"}
 commands.config.summary: "Configurar esta sesión do agente"  # Agent means an AI coding agent; shown for the /config command. {Locked="/config"}
 commands.move.summary: "Mover o panel de axente desta pestana (/move <position>)"  # {Locked="/move","<position>"}
-commands.yolo.summary: "Use the provider's ACP Yolo mode for this session (until /new)"  # {Locked="ACP","Yolo","/yolo","/new"} — slash-command names.
+commands.yolo.summary: "Use o modo ACP Yolo do provedor do axente para esta sesión (ata /new)"  # {Locked="ACP","Yolo","/new"} — slash-command names.
 
 model_picker.title: "Seleccionar modelo (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "O axente conectado non anunciou ningún modelo seleccionable."

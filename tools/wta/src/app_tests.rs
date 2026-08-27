@@ -234,7 +234,7 @@ fn tab_close_drops_yolo_override_and_pending_change() {
         .unwrap()
         .set_session_override(session_id.to_string(), true);
     app.pending_yolo_changes
-        .insert(session_id.to_string(), (true, tab_id.to_string()));
+        .insert(session_id.to_string(), (1, true, tab_id.to_string()));
 
     app.drop_tab_session(tab_id);
 
@@ -302,7 +302,7 @@ fn reset_tab_session_drops_yolo_override_and_pending_change() {
         .unwrap()
         .set_session_override(session_id.to_string(), true);
     app.pending_yolo_changes
-        .insert(session_id.to_string(), (false, tab_id.to_string()));
+        .insert(session_id.to_string(), (1, false, tab_id.to_string()));
 
     app.reset_tab_session_for(tab_id);
 

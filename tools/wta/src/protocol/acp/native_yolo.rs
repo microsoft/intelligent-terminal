@@ -32,6 +32,23 @@ pub(crate) struct NativeYoloState {
     next_operation: AtomicU64,
 }
 
+struct OperationGateLease<'a> {
+    gates: &'a Mutex<HashMap<acp::schema::v1::SessionId, Arc<tokio::sync::Mutex<()>>>>,
+    session_id: acp::schema::v1::SessionId,
+    gate: Arc<tokio::sync::Mutex<()>>,
+}
+
+impl Drop for OperationGateLease<'_> {
+    fn drop(&mut self) {
+        let mut gates = self.gates.lock().unwrap();
+        if gates.get(&self.session_id).is_some_and(|current| {
+            Arc::ptr_eq(current, &self.gate) && Arc::strong_count(current) == 2
+        }) {
+            gates.remove(&self.session_id);
+        }
+    }
+}
+
 impl NativeYoloState {
     pub(crate) fn new() -> Self {
         Self {
@@ -118,11 +135,7 @@ impl NativeYoloState {
 
     pub(crate) fn forget_session(&self, session_id: &acp::schema::v1::SessionId) {
         self.sessions.write().unwrap().remove(session_id);
-        let tombstone = self.next_generation.fetch_add(1, Ordering::Relaxed);
-        self.session_generations
-            .lock()
-            .unwrap()
-            .insert(session_id.clone(), tombstone);
+        self.session_generations.lock().unwrap().remove(session_id);
         self.desired_operations.lock().unwrap().remove(session_id);
         let mut gates = self.operation_gates.lock().unwrap();
         if gates
@@ -172,49 +185,62 @@ impl NativeYoloState {
         conn: &crate::protocol::acp::conn::ClientLink,
         operation: NativeYoloOperation,
     ) -> Result<(), String> {
-        let gate = self
-            .operation_gates
-            .lock()
-            .unwrap()
-            .entry(operation.session_id.clone())
-            .or_insert_with(|| Arc::new(tokio::sync::Mutex::new(())))
-            .clone();
-        let _guard = gate.lock().await;
-        if !self.operation_is_current(&operation) {
-            return Ok(());
-        }
-        let action = self.action_for(&operation.session_id, operation.enabled)?;
-        match &action {
-            NativeYoloAction::SetConfigOption { config_id, value } => {
-                let response = conn
-                    .set_session_config_option(acp::schema::v1::SetSessionConfigOptionRequest::new(
-                        operation.session_id.clone(),
-                        config_id.clone(),
-                        value.as_str(),
-                    ))
-                    .await;
-                if !self.operation_is_current(&operation) {
-                    return Ok(());
-                }
-                let response = response.map_err(|error| error.to_string())?;
-                self.record_from_config_update(&operation.session_id, &response.config_options);
+        let lease = {
+            let gate = self
+                .operation_gates
+                .lock()
+                .unwrap()
+                .entry(operation.session_id.clone())
+                .or_insert_with(|| Arc::new(tokio::sync::Mutex::new(())))
+                .clone();
+            OperationGateLease {
+                gates: &self.operation_gates,
+                session_id: operation.session_id.clone(),
+                gate,
             }
-            NativeYoloAction::SetMode { mode_id } => {
-                let response = conn
-                    .set_session_mode(acp::schema::v1::SetSessionModeRequest::new(
-                        operation.session_id.clone(),
-                        mode_id.clone(),
-                    ))
-                    .await;
-                if !self.operation_is_current(&operation) {
-                    return Ok(());
-                }
-                response.map_err(|error| error.to_string())?;
-                self.record_current_mode(&operation.session_id, mode_id);
+        };
+        let _guard = lease.gate.lock().await;
+        let result = async {
+            if !self.operation_is_current(&operation) {
+                return Ok(());
             }
-            NativeYoloAction::Noop => {}
+            let action = self.action_for(&operation.session_id, operation.enabled)?;
+            match &action {
+                NativeYoloAction::SetConfigOption { config_id, value } => {
+                    let response = conn
+                        .set_session_config_option(
+                            acp::schema::v1::SetSessionConfigOptionRequest::new(
+                                operation.session_id.clone(),
+                                config_id.clone(),
+                                value.as_str(),
+                            ),
+                        )
+                        .await;
+                    if !self.operation_is_current(&operation) {
+                        return Ok(());
+                    }
+                    let response = response.map_err(|error| error.to_string())?;
+                    self.record_from_config_update(&operation.session_id, &response.config_options);
+                }
+                NativeYoloAction::SetMode { mode_id } => {
+                    let response = conn
+                        .set_session_mode(acp::schema::v1::SetSessionModeRequest::new(
+                            operation.session_id.clone(),
+                            mode_id.clone(),
+                        ))
+                        .await;
+                    if !self.operation_is_current(&operation) {
+                        return Ok(());
+                    }
+                    response.map_err(|error| error.to_string())?;
+                    self.record_current_mode(&operation.session_id, mode_id);
+                }
+                NativeYoloAction::Noop => {}
+            }
+            Ok(())
         }
-        Ok(())
+        .await;
+        result
     }
 
     fn operation_is_current(&self, operation: &NativeYoloOperation) -> bool {

@@ -231,7 +231,7 @@ system.agent_switch_unavailable: "[Àğéñţ śŵïţçĥïñğ ïś ûñåṽ�
 commands.model.summary: "[Ṗïçķ ţĥé ḿöďéĺ ƒöŕ ţĥïś ṗåñé (/model <id> ţö śŵïţçĥ ďïŕéçţĺÿ)!!!! !!!! !!!! !!!!]"  # {Locked="/model","<id>"}
 commands.config.summary: "[Çöñƒïğûŕé ţĥïś åğéñţ śéśśïöñ!!!! !!!! !!!! !!!!]"  # Agent means an AI coding agent; shown for the /config command. {Locked="/config"}
 commands.move.summary: "[Ḿöṽé ţĥïś ţåƀ'ś åğéñţ ṗåñé (/move <position>)!!!! !!!! !!!!]"  # {Locked="/move","<position>"}
-commands.yolo.summary: "[Ûśé ţĥé ṗŕöṽïďéŕ'ś ACP Yolo ḿöďé ƒöŕ ţĥïś śéśśïöñ (ûñţïĺ /new)!!!! !!!!]"  # {Locked="ACP","Yolo","/yolo","/new"}
+commands.yolo.summary: "[Ûśé ţĥé ṗŕöṽïďéŕ'ś ACP Yolo ḿöďé ƒöŕ ţĥïś śéśśïöñ (ûñţïĺ /new)!!!! !!!!]"  # {Locked="ACP","Yolo","/new"}
 
 model_picker.title: "[Ŝéĺéçţ ḿöďéĺ (↑ ↓ • Enter • Esc)!!!! !!!!]"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "[Ţĥé çöññéçţéď åğéñţ ďïď ñöţ åďṽéŕţïśé åñÿ śéĺéçţåƀĺé ḿöďéĺś.!!!! !!!! !!!! !!!!]"

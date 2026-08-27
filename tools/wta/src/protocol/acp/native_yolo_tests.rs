@@ -293,7 +293,7 @@ fn discovers_gemini_yolo_mode_and_restore_value() {
 }
 
 #[test]
-fn unsupported_agents_do_not_infer_native_yolo_from_lookalike_options() {
+fn unsupported_agents_do_not_infer_native_yolo_from_look_alike_options() {
     let response = r#"{
         "sessionId": "unsupported-session",
         "configOptions": [{
@@ -310,7 +310,7 @@ fn unsupported_agents_do_not_infer_native_yolo_from_lookalike_options() {
     }"#;
 
     assert!(discover(crate::agent_registry::OPENCODE_AGENT_ID, response, true).is_err());
-    assert!(discover("custom:lookalike", response, true).is_err());
+    assert!(discover("custom:look-alike", response, true).is_err());
     assert_eq!(
         discover(crate::agent_registry::OPENCODE_AGENT_ID, response, false),
         Ok(NativeYoloAction::Noop)
@@ -752,4 +752,106 @@ fn teardown_generation_fences_reserved_operation_for_reused_session_id() {
 
         assert!(actions.lock().unwrap().is_empty());
     });
+}
+
+#[test]
+fn in_flight_teardown_releases_operation_gate_after_rpc() {
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    tokio::task::LocalSet::new().block_on(&runtime, async {
+        let state = Arc::new(NativeYoloState::new());
+        state.set_resolved_agent_id(Some(crate::agent_registry::COPILOT_AGENT_ID));
+        let response: acp::schema::v1::NewSessionResponse = serde_json::from_str(
+            r#"{
+                "sessionId": "forgotten-in-flight",
+                "configOptions": [{
+                    "id": "allow_all", "name": "Allow All", "category": "permissions",
+                    "type": "select", "currentValue": "off",
+                    "options": [{"value": "on", "name": "On"}, {"value": "off", "name": "Off"}]
+                }]
+            }"#,
+        )
+        .unwrap();
+        let session_id = response.session_id.clone();
+        state.record_from_new_session(&response);
+        let barrier = ConfigApplyBarrier {
+            started: Arc::new(tokio::sync::Notify::new()),
+            release: Arc::new(tokio::sync::Notify::new()),
+        };
+        let connection = spawn_apply_mock(Arc::new(Mutex::new(Vec::new())), Some(barrier.clone()));
+        let apply = tokio::task::spawn_local({
+            let state = Arc::clone(&state);
+            let session_id = session_id.clone();
+            async move { state.apply(&connection, session_id, true).await }
+        });
+
+        barrier.started.notified().await;
+        state.forget_session(&session_id);
+        assert_eq!(state.operation_gates.lock().unwrap().len(), 1);
+        barrier.release.notify_one();
+        apply.await.unwrap().unwrap();
+
+        assert!(state.operation_gates.lock().unwrap().is_empty());
+    });
+}
+
+#[test]
+fn cancelled_in_flight_teardown_releases_operation_gate() {
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    tokio::task::LocalSet::new().block_on(&runtime, async {
+        let state = Arc::new(NativeYoloState::new());
+        state.set_resolved_agent_id(Some(crate::agent_registry::COPILOT_AGENT_ID));
+        let response: acp::schema::v1::NewSessionResponse = serde_json::from_str(
+            r#"{
+                "sessionId": "cancelled-in-flight",
+                "configOptions": [{
+                    "id": "allow_all", "name": "Allow All", "category": "permissions",
+                    "type": "select", "currentValue": "off",
+                    "options": [{"value": "on", "name": "On"}, {"value": "off", "name": "Off"}]
+                }]
+            }"#,
+        )
+        .unwrap();
+        let session_id = response.session_id.clone();
+        state.record_from_new_session(&response);
+        let barrier = ConfigApplyBarrier {
+            started: Arc::new(tokio::sync::Notify::new()),
+            release: Arc::new(tokio::sync::Notify::new()),
+        };
+        let connection = spawn_apply_mock(Arc::new(Mutex::new(Vec::new())), Some(barrier.clone()));
+        let apply = tokio::task::spawn_local({
+            let state = Arc::clone(&state);
+            let session_id = session_id.clone();
+            async move { state.apply(&connection, session_id, true).await }
+        });
+
+        barrier.started.notified().await;
+        state.forget_session(&session_id);
+        apply.abort();
+        assert!(apply.await.unwrap_err().is_cancelled());
+        assert!(state.operation_gates.lock().unwrap().is_empty());
+        barrier.release.notify_one();
+    });
+}
+
+#[test]
+fn forgotten_sessions_do_not_accumulate_generation_tombstones() {
+    let state = NativeYoloState::new();
+
+    for index in 0..128 {
+        let session_id = acp::schema::v1::SessionId::new(format!("forgotten-{index}"));
+        state
+            .session_generations
+            .lock()
+            .unwrap()
+            .insert(session_id.clone(), index);
+        state.forget_session(&session_id);
+    }
+
+    assert!(state.session_generations.lock().unwrap().is_empty());
 }

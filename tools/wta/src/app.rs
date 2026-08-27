@@ -1076,8 +1076,10 @@ pub struct App {
     /// default is hot-updatable; explicit per-session values override it.
     yolo_state: crate::app_contracts::SharedYoloState,
     /// Native permission-mode changes awaiting an ACP acknowledgement.
-    /// The tab id keeps completion messages scoped if focus changes.
-    pending_yolo_changes: HashMap<String, (bool, String)>,
+    /// The transaction id fences stale acknowledgements after session-id reuse;
+    /// the tab id keeps completion messages scoped if focus changes.
+    pending_yolo_changes: HashMap<String, (u64, bool, String)>,
+    next_yolo_transaction_id: u64,
     // Slash-command UI state. The /help overlay is global — it covers
     // the chat area regardless of which tab is active. Per-tab popup
     // state (the command-completion candidates as the user types `/he…`)
@@ -1392,6 +1394,7 @@ impl App {
             master_request_tx,
             debug_capture_enabled,
             pending_yolo_changes: HashMap::new(),
+            next_yolo_transaction_id: 0,
             help_overlay_visible: false,
             debug_messages: Vec::new(),
             show_debug_panel: false,
@@ -5589,14 +5592,17 @@ impl App {
             }
             let enabled = option.enabled;
             let tab_id = self.active_tab_key().to_string();
+            self.next_yolo_transaction_id = self.next_yolo_transaction_id.wrapping_add(1);
+            let transaction_id = self.next_yolo_transaction_id;
             self.pending_yolo_changes
-                .insert(sid.clone(), (enabled, tab_id.clone()));
+                .insert(sid.clone(), (transaction_id, enabled, tab_id.clone()));
             // Wait for the provider-native session operation to succeed before
             // committing the local state.
             if self
                 .master_request_tx
                 .send(
                     crate::protocol::acp::client::MasterExtRequest::SetSessionYolo {
+                        transaction_id,
                         session_id: agent_client_protocol::schema::v1::SessionId::new(sid.clone()),
                         enabled,
                     },
@@ -5676,16 +5682,21 @@ impl App {
 
     fn complete_yolo_change(
         &mut self,
+        transaction_id: u64,
         session_id: String,
         enabled: bool,
         result: Result<(), String>,
     ) {
-        let Some((pending_enabled, tab_id)) = self.pending_yolo_changes.remove(&session_id) else {
+        let Some((pending_transaction_id, pending_enabled, tab_id)) =
+            self.pending_yolo_changes.get(&session_id)
+        else {
             return;
         };
-        if pending_enabled != enabled {
+        if *pending_transaction_id != transaction_id || *pending_enabled != enabled {
             return;
         }
+        let tab_id = tab_id.clone();
+        self.pending_yolo_changes.remove(&session_id);
         if self
             .tab_sessions
             .get(&tab_id)

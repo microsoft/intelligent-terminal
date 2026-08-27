@@ -229,7 +229,7 @@ system.agent_switch_unavailable: "Kāore i te wātea te whakawhiti māngai i wah
 commands.model.summary: "Kōwhiria te tauira mō tēnei papa (/model <id> ki te huri tika)"  # {Locked="/model","<id>"}
 commands.config.summary: "Whirihorahia tēnei teho māngai"  # Agent means an AI coding agent; shown for the /config command. {Locked="/config"}
 commands.move.summary: "Neke i te papa agent o tēnei ripa (/move <position>)"  # {Locked="/move","<position>"}
-commands.yolo.summary: "Use the provider's ACP Yolo mode for this session (until /new)"  # {Locked="ACP","Yolo","/yolo","/new"} — slash-command names.
+commands.yolo.summary: "Whakamahia te aratau ACP Yolo a te kaiwhakarato āpiha kua tīpakohia mō tēnei wātū (tae noa ki /new)"  # {Locked="ACP","Yolo","/new"} — slash-command names.
 
 model_picker.title: "Kōwhiria te tauira (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "Kāore te agent kua hono i pānui i tētahi tauira ka taea te kōwhiri."

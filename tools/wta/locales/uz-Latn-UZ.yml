@@ -230,7 +230,7 @@ system.agent_switch_unavailable: "Agentni almashtirish Windows Terminal ilovasid
 commands.model.summary: "Bu panel uchun modelni tanlang (toʻgʻridan-toʻgʻri almashtirish uchun /model <id>)"  # {Locked="/model","<id>"}
 commands.config.summary: "Ushbu agent seansini sozlash"  # Agent means an AI coding agent; shown for the /config command. {Locked="/config"}
 commands.move.summary: "Bu tabning agent panelini koʻchirish (/move <position>)"  # {Locked="/move","<position>"}
-commands.yolo.summary: "Use the provider's ACP Yolo mode for this session (until /new)"  # {Locked="ACP","Yolo","/yolo","/new"} — slash-command names.
+commands.yolo.summary: "Ushbu seans uchun agent provayderining ACP Yolo rejimidan foydalaning (/new gacha)"  # {Locked="ACP","Yolo","/new"} — slash-command names.
 
 model_picker.title: "Modelni tanlang (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "Ulangan agent hech qanday tanlanadigan modelni eʼlon qilmadi."

@@ -2902,8 +2902,8 @@
     <value>에이전트 Hooks</value>
     <comment>Section header for the Agent Hooks installer (lets users install hook scripts that report agent CLI activity to the agent pane).</comment>
   </data>
-  <data name="AIAgents_YoloMode.Header" xml:space="preserve"><value>공급자의 Yolo 모드 사용</value><comment>{Locked=&quot;ACP&quot;,&quot;Yolo&quot;} Header for the global setting that asks each AI agent provider to enable its advertised ACP session Yolo capability.</comment></data>
-  <data name="AIAgents_YoloMode.HelpText" xml:space="preserve"><value>에이전트 공급자의 ACP 세션 모드를 사용하여 확인 절차를 줄이거나 우회합니다. 그 결과 적용되는 권한, 샌드박스, 파일 액세스 및 네트워크 액세스는 공급자가 정의합니다. 지원되는 모드가 없는 공급자는 계속 권한을 요청합니다.</value><comment>{Locked=&quot;ACP&quot;,&quot;Yolo&quot;} Risk warning shown under the Yolo toggle. Here provider means the selected AI agent provider, not a network provider.</comment></data>
+  <data name="AIAgents_YoloMode.Header" xml:space="preserve"><value>공급자의 Yolo 모드 사용</value><comment>{Locked=&quot;Yolo&quot;} Header for the global setting that asks each AI agent provider to enable its advertised ACP session Yolo capability.</comment></data>
+  <data name="AIAgents_YoloMode.HelpText" xml:space="preserve"><value>에이전트 공급자의 ACP 세션 모드를 사용하여 확인 절차를 줄이거나 우회합니다. 그 결과 적용되는 권한, 샌드박스, 파일 액세스 및 네트워크 액세스는 공급자가 정의합니다. 지원되는 모드가 없는 공급자는 계속 권한을 요청합니다.</value><comment>{Locked=&quot;ACP&quot;} Risk warning shown under the Yolo toggle. Here provider means the selected AI agent provider, not a network provider.</comment></data>
   <data name="AIAgents_HooksInstall.Header" xml:space="preserve">
     <value>에이전트 Hook 스크립트 설치</value>
     <comment>Header for the Agent Hooks install section.</comment>

@@ -229,7 +229,7 @@ system.agent_switch_unavailable: "Ndryshimi i agjentit nuk është i disponuesh�
 commands.model.summary: "Zgjidhni modelin për këtë panel (/model <id> për të kaluar drejtpërdrejt)"  # {Locked="/model","<id>"}
 commands.config.summary: "Konfiguroni këtë seancë të agjentit"  # Agent means an AI coding agent; shown for the /config command. {Locked="/config"}
 commands.move.summary: "Lëvizni panelin e agjentit të kësaj skede (/move <position>)"  # {Locked="/move","<position>"}
-commands.yolo.summary: "Use the provider's ACP Yolo mode for this session (until /new)"  # {Locked="ACP","Yolo","/yolo","/new"} — slash-command names.
+commands.yolo.summary: "Përdor modalitetin ACP Yolo të ofruesit të agjentit për këtë seancë (deri në /new)"  # {Locked="ACP","Yolo","/new"} — slash-command names.
 
 model_picker.title: "Zgjidhni modelin (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "Agjenti i lidhur nuk shpalli asnjë model të zgjedhshëm."

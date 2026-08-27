@@ -5,15 +5,28 @@ function Backup-WtConfig {
     [CmdletBinding()] param([Parameter(Mandatory)]$App)
     foreach ($f in @($App.SettingsPath, $App.StatePath)) {
         $bak = "$f.e2ebak"
-        # A leftover .e2ebak means a prior run crashed before restoring. Recover by
-        # restoring it first (revert that run's changes) so we snapshot the real
-        # pre-test state — not a state already mutated by the crashed run.
+        $missing = "$bak.missing"
+        # A leftover backup or missing-file marker means a prior run crashed before
+        # restoring. Recover first so we snapshot the real pre-test state.
         if (Test-Path $bak) {
             Copy-Item -LiteralPath $bak -Destination $f -Force
             Remove-Item -LiteralPath $bak -Force
+            Remove-Item -LiteralPath $missing -Force -ErrorAction SilentlyContinue
             Write-ItLog -Level WARN -Message "Recovered stale backup for $f (prior run did not clean up)"
         }
-        if (Test-Path $f) { Copy-Item -LiteralPath $f -Destination $bak -Force; Write-ItLog -Level INFO -Message "Backed up $f" }
+        elseif (Test-Path $missing) {
+            Remove-Item -LiteralPath $f -Force -ErrorAction SilentlyContinue
+            Remove-Item -LiteralPath $missing -Force
+            Write-ItLog -Level WARN -Message "Recovered stale missing-file marker for $f (prior run did not clean up)"
+        }
+        if (Test-Path $f) {
+            Copy-Item -LiteralPath $f -Destination $bak -Force
+            Write-ItLog -Level INFO -Message "Backed up $f"
+        }
+        else {
+            [System.IO.File]::WriteAllBytes($missing, [byte[]]::new(0))
+            Write-ItLog -Level INFO -Message "Recorded that $f did not exist before the test"
+        }
     }
 }
 
@@ -43,7 +56,18 @@ function Restore-WtConfig {
     [CmdletBinding()] param([Parameter(Mandatory)]$App)
     foreach ($f in @($App.SettingsPath, $App.StatePath)) {
         $bak = "$f.e2ebak"
-        if (Test-Path $bak) { Copy-Item -LiteralPath $bak -Destination $f -Force; Remove-Item -LiteralPath $bak -Force; Write-ItLog -Level INFO -Message "Restored $f" }
+        $missing = "$bak.missing"
+        if (Test-Path $bak) {
+            Copy-Item -LiteralPath $bak -Destination $f -Force
+            Remove-Item -LiteralPath $bak -Force
+            Remove-Item -LiteralPath $missing -Force -ErrorAction SilentlyContinue
+            Write-ItLog -Level INFO -Message "Restored $f"
+        }
+        elseif (Test-Path $missing) {
+            Remove-Item -LiteralPath $f -Force -ErrorAction SilentlyContinue
+            Remove-Item -LiteralPath $missing -Force
+            Write-ItLog -Level INFO -Message "Removed test-created $f"
+        }
     }
 }
 
@@ -247,6 +271,9 @@ function Start-Terminal {
     # fresh monarch re-reads state.json); -ShowFre separately controls whether the FRE overlay
     # is left showing.
     Stop-StaleItInstances
+    Initialize-LogOffsets -App $app | Out-Null
+    $preLaunchLogStartOffset = if ($app.LogStartOffset) { $app.LogStartOffset.Clone() } else { @{} }
+    $app | Add-Member -NotePropertyName PreLaunchLogStartOffset -NotePropertyValue $preLaunchLogStartOffset -Force
 
     if ($Backup) { Backup-WtConfig -App $app }
     # Strip agent/AI keys from settings.json so the user's real config (e.g. a Foundry

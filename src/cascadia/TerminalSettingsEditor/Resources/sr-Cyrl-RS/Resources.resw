@@ -779,8 +779,8 @@
   </data><data name="AIAgents_HooksGroupHeader.Text" xml:space="preserve">
     <value>Hooks агента</value>
     <comment>Section header for the Agent Hooks installer (lets users install hook scripts that report agent CLI activity to the agent pane).</comment>
-  </data><data name="AIAgents_YoloMode.Header" xml:space="preserve"><value>Користи Yolo режим добављача</value><comment>{Locked=&quot;ACP&quot;,&quot;Yolo&quot;} Header for the global setting that asks each AI agent provider to enable its advertised ACP session Yolo capability.</comment></data>
-<data name="AIAgents_YoloMode.HelpText" xml:space="preserve"><value>Користи ACP режим сесије добављача агента да би смањио број потврда или их заобишао. Добављач дефинише резултујуће дозволе, sandbox окружење и приступ датотекама и мрежи. Добављачи без подржаног режима и даље ће тражити дозволу.</value><comment>{Locked=&quot;ACP&quot;,&quot;Yolo&quot;} Risk warning shown under the Yolo toggle. Here provider means the selected AI agent provider, not a network provider.</comment></data>
+  </data><data name="AIAgents_YoloMode.Header" xml:space="preserve"><value>Користи Yolo режим добављача</value><comment>{Locked=&quot;Yolo&quot;} Header for the global setting that asks each AI agent provider to enable its advertised ACP session Yolo capability.</comment></data>
+<data name="AIAgents_YoloMode.HelpText" xml:space="preserve"><value>Користи ACP режим сесије добављача агента да би смањио број потврда или их заобишао. Добављач дефинише резултујуће дозволе, sandbox окружење и приступ датотекама и мрежи. Добављачи без подржаног режима и даље ће тражити дозволу.</value><comment>{Locked=&quot;ACP&quot;} Risk warning shown under the Yolo toggle. Here provider means the selected AI agent provider, not a network provider.</comment></data>
 <data name="AIAgents_HooksInstall.Header" xml:space="preserve">
     <value>Инсталирај Hook скрипте агента</value>
     <comment>Header for the Agent Hooks install section.</comment>

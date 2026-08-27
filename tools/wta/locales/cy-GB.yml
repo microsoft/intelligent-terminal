@@ -231,7 +231,7 @@ system.agent_switch_unavailable: "Nid yw newid asiant ar gael y tu allan i dab W
 commands.model.summary: "Dewiswch y model ar gyfer y paen hwn (/model <id> i newid yn uniongyrchol)"  # {Locked="/model","<id>"}
 commands.config.summary: "Ffurfweddu sesiwn yr asiant hwn"  # Agent means an AI coding agent; shown for the /config command. {Locked="/config"}
 commands.move.summary: "Symud paen asiant y tab hwn (/move <position>)"  # {Locked="/move","<position>"}
-commands.yolo.summary: "Use the provider's ACP Yolo mode for this session (until /new)"  # {Locked="ACP","Yolo","/yolo","/new"} — slash-command names.
+commands.yolo.summary: "Defnyddio modd ACP Yolo y darparwr ar gyfer y sesiwn hon (tan /new)"  # {Locked="ACP","Yolo","/new"} — slash-command names.
 
 model_picker.title: "Dewiswch model (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "Ni hysbysebodd yr asiant cysylltiedig unrhyw fodelau dethol."

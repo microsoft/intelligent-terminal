@@ -2888,8 +2888,8 @@
   <data name="AIAgents_HooksGroupHeader.Text" xml:space="preserve">
     <value>Hooks для агентов</value>
   </data>
-  <data name="AIAgents_YoloMode.Header" xml:space="preserve"><value>Использовать режим Yolo поставщика</value><comment>{Locked=&quot;ACP&quot;,&quot;Yolo&quot;} Header for the global setting that asks each AI agent provider to enable its advertised ACP session Yolo capability.</comment></data>
-  <data name="AIAgents_YoloMode.HelpText" xml:space="preserve"><value>Использует режим сеанса ACP поставщика агента, чтобы сократить число подтверждений или обойти их. Поставщик определяет результирующие разрешения, параметры песочницы, а также доступ к файлам и сети. Поставщики без поддерживаемого режима по-прежнему будут запрашивать разрешение.</value><comment>{Locked=&quot;ACP&quot;,&quot;Yolo&quot;} Risk warning shown under the Yolo toggle. Here provider means the selected AI agent provider, not a network provider.</comment></data>
+  <data name="AIAgents_YoloMode.Header" xml:space="preserve"><value>Использовать режим Yolo поставщика</value><comment>{Locked=&quot;Yolo&quot;} Header for the global setting that asks each AI agent provider to enable its advertised ACP session Yolo capability.</comment></data>
+  <data name="AIAgents_YoloMode.HelpText" xml:space="preserve"><value>Использует режим сеанса ACP поставщика агента, чтобы сократить число подтверждений или обойти их. Поставщик определяет результирующие разрешения, параметры песочницы, а также доступ к файлам и сети. Поставщики без поддерживаемого режима по-прежнему будут запрашивать разрешение.</value><comment>{Locked=&quot;ACP&quot;} Risk warning shown under the Yolo toggle. Here provider means the selected AI agent provider, not a network provider.</comment></data>
   <data name="AIAgents_HooksInstall.Header" xml:space="preserve">
     <value>Установить скрипты Hooks для агентов</value>
   </data>

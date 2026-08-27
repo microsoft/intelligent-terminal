@@ -231,7 +231,7 @@ system.agent_switch_unavailable: "Agent-oorskakeling is nie beskikbaar buite 'n 
 commands.model.summary: "Kies die model vir hierdie paneel (/model <id> om direk oor te skakel)"  # {Locked="/model","<id>"}
 commands.config.summary: "Stel hierdie agent-sessie op"  # Agent means an AI coding agent; shown for the /config command. {Locked="/config"}
 commands.move.summary: "Skuif hierdie oortjie se agentpaneel (/move <position>)"  # {Locked="/move","<position>"}
-commands.yolo.summary: "Use the provider's ACP Yolo mode for this session (until /new)"  # {Locked="ACP","Yolo","/yolo","/new"} — slash-command names.
+commands.yolo.summary: "Gebruik die verskaffer se ACP Yolo-modus vir hierdie sessie (tot /new)"  # {Locked="ACP","Yolo","/new"} — slash-command names.
 
 model_picker.title: "Kies model (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "Die gekoppelde agent het geen kiesbare modelle aangekondig nie."

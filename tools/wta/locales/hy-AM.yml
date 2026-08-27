@@ -246,7 +246,7 @@ system.agent_switch_unavailable: "Գործակալի փոխարկումը հաս
 commands.model.summary: "Ընտրեք մոդելն այս վահանակի համար (/model <id>՝ ուղղակիորեն փոխելու համար)"  # {Locked="/model","<id>"}
 commands.config.summary: "Կարգավորել գործակալի այս աշխատաշրջանը"  # Agent means an AI coding agent; shown for the /config command. {Locked="/config"}
 commands.move.summary: "Տեղափոխել այս ներդիրի ագենտի վահանակը (/move <position>)"  # {Locked="/move","<position>"}
-commands.yolo.summary: "Use the provider's ACP Yolo mode for this session (until /new)"  # {Locked="ACP","Yolo","/yolo","/new"} — slash-command names.
+commands.yolo.summary: "Օգտագործել գործակալի մատակարարի ACP Yolo ռեժիմն այս աշխատաշրջանի համար (մինչև /new)"  # {Locked="ACP","Yolo","/new"} — slash-command names.
 
 model_picker.title: "Ընտրեք մոդելը (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "Միացված ագենտը չհայտարարեց ընտրելի մոդելների մասին։"

@@ -51,6 +51,7 @@ pub enum AppEvent {
         current_model_id: Option<String>,
     },
     YoloModeChangeCompleted {
+        transaction_id: u64,
         session_id: String,
         enabled: bool,
         result: Result<(), String>,

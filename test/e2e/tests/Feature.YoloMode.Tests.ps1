@@ -6,16 +6,39 @@
 BeforeDiscovery {
     Import-Module (Join-Path $PSScriptRoot '..\ItE2E\ItE2E.psd1') -Force
     $script:Ready = $false
-    $script:copilotReady = [bool](Get-Command copilot -ErrorAction SilentlyContinue)
+    $script:copilotStatus = if (Get-Command copilot -ErrorAction SilentlyContinue) { 'probe-failed' } else { 'not-installed' }
     $script:openCodeReady = [bool](Get-Command opencode -ErrorAction SilentlyContinue)
-    $script:policyReady = $script:copilotReady -and (Test-WtAgentPolicyControllable)
     try {
-        $null = Resolve-ItApp -Package Dev -ErrorAction Stop
+        $resolvedApp = Resolve-ItApp -Package Dev -ErrorAction Stop
         $script:Ready = Test-WinAppAvailable
+        if ($script:copilotStatus -ne 'not-installed') {
+            $script:copilotStatus = Get-AgentAcpStatus -App $resolvedApp -AgentCommand 'copilot --acp --stdio'
+        }
     }
     catch {
         $script:Ready = $false
     }
+    $script:copilotBlocked = $script:copilotStatus -in @('not-installed', 'installed-unauthenticated')
+    $script:policyReady = (-not $script:copilotBlocked) -and (Test-WtAgentPolicyControllable)
+}
+
+function Test-YoloNativeUpdate {
+    param(
+        [Parameter(Mandatory)]$App,
+        [Parameter(Mandatory)][string]$AcpSessionId,
+        [Parameter(Mandatory)][bool]$Enabled
+    )
+
+    $sessionPattern = [regex]::Escape($AcpSessionId)
+    $enabledPattern = 'enabled=' + $Enabled.ToString().ToLowerInvariant()
+    $logApp = $App.PSObject.Copy()
+    $logApp.LogStartOffset = $App.PreLaunchLogStartOffset
+    @((Get-ItLogText -App $logApp -Name 'wta-main_helper-*.log' -SinceStart) -split '\r?\n' |
+        Where-Object {
+            $_ -match $sessionPattern -and
+            $_ -match $enabledPattern -and
+            $_ -match 'provider-native Yolo updated for live session'
+        }).Count -gt 0
 }
 
 Describe 'Feature Yolo mode permission boundary' -Tag 'Feature' -Skip:(-not $script:Ready) {
@@ -70,20 +93,39 @@ Describe 'Feature provider-native Yolo with Copilot' -Tag 'Feature' -Skip:(-not 
         Import-Module (Join-Path $PSScriptRoot '..\ItE2E\ItE2E.psd1') -Force
     }
 
-    It 'Yolo setting persists' -Skip:(-not $script:copilotReady) {
-        $app = Start-Terminal -Package Dev -PassFre $true -Settings @{
-            acpAgent = 'copilot'
-            'agentPane.yoloMode' = $true
-        }
+    It 'Yolo setting persists' -Skip:$script:copilotBlocked {
+        $configOwner = Resolve-ItApp -Package Dev
+        $firstApp = $null
+        $secondApp = $null
         try {
-            Assert-Setting -App $app -Key 'agentPane.yoloMode' -Value $true
+            $firstApp = Start-Terminal -Package Dev -PassFre $true -Settings @{
+                acpAgent = 'copilot'
+                'agentPane.yoloMode' = $false
+            }
+            Assert-Setting -App $firstApp -Key 'agentPane.yoloMode' -Value $false
+            Set-WtSetting -App $firstApp -Key 'agentPane.yoloMode' -Value $true | Out-Null
+            Assert-Setting -App $firstApp -Key 'agentPane.yoloMode' -Value $true
+
+            Stop-Terminal -App $firstApp -RestoreSettings $false
+            $firstApp = $null
+
+            $secondApp = Start-Terminal -Package Dev -PassFre $true -Backup $false -CleanSettings $false
+            Assert-Setting -App $secondApp -Key 'agentPane.yoloMode' -Value $true
+            Wait-AgentReady -App $secondApp -TimeoutSec 90 | Should -BeTrue
+            $shellPane = Get-ActivePane -App $secondApp
+            $agentSession = Wait-NewAgentPaneSession -App $secondApp -OwnerPaneSessionId $shellPane.session_id -TimeoutSec 30
+            (Test-Until -TimeoutSec 30 -IntervalSec 0.5 -Condition {
+                Test-YoloNativeUpdate -App $secondApp -AcpSessionId $agentSession.AcpSessionId -Enabled $true
+            }) | Should -BeTrue -Because 'the relaunched default session must receive the persisted native Yolo setting'
         }
         finally {
-            if ($app) { Stop-Terminal -App $app }
+            if ($secondApp) { Stop-Terminal -App $secondApp -RestoreSettings $false }
+            if ($firstApp) { Stop-Terminal -App $firstApp -RestoreSettings $false }
+            Restore-WtConfig -App $configOwner
         }
     }
 
-    It 'Provider-native Yolo toggles per live session' -Skip:(-not $script:copilotReady) {
+    It 'Provider-native Yolo toggles per live session' -Skip:$script:copilotBlocked {
         $app = Start-Terminal -Package Dev -PassFre $true -Settings @{
             acpAgent = 'copilot'
             'agentPane.yoloMode' = $true
@@ -148,7 +190,13 @@ Describe 'Feature AllowYoloMode policy' -Tag 'Feature' -Skip:(-not $script:Ready
             Open-AgentPane -App $app | Out-Null
             Wait-AgentReady -App $app -TimeoutSec 90 | Should -BeTrue
             $shellPane = Get-ActivePane -App $app
-            $agentPane = (Wait-NewAgentPaneSession -App $app -OwnerPaneSessionId $shellPane.session_id -TimeoutSec 30).PaneSessionId
+            $agentSession = Wait-NewAgentPaneSession -App $app -OwnerPaneSessionId $shellPane.session_id -TimeoutSec 30
+            (Test-Until -TimeoutSec 30 -IntervalSec 0.5 -Condition {
+                Test-YoloNativeUpdate -App $app -AcpSessionId $agentSession.AcpSessionId -Enabled $false
+            }) | Should -BeTrue -Because 'policy must reconcile the initial provider session to native Yolo off'
+            (Test-YoloNativeUpdate -App $app -AcpSessionId $agentSession.AcpSessionId -Enabled $true) |
+                Should -BeFalse -Because 'policy must suppress the persisted global-on setting at startup'
+            $agentPane = $agentSession.PaneSessionId
             Send-AgentPrompt -App $app -PaneSessionId $agentPane -Text '/yolo on' | Out-Null
             $blocked = Get-WtaLocalizedTextRegex -Key 'system.yolo_blocked_by_policy'
             if (-not $blocked) { $blocked = '(?i)Yolo mode is disabled' }

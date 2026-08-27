@@ -231,7 +231,7 @@ system.agent_switch_unavailable: "ୱିଣ୍ଡୋଜ୍ ଟର୍ମିନା
 commands.model.summary: "ଏହି ପେନ୍ ପାଇଁ ମଡେଲ ବାଛନ୍ତୁ (ସିଧାସଳଖ ବଦଳାଇବାକୁ /model <id>)"  # {Locked="/model","<id>"}
 commands.config.summary: "ଏହି ଏଜେଣ୍ଟ୍ ସେସନ୍ କନ୍ଫିଗର୍ କରନ୍ତୁ"  # Agent means an AI coding agent; shown for the /config command. {Locked="/config"}
 commands.move.summary: "ଏହି ଟ୍ୟାବ୍‌ର ଏଜେଣ୍ଟ୍ ପେନ୍‌କୁ ସ୍ଥានାନ୍ତର କରନ୍ତୁ (/move <position>)"  # {Locked="/move","<position>"}
-commands.yolo.summary: "Use the provider's ACP Yolo mode for this session (until /new)"  # {Locked="ACP","Yolo","/yolo","/new"} — slash-command names.
+commands.yolo.summary: "ଏହି ସେସନ୍ ପାଇଁ ପ୍ରଦାତାଙ୍କ ACP Yolo ମୋଡ୍ ବ୍ୟବହାର କରନ୍ତୁ (/new ପର୍ଯ୍ୟନ୍ତ)"  # {Locked="ACP","Yolo","/new"} — slash-command names.
 
 model_picker.title: "ମଡେଲ ବାଛନ୍ତୁ (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "ସଂଯୁକ୍ତ ଏଜେଣ୍ଟ କୌଣସି ଚୟନଯୋଗ୍ୟ ମଡେଲ ଘୋଷଣା କଲା ନାହିଁ।"

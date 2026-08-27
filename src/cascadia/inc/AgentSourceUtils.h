@@ -3,11 +3,18 @@
 
 #pragma once
 
+#include <wil/win32_helpers.h>
+
 #include <string>
 #include <string_view>
 
 namespace Microsoft::Terminal::AgentSource
 {
+    inline std::wstring ReadEnvironmentVariable(const wchar_t* name)
+    {
+        return wil::TryGetEnvironmentVariableW<std::wstring>(name);
+    }
+
     inline std::wstring ResolveCwd(
         const std::wstring_view paneCwd,
         const std::wstring_view windowCwd,

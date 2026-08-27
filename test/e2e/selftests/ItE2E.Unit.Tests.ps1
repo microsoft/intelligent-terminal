@@ -108,6 +108,71 @@ Describe 'Agent settings cleanup' -Tag 'Unit' {
     }
 }
 
+Describe 'Configuration backup and restore' -Tag 'Unit' {
+    It 'restores existing configuration content' {
+        $app = [pscustomobject]@{
+            SettingsPath = Join-Path $TestDrive 'existing-settings.json'
+            StatePath = Join-Path $TestDrive 'existing-state.json'
+        }
+        '{"original":"settings"}' | Set-Content -LiteralPath $app.SettingsPath -Encoding utf8
+        '{"original":"state"}' | Set-Content -LiteralPath $app.StatePath -Encoding utf8
+
+        Backup-WtConfig -App $app
+        '{}' | Set-Content -LiteralPath $app.SettingsPath -Encoding utf8
+        '{}' | Set-Content -LiteralPath $app.StatePath -Encoding utf8
+        Restore-WtConfig -App $app
+
+        Get-Content -LiteralPath $app.SettingsPath -Raw | Should -Match '"original":"settings"'
+        Get-Content -LiteralPath $app.StatePath -Raw | Should -Match '"original":"state"'
+    }
+
+    It 'removes files created when the original configuration was absent' {
+        $app = [pscustomobject]@{
+            SettingsPath = Join-Path $TestDrive 'missing-settings.json'
+            StatePath = Join-Path $TestDrive 'missing-state.json'
+        }
+
+        Backup-WtConfig -App $app
+        '{}' | Set-Content -LiteralPath $app.SettingsPath -Encoding utf8
+        '{}' | Set-Content -LiteralPath $app.StatePath -Encoding utf8
+        Restore-WtConfig -App $app
+
+        Test-Path -LiteralPath $app.SettingsPath | Should -BeFalse
+        Test-Path -LiteralPath $app.StatePath | Should -BeFalse
+    }
+
+    It 'recovers a stale missing-file marker before taking a new snapshot' {
+        $app = [pscustomobject]@{
+            SettingsPath = Join-Path $TestDrive 'stale-settings.json'
+            StatePath = Join-Path $TestDrive 'stale-state.json'
+        }
+        '{}' | Set-Content -LiteralPath $app.SettingsPath -Encoding utf8
+        [System.IO.File]::WriteAllBytes("$($app.SettingsPath).e2ebak.missing", [byte[]]::new(0))
+
+        Backup-WtConfig -App $app
+
+        Test-Path -LiteralPath $app.SettingsPath | Should -BeFalse
+        Test-Path -LiteralPath "$($app.SettingsPath).e2ebak.missing" | Should -BeTrue
+        Restore-WtConfig -App $app
+    }
+
+    It 'recovers a stale backup before taking a new snapshot' {
+        $app = [pscustomobject]@{
+            SettingsPath = Join-Path $TestDrive 'crashed-settings.json'
+            StatePath = Join-Path $TestDrive 'crashed-state.json'
+        }
+        '{"test":"contaminated"}' | Set-Content -LiteralPath $app.SettingsPath -Encoding utf8
+        '{"original":"settings"}' | Set-Content -LiteralPath "$($app.SettingsPath).e2ebak" -Encoding utf8
+
+        Backup-WtConfig -App $app
+
+        Get-Content -LiteralPath $app.SettingsPath -Raw | Should -Match '"original":"settings"'
+        '{}' | Set-Content -LiteralPath $app.SettingsPath -Encoding utf8
+        Restore-WtConfig -App $app
+        Get-Content -LiteralPath $app.SettingsPath -Raw | Should -Match '"original":"settings"'
+    }
+}
+
 Describe 'Resolve-ItApp' -Tag 'Unit' {
     It 'resolves a descriptor with the expected shape when a package is installed' {
         $installed = Get-AppxPackage | Where-Object { $_.Name -like '*IntelligentTerminal*' }
@@ -159,6 +224,31 @@ Describe 'Start-Terminal startup ordering' -Tag 'Unit' {
 
             $app.Hwnd | Should -Be 9001
             $script:startupOrder | Should -Be @('hwnd', 'com')
+        }
+    }
+}
+
+Describe 'Agent readiness log boundary' -Tag 'Unit' {
+    It 'checks failures only in the current launch log slice' {
+        InModuleScope ItE2E {
+            $script:observedOffset = $null
+            $app = [pscustomobject]@{
+                LogStartOffset = @{ 'wta-main_helper-old.log' = 200 }
+                PreLaunchLogStartOffset = @{ 'wta-main_helper-old.log' = 100 }
+            }
+
+            Mock Open-AgentPane
+            Mock Get-AgentConnectedPlaceholderRegex { 'connected-never-matches' }
+            Mock Get-AgentPaneText { '' }
+            Mock Get-ItLogText {
+                param($App)
+                $script:observedOffset = $App.LogStartOffset['wta-main_helper-old.log']
+                'class=auth_required'
+            }
+            Mock Write-ItLog
+
+            Wait-AgentReady -App $app -TimeoutSec 1 | Should -BeFalse
+            $script:observedOffset | Should -Be 100
         }
     }
 }

@@ -2902,8 +2902,8 @@
     <value>智能体 Hooks</value>
     <comment>Section header for the Agent Hooks installer (lets users install hook scripts that report agent CLI activity to the agent pane).</comment>
   </data>
-  <data name="AIAgents_YoloMode.Header" xml:space="preserve"><value>使用提供商 Yolo 模式</value><comment>{Locked=&quot;ACP&quot;,&quot;Yolo&quot;} Header for the global setting that asks each AI agent provider to enable its advertised ACP session Yolo capability.</comment></data>
-  <data name="AIAgents_YoloMode.HelpText" xml:space="preserve"><value>使用智能体提供商的 ACP 会话模式来减少或绕过确认。提供商定义由此产生的权限、沙盒、文件访问和网络访问。对于不支持相应模式的提供商，仍会请求权限。</value><comment>{Locked=&quot;ACP&quot;,&quot;Yolo&quot;} Risk warning shown under the Yolo toggle. Here provider means the selected AI agent provider, not a network provider.</comment></data>
+  <data name="AIAgents_YoloMode.Header" xml:space="preserve"><value>使用提供商 Yolo 模式</value><comment>{Locked=&quot;Yolo&quot;} Header for the global setting that asks each AI agent provider to enable its advertised ACP session Yolo capability.</comment></data>
+  <data name="AIAgents_YoloMode.HelpText" xml:space="preserve"><value>使用智能体提供商的 ACP 会话模式来减少或绕过确认。提供商定义由此产生的权限、沙盒、文件访问和网络访问。对于不支持相应模式的提供商，仍会请求权限。</value><comment>{Locked=&quot;ACP&quot;} Risk warning shown under the Yolo toggle. Here provider means the selected AI agent provider, not a network provider.</comment></data>
   <data name="AIAgents_HooksInstall.Header" xml:space="preserve">
     <value>安装智能体 Hook 脚本</value>
     <comment>Header for the Agent Hooks install section.</comment>

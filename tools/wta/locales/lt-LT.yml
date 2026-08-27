@@ -230,7 +230,7 @@ system.agent_switch_unavailable: "Agento perjungimas nepasiekiamas už „Window
 commands.model.summary: "Pasirinkite šios srities modelį (/model <id> norėdami perjungti tiesiogiai)"  # {Locked="/model","<id>"}
 commands.config.summary: "Konfigūruoti šią agento sesiją"  # Agent means an AI coding agent; shown for the /config command. {Locked="/config"}
 commands.move.summary: "Perkelti šios kortelės agento skydelį (/move <position>)"  # {Locked="/move","<position>"}
-commands.yolo.summary: "Use the provider's ACP Yolo mode for this session (until /new)"  # {Locked="ACP","Yolo","/yolo","/new"} — slash-command names.
+commands.yolo.summary: "Naudoti pasirinkto agento teikėjo ACP Yolo režimą šiame seanse (iki /new)"  # {Locked="ACP","Yolo","/new"} — slash-command names.
 
 model_picker.title: "Pasirinkite modelį (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "Prijungtas agentas nepaskelbė jokių pasirenkamų modelių."

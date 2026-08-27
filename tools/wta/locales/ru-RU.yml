@@ -230,7 +230,7 @@ system.agent_switch_unavailable: "Переключение агентов нед
 commands.model.summary: "Выберите модель для этой панели (/model <id> для прямого переключения)"  # {Locked="/model","<id>"}
 commands.config.summary: "Настроить этот сеанс агента"  # Agent means an AI coding agent; shown for the /config command. {Locked="/config"}
 commands.move.summary: "Переместить панель агента этой вкладки (/move <position>)"  # {Locked="/move","<position>"}
-commands.yolo.summary: "Use the provider's ACP Yolo mode for this session (until /new)"  # {Locked="ACP","Yolo","/yolo","/new"} — slash-command names.
+commands.yolo.summary: "Используйте режим ACP Yolo поставщика для этого сеанса (до /new)"  # {Locked="ACP","Yolo","/new"} — slash-command names.
 
 model_picker.title: "Выбор модели (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "Подключённый агент не объявил ни одной доступной для выбора модели."

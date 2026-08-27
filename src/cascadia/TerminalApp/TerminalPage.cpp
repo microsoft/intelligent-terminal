@@ -1600,11 +1600,9 @@ namespace winrt::TerminalApp::implementation
         }
         if (activeCwd.empty())
         {
-            wchar_t homePath[MAX_PATH];
-            if (GetEnvironmentVariableW(L"USERPROFILE", homePath, MAX_PATH) > 0)
-            {
-                activeCwd = winrt::hstring{ homePath };
-            }
+            activeCwd = winrt::hstring{
+                ::Microsoft::Terminal::AgentSource::ReadEnvironmentVariable(L"USERPROFILE")
+            };
         }
         if (!activeCwd.empty())
         {
@@ -3173,12 +3171,9 @@ namespace winrt::TerminalApp::implementation
         {
             profileDirectory = sourceProfile.EvaluatedStartingDirectory();
         }
-        winrt::hstring homeDirectory;
-        wchar_t homePath[MAX_PATH];
-        if (GetEnvironmentVariableW(L"USERPROFILE", homePath, MAX_PATH) > 0)
-        {
-            homeDirectory = winrt::hstring{ homePath };
-        }
+        const winrt::hstring homeDirectory{
+            ::Microsoft::Terminal::AgentSource::ReadEnvironmentVariable(L"USERPROFILE")
+        };
         const winrt::hstring startingDirectory{
             ::Microsoft::Terminal::AgentSource::ResolveCwd(
                 std::wstring_view{ paneDirectory },

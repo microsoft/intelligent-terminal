@@ -30,6 +30,7 @@ fn complete_yolo_request(
 ) {
     let request = master_rx.try_recv().expect("a yolo request was queued");
     let crate::protocol::acp::client::MasterExtRequest::SetSessionYolo {
+        transaction_id,
         session_id,
         enabled,
     } = request
@@ -37,6 +38,7 @@ fn complete_yolo_request(
         panic!("expected SetSessionYolo");
     };
     app.handle_event(AppEvent::YoloModeChangeCompleted {
+        transaction_id,
         session_id: session_id.to_string(),
         enabled,
         result: result.map_err(str::to_string),
@@ -538,11 +540,68 @@ fn runtime_change_cancels_stale_pending_yolo_ack() {
     assert!(!app.pending_yolo_changes.contains_key(session_id));
 
     app.handle_event(AppEvent::YoloModeChangeCompleted {
+        transaction_id: 0,
         session_id: session_id.into(),
         enabled: true,
         result: Ok(()),
     });
     assert!(!app.yolo_state.lock().unwrap().effective(session_id));
+}
+
+#[test]
+fn reused_session_id_ignores_stale_yolo_acknowledgement() {
+    let (mut app, mut master_rx) = test_app_with_master_rx();
+    let session_id = "reused-yolo-ack-session";
+    app.current_tab_mut().session_id = Some(session_id.into());
+
+    run_slash_args(&mut app, "yolo", "on");
+    let old_request = master_rx.try_recv().expect("old slash request");
+    app.clear_yolo_session_state(session_id);
+
+    run_slash_args(&mut app, "yolo", "on");
+    let new_request = master_rx.try_recv().expect("new slash request");
+    let MasterExtRequest::SetSessionYolo {
+        transaction_id,
+        session_id,
+        enabled,
+    } = old_request
+    else {
+        panic!("expected SetSessionYolo");
+    };
+    app.handle_event(AppEvent::YoloModeChangeCompleted {
+        transaction_id,
+        session_id: session_id.to_string(),
+        enabled,
+        result: Ok(()),
+    });
+
+    assert!(app.pending_yolo_changes.contains_key(session_id.0.as_ref()));
+    assert!(!app
+        .yolo_state
+        .lock()
+        .unwrap()
+        .effective(session_id.0.as_ref()));
+
+    let MasterExtRequest::SetSessionYolo {
+        transaction_id,
+        session_id,
+        enabled,
+    } = new_request
+    else {
+        panic!("expected SetSessionYolo");
+    };
+    app.handle_event(AppEvent::YoloModeChangeCompleted {
+        transaction_id,
+        session_id: session_id.to_string(),
+        enabled,
+        result: Ok(()),
+    });
+    assert!(!app.pending_yolo_changes.contains_key(session_id.0.as_ref()));
+    assert!(app
+        .yolo_state
+        .lock()
+        .unwrap()
+        .effective(session_id.0.as_ref()));
 }
 
 #[test]
@@ -587,7 +646,7 @@ fn session_replacement_cleans_yolo_and_pending_state() {
         .unwrap()
         .set_session_override("old-session".into(), true);
     app.pending_yolo_changes
-        .insert("old-session".into(), (true, DEFAULT_TAB_ID.into()));
+        .insert("old-session".into(), (1, true, DEFAULT_TAB_ID.into()));
 
     app.handle_event(AppEvent::SessionAttached {
         tab_id: DEFAULT_TAB_ID.into(),
