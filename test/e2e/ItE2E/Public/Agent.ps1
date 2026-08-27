@@ -402,15 +402,16 @@ function Get-AgentPaneSessions {
         for ($i = $records.Count - 1; $i -ge 0; $i--) {
             $r = $records[$i]
             $paneId = [string]$r.pane_session_id
-            if (-not $seen.Add($paneId)) { continue }
-            $alive = $false
-            try { $st = Get-WtPaneStatus -App $App -SessionId $paneId; $alive = ($st -and $st.state -match 'run') } catch { $alive = $false }
-            if ($alive) {
-                [pscustomobject]@{
-                    PaneSessionId   = $paneId
-                    AcpSessionId    = $r.session_id
-                    StartedAt       = $r.started_at
-                    HelperProcessId = $st.pid
+            if ($seen.Add($paneId)) {
+                $alive = $false
+                try { $st = Get-WtPaneStatus -App $App -SessionId $paneId; $alive = ($st -and $st.state -match 'run') } catch { $alive = $false }
+                if ($alive) {
+                    [pscustomobject]@{
+                        PaneSessionId   = $paneId
+                        AcpSessionId    = $r.session_id
+                        StartedAt       = $r.started_at
+                        HelperProcessId = $st.pid
+                    }
                 }
             }
         }

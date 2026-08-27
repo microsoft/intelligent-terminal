@@ -23,6 +23,7 @@
 #   AllowCustomAgents      REG_DWORD     0 = Blocked, non-zero = Allowed
 #   AllowAutoFix           REG_DWORD     0 = Blocked, non-zero = Allowed
 #   AllowAgentSessionHooks REG_DWORD     0 = Blocked, non-zero = Allowed
+#   AllowYoloMode          REG_DWORD     0 = Blocked, non-zero = Allowed
 
 $script:WtAgentPolicyKey = 'HKCU:\SOFTWARE\Policies\Microsoft\IntelligentTerminal'
 
@@ -32,6 +33,7 @@ $script:WtAgentPolicyValues = [ordered]@{
     AllowCustomAgents      = 'DWord'
     AllowAutoFix           = 'DWord'
     AllowAgentSessionHooks = 'DWord'
+    AllowYoloMode          = 'DWord'
 }
 
 function Get-WtAgentPolicyState {
@@ -55,7 +57,7 @@ function Set-WtAgentPolicy {
         hive to be writable (see Enable-WtAgentPolicyTesting.ps1 — grant once, then non-elevated).
     .PARAMETER Policy
         Hashtable keyed by registry value name:
-          AllowAutoFix / AllowCustomAgents / AllowAgentSessionHooks -> 'Allowed' | 'Blocked' | 0/1
+          AllowAutoFix / AllowCustomAgents / AllowAgentSessionHooks / AllowYoloMode -> 'Allowed' | 'Blocked' | 0/1
           AllowedAgents -> string[] of built-in agent ids (e.g. @('copilot'))
         A $null value clears (removes) that policy value.
     .EXAMPLE
