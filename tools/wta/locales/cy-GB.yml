@@ -48,6 +48,7 @@ chat.plan_marker_in_progress: "[>]"  # {Locked}
 chat.plan_marker_pending: "[ ]"  # {Locked}
 chat.autofix_prompt_label: "Methiant gorchymyn diweddar wedi'i ddiagnosio'n awtomatig"
 chat.turn_canceled: "(canslwyd)"
+chat.turn_adjusted: "(wedi'i addasu)"
 chat.turn_executed: "→ wedi'i weithredu: %{title}"
 # Persistent tool-category labels shown after a status marker and before a subject.
 chat.tool_kind.run: "Rhedeg"
@@ -71,6 +72,13 @@ input.image_attachments: "📎 Delweddau: %{items}"  # {Locked="📎","%{items}"
 # ── Naidlen gorchmynion (src/ui/command_popup.rs) ─────────────────────────────────
 # {Locked="/"} - rhagddodiad gorchymyn slaes, rhaid iddo aros yn ASCII
 commands.popup_title: " / gorchmynion "
+delegate_picker.title: " Cyrchfan y cynadleddwyr "
+delegate_picker.tab: "Tab newydd"
+delegate_picker.panel: "Panel newydd"
+delegate_picker.intent_required: "Disgrifiwch y gwaith i'w ddirprwyo."
+delegate_picker.not_configured: "Nid oes unrhyw asiant dirprwyo wedi'i ffurfweddu."
+delegate_picker.no_parent_pane: "Nid oes cwarel gweithio ar gael i'w hollti."
+delegate_picker.launch_failed: "Methu lansio'r cynrychiolydd: %{error}"
 commands.help_title: " Cymorth "
 commands.help_header: "Gorchmynion slaes — teipiwch / yn y blwch mewnbwn."
 commands.help_escape_hint: "  //text     Anfon '/' llythrennol (dianc y parsiwr gorchmynion)"  # {Locked="//text","/"}
@@ -80,7 +88,9 @@ commands.help_close_hint: "  Esc        Cau'r cymorth hwn"  # {Locked="Esc"}
 # {Locked="Enter","Esc","↵","↑","↓","←","→"} - enwau bysellau a glyff bysell Dychwelyd, peidiwch â chyfieithu
 recommendations.nav_hint: "(↑ ↓ i lywio • ← → i newid botymau • Enter i ddewis • Esc i ganslo)"
 recommendations.button_run_command: "[ Rhedeg gorchymyn ]"
+recommendations.button_send_to_delegate: "[Anfon at ddirprwy ]"
 recommendations.button_insert_in_terminal: "Mewnosod yn y Terfynell"
+recommendations.button_adjust_command: "Addasu"  # Button label — refine the prepared terminal command using a natural-language instruction
 recommendations.button_open_in_new_tab: "Agor mewn Tab Newydd ↵"
 recommendations.button_open_in_new_panel: "Agor mewn Panel Newydd ↵"
 recommendations.button_open_tab: "Agor Tab ↵"
@@ -211,12 +221,19 @@ commands.restart.summary: "Restart agent"
 commands.stop.summary: "Cancel the in-flight prompt"
 commands.sessions.summary: "Open the historical sessions picker (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
 commands.agent.summary: "Dewiswch y asiant ar gyfer y paen hwn (/agent <id> i newid yn uniongyrchol)"  # {Locked="/agent","<id>"}
+commands.command.summary: "Create a terminal command card from an intent (/command <intent>)"  # {Locked="/command","<intent>"}
+command_card.intent_required: "Describe the terminal command you want Copilot to prepare."
+command_card.adjustment_required: "Disgrifiwch sut rydych am addasu'r gorchymyn terfynell."
+commands.delegate.summary: "Paratoi tasg ac agor asiant dirprwyol (/delegate <intent>)"
 
 # ── Gweithredu argymhelliad (src/coordinator.rs) ───────────────────────────
 system.choice_execution_failed: "Methodd dewis %{choice}: %{error}"
 
 # ── Agent picker (src/ui/agent_popup.rs) ────────────────────────────────────
 # {Locked="↑","↓","Enter","Esc"} - key names, do not translate
+command_card.target_unavailable: "Nid yw'r cwarel a ddewiswyd ar gael bellach."
+direct_command.command_required: "Enter a command after $."  # {Locked="$"}
+direct_command.execution_unavailable: "Terminal command execution is unavailable."
 agent_picker.title: "Dewiswch asiant (↑ ↓ • Enter • Esc)"  # Agent means an AI coding agent
 # Shown when no policy-allowed AI agent CLI is installed on the machine.
 system.no_agents: "Ni chafwyd hyd i unrhyw CLI asiant ar gael ar y peiriant hwn."  # {Locked="CLI"}

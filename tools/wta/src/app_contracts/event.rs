@@ -106,6 +106,11 @@ pub enum AppEvent {
         prompt_id: u64,
         pane_id: String,
     },
+    DelegateDestinationReady {
+        tab_id: String,
+        prompt_id: u64,
+        result: Result<String, String>,
+    },
     AgentError {
         session_id: Option<String>,
         failure: crate::protocol::acp::failure::AgentFailure,

@@ -1,13 +1,120 @@
 use std::cell::RefCell;
-use std::collections::{HashSet, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 
 use serde::{Deserialize, Serialize};
 
 use crate::app_contracts::{PermOption, PlanEntry};
 use crate::commands::{CommandSpec, MovePositionSpec};
+use crate::coordinator::OpenTarget;
+use crate::pane_context::normalize_pane_session_id;
 
 use super::input_edit::InputHistory;
 use super::{TabAutofixState, TurnState};
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Deserialize)]
+pub struct PaneDescriptor {
+    pub session_id: String,
+    #[serde(default)]
+    pub ordinal: u32,
+    #[serde(default)]
+    pub title: String,
+    #[serde(default)]
+    pub profile: String,
+    #[serde(default)]
+    pub cwd: String,
+    #[serde(default)]
+    pub shell: String,
+    #[serde(default)]
+    pub is_active: bool,
+    #[serde(default)]
+    pub is_agent_pane: bool,
+    #[serde(default = "default_true")]
+    pub visible: bool,
+    #[serde(default)]
+    pub read_only: bool,
+}
+
+fn default_true() -> bool {
+    true
+}
+
+impl PaneDescriptor {
+    pub fn is_writable_terminal(&self) -> bool {
+        self.visible && !self.read_only && !self.is_agent_pane && !self.session_id.is_empty()
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PreparedActionMode {
+    Command,
+    DelegateSend,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PendingPreparation {
+    pub prompt_id: u64,
+    pub target_session_id: String,
+    pub mode: PreparedActionMode,
+    pub title: String,
+    pub revision_root_index: Option<usize>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CommandAdjustment {
+    pub title: String,
+    pub current_command: String,
+    pub target_session_id: String,
+    pub history_index: usize,
+    pub revision_root_index: usize,
+}
+
+#[derive(Debug, Clone)]
+pub struct PendingDelegate {
+    pub intent: String,
+}
+
+#[derive(Debug, Default)]
+pub struct PaneCatalogState {
+    pub generation: u64,
+    pub panes: HashMap<String, PaneDescriptor>,
+}
+
+impl PaneCatalogState {
+    pub fn writable_panes(&self) -> Vec<&PaneDescriptor> {
+        let mut panes: Vec<_> = self
+            .panes
+            .values()
+            .filter(|pane| pane.is_writable_terminal())
+            .collect();
+        panes.sort_by(|left, right| {
+            left.ordinal
+                .cmp(&right.ordinal)
+                .then_with(|| left.session_id.cmp(&right.session_id))
+        });
+        panes
+    }
+
+    pub fn replace_snapshot(&mut self, generation: u64, panes: Vec<PaneDescriptor>) {
+        if generation < self.generation {
+            return;
+        }
+        self.generation = generation;
+        self.panes = panes
+            .into_iter()
+            .map(|pane| (normalize_pane_session_id(&pane.session_id), pane))
+            .collect();
+    }
+
+    pub fn get(&self, session_id: &str) -> Option<&PaneDescriptor> {
+        self.panes.get(&normalize_pane_session_id(session_id))
+    }
+
+    pub fn active_writable_pane(&self) -> Option<&PaneDescriptor> {
+        self.writable_panes()
+            .into_iter()
+            .find(|pane| pane.is_active)
+    }
+}
 
 pub(crate) const DEFAULT_TAB_ID: &str = "0";
 
@@ -397,6 +504,8 @@ pub(crate) struct PendingTerminalActionProposal {
     pub prompt_id: u64,
     pub is_autofix: bool,
     pub recommendations: super::RecommendationSet,
+    pub prepared_mode: Option<PreparedActionMode>,
+    pub committed: bool,
 }
 
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
@@ -477,16 +586,24 @@ impl ConfigPickerState {
 /// mutating shared `App` fields.
 #[derive(Default)]
 pub struct TabSession {
+    pub pane_catalog: PaneCatalogState,
     /// Per-tab autofix state machine (see `TabAutofixState`).
     pub autofix: TabAutofixState,
     pub(crate) pending_terminal_action_proposal: Option<PendingTerminalActionProposal>,
     pub(crate) active_direct_proposal_id: Option<String>,
+    pub(crate) pending_preparation: Option<PendingPreparation>,
+    pub(crate) active_prepared_mode: Option<PreparedActionMode>,
+    pub(crate) command_adjustment: Option<CommandAdjustment>,
+    pub(crate) pending_delegate: Option<PendingDelegate>,
     pub usage: Option<crate::usage::UsageSnapshot>,
     pub usage_staleness: crate::usage::UsageStaleness,
 
     // Conversation history
     pub messages: Vec<ChatMessage>,
     pub completed_turns: Vec<CompletedTurn>,
+    /// Maps each command turn to its root. Root turns map to themselves;
+    /// revisions map to the root and render one level below it.
+    pub command_revision_parents: HashMap<usize, usize>,
     /// UI-only disclosure state keyed by the ACP session's tool-call IDs.
     pub(crate) expanded_completed_tool_calls: HashSet<String>,
     pub(crate) completed_turn_layout: CompletedTurnLayoutState,
@@ -588,6 +705,9 @@ pub struct TabSession {
     pub agent_picker_open: bool,
     /// Highlighted row in `App::available_agents`.
     pub agent_picker_selected: usize,
+    pub delegate_picker_open: bool,
+    pub delegate_picker_selected: usize,
+    pub last_delegate_target: Option<OpenTarget>,
 
     // agent session view (`/sessions`) — per-tab so each WT tab keeps
     // its own open/closed state and selected row across tab switches.
@@ -660,8 +780,10 @@ impl TabSession {
 
     pub(crate) fn clear_completed_turns(&mut self) {
         self.completed_turns.clear();
+        self.command_revision_parents.clear();
         self.expanded_completed_tool_calls.clear();
         self.completed_turn_layout = CompletedTurnLayoutState::default();
+        self.clear_completed_turn_selection();
     }
 
     pub(crate) fn completed_tool_call_expanded(&self, id: &str) -> bool {
@@ -812,6 +934,7 @@ impl TabSession {
             && !self.model_picker_open
             && !self.config_picker.is_open()
             && !self.agent_picker_open
+            && !self.delegate_picker_open
     }
 
     pub fn clear_recommendations(&mut self) {
@@ -841,6 +964,10 @@ impl TabSession {
                 .and_then(|prompt| prompt.context.target_pane_id().map(str::to_string));
         }
         None
+    }
+
+    pub fn compute_chip_target(&self) -> Option<String> {
+        self.compute_chip_card_target()
     }
 
     pub fn clear_chat_history(&mut self) {
@@ -1054,4 +1181,105 @@ pub struct AgentsViewState {
     pub latest_request_id: Option<u64>,
     pub pending_rescan: bool,
     pub rescan_in_flight: bool,
+}
+
+#[cfg(test)]
+mod pane_catalog_tests {
+    use super::*;
+
+    fn pane(id: &str, title: &str, active: bool) -> PaneDescriptor {
+        PaneDescriptor {
+            session_id: id.to_string(),
+            ordinal: 0,
+            title: title.to_string(),
+            profile: String::new(),
+            cwd: String::new(),
+            shell: String::new(),
+            is_active: active,
+            is_agent_pane: false,
+            visible: true,
+            read_only: false,
+        }
+    }
+
+    #[test]
+    fn snapshot_replaces_catalog_and_ignores_older_generations() {
+        let mut state = PaneCatalogState::default();
+        state.replace_snapshot(2, vec![pane("new", "New", false)]);
+        state.replace_snapshot(1, vec![pane("old", "Old", false)]);
+
+        assert_eq!(state.generation, 2);
+        assert!(state.panes.contains_key("new"));
+        assert!(!state.panes.contains_key("old"));
+    }
+
+    #[test]
+    fn lookup_normalizes_guid_format() {
+        let mut state = PaneCatalogState::default();
+        state.replace_snapshot(
+            1,
+            vec![pane(
+                "{a6a3dec8-3d75-4afa-ba75-ed5f633e3126}",
+                "PowerShell",
+                true,
+            )],
+        );
+
+        assert!(state.get("A6A3DEC8-3D75-4AFA-BA75-ED5F633E3126").is_some());
+    }
+
+    #[test]
+    fn candidates_exclude_agent_hidden_and_read_only_panes() {
+        let mut eligible = pane("eligible", "Eligible", true);
+        let mut agent = pane("agent", "Agent", false);
+        agent.is_agent_pane = true;
+        let mut hidden = pane("hidden", "Hidden", false);
+        hidden.visible = false;
+        let mut read_only = pane("readonly", "Read only", false);
+        read_only.read_only = true;
+        eligible.shell = "pwsh".to_string();
+
+        let mut state = PaneCatalogState::default();
+        state.replace_snapshot(1, vec![read_only, hidden, agent, eligible]);
+
+        let ids = state
+            .writable_panes()
+            .into_iter()
+            .map(|pane| pane.session_id.as_str())
+            .collect::<Vec<_>>();
+        assert_eq!(ids, vec!["eligible"]);
+    }
+
+    #[test]
+    fn writable_panes_follow_snapshot_ordinals() {
+        let mut first = pane("first", "PowerShell", false);
+        first.ordinal = 1;
+        let mut second = pane("second", "PowerShell", true);
+        second.ordinal = 2;
+        let mut state = PaneCatalogState::default();
+        state.replace_snapshot(1, vec![second, first]);
+
+        let ids = state
+            .writable_panes()
+            .into_iter()
+            .map(|pane| pane.session_id.as_str())
+            .collect::<Vec<_>>();
+        assert_eq!(ids, vec!["first", "second"]);
+    }
+
+    #[test]
+    fn active_fallback_excludes_non_writable_panes() {
+        let mut active_agent = pane("agent", "Agent", true);
+        active_agent.is_agent_pane = true;
+        let active_shell = pane("shell", "PowerShell", true);
+        let mut state = PaneCatalogState::default();
+        state.replace_snapshot(1, vec![active_agent, active_shell]);
+
+        assert_eq!(
+            state
+                .active_writable_pane()
+                .map(|pane| pane.session_id.as_str()),
+            Some("shell")
+        );
+    }
 }

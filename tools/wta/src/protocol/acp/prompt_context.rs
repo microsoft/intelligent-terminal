@@ -22,7 +22,7 @@
 use async_trait::async_trait;
 
 use crate::coordinator::default_supported_delegate_agents;
-use crate::pane_context::PaneContext;
+use crate::pane_context::{normalize_pane_session_id, PaneContext};
 use crate::shell::ShellManager;
 
 const ACTIVE_PANE_CONTEXT_MAX_CHARS: usize = 4000;
@@ -261,6 +261,7 @@ async fn resolve_pane_by_session_id(
     shell_mgr: &ShellManager,
     session_id: &str,
 ) -> Option<serde_json::Value> {
+    let normalized_session_id = normalize_pane_session_id(session_id);
     let windows = shell_mgr.wt_list_windows().await.ok()?;
     for win in windows.get("windows")?.as_array()? {
         let Some(window_id) = json_str_or_num(win.get("window_id")) else {
@@ -287,10 +288,11 @@ async fn resolve_pane_by_session_id(
             let Some(panes_arr) = panes.get("panes").and_then(|v| v.as_array()) else {
                 continue;
             };
-            if let Some(pane) = panes_arr
-                .iter()
-                .find(|p| json_str_or_num(p.get("session_id")).as_deref() == Some(session_id))
-            {
+            if let Some(pane) = panes_arr.iter().find(|pane| {
+                json_str_or_num(pane.get("session_id")).is_some_and(|candidate| {
+                    normalize_pane_session_id(&candidate) == normalized_session_id
+                })
+            }) {
                 return Some(pane.clone());
             }
         }
@@ -312,9 +314,23 @@ async fn build_terminal_context(
     // pane (the "source"), so a single active-pane query gives us the right
     // target. Pane IDs are process-globally unique, so we only need the pane
     // id itself — tab/window aren't needed for addressing.
-    let active = match pane_context.and_then(|context| context.source_pane_id.as_deref()) {
-        Some(source) => resolve_pane_by_session_id(shell_mgr, source).await?,
-        None => shell_mgr.wt_get_active_pane().await.ok()?,
+    let active = match pane_context {
+        Some(context) if context.cached_source.is_some() => {
+            let source = context.source_pane_id.as_deref()?;
+            let cached = context.cached_source.as_ref()?;
+            serde_json::json!({
+                "session_id": source,
+                "title": cached.title,
+                "profile": cached.profile,
+                "cwd": cached.cwd,
+                "shell": cached.shell,
+                "is_agent_pane": false,
+            })
+        }
+        Some(context) if context.source_pane_id.is_some() => {
+            resolve_pane_by_session_id(shell_mgr, context.source_pane_id.as_deref()?).await?
+        }
+        _ => shell_mgr.wt_get_active_pane().await.ok()?,
     };
 
     let is_agent = active
@@ -418,6 +434,9 @@ pub(super) async fn resolve_provider_context(
         return resolved;
     }
     if !is_autofix {
+        resolved.resolved_planner_pane = pane_context
+            .and_then(|context| context.source_pane_id.clone())
+            .filter(|pane_id| !pane_id.trim().is_empty());
         if let Some(context) = build_terminal_context(shell_mgr, pane_context).await {
             resolved.planner_terminal_context = Some(context.json);
             resolved.resolved_planner_pane = Some(context.target_pane_id);
@@ -856,6 +875,15 @@ mod tests {
     }
 
     #[test]
+    fn pane_session_ids_compare_independent_of_guid_formatting() {
+        assert_eq!(
+            normalize_pane_session_id("{05740574-243F-4B39-94A8-C507A47CF8FB}"),
+            normalize_pane_session_id("05740574-243f-4b39-94a8-c507a47cf8fb")
+        );
+        assert_eq!(normalize_pane_session_id(" pane-9 "), "pane-9");
+    }
+
+    #[test]
     fn user_locale_tag_returns_current_locale_verbatim() {
         let _g = crate::test_support::lock_locale();
         // Real locales pass through unchanged.
@@ -899,6 +927,37 @@ mod tests {
     async fn build_terminal_context_none_without_wt_channel() {
         let mgr = ShellManager::new();
         assert!(build_terminal_context(&mgr, None).await.is_none());
+    }
+
+    #[tokio::test]
+    async fn build_terminal_context_uses_cached_explicit_target_without_enumeration() {
+        let mgr = shell_mgr_with_pane(serde_json::json!({
+            "session_id": "wrong-active-pane",
+            "title": "Wrong",
+        }));
+        let pane_context = PaneContext {
+            source_pane_id: Some("{05740574-243f-4b39-94a8-c507a47cf8fb}".to_string()),
+            cached_source: Some(crate::pane_context::CachedPaneMetadata {
+                title: "PowerShell 1".to_string(),
+                profile: "PowerShell".to_string(),
+                cwd: "C:\\workspace".to_string(),
+                shell: "pwsh.exe".to_string(),
+            }),
+            ..Default::default()
+        };
+
+        let context = build_terminal_context(&mgr, Some(&pane_context))
+            .await
+            .expect("cached target should not require list_windows/list_tabs/list_panes");
+        assert_eq!(
+            context.target_pane_id,
+            "{05740574-243f-4b39-94a8-c507a47cf8fb}"
+        );
+        let json: serde_json::Value =
+            serde_json::from_str(&context.json).expect("terminal context JSON");
+        assert_eq!(json["window_title"], "PowerShell 1");
+        assert_eq!(json["cwd"], "C:\\workspace");
+        assert_eq!(json["shell"], "pwsh.exe");
     }
 
     #[tokio::test]

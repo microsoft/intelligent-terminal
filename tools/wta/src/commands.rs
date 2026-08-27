@@ -49,6 +49,10 @@ pub enum CommandKind {
     /// Move this tab's agent pane without changing the global pane-position
     /// setting or any other tab.
     Move,
+    /// Ask the agent to turn an intent into a terminal command card.
+    Command,
+    /// Prepare a prompt and launch the configured delegate in a new destination.
+    Delegate,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -141,6 +145,18 @@ pub const REGISTRY: &[CommandSpec] = &[
         summary_key: "commands.move.summary",
         kind: CommandKind::Move,
         completion_behavior: CompletionBehavior::OpenPicker,
+    },
+    CommandSpec {
+        name: "command",
+        summary_key: "commands.command.summary",
+        kind: CommandKind::Command,
+        completion_behavior: CompletionBehavior::RequireFreeText,
+    },
+    CommandSpec {
+        name: "delegate",
+        summary_key: "commands.delegate.summary",
+        kind: CommandKind::Delegate,
+        completion_behavior: CompletionBehavior::RequireFreeText,
     },
 ];
 
@@ -276,6 +292,11 @@ pub fn classify(input: &str) -> ParseOutcome {
 /// Return the [`CommandSpec`] for the given name (case-insensitive), or
 /// `None` if unknown.
 pub fn lookup(name: &str) -> Option<&'static CommandSpec> {
+    let name = if name.eq_ignore_ascii_case("cmd") {
+        "command"
+    } else {
+        name
+    };
     REGISTRY
         .iter()
         .find(|spec| spec.name.eq_ignore_ascii_case(name))
@@ -286,6 +307,9 @@ pub fn lookup(name: &str) -> Option<&'static CommandSpec> {
 /// registry in declaration order. Used by the autocomplete popup.
 pub fn matches(query: &str) -> Vec<&'static CommandSpec> {
     let needle = query.trim().to_ascii_lowercase();
+    if needle == "cmd" {
+        return lookup("command").into_iter().collect();
+    }
     let (prefix_matches, contains_matches): (Vec<_>, Vec<_>) = REGISTRY
         .iter()
         .filter(|spec| spec.name.contains(&needle))
@@ -381,6 +405,19 @@ mod tests {
         let s_matches: Vec<&str> = matches("s").into_iter().map(|c| c.name).collect();
         assert!(s_matches.contains(&"stop"));
         assert!(s_matches.contains(&"sessions"));
+    }
+
+    #[test]
+    fn deterministic_action_commands_parse() {
+        let command = parse("/command clean temporary files").unwrap();
+        assert_eq!(command.kind, CommandKind::Command);
+        assert_eq!(command.rest, "clean temporary files");
+        assert_eq!(parse("/cmd echo hello").unwrap().kind, CommandKind::Command);
+        assert_eq!(matches("cmd")[0].name, "command");
+
+        let delegate = parse("/delegate investigate the failure").unwrap();
+        assert_eq!(delegate.kind, CommandKind::Delegate);
+        assert_eq!(delegate.rest, "investigate the failure");
     }
 
     #[test]
@@ -515,13 +552,15 @@ mod tests {
                 ("model", OpenPicker),
                 ("config", OpenPicker),
                 ("move", OpenPicker),
+                ("command", RequireFreeText),
+                ("delegate", RequireFreeText),
             ]
         );
         assert!(
-            !actual
+            actual
                 .iter()
                 .any(|(_, behavior)| *behavior == RequireFreeText),
-            "required free-text commands currently come from the ACP session registry"
+            "host and ACP commands share required free-text completion"
         );
     }
 

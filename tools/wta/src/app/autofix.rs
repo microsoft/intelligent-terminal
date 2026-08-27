@@ -230,6 +230,7 @@ impl App {
             window_id: self.window_id.clone(),
             cwd: None,
             source_pane_id: Some(notification.pane_id.clone()),
+            cached_source: None,
         };
 
         // Store the failing pane ID on the target tab so the Esc dismiss

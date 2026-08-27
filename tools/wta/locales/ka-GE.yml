@@ -48,6 +48,7 @@ chat.plan_marker_in_progress: "[>]"  # {Locked}
 chat.plan_marker_pending: "[ ]"  # {Locked}
 chat.autofix_prompt_label: "ბრძანების ბოლო შეცდომა ავტომატურად დიაგნოსტირებულია"
 chat.turn_canceled: "(გაუქმდა)"
+chat.turn_adjusted: "(მორგდა)"
 chat.turn_executed: "→ შესრულდა: %{title}"
 # ხელსაწყოს კატეგორიის მუდმივი წარწერები, რომლებიც გამოჩნდება სტატუსის ნიშნულის შემდეგ და თემის წინ.
 chat.tool_kind.run: "გაშვება"
@@ -70,6 +71,13 @@ input.image_attachments: "📎 სურათები: %{items}"  # {Locked="�
 # ── ბრძანებების ამომხტარი (src/ui/command_popup.rs) ─────────────────────────────────
 # {Locked="/"} - სლეშ-ბრძანების პრეფიქსი, უნდა დარჩეს ASCII
 commands.popup_title: " / ბრძანებები "
+delegate_picker.title: "დანიშნულების ადგილის დელეგირება"
+delegate_picker.tab: "ახალი ჩანართი"
+delegate_picker.panel: "ახალი პანელი"
+delegate_picker.intent_required: "აღწერეთ სამუშაოს დელეგირება."
+delegate_picker.not_configured: "დელეგატის აგენტი არ არის კონფიგურირებული."
+delegate_picker.no_parent_pane: "სამუშაო პანელი არ არის ხელმისაწვდომი გასაყოფად."
+delegate_picker.launch_failed: "დელეგატის გაშვება ვერ მოხერხდა: %{error}"
 commands.help_title: " დახმარება "
 commands.help_header: "სლეშ-ბრძანებები — აკრიფეთ / შეყვანის ველში."
 commands.help_escape_hint: "  //text     გაგზავნეთ პირდაპირი '/' (გაექცევა ბრძანებების ანალიზატორს)"  # {Locked="//text","/"}
@@ -87,12 +95,18 @@ commands.restart.summary: "გადატვირთეთ აგენტი"
 commands.stop.summary: "მიმდინარე მოთხოვნის გაუქმება"
 commands.sessions.summary: "ისტორიული სესიების ამრჩევის გახსნა (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
 commands.agent.summary: "აირჩიეთ აგენტი ამ ჩანართისთვის (/agent <id> პირდაპირ გადასართავად)"  # {Locked="/agent","<id>"}
+commands.command.summary: "Create a terminal command card from an intent (/command <intent>)"  # {Locked="/command","<intent>"}
+command_card.intent_required: "Describe the terminal command you want Copilot to prepare."
+command_card.adjustment_required: "აღწერეთ, როგორ გსურთ ტერმინალის ბრძანების მორგება."
+commands.delegate.summary: "მოამზადეთ დავალება და გახსენით დელეგატის აგენტი (/delegate <intent>)"
 
 # ── რეკომენდაციების პანელი (src/ui/recommendations.rs) ───────────────────────────────
 # {Locked="Enter","Esc","↵","↑","↓","←","→"} - ღილაკების სახელები და Return ღილაკის გლიფი, არ ითარგმნება
 recommendations.nav_hint: "(↑ ↓ ნავიგაციისთვის • ← → ღილაკებს შორის გადასართავად • Enter არჩევისთვის • Esc გაუქმებისთვის)"
 recommendations.button_run_command: "[ ბრძანების გაშვება ]"
+recommendations.button_send_to_delegate: "[გაგზავნა დელეგატთან]"
 recommendations.button_insert_in_terminal: "ჩასმა ტერმინალში"
+recommendations.button_adjust_command: "მორგება"  # Button label — refine the prepared terminal command using a natural-language instruction
 recommendations.button_open_in_new_tab: "ახალ ჩანართში გახსნა ↵"
 recommendations.button_open_in_new_panel: "ახალ პანელში გახსნა ↵"
 recommendations.button_open_tab: "ჩანართის გახსნა ↵"
@@ -216,6 +230,9 @@ system.choice_execution_failed: "არჩევანი %{choice} ვერ �
 
 # ── Agent picker (src/ui/agent_popup.rs) ────────────────────────────────────
 # {Locked="↑","↓","Enter","Esc"} - key names, do not translate
+command_card.target_unavailable: "არჩეული პანელი აღარ არის ხელმისაწვდომი."
+direct_command.command_required: "Enter a command after $."  # {Locked="$"}
+direct_command.execution_unavailable: "Terminal command execution is unavailable."
 agent_picker.title: "აირჩიეთ აგენტი (↑ ↓ • Enter • Esc)"  # Agent means an AI coding agent
 # Shown when no policy-allowed AI agent CLI is installed on the machine.
 system.no_agents: "ამ კომპიუტერზე ხელმისაწვდომი აგენტის CLI ვერ მოიძებნა."  # {Locked="CLI"}

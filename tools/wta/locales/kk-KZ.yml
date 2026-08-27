@@ -48,6 +48,7 @@ chat.plan_marker_in_progress: "[>]"  # {Locked}
 chat.plan_marker_pending: "[ ]"  # {Locked}
 chat.autofix_prompt_label: "Соңғы пәрмен қателігі автоматты түрде диагноз қойылды"
 chat.turn_canceled: "(бас тартылды)"
+chat.turn_adjusted: "(реттелді)"
 chat.turn_executed: "→ орындалды: %{title}"
 # Күй белгісінен кейін және тақырыптың алдында көрсетілетін тұрақты құрал санаты белгілері.
 chat.tool_kind.run: "Іске қосу"
@@ -70,6 +71,13 @@ input.image_attachments: "📎 Суреттер: %{items}"  # {Locked="📎","%{
 # ── Command popup (src/ui/command_popup.rs) ─────────────────────────────────
 # {Locked="/"} - slash-command prefix, must remain ASCII
 commands.popup_title: " / командалар "
+delegate_picker.title: " Тағайындалған жерді тағайындау "
+delegate_picker.tab: "Жаңа қойынды"
+delegate_picker.panel: "Жаңа панель"
+delegate_picker.intent_required: "Өкілетті жұмысты сипаттаңыз."
+delegate_picker.not_configured: "Ешбір делегат агенті конфигурацияланбаған."
+delegate_picker.no_parent_pane: "Бөлуге ешбір жұмыс аймағы қолжетімді емес."
+delegate_picker.launch_failed: "Өкілді іске қосу мүмкін болмады: %{error}"
 commands.help_title: " Көмек "
 commands.help_header: "Слэш командалары — енгізу жолағына / теріңіз."
 commands.help_escape_hint: "  //text     Тура мағынадағы '/' жіберу (команда анализаторын айналып өту)"  # {Locked="//text","/"}
@@ -87,12 +95,18 @@ commands.restart.summary: "Агентті қайта іске қосу"
 commands.stop.summary: "Орындалып жатқан сұраудан бас тарту"
 commands.sessions.summary: "Тарихи сеанстар таңдағышын ашу (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
 commands.agent.summary: "Осы панель үшін агентді таңдаңыз (тікелей ауыстыру үшін /agent <id>)"  # {Locked="/agent","<id>"}
+commands.command.summary: "Create a terminal command card from an intent (/command <intent>)"  # {Locked="/command","<intent>"}
+command_card.intent_required: "Describe the terminal command you want Copilot to prepare."
+command_card.adjustment_required: "Терминал пәрменін қалай реттегіңіз келетінін сипаттаңыз."
+commands.delegate.summary: "Тапсырманы дайындаңыз және өкіл агентін ашыңыз (/delegate <intent>)"
 
 # ── Recommendations panel (src/ui/recommendations.rs) ───────────────────────
 # {Locked="Enter","Esc","↵","↑","↓","←","→"} - key names and Return-key glyph, do not translate
 recommendations.nav_hint: "(↑ ↓ шарлау үшін • ← → түймелер арасында ауысу үшін • Enter таңдау үшін • Esc бас тарту үшін)"
 recommendations.button_run_command: "[ Команданы іске қосу ]"
+recommendations.button_send_to_delegate: "[ Өкілге жіберу ]"
 recommendations.button_insert_in_terminal: "Terminal-ға кірістіру"
+recommendations.button_adjust_command: "Реттеу"  # Button label — refine the prepared terminal command using a natural-language instruction
 recommendations.button_open_in_new_tab: "Жаңа қойындыда ашу ↵"
 recommendations.button_open_in_new_panel: "Жаңа панельде ашу ↵"
 recommendations.button_open_tab: "Қойындыны ашу ↵"
@@ -216,6 +230,9 @@ system.choice_execution_failed: "%{choice} таңдауы сәтсіз аяқт�
 
 # ── Agent picker (src/ui/agent_popup.rs) ────────────────────────────────────
 # {Locked="↑","↓","Enter","Esc"} - key names, do not translate
+command_card.target_unavailable: "Таңдалған аумақ енді қолжетімді емес."
+direct_command.command_required: "Enter a command after $."  # {Locked="$"}
+direct_command.execution_unavailable: "Terminal command execution is unavailable."
 agent_picker.title: "Агентді таңдаңыз (↑ ↓ • Enter • Esc)"  # Agent means an AI coding agent
 # Shown when no policy-allowed AI agent CLI is installed on the machine.
 system.no_agents: "Бұл компьютерде қолжетімді агент CLI табылмады."  # {Locked="CLI"}

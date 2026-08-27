@@ -48,6 +48,7 @@ chat.plan_marker_in_progress: "[>]"  # {Locked}
 chat.plan_marker_pending: "[ ]"  # {Locked}
 chat.autofix_prompt_label: "Автоматично диагностициран скорошен неуспех на команда"
 chat.turn_canceled: "(отменено)"
+chat.turn_adjusted: "(коригирано)"
 chat.turn_executed: "→ изпълнено: %{title}"
 # Persistent tool-category labels shown after a status marker and before a subject.
 chat.tool_kind.run: "Изпълнение"
@@ -71,6 +72,13 @@ input.image_attachments: "📎 Изображения: %{items}"  # {Locked="�
 # ── Command popup (src/ui/command_popup.rs) ─────────────────────────────────
 # {Locked="/"} - slash-command prefix, must remain ASCII
 commands.popup_title: " / команди "
+delegate_picker.title: " Дестинация за делегиране "
+delegate_picker.tab: "Нов раздел"
+delegate_picker.panel: "Нов панел"
+delegate_picker.intent_required: "Опишете работата за делегиране."
+delegate_picker.not_configured: "Не е конфигуриран делегиран агент."
+delegate_picker.no_parent_pane: "Няма достъпен работен панел за разделяне."
+delegate_picker.launch_failed: "Неуспешно стартиране на делегата: %{error}"
 commands.help_title: " Помощ "
 commands.help_header: "Наклонена черта команди — въведете / в полето за въвеждане."
 commands.help_escape_hint: "  //text     Изпращане на буквално '/' (заобикаля анализатора на команди)"  # {Locked="//text","/"}
@@ -85,11 +93,17 @@ commands.restart.summary: "Рестартирай агента"
 commands.stop.summary: "Отмяна на текущата подкана"
 commands.sessions.summary: "Отваряне на избора на предишни сесии (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
 commands.agent.summary: "Изберете агента за този раздел (/agent <id> за директно превключване)"  # {Locked="/agent","<id>"}
+commands.command.summary: "Create a terminal command card from an intent (/command <intent>)"  # {Locked="/command","<intent>"}
+command_card.intent_required: "Describe the terminal command you want Copilot to prepare."
+command_card.adjustment_required: "Опишете как искате да коригирате командата за терминала."
+commands.delegate.summary: "Подгответе задача и отворете делегиран агент (/delegate <intent>)"
 # ── Recommendations panel (src/ui/recommendations.rs) ───────────────────────
 # {Locked="Enter","Esc","↵","↑","↓","←","→"} - key names and Return-key glyph, do not translate
 recommendations.nav_hint: "(↑ ↓ за навигация • ← → за превключване на бутони • Enter за избор • Esc за отказ)"
 recommendations.button_run_command: "[ Изпълни команда ]"
+recommendations.button_send_to_delegate: "[Изпращане до делегат]"
 recommendations.button_insert_in_terminal: "Вмъкване в Terminal"
+recommendations.button_adjust_command: "Коригирай"  # Button label — refine the prepared terminal command using a natural-language instruction
 recommendations.button_open_in_new_tab: "Отваряне в нов раздел ↵"
 recommendations.button_open_in_new_panel: "Отваряне в нов панел ↵"
 recommendations.button_open_tab: "Отваряне на раздел ↵"
@@ -218,6 +232,9 @@ system.choice_execution_failed: "Избор %{choice} е неуспешен: %{e
 
 # ── Agent picker (src/ui/agent_popup.rs) ────────────────────────────────────
 # {Locked="↑","↓","Enter","Esc"} - key names, do not translate
+command_card.target_unavailable: "Избраният панел вече не е наличен."
+direct_command.command_required: "Enter a command after $."  # {Locked="$"}
+direct_command.execution_unavailable: "Terminal command execution is unavailable."
 agent_picker.title: "Изберете агент (↑ ↓ • Enter • Esc)"  # Agent means an AI coding agent
 # Shown when no policy-allowed AI agent CLI is installed on the machine.
 system.no_agents: "На тази машина не е открит наличен CLI за агент."  # {Locked="CLI"}

@@ -48,6 +48,7 @@ chat.plan_marker_in_progress: "[>]"  # {Locked}
 chat.plan_marker_pending: "[ ]"  # {Locked}
 chat.autofix_prompt_label: "சமீபத்திய கட்டளை தோல்வி தானாகவே கண்டறியப்பட்டது"
 chat.turn_canceled: "(ரத்து செய்யப்பட்டது)"
+chat.turn_adjusted: "(சரிசெய்யப்பட்டது)"
 chat.turn_executed: "→ செயல்படுத்தப்பட்டது: %{title}"
 # நிலைக் குறிக்குப் பிறகும் பொருளுக்கு முன்பும் காட்டப்படும் நிலையான கருவி-வகை லேபிள்கள்.
 chat.tool_kind.run: "இயக்கு"
@@ -70,6 +71,13 @@ input.image_attachments: "📎 படங்கள்: %{items}"  # {Locked="📎
 # ── கட்டளை பாப்அப் (src/ui/command_popup.rs) ─────────────────────────────────
 # {Locked="/"} - ஸ்லாஷ்-கட்டளை முன்னொட்டு, ASCII ஆக இருக்க வேண்டும்
 commands.popup_title: " / கட்டளைகள் "
+delegate_picker.title: " டெலிகேட் இலக்கு "
+delegate_picker.tab: "புதிய தாவல்"
+delegate_picker.panel: "புதிய பேனல்"
+delegate_picker.intent_required: "ஒதுக்க வேண்டிய வேலையை விவரிக்கவும்."
+delegate_picker.not_configured: "பிரதிநிதி ஏஜென்ட் எதுவும் உள்ளமைக்கப்படவில்லை."
+delegate_picker.no_parent_pane: "பிரிப்பதற்கு வேலை செய்யும் பலகம் இல்லை."
+delegate_picker.launch_failed: "பிரதிநிதியைத் தொடங்க முடியவில்லை: %{error}"
 commands.help_title: " உதவி "
 commands.help_header: "ஸ்லாஷ் கட்டளைகள் — உள்ளீட்டுப் பெட்டியில் / தட்டச்சு செய்யுங்கள்."
 commands.help_escape_hint: "  //text     நேரடி '/' அனுப்பு (கட்டளை பாகுபடுத்தியை எஸ்கேப் செய்கிறது)"  # {Locked="//text","/"}
@@ -87,12 +95,18 @@ commands.restart.summary: "முகவரை மறுதொடக்கம் 
 commands.stop.summary: "செயலில் உள்ள prompt-ஐ ரத்துசெய்"
 commands.sessions.summary: "வரலாற்று அமர்வுகள் தேர்வியைத் திற (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
 commands.agent.summary: "இந்தப் பலகத்திற்கான ஏஜென்ட்யைத் தேர்ந்தெடுக்கவும் (நேரடியாக மாற்ற /agent <id>)"  # {Locked="/agent","<id>"}
+commands.command.summary: "Create a terminal command card from an intent (/command <intent>)"  # {Locked="/command","<intent>"}
+command_card.intent_required: "Describe the terminal command you want Copilot to prepare."
+command_card.adjustment_required: "டெர்மினல் கட்டளையை நீங்கள் எவ்வாறு சரிசெய்ய விரும்புகிறீர்கள் என்பதை விவரிக்கவும்."
+commands.delegate.summary: "ஒரு பணியைத் தயாரித்து, ஒரு பிரதிநிதி முகவரைத் திறக்கவும் (/delegate <intent>)"
 
 # ── பரிந்துரைகள் பலகம் (src/ui/recommendations.rs) ───────────────────────────────
 # {Locked="Enter","Esc","↵","↑","↓","←","→"} - விசைப் பெயர்கள் மற்றும் Return-விசை குறியீடு, மொழிபெயர்க்க வேண்டாம்
 recommendations.nav_hint: "(↑ ↓ வழிசெலுத்த • ← → பொத்தான்களை மாற்ற • Enter தேர்ந்தெடுக்க • Esc ரத்துசெய்ய)"
 recommendations.button_run_command: "[ கட்டளையை இயக்கு ]"
+recommendations.button_send_to_delegate: "[ பிரதிநிதிக்கு அனுப்பு ]"
 recommendations.button_insert_in_terminal: "டெர்மினலில் செருகு"
+recommendations.button_adjust_command: "சரிசெய்"  # Button label — refine the prepared terminal command using a natural-language instruction
 recommendations.button_open_in_new_tab: "புதிய தாவலில் திற ↵"
 recommendations.button_open_in_new_panel: "புதிய பலகத்தில் திற ↵"
 recommendations.button_open_tab: "தாவலைத் திற ↵"
@@ -217,6 +231,9 @@ system.choice_execution_failed: "தேர்வு %{choice} தோல்வி
 
 # ── Agent picker (src/ui/agent_popup.rs) ────────────────────────────────────
 # {Locked="↑","↓","Enter","Esc"} - key names, do not translate
+command_card.target_unavailable: "தேர்ந்தெடுக்கப்பட்ட பலகம் இனி கிடைக்காது."
+direct_command.command_required: "Enter a command after $."  # {Locked="$"}
+direct_command.execution_unavailable: "Terminal command execution is unavailable."
 agent_picker.title: "ஏஜென்ட்யைத் தேர்ந்தெடுக்கவும் (↑ ↓ • Enter • Esc)"  # Agent means an AI coding agent
 # Shown when no policy-allowed AI agent CLI is installed on the machine.
 system.no_agents: "இந்தக் கணினியில் ஏஜென்ட் CLI எதுவும் கிடைக்கவில்லை."  # {Locked="CLI"}

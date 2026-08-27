@@ -81,7 +81,8 @@ fn render_compact(frame: &mut Frame, app: &App, area: Rect) {
     let Some(choice) = recommendations.choices.get(selected) else {
         return;
     };
-    let (summary, buttons, body_kind) = extract_card_content(choice);
+    let (summary, buttons, body_kind) =
+        extract_card_content(choice, app.current_tab().active_prepared_mode);
     let marker = "○";
     let position = if recommendations.choices.len() > 1 {
         format!(" ↑↓ {}/{} ", selected + 1, recommendations.choices.len())
@@ -113,10 +114,23 @@ fn render_compact(frame: &mut Frame, app: &App, area: Rect) {
             height: 1,
             ..area
         };
-        let focused = (app.current_tab().recommendation_focus
-            == crate::app::RecommendationFocus::Button)
-            .then_some(app.current_tab().selected_button);
-        card::render_buttons(frame, button_area, &buttons, focused);
+        let focused = if app.current_tab().command_adjustment.is_some() {
+            Some(2)
+        } else {
+            (app.current_tab().recommendation_focus == crate::app::RecommendationFocus::Button)
+                .then_some(app.current_tab().selected_button)
+        };
+        if app.current_tab().command_adjustment.is_some() {
+            card::render_buttons_with_style(
+                frame,
+                button_area,
+                &buttons,
+                focused,
+                theme::ACTIVE_REVERSED,
+            );
+        } else {
+            card::render_buttons(frame, button_area, &buttons, focused);
+        }
     }
 }
 
@@ -187,7 +201,8 @@ fn render_card(
         return;
     };
 
-    let (command_text, buttons, body_kind) = extract_card_content(choice);
+    let (command_text, buttons, body_kind) =
+        extract_card_content(choice, app.current_tab().active_prepared_mode);
     let body_style = match body_kind {
         CardBodyKind::Code => theme::CARD_CODE,
         CardBodyKind::Description => theme::CARD_DESCRIPTION,
@@ -202,14 +217,26 @@ fn render_card(
 
     let button_inner = card::inset_horizontal(button_area, 2);
     if button_inner.width > 0 {
-        let focused = if is_selected
+        let focused = if is_selected && app.current_tab().command_adjustment.is_some() {
+            Some(2)
+        } else if is_selected
             && app.current_tab().recommendation_focus == crate::app::RecommendationFocus::Button
         {
             Some(app.current_tab().selected_button)
         } else {
             None
         };
-        card::render_buttons(frame, button_inner, &buttons, focused);
+        if app.current_tab().command_adjustment.is_some() {
+            card::render_buttons_with_style(
+                frame,
+                button_inner,
+                &buttons,
+                focused,
+                theme::ACTIVE_REVERSED,
+            );
+        } else {
+            card::render_buttons(frame, button_inner, &buttons, focused);
+        }
     }
 }
 
@@ -218,16 +245,29 @@ enum CardBodyKind {
     Description,
 }
 
-fn extract_card_content(choice: &RecommendationChoice) -> (String, Vec<String>, CardBodyKind) {
+fn extract_card_content(
+    choice: &RecommendationChoice,
+    prepared_mode: Option<crate::app::PreparedActionMode>,
+) -> (String, Vec<String>, CardBodyKind) {
     let display = recommendation_display_text(choice);
     let (buttons, body_kind) = match choice.actions.first() {
-        Some(RecommendedAction::Send { .. }) => (
-            vec![
-                t!("recommendations.button_run_command").into_owned(),
-                t!("recommendations.button_insert_in_terminal").into_owned(),
-            ],
-            CardBodyKind::Code,
-        ),
+        Some(RecommendedAction::Send { .. }) => {
+            let buttons = match prepared_mode {
+                Some(crate::app::PreparedActionMode::Command) => vec![
+                    t!("recommendations.button_run_command").into_owned(),
+                    t!("recommendations.button_insert_in_terminal").into_owned(),
+                    t!("recommendations.button_adjust_command").into_owned(),
+                ],
+                Some(crate::app::PreparedActionMode::DelegateSend) => {
+                    vec![t!("recommendations.button_send_to_delegate").into_owned()]
+                }
+                None => vec![
+                    t!("recommendations.button_run_command").into_owned(),
+                    t!("recommendations.button_insert_in_terminal").into_owned(),
+                ],
+            };
+            (buttons, CardBodyKind::Code)
+        }
         Some(RecommendedAction::OpenAndSend { target, .. }) => {
             let target_label = match target {
                 OpenTarget::Tab => t!("recommendations.button_open_in_new_tab").into_owned(),
@@ -311,6 +351,33 @@ pub(super) fn recommendation_display_text(choice: &RecommendationChoice) -> Stri
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn command_preparation_adds_adjust_to_run_and_insert_buttons() {
+        let _guard = crate::test_support::lock_locale();
+        rust_i18n::set_locale("en-US");
+        let choice = RecommendationChoice {
+            choice: 0,
+            title: "List files".to_string(),
+            rationale: String::new(),
+            actions: vec![RecommendedAction::Send {
+                parent: "pane-one".to_string(),
+                input: "Get-ChildItem".to_string(),
+            }],
+        };
+
+        let (_, buttons, _) =
+            extract_card_content(&choice, Some(crate::app::PreparedActionMode::Command));
+
+        assert_eq!(
+            buttons,
+            vec![
+                "[ Run command ]".to_string(),
+                "Insert in Terminal".to_string(),
+                "Adjust".to_string()
+            ]
+        );
+    }
 
     #[test]
     fn compact_summary_paragraph_right_aligns_for_rtl() {

@@ -48,6 +48,7 @@ chat.plan_marker_in_progress: "[>]"  # {Locked}
 chat.plan_marker_pending: "[ ]"  # {Locked}
 chat.autofix_prompt_label: "حالیہ کمانڈ کی ناکامی کا خودکار طور پر تشخیص کیا گیا"
 chat.turn_canceled: "(منسوخ)"
+chat.turn_adjusted: "(ایڈجسٹ کیا گیا)"
 chat.turn_executed: "→ پر عمل کر دیا گیا: %{title}"
 # مستقل ٹول زمرہ لیبل، جو اسٹیٹس نشان کے بعد اور موضوع سے پہلے دکھائے جاتے ہیں۔
 chat.tool_kind.run: "چلانا"
@@ -70,6 +71,13 @@ input.image_attachments: "📎 تصاویر: %{items}"  # {Locked="📎","%{item
 # ── کمانڈ پاپ اپ (src/ui/command_popup.rs) ─────────────────────────────────
 # {Locked="/"} - سلیش-کمانڈ پریفکس، ASCII ہونا ضروری ہے
 commands.popup_title: " / کمانڈز "
+delegate_picker.title: " ڈیلیگیٹ منزل "
+delegate_picker.tab: "نیا ٹیب"
+delegate_picker.panel: "نیا پینل"
+delegate_picker.intent_required: " تفویض کرنے کے لیے کام کی وضاحت کریں۔"
+delegate_picker.not_configured: "کوئی ڈیلیگیٹ ایجنٹ کنفیگر نہیں ہے۔"
+delegate_picker.no_parent_pane: "کوئی ورکنگ پین تقسیم کرنے کے لیے دستیاب نہیں ہے۔"
+delegate_picker.launch_failed: " مندوب کو لانچ نہیں کیا جا سکا: %{error}"
 commands.help_title: " مدد "
 commands.help_header: "سلیش کمانڈز — ان پٹ باکس میں / ٹائپ کریں۔"
 commands.help_escape_hint: "  //text     لفظی '/' بھیجیں (کمانڈ پارسر سے فرار)"  # {Locked="//text","/"}
@@ -87,12 +95,18 @@ commands.restart.summary: "ایجنٹ کو دوبارہ شروع کریں"
 commands.stop.summary: "جاری پرامپٹ منسوخ کریں"
 commands.sessions.summary: "تاریخی سیشنز کا انتخاب کار کھولیں (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
 commands.agent.summary: "اس ٹیب کے لیے ایجنٹ منتخب کریں (براہ راست تبدیل کرنے کے لیے /agent <id>)"  # {Locked="/agent","<id>"}
+commands.command.summary: "Create a terminal command card from an intent (/command <intent>)"  # {Locked="/command","<intent>"}
+command_card.intent_required: "Describe the terminal command you want Copilot to prepare."
+command_card.adjustment_required: "بیان کریں کہ آپ ٹرمینل کمانڈ کو کیسے ایڈجسٹ کرنا چاہتے ہیں۔"
+commands.delegate.summary: "ایک ٹاسک تیار کریں اور ڈیلیگیٹ ایجنٹ کھولیں (/delegate <intent>)"
 
 # ── سفارشات پینل (src/ui/recommendations.rs) ───────────────────────────────
 # {Locked="Enter","Esc","↵","↑","↓","←","→"} - کلید کے نام اور Return-کلید گلف، ترجمہ نہ کریں
 recommendations.nav_hint: "(↑ ↓ نیویگیٹ کرنے کے لیے • ← → بٹن تبدیل کرنے کے لیے • Enter منتخب کرنے کے لیے • Esc منسوخ کرنے کے لیے)"
 recommendations.button_run_command: "[ کمانڈ چلائیں ]"
+recommendations.button_send_to_delegate: "[ مندوب کو بھیجیں ]"
 recommendations.button_insert_in_terminal: "ٹرمینل میں داخل کریں"
+recommendations.button_adjust_command: "ایڈجسٹ کریں"  # Button label — refine the prepared terminal command using a natural-language instruction
 recommendations.button_open_in_new_tab: "نئی ٹیب میں کھولیں ↵"
 recommendations.button_open_in_new_panel: "نئے پینل میں کھولیں ↵"
 recommendations.button_open_tab: "ٹیب کھولیں ↵"
@@ -217,6 +231,9 @@ system.choice_execution_failed: "انتخاب %{choice} ناکام ہو گیا: 
 
 # ── Agent picker (src/ui/agent_popup.rs) ────────────────────────────────────
 # {Locked="↑","↓","Enter","Esc"} - key names, do not translate
+command_card.target_unavailable: "منتخب کردہ پین اب دستیاب نہیں ہے۔"
+direct_command.command_required: "Enter a command after $."  # {Locked="$"}
+direct_command.execution_unavailable: "Terminal command execution is unavailable."
 agent_picker.title: "ایجنٹ منتخب کریں (↑ ↓ • Enter • Esc)"  # Agent means an AI coding agent
 # Shown when no policy-allowed AI agent CLI is installed on the machine.
 system.no_agents: "اس مشین پر کوئی ایجنٹ CLI دستیاب نہیں ملا۔"  # {Locked="CLI"}

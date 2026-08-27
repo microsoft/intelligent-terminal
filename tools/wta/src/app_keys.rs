@@ -504,6 +504,23 @@ impl App {
             return;
         }
 
+        if self.current_tab().delegate_picker_open {
+            match key.code {
+                KeyCode::Up | KeyCode::Down => {
+                    let tab = self.current_tab_mut();
+                    tab.delegate_picker_selected = 1 - tab.delegate_picker_selected.min(1);
+                }
+                KeyCode::Enter => self.commit_delegate_picker(),
+                KeyCode::Esc => {
+                    let tab = self.current_tab_mut();
+                    tab.delegate_picker_open = false;
+                    tab.pending_delegate = None;
+                }
+                _ => {}
+            }
+            return;
+        }
+
         // Model picker modal (`/model`): while it's up, arrows move the
         // highlight, Enter commits the pick, Esc dismisses. Swallow every
         // other key so nothing leaks into the input box behind the modal.
@@ -535,6 +552,10 @@ impl App {
         }
 
         match key.code {
+            KeyCode::Up | KeyCode::Down if self.current_tab().command_adjustment.is_some() => {
+                // Adjust is an explicit input mode. Keep focus in its editor
+                // until the user submits or presses Esc.
+            }
             KeyCode::Up if self.current_tab().turn.recommendations().is_some() => {
                 if self.current_tab().recommendation_focus == RecommendationFocus::Input {
                     let choices_len = self
@@ -722,6 +743,14 @@ impl App {
             KeyCode::Esc if self.show_notification_banner => {
                 self.dismiss_notifications();
             }
+            KeyCode::Esc if self.current_tab().command_adjustment.is_some() => {
+                let tab = self.current_tab_mut();
+                tab.command_adjustment = None;
+                tab.recommendation_focus = RecommendationFocus::Button;
+                tab.clear_input();
+                let tab_id = self.active_tab_key().to_string();
+                self.recompute_chip_override(&tab_id);
+            }
             KeyCode::Esc
                 if self.current_tab().turn.recommendations().is_some()
                     || (self.current_tab().autofix.pane_id.is_some()
@@ -844,6 +873,15 @@ impl App {
                     return;
                 }
 
+                if self.current_tab().command_adjustment.is_some() {
+                    self.submit_command_adjustment();
+                    return;
+                }
+
+                if self.try_execute_direct_pane_command() {
+                    return;
+                }
+
                 // Slash-command intercept (popup selection, known command, or
                 // unknown-command warning). Runs before the prompt path so
                 // commands like /stop work even mid-flight, and /help / /clear
@@ -872,6 +910,8 @@ impl App {
                     let is_agent_command = self
                         .agent_command_for_input(&self.current_tab().input)
                         .is_some();
+                    let source_pane_id = self.source_session_id.clone();
+                    let source_descriptor = self.source_pane_descriptor();
                     let tab = self.current_tab_mut();
                     let display_text = std::mem::take(&mut tab.input);
                     let (text, images) = tab.attachments.take_for_submission(display_text.clone());
@@ -894,8 +934,20 @@ impl App {
                         pane_id: self.pane_id.clone(),
                         tab_id: self.tab_id.clone(),
                         window_id: self.window_id.clone(),
-                        cwd: self.source_cwd.clone(),
-                        source_pane_id: self.source_session_id.clone(),
+                        cwd: source_descriptor
+                            .as_ref()
+                            .map(|pane| pane.cwd.clone())
+                            .filter(|cwd| !cwd.is_empty())
+                            .or_else(|| self.source_cwd.clone()),
+                        source_pane_id: source_pane_id.clone(),
+                        cached_source: source_descriptor.map(|pane| {
+                            crate::pane_context::CachedPaneMetadata {
+                                title: pane.title,
+                                profile: pane.profile,
+                                cwd: pane.cwd,
+                                shell: pane.shell,
+                            }
+                        }),
                     };
                     let prompt = if is_agent_command {
                         PromptSubmission::new_agent_command(text.clone(), Some(pane_context))
@@ -917,7 +969,9 @@ impl App {
                         id: prompt.id,
                         text: display_text,
                         submitted_at_unix_s: prompt.submitted_at_unix_s,
-                        context: TurnContext::default(),
+                        context: TurnContext {
+                            target_pane_id: source_pane_id,
+                        },
                         autofix: None,
                     };
                     self.turn_submit_prompt(&session_id, submitted);

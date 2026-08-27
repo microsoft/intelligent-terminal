@@ -48,6 +48,7 @@ chat.plan_marker_in_progress: "[>]"  # {Locked}
 chat.plan_marker_pending: "[ ]"  # {Locked}
 chat.autofix_prompt_label: "วินิจฉัยความล้มเหลวของคำสั่งล่าสุดโดยอัตโนมัติ"
 chat.turn_canceled: "(ยกเลิกแล้ว)"
+chat.turn_adjusted: "(ปรับแล้ว)"
 chat.turn_executed: "→ ดำเนินการแล้ว: %{title}"
 # ป้ายหมวดหมู่เครื่องมือแบบถาวรที่แสดงหลังเครื่องหมายสถานะและก่อนหัวข้อ
 chat.tool_kind.run: "เรียกใช้"
@@ -70,6 +71,13 @@ input.image_attachments: "📎 รูปภาพ: %{items}"  # {Locked="📎","
 # ── Command popup (src/ui/command_popup.rs) ─────────────────────────────────
 # {Locked="/"} - slash-command prefix, must remain ASCII
 commands.popup_title: " / คำสั่ง "
+delegate_picker.title: " มอบหมายปลายทาง "
+delegate_picker.tab: "แท็บใหม่"
+delegate_picker.panel: "แผงใหม่"
+delegate_picker.intent_required: "อธิบายงานที่จะมอบหมาย"
+delegate_picker.not_configured: "ไม่มีการกำหนดค่าตัวแทนผู้รับมอบสิทธิ์"
+delegate_picker.no_parent_pane: "ไม่มีบานหน้าต่างการทำงานให้แยก"
+delegate_picker.launch_failed: "ไม่สามารถเปิดตัวผู้รับมอบสิทธิ์: %{error}"
 commands.help_title: " ช่วยเหลือ "
 commands.help_header: "คำสั่งสแลช — พิมพ์ / ในช่องป้อนข้อมูล"
 commands.help_escape_hint: "  //text     ส่ง '/' ตามตัวอักษร (เลี่ยงตัววิเคราะห์คำสั่ง)"  # {Locked="//text","/"}
@@ -79,7 +87,9 @@ commands.help_close_hint: "  Esc        ปิดหน้าต่างช่�
 # {Locked="Enter","Esc","↵","↑","↓","←","→"} - key names and Return-key glyph, do not translate
 recommendations.nav_hint: "(↑ ↓ เลื่อนเลือก • ← → สลับการกระทำ • Enter เพื่อเลือก • Esc เพื่อยกเลิก)"
 recommendations.button_run_command: "[ เรียกใช้คำสั่ง ]"
+recommendations.button_send_to_delegate: "[ ส่งไปยังผู้รับมอบสิทธิ์ ]"
 recommendations.button_insert_in_terminal: "แทรกใน Terminal"
+recommendations.button_adjust_command: "ปรับ"  # Button label — refine the prepared terminal command using a natural-language instruction
 recommendations.button_open_in_new_tab: "เปิดในแท็บใหม่ ↵"
 recommendations.button_open_in_new_panel: "เปิดในแผงใหม่ ↵"
 recommendations.button_open_tab: "เปิดแท็บ ↵"
@@ -210,12 +220,19 @@ commands.restart.summary: "Restart agent"
 commands.stop.summary: "Cancel the in-flight prompt"
 commands.sessions.summary: "Open the historical sessions picker (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
 commands.agent.summary: "เลือกตัวแทนสำหรับแผงนี้ (/agent <id> เพื่อสลับโดยตรง)"  # {Locked="/agent","<id>"}
+commands.command.summary: "Create a terminal command card from an intent (/command <intent>)"  # {Locked="/command","<intent>"}
+command_card.intent_required: "Describe the terminal command you want Copilot to prepare."
+command_card.adjustment_required: "อธิบายว่าคุณต้องการปรับคำสั่งเทอร์มินัลอย่างไร"
+commands.delegate.summary: "เตรียมงานและเปิดตัวแทนรับมอบสิทธิ์ (/delegate <intent>)"
 
 # ── การดำเนินการคำแนะนำ (src/coordinator.rs) ───────────────────────────
 system.choice_execution_failed: "ตัวเลือก %{choice} ล้มเหลว: %{error}"
 
 # ── Agent picker (src/ui/agent_popup.rs) ────────────────────────────────────
 # {Locked="↑","↓","Enter","Esc"} - key names, do not translate
+command_card.target_unavailable: "ช่องที่เลือกไม่สามารถใช้งานได้อีกต่อไป"
+direct_command.command_required: "Enter a command after $."  # {Locked="$"}
+direct_command.execution_unavailable: "Terminal command execution is unavailable."
 agent_picker.title: "เลือกตัวแทน (↑ ↓ • Enter • Esc)"  # Agent means an AI coding agent
 # Shown when no policy-allowed AI agent CLI is installed on the machine.
 system.no_agents: "ไม่พบ CLI ตัวแทนที่พร้อมใช้งานบนเครื่องนี้"  # {Locked="CLI"}

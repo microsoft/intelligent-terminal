@@ -48,6 +48,7 @@ chat.plan_marker_in_progress: "[>]"  # {Locked}
 chat.plan_marker_pending: "[ ]"  # {Locked}
 chat.autofix_prompt_label: "শেহতীয়া আদেশ বিফলতা স্বয়ংক্ৰিয়ভাৱে নিৰ্ণয় কৰা হৈছে"
 chat.turn_canceled: "(বাতিল কৰা হৈছে)"
+chat.turn_adjusted: "(সংশোধন কৰা হৈছে)"
 chat.turn_executed: "→ সম্পাদন কৰা হ’ল: %{title}"
 # Persistent tool-category labels shown after a status marker and before a subject.
 chat.tool_kind.run: "চলাও"
@@ -71,6 +72,13 @@ input.image_attachments: "📎 ছবিসমূহ: %{items}"  # {Locked="📎
 # ── কমাণ্ড পপআপ (src/ui/command_popup.rs) ─────────────────────────────────
 # {Locked="/"} - শ্লেশ-কমাণ্ড উপসৰ্গ, ASCII হ'ব লাগিব
 commands.popup_title: " / কমাণ্ড "
+delegate_picker.title: " প্ৰতিনিধি গন্তব্যস্থান "
+delegate_picker.tab: "নতুন টেব"
+delegate_picker.panel: "নতুন পেনেল"
+delegate_picker.intent_required: "প্ৰতিনিধিত্ব কৰিবলগীয়া কামৰ বৰ্ণনা কৰা।"
+delegate_picker.not_configured: "কোনো প্ৰতিনিধি এজেন্ট বিন্যাস কৰা হোৱা নাই।"
+delegate_picker.no_parent_pane: "বিভাজিত কৰিবলে কোনো কাম কৰা পেন উপলব্ধ নহয়।"
+delegate_picker.launch_failed: "প্ৰতিনিধি আৰম্ভ কৰিব পৰা নগ'ল: %{error}"
 commands.help_title: " সহায় "
 commands.help_header: "শ্লেশ কমাণ্ড — ইনপুট বাকচত / টাইপ কৰক।"
 commands.help_escape_hint: "  //text     আক্ষৰিক '/' পঠিয়াওক (কমাণ্ড পাৰ্ছাৰ এস্কেপ কৰে)"  # {Locked="//text","/"}
@@ -88,12 +96,18 @@ commands.restart.summary: "এজেণ্ট পুনৰাৰম্ভ কৰ
 commands.stop.summary: "চলি থকা প্ৰম্প্ট বাতিল কৰক"
 commands.sessions.summary: "ঐতিহাসিক ছেশ্যন পিকাৰ খোলক (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
 commands.agent.summary: "এই পেনৰ বাবে এজেণ্ট বাছনি কৰক (পোনপটীয়াকৈ সলাবলৈ /agent <id>)"  # {Locked="/agent","<id>"}
+commands.command.summary: "Create a terminal command card from an intent (/command <intent>)"  # {Locked="/command","<intent>"}
+command_card.intent_required: "Describe the terminal command you want Copilot to prepare."
+command_card.adjustment_required: "আপুনি টাৰ্মিনেল কমাণ্ডটো কেনেদৰে সংশোধন কৰিব বিচাৰে সেয়া বৰ্ণনা কৰক।"
+commands.delegate.summary: "এটা কাম প্ৰস্তুত কৰক আৰু এটা প্ৰতিনিধি এজেন্ট খোলক (/delegate <intent>)"
 
 # ── পৰামৰ্শ পেনেল (src/ui/recommendations.rs) ───────────────────────────────
 # {Locked="Enter","Esc","↵","↑","↓","←","→"} - কী নাম আৰু Return-কী গ্লিফ, অনুবাদ নকৰিব
 recommendations.nav_hint: "(↑ ↓ নেভিগেট কৰিবলৈ • ← → বুটাম সলাবলৈ • Enter বাছনি কৰিবলৈ • Esc বাতিল কৰিবলৈ)"
 recommendations.button_run_command: "[ কমাণ্ড চলাওক ]"
+recommendations.button_send_to_delegate: "[ প্ৰতিনিধিলৈ পঠাওক ]"
 recommendations.button_insert_in_terminal: "টাৰ্মিনেলত সন্নিবেশ কৰক"
+recommendations.button_adjust_command: "সংশোধন কৰক"  # Button label — refine the prepared terminal command using a natural-language instruction
 recommendations.button_open_in_new_tab: "নতুন টেবত খোলক ↵"
 recommendations.button_open_in_new_panel: "নতুন পেনেলত খোলক ↵"
 recommendations.button_open_tab: "টেব খোলক ↵"
@@ -219,6 +233,9 @@ system.choice_execution_failed: "পছন্দ %{choice} ব্যৰ্থ �
 
 # ── Agent picker (src/ui/agent_popup.rs) ────────────────────────────────────
 # {Locked="↑","↓","Enter","Esc"} - key names, do not translate
+command_card.target_unavailable: "নিৰ্বাচিত পেন আৰু উপলব্ধ নহয়।"
+direct_command.command_required: "Enter a command after $."  # {Locked="$"}
+direct_command.execution_unavailable: "Terminal command execution is unavailable."
 agent_picker.title: "এজেণ্ট বাছনি কৰক (↑ ↓ • Enter • Esc)"  # Agent means an AI coding agent
 # Shown when no policy-allowed AI agent CLI is installed on the machine.
 system.no_agents: "এই মেচিনত কোনো উপলব্ধ এজেণ্ট CLI পোৱা নগ’ল।"  # {Locked="CLI"}

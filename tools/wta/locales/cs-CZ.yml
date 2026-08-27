@@ -48,6 +48,7 @@ chat.plan_marker_in_progress: "[>]"  # {Locked}
 chat.plan_marker_pending: "[ ]"  # {Locked}
 chat.autofix_prompt_label: "Automaticky diagnostikováno nedávné selhání příkazu"
 chat.turn_canceled: "(zrušeno)"
+chat.turn_adjusted: "(upraveno)"
 chat.turn_executed: "→ provedeno: %{title}"
 # Persistent tool-category labels shown after a status marker and before a subject.
 chat.tool_kind.run: "Spustit"
@@ -71,6 +72,13 @@ input.image_attachments: "📎 Obrázky: %{items}"  # {Locked="📎","%{items}"}
 # ── Command popup (src/ui/command_popup.rs) ─────────────────────────────────
 # {Locked="/"} - slash-command prefix, must remain ASCII
 commands.popup_title: " / příkazy "
+delegate_picker.title: " Cíl delegáta "
+delegate_picker.tab: "Nová karta"
+delegate_picker.panel: "Nový panel"
+delegate_picker.intent_required: "Popište práci, kterou chcete delegovat."
+delegate_picker.not_configured: "Není nakonfigurován žádný agent delegáta."
+delegate_picker.no_parent_pane: "Žádný pracovní panel není k dispozici k rozdělení."
+delegate_picker.launch_failed: "Nepodařilo se spustit delegáta: %{error}"
 commands.help_title: " Nápověda "
 commands.help_header: "Příkazy lomítka — zadejte / do vstupního pole."
 commands.help_escape_hint: "  //text     Odešle doslovné '/' (obejde analyzátor příkazů)"  # {Locked="//text","/"}
@@ -85,11 +93,17 @@ commands.restart.summary: "Restartovat agenta"
 commands.stop.summary: "Zrušit probíhající výzvu"
 commands.sessions.summary: "Otevřít výběr historických relací (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
 commands.agent.summary: "Vyberte agent pro tuto kartu (/agent <id> pro přímé přepnutí)"  # {Locked="/agent","<id>"}
+commands.command.summary: "Create a terminal command card from an intent (/command <intent>)"  # {Locked="/command","<intent>"}
+command_card.intent_required: "Describe the terminal command you want Copilot to prepare."
+command_card.adjustment_required: "Popište, jak chcete upravit příkaz terminálu."
+commands.delegate.summary: "Připravte úkol a otevřete zástupce delegáta (/delegate <intent>)"
 # ── Recommendations panel (src/ui/recommendations.rs) ───────────────────────
 # {Locked="Enter","Esc","↵","↑","↓","←","→"} - key names and Return-key glyph, do not translate
 recommendations.nav_hint: "(↑ ↓ pro navigaci • ← → pro přepínání tlačítek • Enter pro výběr • Esc pro zrušení)"
 recommendations.button_run_command: "[ Spustit příkaz ]"
+recommendations.button_send_to_delegate: "[ Odeslat delegátovi ]"
 recommendations.button_insert_in_terminal: "Vložit do terminálu"
+recommendations.button_adjust_command: "Upravit"  # Button label — refine the prepared terminal command using a natural-language instruction
 recommendations.button_open_in_new_tab: "Otevřít v nové kartě ↵"
 recommendations.button_open_in_new_panel: "Otevřít v novém panelu ↵"
 recommendations.button_open_tab: "Otevřít kartu ↵"
@@ -218,6 +232,9 @@ system.choice_execution_failed: "Volba %{choice} selhala: %{error}"
 
 # ── Agent picker (src/ui/agent_popup.rs) ────────────────────────────────────
 # {Locked="↑","↓","Enter","Esc"} - key names, do not translate
+command_card.target_unavailable: "Vybraný panel již není dostupný."
+direct_command.command_required: "Enter a command after $."  # {Locked="$"}
+direct_command.execution_unavailable: "Terminal command execution is unavailable."
 agent_picker.title: "Vyberte agent (↑ ↓ • Enter • Esc)"  # Agent means an AI coding agent
 # Shown when no policy-allowed AI agent CLI is installed on the machine.
 system.no_agents: "Na tomto počítači nebyl nalezen žádný dostupný CLI agenta."  # {Locked="CLI"}

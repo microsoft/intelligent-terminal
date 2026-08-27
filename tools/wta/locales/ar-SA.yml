@@ -48,6 +48,7 @@ chat.plan_marker_in_progress: "[>]"  # {Locked}
 chat.plan_marker_pending: "[ ]"  # {Locked}
 chat.autofix_prompt_label: "تم التشخيص التلقائي لفشل أمر حديث"
 chat.turn_canceled: "(تم الإلغاء)"
+chat.turn_adjusted: "(تم التعديل)"
 chat.turn_executed: "→ تم التنفيذ: %{title}"
 # Persistent tool-category labels shown after a status marker and before a subject.
 chat.tool_kind.run: "تشغيل"
@@ -71,6 +72,13 @@ input.image_attachments: "📎 الصور: %{items}"  # {Locked="📎","%{items}
 # ── نافذة الأوامر المنبثقة (src/ui/command_popup.rs) ─────────────────────────────────
 # {Locked="/"} - بادئة أمر الشرطة المائلة، يجب أن تبقى ASCII
 commands.popup_title: " / الأوامر "
+delegate_picker.title: " وجهة التفويض "
+delegate_picker.tab: "علامة تبويب جديدة"
+delegate_picker.panel: "لوحة جديدة"
+delegate_picker.intent_required: "وصف العمل المراد تفويضه."
+delegate_picker.not_configured: "لم يتم تكوين أي وكيل مفوض."
+delegate_picker.no_parent_pane: "لا يوجد جزء عمل متاح للتقسيم."
+delegate_picker.launch_failed: "تعذر تشغيل المفوض: %{error}"
 commands.help_title: " المساعدة "
 commands.help_header: "أوامر الشرطة المائلة — اكتب / في مربع الإدخال."
 commands.help_escape_hint: "  //text     إرسال '/' حرفيًا (يتجاوز محلل الأوامر)"  # {Locked="//text","/"}
@@ -88,12 +96,18 @@ commands.restart.summary: "إعادة تشغيل عامل الذكاء الاص�
 commands.stop.summary: "إلغاء الأمر قيد التنفيذ"
 commands.sessions.summary: "فتح منتقي الجلسات التاريخية (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
 commands.agent.summary: "اختر عامل لعلامة التبويب هذه (/agent <id> للتبديل مباشرةً)"  # {Locked="/agent","<id>"}
+commands.command.summary: "Create a terminal command card from an intent (/command <intent>)"  # {Locked="/command","<intent>"}
+command_card.intent_required: "Describe the terminal command you want Copilot to prepare."
+command_card.adjustment_required: "صِف كيف تريد تعديل أمر الطرفية."
+commands.delegate.summary: "قم بإعداد مهمة وفتح وكيل مفوض (/delegate <intent>)"
 
 # ── لوحة التوصيات (src/ui/recommendations.rs) ───────────────────────────────
 # {Locked="Enter","Esc","↵","↑","↓","←","→"} - أسماء المفاتيح ورمز مفتاح الإدخال، لا تترجمها
 recommendations.nav_hint: "(↑ ↓ للتنقل • ← → للتبديل بين الأزرار • Enter للتحديد • Esc للإلغاء)"
 recommendations.button_run_command: "[ تشغيل الأمر ]"
+recommendations.button_send_to_delegate: "[إرسال إلى المفوض]"
 recommendations.button_insert_in_terminal: "إدراج في الطرفية"
+recommendations.button_adjust_command: "تعديل"  # Button label — refine the prepared terminal command using a natural-language instruction
 recommendations.button_open_in_new_tab: "فتح في علامة تبويب جديدة ↵"
 recommendations.button_open_in_new_panel: "فتح في لوحة جديدة ↵"
 recommendations.button_open_tab: "فتح علامة تبويب ↵"
@@ -218,6 +232,9 @@ system.choice_execution_failed: "فشل الاختيار %{choice}: %{error}"
 
 # ── Agent picker (src/ui/agent_popup.rs) ────────────────────────────────────
 # {Locked="↑","↓","Enter","Esc"} - key names, do not translate
+command_card.target_unavailable: "الجزء المحدد لم يعد متاحًا."
+direct_command.command_required: "Enter a command after $."  # {Locked="$"}
+direct_command.execution_unavailable: "Terminal command execution is unavailable."
 agent_picker.title: "اختر عامل الذكاء الاصطناعي (↑ ↓ • Enter • Esc)"  # Agent means an AI coding agent
 # Shown when no policy-allowed AI agent CLI is installed on the machine.
 system.no_agents: "لم يتم العثور على واجهة سطر أوامر (CLI) لعامل ذكاء اصطناعي متاحة على هذا الجهاز."  # {Locked="CLI"}

@@ -44,6 +44,7 @@ chat.plan_marker_in_progress: "[>]"  # {Locked}
 chat.plan_marker_pending: "[ ]"  # {Locked}
 chat.autofix_prompt_label: "已自动诊断最近的一次命令失败"
 chat.turn_canceled: "(已取消)"
+chat.turn_adjusted: "(已调整)"
 chat.turn_executed: "→ 已执行: %{title}"
 # 在状态标记之后、操作对象之前显示的持久工具类别标签。
 chat.tool_kind.run: "运行"
@@ -66,6 +67,13 @@ input.image_attachments: "📎 图片: %{items}"  # {Locked="📎","%{items}"}
 # ── 命令弹出窗口 (src/ui/command_popup.rs) ─────────────────────────────────
 # {Locked="/"} - 斜杠命令前缀，必须保持 ASCII
 commands.popup_title: " / 命令 "
+delegate_picker.title: " 委托目的地 "
+delegate_picker.tab: "新标签"
+delegate_picker.panel: "新面板"
+delegate_picker.intent_required: "描述要委派的工作。"
+delegate_picker.not_configured: "未配置委派代理。"
+delegate_picker.no_parent_pane: "没有可分割的工作窗格。"
+delegate_picker.launch_failed: "无法启动委托：%{error}"
 commands.help_title: " 帮助 "
 commands.help_header: "斜杠命令 — 在输入框中键入 /。"
 commands.help_escape_hint: "  //text     发送字面 '/'（转义命令解析器）"  # {Locked="//text","/"}
@@ -75,7 +83,9 @@ commands.help_close_hint: "  Esc        关闭此帮助"  # {Locked="Esc"}
 # {Locked="Enter","Esc","↵","↑","↓","←","→"} - 按键名称和回车键符号，不翻译
 recommendations.nav_hint: "(↑ ↓ 导航 • ← → 切换按钮 • Enter 选择 • Esc 取消)"
 recommendations.button_run_command: "[ 运行命令 ]"
+recommendations.button_send_to_delegate: "[ 发送给代理人 ]"
 recommendations.button_insert_in_terminal: "插入到终端"
+recommendations.button_adjust_command: "调整"  # Button label — refine the prepared terminal command using a natural-language instruction
 recommendations.button_open_in_new_tab: "在新标签页中打开 ↵"
 recommendations.button_open_in_new_panel: "在新面板中打开 ↵"
 recommendations.button_open_tab: "打开标签页 ↵"
@@ -205,12 +215,19 @@ commands.restart.summary: "重启智能体"
 commands.stop.summary: "取消进行中的提示"
 commands.sessions.summary: "打开历史会话选择器（Ctrl+Shift+/）"
 commands.agent.summary: "为此标签页选择智能体（使用 /agent <id> 可直接切换）"  # {Locked="/agent","<id>"}
+commands.command.summary: "Create a terminal command card from an intent (/command <intent>)"  # {Locked="/command","<intent>"}
+command_card.intent_required: "Describe the terminal command you want Copilot to prepare."
+command_card.adjustment_required: "请描述你希望如何调整终端命令。"
+commands.delegate.summary: "准备任务并打开委派代理 (/delegate <intent>)"
 
 # ── 建议执行 (src/coordinator.rs) ───────────────────────────
 system.choice_execution_failed: "选项 %{choice} 执行失败：%{error}"
 
 # ── Agent picker (src/ui/agent_popup.rs) ────────────────────────────────────
 # {Locked="↑","↓","Enter","Esc"} - key names, do not translate
+command_card.target_unavailable: "所选窗格不再可用。"
+direct_command.command_required: "Enter a command after $."  # {Locked="$"}
+direct_command.execution_unavailable: "Terminal command execution is unavailable."
 agent_picker.title: "选择智能体（↑ ↓ • Enter • Esc）"  # Agent means an AI coding agent
 # Shown when no policy-allowed AI agent CLI is installed on the machine.
 system.no_agents: "在此计算机上未找到可用的智能体 CLI。"  # {Locked="CLI"}

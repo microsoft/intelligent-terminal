@@ -48,6 +48,7 @@ chat.plan_marker_in_progress: "[>]"  # {Locked}
 chat.plan_marker_pending: "[ ]"  # {Locked}
 chat.autofix_prompt_label: "Nylig kommandofeil diagnostisert automatisk"
 chat.turn_canceled: "(avbrutt)"
+chat.turn_adjusted: "(justert)"
 chat.turn_executed: "→ utført: %{title}"
 # Persistent tool-category labels shown after a status marker and before a subject.
 chat.tool_kind.run: "Kjør"
@@ -70,6 +71,13 @@ input.image_attachments: "📎 Bilder: %{items}"  # {Locked="%{items}"} {Locked=
 # ── Command popup (src/ui/command_popup.rs) ─────────────────────────────────
 # {Locked="/"} - slash-command prefix, must remain ASCII
 commands.popup_title: " / kommandoer "
+delegate_picker.title: " Deleger destinasjon "
+delegate_picker.tab: "Ny fane"
+delegate_picker.panel: "Nytt panel"
+delegate_picker.intent_required: "Beskriv arbeidet som skal delegeres."
+delegate_picker.not_configured: "Ingen delegatagent er konfigurert."
+delegate_picker.no_parent_pane: "Ingen arbeidsrute er tilgjengelig for å dele."
+delegate_picker.launch_failed: "Kunne ikke starte delegaten: %{error}"
 commands.help_title: " Hjelp "
 commands.help_header: "Skråstrekkommandoer — skriv / i inndatafeltet."
 commands.help_escape_hint: "  //text     Send en bokstavelig '/' (unngår kommandotolken)"  # {Locked="//text","/"}
@@ -79,7 +87,9 @@ commands.help_close_hint: "  Esc        Lukk denne hjelpen"  # {Locked="Esc"}
 # {Locked="Enter","Esc","↵","↑","↓","←","→"} - key names and Return-key glyph, do not translate
 recommendations.nav_hint: "(↑ ↓ for å navigere • ← → for å bytte knapper • Enter for å velge • Esc for å avbryte)"
 recommendations.button_run_command: "[ Kjør kommando ]"
+recommendations.button_send_to_delegate: "[ Send til delegat ]"
 recommendations.button_insert_in_terminal: "Sett inn i Terminal"
+recommendations.button_adjust_command: "Juster"  # Button label — refine the prepared terminal command using a natural-language instruction
 recommendations.button_open_in_new_tab: "Åpne i ny fane ↵"
 recommendations.button_open_in_new_panel: "Åpne i nytt panel ↵"
 recommendations.button_open_tab: "Åpne fane ↵"
@@ -210,12 +220,19 @@ commands.restart.summary: "Start agenten på nytt"
 commands.stop.summary: "Avbryt ledeteksten som pågår"
 commands.sessions.summary: "Åpne velgeren for historiske økter (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
 commands.agent.summary: "Velg agenten for dette panelet (/agent <id> for å bytte direkte)"  # {Locked="/agent","<id>"}
+commands.command.summary: "Create a terminal command card from an intent (/command <intent>)"  # {Locked="/command","<intent>"}
+command_card.intent_required: "Describe the terminal command you want Copilot to prepare."
+command_card.adjustment_required: "Beskriv hvordan du vil justere terminalkommandoen."
+commands.delegate.summary: "Forbered en oppgave og åpne en delegatagent (/delegate <intent>)"
 
 # ── Utføring av anbefaling (src/coordinator.rs) ───────────────────────────
 system.choice_execution_failed: "Valg %{choice} mislyktes: %{error}"
 
 # ── Agent picker (src/ui/agent_popup.rs) ────────────────────────────────────
 # {Locked="↑","↓","Enter","Esc"} - key names, do not translate
+command_card.target_unavailable: "Den valgte ruten er ikke lenger tilgjengelig."
+direct_command.command_required: "Enter a command after $."  # {Locked="$"}
+direct_command.execution_unavailable: "Terminal command execution is unavailable."
 agent_picker.title: "Velg agent (↑ ↓ • Enter • Esc)"  # Agent means an AI coding agent
 # Shown when no policy-allowed AI agent CLI is installed on the machine.
 system.no_agents: "Ingen tilgjengelig agent-CLI ble funnet på denne maskinen."  # {Locked="CLI"}

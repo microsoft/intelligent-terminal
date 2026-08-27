@@ -48,6 +48,7 @@ chat.plan_marker_in_progress: "[>]"  # {Locked}
 chat.plan_marker_pending: "[ ]"  # {Locked}
 chat.autofix_prompt_label: "[!!_(Auto-diagnosed a recent command failure)_!!]"
 chat.turn_canceled: "[!!_(canceled)_!!]"
+chat.turn_adjusted: "[!! (adjust_ed) !!]"
 chat.turn_executed: "[!!_→ executed: %{title}_!!]"
 # Persistent tool-category labels shown after a status marker and before a subject.
 chat.tool_kind.run: "[!!_Run_!!]"
@@ -70,6 +71,13 @@ input.image_attachments: "[!!_📎 Images: %{items}_!!]"  # {Locked="📎","%{it
 # ── Command popup (src/ui/command_popup.rs) ─────────────────────────────────
 # {Locked="/"} - slash-command prefix, must remain ASCII
 commands.popup_title: "[!!_ / commands _!!]"
+delegate_picker.title: "[ Ďéĺéğåţé ďéśţïñåţïöñ !!]"
+delegate_picker.tab: "[Ñéŵ ţåƀ!!]"
+delegate_picker.panel: "[Ñéŵ ṗåñéĺ!!]"
+delegate_picker.intent_required: "[Ďéśçŕïƀé ţĥé ŵöŕķ ţö ďéĺéğåţé.!!]"
+delegate_picker.not_configured: "[Ñö ďéĺéğåţé åğéñţ ïś çöñƒïğûŕéď.!!]"
+delegate_picker.no_parent_pane: "[Ñö ŵöŕķïñğ ṗåñé ïś åṽåïĺåƀĺé ţö śṗĺïţ.!!]"
+delegate_picker.launch_failed: "[Çöûĺď ñöţ ĺåûñçĥ ţĥé ďéĺéğåţé: %{error}!!]"
 commands.help_title: "[!!_ Help _!!]"
 commands.help_header: "[!!_Slash commands — type / in the input box._!!]"
 commands.help_escape_hint: "[!!_  //text     Send a literal '/' (escapes the command parser)_!!]"  # {Locked="//text","/"}
@@ -79,7 +87,9 @@ commands.help_close_hint: "[!!_  Esc        Close this help_!!]"  # {Locked="Esc
 # {Locked="Enter","Esc","↵","↑","↓","←","→"} - key names and Return-key glyph, do not translate
 recommendations.nav_hint: "[!!_(↑ ↓ to navigate suggestions • ← → to switch actions • Enter to select • Esc to cancel)_!!]"
 recommendations.button_run_command: "[!!_[ Run command ]_!!]"
+recommendations.button_send_to_delegate: "[[ Śéñď ţö ďéĺéğåţé ]!!]"
 recommendations.button_insert_in_terminal: "[!!_Insert in Terminal_!!]"
+recommendations.button_adjust_command: "[!! Adj_ust !!]"  # Button label — refine the prepared terminal command using a natural-language instruction
 recommendations.button_open_in_new_tab: "[!!_Open in New Tab ↵_!!]"
 recommendations.button_open_in_new_panel: "[!!_Open in New Panel ↵_!!]"
 recommendations.button_open_tab: "[!!_Open Tab ↵_!!]"
@@ -208,12 +218,19 @@ commands.restart.summary: "[!!_Restart agent_!!]"
 commands.stop.summary: "[!!_Cancel the in-flight prompt_!!]"
 commands.sessions.summary: "[!!_Open the historical sessions picker (Ctrl+Shift+/)_!!]"
 commands.agent.summary: "[!!_Pick the agent for this tab (/agent <id> to switch directly)_!!]"  # {Locked="/agent","<id>"}
+commands.command.summary: "Create a terminal command card from an intent (/command <intent>)"  # {Locked="/command","<intent>"}
+command_card.intent_required: "Describe the terminal command you want Copilot to prepare."
+command_card.adjustment_required: "[!! Des_cribe how you want to adjust the terminal command. !!]"
+commands.delegate.summary: "[Ṗŕéṗåŕé å ţåśķ åñď öṗéñ å ďéĺéğåţé åğéñţ (/delegate <intent>)!!]"
 
 # ── Recommendation execution (src/coordinator.rs) ───────────────────────────
 system.choice_execution_failed: "[!!_Choice %{choice} failed: %{error}_!!]"
 
 # ── Agent picker (src/ui/agent_popup.rs) ────────────────────────────────────
 # {Locked="↑","↓","Enter","Esc"} - key names, do not translate
+command_card.target_unavailable: "[Ţĥé śéĺéçţéď ṗåñé ïś ñö ĺöñğéŕ åṽåïĺåƀĺé.!!]"
+direct_command.command_required: "Enter a command after $."  # {Locked="$"}
+direct_command.execution_unavailable: "Terminal command execution is unavailable."
 agent_picker.title: "[!!_Select agent (↑ ↓ • Enter • Esc)_!!]"  # Agent means an AI coding agent
 # Shown when no policy-allowed AI agent CLI is installed on the machine.
 system.no_agents: "[!!_No available agent CLI was found on this machine._!!]"  # {Locked="CLI"}

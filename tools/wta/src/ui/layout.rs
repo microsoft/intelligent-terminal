@@ -3,8 +3,8 @@ use ratatui::prelude::*;
 
 use super::config_popup;
 use super::{
-    action_panel, agent_popup, agents_view, auth, chat, command_popup, debug_panel, input,
-    model_popup, permission, recommendations, setup, user_input,
+    action_panel, agent_popup, agents_view, auth, chat, command_popup, debug_panel, delegate_popup,
+    input, model_popup, permission, recommendations, setup, user_input,
 };
 
 pub fn render(frame: &mut Frame, app: &mut App) {
@@ -282,6 +282,9 @@ pub fn render(frame: &mut Frame, app: &mut App) {
 
     if let Some(agent_state) = app.agent_popup_state() {
         agent_popup::render_popup(frame, agent_state, chunks[7]);
+    }
+    if let Some(delegate_state) = app.delegate_popup_state() {
+        delegate_popup::render_popup(frame, delegate_state, chunks[7]);
     }
 
     if let Some(request) = app.current_tab().user_input.front() {

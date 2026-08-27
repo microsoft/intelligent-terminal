@@ -48,6 +48,7 @@ chat.plan_marker_in_progress: "[>]"  # {Locked}
 chat.plan_marker_pending: "[ ]"  # {Locked}
 chat.autofix_prompt_label: "የቅርብ ጊዜ ትዕዛዝ ብልሽት በራስ-ሰር ተመርምሯል"
 chat.turn_canceled: "(ተሰርዟል)"
+chat.turn_adjusted: "(ተስተካክሏል)"
 chat.turn_executed: "→ ተፈጽሟል: %{title}"
 # Persistent tool-category labels shown after a status marker and before a subject.
 chat.tool_kind.run: "አሂድ"
@@ -71,6 +72,13 @@ input.image_attachments: "📎 ምስሎች: %{items}"  # {Locked="📎","%{item
 # ── Command popup (src/ui/command_popup.rs) ─────────────────────────────────
 # {Locked="/"} - slash-command prefix, must remain ASCII
 commands.popup_title: " / commands "
+delegate_picker.title: " መድረሻን ውክልና። "
+delegate_picker.tab: " አዲስ ትር"
+delegate_picker.panel: " አዲስ ፓነል"
+delegate_picker.intent_required: " የውክልና ሥራውን ይግለጹ።"
+delegate_picker.not_configured: " ምንም የውክልና ወኪል አልተዋቀረም።"
+delegate_picker.no_parent_pane: " ለመከፋፈል ምንም የሚሰራ መስኮት የለም።"
+delegate_picker.launch_failed: " ልዑካንን ማስጀመር አልተቻለም፦ %{error}"
 commands.help_title: " Help "
 commands.help_header: "Slash commands — type / in the input box."
 commands.help_escape_hint: "  //text     Send a literal '/' (escapes the command parser)"  # {Locked="//text","/"}
@@ -80,7 +88,9 @@ commands.help_close_hint: "  Esc        Close this help"  # {Locked="Esc"}
 # {Locked="Enter","Esc","↵","↑","↓","←","→"} - key names and Return-key glyph, do not translate
 recommendations.nav_hint: "(↑ ↓ ለማሰስ • ← → አዝራሮችን ለመቀየር • Enter ለመምረጥ • Esc ለመሰረዝ)"
 recommendations.button_run_command: "[ Run command ]"
+recommendations.button_send_to_delegate: "[ ወደ ልዑካን ላክ]"
 recommendations.button_insert_in_terminal: "Insert in Terminal"
+recommendations.button_adjust_command: "አስተካክል"  # Button label — refine the prepared terminal command using a natural-language instruction
 recommendations.button_open_in_new_tab: "Open in New Tab ↵"
 recommendations.button_open_in_new_panel: "Open in New Panel ↵"
 recommendations.button_open_tab: "Open Tab ↵"
@@ -211,12 +221,19 @@ commands.restart.summary: "Restart agent"
 commands.stop.summary: "Cancel the in-flight prompt"
 commands.sessions.summary: "Open the historical sessions picker (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
 commands.agent.summary: "ለዚህ ትር ሞዴሉን ይምረጡ (በቀጥታ ለመቀየር /agent <id>)"  # {Locked="/agent","<id>"}
+commands.command.summary: "Create a terminal command card from an intent (/command <intent>)"  # {Locked="/command","<intent>"}
+command_card.intent_required: "Describe the terminal command you want Copilot to prepare."
+command_card.adjustment_required: "የተርሚናል ትዕዛዙን እንዴት ማስተካከል እንደምትፈልጉ ይግለጹ።"
+commands.delegate.summary: "አንድ ተግባር አዘጋጁ እና የውክልና ወኪል ይክፈቱ (/delegate <intent>)"
 
 # ── የምክር አፈጻጸም (src/coordinator.rs) ───────────────────────────
 system.choice_execution_failed: "ምርጫ %{choice} አልተሳካም፦ %{error}"
 
 # ── Agent picker (src/ui/agent_popup.rs) ────────────────────────────────────
 # {Locked="↑","↓","Enter","Esc"} - key names, do not translate
+command_card.target_unavailable: "የተመረጠው ፓነል ከአሁን በኋላ አይገኝም።"
+direct_command.command_required: "Enter a command after $."  # {Locked="$"}
+direct_command.execution_unavailable: "Terminal command execution is unavailable."
 agent_picker.title: "ኤጅንት ይምረጡ (↑ ↓ • Enter • Esc)"  # Agent means an AI coding agent
 # Shown when no policy-allowed AI agent CLI is installed on the machine.
 system.no_agents: "ምንም የሚገኝ የኤጅንት CLI በዚህ ማሽን ላይ አልተገኘም።"  # {Locked="CLI"}

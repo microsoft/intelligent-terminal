@@ -72,6 +72,7 @@ impl App {
         tab.rec_scroll.reset();
         tab.pending_terminal_action_proposal = None;
         tab.active_direct_proposal_id = None;
+        tab.command_adjustment = None;
         // Autofix prompts are synthesized by the system; they don't render
         // as a User bubble (the user already sees the error line in the
         // failing pane).
@@ -225,6 +226,33 @@ impl App {
             Ok(wire) => wire,
             Err(error) => return DirectProposalEvaluation::Rejected(error),
         };
+        let prepared_mode = self
+            .session_tab(session_id)
+            .pending_preparation
+            .as_ref()
+            .filter(|preparation| preparation.prompt_id == prompt_id)
+            .map(|preparation| preparation.mode);
+        if prepared_mode == Some(PreparedActionMode::Command) {
+            return DirectProposalEvaluation::Rejected(
+                crate::agent_tools::action_proposal::schema::ProposalError::PolicyViolation(
+                    "command preparation is host-managed; return only the exact terminal input as the final assistant message".to_string(),
+                ),
+            );
+        }
+        if prepared_mode.is_some()
+            && (wire.choices.len() != 1
+                || wire.choices[0].actions.len() != 1
+                || !matches!(
+                    wire.choices[0].actions[0],
+                    crate::agent_tools::action_proposal::schema::ProposalActionWire::Send { .. }
+                ))
+        {
+            return DirectProposalEvaluation::Rejected(
+                crate::agent_tools::action_proposal::schema::ProposalError::PolicyViolation(
+                    "a preparation turn must propose exactly one send action".to_string(),
+                ),
+            );
+        }
         let configured_delegate_id = self
             .delegate_agents
             .as_ref()
@@ -248,6 +276,8 @@ impl App {
             prompt_id,
             is_autofix,
             recommendations,
+            prepared_mode,
+            committed: false,
         });
         DirectProposalEvaluation::Presented
     }
@@ -315,6 +345,25 @@ impl App {
     }
 
     pub(super) fn commit_terminal_action_proposal(&mut self, proposal_id: &str) -> bool {
+        let awaiting_delegate = self.tab_sessions.values().any(|tab| {
+            tab.pending_terminal_action_proposal
+                .as_ref()
+                .is_some_and(|pending| pending.proposal_id == proposal_id)
+                && tab.pending_preparation.as_ref().is_some_and(|preparation| {
+                    preparation.mode == PreparedActionMode::DelegateSend
+                        && preparation.target_session_id.is_empty()
+                })
+        });
+        if awaiting_delegate {
+            if let Some(pending) = self.tab_sessions.values_mut().find_map(|tab| {
+                tab.pending_terminal_action_proposal
+                    .as_mut()
+                    .filter(|pending| pending.proposal_id == proposal_id)
+            }) {
+                pending.committed = true;
+                return true;
+            }
+        }
         let pending = self.tab_sessions.values_mut().find_map(|tab| {
             let matches = tab
                 .pending_terminal_action_proposal
@@ -346,8 +395,38 @@ impl App {
             );
         }
         self.session_tab_mut(&pending.session_id)
+            .active_prepared_mode = pending.prepared_mode;
+        self.session_tab_mut(&pending.session_id)
+            .pending_preparation = None;
+        self.session_tab_mut(&pending.session_id)
             .active_direct_proposal_id = Some(proposal_id.to_string());
         true
+    }
+
+    pub(super) fn surface_committed_delegate_proposal(&mut self, prompt_id: u64) {
+        let pending = self.tab_sessions.values_mut().find_map(|tab| {
+            let ready = tab
+                .pending_terminal_action_proposal
+                .as_ref()
+                .is_some_and(|pending| pending.prompt_id == prompt_id && pending.committed);
+            ready
+                .then(|| tab.pending_terminal_action_proposal.take())
+                .flatten()
+        });
+        let Some(pending) = pending else {
+            return;
+        };
+        self.turn_surface_recommendation(
+            &pending.session_id,
+            pending.recommendations,
+            "direct_proposal",
+        );
+        self.session_tab_mut(&pending.session_id)
+            .active_prepared_mode = pending.prepared_mode;
+        self.session_tab_mut(&pending.session_id)
+            .pending_preparation = None;
+        self.session_tab_mut(&pending.session_id)
+            .active_direct_proposal_id = Some(pending.proposal_id);
     }
 
     pub(super) fn invalidate_terminal_action_proposal(
@@ -393,6 +472,15 @@ impl App {
                 tab.turn = TurnState::Idle;
                 return;
             }
+        }
+
+        // `/command` is a host-owned deterministic pipeline. The model only
+        // supplies literal terminal input; it does not decide whether to call
+        // the proposal tool. At the real ACP turn boundary, convert the full
+        // assistant message into one pane-bound Send card.
+        if self.turn_close_command_preparation(session_id) {
+            self.turn_clear_agent_activity(session_id);
+            return;
         }
 
         // (2) A direct proposal already surfaced. Keep its transcript active
@@ -456,6 +544,84 @@ impl App {
             self.turn_close_finalize_chat(session_id);
         }
         self.turn_clear_agent_activity(session_id);
+    }
+
+    fn turn_close_command_preparation(&mut self, session_id: &str) -> bool {
+        let preparation = self
+            .session_tab(session_id)
+            .pending_preparation
+            .as_ref()
+            .filter(|preparation| preparation.mode == PreparedActionMode::Command)
+            .cloned();
+        let Some(preparation) = preparation else {
+            return false;
+        };
+        if self
+            .session_tab(session_id)
+            .turn
+            .prompt()
+            .map(|prompt| prompt.id)
+            != Some(preparation.prompt_id)
+        {
+            return false;
+        }
+
+        let command = self
+            .session_tab(session_id)
+            .active_agent_text()
+            .trim_matches(['\r', '\n'])
+            .to_string();
+        if command.trim().is_empty() {
+            self.session_tab_mut(session_id).pending_preparation = None;
+            return false;
+        }
+
+        let title = self
+            .session_tab(session_id)
+            .pending_preparation
+            .as_ref()
+            .map(|preparation| preparation.title.clone())
+            .unwrap_or_else(|| command.clone());
+        let recommendations = RecommendationSet {
+            recommended_choice: Some(1),
+            choices: vec![crate::coordinator::RecommendationChoice {
+                choice: 1,
+                title,
+                rationale: String::new(),
+                actions: vec![crate::coordinator::RecommendedAction::Send {
+                    parent: preparation.target_session_id,
+                    input: command,
+                }],
+            }],
+        };
+
+        // The model's raw completion is an internal compilation result, not a
+        // chat answer. Keep non-message diagnostics, then let the standard
+        // recommendation history formatter represent the visible result.
+        self.session_tab_mut(session_id)
+            .messages
+            .retain(|message| !matches!(message, ChatMessage::Agent(_)));
+        self.turn_surface_recommendation(session_id, recommendations, "host_command_preparation");
+        let summary = match &self.session_tab(session_id).turn {
+            TurnState::Surfaced {
+                outcome: TurnOutcome::Recommendation(recommendations),
+                ..
+            } => format_recommendations_for_chat(recommendations),
+            _ => unreachable!("command recommendation was just surfaced"),
+        };
+        let tab = self.session_tab_mut(session_id);
+        tab.pending_preparation = None;
+        tab.active_prepared_mode = Some(PreparedActionMode::Command);
+        tab.active_direct_proposal_id = None;
+        self.turn_commit_recommendation_history(session_id, summary, None);
+        let tab = self.session_tab_mut(session_id);
+        if let Some(revision_index) = tab.completed_turns.len().checked_sub(1) {
+            let root_index = preparation.revision_root_index.unwrap_or(revision_index);
+            tab.command_revision_parents
+                .insert(revision_index, root_index);
+        }
+        self.turn_release_end_pending_logged(session_id, "via=host_command+end");
+        true
     }
 
     /// Path (3): close a turn that received `AgentMessageEnd` with no
@@ -610,6 +776,12 @@ impl App {
     /// choice to the coordinator and transition to `Surfaced { Empty, .. }`
     /// while preserving the ACP single-flight gate.
     pub fn turn_execute_card(&mut self, session_id: &str) {
+        if self.session_tab(session_id).active_prepared_mode == Some(PreparedActionMode::Command)
+            && self.session_tab(session_id).selected_button == 2
+        {
+            self.turn_begin_command_adjustment(session_id);
+            return;
+        }
         let Some(choice) = self.selected_recommendation_choice().cloned() else {
             return;
         };
@@ -630,8 +802,10 @@ impl App {
             .session_tab(session_id)
             .active_direct_proposal_id
             .clone();
-        let insert_only =
-            self.session_tab(session_id).selected_button == 1 && self.is_send_choice(&choice);
+        let prepared_mode = self.session_tab(session_id).active_prepared_mode;
+        let insert_only = prepared_mode != Some(PreparedActionMode::DelegateSend)
+            && self.session_tab(session_id).selected_button == 1
+            && self.is_send_choice(&choice);
         let target_tab = self.tab_for_session(session_id);
         let context = self
             .session_tab(session_id)
@@ -656,6 +830,7 @@ impl App {
                 context,
             })
             .is_ok();
+        self.session_tab_mut(session_id).active_prepared_mode = None;
         if let Some(claim) = confirmation_claim {
             let status = if dispatched {
                 crate::agent_tools::action_proposal::channel::ProposalFinalStatus::Confirmed
@@ -693,6 +868,7 @@ impl App {
         tab.selected_button = 0;
         tab.recommendation_focus = RecommendationFocus::Button;
         tab.active_direct_proposal_id = None;
+        tab.command_adjustment = None;
         tab.rec_scroll.reset();
         let marker = t!("chat.turn_executed", title = &executed_title).into_owned();
         let outcome = if end_pending {
@@ -838,6 +1014,9 @@ impl App {
         tab.user_input.clear();
         tab.turn = TurnState::Idle;
         tab.pending_terminal_action_proposal = None;
+        tab.pending_preparation = None;
+        tab.active_prepared_mode = None;
+        tab.command_adjustment = None;
         tab.active_direct_proposal_id = None;
         if let Some(proposal_id) = direct_proposal_id.as_deref() {
             self.proposal_channels.resolve_final(
@@ -849,6 +1028,41 @@ impl App {
         // Esc on a Send card or in-flight autofix exits the chip-override
         // state; release whatever the helper had pinned. C++ falls back to
         // source-of-agent driven rendering.
+        self.recompute_chip_override(&target_tab);
+    }
+
+    fn turn_begin_command_adjustment(&mut self, session_id: &str) {
+        let Some(choice) = self.selected_recommendation_choice().cloned() else {
+            return;
+        };
+        let Some((target_session_id, current_command)) =
+            choice.actions.iter().find_map(|action| match action {
+                crate::coordinator::RecommendedAction::Send { parent, input } => {
+                    Some((parent.clone(), input.clone()))
+                }
+                _ => None,
+            })
+        else {
+            return;
+        };
+        let target_tab = self.tab_for_session(session_id);
+        let tab = self.session_tab_mut(session_id);
+        let Some(history_index) = tab.completed_turns.len().checked_sub(1) else {
+            return;
+        };
+        let revision_root_index = tab
+            .command_revision_parents
+            .get(&history_index)
+            .copied()
+            .unwrap_or(history_index);
+        tab.command_adjustment = Some(CommandAdjustment {
+            title: choice.title,
+            current_command,
+            target_session_id,
+            history_index,
+            revision_root_index,
+        });
+        tab.recommendation_focus = RecommendationFocus::Input;
         self.recompute_chip_override(&target_tab);
     }
 

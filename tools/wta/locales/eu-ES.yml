@@ -48,6 +48,7 @@ chat.plan_marker_in_progress: "[>]"  # {Locked}
 chat.plan_marker_pending: "[ ]"  # {Locked}
 chat.autofix_prompt_label: "Azken komando-hutsegite bat automatikoki diagnostikatua"
 chat.turn_canceled: "(bertan behera utzita)"
+chat.turn_adjusted: "(doituta)"
 chat.turn_executed: "→ exekutatuta: %{title}"
 # Persistent tool-category labels shown after a status marker and before a subject.
 chat.tool_kind.run: "Exekutatu"
@@ -70,6 +71,13 @@ input.image_attachments: "📎 Irudiak: %{items}"  # {Locked="📎","%{items}"}
 # ── Komandoen popup-a (src/ui/command_popup.rs) ─────────────────────────────────
 # {Locked="/"} - barra-komando aurrizkia, ASCII izan behar du
 commands.popup_title: " / komandoak "
+delegate_picker.title: " Ordezkatu helmuga "
+delegate_picker.tab: "Fitxa berria"
+delegate_picker.panel: "Panel berria"
+delegate_picker.intent_required: "Deskribatu eskuordetu beharreko lana."
+delegate_picker.not_configured: "Ez dago ordezkari ordezkaririk konfiguratuta."
+delegate_picker.no_parent_pane: "Ez dago lan panelik zatitzeko erabilgarri."
+delegate_picker.launch_failed: "Ezin izan da ordezkaria abiarazi: %{error}"
 commands.help_title: " Laguntza "
 commands.help_header: "Barra-komandoak — idatzi / sarrera-koadroan."
 commands.help_escape_hint: "  //text     Bidali '/' literala (ihes komando-analizatzailetik)"  # {Locked="//text","/"}
@@ -79,7 +87,9 @@ commands.help_close_hint: "  Esc        Itxi laguntza hau"  # {Locked="Esc"}
 # {Locked="Enter","Esc","↵","↑","↓","←","→"} - tekla-izenak eta Itzuli-tekla glifoa, ez itzuli
 recommendations.nav_hint: "(↑ ↓ nabigatzeko • ← → ekintzak aldatzeko • Enter hautatzeko • Esc bertan behera uzteko)"
 recommendations.button_run_command: "[ Exekutatu komandoa ]"
+recommendations.button_send_to_delegate: "[ Bidali ordezkariari ]"
 recommendations.button_insert_in_terminal: "Txertatu Terminalean"
+recommendations.button_adjust_command: "Doitu"  # Button label — refine the prepared terminal command using a natural-language instruction
 recommendations.button_open_in_new_tab: "Ireki Fitxa Berrian ↵"
 recommendations.button_open_in_new_panel: "Ireki Panel Berrian ↵"
 recommendations.button_open_tab: "Ireki Fitxa ↵"
@@ -210,12 +220,19 @@ commands.restart.summary: "Restart agent"
 commands.stop.summary: "Cancel the in-flight prompt"
 commands.sessions.summary: "Open the historical sessions picker (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
 commands.agent.summary: "Aukeratu fitxa honetarako agentea (/agent <id> zuzenean aldatzeko)"  # {Locked="/agent","<id>"}
+commands.command.summary: "Create a terminal command card from an intent (/command <intent>)"  # {Locked="/command","<intent>"}
+command_card.intent_required: "Describe the terminal command you want Copilot to prepare."
+command_card.adjustment_required: "Deskribatu nola doitu nahi duzun terminaleko komandoa."
+commands.delegate.summary: "Prestatu zeregin bat eta ireki ordezkari ordezkari bat (/delegate <intent>)"
 
 # ── Gomendioaren exekuzioa (src/coordinator.rs) ───────────────────────────
 system.choice_execution_failed: "%{choice} aukera huts egin du: %{error}"
 
 # ── Agent picker (src/ui/agent_popup.rs) ────────────────────────────────────
 # {Locked="↑","↓","Enter","Esc"} - key names, do not translate
+command_card.target_unavailable: "Hautatutako panela jada ez dago erabilgarri."
+direct_command.command_required: "Enter a command after $."  # {Locked="$"}
+direct_command.execution_unavailable: "Terminal command execution is unavailable."
 agent_picker.title: "Hautatu agentea (↑ ↓ • Enter • Esc)"  # Agent means an AI coding agent
 # Shown when no policy-allowed AI agent CLI is installed on the machine.
 system.no_agents: "Ez da agente-CLI erabilgarririk aurkitu makina honetan."  # {Locked="CLI"}

@@ -48,6 +48,7 @@ chat.plan_marker_in_progress: "[>]"  # {Locked}
 chat.plan_marker_pending: "[ ]"  # {Locked}
 chat.autofix_prompt_label: "ఇటీవలి కమాండ్ వైఫల్యం స్వయంచాలకంగా నిర్ధారించబడింది"
 chat.turn_canceled: "(రద్దు చేయబడింది)"
+chat.turn_adjusted: "(సర్దుబాటు చేయబడింది)"
 chat.turn_executed: "→ అమలు చేయబడింది: %{title}"
 # స్థితి గుర్తు తర్వాత, విషయానికి ముందు చూపే శాశ్వత సాధన-వర్గ లేబుళ్లు.
 chat.tool_kind.run: "అమలు"
@@ -70,6 +71,13 @@ input.image_attachments: "📎 చిత్రాలు: %{items}"  # {Locked="�
 # ── కమాండ్ పాపప్ (src/ui/command_popup.rs) ─────────────────────────────────
 # {Locked="/"} - స్లాష్-కమాండ్ ప్రిఫిక్స్, ASCII ఉండాలి
 commands.popup_title: " / కమాండ్‌లు "
+delegate_picker.title: " డెలిగేట్ గమ్యం "
+delegate_picker.tab: "కొత్త ట్యాబ్"
+delegate_picker.panel: "కొత్త ప్యానెల్"
+delegate_picker.intent_required: "ప్రతినిధి చేయవలసిన పనిని వివరించండి."
+delegate_picker.not_configured: "ఏ ప్రతినిధి ఏజెంట్ కాన్ఫిగర్ చేయబడలేదు."
+delegate_picker.no_parent_pane: "విభజన చేయడానికి పని చేసే పేన్ అందుబాటులో లేదు."
+delegate_picker.launch_failed: "ప్రతినిధిని ప్రారంభించడం సాధ్యపడలేదు: %{error}"
 commands.help_title: " సహాయం "
 commands.help_header: "స్లాష్ కమాండ్‌లు — ఇన్‌పుట్ బాక్స్‌లో / టైప్ చేయండి."
 commands.help_escape_hint: "  //text     అక్షరాల '/' పంపండి (కమాండ్ పార్సర్‌ను ఎస్కేప్ చేస్తుంది)"  # {Locked="//text","/"}
@@ -87,12 +95,18 @@ commands.restart.summary: "ఏజెంట్‌ను పునఃప్రా�
 commands.stop.summary: "నడుస్తున్న ప్రాంప్ట్‌ను రద్దు చేయి"
 commands.sessions.summary: "చారిత్రక సెషన్‌ల ఎంపికను తెరవండి (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
 commands.agent.summary: "ఈ ట్యాబ్ కోసం ఏజెంట్‌ను ఎంచుకోండి (నేరుగా మార్చడానికి /agent <id>)"  # {Locked="/agent","<id>"}
+commands.command.summary: "Create a terminal command card from an intent (/command <intent>)"  # {Locked="/command","<intent>"}
+command_card.intent_required: "Describe the terminal command you want Copilot to prepare."
+command_card.adjustment_required: "టెర్మినల్ ఆదేశాన్ని మీరు ఎలా సర్దుబాటు చేయాలనుకుంటున్నారో వివరించండి."
+commands.delegate.summary: "టాస్క్‌ని సిద్ధం చేసి, డెలిగేట్ ఏజెంట్‌ను తెరవండి (/delegate <intent>)"
 
 # ── సిఫార్సుల ప్యానెల్ (src/ui/recommendations.rs) ───────────────────────────────
 # {Locked="Enter","Esc","↵","↑","↓","←","→"} - కీ పేర్లు మరియు Return-కీ గ్లిఫ్, అనువదించవద్దు
 recommendations.nav_hint: "(↑ ↓ నావిగేట్ చేయడానికి • ← → బటన్‌లను మార్చడానికి • Enter ఎంచుకోవడానికి • Esc రద్దు చేయడానికి)"
 recommendations.button_run_command: "[ కమాండ్ అమలు చేయండి ]"
+recommendations.button_send_to_delegate: "[ప్రతినిధికి పంపండి ]"
 recommendations.button_insert_in_terminal: "టెర్మినల్‌లో చొప్పించండి"
+recommendations.button_adjust_command: "సర్దుబాటు చేయి"  # Button label — refine the prepared terminal command using a natural-language instruction
 recommendations.button_open_in_new_tab: "కొత్త ట్యాబ్‌లో తెరవండి ↵"
 recommendations.button_open_in_new_panel: "కొత్త ప్యానెల్‌లో తెరవండి ↵"
 recommendations.button_open_tab: "ట్యాబ్ తెరవండి ↵"
@@ -217,6 +231,9 @@ system.choice_execution_failed: "ఎంపిక %{choice} విఫలమైం
 
 # ── Agent picker (src/ui/agent_popup.rs) ────────────────────────────────────
 # {Locked="↑","↓","Enter","Esc"} - key names, do not translate
+command_card.target_unavailable: "ఎంచుకున్న పేన్ ఇప్పుడు అందుబాటులో లేదు."
+direct_command.command_required: "Enter a command after $."  # {Locked="$"}
+direct_command.execution_unavailable: "Terminal command execution is unavailable."
 agent_picker.title: "ఏజెంట్‌ను ఎంచుకోండి (↑ ↓ • Enter • Esc)"  # Agent means an AI coding agent
 # Shown when no policy-allowed AI agent CLI is installed on the machine.
 system.no_agents: "ఈ మెషీన్‌లో అందుబాటులో ఉన్న ఏజెంట్ CLI కనుగొనబడలేదు."  # {Locked="CLI"}

@@ -44,6 +44,7 @@ chat.plan_marker_in_progress: "[>]"  # {Locked}
 chat.plan_marker_pending: "[ ]"  # {Locked}
 chat.autofix_prompt_label: "直近のコマンド失敗を自動診断しました"
 chat.turn_canceled: "(キャンセル済み)"
+chat.turn_adjusted: "(調整済み)"
 chat.turn_executed: "→ 実行済み: %{title}"
 # ステータスマーカーの後、対象の前に表示される永続的なツールカテゴリラベル。
 chat.tool_kind.run: "実行"
@@ -66,6 +67,13 @@ input.image_attachments: "📎 画像: %{items}"  # {Locked="📎","%{items}"}
 # ── コマンド ポップアップ (src/ui/command_popup.rs) ─────────────────────────────────
 # {Locked="/"} - スラッシュ コマンド プレフィックス、ASCII のまま保持
 commands.popup_title: " / コマンド "
+delegate_picker.title: " デリゲート先 "
+delegate_picker.tab: "新しいタブ"
+delegate_picker.panel: "新しいパネル"
+delegate_picker.intent_required: "委任する作業について説明します。"
+delegate_picker.not_configured: "代理エージェントが構成されていません。"
+delegate_picker.no_parent_pane: "分割できる作業ペインがありません。"
+delegate_picker.launch_failed: "デリゲートを起動できませんでした: %{error}"
 commands.help_title: " ヘルプ "
 commands.help_header: "スラッシュ コマンド — 入力ボックスに / を入力してください。"
 commands.help_escape_hint: "  //text     リテラル '/' を送信（コマンド パーサーをエスケープ）"  # {Locked="//text","/"}
@@ -75,7 +83,9 @@ commands.help_close_hint: "  Esc        このヘルプを閉じる"  # {Locked=
 # {Locked="Enter","Esc","↵","↑","↓","←","→"} - キー名と Return キー グリフ、翻訳不要
 recommendations.nav_hint: "(↑ ↓ で移動 • ← → でボタン切り替え • Enter で選択 • Esc でキャンセル)"
 recommendations.button_run_command: "[ コマンドを実行 ]"
+recommendations.button_send_to_delegate: "[代理人に送信]"
 recommendations.button_insert_in_terminal: "ターミナルに挿入"
+recommendations.button_adjust_command: "調整"  # Button label — refine the prepared terminal command using a natural-language instruction
 recommendations.button_open_in_new_tab: "新しいタブで開く ↵"
 recommendations.button_open_in_new_panel: "新しいパネルで開く ↵"
 recommendations.button_open_tab: "タブを開く ↵"
@@ -205,12 +215,19 @@ commands.restart.summary: "エージェントを再起動"
 commands.stop.summary: "実行中のプロンプトをキャンセル"
 commands.sessions.summary: "過去のセッション ピッカーを開く（Ctrl+Shift+/）"
 commands.agent.summary: "このタブのエージェントを選択（直接切り替えるには /agent <id>）"  # {Locked="/agent","<id>"}
+commands.command.summary: "Create a terminal command card from an intent (/command <intent>)"  # {Locked="/command","<intent>"}
+command_card.intent_required: "Describe the terminal command you want Copilot to prepare."
+command_card.adjustment_required: "ターミナル コマンドをどのように調整したいか説明してください。"
+commands.delegate.summary: "タスクを準備し、代理エージェントを開きます (/delegate <intent>)"
 
 # ── 推奨事項の実行 (src/coordinator.rs) ───────────────────────────
 system.choice_execution_failed: "選択肢 %{choice} が失敗しました: %{error}"
 
 # ── Agent picker (src/ui/agent_popup.rs) ────────────────────────────────────
 # {Locked="↑","↓","Enter","Esc"} - key names, do not translate
+command_card.target_unavailable: "選択したペインは使用できなくなりました。"
+direct_command.command_required: "Enter a command after $."  # {Locked="$"}
+direct_command.execution_unavailable: "Terminal command execution is unavailable."
 agent_picker.title: "エージェントを選択 (↑ ↓ • Enter • Esc)"  # Agent means an AI coding agent
 # Shown when no policy-allowed AI agent CLI is installed on the machine.
 system.no_agents: "このマシンに利用可能なエージェント CLI が見つかりませんでした。"  # {Locked="CLI"}

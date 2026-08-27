@@ -48,6 +48,7 @@ chat.plan_marker_in_progress: "[>]"  # {Locked}
 chat.plan_marker_pending: "[ ]"  # {Locked}
 chat.autofix_prompt_label: "Samodejno diagnosticirana nedavna napaka ukaza"
 chat.turn_canceled: "(preklicano)"
+chat.turn_adjusted: "(prilagojeno)"
 chat.turn_executed: "→ izvedeno: %{title}"
 # Stalne oznake kategorij orodij, prikazane za oznako stanja in pred predmetom.
 chat.tool_kind.run: "Zagon"
@@ -70,6 +71,13 @@ input.image_attachments: "📎 Slike: %{items}"  # {Locked="📎","%{items}"}
 # ── Command popup (src/ui/command_popup.rs) ─────────────────────────────────
 # {Locked="/"} - slash-command prefix, must remain ASCII
 commands.popup_title: " / ukazi "
+delegate_picker.title: " Pooblaščeni cilj "
+delegate_picker.tab: "Nov zavihek"
+delegate_picker.panel: "Nova plošča"
+delegate_picker.intent_required: "Opišite delo, ki ga želite prenesti."
+delegate_picker.not_configured: "Konfiguriran ni noben pooblaščenec."
+delegate_picker.no_parent_pane: "Nobeno delovno podokno ni na voljo za razdelitev."
+delegate_picker.launch_failed: "Ni bilo mogoče zagnati pooblaščenca: %{error}"
 commands.help_title: " Pomoč "
 commands.help_header: "Ukazi s poševnico — vnesite / v vnosno polje."
 commands.help_escape_hint: "  //text     Pošlji dobesedni '/' (obide razčlenjevalnik ukazov)"  # {Locked="//text","/"}
@@ -84,11 +92,17 @@ commands.restart.summary: "Ponovno zaženi agenta"
 commands.stop.summary: "Prekliči poziv v teku"
 commands.sessions.summary: "Odpri izbirnik preteklih sej (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
 commands.agent.summary: "Izberite agent za ta zavihek (/agent <id> za neposreden preklop)"  # {Locked="/agent","<id>"}
+commands.command.summary: "Create a terminal command card from an intent (/command <intent>)"  # {Locked="/command","<intent>"}
+command_card.intent_required: "Describe the terminal command you want Copilot to prepare."
+command_card.adjustment_required: "Opišite, kako želite prilagoditi ukaz terminala."
+commands.delegate.summary: "Pripravite nalogo in odprite pooblaščenega posrednika (/delegate <intent>)"
 # ── Recommendations panel (src/ui/recommendations.rs) ───────────────────────
 # {Locked="Enter","Esc","↵","↑","↓","←","→"} - key names and Return-key glyph, do not translate
 recommendations.nav_hint: "(↑ ↓ za krmarjenje • ← → za preklapljanje gumbov • Enter za izbiro • Esc za preklic)"
 recommendations.button_run_command: "[ Zaženi ukaz ]"
+recommendations.button_send_to_delegate: "[ Pošlji pooblaščencu ]"
 recommendations.button_insert_in_terminal: "Vstavi v terminal"
+recommendations.button_adjust_command: "Prilagodi"  # Button label — refine the prepared terminal command using a natural-language instruction
 recommendations.button_open_in_new_tab: "Odpri v novem zavihku ↵"
 recommendations.button_open_in_new_panel: "Odpri v novem podoknu ↵"
 recommendations.button_open_tab: "Odpri zavihek ↵"
@@ -216,6 +230,9 @@ system.choice_execution_failed: "Izbira %{choice} ni uspela: %{error}"
 
 # ── Agent picker (src/ui/agent_popup.rs) ────────────────────────────────────
 # {Locked="↑","↓","Enter","Esc"} - key names, do not translate
+command_card.target_unavailable: "Izbrano podokno ni več na voljo."
+direct_command.command_required: "Enter a command after $."  # {Locked="$"}
+direct_command.execution_unavailable: "Terminal command execution is unavailable."
 agent_picker.title: "Izberi agent (↑ ↓ • Enter • Esc)"  # Agent means an AI coding agent
 # Shown when no policy-allowed AI agent CLI is installed on the machine.
 system.no_agents: "V tej napravi ni mogoče najti nobenega razpoložljivega vmesnika CLI agenta."  # {Locked="CLI"}

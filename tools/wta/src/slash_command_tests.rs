@@ -271,8 +271,9 @@ fn agent_prefix_match_ranks_before_client_substring_match() {
 
     let names = popup_command_names(&app);
 
-    assert_eq!(names, vec!["delta", "model"]);
+    assert_eq!(names, vec!["delegate", "delta", "model"]);
 
+    app.command_popup_down();
     app.command_popup_down();
     app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
 

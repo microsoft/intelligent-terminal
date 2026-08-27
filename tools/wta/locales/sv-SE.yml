@@ -48,6 +48,7 @@ chat.plan_marker_in_progress: "[>]"  # {Locked}
 chat.plan_marker_pending: "[ ]"  # {Locked}
 chat.autofix_prompt_label: "Automatiskt diagnostiserat ett nyligen inträffat kommandofel"
 chat.turn_canceled: "(avbruten)"
+chat.turn_adjusted: "(justerat)"
 chat.turn_executed: "→ utförd: %{title}"
 # Beständiga verktygskategorier som visas efter en statusmarkör och före ett ämne.
 chat.tool_kind.run: "Körning"
@@ -70,6 +71,13 @@ input.image_attachments: "📎 Bilder: %{items}"  # {Locked="📎","%{items}"}
 # ── Command popup (src/ui/command_popup.rs) ─────────────────────────────────
 # {Locked="/"} - slash-command prefix, must remain ASCII
 commands.popup_title: " / kommandon "
+delegate_picker.title: " Delegera destination "
+delegate_picker.tab: "Ny flik"
+delegate_picker.panel: "Ny panel"
+delegate_picker.intent_required: "Beskriv arbetet att delegera."
+delegate_picker.not_configured: "Ingen delegatagent är konfigurerad."
+delegate_picker.no_parent_pane: "Ingen arbetsruta är tillgänglig att dela."
+delegate_picker.launch_failed: "Det gick inte att starta delegaten: %{error}"
 commands.help_title: " Hjälp "
 commands.help_header: "Snedstreckskommandon — skriv / i inmatningsfältet."
 commands.help_escape_hint: "  //text     Skicka ett bokstavligt '/' (undviker kommandotolken)"  # {Locked="//text","/"}
@@ -79,7 +87,9 @@ commands.help_close_hint: "  Esc        Stäng denna hjälp"  # {Locked="Esc"}
 # {Locked="Enter","Esc","↵","↑","↓","←","→"} - key names and Return-key glyph, do not translate
 recommendations.nav_hint: "(↑ ↓ för att navigera • ← → för att växla knappar • Enter för att välja • Esc för att avbryta)"
 recommendations.button_run_command: "[ Kör kommando ]"
+recommendations.button_send_to_delegate: "[ Skicka till ombud ]"
 recommendations.button_insert_in_terminal: "Infoga i Terminal"
+recommendations.button_adjust_command: "Justera"  # Button label — refine the prepared terminal command using a natural-language instruction
 recommendations.button_open_in_new_tab: "Öppna i ny flik ↵"
 recommendations.button_open_in_new_panel: "Öppna i ny panel ↵"
 recommendations.button_open_tab: "Öppna flik ↵"
@@ -210,12 +220,19 @@ commands.restart.summary: "Starta om agenten"
 commands.stop.summary: "Avbryt den pågående prompten"
 commands.sessions.summary: "Öppna väljaren för historiska sessioner (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
 commands.agent.summary: "Välj agenten för den här panelen (/agent <id> för att växla direkt)"  # {Locked="/agent","<id>"}
+commands.command.summary: "Create a terminal command card from an intent (/command <intent>)"  # {Locked="/command","<intent>"}
+command_card.intent_required: "Describe the terminal command you want Copilot to prepare."
+command_card.adjustment_required: "Beskriv hur du vill justera terminalkommandot."
+commands.delegate.summary: "Förbered en uppgift och öppna en delegatagent (/delegate <intent>)"
 
 # ── Körning av rekommendation (src/coordinator.rs) ───────────────────────────
 system.choice_execution_failed: "Val %{choice} misslyckades: %{error}"
 
 # ── Agent picker (src/ui/agent_popup.rs) ────────────────────────────────────
 # {Locked="↑","↓","Enter","Esc"} - key names, do not translate
+command_card.target_unavailable: "Den valda rutan är inte längre tillgänglig."
+direct_command.command_required: "Enter a command after $."  # {Locked="$"}
+direct_command.execution_unavailable: "Terminal command execution is unavailable."
 agent_picker.title: "Välj agent (↑ ↓ • Enter • Esc)"  # Agent means an AI coding agent
 # Shown when no policy-allowed AI agent CLI is installed on the machine.
 system.no_agents: "Det gick inte att hitta något tillgängligt agent-CLI på den här datorn."  # {Locked="CLI"}

@@ -48,6 +48,7 @@ chat.plan_marker_in_progress: "[>]"  # {Locked}
 chat.plan_marker_pending: "[ ]"  # {Locked}
 chat.autofix_prompt_label: "Αυτόματη διάγνωση πρόσφατης αποτυχίας εντολής"
 chat.turn_canceled: "(ακυρώθηκε)"
+chat.turn_adjusted: "(προσαρμόστηκε)"
 chat.turn_executed: "→ εκτελέστηκε: %{title}"
 # Persistent tool-category labels shown after a status marker and before a subject.
 chat.tool_kind.run: "Εκτέλεση"
@@ -71,6 +72,13 @@ input.image_attachments: "📎 Εικόνες: %{items}"  # {Locked="📎","%{it
 # ── Command popup (src/ui/command_popup.rs) ─────────────────────────────────
 # {Locked="/"} - slash-command prefix, must remain ASCII
 commands.popup_title: " / εντολές "
+delegate_picker.title: "Εκπρόσωπος προορισμού"
+delegate_picker.tab: "Νέα καρτέλα"
+delegate_picker.panel: "Νέος πίνακας"
+delegate_picker.intent_required: "Περιγράψτε την εργασία προς ανάθεση."
+delegate_picker.not_configured: "Δεν έχει διαμορφωθεί ένας εκπρόσωπος αντιπροσώπου."
+delegate_picker.no_parent_pane: "Δεν υπάρχει διαθέσιμο παράθυρο εργασίας για διαχωρισμό."
+delegate_picker.launch_failed: "Δεν ήταν δυνατή η εκκίνηση του πληρεξούσιου: %{error}"
 commands.help_title: " Βοήθεια "
 commands.help_header: "Εντολές κάθετης — πληκτρολογήστε / στο πλαίσιο εισόδου."
 commands.help_escape_hint: "  //text     Αποστολή κυριολεκτικού '/' (παράκαμψη αναλυτή εντολών)"  # {Locked="//text","/"}
@@ -80,7 +88,9 @@ commands.help_close_hint: "  Esc        Κλείσιμο αυτής της βο�
 # {Locked="Enter","Esc","↵","↑","↓","←","→"} - key names and Return-key glyph, do not translate
 recommendations.nav_hint: "(↑ ↓ για πλοήγηση • ← → για εναλλαγή κουμπιών • Enter για επιλογή • Esc για ακύρωση)"
 recommendations.button_run_command: "[ Εκτέλεση εντολής ]"
+recommendations.button_send_to_delegate: "[Αποστολή σε εκπρόσωπο]"
 recommendations.button_insert_in_terminal: "Εισαγωγή στο Terminal"
+recommendations.button_adjust_command: "Προσαρμογή"  # Button label — refine the prepared terminal command using a natural-language instruction
 recommendations.button_open_in_new_tab: "Άνοιγμα σε νέα καρτέλα ↵"
 recommendations.button_open_in_new_panel: "Άνοιγμα σε νέο πλαίσιο ↵"
 recommendations.button_open_tab: "Άνοιγμα καρτέλας ↵"
@@ -211,12 +221,19 @@ commands.restart.summary: "Restart agent"
 commands.stop.summary: "Cancel the in-flight prompt"
 commands.sessions.summary: "Open the historical sessions picker (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
 commands.agent.summary: "Επιλέξτε το πράκτορα για αυτό το πλαίσιο (/agent <id> για άμεση εναλλαγή)"  # {Locked="/agent","<id>"}
+commands.command.summary: "Create a terminal command card from an intent (/command <intent>)"  # {Locked="/command","<intent>"}
+command_card.intent_required: "Describe the terminal command you want Copilot to prepare."
+command_card.adjustment_required: "Περιγράψτε πώς θέλετε να προσαρμόσετε την εντολή του τερματικού."
+commands.delegate.summary: "Προετοιμάστε μια εργασία και ανοίξτε έναν εκπρόσωπο αντιπροσώπου (/delegate <intent>)"
 
 # ── Εκτέλεση σύστασης (src/coordinator.rs) ───────────────────────────
 system.choice_execution_failed: "Η επιλογή %{choice} απέτυχε: %{error}"
 
 # ── Agent picker (src/ui/agent_popup.rs) ────────────────────────────────────
 # {Locked="↑","↓","Enter","Esc"} - key names, do not translate
+command_card.target_unavailable: "Το επιλεγμένο παράθυρο δεν είναι πλέον διαθέσιμο."
+direct_command.command_required: "Enter a command after $."  # {Locked="$"}
+direct_command.execution_unavailable: "Terminal command execution is unavailable."
 agent_picker.title: "Επιλέξτε πράκτορα (↑ ↓ • Enter • Esc)"  # Agent means an AI coding agent
 # Shown when no policy-allowed AI agent CLI is installed on the machine.
 system.no_agents: "Δεν βρέθηκε διαθέσιμο CLI πράκτορα σε αυτό το μηχάνημα."  # {Locked="CLI"}

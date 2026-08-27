@@ -48,6 +48,7 @@ chat.plan_marker_in_progress: "[>]"  # {Locked}
 chat.plan_marker_pending: "[ ]"  # {Locked}
 chat.autofix_prompt_label: "ການລົ້ມເຫລວຄຳສັ່ງຫຼ້າສຸດໄດ້ຮັບການວິນິດໄສໂດຍອັດຕະໂນມັດ"
 chat.turn_canceled: "(ຍົກເລີກແລ້ວ)"
+chat.turn_adjusted: "(ປັບແຕ່ງແລ້ວ)"
 chat.turn_executed: "→ ດໍາເນີນການແລ້ວ: %{title}"
 # Persistent tool-category labels shown after a status marker and before a subject.
 chat.tool_kind.run: "ດໍາເນີນການ"
@@ -70,6 +71,13 @@ input.image_attachments: "📎 ຮູບພາບ: %{items}"  # {Locked="%{items
 # ── Command popup (src/ui/command_popup.rs) ─────────────────────────────────
 # {Locked="/"} - slash-command prefix, must remain ASCII
 commands.popup_title: " / commands "
+delegate_picker.title: " ຕົວແທນປາຍທາງ "
+delegate_picker.tab: "ແຖບໃໝ່"
+delegate_picker.panel: "ແຜງໃໝ່"
+delegate_picker.intent_required: "ອະທິບາຍວຽກເພື່ອມອບໝາຍ."
+delegate_picker.not_configured: "ບໍ່ມີການກຳນົດຄ່າຕົວແທນຜູ້ແທນ."
+delegate_picker.no_parent_pane: "ບໍ່ມີແຖບເຮັດວຽກທີ່ສາມາດແຍກໄດ້."
+delegate_picker.launch_failed: "ບໍ່ສາມາດເປີດຕົວຜູ້ແທນໄດ້: %{error}"
 commands.help_title: " Help "
 commands.help_header: "Slash commands — type / in the input box."
 commands.help_escape_hint: "  //text     Send a literal '/' (escapes the command parser)"  # {Locked="//text","/"}
@@ -79,7 +87,9 @@ commands.help_close_hint: "  Esc        Close this help"  # {Locked="Esc"}
 # {Locked="Enter","Esc","↵","↑","↓","←","→"} - key names and Return-key glyph, do not translate
 recommendations.nav_hint: "(↑ ↓ to navigate • ← → ສະຫຼັບການກະທຳ • Enter to select • Esc to cancel)"
 recommendations.button_run_command: "[ Run command ]"
+recommendations.button_send_to_delegate: "[ ສົ່ງໃຫ້ຜູ້ແທນ ]"
 recommendations.button_insert_in_terminal: "Insert in Terminal"
+recommendations.button_adjust_command: "ປັບແຕ່ງ"  # Button label — refine the prepared terminal command using a natural-language instruction
 recommendations.button_open_in_new_tab: "Open in New Tab ↵"
 recommendations.button_open_in_new_panel: "Open in New Panel ↵"
 recommendations.button_open_tab: "Open Tab ↵"
@@ -210,12 +220,19 @@ commands.restart.summary: "Restart agent"
 commands.stop.summary: "Cancel the in-flight prompt"
 commands.sessions.summary: "Open the historical sessions picker (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
 commands.agent.summary: "ເລືອກຕົວແທນສຳລັບ pane ນີ້ (/agent <id> ເພື່ອປ່ຽນໂດຍກົງ)"  # {Locked="/agent","<id>"}
+commands.command.summary: "Create a terminal command card from an intent (/command <intent>)"  # {Locked="/command","<intent>"}
+command_card.intent_required: "Describe the terminal command you want Copilot to prepare."
+command_card.adjustment_required: "ອະທິບາຍວ່າ ທ່ານຕ້ອງການປັບແຕ່ງຄຳສັ່ງ Terminal ແນວໃດ."
+commands.delegate.summary: "ກະກຽມໜ້າວຽກ ແລະເປີດຕົວແທນ (/delegate <intent>)"
 
 # ── ການດຳເນີນການຄຳແນະນຳ (src/coordinator.rs) ───────────────────────────
 system.choice_execution_failed: "ຕົວເລືອກ %{choice} ລົ້ມເຫຼວ: %{error}"
 
 # ── Agent picker (src/ui/agent_popup.rs) ────────────────────────────────────
 # {Locked="↑","↓","Enter","Esc"} - key names, do not translate
+command_card.target_unavailable: "ແຖບທີ່ເລືອກບໍ່ສາມາດໃຊ້ໄດ້ອີກຕໍ່ໄປ."
+direct_command.command_required: "Enter a command after $."  # {Locked="$"}
+direct_command.execution_unavailable: "Terminal command execution is unavailable."
 agent_picker.title: "ເລືອກຕົວແທນ (↑ ↓ • Enter • Esc)"  # Agent means an AI coding agent
 # Shown when no policy-allowed AI agent CLI is installed on the machine.
 system.no_agents: "ບໍ່ພົບ CLI ຕົວແທນທີ່ມີຢູ່ໃນເຄື່ອງນີ້."  # {Locked="CLI"}

@@ -51,7 +51,7 @@ pub struct RecommendationChoice {
     pub actions: Vec<RecommendedAction>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum OpenTarget {
     Tab,

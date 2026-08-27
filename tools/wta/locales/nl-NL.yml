@@ -48,6 +48,7 @@ chat.plan_marker_in_progress: "[>]"  # {Locked}
 chat.plan_marker_pending: "[ ]"  # {Locked}
 chat.autofix_prompt_label: "Recente opdrachtfout automatisch gediagnosticeerd"
 chat.turn_canceled: "(geannuleerd)"
+chat.turn_adjusted: "(aangepast)"
 chat.turn_executed: "→ uitgevoerd: %{title}"
 # Persistent tool-category labels shown after a status marker and before a subject.
 chat.tool_kind.run: "Uitvoeren"
@@ -70,6 +71,13 @@ input.image_attachments: "📎 Afbeeldingen: %{items}"  # {Locked="%{items}"} {L
 # ── Opdrachtpopup (src/ui/command_popup.rs) ─────────────────────────────────
 # {Locked="/"} - schuine-streep-opdrachtvoorvoegsel, moet ASCII blijven
 commands.popup_title: " / opdrachten "
+delegate_picker.title: " Bestemming van de delegatie "
+delegate_picker.tab: "Nieuw tabblad"
+delegate_picker.panel: "Nieuw paneel"
+delegate_picker.intent_required: "Beschrijf het werk dat moet worden gedelegeerd."
+delegate_picker.not_configured: "Er is geen gemachtigde agent geconfigureerd."
+delegate_picker.no_parent_pane: "Er is geen werkvenster beschikbaar om te splitsen."
+delegate_picker.launch_failed: "Kan de gemachtigde niet starten: %{error}"
 commands.help_title: " Help "
 commands.help_header: "Schuine-streep-opdrachten — typ / in het invoervak."
 commands.help_escape_hint: "  //text     Letterlijke '/' verzenden (omzeilt de opdrachtparser)"  # {Locked="//text","/"}
@@ -79,7 +87,9 @@ commands.help_close_hint: "  Esc        Deze help sluiten"  # {Locked="Esc"}
 # {Locked="Enter","Esc","↵","↑","↓","←","→"} - toetsnamen en Enter-toetssymbool, niet vertalen
 recommendations.nav_hint: "(↑ ↓ navigeren • ← → om acties te wisselen • Enter selecteren • Esc annuleren)"
 recommendations.button_run_command: "[ Opdracht uitvoeren ]"
+recommendations.button_send_to_delegate: "[ Verzenden naar afgevaardigde ]"
 recommendations.button_insert_in_terminal: "Invoegen in terminal"
+recommendations.button_adjust_command: "Aanpassen"  # Button label — refine the prepared terminal command using a natural-language instruction
 recommendations.button_open_in_new_tab: "Openen in nieuw tabblad ↵"
 recommendations.button_open_in_new_panel: "Openen in nieuw deelvenster ↵"
 recommendations.button_open_tab: "Tabblad openen ↵"
@@ -210,12 +220,19 @@ commands.restart.summary: "Agent opnieuw starten"
 commands.stop.summary: "De actieve prompt annuleren"
 commands.sessions.summary: "De selector voor eerdere sessies openen (Ctrl+Shift+/)"
 commands.agent.summary: "Het agent voor dit tabblad kiezen (/agent <id> om direct te wisselen)"  # {Locked="/agent","<id>"}
+commands.command.summary: "Create a terminal command card from an intent (/command <intent>)"  # {Locked="/command","<intent>"}
+command_card.intent_required: "Describe the terminal command you want Copilot to prepare."
+command_card.adjustment_required: "Beschrijf hoe u de terminalopdracht wilt aanpassen."
+commands.delegate.summary: "Een taak voorbereiden en een gemachtigde agent openen (/delegate <intent>)"
 
 # ── Aanbeveling uitvoeren (src/coordinator.rs) ───────────────────────────
 system.choice_execution_failed: "Keuze %{choice} is mislukt: %{error}"
 
 # ── Agent picker (src/ui/agent_popup.rs) ────────────────────────────────────
 # {Locked="↑","↓","Enter","Esc"} - key names, do not translate
+command_card.target_unavailable: "Het geselecteerde deelvenster is niet langer beschikbaar."
+direct_command.command_required: "Enter a command after $."  # {Locked="$"}
+direct_command.execution_unavailable: "Terminal command execution is unavailable."
 agent_picker.title: "Agent selecteren (↑ ↓ • Enter • Esc)"  # Agent means an AI coding agent
 # Shown when no policy-allowed AI agent CLI is installed on the machine.
 system.no_agents: "Er is geen beschikbare agent-CLI gevonden op deze machine."  # {Locked="CLI"}

@@ -48,6 +48,7 @@ chat.plan_marker_in_progress: "[>]"  # {Locked}
 chat.plan_marker_pending: "[ ]"  # {Locked}
 chat.autofix_prompt_label: "Automātiski diagnosticēta nesena komandas kļūme"
 chat.turn_canceled: "(atcelts)"
+chat.turn_adjusted: "(pielāgots)"
 chat.turn_executed: "→ izpildīts: %{title}"
 # Persistent tool-category labels shown after a status marker and before a subject.
 chat.tool_kind.run: "Izpildīt"
@@ -70,6 +71,13 @@ input.image_attachments: "📎 Attēli: %{items}"  # {Locked="%{items}"} {Locked
 # ── Command popup (src/ui/command_popup.rs) ─────────────────────────────────
 # {Locked="/"} - slash-command prefix, must remain ASCII
 commands.popup_title: " / komandas "
+delegate_picker.title: " Deleģēt galamērķi "
+delegate_picker.tab: "Jauna cilne"
+delegate_picker.panel: "Jauns panelis"
+delegate_picker.intent_required: "Aprakstiet deleģējamo darbu."
+delegate_picker.not_configured: "Nav konfigurēts neviens pilnvarotais aģents."
+delegate_picker.no_parent_pane: "Nav pieejama neviena darba rūts, ko sadalīt."
+delegate_picker.launch_failed: "Nevarēja palaist delegātu: %{error}"
 commands.help_title: " Palīdzība "
 commands.help_header: "Slīpsvītras komandas — ierakstiet / ievades laukā."
 commands.help_escape_hint: "  //text     Nosūtīt burtisku '/' (apiet komandu parsētāju)"  # {Locked="//text","/"}
@@ -79,7 +87,9 @@ commands.help_close_hint: "  Esc        Aizvērt šo palīdzību"  # {Locked="Es
 # {Locked="Enter","Esc","↵","↑","↓","←","→"} - key names and Return-key glyph, do not translate
 recommendations.nav_hint: "(↑ ↓ lai pārvietotos • ← → lai pārslēgtu pogas • Enter lai izvēlētos • Esc lai atceltu)"
 recommendations.button_run_command: "[ Izpildīt komandu ]"
+recommendations.button_send_to_delegate: "[ Sūtīt deleģētajam ]"
 recommendations.button_insert_in_terminal: "Ievietot terminālī"
+recommendations.button_adjust_command: "Pielāgot"  # Button label — refine the prepared terminal command using a natural-language instruction
 recommendations.button_open_in_new_tab: "Atvērt jaunā cilnē ↵"
 recommendations.button_open_in_new_panel: "Atvērt jaunā panelī ↵"
 recommendations.button_open_tab: "Atvērt cilni ↵"
@@ -210,12 +220,19 @@ commands.restart.summary: "Restart agent"
 commands.stop.summary: "Cancel the in-flight prompt"
 commands.sessions.summary: "Open the historical sessions picker (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
 commands.agent.summary: "Izvēlieties šīs rūts aģentu (/agent <id>, lai pārslēgtu tieši)"  # {Locked="/agent","<id>"}
+commands.command.summary: "Create a terminal command card from an intent (/command <intent>)"  # {Locked="/command","<intent>"}
+command_card.intent_required: "Describe the terminal command you want Copilot to prepare."
+command_card.adjustment_required: "Aprakstiet, kā vēlaties pielāgot termināļa komandu."
+commands.delegate.summary: "Sagatavojiet uzdevumu un atveriet pilnvaroto aģentu (/delegate <intent>)"
 
 # ── Ieteikuma izpilde (src/coordinator.rs) ──────────────────────────────────
 system.choice_execution_failed: "Izvēle %{choice} neizdevās: %{error}"
 
 # ── Agent picker (src/ui/agent_popup.rs) ────────────────────────────────────
 # {Locked="↑","↓","Enter","Esc"} - key names, do not translate
+command_card.target_unavailable: "Atlasītā rūts vairs nav pieejama."
+direct_command.command_required: "Enter a command after $."  # {Locked="$"}
+direct_command.execution_unavailable: "Terminal command execution is unavailable."
 agent_picker.title: "Izvēlieties aģentu (↑ ↓ • Enter • Esc)"  # Agent means an AI coding agent
 # Shown when no policy-allowed AI agent CLI is installed on the machine.
 system.no_agents: "Šajā datorā netika atrasts neviens pieejams aģenta CLI."  # {Locked="CLI"}

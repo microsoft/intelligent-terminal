@@ -48,6 +48,7 @@ chat.plan_marker_in_progress: "[>]"  # {Locked}
 chat.plan_marker_pending: "[ ]"  # {Locked}
 chat.autofix_prompt_label: "Kürzlicher Befehlsfehler automatisch diagnostiziert"
 chat.turn_canceled: "(abgebrochen)"
+chat.turn_adjusted: "(angepasst)"
 chat.turn_executed: "→ ausgeführt: %{title}"
 # Persistent tool-category labels shown after a status marker and before a subject.
 chat.tool_kind.run: "Ausführen"
@@ -71,6 +72,13 @@ input.image_attachments: "📎 Bilder: %{items}"  # {Locked="📎","%{items}"}
 # ── Befehlspopup (src/ui/command_popup.rs) ─────────────────────────────────
 # {Locked="/"} - Schrägstrich-Befehlspräfix, muss ASCII bleiben
 commands.popup_title: " / Befehle "
+delegate_picker.title: " Ziel delegieren "
+delegate_picker.tab: "Neuer Tab"
+delegate_picker.panel: "Neues Panel"
+delegate_picker.intent_required: "Beschreiben Sie die zu delegierende Arbeit."
+delegate_picker.not_configured: "Es ist kein Delegierter Agent konfiguriert."
+delegate_picker.no_parent_pane: "Es ist kein Arbeitsbereich zum Teilen verfügbar."
+delegate_picker.launch_failed: "Delegate konnte nicht gestartet werden: %{error}"
 commands.help_title: " Hilfe "
 commands.help_header: "Schrägstrichbefehle — geben Sie / im Eingabefeld ein."
 commands.help_escape_hint: "  //text     Literales '/' senden (Befehlsparser umgehen)"  # {Locked="//text","/"}
@@ -80,7 +88,9 @@ commands.help_close_hint: "  Esc        Diese Hilfe schließen"  # {Locked="Esc"
 # {Locked="Enter","Esc","↵","↑","↓","←","→"} - Tastennamen und Eingabetaste-Symbol, nicht übersetzen
 recommendations.nav_hint: "(↑ ↓ navigieren • ← → Aktion wechseln • Enter auswählen • Esc abbrechen)"
 recommendations.button_run_command: "[ Befehl ausführen ]"
+recommendations.button_send_to_delegate: "[An Delegierten senden]"
 recommendations.button_insert_in_terminal: "In Terminal einfügen"
+recommendations.button_adjust_command: "Anpassen"  # Button label — refine the prepared terminal command using a natural-language instruction
 recommendations.button_open_in_new_tab: "In neuer Registerkarte öffnen ↵"
 recommendations.button_open_in_new_panel: "In neuem Bereich öffnen ↵"
 recommendations.button_open_tab: "Registerkarte öffnen ↵"
@@ -212,12 +222,19 @@ commands.restart.summary: "Agent neu starten"
 commands.stop.summary: "Laufende Eingabe abbrechen"
 commands.sessions.summary: "Auswahl historischer Sitzungen öffnen (Ctrl+Shift+/)"
 commands.agent.summary: "Agent für diese Registerkarte auswählen (/agent <id> zum direkten Wechseln)"  # {Locked="/agent","<id>"}
+commands.command.summary: "Create a terminal command card from an intent (/command <intent>)"  # {Locked="/command","<intent>"}
+command_card.intent_required: "Describe the terminal command you want Copilot to prepare."
+command_card.adjustment_required: "Beschreiben Sie, wie Sie den Terminalbefehl anpassen möchten."
+commands.delegate.summary: "Bereiten Sie eine Aufgabe vor und öffnen Sie einen Delegierten-Agenten (/delegate <intent>)"
 
 # ── Empfehlungsausführung (src/coordinator.rs) ───────────────────────────
 system.choice_execution_failed: "Auswahl %{choice} fehlgeschlagen: %{error}"
 
 # ── Agent picker (src/ui/agent_popup.rs) ────────────────────────────────────
 # {Locked="↑","↓","Enter","Esc"} - key names, do not translate
+command_card.target_unavailable: "Der ausgewählte Bereich ist nicht mehr verfügbar."
+direct_command.command_required: "Enter a command after $."  # {Locked="$"}
+direct_command.execution_unavailable: "Terminal command execution is unavailable."
 agent_picker.title: "Agent auswählen (↑ ↓ • Enter • Esc)"  # Agent means an AI coding agent
 # Shown when no policy-allowed AI agent CLI is installed on the machine.
 system.no_agents: "Auf diesem Computer wurde keine verfügbare Agenten-CLI gefunden."  # {Locked="CLI"}

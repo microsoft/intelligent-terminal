@@ -49,7 +49,14 @@ fn passed_for_custom_agent_falls_back_when_no_custom_suffix() {
 // `pub(super)` so the sibling `slash_command_tests` module (see the
 // `#[path]` mod in app.rs) can reuse it instead of duplicating App::new.
 pub(super) fn test_app() -> App {
-    let (prompt_tx, _prompt_rx) = tokio::sync::mpsc::unbounded_channel();
+    test_app_with_prompt_rx().0
+}
+
+fn test_app_with_prompt_rx() -> (
+    App,
+    tokio::sync::mpsc::UnboundedReceiver<crate::protocol::acp::client::PromptSubmission>,
+) {
+    let (prompt_tx, prompt_rx) = tokio::sync::mpsc::unbounded_channel();
     let (recommendation_tx, _recommendation_rx) = tokio::sync::mpsc::unbounded_channel();
     let (permission_tx, _permission_rx) = tokio::sync::mpsc::unbounded_channel();
     let (cancel_tx, _cancel_rx) = tokio::sync::mpsc::unbounded_channel();
@@ -60,21 +67,24 @@ pub(super) fn test_app() -> App {
     let (restart_tx, _restart_rx) = tokio::sync::mpsc::unbounded_channel();
     let debug_capture = Arc::new(AtomicBool::new(false));
     let (master_tx, _master_rx) = tokio::sync::mpsc::unbounded_channel();
-    App::new(
-        prompt_tx,
-        recommendation_tx,
-        permission_tx,
-        cancel_tx,
-        new_session_tx,
-        load_session_tx,
-        drop_session_tx,
-        rename_session_tx,
-        restart_tx,
-        master_tx,
-        debug_capture,
-        true,
-        false,
-        Arc::new(crate::shell::ShellManager::new()),
+    (
+        App::new(
+            prompt_tx,
+            recommendation_tx,
+            permission_tx,
+            cancel_tx,
+            new_session_tx,
+            load_session_tx,
+            drop_session_tx,
+            rename_session_tx,
+            restart_tx,
+            master_tx,
+            debug_capture,
+            true,
+            false,
+            Arc::new(crate::shell::ShellManager::new()),
+        ),
+        prompt_rx,
     )
 }
 
@@ -913,7 +923,7 @@ fn empty_pane_session_start_does_not_evict_a_bound_session() {
 /// key in that map.
 #[test]
 fn empty_pane_session_start_is_not_registered_in_active_by_pane() {
-    use crate::agent_sessions::{AgentSessionRegistry, AgentStatus, CliSource, SessionEvent};
+    use crate::agent_sessions::{AgentSessionRegistry, AgentStatus, SessionEvent};
     let mut reg = AgentSessionRegistry::new();
     let params = json!({
         "event": "agent.session.start",
@@ -2811,7 +2821,7 @@ fn slash_model_hot_applies_cloud_model_to_live_session() {
         model: "gpt-5.4".into(),
         pane_override: true,
     });
-
+    assert_eq!(app.current_tab().model_override.as_deref(), Some("gpt-5.4"));
     assert_eq!(app.current_tab().model_override.as_deref(), Some("gpt-5.4"));
     assert!(matches!(
         app.current_tab().messages.last(),
@@ -3117,6 +3127,8 @@ fn settings_agent_rebind_targets_owner_and_resets_only_agent_state() {
                 recommended_choice: None,
                 choices: Vec::new(),
             },
+            prepared_mode: None,
+            committed: false,
         });
         tab.active_direct_proposal_id = Some("old-direct-proposal".into());
         tab.autofix.generation = 7;
@@ -11221,6 +11233,50 @@ fn manual_fix_uses_the_helpers_captured_source_target() {
 }
 
 #[test]
+fn manual_fix_resolves_source_metadata_from_the_catalog() {
+    let (mut app, mut prompt_rx) = test_app_with_prompt_rx();
+    app.source_session_id = Some("A6A3DEC8-3D75-4AFA-BA75-ED5F633E3126".into());
+    app.current_tab_mut().pane_catalog.replace_snapshot(
+        1,
+        vec![tab_state::PaneDescriptor {
+            session_id: "{a6a3dec8-3d75-4afa-ba75-ed5f633e3126}".to_string(),
+            ordinal: 1,
+            title: "Source".to_string(),
+            profile: "PowerShell".to_string(),
+            cwd: "C:\\source".to_string(),
+            shell: "pwsh.exe".to_string(),
+            is_active: false,
+            is_agent_pane: false,
+            visible: true,
+            read_only: false,
+        }],
+    );
+
+    app.cmd_fix(false, String::new());
+
+    assert_eq!(
+        app.current_tab()
+            .turn
+            .prompt()
+            .and_then(|prompt| prompt.context.target_pane_id()),
+        Some("A6A3DEC8-3D75-4AFA-BA75-ED5F633E3126")
+    );
+    let context = prompt_rx
+        .try_recv()
+        .expect("manual fix submission")
+        .pane_context
+        .expect("manual fix pane context");
+    assert_eq!(
+        context.source_pane_id.as_deref(),
+        Some("A6A3DEC8-3D75-4AFA-BA75-ED5F633E3126")
+    );
+    assert_eq!(
+        context.cached_source.expect("cached metadata").cwd,
+        "C:\\source"
+    );
+}
+
+#[test]
 fn prompt_target_binding_survives_tab_rename() {
     let mut app = test_app();
     submit_fix_prompt(&mut app, 42);
@@ -13497,6 +13553,699 @@ fn chip_recompute_dedupes_and_releases_on_idle() {
     app.tab_mut(DEFAULT_TAB_ID).turn = TurnState::Idle;
     app.recompute_chip_override(DEFAULT_TAB_ID);
     assert_eq!(app.tab_mut(DEFAULT_TAB_ID).last_emitted_chip_override, None,);
+}
+
+#[test]
+fn at_sign_is_plain_prompt_text_and_never_opens_a_pane_picker() {
+    let mut app = test_app();
+    app.current_tab_mut().replace_input("@".to_string());
+
+    assert_eq!(app.current_tab().input, "@");
+    assert!(app.current_tab().command_popup_candidates.is_empty());
+    assert!(app.command_popup_state().is_none());
+    assert!(app.current_tab().input_has_nav_focus());
+}
+
+#[test]
+fn command_at_is_ordinary_intent_for_command_and_alias() {
+    for command in ["/command @", "/cmd @"] {
+        let (mut app, mut prompt_rx) = test_app_with_prompt_rx();
+        app.state = ConnectionState::Connected;
+        app.source_session_id = Some("source-pane".to_string());
+        app.current_tab_mut().replace_input(command.to_string());
+
+        app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+
+        let prompt = prompt_rx.try_recv().expect("command preparation");
+        assert!(prompt.text.contains("## User Intent\n@"));
+        assert_eq!(
+            prompt
+                .pane_context
+                .as_ref()
+                .and_then(|context| context.source_pane_id.as_deref()),
+            Some("source-pane")
+        );
+        assert!(app.current_tab().input.is_empty());
+    }
+}
+
+#[test]
+fn delegate_at_is_ordinary_intent_text() {
+    let mut app = test_app();
+
+    app.cmd_delegate("@ investigate this pane".to_string());
+
+    assert!(app.current_tab().delegate_picker_open);
+    assert_eq!(
+        app.current_tab()
+            .pending_delegate
+            .as_ref()
+            .map(|pending| pending.intent.as_str()),
+        Some("@ investigate this pane")
+    );
+    assert!(app.current_tab().messages.is_empty());
+}
+
+#[test]
+fn command_request_uses_source_target_and_standard_prepared_mode() {
+    let (mut app, mut prompt_rx) = test_app_with_prompt_rx();
+    app.source_session_id = Some("pane-one".to_string());
+    app.current_tab_mut().pane_catalog.replace_snapshot(
+        1,
+        vec![tab_state::PaneDescriptor {
+            session_id: "pane-one".to_string(),
+            ordinal: 1,
+            title: "PowerShell".to_string(),
+            profile: "PowerShell".to_string(),
+            cwd: "C:\\one".to_string(),
+            shell: "pwsh.exe".to_string(),
+            is_active: true,
+            is_agent_pane: false,
+            visible: true,
+            read_only: false,
+        }],
+    );
+
+    app.cmd_command("list files recursively".to_string());
+
+    let prompt = prompt_rx.try_recv().expect("command prompt");
+    assert!(prompt.text.contains("list files recursively"));
+    assert_eq!(
+        prompt
+            .pane_context
+            .as_ref()
+            .and_then(|context| context.source_pane_id.as_deref()),
+        Some("pane-one")
+    );
+    let pending = app
+        .current_tab()
+        .pending_preparation
+        .as_ref()
+        .expect("pending command proposal");
+    assert_eq!(pending.mode, PreparedActionMode::Command);
+    assert_eq!(pending.target_session_id, "pane-one");
+}
+
+#[test]
+fn command_uses_active_writable_catalog_pane_only_when_source_is_unavailable() {
+    let (mut app, mut prompt_rx) = test_app_with_prompt_rx();
+    let pane = |session_id: &str| tab_state::PaneDescriptor {
+        session_id: session_id.to_string(),
+        ordinal: 1,
+        title: "PowerShell".to_string(),
+        profile: "PowerShell".to_string(),
+        cwd: "C:\\source".to_string(),
+        shell: "pwsh.exe".to_string(),
+        is_active: false,
+        is_agent_pane: false,
+        visible: true,
+        read_only: false,
+    };
+    let mut read_only = pane("read-only");
+    read_only.is_active = true;
+    read_only.read_only = true;
+    let mut writable = pane("bootstrap-pane");
+    writable.is_active = true;
+    app.current_tab_mut()
+        .pane_catalog
+        .replace_snapshot(1, vec![read_only, writable]);
+
+    app.cmd_command("list files".to_string());
+
+    let prompt = prompt_rx.try_recv().expect("command preparation");
+    assert_eq!(
+        prompt
+            .pane_context
+            .as_ref()
+            .and_then(|context| context.source_pane_id.as_deref()),
+        Some("bootstrap-pane")
+    );
+    assert_eq!(
+        app.current_tab()
+            .pending_preparation
+            .as_ref()
+            .map(|preparation| preparation.target_session_id.as_str()),
+        Some("bootstrap-pane")
+    );
+}
+
+#[test]
+fn command_target_survives_braced_catalog_refresh() {
+    let (mut app, mut prompt_rx) = test_app_with_prompt_rx();
+    app.owner_tab_id = Some(DEFAULT_TAB_ID.to_string());
+    app.window_id = Some("window-one".to_string());
+    app.source_session_id = Some("A6A3DEC8-3D75-4AFA-BA75-ED5F633E3126".to_string());
+    app.current_tab_mut().pane_catalog.replace_snapshot(
+        1,
+        vec![tab_state::PaneDescriptor {
+            session_id: "A6A3DEC8-3D75-4AFA-BA75-ED5F633E3126".to_string(),
+            ordinal: 1,
+            title: "PowerShell".to_string(),
+            profile: "PowerShell".to_string(),
+            cwd: "C:\\one".to_string(),
+            shell: "pwsh.exe".to_string(),
+            is_active: true,
+            is_agent_pane: false,
+            visible: true,
+            read_only: false,
+        }],
+    );
+    app.cmd_command("list files recursively".to_string());
+    let _ = prompt_rx.try_recv().expect("command prompt");
+
+    app.handle_event(AppEvent::WtEvent {
+        method: "pane_catalog_changed".to_string(),
+        pane_id: String::new(),
+        tab_id: None,
+        params: json!({
+            "window_id": "window-one",
+            "tab_id": DEFAULT_TAB_ID,
+            "generation": 2,
+            "panes": [{
+                "session_id": "{a6a3dec8-3d75-4afa-ba75-ed5f633e3126}",
+                "ordinal": 1,
+                "title": "PowerShell",
+                "profile": "PowerShell",
+                "cwd": "C:\\one",
+                "shell": "pwsh.exe",
+                "is_active": true,
+                "is_agent_pane": false,
+                "visible": true,
+                "read_only": false
+            }]
+        }),
+    });
+
+    let tab = app.current_tab();
+    assert_eq!(tab.pane_catalog.generation, 2);
+    assert!(tab
+        .pane_catalog
+        .get("A6A3DEC8-3D75-4AFA-BA75-ED5F633E3126")
+        .is_some());
+    assert!(tab.pending_preparation.is_some());
+    assert!(!tab.turn.is_idle());
+}
+
+#[test]
+fn malformed_catalog_refresh_does_not_invalidate_command_target() {
+    let (mut app, mut prompt_rx) = test_app_with_prompt_rx();
+    app.owner_tab_id = Some(DEFAULT_TAB_ID.to_string());
+    app.source_session_id = Some("pane-one".to_string());
+    app.current_tab_mut().pane_catalog.replace_snapshot(
+        1,
+        vec![tab_state::PaneDescriptor {
+            session_id: "pane-one".to_string(),
+            ordinal: 1,
+            title: "PowerShell".to_string(),
+            profile: "PowerShell".to_string(),
+            cwd: "C:\\one".to_string(),
+            shell: "pwsh.exe".to_string(),
+            is_active: true,
+            is_agent_pane: false,
+            visible: true,
+            read_only: false,
+        }],
+    );
+    app.cmd_command("list files recursively".to_string());
+    let _ = prompt_rx.try_recv().expect("command prompt");
+
+    app.handle_event(AppEvent::WtEvent {
+        method: "pane_catalog_changed".to_string(),
+        pane_id: String::new(),
+        tab_id: None,
+        params: json!({
+            "tab_id": DEFAULT_TAB_ID,
+            "generation": 2,
+            "panes": "not-an-array"
+        }),
+    });
+
+    let tab = app.current_tab();
+    assert_eq!(tab.pane_catalog.generation, 1);
+    assert!(tab.pane_catalog.get("pane-one").is_some());
+    assert!(tab.pending_preparation.is_some());
+    assert!(!tab.turn.is_idle());
+}
+
+#[test]
+fn catalog_refresh_cancels_only_a_command_whose_exact_target_disappears() {
+    let (mut app, mut prompt_rx) = test_app_with_prompt_rx();
+    app.owner_tab_id = Some(DEFAULT_TAB_ID.to_string());
+    app.source_session_id = Some("command-pane".to_string());
+    app.current_tab_mut().session_id = Some("session-one".to_string());
+    app.current_tab_mut().pane_catalog.replace_snapshot(
+        1,
+        vec![tab_state::PaneDescriptor {
+            session_id: "command-pane".to_string(),
+            ordinal: 1,
+            title: "PowerShell".to_string(),
+            profile: "PowerShell".to_string(),
+            cwd: "C:\\one".to_string(),
+            shell: "pwsh.exe".to_string(),
+            is_active: true,
+            is_agent_pane: false,
+            visible: true,
+            read_only: false,
+        }],
+    );
+    app.cmd_command("list files".to_string());
+    let _ = prompt_rx.try_recv().expect("command prompt");
+
+    app.handle_event(AppEvent::WtEvent {
+        method: "pane_catalog_changed".to_string(),
+        pane_id: String::new(),
+        tab_id: None,
+        params: json!({
+            "tab_id": DEFAULT_TAB_ID,
+            "generation": 2,
+            "panes": []
+        }),
+    });
+
+    let tab = app.current_tab();
+    assert!(tab.turn.is_idle());
+    assert!(tab.pending_preparation.is_none());
+    assert!(tab.messages.iter().any(|message| matches!(
+        message,
+        ChatMessage::Notice {
+            kind: NoticeKind::Warning,
+            text,
+        } if text == &t!("command_card.target_unavailable").into_owned()
+    )));
+}
+
+#[test]
+fn catalog_refresh_does_not_cancel_an_ordinary_prompt() {
+    let (mut app, mut prompt_rx) = test_app_with_prompt_rx();
+    app.state = ConnectionState::Connected;
+    app.owner_tab_id = Some(DEFAULT_TAB_ID.to_string());
+    app.source_session_id = Some("source-pane".to_string());
+    app.current_tab_mut().session_id = Some("session-one".to_string());
+    app.current_tab_mut().pane_catalog.replace_snapshot(
+        1,
+        vec![tab_state::PaneDescriptor {
+            session_id: "source-pane".to_string(),
+            ordinal: 1,
+            title: "PowerShell".to_string(),
+            profile: "PowerShell".to_string(),
+            cwd: "C:\\one".to_string(),
+            shell: "pwsh.exe".to_string(),
+            is_active: true,
+            is_agent_pane: false,
+            visible: true,
+            read_only: false,
+        }],
+    );
+    app.current_tab_mut()
+        .replace_input("explain this output".to_string());
+    app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+    let _ = prompt_rx.try_recv().expect("ordinary prompt");
+
+    app.handle_event(AppEvent::WtEvent {
+        method: "pane_catalog_changed".to_string(),
+        pane_id: String::new(),
+        tab_id: None,
+        params: json!({
+            "tab_id": DEFAULT_TAB_ID,
+            "generation": 2,
+            "panes": []
+        }),
+    });
+
+    assert!(app.current_tab().turn.is_in_flight());
+    assert!(app.current_tab().pending_preparation.is_none());
+}
+
+#[test]
+fn command_completion_deterministically_surfaces_a_host_bound_card() {
+    let (mut app, mut prompt_rx) = test_app_with_prompt_rx();
+    app.source_session_id = Some("pane-one".to_string());
+    app.current_tab_mut().pane_catalog.replace_snapshot(
+        1,
+        vec![tab_state::PaneDescriptor {
+            session_id: "pane-one".to_string(),
+            ordinal: 1,
+            title: "PowerShell".to_string(),
+            profile: "PowerShell".to_string(),
+            cwd: "C:\\one".to_string(),
+            shell: "pwsh.exe".to_string(),
+            is_active: true,
+            is_agent_pane: false,
+            visible: true,
+            read_only: false,
+        }],
+    );
+    app.cmd_command("list files recursively".to_string());
+    let _ = prompt_rx.try_recv().expect("command prompt");
+    assert!(
+        render_to_text(&mut app, 100, 30).contains("> [Command] list files recursively"),
+        "command badge must be visible as soon as the prompt is submitted"
+    );
+    app.handle_event(AppEvent::AgentMessageChunk {
+        session_id: DEFAULT_TAB_ID.to_string(),
+        text: "Get-ChildItem ".to_string(),
+    });
+    app.handle_event(AppEvent::AgentMessageChunk {
+        session_id: DEFAULT_TAB_ID.to_string(),
+        text: "-Recurse\r\n".to_string(),
+    });
+    app.handle_event(AppEvent::AgentMessageEnd {
+        session_id: DEFAULT_TAB_ID.to_string(),
+    });
+
+    let tab = app.current_tab();
+    let TurnState::Surfaced {
+        outcome: TurnOutcome::Recommendation(recommendations),
+        end_pending,
+        ..
+    } = &tab.turn
+    else {
+        panic!("expected host-generated command card, got {:?}", tab.turn);
+    };
+    assert!(!end_pending);
+    assert_eq!(recommendations.recommended_choice, Some(1));
+    assert_eq!(recommendations.choices[0].title, "list files recursively");
+    assert_eq!(
+        recommendations.choices[0].actions,
+        vec![RecommendedAction::Send {
+            parent: "pane-one".to_string(),
+            input: "Get-ChildItem -Recurse".to_string(),
+        }]
+    );
+    assert_eq!(tab.active_prepared_mode, Some(PreparedActionMode::Command));
+    assert!(tab.pending_preparation.is_none());
+    assert!(tab.active_direct_proposal_id.is_none());
+    assert!(tab.messages.is_empty());
+    assert_eq!(tab.command_revision_parents.get(&0), Some(&0));
+}
+
+#[test]
+fn adjust_recompiles_the_command_without_changing_its_target() {
+    let (mut app, mut prompt_rx) = test_app_with_prompt_rx();
+    app.source_session_id = Some("pane-one".to_string());
+    app.current_tab_mut().pane_catalog.replace_snapshot(
+        1,
+        vec![tab_state::PaneDescriptor {
+            session_id: "pane-one".to_string(),
+            ordinal: 1,
+            title: "PowerShell".to_string(),
+            profile: "PowerShell".to_string(),
+            cwd: "C:\\one".to_string(),
+            shell: "pwsh.exe".to_string(),
+            is_active: true,
+            is_agent_pane: false,
+            visible: true,
+            read_only: false,
+        }],
+    );
+    app.cmd_command("list files".to_string());
+    let _ = prompt_rx.try_recv().expect("initial command prompt");
+    app.handle_event(AppEvent::AgentMessageChunk {
+        session_id: DEFAULT_TAB_ID.to_string(),
+        text: "Get-ChildItem".to_string(),
+    });
+    app.handle_event(AppEvent::AgentMessageEnd {
+        session_id: DEFAULT_TAB_ID.to_string(),
+    });
+
+    assert_eq!(
+        app.current_tab().completed_turns[0].details.last(),
+        Some(&ChatMessage::Agent("✓ Run: Get-ChildItem".to_string()))
+    );
+
+    app.focus_next_recommendation_action();
+    app.focus_next_recommendation_action();
+    assert_eq!(app.current_tab().selected_button, 2);
+    app.turn_execute_card(DEFAULT_TAB_ID);
+
+    let tab = app.current_tab();
+    assert_eq!(tab.recommendation_focus, RecommendationFocus::Input);
+    assert_eq!(
+        tab.command_adjustment,
+        Some(CommandAdjustment {
+            title: "list files".to_string(),
+            current_command: "Get-ChildItem".to_string(),
+            target_session_id: "pane-one".to_string(),
+            history_index: 0,
+            revision_root_index: 0,
+        })
+    );
+    assert!(tab.turn.recommendations().is_some());
+
+    app.handle_key(KeyEvent::new(KeyCode::Up, KeyModifiers::NONE));
+    assert_eq!(
+        app.current_tab().recommendation_focus,
+        RecommendationFocus::Input
+    );
+    assert_eq!(app.current_tab().selected_button, 2);
+
+    app.current_tab_mut()
+        .replace_input("discard this adjustment".to_string());
+    app.handle_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
+    let tab = app.current_tab();
+    assert!(tab.command_adjustment.is_none());
+    assert!(tab.input.is_empty());
+    assert_eq!(tab.recommendation_focus, RecommendationFocus::Button);
+    assert!(tab.turn.recommendations().is_some());
+
+    app.current_tab_mut().selected_button = 2;
+    app.turn_execute_card(DEFAULT_TAB_ID);
+    app.source_session_id = Some("pane-two".to_string());
+    app.current_tab_mut()
+        .replace_input("include hidden files".to_string());
+    app.submit_command_adjustment();
+
+    assert_eq!(
+        app.current_tab().completed_turns[0].details.last(),
+        Some(&ChatMessage::Agent("✎ Get-ChildItem".to_string()))
+    );
+    assert!(
+        render_to_text(&mut app, 100, 30).contains("  ↳ > include hidden files"),
+        "an active adjustment must render as a child of its command root"
+    );
+    let adjustment_prompt = prompt_rx.try_recv().expect("adjustment prompt");
+    assert!(adjustment_prompt
+        .text
+        .contains("## Original User Intent\nlist files"));
+    assert!(adjustment_prompt
+        .text
+        .contains("## Current Terminal Input\nGet-ChildItem"));
+    assert!(adjustment_prompt
+        .text
+        .contains(&["## Requested Adjustment", "include hidden files"].join("\n")));
+    assert_eq!(
+        adjustment_prompt
+            .pane_context
+            .as_ref()
+            .and_then(|context| context.source_pane_id.as_deref()),
+        Some("pane-one")
+    );
+    assert!(app.current_tab().command_adjustment.is_none());
+
+    app.handle_event(AppEvent::AgentMessageChunk {
+        session_id: DEFAULT_TAB_ID.to_string(),
+        text: "Get-ChildItem -Force".to_string(),
+    });
+    app.handle_event(AppEvent::AgentMessageEnd {
+        session_id: DEFAULT_TAB_ID.to_string(),
+    });
+
+    let tab = app.current_tab();
+    let recommendations = tab.turn.recommendations().expect("adjusted command card");
+    assert_eq!(recommendations.choices[0].title, "list files");
+    assert_eq!(
+        recommendations.choices[0].actions,
+        vec![RecommendedAction::Send {
+            parent: "pane-one".to_string(),
+            input: "Get-ChildItem -Force".to_string(),
+        }]
+    );
+    assert_eq!(tab.active_prepared_mode, Some(PreparedActionMode::Command));
+    let adjusted_marker = t!("chat.turn_adjusted").into_owned();
+    assert_eq!(
+        tab.completed_turns[0].trailing_marker.as_deref(),
+        Some(adjusted_marker.as_str())
+    );
+    assert_eq!(tab.command_revision_parents.get(&1), Some(&0));
+    assert_eq!(tab.command_revision_parents.get(&0), Some(&0));
+
+    app.current_tab_mut().selected_button = 2;
+    app.turn_execute_card(DEFAULT_TAB_ID);
+    app.current_tab_mut()
+        .replace_input("sort by name".to_string());
+    app.submit_command_adjustment();
+    let _ = prompt_rx.try_recv().expect("second adjustment prompt");
+    app.handle_event(AppEvent::AgentMessageChunk {
+        session_id: DEFAULT_TAB_ID.to_string(),
+        text: "Get-ChildItem -Force | Sort-Object Name".to_string(),
+    });
+    app.handle_event(AppEvent::AgentMessageEnd {
+        session_id: DEFAULT_TAB_ID.to_string(),
+    });
+
+    let tab = app.current_tab();
+    assert_eq!(tab.completed_turns.len(), 3);
+    assert_eq!(
+        tab.completed_turns[1].trailing_marker.as_deref(),
+        Some(adjusted_marker.as_str())
+    );
+    assert_eq!(tab.command_revision_parents.get(&1), Some(&0));
+    assert_eq!(tab.command_revision_parents.get(&2), Some(&0));
+    assert_eq!(tab.command_revision_parents.get(&0), Some(&0));
+}
+
+#[test]
+fn command_without_an_available_target_does_not_call_the_model() {
+    let (mut app, mut prompt_rx) = test_app_with_prompt_rx();
+
+    app.cmd_command("list files recursively".to_string());
+
+    assert!(prompt_rx.try_recv().is_err());
+    assert!(app.current_tab().pending_preparation.is_none());
+    assert!(app.current_tab().turn.is_idle());
+    assert!(app.current_tab().messages.iter().any(|message| matches!(
+        message,
+        ChatMessage::Notice {
+            kind: NoticeKind::Warning,
+            text,
+        } if !text.trim().is_empty()
+    )));
+}
+
+#[test]
+fn command_preparation_rejects_model_authored_terminal_action_proposals() {
+    let (mut app, mut prompt_rx) = test_app_with_prompt_rx();
+    stage_proposal_session(&mut app, DEFAULT_TAB_ID);
+    app.source_session_id = Some("pane-one".to_string());
+    app.cmd_command("list files recursively".to_string());
+    let prompt = prompt_rx.try_recv().expect("command prompt");
+    let context = crate::agent_tools::action_proposal::channel::ValidationContext {
+        proposal_id: "model-authored-command".to_string(),
+        binding: crate::agent_tools::action_proposal::channel::ProposalBinding {
+            session_id: DEFAULT_TAB_ID.to_string(),
+            prompt_id: prompt.id,
+            active_target: Some("pane-one".to_string()),
+            is_autofix: false,
+        },
+    };
+
+    let decision = app.evaluate_direct_terminal_action_proposal(
+        &context,
+        TERMINAL_AGENT_PROPOSAL_PAYLOAD,
+        crate::agent_tools::action_proposal::pipe::ProposalPayloadSource::Cli,
+    );
+
+    assert_eq!(
+        decision.status,
+        crate::agent_tools::action_proposal::channel::ProposalValidationStatus::Rejected
+    );
+    assert!(decision
+        .reason
+        .as_deref()
+        .is_some_and(|reason| reason.contains("host-managed")));
+    assert!(app.current_tab().pending_preparation.is_some());
+    assert!(app.current_tab().pending_terminal_action_proposal.is_none());
+}
+
+#[test]
+fn dollar_command_bypasses_model_and_runs_against_source_target() {
+    let mut app = test_app();
+    let (recommendation_tx, mut recommendation_rx) = tokio::sync::mpsc::unbounded_channel();
+    app.recommendation_tx = recommendation_tx;
+    app.source_session_id = Some("pane-one".to_string());
+    app.current_tab_mut().pane_catalog.replace_snapshot(
+        1,
+        vec![tab_state::PaneDescriptor {
+            session_id: "pane-one".to_string(),
+            ordinal: 1,
+            title: "PowerShell".to_string(),
+            profile: "PowerShell".to_string(),
+            cwd: "C:\\one".to_string(),
+            shell: "pwsh.exe".to_string(),
+            is_active: true,
+            is_agent_pane: false,
+            visible: true,
+            read_only: false,
+        }],
+    );
+    app.current_tab_mut()
+        .replace_input("$ git status".to_string());
+
+    assert!(app.try_execute_direct_pane_command());
+
+    let execution = recommendation_rx.try_recv().expect("direct execution");
+    assert!(!execution.insert_only);
+    assert_eq!(execution.context.target_pane_id(), Some("pane-one"));
+    assert_eq!(
+        execution.choice.actions,
+        vec![RecommendedAction::Send {
+            parent: "pane-one".to_string(),
+            input: "git status".to_string(),
+        }]
+    );
+    assert!(app.current_tab().input.is_empty());
+}
+
+#[test]
+fn dollar_command_uses_source_pane_without_catalog_metadata() {
+    let mut app = test_app();
+    let (recommendation_tx, mut recommendation_rx) = tokio::sync::mpsc::unbounded_channel();
+    app.recommendation_tx = recommendation_tx;
+    app.source_session_id = Some("source-pane".to_string());
+    app.current_tab_mut()
+        .replace_input("$ echo ready".to_string());
+
+    assert!(app.try_execute_direct_pane_command());
+
+    let execution = recommendation_rx.try_recv().expect("direct execution");
+    assert_eq!(execution.context.target_pane_id(), Some("source-pane"));
+    assert_eq!(
+        execution.choice.actions,
+        vec![RecommendedAction::Send {
+            parent: "source-pane".to_string(),
+            input: "echo ready".to_string(),
+        }]
+    );
+}
+
+#[test]
+fn ordinary_prompt_snapshots_source_pane_target_and_cached_metadata() {
+    let (mut app, mut prompt_rx) = test_app_with_prompt_rx();
+    app.state = ConnectionState::Connected;
+    app.source_session_id = Some("pane-two".to_string());
+    app.current_tab_mut().pane_catalog.replace_snapshot(
+        1,
+        vec![tab_state::PaneDescriptor {
+            session_id: "pane-two".to_string(),
+            ordinal: 2,
+            title: "PowerShell".to_string(),
+            profile: "PowerShell".to_string(),
+            cwd: "C:\\two".to_string(),
+            shell: "pwsh.exe".to_string(),
+            is_active: false,
+            is_agent_pane: false,
+            visible: true,
+            read_only: false,
+        }],
+    );
+    app.current_tab_mut()
+        .replace_input("explain the current output".to_string());
+
+    app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+
+    let prompt = prompt_rx.try_recv().expect("ordinary prompt submission");
+    let context = prompt.pane_context.expect("pane context");
+    assert_eq!(context.source_pane_id.as_deref(), Some("pane-two"));
+    let cached = context.cached_source.expect("cached target metadata");
+    assert_eq!(cached.cwd, "C:\\two");
+    assert_eq!(cached.shell, "pwsh.exe");
+    assert_eq!(
+        app.current_tab()
+            .turn
+            .prompt()
+            .and_then(|prompt| prompt.context.target_pane_id()),
+        Some("pane-two")
+    );
 }
 
 #[test]

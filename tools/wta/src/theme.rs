@@ -66,6 +66,7 @@ pub const BUTTON: Style = Style::new().fg(Color::Gray).bg(BUTTON_BG);
 pub const BUTTON_FOCUSED: Style = Style::new()
     .add_modifier(Modifier::REVERSED)
     .add_modifier(Modifier::BOLD);
+pub const ACTIVE_REVERSED: Style = Style::new().add_modifier(Modifier::REVERSED);
 pub const BUTTON_PLAIN: Style = Style::new().fg(Color::Reset);
 // Chat message dot indicators
 pub const DOT_ERROR: Style = Style::new().fg(Color::Red).add_modifier(Modifier::BOLD);

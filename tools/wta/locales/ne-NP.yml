@@ -48,6 +48,7 @@ chat.plan_marker_in_progress: "[>]"  # {Locked}
 chat.plan_marker_pending: "[ ]"  # {Locked}
 chat.autofix_prompt_label: "हालैको आदेश असफलता स्वचालित रूपमा निदान गरियो"
 chat.turn_canceled: "(रद्द गरियो)"
+chat.turn_adjusted: "(समायोजित गरियो)"
 chat.turn_executed: "→ कार्यान्वयन गरियो: %{title}"
 # Persistent tool-category labels shown after a status marker and before a subject.
 chat.tool_kind.run: "चलाउनुहोस्"
@@ -70,6 +71,13 @@ input.image_attachments: "📎 छविहरू: %{items}"  # {Locked="%{items
 # ── कमाण्ड पपअप (src/ui/command_popup.rs) ─────────────────────────────────
 # {Locked="/"} - स्ल्याश-कमाण्ड उपसर्ग, ASCII हुनुपर्छ
 commands.popup_title: " / कमाण्डहरू "
+delegate_picker.title: " प्रतिनिधि गन्तव्य "
+delegate_picker.tab: "नयाँ ट्याब"
+delegate_picker.panel: "नयाँ प्यानल"
+delegate_picker.intent_required: "प्रत्यायोजित कार्यको वर्णन गर्नुहोस्।"
+delegate_picker.not_configured: "कुनै पनि प्रतिनिधि एजेन्ट कन्फिगर गरिएको छैन।"
+delegate_picker.no_parent_pane: "विभाजित गर्नको लागि कुनै कार्य फलक उपलब्ध छैन।"
+delegate_picker.launch_failed: " प्रतिनिधि सुरु गर्न सकिएन: %{error}"
 commands.help_title: " मद्दत "
 commands.help_header: "स्ल्याश कमाण्डहरू — इनपुट बक्समा / टाइप गर्नुहोस्।"
 commands.help_escape_hint: "  //text     शाब्दिक '/' पठाउनुहोस् (कमाण्ड पार्सर एस्केप गर्छ)"  # {Locked="//text","/"}
@@ -87,12 +95,18 @@ commands.restart.summary: "एजेन्ट पुन: सुरु गर्�
 commands.stop.summary: "चलिरहेको प्रम्प्ट रद्द गर्नुहोस्"
 commands.sessions.summary: "ऐतिहासिक सत्र पिकर खोल्नुहोस् (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
 commands.agent.summary: "यो पेनका लागि एजेन्ट छान्नुहोस् (सिधै बदल्न /agent <id>)"  # {Locked="/agent","<id>"}
+commands.command.summary: "Create a terminal command card from an intent (/command <intent>)"  # {Locked="/command","<intent>"}
+command_card.intent_required: "Describe the terminal command you want Copilot to prepare."
+command_card.adjustment_required: "तपाईं टर्मिनल आदेशलाई कसरी समायोजन गर्न चाहनुहुन्छ भनेर वर्णन गर्नुहोस्।"
+commands.delegate.summary: "कार्य तयार गर्नुहोस् र प्रतिनिधि एजेन्ट खोल्नुहोस् (/delegate <intent>)"
 
 # ── सिफारिस प्यानल (src/ui/recommendations.rs) ───────────────────────────────
 # {Locked="Enter","Esc","↵","↑","↓","←","→"} - कुञ्जी नामहरू र Return-कुञ्जी ग्लिफ, अनुवाद नगर्नुहोस्
 recommendations.nav_hint: "(↑ ↓ नेभिगेट गर्न • ← → बटनहरू स्विच गर्न • Enter चयन गर्न • Esc रद्द गर्न)"
 recommendations.button_run_command: "[ कमाण्ड चलाउनुहोस् ]"
+recommendations.button_send_to_delegate: "[ प्रतिनिधिलाई पठाउनुहोस् ]"
 recommendations.button_insert_in_terminal: "टर्मिनलमा सम्मिलित गर्नुहोस्"
+recommendations.button_adjust_command: "समायोजन गर्नुहोस्"  # Button label — refine the prepared terminal command using a natural-language instruction
 recommendations.button_open_in_new_tab: "नयाँ ट्याबमा खोल्नुहोस् ↵"
 recommendations.button_open_in_new_panel: "नयाँ प्यानलमा खोल्नुहोस् ↵"
 recommendations.button_open_tab: "ट्याब खोल्नुहोस् ↵"
@@ -217,6 +231,9 @@ system.choice_execution_failed: "छनोट %{choice} असफल भयो: 
 
 # ── Agent picker (src/ui/agent_popup.rs) ────────────────────────────────────
 # {Locked="↑","↓","Enter","Esc"} - key names, do not translate
+command_card.target_unavailable: "चयन गरिएको फलक अब उपलब्ध छैन।"
+direct_command.command_required: "Enter a command after $."  # {Locked="$"}
+direct_command.execution_unavailable: "Terminal command execution is unavailable."
 agent_picker.title: "एजेन्ट छान्नुहोस् (↑ ↓ • Enter • Esc)"  # Agent means an AI coding agent
 # Shown when no policy-allowed AI agent CLI is installed on the machine.
 system.no_agents: "यस मेसिनमा कुनै पनि उपलब्ध एजेन्ट CLI फेला परेन।"  # {Locked="CLI"}
