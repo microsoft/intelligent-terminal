@@ -3762,6 +3762,9 @@ fn dispatch_master_ext_request(
                 match result {
                     Ok(config_options) => {
                         if let Some(config_options) = config_options {
+                            client_state
+                                .native_yolo
+                                .record_from_config_update(&session_id, &config_options);
                             let (available_models, current_model_id) =
                                 crate::protocol::acp::model_select::models_from_config_options(
                                     session_id.0.as_ref(),

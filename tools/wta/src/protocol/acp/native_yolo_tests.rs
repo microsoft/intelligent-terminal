@@ -225,6 +225,47 @@ fn discovers_codex_full_access_config_and_restore_value() {
 }
 
 #[test]
+fn claude_and_codex_use_legacy_mode_when_config_option_is_absent() {
+    for (agent_id, enable_mode, restore_mode) in [
+        (
+            crate::agent_registry::CLAUDE_AGENT_ID,
+            "bypassPermissions",
+            "plan",
+        ),
+        (
+            crate::agent_registry::CODEX_AGENT_ID,
+            "agent-full-access",
+            "read-only",
+        ),
+    ] {
+        let response = serde_json::json!({
+            "sessionId": format!("{agent_id}-mode-session"),
+            "modes": {
+                "currentModeId": restore_mode,
+                "availableModes": [
+                    {"id": restore_mode, "name": "Restore"},
+                    {"id": enable_mode, "name": "Enable"}
+                ]
+            }
+        });
+        let response = serde_json::to_string(&response).unwrap();
+
+        assert_eq!(
+            discover(agent_id, &response, true),
+            Ok(NativeYoloAction::SetMode {
+                mode_id: enable_mode.to_string(),
+            })
+        );
+        assert_eq!(
+            discover(agent_id, &response, false),
+            Ok(NativeYoloAction::SetMode {
+                mode_id: restore_mode.to_string(),
+            })
+        );
+    }
+}
+
+#[test]
 fn discovers_gemini_yolo_mode_and_restore_value() {
     let response = r#"{
         "sessionId": "gemini-session",
@@ -290,15 +331,17 @@ fn missing_capability_is_safe_to_disable_only_for_new_sessions() {
         state.action_for(&new_session_id, false),
         Ok(NativeYoloAction::Noop)
     );
-    assert!(state.action_for(&new_session_id, true).is_err());
+    let expected =
+        Err("copilot did not advertise its expected ACP session Yolo capability".to_string());
+    assert_eq!(state.action_for(&new_session_id, true), expected);
 
     let loaded_session_id = acp::schema::v1::SessionId::new("loaded-without-capability");
     let load_response: acp::schema::v1::LoadSessionResponse =
         serde_json::from_str(r#"{"configOptions": []}"#).unwrap();
     state.record_from_load_session(&loaded_session_id, &load_response);
 
-    assert!(state.action_for(&loaded_session_id, false).is_err());
-    assert!(state.action_for(&loaded_session_id, true).is_err());
+    assert_eq!(state.action_for(&loaded_session_id, false), expected);
+    assert_eq!(state.action_for(&loaded_session_id, true), expected);
 }
 
 #[test]
@@ -335,6 +378,135 @@ fn restore_values_are_isolated_per_session() {
     );
     assert_eq!(
         state.action_for(&acp::schema::v1::SessionId::new("plan-session"), false),
+        Ok(NativeYoloAction::SetConfigOption {
+            config_id: "mode".to_string(),
+            value: "plan".to_string(),
+        })
+    );
+}
+
+#[test]
+fn config_update_refreshes_the_provider_restore_value() {
+    let state = NativeYoloState::new();
+    state.set_resolved_agent_id(Some(crate::agent_registry::CLAUDE_AGENT_ID));
+    let response: acp::schema::v1::NewSessionResponse = serde_json::from_value(serde_json::json!({
+        "sessionId": "config-update-session",
+        "configOptions": [{
+            "id": "mode",
+            "name": "Mode",
+            "category": "mode",
+            "type": "select",
+            "currentValue": "default",
+            "options": [
+                {"value": "default", "name": "Default"},
+                {"value": "plan", "name": "Plan"},
+                {"value": "bypassPermissions", "name": "Bypass Permissions"}
+            ]
+        }]
+    }))
+    .unwrap();
+    let session_id = response.session_id.clone();
+    state.record_from_new_session(&response);
+
+    let updated: acp::schema::v1::NewSessionResponse = serde_json::from_value(serde_json::json!({
+        "sessionId": "unused",
+        "configOptions": [{
+            "id": "mode",
+            "name": "Mode",
+            "category": "mode",
+            "type": "select",
+            "currentValue": "plan",
+            "options": [
+                {"value": "default", "name": "Default"},
+                {"value": "plan", "name": "Plan"},
+                {"value": "bypassPermissions", "name": "Bypass Permissions"}
+            ]
+        }]
+    }))
+    .unwrap();
+    state.record_from_config_update(&session_id, updated.config_options.as_deref().unwrap());
+
+    assert_eq!(
+        state.action_for(&session_id, false),
+        Ok(NativeYoloAction::SetConfigOption {
+            config_id: "mode".to_string(),
+            value: "plan".to_string(),
+        })
+    );
+}
+
+#[test]
+fn claude_preserves_restore_value_across_mode_and_config_updates() {
+    let state = NativeYoloState::new();
+    state.set_resolved_agent_id(Some(crate::agent_registry::CLAUDE_AGENT_ID));
+    let response: acp::schema::v1::NewSessionResponse = serde_json::from_value(serde_json::json!({
+        "sessionId": "cross-channel-session",
+        "modes": {
+            "currentModeId": "plan",
+            "availableModes": [
+                {"id": "default", "name": "Default"},
+                {"id": "plan", "name": "Plan"},
+                {"id": "bypassPermissions", "name": "Bypass Permissions"}
+            ]
+        }
+    }))
+    .unwrap();
+    let session_id = response.session_id.clone();
+    state.record_from_new_session(&response);
+
+    let updated: acp::schema::v1::NewSessionResponse = serde_json::from_value(serde_json::json!({
+        "sessionId": "unused",
+        "configOptions": [{
+            "id": "mode",
+            "name": "Mode",
+            "category": "mode",
+            "type": "select",
+            "currentValue": "bypassPermissions",
+            "options": [
+                {"value": "default", "name": "Default"},
+                {"value": "plan", "name": "Plan"},
+                {"value": "bypassPermissions", "name": "Bypass Permissions"}
+            ]
+        }]
+    }))
+    .unwrap();
+    state.record_from_config_update(&session_id, updated.config_options.as_deref().unwrap());
+
+    assert_eq!(
+        state.action_for(&session_id, false),
+        Ok(NativeYoloAction::SetConfigOption {
+            config_id: "mode".to_string(),
+            value: "plan".to_string(),
+        })
+    );
+}
+
+#[test]
+fn claude_mode_update_refreshes_a_config_channel_restore_value() {
+    let state = NativeYoloState::new();
+    state.set_resolved_agent_id(Some(crate::agent_registry::CLAUDE_AGENT_ID));
+    let response: acp::schema::v1::NewSessionResponse = serde_json::from_value(serde_json::json!({
+        "sessionId": "mode-update-session",
+        "configOptions": [{
+            "id": "mode",
+            "name": "Mode",
+            "category": "mode",
+            "type": "select",
+            "currentValue": "default",
+            "options": [
+                {"value": "default", "name": "Default"},
+                {"value": "plan", "name": "Plan"},
+                {"value": "bypassPermissions", "name": "Bypass Permissions"}
+            ]
+        }]
+    }))
+    .unwrap();
+    let session_id = response.session_id.clone();
+    state.record_from_new_session(&response);
+    state.record_current_mode(&session_id, "plan");
+
+    assert_eq!(
+        state.action_for(&session_id, false),
         Ok(NativeYoloAction::SetConfigOption {
             config_id: "mode".to_string(),
             value: "plan".to_string(),

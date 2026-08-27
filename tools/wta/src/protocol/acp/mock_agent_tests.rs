@@ -71,6 +71,8 @@ struct MockAgent {
     permission_outcome: Arc<Mutex<Option<String>>>,
     /// Side-channel: sessions released through `session/close`.
     closed_sessions: Arc<Mutex<Vec<String>>>,
+    /// Side-channel: config option writes received from the client.
+    seen_config_updates: Arc<Mutex<Vec<(String, String)>>>,
     /// Side-channel: stable tab ids sent through master's close-by-tab
     /// extension.
     close_tab_requests: Arc<Mutex<Vec<String>>>,
@@ -137,6 +139,38 @@ impl MockAgent {
             .unwrap()
             .push(args.session_id.to_string());
         Ok(acp::schema::v1::CloseSessionResponse::new())
+    }
+
+    async fn set_session_config_option(
+        &self,
+        args: acp::schema::v1::SetSessionConfigOptionRequest,
+    ) -> acp::Result<acp::schema::v1::SetSessionConfigOptionResponse> {
+        let config_id = args.config_id.0.to_string();
+        let value = args
+            .value
+            .as_value_id()
+            .map(|value| value.0.to_string())
+            .ok_or_else(|| acp::Error::invalid_params().data("expected select value"))?;
+        self.seen_config_updates
+            .lock()
+            .unwrap()
+            .push((config_id.clone(), value.clone()));
+        let option = serde_json::from_value(serde_json::json!({
+            "id": config_id,
+            "name": "Mode",
+            "category": "mode",
+            "type": "select",
+            "currentValue": value,
+            "options": [
+                {"value": "default", "name": "Default"},
+                {"value": "plan", "name": "Plan"},
+                {"value": "bypassPermissions", "name": "Bypass Permissions"}
+            ]
+        }))
+        .map_err(|error| acp::Error::internal_error().data(error.to_string()))?;
+        Ok(acp::schema::v1::SetSessionConfigOptionResponse::new(vec![
+            option,
+        ]))
     }
 
     async fn prompt(
@@ -363,6 +397,7 @@ fn connect_with(
         seen_images: Arc::new(Mutex::new(Vec::new())),
         permission_outcome: permission_outcome.clone(),
         closed_sessions: Arc::new(Mutex::new(Vec::new())),
+        seen_config_updates: Arc::new(Mutex::new(Vec::new())),
         close_tab_requests: Arc::new(Mutex::new(Vec::new())),
         fail_new_session: Arc::new(AtomicBool::new(false)),
         fail_load_session: Arc::new(AtomicBool::new(false)),
@@ -481,6 +516,12 @@ fn spawn_mock_pair(
                             Q::CloseSessionRequest(a) => conn::respond_enum(
                                 responder,
                                 m.close_session(a).await.map(R::CloseSessionResponse),
+                            ),
+                            Q::SetSessionConfigOptionRequest(a) => conn::respond_enum(
+                                responder,
+                                m.set_session_config_option(a)
+                                    .await
+                                    .map(R::SetSessionConfigOptionResponse),
                             ),
                             Q::PromptRequest(a) => conn::respond_enum(
                                 responder,
@@ -682,6 +723,7 @@ pub(crate) struct DispatchHarness {
     /// onto the wire — the Alt+V image-paste assertion target.
     pub seen_images: Arc<Mutex<Vec<(String, String)>>>,
     pub closed_sessions: Arc<Mutex<Vec<String>>>,
+    pub seen_config_updates: Arc<Mutex<Vec<(String, String)>>>,
     pub close_tab_requests: Arc<Mutex<Vec<String>>>,
     /// Flip to `true` before dispatching to make the mock's `new_session`
     /// fail, exercising the dispatcher's session-establishment error path.
@@ -719,6 +761,7 @@ fn connect_for_dispatch(behavior: MockBehavior) -> DispatchHarness {
     let seen_images = Arc::new(Mutex::new(Vec::new()));
     let permission_outcome = Arc::new(Mutex::new(None));
     let closed_sessions = Arc::new(Mutex::new(Vec::new()));
+    let seen_config_updates = Arc::new(Mutex::new(Vec::new()));
     let close_tab_requests = Arc::new(Mutex::new(Vec::new()));
     let fail_new_session = Arc::new(AtomicBool::new(false));
     let fail_load_session = Arc::new(AtomicBool::new(false));
@@ -731,6 +774,7 @@ fn connect_for_dispatch(behavior: MockBehavior) -> DispatchHarness {
         seen_images: seen_images.clone(),
         permission_outcome,
         closed_sessions: closed_sessions.clone(),
+        seen_config_updates: seen_config_updates.clone(),
         close_tab_requests: close_tab_requests.clone(),
         fail_new_session: fail_new_session.clone(),
         fail_load_session: fail_load_session.clone(),
@@ -750,6 +794,7 @@ fn connect_for_dispatch(behavior: MockBehavior) -> DispatchHarness {
         seen_prompts,
         seen_images,
         closed_sessions,
+        seen_config_updates,
         close_tab_requests,
         fail_new_session,
         fail_load_session,
@@ -1914,6 +1959,83 @@ async fn dispatch_master_ext_session_focus_completes() {
                 Ok(_) => panic!("expected MasterMutationCompleted"),
                 _ => panic!("expected MasterMutationCompleted, got nothing"),
             }
+        })
+        .await;
+}
+
+#[tokio::test]
+async fn generic_config_response_refreshes_native_yolo_restore_value() {
+    let local = tokio::task::LocalSet::new();
+    local
+        .run_until(async {
+            let mut h = connect_for_dispatch(MockBehavior::Reply);
+            h.client
+                .state
+                .native_yolo
+                .set_resolved_agent_id(Some(crate::agent_registry::CLAUDE_AGENT_ID));
+            let response: acp::schema::v1::NewSessionResponse =
+                serde_json::from_value(serde_json::json!({
+                    "sessionId": "config-refresh-session",
+                    "configOptions": [{
+                        "id": "mode",
+                        "name": "Mode",
+                        "category": "mode",
+                        "type": "select",
+                        "currentValue": "default",
+                        "options": [
+                            {"value": "default", "name": "Default"},
+                            {"value": "plan", "name": "Plan"},
+                            {"value": "bypassPermissions", "name": "Bypass Permissions"}
+                        ]
+                    }]
+                }))
+                .unwrap();
+            let session_id = response.session_id.clone();
+            h.client
+                .state
+                .native_yolo
+                .record_from_new_session(&response);
+            let tab_to_session = Arc::new(tokio::sync::Mutex::new(HashMap::from([(
+                "tab-1".to_string(),
+                session_id.clone(),
+            )])));
+
+            dispatch_master_ext_request(
+                MasterExtRequest::SetSessionConfigOption {
+                    session_id: session_id.clone(),
+                    config_id: "mode".to_string(),
+                    value: "plan".to_string(),
+                },
+                &h.conn,
+                &h.event_tx,
+                &tab_to_session,
+                Arc::clone(&h.client.state),
+            );
+
+            loop {
+                match tokio::time::timeout(std::time::Duration::from_secs(5), h.event_rx.recv())
+                    .await
+                {
+                    Ok(Some(AppEvent::SessionConfigSetCompleted { .. })) => break,
+                    Ok(Some(_)) => {}
+                    _ => panic!("expected SessionConfigSetCompleted"),
+                }
+            }
+
+            h.client
+                .state
+                .native_yolo
+                .apply(&h.conn, session_id, false)
+                .await
+                .unwrap();
+
+            assert_eq!(
+                *h.seen_config_updates.lock().unwrap(),
+                vec![
+                    ("mode".to_string(), "plan".to_string()),
+                    ("mode".to_string(), "plan".to_string()),
+                ]
+            );
         })
         .await;
 }

@@ -1,4 +1,6 @@
-use super::{NativeYoloProvider, ProviderSpec};
+use super::{
+    unsupported_action, DiscoveryInput, NativeYoloAction, NativeYoloProvider, ProviderSessionState,
+};
 
 pub(super) struct OpenCodeYoloProvider;
 
@@ -9,7 +11,15 @@ impl NativeYoloProvider for OpenCodeYoloProvider {
         crate::agent_registry::OPENCODE_AGENT_ID
     }
 
-    fn spec(&self) -> Option<ProviderSpec> {
-        None
+    fn discover(&self, _input: DiscoveryInput<'_>) -> ProviderSessionState {
+        ProviderSessionState::Unsupported
+    }
+
+    fn enable(&self, _state: &ProviderSessionState) -> Result<NativeYoloAction, String> {
+        unsupported_action(self.family_id(), true)
+    }
+
+    fn disable(&self, _state: &ProviderSessionState) -> Result<NativeYoloAction, String> {
+        unsupported_action(self.family_id(), false)
     }
 }
