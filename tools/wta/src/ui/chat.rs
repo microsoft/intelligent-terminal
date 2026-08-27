@@ -23,27 +23,8 @@ fn activity_label() -> String {
     t!("chat.activity_thinking").into_owned()
 }
 
-fn tool_content_truncated(content: &[ToolCallContent]) -> bool {
-    content.iter().any(|item| match item {
-        ToolCallContent::Text(output) => output.truncated,
-        ToolCallContent::Diff {
-            old_text, new_text, ..
-        } => old_text.as_ref().is_some_and(|output| output.truncated) || new_text.truncated,
-        ToolCallContent::Terminal { output, .. } => {
-            output.as_ref().is_some_and(|output| output.truncated)
-        }
-        ToolCallContent::Attachment { .. } => false,
-    })
-}
-
-fn tool_call_needs_preview(
-    phase: ToolPhase<'_>,
-    output: Option<&ToolCallOutput>,
-    content: &[ToolCallContent],
-) -> bool {
+fn tool_call_needs_preview(phase: ToolPhase<'_>) -> bool {
     !phase.is_successful()
-        || output.is_some_and(|output| output.truncated)
-        || tool_content_truncated(content)
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -60,15 +41,10 @@ enum ToolDisplay {
 }
 
 impl ToolDisplay {
-    fn detail_level(
-        self,
-        phase: ToolPhase<'_>,
-        output: Option<&ToolCallOutput>,
-        content: &[ToolCallContent],
-    ) -> ToolDetailLevel {
+    fn detail_level(self, phase: ToolPhase<'_>) -> ToolDetailLevel {
         match self {
             Self::Completed { expanded: true } => ToolDetailLevel::Detailed,
-            _ if tool_call_needs_preview(phase, output, content) => ToolDetailLevel::Preview,
+            _ if tool_call_needs_preview(phase) => ToolDetailLevel::Preview,
             _ => ToolDetailLevel::Compact,
         }
     }
@@ -105,22 +81,11 @@ fn compact_group_kind(message: &ChatMessage, expanded: bool) -> Option<ToolCallK
     if expanded {
         return None;
     }
-    let ChatMessage::ToolCall {
-        status,
-        kind,
-        output,
-        content,
-        ..
-    } = message
-    else {
+    let ChatMessage::ToolCall { status, kind, .. } = message else {
         return None;
     };
     let groupable_kind = matches!(kind, ToolCallKind::Read | ToolCallKind::Search);
-    (groupable_kind
-        && ToolPhase::from_status(status).is_successful()
-        && !output.as_ref().is_some_and(|output| output.truncated)
-        && !tool_content_truncated(content))
-    .then_some(*kind)
+    (groupable_kind && ToolPhase::from_status(status).is_successful()).then_some(*kind)
 }
 
 fn previous_message_group_start(messages: &[ChatMessage], end: usize) -> usize {
@@ -154,12 +119,19 @@ fn build_compact_tool_group_lines<'a>(messages: &'a [ChatMessage]) -> Vec<Line<'
             .iter()
             .filter_map(tool_presentation_from_message)
             .collect::<Vec<_>>();
-        let targets = presentations
+        let mut targets = Vec::with_capacity(MAX_TARGETS);
+        for target in presentations
             .iter()
             .filter_map(|presentation| presentation.target_name())
-            .take(MAX_TARGETS)
-            .collect::<Vec<_>>();
-        if targets.len() == messages.len().min(MAX_TARGETS) {
+        {
+            if !targets.contains(&target) {
+                targets.push(target);
+                if targets.len() == MAX_TARGETS {
+                    break;
+                }
+            }
+        }
+        if !targets.is_empty() {
             (targets.join(", "), targets.len())
         } else {
             (first.primary_text(true).into_owned(), 1)
@@ -1520,8 +1492,7 @@ fn build_message_lines_with_details<'a>(
                 *exit_code,
                 locations,
             );
-            let detail_level =
-                tool_display.detail_level(presentation.phase, output.as_ref(), content.as_slice());
+            let detail_level = tool_display.detail_level(presentation.phase);
             let (_, marker_style, detail) = tool_call_presentation(presentation.phase);
             let marker = rendered_tool_call_marker(
                 presentation.phase,
@@ -2442,7 +2413,7 @@ mod tests {
     }
 
     #[test]
-    fn successful_truncated_tool_call_keeps_preview_before_and_after_turn_completion() {
+    fn successful_truncated_tool_call_stays_compact_until_expanded() {
         let message = ChatMessage::ToolCall {
             id: "tool".into(),
             title: "Locate project directory".into(),
@@ -2470,11 +2441,52 @@ mod tests {
                     .map(line_text)
                     .collect();
 
-            assert_eq!(rendered[0], "✓ Run · Locate project directory");
-            assert_eq!(rendered[1], "  └ $ Get-ChildItem");
-            assert_eq!(rendered[2], "    …");
-            assert_eq!(rendered[3], "    truncated output");
+            assert_eq!(rendered, vec!["✓ Run · Get-ChildItem"]);
         }
+
+        let expanded: Vec<String> = build_message_lines_with_details(
+            &message,
+            false,
+            false,
+            None,
+            0,
+            120,
+            ToolDisplay::Completed { expanded: true },
+        )
+        .iter()
+        .map(line_text)
+        .collect();
+        assert_eq!(expanded[0], "✓ Run · Locate project directory");
+        assert_eq!(expanded[1], "  └ $ Get-ChildItem");
+        assert!(expanded
+            .iter()
+            .any(|line| line.contains("truncated output")));
+    }
+
+    #[test]
+    fn successful_truncated_reads_group_and_deduplicate_targets() {
+        let messages = (0..4)
+            .map(|index| ChatMessage::ToolCall {
+                id: format!("read-{index}"),
+                title: "Read project".into(),
+                status: "Completed".into(),
+                kind: ToolCallKind::Read,
+                location: Some(r"C:\codes\rust-app".into()),
+                location_is_command: false,
+                cwd: None,
+                output: Some(ToolCallOutput {
+                    text: "extension summary".into(),
+                    truncated: true,
+                }),
+                exit_code: None,
+                content: Vec::new(),
+                locations: Vec::new(),
+            })
+            .collect::<Vec<_>>();
+
+        assert_eq!(previous_message_group_start(&messages, messages.len()), 0);
+        let rendered = build_compact_tool_group_lines(&messages);
+        assert_eq!(line_text(&rendered[0]), "✓ Read · rust-app · +3");
     }
 
     #[test]
