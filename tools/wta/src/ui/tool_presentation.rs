@@ -1,4 +1,5 @@
 use std::borrow::Cow;
+use std::ops::Range;
 
 use crate::app::{ToolCallKind, ToolCallLocation};
 
@@ -92,14 +93,14 @@ impl<'a> ToolPresentation<'a> {
             return Cow::Borrowed(self.title);
         };
         let compact = compact_target(self.kind, target);
-        let Some(start) = self.title.find(target) else {
+        let Some(range) = self.target_range_in_title(target) else {
             return Cow::Borrowed(self.title);
         };
         let mut title =
             String::with_capacity(self.title.len().saturating_sub(target.len()) + compact.len());
-        title.push_str(&self.title[..start]);
+        title.push_str(&self.title[..range.start]);
         title.push_str(&compact);
-        title.push_str(&self.title[start + target.len()..]);
+        title.push_str(&self.title[range.end..]);
         Cow::Owned(title)
     }
 
@@ -158,7 +159,7 @@ impl<'a> ToolPresentation<'a> {
     pub(crate) fn title_contains_target(&self) -> bool {
         self.target
             .filter(|target| !target.is_empty())
-            .is_some_and(|target| self.title.contains(target))
+            .is_some_and(|target| self.target_range_in_title(target).is_some())
     }
 
     pub(crate) fn target_name(&self) -> Option<&'a str> {
@@ -183,17 +184,44 @@ impl<'a> ToolPresentation<'a> {
         if self.kind != ToolCallKind::Execute && !self.target_is_command {
             return None;
         }
-        if matches!(
-            self.phase,
-            ToolPhase::Failed(Some(detail))
-                if detail
-                    .get(.."exited (".len())
-                    .is_some_and(|prefix| prefix.eq_ignore_ascii_case("exited ("))
-        ) {
+        if matches!(self.phase, ToolPhase::Failed(Some(_))) {
             return None;
         }
         self.exit_code.filter(|code| *code != 0)
     }
+
+    fn target_range_in_title(&self, target: &str) -> Option<Range<usize>> {
+        if matches!(
+            self.kind,
+            ToolCallKind::Read
+                | ToolCallKind::Edit
+                | ToolCallKind::Delete
+                | ToolCallKind::Move
+                | ToolCallKind::Search
+        ) {
+            ascii_case_insensitive_range(self.title, target)
+        } else {
+            self.title
+                .find(target)
+                .map(|start| start..start + target.len())
+        }
+    }
+}
+
+fn ascii_case_insensitive_range(haystack: &str, needle: &str) -> Option<Range<usize>> {
+    if needle.is_empty() {
+        return Some(0..0);
+    }
+
+    haystack.char_indices().find_map(|(start, _)| {
+        let end = start.checked_add(needle.len())?;
+        // `get` rejects an end in the middle of a UTF-8 code point, so the
+        // returned range is always safe to use for later string slicing.
+        haystack
+            .get(start..end)
+            .filter(|candidate| candidate.eq_ignore_ascii_case(needle))
+            .map(|_| start..end)
+    })
 }
 
 fn compact_target(kind: ToolCallKind, target: &str) -> Cow<'_, str> {
@@ -243,11 +271,11 @@ mod tests {
     #[test]
     fn compacts_file_and_search_targets() {
         assert_eq!(
-            compact_target(ToolCallKind::Read, r"C:\repo\src\main.rs"),
+            compact_target(ToolCallKind::Read, r"C:\project\src\main.rs"),
             r"src\main.rs"
         );
         assert_eq!(
-            compact_target(ToolCallKind::Search, r"C:\repo\rust-app"),
+            compact_target(ToolCallKind::Search, r"C:\project\rust-app"),
             "rust-app"
         );
         assert_eq!(
@@ -259,11 +287,11 @@ mod tests {
     #[test]
     fn replaces_provider_embedded_path_with_compact_target() {
         let locations = vec![ToolCallLocation {
-            path: r"C:\repo\src\main.rs".into(),
+            path: r"C:\project\src\main.rs".into(),
             line: None,
         }];
         let presentation = ToolPresentation::new(
-            r"Viewing C:\repo\src\main.rs",
+            r"Viewing C:\project\src\main.rs",
             "Completed",
             ToolCallKind::Read,
             None,
@@ -277,6 +305,99 @@ mod tests {
         assert!(presentation.title_contains_target());
         assert_eq!(presentation.target_name(), Some("main.rs"));
         assert_eq!(presentation.primary_text(true), r"src\main.rs");
+    }
+
+    #[test]
+    fn mixed_case_embedded_path_compacts_without_secondary_target() {
+        let locations = [];
+        let presentation = ToolPresentation::new(
+            r"🔎 Searching C:\Project\Rust-App",
+            "Completed",
+            ToolCallKind::Search,
+            Some(r"c:\project\rust-app"),
+            false,
+            None,
+            None,
+            &locations,
+        );
+
+        assert_eq!(presentation.display_title(), "🔎 Searching rust-app");
+        assert!(presentation.title_contains_target());
+        assert_eq!(presentation.secondary_target(), None);
+    }
+
+    #[test]
+    fn command_targets_remain_case_sensitive() {
+        let locations = [];
+        let presentation = ToolPresentation::new(
+            "Run INDIVIDUAL_ANCHORED_TOOL",
+            "Completed",
+            ToolCallKind::Execute,
+            Some("run individual"),
+            true,
+            None,
+            Some(0),
+            &locations,
+        );
+
+        assert_eq!(presentation.display_title(), "Run INDIVIDUAL_ANCHORED_TOOL");
+        assert!(!presentation.title_contains_target());
+    }
+
+    #[test]
+    fn unmatched_title_remains_borrowed() {
+        let locations = [];
+        let presentation = ToolPresentation::new(
+            "Search source",
+            "Completed",
+            ToolCallKind::Search,
+            Some(r"C:\project\rust-app"),
+            false,
+            None,
+            None,
+            &locations,
+        );
+
+        assert!(matches!(presentation.display_title(), Cow::Borrowed(_)));
+    }
+
+    #[test]
+    fn visible_exit_code_avoids_failed_detail_duplication() {
+        let locations = [];
+        let with_detail = ToolPresentation::new(
+            "Run tests",
+            "Failed: exit code 1",
+            ToolCallKind::Execute,
+            Some("cargo test"),
+            true,
+            None,
+            Some(1),
+            &locations,
+        );
+        let without_detail = ToolPresentation::new(
+            "Run tests",
+            "Failed",
+            ToolCallKind::Execute,
+            Some("cargo test"),
+            true,
+            None,
+            Some(1),
+            &locations,
+        );
+        let exited = ToolPresentation::new(
+            "Run tests",
+            "Exited (2)",
+            ToolCallKind::Execute,
+            Some("cargo test"),
+            true,
+            None,
+            Some(2),
+            &locations,
+        );
+
+        assert_eq!(with_detail.visible_exit_code(), None);
+        assert_eq!(without_detail.visible_exit_code(), Some(1));
+        assert_eq!(exited.visible_exit_code(), None);
     }
 
     #[test]
@@ -296,7 +417,7 @@ mod tests {
             "Resolve cargo",
             "Completed",
             ToolCallKind::Execute,
-            Some("wta.exe resolve-command cargo --shell pwsh --cwd C:\\repo --json"),
+            Some("wta.exe resolve-command cargo --shell pwsh --cwd C:\\project --json"),
             true,
             None,
             Some(0),

@@ -2322,7 +2322,7 @@ mod tests {
     }
 
     #[test]
-    fn successful_edit_does_not_treat_snapshots_as_diffstat() {
+    fn successful_edit_does_not_treat_snapshots_as_line_counts() {
         let message = ChatMessage::ToolCall {
             id: "tool".into(),
             title: "Update source".into(),
@@ -2340,7 +2340,7 @@ mod tests {
                     truncated: false,
                 }),
                 new_text: ToolCallOutput {
-                    text: "new one\nnew two\nnew three".into(),
+                    text: ["new one", "new two", "new three"].join("\n"),
                     truncated: false,
                 },
             }],

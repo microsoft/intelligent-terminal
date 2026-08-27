@@ -10148,10 +10148,10 @@ fn adjacent_successful_reads_render_as_one_compact_group() {
     let mut app = test_app();
     app.state = ConnectionState::Connected;
     app.current_tab_mut().messages = [
-        r"C:\repo\Cargo.toml",
-        r"C:\repo\src\main.rs",
-        r"C:\repo\static\index.html",
-        r"C:\repo\static\app.js",
+        r"C:\project\Cargo.toml",
+        r"C:\project\src\main.rs",
+        r"C:\project\static\index.html",
+        r"C:\project\static\app.js",
     ]
     .into_iter()
     .enumerate()
@@ -11705,6 +11705,7 @@ fn failed_completed_tool_keeps_bounded_diagnostic_preview() {
     let text = render_to_text(&mut app, 80, 20);
     assert!(text.contains("✗ Run · Run checks"));
     assert!(text.contains("tests failed"));
+    assert!(!text.contains("exit 1"));
     assert!(text.contains("diagnostic one"));
     assert!(text.contains("diagnostic two"));
 }
@@ -11816,6 +11817,9 @@ fn completed_tool_expansion_preserves_its_header_row_and_rebuilds_height() {
 fn completed_tool_disclosures_anchor_visible_headers_below_clipped_prompts() {
     use crossterm::event::{KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
 
+    let _locale = crate::test_support::lock_locale();
+    rust_i18n::set_locale("en-US");
+
     const WIDTH: u16 = 60;
     const HEIGHT: u16 = 8;
 
@@ -11912,7 +11916,7 @@ fn completed_tool_disclosures_anchor_visible_headers_below_clipped_prompts() {
         let expanded_row = expanded
             .lines()
             .position(|line| line.contains(marker))
-            .expect("expanded tool header must remain visible");
+            .unwrap_or_else(|| panic!("expanded tool header must remain visible:\n{expanded}"));
         assert_eq!(
             expanded_row, hit.row as usize,
             "{marker} must remain on its clicked row:\n{expanded}",
