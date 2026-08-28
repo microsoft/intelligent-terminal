@@ -179,10 +179,6 @@
                             HorizontalAlignment="Right"
                             Click="{x:Bind ViewModel.AddCustomModelProvider}"
                             Style="{StaticResource AccentButtonStyle}" />
-                    <TextBlock Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                               Text="{x:Bind ViewModel.CustomModelProviderUnsupportedMessage, Mode=OneWay}"
-                               TextWrapping="Wrap"
-                               Visibility="{x:Bind mtu:Converters.StringNotEmptyToVisibility(ViewModel.CustomModelProviderUnsupportedMessage), Mode=OneWay}" />
                 </StackPanel>
             </local:SettingContainer>
 
