@@ -10,7 +10,6 @@ use crate::agent_tools::user_input::UserInputResponse;
 const MCP_PROTOCOL_VERSION: &str = "2025-06-18";
 const SUPPORTED_MCP_PROTOCOL_VERSIONS: &[&str] =
     &["2024-11-05", "2025-03-26", MCP_PROTOCOL_VERSION];
-const TERMINAL_ACTION_TOOL_NAME: &str = "request_terminal_actions";
 const USER_INPUT_TOOL_NAME: &str = "request_user_input";
 pub const SERVER_NAME_PREFIX: &str = "intellterm_";
 pub const SERVER_ID_HEX_LEN: usize = 20;
@@ -22,6 +21,13 @@ pub const CANCEL_USER_INPUT_HELPER_REQUEST_METHOD: &str = "_intellterm.wta/cance
 #[serde(deny_unknown_fields)]
 pub struct HelperRequest {
     pub session_id: String,
+    /// Which action tool the agent selected. Carries the action shape
+    /// alongside the payload, so it never has to be re-encoded as a
+    /// discriminator field inside the arguments. Required: this struct is
+    /// only ever used for terminal actions (user input has its own request
+    /// type), so serde enforces presence rather than deferring to a runtime
+    /// check in the helper.
+    pub tool: String,
     pub arguments: Value,
 }
 
@@ -72,7 +78,7 @@ pub async fn dispatch<A, ActionFuture, U, UserInputFuture>(
     request_user_input: U,
 ) -> Option<Value>
 where
-    A: FnOnce(Value) -> ActionFuture,
+    A: FnOnce(super::action_proposal::schema::McpActionTool, Value) -> ActionFuture,
     ActionFuture: Future<Output = anyhow::Result<ProposalValidationResponse>>,
     U: FnOnce(Value) -> UserInputFuture,
     UserInputFuture: Future<Output = anyhow::Result<UserInputResponse>>,
@@ -100,58 +106,49 @@ where
             })
         }
         "ping" => json!({}),
-        "tools/list" => json!({
-            "tools": [
-                {
-                    "name": TERMINAL_ACTION_TOOL_NAME,
-                    "description": "Request one terminal action in Intelligent Terminal. Use send for a simple bounded action in the current pane, open for a new empty tab or panel, and open_and_send for a new destination with input. Prefer a panel for related parallel work and a tab for independent work, a different environment, or a long-running task. Routing is automatic. Call at most once per turn, then end without assistant prose.",
-                    "inputSchema": super::action_proposal::schema::mcp_input_schema()
-                },
-                {
-                    "name": USER_INPUT_TOOL_NAME,
-                    "description": "Ask the user a blocking clarification question in Intelligent Terminal. Supply up to 8 choices, allow freeform input, or both. Use only when the answer is required to continue the current task.",
-                    "inputSchema": {
-                        "type": "object",
-                        "additionalProperties": false,
-                        "required": ["question"],
-                        "properties": {
-                            "question": {
+        "tools/list" => {
+            let mut tools: Vec<Value> = super::action_proposal::schema::McpActionTool::ALL
+                .into_iter()
+                .map(|tool| {
+                    json!({
+                        "name": tool.tool_name(),
+                        "description": super::action_proposal::schema::mcp_action_description(tool),
+                        "inputSchema": super::action_proposal::schema::mcp_action_input_schema(tool)
+                    })
+                })
+                .collect();
+            tools.push(json!({
+                "name": USER_INPUT_TOOL_NAME,
+                "description": "Ask the user a blocking clarification question in Intelligent Terminal. Supply up to 8 choices, set allow_freeform to true, or both; a call with neither is rejected. Use only when the answer is required to continue the current task.",
+                "inputSchema": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": ["question"],
+                    "properties": {
+                        "question": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 2000
+                        },
+                        "choices": {
+                            "type": "array",
+                            "minItems": 1,
+                            "maxItems": 8,
+                            "items": {
                                 "type": "string",
                                 "minLength": 1,
-                                "maxLength": 2000
-                            },
-                            "choices": {
-                                "type": "array",
-                                "maxItems": 8,
-                                "items": {
-                                    "type": "string",
-                                    "minLength": 1,
-                                    "maxLength": 200
-                                }
-                            },
-                            "allow_freeform": {
-                                "type": "boolean",
-                                "default": false
+                                "maxLength": 200
                             }
                         },
-                        "anyOf": [
-                            {
-                                "required": ["choices"],
-                                "properties": {
-                                    "choices": { "minItems": 1 }
-                                }
-                            },
-                            {
-                                "required": ["allow_freeform"],
-                                "properties": {
-                                    "allow_freeform": { "const": true }
-                                }
-                            }
-                        ]
+                        "allow_freeform": {
+                            "type": "boolean",
+                            "default": false
+                        }
                     }
                 }
-            ]
-        }),
+            }));
+            json!({ "tools": tools })
+        }
         "tools/call" => {
             let name = request.pointer("/params/name").and_then(Value::as_str);
             let arguments = request
@@ -159,8 +156,16 @@ where
                 .cloned()
                 .unwrap_or_else(|| json!({}));
             match name {
-                Some(TERMINAL_ACTION_TOOL_NAME) => {
-                    terminal_action_result(submit_action(arguments).await)
+                Some(name)
+                    if super::action_proposal::schema::McpActionTool::from_tool_name(name)
+                        .is_some() =>
+                {
+                    let Some(tool) =
+                        super::action_proposal::schema::McpActionTool::from_tool_name(name)
+                    else {
+                        unreachable!("guarded by the match arm")
+                    };
+                    terminal_action_result(submit_action(tool, arguments).await)
                 }
                 Some(USER_INPUT_TOOL_NAME) => {
                     user_input_result(request_user_input(arguments).await)
@@ -274,36 +279,82 @@ mod tests {
     async fn lists_session_tools() {
         let response = dispatch(
             json!({"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}),
-            |_| async { unreachable!() },
+            |_, _| async { unreachable!() },
             |_| async { unreachable!() },
         )
         .await
         .unwrap();
+        let names: Vec<&str> = response
+            .pointer("/result/tools")
+            .and_then(Value::as_array)
+            .expect("tools")
+            .iter()
+            .filter_map(|tool| tool.get("name").and_then(Value::as_str))
+            .collect();
         assert_eq!(
-            response
-                .pointer("/result/tools/0/name")
-                .and_then(Value::as_str),
-            Some(TERMINAL_ACTION_TOOL_NAME)
+            names,
+            vec![
+                "terminal_send",
+                "terminal_open",
+                "terminal_open_and_send",
+                USER_INPUT_TOOL_NAME
+            ]
         );
+        // The superseded single-tool name is neither advertised nor accepted;
+        // `tools/call` returns "unknown tool" for it. Spelled out here rather
+        // than kept as a production constant, since nothing else refers to it
+        // anymore.
+        assert!(!names.contains(&"request_terminal_actions"));
+        let user_input_schema = response
+            .pointer("/result/tools/3/inputSchema")
+            .expect("user input schema");
         assert_eq!(
-            response
-                .pointer("/result/tools")
-                .and_then(Value::as_array)
-                .map(Vec::len),
-            Some(2)
+            user_input_schema.get("type").and_then(Value::as_str),
+            Some("object")
         );
+        for keyword in ["oneOf", "anyOf", "allOf", "enum", "const", "not"] {
+            assert!(
+                user_input_schema.get(keyword).is_none(),
+                "top-level {keyword} is rejected by strict OpenAI-compatible providers"
+            );
+        }
+        // An empty choice list is never meaningful — omit the field instead.
+        // Constraining it here stops a model from emitting `choices: []` and
+        // then tripping `UserInputRequest::validate()` when it also leaves
+        // `allow_freeform` at its default of false.
         assert_eq!(
-            response
-                .pointer("/result/tools/1/name")
-                .and_then(Value::as_str),
-            Some(USER_INPUT_TOOL_NAME)
+            user_input_schema
+                .pointer("/properties/choices/minItems")
+                .and_then(Value::as_u64),
+            Some(1)
         );
-        assert_eq!(
-            response
-                .pointer("/result/tools/1/inputSchema/anyOf")
-                .and_then(Value::as_array)
-                .map(Vec::len),
-            Some(2)
+    }
+
+    /// Prints the serialized `tools/list` size so the cost of the tool surface
+    /// can be compared across revisions with a real number rather than an
+    /// estimate. Every published tool is sent on every request, so this is a
+    /// per-request cost worth measuring deliberately when the surface changes.
+    ///
+    /// Ignored by default: it asserts nothing, so it would spend CI time and
+    /// emit output without adding coverage. Run it explicitly with the cargo
+    /// test flags that select ignored tests and disable output capture.
+    #[tokio::test]
+    #[ignore = "measurement helper, not a regression test; run explicitly"]
+    async fn measure_tools_list_size() {
+        let response = dispatch(
+            json!({"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}),
+            |_, _| async { unreachable!() },
+            |_| async { unreachable!() },
+        )
+        .await
+        .unwrap();
+        let tools = response.pointer("/result/tools").expect("tools");
+        let serialized = serde_json::to_string(tools).expect("serialize");
+        println!(
+            "MEASURE tools={} chars={} approx_tokens={}",
+            tools.as_array().map(Vec::len).unwrap_or(0),
+            serialized.len(),
+            serialized.len() / 4
         );
     }
 
@@ -317,7 +368,7 @@ mod tests {
         });
         let response = dispatch(
             request,
-            |_| async { unreachable!() },
+            |_, _| async { unreachable!() },
             |_| async { unreachable!() },
         )
         .await
@@ -343,7 +394,7 @@ mod tests {
                     "arguments":{"question":"Choose","choices":["A","B"]}
                 }
             }),
-            |_| async { unreachable!() },
+            |_, _| async { unreachable!() },
             |_| async {
                 Ok(UserInputResponse::Answered {
                     answer: "B".into(),

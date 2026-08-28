@@ -121,9 +121,8 @@ function Invoke-TerminalActionTool {
         id = 2
         method = 'tools/call'
         params = @{
-            name = 'request_terminal_actions'
+            name = 'terminal_open_and_send'
             arguments = @{
-                type = 'open_and_send'
                 title = "Direction $Marker"
                 input = "echo $Marker"
                 target = 'tab'

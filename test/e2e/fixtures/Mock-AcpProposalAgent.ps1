@@ -37,9 +37,8 @@ function Invoke-ProposalTool {
         id = 1
         method = 'tools/call'
         params = @{
-            name = 'request_terminal_actions'
+            name = 'terminal_send'
             arguments = @{
-                type = 'send'
                 title = "Run echo $Marker"
                 input = "echo $Marker"
             }

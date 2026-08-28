@@ -127,7 +127,8 @@ Tool rows keep a localized type label such as **Run**, **Read**, **Search**, or
 **Edit** visible across pending, running, and completed states. Consecutive
 successful Read, Search, Edit, and Delete calls collapse into one summary row;
 click that row to inspect each call. ACP thought chunks stream as temporary
-**Think** activity and disappear when the visible answer begins.
+**Think** activity and disappear when the visible answer begins. Expanded Edit
+details show bounded line-level `+`/`-` hunks computed from ACP snapshots.
 
 | Key | Action |
 |-----|--------|
