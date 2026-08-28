@@ -86,21 +86,20 @@ pub(crate) fn preview<'a>(
     let new_core = &new_lines[prefix..new_core_end];
     let core_exceeds_limit =
         old_core.len() > MAX_DIFF_CORE_LINES || new_core.len() > MAX_DIFF_CORE_LINES;
-    if core_exceeds_limit && shares_line(old_core, new_core) {
-        if old_core.len() > MAX_DIFF_CORE_LINES && new_core.len() > MAX_DIFF_CORE_LINES {
-            append_large_shared_core(&mut lines, old_core, new_core);
-        } else if old_core.len().max(new_core.len()) <= MAX_ASYMMETRIC_CORE_LINES {
-            append_collapsed_ops(&mut lines, &diff_ops(old_core, new_core));
+    if core_exceeds_limit {
+        if shares_line(old_core, new_core) {
+            if old_core.len() > MAX_DIFF_CORE_LINES && new_core.len() > MAX_DIFF_CORE_LINES {
+                append_large_shared_core(&mut lines, old_core, new_core);
+            } else if old_core.len().max(new_core.len()) <= MAX_ASYMMETRIC_CORE_LINES {
+                append_collapsed_ops(&mut lines, &diff_ops(old_core, new_core));
+            } else {
+                push_omitted(&mut lines);
+            }
         } else {
-            push_omitted(&mut lines);
+            append_large_disjoint_core(&mut lines, old_core, new_core);
         }
     } else {
-        let old_bounded = &old_core[..old_core.len().min(MAX_DIFF_CORE_LINES)];
-        let new_bounded = &new_core[..new_core.len().min(MAX_DIFF_CORE_LINES)];
-        append_collapsed_ops(&mut lines, &diff_ops(old_bounded, new_bounded));
-        if core_exceeds_limit {
-            push_omitted(&mut lines);
-        }
+        append_collapsed_ops(&mut lines, &diff_ops(old_core, new_core));
     }
 
     let suffix_context = suffix.min(CONTEXT_LINES);
@@ -135,6 +134,37 @@ fn shares_line(old_lines: &[&str], new_lines: &[&str]) -> bool {
     };
     let lines = shorter.iter().copied().collect::<HashSet<_>>();
     longer.iter().any(|line| lines.contains(line))
+}
+
+fn append_large_disjoint_core<'a>(
+    output: &mut Vec<DiffLine<'a>>,
+    old_lines: &[&'a str],
+    new_lines: &[&'a str],
+) {
+    output.extend(
+        old_lines
+            .iter()
+            .take(MAX_DIFF_CORE_LINES)
+            .map(|text| DiffLine {
+                kind: DiffLineKind::Removed,
+                text,
+            }),
+    );
+    if old_lines.len() > MAX_DIFF_CORE_LINES {
+        push_omitted(output);
+    }
+    output.extend(
+        new_lines
+            .iter()
+            .take(MAX_DIFF_CORE_LINES)
+            .map(|text| DiffLine {
+                kind: DiffLineKind::Added,
+                text,
+            }),
+    );
+    if new_lines.len() > MAX_DIFF_CORE_LINES {
+        push_omitted(output);
+    }
 }
 
 fn append_large_shared_core<'a>(
@@ -588,6 +618,27 @@ mod tests {
         assert!(balanced
             .iter()
             .any(|line| line.kind == DiffLineKind::Omitted));
+    }
+
+    #[test]
+    fn disjoint_truncated_run_marks_omission_before_next_kind() {
+        let old = (0..300)
+            .map(|index| format!("old {index}"))
+            .collect::<Vec<_>>()
+            .join("\n");
+
+        let lines = preview(Some(&old), "replacement", false, 32);
+        let added = lines
+            .iter()
+            .position(|line| line.kind == DiffLineKind::Added)
+            .expect("replacement must remain visible");
+
+        assert!(lines[..added]
+            .iter()
+            .any(|line| line.kind == DiffLineKind::Omitted));
+        assert!(lines[added + 1..]
+            .iter()
+            .all(|line| line.kind != DiffLineKind::Omitted));
     }
 
     #[test]
