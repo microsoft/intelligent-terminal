@@ -1481,53 +1481,63 @@ pub(crate) fn pending_render_text(tab: &crate::app::TabSession) -> Option<Cow<'_
                 .flatten()
                 .and_then(user_visible_stream_text)
         })
+        .or_else(|| {
+            tab.should_show_persistent_thinking()
+                .then_some(Cow::Borrowed("…"))
+        })
 }
 
 fn build_pending_stream_lines<'a>(app: &App, wrap_width: usize) -> Vec<Line<'a>> {
     let tab = app.current_tab();
-    let Some(text) = pending_render_text(tab) else {
-        return Vec::new();
-    };
-    let is_thought = tab
+    let agent_text = tab
         .streaming_agent_text()
-        .and_then(user_visible_stream_text)
-        .is_none();
-    // Typewriter smoothing: only reveal the first `reveal_chars` characters of
-    // the streaming text. The reveal cursor is advanced toward the full length
-    // by the `RevealTick` animation (`App::advance_reveal`), turning the
-    // upstream ~90-char-every-~100ms bursts into a smooth character flow. The
-    // full text is always in the ordered transcript, and finalize moves that
-    // transcript to history unchanged.
-    let revealed: Cow<'_, str> = {
+        .and_then(user_visible_stream_text);
+    let mut lines = Vec::new();
+    if let Some(text) = agent_text.as_ref() {
         let total = text.chars().count();
         let shown = tab.reveal_chars.max(1).min(total);
-        if shown >= total {
-            text
+        let revealed = if shown >= total {
+            Cow::Borrowed(text.as_ref())
         } else {
             Cow::Owned(text.chars().take(shown).collect())
-        }
-    };
-    let mut lines = Vec::new();
-    let rendered = if is_thought {
-        Cow::Owned(format!(
+        };
+        push_dot_prefixed_lines(
+            &mut lines,
+            &revealed,
+            wrap_width,
+            theme::DOT_AGENT,
+            theme::AGENT_TEXT,
+        );
+    }
+    if tab.should_show_persistent_thinking() {
+        let thought = tab
+            .streaming_thought_text()
+            .and_then(user_visible_stream_text)
+            .unwrap_or(Cow::Borrowed("…"));
+        let revealed = if agent_text.is_some() {
+            thought
+        } else {
+            let total = thought.chars().count();
+            let shown = tab.reveal_chars.max(1).min(total);
+            if shown >= total {
+                thought
+            } else {
+                Cow::Owned(thought.chars().take(shown).collect())
+            }
+        };
+        let rendered = Cow::Owned(format!(
             "{} · {}",
             t!("chat.tool_kind.think"),
             revealed.as_ref()
-        ))
-    } else {
-        revealed
-    };
-    push_dot_prefixed_lines(
-        &mut lines,
-        &rendered,
-        wrap_width,
-        theme::DOT_AGENT,
-        if is_thought {
-            theme::DIM
-        } else {
-            theme::AGENT_TEXT
-        },
-    );
+        ));
+        push_dot_prefixed_lines(
+            &mut lines,
+            &rendered,
+            wrap_width,
+            theme::DOT_AGENT,
+            theme::DIM,
+        );
+    }
     lines
 }
 

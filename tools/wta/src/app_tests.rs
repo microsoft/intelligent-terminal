@@ -11268,17 +11268,19 @@ fn first_message_chunk_transitions_to_streaming_with_transcript_text() {
     assert!(app.current_tab().turn.is_streaming());
     assert!(
         !app.current_tab().should_show_thinking(),
-        "visible response text replaces the generic Thinking row"
+        "visible response text replaces the generic Thinking row with inline activity"
     );
+    app.current_tab_mut().reveal_chars = "partial".chars().count();
+    assert!(render_to_text(&mut app, 80, 20).contains("Think · …"));
     app.advance_reveal();
     assert!(
         !app.current_tab().should_show_thinking(),
-        "revealing response text remains the visible progress indicator"
+        "inline activity remains visible beside revealed response text"
     );
 }
 
 #[test]
-fn thought_chunks_stream_ephemerally_until_visible_message_text_arrives() {
+fn latest_thought_remains_visible_alongside_streaming_message_until_turn_end() {
     let mut app = test_app();
     submit_test_prompt(&mut app, "hi");
     let advanced = app.turn_observe_chunk(DEFAULT_TAB_ID, ChunkKind::Thought, "thinking…");
@@ -11294,13 +11296,28 @@ fn thought_chunks_stream_ephemerally_until_visible_message_text_arrives() {
     let tab = app.current_tab();
     assert_eq!(tab.streaming_thought_text(), None);
     assert_eq!(tab.streaming_agent_text(), Some("Final answer"));
-    assert!(!app.turn_observe_chunk(DEFAULT_TAB_ID, ChunkKind::Thought, "late hidden thought"));
-    assert_eq!(app.current_tab().streaming_thought_text(), None);
     app.current_tab_mut().reveal_chars = "Final answer".chars().count();
+    let reveal_chars = app.current_tab().reveal_chars;
+    assert!(app.turn_observe_chunk(DEFAULT_TAB_ID, ChunkKind::Thought, "late visible thought"));
+    assert_eq!(
+        app.current_tab().streaming_thought_text(),
+        Some("late visible thought")
+    );
+    assert_eq!(
+        app.current_tab().reveal_chars,
+        reveal_chars,
+        "late thought chunks must not rewind visible response text"
+    );
     let rendered = render_to_text(&mut app, 80, 20);
     assert!(rendered.contains("Final"));
     assert!(!rendered.contains("thinking"));
-    assert!(!rendered.contains("late hidden thought"));
+    assert!(rendered.contains("Think · late visible thought"));
+
+    app.handle_event(AppEvent::AgentMessageEnd {
+        session_id: DEFAULT_TAB_ID.into(),
+    });
+    assert_eq!(app.current_tab().streaming_thought_text(), None);
+    assert!(!render_to_text(&mut app, 80, 20).contains("Think ·"));
 }
 
 #[test]
@@ -11364,6 +11381,10 @@ fn running_tool_replaces_thinking_until_tool_completes() {
         "the running tool card is already visible progress"
     );
     assert_eq!(app.current_tab().streaming_thought_text(), None);
+    assert!(
+        render_to_text(&mut app, 80, 20).contains("Think · …"),
+        "tool activity must retain inline Thinking until the turn ends"
+    );
 
     app.handle_event(AppEvent::ToolCallUpdate {
         session_id: DEFAULT_TAB_ID.into(),
