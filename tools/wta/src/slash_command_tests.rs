@@ -41,6 +41,7 @@ fn complete_yolo_request(
         transaction_id,
         session_id: session_id.to_string(),
         enabled,
+        restart_required: false,
         result: result.map_err(str::to_string),
     });
 }
@@ -543,6 +544,7 @@ fn runtime_change_cancels_stale_pending_yolo_ack() {
         transaction_id: 0,
         session_id: session_id.into(),
         enabled: true,
+        restart_required: false,
         result: Ok(()),
     });
     assert!(!app.yolo_state.lock().unwrap().effective(session_id));
@@ -572,6 +574,7 @@ fn reused_session_id_ignores_stale_yolo_acknowledgement() {
         transaction_id,
         session_id: session_id.to_string(),
         enabled,
+        restart_required: false,
         result: Ok(()),
     });
 
@@ -594,6 +597,7 @@ fn reused_session_id_ignores_stale_yolo_acknowledgement() {
         transaction_id,
         session_id: session_id.to_string(),
         enabled,
+        restart_required: false,
         result: Ok(()),
     });
     assert!(!app.pending_yolo_changes.contains_key(session_id.0.as_ref()));

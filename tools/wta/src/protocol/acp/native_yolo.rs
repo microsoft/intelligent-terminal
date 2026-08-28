@@ -10,9 +10,44 @@ mod providers;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, RwLock};
+use std::time::Duration;
 
 use agent_client_protocol as acp;
 use providers::{DiscoveryInput, NativeYoloAction, ProviderSessionState};
+
+pub(super) const NATIVE_YOLO_RPC_TIMEOUT: Duration = Duration::from_secs(10);
+
+#[derive(Debug)]
+pub(super) struct NativeYoloApplyError {
+    message: String,
+    restart_required: bool,
+}
+
+impl NativeYoloApplyError {
+    fn known(message: impl Into<String>) -> Self {
+        Self {
+            message: message.into(),
+            restart_required: false,
+        }
+    }
+
+    fn timed_out(message: impl Into<String>) -> Self {
+        Self {
+            message: message.into(),
+            restart_required: true,
+        }
+    }
+
+    pub(super) fn restart_required(&self) -> bool {
+        self.restart_required
+    }
+}
+
+impl std::fmt::Display for NativeYoloApplyError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(&self.message)
+    }
+}
 
 #[derive(Clone, Debug)]
 pub(crate) struct NativeYoloOperation {
@@ -177,14 +212,26 @@ impl NativeYoloState {
         enabled: bool,
     ) -> Result<(), String> {
         let operation = self.reserve_operation(session_id, enabled);
-        self.apply_reserved(conn, operation).await
+        self.apply_reserved(conn, operation)
+            .await
+            .map_err(|error| error.to_string())
     }
 
-    pub(crate) async fn apply_reserved(
+    pub(super) async fn apply_reserved(
         &self,
         conn: &crate::protocol::acp::conn::ClientLink,
         operation: NativeYoloOperation,
-    ) -> Result<(), String> {
+    ) -> Result<(), NativeYoloApplyError> {
+        self.apply_reserved_with_timeout(conn, operation, NATIVE_YOLO_RPC_TIMEOUT)
+            .await
+    }
+
+    pub(super) async fn apply_reserved_with_timeout(
+        &self,
+        conn: &crate::protocol::acp::conn::ClientLink,
+        operation: NativeYoloOperation,
+        rpc_timeout: Duration,
+    ) -> Result<(), NativeYoloApplyError> {
         let lease = {
             let gate = self
                 .operation_gates
@@ -204,35 +251,55 @@ impl NativeYoloState {
             if !self.operation_is_current(&operation) {
                 return Ok(());
             }
-            let action = self.action_for(&operation.session_id, operation.enabled)?;
+            let action = self
+                .action_for(&operation.session_id, operation.enabled)
+                .map_err(NativeYoloApplyError::known)?;
             match &action {
                 NativeYoloAction::SetConfigOption { config_id, value } => {
-                    let response = conn
-                        .set_session_config_option(
+                    let response = tokio::time::timeout(
+                        rpc_timeout,
+                        conn.set_session_config_option(
                             acp::schema::v1::SetSessionConfigOptionRequest::new(
                                 operation.session_id.clone(),
                                 config_id.clone(),
                                 value.as_str(),
                             ),
-                        )
-                        .await;
+                        ),
+                    )
+                    .await;
+                    let response = response.map_err(|_| {
+                        NativeYoloApplyError::timed_out(format!(
+                            "provider-native Yolo RPC timed out while setting config option '{config_id}' for session '{}'",
+                            operation.session_id
+                        ))
+                    })?;
                     if !self.operation_is_current(&operation) {
                         return Ok(());
                     }
-                    let response = response.map_err(|error| error.to_string())?;
+                    let response = response
+                        .map_err(|error| NativeYoloApplyError::known(error.to_string()))?;
                     self.record_from_config_update(&operation.session_id, &response.config_options);
                 }
                 NativeYoloAction::SetMode { mode_id } => {
-                    let response = conn
-                        .set_session_mode(acp::schema::v1::SetSessionModeRequest::new(
+                    let response = tokio::time::timeout(
+                        rpc_timeout,
+                        conn.set_session_mode(acp::schema::v1::SetSessionModeRequest::new(
                             operation.session_id.clone(),
                             mode_id.clone(),
+                        )),
+                    )
+                    .await;
+                    let response = response.map_err(|_| {
+                        NativeYoloApplyError::timed_out(format!(
+                            "provider-native Yolo RPC timed out while setting mode '{mode_id}' for session '{}'",
+                            operation.session_id
                         ))
-                        .await;
+                    })?;
                     if !self.operation_is_current(&operation) {
                         return Ok(());
                     }
-                    response.map_err(|error| error.to_string())?;
+                    response
+                        .map_err(|error| NativeYoloApplyError::known(error.to_string()))?;
                     self.record_current_mode(&operation.session_id, mode_id);
                 }
                 NativeYoloAction::Noop => {}

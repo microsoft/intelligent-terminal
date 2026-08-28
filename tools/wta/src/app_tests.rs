@@ -3048,6 +3048,66 @@ fn bootstrap_agent_connection_reconciles_global_yolo_state() {
 }
 
 #[test]
+fn failed_policy_yolo_reconcile_restarts_master() {
+    let (mut app, mut restart_rx) = test_app_with_restart_rx();
+
+    app.handle_event(AppEvent::RuntimeYoloReconcileCompleted {
+        fail_closed: false,
+        restart_required: false,
+        result: Err("provider-native Yolo RPC timed out".into()),
+    });
+    assert!(restart_rx.try_recv().is_err());
+
+    app.handle_event(AppEvent::RuntimeYoloReconcileCompleted {
+        fail_closed: true,
+        restart_required: false,
+        result: Err("provider-native Yolo RPC timed out".into()),
+    });
+    assert!(matches!(
+        restart_rx.try_recv().expect("policy failure must restart"),
+        crate::protocol::acp::client::AgentLifecycleRequest::RestartMaster
+    ));
+
+    app.handle_event(AppEvent::RuntimeYoloReconcileCompleted {
+        fail_closed: false,
+        restart_required: true,
+        result: Err("provider-native Yolo RPC timed out".into()),
+    });
+    assert!(matches!(
+        restart_rx
+            .try_recv()
+            .expect("unknown provider outcome must restart"),
+        crate::protocol::acp::client::AgentLifecycleRequest::RestartMaster
+    ));
+}
+
+#[test]
+fn unknown_stale_yolo_outcome_restarts_once_without_committing_state() {
+    let (mut app, mut restart_rx) = test_app_with_restart_rx();
+
+    app.handle_event(AppEvent::YoloModeChangeCompleted {
+        transaction_id: 99,
+        session_id: "stale-timeout-session".into(),
+        enabled: true,
+        restart_required: true,
+        result: Err("provider-native Yolo RPC timed out".into()),
+    });
+
+    assert!(matches!(
+        restart_rx
+            .try_recv()
+            .expect("unknown stale outcome must restart"),
+        crate::protocol::acp::client::AgentLifecycleRequest::RestartMaster
+    ));
+    assert!(restart_rx.try_recv().is_err());
+    assert!(!app
+        .yolo_state
+        .lock()
+        .unwrap()
+        .effective("stale-timeout-session"));
+}
+
+#[test]
 fn fresh_session_model_does_not_replace_global_override() {
     use crate::protocol::acp::client::MasterExtRequest;
 

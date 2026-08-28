@@ -9,6 +9,12 @@ struct ConfigApplyBarrier {
     release: Arc<tokio::sync::Notify>,
 }
 
+#[derive(Clone)]
+struct ModeApplyBarrier {
+    started: Arc<tokio::sync::Notify>,
+    release: Arc<tokio::sync::Notify>,
+}
+
 fn discover(agent_id: &str, response: &str, enabled: bool) -> Result<NativeYoloAction, String> {
     let state = NativeYoloState::new();
     state.set_resolved_agent_id(Some(agent_id));
@@ -22,6 +28,14 @@ fn discover(agent_id: &str, response: &str, enabled: bool) -> Result<NativeYoloA
 fn spawn_apply_mock(
     actions: Arc<Mutex<Vec<NativeYoloAction>>>,
     config_barrier: Option<ConfigApplyBarrier>,
+) -> crate::protocol::acp::conn::ClientLink {
+    spawn_apply_mock_with_barriers(actions, config_barrier, None)
+}
+
+fn spawn_apply_mock_with_barriers(
+    actions: Arc<Mutex<Vec<NativeYoloAction>>>,
+    config_barrier: Option<ConfigApplyBarrier>,
+    mode_barrier: Option<ModeApplyBarrier>,
 ) -> crate::protocol::acp::conn::ClientLink {
     use crate::protocol::acp::conn;
 
@@ -90,7 +104,12 @@ fn spawn_apply_mock(
                   responder: acp::Responder<acp::schema::v1::SetSessionModeResponse>,
                   _context| {
                 let actions = Arc::clone(&mode_actions);
+                let barrier = mode_barrier.clone();
                 async move {
+                    if let Some(barrier) = barrier {
+                        barrier.started.notify_one();
+                        barrier.release.notified().await;
+                    }
                     actions.lock().unwrap().push(NativeYoloAction::SetMode {
                         mode_id: request.mode_id.0.to_string(),
                     });
@@ -668,6 +687,187 @@ fn serializes_native_yolo_writes_per_session() {
                 },
             ]
         );
+    });
+}
+
+#[test]
+fn hung_enable_times_out_and_releases_gate_for_newer_disable() {
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    tokio::task::LocalSet::new().block_on(&runtime, async {
+        let state = Arc::new(NativeYoloState::new());
+        state.set_resolved_agent_id(Some(crate::agent_registry::COPILOT_AGENT_ID));
+        let response: acp::schema::v1::NewSessionResponse = serde_json::from_str(
+            r#"{
+                "sessionId": "hung-enable-session",
+                "configOptions": [{
+                    "id": "allow_all", "name": "Allow All", "category": "permissions",
+                    "type": "select", "currentValue": "off",
+                    "options": [{"value": "on", "name": "On"}, {"value": "off", "name": "Off"}]
+                }]
+            }"#,
+        )
+        .unwrap();
+        let session_id = response.session_id.clone();
+        state.record_from_new_session(&response);
+        let actions = Arc::new(Mutex::new(Vec::new()));
+        let barrier = ConfigApplyBarrier {
+            started: Arc::new(tokio::sync::Notify::new()),
+            release: Arc::new(tokio::sync::Notify::new()),
+        };
+        let connection = spawn_apply_mock(Arc::clone(&actions), Some(barrier.clone()));
+
+        let enable = tokio::task::spawn_local({
+            let state = Arc::clone(&state);
+            let connection = connection.clone();
+            let operation = state.reserve_operation(session_id.clone(), true);
+            async move {
+                state
+                    .apply_reserved_with_timeout(
+                        &connection,
+                        operation,
+                        std::time::Duration::from_millis(20),
+                    )
+                    .await
+            }
+        });
+        barrier.started.notified().await;
+        let disable = tokio::task::spawn_local({
+            let state = Arc::clone(&state);
+            let operation = state.reserve_operation(session_id, false);
+            async move {
+                state
+                    .apply_reserved_with_timeout(
+                        &connection,
+                        operation,
+                        std::time::Duration::from_millis(100),
+                    )
+                    .await
+            }
+        });
+
+        let enable_result = tokio::time::timeout(std::time::Duration::from_millis(200), enable)
+            .await
+            .expect("native Yolo must bound a hung RPC")
+            .unwrap();
+        let error = enable_result.unwrap_err();
+        assert!(error.restart_required());
+        assert!(error
+            .to_string()
+            .contains("provider-native Yolo RPC timed out"));
+        barrier.release.notify_one();
+        tokio::time::timeout(std::time::Duration::from_millis(500), disable)
+            .await
+            .expect("the newer disable must proceed after the timed-out enable releases its gate")
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            actions.lock().unwrap().last(),
+            Some(&NativeYoloAction::SetConfigOption {
+                config_id: "allow_all".to_string(),
+                value: "off".to_string(),
+            })
+        );
+    });
+}
+
+#[test]
+fn hung_current_config_rpc_returns_error_and_releases_gate() {
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    tokio::task::LocalSet::new().block_on(&runtime, async {
+        let state = NativeYoloState::new();
+        state.set_resolved_agent_id(Some(crate::agent_registry::COPILOT_AGENT_ID));
+        let response: acp::schema::v1::NewSessionResponse = serde_json::from_str(
+            r#"{
+                "sessionId": "hung-config-session",
+                "configOptions": [{
+                    "id": "allow_all", "name": "Allow All", "category": "permissions",
+                    "type": "select", "currentValue": "off",
+                    "options": [{"value": "on", "name": "On"}, {"value": "off", "name": "Off"}]
+                }]
+            }"#,
+        )
+        .unwrap();
+        let session_id = response.session_id.clone();
+        state.record_from_new_session(&response);
+        let barrier = ConfigApplyBarrier {
+            started: Arc::new(tokio::sync::Notify::new()),
+            release: Arc::new(tokio::sync::Notify::new()),
+        };
+        let connection = spawn_apply_mock(Arc::new(Mutex::new(Vec::new())), Some(barrier.clone()));
+        let operation = state.reserve_operation(session_id, true);
+
+        let error = state
+            .apply_reserved_with_timeout(
+                &connection,
+                operation,
+                std::time::Duration::from_millis(20),
+            )
+            .await
+            .unwrap_err();
+
+        assert!(error
+            .to_string()
+            .contains("setting config option 'allow_all'"));
+        assert!(error.restart_required());
+        assert!(state.operation_gates.lock().unwrap().is_empty());
+        barrier.release.notify_one();
+    });
+}
+
+#[test]
+fn hung_current_mode_disable_returns_error_and_releases_gate() {
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    tokio::task::LocalSet::new().block_on(&runtime, async {
+        let state = NativeYoloState::new();
+        state.set_resolved_agent_id(Some(crate::agent_registry::GEMINI_AGENT_ID));
+        let response: acp::schema::v1::NewSessionResponse = serde_json::from_str(
+            r#"{
+                "sessionId": "hung-mode-session",
+                "modes": {
+                    "currentModeId": "yolo",
+                    "availableModes": [
+                        {"id": "default", "name": "Default"},
+                        {"id": "yolo", "name": "YOLO"}
+                    ]
+                }
+            }"#,
+        )
+        .unwrap();
+        let session_id = response.session_id.clone();
+        state.record_from_new_session(&response);
+        let barrier = ModeApplyBarrier {
+            started: Arc::new(tokio::sync::Notify::new()),
+            release: Arc::new(tokio::sync::Notify::new()),
+        };
+        let connection = spawn_apply_mock_with_barriers(
+            Arc::new(Mutex::new(Vec::new())),
+            None,
+            Some(barrier.clone()),
+        );
+        let operation = state.reserve_operation(session_id, false);
+
+        let error = state
+            .apply_reserved_with_timeout(
+                &connection,
+                operation,
+                std::time::Duration::from_millis(20),
+            )
+            .await
+            .unwrap_err();
+
+        assert!(error.to_string().contains("setting mode 'default'"));
+        assert!(error.restart_required());
+        assert!(state.operation_gates.lock().unwrap().is_empty());
+        barrier.release.notify_one();
     });
 }
 

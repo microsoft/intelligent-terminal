@@ -54,10 +54,12 @@ pub enum AppEvent {
         transaction_id: u64,
         session_id: String,
         enabled: bool,
+        restart_required: bool,
         result: Result<(), String>,
     },
     RuntimeYoloReconcileCompleted {
         fail_closed: bool,
+        restart_required: bool,
         result: Result<(), String>,
     },
     ModelSetCompleted {

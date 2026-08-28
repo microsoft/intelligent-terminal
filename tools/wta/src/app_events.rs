@@ -789,19 +789,32 @@ impl App {
                 transaction_id,
                 session_id,
                 enabled,
+                restart_required,
                 result,
             } => {
+                if restart_required {
+                    tracing::error!(
+                        target: "yolo",
+                        error = %result.as_ref().err().map(String::as_str).unwrap_or("unknown provider state"),
+                        "provider-native Yolo outcome is unknown; restarting agent stack fail-closed"
+                    );
+                    let _ = self
+                        .restart_tx
+                        .send(crate::protocol::acp::client::AgentLifecycleRequest::RestartMaster);
+                }
                 self.complete_yolo_change(transaction_id, session_id, enabled, result);
             }
             AppEvent::RuntimeYoloReconcileCompleted {
                 fail_closed,
+                restart_required,
                 result,
             } => {
-                if fail_closed && result.is_err() {
+                if result.is_err() && (fail_closed || restart_required) {
                     tracing::error!(
                         target: "yolo",
-                        error = %result.unwrap_err(),
-                        "cannot disable provider-native Yolo; restarting agent stack fail-closed"
+                        error = %result.as_ref().unwrap_err(),
+                        unknown_outcome = restart_required,
+                        "provider-native Yolo reconciliation failed; restarting agent stack fail-closed"
                     );
                     let _ = self
                         .restart_tx

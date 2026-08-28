@@ -2374,8 +2374,12 @@ async fn apply_native_yolo_checked(
     conn: &conn::ClientLink,
     state: &ClientState,
     operation: super::native_yolo::NativeYoloOperation,
-) -> std::result::Result<(), String> {
-    state.native_yolo.apply_reserved(conn, operation).await
+    timeout: std::time::Duration,
+) -> std::result::Result<(), super::native_yolo::NativeYoloApplyError> {
+    state
+        .native_yolo
+        .apply_reserved_with_timeout(conn, operation, timeout)
+        .await
 }
 
 /// Handle a `session/load` failure (Err or timeout) in the
@@ -3471,6 +3475,24 @@ fn dispatch_master_ext_request(
     tab_to_session: &Arc<tokio::sync::Mutex<HashMap<String, acp::schema::v1::SessionId>>>,
     client_state: Arc<ClientState>,
 ) {
+    dispatch_master_ext_request_with_yolo_timeout(
+        req,
+        conn,
+        event_tx,
+        tab_to_session,
+        client_state,
+        super::native_yolo::NATIVE_YOLO_RPC_TIMEOUT,
+    );
+}
+
+fn dispatch_master_ext_request_with_yolo_timeout(
+    req: MasterExtRequest,
+    conn: &conn::ClientLink,
+    event_tx: &mpsc::UnboundedSender<AppEvent>,
+    tab_to_session: &Arc<tokio::sync::Mutex<HashMap<String, acp::schema::v1::SessionId>>>,
+    client_state: Arc<ClientState>,
+    yolo_reconcile_timeout: std::time::Duration,
+) {
     let reserved_yolo_operations = match &req {
         MasterExtRequest::SetSessionYolo {
             session_id,
@@ -3721,7 +3743,13 @@ fn dispatch_master_ext_request(
                     .into_iter()
                     .next()
                     .expect("SetSessionYolo reserves one operation");
-                let result = match apply_native_yolo_checked(&conn, &client_state, operation).await
+                let (result, restart_required) = match apply_native_yolo_checked(
+                    &conn,
+                    &client_state,
+                    operation,
+                    yolo_reconcile_timeout,
+                )
+                .await
                 {
                     Ok(()) => {
                         tracing::info!(
@@ -3730,9 +3758,10 @@ fn dispatch_master_ext_request(
                             enabled,
                             "provider-native Yolo updated for live session"
                         );
-                        Ok(())
+                        (Ok(()), false)
                     }
                     Err(err) => {
+                        let restart_required = err.restart_required();
                         tracing::warn!(
                             target: "acp",
                             session_id = %session_id.0,
@@ -3740,13 +3769,14 @@ fn dispatch_master_ext_request(
                             enabled,
                             "provider-native Yolo update failed"
                         );
-                        Err(err)
+                        (Err(err.to_string()), restart_required)
                     }
                 };
                 let _ = event_tx.send(AppEvent::YoloModeChangeCompleted {
                     transaction_id,
                     session_id: session_id.to_string(),
                     enabled,
+                    restart_required,
                     result,
                 });
             }
@@ -3754,34 +3784,72 @@ fn dispatch_master_ext_request(
                 sessions,
                 fail_closed,
             } => {
-                let mut failure = None;
-                for ((session_id, enabled), operation) in
-                    sessions.into_iter().zip(reserved_yolo_operations)
-                {
-                    match apply_native_yolo_checked(&conn, &client_state, operation).await {
-                        Ok(()) => {
-                            tracing::info!(
-                                target: "acp",
-                                session_id = %session_id.0,
-                                enabled,
-                                "provider-native Yolo updated for live session"
-                            );
-                        }
-                        Err(error) => {
-                            tracing::warn!(
-                                target: "acp",
-                                session_id = %session_id.0,
-                                enabled,
-                                error = %error,
-                                "provider-native Yolo runtime reconciliation failed"
-                            );
-                            failure.get_or_insert_with(|| error.to_string());
+                let reconcile = async {
+                    let mut failure = None;
+                    for ((session_id, enabled), operation) in
+                        sessions.into_iter().zip(reserved_yolo_operations)
+                    {
+                        match apply_native_yolo_checked(
+                            &conn,
+                            &client_state,
+                            operation,
+                            yolo_reconcile_timeout,
+                        )
+                        .await
+                        {
+                            Ok(()) => {
+                                tracing::info!(
+                                    target: "acp",
+                                    session_id = %session_id.0,
+                                    enabled,
+                                    "provider-native Yolo updated for live session"
+                                );
+                            }
+                            Err(error) => {
+                                tracing::warn!(
+                                    target: "acp",
+                                    session_id = %session_id.0,
+                                    enabled,
+                                    error = %error,
+                                    "provider-native Yolo runtime reconciliation failed"
+                                );
+                                if fail_closed || error.restart_required() {
+                                    return Err(error);
+                                }
+                                failure.get_or_insert(error);
+                            }
                         }
                     }
-                }
+                    failure.map_or(Ok(()), Err)
+                };
+                let (result, restart_required) = if fail_closed {
+                    match tokio::time::timeout(yolo_reconcile_timeout, reconcile).await {
+                        Ok(result) => {
+                            let restart_required = result
+                                .as_ref()
+                                .err()
+                                .is_some_and(|error| error.restart_required());
+                            (result.map_err(|error| error.to_string()), restart_required)
+                        }
+                        Err(_) => (
+                            Err(format!(
+                                "provider-native Yolo reconciliation timed out after {yolo_reconcile_timeout:?}"
+                            )),
+                            true,
+                        ),
+                    }
+                } else {
+                    let result = reconcile.await;
+                    let restart_required = result
+                        .as_ref()
+                        .err()
+                        .is_some_and(|error| error.restart_required());
+                    (result.map_err(|error| error.to_string()), restart_required)
+                };
                 let _ = event_tx.send(AppEvent::RuntimeYoloReconcileCompleted {
                     fail_closed,
-                    result: failure.map_or(Ok(()), Err),
+                    restart_required,
+                    result,
                 });
             }
             MasterExtRequest::SetSessionConfigOption {
