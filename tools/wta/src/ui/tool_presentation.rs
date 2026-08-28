@@ -132,6 +132,11 @@ impl<'a> ToolPresentation<'a> {
                 .inline_compact_command()
                 .map(Cow::Borrowed)
                 .unwrap_or_else(|| self.display_title()),
+            ToolCallKind::Edit | ToolCallKind::Delete
+                if !compact && matches!(self.phase, ToolPhase::Failed(_)) =>
+            {
+                self.display_title()
+            }
             ToolCallKind::Read
             | ToolCallKind::Edit
             | ToolCallKind::Delete
@@ -357,6 +362,27 @@ mod tests {
         assert_eq!(presentation.display_title(), r"Viewing src\main.rs");
         assert!(presentation.title_contains_target());
         assert_eq!(presentation.target_name(), Some("main.rs"));
+        assert_eq!(presentation.primary_text(true), r"src\main.rs");
+    }
+
+    #[test]
+    fn failed_mutations_keep_the_provider_operation_title() {
+        let locations = vec![ToolCallLocation {
+            path: r"C:\project\src\main.rs".into(),
+            line: None,
+        }];
+        let presentation = ToolPresentation::new(
+            r"Creating C:\project\src\main.rs",
+            "Failed: Path already exists",
+            ToolCallKind::Edit,
+            None,
+            false,
+            None,
+            None,
+            &locations,
+        );
+
+        assert_eq!(presentation.primary_text(false), r"Creating src\main.rs");
         assert_eq!(presentation.primary_text(true), r"src\main.rs");
     }
 
