@@ -185,6 +185,20 @@ Describe 'Resolve-ItApp' -Tag 'Unit' {
     }
 }
 
+Describe 'Feature suite package selection' -Tag 'Unit' {
+    It 'resolves the Yolo suite package once and uses it for every app operation' {
+        $suitePath = Join-Path $PSScriptRoot '..\tests\Feature.YoloMode.Tests.ps1'
+        $suite = Get-Content -LiteralPath $suitePath -Raw
+
+        ([regex]::Matches($suite, '\bGet-ItTestPackage\b')).Count | Should -Be 1
+        ([regex]::Matches($suite, '(?m)^Describe ')).Count | Should -Be 4
+        ([regex]::Matches($suite, '(?m)^Describe .* -ForEach \$script:PackageCase\b')).Count | Should -Be 4
+        $suite | Should -Not -Match '-Package\s+Dev\b'
+        $suite | Should -Not -Match 'Resolve-ItApp\s+-Package\s+(?!\$(?:script:Package|Package)\b)'
+        $suite | Should -Not -Match 'Start-Terminal\s+-Package\s+(?!\$Package\b)'
+    }
+}
+
 Describe 'Start-Terminal startup ordering' -Tag 'Unit' {
     It 'waits for the first window before probing COM' {
         InModuleScope ItE2E {

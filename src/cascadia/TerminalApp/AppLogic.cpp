@@ -339,20 +339,31 @@ namespace winrt::TerminalApp::implementation
     void AppLogic::_RegisterAgentPolicyChange()
     {
         const auto weakSelf = get_weak();
-        const auto createWatcher = [weakSelf](const HKEY root) {
+        const auto dispatcher = DispatcherQueue::GetForCurrentThread();
+        const auto createWatcher = [weakSelf, dispatcher](const HKEY root) {
             return ::Microsoft::Terminal::Settings::Model::AgentPolicy::CreatePolicyChangeWatcher(
                 root,
-                [weakSelf](wil::RegistryChangeKind) noexcept {
+                [weakSelf, dispatcher](wil::RegistryChangeKind) noexcept {
                     try
                     {
-                        if (const auto self = weakSelf.get())
-                        {
-                            // AgentPolicy is header-only, so TerminalApp and SettingsModel each
-                            // own a cache. Refresh this module now; the settings reload refreshes
-                            // SettingsModel and emits the existing runtime-config diff.
-                            ::Microsoft::Terminal::Settings::Model::AgentPolicy::Reload();
-                            self->ReloadSettingsThrottled();
-                        }
+                        dispatcher.TryEnqueue([weakSelf]() noexcept {
+                            try
+                            {
+                                if (const auto self = weakSelf.get())
+                                {
+                                    // Rebind first so creation or deletion of a missing policy
+                                    // ancestor cannot leave the next path segment unwatched.
+                                    self->_RegisterAgentPolicyChange();
+
+                                    // AgentPolicy is header-only, so TerminalApp and SettingsModel
+                                    // each own a cache. Refresh this module now; the settings reload
+                                    // refreshes SettingsModel and emits the runtime-config diff.
+                                    ::Microsoft::Terminal::Settings::Model::AgentPolicy::Reload();
+                                    self->ReloadSettingsThrottled();
+                                }
+                            }
+                            CATCH_LOG()
+                        });
                     }
                     CATCH_LOG()
                 });

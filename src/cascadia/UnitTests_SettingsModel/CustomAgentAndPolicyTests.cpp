@@ -91,6 +91,7 @@ namespace SettingsModelUnitTests
         TEST_METHOD(EffectiveAgentPaneYoloModeFalseWhenPolicyBlocked);
         TEST_METHOD(IsYoloModePolicyLockedTracksBlocked);
         TEST_METHOD(PolicyChangeWatcherObservesRecursiveMutation);
+        TEST_METHOD(PolicyChangeWatcherTracksPolicyCreatedFromMissingAncestors);
 
         TEST_CLASS_CLEANUP(ClassCleanup)
         {
@@ -758,5 +759,78 @@ namespace SettingsModelUnitTests
 
         VERIFY_ARE_EQUAL(WAIT_OBJECT_0, WaitForSingleObject(changed.get(), 5000));
         VERIFY_IS_GREATER_THAN_OR_EQUAL(callbackCount.load(std::memory_order_relaxed), 1u);
+    }
+
+    void CustomAgentAndPolicyTests::PolicyChangeWatcherTracksPolicyCreatedFromMissingAncestors()
+    {
+        const auto keyPath = L"Software\\IntelligentTerminal\\Tests\\PolicyWatcherAncestors-" +
+                             std::to_wstring(GetCurrentProcessId()) + L"-" +
+                             std::to_wstring(GetTickCount64());
+        const auto cleanup = wil::scope_exit([&] {
+            RegDeleteTreeW(HKEY_CURRENT_USER, keyPath.c_str());
+        });
+
+        wil::unique_hkey root;
+        VERIFY_ARE_EQUAL(
+            static_cast<LSTATUS>(ERROR_SUCCESS),
+            RegCreateKeyExW(
+                HKEY_CURRENT_USER,
+                keyPath.c_str(),
+                0,
+                nullptr,
+                0,
+                KEY_NOTIFY | KEY_CREATE_SUB_KEY,
+                nullptr,
+                &root,
+                nullptr));
+        wil::unique_event changed;
+        changed.create();
+        wil::unique_registry_watcher_nothrow watcher;
+        const auto arm = [&] {
+            watcher = AgentPolicy::details::CreatePolicyChangeWatcher(
+                root.get(),
+                L"Policies\\Microsoft",
+                [&](wil::RegistryChangeKind) {
+                    changed.SetEvent();
+                });
+            VERIFY_IS_TRUE(static_cast<bool>(watcher));
+        };
+        const auto createAndObserve = [&](const wchar_t* relativePath) {
+            VERIFY_WIN32_BOOL_SUCCEEDED(ResetEvent(changed.get()));
+            arm();
+            wil::unique_hkey created;
+            VERIFY_ARE_EQUAL(
+                static_cast<LSTATUS>(ERROR_SUCCESS),
+                RegCreateKeyExW(
+                    root.get(),
+                    relativePath,
+                    0,
+                    nullptr,
+                    0,
+                    KEY_NOTIFY | KEY_CREATE_SUB_KEY | KEY_SET_VALUE,
+                    nullptr,
+                    &created,
+                    nullptr));
+            VERIFY_ARE_EQUAL(WAIT_OBJECT_0, WaitForSingleObject(changed.get(), 5000));
+            return created;
+        };
+
+        createAndObserve(L"Policies");
+        createAndObserve(L"Policies\\Microsoft");
+        auto policyKey = createAndObserve(L"Policies\\Microsoft\\IntelligentTerminal");
+
+        VERIFY_WIN32_BOOL_SUCCEEDED(ResetEvent(changed.get()));
+        arm();
+        constexpr DWORD blocked = 0;
+        VERIFY_ARE_EQUAL(
+            static_cast<LSTATUS>(ERROR_SUCCESS),
+            RegSetValueExW(
+                policyKey.get(),
+                L"AllowYoloMode",
+                0,
+                REG_DWORD,
+                reinterpret_cast<const BYTE*>(&blocked),
+                sizeof(blocked)));
+        VERIFY_ARE_EQUAL(WAIT_OBJECT_0, WaitForSingleObject(changed.get(), 5000));
     }
 }

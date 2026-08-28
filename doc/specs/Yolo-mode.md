@@ -143,8 +143,8 @@ session config or mode.
 
 Other command behavior:
 
-- A second `/yolo` command for the same session is ignored while an update is
-  pending.
+- A newer `/yolo` command for the same session supersedes any pending update;
+  stale acknowledgements from the older update are ignored.
 - Running `/yolo` before the tab has a `session_id` is currently a no-op and
   produces no success message.
 - `/new` removes the previous session override.

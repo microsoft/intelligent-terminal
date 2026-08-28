@@ -80,12 +80,53 @@ namespace Microsoft::Terminal::Settings::Model::AgentPolicy
     {
         inline wil::unique_registry_watcher_nothrow CreatePolicyChangeWatcher(
             wil::unique_hkey&& key,
+            const bool recursive,
             wistd::function<void(wil::RegistryChangeKind)>&& callback) noexcept
         {
             return wil::make_registry_watcher_nothrow(
                 std::move(key),
-                true,
+                recursive,
                 std::move(callback));
+        }
+
+        inline wil::unique_registry_watcher_nothrow CreatePolicyChangeWatcher(
+            wil::unique_hkey&& key,
+            wistd::function<void(wil::RegistryChangeKind)>&& callback) noexcept
+        {
+            return CreatePolicyChangeWatcher(std::move(key), true, std::move(callback));
+        }
+
+        inline wil::unique_registry_watcher_nothrow CreatePolicyChangeWatcher(
+            HKEY root,
+            const std::wstring_view targetPath,
+            wistd::function<void(wil::RegistryChangeKind)>&& callback) noexcept
+        {
+            std::wstring candidate{ targetPath };
+            for (;;)
+            {
+                wil::unique_hkey key;
+                if (RegOpenKeyExW(root, candidate.c_str(), 0, KEY_NOTIFY, &key) == ERROR_SUCCESS)
+                {
+                    return CreatePolicyChangeWatcher(
+                        std::move(key),
+                        candidate.size() == targetPath.size(),
+                        std::move(callback));
+                }
+                if (candidate.empty())
+                {
+                    return {};
+                }
+
+                const auto separator = candidate.find_last_of(L'\\');
+                if (separator == std::wstring::npos)
+                {
+                    candidate.clear();
+                }
+                else
+                {
+                    candidate.resize(separator);
+                }
+            }
         }
     }
 
@@ -93,12 +134,7 @@ namespace Microsoft::Terminal::Settings::Model::AgentPolicy
         HKEY root,
         wistd::function<void(wil::RegistryChangeKind)>&& callback) noexcept
     {
-        wil::unique_hkey key;
-        if (RegOpenKeyExW(root, PolicyWatchRegKey, 0, KEY_NOTIFY, &key) != ERROR_SUCCESS)
-        {
-            return {};
-        }
-        return details::CreatePolicyChangeWatcher(std::move(key), std::move(callback));
+        return details::CreatePolicyChangeWatcher(root, PolicyWatchRegKey, std::move(callback));
     }
 
     // Per-DLL cached snapshot, protected by a mutex.

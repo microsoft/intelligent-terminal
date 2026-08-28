@@ -5,11 +5,13 @@
 
 BeforeDiscovery {
     Import-Module (Join-Path $PSScriptRoot '..\ItE2E\ItE2E.psd1') -Force
+    $script:Package = Get-ItTestPackage
+    $script:PackageCase = @(@{ Package = $script:Package })
     $script:Ready = $false
     $script:copilotStatus = if (Get-Command copilot -ErrorAction SilentlyContinue) { 'probe-failed' } else { 'not-installed' }
     $script:openCodeReady = [bool](Get-Command opencode -ErrorAction SilentlyContinue)
     try {
-        $resolvedApp = Resolve-ItApp -Package Dev -ErrorAction Stop
+        $resolvedApp = Resolve-ItApp -Package $script:Package -ErrorAction Stop
         $script:Ready = Test-WinAppAvailable
         if ($script:copilotStatus -ne 'not-installed') {
             $script:copilotStatus = Get-AgentAcpStatus -App $resolvedApp -AgentCommand 'copilot --acp --stdio'
@@ -22,7 +24,7 @@ BeforeDiscovery {
     $script:policyReady = (-not $script:copilotBlocked) -and (Test-WtAgentPolicyControllable)
 }
 
-Describe 'Feature Yolo mode permission boundary' -Tag 'Feature' -Skip:(-not $script:Ready) {
+Describe 'Feature Yolo mode permission boundary' -ForEach $script:PackageCase -Tag 'Feature' -Skip:(-not $script:Ready) {
     BeforeAll {
         Import-Module (Join-Path $PSScriptRoot '..\ItE2E\ItE2E.psd1') -Force
         $script:fixtureLog = Join-Path $env:TEMP "ite2e-yolo-permission-$([guid]::NewGuid().ToString('N')).log"
@@ -31,7 +33,7 @@ Describe 'Feature Yolo mode permission boundary' -Tag 'Feature' -Skip:(-not $scr
             throw 'The custom ACP fixture requires whitespace-free test paths'
         }
         $fixtureCommand = "pwsh -NoProfile -File $fixture -LogPath $script:fixtureLog"
-        $script:app = Start-Terminal -Package Dev -PassFre $true -Settings @{
+        $script:app = Start-Terminal -Package $Package -PassFre $true -Settings @{
             acpAgent = 'custom:yolo-permission-fixture'
             acpCustomCommand = $fixtureCommand
             'agentPane.yoloMode' = $true
@@ -68,17 +70,17 @@ Describe 'Feature Yolo mode permission boundary' -Tag 'Feature' -Skip:(-not $scr
     }
 }
 
-Describe 'Feature provider-native Yolo with Copilot' -Tag 'Feature' -Skip:(-not $script:Ready) {
+Describe 'Feature provider-native Yolo with Copilot' -ForEach $script:PackageCase -Tag 'Feature' -Skip:(-not $script:Ready) {
     BeforeAll {
         Import-Module (Join-Path $PSScriptRoot '..\ItE2E\ItE2E.psd1') -Force
     }
 
     It 'Yolo setting persists' -Skip:$script:copilotBlocked {
-        $configOwner = Resolve-ItApp -Package Dev
+        $configOwner = Resolve-ItApp -Package $Package
         $firstApp = $null
         $secondApp = $null
         try {
-            $firstApp = Start-Terminal -Package Dev -PassFre $true -Settings @{
+            $firstApp = Start-Terminal -Package $Package -PassFre $true -Settings @{
                 acpAgent = 'copilot'
                 'agentPane.yoloMode' = $false
             }
@@ -89,7 +91,7 @@ Describe 'Feature provider-native Yolo with Copilot' -Tag 'Feature' -Skip:(-not 
             Stop-Terminal -App $firstApp -RestoreSettings $false
             $firstApp = $null
 
-            $secondApp = Start-Terminal -Package Dev -PassFre $true -Backup $false -CleanSettings $false
+            $secondApp = Start-Terminal -Package $Package -PassFre $true -Backup $false -CleanSettings $false
             Assert-Setting -App $secondApp -Key 'agentPane.yoloMode' -Value $true
             Wait-AgentReady -App $secondApp -TimeoutSec 90 | Should -BeTrue
             $agentSession = Wait-NewAgentPaneSession -App $secondApp -TimeoutSec 30
@@ -105,7 +107,7 @@ Describe 'Feature provider-native Yolo with Copilot' -Tag 'Feature' -Skip:(-not 
     }
 
     It 'Provider-native Yolo toggles per live session' -Skip:$script:copilotBlocked {
-        $app = Start-Terminal -Package Dev -PassFre $true -Settings @{
+        $app = Start-Terminal -Package $Package -PassFre $true -Settings @{
             acpAgent = 'copilot'
             'agentPane.yoloMode' = $true
         }
@@ -130,13 +132,13 @@ Describe 'Feature provider-native Yolo with Copilot' -Tag 'Feature' -Skip:(-not 
 
 }
 
-Describe 'Feature unsupported provider Yolo behavior' -Tag 'Feature' -Skip:(-not $script:Ready) {
+Describe 'Feature unsupported provider Yolo behavior' -ForEach $script:PackageCase -Tag 'Feature' -Skip:(-not $script:Ready) {
     BeforeAll {
         Import-Module (Join-Path $PSScriptRoot '..\ItE2E\ItE2E.psd1') -Force
     }
 
     It 'Unsupported agents reject Yolo safely' -Skip:(-not $script:openCodeReady) {
-        $app = Start-Terminal -Package Dev -PassFre $true -Settings @{ acpAgent = 'opencode' }
+        $app = Start-Terminal -Package $Package -PassFre $true -Settings @{ acpAgent = 'opencode' }
         try {
             Open-AgentPane -App $app | Out-Null
             Wait-AgentReady -App $app -TimeoutSec 90 | Should -BeTrue
@@ -151,7 +153,7 @@ Describe 'Feature unsupported provider Yolo behavior' -Tag 'Feature' -Skip:(-not
     }
 }
 
-Describe 'Feature AllowYoloMode policy' -Tag 'Feature' -Skip:(-not $script:Ready) {
+Describe 'Feature AllowYoloMode policy' -ForEach $script:PackageCase -Tag 'Feature' -Skip:(-not $script:Ready) {
     BeforeAll {
         Import-Module (Join-Path $PSScriptRoot '..\ItE2E\ItE2E.psd1') -Force
     }
@@ -160,7 +162,7 @@ Describe 'Feature AllowYoloMode policy' -Tag 'Feature' -Skip:(-not $script:Ready
         $prior = Set-WtAgentPolicy -Policy @{ AllowYoloMode = 'Allowed' }
         $app = $null
         try {
-            $app = Start-Terminal -Package Dev -PassFre $true -Settings @{
+            $app = Start-Terminal -Package $Package -PassFre $true -Settings @{
                 acpAgent = 'copilot'
                 'agentPane.yoloMode' = $true
             }

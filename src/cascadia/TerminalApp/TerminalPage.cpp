@@ -3143,7 +3143,7 @@ namespace winrt::TerminalApp::implementation
             }
         }
 
-        // Resolve cwd:
+        // Resolve the source-aware ACP cwd and the Win32 helper launch cwd separately:
         //   a) Active pane CWD of THIS tab (pre-seeded from its starting directory,
         //      then updated by shell integration / OSC 9;9)
         //   b) VirtualWorkingDirectory (CLI-remoted commands like `wt agent`)
@@ -3157,7 +3157,9 @@ namespace winrt::TerminalApp::implementation
         // the helper would start in the wrong directory (autofix and
         // agent context would attribute to the wrong project). Reading
         // directly from `tab` resolves to whichever pane is active on
-        // this specific tab. It must also win over the window cwd: deferred
+        // this specific tab. For a WSL agent, that source cwd may be POSIX and
+        // must not become the Windows wta-helper process's starting directory.
+        // The pane cwd must also win over the window cwd for agent context: deferred
         // pre-warm runs after startup actions restore that property to the
         // launcher directory, which is System32 for an AUMID activation.
         winrt::hstring paneDirectory;
@@ -3174,24 +3176,27 @@ namespace winrt::TerminalApp::implementation
         const winrt::hstring homeDirectory{
             ::Microsoft::Terminal::AgentSource::ReadEnvironmentVariable(L"USERPROFILE")
         };
-        const winrt::hstring startingDirectory{
-            ::Microsoft::Terminal::AgentSource::ResolveCwd(
-                std::wstring_view{ paneDirectory },
-                std::wstring_view{ windowDirectory },
-                std::wstring_view{ profileDirectory },
-                std::wstring_view{ homeDirectory })
-        };
-        if (!startingDirectory.empty())
+        const auto resolvedCwds = ::Microsoft::Terminal::AgentSource::ResolveAgentAndHelperCwds(
+            effectiveAgentSource == L"wsl",
+            std::wstring_view{ paneDirectory },
+            std::wstring_view{ windowDirectory },
+            std::wstring_view{ profileDirectory },
+            std::wstring_view{ homeDirectory },
+            [](const std::wstring_view candidate) {
+                const std::wstring path{ candidate };
+                return Utils::IsValidDirectory(path.c_str());
+            });
+        if (!resolvedCwds.agent.empty())
         {
-            appendHelperFlagValue(L"--agent-source-cwd", startingDirectory);
+            appendHelperFlagValue(L"--agent-source-cwd", resolvedCwds.agent);
         }
 
         NewTerminalArgs args;
         args.Commandline(winrt::hstring{ helperCmd });
         args.Profile(globals.AiCoordinatorProfile());
-        if (!startingDirectory.empty())
+        if (!resolvedCwds.helper.empty())
         {
-            args.StartingDirectory(startingDirectory);
+            args.StartingDirectory(winrt::hstring{ resolvedCwds.helper });
         }
 
         auto rawPane = _MakeTerminalPane(args, nullptr, nullptr);
