@@ -863,7 +863,7 @@ async fn serve_connection(
             let action_capability = capability.clone();
             let response = crate::agent_tools::session_mcp::dispatch(
                 message,
-                |arguments| submit_to_helper(&state, action_capability, arguments),
+                |tool, arguments| submit_to_helper(&state, action_capability, tool, arguments),
                 |arguments| submit_user_input_to_helper(&state, capability, arguments),
             );
             let response = if is_user_input {
@@ -920,6 +920,7 @@ fn is_user_input_call(message: &Value) -> bool {
 async fn submit_to_helper(
     state: &MasterStateInner,
     capability: CapabilityResolution,
+    tool: crate::agent_tools::action_proposal::schema::McpActionTool,
     arguments: Value,
 ) -> Result<ProposalValidationResponse> {
     let started = std::time::Instant::now();
@@ -927,6 +928,7 @@ async fn submit_to_helper(
         state,
         capability,
         arguments,
+        tool.tool_name(),
         "request_terminal_actions",
         crate::agent_tools::session_mcp::HELPER_REQUEST_METHOD,
         HELPER_TIMEOUT,
@@ -938,6 +940,7 @@ async fn submit_to_helper(
         target: "session_mcp",
         step = "helper→master",
         op = "request_terminal_actions",
+        tool = tool.tool_name(),
         session_id = %session_id,
         status = ?response.status,
         retryable = response.retryable,
@@ -1099,6 +1102,7 @@ async fn forward_to_helper(
     state: &MasterStateInner,
     capability: CapabilityResolution,
     arguments: Value,
+    tool: &'static str,
     op: &'static str,
     helper_method: &'static str,
     timeout: Duration,
@@ -1107,6 +1111,7 @@ async fn forward_to_helper(
     let (session_id, helper_id, forwarder) = resolve_helper(state, capability, op).await?;
     let params = serde_json::value::to_raw_value(&HelperRequest {
         session_id: session_id.to_string(),
+        tool: tool.to_string(),
         arguments,
     })
     .context("encode Helper request")?;
@@ -1115,6 +1120,7 @@ async fn forward_to_helper(
         target: "session_mcp",
         step = "master→helper",
         op,
+        tool,
         helper_id = ?helper_id,
         session_id = %session_id,
         "routing MCP request to owning Helper"
@@ -1395,7 +1401,16 @@ mod tests {
         assert!(server_id
             .chars()
             .all(|ch| ch.is_ascii_digit() || ('a'..='f').contains(&ch)));
-        assert!(format!("mcp__{}__request_terminal_actions", config.name).len() <= 64);
+        // Some agent CLIs cap the fully-qualified MCP tool name at 64 chars.
+        // Assert against the longest name actually published.
+        for tool in crate::agent_tools::action_proposal::schema::McpActionTool::ALL {
+            let qualified = format!("mcp__{}__{}", config.name, tool.tool_name());
+            assert!(
+                qualified.len() <= 64,
+                "{qualified} is {} chars",
+                qualified.len()
+            );
+        }
         assert!(!config.name.contains(&pending.secret));
         assert_eq!(config.url, "http://127.0.0.1:4321/mcp");
         assert_eq!(config.headers.len(), 1);

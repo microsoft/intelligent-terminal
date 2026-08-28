@@ -13,11 +13,11 @@ and every eligible ACP session receives a distinct bearer capability:
 
 ```text
 ACP session
-  -> HTTP MCP: intellterm_<public-id>/{request_terminal_actions,request_user_input}
+  -> HTTP MCP: intellterm_<public-id>/{terminal_send,terminal_open,terminal_open_and_send,request_user_input}
   -> wta-master capability -> ACP SessionId
   -> session_to_helper -> existing master/helper ACP pipe
   -> owning Helper
-       -> request_terminal_actions -> recommendation card -> wtcli/COM executor
+       -> terminal_* -> recommendation card -> wtcli/COM executor
        -> request_user_input -> blocking choice/freeform modal -> structured answer
 ```
 
@@ -25,7 +25,7 @@ The endpoint presents typed terminal actions for review and blocking
 clarification questions. It cannot read or mutate Windows Terminal. The
 existing card confirmation is the sole mutation boundary.
 
-`request_terminal_actions` returns as soon as the Helper commits its card;
+The `terminal_*` tools return as soon as the Helper commits its card;
 confirmation or cancellation then happens independently. `request_user_input`
 deliberately keeps the MCP call open until the user answers, cancels, the
 caller disconnects, or the ten-minute timeout expires.
@@ -93,7 +93,9 @@ intellterm_<public-id>
 Tools:
 
 ```text
-request_terminal_actions
+terminal_send
+terminal_open
+terminal_open_and_send
 request_user_input
 ```
 
@@ -102,30 +104,32 @@ over stateless Streamable HTTP JSON-RPC. POST responses use JSON or HTTP 202
 for notifications; GET and DELETE return 405 because server-initiated streams
 are unnecessary. It exposes no terminal read or execution tools.
 
-Input:
+Input, for `terminal_send`:
 
 ```json
 {
-  "type": "send",
   "title": "Run tests",
   "rationale": "Verify the current change.",
   "input": "cargo test"
 }
 ```
 
-Each MCP call proposes exactly one action. Supported actions are:
+Each MCP call proposes exactly one action. One tool per action shape, rather
+than a single tool with a `type` discriminator, so each schema advertises
+exactly the fields that action accepts and `additionalProperties: false`
+rejects a field belonging to another action. The action tools are:
 
-- `send`: submit input to the trusted active pane;
-- `open`: open an empty tab or panel;
-- `open_and_send`: open a tab or panel and submit input there.
+- `terminal_send`: submit input to the trusted active pane;
+- `terminal_open`: open an empty tab or panel;
+- `terminal_open_and_send`: open a tab or panel and submit input there.
 
-Open actions may include `cwd`, `profile`, and panel `direction`. The
+The open tools may include `cwd`, `profile`, and panel `direction`. The
 user-facing `title` also becomes the requested destination title.
-`open_and_send` may set `delegate: true`; the Helper substitutes the configured
-delegate agent. A model cannot name an arbitrary agent.
+`terminal_open_and_send` may set `delegate: true`; the Helper substitutes the
+configured delegate agent. A model cannot name an arbitrary agent.
 
-Autofix uses the same tool but the Helper supplies the trusted Autofix origin
-and requires a `send` action.
+Autofix uses the same tools but the Helper supplies the trusted Autofix origin
+and requires a `terminal_send` action.
 
 Tool result statuses:
 
@@ -191,9 +195,8 @@ execution path.
 Permission remains an optional compatibility preflight. Some agents call MCP
 without requesting permission.
 
-When an adapter requests permission for either the current
-`intellterm_<public-id>/request_terminal_actions` tool or the legacy
-`intelligent_terminal/request_terminal_actions` name, the Helper:
+When an adapter requests permission for one of the
+`intellterm_<public-id>/terminal_*` action tools, the Helper:
 
 1. verifies the trusted ACP SessionId owns the current issued turn;
 2. silently selects `AllowOnce`; and

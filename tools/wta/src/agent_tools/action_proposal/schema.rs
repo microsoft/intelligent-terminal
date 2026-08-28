@@ -160,20 +160,27 @@ pub struct ProposalChoiceWire {
     pub actions: Vec<ProposalActionWire>,
 }
 
+/// Payload for `terminal_send`. Required fields are plain (not `Option`), so
+/// serde rejects a missing one directly — there is no post-parse
+/// "is this field valid for this variant" pass, because the tool a model
+/// chose already fixes the shape.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct McpProposalWire {
-    #[serde(rename = "type")]
-    pub action_type: McpActionType,
+pub struct McpSendWire {
     pub title: String,
     #[serde(default)]
     pub rationale: String,
+    pub input: String,
+}
+
+/// Payload for `terminal_open`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct McpOpenWire {
+    pub title: String,
     #[serde(default)]
-    pub input: Option<String>,
-    #[serde(default)]
-    pub target: Option<ProposalOpenTargetWire>,
-    #[serde(default)]
-    pub delegate: Option<bool>,
+    pub rationale: String,
+    pub target: ProposalOpenTargetWire,
     #[serde(default)]
     pub cwd: Option<String>,
     #[serde(default)]
@@ -182,12 +189,50 @@ pub struct McpProposalWire {
     pub profile: Option<String>,
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum McpActionType {
+/// Payload for `terminal_open_and_send`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct McpOpenAndSendWire {
+    pub title: String,
+    #[serde(default)]
+    pub rationale: String,
+    pub target: ProposalOpenTargetWire,
+    pub input: String,
+    #[serde(default)]
+    pub delegate: bool,
+    #[serde(default)]
+    pub cwd: Option<String>,
+    #[serde(default)]
+    pub direction: Option<String>,
+    #[serde(default)]
+    pub profile: Option<String>,
+}
+
+/// Which action tool a `tools/call` selected. Replaces the former `type`
+/// discriminator field: the choice now lives in the tool name, so an
+/// invalid field/variant combination is unrepresentable rather than
+/// rejected after the fact.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum McpActionTool {
     Send,
     Open,
     OpenAndSend,
+}
+
+impl McpActionTool {
+    pub const ALL: [Self; 3] = [Self::Send, Self::Open, Self::OpenAndSend];
+
+    pub fn tool_name(self) -> &'static str {
+        match self {
+            Self::Send => "terminal_send",
+            Self::Open => "terminal_open",
+            Self::OpenAndSend => "terminal_open_and_send",
+        }
+    }
+
+    pub fn from_tool_name(name: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|tool| tool.tool_name() == name)
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -267,50 +312,61 @@ pub fn parse_proposal_payload(bytes: &[u8]) -> Result<ProposalWire, ProposalErro
     Ok(wire)
 }
 
-pub fn parse_mcp_proposal_payload(
+/// Decode a `tools/call` payload for one of the three action tools.
+///
+/// The selected tool fixes the action shape, so this is a plain deserialize
+/// plus a wrap — no per-variant field-applicability pass. `serde` enforces
+/// whether a field is required (required fields are not `Option`) and
+/// `deny_unknown_fields`
+/// rejects anything the chosen tool does not accept.
+pub fn parse_mcp_action_payload(
+    tool: McpActionTool,
     bytes: &[u8],
     is_autofix_turn: bool,
 ) -> Result<ProposalWire, ProposalError> {
     if bytes.len() > MAX_PAYLOAD_BYTES {
         return Err(ProposalError::TooLarge { size: bytes.len() });
     }
-    let proposal: McpProposalWire =
-        serde_json::from_slice(bytes).map_err(|e| ProposalError::Malformed(e.to_string()))?;
-    let action = match proposal.action_type {
-        McpActionType::Send => {
-            reject_mcp_fields(&[
-                ("target", proposal.target.is_some()),
-                ("delegate", proposal.delegate.is_some()),
-                ("cwd", proposal.cwd.is_some()),
-                ("direction", proposal.direction.is_some()),
-                ("profile", proposal.profile.is_some()),
-            ])?;
-            ProposalActionWire::Send {
-                input: required_mcp_field(proposal.input, "input", "send")?,
-            }
+    let malformed = |e: serde_json::Error| ProposalError::Malformed(e.to_string());
+    let (title, rationale, action) = match tool {
+        McpActionTool::Send => {
+            let wire: McpSendWire = serde_json::from_slice(bytes).map_err(malformed)?;
+            (
+                wire.title,
+                wire.rationale,
+                ProposalActionWire::Send { input: wire.input },
+            )
         }
-        McpActionType::Open => {
-            reject_mcp_fields(&[
-                ("input", proposal.input.is_some()),
-                ("delegate", proposal.delegate.is_some()),
-            ])?;
-            ProposalActionWire::Open {
-                target: required_mcp_field(proposal.target, "target", "open")?,
-                cwd: proposal.cwd,
-                title: Some(proposal.title.clone()),
-                direction: proposal.direction,
-                profile: proposal.profile,
-            }
+        McpActionTool::Open => {
+            let wire: McpOpenWire = serde_json::from_slice(bytes).map_err(malformed)?;
+            (
+                wire.title.clone(),
+                wire.rationale,
+                ProposalActionWire::Open {
+                    target: wire.target,
+                    cwd: wire.cwd,
+                    title: Some(wire.title),
+                    direction: wire.direction,
+                    profile: wire.profile,
+                },
+            )
         }
-        McpActionType::OpenAndSend => ProposalActionWire::OpenAndSend {
-            target: required_mcp_field(proposal.target, "target", "open_and_send")?,
-            input: required_mcp_field(proposal.input, "input", "open_and_send")?,
-            delegate: proposal.delegate.unwrap_or(false),
-            cwd: proposal.cwd,
-            title: Some(proposal.title.clone()),
-            direction: proposal.direction,
-            profile: proposal.profile,
-        },
+        McpActionTool::OpenAndSend => {
+            let wire: McpOpenAndSendWire = serde_json::from_slice(bytes).map_err(malformed)?;
+            (
+                wire.title.clone(),
+                wire.rationale,
+                ProposalActionWire::OpenAndSend {
+                    target: wire.target,
+                    input: wire.input,
+                    delegate: wire.delegate,
+                    cwd: wire.cwd,
+                    title: Some(wire.title),
+                    direction: wire.direction,
+                    profile: wire.profile,
+                },
+            )
+        }
     };
     Ok(ProposalWire {
         schema_version: SCHEMA_VERSION,
@@ -322,73 +378,86 @@ pub fn parse_mcp_proposal_payload(
         recommended_choice: Some(1),
         choices: vec![ProposalChoiceWire {
             choice: 1,
-            title: proposal.title,
-            rationale: proposal.rationale,
+            title,
+            rationale,
             actions: vec![action],
         }],
     })
 }
 
-fn required_mcp_field<T>(
-    value: Option<T>,
-    field: &str,
-    action_type: &str,
-) -> Result<T, ProposalError> {
-    value.ok_or_else(|| {
-        ProposalError::Malformed(format!("field `{field}` is required for `{action_type}`"))
+fn mcp_title_property() -> serde_json::Value {
+    serde_json::json!({ "type": "string", "minLength": 1, "maxLength": MAX_TITLE_CHARS })
+}
+
+fn mcp_target_properties() -> serde_json::Value {
+    serde_json::json!({
+        "target": { "type": "string", "enum": ["tab", "panel"] },
+        "cwd": { "type": "string", "minLength": 1, "maxLength": MAX_INPUT_CHARS },
+        "direction": { "type": "string", "enum": ["right", "left", "up", "down", "auto"] },
+        "profile": { "type": "string", "minLength": 1, "maxLength": MAX_TITLE_CHARS }
     })
 }
 
-fn reject_mcp_fields(fields: &[(&str, bool)]) -> Result<(), ProposalError> {
-    if let Some((field, _)) = fields.iter().find(|(_, present)| *present) {
-        return Err(ProposalError::Malformed(format!(
-            "field `{field}` is not valid for this action type"
-        )));
-    }
-    Ok(())
-}
+/// Build the schema for one action tool.
+///
+/// Every advertised property is genuinely accepted by that tool and every
+/// required one is listed, so `additionalProperties: false` plus `required`
+/// expresses the whole contract. No property needs prose explaining when it
+/// does or does not apply.
+pub fn mcp_action_input_schema(tool: McpActionTool) -> serde_json::Value {
+    let mut properties = serde_json::Map::new();
+    properties.insert("title".to_string(), mcp_title_property());
+    properties.insert(
+        "rationale".to_string(),
+        serde_json::json!({ "type": "string", "maxLength": MAX_RATIONALE_CHARS }),
+    );
 
-pub fn mcp_input_schema() -> serde_json::Value {
+    let mut required = vec!["title"];
+    if matches!(tool, McpActionTool::Send | McpActionTool::OpenAndSend) {
+        properties.insert(
+            "input".to_string(),
+            serde_json::json!({ "type": "string", "minLength": 1, "maxLength": MAX_INPUT_CHARS }),
+        );
+        required.push("input");
+    }
+    if matches!(tool, McpActionTool::Open | McpActionTool::OpenAndSend) {
+        let Some(target) = mcp_target_properties().as_object().cloned() else {
+            unreachable!("mcp_target_properties builds an object literal")
+        };
+        properties.extend(target);
+        required.push("target");
+    }
+    if matches!(tool, McpActionTool::OpenAndSend) {
+        properties.insert(
+            "delegate".to_string(),
+            serde_json::json!({ "type": "boolean", "description": "Use the configured delegate agent" }),
+        );
+    }
+
     serde_json::json!({
         "type": "object",
         "additionalProperties": false,
-        "properties": {
-            "type": {
-                "type": "string",
-                "enum": ["send", "open", "open_and_send"],
-                "description": "send uses the current pane; open creates an empty target; open_and_send creates a target and submits input"
-            },
-            "title": {
-                "type": "string",
-                "minLength": 1,
-                "maxLength": MAX_TITLE_CHARS,
-                "description": "Short user-facing title for the proposed action"
-            },
-            "rationale": {
-                "type": "string",
-                "maxLength": MAX_RATIONALE_CHARS
-            },
-            "input": {
-                "type": "string",
-                "minLength": 1,
-                "maxLength": MAX_INPUT_CHARS,
-                "description": "Required for send and open_and_send"
-            },
-            "target": {
-                "type": "string",
-                "enum": ["tab", "panel"],
-                "description": "Required for open and open_and_send"
-            },
-            "delegate": {
-                "type": "boolean",
-                "description": "For open_and_send, use the configured delegate agent"
-            },
-            "cwd": { "type": "string", "minLength": 1, "maxLength": MAX_INPUT_CHARS },
-            "direction": { "type": "string", "enum": ["right", "left", "up", "down", "auto"] },
-            "profile": { "type": "string", "minLength": 1, "maxLength": MAX_TITLE_CHARS }
-        },
-        "required": ["type", "title"]
+        "properties": properties,
+        "required": required
     })
+}
+
+/// User-facing description for one action tool.
+pub fn mcp_action_description(tool: McpActionTool) -> &'static str {
+    // Routing guidance appears only on the two tools that create a target.
+    // "At most one action per turn" lives in prompts/terminal-agent.md rather
+    // than being repeated on all three tools here.
+    match tool {
+        McpActionTool::Send => "Run one bounded command in the user's current terminal pane.",
+        McpActionTool::Open => {
+            "Open an empty tab or panel in the user's terminal. Panel for related parallel work; \
+             tab for independent, different-environment, or long-running work."
+        }
+        McpActionTool::OpenAndSend => {
+            "Open a tab or panel in the user's terminal and run input in it. Panel for related \
+             parallel work; tab for independent, different-environment, or long-running work."
+        }
+    }
 }
 
 /// Convert a decoded [`ProposalWire`] into a [`RecommendationSet`], applying
@@ -617,6 +686,7 @@ fn check_len(field: &str, value: &str, max_chars: usize) -> Result<(), ProposalE
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::{json, Value};
 
     fn terminal_agent_wire() -> ProposalWire {
         ProposalWire {
@@ -662,12 +732,11 @@ mod tests {
     #[test]
     fn flat_mcp_send_converts_to_one_recommended_action() {
         let payload = br#"{
-            "type": "send",
             "title": "Run tests",
             "rationale": "Verify the fix",
             "input": "cargo test"
         }"#;
-        let wire = parse_mcp_proposal_payload(payload, false).unwrap();
+        let wire = parse_mcp_action_payload(McpActionTool::Send, payload, false).unwrap();
         assert_eq!(wire.origin, ProposalOrigin::TerminalAgent);
         assert_eq!(wire.recommended_choice, Some(1));
         assert_eq!(wire.choices.len(), 1);
@@ -683,14 +752,13 @@ mod tests {
     #[test]
     fn flat_mcp_open_and_send_converts_to_one_action() {
         let payload = br#"{
-            "type": "open_and_send",
             "title": "Run tests",
             "input": "cargo test",
             "target": "panel",
             "direction": "right",
             "delegate": true
         }"#;
-        let wire = parse_mcp_proposal_payload(payload, false).unwrap();
+        let wire = parse_mcp_action_payload(McpActionTool::OpenAndSend, payload, false).unwrap();
         assert!(matches!(
             &wire.choices[0].actions[0],
             ProposalActionWire::OpenAndSend {
@@ -707,13 +775,12 @@ mod tests {
     #[test]
     fn flat_mcp_open_and_send_tab_accepts_direction() {
         let payload = br#"{
-            "type": "open_and_send",
             "title": "Project walkthrough",
             "input": "Walk through this project",
             "target": "tab",
             "direction": "auto"
         }"#;
-        let wire = parse_mcp_proposal_payload(payload, false).unwrap();
+        let wire = parse_mcp_action_payload(McpActionTool::OpenAndSend, payload, false).unwrap();
         let set = build_recommendation_set(&wire, false, None, None, None).unwrap();
         assert!(matches!(
             &set.choices[0].actions[0],
@@ -734,33 +801,150 @@ mod tests {
                 "actions": [{"type": "send", "input": "cargo test"}]
             }]
         }"#;
-        let err = parse_mcp_proposal_payload(payload, false).unwrap_err();
+        let err = parse_mcp_action_payload(McpActionTool::Send, payload, false).unwrap_err();
         assert!(matches!(err, ProposalError::Malformed(_)));
     }
 
     #[test]
-    fn flat_mcp_schema_has_no_nested_arrays_or_unions() {
-        let schema = mcp_input_schema();
-        assert!(schema.pointer("/properties/type").is_some());
-        assert!(schema.pointer("/properties/title").is_some());
-        assert!(schema.pointer("/properties/input").is_some());
-        assert!(schema.pointer("/properties/choices").is_none());
-        assert!(schema.pointer("/properties/actions").is_none());
-        assert!(!schema.to_string().contains("\"oneOf\""));
+    fn every_action_tool_schema_is_strict_provider_safe() {
+        for tool in McpActionTool::ALL {
+            let schema = mcp_action_input_schema(tool);
+            let name = tool.tool_name();
+            assert_eq!(schema.get("type").and_then(Value::as_str), Some("object"));
+            assert_eq!(schema.get("additionalProperties"), Some(&json!(false)));
+            assert!(schema.pointer("/properties/title").is_some(), "{name}");
+            assert!(schema.pointer("/properties/choices").is_none(), "{name}");
+            assert!(schema.pointer("/properties/actions").is_none(), "{name}");
+            // The discriminator is gone: the tool name carries the shape.
+            assert!(schema.pointer("/properties/type").is_none(), "{name}");
+            for keyword in ["oneOf", "anyOf", "allOf", "enum", "const", "not"] {
+                assert!(
+                    schema.get(keyword).is_none(),
+                    "{name}: top-level {keyword} is rejected by strict providers"
+                );
+            }
+            let serialized = schema.to_string();
+            for keyword in ["oneOf", "anyOf", "allOf"] {
+                assert!(
+                    !serialized.contains(&format!("\"{keyword}\"")),
+                    "{name}: {keyword} must not appear at any depth"
+                );
+            }
+        }
     }
 
+    /// The point of the split: each tool advertises exactly the fields it
+    /// accepts, so `additionalProperties: false` alone rejects a field that
+    /// belongs to a different action — no separate applicability pass.
     #[test]
-    fn flat_mcp_requires_action_specific_fields() {
-        let err = parse_mcp_proposal_payload(br#"{"type":"send","title":"Run tests"}"#, false)
-            .unwrap_err();
-        assert!(matches!(err, ProposalError::Malformed(_)));
+    fn each_tool_advertises_exactly_the_fields_it_accepts() {
+        let expected: [(McpActionTool, &[&str], &[&str]); 3] = [
+            (
+                McpActionTool::Send,
+                &["title", "rationale", "input"],
+                &["title", "input"],
+            ),
+            (
+                McpActionTool::Open,
+                &[
+                    "title",
+                    "rationale",
+                    "target",
+                    "cwd",
+                    "direction",
+                    "profile",
+                ],
+                &["title", "target"],
+            ),
+            (
+                McpActionTool::OpenAndSend,
+                &[
+                    "title",
+                    "rationale",
+                    "input",
+                    "target",
+                    "cwd",
+                    "direction",
+                    "profile",
+                    "delegate",
+                ],
+                &["title", "target", "input"],
+            ),
+        ];
+        for (tool, properties, required) in expected {
+            let schema = mcp_action_input_schema(tool);
+            let advertised: std::collections::BTreeSet<_> = schema
+                .pointer("/properties")
+                .and_then(Value::as_object)
+                .expect("properties")
+                .keys()
+                .map(String::as_str)
+                .collect();
+            assert_eq!(
+                advertised,
+                properties.iter().copied().collect(),
+                "{}",
+                tool.tool_name()
+            );
+            let advertised_required: std::collections::BTreeSet<_> = schema
+                .pointer("/required")
+                .and_then(Value::as_array)
+                .expect("required")
+                .iter()
+                .filter_map(Value::as_str)
+                .collect();
+            assert_eq!(
+                advertised_required,
+                required.iter().copied().collect(),
+                "{}",
+                tool.tool_name()
+            );
+        }
+    }
 
-        let err = parse_mcp_proposal_payload(
-            br#"{"type":"open","title":"New tab","target":"tab","input":"echo hi"}"#,
+    /// A field belonging to another action is now rejected by `serde`'s
+    /// `deny_unknown_fields`, not by a hand-written applicability check.
+    #[test]
+    fn send_rejects_a_target_only_field_as_unknown() {
+        let err = parse_mcp_action_payload(
+            McpActionTool::Send,
+            br#"{"title":"Show weather quickly","input":"curl example.com","cwd":"C:\\repo"}"#,
             false,
         )
         .unwrap_err();
-        assert!(matches!(err, ProposalError::Malformed(_)));
+        let ProposalError::Malformed(message) = err else {
+            panic!("expected a malformed payload error");
+        };
+        assert!(message.contains("cwd"), "{message}");
+
+        // The same payload without the stray field parses.
+        parse_mcp_action_payload(
+            McpActionTool::Send,
+            br#"{"title":"Show weather quickly","input":"curl example.com"}"#,
+            false,
+        )
+        .expect("send payload without the stray field must parse");
+    }
+
+    #[test]
+    fn missing_required_field_is_rejected_by_serde() {
+        for (tool, payload) in [
+            (McpActionTool::Send, &br#"{"title":"Run tests"}"#[..]),
+            (McpActionTool::Open, &br#"{"title":"New tab"}"#[..]),
+            (
+                McpActionTool::OpenAndSend,
+                &br#"{"title":"New tab","target":"tab"}"#[..],
+            ),
+        ] {
+            assert!(
+                matches!(
+                    parse_mcp_action_payload(tool, payload, false),
+                    Err(ProposalError::Malformed(_))
+                ),
+                "{}",
+                tool.tool_name()
+            );
+        }
     }
 
     #[test]

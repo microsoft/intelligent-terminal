@@ -169,7 +169,7 @@ impl App {
         source: crate::agent_tools::action_proposal::pipe::ProposalPayloadSource,
     ) -> DirectProposalEvaluation {
         use crate::agent_tools::action_proposal::schema::{
-            build_recommendation_set, parse_mcp_proposal_payload, parse_proposal_payload,
+            build_recommendation_set, parse_mcp_action_payload, parse_proposal_payload,
         };
 
         if !self.session_to_tab.contains_key(session_id) {
@@ -217,8 +217,8 @@ impl App {
             crate::agent_tools::action_proposal::pipe::ProposalPayloadSource::Cli => {
                 parse_proposal_payload(payload.as_bytes())
             }
-            crate::agent_tools::action_proposal::pipe::ProposalPayloadSource::Mcp => {
-                parse_mcp_proposal_payload(payload.as_bytes(), is_autofix)
+            crate::agent_tools::action_proposal::pipe::ProposalPayloadSource::Mcp(tool) => {
+                parse_mcp_action_payload(tool, payload.as_bytes(), is_autofix)
             }
         };
         let wire = match wire {
