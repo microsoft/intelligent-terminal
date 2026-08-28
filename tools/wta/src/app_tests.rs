@@ -11259,6 +11259,8 @@ fn submit_clears_messages_and_pushes_user_bubble() {
 
 #[test]
 fn first_message_chunk_transitions_to_streaming_with_transcript_text() {
+    let _locale = crate::test_support::lock_locale();
+    rust_i18n::set_locale("en-US");
     let mut app = test_app();
     submit_test_prompt(&mut app, "hi");
     assert!(app.current_tab().should_show_thinking());
@@ -11281,6 +11283,8 @@ fn first_message_chunk_transitions_to_streaming_with_transcript_text() {
 
 #[test]
 fn latest_thought_remains_visible_alongside_streaming_message_until_turn_end() {
+    let _locale = crate::test_support::lock_locale();
+    rust_i18n::set_locale("en-US");
     let mut app = test_app();
     submit_test_prompt(&mut app, "hi");
     let advanced = app.turn_observe_chunk(DEFAULT_TAB_ID, ChunkKind::Thought, "thinking…");
@@ -11359,6 +11363,8 @@ fn structured_stream_hides_thinking_after_response_is_visible() {
 
 #[test]
 fn running_tool_replaces_thinking_until_tool_completes() {
+    let _locale = crate::test_support::lock_locale();
+    rust_i18n::set_locale("en-US");
     let mut app = test_app();
     submit_test_prompt(&mut app, "inspect");
     app.turn_observe_chunk(DEFAULT_TAB_ID, ChunkKind::Thought, "Choosing files");
