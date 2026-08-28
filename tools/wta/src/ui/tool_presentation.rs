@@ -155,7 +155,8 @@ impl<'a> ToolPresentation<'a> {
                 | ToolCallKind::Think
                 | ToolCallKind::SwitchMode
                 | ToolCallKind::Other
-        );
+        ) || (matches!(self.phase, ToolPhase::Failed(_))
+            && matches!(self.kind, ToolCallKind::Edit | ToolCallKind::Delete));
         (kind_uses_title && !self.title_contains_target())
             .then(|| self.display_target())
             .flatten()
@@ -384,6 +385,30 @@ mod tests {
 
         assert_eq!(presentation.primary_text(false), r"Creating src\main.rs");
         assert_eq!(presentation.primary_text(true), r"src\main.rs");
+    }
+
+    #[test]
+    fn failed_mutation_keeps_target_when_title_does_not_contain_it() {
+        let locations = vec![ToolCallLocation {
+            path: r"C:\project\src\main.rs".into(),
+            line: None,
+        }];
+        let presentation = ToolPresentation::new(
+            "Edit source",
+            "Failed",
+            ToolCallKind::Edit,
+            None,
+            false,
+            None,
+            None,
+            &locations,
+        );
+
+        assert_eq!(presentation.primary_text(false), "Edit source");
+        assert_eq!(
+            presentation.secondary_target().as_deref(),
+            Some(r"src\main.rs")
+        );
     }
 
     #[test]
