@@ -3014,6 +3014,40 @@ fn fresh_agent_connection_model_replaces_stale_agent_default() {
 }
 
 #[test]
+fn bootstrap_agent_connection_reconciles_global_yolo_state() {
+    use crate::protocol::acp::client::MasterExtRequest;
+
+    let (mut app, mut master_rx) = test_app_with_master_rx();
+    app.yolo_state.lock().unwrap().update_runtime(true, false);
+
+    app.handle_event(AppEvent::AgentConnected {
+        name: "Agent".into(),
+        model: None,
+        version: None,
+        session_id: "bootstrap-yolo-session".into(),
+        available_models: Vec::new(),
+        current_model_id: None,
+        load_session_supported: false,
+        image_supported: false,
+    });
+
+    let request = master_rx
+        .try_recv()
+        .expect("the bootstrap session must receive the global Yolo state");
+    let MasterExtRequest::ReconcileSessionYolo {
+        sessions,
+        fail_closed,
+    } = request
+    else {
+        panic!("expected ReconcileSessionYolo");
+    };
+    assert_eq!(sessions.len(), 1);
+    assert_eq!(sessions[0].0 .0.as_ref(), "bootstrap-yolo-session");
+    assert!(sessions[0].1);
+    assert!(!fail_closed);
+}
+
+#[test]
 fn fresh_session_model_does_not_replace_global_override() {
     use crate::protocol::acp::client::MasterExtRequest;
 

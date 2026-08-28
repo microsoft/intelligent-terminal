@@ -5680,6 +5680,27 @@ impl App {
         }
     }
 
+    fn reconcile_session_yolo(&self, session_id: &str) {
+        let enabled = self.yolo_state.lock().unwrap().effective(session_id);
+        let fail_closed = !enabled;
+        if self
+            .master_request_tx
+            .send(
+                crate::protocol::acp::client::MasterExtRequest::ReconcileSessionYolo {
+                    sessions: vec![(
+                        agent_client_protocol::schema::v1::SessionId::new(session_id.to_string()),
+                        enabled,
+                    )],
+                    fail_closed,
+                },
+            )
+            .is_err()
+            && fail_closed
+        {
+            let _ = self.restart_tx.send(AgentLifecycleRequest::RestartMaster);
+        }
+    }
+
     fn complete_yolo_change(
         &mut self,
         transaction_id: u64,

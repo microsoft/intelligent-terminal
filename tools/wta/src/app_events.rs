@@ -653,7 +653,7 @@ impl App {
                     tab.usage = None;
                     tab.usage_staleness = crate::usage::UsageStaleness::default();
                 }
-                tab.session_id = Some(session_id);
+                tab.session_id = Some(session_id.clone());
                 let has_real_content = !tab.completed_turns.is_empty()
                     || tab
                         .messages
@@ -667,6 +667,7 @@ impl App {
                 {
                     tab.messages.insert(0, ChatMessage::Disclaimer);
                 }
+                self.reconcile_session_yolo(&session_id);
                 self.publish_agent_status();
             }
             AppEvent::SessionAttached {
@@ -744,26 +745,7 @@ impl App {
                         self.send_session_model(Some(session_id.clone()), model, false);
                     }
                 }
-                let yolo_enabled = self.yolo_state.lock().unwrap().effective(&session_id);
-                let fail_closed = !yolo_enabled;
-                if self
-                    .master_request_tx
-                    .send(
-                        crate::protocol::acp::client::MasterExtRequest::ReconcileSessionYolo {
-                            sessions: vec![(
-                                agent_client_protocol::schema::v1::SessionId::new(
-                                    session_id.clone(),
-                                ),
-                                yolo_enabled,
-                            )],
-                            fail_closed,
-                        },
-                    )
-                    .is_err()
-                    && fail_closed
-                {
-                    let _ = self.restart_tx.send(AgentLifecycleRequest::RestartMaster);
-                }
+                self.reconcile_session_yolo(&session_id);
                 self.publish_agent_status();
             }
             AppEvent::UsageReported {
