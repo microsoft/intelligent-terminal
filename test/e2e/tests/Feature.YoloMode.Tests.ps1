@@ -38,8 +38,7 @@ Describe 'Feature Yolo mode permission boundary' -Tag 'Feature' -Skip:(-not $scr
         }
         Open-AgentPane -App $script:app | Out-Null
         Wait-AgentReady -App $script:app -TimeoutSec 60 | Should -BeTrue
-        $shellPane = Get-ActivePane -App $script:app
-        $script:agentPane = (Wait-NewAgentPaneSession -App $script:app -OwnerPaneSessionId $shellPane.session_id -TimeoutSec 30).PaneSessionId
+        $script:agentPane = (Wait-NewAgentPaneSession -App $script:app -TimeoutSec 30).PaneSessionId
     }
     AfterAll {
         if ($script:app) { Stop-Terminal -App $script:app }
@@ -93,8 +92,7 @@ Describe 'Feature provider-native Yolo with Copilot' -Tag 'Feature' -Skip:(-not 
             $secondApp = Start-Terminal -Package Dev -PassFre $true -Backup $false -CleanSettings $false
             Assert-Setting -App $secondApp -Key 'agentPane.yoloMode' -Value $true
             Wait-AgentReady -App $secondApp -TimeoutSec 90 | Should -BeTrue
-            $shellPane = Get-ActivePane -App $secondApp
-            $agentSession = Wait-NewAgentPaneSession -App $secondApp -OwnerPaneSessionId $shellPane.session_id -TimeoutSec 30
+            $agentSession = Wait-NewAgentPaneSession -App $secondApp -TimeoutSec 30
             (Test-Until -TimeoutSec 30 -IntervalSec 0.5 -Condition {
                 Test-AgentNativeYoloUpdate -App $secondApp -AcpSessionId $agentSession.AcpSessionId -Enabled $true
             }) | Should -BeTrue -Because 'the relaunched default session must receive the persisted native Yolo setting'
@@ -114,8 +112,7 @@ Describe 'Feature provider-native Yolo with Copilot' -Tag 'Feature' -Skip:(-not 
         try {
             Open-AgentPane -App $app | Out-Null
             Wait-AgentReady -App $app -TimeoutSec 90 | Should -BeTrue
-            $shellPane = Get-ActivePane -App $app
-            $agentPane = (Wait-NewAgentPaneSession -App $app -OwnerPaneSessionId $shellPane.session_id -TimeoutSec 30).PaneSessionId
+            $agentPane = (Wait-NewAgentPaneSession -App $app -TimeoutSec 30).PaneSessionId
 
             Initialize-LogOffsets -App $app | Out-Null
             Send-AgentPrompt -App $app -PaneSessionId $agentPane -Text '/yolo off' | Out-Null
@@ -143,8 +140,7 @@ Describe 'Feature unsupported provider Yolo behavior' -Tag 'Feature' -Skip:(-not
         try {
             Open-AgentPane -App $app | Out-Null
             Wait-AgentReady -App $app -TimeoutSec 90 | Should -BeTrue
-            $shellPane = Get-ActivePane -App $app
-            $agentPane = (Wait-NewAgentPaneSession -App $app -OwnerPaneSessionId $shellPane.session_id -TimeoutSec 30).PaneSessionId
+            $agentPane = (Wait-NewAgentPaneSession -App $app -TimeoutSec 30).PaneSessionId
             Send-AgentPrompt -App $app -PaneSessionId $agentPane -Text '/yolo on' | Out-Null
             Assert-AgentPaneText -App $app -PaneSessionId $agentPane `
                 -Pattern '(?i)/yolo on: opencode does not support ACP session Yolo mode' -TimeoutSec 30
@@ -170,8 +166,7 @@ Describe 'Feature AllowYoloMode policy' -Tag 'Feature' -Skip:(-not $script:Ready
             }
             Open-AgentPane -App $app | Out-Null
             Wait-AgentReady -App $app -TimeoutSec 90 | Should -BeTrue
-            $shellPane = Get-ActivePane -App $app
-            $agentSession = Wait-NewAgentPaneSession -App $app -OwnerPaneSessionId $shellPane.session_id -TimeoutSec 30
+            $agentSession = Wait-NewAgentPaneSession -App $app -TimeoutSec 30
             (Test-Until -TimeoutSec 30 -IntervalSec 0.5 -Condition {
                 Test-AgentNativeYoloUpdate -App $app -AcpSessionId $agentSession.AcpSessionId -Enabled $true
             }) | Should -BeTrue -Because 'the allowed policy must permit the persisted global-on setting'
