@@ -152,7 +152,7 @@ system.cannot_resume_phantom_via_flag: "Tidak dapat melanjutkan sesi %{agent} %{
 system.cannot_resume_phantom_via_load: "Tidak dapat melanjutkan sesi %{agent} %{session_id}: sesi ini dimulai tetapi tidak pernah mengumpulkan percakapan apa pun, sehingga %{agent} akan menolak pemuatan. Menghapus baris."
 system.fallback.this_agent: "agen ini"
 system.fallback.connected_agent: "agen yang terhubung"
-system.yolo_blocked_by_policy: "Mode yolo dinonaktifkan oleh kebijakan organisasi Anda."
+system.yolo_blocked_by_policy: "Mode Yolo dinonaktifkan oleh kebijakan organisasi Anda."  # {Locked="Yolo"}
 
 
 # ── Runtime CLI output (src/main.rs) ────────────────────────────────────────

@@ -154,7 +154,7 @@ system.cannot_resume_phantom_via_flag: "%{agent}-Sitzung %{session_id} kann nich
 system.cannot_resume_phantom_via_load: "%{agent}-Sitzung %{session_id} kann nicht fortgesetzt werden: Sie wurde gestartet, hat aber nie eine Unterhaltung angesammelt, sodass %{agent} das Laden ablehnen würde. Zeile wird entfernt."
 system.fallback.this_agent: "dieser Agent"
 system.fallback.connected_agent: "der verbundene Agent"
-system.yolo_blocked_by_policy: "Der Yolo-Modus ist durch die Richtlinie Ihrer Organisation deaktiviert."
+system.yolo_blocked_by_policy: "Der Yolo-Modus ist durch die Richtlinie Ihrer Organisation deaktiviert."  # {Locked="Yolo"}
 
 
 # ── Laufzeit-CLI-Ausgabe (src/main.rs) ────────────────────────────────────────

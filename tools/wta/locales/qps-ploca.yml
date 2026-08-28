@@ -152,7 +152,7 @@ system.cannot_resume_phantom_via_flag: "[!!_Cannot resume %{agent} session %{ses
 system.cannot_resume_phantom_via_load: "[!!_Cannot resume %{agent} session %{session_id}: it was started but never accumulated any conversation, so %{agent} would reject the load. Removing the row._!!]"
 system.fallback.this_agent: "[!!_this agent_!!]"
 system.fallback.connected_agent: "[!!_the connected agent_!!]"
-system.yolo_blocked_by_policy: "[!!_Yolo mode is disabled by your organization's policy._!!]"
+system.yolo_blocked_by_policy: "[!!_Yolo mode is disabled by your organization's policy._!!]"  # {Locked="Yolo"}
 
 
 # ── Runtime CLI output (src/main.rs) ────────────────────────────────────────

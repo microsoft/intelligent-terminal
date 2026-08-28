@@ -152,7 +152,7 @@ system.cannot_resume_phantom_via_flag: "Det går inte att återuppta %{agent}-se
 system.cannot_resume_phantom_via_load: "Det går inte att återuppta %{agent}-sessionen %{session_id}: den startades men samlade aldrig någon konversation, så %{agent} skulle avvisa inläsningen. Tar bort raden."
 system.fallback.this_agent: "den här agenten"
 system.fallback.connected_agent: "den anslutna agenten"
-system.yolo_blocked_by_policy: "Yolo-läget är inaktiverat av organisationens policy."
+system.yolo_blocked_by_policy: "Yolo-läget är inaktiverat av organisationens policy."  # {Locked="Yolo"}
 
 
 # ── Runtime CLI output (src/main.rs) ────────────────────────────────────────

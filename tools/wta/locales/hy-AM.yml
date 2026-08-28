@@ -179,7 +179,7 @@ system.cannot_resume_phantom_via_flag: "Չի կարող վերսկսվել %{age
 system.cannot_resume_phantom_via_load: "Չի կարող վերսկսվել %{agent} աշխատաշրջանը %{session_id}. այն սկսվել էր, բայց որևէ զրույց չէր կուտակել, ուստի %{agent}-ը կմերժեր բեռնումը։ Հեռացվում է տողը։"
 system.fallback.this_agent: "այս agent-ը"
 system.fallback.connected_agent: "միացված agent-ը"
-system.yolo_blocked_by_policy: "Yolo mode-ը անջատված է ձեր կազմակերպության քաղաքականությամբ։"
+system.yolo_blocked_by_policy: "Yolo mode-ը անջատված է ձեր կազմակերպության քաղաքականությամբ։"  # {Locked="Yolo"}
 
 
 # ── Runtime CLI output (src/main.rs) ──────────────────────────────────────────────────────────────────

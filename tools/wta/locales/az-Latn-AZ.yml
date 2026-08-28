@@ -167,7 +167,7 @@ system.cannot_resume_phantom_via_flag: "%{agent} sessiyası %{session_id} bərpa
 system.cannot_resume_phantom_via_load: "%{agent} sessiyası %{session_id} bərpa edilə bilmir: o başladılıb, amma heç bir söhbət toplanmayıb, buna görə %{agent} yükləməni rədd edəcək. Sətir silinir."
 system.fallback.this_agent: "bu agent"
 system.fallback.connected_agent: "qoşulmuş agent"
-system.yolo_blocked_by_policy: "Yolo rejimi təşkilatınızın siyasəti ilə deaktiv edilib."
+system.yolo_blocked_by_policy: "Yolo rejimi təşkilatınızın siyasəti ilə deaktiv edilib."  # {Locked="Yolo"}
 
 
 # ── Runtime CLI output (src/main.rs) ────────────────────────────────────────

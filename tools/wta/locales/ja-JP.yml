@@ -148,7 +148,7 @@ system.cannot_resume_phantom_via_flag: "%{agent} セッション %{session_id} �
 system.cannot_resume_phantom_via_load: "%{agent} セッション %{session_id} を再開できません: 開始されましたが会話が一度も蓄積されていないため、%{agent} が読み込みを拒否します。行を削除します。"
 system.fallback.this_agent: "このエージェント"
 system.fallback.connected_agent: "接続中のエージェント"
-system.yolo_blocked_by_policy: "yolo モードは組織のポリシーによって無効になっています。"
+system.yolo_blocked_by_policy: "Yolo モードは組織のポリシーによって無効になっています。"  # {Locked="Yolo"}
 
 
 # ── ランタイム CLI 出力 (src/main.rs) ────────────────────────────────────────

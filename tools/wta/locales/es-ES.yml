@@ -152,7 +152,7 @@ system.cannot_resume_phantom_via_flag: "No se puede reanudar la sesión de %{age
 system.cannot_resume_phantom_via_load: "No se puede reanudar la sesión de %{agent} %{session_id}: se inició, pero nunca acumuló ninguna conversación, por lo que %{agent} rechazaría la carga. Quitando la fila."
 system.fallback.this_agent: "este agente"
 system.fallback.connected_agent: "el agente conectado"
-system.yolo_blocked_by_policy: "El modo yolo está deshabilitado por la directiva de tu organización."
+system.yolo_blocked_by_policy: "El modo Yolo está deshabilitado por la directiva de tu organización."  # {Locked="Yolo"}
 
 
 # ── Salida de CLI en tiempo de ejecución (src/main.rs) ────────────────────────────────────────

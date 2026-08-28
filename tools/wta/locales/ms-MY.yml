@@ -152,7 +152,7 @@ system.cannot_resume_phantom_via_flag: "Tidak dapat menyambung semula sesi %{age
 system.cannot_resume_phantom_via_load: "Tidak dapat menyambung semula sesi %{agent} %{session_id}: sesi ini telah dimulakan tetapi tidak pernah mengumpulkan sebarang perbualan, jadi %{agent} akan menolak pemuatan. Mengalih keluar baris."
 system.fallback.this_agent: "ejen ini"
 system.fallback.connected_agent: "ejen yang disambungkan"
-system.yolo_blocked_by_policy: "Mod yolo dilumpuhkan oleh dasar organisasi anda."
+system.yolo_blocked_by_policy: "Mod Yolo dilumpuhkan oleh dasar organisasi anda."  # {Locked="Yolo"}
 
 
 # ── Runtime CLI output (src/main.rs) ────────────────────────────────────────

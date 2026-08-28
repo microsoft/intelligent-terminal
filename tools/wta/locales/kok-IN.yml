@@ -165,7 +165,7 @@ system.cannot_resume_phantom_via_flag: "%{agent} सत्र %{session_id} प�
 system.cannot_resume_phantom_via_load: "%{agent} सत्र %{session_id} परत सुरू करूंक शकना: तें सुरू जालें पूण कसलोच संवाद जमा जालो ना, देखून %{agent} load नाकारतलो. ओळ काडटा."
 system.fallback.this_agent: "हो एजंट"
 system.fallback.connected_agent: "जोडिल्लो एजंट"
-system.yolo_blocked_by_policy: "तुमच्या संघटनेच्या धोरणान yolo mode बंद केल्लो आसा."
+system.yolo_blocked_by_policy: "तुमच्या संघटनेच्या धोरणान Yolo mode बंद केल्लो आसा."  # {Locked="Yolo"}
 
 
 # ── रनटायम CLI आउटपुट (src/main.rs) ────────────────────────────────────────

@@ -154,7 +154,7 @@ system.cannot_resume_phantom_via_flag: "Kan ikke genoptage %{agent}-session %{se
 system.cannot_resume_phantom_via_load: "Kan ikke genoptage %{agent}-session %{session_id}: den blev startet, men der blev aldrig opbygget nogen samtale, så %{agent} ville afvise indlæsningen. Fjerner rækken."
 system.fallback.this_agent: "denne agent"
 system.fallback.connected_agent: "den tilsluttede agent"
-system.yolo_blocked_by_policy: "Yolo-tilstand er deaktiveret af din organisations politik."
+system.yolo_blocked_by_policy: "Yolo-tilstand er deaktiveret af din organisations politik."  # {Locked="Yolo"}
 
 
 # ── Runtime CLI output (src/main.rs) ────────────────────────────────────────

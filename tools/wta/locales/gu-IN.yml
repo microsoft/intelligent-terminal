@@ -165,7 +165,7 @@ system.cannot_resume_phantom_via_flag: "%{agent} સત્ર %{session_id} ફ�
 system.cannot_resume_phantom_via_load: "%{agent} સત્ર %{session_id} ફરી શરૂ કરી શકાતું નથી: તે શરૂ થયું હતું પરંતુ તેમાં કોઈ વાતચીત સંગ્રહાઈ નથી, તેથી %{agent} load નકારી દેશે. પંક્તિ દૂર કરવામાં આવી રહી છે."
 system.fallback.this_agent: "આ agent"
 system.fallback.connected_agent: "જોડાયેલ agent"
-system.yolo_blocked_by_policy: "તમારી સંસ્થાની નીતિ દ્વારા yolo mode અક્ષમ કરવામાં આવ્યું છે."
+system.yolo_blocked_by_policy: "તમારી સંસ્થાની નીતિ દ્વારા Yolo mode અક્ષમ કરવામાં આવ્યું છે."  # {Locked="Yolo"}
 
 
 # ── રનટાઇમ CLI આઉટપુટ (src/main.rs) ────────────────────────────────────────

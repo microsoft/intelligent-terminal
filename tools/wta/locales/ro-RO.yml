@@ -152,7 +152,7 @@ system.cannot_resume_phantom_via_flag: "Nu se poate relua sesiunea %{agent} %{se
 system.cannot_resume_phantom_via_load: "Nu se poate relua sesiunea %{agent} %{session_id}: a fost pornită, dar nu a acumulat nicio conversație, așa că %{agent} ar respinge încărcarea. Se elimină rândul."
 system.fallback.this_agent: "acest agent"
 system.fallback.connected_agent: "agentul conectat"
-system.yolo_blocked_by_policy: "Modul yolo este dezactivat de politica organizației dumneavoastră."
+system.yolo_blocked_by_policy: "Modul Yolo este dezactivat de politica organizației dumneavoastră."  # {Locked="Yolo"}
 
 
 # ── Runtime CLI output (src/main.rs) ────────────────────────────────────────

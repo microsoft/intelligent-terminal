@@ -165,7 +165,7 @@ system.cannot_resume_phantom_via_flag: "%{agent} அமர்வு %{session_id
 system.cannot_resume_phantom_via_load: "%{agent} அமர்வு %{session_id} மீண்டும் தொடங்க முடியவில்லை: அது தொடங்கப்பட்டது, ஆனால் எந்த உரையாடலும் சேர்க்கப்படவில்லை; எனவே %{agent} load-ஐ நிராகரிக்கும். வரிசை அகற்றப்படுகிறது."
 system.fallback.this_agent: "இந்த agent"
 system.fallback.connected_agent: "இணைக்கப்பட்ட agent"
-system.yolo_blocked_by_policy: "உங்கள் நிறுவனத்தின் கொள்கையால் yolo mode முடக்கப்பட்டுள்ளது."
+system.yolo_blocked_by_policy: "உங்கள் நிறுவனத்தின் கொள்கையால் Yolo mode முடக்கப்பட்டுள்ளது."  # {Locked="Yolo"}
 
 
 # ── இயக்க நேர CLI வெளியீடு (src/main.rs) ────────────────────────────────────────

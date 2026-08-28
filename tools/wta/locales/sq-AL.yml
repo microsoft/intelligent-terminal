@@ -152,7 +152,7 @@ system.cannot_resume_phantom_via_flag: "Nuk mund të rifillohet sesioni %{agent}
 system.cannot_resume_phantom_via_load: "Nuk mund të rifillohet sesioni %{agent} %{session_id}: ai u nis, por nuk grumbulloi kurrë asnjë bisedë, prandaj %{agent} do ta refuzonte ngarkimin. Po hiqet rreshti."
 system.fallback.this_agent: "ky agjent"
 system.fallback.connected_agent: "agjenti i lidhur"
-system.yolo_blocked_by_policy: "Modaliteti yolo është çaktivizuar nga politika e organizatës suaj."
+system.yolo_blocked_by_policy: "Modaliteti Yolo është çaktivizuar nga politika e organizatës suaj."  # {Locked="Yolo"}
 
 
 # ── Runtime CLI output (src/main.rs) ────────────────────────────────────────

@@ -154,7 +154,7 @@ system.cannot_resume_phantom_via_flag: "Δεν είναι δυνατή η συν
 system.cannot_resume_phantom_via_load: "Δεν είναι δυνατή η συνέχιση της περιόδου λειτουργίας %{agent} %{session_id}: ξεκίνησε αλλά δεν συγκέντρωσε ποτέ καμία συνομιλία, επομένως ο %{agent} θα απέρριπτε τη φόρτωση. Κατάργηση της γραμμής."
 system.fallback.this_agent: "αυτός ο agent"
 system.fallback.connected_agent: "ο συνδεδεμένος agent"
-system.yolo_blocked_by_policy: "Η λειτουργία yolo είναι απενεργοποιημένη από την πολιτική του οργανισμού σας."
+system.yolo_blocked_by_policy: "Η λειτουργία Yolo είναι απενεργοποιημένη από την πολιτική του οργανισμού σας."  # {Locked="Yolo"}
 
 
 # ── Runtime CLI output (src/main.rs) ────────────────────────────────────────

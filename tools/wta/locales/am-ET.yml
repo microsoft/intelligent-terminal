@@ -154,7 +154,7 @@ system.cannot_resume_phantom_via_flag: "የ%{agent} ክፍለ ጊዜ %{session_i
 system.cannot_resume_phantom_via_load: "የ%{agent} ክፍለ ጊዜ %{session_id} መቀጠል አይቻልም፦ ተጀምሯል ግን ምንም ውይይት አልተከማቸበትም፣ ስለዚህ %{agent} መጫኑን ይከለክላል። ረድፉን በማስወገድ ላይ።"
 system.fallback.this_agent: "ይህ agent"
 system.fallback.connected_agent: "የተገናኘው agent"
-system.yolo_blocked_by_policy: "Yolo mode በድርጅትዎ ፖሊሲ ተሰናክሏል።"
+system.yolo_blocked_by_policy: "Yolo mode በድርጅትዎ ፖሊሲ ተሰናክሏል።"  # {Locked="Yolo"}
 
 
 # ── Runtime CLI output (src/main.rs) ────────────────────────────────────────

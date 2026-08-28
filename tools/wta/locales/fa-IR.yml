@@ -165,7 +165,7 @@ system.cannot_resume_phantom_via_flag: "نمی‌توان جلسه %{agent} %{se
 system.cannot_resume_phantom_via_load: "نمی‌توان جلسه %{agent} %{session_id} را ازسر گرفت: شروع شده بود اما هیچ گفت‌وگویی جمع نکرد، بنابراین %{agent} بارگذاری را رد می‌کند. در حال حذف ردیف."
 system.fallback.this_agent: "این عامل"
 system.fallback.connected_agent: "عامل متصل"
-system.yolo_blocked_by_policy: "حالت yolo توسط سیاست سازمان شما غیرفعال شده است."
+system.yolo_blocked_by_policy: "حالت Yolo توسط سیاست سازمان شما غیرفعال شده است."  # {Locked="Yolo"}
 
 
 # ── خروجی CLI در زمان اجرا (src/main.rs) ────────────────────────────────────────

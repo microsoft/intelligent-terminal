@@ -152,7 +152,7 @@ system.cannot_resume_phantom_via_flag: "Kan ikke fortsette %{agent}-økten %{ses
 system.cannot_resume_phantom_via_load: "Kan ikke fortsette %{agent}-økten %{session_id}: den ble startet, men samlet aldri opp noen samtale, så %{agent} ville avvise innlastingen. Fjerner raden."
 system.fallback.this_agent: "denne agenten"
 system.fallback.connected_agent: "den tilkoblede agenten"
-system.yolo_blocked_by_policy: "Yolo-modus er deaktivert av organisasjonens policy."
+system.yolo_blocked_by_policy: "Yolo-modus er deaktivert av organisasjonens policy."  # {Locked="Yolo"}
 
 
 # ── Runtime CLI output (src/main.rs) ────────────────────────────────────────

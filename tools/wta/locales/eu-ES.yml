@@ -152,7 +152,7 @@ system.cannot_resume_phantom_via_flag: "Ezin da %{agent} saioa %{session_id} ber
 system.cannot_resume_phantom_via_load: "Ezin da %{agent} saioa %{session_id} berrekin: hasi zen, baina ez zuen inoiz elkarrizketarik metatu; beraz, %{agent} agenteak karga baztertuko luke. Errenkada kentzen."
 system.fallback.this_agent: "agente hau"
 system.fallback.connected_agent: "konektatutako agentea"
-system.yolo_blocked_by_policy: "Yolo modua desgaituta dago zure erakundearen politikagatik."
+system.yolo_blocked_by_policy: "Yolo modua desgaituta dago zure erakundearen politikagatik."  # {Locked="Yolo"}
 
 
 # ── CLI irteera exekuzio-unean (src/main.rs) ────────────────────────────────────

@@ -165,7 +165,7 @@ system.cannot_resume_phantom_via_flag: "%{agent} ਸੈਸ਼ਨ %{session_id} �
 system.cannot_resume_phantom_via_load: "%{agent} ਸੈਸ਼ਨ %{session_id} ਮੁੜ ਸ਼ੁਰੂ ਨਹੀਂ ਕੀਤਾ ਜਾ ਸਕਦਾ: ਇਹ ਸ਼ੁਰੂ ਹੋਇਆ ਸੀ ਪਰ ਕੋਈ ਗੱਲਬਾਤ ਇਕੱਠੀ ਨਹੀਂ ਹੋਈ, ਇਸ ਲਈ %{agent} load ਨੂੰ ਰੱਦ ਕਰੇਗਾ। ਕਤਾਰ ਹਟਾਈ ਜਾ ਰਹੀ ਹੈ।"
 system.fallback.this_agent: "ਇਹ agent"
 system.fallback.connected_agent: "ਜੁੜਿਆ agent"
-system.yolo_blocked_by_policy: "ਤੁਹਾਡੀ ਸੰਸਥਾ ਦੀ ਨੀਤੀ ਕਾਰਨ yolo mode ਅਯੋਗ ਹੈ।"
+system.yolo_blocked_by_policy: "ਤੁਹਾਡੀ ਸੰਸਥਾ ਦੀ ਨੀਤੀ ਕਾਰਨ Yolo mode ਅਯੋਗ ਹੈ।"  # {Locked="Yolo"}
 
 
 # ── ਰਨਟਾਈਮ CLI ਆਉਟਪੁੱਟ (src/main.rs) ────────────────────────────────────────

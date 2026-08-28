@@ -165,7 +165,7 @@ system.cannot_resume_phantom_via_flag: "%{agent} %{session_id} seansini davom et
 system.cannot_resume_phantom_via_load: "%{agent} %{session_id} seansini davom ettirib boʻlmadi: u boshlangan, lekin hech qanday suhbat yigʻilmagan, shuning uchun %{agent} yuklashni rad etadi. Qator olib tashlanmoqda."
 system.fallback.this_agent: "bu agent"
 system.fallback.connected_agent: "ulangan agent"
-system.yolo_blocked_by_policy: "Yolo rejimi tashkilotingiz siyosati tomonidan o‘chirib qo‘yilgan."
+system.yolo_blocked_by_policy: "Yolo rejimi tashkilotingiz siyosati tomonidan o‘chirib qo‘yilgan."  # {Locked="Yolo"}
 
 
 # ── Runtime CLI output (src/main.rs) ────────────────────────────────────────

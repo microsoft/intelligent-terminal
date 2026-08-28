@@ -161,7 +161,7 @@ system.cannot_resume_phantom_via_flag: "Nie można wznowić sesji %{agent} %{ses
 system.cannot_resume_phantom_via_load: "Nie można wznowić sesji %{agent} %{session_id}: została uruchomiona, ale nigdy nie zgromadziła żadnej konwersacji, więc %{agent} odrzuciłby załadowanie. Usuwanie wiersza."
 system.fallback.this_agent: "ten agent"
 system.fallback.connected_agent: "połączony agent"
-system.yolo_blocked_by_policy: "Tryb yolo jest wyłączony przez zasady twojej organizacji."
+system.yolo_blocked_by_policy: "Tryb Yolo jest wyłączony przez zasady twojej organizacji."  # {Locked="Yolo"}
 
 
 # ── Runtime CLI output (src/main.rs) ────────────────────────────────────────

@@ -154,7 +154,7 @@ system.cannot_resume_phantom_via_flag: "[Çåññöţ ŕéśûḿé %{agent} ś�
 system.cannot_resume_phantom_via_load: "[Çåññöţ ŕéśûḿé %{agent} śéśśïöñ %{session_id}: ïţ ŵåś śţåŕţéď ƀûţ ñéṽéŕ åççûḿûĺåţéď åñÿ çöñṽéŕśåţïöñ, śö %{agent} ŵöûĺď ŕéĵéçţ ţĥé ĺöåď. Ŕéḿöṽïñğ ţĥé ŕöŵ.!!!! !!!! !!!! !!!! !!!! !!!! !!!!]"
 system.fallback.this_agent: "[ţĥïś åğéñţ!!]"
 system.fallback.connected_agent: "[ţĥé çöññéçţéď åğéñţ!!!! !!!!]"
-system.yolo_blocked_by_policy: "[Ŷöĺö ḿöďé ïś ďïśåƀĺéď ƀÿ ÿöûŕ öŕğåñïžåţïöñ'ś ṗöĺïçÿ.!!!! !!!! !!!!]"
+system.yolo_blocked_by_policy: "[Yolo ḿöďé ïś ďïśåƀĺéď ƀÿ ÿöûŕ öŕğåñïžåţïöñ'ś ṗöĺïçÿ.!!!! !!!! !!!!]"  # {Locked="Yolo"}
 
 
 # ── Runtime CLI output (src/main.rs) ────────────────────────────────────────

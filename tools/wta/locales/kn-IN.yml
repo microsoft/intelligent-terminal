@@ -165,7 +165,7 @@ system.cannot_resume_phantom_via_flag: "%{agent} ಸೆಷನ್ %{session_id} �
 system.cannot_resume_phantom_via_load: "%{agent} ಸೆಷನ್ %{session_id} ಪುನರಾರಂಭಿಸಲಾಗುವುದಿಲ್ಲ: ಅದು ಪ್ರಾರಂಭವಾಗಿತ್ತು ಆದರೆ ಯಾವುದೇ ಸಂಭಾಷಣೆ ಸಂಗ್ರಹವಾಗಿಲ್ಲ, ಆದ್ದರಿಂದ %{agent} load ಅನ್ನು ತಿರಸ್ಕರಿಸುತ್ತದೆ. ಸಾಲನ್ನು ತೆಗೆದುಹಾಕಲಾಗುತ್ತಿದೆ."
 system.fallback.this_agent: "ಈ agent"
 system.fallback.connected_agent: "ಸಂಪರ್ಕಿತ agent"
-system.yolo_blocked_by_policy: "ನಿಮ್ಮ ಸಂಸ್ಥೆಯ ನೀತಿಯಿಂದ yolo mode ನಿಷ್ಕ್ರಿಯಗೊಂಡಿದೆ."
+system.yolo_blocked_by_policy: "ನಿಮ್ಮ ಸಂಸ್ಥೆಯ ನೀತಿಯಿಂದ Yolo mode ನಿಷ್ಕ್ರಿಯಗೊಂಡಿದೆ."  # {Locked="Yolo"}
 
 
 # ── ರನ್‌ಟೈಮ್ CLI ಔಟ್‌ಪುಟ್ (src/main.rs) ────────────────────────────────────────

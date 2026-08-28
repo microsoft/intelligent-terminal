@@ -152,7 +152,7 @@ system.cannot_resume_phantom_via_flag: "Impossible de reprendre la session %{age
 system.cannot_resume_phantom_via_load: "Impossible de reprendre la session %{agent} %{session_id} : elle a été démarrée, mais n’a jamais accumulé de conversation; %{agent} rejetterait donc le chargement. Suppression de la ligne."
 system.fallback.this_agent: "cet agent"
 system.fallback.connected_agent: "l’agent connecté"
-system.yolo_blocked_by_policy: "Le mode yolo est désactivé par la stratégie de votre organisation."
+system.yolo_blocked_by_policy: "Le mode Yolo est désactivé par la stratégie de votre organisation."  # {Locked="Yolo"}
 
 
 # ── Sortie CLI d'exécution (src/main.rs) ────────────────────────────────────────

@@ -152,7 +152,7 @@ system.cannot_resume_phantom_via_flag: "Kann %{agent}-Sessioun %{session_id} net
 system.cannot_resume_phantom_via_load: "Kann %{agent}-Sessioun %{session_id} net weiderfueren: si gouf gestart, mee et ass ni e Gespréich entstanen, dofir géif %{agent} d’Luede refuséieren. Rei gëtt ewechgeholl."
 system.fallback.this_agent: "dësen Agent"
 system.fallback.connected_agent: "den ugeschlossenen Agent"
-system.yolo_blocked_by_policy: "De Yolo-Modus ass duerch d'Politik vun Ärer Organisatioun deaktivéiert."
+system.yolo_blocked_by_policy: "De Yolo-Modus ass duerch d'Politik vun Ärer Organisatioun deaktivéiert."  # {Locked="Yolo"}
 
 
 # ── CLI-Ausgang zur Laufzäit (src/main.rs) ────────────────────────────────────

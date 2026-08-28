@@ -152,7 +152,7 @@ system.cannot_resume_phantom_via_flag: "Hindi maipagpatuloy ang %{agent} session
 system.cannot_resume_phantom_via_load: "Hindi maipagpatuloy ang %{agent} session %{session_id}: nagsimula ito pero hindi kailanman nakaipon ng anumang pag-uusap, kaya tatanggihan ng %{agent} ang load. Inaalis ang row."
 system.fallback.this_agent: "ang agent na ito"
 system.fallback.connected_agent: "ang nakakonektang agent"
-system.yolo_blocked_by_policy: "Na-disable ang yolo mode ng patakaran ng iyong organisasyon."
+system.yolo_blocked_by_policy: "Na-disable ang Yolo mode ng patakaran ng iyong organisasyon."  # {Locked="Yolo"}
 
 
 # ── Runtime CLI output (src/main.rs) ────────────────────────────────────────

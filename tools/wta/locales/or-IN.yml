@@ -165,7 +165,7 @@ system.cannot_resume_phantom_via_flag: "%{agent} ସେସନ୍ %{session_id} �
 system.cannot_resume_phantom_via_load: "%{agent} ସେସନ୍ %{session_id} ପୁନଃ ଆରମ୍ଭ କରିପାରିବେ ନାହିଁ: ଏହା ଆରମ୍ଭ ହୋଇଥିଲା କିନ୍ତୁ କୌଣସି କଥୋପକଥନ ସଂଗ୍ରହ କରିନଥିଲା, ସେହିପାଇଁ %{agent} load କୁ ଅସ୍ୱୀକାର କରିବ। ପଙ୍କ୍ତି ହଟାଯାଉଛି।"
 system.fallback.this_agent: "ଏହି agent"
 system.fallback.connected_agent: "ସଂଯୁକ୍ତ agent"
-system.yolo_blocked_by_policy: "ଆପଣଙ୍କ ସଂଗଠନର ନୀତି ଦ୍ୱାରା yolo mode ନିଷ୍କ୍ରିୟ କରାଯାଇଛି।"
+system.yolo_blocked_by_policy: "ଆପଣଙ୍କ ସଂଗଠନର ନୀତି ଦ୍ୱାରା Yolo mode ନିଷ୍କ୍ରିୟ କରାଯାଇଛି।"  # {Locked="Yolo"}
 
 
 # ── ରନ୍‌ଟାଇମ୍ CLI ଆଉଟପୁଟ୍ (src/main.rs) ────────────────────────────────────────

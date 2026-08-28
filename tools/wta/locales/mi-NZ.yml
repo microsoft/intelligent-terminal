@@ -152,7 +152,7 @@ system.cannot_resume_phantom_via_flag: "Kāore e taea te tīmata anō i te wāha
 system.cannot_resume_phantom_via_load: "Kāore e taea te tīmata anō i te wāhanga %{agent} %{session_id}: i tīmata, engari kāore rawa he kōrerorero i kohikohia, nō reira mā %{agent} e whakakore te load. E tango ana i te rārangi."
 system.fallback.this_agent: "tēnei agent"
 system.fallback.connected_agent: "te agent kua hono"
-system.yolo_blocked_by_policy: "Kua monokia te aratau yolo e te kaupapa here a tō whakahaere."
+system.yolo_blocked_by_policy: "Kua monokia te aratau Yolo e te kaupapa here a tō whakahaere."  # {Locked="Yolo"}
 
 
 # ── Runtime CLI output (src/main.rs) ────────────────────────────────────────

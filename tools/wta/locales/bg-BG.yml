@@ -163,7 +163,7 @@ system.cannot_resume_phantom_via_flag: "Не може да се възобнов
 system.cannot_resume_phantom_via_load: "Не може да се възобнови сесията на %{agent} %{session_id}: тя е стартирана, но никога не е натрупала разговор, така че %{agent} би отхвърлил зареждането. Редът се премахва."
 system.fallback.this_agent: "този агент"
 system.fallback.connected_agent: "свързаният агент"
-system.yolo_blocked_by_policy: "Режимът yolo е забранен от политиката на вашата организация."
+system.yolo_blocked_by_policy: "Режимът Yolo е забранен от политиката на вашата организация."  # {Locked="Yolo"}
 
 
 # ── Runtime CLI output (src/main.rs) ────────────────────────────────────────

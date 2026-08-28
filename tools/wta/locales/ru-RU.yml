@@ -161,7 +161,7 @@ system.cannot_resume_phantom_via_flag: "Не удается возобновит
 system.cannot_resume_phantom_via_load: "Не удается возобновить сеанс %{agent} %{session_id}: он был запущен, но в нем не накопилось ни одного разговора, поэтому %{agent} отклонил бы загрузку. Строка удаляется."
 system.fallback.this_agent: "этот агент"
 system.fallback.connected_agent: "подключенный агент"
-system.yolo_blocked_by_policy: "Режим yolo отключен политикой вашей организации."
+system.yolo_blocked_by_policy: "Режим Yolo отключен политикой вашей организации."  # {Locked="Yolo"}
 
 
 # ── Вывод CLI времени выполнения (src/main.rs) ────────────────────────────────────────

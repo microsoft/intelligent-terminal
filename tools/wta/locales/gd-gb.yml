@@ -152,7 +152,7 @@ system.cannot_resume_phantom_via_flag: "Cha ghabh seisean %{agent} %{session_id}
 system.cannot_resume_phantom_via_load: "Cha ghabh seisean %{agent} %{session_id} ath-thòiseachadh: chaidh a thòiseachadh ach cha do chruinnich e còmhradh sam bith, mar sin dhiùltadh %{agent} an luchdadh. A’ toirt air falbh an ràigh."
 system.fallback.this_agent: "an t-àidseant seo"
 system.fallback.connected_agent: "an t-àidseant ceangailte"
-system.yolo_blocked_by_policy: "Tha modh yolo à comas le poileasaidh na buidhne agad."
+system.yolo_blocked_by_policy: "Tha modh Yolo à comas le poileasaidh na buidhne agad."  # {Locked="Yolo"}
 
 
 # ── Toradh CLI àm-ruith (src/main.rs) ────────────────────────────────────

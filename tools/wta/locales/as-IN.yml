@@ -167,7 +167,7 @@ system.cannot_resume_phantom_via_flag: "%{agent} সত্ৰ %{session_id} প�
 system.cannot_resume_phantom_via_load: "%{agent} সত্ৰ %{session_id} পুনৰাৰম্ভ কৰিব নোৱাৰি: ই আৰম্ভ হৈছিল কিন্তু কোনো কথোপকথন সঞ্চিত হোৱা নাই, সেয়ে %{agent}-এ load নাকচ কৰিব। শাৰী আঁতৰোৱা হৈছে।"
 system.fallback.this_agent: "এই agent"
 system.fallback.connected_agent: "সংযুক্ত agent"
-system.yolo_blocked_by_policy: "আপোনাৰ সংগঠনৰ নীতিয়ে yolo mode নিষ্ক্ৰিয় কৰিছে।"
+system.yolo_blocked_by_policy: "আপোনাৰ সংগঠনৰ নীতিয়ে Yolo mode নিষ্ক্ৰিয় কৰিছে।"  # {Locked="Yolo"}
 
 
 # ── ৰানটাইম CLI আউটপুট (src/main.rs) ────────────────────────────────────────

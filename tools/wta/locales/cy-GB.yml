@@ -154,7 +154,7 @@ system.cannot_resume_phantom_via_flag: "Methu ailddechrau sesiwn %{agent} %{sess
 system.cannot_resume_phantom_via_load: "Methu ailddechrau sesiwn %{agent} %{session_id}: cafodd ei dechrau ond ni chasglodd unrhyw sgwrs erioed, felly byddai %{agent} yn gwrthod y llwytho. Yn tynnu’r rhes."
 system.fallback.this_agent: "yr asiant hwn"
 system.fallback.connected_agent: "yr asiant cysylltiedig"
-system.yolo_blocked_by_policy: "Mae modd yolo wedi’i analluogi gan bolisi eich sefydliad."
+system.yolo_blocked_by_policy: "Mae modd Yolo wedi’i analluogi gan bolisi eich sefydliad."  # {Locked="Yolo"}
 
 
 # ── Allbwn CLI amser rhedeg (src/main.rs) ────────────────────────────────────

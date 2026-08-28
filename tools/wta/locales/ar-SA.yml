@@ -167,7 +167,7 @@ system.cannot_resume_phantom_via_flag: "يتعذر استئناف جلسة %{age
 system.cannot_resume_phantom_via_load: "يتعذر استئناف جلسة %{agent} %{session_id}: بدأت لكنها لم تجمع أي محادثة، لذلك سيرفض %{agent} التحميل. تتم إزالة الصف."
 system.fallback.this_agent: "هذا العامل"
 system.fallback.connected_agent: "العامل المتصل"
-system.yolo_blocked_by_policy: "تم تعطيل وضع yolo بواسطة نهج مؤسستك."
+system.yolo_blocked_by_policy: "تم تعطيل وضع Yolo بواسطة نهج مؤسستك."  # {Locked="Yolo"}
 
 
 # ── مخرجات CLI في وقت التشغيل (src/main.rs) ────────────────────────────────────────

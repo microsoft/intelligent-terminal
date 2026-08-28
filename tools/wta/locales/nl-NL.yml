@@ -152,7 +152,7 @@ system.cannot_resume_phantom_via_flag: "Kan %{agent}-sessie %{session_id} niet h
 system.cannot_resume_phantom_via_load: "Kan %{agent}-sessie %{session_id} niet hervatten: deze is gestart maar heeft nooit een gesprek opgebouwd, waardoor %{agent} het laden zou weigeren. Rij wordt verwijderd."
 system.fallback.this_agent: "deze agent"
 system.fallback.connected_agent: "de verbonden agent"
-system.yolo_blocked_by_policy: "Yolo-modus is uitgeschakeld door het beleid van uw organisatie."
+system.yolo_blocked_by_policy: "Yolo-modus is uitgeschakeld door het beleid van uw organisatie."  # {Locked="Yolo"}
 
 
 # ── Runtime CLI-uitvoer (src/main.rs) ────────────────────────────────────────

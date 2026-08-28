@@ -152,7 +152,7 @@ system.cannot_resume_phantom_via_flag: "ບໍ່ສາມາດສືບຕໍ�
 system.cannot_resume_phantom_via_load: "ບໍ່ສາມາດສືບຕໍ່ session %{agent} %{session_id}: ມັນເລີ່ມແລ້ວ ແຕ່ບໍ່ເຄີຍມີການສົນທະນາໃດໆສະສົມ, ດັ່ງນັ້ນ %{agent} ຈະປະຕິເສດການໂຫຼດ. ກຳລັງລຶບແຖວ."
 system.fallback.this_agent: "agent ນີ້"
 system.fallback.connected_agent: "agent ທີ່ເຊື່ອມຕໍ່ແລ້ວ"
-system.yolo_blocked_by_policy: "Yolo mode ຖືກປິດໂດຍນະໂຍບາຍຂອງອົງກອນຂອງທ່ານ."
+system.yolo_blocked_by_policy: "Yolo mode ຖືກປິດໂດຍນະໂຍບາຍຂອງອົງກອນຂອງທ່ານ."  # {Locked="Yolo"}
 
 
 # ── Runtime CLI output (src/main.rs) ────────────────────────────────────────

@@ -161,7 +161,7 @@ system.cannot_resume_phantom_via_flag: "Не може да се продолжи
 system.cannot_resume_phantom_via_load: "Не може да се продолжи сесијата на %{agent} %{session_id}: таа е стартувана, но никогаш не собрала разговор, па %{agent} би го одбил вчитувањето. Редот се отстранува."
 system.fallback.this_agent: "овој агент"
 system.fallback.connected_agent: "поврзаниот агент"
-system.yolo_blocked_by_policy: "Режимот yolo е оневозможен од политиката на вашата организација."
+system.yolo_blocked_by_policy: "Режимот Yolo е оневозможен од политиката на вашата организација."  # {Locked="Yolo"}
 
 
 # ── Runtime CLI output (src/main.rs) ────────────────────────────────────────

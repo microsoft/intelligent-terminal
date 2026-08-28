@@ -152,7 +152,7 @@ system.cannot_resume_phantom_via_flag: "Nepavyksta tęsti %{agent} seanso %{sess
 system.cannot_resume_phantom_via_load: "Nepavyksta tęsti %{agent} seanso %{session_id}: jis buvo paleistas, bet nesukaupė jokio pokalbio, todėl %{agent} atmestų įkėlimą. Eilutė šalinama."
 system.fallback.this_agent: "šis agentas"
 system.fallback.connected_agent: "prijungtas agentas"
-system.yolo_blocked_by_policy: "Yolo režimas išjungtas pagal jūsų organizacijos politiką."
+system.yolo_blocked_by_policy: "Yolo režimas išjungtas pagal jūsų organizacijos politiką."  # {Locked="Yolo"}
 
 
 # ── Runtime CLI output (src/main.rs) ────────────────────────────────────────

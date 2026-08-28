@@ -148,7 +148,7 @@ system.cannot_resume_phantom_via_flag: "%{agent} 세션 %{session_id}을(를) �
 system.cannot_resume_phantom_via_load: "%{agent} 세션 %{session_id}을(를) 재개할 수 없습니다. 시작되었지만 대화가 전혀 누적되지 않았으므로 %{agent}이(가) 로드를 거부합니다. 행을 제거합니다."
 system.fallback.this_agent: "이 에이전트"
 system.fallback.connected_agent: "연결된 에이전트"
-system.yolo_blocked_by_policy: "조직의 정책으로 인해 yolo 모드가 비활성화되어 있습니다."
+system.yolo_blocked_by_policy: "조직의 정책으로 인해 Yolo 모드가 비활성화되어 있습니다."  # {Locked="Yolo"}
 
 
 # ── 런타임 CLI 출력 (src/main.rs) ────────────────────────────────────────

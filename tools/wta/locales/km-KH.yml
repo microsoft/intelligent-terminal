@@ -166,7 +166,7 @@ system.cannot_resume_phantom_via_flag: "មិនអាចបន្តវគ្�
 system.cannot_resume_phantom_via_load: "មិនអាចបន្តវគ្គ %{agent} %{session_id} បានទេ: វាត្រូវបានចាប់ផ្តើម ប៉ុន្តែមិនដែលមានការសន្ទនាណាមួយទេ ដូច្នេះ %{agent} នឹងបដិសេធការផ្ទុក។ កំពុងលុបជួរដេក។"
 system.fallback.this_agent: "អេជេន្ត់នេះ"
 system.fallback.connected_agent: "អេជេន្ត់ដែលបានភ្ជាប់"
-system.yolo_blocked_by_policy: "Yolo mode ត្រូវបានបិទដោយគោលនយោបាយរបស់ស្ថាប័នអ្នក។"
+system.yolo_blocked_by_policy: "Yolo mode ត្រូវបានបិទដោយគោលនយោបាយរបស់ស្ថាប័នអ្នក។"  # {Locked="Yolo"}
 
 
 # ── Runtime CLI output (src/main.rs) ──────────────────────────────────────────────────────────────────

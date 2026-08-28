@@ -161,7 +161,7 @@ system.cannot_resume_phantom_via_flag: "Не вдається відновити
 system.cannot_resume_phantom_via_load: "Не вдається відновити сеанс %{agent} %{session_id}: його було запущено, але в ньому не накопичилося жодної розмови, тому %{agent} відхилив би завантаження. Рядок видаляється."
 system.fallback.this_agent: "цей агент"
 system.fallback.connected_agent: "підключений агент"
-system.yolo_blocked_by_policy: "Режим yolo вимкнено політикою вашої організації."
+system.yolo_blocked_by_policy: "Режим Yolo вимкнено політикою вашої організації."  # {Locked="Yolo"}
 
 
 # ── Вивід CLI під час виконання (src/main.rs) ────────────────────────────────────────

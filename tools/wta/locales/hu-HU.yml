@@ -152,7 +152,7 @@ system.cannot_resume_phantom_via_flag: "Nem lehet folytatni a(z) %{agent} %{sess
 system.cannot_resume_phantom_via_load: "Nem lehet folytatni a(z) %{agent} %{session_id} munkamenetet: elindult, de nem gyűlt benne beszélgetés, ezért a(z) %{agent} elutasítaná a betöltést. A sor eltávolítása."
 system.fallback.this_agent: "ez az ügynök"
 system.fallback.connected_agent: "a csatlakoztatott ügynök"
-system.yolo_blocked_by_policy: "A yolo módot a szervezet szabályzata letiltotta."
+system.yolo_blocked_by_policy: "A Yolo módot a szervezet szabályzata letiltotta."  # {Locked="Yolo"}
 
 
 # ── Runtime CLI output (src/main.rs) ────────────────────────────────────────

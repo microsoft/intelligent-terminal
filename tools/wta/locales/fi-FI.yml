@@ -152,7 +152,7 @@ system.cannot_resume_phantom_via_flag: "%{agent}-istuntoa %{session_id} ei voi j
 system.cannot_resume_phantom_via_load: "%{agent}-istuntoa %{session_id} ei voi jatkaa: se käynnistettiin, mutta siihen ei koskaan kertynyt keskustelua, joten %{agent} hylkäisi latauksen. Poistetaan rivi."
 system.fallback.this_agent: "tämä agentti"
 system.fallback.connected_agent: "yhdistetty agentti"
-system.yolo_blocked_by_policy: "Yolo-tila on poistettu käytöstä organisaatiosi käytännön mukaan."
+system.yolo_blocked_by_policy: "Yolo-tila on poistettu käytöstä organisaatiosi käytännön mukaan."  # {Locked="Yolo"}
 
 
 # ── Runtime CLI output (src/main.rs) ────────────────────────────────────────

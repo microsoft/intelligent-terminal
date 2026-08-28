@@ -152,7 +152,7 @@ system.cannot_resume_phantom_via_flag: "ไม่สามารถดำเน�
 system.cannot_resume_phantom_via_load: "ไม่สามารถดำเนินเซสชัน %{agent} %{session_id} ต่อ: เซสชันนี้เริ่มแล้วแต่ไม่เคยมีการสนทนาสะสม ดังนั้น %{agent} จะปฏิเสธการโหลด กำลังลบแถว"
 system.fallback.this_agent: "เอเจนต์นี้"
 system.fallback.connected_agent: "เอเจนต์ที่เชื่อมต่ออยู่"
-system.yolo_blocked_by_policy: "โหมด yolo ถูกปิดใช้งานโดยนโยบายขององค์กรคุณ"
+system.yolo_blocked_by_policy: "โหมด Yolo ถูกปิดใช้งานโดยนโยบายขององค์กรคุณ"  # {Locked="Yolo"}
 
 
 # ── Runtime CLI output (src/main.rs) ────────────────────────────────────────

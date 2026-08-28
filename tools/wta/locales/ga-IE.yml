@@ -152,7 +152,7 @@ system.cannot_resume_phantom_via_flag: "Ní féidir seisiún %{agent} %{session_
 system.cannot_resume_phantom_via_load: "Ní féidir seisiún %{agent} %{session_id} a atosú: cuireadh tús leis ach níor charnaigh sé aon chomhrá riamh, mar sin dhiúltódh %{agent} don lódáil. An ró á bhaint."
 system.fallback.this_agent: "an gníomhaire seo"
 system.fallback.connected_agent: "an gníomhaire ceangailte"
-system.yolo_blocked_by_policy: "Tá mód yolo díchumasaithe ag polasaí d’eagraíochta."
+system.yolo_blocked_by_policy: "Tá mód Yolo díchumasaithe ag polasaí d’eagraíochta."  # {Locked="Yolo"}
 
 
 # ── Aschur CLI ag am rite (src/main.rs) ────────────────────────────────────

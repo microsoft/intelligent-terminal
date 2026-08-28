@@ -167,7 +167,7 @@ system.cannot_resume_phantom_via_flag: "%{agent} সেশন %{session_id} প�
 system.cannot_resume_phantom_via_load: "%{agent} সেশন %{session_id} পুনরায় শুরু করা যায়নি: এটি শুরু হয়েছিল কিন্তু কোনও কথোপকথন জমা হয়নি, তাই %{agent} load প্রত্যাখ্যান করবে। সারিটি সরানো হচ্ছে।"
 system.fallback.this_agent: "এই agent"
 system.fallback.connected_agent: "সংযুক্ত agent"
-system.yolo_blocked_by_policy: "আপনার সংস্থার নীতি অনুসারে yolo mode নিষ্ক্রিয় করা আছে।"
+system.yolo_blocked_by_policy: "আপনার সংস্থার নীতি অনুসারে Yolo mode নিষ্ক্রিয় করা আছে।"  # {Locked="Yolo"}
 
 
 # ── রানটাইম CLI আউটপুট (src/main.rs) ────────────────────────────────────────

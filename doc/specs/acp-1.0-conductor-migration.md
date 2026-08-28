@@ -879,7 +879,7 @@ routing (cold-start joins, tombstones, etc.).
 ### Compatibility
 
 - Agent CLIs (copilot `--acp`, claude/codex via npx adapters, gemini
-  `--experimental-acp`) are **unaffected** — they receive a normal `initialize`;
+  `--acp`) are **unaffected** — they receive a normal `initialize`;
   the proxy is transparent to them.
 - 0.10→1.0 is a breaking API change for **our** code only. The helper↔master
   named-pipe wire stays private (plain ACP) through Phase 1.

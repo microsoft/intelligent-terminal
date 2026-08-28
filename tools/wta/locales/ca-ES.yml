@@ -154,7 +154,7 @@ system.cannot_resume_phantom_via_flag: "No es pot reprendre la sessió de %{agen
 system.cannot_resume_phantom_via_load: "No es pot reprendre la sessió de %{agent} %{session_id}: es va iniciar però no va acumular cap conversa, de manera que %{agent} rebutjaria la càrrega. S’elimina la fila."
 system.fallback.this_agent: "aquest agent"
 system.fallback.connected_agent: "l’agent connectat"
-system.yolo_blocked_by_policy: "El mode yolo està deshabilitat per la política de la vostra organització."
+system.yolo_blocked_by_policy: "El mode Yolo està deshabilitat per la política de la vostra organització."  # {Locked="Yolo"}
 
 
 # ── Sortida de CLI en temps d'execució (src/main.rs) ────────────────────────────────────

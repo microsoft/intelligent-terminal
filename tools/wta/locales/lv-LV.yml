@@ -152,7 +152,7 @@ system.cannot_resume_phantom_via_flag: "Nevar atsākt %{agent} sesiju %{session_
 system.cannot_resume_phantom_via_load: "Nevar atsākt %{agent} sesiju %{session_id}: tā tika sākta, bet tajā nav uzkrāta neviena saruna, tāpēc %{agent} noraidītu ielādi. Rinda tiek noņemta."
 system.fallback.this_agent: "šis aģents"
 system.fallback.connected_agent: "pievienotais aģents"
-system.yolo_blocked_by_policy: "Yolo režīmu ir atspējojusi jūsu organizācijas politika."
+system.yolo_blocked_by_policy: "Yolo režīmu ir atspējojusi jūsu organizācijas politika."  # {Locked="Yolo"}
 
 
 # ── Runtime CLI output (src/main.rs) ────────────────────────────────────────

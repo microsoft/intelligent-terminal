@@ -148,7 +148,7 @@ system.cannot_resume_phantom_via_flag: "無法恢復 %{agent} 工作階段 %{ses
 system.cannot_resume_phantom_via_load: "無法恢復 %{agent} 工作階段 %{session_id}：它已啟動但從未累積任何對話，因此 %{agent} 會拒絕載入。正在移除此列。"
 system.fallback.this_agent: "此智能體"
 system.fallback.connected_agent: "已連線的智能體"
-system.yolo_blocked_by_policy: "yolo 模式已被您組織的原則停用。"
+system.yolo_blocked_by_policy: "Yolo 模式已被您組織的原則停用。"  # {Locked="Yolo"}
 
 
 # ── 執行階段 CLI 輸出 (src/main.rs) ────────────────────────────────────────

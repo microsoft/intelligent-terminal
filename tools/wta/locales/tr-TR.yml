@@ -165,7 +165,7 @@ system.cannot_resume_phantom_via_flag: "%{agent} oturumu %{session_id} sürdür�
 system.cannot_resume_phantom_via_load: "%{agent} oturumu %{session_id} sürdürülemiyor: başlatılmış ancak hiç konuşma biriktirmemiş, bu yüzden %{agent} yüklemeyi reddederdi. Satır kaldırılıyor."
 system.fallback.this_agent: "bu aracı"
 system.fallback.connected_agent: "bağlı aracı"
-system.yolo_blocked_by_policy: "Yolo modu kuruluşunuzun ilkesi tarafından devre dışı bırakıldı."
+system.yolo_blocked_by_policy: "Yolo modu kuruluşunuzun ilkesi tarafından devre dışı bırakıldı."  # {Locked="Yolo"}
 
 
 # ── Runtime CLI output (src/main.rs) ────────────────────────────────────────

@@ -152,7 +152,7 @@ system.cannot_resume_phantom_via_flag: "%{agent} sesión %{session_id} mana kuti
 system.cannot_resume_phantom_via_load: "%{agent} sesión %{session_id} mana kutichiyta atikunchu: qallarirqan, ichaqa mana ima rimaytapas huñurqanchu; chayrayku %{agent} load nisqata mana chaskinqachu. Filata hurquchkan."
 system.fallback.this_agent: "kay agent"
 system.fallback.connected_agent: "tinkisqa agent"
-system.yolo_blocked_by_policy: "Yolo mode nisqaqa organizaciónniykip política rurasqanrayku deshabilitasqa kachkan."
+system.yolo_blocked_by_policy: "Yolo mode nisqaqa organizaciónniykip política rurasqanrayku deshabilitasqa kachkan."  # {Locked="Yolo"}
 
 
 # ── Runtime CLI output (src/main.rs) ────────────────────────────────────────

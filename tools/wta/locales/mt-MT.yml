@@ -152,7 +152,7 @@ system.cannot_resume_phantom_via_flag: "Ma tistax tkompli s-sessjoni ta’ %{age
 system.cannot_resume_phantom_via_load: "Ma tistax tkompli s-sessjoni ta’ %{agent} %{session_id}: inbdiet iżda qatt ma akkumulat konverżazzjoni, għalhekk %{agent} jirrifjuta t-tagħbija. Qed titneħħa r-ringiela."
 system.fallback.this_agent: "dan l-aġent"
 system.fallback.connected_agent: "l-aġent konness"
-system.yolo_blocked_by_policy: "Il-modalità yolo hija diżattivata mill-politika tal-organizzazzjoni tiegħek."
+system.yolo_blocked_by_policy: "Il-modalità Yolo hija diżattivata mill-politika tal-organizzazzjoni tiegħek."  # {Locked="Yolo"}
 
 
 # ── Output CLI waqt l-eżekuzzjoni (src/main.rs) ────────────────────────────────────

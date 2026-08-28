@@ -163,7 +163,7 @@ system.cannot_resume_phantom_via_flag: "Nije moguće nastaviti sesiju agenta %{a
 system.cannot_resume_phantom_via_load: "Nije moguće nastaviti sesiju agenta %{agent} %{session_id}: pokrenuta je, ali nikada nije prikupila razgovor, pa bi %{agent} odbio učitavanje. Red se uklanja."
 system.fallback.this_agent: "ovaj agent"
 system.fallback.connected_agent: "povezani agent"
-system.yolo_blocked_by_policy: "Yolo način je onemogućen pravilima vaše organizacije."
+system.yolo_blocked_by_policy: "Yolo način je onemogućen pravilima vaše organizacije."  # {Locked="Yolo"}
 
 
 # ── Runtime CLI output (src/main.rs) ────────────────────────────────────────

@@ -152,7 +152,7 @@ system.cannot_resume_phantom_via_flag: "Non è possibile riprendere la sessione 
 system.cannot_resume_phantom_via_load: "Non è possibile riprendere la sessione %{agent} %{session_id}: è stata avviata ma non ha mai accumulato alcuna conversazione, quindi %{agent} rifiuterebbe il caricamento. Rimozione della riga."
 system.fallback.this_agent: "questo agente"
 system.fallback.connected_agent: "l’agente connesso"
-system.yolo_blocked_by_policy: "La modalità yolo è disabilitata dai criteri della tua organizzazione."
+system.yolo_blocked_by_policy: "La modalità Yolo è disabilitata dai criteri della tua organizzazione."  # {Locked="Yolo"}
 
 
 # ── Output CLI di runtime (src/main.rs) ────────────────────────────────────────

@@ -174,7 +174,7 @@ system.cannot_resume_phantom_via_flag: "%{agent} سۆزلىشىشى %{session_id
 system.cannot_resume_phantom_via_load: "%{agent} سۆزلىشىشى %{session_id} نى داۋاملاشتۇرغىلى بولمايدۇ: ئۇ باشلانغان، ئەمما ھېچقانداق سۆھبەت توپلانمىغان، شۇڭا %{agent} load نى رەت قىلىدۇ. قۇر ئۆچۈرۈلۈۋاتىدۇ."
 system.fallback.this_agent: "بۇ agent"
 system.fallback.connected_agent: "ئۇلانغان agent"
-system.yolo_blocked_by_policy: "Yolo mode تەشكىلاتىڭىزنىڭ سىياسىتى بىلەن چەكلەنگەن."
+system.yolo_blocked_by_policy: "Yolo mode تەشكىلاتىڭىزنىڭ سىياسىتى بىلەن چەكلەنگەن."  # {Locked="Yolo"}
 
 
 # ── Runtime CLI output (src/main.rs) ──────────────────────────────────────────────────────────────

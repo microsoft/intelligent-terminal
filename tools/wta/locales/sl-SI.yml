@@ -161,7 +161,7 @@ system.cannot_resume_phantom_via_flag: "Seje %{agent} %{session_id} ni mogoče n
 system.cannot_resume_phantom_via_load: "Seje %{agent} %{session_id} ni mogoče nadaljevati: bila je zagnana, vendar ni nikoli zbrala nobenega pogovora, zato bi %{agent} zavrnil nalaganje. Vrstica se odstranjuje."
 system.fallback.this_agent: "ta agent"
 system.fallback.connected_agent: "povezani agent"
-system.yolo_blocked_by_policy: "Način yolo je onemogočen s pravilnikom vaše organizacije."
+system.yolo_blocked_by_policy: "Način Yolo je onemogočen s pravilnikom vaše organizacije."  # {Locked="Yolo"}
 
 
 # ── Runtime CLI output (src/main.rs) ────────────────────────────────────────

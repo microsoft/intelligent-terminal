@@ -165,7 +165,7 @@ system.cannot_resume_phantom_via_flag: "%{agent} %{session_id} сеансын д
 system.cannot_resume_phantom_via_load: "%{agent} %{session_id} сеансын дәвам итеп булмый: ул башлатылган, ләкин бер сөйләшү дә җыймаган, шуңа күрә %{agent} йөкләүне кире кагар иде. Юл бетерелә."
 system.fallback.this_agent: "бу агент"
 system.fallback.connected_agent: "тоташкан агент"
-system.yolo_blocked_by_policy: "Yolo mode оешмагыз сәясәте буенча сүндерелгән."
+system.yolo_blocked_by_policy: "Yolo mode оешмагыз сәясәте буенча сүндерелгән."  # {Locked="Yolo"}
 
 
 # ── Runtime CLI output (src/main.rs) ────────────────────────────────────────

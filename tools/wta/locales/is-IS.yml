@@ -152,7 +152,7 @@ system.cannot_resume_phantom_via_flag: "Ekki er hægt að halda áfram með %{ag
 system.cannot_resume_phantom_via_load: "Ekki er hægt að halda áfram með %{agent}-setu %{session_id}: hún var ræst en safnaði aldrei neinu samtali, þannig að %{agent} myndi hafna hleðslunni. Fjarlægi röðina."
 system.fallback.this_agent: "þessi agent"
 system.fallback.connected_agent: "tengdi agentinn"
-system.yolo_blocked_by_policy: "Yolo-hamur er óvirkur samkvæmt stefnu fyrirtækis þíns."
+system.yolo_blocked_by_policy: "Yolo-hamur er óvirkur samkvæmt stefnu fyrirtækis þíns."  # {Locked="Yolo"}
 
 
 # ── Runtime CLI output (src/main.rs) ────────────────────────────────────────
