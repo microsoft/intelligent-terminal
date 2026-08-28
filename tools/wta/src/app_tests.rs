@@ -2409,7 +2409,7 @@ fn replay_message_ids_preserve_user_only_recommendation_turns() {
     app.handle_event(AppEvent::UserMessageReplayChunk {
         session_id: "sess-target".to_string(),
         message_id: Some("chat-turn".to_string()),
-        text: "## User Request\nhow is the day".to_string(),
+        text: "## User Request\nHow is the day".to_string(),
     });
     app.handle_event(AppEvent::AgentMessageChunk {
         session_id: "sess-target".to_string(),
@@ -2426,7 +2426,7 @@ fn replay_message_ids_preserve_user_only_recommendation_turns() {
     assert_eq!(turns.len(), 2);
     assert_eq!(turns[0].prompt, "os version");
     assert!(turns[0].details.is_empty());
-    assert_eq!(turns[1].prompt, "how is the day");
+    assert_eq!(turns[1].prompt, "How is the day");
     assert_eq!(
         turns[1].details,
         vec![ChatMessage::Agent("It is going well.".to_string())]
@@ -2440,7 +2440,7 @@ fn hidden_proposal_tool_calls_delimit_replayed_user_messages_without_ids() {
     app.handle_event(AppEvent::UserMessageReplayChunk {
         session_id: "sess-target".to_string(),
         message_id: None,
-        text: "## User Request\nhow are you".to_string(),
+        text: "## User Request\nHow are you".to_string(),
     });
     app.handle_event(AppEvent::AgentMessageChunk {
         session_id: "sess-target".to_string(),
@@ -2467,7 +2467,7 @@ fn hidden_proposal_tool_calls_delimit_replayed_user_messages_without_ids() {
     app.handle_event(AppEvent::UserMessageReplayChunk {
         session_id: "sess-target".to_string(),
         message_id: None,
-        text: "## User Request\nhow is the day".to_string(),
+        text: "## User Request\nHow is the day".to_string(),
     });
     app.handle_event(AppEvent::AgentMessageChunk {
         session_id: "sess-target".to_string(),
@@ -2482,7 +2482,7 @@ fn hidden_proposal_tool_calls_delimit_replayed_user_messages_without_ids() {
 
     let turns = &app.tab_sessions["OWNER-TAB"].completed_turns;
     assert_eq!(turns.len(), 4);
-    assert_eq!(turns[0].prompt, "how are you");
+    assert_eq!(turns[0].prompt, "How are you");
     assert_eq!(
         turns[0].details,
         vec![ChatMessage::Agent("I am doing well.".to_string())]
@@ -2491,7 +2491,7 @@ fn hidden_proposal_tool_calls_delimit_replayed_user_messages_without_ids() {
     assert!(turns[1].details.is_empty());
     assert_eq!(turns[2].prompt, "list file size");
     assert!(turns[2].details.is_empty());
-    assert_eq!(turns[3].prompt, "how is the day");
+    assert_eq!(turns[3].prompt, "How is the day");
     assert_eq!(
         turns[3].details,
         vec![ChatMessage::Agent("It is going well.".to_string())]
@@ -10707,11 +10707,12 @@ fn resuming_pane_paints_resuming_not_connecting() {
     let mut app = test_app();
     app.state = ConnectionState::Connecting("Connecting...".to_string());
     app.current_tab_mut().loading_session = true;
-    app.current_tab_mut().loading_target_session_id = Some("12cbfa43-4e56-4e4d".to_string());
+    app.current_tab_mut().loading_target_session_id =
+        Some("aaaaaaaa-1111-2222-3333-444444444444".to_string());
 
     let text = render_to_text(&mut app, 80, 24);
     assert!(
-        text.contains("12cbfa43"),
+        text.contains("aaaaaaaa"),
         "the resuming line must name the session being restored; rendered:\n{text}"
     );
 
