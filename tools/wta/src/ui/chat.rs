@@ -406,6 +406,13 @@ fn tool_detail_lines(
     lines
 }
 
+fn cap_tool_detail_lines(lines: &mut Vec<String>) {
+    if lines.len() > MAX_TOOL_DETAIL_LINES {
+        lines.truncate(MAX_TOOL_DETAIL_LINES.saturating_sub(1));
+        lines.push("    …".to_string());
+    }
+}
+
 fn restyle_tool_detail_lines(lines: &mut [String], has_prior_child: bool) {
     let mut needs_branch = !has_prior_child;
     for line in lines {
@@ -1691,6 +1698,7 @@ fn build_message_lines_with_details<'a>(
                     }
                 }
             }
+            cap_tool_detail_lines(&mut detail_lines);
             restyle_tool_detail_lines(&mut detail_lines, rendered_command || rendered_output);
             let rendered_details = !detail_lines.is_empty();
             for line in detail_lines {
@@ -2709,14 +2717,16 @@ mod tests {
 
     #[test]
     fn expanded_diff_details_render_only_real_changes() {
+        let old = ["before", "same", "old value", "after"].join("\n");
+        let new = ["before", "same", "new value", "after"].join("\n");
         let content = ToolCallContent::Diff {
             path: "src/main.rs".into(),
             old_text: Some(ToolCallOutput {
-                text: "before\nsame\nold value\nafter".into(),
+                text: old,
                 truncated: false,
             }),
             new_text: ToolCallOutput {
-                text: "before\nsame\nnew value\nafter".into(),
+                text: new,
                 truncated: false,
             },
         };
@@ -2750,7 +2760,7 @@ mod tests {
             path: "src/new.rs".into(),
             old_text: None,
             new_text: ToolCallOutput {
-                text: "first\nsecond".into(),
+                text: ["first", "second"].join("\n"),
                 truncated: false,
             },
         };
@@ -2798,6 +2808,64 @@ mod tests {
         assert!(added > 0);
         assert!(removed.abs_diff(added) <= 1);
         assert!(lines.iter().any(|line| line == "    │ …"));
+    }
+
+    #[test]
+    fn diff_with_fallback_output_respects_the_global_detail_cap() {
+        let old = (0..100)
+            .map(|index| format!("old {index}"))
+            .collect::<Vec<_>>();
+        let new = (0..100)
+            .map(|index| format!("new {index}"))
+            .collect::<Vec<_>>();
+        let message = ChatMessage::ToolCall {
+            id: "tool".into(),
+            title: "Update source".into(),
+            status: "Completed".into(),
+            kind: ToolCallKind::Edit,
+            location: Some("src/main.rs".into()),
+            location_is_command: false,
+            cwd: None,
+            output: Some(ToolCallOutput {
+                text: (0..MAX_TOOL_DETAIL_OUTPUT_LINES)
+                    .map(|index| format!("raw output {index}"))
+                    .collect::<Vec<_>>()
+                    .join("\n"),
+                truncated: false,
+            }),
+            exit_code: None,
+            content: vec![ToolCallContent::Diff {
+                path: "src/main.rs".into(),
+                old_text: Some(ToolCallOutput {
+                    text: old.join("\n"),
+                    truncated: false,
+                }),
+                new_text: ToolCallOutput {
+                    text: new.join("\n"),
+                    truncated: false,
+                },
+            }],
+            locations: Vec::new(),
+        };
+
+        let rendered = build_message_lines_with_details(
+            &message,
+            false,
+            false,
+            None,
+            0,
+            120,
+            ToolDisplay::Completed { expanded: true },
+        )
+        .iter()
+        .map(line_text)
+        .collect::<Vec<_>>();
+
+        assert_eq!(rendered.len(), MAX_TOOL_DETAIL_LINES + 2);
+        assert_eq!(
+            rendered.get(rendered.len() - 2).map(String::as_str),
+            Some("    …")
+        );
     }
 
     #[test]

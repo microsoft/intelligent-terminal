@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 const MAX_DIFF_CORE_LINES: usize = 256;
 const CONTEXT_LINES: usize = 2;
 
@@ -21,8 +23,8 @@ pub(crate) fn preview<'a>(
     source_truncated: bool,
     max_lines: usize,
 ) -> Vec<DiffLine<'a>> {
-    let old_lines = old_text.map_or_else(Vec::new, |text| text.lines().collect());
-    let new_lines = new_text.lines().collect::<Vec<_>>();
+    let old_lines = old_text.map_or_else(Vec::new, snapshot_lines);
+    let new_lines = snapshot_lines(new_text);
     let mut lines = Vec::new();
 
     if source_truncated {
@@ -81,11 +83,17 @@ pub(crate) fn preview<'a>(
     let new_core_end = new_lines.len() - suffix;
     let old_core = &old_lines[prefix..old_core_end];
     let new_core = &new_lines[prefix..new_core_end];
-    let old_bounded = &old_core[..old_core.len().min(MAX_DIFF_CORE_LINES)];
-    let new_bounded = &new_core[..new_core.len().min(MAX_DIFF_CORE_LINES)];
-    append_collapsed_ops(&mut lines, &diff_ops(old_bounded, new_bounded));
-    if old_core.len() > old_bounded.len() || new_core.len() > new_bounded.len() {
+    let core_exceeds_limit =
+        old_core.len() > MAX_DIFF_CORE_LINES || new_core.len() > MAX_DIFF_CORE_LINES;
+    if core_exceeds_limit && shares_line(old_core, new_core) {
         push_omitted(&mut lines);
+    } else {
+        let old_bounded = &old_core[..old_core.len().min(MAX_DIFF_CORE_LINES)];
+        let new_bounded = &new_core[..new_core.len().min(MAX_DIFF_CORE_LINES)];
+        append_collapsed_ops(&mut lines, &diff_ops(old_bounded, new_bounded));
+        if core_exceeds_limit {
+            push_omitted(&mut lines);
+        }
     }
 
     let suffix_context = suffix.min(CONTEXT_LINES);
@@ -102,6 +110,24 @@ pub(crate) fn preview<'a>(
     }
 
     balance_preview(lines, max_lines)
+}
+
+fn snapshot_lines(text: &str) -> Vec<&str> {
+    let mut lines = text.lines().collect::<Vec<_>>();
+    if text.ends_with('\n') {
+        lines.push("");
+    }
+    lines
+}
+
+fn shares_line(old_lines: &[&str], new_lines: &[&str]) -> bool {
+    let (shorter, longer) = if old_lines.len() <= new_lines.len() {
+        (old_lines, new_lines)
+    } else {
+        (new_lines, old_lines)
+    };
+    let lines = shorter.iter().copied().collect::<HashSet<_>>();
+    longer.iter().any(|line| lines.contains(line))
 }
 
 fn diff_ops<'a>(old_lines: &[&'a str], new_lines: &[&'a str]) -> Vec<DiffLine<'a>> {
@@ -207,10 +233,8 @@ fn balance_preview<'a>(lines: Vec<DiffLine<'a>>, max_lines: usize) -> Vec<DiffLi
         }];
     }
 
-    // Each selected kind contributes at most two contiguous ranges (head and
-    // tail), so reserving `2 * kinds + 1` rows covers every possible gap.
-    let change_budget = max_lines.saturating_sub(2 * kinds + 1).max(kinds);
-    let (removed_budget, added_budget) = match (removed.is_empty(), added.is_empty()) {
+    let change_budget = max_lines.saturating_sub(1).max(kinds);
+    let (mut removed_budget, mut added_budget) = match (removed.is_empty(), added.is_empty()) {
         (false, false) => {
             let removed_budget = change_budget.div_ceil(2);
             (removed_budget, change_budget - removed_budget)
@@ -220,10 +244,30 @@ fn balance_preview<'a>(lines: Vec<DiffLine<'a>>, max_lines: usize) -> Vec<DiffLi
         (true, true) => unreachable!(),
     };
 
-    let mut selected = vec![false; lines.len()];
-    select_edges(&removed, removed_budget, &mut selected);
-    select_edges(&added, added_budget, &mut selected);
-    rebuild_selected(&lines, &selected, max_lines)
+    loop {
+        let mut selected = vec![false; lines.len()];
+        select_edges(&removed, removed_budget, &mut selected);
+        select_edges(&added, added_budget, &mut selected);
+        let rebuilt = rebuild_selected(&lines, &selected);
+        if rebuilt.len() <= max_lines {
+            return rebuilt;
+        }
+
+        let minimum_removed = usize::from(!removed.is_empty());
+        let minimum_added = usize::from(!added.is_empty());
+        if removed_budget > minimum_removed
+            && (removed_budget >= added_budget || added_budget == minimum_added)
+        {
+            removed_budget -= 1;
+        } else if added_budget > minimum_added {
+            added_budget -= 1;
+        } else {
+            return vec![DiffLine {
+                kind: DiffLineKind::Omitted,
+                text: "",
+            }];
+        }
+    }
 }
 
 fn indices_for_kind(lines: &[DiffLine<'_>], kind: DiffLineKind) -> Vec<usize> {
@@ -246,12 +290,8 @@ fn select_edges(indices: &[usize], budget: usize, selected: &mut [bool]) {
     }
 }
 
-fn rebuild_selected<'a>(
-    lines: &[DiffLine<'a>],
-    selected: &[bool],
-    max_lines: usize,
-) -> Vec<DiffLine<'a>> {
-    let mut output = Vec::with_capacity(max_lines);
+fn rebuild_selected<'a>(lines: &[DiffLine<'a>], selected: &[bool]) -> Vec<DiffLine<'a>> {
+    let mut output = Vec::new();
     let mut omitted = false;
     for (line, selected) in lines.iter().zip(selected) {
         if *selected {
@@ -267,7 +307,6 @@ fn rebuild_selected<'a>(
     if omitted {
         push_omitted(&mut output);
     }
-    output.truncate(max_lines);
     output
 }
 
@@ -281,12 +320,9 @@ mod tests {
 
     #[test]
     fn reports_only_changed_lines_with_context() {
-        let lines = preview(
-            Some("before\nsame\nold value\nafter\ntail"),
-            "before\nsame\nnew value\nafter\ntail",
-            false,
-            32,
-        );
+        let old = ["before", "same", "old value", "after", "tail"].join("\n");
+        let new = ["before", "same", "new value", "after", "tail"].join("\n");
+        let lines = preview(Some(&old), &new, false, 32);
 
         assert_eq!(
             rendered(&lines),
@@ -303,7 +339,8 @@ mod tests {
 
     #[test]
     fn new_file_reports_additions() {
-        let lines = preview(None, "first\nsecond", false, 32);
+        let new = ["first", "second"].join("\n");
+        let lines = preview(None, &new, false, 32);
 
         assert_eq!(
             rendered(&lines),
@@ -342,6 +379,42 @@ mod tests {
         assert_eq!(lines[0].kind, DiffLineKind::Omitted);
         assert!(lines.iter().any(|line| line.kind == DiffLineKind::Removed));
         assert!(lines.iter().any(|line| line.kind == DiffLineKind::Added));
+    }
+
+    #[test]
+    fn reports_end_of_file_newline_changes() {
+        let added = preview(Some("value"), "value\n", false, 32);
+        let removed = preview(Some("value\n"), "value", false, 32);
+
+        assert_eq!(
+            rendered(&added),
+            vec![(DiffLineKind::Context, "value"), (DiffLineKind::Added, ""),]
+        );
+        assert_eq!(
+            rendered(&removed),
+            vec![
+                (DiffLineKind::Context, "value"),
+                (DiffLineKind::Removed, ""),
+            ]
+        );
+    }
+
+    #[test]
+    fn large_unaligned_core_falls_back_to_omission() {
+        let unchanged = (0..300)
+            .map(|index| format!("same {index}"))
+            .collect::<Vec<_>>();
+        let old = unchanged.join("\n");
+        let mut new = (0..300)
+            .map(|index| format!("inserted {index}"))
+            .collect::<Vec<_>>();
+        new.extend(unchanged);
+        new.push("changed tail".to_string());
+        let new = new.join("\n");
+
+        let lines = preview(Some(&old), &new, false, 32);
+
+        assert_eq!(rendered(&lines), vec![(DiffLineKind::Omitted, "")]);
     }
 
     #[test]
@@ -393,5 +466,59 @@ mod tests {
                 .all(|line| matches!(line.kind, DiffLineKind::Omitted) || line.kind == expected));
             assert!(lines.iter().filter(|line| line.kind == expected).count() >= 8);
         }
+    }
+
+    #[test]
+    fn undersized_budget_never_truncates_one_change_kind() {
+        let old = ["old first", "old second"].join("\n");
+        let new = ["new first", "new second"].join("\n");
+        let lines = preview(Some(&old), &new, false, 2);
+
+        assert_eq!(rendered(&lines), vec![(DiffLineKind::Omitted, "")]);
+    }
+
+    #[test]
+    fn multi_hunk_budget_accounts_for_every_omission() {
+        let lines = vec![
+            DiffLine {
+                kind: DiffLineKind::Removed,
+                text: "old first",
+            },
+            DiffLine {
+                kind: DiffLineKind::Context,
+                text: "same first",
+            },
+            DiffLine {
+                kind: DiffLineKind::Added,
+                text: "new first",
+            },
+            DiffLine {
+                kind: DiffLineKind::Context,
+                text: "same second",
+            },
+            DiffLine {
+                kind: DiffLineKind::Removed,
+                text: "old second",
+            },
+            DiffLine {
+                kind: DiffLineKind::Context,
+                text: "same third",
+            },
+            DiffLine {
+                kind: DiffLineKind::Added,
+                text: "new second",
+            },
+        ];
+
+        let balanced = balance_preview(lines, 4);
+
+        assert!(balanced.len() <= 4);
+        assert!(balanced
+            .iter()
+            .any(|line| line.kind == DiffLineKind::Removed));
+        assert!(balanced.iter().any(|line| line.kind == DiffLineKind::Added));
+        assert!(balanced
+            .iter()
+            .any(|line| line.kind == DiffLineKind::Omitted));
     }
 }
