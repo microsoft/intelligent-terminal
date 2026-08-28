@@ -609,6 +609,71 @@ fn reused_session_id_ignores_stale_yolo_acknowledgement() {
 }
 
 #[test]
+fn newer_slash_yolo_command_supersedes_pending_transaction() {
+    let (mut app, mut master_rx) = test_app_with_master_rx();
+    let session_id = "superseded-yolo-command";
+    app.current_tab_mut().session_id = Some(session_id.into());
+
+    run_slash_args(&mut app, "yolo", "on");
+    let first = master_rx.try_recv().expect("first slash request");
+    run_slash_args(&mut app, "yolo", "off");
+    let second = master_rx
+        .try_recv()
+        .expect("newer slash request must supersede the pending transaction");
+
+    let MasterExtRequest::SetSessionYolo {
+        transaction_id: first_transaction,
+        session_id: first_session,
+        enabled: first_enabled,
+    } = first
+    else {
+        panic!("expected SetSessionYolo");
+    };
+    let MasterExtRequest::SetSessionYolo {
+        transaction_id: second_transaction,
+        session_id: second_session,
+        enabled: second_enabled,
+    } = second
+    else {
+        panic!("expected SetSessionYolo");
+    };
+    assert!(first_enabled);
+    assert!(!second_enabled);
+    assert_eq!(first_session, second_session);
+    assert_ne!(first_transaction, second_transaction);
+
+    app.handle_event(AppEvent::YoloModeChangeCompleted {
+        transaction_id: first_transaction,
+        session_id: first_session.to_string(),
+        enabled: first_enabled,
+        restart_required: false,
+        result: Ok(()),
+    });
+    assert_eq!(
+        app.pending_yolo_changes
+            .get(session_id)
+            .map(|pending| pending.0),
+        Some(second_transaction),
+        "the stale acknowledgement must not consume the newer transaction"
+    );
+    assert!(!app.yolo_state.lock().unwrap().effective(session_id));
+
+    app.handle_event(AppEvent::YoloModeChangeCompleted {
+        transaction_id: second_transaction,
+        session_id: second_session.to_string(),
+        enabled: second_enabled,
+        restart_required: false,
+        result: Ok(()),
+    });
+    assert!(!app.pending_yolo_changes.contains_key(session_id));
+    assert!(!app.yolo_state.lock().unwrap().effective(session_id));
+    assert!(matches!(
+        app.current_tab().messages.last(),
+        Some(ChatMessage::Status(message)) if message == "○ /yolo off"
+    ));
+}
+
+#[test]
 fn runtime_policy_block_forces_off_and_clears_session_override() {
     let (mut app, mut master_rx) = test_app_with_master_rx();
     app.session_to_tab

@@ -32,6 +32,7 @@
 #include <string_view>
 #include <mutex>
 #include <vector>
+#include <wil/registry.h>
 
 namespace Microsoft::Terminal::Settings::Model::AgentPolicy
 {
@@ -73,6 +74,32 @@ namespace Microsoft::Terminal::Settings::Model::AgentPolicy
     // ── Private implementation details ──────────────────────────────────
 
     inline constexpr wchar_t PolicyRegKey[] = LR"(Software\Policies\Microsoft\IntelligentTerminal)";
+    inline constexpr wchar_t PolicyWatchRegKey[] = LR"(Software\Policies\Microsoft)";
+
+    namespace details
+    {
+        inline wil::unique_registry_watcher_nothrow CreatePolicyChangeWatcher(
+            wil::unique_hkey&& key,
+            wistd::function<void(wil::RegistryChangeKind)>&& callback) noexcept
+        {
+            return wil::make_registry_watcher_nothrow(
+                std::move(key),
+                true,
+                std::move(callback));
+        }
+    }
+
+    inline wil::unique_registry_watcher_nothrow CreatePolicyChangeWatcher(
+        HKEY root,
+        wistd::function<void(wil::RegistryChangeKind)>&& callback) noexcept
+    {
+        wil::unique_hkey key;
+        if (RegOpenKeyExW(root, PolicyWatchRegKey, 0, KEY_NOTIFY, &key) != ERROR_SUCCESS)
+        {
+            return {};
+        }
+        return details::CreatePolicyChangeWatcher(std::move(key), std::move(callback));
+    }
 
     // Per-DLL cached snapshot, protected by a mutex.
     // Reload() builds a new snapshot and swaps it under the lock.

@@ -161,7 +161,7 @@ Describe 'Feature AllowYoloMode policy' -Tag 'Feature' -Skip:(-not $script:Ready
     }
 
     It 'AllowYoloMode policy blocks Yolo' -Skip:(-not $script:policyReady) {
-        $prior = Set-WtAgentPolicy -Policy @{ AllowYoloMode = 'Blocked' }
+        $prior = Set-WtAgentPolicy -Policy @{ AllowYoloMode = 'Allowed' }
         $app = $null
         try {
             $app = Start-Terminal -Package Dev -PassFre $true -Settings @{
@@ -173,10 +173,14 @@ Describe 'Feature AllowYoloMode policy' -Tag 'Feature' -Skip:(-not $script:Ready
             $shellPane = Get-ActivePane -App $app
             $agentSession = Wait-NewAgentPaneSession -App $app -OwnerPaneSessionId $shellPane.session_id -TimeoutSec 30
             (Test-Until -TimeoutSec 30 -IntervalSec 0.5 -Condition {
+                Test-AgentNativeYoloUpdate -App $app -AcpSessionId $agentSession.AcpSessionId -Enabled $true
+            }) | Should -BeTrue -Because 'the allowed policy must permit the persisted global-on setting'
+
+            Initialize-LogOffsets -App $app | Out-Null
+            Set-WtAgentPolicy -Policy @{ AllowYoloMode = 'Blocked' } | Out-Null
+            (Test-Until -TimeoutSec 30 -IntervalSec 0.5 -Condition {
                 Test-AgentNativeYoloUpdate -App $app -AcpSessionId $agentSession.AcpSessionId -Enabled $false
-            }) | Should -BeTrue -Because 'policy must reconcile the initial provider session to native Yolo off'
-            (Test-AgentNativeYoloUpdate -App $app -AcpSessionId $agentSession.AcpSessionId -Enabled $true) |
-                Should -BeFalse -Because 'policy must suppress the persisted global-on setting at startup'
+            }) | Should -BeTrue -Because 'a live policy block must reconcile the provider session to native Yolo off'
             $agentPane = $agentSession.PaneSessionId
             Send-AgentPrompt -App $app -PaneSessionId $agentPane -Text '/yolo on' | Out-Null
             $blocked = Get-WtaLocalizedTextRegex -Key 'system.yolo_blocked_by_policy'

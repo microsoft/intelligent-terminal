@@ -5587,9 +5587,6 @@ impl App {
         };
         let session_id = self.current_tab().session_id.clone();
         if let Some(sid) = session_id {
-            if self.pending_yolo_changes.contains_key(&sid) {
-                return;
-            }
             let enabled = option.enabled;
             let tab_id = self.active_tab_key().to_string();
             self.next_yolo_transaction_id = self.next_yolo_transaction_id.wrapping_add(1);

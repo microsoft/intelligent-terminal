@@ -90,6 +90,7 @@ namespace SettingsModelUnitTests
         TEST_METHOD(AgentPaneYoloModeRoundtripsAndDefaults);
         TEST_METHOD(EffectiveAgentPaneYoloModeFalseWhenPolicyBlocked);
         TEST_METHOD(IsYoloModePolicyLockedTracksBlocked);
+        TEST_METHOD(PolicyChangeWatcherObservesRecursiveMutation);
 
         TEST_CLASS_CLEANUP(ClassCleanup)
         {
@@ -695,5 +696,67 @@ namespace SettingsModelUnitTests
 
         SetPolicy(MakePolicy(std::nullopt, AgentPolicy::PolicyState::NotConfigured, AgentPolicy::PolicyState::Blocked));
         VERIFY_IS_TRUE(settings->GlobalSettings().IsYoloModePolicyLocked());
+    }
+
+    void CustomAgentAndPolicyTests::PolicyChangeWatcherObservesRecursiveMutation()
+    {
+        const auto keyPath = L"Software\\IntelligentTerminal\\Tests\\PolicyWatcher-" +
+                             std::to_wstring(GetCurrentProcessId()) + L"-" +
+                             std::to_wstring(GetTickCount64());
+        const auto cleanup = wil::scope_exit([&] {
+            RegDeleteTreeW(HKEY_CURRENT_USER, keyPath.c_str());
+        });
+
+        wil::unique_hkey key;
+        VERIFY_ARE_EQUAL(
+            static_cast<LSTATUS>(ERROR_SUCCESS),
+            RegCreateKeyExW(
+                HKEY_CURRENT_USER,
+                keyPath.c_str(),
+                0,
+                nullptr,
+                0,
+                KEY_NOTIFY | KEY_CREATE_SUB_KEY,
+                nullptr,
+                &key,
+                nullptr));
+        wil::unique_event changed;
+        changed.create();
+        std::atomic_uint32_t callbackCount{ 0 };
+        auto watcher = AgentPolicy::details::CreatePolicyChangeWatcher(
+            std::move(key),
+            [&](wil::RegistryChangeKind) {
+                callbackCount.fetch_add(1, std::memory_order_relaxed);
+                changed.SetEvent();
+            });
+        VERIFY_IS_TRUE(static_cast<bool>(watcher));
+
+        wil::unique_hkey policyKey;
+        const auto policyPath = keyPath + L"\\IntelligentTerminal";
+        VERIFY_ARE_EQUAL(
+            static_cast<LSTATUS>(ERROR_SUCCESS),
+            RegCreateKeyExW(
+                HKEY_CURRENT_USER,
+                policyPath.c_str(),
+                0,
+                nullptr,
+                0,
+                KEY_SET_VALUE,
+                nullptr,
+                &policyKey,
+                nullptr));
+        constexpr DWORD blocked = 0;
+        VERIFY_ARE_EQUAL(
+            static_cast<LSTATUS>(ERROR_SUCCESS),
+            RegSetValueExW(
+                policyKey.get(),
+                L"AllowYoloMode",
+                0,
+                REG_DWORD,
+                reinterpret_cast<const BYTE*>(&blocked),
+                sizeof(blocked)));
+
+        VERIFY_ARE_EQUAL(WAIT_OBJECT_0, WaitForSingleObject(changed.get(), 5000));
+        VERIFY_IS_GREATER_THAN_OR_EQUAL(callbackCount.load(std::memory_order_relaxed), 1u);
     }
 }

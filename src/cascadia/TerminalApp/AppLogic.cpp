@@ -336,6 +336,27 @@ namespace winrt::TerminalApp::implementation
             });
     }
 
+    void AppLogic::_RegisterAgentPolicyChange()
+    {
+        const auto weakSelf = get_weak();
+        const auto createWatcher = [weakSelf](const HKEY root) {
+            return ::Microsoft::Terminal::Settings::Model::AgentPolicy::CreatePolicyChangeWatcher(
+                root,
+                [weakSelf](wil::RegistryChangeKind) {
+                    if (const auto self = weakSelf.get())
+                    {
+                        // AgentPolicy is header-only, so TerminalApp and SettingsModel each
+                        // own a cache. Refresh this module now; the settings reload refreshes
+                        // SettingsModel and emits the existing runtime-config diff.
+                        ::Microsoft::Terminal::Settings::Model::AgentPolicy::Reload();
+                        self->ReloadSettingsThrottled();
+                    }
+                });
+        };
+        _machineAgentPolicyWatcher = createWatcher(HKEY_LOCAL_MACHINE);
+        _userAgentPolicyWatcher = createWatcher(HKEY_CURRENT_USER);
+    }
+
     void AppLogic::_ApplyLanguageSettingChange() noexcept
     try
     {
@@ -418,6 +439,7 @@ namespace winrt::TerminalApp::implementation
         {
             // Register for directory change notification.
             _RegisterSettingsChange();
+            _RegisterAgentPolicyChange();
             return;
         }
 
