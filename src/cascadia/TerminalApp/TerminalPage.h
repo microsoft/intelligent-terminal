@@ -24,6 +24,7 @@
 
 #include "WindowsPackageManagerFactory.h"
 #include "../inc/CustomModelProviderUtils.h"
+#include "../inc/ShellIntegrationProfileHealth.h"
 
 #define DECLARE_ACTION_HANDLER(action) void _Handle##action(const IInspectable& sender, const Microsoft::Terminal::Settings::Model::ActionEventArgs& args);
 
@@ -523,6 +524,13 @@ namespace winrt::TerminalApp::implementation
         // back-to-back (e.g. file-watcher reload storms).
         std::atomic<bool> _shellIntegrationDesiredEnabled{ false };
         std::mutex _shellIntegrationReconcileMutex;
+        uint64_t _shellIntegrationProfileHealthGeneration{ 1 };
+        std::optional<::Microsoft::Terminal::ShellIntegration::Health::Result> _shellIntegrationProfileHealthWarning;
+        std::vector<::Microsoft::Terminal::ShellIntegration::Health::Result> _pendingShellIntegrationProfileHealthWarnings;
+        std::vector<std::pair<
+            ::Microsoft::Terminal::ShellIntegration::Health::TargetKey,
+            ::Microsoft::Terminal::ShellIntegration::Health::ProfileFingerprint>>
+            _dismissedShellIntegrationProfileHealthWarnings;
         bool _agentLifecycleOperationInProgress{ false };
         details::CoalescedRequest _pendingAgentStackRestart;
         struct _PendingAgentRetirement
@@ -741,6 +749,28 @@ namespace winrt::TerminalApp::implementation
         safe_void_coroutine _ReconcileShellIntegration();
         void _ShowShellIntegrationDialog(const winrt::hstring& title, const winrt::hstring& message);
         void _OnSettingsInitShellIntegration(const winrt::Windows::Foundation::IInspectable& sender, const Microsoft::Terminal::Settings::Model::ShellIntegrationTarget target);
+        void _BindShellIntegrationProfileHealth(
+            const winrt::Microsoft::Terminal::TerminalConnection::ITerminalConnection& connection,
+            bool hasCustomHome);
+        void _RequestShellIntegrationProfileHealth(
+            ::Microsoft::Terminal::ShellIntegration::Health::TargetKey target,
+            bool force);
+        safe_void_coroutine _ResolveWslShellIntegrationProfileHealth(
+            std::wstring commandline,
+            std::wstring actualRootImagePath);
+        void _ApplyShellIntegrationProfileHealthResult(
+            const ::Microsoft::Terminal::ShellIntegration::Health::Result& result);
+        void _ShowNextShellIntegrationProfileHealthWarning();
+        void _ClearShellIntegrationProfileHealthWarning();
+        void _ShellIntegrationProfileHealthCloseHandler(
+            const winrt::Windows::Foundation::IInspectable& sender,
+            const winrt::Windows::Foundation::IInspectable& args);
+        void _ShellIntegrationProfileHealthOpenHandler(
+            const winrt::Windows::Foundation::IInspectable& sender,
+            const winrt::Windows::Foundation::IInspectable& args);
+        void _ShellIntegrationProfileHealthRecheckHandler(
+            const winrt::Windows::Foundation::IInspectable& sender,
+            const winrt::Windows::Foundation::IInspectable& args);
 
         void _CreateNewTabFlyout();
         std::vector<winrt::Windows::UI::Xaml::Controls::MenuFlyoutItemBase> _CreateNewTabFlyoutItems(winrt::Windows::Foundation::Collections::IVector<Microsoft::Terminal::Settings::Model::NewTabMenuEntry> entries);

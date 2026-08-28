@@ -35,6 +35,7 @@
 #include "ScratchpadContent.h"
 #include "SettingsPaneContent.h"
 #include "SharedWta.h"
+#include "ShellIntegrationProfileHealthService.h"
 #include "SnippetsPaneContent.h"
 #include "TabRowControl.h"
 #include "TerminalSettingsCache.h"
@@ -70,6 +71,29 @@ using namespace std::chrono_literals;
 
 static constexpr double railMin = 180.0;
 static constexpr double railMax = 480.0;
+
+template<typename T>
+static bool _HasHomeEnvironmentOverride(const T& environment)
+{
+    if (environment)
+    {
+        for (const auto& [name, _] : environment)
+        {
+            if (CompareStringOrdinal(name.c_str(), -1, L"HOME", -1, TRUE) == CSTR_EQUAL)
+            {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+static bool _HasInheritedHomeEnvironment()
+{
+    SetLastError(ERROR_SUCCESS);
+    const auto size = GetEnvironmentVariableW(L"HOME", nullptr, 0);
+    return size != 0 || GetLastError() != ERROR_ENVVAR_NOT_FOUND;
+}
 
 #define HOOKUP_ACTION(action) _actionDispatch->action({ this, &TerminalPage::_Handle##action });
 
@@ -390,6 +414,13 @@ namespace winrt::TerminalApp::implementation
             _lastAutoErrorDetectionEnabled = currentDetection;
             _lastAutoErrorDetectionHasExplicit = hasExplicit;
             _autoErrorDetectionSnapshotInitialized = true;
+            const bool healthEnabled = currentDetection && hasExplicit;
+            _shellIntegrationProfileHealthGeneration =
+                ShellIntegrationProfileHealthService::Instance().SetEnabled(healthEnabled);
+            if (!healthEnabled)
+            {
+                _ClearShellIntegrationProfileHealthWarning();
+            }
             if (shouldReconcile)
             {
                 // Publish latest desired state BEFORE spawning the
@@ -9564,6 +9595,11 @@ namespace winrt::TerminalApp::implementation
         else
         {
             connection = _CreateConnectionFromSettings(profile, *controlSettings.DefaultSettings(), hasSessionId);
+            const auto settingsImpl = controlSettings.DefaultSettings();
+            const auto environment = settingsImpl->EnvironmentVariables();
+            _BindShellIntegrationProfileHealth(
+                connection,
+                _HasHomeEnvironmentOverride(environment) || _HasInheritedHomeEnvironment());
         }
 
         TerminalConnection::ITerminalConnection debugConnection{ nullptr };
@@ -9732,6 +9768,11 @@ namespace winrt::TerminalApp::implementation
             const auto& termControl = paneContent.GetTermControl();
             termControl.HardResetWithoutErase();
             termControl.Connection(connection);
+            const auto profile = paneContent.GetProfile();
+            const auto environment = profile ? profile.EnvironmentVariables() : nullptr;
+            _BindShellIntegrationProfileHealth(
+                connection,
+                _HasHomeEnvironmentOverride(environment) || _HasInheritedHomeEnvironment());
             connection.Start();
         }
     }

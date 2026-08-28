@@ -31,6 +31,11 @@
     <ClCompile Include="ProtocolParsingTests.cpp" />
     <ClCompile Include="RtlHelperTests.cpp" />
     <ClCompile Include="SharedWtaTests.cpp" />
+    <ClCompile Include="BashProfileAnalyzerTests.cpp" />
+    <ClCompile Include="PowerShellProfileAnalyzerTests.cpp" />
+    <ClCompile Include="ShellIntegrationInvocationTests.cpp" />
+    <ClCompile Include="ShellIntegrationProfileHealthServiceTests.cpp" />
+    <ClCompile Include="WslProfileHealthResolverTests.cpp" />
     <ClCompile Include="precomp.cpp">
       <PrecompiledHeader>Create</PrecompiledHeader>
     </ClCompile>

@@ -855,6 +855,21 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
   <data name="TabLayoutRestartInfoBar.Message" xml:space="preserve">
     <value>Restart Windows Terminal to apply the new tab layout.</value>
   </data>
+  <data name="ShellIntegrationProfileHealthInfoBar.Title" xml:space="preserve">
+    <value>Shell integration needs attention</value>
+  </data>
+  <data name="ShellIntegrationProfileHealthInfoBar.Message" xml:space="preserve">
+    <value>Commands after the Intelligent Terminal block in your shell profile can override shell integration. Move the block to the end of the file, then recheck.</value>
+  </data>
+  <data name="ShellIntegrationProfileHealthActionsButton.Content" xml:space="preserve">
+    <value>Profile actions</value>
+  </data>
+  <data name="ShellIntegrationProfileHealthOpenButton.Text" xml:space="preserve">
+    <value>Open profile</value>
+  </data>
+  <data name="ShellIntegrationProfileHealthRecheckButton.Text" xml:space="preserve">
+    <value>Recheck</value>
+  </data>
   <data name="TabStrip_ControlType" xml:space="preserve">
     <value>tab strip</value>
   </data>

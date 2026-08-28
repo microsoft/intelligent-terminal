@@ -18,6 +18,7 @@
 
 #pragma once
 
+#include <atomic>
 #include <array>
 #include <chrono>
 #include <ctime>
@@ -25,6 +26,7 @@
 #include <fstream>
 #include <functional>
 #include <map>
+#include <memory>
 #include <mutex>
 #include <optional>
 #include <regex>
@@ -152,6 +154,50 @@ namespace Microsoft::Terminal::ShellIntegration
             static std::mutex m;
             return m;
         }
+
+        // Health checks read profiles without holding ProfileFileMutex so a
+        // slow OneDrive/WSL read cannot block every installer. This per-path
+        // epoch lets those readers reject a snapshot that overlapped one of
+        // our own mutations. It intentionally does not claim to coordinate
+        // external editors or another process; readers also compare file
+        // metadata before and after their snapshot.
+        inline std::shared_ptr<std::atomic<uint64_t>> ProfileMutationEpoch(const std::filesystem::path& profilePath)
+        {
+            static std::mutex mutex;
+            static std::map<std::wstring, std::shared_ptr<std::atomic<uint64_t>>, std::less<>> epochs;
+
+            const auto key = profilePath.wstring();
+            std::lock_guard lock{ mutex };
+            if (const auto found = epochs.find(key); found != epochs.end())
+            {
+                return found->second;
+            }
+
+            auto state = std::make_shared<std::atomic<uint64_t>>(0);
+            epochs.emplace(key, state);
+            return state;
+        }
+
+        class ProfileMutationGuard
+        {
+        public:
+            explicit ProfileMutationGuard(const std::filesystem::path& profilePath) :
+                _epoch{ ProfileMutationEpoch(profilePath) }
+            {
+                _epoch->fetch_add(1, std::memory_order_acq_rel);
+            }
+
+            ~ProfileMutationGuard()
+            {
+                _epoch->fetch_add(1, std::memory_order_release);
+            }
+
+            ProfileMutationGuard(const ProfileMutationGuard&) = delete;
+            ProfileMutationGuard& operator=(const ProfileMutationGuard&) = delete;
+
+        private:
+            std::shared_ptr<std::atomic<uint64_t>> _epoch;
+        };
 
         // Best-effort backup. Names the file
         // `.bak.<YYYYMMDD-HHMMSS>.<hashHex>` next to the profile.
@@ -445,6 +491,8 @@ namespace Microsoft::Terminal::ShellIntegration
                 return { true, false, {} };
             }
 
+            details::ProfileMutationGuard mutationGuard{ profilePath };
+
             if (!contents.empty())
             {
                 details::WriteBackup(profilePath, contents);
@@ -546,6 +594,8 @@ namespace Microsoft::Terminal::ShellIntegration
             {
                 return { true, true, {} };
             }
+
+            details::ProfileMutationGuard mutationGuard{ profilePath };
 
             // Consume the line terminator that immediately follows the
             // block so we don't leave an orphan empty line behind.

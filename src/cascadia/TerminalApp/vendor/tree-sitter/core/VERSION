@@ -1,0 +1,9 @@
+tree-sitter core
+Version: v0.25.10
+Source: https://github.com/tree-sitter/tree-sitter
+Commit: da6fe9beb4f7f67beb75914ca8e0d48ae48d6406
+Git tree: 25ee41dacf474af5043bc7a479cca55808a2f708
+License: MIT (LICENSE)
+LICENSE SHA-256: 5F9CF9FB6ACB1972B35AE29119CE563BB60EC097656BC4B69B9BAC2D04C7A147
+
+Vendored build inputs are listed in SHA256SUMS. This directory intentionally excludes bindings, generators, tests, and WebAssembly support.

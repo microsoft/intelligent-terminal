@@ -1664,6 +1664,12 @@ void ShellIntegrationTests::Wsl_StripExecTail_StripsExistingExecCommand()
                      StripExecTail(L"wsl.exe -d Ubuntu --exec zsh", false));
     VERIFY_ARE_EQUAL(std::wstring_view{ L"wsl.exe -d Ubuntu" },
                      StripExecTail(L"wsl.exe -d Ubuntu -- fish -l", false));
+    // WSL also accepts a guest command without -e/--exec. Strip that command
+    // while preserving all host-option values.
+    VERIFY_ARE_EQUAL(std::wstring_view{ L"wsl.exe -d Ubuntu" },
+                     StripExecTail(L"wsl.exe -d Ubuntu bash -i", false));
+    VERIFY_ARE_EQUAL(std::wstring_view{ L"wsl.exe --user root --cd /work" },
+                     StripExecTail(L"wsl.exe --user root --cd /work bash", false));
     // bash.exe: keep ONLY the launcher token; ALL its args are dropped (we
     // replace them with our own `-c "probe"`). bash treats a leading operand
     // like `~` as the script and would ignore a later `-c`, so the legacy

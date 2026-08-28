@@ -1,0 +1,9 @@
+tree-sitter-bash grammar
+Version: v0.25.1
+Source: https://github.com/tree-sitter/tree-sitter-bash
+Commit: a06c2e4415e9bc0346c6b86d401879ffb44058f7
+Git tree: af30bca0e56969365471adad71664d474194cdf6
+License: MIT (LICENSE)
+LICENSE SHA-256: 49BF33CF78EF5897E4E161CE1517DF7DE1AE5042A65B6BCFD44401E0FC606559
+
+Vendored build inputs are listed in SHA256SUMS. This directory intentionally excludes bindings, generators, corpus tests, and grammar metadata.

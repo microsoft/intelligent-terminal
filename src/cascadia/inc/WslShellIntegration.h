@@ -175,12 +175,18 @@ namespace Microsoft::Terminal::ShellIntegration::Wsl
                 return cmd.substr(0, i);
             }
 
-            // wsl.exe: keep distro-selection options; cut at the first command
-            // terminator token.
+            // wsl.exe: keep host options and their values; cut at an explicit
+            // command terminator or at the first guest-command operand.
+            bool consumeHostOptionValue = false;
             while (i < cmd.size())
             {
                 const size_t tokStart = i;
                 const std::wstring_view tok = nextToken();
+                if (consumeHostOptionValue)
+                {
+                    consumeHostOptionValue = false;
+                    continue;
+                }
                 if (tok == L"-e" || tok == L"--exec" || tok == L"--")
                 {
                     size_t cut = tokStart;
@@ -190,6 +196,28 @@ namespace Microsoft::Terminal::ShellIntegration::Wsl
                     }
                     return cmd.substr(0, cut);
                 }
+                if (tok == L"-d" || tok == L"--distribution" ||
+                    tok == L"--distribution-id" || tok == L"-u" ||
+                    tok == L"--user" || tok == L"--cd")
+                {
+                    consumeHostOptionValue = true;
+                    continue;
+                }
+                if ((!tok.empty() && tok.front() == L'-') ||
+                    tok.starts_with(L"--distribution=") ||
+                    tok.starts_with(L"--distribution-id=") ||
+                    tok.starts_with(L"--user=") ||
+                    tok.starts_with(L"--cd="))
+                {
+                    continue;
+                }
+
+                size_t cut = tokStart;
+                while (cut > 0 && isWs(cmd[cut - 1]))
+                {
+                    --cut;
+                }
+                return cmd.substr(0, cut);
             }
             return cmd;
         }

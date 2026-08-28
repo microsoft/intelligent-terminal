@@ -64,6 +64,29 @@
                          IsOpen="False"
                          Severity="Informational" />
 
+            <mux:InfoBar x:Name="ShellIntegrationProfileHealthInfoBar"
+                         x:Uid="ShellIntegrationProfileHealthInfoBar"
+                         x:Load="False"
+                         CloseButtonClick="_ShellIntegrationProfileHealthCloseHandler"
+                         CornerRadius="0"
+                         IsClosable="True"
+                         IsIconVisible="True"
+                         IsOpen="False"
+                         Severity="Warning">
+                <mux:InfoBar.ActionButton>
+                    <mux:DropDownButton x:Uid="ShellIntegrationProfileHealthActionsButton">
+                        <mux:DropDownButton.Flyout>
+                            <MenuFlyout>
+                                <MenuFlyoutItem x:Uid="ShellIntegrationProfileHealthOpenButton"
+                                               Click="_ShellIntegrationProfileHealthOpenHandler" />
+                                <MenuFlyoutItem x:Uid="ShellIntegrationProfileHealthRecheckButton"
+                                               Click="_ShellIntegrationProfileHealthRecheckHandler" />
+                            </MenuFlyout>
+                        </mux:DropDownButton.Flyout>
+                    </mux:DropDownButton>
+                </mux:InfoBar.ActionButton>
+            </mux:InfoBar>
+
             <mux:InfoBar x:Name="CloseOnExitInfoBar"
                          x:Uid="CloseOnExitInfoBar"
                          x:Load="False"

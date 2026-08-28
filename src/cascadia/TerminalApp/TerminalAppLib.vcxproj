@@ -110,6 +110,11 @@
     </ClInclude>
     <ClInclude Include="BasePaletteItem.h" />
     <ClInclude Include="SharedWta.h" />
+    <ClInclude Include="BashProfileAnalyzer.h" />
+    <ClInclude Include="PowerShellProfileAnalyzer.h" />
+    <ClInclude Include="ShellIntegrationInvocation.h" />
+    <ClInclude Include="ShellIntegrationProfileHealthService.h" />
+    <ClInclude Include="WslProfileHealthResolver.h" />
     <ClInclude Include="AgentPaneLog.h" />
     <ClInclude Include="AgentPaneDragStash.h" />
     <ClInclude Include="Tab.h">
@@ -226,6 +231,38 @@
       <SubType>Code</SubType>
     </ClCompile>
     <ClCompile Include="SharedWta.cpp" />
+    <ClCompile Include="BashProfileAnalyzer.cpp" />
+    <ClCompile Include="PowerShellProfileAnalyzer.cpp" />
+    <ClCompile Include="ShellIntegrationInvocation.cpp" />
+    <ClCompile Include="ShellIntegrationProfileHealthService.cpp" />
+    <ClCompile Include="WslProfileHealthResolver.cpp" />
+    <ClCompile Include="vendor\tree-sitter\core\src\lib.c">
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <CompileAs>CompileAsC</CompileAs>
+      <TreatWarningAsError>false</TreatWarningAsError>
+      <TreatSpecificWarningsAsErrors></TreatSpecificWarningsAsErrors>
+      <DisableSpecificWarnings>4242;4244;%(DisableSpecificWarnings)</DisableSpecificWarnings>
+      <AdditionalOptions>/std:c11 %(AdditionalOptions)</AdditionalOptions>
+      <AdditionalIncludeDirectories>vendor\tree-sitter\core\include;vendor\tree-sitter\core\src;vendor\tree-sitter\bash\src;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
+    <ClCompile Include="vendor\tree-sitter\bash\src\parser.c">
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <CompileAs>CompileAsC</CompileAs>
+      <TreatWarningAsError>false</TreatWarningAsError>
+      <TreatSpecificWarningsAsErrors></TreatSpecificWarningsAsErrors>
+      <DisableSpecificWarnings>4242;4244;%(DisableSpecificWarnings)</DisableSpecificWarnings>
+      <AdditionalOptions>/std:c11 %(AdditionalOptions)</AdditionalOptions>
+      <AdditionalIncludeDirectories>vendor\tree-sitter\core\include;vendor\tree-sitter\core\src;vendor\tree-sitter\bash\src;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
+    <ClCompile Include="vendor\tree-sitter\bash\src\scanner.c">
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <CompileAs>CompileAsC</CompileAs>
+      <TreatWarningAsError>false</TreatWarningAsError>
+      <TreatSpecificWarningsAsErrors></TreatSpecificWarningsAsErrors>
+      <DisableSpecificWarnings>4242;4244;%(DisableSpecificWarnings)</DisableSpecificWarnings>
+      <AdditionalOptions>/std:c11 %(AdditionalOptions)</AdditionalOptions>
+      <AdditionalIncludeDirectories>vendor\tree-sitter\core\include;vendor\tree-sitter\core\src;vendor\tree-sitter\bash\src;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
     <ClCompile Include="Tab.cpp">
       <DependentUpon>Tab.idl</DependentUpon>
     </ClCompile>
@@ -246,6 +283,10 @@
       <SubType>Code</SubType>
     </ClCompile>
     <ClCompile Include="TerminalPage.Protocol.cpp">
+      <DependentUpon>TerminalPage.xaml</DependentUpon>
+      <SubType>Code</SubType>
+    </ClCompile>
+    <ClCompile Include="TerminalPage.ShellIntegrationHealth.cpp">
       <DependentUpon>TerminalPage.xaml</DependentUpon>
       <SubType>Code</SubType>
     </ClCompile>

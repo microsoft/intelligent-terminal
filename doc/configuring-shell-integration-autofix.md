@@ -6,10 +6,10 @@ The downstream pipeline (autofix detection, classification, VT-event forwarding)
 
 - **PowerShell 7+** (`pwsh.exe`) — written to `Documents\PowerShell\Microsoft.PowerShell_profile.ps1`
 - **Windows PowerShell 5.1** (`powershell.exe`) — written to `Documents\WindowsPowerShell\Microsoft.PowerShell_profile.ps1`
-- **Bash** (Git Bash on Windows) — block written to `~/.bashrc`; the block sources `$HOME/.intelligent-terminal/shell-integration_v1.sh` (which is `%USERPROFILE%\.intelligent-terminal\shell-integration_v1.sh` on Git Bash, where `$HOME` resolves to `%USERPROFILE%`)
-- **WSL** (one install per WSL distro you have a Windows Terminal profile for) — block written to the distro's `~/.bashrc`; the block sources `$HOME/.intelligent-terminal/shell-integration_v1.sh` inside the distro filesystem. We write both via the `\\wsl$\<distName>\` UNC mount from the Windows side
+- **Bash** (Git Bash on Windows) — block written to `~/.bashrc`; the block sources `$HOME/.intelligent-terminal/shell-integration_v3.sh` (which is `%USERPROFILE%\.intelligent-terminal\shell-integration_v3.sh` on the supported default Git Bash HOME mapping)
+- **WSL Bash** (one install per WSL distro you have a Windows Terminal profile for) — block written to the distro's `~/.bashrc`; the block sources `$HOME/.intelligent-terminal/shell-integration_v3.sh` inside the distro filesystem. We write both via the `\\wsl$\<distName>\` UNC mount from the Windows side
 
-> **Distro discovery.** The installer iterates `_settings.AllProfiles()` and picks every profile whose `Source` is `Windows.Terminal.Wsl` (the dynamic-profile namespace used by the legacy `WslDistroGenerator`) **or** `Microsoft.WSL` (the namespace used by the newer Store WSL package generator). Both work; the installer extracts the distro name from the commandline's `-d`/`--distribution` flag, or — for `Microsoft.WSL` profiles whose commandline is resolved at runtime — from the profile name. Add a distro to WT (Settings → "+ Add a new profile" picks up new WSL distros automatically; or `wsl --install <Distro>` followed by relaunching WT) and the next FRE save or Settings install will cover it.
+> **Distro discovery.** The installer finds WSL launch profiles and runs a bounded identity probe through each profile's effective WSL command line. The guest reports `$WSL_DISTRO_NAME` and `$HOME`; those validated values select the distro-specific `.bashrc`. Add a distro to WT (Settings → "+ Add a new profile" picks up new WSL distros automatically; or `wsl --install <Distro>` followed by relaunching WT) and the next FRE save or Settings install will cover it.
 
 > **Cold-start cost.** The first `wsl.exe` invocation in a Windows session spins up the WSL2 VM (~5–15s). The installer's per-distro `$HOME` probe pays this cost once; subsequent invocations are fast.
 
@@ -28,6 +28,25 @@ The downstream pipeline (autofix detection, classification, VT-event forwarding)
 ## Enabling Shell Integration
 
 The FRE wizard and the Settings UI "Install" button handle this for you. The snippets below are a simplified manual-install reference — useful for auditing what shell integration looks like or for installing by hand. The installer writes a slightly more careful version (preserving any existing `PROMPT_COMMAND`, guarding on `$BASH_VERSION` so the block silently no-ops in non-bash shells, and using the sentinel-bracketed `# >>> intelligent-terminal shell-integration >>>` markers so a later Uninstall finds the block byte-precisely).
+
+## Profile Health Check
+
+After shell integration is enabled, Intelligent Terminal checks a supported shell's profile when that logical shell target is first opened in the current application process. It checks only the shell that was actually launched; it does not scan every profile at startup.
+
+The check is read-only and runs outside the UI thread. PowerShell profiles are parsed by the official parser from the same direct `powershell.exe` or `pwsh.exe` host that was launched. Bash profiles are parsed in memory with the vendored Tree-sitter Bash grammar; profile text is never executed.
+
+The managed block is healthy when only whitespace or comments follow it. Intelligent Terminal shows a warning only when parsing proves that a root-level command or statement follows the canonical block. Missing, malformed, unreadable, changing, or syntactically invalid profiles fail closed without a warning; the check never rewrites or moves profile content automatically.
+
+The first-open check covers:
+
+- PowerShell 7 direct hosts that load profiles
+- the official Windows PowerShell 5.1 hosts that load profiles
+- direct Git Bash launches using the supported default `%USERPROFILE%` HOME mapping
+- explicit WSL Bash launches, after the distro and `$HOME` identity probe succeeds
+
+Wrappers, command/script invocations, `-NoProfile`/`--norc`, custom Bash rc files, custom Git Bash HOME mappings, and WSL launches whose guest shell cannot be proven to be Bash are skipped. In particular, a bare WSL default-shell launch is not guessed from the Windows command line.
+
+When the warning appears, use **Profile actions → Open profile**, move the complete managed block to the end of the file, save it, and choose **Profile actions → Recheck**. Closing the warning hides it in the current window; dismissal is not persisted.
 
 ### PowerShell (manual)
 
@@ -126,7 +145,7 @@ If the markers aren't present, the installer didn't run for that shell — re-ru
 
 Each block is self-contained between the open marker (`# >>> intelligent-terminal shell-integration >>>`) and the close marker (`# <<< intelligent-terminal shell-integration <<<`). Delete everything between (and including) those two lines, save the file, and restart the shell. The Settings UI "Uninstall" button does the same thing — including for every WSL distro it can find.
 
-The sourced helper script (`~/.intelligent-terminal/shell-integration_v1.sh` for bash; equivalent versioned files for the other shells) is also safe to delete by hand. The installer leaves stale versions in place to support side-by-side rollback; remove them after you've confirmed the latest version works.
+The sourced helper script (`~/.intelligent-terminal/shell-integration_v3.sh` for bash; `shell-integration_v6.ps1` for PowerShell) is also safe to delete by hand. The installer leaves stale versions in place to support side-by-side rollback; remove them after you've confirmed the latest version works.
 
 ### WSL: distro not detected
 
