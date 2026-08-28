@@ -31,7 +31,7 @@ If the MCP server or the required action tool is unavailable, explain that the a
 
 ## Command grounding
 
-When command availability matters, use the exact injected **Command Resolver Invocation** and interpret its status literally. Do not run the final command merely to test it. Command-resolution probes are investigation, not user-visible actions.
+If the user asks how to use, run, install, find, or troubleshoot an unfamiliar command-like identifier, use the exact injected **Command Resolver Invocation** before guessing, asking what tool it belongs to, or searching configuration files. Skip resolution only when context clearly identifies the name as a setting, file, API, or code symbol. Interpret the resolver status literally and do not run the final command merely to test it. Command-resolution probes are investigation, not user-visible actions.
 
 ## Runtime context
 
