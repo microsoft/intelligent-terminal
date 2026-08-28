@@ -11341,6 +11341,30 @@ fn live_thought_buffer_is_bounded_without_splitting_unicode() {
 }
 
 #[test]
+fn bounded_late_thought_does_not_rewind_revealed_assistant_response() {
+    let mut app = test_app();
+    submit_test_prompt(&mut app, "hi");
+    app.turn_observe_chunk(DEFAULT_TAB_ID, ChunkKind::Message, "Final answer");
+    app.current_tab_mut().reveal_chars = "Final answer".chars().count();
+    let reveal_chars = app.current_tab().reveal_chars;
+
+    app.turn_observe_chunk(DEFAULT_TAB_ID, ChunkKind::Thought, &"思".repeat(4100));
+
+    let tab = app.current_tab();
+    assert_eq!(
+        tab.streaming_thought_text()
+            .expect("late thought stream")
+            .chars()
+            .count(),
+        4000
+    );
+    assert_eq!(
+        tab.reveal_chars, reveal_chars,
+        "bounding a late thought must not rewind fully revealed response text"
+    );
+}
+
+#[test]
 fn structured_stream_hides_thinking_after_response_is_visible() {
     let mut app = test_app();
     submit_test_prompt(&mut app, "hi");

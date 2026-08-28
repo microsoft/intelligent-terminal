@@ -927,7 +927,9 @@ impl TabSession {
                 .nth(remove_chars)
                 .map_or(self.streaming_thought.len(), |(index, _)| index);
             self.streaming_thought.drain(..cut_at);
-            self.reveal_chars = self.reveal_chars.saturating_sub(remove_chars);
+            if self.streaming_agent_text().is_none() {
+                self.reveal_chars = self.reveal_chars.saturating_sub(remove_chars);
+            }
         }
     }
 
