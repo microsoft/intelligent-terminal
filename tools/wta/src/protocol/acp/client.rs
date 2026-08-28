@@ -1006,14 +1006,23 @@ fn is_session_mcp_server_name(name: &str) -> bool {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum SessionMcpTool {
-    TerminalActions,
+    TerminalAction(crate::agent_tools::action_proposal::schema::McpActionTool),
     UserInput,
 }
 
 impl SessionMcpTool {
+    const ALL: [Self; 4] = [
+        Self::TerminalAction(crate::agent_tools::action_proposal::schema::McpActionTool::Send),
+        Self::TerminalAction(crate::agent_tools::action_proposal::schema::McpActionTool::Open),
+        Self::TerminalAction(
+            crate::agent_tools::action_proposal::schema::McpActionTool::OpenAndSend,
+        ),
+        Self::UserInput,
+    ];
+
     fn name(self) -> &'static str {
         match self {
-            Self::TerminalActions => "request_terminal_actions",
+            Self::TerminalAction(tool) => tool.tool_name(),
             Self::UserInput => "request_user_input",
         }
     }
@@ -1024,7 +1033,7 @@ fn session_mcp_tool_from_title(title: Option<&str>) -> Option<SessionMcpTool> {
         return None;
     };
     let title = title.strip_prefix("Use MCP tool: ").unwrap_or(title);
-    for tool in [SessionMcpTool::TerminalActions, SessionMcpTool::UserInput] {
+    for tool in SessionMcpTool::ALL {
         for separator in ["/", "-"] {
             if let Some(server_name) = title.strip_suffix(&format!("{separator}{}", tool.name())) {
                 if is_session_mcp_server_name(server_name) {
@@ -1051,18 +1060,23 @@ fn session_mcp_tool_call(
         return Some(tool);
     }
     let tool = match title.map(str::trim) {
-        Some("request_terminal_actions") => SessionMcpTool::TerminalActions,
-        Some("request_user_input") => SessionMcpTool::UserInput,
-        _ => return None,
+        Some(name) => SessionMcpTool::ALL
+            .into_iter()
+            .find(|tool| tool.name() == name)?,
+        None => return None,
     };
     let Some(raw_input) = raw_input else {
         return None;
     };
     let valid = match tool {
-        SessionMcpTool::TerminalActions => serde_json::to_vec(raw_input).is_ok_and(|payload| {
-            crate::agent_tools::action_proposal::schema::parse_mcp_proposal_payload(&payload, false)
+        SessionMcpTool::TerminalAction(action) => {
+            serde_json::to_vec(raw_input).is_ok_and(|payload| {
+                crate::agent_tools::action_proposal::schema::parse_mcp_action_payload(
+                    action, &payload, false,
+                )
                 .is_ok()
-        }),
+            })
+        }
         SessionMcpTool::UserInput => serde_json::from_value::<
             crate::agent_tools::user_input::UserInputRequest,
         >(raw_input.clone())
@@ -1210,7 +1224,9 @@ impl WtaClient {
             self.hide_session_mcp_tool_call(
                 &session_id,
                 &tool_call_id,
-                SessionMcpTool::TerminalActions,
+                SessionMcpTool::TerminalAction(
+                    crate::agent_tools::action_proposal::schema::McpActionTool::Send,
+                ),
             );
         }
         let title = args
@@ -1254,7 +1270,7 @@ impl WtaClient {
                 ));
             };
             let permission_result = match tool {
-                SessionMcpTool::TerminalActions => self
+                SessionMcpTool::TerminalAction(_) => self
                     .state
                     .proposal_channels
                     .validate_mcp_permission(&session_id),
@@ -1487,7 +1503,9 @@ impl WtaClient {
                     self.hide_session_mcp_tool_call(
                         &sid,
                         &tool_call_id,
-                        SessionMcpTool::TerminalActions,
+                        SessionMcpTool::TerminalAction(
+                            crate::agent_tools::action_proposal::schema::McpActionTool::Send,
+                        ),
                     );
                     return Ok(());
                 }
@@ -1536,7 +1554,9 @@ impl WtaClient {
                     self.hide_session_mcp_tool_call(
                         &sid,
                         &tool_call_id,
-                        SessionMcpTool::TerminalActions,
+                        SessionMcpTool::TerminalAction(
+                            crate::agent_tools::action_proposal::schema::McpActionTool::Send,
+                        ),
                     );
                     return Ok(());
                 }
@@ -1857,6 +1877,20 @@ impl WtaClient {
                     "invalid terminal action request parameters: {error}"
                 ))
             })?;
+        let action_tool = {
+            use crate::agent_tools::action_proposal::schema::McpActionTool;
+            McpActionTool::from_tool_name(&request.tool).ok_or_else(|| {
+                acp::Error::invalid_params().data(format!(
+                    "unknown terminal action tool `{}`; expected one of: {}",
+                    request.tool,
+                    McpActionTool::ALL
+                        .iter()
+                        .map(|tool| tool.tool_name())
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                ))
+            })?
+        };
         let payload = serde_json::to_string(&request.arguments).map_err(|error| {
             acp::Error::internal_error().data(format!(
                 "failed to encode terminal action arguments: {error}"
@@ -1904,7 +1938,7 @@ impl WtaClient {
             .send(AppEvent::DirectTerminalActionProposal {
                 context,
                 payload,
-                source: ProposalPayloadSource::Mcp,
+                source: ProposalPayloadSource::Mcp(action_tool),
                 responder: validation_tx,
             })
             .is_err()
@@ -4923,9 +4957,8 @@ mod tests {
             ToolCallUpdate::new(
                 ToolCallId::new("proposal-mcp-tool"),
                 ToolCallUpdateFields::new()
-                    .title("request_terminal_actions")
+                    .title("terminal_send")
                     .raw_input(serde_json::json!({
-                        "type": "send",
                         "title": "Run test",
                         "input": "cargo test"
                     })),
@@ -5197,8 +5230,8 @@ mod tests {
         let params =
             serde_json::value::to_raw_value(&crate::agent_tools::session_mcp::HelperRequest {
                 session_id: "proposal-session".to_string(),
+                tool: "terminal_send".to_string(),
                 arguments: serde_json::json!({
-                    "type": "send",
                     "title": "Run test",
                     "input": "cargo test"
                 }),
@@ -5220,7 +5253,9 @@ mod tests {
                 } => {
                     assert_eq!(
                         source,
-                        crate::agent_tools::action_proposal::pipe::ProposalPayloadSource::Mcp
+                        crate::agent_tools::action_proposal::pipe::ProposalPayloadSource::Mcp(
+                            crate::agent_tools::action_proposal::schema::McpActionTool::Send
+                        )
                     );
                     responder
                         .send(
@@ -5400,16 +5435,20 @@ mod tests {
     #[test]
     fn session_mcp_tool_title_accepts_supported_permission_shapes() {
         let dynamic = "intellterm_01234567890123456789";
-        for title in [
-            "Use MCP tool: intelligent_terminal/request_terminal_actions".to_string(),
-            "intelligent_terminal-request_terminal_actions".to_string(),
-            format!("Use MCP tool: {dynamic}/request_terminal_actions"),
-            format!("mcp__{dynamic}__request_terminal_actions"),
-        ] {
-            assert_eq!(
-                session_mcp_tool_from_title(Some(&title)),
-                Some(SessionMcpTool::TerminalActions)
-            );
+        for tool in crate::agent_tools::action_proposal::schema::McpActionTool::ALL {
+            let name = tool.tool_name();
+            for title in [
+                format!("Use MCP tool: intelligent_terminal/{name}"),
+                format!("intelligent_terminal-{name}"),
+                format!("Use MCP tool: {dynamic}/{name}"),
+                format!("mcp__{dynamic}__{name}"),
+            ] {
+                assert_eq!(
+                    session_mcp_tool_from_title(Some(&title)),
+                    Some(SessionMcpTool::TerminalAction(tool)),
+                    "{title}"
+                );
+            }
         }
         assert_eq!(
             session_mcp_tool_from_title(Some(&format!(
@@ -5418,11 +5457,14 @@ mod tests {
             Some(SessionMcpTool::UserInput)
         );
         for title in [
-            "intellterm_0123456789abcdef/request_terminal_actions",
-            "intellterm_0123456789012345678A/request_terminal_actions",
-            "Use MCP tool: other/request_terminal_actions",
+            "intellterm_0123456789abcdef/terminal_send",
+            "intellterm_0123456789012345678A/terminal_send",
+            "Use MCP tool: other/terminal_send",
+            // The superseded single-tool name is no longer a tool.
+            "Use MCP tool: intelligent_terminal/request_terminal_actions",
+            "mcp__intellterm_01234567890123456789__request_terminal_actions",
         ] {
-            assert_eq!(session_mcp_tool_from_title(Some(title)), None);
+            assert_eq!(session_mcp_tool_from_title(Some(title)), None, "{title}");
         }
     }
 
