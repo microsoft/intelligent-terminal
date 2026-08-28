@@ -49,6 +49,17 @@ chat.plan_marker_pending: "[ ]"  # {Locked}
 chat.autofix_prompt_label: "Onlangse opdragmislukking outomaties gediagnoseer"
 chat.turn_canceled: "(gekanselleer)"
 chat.turn_executed: "→ uitgevoer: %{title}"
+# Persistent tool-category labels shown after a status marker and before a subject.
+chat.tool_kind.run: "Uitvoer"
+chat.tool_kind.read: "Lees"
+chat.tool_kind.search: "Soek"
+chat.tool_kind.edit: "Wysig"
+chat.tool_kind.delete: "Skrap"
+chat.tool_kind.move: "Skuif"
+chat.tool_kind.fetch: "Haal"
+chat.tool_kind.think: "Dink"
+chat.tool_kind.mode: "Modus"
+chat.tool_kind.other: "Hulpmiddel"
 
 # ── Invoerplekhouers (src/ui/input.rs) ────────────────────────────────────
 input.placeholder.connected: "Vra enigiets, / vir opdragte.."  # {Locked="/"}

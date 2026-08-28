@@ -49,6 +49,17 @@ chat.plan_marker_pending: "[ ]"  # {Locked}
 chat.autofix_prompt_label: "Аутоматски дијагностикован недавни неуспех команде"
 chat.turn_canceled: "(отказано)"
 chat.turn_executed: "→ извршено: %{title}"
+# Трајне ознаке категорија алата приказане послије ознаке статуса и прије предмета.
+chat.tool_kind.run: "Покретање"
+chat.tool_kind.read: "Читање"
+chat.tool_kind.search: "Претрага"
+chat.tool_kind.edit: "Уређивање"
+chat.tool_kind.delete: "Брисање"
+chat.tool_kind.move: "Премјештање"
+chat.tool_kind.fetch: "Преузимање"
+chat.tool_kind.think: "Размишљање"
+chat.tool_kind.mode: "Режим"
+chat.tool_kind.other: "Алат"
 
 # ── Input placeholders (src/ui/input.rs) ────────────────────────────────────
 input.placeholder.connected: "Питајте било шта, / за команде.."  # {Locked="/"}

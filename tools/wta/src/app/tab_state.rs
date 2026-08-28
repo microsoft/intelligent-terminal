@@ -299,6 +299,7 @@ struct CompletedTurnHeightCache {
 pub(crate) struct CompletedTurnViewportAnchor {
     pub index: usize,
     pub row: usize,
+    pub row_offset: usize,
 }
 
 #[derive(Debug, Default)]
@@ -540,10 +541,12 @@ pub struct TabSession {
     // (see `doc/specs/turn-state-refactor.md`).
     pub turn: TurnState,
     pub activity_frame: usize,
-    /// Typewriter reveal cursor for the final assistant-text item in the
-    /// active transcript. Advanced toward its full length by `RevealTick`
-    /// (`advance_reveal`), reset to 0 when a new turn starts streaming, and
-    /// made irrelevant on finalize (the committed message renders in full).
+    /// Ephemeral ACP thought text shown only until visible assistant output
+    /// or another structured activity begins. It never enters `messages` or
+    /// `completed_turns`.
+    pub(crate) streaming_thought: String,
+    /// Typewriter reveal cursor for the currently visible thought or final
+    /// assistant-text item. Advanced toward its full length by `RevealTick`.
     pub reveal_chars: usize,
     pub timing_note: Option<String>,
     pub selection_visible_pending: bool,
@@ -622,6 +625,8 @@ pub struct TabSession {
 }
 
 impl TabSession {
+    const MAX_STREAMING_THOUGHT_CHARS: usize = 4000;
+
     /// Returns the ACP session id only after the conversation is worth restoring.
     pub(crate) fn resumable_session_id(&self) -> Option<&str> {
         self.has_meaningful_conversation.then_some(
@@ -719,6 +724,49 @@ impl TabSession {
         true
     }
 
+    pub(crate) fn toggle_completed_tool_group(
+        &mut self,
+        turn_index: usize,
+        first_detail_index: usize,
+        detail_count: usize,
+    ) -> bool {
+        let Some(turn) = self.completed_turns.get(turn_index) else {
+            return false;
+        };
+        let ids = turn
+            .details
+            .iter()
+            .skip(first_detail_index)
+            .take(detail_count)
+            .filter_map(|message| match message {
+                ChatMessage::ToolCall { id, .. } => Some(id.clone()),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        if ids.len() != detail_count || ids.is_empty() {
+            return false;
+        }
+
+        self.completed_turn_layout.viewport_anchor = self
+            .completed_turn_layout
+            .visible_anchors
+            .iter()
+            .copied()
+            .find(|anchor| anchor.index == turn_index);
+        let expand = ids
+            .iter()
+            .any(|id| !self.expanded_completed_tool_calls.contains(id));
+        if expand {
+            self.expanded_completed_tool_calls.extend(ids);
+        } else {
+            for id in ids {
+                self.expanded_completed_tool_calls.remove(&id);
+            }
+        }
+        self.invalidate_completed_turn_height(turn_index);
+        true
+    }
+
     pub(crate) fn toggle_all_completed_tool_calls(&mut self) -> bool {
         let tool_calls = self
             .completed_turns
@@ -733,8 +781,13 @@ impl TabSession {
             return false;
         }
 
-        self.completed_turn_layout.viewport_anchor =
-            self.completed_turn_layout.visible_anchors.last().copied();
+        self.completed_turn_layout.viewport_anchor = self
+            .completed_turn_layout
+            .visible_anchors
+            .iter()
+            .copied()
+            .filter(|anchor| anchor.row_offset == 0)
+            .last();
         let expand = tool_calls
             .iter()
             .any(|id| !self.expanded_completed_tool_calls.contains(id));
@@ -756,7 +809,7 @@ impl TabSession {
         self.chat_scroll.offset = 0;
     }
 
-    pub(crate) fn should_show_thinking(&self) -> bool {
+    fn can_show_turn_activity(&self) -> bool {
         self.turn.is_in_flight()
             && self.turn.recommendations().is_none()
             && self.permission.is_empty()
@@ -773,6 +826,17 @@ impl TabSession {
                             || status.eq_ignore_ascii_case("running")
                 )
             })
+    }
+
+    pub(crate) fn should_show_streaming_thought(&self) -> bool {
+        self.can_show_turn_activity()
+            && self
+                .streaming_thought_text()
+                .is_some_and(|text| !text.trim().is_empty())
+    }
+
+    pub(crate) fn should_show_thinking(&self) -> bool {
+        self.can_show_turn_activity() && !self.should_show_streaming_thought()
     }
 
     /// Whether the input box is the live, enterable caret target.
@@ -822,6 +886,7 @@ impl TabSession {
 
     pub fn clear_chat_history(&mut self) {
         self.messages.clear();
+        self.clear_streaming_thought();
         self.permission.clear();
         self.user_input.clear();
         self.activity_frame = 0;
@@ -864,6 +929,38 @@ impl TabSession {
                 self.reveal_chars = 0;
             }
         }
+    }
+
+    pub fn append_thought_chunk(&mut self, text: &str) {
+        if text.is_empty() {
+            self.clear_streaming_thought();
+            return;
+        }
+        if self.streaming_thought.is_empty() {
+            self.reveal_chars = 0;
+        }
+        self.streaming_thought.push_str(text);
+
+        let char_count = self.streaming_thought.chars().count();
+        let remove_chars = char_count.saturating_sub(Self::MAX_STREAMING_THOUGHT_CHARS);
+        if remove_chars > 0 {
+            let cut_at = self
+                .streaming_thought
+                .char_indices()
+                .nth(remove_chars)
+                .map_or(self.streaming_thought.len(), |(index, _)| index);
+            self.streaming_thought.drain(..cut_at);
+            self.reveal_chars = self.reveal_chars.saturating_sub(remove_chars);
+        }
+    }
+
+    pub fn clear_streaming_thought(&mut self) {
+        self.streaming_thought.clear();
+        self.reveal_chars = 0;
+    }
+
+    pub fn streaming_thought_text(&self) -> Option<&str> {
+        (!self.streaming_thought.is_empty()).then_some(self.streaming_thought.as_str())
     }
 
     pub fn streaming_agent_message_index(&self) -> Option<usize> {
@@ -1008,7 +1105,7 @@ impl TabSession {
             .visible_anchors
             .iter()
             .copied()
-            .find(|anchor| anchor.index == index);
+            .find(|anchor| anchor.index == index && anchor.row_offset == 0);
         turn.expanded = !turn.expanded;
         self.completed_turn_layout
             .height_cache

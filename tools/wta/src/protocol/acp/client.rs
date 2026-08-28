@@ -781,8 +781,9 @@ fn tool_call_exit_code(raw_output: Option<&serde_json::Value>) -> Option<i64> {
 }
 
 /// Best-effort extraction of *what* a tool call is touching: a file path
-/// (from `locations`/`raw_input.path`/`raw_input.file_path`) or a shell
-/// command (from `raw_input.command`/`commands`). Returns
+/// (from `locations`/`raw_input.path`/`raw_input.file_path`), a shell
+/// command (from `raw_input.command`/`commands`), or a sanitized Fetch URL.
+/// Returns
 /// `(text, is_command)` so callers can decide how to render it — a path
 /// reads fine inline, but a command can be long and benefits from its own
 /// code-styled line (see `ChatMessage::ToolCall::location_is_command`,
@@ -792,6 +793,7 @@ fn tool_call_exit_code(raw_output: Option<&serde_json::Value>) -> Option<i64> {
 /// which would be noisy and could leak large payloads (e.g. file contents
 /// for a write/edit call) into the chat scrollback.
 fn tool_call_target(
+    kind: Option<&acp::schema::v1::ToolKind>,
     locations: &[acp::schema::v1::ToolCallLocation],
     raw_input: Option<&serde_json::Value>,
 ) -> Option<(String, bool)> {
@@ -832,7 +834,40 @@ fn tool_call_target(
     {
         return Some((c.to_string(), true));
     }
+    let fetch_target = matches!(kind, Some(acp::schema::v1::ToolKind::Fetch))
+        || (kind.is_none()
+            && ["url", "uri"]
+                .into_iter()
+                .any(|key| raw_input.get(key).is_some()));
+    if fetch_target {
+        let target = ["url", "uri"]
+            .into_iter()
+            .find_map(|key| raw_input.get(key)?.as_str())
+            .map(str::trim)
+            .filter(|value| !value.is_empty())?;
+        return sanitize_fetch_target(target).map(|target| (target, false));
+    }
     None
+}
+
+fn sanitize_fetch_target(target: &str) -> Option<String> {
+    let (scheme, remainder) = target
+        .split_once("://")
+        .map_or(("", target), |(scheme, remainder)| (scheme, remainder));
+    let safe_end = remainder.find(['?', '#']).unwrap_or(remainder.len());
+    let safe = &remainder[..safe_end];
+    let (authority, path) = safe.split_once('/').unwrap_or((safe, ""));
+    let authority = authority
+        .rsplit_once('@')
+        .map_or(authority, |(_, host)| host);
+    if authority.is_empty() {
+        return None;
+    }
+    let separator = if scheme.is_empty() { "" } else { "://" };
+    let path_separator = if path.is_empty() { "" } else { "/" };
+    Some(format!(
+        "{scheme}{separator}{authority}{path_separator}{path}"
+    ))
 }
 
 /// Truncates a `tool_call_target` string to `TOOL_CALL_LOCATION_MAX_CHARS`,
@@ -863,10 +898,11 @@ fn truncate_target(mut text: String) -> String {
 /// it repeats what a preceding chat tool-call card already showed.
 fn tool_call_location_hint(
     title: &str,
+    kind: Option<&acp::schema::v1::ToolKind>,
     locations: &[acp::schema::v1::ToolCallLocation],
     raw_input: Option<&serde_json::Value>,
 ) -> Option<(String, bool)> {
-    let (hint, is_command) = tool_call_target(locations, raw_input)?;
+    let (hint, is_command) = tool_call_target(kind, locations, raw_input)?;
     let hint = truncate_target(hint);
     let comparison_hint = hint.strip_suffix('…').unwrap_or(&hint);
 
@@ -874,7 +910,15 @@ fn tool_call_location_hint(
     // "Viewing C:\...\rust-app" still dedupes against a locations path that
     // differs only in case (e.g. drive-letter casing from a different code
     // path).
-    if !title.is_empty()
+    let fetch_target = matches!(kind, Some(acp::schema::v1::ToolKind::Fetch))
+        || (kind.is_none()
+            && raw_input.is_some_and(|input| {
+                ["url", "uri"]
+                    .into_iter()
+                    .any(|key| input.get(key).is_some())
+            }));
+    if !fetch_target
+        && !title.is_empty()
         && title
             .to_lowercase()
             .contains(&comparison_hint.to_lowercase())
@@ -962,14 +1006,23 @@ fn is_session_mcp_server_name(name: &str) -> bool {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum SessionMcpTool {
-    TerminalActions,
+    TerminalAction(crate::agent_tools::action_proposal::schema::McpActionTool),
     UserInput,
 }
 
 impl SessionMcpTool {
+    const ALL: [Self; 4] = [
+        Self::TerminalAction(crate::agent_tools::action_proposal::schema::McpActionTool::Send),
+        Self::TerminalAction(crate::agent_tools::action_proposal::schema::McpActionTool::Open),
+        Self::TerminalAction(
+            crate::agent_tools::action_proposal::schema::McpActionTool::OpenAndSend,
+        ),
+        Self::UserInput,
+    ];
+
     fn name(self) -> &'static str {
         match self {
-            Self::TerminalActions => "request_terminal_actions",
+            Self::TerminalAction(tool) => tool.tool_name(),
             Self::UserInput => "request_user_input",
         }
     }
@@ -980,7 +1033,7 @@ fn session_mcp_tool_from_title(title: Option<&str>) -> Option<SessionMcpTool> {
         return None;
     };
     let title = title.strip_prefix("Use MCP tool: ").unwrap_or(title);
-    for tool in [SessionMcpTool::TerminalActions, SessionMcpTool::UserInput] {
+    for tool in SessionMcpTool::ALL {
         for separator in ["/", "-"] {
             if let Some(server_name) = title.strip_suffix(&format!("{separator}{}", tool.name())) {
                 if is_session_mcp_server_name(server_name) {
@@ -1007,18 +1060,23 @@ fn session_mcp_tool_call(
         return Some(tool);
     }
     let tool = match title.map(str::trim) {
-        Some("request_terminal_actions") => SessionMcpTool::TerminalActions,
-        Some("request_user_input") => SessionMcpTool::UserInput,
-        _ => return None,
+        Some(name) => SessionMcpTool::ALL
+            .into_iter()
+            .find(|tool| tool.name() == name)?,
+        None => return None,
     };
     let Some(raw_input) = raw_input else {
         return None;
     };
     let valid = match tool {
-        SessionMcpTool::TerminalActions => serde_json::to_vec(raw_input).is_ok_and(|payload| {
-            crate::agent_tools::action_proposal::schema::parse_mcp_proposal_payload(&payload, false)
+        SessionMcpTool::TerminalAction(action) => {
+            serde_json::to_vec(raw_input).is_ok_and(|payload| {
+                crate::agent_tools::action_proposal::schema::parse_mcp_action_payload(
+                    action, &payload, false,
+                )
                 .is_ok()
-        }),
+            })
+        }
         SessionMcpTool::UserInput => serde_json::from_value::<
             crate::agent_tools::user_input::UserInputRequest,
         >(raw_input.clone())
@@ -1166,7 +1224,9 @@ impl WtaClient {
             self.hide_session_mcp_tool_call(
                 &session_id,
                 &tool_call_id,
-                SessionMcpTool::TerminalActions,
+                SessionMcpTool::TerminalAction(
+                    crate::agent_tools::action_proposal::schema::McpActionTool::Send,
+                ),
             );
         }
         let title = args
@@ -1181,6 +1241,7 @@ impl WtaClient {
         // so restating exactly what path/command is involved is
         // intentional even if it repeats a preceding tool-call card.
         let target_hint = tool_call_target(
+            args.tool_call.fields.kind.as_ref(),
             args.tool_call.fields.locations.as_deref().unwrap_or(&[]),
             args.tool_call.fields.raw_input.as_ref(),
         )
@@ -1209,7 +1270,7 @@ impl WtaClient {
                 ));
             };
             let permission_result = match tool {
-                SessionMcpTool::TerminalActions => self
+                SessionMcpTool::TerminalAction(_) => self
                     .state
                     .proposal_channels
                     .validate_mcp_permission(&session_id),
@@ -1408,6 +1469,11 @@ impl WtaClient {
             }
             acp::schema::v1::SessionUpdate::AgentThoughtChunk(chunk) => {
                 if let acp::schema::v1::ContentBlock::Text(text_content) = chunk.content {
+                    if !text_content.text.trim().is_empty() {
+                        self.state
+                            .prompt_timing
+                            .observe_first_text(&sid, text_content.text.len());
+                    }
                     let _ = self.state.event_tx.send(AppEvent::AgentThoughtChunk {
                         session_id: sid,
                         text: text_content.text,
@@ -1439,7 +1505,9 @@ impl WtaClient {
                     self.hide_session_mcp_tool_call(
                         &sid,
                         &tool_call_id,
-                        SessionMcpTool::TerminalActions,
+                        SessionMcpTool::TerminalAction(
+                            crate::agent_tools::action_proposal::schema::McpActionTool::Send,
+                        ),
                     );
                     return Ok(());
                 }
@@ -1451,6 +1519,7 @@ impl WtaClient {
                     .observe_first_tool_call(&sid, Some(tool_call.title.as_str()));
                 let (location, location_is_command) = match tool_call_location_hint(
                     &tool_call.title,
+                    Some(&tool_call.kind),
                     &tool_call.locations,
                     tool_call.raw_input.as_ref(),
                 ) {
@@ -1487,7 +1556,9 @@ impl WtaClient {
                     self.hide_session_mcp_tool_call(
                         &sid,
                         &tool_call_id,
-                        SessionMcpTool::TerminalActions,
+                        SessionMcpTool::TerminalAction(
+                            crate::agent_tools::action_proposal::schema::McpActionTool::Send,
+                        ),
                     );
                     return Ok(());
                 }
@@ -1534,6 +1605,7 @@ impl WtaClient {
                     if update.fields.locations.is_some() || update.fields.raw_input.is_some() {
                         match tool_call_location_hint(
                             update.fields.title.as_deref().unwrap_or(""),
+                            update.fields.kind.as_ref(),
                             update.fields.locations.as_deref().unwrap_or(&[]),
                             update.fields.raw_input.as_ref(),
                         ) {
@@ -1807,6 +1879,20 @@ impl WtaClient {
                     "invalid terminal action request parameters: {error}"
                 ))
             })?;
+        let action_tool = {
+            use crate::agent_tools::action_proposal::schema::McpActionTool;
+            McpActionTool::from_tool_name(&request.tool).ok_or_else(|| {
+                acp::Error::invalid_params().data(format!(
+                    "unknown terminal action tool `{}`; expected one of: {}",
+                    request.tool,
+                    McpActionTool::ALL
+                        .iter()
+                        .map(|tool| tool.tool_name())
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                ))
+            })?
+        };
         let payload = serde_json::to_string(&request.arguments).map_err(|error| {
             acp::Error::internal_error().data(format!(
                 "failed to encode terminal action arguments: {error}"
@@ -1854,7 +1940,7 @@ impl WtaClient {
             .send(AppEvent::DirectTerminalActionProposal {
                 context,
                 payload,
-                source: ProposalPayloadSource::Mcp,
+                source: ProposalPayloadSource::Mcp(action_tool),
                 responder: validation_tx,
             })
             .is_err()
@@ -4628,8 +4714,9 @@ mod tests {
         claim_unexpected_transport_loss, complete_prompt_request, complete_transport_shutdown,
         inject_wta_pane_meta, is_redundant_startup_model_error, post_login_authenticate_error,
         session_mcp_tool_from_title, stop_prompt_tasks, timeout_result_failure_fields,
-        tool_call_exit_code, tool_call_kind_label, AcpClientExit, ClientState, PromptTimingState,
-        PromptUsageIdentity, SessionMcpTool, SoftStopReason, WtaClient,
+        tool_call_exit_code, tool_call_kind_label, tool_call_location_hint, tool_call_target,
+        AcpClientExit, ClientState, PromptTimingState, PromptUsageIdentity, SessionMcpTool,
+        SoftStopReason, WtaClient,
     };
     use crate::app_contracts::AppEvent;
     use crate::protocol::acp::failure::{AgentFailure, HandshakeStage};
@@ -4637,6 +4724,35 @@ mod tests {
     use std::collections::{HashMap, HashSet};
     use std::sync::{Arc, Mutex};
     use tokio::sync::mpsc;
+
+    #[test]
+    fn fetch_target_strips_credentials_query_and_fragment() {
+        let raw_input = serde_json::json!({
+            "url": "https://user:secret@example.com/api/items?token=secret#result"
+        });
+
+        assert_eq!(
+            tool_call_target(
+                Some(&acp::schema::v1::ToolKind::Fetch),
+                &[],
+                Some(&raw_input)
+            ),
+            Some(("https://example.com/api/items".to_string(), false))
+        );
+        assert_eq!(
+            tool_call_target(None, &[], Some(&raw_input)),
+            Some(("https://example.com/api/items".to_string(), false))
+        );
+        assert_eq!(
+            tool_call_location_hint(
+                "Fetching https://user:secret@example.com/api/items?token=secret#result",
+                Some(&acp::schema::v1::ToolKind::Fetch),
+                &[],
+                Some(&raw_input),
+            ),
+            Some(("https://example.com/api/items".to_string(), false))
+        );
+    }
 
     #[test]
     fn unexpected_transport_loss_is_claimed_exactly_once() {
@@ -4844,9 +4960,8 @@ mod tests {
             ToolCallUpdate::new(
                 ToolCallId::new("proposal-mcp-tool"),
                 ToolCallUpdateFields::new()
-                    .title("request_terminal_actions")
+                    .title("terminal_send")
                     .raw_input(serde_json::json!({
-                        "type": "send",
                         "title": "Run test",
                         "input": "cargo test"
                     })),
@@ -5118,8 +5233,8 @@ mod tests {
         let params =
             serde_json::value::to_raw_value(&crate::agent_tools::session_mcp::HelperRequest {
                 session_id: "proposal-session".to_string(),
+                tool: "terminal_send".to_string(),
                 arguments: serde_json::json!({
-                    "type": "send",
                     "title": "Run test",
                     "input": "cargo test"
                 }),
@@ -5141,7 +5256,9 @@ mod tests {
                 } => {
                     assert_eq!(
                         source,
-                        crate::agent_tools::action_proposal::pipe::ProposalPayloadSource::Mcp
+                        crate::agent_tools::action_proposal::pipe::ProposalPayloadSource::Mcp(
+                            crate::agent_tools::action_proposal::schema::McpActionTool::Send
+                        )
                     );
                     responder
                         .send(
@@ -5321,16 +5438,20 @@ mod tests {
     #[test]
     fn session_mcp_tool_title_accepts_supported_permission_shapes() {
         let dynamic = "intellterm_01234567890123456789";
-        for title in [
-            "Use MCP tool: intelligent_terminal/request_terminal_actions".to_string(),
-            "intelligent_terminal-request_terminal_actions".to_string(),
-            format!("Use MCP tool: {dynamic}/request_terminal_actions"),
-            format!("mcp__{dynamic}__request_terminal_actions"),
-        ] {
-            assert_eq!(
-                session_mcp_tool_from_title(Some(&title)),
-                Some(SessionMcpTool::TerminalActions)
-            );
+        for tool in crate::agent_tools::action_proposal::schema::McpActionTool::ALL {
+            let name = tool.tool_name();
+            for title in [
+                format!("Use MCP tool: intelligent_terminal/{name}"),
+                format!("intelligent_terminal-{name}"),
+                format!("Use MCP tool: {dynamic}/{name}"),
+                format!("mcp__{dynamic}__{name}"),
+            ] {
+                assert_eq!(
+                    session_mcp_tool_from_title(Some(&title)),
+                    Some(SessionMcpTool::TerminalAction(tool)),
+                    "{title}"
+                );
+            }
         }
         assert_eq!(
             session_mcp_tool_from_title(Some(&format!(
@@ -5339,11 +5460,14 @@ mod tests {
             Some(SessionMcpTool::UserInput)
         );
         for title in [
-            "intellterm_0123456789abcdef/request_terminal_actions",
-            "intellterm_0123456789012345678A/request_terminal_actions",
-            "Use MCP tool: other/request_terminal_actions",
+            "intellterm_0123456789abcdef/terminal_send",
+            "intellterm_0123456789012345678A/terminal_send",
+            "Use MCP tool: other/terminal_send",
+            // The superseded single-tool name is no longer a tool.
+            "Use MCP tool: intelligent_terminal/request_terminal_actions",
+            "mcp__intellterm_01234567890123456789__request_terminal_actions",
         ] {
-            assert_eq!(session_mcp_tool_from_title(Some(title)), None);
+            assert_eq!(session_mcp_tool_from_title(Some(title)), None, "{title}");
         }
     }
 

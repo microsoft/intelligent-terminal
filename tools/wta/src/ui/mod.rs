@@ -10,12 +10,14 @@ mod config_popup;
 mod debug_panel;
 mod input;
 mod layout;
+mod line_diff;
 mod model_popup;
 mod permission;
 mod popup;
 mod recommendations;
 pub mod setup;
 pub mod shimmer;
+mod tool_presentation;
 mod user_input;
 
 pub use agent_popup::AgentPopupState;

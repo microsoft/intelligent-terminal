@@ -49,6 +49,17 @@ chat.plan_marker_pending: "[ ]"  # {Locked}
 chat.autofix_prompt_label: "ಇತ್ತೀಚಿನ ಆದೇಶ ವೈಫಲ್ಯವನ್ನು ಸ್ವಯಂಚಾಲಿತವಾಗಿ ರೋಗನಿರ್ಣಯ ಮಾಡಲಾಗಿದೆ"
 chat.turn_canceled: "(ರದ್ದುಗೊಳಿಸಲಾಗಿದೆ)"
 chat.turn_executed: "→ ಕಾರ್ಯಗತಗೊಂಡಿದೆ: %{title}"
+# ಸ್ಥಿತಿ ಗುರುತಿನ ನಂತರ ಮತ್ತು ವಿಷಯದ ಮೊದಲು ತೋರಿಸುವ ಶಾಶ್ವತ ಉಪಕರಣ-ವರ್ಗದ ಲೇಬಲ್‌ಗಳು.
+chat.tool_kind.run: "ಚಲಾಯಿಸಿ"
+chat.tool_kind.read: "ಓದಿ"
+chat.tool_kind.search: "ಹುಡುಕಿ"
+chat.tool_kind.edit: "ಸಂಪಾದಿಸಿ"
+chat.tool_kind.delete: "ಅಳಿಸಿ"
+chat.tool_kind.move: "ಸರಿಸಿ"
+chat.tool_kind.fetch: "ಪಡೆದುಕೊಳ್ಳಿ"
+chat.tool_kind.think: "ಯೋಚಿಸಿ"
+chat.tool_kind.mode: "ಮೋಡ್"
+chat.tool_kind.other: "ಉಪಕರಣ"
 
 # ── ಇನ್‌ಪುಟ್ ಪ್ಲೇಸ್‌ಹೋಲ್ಡರ್‌ಗಳು (src/ui/input.rs) ────────────────────────────────────
 input.placeholder.connected: "ಏನಾದರೂ ಕೇಳಿ, / ಕಮಾಂಡ್‌ಗಳಿಗಾಗಿ.."  # {Locked="/"}

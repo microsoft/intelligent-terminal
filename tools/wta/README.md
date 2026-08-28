@@ -123,13 +123,20 @@ shell, so any pane-launched process — including wta and wtcli — inherits it.
 
 ## TUI Controls
 
+Tool rows keep a localized type label such as **Run**, **Read**, **Search**, or
+**Edit** visible across pending, running, and completed states. Consecutive
+successful Read, Search, Edit, and Delete calls collapse into one summary row;
+click that row to inspect each call. ACP thought chunks stream as temporary
+**Think** activity and disappear when the visible answer begins. Expanded Edit
+details show bounded line-level `+`/`-` hunks computed from ACP snapshots.
+
 | Key | Action |
 |-----|--------|
 | Type + Enter | Send prompt to agent |
 | Ctrl+C | Copy selected text; otherwise cancel streaming / quit |
 | Up / Down | Browse prompt input history |
 | Mouse wheel | Scroll chat (hold Alt to scroll one line) |
-| Click a completed tool status marker | Expand or collapse that tool's details |
+| Click a completed tool header | Expand or collapse that tool's details |
 | Ctrl+O | Expand or collapse all completed tool details |
 | Mouse drag | Select a continuous text range |
 | Double / triple click | Select a word / line |

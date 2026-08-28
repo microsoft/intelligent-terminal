@@ -2309,7 +2309,7 @@ async fn session_notification_hides_proposal_mcp_tool_call() {
             "s1",
             acp::schema::v1::SessionUpdate::ToolCall(acp::schema::v1::ToolCall::new(
                 acp::schema::v1::ToolCallId::new("proposal-mcp-tool"),
-                "intellterm_01234567890123456789/request_terminal_actions",
+                "intellterm_01234567890123456789/terminal_send",
             )),
         ))
         .await

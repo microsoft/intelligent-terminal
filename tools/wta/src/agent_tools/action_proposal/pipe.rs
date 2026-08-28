@@ -32,7 +32,10 @@ enum ProposalCompletion {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ProposalPayloadSource {
     Cli,
-    Mcp,
+    /// An MCP `tools/call`. Carries which action tool was selected, so the
+    /// action shape travels with the payload instead of being re-encoded as a
+    /// discriminator field inside it.
+    Mcp(crate::agent_tools::action_proposal::schema::McpActionTool),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -252,7 +255,7 @@ async fn serve_connection(
         .await;
     }
 
-    let completion = if source == ProposalPayloadSource::Mcp {
+    let completion = if matches!(source, ProposalPayloadSource::Mcp(_)) {
         if !manager.accept_validation_detached(&proposal_id) {
             return write_validation_failure(
                 &mut write_half,

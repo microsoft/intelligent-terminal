@@ -15,38 +15,13 @@ use crate::app::{
     ToolCallOutput,
 };
 use crate::theme;
+use crate::ui::line_diff::{self, DiffLineKind};
 use crate::ui::shimmer;
+use crate::ui::tool_presentation::{ToolPhase, ToolPresentation};
 use crate::ui_trace;
 
 fn activity_label() -> String {
     t!("chat.activity_thinking").into_owned()
-}
-
-fn is_successful_tool_call_status(status: &str) -> bool {
-    status.eq_ignore_ascii_case("completed") || status.eq_ignore_ascii_case("exited (0)")
-}
-
-fn tool_content_truncated(content: &[ToolCallContent]) -> bool {
-    content.iter().any(|item| match item {
-        ToolCallContent::Text(output) => output.truncated,
-        ToolCallContent::Diff {
-            old_text, new_text, ..
-        } => old_text.as_ref().is_some_and(|output| output.truncated) || new_text.truncated,
-        ToolCallContent::Terminal { output, .. } => {
-            output.as_ref().is_some_and(|output| output.truncated)
-        }
-        ToolCallContent::Attachment { .. } => false,
-    })
-}
-
-fn tool_call_needs_preview(
-    status: &str,
-    output: Option<&ToolCallOutput>,
-    content: &[ToolCallContent],
-) -> bool {
-    !is_successful_tool_call_status(status)
-        || output.is_some_and(|output| output.truncated)
-        || tool_content_truncated(content)
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -63,18 +38,127 @@ enum ToolDisplay {
 }
 
 impl ToolDisplay {
-    fn detail_level(
-        self,
-        status: &str,
-        output: Option<&ToolCallOutput>,
-        content: &[ToolCallContent],
-    ) -> ToolDetailLevel {
+    fn detail_level(self, phase: ToolPhase<'_>) -> ToolDetailLevel {
         match self {
             Self::Completed { expanded: true } => ToolDetailLevel::Detailed,
-            _ if tool_call_needs_preview(status, output, content) => ToolDetailLevel::Preview,
-            _ => ToolDetailLevel::Compact,
+            _ if phase.is_successful() => ToolDetailLevel::Compact,
+            _ => ToolDetailLevel::Preview,
         }
     }
+}
+
+fn tool_presentation_from_message(message: &ChatMessage) -> Option<ToolPresentation<'_>> {
+    let ChatMessage::ToolCall {
+        title,
+        status,
+        kind,
+        location,
+        location_is_command,
+        cwd,
+        exit_code,
+        locations,
+        ..
+    } = message
+    else {
+        return None;
+    };
+    Some(ToolPresentation::new(
+        title,
+        status,
+        *kind,
+        location.as_deref(),
+        *location_is_command,
+        cwd.as_deref(),
+        *exit_code,
+        locations,
+    ))
+}
+
+fn compact_group_kind(message: &ChatMessage, expanded: bool) -> Option<ToolCallKind> {
+    if expanded {
+        return None;
+    }
+    let ChatMessage::ToolCall { status, kind, .. } = message else {
+        return None;
+    };
+    let groupable_kind = matches!(
+        kind,
+        ToolCallKind::Read | ToolCallKind::Edit | ToolCallKind::Delete | ToolCallKind::Search
+    );
+    (groupable_kind && ToolPhase::from_status(status).is_successful()).then_some(*kind)
+}
+
+fn previous_message_group_start(messages: &[ChatMessage], end: usize) -> usize {
+    let last = end.saturating_sub(1);
+    let Some(kind) = messages
+        .get(last)
+        .and_then(|message| compact_group_kind(message, false))
+    else {
+        return last;
+    };
+    let mut start = last;
+    while start > 0
+        && messages
+            .get(start - 1)
+            .and_then(|message| compact_group_kind(message, false))
+            == Some(kind)
+    {
+        start -= 1;
+    }
+    start
+}
+
+fn build_compact_tool_group_lines<'a>(messages: &'a [ChatMessage]) -> Vec<Line<'a>> {
+    const MAX_TARGETS: usize = 3;
+
+    let Some(first) = messages.first().and_then(tool_presentation_from_message) else {
+        return Vec::new();
+    };
+    let (mut summary, represented) = if matches!(
+        first.kind,
+        ToolCallKind::Read | ToolCallKind::Edit | ToolCallKind::Delete
+    ) {
+        let presentations = messages
+            .iter()
+            .filter_map(tool_presentation_from_message)
+            .collect::<Vec<_>>();
+        let mut targets = Vec::with_capacity(MAX_TARGETS);
+        for target in presentations
+            .iter()
+            .filter_map(|presentation| presentation.target_name())
+        {
+            if !targets.contains(&target) {
+                targets.push(target);
+                if targets.len() == MAX_TARGETS {
+                    break;
+                }
+            }
+        }
+        if !targets.is_empty() {
+            (targets.join(", "), targets.len())
+        } else {
+            (first.primary_text(true).into_owned(), 1)
+        }
+    } else {
+        (first.primary_text(true).into_owned(), 1)
+    };
+
+    if let Some(target) = first.secondary_target() {
+        summary.push_str(" · ");
+        summary.push_str(&target);
+    }
+    let remaining = messages.len().saturating_sub(represented);
+    if remaining > 0 {
+        summary.push_str(&format!(" · +{remaining}"));
+    }
+
+    vec![Line::from(vec![
+        Span::styled("✓", theme::TOOL_CALL_SUCCESS),
+        Span::raw(" "),
+        Span::styled(first.kind_label(), theme::TOOL_CALL_KIND),
+        Span::styled(" · ", theme::DIM),
+        Span::styled(summary, theme::TOOL_CALL_TITLE),
+    ])]
 }
 
 const MAX_RENDER_LINE_CHARS: usize = 4096;
@@ -195,11 +279,89 @@ fn preview_output_lines(output: &ToolCallOutput, prefix: &str) -> Vec<String> {
     lines
 }
 
+fn truncate_tool_detail_text(text: &str) -> Cow<'_, str> {
+    let mut chars = text.chars();
+    let head = chars
+        .by_ref()
+        .take(MAX_TOOL_OUTPUT_LINE_CHARS)
+        .collect::<String>();
+    if chars.next().is_some() {
+        Cow::Owned(format!("{head}…"))
+    } else {
+        Cow::Borrowed(text)
+    }
+}
+
+struct ToolDetailLine {
+    text: String,
+    style: Style,
+}
+
+impl ToolDetailLine {
+    fn dim(text: String) -> Self {
+        Self {
+            text,
+            style: theme::DIM,
+        }
+    }
+}
+
+fn diff_detail_lines(
+    path: &str,
+    old_text: Option<&ToolCallOutput>,
+    new_text: &ToolCallOutput,
+    detailed: bool,
+    max_lines: usize,
+) -> Vec<ToolDetailLine> {
+    if max_lines == 0 {
+        return Vec::new();
+    }
+    let mut lines = vec![ToolDetailLine {
+        text: format!("    Δ {}", truncate_tool_detail_text(path)),
+        style: theme::TOOL_DIFF_HEADER,
+    }];
+    if !detailed || max_lines == 1 {
+        return lines;
+    }
+
+    let source_truncated = old_text.is_some_and(|output| output.truncated) || new_text.truncated;
+    lines.extend(
+        line_diff::preview(
+            old_text.map(|output| output.text.as_str()),
+            &new_text.text,
+            source_truncated,
+            max_lines - 1,
+        )
+        .into_iter()
+        .map(|line| {
+            let (marker, text, style) = match line.kind {
+                DiffLineKind::Context => ("│ ", truncate_tool_detail_text(line.text), theme::DIM),
+                DiffLineKind::Added => (
+                    "+ ",
+                    truncate_tool_detail_text(line.text),
+                    theme::TOOL_DIFF_ADDED,
+                ),
+                DiffLineKind::Removed => (
+                    "- ",
+                    truncate_tool_detail_text(line.text),
+                    theme::TOOL_DIFF_REMOVED,
+                ),
+                DiffLineKind::Omitted => ("│ ", Cow::Borrowed("…"), theme::DIM),
+            };
+            ToolDetailLine {
+                text: format!("    {marker}{text}"),
+                style,
+            }
+        }),
+    );
+    lines
+}
+
 fn tool_detail_lines(
     content: &[ToolCallContent],
     locations: &[ToolCallLocation],
     detailed: bool,
-) -> Vec<String> {
+) -> Vec<ToolDetailLine> {
     #[cfg(test)]
     TOOL_DETAIL_BUILD_COUNT.with(|count| count.set(count.get() + 1));
 
@@ -210,7 +372,10 @@ fn tool_detail_lines(
             let suffix = location
                 .line
                 .map_or_else(String::new, |line| format!(":{line}"));
-            lines.push(format!("    {}{suffix}", location.path));
+            lines.push(ToolDetailLine::dim(format!(
+                "    {}{suffix}",
+                location.path
+            )));
         }
         omitted = locations.len() > MAX_TOOL_DETAIL_LINES;
     }
@@ -222,9 +387,17 @@ fn tool_detail_lines(
         match item {
             ToolCallContent::Text(output) => {
                 if detailed {
-                    lines.extend(full_output_lines(output, "    │ "));
+                    lines.extend(
+                        full_output_lines(output, "    │ ")
+                            .into_iter()
+                            .map(ToolDetailLine::dim),
+                    );
                 } else {
-                    lines.extend(preview_output_lines(output, "    │ "));
+                    lines.extend(
+                        preview_output_lines(output, "    │ ")
+                            .into_iter()
+                            .map(ToolDetailLine::dim),
+                    );
                 }
             }
             ToolCallContent::Diff {
@@ -232,13 +405,13 @@ fn tool_detail_lines(
                 old_text,
                 new_text,
             } => {
-                lines.push(format!("    Δ {path}"));
-                if detailed {
-                    if let Some(old_text) = old_text {
-                        lines.extend(full_output_lines(old_text, "    - "));
-                    }
-                    lines.extend(full_output_lines(new_text, "    + "));
-                }
+                lines.extend(diff_detail_lines(
+                    path,
+                    old_text.as_ref(),
+                    new_text,
+                    detailed,
+                    MAX_TOOL_DETAIL_LINES.saturating_sub(lines.len()),
+                ));
             }
             ToolCallContent::Terminal {
                 id,
@@ -246,10 +419,14 @@ fn tool_detail_lines(
                 exit_code,
             } => {
                 let status = exit_code.map_or_else(String::new, |code| format!(" · exit {code}"));
-                lines.push(format!("    $ {id}{status}"));
+                lines.push(ToolDetailLine::dim(format!("    $ {id}{status}")));
                 if detailed {
                     if let Some(output) = output {
-                        lines.extend(full_output_lines(output, "    │ "));
+                        lines.extend(
+                            full_output_lines(output, "    │ ")
+                                .into_iter()
+                                .map(ToolDetailLine::dim),
+                        );
                     }
                 }
             }
@@ -257,7 +434,7 @@ fn tool_detail_lines(
                 let target = uri
                     .as_deref()
                     .map_or_else(String::new, |uri| format!(" · {uri}"));
-                lines.push(format!("    ↳ {label}{target}"));
+                lines.push(ToolDetailLine::dim(format!("    ↳ {label}{target}")));
             }
         }
         if lines.len() > MAX_TOOL_DETAIL_LINES {
@@ -267,9 +444,30 @@ fn tool_detail_lines(
     }
     if omitted {
         lines.truncate(MAX_TOOL_DETAIL_LINES.saturating_sub(1));
-        lines.push("    …".to_string());
+        lines.push(ToolDetailLine::dim("    …".to_string()));
     }
     lines
+}
+
+fn cap_tool_detail_lines(lines: &mut Vec<ToolDetailLine>) {
+    if lines.len() > MAX_TOOL_DETAIL_LINES {
+        lines.truncate(MAX_TOOL_DETAIL_LINES.saturating_sub(1));
+        lines.push(ToolDetailLine::dim("    …".to_string()));
+    }
+}
+
+fn restyle_tool_detail_lines(lines: &mut [ToolDetailLine], has_prior_child: bool) {
+    let mut needs_branch = !has_prior_child;
+    for line in lines {
+        if let Some(content) = line.text.strip_prefix("    │ ").map(str::to_string) {
+            line.text = format!("{}{content}", if needs_branch { "  └ " } else { "    " });
+        } else if needs_branch {
+            if let Some(content) = line.text.strip_prefix("    ").map(str::to_string) {
+                line.text = format!("  └ {content}");
+            }
+        }
+        needs_branch = false;
+    }
 }
 
 /// Estimate the chat block's natural height (in visual rows), saturated at
@@ -304,24 +502,31 @@ pub fn estimated_block_height(app: &App, area_width: u16, max_height: u16) -> u1
         return max_height as u16;
     }
 
-    for (index, message) in tab.messages.iter().enumerate().rev() {
+    let mut end = tab.messages.len();
+    while end > 0 {
+        let index = end - 1;
         if Some(index) == streaming_index {
+            end = index;
             continue;
         }
-        height = height.saturating_add(rendered_lines_height(
-            &build_message_lines(
-                message,
-                index + 1 == tab.messages.len(),
+        let start = previous_message_group_start(&tab.messages, end);
+        let message_lines = if end - start > 1 {
+            build_compact_tool_group_lines(&tab.messages[start..end])
+        } else {
+            build_message_lines(
+                &tab.messages[index],
+                end == tab.messages.len(),
                 tab.turn.is_streaming(),
                 permission_tool_call_id,
                 tab.activity_frame,
                 wrap_width,
-            ),
-            wrap_width,
-        ));
+            )
+        };
+        height = height.saturating_add(rendered_lines_height(&message_lines, wrap_width));
         if height >= max_height {
             return max_height as u16;
         }
+        end = start;
     }
 
     for index in (0..tab.completed_turns.len()).rev() {
@@ -395,51 +600,26 @@ fn completed_turn_height(tab: &crate::app::TabSession, index: usize, wrap_width:
     height
 }
 
-fn starts_with_ignore_ascii_case(value: &str, prefix: &str) -> bool {
-    value
-        .get(..prefix.len())
-        .is_some_and(|start| start.eq_ignore_ascii_case(prefix))
-}
-
-fn tool_call_presentation(status: &str) -> (&'static str, Style, Option<&str>) {
-    if status.eq_ignore_ascii_case("pending") {
-        ("○", theme::TOOL_CALL_PENDING, None)
-    } else if status.eq_ignore_ascii_case("inprogress") || status.eq_ignore_ascii_case("running") {
-        ("●", theme::TOOL_CALL_RUNNING, None)
-    } else if is_successful_tool_call_status(status) {
-        ("✓", theme::TOOL_CALL_SUCCESS, None)
-    } else if status.eq_ignore_ascii_case("failed") {
-        ("✗", theme::TOOL_CALL_FAILURE, None)
-    } else if let Some((kind, reason)) = status.split_once(':') {
-        if kind.eq_ignore_ascii_case("failed") {
-            ("✗", theme::TOOL_CALL_FAILURE, Some(reason.trim()))
-        } else {
-            ("•", theme::DIM, Some(status))
-        }
-    } else if starts_with_ignore_ascii_case(status, "exited (") {
-        ("✗", theme::TOOL_CALL_FAILURE, Some(status))
-    } else if status.eq_ignore_ascii_case("cancelled") || status.eq_ignore_ascii_case("canceled") {
-        ("−", theme::TOOL_CALL_CANCELED, None)
-    } else {
-        ("•", theme::DIM, Some(status))
+fn tool_call_presentation(phase: ToolPhase<'_>) -> (&'static str, Style, Option<&str>) {
+    match phase {
+        ToolPhase::Pending => ("○", theme::TOOL_CALL_PENDING, None),
+        ToolPhase::Running => ("●", theme::TOOL_CALL_RUNNING, None),
+        ToolPhase::Succeeded => ("✓", theme::TOOL_CALL_SUCCESS, None),
+        ToolPhase::Failed(detail) => ("✗", theme::TOOL_CALL_FAILURE, detail),
+        ToolPhase::Canceled => ("−", theme::TOOL_CALL_CANCELED, None),
+        ToolPhase::Unknown(status) => ("•", theme::DIM, Some(status)),
     }
 }
 
-fn is_active_tool_call_status(status: &str) -> bool {
-    status.eq_ignore_ascii_case("pending")
-        || status.eq_ignore_ascii_case("inprogress")
-        || status.eq_ignore_ascii_case("running")
-}
-
 fn rendered_tool_call_marker(
-    status: &str,
+    phase: ToolPhase<'_>,
     permission_active: bool,
     activity_frame: usize,
 ) -> &'static str {
-    if permission_active || is_active_tool_call_status(status) {
+    if permission_active || phase.is_active() {
         breathing_dot(activity_frame)
     } else {
-        tool_call_presentation(status).0
+        tool_call_presentation(phase).0
     }
 }
 
@@ -479,8 +659,9 @@ struct CompletedTurnHitOffset {
 }
 
 struct ToolRowGeometry {
-    detail_index: usize,
+    hit_kind: crate::app::CompletedTurnHitKind,
     row_offset: usize,
+    header_width: usize,
     expanded: bool,
     marker: &'static str,
 }
@@ -552,6 +733,7 @@ fn plan_completed_turn_viewport(
                 .row
                 .saturating_add(target_rows_below)
                 .saturating_add(target_height)
+                .saturating_sub(anchor.row_offset)
                 .saturating_sub(visible_height);
         } else {
             let target_end = target_rows_below.saturating_add(target_height);
@@ -662,19 +844,26 @@ pub fn render(frame: &mut Frame, app: &mut App, area: Rect, scrollbar_area: Rect
     let tab = app.current_tab();
     let permission_tool_call_id = permission_tool_call_id(tab);
     let streaming_index = tab.streaming_agent_message_index();
-    for (idx, msg) in tab.messages.iter().enumerate().rev() {
+    let mut end = tab.messages.len();
+    while end > 0 {
+        let idx = end - 1;
         if Some(idx) == streaming_index {
+            end = idx;
             continue;
         }
-        let is_last_message = idx + 1 == tab.messages.len();
-        let mut message_lines = build_message_lines(
-            msg,
-            is_last_message,
-            tab.turn.is_streaming(),
-            permission_tool_call_id,
-            tab.activity_frame,
-            wrap_width,
-        );
+        let start = previous_message_group_start(&tab.messages, end);
+        let mut message_lines = if end - start > 1 {
+            build_compact_tool_group_lines(&tab.messages[start..end])
+        } else {
+            build_message_lines(
+                &tab.messages[idx],
+                end == tab.messages.len(),
+                tab.turn.is_streaming(),
+                permission_tool_call_id,
+                tab.activity_frame,
+                wrap_width,
+            )
+        };
         newer_rows = newer_rows.saturating_add(rendered_lines_height(&message_lines, wrap_width));
         reversed_lines.extend(message_lines.drain(..).rev());
         if newer_rows >= requested_rows
@@ -684,6 +873,7 @@ pub fn render(frame: &mut Frame, app: &mut App, area: Rect, scrollbar_area: Rect
             truncated = true;
             break;
         }
+        end = start;
     }
 
     if !truncated {
@@ -767,13 +957,15 @@ pub fn render(frame: &mut Frame, app: &mut App, area: Rect, scrollbar_area: Rect
             tool_rows,
         } = hit_offset;
         let header_from_top = total_lines.saturating_sub(rows_below.saturating_add(turn_height));
+        let mut visible_anchor = None;
         if let Some(header_row) = header_from_top
             .checked_sub(scroll)
             .filter(|row| *row < visible_height)
         {
-            visible_completed_turn_anchors.push(crate::app::CompletedTurnViewportAnchor {
+            visible_anchor = Some(crate::app::CompletedTurnViewportAnchor {
                 index: turn_index,
                 row: header_row,
+                row_offset: 0,
             });
             let row = inner_area.y.saturating_add(header_row as u16);
             let symbol = if expanded { "▼" } else { "▶" };
@@ -839,27 +1031,30 @@ pub fn render(frame: &mut Frame, app: &mut App, area: Rect, scrollbar_area: Rect
             if visible_row >= visible_height {
                 continue;
             }
+            visible_anchor.get_or_insert(crate::app::CompletedTurnViewportAnchor {
+                index: turn_index,
+                row: visible_row,
+                row_offset: tool_row.row_offset,
+            });
             let row = inner_area.y.saturating_add(visible_row as u16);
-            if let Some(column) = (inner_area.x..inner_area.x.saturating_add(inner_area.width))
-                .find(|column| {
-                    buffer
-                        .cell((*column, row))
-                        .is_some_and(|cell| cell.symbol() == tool_row.marker)
-                })
-            {
+            if let Some((start_column, end_column)) = tool_header_hit_columns(
+                buffer,
+                inner_area,
+                row,
+                tool_row.marker,
+                tool_row.header_width,
+            ) {
                 completed_turn_hits.push(crate::app::CompletedTurnHitRegion {
-                    start_column: column,
-                    end_column: column.saturating_add(1),
+                    start_column,
+                    end_column,
                     row,
                     turn_index,
-                    kind: crate::app::CompletedTurnHitKind::ToolCall {
-                        detail_index: tool_row.detail_index,
-                    },
+                    kind: tool_row.hit_kind,
                 });
                 app.completed_turn_action_links.push(
                     crate::action_links::CompletedTurnActionLink {
-                        start_column: column,
-                        end_column: column.saturating_add(1),
+                        start_column,
+                        end_column,
                         row,
                         action: if tool_row.expanded {
                             crate::action_links::CompletedTurnAction::Collapse
@@ -869,6 +1064,9 @@ pub fn render(frame: &mut Frame, app: &mut App, area: Rect, scrollbar_area: Rect
                     },
                 );
             }
+        }
+        if let Some(anchor) = visible_anchor {
+            visible_completed_turn_anchors.push(anchor);
         }
     }
     app.completed_turn_hits = completed_turn_hits;
@@ -938,6 +1136,24 @@ pub fn render(frame: &mut Frame, app: &mut App, area: Rect, scrollbar_area: Rect
             area.height
         )
     });
+}
+
+fn tool_header_hit_columns(
+    buffer: &Buffer,
+    inner_area: Rect,
+    row: u16,
+    marker: &str,
+    header_width: usize,
+) -> Option<(u16, u16)> {
+    let inner_end = inner_area.x.saturating_add(inner_area.width);
+    let start_column = (inner_area.x..inner_end).find(|column| {
+        buffer
+            .cell((*column, row))
+            .is_some_and(|cell| cell.symbol() == marker)
+    })?;
+    let width = header_width.min(inner_end.saturating_sub(start_column) as usize) as u16;
+    let end_column = start_column.saturating_add(width);
+    (start_column < end_column).then_some((start_column, end_column))
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1131,25 +1347,80 @@ fn build_completed_turn_lines_with_geometry<'a>(
         // `agent_streaming=false` together suppress the streaming-cursor
         // path; details are always finalized by the time they land here.
         let mut rendered_height = rendered_lines_height(&lines, wrap_width);
-        for (detail_index, msg) in turn.details.iter().enumerate() {
-            let display = match msg {
-                ChatMessage::ToolCall { id, status, .. } => {
-                    let expanded = tool_expanded(id);
-                    tool_rows.push(ToolRowGeometry {
-                        detail_index,
-                        row_offset: rendered_height,
-                        expanded,
-                        marker: rendered_tool_call_marker(status, false, 0),
-                    });
-                    ToolDisplay::Completed { expanded }
-                }
-                _ => ToolDisplay::ActiveTurn,
+        let mut detail_index = 0;
+        while detail_index < turn.details.len() {
+            let msg = &turn.details[detail_index];
+            let expanded = match msg {
+                ChatMessage::ToolCall { id, .. } => tool_expanded(id),
+                _ => false,
             };
+            let group_kind = compact_group_kind(msg, expanded);
+            let mut group_end = detail_index + 1;
+            if let Some(group_kind) = group_kind {
+                while group_end < turn.details.len() {
+                    let next = &turn.details[group_end];
+                    let next_expanded = match next {
+                        ChatMessage::ToolCall { id, .. } => tool_expanded(id),
+                        _ => false,
+                    };
+                    if compact_group_kind(next, next_expanded) != Some(group_kind) {
+                        break;
+                    }
+                    group_end += 1;
+                }
+            }
+
+            if group_end - detail_index > 1 {
+                let message_lines =
+                    build_compact_tool_group_lines(&turn.details[detail_index..group_end]);
+                tool_rows.push(ToolRowGeometry {
+                    hit_kind: crate::app::CompletedTurnHitKind::ToolGroup {
+                        first_detail_index: detail_index,
+                        detail_count: group_end - detail_index,
+                    },
+                    row_offset: rendered_height,
+                    header_width: message_lines
+                        .first()
+                        .map_or(1, |line| line.width().min(wrap_width))
+                        .max(1),
+                    expanded: false,
+                    marker: "✓",
+                });
+                rendered_height = rendered_height
+                    .saturating_add(rendered_lines_height(&message_lines, wrap_width));
+                lines.extend(message_lines);
+                detail_index = group_end;
+                continue;
+            }
+
+            let tool_geometry = match msg {
+                ChatMessage::ToolCall { id, status, .. } => Some((
+                    tool_expanded(id),
+                    rendered_tool_call_marker(ToolPhase::from_status(status), false, 0),
+                )),
+                _ => None,
+            };
+            let display = tool_geometry.map_or(ToolDisplay::ActiveTurn, |(expanded, _)| {
+                ToolDisplay::Completed { expanded }
+            });
             let message_lines =
                 build_message_lines_with_details(msg, false, false, None, 0, wrap_width, display);
+            if let Some((expanded, marker)) = tool_geometry {
+                tool_rows.push(ToolRowGeometry {
+                    hit_kind: crate::app::CompletedTurnHitKind::ToolCall { detail_index },
+                    row_offset: rendered_height,
+                    header_width: message_lines
+                        .first()
+                        .map_or(1, |line| line.width().min(wrap_width))
+                        .max(1),
+                    expanded,
+                    marker,
+                });
+            }
             rendered_height =
                 rendered_height.saturating_add(rendered_lines_height(&message_lines, wrap_width));
             lines.extend(message_lines);
+            detail_index += 1;
         }
     }
 
@@ -1221,8 +1492,15 @@ pub(crate) fn user_visible_stream_text(text: &str) -> Option<Cow<'_, str>> {
     (!text.trim().is_empty()).then_some(Cow::Borrowed(text))
 }
 
-fn pending_render_text(tab: &crate::app::TabSession) -> Option<Cow<'_, str>> {
-    user_visible_stream_text(tab.streaming_agent_text()?)
+pub(crate) fn pending_render_text(tab: &crate::app::TabSession) -> Option<Cow<'_, str>> {
+    tab.streaming_agent_text()
+        .and_then(user_visible_stream_text)
+        .or_else(|| {
+            tab.should_show_streaming_thought()
+                .then(|| tab.streaming_thought_text())
+                .flatten()
+                .and_then(user_visible_stream_text)
+        })
 }
 
 fn build_pending_stream_lines<'a>(app: &App, wrap_width: usize) -> Vec<Line<'a>> {
@@ -1230,6 +1508,10 @@ fn build_pending_stream_lines<'a>(app: &App, wrap_width: usize) -> Vec<Line<'a>>
     let Some(text) = pending_render_text(tab) else {
         return Vec::new();
     };
+    let is_thought = tab
+        .streaming_agent_text()
+        .and_then(user_visible_stream_text)
+        .is_none();
     // Typewriter smoothing: only reveal the first `reveal_chars` characters of
     // the streaming text. The reveal cursor is advanced toward the full length
     // by the `RevealTick` animation (`App::advance_reveal`), turning the
@@ -1246,12 +1528,25 @@ fn build_pending_stream_lines<'a>(app: &App, wrap_width: usize) -> Vec<Line<'a>>
         }
     };
     let mut lines = Vec::new();
+    let rendered = if is_thought {
+        Cow::Owned(format!(
+            "{} · {}",
+            t!("chat.tool_kind.think"),
+            revealed.as_ref()
+        ))
+    } else {
+        revealed
+    };
     push_dot_prefixed_lines(
         &mut lines,
-        &revealed,
+        &rendered,
         wrap_width,
         theme::DOT_AGENT,
-        theme::AGENT_TEXT,
+        if is_thought {
+            theme::DIM
+        } else {
+            theme::AGENT_TEXT
+        },
     );
     lines
 }
@@ -1334,49 +1629,55 @@ fn build_message_lines_with_details<'a>(
             content,
             locations,
         } => {
-            let detail_level =
-                tool_display.detail_level(status, output.as_ref(), content.as_slice());
-            let (_, marker_style, detail) = tool_call_presentation(status);
-            let marker = rendered_tool_call_marker(
+            let presentation = ToolPresentation::new(
+                title,
                 status,
+                *kind,
+                location.as_deref(),
+                *location_is_command,
+                cwd.as_deref(),
+                *exit_code,
+                locations,
+            );
+            let detail_level = tool_display.detail_level(presentation.phase);
+            let (_, marker_style, detail) = tool_call_presentation(presentation.phase);
+            let marker = rendered_tool_call_marker(
+                presentation.phase,
                 permission_tool_call_id == Some(id.as_str()),
                 activity_frame,
             );
+            let primary_text =
+                match presentation.primary_text(detail_level == ToolDetailLevel::Compact) {
+                    Cow::Borrowed(text) => truncate_render_text(text),
+                    Cow::Owned(text) => Cow::Owned(truncate_render_text(&text).into_owned()),
+                };
             let mut spans = vec![
                 Span::styled(marker, marker_style),
                 Span::raw(" "),
-                Span::styled(truncate_render_text(title), theme::TOOL_CALL_TITLE),
+                Span::styled(presentation.kind_label(), theme::TOOL_CALL_KIND),
             ];
-            let location = location.as_deref().filter(|l| !l.is_empty());
-            // Path hint pulled from the ACP `locations`/`raw_input` fields
-            // (see `client.rs::tool_call_location_hint`) — surfaces *what*
-            // the tool touched, which the agent's `title` alone often
-            // doesn't (e.g. a generic "Access paths outside trusted
-            // directories" permission title). Rendered inline since a
-            // path is normally short enough to fit on the title's line.
-            if !location_is_command {
-                if let Some(location) = location {
-                    spans.push(Span::styled(
-                        format!(" ({})", truncate_render_text(location)),
-                        theme::DIM,
-                    ));
-                }
-            } else if detail_level == ToolDetailLevel::Compact {
-                if let Some(command) = location {
-                    spans.push(Span::styled(
-                        format!(" · {}", truncate_render_text(command)),
-                        theme::DIM,
-                    ));
-                }
+            if !primary_text.is_empty() {
+                spans.push(Span::styled(" · ", theme::DIM));
+                spans.push(Span::styled(primary_text, theme::TOOL_CALL_TITLE));
             }
-            if *kind == ToolCallKind::Execute {
-                if let Some(cwd) = cwd
-                    .as_deref()
+            let display_target = presentation.display_target();
+            let target = display_target.as_deref();
+            if let Some(target) = presentation.secondary_target() {
+                spans.push(Span::styled(
+                    format!(" · {}", truncate_render_text(&target)),
+                    theme::DIM,
+                ));
+            }
+            if presentation.kind == ToolCallKind::Execute
+                && detail_level != ToolDetailLevel::Compact
+            {
+                if let Some(cwd) = presentation
+                    .cwd
                     .filter(|cwd| !cwd.is_empty())
-                    .filter(|cwd| !title.contains(cwd))
+                    .filter(|cwd| !presentation.title.contains(cwd))
                 {
                     spans.push(Span::styled(
-                        format!(" ({})", truncate_render_text(cwd)),
+                        format!(" · {}", truncate_render_text(cwd)),
                         theme::DIM,
                     ));
                 }
@@ -1387,34 +1688,20 @@ fn build_message_lines_with_details<'a>(
                     theme::DIM,
                 ));
             }
-            if detail_level != ToolDetailLevel::Detailed
-                && (*kind == ToolCallKind::Execute || *location_is_command)
-            {
-                if let Some(exit_code) = exit_code.filter(|_| {
-                    !starts_with_ignore_ascii_case(status, "exited (")
-                        && !starts_with_ignore_ascii_case(status, "failed:")
-                }) {
-                    spans.push(Span::styled(format!(" · exit {exit_code}"), theme::DIM));
-                }
+            if let Some(exit_code) = presentation.visible_exit_code() {
+                spans.push(Span::styled(format!(" · exit {exit_code}"), theme::DIM));
             }
             lines.push(Line::from(spans));
-            // A command target can be several `;`-chained PowerShell
-            // statements crammed into one `raw_input.command` (agents
-            // commonly batch multiple checks into a single tool call) —
-            // rendering that as one long line, which then wraps at the
-            // terminal edge with no hanging indent, reads as an
-            // unreadable wall of text. Splitting on top-level `;`
-            // restores the sequence of discrete steps, one per code-
-            // styled line (mirrors how `execute`-kind cards look in Zed /
-            // opencode); a long remainder folds into a single "+N more"
-            // row instead of growing the card unboundedly.
             let mut rendered_command = false;
-            if *location_is_command && detail_level != ToolDetailLevel::Compact {
-                if let Some(command) = location {
-                    for entry in crate::ui::command_format::command_display_lines(command) {
+            if presentation.target_is_command && detail_level != ToolDetailLevel::Compact {
+                if let Some(command) = target {
+                    for (index, entry) in crate::ui::command_format::command_display_lines(command)
+                        .into_iter()
+                        .enumerate()
+                    {
                         rendered_command = true;
                         lines.push(Line::from(Span::styled(
-                            entry.rendered_text("    "),
+                            entry.rendered_text(if index == 0 { "  └ " } else { "    " }),
                             theme::CARD_CODE,
                         )));
                     }
@@ -1425,10 +1712,17 @@ fn build_message_lines_with_details<'a>(
                 && (*kind == ToolCallKind::Execute || *location_is_command)
             {
                 if let Some(output) = output {
-                    for line in tool_output_lines(output) {
+                    for (index, line) in tool_output_lines(output).into_iter().enumerate() {
                         rendered_output = true;
                         lines.push(Line::from(Span::styled(
-                            format!("    │ {line}"),
+                            format!(
+                                "{}{line}",
+                                if index == 0 && !rendered_command {
+                                    "  └ "
+                                } else {
+                                    "    "
+                                }
+                            ),
                             theme::DIM,
                         )));
                     }
@@ -1445,15 +1739,25 @@ fn build_message_lines_with_details<'a>(
             if !has_text_content && detail_level != ToolDetailLevel::Compact {
                 if let Some(output) = output {
                     if detail_level == ToolDetailLevel::Detailed {
-                        detail_lines.extend(full_output_lines(output, "    │ "));
+                        detail_lines.extend(
+                            full_output_lines(output, "    │ ")
+                                .into_iter()
+                                .map(ToolDetailLine::dim),
+                        );
                     } else if *kind != ToolCallKind::Execute && !*location_is_command {
-                        detail_lines.extend(preview_output_lines(output, "    │ "));
+                        detail_lines.extend(
+                            preview_output_lines(output, "    │ ")
+                                .into_iter()
+                                .map(ToolDetailLine::dim),
+                        );
                     }
                 }
             }
+            cap_tool_detail_lines(&mut detail_lines);
+            restyle_tool_detail_lines(&mut detail_lines, rendered_command || rendered_output);
             let rendered_details = !detail_lines.is_empty();
             for line in detail_lines {
-                lines.push(Line::from(Span::styled(line, theme::DIM)));
+                lines.push(Line::from(Span::styled(line.text, line.style)));
             }
             if rendered_command || rendered_output || rendered_details {
                 lines.push(Line::default());
@@ -1532,7 +1836,7 @@ fn push_dot_prefixed_lines<'a>(
     let body_width = wrap_width.saturating_sub(2).max(1);
     let mut first_row = true;
 
-    for paragraph in text.split('\n') {
+    for paragraph in text.trim_end_matches(['\r', '\n']).split('\n') {
         if paragraph.is_empty() {
             // Skip leading blanks so the dot lands on the first content row
             // — many models prefix prose with `\n` / `\n\n`, which would
@@ -1909,14 +2213,15 @@ mod tests {
 
         assert_eq!(line_text(line), expected_text);
         assert_eq!(line.spans[0].style, expected_marker_style);
-        assert_eq!(line.spans[2].style, theme::TOOL_CALL_TITLE);
+        assert_eq!(line.spans[2].style, theme::TOOL_CALL_KIND);
+        assert_eq!(line.spans[4].style, theme::TOOL_CALL_TITLE);
         assert_eq!(
-            line.spans.get(3).map(|span| span.style),
+            line.spans.get(5).map(|span| span.style),
             expected_detail_style
         );
     }
 
-    /// A `location` hint renders as a dim `(path)` suffix right after the
+    /// A `location` hint renders as a dim secondary subject right after the
     /// title, before the status detail — guards against the card silently
     /// dropping the path/command info that `client.rs` now forwards.
     #[test]
@@ -1939,7 +2244,7 @@ mod tests {
 
         assert_eq!(
             line_text(line),
-            r"● Access paths outside trusted directories (C:\src\rust-app)"
+            r"● Tool · Access paths outside trusted directories · C:\src\rust-app"
         );
         assert_eq!(
             lines.len(),
@@ -1950,7 +2255,7 @@ mod tests {
     }
 
     /// A command-kind location (`location_is_command`) must NOT be inlined
-    /// as a `(hint)` suffix on the title line — it gets its own
+    /// while the tool is active — it gets its own subordinate
     /// `CARD_CODE`-styled `$ command` line instead, since commands can be
     /// long one-liners that would overflow or wrap awkwardly inline.
     #[test]
@@ -1975,8 +2280,8 @@ mod tests {
             3,
             "expected a title line, command line, and paragraph break"
         );
-        assert_eq!(line_text(&lines[0]), "● Run command");
-        assert_eq!(line_text(&lines[1]), "    $ cargo test --workspace");
+        assert_eq!(line_text(&lines[0]), "● Run · Run command");
+        assert_eq!(line_text(&lines[1]), "  └ $ cargo test --workspace");
         assert_eq!(lines[1].spans[0].style, theme::CARD_CODE);
         assert!(lines[2].spans.is_empty());
 
@@ -2019,7 +2324,7 @@ mod tests {
         );
         assert_eq!(
             line_text(&lines[1]),
-            "    $ winget list --name PowerToys 2>$null"
+            "  └ $ winget list --name PowerToys 2>$null"
         );
         assert_eq!(
             line_text(&lines[2]),
@@ -2055,11 +2360,11 @@ mod tests {
         let lines = build_message_lines(&message, false, false, None, 0, 120);
         let rendered: Vec<String> = lines.iter().map(line_text).collect();
 
-        assert_eq!(rendered[0], format!("● bash ({cwd}) · exit 0"));
-        assert_eq!(rendered[1], "    $ cargo test");
-        assert_eq!(rendered[2], "    │ …");
-        assert_eq!(rendered[3], "    │ line 2");
-        assert_eq!(rendered[6], "    │ line 5");
+        assert_eq!(rendered[0], format!("● Run · bash · {cwd}"));
+        assert_eq!(rendered[1], "  └ $ cargo test");
+        assert_eq!(rendered[2], "    …");
+        assert_eq!(rendered[3], "    line 2");
+        assert_eq!(rendered[6], "    line 5");
         assert!(rendered[7].is_empty());
         assert_eq!(lines.len(), message_height(&message, 120));
     }
@@ -2089,10 +2394,149 @@ mod tests {
             .map(line_text)
             .collect();
 
+        assert_eq!(rendered, vec!["✓ Run · cargo test"]);
+    }
+
+    #[test]
+    fn successful_long_command_stays_out_of_compact_header() {
+        let message = ChatMessage::ToolCall {
+            id: "tool".into(),
+            title: "Resolve cargo in active terminal context".into(),
+            status: "Completed".into(),
+            kind: ToolCallKind::Execute,
+            location: Some(
+                "wta.exe resolve-command cargo --shell pwsh --cwd C:\\repo --json".into(),
+            ),
+            location_is_command: true,
+            cwd: Some(r"C:\repo".into()),
+            output: None,
+            exit_code: Some(0),
+            content: Vec::new(),
+            locations: Vec::new(),
+        };
+
+        let rendered: Vec<String> = build_message_lines(&message, false, false, None, 0, 120)
+            .iter()
+            .map(line_text)
+            .collect();
+
         assert_eq!(
             rendered,
-            vec![format!("✓ Run tests · cargo test ({cwd}) · exit 0")]
+            vec!["✓ Run · Resolve cargo in active terminal context"]
         );
+    }
+
+    #[test]
+    fn successful_read_replaces_embedded_full_path_with_compact_subject() {
+        let path = r"C:\Users\kaitao\codes\rust-app\src\main.rs";
+        let message = ChatMessage::ToolCall {
+            id: "tool".into(),
+            title: format!("Viewing {path}"),
+            status: "Completed".into(),
+            kind: ToolCallKind::Read,
+            location: None,
+            location_is_command: false,
+            cwd: None,
+            output: None,
+            exit_code: None,
+            content: Vec::new(),
+            locations: vec![ToolCallLocation {
+                path: path.into(),
+                line: None,
+            }],
+        };
+
+        let rendered: Vec<String> = build_message_lines(&message, false, false, None, 0, 120)
+            .iter()
+            .map(line_text)
+            .collect();
+
+        assert_eq!(rendered, vec![r"✓ Read · src\main.rs"]);
+    }
+
+    #[test]
+    fn successful_search_compacts_workspace_subject() {
+        let message = ChatMessage::ToolCall {
+            id: "tool".into(),
+            title: "Finding files matching **/*.rs".into(),
+            status: "Completed".into(),
+            kind: ToolCallKind::Search,
+            location: Some(r"C:\Users\kaitao\codes\rust-app".into()),
+            location_is_command: false,
+            cwd: None,
+            output: None,
+            exit_code: None,
+            content: Vec::new(),
+            locations: Vec::new(),
+        };
+
+        let rendered: Vec<String> = build_message_lines(&message, false, false, None, 0, 120)
+            .iter()
+            .map(line_text)
+            .collect();
+
+        assert_eq!(
+            rendered,
+            vec!["✓ Search · Finding files matching **/*.rs · rust-app"]
+        );
+    }
+
+    #[test]
+    fn successful_edit_does_not_treat_snapshots_as_line_counts() {
+        let message = ChatMessage::ToolCall {
+            id: "tool".into(),
+            title: "Update source".into(),
+            status: "Completed".into(),
+            kind: ToolCallKind::Edit,
+            location: Some(r"C:\repo\src\chat.rs".into()),
+            location_is_command: false,
+            cwd: None,
+            output: None,
+            exit_code: None,
+            content: vec![ToolCallContent::Diff {
+                path: r"C:\repo\src\chat.rs".into(),
+                old_text: Some(ToolCallOutput {
+                    text: "old one\nold two".into(),
+                    truncated: false,
+                }),
+                new_text: ToolCallOutput {
+                    text: ["new one", "new two", "new three"].join("\n"),
+                    truncated: false,
+                },
+            }],
+            locations: Vec::new(),
+        };
+
+        let rendered: Vec<String> = build_message_lines(&message, false, false, None, 0, 120)
+            .iter()
+            .map(line_text)
+            .collect();
+
+        assert_eq!(rendered, vec![r"✓ Edit · src\chat.rs"]);
+    }
+
+    #[test]
+    fn tool_header_hit_uses_rendered_marker_offset_and_caps_to_inner_area() {
+        use ratatui::widgets::Paragraph;
+
+        let inner_area = Rect::new(3, 2, 20, 1);
+        let header = "✓ Edit file";
+        let header_width = UnicodeWidthStr::width(header);
+        let mut buffer = Buffer::empty(Rect::new(0, 0, 30, 5));
+        Paragraph::new(header)
+            .alignment(Alignment::Right)
+            .render(inner_area, &mut buffer);
+
+        let (start_column, end_column) =
+            tool_header_hit_columns(&buffer, inner_area, inner_area.y, "✓", header_width)
+                .expect("right-aligned marker should be found");
+
+        assert_eq!(
+            start_column,
+            inner_area.x + inner_area.width - header_width as u16
+        );
+        assert!(start_column > inner_area.x);
+        assert_eq!(end_column, inner_area.x + inner_area.width);
     }
 
     #[test]
@@ -2119,11 +2563,13 @@ mod tests {
             .map(line_text)
             .collect();
 
+        assert_eq!(rendered[0], "✗ Run · Run tests · exit 1");
+        assert_eq!(rendered[1], "  └ $ cargo test");
         assert!(rendered.iter().any(|line| line.contains("diagnostic")));
     }
 
     #[test]
-    fn successful_truncated_tool_call_keeps_preview_before_and_after_turn_completion() {
+    fn successful_truncated_tool_call_stays_compact_until_expanded() {
         let message = ChatMessage::ToolCall {
             id: "tool".into(),
             title: "Locate project directory".into(),
@@ -2151,11 +2597,112 @@ mod tests {
                     .map(line_text)
                     .collect();
 
-            assert_eq!(rendered[0], "✓ Locate project directory · exit 0");
-            assert_eq!(rendered[1], "    $ Get-ChildItem");
-            assert_eq!(rendered[2], "    │ …");
-            assert_eq!(rendered[3], "    │ truncated output");
+            assert_eq!(rendered, vec!["✓ Run · Get-ChildItem"]);
         }
+
+        let expanded: Vec<String> = build_message_lines_with_details(
+            &message,
+            false,
+            false,
+            None,
+            0,
+            120,
+            ToolDisplay::Completed { expanded: true },
+        )
+        .iter()
+        .map(line_text)
+        .collect();
+        assert_eq!(expanded[0], "✓ Run · Locate project directory");
+        assert_eq!(expanded[1], "  └ $ Get-ChildItem");
+        assert!(expanded
+            .iter()
+            .any(|line| line.contains("truncated output")));
+    }
+
+    #[test]
+    fn successful_truncated_reads_group_and_deduplicate_targets() {
+        let messages = (0..4)
+            .map(|index| ChatMessage::ToolCall {
+                id: format!("read-{index}"),
+                title: "Read project".into(),
+                status: "Completed".into(),
+                kind: ToolCallKind::Read,
+                location: Some(r"C:\codes\rust-app".into()),
+                location_is_command: false,
+                cwd: None,
+                output: Some(ToolCallOutput {
+                    text: "extension summary".into(),
+                    truncated: true,
+                }),
+                exit_code: None,
+                content: Vec::new(),
+                locations: Vec::new(),
+            })
+            .collect::<Vec<_>>();
+
+        assert_eq!(previous_message_group_start(&messages, messages.len()), 0);
+        let rendered = build_compact_tool_group_lines(&messages);
+        assert_eq!(line_text(&rendered[0]), "✓ Read · rust-app · +3");
+    }
+
+    #[test]
+    fn successful_file_mutations_group_by_kind_and_deduplicate_targets() {
+        for (kind, label) in [
+            (ToolCallKind::Edit, "Edit"),
+            (ToolCallKind::Delete, "Delete"),
+        ] {
+            let messages = [
+                (r"C:\repo\src\chat.rs", "Completed"),
+                (r"C:\repo\src\chat.rs", "Completed"),
+                (r"C:\repo\src\app.rs", "Completed"),
+            ]
+            .into_iter()
+            .enumerate()
+            .map(|(index, (path, status))| ChatMessage::ToolCall {
+                id: format!("mutation-{index}"),
+                title: "Mutate file".into(),
+                status: status.into(),
+                kind,
+                location: Some(path.into()),
+                location_is_command: false,
+                cwd: None,
+                output: None,
+                exit_code: None,
+                content: Vec::new(),
+                locations: Vec::new(),
+            })
+            .collect::<Vec<_>>();
+
+            assert_eq!(previous_message_group_start(&messages, messages.len()), 0);
+            let rendered = build_compact_tool_group_lines(&messages);
+            assert_eq!(
+                line_text(&rendered[0]),
+                format!("✓ {label} · chat.rs, app.rs · +1")
+            );
+        }
+    }
+
+    #[test]
+    fn failed_file_mutation_breaks_compact_group() {
+        let messages = ["Completed", "Failed", "Completed"]
+            .into_iter()
+            .enumerate()
+            .map(|(index, status)| ChatMessage::ToolCall {
+                id: format!("edit-{index}"),
+                title: "Edit file".into(),
+                status: status.into(),
+                kind: ToolCallKind::Edit,
+                location: Some(format!("file-{index}.rs")),
+                location_is_command: false,
+                cwd: None,
+                output: None,
+                exit_code: None,
+                content: Vec::new(),
+                locations: Vec::new(),
+            })
+            .collect::<Vec<_>>();
+
+        assert_eq!(previous_message_group_start(&messages, messages.len()), 2);
     }
 
     #[test]
@@ -2180,9 +2727,9 @@ mod tests {
         let lines = build_message_lines(&message, false, false, None, 0, 120);
         let rendered: Vec<String> = lines.iter().map(line_text).collect();
 
-        assert_eq!(rendered[1], "    │ …");
-        assert_eq!(rendered[2], "    │ line 3");
-        assert_eq!(rendered[3], "    │ line 4");
+        assert_eq!(rendered[1], "  └ …");
+        assert_eq!(rendered[2], "    line 3");
+        assert_eq!(rendered[3], "    line 4");
         assert!(!rendered.iter().any(|line| line.contains("line 1")));
         assert!(!rendered[0].contains("exit 200"));
         assert!(rendered[4].is_empty());
@@ -2201,10 +2748,10 @@ mod tests {
         let lines = tool_detail_lines(&[ToolCallContent::Text(output)], &[], true);
 
         assert_eq!(lines.len(), MAX_TOOL_DETAIL_OUTPUT_LINES + 1);
-        assert_eq!(lines[0], "    │ …");
+        assert_eq!(lines[0].text, "    │ …");
         assert!(lines
             .last()
-            .is_some_and(|line| line.ends_with("object-199.o")));
+            .is_some_and(|line| line.text.ends_with("object-199.o")));
     }
 
     #[test]
@@ -2219,44 +2766,229 @@ mod tests {
         let lines = tool_detail_lines(&[], &locations, true);
 
         assert_eq!(lines.len(), MAX_TOOL_DETAIL_LINES);
-        assert_eq!(lines.last().map(String::as_str), Some("    …"));
+        assert_eq!(lines.last().map(|line| line.text.as_str()), Some("    …"));
+    }
+
+    #[test]
+    fn expanded_diff_details_render_only_real_changes() {
+        let old = ["before", "same", "old value", "after"].join("\n");
+        let new = ["before", "same", "new value", "after"].join("\n");
+        let content = ToolCallContent::Diff {
+            path: "src/main.rs".into(),
+            old_text: Some(ToolCallOutput {
+                text: old,
+                truncated: false,
+            }),
+            new_text: ToolCallOutput {
+                text: new,
+                truncated: false,
+            },
+        };
+
+        let lines = tool_detail_lines(&[content], &[], true);
+
+        assert_eq!(
+            lines
+                .iter()
+                .map(|line| line.text.as_str())
+                .collect::<Vec<_>>(),
+            vec![
+                "    Δ src/main.rs",
+                "    │ before",
+                "    │ same",
+                "    - old value",
+                "    + new value",
+                "    │ after",
+            ]
+        );
+        assert_eq!(lines[2].style, theme::DIM);
+        assert_eq!(lines[3].style, theme::TOOL_DIFF_REMOVED);
+        assert_eq!(lines[4].style, theme::TOOL_DIFF_ADDED);
+    }
+
+    #[test]
+    fn expanded_new_file_diff_renders_additions() {
+        let content = ToolCallContent::Diff {
+            path: "src/new.rs".into(),
+            old_text: None,
+            new_text: ToolCallOutput {
+                text: ["first", "second"].join("\n"),
+                truncated: false,
+            },
+        };
+
+        let lines = tool_detail_lines(&[content], &[], true);
+
+        assert_eq!(
+            lines
+                .iter()
+                .map(|line| line.text.as_str())
+                .collect::<Vec<_>>(),
+            vec!["    Δ src/new.rs", "    + first", "    + second",]
+        );
+    }
+
+    #[test]
+    fn expanded_diff_details_respect_the_global_line_cap() {
+        let content = ToolCallContent::Diff {
+            path: "src/large.rs".into(),
+            old_text: Some(ToolCallOutput {
+                text: (0..300)
+                    .map(|index| format!("old {index}"))
+                    .collect::<Vec<_>>()
+                    .join("\n"),
+                truncated: false,
+            }),
+            new_text: ToolCallOutput {
+                text: (0..300)
+                    .map(|index| format!("new {index}"))
+                    .collect::<Vec<_>>()
+                    .join("\n"),
+                truncated: false,
+            },
+        };
+
+        let lines = tool_detail_lines(&[content], &[], true);
+
+        let removed = lines
+            .iter()
+            .filter(|line| line.text.starts_with("    - "))
+            .count();
+        let added = lines
+            .iter()
+            .filter(|line| line.text.starts_with("    + "))
+            .count();
+        assert!(lines.len() <= MAX_TOOL_DETAIL_LINES);
+        assert!(removed > 0);
+        assert!(added > 0);
+        assert!(removed.abs_diff(added) <= 1);
+        assert!(lines.iter().any(|line| line.text == "    │ …"));
+    }
+
+    #[test]
+    fn ordinary_marker_like_location_keeps_dim_style() {
+        let locations = vec![ToolCallLocation {
+            path: "+ notes.txt".into(),
+            line: None,
+        }];
+
+        let lines = tool_detail_lines(&[], &locations, true);
+
+        assert_eq!(lines[0].text, "    + notes.txt");
+        assert_eq!(lines[0].style, theme::DIM);
+    }
+
+    #[test]
+    fn diff_header_path_is_bounded() {
+        let path = "x".repeat(MAX_TOOL_OUTPUT_LINE_CHARS + 20);
+        let new_text = ToolCallOutput {
+            text: "content".into(),
+            truncated: false,
+        };
+
+        let lines = diff_detail_lines(&path, None, &new_text, true, 4);
+
+        assert!(lines[0].text.ends_with('…'));
+        assert_eq!(
+            lines[0].text.chars().count(),
+            "    Δ ".chars().count() + MAX_TOOL_OUTPUT_LINE_CHARS + 1
+        );
+        assert_eq!(lines[0].style, theme::TOOL_DIFF_HEADER);
+    }
+
+    #[test]
+    fn diff_with_fallback_output_respects_the_global_detail_cap() {
+        let old = (0..100)
+            .map(|index| format!("old {index}"))
+            .collect::<Vec<_>>();
+        let new = (0..100)
+            .map(|index| format!("new {index}"))
+            .collect::<Vec<_>>();
+        let message = ChatMessage::ToolCall {
+            id: "tool".into(),
+            title: "Update source".into(),
+            status: "Completed".into(),
+            kind: ToolCallKind::Edit,
+            location: Some("src/main.rs".into()),
+            location_is_command: false,
+            cwd: None,
+            output: Some(ToolCallOutput {
+                text: (0..MAX_TOOL_DETAIL_OUTPUT_LINES)
+                    .map(|index| format!("raw output {index}"))
+                    .collect::<Vec<_>>()
+                    .join("\n"),
+                truncated: false,
+            }),
+            exit_code: None,
+            content: vec![ToolCallContent::Diff {
+                path: "src/main.rs".into(),
+                old_text: Some(ToolCallOutput {
+                    text: old.join("\n"),
+                    truncated: false,
+                }),
+                new_text: ToolCallOutput {
+                    text: new.join("\n"),
+                    truncated: false,
+                },
+            }],
+            locations: Vec::new(),
+        };
+
+        let rendered = build_message_lines_with_details(
+            &message,
+            false,
+            false,
+            None,
+            0,
+            120,
+            ToolDisplay::Completed { expanded: true },
+        )
+        .iter()
+        .map(line_text)
+        .collect::<Vec<_>>();
+
+        assert_eq!(rendered.len(), MAX_TOOL_DETAIL_LINES + 2);
+        assert_eq!(
+            rendered.get(rendered.len() - 2).map(String::as_str),
+            Some("    …")
+        );
     }
 
     #[test]
     fn tool_call_uses_semantic_status_markers() {
         assert_tool_call(
             "Pending",
-            "● Run: cargo test",
+            "● Tool · Run: cargo test",
             theme::TOOL_CALL_PENDING,
             None,
         );
         assert_tool_call(
             "running",
-            "● Run: cargo test",
+            "● Tool · Run: cargo test",
             theme::TOOL_CALL_RUNNING,
             None,
         );
         assert_tool_call(
             "Completed",
-            "✓ Run: cargo test",
+            "✓ Tool · Run: cargo test",
             theme::TOOL_CALL_SUCCESS,
             None,
         );
         assert_tool_call(
             "Failed: exit code 1",
-            "✗ Run: cargo test · exit code 1",
+            "✗ Tool · Run: cargo test · exit code 1",
             theme::TOOL_CALL_FAILURE,
             Some(theme::DIM),
         );
         assert_tool_call(
             "Canceled",
-            "− Run: cargo test",
+            "− Tool · Run: cargo test",
             theme::TOOL_CALL_CANCELED,
             None,
         );
         assert_tool_call(
             "Exited (1)",
-            "✗ Run: cargo test · Exited (1)",
+            "✗ Tool · Run: cargo test · Exited (1)",
             theme::TOOL_CALL_FAILURE,
             Some(theme::DIM),
         );
@@ -2264,20 +2996,20 @@ mod tests {
         // "exited (" failure prefix matched above) and carries no detail.
         assert_tool_call(
             "Exited (0)",
-            "✓ Run: cargo test",
+            "✓ Tool · Run: cargo test",
             theme::TOOL_CALL_SUCCESS,
             None,
         );
         // Status matching is case-insensitive across the success paths.
         assert_tool_call(
             "COMPLETED",
-            "✓ Run: cargo test",
+            "✓ Tool · Run: cargo test",
             theme::TOOL_CALL_SUCCESS,
             None,
         );
         assert_tool_call(
             "eXiTeD (0)",
-            "✓ Run: cargo test",
+            "✓ Tool · Run: cargo test",
             theme::TOOL_CALL_SUCCESS,
             None,
         );
@@ -2286,7 +3018,7 @@ mod tests {
         // silently dropping the status.
         assert_tool_call(
             "SomeFutureStatus",
-            "• Run: cargo test · SomeFutureStatus",
+            "• Tool · Run: cargo test · SomeFutureStatus",
             theme::DIM,
             Some(theme::DIM),
         );
@@ -2510,6 +3242,15 @@ mod tests {
             texts,
             vec!["● A".to_string(), String::new(), "  B".to_string()]
         );
+    }
+
+    #[test]
+    fn dot_prefix_discards_trailing_blank_lines() {
+        let mut lines = Vec::new();
+        push_dot_prefixed_lines(&mut lines, "A\n\n", 40, theme::DOT_AGENT, theme::AGENT_TEXT);
+
+        assert_eq!(lines.len(), 1);
+        assert_eq!(line_text(&lines[0]), "● A");
     }
 
     #[test]

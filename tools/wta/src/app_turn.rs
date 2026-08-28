@@ -58,6 +58,7 @@ impl App {
         // these orthogonal fields rather than relying on side effects from a
         // grab-bag helper.
         tab.messages.clear();
+        tab.clear_streaming_thought();
         // Dropping any in-flight responders signals Cancelled back to
         // the agent — appropriate when the user starts a new turn.
         tab.permission.clear();
@@ -128,14 +129,24 @@ impl App {
                     tab.append_agent_chunk(text);
                     true
                 } else {
-                    false
+                    tab.append_thought_chunk(text);
+                    !text.is_empty()
                 }
             }
             (TurnState::Streaming { .. }, ChunkKind::Message) => {
+                if tab.streaming_thought_text().is_some() {
+                    tab.clear_streaming_thought();
+                }
                 tab.append_agent_chunk(text);
                 true
             }
-            (TurnState::Streaming { .. }, ChunkKind::Thought) => false,
+            (TurnState::Streaming { .. }, ChunkKind::Thought) => {
+                if tab.streaming_agent_text().is_some() {
+                    return false;
+                }
+                tab.append_thought_chunk(text);
+                !text.is_empty()
+            }
             // A direct proposal may complete before the agent emits its final
             // message chunks. Keep those chunks visible alongside the card.
             (TurnState::Surfaced { .. }, ChunkKind::Message)
@@ -171,7 +182,7 @@ impl App {
         source: crate::agent_tools::action_proposal::pipe::ProposalPayloadSource,
     ) -> DirectProposalEvaluation {
         use crate::agent_tools::action_proposal::schema::{
-            build_recommendation_set, parse_mcp_proposal_payload, parse_proposal_payload,
+            build_recommendation_set, parse_mcp_action_payload, parse_proposal_payload,
         };
 
         if !self.session_to_tab.contains_key(session_id) {
@@ -219,8 +230,8 @@ impl App {
             crate::agent_tools::action_proposal::pipe::ProposalPayloadSource::Cli => {
                 parse_proposal_payload(payload.as_bytes())
             }
-            crate::agent_tools::action_proposal::pipe::ProposalPayloadSource::Mcp => {
-                parse_mcp_proposal_payload(payload.as_bytes(), is_autofix)
+            crate::agent_tools::action_proposal::pipe::ProposalPayloadSource::Mcp(tool) => {
+                parse_mcp_action_payload(tool, payload.as_bytes(), is_autofix)
             }
         };
         let wire = match wire {
@@ -606,6 +617,7 @@ impl App {
     fn turn_clear_agent_activity(&mut self, session_id: &str) {
         let tab = self.session_tab_mut(session_id);
         tab.activity_frame = 0;
+        tab.clear_streaming_thought();
     }
 
     /// User pressed Enter while a card was visible — dispatch the selected
@@ -837,6 +849,7 @@ impl App {
         tab.recommendation_focus = RecommendationFocus::Button;
         tab.rec_scroll.reset();
         tab.activity_frame = 0;
+        tab.clear_streaming_thought();
         tab.user_input.clear();
         tab.turn = TurnState::Idle;
         tab.pending_terminal_action_proposal = None;
@@ -884,6 +897,7 @@ impl App {
         tab.selection_visible_pending = true;
         tab.clear_completed_turn_selection();
         tab.activity_frame = 0;
+        tab.clear_streaming_thought();
         tab.turn = TurnState::Surfaced {
             prompt,
             outcome: TurnOutcome::Recommendation(recommendations),
@@ -947,6 +961,7 @@ impl App {
         tab.recommendation_focus = RecommendationFocus::Button;
         tab.selection_visible_pending = true;
         tab.activity_frame = 0;
+        tab.clear_streaming_thought();
         tab.turn = TurnState::Surfaced {
             prompt,
             outcome: TurnOutcome::Recommendation(recommendations),
@@ -1020,6 +1035,7 @@ impl App {
         tab.recommendation_focus = RecommendationFocus::Button;
         tab.rec_scroll.reset();
         tab.activity_frame = 0;
+        tab.clear_streaming_thought();
         tab.turn = TurnState::Surfaced {
             prompt,
             outcome: TurnOutcome::ChatTurn,

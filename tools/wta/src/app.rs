@@ -4636,7 +4636,13 @@ impl App {
 pub(crate) enum CompletedTurnHitKind {
     Triangle,
     UserInput,
-    ToolCall { detail_index: usize },
+    ToolCall {
+        detail_index: usize,
+    },
+    ToolGroup {
+        first_detail_index: usize,
+        detail_count: usize,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -4683,7 +4689,7 @@ impl App {
             // has caught up (or nothing is streaming) this is a cheap no-op
             // tick that doesn't redraw — so idle/no-backlog costs nothing.
             AppEvent::RevealTick => self.has_reveal_backlog(),
-            AppEvent::AgentMessageChunk { .. } => true,
+            AppEvent::AgentThoughtChunk { .. } | AppEvent::AgentMessageChunk { .. } => true,
             AppEvent::DebugPipeMessage(_) => self.show_debug_panel,
             _ => true,
         }
@@ -4691,8 +4697,7 @@ impl App {
 
     /// Number of user-visible characters in the active assistant segment.
     fn tab_visible_stream_len(tab: &TabSession) -> Option<usize> {
-        crate::ui::chat::user_visible_stream_text(tab.streaming_agent_text()?)
-            .map(|text| text.chars().count())
+        crate::ui::chat::pending_render_text(tab).map(|text| text.chars().count())
     }
 
     /// True iff the current (visible) tab has streaming text that the reveal

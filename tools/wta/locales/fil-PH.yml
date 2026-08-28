@@ -49,6 +49,17 @@ chat.plan_marker_pending: "[ ]"  # {Locked}
 chat.autofix_prompt_label: "Awtomatikong na-diagnose ang kamakailang pagkabigo ng command"
 chat.turn_canceled: "(kinansela)"
 chat.turn_executed: "→ naisagawa: %{title}"
+# Mga permanenteng label ng kategorya ng tool na ipinapakita pagkatapos ng pananda ng katayuan at bago ang paksa.
+chat.tool_kind.run: "Patakbuhin"
+chat.tool_kind.read: "Basahin"
+chat.tool_kind.search: "Hanapin"
+chat.tool_kind.edit: "I-edit"
+chat.tool_kind.delete: "Tanggalin"
+chat.tool_kind.move: "Ilipat"
+chat.tool_kind.fetch: "Kunin"
+chat.tool_kind.think: "Mag-isip"
+chat.tool_kind.mode: "Mode"
+chat.tool_kind.other: "Tool"
 
 # ── Input placeholders (src/ui/input.rs) ────────────────────────────────────
 input.placeholder.connected: "Magtanong ng kahit ano, / para sa mga command.."  # {Locked="/"}

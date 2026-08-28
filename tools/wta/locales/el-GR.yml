@@ -49,6 +49,17 @@ chat.plan_marker_pending: "[ ]"  # {Locked}
 chat.autofix_prompt_label: "Αυτόματη διάγνωση πρόσφατης αποτυχίας εντολής"
 chat.turn_canceled: "(ακυρώθηκε)"
 chat.turn_executed: "→ εκτελέστηκε: %{title}"
+# Persistent tool-category labels shown after a status marker and before a subject.
+chat.tool_kind.run: "Εκτέλεση"
+chat.tool_kind.read: "Ανάγνωση"
+chat.tool_kind.search: "Αναζήτηση"
+chat.tool_kind.edit: "Επεξεργασία"
+chat.tool_kind.delete: "Διαγραφή"
+chat.tool_kind.move: "Μετακίνηση"
+chat.tool_kind.fetch: "Ανάκτηση"
+chat.tool_kind.think: "Σκέψη"
+chat.tool_kind.mode: "Λειτουργία"
+chat.tool_kind.other: "Εργαλείο"
 
 # ── Input placeholders (src/ui/input.rs) ────────────────────────────────────
 input.placeholder.connected: "Ρωτήστε οτιδήποτε, / για εντολές.."  # {Locked="/"}

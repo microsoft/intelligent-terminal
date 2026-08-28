@@ -437,9 +437,26 @@ impl App {
                             })
                     }) {
                         let tab = self.current_tab_mut();
-                        if let CompletedTurnHitKind::ToolCall { detail_index } = pressed.hit.kind {
-                            tab.toggle_completed_tool_call(pressed.hit.turn_index, detail_index);
-                            return;
+                        match pressed.hit.kind {
+                            CompletedTurnHitKind::ToolCall { detail_index } => {
+                                tab.toggle_completed_tool_call(
+                                    pressed.hit.turn_index,
+                                    detail_index,
+                                );
+                                return;
+                            }
+                            CompletedTurnHitKind::ToolGroup {
+                                first_detail_index,
+                                detail_count,
+                            } => {
+                                tab.toggle_completed_tool_group(
+                                    pressed.hit.turn_index,
+                                    first_detail_index,
+                                    detail_count,
+                                );
+                                return;
+                            }
+                            _ => {}
                         }
                         let previous_selected_index = tab.selected_completed_turn_idx;
                         let previous_selection_pending =

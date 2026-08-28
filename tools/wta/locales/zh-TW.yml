@@ -45,6 +45,17 @@ chat.plan_marker_pending: "[ ]"  # {Locked}
 chat.autofix_prompt_label: "已自動診斷最近的一次命令失敗"
 chat.turn_canceled: "(已取消)"
 chat.turn_executed: "→ 已執行: %{title}"
+# 顯示在狀態標記之後、操作對象之前的持續性工具類別標籤。
+chat.tool_kind.run: "執行"
+chat.tool_kind.read: "讀取"
+chat.tool_kind.search: "搜尋"
+chat.tool_kind.edit: "編輯"
+chat.tool_kind.delete: "刪除"
+chat.tool_kind.move: "移動"
+chat.tool_kind.fetch: "擷取"
+chat.tool_kind.think: "思考"
+chat.tool_kind.mode: "模式"
+chat.tool_kind.other: "工具"
 
 # ── 輸入預留位置 (src/ui/input.rs) ────────────────────────────────────────────
 input.placeholder.connected: "隨意提問，/ 查看命令.."  # {Locked="/"}
