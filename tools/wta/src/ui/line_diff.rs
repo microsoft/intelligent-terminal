@@ -86,7 +86,7 @@ pub(crate) fn preview<'a>(
     let core_exceeds_limit =
         old_core.len() > MAX_DIFF_CORE_LINES || new_core.len() > MAX_DIFF_CORE_LINES;
     if core_exceeds_limit && shares_line(old_core, new_core) {
-        push_omitted(&mut lines);
+        append_large_shared_core(&mut lines, old_core, new_core);
     } else {
         let old_bounded = &old_core[..old_core.len().min(MAX_DIFF_CORE_LINES)];
         let new_bounded = &new_core[..new_core.len().min(MAX_DIFF_CORE_LINES)];
@@ -128,6 +128,44 @@ fn shares_line(old_lines: &[&str], new_lines: &[&str]) -> bool {
     };
     let lines = shorter.iter().copied().collect::<HashSet<_>>();
     longer.iter().any(|line| lines.contains(line))
+}
+
+fn append_large_shared_core<'a>(
+    output: &mut Vec<DiffLine<'a>>,
+    old_lines: &[&'a str],
+    new_lines: &[&'a str],
+) {
+    if old_lines.len() <= MAX_DIFF_CORE_LINES || new_lines.len() <= MAX_DIFF_CORE_LINES {
+        push_omitted(output);
+        return;
+    }
+
+    let edge_lines = MAX_DIFF_CORE_LINES / 2;
+    let old_head = &old_lines[..edge_lines];
+    let new_head = &new_lines[..edge_lines];
+    if suffix_anchor_matches(old_head, new_head) {
+        append_collapsed_ops(output, &diff_ops(old_head, new_head));
+    } else {
+        push_omitted(output);
+    }
+
+    push_omitted(output);
+
+    let old_tail = &old_lines[old_lines.len() - edge_lines..];
+    let new_tail = &new_lines[new_lines.len() - edge_lines..];
+    if prefix_anchor_matches(old_tail, new_tail) {
+        append_collapsed_ops(output, &diff_ops(old_tail, new_tail));
+    } else {
+        push_omitted(output);
+    }
+}
+
+fn suffix_anchor_matches(old_lines: &[&str], new_lines: &[&str]) -> bool {
+    old_lines[old_lines.len() - CONTEXT_LINES..] == new_lines[new_lines.len() - CONTEXT_LINES..]
+}
+
+fn prefix_anchor_matches(old_lines: &[&str], new_lines: &[&str]) -> bool {
+    old_lines[..CONTEXT_LINES] == new_lines[..CONTEXT_LINES]
 }
 
 fn diff_ops<'a>(old_lines: &[&'a str], new_lines: &[&'a str]) -> Vec<DiffLine<'a>> {
@@ -415,6 +453,34 @@ mod tests {
         let lines = preview(Some(&old), &new, false, 32);
 
         assert_eq!(rendered(&lines), vec![(DiffLineKind::Omitted, "")]);
+    }
+
+    #[test]
+    fn large_aligned_core_keeps_head_and_tail_edits() {
+        let old = (0..300)
+            .map(|index| format!("same {index}"))
+            .collect::<Vec<_>>();
+        let mut new = old.clone();
+        new[0] = "changed head".to_string();
+        new[299] = "changed tail".to_string();
+        let old = old.join("\n");
+        let new = new.join("\n");
+
+        let lines = preview(Some(&old), &new, false, 32);
+
+        assert!(lines
+            .iter()
+            .any(|line| line.kind == DiffLineKind::Removed && line.text == "same 0"));
+        assert!(lines
+            .iter()
+            .any(|line| line.kind == DiffLineKind::Added && line.text == "changed head"));
+        assert!(lines
+            .iter()
+            .any(|line| line.kind == DiffLineKind::Removed && line.text == "same 299"));
+        assert!(lines
+            .iter()
+            .any(|line| line.kind == DiffLineKind::Added && line.text == "changed tail"));
+        assert!(lines.iter().any(|line| line.kind == DiffLineKind::Omitted));
     }
 
     #[test]

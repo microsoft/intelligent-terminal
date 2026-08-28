@@ -292,17 +292,34 @@ fn truncate_tool_detail_text(text: &str) -> Cow<'_, str> {
     }
 }
 
+struct ToolDetailLine {
+    text: String,
+    style: Style,
+}
+
+impl ToolDetailLine {
+    fn dim(text: String) -> Self {
+        Self {
+            text,
+            style: theme::DIM,
+        }
+    }
+}
+
 fn diff_detail_lines(
     path: &str,
     old_text: Option<&ToolCallOutput>,
     new_text: &ToolCallOutput,
     detailed: bool,
     max_lines: usize,
-) -> Vec<String> {
+) -> Vec<ToolDetailLine> {
     if max_lines == 0 {
         return Vec::new();
     }
-    let mut lines = vec![format!("    Δ {path}")];
+    let mut lines = vec![ToolDetailLine {
+        text: format!("    Δ {}", truncate_tool_detail_text(path)),
+        style: theme::TOOL_DIFF_HEADER,
+    }];
     if !detailed || max_lines == 1 {
         return lines;
     }
@@ -317,13 +334,24 @@ fn diff_detail_lines(
         )
         .into_iter()
         .map(|line| {
-            let (marker, text) = match line.kind {
-                DiffLineKind::Context => ("│ ", truncate_tool_detail_text(line.text)),
-                DiffLineKind::Added => ("+ ", truncate_tool_detail_text(line.text)),
-                DiffLineKind::Removed => ("- ", truncate_tool_detail_text(line.text)),
-                DiffLineKind::Omitted => ("│ ", Cow::Borrowed("…")),
+            let (marker, text, style) = match line.kind {
+                DiffLineKind::Context => ("│ ", truncate_tool_detail_text(line.text), theme::DIM),
+                DiffLineKind::Added => (
+                    "+ ",
+                    truncate_tool_detail_text(line.text),
+                    theme::TOOL_DIFF_ADDED,
+                ),
+                DiffLineKind::Removed => (
+                    "- ",
+                    truncate_tool_detail_text(line.text),
+                    theme::TOOL_DIFF_REMOVED,
+                ),
+                DiffLineKind::Omitted => ("│ ", Cow::Borrowed("…"), theme::DIM),
             };
-            format!("    {marker}{text}")
+            ToolDetailLine {
+                text: format!("    {marker}{text}"),
+                style,
+            }
         }),
     );
     lines
@@ -333,7 +361,7 @@ fn tool_detail_lines(
     content: &[ToolCallContent],
     locations: &[ToolCallLocation],
     detailed: bool,
-) -> Vec<String> {
+) -> Vec<ToolDetailLine> {
     #[cfg(test)]
     TOOL_DETAIL_BUILD_COUNT.with(|count| count.set(count.get() + 1));
 
@@ -344,7 +372,10 @@ fn tool_detail_lines(
             let suffix = location
                 .line
                 .map_or_else(String::new, |line| format!(":{line}"));
-            lines.push(format!("    {}{suffix}", location.path));
+            lines.push(ToolDetailLine::dim(format!(
+                "    {}{suffix}",
+                location.path
+            )));
         }
         omitted = locations.len() > MAX_TOOL_DETAIL_LINES;
     }
@@ -356,9 +387,17 @@ fn tool_detail_lines(
         match item {
             ToolCallContent::Text(output) => {
                 if detailed {
-                    lines.extend(full_output_lines(output, "    │ "));
+                    lines.extend(
+                        full_output_lines(output, "    │ ")
+                            .into_iter()
+                            .map(ToolDetailLine::dim),
+                    );
                 } else {
-                    lines.extend(preview_output_lines(output, "    │ "));
+                    lines.extend(
+                        preview_output_lines(output, "    │ ")
+                            .into_iter()
+                            .map(ToolDetailLine::dim),
+                    );
                 }
             }
             ToolCallContent::Diff {
@@ -380,10 +419,14 @@ fn tool_detail_lines(
                 exit_code,
             } => {
                 let status = exit_code.map_or_else(String::new, |code| format!(" · exit {code}"));
-                lines.push(format!("    $ {id}{status}"));
+                lines.push(ToolDetailLine::dim(format!("    $ {id}{status}")));
                 if detailed {
                     if let Some(output) = output {
-                        lines.extend(full_output_lines(output, "    │ "));
+                        lines.extend(
+                            full_output_lines(output, "    │ ")
+                                .into_iter()
+                                .map(ToolDetailLine::dim),
+                        );
                     }
                 }
             }
@@ -391,7 +434,7 @@ fn tool_detail_lines(
                 let target = uri
                     .as_deref()
                     .map_or_else(String::new, |uri| format!(" · {uri}"));
-                lines.push(format!("    ↳ {label}{target}"));
+                lines.push(ToolDetailLine::dim(format!("    ↳ {label}{target}")));
             }
         }
         if lines.len() > MAX_TOOL_DETAIL_LINES {
@@ -401,41 +444,29 @@ fn tool_detail_lines(
     }
     if omitted {
         lines.truncate(MAX_TOOL_DETAIL_LINES.saturating_sub(1));
-        lines.push("    …".to_string());
+        lines.push(ToolDetailLine::dim("    …".to_string()));
     }
     lines
 }
 
-fn cap_tool_detail_lines(lines: &mut Vec<String>) {
+fn cap_tool_detail_lines(lines: &mut Vec<ToolDetailLine>) {
     if lines.len() > MAX_TOOL_DETAIL_LINES {
         lines.truncate(MAX_TOOL_DETAIL_LINES.saturating_sub(1));
-        lines.push("    …".to_string());
+        lines.push(ToolDetailLine::dim("    …".to_string()));
     }
 }
 
-fn restyle_tool_detail_lines(lines: &mut [String], has_prior_child: bool) {
+fn restyle_tool_detail_lines(lines: &mut [ToolDetailLine], has_prior_child: bool) {
     let mut needs_branch = !has_prior_child;
     for line in lines {
-        if let Some(content) = line.strip_prefix("    │ ").map(str::to_string) {
-            *line = format!("{}{content}", if needs_branch { "  └ " } else { "    " });
+        if let Some(content) = line.text.strip_prefix("    │ ").map(str::to_string) {
+            line.text = format!("{}{content}", if needs_branch { "  └ " } else { "    " });
         } else if needs_branch {
-            if let Some(content) = line.strip_prefix("    ").map(str::to_string) {
-                *line = format!("  └ {content}");
+            if let Some(content) = line.text.strip_prefix("    ").map(str::to_string) {
+                line.text = format!("  └ {content}");
             }
         }
         needs_branch = false;
-    }
-}
-
-fn tool_detail_line_style(line: &str) -> Style {
-    if line.starts_with("    + ") {
-        theme::TOOL_DIFF_ADDED
-    } else if line.starts_with("    - ") {
-        theme::TOOL_DIFF_REMOVED
-    } else if line.starts_with("    Δ ") {
-        theme::TOOL_DIFF_HEADER
-    } else {
-        theme::DIM
     }
 }
 
@@ -1688,21 +1719,25 @@ fn build_message_lines_with_details<'a>(
             if !has_text_content && detail_level != ToolDetailLevel::Compact {
                 if let Some(output) = output {
                     if detail_level == ToolDetailLevel::Detailed {
-                        detail_lines.extend(full_output_lines(output, "    │ "));
+                        detail_lines.extend(
+                            full_output_lines(output, "    │ ")
+                                .into_iter()
+                                .map(ToolDetailLine::dim),
+                        );
                     } else if *kind != ToolCallKind::Execute && !*location_is_command {
-                        detail_lines.extend(preview_output_lines(output, "    │ "));
+                        detail_lines.extend(
+                            preview_output_lines(output, "    │ ")
+                                .into_iter()
+                                .map(ToolDetailLine::dim),
+                        );
                     }
                 }
             }
             cap_tool_detail_lines(&mut detail_lines);
-            let detail_styles = detail_lines
-                .iter()
-                .map(|line| tool_detail_line_style(line))
-                .collect::<Vec<_>>();
             restyle_tool_detail_lines(&mut detail_lines, rendered_command || rendered_output);
             let rendered_details = !detail_lines.is_empty();
-            for (line, style) in detail_lines.into_iter().zip(detail_styles) {
-                lines.push(Line::from(Span::styled(line, style)));
+            for line in detail_lines {
+                lines.push(Line::from(Span::styled(line.text, line.style)));
             }
             if rendered_command || rendered_output || rendered_details {
                 lines.push(Line::default());
@@ -2693,10 +2728,10 @@ mod tests {
         let lines = tool_detail_lines(&[ToolCallContent::Text(output)], &[], true);
 
         assert_eq!(lines.len(), MAX_TOOL_DETAIL_OUTPUT_LINES + 1);
-        assert_eq!(lines[0], "    │ …");
+        assert_eq!(lines[0].text, "    │ …");
         assert!(lines
             .last()
-            .is_some_and(|line| line.ends_with("object-199.o")));
+            .is_some_and(|line| line.text.ends_with("object-199.o")));
     }
 
     #[test]
@@ -2711,7 +2746,7 @@ mod tests {
         let lines = tool_detail_lines(&[], &locations, true);
 
         assert_eq!(lines.len(), MAX_TOOL_DETAIL_LINES);
-        assert_eq!(lines.last().map(String::as_str), Some("    …"));
+        assert_eq!(lines.last().map(|line| line.text.as_str()), Some("    …"));
     }
 
     #[test]
@@ -2733,7 +2768,10 @@ mod tests {
         let lines = tool_detail_lines(&[content], &[], true);
 
         assert_eq!(
-            lines,
+            lines
+                .iter()
+                .map(|line| line.text.as_str())
+                .collect::<Vec<_>>(),
             vec![
                 "    Δ src/main.rs",
                 "    │ before",
@@ -2743,18 +2781,9 @@ mod tests {
                 "    │ after",
             ]
         );
-        assert_eq!(
-            tool_detail_line_style("    - old value"),
-            theme::TOOL_DIFF_REMOVED
-        );
-        assert_eq!(
-            tool_detail_line_style("    + new value"),
-            theme::TOOL_DIFF_ADDED
-        );
-        assert_eq!(
-            tool_detail_line_style("    │ - ordinary output"),
-            theme::DIM
-        );
+        assert_eq!(lines[2].style, theme::DIM);
+        assert_eq!(lines[3].style, theme::TOOL_DIFF_REMOVED);
+        assert_eq!(lines[4].style, theme::TOOL_DIFF_ADDED);
     }
 
     #[test]
@@ -2771,7 +2800,10 @@ mod tests {
         let lines = tool_detail_lines(&[content], &[], true);
 
         assert_eq!(
-            lines,
+            lines
+                .iter()
+                .map(|line| line.text.as_str())
+                .collect::<Vec<_>>(),
             vec!["    Δ src/new.rs", "    + first", "    + second",]
         );
     }
@@ -2800,17 +2832,48 @@ mod tests {
 
         let removed = lines
             .iter()
-            .filter(|line| line.starts_with("    - "))
+            .filter(|line| line.text.starts_with("    - "))
             .count();
         let added = lines
             .iter()
-            .filter(|line| line.starts_with("    + "))
+            .filter(|line| line.text.starts_with("    + "))
             .count();
         assert!(lines.len() <= MAX_TOOL_DETAIL_LINES);
         assert!(removed > 0);
         assert!(added > 0);
         assert!(removed.abs_diff(added) <= 1);
-        assert!(lines.iter().any(|line| line == "    │ …"));
+        assert!(lines.iter().any(|line| line.text == "    │ …"));
+    }
+
+    #[test]
+    fn ordinary_marker_like_location_keeps_dim_style() {
+        let locations = vec![ToolCallLocation {
+            path: "+ notes.txt".into(),
+            line: None,
+        }];
+
+        let lines = tool_detail_lines(&[], &locations, true);
+
+        assert_eq!(lines[0].text, "    + notes.txt");
+        assert_eq!(lines[0].style, theme::DIM);
+    }
+
+    #[test]
+    fn diff_header_path_is_bounded() {
+        let path = "x".repeat(MAX_TOOL_OUTPUT_LINE_CHARS + 20);
+        let new_text = ToolCallOutput {
+            text: "content".into(),
+            truncated: false,
+        };
+
+        let lines = diff_detail_lines(&path, None, &new_text, true, 4);
+
+        assert!(lines[0].text.ends_with('…'));
+        assert_eq!(
+            lines[0].text.chars().count(),
+            "    Δ ".chars().count() + MAX_TOOL_OUTPUT_LINE_CHARS + 1
+        );
+        assert_eq!(lines[0].style, theme::TOOL_DIFF_HEADER);
     }
 
     #[test]
