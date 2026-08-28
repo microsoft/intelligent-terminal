@@ -398,7 +398,11 @@ pub fn parse_mcp_action_payload(
         McpActionTool::RunCommand => {
             let wire: McpRunCommandWire = serde_json::from_slice(bytes).map_err(malformed)?;
             validate_mcp_required_text("summary", &wire.summary, MAX_TITLE_CHARS)?;
-            validate_mcp_optional_text("reason", wire.reason.as_deref(), MAX_RATIONALE_CHARS)?;
+            validate_mcp_optional_nonempty_text(
+                "reason",
+                wire.reason.as_deref(),
+                MAX_RATIONALE_CHARS,
+            )?;
             validate_mcp_required_text("command", &wire.command, MAX_INPUT_CHARS)?;
             (
                 wire.summary,
@@ -411,7 +415,11 @@ pub fn parse_mcp_action_payload(
         McpActionTool::OpenWorkspace => {
             let wire: McpOpenWorkspaceWire = serde_json::from_slice(bytes).map_err(malformed)?;
             validate_mcp_required_text("summary", &wire.summary, MAX_TITLE_CHARS)?;
-            validate_mcp_optional_text("reason", wire.reason.as_deref(), MAX_RATIONALE_CHARS)?;
+            validate_mcp_optional_nonempty_text(
+                "reason",
+                wire.reason.as_deref(),
+                MAX_RATIONALE_CHARS,
+            )?;
             validate_mcp_optional_nonempty_text(
                 "working_directory",
                 wire.working_directory.as_deref(),
@@ -438,7 +446,11 @@ pub fn parse_mcp_action_payload(
             let wire: McpRunCommandInWorkspaceWire =
                 serde_json::from_slice(bytes).map_err(malformed)?;
             validate_mcp_required_text("summary", &wire.summary, MAX_TITLE_CHARS)?;
-            validate_mcp_optional_text("reason", wire.reason.as_deref(), MAX_RATIONALE_CHARS)?;
+            validate_mcp_optional_nonempty_text(
+                "reason",
+                wire.reason.as_deref(),
+                MAX_RATIONALE_CHARS,
+            )?;
             validate_mcp_required_text("command", &wire.command, MAX_INPUT_CHARS)?;
             validate_mcp_optional_nonempty_text(
                 "working_directory",
@@ -467,7 +479,11 @@ pub fn parse_mcp_action_payload(
         McpActionTool::DelegateTask => {
             let wire: McpDelegateTaskWire = serde_json::from_slice(bytes).map_err(malformed)?;
             validate_mcp_required_text("summary", &wire.summary, MAX_TITLE_CHARS)?;
-            validate_mcp_optional_text("reason", wire.reason.as_deref(), MAX_RATIONALE_CHARS)?;
+            validate_mcp_optional_nonempty_text(
+                "reason",
+                wire.reason.as_deref(),
+                MAX_RATIONALE_CHARS,
+            )?;
             validate_mcp_required_text("task", &wire.task, MAX_INPUT_CHARS)?;
             validate_mcp_optional_nonempty_text(
                 "working_directory",
@@ -511,9 +527,9 @@ fn validate_mcp_required_text(
     value: &str,
     max_chars: usize,
 ) -> Result<(), ProposalError> {
-    if value.is_empty() {
+    if value.trim().is_empty() {
         return Err(ProposalError::Malformed(format!(
-            "field `{field}` must not be empty"
+            "field `{field}` must not be empty or whitespace-only"
         )));
     }
     validate_mcp_optional_text(field, Some(value), max_chars)
@@ -524,9 +540,9 @@ fn validate_mcp_optional_nonempty_text(
     value: Option<&str>,
     max_chars: usize,
 ) -> Result<(), ProposalError> {
-    if value.is_some_and(str::is_empty) {
+    if value.is_some_and(|value| value.trim().is_empty()) {
         return Err(ProposalError::Malformed(format!(
-            "field `{field}` must not be empty"
+            "field `{field}` must not be empty or whitespace-only"
         )));
     }
     validate_mcp_optional_text(field, value, max_chars)
@@ -557,6 +573,7 @@ fn mcp_summary_property() -> serde_json::Value {
 fn mcp_reason_property() -> serde_json::Value {
     serde_json::json!({
         "type": "string",
+        "minLength": 1,
         "maxLength": MAX_RATIONALE_CHARS,
         "description": "Why the operation is needed. Omit when the summary is sufficient."
     })
@@ -1174,6 +1191,149 @@ mod tests {
                 tool.tool_name()
             );
         }
+    }
+
+    #[test]
+    fn public_action_required_text_rejects_whitespace_only_values() {
+        for (tool, payload) in [
+            (
+                McpActionTool::RunCommand,
+                json!({"summary":" \t ","command":"echo hi"}),
+            ),
+            (
+                McpActionTool::RunCommand,
+                json!({"summary":"Run","command":"\r\n"}),
+            ),
+            (
+                McpActionTool::OpenWorkspace,
+                json!({"summary":"\n","placement":"new_tab"}),
+            ),
+            (
+                McpActionTool::RunCommandInWorkspace,
+                json!({"summary":"Run","command":" ","placement":"new_tab"}),
+            ),
+            (
+                McpActionTool::DelegateTask,
+                json!({"summary":"Delegate","task":"\t","placement":"new_tab"}),
+            ),
+        ] {
+            let payload = serde_json::to_vec(&payload).unwrap();
+            assert!(
+                matches!(
+                    parse_mcp_action_payload(tool, &payload, false),
+                    Err(ProposalError::Malformed(_))
+                ),
+                "{}",
+                tool.tool_name()
+            );
+        }
+    }
+
+    #[test]
+    fn public_action_optional_nonempty_text_rejects_whitespace_only_values() {
+        for (tool, payload) in [
+            (
+                McpActionTool::OpenWorkspace,
+                json!({
+                    "summary":"Open",
+                    "placement":"new_tab",
+                    "working_directory":" \t "
+                }),
+            ),
+            (
+                McpActionTool::RunCommandInWorkspace,
+                json!({
+                    "summary":"Run",
+                    "command":"echo hi",
+                    "placement":"new_tab",
+                    "profile":"\r\n"
+                }),
+            ),
+        ] {
+            let payload = serde_json::to_vec(&payload).unwrap();
+            assert!(
+                matches!(
+                    parse_mcp_action_payload(tool, &payload, false),
+                    Err(ProposalError::Malformed(_))
+                ),
+                "{}",
+                tool.tool_name()
+            );
+        }
+    }
+
+    #[test]
+    fn reason_schema_and_runtime_require_nonempty_text_when_present() {
+        for (tool, mut payload) in [
+            (
+                McpActionTool::RunCommand,
+                json!({"summary":"Run","command":"echo hi"}),
+            ),
+            (
+                McpActionTool::OpenWorkspace,
+                json!({"summary":"Open","placement":"new_tab"}),
+            ),
+            (
+                McpActionTool::RunCommandInWorkspace,
+                json!({"summary":"Run","command":"echo hi","placement":"new_tab"}),
+            ),
+            (
+                McpActionTool::DelegateTask,
+                json!({"summary":"Delegate","task":"Investigate","placement":"new_tab"}),
+            ),
+        ] {
+            let schema = mcp_action_input_schema(tool);
+            assert_eq!(
+                schema.pointer("/properties/reason/minLength"),
+                Some(&json!(1)),
+                "{}",
+                tool.tool_name()
+            );
+
+            for reason in ["", " \t\r\n "] {
+                payload["reason"] = json!(reason);
+                let bytes = serde_json::to_vec(&payload).unwrap();
+                assert!(
+                    matches!(
+                        parse_mcp_action_payload(tool, &bytes, false),
+                        Err(ProposalError::Malformed(_))
+                    ),
+                    "{} accepted {reason:?}",
+                    tool.tool_name()
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn accepted_public_text_preserves_original_whitespace() {
+        let run = parse_mcp_action_payload(
+            McpActionTool::RunCommand,
+            br#"{"summary":" Run ","reason":" Because ","command":" echo hi "}"#,
+            false,
+        )
+        .unwrap();
+        assert_eq!(run.choices[0].title, " Run ");
+        assert_eq!(run.choices[0].rationale, " Because ");
+        assert!(matches!(
+            &run.choices[0].actions[0],
+            ProposalActionWire::Send { input } if input == " echo hi "
+        ));
+
+        let open = parse_mcp_action_payload(
+            McpActionTool::OpenWorkspace,
+            br#"{"summary":" Open ","placement":"new_tab","working_directory":" C:\\repo ","profile":" PowerShell "}"#,
+            false,
+        )
+        .unwrap();
+        assert!(matches!(
+            &open.choices[0].actions[0],
+            ProposalActionWire::Open {
+                cwd: Some(cwd),
+                profile: Some(profile),
+                ..
+            } if cwd == r" C:\repo " && profile == " PowerShell "
+        ));
     }
 
     #[test]

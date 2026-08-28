@@ -1059,43 +1059,6 @@ fn session_mcp_tool_from_title(title: Option<&str>) -> Option<SessionMcpTool> {
     None
 }
 
-fn session_mcp_tool_call(
-    title: Option<&str>,
-    raw_input: Option<&serde_json::Value>,
-) -> Option<SessionMcpTool> {
-    if let Some(tool) = session_mcp_tool_from_title(title) {
-        return Some(tool);
-    }
-    let tool = match title.map(str::trim) {
-        Some(name) => SessionMcpTool::ALL
-            .into_iter()
-            .find(|tool| tool.name() == name)?,
-        None => return None,
-    };
-    let Some(raw_input) = raw_input else {
-        return None;
-    };
-    let valid = match tool {
-        SessionMcpTool::TerminalAction(action) => {
-            serde_json::to_vec(raw_input).is_ok_and(|payload| {
-                crate::agent_tools::action_proposal::schema::parse_mcp_action_payload(
-                    action, &payload, false,
-                )
-                .is_ok()
-            })
-        }
-        SessionMcpTool::UserInput => serde_json::from_value::<
-            crate::agent_tools::user_input::UserInputRequest,
-        >(raw_input.clone())
-        .is_ok_and(|request| request.validate().is_ok()),
-    };
-    if valid {
-        Some(tool)
-    } else {
-        None
-    }
-}
-
 fn looks_like_proposal_command(command: &str) -> bool {
     fn segment_invokes_proposal(segment: &str) -> bool {
         let segment = segment.trim_start();
@@ -1502,9 +1465,7 @@ impl WtaClient {
             }
             acp::schema::v1::SessionUpdate::ToolCall(tool_call) => {
                 let tool_call_id = tool_call.tool_call_id.to_string();
-                if let Some(tool) =
-                    session_mcp_tool_call(Some(&tool_call.title), tool_call.raw_input.as_ref())
-                {
+                if let Some(tool) = session_mcp_tool_from_title(Some(&tool_call.title)) {
                     self.hide_session_mcp_tool_call(&sid, &tool_call_id, tool);
                     return Ok(());
                 }
@@ -1552,10 +1513,7 @@ impl WtaClient {
             }
             acp::schema::v1::SessionUpdate::ToolCallUpdate(update) => {
                 let tool_call_id = update.tool_call_id.to_string();
-                if let Some(tool) = session_mcp_tool_call(
-                    update.fields.title.as_deref(),
-                    update.fields.raw_input.as_ref(),
-                ) {
+                if let Some(tool) = session_mcp_tool_from_title(update.fields.title.as_deref()) {
                     self.hide_session_mcp_tool_call(&sid, &tool_call_id, tool);
                     return Ok(());
                 }
@@ -4721,10 +4679,10 @@ mod tests {
         acp_error_detail, acp_result_failure_fields, bounded_tool_output_parts,
         claim_unexpected_transport_loss, complete_prompt_request, complete_transport_shutdown,
         inject_wta_pane_meta, is_redundant_startup_model_error, post_login_authenticate_error,
-        session_mcp_tool_call, session_mcp_tool_from_title, stop_prompt_tasks,
-        timeout_result_failure_fields, tool_call_exit_code, tool_call_kind_label,
-        tool_call_location_hint, tool_call_target, AcpClientExit, ClientState, PromptTimingState,
-        PromptUsageIdentity, SessionMcpTool, SoftStopReason, WtaClient,
+        session_mcp_tool_from_title, stop_prompt_tasks, timeout_result_failure_fields,
+        tool_call_exit_code, tool_call_kind_label, tool_call_location_hint, tool_call_target,
+        AcpClientExit, ClientState, PromptTimingState, PromptUsageIdentity, SessionMcpTool,
+        SoftStopReason, WtaClient,
     };
     use crate::app_contracts::AppEvent;
     use crate::protocol::acp::failure::{AgentFailure, HandshakeStage};
@@ -5495,10 +5453,13 @@ mod tests {
         }
     }
 
-    #[test]
-    fn session_mcp_tool_call_classifies_all_intent_payloads() {
+    #[tokio::test]
+    async fn session_mcp_display_keeps_bare_schema_valid_action_calls_visible() {
         use crate::agent_tools::action_proposal::schema::McpActionTool;
 
+        let manager =
+            Arc::new(crate::agent_tools::action_proposal::channel::ProposalChannelManager::new());
+        let (client, mut event_rx) = proposal_test_client(manager);
         for (tool, arguments) in [
             (
                 McpActionTool::RunCommand,
@@ -5525,24 +5486,103 @@ mod tests {
                 }),
             ),
         ] {
-            assert_eq!(
-                session_mcp_tool_call(Some(tool.tool_name()), Some(&arguments)),
-                Some(SessionMcpTool::TerminalAction(tool)),
-                "{}",
-                tool.tool_name()
-            );
-        }
+            let tool_call_id = format!("provider-{}", tool.tool_name());
+            client
+                .session_notification(acp::schema::v1::SessionNotification::new(
+                    acp::schema::v1::SessionId::new("provider-session"),
+                    acp::schema::v1::SessionUpdate::ToolCall(
+                        acp::schema::v1::ToolCall::new(
+                            acp::schema::v1::ToolCallId::new(tool_call_id.as_str()),
+                            tool.tool_name(),
+                        )
+                        .raw_input(Some(arguments)),
+                    ),
+                ))
+                .await
+                .unwrap();
 
-        for removed in ["terminal_send", "terminal_open", "terminal_open_and_send"] {
-            assert_eq!(
-                session_mcp_tool_call(
-                    Some(removed),
-                    Some(&serde_json::json!({"summary":"x","command":"x"}))
-                ),
-                None,
-                "{removed}"
-            );
+            assert!(matches!(
+                event_rx.try_recv(),
+                Ok(AppEvent::ToolCall {
+                    session_id,
+                    id,
+                    title,
+                    ..
+                }) if session_id == "provider-session"
+                    && id == tool_call_id
+                    && title == tool.tool_name()
+            ));
         }
+        assert!(event_rx.try_recv().is_err());
+    }
+
+    #[tokio::test]
+    async fn session_mcp_display_hides_namespace_qualified_calls() {
+        let manager =
+            Arc::new(crate::agent_tools::action_proposal::channel::ProposalChannelManager::new());
+        let (client, mut event_rx) = proposal_test_client(manager);
+        client
+            .session_notification(acp::schema::v1::SessionNotification::new(
+                acp::schema::v1::SessionId::new("proposal-session"),
+                acp::schema::v1::SessionUpdate::ToolCall(acp::schema::v1::ToolCall::new(
+                    acp::schema::v1::ToolCallId::new("qualified-tool"),
+                    "intellterm_01234567890123456789/run_command",
+                )),
+            ))
+            .await
+            .unwrap();
+
+        assert!(matches!(
+            event_rx.try_recv(),
+            Ok(AppEvent::HideToolCall { session_id, id })
+                if session_id == "proposal-session" && id == "qualified-tool"
+        ));
+        assert!(event_rx.try_recv().is_err());
+    }
+
+    #[tokio::test]
+    async fn session_mcp_display_hides_calls_correlated_by_tool_call_id() {
+        let manager =
+            Arc::new(crate::agent_tools::action_proposal::channel::ProposalChannelManager::new());
+        manager
+            .issue("proposal-session".into(), 1, None, false)
+            .unwrap();
+        let (client, mut event_rx) = proposal_test_client(manager);
+        let response = client
+            .request_permission(proposal_mcp_permission_request())
+            .await
+            .unwrap();
+        assert!(matches!(
+            response.outcome,
+            acp::schema::v1::RequestPermissionOutcome::Selected(_)
+        ));
+        assert!(matches!(
+            event_rx.try_recv(),
+            Ok(AppEvent::HideToolCall { session_id, id })
+                if session_id == "proposal-session" && id == "proposal-mcp-tool"
+        ));
+
+        client
+            .session_notification(acp::schema::v1::SessionNotification::new(
+                acp::schema::v1::SessionId::new("proposal-session"),
+                acp::schema::v1::SessionUpdate::ToolCall(
+                    acp::schema::v1::ToolCall::new(
+                        acp::schema::v1::ToolCallId::new("proposal-mcp-tool"),
+                        "run_command",
+                    )
+                    .raw_input(Some(serde_json::json!({
+                        "summary": "Run test",
+                        "command": "cargo test"
+                    }))),
+                ),
+            ))
+            .await
+            .unwrap();
+
+        assert!(
+            event_rx.try_recv().is_err(),
+            "the correlated tool call must remain hidden"
+        );
     }
 
     /// Regression for the cross-window focus bug: the helper-over-pipe

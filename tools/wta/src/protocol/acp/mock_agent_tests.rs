@@ -1210,7 +1210,7 @@ async fn dispatch_prompt_first_autofix_includes_base_and_overlay() {
                 "autofix prompt must carry the auto-fix instruction overlay"
             );
             assert!(
-                seen[0].contains("You assist from within Windows Terminal"),
+                seen[0].contains("# Working in Windows Terminal"),
                 "first-turn autofix must install the base terminal-agent prompt"
             );
             assert!(
