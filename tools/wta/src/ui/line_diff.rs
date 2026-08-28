@@ -1,6 +1,7 @@
 use std::collections::HashSet;
 
 const MAX_DIFF_CORE_LINES: usize = 256;
+const MAX_ASYMMETRIC_CORE_LINES: usize = 4096;
 const CONTEXT_LINES: usize = 2;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -86,7 +87,13 @@ pub(crate) fn preview<'a>(
     let core_exceeds_limit =
         old_core.len() > MAX_DIFF_CORE_LINES || new_core.len() > MAX_DIFF_CORE_LINES;
     if core_exceeds_limit && shares_line(old_core, new_core) {
-        append_large_shared_core(&mut lines, old_core, new_core);
+        if old_core.len() > MAX_DIFF_CORE_LINES && new_core.len() > MAX_DIFF_CORE_LINES {
+            append_large_shared_core(&mut lines, old_core, new_core);
+        } else if old_core.len().max(new_core.len()) <= MAX_ASYMMETRIC_CORE_LINES {
+            append_collapsed_ops(&mut lines, &diff_ops(old_core, new_core));
+        } else {
+            push_omitted(&mut lines);
+        }
     } else {
         let old_bounded = &old_core[..old_core.len().min(MAX_DIFF_CORE_LINES)];
         let new_bounded = &new_core[..new_core.len().min(MAX_DIFF_CORE_LINES)];
@@ -135,11 +142,6 @@ fn append_large_shared_core<'a>(
     old_lines: &[&'a str],
     new_lines: &[&'a str],
 ) {
-    if old_lines.len() <= MAX_DIFF_CORE_LINES || new_lines.len() <= MAX_DIFF_CORE_LINES {
-        push_omitted(output);
-        return;
-    }
-
     let edge_lines = MAX_DIFF_CORE_LINES / 2;
     let old_head = &old_lines[..edge_lines];
     let new_head = &new_lines[..edge_lines];
@@ -586,5 +588,25 @@ mod tests {
         assert!(balanced
             .iter()
             .any(|line| line.kind == DiffLineKind::Omitted));
+    }
+
+    #[test]
+    fn asymmetric_core_uses_bounded_full_alignment() {
+        let mut old = (0..10)
+            .map(|index| format!("old {index}"))
+            .collect::<Vec<_>>();
+        old.insert(5, "shared line".to_string());
+        let mut new = (0..300)
+            .map(|index| format!("new {index}"))
+            .collect::<Vec<_>>();
+        new.insert(150, "shared line".to_string());
+        let old = old.join("\n");
+        let new = new.join("\n");
+
+        let lines = preview(Some(&old), &new, false, 32);
+
+        assert!(lines.iter().any(|line| line.kind == DiffLineKind::Removed));
+        assert!(lines.iter().any(|line| line.kind == DiffLineKind::Added));
+        assert!(lines.iter().any(|line| line.kind == DiffLineKind::Omitted));
     }
 }
