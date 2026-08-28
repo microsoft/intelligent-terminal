@@ -11,7 +11,7 @@
 
 namespace Microsoft::Terminal::AgentSource
 {
-    struct ResolvedCwds
+    struct ResolvedWorkingDirectories
     {
         std::wstring agent;
         std::wstring helper;
@@ -39,7 +39,7 @@ namespace Microsoft::Terminal::AgentSource
     }
 
     template<typename IsWindowsDirectory>
-    inline ResolvedCwds ResolveAgentAndHelperCwds(
+    inline ResolvedWorkingDirectories ResolveAgentAndHelperWorkingDirectories(
         const bool agentRunsInWsl,
         const std::wstring_view paneCwd,
         const std::wstring_view windowCwd,

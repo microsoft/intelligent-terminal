@@ -65,7 +65,7 @@ namespace TerminalAppUnitTests
                    candidate == L"C:\\Users\\user";
         };
 
-        const auto wsl = AgentSource::ResolveAgentAndHelperCwds(
+        const auto wsl = AgentSource::ResolveAgentAndHelperWorkingDirectories(
             true,
             L"/home/user/project",
             L"C:\\window",
@@ -75,7 +75,7 @@ namespace TerminalAppUnitTests
         VERIFY_ARE_EQUAL(std::wstring{ L"/home/user/project" }, wsl.agent);
         VERIFY_ARE_EQUAL(std::wstring{ L"C:\\window" }, wsl.helper);
 
-        const auto host = AgentSource::ResolveAgentAndHelperCwds(
+        const auto host = AgentSource::ResolveAgentAndHelperWorkingDirectories(
             false,
             L"/home/user/project",
             L"C:\\window",
@@ -86,12 +86,12 @@ namespace TerminalAppUnitTests
         VERIFY_ARE_EQUAL(std::wstring{ L"C:\\window" }, host.helper);
 
         const auto noWindowsDirectory = [](std::wstring_view) { return false; };
-        const auto wslWithoutHelperCwd = AgentSource::ResolveAgentAndHelperCwds(
+        const auto wslWithoutHelperCwd = AgentSource::ResolveAgentAndHelperWorkingDirectories(
             true, L"/home/user/project", {}, {}, {}, noWindowsDirectory);
         VERIFY_ARE_EQUAL(std::wstring{ L"/home/user/project" }, wslWithoutHelperCwd.agent);
         VERIFY_ARE_EQUAL(std::wstring{}, wslWithoutHelperCwd.helper);
 
-        const auto hostWithoutWindowsCwd = AgentSource::ResolveAgentAndHelperCwds(
+        const auto hostWithoutWindowsCwd = AgentSource::ResolveAgentAndHelperWorkingDirectories(
             false, L"/home/user/project", {}, {}, {}, noWindowsDirectory);
         VERIFY_ARE_EQUAL(std::wstring{}, hostWithoutWindowsCwd.agent);
         VERIFY_ARE_EQUAL(std::wstring{}, hostWithoutWindowsCwd.helper);

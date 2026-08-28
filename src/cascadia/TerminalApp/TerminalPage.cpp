@@ -3176,7 +3176,7 @@ namespace winrt::TerminalApp::implementation
         const winrt::hstring homeDirectory{
             ::Microsoft::Terminal::AgentSource::ReadEnvironmentVariable(L"USERPROFILE")
         };
-        const auto resolvedCwds = ::Microsoft::Terminal::AgentSource::ResolveAgentAndHelperCwds(
+        const auto resolvedWorkingDirectories = ::Microsoft::Terminal::AgentSource::ResolveAgentAndHelperWorkingDirectories(
             effectiveAgentSource == L"wsl",
             std::wstring_view{ paneDirectory },
             std::wstring_view{ windowDirectory },
@@ -3186,17 +3186,17 @@ namespace winrt::TerminalApp::implementation
                 const std::wstring path{ candidate };
                 return Utils::IsValidDirectory(path.c_str());
             });
-        if (!resolvedCwds.agent.empty())
+        if (!resolvedWorkingDirectories.agent.empty())
         {
-            appendHelperFlagValue(L"--agent-source-cwd", resolvedCwds.agent);
+            appendHelperFlagValue(L"--agent-source-cwd", resolvedWorkingDirectories.agent);
         }
 
         NewTerminalArgs args;
         args.Commandline(winrt::hstring{ helperCmd });
         args.Profile(globals.AiCoordinatorProfile());
-        if (!resolvedCwds.helper.empty())
+        if (!resolvedWorkingDirectories.helper.empty())
         {
-            args.StartingDirectory(winrt::hstring{ resolvedCwds.helper });
+            args.StartingDirectory(winrt::hstring{ resolvedWorkingDirectories.helper });
         }
 
         auto rawPane = _MakeTerminalPane(args, nullptr, nullptr);
