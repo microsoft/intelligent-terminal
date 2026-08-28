@@ -3013,9 +3013,9 @@ pub async fn run_acp_client_over_pipe(
                 "skipping bootstrap session/new (initial_load_session_id={} set)",
                 load_sid,
             ));
-            // Resume is intentionally silent: show the same neutral connecting
-            // stage a fresh pane would, never "Resuming session …", so a
-            // resumed pane is indistinguishable from a normal connection.
+            // The connection stage stays neutral; the pane's own
+            // "Resuming session …" indicator (driven by `loading_session`)
+            // is what tells the user a conversation is being restored.
             let _ = event_tx.send(AppEvent::ConnectionStage("Connecting...".to_string()));
             (
                 acp::schema::v1::SessionId::new(load_sid.to_string()),
@@ -3844,9 +3844,10 @@ fn dispatch_load_session(
                         session_id.0.as_ref(),
                         &resp,
                     );
-                // Resume is intentionally silent: no "Session loaded" note
-                // and no "Resuming…" marker (see the `load_session` handler),
-                // so a resumed pane presents exactly like a normal connection.
+                // No "Session loaded" note is added to the transcript: the
+                // restored conversation speaks for itself, and the in-pane
+                // resuming indicator ends when this event clears
+                // `loading_session`.
                 let _ = event_tx.send(AppEvent::SessionAttached {
                     tab_id: req.tab_id.clone(),
                     session_id: session_id.to_string(),

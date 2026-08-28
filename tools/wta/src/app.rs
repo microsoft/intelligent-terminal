@@ -4793,12 +4793,23 @@ impl App {
                 || tab.agents_view.rescan_in_flight)
     }
 
+    /// True while the current tab is rehydrating a previous conversation
+    /// through ACP `session/load`. Keeps the "Resuming session …" shimmer
+    /// animating for the whole load, including the part that runs after the
+    /// connection is already established and the per-tab turn counter is idle.
+    pub(crate) fn resume_in_flight(&self) -> bool {
+        self.current_tab().loading_session
+    }
+
     fn has_activity_indicator(&self) -> bool {
         if self.mode == AppMode::Setup || self.mode == AppMode::Auth {
             return true; // spinner always ticks in setup/auth mode
         }
         if matches!(self.state, ConnectionState::Connecting(_)) {
             return true; // connecting shimmer
+        }
+        if self.resume_in_flight() {
+            return true; // "Resuming session …" shimmer
         }
         if self.agents_view_awaiting_snapshot() {
             return true; // agents-view "Loading" shimmer

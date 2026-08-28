@@ -508,6 +508,10 @@ impl App {
                 if self.mode == AppMode::Setup
                     || self.mode == AppMode::Auth
                     || self.agents_view_awaiting_snapshot()
+                    // Keep the resuming indicator animating for the whole
+                    // `session/load`, which outlives the connecting state it
+                    // usually starts in.
+                    || self.resume_in_flight()
                     // Keep the connecting indicator animating during the
                     // pipe-connect → ACP init → session/new handshake so a cold
                     // start (which can run tens of seconds) doesn't look frozen
@@ -629,13 +633,18 @@ impl App {
                     self.setup = None;
                 }
                 // Show welcome hint on first-ever connect (persisted in state.json).
+                // A pane that is restoring a previous conversation is not a
+                // first run, so it never gets the hint — and because that is
+                // decided without persisting anything, the next genuinely
+                // fresh pane still shows it.
+                //
                 // The disclaimer card is pushed as a `ChatMessage::Disclaimer`
                 // on every agent-pane startup that lands on an empty chat (no
                 // prior completed turns and no other in-flight messages), so
                 // a session restored with history doesn't get a disclaimer
                 // injected on top. Once shown it's allowed to be cleared by
                 // a subsequent turn — the next startup re-pushes it.
-                if !welcome_shown_in_state() {
+                if !welcome_shown_in_state() && !self.resume_in_flight() {
                     self.show_welcome_hint = true;
                 }
                 // Bind the startup session to whichever tab we own.
@@ -2428,11 +2437,15 @@ impl App {
                         // close it).
                         tab.loading_session = true;
                         tab.loading_target_session_id = Some(session_id.to_string());
-                        // Resume is intentionally silent — no "Resuming…"
-                        // marker — so a resumed pane presents exactly like a
-                        // normal connection. `loading_session` still opens the
-                        // replay window; any past content just streams in above.
+                        // `loading_session` both opens the replay window and
+                        // drives the "Resuming session …" indicator, so the
+                        // user knows a conversation is on its way in rather
+                        // than watching a pane that looks like a cold start.
                     }
+                    // A resume can be requested after the connect that already
+                    // decided this was a first run. Retract the hint rather
+                    // than paint it over a conversation being restored.
+                    self.show_welcome_hint = false;
                     self.project_tab_state(tab_id);
                     let _ = self.load_session_tx.send(LoadSessionForTab {
                         tab_id: tab_id.to_string(),

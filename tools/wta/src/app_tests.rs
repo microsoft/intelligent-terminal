@@ -4946,6 +4946,44 @@ fn agents_snapshot_failed_ignores_stale_request_id() {
     );
 }
 
+/// A resume drives its own indicator, so the shimmer has to keep ticking for
+/// the whole `session/load` — including the part that runs once the connection
+/// is established and the per-tab turn counter has gone idle.
+#[test]
+fn resume_in_flight_keeps_the_activity_shimmer_ticking() {
+    let (mut app, _master_rx) = test_app_with_master_rx();
+    app.state = ConnectionState::Connected;
+    assert!(!app.resume_in_flight());
+
+    let before = app.activity_frame;
+    app.handle_event(AppEvent::Tick);
+    assert_eq!(
+        app.activity_frame, before,
+        "a connected, idle pane has nothing to animate"
+    );
+    assert!(
+        !app.event_requires_redraw(&AppEvent::Tick),
+        "an idle pane must not repaint on every tick"
+    );
+
+    app.current_tab_mut().loading_session = true;
+    assert!(app.resume_in_flight());
+
+    let before = app.activity_frame;
+    app.handle_event(AppEvent::Tick);
+    assert_ne!(
+        app.activity_frame, before,
+        "the resuming indicator must keep animating while session/load runs"
+    );
+    // Advancing the counter is useless on its own: a tick that does not ask
+    // for a repaint leaves the shimmer frozen on screen.
+    assert!(
+        app.event_requires_redraw(&AppEvent::Tick),
+        "a resuming pane must repaint so the shimmer actually moves"
+    );
+    assert!(app.has_activity_indicator());
+}
+
 /// The loading-shimmer signal: true only while the agents view is open
 /// and waiting on its first `session/list` reply (empty placeholder
 /// snapshot + in-flight refetch). Replaces the removed on-disk-scan
@@ -10497,6 +10535,68 @@ fn render_chat_welcome_hint() {
     assert!(
         !probe.trim().is_empty() && text.contains(&probe),
         "chat must paint the welcome title ({title:?}); rendered:\n{text}"
+    );
+}
+
+#[test]
+fn resuming_pane_paints_resuming_not_connecting() {
+    // A resume runs `session/load` while the helper is still `Connecting`, so
+    // the activity line has to prefer the resume. Testing the connection first
+    // reported "Connecting to agent…" for the whole restore and the resuming
+    // label was unreachable on the one path it exists for.
+    let mut app = test_app();
+    app.state = ConnectionState::Connecting("Connecting...".to_string());
+    app.current_tab_mut().loading_session = true;
+    app.current_tab_mut().loading_target_session_id = Some("12cbfa43-4e56-4e4d".to_string());
+
+    let text = render_to_text(&mut app, 80, 24);
+    assert!(
+        text.contains("12cbfa43"),
+        "the resuming line must name the session being restored; rendered:\n{text}"
+    );
+
+    let connecting = t!("connection.connecting_activity").into_owned();
+    let probe: String = connecting.chars().take(8).collect();
+    assert!(
+        !probe.trim().is_empty() && !text.contains(&probe),
+        "a resuming pane must not fall back to the connecting line ({connecting:?}); rendered:\n{text}"
+    );
+}
+
+#[test]
+fn resuming_pane_does_not_paint_the_first_run_welcome() {
+    // A restored conversation is not a first run, so the hint must be gone by
+    // the time the replayed history lands. `load_session` can arrive after the
+    // connect that already decided this was a first run, so the handler has to
+    // retract it rather than merely decline to set it.
+    let (mut app, _load_session_rx) = make_app_with_load_session_channel();
+    app.owner_tab_id = Some("OWNER-TAB".to_string());
+    app.tab_sessions
+        .insert("OWNER-TAB".to_string(), TabSession::default());
+    app.state = ConnectionState::Connected;
+    app.show_welcome_hint = true;
+
+    app.handle_event(AppEvent::WtEvent {
+        method: "load_session".to_string(),
+        pane_id: String::new(),
+        tab_id: None,
+        params: json!({
+            "tab_id": "OWNER-TAB",
+            "session_id": "sess-resume",
+        }),
+    });
+
+    assert!(
+        !app.show_welcome_hint,
+        "a resume must retract the first-run welcome hint"
+    );
+
+    let text = render_to_text(&mut app, 80, 24);
+    let title = t!("chat.welcome_title").into_owned();
+    let probe: String = title.chars().take(6).collect();
+    assert!(
+        !probe.trim().is_empty() && !text.contains(&probe),
+        "a resuming pane must not paint the welcome title ({title:?}); rendered:\n{text}"
     );
 }
 

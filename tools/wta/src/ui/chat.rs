@@ -1172,6 +1172,27 @@ fn build_completed_turn_lines_with_geometry<'a>(
 }
 
 pub fn render_activity(frame: &mut Frame, app: &App, area: Rect) {
+    let tab = app.current_tab();
+    // A resume outranks the connecting line. Restoring a pane runs
+    // `session/load` while the helper is still in `Connecting`, so testing
+    // the connection first would report "Connecting to agent…" for the whole
+    // resume and the user would never learn a conversation was coming back.
+    //
+    // Both shimmers read the app-level `activity_frame`: the per-tab counter
+    // only advances during a turn, and a resume has none in flight.
+    if tab.loading_session {
+        let short_id: String = tab
+            .loading_target_session_id
+            .as_deref()
+            .unwrap_or_default()
+            .chars()
+            .take(8)
+            .collect();
+        let label = t!("system.resuming_session", session_id = short_id).into_owned();
+        let line = Line::from(shimmer::shimmer_spans(&label, app.activity_frame as usize));
+        frame.render_widget(Paragraph::new(line), area);
+        return;
+    }
     // While the helper is still establishing its connection to the agent,
     // show an animated "Connecting to agent…" line (F7). The handshake
     // (pipe connect → ACP init → session/new) can take tens of seconds on a
@@ -1182,20 +1203,6 @@ pub fn render_activity(frame: &mut Frame, app: &App, area: Rect) {
     if matches!(app.state, crate::app::ConnectionState::Connecting(_)) {
         let label = t!("connection.connecting_activity").into_owned();
         let line = Line::from(shimmer::shimmer_spans(&label, app.activity_frame as usize));
-        frame.render_widget(Paragraph::new(line), area);
-        return;
-    }
-    let tab = app.current_tab();
-    if tab.loading_session {
-        let short_id: String = tab
-            .loading_target_session_id
-            .as_deref()
-            .unwrap_or_default()
-            .chars()
-            .take(8)
-            .collect();
-        let label = t!("system.resuming_session", session_id = short_id).into_owned();
-        let line = Line::from(shimmer::shimmer_spans(&label, tab.activity_frame));
         frame.render_widget(Paragraph::new(line), area);
         return;
     }
