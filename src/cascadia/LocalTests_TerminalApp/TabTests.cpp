@@ -361,7 +361,6 @@ namespace TerminalAppLocalTests
 
     void TabTests::PersistedLayoutAgentSessionsReceiveRestorePaths()
     {
-        using winrt::TerminalApp::implementation::RemoveAgentPaneSessionFromShellBindings;
         using winrt::TerminalApp::implementation::SetPersistedLayoutAgentRestorePaths;
 
         const auto firstSessionId = ::Microsoft::Console::Utils::CreateGuid();
@@ -382,7 +381,6 @@ namespace TerminalAppLocalTests
         actions.emplace_back(ShortcutAction::NewTab, NewTabArgs{ firstArgs });
         actions.emplace_back(ShortcutAction::SplitPane, SplitPaneArgs{ SplitType::Manual, SplitDirection::Automatic, 0.5f, secondArgs });
 
-        RemoveAgentPaneSessionFromShellBindings(actions, firstArgs.AgentPaneSessionId());
         SetPersistedLayoutAgentRestorePaths(actions, [](const winrt::guid& sessionId) {
             return winrt::hstring{ L"buffer_" + ::Microsoft::Console::Utils::GuidToPlainString(sessionId) + L".txt" };
         });
@@ -390,10 +388,12 @@ namespace TerminalAppLocalTests
         VERIFY_ARE_EQUAL(
             winrt::hstring{ L"buffer_" + ::Microsoft::Console::Utils::GuidToPlainString(firstSessionId) + L".txt" },
             firstArgs.PersistedBufferPath());
-        VERIFY_IS_TRUE(secondArgs.AgentSessionId().empty());
-        VERIFY_IS_TRUE(secondArgs.AgentSessionAgent().empty());
-        VERIFY_IS_TRUE(secondArgs.AgentResumeCommandline().empty());
+
+        // The second pane's agent session is the one the tab's agent pane owns,
+        // so it must not receive the marker that would resume it as a shell
+        // command. Its binding is left intact — only the marker is withheld.
         VERIFY_IS_TRUE(secondArgs.PersistedBufferPath().empty());
+        VERIFY_ARE_EQUAL(winrt::hstring{ L"copilot-pane-session" }, secondArgs.AgentSessionId());
     }
 
     void TabTests::PaneAgentSessionBindingRequiresPaneIdentity()

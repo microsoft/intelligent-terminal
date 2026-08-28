@@ -603,7 +603,6 @@ namespace winrt::TerminalApp::implementation
             // conversation, so gating this block on that id would silently drop
             // the layout of every agent pane the user opened but never chatted
             // in. An empty id simply means "restore the pane, load no session".
-            RemoveAgentPaneSessionFromShellBindings(actions, record->sessionId);
             for (const auto& action : actions)
             {
                 if (const auto newTabArgs = action.Args().try_as<NewTabArgs>())

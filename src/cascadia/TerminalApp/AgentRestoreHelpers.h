@@ -10,9 +10,10 @@ namespace winrt::TerminalApp::implementation
 {
     // An agent CLI is only resumed for a pane that came back from a persisted
     // layout. `PersistedBufferPath` is what marks such a pane: the startup path
-    // stamps it onto every restored shell pane, so an `AgentSessionId` arriving
-    // any other way (a `wt` commandline, say) starts a normal shell instead of
-    // silently re-attaching to somebody's old conversation.
+    // stamps it onto every restored agent-bound shell pane, so an
+    // `AgentSessionId` arriving any other way (a `wt` commandline, say) starts a
+    // normal shell instead of silently re-attaching to somebody's old
+    // conversation.
     inline constexpr bool ShouldResumeAgentSession(
         const bool hasAgentSession,
         const bool hasPersistedBufferPath) noexcept
@@ -48,38 +49,18 @@ namespace winrt::TerminalApp::implementation
         return nullptr;
     }
 
-    // The agent pane's own ACP session also shows up as the agent binding of
-    // the shell pane that hosts the helper. Leaving it there would make the
-    // restore relaunch the helper's CLI as a shell command too, so the pane is
-    // resumed twice — once as an agent pane and once as a shell.
-    inline void RemoveAgentPaneSessionFromShellBindings(
-        std::vector<winrt::Microsoft::Terminal::Settings::Model::ActionAndArgs>& actions,
-        const winrt::hstring& agentPaneSessionId)
-    {
-        if (agentPaneSessionId.empty())
-        {
-            return;
-        }
-
-        for (const auto& action : actions)
-        {
-            if (const auto terminalArgs = GetTerminalArgsForRestoreAction(action);
-                terminalArgs && terminalArgs.AgentSessionId() == agentPaneSessionId)
-            {
-                terminalArgs.AgentSessionId(L"");
-                terminalArgs.AgentSessionAgent(L"");
-                terminalArgs.AgentResumeCommandline(L"");
-            }
-        }
-    }
-
-    // Points each restored shell pane at the `buffer_{guid}.txt` file its
-    // scrollback was written to, which is also what tells the pane it came from
-    // a persisted layout.
+    // Marks each agent-bound shell pane as having come out of a persisted
+    // layout by pointing it at the `buffer_{guid}.txt` file its scrollback was
+    // written to. `_MakeTerminalPane` derives that same path from `SessionId`
+    // on its own, so the value is only ever an override — what matters is that
+    // a non-empty path is the marker `ShouldResumeAgentSession` looks for.
     //
-    // Panes whose agent session belongs to an agent pane are skipped: that
-    // conversation is replayed through ACP `session/load`, and seeding the
-    // terminal buffer as well would show it twice.
+    // A session that belongs to an agent pane is skipped and so never gets the
+    // marker, which is what keeps the restore from relaunching that CLI as a
+    // shell command on top of the agent pane that already owns it. This runs
+    // over the whole window's actions, so it also covers a session that was
+    // first run in a shell pane and later resumed into an agent pane on a
+    // different tab.
     template<typename TPathForSession>
     inline void SetPersistedLayoutAgentRestorePaths(
         std::vector<winrt::Microsoft::Terminal::Settings::Model::ActionAndArgs>& actions,
