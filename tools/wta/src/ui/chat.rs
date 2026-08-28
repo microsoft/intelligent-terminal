@@ -428,15 +428,11 @@ fn restyle_tool_detail_lines(lines: &mut [String], has_prior_child: bool) {
 }
 
 fn tool_detail_line_style(line: &str) -> Style {
-    let content = line
-        .strip_prefix("  └ ")
-        .or_else(|| line.strip_prefix("    "))
-        .unwrap_or(line);
-    if content.starts_with("+ ") {
+    if line.starts_with("    + ") {
         theme::TOOL_DIFF_ADDED
-    } else if content.starts_with("- ") {
+    } else if line.starts_with("    - ") {
         theme::TOOL_DIFF_REMOVED
-    } else if content.starts_with("Δ ") {
+    } else if line.starts_with("    Δ ") {
         theme::TOOL_DIFF_HEADER
     } else {
         theme::DIM
@@ -1699,10 +1695,13 @@ fn build_message_lines_with_details<'a>(
                 }
             }
             cap_tool_detail_lines(&mut detail_lines);
+            let detail_styles = detail_lines
+                .iter()
+                .map(|line| tool_detail_line_style(line))
+                .collect::<Vec<_>>();
             restyle_tool_detail_lines(&mut detail_lines, rendered_command || rendered_output);
             let rendered_details = !detail_lines.is_empty();
-            for line in detail_lines {
-                let style = tool_detail_line_style(&line);
+            for (line, style) in detail_lines.into_iter().zip(detail_styles) {
                 lines.push(Line::from(Span::styled(line, style)));
             }
             if rendered_command || rendered_output || rendered_details {
@@ -2745,12 +2744,16 @@ mod tests {
             ]
         );
         assert_eq!(
-            tool_detail_line_style("  └ - old value"),
+            tool_detail_line_style("    - old value"),
             theme::TOOL_DIFF_REMOVED
         );
         assert_eq!(
             tool_detail_line_style("    + new value"),
             theme::TOOL_DIFF_ADDED
+        );
+        assert_eq!(
+            tool_detail_line_style("    │ - ordinary output"),
+            theme::DIM
         );
     }
 
