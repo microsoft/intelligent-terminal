@@ -565,6 +565,7 @@ fn mcp_summary_property() -> serde_json::Value {
     serde_json::json!({
         "type": "string",
         "minLength": 1,
+        "pattern": r"\S",
         "maxLength": MAX_TITLE_CHARS,
         "description": "Concise user-visible summary of the proposed operation."
     })
@@ -574,6 +575,7 @@ fn mcp_reason_property() -> serde_json::Value {
     serde_json::json!({
         "type": "string",
         "minLength": 1,
+        "pattern": r"\S",
         "maxLength": MAX_RATIONALE_CHARS,
         "description": "Why the operation is needed. Omit when the summary is sufficient."
     })
@@ -583,6 +585,7 @@ fn mcp_command_property(destination: &str) -> serde_json::Value {
     serde_json::json!({
         "type": "string",
         "minLength": 1,
+        "pattern": r"\S",
         "maxLength": MAX_INPUT_CHARS,
         "description": format!("Exact shell command to run {destination}.")
     })
@@ -598,6 +601,7 @@ fn mcp_workspace_properties() -> serde_json::Map<String, serde_json::Value> {
         "working_directory": {
             "type": "string",
             "minLength": 1,
+            "pattern": r"\S",
             "maxLength": MAX_INPUT_CHARS,
             "description": "Working directory for the new workspace. Omit to use the terminal's default behavior."
         },
@@ -616,6 +620,7 @@ fn mcp_profile_property() -> serde_json::Value {
     serde_json::json!({
         "type": "string",
         "minLength": 1,
+        "pattern": r"\S",
         "maxLength": MAX_TITLE_CHARS,
         "description": "Terminal profile to use for the new workspace."
     })
@@ -660,6 +665,7 @@ pub fn mcp_action_input_schema(tool: McpActionTool) -> serde_json::Value {
                 serde_json::json!({
                     "type": "string",
                     "minLength": 1,
+                    "pattern": r"\S",
                     "maxLength": MAX_INPUT_CHARS,
                     "description": "Self-contained task for the configured delegate agent, including the goal, relevant context, constraints, and completion criteria."
                 }),
@@ -1289,6 +1295,12 @@ mod tests {
                 "{}",
                 tool.tool_name()
             );
+            assert_eq!(
+                schema.pointer("/properties/reason/pattern"),
+                Some(&json!(r"\S")),
+                "{}",
+                tool.tool_name()
+            );
 
             for reason in ["", " \t\r\n "] {
                 payload["reason"] = json!(reason);
@@ -1299,6 +1311,35 @@ mod tests {
                         Err(ProposalError::Malformed(_))
                     ),
                     "{} accepted {reason:?}",
+                    tool.tool_name()
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn public_schema_marks_nonempty_text_as_non_whitespace() {
+        for (tool, properties) in [
+            (McpActionTool::RunCommand, &["summary", "command"][..]),
+            (
+                McpActionTool::OpenWorkspace,
+                &["summary", "working_directory", "profile"][..],
+            ),
+            (
+                McpActionTool::RunCommandInWorkspace,
+                &["summary", "command", "working_directory", "profile"][..],
+            ),
+            (
+                McpActionTool::DelegateTask,
+                &["summary", "task", "working_directory"][..],
+            ),
+        ] {
+            let schema = mcp_action_input_schema(tool);
+            for property in properties {
+                assert_eq!(
+                    schema.pointer(&format!("/properties/{property}/pattern")),
+                    Some(&json!(r"\S")),
+                    "{} property {property}",
                     tool.tool_name()
                 );
             }
