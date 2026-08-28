@@ -15,6 +15,7 @@ use crate::app::{
     ToolCallOutput,
 };
 use crate::theme;
+use crate::ui::line_diff::{self, DiffLineKind};
 use crate::ui::shimmer;
 use crate::ui::tool_presentation::{ToolPhase, ToolPresentation};
 use crate::ui_trace;
@@ -278,6 +279,56 @@ fn preview_output_lines(output: &ToolCallOutput, prefix: &str) -> Vec<String> {
     lines
 }
 
+fn truncate_tool_detail_text(text: &str) -> Cow<'_, str> {
+    let mut chars = text.chars();
+    let head = chars
+        .by_ref()
+        .take(MAX_TOOL_OUTPUT_LINE_CHARS)
+        .collect::<String>();
+    if chars.next().is_some() {
+        Cow::Owned(format!("{head}…"))
+    } else {
+        Cow::Borrowed(text)
+    }
+}
+
+fn diff_detail_lines(
+    path: &str,
+    old_text: Option<&ToolCallOutput>,
+    new_text: &ToolCallOutput,
+    detailed: bool,
+    max_lines: usize,
+) -> Vec<String> {
+    if max_lines == 0 {
+        return Vec::new();
+    }
+    let mut lines = vec![format!("    Δ {path}")];
+    if !detailed || max_lines == 1 {
+        return lines;
+    }
+
+    let source_truncated = old_text.is_some_and(|output| output.truncated) || new_text.truncated;
+    lines.extend(
+        line_diff::preview(
+            old_text.map(|output| output.text.as_str()),
+            &new_text.text,
+            source_truncated,
+            max_lines - 1,
+        )
+        .into_iter()
+        .map(|line| {
+            let (marker, text) = match line.kind {
+                DiffLineKind::Context => ("│ ", truncate_tool_detail_text(line.text)),
+                DiffLineKind::Added => ("+ ", truncate_tool_detail_text(line.text)),
+                DiffLineKind::Removed => ("- ", truncate_tool_detail_text(line.text)),
+                DiffLineKind::Omitted => ("│ ", Cow::Borrowed("…")),
+            };
+            format!("    {marker}{text}")
+        }),
+    );
+    lines
+}
+
 fn tool_detail_lines(
     content: &[ToolCallContent],
     locations: &[ToolCallLocation],
@@ -315,13 +366,13 @@ fn tool_detail_lines(
                 old_text,
                 new_text,
             } => {
-                lines.push(format!("    Δ {path}"));
-                if detailed {
-                    if let Some(old_text) = old_text {
-                        lines.extend(full_output_lines(old_text, "    - "));
-                    }
-                    lines.extend(full_output_lines(new_text, "    + "));
-                }
+                lines.extend(diff_detail_lines(
+                    path,
+                    old_text.as_ref(),
+                    new_text,
+                    detailed,
+                    MAX_TOOL_DETAIL_LINES.saturating_sub(lines.len()),
+                ));
             }
             ToolCallContent::Terminal {
                 id,
@@ -366,6 +417,22 @@ fn restyle_tool_detail_lines(lines: &mut [String], has_prior_child: bool) {
             }
         }
         needs_branch = false;
+    }
+}
+
+fn tool_detail_line_style(line: &str) -> Style {
+    let content = line
+        .strip_prefix("  └ ")
+        .or_else(|| line.strip_prefix("    "))
+        .unwrap_or(line);
+    if content.starts_with("+ ") {
+        theme::TOOL_DIFF_ADDED
+    } else if content.starts_with("- ") {
+        theme::TOOL_DIFF_REMOVED
+    } else if content.starts_with("Δ ") {
+        theme::TOOL_DIFF_HEADER
+    } else {
+        theme::DIM
     }
 }
 
@@ -1627,7 +1694,8 @@ fn build_message_lines_with_details<'a>(
             restyle_tool_detail_lines(&mut detail_lines, rendered_command || rendered_output);
             let rendered_details = !detail_lines.is_empty();
             for line in detail_lines {
-                lines.push(Line::from(Span::styled(line, theme::DIM)));
+                let style = tool_detail_line_style(&line);
+                lines.push(Line::from(Span::styled(line, style)));
             }
             if rendered_command || rendered_output || rendered_details {
                 lines.push(Line::default());
@@ -2637,6 +2705,99 @@ mod tests {
 
         assert_eq!(lines.len(), MAX_TOOL_DETAIL_LINES);
         assert_eq!(lines.last().map(String::as_str), Some("    …"));
+    }
+
+    #[test]
+    fn expanded_diff_details_render_only_real_changes() {
+        let content = ToolCallContent::Diff {
+            path: "src/main.rs".into(),
+            old_text: Some(ToolCallOutput {
+                text: "before\nsame\nold value\nafter".into(),
+                truncated: false,
+            }),
+            new_text: ToolCallOutput {
+                text: "before\nsame\nnew value\nafter".into(),
+                truncated: false,
+            },
+        };
+
+        let lines = tool_detail_lines(&[content], &[], true);
+
+        assert_eq!(
+            lines,
+            vec![
+                "    Δ src/main.rs",
+                "    │ before",
+                "    │ same",
+                "    - old value",
+                "    + new value",
+                "    │ after",
+            ]
+        );
+        assert_eq!(
+            tool_detail_line_style("  └ - old value"),
+            theme::TOOL_DIFF_REMOVED
+        );
+        assert_eq!(
+            tool_detail_line_style("    + new value"),
+            theme::TOOL_DIFF_ADDED
+        );
+    }
+
+    #[test]
+    fn expanded_new_file_diff_renders_additions() {
+        let content = ToolCallContent::Diff {
+            path: "src/new.rs".into(),
+            old_text: None,
+            new_text: ToolCallOutput {
+                text: "first\nsecond".into(),
+                truncated: false,
+            },
+        };
+
+        let lines = tool_detail_lines(&[content], &[], true);
+
+        assert_eq!(
+            lines,
+            vec!["    Δ src/new.rs", "    + first", "    + second",]
+        );
+    }
+
+    #[test]
+    fn expanded_diff_details_respect_the_global_line_cap() {
+        let content = ToolCallContent::Diff {
+            path: "src/large.rs".into(),
+            old_text: Some(ToolCallOutput {
+                text: (0..300)
+                    .map(|index| format!("old {index}"))
+                    .collect::<Vec<_>>()
+                    .join("\n"),
+                truncated: false,
+            }),
+            new_text: ToolCallOutput {
+                text: (0..300)
+                    .map(|index| format!("new {index}"))
+                    .collect::<Vec<_>>()
+                    .join("\n"),
+                truncated: false,
+            },
+        };
+
+        let lines = tool_detail_lines(&[content], &[], true);
+
+        let removed = lines
+            .iter()
+            .filter(|line| line.starts_with("    - "))
+            .count();
+        let added = lines
+            .iter()
+            .filter(|line| line.starts_with("    + "))
+            .count();
+        assert!(lines.len() <= MAX_TOOL_DETAIL_LINES);
+        assert!(removed > 0);
+        assert!(added > 0);
+        assert!(removed.abs_diff(added) <= 1);
+        assert!(lines.iter().any(|line| line == "    │ …"));
     }
 
     #[test]

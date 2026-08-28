@@ -26,6 +26,9 @@ pub const TOOL_CALL_FAILURE: Style = Style::new().fg(Color::Red).add_modifier(Mo
 pub const TOOL_CALL_CANCELED: Style = Style::new()
     .fg(Color::DarkGray)
     .add_modifier(Modifier::ITALIC);
+pub const TOOL_DIFF_ADDED: Style = Style::new().fg(Color::Green);
+pub const TOOL_DIFF_REMOVED: Style = Style::new().fg(Color::Red);
+pub const TOOL_DIFF_HEADER: Style = Style::new().fg(Color::Cyan);
 pub const PLAN_STYLE: Style = Style::new().fg(Color::Cyan);
 pub const ERROR_STYLE: Style = Style::new().fg(Color::Red);
 pub const IN_PROGRESS: Style = Style::new()
