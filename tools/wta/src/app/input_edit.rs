@@ -290,7 +290,7 @@ pub(super) fn clamp_cursor_to_boundary(input: &str, cursor_pos: usize) -> usize 
     clamped
 }
 
-fn prev_char_boundary(input: &str, cursor_pos: usize) -> usize {
+pub(super) fn prev_char_boundary(input: &str, cursor_pos: usize) -> usize {
     let cursor_pos = clamp_cursor_to_boundary(input, cursor_pos);
     if cursor_pos == 0 {
         return 0;
@@ -303,7 +303,7 @@ fn prev_char_boundary(input: &str, cursor_pos: usize) -> usize {
         .unwrap_or(0)
 }
 
-fn next_char_boundary(input: &str, cursor_pos: usize) -> usize {
+pub(super) fn next_char_boundary(input: &str, cursor_pos: usize) -> usize {
     let cursor_pos = clamp_cursor_to_boundary(input, cursor_pos);
     if cursor_pos >= input.len() {
         return input.len();

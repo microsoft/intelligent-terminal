@@ -69,6 +69,8 @@ Describe 'Feature: ACP agent-pane protocol experience' -Tag 'Feature' -Skip:(-no
         $modal = Get-AgentPaneText -App $script:app -PaneSessionId $script:agentPane -MaxLines 60
         $modal | Should -Match 'Alpha'
         $modal | Should -Match 'Beta'
+        $modal | Should -Match 'Gamma'
+        $modal | Should -Match 'Delta'
 
         Send-AgentKey -App $script:app -PaneSessionId $script:agentPane -Key Down | Out-Null
         Send-AgentKey -App $script:app -PaneSessionId $script:agentPane -Key Enter | Out-Null
@@ -81,6 +83,24 @@ Describe 'Feature: ACP agent-pane protocol experience' -Tag 'Feature' -Skip:(-no
         $answered | Should -Not -BeNullOrEmpty
         Assert-AgentPaneText -App $script:app -PaneSessionId $script:agentPane `
             -Pattern 'INPUT_RESULT:.*answered.*Beta' -TimeoutSec 15
+
+        Send-AgentPrompt -App $script:app -PaneSessionId $script:agentPane -Text 'ASK_INPUT' | Out-Null
+        Assert-AgentPaneText -App $script:app -PaneSessionId $script:agentPane `
+            -Pattern 'Choose the deterministic answer' -TimeoutSec 15
+        Send-AgentKey -App $script:app -PaneSessionId $script:agentPane -Key Down -Count 4 | Out-Null
+        Send-AgentPrompt -App $script:app -PaneSessionId $script:agentPane -Text 'abc' -NoSubmit | Out-Null
+        Send-AgentKey -App $script:app -PaneSessionId $script:agentPane -Key Left | Out-Null
+        Send-AgentPrompt -App $script:app -PaneSessionId $script:agentPane -Text 'X' -NoSubmit | Out-Null
+        Send-AgentKey -App $script:app -PaneSessionId $script:agentPane -Key Enter | Out-Null
+
+        $freeform = Wait-Until -TimeoutSec 15 -Because 'the cursor-edited freeform answer to round-trip to the ACP agent' -Condition {
+            Get-Content -LiteralPath $script:requestLog -ErrorAction SilentlyContinue |
+                Where-Object { $_ -match 'user-input-result\|.*"outcome":"answered".*"answer":"abXc".*"selected_index":null' } |
+                Select-Object -Last 1
+        }
+        $freeform | Should -Not -BeNullOrEmpty
+        Assert-AgentPaneText -App $script:app -PaneSessionId $script:agentPane `
+            -Pattern 'INPUT_RESULT:.*answered.*abXc' -TimeoutSec 15
     }
 
     It 'ACP session config picker preserves order and hot-applies a selection' {

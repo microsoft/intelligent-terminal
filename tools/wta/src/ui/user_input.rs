@@ -70,18 +70,18 @@ fn content_lines(request: &UserInputState, width: usize) -> (Vec<Line<'static>>,
     if request.request.allow_freeform {
         let selected = request.freeform_selected();
         let marker = if selected { "● " } else { "○ " };
+        let value_width = width.saturating_sub(marker.width());
         let value = if request.input.is_empty() {
-            "_".to_string()
+            match (selected, value_width) {
+                (true, 2..) => "_█".to_string(),
+                (true, 1) => "█".to_string(),
+                (false, 1..) => "_".to_string(),
+                _ => String::new(),
+            }
+        } else if selected {
+            input_with_caret(&request.input, request.cursor_pos, value_width)
         } else {
-            tail_to_width(
-                &request.input,
-                width.saturating_sub(marker.width() + usize::from(selected)),
-            )
-        };
-        let value = if selected {
-            format!("{value}█")
-        } else {
-            value
+            tail_to_width(&request.input, value_width)
         };
         let start = lines.len();
         lines.push(Line::styled(
@@ -163,6 +163,60 @@ fn tail_to_width(value: &str, width: usize) -> String {
     kept.into_iter().rev().collect()
 }
 
+fn head_to_width(value: &str, width: usize) -> String {
+    if width == 0 {
+        return String::new();
+    }
+    let mut kept = String::new();
+    let mut used: usize = 0;
+    let mut omitted = false;
+    for character in value.chars() {
+        let character_width = UnicodeWidthChar::width(character).unwrap_or(0);
+        if used.saturating_add(character_width) > width {
+            omitted = true;
+            break;
+        }
+        kept.push(character);
+        used = used.saturating_add(character_width);
+    }
+    if omitted {
+        while used >= width {
+            let Some(character) = kept.pop() else {
+                break;
+            };
+            used = used.saturating_sub(UnicodeWidthChar::width(character).unwrap_or(0));
+        }
+        kept.push('…');
+    }
+    kept
+}
+
+fn input_with_caret(value: &str, cursor_pos: usize, width: usize) -> String {
+    if width == 0 {
+        return String::new();
+    }
+    let mut cursor_pos = cursor_pos.min(value.len());
+    while cursor_pos > 0 && !value.is_char_boundary(cursor_pos) {
+        cursor_pos -= 1;
+    }
+    let before = &value[..cursor_pos];
+    let after = &value[cursor_pos..];
+    let text_width = width.saturating_sub(1);
+    let mut after_context_width = after
+        .chars()
+        .next()
+        .map(|character| UnicodeWidthChar::width(character).unwrap_or(0).max(1))
+        .unwrap_or(0)
+        .min(text_width);
+    if after.chars().nth(1).is_some() && after_context_width < text_width {
+        after_context_width += 1;
+    }
+    let visible_before = tail_to_width(before, text_width.saturating_sub(after_context_width));
+    let remaining = text_width.saturating_sub(visible_before.width());
+    let visible_after = head_to_width(after, remaining);
+    format!("{visible_before}█{visible_after}")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -178,6 +232,7 @@ mod tests {
             },
             selected,
             input: "abcdefghijklmnopqrstuvwxyz".into(),
+            cursor_pos: "abcdefghijklmnopqrstuvwxyz".len(),
             responder: None,
         }
     }
@@ -190,9 +245,32 @@ mod tests {
 
     #[test]
     fn freeform_keeps_the_visible_tail_bounded() {
-        let visible = tail_to_width("abcdefghijklmnopqrstuvwxyz", 8);
-        assert!(visible.width() <= 8);
+        let visible = input_with_caret("abcdefghijklmnopqrstuvwxyz", 26, 9);
+        assert!(visible.width() <= 9);
         assert!(visible.starts_with('…'));
-        assert!(visible.ends_with('z'));
+        assert!(visible.ends_with('█'));
+    }
+
+    #[test]
+    fn freeform_renders_the_caret_at_the_cursor() {
+        assert_eq!(input_with_caret("abc", 2, 8), "ab█c");
+    }
+
+    #[test]
+    fn freeform_keeps_context_around_a_scrolled_caret() {
+        let visible = input_with_caret("abcdefghij", 5, 6);
+        assert_eq!(visible, "…de█f…");
+        assert_eq!(visible.width(), 6);
+    }
+
+    #[test]
+    fn empty_freeform_keeps_the_caret_in_a_narrow_row() {
+        let mut request = state(2);
+        request.input.clear();
+        request.cursor_pos = 0;
+        let (lines, _, _) = content_lines(&request, 3);
+        let freeform = lines.last().unwrap();
+        assert_eq!(freeform.width(), 3);
+        assert_eq!(freeform.to_string(), "● █");
     }
 }

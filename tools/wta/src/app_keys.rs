@@ -407,10 +407,16 @@ impl App {
                             && request.input.chars().count() < MAX_ANSWER_CHARS =>
                     {
                         request.selected = request.request.choices.len();
-                        request.input.push(character);
+                        request.insert_input_char(character);
                     }
                     KeyCode::Backspace if request.freeform_selected() => {
-                        request.input.pop();
+                        request.delete_before_cursor();
+                    }
+                    KeyCode::Left if request.freeform_selected() => {
+                        request.move_cursor_left();
+                    }
+                    KeyCode::Right if request.freeform_selected() => {
+                        request.move_cursor_right();
                     }
                     KeyCode::Enter => {
                         if request.freeform_selected() {
