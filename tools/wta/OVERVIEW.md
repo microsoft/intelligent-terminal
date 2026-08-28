@@ -113,8 +113,8 @@ name and a distinct bearer capability, so name-keyed Agent caches cannot
 overwrite another session's header. Master maps the capability to SessionId,
 resolves the current Helper through `session_to_helper`, and forwards the typed
 input over the existing ACP pipe.
-The endpoint exposes `terminal_send`, `terminal_open`, and
-`terminal_open_and_send`, which return after the Helper
+The endpoint exposes `run_command`, `open_workspace`,
+`run_command_in_workspace`, and `delegate_task`, which return after the Helper
 confirms that the recommendation card was presented, and `request_user_input`,
 which blocks until the user answers, cancels, disconnects, or the request times
 out. The latter is a WTA-owned fallback and does not intercept provider-native

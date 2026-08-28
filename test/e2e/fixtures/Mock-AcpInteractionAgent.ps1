@@ -121,12 +121,12 @@ function Invoke-TerminalActionTool {
         id = 2
         method = 'tools/call'
         params = @{
-            name = 'terminal_open_and_send'
+            name = 'run_command_in_workspace'
             arguments = @{
-                title = "Direction $Marker"
-                input = "echo $Marker"
-                target = 'tab'
-                direction = 'auto'
+                summary = "Direction $Marker"
+                command = "echo $Marker"
+                placement = 'new_tab'
+                split_direction = 'auto'
             }
         }
     } | ConvertTo-Json -Depth 12 -Compress

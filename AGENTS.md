@@ -25,8 +25,8 @@ Agent or human CLI --> wta/wtcli --> COM IProtocolServer --> Windows Terminal
   using the same key share one process and multiplex sessions through it.
 - **WT Protocol** is the terminal-control boundary. `wtcli.exe` activates
   `IProtocolServer` through the package COM registration.
-- **Session MCP** exposes `terminal_send`, `terminal_open`,
-  `terminal_open_and_send`, and `request_user_input`.
+- **Session MCP** exposes `run_command`, `open_workspace`,
+  `run_command_in_workspace`, `delegate_task`, and `request_user_input`.
   It routes requests to the owning helper and never executes terminal actions
   itself.
 - Agent panes are ordinary `ConptyConnection` panes hosting `wta-helper`; C++

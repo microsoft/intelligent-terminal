@@ -119,11 +119,11 @@ Describe 'Feature: ACP agent-pane protocol experience' -Tag 'Feature' -Skip:(-no
         $title | Should -Match 'Fixture Model'
     }
 
-    It 'Tab-targeted terminal actions accept a direction hint across Session MCP' {
+    It 'New-tab command workspaces accept a split-direction hint across Session MCP' {
         $marker = [guid]::NewGuid().ToString('N').Substring(0, 12).ToUpperInvariant()
         Send-AgentPrompt -App $script:app -PaneSessionId $script:agentPane -Text "TAB_DIRECTION_$marker" | Out-Null
 
-        $accepted = Wait-Until -TimeoutSec 15 -Because 'the tab action with direction=auto to pass MCP validation' -Condition {
+        $accepted = Wait-Until -TimeoutSec 15 -Because 'the new_tab action with split_direction=auto to pass MCP validation' -Condition {
             Get-Content -LiteralPath $script:requestLog -ErrorAction SilentlyContinue |
                 Where-Object { $_ -match 'tab-direction-result\|.*"status":"accepted"' } |
                 Select-Object -First 1

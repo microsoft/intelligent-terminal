@@ -1011,11 +1011,18 @@ enum SessionMcpTool {
 }
 
 impl SessionMcpTool {
-    const ALL: [Self; 4] = [
-        Self::TerminalAction(crate::agent_tools::action_proposal::schema::McpActionTool::Send),
-        Self::TerminalAction(crate::agent_tools::action_proposal::schema::McpActionTool::Open),
+    const ALL: [Self; 5] = [
         Self::TerminalAction(
-            crate::agent_tools::action_proposal::schema::McpActionTool::OpenAndSend,
+            crate::agent_tools::action_proposal::schema::McpActionTool::RunCommand,
+        ),
+        Self::TerminalAction(
+            crate::agent_tools::action_proposal::schema::McpActionTool::OpenWorkspace,
+        ),
+        Self::TerminalAction(
+            crate::agent_tools::action_proposal::schema::McpActionTool::RunCommandInWorkspace,
+        ),
+        Self::TerminalAction(
+            crate::agent_tools::action_proposal::schema::McpActionTool::DelegateTask,
         ),
         Self::UserInput,
     ];
@@ -1213,11 +1220,15 @@ impl WtaClient {
         let session_id = args.session_id.0.to_string();
         let tool_call_id = args.tool_call.tool_call_id.to_string();
         let proposal_candidate = proposal_permission_command_candidate(&args);
-        let session_mcp_tool = session_mcp_tool_call(
-            args.tool_call.fields.title.as_deref(),
-            args.tool_call.fields.raw_input.as_ref(),
-        )
-        .or_else(|| self.hidden_session_mcp_tool(&session_id, &tool_call_id));
+        // Permission titles are agent-authored. Only a title carrying the
+        // validated per-session MCP server name, or a tool call already
+        // correlated through the hidden-call map, is trusted for silent
+        // approval. The public action names are intentionally generic and a
+        // bare `run_command` from an unrelated provider tool must not bypass
+        // the normal permission UI merely because its payload has the same
+        // shape.
+        let session_mcp_tool = session_mcp_tool_from_title(args.tool_call.fields.title.as_deref())
+            .or_else(|| self.hidden_session_mcp_tool(&session_id, &tool_call_id));
         if let Some(tool) = session_mcp_tool {
             self.hide_session_mcp_tool_call(&session_id, &tool_call_id, tool);
         } else if proposal_candidate.is_some_and(looks_like_proposal_command) {
@@ -1225,7 +1236,7 @@ impl WtaClient {
                 &session_id,
                 &tool_call_id,
                 SessionMcpTool::TerminalAction(
-                    crate::agent_tools::action_proposal::schema::McpActionTool::Send,
+                    crate::agent_tools::action_proposal::schema::McpActionTool::RunCommand,
                 ),
             );
         }
@@ -1504,7 +1515,7 @@ impl WtaClient {
                         &sid,
                         &tool_call_id,
                         SessionMcpTool::TerminalAction(
-                            crate::agent_tools::action_proposal::schema::McpActionTool::Send,
+                            crate::agent_tools::action_proposal::schema::McpActionTool::RunCommand,
                         ),
                     );
                     return Ok(());
@@ -1555,7 +1566,7 @@ impl WtaClient {
                         &sid,
                         &tool_call_id,
                         SessionMcpTool::TerminalAction(
-                            crate::agent_tools::action_proposal::schema::McpActionTool::Send,
+                            crate::agent_tools::action_proposal::schema::McpActionTool::RunCommand,
                         ),
                     );
                     return Ok(());
@@ -4710,10 +4721,10 @@ mod tests {
         acp_error_detail, acp_result_failure_fields, bounded_tool_output_parts,
         claim_unexpected_transport_loss, complete_prompt_request, complete_transport_shutdown,
         inject_wta_pane_meta, is_redundant_startup_model_error, post_login_authenticate_error,
-        session_mcp_tool_from_title, stop_prompt_tasks, timeout_result_failure_fields,
-        tool_call_exit_code, tool_call_kind_label, tool_call_location_hint, tool_call_target,
-        AcpClientExit, ClientState, PromptTimingState, PromptUsageIdentity, SessionMcpTool,
-        SoftStopReason, WtaClient,
+        session_mcp_tool_call, session_mcp_tool_from_title, stop_prompt_tasks,
+        timeout_result_failure_fields, tool_call_exit_code, tool_call_kind_label,
+        tool_call_location_hint, tool_call_target, AcpClientExit, ClientState, PromptTimingState,
+        PromptUsageIdentity, SessionMcpTool, SoftStopReason, WtaClient,
     };
     use crate::app_contracts::AppEvent;
     use crate::protocol::acp::failure::{AgentFailure, HandshakeStage};
@@ -4957,10 +4968,10 @@ mod tests {
             ToolCallUpdate::new(
                 ToolCallId::new("proposal-mcp-tool"),
                 ToolCallUpdateFields::new()
-                    .title("terminal_send")
+                    .title("intellterm_01234567890123456789/run_command")
                     .raw_input(serde_json::json!({
-                        "title": "Run test",
-                        "input": "cargo test"
+                        "summary": "Run test",
+                        "command": "cargo test"
                     })),
             ),
             vec![PermissionOption::new(
@@ -5086,7 +5097,7 @@ mod tests {
                 ToolCallUpdate::new(
                     ToolCallId::new("input-tool"),
                     ToolCallUpdateFields::new()
-                        .title("request_user_input")
+                        .title("intellterm_01234567890123456789/request_user_input")
                         .raw_input(serde_json::json!({
                             "question": "Choose",
                             "choices": ["A", "B"]
@@ -5230,10 +5241,10 @@ mod tests {
         let params =
             serde_json::value::to_raw_value(&crate::agent_tools::session_mcp::HelperRequest {
                 session_id: "proposal-session".to_string(),
-                tool: "terminal_send".to_string(),
+                tool: "run_command".to_string(),
                 arguments: serde_json::json!({
-                    "title": "Run test",
-                    "input": "cargo test"
+                    "summary": "Run test",
+                    "command": "cargo test"
                 }),
             })
             .unwrap();
@@ -5247,6 +5258,7 @@ mod tests {
             let proposal_id = match event_rx.recv().await.unwrap() {
                 AppEvent::DirectTerminalActionProposal {
                     context,
+                    payload,
                     source,
                     responder,
                     ..
@@ -5254,8 +5266,15 @@ mod tests {
                     assert_eq!(
                         source,
                         crate::agent_tools::action_proposal::pipe::ProposalPayloadSource::Mcp(
-                            crate::agent_tools::action_proposal::schema::McpActionTool::Send
+                            crate::agent_tools::action_proposal::schema::McpActionTool::RunCommand
                         )
+                    );
+                    assert_eq!(
+                        serde_json::from_str::<serde_json::Value>(&payload).unwrap(),
+                        serde_json::json!({
+                            "summary": "Run test",
+                            "command": "cargo test"
+                        })
                     );
                     responder
                         .send(
@@ -5457,14 +5476,72 @@ mod tests {
             Some(SessionMcpTool::UserInput)
         );
         for title in [
-            "intellterm_0123456789abcdef/terminal_send",
-            "intellterm_0123456789012345678A/terminal_send",
-            "Use MCP tool: other/terminal_send",
+            "run_command",
+            "open_workspace",
+            "run_command_in_workspace",
+            "delegate_task",
+            "request_user_input",
+            "intellterm_0123456789abcdef/run_command",
+            "intellterm_0123456789012345678A/run_command",
+            "Use MCP tool: other/run_command",
+            "Use MCP tool: intelligent_terminal/terminal_send",
+            "Use MCP tool: intelligent_terminal/terminal_open",
+            "Use MCP tool: intelligent_terminal/terminal_open_and_send",
             // The superseded single-tool name is no longer a tool.
             "Use MCP tool: intelligent_terminal/request_terminal_actions",
             "mcp__intellterm_01234567890123456789__request_terminal_actions",
         ] {
             assert_eq!(session_mcp_tool_from_title(Some(title)), None, "{title}");
+        }
+    }
+
+    #[test]
+    fn session_mcp_tool_call_classifies_all_intent_payloads() {
+        use crate::agent_tools::action_proposal::schema::McpActionTool;
+
+        for (tool, arguments) in [
+            (
+                McpActionTool::RunCommand,
+                serde_json::json!({"summary":"Run tests","command":"cargo test"}),
+            ),
+            (
+                McpActionTool::OpenWorkspace,
+                serde_json::json!({"summary":"Open shell","placement":"new_tab"}),
+            ),
+            (
+                McpActionTool::RunCommandInWorkspace,
+                serde_json::json!({
+                    "summary":"Run tests separately",
+                    "command":"cargo test",
+                    "placement":"new_split"
+                }),
+            ),
+            (
+                McpActionTool::DelegateTask,
+                serde_json::json!({
+                    "summary":"Investigate failures",
+                    "task":"Find and fix the failing tests.",
+                    "placement":"new_tab"
+                }),
+            ),
+        ] {
+            assert_eq!(
+                session_mcp_tool_call(Some(tool.tool_name()), Some(&arguments)),
+                Some(SessionMcpTool::TerminalAction(tool)),
+                "{}",
+                tool.tool_name()
+            );
+        }
+
+        for removed in ["terminal_send", "terminal_open", "terminal_open_and_send"] {
+            assert_eq!(
+                session_mcp_tool_call(
+                    Some(removed),
+                    Some(&serde_json::json!({"summary":"x","command":"x"}))
+                ),
+                None,
+                "{removed}"
+            );
         }
     }
 

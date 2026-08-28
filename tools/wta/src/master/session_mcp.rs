@@ -1402,7 +1402,13 @@ mod tests {
             .chars()
             .all(|ch| ch.is_ascii_digit() || ('a'..='f').contains(&ch)));
         // Some agent CLIs cap the fully-qualified MCP tool name at 64 chars.
-        // Assert against the longest name actually published.
+        // Assert every action name and pin the longest published name so a
+        // future rename cannot silently invalidate this length budget.
+        let longest = crate::agent_tools::action_proposal::schema::McpActionTool::ALL
+            .into_iter()
+            .max_by_key(|tool| tool.tool_name().len())
+            .expect("action tools");
+        assert_eq!(longest.tool_name(), "run_command_in_workspace");
         for tool in crate::agent_tools::action_proposal::schema::McpActionTool::ALL {
             let qualified = format!("mcp__{}__{}", config.name, tool.tool_name());
             assert!(

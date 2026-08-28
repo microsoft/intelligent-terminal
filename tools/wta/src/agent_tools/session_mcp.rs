@@ -294,9 +294,10 @@ mod tests {
         assert_eq!(
             names,
             vec![
-                "terminal_send",
-                "terminal_open",
-                "terminal_open_and_send",
+                "run_command",
+                "open_workspace",
+                "run_command_in_workspace",
+                "delegate_task",
                 USER_INPUT_TOOL_NAME
             ]
         );
@@ -306,7 +307,7 @@ mod tests {
         // anymore.
         assert!(!names.contains(&"request_terminal_actions"));
         let user_input_schema = response
-            .pointer("/result/tools/3/inputSchema")
+            .pointer("/result/tools/4/inputSchema")
             .expect("user input schema");
         assert_eq!(
             user_input_schema.get("type").and_then(Value::as_str),
@@ -328,6 +329,79 @@ mod tests {
                 .and_then(Value::as_u64),
             Some(1)
         );
+    }
+
+    #[tokio::test]
+    async fn rejects_removed_action_tool_names() {
+        for name in ["terminal_send", "terminal_open", "terminal_open_and_send"] {
+            let response = dispatch(
+                json!({
+                    "jsonrpc":"2.0",
+                    "id":1,
+                    "method":"tools/call",
+                    "params":{"name":name,"arguments":{}}
+                }),
+                |_, _| async { unreachable!("removed tools must not be dispatched") },
+                |_| async { unreachable!() },
+            )
+            .await
+            .unwrap();
+            assert_eq!(
+                response.pointer("/error/message").and_then(Value::as_str),
+                Some("unknown tool"),
+                "{name}"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn preserves_action_arguments_at_the_mcp_boundary() {
+        let expected = json!({
+            "summary": "Investigate failures",
+            "reason": "The user requested an independent investigation",
+            "task": "Find the failure, fix it, and report validation results.",
+            "placement": "new_split",
+            "working_directory": "C:\\repo",
+            "split_direction": "right"
+        });
+        let captured = std::sync::Arc::new(std::sync::Mutex::new(None));
+        let response = dispatch(
+            json!({
+                "jsonrpc":"2.0",
+                "id":1,
+                "method":"tools/call",
+                "params":{"name":"delegate_task","arguments":expected.clone()}
+            }),
+            {
+                let captured = std::sync::Arc::clone(&captured);
+                |tool, arguments| async move {
+                    *captured.lock().unwrap() = Some((tool, arguments));
+                    Ok(ProposalValidationResponse {
+                        phase: super::super::action_proposal::pipe::ValidationPhase::Validation,
+                        status: ProposalValidationStatus::Accepted,
+                        proposal_id: Some("proposal".to_string()),
+                        reason: None,
+                        retryable: false,
+                    })
+                }
+            },
+            |_| async { unreachable!() },
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(
+            response
+                .pointer("/result/structuredContent/status")
+                .and_then(Value::as_str),
+            Some("accepted")
+        );
+        let captured = captured.lock().unwrap().take().expect("action call");
+        assert_eq!(
+            captured.0,
+            super::super::action_proposal::schema::McpActionTool::DelegateTask
+        );
+        assert_eq!(captured.1, expected);
     }
 
     /// Prints the serialized `tools/list` size so the cost of the tool surface
