@@ -1004,6 +1004,10 @@ fn is_session_mcp_server_name(name: &str) -> bool {
     crate::agent_tools::session_mcp::server_name_matches(name)
 }
 
+fn is_dynamic_session_mcp_server_name(name: &str) -> bool {
+    name != "intelligent_terminal" && is_session_mcp_server_name(name)
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum SessionMcpTool {
     TerminalAction(crate::agent_tools::action_proposal::schema::McpActionTool),
@@ -1035,7 +1039,10 @@ impl SessionMcpTool {
     }
 }
 
-fn session_mcp_tool_from_title(title: Option<&str>) -> Option<SessionMcpTool> {
+fn session_mcp_tool_from_title_matching(
+    title: Option<&str>,
+    server_name_matches: fn(&str) -> bool,
+) -> Option<SessionMcpTool> {
     let Some(title) = title.map(str::trim) else {
         return None;
     };
@@ -1043,7 +1050,7 @@ fn session_mcp_tool_from_title(title: Option<&str>) -> Option<SessionMcpTool> {
     for tool in SessionMcpTool::ALL {
         for separator in ["/", "-"] {
             if let Some(server_name) = title.strip_suffix(&format!("{separator}{}", tool.name())) {
-                if is_session_mcp_server_name(server_name) {
+                if server_name_matches(server_name) {
                     return Some(tool);
                 }
             }
@@ -1051,12 +1058,20 @@ fn session_mcp_tool_from_title(title: Option<&str>) -> Option<SessionMcpTool> {
         if title
             .strip_prefix("mcp__")
             .and_then(|title| title.strip_suffix(&format!("__{}", tool.name())))
-            .is_some_and(is_session_mcp_server_name)
+            .is_some_and(server_name_matches)
         {
             return Some(tool);
         }
     }
     None
+}
+
+fn session_mcp_tool_from_title(title: Option<&str>) -> Option<SessionMcpTool> {
+    session_mcp_tool_from_title_matching(title, is_session_mcp_server_name)
+}
+
+fn session_mcp_tool_from_dynamic_title(title: Option<&str>) -> Option<SessionMcpTool> {
+    session_mcp_tool_from_title_matching(title, is_dynamic_session_mcp_server_name)
 }
 
 fn looks_like_proposal_command(command: &str) -> bool {
@@ -1465,7 +1480,7 @@ impl WtaClient {
             }
             acp::schema::v1::SessionUpdate::ToolCall(tool_call) => {
                 let tool_call_id = tool_call.tool_call_id.to_string();
-                if let Some(tool) = session_mcp_tool_from_title(Some(&tool_call.title)) {
+                if let Some(tool) = session_mcp_tool_from_dynamic_title(Some(&tool_call.title)) {
                     self.hide_session_mcp_tool_call(&sid, &tool_call_id, tool);
                     return Ok(());
                 }
@@ -1513,7 +1528,9 @@ impl WtaClient {
             }
             acp::schema::v1::SessionUpdate::ToolCallUpdate(update) => {
                 let tool_call_id = update.tool_call_id.to_string();
-                if let Some(tool) = session_mcp_tool_from_title(update.fields.title.as_deref()) {
+                if let Some(tool) =
+                    session_mcp_tool_from_dynamic_title(update.fields.title.as_deref())
+                {
                     self.hide_session_mcp_tool_call(&sid, &tool_call_id, tool);
                     return Ok(());
                 }
@@ -4679,10 +4696,10 @@ mod tests {
         acp_error_detail, acp_result_failure_fields, bounded_tool_output_parts,
         claim_unexpected_transport_loss, complete_prompt_request, complete_transport_shutdown,
         inject_wta_pane_meta, is_redundant_startup_model_error, post_login_authenticate_error,
-        session_mcp_tool_from_title, stop_prompt_tasks, timeout_result_failure_fields,
-        tool_call_exit_code, tool_call_kind_label, tool_call_location_hint, tool_call_target,
-        AcpClientExit, ClientState, PromptTimingState, PromptUsageIdentity, SessionMcpTool,
-        SoftStopReason, WtaClient,
+        session_mcp_tool_from_dynamic_title, session_mcp_tool_from_title, stop_prompt_tasks,
+        timeout_result_failure_fields, tool_call_exit_code, tool_call_kind_label,
+        tool_call_location_hint, tool_call_target, AcpClientExit, ClientState, PromptTimingState,
+        PromptUsageIdentity, SessionMcpTool, SoftStopReason, WtaClient,
     };
     use crate::app_contracts::AppEvent;
     use crate::protocol::acp::failure::{AgentFailure, HandshakeStage};
@@ -5536,6 +5553,47 @@ mod tests {
             event_rx.try_recv(),
             Ok(AppEvent::HideToolCall { session_id, id })
                 if session_id == "proposal-session" && id == "qualified-tool"
+        ));
+        assert!(event_rx.try_recv().is_err());
+    }
+
+    #[tokio::test]
+    async fn session_mcp_display_keeps_stable_namespace_calls_visible() {
+        let manager =
+            Arc::new(crate::agent_tools::action_proposal::channel::ProposalChannelManager::new());
+        let (client, mut event_rx) = proposal_test_client(manager);
+
+        client
+            .session_notification(acp::schema::v1::SessionNotification::new(
+                acp::schema::v1::SessionId::new("provider-session"),
+                acp::schema::v1::SessionUpdate::ToolCall(acp::schema::v1::ToolCall::new(
+                    acp::schema::v1::ToolCallId::new("stable-tool"),
+                    "intelligent_terminal/run_command",
+                )),
+            ))
+            .await
+            .unwrap();
+        assert!(matches!(
+            event_rx.try_recv(),
+            Ok(AppEvent::ToolCall { id, .. }) if id == "stable-tool"
+        ));
+
+        client
+            .session_notification(acp::schema::v1::SessionNotification::new(
+                acp::schema::v1::SessionId::new("provider-session"),
+                acp::schema::v1::SessionUpdate::ToolCallUpdate(
+                    acp::schema::v1::ToolCallUpdate::new(
+                        acp::schema::v1::ToolCallId::new("stable-update"),
+                        acp::schema::v1::ToolCallUpdateFields::new()
+                            .title("intelligent_terminal-run_command"),
+                    ),
+                ),
+            ))
+            .await
+            .unwrap();
+        assert!(matches!(
+            event_rx.try_recv(),
+            Ok(AppEvent::ToolCallUpdate { id, .. }) if id == "stable-update"
         ));
         assert!(event_rx.try_recv().is_err());
     }
