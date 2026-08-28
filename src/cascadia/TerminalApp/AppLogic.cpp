@@ -342,15 +342,19 @@ namespace winrt::TerminalApp::implementation
         const auto createWatcher = [weakSelf](const HKEY root) {
             return ::Microsoft::Terminal::Settings::Model::AgentPolicy::CreatePolicyChangeWatcher(
                 root,
-                [weakSelf](wil::RegistryChangeKind) {
-                    if (const auto self = weakSelf.get())
+                [weakSelf](wil::RegistryChangeKind) noexcept {
+                    try
                     {
-                        // AgentPolicy is header-only, so TerminalApp and SettingsModel each
-                        // own a cache. Refresh this module now; the settings reload refreshes
-                        // SettingsModel and emits the existing runtime-config diff.
-                        ::Microsoft::Terminal::Settings::Model::AgentPolicy::Reload();
-                        self->ReloadSettingsThrottled();
+                        if (const auto self = weakSelf.get())
+                        {
+                            // AgentPolicy is header-only, so TerminalApp and SettingsModel each
+                            // own a cache. Refresh this module now; the settings reload refreshes
+                            // SettingsModel and emits the existing runtime-config diff.
+                            ::Microsoft::Terminal::Settings::Model::AgentPolicy::Reload();
+                            self->ReloadSettingsThrottled();
+                        }
                     }
+                    CATCH_LOG()
                 });
         };
         _machineAgentPolicyWatcher = createWatcher(HKEY_LOCAL_MACHINE);
