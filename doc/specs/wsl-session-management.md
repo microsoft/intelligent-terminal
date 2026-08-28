@@ -1,5 +1,11 @@
 # WSL Agent Session Management (Historical MVP)
 
+> **Superseded in part.** This spec is written against the on-disk history
+> scanner (`history_loader::load_all`) and the `wsl_acp` scan module, both of
+> which have since been removed. Host history now comes from the agent's own
+> ACP `session/list` (`session_history.rs`); there is no WSL history scan in
+> the tree today. The design rationale below is kept for history.
+
 ## Abstract
 
 Intelligent Terminal (IT) surfaces a list of agent-CLI sessions (Copilot /

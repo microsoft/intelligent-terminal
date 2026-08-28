@@ -242,6 +242,14 @@ helper-side and unrelated).
 
 ### Title resolution (and the codex AGENTS.md fix)
 
+> **Superseded.** The on-disk title scan described below was removed with the
+> rest of the disk scanner: titles now come from ACP `session/list`
+> (`SessionInfo::title`, mapped in `session_history.rs`, with
+> `session_history::short_id` as the fallback label). Only the codex
+> subagent-fork check survives, as
+> `session_watcher::classify_codex::record_is_subagent_meta`. The rationale
+> below is kept for history.
+
 A watcher row is created with a **synthetic** title (cwd basename, or empty),
 then upgraded from the CLI's on-disk artefacts by `try_refresh_title_from_disk`
 → `lookup_title_for_session`, the **same** disk-title path the hook and
@@ -283,7 +291,7 @@ title).
 | Apply / dedup / gate / reaper | `tools/wta/src/master/mod.rs` (`apply_watcher_event`, `handle_session_hook`, `ensure_watched_session_row`, `watcher_row_allowed`, `live_it_pane_guids`, `reap_dead_class_b_sessions`, `hook_owned` + `born_bound` sets) |
 | Born-bound registration | `session_registry.rs` (`build_born_bound_request`, `INTELLTERM_METHOD_SESSION_BORN_BOUND`), `main.rs` (`register_launched_session_with_master`) |
 | Row `bound_pid` field | `tools/wta/src/session_registry.rs` |
-| Codex title / subagent / phantom | `tools/wta/src/history_loader.rs` |
+| Codex subagent fork detection | `session_watcher/classify_codex.rs` (`record_is_subagent_meta`) |
 | User-input tool heuristic | `agent_sessions.rs` (`is_user_input_tool`) |
 
 ### Status detection (per-CLI)
@@ -403,7 +411,7 @@ of the live states.
   `session_hook_marks_*`; born-bound: `session_born_bound_marks_born_bound_not_hook_owned`,
   `born_bound_session_gets_watcher_activity_without_rebinding`,
   `real_hook_takes_over_born_bound_session`, `resume_binding_events_are_born_bound_not_hook_owned`),
-  `history_loader::tests` (codex title / subagent / phantom), and
+  `classify_codex::tests` (codex subagent fork detection), and
   `session_watcher` discovery/classify tests (incl. `classify_claude` turn-based:
   user→Working, `stop_reason` end_turn→Idle / tool_use→Working, streaming-partial
   stays Working, AskUserQuestion→Attention).

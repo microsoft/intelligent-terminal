@@ -3690,8 +3690,8 @@ impl HelperHandler {
     /// Answer `session/list` from our own registry (NOT by proxying the
     /// helper's call to the agent CLI). The registry holds both live
     /// sessions and the historical rows seeded at startup / rescan from
-    /// the agent's own `session/list` (host) and `wsl_acp` (WSL),
-    /// Class-A-filtered by the `agent_pane_origin` index. Proxying the
+    /// the agent's own `session/list`, Class-A-filtered by the
+    /// `agent_pane_origin` index. Proxying the
     /// helper's call directly would bypass that merge + filter.
     ///
     /// The response carries our `pane_session_id` inside the standard

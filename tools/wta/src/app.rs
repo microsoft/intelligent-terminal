@@ -733,7 +733,7 @@ where
     // Stamp `AgentPane` origin on the live session if the agent-pane
     // origin index recorded its session id. This is what flips the
     // "agent pane" prefix on for *live* rows — historical rows pick up
-    // the same flag through `history_loader::load_all`'s join. We
+    // the same flag through `session_history::classify_and_map`'s join. We
     // re-read the index on every routed event (small file, infrequent
     // event) rather than caching, to stay correct after a new session
     // is created while wta is already running.

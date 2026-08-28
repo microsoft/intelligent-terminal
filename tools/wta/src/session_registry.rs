@@ -1068,13 +1068,13 @@ impl SessionInfo {
     }
 }
 
-/// Convert an `AgentSession` (the helper-side representation, also used
-/// by the disk scanner `history_loader::load_all`) into a `SessionInfo`
+/// Convert an `AgentSession` (the helper-side representation, also produced
+/// by the ACP history scan in `session_history`) into a `SessionInfo`
 /// for upsert into master's registry.
 ///
-/// Used by master at startup to seed the registry with historical
-/// rows scanned from `~/.copilot/`, `~/.claude/`, `~/.gemini/` so
-/// `wta sessions list` and session management viewers see the full set, not just live
+/// Used by master at startup to seed the registry with historical rows
+/// returned by the agent's own ACP `session/list` so `wta sessions list`
+/// and session management viewers see the full set, not just live
 /// sessions created via `session/new` after master booted.
 pub fn agent_session_to_session_info(s: &AgentSession) -> SessionInfo {
     let last_activity_at_ms = s
