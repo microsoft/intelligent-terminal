@@ -17,35 +17,41 @@ identity to put both back.
 Keeping the shells themselves alive, saving individual closed tabs, and browsing
 a history of past sessions are separate features and are not described here.
 
+
 ## Storage
 
-Nothing new is written. The agent metadata rides the two files Terminal already
-maintains:
+Nothing new is written, and no new field is added to what is written. Both kinds
+of agent-bearing pane persist through layout fields Terminal already has:
 
 | What | Where |
 | --- | --- |
-| Serialized tab layout, including agent metadata | `persistedWindowLayouts` in `state.json` |
+| Serialized tab layout | `persistedWindowLayouts` in `state.json` |
 | Per-pane scrollback | `buffer_{guid}.txt` next to `state.json` |
 
 Elevated windows already write to `elevated-state.json` and `elevated_{guid}.txt`,
 so an elevated session and an unelevated one never see each other's agents.
 
+Concretely, `state.json` gains no agent key and `wt` gains no agent option:
+
+| What has to survive | Field it rides |
+| --- | --- |
+| Which conversation a shell pane was in | `commandline`, rewritten to the agent's resume invocation |
+| That a pane is the agent pane | `type`, a key the layout format already has, with the new values `agent` and `agentStashed` |
+| Which conversation, agent and view the agent pane had | `commandline`, in the stable `wta` resume form |
+| Where the agent pane sat and how big it was | `SplitPaneArgs`' existing `split` and `size` |
+| Where it started | `startingDirectory` |
+
 ## Saving
 
-`TerminalPage::GetWindowLayout` builds the same `WindowLayout` it always did,
-then `_AddAgentRestoreMetadata` stamps each tab's agent bindings onto the
-`NewTerminalArgs` of the actions that rebuild it. Because the metadata is part of
-the ordinary layout, every existing writer picks it up for free:
+`TerminalPage::GetWindowLayout` builds the same `WindowLayout` it always did.
+Because the agent data is part of the ordinary layout, every existing writer
+picks it up for free:
 
 | Writer | Covers |
 | --- | --- |
 | `WindowEmperor::_persistState`, on a five-minute timer | **a crash**, and anything else that never runs shutdown code |
 | `WindowEmperor::_finalizeSessionPersistence` | closing the last window, quitting, sign-out, shutdown |
 | `TerminalPage::_SaveWorkspaceIfNeeded` | named windows, which persist as workspaces |
-
-Two kinds of binding are recorded, and both are designed to outlive the process
-they describe — the same property that lets an ordinary pane come back after its
-program was killed.
 
 **Shell panes.** `_paneAgentSessions` holds the most recent agent session seen in
 each shell pane, keyed by the pane's connection `SessionId`. The binding arrives
@@ -61,61 +67,74 @@ failed exit, so a save that happens later can still describe how to bring the CL
 back. The binding is dropped for good in `_NotifyPanesClosing`, when the pane
 itself goes away.
 
-**The agent pane.** Its ACP session, agent identity (including the WSL distro,
-folded into one `AgentPaneBackend` token), custom command, view, open state,
-position, and split size live in `AgentPaneContent` — a XAML object that dies
-with its pane, and the Agent Pane profile is `closeOnExit: always`, so the pane
-dies the moment the helper does. A save that had to read the live pane would
-therefore describe no agent at all whenever the helper went down first, which is
-exactly what a system shutdown produces: it kills wta and the agent CLIs while
-Terminal's own `WM_ENDSESSION` save is still queued.
+`_StampAgentResumeCommandlines` is the whole of the save-side work: for each
+persisted pane that has a binding, it replaces `commandline` with
+`AgentPaneRestore::BuildResumeCommandline`. That command is rebuilt from the
+agent id rather than taken from whatever string a hook supplied, and the session
+id is validated before it lands inside a command line that will be executed.
 
-So the pane does not own its restore data. `Tab::AgentRestoreRecord` does.
-`_RefreshAgentRestoreRecord` writes it whenever the live pane can be read — at
-creation, and after every `agent_state_changed` projection from wta — and
-`_AddAgentRestoreMetadata` stamps the record, never the pane. The record is
-cleared only when the agent pane is deliberately taken away: `_TeardownAgentPane`,
-a user closing the pane, or a move to another window. A pane lost to a dying
-helper keeps its record and comes back.
+**The agent pane.** It is an ordinary terminal pane hosting a `wta` helper, so
+`BuildStartupActions` serializes it like any other pane — including when it is
+stashed, because `StashAgentPane` only hides the pane and leaves it in the tree.
+`AgentPaneContent::GetNewTerminalArgs` stamps the content type and swaps the live
+helper command line for the stable resume form; `Pane::GetTerminalArgsForPane`
+upgrades that type to `agentStashed` when the pane is hidden.
 
-An agent pane's own CLI never lands in `_paneAgentSessions`. `wta-master` spawns
-it outside every conpty, so it inherits no `WT_SESSION`, its hooks publish an
-empty `pane_id`, and the event is dropped. The one way an agent pane's ACP
-session can also be a shell binding is a session that was first run in a shell
-pane and later resumed into an agent pane; `SetPersistedLayoutAgentRestorePaths`
-covers that on the restore side, across the whole window.
+What it may **not** persist is the live helper command line. That names this
+run's master pipe, this window's id, this tab's id, and a CLI path already
+resolved through GPO `AllowedAgents` — meaningless after a restart, and in the
+last case a frozen policy decision. So the saved form keeps only the session,
+the agent identity (with the WSL distro folded into one `AgentPaneBackend`
+token), the view, and a custom provider's command.
 
-An empty pre-warmed helper is never recorded: wta only projects a session id
-through `TabSession::resumable_session_id` once the conversation is meaningful,
-so a tab the user never chatted in restores its pane layout and no conversation.
+The agent identity has to be written down rather than recovered from the session
+id, because nothing on the wta side outlives the process: `session_registry` is
+an in-memory view of currently-connected sessions, and ACP `session/list` can
+only be asked of an agent that is already spawned — so working out which agent
+owns a session would mean starting every candidate agent first. `session/list`
+is also an UNSTABLE capability that an agent may not implement at all.
+
+For the pane to be there at all when a save runs, the Agent Pane profile is
+`closeOnExit: graceful` rather than `always`. A helper that exits cleanly still
+takes its pane with it, but one that was *killed* leaves the pane behind exactly
+like every other profile. That matters because a system shutdown kills wta and
+the agent CLIs while Terminal's own `WM_ENDSESSION` save is still queued.
+
+An empty pre-warmed helper contributes no conversation: wta only projects a
+session id through `TabSession::resumable_session_id` once the conversation is
+meaningful, so a tab the user never chatted in restores its pane layout and no
+conversation.
 
 ## Restoring
 
-`TerminalWindow::Initialize` already replays `WindowLayout::TabLayout()` for both
-"Restore window layout" modes. Before handing the actions to `TerminalPage`, it
-calls `SetPersistedLayoutAgentRestorePaths`, which points each agent-bound shell
-pane at its `buffer_{guid}.txt` through `NewTerminalArgs::PersistedBufferPath`.
+`TerminalWindow::Initialize` replays `WindowLayout::TabLayout()` unchanged — the
+restore path needed no new pre-processing step, because there is no separate
+agent metadata to distribute.
 
-That property is an override, not the only source of the path: `_MakeTerminalPane`
-derives the same `buffer_{guid}.txt` from `SessionId` for every pane, which is how
-ordinary panes get their scrollback back. What the stamp adds is a marker saying
-"this pane came out of a persisted layout" — `ShouldResumeAgentSession` requires
-it, so an `AgentSessionId` arriving any other way (a `wt` commandline, say) starts
-a normal shell rather than silently re-attaching to an old conversation.
+**Shell panes.** Nothing special happens: the pane is created from its persisted
+`commandline`, which is the resume invocation. The one adjustment is that
+`_MakeTerminalPane` skips seeding the saved scrollback when
+`AgentPaneRestore::IsResumeCommandline` recognises what the pane is about to run.
+The CLI replays its own transcript, so seeding as well would show the
+conversation twice and compound it on every restart. Asking what the pane will
+run — rather than consulting a persisted marker — means a pane the user pointed
+at a resume command themselves behaves the same way.
 
-**Shell panes.** `_MakeTerminalPane` rewrites the pane's commandline to the
-agent's resume command, either the one recorded at save time or one rebuilt from
-the agent id. A resumed pane skips buffer restore: the CLI replays its own
-transcript, and seeding the buffer as well would show the conversation twice and
-compound it on every restart.
+**The agent pane.** `_HandleSplitPane` sees the agent content type and hands the
+action to `_RestoreAgentPaneFromLayout` instead of `_MakePane`, because the pane
+cannot be built from saved state alone. That reads the session, agent, view and
+custom command back out of the command line and calls the ordinary spawn path,
+which re-detects wta, re-acquires the shared master, re-derives the owner ids and
+— importantly — re-applies GPO `AllowedAgents`. A saved layout can therefore
+never launch an agent that policy now forbids. The conversation comes back
+through a boot-time ACP `session/load` driven by wta's
+`--initial-load-session-id`, and `agentStashed` restores the pane already
+toggled away.
 
-**The agent pane.** A pane whose agent session belongs to an agent pane is
-skipped by `SetPersistedLayoutAgentRestorePaths`, so it never gets the marker and
-is never resumed as a shell command on top of the agent pane that owns that
-conversation. The pane itself is rebuilt through `_pendingAgentPaneRestores` with
-its recorded view, open state, position, and size, and its conversation comes
-back through a boot-time ACP `session/load` driven by wta's
-`--initial-load-session-id`.
+Pre-warm is suppressed for the duration of a startup replay
+(`_replayingStartupActions`), because a tab is created before the `splitPane`
+that carries its agent pane. `_PrewarmAgentPanesAfterStartup` then gives a
+stashed helper to every tab the replay left without one.
 
 ## Capabilities and limitations
 
@@ -128,3 +147,6 @@ back through a boot-time ACP `session/load` driven by wta's
   window closed is not halfway through when it comes back.
 * Restoring is gated on the existing **Settings → Startup → "When Terminal
   starts"** preference. `defaultProfile` restores nothing, as before.
+* An agent pane whose helper was killed now stays visible instead of vanishing,
+  because the profile is `closeOnExit: graceful`. That is what makes it
+  survivable in a save, but it is a visible behavior change.

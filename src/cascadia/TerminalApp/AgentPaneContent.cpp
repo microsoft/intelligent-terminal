@@ -5,6 +5,7 @@
 #include "AgentPaneContent.h"
 #include "AgentPaneContent.g.cpp"
 #include "AgentPaneLog.h"
+#include "../inc/AgentPaneRestore.h"
 
 #include <algorithm>
 #include <cwctype>
@@ -37,10 +38,7 @@ namespace winrt::TerminalApp::implementation
         {
             co_await winrt::resume_background();
 
-            const auto waitResult = WaitForSingleObject(process.get(), static_cast<DWORD>(
-                                                                           std::chrono::duration_cast<std::chrono::milliseconds>(
-                                                                               AgentHelperExitTimeout)
-                                                                               .count()));
+            const auto waitResult = WaitForSingleObject(process.get(), static_cast<DWORD>(std::chrono::duration_cast<std::chrono::milliseconds>(AgentHelperExitTimeout).count()));
             const auto waitError = waitResult == WAIT_FAILED ? GetLastError() : ERROR_SUCCESS;
             if (waitResult == WAIT_OBJECT_0)
             {
@@ -154,14 +152,19 @@ namespace winrt::TerminalApp::implementation
         AgentLogoKind _logoForAgent(const winrt::hstring& name)
         {
             std::wstring lower{ name };
-            std::transform(lower.begin(), lower.end(), lower.begin(),
-                           [](wchar_t c) { return static_cast<wchar_t>(std::towlower(c)); });
-            if (lower.find(L"claude") != std::wstring::npos) return AgentLogoKind::Claude;
-            if (lower.find(L"codex") != std::wstring::npos) return AgentLogoKind::Codex;
-            if (lower.find(L"openai") != std::wstring::npos) return AgentLogoKind::Codex;
-            if (lower.find(L"gpt") != std::wstring::npos) return AgentLogoKind::Codex;
-            if (lower.find(L"gemini") != std::wstring::npos) return AgentLogoKind::Gemini;
-            if (lower.find(L"opencode") != std::wstring::npos) return AgentLogoKind::OpenCode;
+            std::transform(lower.begin(), lower.end(), lower.begin(), [](wchar_t c) { return static_cast<wchar_t>(std::towlower(c)); });
+            if (lower.find(L"claude") != std::wstring::npos)
+                return AgentLogoKind::Claude;
+            if (lower.find(L"codex") != std::wstring::npos)
+                return AgentLogoKind::Codex;
+            if (lower.find(L"openai") != std::wstring::npos)
+                return AgentLogoKind::Codex;
+            if (lower.find(L"gpt") != std::wstring::npos)
+                return AgentLogoKind::Codex;
+            if (lower.find(L"gemini") != std::wstring::npos)
+                return AgentLogoKind::Gemini;
+            if (lower.find(L"opencode") != std::wstring::npos)
+                return AgentLogoKind::OpenCode;
             return AgentLogoKind::Copilot;
         }
 
@@ -485,11 +488,42 @@ namespace winrt::TerminalApp::implementation
 
     INewContentArgs AgentPaneContent::GetNewTerminalArgs(BuildStartupKind kind) const
     {
-        if (const auto& impl = winrt::get_self<implementation::TerminalPaneContent>(_inner))
+        const auto& impl = winrt::get_self<implementation::TerminalPaneContent>(_inner);
+        if (!impl)
         {
-            return impl->GetNewTerminalArgs(kind);
+            return nullptr;
         }
-        return nullptr;
+
+        auto args = impl->GetNewTerminalArgs(kind);
+
+        // A live cross-window move re-attaches this pane by ContentId and
+        // keeps the running helper, so it wants the inner args untouched.
+        // Only a saved layout needs the stable form.
+        if (kind != BuildStartupKind::Persist)
+        {
+            return args;
+        }
+
+        const auto terminalArgs = args.try_as<winrt::Microsoft::Terminal::Settings::Model::NewTerminalArgs>();
+        if (!terminalArgs)
+        {
+            return args;
+        }
+
+        // Mark the pane as agent-backed. `Pane::GetTerminalArgsForPane`
+        // upgrades this to the stashed variant when the pane is hidden.
+        terminalArgs.SetContentType(winrt::hstring{ ::Microsoft::Terminal::AgentPaneRestore::PaneType });
+
+        // Replace the live helper command line — which names this run's master
+        // pipe, owner ids and resolved CLI path — with the stable resume form.
+        ::Microsoft::Terminal::AgentPaneRestore::Fields fields;
+        fields.sessionId = _agentSessionId;
+        fields.view = _isSessionsView ? ::Microsoft::Terminal::AgentPaneRestore::SessionsView : ::Microsoft::Terminal::AgentPaneRestore::ChatView;
+        fields.agentIdentity = _agentRestoreIdentity;
+        fields.customCommand = _agentRestoreCustomCommand;
+        terminalArgs.Commandline(winrt::hstring{ ::Microsoft::Terminal::AgentPaneRestore::BuildPaneCommandline(_wtaExecutablePath, fields) });
+
+        return args;
     }
 
     winrt::hstring AgentPaneContent::Title()

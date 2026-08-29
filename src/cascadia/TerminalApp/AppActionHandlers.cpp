@@ -2,6 +2,7 @@
 // Licensed under the MIT license.
 
 #include "pch.h"
+#include "../inc/AgentPaneRestore.h"
 #include "App.h"
 
 #include "TerminalPage.h"
@@ -288,6 +289,19 @@ namespace winrt::TerminalApp::implementation
             const auto& duplicateFromTab{ realArgs.SplitMode() == SplitType::Duplicate ? _GetFocusedTab() : nullptr };
 
             const auto& activeTab{ _senderOrFocusedTab(sender) };
+
+            // A persisted agent pane replays as an ordinary splitPane action,
+            // but it cannot be built by `_MakePane`: the helper needs this
+            // run's master pipe and owner ids, and its agent has to be
+            // re-checked against policy rather than taken from saved state.
+            // Hand it to the spawn path, which does its own split.
+            if (const auto& terminalArgs{ realArgs.ContentArgs().try_as<NewTerminalArgs>() };
+                terminalArgs && ::Microsoft::Terminal::AgentPaneRestore::IsPaneType(terminalArgs.Type()))
+            {
+                _RestoreAgentPaneFromLayout(activeTab, terminalArgs);
+                args.Handled(true);
+                return;
+            }
 
             _SplitPane(activeTab,
                        realArgs.SplitDirection(),
@@ -1727,7 +1741,7 @@ namespace winrt::TerminalApp::implementation
     }
 
     void TerminalPage::_HandleTriggerAutofix(const IInspectable& /*sender*/,
-                                              const ActionEventArgs& args)
+                                             const ActionEventArgs& args)
     {
         // Per-tab: read autofix state from the active tab's AgentPaneContent.
         const auto activeTab = _GetFocusedTabImpl();
@@ -1822,7 +1836,12 @@ namespace winrt::TerminalApp::implementation
         SYSTEMTIME st{};
         GetLocalTime(&st);
         const auto zipName = fmt::format(L"intelligent-terminal-logs-{:04d}{:02d}{:02d}-{:02d}{:02d}{:02d}.zip",
-                                          st.wYear, st.wMonth, st.wDay, st.wHour, st.wMinute, st.wSecond);
+                                         st.wYear,
+                                         st.wMonth,
+                                         st.wDay,
+                                         st.wHour,
+                                         st.wMinute,
+                                         st.wSecond);
         const auto zipPath = desktop / zipName;
 
         // Resolve absolute paths to tar.exe and explorer.exe up-front so we
@@ -1844,15 +1863,16 @@ namespace winrt::TerminalApp::implementation
         // leaking an absolute path. argv[0] must still be present in lpCommandLine
         // even though lpApplicationName provides the executable.
         auto cmdline = fmt::format(LR"("{}" -a -c -f "{}" -C "{}" logs)",
-                                    tarExe.wstring(), zipPath.wstring(), logsDir.parent_path().wstring());
+                                   tarExe.wstring(),
+                                   zipPath.wstring(),
+                                   logsDir.parent_path().wstring());
 
         STARTUPINFOW si{};
         si.cb = sizeof(si);
         si.dwFlags = STARTF_USESHOWWINDOW;
         si.wShowWindow = SW_HIDE;
         PROCESS_INFORMATION pi{};
-        if (!CreateProcessW(tarExe.c_str(), cmdline.data(), nullptr, nullptr, FALSE,
-                            CREATE_NO_WINDOW, nullptr, nullptr, &si, &pi))
+        if (!CreateProcessW(tarExe.c_str(), cmdline.data(), nullptr, nullptr, FALSE, CREATE_NO_WINDOW, nullptr, nullptr, &si, &pi))
         {
             co_return;
         }
@@ -2029,9 +2049,18 @@ namespace winrt::TerminalApp::implementation
 
                 allAlreadyInstalled = true; // becomes false on first non-alreadyInstalled below
 
-                if (shellPresence.pwsh)              { consider(results.pwsh,              L"PowerShell"); }
-                if (shellPresence.windowsPowerShell) { consider(results.windowsPowerShell, L"Windows PowerShell"); }
-                if (shellPresence.bash)              { consider(results.bash,              L"bash"); }
+                if (shellPresence.pwsh)
+                {
+                    consider(results.pwsh, L"PowerShell");
+                }
+                if (shellPresence.windowsPowerShell)
+                {
+                    consider(results.windowsPowerShell, L"Windows PowerShell");
+                }
+                if (shellPresence.bash)
+                {
+                    consider(results.bash, L"bash");
+                }
                 for (const auto& [distName, wslRes] : results.wsl)
                 {
                     consider(wslRes, L"WSL bash (" + distName + L")");

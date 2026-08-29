@@ -51,7 +51,6 @@ namespace SettingsModelUnitTests
             auto warnings = implementation::Command::LayerJson(commands, commands0Json, OriginTag::None);
             VERIFY_ARE_EQUAL(0u, warnings.size());
         }
-
         VERIFY_ARE_EQUAL(1u, commands.Size());
 
         {
@@ -458,39 +457,12 @@ namespace SettingsModelUnitTests
                 "command": { "action": "newWindow", "tabTitle":"\\\";foo\\" }
             },
             {
-                "name":"action9_agentSession",
+                "name":"action9_agentPane",
                 "command": {
                     "action": "newWindow",
-                    "agentSessionId": "agent-session-1",
-                    "agentResumeCommandline": "claude --resume agent-session-1",
-                    "agentPaneSessionId": "acp-session-2",
-                    "agentPaneView": "sessions",
-                    "agentPaneOpen": true,
-                    "agentPanePosition": "right",
-                    "agentPaneSize": 0.35
-                }
-            },
-            {
-                "name":"action10_structuredAgentSession",
-                "command": {
-                    "action": "newWindow",
-                    "sessionId": "{25a0514d-be4a-4da4-adc3-58155f42bd9b}",
-                    "agentSession": {
-                        "paneSessionId": "{25a0514d-be4a-4da4-adc3-58155f42bd9b}",
-                        "agentSessionId": "agent-session-3",
-                        "agent": "copilot"
-                    },
-                    "agentPane": {
-                        "agentSession": {
-                            "agentSessionId": "acp-session-4",
-                            "agent": "wsl:Ubuntu:claude"
-                        },
-                        "view": "chat",
-                        "open": true,
-                        "position": "bottom",
-                        "size": 0.25,
-                        "customCommand": "custom-acp --stdio"
-                    }
+                    "type": "agentStashed",
+                    "commandline": "\"wta.exe\" --initial-load-session-id \"acp-1\" --initial-view \"chat\"",
+                    "startingDirectory": "C:\\repo"
                 }
             }
         ])" };
@@ -501,7 +473,7 @@ namespace SettingsModelUnitTests
         VERIFY_ARE_EQUAL(0u, commands.Size());
         auto warnings = implementation::Command::LayerJson(commands, commands0Json, OriginTag::None);
         VERIFY_ARE_EQUAL(0u, warnings.size());
-        VERIFY_ARE_EQUAL(11u, commands.Size());
+        VERIFY_ARE_EQUAL(10u, commands.Size());
 
         {
             auto command = commands.Lookup(L"action0");
@@ -638,60 +610,36 @@ namespace SettingsModelUnitTests
                 L"cmdline: \"%s\"", cmdline.c_str()));
             VERIFY_ARE_EQUAL(LR"-(--title "\\\"\;foo\\")-", terminalArgs.ToCommandline());
         }
-
         {
-            const auto command = commands.Lookup(L"action9_agentSession");
-            const auto realArgs = command.ActionAndArgs().Args().try_as<NewWindowArgs>();
-            const auto terminalArgs = realArgs.ContentArgs().try_as<NewTerminalArgs>();
-            VERIFY_ARE_EQUAL(winrt::hstring{ L"agent-session-1" }, terminalArgs.AgentSessionId());
-            VERIFY_ARE_EQUAL(winrt::hstring{ L"claude --resume agent-session-1" }, terminalArgs.AgentResumeCommandline());
-            VERIFY_ARE_EQUAL(winrt::hstring{ L"acp-session-2" }, terminalArgs.AgentPaneSessionId());
-            VERIFY_ARE_EQUAL(winrt::hstring{ L"sessions" }, terminalArgs.AgentPaneView());
-            VERIFY_IS_TRUE(terminalArgs.AgentPaneOpen());
-            VERIFY_ARE_EQUAL(winrt::hstring{ L"right" }, terminalArgs.AgentPanePosition());
-            VERIFY_ARE_EQUAL(0.35f, terminalArgs.AgentPaneSize());
-        }
-        {
-            const auto command = commands.Lookup(L"action10_structuredAgentSession");
-            const auto realArgs = command.ActionAndArgs().Args().try_as<NewWindowArgs>();
-            const auto terminalArgs = realArgs.ContentArgs().try_as<NewTerminalArgs>();
-            VERIFY_ARE_EQUAL(winrt::hstring{ L"agent-session-3" }, terminalArgs.AgentSessionId());
-            VERIFY_ARE_EQUAL(winrt::hstring{ L"copilot" }, terminalArgs.AgentSessionAgent());
-            VERIFY_ARE_EQUAL(winrt::hstring{ L"acp-session-4" }, terminalArgs.AgentPaneSessionId());
-            VERIFY_ARE_EQUAL(winrt::hstring{ L"wsl:Ubuntu:claude" }, terminalArgs.AgentPaneAgent());
-            VERIFY_ARE_EQUAL(winrt::hstring{ L"chat" }, terminalArgs.AgentPaneView());
-            VERIFY_IS_TRUE(terminalArgs.AgentPaneOpen());
-            VERIFY_ARE_EQUAL(winrt::hstring{ L"bottom" }, terminalArgs.AgentPanePosition());
-            // A WSL-backed pane records distro and agent as one token, so the
-            // restore can put it back in the distro rather than on the host.
-            VERIFY_ARE_EQUAL(0.25f, terminalArgs.AgentPaneSize());
-            VERIFY_ARE_EQUAL(winrt::hstring{ L"custom-acp --stdio" }, terminalArgs.AgentPaneCustomCommand());
+            // An agent pane is terminal-backed, so a non-empty `type` must not
+            // collapse it into the placeholder content args that other pane
+            // types use — that would throw away the command line naming the
+            // conversation to resume.
+            const auto command = commands.Lookup(L"action9_agentPane");
+            VERIFY_IS_NOT_NULL(command);
+            const auto& realArgs = command.ActionAndArgs().Args().try_as<NewWindowArgs>();
+            VERIFY_IS_NOT_NULL(realArgs);
+            const auto& terminalArgs = realArgs.ContentArgs().try_as<NewTerminalArgs>();
+            VERIFY_IS_NOT_NULL(terminalArgs);
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"agentStashed" }, terminalArgs.Type());
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"C:\\repo" }, terminalArgs.StartingDirectory());
+            VERIFY_IS_TRUE(implementation::NewTerminalArgs::IsAgentPaneType(terminalArgs.Type()));
 
-            const auto serialized = implementation::NewTerminalArgs::ToJson(terminalArgs);
-            VERIFY_IS_TRUE(serialized["agentSession"].isObject());
-            VERIFY_ARE_EQUAL("copilot", serialized["agentSession"]["agent"].asString());
+            // The type has to round-trip through the *action* serializer, not
+            // just `NewTerminalArgs::ToJson`. `ContentArgsToJson` treats a
+            // non-empty type as a content kind it does not understand and
+            // reduces it to a bare `{ "type": ... }`, which would silently drop
+            // the command line naming the conversation to resume.
+            const auto actionJson = implementation::ActionAndArgs::ToJson(command.ActionAndArgs());
+            VERIFY_ARE_EQUAL("agentStashed", actionJson["type"].asString());
             VERIFY_ARE_EQUAL(
-                "{25a0514d-be4a-4da4-adc3-58155f42bd9b}",
-                serialized["agentSession"]["paneSessionId"].asString());
-            VERIFY_IS_TRUE(serialized["agentPane"].isObject());
-            VERIFY_ARE_EQUAL(
-                "wsl:Ubuntu:claude",
-                serialized["agentPane"]["agentSession"]["agent"].asString());
-            VERIFY_IS_FALSE(serialized.isMember("agentResumeCommandline"));
-            VERIFY_IS_FALSE(serialized.isMember("agentPaneSessionId"));
+                R"("wta.exe" --initial-load-session-id "acp-1" --initial-view "chat")",
+                actionJson["commandline"].asString());
+            VERIFY_ARE_EQUAL("C:\\repo", actionJson["startingDirectory"].asString());
 
-            // Size and custom command have to survive the round trip: a missing
-            // write would silently restore an evenly split pane running the
-            // wrong command.
-            VERIFY_ARE_EQUAL(0.25, serialized["agentPane"]["size"].asDouble());
-            VERIFY_ARE_EQUAL(
-                "custom-acp --stdio",
-                serialized["agentPane"]["customCommand"].asString());
-
-            const auto roundTripped = implementation::NewTerminalArgs::FromJson(serialized);
-            VERIFY_ARE_EQUAL(0.25f, roundTripped.AgentPaneSize());
-            VERIFY_ARE_EQUAL(winrt::hstring{ L"custom-acp --stdio" }, roundTripped.AgentPaneCustomCommand());
-            VERIFY_ARE_EQUAL(winrt::hstring{ L"wsl:Ubuntu:claude" }, roundTripped.AgentPaneAgent());
+            const auto roundTripped = implementation::NewTerminalArgs::FromJson(actionJson);
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"agentStashed" }, roundTripped.Type());
+            VERIFY_ARE_EQUAL(terminalArgs.Commandline(), roundTripped.Commandline());
         }
     }
 }

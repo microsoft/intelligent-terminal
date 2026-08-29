@@ -13,7 +13,7 @@
 #include "../TerminalApp/Tab.h"
 #include "../TerminalApp/CommandPalette.h"
 #include "../TerminalApp/ContentManager.h"
-#include "../TerminalApp/AgentRestoreHelpers.h"
+#include "../inc/AgentPaneRestore.h"
 #include "../UnitTests_Control/MockControlSettings.h"
 #include "CppWinrtTailored.h"
 
@@ -122,9 +122,8 @@ namespace TerminalAppLocalTests
         if (Json::parseFromStream(builder, stream, &evt, &errors) &&
             evt["method"].asString() == "connection_state")
         {
-            connectionStates.push_back({
-                evt["params"]["pane_id"].asString(),
-                evt["params"]["state"].asString() });
+            connectionStates.push_back({ evt["params"]["pane_id"].asString(),
+                                         evt["params"]["state"].asString() });
         }
     }
 
@@ -198,7 +197,7 @@ namespace TerminalAppLocalTests
         TEST_METHOD(PaneAgentSessionBindingRequiresPaneIdentity);
         TEST_METHOD(AgentPaneRestoreDoesNotRequireAgentSession);
         TEST_METHOD(PaneAgentSessionEndClearsAgentBinding);
-        TEST_METHOD(ContentIdHandoffEndClearsAgentBinding);
+        TEST_METHOD(ContentIdAttachedPaneEmitsEndStateForItsConnection);
         TEST_METHOD(GetWindowLayoutIncludesAgentRestoreMetadata);
         TEST_METHOD(AgentRestoreRecordOutlivesTheAgentPane);
         TEST_METHOD(KilledCliKeepsAgentBindingUntilPaneCloses);
@@ -351,49 +350,62 @@ namespace TerminalAppLocalTests
 
     void TabTests::AgentSessionRestoreRequiresPersistedBufferPath()
     {
-        using winrt::TerminalApp::implementation::ShouldResumeAgentSession;
+        namespace Restore = ::Microsoft::Terminal::AgentPaneRestore;
 
-        VERIFY_IS_FALSE(ShouldResumeAgentSession(false, false));
-        VERIFY_IS_FALSE(ShouldResumeAgentSession(false, true));
-        VERIFY_IS_FALSE(ShouldResumeAgentSession(true, false));
-        VERIFY_IS_TRUE(ShouldResumeAgentSession(true, true));
+        // A shell pane running an agent CLI persists as that agent's resume
+        // invocation in the ordinary `commandline`, so recognising one is what
+        // tells the restore to skip seeding the saved scrollback.
+        const auto resume = Restore::BuildResumeCommandline(L"claude", L"agent-session-1");
+        VERIFY_ARE_EQUAL(std::wstring{ LR"(cmd.exe /d /s /c "claude --resume agent-session-1")" }, resume);
+        VERIFY_IS_TRUE(Restore::IsResumeCommandline(resume));
+
+        const auto target = Restore::ParseResumeCommandline(resume);
+        VERIFY_ARE_EQUAL(std::wstring{ L"claude" }, target.agent);
+        VERIFY_ARE_EQUAL(std::wstring{ L"agent-session-1" }, target.sessionId);
+
+        // An ordinary shell must not be mistaken for one.
+        VERIFY_IS_FALSE(Restore::IsResumeCommandline(L"pwsh.exe"));
+        VERIFY_IS_FALSE(Restore::IsResumeCommandline(L""));
+
+        // A session id is validated before it lands inside a command line that
+        // gets executed, and an unknown agent has no resume spelling at all.
+        VERIFY_IS_TRUE(Restore::BuildResumeCommandline(L"claude", L"bad id & calc.exe").empty());
+        VERIFY_IS_TRUE(Restore::BuildResumeCommandline(L"claude", L"sidekick-1").empty());
+        VERIFY_IS_TRUE(Restore::BuildResumeCommandline(L"nosuchagent", L"agent-session-1").empty());
     }
 
     void TabTests::PersistedLayoutAgentSessionsReceiveRestorePaths()
     {
-        using winrt::TerminalApp::implementation::SetPersistedLayoutAgentRestorePaths;
+        namespace Restore = ::Microsoft::Terminal::AgentPaneRestore;
 
-        const auto firstSessionId = ::Microsoft::Console::Utils::CreateGuid();
-        const auto secondSessionId = ::Microsoft::Console::Utils::CreateGuid();
+        // The agent pane's saved command line carries only what a restart
+        // cannot re-derive. Everything else — the master pipe, the owner ids,
+        // the resolved CLI path — is rebuilt by the spawn path, so none of it
+        // may appear here.
+        Restore::Fields fields;
+        fields.sessionId = L"acp-1";
+        fields.view = Restore::SessionsView;
+        fields.agentIdentity = L"wsl:Ubuntu:claude";
+        fields.customCommand = L"custom-acp --stdio";
 
-        NewTerminalArgs firstArgs{};
-        firstArgs.SessionId(firstSessionId);
-        firstArgs.AgentSessionId(L"codex-session");
-        firstArgs.AgentPaneSessionId(L"copilot-pane-session");
+        const auto commandline = Restore::BuildPaneCommandline(L"C:\\wta.exe", fields);
+        VERIFY_IS_TRUE(commandline.find(L"--connect-master") == std::wstring::npos);
+        VERIFY_IS_TRUE(commandline.find(L"--owner-tab-id") == std::wstring::npos);
 
-        NewTerminalArgs secondArgs{};
-        secondArgs.SessionId(secondSessionId);
-        secondArgs.AgentSessionId(L"copilot-pane-session");
-        secondArgs.AgentSessionAgent(L"copilot");
-        secondArgs.AgentResumeCommandline(L"copilot --resume copilot-pane-session");
+        auto argc = 0;
+        const wil::unique_hlocal_ptr<PWSTR[]> argv{ ::CommandLineToArgvW(commandline.c_str(), &argc) };
+        VERIFY_IS_NOT_NULL(argv.get());
+        std::vector<std::wstring> tokens;
+        for (auto i = 0; i < argc; ++i)
+        {
+            tokens.emplace_back(argv[i]);
+        }
 
-        std::vector<ActionAndArgs> actions;
-        actions.emplace_back(ShortcutAction::NewTab, NewTabArgs{ firstArgs });
-        actions.emplace_back(ShortcutAction::SplitPane, SplitPaneArgs{ SplitType::Manual, SplitDirection::Automatic, 0.5f, secondArgs });
-
-        SetPersistedLayoutAgentRestorePaths(actions, [](const winrt::guid& sessionId) {
-            return winrt::hstring{ L"buffer_" + ::Microsoft::Console::Utils::GuidToPlainString(sessionId) + L".txt" };
-        });
-
-        VERIFY_ARE_EQUAL(
-            winrt::hstring{ L"buffer_" + ::Microsoft::Console::Utils::GuidToPlainString(firstSessionId) + L".txt" },
-            firstArgs.PersistedBufferPath());
-
-        // The second pane's agent session is the one the tab's agent pane owns,
-        // so it must not receive the marker that would resume it as a shell
-        // command. Its binding is left intact — only the marker is withheld.
-        VERIFY_IS_TRUE(secondArgs.PersistedBufferPath().empty());
-        VERIFY_ARE_EQUAL(winrt::hstring{ L"copilot-pane-session" }, secondArgs.AgentSessionId());
+        const auto parsed = Restore::ParsePaneCommandline(tokens);
+        VERIFY_ARE_EQUAL(fields.sessionId, parsed.sessionId);
+        VERIFY_ARE_EQUAL(fields.view, parsed.view);
+        VERIFY_ARE_EQUAL(fields.agentIdentity, parsed.agentIdentity);
+        VERIFY_ARE_EQUAL(fields.customCommand, parsed.customCommand);
     }
 
     void TabTests::PaneAgentSessionBindingRequiresPaneIdentity()
@@ -438,14 +450,22 @@ namespace TerminalAppLocalTests
 
     void TabTests::AgentPaneRestoreDoesNotRequireAgentSession()
     {
-        using winrt::TerminalApp::implementation::ShouldRestoreAgentPane;
+        namespace Restore = ::Microsoft::Terminal::AgentPaneRestore;
 
         // An agent pane the user opened but never chatted in has no ACP
-        // session id, yet its open/view state must still be restored.
-        VERIFY_IS_TRUE(ShouldRestoreAgentPane(false, true, false));
-        VERIFY_IS_TRUE(ShouldRestoreAgentPane(false, false, true));
-        VERIFY_IS_TRUE(ShouldRestoreAgentPane(true, false, false));
-        VERIFY_IS_FALSE(ShouldRestoreAgentPane(false, false, false));
+        // session id, yet it must still come back — its content type says it is
+        // an agent pane regardless, and the stashed variant carries the one bit
+        // saying the user had toggled it away.
+        VERIFY_IS_TRUE(Restore::IsPaneType(Restore::PaneType));
+        VERIFY_IS_TRUE(Restore::IsPaneType(Restore::StashedPaneType));
+        VERIFY_IS_FALSE(Restore::IsPaneType(L""));
+        VERIFY_IS_FALSE(Restore::IsPaneType(L"settings"));
+
+        Restore::Fields empty;
+        empty.view = Restore::ChatView;
+        const auto commandline = Restore::BuildPaneCommandline(L"wta.exe", empty);
+        VERIFY_IS_TRUE(commandline.find(Restore::SessionIdFlag) == std::wstring::npos);
+        VERIFY_IS_TRUE(commandline.find(Restore::ViewFlag) != std::wstring::npos);
     }
 
     void TabTests::PaneAgentSessionEndClearsAgentBinding()
@@ -495,7 +515,13 @@ namespace TerminalAppLocalTests
         });
     }
 
-    void TabTests::ContentIdHandoffEndClearsAgentBinding()
+    // A pane built by attaching an existing ContentId reports its end state
+    // against the SessionId of the connection it attached to, not the one the
+    // action happened to carry. The two differ on a cross-window move, where
+    // the args name a fresh pane while the content keeps the original
+    // connection — attributing the event to the wrong id would route it to a
+    // pane that no longer exists.
+    void TabTests::ContentIdAttachedPaneEmitsEndStateForItsConnection()
     {
         auto page = _commonSetup();
         VERIFY_IS_NOT_NULL(page);
@@ -522,14 +548,9 @@ namespace TerminalAppLocalTests
             NewTerminalArgs args{};
             args.ContentId(content.Id());
             args.SessionId(fallbackSessionId);
-            args.AgentSessionId(L"agent-session-ended");
-            args.AgentSessionAgent(L"copilot");
-            args.AgentResumeCommandline(L"copilot --resume agent-session-ended");
 
             const auto attachedPane = page->_MakeTerminalPane(args);
             VERIFY_IS_NOT_NULL(attachedPane);
-            VERIFY_ARE_EQUAL(1u, static_cast<unsigned int>(page->_paneAgentSessions.count(liveSessionId)));
-            VERIFY_ARE_EQUAL(0u, static_cast<unsigned int>(page->_paneAgentSessions.count(fallbackSessionId)));
         });
 
         TestOnUIThread([&]() {
@@ -537,12 +558,14 @@ namespace TerminalAppLocalTests
         });
 
         TestOnUIThread([&]() {
-            VERIFY_ARE_EQUAL(0u, static_cast<unsigned int>(page->_paneAgentSessions.count(liveSessionId)));
-            VERIFY_ARE_EQUAL(0u, static_cast<unsigned int>(page->_paneAgentSessions.count(fallbackSessionId)));
-
             const auto closedStates = _statesForPane(connectionStates, _formatPaneId(liveSessionId));
             VERIFY_ARE_EQUAL(1u, static_cast<unsigned int>(closedStates.size()));
             VERIFY_ARE_EQUAL(std::string{ "closed" }, closedStates.at(0));
+
+            // Nothing is attributed to the id the action carried.
+            VERIFY_ARE_EQUAL(
+                0u,
+                static_cast<unsigned int>(_statesForPane(connectionStates, _formatPaneId(fallbackSessionId)).size()));
         });
     }
 
@@ -610,9 +633,11 @@ namespace TerminalAppLocalTests
             if (const auto firstBinding = page->_paneAgentSessions.find(firstTerminalArgs.SessionId());
                 firstBinding != page->_paneAgentSessions.end())
             {
-                VERIFY_ARE_EQUAL(firstBinding->second.sessionId, firstTerminalArgs.AgentSessionId());
-                VERIFY_ARE_EQUAL(firstBinding->second.agent, firstTerminalArgs.AgentSessionAgent());
-                VERIFY_ARE_EQUAL(firstBinding->second.resumeCommandline, firstTerminalArgs.AgentResumeCommandline());
+                VERIFY_ARE_EQUAL(
+                    winrt::hstring{ ::Microsoft::Terminal::AgentPaneRestore::BuildResumeCommandline(
+                        firstBinding->second.agent,
+                        firstBinding->second.sessionId) },
+                    firstTerminalArgs.Commandline());
             }
             else
             {
@@ -625,9 +650,11 @@ namespace TerminalAppLocalTests
             if (const auto secondBinding = page->_paneAgentSessions.find(secondTerminalArgs.SessionId());
                 secondBinding != page->_paneAgentSessions.end())
             {
-                VERIFY_ARE_EQUAL(secondBinding->second.sessionId, secondTerminalArgs.AgentSessionId());
-                VERIFY_ARE_EQUAL(secondBinding->second.agent, secondTerminalArgs.AgentSessionAgent());
-                VERIFY_ARE_EQUAL(secondBinding->second.resumeCommandline, secondTerminalArgs.AgentResumeCommandline());
+                VERIFY_ARE_EQUAL(
+                    winrt::hstring{ ::Microsoft::Terminal::AgentPaneRestore::BuildResumeCommandline(
+                        secondBinding->second.agent,
+                        secondBinding->second.sessionId) },
+                    secondTerminalArgs.Commandline());
             }
             else
             {
@@ -636,58 +663,30 @@ namespace TerminalAppLocalTests
         });
     }
 
-    // The Agent Pane profile is `closeOnExit: always`, so a helper that dies
-    // takes its pane — and everything AgentPaneContent knew — with it. The
-    // record on the Tab is what a save reads instead, so it still describes the
-    // agent after the pane is gone.
+    // The agent pane used to be `closeOnExit: always`, so a helper that died
+    // took its pane — and everything a restore needed — with it. It is now
+    // `graceful`, which keeps the pane after a killed helper exactly like every
+    // other profile, so the pane is still in the tree for a save to serialize.
     void TabTests::AgentRestoreRecordOutlivesTheAgentPane()
     {
-        auto page = _commonSetup();
-        VERIFY_IS_NOT_NULL(page);
+        // Deliberately harness-free: this is a settings assertion, and going
+        // through the page would tie it to `_initializeTerminalPage`.
+        const auto settings = winrt::Microsoft::Terminal::Settings::Model::CascadiaSettings::LoadDefaults();
+        VERIFY_IS_NOT_NULL(settings);
 
-        TestOnUIThread([&]() {
-            const auto tab = page->_GetFocusedTabImpl();
-            VERIFY_IS_NOT_NULL(tab);
-            // The premise: the pane is already gone, as it would be after a
-            // shutdown killed wta.
-            VERIFY_IS_NULL(tab->FindAgentPaneContent());
-
-            winrt::TerminalApp::implementation::Tab::AgentRestoreRecord record;
-            record.sessionId = L"agent-pane-session";
-            record.agent = L"copilot";
-            record.view = L"sessions";
-            record.open = true;
-            record.position = L"bottom";
-            record.size = 0.4f;
-            tab->SetAgentRestoreRecord(record);
-
-            const auto layout = page->GetWindowLayout();
-            VERIFY_IS_NOT_NULL(layout);
-            const auto terminalArgs = _getTerminalArgs(layout.TabLayout().GetAt(0));
-            VERIFY_IS_NOT_NULL(terminalArgs);
-            VERIFY_ARE_EQUAL(winrt::hstring{ L"agent-pane-session" }, terminalArgs.AgentPaneSessionId());
-            VERIFY_ARE_EQUAL(winrt::hstring{ L"copilot" }, terminalArgs.AgentPaneAgent());
-            VERIFY_ARE_EQUAL(winrt::hstring{ L"sessions" }, terminalArgs.AgentPaneView());
-            VERIFY_ARE_EQUAL(winrt::hstring{ L"bottom" }, terminalArgs.AgentPanePosition());
-            VERIFY_IS_TRUE(terminalArgs.AgentPaneOpen());
-            VERIFY_ARE_EQUAL(0.4f, terminalArgs.AgentPaneSize());
-        });
-
-        TestOnUIThread([&]() {
-            const auto tab = page->_GetFocusedTabImpl();
-            VERIFY_IS_NOT_NULL(tab);
-
-            // Taking the pane away on purpose drops the record, so a pane the
-            // user got rid of does not come back.
-            page->_ClearAgentRestoreRecord(tab.get());
-
-            const auto layout = page->GetWindowLayout();
-            VERIFY_IS_NOT_NULL(layout);
-            const auto terminalArgs = _getTerminalArgs(layout.TabLayout().GetAt(0));
-            VERIFY_IS_NOT_NULL(terminalArgs);
-            VERIFY_IS_TRUE(terminalArgs.AgentPaneSessionId().empty());
-            VERIFY_IS_FALSE(terminalArgs.AgentPaneOpen());
-        });
+        winrt::Microsoft::Terminal::Settings::Model::Profile agentProfile{ nullptr };
+        for (const auto& profile : settings.AllProfiles())
+        {
+            if (profile.Name() == L"Agent Pane")
+            {
+                agentProfile = profile;
+                break;
+            }
+        }
+        VERIFY_IS_NOT_NULL(agentProfile);
+        VERIFY_ARE_EQUAL(
+            winrt::Microsoft::Terminal::Settings::Model::CloseOnExitMode::Graceful,
+            agentProfile.CloseOnExit());
     }
 
     // A shell pane survives its CLI being killed (`closeOnExit` only closes on a
@@ -774,10 +773,13 @@ namespace TerminalAppLocalTests
 
         const auto terminalArgs = _getTerminalArgs(persistedActions.GetAt(0));
         VERIFY_IS_NOT_NULL(terminalArgs);
-        VERIFY_ARE_EQUAL(winrt::hstring{ L"agent-session-persisted" }, terminalArgs.AgentSessionId());
-        VERIFY_ARE_EQUAL(winrt::hstring{ L"copilot" }, terminalArgs.AgentSessionAgent());
-        VERIFY_ARE_EQUAL(winrt::hstring{ L"copilot --resume agent-session-persisted" },
-                         terminalArgs.AgentResumeCommandline());
+        // The resume rides the `commandline` every pane already persists, so
+        // there is no agent-specific key in state.json to check.
+        VERIFY_ARE_EQUAL(
+            winrt::hstring{ ::Microsoft::Terminal::AgentPaneRestore::BuildResumeCommandline(
+                L"copilot",
+                L"agent-session-persisted") },
+            terminalArgs.Commandline());
     }
 
     void TabTests::NaturalClosedEventThenNotifyPanesClosingEmitsOnce()

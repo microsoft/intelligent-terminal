@@ -562,21 +562,13 @@ namespace winrt::TerminalApp::implementation
             std::string cwd;
         };
         std::unordered_map<winrt::hstring, _PendingLoadSession> _pendingLoadSessions;
-        struct _PendingAgentPaneRestore
-        {
-            uint64_t startupActionBatchId{ 0 };
-            std::string sessionId;
-            winrt::hstring agent;
-            std::string cwd;
-            std::string view;
-            bool paneOpen{ false };
-            winrt::hstring panePosition;
-            float paneSize{ 0.0f };
-            winrt::hstring customCommand;
-        };
-        std::unordered_map<winrt::hstring, _PendingAgentPaneRestore> _pendingAgentPaneRestores;
-        uint64_t _nextStartupActionBatchId{ 0 };
-        uint64_t _currentStartupActionBatchId{ 0 };
+
+        // True while `ProcessStartupActions` is replaying a batch. A restored
+        // agent pane arrives as one of those actions, so a tab created during
+        // the replay must not also pre-warm a blank one — it would race the
+        // restore and leave the tab with two. `_PrewarmAgentPanesAfterStartup`
+        // picks up whatever the replay did not provide.
+        bool _replayingStartupActions{ false };
         AgentSettingsSnapshot _CaptureAgentSettingsSnapshot() const;
         static AgentSettingsChangeKind _ClassifyAgentSettingsChange(
             const AgentSettingsSnapshot& previous,
@@ -716,7 +708,13 @@ namespace winrt::TerminalApp::implementation
                                               bool focusPane = true);
         winrt::hstring _GetAgentPaneIdentity(Tab* tab) const;
         winrt::hstring _GetAgentPaneCustomCommand(Tab* tab) const;
-        void _RestorePendingAgentPanes(uint64_t startupActionBatchId);
+        void _PrewarmAgentPanesAfterStartup();
+        // Rebuild an agent pane from a persisted layout entry. `contentArgs`
+        // carries only the stable resume command line; everything runtime-bound
+        // (the master pipe, the owner ids, the resolved CLI path) is
+        // re-derived, and the agent selection is re-checked against policy.
+        bool _RestoreAgentPaneFromLayout(const winrt::com_ptr<Tab>& tab,
+                                         const winrt::Microsoft::Terminal::Settings::Model::NewTerminalArgs& contentArgs);
         // Wraps the raw terminal pane's TerminalPaneContent in an
         // AgentPaneContent so the leaf renders the 36px XAML agent bar
         // above the wta TermControl + the bottom-bar below.
@@ -820,12 +818,7 @@ namespace winrt::TerminalApp::implementation
         void _DuplicateTab(const Tab& tab);
 
         safe_void_coroutine _ExportTab(const Tab& tab, winrt::hstring filepath);
-        void _AddAgentRestoreMetadata(Tab* tab, std::vector<winrt::Microsoft::Terminal::Settings::Model::ActionAndArgs>& actions);
-        // Refresh a tab's durable agent-pane restore record from the live pane.
-        // A no-op when the tab has no agent pane, which is what lets the record
-        // outlive a helper that died on its own.
-        void _RefreshAgentRestoreRecord(Tab* tab);
-        void _ClearAgentRestoreRecord(Tab* tab);
+        void _StampAgentResumeCommandlines(std::vector<winrt::Microsoft::Terminal::Settings::Model::ActionAndArgs>& actions);
         // Pane ids whose terminal end event (`closed` / `failed`) already went
         // out on ProtocolVtSequenceReceived for the current TermControl
         // lifetime. `_SetupControl` clears any stale mark when a new control

@@ -10,6 +10,7 @@
 
 #include "pch.h"
 #include "TerminalPage.h"
+#include "../inc/AgentPaneRestore.h"
 #include "Utils.h"
 #include "../../types/inc/utils.hpp"
 #include "../../inc/til/string.h"
@@ -22,7 +23,6 @@
 #include "TabRowControl.h"
 #include "DebugTapConnection.h"
 #include "DesktopNotification.h"
-#include "AgentRestoreHelpers.h"
 #include "..\TerminalSettingsModel\FileUtils.h"
 #include "../TerminalSettingsAppAdapterLib/TerminalSettings.h"
 
@@ -94,35 +94,7 @@ namespace winrt::TerminalApp::implementation
 
         // This call to _MakePane won't return nullptr, we already checked that
         // case above with the _maybeElevate call.
-        const auto newTab = _CreateNewTabFromPane(_MakePane(newContentArgs, nullptr), -1, openInBackground);
-        if (const auto newTerminalArgs{ newContentArgs.try_as<NewTerminalArgs>() })
-        {
-            if (const auto tabImpl = _GetTabImpl(newTab))
-            {
-                if (ShouldRestoreAgentPane(!newTerminalArgs.AgentPaneSessionId().empty(),
-                                           !newTerminalArgs.AgentPaneView().empty(),
-                                           newTerminalArgs.AgentPaneOpen()))
-                {
-                    _pendingAgentPaneRestores.insert_or_assign(
-                        tabImpl->StableId(),
-                        _PendingAgentPaneRestore{
-                            _currentStartupActionBatchId,
-                            winrt::to_string(newTerminalArgs.AgentPaneSessionId()),
-                            newTerminalArgs.AgentPaneAgent(),
-                            winrt::to_string(newTerminalArgs.StartingDirectory()),
-                            winrt::to_string(newTerminalArgs.AgentPaneView()),
-                            newTerminalArgs.AgentPaneOpen(),
-                            newTerminalArgs.AgentPanePosition(),
-                            // A size outside the split range means the record
-                            // predates size persistence, or is corrupt; either
-                            // way the even split is the safe restore.
-                            newTerminalArgs.AgentPaneSize() > 0.0f && newTerminalArgs.AgentPaneSize() < 1.0f ?
-                                newTerminalArgs.AgentPaneSize() :
-                                0.5f,
-                            newTerminalArgs.AgentPaneCustomCommand() });
-                }
-            }
-        }
+        _CreateNewTabFromPane(_MakePane(newContentArgs, nullptr), -1, openInBackground);
         return S_OK;
     }
     CATCH_RETURN();
@@ -269,7 +241,11 @@ namespace winrt::TerminalApp::implementation
         {
             auto weakSelf = get_weak();
             auto weakTab = make_weak(newTabImpl);
-            dispatcher.TryEnqueue(winrt::Windows::System::DispatcherQueuePriority::Low, [weakSelf, weakTab]() {
+            // Read now, not in the callback: by the time the low-priority tick
+            // runs, the replay may have finished even though this tab's own
+            // agent pane is still queued behind it.
+            const auto deferPrewarm = _replayingStartupActions;
+            dispatcher.TryEnqueue(winrt::Windows::System::DispatcherQueuePriority::Low, [weakSelf, weakTab, deferPrewarm]() {
                 const auto self = weakSelf.get();
                 const auto tabImplCom = weakTab.get();
                 if (!self || !tabImplCom)
@@ -328,12 +304,14 @@ namespace winrt::TerminalApp::implementation
                 // Pre-warm a stashed agent pane on this tab so the helper is
                 // running from the start (autofix needs it). A transferred
                 // pane keeps its existing helper and skips this path, and a
-                // tab whose persisted agent pane is about to be restored skips
-                // it too so the restore is not raced by a blank pre-warm.
-                if (self->_pendingAgentPaneRestores.contains(newTabId))
+                // tab created while a startup batch is replaying skips it so a
+                // blank pre-warm cannot race the agent pane that batch is
+                // about to restore — `_PrewarmAgentPanesAfterStartup` covers
+                // whatever the replay left without one.
+                if (deferPrewarm)
                 {
                     _agentPaneLog(
-                        std::string{ "_InitializeTab(deferred): agent pane restore pending for tab " } +
+                        std::string{ "_InitializeTab(deferred): startup replay owns the agent pane for tab " } +
                         winrt::to_string(newTabId));
                 }
                 else if (agentLeavesSeen == 0)
@@ -350,7 +328,6 @@ namespace winrt::TerminalApp::implementation
             });
         }
     }
-
 
     // Method Description:
     // - Create a new tab using a specified pane as the root.
@@ -557,10 +534,15 @@ namespace winrt::TerminalApp::implementation
         _previouslyClosedPanesAndTabs.emplace_back(args);
     }
 
-    // Stamps this tab's agent bindings onto its persisted actions, so a layout
-    // replayed at startup can resume the agent CLI a shell pane was running and
-    // rebuild the tab's agent pane with the conversation it had.
-    void TerminalPage::_AddAgentRestoreMetadata(Tab* const tab, std::vector<ActionAndArgs>& actions)
+    // Rewrites each shell pane that is running an agent CLI so its persisted
+    // command line resumes that conversation.
+    //
+    // This is the only agent metadata a save has to add. The agent pane needs
+    // none: it is an ordinary pane in the tree, so `BuildStartupActions`
+    // already emitted it with its split geometry, and
+    // `AgentPaneContent::GetNewTerminalArgs` already replaced its live helper
+    // command line with the stable resume form.
+    void TerminalPage::_StampAgentResumeCommandlines(std::vector<ActionAndArgs>& actions)
     {
         const auto getTerminalArgs = [](const ActionAndArgs& action) -> NewTerminalArgs {
             INewContentArgs contentArgs{ nullptr };
@@ -578,87 +560,39 @@ namespace winrt::TerminalApp::implementation
 
         for (const auto& action : actions)
         {
-            if (const auto terminalArgs = getTerminalArgs(action))
+            const auto terminalArgs = getTerminalArgs(action);
+            if (!terminalArgs)
             {
-                if (const auto binding = _paneAgentSessions.find(terminalArgs.SessionId()); binding != _paneAgentSessions.end())
-                {
-                    terminalArgs.AgentSessionId(binding->second.sessionId);
-                    terminalArgs.AgentSessionAgent(binding->second.agent);
-                    terminalArgs.AgentResumeCommandline(binding->second.resumeCommandline);
-                }
+                continue;
             }
-        }
 
-        // The record, not the live pane, is what a save reads. Refresh it first
-        // so an agent pane that is still here contributes its current state,
-        // then stamp whatever the tab last knew — which is still there after
-        // the helper died and took the pane with it.
-        _RefreshAgentRestoreRecord(tab);
-
-        if (const auto& record = tab->GetAgentRestoreRecord())
-        {
-            // Whether the pane is open, which view it shows, and where it sits
-            // are user intent and must survive a restore on their own. wta only
-            // projects an agent_session_id once the tab has a meaningful
-            // conversation, so gating this block on that id would silently drop
-            // the layout of every agent pane the user opened but never chatted
-            // in. An empty id simply means "restore the pane, load no session".
-            for (const auto& action : actions)
+            // The agent pane hosts a helper whose ACP session also shows up as
+            // that pane's binding. It already carries its own resume command
+            // line, so leaving it to be rewritten here would relaunch the same
+            // conversation a second time as a plain shell.
+            if (::Microsoft::Terminal::AgentPaneRestore::IsPaneType(terminalArgs.Type()))
             {
-                if (const auto newTabArgs = action.Args().try_as<NewTabArgs>())
-                {
-                    if (const auto terminalArgs = newTabArgs.ContentArgs().try_as<NewTerminalArgs>())
-                    {
-                        terminalArgs.AgentPaneSessionId(record->sessionId);
-                        terminalArgs.AgentPaneAgent(record->agent);
-                        terminalArgs.AgentPaneCustomCommand(record->customCommand);
-                        terminalArgs.AgentPaneView(record->view);
-                        terminalArgs.AgentPaneOpen(record->open);
-                        terminalArgs.AgentPanePosition(record->position);
-                        terminalArgs.AgentPaneSize(record->size);
-                        break;
-                    }
-                }
+                continue;
             }
-        }
-    }
 
-    // Snapshot the live agent pane onto its tab. Everything a restore needs is
-    // read here, while the pane is available, so that no save ever has to find
-    // one.
-    void TerminalPage::_RefreshAgentRestoreRecord(Tab* const tab)
-    {
-        if (!tab)
-        {
-            return;
-        }
+            const auto binding = _paneAgentSessions.find(terminalArgs.SessionId());
+            if (binding == _paneAgentSessions.end())
+            {
+                continue;
+            }
 
-        const auto agentContent = tab->FindAgentPaneContent();
-        if (!agentContent)
-        {
-            return;
-        }
-
-        Tab::AgentRestoreRecord record;
-        record.sessionId = agentContent.AgentSessionId();
-        record.agent = _GetAgentPaneIdentity(tab);
-        record.customCommand = _GetAgentPaneCustomCommand(tab);
-        record.view = agentContent.IsSessionsView() ? L"sessions" : L"chat";
-        record.open = !tab->HasStashedAgentPane();
-        record.position = winrt::get_self<implementation::AgentPaneContent>(agentContent)->GetAgentPanePosition();
-        record.size = tab->AgentPaneSize();
-        tab->SetAgentRestoreRecord(std::move(record));
-    }
-
-    // The agent pane is being taken away on purpose — torn down, closed by the
-    // user, or moved to another window — so there is nothing left to restore.
-    // A pane lost to a dying helper never comes through here, which is what
-    // keeps its record intact.
-    void TerminalPage::_ClearAgentRestoreRecord(Tab* const tab)
-    {
-        if (tab)
-        {
-            tab->SetAgentRestoreRecord(std::nullopt);
+            // Prefer rebuilding from the agent id: it is validated, while a
+            // command line handed to us by a hook is not.
+            namespace Restore = ::Microsoft::Terminal::AgentPaneRestore;
+            const auto resume = !binding->second.agent.empty() ?
+                                    winrt::hstring{ Restore::BuildResumeCommandline(
+                                        binding->second.agent,
+                                        binding->second.sessionId) } :
+                                    binding->second.resumeCommandline;
+            if (!resume.empty())
+            {
+                terminalArgs.Commandline(resume);
+            }
         }
     }
 
@@ -1214,14 +1148,6 @@ namespace winrt::TerminalApp::implementation
         }
 
         const auto isLastPane = owningTab && owningTab->GetLeafPaneCount() == 1;
-
-        // Closing the agent pane by hand is a decision, not an accident, so
-        // its restore record goes with it. (`_SaveWorkspaceIfNeeded` below
-        // reads that record, so clear it first.)
-        if (owningTab && pane->IsAgentPane())
-        {
-            _ClearAgentRestoreRecord(owningTab.get());
-        }
 
         // If this is the last pane on the last tab of a named window, persist
         // the workspace while the pane content is still alive.

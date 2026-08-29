@@ -2,6 +2,7 @@
 // Licensed under the MIT license.
 
 #include "pch.h"
+#include "../inc/AgentPaneRestore.h"
 #include "Pane.h"
 
 using namespace winrt::Windows::Foundation;
@@ -103,7 +104,21 @@ INewContentArgs Pane::GetTerminalArgsForPane(BuildStartupKind kind) const
     {
         return nullptr;
     }
-    return _content.GetNewTerminalArgs(kind);
+    auto args = _content.GetNewTerminalArgs(kind);
+
+    // A stashed agent pane is still in the tree — `StashAgentPane` only hides
+    // it — so it serializes like any other pane. Record that it was toggled
+    // away in the content type it already carries, rather than spending a
+    // separate persisted field on one bit.
+    if (kind == BuildStartupKind::Persist && _isAgentPane && _hidden)
+    {
+        if (const auto terminalArgs = args.try_as<winrt::Microsoft::Terminal::Settings::Model::NewTerminalArgs>())
+        {
+            terminalArgs.SetContentType(winrt::hstring{ ::Microsoft::Terminal::AgentPaneRestore::StashedPaneType });
+        }
+    }
+
+    return args;
 }
 
 // Method Description:
@@ -143,34 +158,11 @@ Pane::BuildStartupState Pane::BuildStartupActions(uint32_t currentId, uint32_t n
         return { .args = {}, .firstPane = shared_from_this(), .focusedPaneId = std::nullopt, .panesCreated = 0 };
     }
 
-    // Agent panes participate in live cross-window Content moves through the
-    // ContentId reattach path. Persistence (BuildStartupKind::Persist, i.e.
-    // app restart) is different and needs an explicit exclusion:
-    // an agent pane's command line is session-specific (it points at the
-    // previous run's wta-master named pipe and an owner-tab-id that no longer
-    // exist), and after a restart there is no live master / helper / conpty
-    // session left to rehydrate. Replaying that saved command line launches a
-    // broken `wta --connect-master <dead-pipe>` that fails its ACP transport
-    // and, combined with the per-tab pre-warmed agent pane each restored tab
-    // already re-creates, leaves the window littered with dead panes (#275).
-    //
-    // So we never persist agent panes into the saved window layout: when one
-    // child of this split is an agent-pane leaf, collapse the split and only
-    // serialize the other child. The user can re-open the agent pane after
-    // restore to get a fresh one.
-    if (kind == BuildStartupKind::Persist)
-    {
-        const auto firstIsAgentLeaf = _firstChild->_IsLeaf() && _firstChild->_isAgentPane;
-        const auto secondIsAgentLeaf = _secondChild->_IsLeaf() && _secondChild->_isAgentPane;
-        if (firstIsAgentLeaf && !secondIsAgentLeaf)
-        {
-            return _secondChild->BuildStartupActions(currentId, nextId, kind);
-        }
-        if (secondIsAgentLeaf && !firstIsAgentLeaf)
-        {
-            return _firstChild->BuildStartupActions(currentId, nextId, kind);
-        }
-    }
+    // An agent pane is an ordinary terminal pane hosting a `wta` helper, so it
+    // persists like any other pane: `AgentPaneContent::GetNewTerminalArgs`
+    // stamps it with an agent content type and rewrites its command line into
+    // the stable resume form. A stashed pane is still in the tree (it is only
+    // hidden), so it is serialized too and comes back stashed.
 
     auto buildSplitPane = [&](auto newPane) {
         ActionAndArgs actionAndArgs;
@@ -3709,9 +3701,7 @@ void Pane::_SetSplitterCursor(bool /*resizing*/)
     {
         return;
     }
-    const auto cursorType = (_splitState == SplitState::Vertical)
-                                ? winrt::Windows::UI::Core::CoreCursorType::SizeWestEast
-                                : winrt::Windows::UI::Core::CoreCursorType::SizeNorthSouth;
+    const auto cursorType = (_splitState == SplitState::Vertical) ? winrt::Windows::UI::Core::CoreCursorType::SizeWestEast : winrt::Windows::UI::Core::CoreCursorType::SizeNorthSouth;
     if (!_splitterPriorCursor)
     {
         _splitterPriorCursor = cw.PointerCursor();
@@ -3790,9 +3780,7 @@ void Pane::_splitterPointerMoved(const winrt::Windows::Foundation::IInspectable&
         return;
     }
 
-    const auto delta = changeWidth
-                           ? (point.X - _splitterDragStartPointer.X)
-                           : (point.Y - _splitterDragStartPointer.Y);
+    const auto delta = changeWidth ? (point.X - _splitterDragStartPointer.X) : (point.Y - _splitterDragStartPointer.Y);
 
     const auto requested = _splitterDragStartPosition + static_cast<float>(delta / totalSize);
     const auto clamped = _ClampSplitPosition(changeWidth, requested, static_cast<float>(totalSize));

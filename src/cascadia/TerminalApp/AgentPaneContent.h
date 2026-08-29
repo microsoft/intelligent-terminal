@@ -37,6 +37,22 @@ namespace winrt::TerminalApp::implementation
         winrt::hstring AgentSessionId() const noexcept { return _agentSessionId; }
         void SetAgentSessionId(const winrt::hstring& sessionId) noexcept { _agentSessionId = sessionId; }
 
+        // The agent identity this pane was launched with, as an
+        // `AgentPaneBackend` token (`claude`, `wsl:Ubuntu:claude`, ...), plus
+        // the launch command when it names a custom provider. These are the
+        // only parts of the live helper command line that survive a restart —
+        // everything else (the master pipe, the owner ids, the resolved CLI
+        // path) is re-derived — so they are what `GetNewTerminalArgs` writes
+        // into the persisted command line.
+        void SetAgentRestoreIdentity(const winrt::hstring& executablePath,
+                                     const winrt::hstring& identity,
+                                     const winrt::hstring& customCommand) noexcept
+        {
+            _wtaExecutablePath = executablePath;
+            _agentRestoreIdentity = identity;
+            _agentRestoreCustomCommand = customCommand;
+        }
+
         // --- Per-pane autofix / diagnostics state ---
         // Driven by inbound `autofix_state_changed` events for this pane's
         // owning tab. The window-level bottom bar reads these accessors
@@ -161,6 +177,9 @@ namespace winrt::TerminalApp::implementation
         // (the single writer for view-derived UI state).
         bool _isSessionsView{ false };
         winrt::hstring _agentSessionId{};
+        winrt::hstring _agentRestoreIdentity{};
+        winrt::hstring _agentRestoreCustomCommand{};
+        winrt::hstring _wtaExecutablePath{};
 
         // --- Diagnostics / autofix state (projected by the window bottom bar) ---
         AutofixState _autofixState{ AutofixState::Idle };
@@ -196,7 +215,6 @@ namespace winrt::TerminalApp::implementation
 
         void _refreshLabel();
         void _refreshLogo();
-
     };
 }
 

@@ -42,8 +42,8 @@ namespace winrt::TerminalApp::implementation
                                                                           std::shared_ptr<Pane> newPane);
 
         std::pair<std::shared_ptr<Pane>, std::shared_ptr<Pane>> SplitPaneAtRoot(winrt::Microsoft::Terminal::Settings::Model::SplitDirection splitType,
-                                                                                 std::shared_ptr<Pane> newPane,
-                                                                                 float splitSize = 0.5f);
+                                                                                std::shared_ptr<Pane> newPane,
+                                                                                float splitSize = 0.5f);
 
         void ToggleSplitOrientation();
         void UpdateIcon(const winrt::hstring& iconPath, const winrt::Microsoft::Terminal::Settings::Model::IconStyle iconStyle);
@@ -132,31 +132,6 @@ namespace winrt::TerminalApp::implementation
         {
             return _agentPanePositionOverride.value_or(globalPosition);
         }
-
-        // What this tab's agent pane has to be rebuilt from after a restart.
-        //
-        // A terminal pane keeps its own restore data — commandline, starting
-        // directory, session id, buffer file — and none of it depends on the
-        // process still being alive, so a pane whose program was killed still
-        // comes back. The agent pane's equivalent lives in its
-        // AgentPaneContent, a XAML object that dies with the pane, and the
-        // Agent Pane profile is `closeOnExit: always`, so the pane dies the
-        // moment its helper does. Recording it here instead gives the agent
-        // pane the same durability every other pane already has: it survives
-        // the helper, and is dropped only when the pane is deliberately taken
-        // away.
-        struct AgentRestoreRecord
-        {
-            winrt::hstring sessionId;
-            winrt::hstring agent;
-            winrt::hstring customCommand;
-            winrt::hstring view;
-            winrt::hstring position;
-            bool open{ false };
-            float size{ 0.0f };
-        };
-        void SetAgentRestoreRecord(std::optional<AgentRestoreRecord> record) noexcept { _agentRestoreRecord = std::move(record); }
-        const std::optional<AgentRestoreRecord>& GetAgentRestoreRecord() const noexcept { return _agentRestoreRecord; }
 
         // Override which pane in this tab shows the blue "Agent" chip. Pass
         // a session GUID to pin the chip onto that pane (e.g. while a Send
@@ -286,7 +261,6 @@ namespace winrt::TerminalApp::implementation
         std::optional<winrt::guid> _agentChipOverride{};
 
         std::optional<winrt::hstring> _agentPanePositionOverride{};
-        std::optional<AgentRestoreRecord> _agentRestoreRecord{};
 
         // Per-tab agent override (runtime-only). Empty id = follow global.
         winrt::hstring _agentIdOverride{};
