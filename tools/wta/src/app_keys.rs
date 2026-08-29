@@ -297,15 +297,18 @@ impl App {
                         .select(Some(cur.saturating_sub(1)));
                     self.update_agents_focus_for_tab(&tab_id);
                 }
-                KeyCode::Enter => {
+                // Only a bare Enter activates a row. A row has exactly one
+                // resume style, so a modifier can never mean "resume the
+                // other way" — any modified Enter (Shift, Alt, Ctrl, ...)
+                // is an accident and is swallowed by the `_` arm below
+                // rather than leaking to the chat input behind the view.
+                KeyCode::Enter if key.modifiers.is_empty() => {
                     if let Some(idx) = self.current_tab().agents_list_state.selected() {
                         let selected = rows.get(idx).cloned();
                         if let Some(s) = selected {
-                            // Enter is the only activation gesture:
                             // session_mgmt::decide_enter_action picks
                             // the single resume style the row's origin
-                            // dictates. Modifiers are deliberately
-                            // ignored — there is no alternate route.
+                            // dictates.
                             self.activate_agent_session_routed(&s);
                         }
                     }

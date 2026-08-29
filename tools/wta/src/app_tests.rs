@@ -5143,10 +5143,9 @@ fn enter_on_history_row_with_missing_cwd_omits_d_flag() {
 }
 
 #[test]
-fn shift_enter_on_live_row_falls_back_to_focus() {
-    // Live rows have no historical state to "load" — Shift+Enter on
-    // them must NOT trigger the resume-in-agent-pane flow. It falls
-    // through to the same FocusPane dispatch as plain Enter.
+fn modified_enter_on_live_row_dispatches_nothing() {
+    // Only a bare Enter activates a row. A modified Enter (Shift, Alt,
+    // ...) must not focus or resume, and must not leak out of the picker.
     use crate::agent_sessions::{CliSource, SessionEvent};
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
     use std::path::PathBuf;
@@ -5161,10 +5160,24 @@ fn shift_enter_on_live_row_falls_back_to_focus() {
     app.current_tab_mut().current_view = View::Agents;
     app.current_tab_mut().agents_list_state.select(Some(0));
 
-    app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::SHIFT));
+    for modifiers in [
+        KeyModifiers::SHIFT,
+        KeyModifiers::ALT,
+        KeyModifiers::CONTROL,
+    ] {
+        app.handle_key(KeyEvent::new(KeyCode::Enter, modifiers));
+        assert!(
+            app.last_dispatched_command_for_test().is_none(),
+            "{modifiers:?}+Enter must not dispatch anything",
+        );
+        // The key is swallowed by the picker, which stays open.
+        assert_eq!(app.current_tab().current_view, View::Agents);
+    }
+
+    app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
     let cmd = app
         .last_dispatched_command_for_test()
-        .expect("a command was dispatched");
+        .expect("bare Enter dispatches");
     assert_eq!(cmd.kind, DispatchedCommandKind::FocusPane);
 }
 
@@ -5219,11 +5232,10 @@ fn enter_on_class_a_dead_row_dispatches_resume_in_agent_pane() {
     assert!(argv.contains("--session-id abc-class-a"), "argv: {}", argv);
 }
 
-/// Class A (AgentPane origin) dead row + Shift+Enter: Shift is not an
-/// alternate gesture, so this is identical to plain Enter
-/// (ResumeInAgentPane), not the CLI `--resume` path.
+/// Class A (AgentPane origin) dead row + modified Enter: no dispatch.
+/// The row's only resume style is reachable through a bare Enter.
 #[test]
-fn shift_enter_on_class_a_dead_row_ignores_shift() {
+fn modified_enter_on_class_a_dead_row_dispatches_nothing() {
     use crate::agent_sessions::{CliSource, OriginFilter, SessionEvent, SessionOrigin};
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
     use std::path::PathBuf;
@@ -5250,26 +5262,32 @@ fn shift_enter_on_class_a_dead_row_ignores_shift() {
 
     app.current_tab_mut().current_view = View::Agents;
     app.current_tab_mut().agents_list_state.select(Some(0));
-    app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::SHIFT));
+    for modifiers in [KeyModifiers::SHIFT, KeyModifiers::ALT] {
+        app.handle_key(KeyEvent::new(KeyCode::Enter, modifiers));
+        assert!(
+            app.last_dispatched_command_for_test().is_none(),
+            "{modifiers:?}+Enter must not resume a Class A row",
+        );
+    }
 
+    app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
     let cmd = app
         .last_dispatched_command_for_test()
-        .expect("a command was dispatched");
+        .expect("bare Enter dispatches");
     assert_eq!(cmd.kind, DispatchedCommandKind::ResumeInAgentPane);
 }
 
-/// Class B (Unknown origin) dead row + Shift+Enter: same as plain
-/// Enter — the CLI `--resume` flag in a new shell tab. This is the
-/// row class the picker shows by default, so it is the case a user
-/// would notice if Shift ever regained a meaning.
+/// Class B (Unknown origin) dead row + modified Enter: no dispatch.
+/// This is the row class the picker shows by default, so it is the
+/// case a user would notice if a modifier ever regained a meaning.
 #[test]
-fn shift_enter_on_class_b_dead_row_ignores_shift() {
+fn modified_enter_on_class_b_dead_row_dispatches_nothing() {
     use crate::agent_sessions::{CliSource, SessionEvent};
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
     use std::path::PathBuf;
     let mut app = test_app();
-    // loadSession IS advertised: without the Shift escape hatch this
-    // must still not divert a Class B row into an agent pane.
+    // loadSession IS advertised: a modifier must not divert a Class B
+    // row into an agent pane, nor resume it in a shell pane.
     app.agent_supports_load_session = true;
     app.agent_sessions.apply(SessionEvent::SessionStarted {
         key: "abc-class-b-shift".into(),
@@ -5285,47 +5303,19 @@ fn shift_enter_on_class_b_dead_row_ignores_shift() {
 
     app.current_tab_mut().current_view = View::Agents;
     app.current_tab_mut().agents_list_state.select(Some(0));
-    app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::SHIFT));
+    for modifiers in [KeyModifiers::SHIFT, KeyModifiers::ALT] {
+        app.handle_key(KeyEvent::new(KeyCode::Enter, modifiers));
+        assert!(
+            app.last_dispatched_command_for_test().is_none(),
+            "{modifiers:?}+Enter must not resume a Class B row",
+        );
+    }
 
+    app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
     let cmd = app
         .last_dispatched_command_for_test()
-        .expect("a command was dispatched");
+        .expect("bare Enter dispatches");
     assert_eq!(cmd.kind, DispatchedCommandKind::NewTabResume);
-}
-
-/// Live row + Shift+Enter: identical to Enter. This is implicitly the
-/// case for `shift_enter_on_live_row_falls_back_to_focus` above; here we
-/// additionally assert with a Class A origin to confirm origin
-/// doesn't matter for Live rows.
-#[test]
-fn shift_enter_on_class_a_live_row_focuses() {
-    use crate::agent_sessions::{CliSource, OriginFilter, SessionEvent, SessionOrigin};
-    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-    use std::path::PathBuf;
-    let mut app = test_app();
-    // Same rationale as the Class A dead-row tests above:
-    // MVP sessions filter hides AgentPane rows, this test verifies the
-    // dispatch logic for when they are visible.
-    app.sessions_origin_filter = OriginFilter::All;
-    app.agent_sessions.apply(SessionEvent::SessionStarted {
-        key: "live-class-a".into(),
-        cli_source: CliSource::Claude,
-        pane_session_id: "00000000-0000-0000-0000-0000000000bb".into(),
-        cwd: PathBuf::from("/x"),
-        title: "t".into(),
-    });
-    app.agent_sessions
-        .set_origin("live-class-a", SessionOrigin::AgentPane);
-
-    app.current_tab_mut().current_view = View::Agents;
-    app.current_tab_mut().agents_list_state.select(Some(0));
-    app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::SHIFT));
-
-    let cmd = app
-        .last_dispatched_command_for_test()
-        .expect("a command was dispatched");
-    assert_eq!(cmd.kind, DispatchedCommandKind::FocusPane);
-    assert_eq!(cmd.session_id.as_deref(), Some("live-class-a"));
 }
 
 /// Class B (Unknown origin) + plain Enter on a Live row preserves

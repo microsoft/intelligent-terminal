@@ -36,10 +36,10 @@
 //! ```
 //!
 //! Enter is the only activation gesture: a row has exactly one resume
-//! style, decided by where the session came from. Modifiers (Shift in
-//! particular) do not select an alternate path — there is no second
+//! style, decided by where the session came from. There is no second
 //! route to fall back to, so a row whose single path is unavailable
-//! reports `NotResumable` instead.
+//! reports `NotResumable` instead. The key handler only activates on a
+//! bare Enter, so no modifier combination reaches this module.
 
 use crate::agent_sessions::{AgentKey, CliSource, SessionOrigin};
 

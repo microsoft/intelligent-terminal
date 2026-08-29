@@ -2639,8 +2639,8 @@ impl App {
     /// or in the existing [`Self::dispatch_resume`] /
     /// [`Self::dispatch_resume_in_agent_pane`] helpers we call into.
     ///
-    /// Enter is the only activation gesture; modifiers do not select
-    /// an alternate resume style. A dead row resumes the way its
+    /// A bare Enter is the only activation gesture; a modified Enter
+    /// never reaches here. A dead row resumes the way its
     /// origin dictates — a session we started in an agent pane comes
     /// back in an agent pane via ACP `session/load`, and a session
     /// discovered in a shell pane comes back in a shell pane via the
