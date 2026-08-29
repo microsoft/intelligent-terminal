@@ -1,0 +1,152 @@
+/*************************************************************************
+* ADOBE CONFIDENTIAL
+* ___________________
+*
+*  Copyright 2015 Adobe Systems Incorporated
+*  All Rights Reserved.
+*
+* NOTICE:  All information contained herein is, and remains
+* the property of Adobe Systems Incorporated and its suppliers,
+* if any.  The intellectual and technical concepts contained
+* herein are proprietary to Adobe Systems Incorporated and its
+* suppliers and are protected by all applicable intellectual property laws,
+* including trade secret and or copyright laws.
+* Dissemination of this information or reproduction of this material
+* is strictly forbidden unless prior written permission is obtained
+* from Adobe Systems Incorporated.
+**************************************************************************/
+import {dcLocalStorage} from "../../common/local-storage.js";
+class ExpressUtils {
+    expressEventsCache = {};
+    adobeCleanFontAdded = !1;
+    addFontToDocument = async () => {
+        if (this.adobeCleanFontAdded)
+            return;
+        const e = chrome.runtime.getURL("browser/css/fonts/AdobeClean-Regular.otf")
+          , t = chrome.runtime.getURL("browser/css/fonts/AdobeClean-Bold.otf")
+          , s = new FontFace("AdobeClean-Regular",`url(${e})`)
+          , o = new FontFace("AdobeClean-Bold",`url(${t})`);
+        document.fonts.add(s),
+        document.fonts.add(o),
+        await s.load(),
+        await o.load(),
+        this.adobeCleanFontAdded = !0
+    }
+    ;
+    isExpressFteTooltipSecond = async () => {
+        const {env: e} = await chrome.storage.local.get("env");
+        if ("prod" === e)
+            return !1;
+        return !!new URLSearchParams(window.location.search).has("expressFteTooltipSecond")
+    }
+    ;
+    sendAnalyticsEvent = e => {
+        try {
+            chrome.runtime.sendMessage({
+                main_op: "analytics",
+                analytics: e
+            })
+        } catch (e) {}
+    }
+    ;
+    sendAnalyticsEventOncePerDay = (e, t, s) => {
+        this.sendAnalyticsEvent([[e, t, {
+            ...s,
+            frequency: "daily"
+        }]])
+    }
+    ;
+    getElementsFromTagNames(e, t) {
+        const s = [];
+        for (const o of t) {
+            const t = e?.getElementsByTagName?.(o);
+            t && s.push(...t)
+        }
+        return s
+    }
+    getElementsFromClassNames(e, t) {
+        const s = [];
+        for (const o of t) {
+            const t = e?.getElementsByClassName?.(o);
+            t && s.push(...t)
+        }
+        return s
+    }
+    getClosestElementBasedOnSelectors(e, t) {
+        for (const s of t) {
+            const t = e.closest(s);
+            if (t)
+                return t
+        }
+        return null
+    }
+    getElementsFromXPath = (e, t) => {
+        const s = [];
+        for (const o of t) {
+            const t = document.evaluate(o, e, null, XPathResult.ORDERED_NODE_SNAPSHOT_TYPE, null);
+            for (let e = 0; e < t.snapshotLength; e++)
+                s.push(t.snapshotItem(e))
+        }
+        return s
+    }
+    ;
+    launchExpress = (e, t, s) => {
+        chrome.runtime.sendMessage({
+            main_op: "launch-express",
+            imgUrl: e,
+            intent: s,
+            touchpoint: t
+        })
+    }
+    ;
+    sendInfoLog = (e, ...t) => {
+        chrome.runtime.sendMessage({
+            main_op: "log-info",
+            log: {
+                message: e,
+                ...t
+            }
+        })
+    }
+    ;
+    sendErrorLog = (e, t) => {
+        chrome.runtime.sendMessage({
+            main_op: "log-error",
+            log: {
+                message: e,
+                error: t
+            }
+        })
+    }
+    ;
+    removeContextualFte = () => {
+        const e = document.getElementById("express-contextual-fte");
+        e && e.remove()
+    }
+    ;
+    getRegexDecodeMap = () => {
+        if (this.regexDecodeMap)
+            return this.regexDecodeMap;
+        const e = "abcdefghijklmnopqrstuvwxyz0123456789.-^{}()|?[]*$#<>_/\\"
+          , t = {};
+        for (let s = 0; s < 55; s += 1)
+            t["k3_v[8b(j1y\\4^q0cd.gu9t>eaw6sn/rp{2i7m#z5|hfxol*?]$)-}<"[s]] = e[s];
+        return this.regexDecodeMap = t,
+        t
+    }
+    ;
+    decodeRegex = e => e.split("").map(e => this.getRegexDecodeMap()[e] || e).join("");
+    parseRegexLiteral = e => {
+        const t = e.match(/^\/(.*?)\/([a-z]*)$/i);
+        if (!t)
+            throw new Error("Invalid RegEx literal format. Expected /pattern/flags");
+        const s = t[1]
+          , o = t[2];
+        return new RegExp(s,o)
+    }
+    ;
+    matchUrlWithRegex = (e, t) => this.parseRegexLiteral(this.decodeRegex(e))?.test?.(t);
+    isLocalFileAccessAllowed = () => dcLocalStorage.getItem("isAllowedLocalFileAccess")
+}
+const expressUtils = new ExpressUtils;
+export default expressUtils;
