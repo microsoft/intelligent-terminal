@@ -9,7 +9,7 @@
 
 use crate::agent_sessions::{AgentSession, AgentStatus, CliSource, SessionLocation, SessionOrigin};
 use std::collections::HashSet;
-use std::time::SystemTime;
+use std::time::{Duration, SystemTime};
 use time::format_description::well_known::Rfc3339;
 use time::OffsetDateTime;
 
@@ -92,10 +92,12 @@ pub(crate) fn parse_iso_to_system_time(s: &str) -> Option<SystemTime> {
         // No `Z` and no `±HH:MM` — assume UTC rather than dropping the value.
         .or_else(|_| OffsetDateTime::parse(&format!("{s}Z"), &Rfc3339))
         .ok()?;
-    if parsed < OffsetDateTime::UNIX_EPOCH {
-        return None;
-    }
-    Some(SystemTime::from(parsed))
+    // `try_from` rejects pre-epoch timestamps; `checked_add` is used instead of
+    // `SystemTime::from`, whose `Add` panics on overflow. `time` caps years at
+    // 9999 unless the `large-dates` feature is on, and feature unification puts
+    // that outside our control, so fail closed rather than rely on the cap.
+    let seconds = u64::try_from(parsed.unix_timestamp()).ok()?;
+    SystemTime::UNIX_EPOCH.checked_add(Duration::new(seconds, parsed.nanosecond()))
 }
 
 /// Fallback display label for a session the agent listed without a title:
@@ -228,6 +230,18 @@ mod tests {
         let naive = parse_iso_to_system_time("2026-05-27T10:53:09").unwrap();
         let utc = parse_iso_to_system_time("2026-05-27T10:53:09Z").unwrap();
         assert_eq!(naive, utc);
+    }
+
+    #[test]
+    fn parse_iso_preserves_fractional_seconds() {
+        // The conversion builds its own `Duration`, so sub-second precision
+        // has to be carried across explicitly.
+        let whole = parse_iso_to_system_time("2026-06-24T04:42:14Z").unwrap();
+        let frac = parse_iso_to_system_time("2026-06-24T04:42:14.588Z").unwrap();
+        assert_eq!(
+            frac.duration_since(whole).unwrap(),
+            Duration::from_millis(588)
+        );
     }
 
     #[test]
