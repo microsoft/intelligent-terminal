@@ -92,10 +92,12 @@ pub(crate) fn parse_iso_to_system_time(s: &str) -> Option<SystemTime> {
         // No `Z` and no `±HH:MM` — assume UTC rather than dropping the value.
         .or_else(|_| OffsetDateTime::parse(&format!("{s}Z"), &Rfc3339))
         .ok()?;
-    // `try_from` rejects pre-epoch timestamps; `checked_add` is used instead of
-    // `SystemTime::from`, whose `Add` panics on overflow. `time` caps years at
-    // 9999 unless the `large-dates` feature is on, and feature unification puts
-    // that outside our control, so fail closed rather than rely on the cap.
+    // `try_from` rejects pre-epoch timestamps. `checked_add` is used because
+    // `SystemTime::from(OffsetDateTime)` is implemented as
+    // `SystemTime::UNIX_EPOCH + duration`, and that `Add` impl panics on
+    // overflow. `time` caps years at 9999 unless the `large-dates` feature is
+    // on, and feature unification puts that outside our control, so fail
+    // closed rather than rely on the cap.
     let seconds = u64::try_from(parsed.unix_timestamp()).ok()?;
     SystemTime::UNIX_EPOCH.checked_add(Duration::new(seconds, parsed.nanosecond()))
 }
