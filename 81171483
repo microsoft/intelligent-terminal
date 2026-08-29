@@ -1,0 +1,3583 @@
+
+<!DOCTYPE html>
+<html lang="en" dir="ltr" prefix="content: http://purl.org/rss/1.0/modules/content/  dc: http://purl.org/dc/terms/  foaf: http://xmlns.com/foaf/0.1/  og: http://ogp.me/ns#  rdfs: http://www.w3.org/2000/01/rdf-schema#  schema: http://schema.org/  sioc: http://rdfs.org/sioc/ns#  sioct: http://rdfs.org/sioc/types#  skos: http://www.w3.org/2004/02/skos/core#  xsd: http://www.w3.org/2001/XMLSchema# ">
+  <head>
+    <meta charset="utf-8" />
+<style>/* @see https://github.com/aFarkas/lazysizes#broken-image-symbol */.js img.lazyload:not([src]) { visibility: hidden; }/* @see https://github.com/aFarkas/lazysizes#automatically-setting-the-sizes-attribute */.js img.lazyloaded[data-sizes=auto] { display: block; width: 100%; }</style>
+<meta name="description" content="The FSCSC program provides financial assistance for specialty crop operations that incurred eligible on-farm food safety program expenses." />
+<meta name="google" content="qUN2GJfA5CL2sBzEQEtHGaF7tScF8afQLCP2MfqO5YA" />
+<link rel="apple-touch-icon" sizes="180x180" href="/themes/farmers_update/assets/img/apple-touch-icon.png" />
+<link rel="apple-touch-icon-precomposed" sizes="180x180" href="/themes/farmers_update/assets/img/apple-touch-icon-precomposed.png" />
+<meta property="og:site_name" content="Farmers.gov" />
+<meta property="og:type" content="website" />
+<meta property="og:url" content="https://www.farmers.gov/coronavirus/pandemic-assistance/food-safety" />
+<meta property="og:title" content="The Food Safety Certification for Specialty Crops Program" />
+<meta property="og:description" content="The FSCSC program provides financial assistance for specialty crop operations that incurred eligible on-farm food safety program expenses." />
+<meta property="og:image" content="https://www.farmers.gov/sites/default/files/2022-03/fscsc-mainpg-hero-resized.jpg" />
+<meta property="og:image:width" content="1440" />
+<meta property="og:image:height" content="400" />
+<meta property="og:image:alt" content="Rows planted leafy greens." />
+<meta property="og:updated_time" content="2022-03-03T12:20:18-0500" />
+<meta property="article:publisher" content="https://www.facebook.com/farmersgov" />
+<meta property="article:published_time" content="2022-06-17T14:12:11-0400" />
+<meta property="article:modified_time" content="2026-03-10T14:47:48-0400" />
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:description" content="The FSCSC program provides financial assistance for specialty crop operations that incurred eligible on-farm food safety program expenses." />
+<meta name="twitter:site" content="@FarmersGov" />
+<meta name="twitter:title" content="The Food Safety Certification for Specialty Crops Program" />
+<meta name="twitter:image" content="https://www.farmers.gov/sites/default/files/2022-03/fscsc-mainpg-hero-resized.jpg" />
+<meta name="twitter:image:alt" content="Rows planted leafy greens." />
+<meta name="msvalidate.01" content="36F1A09D7116D0E8D667792CE040A6C3" />
+<meta name="google-site-verification" content="UQslecU2M6CgowulDXjoped7X-EZJ1yBqg9iJsS3jvQ" />
+<meta name="Generator" content="Drupal 10 (https://www.drupal.org)" />
+<meta name="MobileOptimized" content="width" />
+<meta name="HandheldFriendly" content="true" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<script type="application/ld+json">{
+    "@context": "https://schema.org",
+    "@graph": [
+        {
+            "@type": "XDJ94258027A",
+            "headline": "The Food Safety Certification for Specialty Crops Program",
+            "description": "The FSCSC program provides financial assistance for specialty crop operations that incurred eligible on-farm food safety program expenses.",
+            "image": {
+                "@type": "ImageObject",
+                "representativeOfPage": "False",
+                "url": "/themes/farmers/img/farmersgov.png"
+            },
+            "datePublished": "2022-06-17T14:12:11-0400",
+            "author": {
+                "@type": "GovernmentOrganization",
+                "name": "United States Department of Agriculture"
+            }
+        }
+    ]
+}</script>
+<script type="application/ld+json">{
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    "itemListElement": [
+        {
+            "@type": "ListItem",
+            "position": 1,
+            "name": "Home",
+            "item": "https://www.farmers.gov/"
+        },
+        {
+            "@type": "ListItem",
+            "position": 2,
+            "name": "[Archived] Coronavirus and USDA Assistance For Farmers",
+            "item": "https://www.farmers.gov/coronavirus"
+        },
+        {
+            "@type": "ListItem",
+            "position": 3,
+            "name": "[Archived] USDA Pandemic Assistance For Producers",
+            "item": "https://www.farmers.gov/coronavirus/pandemic-assistance"
+        },
+        {
+            "@type": "ListItem",
+            "position": 4,
+            "name": "Food Safety Certification For Specialty Crops Program"
+        }
+    ]
+}</script>
+<link rel="icon" href="/themes/farmers_update/favicon.ico" type="image/vnd.microsoft.icon" />
+<link rel="canonical" href="https://www.farmers.gov/coronavirus/pandemic-assistance/food-safety" />
+<link rel="shortlink" href="https://www.farmers.gov/node/29355" />
+
+    <title>The Food Safety Certification for Specialty Crops Program | Farmers.gov</title>
+    <!-- Favicons
+    ================================================== -->
+    <!-- 128x128 -->
+    <link rel="shortcut icon" type="image/ico" href="/themes/farmers_update/img/favicons/favicon.ico" />
+    <link rel="icon" type="image/png" href="/themes/farmers_update/img/favicons/favicon.png" />
+    <!-- 192x192, as recommended for Android
+    http://updates.html5rocks.com/2014/11/Support-for-theme-color-in-Chrome-39-for-Android
+    -->
+    <link rel="icon" type="image/png" sizes="192x192" href="/themes/farmers_update/img/favicons/favicon-192.png" />
+    <!-- 57x57 (precomposed) for iPhone 3GS, pre-2011 iPod Touch and older Android devices -->
+    <link rel="apple-touch-icon-precomposed" href="/themes/farmers_update/img/favicons/favicon-57.png">
+    <!-- 72x72 (precomposed) for 1st generation iPad, iPad 2 and iPad mini -->
+    <link rel="apple-touch-icon-precomposed" sizes="72x72" href="/themes/farmers_update/img/favicons/favicon-72.png">
+    <!-- 114x114 (precomposed) for iPhone 4, 4S, 5 and post-2011 iPod Touch -->
+    <link rel="apple-touch-icon-precomposed" sizes="114x114" href="/themes/farmers_update/img/favicons/favicon-114.png">
+    <!-- 144x144 (precomposed) for iPad 3rd and 4th generation -->
+    <link rel="apple-touch-icon-precomposed" sizes="144x144" href="/themes/farmers_update/img/favicons/favicon-144.png">
+
+    <link rel="stylesheet" media="all" href="/sites/default/files/css/css_PrhxCKnMi8-LvZhp7Swab2XBkEOVZoiQQLciW4UY4EQ.css?delta=0&amp;language=en&amp;theme=farmers_update&amp;include=eJx9kFluwzAMRC-kRkcSaGmqKKEWkJIb9_RxmthBUaM_BOZxuHom1cVmqFKEGl8FNshoxCe60O0JSpVMnL5hcOucynWzvKT5JMkQdVFScHWGMC32CO7OBPccmkq0R3B3KmROHs6jdIjj6qlXsf-n39UpltHsb7lnRwvUYSPXifhD-8KPyY2EolA763bnm5xGaWPipGcEo4t2ZDuRwvRp3T1SRhl_waPz-t2hX2Hr-RI_8Q6ELZsW" />
+<link rel="stylesheet" media="all" href="/sites/default/files/css/css_xjPigG02LrasFrlPJZzhliZDRIr7mZ4ZsmJ69leHXs8.css?delta=1&amp;language=en&amp;theme=farmers_update&amp;include=eJx9kFluwzAMRC-kRkcSaGmqKKEWkJIb9_RxmthBUaM_BOZxuHom1cVmqFKEGl8FNshoxCe60O0JSpVMnL5hcOucynWzvKT5JMkQdVFScHWGMC32CO7OBPccmkq0R3B3KmROHs6jdIjj6qlXsf-n39UpltHsb7lnRwvUYSPXifhD-8KPyY2EolA763bnm5xGaWPipGcEo4t2ZDuRwvRp3T1SRhl_waPz-t2hX2Hr-RI_8Q6ELZsW" />
+<link rel="stylesheet" media="print" href="/sites/default/files/css/css_nxx_hLodY-qGmLn5KS2cQ4maUhwVMWDBbwGJ1Q6Tnso.css?delta=2&amp;language=en&amp;theme=farmers_update&amp;include=eJx9kFluwzAMRC-kRkcSaGmqKKEWkJIb9_RxmthBUaM_BOZxuHom1cVmqFKEGl8FNshoxCe60O0JSpVMnL5hcOucynWzvKT5JMkQdVFScHWGMC32CO7OBPccmkq0R3B3KmROHs6jdIjj6qlXsf-n39UpltHsb7lnRwvUYSPXifhD-8KPyY2EolA763bnm5xGaWPipGcEo4t2ZDuRwvRp3T1SRhl_waPz-t2hX2Hr-RI_8Q6ELZsW" />
+<link rel="stylesheet" media="all" href="/sites/default/files/css/css_NijKgIG7dQQAduyrWDI6MGE9PmTzldS6Uwo9uzG-yTI.css?delta=3&amp;language=en&amp;theme=farmers_update&amp;include=eJx9kFluwzAMRC-kRkcSaGmqKKEWkJIb9_RxmthBUaM_BOZxuHom1cVmqFKEGl8FNshoxCe60O0JSpVMnL5hcOucynWzvKT5JMkQdVFScHWGMC32CO7OBPccmkq0R3B3KmROHs6jdIjj6qlXsf-n39UpltHsb7lnRwvUYSPXifhD-8KPyY2EolA763bnm5xGaWPipGcEo4t2ZDuRwvRp3T1SRhl_waPz-t2hX2Hr-RI_8Q6ELZsW" />
+
+    <script type="application/json" data-drupal-selector="drupal-settings-json">{"path":{"baseUrl":"\/","pathPrefix":"","currentPath":"node\/29355","currentPathIsAdmin":false,"isFront":false,"currentLanguage":"en"},"pluralDelimiter":"\u0003","suppressDeprecationErrors":true,"gtag":{"tagId":"G-3Y1EP04WVV","consentMode":false,"otherIds":[],"events":[],"additionalConfigInfo":[]},"ajaxPageState":{"libraries":"eJx9Ue1uwyAMfCEWS3sh5IDnspkPYUibPv2StUmVLdqfE3c-jA-PNV-VqvXUyDUYD9Q4QdUZRlTazpFUkUmNy5Ug5RpRwp0M3ZqE9AW-9oIyPKn5wBqpquUavM0TVcEZzsTdeXlHK5lDspwnOFV3byD7mCckhjNxdy6hpuDIOkptySfZYcsV_i-_bgdOvcCR7tVePDYCljyivGmbZX2Zc2Yh25CBF_jNB_zE21GMRvA-wwqmYEWuWC66_ehLGXoqfZSgF_JGZ20UHytq45KcMVLqf4V1rmVtXa9-6_kkP_gN8hLOGQ","theme":"farmers_update","theme_token":null},"ajaxTrustedUrl":[],"gtm":{"tagId":null,"settings":{"data_layer":"dataLayer","include_classes":false,"allowlist_classes":"google\nnonGooglePixels\nnonGoogleScripts\nnonGoogleIframes","blocklist_classes":"customScripts\ncustomPixels","include_environment":false,"environment_id":"","environment_token":""},"tagIds":["GTM-TC3X39R"]},"lazy":{"lazysizes":{"lazyClass":"lazyload","loadedClass":"lazyloaded","loadingClass":"lazyloading","preloadClass":"lazypreload","errorClass":"lazyerror","autosizesClass":"lazyautosizes","srcAttr":"data-src","srcsetAttr":"data-srcset","sizesAttr":"data-sizes","minSize":40,"customMedia":[],"init":true,"expFactor":1.5,"hFac":0.80000000000000004,"loadMode":2,"loadHidden":true,"ricTimeout":0,"throttleDelay":125,"plugins":{"unveilhooks":"unveilhooks\/ls.unveilhooks"}},"placeholderSrc":"","preferNative":true,"minified":true,"libraryPath":"\/libraries\/lazysizes"},"data":{"extlink":{"extTarget":false,"extTargetAppendNewWindowDisplay":true,"extTargetAppendNewWindowLabel":"(opens in a new window)","extTargetNoOverride":false,"extNofollow":false,"extTitleNoOverride":false,"extNoreferrer":false,"extFollowNoOverride":false,"extClass":"ext","extLabel":"","extImgClass":false,"extSubdomains":true,"extExclude":"farmers\\.gov|usda\\.gov|fsa-usda.force\\.com|fsa\\.usda\\.gov|login\\.gov|idp\\.int\\.identitysandbox\\.gov|fsa\\.my\\.site\\.com","extInclude":"","extCssExclude":".footer-social, .external-link","extCssInclude":"","extCssExplicit":"","extAlert":true,"extAlertText":"You are now leaving the United States Department of Agriculture (USDA) website and entering an external link or a third-party site.\n\nThe USDA website provides links to other websites to provide additional information that may be useful or interesting, and is being provided in a manner consistent with the intended purpose of the content you are viewing on the website. USDA is providing these links for your reference. Once you access another site through a link that we provide, you are subject to the copyright and licensing restrictions of the new site.\n\nIt is the sole responsibility of you, the user of this site, to carefully examine the content of the site and all linked pages for privacy, copyright and licensing restrictions and to secure all necessary permissions if applicable.","extHideIcons":true,"mailtoClass":"0","telClass":"0","mailtoLabel":"","telLabel":"(link is a phone number)","extUseFontAwesome":false,"extIconPlacement":"after","extPreventOrphan":false,"extFaLinkClasses":"fa fa-external-link","extFaMailtoClasses":"fa fa-envelope-o","extAdditionalLinkClasses":"","extAdditionalMailtoClasses":"","extAdditionalTelClasses":"","extFaTelClasses":"fa fa-phone","allowedDomains":[],"extExcludeNoreferrer":""}},"servicecenter":{"url":"https:\/\/www.farmers.gov\/modules\/custom\/farmers_service_center_locator","show_ldd_states":{"AL":"AL","AK":"AK","AS":"AS","AZ":"AZ","AR":"AR","CA":"CA","CO":"CO","CT":"CT","DE":"DE","DC":"DC","FL":"FL","FM":"FM","GA":"GA","GU":"GU","HI":"HI","ID":"ID","IL":"IL","IN":"IN","IA":"IA","KS":"KS","KY":"KY","LA":"LA","ME":"ME","MH":"MH","MD":"MD","MA":"MA","MI":"MI","MN":"MN","MS":"MS","MO":"MO","MT":"MT","NE":"NE","NV":"NV","NH":"NH","NJ":"NJ","NM":"NM","NY":"NY","NC":"NC","ND":"ND","MP":"MP","OH":"OH","OK":"OK","OR":"OR","PW":"PW","PA":"PA","PR":"PR","RI":"RI","SC":"SC","SD":"SD","TN":"TN","TX":"TX","UT":"UT","VT":"VT","VI":"VI","VA":"VA","WA":"WA","WV":"WV","WI":"WI","WY":"WY"},"serverurl":"http:\/\/elasticsearch:9200","serveup":"ES","scl_file":"\/sites\/default\/files\/json\/scl.json"},"states":[{"code":"01","abbr":"AL","name":"Alabama"},{"code":"02","abbr":"AK","name":"Alaska"},{"code":"60","abbr":"AS","name":"American Samoa"},{"code":"04","abbr":"AZ","name":"Arizona"},{"code":"05","abbr":"AR","name":"Arkansas"},{"code":"06","abbr":"CA","name":"California"},{"code":"08","abbr":"CO","name":"Colorado"},{"code":"09","abbr":"CT","name":"Connecticut"},{"code":"10","abbr":"DE","name":"Delaware"},{"code":"11","abbr":"DC","name":"District Of Columbia"},{"code":"64","abbr":"FM","name":"Federated States of Micronesia"},{"code":"12","abbr":"FL","name":"Florida"},{"code":"13","abbr":"GA","name":"Georgia"},{"code":"66","abbr":"GU","name":"Guam"},{"code":"15","abbr":"HI","name":"Hawaii"},{"code":"16","abbr":"ID","name":"Idaho"},{"code":"17","abbr":"IL","name":"Illinois"},{"code":"18","abbr":"IN","name":"Indiana"},{"code":"19","abbr":"IA","name":"Iowa"},{"code":"20","abbr":"KS","name":"Kansas"},{"code":"21","abbr":"KY","name":"Kentucky"},{"code":"22","abbr":"LA","name":"Louisiana"},{"code":"23","abbr":"ME","name":"Maine"},{"code":"68","abbr":"MH","name":"Marshall Islands"},{"code":"24","abbr":"MD","name":"Maryland"},{"code":"25","abbr":"MA","name":"Massachusetts"},{"code":"26","abbr":"MI","name":"Michigan"},{"code":"27","abbr":"MN","name":"Minnesota"},{"code":"28","abbr":"MS","name":"Mississippi"},{"code":"29","abbr":"MO","name":"Missouri"},{"code":"30","abbr":"MT","name":"Montana"},{"code":"31","abbr":"NE","name":"Nebraska"},{"code":"32","abbr":"NV","name":"Nevada"},{"code":"33","abbr":"NH","name":"New Hampshire"},{"code":"34","abbr":"NJ","name":"New Jersey"},{"code":"35","abbr":"NM","name":"New Mexico"},{"code":"36","abbr":"NY","name":"New York"},{"code":"37","abbr":"NC","name":"North Carolina"},{"code":"38","abbr":"ND","name":"North Dakota"},{"code":"69","abbr":"MP","name":"Northern Mariana Islands"},{"code":"39","abbr":"OH","name":"Ohio"},{"code":"40","abbr":"OK","name":"Oklahoma"},{"code":"41","abbr":"OR","name":"Oregon"},{"code":"70","abbr":"PW","name":"Palau"},{"code":"42","abbr":"PA","name":"Pennsylvania"},{"code":"72","abbr":"PR","name":"Puerto Rico"},{"code":"44","abbr":"RI","name":"Rhode Island"},{"code":"45","abbr":"SC","name":"South Carolina"},{"code":"46","abbr":"SD","name":"South Dakota"},{"code":"47","abbr":"TN","name":"Tennessee"},{"code":"48","abbr":"TX","name":"Texas"},{"code":"49","abbr":"UT","name":"Utah"},{"code":"78","abbr":"VI","name":"Virgin Islands"},{"code":"50","abbr":"VT","name":"Vermont"},{"code":"51","abbr":"VA","name":"Virginia"},{"code":"53","abbr":"WA","name":"Washington"},{"code":"54","abbr":"WV","name":"West Virginia"},{"code":"55","abbr":"WI","name":"Wisconsin"},{"code":"56","abbr":"WY","name":"Wyoming"}],"scl_dadt":"{\u0022scl_header\u0022:{\u0022value\u0022:\u0022\\u003Cp\\u003E\\u003Ca data-entity-substitution=\\u0022canonical\\u0022 data-entity-uuid=\\u00229fd3d166-bf7e-42cf-a9bc-2a47f9b79a74\\u0022 data-entity-type=\\u0022node\\u0022 href=\\u0022\\\/node\\\/28855\\u0022\\u003EUSDA Service Centers\\u003C\\\/a\\u003E are locations where you can connect with Farm Service Agency, Natural Resources Conservation Service, or Rural Development employees for your business needs. \\u003Cstrong\\u003ESelect your state and county below to \\ufb01nd your local service center and agency offices.\\u003C\\\/strong\\u003E\\u003C\\\/p\\u003E\\u003Cp\\u003ELooking for something else?\\u003C\\\/p\\u003E\\u003Cul\\u003E\\u003Cli data-list-item-id=\\u0022ec5793261925356822fab2fe778211c99\\u0022\\u003EUse the \\u003Ca href=\\u0022https:\\\/\\\/www.fsa.usda.gov\\\/fsa-office-locator\\u0022\\u003EFSA Office Locator\\u003C\\\/a\\u003E to book an appointment or contact your local FSA Farm Loan or Farm Program office.\\u003C\\\/li\\u003E\\u003Cli data-list-item-id=\\u0022e56192a56018b1bd68d8d85a36de149d1\\u0022\\u003ELearn more about \\u003Ca href=\\u0022\\\/node\\\/29573\\u0022 data-entity-type=\\u0022node\\u0022 data-entity-uuid=\\u0022e49af798-d8a8-45d8-ac55-0c91c3ad0cd1\\u0022 data-entity-substitution=\\u0022canonical\\u0022\\u003EUrban Service Centers\\u003C\\\/a\\u003E.\\u003C\\\/li\\u003E\\u003Cli data-list-item-id=\\u0022e78729d28acf2f95949989a719564869a\\u0022\\u003EFind an \\u003Ca href=\\u0022https:\\\/\\\/www.nacdnet.org\\\/general-resources\\\/conservation-district-directory\\\/\\u0022\\u003ENRCS Conservation District Partners location\\u003C\\\/a\\u003E.\\u003C\\\/li\\u003E\\u003Cli data-list-item-id=\\u0022e818567cecd691f5054cc3c6800d675b6\\u0022\\u003EVisit the Risk Management Agency website to find a \\u003Ca href=\\u0022https:\\\/\\\/www.rma.usda.gov\\\/\\u0022\\u003Eregional or compliance office\\u003C\\\/a\\u003E\\u0026nbsp;or an \\u003Ca href=\\u0022https:\\\/\\\/public-rma.fpac.usda.gov\\\/apps\\\/AgentLocator\\\/#!\\\/#%2F\\u0022\\u003Einsurance agent\\u003C\\\/a\\u003E near you.\\u003C\\\/li\\u003E\\u003C\\\/ul\\u003E\u0022,\u0022format\u0022:\u0022rich_text\u0022},\u0022scl_footer\u0022:{\u0022value\u0022:\u0022\\u003Ch3\\u003ERisk Management Agency\\u003C\\\/h3\\u003E\\u003Cp\\u003ETo locate a Risk Management Agency insurance agent, view the \\u003Ca href=\\u0022https:\\\/\\\/public-rma.fpac.usda.gov\\\/apps\\\/AgentLocator\\\/#!\\\/#%2F\\u0022\\u003EAgent Locator\\u003C\\\/a\\u003E. To find a regional or compliance Risk Management Agency office, please visit the Risk Management Agency \\u003Ca href=\\u0022https:\\\/\\\/www.rma.usda.gov\\\/en\\u0022\\u003Ewebsite\\u003C\\\/a\\u003E.\\u003C\\\/p\\u003E\\u003Cdiv\\u003E\\u003Ch3\\u003EInformation for Your State\\u003C\\\/h3\\u003E\\u003Cp\\u003EFor state-specific USDA information, visit the \\u003Ca href=\\u0022https:\\\/\\\/www.fsa.usda.gov\\\/state-offices\\\/stateFull\\\/index\\u0022 target=\\u0022_blank\\u0022\\u003EFSA\\u003C\\\/a\\u003E state website and the \\u003Ca href=\\u0022https:\\\/\\\/www.nrcs.usda.gov\\\/wps\\\/portal\\\/nrcs\\\/site\\\/stateAbrev\\\/home\\\/\\u0022 target=\\u0022_blank\\u0022\\u003ENRCS\\u003C\\\/a\\u003E state website.\\u003C\\\/p\\u003E\\u003C\\\/div\\u003E\u0022,\u0022format\u0022:\u0022rich_text\u0022}}","TBMegaMenu":{"TBElementsCounter":{"column":null},"theme":"farmers_update","6332a51a-3749-4a4a-9478-e02b70b72e77":{"arrows":"1"}},"user":{"uid":0,"permissionsHash":"4dec3d92325e051f9a63b78fb876b3f2b2a45f34a063b4c59c134d5177ae8851"}}</script>
+<script src="/sites/default/files/js/js_9rX35LqXA7K_qqI4GMNz43WsMKt4lgITzRtyooCdFk8.js?scope=header&amp;delta=0&amp;language=en&amp;theme=farmers_update&amp;include=eJx9jv0KwyAMxF_INY8kUbPgFrVo7Meefu0YhY6yfw7ul0tyrpa5UbWBlLyCO1lDi0rMTwi1jyjD15o71kS1Wa4x2DJRFVzhCh7JSDZRa8gxM1zBI7l9n6In6ynrVkSKRy0V_o-P7T4GVAKW4lBuTVfZb3MpLGQVGXiTXz_gA5czTEbwtcIuRt1WkzFR7uCwkeltDg0--gb3OX64"></script>
+<script src="/modules/custom/farmers_ie_messaging/js/compiled/ie-messaging.min.js?v=1.x" defer></script>
+<script src="/sites/default/files/js/js__yz5YU06s2X4s7iplw7_1M1Xc-MNzBV7-TtW5pHmRh8.js?scope=header&amp;delta=2&amp;language=en&amp;theme=farmers_update&amp;include=eJx9jv0KwyAMxF_INY8kUbPgFrVo7Meefu0YhY6yfw7ul0tyrpa5UbWBlLyCO1lDi0rMTwi1jyjD15o71kS1Wa4x2DJRFVzhCh7JSDZRa8gxM1zBI7l9n6In6ynrVkSKRy0V_o-P7T4GVAKW4lBuTVfZb3MpLGQVGXiTXz_gA5czTEbwtcIuRt1WkzFR7uCwkeltDg0--gb3OX64"></script>
+<script src="/themes/farmers_update/js/plugins/glide.min.js?v=1.32" defer></script>
+<script src="/themes/farmers_update/js/compiled/plugins/tabs.min.js?v=1.32" defer></script>
+<script src="/themes/farmers_update/js/compiled/matchHeight.js?v=1.32" defer></script>
+<script src="/themes/farmers_update/js/compiled/usda.min.js?v=1.32" defer></script>
+<script src="/themes/farmers_update/js/compiled/farmers.min.js?v=1.32" defer></script>
+<script src="/themes/farmers_update/dist/js/farmers.min.js?v=1.32" defer></script>
+<script src="/themes/farmers_update/dist/js/farmers-stepper.min.js?v=1.32" defer></script>
+<script src="/themes/farmers_update/dist/js/smoothscroll-polyfill.min.js?v=1.32" defer></script>
+<script src="/sites/default/files/js/js_iM6EJ02U309fDHzfKvc20MF3253MEHCmnVvPAJm5DCE.js?scope=header&amp;delta=11&amp;language=en&amp;theme=farmers_update&amp;include=eJx9jv0KwyAMxF_INY8kUbPgFrVo7Meefu0YhY6yfw7ul0tyrpa5UbWBlLyCO1lDi0rMTwi1jyjD15o71kS1Wa4x2DJRFVzhCh7JSDZRa8gxM1zBI7l9n6In6ynrVkSKRy0V_o-P7T4GVAKW4lBuTVfZb3MpLGQVGXiTXz_gA5czTEbwtcIuRt1WkzFR7uCwkeltDg0--gb3OX64"></script>
+<script src="/modules/contrib/google_tag/js/gtag.js?tkjm8m"></script>
+<script src="/modules/contrib/google_tag/js/gtm.js?tkjm8m"></script>
+
+
+  </head>
+  <body class="path-node page-node-type-program-page">
+  <div class="back-to-top sitewide">
+    <a href="#">
+      <span class="up"></span>
+      <br>
+          top
+    </a>
+  </div>
+        <noscript><iframe src="https://www.googletagmanager.com/ns.html?id=GTM-TC3X39R"
+                  height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
+
+    
+<!-- Overwriting core theme file for 508 landmark issue, wrapper was...wrapping all of the HTML without having a relevant ARIA role -->
+    
+
+<header class="main-header" role="banner" aria-label="Page Header">
+  <!--wrapper for main header used to hide on print-->
+  <div class="head-main">
+      <a href="#main-content" class="skip-nav" role="navigation" aria-label="Skip to Main Content">
+          Skip to main content
+      </a>
+      <!--Skip to Main Content-->
+                    <div class="usa-banner" id="usa-gov-web-banner">
+      
+
+        <div class="usa-accordion">
+          <div class="usa-banner-header" aria-label="Official United States Government Website Disclaimer">
+            <div class="usa-banner-inner container">
+              <img src="/themes/farmers_update/img/favicons/flag-favicon-57.png" alt="U.S. flag">
+               <div class="usa-banner-text">  
+                <p>
+                                           An official website of the United States government
+                                      
+                  <button class="usa-accordion-button usa-banner-button" aria-expanded="false" aria-controls="gov-banner">
+                    <span class="usa-banner-button-text">Here’s how you know</span>
+                  </button>
+                </p>
+                <div id="nav-branding-bar">
+  <ul>
+            <li><a href="/translated-resources" class="icon-globe" data-drupal-link-system-path="node/29730">Translated Resources</a> 
+         <span class="seperator">|</span>  </li>
+            <li><a href="/working-with-us/service-center-locator" data-drupal-link-system-path="working-with-us/service-center-locator">Service Centers</a> 
+         <span class="seperator">|</span>  </li>
+            <li><a href="/contact" data-drupal-link-system-path="node/29211">Contact</a> 
+         </li>
+    </ul>
+</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="container">
+            <div class="usa-banner-content row usa-accordion-content" id="gov-banner" aria-hidden="true">
+              <div class="usa-banner-guidance-gov medium-6">
+                <img loading="lazy" class="usa-banner-icon usa-media_block-img lazyload" src="/themes/farmers/img/icon-dot-gov.svg" alt="Dot gov">
+                <div class="usa-media_block-body">
+                  <strong>The .gov means it’s official.</strong>
+                  <br>
+                  <div class="">Federal government websites always use a .gov or .mil domain. Before sharing sensitive information online, make sure you’re on a .gov or .mil site by inspecting your browser’s address (or “location”) bar.</div>
+                </div>
+              </div>
+              <div class="usa-banner-guidance-ssl medium-6">
+                <img loading="lazy" class="usa-banner-icon usa-media_block-img lazyload" src="/themes/farmers_update/img/icon-https.svg" alt="SSL">
+                <div class="usa-media_block-body">
+                  <div class="">This site is also protected by an SSL (Secure Sockets Layer) certificate that’s been signed by the U.S. government. The <strong>https://</strong> means all transmitted data is encrypted &nbsp;— in other words, any information or browsing history that you provide is transmitted securely.</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+      <div class="container header-inner-wrap">
+        <div class="">      
+          
+          
+<div class="agency-banner">
+  <div class="agency-logo">
+              <span class="agency-logo">
+          <img  id="block-farmers-update-branding" class="lazyload" loading="lazy" src="/themes/farmers_update/img/usda-symbol.svg" alt="USDA Logo" class="usda-logo-img" />
+        </span>
+                   <a class="agency-logo-text" href="/" aria-label="Farmers.gov - U.S. Department of Agriculture Home Page">
+        <div class="agency-identity">
+          <div class="agency-name">Farmers.gov</div>
+          <div class="tagline">U.S. Department of Agriculture</div>
+        </div>
+          </a>
+  </div>
+  <button type="button" name="button" class="mobile-megamenu-button">MENU</button>
+</div>
+<div class="farmers-basic-block"  id="block-csssitewidefixes-2">
+  
+    
+      <div >
+  
+      <div class="clearfix text-formatted field field--name-body field--type-text-with-summary field--label-hidden field__items">
+              <div class="field__item"><style type="text/css">.tbm-subnav.level-1 {
+  .tbm-item.level-2:nth-child(2) {
+    .mega-dropdown-inner {
+      position: relative;
+      top: 3px;
+    }
+  }
+  .tbm-item.level-2:nth-child(3) {
+    .mega-dropdown-inner {
+      position: relative;
+      top: 6px;
+    }
+  }
+  .tbm-item.level-2:nth-child(4) {
+    .mega-dropdown-inner {
+      position: relative;
+      top: 9px;
+    }
+  }
+  .tbm-item.level-2:nth-child(5) {
+    .mega-dropdown-inner {
+      position: relative;
+      top: 12px;
+    }
+  }
+}
+</style>
+</div>
+          </div>
+  
+</div>
+
+  </div>
+
+
+          <div class="utility-nav">
+                
+<!-- <ul class="usa-nav__secondary-links"> -->
+<ul class="usa-unstyled-list utility-nav-links usa-nav-secondary-links">
+  <li class="usa-nav__secondary-item">
+    <a href="https://www.farmers.gov/dashboard">
+      Local Dashboard
+    </a>
+  </li>
+  <li class="usa-nav__secondary-item">
+    <a href="/blog">
+      Blog
+    </a>
+  </li>
+  <li class="usa-nav__secondary-item">
+    <a href="/data">
+      Data
+    </a>
+  </li>
+  <li class="usa-nav__secondary-item">
+    <a href="https://www.usda.gov">
+      USDA.gov
+    </a>
+  </li>
+</ul>
+
+<span class="utility-nav-buttons utility-nav-links">  
+       <a class="btn tertiary" href="https://fsa.my.site.com/" title="LOG IN">
+      LOG IN
+    </a>
+  
+        <div class="seperator">|</div>
+    
+      <a class="btn tertiary" href="/account#sign-up" title="Sign Up">
+      Sign Up
+    </a>
+  </span>
+
+          </div>
+        </div>
+      </div>
+      <nav class="primary-nav-wrap" aria-label="Navigation">
+        <div class="container">
+              <div id="farmers-signin-mobile" class="card signin-mobile">
+  <a href="/account#sign-up" title="Sign Up">Sign Up  <span class="arrow" tabindex="-1"></span></a>
+</div><div id="block-main" class="block block-tb-megamenu block-tb-megamenu-menu-blockmain">
+  
+    
+      <nav  class="tbm tbm-main tbm-arrows" id="6332a51a-3749-4a4a-9478-e02b70b72e77" data-breakpoint="0" aria-label="main navigation">
+      <button class="tbm-button" type="button" aria-label="Toggle Navigation" aria-labelledby="tbm-main">
+      <span class="tbm-button-container">
+        <span></span>
+        <span></span>
+        <span></span>
+        <span></span>
+      </span>
+    </button>
+    <div class="tbm-collapse  always-show">
+    <ul  class="tbm-nav level-0 items-6" >
+      
+
+  <li  class="tbm-item level-1" aria-level="1" >
+      <div class="tbm-link-container">
+     
+             <a href="/"  class="tbm-link level-1" data-label="/" data-category="Home" role="button">
+                Home
+          </a>
+     
+            </div>
+    
+
+  </li>
+
+
+
+      
+
+  <li  class="tbm-item level-1" aria-level="1" >
+      <div class="tbm-link-container">
+     
+             <a href="/loans"  class="tbm-link level-1" data-label="/loans" data-category="Loans" role="button">
+                Loans
+          </a>
+     
+            </div>
+    
+
+  </li>
+
+
+
+      
+
+  <li  class="tbm-item level-1 tbm-item--has-dropdown" aria-level="1" >
+      <div class="tbm-link-container">
+     
+             <a href="/working-with-us"  class="tbm-link level-1 tbm-toggle" aria-expanded="false" data-label="/working-with-us" data-category="Working With Us" role="button">
+                Working With Us
+          </a>
+     
+                <button class="tbm-submenu-toggle nav-arrow first-level always-show" aria-label="Working With Us">
+          <span class="visually-hidden">Toggle submenu</span>
+        </button>
+          </div>
+    <div  class="tbm-submenu tbm-item-child nav-submenu">
+  <div class="mega-dropdown-inner">
+          <div  class="tbm-row">
+         <div  class="tbm-column span12">
+    <div class="tbm-column-inner">
+               <ul  class="tbm-subnav level-1 items-5 sidemenu">
+      
+
+    <li  class="tbm-item level-2 tbm-item--has-flyout" aria-level="2" >
+      <div class="tbm-link-container">
+     
+             <span class="tbm-link level-2 no-link tbm-toggle" tabindex="0" aria-expanded="false" data-label="" data-category="Program Eligibility and Deadlines"  role="button" tabindex="0">
+                Program Eligibility and Deadlines
+          </span>
+     
+                <button class="tbm-submenu-toggle nav-arrow always-show" aria-label="Program Eligibility and Deadlines">
+          <span class="visually-hidden">Toggle submenu</span>
+        </button>
+          </div>
+    <div  class="tbm-submenu tbm-item-child nav-submenu">
+  <div class="mega-dropdown-inner">
+          <div  class="tbm-row">
+         <div  class="tbm-column span12">
+    <div class="tbm-column-inner">
+                 <div  class="tbm-block">
+    <div class="block-inner">
+      <div id="block-block-content749ca6a0-1b1a-4ca7-abfe-5a3df212feab" class="block block-block-content block-block-content749ca6a0-1b1a-4ca7-abfe-5a3df212feab">
+  
+    
+      <div >
+  
+            <div class="field field--name-field-mm-link-text-reference field--type-entity-reference-revisions field--label-hidden field__item">
+                                                                          
+<div class="mm-card-grid">
+  <div class="mm-grid-blocks">
+    <div class="subcategory row">
+                            <div class="mm-grid-item">
+              
+<div >
+	  <a href="/working-with-us/common-forms" tabindex="0" aria-label="Common Forms - Browse common forms you may need to complete to work with USDA.">
+    <span class="mm-link-container-header">Common Forms</span>
+    
+            <div class="field field--name-field-mm-text field--type-string-long field--label-hidden field__item">Browse common forms you may need to complete to work with USDA.</div>
+      
+  </a>
+</div>
+
+            </div>
+                      <div class="mm-grid-item">
+              
+<div >
+	  <a href="/working-with-us/program-deadlines" tabindex="0" aria-label="National Program Deadlines - View upcoming and ongoing national USDA program deadlines.">
+    <span class="mm-link-container-header">National Program Deadlines</span>
+    
+            <div class="field field--name-field-mm-text field--type-string-long field--label-hidden field__item">View upcoming and ongoing national USDA program deadlines.</div>
+      
+  </a>
+</div>
+
+            </div>
+                                      <div class="mm-grid-item">
+              
+<div >
+	  <a href="/working-with-us/crop-acreage-reports" tabindex="0" aria-label="Crop Acreage Reports - Crop acreage reporting is required to be eligible for several USDA programs.">
+    <span class="mm-link-container-header">Crop Acreage Reports</span>
+    
+            <div class="field field--name-field-mm-text field--type-string-long field--label-hidden field__item">Crop acreage reporting is required to be eligible for several USDA programs.</div>
+      
+  </a>
+</div>
+
+            </div>
+                      <div class="mm-grid-item">
+              
+<div >
+	  <a href="/working-with-us/heirs-property-eligibility" tabindex="0" aria-label="Heirs&#039; Property Eligibility - Establish a farm number on inherited land to become eligible for USDA programs.">
+    <span class="mm-link-container-header">Heirs&#039; Property Eligibility</span>
+    
+            <div class="field field--name-field-mm-text field--type-string-long field--label-hidden field__item">Establish a farm number on inherited land to become eligible for USDA programs.</div>
+      
+  </a>
+</div>
+
+            </div>
+                                      <div class="mm-grid-item">
+              
+<div >
+	  <a href="/working-with-us/farm-bill" tabindex="0" aria-label="Farm Bill - Learn about the Farm Bill and get information on key changes and resources.">
+    <span class="mm-link-container-header">Farm Bill</span>
+    
+            <div class="field field--name-field-mm-text field--type-string-long field--label-hidden field__item">Learn about the Farm Bill and get information on key changes and resources.</div>
+      
+  </a>
+</div>
+
+            </div>
+                    </div>
+    <div class="mm-submenu-bottom-section">
+                </div>
+  </div>
+  <div class="mm-grid-featured">
+    <div class="mm-featured-header">Featured</div>
+<div id="block-workingwithusfeaturedsection" class="block block-block-content block-block-contentfb7925e4-599c-4ad6-81da-64effc4b9370">
+  
+    
+      <div >
+  
+  <div class="field field--name-field-featured-image field--type-image field--label-visually_hidden">
+    <div class="field__label visually-hidden">Featured Image</div>
+              <div class="field__item"  class="field field--name-field-featured-image field--type-image field--label-visually_hidden">  <img loading="lazy" src="/sites/default/files/2025-04/bfr-featured-image.jpg" width="284" height="144" alt="Two farmers with blue sky behind them" typeof="foaf:Image" alt="Two farmers with blue sky behind them"/>
+
+</div>
+          </div>
+<a href="/your-business/beginning-farmers/coordinators" tabindex="0" aria-label="Featured Link: Beginning Farmer and Rancher Coordinators">
+    Beginning Farmer and Rancher Coordinators
+  </a>
+  <div class="field field--name-field-f field--type-string-long field--label-visually_hidden">
+    <div class="field__label visually-hidden">Featured Text</div>
+              <div class="field__item"  class="field field--name-field-f field--type-string-long field--label-visually_hidden">State coordinators can help you understand the USDA process and find the right assistance as you are starting out.</div>
+          </div>
+<ul class="nav-mega-menu-featured-links">
+  <li>
+      <a href="/translated-resources" tabindex="0" aria-label="Featured Link - Translated Resources">
+        Translated Resources
+      </a>
+    </li></ul>
+</div>
+
+  </div>
+
+  </div>
+</div>
+</div>
+      
+</div>
+
+  </div>
+
+    </div>
+  </div>
+
+      </div>
+</div>
+
+  </div>
+
+      </div>
+</div>
+
+
+  </li>
+
+
+
+      
+
+    <li  class="tbm-item level-2 tbm-item--has-flyout" aria-level="2" >
+      <div class="tbm-link-container">
+     
+             <span class="tbm-link level-2 no-link tbm-toggle" tabindex="0" aria-expanded="false" data-label="" data-category="USDA Service Centers"  role="button" tabindex="0">
+                USDA Service Centers
+          </span>
+     
+                <button class="tbm-submenu-toggle nav-arrow always-show" aria-label="USDA Service Centers">
+          <span class="visually-hidden">Toggle submenu</span>
+        </button>
+          </div>
+    <div  class="tbm-submenu tbm-item-child nav-submenu">
+  <div class="mega-dropdown-inner">
+          <div  class="tbm-row">
+         <div  class="tbm-column span12">
+    <div class="tbm-column-inner">
+                 <div  class="tbm-block">
+    <div class="block-inner">
+      <div id="block-block-content6b54e51d-fe1c-4c7f-b2b7-e2b32e5f3a45" class="block block-block-content block-block-content6b54e51d-fe1c-4c7f-b2b7-e2b32e5f3a45">
+  
+    
+      <div >
+  
+            <div class="field field--name-field-mm-link-text-reference field--type-entity-reference-revisions field--label-hidden field__item">
+                                                          
+<div class="mm-card-grid">
+  <div class="mm-grid-blocks">
+    <div class="subcategory row">
+                            <div class="mm-grid-item">
+              
+<div >
+	  <a href="/working-with-us/service-center-locator" tabindex="0" aria-label="Find Your Local Service Center - Get contact information for your local service center and agency offices.">
+    <span class="mm-link-container-header">Find Your Local Service Center</span>
+    
+            <div class="field field--name-field-mm-text field--type-string-long field--label-hidden field__item">Get contact information for your local service center and agency offices.</div>
+      
+  </a>
+</div>
+
+            </div>
+                      <div class="mm-grid-item">
+              
+<div >
+	  <a href="/working-with-us/USDA-service-centers" tabindex="0" aria-label="Visiting Your Service Center - Information about USDA Service Centers and how to prepare for your visit.">
+    <span class="mm-link-container-header">Visiting Your Service Center</span>
+    
+            <div class="field field--name-field-mm-text field--type-string-long field--label-hidden field__item">Information about USDA Service Centers and how to prepare for your visit.</div>
+      
+  </a>
+</div>
+
+            </div>
+                                      <div class="mm-grid-item">
+              
+<div >
+	  <a href="/urban-service-centers" tabindex="0" aria-label="Urban Service Centers - USDA has specialized Urban Service Centers in selected locations across the country.">
+    <span class="mm-link-container-header">Urban Service Centers</span>
+    
+            <div class="field field--name-field-mm-text field--type-string-long field--label-hidden field__item">USDA has specialized Urban Service Centers in selected locations across the country.</div>
+      
+  </a>
+</div>
+
+            </div>
+                    </div>
+    <div class="mm-submenu-bottom-section">
+                </div>
+  </div>
+  <div class="mm-grid-featured">
+    <div class="mm-featured-header">Featured</div>
+<div id="block-workingwithusfeaturedsection--2" class="block block-block-content block-block-contentfb7925e4-599c-4ad6-81da-64effc4b9370">
+  
+    
+      <div >
+  
+  <div class="field field--name-field-featured-image field--type-image field--label-visually_hidden">
+    <div class="field__label visually-hidden">Featured Image</div>
+              <div class="field__item"  class="field field--name-field-featured-image field--type-image field--label-visually_hidden">  <img loading="lazy" src="/sites/default/files/2025-04/bfr-featured-image.jpg" width="284" height="144" alt="Two farmers with blue sky behind them" typeof="foaf:Image" alt="Two farmers with blue sky behind them"/>
+
+</div>
+          </div>
+<a href="/your-business/beginning-farmers/coordinators" tabindex="0" aria-label="Featured Link: Beginning Farmer and Rancher Coordinators">
+    Beginning Farmer and Rancher Coordinators
+  </a>
+  <div class="field field--name-field-f field--type-string-long field--label-visually_hidden">
+    <div class="field__label visually-hidden">Featured Text</div>
+              <div class="field__item"  class="field field--name-field-f field--type-string-long field--label-visually_hidden">State coordinators can help you understand the USDA process and find the right assistance as you are starting out.</div>
+          </div>
+<ul class="nav-mega-menu-featured-links">
+  <li>
+      <a href="/translated-resources" tabindex="0" aria-label="Featured Link - Translated Resources">
+        Translated Resources
+      </a>
+    </li></ul>
+</div>
+
+  </div>
+
+  </div>
+</div>
+</div>
+      
+</div>
+
+  </div>
+
+    </div>
+  </div>
+
+      </div>
+</div>
+
+  </div>
+
+      </div>
+</div>
+
+
+  </li>
+
+
+
+      
+
+    <li  class="tbm-item level-2 tbm-item--has-flyout" aria-level="2" >
+      <div class="tbm-link-container">
+     
+             <span class="tbm-link level-2 no-link tbm-toggle" tabindex="0" aria-expanded="false" data-label="" data-category="Online Services"  role="button" tabindex="0">
+                Online Services
+          </span>
+     
+                <button class="tbm-submenu-toggle nav-arrow always-show" aria-label="Online Services">
+          <span class="visually-hidden">Toggle submenu</span>
+        </button>
+          </div>
+    <div  class="tbm-submenu tbm-item-child nav-submenu">
+  <div class="mega-dropdown-inner">
+          <div  class="tbm-row">
+         <div  class="tbm-column span12">
+    <div class="tbm-column-inner">
+                 <div  class="tbm-block">
+    <div class="block-inner">
+      <div id="block-block-content6618193f-ab4c-4273-8f24-f7ef6c87ee5b" class="block block-block-content block-block-content6618193f-ab4c-4273-8f24-f7ef6c87ee5b">
+  
+    
+      <div >
+  
+            <div class="field field--name-field-mm-link-text-reference field--type-entity-reference-revisions field--label-hidden field__item">
+                                                          
+<div class="mm-card-grid">
+  <div class="mm-grid-blocks">
+    <div class="subcategory row">
+                            <div class="mm-grid-item">
+              
+<div >
+	  <a href="/account" tabindex="0" aria-label="Access Your Farmers.gov Account - Log in to your farmers.gov account or learn how to set up an account.">
+    <span class="mm-link-container-header">Access Your Farmers.gov Account</span>
+    
+            <div class="field field--name-field-mm-text field--type-string-long field--label-hidden field__item">Log in to your farmers.gov account or learn how to set up an account.</div>
+      
+  </a>
+</div>
+
+            </div>
+                      <div class="mm-grid-item">
+              
+<div >
+	  <a href="/working-with-us/signing-and-sharing-documents" tabindex="0" aria-label="OneSpan and Box - Information about secure ways to access, sign, and share USDA documents online.">
+    <span class="mm-link-container-header">OneSpan and Box</span>
+    
+            <div class="field field--name-field-mm-text field--type-string-long field--label-hidden field__item">Information about secure ways to access, sign, and share USDA documents online.</div>
+      
+  </a>
+</div>
+
+            </div>
+                                      <div class="mm-grid-item">
+              
+<div >
+	  <a href="/working-with-us/stay-connected" tabindex="0" aria-label="Stay Connected with USDA - Subscribe to get free email and text updates from your local service center.">
+    <span class="mm-link-container-header">Stay Connected with USDA</span>
+    
+            <div class="field field--name-field-mm-text field--type-string-long field--label-hidden field__item">Subscribe to get free email and text updates from your local service center.</div>
+      
+  </a>
+</div>
+
+            </div>
+                    </div>
+    <div class="mm-submenu-bottom-section">
+                </div>
+  </div>
+  <div class="mm-grid-featured">
+    <div class="mm-featured-header">Featured</div>
+<div id="block-workingwithusfeaturedsection--3" class="block block-block-content block-block-contentfb7925e4-599c-4ad6-81da-64effc4b9370">
+  
+    
+      <div >
+  
+  <div class="field field--name-field-featured-image field--type-image field--label-visually_hidden">
+    <div class="field__label visually-hidden">Featured Image</div>
+              <div class="field__item"  class="field field--name-field-featured-image field--type-image field--label-visually_hidden">  <img loading="lazy" src="/sites/default/files/2025-04/bfr-featured-image.jpg" width="284" height="144" alt="Two farmers with blue sky behind them" typeof="foaf:Image" alt="Two farmers with blue sky behind them"/>
+
+</div>
+          </div>
+<a href="/your-business/beginning-farmers/coordinators" tabindex="0" aria-label="Featured Link: Beginning Farmer and Rancher Coordinators">
+    Beginning Farmer and Rancher Coordinators
+  </a>
+  <div class="field field--name-field-f field--type-string-long field--label-visually_hidden">
+    <div class="field__label visually-hidden">Featured Text</div>
+              <div class="field__item"  class="field field--name-field-f field--type-string-long field--label-visually_hidden">State coordinators can help you understand the USDA process and find the right assistance as you are starting out.</div>
+          </div>
+<ul class="nav-mega-menu-featured-links">
+  <li>
+      <a href="/translated-resources" tabindex="0" aria-label="Featured Link - Translated Resources">
+        Translated Resources
+      </a>
+    </li></ul>
+</div>
+
+  </div>
+
+  </div>
+</div>
+</div>
+      
+</div>
+
+  </div>
+
+    </div>
+  </div>
+
+      </div>
+</div>
+
+  </div>
+
+      </div>
+</div>
+
+
+  </li>
+
+
+
+      
+
+    <li  class="tbm-item level-2 tbm-item--has-flyout" aria-level="2" >
+      <div class="tbm-link-container">
+     
+             <span class="tbm-link level-2 no-link tbm-toggle" tabindex="0" aria-expanded="false" data-label="" data-category="Hire Temporary Foreign Workers"  role="button" tabindex="0">
+                Hire Temporary Foreign Workers
+          </span>
+     
+                <button class="tbm-submenu-toggle nav-arrow always-show" aria-label="Hire Temporary Foreign Workers">
+          <span class="visually-hidden">Toggle submenu</span>
+        </button>
+          </div>
+    <div  class="tbm-submenu tbm-item-child nav-submenu">
+  <div class="mega-dropdown-inner">
+          <div  class="tbm-row">
+         <div  class="tbm-column span12">
+    <div class="tbm-column-inner">
+                 <div  class="tbm-block">
+    <div class="block-inner">
+      <div id="block-block-content0d19aa55-ad79-4267-abf8-0553fc57bed9" class="block block-block-content block-block-content0d19aa55-ad79-4267-abf8-0553fc57bed9">
+  
+    
+      <div >
+  
+            <div class="field field--name-field-mm-link-text-reference field--type-entity-reference-revisions field--label-hidden field__item">
+                                                          
+<div class="mm-card-grid">
+  <div class="mm-grid-blocks">
+    <div class="subcategory row">
+                            <div class="mm-grid-item">
+              
+<div >
+	  <a href="/working-with-us/h2a-visa-program" tabindex="0" aria-label="H-2A Visa Program - Information about filling employment gaps by hiring workers from other countries.">
+    <span class="mm-link-container-header">H-2A Visa Program</span>
+    
+            <div class="field field--name-field-mm-text field--type-string-long field--label-hidden field__item">Information about filling employment gaps by hiring workers from other countries.</div>
+      
+  </a>
+</div>
+
+            </div>
+                      <div class="mm-grid-item">
+              
+<div >
+	  <a href="/working-with-us/h2a-visa-program/checklist" tabindex="0" aria-label="Create Your H-2A Visa Checklist - Create your personalized H-2A visa requirements checklist for your H-2A hiring needs.">
+    <span class="mm-link-container-header">Create Your H-2A Visa Checklist</span>
+    
+            <div class="field field--name-field-mm-text field--type-string-long field--label-hidden field__item">Create your personalized H-2A visa requirements checklist for your H-2A hiring needs.</div>
+      
+  </a>
+</div>
+
+            </div>
+                                      <div class="mm-grid-item">
+              
+<div >
+	  <a href="/H-2A-case-tracker" tabindex="0" aria-label="Track Your H-2A Cases - Check the approval of your H-2A cases with DOL or USCIS.">
+    <span class="mm-link-container-header">Track Your H-2A Cases</span>
+    
+            <div class="field field--name-field-mm-text field--type-string-long field--label-hidden field__item">Check the approval of your H-2A cases with DOL or USCIS.</div>
+      
+  </a>
+</div>
+
+            </div>
+                    </div>
+    <div class="mm-submenu-bottom-section">
+                </div>
+  </div>
+  <div class="mm-grid-featured">
+    <div class="mm-featured-header">Featured</div>
+<div id="block-workingwithusfeaturedsection--4" class="block block-block-content block-block-contentfb7925e4-599c-4ad6-81da-64effc4b9370">
+  
+    
+      <div >
+  
+  <div class="field field--name-field-featured-image field--type-image field--label-visually_hidden">
+    <div class="field__label visually-hidden">Featured Image</div>
+              <div class="field__item"  class="field field--name-field-featured-image field--type-image field--label-visually_hidden">  <img loading="lazy" src="/sites/default/files/2025-04/bfr-featured-image.jpg" width="284" height="144" alt="Two farmers with blue sky behind them" typeof="foaf:Image" alt="Two farmers with blue sky behind them"/>
+
+</div>
+          </div>
+<a href="/your-business/beginning-farmers/coordinators" tabindex="0" aria-label="Featured Link: Beginning Farmer and Rancher Coordinators">
+    Beginning Farmer and Rancher Coordinators
+  </a>
+  <div class="field field--name-field-f field--type-string-long field--label-visually_hidden">
+    <div class="field__label visually-hidden">Featured Text</div>
+              <div class="field__item"  class="field field--name-field-f field--type-string-long field--label-visually_hidden">State coordinators can help you understand the USDA process and find the right assistance as you are starting out.</div>
+          </div>
+<ul class="nav-mega-menu-featured-links">
+  <li>
+      <a href="/translated-resources" tabindex="0" aria-label="Featured Link - Translated Resources">
+        Translated Resources
+      </a>
+    </li></ul>
+</div>
+
+  </div>
+
+  </div>
+</div>
+</div>
+      
+</div>
+
+  </div>
+
+    </div>
+  </div>
+
+      </div>
+</div>
+
+  </div>
+
+      </div>
+</div>
+
+
+  </li>
+
+
+
+      
+
+    <li  class="tbm-item level-2 tbm-item--has-flyout" aria-level="2" >
+      <div class="tbm-link-container">
+     
+             <span class="tbm-link level-2 no-link tbm-toggle" tabindex="0" aria-expanded="false" data-label="" data-category="Get Involved in Your Community"  role="button" tabindex="0">
+                Get Involved in Your Community
+          </span>
+     
+                <button class="tbm-submenu-toggle nav-arrow always-show" aria-label="Get Involved in Your Community">
+          <span class="visually-hidden">Toggle submenu</span>
+        </button>
+          </div>
+    <div  class="tbm-submenu tbm-item-child nav-submenu">
+  <div class="mega-dropdown-inner">
+          <div  class="tbm-row">
+         <div  class="tbm-column span12">
+    <div class="tbm-column-inner">
+                 <div  class="tbm-block">
+    <div class="block-inner">
+      <div id="block-block-contentf2dc6f5c-556a-4be8-b27f-f347553a413d" class="block block-block-content block-block-contentf2dc6f5c-556a-4be8-b27f-f347553a413d">
+  
+    
+      <div >
+  
+            <div class="field field--name-field-mm-link-text-reference field--type-entity-reference-revisions field--label-hidden field__item">
+                                          
+<div class="mm-card-grid">
+  <div class="mm-grid-blocks">
+    <div class="subcategory row">
+                            <div class="mm-grid-item">
+              
+<div >
+	  <a href="/working-with-us/get-involved" tabindex="0" aria-label="Get Involved - Learn how to get involved with other producers in your community.">
+    <span class="mm-link-container-header">Get Involved</span>
+    
+            <div class="field field--name-field-mm-text field--type-string-long field--label-hidden field__item">Learn how to get involved with other producers in your community.</div>
+      
+  </a>
+</div>
+
+            </div>
+                    </div>
+    <div class="mm-submenu-bottom-section">
+                </div>
+  </div>
+  <div class="mm-grid-featured">
+    <div class="mm-featured-header">Featured</div>
+<div id="block-workingwithusfeaturedsection--5" class="block block-block-content block-block-contentfb7925e4-599c-4ad6-81da-64effc4b9370">
+  
+    
+      <div >
+  
+  <div class="field field--name-field-featured-image field--type-image field--label-visually_hidden">
+    <div class="field__label visually-hidden">Featured Image</div>
+              <div class="field__item"  class="field field--name-field-featured-image field--type-image field--label-visually_hidden">  <img loading="lazy" src="/sites/default/files/2025-04/bfr-featured-image.jpg" width="284" height="144" alt="Two farmers with blue sky behind them" typeof="foaf:Image" alt="Two farmers with blue sky behind them"/>
+
+</div>
+          </div>
+<a href="/your-business/beginning-farmers/coordinators" tabindex="0" aria-label="Featured Link: Beginning Farmer and Rancher Coordinators">
+    Beginning Farmer and Rancher Coordinators
+  </a>
+  <div class="field field--name-field-f field--type-string-long field--label-visually_hidden">
+    <div class="field__label visually-hidden">Featured Text</div>
+              <div class="field__item"  class="field field--name-field-f field--type-string-long field--label-visually_hidden">State coordinators can help you understand the USDA process and find the right assistance as you are starting out.</div>
+          </div>
+<ul class="nav-mega-menu-featured-links">
+  <li>
+      <a href="/translated-resources" tabindex="0" aria-label="Featured Link - Translated Resources">
+        Translated Resources
+      </a>
+    </li></ul>
+</div>
+
+  </div>
+
+  </div>
+</div>
+</div>
+      
+</div>
+
+  </div>
+
+    </div>
+  </div>
+
+      </div>
+</div>
+
+  </div>
+
+      </div>
+</div>
+
+
+  </li>
+
+
+
+  </ul>
+
+      </div>
+</div>
+
+  </div>
+
+      </div>
+</div>
+
+
+             <div class="mm-landing-page-banner" data-label="Working With Us">
+      <div class="mm-landing-page-banner-title"> Working With Us</div>
+      <div class="mm-landing-page-banner-link">
+        <a class="btn tertiary" href="/working-with-us" aria-label="View All in Working With Us">View All in Working With Us</a>
+      </div>
+    </div>
+    <div class="mm-mobile-nav-level-1">
+      <div class="mm-links-section-header">Working With Us</div>
+    </div>
+  </li>
+
+
+
+      
+
+  <li  class="tbm-item level-1 tbm-item--has-dropdown" aria-level="1" >
+      <div class="tbm-link-container">
+     
+             <a href="/protection-recovery"  class="tbm-link level-1 tbm-toggle" aria-expanded="false" data-label="/protection-recovery" data-category="Protection and Recovery" role="button">
+                Protection and Recovery
+          </a>
+     
+                <button class="tbm-submenu-toggle nav-arrow first-level always-show" aria-label="Protection and Recovery">
+          <span class="visually-hidden">Toggle submenu</span>
+        </button>
+          </div>
+    <div  class="tbm-submenu tbm-item-child nav-submenu">
+  <div class="mega-dropdown-inner">
+          <div  class="tbm-row">
+         <div  class="tbm-column span12">
+    <div class="tbm-column-inner">
+               <ul  class="tbm-subnav level-1 items-2 sidemenu">
+      
+
+    <li  class="tbm-item level-2 tbm-item--has-flyout" aria-level="2" >
+      <div class="tbm-link-container">
+     
+             <span class="tbm-link level-2 no-link tbm-toggle" tabindex="0" aria-expanded="false" data-label="" data-category="Recovery"  role="button" tabindex="0">
+                Recovery
+          </span>
+     
+                <button class="tbm-submenu-toggle nav-arrow always-show" aria-label="Recovery">
+          <span class="visually-hidden">Toggle submenu</span>
+        </button>
+          </div>
+    <div  class="tbm-submenu tbm-item-child nav-submenu">
+  <div class="mega-dropdown-inner">
+          <div  class="tbm-row">
+         <div  class="tbm-column span12">
+    <div class="tbm-column-inner">
+                 <div  class="tbm-block">
+    <div class="block-inner">
+      <div id="block-block-content9cb843d2-f60b-483c-9fa3-f503baad97b8" class="block block-block-content block-block-content9cb843d2-f60b-483c-9fa3-f503baad97b8">
+  
+    
+      <div >
+  
+            <div class="field field--name-field-mm-link-text-reference field--type-entity-reference-revisions field--label-hidden field__item">
+                                                                                  
+<div class="mm-card-grid">
+  <div class="mm-grid-blocks">
+    <div class="subcategory row">
+                            <div class="mm-grid-item">
+              
+<div >
+	  <a href="/protection-recovery/drought" tabindex="0" aria-label="Drought - USDA programs and resources that protect or help recover from drought.">
+    <span class="mm-link-container-header">Drought</span>
+    
+            <div class="field field--name-field-mm-text field--type-string-long field--label-hidden field__item">USDA programs and resources that protect or help recover from drought.</div>
+      
+  </a>
+</div>
+
+            </div>
+                      <div class="mm-grid-item">
+              
+<div >
+	  <a href="/protection-recovery/hurricane" tabindex="0" aria-label="Hurricane - USDA programs and resources that can help prepare for and recover from hurricanes.">
+    <span class="mm-link-container-header">Hurricane</span>
+    
+            <div class="field field--name-field-mm-text field--type-string-long field--label-hidden field__item">USDA programs and resources that can help prepare for and recover from hurricanes.</div>
+      
+  </a>
+</div>
+
+            </div>
+                                      <div class="mm-grid-item">
+              
+<div >
+	  <a href="/protection-recovery/wildfire" tabindex="0" aria-label="Wildfire - USDA programs and resources about protection and recovery from wildfires.">
+    <span class="mm-link-container-header">Wildfire</span>
+    
+            <div class="field field--name-field-mm-text field--type-string-long field--label-hidden field__item">USDA programs and resources about protection and recovery from wildfires.</div>
+      
+  </a>
+</div>
+
+            </div>
+                      <div class="mm-grid-item">
+              
+<div >
+	  <a href="/protection-recovery/winter-storm" tabindex="0" aria-label="Winter Storms - USDA programs and resources about protection and recovery from winter storms.">
+    <span class="mm-link-container-header">Winter Storms</span>
+    
+            <div class="field field--name-field-mm-text field--type-string-long field--label-hidden field__item">USDA programs and resources about protection and recovery from winter storms.</div>
+      
+  </a>
+</div>
+
+            </div>
+                                      <div class="mm-grid-item">
+              
+<div >
+	  <a href="/protection-recovery/severe-storms" tabindex="0" aria-label="Severe Storms - USDA programs and resources about protection and recovery from severe storms.">
+    <span class="mm-link-container-header">Severe Storms</span>
+    
+            <div class="field field--name-field-mm-text field--type-string-long field--label-hidden field__item">USDA programs and resources about protection and recovery from severe storms.</div>
+      
+  </a>
+</div>
+
+            </div>
+                      <div class="mm-grid-item">
+              
+<div >
+	  <a href="/protection-recovery/flood" tabindex="0" aria-label="Flood and Excessive Moisture - USDA programs and resources about protection and recovery from flood and excessive moisture.">
+    <span class="mm-link-container-header">Flood and Excessive Moisture</span>
+    
+            <div class="field field--name-field-mm-text field--type-string-long field--label-hidden field__item">USDA programs and resources about protection and recovery from flood and excessive moisture.</div>
+      
+  </a>
+</div>
+
+            </div>
+                    </div>
+    <div class="mm-submenu-bottom-section">
+                    <div class="mm-page-anchor-link">
+          <a class="btn tertiary" href="/protection-recovery#recovery" aria-label="view all in recovery">
+            VIEW ALL IN RECOVERY
+          </a>
+        </div>
+          </div>
+  </div>
+  <div class="mm-grid-featured">
+    <div class="mm-featured-header">Featured</div>
+<div id="block-protectionandrecoveryfeatured" class="block block-block-content block-block-content695653ca-d8a0-4ce5-9dec-7a3907e58b7c">
+  
+    
+      <div >
+  
+  <div class="field field--name-field-featured-image field--type-image field--label-visually_hidden">
+    <div class="field__label visually-hidden">Featured Image</div>
+              <div class="field__item"  class="field field--name-field-featured-image field--type-image field--label-visually_hidden">  <img loading="lazy" src="/sites/default/files/2026-03/wildfire-featured-image.jpg" width="284" height="144" alt="Land after wildfire" typeof="foaf:Image" alt="Land after wildfire"/>
+
+</div>
+          </div>
+<a href="/protection-recovery/wildfire" tabindex="0" aria-label="Featured Link: Wildfire Programs and Resources">
+    Wildfire Programs and Resources
+  </a>
+  <div class="field field--name-field-f field--type-string-long field--label-visually_hidden">
+    <div class="field__label visually-hidden">Featured Text</div>
+              <div class="field__item"  class="field field--name-field-f field--type-string-long field--label-visually_hidden">Explore USDA programs and resources that can help protect or recover your operation from wildfire.</div>
+          </div>
+<ul class="nav-mega-menu-featured-links">
+  <li>
+      <a href="/protection-recovery/disaster-tool" tabindex="0" aria-label="Featured Link - Disaster Assistance Discovery Tool">
+        Disaster Assistance Discovery Tool
+      </a>
+    </li></ul>
+</div>
+
+  </div>
+
+  </div>
+</div>
+</div>
+      
+</div>
+
+  </div>
+
+    </div>
+  </div>
+
+      </div>
+</div>
+
+  </div>
+
+      </div>
+</div>
+
+
+  </li>
+
+
+
+      
+
+    <li  class="tbm-item level-2 tbm-item--has-flyout" aria-level="2" >
+      <div class="tbm-link-container">
+     
+             <span class="tbm-link level-2 no-link tbm-toggle" tabindex="0" aria-expanded="false" data-label="" data-category="Protection"  role="button" tabindex="0">
+                Protection
+          </span>
+     
+                <button class="tbm-submenu-toggle nav-arrow always-show" aria-label="Protection">
+          <span class="visually-hidden">Toggle submenu</span>
+        </button>
+          </div>
+    <div  class="tbm-submenu tbm-item-child nav-submenu">
+  <div class="mega-dropdown-inner">
+          <div  class="tbm-row">
+         <div  class="tbm-column span12">
+    <div class="tbm-column-inner">
+                 <div  class="tbm-block">
+    <div class="block-inner">
+      <div id="block-block-content687dcdae-a844-42cf-ad12-dfce6a8f1739" class="block block-block-content block-block-content687dcdae-a844-42cf-ad12-dfce6a8f1739">
+  
+    
+      <div >
+  
+            <div class="field field--name-field-mm-link-text-reference field--type-entity-reference-revisions field--label-hidden field__item">
+                                          
+<div class="mm-card-grid">
+  <div class="mm-grid-blocks">
+    <div class="subcategory row">
+                            <div class="mm-grid-item">
+              
+<div >
+	  <a href="/protection-recovery#protection" tabindex="0" aria-label="View all Protection Programs - USDA offers programs that provide coverage for producers to help them manage risk and to protect their operations from the impact of natural disasters and offer price support for drops in prices or revenues.">
+    <span class="mm-link-container-header">View all Protection Programs</span>
+    
+            <div class="field field--name-field-mm-text field--type-string-long field--label-hidden field__item">USDA offers programs that provide coverage for producers to help them manage risk and to protect their operations from the impact of natural disasters and offer price support for drops in prices or revenues.</div>
+      
+  </a>
+</div>
+
+            </div>
+                    </div>
+    <div class="mm-submenu-bottom-section">
+                </div>
+  </div>
+  <div class="mm-grid-featured">
+    <div class="mm-featured-header">Featured</div>
+<div id="block-protectionandrecoveryfeatured--2" class="block block-block-content block-block-content695653ca-d8a0-4ce5-9dec-7a3907e58b7c">
+  
+    
+      <div >
+  
+  <div class="field field--name-field-featured-image field--type-image field--label-visually_hidden">
+    <div class="field__label visually-hidden">Featured Image</div>
+              <div class="field__item"  class="field field--name-field-featured-image field--type-image field--label-visually_hidden">  <img loading="lazy" src="/sites/default/files/2026-03/wildfire-featured-image.jpg" width="284" height="144" alt="Land after wildfire" typeof="foaf:Image" alt="Land after wildfire"/>
+
+</div>
+          </div>
+<a href="/protection-recovery/wildfire" tabindex="0" aria-label="Featured Link: Wildfire Programs and Resources">
+    Wildfire Programs and Resources
+  </a>
+  <div class="field field--name-field-f field--type-string-long field--label-visually_hidden">
+    <div class="field__label visually-hidden">Featured Text</div>
+              <div class="field__item"  class="field field--name-field-f field--type-string-long field--label-visually_hidden">Explore USDA programs and resources that can help protect or recover your operation from wildfire.</div>
+          </div>
+<ul class="nav-mega-menu-featured-links">
+  <li>
+      <a href="/protection-recovery/disaster-tool" tabindex="0" aria-label="Featured Link - Disaster Assistance Discovery Tool">
+        Disaster Assistance Discovery Tool
+      </a>
+    </li></ul>
+</div>
+
+  </div>
+
+  </div>
+</div>
+</div>
+      
+</div>
+
+  </div>
+
+    </div>
+  </div>
+
+      </div>
+</div>
+
+  </div>
+
+      </div>
+</div>
+
+
+  </li>
+
+
+
+  </ul>
+
+      </div>
+</div>
+
+  </div>
+
+      </div>
+</div>
+
+
+             <div class="mm-landing-page-banner" data-label="Protection and Recovery">
+      <div class="mm-landing-page-banner-title"> Protection and Recovery</div>
+      <div class="mm-landing-page-banner-link">
+        <a class="btn tertiary" href="/protection-recovery" aria-label="View All in Protection and Recovery">View All in Protection and Recovery</a>
+      </div>
+    </div>
+    <div class="mm-mobile-nav-level-1">
+      <div class="mm-links-section-header">Protection and Recovery</div>
+    </div>
+  </li>
+
+
+
+      
+
+  <li  class="tbm-item level-1 tbm-item--has-dropdown" aria-level="1" >
+      <div class="tbm-link-container">
+     
+             <a href="/conservation"  class="tbm-link level-1 tbm-toggle" aria-expanded="false" data-label="/conservation" data-category="Conservation" role="button">
+                Conservation
+          </a>
+     
+                <button class="tbm-submenu-toggle nav-arrow first-level always-show" aria-label="Conservation">
+          <span class="visually-hidden">Toggle submenu</span>
+        </button>
+          </div>
+    <div  class="tbm-submenu tbm-item-child nav-submenu">
+  <div class="mega-dropdown-inner">
+          <div  class="tbm-row">
+         <div  class="tbm-column span12">
+    <div class="tbm-column-inner">
+                 <div  class="tbm-block">
+    <div class="block-inner">
+      <div id="block-block-content67468853-134d-445a-9f8e-fbb972f028bd" class="block block-block-content block-block-content67468853-134d-445a-9f8e-fbb972f028bd">
+  
+    
+      <div >
+  
+            <div class="field field--name-field-mm-link-text-reference field--type-entity-reference-revisions field--label-hidden field__item">
+                                                                                  
+<div class="mm-card-grid">
+  <div class="mm-grid-blocks">
+    <div class="subcategory row">
+                            <div class="mm-grid-item">
+              
+<div >
+	  <a href="/conserve/soil-health" tabindex="0" aria-label="Soil Health - Principles of soil health and best practices to work with the land, not against it.">
+    <span class="mm-link-container-header">Soil Health</span>
+    
+            <div class="field field--name-field-mm-text field--type-string-long field--label-hidden field__item">Principles of soil health and best practices to work with the land, not against it.</div>
+      
+  </a>
+</div>
+
+            </div>
+                      <div class="mm-grid-item">
+              
+<div >
+	  <a href="/conservation/wildlife" tabindex="0" aria-label="Wildlife - America’s privately-owned farms, ranches, and forests are key to supporting wildlife across the country.">
+    <span class="mm-link-container-header">Wildlife</span>
+    
+            <div class="field field--name-field-mm-text field--type-string-long field--label-hidden field__item">America’s privately-owned farms, ranches, and forests are key to supporting wildlife across the country.</div>
+      
+  </a>
+</div>
+
+            </div>
+                                      <div class="mm-grid-item">
+              
+<div >
+	  <a href="/conserve/easements" tabindex="0" aria-label="Easements and Reserves - Learn about easements and reserves and how they benefit different types of land.">
+    <span class="mm-link-container-header">Easements and Reserves</span>
+    
+            <div class="field field--name-field-mm-text field--type-string-long field--label-hidden field__item">Learn about easements and reserves and how they benefit different types of land.</div>
+      
+  </a>
+</div>
+
+            </div>
+                      <div class="mm-grid-item">
+              
+<div >
+	  <a href="/conservation/nutrient-management" tabindex="0" aria-label="Nutrient Management - Efficiently managing nutrients maximizes yields and protects the environment.">
+    <span class="mm-link-container-header">Nutrient Management</span>
+    
+            <div class="field field--name-field-mm-text field--type-string-long field--label-hidden field__item">Efficiently managing nutrients maximizes yields and protects the environment.</div>
+      
+  </a>
+</div>
+
+            </div>
+                                      <div class="mm-grid-item">
+              
+<div >
+	  <a href="/conservation/water-quality" tabindex="0" aria-label="Water Quality - How to improve water quality on your land through practices and initiatives.">
+    <span class="mm-link-container-header">Water Quality</span>
+    
+            <div class="field field--name-field-mm-text field--type-string-long field--label-hidden field__item">How to improve water quality on your land through practices and initiatives.</div>
+      
+  </a>
+</div>
+
+            </div>
+                      <div class="mm-grid-item">
+              
+<div >
+	  <a href="/conserve/water-quantity" tabindex="0" aria-label="Water Quantity - How to manage water quantity on your land through practices and initiatives.">
+    <span class="mm-link-container-header">Water Quantity</span>
+    
+            <div class="field field--name-field-mm-text field--type-string-long field--label-hidden field__item">How to manage water quantity on your land through practices and initiatives.</div>
+      
+  </a>
+</div>
+
+            </div>
+                    </div>
+    <div class="mm-submenu-bottom-section">
+                    <div class="mm-page-anchor-link">
+          <a class="btn tertiary" href="/conservation" aria-label="view all in conservation">
+            VIEW ALL IN CONSERVATION
+          </a>
+        </div>
+          </div>
+  </div>
+  <div class="mm-grid-featured">
+    <div class="mm-featured-header">Featured</div>
+<div id="block-conservationfeaturedsection" class="block block-block-content block-block-content5d2c7ec9-c97b-40d2-9c2f-eea5dfc4f245">
+  
+    
+      <div >
+  
+  <div class="field field--name-field-featured-image field--type-image field--label-visually_hidden">
+    <div class="field__label visually-hidden">Featured Image</div>
+              <div class="field__item"  class="field field--name-field-featured-image field--type-image field--label-visually_hidden">  <img loading="lazy" src="/sites/default/files/2025-04/conservation-featured-image.jpg" width="284" height="144" alt="Sunflower and butterfly" typeof="foaf:Image" alt="Sunflower and butterfly"/>
+
+</div>
+          </div>
+<a href="/conservation/concerns-tool" tabindex="0" aria-label="Featured Link: Conservation Concerns Tool">
+    Conservation Concerns Tool
+  </a>
+  <div class="field field--name-field-f field--type-string-long field--label-visually_hidden">
+    <div class="field__label visually-hidden">Featured Text</div>
+              <div class="field__item"  class="field field--name-field-f field--type-string-long field--label-visually_hidden">Learn about conservation issues that might impact the productivity of your working land.</div>
+          </div>
+<ul class="nav-mega-menu-featured-links">
+  <li>
+      <a href="/conservation/conservation-at-work" tabindex="0" aria-label="Featured Link - Conservation at Work Video Series">
+        Conservation at Work Video Series
+      </a>
+    </li></ul>
+</div>
+
+  </div>
+
+  </div>
+</div>
+</div>
+      
+</div>
+
+  </div>
+
+    </div>
+  </div>
+
+      </div>
+</div>
+
+  </div>
+
+      </div>
+</div>
+
+
+             <div class="mm-landing-page-banner" data-label="Conservation">
+      <div class="mm-landing-page-banner-title"> Conservation</div>
+      <div class="mm-landing-page-banner-link">
+        <a class="btn tertiary" href="/conservation" aria-label="View All in Conservation">View All in Conservation</a>
+      </div>
+    </div>
+    <div class="mm-mobile-nav-level-1">
+      <div class="mm-links-section-header">Conservation</div>
+    </div>
+  </li>
+
+
+
+      
+
+  <li  class="tbm-item level-1 tbm-item--has-dropdown" aria-level="1" >
+      <div class="tbm-link-container">
+     
+             <a href="/your-business"  class="tbm-link level-1 tbm-toggle" aria-expanded="false" data-label="/your-business" data-category="Your Business" role="button">
+                Your Business
+          </a>
+     
+                <button class="tbm-submenu-toggle nav-arrow first-level always-show" aria-label="Your Business">
+          <span class="visually-hidden">Toggle submenu</span>
+        </button>
+          </div>
+    <div  class="tbm-submenu tbm-item-child nav-submenu">
+  <div class="mega-dropdown-inner">
+          <div  class="tbm-row">
+         <div  class="tbm-column span12">
+    <div class="tbm-column-inner">
+               <ul  class="tbm-subnav level-1 items-4 sidemenu">
+      
+
+    <li  class="tbm-item level-2 tbm-item--has-flyout" aria-level="2" >
+      <div class="tbm-link-container">
+     
+             <span class="tbm-link level-2 no-link tbm-toggle" tabindex="0" aria-expanded="false" data-label="" data-category="Beginning Farmers and Ranchers"  role="button" tabindex="0">
+                Beginning Farmers and Ranchers
+          </span>
+     
+                <button class="tbm-submenu-toggle nav-arrow always-show" aria-label="Beginning Farmers and Ranchers">
+          <span class="visually-hidden">Toggle submenu</span>
+        </button>
+          </div>
+    <div  class="tbm-submenu tbm-item-child nav-submenu">
+  <div class="mega-dropdown-inner">
+          <div  class="tbm-row">
+         <div  class="tbm-column span12">
+    <div class="tbm-column-inner">
+                 <div  class="tbm-block">
+    <div class="block-inner">
+      <div id="block-block-contentc4070569-3fcc-4c68-929e-84d9dc86dd04" class="block block-block-content block-block-contentc4070569-3fcc-4c68-929e-84d9dc86dd04">
+  
+    
+      <div >
+  
+            <div class="field field--name-field-mm-link-text-reference field--type-entity-reference-revisions field--label-hidden field__item">
+                                                                                  
+<div class="mm-card-grid">
+  <div class="mm-grid-blocks">
+    <div class="subcategory row">
+                            <div class="mm-grid-item">
+              
+<div >
+	  <a href="/your-business/beginning-farmers/business-plan" tabindex="0" aria-label="Plan Your Farm Operation - Think about your operation from the ground up and start planning for your business.">
+    <span class="mm-link-container-header">Plan Your Farm Operation</span>
+    
+            <div class="field field--name-field-mm-text field--type-string-long field--label-hidden field__item">Think about your operation from the ground up and start planning for your business.</div>
+      
+  </a>
+</div>
+
+            </div>
+                      <div class="mm-grid-item">
+              
+<div >
+	  <a href="/your-business/beginning-farmers/visit-center" tabindex="0" aria-label="Visit Your USDA Service Center - Get in touch with your local Service Center to find programs to support your operation.">
+    <span class="mm-link-container-header">Visit Your USDA Service Center</span>
+    
+            <div class="field field--name-field-mm-text field--type-string-long field--label-hidden field__item">Get in touch with your local Service Center to find programs to support your operation.</div>
+      
+  </a>
+</div>
+
+            </div>
+                                      <div class="mm-grid-item">
+              
+<div >
+	  <a href="/your-business/beginning-farmers/funding" tabindex="0" aria-label="Find Land and Fund Your Operation - USDA has spent decades helping new producers find land and money for their businesses.">
+    <span class="mm-link-container-header">Find Land and Fund Your Operation</span>
+    
+            <div class="field field--name-field-mm-text field--type-string-long field--label-hidden field__item">USDA has spent decades helping new producers find land and money for their businesses.</div>
+      
+  </a>
+</div>
+
+            </div>
+                      <div class="mm-grid-item">
+              
+<div >
+	  <a href="/your-business/beginning-farmers/build-knowledge" tabindex="0" aria-label="Build Your Business - Lean on USDA to help you build your operation with sound business and financial knowledge.">
+    <span class="mm-link-container-header">Build Your Business</span>
+    
+            <div class="field field--name-field-mm-text field--type-string-long field--label-hidden field__item">Lean on USDA to help you build your operation with sound business and financial knowledge.</div>
+      
+  </a>
+</div>
+
+            </div>
+                                      <div class="mm-grid-item">
+              
+<div >
+	  <a href="/your-business/beginning-farmers/sell-your-products" tabindex="0" aria-label="Sell Your Farm Products - Explore everything about producing, marketing and actually selling your final product.">
+    <span class="mm-link-container-header">Sell Your Farm Products</span>
+    
+            <div class="field field--name-field-mm-text field--type-string-long field--label-hidden field__item">Explore everything about producing, marketing and actually selling your final product.</div>
+      
+  </a>
+</div>
+
+            </div>
+                      <div class="mm-grid-item">
+              
+<div >
+	  <a href="/your-business/beginning-farmers/maintain" tabindex="0" aria-label="Maintain Your Farm Operation - Take care of your farm operation, and it will take care of you. USDA can help.">
+    <span class="mm-link-container-header">Maintain Your Farm Operation</span>
+    
+            <div class="field field--name-field-mm-text field--type-string-long field--label-hidden field__item">Take care of your farm operation, and it will take care of you. USDA can help.</div>
+      
+  </a>
+</div>
+
+            </div>
+                    </div>
+    <div class="mm-submenu-bottom-section">
+                </div>
+  </div>
+  <div class="mm-grid-featured">
+    <div class="mm-featured-header">Featured</div>
+<div id="block-yourbusinessfeaturedsection" class="block block-block-content block-block-contentb1eeba12-3fce-4e31-83c3-ef69151e0b48">
+  
+    
+      <div >
+  
+  <div class="field field--name-field-featured-image field--type-image field--label-visually_hidden">
+    <div class="field__label visually-hidden">Featured Image</div>
+              <div class="field__item"  class="field field--name-field-featured-image field--type-image field--label-visually_hidden">  <img loading="lazy" src="/sites/default/files/2022-11/farmersgov-image284x144-handplanting-11-30-2022.jpg.png" width="284" height="144" alt="producer hand in dirt field" typeof="foaf:Image" alt="producer hand in dirt field"/>
+
+</div>
+          </div>
+<a href="https://www.farmers.gov/your-business/beginning-farmers?&amp;utm_campaign=megamenufeatured" tabindex="0" aria-label="Featured Link: How to Start a Farm: Beginning Farmers and Ranchers">
+    How to Start a Farm: Beginning Farmers and Ranchers
+  </a>
+  <div class="field field--name-field-f field--type-string-long field--label-visually_hidden">
+    <div class="field__label visually-hidden">Featured Text</div>
+              <div class="field__item"  class="field field--name-field-f field--type-string-long field--label-visually_hidden">New to farming? Want to learn how to start a farm? USDA can help.</div>
+          </div>
+<ul class="nav-mega-menu-featured-links">
+  <li>
+      <a href="/your-business/beginning-farmers/coordinators" tabindex="0" aria-label="Featured Link - Beginning Farmer and Rancher Coordinators">
+        Beginning Farmer and Rancher Coordinators
+      </a>
+    </li></ul>
+</div>
+
+  </div>
+
+  </div>
+</div>
+</div>
+      
+</div>
+
+  </div>
+
+    </div>
+  </div>
+
+      </div>
+</div>
+
+  </div>
+
+      </div>
+</div>
+
+
+  </li>
+
+
+
+      
+
+    <li  class="tbm-item level-2 tbm-item--has-flyout" aria-level="2" >
+      <div class="tbm-link-container">
+     
+             <span class="tbm-link level-2 no-link tbm-toggle" tabindex="0" aria-expanded="false" data-label="" data-category="Who You Are"  role="button" tabindex="0">
+                Who You Are
+          </span>
+     
+                <button class="tbm-submenu-toggle nav-arrow always-show" aria-label="Who You Are">
+          <span class="visually-hidden">Toggle submenu</span>
+        </button>
+          </div>
+    <div  class="tbm-submenu tbm-item-child nav-submenu">
+  <div class="mega-dropdown-inner">
+          <div  class="tbm-row">
+         <div  class="tbm-column span12">
+    <div class="tbm-column-inner">
+                 <div  class="tbm-block">
+    <div class="block-inner">
+      <div id="block-block-content7571f0f8-e737-49db-a62c-0d00f6af2fed" class="block block-block-content block-block-content7571f0f8-e737-49db-a62c-0d00f6af2fed">
+  
+    
+      <div >
+  
+            <div class="field field--name-field-mm-link-text-reference field--type-entity-reference-revisions field--label-hidden field__item">
+                                                                                  
+<div class="mm-card-grid">
+  <div class="mm-grid-blocks">
+    <div class="subcategory row">
+                            <div class="mm-grid-item">
+              
+<div >
+	  <a href="/your-business/women" tabindex="0" aria-label="Women Farmers - Women farmers and ranchers play a vital role in American agriculture.">
+    <span class="mm-link-container-header">Women Farmers</span>
+    
+            <div class="field field--name-field-mm-text field--type-string-long field--label-hidden field__item">Women farmers and ranchers play a vital role in American agriculture.</div>
+      
+  </a>
+</div>
+
+            </div>
+                      <div class="mm-grid-item">
+              
+<div >
+	  <a href="/your-business/small-scale-producers" tabindex="0" aria-label="Small-scale Producers - No matter the size of your operation, USDA can help it grow. ">
+    <span class="mm-link-container-header">Small-scale Producers</span>
+    
+            <div class="field field--name-field-mm-text field--type-string-long field--label-hidden field__item">No matter the size of your operation, USDA can help it grow. </div>
+      
+  </a>
+</div>
+
+            </div>
+                                      <div class="mm-grid-item">
+              
+<div >
+	  <a href="/your-business/organic" tabindex="0" aria-label="Organic Farmers - Explore USDA programs, services, and resources available for organic farmers.">
+    <span class="mm-link-container-header">Organic Farmers</span>
+    
+            <div class="field field--name-field-mm-text field--type-string-long field--label-hidden field__item">Explore USDA programs, services, and resources available for organic farmers.</div>
+      
+  </a>
+</div>
+
+            </div>
+                      <div class="mm-grid-item">
+              
+<div >
+	  <a href="/your-business/urban-growers" tabindex="0" aria-label="Urban Growers - Browse USDA programs and services provided for urban farmers and gardeners.">
+    <span class="mm-link-container-header">Urban Growers</span>
+    
+            <div class="field field--name-field-mm-text field--type-string-long field--label-hidden field__item">Browse USDA programs and services provided for urban farmers and gardeners.</div>
+      
+  </a>
+</div>
+
+            </div>
+                                      <div class="mm-grid-item">
+              
+<div >
+	  <a href="/your-business/tribal" tabindex="0" aria-label="Partnerships With Tribal Nations - USDA collaborates and partners with Tribal Nations to help them meet their land stewardship, production, and food sovereignty goals.">
+    <span class="mm-link-container-header">Partnerships With Tribal Nations</span>
+    
+            <div class="field field--name-field-mm-text field--type-string-long field--label-hidden field__item">USDA collaborates and partners with Tribal Nations to help them meet their land stewardship, production, and food sovereignty goals.</div>
+      
+  </a>
+</div>
+
+            </div>
+                      <div class="mm-grid-item">
+              
+<div >
+	  <a href="/your-business/military-veterans" tabindex="0" aria-label="Resources for Military Veteran Farmers - Browse USDA programs and services provided for military veteran producers.">
+    <span class="mm-link-container-header">Resources for Military Veteran Farmers</span>
+    
+            <div class="field field--name-field-mm-text field--type-string-long field--label-hidden field__item">Browse USDA programs and services provided for military veteran producers.</div>
+      
+  </a>
+</div>
+
+            </div>
+                    </div>
+    <div class="mm-submenu-bottom-section">
+                </div>
+  </div>
+  <div class="mm-grid-featured">
+    <div class="mm-featured-header">Featured</div>
+<div id="block-yourbusinessfeaturedsection--2" class="block block-block-content block-block-contentb1eeba12-3fce-4e31-83c3-ef69151e0b48">
+  
+    
+      <div >
+  
+  <div class="field field--name-field-featured-image field--type-image field--label-visually_hidden">
+    <div class="field__label visually-hidden">Featured Image</div>
+              <div class="field__item"  class="field field--name-field-featured-image field--type-image field--label-visually_hidden">  <img loading="lazy" src="/sites/default/files/2022-11/farmersgov-image284x144-handplanting-11-30-2022.jpg.png" width="284" height="144" alt="producer hand in dirt field" typeof="foaf:Image" alt="producer hand in dirt field"/>
+
+</div>
+          </div>
+<a href="https://www.farmers.gov/your-business/beginning-farmers?&amp;utm_campaign=megamenufeatured" tabindex="0" aria-label="Featured Link: How to Start a Farm: Beginning Farmers and Ranchers">
+    How to Start a Farm: Beginning Farmers and Ranchers
+  </a>
+  <div class="field field--name-field-f field--type-string-long field--label-visually_hidden">
+    <div class="field__label visually-hidden">Featured Text</div>
+              <div class="field__item"  class="field field--name-field-f field--type-string-long field--label-visually_hidden">New to farming? Want to learn how to start a farm? USDA can help.</div>
+          </div>
+<ul class="nav-mega-menu-featured-links">
+  <li>
+      <a href="/your-business/beginning-farmers/coordinators" tabindex="0" aria-label="Featured Link - Beginning Farmer and Rancher Coordinators">
+        Beginning Farmer and Rancher Coordinators
+      </a>
+    </li></ul>
+</div>
+
+  </div>
+
+  </div>
+</div>
+</div>
+      
+</div>
+
+  </div>
+
+    </div>
+  </div>
+
+      </div>
+</div>
+
+  </div>
+
+      </div>
+</div>
+
+
+  </li>
+
+
+
+      
+
+    <li  class="tbm-item level-2 tbm-item--has-flyout" aria-level="2" >
+      <div class="tbm-link-container">
+     
+             <span class="tbm-link level-2 no-link tbm-toggle" tabindex="0" aria-expanded="false" data-label="" data-category="What You Grow and Raise"  role="button" tabindex="0">
+                What You Grow and Raise
+          </span>
+     
+                <button class="tbm-submenu-toggle nav-arrow always-show" aria-label="What You Grow and Raise">
+          <span class="visually-hidden">Toggle submenu</span>
+        </button>
+          </div>
+    <div  class="tbm-submenu tbm-item-child nav-submenu">
+  <div class="mega-dropdown-inner">
+          <div  class="tbm-row">
+         <div  class="tbm-column span12">
+    <div class="tbm-column-inner">
+                 <div  class="tbm-block">
+    <div class="block-inner">
+      <div id="block-block-contentaa86816a-5374-4912-8601-7456102e5a6f" class="block block-block-content block-block-contentaa86816a-5374-4912-8601-7456102e5a6f">
+  
+    
+      <div >
+  
+            <div class="field field--name-field-mm-link-text-reference field--type-entity-reference-revisions field--label-hidden field__item">
+                                                                  
+<div class="mm-card-grid">
+  <div class="mm-grid-blocks">
+    <div class="subcategory row">
+                            <div class="mm-grid-item">
+              
+<div >
+	  <a href="/your-business/livestock" tabindex="0" aria-label="Livestock - Browse programs and services that USDA offers to support your livestock operation. ">
+    <span class="mm-link-container-header">Livestock</span>
+    
+            <div class="field field--name-field-mm-text field--type-string-long field--label-hidden field__item">Browse programs and services that USDA offers to support your livestock operation. </div>
+      
+  </a>
+</div>
+
+            </div>
+                      <div class="mm-grid-item">
+              
+<div >
+	  <a href="/your-business/specialty-crops" tabindex="0" aria-label="Specialty Crops - Browse USDA programs and services for specialty crops like fruits and vegetables.">
+    <span class="mm-link-container-header">Specialty Crops</span>
+    
+            <div class="field field--name-field-mm-text field--type-string-long field--label-hidden field__item">Browse USDA programs and services for specialty crops like fruits and vegetables.</div>
+      
+  </a>
+</div>
+
+            </div>
+                                      <div class="mm-grid-item">
+              
+<div >
+	  <a href="/your-business/row-crops" tabindex="0" aria-label="Row Crops - Browse USDA programs and services to assist your row crop operation.">
+    <span class="mm-link-container-header">Row Crops</span>
+    
+            <div class="field field--name-field-mm-text field--type-string-long field--label-hidden field__item">Browse USDA programs and services to assist your row crop operation.</div>
+      
+  </a>
+</div>
+
+            </div>
+                      <div class="mm-grid-item">
+              
+<div >
+	  <a href="/your-business/forests" tabindex="0" aria-label="Forests - Browse USDA programs and services that could help your forest land.">
+    <span class="mm-link-container-header">Forests</span>
+    
+            <div class="field field--name-field-mm-text field--type-string-long field--label-hidden field__item">Browse USDA programs and services that could help your forest land.</div>
+      
+  </a>
+</div>
+
+            </div>
+                    </div>
+    <div class="mm-submenu-bottom-section">
+                </div>
+  </div>
+  <div class="mm-grid-featured">
+    <div class="mm-featured-header">Featured</div>
+<div id="block-yourbusinessfeaturedsection--3" class="block block-block-content block-block-contentb1eeba12-3fce-4e31-83c3-ef69151e0b48">
+  
+    
+      <div >
+  
+  <div class="field field--name-field-featured-image field--type-image field--label-visually_hidden">
+    <div class="field__label visually-hidden">Featured Image</div>
+              <div class="field__item"  class="field field--name-field-featured-image field--type-image field--label-visually_hidden">  <img loading="lazy" src="/sites/default/files/2022-11/farmersgov-image284x144-handplanting-11-30-2022.jpg.png" width="284" height="144" alt="producer hand in dirt field" typeof="foaf:Image" alt="producer hand in dirt field"/>
+
+</div>
+          </div>
+<a href="https://www.farmers.gov/your-business/beginning-farmers?&amp;utm_campaign=megamenufeatured" tabindex="0" aria-label="Featured Link: How to Start a Farm: Beginning Farmers and Ranchers">
+    How to Start a Farm: Beginning Farmers and Ranchers
+  </a>
+  <div class="field field--name-field-f field--type-string-long field--label-visually_hidden">
+    <div class="field__label visually-hidden">Featured Text</div>
+              <div class="field__item"  class="field field--name-field-f field--type-string-long field--label-visually_hidden">New to farming? Want to learn how to start a farm? USDA can help.</div>
+          </div>
+<ul class="nav-mega-menu-featured-links">
+  <li>
+      <a href="/your-business/beginning-farmers/coordinators" tabindex="0" aria-label="Featured Link - Beginning Farmer and Rancher Coordinators">
+        Beginning Farmer and Rancher Coordinators
+      </a>
+    </li></ul>
+</div>
+
+  </div>
+
+  </div>
+</div>
+</div>
+      
+</div>
+
+  </div>
+
+    </div>
+  </div>
+
+      </div>
+</div>
+
+  </div>
+
+      </div>
+</div>
+
+
+  </li>
+
+
+
+      
+
+    <li  class="tbm-item level-2 tbm-item--has-flyout" aria-level="2" >
+      <div class="tbm-link-container">
+     
+             <span class="tbm-link level-2 no-link tbm-toggle" tabindex="0" aria-expanded="false" data-label="" data-category="Taxes"  role="button" tabindex="0">
+                Taxes
+          </span>
+     
+                <button class="tbm-submenu-toggle nav-arrow always-show" aria-label="Taxes">
+          <span class="visually-hidden">Toggle submenu</span>
+        </button>
+          </div>
+    <div  class="tbm-submenu tbm-item-child nav-submenu">
+  <div class="mega-dropdown-inner">
+          <div  class="tbm-row">
+         <div  class="tbm-column span12">
+    <div class="tbm-column-inner">
+                 <div  class="tbm-block">
+    <div class="block-inner">
+      <div id="block-block-content591acb8e-2275-44b1-abd3-dff9f6c4aba3" class="block block-block-content block-block-content591acb8e-2275-44b1-abd3-dff9f6c4aba3">
+  
+    
+      <div >
+  
+            <div class="field field--name-field-mm-link-text-reference field--type-entity-reference-revisions field--label-hidden field__item">
+                                                  
+<div class="mm-card-grid">
+  <div class="mm-grid-blocks">
+    <div class="subcategory row">
+                            <div class="mm-grid-item">
+              
+<div >
+	  <a href="/your-business/taxes" tabindex="0" aria-label="Taxes for Farmers and Ranchers - Farm tax information and strategies related to USDA programs.">
+    <span class="mm-link-container-header">Taxes for Farmers and Ranchers</span>
+    
+            <div class="field field--name-field-mm-text field--type-string-long field--label-hidden field__item">Farm tax information and strategies related to USDA programs.</div>
+      
+  </a>
+</div>
+
+            </div>
+                      <div class="mm-grid-item">
+              
+<div >
+	  <a href="/your-business/taxes/videos" tabindex="0" aria-label="Tax Training Videos - Videos on a variety of agricultural tax topics from USDA staff and tax professionals.">
+    <span class="mm-link-container-header">Tax Training Videos</span>
+    
+            <div class="field field--name-field-mm-text field--type-string-long field--label-hidden field__item">Videos on a variety of agricultural tax topics from USDA staff and tax professionals.</div>
+      
+  </a>
+</div>
+
+            </div>
+                    </div>
+    <div class="mm-submenu-bottom-section">
+                </div>
+  </div>
+  <div class="mm-grid-featured">
+    <div class="mm-featured-header">Featured</div>
+<div id="block-yourbusinessfeaturedsection--4" class="block block-block-content block-block-contentb1eeba12-3fce-4e31-83c3-ef69151e0b48">
+  
+    
+      <div >
+  
+  <div class="field field--name-field-featured-image field--type-image field--label-visually_hidden">
+    <div class="field__label visually-hidden">Featured Image</div>
+              <div class="field__item"  class="field field--name-field-featured-image field--type-image field--label-visually_hidden">  <img loading="lazy" src="/sites/default/files/2022-11/farmersgov-image284x144-handplanting-11-30-2022.jpg.png" width="284" height="144" alt="producer hand in dirt field" typeof="foaf:Image" alt="producer hand in dirt field"/>
+
+</div>
+          </div>
+<a href="https://www.farmers.gov/your-business/beginning-farmers?&amp;utm_campaign=megamenufeatured" tabindex="0" aria-label="Featured Link: How to Start a Farm: Beginning Farmers and Ranchers">
+    How to Start a Farm: Beginning Farmers and Ranchers
+  </a>
+  <div class="field field--name-field-f field--type-string-long field--label-visually_hidden">
+    <div class="field__label visually-hidden">Featured Text</div>
+              <div class="field__item"  class="field field--name-field-f field--type-string-long field--label-visually_hidden">New to farming? Want to learn how to start a farm? USDA can help.</div>
+          </div>
+<ul class="nav-mega-menu-featured-links">
+  <li>
+      <a href="/your-business/beginning-farmers/coordinators" tabindex="0" aria-label="Featured Link - Beginning Farmer and Rancher Coordinators">
+        Beginning Farmer and Rancher Coordinators
+      </a>
+    </li></ul>
+</div>
+
+  </div>
+
+  </div>
+</div>
+</div>
+      
+</div>
+
+  </div>
+
+    </div>
+  </div>
+
+      </div>
+</div>
+
+  </div>
+
+      </div>
+</div>
+
+
+  </li>
+
+
+
+  </ul>
+
+      </div>
+</div>
+
+  </div>
+
+      </div>
+</div>
+
+
+             <div class="mm-landing-page-banner" data-label="Your Business">
+      <div class="mm-landing-page-banner-title"> Your Business</div>
+      <div class="mm-landing-page-banner-link">
+        <a class="btn tertiary" href="/your-business" aria-label="View All in Your Business">View All in Your Business</a>
+      </div>
+    </div>
+    <div class="mm-mobile-nav-level-1">
+      <div class="mm-links-section-header">Your Business</div>
+    </div>
+  </li>
+
+
+
+  </ul>
+
+      </div>
+  </nav>
+
+  </div>
+
+
+          <div id="search-field">
+            <form class="search" action="https://search.farmers.gov/search" data-drupal-form-fields="affiliate,header-search">
+              <div role="search" aria-label="Site Search">
+                <input name="utf8" type="hidden" value="✓">
+                <input id="affiliatename" name="affiliate" type="hidden" value="farmers.gov">
+                <label class="usa-sr-only" for="header-search">Search Farmers.gov</label>
+                <input id="header-search" autocomplete="off" name="query" type="search" placeholder="Search Farmers.gov" tabindex="0">
+                <button type="submit" tabindex="0">
+                  <span class="usa-sr-only">Search</span>
+                </button>
+                <input name="commit" type="hidden" value="Search">
+              </div>
+            </form>
+          </div>
+        </div>
+      </nav>
+    <div class="usa-overlay"></div>
+    <div class="site-messages">
+      <div class="ie-message usa-alert usa-alert-warning">
+  <div class="container">
+    <div class="row usa-grid">
+     	<div class="usa-alert-body">
+      	<div class="usa-alert-text">
+       	<p>Farmers.gov is not optimized for this browser. Please use the latest versions of Chrome, Edge, or Safari for the best experience. <a href="#" class="usa-alert-link" onClick="ie_message_close()">Dismiss</a></p>
+      	</div>
+    	</div>
+  	</div>
+	</div>
+</div>
+      <div data-quickedit-entity-id="block_content/261">
+
+            <div class="field field--name-field-promotion field--type-entity-reference-revisions field--label-hidden field__item"></div>
+      
+</div>
+
+    </div>
+          <div id="mm-mobile" class="mm-mobile-primary-nav megamenu">
+        <div class="nav-container">
+          <div id="mm-mobile-header" class="mobile-nav-header">
+              <div class="mm-mobile-menu-close">
+                <span>close</span>
+              </div>
+              <div class="mm-top-section-container">
+                <div class="mm-signup"></div>
+                <div class="mm-search"></div>
+              <div class="mm-top-section">
+                <a class="mm-mobile-top-nav home" href="/">Home</a>
+                <div class="mm-top-nav-header">Jump to list of pages for:</div>
+                <ul class="mm-top-nav"></ul>
+              </div>
+            </div>
+            <div class="mm-links-container"></div>
+            <div class="mm-utility-nav"></div>
+          </div>
+        </div>
+      </div>
+      <div class="back-to-top mm-back-to-top"> 
+        <a href="#mm-mobile"> 
+          <span class="up"></span> 
+          <br>
+          top 
+        </a>
+      </div>
+      </div>
+<div id="print-header" class="container">
+    <div class="row">
+      <div class="agency-banner">
+        <div class="agency-logo">
+            <span title="Home" rel="home" class="agency-logo">
+              <img src="/themes/farmers_update/img/usda-symbol.svg" alt="USDA Logo" class="usda-logo-img">
+            </span>
+            <div class="agency-identity">
+              <div class="agency-name">Farmers.gov</div>
+              <div class="tagline">U.S. Department of Agriculture</div>
+            </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</header>
+
+
+
+
+
+  <main class="farmers-landing-page" id="main-content">
+
+                        <div class="background-image background-image-header" style="background-image:url(/sites/default/files/2022-03/fscsc-mainpg-hero-resized.jpg);">
+          <div class="overlay-card manage-text">
+                          <div class="overlay-card__title"></div>
+                      </div>
+        </div>
+          
+    
+    
+      <div id="block-farmers-update-breadcrumbs" class="block block-system block-system-breadcrumb-block">
+  
+    
+      
+<style>
+#block-farmers-update-breadcrumbs {
+    flex-wrap: wrap;
+    display: flex;
+    position: relative;
+    list-style: none;
+    width: 1080px;
+    margin: 0 auto 0 auto;
+    left: -4px;
+}
+
+.conservation.page-node-type-concern-landing-page #block-farmers-update-breadcrumbs {
+  left: -9px;
+}
+
+.usda-breadcrumb-item:last-child {
+  margin-top: 1px;
+}
+
+.blog.blog-pages #block-farmers-update-breadcrumbs {
+  left: 40px;
+}
+
+#block-farmers-update-breadcrumbs li {
+    padding-left: 1rem;
+    padding-right: 1rem;
+    font-size: 1.2rem;
+    font-weight: 700;
+}
+
+#block-farmers-update-breadcrumbs li a:visited {
+    color: #006546;
+}
+
+#block-farmers-update-breadcrumbs li a {
+    font-weight: 400;
+    cursor: pointer;
+}
+
+#block-farmers-update-breadcrumbs .breadcrumb-arrow {
+    border: solid black;
+    border-width: 0 1px 1px 0;
+    display: inline-block;
+    padding: 2px;
+    margin-left: 1rem;
+    margin-right: -1rem;
+}
+
+.mobile .path-dashboard #dashboard-breadcrumbs {
+  left: -16px;
+}
+
+#block-farmers-update-breadcrumbs .breadcrumb-arrow.left {
+    transform: rotate(135deg);
+    -webkit-transform: rotate(135deg);
+}
+
+#block-farmers-update-breadcrumbs .breadcrumb-arrow.right {
+    transform: rotate(-45deg);
+    -webkit-transform: rotate(-45deg);
+}
+
+#block-farmers-update-breadcrumbs li .breadcrumb-arrow.left {
+    display: none;
+}
+
+#block-farmers-update-breadcrumbs li:last-child .breadcrumb-arrow.right {
+    display: none;
+}
+
+@media (max-width: 976px) {
+  .blog.blog-pages #block-farmers-update-breadcrumbs {
+    left: 2.5%;
+  }
+}
+
+/* Mobile-specific styles */
+@media (max-width: 768px) {
+
+  .mobile-device #block-farmers-update-breadcrumbs {
+    margin: 5px auto -10px auto;
+    width: auto;
+  }
+
+  .mobile-device #block-farmers-update-breadcrumbs li a {
+    white-space: normal;
+    word-wrap: break-word;
+    overflow-wrap: anywhere;
+  }  
+
+  .mobile-device.blog #block-farmers-update-breadcrumbs {
+    margin: 30px auto -25px auto;  
+  }
+
+
+  .mobile-device.blog.blog-pages #block-farmers-update-breadcrumbs {
+    margin: 5px auto -20px auto;
+  }  
+
+  .resized-desktop #block-farmers-update-breadcrumbs {
+    margin: 0 auto -10px auto;
+    width: auto;
+  }
+
+  .conservation #block-farmers-update-breadcrumbs,
+  .found #block-farmers-update-breadcrumbs,
+  .blog #block-farmers-update-breadcrumbs,
+  .loans #block-farmers-update-breadcrumbs,
+  .account #block-farmers-update-breadcrumbs,
+  .resources #block-farmers-update-breadcrumbs,  
+  .farmers #block-farmers-update-breadcrumbs,  
+  .business #block-farmers-update-breadcrumbs,    
+  #block-farmers-update-breadcrumbs {
+    left: -9px;
+  }
+
+  .us #block-farmers-update-breadcrumbs {
+    left: -8px;
+  }
+
+  .conservation.page-node-type-concern-landing-page #block-farmers-update-breadcrumbs {
+    left: -16px;
+  }
+
+  .recovery #block-farmers-update-breadcrumbs {
+    left: -8px;
+  }
+
+  .forbidden #block-farmers-update-breadcrumbs {
+    left: -4px;
+  }  
+
+  .blog.blog-pages #block-farmers-update-breadcrumbs {
+    left: -10px;
+  }
+
+  .us.blog-pages.find_your_local_usda_service_center #block-farmers-update-breadcrumbs {
+    left: -17px;
+  }
+
+  .us.blog-pages.important_dates #block-farmers-update-breadcrumbs {
+    left: -9px;
+  }  
+
+  .us.blog-pages #block-farmers-update-breadcrumbs {
+    left: -8px;
+  }  
+
+  #block-farmers-update-breadcrumbs li {
+    display: none;
+  }
+
+  #block-farmers-update-breadcrumbs li.show-on-mobile {
+    display: flex;
+    align-items: center;
+  }
+
+  #block-farmers-update-breadcrumbs li.show-on-mobile a {
+    margin-left: 20px;
+    z-index: 1;
+  }
+
+  #block-farmers-update-breadcrumbs .breadcrumb-arrow.right {
+    display: none !important;
+  }
+
+  #block-farmers-update-breadcrumbs li.show-on-mobile .breadcrumb-arrow.left {
+    display: inline-block !important;
+  }
+
+  .path-dashboard #dashboard-breadcrumbs {
+    left: -16px;
+    margin-bottom: -10px;
+  }  
+
+  .cercano #block-farmers-update-breadcrumbs {
+    left: -17px;
+  }
+}
+
+@media (max-width: 1141px) {
+  .path-dashboard #dashboard-breadcrumbs {
+    left: -16px;
+    margin-bottom: -10px;
+  }  
+}
+
+</style>
+
+<script>
+  document.addEventListener('DOMContentLoaded', function () {
+    const items = document.querySelectorAll('#block-farmers-update-breadcrumbs li');
+    const isMobileDevice = /Mobi|Android|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+    
+    if (isMobileDevice) {
+      document.body.classList.add('mobile-device');
+    } else {
+      document.body.classList.add('resized-desktop');
+    }
+
+    for (let i = items.length - 1; i >= 0; i--) {
+      if (items[i].querySelector('a')) {
+        items[i].classList.add('show-on-mobile');
+        break;
+      }
+    }
+  });
+</script>
+
+  <nav aria-labelledby="system-breadcrumb">
+    <ul id="block-farmers-update-breadcrumbs" class="container">
+         <li class="usda-breadcrumb-item">
+        <div class="breadcrumb-arrow left"></div>
+                  <a href="/">Home</a>
+                <div class="breadcrumb-arrow right"></div>
+      </li>
+         <li class="usda-breadcrumb-item">
+        <div class="breadcrumb-arrow left"></div>
+                  <a href="/coronavirus">[Archived] Coronavirus and USDA Assistance For Farmers</a>
+                <div class="breadcrumb-arrow right"></div>
+      </li>
+         <li class="usda-breadcrumb-item">
+        <div class="breadcrumb-arrow left"></div>
+                  <a href="/coronavirus/pandemic-assistance">[Archived] USDA Pandemic Assistance For Producers</a>
+                <div class="breadcrumb-arrow right"></div>
+      </li>
+         <li class="usda-breadcrumb-item">
+        <div class="breadcrumb-arrow left"></div>
+                  Food Safety Certification For Specialty Crops Program
+                <div class="breadcrumb-arrow right"></div>
+      </li>
+        </ul>
+  </nav>
+
+
+<script>
+const breadcrumbItems = document.querySelectorAll('.usda-breadcrumb-item');
+
+if (breadcrumbItems.length >= 2) {
+  // Add class from second breadcrumb item (last word only)
+  const secondItemText = breadcrumbItems[1].innerText.trim();
+  const secondItemWords = secondItemText.split(/\s+/);
+  const secondItemLastWord = secondItemWords[secondItemWords.length - 1].toLowerCase();
+  document.body.classList.add(secondItemLastWord);
+
+  if (breadcrumbItems.length > 2) {
+    document.body.classList.add('blog-pages');
+  }
+
+  // Add class from full last breadcrumb item, replacing spaces with underscores
+  const lastItemText = breadcrumbItems[breadcrumbItems.length - 1].innerText.trim();
+  const lastItemClass = lastItemText.toLowerCase().replace(/\s+/g, '_');
+  document.body.classList.add(lastItemClass);
+}
+</script>
+  </div>
+
+
+        
+  <div class="container">
+    <div class="row">
+      <div class="primary-region medium-12">
+        <h1 class="primary-region__title">
+          Food Safety Certification for Specialty Crops Program
+        </h1>
+      </div>
+    </div>  
+  </div> 
+ 
+  <div data-drupal-messages-fallback class="hidden"></div>
+<div id="block-farmers-update-content" class="block block-system block-system-main-block">
+  
+    
+      <article about="/coronavirus/pandemic-assistance/food-safety">
+	
+		
+
+	
+	<div>
+		<div  class="container">
+  <div class="farmers-landing-page row">
+    <div class="primary-region medium-12">
+              <div class="primary-region__header">
+          <p>Did your specialty crop operation recently incur on-farm food safety program expenses related to obtaining or renewing a food safety certification? You may be eligible for financial assistance through USDA’s Food Safety Certification for Specialty Crops Program (FSCSC) for 2025.</p>
+        </div>
+      
+      <div class="category-placeholder" style="display: none">
+          <label id="edit-term-node-placeholder-label" disabled for="edit-term-node-placeholder">Category</label>
+          <select id="edit-term-node-placeholder" class="shs-select form-select form-element form-element--type-select" disabled>
+              <option>- Any -</option>
+          </select>
+      </div>
+
+    </div>
+  </div>
+</div>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  if (window.location.pathname.includes('/translated-resources')) {
+
+    // Add ID to interpreter_link link
+    var interpreter_link = document.querySelector('a[href="https://www.farmers.gov/translated-resources/interpret"]');      
+    if (interpreter_link) interpreter_link.id = 'language-interpreter';
+
+    // Check if the dropdown exists on page load
+    var dropdown = document.querySelector('select.shs-select.form-select');
+    if (dropdown) addOptionIds(dropdown);
+
+    // Use MutationObserver to watch for the dropdown being added if not found
+    var observer = new MutationObserver(function(mutationsList, observer) {          
+        var dropdown = document.getElementById('edit-term-node-tid-depth-shs-0-0');
+        if (dropdown) {
+            addOptionIds(dropdown);
+            addIdsToLanguageSections();         
+            observer.disconnect();
+        }
+    });
+
+    // Start observing the document for added nodes
+    observer.observe(document.body, { childList: true, subtree: true });
+
+    // Initialize the observer
+    observeLanguageChange();
+  }
+});
+
+// Add IDs to languages in the dropdown
+function addOptionIds(dropdown) {
+    var options = dropdown.querySelectorAll('option');
+    
+    options.forEach(function(option) {
+        // Extract text within parentheses
+        var match = option.textContent.match(/\((.*?)\)/);
+                      
+        if (match && match[1]) {
+            var textInBrackets = match[1].trim(); // Extracted text inside parentheses
+            option.id = 'select_lang_' + textInBrackets.toLowerCase();
+        }
+    });
+}   
+
+// Add IDs to language containers/sections
+function addIdsToLanguageSections(){
+  var h2Elements = document.querySelectorAll('h2');
+  
+  h2Elements.forEach(function(h2) {
+      // Extract text inside parentheses (language)
+      var match = h2.textContent.match(/\((.*?)\)/);
+
+      if (match && match[1]) {
+          var textInBrackets = match[1].trim().toLowerCase();
+
+          // Find the parent div element of the h2
+          var parentDiv = h2.closest('div');
+          
+          if (parentDiv) {
+              parentDiv.id = 'select_lang_container_' + textInBrackets;
+          }
+      }
+  });
+}
+
+// Get the 'language' query parameter from the URL (to check if the language has changed in the form)
+function getLanguageFromQuery() {
+    const urlParams = new URLSearchParams(window.location.search);
+    return urlParams.get('language');
+}
+
+// Observe changes in the 'language' query parameter
+function observeLanguageChange() {
+    let currentLanguage = getLanguageFromQuery();
+
+    // Function to handle query parameter changes
+    const checkForLanguageChange = () => {
+        const newLanguage = getLanguageFromQuery();
+        if (newLanguage !== currentLanguage) {
+            setTimeout(
+              function() {
+                addIdsToLanguageSections();
+                addOptionIds(document.querySelectorAll('select.shs-select.form-select')[1]);
+              }
+            , 1500);
+            currentLanguage = newLanguage; // Update current language
+        }
+    };
+
+    // Listen to popstate event (triggered by browser history changes)
+    window.addEventListener('popstate', checkForLanguageChange);
+
+    // Optionally, listen to 'pushState' and 'replaceState' 
+    // This will allow the detection of changes even when using JavaScript to manipulate the history
+    const originalPushState = history.pushState;
+    history.pushState = function(state, title, url) {
+        originalPushState.apply(history, arguments);
+        checkForLanguageChange();
+    };
+
+    const originalReplaceState = history.replaceState;
+    history.replaceState = function(state, title, url) {
+        originalReplaceState.apply(history, arguments);
+        checkForLanguageChange();
+    };
+}
+</script>
+      <div class="paragraph paragraph--type--toast-call-out paragraph--view-mode--default container alert-call-out">
+  <div class="alert-wrapper">
+    <div class="usa-alert usa-alert-info" id="">
+      <div class="usa-alert-body">
+        <div class="usa-alert-text">
+                    
+            <div class="clearfix text-formatted field field--name-field-toast-copy field--type-text-long field--label-hidden field__item"><p>USDA's Farm Service Agency will accept FSCSC applications for calendar year 2025 from January 1, 2025, through January 31, 2026.</p></div>
+      
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+        
+
+<div class="anchor-link-section">
+  <div class="container">
+    <div class="row">
+      <div class="medium-12 anchor-link-header-container">
+      <h2>On This Page</h2>
+  </div>
+
+                          
+                                                                                                                                                                                                                                                                                                                                                                                                                                
+                  
+              <section class="medium-12">
+                                                <div class="item-0"><div class="anchor-link">
+      
+  <a class="anchor-link-target" href="#how-works" aria-label="Skip to How the Food Safety Certification for Specialty Crops Program Works Section" data-anchor="#how-works"  tabindex="0">
+    How the Food Safety Certification for Specialty Crops Program Works
+  </a>
+</div></div>
+                                                            <div class="item-1"><div class="anchor-link">
+      
+  <a class="anchor-link-target" href="#program-eligibility" aria-label="Skip to Program Eligibility Section" data-anchor="#program-eligibility"  tabindex="0">
+    Program Eligibility
+  </a>
+</div></div>
+                                                            <div class="item-2"><div class="anchor-link">
+      
+  <a class="anchor-link-target" href="#expenses" aria-label="Skip to Eligible Expenses Section" data-anchor="#expenses"  tabindex="0">
+    Eligible Expenses
+  </a>
+</div></div>
+                                                            <div class="item-3"><div class="anchor-link">
+      
+  <a class="anchor-link-target" href="#apply" aria-label="Skip to Apply for the Food Safety Certification for Specialty Crops Program Section" data-anchor="#apply"  tabindex="0">
+    Apply for the Food Safety Certification for Specialty Crops Program
+  </a>
+</div></div>
+                                                            <div class="item-4"><div class="anchor-link">
+      
+  <a class="anchor-link-target" href="#resources" aria-label="Skip to Additional Resources Section" data-anchor="#resources"  tabindex="0">
+    Additional Resources
+  </a>
+</div></div>
+                                                                                                                                    </section>
+          </div>
+  </div>
+</div>
+
+        
+<div class="container">
+  <div class="divider-line"></div>
+</div>
+
+        <div class="paragraph paragraph--type-content paragraph--view-mode-default">
+  <!--
+  -->
+  
+<style>
+  /* Namespace CSS with 'account_page' */
+  .account_page h3:not(.stepper-title) > span {
+    display: inline-block;
+    background-color: #49a564;
+    height: 40px;
+    width: 40px;
+    font-size: 20px;
+    line-height: 37px;
+    border-radius: 20px;
+    text-align: center;
+    color: #fff;      
+    margin-right: 15px;
+    padding-top: 1px;    
+  } 
+
+  .account_page h3 + div {
+    border-left: 1px solid #999;
+    padding-left: 40px;
+    margin-left: 20px;
+  }  
+
+  .account_page h3 + div:last-of-type {
+    border-left: 0;
+  }
+</style>
+
+  <div class="container field-content">
+    <div class="row">
+      <h2><a class="ck-anchor" id="how-works"></a>How the Food Safety Certification for Specialty Crops Program Works</h2><p>The FSCSC program provides financial assistance for specialty crop operations that incur eligible on-farm food safety program expenses related to obtaining or renewing a food safety certification. This program helps offset costs to comply with regulatory requirements and market-driven food safety certification requirements.&nbsp;</p><p>FSCSC provides funds to specialty crop operations that incur eligible on-farm food safety program expenses related to obtaining or renewing a food safety certification. FSCSC will cover a percentage of the specialty crop operation’s cost of obtaining or renewing their certification, as well as a percentage of their related expenses.</p>
+    </div>
+  </div>
+
+<script>
+// Check if the current page URL contains "/account" or "/node"
+if (window.location.pathname.includes('/account') || window.location.pathname.includes('/node')) {
+  document.body.classList.add('account_page');
+}
+</script>
+
+  </div>
+
+        
+<div class="container">
+  <div class="divider-line"></div>
+</div>
+
+        <div class="paragraph paragraph--type-content paragraph--view-mode-default">
+  <!--
+  -->
+  
+<style>
+  /* Namespace CSS with 'account_page' */
+  .account_page h3:not(.stepper-title) > span {
+    display: inline-block;
+    background-color: #49a564;
+    height: 40px;
+    width: 40px;
+    font-size: 20px;
+    line-height: 37px;
+    border-radius: 20px;
+    text-align: center;
+    color: #fff;      
+    margin-right: 15px;
+    padding-top: 1px;    
+  } 
+
+  .account_page h3 + div {
+    border-left: 1px solid #999;
+    padding-left: 40px;
+    margin-left: 20px;
+  }  
+
+  .account_page h3 + div:last-of-type {
+    border-left: 0;
+  }
+</style>
+
+  <div class="container field-content">
+    <div class="row">
+      <h2><a class="ck-anchor" id="program-eligibility"></a>Program Eligibility</h2><p>Eligibility requirements for FSCSC applicants are outlined below. We recommend you review these requirements before initiating your FSCSC application.</p><p>To be eligible for FSCSC, an applicant must:</p><ul><li>Have obtained or renewed a 2025 food safety certification issued during the 2025 calendar year.</li><li>Have paid eligible expenses. Expenses that have been incurred by the applicant, but have not yet been paid, will not be eligible.</li><li>Be a specialty crop operation; and meet the definition of a small business or a medium-sized business.<ul><li>A small business has an average annual monetary value of specialty crops the applicant sold during the 3-year period preceding the program year of no more than $500,000. &nbsp;</li><li>A medium size business has an average annual monetary value of specialty crops the applicant sold during the 3-year period preceding the program year of at least $500,001 but no more than $1,000,000.</li></ul></li><li>Be located in the 50 United States, the District of Columbia, the Commonwealth of Puerto Rico, Guam, American Samoa, the U.S. Virgin Islands, and the Commonwealth of the Northern Mariana Islands.&nbsp;</li></ul><p>Please note, eligible expenses for FSCSC are available by clicking the boxes below. Ineligible expenses include infrastructure improvements, equipment, supplies, salaries and benefits, and fees or penalties for late payment.</p>
+    </div>
+  </div>
+
+<script>
+// Check if the current page URL contains "/account" or "/node"
+if (window.location.pathname.includes('/account') || window.location.pathname.includes('/node')) {
+  document.body.classList.add('account_page');
+}
+</script>
+
+  </div>
+
+        
+<div class="container">
+  <div class="divider-line"></div>
+</div>
+
+        <div class="paragraph paragraph--type-content paragraph--view-mode-default">
+  <!--
+  -->
+  
+<style>
+  /* Namespace CSS with 'account_page' */
+  .account_page h3:not(.stepper-title) > span {
+    display: inline-block;
+    background-color: #49a564;
+    height: 40px;
+    width: 40px;
+    font-size: 20px;
+    line-height: 37px;
+    border-radius: 20px;
+    text-align: center;
+    color: #fff;      
+    margin-right: 15px;
+    padding-top: 1px;    
+  } 
+
+  .account_page h3 + div {
+    border-left: 1px solid #999;
+    padding-left: 40px;
+    margin-left: 20px;
+  }  
+
+  .account_page h3 + div:last-of-type {
+    border-left: 0;
+  }
+</style>
+
+  <div class="container field-content">
+    <div class="row">
+      <h2><a class="ck-anchor" id="expenses"></a>Eligible Expenses</h2><p>Please click below to learn more about the categories of eligible expenses and payment amounts for eligible expenses.</p>
+    </div>
+  </div>
+
+<script>
+// Check if the current page URL contains "/account" or "/node"
+if (window.location.pathname.includes('/account') || window.location.pathname.includes('/node')) {
+  document.body.classList.add('account_page');
+}
+</script>
+
+  </div>
+
+        
+                    
+                                                                                  
+<div class="container">
+      <div id="paragraph-4869-1" class="Accordion row" data-allow-toggle>
+              <div class="medium-4 box-accordion">
+          <h3>
+      <button class="box-accordion-top Accordion-trigger"
+            aria-label="Developing a Food Safety Plan"
+            aria-expanded="false"
+            aria-controls="accordion-content-4863"
+            id="accordion-4863">
+
+            
+    Developing a Food Safety Plan
+    <div class="box-accordion-toggle" aria-hidden="true"></div>
+
+      </button>
+</h3>
+<div id="accordion-content-4863"
+      class="Accordion-panel"
+      aria-labelledby="accordion-4863"
+      aria-hidden="true"
+      hidden>
+      <p>
+        
+  <p>A food safety plan is a requirement for any specialty crop operation or group undergoing formal food safety certification.&nbsp;</p><p>FSCSC will cover a percentage of the following food safety plan development expenses:</p><ul><li>The cost of specialty crop operations developing their own plan, including costs of seminars and tools used to create a food safety plan.</li><li>The cost of hiring a consultant, including consulting fees, and other associated expenses.</li></ul><p>For each eligible program year, FSCSC will cover eligible expenses as follows:&nbsp;<strong>75 percent (no maximum)</strong>.&nbsp;</p><p>Expected FSCSC payments for each eligible year will equal the applicant’s eligible expenses multiplied by the corresponding percentage, not to exceed the category’s maximum payment amount. This amount, plus any additional cost share assistance received, cannot exceed the total amount of the eligible expense.&nbsp;</p>
+
+      </p>
+</div>
+        </div>
+              <div class="medium-4 box-accordion">
+          <h3>
+      <button class="box-accordion-top Accordion-trigger"
+            aria-label="Maintaining or Updating a Food Safety Plan"
+            aria-expanded="false"
+            aria-controls="accordion-content-4864"
+            id="accordion-4864">
+
+            
+    Maintaining or Updating a Food Safety Plan
+    <div class="box-accordion-toggle" aria-hidden="true"></div>
+
+      </button>
+</h3>
+<div id="accordion-content-4864"
+      class="Accordion-panel"
+      aria-labelledby="accordion-4864"
+      aria-hidden="true"
+      hidden>
+      <p>
+        
+  <p>Certification programs typically require an annual review of the food safety plan to ensure it is current and addresses any new audit or regulatory requirements, as well as incorporates any new hazards. &nbsp;&nbsp;</p><p>FSCSC will cover a percentage of the costs of maintaining and updating existing food safety plans. &nbsp;&nbsp;</p><p>For each eligible program year, FSCSC will cover eligible expenses as follows: <strong>75 percent, up to a maximum of $675</strong>.</p><p>Expected FSCSC payments for each eligible year will equal the applicant’s eligible expenses multiplied by the corresponding percentage, not to exceed the category’s maximum payment amount. This amount, plus any additional cost share assistance received, cannot exceed the total amount of the eligible expense.</p>
+
+      </p>
+</div>
+        </div>
+              <div class="medium-4 box-accordion">
+          <h3>
+      <button class="box-accordion-top Accordion-trigger"
+            aria-label="Food Safety Certification"
+            aria-expanded="false"
+            aria-controls="accordion-content-4865"
+            id="accordion-4865">
+
+            
+    Food Safety Certification
+    <div class="box-accordion-toggle" aria-hidden="true"></div>
+
+      </button>
+</h3>
+<div id="accordion-content-4865"
+      class="Accordion-panel"
+      aria-labelledby="accordion-4865"
+      aria-hidden="true"
+      hidden>
+      <p>
+        
+  <p>FSCSC will cover a percentage of the cost of obtaining food safety certification issued by a certifier. This includes:</p><ul><li>Application fees </li><li>Inspection costs</li><li>Inspection fees (including travel costs and per diem for certifiers)</li><li>User fees or certifier sales assessments </li><li>Postage</li></ul><p>For each eligible program year, FSCSC will cover eligible expenses as follows: <strong>75 percent, up to a maximum of $2,000</strong>.</p><p>Expected FSCSC payments for each eligible year will equal the applicant’s eligible expenses multiplied by the corresponding percentage, not to exceed the category’s maximum payment amount. This amount, plus any additional cost share assistance received, cannot exceed the total amount of the eligible expense.&nbsp;</p>
+
+      </p>
+</div>
+        </div>
+          </div>
+    <br>
+      <div id="paragraph-4869-2" class="Accordion row" data-allow-toggle>
+              <div class="medium-4 box-accordion">
+          <h3>
+      <button class="box-accordion-top Accordion-trigger"
+            aria-label="Certification Upload Fees"
+            aria-expanded="false"
+            aria-controls="accordion-content-4866"
+            id="accordion-4866">
+
+            
+    Certification Upload Fees
+    <div class="box-accordion-toggle" aria-hidden="true"></div>
+
+      </button>
+</h3>
+<div id="accordion-content-4866"
+      class="Accordion-panel"
+      aria-labelledby="accordion-4866"
+      aria-hidden="true"
+      hidden>
+      <p>
+        
+  <p>FSCSC will cover a percentage of the cost to upload audit reports and certification documentation into commercial audit databases, which may be required by buyers of specialty crops.&nbsp;</p><p>For each eligible program year, FSCSC will cover eligible expenses as follows: <strong>75 percent, up to a maximum of $375</strong>.</p><p>Expected FSCSC payments for each eligible year will equal the applicant’s eligible expenses multiplied by the corresponding percentage, not to exceed the category’s maximum payment amount. This amount, plus any additional cost share assistance received, cannot exceed the total amount of the eligible expense.</p>
+
+      </p>
+</div>
+        </div>
+              <div class="medium-4 box-accordion">
+          <h3>
+      <button class="box-accordion-top Accordion-trigger"
+            aria-label="Microbiological Testing"
+            aria-expanded="false"
+            aria-controls="accordion-content-4867"
+            id="accordion-4867">
+
+            
+    Microbiological Testing
+    <div class="box-accordion-toggle" aria-hidden="true"></div>
+
+      </button>
+</h3>
+<div id="accordion-content-4867"
+      class="Accordion-panel"
+      aria-labelledby="accordion-4867"
+      aria-hidden="true"
+      hidden>
+      <p>
+        
+  <p>FSCSC will cover a percentage of the microbiological testing for products, soil amendments, and water as specified by a food safety plan or food safety management system.</p><p>For each eligible program year and each category (products, soil amendments and water), FSCSC will cover eligible expenses as follows: <strong>75 percent, up to five tests</strong>, including postage.</p><p>Expected FSCSC payments for each eligible year will equal the applicant’s eligible expenses for each category (products, soil amendments and water) multiplied by the corresponding percentage, not to exceed the category’s maximum number of tests. This amount, plus any additional cost share assistance received, cannot exceed the total amount of the eligible expense.&nbsp;</p>
+
+      </p>
+</div>
+        </div>
+              <div class="medium-4 box-accordion">
+          <h3>
+      <button class="box-accordion-top Accordion-trigger"
+            aria-label="Training Expenses"
+            aria-expanded="false"
+            aria-controls="accordion-content-4868"
+            id="accordion-4868">
+
+            
+    Training Expenses
+    <div class="box-accordion-toggle" aria-hidden="true"></div>
+
+      </button>
+</h3>
+<div id="accordion-content-4868"
+      class="Accordion-panel"
+      aria-labelledby="accordion-4868"
+      aria-hidden="true"
+      hidden>
+      <p>
+        
+  <p>FSCSC will cover the cost of food safety training for specialty crop operations.</p><p>For each eligible program year, FSCSC will cover eligible expenses as follows: <strong>100 percent, up to a maximum of $500</strong>.</p><p>Expected FSCSC payments for each eligible year will equal the applicant’s eligible expenses multiplied by the corresponding percentage, not to exceed the category’s maximum payment amount. This amount, plus any additional cost share assistance received, cannot exceed the total amount of the eligible expense.&nbsp;</p>
+
+      </p>
+</div>
+        </div>
+          </div>
+    <br>
+  </div>
+
+        <div class="paragraph paragraph--type-content paragraph--view-mode-default">
+  <!--
+  -->
+  
+<style>
+  /* Namespace CSS with 'account_page' */
+  .account_page h3:not(.stepper-title) > span {
+    display: inline-block;
+    background-color: #49a564;
+    height: 40px;
+    width: 40px;
+    font-size: 20px;
+    line-height: 37px;
+    border-radius: 20px;
+    text-align: center;
+    color: #fff;      
+    margin-right: 15px;
+    padding-top: 1px;    
+  } 
+
+  .account_page h3 + div {
+    border-left: 1px solid #999;
+    padding-left: 40px;
+    margin-left: 20px;
+  }  
+
+  .account_page h3 + div:last-of-type {
+    border-left: 0;
+  }
+</style>
+
+  <div class="container field-content">
+    <div class="row">
+      <p>Specialty crop operations that obtain food safety certification through a group model under a food safety management system are eligible to apply for assistance for their share of eligible expenses paid by the group, in addition to any eligible expenses they incur individually. If requested by the Fam Service Agency, specialty crop operations certified as part of a group under a food safety management system must provide documentation of the applicant’s portion of the group’s expenses from the entity responsible for maintaining the group’s certification.&nbsp;</p><p>FSCSC payments are calculated separately for each category of eligible costs based on the percentages and maximum payment amounts as described in the sections above. Applicants must report any previous cost share assistance received for the expenses included on their application. &nbsp;</p><p>For program year 2025, the Farm Service Agency will issue 50% of the calculated payment following application approval, with the remaining amount to be paid after the application deadline. If calculated payments exceed the amount of available funding, payments will be prorated.</p>
+    </div>
+  </div>
+
+<script>
+// Check if the current page URL contains "/account" or "/node"
+if (window.location.pathname.includes('/account') || window.location.pathname.includes('/node')) {
+  document.body.classList.add('account_page');
+}
+</script>
+
+  </div>
+
+        
+<div class="container">
+  <div class="divider-line"></div>
+</div>
+
+        <div class="paragraph paragraph--type-content paragraph--view-mode-default">
+  <!--
+  -->
+  
+<style>
+  /* Namespace CSS with 'account_page' */
+  .account_page h3:not(.stepper-title) > span {
+    display: inline-block;
+    background-color: #49a564;
+    height: 40px;
+    width: 40px;
+    font-size: 20px;
+    line-height: 37px;
+    border-radius: 20px;
+    text-align: center;
+    color: #fff;      
+    margin-right: 15px;
+    padding-top: 1px;    
+  } 
+
+  .account_page h3 + div {
+    border-left: 1px solid #999;
+    padding-left: 40px;
+    margin-left: 20px;
+  }  
+
+  .account_page h3 + div:last-of-type {
+    border-left: 0;
+  }
+</style>
+
+  <div class="container field-content">
+    <div class="row">
+      <h2><a class="ck-anchor" id="apply"></a>Apply for the Food Safety Certification for Specialty Crop Program</h2><p>The FSCSC application period for calendar year 2025 is January 1, 2025, through January 31, 2026.</p><p>Eligible specialty crop operations could apply for FSCSC by working directly with the Farm Service Agency office at their <a href="https://www.farmers.gov/working-with-us/service-center-locator">local USDA Service Center</a>. Applications were accepted via mail, fax, hand delivery, or electronic means.&nbsp;&nbsp;</p><p>Alternatively, producers with an eAuthentication account may apply for FSCSC via our <a href="https://fcp-apps-fsa.fpac.usda.gov/usda_scc_gateway/fscsc/search">FSCSC Application Portal</a>. Applications will be completed, electronically signed, and submitted directly to your local USDA Service Center through this online system. Please reference our <a href="/sites/default/files/documents/fscsc-portal-userguide.pdf">FSCSC Application Portal User Guide</a> for additional information, including step-by-step application instructions. Producers interested in creating an eAuthentication account should visit <a href="/account" data-entity-type="node" data-entity-uuid="1cc8febb-b11d-4a75-bc1d-fa76df520a12" data-entity-substitution="canonical">farmers.gov/account</a> to learn more.</p><p>The following forms are needed to apply for&nbsp;FSCSC:</p><ul><li><a href="/sites/default/files/documents/fsa-888-1.pdf"><strong>FSA-888-1, Food Safety Certification for Specialty Crops (FSCSC) Program For Program Years 2024 and 2025 Application</strong></a><strong>:</strong> <span>This form includes a certification of the applicant’s status as a specialty crop operation and a small or medium sized business, and their eligible expenses.&nbsp;Complete the form according to the</span>&nbsp;<a href="/sites/default/files/documents/fsa888-1-instructions.pdf">FSA-888-1 instructions</a>.</li><li><a href="https://www.farmers.gov/Form-AD-2047"><strong>AD-2047, Customer Data Worksheet</strong></a><strong>:</strong> This form will be required if not already on file with the Farm Service Agency and documents personal information that positively identifies the customer. Existing customers can also use this form to update their customer profile. Complete the form according to the&nbsp;<a href="https://forms.sc.egov.usda.gov/eForms/instruction?FileType=RevisionInstruction&amp;FileName=AD2047egov_10-28-21V03.pdf" target="_blank" rel="noreferrer noopener">AD-2047 instructions</a>.</li><li><a href="/sites/default/files/documents/SF3881.pdf"><strong>SF-3881, ACH Vendor/Miscellaneous Payment Enrollment Form</strong></a><strong>:</strong> This form will be required if not already on file with the Farm Service Agency and will be used to collect your banking information to allow USDA to make payments to you via direct deposit.</li><li><strong>Supporting Documentation, if requested:</strong> Please note that applicants may be required to provide additional documentation to the Farm Service Agency, if necessary, to substantiate the expenses reported on the application. Examples of supporting documentation include paid invoices, purchase receipts, test results, food safety plans, and certifications, training documentation, and other records determined acceptable by the Farm Service Agency.</li></ul><p>You are encouraged to contact the Farm Service Agency office at your<a href="https://www.farmers.gov/working-with-us/service-center-locator"> local USDA Service Center</a> with any questions about FSCSC, program eligibility, or the application process. You may also call 877-508-8364 to speak directly with a USDA employee ready to provide one-on-one assistance.&nbsp;</p>
+    </div>
+  </div>
+
+<script>
+// Check if the current page URL contains "/account" or "/node"
+if (window.location.pathname.includes('/account') || window.location.pathname.includes('/node')) {
+  document.body.classList.add('account_page');
+}
+</script>
+
+  </div>
+
+        
+<div class="container">
+  <div class="divider-line"></div>
+</div>
+
+        <div class="paragraph paragraph--type-content paragraph--view-mode-default">
+  <!--
+  -->
+  
+<style>
+  /* Namespace CSS with 'account_page' */
+  .account_page h3:not(.stepper-title) > span {
+    display: inline-block;
+    background-color: #49a564;
+    height: 40px;
+    width: 40px;
+    font-size: 20px;
+    line-height: 37px;
+    border-radius: 20px;
+    text-align: center;
+    color: #fff;      
+    margin-right: 15px;
+    padding-top: 1px;    
+  } 
+
+  .account_page h3 + div {
+    border-left: 1px solid #999;
+    padding-left: 40px;
+    margin-left: 20px;
+  }  
+
+  .account_page h3 + div:last-of-type {
+    border-left: 0;
+  }
+</style>
+
+  <div class="container field-content">
+    <div class="row">
+      <h2><a class="ck-anchor" id="resources"></a>Additional Resources</h2><ul><li><a href="/coronavirus/pandemic-assistance/food-safety/faq" data-entity-type="node" data-entity-uuid="96769fe6-7936-4a10-a76a-72b3d88286bd" data-entity-substitution="canonical">Frequently Asked Questions (FAQ)&nbsp;about the Food Safety Certification for Specialty Crops Program</a></li><li><a href="https://www.usda.gov/guidance-documents/specialty-crops/fsa/food-safety-certification-specialty-crops-2024-and-2025" target="_blank"><span>Fact Sheet: Food Safety Certification for Specialty Crops for Program Years 2024 and 2025</span></a></li></ul>
+    </div>
+  </div>
+
+<script>
+// Check if the current page URL contains "/account" or "/node"
+if (window.location.pathname.includes('/account') || window.location.pathname.includes('/node')) {
+  document.body.classList.add('account_page');
+}
+</script>
+
+  </div>
+
+        
+<div class="container">
+  <div class="divider-line"></div>
+</div>
+
+        <div class="paragraph paragraph--type-block paragraph--view-mode-default">
+  <!--
+      <h2></h2>
+  -->
+  
+            <div class="field field--name-field-site-and-module- field--type-block-field field--label-hidden field__item"><div class="container" id="scl-block-two">
+  <div class="service-wrap" id="service-center-wrap">
+    <div class="view-header">
+        <div class="header-icon"></div>
+        <h2 class="headline-1">Find Your Local Service Center</h2>
+    </div>
+  
+    <div class="container language-switcher">
+      <div class="row">
+        <div class="medium-12 grey-1 pt-1 pb-0 flex flex-row">
+          <div class="icon globe"></div>
+          <div class="pt-4 en-text" style="display: none;">View in:</div>
+          <div class="pt-4 es-text" lang="es" style="display: block;">Ver en:</div>
+          <ul class="language-switcher-links flex no-bullets pl-3 mb-2"><li class="pr-4 mt-4"><a href="/spanish/working-with-us/service-center-locator" class="language-link" hreflang="es" data-drupal-link-system-path="working-with-us/service-center-locator">Español</a></li></ul>
+        </div>
+      </div>
+    </div>
+
+    <div class="scl-header-wrap" id="scl-header">
+      <p><a data-entity-substitution="canonical" data-entity-uuid="9fd3d166-bf7e-42cf-a9bc-2a47f9b79a74" data-entity-type="node" href="/node/28855">USDA Service Centers</a> are locations where you can connect with Farm Service Agency, Natural Resources Conservation Service, or Rural Development employees for your business needs. <strong>Select your state and county below to ﬁnd your local service center and agency offices.</strong></p><p>Looking for something else?</p><ul><li data-list-item-id="ec5793261925356822fab2fe778211c99">Use the <a href="https://www.fsa.usda.gov/fsa-office-locator">FSA Office Locator</a> to book an appointment or contact your local FSA Farm Loan or Farm Program office.</li><li data-list-item-id="e56192a56018b1bd68d8d85a36de149d1">Learn more about <a href="/node/29573" data-entity-type="node" data-entity-uuid="e49af798-d8a8-45d8-ac55-0c91c3ad0cd1" data-entity-substitution="canonical">Urban Service Centers</a>.</li><li data-list-item-id="e78729d28acf2f95949989a719564869a">Find an <a href="https://www.nacdnet.org/general-resources/conservation-district-directory/">NRCS Conservation District Partners location</a>.</li><li data-list-item-id="e818567cecd691f5054cc3c6800d675b6">Visit the Risk Management Agency website to find a <a href="https://www.rma.usda.gov/">regional or compliance office</a>&nbsp;or an <a href="https://public-rma.fpac.usda.gov/apps/AgentLocator/#!/#%2F">insurance agent</a> near you.</li></ul>
+    </div>  
+    <div class="select-wrapper">
+  <div class="scl-dropdowns">
+    <div class="scl-state-wrap pr-8">
+      <label for="scl-select-one">State</label>
+      <select class="simpler-select scl-select" id="scl-select-one" name="State">
+        <option>- Please select -</option>
+                <option data-stcode="01" value="AL">Alabama</option>
+                <option data-stcode="02" value="AK">Alaska</option>
+                <option data-stcode="60" value="AS">American Samoa</option>
+                <option data-stcode="04" value="AZ">Arizona</option>
+                <option data-stcode="05" value="AR">Arkansas</option>
+                <option data-stcode="06" value="CA">California</option>
+                <option data-stcode="08" value="CO">Colorado</option>
+                <option data-stcode="09" value="CT">Connecticut</option>
+                <option data-stcode="10" value="DE">Delaware</option>
+                <option data-stcode="11" value="DC">District Of Columbia</option>
+                <option data-stcode="64" value="FM">Federated States of Micronesia</option>
+                <option data-stcode="12" value="FL">Florida</option>
+                <option data-stcode="13" value="GA">Georgia</option>
+                <option data-stcode="66" value="GU">Guam</option>
+                <option data-stcode="15" value="HI">Hawaii</option>
+                <option data-stcode="16" value="ID">Idaho</option>
+                <option data-stcode="17" value="IL">Illinois</option>
+                <option data-stcode="18" value="IN">Indiana</option>
+                <option data-stcode="19" value="IA">Iowa</option>
+                <option data-stcode="20" value="KS">Kansas</option>
+                <option data-stcode="21" value="KY">Kentucky</option>
+                <option data-stcode="22" value="LA">Louisiana</option>
+                <option data-stcode="23" value="ME">Maine</option>
+                <option data-stcode="68" value="MH">Marshall Islands</option>
+                <option data-stcode="24" value="MD">Maryland</option>
+                <option data-stcode="25" value="MA">Massachusetts</option>
+                <option data-stcode="26" value="MI">Michigan</option>
+                <option data-stcode="27" value="MN">Minnesota</option>
+                <option data-stcode="28" value="MS">Mississippi</option>
+                <option data-stcode="29" value="MO">Missouri</option>
+                <option data-stcode="30" value="MT">Montana</option>
+                <option data-stcode="31" value="NE">Nebraska</option>
+                <option data-stcode="32" value="NV">Nevada</option>
+                <option data-stcode="33" value="NH">New Hampshire</option>
+                <option data-stcode="34" value="NJ">New Jersey</option>
+                <option data-stcode="35" value="NM">New Mexico</option>
+                <option data-stcode="36" value="NY">New York</option>
+                <option data-stcode="37" value="NC">North Carolina</option>
+                <option data-stcode="38" value="ND">North Dakota</option>
+                <option data-stcode="69" value="MP">Northern Mariana Islands</option>
+                <option data-stcode="39" value="OH">Ohio</option>
+                <option data-stcode="40" value="OK">Oklahoma</option>
+                <option data-stcode="41" value="OR">Oregon</option>
+                <option data-stcode="70" value="PW">Palau</option>
+                <option data-stcode="42" value="PA">Pennsylvania</option>
+                <option data-stcode="72" value="PR">Puerto Rico</option>
+                <option data-stcode="44" value="RI">Rhode Island</option>
+                <option data-stcode="45" value="SC">South Carolina</option>
+                <option data-stcode="46" value="SD">South Dakota</option>
+                <option data-stcode="47" value="TN">Tennessee</option>
+                <option data-stcode="48" value="TX">Texas</option>
+                <option data-stcode="49" value="UT">Utah</option>
+                <option data-stcode="78" value="VI">Virgin Islands</option>
+                <option data-stcode="50" value="VT">Vermont</option>
+                <option data-stcode="51" value="VA">Virginia</option>
+                <option data-stcode="53" value="WA">Washington</option>
+                <option data-stcode="54" value="WV">West Virginia</option>
+                <option data-stcode="55" value="WI">Wisconsin</option>
+                <option data-stcode="56" value="WY">Wyoming</option>
+              </select>
+    </div>
+    <div class="scl-county-wrap">
+      <label for="scl-one-county">County</label>
+      <select class="simpler-select scl-select scl-county" id="scl-one-county" name="County" disabled>
+        <option>- Please select -</option>
+      </select>
+    </div>
+  </div>
+  <div class="scl-btn-wrap">
+        <input type="submit" value="Go" class="btn lg-btn" id="scl-submit" disabled>
+      </div>
+</div>
+  </div>
+</div></div>
+      
+  </div>
+
+  
+	</div>
+
+</article>
+
+  </div>
+
+
+</main>
+
+
+<style>
+  /* WebP by default */
+  .twitter-link { background-image: url('/themes/farmers_update/assets/img/social-icons/outline/webp/x-twitter.webp'); }
+  .facebook-link { background-image: url('/themes/farmers_update/assets/img/social-icons/outline/webp/facebook.webp'); }
+  .instagram-link { background-image: url('/themes/farmers_update/assets/img/social-icons/outline/webp/instagram.webp'); }
+  .flickr-link { background-image: url('/themes/farmers_update/assets/img/social-icons/outline/webp/flickr.webp'); }
+  .youtube-link { background-image: url('/themes/farmers_update/assets/img/social-icons/outline/webp/youtube.webp'); }
+
+  .social-link { 
+    background-repeat: no-repeat;
+    background-size: contain;
+    width: 32px;
+    height: 32px;
+    display: inline-block;
+    margin-right: 15px;
+  }
+
+  /* Fallback to SVG if WebP not supported */
+  body.no-webp .twitter-link { background-image: url('/themes/farmers_update/assets/img/social-icons/outline/svg/x-twitter.svg'); }
+  body.no-webp .facebook-link { background-image: url('/themes/farmers_update/assets/img/social-icons/outline/svg/facebook.svg'); }
+  body.no-webp .instagram-link { background-image: url('/themes/farmers_update/assets/img/social-icons/outline/svg/instagram.svg'); }
+  body.no-webp .flickr-link { background-image: url('/themes/farmers_update/assets/img/social-icons/outline/svg/flickr.svg'); }
+  body.no-webp .youtube-link { background-image: url('/themes/farmers_update/assets/img/social-icons/outline/svg/youtube.svg'); }
+</style>
+  <footer>
+      <div>
+    <div class="footer-primary-section">
+  <div class="container">
+    <div class="row">
+      <div class="medium-12">
+        <nav class="footer-site-nav" aria-labelledby="block-farmers-update-mainnavigation-2-menu" id="block-farmers-update-mainnavigation-2">
+                                                    
+          <h2  class="usa-sr-only" id="block-farmers-update-mainnavigation-2-menu">Main navigation - Footer</h2>
+          
+
+                                
+        <ul>
+          <li>
+                            <a href="/" data-drupal-link-system-path="&lt;front&gt;"><span>Home</span></a>
+              </li>
+          <li>
+                            <a href="/loans" title="USDA loan options for farmers" data-drupal-link-system-path="node/29182"><span>Loans</span></a>
+              </li>
+          <li>
+                            <a href="/working-with-us" title="Learn about the benefits of working with USDA" data-drupal-link-system-path="node/29181"><span>Working With Us</span></a>
+              </li>
+          <li>
+                            <a href="/protection-recovery" title="USDA resources to protect yourself against and recover from disasters" data-drupal-link-system-path="node/29190"><span>Protection and Recovery</span></a>
+              </li>
+          <li>
+                            <a href="/conservation" title="/conservation" data-drupal-link-system-path="node/28675"><span>Conservation</span></a>
+              </li>
+          <li>
+                            <a href="/your-business" title="Get USDA resources specific to your operation" data-drupal-link-system-path="node/29184"><span>Your Business</span></a>
+              </li>
+        </ul>
+  
+
+
+
+                  </nav>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="footer-secondary-section footer-widget">
+  <div class="container">
+    <div class="row footer-links-container pb-12">
+    <div class="farmers-basic-block"  id="block-farmers-update-farmers-updatelogoblock">
+  
+    
+      <div >
+  
+      <div class="clearfix text-formatted field field--name-body field--type-text-with-summary field--label-hidden field__items">
+              <div class="field__item"><div class="footer-logo">
+  <img alt="Farmers Logo" src="/themes/farmers/img/farmersgov.png" style="float: right; margin-right: 50px; width: 170px;" loading="lazy">
+</div>
+
+<style>
+.element-invisible {display:none;}
+.service-wrap header h1 {
+    background-size: 8rem;
+}
+.pane-anchors a {
+  color: #006546; }
+
+.pane-anchors p {
+  display: inline-block;
+  padding-right: 1.5rem;
+  border-right: 2px solid #BBBBBB;
+  margin-right: 1.5rem;
+  line-height: 2rem; }
+  .pane-anchors p:last-of-type {
+    padding-right: 0;
+    border-right: none;
+    margin-right: 0; }
+  @media screen and (max-width: 559px) {
+    .pane-anchors p {
+      display: inherit;
+      border-right: none; } }
+
+.pane-info-block {
+  background-color: #FAFAFA;
+  border-radius: 2px;
+  border: 2px solid #EDEDED;
+  position: relative;
+  margin-left: auto;
+  margin-right: auto;
+  margin-top: 2rem !important;
+  margin-bottom: 3rem !important; }
+  .pane-info-block .pane-top-border {
+    width: 100%;
+    position: absolute;
+    height: 8px;
+    border-radius: 2px 2px 0 0;
+    background-color: #49A564;
+    top: 0;
+    left: 0; }
+  .pane-info-block .pane-title-wrap {
+    position: relative;
+    padding: 3.5rem 5rem 1rem; }
+  .pane-info-block .pane-icon {
+    display: inline-block; }
+    @media screen and (max-width: 559px) {
+      .pane-info-block .pane-icon {
+        display: block;
+        margin: 0 auto; } }
+  .pane-info-block .pane-title {
+    display: inline-block;
+    position: absolute;
+    padding-left: 2rem;
+    margin: 1.5rem 0;
+    font-size: 2.5rem; }
+    @media screen and (max-width: 559px) {
+      .pane-info-block .pane-title {
+        position: relative;
+        padding-left: 0; } }
+  .pane-info-block .pane-body {
+    padding: 0 5rem 2rem 5rem; }
+    .pane-info-block .pane-body p {
+      line-height: 3rem; }
+  .pane-info-block .pane-button-wrap {
+    border-top: 2px solid #EDEDED;
+    display: inline-block;
+    width: 100%;
+    padding: 0 5rem 2rem 5rem; }
+  .pane-info-block .pane-link {
+    text-decoration: none;
+    color: #fff;
+    font-size: 2rem;
+    padding: 1.15rem 1.75rem;
+    border-radius: 10px;
+    letter-spacing: .03rem;
+    min-width: 175px;
+    display: inline-block;
+    float: left;
+    text-align: center;
+    margin: 2rem 2rem 0 0;
+    font-weight: 600;
+    background-color: #216DD0; }
+    @media screen and (max-width: 559px) {
+      .pane-info-block .pane-link {
+        width: 100%; } }
+  .pane-info-block .pane-inactive-link {
+    text-decoration: none;
+    color: #fff;
+    font-size: 2rem;
+    padding: 1.15rem 1.75rem;
+    border-radius: 10px;
+    letter-spacing: .03rem;
+    min-width: 175px;
+    display: inline-block;
+    float: left;
+    text-align: center;
+    margin: 2rem 2rem 0 0;
+    cursor: not-allowed;
+    font-weight: 600;
+    background-color: #D6D7D9; }
+    @media screen and (max-width: 559px) {
+      .pane-info-block .pane-inactive-link {
+        width: 100%; } }
+</style></div>
+          </div>
+  
+</div>
+
+  </div>
+<nav class="footer-links-nav single-column" aria-labelledby="footernav-legal" id="footernav-legal-container">
+      <h2 id="footernav-legal">Legal</h2>
+        
+                <ul class="menu menu--level-1">
+                    <li class="menu-item">
+        <a href="https://www.usda.gov/accessibility-statement">Accessibility Statement</a>
+              </li>
+                <li class="menu-item">
+        <a href="https://www.usda.gov/about-usda/general-information/staff-offices/office-general-counsel/office-information-affairs/freedom-information-act-division">FOIA</a>
+              </li>
+                <li class="menu-item">
+        <a href="https://www.usda.gov/about-usda/general-information/staff-offices/office-chief-information-officer/guidelines-and-compliance-resources/information-quality-activities">Information Quality</a>
+              </li>
+                <li class="menu-item">
+        <a href="https://www.usda.gov/non-discrimination-statement">Non-Discrimination Statement</a>
+              </li>
+                <li class="menu-item">
+        <a href="https://www.usda.gov/privacy-policy">Privacy Policy</a>
+              </li>
+        </ul>
+  
+
+
+  </nav><nav class="footer-links-nav single-column" aria-labelledby="footernav-resources" id="footernav-resources-container">
+      <h2 id="footernav-resources">Resources</h2>
+        
+                <ul class="menu menu--level-1">
+                    <li class="menu-item">
+        <a href="https://www.farmers.gov/translations#spanish" title="Busque nuestras traducciones o haga una solicitud">Español</a>
+              </li>
+                <li class="menu-item">
+        <a href="https://www.farmers.gov/tools" title="Farmers.gov helps you get more done with web-based tools.">Tools</a>
+              </li>
+                <li class="menu-item">
+        <a href="https://www.usda.gov/about-usda/disaster-resource-center" title="Information about specific disasters, emergencies and USDA assistance during disaster events.">Disaster Resource Center</a>
+              </li>
+                <li class="menu-item">
+        <a href="https://agcounts.usda.gov/portal" title="Agriculture surveys from USDA&#039;s National Agricultural Statistics Service">Farm Surveys and Statistics</a>
+              </li>
+                <li class="menu-item">
+        <a href="https://www.usda.gov/about-usda/working-usda/veterans" title="Resources for military veterans">Veterans</a>
+              </li>
+                <li class="menu-item">
+        <a href="https://www.usda.gov/" title="The United States Department of Agriculture">USDA.gov</a>
+              </li>
+                <li class="menu-item">
+        <a href="https://www.whitehouse.gov/" title="Official website of the White House">WhiteHouse.gov</a>
+              </li>
+        </ul>
+  
+
+
+  </nav>      <div id="block-newsletteremailsignup" class="block block-block-content block-block-content03b998a2-7434-4634-9716-3d87f712ade2 signup">
+        
+                  <h2>Subscribe to Our Updates</h2>
+                
+                  <p><a data-entity-substitution="canonical" data-entity-type="node" data-entity-uuid="b86f9ea2-0bdc-48f1-aa99-3689cf0d6513" href="/node/29276">Stay updated</a> on the latest news and stories from farmers.gov and other USDA topics.</p>
+
+          <form action="https://public.govdelivery.com/accounts/USDAFARMERS/subscribers/qualify">
+            <label for="block-newsletteremailsignup-label" class="signup__label mb-1">Email Address</label>
+                        <input id="block-newsletteremailsignup-label" type="email" name="email" class="signup__input mb-4" aria-label="Enter email address" placeholder="Enter email address">
+            <input class="btn lb-btn" name="commit" value="Subscribe" type="submit">
+          </form>
+              </div>
+    </div>
+  </div>
+</div>
+
+  </div>
+
+    <div class="footer-tertiary-section mt-8">
+      <div class="container">
+        <div class="row">
+          
+          <div class="medium-9 footer-branding">
+            <div class="agency-logo">
+              <a href="/" title="Home" rel="home" class="agency-link">
+                <img  class="lazyload" loading="lazy" src="/themes/farmers/img/usda-symbol.svg" alt="USDA Logo">
+                <div class="agency-name">
+                  Farmers.gov
+                  <div class="tagline">U.S. Department of Agriculture</div>
+                </div>
+              </a>
+            </div>
+          </div>
+          <div class="medium-3 footer-social">
+            <a class="social-link twitter-link" href="https://twitter.com/farmersgov" target="_top" aria-label="USDA on Twitter"></a>
+            <a class="social-link facebook-link" href="https://www.facebook.com/farmersgov" target="_top" aria-label="USDA on Facebook"></a>
+            <a class="social-link instagram-link" href="https://www.instagram.com/farmersgov" target="_top" aria-label="USDA on Instagram"></a>
+            <a class="social-link flickr-link" href="https://www.flickr.com/photos/usdagov/" rel="publisher" target="_top" aria-label="USDA on Flickr"></a>
+            <a class="social-link youtube-link" href="https://www.youtube.com/channel/UCBlm1cdj1ELGjanH0Ci0zDQ" target="_top" aria-label="USDA on Youtube"></a>
+          </div>
+          <div class="footer-bottom">
+  <div class="farmers-basic-block"  id="block-helpdeskfooterlink-3">
+  
+    
+      <div >
+  
+      <div class="clearfix text-formatted field field--name-body field--type-text-with-summary field--label-hidden field__items">
+              <div class="field__item"><div>Contact&nbsp;<a href="mailto:techsupport@farmers.gov?cc=contact@farmers.gov&amp;subject=Tech%20Help%20with%20farmers.gov%20from%20footer">techsupport@farmers.gov</a>&nbsp;for help with this website.</div></div>
+          </div>
+  
+</div>
+
+  </div>
+
+</div>
+
+        </div>
+      </div>
+    </div>
+  </footer>
+
+
+    
+    <script src="/sites/default/files/js/js_LaDPoyRZdx7Dr7b2kvrF8PFLeCdEIZiIR0O1hGBr2Xg.js?scope=footer&amp;delta=0&amp;language=en&amp;theme=farmers_update&amp;include=eJx9jv0KwyAMxF_INY8kUbPgFrVo7Meefu0YhY6yfw7ul0tyrpa5UbWBlLyCO1lDi0rMTwi1jyjD15o71kS1Wa4x2DJRFVzhCh7JSDZRa8gxM1zBI7l9n6In6ynrVkSKRy0V_o-P7T4GVAKW4lBuTVfZb3MpLGQVGXiTXz_gA5czTEbwtcIuRt1WkzFR7uCwkeltDg0--gb3OX64"></script>
+
+
+  </body>
+</html>
