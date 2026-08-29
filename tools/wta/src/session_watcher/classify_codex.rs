@@ -100,14 +100,14 @@ fn codex_permission_reason(payload: Option<&serde_json::Value>) -> Option<String
 /// `source.subagent` in its meta) and inherits the parent's full history — so it
 /// shows the same first user message / title. It is a codex-internal worker, not
 /// a user-facing session, and must not surface as its own session row.
-pub fn record_is_subagent_meta(v: &serde_json::Value) -> bool {
+pub(super) fn record_is_subagent_meta(v: &serde_json::Value) -> bool {
     v.get("type").and_then(|t| t.as_str()) == Some("session_meta")
         && v.get("payload").map(payload_is_subagent).unwrap_or(false)
 }
 
 /// True if a Codex `session_meta` payload's `source` is the subagent variant
 /// (`{"subagent": …}`) rather than a top-level session (`"cli"` / `"user"`).
-pub fn payload_is_subagent(payload: &serde_json::Value) -> bool {
+fn payload_is_subagent(payload: &serde_json::Value) -> bool {
     payload
         .get("source")
         .and_then(|s| s.get("subagent"))

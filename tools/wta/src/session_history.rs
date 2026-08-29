@@ -222,7 +222,7 @@ mod tests {
     }
 
     #[test]
-    fn parse_iso_reads_offsetless_timestamps_as_utc() {
+    fn parse_iso_reads_timestamps_without_offset_as_utc() {
         // Not RFC 3339 (no `Z`, no offset), but accepted by the legacy
         // hand-rolled parser, so the fallback keeps reading it as UTC.
         let naive = parse_iso_to_system_time("2026-05-27T10:53:09").unwrap();
