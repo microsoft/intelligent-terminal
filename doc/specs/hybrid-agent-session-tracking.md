@@ -248,7 +248,11 @@ helper-side and unrelated).
 > `session_history::short_id` as the fallback label). Only the codex
 > subagent-fork check survives, as
 > `session_watcher::classify_codex::record_is_subagent_meta`. The rationale
-> below is kept for history.
+> below is kept for history — every other file, function, and helper it
+> names (`history_loader.rs`, `try_refresh_title_from_disk`,
+> `lookup_title_for_session`, `codex_title_from_file`,
+> `codex_user_text_is_synthetic`, `codex_session_has_real_content`) no
+> longer exists in the tree, so do not go looking for it.
 
 A watcher row is created with a **synthetic** title (cwd basename, or empty),
 then upgraded from the CLI's on-disk artefacts by `try_refresh_title_from_disk`

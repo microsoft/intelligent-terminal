@@ -1069,8 +1069,8 @@ impl SessionInfo {
 }
 
 /// Convert an `AgentSession` (the helper-side representation, also produced
-/// by the ACP history scan in `session_history`) into a `SessionInfo`
-/// for upsert into master's registry.
+/// by `session_history`'s mapping of ACP `session/list` rows) into a
+/// `SessionInfo` for upsert into master's registry.
 ///
 /// Used by master at startup to seed the registry with historical rows
 /// returned by the agent's own ACP `session/list` so `wta sessions list`

@@ -153,10 +153,12 @@ pub enum LivenessState {
 ///
 /// Populated authoritatively by `agent_pane_origin`: WTA appends a record
 /// to the on-disk index whenever it creates an ACP session for an agent
-/// pane (i.e. `--owner-tab-id` was supplied), and `session_history` joins
-/// that index when mapping historical rows. Live rows default to
-/// `Unknown` because the UI only surfaces this badge for ended/historical
-/// sessions, where it is most useful.
+/// pane (i.e. `--owner-tab-id` was supplied). A row is stamped while it is
+/// live, when a routed event's session id turns up in that index, and it
+/// keeps the flag once the session ends — which is where the UI surfaces
+/// it. Rows rebuilt from ACP `session/list` never carry it:
+/// `session_history::classify_and_map` uses the same index to drop
+/// agent-pane sessions from history entirely rather than to badge them.
 #[derive(Clone, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum SessionOrigin {
     /// Origin not recorded — either the session pre-dates the index, was
