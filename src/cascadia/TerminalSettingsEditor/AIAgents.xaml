@@ -424,6 +424,18 @@
                                         Style="{StaticResource AccentButtonStyle}"
                                         MinWidth="120" />
                             </Grid>
+                            <!--  Installing or removing hooks only affects agents that
+                                  start afterwards. The post-action summary above says
+                                  the same thing, but it is transient and only shows up
+                                  once the user has already acted — keep a persistent
+                                  note here so the restart requirement is visible before
+                                  clicking Install, and for the per-CLI Remove buttons
+                                  below (which have no summary of their own).  -->
+                            <TextBlock x:Uid="AIAgents_HooksRestartNote"
+                                       Style="{StaticResource CaptionTextBlockStyle}"
+                                       Opacity="0.6"
+                                       TextWrapping="Wrap"
+                                       Margin="0,4,0,0" />
                             <TextBlock x:Uid="AIAgents_PolicyLocked"
                                        Visibility="{x:Bind ViewModel.IsAgentSessionHooksPolicyLocked, Mode=OneWay}"
                                        Opacity="0.6"
