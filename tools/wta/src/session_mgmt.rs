@@ -5,8 +5,8 @@
 //! `RowSnapshot` (the relevant projection of an `AgentSession` row plus
 //! ambient capabilities) to an `EnterAction` — a
 //! description of *what* the caller should dispatch (Focus, resume in a
-//! new agent pane via ACP `session/load`, resume in a plain pane via CLI
-//! `--resume`, or surface a "not resumable" message).
+//! new agent pane via ACP `session/load`, resume in a plain pane via the
+//! CLI's own resume flag/verb, or surface a "not resumable" message).
 //!
 //! The actual dispatch (split-pane, wtcli, ACP load) lives in `app.rs`
 //! and keeps the existing guard rails (phantom-session pruning, self-
@@ -123,19 +123,21 @@ pub struct RowSnapshot {
     /// Whether the connected agent (the one the helper is talking to via
     /// ACP) advertised the `loadSession` capability at initialize.
     pub load_session_supported: bool,
-    /// Whether the CLI has a `--resume`-style flag. True for
-    /// Claude/Copilot/Codex/Gemini (all four CLIs accept some form of
-    /// `--resume`/`resume <id>` re-attach surface).
+    /// Whether the CLI exposes a resume flag or verb of its own. The
+    /// spelling varies per agent — `--resume` for Claude/Copilot/Gemini,
+    /// the `resume` subcommand for Codex, `--session` for OpenCode — so
+    /// this is sourced from `AgentProfile::resume_flag` rather than
+    /// assumed.
     pub cli_supports_resume_flag: bool,
     /// Whether the session lives inside a WSL distro. The helper and
     /// the agent run on the host, so ACP `session/load` can't rehydrate
     /// a Linux session into a host agent pane — WSL rows always resume
-    /// through the in-distro CLI `--resume` flag.
+    /// through the in-distro CLI's own resume flag.
     pub is_wsl: bool,
 }
 
-/// The state machine. See the module docstring and plan.md for the
-/// table this implements.
+/// The state machine. See the module docstring for the table this
+/// implements.
 pub fn decide_enter_action(row: &RowSnapshot) -> EnterAction {
     match &row.liveness {
         Liveness::Live { pane_session_id } => match pane_session_id {

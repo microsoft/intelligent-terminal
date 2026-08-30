@@ -2651,8 +2651,10 @@ impl App {
         };
         // Ambient: load_session capability is set during ACP init;
         // resume-flag support is a per-CLI profile constant — true for
-        // Claude / Codex / Copilot / Gemini / OpenCode (all five CLIs accept some
-        // form of `--resume`/`resume <id>` re-attach surface).
+        // Claude / Codex / Copilot / Gemini / OpenCode, though the exact
+        // spelling differs per agent (`--resume`, the `resume`
+        // subcommand, `--session`), which is why it comes from the
+        // profile rather than a hard-coded flag.
         let cli_supports_resume_flag = match known_cli_id(&s.cli_source) {
             Some(id) => !crate::agent_registry::lookup_profile_by_id(id)
                 .resume_flag
