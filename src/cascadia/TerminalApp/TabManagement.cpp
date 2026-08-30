@@ -534,6 +534,27 @@ namespace winrt::TerminalApp::implementation
         _previouslyClosedPanesAndTabs.emplace_back(args);
     }
 
+    // Re-read the agent pane's identity from the tab, which is the single
+    // source of truth for it: `/agent` switches the running agent through
+    // `OnAgentSwitchRequested`, which updates the tab's override. Without this
+    // a save would persist whichever agent the pane was created with.
+    void TerminalPage::_RefreshAgentRestoreIdentity(Tab* const tab)
+    {
+        if (!tab)
+        {
+            return;
+        }
+
+        const auto agentContent = tab->FindAgentPaneContent();
+        if (!agentContent)
+        {
+            return;
+        }
+
+        winrt::get_self<implementation::AgentPaneContent>(agentContent)
+            ->SetAgentRestoreIdentity(_GetAgentPaneIdentity(tab), _GetAgentPaneCustomCommand(tab));
+    }
+
     // Rewrites each shell pane that is running an agent CLI so its persisted
     // command line resumes that conversation.
     //

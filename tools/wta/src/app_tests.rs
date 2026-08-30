@@ -14262,6 +14262,48 @@ fn resumable_session_id_requires_a_meaningful_conversation() {
     assert_eq!(tab.resumable_session_id(), Some("fresh-session"));
 }
 
+// Switching agents rebinds the helper and the new agent opens a session of its
+// own, empty until the user talks to it. Everything else that constitutes a
+// conversation is cleared on rebind, and the meaningfulness flag has to be
+// cleared with it — otherwise the previous agent's conversation makes the new
+// agent's untouched session look resumable, and a save records a session the
+// new agent never wrote to disk (`session/load` then fails with
+// "Resource not found").
+#[test]
+fn agent_rebind_clears_meaningful_conversation() {
+    let (mut app, _restart_rx) = test_app_with_restart_rx();
+    app.owner_tab_id = Some("owner-tab".into());
+    app.window_id = Some("window-1".into());
+    app.tab_id = Some("owner-tab".into());
+    app.current_agent_id = "copilot".into();
+
+    {
+        let tab = app.tab_mut("owner-tab");
+        tab.session_id = Some("copilot-session".to_string());
+        tab.has_meaningful_conversation = true;
+        assert_eq!(tab.resumable_session_id(), Some("copilot-session"));
+    }
+
+    app.handle_event(AppEvent::WtEvent {
+        method: "rebind_agent".into(),
+        pane_id: String::new(),
+        tab_id: None,
+        params: json!({
+            "operation_id": "agent-rebind",
+            "generation": 1,
+            "window_id": "window-1",
+            "tab_id": "owner-tab",
+            "agent_id": "claude",
+            "agent_source": "host",
+        }),
+    });
+
+    let tab = app.tab_mut("owner-tab");
+    assert!(!tab.has_meaningful_conversation);
+    assert_eq!(tab.meaningful_conversation_before_load, None);
+    assert_eq!(tab.resumable_session_id(), None);
+}
+
 #[test]
 fn resumable_session_id_uses_the_load_target_during_replay() {
     let tab = TabSession {

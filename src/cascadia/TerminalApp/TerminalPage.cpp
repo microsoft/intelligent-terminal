@@ -3373,8 +3373,8 @@ namespace winrt::TerminalApp::implementation
             // the resolved CLI path — is rebuilt from scratch next time.
             if (const auto impl = winrt::get_self<implementation::AgentPaneContent>(agentContent))
             {
-                impl->SetAgentRestoreIdentity(winrt::hstring{ wtaPath },
-                                              _GetAgentPaneIdentity(tab.get()),
+                impl->SetAgentRestoreExecutable(winrt::hstring{ wtaPath });
+                impl->SetAgentRestoreIdentity(_GetAgentPaneIdentity(tab.get()),
                                               _GetAgentPaneCustomCommand(tab.get()));
             }
         }
@@ -6550,6 +6550,12 @@ namespace winrt::TerminalApp::implementation
             if (agentSessionId.has_value())
             {
                 agentContent.SetAgentSessionId(*agentSessionId);
+                // Stamp the agent that owns this session at the moment it is
+                // recorded. A save later compares it against the tab's current
+                // agent, so a session left behind by `/agent` is never paired
+                // with the agent that replaced it.
+                winrt::get_self<implementation::AgentPaneContent>(agentContent)
+                    ->SetAgentSessionOwner(_GetAgentPaneIdentity(targetTab.get()));
             }
             if (view.has_value())
             {
@@ -7050,6 +7056,20 @@ namespace winrt::TerminalApp::implementation
         }
 
         tab->SetAgentOverride(agentId, winrt::hstring{}, winrt::hstring{}, source, wslDistro);
+
+        // An ACP session belongs to the agent that created it — a codex thread
+        // is meaningless to copilot and vice versa — so the recorded session
+        // has to go with the agent that owned it. Keeping it would let a save
+        // pair the old agent's session id with the new agent's identity, and
+        // the restore would then ask the new agent to load a conversation it
+        // has never heard of. wta records a fresh id once the new agent's
+        // conversation becomes resumable; until then the pane restores empty,
+        // which is the truth.
+        if (const auto agentContent = tab->FindAgentPaneContent())
+        {
+            winrt::get_self<implementation::AgentPaneContent>(agentContent)->SetAgentSessionId({});
+        }
+
         const auto targetBinding = _ResolveAgentPaneSettingsBindingForTab(tab);
         _ApplyAgentPaneBindingForTab(tab, currentBinding, targetBinding);
     }
@@ -8281,6 +8301,9 @@ namespace winrt::TerminalApp::implementation
         for (auto tab : _tabs)
         {
             auto t = winrt::get_self<implementation::Tab>(tab);
+            // Must run before `BuildStartupActions`, which is what reads the
+            // identity out of the agent pane.
+            _RefreshAgentRestoreIdentity(t);
             auto tabActions = t->BuildStartupActions(BuildStartupKind::Persist);
             _StampAgentResumeCommandlines(tabActions);
             actions.insert(actions.end(), std::make_move_iterator(tabActions.begin()), std::make_move_iterator(tabActions.end()));

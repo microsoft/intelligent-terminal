@@ -818,6 +818,7 @@ namespace winrt::TerminalApp::implementation
         void _DuplicateTab(const Tab& tab);
 
         safe_void_coroutine _ExportTab(const Tab& tab, winrt::hstring filepath);
+        void _RefreshAgentRestoreIdentity(Tab* tab);
         void _StampAgentResumeCommandlines(std::vector<winrt::Microsoft::Terminal::Settings::Model::ActionAndArgs>& actions);
         // Pane ids whose terminal end event (`closed` / `failed`) already went
         // out on ProtocolVtSequenceReceived for the current TermControl

@@ -3571,6 +3571,15 @@ impl App {
             tab.usage_staleness = crate::usage::UsageStaleness::default();
             tab.clear_completed_turns();
             tab.session_id = None;
+            // The new agent starts with nothing to resume. Everything else
+            // that constitutes a conversation is cleared just above, so this
+            // flag has to go with it: `resumable_session_id` gates on it, and
+            // leaving it set makes the fresh session of the agent we are
+            // rebinding to look resumable. A save taken before the user talks
+            // to that agent would then record a session it never wrote to
+            // disk, and the restore fails with "Resource not found".
+            tab.has_meaningful_conversation = false;
+            tab.meaningful_conversation_before_load = None;
             tab.loading_session = false;
             tab.loading_target_session_id = None;
             tab.model_override = None;
