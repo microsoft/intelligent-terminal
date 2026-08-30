@@ -1,0 +1,26 @@
+(function(a) {
+    var d = document
+      , w = window
+      , u = "https://assets.targetimg1.com/ssx/ssx.mod.js?seed=AICm5VGgAQAAdgB3Q7vByDG9viyLzUH7kV_SDB2oXKSDE_v2HNugPzFhw1uh&X-GyJwza5Z--z=q"
+      , v = "aAXxMqolJ"
+      , i = "6419470564e170fe500106f6740141a1"
+      , l = "";
+    var s = d.currentScript;
+    addEventListener(v, function f(e) {
+        e.stopImmediatePropagation();
+        removeEventListener(v, f, !0);
+        e.detail.init("AxdR5lGgAQAAUAj7SmRrANAR6_CHJ1CwuRW1Wmn5Pxdmdx9s6pMozuJQ2upoAUldFBwXTpw7wH8AAEB3AAAAAA==", "WmR8Pcsxeru2bkaD51F7o3Hwz4=X6qdSf9YvZ0JyQ_hTUIVNpAgBLGj-nlEKiCOMt", [], [1964922565, 449362651, 439026438, 924833229, 1569742040, 509152007, 1073602390, 435823499], document.currentScript && document.currentScript.nonce || "yMSs7TrxQJ73wGyZCLbYwWRB", document.currentScript && document.currentScript.nonce || "yMSs7TrxQJ73wGyZCLbYwWRB", [], a, (s || {}) && (s || {}).src || null)
+    }, !0);
+    var o = s && s.nonce ? s.nonce : "";
+    try {
+        s && s.parentNode.removeChild(s)
+    } catch (e) {}
+    {
+        var n = d.createElement("script");
+        n.id = i;
+        n.src = u;
+        n.async = !0;
+        n.nonce = o;
+        d.head.appendChild(n)
+    }
+}(typeof arguments === "undefined" ? void 0 : arguments))
