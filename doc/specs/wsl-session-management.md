@@ -55,7 +55,10 @@ In scope (MVP):
 2. Merge the discovered rows into `/sessions`, tagged with their distro so the
    user can tell host rows from WSL rows.
 3. **Resume** a selected WSL row back into that distro (new tab running
-   `wsl -d <distro> -- <cli> --resume <key>`).
+   `wsl -d <distro> --cd <cwd> -- bash -lc "<cli> <resume-flag> <key>"`). The
+   flag comes from `AgentProfile::resume_flag`, so its spelling is per-agent
+   (`--resume`, the `resume` subcommand, `--session`); the login shell is what
+   puts the CLI on `PATH` inside the distro.
 
 Explicitly **out of scope** (accepted MVP limitations, see "Known
 limitations"):
@@ -66,8 +69,8 @@ limitations"):
 - Only the distro's default-login `$HOME` is scanned (multi-Linux-user deferred).
 - "Resume-in-agent-pane" (ACP `session/load`) is **not** offered for
   WSL rows (the helper/agent run on the host; loading a Linux session into a
-  host agent pane is wrong). WSL rows always resume through the in-distro CLI
-  `--resume` flag.
+  host agent pane is wrong). WSL rows always resume through the in-distro
+  CLI's own resume flag.
 
 ## Read mechanism: Hybrid (in-distro fetch), running distros only
 

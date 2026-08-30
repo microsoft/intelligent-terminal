@@ -2644,7 +2644,7 @@ impl App {
     /// origin dictates — a session we started in an agent pane comes
     /// back in an agent pane via ACP `session/load`, and a session
     /// discovered in a shell pane comes back in a shell pane via the
-    /// CLI `--resume` flag.
+    /// CLI's own resume flag/verb.
     fn activate_agent_session_routed(&mut self, s: &crate::agent_sessions::AgentSession) {
         use crate::session_mgmt::{
             decide_enter_action, liveness_from_status, EnterAction, NotResumableReason, RowSnapshot,
