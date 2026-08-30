@@ -120,6 +120,8 @@ namespace TerminalAppUnitTests
         TEST_METHOD(RejectsEqualsInEnvironmentName);
         TEST_METHOD(RejectsEmbeddedNullInEnvironmentName);
         TEST_METHOD(RejectsEmbeddedNullInEnvironmentValue);
+        TEST_METHOD(MasterWorkingDirectoryResolvesToUserProfile);
+        TEST_METHOD(MasterWorkingDirectoryIgnoresTerminalCurrentDirectory);
         TEST_METHOD(ResumeFailureCleansUpSuspendedProcess);
         TEST_METHOD(RestartWaitsForRetiredProcessBeforeContinuing);
         TEST_METHOD(RestartTimeoutTerminatesThenReapsRetiredProcess);
@@ -233,6 +235,48 @@ namespace TerminalAppUnitTests
     {
         constexpr wchar_t value[]{ L'd', L'e', L'b', L'u', L'g', L'\0', L't', L'r', L'a', L'c', L'e' };
         VERIFY_IS_FALSE(details::IsValidEnvironmentOverride(L"WTA_LOG", std::wstring_view{ value, std::size(value) }));
+    }
+
+    void SharedWtaTests::MasterWorkingDirectoryResolvesToUserProfile()
+    {
+        const auto expected = wil::TryGetEnvironmentVariableW<std::wstring>(L"USERPROFILE");
+        if (expected.empty())
+        {
+            Log::Comment(L"USERPROFILE is not set in this environment; nothing to verify.");
+            return;
+        }
+
+        const auto resolved = details::ResolveMasterWorkingDirectory();
+
+        VERIFY_IS_TRUE(resolved.has_value());
+        VERIFY_ARE_EQUAL(expected, *resolved);
+
+        const auto attributes = ::GetFileAttributesW(resolved->c_str());
+        VERIFY_ARE_NOT_EQUAL(INVALID_FILE_ATTRIBUTES, attributes);
+        VERIFY_IS_TRUE(WI_IsFlagSet(attributes, FILE_ATTRIBUTE_DIRECTORY));
+    }
+
+    void SharedWtaTests::MasterWorkingDirectoryIgnoresTerminalCurrentDirectory()
+    {
+        // A packaged Terminal launched from the Start menu runs in
+        // C:\Windows\system32. wta-master used to inherit that and hand it
+        // down to every pooled agent CLI, so agents reported system32 as
+        // their working directory regardless of the tab's profile.
+        wchar_t systemDirectory[MAX_PATH]{};
+        VERIFY_IS_TRUE(::GetSystemDirectoryW(systemDirectory, ARRAYSIZE(systemDirectory)) > 0);
+
+        wchar_t originalDirectory[MAX_PATH]{};
+        VERIFY_IS_TRUE(::GetCurrentDirectoryW(ARRAYSIZE(originalDirectory), originalDirectory) > 0);
+        const auto restoreDirectory = wil::scope_exit([&]() noexcept {
+            ::SetCurrentDirectoryW(originalDirectory);
+        });
+
+        VERIFY_IS_TRUE(::SetCurrentDirectoryW(systemDirectory));
+
+        const auto resolved = details::ResolveMasterWorkingDirectory();
+
+        VERIFY_IS_TRUE(resolved.has_value());
+        VERIFY_ARE_NOT_EQUAL(0, _wcsicmp(systemDirectory, resolved->c_str()));
     }
 
     void SharedWtaTests::ResumeFailureCleansUpSuspendedProcess()

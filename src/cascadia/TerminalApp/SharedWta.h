@@ -149,6 +149,11 @@ namespace winrt::TerminalApp::implementation
         std::optional<std::wstring> BuildEnvironmentBlock(
             std::span<const std::pair<std::wstring, std::wstring>> overrides) noexcept;
 
+        // The working directory to start wta-master in. nullopt means no usable
+        // directory was resolved and the caller should let CreateProcess inherit
+        // Terminal's own working directory.
+        std::optional<std::wstring> ResolveMasterWorkingDirectory() noexcept;
+
         struct SuspendedProcessOperations
         {
             DWORD(WINAPI* resumeThread)(HANDLE){ ::ResumeThread };

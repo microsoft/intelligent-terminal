@@ -349,6 +349,49 @@ namespace winrt::TerminalApp::implementation::details
         }
     }
 
+    // Pin wta-master to the user's profile directory.
+    //
+    // A packaged Terminal launched from the Start menu runs in
+    // C:\Windows\system32, and CreateProcess would hand that down to the
+    // master and, in turn, to every pooled agent CLI the master spawns
+    // (tools/wta/src/master/mod.rs passes `cwd: None`, i.e. "inherit"), so
+    // agents would report system32 as their working directory.
+    //
+    // This is deliberately a neutral fallback rather than any particular
+    // tab's directory. Per-session accuracy already comes from the ACP
+    // `session/new` cwd, and the agent CLI pool is shared across tabs, so a
+    // project path here would only encode whichever tab happened to start
+    // the process first. It also must not point at a project: a long-lived
+    // process holds a handle to its working directory and would block that
+    // directory from being deleted or renamed.
+    std::optional<std::wstring> ResolveMasterWorkingDirectory() noexcept
+    {
+        try
+        {
+            auto home = wil::TryGetEnvironmentVariableW<std::wstring>(L"USERPROFILE");
+            if (home.empty())
+            {
+                return std::nullopt;
+            }
+
+            // Verify it still resolves to a directory. CreateProcess fails
+            // outright on a bad lpCurrentDirectory, so a stale or redirected
+            // USERPROFILE would take the master down with it.
+            const auto attributes = ::GetFileAttributesW(home.c_str());
+            if (attributes == INVALID_FILE_ATTRIBUTES || !WI_IsFlagSet(attributes, FILE_ATTRIBUTE_DIRECTORY))
+            {
+                return std::nullopt;
+            }
+
+            return home;
+        }
+        catch (...)
+        {
+            LOG_CAUGHT_EXCEPTION();
+            return std::nullopt;
+        }
+    }
+
     bool ResumeSuspendedProcess(
         const HANDLE thread,
         const HANDLE process,
@@ -853,6 +896,10 @@ namespace winrt::TerminalApp::implementation
             return false;
         }
 
+        // See ResolveMasterWorkingDirectory: nullopt falls back to inheriting
+        // Terminal's own working directory, which is the pre-existing behavior.
+        const auto workingDirectory = details::ResolveMasterWorkingDirectory();
+
         std::wstring mutableCmdLine{ commandline };
         if (!CreateProcessW(
                 /* lpApplicationName    */ nullptr,
@@ -862,7 +909,7 @@ namespace winrt::TerminalApp::implementation
                 /* bInheritHandles      */ FALSE,
                 /* dwCreationFlags      */ creationFlags,
                 /* lpEnvironment        */ environmentBlock->empty() ? nullptr : environmentBlock->data(),
-                /* lpCurrentDirectory   */ nullptr,
+                /* lpCurrentDirectory   */ workingDirectory ? workingDirectory->c_str() : nullptr,
                 /* lpStartupInfo        */ &si,
                 /* lpProcessInformation */ &pi))
         {

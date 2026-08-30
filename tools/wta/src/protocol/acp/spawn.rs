@@ -227,10 +227,14 @@ impl AgentSpawn {
 /// `cwd` pins the child's working directory to the user's active pane cwd so
 /// the agent's `execute_command` tool — which inherits the agent process cwd
 /// when its shell wrapper doesn't explicitly set one — starts in the user's
-/// project. None preserves the parent's cwd (probe path, where it doesn't
-/// matter). `agent_id` is authoritative when supplied by the master, so a
-/// custom command whose executable happens to match a built-in agent cannot
-/// inherit that built-in's BYOK configuration.
+/// project. `None` leaves the child on this process's own cwd. The master pool
+/// takes that path deliberately: one agent CLI is shared by every tab using the
+/// same key, so no single tab's directory is correct for it. Its cwd instead
+/// comes from wta-master, which `SharedWta::_SpawnLocked` pins to the user's
+/// profile directory. Per-session accuracy comes from the ACP `session/new`
+/// cwd, not from the process cwd. `agent_id` is authoritative when supplied by
+/// the master, so a custom command whose executable happens to match a built-in
+/// agent cannot inherit that built-in's BYOK configuration.
 pub(crate) fn spawn_agent_process(
     agent_cmd: &str,
     cwd: Option<&Path>,
