@@ -140,16 +140,24 @@ impl NativeYoloState {
         let Some(adapter) = providers::lookup(&provider) else {
             return;
         };
-        let Some(previous) = self.sessions.read().unwrap().get(session_id).cloned() else {
+        let mut sessions = self.sessions.write().unwrap();
+        let Some(previous) = sessions.get(session_id).cloned() else {
             return;
         };
-        let Some(channel) = adapter.refresh_config(config_options, &previous) else {
-            return;
+        let next = match adapter.refresh_config(config_options, &previous) {
+            Some(channel) => ProviderSessionState::Available(channel),
+            None => match previous {
+                // A config-only update does not revoke a separately advertised mode.
+                mode @ ProviderSessionState::Available(NativeYoloChannel::Mode { .. }) => mode,
+                // Once a config capability was available, its disappearance makes the
+                // provider's current privileged state uncertain. Disable must fail closed.
+                ProviderSessionState::Available(NativeYoloChannel::ConfigOption { .. }) => {
+                    ProviderSessionState::MissingCapability { loaded: true }
+                }
+                state => state,
+            },
         };
-        self.sessions
-            .write()
-            .unwrap()
-            .insert(session_id.clone(), ProviderSessionState::Available(channel));
+        sessions.insert(session_id.clone(), next);
     }
 
     pub(crate) fn is_privileged_config_selection(

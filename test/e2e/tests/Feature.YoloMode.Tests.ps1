@@ -30,7 +30,7 @@ BeforeDiscovery {
     })
 }
 
-Describe 'Feature Yolo mode permission boundary' -ForEach $script:PackageCase -Tag 'Feature' -Skip:(-not $script:Ready) {
+Describe 'Feature custom-provider permission baseline' -ForEach $script:PackageCase -Tag 'Feature' -Skip:(-not $script:Ready) {
     BeforeAll {
         Import-Module (Join-Path $PSScriptRoot '..\ItE2E\ItE2E.psd1') -Force
         $script:fixtureLog = Join-Path $env:TEMP "ite2e-yolo-permission-$([guid]::NewGuid().ToString('N')).log"
@@ -53,7 +53,7 @@ Describe 'Feature Yolo mode permission boundary' -ForEach $script:PackageCase -T
         Remove-Item -LiteralPath $script:fixtureLog -Force -ErrorAction SilentlyContinue
     }
 
-    It 'Yolo never answers ACP permissions' {
+    It 'Global Yolo does not answer custom-provider permissions' {
         Assert-Setting -App $script:app -Key 'agentPane.yoloMode' -Value $true
         $marker = 'PERM' + [guid]::NewGuid().ToString('N').Substring(0, 12)
         Send-AgentPrompt -App $script:app -PaneSessionId $script:agentPane -Text $marker | Out-Null

@@ -20,7 +20,6 @@
     # acceptance intentionally stays local-only and therefore has no release-report mapping.
     'Yolo setting persists'             = 'Feature provider-native Yolo with Copilot\.Yolo setting persists'
     'Provider-native Yolo toggles per live session' = 'Feature provider-native Yolo with Copilot\.Provider-native Yolo toggles per live session'
-    'Yolo never answers ACP permissions' = 'Feature Yolo mode permission boundary\.Yolo never answers ACP permissions'
     'Unsupported agents reject Yolo safely' = 'Feature unsupported provider Yolo behavior\.Unsupported agents reject Yolo safely'
     'AllowYoloMode policy blocks Yolo'  = 'Feature AllowYoloMode policy\.AllowYoloMode policy blocks Yolo'
     'Esc/back navigation works'         = 'Esc/back navigation works|TRIGGERS the selected option'

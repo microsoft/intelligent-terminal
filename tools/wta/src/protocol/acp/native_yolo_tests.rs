@@ -74,6 +74,7 @@ fn spawn_apply_mock_with_barriers(
                 let actions = Arc::clone(&config_actions);
                 let barrier = config_barrier.clone();
                 async move {
+                    let config_id = request.config_id.0.to_string();
                     let value = request
                         .value
                         .as_value_id()
@@ -89,12 +90,40 @@ fn spawn_apply_mock_with_barriers(
                         .lock()
                         .unwrap()
                         .push(NativeYoloAction::SetConfigOption {
-                            config_id: request.config_id.0.to_string(),
-                            value,
+                            config_id: config_id.clone(),
+                            value: value.clone(),
                         });
-                    responder.respond(acp::schema::v1::SetSessionConfigOptionResponse::new(
-                        Vec::new(),
-                    ))
+                    let option = if config_id == "allow_all" {
+                        serde_json::json!({
+                            "id": config_id,
+                            "name": "Allow All",
+                            "category": "permissions",
+                            "type": "select",
+                            "currentValue": value,
+                            "options": [
+                                {"value": "on", "name": "On"},
+                                {"value": "off", "name": "Off"}
+                            ]
+                        })
+                    } else {
+                        serde_json::json!({
+                            "id": config_id,
+                            "name": "Mode",
+                            "category": "mode",
+                            "type": "select",
+                            "currentValue": value,
+                            "options": [
+                                {"value": "default", "name": "Default"},
+                                {"value": "plan", "name": "Plan"},
+                                {"value": "bypassPermissions", "name": "Bypass Permissions"},
+                                {"value": "agent", "name": "Agent"},
+                                {"value": "agent-full-access", "name": "Agent (Full Access)"}
+                            ]
+                        })
+                    };
+                    responder.respond(acp::schema::v1::SetSessionConfigOptionResponse::new(vec![
+                        serde_json::from_value(option).expect("test config response must be valid"),
+                    ]))
                 }
             },
             acp::on_receive_request!(),
@@ -452,6 +481,114 @@ fn config_update_refreshes_the_provider_restore_value() {
             value: "plan".to_string(),
         })
     );
+}
+
+#[test]
+fn config_update_removing_native_yolo_invalidates_stale_config_channel() {
+    for (agent_id, config_id, category, enable_value, restore_value) in [
+        (
+            crate::agent_registry::COPILOT_AGENT_ID,
+            "allow_all",
+            "permissions",
+            "on",
+            "off",
+        ),
+        (
+            crate::agent_registry::CLAUDE_AGENT_ID,
+            "mode",
+            "mode",
+            "bypassPermissions",
+            "default",
+        ),
+        (
+            crate::agent_registry::CODEX_AGENT_ID,
+            "mode",
+            "mode",
+            "agent-full-access",
+            "agent",
+        ),
+    ] {
+        let state = NativeYoloState::new();
+        state.set_resolved_agent_id(Some(agent_id));
+        let response: acp::schema::v1::NewSessionResponse =
+            serde_json::from_value(serde_json::json!({
+                "sessionId": format!("{agent_id}-config-removed"),
+                "configOptions": [{
+                    "id": config_id,
+                    "name": "Native Yolo",
+                    "category": category,
+                    "type": "select",
+                    "currentValue": enable_value,
+                    "options": [
+                        {"value": enable_value, "name": "Enable"},
+                        {"value": restore_value, "name": "Restore"}
+                    ]
+                }]
+            }))
+            .unwrap();
+        let session_id = response.session_id.clone();
+        state.record_from_new_session(&response);
+
+        state.record_from_config_update(&session_id, &[]);
+
+        assert!(matches!(
+            state.sessions.read().unwrap().get(&session_id),
+            Some(ProviderSessionState::MissingCapability { loaded: true })
+        ));
+        let expected = Err(format!(
+            "{agent_id} did not advertise its expected ACP session Yolo capability"
+        ));
+        assert_eq!(state.action_for(&session_id, true), expected);
+        assert_eq!(state.action_for(&session_id, false), expected);
+    }
+}
+
+#[test]
+fn config_update_without_native_yolo_preserves_existing_mode_channel() {
+    for (agent_id, enable_mode, restore_mode) in [
+        (
+            crate::agent_registry::CLAUDE_AGENT_ID,
+            "bypassPermissions",
+            "plan",
+        ),
+        (
+            crate::agent_registry::CODEX_AGENT_ID,
+            "agent-full-access",
+            "read-only",
+        ),
+    ] {
+        let state = NativeYoloState::new();
+        state.set_resolved_agent_id(Some(agent_id));
+        let response: acp::schema::v1::NewSessionResponse =
+            serde_json::from_value(serde_json::json!({
+                "sessionId": format!("{agent_id}-mode-preserved"),
+                "modes": {
+                    "currentModeId": restore_mode,
+                    "availableModes": [
+                        {"id": restore_mode, "name": "Restore"},
+                        {"id": enable_mode, "name": "Enable"}
+                    ]
+                }
+            }))
+            .unwrap();
+        let session_id = response.session_id.clone();
+        state.record_from_new_session(&response);
+
+        state.record_from_config_update(&session_id, &[]);
+
+        assert_eq!(
+            state.action_for(&session_id, true),
+            Ok(NativeYoloAction::SetMode {
+                mode_id: enable_mode.to_string(),
+            })
+        );
+        assert_eq!(
+            state.action_for(&session_id, false),
+            Ok(NativeYoloAction::SetMode {
+                mode_id: restore_mode.to_string(),
+            })
+        );
+    }
 }
 
 #[test]

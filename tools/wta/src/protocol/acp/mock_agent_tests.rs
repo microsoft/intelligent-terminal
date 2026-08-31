@@ -87,6 +87,7 @@ struct MockAgent {
     /// When set, `load_session` sleeps long enough that a short injected
     /// dispatch timeout elapses first — exercises the timeout path.
     slow_load: Arc<AtomicBool>,
+    new_session_advertises_native_yolo: Arc<AtomicBool>,
     new_session_starts_in_native_yolo: Arc<AtomicBool>,
     fail_native_updates: Arc<AtomicBool>,
     hang_native_updates: Arc<AtomicBool>,
@@ -127,22 +128,27 @@ impl MockAgent {
         let mut response = acp::schema::v1::NewSessionResponse::new(
             acp::schema::v1::SessionId::new("mock-session-1"),
         );
-        if self
+        let starts_in_native_yolo = self
             .new_session_starts_in_native_yolo
-            .load(Ordering::SeqCst)
+            .load(Ordering::SeqCst);
+        if starts_in_native_yolo
+            || self
+                .new_session_advertises_native_yolo
+                .load(Ordering::SeqCst)
         {
-            response.config_options = Some(vec![serde_json::from_value(serde_json::json!({
+            let option = serde_json::json!({
                 "id": "mode",
                 "name": "Mode",
                 "category": "mode",
                 "type": "select",
-                "currentValue": "bypassPermissions",
+                "currentValue": if starts_in_native_yolo { "bypassPermissions" } else { "default" },
                 "options": [
                     {"value": "default", "name": "Default"},
                     {"value": "bypassPermissions", "name": "Bypass Permissions"}
                 ]
-            }))
-            .map_err(|error| acp::Error::internal_error().data(error.to_string()))?]);
+            });
+            response.config_options = Some(vec![serde_json::from_value(option)
+                .map_err(|error| acp::Error::internal_error().data(error.to_string()))?]);
         }
         Ok(response)
     }
@@ -447,6 +453,7 @@ fn connect_with(
         fail_new_session: Arc::new(AtomicBool::new(false)),
         fail_load_session: Arc::new(AtomicBool::new(false)),
         slow_load: Arc::new(AtomicBool::new(false)),
+        new_session_advertises_native_yolo: Arc::new(AtomicBool::new(false)),
         new_session_starts_in_native_yolo: Arc::new(AtomicBool::new(false)),
         fail_native_updates: Arc::new(AtomicBool::new(false)),
         hang_native_updates: Arc::new(AtomicBool::new(false)),
@@ -773,6 +780,7 @@ pub(crate) struct DispatchHarness {
     pub proposal_channels:
         Arc<crate::agent_tools::action_proposal::channel::ProposalChannelManager>,
     pub seen_prompts: Arc<Mutex<Vec<String>>>,
+    pub permission_outcome: Arc<Mutex<Option<String>>>,
     /// Agent-side record of every image content block (mime, base64) assembled
     /// onto the wire — the Alt+V image-paste assertion target.
     pub seen_images: Arc<Mutex<Vec<(String, String)>>>,
@@ -788,6 +796,7 @@ pub(crate) struct DispatchHarness {
     /// Flip to `true` before dispatching to make the mock's `load_session`
     /// sleep past a short injected timeout, exercising the resume-timeout path.
     pub slow_load: Arc<AtomicBool>,
+    pub new_session_advertises_native_yolo: Arc<AtomicBool>,
     pub new_session_starts_in_native_yolo: Arc<AtomicBool>,
     pub fail_native_updates: Arc<AtomicBool>,
     pub hang_native_updates: Arc<AtomicBool>,
@@ -828,6 +837,7 @@ fn connect_for_dispatch(behavior: MockBehavior) -> DispatchHarness {
     let fail_new_session = Arc::new(AtomicBool::new(false));
     let fail_load_session = Arc::new(AtomicBool::new(false));
     let slow_load = Arc::new(AtomicBool::new(false));
+    let new_session_advertises_native_yolo = Arc::new(AtomicBool::new(false));
     let new_session_starts_in_native_yolo = Arc::new(AtomicBool::new(false));
     let fail_native_updates = Arc::new(AtomicBool::new(false));
     let hang_native_updates = Arc::new(AtomicBool::new(false));
@@ -839,13 +849,14 @@ fn connect_for_dispatch(behavior: MockBehavior) -> DispatchHarness {
         behavior,
         seen_prompts: seen_prompts.clone(),
         seen_images: seen_images.clone(),
-        permission_outcome,
+        permission_outcome: permission_outcome.clone(),
         closed_sessions: closed_sessions.clone(),
         seen_config_updates: seen_config_updates.clone(),
         close_tab_requests: close_tab_requests.clone(),
         fail_new_session: fail_new_session.clone(),
         fail_load_session: fail_load_session.clone(),
         slow_load: slow_load.clone(),
+        new_session_advertises_native_yolo: new_session_advertises_native_yolo.clone(),
         new_session_starts_in_native_yolo: new_session_starts_in_native_yolo.clone(),
         fail_native_updates: fail_native_updates.clone(),
         hang_native_updates: hang_native_updates.clone(),
@@ -864,6 +875,7 @@ fn connect_for_dispatch(behavior: MockBehavior) -> DispatchHarness {
         prompt_timing,
         proposal_channels,
         seen_prompts,
+        permission_outcome,
         seen_images,
         closed_sessions,
         seen_config_updates,
@@ -871,6 +883,7 @@ fn connect_for_dispatch(behavior: MockBehavior) -> DispatchHarness {
         fail_new_session,
         fail_load_session,
         slow_load,
+        new_session_advertises_native_yolo,
         new_session_starts_in_native_yolo,
         fail_native_updates,
         hang_native_updates,
@@ -1113,6 +1126,93 @@ async fn lazy_session_disables_native_yolo_before_first_prompt() {
                 *h.seen_config_updates.lock().unwrap(),
                 vec![("mode".to_string(), "default".to_string())],
                 "lazy first-prompt reconciliation must issue exactly one native update"
+            );
+        })
+        .await;
+}
+
+#[tokio::test]
+async fn native_yolo_active_permission_request_remains_pending_for_user() {
+    let local = tokio::task::LocalSet::new();
+    local
+        .run_until(async {
+            let mut h = connect_for_dispatch(MockBehavior::AskPermission);
+            h.client
+                .state
+                .native_yolo
+                .set_resolved_agent_id(Some(crate::agent_registry::CLAUDE_AGENT_ID));
+            h.client
+                .state
+                .yolo_state
+                .lock()
+                .unwrap()
+                .update_runtime(true, false);
+            h.new_session_advertises_native_yolo
+                .store(true, Ordering::SeqCst);
+            h.conn
+                .initialize(acp::schema::v1::InitializeRequest::new(
+                    acp::schema::ProtocolVersion::LATEST,
+                ))
+                .await
+                .expect("initialize failed");
+            let (tab_to_session, in_flight, cancel_signals, memo) = fresh_dispatch_state();
+
+            dispatch_prompt(
+                test_prompt(1, "permission after native Yolo", false),
+                &h.conn,
+                &tab_to_session,
+                &memo,
+                &in_flight,
+                &cancel_signals,
+                &h.event_tx,
+                &h.shell_mgr,
+                &h.prompt_timing,
+                &h.client,
+                &PromptUsageIdentity::default(),
+                false,
+                false,
+                true,
+                &h.proposal_channels,
+            );
+
+            let responder = tokio::time::timeout(std::time::Duration::from_secs(5), async {
+                loop {
+                    match h.event_rx.recv().await {
+                        Some(AppEvent::PermissionRequest { responder, .. }) => break responder,
+                        Some(_) => continue,
+                        None => panic!("event channel closed before permission request"),
+                    }
+                }
+            })
+            .await
+            .expect("timed out waiting for permission request");
+
+            assert_eq!(
+                *h.seen_config_updates.lock().unwrap(),
+                vec![("mode".to_string(), "bypassPermissions".to_string())],
+                "the supported provider must acknowledge native Yolo before prompting"
+            );
+            assert!(
+                h.permission_outcome.lock().unwrap().is_none(),
+                "WTA must not select a permission while native Yolo is active"
+            );
+            tokio::task::yield_now().await;
+            assert!(h.permission_outcome.lock().unwrap().is_none());
+
+            responder.send("allow-once".to_string()).unwrap();
+            tokio::time::timeout(std::time::Duration::from_secs(5), async {
+                loop {
+                    if h.permission_outcome.lock().unwrap().is_some() {
+                        break;
+                    }
+                    tokio::task::yield_now().await;
+                }
+            })
+            .await
+            .expect("permission outcome did not follow explicit user selection");
+            assert_eq!(
+                h.permission_outcome.lock().unwrap().as_deref(),
+                Some("allow-once")
             );
         })
         .await;
