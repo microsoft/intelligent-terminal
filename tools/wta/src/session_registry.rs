@@ -1580,12 +1580,12 @@ fn apply_event_locked(state: &mut RegistryState, ev: SessionEvent) -> bool {
             let pane_owned_by_other_born_bound = state
                 .active_by_pane
                 .get(&pane_session_id)
-                .filter(|prev_sid| **prev_sid != sid)
-                .and_then(|prev_sid| state.sessions.get(prev_sid))
-                .is_some_and(|prev| {
-                    prev.born_bound_pane
+                .filter(|owner_sid| **owner_sid != sid)
+                .and_then(|owner_sid| state.sessions.get(owner_sid))
+                .is_some_and(|owner| {
+                    owner.born_bound_pane
                         && matches!(
-                            prev.status,
+                            owner.status,
                             Some(AgentStatus::Idle | AgentStatus::Working | AgentStatus::Attention)
                         )
                 });
