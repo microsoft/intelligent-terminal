@@ -499,6 +499,12 @@ std::shared_ptr<Pane> Pane::NextPane(const std::shared_ptr<Pane> targetPane)
     std::shared_ptr<Pane> nextPane = nullptr;
     auto foundTarget = false;
 
+    // A hidden leaf is not in the visual tree — a stashed agent pane is the
+    // only one today — so in-order navigation has to step over it. Landing on
+    // one focuses something the user cannot see, and every subsequent action
+    // that acts on "the active pane" is then aimed at the wrong pane.
+    const auto isNavigable = [](const auto& pane) { return pane->_IsLeaf() && !pane->_hidden; };
+
     auto foundNext = WalkTree([&](const auto& pane) {
         // If we are a parent pane we don't want to move to one of our children
         if (foundTarget && targetPane->_HasChild(pane))
@@ -507,13 +513,13 @@ std::shared_ptr<Pane> Pane::NextPane(const std::shared_ptr<Pane> targetPane)
         }
         // In case the target pane is the last pane in the tree, keep a reference
         // to the first leaf so we can wrap around.
-        if (firstLeaf == nullptr && pane->_IsLeaf())
+        if (firstLeaf == nullptr && isNavigable(pane))
         {
             firstLeaf = pane;
         }
 
         // If we've found the target pane already, get the next leaf pane.
-        if (foundTarget && pane->_IsLeaf())
+        if (foundTarget && isNavigable(pane))
         {
             nextPane = pane;
             return true;
@@ -561,6 +567,10 @@ std::shared_ptr<Pane> Pane::PreviousPane(const std::shared_ptr<Pane> targetPane)
     std::shared_ptr<Pane> lastLeaf = nullptr;
     auto foundTarget = false;
 
+    // See `NextPane`: a hidden leaf is not in the visual tree and must not be
+    // a navigation target.
+    const auto isNavigable = [](const auto& pane) { return pane->_IsLeaf() && !pane->_hidden; };
+
     WalkTree([&](auto pane) {
         if (pane == targetPane)
         {
@@ -573,7 +583,7 @@ std::shared_ptr<Pane> Pane::PreviousPane(const std::shared_ptr<Pane> targetPane)
             }
         }
 
-        if (pane->_IsLeaf())
+        if (isNavigable(pane))
         {
             lastLeaf = pane;
         }
