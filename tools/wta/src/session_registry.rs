@@ -1577,6 +1577,14 @@ fn apply_event_locked(state: &mut RegistryState, ev: SessionEvent) -> bool {
             // fallback is silently dropped. Require the hook's session id to
             // match the pane's born-bound owner; a mismatch still records the
             // session, it just gets no pane binding.
+            //
+            // Phrased as "not terminal" rather than "one of the live states" so
+            // that `status: None` counts as live. A row reaches
+            // `ResumePaneAssigned` with no status whenever `ResumeDispatched`
+            // found it neither Historical nor Ended, and `mark_resume_dispatched`
+            // already renders `None` as "Idle"; matching on the live states
+            // instead would leave exactly those rows unprotected and let the
+            // regression through.
             let pane_owned_by_other_born_bound = state
                 .active_by_pane
                 .get(&pane_session_id)
@@ -1584,9 +1592,9 @@ fn apply_event_locked(state: &mut RegistryState, ev: SessionEvent) -> bool {
                 .and_then(|owner_sid| state.sessions.get(owner_sid))
                 .is_some_and(|owner| {
                     owner.born_bound_pane
-                        && matches!(
+                        && !matches!(
                             owner.status,
-                            Some(AgentStatus::Idle | AgentStatus::Working | AgentStatus::Attention)
+                            Some(AgentStatus::Ended | AgentStatus::Historical | AgentStatus::Error)
                         )
                 });
             let pane_known = pane_known && !pane_owned_by_other_born_bound;
@@ -2943,11 +2951,29 @@ mod tests {
     /// Seed a `/sessions` resume: a historical row promoted to Idle and bound
     /// to a freshly-spawned pane by WTA itself, before the CLI has started.
     async fn seed_resumed_pane(reg: &InMemoryRegistry, key: &str, pane: &str) {
+        seed_resumed_pane_with_status(
+            reg,
+            key,
+            pane,
+            Some(crate::agent_sessions::AgentStatus::Historical),
+        )
+        .await;
+    }
+
+    /// [`seed_resumed_pane`] with control over the row's status before the
+    /// resume, so a test can reproduce a row that reaches `ResumePaneAssigned`
+    /// with `status: None` (`ResumeDispatched` only promotes Historical/Ended).
+    async fn seed_resumed_pane_with_status(
+        reg: &InMemoryRegistry,
+        key: &str,
+        pane: &str,
+        status: Option<crate::agent_sessions::AgentStatus>,
+    ) {
         let mut info = SessionInfo::new(
             acp::schema::v1::SessionId::new(key.to_string()),
             PathBuf::from("C:\\x"),
         );
-        info.status = Some(crate::agent_sessions::AgentStatus::Historical);
+        info.status = status;
         info.cli_source = Some(crate::agent_sessions::CliSource::Copilot);
         reg.upsert(info).await;
         reg.apply_event(crate::agent_sessions::SessionEvent::ResumeDispatched { key: key.into() })
@@ -2996,6 +3022,49 @@ mod tests {
         assert!(
             bootstrap.pane_session_id.is_none(),
             "the bootstrap session is still recorded, just never bound to the pane"
+        );
+    }
+
+    /// `ResumeDispatched` only promotes Historical/Ended rows, so a row whose
+    /// status was never set reaches `ResumePaneAssigned` with `status: None`.
+    /// The guard must still protect it — `mark_resume_dispatched` already
+    /// renders `None` as "Idle", and matching on the live states instead of
+    /// excluding the terminal ones left exactly these rows evictable.
+    #[tokio::test]
+    async fn master_reducer_status_none_resumed_pane_is_still_protected() {
+        let reg = InMemoryRegistry::new();
+        seed_resumed_pane_with_status(&reg, "resumed", "pane-1", None).await;
+        assert!(
+            reg.lookup(&acp::schema::v1::SessionId::new("resumed"))
+                .await
+                .unwrap()
+                .status
+                .is_none(),
+            "precondition: the row carries no status"
+        );
+
+        reg.apply_event(crate::agent_sessions::SessionEvent::SessionStarted {
+            key: "bootstrap".into(),
+            cli_source: crate::agent_sessions::CliSource::Copilot,
+            pane_session_id: "pane-1".into(),
+            cwd: PathBuf::from("C:\\x"),
+            title: "t".into(),
+        })
+        .await;
+
+        let resumed = reg
+            .lookup(&acp::schema::v1::SessionId::new("resumed"))
+            .await
+            .unwrap();
+        assert_eq!(
+            resumed.pane_session_id.as_deref(),
+            Some("pane-1"),
+            "a status-less born-bound row must keep its pane"
+        );
+        assert_ne!(
+            resumed.status,
+            Some(crate::agent_sessions::AgentStatus::Ended),
+            "a status-less born-bound row must not be evicted"
         );
     }
 
