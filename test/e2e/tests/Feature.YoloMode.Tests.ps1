@@ -53,26 +53,38 @@ Describe 'Feature custom-provider permission baseline' -ForEach $script:PackageC
         Remove-Item -LiteralPath $script:fixtureLog -Force -ErrorAction SilentlyContinue
     }
 
-    It 'Global Yolo does not answer custom-provider permissions' {
+    It 'Permission UI works' {
         Assert-Setting -App $script:app -Key 'agentPane.yoloMode' -Value $true
-        $marker = 'PERM' + [guid]::NewGuid().ToString('N').Substring(0, 12)
-        Send-AgentPrompt -App $script:app -PaneSessionId $script:agentPane -Text $marker | Out-Null
+        $allowMarker = 'PERM' + [guid]::NewGuid().ToString('N').Substring(0, 12)
+        Send-AgentPrompt -App $script:app -PaneSessionId $script:agentPane -Text $allowMarker | Out-Null
 
         (Wait-AgentPermission -App $script:app -TimeoutSec 30) |
             Should -BeTrue -Because 'the provider permission must remain pending for the user'
         $before = if (Test-Path $script:fixtureLog) {
             Get-Content -LiteralPath $script:fixtureLog -Raw
         } else { '' }
-        $before | Should -Match "permission-requested\|$marker"
-        $before | Should -Not -Match "permission-resolved\|.*\|$marker"
+        $before | Should -Match "permission-requested\|$allowMarker"
+        $before | Should -Not -Match "permission-resolved\|.*\|$allowMarker"
 
         Send-AgentKey -App $script:app -PaneSessionId $script:agentPane -Key Y | Out-Null
         (Test-Until -TimeoutSec 20 -IntervalSec 0.5 -Condition {
             (Get-Content -LiteralPath $script:fixtureLog -Raw -ErrorAction SilentlyContinue) -match
-                "permission-resolved\|allow-once\|$marker"
+                "permission-resolved\|allow-once\|$allowMarker"
         }) | Should -BeTrue -Because 'only the explicit Y key should select AllowOnce'
         Assert-AgentPaneText -App $script:app -PaneSessionId $script:agentPane `
-            -Pattern "PERMISSION_RESULT_${marker}_allow-once" -TimeoutSec 20
+            -Pattern "PERMISSION_RESULT_${allowMarker}_allow-once" -TimeoutSec 20
+
+        $rejectMarker = 'PERM' + [guid]::NewGuid().ToString('N').Substring(0, 12)
+        Send-AgentPrompt -App $script:app -PaneSessionId $script:agentPane -Text $rejectMarker | Out-Null
+        (Wait-AgentPermission -App $script:app -TimeoutSec 30) |
+            Should -BeTrue -Because 'a second provider permission must remain available for rejection'
+        Send-AgentKey -App $script:app -PaneSessionId $script:agentPane -Key N | Out-Null
+        (Test-Until -TimeoutSec 20 -IntervalSec 0.5 -Condition {
+            (Get-Content -LiteralPath $script:fixtureLog -Raw -ErrorAction SilentlyContinue) -match
+                "permission-resolved\|reject-once\|$rejectMarker"
+        }) | Should -BeTrue -Because 'the explicit N key should select RejectOnce'
+        Assert-AgentPaneText -App $script:app -PaneSessionId $script:agentPane `
+            -Pattern "PERMISSION_RESULT_${rejectMarker}_reject-once" -TimeoutSec 20
     }
 }
 
