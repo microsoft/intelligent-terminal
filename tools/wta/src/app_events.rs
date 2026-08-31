@@ -603,8 +603,9 @@ impl App {
                 current_model_id,
                 load_session_supported,
                 image_supported,
+                session_capabilities_ready,
             } => {
-                self.pending_fail_closed_yolo_reconciles.clear();
+                self.pending_yolo_reconciles.clear();
                 self.agent_name = name;
                 self.agent_model = model;
                 self.agent_version = version;
@@ -644,9 +645,15 @@ impl App {
                 }
                 // Bind the startup session to whichever tab we own.
                 let bind_tab = self
-                    .tab_id
+                    .owner_tab_id
                     .clone()
+                    .or_else(|| self.tab_id.clone())
                     .unwrap_or_else(|| DEFAULT_TAB_ID.to_string());
+                if session_capabilities_ready {
+                    self.pending_yolo_session_tabs.remove(&bind_tab);
+                } else {
+                    self.pending_yolo_session_tabs.insert(bind_tab.clone());
+                }
                 self.session_to_tab
                     .insert(session_id.clone(), bind_tab.clone());
                 let tab = self.tab_mut(&bind_tab);
@@ -668,7 +675,9 @@ impl App {
                 {
                     tab.messages.insert(0, ChatMessage::Disclaimer);
                 }
-                self.reconcile_session_yolo(&session_id);
+                if session_capabilities_ready {
+                    self.reconcile_session_yolo(&session_id);
+                }
                 self.publish_agent_status();
             }
             AppEvent::SessionAttached {
@@ -695,6 +704,7 @@ impl App {
                 }
                 self.session_to_tab
                     .insert(session_id.clone(), tab_id.clone());
+                self.pending_yolo_session_tabs.remove(&tab_id);
                 let tab = self.tab_mut(&tab_id);
                 tab.session_id = Some(session_id.clone());
                 // Close the session/load replay window only when this
@@ -818,9 +828,21 @@ impl App {
                 restart_required,
                 result,
             } => {
-                if fail_closed && result.is_ok() {
-                    self.pending_fail_closed_yolo_reconciles
-                        .remove(&reconcile_id);
+                if reconcile_id != 0 && !self.pending_yolo_reconciles.contains_key(&reconcile_id) {
+                    tracing::debug!(
+                        target: "yolo",
+                        reconcile_id,
+                        "ignoring stale provider-native Yolo reconciliation completion"
+                    );
+                    return;
+                }
+                let settled = self.pending_yolo_reconciles.get(&reconcile_id).is_some_and(
+                    |(_, pending_fail_closed)| {
+                        result.is_ok() || (!*pending_fail_closed && !restart_required)
+                    },
+                );
+                if settled {
+                    self.pending_yolo_reconciles.remove(&reconcile_id);
                 }
                 if result.is_err() && (fail_closed || restart_required) {
                     tracing::error!(
@@ -991,6 +1013,7 @@ impl App {
                 tab.scroll_to_bottom();
             }
             AppEvent::TabError { tab_id, message } => {
+                self.pending_yolo_session_tabs.remove(&tab_id);
                 // Scoped error for a specific tab. Bypasses the global
                 // auth-fallback / ConnectionState::Failed flip in
                 // AgentError because the error is local to one tab's
@@ -2437,6 +2460,7 @@ impl App {
                         // normal connection. `loading_session` still opens the
                         // replay window; any past content just streams in above.
                     }
+                    self.pending_yolo_session_tabs.insert(tab_id.to_string());
                     // If the load_session target IS the active tab, push the
                     // (now Chat) view to C++ so the bar drops the "Agent
                     // sessions" label that the user was looking at when they
@@ -2447,11 +2471,23 @@ impl App {
                     if tab_id == self.active_tab_key() {
                         self.project_active_tab_state();
                     }
-                    let _ = self.load_session_tx.send(LoadSessionForTab {
-                        tab_id: tab_id.to_string(),
-                        session_id: session_id.to_string(),
-                        cwd,
-                    });
+                    if self
+                        .load_session_tx
+                        .send(LoadSessionForTab {
+                            tab_id: tab_id.to_string(),
+                            session_id: session_id.to_string(),
+                            cwd,
+                        })
+                        .is_err()
+                    {
+                        self.pending_yolo_session_tabs.remove(tab_id);
+                        let tab = self.tab_mut(tab_id);
+                        tab.loading_session = false;
+                        tab.loading_target_session_id = None;
+                        tab.messages
+                            .push(ChatMessage::Error(t!("connection.lost").into_owned()));
+                        tab.scroll_to_bottom();
+                    }
                     return;
                 }
 

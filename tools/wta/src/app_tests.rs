@@ -1881,6 +1881,31 @@ fn load_session_ignored_when_target_tab_differs_from_owner() {
 }
 
 #[test]
+fn closed_load_session_channel_rolls_back_replay_and_yolo_gate() {
+    let (mut app, load_session_rx) = make_app_with_load_session_channel();
+    drop(load_session_rx);
+    app.owner_tab_id = Some("OWNER-TAB".to_string());
+    app.tab_sessions
+        .insert("OWNER-TAB".to_string(), TabSession::default());
+
+    app.handle_event(AppEvent::WtEvent {
+        method: "load_session".to_string(),
+        pane_id: String::new(),
+        tab_id: None,
+        params: json!({
+            "tab_id": "OWNER-TAB",
+            "session_id": "loaded-session",
+            "cwd": "",
+        }),
+    });
+
+    let tab = &app.tab_sessions["OWNER-TAB"];
+    assert!(!tab.loading_session);
+    assert!(tab.loading_target_session_id.is_none());
+    assert!(!app.pending_yolo_session_tabs.contains("OWNER-TAB"));
+}
+
+#[test]
 fn load_session_applied_when_target_tab_matches_owner() {
     let (mut app, mut load_session_rx) = make_app_with_load_session_channel();
     app.owner_tab_id = Some("OWNER-TAB".to_string());
@@ -3008,6 +3033,7 @@ fn fresh_agent_connection_model_replaces_stale_agent_default() {
         current_model_id: Some("fresh".into()),
         load_session_supported: false,
         image_supported: false,
+        session_capabilities_ready: true,
     });
 
     assert_eq!(app.current_model_id.as_deref(), Some("fresh"));
@@ -3029,6 +3055,7 @@ fn bootstrap_agent_connection_reconciles_global_yolo_state() {
         current_model_id: None,
         load_session_supported: false,
         image_supported: false,
+        session_capabilities_ready: true,
     });
 
     let request = master_rx
@@ -3046,6 +3073,7 @@ fn bootstrap_agent_connection_reconciles_global_yolo_state() {
     assert_eq!(sessions[0].0 .0.as_ref(), "bootstrap-yolo-session");
     assert!(sessions[0].1);
     assert!(!fail_closed);
+    assert!(app.yolo_reconcile_pending_for_tab(DEFAULT_TAB_ID));
 }
 
 #[test]
@@ -3086,6 +3114,20 @@ fn failed_policy_yolo_reconcile_restarts_master() {
 }
 
 #[test]
+fn stale_fail_closed_yolo_reconcile_does_not_restart_master() {
+    let (mut app, mut restart_rx) = test_app_with_restart_rx();
+
+    app.handle_event(AppEvent::RuntimeYoloReconcileCompleted {
+        reconcile_id: 99,
+        fail_closed: true,
+        restart_required: true,
+        result: Err("stale provider outcome".into()),
+    });
+
+    assert!(restart_rx.try_recv().is_err());
+}
+
+#[test]
 fn runtime_policy_reconcile_gates_prompt_until_native_off_acknowledges() {
     let mut app = test_app();
     let (prompt_tx, mut prompt_rx) = tokio::sync::mpsc::unbounded_channel();
@@ -3102,11 +3144,7 @@ fn runtime_policy_reconcile_gates_prompt_until_native_off_acknowledges() {
     assert_eq!(app.current_tab().input, "must wait for native off");
     assert!(prompt_rx.try_recv().is_err());
 
-    let reconcile_id = *app
-        .pending_fail_closed_yolo_reconciles
-        .iter()
-        .next()
-        .unwrap();
+    let reconcile_id = *app.pending_yolo_reconciles.keys().next().unwrap();
     app.handle_event(AppEvent::RuntimeYoloReconcileCompleted {
         reconcile_id,
         fail_closed: true,
@@ -3119,6 +3157,286 @@ fn runtime_policy_reconcile_gates_prompt_until_native_off_acknowledges() {
     assert_eq!(
         prompt_rx.try_recv().expect("prompt after native off").text,
         "must wait for native off"
+    );
+}
+
+#[test]
+fn global_on_session_attach_gates_prompt_until_native_yolo_enable_acknowledges() {
+    use crate::protocol::acp::client::MasterExtRequest;
+
+    let (mut app, mut master_rx) = test_app_with_master_rx();
+    let (prompt_tx, mut prompt_rx) = tokio::sync::mpsc::unbounded_channel();
+    app.prompt_tx = prompt_tx;
+    app.state = ConnectionState::Connected;
+    app.yolo_state.lock().unwrap().update_runtime(true, false);
+
+    app.handle_event(AppEvent::SessionAttached {
+        tab_id: DEFAULT_TAB_ID.into(),
+        session_id: "global-on-session".into(),
+        available_models: Vec::new(),
+        current_model_id: None,
+    });
+    let MasterExtRequest::ReconcileSessionYolo { reconcile_id, .. } = master_rx
+        .try_recv()
+        .expect("global-on session must request native enable")
+    else {
+        panic!("expected ReconcileSessionYolo");
+    };
+    app.current_tab_mut().input = "wait for native on".into();
+    app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+
+    assert_eq!(app.current_tab().input, "wait for native on");
+    assert!(prompt_rx.try_recv().is_err());
+
+    app.handle_event(AppEvent::RuntimeYoloReconcileCompleted {
+        reconcile_id,
+        fail_closed: false,
+        restart_required: false,
+        result: Ok(()),
+    });
+    app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+
+    assert_eq!(
+        prompt_rx.try_recv().expect("prompt after native on").text,
+        "wait for native on"
+    );
+}
+
+#[test]
+fn new_session_creation_gates_prompt_before_yolo_reconcile_can_start() {
+    let mut app = test_app();
+    let (prompt_tx, mut prompt_rx) = tokio::sync::mpsc::unbounded_channel();
+    let (new_session_tx, mut new_session_rx) = tokio::sync::mpsc::unbounded_channel();
+    app.prompt_tx = prompt_tx;
+    app.new_session_tx = new_session_tx;
+    app.state = ConnectionState::Connected;
+    app.current_tab_mut().session_id = Some("old-session".into());
+
+    app.cmd_new(false);
+    new_session_rx
+        .try_recv()
+        .expect("/new must request a replacement session");
+    app.current_tab_mut().input = "wait for replacement mode".into();
+    app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+
+    assert_eq!(app.current_tab().input, "wait for replacement mode");
+    assert!(prompt_rx.try_recv().is_err());
+}
+
+#[test]
+fn known_global_on_failure_releases_yolo_prompt_gate_for_interactive_fallback() {
+    use crate::protocol::acp::client::MasterExtRequest;
+
+    let (mut app, mut master_rx) = test_app_with_master_rx();
+    let (prompt_tx, mut prompt_rx) = tokio::sync::mpsc::unbounded_channel();
+    app.prompt_tx = prompt_tx;
+    app.state = ConnectionState::Connected;
+    app.yolo_state.lock().unwrap().update_runtime(true, false);
+    app.handle_event(AppEvent::SessionAttached {
+        tab_id: DEFAULT_TAB_ID.into(),
+        session_id: "unsupported-global-on".into(),
+        available_models: Vec::new(),
+        current_model_id: None,
+    });
+    let MasterExtRequest::ReconcileSessionYolo { reconcile_id, .. } = master_rx
+        .try_recv()
+        .expect("global-on session must request native enable")
+    else {
+        panic!("expected ReconcileSessionYolo");
+    };
+
+    app.handle_event(AppEvent::RuntimeYoloReconcileCompleted {
+        reconcile_id,
+        fail_closed: false,
+        restart_required: false,
+        result: Err("provider does not support native Yolo".into()),
+    });
+    app.current_tab_mut().input = "continue interactively".into();
+    app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+
+    assert_eq!(
+        prompt_rx.try_recv().expect("interactive prompt").text,
+        "continue interactively"
+    );
+}
+
+#[test]
+fn unknown_yolo_enable_outcome_keeps_prompt_gate_until_agent_reset() {
+    let mut app = test_app();
+    let session_id = "unknown-enable-session";
+    app.current_tab_mut().session_id = Some(session_id.into());
+    app.pending_yolo_reconciles
+        .insert(17, (HashSet::from([session_id.to_string()]), false));
+
+    app.handle_event(AppEvent::RuntimeYoloReconcileCompleted {
+        reconcile_id: 17,
+        fail_closed: false,
+        restart_required: true,
+        result: Err("provider outcome unknown".into()),
+    });
+
+    assert!(app.pending_yolo_reconciles.contains_key(&17));
+    app.reset_agent_scoped_state();
+    assert!(app.pending_yolo_reconciles.is_empty());
+}
+
+#[test]
+fn pending_yolo_reconcile_only_gates_its_target_session() {
+    let mut app = test_app();
+    let (prompt_tx, mut prompt_rx) = tokio::sync::mpsc::unbounded_channel();
+    app.prompt_tx = prompt_tx;
+    app.state = ConnectionState::Connected;
+    app.current_tab_mut().session_id = Some("current-session".into());
+    app.pending_yolo_reconciles.insert(
+        23,
+        (HashSet::from(["background-session".to_string()]), false),
+    );
+    app.current_tab_mut().input = "current tab remains available".into();
+
+    app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+
+    assert_eq!(
+        prompt_rx.try_recv().expect("current session prompt").text,
+        "current tab remains available"
+    );
+}
+
+#[test]
+fn pending_yolo_reconcile_blocks_manual_and_automatic_autofix_prompts() {
+    let mut manual = test_app();
+    let (manual_tx, mut manual_rx) = tokio::sync::mpsc::unbounded_channel();
+    manual.prompt_tx = manual_tx;
+    manual.state = ConnectionState::Connected;
+    manual.current_tab_mut().session_id = Some("manual-fix-session".into());
+    manual.pending_yolo_reconciles.insert(
+        29,
+        (HashSet::from(["manual-fix-session".to_string()]), false),
+    );
+
+    manual.cmd_fix(false, String::new());
+
+    assert!(manual_rx.try_recv().is_err());
+    assert!(manual.current_tab().turn.is_idle());
+
+    let mut automatic = test_app();
+    let (automatic_tx, mut automatic_rx) = tokio::sync::mpsc::unbounded_channel();
+    automatic.prompt_tx = automatic_tx;
+    automatic.state = ConnectionState::Connected;
+    automatic.autofix_enabled = true;
+    automatic.tab_mut("target-tab").session_id = Some("automatic-fix-session".into());
+    automatic.pending_yolo_reconciles.insert(
+        31,
+        (HashSet::from(["automatic-fix-session".to_string()]), false),
+    );
+    let notification = WtNotification {
+        severity: WtEventSeverity::Actionable,
+        pane_id: "failed-pane".into(),
+        tab_id: Some("target-tab".into()),
+        summary: "Command failed".into(),
+        acknowledged: false,
+        age_ticks: 0,
+    };
+
+    automatic.maybe_trigger_autofix(&notification);
+
+    assert!(automatic_rx.try_recv().is_err());
+    assert!(automatic.tab_mut("target-tab").turn.is_idle());
+}
+
+#[test]
+fn initial_load_placeholder_agent_connected_skips_yolo_reconcile() {
+    use crate::protocol::acp::client::MasterExtRequest;
+
+    let (mut app, mut master_rx) = test_app_with_master_rx();
+    let (prompt_tx, mut prompt_rx) = tokio::sync::mpsc::unbounded_channel();
+    app.prompt_tx = prompt_tx;
+    let tab = app.current_tab_mut();
+    tab.loading_session = true;
+    tab.loading_target_session_id = Some("loaded-session".into());
+
+    app.handle_event(AppEvent::AgentConnected {
+        name: "Agent".into(),
+        model: None,
+        version: None,
+        session_id: "loaded-session".into(),
+        available_models: Vec::new(),
+        current_model_id: None,
+        load_session_supported: true,
+        image_supported: false,
+        session_capabilities_ready: false,
+    });
+
+    assert!(
+        master_rx.try_recv().is_err(),
+        "the placeholder has no recorded native capability and must wait for SessionAttached"
+    );
+    app.current_tab_mut().input = "wait for loaded capabilities".into();
+    app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+    assert_eq!(app.current_tab().input, "wait for loaded capabilities");
+    assert!(prompt_rx.try_recv().is_err());
+
+    app.handle_event(AppEvent::SessionAttached {
+        tab_id: DEFAULT_TAB_ID.into(),
+        session_id: "loaded-session".into(),
+        available_models: Vec::new(),
+        current_model_id: None,
+    });
+    let MasterExtRequest::ReconcileSessionYolo { reconcile_id, .. } = master_rx
+        .try_recv()
+        .expect("the loaded session must reconcile after capabilities are recorded")
+    else {
+        panic!("expected ReconcileSessionYolo");
+    };
+    assert!(!app.pending_yolo_session_tabs.contains(DEFAULT_TAB_ID));
+    assert!(app.yolo_reconcile_pending_for_tab(DEFAULT_TAB_ID));
+
+    app.handle_event(AppEvent::RuntimeYoloReconcileCompleted {
+        reconcile_id,
+        fail_closed: true,
+        restart_required: false,
+        result: Ok(()),
+    });
+    app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+    assert_eq!(
+        prompt_rx
+            .try_recv()
+            .expect("prompt after loaded reconcile")
+            .text,
+        "wait for loaded capabilities"
+    );
+}
+
+#[test]
+fn initial_load_placeholder_binds_and_gates_the_helper_owner_tab() {
+    let mut app = test_app();
+    app.owner_tab_id = Some("owner-tab".into());
+    app.tab_id = Some("active-other-tab".into());
+    app.tab_sessions
+        .insert("owner-tab".into(), TabSession::default());
+    app.tab_sessions
+        .insert("active-other-tab".into(), TabSession::default());
+
+    app.handle_event(AppEvent::AgentConnected {
+        name: "Agent".into(),
+        model: None,
+        version: None,
+        session_id: "loaded-session".into(),
+        available_models: Vec::new(),
+        current_model_id: None,
+        load_session_supported: true,
+        image_supported: false,
+        session_capabilities_ready: false,
+    });
+
+    assert_eq!(
+        app.session_to_tab.get("loaded-session").map(String::as_str),
+        Some("owner-tab")
+    );
+    assert!(app.pending_yolo_session_tabs.contains("owner-tab"));
+    assert!(!app.pending_yolo_session_tabs.contains("active-other-tab"));
+    assert_eq!(
+        app.tab_sessions["owner-tab"].session_id.as_deref(),
+        Some("loaded-session")
     );
 }
 
@@ -3154,7 +3472,7 @@ fn overlapping_fail_closed_reconciles_require_every_acknowledgement() {
         restart_required: false,
         result: Ok(()),
     });
-    assert!(!app.pending_fail_closed_yolo_reconciles.is_empty());
+    assert!(!app.pending_yolo_reconciles.is_empty());
 
     app.handle_event(AppEvent::RuntimeYoloReconcileCompleted {
         reconcile_id: second_id,
@@ -3162,7 +3480,7 @@ fn overlapping_fail_closed_reconciles_require_every_acknowledgement() {
         restart_required: false,
         result: Ok(()),
     });
-    assert!(app.pending_fail_closed_yolo_reconciles.is_empty());
+    assert!(app.pending_yolo_reconciles.is_empty());
 }
 
 #[test]
@@ -3180,7 +3498,8 @@ fn agent_reset_clears_session_yolo_state_before_reused_id_attaches() {
         session_id.to_string(),
         (1, true, DEFAULT_TAB_ID.to_string()),
     );
-    app.pending_fail_closed_yolo_reconciles.insert(7);
+    app.pending_yolo_reconciles
+        .insert(7, (HashSet::from([session_id.to_string()]), true));
 
     app.reset_agent_scoped_state();
 
@@ -3191,7 +3510,7 @@ fn agent_reset_clears_session_yolo_state_before_reused_id_attaches() {
         .unwrap()
         .take_client_reconciled(session_id));
     assert!(app.pending_yolo_changes.is_empty());
-    assert!(app.pending_fail_closed_yolo_reconciles.is_empty());
+    assert!(app.pending_yolo_reconciles.is_empty());
 
     app.handle_event(AppEvent::SessionAttached {
         tab_id: DEFAULT_TAB_ID.into(),
@@ -4055,6 +4374,7 @@ fn custom_model_catalog_hot_update_rebuilds_picker_without_stale_rows() {
         current_model_id: Some("cloud".into()),
         load_session_supported: false,
         image_supported: false,
+        session_capabilities_ready: true,
     });
     app.set_custom_model_config(
         vec![
@@ -4268,6 +4588,7 @@ fn same_agent_host_and_wsl_keep_host_catalogs_isolated() {
             current_model_id: Some("agent-advertised".into()),
             load_session_supported: false,
             image_supported: false,
+            session_capabilities_ready: true,
         });
     };
     let host_catalog = || AppEvent::WtEvent {
@@ -4354,6 +4675,7 @@ fn custom_model_hot_update_is_ignored_for_unsupported_profile_backend() {
         current_model_id: Some("cloud".into()),
         load_session_supported: false,
         image_supported: false,
+        session_capabilities_ready: true,
     });
 
     app.handle_event(AppEvent::WtEvent {
@@ -6408,6 +6730,7 @@ fn agent_connected_restores_proposal_channels() {
         current_model_id: None,
         load_session_supported: true,
         image_supported: false,
+        session_capabilities_ready: true,
     });
 
     assert!(
@@ -14105,6 +14428,7 @@ fn usage_lifecycle_load_and_new_connection_clear_but_model_change_preserves() {
         current_model_id: None,
         load_session_supported: false,
         image_supported: false,
+        session_capabilities_ready: true,
     });
     assert!(app.current_tab().usage.is_none());
 }

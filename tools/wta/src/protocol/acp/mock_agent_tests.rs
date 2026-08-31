@@ -1771,10 +1771,10 @@ async fn dispatch_new_session_creates_binds_and_emits_attached() {
         .await;
 }
 
-/// `dispatch_new_session` failure path: when `new_session` errors, an
-/// `AgentError` is surfaced and the tab is left unbound.
+/// `dispatch_new_session` failure path: when `new_session` errors, a
+/// tab-scoped error is surfaced and the tab is left unbound.
 #[tokio::test]
-async fn dispatch_new_session_failure_emits_agent_error_and_leaves_unbound() {
+async fn dispatch_new_session_failure_emits_tab_error_and_leaves_unbound() {
     let local = tokio::task::LocalSet::new();
     local
         .run_until(async {
@@ -1805,13 +1805,14 @@ async fn dispatch_new_session_failure_emits_agent_error_and_leaves_unbound() {
             );
 
             match tokio::time::timeout(std::time::Duration::from_secs(5), event_rx.recv()).await {
-                Ok(Some(AppEvent::AgentError { message, .. })) => {
+                Ok(Some(AppEvent::TabError { tab_id, message })) => {
+                    assert_eq!(tab_id, "t1");
                     assert!(
                         message.contains("/new failed for tab t1"),
                         "unexpected error message: {message}"
                     );
                 }
-                _ => panic!("expected AgentError"),
+                _ => panic!("expected TabError"),
             }
             assert!(
                 tab_to_session.lock().await.is_empty(),

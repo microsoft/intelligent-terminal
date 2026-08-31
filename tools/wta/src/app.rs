@@ -1081,7 +1081,8 @@ pub struct App {
     pending_yolo_changes: HashMap<String, (u64, bool, String)>,
     next_yolo_transaction_id: u64,
     next_yolo_reconcile_id: u64,
-    pending_fail_closed_yolo_reconciles: HashSet<u64>,
+    pending_yolo_reconciles: HashMap<u64, (HashSet<String>, bool)>,
+    pending_yolo_session_tabs: HashSet<String>,
     // Slash-command UI state. The /help overlay is global — it covers
     // the chat area regardless of which tab is active. Per-tab popup
     // state (the command-completion candidates as the user types `/he…`)
@@ -1398,7 +1399,8 @@ impl App {
             pending_yolo_changes: HashMap::new(),
             next_yolo_transaction_id: 0,
             next_yolo_reconcile_id: 0,
-            pending_fail_closed_yolo_reconciles: HashSet::new(),
+            pending_yolo_reconciles: HashMap::new(),
+            pending_yolo_session_tabs: HashSet::new(),
             help_overlay_visible: false,
             debug_messages: Vec::new(),
             show_debug_panel: false,
@@ -3585,7 +3587,8 @@ impl App {
         self.session_commands.clear();
         self.yolo_state.lock().unwrap().clear_sessions();
         self.pending_yolo_changes.clear();
-        self.pending_fail_closed_yolo_reconciles.clear();
+        self.pending_yolo_reconciles.clear();
+        self.pending_yolo_session_tabs.clear();
         let active_tab_id = self.active_tab_key().to_string();
         for tab in self.tab_sessions.values_mut() {
             tab.clear_chat_history();
@@ -5379,10 +5382,18 @@ impl App {
             .tab_id
             .clone()
             .unwrap_or_else(|| DEFAULT_TAB_ID.to_string());
-        let _ = self.new_session_tx.send(NewSessionForTab {
-            tab_id,
+        let request = NewSessionForTab {
+            tab_id: tab_id.clone(),
             cwd: self.source_cwd.clone(),
-        });
+        };
+        if self.new_session_tx.send(request).is_err() {
+            let tab = self.current_tab_mut();
+            tab.messages
+                .push(ChatMessage::Error(t!("connection.lost").into_owned()));
+            tab.scroll_to_bottom();
+            return;
+        }
+        self.pending_yolo_session_tabs.insert(tab_id);
         if let Some(session_id) = self.current_tab().session_id.clone() {
             self.session_model_configs.remove(&session_id);
             self.session_config_options.remove(&session_id);
@@ -5400,8 +5411,7 @@ impl App {
         // means a fresh provider mode, requiring `/yolo` again if the user
         // wants provider-native Yolo for the new conversation.
         if let Some(old_sid) = old_sid {
-            self.yolo_state.lock().unwrap().remove_session(&old_sid);
-            self.pending_yolo_changes.remove(&old_sid);
+            self.clear_yolo_session_state(&old_sid);
         }
     }
 
@@ -5436,6 +5446,13 @@ impl App {
             .tab_id
             .clone()
             .unwrap_or_else(|| DEFAULT_TAB_ID.to_string());
+        if self.yolo_reconcile_pending_for_tab(&target_tab_id) {
+            let tab = self.tab_mut(&target_tab_id);
+            tab.messages
+                .push(ChatMessage::warning(t!("system.agent_busy").into_owned()));
+            tab.scroll_to_bottom();
+            return;
+        }
 
         // Bump generation so any stale in-flight autofix response is dropped,
         // and clear a leftover suggestion — mirrors `maybe_trigger_autofix`.
@@ -5671,54 +5688,77 @@ impl App {
                 .collect::<Vec<_>>()
         };
         let fail_closed = policy_blocked || sessions.iter().any(|(_, enabled)| !enabled);
-        let reconcile_id = self.begin_yolo_reconcile(fail_closed);
-        if self
-            .master_request_tx
-            .send(
-                crate::protocol::acp::client::MasterExtRequest::ReconcileSessionYolo {
-                    reconcile_id,
-                    sessions,
-                    fail_closed,
-                },
-            )
-            .is_err()
-            && fail_closed
-        {
-            let _ = self.restart_tx.send(AgentLifecycleRequest::RestartMaster);
+        let reconcile_id = self.begin_yolo_reconcile(&sessions, fail_closed);
+        let sent = self.master_request_tx.send(
+            crate::protocol::acp::client::MasterExtRequest::ReconcileSessionYolo {
+                reconcile_id,
+                sessions,
+                fail_closed,
+            },
+        );
+        if sent.is_err() {
+            if fail_closed {
+                let _ = self.restart_tx.send(AgentLifecycleRequest::RestartMaster);
+            } else {
+                self.pending_yolo_reconciles.remove(&reconcile_id);
+            }
         }
     }
 
     fn reconcile_session_yolo(&mut self, session_id: &str) {
         let enabled = self.yolo_state.lock().unwrap().effective(session_id);
         let fail_closed = !enabled;
-        let reconcile_id = self.begin_yolo_reconcile(fail_closed);
-        if self
-            .master_request_tx
-            .send(
-                crate::protocol::acp::client::MasterExtRequest::ReconcileSessionYolo {
-                    reconcile_id,
-                    sessions: vec![(
-                        agent_client_protocol::schema::v1::SessionId::new(session_id.to_string()),
-                        enabled,
-                    )],
-                    fail_closed,
-                },
-            )
-            .is_err()
-            && fail_closed
-        {
-            let _ = self.restart_tx.send(AgentLifecycleRequest::RestartMaster);
+        let sessions = vec![(
+            agent_client_protocol::schema::v1::SessionId::new(session_id.to_string()),
+            enabled,
+        )];
+        let reconcile_id = self.begin_yolo_reconcile(&sessions, fail_closed);
+        let sent = self.master_request_tx.send(
+            crate::protocol::acp::client::MasterExtRequest::ReconcileSessionYolo {
+                reconcile_id,
+                sessions,
+                fail_closed,
+            },
+        );
+        if sent.is_err() {
+            if fail_closed {
+                let _ = self.restart_tx.send(AgentLifecycleRequest::RestartMaster);
+            } else {
+                self.pending_yolo_reconciles.remove(&reconcile_id);
+            }
         }
     }
 
-    fn begin_yolo_reconcile(&mut self, fail_closed: bool) -> u64 {
+    fn begin_yolo_reconcile(
+        &mut self,
+        sessions: &[(agent_client_protocol::schema::v1::SessionId, bool)],
+        fail_closed: bool,
+    ) -> u64 {
         self.next_yolo_reconcile_id = self.next_yolo_reconcile_id.wrapping_add(1);
         let reconcile_id = self.next_yolo_reconcile_id;
-        if fail_closed {
-            self.pending_fail_closed_yolo_reconciles
-                .insert(reconcile_id);
+        let session_ids = sessions
+            .iter()
+            .map(|(session_id, _)| session_id.to_string())
+            .collect::<HashSet<_>>();
+        if !session_ids.is_empty() {
+            self.pending_yolo_reconciles
+                .insert(reconcile_id, (session_ids, fail_closed));
         }
         reconcile_id
+    }
+
+    fn yolo_reconcile_pending_for_tab(&self, tab_id: &str) -> bool {
+        if self.pending_yolo_session_tabs.contains(tab_id) {
+            return true;
+        }
+        self.tab_sessions
+            .get(tab_id)
+            .and_then(|tab| tab.session_id.as_deref())
+            .is_some_and(|session_id| {
+                self.pending_yolo_reconciles
+                    .values()
+                    .any(|(sessions, _)| sessions.contains(session_id))
+            })
     }
 
     fn complete_yolo_change(
@@ -5773,6 +5813,11 @@ impl App {
     fn clear_yolo_session_state(&mut self, session_id: &str) {
         self.yolo_state.lock().unwrap().remove_session(session_id);
         self.pending_yolo_changes.remove(session_id);
+        for (sessions, _) in self.pending_yolo_reconciles.values_mut() {
+            sessions.remove(session_id);
+        }
+        self.pending_yolo_reconciles
+            .retain(|_, (sessions, _)| !sessions.is_empty());
     }
 
     /// `/restart` asks Windows Terminal to replace the shared master and Agent
@@ -5796,6 +5841,8 @@ impl App {
         // `/yolo` overrides so a reused session_id cannot inherit stale state.
         self.yolo_state.lock().unwrap().clear_sessions();
         self.pending_yolo_changes.clear();
+        self.pending_yolo_reconciles.clear();
+        self.pending_yolo_session_tabs.clear();
         let _ = self.restart_tx.send(AgentLifecycleRequest::RestartMaster);
         self.publish_agent_status();
     }
@@ -5956,6 +6003,7 @@ impl App {
             return;
         }
         let removed = self.tab_sessions.remove(closed_tab_id);
+        self.pending_yolo_session_tabs.remove(closed_tab_id);
         if let Some(session_id) = removed.as_ref().and_then(|tab| tab.session_id.as_ref()) {
             self.session_model_configs.remove(session_id);
             self.session_config_options.remove(session_id);
@@ -6037,6 +6085,10 @@ impl App {
                 "tab_renamed no-op: ids identical"
             );
             return;
+        }
+        if self.pending_yolo_session_tabs.remove(old_tab_id) {
+            self.pending_yolo_session_tabs
+                .insert(new_tab_id.to_string());
         }
         let had_session = if let Some(mut entry) = self.tab_sessions.remove(old_tab_id) {
             // Preserve target slot's TabSession if one was lazily
@@ -6175,6 +6227,7 @@ impl App {
     /// next tab_changed back into this tab finds an empty-but-present
     /// `TabSession` and just renders an empty chat.
     fn reset_tab_session_for(&mut self, tab_id: &str) {
+        self.pending_yolo_session_tabs.remove(tab_id);
         let mut removed_session_id = None;
         // Same wipe as the `/clear` slash command: clear in-flight chat state
         // via `clear_chat_history` AND the completed-turn history that

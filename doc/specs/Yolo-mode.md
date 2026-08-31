@@ -59,6 +59,34 @@ Therefore, `/yolo` is **session-scoped**, although its state is held inside
 the per-tab helper process. Starting `/new` in the same tab creates a new ACP
 session and resets the override.
 
+### Working-directory compatibility
+
+Provider-native mode and workspace-policy decisions apply to the ACP session's
+actual working directory. This is especially visible with providers such as
+Gemini that enforce their own workspace trust before accepting a privileged
+mode. During package validation, a WSL pane exposed an existing launch bug:
+its POSIX source path could also be used as the Win32 `wta-helper` process
+starting directory, preventing the helper from starting. A Host agent selected
+from that pane could likewise receive the POSIX path as its ACP context.
+
+Terminal therefore resolves two values rather than changing the user's working
+directory:
+
+- A WSL agent receives the source-aware POSIX path through
+  `--agent-source-cwd`.
+- The Win32 helper starts only in a directory validated as usable by the Win32
+  filesystem API, selected from the pane, window, profile, and user-home
+  fallbacks.
+- A Host agent receives that same validated helper directory instead of the
+  raw source path.
+- Existing panes that already report a valid Windows directory keep the same
+  effective directory and precedence.
+
+This compatibility correction is covered by
+`AgentSourceUtilsTests::SeparatesAgentCwdFromHelperLaunchCwd`, including the
+no-valid-helper-directory fallback, and by exact-package provider validation.
+It does not add a trusted-directory feature or modify provider trust files.
+
 ## Goals
 
 - Present provider-advertised ACP Yolo capabilities through one UI.
@@ -166,6 +194,8 @@ When the policy is blocked:
 - A later policy change is hot-applied to existing helpers. Their effective
   state becomes off immediately, session overrides are cleared, and native
   sessions are reconciled to their captured restore values.
+- Prompt submission, including manual and automatic autofix, is gated for each
+  affected session until the provider acknowledges the requested native state.
 - If native disable fails, WTA restarts the agent stack rather than leaving a
   policy-blocked session running in a provider-native Yolo mode.
 - `/yolo` refuses without changing state and displays:
@@ -186,6 +216,7 @@ There are three distinct pieces of state.
 | Global default and policy gate | `YoloState`, initialized from `GlobalAppSettings` and updated through `agent_config_changed` | Persistent setting; helper-owned runtime copy | Yes |
 | Session overrides | `YoloState::session_overrides`, a `HashMap<session_id, bool>` shared by `App` and `ClientState` | Current helper process and ACP session | Yes, through `/yolo` after acknowledgement |
 | Pending changes | `App::pending_yolo_changes`, keyed by ACP `session_id` | Until the provider-native acknowledgement arrives | Yes, internal only |
+| Pending reconciliation | `App::pending_yolo_reconciles`, keyed by transaction and target ACP session | Until startup, `/new`, settings, or policy reconciliation settles | Yes, internal only |
 
 Each session override stores the explicit value selected by `/yolo on` or
 `/yolo off`. Sessions without an override follow the current global default.
@@ -219,6 +250,9 @@ silently reactivate if the policy is later removed.
   subsequent global or policy changes in place.
 - Runtime changes recompute every live session. WTA reconciles the provider's
   native config or mode while preserving explicit session overrides.
+- Startup and replacement sessions gate their first prompt until native
+  reconciliation acknowledges success. A known unsupported enable falls back
+  to interactive provider permissions; disable failures remain fail-closed.
 - Disabling provider-native Yolo is fail-closed: if the ACP update fails, WTA
   requests an agent-stack restart.
 - For a loaded session on a supported provider, a missing or malformed

@@ -3296,6 +3296,7 @@ pub async fn run_acp_client_over_pipe(
         current_model_id,
         load_session_supported,
         image_supported,
+        session_capabilities_ready: has_bootstrap,
     });
     let _ = event_tx.send(AppEvent::SessionConfigUpdated {
         session_id: session_id.to_string(),
@@ -4387,9 +4388,8 @@ fn dispatch_new_session(
         let mut new_session = match new_session_result {
             Ok(s) => s,
             Err(e) => {
-                let _ = event_tx.send(AppEvent::AgentError {
-                    session_id: None,
-                    failure: AgentFailure::from_acp_error(&e),
+                let _ = event_tx.send(AppEvent::TabError {
+                    tab_id: req.tab_id.clone(),
                     message: format!("/new failed for tab {}: {}", req.tab_id, e),
                 });
                 return;

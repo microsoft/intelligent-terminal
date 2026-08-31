@@ -1289,6 +1289,7 @@ fn helper_status_catalog_combines_cloud_agent_and_byok_models() {
         current_model_id: Some("agent-only".into()),
         load_session_supported: false,
         image_supported: false,
+        session_capabilities_ready: true,
     });
 
     assert_eq!(app.available_models.len(), 3);
@@ -1330,6 +1331,7 @@ fn private_cloud_catalog_survives_bare_agent_model_response() {
         current_model_id: None,
         load_session_supported: false,
         image_supported: false,
+        session_capabilities_ready: true,
     });
 
     assert_eq!(app.cloud_models.len(), 1);

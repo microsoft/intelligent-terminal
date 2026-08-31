@@ -869,7 +869,7 @@ impl App {
                         tab.scroll_to_bottom();
                         return;
                     }
-                    if !self.pending_fail_closed_yolo_reconciles.is_empty() {
+                    if self.yolo_reconcile_pending_for_tab(self.active_tab_key()) {
                         let tab = self.current_tab_mut();
                         tab.messages
                             .push(ChatMessage::warning(t!("system.agent_busy").into_owned()));
