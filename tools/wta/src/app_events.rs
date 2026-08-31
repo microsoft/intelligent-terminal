@@ -1654,6 +1654,7 @@ impl App {
                     request,
                     selected: 0,
                     input: String::new(),
+                    cursor_pos: 0,
                     responder: Some(responder),
                 });
             }
@@ -2470,7 +2471,7 @@ impl App {
                     // If the load_session target IS the active tab, push the
                     // (now Chat) view to C++ so the bar drops the "Agent
                     // sessions" label that the user was looking at when they
-                    // hit Shift+Enter on a session row. When the target is a
+                    // hit Enter on a session row. When the target is a
                     // not-yet-active tab (e.g. WT just created a fresh tab
                     // and the `tab_changed` race still hasn't landed), the
                     // imminent `tab_changed` to that tab will project then.
