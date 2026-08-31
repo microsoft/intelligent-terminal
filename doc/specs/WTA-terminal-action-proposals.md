@@ -90,7 +90,7 @@ Server name:
 intellterm_<public-id>
 ```
 
-Tools:
+Tools (four total):
 
 ```text
 run_command_in_current_shell
@@ -98,6 +98,10 @@ create_workspace
 delegate_task_in_new_workspace
 request_user_input
 ```
+
+The first three are terminal-action proposal tools. `request_user_input` is a
+separate blocking clarification tool and does not create a terminal-action
+proposal.
 
 The server supports MCP `initialize`, `ping`, `tools/list`, and `tools/call`
 over stateless Streamable HTTP JSON-RPC. POST responses use JSON or HTTP 202
@@ -114,11 +118,12 @@ Input, for `run_command_in_current_shell`:
 }
 ```
 
-Each MCP call proposes exactly one user-visible terminal outcome. The tools
-separate current-shell execution, workspace creation, and delegation rather
-than exposing a mechanical action discriminator. Each schema advertises
-exactly the fields that intent accepts, and `additionalProperties: false`
-rejects fields belonging to another intent. The action tools are:
+Each terminal-action MCP call proposes exactly one user-visible terminal
+outcome. The tools separate current-shell execution, workspace creation, and
+delegation rather than exposing a mechanical action discriminator. Each
+schema advertises exactly the fields that intent accepts, and
+`additionalProperties: false` rejects fields belonging to another intent. The
+action tools are:
 
 - `run_command_in_current_shell`: propose one shell command for the trusted
   active pane;
@@ -225,8 +230,8 @@ execution path.
 Permission remains an optional compatibility preflight. Some agents call MCP
 without requesting permission.
 
-When an adapter requests permission for one of the
-four `intellterm_<public-id>` action tools, the Helper:
+When an adapter requests permission for one of the three terminal-action tools
+advertised by an `intellterm_<public-id>` server, the Helper:
 
 1. verifies the trusted ACP SessionId owns the current issued turn;
 2. silently selects `AllowOnce`; and

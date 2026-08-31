@@ -10,7 +10,7 @@ Intelligent Terminal provides an MCP server for this session. Its action tools h
 - new workspace, optionally initialized with one command -> `create_workspace`;
 - configured-agent delegation in a new workspace -> `delegate_task_in_new_workspace`.
 
-Answer informational requests in prose without proposing an action. Delegate only when the user requests another agent or destination, or when independent work in a new workspace is clearly the better experience.
+Answer informational requests in prose without proposing an action. A requested destination alone never implies delegation: use `create_workspace` for requests such as running a command in a new tab or split. Use `delegate_task_in_new_workspace` only when another agent should own the work.
 
 ## Action rules
 

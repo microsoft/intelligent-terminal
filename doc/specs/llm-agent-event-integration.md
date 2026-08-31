@@ -446,15 +446,21 @@ exit $EXIT_CODE
 
 ### Pattern C: Native ACP hooks (zero-effort for ACP agents)
 
-Agents that speak ACP already have structured tool-use lifecycle. The ACP host
-(`wta` TUI mode) can emit events on their behalf — no agent modification needed:
+ACP agents can call the Session MCP terminal-action tools, but this path is a
+proposal handoff rather than an immediate execution/completion lifecycle:
 
 ```
 ACP agent calls tool "run_command_in_current_shell"
-  → wta emits agent.tool.invoked {tool: "run_command_in_current_shell", args_summary: "cargo test"}
-  → wta executes in pane
-  → wta emits agent.tool.completed {tool: "run_command_in_current_shell", exit_code: 0, duration_ms: 4200}
+  → Session MCP validates and routes the request to the owning Helper
+  → Helper creates and commits a confirmation card
+  → MCP returns accepted
+  → user later confirms or cancels the card
+  → on confirmation, the existing terminal executor runs the action
 ```
+
+`agent.tool.invoked` can represent the MCP call and proposal handoff. WTA
+currently receives no executor completion callback carrying an exit code or
+duration, so this path cannot emit `agent.tool.completed`.
 
 ### Pattern D: MCP tool (for MCP-connected agents)
 

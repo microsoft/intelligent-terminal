@@ -1,7 +1,8 @@
 #Requires -Modules @{ ModuleName='Pester'; ModuleVersion='5.0.0' }
-# PRs #601, #606, #610, #611, #612, #616, and #634: exercise ACP
-# notifications, client requests, session configuration, and replacement
-# lifecycle through the deployed Terminal, helper, master, and a real stdio agent.
+# PRs #601, #606, #610, #611, #612, #616, #634, and #683: exercise ACP
+# notifications, client requests, Session MCP actions, session configuration,
+# and replacement lifecycle through the deployed Terminal, helper, master, and
+# a real stdio agent.
 
 BeforeDiscovery {
     $fixturePath = (Resolve-Path (Join-Path $PSScriptRoot '..\fixtures\Mock-AcpInteractionAgent.ps1')).Path
@@ -22,15 +23,36 @@ Describe 'Feature: ACP agent-pane protocol experience' -Tag 'Feature' -Skip:(-no
     BeforeEach {
         $script:requestLog = Join-Path $env:TEMP "ite2e-agent-protocol-$([guid]::NewGuid().ToString('N')).log"
         $command = "pwsh -NoProfile -File $script:fixture -LogPath $script:requestLog"
+        $script:delegateLaunchMarker = "CONFIGURED_DELEGATE_$([guid]::NewGuid().ToString('N').Substring(0, 12).ToUpperInvariant())"
         $script:app = Start-Terminal -Package (Get-ItTestPackage) -PassFre $true -Settings @{
             acpAgent = 'custom:interaction-fixture'
             acpCustomCommand = $command
             acpModel = ''
+            delegateAgent = 'custom:interaction-delegate'
+            delegateCustomCommand = "cmd /k echo $script:delegateLaunchMarker"
         }
         Open-AgentPane -App $script:app | Out-Null
         Wait-AgentReady -App $script:app -TimeoutSec 30 |
             Should -BeTrue -Because 'the deterministic ACP interaction fixture must connect'
         $script:agentPane = (Get-AgentPaneSession -App $script:app).PaneSessionId
+        $script:WindowId = [string]$script:app.WindowId
+        $script:GetTabIds = {
+            @((Get-WtTabs -App $script:app -WindowId $script:WindowId) | ForEach-Object { [string]$_.tab_id })
+        }
+        $script:WaitForNewWorkspace = {
+            param([string[]]$BeforeTabIds)
+
+            $tab = Wait-Until -TimeoutSec 20 -IntervalSec 0.4 -Because 'the confirmed action to create a new tab' -Condition {
+                @(Get-WtTabs -App $script:app -WindowId $script:WindowId) |
+                    Where-Object { [string]$_.tab_id -notin $BeforeTabIds } |
+                    Select-Object -First 1
+            }
+            $panes = Wait-Until -TimeoutSec 10 -IntervalSec 0.4 -Because 'the new tab to expose its terminal pane' -Condition {
+                $value = @(Get-WtPanes -App $script:app -WindowId $script:WindowId -TabId ([string]$tab.tab_id))
+                if ($value.Count) { $value }
+            }
+            [pscustomobject]@{ Tab = $tab; Panes = @($panes) }
+        }
     }
     AfterEach {
         if ($script:app) {
@@ -132,6 +154,72 @@ Describe 'Feature: ACP agent-pane protocol experience' -Tag 'Feature' -Skip:(-no
         $card = Get-AgentPaneText -App $script:app -PaneSessionId $script:agentPane -MaxLines 60
         $card | Should -Match "echo $marker"
         $card | Should -Match '(?i)Open in New Tab'
+    }
+
+    It 'Empty workspaces open without sending a command across Session MCP' {
+        $marker = [guid]::NewGuid().ToString('N').Substring(0, 12).ToUpperInvariant()
+        $sentinel = "EMPTY_COMMAND_SENTINEL_$marker"
+        $beforeTabs = & $script:GetTabIds
+        Send-AgentPrompt -App $script:app -PaneSessionId $script:agentPane -Text "EMPTY_WORKSPACE_$marker" | Out-Null
+
+        $accepted = Wait-Until -TimeoutSec 15 -Because 'the command-less create_workspace request to pass Session MCP validation' -Condition {
+            Get-Content -LiteralPath $script:requestLog -ErrorAction SilentlyContinue |
+                Where-Object { $_ -match 'empty-workspace-result\|.*"status":"accepted"' } |
+                Select-Object -First 1
+        }
+        $accepted | Should -Not -BeNullOrEmpty
+
+        $openTabRegex = Get-WtaLocalizedTextRegex -Key 'recommendations.button_open_tab'
+        if (-not $openTabRegex) { $openTabRegex = '(?i)Open Tab' }
+        $card = Wait-Until -TimeoutSec 15 -Because 'the Helper confirmation card for an empty tab' -Condition {
+            $text = Get-AgentPaneText -App $script:app -PaneSessionId $script:agentPane -MaxLines 60
+            if ($text -match [regex]::Escape($sentinel) -and $text -match $openTabRegex) { $text }
+        }
+        $card | Should -Not -BeNullOrEmpty
+
+        Send-AgentKey -App $script:app -PaneSessionId $script:agentPane -Key Enter | Out-Null
+        $workspace = & $script:WaitForNewWorkspace $beforeTabs
+        $workspace.Tab | Should -Not -BeNullOrEmpty
+        $workspace.Panes.Count | Should -BeGreaterOrEqual 1
+        (Get-WtPaneStatus -App $script:app -SessionId ([string]$workspace.Panes[0].session_id)).state |
+            Should -Match 'run'
+
+        Start-Sleep -Seconds 2
+        (Get-WtCapture -App $script:app -SessionId ([string]$workspace.Panes[0].session_id) -MaxLines 30) |
+            Should -Not -Match ([regex]::Escape($sentinel)) -Because 'omitting command must not send the summary sentinel into the new shell'
+    }
+
+    It 'Delegated tasks reach the configured agent in a new workspace across Session MCP' {
+        $marker = [guid]::NewGuid().ToString('N').Substring(0, 12).ToUpperInvariant()
+        $task = "DELEGATED_TASK_$marker"
+        $beforeTabs = & $script:GetTabIds
+        Send-AgentPrompt -App $script:app -PaneSessionId $script:agentPane -Text "DELEGATE_WORKSPACE_$marker" | Out-Null
+
+        $accepted = Wait-Until -TimeoutSec 15 -Because 'the delegate_task_in_new_workspace request to pass Session MCP validation' -Condition {
+            Get-Content -LiteralPath $script:requestLog -ErrorAction SilentlyContinue |
+                Where-Object { $_ -match 'delegate-workspace-result\|.*"status":"accepted"' } |
+                Select-Object -First 1
+        }
+        $accepted | Should -Not -BeNullOrEmpty
+
+        $openTabRegex = Get-WtaLocalizedTextRegex -Key 'recommendations.button_open_in_new_tab'
+        if (-not $openTabRegex) { $openTabRegex = '(?i)Open in New Tab' }
+        $card = Wait-Until -TimeoutSec 15 -Because 'the Helper confirmation card for configured delegation' -Condition {
+            $text = Get-AgentPaneText -App $script:app -PaneSessionId $script:agentPane -MaxLines 60
+            if ($text -match [regex]::Escape($task) -and $text -match $openTabRegex) { $text }
+        }
+        $card | Should -Not -BeNullOrEmpty
+
+        Send-AgentKey -App $script:app -PaneSessionId $script:agentPane -Key Enter | Out-Null
+        $workspace = & $script:WaitForNewWorkspace $beforeTabs
+        $workspace.Tab | Should -Not -BeNullOrEmpty
+        $workspace.Panes.Count | Should -BeGreaterOrEqual 1
+
+        $delegatedPane = [string]$workspace.Panes[0].session_id
+        Assert-Pane -App $script:app -SessionId $delegatedPane `
+            -Match ([regex]::Escape($script:delegateLaunchMarker)) -TimeoutSec 15
+        Assert-Pane -App $script:app -SessionId $delegatedPane `
+            -Match ([regex]::Escape($task)) -TimeoutSec 15
     }
 
     It '/new physically closes the replaced ACP session before creating another' {

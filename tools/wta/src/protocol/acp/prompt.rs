@@ -310,6 +310,10 @@ mod tests {
                 "default prompt must name {tool}"
             );
         }
+        assert!(EMBEDDED_DEFAULT_PROMPT
+            .contains("A requested destination alone never implies delegation"));
+        assert!(EMBEDDED_DEFAULT_PROMPT.contains("running a command in a new tab or split"));
+        assert!(EMBEDDED_DEFAULT_PROMPT.contains("only when another agent should own the work"));
         // Autofix is deliberately restricted to `run_command_in_current_shell` — the Helper
         // rejects any other action for an autofix turn — so naming workspace
         // or delegation tools there would invite a call that cannot be accepted.
