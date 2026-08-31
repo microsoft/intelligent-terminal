@@ -11341,6 +11341,19 @@ fn live_thought_buffer_is_bounded_without_splitting_unicode() {
 }
 
 #[test]
+fn whitespace_thought_keeps_only_generic_thinking_activity() {
+    let mut app = test_app();
+    submit_test_prompt(&mut app, "hi");
+
+    app.turn_observe_chunk(DEFAULT_TAB_ID, ChunkKind::Thought, " ");
+
+    let tab = app.current_tab();
+    assert!(tab.should_show_thinking());
+    assert!(!tab.should_show_inline_thinking());
+    assert_eq!(crate::ui::chat::pending_render_text(tab), None);
+}
+
+#[test]
 fn bounded_late_thought_does_not_rewind_revealed_assistant_response() {
     let mut app = test_app();
     submit_test_prompt(&mut app, "hi");

@@ -1476,13 +1476,13 @@ pub(crate) fn pending_render_text(tab: &crate::app::TabSession) -> Option<Cow<'_
     tab.streaming_agent_text()
         .and_then(user_visible_stream_text)
         .or_else(|| {
-            tab.should_show_streaming_thought()
+            tab.should_show_inline_thinking()
                 .then(|| tab.streaming_thought_text())
                 .flatten()
                 .and_then(user_visible_stream_text)
         })
         .or_else(|| {
-            tab.should_show_persistent_thinking()
+            tab.should_show_inline_thinking()
                 .then_some(Cow::Borrowed("…"))
         })
 }
@@ -1509,7 +1509,7 @@ fn build_pending_stream_lines<'a>(app: &App, wrap_width: usize) -> Vec<Line<'a>>
             theme::AGENT_TEXT,
         );
     }
-    if tab.should_show_persistent_thinking() {
+    if tab.should_show_inline_thinking() {
         let thought = tab
             .streaming_thought_text()
             .and_then(user_visible_stream_text)

@@ -802,22 +802,17 @@ impl TabSession {
             })
     }
 
-    pub(crate) fn should_show_streaming_thought(&self) -> bool {
-        self.should_show_persistent_thinking()
-            && self
-                .streaming_thought_text()
-                .is_some_and(|text| !text.trim().is_empty())
+    fn has_visible_streaming_thought(&self) -> bool {
+        self.streaming_thought_text()
+            .is_some_and(|text| !text.trim().is_empty())
     }
 
     pub(crate) fn should_show_thinking(&self) -> bool {
-        self.can_show_turn_activity() && !self.should_show_streaming_thought()
+        self.can_show_turn_activity() && !self.has_visible_streaming_thought()
     }
 
-    pub(crate) fn should_show_persistent_thinking(&self) -> bool {
-        self.turn.is_in_flight()
-            && (self.streaming_agent_text().is_some()
-                || self.streaming_thought_text().is_some()
-                || !self.can_show_turn_activity())
+    pub(crate) fn should_show_inline_thinking(&self) -> bool {
+        self.turn.is_in_flight() && !self.should_show_thinking()
     }
 
     /// Whether the input box is the live, enterable caret target.
