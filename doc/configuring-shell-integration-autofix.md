@@ -35,6 +35,8 @@ After shell integration is enabled, Intelligent Terminal checks a supported shel
 
 The check is read-only and runs outside the UI thread. PowerShell profiles are parsed by the official parser from the same direct `powershell.exe` or `pwsh.exe` host that was launched. Bash profiles are parsed in memory with the vendored Tree-sitter Bash grammar; profile text is never executed.
 
+Later opens of the same shell target asynchronously compare lightweight file metadata with the cached fingerprint. An unchanged profile reuses the cached analysis without rerunning the parser; a profile created, deleted, replaced, or normally edited since the previous check is read and analyzed again.
+
 The managed block is healthy when only whitespace or comments follow it. Intelligent Terminal shows a warning only when parsing proves that a root-level command or statement follows the canonical block. Missing, malformed, unreadable, changing, or syntactically invalid profiles fail closed without a warning; the check never rewrites or moves profile content automatically.
 
 The first-open check covers:

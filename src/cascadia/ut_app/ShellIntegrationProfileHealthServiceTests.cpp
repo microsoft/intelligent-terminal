@@ -20,9 +20,13 @@ namespace TerminalAppUnitTests
         TEST_CLASS(ShellIntegrationProfileHealthServiceTests);
 
         TEST_METHOD(CachesCompletedTarget);
+        TEST_METHOD(CachesExistingProfileWithoutManagedBlock);
         TEST_METHOD(ForceDuringFlightRunsFreshAnalysis);
         TEST_METHOD(OldGenerationCannotCancelNewRun);
         TEST_METHOD(MissingProfileDoesNotInvokeAnalyzer);
+        TEST_METHOD(ExternalEditInvalidatesCache);
+        TEST_METHOD(ProfileCreatedAfterMissingResultIsAnalyzed);
+        TEST_METHOD(ExternalEditDuringAnalysisIsNotCached);
     };
 
     namespace
@@ -66,6 +70,22 @@ namespace TerminalAppUnitTests
                 target.profilePath = value;
                 target.shellIdentity = value;
                 return target;
+            }
+
+            void Write(const std::string_view contents) const
+            {
+                const wil::unique_hfile file{
+                    CreateFileW(value.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_TEMPORARY, nullptr)
+                };
+                VERIFY_IS_TRUE(static_cast<bool>(file));
+                DWORD written{};
+                VERIFY_IS_TRUE(WriteFile(
+                    file.get(),
+                    contents.data(),
+                    static_cast<DWORD>(contents.size()),
+                    &written,
+                    nullptr));
+                VERIFY_ARE_EQUAL(static_cast<DWORD>(contents.size()), written);
             }
 
             std::wstring value;
@@ -117,6 +137,32 @@ namespace TerminalAppUnitTests
         });
         VERIFY_ARE_EQUAL(Status::Healthy, Wait(invalidated).analysis.status);
         VERIFY_ARE_EQUAL(size_t{ 2 }, analyses.load());
+        service.SetEnabled(false);
+    }
+
+    void ShellIntegrationProfileHealthServiceTests::CachesExistingProfileWithoutManagedBlock()
+    {
+        TemporaryProfile profile;
+        auto& service = ShellIntegrationProfileHealthService::Instance();
+        service.SetEnabled(false);
+        const auto generation = service.SetEnabled(true);
+        std::atomic_size_t analyses{};
+        auto analyze = [&](const TargetKey&, const std::string_view) {
+            ++analyses;
+            return AnalysisResult{ Status::NotInstalled, Reason::MissingBlock };
+        };
+
+        for (size_t request = 0; request < 2; ++request)
+        {
+            std::promise<Result> promise;
+            auto result = promise.get_future();
+            service.Request(profile.Target(), generation, analyze, [&](const Result& value) {
+                promise.set_value(value);
+            });
+            VERIFY_ARE_EQUAL(Status::NotInstalled, Wait(result).analysis.status);
+        }
+
+        VERIFY_ARE_EQUAL(size_t{ 1 }, analyses.load());
         service.SetEnabled(false);
     }
 
@@ -249,6 +295,124 @@ namespace TerminalAppUnitTests
         std::this_thread::sleep_for(std::chrono::milliseconds{ 100 });
         releaseNewPromise.set_value();
         VERIFY_ARE_EQUAL(Status::BlockNotLast, Wait(newResult).analysis.status);
+        service.SetEnabled(false);
+    }
+
+    void ShellIntegrationProfileHealthServiceTests::ExternalEditInvalidatesCache()
+    {
+        TemporaryProfile profile;
+        auto& service = ShellIntegrationProfileHealthService::Instance();
+        service.SetEnabled(false);
+        const auto generation = service.SetEnabled(true);
+        std::atomic_size_t analyses{};
+
+        auto analyze = [&](const TargetKey&, const std::string_view contents) {
+            ++analyses;
+            return AnalysisResult{
+                contents.find("changed") == std::string_view::npos ? Status::Healthy : Status::BlockNotLast,
+                Reason::None
+            };
+        };
+
+        std::promise<Result> firstPromise;
+        auto first = firstPromise.get_future();
+        service.Request(profile.Target(), generation, analyze, [&](const Result& result) {
+            firstPromise.set_value(result);
+        });
+        VERIFY_ARE_EQUAL(Status::Healthy, Wait(first).analysis.status);
+
+        profile.Write("# profile changed\n");
+
+        std::promise<Result> secondPromise;
+        auto second = secondPromise.get_future();
+        service.Request(profile.Target(), generation, analyze, [&](const Result& result) {
+            secondPromise.set_value(result);
+        });
+        VERIFY_ARE_EQUAL(Status::BlockNotLast, Wait(second).analysis.status);
+        VERIFY_ARE_EQUAL(size_t{ 2 }, analyses.load());
+        service.SetEnabled(false);
+    }
+
+    void ShellIntegrationProfileHealthServiceTests::ProfileCreatedAfterMissingResultIsAnalyzed()
+    {
+        TemporaryProfile profile;
+        VERIFY_IS_TRUE(DeleteFileW(profile.value.c_str()));
+
+        auto& service = ShellIntegrationProfileHealthService::Instance();
+        service.SetEnabled(false);
+        const auto generation = service.SetEnabled(true);
+        std::atomic_size_t analyses{};
+        auto analyze = [&](const TargetKey&, const std::string_view) {
+            ++analyses;
+            return AnalysisResult{ Status::Healthy, Reason::None };
+        };
+
+        std::promise<Result> missingPromise;
+        auto missing = missingPromise.get_future();
+        service.Request(profile.Target(), generation, analyze, [&](const Result& result) {
+            missingPromise.set_value(result);
+        });
+        VERIFY_ARE_EQUAL(Status::NotInstalled, Wait(missing).analysis.status);
+        VERIFY_ARE_EQUAL(size_t{ 0 }, analyses.load());
+
+        profile.Write("# created profile\n");
+
+        std::promise<Result> createdPromise;
+        auto created = createdPromise.get_future();
+        service.Request(profile.Target(), generation, analyze, [&](const Result& result) {
+            createdPromise.set_value(result);
+        });
+        VERIFY_ARE_EQUAL(Status::Healthy, Wait(created).analysis.status);
+        VERIFY_ARE_EQUAL(size_t{ 1 }, analyses.load());
+        service.SetEnabled(false);
+    }
+
+    void ShellIntegrationProfileHealthServiceTests::ExternalEditDuringAnalysisIsNotCached()
+    {
+        TemporaryProfile profile;
+        auto& service = ShellIntegrationProfileHealthService::Instance();
+        service.SetEnabled(false);
+        const auto generation = service.SetEnabled(true);
+
+        std::promise<void> startedPromise;
+        auto started = startedPromise.get_future();
+        std::promise<void> releasePromise;
+        const auto release = releasePromise.get_future().share();
+
+        std::promise<Result> resultPromise;
+        auto result = resultPromise.get_future();
+        service.Request(
+            profile.Target(),
+            generation,
+            [&](const TargetKey&, const std::string_view) {
+                startedPromise.set_value();
+                release.wait();
+                return AnalysisResult{ Status::Healthy, Reason::None };
+            },
+            [&](const Result& value) {
+                resultPromise.set_value(value);
+            });
+
+        VERIFY_ARE_EQUAL(std::future_status::ready, started.wait_for(std::chrono::seconds{ 10 }));
+        profile.Write("# profile changed during analysis\n");
+        releasePromise.set_value();
+
+        const auto stale = Wait(result);
+        VERIFY_ARE_EQUAL(Status::Indeterminate, stale.analysis.status);
+        VERIFY_ARE_EQUAL(Reason::ChangedDuringAnalysis, stale.analysis.reason);
+
+        std::promise<Result> retryPromise;
+        auto retry = retryPromise.get_future();
+        service.Request(
+            profile.Target(),
+            generation,
+            [](const TargetKey&, const std::string_view) {
+                return AnalysisResult{ Status::BlockNotLast, Reason::None };
+            },
+            [&](const Result& value) {
+                retryPromise.set_value(value);
+            });
+        VERIFY_ARE_EQUAL(Status::BlockNotLast, Wait(retry).analysis.status);
         service.SetEnabled(false);
     }
 }

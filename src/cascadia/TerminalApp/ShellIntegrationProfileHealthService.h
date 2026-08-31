@@ -69,7 +69,8 @@ namespace winrt::TerminalApp::implementation
             ::Microsoft::Terminal::ShellIntegration::Health::TargetKey target,
             uint64_t generation,
             uint64_t runToken,
-            Analyzer analyzer);
+            Analyzer analyzer,
+            std::optional<::Microsoft::Terminal::ShellIntegration::Health::Result> cachedCandidate);
 
         mutable std::mutex _mutex;
         std::unordered_map<
