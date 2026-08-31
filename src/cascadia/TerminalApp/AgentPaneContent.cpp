@@ -313,7 +313,7 @@ namespace winrt::TerminalApp::implementation
 
     // Apply the supplied colors to the agent-pane top bar (#348). The vector
     // logo paths bind to the label's foreground, so both take the same tint.
-    // The bottom border stays aligned with WTA's fixed input-box border color.
+    // The bottom border uses the tab row's theme-aware background resource.
     void AgentPaneContent::ApplyThemeColors(const Media::Brush& background,
                                             const Media::Brush& foreground)
     {

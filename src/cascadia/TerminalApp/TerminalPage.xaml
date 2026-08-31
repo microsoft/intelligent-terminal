@@ -93,12 +93,12 @@
              window chrome, but its state reflects the *active tab*'s agent
              pane (toggle lit when active tab has an AgentPaneContent,
              diagnostics from the active tab's autofix state, etc.).
-             The top border shares the WTA input-box border color. -->
+             The top border uses the tab row's theme-aware background color. -->
         <Border x:Name="BottomBarRoot"
                 Grid.Row="3"
                 Grid.ColumnSpan="2"
                 Background="#000000"
-                BorderBrush="{StaticResource AgentChromeBorderBrush}"
+                BorderBrush="{ThemeResource TabViewBackground}"
                 BorderThickness="0,1,0,0"
                 VerticalAlignment="Top">
         <Grid x:Name="BottomBar"

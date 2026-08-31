@@ -24,7 +24,7 @@
                 Grid.Row="0"
                 Height="36"
                 Background="#FF000000"
-                BorderBrush="{StaticResource AgentChromeBorderBrush}"
+                BorderBrush="{ThemeResource TabViewBackground}"
                 BorderThickness="0,0,0,1">
             <Grid Padding="10,0,0,0">
                 <!--  Left cluster: logo + label. History and other actions
