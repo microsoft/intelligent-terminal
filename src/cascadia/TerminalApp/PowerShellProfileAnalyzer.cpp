@@ -149,6 +149,7 @@ namespace
         const auto subdir = host == HostKind::Pwsh ? L"PowerShell" : L"WindowsPowerShell";
         const auto expectedLf = _Base64Encode(Powershell::BuildBlock(subdir, "\n"));
         const auto expectedCrLf = _Base64Encode(Powershell::BuildBlock(subdir, "\r\n"));
+        const auto expectedScriptFileName = til::u16u8(Powershell::ScriptFileName());
         const std::string noBomEncoding = host == HostKind::WindowsPowerShell ?
                                                "[Text.Encoding]::Default" :
                                                "(New-Object Text.UTF8Encoding($false,$true))";
@@ -220,7 +221,11 @@ try {
     $block=$text.Substring($start,$end-$start)
     $expectedLf=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String(')" + expectedLf + R"('))
     $expectedCrLf=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String(')" + expectedCrLf + R"('))
-    if($block -cne $expectedLf -and $block -cne $expectedCrLf) { Emit 'Indeterminate' 'MalformedBlock' 0 0; exit 0 }
+    $versionPattern='shell-integration_v[1-9][0-9]*\.ps1'
+    $versionMatches=@([regex]::Matches($block,$versionPattern,[Text.RegularExpressions.RegexOptions]::CultureInvariant))
+    if($versionMatches.Count -ne 1) { Emit 'Indeterminate' 'MalformedBlock' 0 0; exit 0 }
+    $normalizedBlock=[regex]::Replace($block,$versionPattern,')" + expectedScriptFileName + R"(',[Text.RegularExpressions.RegexOptions]::CultureInvariant)
+    if($normalizedBlock -cne $expectedLf -and $normalizedBlock -cne $expectedCrLf) { Emit 'Indeterminate' 'MalformedBlock' 0 0; exit 0 }
     $tail=$text.Substring($end)
     [System.Management.Automation.Language.Token[]]$tailTokens=$null
     [System.Management.Automation.Language.ParseError[]]$tailErrors=$null

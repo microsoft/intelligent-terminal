@@ -105,8 +105,6 @@ namespace winrt::TerminalApp::implementation
                              winrt::Windows::UI::Xaml::DragEventArgs const& e);
         void OnListDrop(winrt::Windows::Foundation::IInspectable const& sender,
                          winrt::Windows::UI::Xaml::DragEventArgs const& e);
-        void OnCustomCloseClick(winrt::Windows::Foundation::IInspectable const& sender,
-                                 winrt::Windows::UI::Xaml::RoutedEventArgs const& e);
 
         // Spec A §2.4: reports the rail as an AutomationControlType::Tab
         // container so screen readers (Narrator / third-party AT) treat it
@@ -127,8 +125,16 @@ namespace winrt::TerminalApp::implementation
         winrt::Windows::Foundation::Collections::IObservableVector<winrt::Windows::Foundation::IInspectable> _tabItems{ nullptr };
         winrt::Windows::Foundation::Collections::IObservableVector<winrt::Windows::Foundation::IInspectable>::VectorChanged_revoker _vectorChangedRevoker;
 
-        // Per-TabViewItem CloseRequested subscription tokens, keyed by pointer identity.
-        std::unordered_map<void*, winrt::event_token> _closeRequestedTokens;
+        struct CloseRequestedSubscription
+        {
+            winrt::Microsoft::UI::Xaml::Controls::TabViewItem item{ nullptr };
+            winrt::event_token loadedToken{};
+            winrt::Windows::UI::Xaml::Controls::Button closeButton{ nullptr };
+            winrt::event_token clickToken{};
+        };
+
+        // Per-TabViewItem template close-button subscriptions, keyed by pointer identity.
+        std::unordered_map<void*, CloseRequestedSubscription> _closeRequestedSubscriptions;
 
         // The item currently being dragged. Set in OnDragItemsStarting, cleared in
         // OnDragItemsCompleted. If DropResult is None, this is the item to fire
@@ -137,7 +143,9 @@ namespace winrt::TerminalApp::implementation
 
         void _onItemsVectorChanged(winrt::Windows::Foundation::Collections::IObservableVector<winrt::Windows::Foundation::IInspectable> const& sender,
                                      winrt::Windows::Foundation::Collections::IVectorChangedEventArgs const& args);
+        void _syncCloseRequestedSubscriptions();
         void _hookCloseRequested(winrt::Microsoft::UI::Xaml::Controls::TabViewItem const& item);
+        void _hookCloseButton(winrt::Microsoft::UI::Xaml::Controls::TabViewItem const& item);
         void _unhookCloseRequested(winrt::Microsoft::UI::Xaml::Controls::TabViewItem const& item);
 
         // Axis-parameterized per B→C rules. Returns -1 to mean "append at end."

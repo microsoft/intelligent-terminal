@@ -22,6 +22,7 @@ namespace TerminalAppUnitTests
 
         TEST_METHOD(RecognizesCanonicalManagedBlock);
         TEST_METHOD(RecognizesCanonicalPwshBlockWhenAvailable);
+        TEST_METHOD(RecognizesCanonicalBlockFromAnotherVersion);
         TEST_METHOD(RecognizesRootStatementAfterBlock);
         TEST_METHOD(IgnoresMarkerTextInString);
         TEST_METHOD(RejectsDuplicateMarkers);
@@ -129,6 +130,21 @@ namespace TerminalAppUnitTests
         const auto actual = Analyze(*host, block);
 
         VerifyStatus(actual, Status::Healthy, Reason::None);
+        VERIFY_ARE_EQUAL(size_t{ 0 }, actual.blockStart);
+        VERIFY_ARE_EQUAL(block.size(), actual.blockEnd);
+    }
+
+    void PowerShellProfileAnalyzerTests::RecognizesCanonicalBlockFromAnotherVersion()
+    {
+        auto block = Powershell::BuildBlock(L"WindowsPowerShell", "\n");
+        const auto currentFileName = til::u16u8(Powershell::ScriptFileName());
+        const auto offset = block.find(currentFileName);
+        VERIFY_ARE_NOT_EQUAL(std::string::npos, offset);
+        block.replace(offset, currentFileName.size(), "shell-integration_v8.ps1");
+
+        const auto actual = Analyze(SystemPowerShell(), block + "\nGet-Date\n");
+
+        VerifyStatus(actual, Status::BlockNotLast, Reason::None);
         VERIFY_ARE_EQUAL(size_t{ 0 }, actual.blockStart);
         VERIFY_ARE_EQUAL(block.size(), actual.blockEnd);
     }

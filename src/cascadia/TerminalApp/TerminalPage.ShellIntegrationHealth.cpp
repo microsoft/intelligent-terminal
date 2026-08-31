@@ -101,7 +101,16 @@ namespace winrt::TerminalApp::implementation
             return;
         }
 
-        const std::wstring commandline{ conpty.Commandline() };
+        std::wstring commandline;
+        try
+        {
+            commandline = wil::ExpandEnvironmentStringsW<std::wstring>(conpty.Commandline().c_str());
+        }
+        catch (...)
+        {
+            LOG_CAUGHT_EXCEPTION();
+            return;
+        }
         auto handled = std::make_shared<std::atomic<bool>>(false);
         conpty.StateChanged(
             [weakThis = get_weak(), commandline, hasCustomHome, handled](const auto& sender, const auto&) {

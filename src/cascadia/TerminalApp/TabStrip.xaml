@@ -32,9 +32,9 @@
                           HorizontalContentAlignment="Stretch" />
 
         <!--
-            The strip proper. ListView holds TabViewItem instances directly via
-            a passthrough item template. ListViewItem chrome is stripped so the
-            TabViewItem owns all visual state; selection is synced in code-behind.
+            The strip proper. TabViewItem derives from ListViewItem, so each item
+            serves as its own container and keeps its native visual state.
+            Selection is synced in code-behind.
         -->
         <ListView x:Name="ItemsList"
                   Grid.Row="1"
@@ -50,40 +50,6 @@
                   ReorderMode="Enabled"
                   SelectionChanged="OnListSelectionChanged"
                   SelectionMode="Single">
-            <ListView.ItemTemplate>
-                <DataTemplate>
-                    <!--
-                        MUX's built-in CloseButton on TabViewItem is only
-                        driven visible when the item lives inside a TabView
-                        (via TabView.CloseButtonOverlayMode). Ours don't, so
-                        we suppress it with IsClosable=false (set in code)
-                        and render our own X in an adjacent column.
-                    -->
-                    <Grid>
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="Auto" />
-                        </Grid.ColumnDefinitions>
-                        <ContentPresenter Grid.Column="0"
-                                          HorizontalAlignment="Stretch"
-                                          HorizontalContentAlignment="Stretch"
-                                          Content="{Binding}" />
-                        <Button x:Uid="TabStripCloseButton"
-                                Grid.Column="1"
-                                Width="24"
-                                Height="24"
-                                Margin="0,0,4,0"
-                                Padding="0"
-                                VerticalAlignment="Center"
-                                Background="Transparent"
-                                BorderThickness="0"
-                                Content="&#xE711;"
-                                FontFamily="{ThemeResource SymbolThemeFontFamily}"
-                                FontSize="10"
-                                Click="OnCustomCloseClick" />
-                    </Grid>
-                </DataTemplate>
-            </ListView.ItemTemplate>
             <ListView.ItemContainerStyle>
                 <Style TargetType="ListViewItem">
                     <Setter Property="Padding" Value="0" />
