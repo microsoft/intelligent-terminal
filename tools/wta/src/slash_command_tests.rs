@@ -540,6 +540,10 @@ fn runtime_change_cancels_stale_pending_yolo_ack() {
 
     app.apply_runtime_yolo_config(Some(false), Some(false));
     assert!(!app.pending_yolo_changes.contains_key(session_id));
+    assert!(
+        app.yolo_reconcile_pending_for_tab(DEFAULT_TAB_ID),
+        "the latest runtime reconciliation must replace the stale slash transaction gate"
+    );
 
     app.handle_event(AppEvent::YoloModeChangeCompleted {
         transaction_id: 0,

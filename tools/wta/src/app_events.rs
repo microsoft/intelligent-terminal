@@ -820,7 +820,13 @@ impl App {
                         .restart_tx
                         .send(crate::protocol::acp::client::AgentLifecycleRequest::RestartMaster);
                 }
-                self.complete_yolo_change(transaction_id, session_id, enabled, result);
+                self.complete_yolo_change(
+                    transaction_id,
+                    session_id,
+                    enabled,
+                    restart_required,
+                    result,
+                );
             }
             AppEvent::RuntimeYoloReconcileCompleted {
                 reconcile_id,

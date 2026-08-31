@@ -5755,9 +5755,11 @@ impl App {
             .get(tab_id)
             .and_then(|tab| tab.session_id.as_deref())
             .is_some_and(|session_id| {
-                self.pending_yolo_reconciles
-                    .values()
-                    .any(|(sessions, _)| sessions.contains(session_id))
+                self.pending_yolo_changes.contains_key(session_id)
+                    || self
+                        .pending_yolo_reconciles
+                        .values()
+                        .any(|(sessions, _)| sessions.contains(session_id))
             })
     }
 
@@ -5766,6 +5768,7 @@ impl App {
         transaction_id: u64,
         session_id: String,
         enabled: bool,
+        restart_required: bool,
         result: Result<(), String>,
     ) {
         let Some((pending_transaction_id, pending_enabled, tab_id)) =
@@ -5777,7 +5780,9 @@ impl App {
             return;
         }
         let tab_id = tab_id.clone();
-        self.pending_yolo_changes.remove(&session_id);
+        if !restart_required {
+            self.pending_yolo_changes.remove(&session_id);
+        }
         if self
             .tab_sessions
             .get(&tab_id)

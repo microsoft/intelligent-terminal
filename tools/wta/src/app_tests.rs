@@ -3193,6 +3193,55 @@ fn runtime_policy_reconcile_gates_prompt_until_native_off_acknowledges() {
 }
 
 #[test]
+fn pending_slash_yolo_disable_gates_prompt_until_native_off_acknowledges() {
+    use crate::protocol::acp::client::MasterExtRequest;
+
+    let (mut app, mut master_rx) = test_app_with_master_rx();
+    let (prompt_tx, mut prompt_rx) = tokio::sync::mpsc::unbounded_channel();
+    app.prompt_tx = prompt_tx;
+    app.state = ConnectionState::Connected;
+    app.current_tab_mut().session_id = Some("slash-off-session".into());
+    app.yolo_state
+        .lock()
+        .unwrap()
+        .set_session_override("slash-off-session".into(), true);
+
+    app.cmd_yolo("off".into());
+    let MasterExtRequest::SetSessionYolo {
+        transaction_id,
+        session_id,
+        enabled,
+    } = master_rx
+        .try_recv()
+        .expect("/yolo off must request native disable")
+    else {
+        panic!("expected SetSessionYolo");
+    };
+    app.current_tab_mut().input = "wait for slash native off".into();
+    app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+
+    assert_eq!(app.current_tab().input, "wait for slash native off");
+    assert!(prompt_rx.try_recv().is_err());
+
+    app.handle_event(AppEvent::YoloModeChangeCompleted {
+        transaction_id,
+        session_id: session_id.to_string(),
+        enabled,
+        restart_required: false,
+        result: Ok(()),
+    });
+    app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+
+    assert_eq!(
+        prompt_rx
+            .try_recv()
+            .expect("prompt after slash native off")
+            .text,
+        "wait for slash native off"
+    );
+}
+
+#[test]
 fn global_on_session_attach_gates_prompt_until_native_yolo_enable_acknowledges() {
     use crate::protocol::acp::client::MasterExtRequest;
 
@@ -3359,6 +3408,48 @@ fn pending_yolo_reconcile_blocks_manual_and_automatic_autofix_prompts() {
     automatic.pending_yolo_reconciles.insert(
         31,
         (HashSet::from(["automatic-fix-session".to_string()]), false),
+    );
+    let notification = WtNotification {
+        severity: WtEventSeverity::Actionable,
+        pane_id: "failed-pane".into(),
+        tab_id: Some("target-tab".into()),
+        summary: "Command failed".into(),
+        acknowledged: false,
+        age_ticks: 0,
+    };
+
+    automatic.maybe_trigger_autofix(&notification);
+
+    assert!(automatic_rx.try_recv().is_err());
+    assert!(automatic.tab_mut("target-tab").turn.is_idle());
+}
+
+#[test]
+fn pending_slash_yolo_change_blocks_manual_and_automatic_autofix_prompts() {
+    let mut manual = test_app();
+    let (manual_tx, mut manual_rx) = tokio::sync::mpsc::unbounded_channel();
+    manual.prompt_tx = manual_tx;
+    manual.state = ConnectionState::Connected;
+    manual.current_tab_mut().session_id = Some("manual-slash-session".into());
+    manual.pending_yolo_changes.insert(
+        "manual-slash-session".into(),
+        (41, false, DEFAULT_TAB_ID.into()),
+    );
+
+    manual.cmd_fix(false, String::new());
+
+    assert!(manual_rx.try_recv().is_err());
+    assert!(manual.current_tab().turn.is_idle());
+
+    let mut automatic = test_app();
+    let (automatic_tx, mut automatic_rx) = tokio::sync::mpsc::unbounded_channel();
+    automatic.prompt_tx = automatic_tx;
+    automatic.state = ConnectionState::Connected;
+    automatic.autofix_enabled = true;
+    automatic.tab_mut("target-tab").session_id = Some("automatic-slash-session".into());
+    automatic.pending_yolo_changes.insert(
+        "automatic-slash-session".into(),
+        (43, false, "target-tab".into()),
     );
     let notification = WtNotification {
         severity: WtEventSeverity::Actionable,
@@ -3584,6 +3675,44 @@ fn unknown_stale_yolo_outcome_restarts_once_without_committing_state() {
         .lock()
         .unwrap()
         .effective("stale-timeout-session"));
+}
+
+#[test]
+fn unknown_current_yolo_outcome_keeps_prompt_gate_until_agent_reset() {
+    let (mut app, mut restart_rx) = test_app_with_restart_rx();
+    let (prompt_tx, mut prompt_rx) = tokio::sync::mpsc::unbounded_channel();
+    app.prompt_tx = prompt_tx;
+    app.state = ConnectionState::Connected;
+    app.current_tab_mut().session_id = Some("current-timeout-session".into());
+    app.pending_yolo_changes.insert(
+        "current-timeout-session".into(),
+        (101, false, DEFAULT_TAB_ID.into()),
+    );
+
+    app.handle_event(AppEvent::YoloModeChangeCompleted {
+        transaction_id: 101,
+        session_id: "current-timeout-session".into(),
+        enabled: false,
+        restart_required: true,
+        result: Err("provider-native Yolo RPC timed out".into()),
+    });
+
+    assert!(matches!(
+        restart_rx
+            .try_recv()
+            .expect("unknown current outcome must restart"),
+        crate::protocol::acp::client::AgentLifecycleRequest::RestartMaster
+    ));
+    assert!(app
+        .pending_yolo_changes
+        .contains_key("current-timeout-session"));
+    app.current_tab_mut().input = "wait for agent reset".into();
+    app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+    assert_eq!(app.current_tab().input, "wait for agent reset");
+    assert!(prompt_rx.try_recv().is_err());
+
+    app.reset_agent_scoped_state();
+    assert!(app.pending_yolo_changes.is_empty());
 }
 
 #[test]
