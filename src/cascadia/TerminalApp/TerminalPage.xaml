@@ -93,13 +93,12 @@
              window chrome, but its state reflects the *active tab*'s agent
              pane (toggle lit when active tab has an AgentPaneContent,
              diagnostics from the active tab's autofix state, etc.).
-             The opaque top border is the pre-composited equivalent of the
-             design's 15%-white divider over the bar's black background. -->
+             The top border shares the WTA input-box border color. -->
         <Border x:Name="BottomBarRoot"
                 Grid.Row="3"
                 Grid.ColumnSpan="2"
                 Background="#000000"
-                BorderBrush="#FF262626"
+                BorderBrush="{StaticResource AgentChromeBorderBrush}"
                 BorderThickness="0,1,0,0"
                 VerticalAlignment="Top">
         <Grid x:Name="BottomBar"

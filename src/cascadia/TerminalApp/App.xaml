@@ -22,6 +22,8 @@
                 <XamlControlsResources xmlns="using:Microsoft.UI.Xaml.Controls"
                                        ControlsResourcesVersion="Version2" />
                 <ResourceDictionary>
+                    <SolidColorBrush x:Key="AgentChromeBorderBrush"
+                                     Color="#FF323232" />
 
                     <!--
                         We're going to apply this style to the root Grid acting
