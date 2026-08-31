@@ -1015,18 +1015,15 @@ enum SessionMcpTool {
 }
 
 impl SessionMcpTool {
-    const ALL: [Self; 5] = [
+    const ALL: [Self; 4] = [
         Self::TerminalAction(
-            crate::agent_tools::action_proposal::schema::McpActionTool::RunCommand,
+            crate::agent_tools::action_proposal::schema::McpActionTool::RunCommandInCurrentShell,
         ),
         Self::TerminalAction(
-            crate::agent_tools::action_proposal::schema::McpActionTool::OpenWorkspace,
+            crate::agent_tools::action_proposal::schema::McpActionTool::CreateWorkspace,
         ),
         Self::TerminalAction(
-            crate::agent_tools::action_proposal::schema::McpActionTool::RunCommandInWorkspace,
-        ),
-        Self::TerminalAction(
-            crate::agent_tools::action_proposal::schema::McpActionTool::DelegateTask,
+            crate::agent_tools::action_proposal::schema::McpActionTool::DelegateTaskInNewWorkspace,
         ),
         Self::UserInput,
     ];
@@ -1202,7 +1199,7 @@ impl WtaClient {
         // validated per-session MCP server name, or a tool call already
         // correlated through the hidden-call map, is trusted for silent
         // approval. The public action names are intentionally generic and a
-        // bare `run_command` from an unrelated provider tool must not bypass
+        // bare `run_command_in_current_shell` from an unrelated provider tool must not bypass
         // the normal permission UI merely because its payload has the same
         // shape.
         let session_mcp_tool = session_mcp_tool_from_title(args.tool_call.fields.title.as_deref())
@@ -1214,7 +1211,7 @@ impl WtaClient {
                 &session_id,
                 &tool_call_id,
                 SessionMcpTool::TerminalAction(
-                    crate::agent_tools::action_proposal::schema::McpActionTool::RunCommand,
+                    crate::agent_tools::action_proposal::schema::McpActionTool::RunCommandInCurrentShell,
                 ),
             );
         }
@@ -1491,7 +1488,7 @@ impl WtaClient {
                         &sid,
                         &tool_call_id,
                         SessionMcpTool::TerminalAction(
-                            crate::agent_tools::action_proposal::schema::McpActionTool::RunCommand,
+                            crate::agent_tools::action_proposal::schema::McpActionTool::RunCommandInCurrentShell,
                         ),
                     );
                     return Ok(());
@@ -1541,7 +1538,7 @@ impl WtaClient {
                         &sid,
                         &tool_call_id,
                         SessionMcpTool::TerminalAction(
-                            crate::agent_tools::action_proposal::schema::McpActionTool::RunCommand,
+                            crate::agent_tools::action_proposal::schema::McpActionTool::RunCommandInCurrentShell,
                         ),
                     );
                     return Ok(());
@@ -4696,10 +4693,10 @@ mod tests {
         acp_error_detail, acp_result_failure_fields, bounded_tool_output_parts,
         claim_unexpected_transport_loss, complete_prompt_request, complete_transport_shutdown,
         inject_wta_pane_meta, is_redundant_startup_model_error, post_login_authenticate_error,
-        session_mcp_tool_from_dynamic_title, session_mcp_tool_from_title, stop_prompt_tasks,
-        timeout_result_failure_fields, tool_call_exit_code, tool_call_kind_label,
-        tool_call_location_hint, tool_call_target, AcpClientExit, ClientState, PromptTimingState,
-        PromptUsageIdentity, SessionMcpTool, SoftStopReason, WtaClient,
+        session_mcp_tool_from_title, stop_prompt_tasks, timeout_result_failure_fields,
+        tool_call_exit_code, tool_call_kind_label, tool_call_location_hint, tool_call_target,
+        AcpClientExit, ClientState, PromptTimingState, PromptUsageIdentity, SessionMcpTool,
+        SoftStopReason, WtaClient,
     };
     use crate::app_contracts::AppEvent;
     use crate::protocol::acp::failure::{AgentFailure, HandshakeStage};
@@ -4943,7 +4940,7 @@ mod tests {
             ToolCallUpdate::new(
                 ToolCallId::new("proposal-mcp-tool"),
                 ToolCallUpdateFields::new()
-                    .title("intellterm_01234567890123456789/run_command")
+                    .title("intellterm_0123456789abcdef/run_command_in_current_shell")
                     .raw_input(serde_json::json!({
                         "summary": "Run test",
                         "command": "cargo test"
@@ -5072,7 +5069,7 @@ mod tests {
                 ToolCallUpdate::new(
                     ToolCallId::new("input-tool"),
                     ToolCallUpdateFields::new()
-                        .title("intellterm_01234567890123456789/request_user_input")
+                        .title("intellterm_0123456789abcdef/request_user_input")
                         .raw_input(serde_json::json!({
                             "question": "Choose",
                             "choices": ["A", "B"]
@@ -5216,7 +5213,7 @@ mod tests {
         let params =
             serde_json::value::to_raw_value(&crate::agent_tools::session_mcp::HelperRequest {
                 session_id: "proposal-session".to_string(),
-                tool: "run_command".to_string(),
+                tool: "run_command_in_current_shell".to_string(),
                 arguments: serde_json::json!({
                     "summary": "Run test",
                     "command": "cargo test"
@@ -5241,7 +5238,7 @@ mod tests {
                     assert_eq!(
                         source,
                         crate::agent_tools::action_proposal::pipe::ProposalPayloadSource::Mcp(
-                            crate::agent_tools::action_proposal::schema::McpActionTool::RunCommand
+                            crate::agent_tools::action_proposal::schema::McpActionTool::RunCommandInCurrentShell
                         )
                     );
                     assert_eq!(
@@ -5428,7 +5425,7 @@ mod tests {
 
     #[test]
     fn session_mcp_tool_title_accepts_supported_permission_shapes() {
-        let dynamic = "intellterm_01234567890123456789";
+        let dynamic = "intellterm_0123456789abcdef";
         for tool in crate::agent_tools::action_proposal::schema::McpActionTool::ALL {
             let name = tool.tool_name();
             for title in [
@@ -5451,20 +5448,28 @@ mod tests {
             Some(SessionMcpTool::UserInput)
         );
         for title in [
+            "run_command_in_current_shell",
+            "create_workspace",
+            "delegate_task_in_new_workspace",
+            "request_user_input",
             "run_command",
             "open_workspace",
             "run_command_in_workspace",
             "delegate_task",
-            "request_user_input",
-            "intellterm_0123456789abcdef/run_command",
-            "intellterm_0123456789012345678A/run_command",
-            "Use MCP tool: other/run_command",
+            "intellterm_01234567890123456789/run_command_in_current_shell",
+            "intellterm_0123456789abcde/run_command_in_current_shell",
+            "intellterm_0123456789abcdeA/run_command_in_current_shell",
+            "Use MCP tool: other/run_command_in_current_shell",
             "Use MCP tool: intelligent_terminal/terminal_send",
             "Use MCP tool: intelligent_terminal/terminal_open",
             "Use MCP tool: intelligent_terminal/terminal_open_and_send",
+            "Use MCP tool: intelligent_terminal/run_command",
+            "Use MCP tool: intelligent_terminal/open_workspace",
+            "Use MCP tool: intelligent_terminal/run_command_in_workspace",
+            "Use MCP tool: intelligent_terminal/delegate_task",
             // The superseded single-tool name is no longer a tool.
             "Use MCP tool: intelligent_terminal/request_terminal_actions",
-            "mcp__intellterm_01234567890123456789__request_terminal_actions",
+            "mcp__intellterm_0123456789abcdef__request_terminal_actions",
         ] {
             assert_eq!(session_mcp_tool_from_title(Some(title)), None, "{title}");
         }
@@ -5479,15 +5484,11 @@ mod tests {
         let (client, mut event_rx) = proposal_test_client(manager);
         for (tool, arguments) in [
             (
-                McpActionTool::RunCommand,
+                McpActionTool::RunCommandInCurrentShell,
                 serde_json::json!({"summary":"Run tests","command":"cargo test"}),
             ),
             (
-                McpActionTool::OpenWorkspace,
-                serde_json::json!({"summary":"Open shell","placement":"new_tab"}),
-            ),
-            (
-                McpActionTool::RunCommandInWorkspace,
+                McpActionTool::CreateWorkspace,
                 serde_json::json!({
                     "summary":"Run tests separately",
                     "command":"cargo test",
@@ -5495,7 +5496,7 @@ mod tests {
                 }),
             ),
             (
-                McpActionTool::DelegateTask,
+                McpActionTool::DelegateTaskInNewWorkspace,
                 serde_json::json!({
                     "summary":"Investigate failures",
                     "task":"Find and fix the failing tests.",
@@ -5543,7 +5544,7 @@ mod tests {
                 acp::schema::v1::SessionId::new("proposal-session"),
                 acp::schema::v1::SessionUpdate::ToolCall(acp::schema::v1::ToolCall::new(
                     acp::schema::v1::ToolCallId::new("qualified-tool"),
-                    "intellterm_01234567890123456789/run_command",
+                    "intellterm_0123456789abcdef/run_command_in_current_shell",
                 )),
             ))
             .await
@@ -5568,7 +5569,7 @@ mod tests {
                 acp::schema::v1::SessionId::new("provider-session"),
                 acp::schema::v1::SessionUpdate::ToolCall(acp::schema::v1::ToolCall::new(
                     acp::schema::v1::ToolCallId::new("stable-tool"),
-                    "intelligent_terminal/run_command",
+                    "intelligent_terminal/run_command_in_current_shell",
                 )),
             ))
             .await
@@ -5585,7 +5586,7 @@ mod tests {
                     acp::schema::v1::ToolCallUpdate::new(
                         acp::schema::v1::ToolCallId::new("stable-update"),
                         acp::schema::v1::ToolCallUpdateFields::new()
-                            .title("intelligent_terminal-run_command"),
+                            .title("intelligent_terminal-run_command_in_current_shell"),
                     ),
                 ),
             ))
@@ -5626,7 +5627,7 @@ mod tests {
                 acp::schema::v1::SessionUpdate::ToolCall(
                     acp::schema::v1::ToolCall::new(
                         acp::schema::v1::ToolCallId::new("proposal-mcp-tool"),
-                        "run_command",
+                        "run_command_in_current_shell",
                     )
                     .raw_input(Some(serde_json::json!({
                         "summary": "Run test",

@@ -121,7 +121,7 @@ function Invoke-TerminalActionTool {
         id = 2
         method = 'tools/call'
         params = @{
-            name = 'run_command_in_workspace'
+            name = 'create_workspace'
             arguments = @{
                 summary = "Direction $Marker"
                 command = "echo $Marker"

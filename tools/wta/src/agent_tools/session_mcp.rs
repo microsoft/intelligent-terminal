@@ -12,7 +12,7 @@ const SUPPORTED_MCP_PROTOCOL_VERSIONS: &[&str] =
     &["2024-11-05", "2025-03-26", MCP_PROTOCOL_VERSION];
 const USER_INPUT_TOOL_NAME: &str = "request_user_input";
 pub const SERVER_NAME_PREFIX: &str = "intellterm_";
-pub const SERVER_ID_HEX_LEN: usize = 20;
+pub const SERVER_ID_HEX_LEN: usize = 16;
 pub const HELPER_REQUEST_METHOD: &str = "_intellterm.wta/request_terminal_actions";
 pub const USER_INPUT_HELPER_REQUEST_METHOD: &str = "_intellterm.wta/request_user_input";
 pub const CANCEL_USER_INPUT_HELPER_REQUEST_METHOD: &str = "_intellterm.wta/cancel_user_input";
@@ -294,10 +294,9 @@ mod tests {
         assert_eq!(
             names,
             vec![
-                "run_command",
-                "open_workspace",
-                "run_command_in_workspace",
-                "delegate_task",
+                "run_command_in_current_shell",
+                "create_workspace",
+                "delegate_task_in_new_workspace",
                 USER_INPUT_TOOL_NAME
             ]
         );
@@ -307,7 +306,7 @@ mod tests {
         // anymore.
         assert!(!names.contains(&"request_terminal_actions"));
         let user_input_schema = response
-            .pointer("/result/tools/4/inputSchema")
+            .pointer("/result/tools/3/inputSchema")
             .expect("user input schema");
         assert_eq!(
             user_input_schema.get("type").and_then(Value::as_str),
@@ -333,7 +332,16 @@ mod tests {
 
     #[tokio::test]
     async fn rejects_removed_action_tool_names() {
-        for name in ["terminal_send", "terminal_open", "terminal_open_and_send"] {
+        for name in [
+            "request_terminal_actions",
+            "run_command",
+            "open_workspace",
+            "run_command_in_workspace",
+            "delegate_task",
+            "terminal_send",
+            "terminal_open",
+            "terminal_open_and_send",
+        ] {
             let response = dispatch(
                 json!({
                     "jsonrpc":"2.0",
@@ -370,7 +378,7 @@ mod tests {
                 "jsonrpc":"2.0",
                 "id":1,
                 "method":"tools/call",
-                "params":{"name":"delegate_task","arguments":expected.clone()}
+                "params":{"name":"delegate_task_in_new_workspace","arguments":expected.clone()}
             }),
             {
                 let captured = std::sync::Arc::clone(&captured);
@@ -399,7 +407,7 @@ mod tests {
         let captured = captured.lock().unwrap().take().expect("action call");
         assert_eq!(
             captured.0,
-            super::super::action_proposal::schema::McpActionTool::DelegateTask
+            super::super::action_proposal::schema::McpActionTool::DelegateTaskInNewWorkspace
         );
         assert_eq!(captured.1, expected);
     }

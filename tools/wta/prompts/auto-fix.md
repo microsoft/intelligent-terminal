@@ -17,8 +17,8 @@ Help the user resume their intended work after a command fails. Determine the go
 
 ## Hand off
 
-Intelligent Terminal provides an MCP server for this session. When ready, call `run_command` next without prose. Treat its advertised input schema as the sole authority.
-Submit exactly one `run_command` call so the user can accept the corrected command before it runs in the failing pane.
+Intelligent Terminal provides an MCP server for this session. When ready, call `run_command_in_current_shell` next without prose. Treat its advertised input schema as the sole authority.
+Submit exactly one `run_command_in_current_shell` call so the user can accept the corrected command before it runs in the failing pane.
 
 The command must advance the user's intended outcome, not merely diagnose or prepare for it. Use the exact shell and cwd without wrapping another shell. With an unknown shell, use only safely portable syntax or explain.
 

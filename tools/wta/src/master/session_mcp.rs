@@ -1397,7 +1397,7 @@ mod tests {
             .name
             .strip_prefix("intellterm_")
             .expect("session MCP server name must use the reserved prefix");
-        assert_eq!(server_id.len(), 20);
+        assert_eq!(server_id.len(), 16);
         assert!(server_id
             .chars()
             .all(|ch| ch.is_ascii_digit() || ('a'..='f').contains(&ch)));
@@ -1408,7 +1408,11 @@ mod tests {
             .into_iter()
             .max_by_key(|tool| tool.tool_name().len())
             .expect("action tools");
-        assert_eq!(longest.tool_name(), "run_command_in_workspace");
+        assert_eq!(longest.tool_name(), "delegate_task_in_new_workspace");
+        assert_eq!(
+            format!("mcp__{}__{}", config.name, longest.tool_name()).len(),
+            64
+        );
         for tool in crate::agent_tools::action_proposal::schema::McpActionTool::ALL {
             let qualified = format!("mcp__{}__{}", config.name, tool.tool_name());
             assert!(

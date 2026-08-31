@@ -37,7 +37,7 @@ function Invoke-ProposalTool {
         id = 1
         method = 'tools/call'
         params = @{
-            name = 'run_command'
+            name = 'run_command_in_current_shell'
             arguments = @{
                 summary = "Run echo $Marker"
                 command = "echo $Marker"

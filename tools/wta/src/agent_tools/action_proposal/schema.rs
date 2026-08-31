@@ -167,26 +167,28 @@ pub struct ProposalChoiceWire {
     pub actions: Vec<ProposalActionWire>,
 }
 
-/// Payload for `run_command`. Required fields are plain (not `Option`), so
-/// serde rejects a missing one directly — there is no post-parse
-/// "is this field valid for this variant" pass, because the tool a model
-/// chose already fixes the shape.
+/// Payload for `run_command_in_current_shell`. Required fields are plain (not
+/// `Option`), so serde rejects a missing one directly — there is no post-parse
+/// "is this field valid for this variant" pass, because the tool a model chose
+/// already fixes the shape.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct McpRunCommandWire {
+pub struct McpRunCommandInCurrentShellWire {
     pub summary: String,
     #[serde(default, deserialize_with = "deserialize_present_option")]
     pub reason: Option<String>,
     pub command: String,
 }
 
-/// Payload for `open_workspace`.
+/// Payload for `create_workspace`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct McpOpenWorkspaceWire {
+pub struct McpCreateWorkspaceWire {
     pub summary: String,
     #[serde(default, deserialize_with = "deserialize_present_option")]
     pub reason: Option<String>,
+    #[serde(default, deserialize_with = "deserialize_present_option")]
+    pub command: Option<String>,
     pub placement: McpWorkspacePlacementWire,
     #[serde(default, deserialize_with = "deserialize_present_option")]
     pub working_directory: Option<String>,
@@ -196,27 +198,10 @@ pub struct McpOpenWorkspaceWire {
     pub profile: Option<String>,
 }
 
-/// Payload for `run_command_in_workspace`.
+/// Payload for `delegate_task_in_new_workspace`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct McpRunCommandInWorkspaceWire {
-    pub summary: String,
-    #[serde(default, deserialize_with = "deserialize_present_option")]
-    pub reason: Option<String>,
-    pub command: String,
-    pub placement: McpWorkspacePlacementWire,
-    #[serde(default, deserialize_with = "deserialize_present_option")]
-    pub working_directory: Option<String>,
-    #[serde(default, deserialize_with = "deserialize_present_option")]
-    pub split_direction: Option<McpSplitDirectionWire>,
-    #[serde(default, deserialize_with = "deserialize_present_option")]
-    pub profile: Option<String>,
-}
-
-/// Payload for `delegate_task`.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct McpDelegateTaskWire {
+pub struct McpDelegateTaskInNewWorkspaceWire {
     pub summary: String,
     #[serde(default, deserialize_with = "deserialize_present_option")]
     pub reason: Option<String>,
@@ -234,26 +219,23 @@ pub struct McpDelegateTaskWire {
 /// rejected after the fact.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum McpActionTool {
-    RunCommand,
-    OpenWorkspace,
-    RunCommandInWorkspace,
-    DelegateTask,
+    RunCommandInCurrentShell,
+    CreateWorkspace,
+    DelegateTaskInNewWorkspace,
 }
 
 impl McpActionTool {
-    pub const ALL: [Self; 4] = [
-        Self::RunCommand,
-        Self::OpenWorkspace,
-        Self::RunCommandInWorkspace,
-        Self::DelegateTask,
+    pub const ALL: [Self; 3] = [
+        Self::RunCommandInCurrentShell,
+        Self::CreateWorkspace,
+        Self::DelegateTaskInNewWorkspace,
     ];
 
     pub fn tool_name(self) -> &'static str {
         match self {
-            Self::RunCommand => "run_command",
-            Self::OpenWorkspace => "open_workspace",
-            Self::RunCommandInWorkspace => "run_command_in_workspace",
-            Self::DelegateTask => "delegate_task",
+            Self::RunCommandInCurrentShell => "run_command_in_current_shell",
+            Self::CreateWorkspace => "create_workspace",
+            Self::DelegateTaskInNewWorkspace => "delegate_task_in_new_workspace",
         }
     }
 
@@ -324,7 +306,7 @@ impl From<ProposalOpenTargetWire> for OpenTarget {
 /// its failing pane at card-execution time.
 ///
 /// `agent: Option<String>` from [`RecommendedAction`] is intentionally not
-/// exposed here. The public `delegate_task` tool selects the configured
+/// exposed here. The public `delegate_task_in_new_workspace` tool selects the configured
 /// delegate by choosing its tool name, while the other tools can never name
 /// an arbitrary agent id. `Open` never carries an agent selector at all
 /// (mirrors [`RecommendedAction::Open`], which has no `agent` field — a bare
@@ -378,7 +360,7 @@ pub fn parse_proposal_payload(bytes: &[u8]) -> Result<ProposalWire, ProposalErro
     Ok(wire)
 }
 
-/// Decode a `tools/call` payload for one of the four action tools.
+/// Decode a `tools/call` payload for one of the three action tools.
 ///
 /// The selected tool fixes the action shape, so this is a plain deserialize
 /// plus a wrap — no per-variant field-applicability pass. `serde` enforces
@@ -395,8 +377,9 @@ pub fn parse_mcp_action_payload(
     }
     let malformed = |e: serde_json::Error| ProposalError::Malformed(e.to_string());
     let (title, rationale, action) = match tool {
-        McpActionTool::RunCommand => {
-            let wire: McpRunCommandWire = serde_json::from_slice(bytes).map_err(malformed)?;
+        McpActionTool::RunCommandInCurrentShell => {
+            let wire: McpRunCommandInCurrentShellWire =
+                serde_json::from_slice(bytes).map_err(malformed)?;
             validate_mcp_required_text("summary", &wire.summary, MAX_TITLE_CHARS)?;
             validate_mcp_optional_nonempty_text(
                 "reason",
@@ -412,13 +395,18 @@ pub fn parse_mcp_action_payload(
                 },
             )
         }
-        McpActionTool::OpenWorkspace => {
-            let wire: McpOpenWorkspaceWire = serde_json::from_slice(bytes).map_err(malformed)?;
+        McpActionTool::CreateWorkspace => {
+            let wire: McpCreateWorkspaceWire = serde_json::from_slice(bytes).map_err(malformed)?;
             validate_mcp_required_text("summary", &wire.summary, MAX_TITLE_CHARS)?;
             validate_mcp_optional_nonempty_text(
                 "reason",
                 wire.reason.as_deref(),
                 MAX_RATIONALE_CHARS,
+            )?;
+            validate_mcp_optional_nonempty_text(
+                "command",
+                wire.command.as_deref(),
+                MAX_INPUT_CHARS,
             )?;
             validate_mcp_optional_nonempty_text(
                 "working_directory",
@@ -430,54 +418,31 @@ pub fn parse_mcp_action_payload(
                 wire.profile.as_deref(),
                 MAX_TITLE_CHARS,
             )?;
-            (
-                wire.summary.clone(),
-                wire.reason.unwrap_or_default(),
-                ProposalActionWire::Open {
-                    target: wire.placement.into(),
-                    cwd: wire.working_directory,
-                    title: Some(wire.summary),
-                    direction: wire.split_direction.map(McpSplitDirectionWire::into_string),
-                    profile: wire.profile,
-                },
-            )
-        }
-        McpActionTool::RunCommandInWorkspace => {
-            let wire: McpRunCommandInWorkspaceWire =
-                serde_json::from_slice(bytes).map_err(malformed)?;
-            validate_mcp_required_text("summary", &wire.summary, MAX_TITLE_CHARS)?;
-            validate_mcp_optional_nonempty_text(
-                "reason",
-                wire.reason.as_deref(),
-                MAX_RATIONALE_CHARS,
-            )?;
-            validate_mcp_required_text("command", &wire.command, MAX_INPUT_CHARS)?;
-            validate_mcp_optional_nonempty_text(
-                "working_directory",
-                wire.working_directory.as_deref(),
-                MAX_INPUT_CHARS,
-            )?;
-            validate_mcp_optional_nonempty_text(
-                "profile",
-                wire.profile.as_deref(),
-                MAX_TITLE_CHARS,
-            )?;
-            (
-                wire.summary.clone(),
-                wire.reason.unwrap_or_default(),
-                ProposalActionWire::OpenAndSend {
-                    target: wire.placement.into(),
-                    input: wire.command,
+            let target = wire.placement.into();
+            let title = Some(wire.summary.clone());
+            let action = match wire.command {
+                Some(command) => ProposalActionWire::OpenAndSend {
+                    target,
+                    input: command,
                     delegate: false,
                     cwd: wire.working_directory,
-                    title: Some(wire.summary),
+                    title,
                     direction: wire.split_direction.map(McpSplitDirectionWire::into_string),
                     profile: wire.profile,
                 },
-            )
+                None => ProposalActionWire::Open {
+                    target,
+                    cwd: wire.working_directory,
+                    title,
+                    direction: wire.split_direction.map(McpSplitDirectionWire::into_string),
+                    profile: wire.profile,
+                },
+            };
+            (wire.summary, wire.reason.unwrap_or_default(), action)
         }
-        McpActionTool::DelegateTask => {
-            let wire: McpDelegateTaskWire = serde_json::from_slice(bytes).map_err(malformed)?;
+        McpActionTool::DelegateTaskInNewWorkspace => {
+            let wire: McpDelegateTaskInNewWorkspaceWire =
+                serde_json::from_slice(bytes).map_err(malformed)?;
             validate_mcp_required_text("summary", &wire.summary, MAX_TITLE_CHARS)?;
             validate_mcp_optional_nonempty_text(
                 "reason",
@@ -591,6 +556,16 @@ fn mcp_command_property(destination: &str) -> serde_json::Value {
     })
 }
 
+fn mcp_create_workspace_command_property() -> serde_json::Value {
+    serde_json::json!({
+        "type": "string",
+        "minLength": 1,
+        "pattern": r"\S",
+        "maxLength": MAX_INPUT_CHARS,
+        "description": "Command to run after creating the workspace. Omit only when the requested outcome is an empty workspace."
+    })
+}
+
 fn mcp_workspace_properties() -> serde_json::Map<String, serde_json::Value> {
     let serde_json::Value::Object(properties) = serde_json::json!({
         "placement": {
@@ -638,28 +613,23 @@ pub fn mcp_action_input_schema(tool: McpActionTool) -> serde_json::Value {
     properties.insert("reason".to_string(), mcp_reason_property());
 
     let required = match tool {
-        McpActionTool::RunCommand => {
+        McpActionTool::RunCommandInCurrentShell => {
             properties.insert(
                 "command".to_string(),
                 mcp_command_property("in the user's current active shell"),
             );
             vec!["summary", "command"]
         }
-        McpActionTool::OpenWorkspace => {
+        McpActionTool::CreateWorkspace => {
+            properties.insert(
+                "command".to_string(),
+                mcp_create_workspace_command_property(),
+            );
             properties.extend(mcp_workspace_properties());
             properties.insert("profile".to_string(), mcp_profile_property());
             vec!["summary", "placement"]
         }
-        McpActionTool::RunCommandInWorkspace => {
-            properties.insert(
-                "command".to_string(),
-                mcp_command_property("in the new workspace"),
-            );
-            properties.extend(mcp_workspace_properties());
-            properties.insert("profile".to_string(), mcp_profile_property());
-            vec!["summary", "command", "placement"]
-        }
-        McpActionTool::DelegateTask => {
+        McpActionTool::DelegateTaskInNewWorkspace => {
             properties.insert(
                 "task".to_string(),
                 serde_json::json!({
@@ -686,17 +656,14 @@ pub fn mcp_action_input_schema(tool: McpActionTool) -> serde_json::Value {
 /// User-facing description for one action tool.
 pub fn mcp_action_description(tool: McpActionTool) -> &'static str {
     match tool {
-        McpActionTool::RunCommand => {
-            "Propose one command for user confirmation and execution in the user's current active shell."
+        McpActionTool::RunCommandInCurrentShell => {
+            "Propose running one command in the user's current active shell after user confirmation."
         }
-        McpActionTool::OpenWorkspace => {
-            "Propose opening an empty terminal workspace in a new tab or split."
+        McpActionTool::CreateWorkspace => {
+            "Propose creating a new terminal workspace in a tab or split, optionally with one command, after user confirmation."
         }
-        McpActionTool::RunCommandInWorkspace => {
-            "Propose opening a new terminal workspace and running one command there."
-        }
-        McpActionTool::DelegateTask => {
-            "Propose opening a new workspace and assigning a self-contained task to the configured delegate agent."
+        McpActionTool::DelegateTaskInNewWorkspace => {
+            "Propose delegating a self-contained task in a new terminal workspace after user confirmation."
         }
     }
 }
@@ -971,13 +938,15 @@ mod tests {
     }
 
     #[test]
-    fn run_command_converts_to_one_recommended_action() {
+    fn run_command_in_current_shell_converts_to_send() {
         let payload = br#"{
             "summary": "Run tests",
             "reason": "Verify the fix",
             "command": "cargo test"
         }"#;
-        let wire = parse_mcp_action_payload(McpActionTool::RunCommand, payload, false).unwrap();
+        let wire =
+            parse_mcp_action_payload(McpActionTool::RunCommandInCurrentShell, payload, false)
+                .unwrap();
         assert_eq!(wire.origin, ProposalOrigin::TerminalAgent);
         assert_eq!(wire.recommended_choice, Some(1));
         assert_eq!(wire.choices.len(), 1);
@@ -992,53 +961,7 @@ mod tests {
     }
 
     #[test]
-    fn delegate_task_converts_to_configured_delegate_action() {
-        let payload = br#"{
-            "summary": "Investigate tests",
-            "task": "Investigate and fix the failing tests",
-            "placement": "new_split",
-            "split_direction": "right"
-        }"#;
-        let wire = parse_mcp_action_payload(McpActionTool::DelegateTask, payload, false).unwrap();
-        assert!(matches!(
-            &wire.choices[0].actions[0],
-            ProposalActionWire::OpenAndSend {
-                target: ProposalOpenTargetWire::Panel,
-                input,
-                delegate: true,
-                direction: Some(direction),
-                title: Some(title),
-                profile: None,
-                ..
-            } if input == "Investigate and fix the failing tests"
-                && direction == "right"
-                && title == "Investigate tests"
-        ));
-    }
-
-    #[test]
-    fn run_command_in_workspace_tab_accepts_direction() {
-        let payload = br#"{
-            "summary": "Project walkthrough",
-            "command": "walkthrough",
-            "placement": "new_tab",
-            "split_direction": "auto"
-        }"#;
-        let wire =
-            parse_mcp_action_payload(McpActionTool::RunCommandInWorkspace, payload, false).unwrap();
-        let set = build_recommendation_set(&wire, false, None, None, None).unwrap();
-        assert!(matches!(
-            &set.choices[0].actions[0],
-            RecommendedAction::OpenAndSend {
-                target: OpenTarget::Tab,
-                direction: Some(direction),
-                ..
-            } if direction == "auto"
-        ));
-    }
-
-    #[test]
-    fn open_workspace_maps_public_fields_to_existing_open_action() {
+    fn create_workspace_without_command_converts_to_open() {
         let payload = br#"{
             "summary": "Open build shell",
             "reason": "Keep the build separate",
@@ -1047,7 +970,8 @@ mod tests {
             "split_direction": "down",
             "profile": "PowerShell"
         }"#;
-        let wire = parse_mcp_action_payload(McpActionTool::OpenWorkspace, payload, false).unwrap();
+        let wire =
+            parse_mcp_action_payload(McpActionTool::CreateWorkspace, payload, false).unwrap();
         assert_eq!(wire.choices[0].title, "Open build shell");
         assert_eq!(wire.choices[0].rationale, "Keep the build separate");
         assert!(matches!(
@@ -1066,31 +990,94 @@ mod tests {
     }
 
     #[test]
-    fn run_command_in_workspace_never_delegates() {
+    fn create_workspace_with_command_converts_to_non_delegated_open_and_send() {
         let payload = br#"{
             "summary": "Run build",
+            "reason": "Build in isolation",
             "command": "cargo build",
             "placement": "new_tab",
+            "working_directory": "C:\\repo",
+            "split_direction": "auto",
             "profile": "PowerShell"
         }"#;
         let wire =
-            parse_mcp_action_payload(McpActionTool::RunCommandInWorkspace, payload, false).unwrap();
+            parse_mcp_action_payload(McpActionTool::CreateWorkspace, payload, false).unwrap();
+        assert_eq!(wire.choices[0].title, "Run build");
+        assert_eq!(wire.choices[0].rationale, "Build in isolation");
         assert!(matches!(
             &wire.choices[0].actions[0],
             ProposalActionWire::OpenAndSend {
                 target: ProposalOpenTargetWire::Tab,
                 input,
                 delegate: false,
+                cwd: Some(cwd),
+                title: Some(title),
+                direction: Some(direction),
                 profile: Some(profile),
+            } if input == "cargo build"
+                && cwd == r"C:\repo"
+                && title == "Run build"
+                && direction == "auto"
+                && profile == "PowerShell"
+        ));
+
+        let set = build_recommendation_set(&wire, false, Some("claude"), None, None).unwrap();
+        assert!(matches!(
+            &set.choices[0].actions[0],
+            RecommendedAction::OpenAndSend {
+                agent: None,
+                target: OpenTarget::Tab,
                 ..
-            } if input == "cargo build" && profile == "PowerShell"
+            }
         ));
     }
 
     #[test]
-    fn delegate_task_rejects_profile_agent_and_delegate_fields() {
+    fn delegate_task_in_new_workspace_converts_to_configured_delegate_action() {
+        let payload = br#"{
+            "summary": "Investigate tests",
+            "task": "Investigate and fix the failing tests",
+            "placement": "new_split",
+            "working_directory": "C:\\repo",
+            "split_direction": "right"
+        }"#;
+        let wire =
+            parse_mcp_action_payload(McpActionTool::DelegateTaskInNewWorkspace, payload, false)
+                .unwrap();
+        assert!(matches!(
+            &wire.choices[0].actions[0],
+            ProposalActionWire::OpenAndSend {
+                target: ProposalOpenTargetWire::Panel,
+                input,
+                delegate: true,
+                cwd: Some(cwd),
+                direction: Some(direction),
+                title: Some(title),
+                profile: None,
+                ..
+            } if input == "Investigate and fix the failing tests"
+                && cwd == r"C:\repo"
+                && direction == "right"
+                && title == "Investigate tests"
+        ));
+        let set =
+            build_recommendation_set(&wire, false, Some("claude"), Some("pane-123"), None).unwrap();
+        assert!(matches!(
+            &set.choices[0].actions[0],
+            RecommendedAction::OpenAndSend {
+                agent: Some(agent),
+                profile: None,
+                parent: Some(parent),
+                ..
+            } if agent == "claude" && parent == "pane-123"
+        ));
+    }
+
+    #[test]
+    fn delegate_task_in_new_workspace_rejects_non_public_fields() {
         for extra in [
             r#""profile":"PowerShell""#,
+            r#""command":"cargo test""#,
             r#""agent":"claude""#,
             r#""delegate":true"#,
         ] {
@@ -1105,7 +1092,7 @@ mod tests {
             assert!(
                 matches!(
                     parse_mcp_action_payload(
-                        McpActionTool::DelegateTask,
+                        McpActionTool::DelegateTaskInNewWorkspace,
                         payload.as_bytes(),
                         false
                     ),
@@ -1120,20 +1107,24 @@ mod tests {
     fn public_action_fields_reject_null_and_invalid_enums() {
         for (tool, payload) in [
             (
-                McpActionTool::RunCommand,
+                McpActionTool::RunCommandInCurrentShell,
                 &br#"{"summary":"Run","command":"echo hi","reason":null}"#[..],
             ),
             (
-                McpActionTool::OpenWorkspace,
+                McpActionTool::CreateWorkspace,
                 &br#"{"summary":"Open","placement":"tab"}"#[..],
             ),
             (
-                McpActionTool::OpenWorkspace,
+                McpActionTool::CreateWorkspace,
+                &br#"{"summary":"Open","placement":"new_tab","command":null}"#[..],
+            ),
+            (
+                McpActionTool::CreateWorkspace,
                 &br#"{"summary":"Open","placement":"new_tab","working_directory":null}"#[..],
             ),
             (
-                McpActionTool::RunCommandInWorkspace,
-                &br#"{"summary":"Run","command":"echo hi","placement":"new_split","split_direction":"center"}"#[..],
+                McpActionTool::DelegateTaskInNewWorkspace,
+                &br#"{"summary":"Delegate","task":"Investigate","placement":"new_split","split_direction":"center"}"#[..],
             ),
         ] {
             assert!(
@@ -1149,19 +1140,32 @@ mod tests {
 
     #[test]
     fn public_action_text_constraints_match_the_advertised_schema() {
+        let long_command = "c".repeat(MAX_INPUT_CHARS + 1);
         let long_profile = "p".repeat(MAX_TITLE_CHARS + 1);
         let long_working_directory = "w".repeat(MAX_INPUT_CHARS + 1);
         for (tool, payload) in [
             (
-                McpActionTool::RunCommand,
+                McpActionTool::RunCommandInCurrentShell,
                 json!({"summary":"Run","command":""}),
             ),
             (
-                McpActionTool::OpenWorkspace,
+                McpActionTool::CreateWorkspace,
                 json!({"summary":"","placement":"new_tab"}),
             ),
             (
-                McpActionTool::OpenWorkspace,
+                McpActionTool::CreateWorkspace,
+                json!({"summary":"Run","command":"","placement":"new_tab"}),
+            ),
+            (
+                McpActionTool::CreateWorkspace,
+                json!({
+                    "summary":"Run",
+                    "command":long_command,
+                    "placement":"new_tab"
+                }),
+            ),
+            (
+                McpActionTool::CreateWorkspace,
                 json!({
                     "summary":"Open",
                     "placement":"new_tab",
@@ -1169,7 +1173,7 @@ mod tests {
                 }),
             ),
             (
-                McpActionTool::RunCommandInWorkspace,
+                McpActionTool::CreateWorkspace,
                 json!({
                     "summary":"Run",
                     "command":"echo hi",
@@ -1178,7 +1182,7 @@ mod tests {
                 }),
             ),
             (
-                McpActionTool::DelegateTask,
+                McpActionTool::DelegateTaskInNewWorkspace,
                 json!({
                     "summary":"Delegate",
                     "task":"Investigate",
@@ -1203,23 +1207,23 @@ mod tests {
     fn public_action_required_text_rejects_whitespace_only_values() {
         for (tool, payload) in [
             (
-                McpActionTool::RunCommand,
+                McpActionTool::RunCommandInCurrentShell,
                 json!({"summary":" \t ","command":"echo hi"}),
             ),
             (
-                McpActionTool::RunCommand,
+                McpActionTool::RunCommandInCurrentShell,
                 json!({"summary":"Run","command":"\r\n"}),
             ),
             (
-                McpActionTool::OpenWorkspace,
+                McpActionTool::CreateWorkspace,
                 json!({"summary":"\n","placement":"new_tab"}),
             ),
             (
-                McpActionTool::RunCommandInWorkspace,
+                McpActionTool::CreateWorkspace,
                 json!({"summary":"Run","command":" ","placement":"new_tab"}),
             ),
             (
-                McpActionTool::DelegateTask,
+                McpActionTool::DelegateTaskInNewWorkspace,
                 json!({"summary":"Delegate","task":"\t","placement":"new_tab"}),
             ),
         ] {
@@ -1239,7 +1243,7 @@ mod tests {
     fn public_action_optional_nonempty_text_rejects_whitespace_only_values() {
         for (tool, payload) in [
             (
-                McpActionTool::OpenWorkspace,
+                McpActionTool::CreateWorkspace,
                 json!({
                     "summary":"Open",
                     "placement":"new_tab",
@@ -1247,7 +1251,7 @@ mod tests {
                 }),
             ),
             (
-                McpActionTool::RunCommandInWorkspace,
+                McpActionTool::CreateWorkspace,
                 json!({
                     "summary":"Run",
                     "command":"echo hi",
@@ -1272,19 +1276,15 @@ mod tests {
     fn reason_schema_and_runtime_require_nonempty_text_when_present() {
         for (tool, mut payload) in [
             (
-                McpActionTool::RunCommand,
+                McpActionTool::RunCommandInCurrentShell,
                 json!({"summary":"Run","command":"echo hi"}),
             ),
             (
-                McpActionTool::OpenWorkspace,
+                McpActionTool::CreateWorkspace,
                 json!({"summary":"Open","placement":"new_tab"}),
             ),
             (
-                McpActionTool::RunCommandInWorkspace,
-                json!({"summary":"Run","command":"echo hi","placement":"new_tab"}),
-            ),
-            (
-                McpActionTool::DelegateTask,
+                McpActionTool::DelegateTaskInNewWorkspace,
                 json!({"summary":"Delegate","task":"Investigate","placement":"new_tab"}),
             ),
         ] {
@@ -1320,17 +1320,16 @@ mod tests {
     #[test]
     fn public_schema_marks_nonempty_text_as_non_whitespace() {
         for (tool, properties) in [
-            (McpActionTool::RunCommand, &["summary", "command"][..]),
             (
-                McpActionTool::OpenWorkspace,
-                &["summary", "working_directory", "profile"][..],
+                McpActionTool::RunCommandInCurrentShell,
+                &["summary", "command"][..],
             ),
             (
-                McpActionTool::RunCommandInWorkspace,
+                McpActionTool::CreateWorkspace,
                 &["summary", "command", "working_directory", "profile"][..],
             ),
             (
-                McpActionTool::DelegateTask,
+                McpActionTool::DelegateTaskInNewWorkspace,
                 &["summary", "task", "working_directory"][..],
             ),
         ] {
@@ -1349,7 +1348,7 @@ mod tests {
     #[test]
     fn accepted_public_text_preserves_original_whitespace() {
         let run = parse_mcp_action_payload(
-            McpActionTool::RunCommand,
+            McpActionTool::RunCommandInCurrentShell,
             br#"{"summary":" Run ","reason":" Because ","command":" echo hi "}"#,
             false,
         )
@@ -1361,25 +1360,42 @@ mod tests {
             ProposalActionWire::Send { input } if input == " echo hi "
         ));
 
-        let open = parse_mcp_action_payload(
-            McpActionTool::OpenWorkspace,
-            br#"{"summary":" Open ","placement":"new_tab","working_directory":" C:\\repo ","profile":" PowerShell "}"#,
+        let create = parse_mcp_action_payload(
+            McpActionTool::CreateWorkspace,
+            br#"{"summary":" Create ","command":" echo hi ","placement":"new_tab","working_directory":" C:\\repo ","profile":" PowerShell "}"#,
             false,
         )
         .unwrap();
         assert!(matches!(
-            &open.choices[0].actions[0],
-            ProposalActionWire::Open {
+            &create.choices[0].actions[0],
+            ProposalActionWire::OpenAndSend {
+                input,
                 cwd: Some(cwd),
                 profile: Some(profile),
                 ..
-            } if cwd == r" C:\repo " && profile == " PowerShell "
+            } if input == " echo hi " && cwd == r" C:\repo " && profile == " PowerShell "
         ));
     }
 
     #[test]
-    fn removed_tool_names_are_not_recognized() {
-        for name in ["terminal_send", "terminal_open", "terminal_open_and_send"] {
+    fn exposes_exactly_the_final_tool_names_without_legacy_aliases() {
+        assert_eq!(
+            McpActionTool::ALL.map(McpActionTool::tool_name),
+            [
+                "run_command_in_current_shell",
+                "create_workspace",
+                "delegate_task_in_new_workspace"
+            ]
+        );
+        for name in [
+            "run_command",
+            "open_workspace",
+            "run_command_in_workspace",
+            "delegate_task",
+            "terminal_send",
+            "terminal_open",
+            "terminal_open_and_send",
+        ] {
             assert_eq!(McpActionTool::from_tool_name(name), None, "{name}");
         }
     }
@@ -1387,22 +1403,30 @@ mod tests {
     #[test]
     fn public_action_descriptions_define_user_visible_terminal_outcomes() {
         for (tool, expected_description) in [
-            (McpActionTool::RunCommand, "user confirmation and execution"),
-            (McpActionTool::OpenWorkspace, "empty terminal workspace"),
             (
-                McpActionTool::RunCommandInWorkspace,
-                "running one command there",
+                McpActionTool::RunCommandInCurrentShell,
+                "Propose running one command in the user's current active shell after user confirmation.",
             ),
-            (McpActionTool::DelegateTask, "configured delegate agent"),
+            (
+                McpActionTool::CreateWorkspace,
+                "Propose creating a new terminal workspace in a tab or split, optionally with one command, after user confirmation.",
+            ),
+            (
+                McpActionTool::DelegateTaskInNewWorkspace,
+                "Propose delegating a self-contained task in a new terminal workspace after user confirmation.",
+            ),
         ] {
             let description = mcp_action_description(tool);
-            assert!(description.starts_with("Propose "), "{}", tool.tool_name());
-            assert!(
-                description.contains(expected_description),
-                "{}",
-                tool.tool_name()
-            );
+            assert_eq!(description, expected_description, "{}", tool.tool_name());
+            assert!(!description.contains("Agent-owned"), "{}", tool.tool_name());
         }
+        assert!(
+            mcp_action_input_schema(McpActionTool::CreateWorkspace)
+                .pointer("/properties/command/description")
+                .and_then(serde_json::Value::as_str)
+                .is_some_and(|description| description.contains("Omit only")),
+            "create_workspace must explain how to request an empty workspace"
+        );
     }
 
     #[test]
@@ -1414,7 +1438,8 @@ mod tests {
                 "actions": [{"type": "send", "input": "cargo test"}]
             }]
         }"#;
-        let err = parse_mcp_action_payload(McpActionTool::RunCommand, payload, false).unwrap_err();
+        let err = parse_mcp_action_payload(McpActionTool::RunCommandInCurrentShell, payload, false)
+            .unwrap_err();
         assert!(matches!(err, ProposalError::Malformed(_)));
     }
 
@@ -1465,26 +1490,14 @@ mod tests {
     /// belongs to a different action — no separate applicability pass.
     #[test]
     fn each_tool_advertises_exactly_the_fields_it_accepts() {
-        let expected: [(McpActionTool, &[&str], &[&str]); 4] = [
+        let expected: [(McpActionTool, &[&str], &[&str]); 3] = [
             (
-                McpActionTool::RunCommand,
+                McpActionTool::RunCommandInCurrentShell,
                 &["summary", "reason", "command"],
                 &["summary", "command"],
             ),
             (
-                McpActionTool::OpenWorkspace,
-                &[
-                    "summary",
-                    "reason",
-                    "placement",
-                    "working_directory",
-                    "split_direction",
-                    "profile",
-                ],
-                &["summary", "placement"],
-            ),
-            (
-                McpActionTool::RunCommandInWorkspace,
+                McpActionTool::CreateWorkspace,
                 &[
                     "summary",
                     "reason",
@@ -1494,10 +1507,10 @@ mod tests {
                     "split_direction",
                     "profile",
                 ],
-                &["summary", "command", "placement"],
+                &["summary", "placement"],
             ),
             (
-                McpActionTool::DelegateTask,
+                McpActionTool::DelegateTaskInNewWorkspace,
                 &[
                     "summary",
                     "reason",
@@ -1543,9 +1556,9 @@ mod tests {
     /// A field belonging to another action is now rejected by `serde`'s
     /// `deny_unknown_fields`, not by a hand-written applicability check.
     #[test]
-    fn run_command_rejects_a_workspace_only_field_as_unknown() {
+    fn run_command_in_current_shell_rejects_a_workspace_only_field_as_unknown() {
         let err = parse_mcp_action_payload(
-            McpActionTool::RunCommand,
+            McpActionTool::RunCommandInCurrentShell,
             br#"{"summary":"Show weather quickly","command":"curl example.com","working_directory":"C:\\repo"}"#,
             false,
         )
@@ -1555,32 +1568,27 @@ mod tests {
         };
         assert!(message.contains("working_directory"), "{message}");
 
-        // The same payload without the stray field parses.
         parse_mcp_action_payload(
-            McpActionTool::RunCommand,
+            McpActionTool::RunCommandInCurrentShell,
             br#"{"summary":"Show weather quickly","command":"curl example.com"}"#,
             false,
         )
-        .expect("run_command payload without the stray field must parse");
+        .expect("current-shell payload without the stray field must parse");
     }
 
     #[test]
     fn missing_required_field_is_rejected_by_serde() {
         for (tool, payload) in [
             (
-                McpActionTool::RunCommand,
+                McpActionTool::RunCommandInCurrentShell,
                 &br#"{"summary":"Run tests"}"#[..],
             ),
             (
-                McpActionTool::OpenWorkspace,
+                McpActionTool::CreateWorkspace,
                 &br#"{"summary":"New tab"}"#[..],
             ),
             (
-                McpActionTool::RunCommandInWorkspace,
-                &br#"{"summary":"New tab","placement":"new_tab"}"#[..],
-            ),
-            (
-                McpActionTool::DelegateTask,
+                McpActionTool::DelegateTaskInNewWorkspace,
                 &br#"{"summary":"Delegate","placement":"new_tab"}"#[..],
             ),
         ] {
@@ -1588,6 +1596,43 @@ mod tests {
                 matches!(
                     parse_mcp_action_payload(tool, payload, false),
                     Err(ProposalError::Malformed(_))
+                ),
+                "{}",
+                tool.tool_name()
+            );
+        }
+    }
+
+    #[test]
+    fn autofix_accepts_only_current_shell_commands() {
+        let run = parse_mcp_action_payload(
+            McpActionTool::RunCommandInCurrentShell,
+            br#"{"summary":"Fix typo","command":"git status"}"#,
+            true,
+        )
+        .unwrap();
+        let set = build_recommendation_set(&run, true, None, None, None).unwrap();
+        assert!(matches!(
+            &set.choices[0].actions[0],
+            RecommendedAction::Send { parent, input }
+                if parent.is_empty() && input == "git status"
+        ));
+
+        for (tool, payload) in [
+            (
+                McpActionTool::CreateWorkspace,
+                &br#"{"summary":"Open shell","placement":"new_tab"}"#[..],
+            ),
+            (
+                McpActionTool::DelegateTaskInNewWorkspace,
+                &br#"{"summary":"Delegate","task":"Fix it","placement":"new_tab"}"#[..],
+            ),
+        ] {
+            let wire = parse_mcp_action_payload(tool, payload, true).unwrap();
+            assert!(
+                matches!(
+                    build_recommendation_set(&wire, true, Some("claude"), None, None),
+                    Err(ProposalError::PolicyViolation(_))
                 ),
                 "{}",
                 tool.tool_name()

@@ -13,7 +13,7 @@ and every eligible ACP session receives a distinct bearer capability:
 
 ```text
 ACP session
-  -> HTTP MCP: intellterm_<public-id>/{run_command,open_workspace,run_command_in_workspace,delegate_task,request_user_input}
+  -> HTTP MCP: intellterm_<public-id>/{run_command_in_current_shell,create_workspace,delegate_task_in_new_workspace,request_user_input}
   -> wta-master capability -> ACP SessionId
   -> session_to_helper -> existing master/helper ACP pipe
   -> owning Helper
@@ -25,7 +25,7 @@ The endpoint presents typed terminal actions for review and blocking
 clarification questions. It cannot read or mutate Windows Terminal. The
 existing card confirmation is the sole mutation boundary.
 
-The four action tools return as soon as the Helper commits its card;
+The three action tools return as soon as the Helper commits its card;
 confirmation or cancellation then happens independently. `request_user_input`
 deliberately keeps the MCP call open until the user answers, cancels, the
 caller disconnects, or the ten-minute timeout expires.
@@ -93,10 +93,9 @@ intellterm_<public-id>
 Tools:
 
 ```text
-run_command
-open_workspace
-run_command_in_workspace
-delegate_task
+run_command_in_current_shell
+create_workspace
+delegate_task_in_new_workspace
 request_user_input
 ```
 
@@ -105,7 +104,7 @@ over stateless Streamable HTTP JSON-RPC. POST responses use JSON or HTTP 202
 for notifications; GET and DELETE return 405 because server-initiated streams
 are unnecessary. It exposes no terminal read or execution tools.
 
-Input, for `run_command`:
+Input, for `run_command_in_current_shell`:
 
 ```json
 {
@@ -115,40 +114,43 @@ Input, for `run_command`:
 }
 ```
 
-Each MCP call proposes exactly one action. One tool per action shape, rather
-than a single tool with a `type` discriminator, so each schema advertises
-exactly the fields that action accepts and `additionalProperties: false`
-rejects a field belonging to another action. The action tools are:
+Each MCP call proposes exactly one user-visible terminal outcome. The tools
+separate current-shell execution, workspace creation, and delegation rather
+than exposing a mechanical action discriminator. Each schema advertises
+exactly the fields that intent accepts, and `additionalProperties: false`
+rejects fields belonging to another intent. The action tools are:
 
-- `run_command`: propose one shell command for the trusted active pane;
-- `open_workspace`: open an empty terminal workspace;
-- `run_command_in_workspace`: open a workspace and run one shell command;
-- `delegate_task`: start the configured delegate agent in a workspace with a
-  self-contained task.
+- `run_command_in_current_shell`: propose one shell command for the trusted
+  active pane;
+- `create_workspace`: create a new terminal workspace, optionally initialized
+  with one shell command;
+- `delegate_task_in_new_workspace`: start the configured delegate agent in a
+  new workspace with a self-contained task.
 
 The exact public payloads are:
 
 | Tool | Required | Optional |
 |---|---|---|
-| `run_command` | `summary`, `command` | `reason` |
-| `open_workspace` | `summary`, `placement` | `reason`, `working_directory`, `split_direction`, `profile` |
-| `run_command_in_workspace` | `summary`, `command`, `placement` | `reason`, `working_directory`, `split_direction`, `profile` |
-| `delegate_task` | `summary`, `task`, `placement` | `reason`, `working_directory`, `split_direction` |
+| `run_command_in_current_shell` | `summary`, `command` | `reason` |
+| `create_workspace` | `summary`, `placement` | `reason`, `command`, `working_directory`, `split_direction`, `profile` |
+| `delegate_task_in_new_workspace` | `summary`, `task`, `placement` | `reason`, `working_directory`, `split_direction` |
 
 `placement` is `new_tab` or `new_split`. `split_direction` is `right`, `left`,
-`up`, `down`, or `auto`. `delegate_task` deliberately exposes neither a
+`up`, `down`, or `auto`. `create_workspace.command` is optional: omitting it
+creates an empty workspace, while supplying it runs that command after
+creation. `delegate_task_in_new_workspace` deliberately exposes neither a
 profile nor an agent selector. The Helper always substitutes the configured
-delegate agent and rejects the request when no valid delegate is configured.
-A model cannot name an arbitrary agent.
+delegate agent and rejects the request when no valid delegate is configured. A
+model cannot name an arbitrary agent.
 
 The Helper maps these public intents into the existing internal action model:
 
 | Public tool | Internal action |
 |---|---|
-| `run_command` | `RecommendedAction::Send` |
-| `open_workspace` | `RecommendedAction::Open` |
-| `run_command_in_workspace` | `RecommendedAction::OpenAndSend` with delegation disabled |
-| `delegate_task` | `RecommendedAction::OpenAndSend` with delegation enabled and no profile |
+| `run_command_in_current_shell` | `RecommendedAction::Send` |
+| `create_workspace` without `command` | `RecommendedAction::Open` |
+| `create_workspace` with `command` | `RecommendedAction::OpenAndSend` with delegation disabled |
+| `delegate_task_in_new_workspace` | `RecommendedAction::OpenAndSend` with delegation enabled and no profile |
 
 `new_tab` maps to the existing `Tab` target and `new_split` maps to `Panel`.
 The user-facing `summary` becomes the recommendation title and, for workspace
@@ -156,8 +158,8 @@ tools, the requested destination title. `working_directory`,
 `split_direction`, and `profile` map to the existing internal fields without
 changing trusted active-pane routing.
 
-Autofix uses only `run_command`; the Helper supplies the trusted Autofix origin
-and requires the resulting internal `Send` action.
+Autofix uses only `run_command_in_current_shell`; the Helper supplies the
+trusted Autofix origin and requires the resulting internal `Send` action.
 
 Tool result statuses:
 
