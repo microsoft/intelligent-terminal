@@ -2455,10 +2455,10 @@ impl App {
                         // close it).
                         tab.loading_session = true;
                         tab.loading_target_session_id = Some(session_id.to_string());
-                        // Resume is intentionally silent — no "Resuming…"
-                        // marker — so a resumed pane presents exactly like a
-                        // normal connection. `loading_session` still opens the
-                        // replay window; any past content just streams in above.
+                        // `loading_session` both opens the replay window and
+                        // drives the "Resuming session …" indicator, so the
+                        // user knows a conversation is on its way in rather
+                        // than watching a pane that looks like a cold start.
                     }
                     // If the load_session target IS the active tab, push the
                     // (now Chat) view to C++ so the bar drops the "Agent
