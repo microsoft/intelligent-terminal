@@ -1,0 +1,1346 @@
+performance.mark("js-parse-end:service-worker-a8438592a5075b56.js");
+let e, t, r, n;
+function a() {
+    let t = (void 0) ?? e;
+    if (!t)
+        throw Error("Client env was requested before it was loaded. This likely means you are attempting to use client env at the module level in SSR, which is not supported. Please move your client env usage into a function.");
+    return t
+}
+if ("u" > typeof document) {
+    let t = document.getElementById("client-env");
+    if (t)
+        try {
+            e = JSON.parse(t.textContent || "")
+        } catch (e) {
+            console.error("Error parsing client-env", e)
+        }
+}
+function o(e) {
+    return new Promise( (t, r) => {
+        e.onsuccess = () => t(e.result),
+        e.onerror = () => r(e.error)
+    }
+    )
+}
+function i(e) {
+    return new Promise( (t, r) => {
+        e.oncomplete = () => t(),
+        e.onabort = e.onerror = () => r(e.error)
+    }
+    )
+}
+let s = "expiresAt"
+  , l = (e, t) => `${e}::${t}`;
+function c(e, t) {
+    let r, n = l(e, t), a = async (e, a) => a((await function() {
+        if (r)
+            return r;
+        let e = globalThis.indexedDB.open(n);
+        e.onupgradeneeded = () => e.result.createObjectStore(t).createIndex(s, "state.expiresAt");
+        let a = o(e);
+        return r = a,
+        (async () => {
+            try {
+                let e = await a
+                  , t = () => {
+                    r === a && (r = void 0)
+                }
+                ;
+                e.onclose = t,
+                e.onversionchange = () => {
+                    e.close(),
+                    t()
+                }
+            } catch {}
+        }
+        )(),
+        r
+    }()).transaction(t, e).objectStore(t));
+    return a.batchKey = n,
+    a
+}
+let u = new Map;
+async function d(e, t) {
+    u.get(e) === t && u.delete(e);
+    try {
+        await t.withStore("readonly", e => {
+            for (let r of t.requests)
+                try {
+                    let t = e.get(r.key);
+                    t.onsuccess = () => r.resolve(t.result),
+                    t.onerror = e => {
+                        e.preventDefault(),
+                        r.reject(t.error)
+                    }
+                } catch (e) {
+                    r.reject(e)
+                }
+        }
+        )
+    } catch (e) {
+        for (let r of t.requests)
+            r.reject(e)
+    }
+}
+let f = async (e, t) => {
+    if (t && "u" > typeof navigator && navigator.storage?.estimate)
+        try {
+            let r = await navigator.storage.estimate()
+              , n = r.quota ?? 0
+              , a = r.usage ?? 0;
+            t("offline_cache.storage_space", e, {
+                quota_bytes: n,
+                usage_bytes: a,
+                available_bytes: n - a,
+                usage_percent: n > 0 ? a / n * 100 : 0
+            })
+        } catch {}
+}
+;
+function h(...e) {
+    return JSON.stringify(e, (e, t) => "object" == typeof t ? t : String(t))
+}
+function m(e, t={}) {
+    let {hash: r=h, cache: n=new Map} = t;
+    return function(...t) {
+        let a = r.apply(this, t);
+        if (n.has(a))
+            return n.get(a);
+        let o = e.apply(this, t);
+        return o instanceof Promise && (o = o.catch(e => {
+            throw n.delete(a),
+            e
+        }
+        )),
+        n.set(a, o),
+        o
+    }
+}
+let p = "u" > typeof FORCE_SERVER_ENV && FORCE_SERVER_ENV
+  , v = "u" < typeof document || p ? void 0 : document
+  , y = "u" < typeof window || p ? void 0 : window;
+"u" < typeof history || p || history;
+"u" < typeof location || p || location;
+let g = void 0 === v;
+function _() {
+    if (g || !v)
+        return !0;
+    let e = v.documentElement.getAttribute("data-render-ssr");
+    return null !== e ? "true" === e : !!(v.querySelector('react-app[data-ssr="true"]') || v.querySelector('react-partial[data-ssr="true"][partial-name="repos-overview"]'))
+}
+let w = g ? void 0 : new Map
+  , b = g ? void 0 : new Set;
+function S() {
+    return new Set(a().featureFlags)
+}
+let E = g || function() {
+    try {
+        return process?.env?.STORYBOOK === "true"
+    } catch {
+        return !1
+    }
+}() ? S : m(S);
+function I() {}
+let q = [];
+function D() {
+    let e = function() {
+        if ("scheduler"in globalThis)
+            return globalThis.scheduler
+    }();
+    if (e) {
+        if ("function" == typeof e.yield)
+            return e.yield();
+        if ("function" == typeof e.postTask)
+            return e.postTask(I, {
+                priority: "user-visible"
+            })
+    }
+    if ("function" == typeof MessageChannel) {
+        if (!t) {
+            let e = new MessageChannel;
+            e.port1.onmessage = () => {
+                q.shift()?.()
+            }
+            ,
+            t = e.port2
+        }
+        let e = t;
+        return new Promise(t => {
+            q.push(t),
+            e.postMessage(void 0)
+        }
+        )
+    }
+    return new Promise(e => setTimeout(e, 0))
+}
+let k = {
+    Check: e => "object" == typeof e && null !== e,
+    Code: () => "simple-validator",
+    Errors: () => []
+}
+  , R = "offline_cache.cache_miss"
+  , T = "offline_cache.cache_evict"
+  , x = "offline_cache.session_disabled"
+  , U = "offline_cache.read_error"
+  , N = "offline_cache.write_error"
+  , A = "offline_cache.cleanup_skipped"
+  , P = "__offline_cache_warmup_probe__";
+function C(e) {
+    try {
+        return Number(globalThis.localStorage?.getItem(e))
+    } catch {
+        return 0
+    }
+}
+function $(e) {
+    try {
+        globalThis.localStorage?.setItem(e, String(Date.now()))
+    } catch {}
+}
+let O = !1;
+function M(e) {
+    return "u" > typeof DOMException && e instanceof DOMException
+}
+function j(e) {
+    if (!M(e))
+        return !1;
+    let t = e.name;
+    return "SecurityError" === t || "UnknownError" === t || "AbortError" === t || "QuotaExceededError" === t || "NotFoundError" === t || "VersionError" === t
+}
+function L(e) {
+    return M(e) && "InvalidStateError" === e.name
+}
+function B() {
+    try {
+        return "u" > typeof globalThis && void 0 !== globalThis.indexedDB
+    } catch {
+        return !1
+    }
+}
+class F extends Error {
+    constructor(e, t, r) {
+        super(`IndexedDB ${e} operation timed out after ${r}ms for key: ${t}`),
+        this.name = "IndexedDbTimeoutError"
+    }
+}
+let V = "offline_cache_v2::"
+  , z = ["offline_cache::"]
+  , H = `offline_cache_schema_first_seen::${V}`
+  , J = new Map
+  , K = new Map;
+function Q(e) {
+    let t = K.get(e);
+    return t || (t = {
+        running: !1,
+        intervalId: void 0
+    },
+    K.set(e, t)),
+    t
+}
+let W = !1;
+async function Y(e) {
+    if (W)
+        return;
+    W = !0;
+    let t = C(H);
+    if (!t || !Number.isFinite(t))
+        return void $(H);
+    let r = Date.now() - t;
+    if (r < 0)
+        return void $(H);
+    if (!(r < 6048e5))
+        try {
+            for (let {name: t} of await globalThis.indexedDB?.databases?.() ?? [])
+                t && z.some(e => t.startsWith(e)) && (globalThis.indexedDB.deleteDatabase(t).onblocked = () => {
+                    e("offline_cache.legacy_delete_blocked", "", {
+                        age_ms: r
+                    })
+                }
+                )
+        } catch {}
+}
+"u" > typeof window && (window.__SAFE_INDEXED_DB_CLEAR_PERSISTERS__ = () => {
+    for (let e of J.values())
+        e && "function" == typeof e.stopPeriodicCleanup && e.stopPeriodicCleanup();
+    J.clear(),
+    K.clear(),
+    O = !1,
+    W = !1
+}
+);
+class G {
+    options;
+    constructor(e) {
+        this.options = e
+    }
+    get collectorUrl() {
+        return this.options.collectorUrl
+    }
+    #e(e, t) {
+        return {
+            type: e,
+            context: {
+                ...this.options.baseContext,
+                ...t
+            }
+        }
+    }
+    sendEvent(e, t) {
+        let r = this.#e(e, t);
+        this.#t({
+            events: [r]
+        })
+    }
+    async #t({events: e}) {
+        let t = JSON.stringify({
+            events: e
+        });
+        try {
+            await fetch(this.collectorUrl, {
+                method: "POST",
+                cache: "no-cache",
+                headers: {
+                    "Content-Type": "application/json"
+                },
+                body: t,
+                keepalive: !0
+            })
+        } catch {}
+    }
+}
+let X = {}
+  , Z = (e, t, n={}) => {
+    if (!r)
+        return;
+    let a = r;
+    queueMicrotask( () => {
+        let r = {
+            ...X
+        };
+        for (let[e,a] of (t && (r.target = t),
+        Object.entries(n)))
+            null != a && (r[e] = `${a}`);
+        a.sendEvent(e || "unknown", r)
+    }
+    )
+}
+;
+var ee = "<unknown>"
+  , et = /^\s*at (.*?) ?\(((?:file|https?|blob|chrome-extension|native|eval|webpack|rsc|<anonymous>|\/|[a-z]:\\|\\\\).*?)(?::(\d+))?(?::(\d+))?\)?\s*$/i
+  , er = /\((\S*)(?::(\d+))(?::(\d+))\)/
+  , en = /^\s*at (?:((?:\[object object\])?.+) )?\(?((?:file|ms-appx|https?|webpack|rsc|blob):.*?):(\d+)(?::(\d+))?\)?\s*$/i
+  , ea = /^\s*(.*?)(?:\((.*?)\))?(?:^|@)((?:file|https?|blob|chrome|webpack|rsc|resource|\[native).*?|[^@]*bundle)(?::(\d+))?(?::(\d+))?\s*$/i
+  , eo = /(\S+) line (\d+)(?: > eval line \d+)* > eval/i
+  , ei = /^\s*(?:([^@]*)(?:\((.*?)\))?@)?(\S.*?):(\d+)(?::(\d+))?\s*$/i
+  , es = /^\s*at (?:((?:\[object object\])?[^\\/]+(?: \[as \S+\])?) )?\(?(.*?):(\d+)(?::(\d+))?\)?\s*$/i;
+function el(e) {
+    return (e.stack || "").split("\n").reduce(function(e, t) {
+        var r, n, a, o, i, s, l = function(e) {
+            var t = et.exec(e);
+            if (!t)
+                return null;
+            var r = t[2] && 0 === t[2].indexOf("native")
+              , n = t[2] && 0 === t[2].indexOf("eval")
+              , a = er.exec(t[2]);
+            return n && null != a && (t[2] = a[1],
+            t[3] = a[2],
+            t[4] = a[3]),
+            {
+                file: r ? null : t[2],
+                methodName: t[1] || ee,
+                arguments: r ? [t[2]] : [],
+                lineNumber: t[3] ? +t[3] : null,
+                column: t[4] ? +t[4] : null
+            }
+        }(t) || (r = t,
+        (n = en.exec(r)) ? {
+            file: n[2],
+            methodName: n[1] || ee,
+            arguments: [],
+            lineNumber: +n[3],
+            column: n[4] ? +n[4] : null
+        } : null) || function(e) {
+            var t = ea.exec(e);
+            if (!t)
+                return null;
+            var r = t[3] && t[3].indexOf(" > eval") > -1
+              , n = eo.exec(t[3]);
+            return r && null != n && (t[3] = n[1],
+            t[4] = n[2],
+            t[5] = null),
+            {
+                file: t[3],
+                methodName: t[1] || ee,
+                arguments: t[2] ? t[2].split(",") : [],
+                lineNumber: t[4] ? +t[4] : null,
+                column: t[5] ? +t[5] : null
+            }
+        }(t) || (a = t,
+        (o = es.exec(a)) ? {
+            file: o[2],
+            methodName: o[1] || ee,
+            arguments: [],
+            lineNumber: +o[3],
+            column: o[4] ? +o[4] : null
+        } : null) || (i = t,
+        (s = ei.exec(i)) ? {
+            file: s[3],
+            methodName: s[1] || ee,
+            arguments: [],
+            lineNumber: +s[4],
+            column: s[5] ? +s[5] : null
+        } : null);
+        return l && e.push(l),
+        e
+    }, []).map(e => ({
+        filename: e.file || "",
+        function: String(e.methodName),
+        lineno: (e.lineNumber || 0).toString(),
+        colno: (e.column || 0).toString()
+    }))
+}
+let ec = Date.now()
+  , eu = 0;
+function ed(e, t) {
+    return {
+        error: e,
+        sanitizedUrl: t?.targetUrl || self.location.href,
+        readyState: "complete",
+        referrer: t?.referrer,
+        timeSinceLoad: Math.round(Date.now() - ec),
+        user: n?.user,
+        actorId: n?.actorId,
+        bundler: "service-worker",
+        ui: !1,
+        release: n?.release,
+        turbo: t?.navType === "turbo",
+        pastRequestIds: t?.requestId ? [t.requestId] : void 0
+    }
+}
+function ef(e) {
+    if (eu < 10 && n?.errorsUrl) {
+        eu++;
+        try {
+            fetch(n.errorsUrl, {
+                method: "POST",
+                body: JSON.stringify({
+                    context: e,
+                    target: "full"
+                })
+            })
+        } catch {}
+    }
+}
+class eh {
+    #r;
+    #n;
+    constructor(e) {
+        this.#r = new Map,
+        this.#n = e
+    }
+    get(e) {
+        let t = this.#r.get(e);
+        return void 0 !== t && (this.#r.delete(e),
+        this.#r.set(e, t)),
+        t
+    }
+    set(e, t) {
+        if (this.#r.has(e) && this.#r.delete(e),
+        this.#r.set(e, t),
+        this.#r.size > this.#n) {
+            let e = this.#r.keys().next().value;
+            void 0 !== e && this.#r.delete(e)
+        }
+    }
+    delete(e) {
+        this.#r.delete(e)
+    }
+    clear() {
+        this.#r.clear()
+    }
+    get size() {
+        return this.#r.size
+    }
+}
+new eh(250),
+v?.readyState === "interactive" || v?.readyState === "complete" ? Promise.resolve() : new Promise(e => {
+    v?.addEventListener("DOMContentLoaded", () => {
+        e()
+    }
+    )
+}
+);
+let em = v?.readyState === "complete" ? Promise.resolve() : new Promise(e => {
+    y?.addEventListener("load", e)
+}
+)
+  , ep = m(function() {
+    return v?.head?.querySelector('meta[name="runtime-environment"]')?.content || ""
+});
+m(function() {
+    return "enterprise" === ep()
+});
+let ev = Object.freeze({
+    INITIAL: "soft-nav:initial",
+    START: "soft-nav:start",
+    REPLACE_MECHANISM: "soft-nav:replace-mechanism",
+    SUCCESS: "soft-nav:success",
+    ERROR: "soft-nav:error",
+    FRAME_UPDATE: "soft-nav:frame-update",
+    END: "soft-nav:end",
+    RENDER: "soft-nav:render",
+    REACT_DONE: "soft-nav:react-done",
+    PROGRESS_BAR: {
+        START: "soft-nav:progress-bar:start",
+        END: "soft-nav:progress-bar:end"
+    }
+})
+  , ey = [];
+function eg(e) {
+    let t;
+    return e || (t = v?.querySelector('meta[name="react-app-name"]')?.getAttribute("content")) || (v?.querySelector("projects-v2") ? "memex" : v?.querySelector('react-partial[partial-name="repos-overview"]') ? "repos-overview" : v?.querySelector("react-app")?.getAttribute("app-name")) || "rails"
+}
+eg(),
+_(),
+v?.addEventListener(ev.RENDER, () => {
+    eg(),
+    _()
+}
+);
+let e_ = null;
+function ew() {
+    if (e_ = null,
+    !ey.length)
+        return;
+    let e = v?.head?.querySelector('meta[name="browser-stats-url"]')?.content;
+    if (e) {
+        for (let n of function(e) {
+            let t = []
+              , r = e.map(e => JSON.stringify(e));
+            for (; r.length > 0; )
+                t.push(function(e) {
+                    let t = e.shift()
+                      , r = [t]
+                      , n = t.length;
+                    for (; e.length > 0 && n <= 65536; ) {
+                        let t = e[0].length;
+                        if (n + t <= 65536) {
+                            let a = e.shift();
+                            r.push(a),
+                            n += t
+                        } else
+                            break
+                    }
+                    return r
+                }(r));
+            return t
+        }(ey)) {
+            var t = e
+              , r = `{"stats": [${n.join(",")}], "target": "${v?.head?.querySelector('meta[name="ui-target"]')?.content || "full"}"}`;
+            try {
+                navigator.sendBeacon && navigator.sendBeacon(t, r)
+            } catch {}
+        }
+        ey = []
+    }
+}
+function eb(e, t, r, n) {
+    let a = function(e, t, r) {
+        let n = {
+            ...t,
+            ...Object.fromEntries(Object.entries(e ?? {}).filter( ([,e]) => void 0 !== e))
+        }
+          , a = Object.keys(n).sort()
+          , o = {};
+        for (let e of a) {
+            if (Array.isArray(r) && r.includes(e))
+                continue;
+            let t = n[e];
+            null != t && (o[e] = t)
+        }
+        return o
+    }(t.variables, r, n);
+    return `${e}-${t.queryName}#${JSON.stringify(a)}`
+}
+!function(e, t=0, {start: r=!0, middle: n=!0, once: a=!1}={}) {
+    let o, i = r, s = 0, l = !1;
+    function c(...u) {
+        if (l)
+            return;
+        let d = Date.now() - s;
+        s = Date.now(),
+        r && n && d >= t && (i = !0),
+        i ? (i = !1,
+        e.apply(this, u),
+        a && c.cancel()) : (n && d < t || !n) && (clearTimeout(o),
+        o = setTimeout( () => {
+            s = Date.now(),
+            e.apply(this, u),
+            a && c.cancel()
+        }
+        , n ? t - d : t))
+    }
+    c.cancel = () => {
+        clearTimeout(o),
+        l = !0
+    }
+}(async function() {
+    await em,
+    null == e_ && (e_ = window.requestIdleCallback(ew))
+}, 5e3),
+v?.addEventListener("pagehide", ew),
+v?.addEventListener("visibilitychange", ew),
+"u" > typeof window && decodeURIComponent(new URLSearchParams(window.location.search).get("disable_clusters") || "").split(",").filter(e => "" !== e);
+let eS = "relay-query"
+  , eE = "IssueViewerViewQuery"
+  , eI = "IssueIndexPageQuery"
+  , eq = (e, t) => {
+    !function(e, t) {
+        if (n && !(e instanceof TypeError && e.message.includes("Failed to fetch"))) {
+            if (!(e instanceof Error || "object" == typeof e && null !== e && "name"in e && "string" == typeof e.name && "message"in e && "string" == typeof e.message)) {
+                if (!e || "boolean" == typeof e || "number" == typeof e)
+                    return;
+                let r = Error()
+                  , a = function(e) {
+                    try {
+                        return JSON.stringify(e)
+                    } catch {
+                        return "Unserializable"
+                    }
+                }(e);
+                ef(ed({
+                    type: "UnknownError",
+                    value: `Unable to report error, due to a thrown non-Error type: ${typeof e}, with value ${a}`,
+                    stacktrace: el(r),
+                    catalogService: n?.catalogService
+                }, t));
+                return
+            }
+            ef(ed({
+                type: e.name,
+                value: e.message,
+                stacktrace: el(e),
+                catalogService: n?.catalogService
+            }, t))
+        }
+    }(e, t),
+    Z("service_worker.error", "reportError", {
+        error_message: e instanceof Error ? e.message : "unknown",
+        service_worker_version: "1.0.0",
+        request_id: t?.requestId,
+        status_code: t?.statusCode,
+        target_url: t?.targetUrl,
+        referrer: t?.referrer,
+        nav_type: t?.navType
+    })
+}
+  , eD = new eh(100)
+  , ek = null
+  , eR = null
+  , eT = null
+  , ex = null
+  , eU = e => {
+    let t = (e => {
+        try {
+            let t = new URL(e,self.location.origin).pathname.split("/").filter(Boolean);
+            if (4 !== t.length || "issues" !== t[2])
+                return;
+            let r = t[3];
+            if (void 0 !== r && /^\d+$/.test(r) && t[0] && t[1])
+                return {
+                    owner: t[0],
+                    repo: t[1],
+                    issueNumber: parseInt(r, 10)
+                };
+            return
+        } catch {
+            return
+        }
+    }
+    )(e);
+    if (t)
+        return {
+            type: "issue-show",
+            ...t
+        };
+    let r = (e => {
+        try {
+            let t = new URL(e,self.location.origin).pathname.split("/").filter(Boolean);
+            if (3 !== t.length || "issues" !== t[2] || !t[0] || !t[1])
+                return;
+            return {
+                owner: t[0],
+                repo: t[1]
+            }
+        } catch {
+            return
+        }
+    }
+    )(e);
+    if (r)
+        return {
+            type: "issue-index",
+            ...r
+        }
+}
+  , eN = ["ISSUE_HYBRID", "ISSUE_ADVANCED"]
+  , eA = e => {
+    switch (e.type) {
+    case "issue-show":
+        return [( ({owner: e, repo: t, issueNumber: r}) => eb(`${eS}-${ek}`, {
+            queryId: "",
+            queryName: eE,
+            variables: {
+                owner: e,
+                repo: t,
+                number: r
+            }
+        }, {
+            count: 15,
+            hideTimeline: !1
+        }))(e)];
+    case "issue-index":
+        return eN.map(t => ( ({owner: e, repo: t}, r="ISSUE_HYBRID") => eb(`${eS}-${ek}`, {
+            queryId: "",
+            queryName: eI,
+            variables: {
+                owner: e,
+                name: t
+            }
+        }, ( ({owner: e, repo: t}, r="ISSUE_HYBRID") => ({
+            query: `is:issue state:open repo:${e}/${t} sort:relevance-desc`,
+            first: 25,
+            labelPageSize: 20,
+            showIssueFieldPills: !0,
+            skip: 0,
+            type: r
+        }))({
+            owner: e,
+            repo: t
+        }, r)))(e, t))
+    }
+}
+  , eP = "CACHED_QUERIES_RESPONSE";
+function eC(e, t) {
+    e.ports[0]?.postMessage(t)
+}
+let e$ = {
+    type: eP,
+    success: !1,
+    reason: "not_found",
+    data: null
+}
+  , eO = {
+    type: eP,
+    success: !1,
+    reason: "error",
+    data: null
+}
+  , eM = self
+  , ej = async (e, t) => {
+    let r, n = !1, a = new Promise(e => {
+        r = setTimeout( () => {
+            n = !0,
+            e(void 0)
+        }
+        , t)
+    }
+    );
+    try {
+        let t = await Promise.race([e, a]);
+        return r && clearTimeout(r),
+        {
+            result: t,
+            timedOut: n
+        }
+    } catch (e) {
+        throw r && clearTimeout(r),
+        e
+    }
+}
+  , eL = async e => {
+    let t, r = performance.now(), n = ex, a = e[0] ?? "";
+    if (n) {
+        let r = e.map(async e => ({
+            data: await n.getItem(e),
+            key: e
+        }));
+        for (let e of (await Promise.all(r)))
+            if (e.data) {
+                t = e.data,
+                a = e.key;
+                break
+            }
+    }
+    return {
+        cachedData: t,
+        cacheKey: a,
+        hasCachedResult: void 0 !== t,
+        durationMs: Math.round(performance.now() - r)
+    }
+}
+  , eB = async (e, t, r, n) => {
+    let a = e.request.url
+      , o = e.request.referrer || void 0
+      , i = t[0] ?? "";
+    try {
+        let {result: s, timedOut: l} = await ej(eL(t), 250)
+          , c = s?.hasCachedResult ?? !1
+          , u = s?.cachedData
+          , d = u?.queryHash ?? "unknown"
+          , f = s?.cacheKey ?? i
+          , h = s?.durationMs ?? 250;
+        l && Z("service_worker.prefetch_timeout", i, {
+            timeout_ms: 250,
+            service_worker_version: "1.0.0",
+            target_url: a,
+            referrer: o,
+            nav_type: r
+        });
+        let m = new Headers(e.request.headers);
+        c && m.set("X-Issues-React-Relay-Cache", `${n}:${d}`);
+        let p = new Request(e.request,{
+            headers: m,
+            referrer: e.request.referrer,
+            referrerPolicy: e.request.referrerPolicy
+        });
+        return Z("service_worker.prerequest", f, {
+            duration_ms: h,
+            cache_hit: c,
+            timed_out: l,
+            service_worker_version: "1.0.0",
+            target_url: a,
+            referrer: o,
+            nav_type: r
+        }),
+        c && u && eD.set(f, u),
+        fetch(p)
+    } catch (t) {
+        return eq(t, {
+            targetUrl: a,
+            referrer: o,
+            navType: r
+        }),
+        fetch(e.request)
+    }
+}
+;
+eM.addEventListener("install", () => ( (e=eM) => {
+    e.skipWaiting()
+}
+)()),
+eM.addEventListener("activate", () => ( (e=eM) => {
+    e.clients.claim()
+}
+)()),
+eM.addEventListener("fetch", (t, h=eM) => {
+    try {
+        if ("GET" !== t.request.method)
+            return;
+        if (!ek) {
+            var m;
+            let t = new URL(h.location.href,h.location.origin)
+              , a = t.searchParams.get("errors_url");
+            ek = t.searchParams.get("current_user"),
+            eR = t.searchParams.get("release"),
+            eT = t.searchParams.get("actor_id"),
+            a && (m = {
+                errorsUrl: a,
+                user: ek || void 0,
+                catalogService: "github/issues",
+                release: eR || void 0,
+                actorId: eT || void 0
+            },
+            n || m.errorsUrl && (n = m));
+            let o = ek;
+            if (!o) {
+                eq(Error("[1.0.0] missing_current_user in handleFetch")),
+                h.registration.unregister();
+                return
+            }
+            e = {
+                locale: "en-US",
+                featureFlags: [],
+                copilotApiOverrideUrl: void 0,
+                cmcApiUrl: void 0,
+                login: o
+            };
+            let i = t.searchParams.get("analytics_collector_url");
+            i && function(e) {
+                if (!r && e.collectorUrl)
+                    try {
+                        r = new G({
+                            collectorUrl: e.collectorUrl
+                        }),
+                        X = {
+                            actor_login: e.actorLogin,
+                            service_worker: "true"
+                        },
+                        e.release && (X.release = e.release),
+                        e.actorId && (X.actor_id = e.actorId)
+                    } catch {}
+            }({
+                collectorUrl: i,
+                actorLogin: o,
+                release: eR || void 0,
+                actorId: eT || void 0
+            })
+        }
+        let p = eU(t.request.url);
+        if (!p || !ek)
+            return;
+        ex || (ex = function({validator: e, sendAnalyticsEvent: t, storeName: r="queries", dataValidator: n}) {
+            let h = n ? `data:${n.name}` : ""
+              , m = `${V + a().login}:${r}:${e.Code()}:${h}`
+              , p = l(V + a().login, r)
+              , v = "offline_cache_last_cleanup::" + p
+              , y = J.get(m);
+            if (y)
+                return y;
+            function g(e) {
+                return !!(!e || !e.state || e.state.dataUpdatedAt && e.state.ttl && Date.now() - e.state.dataUpdatedAt > e.state.ttl) || void 0 !== e.state.cacheVersion && 1 !== e.state.cacheVersion
+            }
+            let _ = c(V + a().login, r);
+            function S() {
+                _ = c(V + a().login, r)
+            }
+            let I = !1;
+            function q() {
+                return function(e) {
+                    let t = E().has(e);
+                    if (w && b && w.get(e) !== t)
+                        for (let r of (w.set(e, t),
+                        b))
+                            r(e, t);
+                    return t
+                }("disable-indexdb-operations") || O
+            }
+            async function k(e, r, n, a) {
+                let o = null
+                  , i = new Promise( (e, i) => {
+                    o = setTimeout( () => {
+                        t("offline_cache.cache_timeout", a, {
+                            operation: n
+                        }),
+                        i(new F(n,a,r))
+                    }
+                    , r)
+                }
+                );
+                try {
+                    let t = await Promise.race([e, i]);
+                    return o && clearTimeout(o),
+                    t
+                } catch (e) {
+                    throw o && clearTimeout(o),
+                    e
+                }
+            }
+            async function M(e) {
+                let t = e.index(s).getAllKeys(IDBKeyRange.upperBound(Date.now(), !0), 250)
+                  , r = e.count()
+                  , [n,a] = await Promise.all([o(t), o(r)]);
+                return {
+                    expiredKeys: n,
+                    totalEntries: a
+                }
+            }
+            async function z(e, r) {
+                for (let n = 0; n < e.length; n += 250) {
+                    let a = e.slice(n, n + 250);
+                    for (let e of (await function(e, t) {
+                        return t("readwrite", t => {
+                            for (let r of e)
+                                t.delete(r);
+                            return i(t.transaction)
+                        }
+                        )
+                    }(a, r),
+                    a))
+                        t(T, e.toString(), {
+                            reason: "periodic_cleanup"
+                        });
+                    n + 250 < e.length && await D()
+                }
+            }
+            async function H() {
+                let e = Q(p);
+                if (e.running)
+                    return;
+                e.running = !0;
+                let r = Date.now();
+                try {
+                    if (t("offline_cache.cleanup_started", "", {}),
+                    !B())
+                        return;
+                    let e = 0
+                      , n = 0
+                      , a = !1;
+                    for (let t = 0; t < 20; t++) {
+                        let {expiredKeys: r, totalEntries: o} = await _("readonly", M);
+                        if (0 === t && (n = o),
+                        0 === r.length || (await z(r, _),
+                        e += r.length,
+                        r.length < 250)) {
+                            a = !0;
+                            break
+                        }
+                        await D()
+                    }
+                    t("offline_cache.cleanup_completed", "", {
+                        removed_count: e,
+                        total_entries: n,
+                        duration_ms: Date.now() - r,
+                        drained: a
+                    }),
+                    a && $(v)
+                } catch (e) {
+                    try {
+                        t("offline_cache.cleanup_error", "", {
+                            error: String(e)
+                        })
+                    } catch {}
+                } finally {
+                    e.running = !1
+                }
+            }
+            async function K(e) {
+                let r = globalThis.navigator?.locks;
+                if (!r)
+                    return e();
+                await r.request("offline_cache_cleanup::" + p, {
+                    ifAvailable: !0
+                }, async r => {
+                    r ? await e() : t(A, "", {
+                        reason: "another_tab_cleaning"
+                    })
+                }
+                )
+            }
+            function W(e) {
+                q() || !B() || void 0 === Q(p).intervalId || Q(p).running || !function(e) {
+                    let r = C(v);
+                    if (!r || !Number.isFinite(r))
+                        return !1;
+                    let n = Date.now() - r;
+                    return !(n < 0) && !(n >= e) && (t(A, "", {
+                        reason: "recently_cleaned",
+                        age_ms: n
+                    }),
+                    !0)
+                }(e) && (Y(t),
+                K(H))
+            }
+            let G = {
+                get cleanupIntervalId() {
+                    return Q(p).intervalId
+                },
+                get isCleanupRunning() {
+                    return Q(p).running
+                },
+                async getItem(r, a) {
+                    if (q() || !B())
+                        return;
+                    let o = Date.now();
+                    try {
+                        var i;
+                        let s, l = await k((s = (i = _).batchKey ?? i,
+                        new Promise( (e, t) => {
+                            let n = u.get(s);
+                            if (!n || n.requests.length >= 32) {
+                                let e = {
+                                    withStore: i,
+                                    requests: []
+                                };
+                                n = e,
+                                u.set(s, e),
+                                queueMicrotask( () => void d(s, e))
+                            }
+                            n.requests.push({
+                                key: r,
+                                resolve: t => e(t),
+                                reject: t
+                            })
+                        }
+                        )), 500, "read", r), c = Date.now() - o;
+                        if (!l?.state?.data) {
+                            void 0 !== l && this.removeItem(r),
+                            t(R, r.toString(), {
+                                ...a,
+                                read_duration_ms: c
+                            });
+                            return
+                        }
+                        if (g(l)) {
+                            this.removeItem(r),
+                            t?.("offline_cache.expired_item", r.toString(), {
+                                ...a,
+                                read_duration_ms: c
+                            });
+                            return
+                        }
+                        if (await D(),
+                        !e.Check(l.state.data)) {
+                            this.removeItem(r);
+                            let n = e.FirstError?.(l.state.data);
+                            t("offline_cache.stale_structure", r.toString(), {
+                                ...a,
+                                errors: void 0 === n ? e.Errors(l.state.data) : [n],
+                                read_duration_ms: c
+                            });
+                            return
+                        }
+                        if (n && !n.isValid(l.state.data)) {
+                            this.removeItem(r),
+                            t("offline_cache.data_invalid", r.toString(), {
+                                ...a,
+                                read_duration_ms: c
+                            });
+                            return
+                        }
+                        let f = l.state.dataUpdatedAt ? Date.now() - l.state.dataUpdatedAt : "N/A"
+                          , h = l.state.ttl ?? "N/A";
+                        return t("offline_cache.cache_hit", r.toString(), {
+                            ...a,
+                            age: f,
+                            ttl: h,
+                            preheat_source: l.state.preheatSource,
+                            read_duration_ms: c
+                        }),
+                        l
+                    } catch (n) {
+                        let e = Date.now() - o;
+                        if (n instanceof F)
+                            return void t(R, r.toString(), {
+                                ...a,
+                                read_duration_ms: e,
+                                timeout: !0
+                            });
+                        if (L(n)) {
+                            S(),
+                            t(U, r.toString(), {
+                                ...a,
+                                session_disabled: !1,
+                                recovered: !0,
+                                error_name: n.name,
+                                read_duration_ms: e
+                            });
+                            return
+                        }
+                        if (j(n)) {
+                            O = !0,
+                            t(x, r.toString(), {
+                                reason: "fatal_error",
+                                error_name: n.name,
+                                read_duration_ms: e
+                            }),
+                            t(U, r.toString(), {
+                                ...a,
+                                session_disabled: !0,
+                                error_name: n.name,
+                                read_duration_ms: e
+                            });
+                            return
+                        }
+                        throw n
+                    }
+                },
+                async setItem(e, r, n, a, o) {
+                    if (q() || !B())
+                        return Promise.resolve();
+                    let s = a ?? r.state.ttl
+                      , l = n ?? r.state.dataUpdatedAt
+                      , c = {
+                        ...r,
+                        state: {
+                            ...r.state,
+                            dataUpdatedAt: l,
+                            ttl: s,
+                            cacheVersion: 1,
+                            expiresAt: l && s ? l + s : void 0
+                        }
+                    };
+                    f(e, t),
+                    t("offline_cache.cache_set", e.toString(), {
+                        ...o,
+                        ttl: s
+                    });
+                    try {
+                        await k(_("readwrite", t => (t.put(c, e),
+                        i(t.transaction))), 2e3, "write", e)
+                    } catch (r) {
+                        if (r instanceof F)
+                            return;
+                        if (L(r)) {
+                            S(),
+                            t(N, e.toString(), {
+                                ...o,
+                                session_disabled: !1,
+                                recovered: !0,
+                                error_name: r.name
+                            });
+                            return
+                        }
+                        if (j(r)) {
+                            O = !0,
+                            t(x, e.toString(), {
+                                reason: "fatal_error",
+                                error_name: r.name
+                            }),
+                            t(N, e.toString(), {
+                                ...o,
+                                session_disabled: !0,
+                                error_name: r.name
+                            });
+                            return
+                        }
+                        throw r
+                    }
+                },
+                async removeItem(e, r) {
+                    if (t(T, e.toString(), r),
+                    B())
+                        return _("readwrite", t => (t.delete(e),
+                        i(t.transaction)))
+                },
+                isBustedOrExpired: e => g(e),
+                async entries() {
+                    if (!B())
+                        return [];
+                    let e = Date.now()
+                      , r = await _("readonly", async e => {
+                        let t = e.getAllKeys()
+                          , r = e.getAll()
+                          , [n,a] = await Promise.all([o(t), o(r)]);
+                        return n.map( (e, t) => [e, a[t]])
+                    }
+                    )
+                      , n = Date.now() - e;
+                    return t("offline_cache.entries_read", "", {
+                        duration_ms: n,
+                        entry_count: r.length
+                    }),
+                    r
+                },
+                cleanupExpiredEntries: H,
+                stopPeriodicCleanup: function() {
+                    let e = Q(p);
+                    void 0 !== e.intervalId && (clearInterval(e.intervalId),
+                    e.intervalId = void 0)
+                },
+                async warmup() {
+                    if (I || q() || !B())
+                        return;
+                    I = !0;
+                    let e = Date.now();
+                    try {
+                        await k(_("readonly", e => o(e.get(P))), 500, "read", P),
+                        t("offline_cache.warmup", "", {
+                            duration_ms: Date.now() - e
+                        })
+                    } catch (n) {
+                        let r = n instanceof F;
+                        if (t("offline_cache.warmup_error", "", {
+                            error: String(n),
+                            duration_ms: Date.now() - e,
+                            timeout: r
+                        }),
+                        j(n)) {
+                            O = !0,
+                            t(x, "", {
+                                reason: "fatal_error",
+                                error_name: n.name
+                            });
+                            return
+                        }
+                        I = !1,
+                        r || S()
+                    }
+                }
+            };
+            return J.set(m, G),
+            !function(e=36e5) {
+                if ("u" < typeof window)
+                    return;
+                let t = Q(p);
+                if (void 0 !== t.intervalId)
+                    return;
+                let r = () => {
+                    let t = window;
+                    "function" == typeof t.requestIdleCallback ? t.requestIdleCallback( () => W(e)) : setTimeout( () => W(e), 1e4)
+                }
+                ;
+                r(),
+                t.intervalId = window.setInterval(r, e)
+            }(),
+            G
+        }({
+            validator: k,
+            sendAnalyticsEvent: Z
+        }));
+        let v = t.request.headers.get("Turbo-Visit")
+          , y = t.request.headers.get("Turbo-Frame")
+          , g = !!(v || y);
+        if ("navigate" === t.request.mode || g) {
+            let e = eA(p);
+            t.respondWith(eB(t, e, g ? "turbo" : "hard", p.type))
+        }
+    } catch (e) {
+        eq(e, {
+            targetUrl: t.request.url,
+            referrer: t.request.referrer || void 0
+        })
+    }
+}
+),
+eM.addEventListener("message", e => {
+    try {
+        let t, r = e.data;
+        if (r?.type !== "GET_CACHED_QUERIES" || !r.url)
+            return void eq(Error(`Unexpected message type: ${r?.type}`));
+        let n = eU(r.url);
+        if (!n) {
+            eq(Error(`Could not parse page params from URL: ${r.url}`)),
+            eC(e, e$);
+            return
+        }
+        let a = (e => {
+            switch (e.type) {
+            case "issue-show":
+                return eE;
+            case "issue-index":
+                return eI
+            }
+        }
+        )(n);
+        for (let e of eA(n))
+            if (t = eD.get(e))
+                break;
+        if (t) {
+            let r;
+            eC(e, {
+                type: eP,
+                success: !0,
+                data: {
+                    preloadedQueries: [(r = t,
+                    {
+                        queryId: r.queryHash ?? "",
+                        queryName: a,
+                        variables: r.variables ?? {},
+                        result: {
+                            data: r.state.data.data
+                        },
+                        timestamp: Math.floor(r.state.dataUpdatedAt / 1e3) - 11,
+                        injectedByServiceWorker: !0
+                    })]
+                }
+            })
+        } else
+            eC(e, e$)
+    } catch (t) {
+        eq(t),
+        eC(e, eO)
+    }
+}
+);
+//# sourceMappingURL=service-worker-a8438592a5075b56-9c3ec3bb8641ee4a.js.map
