@@ -59,34 +59,6 @@ Therefore, `/yolo` is **session-scoped**, although its state is held inside
 the per-tab helper process. Starting `/new` in the same tab creates a new ACP
 session and resets the override.
 
-### Working-directory compatibility
-
-Provider-native mode and workspace-policy decisions apply to the ACP session's
-actual working directory. This is especially visible with providers such as
-Gemini that enforce their own workspace trust before accepting a privileged
-mode. During package validation, a WSL pane exposed an existing launch bug:
-its POSIX source path could also be used as the Win32 `wta-helper` process
-starting directory, preventing the helper from starting. A Host agent selected
-from that pane could likewise receive the POSIX path as its ACP context.
-
-Terminal therefore resolves two values rather than changing the user's working
-directory:
-
-- A WSL agent receives the source-aware POSIX path through
-  `--agent-source-cwd`.
-- The Win32 helper starts only in a directory validated as usable by the Win32
-  filesystem API, selected from the pane, window, profile, and user-home
-  fallbacks.
-- A Host agent receives that same validated helper directory instead of the
-  raw source path.
-- Existing panes that already report a valid Windows directory keep the same
-  effective directory and precedence.
-
-This compatibility correction is covered by
-`AgentSourceUtilsTests::SeparatesAgentCwdFromHelperLaunchCwd`, including the
-no-valid-helper-directory fallback, and by exact-package provider validation.
-It does not add a trusted-directory feature or modify provider trust files.
-
 ## Goals
 
 - Present provider-advertised ACP Yolo capabilities through one UI.

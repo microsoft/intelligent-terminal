@@ -94,15 +94,15 @@ pub fn active_pane_wsl_distro(active: Option<&serde_json::Value>) -> Option<&str
 
 /// Resolve the cwd sent to an ACP agent running in `source`.
 ///
-/// Host agents use the working directory reported by Terminal. WSL agents
-/// require an absolute POSIX path, so translate the common WT forms and
-/// resolve `~`/relative paths against the distro's real `$HOME`.
+/// Host agents preserve the pre-WSL-backend behavior and use WTA's own cwd.
+/// WSL agents require an absolute POSIX path, so translate the common WT
+/// forms and resolve `~`/relative paths against the distro's real `$HOME`.
 pub async fn resolve_source_cwd(source: &AgentSource, reported: Option<&str>) -> Option<String> {
-    let reported = reported.map(str::trim).filter(|cwd| !cwd.is_empty());
     let AgentSource::Wsl { distro } = source else {
-        return reported.map(str::to_string);
+        return None;
     };
 
+    let reported = reported.map(str::trim).filter(|cwd| !cwd.is_empty());
     if let Some(cwd) = reported.and_then(|cwd| normalize_wsl_cwd(distro, cwd)) {
         return Some(cwd);
     }
@@ -207,18 +207,6 @@ mod tests {
         assert_eq!(active_pane_wsl_distro(Some(&pane)), Some("Ubuntu"));
         assert_eq!(
             active_pane_wsl_distro(Some(&serde_json::json!({ "shell": "pwsh.exe" }))),
-            None
-        );
-    }
-
-    #[tokio::test]
-    async fn host_source_preserves_reported_cwd() {
-        assert_eq!(
-            resolve_source_cwd(&AgentSource::Host, Some(r"C:\work\project")).await,
-            Some(r"C:\work\project".to_string())
-        );
-        assert_eq!(
-            resolve_source_cwd(&AgentSource::Host, Some("  ")).await,
             None
         );
     }
