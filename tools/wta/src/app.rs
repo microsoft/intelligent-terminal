@@ -2358,6 +2358,13 @@ impl App {
                 self.config_picker_escape();
                 return;
             }
+            if self.yolo_reconcile_pending_for_tab(self.active_tab_key()) {
+                let tab = self.current_tab_mut();
+                tab.messages
+                    .push(ChatMessage::warning(t!("system.agent_busy").into_owned()));
+                tab.scroll_to_bottom();
+                return;
+            }
 
             let session_id = self.current_tab().session_id.clone();
             let config_id = option.id.clone();

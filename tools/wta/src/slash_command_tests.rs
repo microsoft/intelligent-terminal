@@ -1136,6 +1136,31 @@ fn config_picker_select_sends_session_scoped_option_request() {
 }
 
 #[test]
+fn pending_yolo_change_blocks_config_picker_mutation() {
+    let (mut app, mut master_rx) = test_app_with_master_rx();
+    app.current_tab_mut().session_id = Some("session-1".into());
+    app.handle_event(AppEvent::SessionConfigUpdated {
+        session_id: "session-1".into(),
+        options: vec![config_option("mode", "Mode", "mode", "ask")],
+    });
+    run_slash(&mut app, "config");
+    app.config_picker_enter();
+    app.config_picker_down();
+    app.pending_yolo_changes
+        .insert("session-1".into(), (41, true, DEFAULT_TAB_ID.into()));
+
+    app.config_picker_enter();
+
+    assert!(
+        master_rx.try_recv().is_err(),
+        "pending native Yolo work must block config mutations"
+    );
+    assert!(app.current_tab().config_pending_id.is_none());
+    assert!(app.current_tab().config_picker.is_open());
+    assert_eq!(last_notice(&app).0, NoticeKind::Warning);
+}
+
+#[test]
 fn unbound_background_config_update_does_not_close_current_picker() {
     let mut app = test_app();
     app.current_tab_mut().session_id = Some("current-session".into());
