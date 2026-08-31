@@ -153,9 +153,19 @@ The master keeps **two disjoint** ownership sets (`master/mod.rs`):
 
 `handle_session_hook` routes each inbound event: a binding-only event (the
 dedicated `intellterm.wta/session_born_bound` method, or a
-`ResumeDispatched`/`ResumePaneAssigned` resume-binding event) → `born_bound`;
-anything else (a real hook / ACP event) → `hook_owned` (and, if the session was
-born-bound, drops it from `born_bound` — a real hook **takes over**).
+`ResumeDispatched`/`ResumePaneAssigned` resume-binding event) → `born_bound`
+(and drops any stale `hook_owned` claim — see below); anything else (a real
+hook / ACP event) → `hook_owned` (and, if the session was born-bound, drops it
+from `born_bound` — a real hook **takes over**).
+
+The two sets are disjoint **in both directions**. A born-bound event means WTA
+has just (re)launched that session id, so an ownership claim left by an earlier
+generation of the same id is over. Without the reverse removal, resuming a
+session that had already run once in the same master process left it in
+`hook_owned` forever; since `apply_watcher_event` checks `hook_owned` first,
+every watcher status event for the resumed row was dropped and the row sat at
+`Idle` for its whole life. A real hook re-claims ownership on its very next
+event, so nothing is lost when hooks are working.
 
 `apply_watcher_event` then, in order:
 
