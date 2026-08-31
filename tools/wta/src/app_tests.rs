@@ -3037,6 +3037,7 @@ fn bootstrap_agent_connection_reconciles_global_yolo_state() {
     let MasterExtRequest::ReconcileSessionYolo {
         sessions,
         fail_closed,
+        ..
     } = request
     else {
         panic!("expected ReconcileSessionYolo");
@@ -3052,6 +3053,7 @@ fn failed_policy_yolo_reconcile_restarts_master() {
     let (mut app, mut restart_rx) = test_app_with_restart_rx();
 
     app.handle_event(AppEvent::RuntimeYoloReconcileCompleted {
+        reconcile_id: 0,
         fail_closed: false,
         restart_required: false,
         result: Err("provider-native Yolo RPC timed out".into()),
@@ -3059,6 +3061,7 @@ fn failed_policy_yolo_reconcile_restarts_master() {
     assert!(restart_rx.try_recv().is_err());
 
     app.handle_event(AppEvent::RuntimeYoloReconcileCompleted {
+        reconcile_id: 0,
         fail_closed: true,
         restart_required: false,
         result: Err("provider-native Yolo RPC timed out".into()),
@@ -3069,6 +3072,7 @@ fn failed_policy_yolo_reconcile_restarts_master() {
     ));
 
     app.handle_event(AppEvent::RuntimeYoloReconcileCompleted {
+        reconcile_id: 0,
         fail_closed: false,
         restart_required: true,
         result: Err("provider-native Yolo RPC timed out".into()),
@@ -3079,6 +3083,130 @@ fn failed_policy_yolo_reconcile_restarts_master() {
             .expect("unknown provider outcome must restart"),
         crate::protocol::acp::client::AgentLifecycleRequest::RestartMaster
     ));
+}
+
+#[test]
+fn runtime_policy_reconcile_gates_prompt_until_native_off_acknowledges() {
+    let mut app = test_app();
+    let (prompt_tx, mut prompt_rx) = tokio::sync::mpsc::unbounded_channel();
+    app.prompt_tx = prompt_tx;
+    app.state = ConnectionState::Connected;
+    app.current_tab_mut().session_id = Some("policy-gated-session".into());
+    app.session_to_tab
+        .insert("policy-gated-session".into(), DEFAULT_TAB_ID.to_string());
+    app.current_tab_mut().input = "must wait for native off".into();
+
+    app.apply_runtime_yolo_config(Some(false), Some(true));
+    app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+
+    assert_eq!(app.current_tab().input, "must wait for native off");
+    assert!(prompt_rx.try_recv().is_err());
+
+    let reconcile_id = *app
+        .pending_fail_closed_yolo_reconciles
+        .iter()
+        .next()
+        .unwrap();
+    app.handle_event(AppEvent::RuntimeYoloReconcileCompleted {
+        reconcile_id,
+        fail_closed: true,
+        restart_required: false,
+        result: Ok(()),
+    });
+    app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+
+    assert!(app.current_tab().input.is_empty());
+    assert_eq!(
+        prompt_rx.try_recv().expect("prompt after native off").text,
+        "must wait for native off"
+    );
+}
+
+#[test]
+fn overlapping_fail_closed_reconciles_require_every_acknowledgement() {
+    use crate::protocol::acp::client::MasterExtRequest;
+
+    let (mut app, mut master_rx) = test_app_with_master_rx();
+
+    app.reconcile_session_yolo("session-a");
+    app.reconcile_session_yolo("session-b");
+
+    let first = master_rx.try_recv().expect("first reconcile");
+    let second = master_rx.try_recv().expect("second reconcile");
+    let MasterExtRequest::ReconcileSessionYolo {
+        reconcile_id: first_id,
+        ..
+    } = first
+    else {
+        panic!("expected first ReconcileSessionYolo");
+    };
+    let MasterExtRequest::ReconcileSessionYolo {
+        reconcile_id: second_id,
+        ..
+    } = second
+    else {
+        panic!("expected second ReconcileSessionYolo");
+    };
+
+    app.handle_event(AppEvent::RuntimeYoloReconcileCompleted {
+        reconcile_id: first_id,
+        fail_closed: true,
+        restart_required: false,
+        result: Ok(()),
+    });
+    assert!(!app.pending_fail_closed_yolo_reconciles.is_empty());
+
+    app.handle_event(AppEvent::RuntimeYoloReconcileCompleted {
+        reconcile_id: second_id,
+        fail_closed: true,
+        restart_required: false,
+        result: Ok(()),
+    });
+    assert!(app.pending_fail_closed_yolo_reconciles.is_empty());
+}
+
+#[test]
+fn agent_reset_clears_session_yolo_state_before_reused_id_attaches() {
+    use crate::protocol::acp::client::MasterExtRequest;
+
+    let (mut app, mut master_rx) = test_app_with_master_rx();
+    let session_id = "reused-after-agent-reset";
+    {
+        let mut yolo = app.yolo_state.lock().unwrap();
+        yolo.set_session_override(session_id.to_string(), true);
+        yolo.mark_client_reconciled(session_id.to_string());
+    }
+    app.pending_yolo_changes.insert(
+        session_id.to_string(),
+        (1, true, DEFAULT_TAB_ID.to_string()),
+    );
+    app.pending_fail_closed_yolo_reconciles.insert(7);
+
+    app.reset_agent_scoped_state();
+
+    assert!(!app.yolo_state.lock().unwrap().effective(session_id));
+    assert!(!app
+        .yolo_state
+        .lock()
+        .unwrap()
+        .take_client_reconciled(session_id));
+    assert!(app.pending_yolo_changes.is_empty());
+    assert!(app.pending_fail_closed_yolo_reconciles.is_empty());
+
+    app.handle_event(AppEvent::SessionAttached {
+        tab_id: DEFAULT_TAB_ID.into(),
+        session_id: session_id.into(),
+        available_models: Vec::new(),
+        current_model_id: None,
+    });
+    let MasterExtRequest::ReconcileSessionYolo { sessions, .. } = master_rx
+        .try_recv()
+        .expect("the reused session must be reconciled after reset")
+    else {
+        panic!("expected ReconcileSessionYolo");
+    };
+    assert_eq!(sessions[0].0.to_string(), session_id);
+    assert!(!sessions[0].1);
 }
 
 #[test]

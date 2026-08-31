@@ -507,6 +507,7 @@ fn runtime_global_change_reconciles_live_sessions_and_preserves_override() {
     let MasterExtRequest::ReconcileSessionYolo {
         sessions,
         fail_closed,
+        ..
     } = request
     else {
         panic!("expected ReconcileSessionYolo");
@@ -690,6 +691,7 @@ fn runtime_policy_block_forces_off_and_clears_session_override() {
     let MasterExtRequest::ReconcileSessionYolo {
         sessions,
         fail_closed,
+        ..
     } = request
     else {
         panic!("expected ReconcileSessionYolo");
@@ -744,6 +746,7 @@ fn session_attach_reconciles_latest_yolo_state() {
     let MasterExtRequest::ReconcileSessionYolo {
         sessions,
         fail_closed,
+        ..
     } = request
     else {
         panic!("expected ReconcileSessionYolo");
@@ -752,6 +755,28 @@ fn session_attach_reconciles_latest_yolo_state() {
     assert_eq!(sessions[0].0 .0.as_ref(), "new-yolo-session");
     assert!(sessions[0].1);
     assert!(!fail_closed);
+}
+
+#[test]
+fn client_reconciled_session_attach_does_not_duplicate_native_yolo_rpc() {
+    let (mut app, mut master_rx) = super::tests::test_app_with_master_rx();
+    let session_id = "client-reconciled-lazy-session";
+    app.yolo_state
+        .lock()
+        .unwrap()
+        .mark_client_reconciled(session_id.to_string());
+
+    app.handle_event(AppEvent::SessionAttached {
+        tab_id: DEFAULT_TAB_ID.into(),
+        session_id: session_id.into(),
+        available_models: Vec::new(),
+        current_model_id: None,
+    });
+
+    assert!(
+        master_rx.try_recv().is_err(),
+        "the client-owned lazy reconciliation must suppress the App duplicate"
+    );
 }
 
 #[test]

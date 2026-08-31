@@ -3,7 +3,7 @@ use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ratatui::backend::CrosstermBackend;
 use ratatui::prelude::*;
 use serde::{Deserialize, Serialize};
-use std::collections::{HashMap, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::io;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -1080,6 +1080,8 @@ pub struct App {
     /// the tab id keeps completion messages scoped if focus changes.
     pending_yolo_changes: HashMap<String, (u64, bool, String)>,
     next_yolo_transaction_id: u64,
+    next_yolo_reconcile_id: u64,
+    pending_fail_closed_yolo_reconciles: HashSet<u64>,
     // Slash-command UI state. The /help overlay is global — it covers
     // the chat area regardless of which tab is active. Per-tab popup
     // state (the command-completion candidates as the user types `/he…`)
@@ -1395,6 +1397,8 @@ impl App {
             debug_capture_enabled,
             pending_yolo_changes: HashMap::new(),
             next_yolo_transaction_id: 0,
+            next_yolo_reconcile_id: 0,
+            pending_fail_closed_yolo_reconciles: HashSet::new(),
             help_overlay_visible: false,
             debug_messages: Vec::new(),
             show_debug_panel: false,
@@ -1596,6 +1600,7 @@ impl App {
                 let wt_connected = params.wt_connected;
                 let pipe_name_opt = params.master_pipe_name.clone();
                 let owner_tab_opt = params.owner_tab_id.clone();
+                let yolo_state = Arc::clone(&self.yolo_state);
                 // Per-tab agent identity for the multi-agent master. Prefer
                 // the canonical host-supplied id; command parsing is retained
                 // for compatibility with older deferred state.
@@ -1642,6 +1647,7 @@ impl App {
                             source_cwd,
                             owner_tab_opt,
                             None, // initial_load_session_id: already handled by the dead initial task
+                            yolo_state,
                             event_tx_for_pipe.clone(),
                             prompt_rx,
                             cancel_rx,
@@ -3577,6 +3583,9 @@ impl App {
         self.session_model_configs.clear();
         self.session_config_options.clear();
         self.session_commands.clear();
+        self.yolo_state.lock().unwrap().clear_sessions();
+        self.pending_yolo_changes.clear();
+        self.pending_fail_closed_yolo_reconciles.clear();
         let active_tab_id = self.active_tab_key().to_string();
         for tab in self.tab_sessions.values_mut() {
             tab.clear_chat_history();
@@ -5662,10 +5671,12 @@ impl App {
                 .collect::<Vec<_>>()
         };
         let fail_closed = policy_blocked || sessions.iter().any(|(_, enabled)| !enabled);
+        let reconcile_id = self.begin_yolo_reconcile(fail_closed);
         if self
             .master_request_tx
             .send(
                 crate::protocol::acp::client::MasterExtRequest::ReconcileSessionYolo {
+                    reconcile_id,
                     sessions,
                     fail_closed,
                 },
@@ -5677,13 +5688,15 @@ impl App {
         }
     }
 
-    fn reconcile_session_yolo(&self, session_id: &str) {
+    fn reconcile_session_yolo(&mut self, session_id: &str) {
         let enabled = self.yolo_state.lock().unwrap().effective(session_id);
         let fail_closed = !enabled;
+        let reconcile_id = self.begin_yolo_reconcile(fail_closed);
         if self
             .master_request_tx
             .send(
                 crate::protocol::acp::client::MasterExtRequest::ReconcileSessionYolo {
+                    reconcile_id,
                     sessions: vec![(
                         agent_client_protocol::schema::v1::SessionId::new(session_id.to_string()),
                         enabled,
@@ -5696,6 +5709,16 @@ impl App {
         {
             let _ = self.restart_tx.send(AgentLifecycleRequest::RestartMaster);
         }
+    }
+
+    fn begin_yolo_reconcile(&mut self, fail_closed: bool) -> u64 {
+        self.next_yolo_reconcile_id = self.next_yolo_reconcile_id.wrapping_add(1);
+        let reconcile_id = self.next_yolo_reconcile_id;
+        if fail_closed {
+            self.pending_fail_closed_yolo_reconciles
+                .insert(reconcile_id);
+        }
+        reconcile_id
     }
 
     fn complete_yolo_change(

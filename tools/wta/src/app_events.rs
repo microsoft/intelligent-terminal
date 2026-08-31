@@ -604,6 +604,7 @@ impl App {
                 load_session_supported,
                 image_supported,
             } => {
+                self.pending_fail_closed_yolo_reconciles.clear();
                 self.agent_name = name;
                 self.agent_model = model;
                 self.agent_version = version;
@@ -745,7 +746,14 @@ impl App {
                         self.send_session_model(Some(session_id.clone()), model, false);
                     }
                 }
-                self.reconcile_session_yolo(&session_id);
+                let reconciled_by_client = self
+                    .yolo_state
+                    .lock()
+                    .unwrap()
+                    .take_client_reconciled(&session_id);
+                if !reconciled_by_client {
+                    self.reconcile_session_yolo(&session_id);
+                }
                 self.publish_agent_status();
             }
             AppEvent::UsageReported {
@@ -805,10 +813,15 @@ impl App {
                 self.complete_yolo_change(transaction_id, session_id, enabled, result);
             }
             AppEvent::RuntimeYoloReconcileCompleted {
+                reconcile_id,
                 fail_closed,
                 restart_required,
                 result,
             } => {
+                if fail_closed && result.is_ok() {
+                    self.pending_fail_closed_yolo_reconciles
+                        .remove(&reconcile_id);
+                }
                 if result.is_err() && (fail_closed || restart_required) {
                     tracing::error!(
                         target: "yolo",

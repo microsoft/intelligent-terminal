@@ -869,6 +869,13 @@ impl App {
                         tab.scroll_to_bottom();
                         return;
                     }
+                    if !self.pending_fail_closed_yolo_reconciles.is_empty() {
+                        let tab = self.current_tab_mut();
+                        tab.messages
+                            .push(ChatMessage::warning(t!("system.agent_busy").into_owned()));
+                        tab.scroll_to_bottom();
+                        return;
+                    }
                     let is_agent_command = self
                         .agent_command_for_input(&self.current_tab().input)
                         .is_some();

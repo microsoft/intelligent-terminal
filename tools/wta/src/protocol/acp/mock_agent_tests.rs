@@ -87,6 +87,8 @@ struct MockAgent {
     /// When set, `load_session` sleeps long enough that a short injected
     /// dispatch timeout elapses first — exercises the timeout path.
     slow_load: Arc<AtomicBool>,
+    new_session_starts_in_native_yolo: Arc<AtomicBool>,
+    fail_native_updates: Arc<AtomicBool>,
     hang_native_updates: Arc<AtomicBool>,
     native_update_started: Arc<tokio::sync::Notify>,
     native_update_release: Arc<tokio::sync::Notify>,
@@ -122,9 +124,27 @@ impl MockAgent {
         if self.fail_new_session.load(Ordering::SeqCst) {
             return Err(acp::Error::internal_error().data("mock new_session failure".to_string()));
         }
-        Ok(acp::schema::v1::NewSessionResponse::new(
+        let mut response = acp::schema::v1::NewSessionResponse::new(
             acp::schema::v1::SessionId::new("mock-session-1"),
-        ))
+        );
+        if self
+            .new_session_starts_in_native_yolo
+            .load(Ordering::SeqCst)
+        {
+            response.config_options = Some(vec![serde_json::from_value(serde_json::json!({
+                "id": "mode",
+                "name": "Mode",
+                "category": "mode",
+                "type": "select",
+                "currentValue": "bypassPermissions",
+                "options": [
+                    {"value": "default", "name": "Default"},
+                    {"value": "bypassPermissions", "name": "Bypass Permissions"}
+                ]
+            }))
+            .map_err(|error| acp::Error::internal_error().data(error.to_string()))?]);
+        }
+        Ok(response)
     }
 
     async fn authenticate(
@@ -155,6 +175,9 @@ impl MockAgent {
             .as_value_id()
             .map(|value| value.0.to_string())
             .ok_or_else(|| acp::Error::invalid_params().data("expected select value"))?;
+        if self.fail_native_updates.load(Ordering::SeqCst) {
+            return Err(acp::Error::internal_error().data("mock native update failure"));
+        }
         if self.hang_native_updates.load(Ordering::SeqCst) {
             self.native_update_started.notify_one();
             self.native_update_release.notified().await;
@@ -397,6 +420,9 @@ fn connect_with(
         shell_mgr: Arc::new(ShellManager::new()),
         prompt_timing: Arc::new(PromptTimingState::default()),
         native_yolo: Arc::new(crate::protocol::acp::native_yolo::NativeYoloState::new()),
+        yolo_state: Arc::new(Mutex::new(crate::app_contracts::YoloState::new(
+            false, false,
+        ))),
         provider_probe_capture: ProviderProbeCapture::default(),
         standard_usage_sessions: Mutex::new(HashSet::new()),
         proposal_channels: Arc::new(
@@ -421,6 +447,8 @@ fn connect_with(
         fail_new_session: Arc::new(AtomicBool::new(false)),
         fail_load_session: Arc::new(AtomicBool::new(false)),
         slow_load: Arc::new(AtomicBool::new(false)),
+        new_session_starts_in_native_yolo: Arc::new(AtomicBool::new(false)),
+        fail_native_updates: Arc::new(AtomicBool::new(false)),
         hang_native_updates: Arc::new(AtomicBool::new(false)),
         native_update_started: Arc::new(tokio::sync::Notify::new()),
         native_update_release: Arc::new(tokio::sync::Notify::new()),
@@ -760,6 +788,8 @@ pub(crate) struct DispatchHarness {
     /// Flip to `true` before dispatching to make the mock's `load_session`
     /// sleep past a short injected timeout, exercising the resume-timeout path.
     pub slow_load: Arc<AtomicBool>,
+    pub new_session_starts_in_native_yolo: Arc<AtomicBool>,
+    pub fail_native_updates: Arc<AtomicBool>,
     pub hang_native_updates: Arc<AtomicBool>,
     pub native_update_started: Arc<tokio::sync::Notify>,
     pub native_update_release: Arc<tokio::sync::Notify>,
@@ -779,6 +809,9 @@ fn connect_for_dispatch(behavior: MockBehavior) -> DispatchHarness {
         shell_mgr: shell_mgr.clone(),
         prompt_timing: prompt_timing.clone(),
         native_yolo: Arc::new(crate::protocol::acp::native_yolo::NativeYoloState::new()),
+        yolo_state: Arc::new(Mutex::new(crate::app_contracts::YoloState::new(
+            false, false,
+        ))),
         provider_probe_capture: ProviderProbeCapture::default(),
         standard_usage_sessions: Mutex::new(HashSet::new()),
         proposal_channels: Arc::clone(&proposal_channels),
@@ -795,6 +828,8 @@ fn connect_for_dispatch(behavior: MockBehavior) -> DispatchHarness {
     let fail_new_session = Arc::new(AtomicBool::new(false));
     let fail_load_session = Arc::new(AtomicBool::new(false));
     let slow_load = Arc::new(AtomicBool::new(false));
+    let new_session_starts_in_native_yolo = Arc::new(AtomicBool::new(false));
+    let fail_native_updates = Arc::new(AtomicBool::new(false));
     let hang_native_updates = Arc::new(AtomicBool::new(false));
     let native_update_started = Arc::new(tokio::sync::Notify::new());
     let native_update_release = Arc::new(tokio::sync::Notify::new());
@@ -811,6 +846,8 @@ fn connect_for_dispatch(behavior: MockBehavior) -> DispatchHarness {
         fail_new_session: fail_new_session.clone(),
         fail_load_session: fail_load_session.clone(),
         slow_load: slow_load.clone(),
+        new_session_starts_in_native_yolo: new_session_starts_in_native_yolo.clone(),
+        fail_native_updates: fail_native_updates.clone(),
         hang_native_updates: hang_native_updates.clone(),
         native_update_started: native_update_started.clone(),
         native_update_release: native_update_release.clone(),
@@ -834,6 +871,8 @@ fn connect_for_dispatch(behavior: MockBehavior) -> DispatchHarness {
         fail_new_session,
         fail_load_session,
         slow_load,
+        new_session_starts_in_native_yolo,
+        fail_native_updates,
         hang_native_updates,
         native_update_started,
         native_update_release,
@@ -1005,6 +1044,134 @@ async fn dispatch_prompt_round_trips_through_agent() {
                 in_flight.lock().unwrap().is_empty(),
                 "single-flight slot must be released when the turn completes"
             );
+        })
+        .await;
+}
+
+#[tokio::test]
+async fn lazy_session_disables_native_yolo_before_first_prompt() {
+    let local = tokio::task::LocalSet::new();
+    local
+        .run_until(async {
+            let h = connect_for_dispatch(MockBehavior::Reply);
+            h.client
+                .state
+                .native_yolo
+                .set_resolved_agent_id(Some(crate::agent_registry::CLAUDE_AGENT_ID));
+            h.new_session_starts_in_native_yolo
+                .store(true, Ordering::SeqCst);
+            h.hang_native_updates.store(true, Ordering::SeqCst);
+            h.conn
+                .initialize(acp::schema::v1::InitializeRequest::new(
+                    acp::schema::ProtocolVersion::LATEST,
+                ))
+                .await
+                .expect("initialize failed");
+            let (tab_to_session, in_flight, cancel_signals, memo) = fresh_dispatch_state();
+
+            dispatch_prompt(
+                test_prompt(1, "must wait", false),
+                &h.conn,
+                &tab_to_session,
+                &memo,
+                &in_flight,
+                &cancel_signals,
+                &h.event_tx,
+                &h.shell_mgr,
+                &h.prompt_timing,
+                &h.client,
+                &PromptUsageIdentity::default(),
+                false,
+                false,
+                true,
+                &h.proposal_channels,
+            );
+
+            tokio::time::timeout(
+                std::time::Duration::from_secs(2),
+                h.native_update_started.notified(),
+            )
+            .await
+            .expect("native disable must start before the first prompt");
+            assert!(
+                h.seen_prompts.lock().unwrap().is_empty(),
+                "the first prompt must remain gated until native disable acknowledges"
+            );
+
+            h.native_update_release.notify_one();
+            tokio::time::timeout(std::time::Duration::from_secs(5), async {
+                loop {
+                    if !h.seen_prompts.lock().unwrap().is_empty() {
+                        break;
+                    }
+                    tokio::task::yield_now().await;
+                }
+            })
+            .await
+            .expect("first prompt did not resume after native disable");
+            assert_eq!(
+                *h.seen_config_updates.lock().unwrap(),
+                vec![("mode".to_string(), "default".to_string())],
+                "lazy first-prompt reconciliation must issue exactly one native update"
+            );
+        })
+        .await;
+}
+
+#[tokio::test]
+async fn lazy_session_native_disable_failure_keeps_first_prompt_blocked() {
+    let local = tokio::task::LocalSet::new();
+    local
+        .run_until(async {
+            let mut h = connect_for_dispatch(MockBehavior::Reply);
+            h.client
+                .state
+                .native_yolo
+                .set_resolved_agent_id(Some(crate::agent_registry::CLAUDE_AGENT_ID));
+            h.new_session_starts_in_native_yolo
+                .store(true, Ordering::SeqCst);
+            h.fail_native_updates.store(true, Ordering::SeqCst);
+            h.conn
+                .initialize(acp::schema::v1::InitializeRequest::new(
+                    acp::schema::ProtocolVersion::LATEST,
+                ))
+                .await
+                .expect("initialize failed");
+            let (tab_to_session, in_flight, cancel_signals, memo) = fresh_dispatch_state();
+
+            dispatch_prompt(
+                test_prompt(1, "must never send", false),
+                &h.conn,
+                &tab_to_session,
+                &memo,
+                &in_flight,
+                &cancel_signals,
+                &h.event_tx,
+                &h.shell_mgr,
+                &h.prompt_timing,
+                &h.client,
+                &PromptUsageIdentity::default(),
+                false,
+                false,
+                true,
+                &h.proposal_channels,
+            );
+
+            let event = tokio::time::timeout(std::time::Duration::from_secs(5), async {
+                loop {
+                    match h.event_rx.recv().await {
+                        Some(AppEvent::RuntimeYoloReconcileCompleted { result, .. }) => {
+                            break result
+                        }
+                        Some(_) => continue,
+                        None => panic!("event channel closed before fail-closed result"),
+                    }
+                }
+            })
+            .await
+            .expect("timed out waiting for fail-closed result");
+            assert!(event.is_err());
+            assert!(h.seen_prompts.lock().unwrap().is_empty());
         })
         .await;
 }
@@ -2079,6 +2246,171 @@ async fn generic_config_response_refreshes_native_yolo_restore_value() {
 }
 
 #[tokio::test]
+async fn policy_block_rejects_privileged_generic_config_before_acp() {
+    let local = tokio::task::LocalSet::new();
+    local
+        .run_until(async {
+            let mut h = connect_for_dispatch(MockBehavior::Reply);
+            h.client
+                .state
+                .native_yolo
+                .set_resolved_agent_id(Some(crate::agent_registry::CLAUDE_AGENT_ID));
+            let response: acp::schema::v1::NewSessionResponse =
+                serde_json::from_value(serde_json::json!({
+                    "sessionId": "policy-config-session",
+                    "configOptions": [{
+                        "id": "mode",
+                        "name": "Mode",
+                        "category": "mode",
+                        "type": "select",
+                        "currentValue": "default",
+                        "options": [
+                            {"value": "default", "name": "Default"},
+                            {"value": "bypassPermissions", "name": "Bypass Permissions"}
+                        ]
+                    }]
+                }))
+                .unwrap();
+            let session_id = response.session_id.clone();
+            h.client
+                .state
+                .native_yolo
+                .record_from_new_session(&response);
+            h.client
+                .state
+                .yolo_state
+                .lock()
+                .unwrap()
+                .update_runtime(false, true);
+            let tab_to_session = Arc::new(tokio::sync::Mutex::new(HashMap::from([(
+                "tab-1".to_string(),
+                session_id.clone(),
+            )])));
+
+            dispatch_master_ext_request(
+                MasterExtRequest::SetSessionConfigOption {
+                    session_id,
+                    config_id: "mode".to_string(),
+                    value: "bypassPermissions".to_string(),
+                },
+                &h.conn,
+                &h.event_tx,
+                &tab_to_session,
+                Arc::clone(&h.client.state),
+            );
+
+            match tokio::time::timeout(std::time::Duration::from_secs(5), h.event_rx.recv()).await {
+                Ok(Some(AppEvent::SessionConfigSetFailed { message, .. })) => {
+                    assert!(message.contains("policy"));
+                }
+                Ok(Some(_)) => panic!("expected SessionConfigSetFailed, got another event"),
+                Ok(None) => panic!("expected SessionConfigSetFailed, event channel closed"),
+                Err(_) => panic!("expected SessionConfigSetFailed, got nothing"),
+            }
+            assert!(
+                h.seen_config_updates.lock().unwrap().is_empty(),
+                "blocked privileged config must never reach ACP"
+            );
+        })
+        .await;
+}
+
+#[tokio::test]
+async fn queued_privileged_config_rechecks_policy_after_native_gate() {
+    let local = tokio::task::LocalSet::new();
+    local
+        .run_until(async {
+            let mut h = connect_for_dispatch(MockBehavior::Reply);
+            h.client
+                .state
+                .native_yolo
+                .set_resolved_agent_id(Some(crate::agent_registry::CLAUDE_AGENT_ID));
+            let response: acp::schema::v1::NewSessionResponse =
+                serde_json::from_value(serde_json::json!({
+                    "sessionId": "queued-policy-config-session",
+                    "configOptions": [{
+                        "id": "mode",
+                        "name": "Mode",
+                        "category": "mode",
+                        "type": "select",
+                        "currentValue": "default",
+                        "options": [
+                            {"value": "default", "name": "Default"},
+                            {"value": "bypassPermissions", "name": "Bypass Permissions"}
+                        ]
+                    }]
+                }))
+                .unwrap();
+            let session_id = response.session_id.clone();
+            h.client
+                .state
+                .native_yolo
+                .record_from_new_session(&response);
+            let tab_to_session = Arc::new(tokio::sync::Mutex::new(HashMap::from([(
+                "tab-1".to_string(),
+                session_id.clone(),
+            )])));
+            h.hang_native_updates.store(true, Ordering::SeqCst);
+
+            let native_yolo = Arc::clone(&h.client.state.native_yolo);
+            let conn = h.conn.clone();
+            let blocking_session = session_id.clone();
+            let blocking_update = tokio::task::spawn_local(async move {
+                native_yolo
+                    .apply(&conn, blocking_session, false)
+                    .await
+                    .unwrap();
+            });
+            tokio::time::timeout(
+                std::time::Duration::from_secs(2),
+                h.native_update_started.notified(),
+            )
+            .await
+            .expect("blocking native update must acquire the session gate");
+
+            dispatch_master_ext_request(
+                MasterExtRequest::SetSessionConfigOption {
+                    session_id,
+                    config_id: "mode".to_string(),
+                    value: "bypassPermissions".to_string(),
+                },
+                &h.conn,
+                &h.event_tx,
+                &tab_to_session,
+                Arc::clone(&h.client.state),
+            );
+            tokio::task::yield_now().await;
+            h.client
+                .state
+                .yolo_state
+                .lock()
+                .unwrap()
+                .update_runtime(false, true);
+            h.native_update_release.notify_one();
+            blocking_update.await.unwrap();
+
+            let message = tokio::time::timeout(std::time::Duration::from_secs(5), async {
+                loop {
+                    match h.event_rx.recv().await {
+                        Some(AppEvent::SessionConfigSetFailed { message, .. }) => break message,
+                        Some(_) => continue,
+                        None => panic!("event channel closed before config rejection"),
+                    }
+                }
+            })
+            .await
+            .expect("timed out waiting for queued config rejection");
+            assert!(message.contains("policy"));
+            assert_eq!(
+                *h.seen_config_updates.lock().unwrap(),
+                vec![("mode".to_string(), "default".to_string())],
+                "the queued privileged enable must not reach ACP after policy blocks it"
+            );
+        })
+        .await;
+}
+
+#[tokio::test]
 async fn fail_closed_yolo_reconcile_has_one_deadline_across_sessions() {
     let local = tokio::task::LocalSet::new();
     local
@@ -2117,6 +2449,7 @@ async fn fail_closed_yolo_reconcile_has_one_deadline_across_sessions() {
 
             dispatch_master_ext_request_with_yolo_timeout(
                 MasterExtRequest::ReconcileSessionYolo {
+                    reconcile_id: 1,
                     sessions,
                     fail_closed: true,
                 },
@@ -2142,6 +2475,7 @@ async fn fail_closed_yolo_reconcile_has_one_deadline_across_sessions() {
                 fail_closed,
                 restart_required,
                 result,
+                ..
             } = event
             else {
                 panic!("expected RuntimeYoloReconcileCompleted");
@@ -2194,6 +2528,7 @@ async fn fail_closed_yolo_reconcile_stops_after_first_error() {
 
             dispatch_master_ext_request_with_yolo_timeout(
                 MasterExtRequest::ReconcileSessionYolo {
+                    reconcile_id: 2,
                     sessions: vec![(missing_session, false), (available.session_id, false)],
                     fail_closed: true,
                 },
@@ -2212,6 +2547,7 @@ async fn fail_closed_yolo_reconcile_stops_after_first_error() {
                 fail_closed,
                 restart_required,
                 result,
+                ..
             } = event
             else {
                 panic!("expected RuntimeYoloReconcileCompleted");
@@ -2342,6 +2678,7 @@ async fn non_fail_closed_yolo_reconcile_continues_after_known_error() {
 
             dispatch_master_ext_request_with_yolo_timeout(
                 MasterExtRequest::ReconcileSessionYolo {
+                    reconcile_id: 3,
                     sessions: vec![(missing_session, true), (available.session_id, true)],
                     fail_closed: false,
                 },
@@ -2360,6 +2697,7 @@ async fn non_fail_closed_yolo_reconcile_continues_after_known_error() {
                 fail_closed,
                 restart_required,
                 result,
+                ..
             } = event
             else {
                 panic!("expected RuntimeYoloReconcileCompleted");
@@ -2390,6 +2728,9 @@ fn bare_client() -> (WtaClient, mpsc::UnboundedReceiver<AppEvent>) {
         shell_mgr: Arc::new(ShellManager::new()),
         prompt_timing: Arc::new(PromptTimingState::default()),
         native_yolo: Arc::new(crate::protocol::acp::native_yolo::NativeYoloState::new()),
+        yolo_state: Arc::new(Mutex::new(crate::app_contracts::YoloState::new(
+            false, false,
+        ))),
         provider_probe_capture: ProviderProbeCapture::default(),
         standard_usage_sessions: Mutex::new(HashSet::new()),
         proposal_channels: Arc::new(

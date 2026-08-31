@@ -58,6 +58,7 @@ pub enum AppEvent {
         result: Result<(), String>,
     },
     RuntimeYoloReconcileCompleted {
+        reconcile_id: u64,
         fail_closed: bool,
         restart_required: bool,
         result: Result<(), String>,

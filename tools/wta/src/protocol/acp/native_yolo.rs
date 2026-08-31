@@ -13,7 +13,7 @@ use std::sync::{Arc, Mutex, RwLock};
 use std::time::Duration;
 
 use agent_client_protocol as acp;
-use providers::{DiscoveryInput, NativeYoloAction, ProviderSessionState};
+use providers::{DiscoveryInput, NativeYoloAction, NativeYoloChannel, ProviderSessionState};
 
 pub(super) const NATIVE_YOLO_RPC_TIMEOUT: Duration = Duration::from_secs(10);
 
@@ -152,6 +152,95 @@ impl NativeYoloState {
             .insert(session_id.clone(), ProviderSessionState::Available(channel));
     }
 
+    pub(crate) fn is_privileged_config_selection(
+        &self,
+        session_id: &acp::schema::v1::SessionId,
+        config_id: &str,
+        value: &str,
+    ) -> bool {
+        matches!(
+            self.sessions.read().unwrap().get(session_id),
+            Some(ProviderSessionState::Available(
+                NativeYoloChannel::ConfigOption {
+                    config_id: native_config_id,
+                    enable_value,
+                    ..
+                }
+            )) if native_config_id == config_id && enable_value == value
+        )
+    }
+
+    pub(super) async fn apply_privileged_config_reserved_with_policy_timeout(
+        &self,
+        conn: &crate::protocol::acp::conn::ClientLink,
+        operation: NativeYoloOperation,
+        config_id: &str,
+        value: &str,
+        yolo_state: &crate::app_contracts::SharedYoloState,
+        rpc_timeout: Duration,
+    ) -> Result<Option<Vec<acp::schema::v1::SessionConfigOption>>, NativeYoloApplyError> {
+        let lease = {
+            let gate = self
+                .operation_gates
+                .lock()
+                .unwrap()
+                .entry(operation.session_id.clone())
+                .or_insert_with(|| Arc::new(tokio::sync::Mutex::new(())))
+                .clone();
+            OperationGateLease {
+                gates: &self.operation_gates,
+                session_id: operation.session_id.clone(),
+                gate,
+            }
+        };
+        let _guard = lease.gate.lock().await;
+        if !self.operation_is_current(&operation) {
+            return Ok(None);
+        }
+        if yolo_state.lock().unwrap().policy_blocked() {
+            return Err(NativeYoloApplyError::known(
+                "the AllowYoloMode policy blocks this privileged provider mode".to_string(),
+            ));
+        }
+        if !matches!(
+            self.action_for(&operation.session_id, true)
+                .map_err(NativeYoloApplyError::known)?,
+            NativeYoloAction::SetConfigOption {
+                config_id: ref native_config_id,
+                value: ref native_value,
+            } if native_config_id == config_id && native_value == value
+        ) {
+            return Err(NativeYoloApplyError::known(
+                "the requested config value is not the provider's native Yolo capability"
+                    .to_string(),
+            ));
+        }
+
+        let response = tokio::time::timeout(
+            rpc_timeout,
+            conn.set_session_config_option(
+                acp::schema::v1::SetSessionConfigOptionRequest::new(
+                    operation.session_id.clone(),
+                    config_id.to_string(),
+                    value,
+                ),
+            ),
+        )
+        .await
+        .map_err(|_| {
+            NativeYoloApplyError::timed_out(format!(
+                "provider-native Yolo RPC timed out while setting config option '{config_id}' for session '{}'",
+                operation.session_id
+            ))
+        })?
+        .map_err(|error| NativeYoloApplyError::known(error.to_string()))?;
+        if !self.operation_is_current(&operation) {
+            return Ok(None);
+        }
+        self.record_from_config_update(&operation.session_id, &response.config_options);
+        Ok(Some(response.config_options))
+    }
+
     pub(crate) fn record_current_mode(
         &self,
         session_id: &acp::schema::v1::SessionId,
@@ -232,6 +321,17 @@ impl NativeYoloState {
         operation: NativeYoloOperation,
         rpc_timeout: Duration,
     ) -> Result<(), NativeYoloApplyError> {
+        self.apply_reserved_with_policy_timeout(conn, operation, rpc_timeout, None)
+            .await
+    }
+
+    pub(super) async fn apply_reserved_with_policy_timeout(
+        &self,
+        conn: &crate::protocol::acp::conn::ClientLink,
+        operation: NativeYoloOperation,
+        rpc_timeout: Duration,
+        yolo_state: Option<&crate::app_contracts::SharedYoloState>,
+    ) -> Result<(), NativeYoloApplyError> {
         let lease = {
             let gate = self
                 .operation_gates
@@ -250,6 +350,13 @@ impl NativeYoloState {
         let result = async {
             if !self.operation_is_current(&operation) {
                 return Ok(());
+            }
+            if operation.enabled
+                && yolo_state.is_some_and(|state| state.lock().unwrap().policy_blocked())
+            {
+                return Err(NativeYoloApplyError::known(
+                    "the AllowYoloMode policy blocks provider-native Yolo".to_string(),
+                ));
             }
             let action = self
                 .action_for(&operation.session_id, operation.enabled)
@@ -310,7 +417,7 @@ impl NativeYoloState {
         result
     }
 
-    fn operation_is_current(&self, operation: &NativeYoloOperation) -> bool {
+    pub(super) fn operation_is_current(&self, operation: &NativeYoloOperation) -> bool {
         self.desired_operations
             .lock()
             .unwrap()

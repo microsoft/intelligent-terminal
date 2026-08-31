@@ -1,10 +1,11 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex};
 
 #[derive(Debug)]
 pub struct YoloState {
     global_default: bool,
     session_overrides: HashMap<String, bool>,
+    client_reconciled_sessions: HashSet<String>,
     policy_blocked: bool,
 }
 
@@ -15,6 +16,7 @@ impl YoloState {
         Self {
             global_default: global_default && !policy_blocked,
             session_overrides: HashMap::new(),
+            client_reconciled_sessions: HashSet::new(),
             policy_blocked,
         }
     }
@@ -34,10 +36,20 @@ impl YoloState {
 
     pub fn remove_session(&mut self, session_id: &str) {
         self.session_overrides.remove(session_id);
+        self.client_reconciled_sessions.remove(session_id);
     }
 
     pub fn clear_sessions(&mut self) {
         self.session_overrides.clear();
+        self.client_reconciled_sessions.clear();
+    }
+
+    pub fn mark_client_reconciled(&mut self, session_id: String) {
+        self.client_reconciled_sessions.insert(session_id);
+    }
+
+    pub fn take_client_reconciled(&mut self, session_id: &str) -> bool {
+        self.client_reconciled_sessions.remove(session_id)
     }
 
     pub fn update_runtime(&mut self, global_default: bool, policy_blocked: bool) {

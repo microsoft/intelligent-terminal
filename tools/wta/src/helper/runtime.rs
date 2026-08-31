@@ -719,6 +719,7 @@ async fn run_acp_app(
                 let source_cwd = agent_source_cwd.clone();
                 let owner_tab = config.owner_tab_id.clone();
                 let initial_load_sid = config.initial_load_session_id.clone();
+                let yolo_state_for_client = Arc::clone(&yolo_state);
                 let proposal_channels_for_pipe = Arc::clone(&proposal_channels);
                 tokio::task::spawn_local(async move {
                     match protocol::acp::client::run_acp_client_over_pipe(
@@ -731,6 +732,7 @@ async fn run_acp_app(
                         source_cwd,
                         owner_tab,
                         initial_load_sid,
+                        yolo_state_for_client,
                         event_tx_for_pipe.clone(),
                         prompt_rx,
                         cancel_rx,

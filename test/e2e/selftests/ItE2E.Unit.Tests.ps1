@@ -196,6 +196,8 @@ Describe 'Feature suite package selection' -Tag 'Unit' {
         $suite | Should -Not -Match '-Package\s+Dev\b'
         $suite | Should -Not -Match 'Resolve-ItApp\s+-Package\s+(?!\$(?:script:Package|Package)\b)'
         $suite | Should -Not -Match 'Start-Terminal\s+-Package\s+(?!\$Package\b)'
+        $suite | Should -Match 'Get-AgentAcpStatus\s+-App\s+\$resolvedApp\s+-AgentCommand\s+''opencode acp'''
+        $suite | Should -Not -Match 'openCodeReady\s*=.*Get-Command\s+opencode'
     }
 }
 

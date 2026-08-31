@@ -6,15 +6,17 @@
 BeforeDiscovery {
     Import-Module (Join-Path $PSScriptRoot '..\ItE2E\ItE2E.psd1') -Force
     $script:Package = Get-ItTestPackage
-    $script:PackageCase = @(@{ Package = $script:Package })
     $script:Ready = $false
     $script:copilotStatus = if (Get-Command copilot -ErrorAction SilentlyContinue) { 'probe-failed' } else { 'not-installed' }
-    $script:openCodeReady = [bool](Get-Command opencode -ErrorAction SilentlyContinue)
+    $script:openCodeStatus = if (Get-Command opencode -ErrorAction SilentlyContinue) { 'probe-failed' } else { 'not-installed' }
     try {
         $resolvedApp = Resolve-ItApp -Package $script:Package -ErrorAction Stop
         $script:Ready = Test-WinAppAvailable
         if ($script:copilotStatus -ne 'not-installed') {
             $script:copilotStatus = Get-AgentAcpStatus -App $resolvedApp -AgentCommand 'copilot --acp --stdio'
+        }
+        if ($script:openCodeStatus -ne 'not-installed') {
+            $script:openCodeStatus = Get-AgentAcpStatus -App $resolvedApp -AgentCommand 'opencode acp'
         }
     }
     catch {
@@ -22,6 +24,10 @@ BeforeDiscovery {
     }
     $script:copilotBlocked = $script:copilotStatus -in @('not-installed', 'installed-unauthenticated')
     $script:policyReady = (-not $script:copilotBlocked) -and (Test-WtAgentPolicyControllable)
+    $script:PackageCase = @(@{
+        Package = $script:Package
+        OpenCodeStatus = $script:openCodeStatus
+    })
 }
 
 Describe 'Feature Yolo mode permission boundary' -ForEach $script:PackageCase -Tag 'Feature' -Skip:(-not $script:Ready) {
@@ -137,7 +143,11 @@ Describe 'Feature unsupported provider Yolo behavior' -ForEach $script:PackageCa
         Import-Module (Join-Path $PSScriptRoot '..\ItE2E\ItE2E.psd1') -Force
     }
 
-    It 'Unsupported agents reject Yolo safely' -Skip:(-not $script:openCodeReady) {
+    It 'Unsupported agents reject Yolo safely' {
+        if ($OpenCodeStatus -ne 'ready') {
+            Set-ItResult -Skipped -Because "OpenCode ACP prerequisite: $OpenCodeStatus"
+            return
+        }
         $app = Start-Terminal -Package $Package -PassFre $true -Settings @{ acpAgent = 'opencode' }
         try {
             Open-AgentPane -App $app | Out-Null

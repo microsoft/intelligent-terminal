@@ -256,6 +256,7 @@ pub enum MasterExtRequest {
         enabled: bool,
     },
     ReconcileSessionYolo {
+        reconcile_id: u64,
         sessions: Vec<(acp::schema::v1::SessionId, bool)>,
         fail_closed: bool,
     },
@@ -504,6 +505,7 @@ struct ClientState {
     shell_mgr: Arc<ShellManager>,
     prompt_timing: Arc<PromptTimingState>,
     native_yolo: Arc<super::native_yolo::NativeYoloState>,
+    yolo_state: crate::app_contracts::SharedYoloState,
     provider_probe_capture: ProviderProbeCapture,
     standard_usage_sessions: Mutex<HashSet<String>>,
     proposal_channels: Arc<crate::agent_tools::action_proposal::channel::ProposalChannelManager>,
@@ -2412,7 +2414,7 @@ async fn apply_native_yolo_checked(
 ) -> std::result::Result<(), super::native_yolo::NativeYoloApplyError> {
     state
         .native_yolo
-        .apply_reserved_with_timeout(conn, operation, timeout)
+        .apply_reserved_with_policy_timeout(conn, operation, timeout, Some(&state.yolo_state))
         .await
 }
 
@@ -2539,6 +2541,7 @@ pub async fn run_acp_client_over_pipe(
     source_cwd: Option<String>,
     owner_tab_id: Option<String>,
     initial_load_session_id: Option<String>,
+    yolo_state: crate::app_contracts::SharedYoloState,
     event_tx: mpsc::UnboundedSender<AppEvent>,
     mut prompt_rx: mpsc::UnboundedReceiver<PromptSubmission>,
     mut cancel_rx: mpsc::UnboundedReceiver<CancelRequest>,
@@ -2659,6 +2662,7 @@ pub async fn run_acp_client_over_pipe(
         shell_mgr: shell_mgr.clone(),
         prompt_timing: prompt_timing.clone(),
         native_yolo,
+        yolo_state,
         provider_probe_capture: ProviderProbeCapture::default(),
         standard_usage_sessions: Mutex::new(HashSet::new()),
         proposal_channels: Arc::clone(&proposal_channels),
@@ -3543,6 +3547,18 @@ fn dispatch_master_ext_request_with_yolo_timeout(
                     .reserve_operation(session_id.clone(), *enabled)
             })
             .collect(),
+        MasterExtRequest::SetSessionConfigOption {
+            session_id,
+            config_id,
+            value,
+        } if client_state
+            .native_yolo
+            .is_privileged_config_selection(session_id, config_id, value) =>
+        {
+            vec![client_state
+                .native_yolo
+                .reserve_operation(session_id.clone(), true)]
+        }
         _ => Vec::new(),
     };
     let conn = conn.clone();
@@ -3815,6 +3831,7 @@ fn dispatch_master_ext_request_with_yolo_timeout(
                 });
             }
             MasterExtRequest::ReconcileSessionYolo {
+                reconcile_id,
                 sessions,
                 fail_closed,
             } => {
@@ -3881,6 +3898,7 @@ fn dispatch_master_ext_request_with_yolo_timeout(
                     (result.map_err(|error| error.to_string()), restart_required)
                 };
                 let _ = event_tx.send(AppEvent::RuntimeYoloReconcileCompleted {
+                    reconcile_id,
                     fail_closed,
                     restart_required,
                     result,
@@ -3901,6 +3919,70 @@ fn dispatch_master_ext_request_with_yolo_timeout(
                         config_id,
                         message: "the session is no longer active".to_string(),
                     });
+                    return;
+                }
+
+                let privileged_operation =
+                    reserved_yolo_operations.into_iter().next().or_else(|| {
+                        client_state
+                            .native_yolo
+                            .is_privileged_config_selection(&session_id, &config_id, &value)
+                            .then(|| {
+                                client_state
+                                    .native_yolo
+                                    .reserve_operation(session_id.clone(), true)
+                            })
+                    });
+                if let Some(operation) = privileged_operation {
+                    match client_state
+                        .native_yolo
+                        .apply_privileged_config_reserved_with_policy_timeout(
+                            &conn,
+                            operation,
+                            &config_id,
+                            &value,
+                            &client_state.yolo_state,
+                            yolo_reconcile_timeout,
+                        )
+                        .await
+                    {
+                        Ok(Some(config_options)) => {
+                            publish_session_config_options(
+                                &event_tx,
+                                &session_id,
+                                Some(&config_options),
+                            );
+                            let _ = event_tx.send(AppEvent::SessionConfigSetCompleted {
+                                session_id: session_id.to_string(),
+                                config_id,
+                                value,
+                                model_compat: false,
+                            });
+                        }
+                        Ok(None) => {
+                            let _ = event_tx.send(AppEvent::SessionConfigSetFailed {
+                                session_id: session_id.to_string(),
+                                config_id,
+                                message: "the config update was superseded by newer session state"
+                                    .to_string(),
+                            });
+                        }
+                        Err(error) => {
+                            if error.restart_required() {
+                                let _ = event_tx.send(AppEvent::RuntimeYoloReconcileCompleted {
+                                    reconcile_id: 0,
+                                    fail_closed: false,
+                                    restart_required: true,
+                                    result: Err(error.to_string()),
+                                });
+                            }
+                            let _ = event_tx.send(AppEvent::SessionConfigSetFailed {
+                                session_id: session_id.to_string(),
+                                config_id,
+                                message: error.to_string(),
+                            });
+                        }
+                    }
                     return;
                 }
 
@@ -4617,10 +4699,10 @@ async fn dispatch_prompt_body(
     proposal_channels: Arc<crate::agent_tools::action_proposal::channel::ProposalChannelManager>,
 ) {
     // Resolve (or lazily create) the ACP session for this tab.
-    let prompt_session_id = {
+    let (prompt_session_id, lazy_yolo_operation) = {
         let mut g = tab_to_session_task.lock().await;
         if let Some(sid) = g.get(&tab_key_task) {
-            sid.clone()
+            (sid.clone(), None)
         } else {
             let cwd = prompt
                 .pane_context
@@ -4678,6 +4760,22 @@ async fn dispatch_prompt_body(
             let (available_models, current_model_id) =
                 crate::protocol::acp::model_select::models_from_new_session(&new_session);
             record_native_yolo(&new_session, &client_task.state);
+            let enabled = client_task
+                .state
+                .yolo_state
+                .lock()
+                .unwrap()
+                .effective(new_sid.0.as_ref());
+            let yolo_operation = client_task
+                .state
+                .native_yolo
+                .reserve_operation(new_sid.clone(), enabled);
+            client_task
+                .state
+                .yolo_state
+                .lock()
+                .unwrap()
+                .mark_client_reconciled(new_sid.to_string());
             let _ = event_tx_task.send(AppEvent::SessionAttached {
                 tab_id: tab_key_task.clone(),
                 session_id: new_sid.to_string(),
@@ -4690,10 +4788,63 @@ async fn dispatch_prompt_body(
                 new_session.config_options.as_deref(),
             );
             g.insert(tab_key_task.clone(), new_sid.clone());
-            new_sid
+            (new_sid, Some((enabled, yolo_operation)))
         }
     };
     let prompt_session_id_str = prompt_session_id.to_string();
+
+    if let Some((enabled, operation)) = lazy_yolo_operation {
+        let yolo_result = apply_native_yolo_checked(
+            &conn_task,
+            &client_task.state,
+            operation.clone(),
+            super::native_yolo::NATIVE_YOLO_RPC_TIMEOUT,
+        )
+        .await;
+        if let Err(error) = yolo_result {
+            let restart_required = error.restart_required();
+            let policy_blocked = client_task
+                .state
+                .yolo_state
+                .lock()
+                .unwrap()
+                .policy_blocked();
+            tracing::warn!(
+                target: "yolo",
+                session_id = %prompt_session_id_str,
+                enabled,
+                restart_required,
+                policy_blocked,
+                error = %error,
+                "provider-native Yolo state could not be established before first prompt"
+            );
+            if !enabled || policy_blocked || restart_required {
+                let _ = event_tx_task.send(AppEvent::RuntimeYoloReconcileCompleted {
+                    reconcile_id: 0,
+                    fail_closed: !enabled,
+                    restart_required,
+                    result: Err(error.to_string()),
+                });
+                in_flight_tabs_task.lock().unwrap().remove(&tab_key_task);
+                return;
+            }
+        } else if !client_task
+            .state
+            .native_yolo
+            .operation_is_current(&operation)
+        {
+            tracing::info!(
+                target: "yolo",
+                session_id = %prompt_session_id_str,
+                "discarding first prompt because its lazy-session Yolo operation was superseded"
+            );
+            let _ = event_tx_task.send(AppEvent::AgentMessageEnd {
+                session_id: prompt_session_id_str.clone(),
+            });
+            in_flight_tabs_task.lock().unwrap().remove(&tab_key_task);
+            return;
+        }
+    }
 
     let kind = if prompt.is_autofix() {
         TemplateKind::Autofix
@@ -5168,6 +5319,9 @@ mod tests {
             shell_mgr: Arc::new(ShellManager::new()),
             prompt_timing: Arc::new(PromptTimingState::default()),
             native_yolo: Arc::new(crate::protocol::acp::native_yolo::NativeYoloState::new()),
+            yolo_state: Arc::new(Mutex::new(crate::app_contracts::YoloState::new(
+                false, false,
+            ))),
             provider_probe_capture: super::ProviderProbeCapture::default(),
             standard_usage_sessions: Mutex::new(HashSet::new()),
             proposal_channels: manager,
@@ -5994,6 +6148,9 @@ mod tests {
                 shell_mgr: Arc::new(ShellManager::new()),
                 prompt_timing: Arc::new(super::super::PromptTimingState::default()),
                 native_yolo: Arc::new(crate::protocol::acp::native_yolo::NativeYoloState::new()),
+                yolo_state: Arc::new(Mutex::new(crate::app_contracts::YoloState::new(
+                    false, false,
+                ))),
                 provider_probe_capture: super::super::ProviderProbeCapture::default(),
                 standard_usage_sessions: std::sync::Mutex::new(std::collections::HashSet::new()),
                 proposal_channels: Arc::new(
