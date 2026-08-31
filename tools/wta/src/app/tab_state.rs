@@ -244,27 +244,47 @@ impl UserInputState {
     }
 
     pub fn insert_input_char(&mut self, character: char) {
-        self.cursor_pos = super::input_edit::clamp_cursor_to_boundary(&self.input, self.cursor_pos);
-        self.input.insert(self.cursor_pos, character);
-        self.cursor_pos += character.len_utf8();
+        super::input_edit::TextEditor::new(&mut self.input, &mut self.cursor_pos)
+            .insert_char(character);
     }
 
     pub fn delete_before_cursor(&mut self) {
-        self.cursor_pos = super::input_edit::clamp_cursor_to_boundary(&self.input, self.cursor_pos);
-        if self.cursor_pos == 0 {
-            return;
-        }
-        let previous = super::input_edit::prev_char_boundary(&self.input, self.cursor_pos);
-        self.input.replace_range(previous..self.cursor_pos, "");
-        self.cursor_pos = previous;
+        super::input_edit::TextEditor::new(&mut self.input, &mut self.cursor_pos)
+            .delete_before_cursor();
+    }
+
+    pub fn delete_at_cursor(&mut self) {
+        super::input_edit::TextEditor::new(&mut self.input, &mut self.cursor_pos)
+            .delete_at_cursor();
     }
 
     pub fn move_cursor_left(&mut self) {
-        self.cursor_pos = super::input_edit::prev_char_boundary(&self.input, self.cursor_pos);
+        super::input_edit::TextEditor::new(&mut self.input, &mut self.cursor_pos).move_left();
     }
 
     pub fn move_cursor_right(&mut self) {
-        self.cursor_pos = super::input_edit::next_char_boundary(&self.input, self.cursor_pos);
+        super::input_edit::TextEditor::new(&mut self.input, &mut self.cursor_pos).move_right();
+    }
+
+    pub fn move_cursor_word_left(&mut self) {
+        super::input_edit::TextEditor::new(&mut self.input, &mut self.cursor_pos).move_word_left();
+    }
+
+    pub fn move_cursor_word_right(&mut self) {
+        super::input_edit::TextEditor::new(&mut self.input, &mut self.cursor_pos).move_word_right();
+    }
+
+    pub fn move_cursor_home(&mut self) {
+        super::input_edit::TextEditor::new(&mut self.input, &mut self.cursor_pos).move_home();
+    }
+
+    pub fn move_cursor_end(&mut self) {
+        super::input_edit::TextEditor::new(&mut self.input, &mut self.cursor_pos).move_end();
+    }
+
+    pub fn delete_word_before_cursor(&mut self) {
+        super::input_edit::TextEditor::new(&mut self.input, &mut self.cursor_pos)
+            .delete_word_before_cursor();
     }
 }
 

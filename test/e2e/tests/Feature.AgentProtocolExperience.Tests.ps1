@@ -101,6 +101,34 @@ Describe 'Feature: ACP agent-pane protocol experience' -Tag 'Feature' -Skip:(-no
         $freeform | Should -Not -BeNullOrEmpty
         Assert-AgentPaneText -App $script:app -PaneSessionId $script:agentPane `
             -Pattern 'INPUT_RESULT:.*answered.*abXc' -TimeoutSec 15
+
+        Send-AgentPrompt -App $script:app -PaneSessionId $script:agentPane -Text 'ASK_INPUT' | Out-Null
+        Assert-AgentPaneText -App $script:app -PaneSessionId $script:agentPane `
+            -Pattern 'Choose the deterministic answer' -TimeoutSec 15
+        Send-AgentKey -App $script:app -PaneSessionId $script:agentPane -Key Down -Count 4 | Out-Null
+        Send-AgentPrompt -App $script:app -PaneSessionId $script:agentPane -Text 'one two' -NoSubmit | Out-Null
+
+        # Drive real modified key records through WT/ConPTY: Ctrl+Left, Ctrl+Right,
+        # Backspace, Home, Delete, End, Ctrl+Left, Ctrl+Backspace. The sequence
+        # transforms "one two" into "tw" only when every editing command works.
+        Send-AgentWin32Key -App $script:app -PaneSessionId $script:agentPane -Vk 0x25 -Sc 0x4B -Modifiers 0x08 | Out-Null
+        Send-AgentWin32Key -App $script:app -PaneSessionId $script:agentPane -Vk 0x27 -Sc 0x4D -Modifiers 0x08 | Out-Null
+        Send-AgentWin32Key -App $script:app -PaneSessionId $script:agentPane -Vk 0x08 -Sc 0x0E -Uc 0x08 | Out-Null
+        Send-AgentWin32Key -App $script:app -PaneSessionId $script:agentPane -Vk 0x24 -Sc 0x47 | Out-Null
+        Send-AgentWin32Key -App $script:app -PaneSessionId $script:agentPane -Vk 0x2E -Sc 0x53 | Out-Null
+        Send-AgentWin32Key -App $script:app -PaneSessionId $script:agentPane -Vk 0x23 -Sc 0x4F | Out-Null
+        Send-AgentWin32Key -App $script:app -PaneSessionId $script:agentPane -Vk 0x25 -Sc 0x4B -Modifiers 0x08 | Out-Null
+        Send-AgentWin32Key -App $script:app -PaneSessionId $script:agentPane -Vk 0x08 -Sc 0x0E -Uc 0x08 -Modifiers 0x08 | Out-Null
+        Send-AgentKey -App $script:app -PaneSessionId $script:agentPane -Key Enter | Out-Null
+
+        $keyboardParity = Wait-Until -TimeoutSec 15 -Because 'the fully keyboard-edited freeform answer to round-trip to the ACP agent' -Condition {
+            Get-Content -LiteralPath $script:requestLog -ErrorAction SilentlyContinue |
+                Where-Object { $_ -match 'user-input-result\|.*"outcome":"answered".*"answer":"tw".*"selected_index":null' } |
+                Select-Object -Last 1
+        }
+        $keyboardParity | Should -Not -BeNullOrEmpty
+        Assert-AgentPaneText -App $script:app -PaneSessionId $script:agentPane `
+            -Pattern 'INPUT_RESULT:.*answered.*tw' -TimeoutSec 15
     }
 
     It 'ACP session config picker preserves order and hot-applies a selection' {
