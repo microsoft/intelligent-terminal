@@ -71,27 +71,22 @@ fn content_lines(request: &UserInputState, width: usize) -> (Vec<Line<'static>>,
         let selected = request.freeform_selected();
         let marker = if selected { "● " } else { "○ " };
         let value_width = width.saturating_sub(marker.width());
-        let value = if request.input.is_empty() {
-            match (selected, value_width) {
-                (true, 2..) => "_█".to_string(),
-                (true, 1) => "█".to_string(),
-                (false, 1..) => "_".to_string(),
-                _ => String::new(),
-            }
-        } else if selected {
-            input_with_caret(&request.input, request.cursor_pos, value_width)
+        let line = if selected {
+            selected_freeform_line(marker, &request.input, request.cursor_pos, value_width)
         } else {
-            tail_to_width(&request.input, value_width)
+            let value = if request.input.is_empty() {
+                if value_width > 0 {
+                    "_".to_string()
+                } else {
+                    String::new()
+                }
+            } else {
+                tail_to_width(&request.input, value_width)
+            };
+            Line::styled(format!("{marker}{value}"), theme::INPUT_TEXT)
         };
         let start = lines.len();
-        lines.push(Line::styled(
-            format!("{marker}{value}"),
-            if selected {
-                theme::SELECTED
-            } else {
-                theme::INPUT_TEXT
-            },
-        ));
+        lines.push(line);
         if selected {
             selected_start = start;
             selected_end = lines.len();
@@ -191,30 +186,67 @@ fn head_to_width(value: &str, width: usize) -> String {
     kept
 }
 
-fn input_with_caret(value: &str, cursor_pos: usize, width: usize) -> String {
+fn selected_freeform_line(
+    marker: &'static str,
+    value: &str,
+    cursor_pos: usize,
+    width: usize,
+) -> Line<'static> {
+    let mut spans = vec![Span::styled(marker, theme::SELECTED)];
     if width == 0 {
-        return String::new();
+        return Line::from(spans);
     }
+    if value.is_empty() {
+        spans.push(Span::styled(
+            "_",
+            theme::SELECTED.add_modifier(Modifier::REVERSED),
+        ));
+        return Line::from(spans);
+    }
+
     let mut cursor_pos = cursor_pos.min(value.len());
     while cursor_pos > 0 && !value.is_char_boundary(cursor_pos) {
         cursor_pos -= 1;
     }
     let before = &value[..cursor_pos];
     let after = &value[cursor_pos..];
-    let text_width = width.saturating_sub(1);
-    let mut after_context_width = after
+    let mut after_chars = after.chars();
+    let caret_character = after_chars.next();
+    let after_caret = after_chars.as_str();
+    let raw_caret = caret_character
+        .map(|character| character.to_string())
+        .unwrap_or_else(|| " ".to_string());
+    let caret_text = if raw_caret.width() <= width {
+        raw_caret
+    } else {
+        "…".to_string()
+    };
+    let caret_width = caret_text.width();
+    let text_width = width.saturating_sub(caret_width);
+    let mut after_context_width = after_caret
         .chars()
         .next()
         .map(|character| UnicodeWidthChar::width(character).unwrap_or(0).max(1))
         .unwrap_or(0)
         .min(text_width);
-    if after.chars().nth(1).is_some() && after_context_width < text_width {
+    if after_caret.chars().nth(1).is_some() && after_context_width < text_width {
         after_context_width += 1;
     }
     let visible_before = tail_to_width(before, text_width.saturating_sub(after_context_width));
     let remaining = text_width.saturating_sub(visible_before.width());
-    let visible_after = head_to_width(after, remaining);
-    format!("{visible_before}█{visible_after}")
+    let visible_after = head_to_width(after_caret, remaining);
+
+    if !visible_before.is_empty() {
+        spans.push(Span::styled(visible_before, theme::SELECTED));
+    }
+    spans.push(Span::styled(
+        caret_text,
+        theme::SELECTED.add_modifier(Modifier::REVERSED),
+    ));
+    if !visible_after.is_empty() {
+        spans.push(Span::styled(visible_after, theme::SELECTED));
+    }
+    Line::from(spans)
 }
 
 #[cfg(test)]
@@ -245,22 +277,46 @@ mod tests {
 
     #[test]
     fn freeform_keeps_the_visible_tail_bounded() {
-        let visible = input_with_caret("abcdefghijklmnopqrstuvwxyz", 26, 9);
-        assert!(visible.width() <= 9);
-        assert!(visible.starts_with('…'));
-        assert!(visible.ends_with('█'));
+        let (lines, _, _) = content_lines(&state(2), 11);
+        let freeform = lines.last().unwrap();
+        assert!(freeform.width() <= 11);
+        assert!(freeform.to_string().starts_with("● …"));
+        assert!(freeform.to_string().ends_with(' '));
     }
 
     #[test]
     fn freeform_renders_the_caret_at_the_cursor() {
-        assert_eq!(input_with_caret("abc", 2, 8), "ab█c");
+        let mut request = state(2);
+        request.input = "abc".into();
+        request.cursor_pos = 2;
+        let (lines, _, _) = content_lines(&request, 8);
+        let freeform = lines.last().unwrap();
+
+        assert_eq!(freeform.to_string(), "● abc");
+        assert_eq!(freeform.width(), "● abc".width());
+        let caret = freeform
+            .spans
+            .iter()
+            .find(|span| span.style.add_modifier.contains(Modifier::REVERSED))
+            .expect("selected freeform input should paint a reverse-video caret");
+        assert_eq!(caret.content.as_ref(), "c");
     }
 
     #[test]
     fn freeform_keeps_context_around_a_scrolled_caret() {
-        let visible = input_with_caret("abcdefghij", 5, 6);
-        assert_eq!(visible, "…de█f…");
-        assert_eq!(visible.width(), 6);
+        let mut request = state(2);
+        request.input = "abcdefghij".into();
+        request.cursor_pos = 5;
+        let (lines, _, _) = content_lines(&request, 8);
+        let freeform = lines.last().unwrap();
+        assert_eq!(freeform.to_string(), "● …defg…");
+        assert_eq!(freeform.width(), 8);
+        let caret = freeform
+            .spans
+            .iter()
+            .find(|span| span.style.add_modifier.contains(Modifier::REVERSED))
+            .expect("scrolled freeform input should paint a reverse-video caret");
+        assert_eq!(caret.content.as_ref(), "f");
     }
 
     #[test]
@@ -271,6 +327,66 @@ mod tests {
         let (lines, _, _) = content_lines(&request, 3);
         let freeform = lines.last().unwrap();
         assert_eq!(freeform.width(), 3);
-        assert_eq!(freeform.to_string(), "● █");
+        assert_eq!(freeform.to_string(), "● _");
+        let caret = freeform
+            .spans
+            .iter()
+            .find(|span| span.style.add_modifier.contains(Modifier::REVERSED))
+            .expect("empty freeform input should reverse its placeholder");
+        assert_eq!(caret.content.as_ref(), "_");
+    }
+
+    #[test]
+    fn freeform_caret_preserves_a_zero_width_character() {
+        let mut request = state(2);
+        request.input = "e\u{301}x".into();
+        request.cursor_pos = "e".len();
+        let (lines, _, _) = content_lines(&request, 8);
+        let freeform = lines.last().unwrap();
+
+        assert_eq!(freeform.to_string(), "● e\u{301}x");
+        assert_eq!(freeform.width(), "● e\u{301}x".width());
+        let caret = freeform
+            .spans
+            .iter()
+            .find(|span| span.style.add_modifier.contains(Modifier::REVERSED))
+            .expect("zero-width cursor character should remain in a caret span");
+        assert_eq!(caret.content.as_ref(), "\u{301}");
+    }
+
+    #[test]
+    fn freeform_caret_reverses_a_wide_character_without_shifting_text() {
+        let mut request = state(2);
+        request.input = "a界b".into();
+        request.cursor_pos = "a".len();
+        let (lines, _, _) = content_lines(&request, 8);
+        let freeform = lines.last().unwrap();
+
+        assert_eq!(freeform.to_string(), "● a界b");
+        assert_eq!(freeform.width(), "● a界b".width());
+        let caret = freeform
+            .spans
+            .iter()
+            .find(|span| span.style.add_modifier.contains(Modifier::REVERSED))
+            .expect("wide cursor character should be reversed in place");
+        assert_eq!(caret.content.as_ref(), "界");
+    }
+
+    #[test]
+    fn freeform_end_caret_follows_a_wide_character() {
+        let mut request = state(2);
+        request.input = "a界".into();
+        request.cursor_pos = request.input.len();
+        let (lines, _, _) = content_lines(&request, 6);
+        let freeform = lines.last().unwrap();
+
+        assert_eq!(freeform.to_string(), "● a界 ");
+        assert_eq!(freeform.width(), 6);
+        let caret = freeform
+            .spans
+            .iter()
+            .find(|span| span.style.add_modifier.contains(Modifier::REVERSED))
+            .expect("end caret should reverse a trailing space");
+        assert_eq!(caret.content.as_ref(), " ");
     }
 }
