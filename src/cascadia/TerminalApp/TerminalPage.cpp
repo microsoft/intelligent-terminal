@@ -1600,11 +1600,9 @@ namespace winrt::TerminalApp::implementation
         }
         if (activeCwd.empty())
         {
-            wchar_t homePath[MAX_PATH];
-            if (GetEnvironmentVariableW(L"USERPROFILE", homePath, MAX_PATH) > 0)
-            {
-                activeCwd = winrt::hstring{ homePath };
-            }
+            activeCwd = winrt::hstring{
+                ::Microsoft::Terminal::AgentSource::ReadEnvironmentVariable(L"USERPROFILE")
+            };
         }
         if (!activeCwd.empty())
         {
@@ -3115,7 +3113,7 @@ namespace winrt::TerminalApp::implementation
             }
         }
 
-        // Resolve cwd:
+        // Resolve the source-aware ACP cwd and the Win32 helper launch cwd separately:
         //   a) Active pane CWD of THIS tab (pre-seeded from its starting directory,
         //      then updated by shell integration / OSC 9;9)
         //   b) VirtualWorkingDirectory (CLI-remoted commands like `wt agent`)
@@ -3129,7 +3127,9 @@ namespace winrt::TerminalApp::implementation
         // the helper would start in the wrong directory (autofix and
         // agent context would attribute to the wrong project). Reading
         // directly from `tab` resolves to whichever pane is active on
-        // this specific tab. It must also win over the window cwd: deferred
+        // this specific tab. For a WSL agent, that source cwd may be POSIX and
+        // must not become the Windows wta-helper process's starting directory.
+        // The pane cwd must also win over the window cwd for agent context: deferred
         // pre-warm runs after startup actions restore that property to the
         // launcher directory, which is System32 for an AUMID activation.
         winrt::hstring paneDirectory;
@@ -3143,30 +3143,30 @@ namespace winrt::TerminalApp::implementation
         {
             profileDirectory = sourceProfile.EvaluatedStartingDirectory();
         }
-        winrt::hstring homeDirectory;
-        wchar_t homePath[MAX_PATH];
-        if (GetEnvironmentVariableW(L"USERPROFILE", homePath, MAX_PATH) > 0)
-        {
-            homeDirectory = winrt::hstring{ homePath };
-        }
-        const winrt::hstring startingDirectory{
-            ::Microsoft::Terminal::AgentSource::ResolveCwd(
-                std::wstring_view{ paneDirectory },
-                std::wstring_view{ windowDirectory },
-                std::wstring_view{ profileDirectory },
-                std::wstring_view{ homeDirectory })
+        const winrt::hstring homeDirectory{
+            ::Microsoft::Terminal::AgentSource::ReadEnvironmentVariable(L"USERPROFILE")
         };
-        if (!startingDirectory.empty())
+        const auto resolvedWorkingDirectories = ::Microsoft::Terminal::AgentSource::ResolveAgentAndHelperWorkingDirectories(
+            effectiveAgentSource == L"wsl",
+            std::wstring_view{ paneDirectory },
+            std::wstring_view{ windowDirectory },
+            std::wstring_view{ profileDirectory },
+            std::wstring_view{ homeDirectory },
+            [](const std::wstring_view candidate) {
+                const std::wstring path{ candidate };
+                return Utils::IsValidDirectory(path.c_str());
+            });
+        if (!resolvedWorkingDirectories.agent.empty())
         {
-            appendHelperFlagValue(L"--agent-source-cwd", startingDirectory);
+            appendHelperFlagValue(L"--agent-source-cwd", resolvedWorkingDirectories.agent);
         }
 
         NewTerminalArgs args;
         args.Commandline(winrt::hstring{ helperCmd });
         args.Profile(globals.AiCoordinatorProfile());
-        if (!startingDirectory.empty())
+        if (!resolvedWorkingDirectories.helper.empty())
         {
-            args.StartingDirectory(startingDirectory);
+            args.StartingDirectory(winrt::hstring{ resolvedWorkingDirectories.helper });
         }
 
         auto rawPane = _MakeTerminalPane(args, nullptr, nullptr);
