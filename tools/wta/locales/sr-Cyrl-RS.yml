@@ -154,8 +154,8 @@ system.resuming_session: "Наставља се сесија %{session_id}..."
 system.unknown_command: "Непозната команда \"%{command}\" — послата као упит. Унесите /help за списак."  # {Locked="/help"}
 system.busy_use_stop: "Сачекајте да се тренутни упит заврши или прво употребите /stop."  # {Locked="/stop"}
 system.cannot_focus_session: "Није могуће фокусирати сесију %{session_id}: изгледа активна, али још није повезан GUID окна. Покушајте поново за тренутак."
-system.cannot_resume_no_load_session: "Није могуће наставити у окну агента: %{agent} није огласио могућност ACP `loadSession`. Притисните Enter (без Shift) да уместо тога наставите у новом терминалском окну."  # {Locked="ACP","loadSession","Enter","Shift"}
-system.cannot_resume_no_resume_flag: "Није могуће наставити сесију агента %{agent}: овај агент нема заставицу у стилу `--resume`. Притисните Shift+Enter да покушате наставити унутар окна агента путем ACP-а."  # {Locked="--resume","Shift","Enter","ACP"}
+system.cannot_resume_no_load_session: "Није могуће наставити у окну агента: %{agent} није огласио могућност ACP `loadSession`."  # {Locked="ACP","loadSession"}
+system.cannot_resume_no_resume_flag: "Није могуће наставити сесију агента %{agent}: овај агент нема заставицу у стилу `--resume`."  # {Locked="--resume"}
 system.cannot_resume_unknown_agent: "Није могуће наставити сесију %{session_id}: њен изворни агент није познат овој верзији WTA."
 system.cannot_resume_phantom_via_flag: "Није могуће наставити сесију агента %{agent} %{session_id}: покренута је, али никада није прикупила разговор, па би сам %{agent} одбио наставак. Ред се уклања."
 system.cannot_resume_phantom_via_load: "Није могуће наставити сесију агента %{agent} %{session_id}: покренута је, али никада није прикупила разговор, па би %{agent} одбио учитавање. Ред се уклања."

@@ -2896,17 +2896,21 @@
     <value>安裝後，在 Codex 中執行 /hooks 並核准，以信任新的事件處理常式。</value>
     <comment>One-line reminder shown under the Codex CLI row in the Agent Hooks section. Codex requires per-command trust before hook handlers run; users must execute /hooks inside Codex and approve. {Locked="/hooks","Codex"}</comment>
   </data>
+  <data name="AIAgents_HooksRestartNote.Text" xml:space="preserve">
+    <value>變更會在下次啟動智慧代理時生效。請重新啟動任何開啟的智慧代理以套用變更。</value>
+    <comment>Persistent note shown under the "Install agent hook script" row in the Agent session tracking section. Warns that installing or removing hooks only affects agents started afterwards. In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+  </data>
   <data name="AIAgents_HooksLocateWtaFailedSummary" xml:space="preserve">
     <value>失敗: 找不到 wta.exe</value>
     <comment>Failure summary shown when the Settings UI cannot find the WTA helper executable. {Locked="wta.exe"}</comment>
   </data>
   <data name="AIAgents_HooksRemovedSummary" xml:space="preserve">
-    <value>Hooks 已移除。請重新啟動任何開啟的智慧代理，以捨棄先前的 hooks。</value>
-    <comment>Success summary shown after removing agent session tracking hooks. {Locked="Hooks","hooks"}</comment>
+    <value>Hooks 已移除。</value>
+    <comment>Success summary shown after removing agent session tracking hooks. {Locked="Hooks"}</comment>
   </data>
   <data name="AIAgents_HooksInstalledSummary" xml:space="preserve">
-    <value>Hooks 已安裝。請重新啟動任何開啟的智慧代理，以採用新的 hooks。</value>
-    <comment>Success summary shown after installing agent session tracking hooks. {Locked="Hooks","hooks"}</comment>
+    <value>Hooks 已安裝。</value>
+    <comment>Success summary shown after installing agent session tracking hooks. {Locked="Hooks"}</comment>
   </data>
   <data name="AIAgents_HooksRemovalFailedSummary" xml:space="preserve">
     <value>Hook 移除失敗。請查看 {0} 以取得詳細資料。</value>

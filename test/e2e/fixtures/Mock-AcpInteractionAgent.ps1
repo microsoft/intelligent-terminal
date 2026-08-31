@@ -96,7 +96,7 @@ function Invoke-UserInputTool {
             name = 'request_user_input'
             arguments = @{
                 question = 'Choose the deterministic answer'
-                choices = @('Alpha', 'Beta')
+                choices = @('Alpha', 'Beta', 'Gamma', 'Delta')
                 allow_freeform = $true
             }
         }

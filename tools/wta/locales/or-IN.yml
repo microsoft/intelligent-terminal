@@ -158,8 +158,8 @@ system.resuming_session: "ସେସନ୍ %{session_id} ପୁନଃ ଆରମ�
 system.unknown_command: "ଅଜଣା କମାଣ୍ଡ \"%{command}\" — ପ୍ରମ୍ପ୍ଟ ଭାବେ ପଠାଯାଇଛି। ତାଲିକା ପାଇଁ /help ଟାଇପ୍ କରନ୍ତୁ।"  # {Locked="/help"} — slash-command name.
 system.busy_use_stop: "ବର୍ତ୍ତମାନ ପ୍ରମ୍ପ୍ଟ ଶେଷ ହେବା ପର୍ଯ୍ୟନ୍ତ ଅପେକ୍ଷା କରନ୍ତୁ, କିମ୍ବା ପ୍ରଥମେ /stop କରନ୍ତୁ।"  # {Locked="/stop"} — slash-command name.
 system.cannot_focus_session: "ସେସନ୍ %{session_id} ଉପରେ ଫୋକସ୍ କରିପାରିବେ ନାହିଁ: ଏହା live ଦେଖାଯାଉଛି କିନ୍ତୁ ଏପର୍ଯ୍ୟନ୍ତ କୌଣସି pane GUID ବାଇଣ୍ଡ ହୋଇନାହିଁ। କିଛି ଖଣ୍ଡ ପରେ ପୁଣି ଚେଷ୍ଟା କରନ୍ତୁ।"
-system.cannot_resume_no_load_session: "agent pane ରେ ପୁନଃ ଆରମ୍ଭ କରିପାରିବେ ନାହିଁ: %{agent} ACP `loadSession` କ୍ଷମତା ଘୋଷଣା କରିନାହାନ୍ତି। ତାହାର ବଦଳରେ ନୂଆ terminal pane ରେ ପୁନଃ ଆରମ୍ଭ କରିବାକୁ Enter (Shift ବିନା) ଦବାନ୍ତୁ।"  # {Locked="ACP","loadSession","Enter","Shift"} — protocol/UI terms.
-system.cannot_resume_no_resume_flag: "%{agent} ସେସନ୍ ପୁନଃ ଆରମ୍ଭ କରିପାରିବେ ନାହିଁ: ଏହି agent ପାଖରେ `--resume`-ଶୈଳୀର flag ନାହିଁ। ତାହାର ବଦଳରେ ACP ମାଧ୍ୟମରେ agent pane ଭିତରେ ପୁନଃ ଆରମ୍ଭ କରିବାକୁ Shift+Enter ଦବାଇ ଚେଷ୍ଟା କରନ୍ତୁ।"  # {Locked="--resume","Shift","Enter","ACP"} — flag and UI terms.
+system.cannot_resume_no_load_session: "agent pane ରେ ପୁନଃ ଆରମ୍ଭ କରିପାରିବେ ନାହିଁ: %{agent} ACP `loadSession` କ୍ଷମତା ଘୋଷଣା କରିନାହାନ୍ତି।"  # {Locked="ACP","loadSession"} — protocol/UI terms.
+system.cannot_resume_no_resume_flag: "%{agent} ସେସନ୍ ପୁନଃ ଆରମ୍ଭ କରିପାରିବେ ନାହିଁ: ଏହି agent ପାଖରେ `--resume`-ଶୈଳୀର flag ନାହିଁ।"  # {Locked="--resume"} — flag and UI terms.
 system.cannot_resume_unknown_agent: "ସେସନ୍ %{session_id} ପୁନଃ ଆରମ୍ଭ କରିପାରିବେ ନାହିଁ: ଏହାର ଉତ୍ସ agent ଏହି WTA build ପାଇଁ ଅଜଣା।"
 system.cannot_resume_phantom_via_flag: "%{agent} ସେସନ୍ %{session_id} ପୁନଃ ଆରମ୍ଭ କରିପାରିବେ ନାହିଁ: ଏହା ଆରମ୍ଭ ହୋଇଥିଲା କିନ୍ତୁ କୌଣସି କଥୋପକଥନ ସଂଗ୍ରହ କରିନଥିଲା, ସେହିପାଇଁ %{agent} ନିଜେ resume କୁ ଅସ୍ୱୀକାର କରିବ। ପଙ୍କ୍ତି ହଟାଯାଉଛି।"
 system.cannot_resume_phantom_via_load: "%{agent} ସେସନ୍ %{session_id} ପୁନଃ ଆରମ୍ଭ କରିପାରିବେ ନାହିଁ: ଏହା ଆରମ୍ଭ ହୋଇଥିଲା କିନ୍ତୁ କୌଣସି କଥୋପକଥନ ସଂଗ୍ରହ କରିନଥିଲା, ସେହିପାଇଁ %{agent} load କୁ ଅସ୍ୱୀକାର କରିବ। ପଙ୍କ୍ତି ହଟାଯାଉଛି।"

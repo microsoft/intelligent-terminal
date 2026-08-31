@@ -73,9 +73,11 @@
     'PowerShell shell integration installed' = 'PowerShell shell integration emits|PowerShell-level errors emit a non-zero command-finished mark on Windows PowerShell 5\.1'
 
     # §4 session view / focus
-    # NOTE: 'Shift+Enter behavior works' is NOT E2E-mapped — its contract (Live row Shift+Enter ->
-    # FocusPane) is deterministically covered by the Rust unit test
-    # shift_enter_on_class_a_live_row_focuses; focus-pane semantics aren't stably observable in E2E.
+    # NOTE: 'Only a bare Enter activates a row' is NOT E2E-mapped — its contract (a modified Enter
+    # never activates a row) is deterministically covered by the Rust unit tests
+    # modified_enter_on_live_row_dispatches_nothing / modified_enter_on_class_a_dead_row_dispatches_nothing /
+    # modified_enter_on_class_b_dead_row_dispatches_nothing; "nothing happened" and focus-pane
+    # semantics aren't stably observable in E2E.
     #
     # NOTE: 'Idle state is correct' is covered end-to-end by Feature.SessionState (the It name
     # contains the item title, so the report auto-credits it): it runs a real shell copilot

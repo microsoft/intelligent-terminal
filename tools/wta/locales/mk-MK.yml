@@ -154,8 +154,8 @@ system.resuming_session: "Се продолжува сесијата %{session_i
 system.unknown_command: "Непозната команда \"%{command}\" — испратена како барање. Внесете /help за списокот."  # {Locked="/help"}
 system.busy_use_stop: "Почекајте тековното барање да заврши или прво употребете /stop."  # {Locked="/stop"}
 system.cannot_focus_session: "Не може да се фокусира сесијата %{session_id}: изгледа активна, но сè уште не е поврзан GUID на панел. Обидете се повторно за момент."
-system.cannot_resume_no_load_session: "Не може да се продолжи во панелот на агентот: %{agent} не ја објави можноста ACP `loadSession`. Притиснете Enter (без Shift) за наместо тоа да продолжите во нов терминален панел."  # {Locked="ACP","loadSession","Enter","Shift"}
-system.cannot_resume_no_resume_flag: "Не може да се продолжи сесијата на %{agent}: овој агент нема знаменце во стил `--resume`. Притиснете Shift+Enter за да се обидете да продолжите во панелот на агентот преку ACP."  # {Locked="--resume","Shift","Enter","ACP"}
+system.cannot_resume_no_load_session: "Не може да се продолжи во панелот на агентот: %{agent} не ја објави можноста ACP `loadSession`."  # {Locked="ACP","loadSession"}
+system.cannot_resume_no_resume_flag: "Не може да се продолжи сесијата на %{agent}: овој агент нема знаменце во стил `--resume`."  # {Locked="--resume"}
 system.cannot_resume_unknown_agent: "Не може да се продолжи сесијата %{session_id}: нејзиниот изворен агент е непознат за оваа изведба на WTA."
 system.cannot_resume_phantom_via_flag: "Не може да се продолжи сесијата на %{agent} %{session_id}: таа е стартувана, но никогаш не собрала разговор, па самиот %{agent} би го одбил продолжувањето. Редот се отстранува."
 system.cannot_resume_phantom_via_load: "Не може да се продолжи сесијата на %{agent} %{session_id}: таа е стартувана, но никогаш не собрала разговор, па %{agent} би го одбил вчитувањето. Редот се отстранува."

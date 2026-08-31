@@ -2,12 +2,11 @@
 //!
 //! Drives the minimal client side of an ACP connection — `initialize`
 //! then `session/list` — over an already-spawned agent process's piped
-//! stdio. Two callers need exactly this exchange, so it lives here once:
+//! stdio. It lives here, separate from its caller, so the exchange stays
+//! reusable for any diagnostic or scan that needs a one-shot session list:
 //!
-//! * the `probe-sessions` diagnostic ([`super::probe`]), which spawns a
-//!   Windows-side agent and dumps the raw result; and
-//! * the production WSL history scan ([`crate::wsl_acp`]), which spawns the
-//!   distro's CLI through `wsl.exe` and maps the rows into `AgentSession`s.
+//! * the `probe-sessions` diagnostic ([`super::probe`]) spawns a
+//!   Windows-side agent and dumps the raw result.
 //!
 //! Callers must drive this inside a tokio `LocalSet`: the stderr drain and the
 //! ACP connection I/O are spawned via [`tokio::task::spawn_local`] (the

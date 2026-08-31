@@ -521,7 +521,7 @@ in its `_tabs` collection. Affected events:
 - `agent_status` (model, state, available models)
 - `autofix_state` (bar snapshot)
 - `close_agent_pane` (Ctrl+C×2 in TUI)
-- `resume_in_new_agent_tab` (slash-command / Shift+Enter on session row)
+- `resume_in_new_agent_tab` (slash-command / Enter on an agent-pane session row)
 
 **The `switch_tab_session` owner-lock.** A `tab_changed` is broadcast
 to every helper subscribed to the COM event bus. Pre-B20, every helper

@@ -4637,9 +4637,6 @@ namespace winrt::TerminalApp::implementation
         Grid::SetColumn(InfoBarsPanel(), 1);
         Grid::SetColumnSpan(InfoBarsPanel(), 1);
 
-        Grid::SetColumn(TabContentFiller(), 1);
-        Grid::SetColumnSpan(TabContentFiller(), 1);
-
         Grid::SetColumn(_tabContent, 1);
         Grid::SetColumnSpan(_tabContent, 1);
 

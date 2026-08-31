@@ -20,7 +20,6 @@ mod custom_model_provider;
 mod cwd_util;
 mod event;
 mod helper;
-mod history_loader;
 #[cfg(test)]
 #[path = "hook_contract_tests.rs"]
 mod hook_contract_tests;

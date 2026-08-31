@@ -1,5 +1,11 @@
 # WSL Agent Session Management (Historical MVP)
 
+> **Superseded in part.** This spec is written against the on-disk history
+> scanner (`history_loader::load_all`) and the `wsl_acp` scan module, both of
+> which have since been removed. Host history now comes from the agent's own
+> ACP `session/list` (`session_history.rs`); there is no WSL history scan in
+> the tree today. The design rationale below is kept for history.
+
 ## Abstract
 
 Intelligent Terminal (IT) surfaces a list of agent-CLI sessions (Copilot /
@@ -55,7 +61,10 @@ In scope (MVP):
 2. Merge the discovered rows into `/sessions`, tagged with their distro so the
    user can tell host rows from WSL rows.
 3. **Resume** a selected WSL row back into that distro (new tab running
-   `wsl -d <distro> -- <cli> --resume <key>`).
+   `wsl -d <distro> --cd <cwd> -- bash -lc "<cli> <resume-flag> <key>"`). The
+   flag comes from `AgentProfile::resume_flag`, so its spelling is per-agent
+   (`--resume`, the `resume` subcommand, `--session`); the login shell is what
+   puts the CLI on `PATH` inside the distro.
 
 Explicitly **out of scope** (accepted MVP limitations, see "Known
 limitations"):
@@ -64,9 +73,10 @@ limitations"):
 - No hooks installed inside WSL; no permission/Attention surfacing.
 - **Stopped** distros are not scanned (we never auto-boot a VM).
 - Only the distro's default-login `$HOME` is scanned (multi-Linux-user deferred).
-- Shift+Enter "resume-in-agent-pane" (ACP `session/load`) is **not** offered for
+- "Resume-in-agent-pane" (ACP `session/load`) is **not** offered for
   WSL rows (the helper/agent run on the host; loading a Linux session into a
-  host agent pane is wrong). Shift+Enter == Enter for WSL rows.
+  host agent pane is wrong). WSL rows always resume through the in-distro
+  CLI's own resume flag.
 
 ## Read mechanism: Hybrid (in-distro fetch), running distros only
 
@@ -258,9 +268,9 @@ Resume routing already exists: `decide_enter_action` (`session_mgmt.rs`) →
    possible future hardening (it would need another in-distro spawn) — out of
    scope for MVP.
 
-3. **Shift+Enter == Enter for WSL rows.** The `ResumeInAgentPane` branch
+3. **WSL rows never resume in an agent pane.** The `ResumeInAgentPane` branch
    (ACP `session/load`) is suppressed for `Wsl` location (helper/agent are
-   host-side); both Enter and Shift+Enter route to the CLI-flag resume above.
+   host-side); Enter routes to the CLI-flag resume above regardless of origin.
 
 ## Gating: `wta`-side choke point + env opt-in (real setting deferred)
 
@@ -457,7 +467,7 @@ at all, a pooled agent for its source exists.
 - Naming the distro on the row, now as a `· <distro>` suffix beside the CLI
   provider (`cli_suffix_for`) rather than a leading `[WSL-<distro>]` tag.
 - Resume back into the distro, including the `wsl -d <distro> --cd ...` command
-  shape and the suppression of Shift+Enter "resume in agent pane" for WSL rows.
+  shape and the suppression of "resume in agent pane" for WSL rows.
 - `SessionLocation` on the wire, which is now load-bearing for filtering rather
   than only for display.
 - The session MCP WSL relay, which serves WSL agent panes and is unrelated to

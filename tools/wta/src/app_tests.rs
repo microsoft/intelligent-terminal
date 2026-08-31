@@ -5910,179 +5910,9 @@ fn enter_on_history_row_with_missing_cwd_omits_d_flag() {
 }
 
 #[test]
-fn shift_enter_on_history_row_dispatches_resume_in_agent_pane() {
-    // Shift+Enter on a terminal-state row should route to the
-    // ResumeInAgentPane path, NOT the legacy NewTabResume — it
-    // emits `resume_in_new_agent_tab` to WT instead of spawning a
-    // normal terminal tab locally. The dispatched-command tape
-    // captures the shape so downstream wiring can be
-    // regression-checked.
-    use crate::agent_sessions::{CliSource, SessionEvent};
-    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-    // Use a real existing directory so cwd_util::validate_starting_directory
-    // accepts it. A missing cwd would (correctly) be omitted —
-    // covered by `shift_enter_on_history_row_with_missing_cwd_omits_cwd`.
-    let real_cwd = std::env::temp_dir();
-    let real_cwd_str = real_cwd.to_string_lossy().to_string();
-    let mut app = test_app();
-    // Capability gate: dispatch is only attempted when the agent
-    // advertised loadSession. Without this, the handler
-    // short-circuits with a system message instead.
-    app.agent_supports_load_session = true;
-    app.agent_sessions.apply(SessionEvent::SessionStarted {
-        key: "abc-123".into(),
-        cli_source: CliSource::Claude,
-        pane_session_id: "p".into(),
-        cwd: real_cwd.clone(),
-        title: "t".into(),
-    });
-    app.agent_sessions.apply(SessionEvent::SessionStopped {
-        key: "abc-123".into(),
-        reason: "user_exit".into(),
-    });
-
-    app.current_tab_mut().current_view = View::Agents;
-    app.current_tab_mut().agents_list_state.select(Some(0));
-    app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::SHIFT));
-
-    let cmd = app
-        .last_dispatched_command_for_test()
-        .expect("a command was dispatched");
-    assert_eq!(cmd.kind, DispatchedCommandKind::ResumeInAgentPane);
-    assert_eq!(cmd.session_id.as_deref(), Some("abc-123"));
-    let argv = cmd.argv.join(" ");
-    assert!(argv.contains("resume_in_new_agent_tab"), "argv: {}", argv);
-    assert!(argv.contains("--session-id abc-123"), "argv: {}", argv);
-    let expected = format!("--cwd {}", real_cwd_str);
-    assert!(
-        argv.contains(&expected),
-        "expected `{}` in argv: {}",
-        expected,
-        argv
-    );
-}
-
-/// Shift+Enter mirror of `enter_on_history_row_with_missing_cwd_omits_d_flag`:
-/// when the stored cwd no longer exists, the resume-in-agent-pane
-/// path must omit the `cwd` field from the emitted
-/// `resume_in_new_agent_tab` event so WT's `_OpenNewTab` falls back
-/// to the profile's startingDirectory (otherwise the new tab opens
-/// with a broken connection).
-#[test]
-fn shift_enter_on_history_row_with_missing_cwd_omits_cwd() {
-    use crate::agent_sessions::{CliSource, SessionEvent};
-    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-    use std::path::PathBuf;
-    let missing = {
-        let mut p = std::env::temp_dir();
-        p.push(format!(
-            "wta-missing-shift-cwd-{}-{}",
-            std::process::id(),
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .map(|d| d.as_nanos())
-                .unwrap_or(0)
-        ));
-        p
-    };
-    assert!(!missing.exists());
-    let mut app = test_app();
-    app.agent_supports_load_session = true;
-    app.agent_sessions.apply(SessionEvent::SessionStarted {
-        key: "abc-stale".into(),
-        cli_source: CliSource::Claude,
-        pane_session_id: "p".into(),
-        cwd: PathBuf::from(&missing),
-        title: "t".into(),
-    });
-    app.agent_sessions.apply(SessionEvent::SessionStopped {
-        key: "abc-stale".into(),
-        reason: "user_exit".into(),
-    });
-    app.current_tab_mut().current_view = View::Agents;
-    app.current_tab_mut().agents_list_state.select(Some(0));
-    app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::SHIFT));
-
-    let cmd = app
-        .last_dispatched_command_for_test()
-        .expect("a command was dispatched");
-    assert_eq!(cmd.kind, DispatchedCommandKind::ResumeInAgentPane);
-    let argv = cmd.argv.join(" ");
-    assert!(argv.contains("resume_in_new_agent_tab"), "argv: {}", argv);
-    // Fallback contract: the --cwd flag (and any value) must be
-    // omitted entirely so the consumer uses its default. A
-    // regression that sent `--cwd ""` would slip past a
-    // string-contains check, hence the explicit flag assertion.
-    assert!(
-        !cmd.argv.iter().any(|a| a == "--cwd"),
-        "argv must omit --cwd when cwd is missing: {:?}",
-        cmd.argv
-    );
-    assert!(
-        !argv.contains(&missing.to_string_lossy().to_string()),
-        "argv must not embed the stale cwd: {}",
-        argv
-    );
-}
-
-#[test]
-fn shift_enter_history_row_without_load_session_capability_shows_hint() {
-    // Capability gate: when the agent doesn't advertise loadSession,
-    // Shift+Enter must not open a new tab. Instead it pushes a
-    // system message in the session management view explaining the
-    // fallback (plain Enter). The dispatched-command tape captures
-    // the gated path so the regression is observable.
-    use crate::agent_sessions::{CliSource, SessionEvent};
-    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-    use std::path::PathBuf;
-    let mut app = test_app();
-    // No `agent_supports_load_session = true` — default is false.
-    app.agent_sessions.apply(SessionEvent::SessionStarted {
-        key: "abc-123".into(),
-        cli_source: CliSource::Claude,
-        pane_session_id: "p".into(),
-        cwd: PathBuf::from("/work/proj"),
-        title: "t".into(),
-    });
-    app.agent_sessions.apply(SessionEvent::SessionStopped {
-        key: "abc-123".into(),
-        reason: "user_exit".into(),
-    });
-
-    app.current_tab_mut().current_view = View::Agents;
-    app.current_tab_mut().agents_list_state.select(Some(0));
-    app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::SHIFT));
-
-    let cmd = app
-        .last_dispatched_command_for_test()
-        .expect("a command was dispatched");
-    // B-10: `decide_enter_action` short-circuits to NotResumable
-    // before any side-effect dispatch when the agent doesn't
-    // advertise loadSession. Previously this routed all the way
-    // through `dispatch_resume_in_agent_pane`'s internal gate;
-    // now the gate is hoisted into the pure state machine so
-    // there's one canonical path. The system hint message is
-    // unchanged.
-    assert_eq!(cmd.kind, DispatchedCommandKind::NotResumable);
-    let argv = cmd.argv.join(" ");
-    assert!(argv.contains("LoadSessionNotSupported"), "argv: {}", argv);
-    // The current tab gets a warning notice.
-    let has_hint = app.current_tab().messages.iter().any(|m| {
-        matches!(m, ChatMessage::Notice {
-            kind: NoticeKind::Warning,
-            text,
-        }
-            if text.contains("loadSession")
-                && text.contains("Press Enter"))
-    });
-    assert!(has_hint, "expected system hint message in the current tab");
-}
-
-#[test]
-fn shift_enter_on_live_row_falls_back_to_focus() {
-    // Live rows have no historical state to "load" — Shift+Enter on
-    // them must NOT trigger the resume-in-agent-pane flow. It falls
-    // through to the same FocusPane dispatch as plain Enter.
+fn modified_enter_on_live_row_dispatches_nothing() {
+    // Only a bare Enter activates a row. A modified Enter (Shift, Alt,
+    // ...) must not focus or resume, and must not leak out of the picker.
     use crate::agent_sessions::{CliSource, SessionEvent};
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
     use std::path::PathBuf;
@@ -6097,14 +5927,28 @@ fn shift_enter_on_live_row_falls_back_to_focus() {
     app.current_tab_mut().current_view = View::Agents;
     app.current_tab_mut().agents_list_state.select(Some(0));
 
-    app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::SHIFT));
+    for modifiers in [
+        KeyModifiers::SHIFT,
+        KeyModifiers::ALT,
+        KeyModifiers::CONTROL,
+    ] {
+        app.handle_key(KeyEvent::new(KeyCode::Enter, modifiers));
+        assert!(
+            app.last_dispatched_command_for_test().is_none(),
+            "{modifiers:?}+Enter must not dispatch anything",
+        );
+        // The key is swallowed by the picker, which stays open.
+        assert_eq!(app.current_tab().current_view, View::Agents);
+    }
+
+    app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
     let cmd = app
         .last_dispatched_command_for_test()
-        .expect("a command was dispatched");
+        .expect("bare Enter dispatches");
     assert_eq!(cmd.kind, DispatchedCommandKind::FocusPane);
 }
 
-// -------- B-10: state-machine-driven Enter / Shift+Enter dispatch --------
+// -------- state-machine-driven Enter dispatch --------
 //
 // Pure routing rules are exhaustively tested in
 // `session_mgmt::tests`. Here we verify the *integration* — that the
@@ -6112,12 +5956,10 @@ fn shift_enter_on_live_row_falls_back_to_focus() {
 // selected AgentSession, hands it to `decide_enter_action`, and
 // dispatches each EnterAction variant through the correct side
 // effect (or NotResumable hint). One or two representative cases
-// per variant is enough; B-1 holds the truth table.
+// per variant is enough; session_mgmt holds the truth table.
 
 /// Class A (AgentPane origin) dead row + plain Enter:
-/// new state machine routes to ResumeInAgentPane (ACP load).
-/// This is the headline behavior change from B-10 — previously
-/// Class A dead + Enter ran the CLI --resume flag path.
+/// the state machine routes to ResumeInAgentPane (ACP load).
 #[test]
 fn enter_on_class_a_dead_row_dispatches_resume_in_agent_pane() {
     use crate::agent_sessions::{CliSource, OriginFilter, SessionEvent, SessionOrigin};
@@ -6157,10 +5999,10 @@ fn enter_on_class_a_dead_row_dispatches_resume_in_agent_pane() {
     assert!(argv.contains("--session-id abc-class-a"), "argv: {}", argv);
 }
 
-/// Class A (AgentPane origin) dead row + Shift+Enter:
-/// Shift flips the default → ResumeCliFlag (new tab CLI --resume).
+/// Class A (AgentPane origin) dead row + modified Enter: no dispatch.
+/// The row's only resume style is reachable through a bare Enter.
 #[test]
-fn shift_enter_on_class_a_dead_row_dispatches_cli_resume() {
+fn modified_enter_on_class_a_dead_row_dispatches_nothing() {
     use crate::agent_sessions::{CliSource, OriginFilter, SessionEvent, SessionOrigin};
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
     use std::path::PathBuf;
@@ -6187,51 +6029,60 @@ fn shift_enter_on_class_a_dead_row_dispatches_cli_resume() {
 
     app.current_tab_mut().current_view = View::Agents;
     app.current_tab_mut().agents_list_state.select(Some(0));
-    app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::SHIFT));
+    for modifiers in [KeyModifiers::SHIFT, KeyModifiers::ALT] {
+        app.handle_key(KeyEvent::new(KeyCode::Enter, modifiers));
+        assert!(
+            app.last_dispatched_command_for_test().is_none(),
+            "{modifiers:?}+Enter must not resume a Class A row",
+        );
+    }
 
-    // What matters here is that Shift+Enter on
-    // Class A dead routed through dispatch_resume (the CLI flag
-    // path), NOT dispatch_resume_in_agent_pane.
+    app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
     let cmd = app
         .last_dispatched_command_for_test()
-        .expect("a command was dispatched");
-    assert_eq!(cmd.kind, DispatchedCommandKind::NewTabResume);
+        .expect("bare Enter dispatches");
+    assert_eq!(cmd.kind, DispatchedCommandKind::ResumeInAgentPane);
 }
 
-/// Live row + Shift+Enter: identical to Enter (Shift is a no-op on
-/// live rows because agents forbid two clients on one session).
-/// This is implicitly the case for `shift_enter_on_live_row_falls_
-/// back_to_focus` above; here we additionally assert with a Class
-/// A origin to confirm origin doesn't matter for Live rows.
+/// Class B (Unknown origin) dead row + modified Enter: no dispatch.
+/// This is the row class the picker shows by default, so it is the
+/// case a user would notice if a modifier ever regained a meaning.
 #[test]
-fn shift_enter_on_class_a_live_row_focuses() {
-    use crate::agent_sessions::{CliSource, OriginFilter, SessionEvent, SessionOrigin};
+fn modified_enter_on_class_b_dead_row_dispatches_nothing() {
+    use crate::agent_sessions::{CliSource, SessionEvent};
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
     use std::path::PathBuf;
     let mut app = test_app();
-    // Same rationale as the Class A dead-row tests above:
-    // MVP sessions filter hides AgentPane rows, this test verifies the
-    // dispatch logic for when they are visible.
-    app.sessions_origin_filter = OriginFilter::All;
+    // loadSession IS advertised: a modifier must not divert a Class B
+    // row into an agent pane, nor resume it in a shell pane.
+    app.agent_supports_load_session = true;
     app.agent_sessions.apply(SessionEvent::SessionStarted {
-        key: "live-class-a".into(),
+        key: "abc-class-b-shift".into(),
         cli_source: CliSource::Claude,
-        pane_session_id: "00000000-0000-0000-0000-0000000000bb".into(),
-        cwd: PathBuf::from("/x"),
+        pane_session_id: "p".into(),
+        cwd: PathBuf::from("/work/cls-b"),
         title: "t".into(),
     });
-    app.agent_sessions
-        .set_origin("live-class-a", SessionOrigin::AgentPane);
+    app.agent_sessions.apply(SessionEvent::SessionStopped {
+        key: "abc-class-b-shift".into(),
+        reason: "user_exit".into(),
+    });
 
     app.current_tab_mut().current_view = View::Agents;
     app.current_tab_mut().agents_list_state.select(Some(0));
-    app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::SHIFT));
+    for modifiers in [KeyModifiers::SHIFT, KeyModifiers::ALT] {
+        app.handle_key(KeyEvent::new(KeyCode::Enter, modifiers));
+        assert!(
+            app.last_dispatched_command_for_test().is_none(),
+            "{modifiers:?}+Enter must not resume a Class B row",
+        );
+    }
 
+    app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
     let cmd = app
         .last_dispatched_command_for_test()
-        .expect("a command was dispatched");
-    assert_eq!(cmd.kind, DispatchedCommandKind::FocusPane);
-    assert_eq!(cmd.session_id.as_deref(), Some("live-class-a"));
+        .expect("bare Enter dispatches");
+    assert_eq!(cmd.kind, DispatchedCommandKind::NewTabResume);
 }
 
 /// Class B (Unknown origin) + plain Enter on a Live row preserves
@@ -8088,6 +7939,150 @@ fn user_input_accepts_freeform_and_escape_cancels() {
     assert_eq!(
         response.try_recv().unwrap(),
         crate::agent_tools::user_input::UserInputResponse::Cancelled
+    );
+}
+
+#[test]
+fn user_input_freeform_cursor_moves_left_and_right() {
+    let mut app = test_app();
+    begin_user_input_test(&mut app);
+    let (responder, mut response) = tokio::sync::oneshot::channel();
+    app.handle_event(AppEvent::UserInputRequest {
+        request_id: "freeform-cursor".into(),
+        session_id: DEFAULT_TAB_ID.into(),
+        request: crate::agent_tools::user_input::UserInputRequest {
+            question: "Describe it".into(),
+            choices: Vec::new(),
+            allow_freeform: true,
+        },
+        responder,
+    });
+
+    for character in "cat".chars() {
+        app.handle_key(KeyEvent::new(KeyCode::Char(character), KeyModifiers::NONE));
+    }
+    app.handle_key(KeyEvent::new(KeyCode::Left, KeyModifiers::NONE));
+    app.handle_key(KeyEvent::new(KeyCode::Char('r'), KeyModifiers::NONE));
+    app.handle_key(KeyEvent::new(KeyCode::Left, KeyModifiers::NONE));
+    app.handle_key(KeyEvent::new(KeyCode::Right, KeyModifiers::NONE));
+    app.handle_key(KeyEvent::new(KeyCode::Char('e'), KeyModifiers::NONE));
+    app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+
+    assert_eq!(
+        response.try_recv().unwrap(),
+        crate::agent_tools::user_input::UserInputResponse::Answered {
+            answer: "caret".into(),
+            selected_index: None,
+        }
+    );
+}
+
+#[test]
+fn user_input_freeform_cursor_preserves_utf8_boundaries() {
+    let mut app = test_app();
+    begin_user_input_test(&mut app);
+    let (responder, mut response) = tokio::sync::oneshot::channel();
+    app.handle_event(AppEvent::UserInputRequest {
+        request_id: "freeform-unicode".into(),
+        session_id: DEFAULT_TAB_ID.into(),
+        request: crate::agent_tools::user_input::UserInputRequest {
+            question: "Describe it".into(),
+            choices: Vec::new(),
+            allow_freeform: true,
+        },
+        responder,
+    });
+
+    for character in "aé界".chars() {
+        app.handle_key(KeyEvent::new(KeyCode::Char(character), KeyModifiers::NONE));
+    }
+    app.handle_key(KeyEvent::new(KeyCode::Left, KeyModifiers::NONE));
+    app.handle_key(KeyEvent::new(KeyCode::Backspace, KeyModifiers::NONE));
+    app.handle_key(KeyEvent::new(KeyCode::Char('X'), KeyModifiers::NONE));
+    app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+
+    assert_eq!(
+        response.try_recv().unwrap(),
+        crate::agent_tools::user_input::UserInputResponse::Answered {
+            answer: "aX界".into(),
+            selected_index: None,
+        }
+    );
+}
+
+#[test]
+fn user_input_freeform_supports_home_delete_and_end() {
+    let mut app = test_app();
+    begin_user_input_test(&mut app);
+    let (responder, mut response) = tokio::sync::oneshot::channel();
+    app.handle_event(AppEvent::UserInputRequest {
+        request_id: "freeform-navigation".into(),
+        session_id: DEFAULT_TAB_ID.into(),
+        request: crate::agent_tools::user_input::UserInputRequest {
+            question: "Describe it".into(),
+            choices: Vec::new(),
+            allow_freeform: true,
+        },
+        responder,
+    });
+
+    for character in "abcd".chars() {
+        app.handle_key(KeyEvent::new(KeyCode::Char(character), KeyModifiers::NONE));
+    }
+    app.handle_key(KeyEvent::new(KeyCode::Home, KeyModifiers::NONE));
+    assert_eq!(app.current_tab().user_input.front().unwrap().cursor_pos, 0);
+    app.handle_key(KeyEvent::new(KeyCode::Delete, KeyModifiers::NONE));
+    assert_eq!(app.current_tab().user_input.front().unwrap().input, "bcd");
+    app.handle_key(KeyEvent::new(KeyCode::End, KeyModifiers::NONE));
+    assert_eq!(app.current_tab().user_input.front().unwrap().cursor_pos, 3);
+    app.handle_key(KeyEvent::new(KeyCode::Backspace, KeyModifiers::NONE));
+    app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+
+    assert_eq!(
+        response.try_recv().unwrap(),
+        crate::agent_tools::user_input::UserInputResponse::Answered {
+            answer: "bc".into(),
+            selected_index: None,
+        }
+    );
+}
+
+#[test]
+fn user_input_freeform_supports_word_navigation_and_deletion() {
+    let mut app = test_app();
+    begin_user_input_test(&mut app);
+    let (responder, mut response) = tokio::sync::oneshot::channel();
+    app.handle_event(AppEvent::UserInputRequest {
+        request_id: "freeform-word-navigation".into(),
+        session_id: DEFAULT_TAB_ID.into(),
+        request: crate::agent_tools::user_input::UserInputRequest {
+            question: "Describe it".into(),
+            choices: Vec::new(),
+            allow_freeform: true,
+        },
+        responder,
+    });
+
+    for character in "one two".chars() {
+        app.handle_key(KeyEvent::new(KeyCode::Char(character), KeyModifiers::NONE));
+    }
+    app.handle_key(KeyEvent::new(KeyCode::Left, KeyModifiers::CONTROL));
+    assert_eq!(app.current_tab().user_input.front().unwrap().cursor_pos, 4);
+    app.handle_key(KeyEvent::new(KeyCode::Right, KeyModifiers::CONTROL));
+    assert_eq!(app.current_tab().user_input.front().unwrap().cursor_pos, 7);
+    app.handle_key(KeyEvent::new(KeyCode::Left, KeyModifiers::CONTROL));
+    app.handle_key(KeyEvent::new(KeyCode::Backspace, KeyModifiers::CONTROL));
+    let request = app.current_tab().user_input.front().unwrap();
+    assert_eq!(request.input, "two");
+    assert_eq!(request.cursor_pos, 0);
+    app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+
+    assert_eq!(
+        response.try_recv().unwrap(),
+        crate::agent_tools::user_input::UserInputResponse::Answered {
+            answer: "two".into(),
+            selected_index: None,
+        }
     );
 }
 
@@ -12082,6 +12077,8 @@ fn submit_clears_messages_and_pushes_user_bubble() {
 
 #[test]
 fn first_message_chunk_transitions_to_streaming_with_transcript_text() {
+    let _locale = crate::test_support::lock_locale();
+    rust_i18n::set_locale("en-US");
     let mut app = test_app();
     submit_test_prompt(&mut app, "hi");
     assert!(app.current_tab().should_show_thinking());
@@ -12091,17 +12088,21 @@ fn first_message_chunk_transitions_to_streaming_with_transcript_text() {
     assert!(app.current_tab().turn.is_streaming());
     assert!(
         !app.current_tab().should_show_thinking(),
-        "visible response text replaces the generic Thinking row"
+        "visible response text replaces the generic Thinking row with inline activity"
     );
+    app.current_tab_mut().reveal_chars = "partial".chars().count();
+    assert!(render_to_text(&mut app, 80, 20).contains("Think · …"));
     app.advance_reveal();
     assert!(
         !app.current_tab().should_show_thinking(),
-        "revealing response text remains the visible progress indicator"
+        "inline activity remains visible beside revealed response text"
     );
 }
 
 #[test]
-fn thought_chunks_stream_ephemerally_until_visible_message_text_arrives() {
+fn latest_thought_remains_visible_alongside_streaming_message_until_turn_end() {
+    let _locale = crate::test_support::lock_locale();
+    rust_i18n::set_locale("en-US");
     let mut app = test_app();
     submit_test_prompt(&mut app, "hi");
     let advanced = app.turn_observe_chunk(DEFAULT_TAB_ID, ChunkKind::Thought, "thinking…");
@@ -12117,13 +12118,28 @@ fn thought_chunks_stream_ephemerally_until_visible_message_text_arrives() {
     let tab = app.current_tab();
     assert_eq!(tab.streaming_thought_text(), None);
     assert_eq!(tab.streaming_agent_text(), Some("Final answer"));
-    assert!(!app.turn_observe_chunk(DEFAULT_TAB_ID, ChunkKind::Thought, "late hidden thought"));
-    assert_eq!(app.current_tab().streaming_thought_text(), None);
     app.current_tab_mut().reveal_chars = "Final answer".chars().count();
+    let reveal_chars = app.current_tab().reveal_chars;
+    assert!(app.turn_observe_chunk(DEFAULT_TAB_ID, ChunkKind::Thought, "late visible thought"));
+    assert_eq!(
+        app.current_tab().streaming_thought_text(),
+        Some("late visible thought")
+    );
+    assert_eq!(
+        app.current_tab().reveal_chars,
+        reveal_chars,
+        "late thought chunks must not rewind visible response text"
+    );
     let rendered = render_to_text(&mut app, 80, 20);
     assert!(rendered.contains("Final"));
     assert!(!rendered.contains("thinking"));
-    assert!(!rendered.contains("late hidden thought"));
+    assert!(rendered.contains("Think · late visible thought"));
+
+    app.handle_event(AppEvent::AgentMessageEnd {
+        session_id: DEFAULT_TAB_ID.into(),
+    });
+    assert_eq!(app.current_tab().streaming_thought_text(), None);
+    assert!(!render_to_text(&mut app, 80, 20).contains("Think ·"));
 }
 
 #[test]
@@ -12139,6 +12155,43 @@ fn live_thought_buffer_is_bounded_without_splitting_unicode() {
             .chars()
             .count(),
         4000
+    );
+}
+
+#[test]
+fn whitespace_thought_keeps_only_generic_thinking_activity() {
+    let mut app = test_app();
+    submit_test_prompt(&mut app, "hi");
+
+    app.turn_observe_chunk(DEFAULT_TAB_ID, ChunkKind::Thought, " ");
+
+    let tab = app.current_tab();
+    assert!(tab.should_show_thinking());
+    assert!(!tab.should_show_inline_thinking());
+    assert_eq!(crate::ui::chat::pending_render_text(tab), None);
+}
+
+#[test]
+fn bounded_late_thought_does_not_rewind_revealed_assistant_response() {
+    let mut app = test_app();
+    submit_test_prompt(&mut app, "hi");
+    app.turn_observe_chunk(DEFAULT_TAB_ID, ChunkKind::Message, "Final answer");
+    app.current_tab_mut().reveal_chars = "Final answer".chars().count();
+    let reveal_chars = app.current_tab().reveal_chars;
+
+    app.turn_observe_chunk(DEFAULT_TAB_ID, ChunkKind::Thought, &"思".repeat(4100));
+
+    let tab = app.current_tab();
+    assert_eq!(
+        tab.streaming_thought_text()
+            .expect("late thought stream")
+            .chars()
+            .count(),
+        4000
+    );
+    assert_eq!(
+        tab.reveal_chars, reveal_chars,
+        "bounding a late thought must not rewind fully revealed response text"
     );
 }
 
@@ -12165,6 +12218,8 @@ fn structured_stream_hides_thinking_after_response_is_visible() {
 
 #[test]
 fn running_tool_replaces_thinking_until_tool_completes() {
+    let _locale = crate::test_support::lock_locale();
+    rust_i18n::set_locale("en-US");
     let mut app = test_app();
     submit_test_prompt(&mut app, "inspect");
     app.turn_observe_chunk(DEFAULT_TAB_ID, ChunkKind::Thought, "Choosing files");
@@ -12187,6 +12242,10 @@ fn running_tool_replaces_thinking_until_tool_completes() {
         "the running tool card is already visible progress"
     );
     assert_eq!(app.current_tab().streaming_thought_text(), None);
+    assert!(
+        render_to_text(&mut app, 80, 20).contains("Think · …"),
+        "tool activity must retain inline Thinking until the turn ends"
+    );
 
     app.handle_event(AppEvent::ToolCallUpdate {
         session_id: DEFAULT_TAB_ID.into(),

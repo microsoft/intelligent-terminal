@@ -154,8 +154,8 @@ system.resuming_session: "Возобновление сеанса %{session_id}.
 system.unknown_command: "Неизвестная команда \"%{command}\" — отправлена как запрос. Введите /help, чтобы увидеть список."  # {Locked="/help"}
 system.busy_use_stop: "Дождитесь завершения текущего запроса или сначала используйте /stop."  # {Locked="/stop"}
 system.cannot_focus_session: "Не удается сфокусировать сеанс %{session_id}: он выглядит активным, но GUID панели еще не привязан. Повторите попытку через несколько секунд."
-system.cannot_resume_no_load_session: "Не удается возобновить в панели агента: %{agent} не объявил возможность ACP `loadSession`. Нажмите Enter (без Shift), чтобы вместо этого возобновить в новой панели терминала."  # {Locked="ACP","loadSession","Enter","Shift"}
-system.cannot_resume_no_resume_flag: "Не удается возобновить сеанс %{agent}: у этого агента нет флага в стиле `--resume`. Нажмите Shift+Enter, чтобы попробовать возобновить внутри панели агента через ACP."  # {Locked="--resume","Shift","Enter","ACP"}
+system.cannot_resume_no_load_session: "Не удается возобновить в панели агента: %{agent} не объявил возможность ACP `loadSession`."  # {Locked="ACP","loadSession"}
+system.cannot_resume_no_resume_flag: "Не удается возобновить сеанс %{agent}: у этого агента нет флага в стиле `--resume`."  # {Locked="--resume"}
 system.cannot_resume_unknown_agent: "Не удается возобновить сеанс %{session_id}: его исходный агент неизвестен этой сборке WTA."
 system.cannot_resume_phantom_via_flag: "Не удается возобновить сеанс %{agent} %{session_id}: он был запущен, но в нем не накопилось ни одного разговора, поэтому сам %{agent} отклонил бы возобновление. Строка удаляется."
 system.cannot_resume_phantom_via_load: "Не удается возобновить сеанс %{agent} %{session_id}: он был запущен, но в нем не накопилось ни одного разговора, поэтому %{agent} отклонил бы загрузку. Строка удаляется."

@@ -3686,8 +3686,8 @@ impl HelperHandler {
     /// Answer `session/list` from our own registry (NOT by proxying the
     /// helper's call to the agent CLI). The registry holds both live
     /// sessions and the historical rows seeded at startup / rescan from
-    /// the agent's own `session/list` (host) and `wsl_acp` (WSL),
-    /// Class-A-filtered by the `agent_pane_origin` index. Proxying the
+    /// the agent's own `session/list`, Class-A-filtered by the
+    /// `agent_pane_origin` index. Proxying the
     /// helper's call directly would bypass that merge + filter.
     ///
     /// The response carries our `pane_session_id` inside the standard
@@ -6146,7 +6146,15 @@ async fn handle_session_hook(
     //
     //  * binding-only (#266 delegate born-bound + resume binding events): record
     //    in `born_bound` so the watcher may still supply STATUS when no real hook
-    //    is installed — without re-binding the pane.
+    //    is installed — without re-binding the pane. Also drop any **stale**
+    //    `hook_owned` claim: the two sets are disjoint by contract, and a
+    //    born-bound event means WTA has just (re)launched this session id, so an
+    //    ownership claim left by a previous generation of the same session is
+    //    over. Without this a `/sessions` resume of a session that ran earlier
+    //    in the same master process stayed `hook_owned` forever, and because
+    //    `apply_watcher_event` checks `hook_owned` first, every watcher status
+    //    event for the resumed row was dropped — the row sat at Idle for the
+    //    whole session. A real hook re-claims ownership on its very next event.
     //  * real hook / ACP agent-pane event: authoritative for binding AND
     //    activity. Record in `hook_owned` (full watcher suppression) and, if the
     //    session was previously born-bound, drop it from `born_bound` — the real
@@ -6154,6 +6162,7 @@ async fn handle_session_hook(
     if let Some(key) = &refresh_key {
         let sid = acp::schema::v1::SessionId::new(key.clone());
         if binding_only {
+            state.hook_owned.lock().await.remove(&sid);
             state.born_bound.lock().await.insert(sid);
         } else {
             state.hook_owned.lock().await.insert(sid.clone());

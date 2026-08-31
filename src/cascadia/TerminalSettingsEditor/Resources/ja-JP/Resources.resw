@@ -2896,17 +2896,21 @@
     <value>インストール後、Codex で /hooks を実行し、承認して新しいイベント ハンドラーを信頼してください。</value>
     <comment>One-line reminder shown under the Codex CLI row in the Agent Hooks section. Codex requires per-command trust before hook handlers run; users must execute /hooks inside Codex and approve. {Locked="/hooks","Codex"}</comment>
   </data>
+  <data name="AIAgents_HooksRestartNote.Text" xml:space="preserve">
+    <value>変更は次回エージェントを起動したときに反映されます。適用するには、開いているエージェントを再起動してください。</value>
+    <comment>Persistent note shown under the "Install agent hook script" row in the Agent session tracking section. Warns that installing or removing hooks only affects agents started afterwards. In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+  </data>
   <data name="AIAgents_HooksLocateWtaFailedSummary" xml:space="preserve">
     <value>失敗: wta.exe が見つかりませんでした</value>
     <comment>Failure summary shown when the Settings UI cannot find the WTA helper executable. {Locked="wta.exe"}</comment>
   </data>
   <data name="AIAgents_HooksRemovedSummary" xml:space="preserve">
-    <value>Hooks を削除しました。以前の hooks を破棄するには、開いているエージェントを再起動してください。</value>
-    <comment>Success summary shown after removing agent session tracking hooks. {Locked="Hooks","hooks"}</comment>
+    <value>Hooks を削除しました。</value>
+    <comment>Success summary shown after removing agent session tracking hooks. {Locked="Hooks"}</comment>
   </data>
   <data name="AIAgents_HooksInstalledSummary" xml:space="preserve">
-    <value>Hooks をインストールしました。新しい hooks を反映するには、開いているエージェントを再起動してください。</value>
-    <comment>Success summary shown after installing agent session tracking hooks. {Locked="Hooks","hooks"}</comment>
+    <value>Hooks をインストールしました。</value>
+    <comment>Success summary shown after installing agent session tracking hooks. {Locked="Hooks"}</comment>
   </data>
   <data name="AIAgents_HooksRemovalFailedSummary" xml:space="preserve">
     <value>Hook の削除に失敗しました。詳細については {0} を確認してください。</value>

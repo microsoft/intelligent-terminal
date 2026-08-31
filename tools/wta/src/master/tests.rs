@@ -10507,3 +10507,76 @@ async fn resume_binding_events_are_born_bound_not_hook_owned() {
     );
     assert!(!state.hook_owned.lock().await.contains(&sid));
 }
+
+#[tokio::test]
+async fn resume_binding_events_clear_a_stale_hook_ownership_claim() {
+    // Regression: resuming a session that already ran once in THIS master
+    // process. The earlier run's hooks put the id in `hook_owned`, and
+    // `hook_owned` used to be sticky — the resume added `born_bound` but left
+    // the stale claim in place, so `apply_watcher_event`'s first check dropped
+    // every watcher status event and the resumed row sat at Idle for its whole
+    // life. The two sets are disjoint by contract; a born-bound event means WTA
+    // just relaunched the id, so the previous generation's claim is over.
+    let state = make_state();
+    let sid = acp::schema::v1::SessionId::new("sid-rerun".to_string());
+
+    let first_run = crate::agent_sessions::SessionEvent::SessionStarted {
+        key: "sid-rerun".to_string(),
+        cli_source: crate::agent_sessions::CliSource::Copilot,
+        pane_session_id: "pane-old".to_string(),
+        cwd: std::path::PathBuf::from("C:\\repo"),
+        title: String::new(),
+    };
+    handle_session_hook(&state, first_run, false)
+        .await
+        .expect("real hook accepted");
+    assert!(state.hook_owned.lock().await.contains(&sid));
+
+    let dispatched = crate::agent_sessions::SessionEvent::ResumeDispatched {
+        key: "sid-rerun".to_string(),
+    };
+    handle_session_hook(&state, dispatched, false)
+        .await
+        .expect("resume dispatched accepted");
+
+    assert!(
+        !state.hook_owned.lock().await.contains(&sid),
+        "the resume must drop the previous run's hook_owned claim, or the \
+         watcher's status fallback stays suppressed for the whole session"
+    );
+    assert!(
+        state.born_bound.lock().await.contains(&sid),
+        "the resumed session is born-bound"
+    );
+}
+
+#[tokio::test]
+async fn born_bound_delegate_clears_a_stale_hook_ownership_claim() {
+    // Same invariant for the dedicated born-bound method (`?<prompt>`
+    // delegation), which reaches `handle_session_hook` with is_born_bound=true.
+    let state = make_state();
+    let sid = acp::schema::v1::SessionId::new("sid-delegate".to_string());
+
+    let earlier = crate::agent_sessions::SessionEvent::ToolStarting {
+        key: "sid-delegate".to_string(),
+        tool_name: "Bash".to_string(),
+    };
+    handle_session_hook(&state, earlier, false)
+        .await
+        .expect("real hook accepted");
+    assert!(state.hook_owned.lock().await.contains(&sid));
+
+    let born = crate::agent_sessions::SessionEvent::SessionStarted {
+        key: "sid-delegate".to_string(),
+        cli_source: crate::agent_sessions::CliSource::Copilot,
+        pane_session_id: "pane-new".to_string(),
+        cwd: std::path::PathBuf::from("C:\\repo"),
+        title: String::new(),
+    };
+    handle_session_hook(&state, born, true)
+        .await
+        .expect("born-bound accepted");
+
+    assert!(!state.hook_owned.lock().await.contains(&sid));
+    assert!(state.born_bound.lock().await.contains(&sid));
+}

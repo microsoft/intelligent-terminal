@@ -153,9 +153,19 @@ The master keeps **two disjoint** ownership sets (`master/mod.rs`):
 
 `handle_session_hook` routes each inbound event: a binding-only event (the
 dedicated `intellterm.wta/session_born_bound` method, or a
-`ResumeDispatched`/`ResumePaneAssigned` resume-binding event) → `born_bound`;
-anything else (a real hook / ACP event) → `hook_owned` (and, if the session was
-born-bound, drops it from `born_bound` — a real hook **takes over**).
+`ResumeDispatched`/`ResumePaneAssigned` resume-binding event) → `born_bound`
+(and drops any stale `hook_owned` claim — see below); anything else (a real
+hook / ACP event) → `hook_owned` (and, if the session was born-bound, drops it
+from `born_bound` — a real hook **takes over**).
+
+The two sets are disjoint **in both directions**. A born-bound event means WTA
+has just (re)launched that session id, so an ownership claim left by an earlier
+generation of the same id is over. Without the reverse removal, resuming a
+session that had already run once in the same master process left it in
+`hook_owned` forever; since `apply_watcher_event` checks `hook_owned` first,
+every watcher status event for the resumed row was dropped and the row sat at
+`Idle` for its whole life. A real hook re-claims ownership on its very next
+event, so nothing is lost when hooks are working.
 
 `apply_watcher_event` then, in order:
 
@@ -194,6 +204,21 @@ the hook-free resume binding, so `handle_session_hook` records them in
 `born_bound` rather than `hook_owned` — without this, a resumed session would be
 treated as hook-owned and its row would sit at `Idle` forever even as the watcher
 saw activity.
+
+**Resume pane ownership.** `ResumePaneAssigned` marks the row's pane binding
+`born_bound_pane` (`session_registry.rs`). WTA creates the resume pane and binds
+it *before* the agent CLI starts, so that pane belongs to exactly one session
+id. Copilot's `--resume` boots a throwaway bootstrap session and only switches
+to the requested one seconds later, so its deferred `SessionStart` hook reports
+the **bootstrap** id against the resumed pane's GUID. Master's `SessionStarted`
+reducer therefore refuses the `active_by_pane` handoff when the pane's current
+owner is a live born-bound row with a different key: the incoming session is
+still recorded, it just gets no pane binding. Without the guard the resumed row
+was demoted to `Ended`, and because terminal-state rows refuse resurrection it
+stayed there for the rest of the CLI's life — the watcher's status fallback
+silently dropped every event. The flag clears itself whenever the row gives up
+the pane (`SessionStopped`, `PaneClosed`, `end_entry`) or once a `SessionStarted`
+for the *same* key claims it, so the protection needs no timer.
 
 ### Liveness gate: scoping to this IT window
 
@@ -242,6 +267,18 @@ helper-side and unrelated).
 
 ### Title resolution (and the codex AGENTS.md fix)
 
+> **Superseded.** The on-disk title scan described below was removed with the
+> rest of the disk scanner: titles now come from ACP `session/list`
+> (`SessionInfo::title`, mapped in `session_history.rs`, with
+> `session_history::short_id` as the fallback label). Only the codex
+> subagent-fork check survives, as
+> `session_watcher::classify_codex::record_is_subagent_meta`. The rationale
+> below is kept for history — every other file, function, and helper it
+> names (`history_loader.rs`, `try_refresh_title_from_disk`,
+> `lookup_title_for_session`, `codex_title_from_file`,
+> `codex_user_text_is_synthetic`, `codex_session_has_real_content`) no
+> longer exists in the tree, so do not go looking for it.
+
 A watcher row is created with a **synthetic** title (cwd basename, or empty),
 then upgraded from the CLI's on-disk artefacts by `try_refresh_title_from_disk`
 → `lookup_title_for_session`, the **same** disk-title path the hook and
@@ -283,7 +320,7 @@ title).
 | Apply / dedup / gate / reaper | `tools/wta/src/master/mod.rs` (`apply_watcher_event`, `handle_session_hook`, `ensure_watched_session_row`, `watcher_row_allowed`, `live_it_pane_guids`, `reap_dead_class_b_sessions`, `hook_owned` + `born_bound` sets) |
 | Born-bound registration | `session_registry.rs` (`build_born_bound_request`, `INTELLTERM_METHOD_SESSION_BORN_BOUND`), `main.rs` (`register_launched_session_with_master`) |
 | Row `bound_pid` field | `tools/wta/src/session_registry.rs` |
-| Codex title / subagent / phantom | `tools/wta/src/history_loader.rs` |
+| Codex subagent fork detection | `session_watcher/classify_codex.rs` (`record_is_subagent_meta`) |
 | User-input tool heuristic | `agent_sessions.rs` (`is_user_input_tool`) |
 
 ### Status detection (per-CLI)
@@ -403,7 +440,7 @@ of the live states.
   `session_hook_marks_*`; born-bound: `session_born_bound_marks_born_bound_not_hook_owned`,
   `born_bound_session_gets_watcher_activity_without_rebinding`,
   `real_hook_takes_over_born_bound_session`, `resume_binding_events_are_born_bound_not_hook_owned`),
-  `history_loader::tests` (codex title / subagent / phantom), and
+  `classify_codex::tests` (codex subagent fork detection), and
   `session_watcher` discovery/classify tests (incl. `classify_claude` turn-based:
   user→Working, `stop_reason` end_turn→Idle / tool_use→Working, streaming-partial
   stays Working, AskUserQuestion→Attention).

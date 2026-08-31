@@ -142,7 +142,7 @@ pub fn process_change(path: &Path, progress: &mut HashMap<PathBuf, Progress>) ->
                 // ignored and drop everything: it inherits the parent's history,
                 // so tracking it would duplicate the parent's row.
                 if matches!(disc.cli, CliSource::Codex)
-                    && crate::history_loader::codex_record_is_subagent_meta(&val)
+                    && classify_codex::record_is_subagent_meta(&val)
                 {
                     entry.ignored = true;
                     return Vec::new();

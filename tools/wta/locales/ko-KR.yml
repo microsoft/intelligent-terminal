@@ -141,8 +141,8 @@ system.resuming_session: "세션 %{session_id} 재개 중..."
 system.unknown_command: "알 수 없는 명령 \"%{command}\" — 프롬프트로 보냈습니다. 목록을 보려면 /help를 입력하세요."  # {Locked="/help"}
 system.busy_use_stop: "현재 프롬프트가 완료될 때까지 기다리거나 먼저 /stop을 실행하세요."  # {Locked="/stop"}
 system.cannot_focus_session: "세션 %{session_id}에 포커스할 수 없습니다. 라이브 상태로 보이지만 아직 창 GUID가 바인딩되지 않았습니다. 잠시 후 다시 시도하세요."
-system.cannot_resume_no_load_session: "에이전트 창에서 재개할 수 없습니다. %{agent}이(가) ACP `loadSession` 기능을 알리지 않았습니다. 대신 Enter(Shift 제외)를 눌러 새 터미널 창에서 재개하세요."  # {Locked="ACP","loadSession","Enter","Shift"}
-system.cannot_resume_no_resume_flag: "%{agent} 세션을 재개할 수 없습니다. 이 에이전트에는 `--resume` 스타일 플래그가 없습니다. 대신 Shift+Enter를 눌러 ACP를 통해 에이전트 창 안에서 재개를 시도하세요."  # {Locked="--resume","Shift","Enter","ACP"}
+system.cannot_resume_no_load_session: "에이전트 창에서 재개할 수 없습니다. %{agent}이(가) ACP `loadSession` 기능을 알리지 않았습니다."  # {Locked="ACP","loadSession"}
+system.cannot_resume_no_resume_flag: "%{agent} 세션을 재개할 수 없습니다. 이 에이전트에는 `--resume` 스타일 플래그가 없습니다."  # {Locked="--resume"}
 system.cannot_resume_unknown_agent: "세션 %{session_id}을(를) 재개할 수 없습니다. 원본 에이전트를 이 빌드에서 인식할 수 없습니다."
 system.cannot_resume_phantom_via_flag: "%{agent} 세션 %{session_id}을(를) 재개할 수 없습니다. 시작되었지만 대화가 전혀 누적되지 않았으므로 %{agent} 자체에서 재개를 거부합니다. 행을 제거합니다."
 system.cannot_resume_phantom_via_load: "%{agent} 세션 %{session_id}을(를) 재개할 수 없습니다. 시작되었지만 대화가 전혀 누적되지 않았으므로 %{agent}이(가) 로드를 거부합니다. 행을 제거합니다."

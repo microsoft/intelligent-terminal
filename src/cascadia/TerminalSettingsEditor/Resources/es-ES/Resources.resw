@@ -2896,17 +2896,21 @@
     <value>Después de instalar, ejecuta /hooks en Codex y aprueba para confiar en los nuevos controladores de eventos.</value>
     <comment>One-line reminder shown under the Codex CLI row in the Agent Hooks section. Codex requires per-command trust before hook handlers run; users must execute /hooks inside Codex and approve. {Locked="/hooks","Codex"}</comment>
   </data>
+  <data name="AIAgents_HooksRestartNote.Text" xml:space="preserve">
+    <value>Los cambios se aplican la próxima vez que se inicia un agente. Reinicie todos los agentes abiertos para aplicarlos.</value>
+    <comment>Persistent note shown under the "Install agent hook script" row in the Agent session tracking section. Warns that installing or removing hooks only affects agents started afterwards. In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+  </data>
   <data name="AIAgents_HooksLocateWtaFailedSummary" xml:space="preserve">
     <value>Error: no se pudo encontrar wta.exe</value>
     <comment>Failure summary shown when the Settings UI cannot find the WTA helper executable. {Locked="wta.exe"}</comment>
   </data>
   <data name="AIAgents_HooksRemovedSummary" xml:space="preserve">
-    <value>Hooks quitados. Reinicie todos los agentes abiertos para descartar los hooks anteriores.</value>
-    <comment>Success summary shown after removing agent session tracking hooks. {Locked="Hooks","hooks"}</comment>
+    <value>Hooks quitados.</value>
+    <comment>Success summary shown after removing agent session tracking hooks. {Locked="Hooks"}</comment>
   </data>
   <data name="AIAgents_HooksInstalledSummary" xml:space="preserve">
-    <value>Hooks instalados. Reinicie todos los agentes abiertos para recoger los nuevos hooks.</value>
-    <comment>Success summary shown after installing agent session tracking hooks. {Locked="Hooks","hooks"}</comment>
+    <value>Hooks instalados.</value>
+    <comment>Success summary shown after installing agent session tracking hooks. {Locked="Hooks"}</comment>
   </data>
   <data name="AIAgents_HooksRemovalFailedSummary" xml:space="preserve">
     <value>Error al quitar Hook. Consulte {0} para obtener detalles.</value>

@@ -533,7 +533,7 @@ async fn run_acp_app(
             let (new_session_tx, new_session_rx) = tokio::sync::mpsc::unbounded_channel();
             // load_session channel: App emits a LoadSessionForTab in
             // response to WT's `load_session` event (the back-half of
-            // the session management view's Shift+Enter -> "resume in
+            // the session management view's Enter -> "resume in
             // new tab's agent pane" flow). The ACP client calls
             // `conn.load_session` and binds the rehydrated session to
             // the tab via SessionAttached.

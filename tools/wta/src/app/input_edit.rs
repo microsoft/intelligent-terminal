@@ -1,10 +1,90 @@
-use std::collections::VecDeque;
+use std::{collections::VecDeque, ops::Range};
 
 use crate::commands::{self, MovePositionSpec, YoloOptionSpec};
 
 use super::tab_state::TabSession;
 
 pub(super) const INPUT_HISTORY_MAX_ENTRIES: usize = 50;
+
+pub(super) struct TextEditor<'a> {
+    text: &'a mut String,
+    cursor_pos: &'a mut usize,
+}
+
+impl<'a> TextEditor<'a> {
+    pub fn new(text: &'a mut String, cursor_pos: &'a mut usize) -> Self {
+        *cursor_pos = clamp_cursor_to_boundary(text, *cursor_pos);
+        Self { text, cursor_pos }
+    }
+
+    pub fn insert_char(&mut self, character: char) -> Range<usize> {
+        let start = *self.cursor_pos;
+        self.text.insert(start, character);
+        *self.cursor_pos += character.len_utf8();
+        start..*self.cursor_pos
+    }
+
+    pub fn insert_str(&mut self, value: &str) -> Option<Range<usize>> {
+        if value.is_empty() {
+            return None;
+        }
+        let start = *self.cursor_pos;
+        self.text.insert_str(start, value);
+        *self.cursor_pos += value.len();
+        Some(start..*self.cursor_pos)
+    }
+
+    pub fn delete_before_cursor(&mut self) -> Option<Range<usize>> {
+        let end = *self.cursor_pos;
+        let start = prev_char_boundary(self.text, end);
+        self.delete_range(start..end)
+    }
+
+    pub fn delete_at_cursor(&mut self) -> Option<Range<usize>> {
+        let start = *self.cursor_pos;
+        let end = next_char_boundary(self.text, start);
+        self.delete_range(start..end)
+    }
+
+    pub fn delete_word_before_cursor(&mut self) -> Option<Range<usize>> {
+        let end = *self.cursor_pos;
+        let start = prev_word_boundary(self.text, end);
+        self.delete_range(start..end)
+    }
+
+    pub fn delete_range(&mut self, range: Range<usize>) -> Option<Range<usize>> {
+        if range.is_empty() {
+            return None;
+        }
+        self.text.replace_range(range.clone(), "");
+        *self.cursor_pos = range.start;
+        Some(range)
+    }
+
+    pub fn move_left(&mut self) {
+        *self.cursor_pos = prev_char_boundary(self.text, *self.cursor_pos);
+    }
+
+    pub fn move_right(&mut self) {
+        *self.cursor_pos = next_char_boundary(self.text, *self.cursor_pos);
+    }
+
+    pub fn move_word_left(&mut self) {
+        *self.cursor_pos = prev_word_boundary(self.text, *self.cursor_pos);
+    }
+
+    pub fn move_word_right(&mut self) {
+        *self.cursor_pos = next_word_boundary(self.text, *self.cursor_pos);
+    }
+
+    pub fn move_home(&mut self) {
+        *self.cursor_pos = 0;
+    }
+
+    pub fn move_end(&mut self) {
+        *self.cursor_pos = self.text.len();
+    }
+}
 
 #[derive(Default)]
 pub(super) struct InputHistory {
@@ -32,11 +112,9 @@ impl TabSession {
 
     pub fn insert_input_char(&mut self, ch: char) {
         self.reset_input_history_navigation();
-        self.cursor_pos = clamp_cursor_to_boundary(&self.input, self.cursor_pos);
-        self.input.insert(self.cursor_pos, ch);
+        let inserted = TextEditor::new(&mut self.input, &mut self.cursor_pos).insert_char(ch);
         self.attachments
-            .on_text_inserted(self.cursor_pos, ch.len_utf8());
-        self.cursor_pos += ch.len_utf8();
+            .on_text_inserted(inserted.start, inserted.len());
         self.refresh_command_popup();
     }
 
@@ -45,11 +123,12 @@ impl TabSession {
             return;
         }
         self.reset_input_history_navigation();
-        self.cursor_pos = clamp_cursor_to_boundary(&self.input, self.cursor_pos);
-        self.input.insert_str(self.cursor_pos, text);
-        self.attachments
-            .on_text_inserted(self.cursor_pos, text.len());
-        self.cursor_pos += text.len();
+        if let Some(inserted) =
+            TextEditor::new(&mut self.input, &mut self.cursor_pos).insert_str(text)
+        {
+            self.attachments
+                .on_text_inserted(inserted.start, inserted.len());
+        }
         self.refresh_command_popup();
     }
 
@@ -75,10 +154,11 @@ impl TabSession {
             self.refresh_command_popup();
             return;
         }
-        let previous = prev_char_boundary(&self.input, self.cursor_pos);
-        self.input.replace_range(previous..self.cursor_pos, "");
-        self.attachments.on_text_deleted(previous..self.cursor_pos);
-        self.cursor_pos = previous;
+        if let Some(deleted) =
+            TextEditor::new(&mut self.input, &mut self.cursor_pos).delete_before_cursor()
+        {
+            self.attachments.on_text_deleted(deleted);
+        }
         self.refresh_command_popup();
     }
 
@@ -91,9 +171,11 @@ impl TabSession {
         let range = self.attachments.expand_deletion_range(
             prev_word_boundary(&self.input, self.cursor_pos)..self.cursor_pos,
         );
-        self.input.replace_range(range.clone(), "");
-        self.attachments.on_text_deleted(range.clone());
-        self.cursor_pos = range.start;
+        if let Some(deleted) =
+            TextEditor::new(&mut self.input, &mut self.cursor_pos).delete_range(range)
+        {
+            self.attachments.on_text_deleted(deleted);
+        }
         self.refresh_command_popup();
     }
 
@@ -111,44 +193,46 @@ impl TabSession {
             self.refresh_command_popup();
             return;
         }
-        let next = next_char_boundary(&self.input, self.cursor_pos);
-        self.input.replace_range(self.cursor_pos..next, "");
-        self.attachments.on_text_deleted(self.cursor_pos..next);
+        if let Some(deleted) =
+            TextEditor::new(&mut self.input, &mut self.cursor_pos).delete_at_cursor()
+        {
+            self.attachments.on_text_deleted(deleted);
+        }
         self.refresh_command_popup();
     }
 
     pub fn move_cursor_left(&mut self) {
-        self.cursor_pos = self
-            .attachments
-            .cursor_left(self.cursor_pos)
-            .unwrap_or_else(|| prev_char_boundary(&self.input, self.cursor_pos));
+        if let Some(cursor_pos) = self.attachments.cursor_left(self.cursor_pos) {
+            self.cursor_pos = cursor_pos;
+        } else {
+            TextEditor::new(&mut self.input, &mut self.cursor_pos).move_left();
+        }
     }
 
     pub fn move_cursor_right(&mut self) {
-        self.cursor_pos = self
-            .attachments
-            .cursor_right(self.cursor_pos)
-            .unwrap_or_else(|| next_char_boundary(&self.input, self.cursor_pos));
+        if let Some(cursor_pos) = self.attachments.cursor_right(self.cursor_pos) {
+            self.cursor_pos = cursor_pos;
+        } else {
+            TextEditor::new(&mut self.input, &mut self.cursor_pos).move_right();
+        }
     }
 
     pub fn move_cursor_word_left(&mut self) {
-        self.cursor_pos = self
-            .attachments
-            .snap_cursor_left(prev_word_boundary(&self.input, self.cursor_pos));
+        TextEditor::new(&mut self.input, &mut self.cursor_pos).move_word_left();
+        self.cursor_pos = self.attachments.snap_cursor_left(self.cursor_pos);
     }
 
     pub fn move_cursor_word_right(&mut self) {
-        self.cursor_pos = self
-            .attachments
-            .snap_cursor_right(next_word_boundary(&self.input, self.cursor_pos));
+        TextEditor::new(&mut self.input, &mut self.cursor_pos).move_word_right();
+        self.cursor_pos = self.attachments.snap_cursor_right(self.cursor_pos);
     }
 
     pub fn move_cursor_home(&mut self) {
-        self.cursor_pos = 0;
+        TextEditor::new(&mut self.input, &mut self.cursor_pos).move_home();
     }
 
     pub fn move_cursor_end(&mut self) {
-        self.cursor_pos = self.input.len();
+        TextEditor::new(&mut self.input, &mut self.cursor_pos).move_end();
     }
 
     pub(super) fn record_input_history(&mut self, input: &str) {
@@ -308,7 +392,7 @@ pub(super) fn clamp_cursor_to_boundary(input: &str, cursor_pos: usize) -> usize 
     clamped
 }
 
-fn prev_char_boundary(input: &str, cursor_pos: usize) -> usize {
+pub(super) fn prev_char_boundary(input: &str, cursor_pos: usize) -> usize {
     let cursor_pos = clamp_cursor_to_boundary(input, cursor_pos);
     if cursor_pos == 0 {
         return 0;
@@ -321,7 +405,7 @@ fn prev_char_boundary(input: &str, cursor_pos: usize) -> usize {
         .unwrap_or(0)
 }
 
-fn next_char_boundary(input: &str, cursor_pos: usize) -> usize {
+pub(super) fn next_char_boundary(input: &str, cursor_pos: usize) -> usize {
     let cursor_pos = clamp_cursor_to_boundary(input, cursor_pos);
     if cursor_pos >= input.len() {
         return input.len();
