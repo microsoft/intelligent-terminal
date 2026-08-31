@@ -885,7 +885,7 @@ fn resolve_delegate(
         .map(|id| Some(id.to_string()))
         .ok_or_else(|| {
             ProposalError::PolicyViolation(
-                "delegate: true requested but no delegate agent is configured".to_string(),
+                "delegation requested but no delegate agent is configured".to_string(),
             )
         })
 }
@@ -1831,7 +1831,12 @@ mod tests {
             profile: None,
         }];
         let err = build_recommendation_set(&wire, false, None, None, None).unwrap_err();
-        assert!(matches!(err, ProposalError::PolicyViolation(_)));
+        assert_eq!(
+            err,
+            ProposalError::PolicyViolation(
+                "delegation requested but no delegate agent is configured".to_string()
+            )
+        );
     }
 
     #[test]
