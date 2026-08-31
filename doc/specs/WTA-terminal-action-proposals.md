@@ -141,10 +141,11 @@ The exact public payloads are:
 | `delegate_task_in_new_workspace` | `summary`, `task`, `placement` | `reason`, `working_directory`, `split_direction` |
 
 `placement` is `new_tab` or `new_split`. `split_direction` is `right`, `left`,
-`up`, `down`, or `auto`. `create_workspace.command` is optional: omitting it
-creates an empty workspace, while supplying it runs that command after
-creation. `delegate_task_in_new_workspace` deliberately exposes neither a
-profile nor an agent selector. The Helper always substitutes the configured
+`up`, `down`, or `auto`; it affects only `new_split` and is accepted but
+ignored for `new_tab` compatibility. `create_workspace.command` is optional:
+omitting it creates an empty workspace, while supplying it runs that command
+after creation. `delegate_task_in_new_workspace` deliberately exposes neither
+a profile nor an agent selector. The Helper always substitutes the configured
 delegate agent and rejects the request when no valid delegate is configured. A
 model cannot name an arbitrary agent.
 
@@ -159,7 +160,7 @@ The Helper maps these public intents into the existing internal action model:
 
 `new_tab` maps to the existing `Tab` target and `new_split` maps to `Panel`.
 The user-facing `summary` becomes the recommendation title and, for workspace
-tools, the requested destination title. `working_directory`,
+tools targeting `new_tab`, the initial tab title. `working_directory`,
 `split_direction`, and `profile` map to the existing internal fields without
 changing trusted active-pane routing.
 

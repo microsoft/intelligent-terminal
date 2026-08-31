@@ -526,13 +526,21 @@ fn validate_mcp_optional_text(
     Ok(())
 }
 
-fn mcp_summary_property() -> serde_json::Value {
+fn mcp_summary_property(tool: McpActionTool) -> serde_json::Value {
+    let description = match tool {
+        McpActionTool::RunCommandInCurrentShell => {
+            "Concise user-visible summary of the proposed command."
+        }
+        McpActionTool::CreateWorkspace | McpActionTool::DelegateTaskInNewWorkspace => {
+            "Concise user-visible summary of the proposed workspace operation. For new_tab, this is also the initial tab title."
+        }
+    };
     serde_json::json!({
         "type": "string",
         "minLength": 1,
         "pattern": r"\S",
         "maxLength": MAX_TITLE_CHARS,
-        "description": "Concise user-visible summary of the proposed operation."
+        "description": description
     })
 }
 
@@ -583,7 +591,7 @@ fn mcp_workspace_properties() -> serde_json::Map<String, serde_json::Value> {
         "split_direction": {
             "type": "string",
             "enum": ["right", "left", "up", "down", "auto"],
-            "description": "Preferred split direction hint; auto lets Intelligent Terminal choose."
+            "description": "Preferred direction for new_split; auto lets Intelligent Terminal choose. Accepted and ignored for new_tab compatibility."
         }
     }) else {
         unreachable!("workspace properties are an object literal")
@@ -609,7 +617,7 @@ fn mcp_profile_property() -> serde_json::Value {
 /// does or does not apply.
 pub fn mcp_action_input_schema(tool: McpActionTool) -> serde_json::Value {
     let mut properties = serde_json::Map::new();
-    properties.insert("summary".to_string(), mcp_summary_property());
+    properties.insert("summary".to_string(), mcp_summary_property(tool));
     properties.insert("reason".to_string(), mcp_reason_property());
 
     let required = match tool {
@@ -1427,6 +1435,31 @@ mod tests {
                 .is_some_and(|description| description.contains("Omit only")),
             "create_workspace must explain how to request an empty workspace"
         );
+        for tool in [
+            McpActionTool::CreateWorkspace,
+            McpActionTool::DelegateTaskInNewWorkspace,
+        ] {
+            let schema = mcp_action_input_schema(tool);
+            assert!(
+                schema
+                    .pointer("/properties/summary/description")
+                    .and_then(serde_json::Value::as_str)
+                    .is_some_and(|description| description.contains("initial tab title")),
+                "{} must disclose the new_tab title behavior",
+                tool.tool_name()
+            );
+            assert!(
+                schema
+                    .pointer("/properties/split_direction/description")
+                    .and_then(serde_json::Value::as_str)
+                    .is_some_and(|description| {
+                        description.contains("for new_split")
+                            && description.contains("ignored for new_tab")
+                    }),
+                "{} must disclose split_direction compatibility behavior",
+                tool.tool_name()
+            );
+        }
     }
 
     #[test]
