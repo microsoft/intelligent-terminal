@@ -1,0 +1,212 @@
+--------------------------------------------------------------------------------
+Start time: 2026-08-29 04:56:18Z
+Process: 7214.1dd3772af12ae81
+Command: /stub 1.1.24010.2001 /payload 1.457.382.0 /MpWUStub /program C:\WINDOWS\SoftwareDistribution\Download\Install\AM_Delta_Patch_1.457.372.0.exe WD /q
+Administrator: yes
+Version: 1.1.24010.2001
+
+================================ ProductSearch =================================
+
+               Microsoft Windows Defender (RS1+):                              
+       Status: Active                                                          
+  ProductGUID: 77BDAF73-B396-481F-9042-AD358843EC24                            
+       Engine: d99dea0bdbb52a7f1099c0ac1994ae789df76bd0dc9a9fef6abbfe1cf911483c  1.1.26070.7 
+  AS base VDM: c5de989420a3225bef1a8030ff4f93241331266ec5ed306c71ba553d22271811  1.457.0.0   
+  AV base VDM: 7a00586b63caa233831229b2ba12e99e0e49bdd6d2770d6a46399df207437497  1.457.0.0   
+ AS delta VDM: 6ef62034c9f90b8380fbe8b81cbe0f2bbca9354ede3e61fb18c1b1f589757a8f  1.457.372.0 
+ AV delta VDM: 00242cd8b45a4dbbe49636b1f26683a8896eeaeb7c11229d9342e7b832a84c89  1.457.372.0 
+   NIS engine:
+ NIS base VDM:
+ NIS full VDM:
+     Platform: f5bb3463a94c4d87cc90691b474126f5ec1330579dd596f381322c3daf7f44dc  4.18.26070.9
+
+============================== AccumulatePackages ==============================
+
+PackageName:*C:\WINDOWS\SoftwareDistribution\Download\Install\AM_Delta_Patch_1.457.372.0.exe
+
+=============================== PackageDiscovery ===============================
+
+                   Package files discovered:
+                                  Directory: C:\WINDOWS\Temp\107C135A-4E43-47A8-B634-F57528FCD3297214.1dd3772af12ae81
+ 1.457.372.0_to_1.457.382.0_mpasdlta.vdm._p: 0d6c53fd1aaaa3c139922626b75cd6ee6fdc8c58633526f223fd45b6a435c0aa        
+ 1.457.372.0_to_1.457.382.0_mpavdlta.vdm._p: 6e4b17c5bd69d622e01958b188c28c9078e897a648d3a1ad3210267bac6d6e0d        
+       23DBCF70-F6C1-40B5-8C73-5374682EB380:
+               AM BDD:     
+       Engine: Not included
+  AS base VDM: Not included
+  AV base VDM: Not included
+ AS delta VDM: 1.457.382.0 
+ AV delta VDM: 1.457.382.0 
+
+=============================== PatchApplication ===============================
+
+Patched mpasdlta.vdm to 1.457.382.0
+Patched mpavdlta.vdm to 1.457.382.0
+
+==================================== Update ====================================
+
+ Product name: Microsoft Windows Defender (RS1+)
+                              Package files:
+                                  Directory: C:\WINDOWS\Temp\107C135A-4E43-47A8-B634-F57528FCD3297214.1dd3772af12ae81
+ 1.457.372.0_to_1.457.382.0_mpasdlta.vdm._p: 0d6c53fd1aaaa3c139922626b75cd6ee6fdc8c58633526f223fd45b6a435c0aa        
+ 1.457.372.0_to_1.457.382.0_mpavdlta.vdm._p: 6e4b17c5bd69d622e01958b188c28c9078e897a648d3a1ad3210267bac6d6e0d        
+       23DBCF70-F6C1-40B5-8C73-5374682EB380:
+                               mpasdlta.vdm: bb6e782ab842f76548b18dad7e60a1a175e7833b30b09e9d57a7423150b53f1e          1.457.382.0
+                               mpavdlta.vdm: bac306015366849fbef6bc3a94e0444a935c8fec89431346faa6f751efe97b28          1.457.382.0
+SignatureLocation changed from C:\ProgramData\Microsoft\Windows Defender\Definition Updates\{7DE89817-B5E8-448F-9CB1-9A30E054ABFA} to C:\ProgramData\Microsoft\Windows Defender\Definition Updates\{F2C07145-62AE-478A-BACA-D83F6F16C72C}
+Signatures updated from C:\WINDOWS\Temp\107C135A-4E43-47A8-B634-F57528FCD3297214.1dd3772af12ae81
+
+================================ ValidateUpdate ================================
+
+MpSigStub successfully updated Microsoft Windows Defender (RS1+) using the AM BDD package.
+
+               Original:    Updated to:
+ AS delta VDM: 1.457.372.0  1.457.382.0
+ AV delta VDM: 1.457.372.0  1.457.382.0
+
+DeltaUpdateFailure set to 0
+BddUpdateFailure set to 0
+End time: 2026-08-29 05:05:21Z
+--------------------------------------------------------------------------------
+
+--------------------------------------------------------------------------------
+Start time: 2026-08-29 08:38:12Z
+Process: 1b88.1dd3791ba19d4ac
+Command: /stub 1.1.24010.2001 /payload 1.457.393.0 /MpWUStub /program C:\WINDOWS\SoftwareDistribution\Download\Install\AM_Delta_Patch_1.457.382.0.exe WD /q
+Administrator: yes
+Version: 1.1.24010.2001
+
+================================ ProductSearch =================================
+
+               Microsoft Windows Defender (RS1+):                              
+       Status: Active                                                          
+  ProductGUID: 77BDAF73-B396-481F-9042-AD358843EC24                            
+       Engine: d99dea0bdbb52a7f1099c0ac1994ae789df76bd0dc9a9fef6abbfe1cf911483c  1.1.26070.7 
+  AS base VDM: c5de989420a3225bef1a8030ff4f93241331266ec5ed306c71ba553d22271811  1.457.0.0   
+  AV base VDM: 7a00586b63caa233831229b2ba12e99e0e49bdd6d2770d6a46399df207437497  1.457.0.0   
+ AS delta VDM: bb6e782ab842f76548b18dad7e60a1a175e7833b30b09e9d57a7423150b53f1e  1.457.382.0 
+ AV delta VDM: bac306015366849fbef6bc3a94e0444a935c8fec89431346faa6f751efe97b28  1.457.382.0 
+   NIS engine:
+ NIS base VDM:
+ NIS full VDM:
+     Platform: f5bb3463a94c4d87cc90691b474126f5ec1330579dd596f381322c3daf7f44dc  4.18.26070.9
+
+============================== AccumulatePackages ==============================
+
+PackageName:*C:\WINDOWS\SoftwareDistribution\Download\Install\AM_Delta_Patch_1.457.382.0.exe
+
+=============================== PackageDiscovery ===============================
+
+                   Package files discovered:
+                                  Directory: C:\WINDOWS\Temp\D7BDFB70-F186-4DBD-8DB8-AE7922F662551b88.1dd3791ba19d4ac
+ 1.457.382.0_to_1.457.393.0_mpasdlta.vdm._p: 9389ac6cec215f22d0231982a91939cc83bf2d066fce61fe6aaafa75b9fdbffd        
+ 1.457.382.0_to_1.457.393.0_mpavdlta.vdm._p: 0fe8e22d13178b3dbe3282bcc3dd44c994321e4d57712b4cffcec5a2e62773c0        
+       14A6D54A-21BE-41B7-A3A1-AED86A54BC4C:
+               AM BDD:     
+       Engine: Not included
+  AS base VDM: Not included
+  AV base VDM: Not included
+ AS delta VDM: 1.457.393.0 
+ AV delta VDM: 1.457.393.0 
+
+=============================== PatchApplication ===============================
+
+Patched mpasdlta.vdm to 1.457.393.0
+Patched mpavdlta.vdm to 1.457.393.0
+
+==================================== Update ====================================
+
+ Product name: Microsoft Windows Defender (RS1+)
+                              Package files:
+                                  Directory: C:\WINDOWS\Temp\D7BDFB70-F186-4DBD-8DB8-AE7922F662551b88.1dd3791ba19d4ac
+ 1.457.382.0_to_1.457.393.0_mpasdlta.vdm._p: 9389ac6cec215f22d0231982a91939cc83bf2d066fce61fe6aaafa75b9fdbffd        
+ 1.457.382.0_to_1.457.393.0_mpavdlta.vdm._p: 0fe8e22d13178b3dbe3282bcc3dd44c994321e4d57712b4cffcec5a2e62773c0        
+       14A6D54A-21BE-41B7-A3A1-AED86A54BC4C:
+                               mpasdlta.vdm: 19399332099a8ee266906cd07eeea7a193abd61c0d982b49906446ec79ff8ccb          1.457.393.0
+                               mpavdlta.vdm: c4a206569decc21e962188519ba0d8c8ecc50bdd58aedfdf38b88203231564f8          1.457.393.0
+SignatureLocation changed from C:\ProgramData\Microsoft\Windows Defender\Definition Updates\{F2C07145-62AE-478A-BACA-D83F6F16C72C} to C:\ProgramData\Microsoft\Windows Defender\Definition Updates\{41CB1F51-1B83-4376-9892-F6F392DEBE8D}
+Signatures updated from C:\WINDOWS\Temp\D7BDFB70-F186-4DBD-8DB8-AE7922F662551b88.1dd3791ba19d4ac
+
+================================ ValidateUpdate ================================
+
+MpSigStub successfully updated Microsoft Windows Defender (RS1+) using the AM BDD package.
+
+               Original:    Updated to:
+ AS delta VDM: 1.457.382.0  1.457.393.0
+ AV delta VDM: 1.457.382.0  1.457.393.0
+
+DeltaUpdateFailure set to 0
+BddUpdateFailure set to 0
+End time: 2026-08-29 08:38:44Z
+--------------------------------------------------------------------------------
+
+--------------------------------------------------------------------------------
+Start time: 2026-08-30 18:00:12Z
+Process: 7b18.1dd38a96783977a
+Command: /stub 1.1.24010.2001 /payload 1.457.415.0 /MpWUStub /program C:\WINDOWS\SoftwareDistribution\Download\Install\AM_Delta_Patch_1.457.393.0.exe WD /q
+Administrator: yes
+Version: 1.1.24010.2001
+
+================================ ProductSearch =================================
+
+               Microsoft Windows Defender (RS1+):                              
+       Status: Active                                                          
+  ProductGUID: 77BDAF73-B396-481F-9042-AD358843EC24                            
+       Engine: d99dea0bdbb52a7f1099c0ac1994ae789df76bd0dc9a9fef6abbfe1cf911483c  1.1.26070.7 
+  AS base VDM: c5de989420a3225bef1a8030ff4f93241331266ec5ed306c71ba553d22271811  1.457.0.0   
+  AV base VDM: 7a00586b63caa233831229b2ba12e99e0e49bdd6d2770d6a46399df207437497  1.457.0.0   
+ AS delta VDM: 19399332099a8ee266906cd07eeea7a193abd61c0d982b49906446ec79ff8ccb  1.457.393.0 
+ AV delta VDM: c4a206569decc21e962188519ba0d8c8ecc50bdd58aedfdf38b88203231564f8  1.457.393.0 
+   NIS engine:
+ NIS base VDM:
+ NIS full VDM:
+     Platform: f5bb3463a94c4d87cc90691b474126f5ec1330579dd596f381322c3daf7f44dc  4.18.26070.9
+
+============================== AccumulatePackages ==============================
+
+PackageName:*C:\WINDOWS\SoftwareDistribution\Download\Install\AM_Delta_Patch_1.457.393.0.exe
+
+=============================== PackageDiscovery ===============================
+
+                   Package files discovered:
+                                  Directory: C:\WINDOWS\Temp\7DB39988-DEB2-4422-8630-679E9F622A967b18.1dd38a96783977a
+ 1.457.393.0_to_1.457.415.0_mpasdlta.vdm._p: cfbfef3aa44c3e4efdaa9cd4c91ec842d8137da18b5e1e211245ebb76daa1dfa        
+ 1.457.393.0_to_1.457.415.0_mpavdlta.vdm._p: 54064e62615d8cd1abdd73cfdf649203b4a0f2caccad7afe4487054fa85e364a        
+       BFC785B9-EB64-4879-BF8D-70B847DD3136:
+               AM BDD:     
+       Engine: Not included
+  AS base VDM: Not included
+  AV base VDM: Not included
+ AS delta VDM: 1.457.415.0 
+ AV delta VDM: 1.457.415.0 
+
+=============================== PatchApplication ===============================
+
+Patched mpasdlta.vdm to 1.457.415.0
+Patched mpavdlta.vdm to 1.457.415.0
+
+==================================== Update ====================================
+
+ Product name: Microsoft Windows Defender (RS1+)
+                              Package files:
+                                  Directory: C:\WINDOWS\Temp\7DB39988-DEB2-4422-8630-679E9F622A967b18.1dd38a96783977a
+ 1.457.393.0_to_1.457.415.0_mpasdlta.vdm._p: cfbfef3aa44c3e4efdaa9cd4c91ec842d8137da18b5e1e211245ebb76daa1dfa        
+ 1.457.393.0_to_1.457.415.0_mpavdlta.vdm._p: 54064e62615d8cd1abdd73cfdf649203b4a0f2caccad7afe4487054fa85e364a        
+       BFC785B9-EB64-4879-BF8D-70B847DD3136:
+                               mpasdlta.vdm: 12506115670a4f8b11d0da9c47115ad43c2eb568188aa071b7c7349bdf87eae4          1.457.415.0
+                               mpavdlta.vdm: 853ef02deec48fbf4a22b44092622c1bd20c253952edd289ec0f2471c3367ad9          1.457.415.0
+SignatureLocation changed from C:\ProgramData\Microsoft\Windows Defender\Definition Updates\{41CB1F51-1B83-4376-9892-F6F392DEBE8D} to C:\ProgramData\Microsoft\Windows Defender\Definition Updates\{03FCCEF5-2B34-4D5B-AB98-DC262622FB2F}
+Signatures updated from C:\WINDOWS\Temp\7DB39988-DEB2-4422-8630-679E9F622A967b18.1dd38a96783977a
+
+================================ ValidateUpdate ================================
+
+MpSigStub successfully updated Microsoft Windows Defender (RS1+) using the AM BDD package.
+
+               Original:    Updated to:
+ AS delta VDM: 1.457.393.0  1.457.415.0
+ AV delta VDM: 1.457.393.0  1.457.415.0
+
+DeltaUpdateFailure set to 0
+BddUpdateFailure set to 0
+End time: 2026-08-30 18:00:44Z
+--------------------------------------------------------------------------------
