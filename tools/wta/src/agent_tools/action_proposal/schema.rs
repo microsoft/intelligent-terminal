@@ -687,16 +687,16 @@ pub fn mcp_action_input_schema(tool: McpActionTool) -> serde_json::Value {
 pub fn mcp_action_description(tool: McpActionTool) -> &'static str {
     match tool {
         McpActionTool::RunCommand => {
-            "Propose one shell command to run in the user's current active shell."
+            "Hand off one shell command for user confirmation and execution in the user's current active shell. Use when running that command in the user's pane is the requested outcome, not for Agent-owned investigation or validation."
         }
         McpActionTool::OpenWorkspace => {
-            "Open an empty terminal workspace without running a command or starting an agent."
+            "Hand off creation of an empty terminal workspace without running a command or starting an agent. Use when opening a new tab or split is the requested outcome, not for Agent-owned investigation."
         }
         McpActionTool::RunCommandInWorkspace => {
-            "Open a new terminal workspace and run a shell command in it."
+            "Hand off creation of a new terminal workspace and execution of one shell command there. Use when the requested outcome should run in a new tab or split, not for Agent-owned investigation or validation."
         }
         McpActionTool::DelegateTask => {
-            "Start the configured delegate agent in a new workspace and give it a self-contained task."
+            "Hand off a self-contained task to the configured delegate agent in a new workspace. Use only when another agent should own the requested work, not for this Agent's own work or a plain shell command."
         }
     }
 }
@@ -1381,6 +1381,29 @@ mod tests {
     fn removed_tool_names_are_not_recognized() {
         for name in ["terminal_send", "terminal_open", "terminal_open_and_send"] {
             assert_eq!(McpActionTool::from_tool_name(name), None, "{name}");
+        }
+    }
+
+    #[test]
+    fn public_action_descriptions_distinguish_terminal_handoffs_from_agent_owned_work() {
+        for (tool, expected_outcome) in [
+            (McpActionTool::RunCommand, "requested outcome"),
+            (McpActionTool::OpenWorkspace, "requested outcome"),
+            (McpActionTool::RunCommandInWorkspace, "requested outcome"),
+            (McpActionTool::DelegateTask, "another agent should own"),
+        ] {
+            let description = mcp_action_description(tool);
+            assert!(description.contains("Hand off"), "{}", tool.tool_name());
+            assert!(
+                description.contains(expected_outcome),
+                "{}",
+                tool.tool_name()
+            );
+            assert!(
+                description.contains("Agent-owned") || description.contains("this Agent's own"),
+                "{}",
+                tool.tool_name()
+            );
         }
     }
 

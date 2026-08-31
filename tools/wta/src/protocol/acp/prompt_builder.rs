@@ -419,7 +419,7 @@ mod tests {
             "planner must ship the delegate-agents section"
         );
         assert!(
-            built_prompt.contains("hand it back through exactly one of its action tools"),
+            built_prompt.contains("requested deliverable should occur in the user's terminal"),
             "terminal prompt must use the intent-based action workflow"
         );
         assert!(
