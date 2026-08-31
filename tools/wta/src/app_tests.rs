@@ -7285,20 +7285,20 @@ fn user_input_freeform_cursor_moves_left_and_right() {
         responder,
     });
 
-    for character in "abc".chars() {
+    for character in "cat".chars() {
         app.handle_key(KeyEvent::new(KeyCode::Char(character), KeyModifiers::NONE));
     }
     app.handle_key(KeyEvent::new(KeyCode::Left, KeyModifiers::NONE));
-    app.handle_key(KeyEvent::new(KeyCode::Char('X'), KeyModifiers::NONE));
+    app.handle_key(KeyEvent::new(KeyCode::Char('r'), KeyModifiers::NONE));
     app.handle_key(KeyEvent::new(KeyCode::Left, KeyModifiers::NONE));
     app.handle_key(KeyEvent::new(KeyCode::Right, KeyModifiers::NONE));
-    app.handle_key(KeyEvent::new(KeyCode::Char('Y'), KeyModifiers::NONE));
+    app.handle_key(KeyEvent::new(KeyCode::Char('e'), KeyModifiers::NONE));
     app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
 
     assert_eq!(
         response.try_recv().unwrap(),
         crate::agent_tools::user_input::UserInputResponse::Answered {
-            answer: "abXYc".into(),
+            answer: "caret".into(),
             selected_index: None,
         }
     );

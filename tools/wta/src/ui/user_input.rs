@@ -305,18 +305,18 @@ mod tests {
     #[test]
     fn freeform_keeps_context_around_a_scrolled_caret() {
         let mut request = state(2);
-        request.input = "abcdefghij".into();
-        request.cursor_pos = 5;
-        let (lines, _, _) = content_lines(&request, 8);
+        request.input = "zero alpha beta gamma".into();
+        request.cursor_pos = "zero alpha ".len();
+        let (lines, _, _) = content_lines(&request, 13);
         let freeform = lines.last().unwrap();
-        assert_eq!(freeform.to_string(), "● …defg…");
-        assert_eq!(freeform.width(), 8);
+        assert_eq!(freeform.to_string(), "● … alpha be…");
+        assert_eq!(freeform.width(), 13);
         let caret = freeform
             .spans
             .iter()
             .find(|span| span.style.add_modifier.contains(Modifier::REVERSED))
             .expect("scrolled freeform input should paint a reverse-video caret");
-        assert_eq!(caret.content.as_ref(), "f");
+        assert_eq!(caret.content.as_ref(), "b");
     }
 
     #[test]
