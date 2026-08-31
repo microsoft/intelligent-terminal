@@ -6,7 +6,7 @@
 //! of the crate root, so it can reach `App`'s private dispatch methods —
 //! exactly like the inline `app::tests` module it borrows `test_app` from.
 
-use super::tests::{test_app, test_app_with_master_rx};
+use super::tests::{test_app, test_app_with_master_rx, test_app_with_new_session_rx};
 use super::*;
 use crate::protocol::acp::client::MasterExtRequest;
 
@@ -393,7 +393,7 @@ fn slash_stop_when_idle_notes_nothing_to_stop() {
 
 #[test]
 fn slash_new_when_idle_resets_session() {
-    let mut app = test_app();
+    let (mut app, _new_session_rx) = test_app_with_new_session_rx();
     app.current_tab_mut().session_id = Some("sid-1".into());
     app.current_tab_mut()
         .messages

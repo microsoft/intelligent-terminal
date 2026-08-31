@@ -82,6 +82,16 @@ pub(super) fn test_app() -> App {
     )
 }
 
+pub(super) fn test_app_with_new_session_rx() -> (
+    App,
+    tokio::sync::mpsc::UnboundedReceiver<crate::protocol::acp::client::NewSessionForTab>,
+) {
+    let mut app = test_app();
+    let (new_session_tx, new_session_rx) = tokio::sync::mpsc::unbounded_channel();
+    app.new_session_tx = new_session_tx;
+    (app, new_session_rx)
+}
+
 fn test_app_with_restart_rx() -> (
     App,
     tokio::sync::mpsc::UnboundedReceiver<crate::protocol::acp::client::AgentLifecycleRequest>,
@@ -2857,7 +2867,7 @@ fn switching_to_tab_without_session_clears_model_picker() {
 
 #[test]
 fn new_session_prunes_previous_model_config() {
-    let mut app = test_app();
+    let (mut app, _new_session_rx) = test_app_with_new_session_rx();
     app.current_tab_mut().session_id = Some("sid-old".into());
     app.session_model_configs.insert(
         "sid-old".into(),
@@ -2867,6 +2877,28 @@ fn new_session_prunes_previous_model_config() {
     app.cmd_new(false);
 
     assert!(!app.session_model_configs.contains_key("sid-old"));
+}
+
+#[test]
+fn new_session_dispatch_failure_preserves_current_session() {
+    let mut app = test_app();
+    app.current_tab_mut().session_id = Some("sid-old".into());
+    app.current_tab_mut()
+        .messages
+        .push(ChatMessage::System("keep this message".into()));
+
+    app.cmd_new(false);
+
+    assert_eq!(app.current_tab().session_id.as_deref(), Some("sid-old"));
+    assert_eq!(
+        app.current_tab().messages.first(),
+        Some(&ChatMessage::System("keep this message".into()))
+    );
+    assert!(matches!(
+        app.current_tab().messages.last(),
+        Some(ChatMessage::Error(_))
+    ));
+    assert!(!app.pending_yolo_session_tabs.contains(DEFAULT_TAB_ID));
 }
 
 /// `/model <id>` hot-applies a model within the current Settings-selected mode
@@ -14370,7 +14402,7 @@ fn usage_cleared_removes_only_owner_snapshot_without_changing_chat() {
 
 #[test]
 fn usage_lifecycle_clear_preserves_but_session_boundaries_clear() {
-    let mut app = test_app();
+    let (mut app, _new_session_rx) = test_app_with_new_session_rx();
     let snapshot = usage_snapshot();
     app.current_tab_mut().usage = Some(snapshot.clone());
     app.cmd_clear();
