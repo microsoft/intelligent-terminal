@@ -300,19 +300,19 @@ impl App {
                         .select(Some(cur.saturating_sub(1)));
                     self.update_agents_focus_for_tab(&tab_id);
                 }
-                KeyCode::Enter => {
+                // Only a bare Enter activates a row. A row has exactly one
+                // resume style, so a modifier can never mean "resume the
+                // other way" — any modified Enter (Shift, Alt, Ctrl, ...)
+                // is an accident and is swallowed by the `_` arm below
+                // rather than leaking to the chat input behind the view.
+                KeyCode::Enter if key.modifiers.is_empty() => {
                     if let Some(idx) = self.current_tab().agents_list_state.selected() {
                         let selected = rows.get(idx).cloned();
                         if let Some(s) = selected {
-                            // B-10: route through the unified
-                            // state-machine dispatcher. Shift flips
-                            // the default per-origin (see
-                            // session_mgmt::decide_enter_action) —
-                            // Live rows ignore Shift; dead rows use
-                            // it as an escape hatch to the *other*
-                            // resume style.
-                            let shift = key.modifiers.contains(KeyModifiers::SHIFT);
-                            self.activate_agent_session_with_shift(&s, shift);
+                            // session_mgmt::decide_enter_action picks
+                            // the single resume style the row's origin
+                            // dictates.
+                            self.activate_agent_session_routed(&s);
                         }
                     }
                 }
@@ -407,10 +407,43 @@ impl App {
                             && request.input.chars().count() < MAX_ANSWER_CHARS =>
                     {
                         request.selected = request.request.choices.len();
-                        request.input.push(character);
+                        request.insert_input_char(character);
+                    }
+                    KeyCode::Backspace
+                        if request.freeform_selected()
+                            && key.modifiers.contains(KeyModifiers::CONTROL) =>
+                    {
+                        request.delete_word_before_cursor();
                     }
                     KeyCode::Backspace if request.freeform_selected() => {
-                        request.input.pop();
+                        request.delete_before_cursor();
+                    }
+                    KeyCode::Delete if request.freeform_selected() => {
+                        request.delete_at_cursor();
+                    }
+                    KeyCode::Left
+                        if request.freeform_selected()
+                            && key.modifiers.contains(KeyModifiers::CONTROL) =>
+                    {
+                        request.move_cursor_word_left();
+                    }
+                    KeyCode::Right
+                        if request.freeform_selected()
+                            && key.modifiers.contains(KeyModifiers::CONTROL) =>
+                    {
+                        request.move_cursor_word_right();
+                    }
+                    KeyCode::Left if request.freeform_selected() => {
+                        request.move_cursor_left();
+                    }
+                    KeyCode::Right if request.freeform_selected() => {
+                        request.move_cursor_right();
+                    }
+                    KeyCode::Home if request.freeform_selected() => {
+                        request.move_cursor_home();
+                    }
+                    KeyCode::End if request.freeform_selected() => {
+                        request.move_cursor_end();
                     }
                     KeyCode::Enter => {
                         if request.freeform_selected() {

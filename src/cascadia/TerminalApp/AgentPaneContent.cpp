@@ -316,25 +316,13 @@ namespace winrt::TerminalApp::implementation
 
     // Apply the supplied colors to the agent-pane top bar (#348). The vector
     // logo paths bind to the label's foreground, so both take the same tint.
-    // The 1px bottom hairline uses the foreground color at ~15% alpha, so it
-    // reads as a soft separator (like the original #26FFFFFF) — consistent
-    // with the text but not a hard full-white/black line.
+    // The bottom border uses the TabViewBackground theme resource.
     void AgentPaneContent::ApplyThemeColors(const Media::Brush& background,
                                             const Media::Brush& foreground)
     {
         if (const auto barRoot = AgentBarRoot())
         {
             barRoot.Background(background);
-            if (const auto fgSolid = foreground.try_as<Media::SolidColorBrush>())
-            {
-                auto c = fgSolid.Color();
-                c.A = 0x26;
-                barRoot.BorderBrush(Media::SolidColorBrush{ c });
-            }
-            else
-            {
-                barRoot.BorderBrush(foreground);
-            }
         }
         if (const auto label = AgentLabelText())
         {

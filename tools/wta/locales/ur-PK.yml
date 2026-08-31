@@ -158,8 +158,8 @@ system.resuming_session: "سیشن %{session_id} دوبارہ شروع کیا ج
 system.unknown_command: "نامعلوم کمانڈ \"%{command}\" — پرامپٹ کے طور پر بھیجی گئی۔ فہرست کے لیے /help ٹائپ کریں۔"  # {Locked="/help"} — slash-command name.
 system.busy_use_stop: "موجودہ پرامپٹ ختم ہونے تک انتظار کریں، یا پہلے /stop کریں۔"  # {Locked="/stop"} — slash-command name.
 system.cannot_focus_session: "سیشن %{session_id} پر فوکس نہیں کیا جا سکتا: یہ live لگتا ہے مگر ابھی کوئی pane GUID باؤنڈ نہیں ہے۔ کچھ دیر بعد دوبارہ کوشش کریں۔"
-system.cannot_resume_no_load_session: "agent pane میں دوبارہ شروع نہیں کیا جا سکتا: %{agent} نے ACP `loadSession` صلاحیت کا اعلان نہیں کیا۔ اس کے بجائے نئے terminal pane میں دوبارہ شروع کرنے کے لیے Enter (Shift کے بغیر) دبائیں۔"  # {Locked="ACP","loadSession","Enter","Shift"} — protocol/UI terms.
-system.cannot_resume_no_resume_flag: "%{agent} سیشن دوبارہ شروع نہیں کیا جا سکتا: اس agent کے پاس `--resume` طرز کا flag نہیں ہے۔ اس کے بجائے ACP کے ذریعے agent pane کے اندر دوبارہ شروع کرنے کی کوشش کے لیے Shift+Enter دبائیں۔"  # {Locked="--resume","Shift","Enter","ACP"} — flag and UI terms.
+system.cannot_resume_no_load_session: "agent pane میں دوبارہ شروع نہیں کیا جا سکتا: %{agent} نے ACP `loadSession` صلاحیت کا اعلان نہیں کیا۔"  # {Locked="ACP","loadSession"} — protocol/UI terms.
+system.cannot_resume_no_resume_flag: "%{agent} سیشن دوبارہ شروع نہیں کیا جا سکتا: اس agent کے پاس `--resume` طرز کا flag نہیں ہے۔"  # {Locked="--resume"} — flag and UI terms.
 system.cannot_resume_unknown_agent: "سیشن %{session_id} دوبارہ شروع نہیں کیا جا سکتا: اس کا ماخذ agent اس WTA build کے لیے نامعلوم ہے۔"
 system.cannot_resume_phantom_via_flag: "%{agent} سیشن %{session_id} دوبارہ شروع نہیں کیا جا سکتا: یہ شروع ہوا تھا مگر اس میں کوئی گفتگو جمع نہیں ہوئی، اس لیے %{agent} خود resume کو مسترد کر دے گا۔ قطار ہٹائی جا رہی ہے۔"
 system.cannot_resume_phantom_via_load: "%{agent} سیشن %{session_id} دوبارہ شروع نہیں کیا جا سکتا: یہ شروع ہوا تھا مگر اس میں کوئی گفتگو جمع نہیں ہوئی، اس لیے %{agent} load کو مسترد کر دے گا۔ قطار ہٹائی جا رہی ہے۔"

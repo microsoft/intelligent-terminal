@@ -79,18 +79,6 @@
             </mux:InfoBar>
         </StackPanel>
 
-        <!-- Solid filler behind TabContent so any transparent edge pixels
-             (pane border, padding rounding, etc.) between the pane and the
-             BottomBar read as a seamless continuation of the BottomBar
-             instead of showing the desktop behind the window. Uses the
-             BottomBar color so the gap — if any — visually merges into
-             the bar. Declared before TabContent so it sits behind. -->
-        <Border x:Name="TabContentFiller"
-                Grid.Row="2"
-                Grid.ColumnSpan="2"
-                Background="#000000"
-                IsHitTestVisible="False" />
-
         <Grid x:Name="TabContent"
               Grid.Row="2"
               Grid.ColumnSpan="2"
@@ -105,37 +93,18 @@
              window chrome, but its state reflects the *active tab*'s agent
              pane (toggle lit when active tab has an AgentPaneContent,
              diagnostics from the active tab's autofix state, etc.).
-             Wrapped in a Border so we can draw a 1-pixel divider between
-             the terminal pane and the bar. The divider is a child Border
-             (not BorderThickness) because XAML's BorderBrush paints the
-             thickness strip OUTSIDE the Background fill — so a
-             semi-transparent BorderBrush would alpha-blend against the
-             transparent window underneath instead of the bar's black.
-             Stacking a 1px Border on top of the solid-black outer Border
-             makes the alpha blend correctly. -->
+             The top border uses the TabViewBackground theme resource. -->
         <Border x:Name="BottomBarRoot"
                 Grid.Row="3"
                 Grid.ColumnSpan="2"
                 Background="#000000"
+                BorderBrush="{ThemeResource TabViewBackground}"
+                BorderThickness="0,1,0,0"
                 VerticalAlignment="Top">
-        <Grid>
-            <Grid.RowDefinitions>
-                <RowDefinition Height="1" />
-                <RowDefinition Height="40" />
-            </Grid.RowDefinitions>
-
-            <!-- Divider: design spec #FFFFFF26 (= XAML #26FFFFFF, white 15% alpha).
-                 Sits on the outer Border's #000000, so it renders as a subtle
-                 dark-gray hairline. -->
-            <Border Grid.Row="0" Background="#26FFFFFF" />
-
         <Grid x:Name="BottomBar"
-              Grid.Row="1"
+              Height="40"
               Padding="12,0,12,0"
               HorizontalAlignment="Stretch">
-            <Grid.Background>
-                <SolidColorBrush Color="#000000" />
-            </Grid.Background>
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="Auto" />
@@ -279,7 +248,6 @@
                 </Image>
             </Button>
 
-        </Grid>
         </Grid>
         </Border>
 

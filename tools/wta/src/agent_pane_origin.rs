@@ -27,9 +27,8 @@
 //   ENTER-routing work that will consume this field):
 //     {"v":2,"session_id":"<uuid>","origin":"agent_pane","pane_session_id":"<WT pane GUID>","started_at":"<RFC3339-ish>"}
 //
-// We deliberately do NOT record `cli_source` — `history_loader` already
-// derives it from which per-CLI on-disk artefact directory the session was
-// found in, so duplicating it here would create a second source of truth
+// We deliberately do NOT record `cli_source` — the session's own agent
+// reports it, so duplicating it here would create a second source of truth
 // that could drift. Same rationale for `owner_tab_id`: no caller needs it
 // yet, and we can always recover it via WT itself.
 //
@@ -44,8 +43,8 @@
 // The file is append-only; it is never read-then-written from this module.
 // Old entries become orphans naturally when the corresponding CLI session
 // directory is deleted by the user or the agent CLI itself — orphan entries
-// in the index are harmless because `history_loader` only consults the
-// index when constructing rows for sessions that *still exist on disk*.
+// in the index are harmless because the index is only ever consulted as a
+// filter against session ids the agent itself still reports.
 
 use std::collections::{HashMap, HashSet};
 use std::fs::{File, OpenOptions};
@@ -133,8 +132,8 @@ pub fn append_to(
 
 /// Load the default index into a `HashSet<String>` of session ids. Empty
 /// set if the file does not exist, cannot be opened, or is empty — never
-/// errors out to the caller, which lets `history_loader` proceed even on
-/// a fresh install or after a manual delete.
+/// errors out to the caller, so the history scan still proceeds on a fresh
+/// install or after a manual delete.
 ///
 /// Unpackaged dev binaries also merge the installed Intelligent Terminal
 /// package's LocalState index when present. That keeps diagnostics such as

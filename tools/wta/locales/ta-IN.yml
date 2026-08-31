@@ -158,8 +158,8 @@ system.resuming_session: "அமர்வு %{session_id} மீண்டும
 system.unknown_command: "அறியப்படாத கட்டளை \"%{command}\" — prompt ஆக அனுப்பப்பட்டது. பட்டியலுக்கு /help எனத் தட்டச்சு செய்யவும்."  # {Locked="/help"} — slash-command name.
 system.busy_use_stop: "தற்போதைய prompt முடியும் வரை காத்திருக்கவும், அல்லது முதலில் /stop செய்யவும்."  # {Locked="/stop"} — slash-command name.
 system.cannot_focus_session: "அமர்வு %{session_id} மீது கவனம் செலுத்த முடியவில்லை: அது live போலத் தெரிகிறது ஆனால் இன்னும் pane GUID எதுவும் பிணைக்கப்படவில்லை. சிறிது நேரம் கழித்து மீண்டும் முயற்சிக்கவும்."
-system.cannot_resume_no_load_session: "agent pane-இல் மீண்டும் தொடங்க முடியவில்லை: %{agent} ACP `loadSession` திறனை அறிவிக்கவில்லை. அதற்கு பதிலாக புதிய terminal pane-இல் மீண்டும் தொடங்க Enter (Shift இல்லாமல்) அழுத்தவும்."  # {Locked="ACP","loadSession","Enter","Shift"} — protocol/UI terms.
-system.cannot_resume_no_resume_flag: "%{agent} அமர்வை மீண்டும் தொடங்க முடியவில்லை: இந்த agent-க்கு `--resume` பாணி flag இல்லை. அதற்கு பதிலாக ACP மூலம் agent pane-க்குள் மீண்டும் தொடங்க முயற்சிக்க Shift+Enter அழுத்தவும்."  # {Locked="--resume","Shift","Enter","ACP"} — flag and UI terms.
+system.cannot_resume_no_load_session: "agent pane-இல் மீண்டும் தொடங்க முடியவில்லை: %{agent} ACP `loadSession` திறனை அறிவிக்கவில்லை."  # {Locked="ACP","loadSession"} — protocol/UI terms.
+system.cannot_resume_no_resume_flag: "%{agent} அமர்வை மீண்டும் தொடங்க முடியவில்லை: இந்த agent-க்கு `--resume` பாணி flag இல்லை."  # {Locked="--resume"} — flag and UI terms.
 system.cannot_resume_unknown_agent: "அமர்வு %{session_id} மீண்டும் தொடங்க முடியவில்லை: அதன் மூல agent இந்த WTA build-க்கு தெரியாது."
 system.cannot_resume_phantom_via_flag: "%{agent} அமர்வு %{session_id} மீண்டும் தொடங்க முடியவில்லை: அது தொடங்கப்பட்டது, ஆனால் எந்த உரையாடலும் சேர்க்கப்படவில்லை; எனவே %{agent} தானே resume-ஐ நிராகரிக்கும். வரிசை அகற்றப்படுகிறது."
 system.cannot_resume_phantom_via_load: "%{agent} அமர்வு %{session_id} மீண்டும் தொடங்க முடியவில்லை: அது தொடங்கப்பட்டது, ஆனால் எந்த உரையாடலும் சேர்க்கப்படவில்லை; எனவே %{agent} load-ஐ நிராகரிக்கும். வரிசை அகற்றப்படுகிறது."

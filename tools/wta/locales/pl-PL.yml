@@ -154,8 +154,8 @@ system.resuming_session: "Wznawianie sesji %{session_id}..."
 system.unknown_command: "Nieznane polecenie \"%{command}\" — wysłano jako monit. Wpisz /help, aby wyświetlić listę."  # {Locked="/help"}
 system.busy_use_stop: "Poczekaj, aż bieżący monit się zakończy, albo najpierw użyj /stop."  # {Locked="/stop"}
 system.cannot_focus_session: "Nie można ustawić fokusu na sesji %{session_id}: wygląda na aktywną, ale nie powiązano jeszcze żadnego identyfikatora GUID panelu. Spróbuj ponownie za chwilę."
-system.cannot_resume_no_load_session: "Nie można wznowić w panelu agenta: %{agent} nie ogłosił możliwości ACP `loadSession`. Naciśnij Enter (bez Shift), aby zamiast tego wznowić w nowym panelu terminala."  # {Locked="ACP","loadSession","Enter","Shift"}
-system.cannot_resume_no_resume_flag: "Nie można wznowić sesji %{agent}: ten agent nie ma flagi w stylu `--resume`. Naciśnij Shift+Enter, aby spróbować wznowić wewnątrz panelu agenta przez ACP."  # {Locked="--resume","Shift","Enter","ACP"}
+system.cannot_resume_no_load_session: "Nie można wznowić w panelu agenta: %{agent} nie ogłosił możliwości ACP `loadSession`."  # {Locked="ACP","loadSession"}
+system.cannot_resume_no_resume_flag: "Nie można wznowić sesji %{agent}: ten agent nie ma flagi w stylu `--resume`."  # {Locked="--resume"}
 system.cannot_resume_unknown_agent: "Nie można wznowić sesji %{session_id}: jej agent źródłowy jest nieznany tej kompilacji WTA."
 system.cannot_resume_phantom_via_flag: "Nie można wznowić sesji %{agent} %{session_id}: została uruchomiona, ale nigdy nie zgromadziła żadnej konwersacji, więc sam %{agent} odrzuciłby wznowienie. Usuwanie wiersza."
 system.cannot_resume_phantom_via_load: "Nie można wznowić sesji %{agent} %{session_id}: została uruchomiona, ale nigdy nie zgromadziła żadnej konwersacji, więc %{agent} odrzuciłby załadowanie. Usuwanie wiersza."

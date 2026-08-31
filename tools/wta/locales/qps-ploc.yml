@@ -147,8 +147,8 @@ system.resuming_session: "[Ŕéśûḿïñğ śéśśïöñ %{session_id}...!!!!
 system.unknown_command: "[Ûñķñöŵñ çöḿḿåñď \"%{command}\" — śéñţ åś ṗŕöḿṗţ. Ţÿṗé /help ƒöŕ ţĥé ĺïśţ.!!!! !!!! !!!! !!!! !!!!]"  # {Locked="/help"}
 system.busy_use_stop: "[Ŵåïţ ƒöŕ ţĥé çûŕŕéñţ ṗŕöḿṗţ ţö ƒïñïśĥ, öŕ /stop ƒïŕśţ.!!!! !!!! !!!! !!!!]"  # {Locked="/stop"}
 system.cannot_focus_session: "[Çåññöţ ƒöçûś śéśśïöñ %{session_id}: ïţ åṗṗéåŕś ĺïṽé ƀûţ ñö ṗåñé ĞÛÎĎ ïś ƀöûñď ÿéţ. Ţŕÿ åğåïñ ïñ å ḿöḿéñţ.!!!! !!!! !!!! !!!! !!!! !!!! !!!!]"
-system.cannot_resume_no_load_session: "[Çåññöţ ŕéśûḿé ïñ åğéñţ ṗåñé: %{agent} ďïď ñöţ åďṽéŕţïśé ţĥé ACP `loadSession` çåṗåƀïĺïţÿ. Ṗŕéśś Enter (ŵïţĥöûţ Shift) ţö ŕéśûḿé ïñ å ñéŵ ţéŕḿïñåĺ ṗåñé ïñśţéåď.!!!! !!!! !!!! !!!! !!!! !!!! !!!! !!!!]"  # {Locked="ACP","loadSession","Enter","Shift"}
-system.cannot_resume_no_resume_flag: "[Çåññöţ ŕéśûḿé %{agent} śéśśïöñ: ţĥïś åğéñţ ĥåś ñö `--resume`-śţÿĺé ƒĺåğ. Ṗŕéśś Shift+Enter ţö ţŕÿ ŕéśûḿïñğ ïñśïďé ţĥé åğéñţ ṗåñé ṽïå ACP ïñśţéåď.!!!! !!!! !!!! !!!! !!!! !!!! !!!! !!!!]"  # {Locked="--resume","Shift","Enter","ACP"}
+system.cannot_resume_no_load_session: "[Çåññöţ ŕéśûḿé ïñ åğéñţ ṗåñé: %{agent} ďïď ñöţ åďṽéŕţïśé ţĥé ACP `loadSession` çåṗåƀïĺïţÿ.!!!! !!!! !!!! !!!! !!!! !!!! !!!! !!!!]"  # {Locked="ACP","loadSession"}
+system.cannot_resume_no_resume_flag: "[Çåññöţ ŕéśûḿé %{agent} śéśśïöñ: ţĥïś åğéñţ ĥåś ñö `--resume`-śţÿĺé ƒĺåğ.!!!! !!!! !!!! !!!! !!!! !!!! !!!! !!!!]"  # {Locked="--resume"}
 system.cannot_resume_unknown_agent: "[Çåññöţ ŕéśûḿé śéśśïöñ %{session_id}: ïţś śöûŕçé åğéñţ ïś ûñķñöŵñ ţö ţĥïś ƀûïĺď.!!!! !!!! !!!! !!!! !!!!]"
 system.cannot_resume_phantom_via_flag: "[Çåññöţ ŕéśûḿé %{agent} śéśśïöñ %{session_id}: ïţ ŵåś śţåŕţéď ƀûţ ñéṽéŕ åççûḿûĺåţéď åñÿ çöñṽéŕśåţïöñ, śö %{agent} ïţśéĺƒ ŵöûĺď ŕéĵéçţ ţĥé ŕéśûḿé. Ŕéḿöṽïñğ ţĥé ŕöŵ.!!!! !!!! !!!! !!!! !!!! !!!! !!!! !!!!]"
 system.cannot_resume_phantom_via_load: "[Çåññöţ ŕéśûḿé %{agent} śéśśïöñ %{session_id}: ïţ ŵåś śţåŕţéď ƀûţ ñéṽéŕ åççûḿûĺåţéď åñÿ çöñṽéŕśåţïöñ, śö %{agent} ŵöûĺď ŕéĵéçţ ţĥé ĺöåď. Ŕéḿöṽïñğ ţĥé ŕöŵ.!!!! !!!! !!!! !!!! !!!! !!!! !!!!]"

@@ -161,9 +161,11 @@ Inside the agent pane, type `/` to see available commands. Type `/help` at any t
 |---------|-------------|
 | `/agent [id]` | Pick the agent source for this tab. In a WSL pane, the picker includes agents installed on Windows and in that pane's WSL distro; it never offers other distros. |
 | `/clear` | Clear the chat scrollback (keeps the current session) |
+| `/config` | Configure the current agent session using the options your agent exposes. With GitHub Copilot, for example, you can set the mode (agent, plan, or autopilot), model, reasoning effort, and whether it asks for approval before using tools |
 | `/fix [hint]` | Diagnose the active terminal and suggest a fix; add an optional hint to steer it (e.g. `/fix the path looks wrong`) |
 | `/help` | Show the command list |
-| `/model [id]` | Pick the model for this pane; bare `/model` opens a picker, `/model <id>` switches directly |
+| `/model [id]` | Pick the model for this pane; bare `/model` opens a picker of your configured BYOK models, `/model <id>` switches directly |
+| `/move [position]` | Move this tab's agent pane without changing the global setting or other tabs; `/move left\|right\|up\|down` (aliases `l`/`r`/`u`/`d`) |
 | `/new` | Start a fresh agent session (drops history) |
 | `/restart` | Restart the agent with a clean session |
 | `/sessions` | Open agent management (same as <kbd>Ctrl+Shift+/</kbd>) |

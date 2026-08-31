@@ -89,7 +89,7 @@ pub(crate) fn title_is_placeholder(cli: &CliSource, title: &str) -> bool {
             23 => *byte == b'Z',
             _ => byte.is_ascii_digit(),
         })
-        && crate::history_loader::parse_iso_to_system_time(timestamp).is_some()
+        && crate::session_history::parse_iso_to_system_time(timestamp).is_some()
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -153,10 +153,12 @@ pub enum LivenessState {
 ///
 /// Populated authoritatively by `agent_pane_origin`: WTA appends a record
 /// to the on-disk index whenever it creates an ACP session for an agent
-/// pane (i.e. `--owner-tab-id` was supplied), and `history_loader` joins
-/// that index when reconstructing historical rows. Live rows default to
-/// `Unknown` because the UI only surfaces this badge for ended/historical
-/// sessions, where it is most useful.
+/// pane (i.e. `--owner-tab-id` was supplied). A row is stamped while it is
+/// live, when a routed event's session id turns up in that index, and it
+/// keeps the flag once the session ends — which is where the UI surfaces
+/// it. Rows rebuilt from ACP `session/list` never carry it:
+/// `session_history::classify_and_map` uses the same index to drop
+/// agent-pane sessions from history entirely rather than to badge them.
 #[derive(Clone, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum SessionOrigin {
     /// Origin not recorded — either the session pre-dates the index, was
@@ -1147,8 +1149,8 @@ impl AgentSessionRegistry {
     /// is `Historical` or `Ended`, upgrade it to `Live` (`AgentStatus::Idle`)
     /// and bind the pane.
     ///
-    /// Motivation: at startup the on-disk history scan
-    /// (`history_loader::load_all`) and the helper's `list_sessions`
+    /// Motivation: at startup the ACP `session/list` history scan
+    /// (`session_history::classify_and_map`) and the helper's `list_sessions`
     /// bootstrap can land in either order, and a WTA process attached
     /// to an existing master in another WT window may never see the
     /// originating `SessionStarted` hook event. Without this join, a

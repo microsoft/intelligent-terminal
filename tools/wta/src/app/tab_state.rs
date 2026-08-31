@@ -236,6 +236,7 @@ pub struct UserInputState {
     pub request: crate::agent_tools::user_input::UserInputRequest,
     pub selected: usize,
     pub input: String,
+    pub cursor_pos: usize,
     pub responder:
         Option<tokio::sync::oneshot::Sender<crate::agent_tools::user_input::UserInputResponse>>,
 }
@@ -247,6 +248,50 @@ impl UserInputState {
 
     pub fn freeform_selected(&self) -> bool {
         self.request.allow_freeform && self.selected == self.request.choices.len()
+    }
+
+    pub fn insert_input_char(&mut self, character: char) {
+        super::input_edit::TextEditor::new(&mut self.input, &mut self.cursor_pos)
+            .insert_char(character);
+    }
+
+    pub fn delete_before_cursor(&mut self) {
+        super::input_edit::TextEditor::new(&mut self.input, &mut self.cursor_pos)
+            .delete_before_cursor();
+    }
+
+    pub fn delete_at_cursor(&mut self) {
+        super::input_edit::TextEditor::new(&mut self.input, &mut self.cursor_pos)
+            .delete_at_cursor();
+    }
+
+    pub fn move_cursor_left(&mut self) {
+        super::input_edit::TextEditor::new(&mut self.input, &mut self.cursor_pos).move_left();
+    }
+
+    pub fn move_cursor_right(&mut self) {
+        super::input_edit::TextEditor::new(&mut self.input, &mut self.cursor_pos).move_right();
+    }
+
+    pub fn move_cursor_word_left(&mut self) {
+        super::input_edit::TextEditor::new(&mut self.input, &mut self.cursor_pos).move_word_left();
+    }
+
+    pub fn move_cursor_word_right(&mut self) {
+        super::input_edit::TextEditor::new(&mut self.input, &mut self.cursor_pos).move_word_right();
+    }
+
+    pub fn move_cursor_home(&mut self) {
+        super::input_edit::TextEditor::new(&mut self.input, &mut self.cursor_pos).move_home();
+    }
+
+    pub fn move_cursor_end(&mut self) {
+        super::input_edit::TextEditor::new(&mut self.input, &mut self.cursor_pos).move_end();
+    }
+
+    pub fn delete_word_before_cursor(&mut self) {
+        super::input_edit::TextEditor::new(&mut self.input, &mut self.cursor_pos)
+            .delete_word_before_cursor();
     }
 }
 
@@ -828,15 +873,17 @@ impl TabSession {
             })
     }
 
-    pub(crate) fn should_show_streaming_thought(&self) -> bool {
-        self.can_show_turn_activity()
-            && self
-                .streaming_thought_text()
-                .is_some_and(|text| !text.trim().is_empty())
+    fn has_visible_streaming_thought(&self) -> bool {
+        self.streaming_thought_text()
+            .is_some_and(|text| !text.trim().is_empty())
     }
 
     pub(crate) fn should_show_thinking(&self) -> bool {
-        self.can_show_turn_activity() && !self.should_show_streaming_thought()
+        self.can_show_turn_activity() && !self.has_visible_streaming_thought()
+    }
+
+    pub(crate) fn should_show_inline_thinking(&self) -> bool {
+        self.turn.is_in_flight() && !self.should_show_thinking()
     }
 
     /// Whether the input box is the live, enterable caret target.
@@ -937,7 +984,9 @@ impl TabSession {
             return;
         }
         if self.streaming_thought.is_empty() {
-            self.reveal_chars = 0;
+            if self.streaming_agent_text().is_none() {
+                self.reveal_chars = 0;
+            }
         }
         self.streaming_thought.push_str(text);
 
@@ -950,13 +999,17 @@ impl TabSession {
                 .nth(remove_chars)
                 .map_or(self.streaming_thought.len(), |(index, _)| index);
             self.streaming_thought.drain(..cut_at);
-            self.reveal_chars = self.reveal_chars.saturating_sub(remove_chars);
+            if self.streaming_agent_text().is_none() {
+                self.reveal_chars = self.reveal_chars.saturating_sub(remove_chars);
+            }
         }
     }
 
     pub fn clear_streaming_thought(&mut self) {
         self.streaming_thought.clear();
-        self.reveal_chars = 0;
+        if self.streaming_agent_text().is_none() {
+            self.reveal_chars = 0;
+        }
     }
 
     pub fn streaming_thought_text(&self) -> Option<&str> {

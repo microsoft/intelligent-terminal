@@ -141,9 +141,6 @@ impl App {
                 true
             }
             (TurnState::Streaming { .. }, ChunkKind::Thought) => {
-                if tab.streaming_agent_text().is_some() {
-                    return false;
-                }
                 tab.append_thought_chunk(text);
                 !text.is_empty()
             }

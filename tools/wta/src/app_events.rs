@@ -1618,6 +1618,7 @@ impl App {
                     request,
                     selected: 0,
                     input: String::new(),
+                    cursor_pos: 0,
                     responder: Some(responder),
                 });
             }
@@ -2454,10 +2455,20 @@ impl App {
                         // close it).
                         tab.loading_session = true;
                         tab.loading_target_session_id = Some(session_id.to_string());
-                        // `loading_session` both opens the replay window and
-                        // drives the "Resuming session …" indicator, so the
-                        // user knows a conversation is on its way in rather
-                        // than watching a pane that looks like a cold start.
+                        // Resume is intentionally silent — no "Resuming…"
+                        // marker — so a resumed pane presents exactly like a
+                        // normal connection. `loading_session` still opens the
+                        // replay window; any past content just streams in above.
+                    }
+                    // If the load_session target IS the active tab, push the
+                    // (now Chat) view to C++ so the bar drops the "Agent
+                    // sessions" label that the user was looking at when they
+                    // hit Enter on a session row. When the target is a
+                    // not-yet-active tab (e.g. WT just created a fresh tab
+                    // and the `tab_changed` race still hasn't landed), the
+                    // imminent `tab_changed` to that tab will project then.
+                    if tab_id == self.active_tab_key() {
+                        self.project_active_tab_state();
                     }
                     // A resume can be requested after the connect that already
                     // decided this was a first run. Retract the hint rather

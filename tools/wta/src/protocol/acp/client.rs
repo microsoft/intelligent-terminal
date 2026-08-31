@@ -271,7 +271,7 @@ fn publish_session_config_options(
 
 /// User-initiated request to resume a historical agent session by calling
 /// the ACP `session/load` method, binding the loaded session to a
-/// specific WT tab. Emitted by the session management view's Shift+Enter
+/// specific WT tab. Emitted by the session management view's Enter
 /// handler (after WT has created a new tab and reconciled the agent pane
 /// onto it). The ACP client task calls `conn.load_session(...)`; on
 /// success the loaded SessionId is bound to the tab and `SessionAttached`
@@ -3806,7 +3806,7 @@ fn dispatch_master_ext_request(
 }
 
 /// Resume a historical agent session for a tab via ACP `session/load`
-/// (the session-management Enter/Shift+Enter resume path). Cancels and
+/// (the session-management Enter resume path). Cancels and
 /// drops any existing binding, calls `load_session` under a timeout, and
 /// on success rebinds the tab and emits `SessionAttached` +
 /// `TabSystemMessage`. Called by `run_acp_client_over_pipe`.

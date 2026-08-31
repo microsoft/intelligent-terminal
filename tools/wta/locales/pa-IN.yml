@@ -158,8 +158,8 @@ system.resuming_session: "ਸੈਸ਼ਨ %{session_id} ਮੁੜ ਸ਼ੁਰ�
 system.unknown_command: "ਅਣਜਾਣ ਕਮਾਂਡ \"%{command}\" — ਪ੍ਰੌਮਪਟ ਵਜੋਂ ਭੇਜੀ ਗਈ। ਸੂਚੀ ਲਈ /help ਟਾਈਪ ਕਰੋ।"  # {Locked="/help"} — slash-command name.
 system.busy_use_stop: "ਮੌਜੂਦਾ ਪ੍ਰੌਮਪਟ ਮੁਕਣ ਤੱਕ ਉਡੀਕ ਕਰੋ, ਜਾਂ ਪਹਿਲਾਂ /stop ਕਰੋ।"  # {Locked="/stop"} — slash-command name.
 system.cannot_focus_session: "ਸੈਸ਼ਨ %{session_id} 'ਤੇ ਫੋਕਸ ਨਹੀਂ ਕੀਤਾ ਜਾ ਸਕਦਾ: ਇਹ live ਦਿਸਦਾ ਹੈ ਪਰ ਹਾਲੇ ਕੋਈ pane GUID ਬਾਊਂਡ ਨਹੀਂ ਹੈ। ਕੁਝ ਪਲਾਂ ਬਾਅਦ ਦੁਬਾਰਾ ਕੋਸ਼ਿਸ਼ ਕਰੋ।"
-system.cannot_resume_no_load_session: "agent pane ਵਿੱਚ ਮੁੜ ਸ਼ੁਰੂ ਨਹੀਂ ਕੀਤਾ ਜਾ ਸਕਦਾ: %{agent} ਨੇ ACP `loadSession` ਸਮਰੱਥਾ ਦਾ ਐਲਾਨ ਨਹੀਂ ਕੀਤਾ। ਇਸ ਦੀ ਬਜਾਏ ਨਵੇਂ terminal pane ਵਿੱਚ ਮੁੜ ਸ਼ੁਰੂ ਕਰਨ ਲਈ Enter (Shift ਤੋਂ ਬਿਨਾਂ) ਦਬਾਓ।"  # {Locked="ACP","loadSession","Enter","Shift"} — protocol/UI terms.
-system.cannot_resume_no_resume_flag: "%{agent} ਸੈਸ਼ਨ ਮੁੜ ਸ਼ੁਰੂ ਨਹੀਂ ਕੀਤਾ ਜਾ ਸਕਦਾ: ਇਸ agent ਕੋਲ `--resume`-ਸ਼ੈਲੀ ਦਾ flag ਨਹੀਂ ਹੈ। ਇਸ ਦੀ ਬਜਾਏ ACP ਰਾਹੀਂ agent pane ਦੇ ਅੰਦਰ ਮੁੜ ਸ਼ੁਰੂ ਕਰਨ ਦੀ ਕੋਸ਼ਿਸ਼ ਲਈ Shift+Enter ਦਬਾਓ।"  # {Locked="--resume","Shift","Enter","ACP"} — flag and UI terms.
+system.cannot_resume_no_load_session: "agent pane ਵਿੱਚ ਮੁੜ ਸ਼ੁਰੂ ਨਹੀਂ ਕੀਤਾ ਜਾ ਸਕਦਾ: %{agent} ਨੇ ACP `loadSession` ਸਮਰੱਥਾ ਦਾ ਐਲਾਨ ਨਹੀਂ ਕੀਤਾ।"  # {Locked="ACP","loadSession"} — protocol/UI terms.
+system.cannot_resume_no_resume_flag: "%{agent} ਸੈਸ਼ਨ ਮੁੜ ਸ਼ੁਰੂ ਨਹੀਂ ਕੀਤਾ ਜਾ ਸਕਦਾ: ਇਸ agent ਕੋਲ `--resume`-ਸ਼ੈਲੀ ਦਾ flag ਨਹੀਂ ਹੈ।"  # {Locked="--resume"} — flag and UI terms.
 system.cannot_resume_unknown_agent: "ਸੈਸ਼ਨ %{session_id} ਮੁੜ ਸ਼ੁਰੂ ਨਹੀਂ ਕੀਤਾ ਜਾ ਸਕਦਾ: ਇਸ ਦਾ ਸਰੋਤ agent ਇਸ WTA build ਲਈ ਅਣਜਾਣ ਹੈ।"
 system.cannot_resume_phantom_via_flag: "%{agent} ਸੈਸ਼ਨ %{session_id} ਮੁੜ ਸ਼ੁਰੂ ਨਹੀਂ ਕੀਤਾ ਜਾ ਸਕਦਾ: ਇਹ ਸ਼ੁਰੂ ਹੋਇਆ ਸੀ ਪਰ ਕੋਈ ਗੱਲਬਾਤ ਇਕੱਠੀ ਨਹੀਂ ਹੋਈ, ਇਸ ਲਈ %{agent} ਖੁਦ resume ਨੂੰ ਰੱਦ ਕਰੇਗਾ। ਕਤਾਰ ਹਟਾਈ ਜਾ ਰਹੀ ਹੈ।"
 system.cannot_resume_phantom_via_load: "%{agent} ਸੈਸ਼ਨ %{session_id} ਮੁੜ ਸ਼ੁਰੂ ਨਹੀਂ ਕੀਤਾ ਜਾ ਸਕਦਾ: ਇਹ ਸ਼ੁਰੂ ਹੋਇਆ ਸੀ ਪਰ ਕੋਈ ਗੱਲਬਾਤ ਇਕੱਠੀ ਨਹੀਂ ਹੋਈ, ਇਸ ਲਈ %{agent} load ਨੂੰ ਰੱਦ ਕਰੇਗਾ। ਕਤਾਰ ਹਟਾਈ ਜਾ ਰਹੀ ਹੈ।"
