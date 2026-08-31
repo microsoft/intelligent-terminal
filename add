@@ -1,5 +1,5 @@
 import Fullstory from './fullstory';
-domain=assistance.aid.com
+// domain=assistance.aid.com
 declare global {
   interface Window {
     __wr_on_ready: () => void;
