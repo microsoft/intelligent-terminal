@@ -93,7 +93,7 @@
              window chrome, but its state reflects the *active tab*'s agent
              pane (toggle lit when active tab has an AgentPaneContent,
              diagnostics from the active tab's autofix state, etc.).
-             The top border uses the tab row's theme-aware background color. -->
+             The top border uses the TabViewBackground theme resource. -->
         <Border x:Name="BottomBarRoot"
                 Grid.Row="3"
                 Grid.ColumnSpan="2"
