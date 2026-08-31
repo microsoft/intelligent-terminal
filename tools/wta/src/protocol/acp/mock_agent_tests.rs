@@ -1260,9 +1260,12 @@ async fn lazy_session_native_disable_failure_keeps_first_prompt_blocked() {
             let event = tokio::time::timeout(std::time::Duration::from_secs(5), async {
                 loop {
                     match h.event_rx.recv().await {
-                        Some(AppEvent::RuntimeYoloReconcileCompleted { result, .. }) => {
-                            break result
-                        }
+                        Some(AppEvent::RuntimeYoloReconcileCompleted {
+                            reconcile_id,
+                            fail_closed,
+                            restart_required,
+                            result,
+                        }) => break (reconcile_id, fail_closed, restart_required, result),
                         Some(_) => continue,
                         None => panic!("event channel closed before fail-closed result"),
                     }
@@ -1270,7 +1273,10 @@ async fn lazy_session_native_disable_failure_keeps_first_prompt_blocked() {
             })
             .await
             .expect("timed out waiting for fail-closed result");
-            assert!(event.is_err());
+            assert_eq!(event.0, 0);
+            assert!(event.1);
+            assert!(event.2);
+            assert!(event.3.is_err());
             assert!(h.seen_prompts.lock().unwrap().is_empty());
         })
         .await;
@@ -2583,10 +2589,237 @@ async fn native_disable_config_timeout_requests_restart() {
                 panic!("expected RuntimeYoloReconcileCompleted");
             };
             assert_eq!(reconcile_id, 0);
-            assert!(!fail_closed);
+            assert!(fail_closed);
             assert!(restart_required);
             assert!(result.unwrap_err().contains("setting config option 'mode'"));
             h.native_update_release.notify_one();
+        })
+        .await;
+}
+
+#[tokio::test]
+async fn rejected_slash_yolo_disable_requests_restart() {
+    let local = tokio::task::LocalSet::new();
+    local
+        .run_until(async {
+            let mut h = connect_for_dispatch(MockBehavior::Reply);
+            h.client
+                .state
+                .native_yolo
+                .set_resolved_agent_id(Some(crate::agent_registry::CLAUDE_AGENT_ID));
+            let response: acp::schema::v1::NewSessionResponse =
+                serde_json::from_value(serde_json::json!({
+                    "sessionId": "rejected-slash-disable-session",
+                    "configOptions": [{
+                        "id": "mode",
+                        "name": "Mode",
+                        "category": "mode",
+                        "type": "select",
+                        "currentValue": "bypassPermissions",
+                        "options": [
+                            {"value": "default", "name": "Default"},
+                            {"value": "bypassPermissions", "name": "Bypass Permissions"}
+                        ]
+                    }]
+                }))
+                .unwrap();
+            let session_id = response.session_id.clone();
+            h.client
+                .state
+                .native_yolo
+                .record_from_new_session(&response);
+            h.fail_native_updates.store(true, Ordering::SeqCst);
+            let tab_to_session = Arc::new(tokio::sync::Mutex::new(HashMap::new()));
+
+            dispatch_master_ext_request(
+                MasterExtRequest::SetSessionYolo {
+                    transaction_id: 51,
+                    session_id,
+                    enabled: false,
+                },
+                &h.conn,
+                &h.event_tx,
+                &tab_to_session,
+                Arc::clone(&h.client.state),
+            );
+
+            let event = tokio::time::timeout(std::time::Duration::from_secs(1), h.event_rx.recv())
+                .await
+                .expect("disable rejection must complete")
+                .expect("event channel must remain open");
+            let AppEvent::YoloModeChangeCompleted {
+                enabled,
+                restart_required,
+                result,
+                ..
+            } = event
+            else {
+                panic!("expected YoloModeChangeCompleted");
+            };
+            assert!(!enabled);
+            assert!(result.is_err());
+            assert!(
+                restart_required,
+                "a rejected disable has unknown provider state"
+            );
+        })
+        .await;
+}
+
+#[tokio::test]
+async fn rejected_config_yolo_disable_requests_restart() {
+    let local = tokio::task::LocalSet::new();
+    local
+        .run_until(async {
+            let mut h = connect_for_dispatch(MockBehavior::Reply);
+            h.client
+                .state
+                .native_yolo
+                .set_resolved_agent_id(Some(crate::agent_registry::CLAUDE_AGENT_ID));
+            let response: acp::schema::v1::NewSessionResponse =
+                serde_json::from_value(serde_json::json!({
+                    "sessionId": "rejected-config-disable-session",
+                    "configOptions": [{
+                        "id": "mode",
+                        "name": "Mode",
+                        "category": "mode",
+                        "type": "select",
+                        "currentValue": "bypassPermissions",
+                        "options": [
+                            {"value": "default", "name": "Default"},
+                            {"value": "plan", "name": "Plan"},
+                            {"value": "bypassPermissions", "name": "Bypass Permissions"}
+                        ]
+                    }]
+                }))
+                .unwrap();
+            let session_id = response.session_id.clone();
+            h.client
+                .state
+                .native_yolo
+                .record_from_new_session(&response);
+            h.fail_native_updates.store(true, Ordering::SeqCst);
+            let tab_to_session = Arc::new(tokio::sync::Mutex::new(HashMap::from([(
+                "tab-1".to_string(),
+                session_id.clone(),
+            )])));
+
+            dispatch_master_ext_request(
+                MasterExtRequest::SetSessionConfigOption {
+                    session_id,
+                    config_id: "mode".to_string(),
+                    value: "plan".to_string(),
+                },
+                &h.conn,
+                &h.event_tx,
+                &tab_to_session,
+                Arc::clone(&h.client.state),
+            );
+
+            let restart_required = tokio::time::timeout(std::time::Duration::from_secs(1), async {
+                loop {
+                    match h.event_rx.recv().await {
+                        Some(AppEvent::RuntimeYoloReconcileCompleted {
+                            restart_required,
+                            result,
+                            ..
+                        }) => {
+                            assert!(result.is_err());
+                            break restart_required;
+                        }
+                        Some(_) => continue,
+                        None => panic!("event channel closed before restart request"),
+                    }
+                }
+            })
+            .await
+            .expect("rejected native config disable must request restart");
+            assert!(restart_required);
+
+            match tokio::time::timeout(std::time::Duration::from_secs(1), h.event_rx.recv()).await {
+                Ok(Some(AppEvent::SessionConfigSetFailed {
+                    session_id,
+                    config_id,
+                    message,
+                    restart_required,
+                })) => {
+                    assert_eq!(session_id, "rejected-config-disable-session");
+                    assert_eq!(config_id, "mode");
+                    assert!(message.contains("mock native update failure"));
+                    assert!(restart_required);
+                }
+                _ => panic!("expected the paired SessionConfigSetFailed event"),
+            }
+        })
+        .await;
+}
+
+#[tokio::test]
+async fn rejected_reconcile_yolo_disable_requests_restart() {
+    let local = tokio::task::LocalSet::new();
+    local
+        .run_until(async {
+            let mut h = connect_for_dispatch(MockBehavior::Reply);
+            h.client
+                .state
+                .native_yolo
+                .set_resolved_agent_id(Some(crate::agent_registry::CLAUDE_AGENT_ID));
+            let response: acp::schema::v1::NewSessionResponse =
+                serde_json::from_value(serde_json::json!({
+                    "sessionId": "rejected-reconcile-disable-session",
+                    "configOptions": [{
+                        "id": "mode",
+                        "name": "Mode",
+                        "category": "mode",
+                        "type": "select",
+                        "currentValue": "bypassPermissions",
+                        "options": [
+                            {"value": "default", "name": "Default"},
+                            {"value": "bypassPermissions", "name": "Bypass Permissions"}
+                        ]
+                    }]
+                }))
+                .unwrap();
+            let session_id = response.session_id.clone();
+            h.client
+                .state
+                .native_yolo
+                .record_from_new_session(&response);
+            h.fail_native_updates.store(true, Ordering::SeqCst);
+            let tab_to_session = Arc::new(tokio::sync::Mutex::new(HashMap::new()));
+
+            dispatch_master_ext_request(
+                MasterExtRequest::ReconcileSessionYolo {
+                    reconcile_id: 61,
+                    sessions: vec![(session_id, false)],
+                    fail_closed: true,
+                },
+                &h.conn,
+                &h.event_tx,
+                &tab_to_session,
+                Arc::clone(&h.client.state),
+            );
+
+            let event = tokio::time::timeout(std::time::Duration::from_secs(1), h.event_rx.recv())
+                .await
+                .expect("reconcile rejection must complete")
+                .expect("event channel must remain open");
+            let AppEvent::RuntimeYoloReconcileCompleted {
+                reconcile_id,
+                fail_closed,
+                restart_required,
+                result,
+            } = event
+            else {
+                panic!("expected RuntimeYoloReconcileCompleted");
+            };
+            assert_eq!(reconcile_id, 61);
+            assert!(fail_closed);
+            assert!(result.is_err());
+            assert!(
+                restart_required,
+                "a rejected disable has unknown provider state"
+            );
         })
         .await;
 }
@@ -2734,7 +2967,7 @@ async fn fail_closed_yolo_reconcile_stops_after_first_error() {
                 panic!("expected RuntimeYoloReconcileCompleted");
             };
             assert!(fail_closed);
-            assert!(!restart_required);
+            assert!(restart_required);
             assert!(result
                 .unwrap_err()
                 .contains("expected ACP session Yolo capability"));

@@ -93,6 +93,7 @@ pub enum AppEvent {
         session_id: String,
         config_id: String,
         message: String,
+        restart_required: bool,
     },
     TabError {
         tab_id: String,

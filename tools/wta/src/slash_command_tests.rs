@@ -1080,6 +1080,7 @@ fn failed_model_config_selection_keeps_the_previous_model() {
         session_id: "session-1".into(),
         config_id: "agent-model".into(),
         message: "rejected".into(),
+        restart_required: false,
     });
 
     assert!(app.current_tab().config_pending_id.is_none());
@@ -1162,6 +1163,31 @@ fn failed_native_config_dispatch_clears_prompt_gate() {
 }
 
 #[test]
+fn restart_required_native_config_failure_keeps_prompt_gate_until_reset() {
+    let mut app = test_app();
+    app.current_tab_mut().session_id = Some("session-1".into());
+    app.current_tab_mut().config_pending_id = Some("mode".into());
+    app.current_tab_mut().native_yolo_config_pending = true;
+    app.session_to_tab
+        .insert("session-1".into(), DEFAULT_TAB_ID.into());
+
+    app.handle_event(AppEvent::SessionConfigSetFailed {
+        session_id: "session-1".into(),
+        config_id: "mode".into(),
+        message: "provider rejected disable".into(),
+        restart_required: true,
+    });
+
+    assert_eq!(app.current_tab().config_pending_id.as_deref(), Some("mode"));
+    assert!(app.current_tab().native_yolo_config_pending);
+    assert!(app.prompt_reconfiguration_pending_for_tab(DEFAULT_TAB_ID));
+
+    app.reset_agent_scoped_state();
+    assert!(app.current_tab().config_pending_id.is_none());
+    assert!(!app.current_tab().native_yolo_config_pending);
+}
+
+#[test]
 fn pending_yolo_change_blocks_config_picker_mutation() {
     let (mut app, mut master_rx) = test_app_with_master_rx();
     app.current_tab_mut().session_id = Some("session-1".into());
@@ -1215,6 +1241,7 @@ fn unbound_background_config_failure_does_not_pollute_current_tab() {
         session_id: "closed-session".into(),
         config_id: "mode".into(),
         message: "the session is no longer active".into(),
+        restart_required: false,
     });
 
     assert_eq!(app.current_tab().messages.len(), message_count);

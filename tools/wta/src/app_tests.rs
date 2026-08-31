@@ -3390,6 +3390,26 @@ fn unknown_yolo_enable_outcome_keeps_prompt_gate_until_agent_reset() {
 }
 
 #[test]
+fn untracked_unknown_yolo_outcome_gates_sessions_until_agent_reset() {
+    let mut app = test_app();
+    let session_id = "lazy-unknown-session";
+    app.current_tab_mut().session_id = Some(session_id.into());
+    app.session_to_tab
+        .insert(session_id.into(), DEFAULT_TAB_ID.into());
+
+    app.handle_event(AppEvent::RuntimeYoloReconcileCompleted {
+        reconcile_id: 0,
+        fail_closed: true,
+        restart_required: true,
+        result: Err("provider outcome unknown".into()),
+    });
+
+    assert!(app.yolo_reconcile_pending_for_tab(DEFAULT_TAB_ID));
+    app.reset_agent_scoped_state();
+    assert!(!app.yolo_reconcile_pending_for_tab(DEFAULT_TAB_ID));
+}
+
+#[test]
 fn pending_yolo_reconcile_only_gates_its_target_session() {
     let mut app = test_app();
     let (prompt_tx, mut prompt_rx) = tokio::sync::mpsc::unbounded_channel();

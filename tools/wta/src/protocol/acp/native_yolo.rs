@@ -50,6 +50,11 @@ impl NativeYoloApplyError {
     pub(super) fn restart_required(&self) -> bool {
         self.restart_required
     }
+
+    pub(super) fn requiring_restart(mut self) -> Self {
+        self.restart_required = true;
+        self
+    }
 }
 
 impl std::fmt::Display for NativeYoloApplyError {
@@ -64,6 +69,12 @@ pub(crate) struct NativeYoloOperation {
     enabled: bool,
     sequence: u64,
     generation: Option<u64>,
+}
+
+impl NativeYoloOperation {
+    pub(super) fn enabled(&self) -> bool {
+        self.enabled
+    }
 }
 
 pub(crate) struct NativeYoloState {

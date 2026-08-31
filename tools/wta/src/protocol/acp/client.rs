@@ -3828,7 +3828,10 @@ fn dispatch_master_ext_request_with_yolo_timeout(
                         (Ok(()), false)
                     }
                     Err(err) => {
-                        let restart_required = err.restart_required();
+                        // A rejected disable does not prove that the provider
+                        // left its privileged mode. Keep the prompt gate and
+                        // replace the shared agent stack fail-closed.
+                        let restart_required = !enabled || err.restart_required();
                         tracing::warn!(
                             target: "acp",
                             session_id = %session_id.0,
@@ -3874,6 +3877,13 @@ fn dispatch_master_ext_request_with_yolo_timeout(
                                 );
                             }
                             Err(error) => {
+                                let error = if enabled {
+                                    error
+                                } else {
+                                    // A rejected disable does not attest that
+                                    // the provider left its privileged mode.
+                                    error.requiring_restart()
+                                };
                                 tracing::warn!(
                                     target: "acp",
                                     session_id = %session_id.0,
@@ -3935,6 +3945,7 @@ fn dispatch_master_ext_request_with_yolo_timeout(
                         session_id: session_id.to_string(),
                         config_id,
                         message: "the session is no longer active".to_string(),
+                        restart_required: false,
                     });
                     return;
                 }
@@ -3950,6 +3961,7 @@ fn dispatch_master_ext_request_with_yolo_timeout(
                         })
                 });
                 if let Some(operation) = native_operation {
+                    let disabling_native_yolo = !operation.enabled();
                     match client_state
                         .native_yolo
                         .apply_native_config_reserved_with_policy_timeout(
@@ -3982,13 +3994,17 @@ fn dispatch_master_ext_request_with_yolo_timeout(
                                 config_id,
                                 message: "the config update was superseded by newer session state"
                                     .to_string(),
+                                restart_required: false,
                             });
                         }
                         Err(error) => {
-                            if error.restart_required() {
+                            // Any failed disable leaves the provider's actual
+                            // privilege state unknown, even for an ordinary ACP
+                            // rejection rather than a transport timeout.
+                            if disabling_native_yolo || error.restart_required() {
                                 let _ = event_tx.send(AppEvent::RuntimeYoloReconcileCompleted {
                                     reconcile_id: 0,
-                                    fail_closed: false,
+                                    fail_closed: disabling_native_yolo,
                                     restart_required: true,
                                     result: Err(error.to_string()),
                                 });
@@ -3997,6 +4013,7 @@ fn dispatch_master_ext_request_with_yolo_timeout(
                                 session_id: session_id.to_string(),
                                 config_id,
                                 message: error.to_string(),
+                                restart_required: disabling_native_yolo || error.restart_required(),
                             });
                         }
                     }
@@ -4068,6 +4085,7 @@ fn dispatch_master_ext_request_with_yolo_timeout(
                             session_id: session_id.to_string(),
                             config_id,
                             message: error.to_string(),
+                            restart_required: false,
                         });
                     }
                 }
@@ -4826,7 +4844,9 @@ async fn dispatch_prompt_body(
         )
         .await;
         if let Err(error) = yolo_result {
-            let restart_required = error.restart_required();
+            // As with slash/config/reconcile, an ordinary ACP rejection
+            // cannot attest that a requested disable left privileged mode.
+            let restart_required = !enabled || error.restart_required();
             let policy_blocked = client_task
                 .state
                 .yolo_state

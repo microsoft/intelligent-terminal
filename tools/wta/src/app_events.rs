@@ -839,6 +839,16 @@ impl App {
                 restart_required,
                 result,
             } => {
+                if reconcile_id == 0 && restart_required {
+                    // Lazy-session and native `/config` operations do not
+                    // allocate an App reconcile id. Their unknown outcome
+                    // still replaces the shared master, so gate every live
+                    // session until reset tears down the old agent state.
+                    let sessions = self.session_to_tab.keys().cloned().collect::<HashSet<_>>();
+                    if !sessions.is_empty() {
+                        self.pending_yolo_reconciles.insert(0, (sessions, true));
+                    }
+                }
                 if reconcile_id != 0 && !self.pending_yolo_reconciles.contains_key(&reconcile_id) {
                     tracing::debug!(
                         target: "yolo",
@@ -999,6 +1009,7 @@ impl App {
                 session_id,
                 config_id,
                 message,
+                restart_required,
             } => {
                 let option_name = self
                     .session_config_options
@@ -1011,7 +1022,8 @@ impl App {
                     return;
                 };
                 let tab = self.tab_mut(&target_tab);
-                if tab.config_pending_id.as_deref() == Some(config_id.as_str()) {
+                if !restart_required && tab.config_pending_id.as_deref() == Some(config_id.as_str())
+                {
                     tab.config_pending_id = None;
                     tab.native_yolo_config_pending = false;
                 }
