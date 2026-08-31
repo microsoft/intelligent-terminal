@@ -2367,6 +2367,7 @@ async fn policy_block_rejects_privileged_generic_config_before_acp() {
                         "currentValue": "default",
                         "options": [
                             {"value": "default", "name": "Default"},
+                            {"value": "plan", "name": "Plan"},
                             {"value": "bypassPermissions", "name": "Bypass Permissions"}
                         ]
                     }]
@@ -2507,6 +2508,85 @@ async fn queued_privileged_config_rechecks_policy_after_native_gate() {
                 vec![("mode".to_string(), "default".to_string())],
                 "the queued privileged enable must not reach ACP after policy blocks it"
             );
+        })
+        .await;
+}
+
+#[tokio::test]
+async fn native_disable_config_timeout_requests_restart() {
+    let local = tokio::task::LocalSet::new();
+    local
+        .run_until(async {
+            let mut h = connect_for_dispatch(MockBehavior::Reply);
+            h.client
+                .state
+                .native_yolo
+                .set_resolved_agent_id(Some(crate::agent_registry::CLAUDE_AGENT_ID));
+            let response: acp::schema::v1::NewSessionResponse =
+                serde_json::from_value(serde_json::json!({
+                    "sessionId": "hung-config-disable-session",
+                    "configOptions": [{
+                        "id": "mode",
+                        "name": "Mode",
+                        "category": "mode",
+                        "type": "select",
+                        "currentValue": "bypassPermissions",
+                        "options": [
+                            {"value": "default", "name": "Default"},
+                            {"value": "bypassPermissions", "name": "Bypass Permissions"}
+                        ]
+                    }]
+                }))
+                .unwrap();
+            let session_id = response.session_id.clone();
+            h.client
+                .state
+                .native_yolo
+                .record_from_new_session(&response);
+            h.hang_native_updates.store(true, Ordering::SeqCst);
+            let tab_to_session = Arc::new(tokio::sync::Mutex::new(HashMap::from([(
+                "tab-1".to_string(),
+                session_id.clone(),
+            )])));
+
+            dispatch_master_ext_request_with_yolo_timeout(
+                MasterExtRequest::SetSessionConfigOption {
+                    session_id: session_id.clone(),
+                    config_id: "mode".to_string(),
+                    value: "plan".to_string(),
+                },
+                &h.conn,
+                &h.event_tx,
+                &tab_to_session,
+                Arc::clone(&h.client.state),
+                std::time::Duration::from_millis(20),
+            );
+
+            tokio::time::timeout(
+                std::time::Duration::from_secs(1),
+                h.native_update_started.notified(),
+            )
+            .await
+            .expect("the provider-native disable must start");
+            let event =
+                tokio::time::timeout(std::time::Duration::from_millis(250), h.event_rx.recv())
+                    .await
+                    .expect("native config disable timeout must report an unknown outcome")
+                    .expect("event channel must remain open");
+            let AppEvent::RuntimeYoloReconcileCompleted {
+                reconcile_id,
+                fail_closed,
+                restart_required,
+                result,
+            } = event
+            else {
+                panic!("expected RuntimeYoloReconcileCompleted");
+            };
+            assert_eq!(reconcile_id, 0);
+            assert!(!fail_closed);
+            assert!(restart_required);
+            assert!(result.unwrap_err().contains("setting config option 'mode'"));
+            h.native_update_release.notify_one();
         })
         .await;
 }
@@ -3085,6 +3165,59 @@ async fn invalid_optional_cost_preserves_context_without_logging_values() {
     let logs = String::from_utf8(captured.lock().unwrap().clone()).unwrap();
     assert!(!logs.contains("987654321"));
     assert!(!logs.contains("123456789"));
+}
+
+#[tokio::test]
+async fn session_notification_marks_master_attested_native_yolo_config() {
+    let (client, mut rx) = bare_client();
+    client
+        .state
+        .native_yolo
+        .set_resolved_agent_id(Some(crate::agent_registry::CLAUDE_AGENT_ID));
+    let response: acp::schema::v1::NewSessionResponse = serde_json::from_value(serde_json::json!({
+        "sessionId": "native-config-session",
+        "configOptions": [{
+            "id": "mode",
+            "name": "Mode",
+            "category": "mode",
+            "type": "select",
+            "currentValue": "default",
+            "options": [
+                {"value": "default", "name": "Default"},
+                {"value": "bypassPermissions", "name": "Bypass Permissions"}
+            ]
+        }]
+    }))
+    .unwrap();
+    client.state.native_yolo.record_from_new_session(&response);
+    let update: acp::schema::v1::SessionUpdate = serde_json::from_value(serde_json::json!({
+        "sessionUpdate": "config_option_update",
+        "configOptions": [{
+            "id": "mode",
+            "name": "Mode",
+            "category": "mode",
+            "type": "select",
+            "currentValue": "default",
+            "options": [
+                {"value": "default", "name": "Default"},
+                {"value": "bypassPermissions", "name": "Bypass Permissions"}
+            ]
+        }]
+    }))
+    .unwrap();
+
+    client
+        .session_notification(notif("native-config-session", update))
+        .await
+        .unwrap();
+
+    match rx.try_recv() {
+        Ok(AppEvent::SessionConfigUpdated { options, .. }) => {
+            assert_eq!(options.len(), 1);
+            assert!(options[0].native_yolo);
+        }
+        _ => panic!("expected SessionConfigUpdated"),
+    }
 }
 
 #[tokio::test]

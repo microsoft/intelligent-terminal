@@ -1,7 +1,7 @@
 use super::{
     available_or_missing, config_action, config_channel, finish_supported_action, mode_action,
     mode_channel, observe_mode, ConfigSpec, DiscoveryInput, ModeSpec, NativeYoloAction,
-    NativeYoloChannel, NativeYoloProvider, ProviderSessionState,
+    NativeYoloProvider, ProviderSessionState,
 };
 
 const CONFIG: ConfigSpec = ConfigSpec {
@@ -45,11 +45,11 @@ impl NativeYoloProvider for CodexYoloProvider {
         &self,
         config_options: &[agent_client_protocol::schema::v1::SessionConfigOption],
         previous: &ProviderSessionState,
-    ) -> Option<NativeYoloChannel> {
+    ) -> super::ChannelDiscovery {
         config_channel(Some(config_options), CONFIG, Some(previous))
     }
 
     fn observe_current_mode(&self, state: &mut ProviderSessionState, current_mode_id: &str) {
-        observe_mode(state, current_mode_id);
+        observe_mode(state, current_mode_id, MODE);
     }
 }

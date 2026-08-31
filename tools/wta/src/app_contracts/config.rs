@@ -13,6 +13,7 @@ pub struct AcpSessionConfigOption {
     pub category: Option<String>,
     pub current_value: String,
     pub values: Vec<AcpSessionConfigValue>,
+    pub native_yolo: bool,
 }
 
 impl AcpSessionConfigOption {

@@ -611,6 +611,10 @@ namespace winrt::TerminalApp::implementation
             uint64_t generation);
         static bool _AgentSettingsChanged(const AgentSettingsSnapshot& a, const AgentSettingsSnapshot& b);
         AgentRuntimeConfigSnapshot _CaptureAgentRuntimeConfig() const;
+        static Json::Value _BuildAgentReadyRuntimeConfigPayload(
+            std::string_view tabId,
+            std::string_view windowId,
+            const AgentRuntimeConfigSnapshot& config);
         // Diffs the hot-updatable runtime config against the last snapshot
         // and, on change, emits one `agent_config_changed` event carrying
         // only the changed fields. No agent-pane teardown.

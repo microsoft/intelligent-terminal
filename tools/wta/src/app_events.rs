@@ -706,6 +706,11 @@ impl App {
                     .insert(session_id.clone(), tab_id.clone());
                 self.pending_yolo_session_tabs.remove(&tab_id);
                 let tab = self.tab_mut(&tab_id);
+                if tab.session_id.as_deref() != Some(session_id.as_str()) {
+                    tab.config_picker = ConfigPickerState::Closed;
+                    tab.config_pending_id = None;
+                    tab.native_yolo_config_pending = false;
+                }
                 tab.session_id = Some(session_id.clone());
                 // Close the session/load replay window only when this
                 // attach is for the session we asked to load. An
@@ -966,6 +971,7 @@ impl App {
                     let tab = self.tab_mut(&target_tab);
                     if tab.config_pending_id.as_deref() == Some(config_id.as_str()) {
                         tab.config_pending_id = None;
+                        tab.native_yolo_config_pending = false;
                     }
                     let message = if model_compat {
                         tab.model_override = Some(value.clone());
@@ -1007,6 +1013,7 @@ impl App {
                 let tab = self.tab_mut(&target_tab);
                 if tab.config_pending_id.as_deref() == Some(config_id.as_str()) {
                     tab.config_pending_id = None;
+                    tab.native_yolo_config_pending = false;
                 }
                 tab.messages.push(ChatMessage::error(
                     t!(

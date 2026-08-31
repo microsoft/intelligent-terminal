@@ -2372,22 +2372,41 @@ impl App {
             let session_id = self.current_tab().session_id.clone();
             let config_id = option.id.clone();
             let value_id = value.id.clone();
+            let native_yolo = option.native_yolo;
             if let Some(session_id) = session_id {
-                let tab = self.current_tab_mut();
-                if tab.config_pending_id.is_some() {
-                    return;
+                {
+                    let tab = self.current_tab_mut();
+                    if tab.config_pending_id.is_some() {
+                        return;
+                    }
+                    tab.config_pending_id = Some(config_id.clone());
+                    tab.native_yolo_config_pending = native_yolo;
+                    tab.config_picker = parent_selected
+                        .map(|selected| ConfigPickerState::Options { selected })
+                        .unwrap_or(ConfigPickerState::Closed);
                 }
-                tab.config_pending_id = Some(config_id.clone());
-                tab.config_picker = parent_selected
-                    .map(|selected| ConfigPickerState::Options { selected })
-                    .unwrap_or(ConfigPickerState::Closed);
-                let _ = self.master_request_tx.send(
-                    crate::protocol::acp::client::MasterExtRequest::SetSessionConfigOption {
-                        session_id: agent_client_protocol::schema::v1::SessionId::new(session_id),
-                        config_id,
-                        value: value_id,
-                    },
-                );
+                if self
+                    .master_request_tx
+                    .send(
+                        crate::protocol::acp::client::MasterExtRequest::SetSessionConfigOption {
+                            session_id: agent_client_protocol::schema::v1::SessionId::new(
+                                session_id,
+                            ),
+                            config_id: config_id.clone(),
+                            value: value_id,
+                        },
+                    )
+                    .is_err()
+                {
+                    let tab = self.current_tab_mut();
+                    if tab.config_pending_id.as_deref() == Some(config_id.as_str()) {
+                        tab.config_pending_id = None;
+                        tab.native_yolo_config_pending = false;
+                    }
+                    tab.messages
+                        .push(ChatMessage::Error(t!("connection.lost").into_owned()));
+                    tab.scroll_to_bottom();
+                }
             }
             return;
         }
@@ -3530,6 +3549,7 @@ impl App {
             tab.model_picker_selected = 0;
             tab.config_picker = ConfigPickerState::Closed;
             tab.config_pending_id = None;
+            tab.native_yolo_config_pending = false;
             tab.agent_picker_open = false;
             tab.agent_picker_selected = 0;
             tab.pending_terminal_action_proposal = None;
@@ -5331,6 +5351,9 @@ impl App {
         tab.usage = None;
         tab.usage_staleness = crate::usage::UsageStaleness::default();
         tab.clear_completed_turns();
+        tab.config_picker = ConfigPickerState::Closed;
+        tab.config_pending_id = None;
+        tab.native_yolo_config_pending = false;
         let old_sid = tab.session_id.take();
         tab.scroll_to_bottom();
         // Drop the stale session_id from the yolo override set: `/yolo`
@@ -5373,7 +5396,7 @@ impl App {
             .tab_id
             .clone()
             .unwrap_or_else(|| DEFAULT_TAB_ID.to_string());
-        if self.yolo_reconcile_pending_for_tab(&target_tab_id) {
+        if self.prompt_reconfiguration_pending_for_tab(&target_tab_id) {
             let tab = self.tab_mut(&target_tab_id);
             tab.messages
                 .push(ChatMessage::warning(t!("system.agent_busy").into_owned()));
@@ -5688,6 +5711,14 @@ impl App {
                         .values()
                         .any(|(sessions, _)| sessions.contains(session_id))
             })
+    }
+
+    fn prompt_reconfiguration_pending_for_tab(&self, tab_id: &str) -> bool {
+        self.yolo_reconcile_pending_for_tab(tab_id)
+            || self
+                .tab_sessions
+                .get(tab_id)
+                .is_some_and(|tab| tab.native_yolo_config_pending)
     }
 
     fn complete_yolo_change(
@@ -6166,6 +6197,9 @@ impl App {
         // `clear_chat_history` deliberately leaves alone.
         if let Some(tab) = self.tab_sessions.get_mut(tab_id) {
             removed_session_id = tab.session_id.take();
+            tab.config_picker = ConfigPickerState::Closed;
+            tab.config_pending_id = None;
+            tab.native_yolo_config_pending = false;
             tab.clear_chat_history();
             tab.usage = None;
             tab.usage_staleness = crate::usage::UsageStaleness::default();

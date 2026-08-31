@@ -313,11 +313,39 @@ fn reset_tab_session_drops_yolo_override_and_pending_change() {
         .set_session_override(session_id.to_string(), true);
     app.pending_yolo_changes
         .insert(session_id.to_string(), (1, false, tab_id.to_string()));
+    app.current_tab_mut().config_pending_id = Some("mode".into());
+    app.current_tab_mut().native_yolo_config_pending = true;
 
     app.reset_tab_session_for(tab_id);
 
     assert!(!app.yolo_state.lock().unwrap().effective(session_id));
     assert!(!app.pending_yolo_changes.contains_key(session_id));
+    assert!(app.current_tab().config_pending_id.is_none());
+    assert!(!app.current_tab().native_yolo_config_pending);
+}
+
+#[test]
+fn replacement_session_clears_old_native_config_prompt_gate() {
+    let mut app = test_app();
+    app.current_tab_mut().session_id = Some("old-session".into());
+    app.current_tab_mut().config_pending_id = Some("mode".into());
+    app.current_tab_mut().native_yolo_config_pending = true;
+    app.session_to_tab
+        .insert("old-session".into(), DEFAULT_TAB_ID.into());
+
+    app.handle_event(AppEvent::SessionAttached {
+        tab_id: DEFAULT_TAB_ID.into(),
+        session_id: "replacement-session".into(),
+        available_models: Vec::new(),
+        current_model_id: None,
+    });
+
+    assert_eq!(
+        app.current_tab().session_id.as_deref(),
+        Some("replacement-session")
+    );
+    assert!(app.current_tab().config_pending_id.is_none());
+    assert!(!app.current_tab().native_yolo_config_pending);
 }
 
 fn agent_paste_params(window_id: &str, tab_id: &str) -> serde_json::Value {
@@ -3422,6 +3450,78 @@ fn pending_yolo_reconcile_blocks_manual_and_automatic_autofix_prompts() {
 
     assert!(automatic_rx.try_recv().is_err());
     assert!(automatic.tab_mut("target-tab").turn.is_idle());
+}
+
+#[test]
+fn pending_config_update_blocks_normal_manual_and_automatic_prompts() {
+    let mut normal = test_app();
+    let (normal_tx, mut normal_rx) = tokio::sync::mpsc::unbounded_channel();
+    normal.prompt_tx = normal_tx;
+    normal.state = ConnectionState::Connected;
+    normal.current_tab_mut().session_id = Some("normal-config-session".into());
+    normal.current_tab_mut().config_pending_id = Some("mode".into());
+    normal.current_tab_mut().native_yolo_config_pending = true;
+    normal.current_tab_mut().input = "wait for native mode".into();
+
+    normal.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+
+    assert!(normal_rx.try_recv().is_err());
+    assert_eq!(normal.current_tab().input, "wait for native mode");
+    assert!(normal.current_tab().turn.is_idle());
+
+    let mut manual = test_app();
+    let (manual_tx, mut manual_rx) = tokio::sync::mpsc::unbounded_channel();
+    manual.prompt_tx = manual_tx;
+    manual.state = ConnectionState::Connected;
+    manual.current_tab_mut().session_id = Some("manual-config-session".into());
+    manual.current_tab_mut().config_pending_id = Some("mode".into());
+    manual.current_tab_mut().native_yolo_config_pending = true;
+
+    manual.cmd_fix(false, String::new());
+
+    assert!(manual_rx.try_recv().is_err());
+    assert!(manual.current_tab().turn.is_idle());
+
+    let mut automatic = test_app();
+    let (automatic_tx, mut automatic_rx) = tokio::sync::mpsc::unbounded_channel();
+    automatic.prompt_tx = automatic_tx;
+    automatic.state = ConnectionState::Connected;
+    automatic.autofix_enabled = true;
+    let tab = automatic.tab_mut("target-tab");
+    tab.session_id = Some("automatic-config-session".into());
+    tab.config_pending_id = Some("mode".into());
+    tab.native_yolo_config_pending = true;
+    let notification = WtNotification {
+        severity: WtEventSeverity::Actionable,
+        pane_id: "failed-pane".into(),
+        tab_id: Some("target-tab".into()),
+        summary: "Command failed".into(),
+        acknowledged: false,
+        age_ticks: 0,
+    };
+
+    automatic.maybe_trigger_autofix(&notification);
+
+    assert!(automatic_rx.try_recv().is_err());
+    assert!(automatic.tab_mut("target-tab").turn.is_idle());
+}
+
+#[test]
+fn pending_non_yolo_config_does_not_block_normal_prompts() {
+    let mut app = test_app();
+    let (prompt_tx, mut prompt_rx) = tokio::sync::mpsc::unbounded_channel();
+    app.prompt_tx = prompt_tx;
+    app.state = ConnectionState::Connected;
+    app.current_tab_mut().session_id = Some("model-config-session".into());
+    app.current_tab_mut().config_pending_id = Some("model".into());
+    app.current_tab_mut().input = "continue while model config is pending".into();
+
+    app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+
+    assert_eq!(
+        prompt_rx.try_recv().expect("ordinary prompt").text,
+        "continue while model config is pending"
+    );
 }
 
 #[test]
@@ -8886,6 +8986,7 @@ fn render_config_picker_lists_options_and_current_values() {
                 name: "HighXYZ".into(),
                 description: Some("Think longer".into()),
             }],
+            native_yolo: false,
         }],
     });
     app.current_tab_mut().config_picker = ConfigPickerState::Options { selected: 0 };

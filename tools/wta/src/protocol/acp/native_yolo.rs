@@ -13,7 +13,9 @@ use std::sync::{Arc, Mutex, RwLock};
 use std::time::Duration;
 
 use agent_client_protocol as acp;
-use providers::{DiscoveryInput, NativeYoloAction, NativeYoloChannel, ProviderSessionState};
+use providers::{
+    ChannelDiscovery, DiscoveryInput, NativeYoloAction, NativeYoloChannel, ProviderSessionState,
+};
 
 pub(super) const NATIVE_YOLO_RPC_TIMEOUT: Duration = Duration::from_secs(10);
 
@@ -32,6 +34,13 @@ impl NativeYoloApplyError {
     }
 
     fn timed_out(message: impl Into<String>) -> Self {
+        Self {
+            message: message.into(),
+            restart_required: true,
+        }
+    }
+
+    fn unrestorable(message: impl Into<String>) -> Self {
         Self {
             message: message.into(),
             restart_required: true,
@@ -145,13 +154,21 @@ impl NativeYoloState {
             return;
         };
         let next = match adapter.refresh_config(config_options, &previous) {
-            Some(channel) => ProviderSessionState::Available(channel),
-            None => match previous {
+            ChannelDiscovery::Available(channel) => ProviderSessionState::Available(channel),
+            ChannelDiscovery::UnrestorablePrivileged => match previous {
+                // A separately advertised mode remains a valid restore path
+                // even when the config-only update is already privileged and
+                // omits its own restore value.
+                mode @ ProviderSessionState::Available(NativeYoloChannel::Mode { .. }) => mode,
+                _ => ProviderSessionState::UnrestorablePrivileged,
+            },
+            ChannelDiscovery::Missing => match previous {
                 // A config-only update does not revoke a separately advertised mode.
                 mode @ ProviderSessionState::Available(NativeYoloChannel::Mode { .. }) => mode,
                 // Once a config capability was available, its disappearance makes the
                 // provider's current privileged state uncertain. Disable must fail closed.
-                ProviderSessionState::Available(NativeYoloChannel::ConfigOption { .. }) => {
+                ProviderSessionState::Available(NativeYoloChannel::ConfigOption { .. })
+                | ProviderSessionState::UnrestorablePrivileged => {
                     ProviderSessionState::MissingCapability { loaded: true }
                 }
                 state => state,
@@ -160,25 +177,42 @@ impl NativeYoloState {
         sessions.insert(session_id.clone(), next);
     }
 
-    pub(crate) fn is_privileged_config_selection(
+    pub(crate) fn native_config_selection(
         &self,
         session_id: &acp::schema::v1::SessionId,
         config_id: &str,
         value: &str,
+    ) -> Option<bool> {
+        let sessions = self.sessions.read().unwrap();
+        let Some(ProviderSessionState::Available(NativeYoloChannel::ConfigOption {
+            config_id: native_config_id,
+            enable_value,
+            ..
+        })) = sessions.get(session_id)
+        else {
+            return None;
+        };
+        if native_config_id != config_id {
+            return None;
+        }
+        Some(enable_value == value)
+    }
+
+    pub(crate) fn is_native_config_option(
+        &self,
+        session_id: &acp::schema::v1::SessionId,
+        config_id: &str,
     ) -> bool {
         matches!(
             self.sessions.read().unwrap().get(session_id),
-            Some(ProviderSessionState::Available(
-                NativeYoloChannel::ConfigOption {
-                    config_id: native_config_id,
-                    enable_value,
-                    ..
-                }
-            )) if native_config_id == config_id && enable_value == value
+            Some(ProviderSessionState::Available(NativeYoloChannel::ConfigOption {
+                config_id: native_config_id,
+                ..
+            })) if native_config_id == config_id
         )
     }
 
-    pub(super) async fn apply_privileged_config_reserved_with_policy_timeout(
+    pub(super) async fn apply_native_config_reserved_with_policy_timeout(
         &self,
         conn: &crate::protocol::acp::conn::ClientLink,
         operation: NativeYoloOperation,
@@ -205,21 +239,23 @@ impl NativeYoloState {
         if !self.operation_is_current(&operation) {
             return Ok(None);
         }
-        if yolo_state.lock().unwrap().policy_blocked() {
+        if operation.enabled && yolo_state.lock().unwrap().policy_blocked() {
             return Err(NativeYoloApplyError::known(
                 "the AllowYoloMode policy blocks this privileged provider mode".to_string(),
             ));
         }
-        if !matches!(
-            self.action_for(&operation.session_id, true)
-                .map_err(NativeYoloApplyError::known)?,
-            NativeYoloAction::SetConfigOption {
-                config_id: ref native_config_id,
-                value: ref native_value,
-            } if native_config_id == config_id && native_value == value
-        ) {
+        let valid_transition = matches!(
+            self.sessions.read().unwrap().get(&operation.session_id),
+            Some(ProviderSessionState::Available(NativeYoloChannel::ConfigOption {
+                config_id: native_config_id,
+                enable_value,
+                ..
+            })) if native_config_id == config_id
+                && (operation.enabled == (enable_value == value))
+        );
+        if !valid_transition {
             return Err(NativeYoloApplyError::known(
-                "the requested config value is not the provider's native Yolo capability"
+                "the requested config value is not the provider's native Yolo transition"
                     .to_string(),
             ));
         }
@@ -365,6 +401,15 @@ impl NativeYoloState {
                 return Err(NativeYoloApplyError::known(
                     "the AllowYoloMode policy blocks provider-native Yolo".to_string(),
                 ));
+            }
+            if matches!(
+                self.sessions.read().unwrap().get(&operation.session_id),
+                Some(ProviderSessionState::UnrestorablePrivileged)
+            ) {
+                return Err(NativeYoloApplyError::unrestorable(format!(
+                    "{} is already in its ACP session Yolo mode without an advertised restore value",
+                    self.provider_id()
+                )));
             }
             let action = self
                 .action_for(&operation.session_id, operation.enabled)

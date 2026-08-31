@@ -902,7 +902,7 @@ impl App {
                         tab.scroll_to_bottom();
                         return;
                     }
-                    if self.yolo_reconcile_pending_for_tab(self.active_tab_key()) {
+                    if self.prompt_reconfiguration_pending_for_tab(self.active_tab_key()) {
                         let tab = self.current_tab_mut();
                         tab.messages
                             .push(ChatMessage::warning(t!("system.agent_busy").into_owned()));

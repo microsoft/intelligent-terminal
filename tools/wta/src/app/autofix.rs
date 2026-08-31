@@ -153,7 +153,7 @@ impl App {
             return;
         }
 
-        if self.yolo_reconcile_pending_for_tab(&target_tab_id) {
+        if self.prompt_reconfiguration_pending_for_tab(&target_tab_id) {
             tracing::info!(
                 target: "autofix",
                 tab_id = %target_tab_id,

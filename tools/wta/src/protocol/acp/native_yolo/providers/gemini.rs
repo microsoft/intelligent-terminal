@@ -33,6 +33,6 @@ impl NativeYoloProvider for GeminiYoloProvider {
     }
 
     fn observe_current_mode(&self, state: &mut ProviderSessionState, current_mode_id: &str) {
-        observe_mode(state, current_mode_id);
+        observe_mode(state, current_mode_id, MODE);
     }
 }

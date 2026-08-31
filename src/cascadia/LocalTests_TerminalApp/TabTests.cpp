@@ -91,6 +91,7 @@ namespace TerminalAppLocalTests
         TEST_METHOD(TransferredAgentContentFirstPaneDefersTabRekey);
         TEST_METHOD(TransferredAgentContentSplitPaneRetiresDestinationAgentPane);
         TEST_METHOD(TransferredAgentStatusReplaysMissedTabRekey);
+        TEST_METHOD(AgentReadyRuntimeConfigIncludesCurrentYoloState);
 
         TEST_METHOD(NextMRUTab);
         TEST_METHOD(VerifyCommandPaletteTabSwitcherOrder);
@@ -1302,6 +1303,25 @@ namespace TerminalAppLocalTests
 
             page->ProtocolVtSequenceReceived(token);
         });
+    }
+
+    void TabTests::AgentReadyRuntimeConfigIncludesCurrentYoloState()
+    {
+        winrt::TerminalApp::implementation::TerminalPage::AgentRuntimeConfigSnapshot config;
+        config.yoloEnabled = false;
+        config.yoloCommandBlocked = true;
+
+        const auto payload = winrt::TerminalApp::implementation::TerminalPage::_BuildAgentReadyRuntimeConfigPayload(
+            "tab-a",
+            "42",
+            config);
+
+        VERIFY_ARE_EQUAL("tab-a", payload["tab_id"].asString());
+        VERIFY_ARE_EQUAL("42", payload["window_id"].asString());
+        VERIFY_IS_TRUE(payload["yolo_enabled"].isBool());
+        VERIFY_IS_FALSE(payload["yolo_enabled"].asBool());
+        VERIFY_IS_TRUE(payload["yolo_command_blocked"].isBool());
+        VERIFY_IS_TRUE(payload["yolo_command_blocked"].asBool());
     }
 
     void TabTests::NextMRUTab()

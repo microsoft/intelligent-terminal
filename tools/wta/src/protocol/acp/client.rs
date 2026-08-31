@@ -269,12 +269,16 @@ pub enum MasterExtRequest {
 
 fn publish_session_config_options(
     event_tx: &mpsc::UnboundedSender<AppEvent>,
+    native_yolo: &super::native_yolo::NativeYoloState,
     session_id: &acp::schema::v1::SessionId,
     options: Option<&[acp::schema::v1::SessionConfigOption]>,
 ) {
-    let options = options
+    let mut options = options
         .map(crate::protocol::acp::session_config::select_options)
         .unwrap_or_default();
+    for option in &mut options {
+        option.native_yolo = native_yolo.is_native_config_option(session_id, &option.id);
+    }
     let _ = event_tx.send(AppEvent::SessionConfigUpdated {
         session_id: session_id.to_string(),
         options,
@@ -1675,12 +1679,12 @@ impl WtaClient {
                         &update.config_options,
                     )
                     .unwrap_or_default();
-                let _ = self.state.event_tx.send(AppEvent::SessionConfigUpdated {
-                    session_id: sid.clone(),
-                    options: crate::protocol::acp::session_config::select_options(
-                        &update.config_options,
-                    ),
-                });
+                publish_session_config_options(
+                    &self.state.event_tx,
+                    &self.state.native_yolo,
+                    &session_id,
+                    Some(&update.config_options),
+                );
                 let _ = self.state.event_tx.send(AppEvent::ModelConfigUpdated {
                     session_id: sid,
                     available_models,
@@ -2508,7 +2512,12 @@ async fn handle_load_failure(
                 available_models,
                 current_model_id,
             });
-            publish_session_config_options(&event_tx, &new_sid, resp.config_options.as_deref());
+            publish_session_config_options(
+                &event_tx,
+                &client_state.native_yolo,
+                &new_sid,
+                resp.config_options.as_deref(),
+            );
         }
         Err(e) => {
             tracing::error!(
@@ -3298,6 +3307,11 @@ pub async fn run_acp_client_over_pipe(
         image_supported,
         session_capabilities_ready: has_bootstrap,
     });
+    for option in &mut session_config {
+        option.native_yolo = state
+            .native_yolo
+            .is_native_config_option(&session_id, &option.id);
+    }
     let _ = event_tx.send(AppEvent::SessionConfigUpdated {
         session_id: session_id.to_string(),
         options: session_config,
@@ -3552,14 +3566,15 @@ fn dispatch_master_ext_request_with_yolo_timeout(
             session_id,
             config_id,
             value,
-        } if client_state
+        } => client_state
             .native_yolo
-            .is_privileged_config_selection(session_id, config_id, value) =>
-        {
-            vec![client_state
-                .native_yolo
-                .reserve_operation(session_id.clone(), true)]
-        }
+            .native_config_selection(session_id, config_id, value)
+            .map(|enabled| {
+                vec![client_state
+                    .native_yolo
+                    .reserve_operation(session_id.clone(), enabled)]
+            })
+            .unwrap_or_default(),
         _ => Vec::new(),
     };
     let conn = conn.clone();
@@ -3746,6 +3761,7 @@ fn dispatch_master_ext_request_with_yolo_timeout(
                                     .unwrap_or_default();
                                 publish_session_config_options(
                                     &event_tx,
+                                    &client_state.native_yolo,
                                     &sid,
                                     Some(&config_options),
                                 );
@@ -3923,21 +3939,20 @@ fn dispatch_master_ext_request_with_yolo_timeout(
                     return;
                 }
 
-                let privileged_operation =
-                    reserved_yolo_operations.into_iter().next().or_else(|| {
-                        client_state
-                            .native_yolo
-                            .is_privileged_config_selection(&session_id, &config_id, &value)
-                            .then(|| {
-                                client_state
-                                    .native_yolo
-                                    .reserve_operation(session_id.clone(), true)
-                            })
-                    });
-                if let Some(operation) = privileged_operation {
+                let native_operation = reserved_yolo_operations.into_iter().next().or_else(|| {
+                    client_state
+                        .native_yolo
+                        .native_config_selection(&session_id, &config_id, &value)
+                        .map(|enabled| {
+                            client_state
+                                .native_yolo
+                                .reserve_operation(session_id.clone(), enabled)
+                        })
+                });
+                if let Some(operation) = native_operation {
                     match client_state
                         .native_yolo
-                        .apply_privileged_config_reserved_with_policy_timeout(
+                        .apply_native_config_reserved_with_policy_timeout(
                             &conn,
                             operation,
                             &config_id,
@@ -3950,6 +3965,7 @@ fn dispatch_master_ext_request_with_yolo_timeout(
                         Ok(Some(config_options)) => {
                             publish_session_config_options(
                                 &event_tx,
+                                &client_state.native_yolo,
                                 &session_id,
                                 Some(&config_options),
                             );
@@ -4022,6 +4038,7 @@ fn dispatch_master_ext_request_with_yolo_timeout(
                                 .unwrap_or_default();
                             publish_session_config_options(
                                 &event_tx,
+                                &client_state.native_yolo,
                                 &session_id,
                                 Some(&config_options),
                             );
@@ -4200,6 +4217,7 @@ fn dispatch_load_session(
                 });
                 publish_session_config_options(
                     &event_tx,
+                    &client_state.native_yolo,
                     &session_id,
                     resp.config_options.as_deref(),
                 );
@@ -4435,7 +4453,12 @@ fn dispatch_new_session(
             available_models,
             current_model_id,
         });
-        publish_session_config_options(&event_tx, &new_sid, new_session.config_options.as_deref());
+        publish_session_config_options(
+            &event_tx,
+            &client_state.native_yolo,
+            &new_sid,
+            new_session.config_options.as_deref(),
+        );
     });
 }
 
@@ -4784,6 +4807,7 @@ async fn dispatch_prompt_body(
             });
             publish_session_config_options(
                 &event_tx_task,
+                &client_task.state.native_yolo,
                 &new_sid,
                 new_session.config_options.as_deref(),
             );

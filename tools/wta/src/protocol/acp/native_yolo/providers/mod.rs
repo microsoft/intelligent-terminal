@@ -31,8 +31,28 @@ pub(super) enum NativeYoloChannel {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(super) enum ProviderSessionState {
     Available(NativeYoloChannel),
+    UnrestorablePrivileged,
     MissingCapability { loaded: bool },
     Unsupported,
+}
+
+pub(super) enum ChannelDiscovery {
+    Available(NativeYoloChannel),
+    UnrestorablePrivileged,
+    Missing,
+}
+
+impl ChannelDiscovery {
+    pub(super) fn or_else(self, discover: impl FnOnce() -> Self) -> Self {
+        match self {
+            available @ Self::Available(_) => available,
+            unrestorable @ Self::UnrestorablePrivileged => match discover() {
+                available @ Self::Available(_) => available,
+                _ => unrestorable,
+            },
+            Self::Missing => discover(),
+        }
+    }
 }
 
 #[derive(Clone, Copy)]
@@ -67,8 +87,8 @@ pub(super) trait NativeYoloProvider: Sync {
         &self,
         _config_options: &[acp::schema::v1::SessionConfigOption],
         _previous: &ProviderSessionState,
-    ) -> Option<NativeYoloChannel> {
-        None
+    ) -> ChannelDiscovery {
+        ChannelDiscovery::Missing
     }
 
     fn observe_current_mode(&self, _state: &mut ProviderSessionState, _current_mode_id: &str) {}
@@ -90,54 +110,77 @@ pub(super) fn lookup(family_id: &str) -> Option<&'static dyn NativeYoloProvider>
 }
 
 pub(super) fn available_or_missing(
-    channel: Option<NativeYoloChannel>,
+    discovery: ChannelDiscovery,
     loaded: bool,
 ) -> ProviderSessionState {
-    channel
-        .map(ProviderSessionState::Available)
-        .unwrap_or(ProviderSessionState::MissingCapability { loaded })
+    match discovery {
+        ChannelDiscovery::Available(channel) => ProviderSessionState::Available(channel),
+        ChannelDiscovery::UnrestorablePrivileged => ProviderSessionState::UnrestorablePrivileged,
+        ChannelDiscovery::Missing => ProviderSessionState::MissingCapability { loaded },
+    }
 }
 
 pub(super) fn config_channel(
     options: Option<&[acp::schema::v1::SessionConfigOption]>,
     spec: ConfigSpec,
     previous: Option<&ProviderSessionState>,
-) -> Option<NativeYoloChannel> {
-    let option = options?.iter().find(|option| {
-        option.id.0.as_ref() == spec.id
-            && category_name(option.category.as_ref()).as_deref() == Some(spec.category)
-    })?;
-    let acp::schema::v1::SessionConfigKind::Select(select) = &option.kind else {
-        return None;
+) -> ChannelDiscovery {
+    let Some(option) = options.and_then(|options| {
+        options.iter().find(|option| {
+            option.id.0.as_ref() == spec.id
+                && category_name(option.category.as_ref()).as_deref() == Some(spec.category)
+        })
+    }) else {
+        return ChannelDiscovery::Missing;
     };
-    let values = select_values(select)?;
+    let acp::schema::v1::SessionConfigKind::Select(select) = &option.kind else {
+        return ChannelDiscovery::Missing;
+    };
     let current_value = select.current_value.0.as_ref();
+    let Some(values) = select_values(select) else {
+        return if current_value == spec.enable_value {
+            ChannelDiscovery::UnrestorablePrivileged
+        } else {
+            ChannelDiscovery::Missing
+        };
+    };
     if !values.contains(&spec.enable_value) || !values.contains(&current_value) {
-        return None;
+        return if current_value == spec.enable_value {
+            ChannelDiscovery::UnrestorablePrivileged
+        } else {
+            ChannelDiscovery::Missing
+        };
     }
-    let restore_value = if current_value != spec.enable_value {
-        current_value.to_string()
-    } else {
+    let restore_value = if current_value == spec.enable_value {
         previous_restore_config(previous, spec.id, spec.enable_value)
             .filter(|value| values.contains(&value.as_str()))
-            .unwrap_or_else(|| spec.default_restore_value.to_string())
+            .or_else(|| {
+                values
+                    .contains(&spec.default_restore_value)
+                    .then(|| spec.default_restore_value.to_string())
+            })
+    } else {
+        Some(current_value.to_string())
     };
-    values
-        .contains(&restore_value.as_str())
-        .then(|| NativeYoloChannel::ConfigOption {
+    match restore_value {
+        Some(restore_value) => ChannelDiscovery::Available(NativeYoloChannel::ConfigOption {
             config_id: spec.id.to_string(),
             enable_value: spec.enable_value.to_string(),
             restore_value,
             current_value: current_value.to_string(),
-        })
+        }),
+        None => ChannelDiscovery::UnrestorablePrivileged,
+    }
 }
 
 pub(super) fn mode_channel(
     state: Option<&acp::schema::v1::SessionModeState>,
     spec: ModeSpec,
     previous: Option<&ProviderSessionState>,
-) -> Option<NativeYoloChannel> {
-    let state = state?;
+) -> ChannelDiscovery {
+    let Some(state) = state else {
+        return ChannelDiscovery::Missing;
+    };
     let available = state
         .available_modes
         .iter()
@@ -145,22 +188,31 @@ pub(super) fn mode_channel(
         .collect::<Vec<_>>();
     let current_mode_id = state.current_mode_id.0.as_ref();
     if !available.contains(&spec.enable_mode_id) || !available.contains(&current_mode_id) {
-        return None;
+        return if current_mode_id == spec.enable_mode_id {
+            ChannelDiscovery::UnrestorablePrivileged
+        } else {
+            ChannelDiscovery::Missing
+        };
     }
-    let restore_mode_id = if current_mode_id != spec.enable_mode_id {
-        current_mode_id.to_string()
-    } else {
+    let restore_mode_id = if current_mode_id == spec.enable_mode_id {
         previous_restore_mode(previous, spec.enable_mode_id)
             .filter(|value| available.contains(&value.as_str()))
-            .unwrap_or_else(|| spec.default_restore_mode_id.to_string())
+            .or_else(|| {
+                available
+                    .contains(&spec.default_restore_mode_id)
+                    .then(|| spec.default_restore_mode_id.to_string())
+            })
+    } else {
+        Some(current_mode_id.to_string())
     };
-    available
-        .contains(&restore_mode_id.as_str())
-        .then(|| NativeYoloChannel::Mode {
+    match restore_mode_id {
+        Some(restore_mode_id) => ChannelDiscovery::Available(NativeYoloChannel::Mode {
             enable_mode_id: spec.enable_mode_id.to_string(),
             restore_mode_id,
             current_mode_id: current_mode_id.to_string(),
-        })
+        }),
+        None => ChannelDiscovery::UnrestorablePrivileged,
+    }
 }
 
 pub(super) fn config_action(
@@ -210,6 +262,11 @@ pub(super) fn finish_supported_action(
     if let Some(action) = action {
         return Ok(action);
     }
+    if matches!(state, ProviderSessionState::UnrestorablePrivileged) {
+        return Err(format!(
+            "{provider} is already in its ACP session Yolo mode without an advertised restore value"
+        ));
+    }
     if !enabled
         && matches!(
             state,
@@ -234,7 +291,11 @@ pub(super) fn unsupported_action(
     }
 }
 
-pub(super) fn observe_mode(state: &mut ProviderSessionState, current_mode_id: &str) {
+pub(super) fn observe_mode(
+    state: &mut ProviderSessionState,
+    current_mode_id: &str,
+    spec: ModeSpec,
+) {
     match state {
         ProviderSessionState::Available(NativeYoloChannel::Mode {
             enable_mode_id,
@@ -257,7 +318,16 @@ pub(super) fn observe_mode(state: &mut ProviderSessionState, current_mode_id: &s
             }
             *current_value = current_mode_id.to_string();
         }
-        ProviderSessionState::MissingCapability { .. } | ProviderSessionState::Unsupported => {}
+        ProviderSessionState::UnrestorablePrivileged if current_mode_id != spec.enable_mode_id => {
+            *state = ProviderSessionState::Available(NativeYoloChannel::Mode {
+                enable_mode_id: spec.enable_mode_id.to_string(),
+                restore_mode_id: current_mode_id.to_string(),
+                current_mode_id: current_mode_id.to_string(),
+            });
+        }
+        ProviderSessionState::UnrestorablePrivileged
+        | ProviderSessionState::MissingCapability { .. }
+        | ProviderSessionState::Unsupported => {}
     }
 }
 

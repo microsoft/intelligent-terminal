@@ -199,6 +199,115 @@ fn discovers_copilot_allow_all_config_and_restore_value() {
 }
 
 #[test]
+fn fresh_privileged_config_without_restore_fails_disable_closed() {
+    for (name, options) in [
+        ("missing-restore", r#"[{"value":"on","name":"On"}]"#),
+        (
+            "malformed-missing-enable",
+            r#"[{"value":"off","name":"Off"}]"#,
+        ),
+    ] {
+        let response = format!(
+            r#"{{
+                "sessionId": "unrestorable-copilot-{name}",
+                "configOptions": [{{
+                    "id": "allow_all",
+                    "name": "Allow All",
+                    "category": "permissions",
+                    "type": "select",
+                    "currentValue": "on",
+                    "options": {options}
+                }}]
+            }}"#
+        );
+
+        assert!(
+            discover(
+                crate::agent_registry::COPILOT_AGENT_ID,
+                &response,
+                false
+            )
+            .is_err(),
+            "an already-privileged fresh session without a valid selector and restore value must not disable as a no-op: {name}"
+        );
+        assert!(
+            discover(crate::agent_registry::COPILOT_AGENT_ID, &response, true).is_err(),
+            "an unrestorable privileged session must not be accepted as a reversible enabled state: {name}"
+        );
+    }
+}
+
+#[test]
+fn fresh_privileged_mode_without_restore_fails_disable_closed() {
+    for (name, available_modes) in [
+        ("missing-restore", r#"[{"id":"yolo","name":"Yolo"}]"#),
+        (
+            "malformed-missing-enable",
+            r#"[{"id":"default","name":"Default"}]"#,
+        ),
+    ] {
+        let response = format!(
+            r#"{{
+                "sessionId": "unrestorable-gemini-{name}",
+                "modes": {{
+                    "currentModeId": "yolo",
+                    "availableModes": {available_modes}
+                }}
+            }}"#
+        );
+
+        assert!(
+            discover(crate::agent_registry::GEMINI_AGENT_ID, &response, false).is_err(),
+            "an already-privileged fresh session without a valid mode selector and restore value must not disable as a no-op: {name}"
+        );
+        assert!(
+            discover(crate::agent_registry::GEMINI_AGENT_ID, &response, true).is_err(),
+            "an unrestorable privileged session must not be accepted as a reversible enabled state: {name}"
+        );
+    }
+}
+
+#[test]
+fn unrestorable_privileged_apply_requires_agent_restart() {
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    tokio::task::LocalSet::new().block_on(&runtime, async {
+        let state = NativeYoloState::new();
+        state.set_resolved_agent_id(Some(crate::agent_registry::COPILOT_AGENT_ID));
+        let response: acp::schema::v1::NewSessionResponse =
+            serde_json::from_value(serde_json::json!({
+                "sessionId": "unrestorable-apply-session",
+                "configOptions": [{
+                    "id": "allow_all",
+                    "name": "Allow All",
+                    "category": "permissions",
+                    "type": "select",
+                    "currentValue": "on",
+                    "options": [{"value": "on", "name": "On"}]
+                }]
+            }))
+            .unwrap();
+        let session_id = response.session_id.clone();
+        state.record_from_new_session(&response);
+        let conn = spawn_apply_mock(Arc::new(Mutex::new(Vec::new())), None);
+
+        let error = state
+            .apply_reserved_with_timeout(
+                &conn,
+                state.reserve_operation(session_id, true),
+                std::time::Duration::from_millis(50),
+            )
+            .await
+            .unwrap_err();
+
+        assert!(error.restart_required());
+        assert!(error.to_string().contains("without an advertised restore"));
+    });
+}
+
+#[test]
 fn discovers_claude_bypass_permissions_config_and_restore_value() {
     let response = r#"{
         "sessionId": "claude-session",
@@ -587,6 +696,34 @@ fn config_update_without_native_yolo_preserves_existing_mode_channel() {
             Ok(NativeYoloAction::SetMode {
                 mode_id: restore_mode.to_string(),
             })
+        );
+
+        let config_update: acp::schema::v1::NewSessionResponse =
+            serde_json::from_value(serde_json::json!({
+                "sessionId": "unused",
+                "configOptions": [{
+                    "id": "mode",
+                    "name": "Mode",
+                    "category": "mode",
+                    "type": "select",
+                    "currentValue": enable_mode,
+                    "options": [
+                        {"value": enable_mode, "name": "Enable"}
+                    ]
+                }]
+            }))
+            .unwrap();
+        state.record_from_config_update(
+            &session_id,
+            config_update.config_options.as_deref().unwrap(),
+        );
+
+        assert_eq!(
+            state.action_for(&session_id, false),
+            Ok(NativeYoloAction::SetMode {
+                mode_id: restore_mode.to_string(),
+            }),
+            "an unrestorable config-only update must not revoke an independent mode restore path"
         );
     }
 }

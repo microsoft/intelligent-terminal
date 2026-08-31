@@ -932,6 +932,7 @@ fn config_option(
                 description: Some("Write code".into()),
             },
         ],
+        native_yolo: false,
     }
 }
 
@@ -1133,6 +1134,31 @@ fn config_picker_select_sends_session_scoped_option_request() {
     assert!(app.current_tab().config_pending_id.is_none());
     assert_eq!(last_notice(&app).0, NoticeKind::Success);
     assert!(last_notice(&app).1.contains("Mode: Code"));
+}
+
+#[test]
+fn failed_native_config_dispatch_clears_prompt_gate() {
+    let (mut app, master_rx) = super::tests::test_app_with_master_rx();
+    drop(master_rx);
+    app.current_tab_mut().session_id = Some("session-1".into());
+    let mut option = config_option("mode", "Mode", "mode", "ask");
+    option.native_yolo = true;
+    app.handle_event(AppEvent::SessionConfigUpdated {
+        session_id: "session-1".into(),
+        options: vec![option],
+    });
+    run_slash(&mut app, "config");
+    app.config_picker_enter();
+    app.config_picker_down();
+
+    app.config_picker_enter();
+
+    assert!(app.current_tab().config_pending_id.is_none());
+    assert!(!app.current_tab().native_yolo_config_pending);
+    assert!(matches!(
+        app.current_tab().messages.last(),
+        Some(ChatMessage::Error(message)) if message.contains("/restart")
+    ));
 }
 
 #[test]

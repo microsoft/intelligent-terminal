@@ -1,6 +1,6 @@
 use super::{
     available_or_missing, config_action, config_channel, finish_supported_action, ConfigSpec,
-    DiscoveryInput, NativeYoloAction, NativeYoloChannel, NativeYoloProvider, ProviderSessionState,
+    DiscoveryInput, NativeYoloAction, NativeYoloProvider, ProviderSessionState,
 };
 
 const CONFIG: ConfigSpec = ConfigSpec {
@@ -38,7 +38,7 @@ impl NativeYoloProvider for CopilotYoloProvider {
         &self,
         config_options: &[agent_client_protocol::schema::v1::SessionConfigOption],
         previous: &ProviderSessionState,
-    ) -> Option<NativeYoloChannel> {
+    ) -> super::ChannelDiscovery {
         config_channel(Some(config_options), CONFIG, Some(previous))
     }
 }

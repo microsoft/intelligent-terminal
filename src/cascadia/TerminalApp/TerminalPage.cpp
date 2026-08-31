@@ -2075,6 +2075,19 @@ namespace winrt::TerminalApp::implementation
         };
     }
 
+    Json::Value TerminalPage::_BuildAgentReadyRuntimeConfigPayload(
+        const std::string_view tabId,
+        const std::string_view windowId,
+        const AgentRuntimeConfigSnapshot& config)
+    {
+        Json::Value params{ Json::objectValue };
+        params["tab_id"] = std::string{ tabId };
+        params["window_id"] = std::string{ windowId };
+        params["yolo_enabled"] = config.yoloEnabled;
+        params["yolo_command_blocked"] = config.yoloCommandBlocked;
+        return params;
+    }
+
     // Hot-propagate runtime agent config to the running wta-helper(s) over the
     // protocol event channel. A single consolidated `agent_config_changed`
     // event carries only the fields that changed:
@@ -6160,35 +6173,47 @@ namespace winrt::TerminalApp::implementation
         // Full model catalogs are intentionally not placed on the helper
         // command line. Once this specific helper reports Connected without a
         // host catalog, deliver the credential-free catalogs over the existing
-        // protocol event channel. The tab id scopes the broadcast to the
-        // requesting helper; its follow-up status marks the catalog ready and
-        // prevents a response loop.
+        // protocol event channel. Every Connected status resends the current
+        // Yolo default/policy in case this helper missed a one-shot hot update
+        // between argv capture and event subscription. Applying unchanged
+        // values is idempotent and emits no follow-up status. The tab id scopes
+        // the broadcast to the requesting helper; its follow-up status marks
+        // the catalog ready and prevents a catalog response loop.
         const bool hostCatalogReady =
             params.isMember("host_catalog_ready") &&
             params["host_catalog_ready"].isBool() &&
             params["host_catalog_ready"].asBool();
-        if (usesHostCatalog &&
-            state == L"connected" &&
-            !hostCatalogReady &&
-            !agentId.empty() &&
+        const bool helperNeedsRuntimeConfig = state == L"connected";
+        const bool helperNeedsHostCatalog =
+            usesHostCatalog && !hostCatalogReady && !agentId.empty();
+        if (state == L"connected" &&
             !effectiveStatusTabId.empty() &&
-            statusTab)
+            statusTab &&
+            (helperNeedsRuntimeConfig || helperNeedsHostCatalog))
         {
             const auto& globals = _settings.GlobalSettings();
-            const auto customModels =
-                ::Microsoft::Terminal::CustomModels::CaptureCatalog(
-                    globals.CustomModelProviders());
-            Json::Value config{ Json::objectValue };
+            auto config = helperNeedsRuntimeConfig ?
+                              _BuildAgentReadyRuntimeConfigPayload(
+                                  winrt::to_string(effectiveStatusTabId),
+                                  std::to_string(_WindowProperties.WindowId()),
+                                  _CaptureAgentRuntimeConfig()) :
+                              Json::Value{ Json::objectValue };
             config["tab_id"] = winrt::to_string(effectiveStatusTabId);
-            config["target_agent_id"] = winrt::to_string(agentId);
-            config["cloud_models"] = _CloudModelOptionsToJson(agentId);
-            config["custom_models"] =
-                ::Microsoft::Terminal::CustomModels::CatalogToJson(customModels);
-            config["custom_model_selection"] =
-                _FindSelectedCustomModel(globals) ?
-                    winrt::to_string(globals.CustomModelSelection()) :
-                    std::string{};
-            _agentPaneLog("OnAgentStatusChanged: delivering model catalogs over protocol");
+            if (helperNeedsHostCatalog)
+            {
+                const auto customModels =
+                    ::Microsoft::Terminal::CustomModels::CaptureCatalog(
+                        globals.CustomModelProviders());
+                config["target_agent_id"] = winrt::to_string(agentId);
+                config["cloud_models"] = _CloudModelOptionsToJson(agentId);
+                config["custom_models"] =
+                    ::Microsoft::Terminal::CustomModels::CatalogToJson(customModels);
+                config["custom_model_selection"] =
+                    _FindSelectedCustomModel(globals) ?
+                        winrt::to_string(globals.CustomModelSelection()) :
+                        std::string{};
+            }
+            _agentPaneLog("OnAgentStatusChanged: delivering helper runtime config over protocol");
             _RaiseProtocolEvent("agent_config_changed", config);
         }
 
