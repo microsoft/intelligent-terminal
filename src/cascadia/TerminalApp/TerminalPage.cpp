@@ -8220,6 +8220,7 @@ namespace winrt::TerminalApp::implementation
                     _DetachPaneFromWindow(pane);
                     _MoveContent(std::move(startupActions.args), windowId, tabIdx);
                     focusedTab->DetachPane();
+                    _RefreshShellIntegrationProfileHealthWarnings();
 
                     if (auto autoPeer = Automation::Peers::FrameworkElementAutomationPeer::FromElement(*this))
                     {
@@ -8263,6 +8264,7 @@ namespace winrt::TerminalApp::implementation
             auto pane = focusedTab->DetachPane();
             targetTab->AttachPane(pane);
             _SetFocusedTab(*targetTab);
+            _RefreshShellIntegrationProfileHealthWarnings();
 
             if (auto autoPeer = Automation::Peers::FrameworkElementAutomationPeer::FromElement(*this))
             {
@@ -8277,6 +8279,7 @@ namespace winrt::TerminalApp::implementation
         {
             auto pane = focusedTab->DetachPane();
             _CreateNewTabFromPane(pane);
+            _RefreshShellIntegrationProfileHealthWarnings();
             if (auto autoPeer = Automation::Peers::FrameworkElementAutomationPeer::FromElement(*this))
             {
                 autoPeer.RaiseNotificationEvent(Automation::Peers::AutomationNotificationKind::ActionCompleted,
@@ -9467,6 +9470,10 @@ namespace winrt::TerminalApp::implementation
             // serialize the actual profile's GUID along with the content guid.
             const auto& profile = _settings.GetProfileForArgs(newTerminalArgs);
             const auto control = _AttachControlToContent(newTerminalArgs.ContentId());
+            const auto environment = profile ? profile.EnvironmentVariables() : nullptr;
+            _BindShellIntegrationProfileHealth(
+                control.Connection(),
+                _HasHomeEnvironmentOverride(environment) || _HasInheritedHomeEnvironment());
             auto paneContent{ winrt::make<TerminalPaneContent>(profile, _terminalSettingsCache, control) };
             auto resultPane = std::make_shared<Pane>(paneContent);
 
@@ -9595,12 +9602,12 @@ namespace winrt::TerminalApp::implementation
         else
         {
             connection = _CreateConnectionFromSettings(profile, *controlSettings.DefaultSettings(), hasSessionId);
-            const auto settingsImpl = controlSettings.DefaultSettings();
-            const auto environment = settingsImpl->EnvironmentVariables();
-            _BindShellIntegrationProfileHealth(
-                connection,
-                _HasHomeEnvironmentOverride(environment) || _HasInheritedHomeEnvironment());
         }
+        const auto settingsImpl = controlSettings.DefaultSettings();
+        const auto environment = settingsImpl->EnvironmentVariables();
+        _BindShellIntegrationProfileHealth(
+            connection,
+            _HasHomeEnvironmentOverride(environment) || _HasInheritedHomeEnvironment());
 
         TerminalConnection::ITerminalConnection debugConnection{ nullptr };
         if (_settings.GlobalSettings().DebugFeaturesEnabled())

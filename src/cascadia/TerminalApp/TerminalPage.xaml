@@ -81,6 +81,8 @@
                                                Click="_ShellIntegrationProfileHealthOpenHandler" />
                                 <MenuFlyoutItem x:Uid="ShellIntegrationProfileHealthRecheckButton"
                                                Click="_ShellIntegrationProfileHealthRecheckHandler" />
+                                <MenuFlyoutItem x:Uid="ShellIntegrationProfileHealthDismissButton"
+                                               Click="_ShellIntegrationProfileHealthCloseHandler" />
                             </MenuFlyout>
                         </mux:DropDownButton.Flyout>
                     </mux:DropDownButton>

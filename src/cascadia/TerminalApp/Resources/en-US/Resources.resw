@@ -870,6 +870,12 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
   <data name="ShellIntegrationProfileHealthRecheckButton.Text" xml:space="preserve">
     <value>Recheck</value>
   </data>
+  <data name="ShellIntegrationProfileHealthDismissButton.Text" xml:space="preserve">
+    <value>Dismiss</value>
+  </data>
+  <data name="ShellIntegrationProfileHealthTabWarningIcon.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Shell integration needs attention</value>
+  </data>
   <data name="TabStrip_ControlType" xml:space="preserve">
     <value>tab strip</value>
   </data>

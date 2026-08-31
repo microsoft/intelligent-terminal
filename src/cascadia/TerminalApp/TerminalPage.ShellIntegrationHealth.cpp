@@ -112,72 +112,80 @@ namespace winrt::TerminalApp::implementation
             return;
         }
         auto handled = std::make_shared<std::atomic<bool>>(false);
+        const auto processConnected = [weakThis = get_weak(), commandline, hasCustomHome, handled](const ConptyConnection& launched) {
+            if (!launched ||
+                launched.State() != ConnectionState::Connected ||
+                handled->exchange(true, std::memory_order_acq_rel))
+            {
+                return;
+            }
+
+            const auto image = _RootProcessImage(launched);
+            if (!image)
+            {
+                return;
+            }
+
+            const auto classification = Invocation::Classify(commandline, std::wstring_view{ *image });
+            const bool resolvableWslIdentity =
+                classification.shellKind == Health::ShellKind::WslBash &&
+                classification.reason == Invocation::Reason::WslIdentityRequired;
+            if ((!classification.eligible && !resolvableWslIdentity) || !classification.shellKind)
+            {
+                return;
+            }
+
+            auto page = weakThis.get();
+            if (!page)
+            {
+                return;
+            }
+
+            const auto sourceSessionId = launched.SessionId();
+            Health::TargetKey target;
+            target.shell = *classification.shellKind;
+            switch (*classification.shellKind)
+            {
+            case Health::ShellKind::PowerShell:
+                target.syntax = Health::ProfileSyntax::PowerShell;
+                target.profilePath = Powershell::DiscoverProfilePath(ShellIntegration::Target::Pwsh);
+                target.hostPath = *image;
+                break;
+            case Health::ShellKind::WindowsPowerShell:
+                target.syntax = Health::ProfileSyntax::PowerShell;
+                target.profilePath = Powershell::DiscoverProfilePath(ShellIntegration::Target::WindowsPowerShell);
+                target.hostPath = *image;
+                break;
+            case Health::ShellKind::GitBash:
+                if (hasCustomHome || !_IsGitForWindowsBash(*image))
+                {
+                    return;
+                }
+                target.syntax = Health::ProfileSyntax::Bash;
+                target.profilePath = Bash::DiscoverProfilePath();
+                break;
+            case Health::ShellKind::WslBash:
+                page->_ResolveWslShellIntegrationProfileHealth(commandline, *image, sourceSessionId);
+                return;
+            }
+
+            if (!target.profilePath.empty())
+            {
+                page->_RequestShellIntegrationProfileHealth(std::move(target), false, sourceSessionId);
+            }
+        };
+
         conpty.StateChanged(
-            [weakThis = get_weak(), commandline, hasCustomHome, handled](const auto& sender, const auto&) {
-                const auto launched = sender.template try_as<ConptyConnection>();
-                if (!launched ||
-                    launched.State() != ConnectionState::Connected ||
-                    handled->exchange(true, std::memory_order_acq_rel))
-                {
-                    return;
-                }
-
-                const auto image = _RootProcessImage(launched);
-                if (!image)
-                {
-                    return;
-                }
-
-                const auto classification = Invocation::Classify(commandline, std::wstring_view{ *image });
-                const bool resolvableWslIdentity =
-                    classification.shellKind == Health::ShellKind::WslBash &&
-                    classification.reason == Invocation::Reason::WslIdentityRequired;
-                if ((!classification.eligible && !resolvableWslIdentity) || !classification.shellKind)
-                {
-                    return;
-                }
-
-                auto page = weakThis.get();
-                if (!page)
-                {
-                    return;
-                }
-
-                Health::TargetKey target;
-                target.shell = *classification.shellKind;
-                switch (*classification.shellKind)
-                {
-                case Health::ShellKind::PowerShell:
-                    target.syntax = Health::ProfileSyntax::PowerShell;
-                    target.profilePath = Powershell::DiscoverProfilePath(ShellIntegration::Target::Pwsh);
-                    target.hostPath = *image;
-                    break;
-                case Health::ShellKind::WindowsPowerShell:
-                    target.syntax = Health::ProfileSyntax::PowerShell;
-                    target.profilePath = Powershell::DiscoverProfilePath(ShellIntegration::Target::WindowsPowerShell);
-                    target.hostPath = *image;
-                    break;
-                case Health::ShellKind::GitBash:
-                    if (hasCustomHome || !_IsGitForWindowsBash(*image))
-                    {
-                        return;
-                    }
-                    target.syntax = Health::ProfileSyntax::Bash;
-                    target.profilePath = Bash::DiscoverProfilePath();
-                    break;
-                case Health::ShellKind::WslBash:
-                    page->_ResolveWslShellIntegrationProfileHealth(commandline, *image);
-                    return;
-                }
-
-                if (!target.profilePath.empty())
-                {
-                    page->_RequestShellIntegrationProfileHealth(std::move(target), false);
-                }
+            [processConnected](const auto& sender, const auto&) {
+                processConnected(sender.template try_as<ConptyConnection>());
             });
+        processConnected(conpty);
     }
 
-    void TerminalPage::_RequestShellIntegrationProfileHealth(Health::TargetKey target, const bool force)
+    void TerminalPage::_RequestShellIntegrationProfileHealth(
+        Health::TargetKey target,
+        const bool force,
+        const std::optional<winrt::guid> sourceSessionId)
     {
         const auto generation = _shellIntegrationProfileHealthGeneration;
         ShellIntegrationProfileHealthService::Instance().Request(
@@ -190,14 +198,14 @@ namespace winrt::TerminalApp::implementation
                 }
                 return Bash::ProfileAnalyzer::Analyze(profile);
             },
-            [weakThis = get_weak(), generation](const Health::Result& result) {
+            [weakThis = get_weak(), generation, sourceSessionId](const Health::Result& result) {
                 if (const auto page = weakThis.get())
                 {
                     try
                     {
                         page->Dispatcher().RunAsync(
                             CoreDispatcherPriority::Normal,
-                            [weakThis, generation, result]() {
+                            [weakThis, generation, result, sourceSessionId]() {
                                 if (const auto page = weakThis.get())
                                 {
                                     const auto& service = ShellIntegrationProfileHealthService::Instance();
@@ -205,7 +213,7 @@ namespace winrt::TerminalApp::implementation
                                         service.Enabled() &&
                                         service.Generation() == generation)
                                     {
-                                        page->_ApplyShellIntegrationProfileHealthResult(result);
+                                        page->_ApplyShellIntegrationProfileHealthResult(result, sourceSessionId);
                                     }
                                 }
                             });
@@ -221,7 +229,8 @@ namespace winrt::TerminalApp::implementation
 
     safe_void_coroutine TerminalPage::_ResolveWslShellIntegrationProfileHealth(
         std::wstring commandline,
-        std::wstring actualRootImagePath)
+        std::wstring actualRootImagePath,
+        const winrt::guid sourceSessionId)
     {
         const auto weakThis = get_weak();
         const auto dispatcher = Dispatcher();
@@ -237,77 +246,115 @@ namespace winrt::TerminalApp::implementation
         co_await winrt::resume_foreground(dispatcher);
         if (const auto page = weakThis.get())
         {
-            page->_RequestShellIntegrationProfileHealth(std::move(*resolution.target), false);
+            page->_RequestShellIntegrationProfileHealth(std::move(*resolution.target), false, sourceSessionId);
         }
     }
 
-    void TerminalPage::_ApplyShellIntegrationProfileHealthResult(const Health::Result& result)
+    void TerminalPage::_ApplyShellIntegrationProfileHealthResult(
+        const Health::Result& result,
+        const std::optional<winrt::guid> sourceSessionId)
     {
-        if (!result.analysis.ShouldNotify())
+        if (sourceSessionId && *sourceSessionId != winrt::guid{})
         {
-            std::erase_if(
-                _pendingShellIntegrationProfileHealthWarnings,
-                [&](const auto& pending) { return pending.target == result.target; });
-            if (_shellIntegrationProfileHealthWarning &&
-                _shellIntegrationProfileHealthWarning->target == result.target)
+            const auto observation = std::find_if(
+                _shellIntegrationProfileHealthObservations.begin(),
+                _shellIntegrationProfileHealthObservations.end(),
+                [&](const auto& value) { return value.sessionId == *sourceSessionId; });
+            if (observation == _shellIntegrationProfileHealthObservations.end())
             {
-                _shellIntegrationProfileHealthWarning.reset();
-                _ShowNextShellIntegrationProfileHealthWarning();
-            }
-            return;
-        }
-
-        const auto dismissed = std::find_if(
-            _dismissedShellIntegrationProfileHealthWarnings.begin(),
-            _dismissedShellIntegrationProfileHealthWarnings.end(),
-            [&](const auto& value) {
-                return value.first == result.target && value.second == result.fingerprint;
-            });
-        if (dismissed != _dismissedShellIntegrationProfileHealthWarnings.end())
-        {
-            return;
-        }
-
-        if (_shellIntegrationProfileHealthWarning)
-        {
-            if (_shellIntegrationProfileHealthWarning->target == result.target)
-            {
-                _shellIntegrationProfileHealthWarning = result;
-                return;
-            }
-
-            const auto pending = std::find_if(
-                _pendingShellIntegrationProfileHealthWarnings.begin(),
-                _pendingShellIntegrationProfileHealthWarnings.end(),
-                [&](const auto& value) { return value.target == result.target; });
-            if (pending == _pendingShellIntegrationProfileHealthWarnings.end())
-            {
-                _pendingShellIntegrationProfileHealthWarnings.emplace_back(result);
+                _shellIntegrationProfileHealthObservations.emplace_back(
+                    _ShellIntegrationProfileHealthObservation{ *sourceSessionId, result.target });
             }
             else
             {
-                *pending = result;
+                observation->target = result.target;
             }
-            return;
         }
 
-        _shellIntegrationProfileHealthWarning = result;
-        if (const auto infoBar = FindName(L"ShellIntegrationProfileHealthInfoBar").try_as<MUX::Controls::InfoBar>())
+        const auto warning = std::find_if(
+            _shellIntegrationProfileHealthWarnings.begin(),
+            _shellIntegrationProfileHealthWarnings.end(),
+            [&](const auto& value) { return value.target == result.target; });
+        if (result.analysis.ShouldNotify())
         {
-            infoBar.IsOpen(true);
+            if (warning == _shellIntegrationProfileHealthWarnings.end())
+            {
+                _shellIntegrationProfileHealthWarnings.emplace_back(result);
+            }
+            else
+            {
+                *warning = result;
+            }
         }
+        else if (warning != _shellIntegrationProfileHealthWarnings.end())
+        {
+            _shellIntegrationProfileHealthWarnings.erase(warning);
+        }
+
+        _RefreshShellIntegrationProfileHealthWarnings();
     }
 
-    void TerminalPage::_ShowNextShellIntegrationProfileHealthWarning()
+    void TerminalPage::_RefreshShellIntegrationProfileHealthWarnings()
     {
-        if (!_pendingShellIntegrationProfileHealthWarnings.empty())
+        const auto isDismissed = [&](const Health::Result& result) {
+            return std::find_if(
+                       _dismissedShellIntegrationProfileHealthWarnings.begin(),
+                       _dismissedShellIntegrationProfileHealthWarnings.end(),
+                       [&](const auto& value) {
+                           return value.first == result.target && value.second == result.fingerprint;
+                       }) != _dismissedShellIntegrationProfileHealthWarnings.end();
+        };
+        const auto warningForTab = [&](const winrt::com_ptr<Tab>& tab) -> std::optional<Health::Result> {
+            std::optional<Health::Result> result;
+            if (!tab || !tab->GetRootPane())
+            {
+                return result;
+            }
+
+            tab->GetRootPane()->WalkTree([&](const auto& pane) {
+                if (result)
+                {
+                    return;
+                }
+
+                const auto sessionId = pane->GetSessionId();
+                if (sessionId == winrt::guid{})
+                {
+                    return;
+                }
+
+                const auto observation = std::find_if(
+                    _shellIntegrationProfileHealthObservations.begin(),
+                    _shellIntegrationProfileHealthObservations.end(),
+                    [&](const auto& value) { return value.sessionId == sessionId; });
+                if (observation == _shellIntegrationProfileHealthObservations.end())
+                {
+                    return;
+                }
+
+                const auto warning = std::find_if(
+                    _shellIntegrationProfileHealthWarnings.begin(),
+                    _shellIntegrationProfileHealthWarnings.end(),
+                    [&](const auto& value) {
+                        return value.target == observation->target && !isDismissed(value);
+                    });
+                if (warning != _shellIntegrationProfileHealthWarnings.end())
+                {
+                    result = *warning;
+                }
+            });
+            return result;
+        };
+
+        for (const auto& tab : _tabs)
         {
-            _shellIntegrationProfileHealthWarning =
-                std::move(_pendingShellIntegrationProfileHealthWarnings.front());
-            _pendingShellIntegrationProfileHealthWarnings.erase(
-                _pendingShellIntegrationProfileHealthWarnings.begin());
+            if (const auto tabImpl = _GetTabImpl(tab))
+            {
+                tabImpl->TabStatus().IsShellIntegrationWarning(warningForTab(tabImpl).has_value());
+            }
         }
 
+        _shellIntegrationProfileHealthWarning = warningForTab(_GetFocusedTabImpl());
         if (const auto infoBar = FindName(L"ShellIntegrationProfileHealthInfoBar").try_as<MUX::Controls::InfoBar>())
         {
             infoBar.IsOpen(_shellIntegrationProfileHealthWarning.has_value());
@@ -317,7 +364,15 @@ namespace winrt::TerminalApp::implementation
     void TerminalPage::_ClearShellIntegrationProfileHealthWarning()
     {
         _shellIntegrationProfileHealthWarning.reset();
-        _pendingShellIntegrationProfileHealthWarnings.clear();
+        _shellIntegrationProfileHealthWarnings.clear();
+        _shellIntegrationProfileHealthObservations.clear();
+        for (const auto& tab : _tabs)
+        {
+            if (const auto tabImpl = _GetTabImpl(tab))
+            {
+                tabImpl->TabStatus().IsShellIntegrationWarning(false);
+            }
+        }
         if (const auto infoBar = FindName(L"ShellIntegrationProfileHealthInfoBar").try_as<MUX::Controls::InfoBar>())
         {
             infoBar.IsOpen(false);
@@ -332,8 +387,7 @@ namespace winrt::TerminalApp::implementation
                 _shellIntegrationProfileHealthWarning->target,
                 _shellIntegrationProfileHealthWarning->fingerprint);
         }
-        _shellIntegrationProfileHealthWarning.reset();
-        _ShowNextShellIntegrationProfileHealthWarning();
+        _RefreshShellIntegrationProfileHealthWarnings();
     }
 
     void TerminalPage::_ShellIntegrationProfileHealthOpenHandler(const IInspectable&, const IInspectable&)

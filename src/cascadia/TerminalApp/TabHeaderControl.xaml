@@ -56,6 +56,14 @@
                   FontSize="12"
                   Glyph="&#xEC05;"
                   Visibility="{x:Bind TabStatus.IsInputBroadcastActive, Mode=OneWay}" />
+        <FontIcon x:Name="HeaderShellIntegrationWarningIcon"
+                  x:Uid="ShellIntegrationProfileHealthTabWarningIcon"
+                  Margin="0,0,8,0"
+                  Foreground="{ThemeResource SystemFillColorCautionBrush}"
+                  FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                  FontSize="12"
+                  Glyph="&#xE7BA;"
+                  Visibility="{x:Bind TabStatus.IsShellIntegrationWarning, Mode=OneWay}" />
         <TextBlock x:Name="HeaderTextBlock"
                    Text="{x:Bind Title, Mode=OneWay}"
                    Visibility="Visible" />

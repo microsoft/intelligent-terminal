@@ -169,6 +169,7 @@ namespace winrt::TerminalApp::implementation
 
         auto tabViewItem = newTabImpl->TabViewItem();
         _tabItems().InsertAt(insertPosition, tabViewItem);
+        _RefreshShellIntegrationProfileHealthWarnings();
 
         // Set this tab's icon to the icon from the content
         _UpdateTabIcon(*newTabImpl);
@@ -735,6 +736,7 @@ namespace winrt::TerminalApp::implementation
         _tabs.RemoveAt(tabIndex);
         _tabItems().RemoveAt(tabIndex);
         _UpdateTabIndices();
+        _RefreshShellIntegrationProfileHealthWarnings();
 
         // To close the window here, we need to close the hosting window.
         if (_tabs.Size() == 0)
@@ -1069,6 +1071,7 @@ namespace winrt::TerminalApp::implementation
 
         // If specified, detach before closing to directly update the pane structure
         pane->Close();
+        _RefreshShellIntegrationProfileHealthWarnings();
     }
 
     // Method Description:
@@ -1411,6 +1414,7 @@ namespace winrt::TerminalApp::implementation
                 _NotifyAgentTabChanged(tabImplForNotify->StableId());
             }
 
+            _RefreshShellIntegrationProfileHealthWarnings();
             _adjustProcessPriorityThrottled->Run();
         }
         CATCH_LOG();

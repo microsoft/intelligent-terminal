@@ -526,7 +526,13 @@ namespace winrt::TerminalApp::implementation
         std::mutex _shellIntegrationReconcileMutex;
         uint64_t _shellIntegrationProfileHealthGeneration{ 1 };
         std::optional<::Microsoft::Terminal::ShellIntegration::Health::Result> _shellIntegrationProfileHealthWarning;
-        std::vector<::Microsoft::Terminal::ShellIntegration::Health::Result> _pendingShellIntegrationProfileHealthWarnings;
+        std::vector<::Microsoft::Terminal::ShellIntegration::Health::Result> _shellIntegrationProfileHealthWarnings;
+        struct _ShellIntegrationProfileHealthObservation
+        {
+            winrt::guid sessionId{};
+            ::Microsoft::Terminal::ShellIntegration::Health::TargetKey target;
+        };
+        std::vector<_ShellIntegrationProfileHealthObservation> _shellIntegrationProfileHealthObservations;
         std::vector<std::pair<
             ::Microsoft::Terminal::ShellIntegration::Health::TargetKey,
             ::Microsoft::Terminal::ShellIntegration::Health::ProfileFingerprint>>
@@ -754,13 +760,16 @@ namespace winrt::TerminalApp::implementation
             bool hasCustomHome);
         void _RequestShellIntegrationProfileHealth(
             ::Microsoft::Terminal::ShellIntegration::Health::TargetKey target,
-            bool force);
+            bool force,
+            std::optional<winrt::guid> sourceSessionId = std::nullopt);
         safe_void_coroutine _ResolveWslShellIntegrationProfileHealth(
             std::wstring commandline,
-            std::wstring actualRootImagePath);
+            std::wstring actualRootImagePath,
+            winrt::guid sourceSessionId);
         void _ApplyShellIntegrationProfileHealthResult(
-            const ::Microsoft::Terminal::ShellIntegration::Health::Result& result);
-        void _ShowNextShellIntegrationProfileHealthWarning();
+            const ::Microsoft::Terminal::ShellIntegration::Health::Result& result,
+            std::optional<winrt::guid> sourceSessionId);
+        void _RefreshShellIntegrationProfileHealthWarnings();
         void _ClearShellIntegrationProfileHealthWarning();
         void _ShellIntegrationProfileHealthCloseHandler(
             const winrt::Windows::Foundation::IInspectable& sender,
