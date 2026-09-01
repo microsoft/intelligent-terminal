@@ -1441,7 +1441,7 @@ namespace winrt::TerminalApp::implementation
 
     void TerminalPage::_DelegatePromptToAgent(const winrt::hstring& prompt)
     {
-        _LaunchDelegate(prompt);
+        _LaunchDelegate(prompt, L"CommandPalette");
     }
 
     // Open the delegate agent interactively in a brand-new tab with no
@@ -1451,7 +1451,7 @@ namespace winrt::TerminalApp::implementation
     // a new tab whose commandline is the delegate agent's own interactive CLI.
     void TerminalPage::_OpenBackgroundAgentTab()
     {
-        _LaunchDelegate(std::nullopt);
+        _LaunchDelegate(std::nullopt, L"Action");
     }
 
     // Launch a hidden `wta delegate` process. With a prompt this is the
@@ -1459,7 +1459,7 @@ namespace winrt::TerminalApp::implementation
     // the new tab's agent CLI). Without a prompt the agent opens interactively
     // in a new tab. Either way wta itself creates the tab via the WT COM
     // protocol; this launched process exits once the tab is spawned.
-    void TerminalPage::_LaunchDelegate(const std::optional<winrt::hstring>& prompt)
+    void TerminalPage::_LaunchDelegate(const std::optional<winrt::hstring>& prompt, const wchar_t* triggerSource)
     {
         _agentPaneLog(prompt.has_value() ?
                           "_LaunchDelegate called, prompt='" + winrt::to_string(*prompt) + "'" :
@@ -1654,6 +1654,13 @@ namespace winrt::TerminalApp::implementation
 
         // pi destructor closes hProcess + hThread on scope exit.
         _agentPaneLog("delegate process launched OK");
+        TraceLoggingWrite(
+            g_hTerminalAppProvider,
+            "DelegateInvoked",
+            TraceLoggingDescription("Event emitted when delegation is launched"),
+            TraceLoggingWideString(triggerSource, "TriggerSource"),
+            TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
+            TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage));
     }
 
     // --- Hot-reload of agent/model settings -------------------------------

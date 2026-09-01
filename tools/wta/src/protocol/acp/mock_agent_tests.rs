@@ -781,6 +781,8 @@ fn test_prompt(id: u64, text: &str, is_autofix: bool) -> PromptSubmission {
         autofix_text_kind: is_autofix.then_some(AutofixTextKind::UserRequest),
         agent_command: false,
         images: Vec::new(),
+        is_byok: false,
+        agent_id: "copilot".to_string(),
     }
 }
 

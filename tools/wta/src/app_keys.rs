@@ -905,6 +905,8 @@ impl App {
                     let is_agent_command = self
                         .agent_command_for_input(&self.current_tab().input)
                         .is_some();
+                    let is_byok = self.current_model_is_byok();
+                    let agent_id = self.current_agent_id.clone();
                     let tab = self.current_tab_mut();
                     let display_text = std::mem::take(&mut tab.input);
                     let (text, images) = tab.attachments.take_for_submission(display_text.clone());
@@ -935,7 +937,9 @@ impl App {
                     } else {
                         PromptSubmission::new(text.clone(), Some(pane_context))
                     }
-                    .with_images(images);
+                    .with_images(images)
+                    .with_byok(is_byok)
+                    .with_agent_id(agent_id);
                     prompt_timing_log(
                         prompt.id,
                         prompt.submitted_at_unix_s,

@@ -439,6 +439,9 @@ async fn execute_choice(
                     Some(agent) => Some(lookup_delegate_agent(delegate_agents, agent)?),
                     None => None,
                 };
+                if runtime.is_some() {
+                    crate::telemetry::log_delegate_invoked("Agent");
+                }
                 let runtime_name = runtime.map(|agent| agent.name.as_str());
                 let delivery_mode = runtime
                     .map(|agent| agent.prompt_delivery)

@@ -5,10 +5,46 @@
 > documents the telemetry events emitted by the underlying Windows Terminal
 > / OpenConsole code that Intelligent Terminal forks from.
 >
-> **Intelligent Terminal-specific telemetry** (events emitted by WTA,
-> agent-pane lifecycle, autofix, hooks installation, etc.) is **not yet
-> catalogued here**. See [`PRIVACY.md`](./PRIVACY.md) for IT-specific
-> privacy information and how to disable telemetry.
+> Intelligent Terminal-specific events are summarized below. See
+> [`PRIVACY.md`](./PRIVACY.md) for privacy information and how to disable
+> telemetry.
+
+## Intelligent Terminal-specific events
+
+Terminal-side events reuse the existing App, Settings Model, and Settings
+Editor providers:
+
+- `AgentPaneOpened`
+- `CommandPaletteDispatchedAgentPrompt`
+- `DelegateInvoked`
+- `ErrorDetected`
+- `AgentProviderConfigured`
+- `CustomModelProviderConfigured`
+- `IntelligentFeatureConfigured`
+- `AcpModelProbeStarted`
+- `AcpModelProbeDiscarded`
+- `AcpModelProbeCompleted`
+
+WTA uses the `Microsoft.Windows.Terminal.WTA` provider:
+
+- `AcpInitializeComplete`
+- `AcpNewSessionComplete`
+- `AgentPromptSent`
+- `AgentResponseFirstToken`
+- `AgentResponseComplete`
+- `AgentColdStartComplete`
+- `SlashCommandInvoked`
+- `SessionsViewOpened`
+- `SessionResumeInvoked`
+- `SessionMcpToolCalled`
+- `HookOperationCompleted`
+- `DelegateInvoked`
+- `ErrorDetected`
+- `ErrorFixResolved`
+
+These events use controlled categories and aggregate measurements. They do not
+include prompts, responses, terminal contents, API keys, custom endpoint URLs,
+custom agent commands, or model identifiers.
 
 This document enumerates every **true telemetry event** in the Windows Terminal codebase under `src\` — i.e., every `TraceLoggingWrite(...)` call site whose argument list contains one of the Microsoft telemetry keywords (`MICROSOFT_KEYWORD_MEASURES`, `MICROSOFT_KEYWORD_TELEMETRY`, or `MICROSOFT_KEYWORD_CRITICAL_DATA`) and is therefore reported to Microsoft.
 

@@ -4815,19 +4815,35 @@ async fn spawn_one_agent(
     provider_binding: &ProviderBinding,
     supplied_cloud_models: Vec<crate::app::AcpModelInfo>,
 ) -> Result<Arc<AgentCli>> {
+    let cold_start_started = std::time::Instant::now();
     let instance_id = AgentInstanceId::new_v4();
     let resolved_agent_id = agent_id
         .map(str::to_string)
         .unwrap_or_else(|| crate::agent_registry::resolve_agent_id_from_cmd(agent_cmd).to_string());
-    let mut spawn_result = spawn_agent_process_for_source_with_provider(
+    let source_kind = match source {
+        crate::agent_source::AgentSource::Host => "Host",
+        crate::agent_source::AgentSource::Wsl { .. } => "Wsl",
+    };
+    let mut spawn_result = match spawn_agent_process_for_source_with_provider(
         agent_cmd,
         None,
         agent_id,
         source,
         ChildEnvironmentPolicy::ApplySharedProvider,
         provider_binding.spawn_selection(),
-    )
-    .with_context(|| format!("failed to spawn agent CLI: {agent_cmd}"))?;
+    ) {
+        Ok(result) => result,
+        Err(error) => {
+            crate::telemetry::log_agent_cold_start_complete(
+                &resolved_agent_id,
+                source_kind,
+                cold_start_started.elapsed().as_secs_f64() * 1000.0,
+                false,
+                "SpawnFailed",
+            );
+            return Err(error).with_context(|| format!("failed to spawn agent CLI: {agent_cmd}"));
+        }
+    };
     tracing::info!(
         target: "master",
         program = %spawn_result.resolved_program,
@@ -5022,6 +5038,13 @@ async fn spawn_one_agent(
             let stderr = stderr_log
                 .finish_failed_startup(&mut child, stderr_task)
                 .await;
+            crate::telemetry::log_agent_cold_start_complete(
+                &resolved_agent_id,
+                source_kind,
+                cold_start_started.elapsed().as_secs_f64() * 1000.0,
+                false,
+                "InitializeFailed",
+            );
             return Err(anyhow!(
                 "ACP initialize failed for {}: {e}{}",
                 describe_agent_target(agent_cmd, source),
@@ -5032,6 +5055,13 @@ async fn spawn_one_agent(
             let stderr = stderr_log
                 .finish_failed_startup(&mut child, stderr_task)
                 .await;
+            crate::telemetry::log_agent_cold_start_complete(
+                &resolved_agent_id,
+                source_kind,
+                cold_start_started.elapsed().as_secs_f64() * 1000.0,
+                false,
+                "Timeout",
+            );
             return Err(anyhow!(
                 "ACP initialize timed out after {init_timeout_secs}s — agent CLI {} did not respond{}",
                 describe_agent_target(agent_cmd, source),
@@ -5039,6 +5069,13 @@ async fn spawn_one_agent(
             ));
         }
     };
+    crate::telemetry::log_agent_cold_start_complete(
+        &resolved_agent_id,
+        source_kind,
+        cold_start_started.elapsed().as_secs_f64() * 1000.0,
+        true,
+        "",
+    );
 
     // Init succeeded — install the child reaper now (takes ownership of
     // `child`). A later CLI exit drops just this agent from the pool so

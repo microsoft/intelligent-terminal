@@ -847,6 +847,12 @@ async fn serve_connection(
                 None
             };
             if message.get("method").and_then(Value::as_str) == Some("tools/call") {
+                crate::telemetry::log_session_mcp_tool_called(
+                    message
+                        .pointer("/params/name")
+                        .and_then(Value::as_str)
+                        .unwrap_or(""),
+                );
                 let session_id = match &capability {
                     CapabilityResolution::Bound(session_id) => Some(session_id.to_string()),
                     CapabilityResolution::Pending | CapabilityResolution::Unknown => None,
