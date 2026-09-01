@@ -1858,6 +1858,19 @@ fn load_session_applied_when_target_tab_matches_owner() {
         Some("sess-abc")
     );
     assert!(app.session_model_configs.contains_key("old-session"));
+
+    // The request is also retained. If the ACP client dies before it consumes
+    // this, `load_session_rx` is dropped with the request still in it and the
+    // reconnect gets a brand-new channel pair — so `try_start_acp` has to be
+    // able to re-issue it, or the replacement quietly opens a fresh session
+    // while the pane keeps saying "Resuming session …".
+    let pending = app
+        .pending_session_load
+        .as_ref()
+        .expect("an in-flight load must be retained for a possible reconnect");
+    assert_eq!(pending.tab_id, "OWNER-TAB");
+    assert_eq!(pending.session_id, "sess-abc");
+    assert_eq!(pending.cwd.as_deref(), Some("C:/foo"));
 }
 
 #[test]
@@ -2216,6 +2229,43 @@ get time"#
     assert!(matches!(&t1.details[0], ChatMessage::ToolCall { .. }));
     assert!(matches!(&t1.details[1], ChatMessage::Agent(_)));
     assert!(t1.expanded);
+}
+
+// A replayed turn is stored expanded, and expanded rendering reads
+// `turn.prompt` verbatim (`build_completed_turn_lines`), collapsing it only
+// when the turn is collapsed. Storing a preview here instead of the request
+// would make the truncation permanent: a restored turn could never show more
+// than the first line, however far the user expands it.
+#[test]
+fn pack_replayed_turns_keep_the_whole_prompt() {
+    let long_line = "x".repeat(200);
+    let request = format!("first line\nsecond line\n{long_line}");
+
+    let mut tab = TabSession::default();
+    tab.messages = vec![
+        ChatMessage::User(format!(
+            "# Terminal Agent\n...\n\n## User Request\n{request}"
+        )),
+        ChatMessage::Agent("done".to_string()),
+    ];
+
+    tab.pack_replayed_messages_into_turns();
+
+    assert_eq!(tab.completed_turns.len(), 1);
+    let turn = &tab.completed_turns[0];
+    assert!(turn.expanded);
+    assert_eq!(turn.prompt, request);
+    assert!(
+        !turn.prompt.ends_with('…'),
+        "the stored prompt must be the request, not its collapsed preview"
+    );
+    // The collapsed header is still a one-line preview — that is the
+    // renderer's job, not something baked into the stored turn.
+    assert_eq!(
+        collapsed_prompt_preview(&turn.prompt),
+        "first line…",
+        "collapsing stays available at render time"
+    );
 }
 
 #[test]
@@ -14372,4 +14422,46 @@ fn resumable_session_id_uses_the_load_target_during_replay() {
         ..Default::default()
     };
     assert_eq!(tab.resumable_session_id(), Some("loaded-session"));
+}
+
+// Submitting a prompt is not yet proof the agent has taken it: the caller
+// still has to dispatch it over ACP, and the agent only writes the session to
+// disk once it starts handling it. A save landing in that window would record
+// a `session/new` id the agent never persisted, and the restore would fail
+// with "Resource not found" — the same class of failure the rebind fix
+// addresses. Agent activity for the turn is what makes the id safe to keep.
+#[test]
+fn a_submitted_prompt_is_not_resumable_until_the_agent_answers() {
+    let mut app = test_app();
+    app.tab_mut(DEFAULT_TAB_ID).session_id = Some("fresh-session".to_string());
+
+    submit_test_prompt(&mut app, "hello");
+    assert_eq!(
+        app.tab_mut(DEFAULT_TAB_ID).resumable_session_id(),
+        None,
+        "a prompt the agent has not answered yet must not be persisted as resumable"
+    );
+
+    app.turn_observe_chunk(DEFAULT_TAB_ID, ChunkKind::Message, "hi");
+    assert_eq!(
+        app.tab_mut(DEFAULT_TAB_ID).resumable_session_id(),
+        Some("fresh-session")
+    );
+}
+
+// A turn can finish without ever streaming a visible chunk (a tool-only turn).
+// The turn boundary itself is still proof the agent processed the prompt.
+#[test]
+fn a_chunkless_turn_still_makes_the_session_resumable() {
+    let mut app = test_app();
+    app.tab_mut(DEFAULT_TAB_ID).session_id = Some("fresh-session".to_string());
+
+    submit_test_prompt(&mut app, "hello");
+    assert_eq!(app.tab_mut(DEFAULT_TAB_ID).resumable_session_id(), None);
+
+    app.turn_close(DEFAULT_TAB_ID);
+    assert_eq!(
+        app.tab_mut(DEFAULT_TAB_ID).resumable_session_id(),
+        Some("fresh-session")
+    );
 }

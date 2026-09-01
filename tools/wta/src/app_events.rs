@@ -2475,11 +2475,17 @@ impl App {
                     // than paint it over a conversation being restored.
                     self.show_welcome_hint = false;
                     self.project_tab_state(tab_id);
-                    let _ = self.load_session_tx.send(LoadSessionForTab {
+                    let request = LoadSessionForTab {
                         tab_id: tab_id.to_string(),
                         session_id: session_id.to_string(),
                         cwd,
-                    });
+                    };
+                    // Remember it: if the ACP client dies before consuming
+                    // this, `load_session_rx` is dropped with the request
+                    // still in it and the reconnect gets a fresh channel
+                    // pair, so `try_start_acp` has to re-issue it.
+                    self.pending_session_load = Some(request.clone());
+                    let _ = self.load_session_tx.send(request);
                     return;
                 }
 

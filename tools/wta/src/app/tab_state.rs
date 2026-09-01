@@ -1071,8 +1071,12 @@ impl TabSession {
                     // A replayed prompt still carries the terminal-agent
                     // template, so the header shows only the request the user
                     // actually typed; the wrapper is never rendered.
-                    let prompt = replay_user_request(&text);
-                    current = Some((collapsed_prompt_preview(prompt), Vec::new()));
+                    // Keep the full request. The renderer collapses a turn
+                    // header itself (`build_completed_turn_lines`), so storing
+                    // a preview here would make the truncation permanent — an
+                    // expanded restored turn could never show more than the
+                    // first line.
+                    current = Some((replay_user_request(&text).to_string(), Vec::new()));
                 }
                 other => {
                     if let Some((_, details)) = current.as_mut() {
