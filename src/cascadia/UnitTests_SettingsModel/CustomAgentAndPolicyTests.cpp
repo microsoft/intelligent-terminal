@@ -28,6 +28,7 @@
 #include "../TerminalSettingsModel/CascadiaSettings.h"
 #include "../TerminalSettingsModel/AcpRuntimeState.h"
 #include "../inc/AgentPolicy.h"
+#include "../inc/AgentRegistry.h"
 #include "../inc/CustomModelProviderUtils.h"
 #include "JsonTestClass.h"
 
@@ -90,6 +91,7 @@ namespace SettingsModelUnitTests
         TEST_METHOD(AgentPaneYoloModeRoundtripsAndDefaults);
         TEST_METHOD(EffectiveAgentPaneYoloModeFalseWhenPolicyBlocked);
         TEST_METHOD(IsYoloModePolicyLockedTracksBlocked);
+        TEST_METHOD(YoloSettingsNoticeRequiresInstalledSelectedProviderAndEnabledPreference);
         TEST_METHOD(PolicyChangeWatcherObservesRecursiveMutation);
         TEST_METHOD(PolicyChangeWatcherTracksPolicyCreatedFromMissingAncestors);
 
@@ -683,6 +685,26 @@ namespace SettingsModelUnitTests
         // The raw (non-effective) setting still reflects the user's choice —
         // only the effective/gated accessor is policy-clamped.
         VERIFY_IS_TRUE(settings->GlobalSettings().AgentPaneYoloMode());
+    }
+
+    void CustomAgentAndPolicyTests::YoloSettingsNoticeRequiresInstalledSelectedProviderAndEnabledPreference()
+    {
+        using namespace ::Microsoft::Terminal::Settings::Model::AgentRegistry;
+
+        VERIFY_ARE_EQUAL(YoloSettingsNotice::Unavailable,
+                         GetYoloSettingsNotice(L"opencode", true, false, true));
+        VERIFY_ARE_EQUAL(YoloSettingsNotice::Conditional,
+                         GetYoloSettingsNotice(L"gemini", true, false, true));
+        VERIFY_ARE_EQUAL(YoloSettingsNotice::None,
+                         GetYoloSettingsNotice(L"copilot", true, false, true));
+        VERIFY_ARE_EQUAL(YoloSettingsNotice::None,
+                         GetYoloSettingsNotice(L"opencode", false, false, true));
+        VERIFY_ARE_EQUAL(YoloSettingsNotice::None,
+                         GetYoloSettingsNotice(L"opencode", true, true, true));
+        VERIFY_ARE_EQUAL(YoloSettingsNotice::None,
+                         GetYoloSettingsNotice(L"opencode", true, false, false));
+        VERIFY_ARE_EQUAL(YoloSettingsNotice::None,
+                         GetYoloSettingsNotice(L"custom:opencode", true, false, true));
     }
 
     void CustomAgentAndPolicyTests::IsYoloModePolicyLockedTracksBlocked()

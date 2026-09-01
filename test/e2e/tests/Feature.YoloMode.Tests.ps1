@@ -9,6 +9,7 @@ BeforeDiscovery {
     $script:Ready = $false
     $script:copilotStatus = if (Get-Command copilot -ErrorAction SilentlyContinue) { 'probe-failed' } else { 'not-installed' }
     $script:openCodeStatus = if (Get-Command opencode -ErrorAction SilentlyContinue) { 'probe-failed' } else { 'not-installed' }
+    $script:geminiInstalled = [bool](Get-Command gemini -ErrorAction SilentlyContinue)
     try {
         $resolvedApp = Resolve-ItApp -Package $script:Package -ErrorAction Stop
         $script:Ready = Test-WinAppAvailable
@@ -27,6 +28,7 @@ BeforeDiscovery {
     $script:PackageCase = @(@{
         Package = $script:Package
         OpenCodeStatus = $script:openCodeStatus
+        GeminiInstalled = $script:geminiInstalled
     })
 }
 
@@ -152,6 +154,77 @@ Describe 'Feature provider-native Yolo with Copilot' -ForEach $script:PackageCas
         }
     }
 
+}
+
+Describe 'Feature Settings Yolo provider compatibility' -ForEach $script:PackageCase -Tag 'Feature' -Skip:(-not $script:Ready) {
+    BeforeAll {
+        Import-Module (Join-Path $PSScriptRoot '..\ItE2E\ItE2E.psd1') -Force
+    }
+
+    It 'Settings warns that OpenCode Yolo remains interactive' {
+        if ($OpenCodeStatus -eq 'not-installed') {
+            Set-ItResult -Skipped -Because 'OpenCode is not installed, so it is intentionally absent from the default-provider picker'
+            return
+        }
+
+        $app = Start-Terminal -Package $Package -PassFre $true -Settings @{
+            acpAgent = 'opencode'
+            'agentPane.yoloMode' = $true
+        }
+        try {
+            try { Open-WtSettings -App $app -TimeoutSec 20 | Out-Null }
+            catch {
+                Set-ItResult -Skipped -Because "the WT window could not take foreground to open Settings: $($_.Exception.Message)"
+                return
+            }
+            Invoke-SettingsNav -App $app -NavItem 'AIAgentsNavItem' | Out-Null
+
+            Wait-UiElement -App $app -Selector 'OpenCodeYoloCompatibilityInfoBar' -TimeoutSec 15 | Out-Null
+            $title = Get-WtReswTextRegex -Key 'AIAgents_YoloOpenCodeWarning.Title'
+            (Get-UiTree -App $app -Selector 'OpenCodeYoloCompatibilityInfoBar' -Depth 4) |
+                Should -Match $title -Because 'the warning must explain the selected default provider limitation'
+            Test-UiElementExists -App $app -Selector 'GeminiYoloCompatibilityInfoBar' -TimeoutSec 1 |
+                Should -BeFalse -Because 'only the selected default provider should have a compatibility notice'
+
+            Invoke-UiElement -App $app -Selector 'AgentPaneYoloModeToggle' | Out-Null
+            Wait-UiElement -App $app -Selector 'OpenCodeYoloCompatibilityInfoBar' -Gone -TimeoutSec 10 | Out-Null
+            Invoke-UiElement -App $app -Selector 'AgentPaneYoloModeToggle' | Out-Null
+            Wait-UiElement -App $app -Selector 'OpenCodeYoloCompatibilityInfoBar' -TimeoutSec 10 | Out-Null
+        }
+        finally {
+            if ($app) { Stop-Terminal -App $app }
+        }
+    }
+
+    It 'Settings explains Gemini workspace trust dependency' {
+        if (-not $GeminiInstalled) {
+            Set-ItResult -Skipped -Because 'Gemini is not installed, so it is intentionally absent from the default-provider picker'
+            return
+        }
+
+        $app = Start-Terminal -Package $Package -PassFre $true -Settings @{
+            acpAgent = 'gemini'
+            'agentPane.yoloMode' = $true
+        }
+        try {
+            try { Open-WtSettings -App $app -TimeoutSec 20 | Out-Null }
+            catch {
+                Set-ItResult -Skipped -Because "the WT window could not take foreground to open Settings: $($_.Exception.Message)"
+                return
+            }
+            Invoke-SettingsNav -App $app -NavItem 'AIAgentsNavItem' | Out-Null
+
+            Wait-UiElement -App $app -Selector 'GeminiYoloCompatibilityInfoBar' -TimeoutSec 15 | Out-Null
+            $title = Get-WtReswTextRegex -Key 'AIAgents_YoloGeminiInfo.Title'
+            (Get-UiTree -App $app -Selector 'GeminiYoloCompatibilityInfoBar' -Depth 4) |
+                Should -Match $title -Because 'the informational notice must describe Gemini workspace trust'
+            Test-UiElementExists -App $app -Selector 'OpenCodeYoloCompatibilityInfoBar' -TimeoutSec 1 |
+                Should -BeFalse -Because 'only the selected default provider should have a compatibility notice'
+        }
+        finally {
+            if ($app) { Stop-Terminal -App $app }
+        }
+    }
 }
 
 Describe 'Feature unsupported provider Yolo behavior' -ForEach $script:PackageCase -Tag 'Feature' -Skip:(-not $script:Ready) {

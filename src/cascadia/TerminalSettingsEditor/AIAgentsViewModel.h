@@ -10,6 +10,7 @@
 #include "ViewModelHelpers.h"
 #include "Utils.h"
 #include "../inc/AgentHooksStatus.h"
+#include "../inc/AgentRegistry.h"
 #include "../inc/CustomModelCredential.h"
 #include "../inc/CustomModelProviderUtils.h"
 
@@ -160,6 +161,8 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         bool AgentPaneYoloMode() const;
         void AgentPaneYoloMode(bool value);
         bool HasAgentPaneYoloMode() const;
+        bool ShowOpenCodeYoloWarning() const;
+        bool ShowGeminiYoloInfo() const;
 
         // GPO policy lock indicators
         bool IsAgentPolicyLocked() const { return _GlobalSettings.IsAgentPolicyLocked(); }
@@ -275,6 +278,8 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         static bool _IsAgentInstalled(const wchar_t* name);
         static bool _IsKnownAgent(const winrt::hstring& id);
         static winrt::hstring _DeriveId(const winrt::hstring& command);
+        bool _IsSelectedAcpAgentAvailable() const;
+        ::Microsoft::Terminal::Settings::Model::AgentRegistry::YoloSettingsNotice _YoloSettingsNotice() const;
         Editor::AgentEntry _FindEntryById(
             const winrt::Windows::Foundation::Collections::IObservableVector<Editor::AgentEntry>& list,
             const winrt::hstring& id) const;

@@ -183,5 +183,8 @@ namespace Microsoft.Terminal.Settings.Editor
         void RemoveGeminiHooks();
         void RemoveCodexHooks();
         void RemoveOpenCodeHooks();
+
+        Boolean ShowOpenCodeYoloWarning { get; };
+        Boolean ShowGeminiYoloInfo { get; };
     }
 }

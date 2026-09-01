@@ -2995,4 +2995,8 @@
     <value>{} | {} | OpenAI 互換</value>
     <comment>{Locked="{}","OpenAI"} The first {} is replaced with the provider name; the second is replaced with its location.</comment>
   </data>
+  <data name="AIAgents_YoloOpenCodeWarning.Title" xml:space="preserve"><value>OpenCode では Yolo モードを利用できません</value><comment>{Locked="Yolo","OpenCode"} InfoBar title shown on the AI Agents settings page when global Yolo mode is on and the installed selected default provider is OpenCode.</comment></data>
+  <data name="AIAgents_YoloOpenCodeWarning.Message" xml:space="preserve"><value>OpenCode は、サポートされているネイティブ Yolo モードをアドバタイズしません。この設定がオンの場合でも、アクセス許可の要求は引き続き対話形式です。</value><comment>{Locked="OpenCode","Yolo"} InfoBar message shown on the AI Agents settings page. "Advertise" means the provider reports a supported native ACP session capability. "Interactive" means the user must still choose permission options manually.</comment></data>
+  <data name="AIAgents_YoloGeminiInfo.Title" xml:space="preserve"><value>Gemini Yolo モードはワークスペースの信頼に依存します</value><comment>{Locked="Gemini","Yolo"} InfoBar title shown on the AI Agents settings page when global Yolo mode is on and the installed selected default provider is Gemini.</comment></data>
+  <data name="AIAgents_YoloGeminiInfo.Message" xml:space="preserve"><value>Gemini は、ワークスペースの信頼とプロバイダー ポリシーで許可されている場合にのみ Yolo モードを有効にします。現在のセッションの状態はエージェント ペインで確認してください。</value><comment>{Locked="Gemini","Yolo"} InfoBar message shown on the AI Agents settings page. Workspace trust and provider policy are owned by Gemini, not by Intelligent Terminal. The Agent pane shows the actual current session status.</comment></data>
 </root>
