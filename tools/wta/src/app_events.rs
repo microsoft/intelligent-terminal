@@ -324,6 +324,12 @@ impl App {
         match event {
             AppEvent::Key(key) => {
                 self.cancel_completed_turn_click();
+                let is_select_all = matches!(key.code, KeyCode::Char('a'))
+                    && key.modifiers == KeyModifiers::CONTROL;
+                if is_select_all {
+                    self.text_selection.select_all();
+                    return;
+                }
                 let is_copy = matches!(key.code, KeyCode::Char('c'))
                     && key.modifiers.contains(KeyModifiers::CONTROL);
                 if is_copy && self.copy_text_selection() {
