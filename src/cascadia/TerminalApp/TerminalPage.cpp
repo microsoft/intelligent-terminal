@@ -1441,7 +1441,7 @@ namespace winrt::TerminalApp::implementation
 
     void TerminalPage::_DelegatePromptToAgent(const winrt::hstring& prompt)
     {
-        _LaunchDelegate(prompt, L"CommandPalette");
+        _LaunchDelegate(prompt);
     }
 
     // Open the delegate agent interactively in a brand-new tab with no
@@ -1451,7 +1451,7 @@ namespace winrt::TerminalApp::implementation
     // a new tab whose commandline is the delegate agent's own interactive CLI.
     void TerminalPage::_OpenBackgroundAgentTab()
     {
-        _LaunchDelegate(std::nullopt, L"Action");
+        _LaunchDelegate(std::nullopt);
     }
 
     // Launch a hidden `wta delegate` process. With a prompt this is the
@@ -1459,8 +1459,9 @@ namespace winrt::TerminalApp::implementation
     // the new tab's agent CLI). Without a prompt the agent opens interactively
     // in a new tab. Either way wta itself creates the tab via the WT COM
     // protocol; this launched process exits once the tab is spawned.
-    void TerminalPage::_LaunchDelegate(const std::optional<winrt::hstring>& prompt, const wchar_t* triggerSource)
+    void TerminalPage::_LaunchDelegate(const std::optional<winrt::hstring>& prompt)
     {
+        const auto triggerSource = prompt.has_value() ? L"CommandPalette" : L"Action";
         _agentPaneLog(prompt.has_value() ?
                           "_LaunchDelegate called, prompt='" + winrt::to_string(*prompt) + "'" :
                           "_LaunchDelegate called (interactive, no prompt)");

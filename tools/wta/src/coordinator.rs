@@ -439,9 +439,6 @@ async fn execute_choice(
                     Some(agent) => Some(lookup_delegate_agent(delegate_agents, agent)?),
                     None => None,
                 };
-                if runtime.is_some() {
-                    crate::telemetry::log_delegate_invoked("Agent");
-                }
                 let runtime_name = runtime.map(|agent| agent.name.as_str());
                 let delivery_mode = runtime
                     .map(|agent| agent.prompt_delivery)
@@ -524,6 +521,9 @@ async fn execute_choice(
                     "open_and_send resolved target={} pane_id={}",
                     target_label, pane_id
                 ));
+                if runtime.is_some() {
+                    crate::telemetry::log_delegate_invoked("Agent");
+                }
                 let _ = event_tx.send(AppEvent::ExecutionInfo(format!(
                     "Opened {} pane {}.",
                     target_label, pane_id

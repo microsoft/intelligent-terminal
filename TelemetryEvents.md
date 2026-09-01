@@ -17,9 +17,7 @@ keys, credential identifiers, custom endpoint URLs, model identifiers, custom
 agent names, or custom agent command lines.
 
 Agent identifiers are limited to `copilot`, `claude`, `codex`, `gemini`, and
-`opencode`; every other identifier is reported as `custom`. Session and pane
-identifiers are opaque correlation identifiers and do not contain terminal
-content.
+`opencode`; every other identifier is reported as `custom`.
 
 ### Provider: Microsoft.Windows.Terminal.App
 
@@ -58,14 +56,6 @@ load:
 | `QuotaUsage` | `true` or `false` |
 | `VerticalTabs` | `true` or `false` |
 
-### Provider: Microsoft.Windows.Terminal.Settings.Editor
-
-| Event | Trigger | Fields |
-|---|---|---|
-| `AcpModelProbeStarted` | Settings starts a clean ACP model-catalog probe. | `AgentId`, `CacheRevision` |
-| `AcpModelProbeDiscarded` | A completed probe is superseded by a newer probe generation. | `AgentId` |
-| `AcpModelProbeCompleted` | A clean ACP model-catalog probe completes. | `AgentId`, `Succeeded`, `ModelCount` |
-
 ### Provider: Microsoft.Windows.Terminal.WTA
 
 - **GUID:** `{4cfcff80-4e6b-5bfd-8ea1-d38e1226f70b}`
@@ -97,9 +87,8 @@ is `Host` or `Wsl`.
 
 Prompt and response text is never included. Length fields contain byte counts
 only. `IsByok` is captured for the specific prompt so live model changes are
-attributed correctly. `TotalResponseBytes` is currently always `0` because the
-master process, rather than the helper, owns the agent stdout transport; the
-field is retained for schema compatibility.
+attributed correctly. `TotalResponseBytes` is currently unpopulated and
+retained for schema compatibility.
 
 #### Commands, sessions, delegation, MCP, and hooks
 
@@ -107,7 +96,7 @@ field is retained for schema compatibility.
 |---|---|---|
 | `SlashCommandInvoked` | WTA dispatches a registered slash command. | `CommandName`: `help`, `clear`, `new`, `fix`, `restart`, `stop`, `sessions`, `agent`, `model`, `config`, or `move` |
 | `SessionsViewOpened` | The Agent Session View is opened. | None |
-| `SessionResumeInvoked` | A resumable item is launched from Agent Session View. | `Route` (`AgentPane` for ACP `session/load`, or `Cli` for provider-native CLI resume), `AgentId` |
+| `SessionResumeInvoked` | A resume operation is dispatched from Agent Session View. | `Route` (`AgentPane` for ACP `session/load`, or `Cli` for provider-native CLI resume), `AgentId` |
 | `DelegateInvoked` | An agent recommendation invokes the configured delegate through WTA. | `TriggerSource` (`Agent`) |
 | `SessionMcpToolCalled` | A session MCP function is invoked. | `ToolName`: `terminal_send`, `terminal_open`, `terminal_open_and_send`, `request_user_input`, or `unknown` |
 | `HookOperationCompleted` | Hook installation or uninstallation finishes for one supported CLI. | `Operation` (`Install` or `Uninstall`), `Cli` (`copilot`, `claude`, `gemini`, `codex`, or `opencode`), `Outcome` |
