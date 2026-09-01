@@ -2513,6 +2513,16 @@ namespace winrt::Microsoft::Terminal::Control::implementation
     {
         const auto scaleX = sender.CompositionScaleX();
 
+        // A SwapChainPanel that leaves the visual tree (e.g. the pane it lives
+        // in got stashed) reports a composition scale of 0. That's not a DPI we
+        // can render at: it would divide by zero in FontSizeInDips() and hand
+        // every layout consumer an infinite font size. Keep the last real
+        // scale; XAML raises this again with a valid one on re-attach.
+        if (!(scaleX > 0.0f))
+        {
+            return;
+        }
+
         _core.ScaleChanged(scaleX);
     }
 

@@ -3093,7 +3093,7 @@ Pane::SnapSizeResult Pane::_CalcSnappedDimension(const bool widthOrHeight, const
         // character grid. Their TermControl may also be uninitialized, which
         // makes GridUnitSize/SnapDownToGrid return inf/NaN and poisons the
         // whole snap calculation via parent aggregation.
-        if (!snappable || _isAgentPane)
+        if (!snappable || _isAgentPane || _hidden)
         {
             return { dimension, dimension };
         }
@@ -3137,6 +3137,15 @@ Pane::SnapSizeResult Pane::_CalcSnappedDimension(const bool widthOrHeight, const
             return { lower, higher };
         }
     }
+    else if (_firstChild->_hidden || _secondChild->_hidden)
+    {
+        // `HidePane` pulled one child out of the visual tree and handed the
+        // whole grid to its sibling, so the visible child alone decides where
+        // we can snap. Aggregating the hidden one would snap against space
+        // that isn't laid out (see `_GetMinSize`).
+        const auto& visibleChild = _firstChild->_hidden ? _secondChild : _firstChild;
+        return visibleChild->_CalcSnappedDimension(widthOrHeight, dimension);
+    }
     else if (_splitState == (widthOrHeight ? SplitState::Horizontal : SplitState::Vertical))
     {
         // If we're resizing along separator axis, snap to the closest possibility
@@ -3177,6 +3186,14 @@ Pane::SnapSizeResult Pane::_CalcSnappedDimension(const bool widthOrHeight, const
 // - <none>
 void Pane::_AdvanceSnappedDimension(const bool widthOrHeight, LayoutSizeNode& sizeNode) const
 {
+    // A hidden pane isn't laid out, so its node stays at the zero size
+    // `_CreateMinSizeTree` gave it. Growing it would hand the snap
+    // calculation space that never reaches the screen.
+    if (_hidden)
+    {
+        return;
+    }
+
     if (_IsLeaf())
     {
         const auto& snappable{ _content.try_as<ISnappable>() };
@@ -3236,7 +3253,13 @@ void Pane::_AdvanceSnappedDimension(const bool widthOrHeight, LayoutSizeNode& si
 
         // Choose which child pane to advance.
         bool advanceFirstOrSecond;
-        if (_splitState == (widthOrHeight ? SplitState::Horizontal : SplitState::Vertical))
+        if (_firstChild->_hidden || _secondChild->_hidden)
+        {
+            // Only the visible child grows. Picking the hidden one would leave
+            // our size unchanged and spin `_CalcSnappedChildrenSizes` forever.
+            advanceFirstOrSecond = _secondChild->_hidden;
+        }
+        else if (_splitState == (widthOrHeight ? SplitState::Horizontal : SplitState::Vertical))
         {
             // If we're growing along separator axis, choose the child that
             // wants to be smaller than the other, so that the resulting size
@@ -3326,6 +3349,22 @@ Size Pane::_GetMinSize() const
     }
     else
     {
+        // `HidePane` removed the hidden child from the visual tree and gave
+        // the whole grid to its sibling, so the sibling alone defines our
+        // minimum. Folding the hidden child in would inflate the minimum by
+        // space that is never laid out — and for a stashed agent pane it
+        // poisons the result outright: a detached SwapChainPanel reports a
+        // composition scale of 0, so `FontSizeInDips` (and with it
+        // `TermControl::MinimumSize`) comes back as infinity.
+        if (_firstChild->_hidden)
+        {
+            return _secondChild->_GetMinSize();
+        }
+        if (_secondChild->_hidden)
+        {
+            return _firstChild->_GetMinSize();
+        }
+
         const auto firstSize = _firstChild->_GetMinSize();
         const auto secondSize = _secondChild->_GetMinSize();
 
@@ -3349,6 +3388,14 @@ Size Pane::_GetMinSize() const
 // - Root node of built tree that matches this pane.
 Pane::LayoutSizeNode Pane::_CreateMinSizeTree(const bool widthOrHeight) const
 {
+    // A hidden pane occupies no space, so it enters the calculation at zero
+    // and `_AdvanceSnappedDimension` never grows it. It gets no child nodes
+    // either — nothing ever descends into it.
+    if (_hidden)
+    {
+        return LayoutSizeNode{ 0.0f };
+    }
+
     const auto size = _GetMinSize();
     LayoutSizeNode node(widthOrHeight ? size.Width : size.Height);
     if (!_IsLeaf())
@@ -3371,6 +3418,15 @@ Pane::LayoutSizeNode Pane::_CreateMinSizeTree(const bool widthOrHeight) const
 // - split position (value in range <0.0, 1.0>)
 float Pane::_ClampSplitPosition(const bool widthOrHeight, const float requestedValue, const float totalSize) const
 {
+    // With one child hidden there is no visible separator to clamp: the
+    // visible child owns the whole pane. Clamping anyway would build the
+    // bounds out of the hidden child's (possibly infinite) minimum and hand
+    // `std::clamp` a low > high pair.
+    if (_firstChild->_hidden || _secondChild->_hidden)
+    {
+        return requestedValue;
+    }
+
     const auto firstMinSize = _firstChild->_GetMinSize();
     const auto secondMinSize = _secondChild->_GetMinSize();
 
