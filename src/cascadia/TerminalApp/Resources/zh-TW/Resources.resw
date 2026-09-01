@@ -1063,14 +1063,14 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
     <comment>In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_AgentDescription.Text" xml:space="preserve">
-    <value>選擇智能體窗格中使用且支援 ACP 的智能體。</value>
+    <value>選擇用於智能體窗格的智能體。深入了解 ACP。</value>
     <comment>{Locked="ACP"}
-In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+Here "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a proxy, human agent, or representative. ACP is displayed as a hyperlink.</comment>
   </data>
   <data name="FreOverlay_AgentInstallHint.Text" xml:space="preserve">
-    <value>此智能體需要 Node.js 和 NPX，若尚未安裝，將會自動安裝。</value>
-    <comment>{Locked="Node.js","NPX"}
-In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+    <value>如果電腦上尚未安裝 Node.js 執行階段，則會進行安裝。</value>
+    <comment>{Locked="Node.js"}
+This hint appears when selecting an AI agent whose Node.js runtime may need to be installed automatically.</comment>
   </data>
   <data name="FreOverlay_AutoErrorLabel.Text" xml:space="preserve">
     <value>自動錯誤建議</value>
@@ -1268,10 +1268,12 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
     <value>自動偵測錯誤。</value>
   </data>
   <data name="FreOverlay_AutoDetectShellIntegrationHintPrefix" xml:space="preserve">
-    <value>啟用此功能將安裝 Shell 整合，以偵測命令失敗。 </value>
+    <value>安裝 Shell 整合，以便在 PowerShell、bash 和 WSL bash 中自動偵測錯誤。 </value>
+    <comment>{Locked="PowerShell","bash","WSL bash"} Hint shown under the "Automatic error detection" toggle in the first-run wizard. It explains that shell integration is installed for automatic error detection in the listed shells. The trailing space is intentional — it separates this prefix from the inline supported-shells hyperlink that follows.</comment>
   </data>
   <data name="FreOverlay_AutoDetectShellIntegrationHintLink" xml:space="preserve">
-    <value>深入了解</value>
+    <value>檢視所有支援的 shell</value>
+    <comment>Inline hyperlink text that follows FreOverlay_AutoDetectShellIntegrationHintPrefix and opens the documentation listing every shell that supports automatic error detection.</comment>
   </data>
   <data name="InitShellIntegrationExecutionPolicyErrorMessage" xml:space="preserve">
     <value>PowerShell 執行原則正在封鎖指令碼。</value>

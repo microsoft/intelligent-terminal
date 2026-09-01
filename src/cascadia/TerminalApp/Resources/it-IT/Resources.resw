@@ -1058,12 +1058,12 @@
     <value>Agente</value>
   </data>
   <data name="FreOverlay_AgentDescription.Text" xml:space="preserve">
-    <value>Scegli l'agente utilizzato nel riquadro agente che supporta ACP.</value>
-    <comment>{Locked="ACP"}</comment>
+    <value>Scegli l'agente per il riquadro agente. Altre informazioni su ACP.</value>
+    <comment>{Locked="ACP"} Here "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a proxy, human agent, or representative. ACP is displayed as a hyperlink.</comment>
   </data>
   <data name="FreOverlay_AgentInstallHint.Text" xml:space="preserve">
-    <value>Questo agente richiede Node.js e NPX, che verranno installati automaticamente se non già presenti.</value>
-    <comment>{Locked="Node.js","NPX"}</comment>
+    <value>Installa il runtime Node.js se non è già presente nel computer.</value>
+    <comment>{Locked="Node.js"} This hint appears when selecting an AI agent whose Node.js runtime may need to be installed automatically.</comment>
   </data>
   <data name="FreOverlay_AutoErrorLabel.Text" xml:space="preserve">
     <value>Suggerimento automatico degli errori</value>
@@ -1260,10 +1260,12 @@
     <value>Rileva automaticamente gli errori.</value>
   </data>
   <data name="FreOverlay_AutoDetectShellIntegrationHintPrefix" xml:space="preserve">
-    <value>L'abilitazione di questa opzione installerà l'integrazione shell per rilevare gli errori dei comandi. </value>
+    <value>Installa l'integrazione shell per il rilevamento automatico degli errori in PowerShell, bash e WSL bash. </value>
+    <comment>{Locked="PowerShell","bash","WSL bash"} Hint shown under the "Automatic error detection" toggle in the first-run wizard. It explains that shell integration is installed for automatic error detection in the listed shells. The trailing space is intentional — it separates this prefix from the inline supported-shells hyperlink that follows.</comment>
   </data>
   <data name="FreOverlay_AutoDetectShellIntegrationHintLink" xml:space="preserve">
-    <value>Altre informazioni</value>
+    <value>Visualizza tutte le shell supportate</value>
+    <comment>Inline hyperlink text that follows FreOverlay_AutoDetectShellIntegrationHintPrefix and opens the documentation listing every shell that supports automatic error detection.</comment>
   </data>
   <data name="InitShellIntegrationExecutionPolicyErrorMessage" xml:space="preserve">
     <value>Il criterio di esecuzione di PowerShell sta bloccando gli script.</value>

@@ -50,12 +50,12 @@
     <comment>In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_AgentDescription.Text" xml:space="preserve">
-    <value>Tagh an neach-gnìomha a thèid a chleachdadh sa phanail neach-gnìomha agus a bheir taic do ACP.</value>
-    <comment>{Locked="ACP"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+    <value>Tagh an neach-gnìomha airson pana an neach-gnìomha agad. Ionnsaich tuilleadh mu ACP.</value>
+    <comment>{Locked="ACP"} Here "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a proxy, human agent, or representative. ACP is displayed as a hyperlink.</comment>
   </data>
   <data name="FreOverlay_AgentInstallHint.Text" xml:space="preserve">
-    <value>Feumaidh an neach-gnìomha seo Node.js agus NPX, a thèid a stàladh gu fèin-obrachail mura h-eil iad ann mar-thà.</value>
-    <comment>{Locked="Node.js","NPX"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+    <value>Stàlaichidh seo àm-ruith Node.js mura h-eil e air an uidheam agad mu thràth.</value>
+    <comment>{Locked="Node.js"} This hint appears when selecting an AI agent whose Node.js runtime may need to be installed automatically.</comment>
   </data>
   <data name="FreOverlay_AutoErrorLabel.Text" xml:space="preserve">
     <value>Moladh mhearachdan fèin-obrachail</value>
@@ -242,10 +242,12 @@
     <value>Ionnsaich mar a chàraicheas tu seo a làimh</value>
     <comment>Hyperlink shown below an FRE setup error message. Opens step-by-step manual setup instructions in the browser.</comment>
   </data>  <data name="FreOverlay_AutoDetectShellIntegrationHintPrefix" xml:space="preserve">
-    <value>Ma chuireas tu seo air thèid co-aonachadh shell a stàladh gus fàilligidhean àithne a lorg. </value>
+    <value>Stàlaichidh seo co-aonachadh shell airson mearachdan a lorg gu fèin-obrachail ann am PowerShell, bash agus WSL bash. </value>
+    <comment>{Locked="PowerShell","bash","WSL bash"} Hint shown under the "Automatic error detection" toggle in the first-run wizard. It explains that shell integration is installed for automatic error detection in the listed shells. The trailing space is intentional — it separates this prefix from the inline supported-shells hyperlink that follows.</comment>
   </data>
   <data name="FreOverlay_AutoDetectShellIntegrationHintLink" xml:space="preserve">
-    <value>Faigh a-mach barrachd</value>
+    <value>Seall a h-uile shell ris a bheil taic</value>
+    <comment>Inline hyperlink text that follows FreOverlay_AutoDetectShellIntegrationHintPrefix and opens the documentation listing every shell that supports automatic error detection.</comment>
   </data>
   <data name="InitShellIntegrationExecutionPolicyErrorMessage" xml:space="preserve">
     <value>Tha poileasaidh ruith PowerShell a' bacadh sgriobtaichean.</value>

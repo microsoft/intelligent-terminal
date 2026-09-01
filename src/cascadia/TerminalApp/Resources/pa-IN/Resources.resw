@@ -163,12 +163,12 @@
     <comment>In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_AgentDescription.Text" xml:space="preserve">
-    <value>ਏਜੰਟ ਪੈਨ ਵਿੱਚ ਵਰਤੇ ਜਾਣ ਵਾਲੇ ਅਤੇ ACP ਦਾ ਸਮਰਥਨ ਕਰਨ ਵਾਲੇ ਏਜੰਟ ਨੂੰ ਚੁਣੋ।</value>
-    <comment>{Locked="ACP"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+    <value>ਆਪਣੇ ਏਜੰਟ ਪੈਨ ਲਈ ਏਜੰਟ ਚੁਣੋ। ACP ਬਾਰੇ ਹੋਰ ਜਾਣੋ।</value>
+    <comment>{Locked="ACP"} Here "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a proxy, human agent, or representative. ACP is displayed as a hyperlink.</comment>
   </data>
   <data name="FreOverlay_AgentInstallHint.Text" xml:space="preserve">
-    <value>ਇਸ ਏਜੰਟ ਨੂੰ Node.js ਅਤੇ NPX ਦੀ ਲੋੜ ਹੈ, ਜੋ ਪਹਿਲਾਂ ਤੋਂ ਮੌਜੂਦ ਨਾ ਹੋਣ 'ਤੇ ਆਪਣੇ ਆਪ ਇੰਸਟਾਲ ਹੋ ਜਾਣਗੇ।</value>
-    <comment>{Locked="Node.js","NPX"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+    <value>ਜੇ ਤੁਹਾਡੀ ਮਸ਼ੀਨ ਉੱਤੇ Node.js ਰਨਟਾਈਮ ਪਹਿਲਾਂ ਤੋਂ ਨਹੀਂ ਹੈ, ਤਾਂ ਇਸਨੂੰ ਇੰਸਟਾਲ ਕਰਦਾ ਹੈ।</value>
+    <comment>{Locked="Node.js"} This hint appears when selecting an AI agent whose Node.js runtime may need to be installed automatically.</comment>
   </data>
   <data name="FreOverlay_AutoErrorLabel.Text" xml:space="preserve">
     <value>ਆਟੋਮੈਟਿਕ ਗਲਤੀ ਸੁਝਾਅ</value>
@@ -362,10 +362,12 @@
     <value>ਇਸ ਨੂੰ ਹੱਥੀਂ ਠੀਕ ਕਰਨ ਦਾ ਤਰੀਕਾ ਜਾਣੋ</value>
     <comment>Hyperlink shown below an FRE setup error message. Opens step-by-step manual setup instructions in the browser.</comment>
   </data>  <data name="FreOverlay_AutoDetectShellIntegrationHintPrefix" xml:space="preserve">
-    <value>ਇਸਨੂੰ ਸਮਰੱਥ ਕਰਨ ਨਾਲ ਕਮਾਂਡ ਅਸਫਲਤਾਵਾਂ ਦਾ ਪਤਾ ਲਗਾਉਣ ਲਈ shell ਇੰਟੀਗ੍ਰੇਸ਼ਨ ਇੰਸਟਾਲ ਹੋਵੇਗਾ। </value>
+    <value>PowerShell, bash ਅਤੇ WSL bash ਵਿੱਚ ਸਵੈਚਲਿਤ ਗਲਤੀ ਖੋਜ ਲਈ shell ਇੰਟੀਗ੍ਰੇਸ਼ਨ ਇੰਸਟਾਲ ਕਰਦਾ ਹੈ। </value>
+    <comment>{Locked="PowerShell","bash","WSL bash"} Hint shown under the "Automatic error detection" toggle in the first-run wizard. It explains that shell integration is installed for automatic error detection in the listed shells. The trailing space is intentional — it separates this prefix from the inline supported-shells hyperlink that follows.</comment>
   </data>
   <data name="FreOverlay_AutoDetectShellIntegrationHintLink" xml:space="preserve">
-    <value>ਹੋਰ ਜਾਣੋ</value>
+    <value>ਸਾਰੇ ਸਮਰਥਿਤ shell ਵੇਖੋ</value>
+    <comment>Inline hyperlink text that follows FreOverlay_AutoDetectShellIntegrationHintPrefix and opens the documentation listing every shell that supports automatic error detection.</comment>
   </data>
   <data name="InitShellIntegrationExecutionPolicyErrorMessage" xml:space="preserve">
     <value>PowerShell ਐਗਜ਼ੀਕਿਊਸ਼ਨ ਨੀਤੀ ਸਕ੍ਰਿਪਟਾਂ ਨੂੰ ਬਲੌਕ ਕਰ ਰਹੀ ਹੈ।</value>
