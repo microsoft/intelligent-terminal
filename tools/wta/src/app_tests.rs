@@ -7369,6 +7369,32 @@ fn protocol_error_ends_turn_without_failing_connection() {
 }
 
 #[test]
+fn superseded_lazy_prompt_error_keeps_committed_user_bubble_visible() {
+    let mut app = test_app();
+    app.state = ConnectionState::Connected;
+    submit_test_prompt(&mut app, "keep this prompt visible");
+
+    app.handle_event(AppEvent::AgentError {
+        session_id: Some(DEFAULT_TAB_ID.to_string()),
+        failure: crate::protocol::acp::failure::AgentFailure::Protocol {
+            code: -32003,
+            message: "Failed to update Yolo: Try again".to_string(),
+        },
+        message: "Failed to update Yolo: Try again".to_string(),
+    });
+
+    assert_eq!(
+        app.current_tab().messages,
+        vec![
+            ChatMessage::User("keep this prompt visible".to_string()),
+            ChatMessage::Error("Failed to update Yolo: Try again".to_string()),
+        ]
+    );
+    assert_eq!(app.current_tab().turn, TurnState::Idle);
+    assert_eq!(app.state, ConnectionState::Connected);
+}
+
+#[test]
 fn startup_protocol_error_fails_connection() {
     let mut app = test_app();
     app.state = ConnectionState::Connecting("Creating session...".to_string());

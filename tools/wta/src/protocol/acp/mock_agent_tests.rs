@@ -1173,6 +1173,118 @@ async fn lazy_session_disables_native_yolo_before_first_prompt() {
 }
 
 #[tokio::test]
+async fn superseded_lazy_yolo_operation_reports_retryable_error_instead_of_silent_turn_end() {
+    let local = tokio::task::LocalSet::new();
+    local
+        .run_until(async {
+            let mut h = connect_for_dispatch(MockBehavior::Reply);
+            h.client
+                .state
+                .native_yolo
+                .set_resolved_agent_id(Some(crate::agent_registry::CLAUDE_AGENT_ID));
+            h.new_session_starts_in_native_yolo
+                .store(true, Ordering::SeqCst);
+            h.hang_native_updates.store(true, Ordering::SeqCst);
+            h.conn
+                .initialize(acp::schema::v1::InitializeRequest::new(
+                    acp::schema::ProtocolVersion::LATEST,
+                ))
+                .await
+                .expect("initialize failed");
+            let (tab_to_session, in_flight, cancel_signals, memo) = fresh_dispatch_state();
+
+            dispatch_prompt(
+                test_prompt(1, "must receive a retryable result", false),
+                &h.conn,
+                &tab_to_session,
+                &memo,
+                &in_flight,
+                &cancel_signals,
+                &h.event_tx,
+                &h.shell_mgr,
+                &h.prompt_timing,
+                &h.client,
+                &PromptUsageIdentity::default(),
+                false,
+                false,
+                true,
+                &h.proposal_channels,
+            );
+
+            tokio::time::timeout(
+                std::time::Duration::from_secs(2),
+                h.native_update_started.notified(),
+            )
+            .await
+            .expect("lazy native update must start before supersession");
+            let session_id = tokio::time::timeout(std::time::Duration::from_secs(2), async {
+                loop {
+                    if let Some(session_id) = tab_to_session.lock().await.get("0").cloned() {
+                        break session_id;
+                    }
+                    tokio::task::yield_now().await;
+                }
+            })
+            .await
+            .expect("lazy session was not bound");
+
+            h.hang_native_updates.store(false, Ordering::SeqCst);
+            dispatch_master_ext_request(
+                MasterExtRequest::ReconcileSessionYolo {
+                    reconcile_id: 97,
+                    sessions: vec![(session_id.clone(), true)],
+                    fail_closed: false,
+                },
+                &h.conn,
+                &h.event_tx,
+                &tab_to_session,
+                Arc::clone(&h.client.state),
+            );
+            h.native_update_release.notify_one();
+
+            let message = tokio::time::timeout(std::time::Duration::from_secs(5), async {
+                loop {
+                    match h.event_rx.recv().await {
+                        Some(AppEvent::AgentError {
+                            session_id: Some(completed_session),
+                            failure: crate::protocol::acp::failure::AgentFailure::Protocol { .. },
+                            message,
+                        }) => {
+                            assert_eq!(completed_session, session_id.to_string());
+                            break message;
+                        }
+                        Some(AppEvent::AgentMessageEnd { .. }) => {
+                            panic!("superseded lazy prompt ended without a retryable error")
+                        }
+                        Some(_) => continue,
+                        None => panic!("event channel closed before retryable error"),
+                    }
+                }
+            })
+            .await
+            .expect("timed out waiting for retryable lazy-prompt error");
+
+            assert!(message.contains("Yolo"));
+            assert!(h.seen_prompts.lock().unwrap().is_empty());
+            let (_, fail_closed, restart_required, result) =
+                next_yolo_reconcile_completion(&mut h.event_rx, std::time::Duration::from_secs(5))
+                    .await;
+            assert!(!fail_closed);
+            assert!(!restart_required);
+            assert!(result.is_ok());
+            assert_eq!(
+                *h.seen_config_updates.lock().unwrap(),
+                vec![
+                    ("mode".to_string(), "default".to_string()),
+                    ("mode".to_string(), "bypassPermissions".to_string()),
+                ],
+                "the newer reconcile must establish its final mode after the retryable prompt error"
+            );
+        })
+        .await;
+}
+
+#[tokio::test]
 async fn native_yolo_active_permission_request_remains_pending_for_user() {
     let local = tokio::task::LocalSet::new();
     local

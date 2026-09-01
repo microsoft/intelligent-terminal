@@ -4909,10 +4909,22 @@ async fn dispatch_prompt_body(
                     tracing::info!(
                         target: "yolo",
                         session_id = %prompt_session_id_str,
-                        "discarding first prompt because its lazy-session Yolo operation was superseded"
+                        "ending first prompt with a retryable error because its lazy-session Yolo operation was superseded"
                     );
-                    let _ = event_tx_task.send(AppEvent::AgentMessageEnd {
-                        session_id: prompt_session_id_str.clone(),
+                    let retry = t!("setup.option.retry_detection").into_owned();
+                    let message = t!(
+                        "system.config_update_failed",
+                        option = "Yolo",
+                        error = retry.as_str()
+                    )
+                    .into_owned();
+                    let _ = event_tx_task.send(AppEvent::AgentError {
+                        session_id: Some(prompt_session_id_str.clone()),
+                        failure: AgentFailure::Protocol {
+                            code: -32003,
+                            message: message.clone(),
+                        },
+                        message,
                     });
                     in_flight_tabs_task.lock().unwrap().remove(&tab_key_task);
                     return;
