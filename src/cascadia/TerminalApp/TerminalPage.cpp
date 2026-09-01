@@ -3456,6 +3456,7 @@ namespace winrt::TerminalApp::implementation
         if (const auto agentContent = newPane->GetContent().try_as<winrt::TerminalApp::AgentPaneContent>())
         {
             _WireAgentPaneEvents(agentContent, tab);
+            agentContent.SetSessionsView(intoSessionsView || initialView == "sessions");
             agentContent.SetAgentPanePosition(_AgentPanePositionToContentPosition(panePosition));
             // Record the parts of this spawn a future restore cannot re-derive.
             // Everything else on `helperCmd` — the master pipe, the owner ids,
@@ -6631,6 +6632,22 @@ namespace winrt::TerminalApp::implementation
         {
             view = params["view"].asString();
             logSuffix += " view=" + *view;
+        }
+        // Before the first agent_status, the helper may not have subscribed
+        // when C++ sent the user's latest pane/view intent. During that narrow
+        // startup window, the locally applied physical state is authoritative;
+        // applying the helper's default projection can undo an open/close or
+        // view switch. The first status replays the physical state to WTA,
+        // after which normal single-writer projections resume.
+        if (const auto content = targetTab->FindAgentPaneContent())
+        {
+            const auto impl = winrt::get_self<implementation::AgentPaneContent>(content);
+            if (!impl->IsHelperEventReady())
+            {
+                wantOpen.reset();
+                view.reset();
+                logSuffix += " pre_ready_local_state_authoritative";
+            }
         }
         bool panePositionSpecified = false;
         std::optional<winrt::hstring> panePositionOverride;
