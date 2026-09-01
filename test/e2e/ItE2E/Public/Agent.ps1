@@ -170,7 +170,7 @@ function Get-WtaLocalizedTextRegex {
                     # parenthesized hint (\s+\() so a value that is ENTIRELY parenthesized — e.g.
                     # agents.footer_hint "(↑ ↓ … Esc to exit …)" — is preserved intact instead of
                     # being stripped to an empty string.
-                    $val -replace '\s+\([^)]*\)\s*$', '' -replace '\.+\s*$', ''
+                    $val -replace '\s+\u21B5\s*$', '' -replace '\s+\([^)]*\)\s*$', '' -replace '\.+\s*$', ''
                 } |
                 Where-Object { $_ } | Select-Object -Unique | ForEach-Object { [regex]::Escape($_) }
             $pats = @($pats)

@@ -26,17 +26,17 @@ Describe 'Feature: proposal MCP session routing' -Tag 'Feature' -Skip:(-not $scr
             acpCustomCommand = $command
             acpModel = ''
         }
-
-        $tabAShell = (Get-ActivePane -App $script:app).session_id
+        $tabA = Get-ActivePane -App $script:app
+        $tabAShell = $tabA.session_id
         Open-AgentPane -App $script:app | Out-Null
-        $script:tabAPane = (Wait-NewAgentPaneSession -App $script:app -OwnerPaneSessionId $tabAShell -TimeoutSec 30).PaneSessionId
+        $script:tabAPane = (Wait-NewAgentPaneSession -App $script:app -TabId ([string]$tabA.tab_id) -TimeoutSec 30).PaneSessionId
         Wait-AgentReady -App $script:app -PaneSessionId $script:tabAPane -TimeoutSec 60 |
             Should -BeTrue -Because 'tab A must have a connected ACP session'
 
         $tabB = New-WtTab -App $script:app -Title 'proposal-mcp-tab-b'
         Set-WtPaneFocus -App $script:app -SessionId $tabB.session_id
         Open-AgentPane -App $script:app | Out-Null
-        $script:tabBPane = (Wait-NewAgentPaneSession -App $script:app -OwnerPaneSessionId $tabB.session_id -TimeoutSec 30).PaneSessionId
+        $script:tabBPane = (Wait-NewAgentPaneSession -App $script:app -TabId ([string]$tabB.tab_id) -TimeoutSec 30).PaneSessionId
         Wait-AgentReady -App $script:app -PaneSessionId $script:tabBPane -TimeoutSec 60 |
             Should -BeTrue -Because 'tab B must have a connected ACP session'
     }
@@ -66,7 +66,6 @@ Describe 'Feature: proposal MCP session routing' -Tag 'Feature' -Skip:(-not $scr
         $uniqueServerNames = @($serverNames | Select-Object -Unique)
         $serverNames.Count | Should -BeGreaterOrEqual 2 -Because 'each tab session/new must receive a Session MCP server with the public 16-hex name'
         $uniqueServerNames.Count | Should -Be @($serverNames).Count -Because 'every ACP session must receive an independently named MCP server'
-
         $cardRegex = Get-WtaLocalizedTextRegex -Key 'recommendations.button_open_in_new_tab'
         if (-not $cardRegex) { $cardRegex = '(?i)Open in New Tab' }
         $markerA = "A$([guid]::NewGuid().ToString('N').Substring(0, 12).ToUpperInvariant())"

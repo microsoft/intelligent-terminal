@@ -85,6 +85,15 @@ Describe 'JSON helpers' -Tag 'Unit' {
     }
 }
 
+Describe 'Localized WTA text matching' -Tag 'Unit' {
+    It 'matches action labels without depending on the trailing Enter glyph encoding' {
+        $pattern = Get-WtaLocalizedTextRegex -Key 'recommendations.button_open_tab'
+
+        $pattern | Should -Not -BeNullOrEmpty
+        'Open Tab' | Should -Match $pattern
+    }
+}
+
 Describe 'Agent settings cleanup' -Tag 'Unit' {
     It 'removes showTokenUsageAndCost while preserving profiles' {
         $settingsPath = Join-Path $TestDrive 'settings.json'
