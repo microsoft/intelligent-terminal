@@ -6024,49 +6024,64 @@ mod tests {
         assert!(event_rx.try_recv().is_err());
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn session_mcp_display_hides_calls_correlated_by_tool_call_id() {
-        let manager =
-            Arc::new(crate::agent_tools::action_proposal::channel::ProposalChannelManager::new());
-        manager
-            .issue("proposal-session".into(), 1, None, false)
-            .unwrap();
-        let (client, mut event_rx) = proposal_test_client(manager);
-        let response = client
-            .request_permission(proposal_mcp_permission_request())
-            .await
-            .unwrap();
-        assert!(matches!(
-            response.outcome,
-            acp::schema::v1::RequestPermissionOutcome::Selected(_)
-        ));
-        assert!(matches!(
-            event_rx.try_recv(),
-            Ok(AppEvent::HideToolCall { session_id, id })
-                if session_id == "proposal-session" && id == "proposal-mcp-tool"
-        ));
+        tokio::task::LocalSet::new()
+            .run_until(async {
+                let manager = Arc::new(
+                    crate::agent_tools::action_proposal::channel::ProposalChannelManager::new(),
+                );
+                manager
+                    .issue("proposal-session".into(), 1, None, false)
+                    .unwrap();
+                let (client, mut event_rx) = proposal_test_client(manager);
+                let request_client = client.clone();
+                let handle = tokio::task::spawn_local(async move {
+                    request_client
+                        .request_permission(proposal_mcp_permission_request())
+                        .await
+                });
 
-        client
-            .session_notification(acp::schema::v1::SessionNotification::new(
-                acp::schema::v1::SessionId::new("proposal-session"),
-                acp::schema::v1::SessionUpdate::ToolCall(
-                    acp::schema::v1::ToolCall::new(
-                        acp::schema::v1::ToolCallId::new("proposal-mcp-tool"),
-                        "run_command_in_current_shell",
-                    )
-                    .raw_input(Some(serde_json::json!({
-                        "summary": "Run test",
-                        "command": "cargo test"
-                    }))),
-                ),
-            ))
-            .await
-            .unwrap();
+                assert!(matches!(
+                    event_rx.recv().await,
+                    Some(AppEvent::HideToolCall { session_id, id })
+                        if session_id == "proposal-session" && id == "proposal-mcp-tool"
+                ));
+                match event_rx.recv().await {
+                    Some(AppEvent::PermissionRequest { responder, .. }) => {
+                        responder.send("allow-once".to_string()).unwrap();
+                    }
+                    _ => panic!("expected PermissionRequest"),
+                }
+                let response = handle.await.unwrap().unwrap();
+                assert!(matches!(
+                    response.outcome,
+                    acp::schema::v1::RequestPermissionOutcome::Selected(_)
+                ));
 
-        assert!(
-            event_rx.try_recv().is_err(),
-            "the correlated tool call must remain hidden"
-        );
+                client
+                    .session_notification(acp::schema::v1::SessionNotification::new(
+                        acp::schema::v1::SessionId::new("proposal-session"),
+                        acp::schema::v1::SessionUpdate::ToolCall(
+                            acp::schema::v1::ToolCall::new(
+                                acp::schema::v1::ToolCallId::new("proposal-mcp-tool"),
+                                "run_command_in_current_shell",
+                            )
+                            .raw_input(Some(serde_json::json!({
+                                "summary": "Run test",
+                                "command": "cargo test"
+                            }))),
+                        ),
+                    ))
+                    .await
+                    .unwrap();
+
+                assert!(
+                    event_rx.try_recv().is_err(),
+                    "the correlated tool call must remain hidden"
+                );
+            })
+            .await;
     }
 
     /// Regression for the cross-window focus bug: the helper-over-pipe
