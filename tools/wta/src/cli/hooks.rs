@@ -276,14 +276,14 @@ pub(crate) fn run_uninstall(cli: HooksCliFilter, json_mode: bool) -> Result<()> 
     let report = crate::agent_hooks_installer::uninstall(cli.into_scope());
     for cli in &report.clis {
         let outcome = if !cli.attempted {
-            "Skipped"
+            "skipped"
         } else if cli.plugin_uninstalled == Some(false)
             || cli.marketplace_removed == Some(false)
             || !cli.staging_dir_removed
         {
-            "Failed"
+            "failed"
         } else {
-            "Succeeded"
+            "succeeded"
         };
         crate::telemetry::log_hook_operation_completed("Uninstall", cli.name, outcome);
     }
