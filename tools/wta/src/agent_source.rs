@@ -115,11 +115,17 @@ pub async fn resolve_source_cwd(source: &AgentSource, reported: Option<&str>) ->
         Some(relative) if relative.starts_with("~/") => {
             Some(format!("{}/{}", home.trim_end_matches('/'), &relative[2..]))
         }
-        Some(relative) if !relative.contains(':') && !relative.starts_with('\\') => {
-            Some(format!("{}/{}", home.trim_end_matches('/'), relative))
-        }
+        Some(relative) if !relative.contains(':') && !relative.starts_with('\\') => Some(format!(
+            "{}/{}",
+            home.trim_end_matches('/'),
+            normalize_wsl_relative_cwd(relative)
+        )),
         _ => Some(home),
     }
+}
+
+fn normalize_wsl_relative_cwd(cwd: &str) -> String {
+    cwd.replace('\\', "/").trim_start_matches("./").to_string()
 }
 
 fn normalize_wsl_cwd(distro: &str, cwd: &str) -> Option<String> {
@@ -259,5 +265,13 @@ mod tests {
         ] {
             assert_eq!(normalize_wsl_cwd("Ubuntu", cwd).as_deref(), Some("/"));
         }
+    }
+
+    #[test]
+    fn wsl_relative_cwd_uses_posix_separators() {
+        assert_eq!(normalize_wsl_relative_cwd(r"foo\bar"), "foo/bar");
+        assert_eq!(normalize_wsl_relative_cwd(r".\foo"), "foo");
+        assert_eq!(normalize_wsl_relative_cwd("./foo"), "foo");
+        assert_eq!(normalize_wsl_relative_cwd("../foo"), "../foo");
     }
 }

@@ -137,6 +137,68 @@ pub(super) async fn run_default_tui_over_pipe(
     .await
 }
 
+async fn resolve_app_source_cwd(
+    source: &crate::agent_source::AgentSource,
+    normalized_supplied_cwd: Option<String>,
+    legacy_environment_cwd: Option<String>,
+) -> Option<String> {
+    if let Some(cwd) = normalized_supplied_cwd.filter(|cwd| !cwd.is_empty()) {
+        return Some(cwd);
+    }
+    crate::agent_source::resolve_source_cwd(source, legacy_environment_cwd.as_deref()).await
+}
+
+#[cfg(test)]
+mod cwd_tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn normalized_host_cwd_wins_over_legacy_environment_cwd() {
+        let source = crate::agent_source::AgentSource::Host;
+
+        assert_eq!(
+            resolve_app_source_cwd(
+                &source,
+                Some(r"C:\work\project".to_string()),
+                Some(r"C:\Windows\System32".to_string()),
+            )
+            .await
+            .as_deref(),
+            Some(r"C:\work\project")
+        );
+    }
+
+    #[tokio::test]
+    async fn legacy_environment_cwd_is_only_a_normalized_fallback() {
+        let source = crate::agent_source::AgentSource::Host;
+
+        assert_eq!(
+            resolve_app_source_cwd(&source, None, Some(r" C:\legacy\workspace ".to_string()),)
+                .await
+                .as_deref(),
+            Some(r"C:\legacy\workspace")
+        );
+    }
+
+    #[tokio::test]
+    async fn normalized_wsl_cwd_wins_over_legacy_windows_environment_cwd() {
+        let source = crate::agent_source::AgentSource::Wsl {
+            distro: "Ubuntu".to_string(),
+        };
+
+        assert_eq!(
+            resolve_app_source_cwd(
+                &source,
+                Some("/home/user/project".to_string()),
+                Some(r"C:\Windows\System32".to_string()),
+            )
+            .await
+            .as_deref(),
+            Some("/home/user/project")
+        );
+    }
+}
+
 /// Discover our own pane identity by matching our PID against WT's pane list.
 async fn discover_pane_identity(shell_mgr: &ShellManager) -> Option<(String, String, String)> {
     let our_pid = std::process::id();
@@ -1229,10 +1291,15 @@ async fn run_acp_app(
             app_state.source_session_id = std::env::var("WTA_SOURCE_SESSION_ID")
                 .ok()
                 .filter(|s| !s.is_empty());
-            app_state.source_cwd = std::env::var("WTA_SOURCE_CWD")
+            let legacy_source_cwd = std::env::var("WTA_SOURCE_CWD")
                 .ok()
-                .filter(|s| !s.is_empty())
-                .or_else(|| agent_source_cwd.clone());
+                .filter(|s| !s.is_empty());
+            app_state.source_cwd = resolve_app_source_cwd(
+                &agent_source,
+                agent_source_cwd.clone(),
+                legacy_source_cwd,
+            )
+            .await;
 
             // ── env-gated raw agent_event chat logging (diagnostics) ──────
             app_state.log_agent_events = std::env::var("WTA_LOG_AGENT_EVENT")
