@@ -1,0 +1,3383 @@
+(self.webpackChunkmybenefits_ui = self.webpackChunkmybenefits_ui || []).push([[3499], {
+    3136(P, v, e) {
+        e.d(v, {
+            J: () => f
+        });
+        var l = e(1606);
+        let f = ( () => {
+            class p {
+                rootUrl = "/myssa/mybenefits-api";
+                static \u0275fac = function(u) {
+                    return new (u || p)
+                }
+                ;
+                static \u0275prov = l.\u0275\u0275defineInjectable({
+                    token: p,
+                    factory: p.\u0275fac,
+                    providedIn: "root"
+                })
+            }
+            return p
+        }
+        )()
+    },
+    8997(P, v, e) {
+        e.d(v, {
+            f: () => n
+        });
+        var l = e(3136)
+          , f = e(4624)
+          , p = e(3519)
+          , h = e(4871)
+          , c = e(7191)
+          , u = e(2056)
+          , i = e(3259)
+          , d = e(225)
+          , y = e(9591)
+          , t = e(1606)
+          , s = e(9674);
+        let n = ( () => {
+            class o {
+                static forRoot(a) {
+                    return {
+                        ngModule: o,
+                        providers: [{
+                            provide: l.J,
+                            useValue: a
+                        }]
+                    }
+                }
+                constructor(a, m) {
+                    if (a)
+                        throw new Error("ApiModule is already loaded. Import in your base AppModule only.");
+                    if (!m)
+                        throw new Error("You need to import the HttpClientModule in your AppModule! \nSee also https://github.com/angular/angular/issues/20575")
+                }
+                static \u0275fac = function(m) {
+                    return new (m || o)(t.\u0275\u0275inject(o, 12),t.\u0275\u0275inject(s.HttpClient, 8))
+                }
+                ;
+                static \u0275mod = t.\u0275\u0275defineNgModule({
+                    type: o
+                });
+                static \u0275inj = t.\u0275\u0275defineInjector({
+                    providers: [f.N, p.W, h.H, c.W, u.u, i.Y, d.Z, y.G, l.J]
+                })
+            }
+            return o
+        }
+        )()
+    },
+    9576(P, v, e) {
+        e.d(v, {
+            d: () => h
+        });
+        var l = e(1606)
+          , f = e(3136)
+          , p = e(9674);
+        let h = ( () => {
+            class c {
+                config;
+                http;
+                constructor(i, d) {
+                    this.config = i,
+                    this.http = d
+                }
+                _rootUrl;
+                get rootUrl() {
+                    return this._rootUrl || this.config.rootUrl
+                }
+                set rootUrl(i) {
+                    this._rootUrl = i
+                }
+                static \u0275fac = function(d) {
+                    return new (d || c)(l.\u0275\u0275inject(f.J),l.\u0275\u0275inject(p.HttpClient))
+                }
+                ;
+                static \u0275prov = l.\u0275\u0275defineInjectable({
+                    token: c,
+                    factory: c.\u0275fac
+                })
+            }
+            return c
+        }
+        )()
+    },
+    7420(P, v, e) {
+        e.d(v, {
+            t: () => d
+        });
+        var l = e(9674);
+        const p = new class f {
+            encodeKey(t) {
+                return encodeURIComponent(t)
+            }
+            encodeValue(t) {
+                return encodeURIComponent(t)
+            }
+            decodeKey(t) {
+                return decodeURIComponent(t)
+            }
+            decodeValue(t) {
+                return decodeURIComponent(t)
+            }
+        }
+        ;
+        class h {
+            name;
+            value;
+            options;
+            constructor(t, s, n, o, r) {
+                this.name = t,
+                this.value = s,
+                this.options = n,
+                this.options = n || {},
+                null == this.options.style && (this.options.style = o),
+                null == this.options.explode && (this.options.explode = r)
+            }
+            serializeValue(t, s=",") {
+                if (null == t)
+                    return "";
+                if (t instanceof Array)
+                    return t.map(n => this.serializeValue(n).split(s).join(encodeURIComponent(s))).join(s);
+                if ("object" == typeof t) {
+                    const n = [];
+                    for (const o of Object.keys(t)) {
+                        let r = t[o];
+                        null != r && (r = this.serializeValue(r).split(s).join(encodeURIComponent(s)),
+                        this.options.explode ? n.push(`${o}=${r}`) : (n.push(o),
+                        n.push(r)))
+                    }
+                    return n.join(s)
+                }
+                return String(t)
+            }
+        }
+        class c extends h {
+            constructor(t, s, n) {
+                super(t, s, n, "simple", !1)
+            }
+            append(t) {
+                let s = this.value;
+                null == s && (s = "");
+                let n = "label" === this.options.style ? "." : ""
+                  , o = this.options.explode ? "" === n ? "," : n : ","
+                  , r = !1;
+                return "matrix" === this.options.style && (n = `;${this.name}=`,
+                this.options.explode && "object" == typeof s && (n = ";",
+                s instanceof Array ? (s = s.map(a => `${this.name}=${this.serializeValue(a, ";")}`),
+                s = s.join(";"),
+                r = !0) : (s = this.serializeValue(s, ";"),
+                r = !0))),
+                s = n + (r ? s : this.serializeValue(s, o)),
+                (t = t.replace(`{${this.name}}`, s)).replace(`{${n}${this.name}${this.options.explode ? "*" : ""}}`, s)
+            }
+            serializeValue(t, s=",") {
+                var n = "string" == typeof t ? encodeURIComponent(t) : super.serializeValue(t, s);
+                return (n = (n = n.replace(/%3D/g, "=")).replace(/%3B/g, ";")).replace(/%2C/g, ",")
+            }
+        }
+        class u extends h {
+            constructor(t, s, n) {
+                super(t, s, n, "form", !0)
+            }
+            append(t) {
+                if (this.value instanceof Array) {
+                    if (!this.options.explode)
+                        return t.append(this.name, this.serializeValue(this.value, "spaceDelimited" === this.options.style ? " " : "pipeDelimited" === this.options.style ? "|" : ","));
+                    for (const s of this.value)
+                        t = t.append(this.name, this.serializeValue(s))
+                } else if (null !== this.value && "object" == typeof this.value)
+                    if ("deepObject" === this.options.style)
+                        for (const s of Object.keys(this.value)) {
+                            const n = this.value[s];
+                            null != n && (t = t.append(`${this.name}[${s}]`, this.serializeValue(n)))
+                        }
+                    else if (this.options.explode)
+                        for (const s of Object.keys(this.value)) {
+                            const n = this.value[s];
+                            null != n && (t = t.append(s, this.serializeValue(n)))
+                        }
+                    else {
+                        const s = [];
+                        for (const n of Object.keys(this.value)) {
+                            const o = this.value[n];
+                            null != o && (s.push(n),
+                            s.push(o))
+                        }
+                        t = t.append(this.name, this.serializeValue(s))
+                    }
+                else
+                    null != this.value && (t = t.append(this.name, this.serializeValue(this.value)));
+                return t
+            }
+        }
+        class i extends h {
+            constructor(t, s, n) {
+                super(t, s, n, "simple", !1)
+            }
+            append(t) {
+                if (null != this.value)
+                    if (this.value instanceof Array)
+                        for (const s of this.value)
+                            t = t.append(this.name, this.serializeValue(s));
+                    else
+                        t = t.append(this.name, this.serializeValue(this.value));
+                return t
+            }
+        }
+        class d {
+            rootUrl;
+            operationPath;
+            method;
+            _path = new Map;
+            _query = new Map;
+            _header = new Map;
+            _bodyContent;
+            _bodyContentType;
+            constructor(t, s, n) {
+                this.rootUrl = t,
+                this.operationPath = s,
+                this.method = n
+            }
+            path(t, s, n) {
+                this._path.set(t, new c(t,s,n || {}))
+            }
+            query(t, s, n) {
+                this._query.set(t, new u(t,s,n || {}))
+            }
+            header(t, s, n) {
+                this._header.set(t, new i(t,s,n || {}))
+            }
+            body(t, s="application/json") {
+                if (this._bodyContentType = t instanceof Blob ? t.type : s,
+                "application/x-www-form-urlencoded" === this._bodyContentType && null !== t && "object" == typeof t) {
+                    const n = [];
+                    for (const o of Object.keys(t)) {
+                        let r = t[o];
+                        r instanceof Array || (r = [r]);
+                        for (const a of r) {
+                            const m = this.formDataValue(a);
+                            null !== m && n.push([o, m])
+                        }
+                    }
+                    this._bodyContent = n.map(o => `${encodeURIComponent(o[0])}=${encodeURIComponent(o[1])}`).join("&")
+                } else if ("multipart/form-data" === this._bodyContentType) {
+                    const n = new FormData;
+                    if (null != t)
+                        for (const o of Object.keys(t)) {
+                            const r = t[o];
+                            if (r instanceof Array)
+                                for (const a of r) {
+                                    const m = this.formDataValue(a);
+                                    null !== m && n.append(o, m)
+                                }
+                            else {
+                                const a = this.formDataValue(r);
+                                null !== a && n.set(o, a)
+                            }
+                        }
+                    this._bodyContent = n
+                } else
+                    this._bodyContent = t
+            }
+            formDataValue(t) {
+                return null == t ? null : t instanceof Blob ? t : "object" == typeof t ? new Blob([JSON.stringify(t)],{
+                    type: "application/json"
+                }) : String(t)
+            }
+            build(t) {
+                t = t || {};
+                let s = this.operationPath;
+                for (const a of this._path.values())
+                    s = a.append(s);
+                const n = this.rootUrl + s;
+                let o = new l.HttpParams({
+                    encoder: p
+                });
+                for (const a of this._query.values())
+                    o = a.append(o);
+                let r = new l.HttpHeaders;
+                t.accept && (r = r.append("Accept", t.accept));
+                for (const a of this._header.values())
+                    r = a.append(r);
+                return this._bodyContentType && !(this._bodyContent instanceof FormData) && (r = r.set("Content-Type", this._bodyContentType)),
+                new l.HttpRequest(this.method.toUpperCase(),n,this._bodyContent,{
+                    params: o,
+                    headers: r,
+                    responseType: t.responseType,
+                    reportProgress: t.reportProgress,
+                    context: t.context
+                })
+            }
+        }
+    },
+    3307(P, v, e) {
+        e.d(v, {
+            Hk: () => p.H,
+            Nj: () => l.N,
+            WV: () => f.W,
+            uq: () => c.u
+        });
+        var l = e(4624)
+          , f = e(3519)
+          , p = e(4871)
+          , c = (e(7191),
+        e(2056));
+        e(3259),
+        e(225),
+        e(9591)
+    },
+    9591(P, v, e) {
+        e.d(v, {
+            G: () => y
+        });
+        var l = e(6354)
+          , f = e(9576)
+          , p = e(9674)
+          , h = e(5964)
+          , c = e(7420);
+        function u(t, s, n, o) {
+            const r = new c.t(s,u.PATH,"get");
+            return t.request(r.build({
+                responseType: "json",
+                accept: "application/json",
+                context: o
+            })).pipe((0,
+            h.p)(a => a instanceof p.HttpResponse), (0,
+            l.T)(a => a))
+        }
+        u.PATH = "/checkHomeUrl";
+        var i = e(1606)
+          , d = e(3136);
+        let y = ( () => {
+            class t extends f.d {
+                constructor(n, o) {
+                    super(n, o)
+                }
+                static CheckHomeUrlPath = "/checkHomeUrl";
+                checkHomeUrl$Response(n, o) {
+                    return u(this.http, this.rootUrl, 0, o)
+                }
+                checkHomeUrl(n, o) {
+                    return this.checkHomeUrl$Response(n, o).pipe((0,
+                    l.T)(r => r.body))
+                }
+                static \u0275fac = function(o) {
+                    return new (o || t)(i.\u0275\u0275inject(d.J),i.\u0275\u0275inject(p.HttpClient))
+                }
+                ;
+                static \u0275prov = i.\u0275\u0275defineInjectable({
+                    token: t,
+                    factory: t.\u0275fac,
+                    providedIn: "root"
+                })
+            }
+            return t
+        }
+        )()
+    },
+    225(P, v, e) {
+        e.d(v, {
+            Z: () => t
+        });
+        var l = e(6354)
+          , f = e(9576)
+          , p = e(9674)
+          , h = e(5964)
+          , c = e(7420);
+        function u(s, n, o, r) {
+            const a = new c.t(n,u.PATH,"get");
+            return s.request(a.build({
+                responseType: "json",
+                accept: "application/json",
+                context: r
+            })).pipe((0,
+            h.p)(m => m instanceof p.HttpResponse), (0,
+            l.T)(m => m))
+        }
+        function i(s, n, o, r) {
+            const a = new c.t(n,i.PATH,"get");
+            return s.request(a.build({
+                responseType: "json",
+                accept: "application/json",
+                context: r
+            })).pipe((0,
+            h.p)(m => m instanceof p.HttpResponse), (0,
+            l.T)(m => m))
+        }
+        u.PATH = "/headerInfo",
+        i.PATH = "/headerInfoV2";
+        var d = e(1606)
+          , y = e(3136);
+        let t = ( () => {
+            class s extends f.d {
+                constructor(o, r) {
+                    super(o, r)
+                }
+                static GetHeaderInfoPath = "/headerInfo";
+                getHeaderInfo$Response(o, r) {
+                    return u(this.http, this.rootUrl, 0, r)
+                }
+                getHeaderInfo(o, r) {
+                    return this.getHeaderInfo$Response(o, r).pipe((0,
+                    l.T)(a => a.body))
+                }
+                static GetHeaderInfoV2Path = "/headerInfoV2";
+                getHeaderInfoV2$Response(o, r) {
+                    return i(this.http, this.rootUrl, 0, r)
+                }
+                getHeaderInfoV2(o, r) {
+                    return this.getHeaderInfoV2$Response(o, r).pipe((0,
+                    l.T)(a => a.body))
+                }
+                static \u0275fac = function(r) {
+                    return new (r || s)(d.\u0275\u0275inject(y.J),d.\u0275\u0275inject(p.HttpClient))
+                }
+                ;
+                static \u0275prov = d.\u0275\u0275defineInjectable({
+                    token: s,
+                    factory: s.\u0275fac,
+                    providedIn: "root"
+                })
+            }
+            return s
+        }
+        )()
+    },
+    3259(P, v, e) {
+        e.d(v, {
+            Y: () => y
+        });
+        var l = e(6354)
+          , f = e(9576)
+          , p = e(9674)
+          , h = e(5964)
+          , c = e(7420);
+        function u(t, s, n, o) {
+            const r = new c.t(s,u.PATH,"get");
+            return t.request(r.build({
+                responseType: "text",
+                accept: "*/*",
+                context: o
+            })).pipe((0,
+            h.p)(a => a instanceof p.HttpResponse), (0,
+            l.T)(a => a.clone({
+                body: void 0
+            })))
+        }
+        u.PATH = "/ibm_security_logout";
+        var i = e(1606)
+          , d = e(3136);
+        let y = ( () => {
+            class t extends f.d {
+                constructor(n, o) {
+                    super(n, o)
+                }
+                static LogoutPath = "/ibm_security_logout";
+                logout$Response(n, o) {
+                    return u(this.http, this.rootUrl, 0, o)
+                }
+                logout(n, o) {
+                    return this.logout$Response(n, o).pipe((0,
+                    l.T)(r => r.body))
+                }
+                static \u0275fac = function(o) {
+                    return new (o || t)(i.\u0275\u0275inject(d.J),i.\u0275\u0275inject(p.HttpClient))
+                }
+                ;
+                static \u0275prov = i.\u0275\u0275defineInjectable({
+                    token: t,
+                    factory: t.\u0275fac,
+                    providedIn: "root"
+                })
+            }
+            return t
+        }
+        )()
+    },
+    2056(P, v, e) {
+        e.d(v, {
+            u: () => y
+        });
+        var l = e(6354)
+          , f = e(9576)
+          , p = e(9674)
+          , h = e(5964)
+          , c = e(7420);
+        function u(t, s, n, o) {
+            const r = new c.t(s,u.PATH,"get");
+            return t.request(r.build({
+                responseType: "json",
+                accept: "application/json",
+                context: o
+            })).pipe((0,
+            h.p)(a => a instanceof p.HttpResponse), (0,
+            l.T)(a => a))
+        }
+        u.PATH = "/medicareInfo";
+        var i = e(1606)
+          , d = e(3136);
+        let y = ( () => {
+            class t extends f.d {
+                constructor(n, o) {
+                    super(n, o)
+                }
+                static MedicareInfoPath = "/medicareInfo";
+                medicareInfo$Response(n, o) {
+                    return u(this.http, this.rootUrl, 0, o)
+                }
+                medicareInfo(n, o) {
+                    return this.medicareInfo$Response(n, o).pipe((0,
+                    l.T)(r => r.body))
+                }
+                static \u0275fac = function(o) {
+                    return new (o || t)(i.\u0275\u0275inject(d.J),i.\u0275\u0275inject(p.HttpClient))
+                }
+                ;
+                static \u0275prov = i.\u0275\u0275defineInjectable({
+                    token: t,
+                    factory: t.\u0275fac,
+                    providedIn: "root"
+                })
+            }
+            return t
+        }
+        )()
+    },
+    4624(P, v, e) {
+        e.d(v, {
+            N: () => y
+        });
+        var l = e(6354)
+          , f = e(9576)
+          , p = e(9674)
+          , h = e(5964)
+          , c = e(7420);
+        function u(t, s, n, o) {
+            const r = new c.t(s,u.PATH,"get");
+            return t.request(r.build({
+                responseType: "blob",
+                accept: "*/*",
+                context: o
+            })).pipe((0,
+            h.p)(a => a instanceof p.HttpResponse), (0,
+            l.T)(a => a))
+        }
+        u.PATH = "/visitMyProfile";
+        var i = e(1606)
+          , d = e(3136);
+        let y = ( () => {
+            class t extends f.d {
+                constructor(n, o) {
+                    super(n, o)
+                }
+                static VisitMyProfilePath = "/visitMyProfile";
+                visitMyProfile$Response(n, o) {
+                    return u(this.http, this.rootUrl, 0, o)
+                }
+                visitMyProfile(n, o) {
+                    return this.visitMyProfile$Response(n, o).pipe((0,
+                    l.T)(r => r.body))
+                }
+                static \u0275fac = function(o) {
+                    return new (o || t)(i.\u0275\u0275inject(d.J),i.\u0275\u0275inject(p.HttpClient))
+                }
+                ;
+                static \u0275prov = i.\u0275\u0275defineInjectable({
+                    token: t,
+                    factory: t.\u0275fac,
+                    providedIn: "root"
+                })
+            }
+            return t
+        }
+        )()
+    },
+    7191(P, v, e) {
+        e.d(v, {
+            W: () => t
+        });
+        var l = e(6354)
+          , f = e(9576)
+          , p = e(9674)
+          , h = e(5964)
+          , c = e(7420);
+        function u(s, n, o, r) {
+            const a = new c.t(n,u.PATH,"get");
+            return s.request(a.build({
+                responseType: "json",
+                accept: "application/json",
+                context: r
+            })).pipe((0,
+            h.p)(m => m instanceof p.HttpResponse), (0,
+            l.T)(m => m))
+        }
+        function i(s, n, o, r) {
+            const a = new c.t(n,i.PATH,"get");
+            return s.request(a.build({
+                responseType: "json",
+                accept: "application/json",
+                context: r
+            })).pipe((0,
+            h.p)(m => m instanceof p.HttpResponse), (0,
+            l.T)(m => m))
+        }
+        u.PATH = "/overpayments",
+        i.PATH = "/payHistOnly";
+        var d = e(1606)
+          , y = e(3136);
+        let t = ( () => {
+            class s extends f.d {
+                constructor(o, r) {
+                    super(o, r)
+                }
+                static PayHistOnlyPath = "/payHistOnly";
+                payHistOnly$Response(o, r) {
+                    return i(this.http, this.rootUrl, 0, r)
+                }
+                payHistOnly(o, r) {
+                    return this.payHistOnly$Response(o, r).pipe((0,
+                    l.T)(a => a.body))
+                }
+                static OverpaymentsPath = "/overpayments";
+                overpayments$Response(o, r) {
+                    return u(this.http, this.rootUrl, 0, r)
+                }
+                overpayments(o, r) {
+                    return this.overpayments$Response(o, r).pipe((0,
+                    l.T)(a => a.body))
+                }
+                static \u0275fac = function(r) {
+                    return new (r || s)(d.\u0275\u0275inject(y.J),d.\u0275\u0275inject(p.HttpClient))
+                }
+                ;
+                static \u0275prov = d.\u0275\u0275defineInjectable({
+                    token: s,
+                    factory: s.\u0275fac,
+                    providedIn: "root"
+                })
+            }
+            return s
+        }
+        )()
+    },
+    4871(P, v, e) {
+        e.d(v, {
+            H: () => y
+        });
+        var l = e(6354)
+          , f = e(9576)
+          , p = e(9674)
+          , h = e(5964)
+          , c = e(7420);
+        function u(t, s, n, o) {
+            const r = new c.t(s,u.PATH,"get");
+            return t.request(r.build({
+                responseType: "json",
+                accept: "application/json",
+                context: o
+            })).pipe((0,
+            h.p)(a => a instanceof p.HttpResponse), (0,
+            l.T)(a => a))
+        }
+        u.PATH = "/t16Info";
+        var i = e(1606)
+          , d = e(3136);
+        let y = ( () => {
+            class t extends f.d {
+                constructor(n, o) {
+                    super(n, o)
+                }
+                static T16InfoPath = "/t16Info";
+                t16Info$Response(n, o) {
+                    return u(this.http, this.rootUrl, 0, o)
+                }
+                t16Info(n, o) {
+                    return this.t16Info$Response(n, o).pipe((0,
+                    l.T)(r => r.body))
+                }
+                static \u0275fac = function(o) {
+                    return new (o || t)(i.\u0275\u0275inject(d.J),i.\u0275\u0275inject(p.HttpClient))
+                }
+                ;
+                static \u0275prov = i.\u0275\u0275defineInjectable({
+                    token: t,
+                    factory: t.\u0275fac,
+                    providedIn: "root"
+                })
+            }
+            return t
+        }
+        )()
+    },
+    3519(P, v, e) {
+        e.d(v, {
+            W: () => y
+        });
+        var l = e(6354)
+          , f = e(9576)
+          , p = e(9674)
+          , h = e(5964)
+          , c = e(7420);
+        function u(t, s, n, o) {
+            const r = new c.t(s,u.PATH,"get");
+            return t.request(r.build({
+                responseType: "json",
+                accept: "application/json",
+                context: o
+            })).pipe((0,
+            h.p)(a => a instanceof p.HttpResponse), (0,
+            l.T)(a => a))
+        }
+        u.PATH = "/t2Info";
+        var i = e(1606)
+          , d = e(3136);
+        let y = ( () => {
+            class t extends f.d {
+                constructor(n, o) {
+                    super(n, o)
+                }
+                static T2InfoPath = "/t2Info";
+                t2Info$Response(n, o) {
+                    return u(this.http, this.rootUrl, 0, o)
+                }
+                t2Info(n, o) {
+                    return this.t2Info$Response(n, o).pipe((0,
+                    l.T)(r => r.body))
+                }
+                static \u0275fac = function(o) {
+                    return new (o || t)(i.\u0275\u0275inject(d.J),i.\u0275\u0275inject(p.HttpClient))
+                }
+                ;
+                static \u0275prov = i.\u0275\u0275defineInjectable({
+                    token: t,
+                    factory: t.\u0275fac,
+                    providedIn: "root"
+                })
+            }
+            return t
+        }
+        )()
+    },
+    3499(P, v, e) {
+        e.d(v, {
+            BenefitsAndPaymentsModule: () => r
+        }),
+        e.r(v);
+        var l = e(116)
+          , f = e(5312)
+          , p = e(9674)
+          , h = e(8590)
+          , c = e(152);
+        const u = [];
+        var i = e(1606);
+        let d = ( () => {
+            class a {
+                static \u0275fac = function(I) {
+                    return new (I || a)
+                }
+                ;
+                static \u0275mod = i.\u0275\u0275defineNgModule({
+                    type: a
+                });
+                static \u0275inj = i.\u0275\u0275defineInjector({
+                    imports: [c.RouterModule.forChild(u), c.RouterModule]
+                })
+            }
+            return a
+        }
+        )();
+        var y = e(8769)
+          , t = e(9079)
+          , s = e(9978)
+          , n = e(3307)
+          , o = e(8997);
+        let r = ( () => {
+            class a {
+                static \u0275fac = function(I) {
+                    return new (I || a)
+                }
+                ;
+                static \u0275mod = i.\u0275\u0275defineNgModule({
+                    type: a
+                });
+                static \u0275inj = i.\u0275\u0275defineInjector({
+                    providers: [h.ComponentRawMaterialsDepartmentStore, {
+                        provide: h.CONTACT_US_URL,
+                        useValue: f.c.contactUsUrl
+                    }, n.uq, y.K, n.WV, t.Q, n.Hk, s.V, n.Nj],
+                    imports: [l.CommonModule, p.HttpClientModule, d, h.MyssaContactUsModule, h.MyssaDynamicComponentModule, o.f.forRoot({
+                        rootUrl: f.c.bffApiBaseUrl
+                    })]
+                })
+            }
+            return a
+        }
+        )()
+    },
+    8769(P, v, e) {
+        e.d(v, {
+            K: () => h
+        });
+        var l = e(6354)
+          , f = e(1606)
+          , p = e(3307);
+        let h = ( () => {
+            class c {
+                _client;
+                _data;
+                _status;
+                constructor(i) {
+                    this._client = i
+                }
+                get data() {
+                    return this._data
+                }
+                get status() {
+                    return this._status
+                }
+                loadData() {
+                    return this._client.medicareInfo().pipe((0,
+                    l.T)(i => (i.responseStatus && (this._status = i.responseStatus),
+                    i.responseData && (this._data = i.responseData),
+                    this._data)))
+                }
+                static \u0275fac = function(d) {
+                    return new (d || c)(f.\u0275\u0275inject(p.uq))
+                }
+                ;
+                static \u0275prov = f.\u0275\u0275defineInjectable({
+                    token: c,
+                    factory: c.\u0275fac,
+                    providedIn: "root"
+                })
+            }
+            return c
+        }
+        )()
+    },
+    9978(P, v, e) {
+        e.d(v, {
+            V: () => h
+        });
+        var l = e(6354)
+          , f = e(1606)
+          , p = e(3307);
+        let h = ( () => {
+            class c {
+                _client;
+                _data;
+                _status;
+                constructor(i) {
+                    this._client = i
+                }
+                get data() {
+                    return this._data
+                }
+                get status() {
+                    return this._status
+                }
+                loadData() {
+                    return this._client.t16Info().pipe((0,
+                    l.T)(i => {
+                        const d = i.responseData;
+                        return this._data = d,
+                        this._status = i.responseStatus,
+                        d
+                    }
+                    ))
+                }
+                static \u0275fac = function(d) {
+                    return new (d || c)(f.\u0275\u0275inject(p.Hk))
+                }
+                ;
+                static \u0275prov = f.\u0275\u0275defineInjectable({
+                    token: c,
+                    factory: c.\u0275fac,
+                    providedIn: "root"
+                })
+            }
+            return c
+        }
+        )()
+    },
+    9079(P, v, e) {
+        e.d(v, {
+            Q: () => h
+        });
+        var l = e(6354)
+          , f = e(1606)
+          , p = e(3307);
+        let h = ( () => {
+            class c {
+                _client;
+                _data;
+                _status;
+                constructor(i) {
+                    this._client = i
+                }
+                get data() {
+                    return this._data
+                }
+                get status() {
+                    return this._status
+                }
+                loadData() {
+                    return this._client.t2Info().pipe((0,
+                    l.T)(i => {
+                        this._status = i.responseStatus;
+                        const y = i.responseData;
+                        return this._data = y,
+                        y
+                    }
+                    ))
+                }
+                static \u0275fac = function(d) {
+                    return new (d || c)(f.\u0275\u0275inject(p.WV))
+                }
+                ;
+                static \u0275prov = f.\u0275\u0275defineInjectable({
+                    token: c,
+                    factory: c.\u0275fac,
+                    providedIn: "root"
+                })
+            }
+            return c
+        }
+        )()
+    },
+    5312(P, v, e) {
+        e.d(v, {
+            c: () => y
+        });
+        const u = []
+          , i = {
+            type: "module",
+            remoteEntry: "/myssa/mymrc-ui/remoteEntry.js",
+            exposedModule: "MymrcUiComponent",
+            componentName: "MymrcUiComponent",
+            exposedModuleOfNgModule: "MymrcUiNgModule",
+            ngModuleName: "MymrcUiModule",
+            displayName: "Mymrc UI"
+        }
+          , d = [i]
+          , y = {
+            production: !0,
+            shouldLoadRemotesUpfront: !1,
+            bffApiBaseUrl: "/myssa/mybenefits-api",
+            contactUsUrl: "https://www.ssa.gov/agency/contact/phone.html",
+            paymentHistUrl: "/myssa/mybenefits-ui/payment-history",
+            mymrcUiContainerPluginFragment: i,
+            pluginPageList: u,
+            pluginFragmentList: d,
+            pluginList: [...u, ...d]
+        }
+    }
+}]);(self.webpackChunkmybenefits_ui = self.webpackChunkmybenefits_ui || []).push([[3412, 8302], {
+    3136(b, x, o) {
+        o.d(x, {
+            J: () => t
+        });
+        var e = o(1606);
+        let t = ( () => {
+            class f {
+                rootUrl = "/myssa/mybenefits-api";
+                static \u0275fac = function(h) {
+                    return new (h || f)
+                }
+                ;
+                static \u0275prov = e.\u0275\u0275defineInjectable({
+                    token: f,
+                    factory: f.\u0275fac,
+                    providedIn: "root"
+                })
+            }
+            return f
+        }
+        )()
+    },
+    9576(b, x, o) {
+        o.d(x, {
+            d: () => g
+        });
+        var e = o(1606)
+          , t = o(3136)
+          , f = o(9674);
+        let g = ( () => {
+            class n {
+                config;
+                http;
+                constructor(m, p) {
+                    this.config = m,
+                    this.http = p
+                }
+                _rootUrl;
+                get rootUrl() {
+                    return this._rootUrl || this.config.rootUrl
+                }
+                set rootUrl(m) {
+                    this._rootUrl = m
+                }
+                static \u0275fac = function(p) {
+                    return new (p || n)(e.\u0275\u0275inject(t.J),e.\u0275\u0275inject(f.HttpClient))
+                }
+                ;
+                static \u0275prov = e.\u0275\u0275defineInjectable({
+                    token: n,
+                    factory: n.\u0275fac
+                })
+            }
+            return n
+        }
+        )()
+    },
+    7420(b, x, o) {
+        o.d(x, {
+            t: () => p
+        });
+        var e = o(9674);
+        const f = new class t {
+            encodeKey(a) {
+                return encodeURIComponent(a)
+            }
+            encodeValue(a) {
+                return encodeURIComponent(a)
+            }
+            decodeKey(a) {
+                return decodeURIComponent(a)
+            }
+            decodeValue(a) {
+                return decodeURIComponent(a)
+            }
+        }
+        ;
+        class g {
+            name;
+            value;
+            options;
+            constructor(a, l, r, s, d) {
+                this.name = a,
+                this.value = l,
+                this.options = r,
+                this.options = r || {},
+                null == this.options.style && (this.options.style = s),
+                null == this.options.explode && (this.options.explode = d)
+            }
+            serializeValue(a, l=",") {
+                if (null == a)
+                    return "";
+                if (a instanceof Array)
+                    return a.map(r => this.serializeValue(r).split(l).join(encodeURIComponent(l))).join(l);
+                if ("object" == typeof a) {
+                    const r = [];
+                    for (const s of Object.keys(a)) {
+                        let d = a[s];
+                        null != d && (d = this.serializeValue(d).split(l).join(encodeURIComponent(l)),
+                        this.options.explode ? r.push(`${s}=${d}`) : (r.push(s),
+                        r.push(d)))
+                    }
+                    return r.join(l)
+                }
+                return String(a)
+            }
+        }
+        class n extends g {
+            constructor(a, l, r) {
+                super(a, l, r, "simple", !1)
+            }
+            append(a) {
+                let l = this.value;
+                null == l && (l = "");
+                let r = "label" === this.options.style ? "." : ""
+                  , s = this.options.explode ? "" === r ? "," : r : ","
+                  , d = !1;
+                return "matrix" === this.options.style && (r = `;${this.name}=`,
+                this.options.explode && "object" == typeof l && (r = ";",
+                l instanceof Array ? (l = l.map(c => `${this.name}=${this.serializeValue(c, ";")}`),
+                l = l.join(";"),
+                d = !0) : (l = this.serializeValue(l, ";"),
+                d = !0))),
+                l = r + (d ? l : this.serializeValue(l, s)),
+                (a = a.replace(`{${this.name}}`, l)).replace(`{${r}${this.name}${this.options.explode ? "*" : ""}}`, l)
+            }
+            serializeValue(a, l=",") {
+                var r = "string" == typeof a ? encodeURIComponent(a) : super.serializeValue(a, l);
+                return (r = (r = r.replace(/%3D/g, "=")).replace(/%3B/g, ";")).replace(/%2C/g, ",")
+            }
+        }
+        class h extends g {
+            constructor(a, l, r) {
+                super(a, l, r, "form", !0)
+            }
+            append(a) {
+                if (this.value instanceof Array) {
+                    if (!this.options.explode)
+                        return a.append(this.name, this.serializeValue(this.value, "spaceDelimited" === this.options.style ? " " : "pipeDelimited" === this.options.style ? "|" : ","));
+                    for (const l of this.value)
+                        a = a.append(this.name, this.serializeValue(l))
+                } else if (null !== this.value && "object" == typeof this.value)
+                    if ("deepObject" === this.options.style)
+                        for (const l of Object.keys(this.value)) {
+                            const r = this.value[l];
+                            null != r && (a = a.append(`${this.name}[${l}]`, this.serializeValue(r)))
+                        }
+                    else if (this.options.explode)
+                        for (const l of Object.keys(this.value)) {
+                            const r = this.value[l];
+                            null != r && (a = a.append(l, this.serializeValue(r)))
+                        }
+                    else {
+                        const l = [];
+                        for (const r of Object.keys(this.value)) {
+                            const s = this.value[r];
+                            null != s && (l.push(r),
+                            l.push(s))
+                        }
+                        a = a.append(this.name, this.serializeValue(l))
+                    }
+                else
+                    null != this.value && (a = a.append(this.name, this.serializeValue(this.value)));
+                return a
+            }
+        }
+        class m extends g {
+            constructor(a, l, r) {
+                super(a, l, r, "simple", !1)
+            }
+            append(a) {
+                if (null != this.value)
+                    if (this.value instanceof Array)
+                        for (const l of this.value)
+                            a = a.append(this.name, this.serializeValue(l));
+                    else
+                        a = a.append(this.name, this.serializeValue(this.value));
+                return a
+            }
+        }
+        class p {
+            rootUrl;
+            operationPath;
+            method;
+            _path = new Map;
+            _query = new Map;
+            _header = new Map;
+            _bodyContent;
+            _bodyContentType;
+            constructor(a, l, r) {
+                this.rootUrl = a,
+                this.operationPath = l,
+                this.method = r
+            }
+            path(a, l, r) {
+                this._path.set(a, new n(a,l,r || {}))
+            }
+            query(a, l, r) {
+                this._query.set(a, new h(a,l,r || {}))
+            }
+            header(a, l, r) {
+                this._header.set(a, new m(a,l,r || {}))
+            }
+            body(a, l="application/json") {
+                if (this._bodyContentType = a instanceof Blob ? a.type : l,
+                "application/x-www-form-urlencoded" === this._bodyContentType && null !== a && "object" == typeof a) {
+                    const r = [];
+                    for (const s of Object.keys(a)) {
+                        let d = a[s];
+                        d instanceof Array || (d = [d]);
+                        for (const c of d) {
+                            const D = this.formDataValue(c);
+                            null !== D && r.push([s, D])
+                        }
+                    }
+                    this._bodyContent = r.map(s => `${encodeURIComponent(s[0])}=${encodeURIComponent(s[1])}`).join("&")
+                } else if ("multipart/form-data" === this._bodyContentType) {
+                    const r = new FormData;
+                    if (null != a)
+                        for (const s of Object.keys(a)) {
+                            const d = a[s];
+                            if (d instanceof Array)
+                                for (const c of d) {
+                                    const D = this.formDataValue(c);
+                                    null !== D && r.append(s, D)
+                                }
+                            else {
+                                const c = this.formDataValue(d);
+                                null !== c && r.set(s, c)
+                            }
+                        }
+                    this._bodyContent = r
+                } else
+                    this._bodyContent = a
+            }
+            formDataValue(a) {
+                return null == a ? null : a instanceof Blob ? a : "object" == typeof a ? new Blob([JSON.stringify(a)],{
+                    type: "application/json"
+                }) : String(a)
+            }
+            build(a) {
+                a = a || {};
+                let l = this.operationPath;
+                for (const c of this._path.values())
+                    l = c.append(l);
+                const r = this.rootUrl + l;
+                let s = new e.HttpParams({
+                    encoder: f
+                });
+                for (const c of this._query.values())
+                    s = c.append(s);
+                let d = new e.HttpHeaders;
+                a.accept && (d = d.append("Accept", a.accept));
+                for (const c of this._header.values())
+                    d = c.append(d);
+                return this._bodyContentType && !(this._bodyContent instanceof FormData) && (d = d.set("Content-Type", this._bodyContentType)),
+                new e.HttpRequest(this.method.toUpperCase(),r,this._bodyContent,{
+                    params: s,
+                    headers: d,
+                    responseType: a.responseType,
+                    reportProgress: a.reportProgress,
+                    context: a.context
+                })
+            }
+        }
+    },
+    3307(b, x, o) {
+        o.d(x, {
+            Hk: () => f.H,
+            Nj: () => e.N,
+            WV: () => t.W,
+            uq: () => n.u
+        });
+        var e = o(4624)
+          , t = o(3519)
+          , f = o(4871)
+          , n = (o(7191),
+        o(2056));
+        o(3259),
+        o(225),
+        o(9591)
+    },
+    9591(b, x, o) {
+        o.d(x, {
+            G: () => C
+        });
+        var e = o(6354)
+          , t = o(9576)
+          , f = o(9674)
+          , g = o(5964)
+          , n = o(7420);
+        function h(a, l, r, s) {
+            const d = new n.t(l,h.PATH,"get");
+            return a.request(d.build({
+                responseType: "json",
+                accept: "application/json",
+                context: s
+            })).pipe((0,
+            g.p)(c => c instanceof f.HttpResponse), (0,
+            e.T)(c => c))
+        }
+        h.PATH = "/checkHomeUrl";
+        var m = o(1606)
+          , p = o(3136);
+        let C = ( () => {
+            class a extends t.d {
+                constructor(r, s) {
+                    super(r, s)
+                }
+                static CheckHomeUrlPath = "/checkHomeUrl";
+                checkHomeUrl$Response(r, s) {
+                    return h(this.http, this.rootUrl, 0, s)
+                }
+                checkHomeUrl(r, s) {
+                    return this.checkHomeUrl$Response(r, s).pipe((0,
+                    e.T)(d => d.body))
+                }
+                static \u0275fac = function(s) {
+                    return new (s || a)(m.\u0275\u0275inject(p.J),m.\u0275\u0275inject(f.HttpClient))
+                }
+                ;
+                static \u0275prov = m.\u0275\u0275defineInjectable({
+                    token: a,
+                    factory: a.\u0275fac,
+                    providedIn: "root"
+                })
+            }
+            return a
+        }
+        )()
+    },
+    225(b, x, o) {
+        o.d(x, {
+            Z: () => a
+        });
+        var e = o(6354)
+          , t = o(9576)
+          , f = o(9674)
+          , g = o(5964)
+          , n = o(7420);
+        function h(l, r, s, d) {
+            const c = new n.t(r,h.PATH,"get");
+            return l.request(c.build({
+                responseType: "json",
+                accept: "application/json",
+                context: d
+            })).pipe((0,
+            g.p)(D => D instanceof f.HttpResponse), (0,
+            e.T)(D => D))
+        }
+        function m(l, r, s, d) {
+            const c = new n.t(r,m.PATH,"get");
+            return l.request(c.build({
+                responseType: "json",
+                accept: "application/json",
+                context: d
+            })).pipe((0,
+            g.p)(D => D instanceof f.HttpResponse), (0,
+            e.T)(D => D))
+        }
+        h.PATH = "/headerInfo",
+        m.PATH = "/headerInfoV2";
+        var p = o(1606)
+          , C = o(3136);
+        let a = ( () => {
+            class l extends t.d {
+                constructor(s, d) {
+                    super(s, d)
+                }
+                static GetHeaderInfoPath = "/headerInfo";
+                getHeaderInfo$Response(s, d) {
+                    return h(this.http, this.rootUrl, 0, d)
+                }
+                getHeaderInfo(s, d) {
+                    return this.getHeaderInfo$Response(s, d).pipe((0,
+                    e.T)(c => c.body))
+                }
+                static GetHeaderInfoV2Path = "/headerInfoV2";
+                getHeaderInfoV2$Response(s, d) {
+                    return m(this.http, this.rootUrl, 0, d)
+                }
+                getHeaderInfoV2(s, d) {
+                    return this.getHeaderInfoV2$Response(s, d).pipe((0,
+                    e.T)(c => c.body))
+                }
+                static \u0275fac = function(d) {
+                    return new (d || l)(p.\u0275\u0275inject(C.J),p.\u0275\u0275inject(f.HttpClient))
+                }
+                ;
+                static \u0275prov = p.\u0275\u0275defineInjectable({
+                    token: l,
+                    factory: l.\u0275fac,
+                    providedIn: "root"
+                })
+            }
+            return l
+        }
+        )()
+    },
+    3259(b, x, o) {
+        o.d(x, {
+            Y: () => C
+        });
+        var e = o(6354)
+          , t = o(9576)
+          , f = o(9674)
+          , g = o(5964)
+          , n = o(7420);
+        function h(a, l, r, s) {
+            const d = new n.t(l,h.PATH,"get");
+            return a.request(d.build({
+                responseType: "text",
+                accept: "*/*",
+                context: s
+            })).pipe((0,
+            g.p)(c => c instanceof f.HttpResponse), (0,
+            e.T)(c => c.clone({
+                body: void 0
+            })))
+        }
+        h.PATH = "/ibm_security_logout";
+        var m = o(1606)
+          , p = o(3136);
+        let C = ( () => {
+            class a extends t.d {
+                constructor(r, s) {
+                    super(r, s)
+                }
+                static LogoutPath = "/ibm_security_logout";
+                logout$Response(r, s) {
+                    return h(this.http, this.rootUrl, 0, s)
+                }
+                logout(r, s) {
+                    return this.logout$Response(r, s).pipe((0,
+                    e.T)(d => d.body))
+                }
+                static \u0275fac = function(s) {
+                    return new (s || a)(m.\u0275\u0275inject(p.J),m.\u0275\u0275inject(f.HttpClient))
+                }
+                ;
+                static \u0275prov = m.\u0275\u0275defineInjectable({
+                    token: a,
+                    factory: a.\u0275fac,
+                    providedIn: "root"
+                })
+            }
+            return a
+        }
+        )()
+    },
+    2056(b, x, o) {
+        o.d(x, {
+            u: () => C
+        });
+        var e = o(6354)
+          , t = o(9576)
+          , f = o(9674)
+          , g = o(5964)
+          , n = o(7420);
+        function h(a, l, r, s) {
+            const d = new n.t(l,h.PATH,"get");
+            return a.request(d.build({
+                responseType: "json",
+                accept: "application/json",
+                context: s
+            })).pipe((0,
+            g.p)(c => c instanceof f.HttpResponse), (0,
+            e.T)(c => c))
+        }
+        h.PATH = "/medicareInfo";
+        var m = o(1606)
+          , p = o(3136);
+        let C = ( () => {
+            class a extends t.d {
+                constructor(r, s) {
+                    super(r, s)
+                }
+                static MedicareInfoPath = "/medicareInfo";
+                medicareInfo$Response(r, s) {
+                    return h(this.http, this.rootUrl, 0, s)
+                }
+                medicareInfo(r, s) {
+                    return this.medicareInfo$Response(r, s).pipe((0,
+                    e.T)(d => d.body))
+                }
+                static \u0275fac = function(s) {
+                    return new (s || a)(m.\u0275\u0275inject(p.J),m.\u0275\u0275inject(f.HttpClient))
+                }
+                ;
+                static \u0275prov = m.\u0275\u0275defineInjectable({
+                    token: a,
+                    factory: a.\u0275fac,
+                    providedIn: "root"
+                })
+            }
+            return a
+        }
+        )()
+    },
+    4624(b, x, o) {
+        o.d(x, {
+            N: () => C
+        });
+        var e = o(6354)
+          , t = o(9576)
+          , f = o(9674)
+          , g = o(5964)
+          , n = o(7420);
+        function h(a, l, r, s) {
+            const d = new n.t(l,h.PATH,"get");
+            return a.request(d.build({
+                responseType: "blob",
+                accept: "*/*",
+                context: s
+            })).pipe((0,
+            g.p)(c => c instanceof f.HttpResponse), (0,
+            e.T)(c => c))
+        }
+        h.PATH = "/visitMyProfile";
+        var m = o(1606)
+          , p = o(3136);
+        let C = ( () => {
+            class a extends t.d {
+                constructor(r, s) {
+                    super(r, s)
+                }
+                static VisitMyProfilePath = "/visitMyProfile";
+                visitMyProfile$Response(r, s) {
+                    return h(this.http, this.rootUrl, 0, s)
+                }
+                visitMyProfile(r, s) {
+                    return this.visitMyProfile$Response(r, s).pipe((0,
+                    e.T)(d => d.body))
+                }
+                static \u0275fac = function(s) {
+                    return new (s || a)(m.\u0275\u0275inject(p.J),m.\u0275\u0275inject(f.HttpClient))
+                }
+                ;
+                static \u0275prov = m.\u0275\u0275defineInjectable({
+                    token: a,
+                    factory: a.\u0275fac,
+                    providedIn: "root"
+                })
+            }
+            return a
+        }
+        )()
+    },
+    7191(b, x, o) {
+        o.d(x, {
+            W: () => a
+        });
+        var e = o(6354)
+          , t = o(9576)
+          , f = o(9674)
+          , g = o(5964)
+          , n = o(7420);
+        function h(l, r, s, d) {
+            const c = new n.t(r,h.PATH,"get");
+            return l.request(c.build({
+                responseType: "json",
+                accept: "application/json",
+                context: d
+            })).pipe((0,
+            g.p)(D => D instanceof f.HttpResponse), (0,
+            e.T)(D => D))
+        }
+        function m(l, r, s, d) {
+            const c = new n.t(r,m.PATH,"get");
+            return l.request(c.build({
+                responseType: "json",
+                accept: "application/json",
+                context: d
+            })).pipe((0,
+            g.p)(D => D instanceof f.HttpResponse), (0,
+            e.T)(D => D))
+        }
+        h.PATH = "/overpayments",
+        m.PATH = "/payHistOnly";
+        var p = o(1606)
+          , C = o(3136);
+        let a = ( () => {
+            class l extends t.d {
+                constructor(s, d) {
+                    super(s, d)
+                }
+                static PayHistOnlyPath = "/payHistOnly";
+                payHistOnly$Response(s, d) {
+                    return m(this.http, this.rootUrl, 0, d)
+                }
+                payHistOnly(s, d) {
+                    return this.payHistOnly$Response(s, d).pipe((0,
+                    e.T)(c => c.body))
+                }
+                static OverpaymentsPath = "/overpayments";
+                overpayments$Response(s, d) {
+                    return h(this.http, this.rootUrl, 0, d)
+                }
+                overpayments(s, d) {
+                    return this.overpayments$Response(s, d).pipe((0,
+                    e.T)(c => c.body))
+                }
+                static \u0275fac = function(d) {
+                    return new (d || l)(p.\u0275\u0275inject(C.J),p.\u0275\u0275inject(f.HttpClient))
+                }
+                ;
+                static \u0275prov = p.\u0275\u0275defineInjectable({
+                    token: l,
+                    factory: l.\u0275fac,
+                    providedIn: "root"
+                })
+            }
+            return l
+        }
+        )()
+    },
+    4871(b, x, o) {
+        o.d(x, {
+            H: () => C
+        });
+        var e = o(6354)
+          , t = o(9576)
+          , f = o(9674)
+          , g = o(5964)
+          , n = o(7420);
+        function h(a, l, r, s) {
+            const d = new n.t(l,h.PATH,"get");
+            return a.request(d.build({
+                responseType: "json",
+                accept: "application/json",
+                context: s
+            })).pipe((0,
+            g.p)(c => c instanceof f.HttpResponse), (0,
+            e.T)(c => c))
+        }
+        h.PATH = "/t16Info";
+        var m = o(1606)
+          , p = o(3136);
+        let C = ( () => {
+            class a extends t.d {
+                constructor(r, s) {
+                    super(r, s)
+                }
+                static T16InfoPath = "/t16Info";
+                t16Info$Response(r, s) {
+                    return h(this.http, this.rootUrl, 0, s)
+                }
+                t16Info(r, s) {
+                    return this.t16Info$Response(r, s).pipe((0,
+                    e.T)(d => d.body))
+                }
+                static \u0275fac = function(s) {
+                    return new (s || a)(m.\u0275\u0275inject(p.J),m.\u0275\u0275inject(f.HttpClient))
+                }
+                ;
+                static \u0275prov = m.\u0275\u0275defineInjectable({
+                    token: a,
+                    factory: a.\u0275fac,
+                    providedIn: "root"
+                })
+            }
+            return a
+        }
+        )()
+    },
+    3519(b, x, o) {
+        o.d(x, {
+            W: () => C
+        });
+        var e = o(6354)
+          , t = o(9576)
+          , f = o(9674)
+          , g = o(5964)
+          , n = o(7420);
+        function h(a, l, r, s) {
+            const d = new n.t(l,h.PATH,"get");
+            return a.request(d.build({
+                responseType: "json",
+                accept: "application/json",
+                context: s
+            })).pipe((0,
+            g.p)(c => c instanceof f.HttpResponse), (0,
+            e.T)(c => c))
+        }
+        h.PATH = "/t2Info";
+        var m = o(1606)
+          , p = o(3136);
+        let C = ( () => {
+            class a extends t.d {
+                constructor(r, s) {
+                    super(r, s)
+                }
+                static T2InfoPath = "/t2Info";
+                t2Info$Response(r, s) {
+                    return h(this.http, this.rootUrl, 0, s)
+                }
+                t2Info(r, s) {
+                    return this.t2Info$Response(r, s).pipe((0,
+                    e.T)(d => d.body))
+                }
+                static \u0275fac = function(s) {
+                    return new (s || a)(m.\u0275\u0275inject(p.J),m.\u0275\u0275inject(f.HttpClient))
+                }
+                ;
+                static \u0275prov = m.\u0275\u0275defineInjectable({
+                    token: a,
+                    factory: a.\u0275fac,
+                    providedIn: "root"
+                })
+            }
+            return a
+        }
+        )()
+    },
+    8769(b, x, o) {
+        o.d(x, {
+            K: () => g
+        });
+        var e = o(6354)
+          , t = o(1606)
+          , f = o(3307);
+        let g = ( () => {
+            class n {
+                _client;
+                _data;
+                _status;
+                constructor(m) {
+                    this._client = m
+                }
+                get data() {
+                    return this._data
+                }
+                get status() {
+                    return this._status
+                }
+                loadData() {
+                    return this._client.medicareInfo().pipe((0,
+                    e.T)(m => (m.responseStatus && (this._status = m.responseStatus),
+                    m.responseData && (this._data = m.responseData),
+                    this._data)))
+                }
+                static \u0275fac = function(p) {
+                    return new (p || n)(t.\u0275\u0275inject(f.uq))
+                }
+                ;
+                static \u0275prov = t.\u0275\u0275defineInjectable({
+                    token: n,
+                    factory: n.\u0275fac,
+                    providedIn: "root"
+                })
+            }
+            return n
+        }
+        )()
+    },
+    234(b, x, o) {
+        o.d(x, {
+            I: () => e
+        });
+        class e {
+            amountTxt;
+            month;
+            startPremMonth;
+            startPremYear;
+            type;
+            year;
+            coverageTypeTxt
+        }
+    },
+    9978(b, x, o) {
+        o.d(x, {
+            V: () => g
+        });
+        var e = o(6354)
+          , t = o(1606)
+          , f = o(3307);
+        let g = ( () => {
+            class n {
+                _client;
+                _data;
+                _status;
+                constructor(m) {
+                    this._client = m
+                }
+                get data() {
+                    return this._data
+                }
+                get status() {
+                    return this._status
+                }
+                loadData() {
+                    return this._client.t16Info().pipe((0,
+                    e.T)(m => {
+                        const p = m.responseData;
+                        return this._data = p,
+                        this._status = m.responseStatus,
+                        p
+                    }
+                    ))
+                }
+                static \u0275fac = function(p) {
+                    return new (p || n)(t.\u0275\u0275inject(f.Hk))
+                }
+                ;
+                static \u0275prov = t.\u0275\u0275defineInjectable({
+                    token: n,
+                    factory: n.\u0275fac,
+                    providedIn: "root"
+                })
+            }
+            return n
+        }
+        )()
+    },
+    9079(b, x, o) {
+        o.d(x, {
+            Q: () => g
+        });
+        var e = o(6354)
+          , t = o(1606)
+          , f = o(3307);
+        let g = ( () => {
+            class n {
+                _client;
+                _data;
+                _status;
+                constructor(m) {
+                    this._client = m
+                }
+                get data() {
+                    return this._data
+                }
+                get status() {
+                    return this._status
+                }
+                loadData() {
+                    return this._client.t2Info().pipe((0,
+                    e.T)(m => {
+                        this._status = m.responseStatus;
+                        const C = m.responseData;
+                        return this._data = C,
+                        C
+                    }
+                    ))
+                }
+                static \u0275fac = function(p) {
+                    return new (p || n)(t.\u0275\u0275inject(f.WV))
+                }
+                ;
+                static \u0275prov = t.\u0275\u0275defineInjectable({
+                    token: n,
+                    factory: n.\u0275fac,
+                    providedIn: "root"
+                })
+            }
+            return n
+        }
+        )()
+    },
+    7760(b, x, o) {
+        o.d(x, {
+            v: () => C
+        });
+        var e = o(5312)
+          , t = o(1606);
+        function f(a, l) {
+            1 & a && (t.\u0275\u0275elementStart(0, "p", 0),
+            t.\u0275\u0275text(1, " You are not currently receiving payments. "),
+            t.\u0275\u0275elementEnd())
+        }
+        function g(a, l) {
+            1 & a && (t.\u0275\u0275elementStart(0, "p", 1),
+            t.\u0275\u0275text(1, " You are currently "),
+            t.\u0275\u0275elementStart(2, "span", 3),
+            t.\u0275\u0275text(3, "enrolled"),
+            t.\u0275\u0275elementEnd(),
+            t.\u0275\u0275text(4, " in "),
+            t.\u0275\u0275elementStart(5, "span", 3),
+            t.\u0275\u0275text(6, "Medicare"),
+            t.\u0275\u0275elementEnd(),
+            t.\u0275\u0275text(7, ". "),
+            t.\u0275\u0275elementEnd())
+        }
+        function n(a, l) {
+            if (1 & a && (t.\u0275\u0275elementStart(0, "uef-typography", 2)(1, "uef-typography", 4),
+            t.\u0275\u0275text(2),
+            t.\u0275\u0275elementEnd(),
+            t.\u0275\u0275elementStart(3, "uef-typography", 5)(4, "b"),
+            t.\u0275\u0275text(5, "total"),
+            t.\u0275\u0275elementEnd(),
+            t.\u0275\u0275text(6, " monthly benefit before "),
+            t.\u0275\u0275elementStart(7, "uef-control", 6)(8, "uef-link"),
+            t.\u0275\u0275text(9, " deductions "),
+            t.\u0275\u0275elementEnd()()()()),
+            2 & a) {
+                const r = t.\u0275\u0275nextContext();
+                t.\u0275\u0275advance(2),
+                t.\u0275\u0275textInterpolate(r.totalNextPmt)
+            }
+        }
+        function h(a, l) {
+            if (1 & a && (t.\u0275\u0275elementStart(0, "p")(1, "uef-link", 7)(2, "uef-icon", 8),
+            t.\u0275\u0275text(3, "View your payment history and overpayment details"),
+            t.\u0275\u0275elementEnd()()()),
+            2 & a) {
+                const r = t.\u0275\u0275nextContext();
+                t.\u0275\u0275advance(),
+                t.\u0275\u0275property("href", t.\u0275\u0275interpolate(r.paymentHistUrl))
+            }
+        }
+        function m(a, l) {
+            1 & a && (t.\u0275\u0275elementStart(0, "p")(1, "uef-link", 9),
+            t.\u0275\u0275text(2, "View or update your direct deposit information"),
+            t.\u0275\u0275elementEnd()())
+        }
+        function p(a, l) {
+            1 & a && (t.\u0275\u0275elementStart(0, "p")(1, "uef-link", 10),
+            t.\u0275\u0275text(2, "View or update your address or phone number"),
+            t.\u0275\u0275elementEnd()())
+        }
+        let C = ( () => {
+            class a {
+                totalNextPmt;
+                totalOverPmt;
+                showMedicare;
+                showPaymentHistLink;
+                canUpdateDirectDeposit;
+                isRailroad;
+                showOverPaymentContainer;
+                paymentHistUrl = e.c.paymentHistUrl;
+                static \u0275fac = function(s) {
+                    return new (s || a)
+                }
+                ;
+                static \u0275cmp = t.\u0275\u0275defineComponent({
+                    type: a,
+                    selectors: [["app-benefit-summary"]],
+                    inputs: {
+                        totalNextPmt: "totalNextPmt",
+                        totalOverPmt: "totalOverPmt",
+                        showMedicare: "showMedicare",
+                        showPaymentHistLink: "showPaymentHistLink",
+                        canUpdateDirectDeposit: "canUpdateDirectDeposit",
+                        isRailroad: "isRailroad",
+                        showOverPaymentContainer: "showOverPaymentContainer"
+                    },
+                    standalone: !1,
+                    decls: 7,
+                    vars: 6,
+                    consts: [["id", "paymentsStatusText"], ["id", "medicareEnrollmentStatusText"], ["sx", '{"margin-top":"var(--uef-space-inset-2x)", "display": "flex", "alignItems":"flex-end"}'], [1, "status-em"], ["variant", "body-m", "size", "300%", 2, "align-self", "flex-end", "display", "inline-flex", "align-items", "flex-end", "line-height", "1", "margin", "0", "padding", "0"], ["sx", '{"margin-left":"var(--uef-space-inset-2x)"}'], ["target", "deductions-modal"], [2, "text-decoration", "none", 3, "href"], ["type", "solid", "name", "clock-rotate-left", "color", "var(--uef-color-text-link-on-light)", "sx", '{"marginRight":"var(--uef-link-gap)"}'], ["href", "/myssa/mydd-ui/start"], ["href", "/myssa/mycoa-ui"]],
+                    template: function(s, d) {
+                        1 & s && (t.\u0275\u0275elementStart(0, "uef-container"),
+                        t.\u0275\u0275conditionalCreate(1, f, 2, 0, "p", 0),
+                        t.\u0275\u0275conditionalCreate(2, g, 8, 0, "p", 1),
+                        t.\u0275\u0275conditionalCreate(3, n, 10, 1, "uef-typography", 2),
+                        t.\u0275\u0275conditionalCreate(4, h, 4, 2, "p"),
+                        t.\u0275\u0275conditionalCreate(5, m, 3, 0, "p"),
+                        t.\u0275\u0275conditionalCreate(6, p, 3, 0, "p"),
+                        t.\u0275\u0275elementEnd()),
+                        2 & s && (t.\u0275\u0275advance(),
+                        t.\u0275\u0275conditional("$0" === d.totalNextPmt && (!d.totalOverPmt || "$0" === d.totalOverPmt) || d.showOverPaymentContainer ? 1 : -1),
+                        t.\u0275\u0275advance(),
+                        t.\u0275\u0275conditional("$0" === d.totalNextPmt && d.showMedicare ? 2 : -1),
+                        t.\u0275\u0275advance(),
+                        t.\u0275\u0275conditional("$0" !== d.totalNextPmt ? 3 : -1),
+                        t.\u0275\u0275advance(),
+                        t.\u0275\u0275conditional(d.showPaymentHistLink ? 4 : -1),
+                        t.\u0275\u0275advance(),
+                        t.\u0275\u0275conditional(d.canUpdateDirectDeposit && !d.isRailroad ? 5 : -1),
+                        t.\u0275\u0275advance(),
+                        t.\u0275\u0275conditional(d.canUpdateDirectDeposit || !d.showMedicare || d.isRailroad ? -1 : 6))
+                    },
+                    styles: [".status-em[_ngcontent-%COMP%]{font-weight:700}"]
+                })
+            }
+            return a
+        }
+        )()
+    },
+    3412(b, x, o) {
+        o.r(x),
+        o.d(x, {
+            BenefitsAndPaymentsTeaserContainerComponent: () => v
+        });
+        var e = o(467)
+          , t = o(234)
+          , f = o(8590)
+          , g = o(5312)
+          , n = o(1606)
+          , h = o(8769)
+          , m = o(9079)
+          , p = o(9978)
+          , C = o(8302)
+          , a = o(4960)
+          , l = o(3808)
+          , r = o(7760);
+        function s(y, _) {
+            1 & y && (n.\u0275\u0275elementStart(0, "div", 8)(1, "uef-alert", 10)(2, "uef-typography", 11)(3, "b"),
+            n.\u0275\u0275text(4, "We can't display your benefit and payment information right now."),
+            n.\u0275\u0275elementEnd(),
+            n.\u0275\u0275text(5, " Please try again later. "),
+            n.\u0275\u0275elementEnd()()())
+        }
+        function d(y, _) {
+            if (1 & y && n.\u0275\u0275element(0, "app-benefit-summary", 12),
+            2 & y) {
+                const i = n.\u0275\u0275nextContext(3);
+                n.\u0275\u0275property("totalNextPmt", i.totalNextPmt)("totalOverPmt", i.totalOverPmt)("showMedicare", i.showMedicare || "X0" === (null == i.t2Details1 ? null : i.t2Details1.suspCode))("showPaymentHistLink", i.showPaymentHistLink)("canUpdateDirectDeposit", i.canUpdateDirectDeposit)("isRailroad", i.medicareInfoStore.data.isRailroad)("showOverPaymentContainer", i.showOverPaymentContainer)
+            }
+        }
+        function c(y, _) {
+            1 & y && (n.\u0275\u0275elementStart(0, "uef-typography"),
+            n.\u0275\u0275text(1, " An overpayment notice has been sent to you by mail that explains why you have been overpaid, your "),
+            n.\u0275\u0275elementStart(2, "uef-link", 26),
+            n.\u0275\u0275text(3, "repayment options"),
+            n.\u0275\u0275element(4, "uef-icon", 27),
+            n.\u0275\u0275elementEnd(),
+            n.\u0275\u0275text(5, " , and your appeal and waiver rights. "),
+            n.\u0275\u0275elementEnd())
+        }
+        function D(y, _) {
+            1 & y && (n.\u0275\u0275elementStart(0, "uef-typography", 21),
+            n.\u0275\u0275text(1, " A waiver or appeal is associated with part or all of this overpayment. "),
+            n.\u0275\u0275elementEnd())
+        }
+        function T(y, _) {
+            if (1 & y && (n.\u0275\u0275elementStart(0, "div"),
+            n.\u0275\u0275element(1, "app-benefit-summary", 12),
+            n.\u0275\u0275elementStart(2, "div")(3, "uef-card", 18),
+            n.\u0275\u0275element(4, "span", 19),
+            n.\u0275\u0275elementStart(5, "uef-alert", 20),
+            n.\u0275\u0275text(6, " An overpayment occurs when Social Security pays you more than you should have been paid. "),
+            n.\u0275\u0275conditionalCreate(7, c, 6, 0, "uef-typography"),
+            n.\u0275\u0275conditionalCreate(8, D, 2, 0, "uef-typography", 21),
+            n.\u0275\u0275elementEnd(),
+            n.\u0275\u0275elementStart(9, "p", 22),
+            n.\u0275\u0275text(10, "Your overpayment amount: "),
+            n.\u0275\u0275element(11, "br"),
+            n.\u0275\u0275elementStart(12, "span", 23),
+            n.\u0275\u0275text(13),
+            n.\u0275\u0275elementEnd(),
+            n.\u0275\u0275element(14, "br"),
+            n.\u0275\u0275text(15, " If there has been a recent change, the amount displayed may not be the most current amount. "),
+            n.\u0275\u0275elementEnd(),
+            n.\u0275\u0275elementStart(16, "p"),
+            n.\u0275\u0275text(17, " To learn more about overpayments, see "),
+            n.\u0275\u0275elementStart(18, "uef-link", 24),
+            n.\u0275\u0275element(19, "uef-icon", 25),
+            n.\u0275\u0275text(20, "Overpayments "),
+            n.\u0275\u0275elementEnd()()()()()),
+            2 & y) {
+                const i = n.\u0275\u0275nextContext(3);
+                n.\u0275\u0275advance(),
+                n.\u0275\u0275property("totalNextPmt", i.totalNextPmt)("totalOverPmt", i.totalOverPmt)("showMedicare", i.showMedicare || "X0" === (null == i.t2Details1 ? null : i.t2Details1.suspCode))("showPaymentHistLink", i.showPaymentHistLink)("canUpdateDirectDeposit", i.canUpdateDirectDeposit)("isRailroad", i.medicareInfoStore.data.isRailroad)("showOverPaymentContainer", i.showOverPaymentContainer),
+                n.\u0275\u0275advance(6),
+                n.\u0275\u0275conditional(i.showOverPaymentWaiver ? -1 : 7),
+                n.\u0275\u0275advance(),
+                n.\u0275\u0275conditional(i.showOverPaymentWaiver ? 8 : -1),
+                n.\u0275\u0275advance(5),
+                n.\u0275\u0275textInterpolate1(" ", i.totalOverPmt, " ")
+            }
+        }
+        function O(y, _) {
+            if (1 & y && (n.\u0275\u0275elementStart(0, "uef-grid-item", 14),
+            n.\u0275\u0275element(1, "app-t2-details", 28),
+            n.\u0275\u0275elementEnd()),
+            2 & y) {
+                const i = n.\u0275\u0275nextContext(3);
+                n.\u0275\u0275advance(),
+                n.\u0275\u0275property("t2Details", i.t2Details1)("t2NextPmt", i.t2NextPmt1)
+            }
+        }
+        function M(y, _) {
+            if (1 & y && (n.\u0275\u0275elementStart(0, "uef-grid-item", 14),
+            n.\u0275\u0275element(1, "app-t2-details", 28),
+            n.\u0275\u0275elementEnd()),
+            2 & y) {
+                const i = n.\u0275\u0275nextContext(3);
+                n.\u0275\u0275advance(),
+                n.\u0275\u0275property("t2Details", i.t2Details2)("t2NextPmt", i.t2NextPmt2)
+            }
+        }
+        function U(y, _) {
+            if (1 & y && (n.\u0275\u0275elementStart(0, "uef-grid-item", 14),
+            n.\u0275\u0275element(1, "app-t2-details", 28),
+            n.\u0275\u0275elementEnd()),
+            2 & y) {
+                const i = n.\u0275\u0275nextContext(3);
+                n.\u0275\u0275advance(),
+                n.\u0275\u0275property("t2Details", i.t2Details3)("t2NextPmt", i.t2NextPmt3)
+            }
+        }
+        function A(y, _) {
+            if (1 & y && (n.\u0275\u0275elementStart(0, "uef-grid-item", 15),
+            n.\u0275\u0275element(1, "app-t2-details", 29),
+            n.\u0275\u0275elementEnd()),
+            2 & y) {
+                const i = n.\u0275\u0275nextContext(3);
+                n.\u0275\u0275advance(),
+                n.\u0275\u0275property("t2Details", i.t2Details1)("t2NextPmt", i.t2NextPmt1)
+            }
+        }
+        function R(y, _) {
+            if (1 & y && (n.\u0275\u0275elementStart(0, "uef-grid-item", 15),
+            n.\u0275\u0275element(1, "app-t2-details", 29),
+            n.\u0275\u0275elementEnd()),
+            2 & y) {
+                const i = n.\u0275\u0275nextContext(3);
+                n.\u0275\u0275advance(),
+                n.\u0275\u0275property("t2Details", i.t2Details2)("t2NextPmt", i.t2NextPmt2)
+            }
+        }
+        function j(y, _) {
+            if (1 & y && (n.\u0275\u0275elementStart(0, "uef-grid-item", 15),
+            n.\u0275\u0275element(1, "app-t2-details", 29),
+            n.\u0275\u0275elementEnd()),
+            2 & y) {
+                const i = n.\u0275\u0275nextContext(3);
+                n.\u0275\u0275advance(),
+                n.\u0275\u0275property("t2Details", i.t2Details3)("t2NextPmt", i.t2NextPmt3)
+            }
+        }
+        function H(y, _) {
+            if (1 & y && (n.\u0275\u0275elementStart(0, "uef-grid-item", 14),
+            n.\u0275\u0275element(1, "app-t16-details", 30),
+            n.\u0275\u0275elementEnd()),
+            2 & y) {
+                const i = n.\u0275\u0275nextContext(3);
+                n.\u0275\u0275advance(),
+                n.\u0275\u0275property("t16Details", i.t16Details)("t16NextPmt", i.t16NextPmt)
+            }
+        }
+        function N(y, _) {
+            if (1 & y && (n.\u0275\u0275elementStart(0, "uef-grid-item", 15),
+            n.\u0275\u0275element(1, "app-t16-details", 31),
+            n.\u0275\u0275elementEnd()),
+            2 & y) {
+                const i = n.\u0275\u0275nextContext(3);
+                n.\u0275\u0275advance(),
+                n.\u0275\u0275property("t16Details", i.t16Details)("t16NextPmt", i.t16NextPmt)
+            }
+        }
+        function L(y, _) {
+            if (1 & y && (n.\u0275\u0275elementStart(0, "uef-grid-item", 14)(1, "uef-card", 17),
+            n.\u0275\u0275element(2, "app-benefits-and-payments-teaser", 32),
+            n.\u0275\u0275elementStart(3, "uef-alert", 33),
+            n.\u0275\u0275text(4, "This information should not be used as proof of coverage. It is provided by the Center for Medicare Services and "),
+            n.\u0275\u0275elementStart(5, "b"),
+            n.\u0275\u0275text(6, "may not reflect recent updates"),
+            n.\u0275\u0275elementEnd(),
+            n.\u0275\u0275text(7, ". Please call "),
+            n.\u0275\u0275elementStart(8, "b"),
+            n.\u0275\u0275text(9, "1-800-633-4227"),
+            n.\u0275\u0275elementEnd(),
+            n.\u0275\u0275text(10, " or visit "),
+            n.\u0275\u0275elementStart(11, "uef-link", 34),
+            n.\u0275\u0275text(12, "Medicare.gov"),
+            n.\u0275\u0275element(13, "uef-icon", 27),
+            n.\u0275\u0275elementEnd(),
+            n.\u0275\u0275text(14, " for assistance. If you are deaf or hard of hearing, you may call the TTY number, at "),
+            n.\u0275\u0275elementStart(15, "b"),
+            n.\u0275\u0275text(16, "1-877-486-2048"),
+            n.\u0275\u0275elementEnd(),
+            n.\u0275\u0275text(17, ". "),
+            n.\u0275\u0275elementEnd()()()),
+            2 & y) {
+                const i = n.\u0275\u0275nextContext(3);
+                n.\u0275\u0275advance(2),
+                n.\u0275\u0275property("partADisplay", i.partADisplay)("partBDisplay", i.partBDisplay)("partCDisplay", i.partCDisplay)("partDDisplay", i.partDDisplay)("showPartCandDStatic", i.showPartCandDStatic)("mymrcUiContainerComponentRawMaterials", i.mymrcUiContainerComponentRawMaterials)
+            }
+        }
+        function W(y, _) {
+            1 & y && (n.\u0275\u0275elementStart(0, "uef-card", 17)(1, "uef-typography", 35),
+            n.\u0275\u0275text(2, "Medicare Enrollment Details"),
+            n.\u0275\u0275elementEnd(),
+            n.\u0275\u0275elementStart(3, "uef-alert", 36),
+            n.\u0275\u0275text(4, " For more information about Medicare Enrollment details or requesting a replacement Medicare card, please visit "),
+            n.\u0275\u0275elementStart(5, "uef-link", 37),
+            n.\u0275\u0275text(6, "Railroad Retirement Board Website"),
+            n.\u0275\u0275element(7, "uef-icon", 27),
+            n.\u0275\u0275elementEnd()(),
+            n.\u0275\u0275element(8, "div", 38),
+            n.\u0275\u0275elementEnd())
+        }
+        function F(y, _) {
+            if (1 & y && (n.\u0275\u0275elementStart(0, "div", 9),
+            n.\u0275\u0275conditionalCreate(1, d, 1, 7, "app-benefit-summary", 12),
+            n.\u0275\u0275conditionalCreate(2, T, 21, 10, "div"),
+            n.\u0275\u0275elementStart(3, "uef-grid", 13),
+            n.\u0275\u0275conditionalCreate(4, O, 2, 2, "uef-grid-item", 14),
+            n.\u0275\u0275conditionalCreate(5, M, 2, 2, "uef-grid-item", 14),
+            n.\u0275\u0275conditionalCreate(6, U, 2, 2, "uef-grid-item", 14),
+            n.\u0275\u0275conditionalCreate(7, A, 2, 2, "uef-grid-item", 15),
+            n.\u0275\u0275conditionalCreate(8, R, 2, 2, "uef-grid-item", 15),
+            n.\u0275\u0275conditionalCreate(9, j, 2, 2, "uef-grid-item", 15),
+            n.\u0275\u0275conditionalCreate(10, H, 2, 2, "uef-grid-item", 14),
+            n.\u0275\u0275conditionalCreate(11, N, 2, 2, "uef-grid-item", 15),
+            n.\u0275\u0275elementEnd(),
+            n.\u0275\u0275elementStart(12, "uef-grid", 16),
+            n.\u0275\u0275conditionalCreate(13, L, 18, 6, "uef-grid-item", 14),
+            n.\u0275\u0275elementEnd(),
+            n.\u0275\u0275conditionalCreate(14, W, 9, 0, "uef-card", 17),
+            n.\u0275\u0275elementEnd()),
+            2 & y) {
+                const i = n.\u0275\u0275nextContext(2);
+                n.\u0275\u0275advance(),
+                n.\u0275\u0275conditional(i.showOverPaymentContainer ? -1 : 1),
+                n.\u0275\u0275advance(),
+                n.\u0275\u0275conditional(i.showOverPaymentContainer ? 2 : -1),
+                n.\u0275\u0275advance(2),
+                n.\u0275\u0275conditional(null != i.t2Details1 && i.t2Details1.activeStatus && 1 === i.numBenefits ? 4 : -1),
+                n.\u0275\u0275advance(),
+                n.\u0275\u0275conditional(null != i.t2Details2 && i.t2Details2.activeStatus && 1 === i.numBenefits ? 5 : -1),
+                n.\u0275\u0275advance(),
+                n.\u0275\u0275conditional(null != i.t2Details3 && i.t2Details3.activeStatus && 1 === i.numBenefits ? 6 : -1),
+                n.\u0275\u0275advance(),
+                n.\u0275\u0275conditional(null != i.t2Details1 && i.t2Details1.activeStatus && i.numBenefits > 1 ? 7 : -1),
+                n.\u0275\u0275advance(),
+                n.\u0275\u0275conditional(null != i.t2Details2 && i.t2Details2.activeStatus && i.numBenefits > 1 ? 8 : -1),
+                n.\u0275\u0275advance(),
+                n.\u0275\u0275conditional(null != i.t2Details3 && i.t2Details3.activeStatus && i.numBenefits > 1 ? 9 : -1),
+                n.\u0275\u0275advance(),
+                n.\u0275\u0275conditional(null != i.t16Details && i.t16Details.activeStatus && 1 === i.numBenefits ? 10 : -1),
+                n.\u0275\u0275advance(),
+                n.\u0275\u0275conditional(null != i.t16Details && i.t16Details.activeStatus && i.numBenefits > 1 ? 11 : -1),
+                n.\u0275\u0275advance(2),
+                n.\u0275\u0275conditional(i.showMedicare ? 13 : -1),
+                n.\u0275\u0275advance(),
+                n.\u0275\u0275conditional(i.medicareInfoStore.data.isRailroad ? 14 : -1)
+            }
+        }
+        function u(y, _) {
+            if (1 & y && (n.\u0275\u0275elementStart(0, "div", 0)(1, "uef-typography", 7),
+            n.\u0275\u0275text(2, " Benefits and Payments "),
+            n.\u0275\u0275elementEnd(),
+            n.\u0275\u0275conditionalCreate(3, s, 6, 0, "div", 8),
+            n.\u0275\u0275conditionalCreate(4, F, 15, 12, "div", 9),
+            n.\u0275\u0275elementEnd()),
+            2 & y) {
+                const i = n.\u0275\u0275nextContext();
+                n.\u0275\u0275advance(3),
+                n.\u0275\u0275conditional(i.error ? 3 : -1),
+                n.\u0275\u0275advance(),
+                n.\u0275\u0275conditional(i.error ? -1 : 4)
+            }
+        }
+        function I(y, _) {
+            1 & y && (n.\u0275\u0275elementStart(0, "div"),
+            n.\u0275\u0275text(1, "Loading..."),
+            n.\u0275\u0275elementEnd())
+        }
+        let v = ( () => {
+            class y {
+                medicareInfoStore;
+                t2InfoStore;
+                t16InfoStore;
+                _crmDepartmentStore;
+                loaded = !1;
+                error = !1;
+                showMedicare = !1;
+                showT2T16 = !1;
+                showPaymentHistLink = !1;
+                showOverPaymentContainer = !1;
+                showOverPaymentWaiver = !1;
+                canUpdateDirectDeposit = !1;
+                partADisplay;
+                partBDisplay;
+                partCDisplay;
+                partDDisplay;
+                showPartCandDStatic;
+                t2Details1;
+                t2Details2;
+                t2Details3;
+                t2NextPmt1;
+                t2NextPmt2;
+                t2NextPmt3;
+                t2TotalOverPmt;
+                t16Details;
+                t16NextPmt;
+                totalNextPmt;
+                totalOverPmt;
+                numBenefits = 0;
+                mymrcUiContainerComponentRawMaterials;
+                deductionModal = !1;
+                constructor(i, S, E, P) {
+                    this.medicareInfoStore = i,
+                    this.t2InfoStore = S,
+                    this.t16InfoStore = E,
+                    this._crmDepartmentStore = P
+                }
+                ngOnInit() {
+                    var i = this;
+                    return (0,
+                    e.A)(function*() {
+                        i.loadPluginFragments(),
+                        i.medicareInfoStore.loadData().subscribe(S => {
+                            ("0000" === i.medicareInfoStore.status.returnCode || "0001" === i.medicareInfoStore.status.returnCode) && S.medicareParts && S.medicareParts.forEach(E => {
+                                i.showMedicare = !0;
+                                const P = new t.I;
+                                P.amountTxt = E.amountTxt,
+                                P.month = E.month,
+                                P.startPremMonth = E.startPremMonth,
+                                P.startPremYear = E.startPremYear,
+                                P.type = E.type,
+                                P.year = E.year,
+                                "A" === E.type && (P.coverageTypeTxt = "Part A (Hospital Insurance)",
+                                i.partADisplay = P),
+                                "B" === E.type && (P.coverageTypeTxt = "Part B (Medical Insurance)",
+                                i.partBDisplay = P),
+                                "C" === E.type && (P.coverageTypeTxt = "Part C (Medicare Advantage)",
+                                i.partCDisplay = P),
+                                "D" === E.type && (P.coverageTypeTxt = "Part D (Medicare Prescription Drug Coverage)",
+                                i.partDDisplay = P)
+                            }
+                            )
+                        }
+                        , S => {
+                            console.warn("%cWe cannot provide your Medicare information at this time. Please try again later.", "color: black; font-weight: bold; font-style: italic; background-color: rgb(252, 255, 171);padding: 5px"),
+                            i.error = !0,
+                            i.loaded = !0
+                        }
+                        , () => {
+                            !i.partADisplay && !i.partBDisplay && !i.partCDisplay && !i.partDDisplay && (i.showMedicare = !1,
+                            console.warn("%cWe cannot provide your Medicare information at this time. Please try again later.", "font-size: medium; color: black; font-weight: bold; background-color: rgb(252, 255, 171);padding: 5px")),
+                            !i.partCDisplay && !i.partDDisplay && (i.showPartCandDStatic = !0),
+                            i.loaded = !0
+                        }
+                        ),
+                        i.t2InfoStore.loadData().subscribe(S => {
+                            if ("0000" === i.t2InfoStore.status.returnCode || "0001" === i.t2InfoStore.status.returnCode) {
+                                let E = !1;
+                                for (let P = 0; P < S.length; P++)
+                                    "Active" === S[P].activeStatus && (E = !0);
+                                i.t2TotalOverPmt = 0;
+                                for (let P = 0; P < S.length; P++) {
+                                    let w = S[P].totalOverpayments;
+                                    if (void 0 !== w && (i.t2TotalOverPmt += w),
+                                    "Y" === S[P].waiverInd && (i.showOverPaymentWaiver = !0),
+                                    S[P].activeStatus && (!E || "SD" !== S[P].suspCode && "SH" !== S[P].suspCode)) {
+                                        const B = S[P].nextPaymentBeforeDeductions
+                                          , V = new Intl.NumberFormat("en-US",{
+                                            style: "currency",
+                                            currency: "USD",
+                                            minimumFractionDigits: 2,
+                                            maximumFractionDigits: 2
+                                        });
+                                        i.t2Details1 ? i.t2Details2 ? (i.t2Details3 = S[P],
+                                        B && (i.t2NextPmt3 = V.format(B).replace(".00", ""))) : (i.t2Details2 = S[P],
+                                        B && (i.t2NextPmt2 = V.format(B).replace(".00", ""))) : (i.t2Details1 = S[P],
+                                        B && (i.t2NextPmt1 = V.format(B).replace(".00", "")),
+                                        i.showPaymentHistLink = !0,
+                                        i.canUpdateDirectDeposit = !0)
+                                    }
+                                }
+                                i.calcTotalNextPmt(),
+                                i.calcTotalOverPmt(),
+                                i.calcNumBenefits()
+                            } else
+                                i.error = !0
+                        }
+                        , S => {
+                            i.error = !0,
+                            i.loaded = !0
+                        }
+                        ),
+                        i.t16InfoStore.loadData().subscribe(S => {
+                            if ("0000" != i.t16InfoStore.status.returnCode)
+                                i.error = !0,
+                                i.loaded = !0;
+                            else if (S.length > 0) {
+                                i.t16Details = S[0],
+                                i.t16Details.suspCode?.startsWith("T") || (i.showPaymentHistLink = !0,
+                                i.canUpdateDirectDeposit = !0);
+                                const E = i.t16Details.nextPaymentBeforeDeductions;
+                                E && (i.t16NextPmt = new Intl.NumberFormat("en-US",{
+                                    style: "currency",
+                                    currency: "USD",
+                                    minimumFractionDigits: 2,
+                                    maximumFractionDigits: 2
+                                }).format(E).replace(".00", "")),
+                                i.calcTotalNextPmt(),
+                                i.calcTotalOverPmt(),
+                                i.calcNumBenefits(),
+                                i.t16Details?.isWaiver && (i.showOverPaymentWaiver = !0)
+                            }
+                        }
+                        , S => {
+                            i.error = !0,
+                            i.loaded = !0
+                        }
+                        )
+                    })()
+                }
+                calcNumBenefits() {
+                    this.numBenefits = 0,
+                    this.t2Details1?.activeStatus && this.numBenefits++,
+                    this.t2Details2?.activeStatus && this.numBenefits++,
+                    this.t2Details3?.activeStatus && this.numBenefits++,
+                    this.t16Details?.activeStatus && this.numBenefits++
+                }
+                calcTotalNextPmt() {
+                    let i = 0;
+                    this.t2Details1 && this.t2Details1.nextPaymentBeforeDeductions && (i += this.t2Details1.nextPaymentBeforeDeductions),
+                    this.t2Details2 && this.t2Details2.nextPaymentBeforeDeductions && (i += this.t2Details2.nextPaymentBeforeDeductions),
+                    this.t2Details3 && this.t2Details3.nextPaymentBeforeDeductions && (i += this.t2Details3.nextPaymentBeforeDeductions),
+                    this.t16Details && this.t16Details.nextPaymentBeforeDeductions && (i += this.t16Details.nextPaymentBeforeDeductions),
+                    this.totalNextPmt = new Intl.NumberFormat("en-US",{
+                        style: "currency",
+                        currency: "USD",
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2
+                    }).format(i).replace(".00", "")
+                }
+                calcTotalOverPmt() {
+                    let i = 0;
+                    i += this.t2TotalOverPmt,
+                    this.t16Details && this.t16Details.totalOverpayments && (i += this.t16Details.totalOverpayments),
+                    this.totalOverPmt = new Intl.NumberFormat("en-US",{
+                        style: "currency",
+                        currency: "USD",
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2
+                    }).format(i).replace(".00", ""),
+                    (this.t2Details1?.activeStatus || this.t2Details2?.activeStatus || this.t2Details3?.activeStatus || this.t16Details?.activeStatus) && (this.showT2T16 = !0),
+                    i > 0 && "$0" === this.totalNextPmt && !this.showT2T16 && (this.showOverPaymentContainer = !0)
+                }
+                loadPluginFragments() {
+                    var i = this;
+                    return (0,
+                    e.A)(function*() {
+                        yield i.loadMymrcUiContainerPluginFragment()
+                    })()
+                }
+                loadMymrcUiContainerPluginFragment() {
+                    return this._crmDepartmentStore.get(g.c.mymrcUiContainerPluginFragment).then(i => {
+                        this.mymrcUiContainerComponentRawMaterials = i
+                    }
+                    ).catch(i => {
+                        (0,
+                        f.handlePluginFragmentLoadingError)(g.c.mymrcUiContainerPluginFragment, i)
+                    }
+                    )
+                }
+                onDeductionsChange(i) {
+                    this.deductionModal = i
+                }
+                closeDialog() {
+                    this.deductionModal = !1
+                }
+                static \u0275fac = function(S) {
+                    return new (S || y)(n.\u0275\u0275directiveInject(h.K),n.\u0275\u0275directiveInject(m.Q),n.\u0275\u0275directiveInject(p.V),n.\u0275\u0275directiveInject(f.ComponentRawMaterialsDepartmentStore))
+                }
+                ;
+                static \u0275cmp = n.\u0275\u0275defineComponent({
+                    type: y,
+                    selectors: [["app-benefits-and-payments-teaser-container"]],
+                    inputs: {
+                        deductionModal: "deductionModal"
+                    },
+                    standalone: !1,
+                    decls: 35,
+                    vars: 4,
+                    consts: [["id", "benefitsTeaserInnerContainer"], ["backdrop", "", "close-button", "", "width", "590px", "id", "deductions-modal", 3, "dialogUpdate", "open", "actionRequired"], ["variant", "heading3", "slot", "uef-dialog-header", "weight", "bold"], ["line-height", "var(--uef-font-line-height-regular)", "slot", "uef-dialog-body"], [2, "line-height", "var(--uef-font-line-height-regular)"], ["slot", "uef-dialog-footer", "alignment", "right", "direction", "ltr"], ["fill", "solid", "accessibility-text", "Close", "name", "close-deductions", 3, "buttonClick"], ["variant", "heading2", "id", "benefitsTxt", "sx", '{"margin-top":"var(--uef-space-inset-4x)"}'], ["id", "errorContainerRow"], ["separator", "true"], ["sx", '{"margin-top":"var(--uef-space-inset-4x)", "margin-bottom":"var(--uef-space-inset-2x)"}', "id", "errorNotice", "compact", "true", "dismissable", "false", "color", "danger"], ["variant", "body-m", "slot", "uef-alert-header"], [3, "totalNextPmt", "totalOverPmt", "showMedicare", "showPaymentHistLink", "canUpdateDirectDeposit", "isRailroad", "showOverPaymentContainer"], ["grid-template-columns", "minmax(600px, 100%)", "gap", "1rem", "breakpoint", "48rem"], ["width", "full"], ["width", "1-2"], ["grid-template-columns", "minmax(600px, 100%)", "gap", "1rem", "breakpoint", "48rem", 2, "margin-top", "var(--uef-space-inset-4x)"], ["sx", '{"border":"var(--uef-border-width-xs) var(--uef-border-style-solid) var(--uef-color-border-primary)","margin-top":"var(--uef-space-inset-4x)",\n              "padding":"var(--uef-space-inset-4x)","borderRadius":"var(--uef-border-radius-softest)"}', 2, "line-height", "var(--uef-font-line-height-regular)"], ["slot", "uef-card-body", "sx", '{"border":"var(--uef-border-width-xs) var(--uef-border-style-solid) var(--uef-color-border-primary)","margin-top":"var(--uef-space-inset-4x)","padding":"var(--uef-space-inset-2x)","borderRadius":"var(--uef-border-radius-softest)"}', 2, "line-height", "var(--uef-font-line-height-regular)"], [2, "display", "block", "height", "var(--uef-space-inset-2x)"], ["color", "warning", "compact", "true", "header", "You have an outstanding overpayment to repay. ", 2, "line-height", "var(--uef-font-line-height-regular)"], [2, "margin-top", "var(--uef-space-2x)"], [2, "margin-bottom", "0"], [2, "font-size", "300%", "color", "rgb(200, 0, 0)", "margin-bottom", "0"], ["type", "pdf", "href", "https://www.ssa.gov/pubs/EN-05-10098.pdf", "target", "_blank"], ["name", "file-pdf", "accessibility-text", "PDF file", "color", "var(--uef-color-red-primary)", "sx", '{"marginRight":"var(--uef-link-gap)"}'], ["type", "external", "href", "https://www.ssa.gov/overpayments/", "target", "_blank"], ["type", "solid", "name", "external-link-alt", "accessibility-text", "External website", "color", "var(--uef-color-text-link-on-light)", "sx", '{"marginLeft":"var(--uef-link-gap)"}'], ["width", "half", 3, "t2Details", "t2NextPmt"], ["width", "full", 3, "t2Details", "t2NextPmt"], ["width", "half", 3, "t16Details", "t16NextPmt"], ["width", "full", 3, "t16Details", "t16NextPmt"], [3, "partADisplay", "partBDisplay", "partCDisplay", "partDDisplay", "showPartCandDStatic", "mymrcUiContainerComponentRawMaterials"], ["id", "medicareQuestionsNotice", "dismissable", "false", "type", "info", "header", "Medicare Questions?", "compact", "", "sx", '{"gap":"1rem"}', 2, "margin-top", "10px", "line-height", "var(--uef-font-line-height-regular)"], ["type", "external", "target", "_blank", "href", "https://www.medicare.gov"], ["variant", "heading3", "color", "var(--uef-color-text-primary-on-light)", "weight", "var(--uef-font-weight-semibold)"], ["type", "info", "id", "medicareEnrollmentDetailsContainerRow", "header", "Our records indicate that your Medicare is handled by the Railroad Retirement Board.", 2, "margin-top", "var(--uef-space-inset-4x)", "line-height", "var(--uef-font-line-height-regular)"], ["type", "external", "href", "https://rrb.gov", "target", "_blank"], [2, "height", "var(--uef-space-inset-2x)"]],
+                    template: function(S, E) {
+                        1 & S && (n.\u0275\u0275conditionalCreate(0, u, 5, 2, "div", 0),
+                        n.\u0275\u0275elementStart(1, "uef-dialog", 1),
+                        n.\u0275\u0275listener("dialogUpdate", function(w) {
+                            return E.deductionModal = w.detail.open
+                        }),
+                        n.\u0275\u0275elementStart(2, "uef-typography", 2),
+                        n.\u0275\u0275text(3, " Deductions "),
+                        n.\u0275\u0275elementEnd(),
+                        n.\u0275\u0275elementStart(4, "uef-typography", 3)(5, "p"),
+                        n.\u0275\u0275text(6, " Deductions: The part of the monthly payment that is being withheld. Part of your payment may be withheld for: "),
+                        n.\u0275\u0275elementEnd(),
+                        n.\u0275\u0275elementStart(7, "ul", 4)(8, "li"),
+                        n.\u0275\u0275text(9, "Medicare premium payments,"),
+                        n.\u0275\u0275elementEnd(),
+                        n.\u0275\u0275elementStart(10, "li"),
+                        n.\u0275\u0275text(11, " Overpayments of Social Security or Supplemental Security Income (SSI) benefits, "),
+                        n.\u0275\u0275elementEnd(),
+                        n.\u0275\u0275elementStart(12, "li"),
+                        n.\u0275\u0275text(13, "Excess earnings,"),
+                        n.\u0275\u0275elementEnd(),
+                        n.\u0275\u0275elementStart(14, "li"),
+                        n.\u0275\u0275text(15, "Voluntary income tax withholding, and"),
+                        n.\u0275\u0275elementEnd(),
+                        n.\u0275\u0275elementStart(16, "li"),
+                        n.\u0275\u0275text(17, "Payment of your appointed representative."),
+                        n.\u0275\u0275elementEnd()(),
+                        n.\u0275\u0275elementStart(18, "p"),
+                        n.\u0275\u0275text(19, " The federal government can also garnish benefits under the following circumstances: "),
+                        n.\u0275\u0275elementEnd(),
+                        n.\u0275\u0275elementStart(20, "ul", 4)(21, "li"),
+                        n.\u0275\u0275text(22, "Enforcement of child, spousal or family support obligations,"),
+                        n.\u0275\u0275elementEnd(),
+                        n.\u0275\u0275elementStart(23, "li"),
+                        n.\u0275\u0275text(24, "Court-ordered victim restitution,"),
+                        n.\u0275\u0275elementEnd(),
+                        n.\u0275\u0275elementStart(25, "li"),
+                        n.\u0275\u0275text(26, "Collection of unpaid federal taxes,"),
+                        n.\u0275\u0275elementEnd(),
+                        n.\u0275\u0275elementStart(27, "li"),
+                        n.\u0275\u0275text(28, " Withholding to satisfy a current year federal income tax liability, and "),
+                        n.\u0275\u0275elementEnd(),
+                        n.\u0275\u0275elementStart(29, "li"),
+                        n.\u0275\u0275text(30, " Non-tax debt owed to other federal agencies according to the Debt Collection Act of 1996 (Public Law 104-134 77). "),
+                        n.\u0275\u0275elementEnd()()(),
+                        n.\u0275\u0275elementStart(31, "uef-button-group", 5)(32, "uef-button", 6),
+                        n.\u0275\u0275listener("buttonClick", function() {
+                            return E.closeDialog()
+                        }),
+                        n.\u0275\u0275text(33, " Close "),
+                        n.\u0275\u0275elementEnd()()(),
+                        n.\u0275\u0275conditionalCreate(34, I, 2, 0, "div")),
+                        2 & S && (n.\u0275\u0275conditional(E.loaded ? 0 : -1),
+                        n.\u0275\u0275advance(),
+                        n.\u0275\u0275property("open", E.deductionModal)("actionRequired", !1),
+                        n.\u0275\u0275advance(33),
+                        n.\u0275\u0275conditional(E.loaded ? -1 : 34))
+                    },
+                    dependencies: [C.BenefitsAndPaymentsTeaserComponent, a.W, l.X, r.v],
+                    styles: [".status-em[_ngcontent-%COMP%]{font-weight:700}"]
+                })
+            }
+            return y
+        }
+        )()
+    },
+    8302(b, x, o) {
+        o.r(x),
+        o.d(x, {
+            BenefitsAndPaymentsTeaserComponent: () => a
+        });
+        var e = o(1606)
+          , t = o(8590)
+          , f = o(4084);
+        function g(l, r) {
+            if (1 & l && (e.\u0275\u0275elementStart(0, "uef-grid-item", 5),
+            e.\u0275\u0275element(1, "app-part-coverage", 9),
+            e.\u0275\u0275elementEnd()),
+            2 & l) {
+                const s = e.\u0275\u0275nextContext();
+                e.\u0275\u0275advance(),
+                e.\u0275\u0275property("part", s.partADisplay)
+            }
+        }
+        function n(l, r) {
+            if (1 & l && (e.\u0275\u0275elementStart(0, "uef-grid-item", 5),
+            e.\u0275\u0275element(1, "app-part-coverage", 10),
+            e.\u0275\u0275elementEnd()),
+            2 & l) {
+                const s = e.\u0275\u0275nextContext();
+                e.\u0275\u0275advance(),
+                e.\u0275\u0275property("part", s.partBDisplay)
+            }
+        }
+        function h(l, r) {
+            1 & l && (e.\u0275\u0275elementContainerStart(0),
+            e.\u0275\u0275elementStart(1, "div", 13),
+            e.\u0275\u0275text(2, " For "),
+            e.\u0275\u0275elementStart(3, "span", 14),
+            e.\u0275\u0275text(4, "Part C (Medicare Advantage)"),
+            e.\u0275\u0275elementEnd(),
+            e.\u0275\u0275text(5, " details, please contact Medicare for the status of your enrollment. "),
+            e.\u0275\u0275elementEnd(),
+            e.\u0275\u0275elementContainerEnd())
+        }
+        function m(l, r) {
+            1 & l && (e.\u0275\u0275elementContainerStart(0),
+            e.\u0275\u0275elementStart(1, "div", 15),
+            e.\u0275\u0275text(2, " For "),
+            e.\u0275\u0275elementStart(3, "span", 14),
+            e.\u0275\u0275text(4, "Part D (Medicare Prescription Drug Coverage)"),
+            e.\u0275\u0275elementEnd(),
+            e.\u0275\u0275text(5, " details, please contact Medicare for the status of your enrollment. "),
+            e.\u0275\u0275elementEnd(),
+            e.\u0275\u0275elementContainerEnd())
+        }
+        function p(l, r) {
+            if (1 & l && (e.\u0275\u0275elementStart(0, "uef-grid-item", 6),
+            e.\u0275\u0275element(1, "app-part-coverage", 11),
+            e.\u0275\u0275conditionalCreate(2, h, 6, 0, "ng-container"),
+            e.\u0275\u0275element(3, "app-part-coverage", 12),
+            e.\u0275\u0275conditionalCreate(4, m, 6, 0, "ng-container"),
+            e.\u0275\u0275elementEnd()),
+            2 & l) {
+                const s = e.\u0275\u0275nextContext();
+                e.\u0275\u0275advance(),
+                e.\u0275\u0275property("part", s.partCDisplay),
+                e.\u0275\u0275advance(),
+                e.\u0275\u0275conditional(s.partCDisplay ? -1 : 2),
+                e.\u0275\u0275advance(),
+                e.\u0275\u0275property("part", s.partDDisplay),
+                e.\u0275\u0275advance(),
+                e.\u0275\u0275conditional(s.partDDisplay ? -1 : 4)
+            }
+        }
+        function C(l, r) {
+            1 & l && (e.\u0275\u0275elementStart(0, "uef-grid-item", 6)(1, "div", 16),
+            e.\u0275\u0275text(2, " For "),
+            e.\u0275\u0275elementStart(3, "span", 14),
+            e.\u0275\u0275text(4, "Part C (Medicare Advantage)"),
+            e.\u0275\u0275elementEnd(),
+            e.\u0275\u0275text(5, " and "),
+            e.\u0275\u0275elementStart(6, "span", 14),
+            e.\u0275\u0275text(7, "Part D (Medicare Prescription Drug Coverage)"),
+            e.\u0275\u0275elementEnd(),
+            e.\u0275\u0275text(8, " details, please contact Medicare for the status of your enrollment. "),
+            e.\u0275\u0275elementEnd()())
+        }
+        let a = ( () => {
+            class l {
+                partADisplay;
+                partBDisplay;
+                partCDisplay;
+                partDDisplay;
+                showPartCandDStatic;
+                mymrcUiContainerComponentRawMaterials;
+                loading;
+                static \u0275fac = function(d) {
+                    return new (d || l)
+                }
+                ;
+                static \u0275cmp = e.\u0275\u0275defineComponent({
+                    type: l,
+                    selectors: [["app-benefits-and-payments-teaser"]],
+                    inputs: {
+                        partADisplay: "partADisplay",
+                        partBDisplay: "partBDisplay",
+                        partCDisplay: "partCDisplay",
+                        partDDisplay: "partDDisplay",
+                        showPartCandDStatic: "showPartCandDStatic",
+                        mymrcUiContainerComponentRawMaterials: "mymrcUiContainerComponentRawMaterials"
+                    },
+                    standalone: !1,
+                    decls: 14,
+                    vars: 5,
+                    consts: [["justify-content", "flex-start", "align-content", "center", "wrap", "wrap", "align-items", "center", "gap", "0.25rem 1rem"], ["align-self", "flex-start"], ["variant", "heading3", "color", "var(--uef-color-text-primary-on-light)", "weight", "var(--uef-font-weight-semibold)"], ["color", "success", 1, "tag-default"], ["grid-template-columns", "repeat(3, 2fr)", "breakpoint", "48rem", "sx", '{"paddingTop":"var(--uef-space-4x)"}', 2, "line-height", "var(--uef-font-line-height-regular)"], ["sx", '{"marginBottom":"var(--uef-space-2x)","marginRight":"var(--uef-space-4x)"}'], ["sx", '{"marginBottom":"var(--uef-space-2x)"}'], ["id", "medicareEnrollmentDetailsContainerRow"], ["id", "mymrcPlugin", 3, "componentRawMaterials"], ["id", "partA", 3, "part"], ["id", "partB", 3, "part"], ["id", "partC", 3, "part"], ["id", "partD", 3, "part"], ["id", "partCStatic"], [1, "partName"], ["id", "partDStatic"], ["id", "partCAndDStaticText"]],
+                    template: function(d, c) {
+                        1 & d && (e.\u0275\u0275elementStart(0, "uef-flex", 0)(1, "uef-flex-item", 1)(2, "uef-typography", 2),
+                        e.\u0275\u0275text(3, "Medicare Enrollment Details"),
+                        e.\u0275\u0275elementEnd()(),
+                        e.\u0275\u0275elementStart(4, "uef-flex-item")(5, "uef-tag", 3),
+                        e.\u0275\u0275text(6, " ENROLLED "),
+                        e.\u0275\u0275elementEnd()()(),
+                        e.\u0275\u0275elementStart(7, "uef-grid", 4),
+                        e.\u0275\u0275conditionalCreate(8, g, 2, 1, "uef-grid-item", 5),
+                        e.\u0275\u0275conditionalCreate(9, n, 2, 1, "uef-grid-item", 5),
+                        e.\u0275\u0275conditionalCreate(10, p, 5, 4, "uef-grid-item", 6),
+                        e.\u0275\u0275conditionalCreate(11, C, 9, 0, "uef-grid-item", 6),
+                        e.\u0275\u0275elementEnd(),
+                        e.\u0275\u0275elementStart(12, "uef-container-row", 7),
+                        e.\u0275\u0275element(13, "myssa-dynamic-component-proxy", 8),
+                        e.\u0275\u0275elementEnd()),
+                        2 & d && (e.\u0275\u0275advance(8),
+                        e.\u0275\u0275conditional(c.partADisplay ? 8 : -1),
+                        e.\u0275\u0275advance(),
+                        e.\u0275\u0275conditional(c.partBDisplay ? 9 : -1),
+                        e.\u0275\u0275advance(),
+                        e.\u0275\u0275conditional(c.showPartCandDStatic ? -1 : 10),
+                        e.\u0275\u0275advance(),
+                        e.\u0275\u0275conditional(c.showPartCandDStatic ? 11 : -1),
+                        e.\u0275\u0275advance(2),
+                        e.\u0275\u0275property("componentRawMaterials", c.mymrcUiContainerComponentRawMaterials))
+                    },
+                    dependencies: [t.DynamicComponentProxyComponent, f.V],
+                    styles: ['.partName[_ngcontent-%COMP%], .profile-em[_ngcontent-%COMP%], .disclaimer-em[_ngcontent-%COMP%], .telephone-em[_ngcontent-%COMP%]{font-weight:700}.title[_ngcontent-%COMP%]{font-weight:700;font-size:125%}.title[_ngcontent-%COMP%]:before{content:"\\a0"}.tag-default[_ngcontent-%COMP%]{width:min-content;margin-top:5px;margin-left:5px}']
+                })
+            }
+            return l
+        }
+        )()
+    },
+    4084(b, x, o) {
+        o.d(x, {
+            V: () => m
+        });
+        var e = o(1606)
+          , t = o(116);
+        function f(p, C) {
+            if (1 & p && (e.\u0275\u0275elementStart(0, "span", 7),
+            e.\u0275\u0275text(1),
+            e.\u0275\u0275elementEnd()),
+            2 & p) {
+                const a = e.\u0275\u0275nextContext(2);
+                e.\u0275\u0275advance(),
+                e.\u0275\u0275textInterpolate(a.part.amountTxt)
+            }
+        }
+        function g(p, C) {
+            if (1 & p && (e.\u0275\u0275elementStart(0, "span", 8),
+            e.\u0275\u0275text(1),
+            e.\u0275\u0275elementEnd()),
+            2 & p) {
+                const a = e.\u0275\u0275nextContext(2);
+                e.\u0275\u0275advance(),
+                e.\u0275\u0275textInterpolate(a.part.amountTxt)
+            }
+        }
+        function n(p, C) {
+            if (1 & p && (e.\u0275\u0275elementStart(0, "span"),
+            e.\u0275\u0275text(1),
+            e.\u0275\u0275elementEnd()),
+            2 & p) {
+                const a = e.\u0275\u0275nextContext(2);
+                e.\u0275\u0275advance(),
+                e.\u0275\u0275textInterpolate2(" (as of ", a.part.startPremMonth, " ", a.part.startPremYear, ")")
+            }
+        }
+        function h(p, C) {
+            if (1 & p && (e.\u0275\u0275elementStart(0, "div", 1)(1, "span", 2),
+            e.\u0275\u0275text(2),
+            e.\u0275\u0275elementEnd(),
+            e.\u0275\u0275element(3, "br"),
+            e.\u0275\u0275elementStart(4, "span"),
+            e.\u0275\u0275text(5, "Your coverage started "),
+            e.\u0275\u0275elementEnd(),
+            e.\u0275\u0275elementStart(6, "span", 3),
+            e.\u0275\u0275text(7),
+            e.\u0275\u0275elementEnd(),
+            e.\u0275\u0275text(8, ". Your monthly premium is "),
+            e.\u0275\u0275template(9, f, 2, 1, "span", 4)(10, g, 2, 1, "span", 5)(11, n, 2, 2, "span", 6),
+            e.\u0275\u0275text(12, ". "),
+            e.\u0275\u0275elementEnd()),
+            2 & p) {
+                const a = e.\u0275\u0275nextContext();
+                e.\u0275\u0275advance(2),
+                e.\u0275\u0275textInterpolate(a.part.coverageTypeTxt),
+                e.\u0275\u0275advance(5),
+                e.\u0275\u0275textInterpolate2("", a.part.month, " ", a.part.year),
+                e.\u0275\u0275advance(2),
+                e.\u0275\u0275property("ngIf", "$0.00" === a.part.amountTxt),
+                e.\u0275\u0275advance(),
+                e.\u0275\u0275property("ngIf", "$0.00" !== a.part.amountTxt),
+                e.\u0275\u0275advance(),
+                e.\u0275\u0275property("ngIf", a.part.startPremMonth)
+            }
+        }
+        let m = ( () => {
+            class p {
+                part;
+                static \u0275fac = function(l) {
+                    return new (l || p)
+                }
+                ;
+                static \u0275cmp = e.\u0275\u0275defineComponent({
+                    type: p,
+                    selectors: [["app-part-coverage"]],
+                    inputs: {
+                        part: "part"
+                    },
+                    standalone: !1,
+                    decls: 1,
+                    vars: 1,
+                    consts: [["class", "container-block", 4, "ngIf"], [1, "container-block"], [1, "partName"], [1, "startTime"], ["class", "positive-amount", 4, "ngIf"], ["class", "negative-amount", 4, "ngIf"], [4, "ngIf"], [1, "positive-amount"], [1, "negative-amount"]],
+                    template: function(l, r) {
+                        1 & l && e.\u0275\u0275template(0, h, 13, 6, "div", 0),
+                        2 & l && e.\u0275\u0275property("ngIf", r.part)
+                    },
+                    dependencies: [t.NgIf],
+                    styles: [".startTime[_ngcontent-%COMP%], .positive-amount[_ngcontent-%COMP%]{font-weight:700}.negative-amount[_ngcontent-%COMP%]{font-weight:700;color:#c00}.partName[_ngcontent-%COMP%], .coverage-type[_ngcontent-%COMP%]{font-weight:700}.container-block[_ngcontent-%COMP%]   *[_ngcontent-%COMP%]{line-height:var(--uef-font-line-height-regular)}"]
+                })
+            }
+            return p
+        }
+        )()
+    },
+    3808(b, x, o) {
+        o.d(x, {
+            X: () => d
+        });
+        var e = o(1606)
+          , t = o(116);
+        function f(c, D) {
+            if (1 & c && (e.\u0275\u0275elementStart(0, "uef-tag", 5),
+            e.\u0275\u0275text(1),
+            e.\u0275\u0275pipe(2, "uppercase"),
+            e.\u0275\u0275elementEnd()),
+            2 & c) {
+                const T = e.\u0275\u0275nextContext();
+                e.\u0275\u0275advance(),
+                e.\u0275\u0275textInterpolate1(" ", e.\u0275\u0275pipeBind1(2, 1, T.t16Details.activeStatus), " ")
+            }
+        }
+        function g(c, D) {
+            if (1 & c && (e.\u0275\u0275elementStart(0, "uef-tag", 6),
+            e.\u0275\u0275text(1),
+            e.\u0275\u0275pipe(2, "uppercase"),
+            e.\u0275\u0275elementEnd()),
+            2 & c) {
+                const T = e.\u0275\u0275nextContext();
+                e.\u0275\u0275advance(),
+                e.\u0275\u0275textInterpolate1(" ", e.\u0275\u0275pipeBind1(2, 1, T.t16Details.activeStatus), " ")
+            }
+        }
+        function n(c, D) {
+            if (1 & c && (e.\u0275\u0275elementStart(0, "uef-tag", 7),
+            e.\u0275\u0275text(1),
+            e.\u0275\u0275pipe(2, "uppercase"),
+            e.\u0275\u0275elementEnd()),
+            2 & c) {
+                const T = e.\u0275\u0275nextContext();
+                e.\u0275\u0275advance(),
+                e.\u0275\u0275textInterpolate1(" ", e.\u0275\u0275pipeBind1(2, 1, T.t16Details.activeStatus), " ")
+            }
+        }
+        function h(c, D) {
+            1 & c && (e.\u0275\u0275elementStart(0, "uef-alert", 9),
+            e.\u0275\u0275text(1, "You are not currently receiving Supplemental Security Income (SSI). "),
+            e.\u0275\u0275elementEnd())
+        }
+        function m(c, D) {
+            if (1 & c) {
+                const T = e.\u0275\u0275getCurrentView();
+                e.\u0275\u0275elementStart(0, "uef-alert", 10),
+                e.\u0275\u0275text(1, "Your benefit payments are suspended because your mailing address or payment information is incorrect. "),
+                e.\u0275\u0275elementStart(2, "p", 14)(3, "uef-button", 15),
+                e.\u0275\u0275listener("buttonClick", function() {
+                    e.\u0275\u0275restoreView(T);
+                    const M = e.\u0275\u0275nextContext();
+                    return e.\u0275\u0275resetView(M.updateContact())
+                }),
+                e.\u0275\u0275text(4, " Update your contact information now"),
+                e.\u0275\u0275elementEnd()()()
+            }
+        }
+        function p(c, D) {
+            if (1 & c && (e.\u0275\u0275elementStart(0, "p", 11)(1, "span", 16),
+            e.\u0275\u0275text(2),
+            e.\u0275\u0275elementEnd(),
+            e.\u0275\u0275text(3, " next payment before "),
+            e.\u0275\u0275elementStart(4, "uef-control", 17)(5, "uef-link"),
+            e.\u0275\u0275text(6, " deductions "),
+            e.\u0275\u0275elementEnd()()()),
+            2 & c) {
+                const T = e.\u0275\u0275nextContext();
+                e.\u0275\u0275advance(2),
+                e.\u0275\u0275textInterpolate1(" ", T.t16NextPmt, " ")
+            }
+        }
+        function C(c, D) {
+            if (1 & c && (e.\u0275\u0275elementStart(0, "uef-grid-item", 13)(1, "uef-grid", 18)(2, "uef-grid-item"),
+            e.\u0275\u0275text(3, "Next payment date: "),
+            e.\u0275\u0275elementStart(4, "b"),
+            e.\u0275\u0275text(5),
+            e.\u0275\u0275pipe(6, "date"),
+            e.\u0275\u0275elementEnd()(),
+            e.\u0275\u0275elementStart(7, "uef-grid-item"),
+            e.\u0275\u0275text(8, "Payments are made on the "),
+            e.\u0275\u0275elementStart(9, "b"),
+            e.\u0275\u0275text(10),
+            e.\u0275\u0275elementEnd(),
+            e.\u0275\u0275text(11, " of every month"),
+            e.\u0275\u0275elementEnd(),
+            e.\u0275\u0275elementStart(12, "uef-grid-item"),
+            e.\u0275\u0275text(13, "Payments are made by "),
+            e.\u0275\u0275elementStart(14, "b"),
+            e.\u0275\u0275text(15),
+            e.\u0275\u0275pipe(16, "lowercase"),
+            e.\u0275\u0275elementEnd()()()()),
+            2 & c) {
+                const T = e.\u0275\u0275nextContext();
+                e.\u0275\u0275advance(5),
+                e.\u0275\u0275textInterpolate(e.\u0275\u0275pipeBind2(6, 3, T.t16Details.nextPaymentDate, "longDate")),
+                e.\u0275\u0275advance(5),
+                e.\u0275\u0275textInterpolate(T.t16Details.usualPaymentDayOfMonth),
+                e.\u0275\u0275advance(5),
+                e.\u0275\u0275textInterpolate(e.\u0275\u0275pipeBind1(16, 6, T.t16Details.paymentMethod))
+            }
+        }
+        function a(c, D) {
+            if (1 & c && (e.\u0275\u0275elementStart(0, "uef-grid-item"),
+            e.\u0275\u0275text(1, "Overpayment withholding:"),
+            e.\u0275\u0275elementEnd(),
+            e.\u0275\u0275elementStart(2, "uef-grid-item", 21)(3, "span", 24),
+            e.\u0275\u0275text(4),
+            e.\u0275\u0275pipe(5, "currency"),
+            e.\u0275\u0275elementEnd()()),
+            2 & c) {
+                const T = e.\u0275\u0275nextContext(2);
+                e.\u0275\u0275advance(4),
+                e.\u0275\u0275textInterpolate1(" -", e.\u0275\u0275pipeBind2(5, 1, T.t16Details.overpaymentWitholding, "USD"), " ")
+            }
+        }
+        function l(c, D) {
+            if (1 & c && (e.\u0275\u0275elementStart(0, "uef-grid-item"),
+            e.\u0275\u0275text(1, "Other deductions:"),
+            e.\u0275\u0275elementEnd(),
+            e.\u0275\u0275elementStart(2, "uef-grid-item", 21)(3, "span", 24),
+            e.\u0275\u0275text(4),
+            e.\u0275\u0275pipe(5, "currency"),
+            e.\u0275\u0275elementEnd()()),
+            2 & c) {
+                const T = e.\u0275\u0275nextContext(2);
+                e.\u0275\u0275advance(4),
+                e.\u0275\u0275textInterpolate1(" -", e.\u0275\u0275pipeBind2(5, 1, T.t16Details.otherDeductions, "USD"), " ")
+            }
+        }
+        function r(c, D) {
+            1 & c && (e.\u0275\u0275elementStart(0, "uef-grid-item", 20),
+            e.\u0275\u0275text(1, "No deductions"),
+            e.\u0275\u0275elementEnd())
+        }
+        function s(c, D) {
+            if (1 & c && (e.\u0275\u0275elementStart(0, "uef-grid-item", 13)(1, "uef-grid", 19)(2, "uef-grid-item", 20)(3, "b"),
+            e.\u0275\u0275text(4),
+            e.\u0275\u0275pipe(5, "date"),
+            e.\u0275\u0275elementEnd()(),
+            e.\u0275\u0275elementStart(6, "uef-grid-item"),
+            e.\u0275\u0275text(7, "Monthly benefit amount:"),
+            e.\u0275\u0275elementEnd(),
+            e.\u0275\u0275elementStart(8, "uef-grid-item", 21)(9, "span", 22),
+            e.\u0275\u0275text(10),
+            e.\u0275\u0275pipe(11, "currency"),
+            e.\u0275\u0275elementEnd()(),
+            e.\u0275\u0275conditionalCreate(12, a, 6, 4),
+            e.\u0275\u0275conditionalCreate(13, l, 6, 4),
+            e.\u0275\u0275conditionalCreate(14, r, 2, 0, "uef-grid-item", 20),
+            e.\u0275\u0275elementStart(15, "uef-grid-item")(16, "b"),
+            e.\u0275\u0275text(17, "Last payment total:"),
+            e.\u0275\u0275elementEnd()(),
+            e.\u0275\u0275elementStart(18, "uef-grid-item", 21)(19, "span", 23),
+            e.\u0275\u0275text(20),
+            e.\u0275\u0275pipe(21, "currency"),
+            e.\u0275\u0275elementEnd()()()()),
+            2 & c) {
+                const T = e.\u0275\u0275nextContext();
+                e.\u0275\u0275advance(4),
+                e.\u0275\u0275textInterpolate1("Last payment date: ", e.\u0275\u0275pipeBind2(5, 6, T.t16Details.lastPaymentDate, "longDate")),
+                e.\u0275\u0275advance(6),
+                e.\u0275\u0275textInterpolate1(" ", e.\u0275\u0275pipeBind2(11, 9, T.t16Details.lastPaymentAmountBeforeDeductions, "USD"), " "),
+                e.\u0275\u0275advance(2),
+                e.\u0275\u0275conditional(T.t16Details.overpaymentWitholding > 0 ? 12 : -1),
+                e.\u0275\u0275advance(),
+                e.\u0275\u0275conditional(T.t16Details.otherDeductions > 0 ? 13 : -1),
+                e.\u0275\u0275advance(),
+                e.\u0275\u0275conditional(T.t16Details.overpaymentWitholding || T.t16Details.otherDeductions ? -1 : 14),
+                e.\u0275\u0275advance(6),
+                e.\u0275\u0275textInterpolate1(" ", e.\u0275\u0275pipeBind2(21, 12, T.t16Details.lastPaymentTotal, "USD"), " ")
+            }
+        }
+        let d = ( () => {
+            class c {
+                t16Details;
+                t16NextPmt;
+                width;
+                updateContact() {
+                    window.location.href = "/myssa/mycoa-ui/mycoa"
+                }
+                static \u0275fac = function(O) {
+                    return new (O || c)
+                }
+                ;
+                static \u0275cmp = e.\u0275\u0275defineComponent({
+                    type: c,
+                    selectors: [["app-t16-details"]],
+                    inputs: {
+                        t16Details: "t16Details",
+                        t16NextPmt: "t16NextPmt",
+                        width: "width"
+                    },
+                    standalone: !1,
+                    decls: 16,
+                    vars: 9,
+                    consts: [["slot", "uef-card-body", "sx", '{"border":"var(--uef-border-width-xs) var(--uef-border-style-solid) var(--uef-color-border-primary)","margin-top":"var(--uef-space-inset-4x)",\n  "padding":"var(--uef-space-inset-4x)","borderRadius":"var(--uef-border-radius-softest)"}', 2, "line-height", "var(--uef-font-line-height-regular)"], ["slot", "uef-card-header", "wrap", "wrap", "align-items", "flex-start", "gap", "0.25rem 1rem", "display", "flex"], ["align-self", "flex-start", 2, "flex", "0 0 auto"], ["variant", "heading3", "color", "var(--uef-color-text-primary-on-light)", "weight", "var(--uef-font-weight-semibold)"], ["flex-basis", "100", "flex-grow", "0", "flex-shrink", "0"], ["color", "success", 1, "tag-default"], ["color", "warning", 1, "tag-default"], ["color", "danger", 1, "tag-default"], ["slot", "uef-card-body", "variant", "body-m", "line-height", "var(--uef-font-line-height-regular)", "color", "var(--uef-color-text-primary-on-light)", "sx", '{"paddingTop":"var(--uef-space-stack-2x)","paddingBottom":"var(--uef-space-stack-2x)"}'], ["color", "warning", "compact", "true", "header", "Payments suspended:", 2, "margin", "var(--uef-space-inset-2x) 0 0 0"], ["color", "danger", "compact", "true", "header", "Payments suspended:", 2, "margin", "var(--uef-space-inset-2x) 0 0 0"], [2, "margin", "var(--uef-space-inset-2x) 0 var(--uef-space-inset-2x) 0"], ["grid-template-columns", "repeat(auto-fit, minmax(180px, 1fr))", "gap", "1.1rem"], ["justify-self", "flex-start"], [2, "margin", "var(--uef-space-inset-4x) 0 0 0"], ["id", "updateContactInfoS06", "fill", "solid", 3, "buttonClick"], [2, "font-size", "120%", "font-weight", "500"], ["target", "deductions-modal"], ["grid-template-columns", "1fr"], ["grid-template-columns", "2fr 1fr", "column-gap", "1rem"], [2, "grid-column", "1 / -1"], ["align", "right"], [1, "positive-amount"], [1, "positive-amount", "label-bold"], [1, "negative-amount"]],
+                    template: function(O, M) {
+                        1 & O && (e.\u0275\u0275elementStart(0, "uef-card", 0)(1, "uef-flex", 1)(2, "uef-flex-item", 2)(3, "uef-typography", 3),
+                        e.\u0275\u0275text(4),
+                        e.\u0275\u0275elementEnd()(),
+                        e.\u0275\u0275elementStart(5, "uef-flex-item", 4),
+                        e.\u0275\u0275conditionalCreate(6, f, 3, 3, "uef-tag", 5),
+                        e.\u0275\u0275conditionalCreate(7, g, 3, 3, "uef-tag", 6),
+                        e.\u0275\u0275conditionalCreate(8, n, 3, 3, "uef-tag", 7),
+                        e.\u0275\u0275elementEnd()(),
+                        e.\u0275\u0275elementStart(9, "uef-typography", 8),
+                        e.\u0275\u0275conditionalCreate(10, h, 2, 0, "uef-alert", 9),
+                        e.\u0275\u0275conditionalCreate(11, m, 5, 0, "uef-alert", 10),
+                        e.\u0275\u0275conditionalCreate(12, p, 7, 1, "p", 11),
+                        e.\u0275\u0275elementStart(13, "uef-grid", 12),
+                        e.\u0275\u0275conditionalCreate(14, C, 17, 8, "uef-grid-item", 13),
+                        e.\u0275\u0275conditionalCreate(15, s, 22, 15, "uef-grid-item", 13),
+                        e.\u0275\u0275elementEnd()()()),
+                        2 & O && (e.\u0275\u0275advance(4),
+                        e.\u0275\u0275textInterpolate1(" SSI (", M.t16Details.ssiBenefitType, ") "),
+                        e.\u0275\u0275advance(2),
+                        e.\u0275\u0275conditional("Active" === M.t16Details.activeStatus ? 6 : -1),
+                        e.\u0275\u0275advance(),
+                        e.\u0275\u0275conditional("Suspended" === M.t16Details.activeStatus && "S06" !== M.t16Details.suspCode ? 7 : -1),
+                        e.\u0275\u0275advance(),
+                        e.\u0275\u0275conditional("Suspended" === M.t16Details.activeStatus && "S06" === M.t16Details.suspCode ? 8 : -1),
+                        e.\u0275\u0275advance(2),
+                        e.\u0275\u0275conditional("Suspended" === M.t16Details.activeStatus && "S06" !== M.t16Details.suspCode ? 10 : -1),
+                        e.\u0275\u0275advance(),
+                        e.\u0275\u0275conditional("Suspended" === M.t16Details.activeStatus && "S06" === M.t16Details.suspCode ? 11 : -1),
+                        e.\u0275\u0275advance(),
+                        e.\u0275\u0275conditional(M.t16NextPmt ? 12 : -1),
+                        e.\u0275\u0275advance(2),
+                        e.\u0275\u0275conditional(M.t16Details.nextPaymentDate ? 14 : -1),
+                        e.\u0275\u0275advance(),
+                        e.\u0275\u0275conditional(M.t16Details.lastPaymentDate ? 15 : -1))
+                    },
+                    dependencies: [t.UpperCasePipe, t.LowerCasePipe, t.CurrencyPipe, t.DatePipe],
+                    styles: [".positive-amount[_ngcontent-%COMP%]{text-align:right}.negative-amount[_ngcontent-%COMP%]{color:#ef0000;text-align:right}.tag-default[_ngcontent-%COMP%]{width:min-content;margin-top:5px}.label-bold[_ngcontent-%COMP%]{font-weight:700}"]
+                })
+            }
+            return c
+        }
+        )()
+    },
+    4960(b, x, o) {
+        o.d(x, {
+            W: () => F
+        });
+        var e = o(5312)
+          , t = o(1606)
+          , f = o(116);
+        const g = () => ["S1", "S2", "S3", "S5"]
+          , n = () => ["S6"]
+          , h = () => ["S1", "S2", "S3", "S5", "S6"];
+        function m(u, I) {
+            if (1 & u && (t.\u0275\u0275elementStart(0, "uef-tag", 4),
+            t.\u0275\u0275text(1),
+            t.\u0275\u0275pipe(2, "uppercase"),
+            t.\u0275\u0275elementEnd()),
+            2 & u) {
+                const v = t.\u0275\u0275nextContext();
+                t.\u0275\u0275advance(),
+                t.\u0275\u0275textInterpolate1(" ", t.\u0275\u0275pipeBind1(2, 1, v.t2Details.activeStatus), " ")
+            }
+        }
+        function p(u, I) {
+            if (1 & u && (t.\u0275\u0275elementStart(0, "uef-tag", 5),
+            t.\u0275\u0275text(1),
+            t.\u0275\u0275pipe(2, "uppercase"),
+            t.\u0275\u0275elementEnd()),
+            2 & u) {
+                const v = t.\u0275\u0275nextContext();
+                t.\u0275\u0275advance(),
+                t.\u0275\u0275textInterpolate1(" ", t.\u0275\u0275pipeBind1(2, 1, v.t2Details.activeStatus), " ")
+            }
+        }
+        function C(u, I) {
+            if (1 & u && (t.\u0275\u0275elementStart(0, "uef-tag", 6),
+            t.\u0275\u0275text(1),
+            t.\u0275\u0275pipe(2, "uppercase"),
+            t.\u0275\u0275elementEnd()),
+            2 & u) {
+                const v = t.\u0275\u0275nextContext();
+                t.\u0275\u0275advance(),
+                t.\u0275\u0275textInterpolate1(" ", t.\u0275\u0275pipeBind1(2, 1, v.t2Details.activeStatus), " ")
+            }
+        }
+        function a(u, I) {
+            if (1 & u && (t.\u0275\u0275elementStart(0, "uef-tag", 5),
+            t.\u0275\u0275text(1),
+            t.\u0275\u0275pipe(2, "uppercase"),
+            t.\u0275\u0275elementEnd()),
+            2 & u) {
+                const v = t.\u0275\u0275nextContext();
+                t.\u0275\u0275advance(),
+                t.\u0275\u0275textInterpolate1(" ", t.\u0275\u0275pipeBind1(2, 1, v.t2Details.activeStatus), " ")
+            }
+        }
+        function l(u, I) {
+            if (1 & u && (t.\u0275\u0275elementStart(0, "uef-tag", 5),
+            t.\u0275\u0275text(1),
+            t.\u0275\u0275pipe(2, "uppercase"),
+            t.\u0275\u0275elementEnd()),
+            2 & u) {
+                const v = t.\u0275\u0275nextContext();
+                t.\u0275\u0275advance(),
+                t.\u0275\u0275textInterpolate1(" ", t.\u0275\u0275pipeBind1(2, 1, v.t2Details.activeStatus), " ")
+            }
+        }
+        function r(u, I) {
+            if (1 & u && (t.\u0275\u0275text(0, " We cannot pay your regular monthly benefits at this time because you have an outstanding overpayment to repay. You should have received a letter in the mail explaining why you have been overpaid, your "),
+            t.\u0275\u0275elementStart(1, "uef-link", 14),
+            t.\u0275\u0275text(2, "repayment options "),
+            t.\u0275\u0275element(3, "uef-icon", 15),
+            t.\u0275\u0275elementEnd(),
+            t.\u0275\u0275text(4, ", your appeal and waiver rights, and when your payments will resume."),
+            t.\u0275\u0275element(5, "br"),
+            t.\u0275\u0275elementStart(6, "uef-link", 16),
+            t.\u0275\u0275text(7, "View your overpayment details"),
+            t.\u0275\u0275elementEnd()),
+            2 & u) {
+                const v = t.\u0275\u0275nextContext(2);
+                t.\u0275\u0275advance(6),
+                t.\u0275\u0275property("href", t.\u0275\u0275interpolate(v.paymentHistUrl))
+            }
+        }
+        function s(u, I) {
+            1 & u && t.\u0275\u0275text(0, " We cannot pay your regular monthly benefits at this time. You should have received a letter in the mail explaining why we cannot pay you, and when your payments will resume. ")
+        }
+        function d(u, I) {
+            if (1 & u && (t.\u0275\u0275elementStart(0, "uef-alert", 8),
+            t.\u0275\u0275conditionalCreate(1, r, 8, 2),
+            t.\u0275\u0275conditionalCreate(2, s, 1, 0),
+            t.\u0275\u0275elementEnd()),
+            2 & u) {
+                const v = t.\u0275\u0275nextContext();
+                t.\u0275\u0275advance(),
+                t.\u0275\u0275conditional("D6" === v.t2Details.suspCode ? 1 : -1),
+                t.\u0275\u0275advance(),
+                t.\u0275\u0275conditional("D6" !== v.t2Details.suspCode ? 2 : -1)
+            }
+        }
+        function c(u, I) {
+            1 & u && t.\u0275\u0275text(0, " Your benefit payments are suspended because our records indicate that you were or are currently working. ")
+        }
+        function D(u, I) {
+            1 & u && t.\u0275\u0275text(0, " Your benefit payments are suspended because our records indicate that the person on whose record you are entitled is currently working. ")
+        }
+        function T(u, I) {
+            if (1 & u && (t.\u0275\u0275elementStart(0, "uef-alert", 9),
+            t.\u0275\u0275conditionalCreate(1, c, 1, 0),
+            t.\u0275\u0275conditionalCreate(2, D, 1, 0),
+            t.\u0275\u0275elementEnd()),
+            2 & u) {
+                const v = t.\u0275\u0275nextContext();
+                t.\u0275\u0275advance(),
+                t.\u0275\u0275conditional("S1" === v.t2Details.suspCode || "S2" === v.t2Details.suspCode ? 1 : -1),
+                t.\u0275\u0275advance(),
+                t.\u0275\u0275conditional("S3" === v.t2Details.suspCode || "S5" === v.t2Details.suspCode ? 2 : -1)
+            }
+        }
+        function O(u, I) {
+            if (1 & u) {
+                const v = t.\u0275\u0275getCurrentView();
+                t.\u0275\u0275elementStart(0, "uef-alert", 10),
+                t.\u0275\u0275text(1, "Your benefit payments are suspended because your mailing address or payment information is incorrect. "),
+                t.\u0275\u0275elementStart(2, "p", 17)(3, "uef-button", 18),
+                t.\u0275\u0275listener("buttonClick", function() {
+                    t.\u0275\u0275restoreView(v);
+                    const _ = t.\u0275\u0275nextContext();
+                    return t.\u0275\u0275resetView(_.updateContact())
+                }),
+                t.\u0275\u0275text(4, " Update your contact information now"),
+                t.\u0275\u0275elementEnd()()()
+            }
+        }
+        function M(u, I) {
+            1 & u && (t.\u0275\u0275elementStart(0, "uef-alert", 9),
+            t.\u0275\u0275text(1, " You are not currently receiving Social Security Payments. "),
+            t.\u0275\u0275elementEnd())
+        }
+        function U(u, I) {
+            if (1 & u && (t.\u0275\u0275elementStart(0, "p", 11)(1, "span", 19),
+            t.\u0275\u0275text(2),
+            t.\u0275\u0275elementEnd(),
+            t.\u0275\u0275text(3, " next payment before "),
+            t.\u0275\u0275elementStart(4, "uef-control", 20)(5, "uef-link"),
+            t.\u0275\u0275text(6, " deductions "),
+            t.\u0275\u0275elementEnd()()()),
+            2 & u) {
+                const v = t.\u0275\u0275nextContext();
+                t.\u0275\u0275advance(2),
+                t.\u0275\u0275textInterpolate1(" ", v.t2NextPmt, " ")
+            }
+        }
+        function A(u, I) {
+            if (1 & u && (t.\u0275\u0275elementStart(0, "uef-grid-item", 13)(1, "uef-grid", 21)(2, "uef-grid-item"),
+            t.\u0275\u0275text(3, "Next payment date: "),
+            t.\u0275\u0275elementStart(4, "b"),
+            t.\u0275\u0275text(5),
+            t.\u0275\u0275pipe(6, "date"),
+            t.\u0275\u0275elementEnd()(),
+            t.\u0275\u0275elementStart(7, "uef-grid-item"),
+            t.\u0275\u0275text(8, "Payments are made on the "),
+            t.\u0275\u0275elementStart(9, "b"),
+            t.\u0275\u0275text(10),
+            t.\u0275\u0275elementEnd(),
+            t.\u0275\u0275text(11, " of every month"),
+            t.\u0275\u0275elementEnd(),
+            t.\u0275\u0275elementStart(12, "uef-grid-item"),
+            t.\u0275\u0275text(13, "Payments are made by "),
+            t.\u0275\u0275elementStart(14, "b"),
+            t.\u0275\u0275text(15),
+            t.\u0275\u0275pipe(16, "lowercase"),
+            t.\u0275\u0275elementEnd()()()()),
+            2 & u) {
+                const v = t.\u0275\u0275nextContext();
+                t.\u0275\u0275advance(5),
+                t.\u0275\u0275textInterpolate(t.\u0275\u0275pipeBind2(6, 3, v.t2Details.nextPaymentDate, "longDate")),
+                t.\u0275\u0275advance(5),
+                t.\u0275\u0275textInterpolate(v.t2Details.usualPaymentDayOfMonth),
+                t.\u0275\u0275advance(5),
+                t.\u0275\u0275textInterpolate(t.\u0275\u0275pipeBind1(16, 6, v.t2Details.paymentMethod))
+            }
+        }
+        function R(u, I) {
+            if (1 & u && (t.\u0275\u0275elementStart(0, "uef-grid-item"),
+            t.\u0275\u0275text(1, "Credits and adjustments:"),
+            t.\u0275\u0275elementEnd(),
+            t.\u0275\u0275elementStart(2, "uef-grid-item", 24)(3, "span", 27),
+            t.\u0275\u0275text(4),
+            t.\u0275\u0275pipe(5, "currency"),
+            t.\u0275\u0275elementEnd()()),
+            2 & u) {
+                const v = t.\u0275\u0275nextContext(2);
+                t.\u0275\u0275advance(4),
+                t.\u0275\u0275textInterpolate1(" -", t.\u0275\u0275pipeBind2(5, 1, v.t2Details.creditsAndAdjustments, "USD"), " ")
+            }
+        }
+        function j(u, I) {
+            if (1 & u && (t.\u0275\u0275elementStart(0, "uef-grid-item"),
+            t.\u0275\u0275text(1, "Medicare premium(s):"),
+            t.\u0275\u0275elementEnd(),
+            t.\u0275\u0275elementStart(2, "uef-grid-item", 24)(3, "span", 27),
+            t.\u0275\u0275text(4),
+            t.\u0275\u0275pipe(5, "currency"),
+            t.\u0275\u0275elementEnd()()),
+            2 & u) {
+                const v = t.\u0275\u0275nextContext(2);
+                t.\u0275\u0275advance(4),
+                t.\u0275\u0275textInterpolate1(" -", t.\u0275\u0275pipeBind2(5, 1, v.t2Details.medicarePremiums, "USD"), " ")
+            }
+        }
+        function H(u, I) {
+            if (1 & u && (t.\u0275\u0275elementStart(0, "uef-grid-item"),
+            t.\u0275\u0275text(1, "Overpayment withholding:"),
+            t.\u0275\u0275elementEnd(),
+            t.\u0275\u0275elementStart(2, "uef-grid-item", 24)(3, "span", 27),
+            t.\u0275\u0275text(4),
+            t.\u0275\u0275pipe(5, "currency"),
+            t.\u0275\u0275elementEnd()()),
+            2 & u) {
+                const v = t.\u0275\u0275nextContext(2);
+                t.\u0275\u0275advance(4),
+                t.\u0275\u0275textInterpolate1(" -", t.\u0275\u0275pipeBind2(5, 1, v.t2Details.overpaymentWitholding, "USD"), " ")
+            }
+        }
+        function N(u, I) {
+            if (1 & u && (t.\u0275\u0275elementStart(0, "uef-grid-item"),
+            t.\u0275\u0275text(1, "Other deductions:"),
+            t.\u0275\u0275elementEnd(),
+            t.\u0275\u0275elementStart(2, "uef-grid-item", 24)(3, "span", 27),
+            t.\u0275\u0275text(4),
+            t.\u0275\u0275pipe(5, "currency"),
+            t.\u0275\u0275elementEnd()()),
+            2 & u) {
+                const v = t.\u0275\u0275nextContext(2);
+                t.\u0275\u0275advance(4),
+                t.\u0275\u0275textInterpolate1(" -", t.\u0275\u0275pipeBind2(5, 1, v.t2Details.otherDeductions, "USD"), " ")
+            }
+        }
+        function L(u, I) {
+            1 & u && (t.\u0275\u0275elementStart(0, "uef-grid-item", 23),
+            t.\u0275\u0275text(1, "No deductions"),
+            t.\u0275\u0275elementEnd())
+        }
+        function W(u, I) {
+            if (1 & u && (t.\u0275\u0275elementStart(0, "uef-grid-item", 13)(1, "uef-grid", 22)(2, "uef-grid-item", 23)(3, "b"),
+            t.\u0275\u0275text(4),
+            t.\u0275\u0275pipe(5, "date"),
+            t.\u0275\u0275elementEnd()(),
+            t.\u0275\u0275elementStart(6, "uef-grid-item"),
+            t.\u0275\u0275text(7, "Monthly benefit amount:"),
+            t.\u0275\u0275elementEnd(),
+            t.\u0275\u0275elementStart(8, "uef-grid-item", 24)(9, "span", 25),
+            t.\u0275\u0275text(10),
+            t.\u0275\u0275pipe(11, "currency"),
+            t.\u0275\u0275elementEnd()(),
+            t.\u0275\u0275conditionalCreate(12, R, 6, 4),
+            t.\u0275\u0275conditionalCreate(13, j, 6, 4),
+            t.\u0275\u0275conditionalCreate(14, H, 6, 4),
+            t.\u0275\u0275conditionalCreate(15, N, 6, 4),
+            t.\u0275\u0275conditionalCreate(16, L, 2, 0, "uef-grid-item", 23),
+            t.\u0275\u0275elementStart(17, "uef-grid-item")(18, "b"),
+            t.\u0275\u0275text(19, "Last payment total:"),
+            t.\u0275\u0275elementEnd()(),
+            t.\u0275\u0275elementStart(20, "uef-grid-item", 24)(21, "span", 26),
+            t.\u0275\u0275text(22),
+            t.\u0275\u0275pipe(23, "currency"),
+            t.\u0275\u0275elementEnd()()()()),
+            2 & u) {
+                const v = t.\u0275\u0275nextContext();
+                t.\u0275\u0275advance(4),
+                t.\u0275\u0275textInterpolate1("Last payment date: ", t.\u0275\u0275pipeBind2(5, 8, v.t2Details.lastPaymentDate, "longDate")),
+                t.\u0275\u0275advance(6),
+                t.\u0275\u0275textInterpolate1(" ", t.\u0275\u0275pipeBind2(11, 11, v.t2Details.lastPaymentAmountBeforeDeductions, "USD"), " "),
+                t.\u0275\u0275advance(2),
+                t.\u0275\u0275conditional(v.t2Details.creditsAndAdjustments > 0 ? 12 : -1),
+                t.\u0275\u0275advance(),
+                t.\u0275\u0275conditional(v.t2Details.medicarePremiums > 0 ? 13 : -1),
+                t.\u0275\u0275advance(),
+                t.\u0275\u0275conditional(v.t2Details.overpaymentWitholding > 0 ? 14 : -1),
+                t.\u0275\u0275advance(),
+                t.\u0275\u0275conditional(v.t2Details.otherDeductions > 0 ? 15 : -1),
+                t.\u0275\u0275advance(),
+                t.\u0275\u0275conditional(0 == v.t2Details.creditsAndAdjustments && 0 == v.t2Details.medicarePremiums && 0 == v.t2Details.overpaymentWitholding && 0 == v.t2Details.otherDeductions ? 16 : -1),
+                t.\u0275\u0275advance(6),
+                t.\u0275\u0275textInterpolate1(" ", t.\u0275\u0275pipeBind2(23, 14, v.t2Details.lastPaymentTotal, "USD"), " ")
+            }
+        }
+        let F = ( () => {
+            class u {
+                t2Details;
+                t2NextPmt;
+                width;
+                paymentHistUrl = e.c.paymentHistUrl;
+                updateContact() {
+                    window.location.href = "/myssa/mycoa-ui/mycoa"
+                }
+                static \u0275fac = function(y) {
+                    return new (y || u)
+                }
+                ;
+                static \u0275cmp = t.\u0275\u0275defineComponent({
+                    type: u,
+                    selectors: [["app-t2-details"]],
+                    inputs: {
+                        t2Details: "t2Details",
+                        t2NextPmt: "t2NextPmt",
+                        width: "width"
+                    },
+                    standalone: !1,
+                    decls: 20,
+                    vars: 18,
+                    consts: [["slot", "uef-card-body", "sx", '{"border":"var(--uef-border-width-xs) var(--uef-border-style-solid) var(--uef-color-border-primary)","margin-top":"var(--uef-space-inset-4x)",\n  "padding":"var(--uef-space-inset-4x)","borderRadius":"var(--uef-border-radius-softest)"}', 2, "line-height", "var(--uef-font-line-height-regular)"], ["slot", "uef-card-header", "justify-content", "flex-start", "align-content", "center", "wrap", "wrap", "align-items", "center", "gap", "0.25rem 1rem"], ["align-self", "flex-start"], ["variant", "heading3", "color", "var(--uef-color-text-primary-on-light)", "weight", "var(--uef-font-weight-semibold)"], ["color", "success", 1, "tag-default"], ["color", "warning", 1, "tag-default"], ["color", "danger", 1, "tag-default"], ["slot", "uef-card-body", "variant", "body-m", "line-height", "var(--uef-font-line-height-regular)", "color", "var(--uef-color-text-primary-on-light)", "sx", '{"paddingTop":"var(--uef-space-stack-2x)","paddingBottom":"var(--uef-space-stack-2x)"}'], ["color", "warning", "compact", "true", "header", "Payments on hold:", 2, "margin", "var(--uef-space-inset-2x) 0 var(--uef-space-inset-4x) 0"], ["color", "warning", "compact", "true", "header", "Payments suspended:", 2, "margin", "var(--uef-space-inset-2x) 0 var(--uef-space-inset-4x) 0"], ["color", "danger", "compact", "true", "header", "Payments suspended:", 2, "margin", "var(--uef-space-inset-2x) 0 var(--uef-space-inset-4x) 0"], [2, "margin", "var(--uef-space-inset-2x) 0 var(--uef-space-inset-2x) 0"], ["grid-template-columns", "repeat(auto-fit, minmax(180px, 1fr))", "gap", "1.1rem"], ["justify-self", "flex-start"], ["href", "https://www.ssa.gov/overpayments/", "type", "external", "target", "_blank"], ["type", "solid", "name", "external-link-alt", "accessibility-text", "External website", "color", "var(--uef-color-text-link-on-light)", "sx", '{"marginLeft":"var(--uef-link-gap)"}'], [3, "href"], [2, "margin", "var(--uef-space-inset-4x) 0 0 0"], ["id", "updateContactInfoS6", "fill", "solid", 3, "buttonClick"], [2, "font-size", "120%", "font-weight", "500"], ["target", "deductions-modal"], ["grid-template-columns", "1fr"], ["grid-template-columns", "2fr 1fr", "column-gap", "1rem"], [2, "grid-column", "1 / -1"], ["align", "right"], [1, "positive-amount"], [1, "positive-amount", "label-bold"], [1, "negative-amount"]],
+                    template: function(y, _) {
+                        1 & y && (t.\u0275\u0275elementStart(0, "uef-card", 0)(1, "uef-flex", 1)(2, "uef-flex-item", 2)(3, "uef-typography", 3),
+                        t.\u0275\u0275text(4),
+                        t.\u0275\u0275elementEnd()(),
+                        t.\u0275\u0275elementStart(5, "uef-flex-item"),
+                        t.\u0275\u0275conditionalCreate(6, m, 3, 3, "uef-tag", 4),
+                        t.\u0275\u0275conditionalCreate(7, p, 3, 3, "uef-tag", 5),
+                        t.\u0275\u0275conditionalCreate(8, C, 3, 3, "uef-tag", 6),
+                        t.\u0275\u0275conditionalCreate(9, a, 3, 3, "uef-tag", 5),
+                        t.\u0275\u0275conditionalCreate(10, l, 3, 3, "uef-tag", 5),
+                        t.\u0275\u0275elementEnd()(),
+                        t.\u0275\u0275elementStart(11, "uef-typography", 7),
+                        t.\u0275\u0275conditionalCreate(12, d, 3, 2, "uef-alert", 8),
+                        t.\u0275\u0275conditionalCreate(13, T, 3, 2, "uef-alert", 9),
+                        t.\u0275\u0275conditionalCreate(14, O, 5, 0, "uef-alert", 10),
+                        t.\u0275\u0275conditionalCreate(15, M, 2, 0, "uef-alert", 9),
+                        t.\u0275\u0275conditionalCreate(16, U, 7, 1, "p", 11),
+                        t.\u0275\u0275elementStart(17, "uef-grid", 12),
+                        t.\u0275\u0275conditionalCreate(18, A, 17, 8, "uef-grid-item", 13),
+                        t.\u0275\u0275conditionalCreate(19, W, 24, 17, "uef-grid-item", 13),
+                        t.\u0275\u0275elementEnd()()()),
+                        2 & y && (t.\u0275\u0275advance(4),
+                        t.\u0275\u0275textInterpolate1(" Social Security (", _.t2Details.socialSecurityBenefitType, ") "),
+                        t.\u0275\u0275advance(2),
+                        t.\u0275\u0275conditional("Active" === _.t2Details.activeStatus ? 6 : -1),
+                        t.\u0275\u0275advance(),
+                        t.\u0275\u0275conditional("Suspended" === _.t2Details.activeStatus && t.\u0275\u0275pureFunction0(13, g).includes(_.t2Details.suspCode) ? 7 : -1),
+                        t.\u0275\u0275advance(),
+                        t.\u0275\u0275conditional("Suspended" === _.t2Details.activeStatus && t.\u0275\u0275pureFunction0(14, n).includes(_.t2Details.suspCode) ? 8 : -1),
+                        t.\u0275\u0275advance(),
+                        t.\u0275\u0275conditional("Suspended" !== _.t2Details.activeStatus || t.\u0275\u0275pureFunction0(15, h).includes(_.t2Details.suspCode) ? -1 : 9),
+                        t.\u0275\u0275advance(),
+                        t.\u0275\u0275conditional("On Hold" === _.t2Details.activeStatus ? 10 : -1),
+                        t.\u0275\u0275advance(2),
+                        t.\u0275\u0275conditional("On Hold" === _.t2Details.activeStatus ? 12 : -1),
+                        t.\u0275\u0275advance(),
+                        t.\u0275\u0275conditional("Suspended" === _.t2Details.activeStatus && t.\u0275\u0275pureFunction0(16, g).includes(_.t2Details.suspCode) ? 13 : -1),
+                        t.\u0275\u0275advance(),
+                        t.\u0275\u0275conditional("Suspended" === _.t2Details.activeStatus && "S6" === _.t2Details.suspCode ? 14 : -1),
+                        t.\u0275\u0275advance(),
+                        t.\u0275\u0275conditional("Suspended" !== _.t2Details.activeStatus || t.\u0275\u0275pureFunction0(17, h).includes(_.t2Details.suspCode) ? -1 : 15),
+                        t.\u0275\u0275advance(),
+                        t.\u0275\u0275conditional(_.t2NextPmt ? 16 : -1),
+                        t.\u0275\u0275advance(2),
+                        t.\u0275\u0275conditional(_.t2Details.nextPaymentDate ? 18 : -1),
+                        t.\u0275\u0275advance(),
+                        t.\u0275\u0275conditional(_.t2Details.lastPaymentDate ? 19 : -1))
+                    },
+                    dependencies: [f.UpperCasePipe, f.LowerCasePipe, f.CurrencyPipe, f.DatePipe],
+                    styles: [".positive-amount[_ngcontent-%COMP%]{text-align:right}.negative-amount[_ngcontent-%COMP%]{color:#ef0000;text-align:right}.tag-default[_ngcontent-%COMP%]{width:min-content;margin-top:5px}.label-bold[_ngcontent-%COMP%]{font-weight:700}"]
+                })
+            }
+            return u
+        }
+        )()
+    },
+    5312(b, x, o) {
+        o.d(x, {
+            c: () => C
+        });
+        const h = []
+          , m = {
+            type: "module",
+            remoteEntry: "/myssa/mymrc-ui/remoteEntry.js",
+            exposedModule: "MymrcUiComponent",
+            componentName: "MymrcUiComponent",
+            exposedModuleOfNgModule: "MymrcUiNgModule",
+            ngModuleName: "MymrcUiModule",
+            displayName: "Mymrc UI"
+        }
+          , p = [m]
+          , C = {
+            production: !0,
+            shouldLoadRemotesUpfront: !1,
+            bffApiBaseUrl: "/myssa/mybenefits-api",
+            contactUsUrl: "https://www.ssa.gov/agency/contact/phone.html",
+            paymentHistUrl: "/myssa/mybenefits-ui/payment-history",
+            mymrcUiContainerPluginFragment: m,
+            pluginPageList: h,
+            pluginFragmentList: p,
+            pluginList: [...h, ...p]
+        }
+    }
+}]);
+
