@@ -5124,6 +5124,16 @@ namespace winrt::TerminalApp::implementation
     // queued behind the tab that owns it.
     void TerminalPage::_PrewarmAgentPanesAfterStartup()
     {
+        // Re-check rather than trust the caller: this now runs off a dispatcher
+        // tick, so a batch handed to this window by `ExecuteCommandline` can
+        // have started between the queue and the tick. That batch owns the
+        // agent panes of the tabs it is restoring, and its own completion
+        // re-queues this drain once it is done.
+        if (_startupActionReplayDepth > 0)
+        {
+            return;
+        }
+
         auto pending = std::exchange(_tabsAwaitingPrewarm, {});
         for (const auto& weakTab : pending)
         {
