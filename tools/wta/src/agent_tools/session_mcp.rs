@@ -12,7 +12,7 @@ const SUPPORTED_MCP_PROTOCOL_VERSIONS: &[&str] =
     &["2024-11-05", "2025-03-26", MCP_PROTOCOL_VERSION];
 const USER_INPUT_TOOL_NAME: &str = "request_user_input";
 pub const SERVER_NAME_PREFIX: &str = "intellterm_";
-pub const SERVER_ID_HEX_LEN: usize = 20;
+pub const SERVER_ID_HEX_LEN: usize = 16;
 pub const HELPER_REQUEST_METHOD: &str = "_intellterm.wta/request_terminal_actions";
 pub const USER_INPUT_HELPER_REQUEST_METHOD: &str = "_intellterm.wta/request_user_input";
 pub const CANCEL_USER_INPUT_HELPER_REQUEST_METHOD: &str = "_intellterm.wta/cancel_user_input";
@@ -294,9 +294,9 @@ mod tests {
         assert_eq!(
             names,
             vec![
-                "terminal_send",
-                "terminal_open",
-                "terminal_open_and_send",
+                "run_command_in_current_shell",
+                "create_workspace",
+                "delegate_task_in_new_workspace",
                 USER_INPUT_TOOL_NAME
             ]
         );
@@ -328,6 +328,88 @@ mod tests {
                 .and_then(Value::as_u64),
             Some(1)
         );
+    }
+
+    #[tokio::test]
+    async fn rejects_removed_action_tool_names() {
+        for name in [
+            "request_terminal_actions",
+            "run_command",
+            "open_workspace",
+            "run_command_in_workspace",
+            "delegate_task",
+            "terminal_send",
+            "terminal_open",
+            "terminal_open_and_send",
+        ] {
+            let response = dispatch(
+                json!({
+                    "jsonrpc":"2.0",
+                    "id":1,
+                    "method":"tools/call",
+                    "params":{"name":name,"arguments":{}}
+                }),
+                |_, _| async { unreachable!("removed tools must not be dispatched") },
+                |_| async { unreachable!() },
+            )
+            .await
+            .unwrap();
+            assert_eq!(
+                response.pointer("/error/message").and_then(Value::as_str),
+                Some("unknown tool"),
+                "{name}"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn preserves_action_arguments_at_the_mcp_boundary() {
+        let expected = json!({
+            "summary": "Investigate failures",
+            "reason": "The user requested an independent investigation",
+            "task": "Find the failure, fix it, and report validation results.",
+            "placement": "new_split",
+            "working_directory": "C:\\repo",
+            "split_direction": "right"
+        });
+        let captured = std::sync::Arc::new(std::sync::Mutex::new(None));
+        let response = dispatch(
+            json!({
+                "jsonrpc":"2.0",
+                "id":1,
+                "method":"tools/call",
+                "params":{"name":"delegate_task_in_new_workspace","arguments":expected.clone()}
+            }),
+            {
+                let captured = std::sync::Arc::clone(&captured);
+                |tool, arguments| async move {
+                    *captured.lock().unwrap() = Some((tool, arguments));
+                    Ok(ProposalValidationResponse {
+                        phase: super::super::action_proposal::pipe::ValidationPhase::Validation,
+                        status: ProposalValidationStatus::Accepted,
+                        proposal_id: Some("proposal".to_string()),
+                        reason: None,
+                        retryable: false,
+                    })
+                }
+            },
+            |_| async { unreachable!() },
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(
+            response
+                .pointer("/result/structuredContent/status")
+                .and_then(Value::as_str),
+            Some("accepted")
+        );
+        let captured = captured.lock().unwrap().take().expect("action call");
+        assert_eq!(
+            captured.0,
+            super::super::action_proposal::schema::McpActionTool::DelegateTaskInNewWorkspace
+        );
+        assert_eq!(captured.1, expected);
     }
 
     /// Prints the serialized `tools/list` size so the cost of the tool surface

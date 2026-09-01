@@ -42,9 +42,9 @@ Master owns one loopback Streamable HTTP listener and publishes an independent
 server name and bearer capability for each eligible ACP session. WSL sessions
 use an on-demand distro-local relay to that listener. The endpoint exposes:
 
-- `terminal_send`
-- `terminal_open`
-- `terminal_open_and_send`
+- `run_command_in_current_shell`
+- `create_workspace`
+- `delegate_task_in_new_workspace`
 - `request_user_input`
 
 Treat the bearer capability as the session identity. Revoke it when the exact

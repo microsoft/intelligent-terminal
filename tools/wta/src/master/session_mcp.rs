@@ -1397,12 +1397,22 @@ mod tests {
             .name
             .strip_prefix("intellterm_")
             .expect("session MCP server name must use the reserved prefix");
-        assert_eq!(server_id.len(), 20);
+        assert_eq!(server_id.len(), 16);
         assert!(server_id
             .chars()
             .all(|ch| ch.is_ascii_digit() || ('a'..='f').contains(&ch)));
         // Some agent CLIs cap the fully-qualified MCP tool name at 64 chars.
-        // Assert against the longest name actually published.
+        // Assert every action name and pin the longest published name so a
+        // future rename cannot silently invalidate this length budget.
+        let longest = crate::agent_tools::action_proposal::schema::McpActionTool::ALL
+            .into_iter()
+            .max_by_key(|tool| tool.tool_name().len())
+            .expect("action tools");
+        assert_eq!(longest.tool_name(), "delegate_task_in_new_workspace");
+        assert_eq!(
+            format!("mcp__{}__{}", config.name, longest.tool_name()).len(),
+            64
+        );
         for tool in crate::agent_tools::action_proposal::schema::McpActionTool::ALL {
             let qualified = format!("mcp__{}__{}", config.name, tool.tool_name());
             assert!(
