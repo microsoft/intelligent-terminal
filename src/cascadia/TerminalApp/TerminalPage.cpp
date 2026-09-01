@@ -5076,7 +5076,33 @@ namespace winrt::TerminalApp::implementation
         // startup replay whose agent panes are queued behind it.
         if (_startupActionReplayDepth == 0)
         {
-            _PrewarmAgentPanesAfterStartup();
+            // Not inline. Pre-warm only spawns the helper if the agent pane
+            // gets a real layout pass first: `TermControl::_InitializeTerminal`
+            // bails while the SwapChainPanel still measures zero, and
+            // `_AutoCreateHiddenAgentPaneShared` stashes the pane straight
+            // after — pulling it out of the tree before it can ever be
+            // measured again. Nothing has been laid out at the moment a replay
+            // finishes, so a pane pre-warmed here would come back with no
+            // helper, no conpty, and a `ControlCore` still holding the
+            // composition scale of 0 it was constructed with.
+            //
+            // `_InitializeTab` defers its own pre-warm to a low-priority tick
+            // for exactly this reason. Match it, so a tab that skipped that
+            // tick because a replay was in flight gets an equally settled one.
+            if (auto dispatcher = winrt::Windows::System::DispatcherQueue::GetForCurrentThread())
+            {
+                dispatcher.TryEnqueue(winrt::Windows::System::DispatcherQueuePriority::Low,
+                                      [weakSelf = get_weak()]() {
+                                          if (const auto self{ weakSelf.get() })
+                                          {
+                                              self->_PrewarmAgentPanesAfterStartup();
+                                          }
+                                      });
+            }
+            else
+            {
+                _PrewarmAgentPanesAfterStartup();
+            }
         }
 
         // GH#6586: now that we're done processing all startup commands,
