@@ -281,26 +281,43 @@ mod tests {
     fn embedded_prompts_use_the_mcp_tool_schema_as_authority() {
         for prompt in [EMBEDDED_DEFAULT_PROMPT, EMBEDDED_AUTOFIX_PROMPT] {
             assert!(prompt.contains("provides an MCP server for this session"));
-            assert!(prompt.contains("terminal_send"));
+            assert!(prompt.contains("run_command_in_current_shell"));
             assert!(!prompt.contains("request_terminal_actions"));
+            for removed in ["terminal_send", "terminal_open", "terminal_open_and_send"] {
+                assert!(!prompt.contains(removed), "prompt still names {removed}");
+            }
+            for removed in [
+                "`run_command`",
+                "`open_workspace`",
+                "`run_command_in_workspace`",
+                "`delegate_task`",
+            ] {
+                assert!(!prompt.contains(removed), "prompt still names {removed}");
+            }
             assert!(prompt.contains("advertised input schema as the sole authority"));
             assert!(!prompt.contains(r#"{"type""#));
             assert!(!prompt.contains("recommended_choice"));
             assert!(!prompt.contains("```json"));
         }
         // The default prompt drives every action, so it must name each tool.
-        for tool in ["terminal_send", "terminal_open", "terminal_open_and_send"] {
+        for tool in [
+            "run_command_in_current_shell",
+            "create_workspace",
+            "delegate_task_in_new_workspace",
+        ] {
             assert!(
                 EMBEDDED_DEFAULT_PROMPT.contains(tool),
                 "default prompt must name {tool}"
             );
         }
-        // Autofix is deliberately restricted to `terminal_send` — the Helper
-        // rejects any other action for an autofix turn — so naming the target
-        // tools there would invite a call that cannot be accepted.
-        // `terminal_open` alone would already catch `terminal_open_and_send`
-        // by substring; both are asserted so the intent survives a rename.
-        for tool in ["terminal_open", "terminal_open_and_send"] {
+        assert!(EMBEDDED_DEFAULT_PROMPT
+            .contains("A requested destination alone never implies delegation"));
+        assert!(EMBEDDED_DEFAULT_PROMPT.contains("running a command in a new tab or split"));
+        assert!(EMBEDDED_DEFAULT_PROMPT.contains("only when another agent should own the work"));
+        // Autofix is deliberately restricted to `run_command_in_current_shell` — the Helper
+        // rejects any other action for an autofix turn — so naming workspace
+        // or delegation tools there would invite a call that cannot be accepted.
+        for tool in ["create_workspace", "delegate_task_in_new_workspace"] {
             assert!(
                 !EMBEDDED_AUTOFIX_PROMPT.contains(tool),
                 "autofix prompt must not name {tool}"
@@ -309,7 +326,8 @@ mod tests {
         assert!(EMBEDDED_DEFAULT_PROMPT.contains("Submit exactly one action"));
         assert!(EMBEDDED_DEFAULT_PROMPT.contains("`request_user_input`"));
         assert!(EMBEDDED_DEFAULT_PROMPT.contains("instead of guessing"));
-        assert!(EMBEDDED_AUTOFIX_PROMPT.contains("Submit exactly one `terminal_send` call"));
+        assert!(EMBEDDED_AUTOFIX_PROMPT
+            .contains("Submit exactly one `run_command_in_current_shell` call"));
     }
 
     #[test]

@@ -419,8 +419,8 @@ mod tests {
             "planner must ship the delegate-agents section"
         );
         assert!(
-            built_prompt.contains("Follow one continuous workflow"),
-            "terminal prompt must use the unified workflow"
+            built_prompt.contains("user-visible, confirmation-gated actions"),
+            "terminal prompt must use the intent-based action workflow"
         );
         assert!(
             !built_prompt.contains("Choose the first matching mode"),
@@ -533,7 +533,7 @@ mod tests {
         assert_eq!(display_name, autofix.display_name);
         assert_ne!(display_name, planner.display_name);
         assert!(
-            built_prompt.contains("You assist from within Windows Terminal"),
+            built_prompt.contains("# Working in Windows Terminal"),
             "first-turn autofix must install the base terminal-agent prompt"
         );
         assert!(

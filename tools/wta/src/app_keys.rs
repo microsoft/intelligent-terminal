@@ -407,10 +407,43 @@ impl App {
                             && request.input.chars().count() < MAX_ANSWER_CHARS =>
                     {
                         request.selected = request.request.choices.len();
-                        request.input.push(character);
+                        request.insert_input_char(character);
+                    }
+                    KeyCode::Backspace
+                        if request.freeform_selected()
+                            && key.modifiers.contains(KeyModifiers::CONTROL) =>
+                    {
+                        request.delete_word_before_cursor();
                     }
                     KeyCode::Backspace if request.freeform_selected() => {
-                        request.input.pop();
+                        request.delete_before_cursor();
+                    }
+                    KeyCode::Delete if request.freeform_selected() => {
+                        request.delete_at_cursor();
+                    }
+                    KeyCode::Left
+                        if request.freeform_selected()
+                            && key.modifiers.contains(KeyModifiers::CONTROL) =>
+                    {
+                        request.move_cursor_word_left();
+                    }
+                    KeyCode::Right
+                        if request.freeform_selected()
+                            && key.modifiers.contains(KeyModifiers::CONTROL) =>
+                    {
+                        request.move_cursor_word_right();
+                    }
+                    KeyCode::Left if request.freeform_selected() => {
+                        request.move_cursor_left();
+                    }
+                    KeyCode::Right if request.freeform_selected() => {
+                        request.move_cursor_right();
+                    }
+                    KeyCode::Home if request.freeform_selected() => {
+                        request.move_cursor_home();
+                    }
+                    KeyCode::End if request.freeform_selected() => {
+                        request.move_cursor_end();
                     }
                     KeyCode::Enter => {
                         if request.freeform_selected() {

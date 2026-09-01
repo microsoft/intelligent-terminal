@@ -229,6 +229,7 @@ pub struct UserInputState {
     pub request: crate::agent_tools::user_input::UserInputRequest,
     pub selected: usize,
     pub input: String,
+    pub cursor_pos: usize,
     pub responder:
         Option<tokio::sync::oneshot::Sender<crate::agent_tools::user_input::UserInputResponse>>,
 }
@@ -240,6 +241,50 @@ impl UserInputState {
 
     pub fn freeform_selected(&self) -> bool {
         self.request.allow_freeform && self.selected == self.request.choices.len()
+    }
+
+    pub fn insert_input_char(&mut self, character: char) {
+        super::input_edit::TextEditor::new(&mut self.input, &mut self.cursor_pos)
+            .insert_char(character);
+    }
+
+    pub fn delete_before_cursor(&mut self) {
+        super::input_edit::TextEditor::new(&mut self.input, &mut self.cursor_pos)
+            .delete_before_cursor();
+    }
+
+    pub fn delete_at_cursor(&mut self) {
+        super::input_edit::TextEditor::new(&mut self.input, &mut self.cursor_pos)
+            .delete_at_cursor();
+    }
+
+    pub fn move_cursor_left(&mut self) {
+        super::input_edit::TextEditor::new(&mut self.input, &mut self.cursor_pos).move_left();
+    }
+
+    pub fn move_cursor_right(&mut self) {
+        super::input_edit::TextEditor::new(&mut self.input, &mut self.cursor_pos).move_right();
+    }
+
+    pub fn move_cursor_word_left(&mut self) {
+        super::input_edit::TextEditor::new(&mut self.input, &mut self.cursor_pos).move_word_left();
+    }
+
+    pub fn move_cursor_word_right(&mut self) {
+        super::input_edit::TextEditor::new(&mut self.input, &mut self.cursor_pos).move_word_right();
+    }
+
+    pub fn move_cursor_home(&mut self) {
+        super::input_edit::TextEditor::new(&mut self.input, &mut self.cursor_pos).move_home();
+    }
+
+    pub fn move_cursor_end(&mut self) {
+        super::input_edit::TextEditor::new(&mut self.input, &mut self.cursor_pos).move_end();
+    }
+
+    pub fn delete_word_before_cursor(&mut self) {
+        super::input_edit::TextEditor::new(&mut self.input, &mut self.cursor_pos)
+            .delete_word_before_cursor();
     }
 }
 

@@ -1004,6 +1004,10 @@ fn is_session_mcp_server_name(name: &str) -> bool {
     crate::agent_tools::session_mcp::server_name_matches(name)
 }
 
+fn is_dynamic_session_mcp_server_name(name: &str) -> bool {
+    name != "intelligent_terminal" && is_session_mcp_server_name(name)
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum SessionMcpTool {
     TerminalAction(crate::agent_tools::action_proposal::schema::McpActionTool),
@@ -1012,10 +1016,14 @@ enum SessionMcpTool {
 
 impl SessionMcpTool {
     const ALL: [Self; 4] = [
-        Self::TerminalAction(crate::agent_tools::action_proposal::schema::McpActionTool::Send),
-        Self::TerminalAction(crate::agent_tools::action_proposal::schema::McpActionTool::Open),
         Self::TerminalAction(
-            crate::agent_tools::action_proposal::schema::McpActionTool::OpenAndSend,
+            crate::agent_tools::action_proposal::schema::McpActionTool::RunCommandInCurrentShell,
+        ),
+        Self::TerminalAction(
+            crate::agent_tools::action_proposal::schema::McpActionTool::CreateWorkspace,
+        ),
+        Self::TerminalAction(
+            crate::agent_tools::action_proposal::schema::McpActionTool::DelegateTaskInNewWorkspace,
         ),
         Self::UserInput,
     ];
@@ -1028,7 +1036,10 @@ impl SessionMcpTool {
     }
 }
 
-fn session_mcp_tool_from_title(title: Option<&str>) -> Option<SessionMcpTool> {
+fn session_mcp_tool_from_title_matching(
+    title: Option<&str>,
+    server_name_matches: fn(&str) -> bool,
+) -> Option<SessionMcpTool> {
     let Some(title) = title.map(str::trim) else {
         return None;
     };
@@ -1036,7 +1047,7 @@ fn session_mcp_tool_from_title(title: Option<&str>) -> Option<SessionMcpTool> {
     for tool in SessionMcpTool::ALL {
         for separator in ["/", "-"] {
             if let Some(server_name) = title.strip_suffix(&format!("{separator}{}", tool.name())) {
-                if is_session_mcp_server_name(server_name) {
+                if server_name_matches(server_name) {
                     return Some(tool);
                 }
             }
@@ -1044,7 +1055,7 @@ fn session_mcp_tool_from_title(title: Option<&str>) -> Option<SessionMcpTool> {
         if title
             .strip_prefix("mcp__")
             .and_then(|title| title.strip_suffix(&format!("__{}", tool.name())))
-            .is_some_and(is_session_mcp_server_name)
+            .is_some_and(server_name_matches)
         {
             return Some(tool);
         }
@@ -1052,41 +1063,12 @@ fn session_mcp_tool_from_title(title: Option<&str>) -> Option<SessionMcpTool> {
     None
 }
 
-fn session_mcp_tool_call(
-    title: Option<&str>,
-    raw_input: Option<&serde_json::Value>,
-) -> Option<SessionMcpTool> {
-    if let Some(tool) = session_mcp_tool_from_title(title) {
-        return Some(tool);
-    }
-    let tool = match title.map(str::trim) {
-        Some(name) => SessionMcpTool::ALL
-            .into_iter()
-            .find(|tool| tool.name() == name)?,
-        None => return None,
-    };
-    let Some(raw_input) = raw_input else {
-        return None;
-    };
-    let valid = match tool {
-        SessionMcpTool::TerminalAction(action) => {
-            serde_json::to_vec(raw_input).is_ok_and(|payload| {
-                crate::agent_tools::action_proposal::schema::parse_mcp_action_payload(
-                    action, &payload, false,
-                )
-                .is_ok()
-            })
-        }
-        SessionMcpTool::UserInput => serde_json::from_value::<
-            crate::agent_tools::user_input::UserInputRequest,
-        >(raw_input.clone())
-        .is_ok_and(|request| request.validate().is_ok()),
-    };
-    if valid {
-        Some(tool)
-    } else {
-        None
-    }
+fn session_mcp_tool_from_title(title: Option<&str>) -> Option<SessionMcpTool> {
+    session_mcp_tool_from_title_matching(title, is_session_mcp_server_name)
+}
+
+fn session_mcp_tool_from_dynamic_title(title: Option<&str>) -> Option<SessionMcpTool> {
+    session_mcp_tool_from_title_matching(title, is_dynamic_session_mcp_server_name)
 }
 
 fn looks_like_proposal_command(command: &str) -> bool {
@@ -1213,11 +1195,15 @@ impl WtaClient {
         let session_id = args.session_id.0.to_string();
         let tool_call_id = args.tool_call.tool_call_id.to_string();
         let proposal_candidate = proposal_permission_command_candidate(&args);
-        let session_mcp_tool = session_mcp_tool_call(
-            args.tool_call.fields.title.as_deref(),
-            args.tool_call.fields.raw_input.as_ref(),
-        )
-        .or_else(|| self.hidden_session_mcp_tool(&session_id, &tool_call_id));
+        // Permission titles are agent-authored. Only a title carrying the
+        // validated per-session MCP server name, or a tool call already
+        // correlated through the hidden-call map, is trusted for silent
+        // approval. The public action names are intentionally generic and a
+        // bare `run_command_in_current_shell` from an unrelated provider tool must not bypass
+        // the normal permission UI merely because its payload has the same
+        // shape.
+        let session_mcp_tool = session_mcp_tool_from_title(args.tool_call.fields.title.as_deref())
+            .or_else(|| self.hidden_session_mcp_tool(&session_id, &tool_call_id));
         if let Some(tool) = session_mcp_tool {
             self.hide_session_mcp_tool_call(&session_id, &tool_call_id, tool);
         } else if proposal_candidate.is_some_and(looks_like_proposal_command) {
@@ -1225,7 +1211,7 @@ impl WtaClient {
                 &session_id,
                 &tool_call_id,
                 SessionMcpTool::TerminalAction(
-                    crate::agent_tools::action_proposal::schema::McpActionTool::Send,
+                    crate::agent_tools::action_proposal::schema::McpActionTool::RunCommandInCurrentShell,
                 ),
             );
         }
@@ -1491,9 +1477,7 @@ impl WtaClient {
             }
             acp::schema::v1::SessionUpdate::ToolCall(tool_call) => {
                 let tool_call_id = tool_call.tool_call_id.to_string();
-                if let Some(tool) =
-                    session_mcp_tool_call(Some(&tool_call.title), tool_call.raw_input.as_ref())
-                {
+                if let Some(tool) = session_mcp_tool_from_dynamic_title(Some(&tool_call.title)) {
                     self.hide_session_mcp_tool_call(&sid, &tool_call_id, tool);
                     return Ok(());
                 }
@@ -1504,7 +1488,7 @@ impl WtaClient {
                         &sid,
                         &tool_call_id,
                         SessionMcpTool::TerminalAction(
-                            crate::agent_tools::action_proposal::schema::McpActionTool::Send,
+                            crate::agent_tools::action_proposal::schema::McpActionTool::RunCommandInCurrentShell,
                         ),
                     );
                     return Ok(());
@@ -1541,10 +1525,9 @@ impl WtaClient {
             }
             acp::schema::v1::SessionUpdate::ToolCallUpdate(update) => {
                 let tool_call_id = update.tool_call_id.to_string();
-                if let Some(tool) = session_mcp_tool_call(
-                    update.fields.title.as_deref(),
-                    update.fields.raw_input.as_ref(),
-                ) {
+                if let Some(tool) =
+                    session_mcp_tool_from_dynamic_title(update.fields.title.as_deref())
+                {
                     self.hide_session_mcp_tool_call(&sid, &tool_call_id, tool);
                     return Ok(());
                 }
@@ -1555,7 +1538,7 @@ impl WtaClient {
                         &sid,
                         &tool_call_id,
                         SessionMcpTool::TerminalAction(
-                            crate::agent_tools::action_proposal::schema::McpActionTool::Send,
+                            crate::agent_tools::action_proposal::schema::McpActionTool::RunCommandInCurrentShell,
                         ),
                     );
                     return Ok(());
@@ -4957,10 +4940,10 @@ mod tests {
             ToolCallUpdate::new(
                 ToolCallId::new("proposal-mcp-tool"),
                 ToolCallUpdateFields::new()
-                    .title("terminal_send")
+                    .title("intellterm_0123456789abcdef/run_command_in_current_shell")
                     .raw_input(serde_json::json!({
-                        "title": "Run test",
-                        "input": "cargo test"
+                        "summary": "Run test",
+                        "command": "cargo test"
                     })),
             ),
             vec![PermissionOption::new(
@@ -5086,7 +5069,7 @@ mod tests {
                 ToolCallUpdate::new(
                     ToolCallId::new("input-tool"),
                     ToolCallUpdateFields::new()
-                        .title("request_user_input")
+                        .title("intellterm_0123456789abcdef/request_user_input")
                         .raw_input(serde_json::json!({
                             "question": "Choose",
                             "choices": ["A", "B"]
@@ -5230,10 +5213,10 @@ mod tests {
         let params =
             serde_json::value::to_raw_value(&crate::agent_tools::session_mcp::HelperRequest {
                 session_id: "proposal-session".to_string(),
-                tool: "terminal_send".to_string(),
+                tool: "run_command_in_current_shell".to_string(),
                 arguments: serde_json::json!({
-                    "title": "Run test",
-                    "input": "cargo test"
+                    "summary": "Run test",
+                    "command": "cargo test"
                 }),
             })
             .unwrap();
@@ -5247,6 +5230,7 @@ mod tests {
             let proposal_id = match event_rx.recv().await.unwrap() {
                 AppEvent::DirectTerminalActionProposal {
                     context,
+                    payload,
                     source,
                     responder,
                     ..
@@ -5254,8 +5238,15 @@ mod tests {
                     assert_eq!(
                         source,
                         crate::agent_tools::action_proposal::pipe::ProposalPayloadSource::Mcp(
-                            crate::agent_tools::action_proposal::schema::McpActionTool::Send
+                            crate::agent_tools::action_proposal::schema::McpActionTool::RunCommandInCurrentShell
                         )
+                    );
+                    assert_eq!(
+                        serde_json::from_str::<serde_json::Value>(&payload).unwrap(),
+                        serde_json::json!({
+                            "summary": "Run test",
+                            "command": "cargo test"
+                        })
                     );
                     responder
                         .send(
@@ -5434,7 +5425,7 @@ mod tests {
 
     #[test]
     fn session_mcp_tool_title_accepts_supported_permission_shapes() {
-        let dynamic = "intellterm_01234567890123456789";
+        let dynamic = "intellterm_0123456789abcdef";
         for tool in crate::agent_tools::action_proposal::schema::McpActionTool::ALL {
             let name = tool.tool_name();
             for title in [
@@ -5457,15 +5448,200 @@ mod tests {
             Some(SessionMcpTool::UserInput)
         );
         for title in [
-            "intellterm_0123456789abcdef/terminal_send",
-            "intellterm_0123456789012345678A/terminal_send",
-            "Use MCP tool: other/terminal_send",
+            "run_command_in_current_shell",
+            "create_workspace",
+            "delegate_task_in_new_workspace",
+            "request_user_input",
+            "run_command",
+            "open_workspace",
+            "run_command_in_workspace",
+            "delegate_task",
+            "intellterm_01234567890123456789/run_command_in_current_shell",
+            "intellterm_0123456789abcde/run_command_in_current_shell",
+            "intellterm_0123456789abcdeA/run_command_in_current_shell",
+            "Use MCP tool: other/run_command_in_current_shell",
+            "Use MCP tool: intelligent_terminal/terminal_send",
+            "Use MCP tool: intelligent_terminal/terminal_open",
+            "Use MCP tool: intelligent_terminal/terminal_open_and_send",
+            "Use MCP tool: intelligent_terminal/run_command",
+            "Use MCP tool: intelligent_terminal/open_workspace",
+            "Use MCP tool: intelligent_terminal/run_command_in_workspace",
+            "Use MCP tool: intelligent_terminal/delegate_task",
             // The superseded single-tool name is no longer a tool.
             "Use MCP tool: intelligent_terminal/request_terminal_actions",
-            "mcp__intellterm_01234567890123456789__request_terminal_actions",
+            "mcp__intellterm_0123456789abcdef__request_terminal_actions",
         ] {
             assert_eq!(session_mcp_tool_from_title(Some(title)), None, "{title}");
         }
+    }
+
+    #[tokio::test]
+    async fn session_mcp_display_keeps_bare_schema_valid_action_calls_visible() {
+        use crate::agent_tools::action_proposal::schema::McpActionTool;
+
+        let manager =
+            Arc::new(crate::agent_tools::action_proposal::channel::ProposalChannelManager::new());
+        let (client, mut event_rx) = proposal_test_client(manager);
+        for (tool, arguments) in [
+            (
+                McpActionTool::RunCommandInCurrentShell,
+                serde_json::json!({"summary":"Run tests","command":"cargo test"}),
+            ),
+            (
+                McpActionTool::CreateWorkspace,
+                serde_json::json!({
+                    "summary":"Run tests separately",
+                    "command":"cargo test",
+                    "placement":"new_split"
+                }),
+            ),
+            (
+                McpActionTool::DelegateTaskInNewWorkspace,
+                serde_json::json!({
+                    "summary":"Investigate failures",
+                    "task":"Find and fix the failing tests.",
+                    "placement":"new_tab"
+                }),
+            ),
+        ] {
+            let tool_call_id = format!("provider-{}", tool.tool_name());
+            client
+                .session_notification(acp::schema::v1::SessionNotification::new(
+                    acp::schema::v1::SessionId::new("provider-session"),
+                    acp::schema::v1::SessionUpdate::ToolCall(
+                        acp::schema::v1::ToolCall::new(
+                            acp::schema::v1::ToolCallId::new(tool_call_id.as_str()),
+                            tool.tool_name(),
+                        )
+                        .raw_input(Some(arguments)),
+                    ),
+                ))
+                .await
+                .unwrap();
+
+            assert!(matches!(
+                event_rx.try_recv(),
+                Ok(AppEvent::ToolCall {
+                    session_id,
+                    id,
+                    title,
+                    ..
+                }) if session_id == "provider-session"
+                    && id == tool_call_id
+                    && title == tool.tool_name()
+            ));
+        }
+        assert!(event_rx.try_recv().is_err());
+    }
+
+    #[tokio::test]
+    async fn session_mcp_display_hides_namespace_qualified_calls() {
+        let manager =
+            Arc::new(crate::agent_tools::action_proposal::channel::ProposalChannelManager::new());
+        let (client, mut event_rx) = proposal_test_client(manager);
+        client
+            .session_notification(acp::schema::v1::SessionNotification::new(
+                acp::schema::v1::SessionId::new("proposal-session"),
+                acp::schema::v1::SessionUpdate::ToolCall(acp::schema::v1::ToolCall::new(
+                    acp::schema::v1::ToolCallId::new("qualified-tool"),
+                    "intellterm_0123456789abcdef/run_command_in_current_shell",
+                )),
+            ))
+            .await
+            .unwrap();
+
+        assert!(matches!(
+            event_rx.try_recv(),
+            Ok(AppEvent::HideToolCall { session_id, id })
+                if session_id == "proposal-session" && id == "qualified-tool"
+        ));
+        assert!(event_rx.try_recv().is_err());
+    }
+
+    #[tokio::test]
+    async fn session_mcp_display_keeps_stable_namespace_calls_visible() {
+        let manager =
+            Arc::new(crate::agent_tools::action_proposal::channel::ProposalChannelManager::new());
+        let (client, mut event_rx) = proposal_test_client(manager);
+
+        client
+            .session_notification(acp::schema::v1::SessionNotification::new(
+                acp::schema::v1::SessionId::new("provider-session"),
+                acp::schema::v1::SessionUpdate::ToolCall(acp::schema::v1::ToolCall::new(
+                    acp::schema::v1::ToolCallId::new("stable-tool"),
+                    "intelligent_terminal/run_command_in_current_shell",
+                )),
+            ))
+            .await
+            .unwrap();
+        assert!(matches!(
+            event_rx.try_recv(),
+            Ok(AppEvent::ToolCall { id, .. }) if id == "stable-tool"
+        ));
+
+        client
+            .session_notification(acp::schema::v1::SessionNotification::new(
+                acp::schema::v1::SessionId::new("provider-session"),
+                acp::schema::v1::SessionUpdate::ToolCallUpdate(
+                    acp::schema::v1::ToolCallUpdate::new(
+                        acp::schema::v1::ToolCallId::new("stable-update"),
+                        acp::schema::v1::ToolCallUpdateFields::new()
+                            .title("intelligent_terminal-run_command_in_current_shell"),
+                    ),
+                ),
+            ))
+            .await
+            .unwrap();
+        assert!(matches!(
+            event_rx.try_recv(),
+            Ok(AppEvent::ToolCallUpdate { id, .. }) if id == "stable-update"
+        ));
+        assert!(event_rx.try_recv().is_err());
+    }
+
+    #[tokio::test]
+    async fn session_mcp_display_hides_calls_correlated_by_tool_call_id() {
+        let manager =
+            Arc::new(crate::agent_tools::action_proposal::channel::ProposalChannelManager::new());
+        manager
+            .issue("proposal-session".into(), 1, None, false)
+            .unwrap();
+        let (client, mut event_rx) = proposal_test_client(manager);
+        let response = client
+            .request_permission(proposal_mcp_permission_request())
+            .await
+            .unwrap();
+        assert!(matches!(
+            response.outcome,
+            acp::schema::v1::RequestPermissionOutcome::Selected(_)
+        ));
+        assert!(matches!(
+            event_rx.try_recv(),
+            Ok(AppEvent::HideToolCall { session_id, id })
+                if session_id == "proposal-session" && id == "proposal-mcp-tool"
+        ));
+
+        client
+            .session_notification(acp::schema::v1::SessionNotification::new(
+                acp::schema::v1::SessionId::new("proposal-session"),
+                acp::schema::v1::SessionUpdate::ToolCall(
+                    acp::schema::v1::ToolCall::new(
+                        acp::schema::v1::ToolCallId::new("proposal-mcp-tool"),
+                        "run_command_in_current_shell",
+                    )
+                    .raw_input(Some(serde_json::json!({
+                        "summary": "Run test",
+                        "command": "cargo test"
+                    }))),
+                ),
+            ))
+            .await
+            .unwrap();
+
+        assert!(
+            event_rx.try_recv().is_err(),
+            "the correlated tool call must remain hidden"
+        );
     }
 
     /// Regression for the cross-window focus bug: the helper-over-pipe

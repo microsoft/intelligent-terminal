@@ -13,11 +13,11 @@ and every eligible ACP session receives a distinct bearer capability:
 
 ```text
 ACP session
-  -> HTTP MCP: intellterm_<public-id>/{terminal_send,terminal_open,terminal_open_and_send,request_user_input}
+  -> HTTP MCP: intellterm_<public-id>/{run_command_in_current_shell,create_workspace,delegate_task_in_new_workspace,request_user_input}
   -> wta-master capability -> ACP SessionId
   -> session_to_helper -> existing master/helper ACP pipe
   -> owning Helper
-       -> terminal_* -> recommendation card -> wtcli/COM executor
+       -> action tool -> recommendation card -> wtcli/COM executor
        -> request_user_input -> blocking choice/freeform modal -> structured answer
 ```
 
@@ -25,7 +25,7 @@ The endpoint presents typed terminal actions for review and blocking
 clarification questions. It cannot read or mutate Windows Terminal. The
 existing card confirmation is the sole mutation boundary.
 
-The `terminal_*` tools return as soon as the Helper commits its card;
+The three action tools return as soon as the Helper commits its card;
 confirmation or cancellation then happens independently. `request_user_input`
 deliberately keeps the MCP call open until the user answers, cancels, the
 caller disconnects, or the ten-minute timeout expires.
@@ -90,46 +90,82 @@ Server name:
 intellterm_<public-id>
 ```
 
-Tools:
+Tools (four total):
 
 ```text
-terminal_send
-terminal_open
-terminal_open_and_send
+run_command_in_current_shell
+create_workspace
+delegate_task_in_new_workspace
 request_user_input
 ```
+
+The first three are terminal-action proposal tools. `request_user_input` is a
+separate blocking clarification tool and does not create a terminal-action
+proposal.
 
 The server supports MCP `initialize`, `ping`, `tools/list`, and `tools/call`
 over stateless Streamable HTTP JSON-RPC. POST responses use JSON or HTTP 202
 for notifications; GET and DELETE return 405 because server-initiated streams
 are unnecessary. It exposes no terminal read or execution tools.
 
-Input, for `terminal_send`:
+Input, for `run_command_in_current_shell`:
 
 ```json
 {
-  "title": "Run tests",
-  "rationale": "Verify the current change.",
-  "input": "cargo test"
+  "summary": "Run tests",
+  "reason": "Verify the current change.",
+  "command": "cargo test"
 }
 ```
 
-Each MCP call proposes exactly one action. One tool per action shape, rather
-than a single tool with a `type` discriminator, so each schema advertises
-exactly the fields that action accepts and `additionalProperties: false`
-rejects a field belonging to another action. The action tools are:
+Each terminal-action MCP call proposes exactly one user-visible terminal
+outcome. The tools separate current-shell execution, workspace creation, and
+delegation rather than exposing a mechanical action discriminator. Each
+schema advertises exactly the fields that intent accepts, and
+`additionalProperties: false` rejects fields belonging to another intent. The
+action tools are:
 
-- `terminal_send`: submit input to the trusted active pane;
-- `terminal_open`: open an empty tab or panel;
-- `terminal_open_and_send`: open a tab or panel and submit input there.
+- `run_command_in_current_shell`: propose one shell command for the trusted
+  active pane;
+- `create_workspace`: create a new terminal workspace, optionally initialized
+  with one shell command;
+- `delegate_task_in_new_workspace`: start the configured delegate agent in a
+  new workspace with a self-contained task.
 
-The open tools may include `cwd`, `profile`, and panel `direction`. The
-user-facing `title` also becomes the requested destination title.
-`terminal_open_and_send` may set `delegate: true`; the Helper substitutes the
-configured delegate agent. A model cannot name an arbitrary agent.
+The exact public payloads are:
 
-Autofix uses the same tools but the Helper supplies the trusted Autofix origin
-and requires a `terminal_send` action.
+| Tool | Required | Optional |
+|---|---|---|
+| `run_command_in_current_shell` | `summary`, `command` | `reason` |
+| `create_workspace` | `summary`, `placement` | `reason`, `command`, `working_directory`, `split_direction`, `profile` |
+| `delegate_task_in_new_workspace` | `summary`, `task`, `placement` | `reason`, `working_directory`, `split_direction` |
+
+`placement` is `new_tab` or `new_split`. `split_direction` is `right`, `left`,
+`up`, `down`, or `auto`; it affects only `new_split` and is accepted but
+ignored for `new_tab` compatibility. `create_workspace.command` is optional:
+omitting it creates an empty workspace, while supplying it runs that command
+after creation. `delegate_task_in_new_workspace` deliberately exposes neither
+a profile nor an agent selector. The Helper always substitutes the configured
+delegate agent and rejects the request when no valid delegate is configured. A
+model cannot name an arbitrary agent.
+
+The Helper maps these public intents into the existing internal action model:
+
+| Public tool | Internal action |
+|---|---|
+| `run_command_in_current_shell` | `RecommendedAction::Send` |
+| `create_workspace` without `command` | `RecommendedAction::Open` |
+| `create_workspace` with `command` | `RecommendedAction::OpenAndSend` with delegation disabled |
+| `delegate_task_in_new_workspace` | `RecommendedAction::OpenAndSend` with delegation enabled and no profile |
+
+`new_tab` maps to the existing `Tab` target and `new_split` maps to `Panel`.
+The user-facing `summary` becomes the recommendation title and, for workspace
+tools targeting `new_tab`, the initial tab title. `working_directory`,
+`split_direction`, and `profile` map to the existing internal fields without
+changing trusted active-pane routing.
+
+Autofix uses only `run_command_in_current_shell`; the Helper supplies the
+trusted Autofix origin and requires the resulting internal `Send` action.
 
 Tool result statuses:
 
@@ -195,8 +231,8 @@ execution path.
 Permission remains an optional compatibility preflight. Some agents call MCP
 without requesting permission.
 
-When an adapter requests permission for one of the
-`intellterm_<public-id>/terminal_*` action tools, the Helper:
+When an adapter requests permission for one of the three terminal-action tools
+advertised by an `intellterm_<public-id>` server, the Helper:
 
 1. verifies the trusted ACP SessionId owns the current issued turn;
 2. silently selects `AllowOnce`; and

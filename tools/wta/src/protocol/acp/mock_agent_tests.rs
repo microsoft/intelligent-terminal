@@ -1210,7 +1210,7 @@ async fn dispatch_prompt_first_autofix_includes_base_and_overlay() {
                 "autofix prompt must carry the auto-fix instruction overlay"
             );
             assert!(
-                seen[0].contains("You assist from within Windows Terminal"),
+                seen[0].contains("# Working in Windows Terminal"),
                 "first-turn autofix must install the base terminal-agent prompt"
             );
             assert!(
@@ -2303,7 +2303,7 @@ async fn session_notification_hides_proposal_mcp_tool_call() {
             "s1",
             acp::schema::v1::SessionUpdate::ToolCall(acp::schema::v1::ToolCall::new(
                 acp::schema::v1::ToolCallId::new("proposal-mcp-tool"),
-                "intellterm_01234567890123456789/terminal_send",
+                "intellterm_0123456789abcdef/run_command_in_current_shell",
             )),
         ))
         .await

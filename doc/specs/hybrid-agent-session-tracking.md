@@ -153,9 +153,19 @@ The master keeps **two disjoint** ownership sets (`master/mod.rs`):
 
 `handle_session_hook` routes each inbound event: a binding-only event (the
 dedicated `intellterm.wta/session_born_bound` method, or a
-`ResumeDispatched`/`ResumePaneAssigned` resume-binding event) → `born_bound`;
-anything else (a real hook / ACP event) → `hook_owned` (and, if the session was
-born-bound, drops it from `born_bound` — a real hook **takes over**).
+`ResumeDispatched`/`ResumePaneAssigned` resume-binding event) → `born_bound`
+(and drops any stale `hook_owned` claim — see below); anything else (a real
+hook / ACP event) → `hook_owned` (and, if the session was born-bound, drops it
+from `born_bound` — a real hook **takes over**).
+
+The two sets are disjoint **in both directions**. A born-bound event means WTA
+has just (re)launched that session id, so an ownership claim left by an earlier
+generation of the same id is over. Without the reverse removal, resuming a
+session that had already run once in the same master process left it in
+`hook_owned` forever; since `apply_watcher_event` checks `hook_owned` first,
+every watcher status event for the resumed row was dropped and the row sat at
+`Idle` for its whole life. A real hook re-claims ownership on its very next
+event, so nothing is lost when hooks are working.
 
 `apply_watcher_event` then, in order:
 
@@ -194,6 +204,21 @@ the hook-free resume binding, so `handle_session_hook` records them in
 `born_bound` rather than `hook_owned` — without this, a resumed session would be
 treated as hook-owned and its row would sit at `Idle` forever even as the watcher
 saw activity.
+
+**Resume pane ownership.** `ResumePaneAssigned` marks the row's pane binding
+`born_bound_pane` (`session_registry.rs`). WTA creates the resume pane and binds
+it *before* the agent CLI starts, so that pane belongs to exactly one session
+id. Copilot's `--resume` boots a throwaway bootstrap session and only switches
+to the requested one seconds later, so its deferred `SessionStart` hook reports
+the **bootstrap** id against the resumed pane's GUID. Master's `SessionStarted`
+reducer therefore refuses the `active_by_pane` handoff when the pane's current
+owner is a live born-bound row with a different key: the incoming session is
+still recorded, it just gets no pane binding. Without the guard the resumed row
+was demoted to `Ended`, and because terminal-state rows refuse resurrection it
+stayed there for the rest of the CLI's life — the watcher's status fallback
+silently dropped every event. The flag clears itself whenever the row gives up
+the pane (`SessionStopped`, `PaneClosed`, `end_entry`) or once a `SessionStarted`
+for the *same* key claims it, so the protection needs no timer.
 
 ### Liveness gate: scoping to this IT window
 

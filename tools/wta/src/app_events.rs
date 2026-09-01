@@ -1573,6 +1573,7 @@ impl App {
                     request,
                     selected: 0,
                     input: String::new(),
+                    cursor_pos: 0,
                     responder: Some(responder),
                 });
             }

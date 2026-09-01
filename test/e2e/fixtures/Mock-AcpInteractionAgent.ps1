@@ -96,7 +96,7 @@ function Invoke-UserInputTool {
             name = 'request_user_input'
             arguments = @{
                 question = 'Choose the deterministic answer'
-                choices = @('Alpha', 'Beta')
+                choices = @('Alpha', 'Beta', 'Gamma', 'Delta')
                 allow_freeform = $true
             }
         }
@@ -104,10 +104,12 @@ function Invoke-UserInputTool {
     Invoke-RestMethod -Method Post -Uri $Server.url -Headers $headers -ContentType 'application/json' -Body $body
 }
 
-function Invoke-TerminalActionTool {
+function Invoke-SessionMcpTool {
     param(
         [Parameter(Mandatory)]$Server,
-        [Parameter(Mandatory)][string]$Marker
+        [Parameter(Mandatory)][string]$Name,
+        [Parameter(Mandatory)][hashtable]$Arguments,
+        [Parameter(Mandatory)][int]$Id
     )
 
     $headers = @{ 'mcp-protocol-version' = '2025-06-18' }
@@ -118,16 +120,11 @@ function Invoke-TerminalActionTool {
     }
     $body = @{
         jsonrpc = '2.0'
-        id = 2
+        id = $Id
         method = 'tools/call'
         params = @{
-            name = 'terminal_open_and_send'
-            arguments = @{
-                title = "Direction $Marker"
-                input = "echo $Marker"
-                target = 'tab'
-                direction = 'auto'
-            }
+            name = $Name
+            arguments = $Arguments
         }
     } | ConvertTo-Json -Depth 12 -Compress
     Invoke-RestMethod -Method Post -Uri $Server.url -Headers $headers -ContentType 'application/json' -Body $body
@@ -157,8 +154,9 @@ while ($null -ne ($line = [Console]::In.ReadLine())) {
         'session/new' {
             $sessionCounter++
             $sessionId = "interaction-$PID-$sessionCounter"
-            $sessionMcpServers[$sessionId] = @($request.params.mcpServers) | Select-Object -First 1
-            Write-FixtureLog -Message "session/new|$sessionId"
+            $server = @($request.params.mcpServers) | Select-Object -First 1
+            $sessionMcpServers[$sessionId] = $server
+            Write-FixtureLog -Message "session/new|$sessionId|mcp_server=$([string]$server.name)"
             Send-AcpMessage @{
                 jsonrpc = '2.0'
                 id = $request.id
@@ -282,9 +280,51 @@ while ($null -ne ($line = [Console]::In.ReadLine())) {
                     throw 'session/new did not provide a Session MCP server'
                 }
                 $marker = $Matches.marker
-                $response = Invoke-TerminalActionTool -Server $server -Marker $marker
+                $response = Invoke-SessionMcpTool -Server $server -Name 'create_workspace' -Id 2 -Arguments @{
+                    summary = "Direction $marker"
+                    command = "echo $marker"
+                    placement = 'new_tab'
+                    split_direction = 'auto'
+                }
                 $result = $response.result.structuredContent | ConvertTo-Json -Depth 20 -Compress
                 Write-FixtureLog -Message "tab-direction-result|$result"
+                Send-AcpMessage @{
+                    jsonrpc = '2.0'
+                    id = $request.id
+                    result = @{ stopReason = 'end_turn' }
+                }
+            }
+            elseif ($promptText -match 'EMPTY_WORKSPACE_(?<marker>[A-F0-9]+)') {
+                $server = $sessionMcpServers[$sessionId]
+                if (-not $server) {
+                    throw 'session/new did not provide a Session MCP server'
+                }
+                $marker = $Matches.marker
+                $response = Invoke-SessionMcpTool -Server $server -Name 'create_workspace' -Id 3 -Arguments @{
+                    summary = "Empty workspace EMPTY_COMMAND_SENTINEL_$marker"
+                    placement = 'new_tab'
+                }
+                $result = $response.result.structuredContent | ConvertTo-Json -Depth 20 -Compress
+                Write-FixtureLog -Message "empty-workspace-result|$result"
+                Send-AcpMessage @{
+                    jsonrpc = '2.0'
+                    id = $request.id
+                    result = @{ stopReason = 'end_turn' }
+                }
+            }
+            elseif ($promptText -match 'DELEGATE_WORKSPACE_(?<marker>[A-F0-9]+)') {
+                $server = $sessionMcpServers[$sessionId]
+                if (-not $server) {
+                    throw 'session/new did not provide a Session MCP server'
+                }
+                $marker = $Matches.marker
+                $response = Invoke-SessionMcpTool -Server $server -Name 'delegate_task_in_new_workspace' -Id 4 -Arguments @{
+                    summary = "Delegate workspace $marker"
+                    task = "DELEGATED_TASK_$marker"
+                    placement = 'new_tab'
+                }
+                $result = $response.result.structuredContent | ConvertTo-Json -Depth 20 -Compress
+                Write-FixtureLog -Message "delegate-workspace-result|$result"
                 Send-AcpMessage @{
                     jsonrpc = '2.0'
                     id = $request.id
