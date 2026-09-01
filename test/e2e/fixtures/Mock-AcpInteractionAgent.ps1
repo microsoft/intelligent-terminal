@@ -157,6 +157,13 @@ while ($null -ne ($line = [Console]::In.ReadLine())) {
             $server = @($request.params.mcpServers) | Select-Object -First 1
             $sessionMcpServers[$sessionId] = $server
             Write-FixtureLog -Message "session/new|$sessionId|mcp_server=$([string]$server.name)"
+            $cwdJson = if ($null -eq $request.params.cwd) {
+                'null'
+            }
+            else {
+                ConvertTo-Json -InputObject ([string]$request.params.cwd) -Compress
+            }
+            Write-FixtureLog -Message "session/new-cwd|$sessionId|$cwdJson"
             Send-AcpMessage @{
                 jsonrpc = '2.0'
                 id = $request.id
