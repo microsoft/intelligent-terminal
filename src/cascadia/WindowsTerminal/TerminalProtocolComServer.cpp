@@ -97,9 +97,10 @@ HRESULT TerminalProtocolComServer::s_StopListening()
 {
     std::unique_lock lock{ g_mtx };
 
+    HRESULT result = S_OK;
     if (g_comRegistration)
     {
-        RETURN_IF_FAILED(CoRevokeClassObject(g_comRegistration));
+        result = CoRevokeClassObject(g_comRegistration);
         g_comRegistration = 0;
     }
 
@@ -113,7 +114,7 @@ HRESULT TerminalProtocolComServer::s_StopListening()
         g_comMtaThread.join();
     }
 
-    return S_OK;
+    return result;
 }
 
 TerminalProtocolComServer::~TerminalProtocolComServer()
@@ -609,7 +610,6 @@ try
     return S_OK;
 }
 CATCH_RETURN()
-
 STDMETHODIMP TerminalProtocolComServer::ListTabs(unsigned __int64 windowIdFilter, BSTR* json)
 try
 {
@@ -1117,6 +1117,9 @@ try
         // a new tab and asks wta to open an agent pane in it.
         _dispatchResumeInNewAgentTabToPage(eventH);
         return S_OK;
+    case ProtocolParsing::SendEventRoute::PaneAgentSession:
+        _dispatchPaneAgentSessionToPage(eventH);
+        return S_OK;
     case ProtocolParsing::SendEventRoute::AgentChipTarget:
         // Helper override for which pane gets the "Agent" chip; null
         // pane_session_id reverts the tab to source-flag-driven chip.
@@ -1135,7 +1138,12 @@ try
     {
         Json::StreamWriterBuilder wb;
         wb["indentation"] = "";
-        s_NotifyEventToComClients(Json::writeString(wb, evt));
+        const auto normalized = Json::writeString(wb, evt);
+        // Hooks publish agent lifecycle events through the broadcast route.
+        // Mirror those events into TerminalPage so a persisted layout records
+        // the same pane/session binding as WTA's registry.
+        _dispatchPaneAgentSessionToPage(winrt::to_hstring(normalized));
+        s_NotifyEventToComClients(normalized);
         return S_OK;
     }
     default:
@@ -1467,6 +1475,39 @@ void TerminalProtocolComServer::_dispatchResumeInNewAgentTabToPage(const winrt::
                 catch (...)
                 {
                     // Swallow: page may have been torn down during dispatch.
+                }
+            });
+    }
+}
+
+void TerminalProtocolComServer::_dispatchPaneAgentSessionToPage(const winrt::hstring& eventJson)
+{
+    if (!s_emperor)
+    {
+        return;
+    }
+    for (const auto& host : s_emperor->GetWindows())
+    {
+        auto page = _getPage(host.get());
+        if (!page)
+        {
+            continue;
+        }
+        const auto dispatcher = page.Dispatcher();
+        if (!dispatcher)
+        {
+            continue;
+        }
+        dispatcher.RunAsync(
+            winrt::Windows::UI::Core::CoreDispatcherPriority::Normal,
+            [page, eventJson]() {
+                try
+                {
+                    page.OnPaneAgentSessionChanged(eventJson);
+                }
+                catch (...)
+                {
+                    // Page may have been torn down during dispatch.
                 }
             });
     }

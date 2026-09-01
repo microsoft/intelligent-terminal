@@ -455,6 +455,15 @@ namespace SettingsModelUnitTests
             {
                 "name":"action8_tabTitleEscaping",
                 "command": { "action": "newWindow", "tabTitle":"\\\";foo\\" }
+            },
+            {
+                "name":"action9_agentPane",
+                "command": {
+                    "action": "newWindow",
+                    "type": "agentStashed",
+                    "commandline": "\"wta.exe\" --initial-load-session-id \"acp-1\" --initial-view \"chat\"",
+                    "startingDirectory": "C:\\repo"
+                }
             }
         ])" };
 
@@ -464,7 +473,7 @@ namespace SettingsModelUnitTests
         VERIFY_ARE_EQUAL(0u, commands.Size());
         auto warnings = implementation::Command::LayerJson(commands, commands0Json, OriginTag::None);
         VERIFY_ARE_EQUAL(0u, warnings.size());
-        VERIFY_ARE_EQUAL(9u, commands.Size());
+        VERIFY_ARE_EQUAL(10u, commands.Size());
 
         {
             auto command = commands.Lookup(L"action0");
@@ -600,6 +609,37 @@ namespace SettingsModelUnitTests
             Log::Comment(NoThrowString().Format(
                 L"cmdline: \"%s\"", cmdline.c_str()));
             VERIFY_ARE_EQUAL(LR"-(--title "\\\"\;foo\\")-", terminalArgs.ToCommandline());
+        }
+        {
+            // An agent pane is terminal-backed, so a non-empty `type` must not
+            // collapse it into the placeholder content args that other pane
+            // types use — that would throw away the command line naming the
+            // conversation to resume.
+            const auto command = commands.Lookup(L"action9_agentPane");
+            VERIFY_IS_NOT_NULL(command);
+            const auto& realArgs = command.ActionAndArgs().Args().try_as<NewWindowArgs>();
+            VERIFY_IS_NOT_NULL(realArgs);
+            const auto& terminalArgs = realArgs.ContentArgs().try_as<NewTerminalArgs>();
+            VERIFY_IS_NOT_NULL(terminalArgs);
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"agentStashed" }, terminalArgs.Type());
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"C:\\repo" }, terminalArgs.StartingDirectory());
+            VERIFY_IS_TRUE(implementation::NewTerminalArgs::IsAgentPaneType(terminalArgs.Type()));
+
+            // The type has to round-trip through the *action* serializer, not
+            // just `NewTerminalArgs::ToJson`. `ContentArgsToJson` treats a
+            // non-empty type as a content kind it does not understand and
+            // reduces it to a bare `{ "type": ... }`, which would silently drop
+            // the command line naming the conversation to resume.
+            const auto actionJson = implementation::ActionAndArgs::ToJson(command.ActionAndArgs());
+            VERIFY_ARE_EQUAL("agentStashed", actionJson["type"].asString());
+            VERIFY_ARE_EQUAL(
+                R"("wta.exe" --initial-load-session-id "acp-1" --initial-view "chat")",
+                actionJson["commandline"].asString());
+            VERIFY_ARE_EQUAL("C:\\repo", actionJson["startingDirectory"].asString());
+
+            const auto roundTripped = implementation::NewTerminalArgs::FromJson(actionJson);
+            VERIFY_ARE_EQUAL(winrt::hstring{ L"agentStashed" }, roundTripped.Type());
+            VERIFY_ARE_EQUAL(terminalArgs.Commandline(), roundTripped.Commandline());
         }
     }
 }

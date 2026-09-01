@@ -366,7 +366,7 @@ fn slash_help_toggles_overlay() {
 }
 
 #[test]
-fn slash_clear_wipes_active_tab_history() {
+fn slash_clear_wipes_active_tab_conversation() {
     let mut app = test_app();
     app.current_tab_mut()
         .messages

@@ -6,6 +6,7 @@
 // HEY YOU: When adding ActionArgs types, make sure to add the corresponding
 //          *.g.cpp to ActionArgs.cpp!
 #include "ActionEventArgs.g.h"
+#include "../inc/AgentPaneRestore.h"
 #include "BaseContentArgs.g.h"
 #include "NewTerminalArgs.g.h"
 #include "CopyTextArgs.g.h"
@@ -387,21 +388,36 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
     struct NewTerminalArgs : public NewTerminalArgsT<NewTerminalArgs>
     {
         PARTIAL_ACTION_ARG_BODY(NewTerminalArgs, NEW_TERMINAL_ARGS);
+        // Content discriminator. Empty for an ordinary terminal pane. An agent
+        // pane is still terminal-backed — it hosts a `wta` helper in a conpty —
+        // so it keeps every terminal arg and only adds a type. The stashed
+        // variant is a separate value so a toggled-away pane comes back
+        // toggled away without spending a second persisted field on one bit.
         ACTION_ARG(winrt::hstring, Type, L"");
         ACTION_ARG(winrt::guid, SessionId, winrt::guid{});
         ACTION_ARG(bool, AppendCommandLine, false);
         ACTION_ARG(uint64_t, ContentId);
 
+        static constexpr std::string_view TypeKey{ "type" };
         static constexpr std::string_view SessionIdKey{ "sessionId" };
         static constexpr std::string_view AppendCommandLineKey{ "appendCommandLine" };
         static constexpr std::string_view ContentKey{ "__content" };
 
     public:
+        // Content types live in `AgentPaneRestore` so the restore path in
+        // TerminalApp and the parser here agree on one spelling.
+        static bool IsAgentPaneType(const std::wstring_view type) noexcept
+        {
+            return ::Microsoft::Terminal::AgentPaneRestore::IsPaneType(type);
+        }
+
         NewTerminalArgs(int32_t& profileIndex) :
             _ProfileIndex{ profileIndex } {};
         hstring GenerateName() const { return GenerateName(GetLibraryResourceLoader().ResourceContext()); }
         hstring GenerateName(const winrt::Windows::ApplicationModel::Resources::Core::ResourceContext&) const;
         hstring ToCommandline() const;
+
+        void SetContentType(const hstring& type) { _Type = type; }
 
         bool Equals(const Model::INewContentArgs& other)
         {
@@ -419,6 +435,7 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
                        otherAsUs->_ColorScheme == _ColorScheme &&
                        otherAsUs->_Elevate == _Elevate &&
                        otherAsUs->_ReloadEnvironmentVariables == _ReloadEnvironmentVariables &&
+                       otherAsUs->_Type == _Type &&
                        otherAsUs->_ContentId == _ContentId;
             }
             return false;
@@ -433,6 +450,7 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
             JsonUtils::GetValueForKey(json, ProfileIndexKey, args->_ProfileIndex);
             JsonUtils::GetValueForKey(json, ProfileKey, args->_Profile);
             JsonUtils::GetValueForKey(json, SessionIdKey, args->_SessionId);
+            JsonUtils::GetValueForKey(json, TypeKey, args->_Type);
             JsonUtils::GetValueForKey(json, TabColorKey, args->_TabColor);
             JsonUtils::GetValueForKey(json, SuppressApplicationTitleKey, args->_SuppressApplicationTitle);
             JsonUtils::GetValueForKey(json, ColorSchemeKey, args->_ColorScheme);
@@ -455,6 +473,7 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
             JsonUtils::SetValueForKey(json, ProfileIndexKey, args->_ProfileIndex);
             JsonUtils::SetValueForKey(json, ProfileKey, args->_Profile);
             JsonUtils::SetValueForKey(json, SessionIdKey, args->_SessionId);
+            JsonUtils::SetValueForKey(json, TypeKey, args->_Type);
             JsonUtils::SetValueForKey(json, TabColorKey, args->_TabColor);
             JsonUtils::SetValueForKey(json, SuppressApplicationTitleKey, args->_SuppressApplicationTitle);
             JsonUtils::SetValueForKey(json, ColorSchemeKey, args->_ColorScheme);
@@ -473,6 +492,7 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
             copy->_ProfileIndex = _ProfileIndex;
             copy->_Profile = _Profile;
             copy->_SessionId = _SessionId;
+            copy->_Type = _Type;
             copy->_SuppressApplicationTitle = _SuppressApplicationTitle;
             copy->_ColorScheme = _ColorScheme;
             copy->_Elevate = _Elevate;
@@ -498,17 +518,24 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
             h.write(ColorScheme());
             h.write(Elevate());
             h.write(ReloadEnvironmentVariables());
+            h.write(Type());
             h.write(ContentId());
         }
     };
 
     static std::tuple<Model::INewContentArgs, std::vector<SettingsLoadWarnings>> ContentArgsFromJson(const Json::Value& json)
     {
+        using TerminalArgs = winrt::Microsoft::Terminal::Settings::Model::implementation::NewTerminalArgs;
+
         winrt::hstring type;
         JsonUtils::GetValueForKey(json, "type", type);
-        if (type.empty())
+        // An agent pane is terminal-backed — it hosts a `wta` helper in a
+        // conpty — so it keeps every terminal arg and is parsed as a
+        // `NewTerminalArgs`. Collapsing it into the placeholder below would
+        // throw away the commandline that says which session to resume.
+        if (type.empty() || TerminalArgs::IsAgentPaneType(type))
         {
-            auto terminalArgs = winrt::Microsoft::Terminal::Settings::Model::implementation::NewTerminalArgs::FromJson(json);
+            auto terminalArgs = TerminalArgs::FromJson(json);
             // Don't let the user specify the __content property in their
             // settings. That's an internal-use-only property.
             if (terminalArgs.ContentId())
@@ -528,8 +555,14 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
         {
             return {};
         }
-        // TerminalArgs don't have a type.
-        if (contentArgs.Type().empty())
+        // TerminalArgs don't have a type. An agent pane does, but it is still
+        // terminal-backed — it hosts a `wta` helper in a conpty — so it has to
+        // be written as a `NewTerminalArgs`. Falling through to the placeholder
+        // below would drop everything except the type, including the command
+        // line that names the conversation to resume. This mirrors the same
+        // allowance in `ContentArgsFromJson`.
+        if (contentArgs.Type().empty() ||
+            winrt::Microsoft::Terminal::Settings::Model::implementation::NewTerminalArgs::IsAgentPaneType(contentArgs.Type()))
         {
             return winrt::Microsoft::Terminal::Settings::Model::implementation::NewTerminalArgs::ToJson(contentArgs.try_as<Model::NewTerminalArgs>());
         }

@@ -83,6 +83,15 @@ impl App {
         tab.activity_frame = 0;
         tab.timing_note = None;
         tab.turn = TurnState::Submitted(prompt);
+        // NOTE: `has_meaningful_conversation` is deliberately NOT set here.
+        // It gates `resumable_session_id`, i.e. the session id Terminal writes
+        // into the saved layout, and a prompt that has only been submitted is
+        // not yet proof that the agent has taken it — the caller still has to
+        // dispatch it over ACP. A save landing in that window would record a
+        // freshly created `session/new` id the agent never wrote to disk, and
+        // the restore would fail with "Resource not found". The flag is set
+        // instead on the first sign of agent activity for the turn
+        // (`turn_observe_chunk` / `turn_close`).
 
         // Submitting a new prompt dismisses any prior leftover card (the
         // `selected_recommendation = 0` + turn reset above). If the helper
@@ -93,6 +102,7 @@ impl App {
         // `turn_surface_*` callback once recommendations arrive.
         let owned_tab = tab_id.to_string();
         self.recompute_chip_override(&owned_tab);
+        self.project_tab_state(&owned_tab);
     }
 
     /// Observe a streamed chunk. Lifecycle state records only whether output
@@ -113,6 +123,12 @@ impl App {
                 return false;
             }
         }
+
+        // A chunk for this turn is proof the agent has taken the prompt, and
+        // therefore that it has written the session the chunk belongs to. That
+        // is the point from which the id is safe to persist — see the note in
+        // `turn_submit_prompt_for_tab`.
+        tab.has_meaningful_conversation = true;
 
         match (&tab.turn, kind) {
             (TurnState::Submitted(_), _) => {
@@ -400,6 +416,18 @@ impl App {
                 tab.reveal_chars = 0;
                 tab.turn = TurnState::Idle;
                 return;
+            }
+        }
+
+        // Reaching a turn boundary means the agent processed the prompt, so
+        // its session is on disk even if the turn produced no visible chunks
+        // (a tool-only turn, say). See `turn_submit_prompt_for_tab`. Gated on
+        // there actually being a turn: a stray end-of-turn against an idle tab
+        // is no evidence of a conversation.
+        {
+            let tab = self.session_tab_mut(session_id);
+            if !matches!(tab.turn, TurnState::Idle) {
+                tab.has_meaningful_conversation = true;
             }
         }
 

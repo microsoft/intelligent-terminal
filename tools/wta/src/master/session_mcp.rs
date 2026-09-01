@@ -1375,6 +1375,27 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn closing_session_revokes_committed_capability_but_not_replacement() {
+        let registry = CapabilityRegistry::default();
+        let owner = AgentInstanceId::new_v4();
+        let session_id = acp::schema::v1::SessionId::new("session");
+        let committed = registry.prepare(owner, None).await;
+        assert!(registry.bind(&committed, session_id.clone()).await);
+        let replacement = registry.prepare(owner, Some(session_id.clone())).await;
+
+        assert!(registry.remove_session(&session_id).await);
+
+        assert!(matches!(
+            registry.resolve(&committed.secret).await,
+            CapabilityResolution::Unknown
+        ));
+        assert!(matches!(
+            registry.resolve(&replacement.secret).await,
+            CapabilityResolution::Bound(found) if found == session_id
+        ));
+    }
+
+    #[tokio::test]
     async fn server_configs_isolate_session_identity_and_capability() {
         let registry = CapabilityRegistry::default();
         let pending = registry.prepare(AgentInstanceId::new_v4(), None).await;

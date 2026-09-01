@@ -162,11 +162,13 @@ pub(super) fn build_agent_state_changed_event(
     let usage = tab.usage.as_ref().map(|snapshot| {
         crate::usage::UsageProjection::with_staleness(snapshot, tab.usage_staleness)
     });
+    let projected_session_id = tab.resumable_session_id();
     serde_json::json!({
         "type": "event",
         "method": "agent_state_changed",
         "params": {
             "tab_id": target_tab,
+            "agent_session_id": projected_session_id,
             "view": view,
             "pane_open": tab.pane_open,
             "pane_position": tab.agent_pane_position,
