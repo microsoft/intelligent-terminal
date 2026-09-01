@@ -41,12 +41,12 @@ The managed block is healthy when only whitespace or comments follow it. Intelli
 
 The first-open check covers:
 
-- PowerShell 7 direct hosts that load profiles
-- the official Windows PowerShell 5.1 hosts that load profiles
+- PowerShell 7 direct hosts that load profiles, including persistent `-NoExit -Command` sessions
+- the official Windows PowerShell 5.1 hosts that load profiles, including Visual Studio Developer PowerShell
 - direct Git Bash launches using the supported default `%USERPROFILE%` HOME mapping
 - explicit WSL Bash launches, after the distro and `$HOME` identity probe succeeds
 
-Wrappers, command/script invocations, `-NoProfile`/`--norc`, custom Bash rc files, custom Git Bash HOME mappings, and WSL launches whose guest shell cannot be proven to be Bash are skipped. In particular, a bare WSL default-shell launch is not guessed from the Windows command line.
+Wrappers, non-persistent command/script invocations, `-NoProfile`/`--norc`, custom Bash rc files, custom Git Bash HOME mappings, and WSL launches whose guest shell cannot be proven to be Bash are skipped. PowerShell `-NoExit -Command` sessions are checked because they load the profile and remain interactive; `-File`, `-EncodedCommand`, and ordinary `-Command` invocations remain excluded. In particular, a bare WSL default-shell launch is not guessed from the Windows command line.
 
 When the warning appears, use **Profile actions → Open profile**, move the complete managed block to the end of the file, save it, and choose **Profile actions → Recheck**. Closing the warning hides it in the current window; dismissal is not persisted.
 

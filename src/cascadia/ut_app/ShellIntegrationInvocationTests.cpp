@@ -36,6 +36,7 @@ namespace TerminalAppUnitTests
         TEST_CLASS(ShellIntegrationInvocationTests);
 
         TEST_METHOD(ClassifiesPowerShellHostSwitches);
+        TEST_METHOD(ClassifiesNoExitPowerShellCommandSessions);
         TEST_METHOD(DoesNotParsePowerShellCommandTextAsHostOptions);
         TEST_METHOD(RejectsWrappersRelativeRootsAndMismatchedImages);
         TEST_METHOD(ClassifiesGitBashOnlyWhenBashrcIsProven);
@@ -65,10 +66,40 @@ namespace TerminalAppUnitTests
                          Classify(L"powershell.exe -NoLogo", std::wstring_view{ L"D:\\Tools\\powershell.exe" }).reason);
     }
 
+    void ShellIntegrationInvocationTests::ClassifiesNoExitPowerShellCommandSessions()
+    {
+        constexpr std::wstring_view developerShellCommand{
+            LR"( -NoExit -Command "&{Import-Module 'C:\Program Files\Microsoft Visual Studio\2022\Community\Common7\Tools\Microsoft.VisualStudio.DevShell.dll'; Enter-VsDevShell 1234}")"
+        };
+
+        constexpr std::wstring_view pwshImage{ L"C:\\Program Files\\PowerShell\\7\\pwsh.exe" };
+        VERIFY_IS_TRUE(Classify(std::wstring{ L"pwsh.exe" } + std::wstring{ developerShellCommand }, pwshImage).eligible);
+
+        const auto windowsPowerShell = WindowsDirectory() + L"\\System32\\WindowsPowerShell\\v1.0\\powershell.exe";
+        const auto windowsDeveloperShell = Classify(std::wstring{ L"powershell.exe" } + std::wstring{ developerShellCommand }, windowsPowerShell);
+        VERIFY_IS_TRUE(windowsDeveloperShell.eligible);
+        VERIFY_ARE_EQUAL(Reason::Eligible, windowsDeveloperShell.reason);
+
+        VERIFY_ARE_EQUAL(Reason::PowerShellNoProfile,
+                         Classify(Commandline(windowsPowerShell, L" -NoProfile -NoExit -Command \"echo ready\"")).reason);
+        VERIFY_ARE_EQUAL(Reason::PowerShellNonInteractive,
+                         Classify(Commandline(windowsPowerShell, L" -NonInteractive -NoExit -Command \"echo ready\"")).reason);
+        VERIFY_ARE_EQUAL(Reason::PowerShellCommand,
+                         Classify(Commandline(windowsPowerShell, L" -Command \"echo ready\"")).reason);
+        VERIFY_ARE_EQUAL(Reason::PowerShellEncodedCommand,
+                         Classify(Commandline(windowsPowerShell, L" -NoExit -EncodedCommand ZQBjAGgAbwA=")).reason);
+        VERIFY_ARE_EQUAL(Reason::PowerShellFile,
+                         Classify(Commandline(windowsPowerShell, L" -NoExit -File setup.ps1")).reason);
+    }
+
     void ShellIntegrationInvocationTests::DoesNotParsePowerShellCommandTextAsHostOptions()
     {
         const auto classified = Classify(L"\"C:\\Program Files\\PowerShell\\7\\pwsh.exe\" -Command \"echo -NoProfile\"");
         VERIFY_ARE_EQUAL(Reason::PowerShellCommand, classified.reason);
+
+        const auto persistent = Classify(L"\"C:\\Program Files\\PowerShell\\7\\pwsh.exe\" -NoExit -Command \"echo -NoProfile\"");
+        VERIFY_IS_TRUE(persistent.eligible);
+        VERIFY_ARE_EQUAL(Reason::Eligible, persistent.reason);
     }
 
     void ShellIntegrationInvocationTests::RejectsWrappersRelativeRootsAndMismatchedImages()

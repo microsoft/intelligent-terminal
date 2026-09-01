@@ -290,6 +290,7 @@ namespace Microsoft::Terminal::ShellIntegration::Invocation
         {
             Classification result;
             result.shellKind = core ? ShellKind::PowerShell : ShellKind::WindowsPowerShell;
+            bool noExit = false;
 
             for (size_t i = 1; i < args.size(); ++i)
             {
@@ -316,7 +317,8 @@ namespace Microsoft::Terminal::ShellIntegration::Invocation
                 }
                 if (_OptionName(arg, L"Command", 1))
                 {
-                    result.reason = Reason::PowerShellCommand;
+                    result.eligible = noExit;
+                    result.reason = noExit ? Reason::Eligible : Reason::PowerShellCommand;
                     return result; // Everything after this is command text.
                 }
                 if (_OptionName(arg, L"EncodedCommand", 2) || _EqualsCi(arg, L"-e"))
@@ -324,8 +326,12 @@ namespace Microsoft::Terminal::ShellIntegration::Invocation
                     result.reason = Reason::PowerShellEncodedCommand;
                     return result;
                 }
-                if (_OptionName(arg, L"NoExit", 3) || _OptionName(arg, L"NoLogo", 3) ||
-                    _OptionName(arg, L"Mta", 1) || _OptionName(arg, L"Sta", 1))
+                if (_OptionName(arg, L"NoExit", 3))
+                {
+                    noExit = true;
+                    continue;
+                }
+                if (_OptionName(arg, L"NoLogo", 3) || _OptionName(arg, L"Mta", 1) || _OptionName(arg, L"Sta", 1))
                 {
                     continue;
                 }
