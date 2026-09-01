@@ -576,7 +576,7 @@ namespace winrt::TerminalApp::implementation
         uint32_t _startupActionReplayDepth{ 0 };
         // Tabs that skipped their own pre-warm because a replay was in flight.
         // Drained when the outermost replay finishes. Recording the tabs —
-        // rather than rescanning every tab in the window — is what keeps an
+        // rather than re-scanning every tab in the window — is what keeps an
         // unrelated `wt` handoff from resurrecting an agent pane the user
         // deliberately closed.
         std::vector<winrt::weak_ref<Tab>> _tabsAwaitingPrewarm;

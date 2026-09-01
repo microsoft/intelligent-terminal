@@ -14503,7 +14503,7 @@ fn a_submitted_prompt_is_not_resumable_until_the_agent_answers() {
 // A turn can finish without ever streaming a visible chunk (a tool-only turn).
 // The turn boundary itself is still proof the agent processed the prompt.
 #[test]
-fn a_chunkless_turn_still_makes_the_session_resumable() {
+fn a_turn_with_no_chunks_still_makes_the_session_resumable() {
     let mut app = test_app();
     app.tab_mut(DEFAULT_TAB_ID).session_id = Some("fresh-session".to_string());
 
