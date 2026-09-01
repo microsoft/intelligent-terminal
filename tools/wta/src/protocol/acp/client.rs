@@ -3843,6 +3843,7 @@ fn dispatch_master_ext_request_with_yolo_timeout(
                     for ((session_id, enabled), operation) in
                         sessions.into_iter().zip(reserved_yolo_operations)
                     {
+                        let status_operation = operation.clone();
                         match apply_native_yolo_checked(
                             &conn,
                             &client_state,
@@ -3852,6 +3853,17 @@ fn dispatch_master_ext_request_with_yolo_timeout(
                         .await
                         {
                             Ok(()) => {
+                                if client_state
+                                    .native_yolo
+                                    .operation_is_current(&status_operation)
+                                {
+                                    let _ = event_tx.send(AppEvent::YoloSessionStatusChanged {
+                                        session_id: session_id.to_string(),
+                                        enabled,
+                                        restart_required: false,
+                                        result: Ok(()),
+                                    });
+                                }
                                 tracing::info!(
                                     target: "acp",
                                     session_id = %session_id.0,
@@ -3867,6 +3879,14 @@ fn dispatch_master_ext_request_with_yolo_timeout(
                                     // the provider left its privileged mode.
                                     error.requiring_restart()
                                 };
+                                let restart_required = error.restart_required();
+                                let error_message = error.to_string();
+                                let _ = event_tx.send(AppEvent::YoloSessionStatusChanged {
+                                    session_id: session_id.to_string(),
+                                    enabled,
+                                    restart_required,
+                                    result: Err(error_message),
+                                });
                                 tracing::warn!(
                                     target: "acp",
                                     session_id = %session_id.0,
@@ -3944,7 +3964,8 @@ fn dispatch_master_ext_request_with_yolo_timeout(
                         })
                 });
                 if let Some(operation) = native_operation {
-                    let disabling_native_yolo = !operation.enabled();
+                    let enabled = operation.enabled();
+                    let disabling_native_yolo = !enabled;
                     match client_state
                         .native_yolo
                         .apply_native_config_reserved_with_policy_timeout(
@@ -3958,6 +3979,12 @@ fn dispatch_master_ext_request_with_yolo_timeout(
                         .await
                     {
                         Ok(Some(config_options)) => {
+                            let _ = event_tx.send(AppEvent::YoloSessionStatusChanged {
+                                session_id: session_id.to_string(),
+                                enabled,
+                                restart_required: false,
+                                result: Ok(()),
+                            });
                             publish_session_config_options(
                                 &event_tx,
                                 &client_state.native_yolo,
@@ -3992,6 +4019,12 @@ fn dispatch_master_ext_request_with_yolo_timeout(
                                     result: Err(error.to_string()),
                                 });
                             }
+                            let _ = event_tx.send(AppEvent::YoloSessionStatusChanged {
+                                session_id: session_id.to_string(),
+                                enabled,
+                                restart_required: disabling_native_yolo || error.restart_required(),
+                                result: Err(error.to_string()),
+                            });
                             let _ = event_tx.send(AppEvent::SessionConfigSetFailed {
                                 session_id: session_id.to_string(),
                                 config_id,
@@ -4826,50 +4859,68 @@ async fn dispatch_prompt_body(
             super::native_yolo::NATIVE_YOLO_RPC_TIMEOUT,
         )
         .await;
-        if let Err(error) = yolo_result {
-            // As with slash/config/reconcile, an ordinary ACP rejection
-            // cannot attest that a requested disable left privileged mode.
-            let restart_required = !enabled || error.restart_required();
-            let policy_blocked = client_task
-                .state
-                .yolo_state
-                .lock()
-                .unwrap()
-                .policy_blocked();
-            tracing::warn!(
-                target: "yolo",
-                session_id = %prompt_session_id_str,
-                enabled,
-                restart_required,
-                policy_blocked,
-                error = %error,
-                "provider-native Yolo state could not be established before first prompt"
-            );
-            if !enabled || policy_blocked || restart_required {
-                let _ = event_tx_task.send(AppEvent::RuntimeYoloReconcileCompleted {
-                    reconcile_id: 0,
-                    fail_closed: !enabled,
+        match yolo_result {
+            Err(error) => {
+                // As with slash/config/reconcile, an ordinary ACP rejection
+                // cannot attest that a requested disable left privileged mode.
+                let restart_required = !enabled || error.restart_required();
+                let policy_blocked = client_task
+                    .state
+                    .yolo_state
+                    .lock()
+                    .unwrap()
+                    .policy_blocked();
+                let error = error.to_string();
+                let _ = event_tx_task.send(AppEvent::YoloSessionStatusChanged {
+                    session_id: prompt_session_id_str.clone(),
+                    enabled,
                     restart_required,
-                    result: Err(error.to_string()),
+                    result: Err(error.clone()),
                 });
-                in_flight_tabs_task.lock().unwrap().remove(&tab_key_task);
-                return;
+                tracing::warn!(
+                    target: "yolo",
+                    session_id = %prompt_session_id_str,
+                    enabled,
+                    restart_required,
+                    policy_blocked,
+                    error = %error,
+                    "provider-native Yolo state could not be established before first prompt"
+                );
+                if !enabled || policy_blocked || restart_required {
+                    let _ = event_tx_task.send(AppEvent::RuntimeYoloReconcileCompleted {
+                        reconcile_id: 0,
+                        fail_closed: !enabled,
+                        restart_required,
+                        result: Err(error),
+                    });
+                    in_flight_tabs_task.lock().unwrap().remove(&tab_key_task);
+                    return;
+                }
             }
-        } else if !client_task
-            .state
-            .native_yolo
-            .operation_is_current(&operation)
-        {
-            tracing::info!(
-                target: "yolo",
-                session_id = %prompt_session_id_str,
-                "discarding first prompt because its lazy-session Yolo operation was superseded"
-            );
-            let _ = event_tx_task.send(AppEvent::AgentMessageEnd {
-                session_id: prompt_session_id_str.clone(),
-            });
-            in_flight_tabs_task.lock().unwrap().remove(&tab_key_task);
-            return;
+            Ok(()) => {
+                if !client_task
+                    .state
+                    .native_yolo
+                    .operation_is_current(&operation)
+                {
+                    tracing::info!(
+                        target: "yolo",
+                        session_id = %prompt_session_id_str,
+                        "discarding first prompt because its lazy-session Yolo operation was superseded"
+                    );
+                    let _ = event_tx_task.send(AppEvent::AgentMessageEnd {
+                        session_id: prompt_session_id_str.clone(),
+                    });
+                    in_flight_tabs_task.lock().unwrap().remove(&tab_key_task);
+                    return;
+                }
+                let _ = event_tx_task.send(AppEvent::YoloSessionStatusChanged {
+                    session_id: prompt_session_id_str.clone(),
+                    enabled,
+                    restart_required: false,
+                    result: Ok(()),
+                });
+            }
         }
     }
 

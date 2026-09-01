@@ -108,6 +108,31 @@ to existing helpers through `agent_config_changed`.
 The global value is a default for every ACP session owned by that helper. It
 does not merge into, or rewrite, individual session records.
 
+### Current-session status
+
+The global toggle is a provider-independent preference, not proof that the
+current ACP session entered its provider's privileged mode. The agent header
+therefore appends a provider-acknowledged status marker:
+
+| Marker | Current session state |
+| --- | --- |
+| `◌ Yolo · On…` / `◌ Yolo · Off…` | The native enable or disable operation is pending. |
+| `● Yolo · On` | The provider acknowledged native Yolo for this session. |
+| `○ Yolo · Off` | Native Yolo is off for this session. |
+| `⚠ Yolo` | The provider does not support Yolo or rejected the requested mode. |
+| `? Yolo` | The provider's final state is unknown and the agent stack is being replaced. |
+
+`On` and `Off` use the Terminal UI's localized toggle terminology.
+
+Hovering the warning marker shows the provider or transport error. A known
+automatic enable rejection is also written into chat using the same
+`/yolo on: <error>` form as an explicit command; prompts then continue through
+the normal interactive permission UI. The global toggle remains enabled so the
+preference can apply again after switching to a supported provider. Provider
+switch and agent reset clear the prior session marker before the replacement
+session reports its own state. Unknown or failed disable outcomes retain the
+prompt gate and restart the agent stack fail-closed.
+
 ### Session command
 
 The agent chat accepts:

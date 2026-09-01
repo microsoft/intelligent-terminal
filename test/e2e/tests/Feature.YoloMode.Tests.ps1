@@ -116,6 +116,10 @@ Describe 'Feature provider-native Yolo with Copilot' -ForEach $script:PackageCas
             (Test-Until -TimeoutSec 30 -IntervalSec 0.5 -Condition {
                 Test-AgentNativeYoloUpdate -App $secondApp -AcpSessionId $agentSession.AcpSessionId -Enabled $true
             }) | Should -BeTrue -Because 'the relaunched default session must receive the persisted native Yolo setting'
+            (Test-Until -TimeoutSec 30 -IntervalSec 0.5 -Condition {
+                $label = Get-UiElement -App $secondApp -Selector 'AgentYoloStatusText'
+                $label -and $label.name -match '● Yolo'
+            }) | Should -BeTrue -Because 'the agent header must distinguish acknowledged Yolo from the persisted preference'
         }
         finally {
             if ($secondApp) { Stop-Terminal -App $secondApp -RestoreSettings $false }
@@ -160,14 +164,21 @@ Describe 'Feature unsupported provider Yolo behavior' -ForEach $script:PackageCa
             Set-ItResult -Skipped -Because "OpenCode ACP prerequisite: $OpenCodeStatus"
             return
         }
-        $app = Start-Terminal -Package $Package -PassFre $true -Settings @{ acpAgent = 'opencode' }
+        $app = Start-Terminal -Package $Package -PassFre $true -Settings @{
+            acpAgent = 'opencode'
+            'agentPane.yoloMode' = $true
+        }
         try {
             Open-AgentPane -App $app | Out-Null
             Wait-AgentReady -App $app -TimeoutSec 90 | Should -BeTrue
             $agentPane = (Wait-NewAgentPaneSession -App $app -TimeoutSec 30).PaneSessionId
-            Send-AgentPrompt -App $app -PaneSessionId $agentPane -Text '/yolo on' | Out-Null
             Assert-AgentPaneText -App $app -PaneSessionId $agentPane `
                 -Pattern '(?i)/yolo on: opencode does not support ACP session Yolo mode' -TimeoutSec 30
+            (Test-Until -TimeoutSec 30 -IntervalSec 0.5 -Condition {
+                $label = Get-UiElement -App $app -Selector 'AgentYoloStatusText'
+                $label -and $label.name -match '⚠ Yolo'
+            }) | Should -BeTrue -Because 'the global preference must not look active when OpenCode rejects Yolo'
+            Assert-Setting -App $app -Key 'agentPane.yoloMode' -Value $true
         }
         finally {
             if ($app) { Stop-Terminal -App $app }

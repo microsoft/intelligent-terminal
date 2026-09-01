@@ -64,6 +64,12 @@ pub enum AppEvent {
         restart_required: bool,
         result: Result<(), String>,
     },
+    YoloSessionStatusChanged {
+        session_id: String,
+        enabled: bool,
+        restart_required: bool,
+        result: Result<(), String>,
+    },
     ModelSetCompleted {
         session_id: String,
         model: String,

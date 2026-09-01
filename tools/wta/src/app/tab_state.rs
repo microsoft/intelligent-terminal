@@ -514,6 +514,67 @@ impl ConfigPickerState {
     }
 }
 
+/// Actual provider-native Yolo state for the tab's current ACP session.
+/// This is intentionally separate from the persisted global preference: an
+/// enabled preference can be unavailable for the selected provider or rejected
+/// by provider-owned policy such as Gemini workspace trust.
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
+pub enum YoloUiStatus {
+    #[default]
+    Hidden,
+    PendingOn,
+    PendingOff,
+    PendingConfig,
+    Active,
+    Off,
+    Unavailable(String),
+    Unknown(String),
+}
+
+impl YoloUiStatus {
+    pub fn pending(enabled: bool) -> Self {
+        if enabled {
+            Self::PendingOn
+        } else {
+            Self::PendingOff
+        }
+    }
+
+    pub fn wire_state(&self) -> &'static str {
+        match self {
+            Self::Hidden => "hidden",
+            Self::PendingOn => "pending_on",
+            Self::PendingOff => "pending_off",
+            Self::PendingConfig => "pending_config",
+            Self::Active => "active",
+            Self::Off => "off",
+            Self::Unavailable(_) => "unavailable",
+            Self::Unknown(_) => "unknown",
+        }
+    }
+
+    pub fn detail(&self) -> Option<&str> {
+        match self {
+            Self::Unavailable(detail) | Self::Unknown(detail) => Some(detail),
+            _ => None,
+        }
+    }
+
+    pub(super) fn requested_enabled(&self) -> Option<bool> {
+        match self {
+            Self::PendingOn => Some(true),
+            Self::PendingOff => Some(false),
+            _ => None,
+        }
+    }
+
+    pub(super) fn accepts_result(&self, enabled: bool) -> bool {
+        self.requested_enabled()
+            .is_some_and(|pending| pending == enabled)
+            || matches!(self, Self::PendingConfig)
+    }
+}
+
 /// Everything that conceptually belongs to one tab's conversation: the
 /// message history, the streaming buffer of the in-flight prompt, the
 /// pending tool calls, the recommendations panel state, etc.
@@ -638,6 +699,9 @@ pub struct TabSession {
     /// The pending config option is the provider-native Yolo channel, so no
     /// prompt may start until its provider acknowledgement arrives.
     pub native_yolo_config_pending: bool,
+    /// Provider-acknowledged Yolo state for the current ACP session. The XAML
+    /// agent header projects this separately from the global Settings toggle.
+    pub yolo_status: YoloUiStatus,
     /// True while the `/agent` picker is open for this tab.
     pub agent_picker_open: bool,
     /// Highlighted row in `App::available_agents`.

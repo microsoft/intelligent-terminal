@@ -6035,6 +6035,8 @@ namespace winrt::TerminalApp::implementation
         const auto model = pickStr("model");
         const auto state = pickStr("state");
         const auto backend = pickStr("backend");
+        const auto yoloState = pickStr("yolo_state");
+        const auto yoloDetail = pickStr("yolo_detail");
         const auto statusTabId = pickStr("tab_id");
 
         _agentPaneLog("OnAgentStatusChanged: payload=" + winrt::to_string(eventJson).substr(0, 600));
@@ -6228,6 +6230,10 @@ namespace winrt::TerminalApp::implementation
                 // and every publish_agent_status call, so the first routed
                 // status proves this pane can receive later settings events.
                 content.UpdateAgentStatus(name, version, model, state, backend);
+                if (const auto impl = winrt::get_self<winrt::TerminalApp::implementation::AgentPaneContent>(content))
+                {
+                    impl->UpdateYoloStatus(yoloState, yoloDetail);
+                }
             }
         };
         if (!tabId.empty())

@@ -714,6 +714,28 @@ async fn next_agent_chunk(event_rx: &mut mpsc::UnboundedReceiver<AppEvent>) -> S
     .expect("timed out waiting for an agent message chunk")
 }
 
+async fn next_yolo_reconcile_completion(
+    event_rx: &mut mpsc::UnboundedReceiver<AppEvent>,
+    timeout: std::time::Duration,
+) -> (u64, bool, bool, Result<(), String>) {
+    tokio::time::timeout(timeout, async {
+        loop {
+            match event_rx.recv().await {
+                Some(AppEvent::RuntimeYoloReconcileCompleted {
+                    reconcile_id,
+                    fail_closed,
+                    restart_required,
+                    result,
+                }) => break (reconcile_id, fail_closed, restart_required, result),
+                Some(_) => continue,
+                None => panic!("event channel closed before Yolo reconciliation completed"),
+            }
+        }
+    })
+    .await
+    .expect("timed out waiting for Yolo reconciliation completion")
+}
+
 #[tokio::test]
 async fn happy_path_chat_round_trip_surfaces_mock_reply() {
     let local = tokio::task::LocalSet::new();
@@ -1066,7 +1088,7 @@ async fn lazy_session_disables_native_yolo_before_first_prompt() {
     let local = tokio::task::LocalSet::new();
     local
         .run_until(async {
-            let h = connect_for_dispatch(MockBehavior::Reply);
+            let mut h = connect_for_dispatch(MockBehavior::Reply);
             h.client
                 .state
                 .native_yolo
@@ -1112,6 +1134,25 @@ async fn lazy_session_disables_native_yolo_before_first_prompt() {
             );
 
             h.native_update_release.notify_one();
+            let status = tokio::time::timeout(std::time::Duration::from_secs(5), async {
+                loop {
+                    match h.event_rx.recv().await {
+                        Some(AppEvent::YoloSessionStatusChanged {
+                            enabled,
+                            restart_required,
+                            result,
+                            ..
+                        }) => break (enabled, restart_required, result),
+                        Some(_) => continue,
+                        None => panic!("event channel closed before Yolo status"),
+                    }
+                }
+            })
+            .await
+            .expect("timed out waiting for lazy-session Yolo status");
+            assert!(!status.0);
+            assert!(!status.1);
+            assert!(status.2.is_ok());
             tokio::time::timeout(std::time::Duration::from_secs(5), async {
                 loop {
                     if !h.seen_prompts.lock().unwrap().is_empty() {
@@ -1175,9 +1216,16 @@ async fn native_yolo_active_permission_request_remains_pending_for_user() {
                 &h.proposal_channels,
             );
 
+            let mut yolo_active = false;
             let responder = tokio::time::timeout(std::time::Duration::from_secs(5), async {
                 loop {
                     match h.event_rx.recv().await {
+                        Some(AppEvent::YoloSessionStatusChanged {
+                            enabled: true,
+                            restart_required: false,
+                            result: Ok(()),
+                            ..
+                        }) => yolo_active = true,
                         Some(AppEvent::PermissionRequest { responder, .. }) => break responder,
                         Some(_) => continue,
                         None => panic!("event channel closed before permission request"),
@@ -1186,6 +1234,10 @@ async fn native_yolo_active_permission_request_remains_pending_for_user() {
             })
             .await
             .expect("timed out waiting for permission request");
+            assert!(
+                yolo_active,
+                "the header status must acknowledge native Yolo before permission UI"
+            );
 
             assert_eq!(
                 *h.seen_config_updates.lock().unwrap(),
@@ -1257,9 +1309,16 @@ async fn lazy_session_native_disable_failure_keeps_first_prompt_blocked() {
                 &h.proposal_channels,
             );
 
+            let mut unknown_status = false;
             let event = tokio::time::timeout(std::time::Duration::from_secs(5), async {
                 loop {
                     match h.event_rx.recv().await {
+                        Some(AppEvent::YoloSessionStatusChanged {
+                            enabled: false,
+                            restart_required: true,
+                            result: Err(_),
+                            ..
+                        }) => unknown_status = true,
                         Some(AppEvent::RuntimeYoloReconcileCompleted {
                             reconcile_id,
                             fail_closed,
@@ -1277,6 +1336,10 @@ async fn lazy_session_native_disable_failure_keeps_first_prompt_blocked() {
             assert!(event.1);
             assert!(event.2);
             assert!(event.3.is_err());
+            assert!(
+                unknown_status,
+                "the header status must report an unknown native outcome before restart"
+            );
             assert!(h.seen_prompts.lock().unwrap().is_empty());
         })
         .await;
@@ -2407,14 +2470,20 @@ async fn policy_block_rejects_privileged_generic_config_before_acp() {
                 Arc::clone(&h.client.state),
             );
 
-            match tokio::time::timeout(std::time::Duration::from_secs(5), h.event_rx.recv()).await {
-                Ok(Some(AppEvent::SessionConfigSetFailed { message, .. })) => {
-                    assert!(message.contains("policy"));
+            tokio::time::timeout(std::time::Duration::from_secs(5), async {
+                loop {
+                    match h.event_rx.recv().await {
+                        Some(AppEvent::SessionConfigSetFailed { message, .. }) => {
+                            assert!(message.contains("policy"));
+                            break;
+                        }
+                        Some(_) => continue,
+                        None => panic!("expected SessionConfigSetFailed, event channel closed"),
+                    }
                 }
-                Ok(Some(_)) => panic!("expected SessionConfigSetFailed, got another event"),
-                Ok(None) => panic!("expected SessionConfigSetFailed, event channel closed"),
-                Err(_) => panic!("expected SessionConfigSetFailed, got nothing"),
-            }
+            })
+            .await
+            .expect("expected SessionConfigSetFailed, got nothing");
             assert!(
                 h.seen_config_updates.lock().unwrap().is_empty(),
                 "blocked privileged config must never reach ACP"
@@ -2736,20 +2805,28 @@ async fn rejected_config_yolo_disable_requests_restart() {
             .expect("rejected native config disable must request restart");
             assert!(restart_required);
 
-            match tokio::time::timeout(std::time::Duration::from_secs(1), h.event_rx.recv()).await {
-                Ok(Some(AppEvent::SessionConfigSetFailed {
-                    session_id,
-                    config_id,
-                    message,
-                    restart_required,
-                })) => {
-                    assert_eq!(session_id, "rejected-config-disable-session");
-                    assert_eq!(config_id, "mode");
-                    assert!(message.contains("mock native update failure"));
-                    assert!(restart_required);
+            tokio::time::timeout(std::time::Duration::from_secs(1), async {
+                loop {
+                    match h.event_rx.recv().await {
+                        Some(AppEvent::SessionConfigSetFailed {
+                            session_id,
+                            config_id,
+                            message,
+                            restart_required,
+                        }) => {
+                            assert_eq!(session_id, "rejected-config-disable-session");
+                            assert_eq!(config_id, "mode");
+                            assert!(message.contains("mock native update failure"));
+                            assert!(restart_required);
+                            break;
+                        }
+                        Some(_) => continue,
+                        None => panic!("event channel closed before config failure"),
+                    }
                 }
-                _ => panic!("expected the paired SessionConfigSetFailed event"),
-            }
+            })
+            .await
+            .expect("expected the paired SessionConfigSetFailed event");
         })
         .await;
 }
@@ -2800,19 +2877,9 @@ async fn rejected_reconcile_yolo_disable_requests_restart() {
                 Arc::clone(&h.client.state),
             );
 
-            let event = tokio::time::timeout(std::time::Duration::from_secs(1), h.event_rx.recv())
-                .await
-                .expect("reconcile rejection must complete")
-                .expect("event channel must remain open");
-            let AppEvent::RuntimeYoloReconcileCompleted {
-                reconcile_id,
-                fail_closed,
-                restart_required,
-                result,
-            } = event
-            else {
-                panic!("expected RuntimeYoloReconcileCompleted");
-            };
+            let (reconcile_id, fail_closed, restart_required, result) =
+                next_yolo_reconcile_completion(&mut h.event_rx, std::time::Duration::from_secs(1))
+                    .await;
             assert_eq!(reconcile_id, 61);
             assert!(fail_closed);
             assert!(result.is_err());
@@ -2880,20 +2947,11 @@ async fn fail_closed_yolo_reconcile_has_one_deadline_across_sessions() {
             )
             .await
             .expect("the first provider disable must start");
-            let event =
-                tokio::time::timeout(std::time::Duration::from_millis(250), h.event_rx.recv())
-                    .await
-                    .expect("fail-closed reconciliation must have one overall deadline")
-                    .expect("event channel must remain open");
-            let AppEvent::RuntimeYoloReconcileCompleted {
-                fail_closed,
-                restart_required,
-                result,
-                ..
-            } = event
-            else {
-                panic!("expected RuntimeYoloReconcileCompleted");
-            };
+            let (_, fail_closed, restart_required, result) = next_yolo_reconcile_completion(
+                &mut h.event_rx,
+                std::time::Duration::from_millis(250),
+            )
+            .await;
             assert!(fail_closed);
             assert!(restart_required);
             assert!(result.unwrap_err().contains("timed out"));
@@ -2953,19 +3011,9 @@ async fn fail_closed_yolo_reconcile_stops_after_first_error() {
                 std::time::Duration::from_millis(250),
             );
 
-            let event = tokio::time::timeout(std::time::Duration::from_secs(1), h.event_rx.recv())
-                .await
-                .expect("fail-closed reconciliation must report its first error")
-                .expect("event channel must remain open");
-            let AppEvent::RuntimeYoloReconcileCompleted {
-                fail_closed,
-                restart_required,
-                result,
-                ..
-            } = event
-            else {
-                panic!("expected RuntimeYoloReconcileCompleted");
-            };
+            let (_, fail_closed, restart_required, result) =
+                next_yolo_reconcile_completion(&mut h.event_rx, std::time::Duration::from_secs(1))
+                    .await;
             assert!(fail_closed);
             assert!(restart_required);
             assert!(result
@@ -3103,19 +3151,9 @@ async fn non_fail_closed_yolo_reconcile_continues_after_known_error() {
                 std::time::Duration::from_millis(250),
             );
 
-            let event = tokio::time::timeout(std::time::Duration::from_secs(1), h.event_rx.recv())
-                .await
-                .expect("best-effort reconciliation must complete")
-                .expect("event channel must remain open");
-            let AppEvent::RuntimeYoloReconcileCompleted {
-                fail_closed,
-                restart_required,
-                result,
-                ..
-            } = event
-            else {
-                panic!("expected RuntimeYoloReconcileCompleted");
-            };
+            let (_, fail_closed, restart_required, result) =
+                next_yolo_reconcile_completion(&mut h.event_rx, std::time::Duration::from_secs(1))
+                    .await;
             assert!(!fail_closed);
             assert!(!restart_required);
             assert!(result

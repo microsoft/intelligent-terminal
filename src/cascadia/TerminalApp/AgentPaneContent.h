@@ -25,6 +25,10 @@ namespace winrt::TerminalApp::implementation
                                const winrt::hstring& model,
                                const winrt::hstring& state,
                                const winrt::hstring& backend);
+        // Internal projection from WTA's per-session provider acknowledgement.
+        // Kept off the WinRT interface so extending this UI detail cannot
+        // disturb the generated ABI.
+        void UpdateYoloStatus(const winrt::hstring& state, const winrt::hstring& detail);
 
         void SetSessionsView(bool active);
         // Whether the agent pane is currently displaying its sessions view

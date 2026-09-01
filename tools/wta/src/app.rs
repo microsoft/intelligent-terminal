@@ -82,7 +82,7 @@ use input_edit::{next_word_boundary, prev_word_boundary, INPUT_HISTORY_MAX_ENTRI
 pub use tab_state::{
     ChatMessage, CompletedTurn, ConfigPickerState, NoticeKind, PermissionState,
     RecommendationFocus, TabSession, ToolCallContent, ToolCallKind, ToolCallLocation,
-    ToolCallOutput, UserInputState, View,
+    ToolCallOutput, UserInputState, View, YoloUiStatus,
 };
 pub(crate) use tab_state::{CompletedTurnViewportAnchor, DEFAULT_TAB_ID};
 pub use turn_state::{AutofixContext, ChunkKind, SubmittedPrompt, TurnOutcome, TurnState};
@@ -1085,6 +1085,10 @@ pub struct App {
     next_yolo_transaction_id: u64,
     next_yolo_reconcile_id: u64,
     pending_yolo_reconciles: HashMap<u64, (HashSet<String>, bool)>,
+    /// Desired state captured by each reconcile generation. The prompt gate
+    /// keeps only session membership; this parallel map prevents an older
+    /// completion from projecting a newer pending target as acknowledged.
+    pending_yolo_reconcile_targets: HashMap<u64, HashMap<String, bool>>,
     pending_yolo_session_tabs: HashSet<String>,
     // Slash-command UI state. The /help overlay is global — it covers
     // the chat area regardless of which tab is active. Per-tab popup
@@ -1403,6 +1407,7 @@ impl App {
             next_yolo_transaction_id: 0,
             next_yolo_reconcile_id: 0,
             pending_yolo_reconciles: HashMap::new(),
+            pending_yolo_reconcile_targets: HashMap::new(),
             pending_yolo_session_tabs: HashSet::new(),
             help_overlay_visible: false,
             debug_messages: Vec::new(),
@@ -2381,6 +2386,9 @@ impl App {
                     }
                     tab.config_pending_id = Some(config_id.clone());
                     tab.native_yolo_config_pending = native_yolo;
+                    if native_yolo {
+                        tab.yolo_status = YoloUiStatus::PendingConfig;
+                    }
                     tab.config_picker = parent_selected
                         .map(|selected| ConfigPickerState::Options { selected })
                         .unwrap_or(ConfigPickerState::Closed);
@@ -2402,11 +2410,21 @@ impl App {
                     if tab.config_pending_id.as_deref() == Some(config_id.as_str()) {
                         tab.config_pending_id = None;
                         tab.native_yolo_config_pending = false;
+                        if native_yolo {
+                            tab.yolo_status =
+                                YoloUiStatus::Unavailable(t!("connection.lost").into_owned());
+                        }
                     }
                     tab.messages
                         .push(ChatMessage::Error(t!("connection.lost").into_owned()));
                     tab.scroll_to_bottom();
+                    if native_yolo {
+                        self.publish_agent_status();
+                    }
                 }
+            }
+            if native_yolo {
+                self.publish_agent_status();
             }
             return;
         }
@@ -3534,6 +3552,7 @@ impl App {
         self.yolo_state.lock().unwrap().clear_sessions();
         self.pending_yolo_changes.clear();
         self.pending_yolo_reconciles.clear();
+        self.pending_yolo_reconcile_targets.clear();
         self.pending_yolo_session_tabs.clear();
         let active_tab_id = self.active_tab_key().to_string();
         for tab in self.tab_sessions.values_mut() {
@@ -3550,6 +3569,7 @@ impl App {
             tab.config_picker = ConfigPickerState::Closed;
             tab.config_pending_id = None;
             tab.native_yolo_config_pending = false;
+            tab.yolo_status = YoloUiStatus::Hidden;
             tab.agent_picker_open = false;
             tab.agent_picker_selected = 0;
             tab.pending_terminal_action_proposal = None;
@@ -4276,6 +4296,7 @@ impl App {
             AppEvent::ModelConfigUpdated { .. } => "model_config_updated",
             AppEvent::YoloModeChangeCompleted { .. } => "yolo_mode_change_completed",
             AppEvent::RuntimeYoloReconcileCompleted { .. } => "runtime_yolo_reconcile_completed",
+            AppEvent::YoloSessionStatusChanged { .. } => "yolo_session_status_changed",
             AppEvent::ModelSetCompleted { .. } => "model_set_completed",
             AppEvent::ModelSetFailed { .. } => "model_set_failed",
             AppEvent::SessionConfigUpdated { .. } => "session_config_updated",
@@ -5354,6 +5375,7 @@ impl App {
         tab.config_picker = ConfigPickerState::Closed;
         tab.config_pending_id = None;
         tab.native_yolo_config_pending = false;
+        tab.yolo_status = YoloUiStatus::Hidden;
         let old_sid = tab.session_id.take();
         tab.scroll_to_bottom();
         // Drop the stale session_id from the yolo override set: `/yolo`
@@ -5363,6 +5385,7 @@ impl App {
         if let Some(old_sid) = old_sid {
             self.clear_yolo_session_state(&old_sid);
         }
+        self.publish_agent_status();
     }
 
     /// `/fix [hint]` — run the auto-fix prompt on demand against the active
@@ -5569,6 +5592,8 @@ impl App {
             let transaction_id = self.next_yolo_transaction_id;
             self.pending_yolo_changes
                 .insert(sid.clone(), (transaction_id, enabled, tab_id.clone()));
+            self.tab_mut(&tab_id).yolo_status = YoloUiStatus::pending(enabled);
+            self.publish_agent_status();
             // Wait for the provider-native session operation to succeed before
             // committing the local state.
             if self
@@ -5584,9 +5609,11 @@ impl App {
             {
                 self.pending_yolo_changes.remove(&sid);
                 let tab = self.tab_mut(&tab_id);
+                tab.yolo_status = YoloUiStatus::Unavailable(t!("connection.lost").into_owned());
                 tab.messages
                     .push(ChatMessage::Error(t!("connection.lost").into_owned()));
                 tab.scroll_to_bottom();
+                self.publish_agent_status();
             }
         }
         // If there's no session yet (pane still connecting), `/yolo` is a
@@ -5637,6 +5664,7 @@ impl App {
                 })
                 .collect::<Vec<_>>()
         };
+        let status_sessions = sessions.clone();
         let fail_closed = policy_blocked || sessions.iter().any(|(_, enabled)| !enabled);
         let reconcile_id = self.begin_yolo_reconcile(&sessions, fail_closed);
         let sent = self.master_request_tx.send(
@@ -5647,12 +5675,24 @@ impl App {
             },
         );
         if sent.is_err() {
+            let error = Err(t!("connection.lost").into_owned());
+            for (session_id, enabled) in &status_sessions {
+                self.apply_yolo_ui_result(
+                    session_id.0.as_ref(),
+                    *enabled,
+                    fail_closed,
+                    &error,
+                    false,
+                );
+            }
             if fail_closed {
                 let _ = self.restart_tx.send(AgentLifecycleRequest::RestartMaster);
             } else {
                 self.pending_yolo_reconciles.remove(&reconcile_id);
+                self.pending_yolo_reconcile_targets.remove(&reconcile_id);
             }
         }
+        self.publish_agent_status();
     }
 
     fn reconcile_session_yolo(&mut self, session_id: &str) {
@@ -5671,10 +5711,13 @@ impl App {
             },
         );
         if sent.is_err() {
+            let error = Err(t!("connection.lost").into_owned());
+            self.apply_yolo_ui_result(session_id, enabled, fail_closed, &error, false);
             if fail_closed {
                 let _ = self.restart_tx.send(AgentLifecycleRequest::RestartMaster);
             } else {
                 self.pending_yolo_reconciles.remove(&reconcile_id);
+                self.pending_yolo_reconcile_targets.remove(&reconcile_id);
             }
         }
     }
@@ -5690,11 +5733,58 @@ impl App {
             .iter()
             .map(|(session_id, _)| session_id.to_string())
             .collect::<HashSet<_>>();
+        for (session_id, enabled) in sessions {
+            if let Some(tab_id) = self.bound_tab_for_session(&session_id.to_string()) {
+                self.tab_mut(&tab_id).yolo_status = YoloUiStatus::pending(*enabled);
+            }
+        }
         if !session_ids.is_empty() {
             self.pending_yolo_reconciles
                 .insert(reconcile_id, (session_ids, fail_closed));
+            self.pending_yolo_reconcile_targets.insert(
+                reconcile_id,
+                sessions
+                    .iter()
+                    .map(|(session_id, enabled)| (session_id.to_string(), *enabled))
+                    .collect(),
+            );
         }
         reconcile_id
+    }
+
+    fn apply_yolo_ui_result(
+        &mut self,
+        session_id: &str,
+        enabled: bool,
+        restart_required: bool,
+        result: &Result<(), String>,
+        announce: bool,
+    ) {
+        let Some(tab_id) = self.bound_tab_for_session(session_id) else {
+            return;
+        };
+        let status = match result {
+            Ok(()) if enabled => YoloUiStatus::Active,
+            Ok(()) => YoloUiStatus::Off,
+            Err(error) if restart_required => YoloUiStatus::Unknown(error.clone()),
+            Err(error) => YoloUiStatus::Unavailable(error.clone()),
+        };
+        let tab = self.tab_mut(&tab_id);
+        tab.yolo_status = status;
+        if announce && (enabled || result.is_err()) {
+            match result {
+                Ok(()) => tab
+                    .messages
+                    .push(ChatMessage::Status("● /yolo on".to_string())),
+                Err(error) => {
+                    let state = if enabled { "on" } else { "off" };
+                    tab.messages
+                        .push(ChatMessage::Error(format!("/yolo {state}: {error}")));
+                }
+            }
+            tab.scroll_to_bottom();
+        }
+        self.publish_agent_status();
     }
 
     fn yolo_reconcile_pending_for_tab(&self, tab_id: &str) -> bool {
@@ -5750,12 +5840,13 @@ impl App {
             return;
         }
 
+        let status_result = result.clone();
         match result {
             Ok(()) => {
                 self.yolo_state
                     .lock()
                     .unwrap()
-                    .set_session_override(session_id, enabled);
+                    .set_session_override(session_id.clone(), enabled);
 
                 let marker = if enabled { "●" } else { "○" };
                 let state = if enabled { "on" } else { "off" };
@@ -5770,6 +5861,13 @@ impl App {
                     .push(ChatMessage::Error(format!("/yolo {}: {}", state, error)));
             }
         }
+        self.apply_yolo_ui_result(
+            &session_id,
+            enabled,
+            restart_required,
+            &status_result,
+            false,
+        );
         self.tab_mut(&tab_id).scroll_to_bottom();
     }
 
@@ -5781,6 +5879,11 @@ impl App {
         }
         self.pending_yolo_reconciles
             .retain(|_, (sessions, _)| !sessions.is_empty());
+        for targets in self.pending_yolo_reconcile_targets.values_mut() {
+            targets.remove(session_id);
+        }
+        self.pending_yolo_reconcile_targets
+            .retain(|_, targets| !targets.is_empty());
     }
 
     /// `/restart` asks Windows Terminal to replace the shared master and Agent
@@ -5799,12 +5902,14 @@ impl App {
             tab.usage_staleness = crate::usage::UsageStaleness::default();
             tab.clear_completed_turns();
             tab.session_id = None;
+            tab.yolo_status = YoloUiStatus::Hidden;
         }
         // Every session is about to die with the agent stack; drop any
         // `/yolo` overrides so a reused session_id cannot inherit stale state.
         self.yolo_state.lock().unwrap().clear_sessions();
         self.pending_yolo_changes.clear();
         self.pending_yolo_reconciles.clear();
+        self.pending_yolo_reconcile_targets.clear();
         self.pending_yolo_session_tabs.clear();
         let _ = self.restart_tx.send(AgentLifecycleRequest::RestartMaster);
         self.publish_agent_status();
@@ -6200,6 +6305,7 @@ impl App {
             tab.config_picker = ConfigPickerState::Closed;
             tab.config_pending_id = None;
             tab.native_yolo_config_pending = false;
+            tab.yolo_status = YoloUiStatus::Hidden;
             tab.clear_chat_history();
             tab.usage = None;
             tab.usage_staleness = crate::usage::UsageStaleness::default();
@@ -6222,6 +6328,7 @@ impl App {
             tab_id: tab_id.to_string(),
             notify_master: false,
         });
+        self.publish_agent_status();
 
         tracing::info!(
             target: "tab_session",

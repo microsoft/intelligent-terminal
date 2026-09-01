@@ -15,6 +15,8 @@
 #include "../TerminalApp/ContentManager.h"
 #include "CppWinrtTailored.h"
 
+#include <winrt/Windows.UI.Xaml.Automation.h>
+
 using namespace Microsoft::Console;
 using namespace TerminalApp;
 using namespace winrt::TerminalApp;
@@ -1266,7 +1268,7 @@ namespace TerminalAppLocalTests
                     }
                 });
 
-            const auto sendStatus = [&](const winrt::hstring& tabId, const char* model) {
+            const auto sendStatus = [&](const winrt::hstring& tabId, const char* model, const char* yoloState, const char* yoloDetail) {
                 Json::Value event{ Json::objectValue };
                 event["type"] = "event";
                 event["method"] = "agent_status";
@@ -1276,6 +1278,8 @@ namespace TerminalAppLocalTests
                 event["params"]["model"] = model;
                 event["params"]["state"] = "connected";
                 event["params"]["backend"] = "Windows";
+                event["params"]["yolo_state"] = yoloState;
+                event["params"]["yolo_detail"] = yoloDetail;
                 event["params"]["host_catalog_ready"] = true;
                 event["params"]["tab_id"] = winrt::to_string(tabId);
 
@@ -1284,21 +1288,34 @@ namespace TerminalAppLocalTests
                 page->OnAgentStatusChanged(winrt::to_hstring(Json::writeString(writerBuilder, event)));
             };
 
-            sendStatus(oldTabId, "model-a");
+            sendStatus(oldTabId, "model-a", "active", "");
 
             VERIFY_IS_TRUE(impl->IsHelperEventReady());
             VERIFY_IS_TRUE(impl->IsAgentConnected());
             VERIFY_IS_TRUE(impl->GetAgentName() == L"Copilot");
             VERIFY_IS_TRUE(impl->GetAgentModel() == L"model-a");
+            const auto yoloStatus = impl->GetRoot().FindName(L"AgentYoloStatusText").try_as<TextBlock>();
+            VERIFY_IS_NOT_NULL(yoloStatus);
+            std::wstring expectedActive{ L"● Yolo · " };
+            expectedActive += RS_(L"FreOverlay_ToggleOn");
+            VERIFY_IS_TRUE(yoloStatus.Text() == expectedActive);
+            VERIFY_IS_TRUE(yoloStatus.Visibility() == Visibility::Visible);
             VERIFY_ARE_EQUAL(1u, protocolEvents.size());
             VERIFY_IS_TRUE(protocolEvents[0]["method"].asString() == "tab_renamed");
             VERIFY_IS_TRUE(protocolEvents[0]["params"]["old_tab_id"].asString() == winrt::to_string(oldTabId));
             VERIFY_IS_TRUE(protocolEvents[0]["params"]["new_tab_id"].asString() == winrt::to_string(focusedTab->StableId()));
             VERIFY_IS_TRUE(impl->TransferSourceTabId().empty());
 
-            sendStatus(focusedTab->StableId(), "model-b");
+            sendStatus(focusedTab->StableId(), "model-b", "unavailable", "provider rejected Yolo");
 
             VERIFY_IS_TRUE(impl->GetAgentModel() == L"model-b");
+            VERIFY_IS_TRUE(yoloStatus.Text() == L"⚠ Yolo");
+            VERIFY_IS_TRUE(
+                winrt::Windows::UI::Xaml::Automation::AutomationProperties::GetName(yoloStatus) ==
+                L"⚠ Yolo: provider rejected Yolo");
+            VERIFY_IS_TRUE(
+                winrt::unbox_value<winrt::hstring>(ToolTipService::GetToolTip(yoloStatus)) ==
+                L"provider rejected Yolo");
             VERIFY_ARE_EQUAL(1u, protocolEvents.size());
 
             page->ProtocolVtSequenceReceived(token);

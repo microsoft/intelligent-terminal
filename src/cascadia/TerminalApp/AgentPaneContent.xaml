@@ -26,12 +26,21 @@
                 Background="#FF000000"
                 BorderBrush="{ThemeResource TabViewBackground}"
                 BorderThickness="0,0,0,1">
-            <Grid Padding="10,0,0,0">
+            <Grid Padding="10,0,10,0"
+                  ColumnSpacing="8">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
                 <!--  Left cluster: logo + label. History and other actions
                       live on the window-level bottom agent bar.  -->
-                <StackPanel Orientation="Horizontal"
-                            VerticalAlignment="Center"
-                            Spacing="4">
+                <Grid Grid.Column="0"
+                      VerticalAlignment="Center"
+                      ColumnSpacing="4">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
                     <!--  Keep agent marks as XAML vectors so their primary Fill
                           can bind to the title text's theme-aware Foreground
                           (#348). Viewbox preserves each source SVG's viewBox.  -->
@@ -94,13 +103,27 @@
                         </Viewbox>
                     </Grid>
                     <TextBlock x:Name="AgentLabelText"
+                               Grid.Column="1"
                                VerticalAlignment="Center"
                                FontFamily="Segoe UI Variable, Segoe UI"
                                FontSize="12"
                                LineHeight="16"
                                Foreground="#FFFFFFFF"
+                             TextTrimming="CharacterEllipsis"
                                Text="GitHub Copilot" />
-                </StackPanel>
+                </Grid>
+                    <!--  Fixed-position provider-acknowledged Yolo state. Keeping
+                        this outside the identity/model label prevents long model
+                        names from hiding a security-relevant unavailable state.  -->
+                    <TextBlock x:Name="AgentYoloStatusText"
+                           Grid.Column="1"
+                           VerticalAlignment="Center"
+                           FontFamily="Segoe UI Variable, Segoe UI"
+                           FontSize="12"
+                           LineHeight="16"
+                           Foreground="#FFFFFFFF"
+                           Text=""
+                           Visibility="Collapsed" />
             </Grid>
         </Border>
 

@@ -8,10 +8,12 @@
 
 #include <algorithm>
 #include <cwctype>
+#include <winrt/Windows.UI.Xaml.Automation.h>
 #include <winrt/Windows.UI.Xaml.Media.h>
 
 using namespace winrt::Windows::UI;
 using namespace winrt::Windows::UI::Xaml;
+using namespace winrt::Windows::UI::Xaml::Automation;
 using namespace winrt::Windows::UI::Xaml::Controls;
 using namespace winrt::Windows::UI::Xaml::Media;
 using namespace winrt::Microsoft::Terminal::Control;
@@ -230,6 +232,66 @@ namespace winrt::TerminalApp::implementation
         // observe agent_status arriving in the same race window. Also
         // future-proofs the bar against ever displaying agent name.
         StateChanged.raise(*this, nullptr);
+    }
+
+    void AgentPaneContent::UpdateYoloStatus(const winrt::hstring& state, const winrt::hstring& detail)
+    {
+        const auto status = AgentYoloStatusText();
+        std::wstring text;
+        if (state == L"pending_on")
+        {
+            text = L"◌ Yolo · ";
+            text += RS_(L"FreOverlay_ToggleOn");
+            text += L"…";
+        }
+        else if (state == L"pending_off")
+        {
+            text = L"◌ Yolo · ";
+            text += RS_(L"FreOverlay_ToggleOff");
+            text += L"…";
+        }
+        else if (state == L"pending_config")
+        {
+            text = L"◌ Yolo…";
+        }
+        else if (state == L"active")
+        {
+            text = L"● Yolo · ";
+            text += RS_(L"FreOverlay_ToggleOn");
+        }
+        else if (state == L"off")
+        {
+            text = L"○ Yolo · ";
+            text += RS_(L"FreOverlay_ToggleOff");
+        }
+        else if (state == L"unavailable")
+        {
+            text = L"⚠ Yolo";
+        }
+        else if (state == L"unknown")
+        {
+            text = L"? Yolo";
+        }
+
+        const auto badge = winrt::hstring{ text };
+        status.Text(badge);
+        status.Visibility(text.empty() ? Visibility::Collapsed : Visibility::Visible);
+        auto accessibleName = text;
+        if (!detail.empty())
+        {
+            accessibleName += L": ";
+            accessibleName += detail;
+        }
+        AutomationProperties::SetName(status, winrt::hstring{ accessibleName });
+        AutomationProperties::SetHelpText(status, detail);
+        if (detail.empty())
+        {
+            ToolTipService::SetToolTip(status, nullptr);
+        }
+        else
+        {
+            ToolTipService::SetToolTip(status, box_value(detail));
+        }
     }
 
     // Swap the bar between two modes. Both keep the agent logo and the
