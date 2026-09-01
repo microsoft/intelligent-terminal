@@ -106,6 +106,11 @@ private:
 
     // Protocol server for AI CLI integration
     std::wstring _comClsid; // Stringified CLSID for WT_COM_CLSID env var
+    // A named event whose mere existence means "the Terminal that owns this
+    // pane is still running". Its name goes to panes as WT_COM_HOST so that
+    // clients can tell a live host from one that a COM activation would
+    // resurrect. See _initializeProtocolServer().
+    wil::unique_handle _comHostLiveness;
     void _initializeProtocolServer();
     std::vector<winrt::Microsoft::Terminal::Settings::Model::GlobalSummonArgs> _hotkeys;
     NOTIFYICONDATA _notificationIcon{};

@@ -5,6 +5,14 @@ running Terminal via the `WT_COM_CLSID` environment variable, calls
 `CoCreateInstance(CLSCTX_LOCAL_SERVER)` to obtain `IProtocolServer`, and
 exposes a tmux-style command surface over its IDL methods.
 
+Before activating, it opens the event named by `WT_COM_HOST` and gives up if
+that event is gone. The class is registered as a packaged ExeServer, so
+activation does not fail once the owning Terminal has exited — DCOM launches a
+windowless `WindowsTerminal.exe -Embedding` that has no panes to act on and no
+window to close. `WT_COM_HOST` is a liveness handle, not a credential; when it
+is absent (an older Terminal, or an environment copied by hand) `wtcli`
+activates as before.
+
 - Source: `src/tools/wtcli/main.cpp`
 - IDL: `src/cascadia/TerminalProtocol/TerminalProtocol.idl`
 - Primary in-tree caller: `tools/wta/src/shell/wt_channel/cli_channel.rs` (and

@@ -546,22 +546,38 @@ fn run_pipe_id(json_mode: bool) -> Result<()> {
 fn run_set_env(shell_type: &str) -> Result<()> {
     let clsid = std::env::var("WT_COM_CLSID")
         .map_err(|_| anyhow::anyhow!("{}", t!("error.wt_com_clsid_not_set")))?;
+    // Liveness handle for the Terminal that owns this pane. Copied alongside the
+    // CLSID so the target shell keeps refusing to activate a Terminal that has
+    // already exited instead of having DCOM start a windowless one.
+    let host = std::env::var("WT_COM_HOST").ok();
 
     match shell_type {
         "bash" | "sh" | "zsh" => {
             println!("export WT_COM_CLSID='{}'", clsid);
+            if let Some(host) = &host {
+                println!("export WT_COM_HOST='{}'", host);
+            }
             eprintln!("# Run: eval \"$(wta set-env)\"");
         }
         "powershell" | "pwsh" | "ps" => {
             println!("$env:WT_COM_CLSID = '{}'", clsid);
+            if let Some(host) = &host {
+                println!("$env:WT_COM_HOST = '{}'", host);
+            }
             eprintln!("# Run: wta set-env -s powershell | Invoke-Expression");
         }
         "cmd" => {
             println!("set WT_COM_CLSID={}", clsid);
+            if let Some(host) = &host {
+                println!("set WT_COM_HOST={}", host);
+            }
             eprintln!("REM Run in a for /f loop or copy-paste");
         }
         "fish" => {
             println!("set -gx WT_COM_CLSID '{}'", clsid);
+            if let Some(host) = &host {
+                println!("set -gx WT_COM_HOST '{}'", host);
+            }
             eprintln!("# Run: wta set-env -s fish | source");
         }
         other => bail!("{}", t!("error.unknown_shell_type", shell = other)),

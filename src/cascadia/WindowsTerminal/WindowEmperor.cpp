@@ -46,6 +46,17 @@ static constexpr ULONG_PTR TERMINAL_HANDOFF_MAGIC = 0x4c414e494d524554; // 'TERM
 static constexpr ULONG_PTR TERMINAL_HANDOFF_MAGIC = 0x4d524554; // 'TERM'
 #endif
 
+// Reaps a COM activation that never asked for a window. Both of our classes
+// (the defterm handoff and TerminalProtocolComServer) are registered as one
+// packaged ExeServer, so any CoCreateInstance that arrives while no server is
+// running makes DCOM start `WindowsTerminal.exe -Embedding`. A handoff turns
+// into a window within moments; a protocol activation that raced our exit never
+// will, and without this it would sit in Task Manager as a windowless process,
+// holding the single-instance mutex and the global hotkeys, until the user
+// found and killed it. The delay only has to outlast an in-flight handoff.
+static constexpr UINT_PTR COM_ACTIVATION_REAP_TIMER_ID = 1;
+static constexpr UINT COM_ACTIVATION_REAP_TIMEOUT_MS = 30 * 1000;
+
 extern "C" IMAGE_DOS_HEADER __ImageBase;
 
 // A convenience function around CommandLineToArgv.
@@ -669,8 +680,12 @@ void WindowEmperor::HandleCommandlineArgs(int nCmdShow)
             // Stay headless and leave the saved layout alone; whichever
             // activation actually wants a window restores it.
             //
-            // TODO: Here we could start a timer and exit after, say, 5 seconds
-            // if no windows are created. But that's a minor concern.
+            // But don't stay headless forever: a protocol activation that
+            // raced the exit of the Terminal that owned the calling pane can
+            // never produce a window, and the process it started would outlive
+            // every window the user could see. Give a real activation time to
+            // ask for its window, then reap ourselves if none did.
+            SetTimer(_window.get(), COM_ACTIVATION_REAP_TIMER_ID, COM_ACTIVATION_REAP_TIMEOUT_MS, nullptr);
         }
         else
         {
@@ -1360,6 +1375,28 @@ LRESULT WindowEmperor::_messageHandler(HWND window, UINT const message, WPARAM c
         case WM_HOTKEY:
             _hotkeyPressed(static_cast<long>(wParam));
             return 0;
+        case WM_TIMER:
+            if (wParam == COM_ACTIVATION_REAP_TIMER_ID)
+            {
+                KillTimer(window, COM_ACTIVATION_REAP_TIMER_ID);
+                // _deferPersistedLayoutRestore is cleared by the first
+                // CreateNewWindow(), so it still being set means no activation
+                // ever wanted a window and we are the useless leftover of one
+                // that raced a Terminal exit. It also keeps
+                // _finalizeSessionPersistence() off the saved layout, so
+                // quitting here cannot overwrite the session we never restored.
+                //
+                // A window that opened and closed again in the meantime has
+                // already been through _postQuitMessageIfNeeded(), and
+                // AllowHeadless users opted into a windowless process — both
+                // are respected by deferring to that same helper.
+                if (_deferPersistedLayoutRestore)
+                {
+                    _postQuitMessageIfNeeded();
+                }
+                return 0;
+            }
+            break;
         case WM_QUERYENDSESSION:
             // For WM_QUERYENDSESSION and WM_ENDSESSION, refer to:
             // https://docs.microsoft.com/en-us/windows/win32/rstmgr/guidelines-for-applications
@@ -1874,6 +1911,28 @@ void WindowEmperor::_initializeProtocolServer()
         {
             _comClsid = clsidStr.get();
             SetEnvironmentVariableW(L"WT_COM_CLSID", _comClsid.c_str());
+
+            // The CLSID alone cannot tell a caller whether we are still here:
+            // it is registered as a packaged ExeServer, so activating it after
+            // we exit doesn't fail, it makes DCOM launch a fresh, windowless
+            // `WindowsTerminal.exe -Embedding` that has no panes to act on and
+            // no window to show. Panes get this event name alongside the CLSID
+            // so a client can check first and give up instead of resurrecting
+            // a Terminal the user just closed.
+            //
+            // The name carries our PID, so it identifies *this* host rather
+            // than "some Terminal": the object dies with us, and a PID reused
+            // by anything that isn't a Terminal never recreates it.
+            auto livenessName = fmt::format(FMT_COMPILE(L"Local\\IntelligentTerminal.ProtocolHost.{}.{}"), _comClsid, GetCurrentProcessId());
+            _comHostLiveness.reset(CreateEventW(nullptr, TRUE, FALSE, livenessName.c_str()));
+            if (_comHostLiveness)
+            {
+                SetEnvironmentVariableW(L"WT_COM_HOST", livenessName.c_str());
+            }
+            else
+            {
+                LOG_LAST_ERROR();
+            }
         }
     }
 
