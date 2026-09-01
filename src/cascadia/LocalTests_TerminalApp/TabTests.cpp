@@ -2257,6 +2257,9 @@ namespace TerminalAppLocalTests
             VERIFY_IS_TRUE(impl->GetAgentModel() == L"model-a");
             const auto yoloStatus = impl->GetRoot().FindName(L"AgentYoloStatusText").try_as<TextBlock>();
             VERIFY_IS_NOT_NULL(yoloStatus);
+            VERIFY_IS_TRUE(
+                winrt::Windows::UI::Xaml::Automation::AutomationProperties::GetAutomationId(yoloStatus) ==
+                L"AgentYoloStatusText");
             std::wstring expectedActive{ L"● Yolo · " };
             expectedActive += RS_(L"FreOverlay_ToggleOn");
             VERIFY_IS_TRUE(yoloStatus.Text() == expectedActive);

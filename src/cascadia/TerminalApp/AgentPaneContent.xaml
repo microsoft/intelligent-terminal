@@ -117,6 +117,7 @@
                         names from hiding a security-relevant unavailable state.  -->
                     <TextBlock x:Name="AgentYoloStatusText"
                            Grid.Column="1"
+                               AutomationProperties.AutomationId="AgentYoloStatusText"
                            VerticalAlignment="Center"
                            FontFamily="Segoe UI Variable, Segoe UI"
                            FontSize="12"
