@@ -331,6 +331,19 @@ bool Pane::_Resize(const ResizeDirection& direction)
         return false;
     }
 
+    // `HidePane` collapsed our grid to a single track and handed it to the
+    // visible child, so there is no separator on screen for this to move.
+    // Report it unhandled rather than move one anyway: `_desiredSplitPosition`
+    // has nothing meaningful to be clamped against while a child is hidden, so
+    // it would drift by 5% per keypress and come back as a corrupt ratio when
+    // the pane is restored — and `_CreateRowColDefinitions` below would
+    // re-split the collapsed grid, stranding the visible child in the fraction
+    // the hidden one used to leave it.
+    if (_firstChild->_hidden || _secondChild->_hidden)
+    {
+        return false;
+    }
+
     auto amount = .05f;
     if (direction == ResizeDirection::Right || direction == ResizeDirection::Down)
     {
@@ -3418,13 +3431,16 @@ Pane::LayoutSizeNode Pane::_CreateMinSizeTree(const bool widthOrHeight) const
 // - split position (value in range <0.0, 1.0>)
 float Pane::_ClampSplitPosition(const bool widthOrHeight, const float requestedValue, const float totalSize) const
 {
-    // With one child hidden there is no visible separator to clamp: the
-    // visible child owns the whole pane. Clamping anyway would build the
-    // bounds out of the hidden child's (possibly infinite) minimum and hand
-    // `std::clamp` a low > high pair.
+    // With one child hidden there is no visible separator to clamp against:
+    // the visible child owns the whole pane. Hold the position rather than
+    // pass the request through — the bounds would be built out of a minimum
+    // the hidden child no longer occupies, and an unclamped value would drift
+    // `_desiredSplitPosition` out of [0, 1] and corrupt the ratio the pane is
+    // restored with. `_Resize` already declines to move a separator that
+    // isn't there; this keeps any other caller from doing so either.
     if (_firstChild->_hidden || _secondChild->_hidden)
     {
-        return requestedValue;
+        return _desiredSplitPosition;
     }
 
     const auto firstMinSize = _firstChild->_GetMinSize();
