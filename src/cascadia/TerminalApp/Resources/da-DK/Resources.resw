@@ -181,9 +181,8 @@
     <value>Sessionsstyring</value>
   </data>
   <data name="FreOverlay_SessionDescription.Text" xml:space="preserve">
-    <value>Giv Intelligent Terminal tilladelse til at spore status for dine kørende eller aktive agenter.</value>
-    <comment>{Locked="Intelligent Terminal"} "Intelligent Terminal" is the product name.
-In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+    <value>Spor dine kørende og tidligere agentsessioner.</value>
+    <comment>Description for session tracking in the first-run wizard. In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_SessionHint.Text" xml:space="preserve">
     <value>Aktivering af dette vil installere integrationshooks til at spore sessioner på tværs af dine agenter.</value>
@@ -345,7 +344,7 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
     <value>Automatisk fejlregistrering</value>
   </data>
   <data name="FreOverlay_AutoDetectDescription.Text" xml:space="preserve">
-    <value>Giv Intelligent Terminal tilladelse til at få adgang til din shell og automatisk registrere fejl.</value>
+    <value>Registrer fejl automatisk.</value>
   </data>
 <data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
     <value>⚠ Installation af shell-integration mislykkedes. Fejlregistrering er blevet deaktiveret. Du kan genaktivere den og prøve igen, eller gemme for at fortsætte uden den.</value>

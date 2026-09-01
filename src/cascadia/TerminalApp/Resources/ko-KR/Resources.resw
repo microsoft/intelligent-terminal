@@ -1111,8 +1111,8 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
     <value>세션 관리</value>
   </data>
   <data name="FreOverlay_SessionDescription.Text" xml:space="preserve">
-    <value>지능형 터미널이 실행 중이거나 활성 상태인 에이전트의 상태를 추적할 수 있도록 허용합니다.</value>
-    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name. In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+    <value>실행 중인 에이전트 세션과 이전 에이전트 세션을 추적합니다.</value>
+    <comment>Description for session tracking in the first-run wizard. In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_SessionHint.Text" xml:space="preserve">
     <value>이를 활성화하면 에이전트 전체에서 세션을 추적하기 위한 통합 hooks가 설치됩니다.</value>
@@ -1297,7 +1297,7 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
     <value>자동 오류 검색</value>
   </data>
   <data name="FreOverlay_AutoDetectDescription.Text" xml:space="preserve">
-    <value>Intelligent Terminal이 셸에 액세스하여 오류를 자동으로 검색하도록 허용합니다.</value>
+    <value>오류를 자동으로 감지합니다.</value>
   </data>
   <data name="FreOverlay_AutoDetectShellIntegrationHintPrefix" xml:space="preserve">
     <value>이를 활성화하면 명령 실패를 감지하기 위한 셸 통합이 설치됩니다. </value>

@@ -68,8 +68,8 @@
     <value>Ġestjoni tas-sessjonijiet</value>
   </data>
   <data name="FreOverlay_SessionDescription.Text" xml:space="preserve">
-    <value>Agħti lill-Terminal Intelliġenti permess biex isegwi l-istatus tal-aġenti tiegħek li qegħdin jaħdmu jew attivi.</value>
-    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
+    <value>Segwi s-sessjonijiet tal-aġent tiegħek li għaddejjin u dawk preċedenti.</value>
+    <comment>Description for session tracking in the first-run wizard. In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_SessionHint.Text" xml:space="preserve">
     <value>L-attivazzjoni ta' dan se tinstalla hooks ta' integrazzjoni biex isegwu s-sessjonijiet madwar l-aġenti tiegħek.</value>
@@ -231,7 +231,7 @@
     <value>Identifikazzjoni awtomatika tal-iżbalji</value>
   </data>
   <data name="FreOverlay_AutoDetectDescription.Text" xml:space="preserve">
-    <value>Agħti permess lil Intelligent Terminal biex jaċċessa l-qoxra tiegħek u jidentifika l-iżbalji awtomatikament.</value>
+    <value>Identifika l-iżbalji awtomatikament.</value>
   </data>
 <data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
     <value>⚠ L-installazzjoni tal-integrazzjoni tal-qoxra falliet. Id-detezzjoni tal-iżbalji ġiet mitfija. Tista' terġa' tixgħelha u terġa' tipprova, jew issejvja biex tkompli mingħajrha.</value>

@@ -2630,7 +2630,7 @@
     <value>Автоматичне виявлення помилок</value>
   </data>
   <data name="AIAgents_AutoErrorDetectionCaptionPrefix" xml:space="preserve">
-    <value>Дозвольте Інтелектуальному Терміналу отримати доступ до оболонки та автоматично виявляти помилки. Доступно в PowerShell, bash і WSL bash. </value>
+    <value>Автоматично виявляйте помилки. Доступно в PowerShell, bash і WSL bash. </value>
   </data>
   <data name="AIAgents_AutoErrorDetectionCaptionLink" xml:space="preserve">
     <value>Переглянути всі підтримувані оболонки</value>
@@ -2639,7 +2639,7 @@
     <value>Автоматична пропозиція виправлень</value>
   </data>
   <data name="AIAgents_AutoErrorSuggestionCaption.Text" xml:space="preserve">
-    <value>Дозвольте Інтелектуальному Терміналу надсилати помилки вашому агенту для автоматичної пропозиції виправлень.</value>
+    <value>Виявляйте помилки й автоматично надсилайте їх агенту для виправлення.</value>
   </data>
   <data name="AIAgents_CustomModels.Header" xml:space="preserve">
     <value>Постачальники BYOK</value>

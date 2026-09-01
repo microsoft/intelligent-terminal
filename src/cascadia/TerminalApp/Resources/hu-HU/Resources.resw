@@ -181,8 +181,8 @@
     <value>Munkamenet-kezelés</value>
   </data>
   <data name="FreOverlay_SessionDescription.Text" xml:space="preserve">
-    <value>Adjon engedélyt az Intelligens Terminál számára a futó vagy aktív ügynökök állapotának nyomon követéséhez.</value>
-    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
+    <value>Kövesse nyomon a futó és korábbi ügynöki munkameneteit.</value>
+    <comment>Description for session tracking in the first-run wizard. In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_SessionHint.Text" xml:space="preserve">
     <value>Ennek engedélyezése integrációs hooks telepítését végzi a munkamenetek ügynökök közötti nyomon követéséhez.</value>
@@ -345,7 +345,7 @@
     <value>Automatikus hibafelismerés</value>
   </data>
   <data name="FreOverlay_AutoDetectDescription.Text" xml:space="preserve">
-    <value>Engedélyezze az Intelligent Terminal számára, hogy hozzáférjen a parancshéjhoz, és automatikusan felismerje a hibákat.</value>
+    <value>Automatikusan észlelje a hibákat.</value>
   </data>
 <data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
     <value>⚠ A shell-integráció telepítése sikertelen. A hibaészlelés ki lett kapcsolva. Újra engedélyezheti, és megpróbálhatja újra, vagy menthet a folytatáshoz nélküle.</value>

@@ -68,8 +68,8 @@
     <value>ئوتتۇرا باشقۇرۇش</value>
   </data>
   <data name="FreOverlay_SessionDescription.Text" xml:space="preserve">
-    <value>ئەقلىي تېرمىنال غا ئىشلىۋاتقان ياكى ئاكتىۋ ۋەكىللىرىڭىزنىڭ ھالىتىنى بايقاش ئىزنى بېرىڭ.</value>
-    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
+    <value>ئىجرا بولۇۋاتقان ۋە ئىلگىرىكى ۋاكالەتچى سۆزلىشىشلىرىڭىزنى ئىزلاڭ.</value>
+    <comment>Description for session tracking in the first-run wizard. In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_SessionHint.Text" xml:space="preserve">
     <value>بۇنى ئاچسىڭىز، ۋەكىللىرىڭىز ئارىسىدىكى ئولتۇرۇشلارنى ئىز قوغلاش ئۈچۈن بىرلەشتۈرۈش hooks ئورنىتىلىدۇ.</value>
@@ -231,7 +231,7 @@
     <value>ئاپتوماتىك خاتالىق بايقاش</value>
   </data>
   <data name="FreOverlay_AutoDetectDescription.Text" xml:space="preserve">
-    <value>Intelligent Terminal غا شېلىڭىزنى زىيارەت قىلىش ۋە خاتالىقلارنى ئاپتوماتىك بايقاشقا رۇخسەت بېرىڭ.</value>
+    <value>خاتالىقلارنى ئاپتوماتىك بايقاڭ.</value>
   </data>
 <data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
     <value>⚠ شېل بىرلەشتۈرۈشنى ئورنىتىش مەغلۇب بولدى. خاتالىق بايقاش تاقالدى. ئۇنى قايتا ئېچىپ قايتا سىنىيالايسىز، ياكى ئۇنىڭسىز داۋاملاشتۇرۇش ئۈچۈن ساقلىيالايسىز.</value>

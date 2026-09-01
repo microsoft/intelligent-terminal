@@ -1083,8 +1083,8 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
     <value>工作階段管理</value>
   </data>
   <data name="FreOverlay_SessionDescription.Text" xml:space="preserve">
-    <value>授予智能終端追蹤執行中或作用中智能體狀態的權限。</value>
-    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name. In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+    <value>追蹤執行中與過去的智能體工作階段。</value>
+    <comment>Description for session tracking in the first-run wizard. In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_SessionHint.Text" xml:space="preserve">
     <value>啟用此功能將安裝整合 hooks，以追蹤跨智能體的工作階段。</value>
@@ -1265,7 +1265,7 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
     <value>自動錯誤偵測</value>
   </data>
   <data name="FreOverlay_AutoDetectDescription.Text" xml:space="preserve">
-    <value>允許 Intelligent Terminal 存取您的 shell 並自動偵測錯誤。</value>
+    <value>自動偵測錯誤。</value>
   </data>
   <data name="FreOverlay_AutoDetectShellIntegrationHintPrefix" xml:space="preserve">
     <value>啟用此功能將安裝 Shell 整合，以偵測命令失敗。 </value>

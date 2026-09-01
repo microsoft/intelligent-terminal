@@ -2926,7 +2926,7 @@
     <value>Rilevamento automatico degli errori</value>
   </data>
   <data name="AIAgents_AutoErrorDetectionCaptionPrefix" xml:space="preserve">
-    <value>Consenti a Terminale Intelligente di accedere alla shell e rilevare automaticamente gli errori. Disponibile in PowerShell, bash e WSL bash. </value>
+    <value>Rileva automaticamente gli errori. Disponibile in PowerShell, bash e WSL bash. </value>
   </data>
   <data name="AIAgents_AutoErrorDetectionCaptionLink" xml:space="preserve">
     <value>Visualizza tutte le shell supportate</value>
@@ -2935,7 +2935,7 @@
     <value>Suggerimento automatico degli errori</value>
   </data>
   <data name="AIAgents_AutoErrorSuggestionCaption.Text" xml:space="preserve">
-    <value>Consenti a Terminale Intelligente di inviare gli errori all'agente per suggerire automaticamente le correzioni.</value>
+    <value>Rileva gli errori e inviali automaticamente all'agente per correggerli.</value>
   </data>
   <data name="AIAgents_CustomModels.Header" xml:space="preserve">
     <value>Provider BYOK</value>

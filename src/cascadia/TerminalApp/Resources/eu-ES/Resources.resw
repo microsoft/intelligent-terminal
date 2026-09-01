@@ -68,8 +68,8 @@
     <value>Saio-kudeaketa</value>
   </data>
   <data name="FreOverlay_SessionDescription.Text" xml:space="preserve">
-    <value>Eman Terminal Adimenduna-i zure agente aktiboen egoera jarraitzeko baimena.</value>
-    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name. In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+    <value>Egin martxan dauden eta iraganeko agente-saioen jarraipena.</value>
+    <comment>Description for session tracking in the first-run wizard. In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_SessionHint.Text" xml:space="preserve">
     <value>Hau gaitzeak integrazio-hooks instalatuko ditu zure agente guztietan saioen jarraipena egiteko.</value>
@@ -163,7 +163,7 @@
     <value>Erroreen detekzio automatikoa</value>
   </data>
   <data name="FreOverlay_AutoDetectDescription.Text" xml:space="preserve">
-    <value>Eman baimena Intelligent Terminal-i zure shell-era sartzeko eta erroreak automatikoki detektatzeko.</value>
+    <value>Detektatu erroreak automatikoki.</value>
   </data>
 <data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
     <value>⚠ Shell integrazioa instalatzeak huts egin du. Erroreen detekzioa desaktibatu da. Berriro aktibatu eta berriro saiatu dezakezu, edo gorde hori gabe jarraitzeko.</value>

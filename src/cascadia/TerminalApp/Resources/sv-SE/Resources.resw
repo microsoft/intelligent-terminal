@@ -181,9 +181,8 @@
     <value>Sessionshantering</value>
   </data>
   <data name="FreOverlay_SessionDescription.Text" xml:space="preserve">
-    <value>Ge Intelligent Terminal behörighet att spåra statusen för dina pågående eller aktiva agenter.</value>
-    <comment>{Locked="Intelligent Terminal"} "Intelligent Terminal" is the product name.
-In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+    <value>Spåra dina pågående och tidigare agentsessioner.</value>
+    <comment>Description for session tracking in the first-run wizard. In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_SessionHint.Text" xml:space="preserve">
     <value>Om du aktiverar detta installeras integrations-hooks för att spåra sessioner mellan dina agenter.</value>
@@ -345,7 +344,7 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
     <value>Automatisk feldetektering</value>
   </data>
   <data name="FreOverlay_AutoDetectDescription.Text" xml:space="preserve">
-    <value>Ge Intelligent Terminal behörighet att komma åt skalet och automatiskt identifiera fel.</value>
+    <value>Identifiera fel automatiskt.</value>
   </data>
 <data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
     <value>⚠ Det gick inte att installera skalintegrering. Feldetektering har inaktiverats. Du kan aktivera det igen och försöka på nytt, eller spara för att fortsätta utan det.</value>

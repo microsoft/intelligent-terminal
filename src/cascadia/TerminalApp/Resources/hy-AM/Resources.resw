@@ -68,8 +68,8 @@
     <value>Նիստերի կառավարում</value>
   </data>
   <data name="FreOverlay_SessionDescription.Text" xml:space="preserve">
-    <value>Թույլատրեք Խելացի տերմինալ-ին հետևել ձեր գործող կամ ակտիվ գործակալների կարգավիճակը:</value>
-    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
+    <value>Հետևեք ձեր ընթացիկ և նախորդ ագենտի նիստերին։</value>
+    <comment>Description for session tracking in the first-run wizard. In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_SessionHint.Text" xml:space="preserve">
     <value>Սա միացնելը կտեղադրի ինտեգրացիոն hooks՝ ձեր գործակալներում նիստերին հետևելու համար:</value>
@@ -231,7 +231,7 @@
     <value>Սխալների ավտոմատ հայտնաբերում</value>
   </data>
   <data name="FreOverlay_AutoDetectDescription.Text" xml:space="preserve">
-    <value>Թույլ տվեք Intelligent Terminal-ին մուտք գործել ձեր թաղանթ և ավտոմատ կերպով հայտնաբերել սխալները։</value>
+    <value>Ավտոմատ հայտնաբերեք սխալները։</value>
   </data>
 <data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
     <value>⚠ Shell-ի ինտեգրացիայի տեղադրումը ձախողվեց։ Սխալների հայտնաբերումը անջատվել է։ Կարող եք նորից միացնել և նորից փորձել, կամ պահել առանց դրա շարունակելու համար։</value>

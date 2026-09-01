@@ -181,8 +181,8 @@
     <value>அமர்வு மேலாண்மை</value>
   </data>
   <data name="FreOverlay_SessionDescription.Text" xml:space="preserve">
-    <value>அறிவாண் முனையம்-க்கு உங்கள் இயங்கும் அல்லது செயலில் உள்ள முகவர்களின் நிலையைக் கண்காணிக்க அனுமதி வழங்கவும்.</value>
-    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name. In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+    <value>உங்கள் இயங்கும் மற்றும் கடந்த முகவர் அமர்வுகளைக் கண்காணிக்கவும்.</value>
+    <comment>Description for session tracking in the first-run wizard. In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_SessionHint.Text" xml:space="preserve">
     <value>இதை இயக்குவது உங்கள் முகவர்களெங்கும் அமர்வுகளைக் கண்காணிக்க ஒருங்கிணைப்பு hooks-ஐ நிறுவும்.</value>
@@ -356,7 +356,7 @@
     <value>தானியங்கி பிழை கண்டறிதல்</value>
   </data>
   <data name="FreOverlay_AutoDetectDescription.Text" xml:space="preserve">
-    <value>உங்கள் ஷெல்லை அணுகவும் பிழைகளைத் தானாகவே கண்டறியவும் Intelligent Terminal-ஐ அனுமதிக்கவும்.</value>
+    <value>பிழைகளைத் தானாகக் கண்டறியவும்.</value>
   </data>
   <data name="FreOverlay_ErrorHelpLink" xml:space="preserve">
     <value>இதை கைமுறையாக சரிசெய்வது எப்படி என்பதை அறிக</value>

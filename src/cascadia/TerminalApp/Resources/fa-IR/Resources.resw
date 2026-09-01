@@ -182,8 +182,8 @@
     <value>مدیریت جلسات</value>
   </data>
   <data name="FreOverlay_SessionDescription.Text" xml:space="preserve">
-    <value>به پایانه هوشمند اجازه پیگیری وضعیت عامل‌های در حال اجرا یا فعال شما را بدهید.</value>
-    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
+    <value>نشست‌های در حال اجرا و گذشته عامل خود را پیگیری کنید.</value>
+    <comment>Description for session tracking in the first-run wizard. In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_SessionHint.Text" xml:space="preserve">
     <value>فعال‌سازی این گزینه hooks یکپارچه‌سازی را برای پیگیری جلسات در عامل‌های شما نصب خواهد کرد.</value>
@@ -345,7 +345,7 @@
     <value>تشخیص خودکار خطا</value>
   </data>
   <data name="FreOverlay_AutoDetectDescription.Text" xml:space="preserve">
-    <value>به Intelligent Terminal اجازه دهید به پوسته شما دسترسی پیدا کند و خطاها را به طور خودکار تشخیص دهد.</value>
+    <value>خطاها را به‌طور خودکار تشخیص دهید.</value>
   </data>
 <data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
     <value>⚠ نصب یکپارچه‌سازی پوسته ناموفق بود. تشخیص خطا غیرفعال شده است. می‌توانید آن را دوباره فعال کنید و دوباره تلاش کنید، یا ذخیره کنید تا بدون آن ادامه دهید.</value>

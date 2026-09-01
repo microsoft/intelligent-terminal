@@ -181,8 +181,8 @@
     <value>Управување со сесии</value>
   </data>
   <data name="FreOverlay_SessionDescription.Text" xml:space="preserve">
-    <value>Дајте му на Интелигентен Терминал дозвола за следење на статусот на вашите активни или работни агенти.</value>
-    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
+    <value>Следете ги вашите тековни и претходни сесии на агентот.</value>
+    <comment>Description for session tracking in the first-run wizard. In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_SessionHint.Text" xml:space="preserve">
     <value>Овозможувањето на ова ќе инсталира интеграциски hooks за следење на сесии меѓу вашите агенти.</value>
@@ -345,7 +345,7 @@
     <value>Автоматско откривање грешки</value>
   </data>
   <data name="FreOverlay_AutoDetectDescription.Text" xml:space="preserve">
-    <value>Дозволете му на Intelligent Terminal да пристапи до вашата обвивка и автоматски да открива грешки.</value>
+    <value>Автоматски откривајте грешки.</value>
   </data>
 <data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
     <value>⚠ Не успеа инсталирањето на интеграција на школка. Детекцијата на грешки е исклучена. Можете повторно да ја вклучите и да се обидете повторно, или да зачувате за да продолжите без неа.</value>

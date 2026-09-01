@@ -181,8 +181,8 @@
     <value>Sesiju pārvaldība</value>
   </data>
   <data name="FreOverlay_SessionDescription.Text" xml:space="preserve">
-    <value>Piešķiriet Viedais Terminālis atļauju izsekot jūsu darbojošos vai aktīvo aģentu statusu.</value>
-    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name. In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+    <value>Izsekojiet savas pašreizējās un iepriekšējās aģenta sesijas.</value>
+    <comment>Description for session tracking in the first-run wizard. In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_SessionHint.Text" xml:space="preserve">
     <value>Iespējojot šo funkciju, tiks instalēti integrācijas hooks sesiju izsekošanai starp jūsu aģentiem.</value>
@@ -345,7 +345,7 @@
     <value>Automātiska kļūdu noteikšana</value>
   </data>
   <data name="FreOverlay_AutoDetectDescription.Text" xml:space="preserve">
-    <value>Atļaujiet Intelligent Terminal piekļūt jūsu čaulai un automātiski noteikt kļūdas.</value>
+    <value>Automātiski noteikt kļūdas.</value>
   </data>
 <data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
     <value>⚠ Neizdevās instalēt čaulas integrāciju. Kļūdu noteikšana ir izslēgta. Varat to atkārtoti iespējot un mēģināt vēlreiz vai saglabāt, lai turpinātu bez tās.</value>

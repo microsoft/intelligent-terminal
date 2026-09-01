@@ -182,8 +182,8 @@
     <value>सत्र वेवस्थापन</value>
   </data>
   <data name="FreOverlay_SessionDescription.Text" xml:space="preserve">
-    <value>इंटेलिजंट टर्मिनल क तुमच्या चालू वा सक्रिय एजेंटांची स्थिती मागोवपाक परवानगी द्यात.</value>
-    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name. In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+    <value>तुमचीं चालू आनी आदलीं एजंट सत्रां मागोवात.</value>
+    <comment>Description for session tracking in the first-run wizard. In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_SessionHint.Text" xml:space="preserve">
     <value>हें सक्षम केल्यार तुमच्या एजेंटां मदीं सत्रांचो मागोवो घेवपाक एकत्रीकरण hooks इन्स्टॉल जातले.</value>
@@ -357,7 +357,7 @@
     <value>स्वयंचलित त्रुटी सोद</value>
   </data>
   <data name="FreOverlay_AutoDetectDescription.Text" xml:space="preserve">
-    <value>Intelligent Terminal क तुमच्या शेलांत प्रवेश करपाक आनी त्रुटी आपशीच सोदपाक परवानगी दियात.</value>
+    <value>त्रुटी आपशीच सोदात.</value>
   </data>
   <data name="FreOverlay_ErrorHelpLink" xml:space="preserve">
     <value>हें मेन्युअल रितीन कशें दुरुस्त करचें तें शिका</value>

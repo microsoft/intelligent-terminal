@@ -68,8 +68,8 @@
     <value>Riènrachadh sheiseanan</value>
   </data>
   <data name="FreOverlay_SessionDescription.Text" xml:space="preserve">
-    <value>Thoir cead do Tèirmineal Glic inbhe nan neach-gnìomha a tha a' ruith no beòthail agad a leantainn.</value>
-    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
+    <value>Cum sùil air na seiseanan àidseant agad a tha a’ ruith agus a dh’fhalbh.</value>
+    <comment>Description for session tracking in the first-run wizard. In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_SessionHint.Text" xml:space="preserve">
     <value>Ma chuireas tu seo air thèid hooks co-aonachaidh a stàladh gus seiseanan a leantainn thar nan neach-gnìomha agad.</value>
@@ -231,7 +231,7 @@
     <value>Lorg mhearachdan fèin-obrachail</value>
   </data>
   <data name="FreOverlay_AutoDetectDescription.Text" xml:space="preserve">
-    <value>Thoir cead do Intelligent Terminal cothrom fhaighinn air an t-slige agad agus mearachdan a lorg gu fèin-obrachail.</value>
+    <value>Lorg mearachdan gu fèin-obrachail.</value>
   </data>
 <data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
     <value>⚠ Dh'fhàillig stàladh amalachadh na slige. Chaidh lorg mhearachdan a chur dheth. 'S urrainn dhut a chur air a-rithist agus feuchainn a-rithist, no sàbhail gus leantainn às aonais.</value>

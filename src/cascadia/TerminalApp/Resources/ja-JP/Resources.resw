@@ -1084,8 +1084,8 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
     <value>セッション管理</value>
   </data>
   <data name="FreOverlay_SessionDescription.Text" xml:space="preserve">
-    <value>インテリジェント ターミナルに実行中またはアクティブなエージェントの状態を追跡する権限を付与します。</value>
-    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name. In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+    <value>実行中および過去のエージェント セッションを追跡します。</value>
+    <comment>Description for session tracking in the first-run wizard. In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_SessionHint.Text" xml:space="preserve">
     <value>これを有効にすると、エージェント全体でセッションを追跡するための統合 hooks がインストールされます。</value>
@@ -1266,7 +1266,7 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
     <value>エラーの自動検出</value>
   </data>
   <data name="FreOverlay_AutoDetectDescription.Text" xml:space="preserve">
-    <value>Intelligent Terminal にシェルへのアクセスを許可し、エラーを自動的に検出します。</value>
+    <value>エラーを自動的に検出します。</value>
   </data>
   <data name="FreOverlay_AutoDetectShellIntegrationHintPrefix" xml:space="preserve">
     <value>これを有効にすると、コマンドの失敗を検出するためのシェル統合がインストールされます。 </value>

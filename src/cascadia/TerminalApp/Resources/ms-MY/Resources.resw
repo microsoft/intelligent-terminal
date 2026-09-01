@@ -181,8 +181,8 @@
     <value>Pengurusan sesi</value>
   </data>
   <data name="FreOverlay_SessionDescription.Text" xml:space="preserve">
-    <value>Benarkan Terminal Pintar menjejaki status ejen yang sedang berjalan atau aktif.</value>
-    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name. In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+    <value>Jejaki sesi ejen anda yang sedang berjalan dan terdahulu.</value>
+    <comment>Description for session tracking in the first-run wizard. In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_SessionHint.Text" xml:space="preserve">
     <value>Mendayakan ini akan memasang hooks integrasi untuk menjejaki sesi merentas ejen anda.</value>
@@ -276,7 +276,7 @@
     <value>Pengesanan ralat automatik</value>
   </data>
   <data name="FreOverlay_AutoDetectDescription.Text" xml:space="preserve">
-    <value>Benarkan Intelligent Terminal mengakses shell anda dan mengesan ralat secara automatik.</value>
+    <value>Kesan ralat secara automatik.</value>
   </data>
 <data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
     <value>⚠ Gagal memasang integrasi shell. Pengesanan ralat telah dimatikan. Anda boleh mengaktifkannya semula dan cuba lagi, atau simpan untuk meneruskan tanpanya.</value>

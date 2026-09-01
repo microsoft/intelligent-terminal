@@ -68,8 +68,8 @@
     <value>Rheoli sesiynau</value>
   </data>
   <data name="FreOverlay_SessionDescription.Text" xml:space="preserve">
-    <value>Rhowch ganiatâd i Terfynell Ddeallus olrhain statws eich asiantau sy'n rhedeg neu'n weithredol.</value>
-    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
+    <value>Traciwch eich sesiynau asiant sy'n rhedeg a rhai blaenorol.</value>
+    <comment>Description for session tracking in the first-run wizard. In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_SessionHint.Text" xml:space="preserve">
     <value>Bydd galluogi hyn yn gosod hooks integreiddio i olrhain sesiynau ar draws eich asiantau.</value>
@@ -231,7 +231,7 @@
     <value>Canfod gwallau yn awtomatig</value>
   </data>
   <data name="FreOverlay_AutoDetectDescription.Text" xml:space="preserve">
-    <value>Rhowch ganiatâd i Intelligent Terminal gael mynediad i'ch cragen a chanfod gwallau yn awtomatig.</value>
+    <value>Canfod gwallau yn awtomatig.</value>
   </data>
 <data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
     <value>⚠ Methodd gosod integreiddio plisgyn. Mae canfod gwallau wedi'i ddiffodd. Gallwch ei ail-alluogi a rhoi cynnig arall arni, neu gadw i barhau hebddo.</value>

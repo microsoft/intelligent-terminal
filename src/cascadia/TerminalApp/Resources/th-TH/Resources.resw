@@ -181,8 +181,8 @@
     <value>การจัดการเซสชัน</value>
   </data>
   <data name="FreOverlay_SessionDescription.Text" xml:space="preserve">
-    <value>อนุญาตให้ เทอร์มินัลอัจฉริยะ ติดตามสถานะของเอเจนต์ที่กำลังทำงานหรือใช้งานอยู่</value>
-    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name. In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+    <value>ติดตามเซสชันเอเจนต์ที่กำลังทำงานและเซสชันที่ผ่านมา</value>
+    <comment>Description for session tracking in the first-run wizard. In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_SessionHint.Text" xml:space="preserve">
     <value>การเปิดใช้งานนี้จะติดตั้ง hooks การรวมเพื่อติดตามเซสชันข้ามเอเจนต์ของคุณ</value>
@@ -276,7 +276,7 @@
     <value>การตรวจหาข้อผิดพลาดอัตโนมัติ</value>
   </data>
   <data name="FreOverlay_AutoDetectDescription.Text" xml:space="preserve">
-    <value>อนุญาตให้ Intelligent Terminal เข้าถึงเชลล์ของคุณและตรวจหาข้อผิดพลาดโดยอัตโนมัติ</value>
+    <value>ตรวจหาข้อผิดพลาดโดยอัตโนมัติ</value>
   </data>
 <data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
     <value>⚠ ติดตั้งการรวมเชลล์ล้มเหลว การตรวจจับข้อผิดพลาดถูกปิดใช้งาน คุณสามารถเปิดใช้งานอีกครั้งแล้วลองใหม่ หรือบันทึกเพื่อดำเนินการต่อโดยไม่ใช้</value>

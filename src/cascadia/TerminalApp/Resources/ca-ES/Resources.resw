@@ -68,8 +68,8 @@
     <value>Gestió de sessions</value>
   </data>
   <data name="FreOverlay_SessionDescription.Text" xml:space="preserve">
-    <value>Doneu permís a Terminal Intel·ligent per fer el seguiment de l'estat dels vostres agents en execució o actius.</value>
-    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name. In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+    <value>Fes el seguiment de les sessions d'agent en curs i anteriors.</value>
+    <comment>Description for session tracking in the first-run wizard. In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_SessionHint.Text" xml:space="preserve">
     <value>En activar això s'instal·laran hooks d'integració per fer el seguiment de sessions a tots els agents.</value>
@@ -163,7 +163,7 @@
     <value>Detecció automàtica d'errors</value>
   </data>
   <data name="FreOverlay_AutoDetectDescription.Text" xml:space="preserve">
-    <value>Permet que l'Intelligent Terminal accedeixi a l'intèrpret d'ordres i detecti errors automàticament.</value>
+    <value>Detecta els errors automàticament.</value>
   </data>
 <data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
     <value>⚠ No s'ha pogut instal·lar la integració de l'intèrpret d'ordres. La detecció d'errors s'ha desactivat. Podeu tornar-la a activar i tornar-ho a provar, o desar per continuar sense ella.</value>

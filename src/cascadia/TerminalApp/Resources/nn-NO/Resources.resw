@@ -181,9 +181,8 @@
     <value>Øktadministrasjon</value>
   </data>
   <data name="FreOverlay_SessionDescription.Text" xml:space="preserve">
-    <value>Gje Intelligent Terminal løyve til å spore statusen til dei pågåande eller aktive agentane dine.</value>
-    <comment>{Locked="Intelligent Terminal"} "Intelligent Terminal" is the product name.
-In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+    <value>Spor pågåande og tidlegare agentøkter.</value>
+    <comment>Description for session tracking in the first-run wizard. In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_SessionHint.Text" xml:space="preserve">
     <value>Aktivering av dette vil installere integrasjonshooks for å spore økter på tvers av agentane dine.</value>
@@ -345,7 +344,7 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
     <value>Automatisk feilregistrering</value>
   </data>
   <data name="FreOverlay_AutoDetectDescription.Text" xml:space="preserve">
-    <value>Gi Intelligent Terminal løyve til å få tilgang til skalet og automatisk oppdage feil.</value>
+    <value>Oppdag feil automatisk.</value>
   </data>
 <data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
     <value>⚠ Kunne ikkje installere skalintegrasjon. Feiloppdaging er slått av. Du kan aktivere den på nytt og prøve igjen, eller lagre for å halde fram utan den.</value>

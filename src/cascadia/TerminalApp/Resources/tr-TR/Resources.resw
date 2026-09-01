@@ -181,8 +181,8 @@
     <value>Oturum yönetimi</value>
   </data>
   <data name="FreOverlay_SessionDescription.Text" xml:space="preserve">
-    <value>Akıllı Terminal'in çalışan veya etkin aracılarınızın durumunu izlemesine izin verin.</value>
-    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
+    <value>Çalışan ve geçmiş yapay zeka aracısı oturumlarınızı izleyin.</value>
+    <comment>Description for session tracking in the first-run wizard. In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_SessionHint.Text" xml:space="preserve">
     <value>Bunu etkinleştirmek, aracılarınız genelinde oturumları izlemek için tümleştirme hooks yükleyecektir.</value>
@@ -345,7 +345,7 @@
     <value>Otomatik hata algılama</value>
   </data>
   <data name="FreOverlay_AutoDetectDescription.Text" xml:space="preserve">
-    <value>Intelligent Terminal uygulamasının kabuğunuza erişmesine ve hataları otomatik olarak algılamasına izin verin.</value>
+    <value>Hataları otomatik olarak algılayın.</value>
   </data>
 <data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
     <value>⚠ Kabuk tümleştirmesi yüklenemedi. Hata algılama kapatıldı. Yeniden etkinleştirip tekrar deneyebilir veya bu özellik olmadan devam etmek için kaydedebilirsiniz.</value>

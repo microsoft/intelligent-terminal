@@ -182,8 +182,8 @@
     <value>ניהול הפעלות</value>
   </data>
   <data name="FreOverlay_SessionDescription.Text" xml:space="preserve">
-    <value>תן ל-מסוף חכם הרשאה לעקוב אחר מצב הסוכנים הפועלים או הפעילים שלך.</value>
-    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
+    <value>עקוב אחר הפעלות הסוכן הפועלות כעת והקודמות שלך.</value>
+    <comment>Description for session tracking in the first-run wizard. In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_SessionHint.Text" xml:space="preserve">
     <value>הפעלת אפשרות זו תתקין hooks לאינטגרציה למעקב אחר הפעלות בכל הסוכנים שלך.</value>
@@ -345,7 +345,7 @@
     <value>זיהוי שגיאות אוטומטי</value>
   </data>
   <data name="FreOverlay_AutoDetectDescription.Text" xml:space="preserve">
-    <value>העניק ל-Intelligent Terminal הרשאה לגשת למעטפת שלך ולזהות שגיאות באופן אוטומטי.</value>
+    <value>זהה שגיאות באופן אוטומטי.</value>
   </data>
 <data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
     <value>⚠ התקנת שילוב מעטפת נכשלה. זיהוי שגיאות כובה. באפשרותך להפעיל מחדש ולנסות שוב, או לשמור כדי להמשיך בלעדיו.</value>

@@ -177,8 +177,8 @@
     <value>Sessiebeheer</value>
   </data>
   <data name="FreOverlay_SessionDescription.Text" xml:space="preserve">
-    <value>Geef Intelligente Terminal toestemming om de status van uw actieve of lopende agents bij te houden.</value>
-    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
+    <value>Houd uw lopende en eerdere agentsessies bij.</value>
+    <comment>Description for session tracking in the first-run wizard. In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_SessionHint.Text" xml:space="preserve">
     <value>Als u dit inschakelt, worden integratiehooks geïnstalleerd om sessies bij te houden voor al uw agents.</value>
@@ -339,7 +339,7 @@
     <value>Automatische foutdetectie</value>
   </data>
   <data name="FreOverlay_AutoDetectDescription.Text" xml:space="preserve">
-    <value>Geef Intelligent Terminal toestemming om toegang te krijgen tot uw shell en automatisch fouten te detecteren.</value>
+    <value>Detecteer fouten automatisch.</value>
   </data>
 <data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
     <value>⚠ Het installeren van shellintegratie is mislukt. Foutdetectie is uitgeschakeld. U kunt het opnieuw inschakelen en het opnieuw proberen, of opslaan om verder te gaan zonder.</value>

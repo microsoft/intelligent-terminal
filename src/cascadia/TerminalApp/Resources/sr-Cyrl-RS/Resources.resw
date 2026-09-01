@@ -1062,8 +1062,8 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
     <value>Управљање сесијама</value>
   </data>
   <data name="FreOverlay_SessionDescription.Text" xml:space="preserve">
-    <value>Дајте Интелигентни Терминал дозволу да прати стање ваших покренутих или активних агената.</value>
-    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
+    <value>Пратите своје текуће и претходне сесије агента.</value>
+    <comment>Description for session tracking in the first-run wizard. In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_SessionHint.Text" xml:space="preserve">
     <value>Омогућавање овога ће инсталирати интеграционе hooks за праћење сесија у свим вашим агентима.</value>
@@ -1272,7 +1272,7 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
     <value>Аутоматско откривање грешака</value>
   </data>
   <data name="FreOverlay_AutoDetectDescription.Text" xml:space="preserve">
-    <value>Дозволите да Intelligent Terminal приступи вашој командној линији и аутоматски открива грешке.</value>
+    <value>Аутоматски откривајте грешке.</value>
   </data>
   <data name="FreOverlay_AutoDetectShellIntegrationHintPrefix" xml:space="preserve">
     <value>Омогућавање овога ће инсталирати интеграцију shell-а за откривање неуспеха команди. </value>

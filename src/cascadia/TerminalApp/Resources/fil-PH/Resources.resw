@@ -181,8 +181,8 @@
     <value>Pamamahala ng session</value>
   </data>
   <data name="FreOverlay_SessionDescription.Text" xml:space="preserve">
-    <value>Payagan ang Matalinong Terminal na subaybayan ang status ng iyong mga tumatakbo o aktibong agent.</value>
-    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name. In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+    <value>Subaybayan ang iyong mga tumatakbo at nakaraang session ng ahente.</value>
+    <comment>Description for session tracking in the first-run wizard. In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_SessionHint.Text" xml:space="preserve">
     <value>Ang pag-enable nito ay mag-i-install ng mga integration hooks para subaybayan ang mga session sa iyong mga agent.</value>
@@ -276,7 +276,7 @@
     <value>Awtomatikong pagtukoy ng error</value>
   </data>
   <data name="FreOverlay_AutoDetectDescription.Text" xml:space="preserve">
-    <value>Bigyan ang Intelligent Terminal ng pahintulot na i-access ang iyong shell at awtomatikong tukuyin ang mga error.</value>
+    <value>Awtomatikong tukuyin ang mga error.</value>
   </data>
 <data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
     <value>⚠ Nabigong i-install ang shell integration. Na-off ang error detection. Maaari mo itong i-enable ulit at subukang muli, o i-save para magpatuloy nang wala ito.</value>

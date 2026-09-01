@@ -181,8 +181,8 @@
     <value>सत्र प्रबंधन</value>
   </data>
   <data name="FreOverlay_SessionDescription.Text" xml:space="preserve">
-    <value>इंटेलिजेंट टर्मिनल को आपके चल रहे या सक्रिय एजेंटों की स्थिति ट्रैक करने की अनुमति दें।</value>
-    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name. In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+    <value>अपने चल रहे और पिछले एजेंट सत्रों को ट्रैक करें।</value>
+    <comment>Description for session tracking in the first-run wizard. In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_SessionHint.Text" xml:space="preserve">
     <value>इसे सक्षम करने से आपके एजेंटों में सत्रों को ट्रैक करने के लिए एकीकरण hooks इंस्टॉल होंगे।</value>
@@ -356,7 +356,7 @@
     <value>स्वचालित त्रुटि पहचान</value>
   </data>
   <data name="FreOverlay_AutoDetectDescription.Text" xml:space="preserve">
-    <value>Intelligent Terminal को अपने शेल तक पहुंचने और स्वचालित रूप से त्रुटियों का पता लगाने की अनुमति दें।</value>
+    <value>त्रुटियों का स्वचालित रूप से पता लगाएँ।</value>
   </data>
   <data name="FreOverlay_ErrorHelpLink" xml:space="preserve">
     <value>मैन्युअल रूप से इसे ठीक करना सीखें</value>

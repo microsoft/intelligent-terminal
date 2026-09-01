@@ -1077,8 +1077,8 @@
     <value>Gestion des sessions</value>
   </data>
   <data name="FreOverlay_SessionDescription.Text" xml:space="preserve">
-    <value>Autorisez Terminal Intelligent à suivre l'état de vos agents en cours d'exécution ou actifs.</value>
-    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
+    <value>Suivez vos sessions d’agent en cours et passées.</value>
+    <comment>Description for session tracking in the first-run wizard. In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_SessionHint.Text" xml:space="preserve">
     <value>L'activation de cette option installera des hooks d'intégration pour suivre les sessions sur vos agents.</value>
@@ -1258,7 +1258,7 @@
     <value>Détection automatique des erreurs</value>
   </data>
   <data name="FreOverlay_AutoDetectDescription.Text" xml:space="preserve">
-    <value>Autorisez Intelligent Terminal à accéder à votre shell et à détecter automatiquement les erreurs.</value>
+    <value>Détectez automatiquement les erreurs.</value>
   </data>
   <data name="FreOverlay_AutoDetectShellIntegrationHintPrefix" xml:space="preserve">
     <value>L'activation de cette option installera l'intégration shell pour détecter les échecs de commande. </value>

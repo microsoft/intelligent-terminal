@@ -1105,8 +1105,8 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
     <value>Управление сеансами</value>
   </data>
   <data name="FreOverlay_SessionDescription.Text" xml:space="preserve">
-    <value>Разрешите Интеллектуальный Терминал отслеживать состояние ваших запущенных или активных агентов.</value>
-    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
+    <value>Отслеживайте текущие и прошлые сеансы агента.</value>
+    <comment>Description for session tracking in the first-run wizard. In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_SessionHint.Text" xml:space="preserve">
     <value>Включение этой функции установит интеграционные hooks для отслеживания сеансов во всех ваших агентах.</value>
@@ -1292,7 +1292,7 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
     <value>Автоматическое обнаружение ошибок</value>
   </data>
   <data name="FreOverlay_AutoDetectDescription.Text" xml:space="preserve">
-    <value>Разрешите Intelligent Terminal доступ к оболочке и автоматическое обнаружение ошибок.</value>
+    <value>Автоматически обнаруживайте ошибки.</value>
   </data>
   <data name="FreOverlay_AutoDetectShellIntegrationHintPrefix" xml:space="preserve">
     <value>Включение этой функции установит интеграцию оболочки для обнаружения сбоев команд. </value>

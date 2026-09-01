@@ -68,8 +68,8 @@
     <value>Sessiebestuur</value>
   </data>
   <data name="FreOverlay_SessionDescription.Text" xml:space="preserve">
-    <value>Gee Intelligente Terminaal toestemming om die status van jou lopende of aktiewe agente na te spoor.</value>
-    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
+    <value>Volg jou lopende en vorige agentsessies.</value>
+    <comment>Description for session tracking in the first-run wizard. In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_SessionHint.Text" xml:space="preserve">
     <value>Deur dit te aktiveer, sal integrasie-hooks geïnstalleer word om sessies oor jou agente na te spoor.</value>
@@ -231,7 +231,7 @@
     <value>Outomatiese foutopsporing</value>
   </data>
   <data name="FreOverlay_AutoDetectDescription.Text" xml:space="preserve">
-    <value>Gee Intelligent Terminal toestemming om toegang tot jou dop te verkry en foute outomaties op te spoor.</value>
+    <value>Bespeur foute outomaties.</value>
   </data>
 <data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
     <value>⚠ Kon nie dop-integrasie installeer nie. Foutopsporing is afgeskakel. Jy kan dit weer aktiveer en weer probeer, of stoor om sonder dit voort te gaan.</value>

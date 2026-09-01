@@ -2984,7 +2984,7 @@
     <value>Аутоматско откривање грешака</value>
   </data>
   <data name="AIAgents_AutoErrorDetectionCaptionPrefix" xml:space="preserve">
-    <value>Дозволите да Интелигентни Терминал приступи вашој командној линији и аутоматски открива грешке. Доступно у PowerShell, bash и WSL bash. </value>
+    <value>Аутоматски откривајте грешке. Доступно у PowerShell, bash и WSL bash. </value>
   </data>
   <data name="AIAgents_AutoErrorDetectionCaptionLink" xml:space="preserve">
     <value>Прикажи све подржане shell-ове</value>
@@ -2993,7 +2993,7 @@
     <value>Аутоматски предлог исправки</value>
   </data>
   <data name="AIAgents_AutoErrorSuggestionCaption.Text" xml:space="preserve">
-    <value>Дозволите да Интелигентни Терминал шаље грешке вашем агенту ради аутоматског предлагања исправки.</value>
+    <value>Откривајте грешке и аутоматски их шаљите агенту ради исправљања.</value>
   </data>
   <data name="AIAgents_CustomModels.Header" xml:space="preserve">
     <value>Добављачи BYOK</value>

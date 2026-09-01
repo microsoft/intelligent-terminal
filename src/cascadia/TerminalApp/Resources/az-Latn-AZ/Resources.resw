@@ -181,8 +181,8 @@
     <value>Sessiya idarəetməsi</value>
   </data>
   <data name="FreOverlay_SessionDescription.Text" xml:space="preserve">
-    <value>Ağıllı Terminal-a işləyən və ya aktiv agentlərinizin vəziyyətini izləmək icazəsi verin.</value>
-    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
+    <value>Davam edən və keçmiş agent sessiyalarınızı izləyin.</value>
+    <comment>Description for session tracking in the first-run wizard. In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_SessionHint.Text" xml:space="preserve">
     <value>Bunu aktivləşdirmək agentləriniz arasında sessiyaları izləmək üçün inteqrasiya hooks quraşdıracaq.</value>
@@ -344,7 +344,7 @@
     <value>Avtomatik səhv aşkarlanması</value>
   </data>
   <data name="FreOverlay_AutoDetectDescription.Text" xml:space="preserve">
-    <value>Intelligent Terminal-ə qabığınıza daxil olmaq və səhvləri avtomatik aşkarlamaq icazəsi verin.</value>
+    <value>Səhvləri avtomatik aşkarlayın.</value>
   </data>
 <data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
     <value>⚠ Shell inteqrasiyasını quraşdırmaq alınmadı. Xəta aşkarlanması söndürülüb. Onu yenidən aktivləşdirib təkrar cəhd edə bilərsiniz və ya onsuz davam etmək üçün saxlaya bilərsiniz.</value>

@@ -68,8 +68,8 @@
     <value>የክፍለጣ አስተዳደር</value>
   </data>
   <data name="FreOverlay_SessionDescription.Text" xml:space="preserve">
-    <value>ለ ብልህ ተርሚናል የኤጅንቶችዎን ሁኔታ ለመከታተል ፍቃድ ይስጡ።</value>
-    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
+    <value>በሂደት ላይ ያሉ እና ያለፉ የወኪል ክፍለ ጊዜዎችዎን ይከታተሉ።</value>
+    <comment>Description for session tracking in the first-run wizard. In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_SessionHint.Text" xml:space="preserve">
     <value>ይህን ማንቃት በኤጅንቶችዎ ውስጥ ክፍለጊዜዎችን ለመከታተል የውህደት hooks ይጭናል።</value>
@@ -231,7 +231,7 @@
     <value>ራስ-ሰር የስህተት ማወቅ</value>
   </data>
   <data name="FreOverlay_AutoDetectDescription.Text" xml:space="preserve">
-    <value>Intelligent Terminal ወደ ሼልዎ መድረስ እና ስህተቶችን ራስ-ሰር እንዲያውቅ ይፍቀዱ።</value>
+    <value>ስህተቶችን በራስ-ሰር ያግኙ።</value>
   </data>
 <data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
     <value>⚠ የሼል ውህደት መጫን አልተሳካም። የስህተት ማወቂያ ጠፍቷል። እንደገና ማንቃት እና መሞከር ይችላሉ፣ ወይም ያለ እሱ ለመቀጠል ያስቀምጡ።</value>

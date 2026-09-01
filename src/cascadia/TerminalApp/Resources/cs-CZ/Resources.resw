@@ -181,8 +181,8 @@
     <value>Správa relací</value>
   </data>
   <data name="FreOverlay_SessionDescription.Text" xml:space="preserve">
-    <value>Udělte Inteligentní Terminál oprávnění ke sledování stavu vašich běžících nebo aktivních agentů.</value>
-    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
+    <value>Sledujte probíhající a minulé relace agenta.</value>
+    <comment>Description for session tracking in the first-run wizard. In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_SessionHint.Text" xml:space="preserve">
     <value>Povolením této funkce se nainstalují integrační hooks pro sledování relací napříč vašimi agenty.</value>
@@ -345,7 +345,7 @@
     <value>Automatická detekce chyb</value>
   </data>
   <data name="FreOverlay_AutoDetectDescription.Text" xml:space="preserve">
-    <value>Povolte aplikaci Intelligent Terminal přístup k prostředí shell a automatickou detekci chyb.</value>
+    <value>Automaticky zjišťujte chyby.</value>
   </data>
 <data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
     <value>⚠ Nepodařilo se nainstalovat integraci prostředí. Detekce chyb byla vypnuta. Můžete ji znovu zapnout a zkusit to znovu, nebo uložit a pokračovat bez ní.</value>

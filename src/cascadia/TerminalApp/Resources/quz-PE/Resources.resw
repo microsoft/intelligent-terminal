@@ -68,8 +68,8 @@
     <value>Hunt'a kamachiy</value>
   </data>
   <data name="FreOverlay_SessionDescription.Text" xml:space="preserve">
-    <value>Yuyaysapa Terminal nisqaman agentekunaykipa kachkayninta qhawariyta quy.</value>
-    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
+    <value>Purichkaq hinaspa ñawpaq agente sesiónkunaykita qhawariy.</value>
+    <comment>Description for session tracking in the first-run wizard. In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_SessionHint.Text" xml:space="preserve">
     <value>Kayta hurquqtiyki integración hooks nisqakunata churanqa agente nisqakunaykipi hunt'akunata qhawarinapaq.</value>
@@ -231,7 +231,7 @@
     <value>Pantasqakunata unaylla tariy</value>
   </data>
   <data name="FreOverlay_AutoDetectDescription.Text" xml:space="preserve">
-    <value>Intelligent Terminal-man saqiy shell-niykiman yaykunanpaq hinaspa pantasqakunata unaylla tarinanpaq.</value>
+    <value>Pantasqakunata kikillanmanta tariy.</value>
   </data>
 <data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
     <value>⚠ Shell tinkiynin churay mana allinchu karqa. Pantay taripay wichqasqa karqa. Watiqmanta atichiy ruwarinapaq, utaq waqaychay mana paywan hina siginapaq.</value>

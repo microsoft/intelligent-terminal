@@ -181,8 +181,8 @@
     <value>Сеансты басқару</value>
   </data>
   <data name="FreOverlay_SessionDescription.Text" xml:space="preserve">
-    <value>Зияткер терминал-ға жұмыс істеп тұрған немесе белсенді агенттеріңіздің күйін бақылауға рұқсат беріңіз.</value>
-    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
+    <value>Орындалып жатқан және өткен агент сеанстарын қадағалаңыз.</value>
+    <comment>Description for session tracking in the first-run wizard. In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_SessionHint.Text" xml:space="preserve">
     <value>Мұны қосу агенттеріңіз бойынша сеанстарды бақылау үшін интеграция hooks орнатады.</value>
@@ -344,7 +344,7 @@
     <value>Қателерді автоматты түрде анықтау</value>
   </data>
   <data name="FreOverlay_AutoDetectDescription.Text" xml:space="preserve">
-    <value>Intelligent Terminal қолданбасына қабықшаңызға кіруге және қателерді автоматты түрде анықтауға рұқсат беріңіз.</value>
+    <value>Қателерді автоматты түрде анықтаңыз.</value>
   </data>
 <data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
     <value>⚠ Shell біріктіруін орнату сәтсіз аяқталды. Қателерді анықтау өшірілді. Оны қайта қосып, қайталап көруіңізге немесе онсыз жалғастыру үшін сақтауыңызға болады.</value>

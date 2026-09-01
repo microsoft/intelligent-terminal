@@ -182,8 +182,8 @@
     <value>إدارة الجلسات</value>
   </data>
   <data name="FreOverlay_SessionDescription.Text" xml:space="preserve">
-    <value>امنح الوحدة الطرفية الذكية إذن تتبع حالة وكلائك قيد التشغيل أو النشطين.</value>
-    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
+    <value>تتبّع جلسات عامل الذكاء الاصطناعي قيد التشغيل والسابقة الخاصة بك.</value>
+    <comment>Description for session tracking in the first-run wizard. In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_SessionHint.Text" xml:space="preserve">
     <value>سيؤدي تمكين هذا إلى تثبيت hooks التكامل لتتبع الجلسات عبر وكلائك.</value>
@@ -345,7 +345,7 @@
     <value>الكشف التلقائي عن الأخطاء</value>
   </data>
   <data name="FreOverlay_AutoDetectDescription.Text" xml:space="preserve">
-    <value>امنح Intelligent Terminal إذنًا بالوصول إلى الصدفة واكتشاف الأخطاء تلقائيًا.</value>
+    <value>اكتشف الأخطاء تلقائيًا.</value>
   </data>
 <data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
     <value>⚠ فشل تثبيت تكامل الصدفة. تم إيقاف اكتشاف الأخطاء. يمكنك إعادة تمكينه والمحاولة مرة أخرى، أو الحفظ للمتابعة بدونه.</value>

@@ -2926,7 +2926,7 @@
     <value>Detección automática de errores</value>
   </data>
   <data name="AIAgents_AutoErrorDetectionCaptionPrefix" xml:space="preserve">
-    <value>Permita que Terminal Inteligente acceda a su shell y detecte errores automáticamente. Disponible en PowerShell, bash y WSL bash. </value>
+    <value>Detecta errores automáticamente. Disponible en PowerShell, bash y WSL bash. </value>
   </data>
   <data name="AIAgents_AutoErrorDetectionCaptionLink" xml:space="preserve">
     <value>Ver todos los shells compatibles</value>
@@ -2935,7 +2935,7 @@
     <value>Sugerencia automática de errores</value>
   </data>
   <data name="AIAgents_AutoErrorSuggestionCaption.Text" xml:space="preserve">
-    <value>Permita que Terminal Inteligente envíe errores a su agente para sugerir correcciones automáticamente.</value>
+    <value>Detecta errores y envíalos automáticamente al agente para que los corrija.</value>
   </data>
   <data name="AIAgents_CustomModels.Header" xml:space="preserve">
     <value>Proveedores BYOK</value>

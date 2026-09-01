@@ -182,8 +182,8 @@
     <value>ছেশ্বন পৰিচালনা</value>
   </data>
   <data name="FreOverlay_SessionDescription.Text" xml:space="preserve">
-    <value>ইন্টেলিজেন্ট টাৰ্মিনেল ক আপোনাৰ চলি থকা বা সক্ৰিয় এজেণ্টসমূহৰ স্থিতি ট্ৰেক কৰিবলৈ অনুমতি দিয়ক।</value>
-    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name. In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+    <value>আপোনাৰ চলি থকা আৰু পূৰ্বৱৰ্তী এজেণ্ট ছেশ্যনসমূহ ট্ৰেক কৰক।</value>
+    <comment>Description for session tracking in the first-run wizard. In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_SessionHint.Text" xml:space="preserve">
     <value>এইটো সক্ষম কৰিলে আপোনাৰ এজেণ্টসমূহত ছেশ্বন ট্ৰেক কৰিবলৈ ইণ্টিগ্ৰেশ্বন hooks ইনষ্টল হ'ব।</value>
@@ -357,7 +357,7 @@
     <value>স্বয়ংক্ৰিয় ত্ৰুটি চিনাক্তকৰণ</value>
   </data>
   <data name="FreOverlay_AutoDetectDescription.Text" xml:space="preserve">
-    <value>Intelligent Terminal ক আপোনাৰ শ্বেল ব্যৱহাৰ কৰিবলৈ আৰু ত্ৰুটিসমূহ স্বয়ংক্ৰিয়ভাৱে চিনাক্ত কৰিবলৈ অনুমতি দিয়ক।</value>
+    <value>ত্ৰুটিসমূহ স্বয়ংক্ৰিয়ভাৱে চিনাক্ত কৰক।</value>
   </data>
   <data name="FreOverlay_ErrorHelpLink" xml:space="preserve">
     <value>এইটো কেনেকৈ মেনুৱেলী ঠিক কৰিব শিকক</value>

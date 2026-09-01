@@ -68,8 +68,8 @@
     <value>სესიების მართვა</value>
   </data>
   <data name="FreOverlay_SessionDescription.Text" xml:space="preserve">
-    <value>მიეცით ჭკვიანი ტერმინალი-ს უფლება თვალყური ადევნოს თქვენი გაშვებული ან აქტიური აგენტების სტატუსს.</value>
-    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
+    <value>თვალი ადევნეთ თქვენს მიმდინარე და წარსულ აგენტის სესიებს.</value>
+    <comment>Description for session tracking in the first-run wizard. In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_SessionHint.Text" xml:space="preserve">
     <value>ამის ჩართვა დააინსტალირებს ინტეგრაციის hooks-ს თქვენს აგენტებში სესიების თვალყურისდევნებისთვის.</value>
@@ -231,7 +231,7 @@
     <value>შეცდომების ავტომატური აღმოჩენა</value>
   </data>
   <data name="FreOverlay_AutoDetectDescription.Text" xml:space="preserve">
-    <value>მიეცით Intelligent Terminal-ს უფლება, წვდომა ჰქონდეს თქვენს გარსზე და ავტომატურად აღმოაჩინოს შეცდომები.</value>
+    <value>შეცდომების ავტომატურად აღმოჩენა.</value>
   </data>
 <data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
     <value>⚠ გარსის ინტეგრაციის ინსტალაცია ვერ მოხერხდა. შეცდომების აღმოჩენა გამორთულია. შეგიძლიათ ხელახლა ჩართოთ და სცადოთ თავიდან, ან შეინახოთ მის გარეშე გასაგრძელებლად.</value>

@@ -68,8 +68,8 @@
     <value>Bainistíocht seisiún</value>
   </data>
   <data name="FreOverlay_SessionDescription.Text" xml:space="preserve">
-    <value>Tabhair cead do Teirminéal Cliste stádas do ghníomhairí atá ag rith nó gníomhach a rianú.</value>
-    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
+    <value>Rianaigh do sheisiúin ghníomhaire reatha agus roimhe seo.</value>
+    <comment>Description for session tracking in the first-run wizard. In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_SessionHint.Text" xml:space="preserve">
     <value>Má chuireann tú é seo ar siúl suiteálfar hooks comhtháthaithe chun seisiúin a rianú trasna do ghníomhairí.</value>
@@ -231,7 +231,7 @@
     <value>Brath earráidí uathoibríoch</value>
   </data>
   <data name="FreOverlay_AutoDetectDescription.Text" xml:space="preserve">
-    <value>Tabhair cead do Intelligent Terminal rochtain a fháil ar do bhlaosc agus earráidí a bhrath go huathoibríoch.</value>
+    <value>Braith earráidí go huathoibríoch.</value>
   </data>
 <data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
     <value>⚠ Theip ar chomhtháthú blaoisce a shuiteáil. Tá brath earráidí múchta. Is féidir leat é a athchumasú agus triail eile a bhaint as, nó sábháil chun leanúint ar aghaidh gan é.</value>

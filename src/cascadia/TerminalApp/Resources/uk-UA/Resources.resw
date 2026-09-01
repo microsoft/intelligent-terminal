@@ -1073,8 +1073,8 @@
     <value>Керування сеансами</value>
   </data>
   <data name="FreOverlay_SessionDescription.Text" xml:space="preserve">
-    <value>Надайте Інтелектуальний Термінал дозвіл відстежувати стан ваших запущених або активних агентів.</value>
-    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
+    <value>Відстежуйте поточні та минулі сеанси агента.</value>
+    <comment>Description for session tracking in the first-run wizard. In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_SessionHint.Text" xml:space="preserve">
     <value>Увімкнення цієї функції встановить інтеграційні hooks для відстеження сеансів у всіх ваших агентах.</value>
@@ -1249,7 +1249,7 @@
     <value>Автоматичне виявлення помилок</value>
   </data>
   <data name="FreOverlay_AutoDetectDescription.Text" xml:space="preserve">
-    <value>Дозвольте Intelligent Terminal отримати доступ до оболонки та автоматично виявляти помилки.</value>
+    <value>Автоматично виявляйте помилки.</value>
   </data>
 <data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
     <value>⚠ Не вдалося встановити інтеграцію оболонки. Виявлення помилок вимкнено. Ви можете повторно увімкнути його та спробувати знову, або зберегти, щоб продовжити без нього.</value>

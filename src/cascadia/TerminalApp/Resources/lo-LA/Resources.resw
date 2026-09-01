@@ -68,8 +68,8 @@
     <value>ການຈັດການພາກສ່ວນ</value>
   </data>
   <data name="FreOverlay_SessionDescription.Text" xml:space="preserve">
-    <value>ໃຫ້ສິດ ເທອຮ໌ມິນັລອັດຊະລິຍະ ຕິດຕາມສະຖານະຂອງ agent ທີ່ກຳລັງເຮັດວຽກຢູ່ຫລືໃຊ້ງານຢູ່.</value>
-    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name. In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+    <value>ຕິດຕາມເຊດຊັນຕົວແທນທີ່ກຳລັງເຮັດວຽກ ແລະ ຜ່ານມາຂອງທ່ານ.</value>
+    <comment>Description for session tracking in the first-run wizard. In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_SessionHint.Text" xml:space="preserve">
     <value>ການເປີດໃຊ້ນີ້ຈະຕິດຕັ້ງ hooks ເຊື່ອມຕໍ່ເພື່ອຕິດຕາມພາກສ່ວນຂອງ agent ຂອງທ່ານ.</value>
@@ -163,7 +163,7 @@
     <value>ການກວດຫາຂໍ້ຜິດພາດອັດຕະໂນມັດ</value>
   </data>
   <data name="FreOverlay_AutoDetectDescription.Text" xml:space="preserve">
-    <value>ອະນຸຍາດໃຫ້ Intelligent Terminal ເຂົ້າເຖິງເຊລຂອງທ່ານ ແລະກວດຫາຂໍ້ຜິດພາດໂດຍອັດຕະໂນມັດ.</value>
+    <value>ກວດຫາຂໍ້ຜິດພາດໂດຍອັດຕະໂນມັດ.</value>
   </data>
 <data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
     <value>⚠ ການຕິດຕັ້ງ shell integration ລົ້ມເຫລວ. ການກວດຫາຂໍ້ຜິດພາດໄດ້ຖືກປິດແລ້ວ. ທ່ານສາມາດເປີດໃຊ້ງານມັນອີກຄັ້ງແລະລອງໃຫມ່, ຫຼືບັນທຶກເພື່ອສືບຕໍ່ໂດຍບໍ່ມີມັນ.</value>

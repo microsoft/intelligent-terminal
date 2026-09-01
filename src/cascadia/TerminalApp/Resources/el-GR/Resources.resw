@@ -68,8 +68,8 @@
     <value>Διαχείριση συνεδριών</value>
   </data>
   <data name="FreOverlay_SessionDescription.Text" xml:space="preserve">
-    <value>Δώστε στο Έξυπνο Τερματικό δικαίωμα παρακολούθησης της κατάστασης των ενεργών πρακτόρων σας.</value>
-    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
+    <value>Παρακολουθήστε τις τρέχουσες και προηγούμενες συνεδρίες πράκτορα.</value>
+    <comment>Description for session tracking in the first-run wizard. In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_SessionHint.Text" xml:space="preserve">
     <value>Η ενεργοποίηση αυτής της λειτουργίας θα εγκαταστήσει hooks ενσωμάτωσης για την παρακολούθηση συνεδριών σε όλους τους πράκτορές σας.</value>
@@ -232,7 +232,7 @@
     <value>Αυτόματος εντοπισμός σφαλμάτων</value>
   </data>
   <data name="FreOverlay_AutoDetectDescription.Text" xml:space="preserve">
-    <value>Επιτρέψτε στο Intelligent Terminal να αποκτήσει πρόσβαση στο κέλυφος και να εντοπίζει αυτόματα σφάλματα.</value>
+    <value>Εντοπίστε αυτόματα τα σφάλματα.</value>
   </data>
 <data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
     <value>⚠ Αποτυχία εγκατάστασης της ενσωμάτωσης κελύφους. Ο εντοπισμός σφαλμάτων απενεργοποιήθηκε. Μπορείτε να τον ενεργοποιήσετε ξανά και να δοκιμάσετε ξανά, ή να αποθηκεύσετε για να συνεχίσετε χωρίς αυτόν.</value>

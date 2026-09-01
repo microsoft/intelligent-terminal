@@ -68,8 +68,8 @@
     <value>Xestión de sesións</value>
   </data>
   <data name="FreOverlay_SessionDescription.Text" xml:space="preserve">
-    <value>Délle permiso a Terminal Intelixente para facer un seguimento do estado dos seus axentes en execución ou activos.</value>
-    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name. In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+    <value>Fai un seguimento das túas sesións de axente en curso e anteriores.</value>
+    <comment>Description for session tracking in the first-run wizard. In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_SessionHint.Text" xml:space="preserve">
     <value>Ao activar isto instalaranse hooks de integración para facer un seguimento das sesións nos seus axentes.</value>
@@ -163,7 +163,7 @@
     <value>Detección automática de erros</value>
   </data>
   <data name="FreOverlay_AutoDetectDescription.Text" xml:space="preserve">
-    <value>Permite que Intelligent Terminal acceda ao teu intérprete de ordes e detecte erros automaticamente.</value>
+    <value>Detecta erros automaticamente.</value>
   </data>
 <data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
     <value>⚠ Produciuse un erro ao instalar a integración do shell. A detección de erros desactivouse. Pode reactivala e tentalo de novo, ou gardar para continuar sen ela.</value>

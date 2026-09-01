@@ -181,8 +181,8 @@
     <value>Lotustjórnun</value>
   </data>
   <data name="FreOverlay_SessionDescription.Text" xml:space="preserve">
-    <value>Veittu Snjallútstöð heimild til að rekja stöðu þinna keyrandi eða virkra agenta.</value>
-    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name. In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+    <value>Fylgstu með yfirstandandi og fyrri umboðsmannslotum þínum.</value>
+    <comment>Description for session tracking in the first-run wizard. In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_SessionHint.Text" xml:space="preserve">
     <value>Virkjun þessa mun setja upp samþættingar-hooks til að rekja lotur þvert á agentana þína.</value>
@@ -344,7 +344,7 @@
     <value>Sjálfvirk villugreining</value>
   </data>
   <data name="FreOverlay_AutoDetectDescription.Text" xml:space="preserve">
-    <value>Veittu Intelligent Terminal heimild til að fá aðgang að skelinni þinni og greina villur sjálfkrafa.</value>
+    <value>Greina villur sjálfkrafa.</value>
   </data>
 <data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
     <value>⚠ Ekki tókst að setja upp skeljasamþættingu. Slökkt hefur verið á villuleit. Þú getur virkjað hana aftur og reynt aftur, eða vistað til að halda áfram án hennar.</value>

@@ -177,8 +177,8 @@
     <value>Session management</value>
   </data>
   <data name="FreOverlay_SessionDescription.Text" xml:space="preserve">
-    <value>Give Intelligent Terminal permission to track the status of your running or active agents.</value>
-    <comment>{Locked="Intelligent Terminal"} "Intelligent Terminal" is the product name.</comment>
+    <value>Track your running and past agent sessions.</value>
+    <comment>Description for session tracking in the first-run wizard. In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_SessionHint.Text" xml:space="preserve">
     <value>Enabling this will install integration hooks to track sessions across your agents.</value>
@@ -339,7 +339,7 @@
     <value>Automatic error detection</value>
   </data>
   <data name="FreOverlay_AutoDetectDescription.Text" xml:space="preserve">
-    <value>Give Intelligent Terminal permission to access your shell and automatically detect errors.</value>
+    <value>Detect errors automatically.</value>
   </data>
 <data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
     <value>⚠ Failed to install shell integration. Error detection has been turned off. You can re-enable it and try again, or save to continue without it.</value>

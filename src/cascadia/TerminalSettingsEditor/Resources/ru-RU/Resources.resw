@@ -2969,7 +2969,7 @@
     <value>Автоматическое обнаружение ошибок</value>
   </data>
   <data name="AIAgents_AutoErrorDetectionCaptionPrefix" xml:space="preserve">
-    <value>Разрешите Интеллектуальному Терминалу доступ к оболочке и автоматическое обнаружение ошибок. Доступно в PowerShell, bash и WSL bash. </value>
+    <value>Автоматически обнаруживайте ошибки. Доступно в PowerShell, bash и WSL bash. </value>
   </data>
   <data name="AIAgents_AutoErrorDetectionCaptionLink" xml:space="preserve">
     <value>Показать все поддерживаемые оболочки</value>
@@ -2978,7 +2978,7 @@
     <value>Автоматическое предложение исправлений</value>
   </data>
   <data name="AIAgents_AutoErrorSuggestionCaption.Text" xml:space="preserve">
-    <value>Разрешите Интеллектуальному Терминалу отправлять ошибки агенту для автоматического предложения исправлений.</value>
+    <value>Обнаруживайте ошибки и автоматически отправляйте их агенту для исправления.</value>
   </data>
   <data name="AIAgents_CustomModels.Header" xml:space="preserve">
     <value>Поставщики BYOK</value>
