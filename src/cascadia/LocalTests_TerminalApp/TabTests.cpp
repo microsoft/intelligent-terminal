@@ -2264,10 +2264,14 @@ namespace TerminalAppLocalTests
             expectedActive += RS_(L"FreOverlay_ToggleOn");
             VERIFY_IS_TRUE(yoloStatus.Text() == expectedActive);
             VERIFY_IS_TRUE(yoloStatus.Visibility() == Visibility::Visible);
-            VERIFY_ARE_EQUAL(1u, protocolEvents.size());
+            VERIFY_ARE_EQUAL(2u, protocolEvents.size());
             VERIFY_IS_TRUE(protocolEvents[0]["method"].asString() == "tab_renamed");
             VERIFY_IS_TRUE(protocolEvents[0]["params"]["old_tab_id"].asString() == winrt::to_string(oldTabId));
             VERIFY_IS_TRUE(protocolEvents[0]["params"]["new_tab_id"].asString() == winrt::to_string(focusedTab->StableId()));
+            VERIFY_IS_TRUE(protocolEvents[1]["method"].asString() == "set_agent_state");
+            VERIFY_IS_TRUE(protocolEvents[1]["params"]["tab_id"].asString() == winrt::to_string(focusedTab->StableId()));
+            VERIFY_IS_TRUE(protocolEvents[1]["params"]["view"].asString() == "chat");
+            VERIFY_IS_TRUE(protocolEvents[1]["params"]["pane_open"].asBool());
             VERIFY_IS_TRUE(impl->TransferSourceTabId().empty());
 
             sendStatus(focusedTab->StableId(), "model-b", "unavailable", "provider rejected Yolo");
@@ -2280,7 +2284,7 @@ namespace TerminalAppLocalTests
             VERIFY_IS_TRUE(
                 winrt::unbox_value<winrt::hstring>(ToolTipService::GetToolTip(yoloStatus)) ==
                 L"provider rejected Yolo");
-            VERIFY_ARE_EQUAL(1u, protocolEvents.size());
+            VERIFY_ARE_EQUAL(2u, protocolEvents.size());
 
             page->ProtocolVtSequenceReceived(token);
         });

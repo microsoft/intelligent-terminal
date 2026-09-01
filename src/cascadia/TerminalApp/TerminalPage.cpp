@@ -6510,14 +6510,24 @@ namespace winrt::TerminalApp::implementation
         const auto update = [&](const winrt::com_ptr<Tab>& tabImpl) {
             if (const auto content = tabImpl->FindAgentPaneContent())
             {
+                const auto impl = winrt::get_self<winrt::TerminalApp::implementation::AgentPaneContent>(content);
+                const bool helperWasReady = impl->IsHelperEventReady();
                 // UpdateAgentStatus also caches helper-event readiness. In
                 // helper startup, subscribe_events precedes App construction
                 // and every publish_agent_status call, so the first routed
                 // status proves this pane can receive later settings events.
                 content.UpdateAgentStatus(name, version, model, state, backend);
-                if (const auto impl = winrt::get_self<winrt::TerminalApp::implementation::AgentPaneContent>(content))
+                impl->UpdateYoloStatus(yoloState, yoloDetail);
+                if (!helperWasReady)
                 {
-                    impl->UpdateYoloStatus(yoloState, yoloDetail);
+                    // The user can open or switch this pane before the helper
+                    // subscribes to WT protocol events. Re-send the locally
+                    // applied state when the first agent_status proves the
+                    // listener is ready, before a startup projection with the
+                    // helper's default pane_open=false can re-stash it.
+                    const std::string_view view = impl->IsSessionsView() ? "sessions" : "chat";
+                    const bool paneOpen = !tabImpl->HasStashedAgentPane();
+                    _RequestAgentStateForTab(tabImpl, view, paneOpen);
                 }
             }
         };
