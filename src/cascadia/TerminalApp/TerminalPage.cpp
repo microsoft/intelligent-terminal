@@ -5089,19 +5089,27 @@ namespace winrt::TerminalApp::implementation
             // `_InitializeTab` defers its own pre-warm to a low-priority tick
             // for exactly this reason. Match it, so a tab that skipped that
             // tick because a replay was in flight gets an equally settled one.
-            if (auto dispatcher = winrt::Windows::System::DispatcherQueue::GetForCurrentThread())
+            //
+            // There is deliberately no inline fallback if the tick cannot be
+            // scheduled. Running the drain inline is the timing this moved
+            // away from, so it would hand the tab a stashed pane with no
+            // helper behind it rather than no pane at all — a worse outcome,
+            // and one the user cannot see to correct. `TryEnqueue` only fails
+            // once the queue is shutting down, where a freshly spawned helper
+            // would outlive the window that asked for it anyway.
+            const auto dispatcher = winrt::Windows::System::DispatcherQueue::GetForCurrentThread();
+            const auto queued = dispatcher &&
+                                dispatcher.TryEnqueue(winrt::Windows::System::DispatcherQueuePriority::Low,
+                                                      [weakSelf = get_weak()]() {
+                                                          if (const auto self{ weakSelf.get() })
+                                                          {
+                                                              self->_PrewarmAgentPanesAfterStartup();
+                                                          }
+                                                      });
+            if (!queued)
             {
-                dispatcher.TryEnqueue(winrt::Windows::System::DispatcherQueuePriority::Low,
-                                      [weakSelf = get_weak()]() {
-                                          if (const auto self{ weakSelf.get() })
-                                          {
-                                              self->_PrewarmAgentPanesAfterStartup();
-                                          }
-                                      });
-            }
-            else
-            {
-                _PrewarmAgentPanesAfterStartup();
+                _agentPaneLog("_ProcessStartupActions: could not queue the agent pane pre-warm drain; "
+                              "tabs awaiting pre-warm keep their helper until one is opened");
             }
         }
 
