@@ -163,6 +163,55 @@ Pane::BuildStartupState Pane::BuildStartupActions(uint32_t currentId, uint32_t n
     // stamps it with an agent content type and rewrites its command line into
     // the stable resume form. A stashed pane is still in the tree (it is only
     // hidden), so it is serialized too and comes back stashed.
+    //
+    // What it cannot do is take part in the ordinary tree walk, for two
+    // reasons that both come from how it is replayed:
+    //
+    //  * It must arrive as a `splitPane`. Only `_HandleSplitPane` knows to
+    //    divert an agent content type to `_RestoreAgentPaneFromLayout`;
+    //    `_HandleNewTab` has no such hook, so an agent pane that the walk
+    //    happened to hand back as `firstPane` — which is what a leading-edge
+    //    `agentPanePosition` of `left` or `top` produces — would be replayed
+    //    as a literal command line.
+    //  * It must arrive last. The restore path attaches it with
+    //    `SplitPaneAtRoot`, so anything replayed after it would be splitting a
+    //    tree that already has the agent pane at its root, and would split the
+    //    agent pane itself whenever the restore left it focused.
+    //
+    // So lift it out of the walk: serialize the sibling subtree, then append
+    // the agent pane's split. The direction is flipped for a leading-edge pane
+    // so it still lands back on the side the user had it on.
+    auto buildAgentSplitPane = [&](const auto& agentPane, const bool leadingEdge) {
+        ActionAndArgs actionAndArgs;
+        actionAndArgs.Action(ShortcutAction::SplitPane);
+        const auto horizontal = _splitState == SplitState::Horizontal;
+        const auto splitDirection = leadingEdge ?
+                                        (horizontal ? SplitDirection::Up : SplitDirection::Left) :
+                                        (horizontal ? SplitDirection::Down : SplitDirection::Right);
+        // `splitSize` is the fraction the *new* pane takes, while
+        // `_desiredSplitPosition` always sizes the first child.
+        const auto splitSize = leadingEdge ? _desiredSplitPosition : 1.0f - _desiredSplitPosition;
+        SplitPaneArgs args{ SplitType::Manual, splitDirection, splitSize, agentPane->GetTerminalArgsForPane(kind) };
+        actionAndArgs.Args(args);
+
+        return actionAndArgs;
+    };
+
+    if (kind == BuildStartupKind::Persist)
+    {
+        const auto firstIsAgentLeaf = _firstChild->_IsLeaf() && _firstChild->_isAgentPane;
+        const auto secondIsAgentLeaf = _secondChild->_IsLeaf() && _secondChild->_isAgentPane;
+        if (firstIsAgentLeaf != secondIsAgentLeaf)
+        {
+            const auto& agentChild = firstIsAgentLeaf ? _firstChild : _secondChild;
+            const auto& siblingChild = firstIsAgentLeaf ? _secondChild : _firstChild;
+
+            auto state = siblingChild->BuildStartupActions(currentId, nextId, kind);
+            state.args.emplace_back(buildAgentSplitPane(agentChild, firstIsAgentLeaf));
+            state.panesCreated += 1;
+            return state;
+        }
+    }
 
     auto buildSplitPane = [&](auto newPane) {
         ActionAndArgs actionAndArgs;

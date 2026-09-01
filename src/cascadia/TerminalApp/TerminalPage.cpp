@@ -1019,6 +1019,25 @@ namespace winrt::TerminalApp::implementation
         return SplitDirection::Right;
     }
 
+    winrt::hstring TerminalPage::_SplitDirectionToAgentPanePosition(const SplitDirection direction)
+    {
+        switch (direction)
+        {
+        case SplitDirection::Up:
+            return winrt::hstring{ L"top" };
+        case SplitDirection::Down:
+            return winrt::hstring{ L"bottom" };
+        case SplitDirection::Left:
+            return winrt::hstring{ L"left" };
+        case SplitDirection::Right:
+            return winrt::hstring{ L"right" };
+        default:
+            // `Automatic` carries no side, so the caller falls back to the
+            // configured position rather than guessing one.
+            return winrt::hstring{};
+        }
+    }
+
     winrt::hstring TerminalPage::_AgentPanePositionToContentPosition(const winrt::hstring& position)
     {
         return position == L"up" ? winrt::hstring{ L"top" } : position;
@@ -1447,7 +1466,9 @@ namespace winrt::TerminalApp::implementation
     // what re-applies GPO `AllowedAgents`. That matters: a saved layout must
     // never be able to launch an agent the policy now forbids.
     bool TerminalPage::_RestoreAgentPaneFromLayout(const winrt::com_ptr<Tab>& tab,
-                                                   const NewTerminalArgs& contentArgs)
+                                                   const NewTerminalArgs& contentArgs,
+                                                   const SplitDirection splitDirection,
+                                                   const float splitSize)
     {
         if (!tab || !contentArgs)
         {
@@ -1494,6 +1515,23 @@ namespace winrt::TerminalApp::implementation
         const auto intoSessionsView = fields.view == ::Microsoft::Terminal::AgentPaneRestore::SessionsView;
         const auto stashed = ::Microsoft::Terminal::AgentPaneRestore::StashedPaneType == std::wstring_view{ contentArgs.Type() };
 
+        // The saved split geometry is the pane's own, not the configured
+        // default: the user may have dragged the splitter, or moved this one
+        // pane with `>Move agent pane`. An empty position (a split direction
+        // of `Automatic`) or an out-of-range size means the layout predates
+        // this and the configured default still applies.
+        const auto savedPosition = _SplitDirectionToAgentPanePosition(splitDirection);
+
+        // A saved side that disagrees with the configured one can only have
+        // come from a per-tab override, so put that back too. Pinning an
+        // override in the common case would be wrong — the tab would then stop
+        // following a later change to the global setting.
+        if (!savedPosition.empty() &&
+            savedPosition != tab->EffectiveAgentPanePosition(_settings.GlobalSettings().AgentPanePosition()))
+        {
+            tab->AgentPanePositionOverride(savedPosition);
+        }
+
         return _AutoCreateHiddenAgentPaneShared(tab,
                                                 intoSessionsView,
                                                 /*autoStash*/ stashed,
@@ -1501,8 +1539,8 @@ namespace winrt::TerminalApp::implementation
                                                 winrt::to_string(contentArgs.StartingDirectory()),
                                                 {},
                                                 winrt::to_string(fields.view),
-                                                {},
-                                                0.0f,
+                                                std::wstring_view{ savedPosition },
+                                                splitSize,
                                                 /*focusPane*/ !stashed);
     }
 
@@ -3359,7 +3397,12 @@ namespace winrt::TerminalApp::implementation
         }
         auto newPane = _WrapInAgentPaneContent(rawPane);
         newPane->IsAgentPane(true);
-        const auto panePosition = tab->EffectiveAgentPanePosition(globals.AgentPanePosition());
+        // A restore supplies the side the pane was actually on, which can
+        // differ from the configured default after a splitter drag or a
+        // `>Move agent pane`. Everything else falls back to the setting.
+        const auto panePosition = initialPanePosition.empty() ?
+                                      tab->EffectiveAgentPanePosition(globals.AgentPanePosition()) :
+                                      winrt::hstring{ initialPanePosition };
 
         // Wire the AgentPaneContent's bottom-bar click events to the page
         // so toolbar buttons drive the per-tab logic. We need the tab
@@ -5005,8 +5048,13 @@ namespace winrt::TerminalApp::implementation
         // See GH#13136.
         auto suspend = _tabs.Size() > 0 && !forceFirstActionSynchronous;
 
-        _replayingStartupActions = true;
-        auto clearReplaying = wil::scope_exit([this]() noexcept { _replayingStartupActions = false; });
+        ++_startupActionReplayDepth;
+        auto clearReplaying = wil::scope_exit([this]() noexcept {
+            if (_startupActionReplayDepth > 0)
+            {
+                --_startupActionReplayDepth;
+            }
+        });
 
         for (size_t i = 0; i < actions.size(); ++i)
         {
@@ -5020,7 +5068,13 @@ namespace winrt::TerminalApp::implementation
         }
 
         clearReplaying.reset();
-        _PrewarmAgentPanesAfterStartup();
+        // Only the outermost replay drains the queue: an inner batch handed to
+        // this window by `ExecuteCommandline` may still be nested inside a
+        // startup replay whose agent panes are queued behind it.
+        if (_startupActionReplayDepth == 0)
+        {
+            _PrewarmAgentPanesAfterStartup();
+        }
 
         // GH#6586: now that we're done processing all startup commands,
         // focus the active control. This will work as expected for both
@@ -5034,15 +5088,17 @@ namespace winrt::TerminalApp::implementation
         }
     }
 
-    // Give every tab the startup replay just produced a stashed helper, unless
-    // the replay already restored one. Pre-warm is deferred for the duration of
-    // a replay so a blank helper cannot race a persisted agent pane that is
-    // still queued behind the tab that owns it.
+    // Give the tabs that skipped their own pre-warm — because a replay was in
+    // flight when they were created — a stashed helper now, unless the replay
+    // already restored one. Pre-warm is deferred for the duration of a replay
+    // so a blank helper cannot race a persisted agent pane that is still
+    // queued behind the tab that owns it.
     void TerminalPage::_PrewarmAgentPanesAfterStartup()
     {
-        for (const auto& tab : _tabs)
+        auto pending = std::exchange(_tabsAwaitingPrewarm, {});
+        for (const auto& weakTab : pending)
         {
-            const auto tabImpl = _GetTabImpl(tab);
+            const auto tabImpl = weakTab.get();
             if (!tabImpl || tabImpl->FindAgentPane())
             {
                 continue;

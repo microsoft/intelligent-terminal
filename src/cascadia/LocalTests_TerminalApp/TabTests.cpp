@@ -193,6 +193,7 @@ namespace TerminalAppLocalTests
 
         TEST_METHOD(CreateTerminalPage);
         TEST_METHOD(AgentSessionRestoreRequiresPersistedBufferPath);
+        TEST_METHOD(AgentPaneRestoreRecordRoundTrips);
         TEST_METHOD(PersistedLayoutAgentSessionsReceiveRestorePaths);
         TEST_METHOD(PaneAgentSessionBindingRequiresPaneIdentity);
         TEST_METHOD(AgentPaneRestoreDoesNotRequireAgentSession);
@@ -372,6 +373,62 @@ namespace TerminalAppLocalTests
         VERIFY_IS_TRUE(Restore::BuildResumeCommandline(L"claude", L"bad id & calc.exe").empty());
         VERIFY_IS_TRUE(Restore::BuildResumeCommandline(L"claude", L"sidekick-1").empty());
         VERIFY_IS_TRUE(Restore::BuildResumeCommandline(L"nosuchagent", L"agent-session-1").empty());
+
+        // Every built-in agent whose `resume_flag` is non-empty in
+        // `tools/wta/src/agent_registry.rs` has to be spellable here, or a
+        // shell pane running it comes back as a bare prompt. OpenCode is the
+        // one that does not use `--resume`.
+        VERIFY_ARE_EQUAL(
+            std::wstring{ LR"(cmd.exe /d /s /c "opencode --session agent-session-1")" },
+            Restore::BuildResumeCommandline(L"opencode", L"agent-session-1"));
+        for (const auto agent : { L"copilot", L"claude", L"codex", L"gemini", L"opencode" })
+        {
+            const auto built = Restore::BuildResumeCommandline(agent, L"agent-session-1");
+            VERIFY_IS_FALSE(built.empty());
+            VERIFY_ARE_EQUAL(std::wstring{ agent }, Restore::ParseResumeCommandline(built).agent);
+        }
+    }
+
+    void TabTests::AgentPaneRestoreRecordRoundTrips()
+    {
+        namespace Restore = ::Microsoft::Terminal::AgentPaneRestore;
+
+        // The record is written as a command line and read back with
+        // `CommandLineToArgvW`, so every value has to survive that parser.
+        // Backslashes are the trap: it only treats them specially when they run
+        // into a quote, so doubling all of them turns an ordinary Windows path
+        // into one with doubled separators.
+        Restore::Fields written;
+        written.sessionId = L"agent-session-1";
+        written.view = Restore::ChatView;
+        written.agentIdentity = L"wsl:Ubuntu-22.04:claude";
+        written.customCommand = LR"(C:\tools\my agent\agent.exe --acp --note "hi" --trailing C:\dir\)";
+
+        const auto commandline = Restore::BuildPaneCommandline(LR"(C:\Program Files\wta.exe)", written);
+
+        auto argc = 0;
+        const wil::unique_hlocal_ptr<PWSTR[]> argv{ ::CommandLineToArgvW(commandline.c_str(), &argc) };
+        VERIFY_IS_NOT_NULL(argv.get());
+        std::vector<std::wstring> tokens;
+        for (auto i = 0; i < argc; ++i)
+        {
+            tokens.emplace_back(argv[i]);
+        }
+
+        VERIFY_ARE_EQUAL(std::wstring{ LR"(C:\Program Files\wta.exe)" }, tokens.at(0));
+
+        const auto read = Restore::ParsePaneCommandline(tokens);
+        VERIFY_ARE_EQUAL(written.sessionId, read.sessionId);
+        VERIFY_ARE_EQUAL(written.view, read.view);
+        VERIFY_ARE_EQUAL(written.agentIdentity, read.agentIdentity);
+        VERIFY_ARE_EQUAL(written.customCommand, read.customCommand);
+
+        // Empty fields are simply absent rather than round-tripping as `""`.
+        Restore::Fields sparse;
+        sparse.sessionId = L"only-a-session";
+        const auto sparseCmd = Restore::BuildPaneCommandline(L"wta.exe", sparse);
+        VERIFY_IS_TRUE(sparseCmd.find(Restore::ViewFlag) == std::wstring::npos);
+        VERIFY_IS_TRUE(sparseCmd.find(Restore::CustomCommandFlag) == std::wstring::npos);
     }
 
     void TabTests::PersistedLayoutAgentSessionsReceiveRestorePaths()

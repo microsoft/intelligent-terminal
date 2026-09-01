@@ -563,12 +563,23 @@ namespace winrt::TerminalApp::implementation
         };
         std::unordered_map<winrt::hstring, _PendingLoadSession> _pendingLoadSessions;
 
-        // True while `ProcessStartupActions` is replaying a batch. A restored
-        // agent pane arrives as one of those actions, so a tab created during
-        // the replay must not also pre-warm a blank one — it would race the
+        // Depth of in-flight `ProcessStartupActions` replays. A restored agent
+        // pane arrives as one of those actions, so a tab created during a
+        // replay must not also pre-warm a blank one — it would race the
         // restore and leave the tab with two. `_PrewarmAgentPanesAfterStartup`
         // picks up whatever the replay did not provide.
-        bool _replayingStartupActions{ false };
+        //
+        // A counter rather than a flag: `ExecuteCommandline` can hand a second
+        // batch to this window while the startup batch is still suspended
+        // between actions, and a flag would let that inner batch clear the
+        // suppression out from under the outer one.
+        uint32_t _startupActionReplayDepth{ 0 };
+        // Tabs that skipped their own pre-warm because a replay was in flight.
+        // Drained when the outermost replay finishes. Recording the tabs —
+        // rather than rescanning every tab in the window — is what keeps an
+        // unrelated `wt` handoff from resurrecting an agent pane the user
+        // deliberately closed.
+        std::vector<winrt::weak_ref<Tab>> _tabsAwaitingPrewarm;
         AgentSettingsSnapshot _CaptureAgentSettingsSnapshot() const;
         static AgentSettingsChangeKind _ClassifyAgentSettingsChange(
             const AgentSettingsSnapshot& previous,
@@ -714,7 +725,9 @@ namespace winrt::TerminalApp::implementation
         // (the master pipe, the owner ids, the resolved CLI path) is
         // re-derived, and the agent selection is re-checked against policy.
         bool _RestoreAgentPaneFromLayout(const winrt::com_ptr<Tab>& tab,
-                                         const winrt::Microsoft::Terminal::Settings::Model::NewTerminalArgs& contentArgs);
+                                         const winrt::Microsoft::Terminal::Settings::Model::NewTerminalArgs& contentArgs,
+                                         winrt::Microsoft::Terminal::Settings::Model::SplitDirection splitDirection,
+                                         float splitSize);
         // Wraps the raw terminal pane's TerminalPaneContent in an
         // AgentPaneContent so the leaf renders the 36px XAML agent bar
         // above the wta TermControl + the bottom-bar below.
@@ -1004,6 +1017,7 @@ namespace winrt::TerminalApp::implementation
         void _FocusAgentPane();
         void _RepositionAgentPanes();
         static winrt::Microsoft::Terminal::Settings::Model::SplitDirection _AgentPanePositionToSplitDirection(const winrt::hstring& position);
+        static winrt::hstring _SplitDirectionToAgentPanePosition(winrt::Microsoft::Terminal::Settings::Model::SplitDirection direction);
         static winrt::hstring _AgentPanePositionToContentPosition(const winrt::hstring& position);
 
         // First-run experience

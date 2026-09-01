@@ -298,7 +298,7 @@ namespace winrt::TerminalApp::implementation
             if (const auto& terminalArgs{ realArgs.ContentArgs().try_as<NewTerminalArgs>() };
                 terminalArgs && ::Microsoft::Terminal::AgentPaneRestore::IsPaneType(terminalArgs.Type()))
             {
-                _RestoreAgentPaneFromLayout(activeTab, terminalArgs);
+                _RestoreAgentPaneFromLayout(activeTab, terminalArgs, realArgs.SplitDirection(), realArgs.SplitSize());
                 args.Handled(true);
                 return;
             }
@@ -512,6 +512,20 @@ namespace winrt::TerminalApp::implementation
             {
                 args.Handled(false);
                 return;
+            }
+
+            // Belt and braces. `Pane::BuildStartupActions` lifts an agent pane
+            // out of the tree so it is always persisted as a `splitPane`, which
+            // `_HandleSplitPane` knows to divert to the restore path. A layout
+            // written before that — or hand-edited — could still name one here,
+            // and its command line is a restore record rather than something
+            // runnable. Strip it and open an ordinary tab rather than executing
+            // the record.
+            if (const auto& terminalArgs{ realArgs.ContentArgs().try_as<NewTerminalArgs>() };
+                terminalArgs && ::Microsoft::Terminal::AgentPaneRestore::IsPaneType(terminalArgs.Type()))
+            {
+                terminalArgs.Commandline({});
+                terminalArgs.SetContentType({});
             }
 
             const auto result = _OpenNewTab(realArgs.ContentArgs());

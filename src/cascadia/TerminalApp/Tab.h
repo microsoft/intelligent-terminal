@@ -110,7 +110,6 @@ namespace winrt::TerminalApp::implementation
         winrt::TerminalApp::AgentPaneContent FindAgentPaneContent() const;
         // Returns the Pane node hosting the AgentPaneContent, or nullptr.
         std::shared_ptr<Pane> FindAgentPane() const;
-        float AgentPaneSize() const noexcept;
 
         // Hide the agent pane without detaching it from the tree. The pane
         // stays alive (so TermControl + conpty + wta-helper survive), but

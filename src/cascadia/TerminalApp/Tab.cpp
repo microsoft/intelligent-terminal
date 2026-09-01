@@ -784,8 +784,8 @@ namespace winrt::TerminalApp::implementation
     // Return Value:
     // - a pair of (the Pane wrapping the original tree, the new Pane)
     std::pair<std::shared_ptr<Pane>, std::shared_ptr<Pane>> Tab::SplitPaneAtRoot(SplitDirection splitType,
-                                                                                std::shared_ptr<Pane> pane,
-                                                                                const float splitSize)
+                                                                                 std::shared_ptr<Pane> pane,
+                                                                                 const float splitSize)
     {
         ASSERT_UI_THREAD();
 
@@ -2529,25 +2529,6 @@ namespace winrt::TerminalApp::implementation
             }
         }
         return nullptr;
-    }
-
-    // Fraction of its parent split that the agent pane currently occupies, so
-    // a restore can bring the pane back the size the user left it.
-    // Falls back to an even split when there is no agent pane to measure.
-    float Tab::AgentPaneSize() const noexcept
-    {
-        if (const auto agentPane = FindAgentPane())
-        {
-            if (const auto parent = _rootPane->_FindParentOfPane(agentPane))
-            {
-                // `_desiredSplitPosition` sizes the first child, so invert it
-                // when the agent pane is the second one.
-                return parent->_firstChild == agentPane ?
-                           parent->_desiredSplitPosition :
-                           1.0f - parent->_desiredSplitPosition;
-            }
-        }
-        return 0.5f;
     }
 
     // Hide the agent pane without destroying it. The pane stays in the tab

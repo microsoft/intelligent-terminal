@@ -244,7 +244,14 @@ namespace winrt::TerminalApp::implementation
             // Read now, not in the callback: by the time the low-priority tick
             // runs, the replay may have finished even though this tab's own
             // agent pane is still queued behind it.
-            const auto deferPrewarm = _replayingStartupActions;
+            const auto deferPrewarm = _startupActionReplayDepth > 0;
+            if (deferPrewarm)
+            {
+                // Queue synchronously. The low-priority callback below runs
+                // after `_PrewarmAgentPanesAfterStartup` for the last tabs of a
+                // batch, so recording there would miss them entirely.
+                _tabsAwaitingPrewarm.emplace_back(make_weak(newTabImpl));
+            }
             dispatcher.TryEnqueue(winrt::Windows::System::DispatcherQueuePriority::Low, [weakSelf, weakTab, deferPrewarm]() {
                 const auto self = weakSelf.get();
                 const auto tabImplCom = weakTab.get();
@@ -603,13 +610,20 @@ namespace winrt::TerminalApp::implementation
             }
 
             // Prefer rebuilding from the agent id: it is validated, while a
-            // command line handed to us by a hook is not.
+            // command line handed to us by a hook is not. Fall back to the
+            // recorded one when we cannot spell the resume ourselves — an
+            // agent absent from `ResumeInvocations`, or a session id that
+            // fails validation — rather than dropping the binding entirely.
             namespace Restore = ::Microsoft::Terminal::AgentPaneRestore;
-            const auto resume = !binding->second.agent.empty() ?
-                                    winrt::hstring{ Restore::BuildResumeCommandline(
-                                        binding->second.agent,
-                                        binding->second.sessionId) } :
-                                    binding->second.resumeCommandline;
+            auto resume = binding->second.agent.empty() ?
+                              winrt::hstring{} :
+                              winrt::hstring{ Restore::BuildResumeCommandline(
+                                  binding->second.agent,
+                                  binding->second.sessionId) };
+            if (resume.empty())
+            {
+                resume = binding->second.resumeCommandline;
+            }
             if (!resume.empty())
             {
                 terminalArgs.Commandline(resume);

@@ -62,19 +62,43 @@ namespace Microsoft::Terminal::AgentPaneRestore
         std::wstring customCommand;
     };
 
-    // Quote a value the same way the live helper spawn does, so a distro name
-    // or custom command containing spaces round-trips.
+    // Quote a value so that `CommandLineToArgvW` — which is what
+    // `ParsePaneCommandline` is fed from — hands it back verbatim.
+    //
+    // That parser only treats backslashes specially when they run into a
+    // quote, so escaping every one of them corrupts ordinary Windows paths:
+    // `C:\tools\agent.exe` would come back as `C:\\tools\\agent.exe`. Double
+    // only the runs that precede a quote, plus the trailing run that would
+    // otherwise escape the closing quote.
+    //
+    // This deliberately does not escape `;` the way `QuoteAndEscapeCommandlineArg`
+    // does: that escape exists for `wt`'s own action separator, and a literal
+    // `\;` here would survive into the parsed value.
     inline void AppendQuoted(std::wstring& out, const std::wstring_view value)
     {
         out.push_back(L'"');
+
+        size_t backslashes = 0;
         for (const auto ch : value)
         {
-            if (ch == L'"' || ch == L'\\')
+            if (ch == L'\\')
             {
-                out.push_back(L'\\');
+                ++backslashes;
+            }
+            else
+            {
+                if (ch == L'"')
+                {
+                    // 2n+1 backslashes before a quote parse back as n
+                    // backslashes plus a literal quote.
+                    out.append(backslashes + 1, L'\\');
+                }
+                backslashes = 0;
             }
             out.push_back(ch);
         }
+
+        out.append(backslashes, L'\\');
         out.push_back(L'"');
     }
 
@@ -143,11 +167,16 @@ namespace Microsoft::Terminal::AgentPaneRestore
     }
 
     // How each agent CLI spells "pick up this conversation again".
+    //
+    // This mirrors `resume_flag` in `tools/wta/src/agent_registry.rs`, which is
+    // the source of truth; an agent missing here simply never gets its shell
+    // pane rewritten. Agents whose `resume_flag` is empty do not belong here.
     inline constexpr std::pair<std::wstring_view, std::wstring_view> ResumeInvocations[]{
         { L"copilot", L"--resume" },
         { L"claude", L"--resume" },
         { L"codex", L"resume" },
         { L"gemini", L"--resume" },
+        { L"opencode", L"--session" },
     };
 
     inline constexpr std::wstring_view ResumeShellPrefix{ L"cmd.exe /d /s /c \"" };
