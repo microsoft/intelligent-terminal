@@ -2101,6 +2101,57 @@ fn session_attached_for_load_target_closes_replay_window() {
     );
 }
 
+// The status row only gets height when `should_show_activity` says so, and
+// `render_activity` draws into whatever that allocates. A resume outlives the
+// `Connecting` state it starts in — `session/load` only runs once the
+// handshake is done, and can take tens of seconds — so leaving it out of the
+// gate collapsed the row the moment the connection completed: the resume
+// shimmer was drawn into a zero-height area and the pane went blank for the
+// rest of the load, with no way to tell a slow resume from a hang.
+#[test]
+fn a_resume_keeps_the_status_row_after_the_connection_completes() {
+    let (mut app, _load_session_rx) = make_app_with_load_session_channel();
+    app.owner_tab_id = Some("OWNER-TAB".to_string());
+    app.tab_id = Some("OWNER-TAB".to_string());
+    app.tab_sessions
+        .insert("OWNER-TAB".to_string(), TabSession::default());
+    app.state = ConnectionState::Connected;
+
+    assert!(
+        !crate::ui::chat::should_show_activity(&app),
+        "an idle connected pane needs no status row"
+    );
+
+    app.handle_event(AppEvent::WtEvent {
+        method: "load_session".to_string(),
+        pane_id: String::new(),
+        tab_id: None,
+        params: json!({
+            "tab_id": "OWNER-TAB",
+            "session_id": "sess-target",
+            "cwd": "",
+        }),
+    });
+
+    assert!(app.tab_sessions["OWNER-TAB"].loading_session);
+    assert!(
+        crate::ui::chat::should_show_activity(&app),
+        "a resume must hold the status row open for the whole session/load, \
+         not just while the connection is still being established"
+    );
+
+    app.handle_event(AppEvent::SessionAttached {
+        tab_id: "OWNER-TAB".to_string(),
+        session_id: "sess-target".to_string(),
+        available_models: vec![],
+        current_model_id: None,
+    });
+    assert!(
+        !crate::ui::chat::should_show_activity(&app),
+        "and is released once the resume is done"
+    );
+}
+
 /// TabError must clear both flags so a subsequent load can re-open
 /// the window cleanly.
 #[test]

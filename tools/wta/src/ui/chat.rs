@@ -629,6 +629,13 @@ fn should_show_turn_activity(tab: &crate::app::TabSession) -> bool {
 
 pub(crate) fn should_show_activity(app: &App) -> bool {
     matches!(app.state, crate::app::ConnectionState::Connecting(_))
+        // A resume outlives the connecting state it starts in: `session/load`
+        // only runs once the handshake is done, and it can take tens of
+        // seconds. Without this the status row loses its height the instant
+        // the connection completes, so `render_activity` draws the resume
+        // shimmer into a zero-height area and the pane goes blank for the rest
+        // of the load — with no way to tell a slow resume from a hang.
+        || app.resume_in_flight()
         || should_show_turn_activity(app.current_tab())
 }
 
