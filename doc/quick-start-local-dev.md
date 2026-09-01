@@ -47,7 +47,7 @@ first build is slow; later ones are incremental.
 | **C++** (`src/`) | Press **F5** in Visual Studio |
 
 `cargo build` is incremental (seconds for a small change). To see a WTA change inside the running
-Terminal (agent pane, autofix), press **F5** afterward so the new `wta.exe` is copied in.
+Terminal (agent pane, Auto-error-handling), press **F5** afterward so the new `wta.exe` is copied in.
 
 > If a rebuild reports `wta.exe` in use, stop the running instance first: close the Dev Terminal,
 > or run `taskkill /f /im wta.exe`.

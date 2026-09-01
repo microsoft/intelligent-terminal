@@ -92,7 +92,7 @@
         <!-- Bottom Bar: window-level AI agent toolbar. Always visible as
              window chrome, but its state reflects the *active tab*'s agent
              pane (toggle lit when active tab has an AgentPaneContent,
-             diagnostics from the active tab's autofix state, etc.).
+             diagnostics from the active tab's auto-error-handling state, etc.).
              The top border uses the TabViewBackground theme resource. -->
         <Border x:Name="BottomBarRoot"
                 Grid.Row="3"

@@ -46,7 +46,7 @@ chat.plan_header: "Kế hoạch:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}
 chat.plan_marker_pending: "[ ]"  # {Locked}
-chat.autofix_prompt_label: "Đã tự động chẩn đoán một lỗi lệnh gần đây"
+chat.auto_error_handling_prompt_label: "Đã tự động chẩn đoán một lỗi lệnh gần đây"
 chat.turn_canceled: "(đã hủy)"
 chat.turn_executed: "→ đã thực thi: %{title}"
 # Nhãn danh mục công cụ cố định, hiển thị sau dấu trạng thái và trước đối tượng.

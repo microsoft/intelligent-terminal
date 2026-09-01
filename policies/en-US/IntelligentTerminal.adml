@@ -39,10 +39,10 @@ To control custom agent commands (custom:&lt;command&gt;), use the "Allow Custom
       <string id="AllowCustomAgentsText">Controls whether end users can configure custom AI agent commands (custom:&lt;command&gt;) in Intelligent Terminal.
 
 If you enable this policy or do not configure it, users can add custom agent commands. If you disable this policy, the "Add New" option is hidden and existing custom agent configurations are ignored at runtime.</string>
-      <string id="AllowAutoFix">Allow Auto-Fix</string>
-      <string id="AllowAutoFixText">Controls whether the automatic error-fix feature (auto-fix) is available in Intelligent Terminal. When enabled, the agent automatically suggests fixes for failed commands.
+      <string id="AllowAutoErrorHandling">Allow Auto-error-handling with agents</string>
+      <string id="AllowAutoErrorHandlingText">Controls whether Auto-error-handling can send detected errors to an agent for fixes automatically.
 
-If you enable this policy or do not configure it, users can toggle auto-fix in settings. If you disable this policy, auto-fix is forced off regardless of the user setting.</string>
+If you enable this policy or do not configure it, users can select any Auto-error-handling option. If you disable this policy, users can select Off or Detect errors automatically, but cannot send detected errors to an agent automatically.</string>
       <string id="AllowAgentSessionHooks">Allow Agent Session Hooks</string>
       <string id="AllowAgentSessionHooksText">Controls whether agent session tracking hooks can be installed in Intelligent Terminal. Hooks integrate with agents (GitHub Copilot, Claude, Gemini) to track sessions across tools.
 

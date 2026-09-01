@@ -46,7 +46,7 @@ chat.plan_header: "План:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}
 chat.plan_marker_pending: "[ ]"  # {Locked}
-chat.autofix_prompt_label: "Аутоматски дијагностикован недавни неуспех команде"
+chat.auto_error_handling_prompt_label: "Аутоматски дијагностикован недавни неуспех команде"
 chat.turn_canceled: "(отказано)"
 chat.turn_executed: "→ извршено: %{title}"
 # Трајне ознаке категорија алата приказане послије ознаке статуса и прије предмета.

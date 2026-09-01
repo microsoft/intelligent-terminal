@@ -46,7 +46,7 @@ chat.plan_header: "Plāns:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}
 chat.plan_marker_pending: "[ ]"  # {Locked}
-chat.autofix_prompt_label: "Automātiski diagnosticēta nesena komandas kļūme"
+chat.auto_error_handling_prompt_label: "Automātiski diagnosticēta nesena komandas kļūme"
 chat.turn_canceled: "(atcelts)"
 chat.turn_executed: "→ izpildīts: %{title}"
 # Persistent tool-category labels shown after a status marker and before a subject.

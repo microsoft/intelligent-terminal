@@ -57,13 +57,6 @@
     <value>Node.js exekuzio-ingurunea instalatzen du, ordenagailuan aurrez ez badago.</value>
     <comment>{Locked="Node.js"} This hint appears when selecting an AI agent whose Node.js runtime may need to be installed automatically.</comment>
   </data>
-  <data name="FreOverlay_AutoErrorLabel.Text" xml:space="preserve">
-    <value>Erroreen iradokizun automatikoa</value>
-  </data>
-  <data name="FreOverlay_AutoErrorDescription.Text" xml:space="preserve">
-    <value>Eman baimena Intelligent Terminal-i erroreak zure agenteari bidaltzeko konponketak automatikoki iradokitzeko.</value>
-    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
-  </data>
   <data name="FreOverlay_SessionLabel.Text" xml:space="preserve">
     <value>Saio-kudeaketa</value>
   </data>
@@ -159,11 +152,13 @@
   <data name="FreOverlay_ToggleOff" xml:space="preserve">
     <value>Desaktibatuta</value>
   </data>
-  <data name="FreOverlay_AutoDetectLabel.Text" xml:space="preserve">
-    <value>Erroreen detekzio automatikoa</value>
+  <data name="FreOverlay_AutoErrorHandlingLabel.Text" xml:space="preserve">
+    <value>Erroreen kudeaketa automatikoa</value>
+    <comment>Label for the Auto-error-handling dropdown in the first-run wizard.</comment>
   </data>
-  <data name="FreOverlay_AutoDetectDescription.Text" xml:space="preserve">
-    <value>Detektatu erroreak automatikoki.</value>
+  <data name="FreOverlay_AutoErrorHandlingDescription.Text" xml:space="preserve">
+    <value>Aukeratu terminal-erroreak nola kudeatzen diren.</value>
+    <comment>Description for the Auto-error-handling dropdown in the first-run wizard.</comment>
   </data>
 <data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
     <value>⚠ Shell integrazioa instalatzeak huts egin du. Erroreen detekzioa desaktibatu da. Berriro aktibatu eta berriro saiatu dezakezu, edo gorde hori gabe jarraitzeko.</value>
@@ -173,13 +168,25 @@
   </data><data name="FreOverlay_ErrorHelpLink" xml:space="preserve">
     <value>Ikasi nola konpondu hau eskuz</value>
     <comment>Hyperlink shown below an FRE setup error message. Opens step-by-step manual setup instructions in the browser.</comment>
-  </data>  <data name="FreOverlay_AutoDetectShellIntegrationHintPrefix" xml:space="preserve">
-    <value>Shell integrazioa instalatzen du PowerShell, bash eta WSL bash-en erroreak automatikoki hautemateko. </value>
-    <comment>{Locked="PowerShell","bash","WSL bash"} Hint shown under the "Automatic error detection" toggle in the first-run wizard. It explains that shell integration is installed for automatic error detection in the listed shells. The trailing space is intentional — it separates this prefix from the inline supported-shells hyperlink that follows.</comment>
+  </data>  <data name="FreOverlay_AutoErrorHandlingShellIntegrationHintPrefix" xml:space="preserve">
+    <value>PowerShell, bash eta WSL bash-en akatsak automatikoki kudeatzeko shell integrazioa instalatzen du. </value>
+    <comment>{Locked="PowerShell","bash","WSL bash"} Hint shown under the Auto-error-handling dropdown in the first-run wizard. The trailing space is intentional — it separates this prefix from the inline FreOverlay_AutoErrorHandlingShellIntegrationHintLink hyperlink that follows.</comment>
   </data>
-  <data name="FreOverlay_AutoDetectShellIntegrationHintLink" xml:space="preserve">
+  <data name="FreOverlay_AutoErrorHandlingShellIntegrationHintLink" xml:space="preserve">
     <value>Ikusi onartutako shell guztiak</value>
-    <comment>Inline hyperlink text that follows FreOverlay_AutoDetectShellIntegrationHintPrefix and opens the documentation listing every shell that supports automatic error detection.</comment>
+    <comment>Inline hyperlink text that follows FreOverlay_AutoErrorHandlingShellIntegrationHintPrefix and opens the documentation listing every shell that supports Auto-error-handling.</comment>
+  </data>
+  <data name="FreOverlay_AutoErrorHandling_Off" xml:space="preserve">
+    <value>Desaktibatuta</value>
+    <comment>The first option in the Auto-error-handling dropdown. It disables automatic terminal error detection and fixes.</comment>
+  </data>
+  <data name="FreOverlay_AutoErrorHandling_DetectErrorsAutomatically" xml:space="preserve">
+    <value>Detektatu erroreak automatikoki</value>
+    <comment>The second option in the Auto-error-handling dropdown. It detects terminal errors automatically without sending them to an AI agent. Here "agent" means an AI intelligent agent, not a proxy or human agent.</comment>
+  </data>
+  <data name="FreOverlay_AutoErrorHandling_DetectErrorsAndSendToAgentForFixesAutomatically" xml:space="preserve">
+    <value>Detektatu erroreak eta bidali AI agenteari automatikoki konponketak egiteko.</value>
+    <comment>The third option in the Auto-error-handling dropdown. It detects terminal errors and sends them to an AI agent for automatic fixes. Here "agent" means an AI intelligent agent, not a proxy or human agent.</comment>
   </data>
   <data name="InitShellIntegrationExecutionPolicyErrorMessage" xml:space="preserve">
     <value>PowerShell exekuzio-politikak script-ak blokeatzen ditu.</value>

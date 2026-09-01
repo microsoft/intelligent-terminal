@@ -24,7 +24,7 @@ $publicFns = @(
     'Send-WtInput', 'Send-WtKeys', 'Get-WtCapture', 'Wait-WtPaneExit', 'Invoke-RunCommand', 'Send-WtEvent',
     # Settings / Fre
     'Get-WtSettingsObject', 'Set-WtSetting', 'Get-WtSetting', 'Set-WtAgent', 'Set-WtDelegateAgent',
-    'Set-WtAutofix', 'Set-WtPanePosition', 'Set-WtSettings', 'ConvertFrom-JsonC',
+    'Set-WtAutoErrorHandling', 'Set-WtPanePosition', 'Set-WtSettings', 'ConvertFrom-JsonC',
     'Get-WtStateObject', 'Set-WtState', 'Invoke-FrePass', 'Reset-Fre', 'Get-FreCompleted',
     'Invoke-FrePassViaUi', 'Test-FreShowing',
     'Get-WtExecutionPolicyState', 'Set-WtExecutionPolicy', 'Restore-WtExecutionPolicy',
@@ -40,7 +40,7 @@ $publicFns = @(
     # Observe
     'Get-ItLogDir', 'Initialize-LogOffsets', 'Get-ItLogText', 'Start-WtEventListener', 'Get-WtEvents',
     'Wait-WtEvent', 'Stop-WtEventListener', 'Get-ContextBundle', 'ConvertTo-ContextText',
-    # Agent / Autofix / Sessions
+    # Agent / Auto-error-handling / Sessions
     'Open-AgentPane', 'Set-AgentPaneFocus', 'Wait-AgentReady', 'Get-AgentCliStatus', 'Get-WtaLocalizedTextRegex', 'Get-WtReswTextValues', 'Get-WtReswTextRegex', 'Get-RecommendationCardRegex', 'Get-PendingTerminalActionProposal', 'Wait-TerminalActionProposal', 'Resolve-AgentOwnerTabId', 'Send-AgentPrompt', 'Wait-AgentState',
     'Test-AgentPaneOpen', 'Stop-AgentPane', 'Restore-AgentPane', 'Get-AgentPaneSessions', 'Get-AgentPaneSession', 'Wait-NewAgentPaneSession', 'Get-AgentPaneText',
     'Send-AgentKey', 'Send-AgentShiftEnter', 'Clear-AgentInput', 'Send-AgentWin32Key', 'Send-AgentAltV',
@@ -48,7 +48,7 @@ $publicFns = @(
     'Open-AgentCommandMenu', 'Get-AgentMenuSelection', 'Invoke-AgentMenuItem',
     'Test-AgentPopupShown', 'Wait-AgentPermission', 'Resolve-AgentPermission', 'Assert-AgentPaneText',
     'Set-ClipboardImage',
-    'Wait-Autofix', 'Wait-WtCommandFailure', 'Send-AutofixState', 'Invoke-FailingCommand', 'Get-WtSessions', 'Invoke-Wta',
+    'Wait-AutoErrorHandling', 'Wait-AutoErrorHandlingDetection', 'Wait-WtCommandFailure', 'Send-AutoErrorHandlingState', 'Invoke-FailingCommand', 'Get-WtSessions', 'Invoke-Wta',
     'Open-SessionList', 'Close-SessionList', 'Test-SessionListShown', 'Get-SessionViewRenderRegex', 'Get-SessionRows',
     'Get-SessionListSelection', 'Select-SessionRow', 'Resume-Session', 'Get-SessionListJson',
     # Verify

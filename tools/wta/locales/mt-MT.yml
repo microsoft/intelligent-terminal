@@ -46,7 +46,7 @@ chat.plan_header: "Pjan:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}
 chat.plan_marker_pending: "[ ]"  # {Locked}
-chat.autofix_prompt_label: "Falliment riċenti ta' kmand iddijanjostikat awtomatikament"
+chat.auto_error_handling_prompt_label: "Falliment riċenti ta' kmand iddijanjostikat awtomatikament"
 chat.turn_canceled: "(ikkanċellat)"
 chat.turn_executed: "→ ġie eżegwit: %{title}"
 # Persistent tool-category labels shown after a status marker and before a subject.

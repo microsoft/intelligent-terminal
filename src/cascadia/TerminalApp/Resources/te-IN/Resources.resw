@@ -170,13 +170,6 @@
     <value>మీ మెషీన్‌లో Node.js రన్‌టైమ్ ఇప్పటికే లేకపోతే దాన్ని ఇన్‌స్టాల్ చేస్తుంది.</value>
     <comment>{Locked="Node.js"} This hint appears when selecting an AI agent whose Node.js runtime may need to be installed automatically.</comment>
   </data>
-  <data name="FreOverlay_AutoErrorLabel.Text" xml:space="preserve">
-    <value>స్వయంచాలక లోపం సూచన</value>
-  </data>
-  <data name="FreOverlay_AutoErrorDescription.Text" xml:space="preserve">
-    <value>పరిష్కారాలను స్వయంచాలకంగా సూచించడానికి మీ ఏజెంట్‌కు లోపాలను పంపడానికి Intelligent Terminal‌ను అనుమతించండి.</value>
-    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
-  </data>
   <data name="FreOverlay_SessionLabel.Text" xml:space="preserve">
     <value>సెషన్ నిర్వహణ</value>
   </data>
@@ -292,10 +285,6 @@
     <value>లోపం కనుగొనబడింది: విశ్లేషిస్తోంది…</value>
     <comment>Short status label shown next to the diagnostics button while an automatic error analysis is in progress.</comment>
   </data>
-  <data name="Diagnostics_ErrorArmedLabelFormat" xml:space="preserve">
-    <value>లోపం కనుగొనబడింది: పరిష్కరించడానికి {0}</value>
-    <comment>Short status label shown next to the diagnostics button when a fix is ready. {0} is replaced with the keyboard shortcut.</comment>
-  </data>
   <data name="Diagnostics_ErrorDetectedLabelFormat" xml:space="preserve">
     <value>సూచించిన పరిష్కారం కోసం ఏజెంట్‌ను అడగడానికి {0} క్లిక్ చేయండి లేదా నొక్కండి</value>
     <comment>Short status label shown next to the diagnostics button when an error is detected and a fix can be requested. {0} is replaced with the keyboard shortcut.</comment>
@@ -311,26 +300,6 @@
   <data name="Diagnostics_ErrorDetectedTooltipFormat" xml:space="preserve">
     <value>లోపం గుర్తించబడింది. AI ఏజెంట్‌కి నిర్ధారించి పరిష్కారం సూచించమని అడగడానికి {0} క్లిక్ చేయండి లేదా నొక్కండి.</value>
     <comment>Tooltip for the diagnostics button when an error is detected and a fix can be requested. {0} is replaced with the keyboard shortcut.</comment>
-  </data>
-  <data name="Diagnostics_FixReadyTooltipFormat" xml:space="preserve">
-    <value>పరిష్కారం సిద్ధం — వర్తింపజేయడానికి {0}</value>
-    <comment>Tooltip for the diagnostics button when a fix is ready. {0} is replaced with the keyboard shortcut.</comment>
-  </data>
-  <data name="Diagnostics_FixReadyTooltipWithPreviewFormat" xml:space="preserve">
-    <value>పరిష్కారం సిద్ధం — వర్తింపజేయడానికి {0}: {1}</value>
-    <comment>Tooltip for the diagnostics button when a fix is ready. {0} is replaced with the keyboard shortcut; {1} is a preview of the suggested command or fix.</comment>
-  </data>
-  <data name="Diagnostics_SuggestionReadyLabel" xml:space="preserve">
-    <value>సూచన సిద్ధం — ఏజెంట్ పేన్‌ను తెరవండి</value>
-    <comment>Short status label shown next to the diagnostics button when a suggestion is available in the agent pane.</comment>
-  </data>
-  <data name="Diagnostics_SuggestionTooltipIntro" xml:space="preserve">
-    <value>Auto-fix దీన్ని నేరుగా పరిష్కరించడానికి నిరాకరించింది. </value>
-    <comment>First sentence of the diagnostics tooltip when automatic fix generation declines to apply a fix directly. Preserve the trailing space; additional guidance follows in the same tooltip.</comment>
-  </data>
-  <data name="Diagnostics_SuggestionTooltipInstruction" xml:space="preserve">
-    <value>ఏజెంట్ పేన్‌ను తెరిచి పూర్తి సూచనను చదవడానికి ఇక్కడ క్లిక్ చేయండి లేదా Ctrl+Shift+. నొక్కండి.</value>
-    <comment>Second sentence of the diagnostics tooltip when a suggestion is available. {Locked="Ctrl+Shift+."}</comment>
   </data>
   <data name="Diagnostics_Tooltip" xml:space="preserve">
     <value>విశ్లేషణలు</value>
@@ -352,22 +321,36 @@
     <value>Terminal Protocol</value>
     <comment>Title for the teaching tip that displays Terminal Protocol connection information. {Locked="Terminal Protocol"}</comment>
   </data>
-  <data name="FreOverlay_AutoDetectLabel.Text" xml:space="preserve">
-    <value>స్వయంచాలక లోపం గుర్తింపు</value>
+  <data name="FreOverlay_AutoErrorHandlingLabel.Text" xml:space="preserve">
+    <value>స్వయంచాలక లోపం నిర్వహణ</value>
+    <comment>Label for the Auto-error-handling dropdown in the first-run wizard.</comment>
   </data>
-  <data name="FreOverlay_AutoDetectDescription.Text" xml:space="preserve">
-    <value>లోపాలను స్వయంచాలకంగా గుర్తించండి.</value>
+  <data name="FreOverlay_AutoErrorHandlingDescription.Text" xml:space="preserve">
+    <value>టెర్మినల్ లోపాలను ఎలా నిర్వహించాలో ఎంచుకోండి.</value>
+    <comment>Description for the Auto-error-handling dropdown in the first-run wizard.</comment>
   </data>
   <data name="FreOverlay_ErrorHelpLink" xml:space="preserve">
     <value>దీన్ని మాన్యువల్‌గా ఎలా పరిష్కరించాలో తెలుసుకోండి</value>
     <comment>Hyperlink shown below an FRE setup error message. Opens step-by-step manual setup instructions in the browser.</comment>
-  </data>  <data name="FreOverlay_AutoDetectShellIntegrationHintPrefix" xml:space="preserve">
-    <value>PowerShell, bash మరియు WSL bashలో స్వయంచాలక దోష గుర్తింపు కోసం shell ఇంటిగ్రేషన్‌ను ఇన్‌స్టాల్ చేస్తుంది. </value>
-    <comment>{Locked="PowerShell","bash","WSL bash"} Hint shown under the "Automatic error detection" toggle in the first-run wizard. It explains that shell integration is installed for automatic error detection in the listed shells. The trailing space is intentional — it separates this prefix from the inline supported-shells hyperlink that follows.</comment>
+  </data>  <data name="FreOverlay_AutoErrorHandlingShellIntegrationHintPrefix" xml:space="preserve">
+    <value>PowerShell, bash మరియు WSL bashలో స్వయంచాలక దోష నిర్వహణ కోసం shell ఇంటిగ్రేషన్‌ను ఇన్‌స్టాల్ చేస్తుంది. </value>
+    <comment>{Locked="PowerShell","bash","WSL bash"} Hint shown under the Auto-error-handling dropdown in the first-run wizard. The trailing space is intentional — it separates this prefix from the inline FreOverlay_AutoErrorHandlingShellIntegrationHintLink hyperlink that follows.</comment>
   </data>
-  <data name="FreOverlay_AutoDetectShellIntegrationHintLink" xml:space="preserve">
+  <data name="FreOverlay_AutoErrorHandlingShellIntegrationHintLink" xml:space="preserve">
     <value>మద్దతు ఉన్న అన్ని shellలను చూడండి</value>
-    <comment>Inline hyperlink text that follows FreOverlay_AutoDetectShellIntegrationHintPrefix and opens the documentation listing every shell that supports automatic error detection.</comment>
+    <comment>Inline hyperlink text that follows FreOverlay_AutoErrorHandlingShellIntegrationHintPrefix and opens the documentation listing every shell that supports Auto-error-handling.</comment>
+  </data>
+  <data name="FreOverlay_AutoErrorHandling_Off" xml:space="preserve">
+    <value>ఆఫ్</value>
+    <comment>The first option in the Auto-error-handling dropdown. It disables automatic terminal error detection and fixes.</comment>
+  </data>
+  <data name="FreOverlay_AutoErrorHandling_DetectErrorsAutomatically" xml:space="preserve">
+    <value>లోపాలను స్వయంచాలకంగా గుర్తించండి</value>
+    <comment>The second option in the Auto-error-handling dropdown. It detects terminal errors automatically without sending them to an AI agent. Here "agent" means an AI intelligent agent, not a proxy or human agent.</comment>
+  </data>
+  <data name="FreOverlay_AutoErrorHandling_DetectErrorsAndSendToAgentForFixesAutomatically" xml:space="preserve">
+    <value>లోపాలను గుర్తించి, వాటిని స్వయంచాలకంగా పరిష్కారాల కోసం AI ఏజెంట్‌కు పంపండి.</value>
+    <comment>The third option in the Auto-error-handling dropdown. It detects terminal errors and sends them to an AI agent for automatic fixes. Here "agent" means an AI intelligent agent, not a proxy or human agent.</comment>
   </data>
   <data name="InitShellIntegrationExecutionPolicyErrorMessage" xml:space="preserve">
     <value>PowerShell ఎగ్జిక్యూషన్ విధానం స్క్రిప్ట్‌లను నిరోధిస్తోంది.</value>

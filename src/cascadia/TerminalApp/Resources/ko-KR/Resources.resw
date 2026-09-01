@@ -1100,13 +1100,6 @@ Here "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a proxy, 
     <comment>{Locked="Node.js"}
 This hint appears when selecting an AI agent whose Node.js runtime may need to be installed automatically.</comment>
   </data>
-  <data name="FreOverlay_AutoErrorLabel.Text" xml:space="preserve">
-    <value>자동 오류 제안</value>
-  </data>
-  <data name="FreOverlay_AutoErrorDescription.Text" xml:space="preserve">
-    <value>Intelligent Terminal이 오류를 에이전트로 보내 수정 사항을 자동으로 제안하도록 허용합니다.</value>
-    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
-  </data>
   <data name="FreOverlay_SessionLabel.Text" xml:space="preserve">
     <value>세션 관리</value>
   </data>
@@ -1233,10 +1226,6 @@ This hint appears when selecting an AI agent whose Node.js runtime may need to b
     <value>오류 감지됨: 분석 중…</value>
     <comment>Short status label shown next to the diagnostics button while an automatic error analysis is in progress.</comment>
   </data>
-  <data name="Diagnostics_ErrorArmedLabelFormat" xml:space="preserve">
-    <value>오류 감지됨: {0} 키로 수정</value>
-    <comment>Short status label shown next to the diagnostics button when a fix is ready. {0} is replaced with the keyboard shortcut.</comment>
-  </data>
   <data name="Diagnostics_ErrorDetectedLabelFormat" xml:space="preserve">
     <value>에이전트에게 수정 제안을 요청하려면 {0}를 클릭하거나 누르세요</value>
     <comment>Short status label shown next to the diagnostics button when an error is detected and a fix can be requested. {0} is replaced with the keyboard shortcut.</comment>
@@ -1252,26 +1241,6 @@ This hint appears when selecting an AI agent whose Node.js runtime may need to b
   <data name="Diagnostics_ErrorDetectedTooltipFormat" xml:space="preserve">
     <value>오류가 감지되었습니다. AI 에이전트에게 진단과 수정 제안을 요청하려면 {0}를 클릭하거나 누르세요.</value>
     <comment>Tooltip for the diagnostics button when an error is detected and a fix can be requested. {0} is replaced with the keyboard shortcut.</comment>
-  </data>
-  <data name="Diagnostics_FixReadyTooltipFormat" xml:space="preserve">
-    <value>수정 준비됨 — {0} 키로 적용</value>
-    <comment>Tooltip for the diagnostics button when a fix is ready. {0} is replaced with the keyboard shortcut.</comment>
-  </data>
-  <data name="Diagnostics_FixReadyTooltipWithPreviewFormat" xml:space="preserve">
-    <value>수정 준비됨 — {0} 키로 적용: {1}</value>
-    <comment>Tooltip for the diagnostics button when a fix is ready. {0} is replaced with the keyboard shortcut; {1} is a preview of the suggested command or fix.</comment>
-  </data>
-  <data name="Diagnostics_SuggestionReadyLabel" xml:space="preserve">
-    <value>제안 준비됨 — 에이전트 창 열기</value>
-    <comment>Short status label shown next to the diagnostics button when a suggestion is available in the agent pane.</comment>
-  </data>
-  <data name="Diagnostics_SuggestionTooltipIntro" xml:space="preserve">
-    <value>자동 수정에서 직접 수정을 거부했습니다. </value>
-    <comment>First sentence of the diagnostics tooltip when automatic fix generation declines to apply a fix directly. Preserve the trailing space; additional guidance follows in the same tooltip.</comment>
-  </data>
-  <data name="Diagnostics_SuggestionTooltipInstruction" xml:space="preserve">
-    <value>여기를 클릭하거나 Ctrl+Shift+.를 눌러 에이전트 창을 열고 전체 제안을 읽으세요.</value>
-    <comment>Second sentence of the diagnostics tooltip when a suggestion is available. {Locked="Ctrl+Shift+."}</comment>
   </data>
   <data name="Diagnostics_Tooltip" xml:space="preserve">
     <value>진단</value>
@@ -1293,19 +1262,33 @@ This hint appears when selecting an AI agent whose Node.js runtime may need to b
     <value>Terminal Protocol</value>
     <comment>Title for the teaching tip that displays Terminal Protocol connection information. {Locked="Terminal Protocol"}</comment>
   </data>
-  <data name="FreOverlay_AutoDetectLabel.Text" xml:space="preserve">
-    <value>자동 오류 검색</value>
+  <data name="FreOverlay_AutoErrorHandlingLabel.Text" xml:space="preserve">
+    <value>자동 오류 처리</value>
+    <comment>Label for the Auto-error-handling dropdown in the first-run wizard.</comment>
   </data>
-  <data name="FreOverlay_AutoDetectDescription.Text" xml:space="preserve">
-    <value>오류를 자동으로 감지합니다.</value>
+  <data name="FreOverlay_AutoErrorHandlingDescription.Text" xml:space="preserve">
+    <value>터미널 오류 처리 방법을 선택합니다.</value>
+    <comment>Description for the Auto-error-handling dropdown in the first-run wizard.</comment>
   </data>
-  <data name="FreOverlay_AutoDetectShellIntegrationHintPrefix" xml:space="preserve">
-    <value>PowerShell, bash 및 WSL bash에서 자동 오류 감지를 위한 셸 통합을 설치합니다. </value>
-    <comment>{Locked="PowerShell","bash","WSL bash"} Hint shown under the "Automatic error detection" toggle in the first-run wizard. It explains that shell integration is installed for automatic error detection in the listed shells. The trailing space is intentional — it separates this prefix from the inline supported-shells hyperlink that follows.</comment>
+  <data name="FreOverlay_AutoErrorHandlingShellIntegrationHintPrefix" xml:space="preserve">
+    <value>PowerShell, bash 및 WSL bash의 자동 오류 처리를 위한 셸 통합을 설치합니다. </value>
+    <comment>{Locked="PowerShell","bash","WSL bash"} Hint shown under the Auto-error-handling dropdown in the first-run wizard. The trailing space is intentional — it separates this prefix from the inline FreOverlay_AutoErrorHandlingShellIntegrationHintLink hyperlink that follows.</comment>
   </data>
-  <data name="FreOverlay_AutoDetectShellIntegrationHintLink" xml:space="preserve">
+  <data name="FreOverlay_AutoErrorHandlingShellIntegrationHintLink" xml:space="preserve">
     <value>지원되는 모든 셸 보기</value>
-    <comment>Inline hyperlink text that follows FreOverlay_AutoDetectShellIntegrationHintPrefix and opens the documentation listing every shell that supports automatic error detection.</comment>
+    <comment>Inline hyperlink text that follows FreOverlay_AutoErrorHandlingShellIntegrationHintPrefix and opens the documentation listing every shell that supports Auto-error-handling.</comment>
+  </data>
+  <data name="FreOverlay_AutoErrorHandling_Off" xml:space="preserve">
+    <value>끄기</value>
+    <comment>The first option in the Auto-error-handling dropdown. It disables automatic terminal error detection and fixes.</comment>
+  </data>
+  <data name="FreOverlay_AutoErrorHandling_DetectErrorsAutomatically" xml:space="preserve">
+    <value>오류를 자동으로 감지합니다</value>
+    <comment>The second option in the Auto-error-handling dropdown. It detects terminal errors automatically without sending them to an AI agent. Here "agent" means an AI intelligent agent, not a proxy or human agent.</comment>
+  </data>
+  <data name="FreOverlay_AutoErrorHandling_DetectErrorsAndSendToAgentForFixesAutomatically" xml:space="preserve">
+    <value>오류를 감지하고 수정을 위해 에이전트에 자동으로 보냅니다.</value>
+    <comment>The third option in the Auto-error-handling dropdown. It detects terminal errors and sends them to an AI agent for automatic fixes. Here "agent" means an AI intelligent agent, not a proxy or human agent.</comment>
   </data>
   <data name="InitShellIntegrationExecutionPolicyErrorMessage" xml:space="preserve">
     <value>PowerShell 실행 정책이 스크립트를 차단하고 있습니다.</value>

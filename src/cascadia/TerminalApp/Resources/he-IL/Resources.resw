@@ -171,13 +171,6 @@
     <value>מתקין את סביבת זמן הריצה של Node.js אם היא עדיין אינה מותקנת במחשב שלך.</value>
     <comment>{Locked="Node.js"} This hint appears when selecting an AI agent whose Node.js runtime may need to be installed automatically.</comment>
   </data>
-  <data name="FreOverlay_AutoErrorLabel.Text" xml:space="preserve">
-    <value>הצעת שגיאות אוטומטית</value>
-  </data>
-  <data name="FreOverlay_AutoErrorDescription.Text" xml:space="preserve">
-    <value>העניק ל-Intelligent Terminal הרשאה לשלוח שגיאות לסוכן שלך כדי להציע תיקונים באופן אוטומטי.</value>
-    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
-  </data>
   <data name="FreOverlay_SessionLabel.Text" xml:space="preserve">
     <value>ניהול הפעלות</value>
   </data>
@@ -281,10 +274,6 @@
     <value>זוהתה שגיאה: מנתח…</value>
     <comment>Short status label shown next to the diagnostics button while an automatic error analysis is in progress.</comment>
   </data>
-  <data name="Diagnostics_ErrorArmedLabelFormat" xml:space="preserve">
-    <value>זוהתה שגיאה: {0} לתיקון</value>
-    <comment>Short status label shown next to the diagnostics button when a fix is ready. {0} is replaced with the keyboard shortcut.</comment>
-  </data>
   <data name="Diagnostics_ErrorDetectedLabelFormat" xml:space="preserve">
     <value>לחץ או הקש על {0} כדי לבקש מהסוכן תיקון מוצע</value>
     <comment>Short status label shown next to the diagnostics button when an error is detected and a fix can be requested. {0} is replaced with the keyboard shortcut.</comment>
@@ -300,26 +289,6 @@
   <data name="Diagnostics_ErrorDetectedTooltipFormat" xml:space="preserve">
     <value>זוהתה שגיאה. לחץ או הקש על {0} כדי לבקש מהסוכן של ה‑AI לאבחן ולהציע תיקון.</value>
     <comment>Tooltip for the diagnostics button when an error is detected and a fix can be requested. {0} is replaced with the keyboard shortcut.</comment>
-  </data>
-  <data name="Diagnostics_FixReadyTooltipFormat" xml:space="preserve">
-    <value>התיקון מוכן — {0} להחלה</value>
-    <comment>Tooltip for the diagnostics button when a fix is ready. {0} is replaced with the keyboard shortcut.</comment>
-  </data>
-  <data name="Diagnostics_FixReadyTooltipWithPreviewFormat" xml:space="preserve">
-    <value>התיקון מוכן — {0} להחלה: {1}</value>
-    <comment>Tooltip for the diagnostics button when a fix is ready. {0} is replaced with the keyboard shortcut; {1} is a preview of the suggested command or fix.</comment>
-  </data>
-  <data name="Diagnostics_SuggestionReadyLabel" xml:space="preserve">
-    <value>ההצעה מוכנה — פתח את חלונית הסוכן</value>
-    <comment>Short status label shown next to the diagnostics button when a suggestion is available in the agent pane.</comment>
-  </data>
-  <data name="Diagnostics_SuggestionTooltipIntro" xml:space="preserve">
-    <value>התיקון האוטומטי סירב לתקן זאת ישירות. </value>
-    <comment>First sentence of the diagnostics tooltip when automatic fix generation declines to apply a fix directly. Preserve the trailing space; additional guidance follows in the same tooltip.</comment>
-  </data>
-  <data name="Diagnostics_SuggestionTooltipInstruction" xml:space="preserve">
-    <value>לחץ כאן או הקש Ctrl+Shift+. כדי לפתוח את חלונית הסוכן ולקרוא את ההצעה המלאה.</value>
-    <comment>Second sentence of the diagnostics tooltip when a suggestion is available. {Locked="Ctrl+Shift+."}</comment>
   </data>
   <data name="Diagnostics_Tooltip" xml:space="preserve">
     <value>אבחון</value>
@@ -341,11 +310,13 @@
     <value>Terminal Protocol</value>
     <comment>Title for the teaching tip that displays Terminal Protocol connection information. {Locked="Terminal Protocol"}</comment>
   </data>
-  <data name="FreOverlay_AutoDetectLabel.Text" xml:space="preserve">
-    <value>זיהוי שגיאות אוטומטי</value>
+  <data name="FreOverlay_AutoErrorHandlingLabel.Text" xml:space="preserve">
+    <value>טיפול אוטומטי בשגיאות</value>
+    <comment>Label for the Auto-error-handling dropdown in the first-run wizard.</comment>
   </data>
-  <data name="FreOverlay_AutoDetectDescription.Text" xml:space="preserve">
-    <value>זהה שגיאות באופן אוטומטי.</value>
+  <data name="FreOverlay_AutoErrorHandlingDescription.Text" xml:space="preserve">
+    <value>בחר כיצד יטופלו שגיאות מסוף.</value>
+    <comment>Description for the Auto-error-handling dropdown in the first-run wizard.</comment>
   </data>
 <data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
     <value>⚠ התקנת שילוב מעטפת נכשלה. זיהוי שגיאות כובה. באפשרותך להפעיל מחדש ולנסות שוב, או לשמור כדי להמשיך בלעדיו.</value>
@@ -355,13 +326,25 @@
   </data><data name="FreOverlay_ErrorHelpLink" xml:space="preserve">
     <value>למד כיצד לתקן זאת באופן ידני</value>
     <comment>Hyperlink shown below an FRE setup error message. Opens step-by-step manual setup instructions in the browser.</comment>
-  </data>  <data name="FreOverlay_AutoDetectShellIntegrationHintPrefix" xml:space="preserve">
-    <value>מתקין שילוב shell לזיהוי שגיאות אוטומטי ב-PowerShell, ב-bash וב-WSL bash. </value>
-    <comment>{Locked="PowerShell","bash","WSL bash"} Hint shown under the "Automatic error detection" toggle in the first-run wizard. It explains that shell integration is installed for automatic error detection in the listed shells. The trailing space is intentional — it separates this prefix from the inline supported-shells hyperlink that follows.</comment>
+  </data>  <data name="FreOverlay_AutoErrorHandlingShellIntegrationHintPrefix" xml:space="preserve">
+    <value>מתקין שילוב מעטפת לטיפול אוטומטי בשגיאות ב-PowerShell, bash ו-WSL bash. </value>
+    <comment>{Locked="PowerShell","bash","WSL bash"} Hint shown under the Auto-error-handling dropdown in the first-run wizard. The trailing space is intentional — it separates this prefix from the inline FreOverlay_AutoErrorHandlingShellIntegrationHintLink hyperlink that follows.</comment>
   </data>
-  <data name="FreOverlay_AutoDetectShellIntegrationHintLink" xml:space="preserve">
+  <data name="FreOverlay_AutoErrorHandlingShellIntegrationHintLink" xml:space="preserve">
     <value>הצג את כל רכיבי shell הנתמכים</value>
-    <comment>Inline hyperlink text that follows FreOverlay_AutoDetectShellIntegrationHintPrefix and opens the documentation listing every shell that supports automatic error detection.</comment>
+    <comment>Inline hyperlink text that follows FreOverlay_AutoErrorHandlingShellIntegrationHintPrefix and opens the documentation listing every shell that supports Auto-error-handling.</comment>
+  </data>
+  <data name="FreOverlay_AutoErrorHandling_Off" xml:space="preserve">
+    <value>כבוי</value>
+    <comment>The first option in the Auto-error-handling dropdown. It disables automatic terminal error detection and fixes.</comment>
+  </data>
+  <data name="FreOverlay_AutoErrorHandling_DetectErrorsAutomatically" xml:space="preserve">
+    <value>זהה שגיאות באופן אוטומטי</value>
+    <comment>The second option in the Auto-error-handling dropdown. It detects terminal errors automatically without sending them to an AI agent. Here "agent" means an AI intelligent agent, not a proxy or human agent.</comment>
+  </data>
+  <data name="FreOverlay_AutoErrorHandling_DetectErrorsAndSendToAgentForFixesAutomatically" xml:space="preserve">
+    <value>זהה שגיאות ושלח אותן אוטומטית לסוכן ה-AI לצורך תיקון.</value>
+    <comment>The third option in the Auto-error-handling dropdown. It detects terminal errors and sends them to an AI agent for automatic fixes. Here "agent" means an AI intelligent agent, not a proxy or human agent.</comment>
   </data>
   <data name="InitShellIntegrationExecutionPolicyErrorMessage" xml:space="preserve">
     <value>מדיניות הביצוע של PowerShell חוסמת סקריפטים.</value>

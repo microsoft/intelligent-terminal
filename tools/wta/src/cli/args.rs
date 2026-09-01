@@ -111,9 +111,9 @@ pub(crate) struct Cli {
     #[arg(long)]
     pub(crate) delegate_model: Option<String>,
 
-    /// Disable auto-fix on command failure
+    /// Disable automatic sending of detected errors to the agent
     #[arg(long)]
-    pub(crate) no_autofix: bool,
+    pub(crate) no_auto_error_handling_with_agent: bool,
 
     /// Enter diagnostic setup mode with the given reason instead of connecting directly.
     /// Values: agent-missing, agent-error

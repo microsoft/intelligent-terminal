@@ -31,7 +31,7 @@ namespace Microsoft::Terminal::Protocol::Parsing
     // The dispatch routes for IProtocolServer::SendEvent.
     enum class SendEventRoute
     {
-        AutofixState,         // Direct to TerminalPage, no broadcast
+        AutoErrorHandlingState, // Direct to TerminalPage, no broadcast
         AgentStatus,          // Direct to TerminalPage, no broadcast
         AgentSwitch,          // Direct to TerminalPage, no broadcast — `/agent` per-tab switch
         CloseAgentPane,       // Direct to TerminalPage, no broadcast
@@ -70,9 +70,9 @@ namespace Microsoft::Terminal::Protocol::Parsing
         if (outEvt.isMember("method") && outEvt["method"].isString())
         {
             const auto method = outEvt["method"].asString();
-            if (method == "autofix_state")
+            if (method == "auto_error_handling_state")
             {
-                return SendEventRoute::AutofixState;
+                return SendEventRoute::AutoErrorHandlingState;
             }
             if (method == "agent_status")
             {

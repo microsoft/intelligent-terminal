@@ -74,22 +74,22 @@ pub struct PromptSubmission {
     pub text: String,
     pub pane_context: Option<PaneContext>,
     pub submitted_at_unix_s: f64,
-    /// Distinguishes planner prompts from manual and automatic auto-fix
+    /// Distinguishes planner prompts from manual and automatic Auto-error-handling
     /// inputs. Automatic summaries are untrusted diagnostic context, while
     /// text supplied to `/fix` is user intent.
-    pub autofix_text_kind: Option<AutofixTextKind>,
+    pub auto_error_handling_text_kind: Option<AutoErrorHandlingTextKind>,
     /// Agent-advertised slash commands are sent verbatim, without planner
     /// templates or terminal context.
     agent_command: bool,
     /// Images pasted into the input via Alt+V. Sent to the agent as ACP
     /// `ContentBlock::Image` blocks appended after the text block (only when
     /// the agent advertised `promptCapabilities.image`). Empty for the common
-    /// text-only and all auto-fix prompts.
+    /// text-only and all Auto-error-handling prompts.
     pub images: Vec<crate::clipboard_image::PastedImage>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum AutofixTextKind {
+pub enum AutoErrorHandlingTextKind {
     UserRequest,
     FailureSummary,
 }
@@ -333,12 +333,23 @@ impl PromptSubmission {
         Self::new_with_kind(text, pane_context, None)
     }
 
-    pub fn new_autofix(text: String, pane_context: Option<PaneContext>) -> Self {
-        Self::new_with_kind(text, pane_context, Some(AutofixTextKind::UserRequest))
+    pub fn new_auto_error_handling(text: String, pane_context: Option<PaneContext>) -> Self {
+        Self::new_with_kind(
+            text,
+            pane_context,
+            Some(AutoErrorHandlingTextKind::UserRequest),
+        )
     }
 
-    pub fn new_autofix_failure(text: String, pane_context: Option<PaneContext>) -> Self {
-        Self::new_with_kind(text, pane_context, Some(AutofixTextKind::FailureSummary))
+    pub fn new_auto_error_handling_failure(
+        text: String,
+        pane_context: Option<PaneContext>,
+    ) -> Self {
+        Self::new_with_kind(
+            text,
+            pane_context,
+            Some(AutoErrorHandlingTextKind::FailureSummary),
+        )
     }
 
     pub fn new_agent_command(text: String, pane_context: Option<PaneContext>) -> Self {
@@ -350,7 +361,7 @@ impl PromptSubmission {
     fn new_with_kind(
         text: String,
         pane_context: Option<PaneContext>,
-        autofix_text_kind: Option<AutofixTextKind>,
+        auto_error_handling_text_kind: Option<AutoErrorHandlingTextKind>,
     ) -> Self {
         static NEXT_PROMPT_ID: AtomicU64 = AtomicU64::new(1);
         Self {
@@ -358,14 +369,14 @@ impl PromptSubmission {
             text,
             pane_context,
             submitted_at_unix_s: now_unix_s(),
-            autofix_text_kind,
+            auto_error_handling_text_kind,
             agent_command: false,
             images: Vec::new(),
         }
     }
 
-    pub fn is_autofix(&self) -> bool {
-        self.autofix_text_kind.is_some()
+    pub fn is_auto_error_handling(&self) -> bool {
+        self.auto_error_handling_text_kind.is_some()
     }
 
     pub fn is_agent_command(&self) -> bool {
@@ -4490,8 +4501,8 @@ async fn dispatch_prompt_body(
     };
     let prompt_session_id_str = prompt_session_id.to_string();
 
-    let kind = if prompt.is_autofix() {
-        TemplateKind::Autofix
+    let kind = if prompt.is_auto_error_handling() {
+        TemplateKind::AutoErrorHandling
     } else {
         TemplateKind::Planner
     };
@@ -4514,7 +4525,7 @@ async fn dispatch_prompt_body(
             prompt.id,
             prompt.submitted_at_unix_s,
             &prompt.text,
-            prompt.autofix_text_kind,
+            prompt.auto_error_handling_text_kind,
             include_base_prompt,
             &shell_mgr_task,
             wt_connected,
@@ -4529,7 +4540,7 @@ async fn dispatch_prompt_body(
             prompt_session_id_str.clone(),
             prompt.id,
             resolved_target_pane.clone(),
-            prompt.is_autofix(),
+            prompt.is_auto_error_handling(),
         ) {
             Ok(_) => {}
             Err(error) => {
@@ -4584,9 +4595,9 @@ async fn dispatch_prompt_body(
     crate::telemetry::log_agent_prompt_sent(
         &prompt_session_id_str,
         u32::try_from(text.len()).unwrap_or(u32::MAX),
-        prompt.is_autofix(),
+        prompt.is_auto_error_handling(),
         match kind {
-            TemplateKind::Autofix => "Autofix",
+            TemplateKind::AutoErrorHandling => "AutoErrorHandling",
             TemplateKind::Planner if prompt.is_agent_command() => "AgentCommand",
             TemplateKind::Planner => "Planner",
         },

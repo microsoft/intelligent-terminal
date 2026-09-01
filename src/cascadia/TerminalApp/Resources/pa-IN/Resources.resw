@@ -170,13 +170,6 @@
     <value>ਜੇ ਤੁਹਾਡੀ ਮਸ਼ੀਨ ਉੱਤੇ Node.js ਰਨਟਾਈਮ ਪਹਿਲਾਂ ਤੋਂ ਨਹੀਂ ਹੈ, ਤਾਂ ਇਸਨੂੰ ਇੰਸਟਾਲ ਕਰਦਾ ਹੈ।</value>
     <comment>{Locked="Node.js"} This hint appears when selecting an AI agent whose Node.js runtime may need to be installed automatically.</comment>
   </data>
-  <data name="FreOverlay_AutoErrorLabel.Text" xml:space="preserve">
-    <value>ਆਟੋਮੈਟਿਕ ਗਲਤੀ ਸੁਝਾਅ</value>
-  </data>
-  <data name="FreOverlay_AutoErrorDescription.Text" xml:space="preserve">
-    <value>Intelligent Terminal ਨੂੰ ਆਪਣੇ ਆਪ ਹੱਲ ਸੁਝਾਉਣ ਲਈ ਤੁਹਾਡੇ ਏਜੰਟ ਨੂੰ ਗਲਤੀਆਂ ਭੇਜਣ ਦੀ ਇਜਾਜ਼ਤ ਦਿਓ।</value>
-    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
-  </data>
   <data name="FreOverlay_SessionLabel.Text" xml:space="preserve">
     <value>ਸੈਸ਼ਨ ਪ੍ਰਬੰਧਨ</value>
   </data>
@@ -292,10 +285,6 @@
     <value>ਗਲਤੀ ਮਿਲੀ: ਵਿਸ਼ਲੇਸ਼ਣ ਕੀਤਾ ਜਾ ਰਿਹਾ ਹੈ…</value>
     <comment>Short status label shown next to the diagnostics button while an automatic error analysis is in progress.</comment>
   </data>
-  <data name="Diagnostics_ErrorArmedLabelFormat" xml:space="preserve">
-    <value>ਗਲਤੀ ਮਿਲੀ: ਠੀਕ ਕਰਨ ਲਈ {0}</value>
-    <comment>Short status label shown next to the diagnostics button when a fix is ready. {0} is replaced with the keyboard shortcut.</comment>
-  </data>
   <data name="Diagnostics_ErrorDetectedLabelFormat" xml:space="preserve">
     <value>ਸੁਝਾਏ ਗਏ ਹੱਲ ਲਈ ਏਜੰਟ ਨੂੰ ਪੁੱਛਣ ਵਾਸਤੇ {0} 'ਤੇ ਕਲਿੱਕ ਕਰੋ ਜਾਂ ਦਬਾਓ</value>
     <comment>Short status label shown next to the diagnostics button when an error is detected and a fix can be requested. {0} is replaced with the keyboard shortcut.</comment>
@@ -311,26 +300,6 @@
   <data name="Diagnostics_ErrorDetectedTooltipFormat" xml:space="preserve">
     <value>ਗਲਤੀ ਮਿਲੀ। AI ਏਜੰਟ ਨੂੰ ਨਿਦਾਨ ਕਰਨ ਅਤੇ ਹੱਲ ਸੁਝਾਉਣ ਲਈ {0} 'ਤੇ ਕਲਿੱਕ ਕਰੋ ਜਾਂ ਦਬਾਓ।</value>
     <comment>Tooltip for the diagnostics button when an error is detected and a fix can be requested. {0} is replaced with the keyboard shortcut.</comment>
-  </data>
-  <data name="Diagnostics_FixReadyTooltipFormat" xml:space="preserve">
-    <value>ਫਿਕਸ ਤਿਆਰ — ਲਾਗੂ ਕਰਨ ਲਈ {0}</value>
-    <comment>Tooltip for the diagnostics button when a fix is ready. {0} is replaced with the keyboard shortcut.</comment>
-  </data>
-  <data name="Diagnostics_FixReadyTooltipWithPreviewFormat" xml:space="preserve">
-    <value>ਫਿਕਸ ਤਿਆਰ — ਲਾਗੂ ਕਰਨ ਲਈ {0}: {1}</value>
-    <comment>Tooltip for the diagnostics button when a fix is ready. {0} is replaced with the keyboard shortcut; {1} is a preview of the suggested command or fix.</comment>
-  </data>
-  <data name="Diagnostics_SuggestionReadyLabel" xml:space="preserve">
-    <value>ਸੁਝਾਅ ਤਿਆਰ — ਏਜੰਟ ਪੇਨ ਖੋਲ੍ਹੋ</value>
-    <comment>Short status label shown next to the diagnostics button when a suggestion is available in the agent pane.</comment>
-  </data>
-  <data name="Diagnostics_SuggestionTooltipIntro" xml:space="preserve">
-    <value>Auto-fix ਨੇ ਇਸਨੂੰ ਸਿੱਧਾ ਠੀਕ ਕਰਨ ਤੋਂ ਇਨਕਾਰ ਕੀਤਾ। </value>
-    <comment>First sentence of the diagnostics tooltip when automatic fix generation declines to apply a fix directly. Preserve the trailing space; additional guidance follows in the same tooltip.</comment>
-  </data>
-  <data name="Diagnostics_SuggestionTooltipInstruction" xml:space="preserve">
-    <value>ਏਜੰਟ ਪੇਨ ਖੋਲ੍ਹਣ ਅਤੇ ਪੂਰਾ ਸੁਝਾਅ ਪੜ੍ਹਨ ਲਈ ਇੱਥੇ ਕਲਿੱਕ ਕਰੋ ਜਾਂ Ctrl+Shift+. ਦਬਾਓ।</value>
-    <comment>Second sentence of the diagnostics tooltip when a suggestion is available. {Locked="Ctrl+Shift+."}</comment>
   </data>
   <data name="Diagnostics_Tooltip" xml:space="preserve">
     <value>ਡਾਇਗਨੋਸਟਿਕਸ</value>
@@ -352,22 +321,36 @@
     <value>Terminal Protocol</value>
     <comment>Title for the teaching tip that displays Terminal Protocol connection information. {Locked="Terminal Protocol"}</comment>
   </data>
-  <data name="FreOverlay_AutoDetectLabel.Text" xml:space="preserve">
-    <value>ਆਟੋਮੈਟਿਕ ਗਲਤੀ ਖੋਜ</value>
+  <data name="FreOverlay_AutoErrorHandlingLabel.Text" xml:space="preserve">
+    <value>ਸਵੈਚਲਿਤ ਗਲਤੀ ਪ੍ਰਬੰਧਨ</value>
+    <comment>Label for the Auto-error-handling dropdown in the first-run wizard.</comment>
   </data>
-  <data name="FreOverlay_AutoDetectDescription.Text" xml:space="preserve">
-    <value>ਗਲਤੀਆਂ ਦਾ ਆਪਣੇ ਆਪ ਪਤਾ ਲਗਾਓ।</value>
+  <data name="FreOverlay_AutoErrorHandlingDescription.Text" xml:space="preserve">
+    <value>ਚੁਣੋ ਕਿ ਟਰਮੀਨਲ ਗਲਤੀਆਂ ਨੂੰ ਕਿਵੇਂ ਸੰਭਾਲਿਆ ਜਾਂਦਾ ਹੈ।</value>
+    <comment>Description for the Auto-error-handling dropdown in the first-run wizard.</comment>
   </data>
   <data name="FreOverlay_ErrorHelpLink" xml:space="preserve">
     <value>ਇਸ ਨੂੰ ਹੱਥੀਂ ਠੀਕ ਕਰਨ ਦਾ ਤਰੀਕਾ ਜਾਣੋ</value>
     <comment>Hyperlink shown below an FRE setup error message. Opens step-by-step manual setup instructions in the browser.</comment>
-  </data>  <data name="FreOverlay_AutoDetectShellIntegrationHintPrefix" xml:space="preserve">
-    <value>PowerShell, bash ਅਤੇ WSL bash ਵਿੱਚ ਸਵੈਚਲਿਤ ਗਲਤੀ ਖੋਜ ਲਈ shell ਇੰਟੀਗ੍ਰੇਸ਼ਨ ਇੰਸਟਾਲ ਕਰਦਾ ਹੈ। </value>
-    <comment>{Locked="PowerShell","bash","WSL bash"} Hint shown under the "Automatic error detection" toggle in the first-run wizard. It explains that shell integration is installed for automatic error detection in the listed shells. The trailing space is intentional — it separates this prefix from the inline supported-shells hyperlink that follows.</comment>
+  </data>  <data name="FreOverlay_AutoErrorHandlingShellIntegrationHintPrefix" xml:space="preserve">
+    <value>PowerShell, bash ਅਤੇ WSL bash ਵਿੱਚ ਸਵੈਚਲਿਤ ਗਲਤੀ ਪ੍ਰਬੰਧਨ ਲਈ shell ਏਕੀਕਰਣ ਸਥਾਪਤ ਕਰਦਾ ਹੈ। </value>
+    <comment>{Locked="PowerShell","bash","WSL bash"} Hint shown under the Auto-error-handling dropdown in the first-run wizard. The trailing space is intentional — it separates this prefix from the inline FreOverlay_AutoErrorHandlingShellIntegrationHintLink hyperlink that follows.</comment>
   </data>
-  <data name="FreOverlay_AutoDetectShellIntegrationHintLink" xml:space="preserve">
+  <data name="FreOverlay_AutoErrorHandlingShellIntegrationHintLink" xml:space="preserve">
     <value>ਸਾਰੇ ਸਮਰਥਿਤ shell ਵੇਖੋ</value>
-    <comment>Inline hyperlink text that follows FreOverlay_AutoDetectShellIntegrationHintPrefix and opens the documentation listing every shell that supports automatic error detection.</comment>
+    <comment>Inline hyperlink text that follows FreOverlay_AutoErrorHandlingShellIntegrationHintPrefix and opens the documentation listing every shell that supports Auto-error-handling.</comment>
+  </data>
+  <data name="FreOverlay_AutoErrorHandling_Off" xml:space="preserve">
+    <value>ਬੰਦ</value>
+    <comment>The first option in the Auto-error-handling dropdown. It disables automatic terminal error detection and fixes.</comment>
+  </data>
+  <data name="FreOverlay_AutoErrorHandling_DetectErrorsAutomatically" xml:space="preserve">
+    <value>ਗਲਤੀਆਂ ਦਾ ਆਪਣੇ ਆਪ ਪਤਾ ਲਗਾਓ</value>
+    <comment>The second option in the Auto-error-handling dropdown. It detects terminal errors automatically without sending them to an AI agent. Here "agent" means an AI intelligent agent, not a proxy or human agent.</comment>
+  </data>
+  <data name="FreOverlay_AutoErrorHandling_DetectErrorsAndSendToAgentForFixesAutomatically" xml:space="preserve">
+    <value>ਗਲਤੀਆਂ ਦਾ ਪਤਾ ਲਗਾਓ ਅਤੇ ਉਹਨਾਂ ਨੂੰ ਆਪਣੇ ਆਪ ਠੀਕ ਕਰਨ ਲਈ AI ਏਜੰਟ ਨੂੰ ਭੇਜੋ।</value>
+    <comment>The third option in the Auto-error-handling dropdown. It detects terminal errors and sends them to an AI agent for automatic fixes. Here "agent" means an AI intelligent agent, not a proxy or human agent.</comment>
   </data>
   <data name="InitShellIntegrationExecutionPolicyErrorMessage" xml:space="preserve">
     <value>PowerShell ਐਗਜ਼ੀਕਿਊਸ਼ਨ ਨੀਤੀ ਸਕ੍ਰਿਪਟਾਂ ਨੂੰ ਬਲੌਕ ਕਰ ਰਹੀ ਹੈ।</value>

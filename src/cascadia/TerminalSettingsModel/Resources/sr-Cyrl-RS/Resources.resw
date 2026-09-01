@@ -752,8 +752,8 @@
     <value>Фокусирај панел ВИ агента</value>
   </data><data name="OpenAgentSessionsCommandKey" xml:space="preserve">
     <value>Отвори листу сесија ВИ агента</value>
-  </data><data name="TriggerAutofixCommandKey" xml:space="preserve">
-    <value>Покрени аутоматску исправку</value>
+  </data><data name="TriggerAutoErrorHandlingCommandKey" xml:space="preserve">
+    <value>Аутоматско руковање грешкама</value>
   </data>
   
   

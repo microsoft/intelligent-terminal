@@ -333,7 +333,7 @@ void WindowEmperor::CreateNewWindow(winrt::TerminalApp::WindowRequestedArgs args
 
     // Wire the new window's TerminalPage::ProtocolVtSequenceReceived
     // into the COM fan-out so events emitted by panes in this window
-    // (agent-pane attach_pane / detach_pane, autofix OSC 133;D, etc.)
+    // (agent-pane attach_pane / detach_pane, auto-error-handling OSC 133;D, etc.)
     // actually reach connected wta clients. Without this, only the
     // first-opened window's events propagate.
     TerminalProtocolComServer::s_OnWindowAdded(addedHost);

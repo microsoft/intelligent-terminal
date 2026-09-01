@@ -2,7 +2,7 @@
 # Release checklist §2: non-Copilot built-in agents (Claude / Codex / Gemini) connect through
 # the ACP adapter.
 #
-# Copilot is the PRIMARY agent: its full behaviour (chat, autofix, insert/run, permission,
+# Copilot is the PRIMARY agent: its full behaviour (chat, Auto-error-handling, insert/run, permission,
 # rendering, slash, sessions, …) is covered in depth by the copilot-only feature suites. All
 # built-in agents share the SAME path — agent pane -> helper -> master -> agent CLI (ACP) — and
 # the only per-agent difference is the command `wta-master` spawns (agent_registry). So we do

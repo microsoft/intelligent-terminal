@@ -46,7 +46,7 @@ chat.plan_header: "Plan:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}
 chat.plan_marker_pending: "[ ]"  # {Locked}
-chat.autofix_prompt_label: "Automatski dijagnosticiran nedavni neuspjeh naredbe"
+chat.auto_error_handling_prompt_label: "Automatski dijagnosticiran nedavni neuspjeh naredbe"
 chat.turn_canceled: "(otkazano)"
 chat.turn_executed: "→ izvršeno: %{title}"
 # Trajne oznake kategorije alata prikazane nakon oznake statusa i prije predmeta.

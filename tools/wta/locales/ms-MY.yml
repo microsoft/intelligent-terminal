@@ -46,7 +46,7 @@ chat.plan_header: "Pelan:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}
 chat.plan_marker_pending: "[ ]"  # {Locked}
-chat.autofix_prompt_label: "Kegagalan arahan baru-baru ini didiagnosis secara automatik"
+chat.auto_error_handling_prompt_label: "Kegagalan arahan baru-baru ini didiagnosis secara automatik"
 chat.turn_canceled: "(dibatalkan)"
 chat.turn_executed: "→ dilaksanakan: %{title}"
 # Persistent tool-category labels shown after a status marker and before a subject.

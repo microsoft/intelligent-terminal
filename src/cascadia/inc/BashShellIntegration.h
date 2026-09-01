@@ -85,7 +85,7 @@ namespace Microsoft::Terminal::ShellIntegration::Bash
     // non-interactive shells and non-bash shells.
     //
     // The script is intentionally tiny — same OSC sequences the PS
-    // script emits, so the autofix / VT-event pipeline downstream is
+    // script emits, so the auto-error-handling / VT-event pipeline downstream is
     // shell-agnostic and needs no changes.
     inline std::string ScriptContent()
     {

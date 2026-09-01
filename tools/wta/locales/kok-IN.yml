@@ -46,7 +46,7 @@ chat.plan_header: "योजना:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}
 chat.plan_marker_pending: "[ ]"  # {Locked}
-chat.autofix_prompt_label: "अद्ल्या आदेश अपयशाचें स्वयं-निदान केलें"
+chat.auto_error_handling_prompt_label: "अद्ल्या आदेश अपयशाचें स्वयं-निदान केलें"
 chat.turn_canceled: "(रद्द केल्लें)"
 chat.turn_executed: "→ निश्पादीत: %{title}"
 # स्थिती चिन्हा उपरांत आनी विशया आदीं दाखोवपी कायम साधन-वर्ग लेबलां.

@@ -46,7 +46,7 @@ chat.plan_header: "Ruwana:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}
 chat.plan_marker_pending: "[ ]"  # {Locked}
-chat.autofix_prompt_label: "Sapan kamachiykuq pantarisqa ñakaq qhawasqa"
+chat.auto_error_handling_prompt_label: "Sapan kamachiykuq pantarisqa ñakaq qhawasqa"
 chat.turn_canceled: "(saqisqa)"
 chat.turn_executed: "→ ruwasqa: %{title}"
 # Persistent tool-category labels shown after a status marker and before a subject.

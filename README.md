@@ -118,8 +118,7 @@ Everything is configurable through Intelligent Terminal settings, under "Agent" 
 | Agent and model | GitHub Copilot (default), or any ACP-compatible agent CLI, including custom or local agents. Configurable for both the agent pane and command palette. Each agent pane can also override its model on the fly with `/model`; changing the global setting here overrides every pane. |
 | Custom providers (BYOK) | Bring your own provider credentials and model through GitHub Copilot or OpenCode using an OpenAI-compatible Chat Completions endpoint. Add a provider under Agent settings with a Base URL, Model ID, and optional API key, then select it from `/model`. API keys are stored in Windows Credential Manager; keyless local endpoints such as Ollama remain supported. |
 | Pane placement | Top, Bottom (default), Left, Right |
-| Error detection | Allows Intelligent Terminal to automatically detect command failures |
-| Error suggestions | Allows Intelligent Terminal to automatically send detected errors to the agent for fix suggestions |
+| Auto-error-handling | Choose **Off**, **Detect errors automatically**, or **Detect errors and send them to the agent for fixes automatically.** |
 | Agent session tracking (hooks) | Allows Intelligent Terminal to track active agent sessions and their status in the session management UI |
 | Token usage display | Show or hide token usage and cost in the agent status bar |
 
@@ -192,7 +191,7 @@ View all active agents, their status, and past sessions. Pick up a workflow wher
 ### Error Detection
 
 <p align="center">
-  <img src="./images/intelligent-terminal-error-detection.png" alt="Screenshot of automatic error detection with a suggested fix">
+  <img src="./images/intelligent-terminal-error-detection.png" alt="Screenshot of Auto-error-handling with a fix ready">
 </p>
 
 When a command fails, an indicator appears in the agent status bar. Click it or press <kbd>Ctrl+Alt+.</kbd> to open the agent pane with the error context already loaded. The agent can explain what happened and suggest or run a fix. Configure your settings to auto-detect errors only, or to also auto-suggest fixes. You can also trigger a fix at any time from the agent pane with the `/fix` slash command.

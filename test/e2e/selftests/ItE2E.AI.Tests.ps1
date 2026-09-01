@@ -24,7 +24,7 @@ Describe 'AI oracle (agent CLI judge)' -Tag 'AI' -Skip:(-not $script:HasAgent) {
 
     It 'returns pass=false for an unsupported claim' {
         $ctx = "PS C:\repo> echo hello`nhello`nPS C:\repo>"
-        $r = Test-AIClaim -Claim 'An autofix suggestion was offered for a failed command.' -Context $ctx
+        $r = Test-AIClaim -Claim 'An Auto-error-handling proposed fix was offered for a failed command.' -Context $ctx
         $r.pass | Should -BeFalse
     }
 

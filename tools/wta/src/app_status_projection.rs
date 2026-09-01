@@ -10,7 +10,7 @@ impl App {
     /// Push the current agent status (name / version / model / connection state)
     /// to the host so a XAML-rendered agent bar can update itself. The COM
     /// server special-cases `method == "agent_status"` and dispatches it
-    /// straight to TerminalPage, parallel to the existing `autofix_state`
+    /// straight to TerminalPage, parallel to the existing `auto_error_handling_state`
     /// path. Cheap to call on every state change — the publisher serializes
     /// `wtcli publish` invocations, and an extra one per state transition is
     /// negligible compared to chat traffic.
@@ -89,8 +89,8 @@ impl App {
     /// which is the single writer of `_agentSessionsViewActive` and
     /// `Tab.AgentPaneOpen` for the active tab.
     ///
-    /// Also re-emits the autofix bar snapshot (orthogonal domain — bottom
-    /// bar autofix indicator — kept on its own `autofix_state` route).
+    /// Also re-emits the Auto-error-handling bar snapshot (orthogonal domain — bottom
+    /// bar Auto-error-handling indicator — kept on its own `auto_error_handling_state` route).
     ///
     /// Call sites:
     ///   - `switch_tab_session` end — covers WT `tab_changed`.
@@ -126,11 +126,11 @@ impl App {
         let evt = build_agent_state_changed_event(target_tab, tab);
         send_wt_protocol_event(evt.to_string());
 
-        // Autofix bar is window-level (single bottom bar reflecting the
+        // Auto-error-handling bar is window-level (single bottom bar reflecting the
         // active tab), so only re-emit when we're projecting the active
         // tab. A non-active mutation does not change the visible bar.
         if target_tab == self.active_tab_key() {
-            send_bar_event(&tab.autofix.bar_snapshot, Some(target_tab));
+            send_bar_event(&tab.auto_error_handling.bar_snapshot, Some(target_tab));
         }
     }
 }

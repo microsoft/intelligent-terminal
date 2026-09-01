@@ -358,7 +358,7 @@ namespace Microsoft::Terminal::ShellIntegration::Powershell
     // OSC 133;D exit code on Windows PowerShell 5.1. 5.1 stamps
     // InvocationInfo.HistoryId = -1 on these .NET-exception-class errors, so
     // the old HistoryId-match check missed them and emitted the stale 0 from
-    // the prior command, causing autofix to treat the failure as success.
+    // the prior command, causing auto-error-handling to treat the failure as success.
     // Bumped so existing users get the corrected script rewritten in.
     //
     // v4: command-not-found errors can leave $LastExitCode null because no

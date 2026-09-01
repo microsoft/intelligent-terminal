@@ -46,7 +46,7 @@ chat.plan_header: "Plana:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}
 chat.plan_marker_pending: "[ ]"  # {Locked}
-chat.autofix_prompt_label: "Azken komando-hutsegite bat automatikoki diagnostikatua"
+chat.auto_error_handling_prompt_label: "Azken komando-hutsegite bat automatikoki diagnostikatua"
 chat.turn_canceled: "(bertan behera utzita)"
 chat.turn_executed: "→ exekutatuta: %{title}"
 # Persistent tool-category labels shown after a status marker and before a subject.

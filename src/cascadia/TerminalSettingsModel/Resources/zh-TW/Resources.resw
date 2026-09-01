@@ -991,7 +991,7 @@
   <data name="OpenAgentPaneCommandKey" xml:space="preserve"><value>切換 AI 代理</value></data>
   <data name="FocusAgentPaneCommandKey" xml:space="preserve"><value>將焦點移至 AI 代理窗格</value></data>
   <data name="OpenAgentSessionsCommandKey" xml:space="preserve"><value>開啟 AI 代理工作階段清單</value></data>
-  <data name="TriggerAutofixCommandKey" xml:space="preserve"><value>觸發自動修正</value></data>
+  <data name="TriggerAutoErrorHandlingCommandKey" xml:space="preserve"><value>自動錯誤處理</value></data>
   <data name="PromptActionArgumentLocalized" xml:space="preserve"><value>提示</value></data>
   <data name="BugReportCommandKey" xml:space="preserve"><value>回報問題（收集記錄）</value></data>
   <data name="OpenBackgroundAgentCommandKey" xml:space="preserve">

@@ -1088,8 +1088,8 @@ try
 
     switch (route)
     {
-    case ProtocolParsing::SendEventRoute::AutofixState:
-        _dispatchAutofixStateToPage(eventH);
+    case ProtocolParsing::SendEventRoute::AutoErrorHandlingState:
+        _dispatchAutoErrorHandlingStateToPage(eventH);
         return S_OK;
     case ProtocolParsing::SendEventRoute::AgentStatus:
         _dispatchAgentStatusToPage(eventH);
@@ -1144,7 +1144,7 @@ try
 }
 CATCH_RETURN()
 
-void TerminalProtocolComServer::_dispatchAutofixStateToPage(const winrt::hstring& eventJson)
+void TerminalProtocolComServer::_dispatchAutoErrorHandlingStateToPage(const winrt::hstring& eventJson)
 {
     if (!s_emperor)
     {
@@ -1172,7 +1172,7 @@ void TerminalProtocolComServer::_dispatchAutofixStateToPage(const winrt::hstring
             [page, eventJson]() {
                 try
                 {
-                    page.OnAutofixStateChanged(eventJson);
+                    page.OnAutoErrorHandlingStateChanged(eventJson);
                 }
                 catch (...)
                 {
@@ -1189,7 +1189,7 @@ void TerminalProtocolComServer::_dispatchAgentStatusToPage(const winrt::hstring&
         return;
     }
 
-    // Same fan-out shape as autofix: every window gets the event so its
+    // Same fan-out shape as auto-error-handling: every window gets the event so its
     // AgentPaneContent (if any) can update. Per-window owns its own agent leaf.
     for (const auto& host : s_emperor->GetWindows())
     {

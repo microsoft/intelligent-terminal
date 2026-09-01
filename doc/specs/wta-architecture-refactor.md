@@ -172,7 +172,8 @@ Move `TabSession`, input history, cursor editing, and command completion state
 into focused modules. Keep application side effects and complex transitions on
 `App` until the state extraction is complete.
 
-The existing `app/turn_state.rs` and `app/autofix.rs` are the model: pure data
+The existing `tools/wta/src/app/turn_state.rs` and
+`tools/wta/src/app/auto_error_handling.rs` are the model: pure data
 and small pure helpers, with orchestration outside the state type.
 
 ## Step 4: ACP failure-domain behavior

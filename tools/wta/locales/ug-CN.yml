@@ -46,7 +46,7 @@ chat.plan_header: "پىلان:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}
 chat.plan_marker_pending: "[ ]"  # {Locked}
-chat.autofix_prompt_label: "يېقىنقى بۇيرۇق مەغلۇبىيىتى ئاپتوماتىك دىئاگنوز قىلىندى"
+chat.auto_error_handling_prompt_label: "يېقىنقى بۇيرۇق مەغلۇبىيىتى ئاپتوماتىك دىئاگنوز قىلىندى"
 chat.turn_canceled: "(ئەمەلدىن قالدۇرۇلدى)"
 chat.turn_executed: "→ ئىجرا قىلىندى: %{title}"
 # ھالەت بەلگىسىدىن كېيىن ۋە تېمىدىن بۇرۇن كۆرسىتىلىدىغان دائىملىق قورال تۈرى بەلگىلىرى.

@@ -1002,8 +1002,8 @@
   <data name="OpenAgentSessionsCommandKey" xml:space="preserve">
     <value>AI 에이전트 세션 목록 열기</value>
   </data>
-  <data name="TriggerAutofixCommandKey" xml:space="preserve">
-    <value>자동 수정 실행</value>
+  <data name="TriggerAutoErrorHandlingCommandKey" xml:space="preserve">
+    <value>자동 오류 처리</value>
   </data>
   <data name="PromptActionArgumentLocalized" xml:space="preserve">
     <value>프롬프트</value>

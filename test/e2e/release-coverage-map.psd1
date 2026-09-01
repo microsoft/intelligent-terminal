@@ -3,12 +3,10 @@
     # -> regex matched against test full-names (Describe.Context.It). Add only entries you are
     # CONFIDENT about. Unmapped items fall through to "manual" — never assert a false [x].
 
-    # §2 Insert/Run/target — covered by both the autofix path and the chat (proposed-command) path
-    'Insert into pane works'            = 'Insert suggestion types the fix|inserted into the active shell pane'
-    'Run in pane works'                 = 'Run suggestion executes the fix|runs in the active shell pane'
-    'Command target is correct'         = 'Autofix target pane is correct'
-    'Insert suggestion works'           = 'Insert suggestion types the fix|inserted into the active shell pane'
-    'Run suggestion works'              = 'Run suggestion executes the fix|runs in the active shell pane'
+    # §2 Insert/Run/target — covered by both Auto-error-handling and chat proposals
+    'Insert into pane works'            = 'Insert proposed fix works|inserted into the active shell pane'
+    'Run in pane works'                 = 'Run proposed fix works|runs in the active shell pane'
+    'Command target is correct'         = 'Insert returns keyboard focus to the target shell pane'
 
     # §2 agent pane open/hide/focus + slash
     'Different positions work'          = 'at all four pane positions'
@@ -47,9 +45,6 @@
     # `wta delegate` directly and cannot prove the Settings picker renders or saves.
     'Command palette agent source is strict' = 'never falls back to the Windows host|never diverted to WSL'
 
-    # §0 FRE auto-error (on/off both covered by the single off/on test)
-    'Automatic error detection on'      = 'Automatic error detection off/on'
-    'Automatic error suggestion on'     = 'Automatic error suggestion off/on'
     'Session-management choice persists' = 'Session management choice persists'
 
     # §2 built-in chat: the non-Copilot agents are one consolidated matrix case now. Anchor on the
@@ -57,10 +52,10 @@
     # ("/restart reconnects and answers"), which would otherwise credit this item incorrectly.
     'Non-Copilot agents chat works'     = 'non-Copilot agent.*connects and answers'
 
-    # §3 autofix (copilot)
-    'Autofix with Copilot works'        = 'Visible agent pane autofix works'
-    'Visible agent pane autofix works'  = 'Visible agent pane autofix works'
-    'Stashed agent pane autofix works'  = 'Stashed agent pane autofix works'
+    # §3 Auto-error-handling (Copilot)
+    'Visible agent pane flow works'     = 'Visible agent pane flow works'
+    'Stashed agent pane flow works'     = 'Stashed agent pane flow works'
+    'Auto-error-handling with Copilot works' = 'Auto-error-handling with Copilot works'
 
     # §3 shell integration
     'PowerShell shell integration installed' = 'PowerShell shell integration emits|PowerShell-level errors emit a non-zero command-finished mark on Windows PowerShell 5\.1'
@@ -147,8 +142,9 @@
     'Early startup failures are logged' = 'Early startup failures would be logged'
 
     # §0/§1 agent Group Policy locks — the Feature.AgentPolicy suite drives the GPO registry
-    # (AllowAutoFix / AllowedAgents / AllowCustomAgents / AllowAgentSessionHooks) and asserts both
-    # the ENFORCEMENT (autofix suppressed; blocked built-in/custom agents can't open a pane) and
+    # (AllowAutoErrorHandling / AllowedAgents / AllowCustomAgents / AllowAgentSessionHooks) and
+    # asserts both the ENFORCEMENT (send-to-agent mode degrades to detect-only; blocked
+    # built-in/custom agents cannot open a pane) and
     # the UI policy MESSAGE (the FRE SessionHooksPolicyNotice "managed by your organization").
     # 'Group Policy locks' is in every Describe name, so the FRE-locks item is credited by the
     # whole suite; the Settings-style "policy message" item is credited by the FRE notice case
@@ -171,7 +167,6 @@
     'Copilot preinstalled'              = 'FRE agent dropdown shows Copilot as installed'
     'Non-Copilot agents appear when installed' = 'Non-Copilot agents appear as installed in the FRE'
     'Session hook hints'                = 'Session hook hints appear only when'
-    'Detection/suggestion dependency'   = 'the suggestion toggle disables when detection is off'
     # §0 FRE session-management hook install (Feature.FreHooks) — observed on disk via config.json.
     'Session management on'              = 'Session management on installs agent hooks'
     'Session management off'             = 'Session management off does not install hooks'
@@ -187,10 +182,6 @@
     'Per-tab agent switching is isolated' = 'Switching tab B rebuilds only tab B and leaves tab A conversation alive|Both agent tabs remain independently usable after the switch'
     'Global agent defaults respect per-tab overrides' = 'A newly opened tab still follows the global default agent|Changing the global default rebuilds follower tabs but preserves overridden tab B'
     'Close target tab cleans up'        = 'Close target tab cleans up'
-    # Agent insert/run/autofix targeting the intended split pane is proven by the autofix-in-a-split
-    # case plus the autofix-target-pane assertion.
-    'Split pane target selection is correct' = 'Split pane autofix works|Autofix target pane is correct'
-
     # §6 custom agents (Feature.CustomAgent)
     'Custom agent is Settings-only'     = 'Custom agent is Settings-only'
     'Custom agent runs the standard agent-pane behaviours' = 'A configured custom ACP agent connects and chats'

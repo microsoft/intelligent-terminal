@@ -436,22 +436,22 @@ fn slash_restart_resets_connection_and_clears_sessions() {
 }
 
 #[test]
-fn slash_fix_when_idle_submits_autofix_turn() {
+fn slash_fix_when_idle_submits_auto_error_handling_turn() {
     let mut app = test_app();
     app.state = ConnectionState::Connected;
-    let gen_before = app.current_tab().autofix.generation;
+    let gen_before = app.current_tab().auto_error_handling.generation;
     assert!(app.current_tab().turn.is_idle());
 
     run_slash(&mut app, "fix");
 
     assert!(
         !app.current_tab().turn.is_idle(),
-        "/fix on an idle tab must submit an autofix turn"
+        "/fix on an idle tab must submit an Auto-error-handling turn"
     );
     assert_eq!(
-        app.current_tab().autofix.generation,
+        app.current_tab().auto_error_handling.generation,
         gen_before.wrapping_add(1),
-        "/fix must bump the autofix generation so stale responses are dropped"
+        "/fix must bump the auto_error_handling generation so stale responses are dropped"
     );
 }
 
@@ -462,12 +462,12 @@ fn slash_fix_while_busy_does_not_resubmit() {
     // First /fix arms an in-flight turn.
     run_slash(&mut app, "fix");
     assert!(!app.current_tab().turn.is_idle());
-    let gen_after_first = app.current_tab().autofix.generation;
+    let gen_after_first = app.current_tab().auto_error_handling.generation;
 
     // Second /fix while busy must be refused (busy advisory), not resubmitted.
     run_slash(&mut app, "fix");
     assert_eq!(
-        app.current_tab().autofix.generation,
+        app.current_tab().auto_error_handling.generation,
         gen_after_first,
         "/fix while a turn is in flight must not bump generation / resubmit"
     );

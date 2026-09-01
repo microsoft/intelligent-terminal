@@ -67,6 +67,13 @@ namespace Microsoft.Terminal.Settings.Model
         Always = 2,
     };
 
+    enum AutoErrorHandling
+    {
+        Off = 0,
+        DetectErrorsAutomatically = 1,
+        DetectErrorsAndSendToAgentForFixesAutomatically = 2,
+    };
+
     [default_interface] runtimeclass GlobalAppSettings {
         Guid DefaultProfile;
 
@@ -130,6 +137,7 @@ namespace Microsoft.Terminal.Settings.Model
         INHERITABLE_SETTING(IVector<CustomModelProvider>, CustomModelProviders);
         INHERITABLE_SETTING(String, DelegateAgent);
         INHERITABLE_SETTING(String, DelegateModel);
+        // Legacy ABI compatibility properties. New code uses AutoErrorHandling.
         INHERITABLE_SETTING(Boolean, AutoErrorDetectionEnabled);
         INHERITABLE_SETTING(Boolean, AutoFixEnabled);
         INHERITABLE_SETTING(Boolean, ShowTokenUsageAndCost);
@@ -157,6 +165,7 @@ namespace Microsoft.Terminal.Settings.Model
         // raw INHERITABLE_SETTING properties for runtime decisions.
         String EffectiveAcpAgent { get; };
         String EffectiveDelegateAgent { get; };
+        // Legacy ABI compatibility getters. New code uses EffectiveAutoErrorHandling.
         Boolean EffectiveAutoErrorDetectionEnabled { get; };
         Boolean EffectiveAutoFixEnabled { get; };
 
@@ -165,8 +174,8 @@ namespace Microsoft.Terminal.Settings.Model
         // IsAgentPolicyLocked: AllowedAgents policy is active — agent
         //   lists are filtered (dropdowns stay enabled, but show fewer options).
         // IsCustomAgentPolicyLocked: AllowCustomAgents is disabled.
-        // IsAutoFixPolicyLocked / IsAgentSessionHooksPolicyLocked:
-        //   the corresponding toggle/button is disabled and forced off.
+        // IsAutoFixPolicyLocked is a legacy ABI compatibility property.
+        // IsAgentSessionHooksPolicyLocked disables the corresponding button.
         Boolean IsAgentPolicyLocked { get; };
         Boolean IsCustomAgentPolicyLocked { get; };
         Boolean IsAutoFixPolicyLocked { get; };
@@ -185,5 +194,10 @@ namespace Microsoft.Terminal.Settings.Model
         Theme CurrentTheme { get; };
 
         Boolean ShouldUsePersistedLayout();
+
+        // Appended to preserve the existing GlobalAppSettings ABI.
+        INHERITABLE_SETTING(AutoErrorHandling, AutoErrorHandling);
+        AutoErrorHandling EffectiveAutoErrorHandling { get; };
+        Boolean IsAutoErrorHandlingPolicyRestricted { get; };
     }
 }

@@ -46,7 +46,7 @@ chat.plan_header: "ແຜນການ:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}
 chat.plan_marker_pending: "[ ]"  # {Locked}
-chat.autofix_prompt_label: "ການລົ້ມເຫລວຄຳສັ່ງຫຼ້າສຸດໄດ້ຮັບການວິນິດໄສໂດຍອັດຕະໂນມັດ"
+chat.auto_error_handling_prompt_label: "ການລົ້ມເຫລວຄຳສັ່ງຫຼ້າສຸດໄດ້ຮັບການວິນິດໄສໂດຍອັດຕະໂນມັດ"
 chat.turn_canceled: "(ຍົກເລີກແລ້ວ)"
 chat.turn_executed: "→ ດໍາເນີນການແລ້ວ: %{title}"
 # Persistent tool-category labels shown after a status marker and before a subject.

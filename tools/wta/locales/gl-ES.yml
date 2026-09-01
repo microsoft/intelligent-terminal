@@ -46,7 +46,7 @@ chat.plan_header: "Plan:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}
 chat.plan_marker_pending: "[ ]"  # {Locked}
-chat.autofix_prompt_label: "Diagnosticouse automaticamente un fallo recente dun comando"
+chat.auto_error_handling_prompt_label: "Diagnosticouse automaticamente un fallo recente dun comando"
 chat.turn_canceled: "(cancelado)"
 chat.turn_executed: "→ executado: %{title}"
 # Etiquetas persistentes de categoría de ferramenta mostradas tras un marcador de estado e antes do asunto.

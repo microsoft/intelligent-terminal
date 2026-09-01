@@ -46,7 +46,7 @@ chat.plan_header: "Plan:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}
 chat.plan_marker_pending: "[ ]"  # {Locked}
-chat.autofix_prompt_label: "Automatiskt diagnostiserat ett nyligen inträffat kommandofel"
+chat.auto_error_handling_prompt_label: "Automatiskt diagnostiserat ett nyligen inträffat kommandofel"
 chat.turn_canceled: "(avbruten)"
 chat.turn_executed: "→ utförd: %{title}"
 # Beständiga verktygskategorier som visas efter en statusmarkör och före ett ämne.

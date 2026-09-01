@@ -46,7 +46,7 @@ chat.plan_header: "योजना:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}
 chat.plan_marker_pending: "[ ]"  # {Locked}
-chat.autofix_prompt_label: "हाल की कमांड विफलता का स्वतः निदान किया गया"
+chat.auto_error_handling_prompt_label: "हाल की कमांड विफलता का स्वतः निदान किया गया"
 chat.turn_canceled: "(रद्द कर दिया गया)"
 chat.turn_executed: "→ निष्पादित: %{title}"
 # स्थिति चिह्न के बाद और विषय से पहले दिखने वाले स्थायी टूल-श्रेणी लेबल।

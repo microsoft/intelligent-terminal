@@ -151,7 +151,7 @@ fetched on demand at run time, so its only prerequisite is Node.js.
 **Why you need it:** GitHub Copilot is the **default agent** in Intelligent
 Terminal and the only agent the first-run experience installs on your
 behalf. It powers the agent pane, the `?<prompt>` command-palette
-delegation, and the auto-fix workflow.
+delegation, and Auto-error-handling.
 
 #### Installed automatically by the first-run experience
 
@@ -461,7 +461,7 @@ without it) and restart Intelligent Terminal once.
 
 **Why you need it:** Shell integration teaches your shell to emit **OSC 133**
 marks after every prompt. Intelligent Terminal uses these marks to detect
-command boundaries and exit codes, which powers the auto-fix feature, command
+command boundaries and exit codes, which powers Auto-error-handling, command
 navigation, and the bottom-bar agent state. Without these marks Intelligent
 Terminal cannot tell when a command finished or whether it failed.
 
@@ -600,15 +600,33 @@ Notes and limitations:
   or that ship **without bash** (for example, Alpine), are **not yet
   supported**.
 
-### Enable auto-error detection and auto-error fix
+### Configure Auto-error-handling
 
 Once shell integration is in place (and, for PowerShell, the execution policy
-is set), open **Settings → AI Agents** inside Intelligent Terminal and turn on
-**Auto-error detection** (and, optionally, the auto-fix follow-up). With shell
-integration loading correctly, the agent pane will now:
+is set), open **Settings → AI Agents** inside Intelligent Terminal and choose
+an **Auto-error-handling** option:
 
-- Detect failing commands automatically (via the OSC 133 exit-code marks).
-- Offer to diagnose and propose a fix for the most recent failure.
+- `Off`
+- `Detect errors automatically`
+- `Detect errors and send them to the agent for fixes automatically.`
+
+The default detects failures without sending them to an agent. The equivalent
+JSON is:
+
+```json
+{
+  "autoErrorHandling": "detectErrorsAutomatically"
+}
+```
+
+With shell integration loading correctly, Intelligent Terminal detects failing
+commands through OSC 133 exit-code marks. The third option also sends the most
+recent failure to the agent so it can propose a fix.
+
+> [!NOTE]
+> **Legacy settings migration:** Existing `autoErrorDetectionEnabled` and
+> `autoFixEnabled` booleans are accepted only for upgrade compatibility and are
+> migrated to `autoErrorHandling`. New configurations must use the enum setting.
 
 If anything is not behaving as expected, see Microsoft's
 [Shell integration in Windows Terminal](https://learn.microsoft.com/en-us/windows/terminal/tutorials/shell-integration)

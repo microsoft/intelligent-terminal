@@ -46,7 +46,7 @@ chat.plan_header: "Plaan:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}
 chat.plan_marker_pending: "[ ]"  # {Locked}
-chat.autofix_prompt_label: "Hiljutine käsutõrge automaatselt diagnoositud"
+chat.auto_error_handling_prompt_label: "Hiljutine käsutõrge automaatselt diagnoositud"
 chat.turn_canceled: "(tühistatud)"
 chat.turn_executed: "→ käivitatud: %{title}"
 # Persistent tool-category labels shown after a status marker and before a subject.

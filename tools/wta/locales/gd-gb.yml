@@ -46,7 +46,7 @@ chat.plan_header: "Plana:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}
 chat.plan_marker_pending: "[ ]"  # {Locked}
-chat.autofix_prompt_label: "Air breithneachadh gu fèin-obrachail air fàilligeadh àithne o chionn ghoirid"
+chat.auto_error_handling_prompt_label: "Air breithneachadh gu fèin-obrachail air fàilligeadh àithne o chionn ghoirid"
 chat.turn_canceled: "(air a sgur)"
 chat.turn_executed: "→ air a chur an gnìomh: %{title}"
 # Leubailean maireannach roinn-seòrsa inneil a chithear às dèidh comharra inbhe agus ron chuspair.

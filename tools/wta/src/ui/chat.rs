@@ -3050,7 +3050,7 @@ mod tests {
                 text: "hi".into(),
                 submitted_at_unix_s: 0.0,
                 context: crate::app::TurnContext::default(),
-                autofix: None,
+                auto_error_handling: None,
             },
         };
         if !buf.is_empty() {

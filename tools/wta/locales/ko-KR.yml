@@ -42,7 +42,7 @@ chat.plan_header: "계획:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}
 chat.plan_marker_pending: "[ ]"  # {Locked}
-chat.autofix_prompt_label: "최근 명령 실패를 자동으로 진단했습니다"
+chat.auto_error_handling_prompt_label: "최근 명령 실패를 자동으로 진단했습니다"
 chat.turn_canceled: "(취소됨)"
 chat.turn_executed: "→ 실행됨: %{title}"
 # 상태 표시자 뒤와 대상 앞에 표시되는 영구적인 도구 범주 레이블입니다.

@@ -991,7 +991,7 @@
   <data name="OpenAgentPaneCommandKey" xml:space="preserve"><value>Mostra/nascondi agente AI</value></data>
   <data name="FocusAgentPaneCommandKey" xml:space="preserve"><value>Passa al riquadro dell'agente AI</value></data>
   <data name="OpenAgentSessionsCommandKey" xml:space="preserve"><value>Apri elenco sessioni dell'agente AI</value></data>
-  <data name="TriggerAutofixCommandKey" xml:space="preserve"><value>Esegui correzione automatica</value></data>
+  <data name="TriggerAutoErrorHandlingCommandKey" xml:space="preserve"><value>Gestione automatica degli errori</value></data>
   <data name="PromptActionArgumentLocalized" xml:space="preserve"><value>Prompt</value></data>
   <data name="BugReportCommandKey" xml:space="preserve"><value>Segnala un bug (raccogli i log)</value></data>
   <data name="OpenBackgroundAgentCommandKey" xml:space="preserve">

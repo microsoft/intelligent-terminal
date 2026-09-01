@@ -14,7 +14,7 @@
 // Policy values:
 //   AllowedAgents      REG_MULTI_SZ  Allowlist of agent IDs. Absent = all allowed.
 //   AllowCustomAgents  REG_DWORD     0 = blocked, 1 = allowed. Absent = allowed.
-//   AllowAutoFix       REG_DWORD     0 = blocked, 1 = allowed. Absent = allowed.
+//   AllowAutoErrorHandling REG_DWORD 0 = sending errors to agents is blocked.
 //   AllowAgentSessionHooks REG_DWORD  0 = blocked, 1 = allowed. Absent = allowed.
 
 #pragma once
@@ -60,7 +60,7 @@ namespace Microsoft::Terminal::Settings::Model::AgentPolicy
         std::optional<std::set<std::wstring, CaseInsensitiveLess>> allowedAgents;
 
         PolicyState customAgents{ PolicyState::NotConfigured };
-        PolicyState autoFix{ PolicyState::NotConfigured };
+        PolicyState autoErrorHandling{ PolicyState::NotConfigured };
         PolicyState agentSessionHooks{ PolicyState::NotConfigured };
     };
 
@@ -75,13 +75,40 @@ namespace Microsoft::Terminal::Settings::Model::AgentPolicy
     inline std::shared_ptr<const PolicySnapshot> s_snapshot;
     inline std::atomic_bool s_loaded{ false }; // true once Reload() has run in this DLL
 
+    inline std::optional<DWORD> _ReadDwordPolicyFromHive(const HKEY key, const wchar_t* valueName)
+    {
+        DWORD value{};
+        DWORD size = sizeof(value);
+        if (RegGetValueW(key, PolicyRegKey, valueName, RRF_RT_REG_DWORD, nullptr, &value, &size) == ERROR_SUCCESS)
+        {
+            return value;
+        }
+        return std::nullopt;
+    }
+
     inline std::optional<DWORD> _ReadDwordPolicy(const wchar_t* valueName)
     {
         for (const auto key : { HKEY_LOCAL_MACHINE, HKEY_CURRENT_USER })
         {
-            DWORD value{};
-            DWORD size = sizeof(value);
-            if (RegGetValueW(key, PolicyRegKey, valueName, RRF_RT_REG_DWORD, nullptr, &value, &size) == ERROR_SUCCESS)
+            if (const auto value = _ReadDwordPolicyFromHive(key, valueName))
+            {
+                return value;
+            }
+        }
+        return std::nullopt;
+    }
+
+    inline std::optional<DWORD> _ReadDwordPolicyWithLegacyFallback(const wchar_t* valueName, const wchar_t* legacyValueName)
+    {
+        // Machine policy always takes precedence over user policy, including
+        // when the machine still uses a legacy value name.
+        for (const auto key : { HKEY_LOCAL_MACHINE, HKEY_CURRENT_USER })
+        {
+            if (const auto value = _ReadDwordPolicyFromHive(key, valueName))
+            {
+                return value;
+            }
+            if (const auto value = _ReadDwordPolicyFromHive(key, legacyValueName))
             {
                 return value;
             }
@@ -137,7 +164,10 @@ namespace Microsoft::Terminal::Settings::Model::AgentPolicy
         auto snap = std::make_shared<PolicySnapshot>();
         snap->allowedAgents = _ReadMultiSzPolicy(L"AllowedAgents");
         snap->customAgents = _DwordToPolicyState(_ReadDwordPolicy(L"AllowCustomAgents"));
-        snap->autoFix = _DwordToPolicyState(_ReadDwordPolicy(L"AllowAutoFix"));
+        const auto autoErrorHandling = _ReadDwordPolicyWithLegacyFallback(
+            L"AllowAutoErrorHandling",
+            L"AllowAutoFix");
+        snap->autoErrorHandling = _DwordToPolicyState(autoErrorHandling);
         snap->agentSessionHooks = _DwordToPolicyState(_ReadDwordPolicy(L"AllowAgentSessionHooks"));
 
         {
@@ -178,9 +208,9 @@ namespace Microsoft::Terminal::Settings::Model::AgentPolicy
         return _GetSnapshot()->customAgents != PolicyState::Blocked;
     }
 
-    inline bool IsAutoFixAllowed()
+    inline bool IsAutoErrorHandlingWithAgentAllowed()
     {
-        return _GetSnapshot()->autoFix != PolicyState::Blocked;
+        return _GetSnapshot()->autoErrorHandling != PolicyState::Blocked;
     }
 
     inline bool IsAgentSessionHooksAllowed()
@@ -194,9 +224,9 @@ namespace Microsoft::Terminal::Settings::Model::AgentPolicy
         return _GetSnapshot()->customAgents;
     }
 
-    inline PolicyState GetAutoFixPolicy()
+    inline PolicyState GetAutoErrorHandlingPolicy()
     {
-        return _GetSnapshot()->autoFix;
+        return _GetSnapshot()->autoErrorHandling;
     }
 
     // ── Test-only seam ──────────────────────────────────────────────────

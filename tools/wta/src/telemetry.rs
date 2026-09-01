@@ -15,13 +15,13 @@
 // explicitly shared (e.g. `PaneId`).
 //
 // Events emitted from this module:
-//   - AcpInitializeComplete  (ACP initialize RPC completes)
-//   - AcpNewSessionComplete  (ACP session/new RPC completes)
+//   - AcpInitializeComplete    (ACP initialize RPC completes)
+//   - AcpNewSessionComplete    (ACP session/new RPC completes)
 //   - AgentPromptSent          (WTA dispatches a prompt over ACP)
 //   - AgentResponseFirstToken  (ACP returns the first text chunk)
 //   - AgentResponseComplete    (ACP prompt request completes)
-//   - ErrorDetected            (classify_wt_event positively classifies an error)
-//   - ErrorFixResolved         (next command's exit code is 0 after a fix attempt)
+//   - AutoErrorHandlingDetected (the WT event classifier identifies an error)
+//   - AutoErrorHandlingResolved (the next command succeeds in the same pane)
 //
 // Conventions:
 //   - Per-event description: documented in the Rust doc comment above each
@@ -31,7 +31,7 @@
 //     source (and in this module's per-event subsection below) rather than
 //     in the event payload.
 //   - Keyword: MICROSOFT_KEYWORD_MEASURES (stub = 0 in OSS; real value in MS-internal build)
-//   - PartA_PrivTags: per-event — `ErrorDetected` / `ErrorFixResolved` /
+//   - PartA_PrivTags: per-event — `AutoErrorHandlingDetected` / `AutoErrorHandlingResolved` /
 //     `AgentPromptSent` use `PDT_ProductAndServiceUsage` (usage-tagged
 //     product signals), while the latency-bearing
 //     `AgentResponseFirstToken` and `AgentResponseComplete` use
@@ -151,10 +151,10 @@ pub fn log_acp_new_session_complete(
 pub fn log_agent_prompt_sent(
     session_id: &str,
     prompt_byte_len: u32,
-    is_autofix: bool,
+    is_auto_error_handling: bool,
     template_kind: &str,
 ) {
-    let is_autofix_i32: i32 = if is_autofix { 1 } else { 0 };
+    let is_auto_error_handling_i32: i32 = if is_auto_error_handling { 1 } else { 0 };
     tlg::write_event!(
         AGENT_PROVIDER,
         "AgentPromptSent",
@@ -162,7 +162,7 @@ pub fn log_agent_prompt_sent(
         keyword(MICROSOFT_KEYWORD_MEASURES),
         str8("SessionId", session_id),
         u32("PromptLengthBytes", &prompt_byte_len),
-        bool32("IsAutofix", &is_autofix_i32),
+        bool32("IsAutoErrorHandling", &is_auto_error_handling_i32),
         str8("TemplateKind", template_kind),
         str8("Route", "AcpDispatch"),
         u64("PartA_PrivTags", &PDT_PRODUCT_AND_SERVICE_USAGE),
@@ -238,10 +238,10 @@ pub fn log_agent_response_complete(
 
 /// Emitted when the WTA event classifier positively identifies an error in
 /// a pane (e.g., connection failed, process exited with non-zero code).
-pub fn log_error_detected(severity: &str, method: &str, pane_id: &str) {
+pub fn log_auto_error_handling_detected(severity: &str, method: &str, pane_id: &str) {
     tlg::write_event!(
         AGENT_PROVIDER,
-        "ErrorDetected",
+        "AutoErrorHandlingDetected",
         level(Verbose),
         keyword(MICROSOFT_KEYWORD_MEASURES),
         str8("Severity", severity),
@@ -251,18 +251,21 @@ pub fn log_error_detected(severity: &str, method: &str, pane_id: &str) {
     );
 }
 
-/// Emitted when the next command after an attempted fix succeeds (exit 0)
-/// in the same pane where autofix was armed. `time_since_fix_ms` is a
-/// monotonic duration (`Instant::elapsed`) from arming the fix to observing
-/// the successful exit, not wall-clock.
-pub fn log_error_fix_resolved(pane_id: &str, time_since_fix_ms: f64) {
+/// Emitted when the next command after Auto-error-handling starts succeeds
+/// (exit 0) in the same pane. `time_since_handling_started_ms` is a monotonic
+/// duration (`Instant::elapsed`) from starting the flow to observing the
+/// successful exit, not wall-clock.
+pub fn log_auto_error_handling_resolved(pane_id: &str, time_since_handling_started_ms: f64) {
     tlg::write_event!(
         AGENT_PROVIDER,
-        "ErrorFixResolved",
+        "AutoErrorHandlingResolved",
         level(Verbose),
         keyword(MICROSOFT_KEYWORD_MEASURES),
         str8("PaneId", pane_id),
-        f64("TimeSinceFixMs", &time_since_fix_ms),
+        f64(
+            "TimeSinceHandlingStartedMs",
+            &time_since_handling_started_ms
+        ),
         u64("PartA_PrivTags", &PDT_PRODUCT_AND_SERVICE_USAGE),
     );
 }

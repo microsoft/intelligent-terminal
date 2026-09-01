@@ -46,7 +46,7 @@ chat.plan_header: "Plean:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}
 chat.plan_marker_pending: "[ ]"  # {Locked}
-chat.autofix_prompt_label: "Diagnóisíodh teip ar ordú le déanaí go huathoibríoch"
+chat.auto_error_handling_prompt_label: "Diagnóisíodh teip ar ordú le déanaí go huathoibríoch"
 chat.turn_canceled: "(cealaithe)"
 chat.turn_executed: "→ rinneadh: %{title}"
 # Lipéid bhuana chatagóir uirlise a thaispeántar tar éis marcóir stádais agus roimh an ábhar.

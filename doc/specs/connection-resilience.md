@@ -81,9 +81,9 @@ live app:
 - **In-flight master death** (kill master *while a prompt is streaming*):
   confirm the raw prompt failure is logged before the helper exits and no
   session is loaded.
-- **Autofix gated off after disconnect**: once state leaves `Connected`,
-  `trigger_autofix_inner` early-returns (`app/autofix.rs:97`). Confirm a shell
-  command failure after a disconnect does **not** fire an autofix.
+- **Auto-error-handling gated off after disconnect**: once state leaves `Connected`,
+  the request gate returns early. Confirm a shell
+  command failure after a disconnect does **not** start an agent request.
 - **Normal teardown** (close pane / close tab / quit / `Ctrl+C×2`): confirm
   helper and listener exit without a visible transient failure.
 - **F7 connecting animation during a real cold start** (npx adapter download):
@@ -121,10 +121,10 @@ automatic session recovery.
   added by this work, but it is the same fragility we removed elsewhere. The
   clean fix is for the ACP layer to surface a **typed** auth error rather than a
   string, so neither side has to pattern-match.
-- **F10 — autofix events in a non-`Connected` state are dropped, not queued.** A
+- **F10 — Auto-error-handling events in a non-`Connected` state are dropped, not queued.** A
   command failure that lands during cold start / in the `Failed` window is
-  denied autofix and never replayed once the session connects. This is currently
-  *intended* (don't autofix into a dead transport), but a "replay the last
+  denied an agent request and never replayed once the session connects. This is currently
+  *intended* (don't send into a dead transport), but a "replay the last
   failure on reconnect" enhancement is possible.
 
 ## 7. Failure-point status table
@@ -143,7 +143,7 @@ of PR #141:
 | F7 | connecting looked frozen | **fixed** — animated activity line; cold-start not verified live (§4) |
 | F8 | agent-side session leak on disconnect | **fixed** — bounded cancel/close + local retirement |
 | F9 | routing to a dead helper | **already graceful** (no work) |
-| F10 | autofix event dropped in non-Connected state | **intended**, replay possible (§6) |
+| F10 | Auto-error-handling event dropped in non-Connected state | **intended**, replay possible (§6) |
 
 ## 8. Terminal crash semantics — fail closed, never auto-resume
 

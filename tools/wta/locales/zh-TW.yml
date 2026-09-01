@@ -42,7 +42,7 @@ chat.plan_header: "計畫："
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}
 chat.plan_marker_pending: "[ ]"  # {Locked}
-chat.autofix_prompt_label: "已自動診斷最近的一次命令失敗"
+chat.auto_error_handling_prompt_label: "已自動診斷最近的一次命令失敗"
 chat.turn_canceled: "(已取消)"
 chat.turn_executed: "→ 已執行: %{title}"
 # 顯示在狀態標記之後、操作對象之前的持續性工具類別標籤。

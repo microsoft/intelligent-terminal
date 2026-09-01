@@ -46,7 +46,7 @@ chat.plan_header: "Rencana:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}
 chat.plan_marker_pending: "[ ]"  # {Locked}
-chat.autofix_prompt_label: "Kegagalan perintah terbaru terdiagnosis otomatis"
+chat.auto_error_handling_prompt_label: "Kegagalan perintah terbaru terdiagnosis otomatis"
 chat.turn_canceled: "(dibatalkan)"
 chat.turn_executed: "→ dijalankan: %{title}"
 # Label kategori alat persisten yang ditampilkan setelah penanda status dan sebelum subjek.

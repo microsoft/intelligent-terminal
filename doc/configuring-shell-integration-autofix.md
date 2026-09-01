@@ -1,8 +1,13 @@
-# Configuring Shells for Auto-Fix
+# Configuring Shells for Auto-error-handling
 
-The WTA auto-fix feature automatically detects when a command fails in another pane and suggests a fix. It works by listening for **OSC 133** shell integration sequences that the shell emits after each command.
+Auto-error-handling uses **OSC 133** shell integration sequences emitted after each command to detect failures. Depending on the selected setting, Intelligent Terminal can stop after detection or send the error context to the agent for a proposed fix.
 
-The downstream pipeline (autofix detection, classification, VT-event forwarding) is **shell-agnostic** — it only cares about the OSC 133 marks on the wire. Any shell that emits them works. Today the installer ships ready-to-go integrations for:
+> [!NOTE]
+> This guide retains its legacy `autofix` filename as a compatibility URL for
+> existing bookmarks and external links. Auto-error-handling is the current
+> feature name.
+
+The downstream pipeline (failure detection, classification, and VT-event forwarding) is **shell-agnostic** — it only cares about the OSC 133 marks on the wire. Any shell that emits them works. Today the installer ships ready-to-go integrations for:
 
 - **PowerShell 7+** (`pwsh.exe`) — written to `Documents\PowerShell\Microsoft.PowerShell_profile.ps1`
 - **Windows PowerShell 5.1** (`powershell.exe`) — written to `Documents\WindowsPowerShell\Microsoft.PowerShell_profile.ps1`
@@ -17,8 +22,12 @@ The downstream pipeline (autofix detection, classification, VT-event forwarding)
 
 1. The shell emits `OSC 133;D;<exit_code>` after every command finishes
 2. Windows Terminal forwards this as a `vt_sequence` event to WTA
-3. If `exit_code != 0`, WTA reads the pane's terminal buffer and asks the AI to diagnose the error and suggest a fix
-4. The user reviews and confirms the suggestion before it runs
+3. If `exit_code != 0`, Intelligent Terminal applies the selected Auto-error-handling option:
+   - `Off`
+   - `Detect errors automatically`
+   - `Detect errors and send them to the agent for fixes automatically.`
+4. With the third option, WTA reads the pane's terminal buffer and asks the agent to diagnose the error and propose a fix
+5. The user reviews and confirms the proposed fix before it runs
 
 ## Requirements
 
@@ -46,11 +55,11 @@ This wraps your existing prompt to emit three OSC 133 sequences on every command
 
 | Sequence | Meaning | Role |
 |----------|---------|------|
-| `133;D;$ec` | Command finished with exit code | **Triggers auto-fix when `$ec != 0`** |
+| `133;D;$ec` | Command finished with exit code | **Reports a failure to Auto-error-handling when `$ec != 0`** |
 | `133;A` | Prompt start | Marks where the new prompt begins |
 | `133;B` | Command input start | Marks where user input begins |
 
-The key is `133;D` — it reports the previous command's exit code. WTA listens for this and triggers auto-fix whenever the exit code is non-zero.
+The key is `133;D` — it reports the previous command's exit code. WTA listens for this and applies the selected Auto-error-handling option whenever the exit code is non-zero.
 
 ### Manual bash setup
 
@@ -71,13 +80,22 @@ For Git Bash users on Windows, the FRE / Settings installer takes care of all of
 
 ### Verifying It Works
 
-1. Open a pane in Intelligent Terminal
-2. Run a command that fails, e.g.: `Get-Item "C:\nonexistent-path"` (pwsh) or `ls /nonexistent` (bash)
-3. The WTA agent pane should show a notification and automatically suggest a fix
+1. Open **Settings → AI Agents** and set **Auto-error-handling** to `Detect errors and send them to the agent for fixes automatically.`
+2. Open a pane in Intelligent Terminal
+3. Run a command that fails, e.g.: `Get-Item "C:\nonexistent-path"` (pwsh) or `ls /nonexistent` (bash)
+4. The agent pane should show the detected failure and the agent's proposed fix
+
+The equivalent JSON setting is:
+
+```json
+{
+  "autoErrorHandling": "detectErrorsAndSendToAgentForFixesAutomatically"
+}
+```
 
 ### Checking the Diagnostic Log
 
-Autofix events are logged by the shared host process. Find the log directory:
+Auto-error-handling events are logged by the shared host process. Find the log directory:
 
 ```powershell
 # Packaged install (F5 / MSIX):
@@ -90,14 +108,14 @@ $logDir = "$env:LOCALAPPDATA\IntelligentTerminal\logs"
 Get-Content "$logDir\wta-ensure-host.log" -Tail 20
 ```
 
-Look for `target: "autofix"` lines — they show received events, classification, and whether auto-fix was triggered.
+Look for the `target: "auto_error_handling"` tracing target — those lines show received events, classification, and whether Auto-error-handling sent the failure to the agent.
 
 ## Behavior Notes
 
-- **One-shot**: Auto-fix triggers only once per user prompt. After a fix is suggested (whether accepted or not), it won't trigger again until the user manually submits a new prompt. This prevents cascading loops.
-- **Idle only**: Auto-fix only fires when the agent is connected and not already processing a request.
+- **One-shot**: Auto-error-handling sends only one failure to the agent per user prompt. After a fix is proposed (whether accepted or not), it won't send another until the user manually submits a new prompt. This prevents cascading loops.
+- **Idle only**: Auto-error-handling sends a failure to the agent only when the agent is connected and not already processing a request.
 - **Own-pane filtering**: Events from WTA's own pane are ignored to avoid self-triggering.
-- **Buffer context**: When auto-fix triggers, it reads the last ~30 lines from the failing pane to provide error context to the AI.
+- **Buffer context**: When the third option sends a failure to the agent, it reads the last ~30 lines from the failing pane to provide error context.
 
 ## Troubleshooting
 

@@ -15,8 +15,8 @@
 use super::{
     dispatch_cancel, dispatch_drop_session, dispatch_load_session, dispatch_master_ext_request,
     dispatch_new_session, dispatch_prompt, dispatch_rename_session, take_retired_session_result,
-    AutofixTextKind, CancelRequest, DropSessionRequest, LoadSessionForTab, MasterExtRequest,
-    NewSessionForTab, PromptSubmission, RenameSessionRequest,
+    AutoErrorHandlingTextKind, CancelRequest, DropSessionRequest, LoadSessionForTab,
+    MasterExtRequest, NewSessionForTab, PromptSubmission, RenameSessionRequest,
 };
 use super::{ClientState, PromptUsageIdentity, ProviderProbeCapture, WtaClient};
 use crate::app_contracts::{AppEvent, PlanEntry, PlanEntryStatus};
@@ -772,13 +772,14 @@ fn fresh_dispatch_state() -> (
     )
 }
 
-fn test_prompt(id: u64, text: &str, is_autofix: bool) -> PromptSubmission {
+fn test_prompt(id: u64, text: &str, is_auto_error_handling: bool) -> PromptSubmission {
     PromptSubmission {
         id,
         text: text.to_string(),
         pane_context: None,
         submitted_at_unix_s: 0.0,
-        autofix_text_kind: is_autofix.then_some(AutofixTextKind::UserRequest),
+        auto_error_handling_text_kind: is_auto_error_handling
+            .then_some(AutoErrorHandlingTextKind::UserRequest),
         agent_command: false,
         images: Vec::new(),
     }
@@ -896,7 +897,7 @@ async fn dispatch_prompt_round_trips_through_agent() {
             );
             assert!(
                 seen[0].contains("Working in Windows Terminal"),
-                "a non-autofix prompt must carry the terminal template"
+                "a non-Auto-error-handling prompt must carry the terminal template"
             );
 
             // The session is cached before the prompt is sent, so it's already
@@ -1166,10 +1167,10 @@ async fn dispatch_prompt_new_session_failure_emits_error_and_releases_slot() {
         .await;
 }
 
-/// First-turn autofix installs the base terminal-agent prompt and adds the
-/// autofix instruction overlay.
+/// First-turn Auto-error-handling installs the base terminal-agent prompt and adds the
+/// Auto-error-handling instruction overlay.
 #[tokio::test]
-async fn dispatch_prompt_first_autofix_includes_base_and_overlay() {
+async fn dispatch_prompt_first_auto_error_handling_includes_base_and_overlay() {
     let local = tokio::task::LocalSet::new();
     local
         .run_until(async {
@@ -1185,7 +1186,7 @@ async fn dispatch_prompt_first_autofix_includes_base_and_overlay() {
             let mut event_rx = h.event_rx;
 
             dispatch_prompt(
-                test_prompt(1, "fix the build", true), // is_autofix = true
+                test_prompt(1, "fix the build", true), // is_auto_error_handling = true
                 &h.conn,
                 &tab_to_session,
                 &memo,
@@ -1206,16 +1207,16 @@ async fn dispatch_prompt_first_autofix_includes_base_and_overlay() {
             let seen = h.seen_prompts.lock().unwrap().clone();
             assert_eq!(seen.len(), 1);
             assert!(
-                seen[0].contains("Auto-Fix Instructions"),
-                "autofix prompt must carry the auto-fix instruction overlay"
+                seen[0].contains("Auto-error-handling Instructions"),
+                "Auto-error-handling prompt must carry its instruction overlay"
             );
             assert!(
                 seen[0].contains("# Working in Windows Terminal"),
-                "first-turn autofix must install the base terminal-agent prompt"
+                "first-turn auto_error_handling must install the base terminal-agent prompt"
             );
             assert!(
                 seen[0].contains("fix the build"),
-                "autofix prompt must still carry the user's text"
+                "Auto-error-handling prompt must still carry the user's text"
             );
         })
         .await;

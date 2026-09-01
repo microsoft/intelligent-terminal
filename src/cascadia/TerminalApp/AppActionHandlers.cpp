@@ -1725,10 +1725,10 @@ namespace winrt::TerminalApp::implementation
         args.Handled(true);
     }
 
-    void TerminalPage::_HandleTriggerAutofix(const IInspectable& /*sender*/,
-                                              const ActionEventArgs& args)
+    void TerminalPage::_HandleTriggerAutoErrorHandling(const IInspectable& /*sender*/,
+                                                        const ActionEventArgs& args)
     {
-        // Per-tab: read autofix state from the active tab's AgentPaneContent.
+        // Per-tab: read auto-error-handling state from the active tab's AgentPaneContent.
         const auto activeTab = _GetFocusedTabImpl();
         if (!activeTab)
         {
@@ -1744,8 +1744,8 @@ namespace winrt::TerminalApp::implementation
         {
             return;
         }
-        using AS = winrt::TerminalApp::implementation::AgentPaneContent::AutofixState;
-        const auto state = impl->GetAutofixState();
+        using AS = winrt::TerminalApp::implementation::AgentPaneContent::AutoErrorHandlingState;
+        const auto state = impl->GetAutoErrorHandlingState();
         // Open or focus the active tab's agent pane (shared by Detected and
         // Review). Opening it makes the helper observe pane_open=true and
         // flip the bar to Idle on its own.
@@ -1760,7 +1760,7 @@ namespace winrt::TerminalApp::implementation
             }
             else
             {
-                _OpenOrReuseAgentPane(/*intoSessionsView*/ false, L"Autofix");
+                _OpenOrReuseAgentPane(/*intoSessionsView*/ false, L"AutoErrorHandling");
             }
         };
         if (state == AS::Detected)
@@ -1769,7 +1769,7 @@ namespace winrt::TerminalApp::implementation
             openAgentPaneForReview();
             Json::Value evt;
             evt["type"] = "event";
-            evt["method"] = "autofix_execute_from_detected";
+            evt["method"] = "auto_error_handling_request_analysis";
             Json::Value params;
             params["pane_id"] = winrt::to_string(impl->GetLastErrorPaneId());
             params["tab_id"] = winrt::to_string(activeTab->StableId());
@@ -2126,7 +2126,7 @@ namespace winrt::TerminalApp::implementation
         _InitShellIntegration(target);
     }
 
-    // Silent install/uninstall driven by EffectiveAutoErrorDetectionEnabled.
+    // Silent install/uninstall driven by EffectiveAutoErrorHandling.
     // Called from SetSettings on first-load and on every change of the
     // effective detection setting. No dialog — this is the background
     // reconcile that keeps $PROFILE in sync with the user's stored

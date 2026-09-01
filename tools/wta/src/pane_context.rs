@@ -29,7 +29,7 @@ mod tests {
 
     /// `effective_source_pane_id` prefers `source_pane_id` (the pane that
     /// actually produced the failing command) and only falls back to
-    /// `pane_id` (the agent pane) when no source is recorded. Autofix routing
+    /// `pane_id` (the agent pane) when no source is recorded. Auto-error-handling routing
     /// depends on this precedence — a regression would land fixes in the wrong
     /// pane.
     #[test]

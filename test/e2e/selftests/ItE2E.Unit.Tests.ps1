@@ -59,12 +59,12 @@ Describe 'JSON helpers' -Tag 'Unit' {
 {
     // a comment
     "acpAgent": "copilot",
-    "autoFixEnabled": true,
+    "autoErrorHandling": "detectErrorsAndSendToAgentForFixesAutomatically",
 }
 "@
         $o = ConvertFrom-JsonC -Text $jsonc
         $o.acpAgent | Should -Be 'copilot'
-        $o.autoFixEnabled | Should -BeTrue
+        $o.autoErrorHandling | Should -Be 'detectErrorsAndSendToAgentForFixesAutomatically'
     }
 
     It 'Set-WtSetting verifies nested object arrays structurally' {
@@ -83,6 +83,17 @@ Describe 'JSON helpers' -Tag 'Unit' {
         $stored[0].id | Should -Be 'provider-local'
         $stored[0].models[0].name | Should -Be 'Test Model'
     }
+
+    It 'Set-WtAutoErrorHandling writes each canonical enum value' {
+        $settingsPath = Join-Path $TestDrive 'auto-error-handling-settings.json'
+        '{}' | Set-Content -LiteralPath $settingsPath -Encoding utf8
+        $app = [pscustomobject]@{ SettingsPath = $settingsPath }
+
+        foreach ($mode in 'off', 'detectErrorsAutomatically', 'detectErrorsAndSendToAgentForFixesAutomatically') {
+            Set-WtAutoErrorHandling -App $app -Mode $mode | Out-Null
+            Get-WtSetting -App $app -Key 'autoErrorHandling' | Should -Be $mode
+        }
+    }
 }
 
 Describe 'Agent settings cleanup' -Tag 'Unit' {
@@ -95,6 +106,7 @@ Describe 'Agent settings cleanup' -Tag 'Unit' {
                 guid = '{6239a42c-1111-49a3-80bd-e8fdd045185c}'
             })
             acpAgent = 'copilot'
+            autoErrorHandling = 'detectErrorsAutomatically'
             showTokenUsageAndCost = $true
         } | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $settingsPath -Encoding utf8
         $app = [pscustomobject]@{ SettingsPath = $settingsPath }
@@ -104,6 +116,7 @@ Describe 'Agent settings cleanup' -Tag 'Unit' {
         $settings = Get-WtSettingsObject -App $app
         $settings.PSObject.Properties.Name | Should -Not -Contain 'showTokenUsageAndCost'
         $settings.PSObject.Properties.Name | Should -Not -Contain 'acpAgent'
+        $settings.PSObject.Properties.Name | Should -Not -Contain 'autoErrorHandling'
         $settings.profiles[0].name | Should -Be 'p0'
     }
 }

@@ -3,7 +3,7 @@
 //! `#[path]`) so it can reach `App`'s private fields and helper methods just
 //! like the rest of `app.rs` does. `handle_event` is `pub(super)` because
 //! `App::run` (in `app.rs`) and the test helpers in sibling test modules
-//! (`app_tests.rs`, `autofix_tests.rs`) all call it directly on an `App`.
+//! (`app_tests.rs`, `auto_error_handling_tests.rs`) all call it directly on an `App`.
 
 use super::*;
 
@@ -250,7 +250,7 @@ impl App {
         match crate::win32::copy_text_to_clipboard(&text) {
             Ok(()) => {
                 self.text_selection.clear();
-                self.close_pane_armed_at = None;
+                self.close_pane_started_at = None;
                 self.transient_hint = Some((
                     t!("system.selection_copied").into_owned(),
                     std::time::Instant::now() + SELECTION_COPIED_HINT_WINDOW,
@@ -1284,7 +1284,7 @@ impl App {
                 }
 
                 // Append directly to the ordered active transcript. The state
-                // machine drops late chunks and stale autofix generations.
+                // machine drops late chunks and stale Auto-error-handling generations.
                 self.turn_observe_chunk(&session_id, ChunkKind::Message, &text);
             }
             AppEvent::UserMessageReplayChunk { session_id, text } => {
@@ -1866,10 +1866,10 @@ impl App {
                 // Per-WT-event (every vt_sequence included) — trace-only; the
                 // single per-event breadcrumb stays at debug in main.rs
                 // (`wt_event_rx: received event`).
-                tracing::trace!(target: "autofix", method = %method, pane_id = %pane_id, tab_id = ?tab_id, self_pane_id = ?self.pane_id, "WtEvent");
+                tracing::trace!(target: "auto_error_handling", method = %method, pane_id = %pane_id, tab_id = ?tab_id, self_pane_id = ?self.pane_id, "WtEvent");
 
                 // Hook bridge events: fire-and-forget into the agent registry
-                // so the agent session view stays current. Unrelated to autofix /
+                // so the agent session view stays current. Unrelated to Auto-error-handling /
                 // tab routing; runs before the same-pane skip because we want
                 // to record events from our own pane too.
                 if method == "agent_event" {
@@ -1896,33 +1896,38 @@ impl App {
                     return;
                 }
 
-                // autofix_execute is an inbound UI action ("run the armed
-                // fix now") from TerminalPage. pane_id is the failing
+                // `auto_error_handling_execute_result` is an inbound UI
+                // action ("run the actionable result now") from TerminalPage.
+                // pane_id is the failing
                 // pane — NOT our own — so this check must run before the
                 // same-pane skip below. Ignore the event if we don't
-                // actually have a cached autofix for that pane.
-                if method == "autofix_execute" {
-                    self.handle_autofix_execute_request(&pane_id);
+                // actually have a cached Auto-error-handling result for it.
+                if method == "auto_error_handling_execute_result" {
+                    self.handle_auto_error_handling_execute_result_request(&pane_id);
                     return;
                 }
 
-                if method == "autofix_dismiss_suggestion" {
-                    // User clicked the bar in Suggested state. The bar
+                if method == "auto_error_handling_dismiss_result" {
+                    // User dismissed the bar's Review state. The bar
                     // always projects the active tab, so clear that tab's
-                    // suggested_pane_id and emit cleared.
+                    // result_pane_id and emit cleared.
                     let active = self.active_tab_key().to_string();
-                    let suggested = self.current_tab_mut().autofix.suggested_pane_id.take();
-                    if suggested.is_some() {
-                        self.emit_autofix_state_cleared(&active);
+                    let result_pane = self
+                        .current_tab_mut()
+                        .auto_error_handling
+                        .result_pane_id
+                        .take();
+                    if result_pane.is_some() {
+                        self.emit_auto_error_handling_state_cleared(&active);
                     }
                     return;
                 }
 
-                if method == "autofix_execute_from_detected" {
+                if method == "auto_error_handling_request_analysis" {
                     // User pressed the pill / hotkey in Detected state.
-                    // Replay the trigger as if auto-suggest were on, so
-                    // the LLM call fires and we transition to Pending.
-                    self.handle_autofix_execute_from_detected();
+                    // Replay the trigger with explicit user intent so the
+                    // agent call starts and the state transitions to Pending.
+                    self.handle_auto_error_handling_request_analysis();
                     return;
                 }
 
@@ -1930,7 +1935,7 @@ impl App {
                     // Command palette `?<prompt>` delegation. Not a WT
                     // notification — has nothing to do with banner/queue.
                     let prompt = params.get("prompt").and_then(|v| v.as_str()).unwrap_or("");
-                    tracing::info!(target: "autofix", prompt_len = prompt.len(), "agent_prompt: delegating");
+                    tracing::info!(target: "delegate", prompt_len = prompt.len(), "agent_prompt: delegating");
                     if !prompt.is_empty() {
                         self.delegate_to_tab_agent(prompt);
                     }
@@ -2015,7 +2020,7 @@ impl App {
 
                 if method == "agent_config_changed" {
                     // C++ pushes this when the user changes a hot-updatable
-                    // agent setting (auto-suggest gate, acp-model, delegate
+                    // agent setting (automatic handling gate, acp-model, delegate
                     // agent/model) while WTA is already running. Unified
                     // dispatch: each field is optional and only present when
                     // it actually changed, so we apply exactly what's set
@@ -2042,14 +2047,17 @@ impl App {
                         return;
                     }
 
-                    if let Some(enabled) = params.get("autofix_enabled").and_then(|v| v.as_bool()) {
+                    if let Some(enabled) = params
+                        .get("auto_error_handling_with_agent_enabled")
+                        .and_then(|v| v.as_bool())
+                    {
                         tracing::info!(
-                            target: "autofix",
-                            old = self.autofix_enabled,
+                            target: "agent_config",
+                            old = self.auto_error_handling_with_agent_enabled,
                             new = enabled,
-                            "autofix_enabled hot-reloaded from settings change",
+                            "Auto-error-handling send-to-agent mode hot-reloaded from settings change",
                         );
-                        self.autofix_enabled = enabled;
+                        self.auto_error_handling_with_agent_enabled = enabled;
                     }
 
                     // delegate_agent + delegate_model travel together so the
@@ -2077,7 +2085,7 @@ impl App {
                             params.get("target_agent_id").and_then(|v| v.as_str())
                         {
                             tracing::info!(
-                            target: "autofix",
+                            target: "agent_config",
                             model = raw,
                                 target_agent_id,
                                 "scoped acp-model hot-update requested from settings change",
@@ -2085,7 +2093,7 @@ impl App {
                             self.apply_global_acp_model(target_agent_id, Some(raw.to_string()));
                         } else {
                             tracing::warn!(
-                                target: "autofix",
+                                target: "agent_config",
                                 "ignoring acp-model hot-update without target_agent_id"
                             );
                         }
@@ -2202,7 +2210,7 @@ impl App {
                     if let Some(new_tab_id) = params.get("tab_id").and_then(|v| v.as_str()) {
                         // switch_tab_session calls project_active_tab_state
                         // at its end — that pushes the new tab's view AND
-                        // autofix bar snapshot to C++ in one shot.
+                        // Auto-error-handling bar snapshot to C++ in one shot.
                         self.switch_tab_session(new_tab_id.to_string());
                     } else {
                         tracing::warn!(target: "tab_session", "tab_changed: missing tab_id in params");
@@ -2537,9 +2545,9 @@ impl App {
                         if let Some(review_pane) = self
                             .tab_sessions
                             .get(&target_tab)
-                            .and_then(|t| t.autofix.suggested_pane_id.clone())
+                            .and_then(|t| t.auto_error_handling.result_pane_id.clone())
                         {
-                            self.emit_autofix_state_result(&target_tab, &review_pane);
+                            self.update_auto_error_handling_review_state(&target_tab, &review_pane);
                         }
                     }
 
@@ -2553,7 +2561,7 @@ impl App {
 
                 // Skip events from our own pane
                 if self.pane_id.as_deref() == Some(pane_id.as_str()) {
-                    tracing::debug!(target: "autofix", "skipped: own pane");
+                    tracing::debug!(target: "auto_error_handling", "skipped: own pane");
                     return;
                 }
 
@@ -2679,7 +2687,7 @@ impl App {
 
                 let notification = classify_wt_event(&method, &pane_id, tab_id.as_deref(), &params);
                 // Per-WT-event classification — trace-only (vt_sequence volume).
-                tracing::trace!(target: "autofix", severity = ?notification.severity, summary = %notification.summary, tab_id = ?notification.tab_id, "classified");
+                tracing::trace!(target: "auto_error_handling", severity = ?notification.severity, summary = %notification.summary, tab_id = ?notification.tab_id, "classified");
 
                 // Per-tab filter. WT broadcasts pane-scoped events to every
                 // helper in the window, but another tab's failures are not
@@ -2693,7 +2701,7 @@ impl App {
                         // Per-cross-tab-event (very high volume in multi-tab
                         // windows) — trace-only.
                         tracing::trace!(
-                            target: "autofix",
+                            target: "auto_error_handling",
                             event_tab,
                             self_tab,
                             method = %method,
@@ -2703,7 +2711,7 @@ impl App {
                     }
                 }
 
-                // Telemetry: emit ErrorDetected for any non-acknowledged
+                // Telemetry: emit AutoErrorHandlingDetected for any non-acknowledged
                 // critical/actionable classification. Acknowledged events are
                 // the auto-silenced "unknown"/"connected"/success cases.
                 if !notification.acknowledged {
@@ -2713,7 +2721,11 @@ impl App {
                         WtEventSeverity::Informational => None,
                     };
                     if let Some(severity_str) = severity_str {
-                        crate::telemetry::log_error_detected(severity_str, &method, &pane_id);
+                        crate::telemetry::log_auto_error_handling_detected(
+                            severity_str,
+                            &method,
+                            &pane_id,
+                        );
                     }
                 }
 
@@ -2725,11 +2737,11 @@ impl App {
                     WtEventSeverity::Critical | WtEventSeverity::Actionable => {
                         self.show_notification_banner = true;
                         // Only OSC-133;D vt_sequence events have the exit
-                        // code + live shell buffer needed to drive autofix.
+                        // code + live shell buffer needed to drive Auto-error-handling.
                         // `connection_state: closed`/`failed` is just process
                         // termination — banner-only.
                         if method == "vt_sequence" {
-                            self.maybe_trigger_autofix(&notification);
+                            self.maybe_trigger_auto_error_handling(&notification);
                         }
                     }
                     WtEventSeverity::Informational => {
@@ -2739,11 +2751,11 @@ impl App {
                         //     command in the failing pane.
                         //   * prompt-start (A): the shell drew a fresh prompt
                         //     line (user pressed Enter, switched away, etc.).
-                        // For Pending/Armed/Detected we gate prompt-start on
+                        // For Pending/Review/Detected we gate prompt-start on
                         // `trigger_echo_pane` so the immediate A that
                         // PowerShell emits ~1ms after every D doesn't
-                        // dismiss the state we just established. Suggested
-                        // fires asynchronously (after the LLM returns), so
+                        // dismiss the state we just established. Review
+                        // fires asynchronously (after the agent returns), so
                         // it has no echo to skip and dismisses on any A.
                         if method == "vt_sequence" {
                             let seq = params
@@ -2765,18 +2777,19 @@ impl App {
                             // one PowerShell emits immediately after the
                             // triggering D. `effective_prompt_start` is the
                             // "user actually moved on" signal for D-synchronous
-                            // states (Pending / Detected). Suggested uses raw
-                            // `is_prompt_start` since it fires post-LLM.
+                            // states (Pending / Detected). Review uses raw
+                            // `is_prompt_start` since it fires after analysis.
                             let effective_prompt_start = if is_prompt_start {
                                 if let Some(t) = event_tab.as_deref() {
                                     let echo = self
                                         .tab_mut(&t.to_string())
-                                        .autofix
+                                        .auto_error_handling
                                         .trigger_echo_pane
                                         .clone();
                                     if echo.as_deref() == Some(pane_id.as_str()) {
-                                        self.tab_mut(&t.to_string()).autofix.trigger_echo_pane =
-                                            None;
+                                        self.tab_mut(&t.to_string())
+                                            .auto_error_handling
+                                            .trigger_echo_pane = None;
                                         false
                                     } else {
                                         true
@@ -2787,34 +2800,36 @@ impl App {
                             } else {
                                 false
                             };
-                            let armed_in_event_tab = event_tab
+                            let active_handling_pane = event_tab
                                 .as_deref()
                                 .and_then(|t| self.tab_sessions.get(t))
-                                .and_then(|t| t.autofix.pane_id.as_deref())
+                                .and_then(|t| t.auto_error_handling.pane_id.as_deref())
                                 .map(str::to_string);
                             if (is_exit_zero || effective_prompt_start)
-                                && armed_in_event_tab.as_deref() == Some(pane_id.as_str())
+                                && active_handling_pane.as_deref() == Some(pane_id.as_str())
                             {
                                 let target_tab = event_tab
                                     .clone()
-                                    .expect("armed_in_event_tab requires tab_id present");
-                                // Telemetry: a fix was armed for this pane and the next
-                                // command exited cleanly — the user's problem resolved.
-                                // Elapsed is monotonic (`Instant::elapsed`) from arm to
-                                // clean exit, not wall-clock.
-                                if let Some(armed) =
-                                    self.tab_mut(&target_tab).autofix.armed_at.take()
+                                    .expect("active_handling_pane requires tab_id present");
+                                // Telemetry: handling started for this pane and the
+                                // next command exited cleanly. Elapsed time is
+                                // monotonic, not wall-clock.
+                                if let Some(started_at) = self
+                                    .tab_mut(&target_tab)
+                                    .auto_error_handling
+                                    .started_at
+                                    .take()
                                 {
-                                    let elapsed_ms = armed.elapsed().as_secs_f64() * 1000.0;
-                                    crate::telemetry::log_error_fix_resolved(
+                                    let elapsed_ms = started_at.elapsed().as_secs_f64() * 1000.0;
+                                    crate::telemetry::log_auto_error_handling_resolved(
                                         pane_id.as_str(),
                                         elapsed_ms,
                                     );
                                 }
                                 // `turn_cancel` owns the full cleanup: bumps
-                                // the tab's autofix_generation, emits cleared
-                                // (resolving the pane from AutofixContext, or
-                                // `autofix.pane_id` as a fallback), and
+                                // the tab's auto_error_handling_generation, emits cleared
+                                // (resolving the pane from AutoErrorHandlingContext, or
+                                // `auto_error_handling.pane_id` as a fallback), and
                                 // resets `tab.turn` to Idle. Avoid duplicating
                                 // its work.
                                 let session_id = self
@@ -2828,31 +2843,34 @@ impl App {
                                     // minimum cleanup turn_cancel would do.
                                     let pane_to_clear = {
                                         let tab = self.tab_mut(&target_tab);
-                                        tab.autofix.generation =
-                                            tab.autofix.generation.wrapping_add(1);
+                                        tab.auto_error_handling.generation =
+                                            tab.auto_error_handling.generation.wrapping_add(1);
                                         tab.clear_recommendations();
-                                        tab.autofix.pane_id.take()
+                                        tab.auto_error_handling.pane_id.take()
                                     };
                                     if pane_to_clear.is_some() {
-                                        self.emit_autofix_state_cleared(&target_tab);
+                                        self.emit_auto_error_handling_state_cleared(&target_tab);
                                     }
                                 }
                             }
-                            // Suggested: dismiss on prompt activity (exit-zero
+                            // Review: dismiss on prompt activity (exit-zero
                             // or a fresh prompt-start) in the event's tab.
                             // Emit cleared so the bar's per-tab snapshot
                             // resets to Idle.
                             if is_exit_zero || is_prompt_start {
                                 if let Some(t) = event_tab.as_deref() {
                                     let t_owned = t.to_string();
-                                    let pane_to_clear =
-                                        self.tab_mut(&t_owned).autofix.suggested_pane_id.take();
+                                    let pane_to_clear = self
+                                        .tab_mut(&t_owned)
+                                        .auto_error_handling
+                                        .result_pane_id
+                                        .take();
                                     if pane_to_clear.is_some() {
-                                        self.emit_autofix_state_cleared(&t_owned);
+                                        self.emit_auto_error_handling_state_cleared(&t_owned);
                                     }
                                 }
                             }
-                            // Detected (suggest-mode pill): dismiss when the
+                            // Detected (detect-only pill): dismiss when the
                             // user moves on in the same pane — either a
                             // successful command (exit-zero) or a fresh
                             // prompt-start that isn't the trigger's echo.
@@ -2862,12 +2880,12 @@ impl App {
                                 if let Some(t) = event_tab.as_deref() {
                                     let t_owned = t.to_string();
                                     let detected_matches = matches!(
-                                        &self.tab_mut(&t_owned).autofix.bar_snapshot,
-                                        AutofixBarSnapshot::Detected { pane_id: bar_pane, .. }
+                                        &self.tab_mut(&t_owned).auto_error_handling.bar_snapshot,
+                                        AutoErrorHandlingBarSnapshot::Detected { pane_id: bar_pane, .. }
                                             if bar_pane == pane_id.as_str()
                                     );
                                     if detected_matches {
-                                        self.emit_autofix_state_cleared(&t_owned);
+                                        self.emit_auto_error_handling_state_cleared(&t_owned);
                                     }
                                 }
                             }

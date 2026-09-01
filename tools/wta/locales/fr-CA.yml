@@ -46,7 +46,7 @@ chat.plan_header: "Plan :"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}
 chat.plan_marker_pending: "[ ]"  # {Locked}
-chat.autofix_prompt_label: "Échec récent d'une commande diagnostiqué automatiquement"
+chat.auto_error_handling_prompt_label: "Échec récent d'une commande diagnostiqué automatiquement"
 chat.turn_canceled: "(annulé)"
 chat.turn_executed: "→ exécuté : %{title}"
 # Étiquettes persistantes de catégorie d’outil affichées après un marqueur d’état et avant le sujet.

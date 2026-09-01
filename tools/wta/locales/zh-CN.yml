@@ -42,7 +42,7 @@ chat.plan_header: "计划："
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}
 chat.plan_marker_pending: "[ ]"  # {Locked}
-chat.autofix_prompt_label: "已自动诊断最近的一次命令失败"
+chat.auto_error_handling_prompt_label: "已自动诊断最近的一次命令失败"
 chat.turn_canceled: "(已取消)"
 chat.turn_executed: "→ 已执行: %{title}"
 # 在状态标记之后、操作对象之前显示的持久工具类别标签。

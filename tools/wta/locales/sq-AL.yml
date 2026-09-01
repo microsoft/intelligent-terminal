@@ -46,7 +46,7 @@ chat.plan_header: "Plani:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}
 chat.plan_marker_pending: "[ ]"  # {Locked}
-chat.autofix_prompt_label: "Dështim i fundit i komandës është diagnostikuar automatikisht"
+chat.auto_error_handling_prompt_label: "Dështim i fundit i komandës është diagnostikuar automatikisht"
 chat.turn_canceled: "(anuluar)"
 chat.turn_executed: "→ ekzekutuar: %{title}"
 # Etiketa të përhershme të kategorive të mjeteve, të shfaqura pas shënuesit të gjendjes dhe para subjektit.

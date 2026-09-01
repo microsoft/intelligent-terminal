@@ -81,8 +81,6 @@ Author(s):
     X(winrt::Windows::Foundation::Collections::IVector<Model::CustomModelProvider>, CustomModelProviders, "customModelProviders", winrt::single_threaded_vector<Model::CustomModelProvider>())             \
     X(hstring, DelegateAgent, "delegateAgent", L"copilot")                                                                                                                                              \
     X(hstring, DelegateModel, "delegateModel", L"")                                                                                                                                                    \
-    X(bool, AutoErrorDetectionEnabled, "autoErrorDetectionEnabled", true)                                                                                                                               \
-    X(bool, AutoFixEnabled, "autoFixEnabled", false)                                                                                                                                                    \
     X(bool, ShowTokenUsageAndCost, "showTokenUsageAndCost", false)                                                                                                                                      \
     X(hstring, AcpCustomCommand, "acpCustomCommand", L"")                                                                                                                                              \
     X(hstring, DelegateCustomCommand, "delegateCustomCommand", L"")                                                                                                                                    \

@@ -218,7 +218,7 @@ namespace winrt::TerminalApp::implementation
         {
             _refreshLogo();
         }
-        // Match `SetSessionsView` and `ApplyAutofixState`: any bottom-bar-
+        // Match `SetSessionsView` and `ApplyAutoErrorHandlingState`: any bottom-bar-
         // affecting state mutation on AgentPaneContent must raise
         // `StateChanged` so subscribers (TerminalPage's bar-refresh
         // handler) can pick up the change without polling. The bar does
@@ -250,15 +250,15 @@ namespace winrt::TerminalApp::implementation
         StateChanged.raise(*this, nullptr);
     }
 
-    void AgentPaneContent::ApplyAutofixState(AutofixState state,
-                                             const winrt::hstring& paneId,
-                                             const winrt::hstring& summary,
-                                             const winrt::hstring& fixPreview,
-                                             const winrt::hstring& hotkeyHint,
-                                             const winrt::hstring& suggestionTitle)
+    void AgentPaneContent::ApplyAutoErrorHandlingState(AutoErrorHandlingState state,
+                                                       const winrt::hstring& paneId,
+                                                       const winrt::hstring& summary,
+                                                       const winrt::hstring& fixPreview,
+                                                       const winrt::hstring& hotkeyHint,
+                                                       const winrt::hstring& resultTitle)
     {
-        _autofixState = state;
-        if (state == AutofixState::Idle)
+        _autoErrorHandlingState = state;
+        if (state == AutoErrorHandlingState::Idle)
         {
             // Clear ALL cached fields on idle, including `_hotkeyHint`.
             // The bottom bar reads these directly, so a leftover hint
@@ -266,7 +266,7 @@ namespace winrt::TerminalApp::implementation
             // hang around after the bar should have gone quiet.
             _lastErrorPaneId = {};
             _fixPreview = {};
-            _suggestionTitle = {};
+            _resultTitle = {};
             _detectedSummary = {};
             _hotkeyHint = {};
         }
@@ -288,9 +288,9 @@ namespace winrt::TerminalApp::implementation
             {
                 _hotkeyHint = hotkeyHint;
             }
-            if (!suggestionTitle.empty())
+            if (!resultTitle.empty())
             {
-                _suggestionTitle = suggestionTitle;
+                _resultTitle = resultTitle;
             }
         }
         StateChanged.raise(*this, nullptr);

@@ -46,7 +46,7 @@ chat.plan_header: "ଯୋଜନା:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}
 chat.plan_marker_pending: "[ ]"  # {Locked}
-chat.autofix_prompt_label: "ସମ୍ପ୍ରତି କମାଣ୍ଡ ବିଫଳତା ସ୍ୱୟଂଚାଳିତ ଭାବେ ନିଦାନ କରାଯାଇଛି"
+chat.auto_error_handling_prompt_label: "ସମ୍ପ୍ରତି କମାଣ୍ଡ ବିଫଳତା ସ୍ୱୟଂଚାଳିତ ଭାବେ ନିଦାନ କରାଯାଇଛି"
 chat.turn_canceled: "(ବାତିଲ କରାଗଲା)"
 chat.turn_executed: "→ କାର୍ଯ୍ୟକାରୀ ହୋଇଛି: %{title}"
 # Persistent tool-category labels shown after a status marker and before a subject.

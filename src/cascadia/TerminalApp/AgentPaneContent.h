@@ -35,11 +35,11 @@ namespace winrt::TerminalApp::implementation
         // into sessions view.
         bool IsSessionsView() const noexcept { return _isSessionsView; }
 
-        // --- Per-pane autofix / diagnostics state ---
-        // Driven by inbound `autofix_state_changed` events for this pane's
+        // --- Per-pane auto-error-handling diagnostics state ---
+        // Driven by inbound auto-error-handling state events for this pane's
         // owning tab. The window-level bottom bar reads these accessors
         // when refreshing for the active tab.
-        enum class AutofixState
+        enum class AutoErrorHandlingState
         {
             Idle,
             Detected,
@@ -47,22 +47,22 @@ namespace winrt::TerminalApp::implementation
             // Analysis finished; the result (fix or explanation) is waiting
             // in the agent pane chat. Surfaced only when the pane is closed
             // — the helper decides via pane_open and sends Idle instead when
-            // it's already open. Replaces the old Armed/Suggested split:
-            // autofix no longer auto-executes, so both surface identically.
+            // it's already open. Replaces the old Armed/Review split:
+            // auto-error-handling no longer executes fixes, so both surface identically.
             Review,
         };
-        // Update the diagnostics state from an inbound autofix_state event
+        // Update the diagnostics state from an inbound auto-error-handling state event
         // (single-writer for this pane's state). `pane_id` and other fields
         // come from the JSON payload; we only stash strings that the bar
         // surface needs to render. After updating, fires `StateChanged` so
         // the page can refresh the window-level bottom bar if this is the
         // active tab.
-        void ApplyAutofixState(AutofixState state,
-                               const winrt::hstring& paneId,
-                               const winrt::hstring& summary,
-                               const winrt::hstring& fixPreview,
-                               const winrt::hstring& hotkeyHint,
-                               const winrt::hstring& suggestionTitle);
+        void ApplyAutoErrorHandlingState(AutoErrorHandlingState state,
+                                         const winrt::hstring& paneId,
+                                         const winrt::hstring& summary,
+                                         const winrt::hstring& fixPreview,
+                                         const winrt::hstring& hotkeyHint,
+                                         const winrt::hstring& resultTitle);
         // Update the cached pane-position. Fires StateChanged so the
         // bottom bar can refresh its toggle-icon orientation.
         void SetAgentPanePosition(const winrt::hstring& position);
@@ -91,10 +91,10 @@ namespace winrt::TerminalApp::implementation
                               const winrt::Windows::UI::Xaml::Media::Brush& foreground);
 
         // Accessors for state that the window-level bottom bar projects.
-        AutofixState GetAutofixState() const noexcept { return _autofixState; }
+        AutoErrorHandlingState GetAutoErrorHandlingState() const noexcept { return _autoErrorHandlingState; }
         // True once the helper's ACP session has reached Connected (driven
         // by the `agent_status` `state` field via UpdateAgentStatus). The
-        // bottom-bar diagnostics group is gated on this: no autofix
+        // bottom-bar diagnostics group is gated on this: no automatic handling
         // capability exists before connect (cold start) or after a
         // failure/disconnect, so the button must not appear at all.
         bool IsAgentConnected() const noexcept { return _agentState == L"connected"; }
@@ -107,13 +107,13 @@ namespace winrt::TerminalApp::implementation
         winrt::hstring GetLastErrorPaneId() const noexcept { return _lastErrorPaneId; }
         winrt::hstring GetFixPreview() const noexcept { return _fixPreview; }
         winrt::hstring GetHotkeyHint() const noexcept { return _hotkeyHint; }
-        winrt::hstring GetSuggestionTitle() const noexcept { return _suggestionTitle; }
+        winrt::hstring GetResultTitle() const noexcept { return _resultTitle; }
         winrt::hstring GetDetectedSummary() const noexcept { return _detectedSummary; }
         winrt::hstring GetAgentPanePosition() const noexcept { return _agentPanePosition; }
         [[nodiscard]] bool ApplyAgentUsage(const Json::Value& usage);
         const std::vector<::TerminalApp::AgentUsage::Item>& GetAgentUsage() const noexcept { return _agentUsage; }
 
-        // Fired whenever cached bottom-bar-relevant state changes (autofix
+        // Fired whenever cached bottom-bar-relevant state changes (automatic error handling
         // state, sessions view, agent pane position). The outer page
         // subscribes to refresh the window-level bottom bar when the
         // firing pane belongs to the active tab.
@@ -159,12 +159,12 @@ namespace winrt::TerminalApp::implementation
         // (the single writer for view-derived UI state).
         bool _isSessionsView{ false };
 
-        // --- Diagnostics / autofix state (projected by the window bottom bar) ---
-        AutofixState _autofixState{ AutofixState::Idle };
+        // --- Auto-error-handling diagnostics state (projected by the window bottom bar) ---
+        AutoErrorHandlingState _autoErrorHandlingState{ AutoErrorHandlingState::Idle };
         winrt::hstring _lastErrorPaneId{};
         winrt::hstring _fixPreview{};
         winrt::hstring _hotkeyHint{};
-        winrt::hstring _suggestionTitle{};
+        winrt::hstring _resultTitle{};
         winrt::hstring _detectedSummary{};
         std::vector<::TerminalApp::AgentUsage::Item> _agentUsage;
         // Effective per-tab AgentPanePosition for icon orientation.

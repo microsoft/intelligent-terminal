@@ -770,8 +770,8 @@
   <data name="OpenAgentSessionsCommandKey" xml:space="preserve">
     <value>Open AI assistant sessions list</value>
   <comment>In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment></data>
-  <data name="TriggerAutofixCommandKey" xml:space="preserve">
-    <value>Trigger autofix</value>
+  <data name="TriggerAutoErrorHandlingCommandKey" xml:space="preserve">
+    <value>Auto-error-handling</value>
   <comment>In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment></data>
   <data name="WorkspacesCommandKey" xml:space="preserve">
     <value>Workspaces...</value>

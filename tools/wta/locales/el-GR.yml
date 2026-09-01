@@ -46,7 +46,7 @@ chat.plan_header: "Σχέδιο:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}
 chat.plan_marker_pending: "[ ]"  # {Locked}
-chat.autofix_prompt_label: "Αυτόματη διάγνωση πρόσφατης αποτυχίας εντολής"
+chat.auto_error_handling_prompt_label: "Αυτόματη διάγνωση πρόσφατης αποτυχίας εντολής"
 chat.turn_canceled: "(ακυρώθηκε)"
 chat.turn_executed: "→ εκτελέστηκε: %{title}"
 # Persistent tool-category labels shown after a status marker and before a subject.

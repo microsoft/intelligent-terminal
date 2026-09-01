@@ -1002,8 +1002,8 @@
   <data name="OpenAgentSessionsCommandKey" xml:space="preserve">
     <value>Открыть список сеансов ИИ-агента</value>
   </data>
-  <data name="TriggerAutofixCommandKey" xml:space="preserve">
-    <value>Запустить автоисправление</value>
+  <data name="TriggerAutoErrorHandlingCommandKey" xml:space="preserve">
+    <value>Автоматическая обработка ошибок</value>
   </data>
   <data name="PromptActionArgumentLocalized" xml:space="preserve">
     <value>Запрос</value>

@@ -21,7 +21,8 @@
 # Registry values (AgentPolicy.h:69, 55-65, 122-129):
 #   AllowedAgents          REG_MULTI_SZ  built-in agent-id allowlist (nullopt = all allowed)
 #   AllowCustomAgents      REG_DWORD     0 = Blocked, non-zero = Allowed
-#   AllowAutoFix           REG_DWORD     0 = Blocked, non-zero = Allowed
+#   AllowAutoErrorHandling REG_DWORD     0 = Blocked, non-zero = Allowed
+#   AllowAutoFix           REG_DWORD     Legacy fallback when AllowAutoErrorHandling is absent
 #   AllowAgentSessionHooks REG_DWORD     0 = Blocked, non-zero = Allowed
 
 $script:WtAgentPolicyKey = 'HKCU:\SOFTWARE\Policies\Microsoft\IntelligentTerminal'
@@ -30,6 +31,8 @@ $script:WtAgentPolicyKey = 'HKCU:\SOFTWARE\Policies\Microsoft\IntelligentTermina
 $script:WtAgentPolicyValues = [ordered]@{
     AllowedAgents          = 'MultiString'
     AllowCustomAgents      = 'DWord'
+    AllowAutoErrorHandling = 'DWord'
+    # Legacy compatibility: retained only to test fallback and precedence.
     AllowAutoFix           = 'DWord'
     AllowAgentSessionHooks = 'DWord'
 }
@@ -55,11 +58,12 @@ function Set-WtAgentPolicy {
         hive to be writable (see Enable-WtAgentPolicyTesting.ps1 — grant once, then non-elevated).
     .PARAMETER Policy
         Hashtable keyed by registry value name:
-          AllowAutoFix / AllowCustomAgents / AllowAgentSessionHooks -> 'Allowed' | 'Blocked' | 0/1
+          AllowAutoErrorHandling / AllowCustomAgents / AllowAgentSessionHooks -> 'Allowed' | 'Blocked' | 0/1
+          AllowAutoFix -> Legacy fallback compatibility only
           AllowedAgents -> string[] of built-in agent ids (e.g. @('copilot'))
         A $null value clears (removes) that policy value.
     .EXAMPLE
-        $prior = Set-WtAgentPolicy -Policy @{ AllowAutoFix = 'Blocked' }
+        $prior = Set-WtAgentPolicy -Policy @{ AllowAutoErrorHandling = 'Blocked' }
         try { ... } finally { Restore-WtAgentPolicy -State $prior }
     #>
     [CmdletBinding()]

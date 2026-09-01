@@ -46,7 +46,7 @@ chat.plan_header: "Plan:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}
 chat.plan_marker_pending: "[ ]"  # {Locked}
-chat.autofix_prompt_label: "Diagnosticado automáticamente una falla reciente de un comando"
+chat.auto_error_handling_prompt_label: "Diagnosticado automáticamente una falla reciente de un comando"
 chat.turn_canceled: "(cancelado)"
 chat.turn_executed: "→ ejecutado: %{title}"
 # Persistent tool-category labels shown after a status marker and before a subject.

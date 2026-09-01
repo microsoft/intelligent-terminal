@@ -11,7 +11,7 @@
 //!   session/helper/window/tab/pane id, and delegation is a distinct public
 //!   intent that can ask for "the user's configured delegate" but never name
 //!   an arbitrary agent;
-//! * origin-aware policy (`ProposalOrigin::TerminalAgent` vs `::Autofix`);
+//! * origin-aware policy (`ProposalOrigin::TerminalAgent` vs `::AutoErrorHandling`);
 //! * size/count bounds enforced *before* `serde_json` ever sees the bytes;
 //! * conversion into [`crate::coordinator::RecommendationSet`], which then
 //!   flows through the shared card-surfacing and execution pipeline.
@@ -134,14 +134,14 @@ impl ProposalError {
 }
 
 /// Which system prompt asked for this proposal. Validated against the
-/// owning helper's OWN authoritative `TurnState::is_autofix()` — a
-/// mismatch (e.g. `autofix` origin claimed on a plain chat turn) is a
+/// owning helper's OWN authoritative `TurnState::is_auto_error_handling()` — a
+/// mismatch (e.g. `auto_error_handling` origin claimed on a plain chat turn) is a
 /// policy violation, never trusted from the payload alone.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ProposalOrigin {
     TerminalAgent,
-    Autofix,
+    AutoErrorHandling,
 }
 
 /// Top-level proposal payload. `deny_unknown_fields` so a future field a
@@ -302,7 +302,7 @@ impl From<ProposalOpenTargetWire> for OpenTarget {
 /// Action wire shape. Deliberately has no session/helper/window/tab/pane id
 /// field. The helper captures the active working pane for the prompt and
 /// supplies it separately as trusted metadata; model-authored JSON cannot
-/// redirect a send or panel action to another pane. Autofix continues to bind
+/// redirect a send or panel action to another pane. Auto-error-handling continues to bind
 /// its failing pane at card-execution time.
 ///
 /// `agent: Option<String>` from [`RecommendedAction`] is intentionally not
@@ -370,7 +370,7 @@ pub fn parse_proposal_payload(bytes: &[u8]) -> Result<ProposalWire, ProposalErro
 pub fn parse_mcp_action_payload(
     tool: McpActionTool,
     bytes: &[u8],
-    is_autofix_turn: bool,
+    is_auto_error_handling_turn: bool,
 ) -> Result<ProposalWire, ProposalError> {
     if bytes.len() > MAX_PAYLOAD_BYTES {
         return Err(ProposalError::TooLarge { size: bytes.len() });
@@ -472,8 +472,8 @@ pub fn parse_mcp_action_payload(
     };
     Ok(ProposalWire {
         schema_version: SCHEMA_VERSION,
-        origin: if is_autofix_turn {
-            ProposalOrigin::Autofix
+        origin: if is_auto_error_handling_turn {
+            ProposalOrigin::AutoErrorHandling
         } else {
             ProposalOrigin::TerminalAgent
         },
@@ -679,7 +679,7 @@ pub fn mcp_action_description(tool: McpActionTool) -> &'static str {
 /// Convert a decoded [`ProposalWire`] into a [`RecommendationSet`], applying
 /// origin policy and shared count, length, and coordinator-target validation.
 ///
-/// * `is_autofix_turn` — the owning turn's OWN `TurnState::is_autofix()`
+/// * `is_auto_error_handling_turn` — the owning turn's OWN `TurnState::is_auto_error_handling()`
 ///   (never taken from the payload). A mismatch against `wire.origin` is a
 ///   [`ProposalError::PolicyViolation`].
 /// * `configured_delegate_id` — the helper's currently configured delegate
@@ -692,16 +692,16 @@ pub fn mcp_action_description(tool: McpActionTool) -> &'static str {
 ///   targets by [`crate::coordinator::validate_recommendation_set_for_coordinator_target`].
 pub fn build_recommendation_set(
     wire: &ProposalWire,
-    is_autofix_turn: bool,
+    is_auto_error_handling_turn: bool,
     configured_delegate_id: Option<&str>,
     trusted_active_target: Option<&str>,
     coordinator_target: Option<&str>,
 ) -> Result<RecommendationSet, ProposalError> {
-    let origin_is_autofix = matches!(wire.origin, ProposalOrigin::Autofix);
-    if origin_is_autofix != is_autofix_turn {
+    let origin_is_auto_error_handling = matches!(wire.origin, ProposalOrigin::AutoErrorHandling);
+    if origin_is_auto_error_handling != is_auto_error_handling_turn {
         return Err(ProposalError::PolicyViolation(format!(
-            "origin {:?} does not match the current turn (is_autofix={})",
-            wire.origin, is_autofix_turn
+            "origin {:?} does not match the current turn (is_auto_error_handling={})",
+            wire.origin, is_auto_error_handling_turn
         )));
     }
 
@@ -712,28 +712,28 @@ pub fn build_recommendation_set(
         )));
     }
 
-    if origin_is_autofix {
-        // Autofix MVP policy: exactly one choice, exactly one Send action.
-        // No Open/OpenAndSend — autofix never spawns a new pane. `parent`
+    if origin_is_auto_error_handling {
+        // Auto-error-handling MVP policy: exactly one choice, exactly one Send action.
+        // No Open/OpenAndSend — Auto-error-handling never spawns a new pane. `parent`
         // is stripped/ignored unconditionally; the real failing pane is
         // bound by the caller (App::turn_execute_card's existing autofill),
         // exactly like today's manual `/fix` flow.
         if wire.choices.len() != 1 {
             return Err(ProposalError::PolicyViolation(format!(
-                "autofix proposals must have exactly one choice, got {}",
+                "auto_error_handling proposals must have exactly one choice, got {}",
                 wire.choices.len()
             )));
         }
         let choice = &wire.choices[0];
         if choice.actions.len() != 1 {
             return Err(ProposalError::PolicyViolation(format!(
-                "autofix proposals must have exactly one action, got {}",
+                "auto_error_handling proposals must have exactly one action, got {}",
                 choice.actions.len()
             )));
         }
         let ProposalActionWire::Send { input, .. } = &choice.actions[0] else {
             return Err(ProposalError::PolicyViolation(
-                "autofix proposals must use a single send action".to_string(),
+                "auto_error_handling proposals must use a single send action".to_string(),
             ));
         };
         check_len("title", &choice.title, MAX_TITLE_CHARS)?;
@@ -920,10 +920,10 @@ mod tests {
         }
     }
 
-    fn autofix_wire() -> ProposalWire {
+    fn auto_error_handling_wire() -> ProposalWire {
         ProposalWire {
             schema_version: SCHEMA_VERSION,
-            origin: ProposalOrigin::Autofix,
+            origin: ProposalOrigin::AutoErrorHandling,
             recommended_choice: Some(1),
             choices: vec![ProposalChoiceWire {
                 choice: 1,
@@ -943,6 +943,14 @@ mod tests {
         let parsed = parse_proposal_payload(json.as_bytes()).unwrap();
         assert_eq!(parsed.schema_version, SCHEMA_VERSION);
         assert_eq!(parsed.choices.len(), 1);
+    }
+
+    #[test]
+    fn auto_error_handling_origin_uses_protocol_name() {
+        assert_eq!(
+            serde_json::to_value(ProposalOrigin::AutoErrorHandling).unwrap(),
+            json!("auto_error_handling")
+        );
     }
 
     #[test]
@@ -1637,7 +1645,7 @@ mod tests {
     }
 
     #[test]
-    fn autofix_accepts_only_current_shell_commands() {
+    fn auto_error_handling_accepts_only_current_shell_commands() {
         let run = parse_mcp_action_payload(
             McpActionTool::RunCommandInCurrentShell,
             br#"{"summary":"Fix typo","command":"git status"}"#,
@@ -1764,8 +1772,8 @@ mod tests {
     }
 
     #[test]
-    fn autofix_leaves_parent_for_execution_time_binding() {
-        let wire = autofix_wire();
+    fn auto_error_handling_leaves_parent_for_execution_time_binding() {
+        let wire = auto_error_handling_wire();
         let set = build_recommendation_set(&wire, true, None, None, None).unwrap();
         match &set.choices[0].actions[0] {
             RecommendedAction::Send { parent, .. } => assert_eq!(parent, ""),
@@ -1774,8 +1782,8 @@ mod tests {
     }
 
     #[test]
-    fn autofix_rejects_open_action() {
-        let mut wire = autofix_wire();
+    fn auto_error_handling_rejects_open_action() {
+        let mut wire = auto_error_handling_wire();
         wire.choices[0].actions = vec![ProposalActionWire::Open {
             target: ProposalOpenTargetWire::Tab,
             cwd: None,
@@ -1788,8 +1796,8 @@ mod tests {
     }
 
     #[test]
-    fn autofix_rejects_multiple_choices() {
-        let mut wire = autofix_wire();
+    fn auto_error_handling_rejects_multiple_choices() {
+        let mut wire = auto_error_handling_wire();
         let mut second = wire.choices[0].clone();
         second.choice = 2;
         wire.choices.push(second);

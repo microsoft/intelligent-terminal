@@ -46,7 +46,7 @@ chat.plan_header: "תוכנית:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}
 chat.plan_marker_pending: "[ ]"  # {Locked}
-chat.autofix_prompt_label: "כשל פקודה אחרון אובחן אוטומטית"
+chat.auto_error_handling_prompt_label: "כשל פקודה אחרון אובחן אוטומטית"
 chat.turn_canceled: "(בוטל)"
 chat.turn_executed: "→ בוצע: %{title}"
 # תוויות קבועות של קטגוריות כלים, המוצגות אחרי סמן מצב ולפני הנושא.

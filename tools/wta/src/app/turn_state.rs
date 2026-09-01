@@ -44,14 +44,14 @@ pub struct SubmittedPrompt {
     pub text: String,
     pub submitted_at_unix_s: f64,
     pub context: TurnContext,
-    pub autofix: Option<AutofixContext>,
+    pub auto_error_handling: Option<AutoErrorHandlingContext>,
 }
 
-/// Extra context attached to autofix-initiated turns.
+/// Extra context attached to Auto-error-handling-initiated turns.
 #[derive(Debug, Clone, PartialEq)]
-pub struct AutofixContext {
-    /// `App.autofix_generation` at submit time. Compared against current
-    /// generation on every chunk / end event; mismatch means a newer autofix
+pub struct AutoErrorHandlingContext {
+    /// `App.auto_error_handling_generation` at submit time. Compared against current
+    /// generation on every chunk / end event; mismatch means a newer Auto-error-handling
     /// (or an Esc cancel) has invalidated this turn — drop the response.
     pub generation: u64,
 }
@@ -59,7 +59,7 @@ pub struct AutofixContext {
 /// What the assistant produced for the user this turn.
 #[derive(Debug, Clone, PartialEq)]
 pub enum TurnOutcome {
-    /// Recommendation card is visible. Unified across autofix Fix and
+    /// Recommendation card is visible. Unified across Auto-error-handling Fix and
     /// planner-mode task suggestions.
     Recommendation(RecommendationSet),
     /// The user acted on a recommendation before the Agent finished. The
@@ -161,16 +161,18 @@ impl TurnState {
         }
     }
 
-    /// Autofix generation snapshot for the current turn, if any.
-    pub fn autofix_generation(&self) -> Option<u64> {
+    /// Auto-error-handling generation snapshot for the current turn, if any.
+    pub fn auto_error_handling_generation(&self) -> Option<u64> {
         self.prompt()
-            .and_then(|p| p.autofix.as_ref())
+            .and_then(|p| p.auto_error_handling.as_ref())
             .map(|a| a.generation)
     }
 
-    /// Whether the current turn is an autofix turn.
-    pub fn is_autofix(&self) -> bool {
-        self.prompt().map(|p| p.autofix.is_some()).unwrap_or(false)
+    /// Whether the current turn is an Auto-error-handling turn.
+    pub fn is_auto_error_handling(&self) -> bool {
+        self.prompt()
+            .map(|p| p.auto_error_handling.is_some())
+            .unwrap_or(false)
     }
 }
 
@@ -185,17 +187,17 @@ mod tests {
             text: "hello".into(),
             submitted_at_unix_s: 0.0,
             context: TurnContext::default(),
-            autofix: None,
+            auto_error_handling: None,
         }
     }
 
-    fn autofix_prompt(gen: u64) -> SubmittedPrompt {
+    fn auto_error_handling_prompt(gen: u64) -> SubmittedPrompt {
         SubmittedPrompt {
             id: 2,
-            text: "autofix".into(),
+            text: "auto_error_handling".into(),
             submitted_at_unix_s: 0.0,
             context: TurnContext::with_target_pane("pane-1"),
-            autofix: Some(AutofixContext { generation: gen }),
+            auto_error_handling: Some(AutoErrorHandlingContext { generation: gen }),
         }
     }
 
@@ -219,8 +221,8 @@ mod tests {
         assert!(s.accepts_new_prompt());
         assert!(s.recommendations().is_none());
         assert!(s.prompt().is_none());
-        assert!(s.autofix_generation().is_none());
-        assert!(!s.is_autofix());
+        assert!(s.auto_error_handling_generation().is_none());
+        assert!(!s.is_auto_error_handling());
         assert!(!s.is_in_flight());
     }
 
@@ -302,34 +304,34 @@ mod tests {
     }
 
     #[test]
-    fn autofix_generation_propagates() {
-        let s = TurnState::Submitted(autofix_prompt(42));
-        assert_eq!(s.autofix_generation(), Some(42));
-        assert!(s.is_autofix());
+    fn auto_error_handling_generation_propagates() {
+        let s = TurnState::Submitted(auto_error_handling_prompt(42));
+        assert_eq!(s.auto_error_handling_generation(), Some(42));
+        assert!(s.is_auto_error_handling());
 
         let s = TurnState::Streaming {
-            prompt: autofix_prompt(7),
+            prompt: auto_error_handling_prompt(7),
         };
-        assert_eq!(s.autofix_generation(), Some(7));
+        assert_eq!(s.auto_error_handling_generation(), Some(7));
 
         let s = TurnState::Surfaced {
-            prompt: autofix_prompt(99),
+            prompt: auto_error_handling_prompt(99),
             outcome: TurnOutcome::Empty,
             end_pending: false,
         };
-        assert_eq!(s.autofix_generation(), Some(99));
+        assert_eq!(s.auto_error_handling_generation(), Some(99));
     }
 
     #[test]
-    fn non_autofix_turn_has_no_generation() {
+    fn non_auto_error_handling_turn_has_no_generation() {
         let s = TurnState::Submitted(prompt());
-        assert_eq!(s.autofix_generation(), None);
-        assert!(!s.is_autofix());
+        assert_eq!(s.auto_error_handling_generation(), None);
+        assert!(!s.is_auto_error_handling());
     }
 
     #[test]
-    fn idle_has_no_autofix_generation() {
-        assert_eq!(TurnState::Idle.autofix_generation(), None);
+    fn idle_has_no_auto_error_handling_generation() {
+        assert_eq!(TurnState::Idle.auto_error_handling_generation(), None);
     }
 
     #[test]

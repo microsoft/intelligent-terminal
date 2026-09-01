@@ -46,7 +46,7 @@ chat.plan_header: "Mahere:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}
 chat.plan_marker_pending: "[ ]"  # {Locked}
-chat.autofix_prompt_label: "Kua tātaringia aunoatia te rahunga whakahau tata"
+chat.auto_error_handling_prompt_label: "Kua tātaringia aunoatia te rahunga whakahau tata"
 chat.turn_canceled: "(whakakorea)"
 chat.turn_executed: "→ kua mahia: %{title}"
 # Persistent tool-category labels shown after a status marker and before a subject.

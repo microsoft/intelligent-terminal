@@ -89,7 +89,7 @@ pub struct ProposalBinding {
     pub session_id: String,
     pub prompt_id: u64,
     pub active_target: Option<String>,
-    pub is_autofix: bool,
+    pub is_auto_error_handling: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -191,7 +191,7 @@ impl ProposalChannelManager {
         session_id: String,
         prompt_id: u64,
         active_target: Option<String>,
-        is_autofix: bool,
+        is_auto_error_handling: bool,
     ) -> Result<ProposalChannel, ChannelFailure> {
         let mut state = self.lock_state();
         self.prune_tombstones(&mut state);
@@ -210,7 +210,7 @@ impl ProposalChannelManager {
                 session_id,
                 prompt_id,
                 active_target,
-                is_autofix,
+                is_auto_error_handling,
             },
             state: ProposalChannelState::Issued,
             validation_retries: 0,

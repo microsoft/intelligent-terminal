@@ -475,7 +475,7 @@ async fn run_acp_app(
                             .unwrap_or(serde_json::Value::Null);
                         // Read `pane_id` (current name) with a fallback
                         // to `session_id` (the old name before the
-                        // per-tab autofix routing PR renamed it). The
+                        // per-tab Auto-error-handling routing PR renamed it). The
                         // C++ TerminalPage side now emits `pane_id` for
                         // `connection_state` / `vt_sequence`, but the
                         // wtcli `send-event` builder
@@ -809,8 +809,9 @@ async fn run_acp_app(
                 Arc::clone(&delegate_agents),
             ));
 
-            let autofix_enabled = !config.no_autofix;
-            let mut app_state = app::App::new(prompt_tx, recommendation_tx, permission_tx, cancel_tx, new_session_tx, load_session_tx, drop_session_tx, rename_session_tx, restart_tx, master_ext_tx, debug_capture_enabled, wt_connected, autofix_enabled, Arc::clone(&shell_mgr));
+            let auto_error_handling_with_agent_enabled =
+                !config.no_auto_error_handling_with_agent;
+            let mut app_state = app::App::new(prompt_tx, recommendation_tx, permission_tx, cancel_tx, new_session_tx, load_session_tx, drop_session_tx, rename_session_tx, restart_tx, master_ext_tx, debug_capture_enabled, wt_connected, auto_error_handling_with_agent_enabled, Arc::clone(&shell_mgr));
             app_state.set_proposal_channels(Arc::clone(&proposal_channels));
             app_state.set_allowed_agent_ids(config.allowed_agent_ids.clone());
             // Seed the hot-updatable runtime agent config: the shared
@@ -1225,7 +1226,7 @@ async fn run_acp_app(
                 }
             }
 
-            // ── source-pane context (autofix attribution) ─────────────────
+            // ── source-pane context (Auto-error-handling attribution) ─────────────────
             app_state.source_session_id = std::env::var("WTA_SOURCE_SESSION_ID")
                 .ok()
                 .filter(|s| !s.is_empty());

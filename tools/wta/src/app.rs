@@ -70,11 +70,11 @@ fn agent_command_on_enter(input: &str, selected: Option<&AvailableAgent>) -> Opt
 }
 
 mod attachments;
-mod autofix;
+mod auto_error_handling;
 mod input_edit;
 mod tab_state;
 mod turn_state;
-use autofix::*;
+use auto_error_handling::*;
 
 pub use crate::turn_context::TurnContext;
 #[cfg(test)]
@@ -85,7 +85,9 @@ pub use tab_state::{
     ToolCallOutput, UserInputState, View,
 };
 pub(crate) use tab_state::{CompletedTurnViewportAnchor, DEFAULT_TAB_ID};
-pub use turn_state::{AutofixContext, ChunkKind, SubmittedPrompt, TurnOutcome, TurnState};
+pub use turn_state::{
+    AutoErrorHandlingContext, ChunkKind, SubmittedPrompt, TurnOutcome, TurnState,
+};
 
 // ─── MVP sessions origin filter ────────────────────────────────────────────────────
 //
@@ -365,7 +367,7 @@ pub struct WtNotification {
     pub pane_id: String,
     /// WT tab StableId that owns the failing pane. `None` when the
     /// underlying event predates the tab_id wire (older WT builds) or
-    /// arrived without a tab context. Autofix routing treats absence as
+    /// arrived without a tab context. Auto-error-handling routing treats absence as
     /// "cannot route — drop with warn", to avoid the old failure mode
     /// where the fix landed in whatever tab happened to be active.
     pub tab_id: Option<String>,
@@ -1099,7 +1101,7 @@ pub struct App {
     // `tab_id` (which floats with `tab_changed` to track WT's currently-
     // focused tab), this is anchored to the helper's owning pane and
     // follows only `tab_renamed` events (cross-window drag). Used as the
-    // `tab_id` field on outbound `agent_status` and `autofix_state` events
+    // `tab_id` field on outbound `agent_status` and `auto_error_handling_state` events
     // so the C++ side can route per-pane state to the right
     // AgentPaneContent / bottom bar window without fan-out.
     pub owner_tab_id: Option<String>,
@@ -1107,10 +1109,9 @@ pub struct App {
     // WT event notifications (global — affects bottom-bar / banner across tabs)
     pub wt_notifications: std::collections::VecDeque<WtNotification>,
     pub show_notification_banner: bool,
-    // Auto-fix global on/off. Per-tab autofix machinery (pane_id,
-    // generation, suggested_pane_id, armed_at, bar_snapshot) lives on
-    // `TabSession.autofix`.
-    pub autofix_enabled: bool,
+    // Whether detected errors are sent to the agent automatically. Per-tab
+    // error-handling machinery lives on `TabSession.auto_error_handling`.
+    pub auto_error_handling_with_agent_enabled: bool,
     // Per-tab conversation sessions. Keyed by the stable tab GUID WT mints
     // at tab construction. The active tab is `tab_id` — seeded from the
     // `--owner-tab-id` CLI arg before ACP init in the WT-spawned path, or
@@ -1201,7 +1202,7 @@ pub struct App {
     #[cfg(test)]
     pub last_dispatched_command: Option<DispatchedCommand>,
     /// Source pane GUID (set from `WTA_SOURCE_SESSION_ID` env var by the
-    /// launching pane). Used by autofix to attribute which pane originated
+    /// launching pane). Used by Auto-error-handling to attribute which pane originated
     /// the failing command we're about to fix.
     pub source_session_id: Option<String>,
     /// Source pane working directory (set from `WTA_SOURCE_CWD`).
@@ -1220,7 +1221,7 @@ pub struct App {
     /// flight. A second Ctrl+C within `CLOSE_PANE_ARM_WINDOW` closes the
     /// pane (we ask WT to do it; ConPty then SIGKILLs us). Cleared on any
     /// other key, on prompt activity, or after the window elapses.
-    pub close_pane_armed_at: Option<std::time::Instant>,
+    pub close_pane_started_at: Option<std::time::Instant>,
     /// Transient one-line hint rendered at the bottom of the chat area
     /// (localized via `system.close_pane_hint`). Auto-clears at the
     /// recorded deadline.
@@ -1330,7 +1331,7 @@ impl App {
         master_request_tx: mpsc::UnboundedSender<crate::protocol::acp::client::MasterExtRequest>,
         debug_capture_enabled: Arc<AtomicBool>,
         wt_connected: bool,
-        autofix_enabled: bool,
+        auto_error_handling_with_agent_enabled: bool,
         shell_mgr: Arc<crate::shell::ShellManager>,
     ) -> Self {
         let mut tab_sessions = HashMap::new();
@@ -1404,7 +1405,7 @@ impl App {
             window_id: None,
             wt_notifications: VecDeque::new(),
             show_notification_banner: false,
-            autofix_enabled,
+            auto_error_handling_with_agent_enabled,
             tab_sessions,
             session_to_tab: HashMap::new(),
             agent_sessions: crate::agent_sessions::AgentSessionRegistry::new(),
@@ -1429,7 +1430,7 @@ impl App {
             source_cwd: None,
             log_agent_events: false,
             activity_frame: 0,
-            close_pane_armed_at: None,
+            close_pane_started_at: None,
             transient_hint: None,
             alive: crate::session_registry::InMemoryRegistry::shared(),
             alive_loaded: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
@@ -2560,7 +2561,7 @@ impl App {
         );
         *shared.lock().unwrap() = runtimes;
         tracing::info!(
-            target: "autofix",
+            target: "agent_config",
             delegate_agent,
             delegate_model,
             "delegate config hot-updated from settings change"
@@ -3503,15 +3504,15 @@ impl App {
             tab.pending_terminal_action_proposal = None;
             tab.active_direct_proposal_id = None;
             tab.last_emitted_chip_override = None;
-            tab.autofix.generation = tab.autofix.generation.wrapping_add(1);
-            tab.autofix.pane_id = None;
-            tab.autofix.armed_at = None;
-            tab.autofix.suggested_pane_id = None;
-            tab.autofix.trigger_echo_pane = None;
-            tab.autofix.bar_snapshot = Default::default();
+            tab.auto_error_handling.generation = tab.auto_error_handling.generation.wrapping_add(1);
+            tab.auto_error_handling.pane_id = None;
+            tab.auto_error_handling.started_at = None;
+            tab.auto_error_handling.result_pane_id = None;
+            tab.auto_error_handling.trigger_echo_pane = None;
+            tab.auto_error_handling.bar_snapshot = Default::default();
         }
         if self.tab_sessions.contains_key(&active_tab_id) {
-            self.emit_autofix_state_cleared(&active_tab_id);
+            self.emit_auto_error_handling_state_cleared(&active_tab_id);
         }
         self.proposal_channels.set_agent_transport_available(false);
         self.state = ConnectionState::Connecting(t!("connection.starting").into_owned());
@@ -5277,13 +5278,13 @@ impl App {
         tab.scroll_to_bottom();
     }
 
-    /// `/fix [hint]` — run the auto-fix prompt on demand against the active
-    /// terminal pane. Reuses the error-triggered autofix pipeline
-    /// (`PromptSubmission::is_autofix`): the agent receives the `auto-fix.md`
+    /// `/fix [hint]` — run the Auto-error-handling prompt on demand against the active
+    /// terminal pane. Reuses the error-triggered Auto-error-handling pipeline
+    /// (`PromptSubmission::is_auto_error_handling`): the agent receives the `auto-error-handling.md`
     /// instruction overlay plus the working pane's recent output, and any `hint` typed
     /// after `/fix` is appended as an extra steer.
     ///
-    /// Differences from auto-triggered autofix (`maybe_trigger_autofix`):
+    /// Differences from auto-triggered Auto-error-handling (`maybe_trigger_auto_error_handling`):
     /// there is no failing-pane notification, so (1) the helper's captured
     /// source pane is resolved in the ACP client task; and
     /// (2) the turn context starts without a target and is late-bound once
@@ -5309,13 +5310,14 @@ impl App {
             .clone()
             .unwrap_or_else(|| DEFAULT_TAB_ID.to_string());
 
-        // Bump generation so any stale in-flight autofix response is dropped,
-        // and clear a leftover suggestion — mirrors `maybe_trigger_autofix`.
+        // Bump generation so any stale in-flight Auto-error-handling response is dropped,
+        // and clear a result awaiting review — mirrors
+        // `maybe_trigger_auto_error_handling`.
         let generation = {
             let tab = self.tab_mut(&target_tab_id);
-            tab.autofix.generation = tab.autofix.generation.wrapping_add(1);
-            tab.autofix.suggested_pane_id = None;
-            tab.autofix.generation
+            tab.auto_error_handling.generation = tab.auto_error_handling.generation.wrapping_add(1);
+            tab.auto_error_handling.result_pane_id = None;
+            tab.auto_error_handling.generation
         };
 
         let source_pane_id = self.source_session_id.clone();
@@ -5328,7 +5330,7 @@ impl App {
         };
 
         let hint = hint.trim().to_string();
-        let prompt = PromptSubmission::new_autofix(hint.clone(), Some(pane_context));
+        let prompt = PromptSubmission::new_auto_error_handling(hint.clone(), Some(pane_context));
         let submitted = SubmittedPrompt {
             id: prompt.id,
             text: prompt.text.clone(),
@@ -5338,7 +5340,7 @@ impl App {
                 // the ACP client resolves the active source and late-binds it.
                 target_pane_id: source_pane_id,
             },
-            autofix: Some(AutofixContext { generation }),
+            auto_error_handling: Some(AutoErrorHandlingContext { generation }),
         };
         tracing::info!(
             target: "slash_cmd",
@@ -5530,7 +5532,7 @@ impl App {
     /// Owner-lock: when `self.owner_tab_id` is set (i.e. this is a per-tab
     /// helper spawned for a specific agent pane), `tab_changed` events for
     /// a *different* tab are no-ops. The helper's TUI / per-tab state /
-    /// autofix bar are anchored to the owner tab; without this guard, two
+    /// Auto-error-handling bar are anchored to the owner tab; without this guard, two
     /// helpers in the same window both process every tab switch and the
     /// non-owner's stale `tab_sessions[<other tab>]` default snapshot
     /// (created via `.or_default()` below) clobbers the owner's real
@@ -5579,7 +5581,7 @@ impl App {
         self.rebuild_model_catalog_from_agent_state();
         self.publish_agent_status();
 
-        // The new active tab's `current_view` (and autofix bar) is now
+        // The new active tab's `current_view` (and Auto-error-handling bar) is now
         // authoritative for the shared C++ agent pane. Re-emit so the bar
         // title and bottom-bar highlight match the tab we just switched to;
         // without this, C++'s global flag stays on the previous tab's view
@@ -5664,14 +5666,14 @@ impl App {
     /// StableId when the user drags a tab into another window; the
     /// underlying helper process survives the drag (conpty + TermControl
     /// reattach via WT's ContentId mechanism) but the tab key WT uses to
-    /// address us has changed. Without this, autofix / set_agent_state /
+    /// address us has changed. Without this, Auto-error-handling / set_agent_state /
     /// any other event WT broadcasts with the new id would miss every
     /// entry keyed under the old id.
     ///
     /// Concretely re-keys: `self.tab_id`, `self.tab_sessions` (HashMap key),
     /// `self.session_to_tab` (values), and any cached
     /// `wt_notifications.tab_id` matching the old id. Triggers a
-    /// re-projection so the bottom-bar autofix snapshot, agent-pane view,
+    /// re-projection so the bottom-bar Auto-error-handling snapshot, agent-pane view,
     /// and pane_open flag are republished under the new identity.
     ///
     /// No-op when `new_tab_id == old_tab_id`. If the old tab id is unknown,
@@ -5715,7 +5717,7 @@ impl App {
             self.tab_id = Some(new_tab_id.to_string());
         }
         // owner_tab_id is the helper's anchor for outbound per-pane events
-        // (agent_status / autofix_state). Follow the rename so subsequent
+        // (agent_status / auto_error_handling_state). Follow the rename so subsequent
         // events route to the new tab id on the C++ side. Without this,
         // a cross-window drag leaves the helper publishing tab_id=old —
         // C++'s _FindTabByStableId(old) misses (old tab is gone from the
@@ -5774,7 +5776,7 @@ impl App {
         );
 
         // Re-publish the (now-renamed) active tab so the bottom-bar
-        // autofix snapshot, agent-pane view, and pane_open flag are
+        // Auto-error-handling snapshot, agent-pane view, and pane_open flag are
         // republished under the new identity. Without this, C++'s
         // mirrored state would still be tagged with the old id on the
         // next event round-trip.
@@ -5889,7 +5891,7 @@ impl App {
     /// This is the same path used by the command palette — single code path for
     /// context capture, prompt building, and tab creation.
     pub fn delegate_to_tab_agent(&self, prompt: &str) {
-        tracing::info!(target: "autofix", prompt_len = prompt.len(), "delegate_to_tab_agent called");
+        tracing::info!(target: "delegate", prompt_len = prompt.len(), "delegate_to_tab_agent called");
         let exe = match std::env::current_exe() {
             Ok(p) => p,
             Err(_) => return,
@@ -6317,12 +6319,12 @@ fn now_unix_s() -> f64 {
 #[path = "slash_command_tests.rs"]
 mod slash_command_tests;
 
-// Autofix-trigger reducer tests. Same `#[path]` child-of-`app` pattern as
+// Auto-error-handling-trigger reducer tests. Same `#[path]` child-of-`app` pattern as
 // slash_command_tests so they can reach `App`'s private dispatch methods and
-// the `pub(super)` autofix state fields.
+// the `pub(super)` Auto-error-handling state fields.
 #[cfg(test)]
-#[path = "autofix_tests.rs"]
-mod autofix_tests;
+#[path = "auto_error_handling_tests.rs"]
+mod auto_error_handling_tests;
 
 #[cfg(test)]
 #[path = "app_tests.rs"]

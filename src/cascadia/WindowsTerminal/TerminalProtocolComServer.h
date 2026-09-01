@@ -129,7 +129,7 @@ private:
 
     // Per-method UI-thread dispatch helpers (unchanged from the WinRT server;
     // they marshal SendEvent payloads onto each window's TerminalPage).
-    static void _dispatchAutofixStateToPage(const winrt::hstring& eventJson);
+    static void _dispatchAutoErrorHandlingStateToPage(const winrt::hstring& eventJson);
     static void _dispatchAgentStatusToPage(const winrt::hstring& eventJson);
     static void _dispatchAgentSwitchToPage(const winrt::hstring& eventJson);
     static void _dispatchCloseAgentPaneToPage(const winrt::hstring& eventJson);

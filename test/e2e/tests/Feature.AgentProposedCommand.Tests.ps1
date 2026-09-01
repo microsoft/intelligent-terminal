@@ -2,11 +2,12 @@
 # Release checklist §2 "Insert into pane works" / "Run in pane works" / "Command target is
 # correct" via the Direct Helper Proposal path: ask Copilot to submit a specific command through
 # the canonical WTA CLI, then Insert / Run it into the active shell pane. Distinct trigger from
-# Feature.AutofixPane.Tests.ps1 (which arrives via a command failure).
+# Feature.AutoErrorHandlingPane.Tests.ps1 (which arrives via a command failure).
 #
 # A UNIQUE marker makes the card text and pane assertion exact. Missing cards fail the test so
 # canonical command, permission arming, and direct-pipe regressions remain visible.
-# IMPORTANT: Insert and Run each use their OWN fresh terminal (like Feature.AutofixPane). With a
+# IMPORTANT: Insert and Run each use their OWN fresh terminal (like
+# Feature.AutoErrorHandlingPane). With a
 # shared terminal a prior card's "Run command"/"Insert in Terminal" text lingers in the
 # scrollback and could co-occur with the next case's marker (which appears in the prompt echo)
 # to false-positive the card-readiness check before a fresh card actually renders.

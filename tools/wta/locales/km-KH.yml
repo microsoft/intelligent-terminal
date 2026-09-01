@@ -49,7 +49,7 @@ chat.plan_header: "ផែនការ:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}
 chat.plan_marker_pending: "[ ]"  # {Locked}
-chat.autofix_prompt_label: "បរាជ័យពាក្យបញ្ជាថ្មីៗត្រូវបានធ្វើរោគវិនិច្ឆ័យដោយស្វ័យប្រវត្តិ"
+chat.auto_error_handling_prompt_label: "បរាជ័យពាក្យបញ្ជាថ្មីៗត្រូវបានធ្វើរោគវិនិច្ឆ័យដោយស្វ័យប្រវត្តិ"
 chat.turn_canceled: "(បានបោះបង់)"
 chat.turn_executed: "→ បានដំណើរការ: %{title}"
 # ស្លាកប្រភេទឧបករណ៍អចិន្ត្រៃយ៍ដែលបង្ហាញបន្ទាប់ពីសញ្ញាស្ថានភាព និងមុនប្រធានបទ។
