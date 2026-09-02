@@ -34,6 +34,10 @@ impl NativeYoloProvider for CopilotYoloProvider {
         finish_supported_action(self.family_id(), state, config_action(state, false), false)
     }
 
+    fn is_privileged_agent_command(&self, command_name: &str) -> bool {
+        command_name.eq_ignore_ascii_case("allow_all")
+    }
+
     fn refresh_config(
         &self,
         config_options: &[agent_client_protocol::schema::v1::SessionConfigOption],

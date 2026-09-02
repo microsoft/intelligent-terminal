@@ -253,6 +253,18 @@ impl NativeYoloState {
         )
     }
 
+    pub(crate) fn privileged_agent_command<'a>(&self, input: &'a str) -> Option<&'a str> {
+        let command_name = input
+            .trim_start()
+            .strip_prefix('/')?
+            .split_whitespace()
+            .next()?;
+        let provider = self.provider_id();
+        providers::lookup(&provider)?
+            .is_privileged_agent_command(command_name)
+            .then_some(command_name)
+    }
+
     pub(super) async fn apply_native_config_reserved_with_policy_timeout(
         &self,
         conn: &crate::protocol::acp::conn::ClientLink,

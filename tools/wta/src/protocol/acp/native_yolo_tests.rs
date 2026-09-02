@@ -507,6 +507,31 @@ fn unsupported_agents_do_not_infer_native_yolo_from_look_alike_options() {
 }
 
 #[test]
+fn privileged_agent_commands_are_scoped_to_the_attested_provider() {
+    let state = NativeYoloState::new();
+    state.set_resolved_agent_id(Some(crate::agent_registry::COPILOT_AGENT_ID));
+    assert_eq!(
+        state.privileged_agent_command(" /ALLOW_ALL optional-input"),
+        Some("ALLOW_ALL")
+    );
+    assert_eq!(state.privileged_agent_command("/usage"), None);
+
+    for agent_id in [
+        crate::agent_registry::CLAUDE_AGENT_ID,
+        crate::agent_registry::CODEX_AGENT_ID,
+        crate::agent_registry::GEMINI_AGENT_ID,
+        "custom:copilot-look-alike",
+    ] {
+        state.set_resolved_agent_id(Some(agent_id));
+        assert_eq!(
+            state.privileged_agent_command("/allow_all"),
+            None,
+            "provider={agent_id}"
+        );
+    }
+}
+
+#[test]
 fn missing_capability_is_safe_to_disable_only_for_new_sessions() {
     let state = NativeYoloState::new();
     state.set_resolved_agent_id(Some(crate::agent_registry::COPILOT_AGENT_ID));
@@ -973,6 +998,126 @@ fn reconciliation_disable_requires_returned_native_config_option() {
 
         assert!(error.restart_required());
         assert!(error.to_string().contains("did not acknowledge"));
+    });
+}
+
+#[test]
+fn policy_blocks_privileged_config_for_every_config_provider() {
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    tokio::task::LocalSet::new().block_on(&runtime, async {
+        for (agent_id, config_id, category, restore_value, enable_value) in [
+            (
+                crate::agent_registry::COPILOT_AGENT_ID,
+                "allow_all",
+                "permissions",
+                "off",
+                "on",
+            ),
+            (
+                crate::agent_registry::CLAUDE_AGENT_ID,
+                "mode",
+                "mode",
+                "default",
+                "bypassPermissions",
+            ),
+            (
+                crate::agent_registry::CODEX_AGENT_ID,
+                "mode",
+                "mode",
+                "agent",
+                "agent-full-access",
+            ),
+        ] {
+            let state = NativeYoloState::new();
+            state.set_resolved_agent_id(Some(agent_id));
+            let response: acp::schema::v1::NewSessionResponse =
+                serde_json::from_value(serde_json::json!({
+                    "sessionId": format!("{agent_id}-policy-config"),
+                    "configOptions": [{
+                        "id": config_id,
+                        "name": "Native Yolo",
+                        "category": category,
+                        "type": "select",
+                        "currentValue": restore_value,
+                        "options": [
+                            {"value": restore_value, "name": "Restore"},
+                            {"value": enable_value, "name": "Enable"}
+                        ]
+                    }]
+                }))
+                .unwrap();
+            let session_id = response.session_id.clone();
+            state.record_from_new_session(&response);
+            let actions = Arc::new(Mutex::new(Vec::new()));
+            let connection = spawn_apply_mock(Arc::clone(&actions), None);
+            let operation = state.reserve_operation(session_id, true);
+            let yolo_state = Arc::new(Mutex::new(crate::app_contracts::YoloState::new(
+                false, true,
+            )));
+
+            let error = state
+                .apply_native_config_reserved_with_policy_timeout(
+                    &connection,
+                    operation,
+                    config_id,
+                    enable_value,
+                    &yolo_state,
+                    std::time::Duration::from_millis(100),
+                )
+                .await
+                .unwrap_err();
+
+            assert!(error.to_string().contains("policy"), "provider={agent_id}");
+            assert!(actions.lock().unwrap().is_empty(), "provider={agent_id}");
+        }
+    });
+}
+
+#[test]
+fn policy_blocks_privileged_mode_for_gemini() {
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    tokio::task::LocalSet::new().block_on(&runtime, async {
+        let state = NativeYoloState::new();
+        state.set_resolved_agent_id(Some(crate::agent_registry::GEMINI_AGENT_ID));
+        let response: acp::schema::v1::NewSessionResponse =
+            serde_json::from_value(serde_json::json!({
+                "sessionId": "gemini-policy-mode",
+                "modes": {
+                    "currentModeId": "default",
+                    "availableModes": [
+                        {"id": "default", "name": "Default"},
+                        {"id": "yolo", "name": "Yolo"}
+                    ]
+                }
+            }))
+            .unwrap();
+        let session_id = response.session_id.clone();
+        state.record_from_new_session(&response);
+        let actions = Arc::new(Mutex::new(Vec::new()));
+        let connection = spawn_apply_mock_with_barriers(Arc::clone(&actions), None, None);
+        let operation = state.reserve_operation(session_id, true);
+        let yolo_state = Arc::new(Mutex::new(crate::app_contracts::YoloState::new(
+            false, true,
+        )));
+
+        let error = state
+            .apply_reserved_with_policy_timeout(
+                &connection,
+                operation,
+                std::time::Duration::from_millis(100),
+                Some(&yolo_state),
+            )
+            .await
+            .unwrap_err();
+
+        assert!(error.to_string().contains("policy"));
+        assert!(actions.lock().unwrap().is_empty());
     });
 }
 

@@ -102,6 +102,11 @@ WTA intentionally has no built-in `yolo` command. A provider command named
 and is forwarded as an ordinary provider command; WTA must not reserve or mute
 it.
 
+GitHub Copilot's provider-owned `/allow_all` command is a reviewed privileged
+entry point. WTA forwards it only while `AllowYoloMode` permits Yolo. Other
+Copilot commands and same-named commands from custom or non-Copilot providers
+remain ordinary provider commands.
+
 The generic `/config` picker continues to expose ACP `configOptions`:
 
 - Copilot can expose `allow_all` with `on` and `off` values.
@@ -176,6 +181,8 @@ When policy blocks Yolo mode:
   enabled default.
 - Existing helpers receive the change through the normal settings-reload path.
 - Every live session is reconciled to its captured nonprivileged value.
+- Privileged `/config` selections, provider mode changes, and GitHub Copilot's
+  advertised `/allow_all` command are rejected before reaching the provider.
 - Prompt producers remain gated until the matching disable is acknowledged.
 - Any unconfirmed disable restarts the agent stack fail closed.
 
@@ -190,7 +197,7 @@ option is not sufficient.
 
 | Provider | Advertised contract | Enable | Restore |
 |---|---|---|---|
-| GitHub Copilot | `configOptions` ID `allow_all`, category `permissions`, Select values `on`/`off` | `session/set_config_option(allow_all, on)` | Captured value, normally `off` |
+| GitHub Copilot | `configOptions` ID `allow_all`, category `permissions`, Select values `on`/`off`; provider command `/allow_all` | `session/set_config_option(allow_all, on)` or the policy-gated provider command | Captured value, normally `off` |
 | Claude | `configOptions` ID `mode` with `bypassPermissions`; legacy mode fallback | `session/set_config_option(mode, bypassPermissions)` | Captured value, normally `default` |
 | Codex | `configOptions` ID `mode` with `agent-full-access`; legacy mode fallback | `session/set_config_option(mode, agent-full-access)` | Captured value, normally `agent` |
 | Gemini | ACP mode `yolo` | `session/set_mode(yolo)` | Captured mode, normally `default` |

@@ -221,6 +221,17 @@ Describe 'Feature AllowYoloMode policy' -ForEach $script:PackageCase -Tag 'Featu
             (Test-Until -TimeoutSec 30 -IntervalSec 0.5 -Condition {
                 Test-AgentNativeYoloUpdate -App $app -AcpSessionId $agentSession.AcpSessionId -Enabled $false
             }) | Should -BeTrue -Because 'a live policy block must reconcile the provider session to native Yolo off'
+
+            Open-AgentCommandMenu -App $app -PaneSessionId $agentSession.PaneSessionId | Out-Null
+            (Test-AgentPopupShown -App $app -PaneSessionId $agentSession.PaneSessionId `
+                    -Pattern '(?i)/allow_all' -TimeoutSec 15) |
+                Should -BeTrue -Because 'the policy check targets Copilot''s advertised command, not ordinary prompt text'
+            Clear-AgentInput -App $app -PaneSessionId $agentSession.PaneSessionId | Out-Null
+            Send-AgentPrompt -App $app -PaneSessionId $agentSession.PaneSessionId -Text '/allow_all' | Out-Null
+            Assert-AgentPaneText -App $app -PaneSessionId $agentSession.PaneSessionId `
+                -Pattern 'AllowYoloMode.*?/allow_all' -TimeoutSec 15
+            (Test-AgentNativeYoloUpdate -App $app -AcpSessionId $agentSession.AcpSessionId -Enabled $true) |
+                Should -BeFalse -Because 'the blocked provider command must not re-enable native Yolo'
         }
         finally {
             if ($app) { Stop-Terminal -App $app }

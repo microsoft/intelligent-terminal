@@ -1464,6 +1464,163 @@ async fn dispatch_agent_command_reaches_agent_verbatim() {
 }
 
 #[tokio::test]
+async fn prompt_guard_evaluates_policy_when_the_request_is_sent() {
+    let local = tokio::task::LocalSet::new();
+    local
+        .run_until(async {
+            let h = connect_for_dispatch(MockBehavior::Reply);
+            h.conn
+                .initialize(acp::schema::v1::InitializeRequest::new(
+                    acp::schema::ProtocolVersion::LATEST,
+                ))
+                .await
+                .expect("initialize failed");
+            let allowed = Arc::new(AtomicBool::new(true));
+            let request = acp::schema::v1::PromptRequest::new(
+                acp::schema::v1::SessionId::new("guarded-command-session"),
+                vec![acp::schema::v1::ContentBlock::Text(
+                    acp::schema::v1::TextContent::new("/allow_all"),
+                )],
+            );
+            let prompt = h.conn.prompt_if(request, {
+                let allowed = Arc::clone(&allowed);
+                move || allowed.load(Ordering::SeqCst)
+            });
+
+            allowed.store(false, Ordering::SeqCst);
+            assert!(prompt.await.expect("prompt guard failed").is_none());
+            assert!(h.seen_prompts.lock().unwrap().is_empty());
+        })
+        .await;
+}
+
+#[tokio::test]
+async fn policy_block_allows_nonprivileged_or_non_copilot_agent_commands() {
+    let local = tokio::task::LocalSet::new();
+    local
+        .run_until(async {
+            for (agent_id, command) in [
+                (crate::agent_registry::COPILOT_AGENT_ID, "/usage"),
+                ("custom:copilot-look-alike", "/allow_all"),
+            ] {
+                let mut h = connect_for_dispatch(MockBehavior::Reply);
+                h.conn
+                    .initialize(acp::schema::v1::InitializeRequest::new(
+                        acp::schema::ProtocolVersion::LATEST,
+                    ))
+                    .await
+                    .expect("initialize failed");
+                h.client
+                    .state
+                    .native_yolo
+                    .set_resolved_agent_id(Some(agent_id));
+                h.client
+                    .state
+                    .yolo_state
+                    .lock()
+                    .unwrap()
+                    .update_runtime(false, true);
+
+                let (tab_to_session, in_flight, cancel_signals, memo) = fresh_dispatch_state();
+                let mut prompt = test_prompt(1, command, false);
+                prompt.agent_command = true;
+
+                dispatch_prompt(
+                    prompt,
+                    &h.conn,
+                    &tab_to_session,
+                    &memo,
+                    &in_flight,
+                    &cancel_signals,
+                    &h.event_tx,
+                    &h.shell_mgr,
+                    &h.prompt_timing,
+                    &h.client,
+                    &PromptUsageIdentity::default(),
+                    false,
+                    false,
+                    true,
+                    &h.proposal_channels,
+                );
+
+                let _ = next_agent_chunk(&mut h.event_rx).await;
+                assert_eq!(
+                    h.seen_prompts.lock().unwrap().as_slice(),
+                    [command],
+                    "provider={agent_id}"
+                );
+            }
+        })
+        .await;
+}
+
+#[tokio::test]
+async fn policy_block_rejects_copilot_allow_all_agent_command_before_acp() {
+    let local = tokio::task::LocalSet::new();
+    local
+        .run_until(async {
+            let mut h = connect_for_dispatch(MockBehavior::Reply);
+            h.conn
+                .initialize(acp::schema::v1::InitializeRequest::new(
+                    acp::schema::ProtocolVersion::LATEST,
+                ))
+                .await
+                .expect("initialize failed");
+            h.client
+                .state
+                .native_yolo
+                .set_resolved_agent_id(Some(crate::agent_registry::COPILOT_AGENT_ID));
+            h.client
+                .state
+                .yolo_state
+                .lock()
+                .unwrap()
+                .update_runtime(false, true);
+
+            let (tab_to_session, in_flight, cancel_signals, memo) = fresh_dispatch_state();
+            let mut prompt = test_prompt(1, "/allow_all", false);
+            prompt.agent_command = true;
+
+            dispatch_prompt(
+                prompt,
+                &h.conn,
+                &tab_to_session,
+                &memo,
+                &in_flight,
+                &cancel_signals,
+                &h.event_tx,
+                &h.shell_mgr,
+                &h.prompt_timing,
+                &h.client,
+                &PromptUsageIdentity::default(),
+                false,
+                false,
+                true,
+                &h.proposal_channels,
+            );
+
+            let message = tokio::time::timeout(std::time::Duration::from_secs(5), async {
+                loop {
+                    match h.event_rx.recv().await {
+                        Some(AppEvent::AgentError { message, .. }) => break message,
+                        Some(AppEvent::AgentMessageChunk { .. }) => {
+                            panic!("policy-blocked /allow_all reached the ACP agent")
+                        }
+                        Some(_) => continue,
+                        None => panic!("event channel closed before policy rejection"),
+                    }
+                }
+            })
+            .await
+            .expect("timed out waiting for policy rejection");
+            assert!(message.contains("AllowYoloMode"));
+            assert!(message.contains("/allow_all"));
+            assert!(h.seen_prompts.lock().unwrap().is_empty());
+        })
+        .await;
+}
+
+#[tokio::test]
 async fn dispatch_prompt_does_not_advertise_unavailable_proposals() {
     let local = tokio::task::LocalSet::new();
     local
@@ -2493,74 +2650,99 @@ async fn policy_block_rejects_privileged_generic_config_before_acp() {
     let local = tokio::task::LocalSet::new();
     local
         .run_until(async {
-            let mut h = connect_for_dispatch(MockBehavior::Reply);
-            h.client
-                .state
-                .native_yolo
-                .set_resolved_agent_id(Some(crate::agent_registry::CLAUDE_AGENT_ID));
-            let response: acp::schema::v1::NewSessionResponse =
-                serde_json::from_value(serde_json::json!({
-                    "sessionId": "policy-config-session",
-                    "configOptions": [{
-                        "id": "mode",
-                        "name": "Mode",
-                        "category": "mode",
-                        "type": "select",
-                        "currentValue": "default",
-                        "options": [
-                            {"value": "default", "name": "Default"},
-                            {"value": "plan", "name": "Plan"},
-                            {"value": "bypassPermissions", "name": "Bypass Permissions"}
-                        ]
-                    }]
-                }))
-                .unwrap();
-            let session_id = response.session_id.clone();
-            h.client
-                .state
-                .native_yolo
-                .record_from_new_session(&response);
-            h.client
-                .state
-                .yolo_state
-                .lock()
-                .unwrap()
-                .update_runtime(false, true);
-            let tab_to_session = Arc::new(tokio::sync::Mutex::new(HashMap::from([(
-                "tab-1".to_string(),
-                session_id.clone(),
-            )])));
+            for (agent_id, config_id, category, restore_value, enable_value) in [
+                (
+                    crate::agent_registry::COPILOT_AGENT_ID,
+                    "allow_all",
+                    "permissions",
+                    "off",
+                    "on",
+                ),
+                (
+                    crate::agent_registry::CLAUDE_AGENT_ID,
+                    "mode",
+                    "mode",
+                    "default",
+                    "bypassPermissions",
+                ),
+                (
+                    crate::agent_registry::CODEX_AGENT_ID,
+                    "mode",
+                    "mode",
+                    "agent",
+                    "agent-full-access",
+                ),
+            ] {
+                let mut h = connect_for_dispatch(MockBehavior::Reply);
+                h.client
+                    .state
+                    .native_yolo
+                    .set_resolved_agent_id(Some(agent_id));
+                let response: acp::schema::v1::NewSessionResponse =
+                    serde_json::from_value(serde_json::json!({
+                        "sessionId": format!("{agent_id}-policy-config-session"),
+                        "configOptions": [{
+                            "id": config_id,
+                            "name": "Native Yolo",
+                            "category": category,
+                            "type": "select",
+                            "currentValue": restore_value,
+                            "options": [
+                                {"value": restore_value, "name": "Restore"},
+                                {"value": enable_value, "name": "Enable"}
+                            ]
+                        }]
+                    }))
+                    .unwrap();
+                let session_id = response.session_id.clone();
+                h.client
+                    .state
+                    .native_yolo
+                    .record_from_new_session(&response);
+                h.client
+                    .state
+                    .yolo_state
+                    .lock()
+                    .unwrap()
+                    .update_runtime(false, true);
+                let tab_to_session = Arc::new(tokio::sync::Mutex::new(HashMap::from([(
+                    "tab-1".to_string(),
+                    session_id.clone(),
+                )])));
 
-            dispatch_master_ext_request(
-                MasterExtRequest::SetSessionConfigOption {
-                    session_id,
-                    config_id: "mode".to_string(),
-                    value: "bypassPermissions".to_string(),
-                },
-                &h.conn,
-                &h.event_tx,
-                &tab_to_session,
-                Arc::clone(&h.client.state),
-            );
+                dispatch_master_ext_request(
+                    MasterExtRequest::SetSessionConfigOption {
+                        session_id,
+                        config_id: config_id.to_string(),
+                        value: enable_value.to_string(),
+                    },
+                    &h.conn,
+                    &h.event_tx,
+                    &tab_to_session,
+                    Arc::clone(&h.client.state),
+                );
 
-            tokio::time::timeout(std::time::Duration::from_secs(5), async {
-                loop {
-                    match h.event_rx.recv().await {
-                        Some(AppEvent::SessionConfigSetFailed { message, .. }) => {
-                            assert!(message.contains("policy"));
-                            break;
+                tokio::time::timeout(std::time::Duration::from_secs(5), async {
+                    loop {
+                        match h.event_rx.recv().await {
+                            Some(AppEvent::SessionConfigSetFailed { message, .. }) => {
+                                assert!(message.contains("policy"), "provider={agent_id}");
+                                break;
+                            }
+                            Some(_) => continue,
+                            None => {
+                                panic!("expected SessionConfigSetFailed, provider={agent_id}")
+                            }
                         }
-                        Some(_) => continue,
-                        None => panic!("expected SessionConfigSetFailed, event channel closed"),
                     }
-                }
-            })
-            .await
-            .expect("expected SessionConfigSetFailed, got nothing");
-            assert!(
-                h.seen_config_updates.lock().unwrap().is_empty(),
-                "blocked privileged config must never reach ACP"
-            );
+                })
+                .await
+                .expect("expected SessionConfigSetFailed, got nothing");
+                assert!(
+                    h.seen_config_updates.lock().unwrap().is_empty(),
+                    "blocked privileged config must never reach ACP: provider={agent_id}"
+                );
+            }
         })
         .await;
 }

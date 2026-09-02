@@ -4854,6 +4854,34 @@ async fn dispatch_prompt_body(
         }
     }
 
+    if prompt.is_agent_command()
+        && client_task
+            .state
+            .yolo_state
+            .lock()
+            .unwrap()
+            .policy_blocked()
+    {
+        if let Some(command_name) = client_task
+            .state
+            .native_yolo
+            .privileged_agent_command(&prompt.text)
+        {
+            let message =
+                format!("the AllowYoloMode policy blocks provider command '/{command_name}'");
+            let _ = event_tx_task.send(AppEvent::AgentError {
+                session_id: Some(prompt_session_id_str),
+                failure: AgentFailure::Protocol {
+                    code: -32003,
+                    message: message.clone(),
+                },
+                message,
+            });
+            in_flight_tabs_task.lock().unwrap().remove(&tab_key_task);
+            return;
+        }
+    }
+
     let kind = if prompt.is_autofix() {
         TemplateKind::Autofix
     } else {
@@ -4941,25 +4969,6 @@ async fn dispatch_prompt_body(
             &text,
         );
     }
-    prompt_timing_task.mark_prompt_sent(&prompt_session_id_str);
-
-    // Telemetry: prompt dispatched over ACP. WTA emits `AgentPromptSent`
-    // for the agent-pane prompt-entry route; the C++ side emits
-    // `CommandPaletteDispatchedAgentPrompt` for the `?<prompt>` delegation
-    // route under the same provider.
-    crate::telemetry::log_agent_prompt_sent(
-        &prompt_session_id_str,
-        u32::try_from(text.len()).unwrap_or(u32::MAX),
-        prompt.is_autofix(),
-        match kind {
-            TemplateKind::Autofix => "Autofix",
-            TemplateKind::Planner if prompt.is_agent_command() => "AgentCommand",
-            TemplateKind::Planner => "Planner",
-        },
-        prompt.is_byok(),
-        prompt.agent_id(),
-    );
-
     // Register a cancel oneshot for this prompt. The cancel
     // listener picks the sender out by session_id and signals it
     // when the user presses Ctrl+C.
@@ -4974,31 +4983,100 @@ async fn dispatch_prompt_body(
     // through master → agent CLI verbatim; the agent only receives them if it
     // advertised `promptCapabilities.image` (the UI gates Alt+V on that flag).
     let content = build_prompt_content(&text, &prompt.images);
-    let prompt_fut = conn_task.prompt(acp::schema::v1::PromptRequest::new(
-        prompt_session_id.clone(),
-        content,
-    ));
+    let privileged_agent_command = prompt
+        .is_agent_command()
+        .then(|| {
+            client_task
+                .state
+                .native_yolo
+                .privileged_agent_command(&prompt.text)
+        })
+        .flatten()
+        .map(str::to_string);
+    let yolo_state = Arc::clone(&client_task.state.yolo_state);
+    let telemetry_timing = Arc::clone(&prompt_timing_task);
+    let telemetry_session_id = prompt_session_id_str.clone();
+    let telemetry_prompt_len = u32::try_from(text.len()).unwrap_or(u32::MAX);
+    let telemetry_is_autofix = prompt.is_autofix();
+    let telemetry_source = match kind {
+        TemplateKind::Autofix => "Autofix",
+        TemplateKind::Planner if prompt.is_agent_command() => "AgentCommand",
+        TemplateKind::Planner => "Planner",
+    };
+    let telemetry_is_byok = prompt.is_byok();
+    let telemetry_agent_id = prompt.agent_id().to_string();
+    let prompt_fut = conn_task.prompt_if(
+        acp::schema::v1::PromptRequest::new(prompt_session_id.clone(), content),
+        {
+            let privileged_agent_command = privileged_agent_command.clone();
+            move || {
+                let should_send = privileged_agent_command.is_none()
+                    || !yolo_state.lock().unwrap().policy_blocked();
+                if should_send {
+                    telemetry_timing.mark_prompt_sent(&telemetry_session_id);
+                    crate::telemetry::log_agent_prompt_sent(
+                        &telemetry_session_id,
+                        telemetry_prompt_len,
+                        telemetry_is_autofix,
+                        telemetry_source,
+                        telemetry_is_byok,
+                        &telemetry_agent_id,
+                    );
+                }
+                should_send
+            }
+        },
+    );
     tokio::pin!(prompt_fut);
 
     let completed_successfully = tokio::select! {
         result = &mut prompt_fut => {
-            // Peek the successful turn's stop_reason (the response is consumed
-            // by `complete_prompt_request`). A soft stop is not an error; the
-            // Err arm is classified separately by `from_acp_error`.
-            let soft_stop = result
-                .as_ref()
-                .ok()
-                .and_then(|resp| SoftStopReason::from_stop_reason(resp.stop_reason));
-            let successful = result.is_ok();
-            complete_prompt_request(
-                result,
-                soft_stop,
-                &prompt_timing_task,
-                &event_tx_task,
-                prompt_session_id_str.clone(),
-            )
-            .await;
-            successful
+            match result {
+                Ok(None) => {
+                    let command_name = privileged_agent_command
+                        .as_deref()
+                        .unwrap_or("privileged command");
+                    let message = format!(
+                        "the AllowYoloMode policy blocks provider command '/{command_name}'"
+                    );
+                    let _ = prompt_timing_task.complete(
+                        &prompt_session_id_str,
+                        false,
+                        Some("policy_blocked"),
+                    );
+                    let _ = event_tx_task.send(AppEvent::AgentError {
+                        session_id: Some(prompt_session_id_str.clone()),
+                        failure: AgentFailure::Protocol {
+                            code: -32003,
+                            message: message.clone(),
+                        },
+                        message,
+                    });
+                    false
+                }
+                result => {
+                    let result = result.map(|response| {
+                        response.expect("prompt guard returns None only when policy blocks")
+                    });
+                    // Peek the successful turn's stop_reason (the response is consumed
+                    // by `complete_prompt_request`). A soft stop is not an error; the
+                    // Err arm is classified separately by `from_acp_error`.
+                    let soft_stop = result
+                        .as_ref()
+                        .ok()
+                        .and_then(|resp| SoftStopReason::from_stop_reason(resp.stop_reason));
+                    let successful = result.is_ok();
+                    complete_prompt_request(
+                        result,
+                        soft_stop,
+                        &prompt_timing_task,
+                        &event_tx_task,
+                        prompt_session_id_str.clone(),
+                    )
+                    .await;
+                    successful
+                }
+            }
         }
         _ = cancel_rx => {
             // The user cancelled. Synthesize an AgentMessageEnd
