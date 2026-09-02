@@ -26,7 +26,9 @@ jobs:
           # upstream commits." Sync it up front so wingetcreate always sees a current fork.
           $owner = (gh api user --jq '.login')
           Write-Host "Syncing $owner/winget-pkgs with microsoft/winget-pkgs..."
-          gh api -X POST "repos/$owner/winget-pkgs/merge-upstream" -f branch=master
+          $branch = (gh api "repos/$owner/winget-pkgs" --jq '.default_branch')
+          Write-Host "Default branch is $branch"
+          gh api -X POST "repos/$owner/winget-pkgs/merge-upstream" -f branch=$branch
 
       - name: Publish Intelligent Terminal
         run: |
