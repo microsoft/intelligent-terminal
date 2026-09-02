@@ -608,7 +608,7 @@ an **Auto error handling** option:
 
 - `Off`
 - `Detect errors automatically`
-- `Detect errors and send them to the agent for fixes automatically.`
+- `Detect errors and send them to the agent for fixes automatically`
 
 The default detects failures without sending them to an agent. The equivalent
 JSON is:

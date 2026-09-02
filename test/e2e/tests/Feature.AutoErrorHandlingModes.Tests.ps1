@@ -80,7 +80,7 @@ Describe 'Feature: Auto error handling send-to-agent mode' -Tag 'Feature' -Skip:
     }
     AfterAll { if ($script:app) { Stop-Terminal -App $script:app } }
 
-    It 'Detect errors and send them to the agent for fixes automatically. works' {
+    It 'Detect errors and send them to the agent for fixes automatically works' {
         $sid = (Get-ActivePane -App $script:app).session_id
         $listener = Start-WtEventListener -App $script:app
         try {

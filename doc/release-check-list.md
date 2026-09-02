@@ -56,10 +56,10 @@ Net effect: UT shrinks the manual matrix to "did the wiring and UI connect", not
 
 ### FRE Auto error handling
 
-- [ ] `C020` `[UT✓]` `[E2E]` **All Auto error handling options appear:** The description says "Choose how terminal errors are handled." and the picker shows exactly `Off`; `Detect errors automatically`; `Detect errors and send them to the agent for fixes automatically.` _(UT: enum serialization and option population.)_
+- [ ] `C020` `[UT✓]` `[E2E]` **All Auto error handling options appear:** The description says "Choose how terminal errors are handled." and the picker shows exactly `Off`; `Detect errors automatically`; `Detect errors and send them to the agent for fixes automatically` _(UT: enum serialization and option population.)_
 - [ ] `C021` `[UT✓]` `[E2E]` **`Off` works:** Command failures do not produce Auto error handling activity.
 - [ ] `C022` `[UT✓]` `[E2E]` **`Detect errors automatically` works:** Shell failures are detected when shell integration is available, but they are not sent to the agent.
-- [ ] `C023` `[UT✓]` `[E2E]` **`Detect errors and send them to the agent for fixes automatically.` works:** A detected failure can be sent to a connected agent, which can return a proposed fix.
+- [ ] `C023` `[UT✓]` `[E2E]` **`Detect errors and send them to the agent for fixes automatically` works:** A detected failure can be sent to a connected agent, which can return a proposed fix.
 - [ ] `C024` `[UT✓]` `[E2E]` **The picker stores one valid state:** Switching options never produces an invalid combination or leaves obsolete dependent controls visible.
 - [ ] `C025` `[UT✓]` `[E2E]` **The option persists:** The selected `autoErrorHandling` value remains after restart. _(UT: settings round-trip.)_
 
@@ -91,7 +91,7 @@ Net effect: UT shrinks the manual matrix to "did the wiring and UI connect", not
 - [ ] `C041` `[UT✓]` `[E2E]` **Model changes apply:** Changing `acpModel` affects new agent-pane sessions and does not corrupt existing settings. _(UT: `build_acp_command` model handling.)_
 - [ ] `C042` `[UT✓]` `[E2E]` **Delegate model changes apply:** Changing `delegateModel` affects new delegate-agent launches. _(UT: command construction.)_
 - [ ] `C043` `[UT✓]` `[E2E]` **Pane position setting works:** Bottom/right/left/top can be selected and saved. _(UT: `AgentPanePositionRoundtripsAndDefaults`.)_
-- [ ] `C044` `[UT✓]` `[E2E]` **Auto error handling options match FRE:** Settings explains that the control chooses how terminal errors are handled and shows exactly `Off`; `Detect errors automatically`; `Detect errors and send them to the agent for fixes automatically.` _(UT: enum settings round-trip.)_
+- [ ] `C044` `[UT✓]` `[E2E]` **Auto error handling options match FRE:** Settings explains that the control chooses how terminal errors are handled and shows exactly `Off`; `Detect errors automatically`; `Detect errors and send them to the agent for fixes automatically` _(UT: enum settings round-trip.)_
 - [ ] `C045` `[UT✓]` `[E2E]` **Auto error handling behavior matches FRE:** Each selected option has the same detection and agent-submission behavior in Settings and FRE.
 - [ ] `C046` `[UT~]` `[E2E]` **Session hooks install works:** Install hooks button detects supported CLIs and reports success/failure clearly. _(UT: status parse.)_
 - [ ] `C047` `[E2E]` **Session hooks remove works:** Per-CLI remove buttons remove hook state without breaking the Settings page.
@@ -221,7 +221,7 @@ Net effect: UT shrinks the manual matrix to "did the wiring and UI connect", not
 
 ## 3. Auto error handling flow
 
-**Feature definition:** Auto error handling detects terminal command failures. With `Detect errors and send them to the agent for fixes automatically.`, it captures relevant pane context, asks the configured agent for a fix, and accepts actionable fixes only through a Direct Helper Proposal before offering Insert or Run.
+**Feature definition:** Auto error handling detects terminal command failures. With `Detect errors and send them to the agent for fixes automatically`, it captures relevant pane context, asks the configured agent for a fix, and accepts actionable fixes only through a Direct Helper Proposal before offering Insert or Run.
 
 ### Shell integration and detection
 
@@ -239,7 +239,7 @@ Net effect: UT shrinks the manual matrix to "did the wiring and UI connect", not
 - [x] `C091` `[UT✓]` **`Off` suppresses processing:** Failures do not produce Auto error handling activity.
 - [x] `C092` `[UT✓]` **`Detect errors automatically` observes failures locally:** Failure notifications are observed without contacting the agent.
 - [x] `C093` `[UT✓]` **`Detect errors automatically` suppresses agent calls:** Detection can show expected local UI but does not ask the agent for a fix.
-- [x] `C094` `[UT✓]` **`Detect errors and send them to the agent for fixes automatically.` contacts the agent:** With a connected helper, a proposed fix is requested.
+- [x] `C094` `[UT✓]` **`Detect errors and send them to the agent for fixes automatically` contacts the agent:** With a connected helper, a proposed fix is requested.
 - [x] `C095` `[UT✓]` **Cold-start behavior is acceptable:** If failure happens before the helper is connected, UI stays stable and no stale proposed fix appears later.
 
 ### Auto error handling with the agent pane

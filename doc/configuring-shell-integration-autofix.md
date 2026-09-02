@@ -25,7 +25,7 @@ The downstream pipeline (failure detection, classification, and VT-event forward
 3. If `exit_code != 0`, Intelligent Terminal applies the selected Auto error handling option:
    - `Off`
    - `Detect errors automatically`
-   - `Detect errors and send them to the agent for fixes automatically.`
+   - `Detect errors and send them to the agent for fixes automatically`
 4. With the third option, WTA reads the pane's terminal buffer and asks the agent to diagnose the error and propose a fix
 5. The user reviews and confirms the proposed fix before it runs
 
@@ -80,7 +80,7 @@ For Git Bash users on Windows, the FRE / Settings installer takes care of all of
 
 ### Verifying It Works
 
-1. Open **Settings → AI Agents** and set **Auto error handling** to `Detect errors and send them to the agent for fixes automatically.`
+1. Open **Settings → AI Agents** and set **Auto error handling** to `Detect errors and send them to the agent for fixes automatically`
 2. Open a pane in Intelligent Terminal
 3. Run a command that fails, e.g.: `Get-Item "C:\nonexistent-path"` (pwsh) or `ls /nonexistent` (bash)
 4. The agent pane should show the detected failure and the agent's proposed fix

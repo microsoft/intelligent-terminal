@@ -72,7 +72,7 @@ Describe 'Feature §0 FRE agent setup (overlay controls)' -Tag 'Feature' -Skip:(
         foreach ($option in @(
                 @{ Key = 'FreOverlay_AutoErrorHandling_Off'; Fallback = 'Off' },
                 @{ Key = 'FreOverlay_AutoErrorHandling_DetectErrorsAutomatically'; Fallback = 'Detect errors automatically' },
-                @{ Key = 'FreOverlay_AutoErrorHandling_DetectErrorsAndSendToAgentForFixesAutomatically'; Fallback = 'Detect errors and send them to the agent for fixes automatically.' }
+                @{ Key = 'FreOverlay_AutoErrorHandling_DetectErrorsAndSendToAgentForFixesAutomatically'; Fallback = 'Detect errors and send them to the agent for fixes automatically' }
             )) {
             $pattern = Get-WtReswTextRegex -Key $option.Key
             if (-not $pattern) { $pattern = [regex]::Escape($option.Fallback) }
@@ -84,7 +84,7 @@ Describe 'Feature §0 FRE agent setup (overlay controls)' -Tag 'Feature' -Skip:(
         foreach ($option in @(
                 @{ Key = 'FreOverlay_AutoErrorHandling_Off'; Fallback = 'Off' },
                 @{ Key = 'FreOverlay_AutoErrorHandling_DetectErrorsAutomatically'; Fallback = 'Detect errors automatically' },
-                @{ Key = 'FreOverlay_AutoErrorHandling_DetectErrorsAndSendToAgentForFixesAutomatically'; Fallback = 'Detect errors and send them to the agent for fixes automatically.' }
+                @{ Key = 'FreOverlay_AutoErrorHandling_DetectErrorsAndSendToAgentForFixesAutomatically'; Fallback = 'Detect errors and send them to the agent for fixes automatically' }
             )) {
             Invoke-UiElement -App $script:app -Selector 'AutoErrorHandlingComboBox' | Out-Null
             Start-Sleep -Milliseconds 300
