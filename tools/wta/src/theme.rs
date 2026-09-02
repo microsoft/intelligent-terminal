@@ -13,7 +13,6 @@ pub const COMMAND_TOKEN: Style = Style::new().fg(Color::Cyan).add_modifier(Modif
 pub const AGENT_TEXT: Style = Style::new().fg(Color::Reset);
 pub const DISCLAIMER_TEXT: Style = Style::new().fg(Color::Reset).add_modifier(Modifier::DIM);
 pub const SYSTEM_TEXT: Style = Style::new().fg(Color::Cyan);
-pub const STATUS_TEXT: Style = Style::new().fg(Color::Reset);
 pub const NOTICE_SUCCESS: Style = Style::new().fg(Color::Green);
 pub const NOTICE_INFO: Style = Style::new().fg(Color::Cyan);
 pub const NOTICE_WARNING: Style = Style::new().fg(Color::Yellow);

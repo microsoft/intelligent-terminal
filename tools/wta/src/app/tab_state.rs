@@ -77,8 +77,6 @@ pub enum ChatMessage {
     Agent(String),
     /// Legacy untyped system message retained for persisted chat compatibility.
     System(String),
-    /// Low-emphasis inline status rendered in the pane's normal foreground.
-    Status(String),
     Notice {
         kind: NoticeKind,
         text: String,

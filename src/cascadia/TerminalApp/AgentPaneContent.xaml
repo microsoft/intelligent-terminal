@@ -26,16 +26,10 @@
                 Background="#FF000000"
                 BorderBrush="{ThemeResource TabViewBackground}"
                 BorderThickness="0,0,0,1">
-            <Grid Padding="10,0,10,0"
-                  ColumnSpacing="8">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="Auto" />
-                </Grid.ColumnDefinitions>
+            <Grid Padding="10,0,10,0">
                 <!--  Left cluster: logo + label. History and other actions
                       live on the window-level bottom agent bar.  -->
-                <Grid Grid.Column="0"
-                      VerticalAlignment="Center"
+                <Grid VerticalAlignment="Center"
                       ColumnSpacing="4">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="Auto" />

@@ -1623,15 +1623,6 @@ fn build_message_lines_with_details<'a>(
             }
             lines.push(Line::default());
         }
-        ChatMessage::Status(text) => {
-            for line_text in text.lines() {
-                lines.push(Line::from(Span::styled(
-                    truncate_render_text(line_text),
-                    theme::STATUS_TEXT,
-                )));
-            }
-            lines.push(Line::default());
-        }
         ChatMessage::Notice { kind, text } => {
             let (marker, style) = match kind {
                 NoticeKind::Success => ("✓", theme::NOTICE_SUCCESS),
