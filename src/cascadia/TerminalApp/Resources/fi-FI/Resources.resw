@@ -223,39 +223,39 @@
     <value>Määritetään...</value>
   </data>
   <data name="FreOverlay_InstallError_BlockedByPolicy" xml:space="preserve">
-    <value>⚠ Kohteen {0} asennus estettiin Windowsin paketinhallinnan käytännön vuoksi. Jos käytät hallittua laitetta, ota yhteyttä IT-järjestelmänvalvojaan.</value>
+    <value>Kohteen {0} asennus estettiin Windowsin paketinhallinnan käytännön vuoksi. Jos käytät hallittua laitetta, ota yhteyttä IT-järjestelmänvalvojaan.</value>
     <comment>FRE setup error. {0} is the package display name. Shown when winget returned BlockedByPolicy.</comment>
   </data>
   <data name="FreOverlay_InstallError_Generic" xml:space="preserve">
-    <value>⚠ Kohdetta {0} ei voitu asentaa (virhekoodi {1}). Katso lokista lisätiedot tai asenna {0} manuaalisesti.</value>
+    <value>Kohdetta {0} ei voitu asentaa (virhekoodi {1}). Katso lokista lisätiedot tai asenna {0} manuaalisesti.</value>
     <comment>FRE setup error fallback. {0} is the package display name (appears twice). {1} is a pre-formatted HRESULT string like "0x80190194".</comment>
   </data>
   <data name="FreOverlay_InstallError_GenericNoCode" xml:space="preserve">
-    <value>⚠ Kohdetta {0} ei voitu asentaa. Katso lokista lisätiedot tai asenna {0} manuaalisesti.</value>
+    <value>Kohdetta {0} ei voitu asentaa. Katso lokista lisätiedot tai asenna {0} manuaalisesti.</value>
     <comment>FRE setup error fallback used when no actionable error code is available. {0} is the package display name (appears twice).</comment>
   </data>
   <data name="FreOverlay_InstallError_InstallerFailed" xml:space="preserve">
-    <value>⚠ Kohteen {0} asennusohjelma ilmoitti virheestä (koodi {1}). Tarkista lokista lisätiedot tai asenna {0} manuaalisesti.</value>
+    <value>Kohteen {0} asennusohjelma ilmoitti virheestä (koodi {1}). Tarkista lokista lisätiedot tai asenna {0} manuaalisesti.</value>
     <comment>FRE setup error. {0} is the package display name (appears twice). {1} is the installer-reported error code as a decimal number (e.g. MSI 1603).</comment>
   </data>
   <data name="FreOverlay_InstallError_Network" xml:space="preserve">
-    <value>⚠ Windowsin paketinhallintaan ei saatu yhteyttä asennettaessa kohdetta {0}. Tarkista internetyhteys (VPN, välityspalvelin tai palomuuri voi estää sen) ja yritä uudelleen.</value>
+    <value>Windowsin paketinhallintaan ei saatu yhteyttä asennettaessa kohdetta {0}. Tarkista internetyhteys (VPN, välityspalvelin tai palomuuri voi estää sen) ja yritä uudelleen.</value>
     <comment>{Locked="VPN"} FRE setup error. {0} is the package display name. Shown when winget couldn't reach its catalog or download failed with a network-class HRESULT.</comment>
   </data>
   <data name="FreOverlay_InstallError_NoCompatibleInstaller" xml:space="preserve">
-    <value>⚠ Tälle järjestelmälle ei ole saatavilla yhteensopivaa asennusohjelmaa kohteelle {0} (käyttöjärjestelmän versiota tai arkkitehtuuria ei ehkä tueta). Asenna {0} manuaalisesti.</value>
+    <value>Tälle järjestelmälle ei ole saatavilla yhteensopivaa asennusohjelmaa kohteelle {0} (käyttöjärjestelmän versiota tai arkkitehtuuria ei ehkä tueta). Asenna {0} manuaalisesti.</value>
     <comment>FRE setup error. {0} is the package display name (appears twice).</comment>
   </data>
   <data name="FreOverlay_InstallError_PackageNotFound" xml:space="preserve">
-    <value>⚠ Kohdetta {0} ei löytynyt Windowsin paketinhallinnan luettelosta. Yritä päivittää winget-lähteet tai asenna {0} manuaalisesti.</value>
+    <value>Kohdetta {0} ei löytynyt Windowsin paketinhallinnan luettelosta. Yritä päivittää winget-lähteet tai asenna {0} manuaalisesti.</value>
     <comment>{Locked="winget"} FRE setup error. {0} is the package display name (appears twice).</comment>
   </data>
   <data name="FreOverlay_InstallError_Timeout" xml:space="preserve">
-    <value>⚠ Kohteen {0} asennus kesti yli 20 minuuttia. Intelligent Terminal lopetti odottamisen, mutta asennusohjelma saattaa edelleen olla käynnissä taustalla. Tarkista Task Manager tai yritä myöhemmin uudelleen.</value>
+    <value>Kohteen {0} asennus kesti yli 20 minuuttia. Intelligent Terminal lopetti odottamisen, mutta asennusohjelma saattaa edelleen olla käynnissä taustalla. Tarkista Task Manager tai yritä myöhemmin uudelleen.</value>
     <comment>{Locked="Intelligent Terminal","Task Manager"} FRE setup error. {0} is the package display name.</comment>
   </data>
   <data name="FreOverlay_InstallErrorWingetMissing" xml:space="preserve">
-    <value>⚠ Windowsin paketinhallintaa (winget) ei ole asennettu tai se ei ole käytettävissä. Asenna se ensin ja yritä sitten uudelleen.</value>
+    <value>Windowsin paketinhallintaa (winget) ei ole asennettu tai se ei ole käytettävissä. Asenna se ensin ja yritä sitten uudelleen.</value>
     <comment>{Locked="winget"} Error shown in the FRE setup overlay when a prerequisite install was attempted but winget itself is not available on this system.</comment>
   </data>
   <data name="FreOverlay_PackageDisplayName_Copilot" xml:space="preserve">
@@ -347,9 +347,9 @@
     <value>Salli Intelligent Terminalin käyttää komentotulkkia ja tunnistaa virheet automaattisesti.</value>
   </data>
 <data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
-    <value>⚠ Komentotulkin integroinnin asennus epäonnistui. Virheiden tunnistus on poistettu käytöstä. Voit ottaa sen uudelleen käyttöön ja yrittää uudelleen tai tallentaa jatkaaksesi ilman sitä.</value>
+    <value>Komentotulkin integroinnin asennus epäonnistui. Virheiden tunnistus on poistettu käytöstä. Voit ottaa sen uudelleen käyttöön ja yrittää uudelleen tai tallentaa jatkaaksesi ilman sitä.</value>
   </data><data name="FreOverlay_InstallErrorHooks" xml:space="preserve">
-    <value>⚠ Session hooks eivät asentuneet. Istunnonhallinta on poistettu käytöstä. Voit ottaa sen uudelleen käyttöön ja yrittää uudelleen tai tallentaa jatkaaksesi ilman sitä.</value>
+    <value>Session hooks eivät asentuneet. Istunnonhallinta on poistettu käytöstä. Voit ottaa sen uudelleen käyttöön ja yrittää uudelleen tai tallentaa jatkaaksesi ilman sitä.</value>
     <comment>{Locked="hooks"}</comment>
   </data><data name="FreOverlay_ErrorHelpLink" xml:space="preserve">
     <value>Opi korjaamaan tämä manuaalisesti</value>
@@ -365,7 +365,7 @@
     <comment>Body of an error dialog shown after the user tries to install PowerShell shell integration but their PowerShell execution policy (Restricted or AllSigned) is blocking scripts. A separate "Learn how to fix this manually" hyperlink (FreOverlay_ErrorHelpLink) is rendered on its own line below this sentence. {Locked="PowerShell"}</comment>
   </data>
   <data name="FreOverlay_InstallErrorShellIntegrationExecutionPolicy" xml:space="preserve">
-    <value>⚠ PowerShellin suorituskäytäntö estää komentosarjat. Virheiden tunnistus poistettu käytöstä.</value>
+    <value>PowerShellin suorituskäytäntö estää komentosarjat. Virheiden tunnistus poistettu käytöstä.</value>
     <comment>{Locked="PowerShell"}</comment>
   </data>
   <data name="UsageGroup/[using:Windows.UI.Xaml.Automation]AutomationProperties/Name" xml:space="preserve"><value>Käyttö</value><comment>Accessibility name for the session usage summary in the terminal bottom bar.</comment></data>

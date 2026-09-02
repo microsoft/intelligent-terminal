@@ -581,10 +581,24 @@
                                 HorizontalAlignment="Left" VerticalAlignment="Center"
                                 MaxWidth="440" Spacing="2"
                                 Visibility="Collapsed">
-                        <TextBlock x:Name="ErrorText"
-                                   Foreground="#FFFF6B6B" FontSize="13"
-                                   TextWrapping="Wrap"
-                                   AutomationProperties.LiveSetting="Assertive" />
+                        <Grid ColumnSpacing="6">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <FontIcon Grid.Column="0"
+                                      Glyph="&#xE7BA;"
+                                      FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                                      FontSize="13"
+                                      Foreground="#FFFF6B6B"
+                                      VerticalAlignment="Top"
+                                      Margin="0,1,0,0" />
+                            <TextBlock Grid.Column="1"
+                                       x:Name="ErrorText"
+                                       Foreground="#FFFF6B6B" FontSize="13"
+                                       TextWrapping="Wrap"
+                                       AutomationProperties.LiveSetting="Assertive" />
+                        </Grid>
                         <TextBlock FontSize="12" TextWrapping="Wrap">
                             <Hyperlink x:Name="ErrorHelpLink"
                                        NavigateUri="https://aka.ms/intelligent-terminal-dependency"
