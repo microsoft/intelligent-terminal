@@ -2979,7 +2979,7 @@
     <comment>Title for the Auto error handling dropdown in the AI agents settings page.</comment>
   </data>
   <data name="AIAgents_AutoErrorHandlingCaptionPrefix" xml:space="preserve">
-    <value>터미널 오류 처리 방법을 선택합니다. PowerShell, bash 및 WSL bash에서 사용할 수 있습니다. </value>
+    <value>터미널 오류 처리 방법을 선택합니다. PowerShell, bash 및 WSL bash의 자동 오류 처리를 위한 셸 통합을 설치합니다. </value>
     <comment>{Locked="PowerShell","bash","WSL bash"} Caption under the Auto error handling title; the trailing space separates this prefix from the inline AIAgents_AutoErrorHandlingCaptionLink hyperlink that follows.</comment>
   </data>
   <data name="AIAgents_AutoErrorHandlingCaptionLink" xml:space="preserve">

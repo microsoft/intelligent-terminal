@@ -214,7 +214,7 @@
     <value>بۇنى قولدا قانداق ئوڭشاشنى ئۆگىنىڭ</value>
     <comment>Hyperlink shown below an FRE setup error message. Opens step-by-step manual setup instructions in the browser.</comment>
   </data>  <data name="FreOverlay_AutoErrorHandlingShellIntegrationHintPrefix" xml:space="preserve">
-    <value>PowerShell، bash ۋە WSL bash دا ئىشلەتكىلى بولىدۇ. </value>
+    <value>PowerShell ، bash ۋە WSL bash دا ئاپتوماتىك خاتالىق بىر تەرەپ قىلىش ئۈچۈن shell بىرلەشتۈرۈشنى ئورنىتىدۇ. </value>
     <comment>{Locked="PowerShell","bash","WSL bash"} Hint shown under the Auto error handling dropdown in the first-run wizard. The trailing space is intentional — it separates this prefix from the inline FreOverlay_AutoErrorHandlingShellIntegrationHintLink hyperlink that follows.</comment>
   </data>
   <data name="FreOverlay_AutoErrorHandlingShellIntegrationHintLink" xml:space="preserve">

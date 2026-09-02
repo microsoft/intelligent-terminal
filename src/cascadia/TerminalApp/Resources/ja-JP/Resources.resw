@@ -1241,7 +1241,7 @@ This hint appears when selecting an AI agent whose Node.js runtime may need to b
     <comment>Description for the Auto error handling dropdown in the first-run wizard.</comment>
   </data>
   <data name="FreOverlay_AutoErrorHandlingShellIntegrationHintPrefix" xml:space="preserve">
-    <value>PowerShell、bash、WSL bash で利用できます。 </value>
+    <value>PowerShell、bash、および WSL bash での自動エラー処理のためのシェル統合をインストールします。 </value>
     <comment>{Locked="PowerShell","bash","WSL bash"} Hint shown under the Auto error handling dropdown in the first-run wizard. The trailing space is intentional — it separates this prefix from the inline FreOverlay_AutoErrorHandlingShellIntegrationHintLink hyperlink that follows.</comment>
   </data>
   <data name="FreOverlay_AutoErrorHandlingShellIntegrationHintLink" xml:space="preserve">

@@ -2979,7 +2979,7 @@
     <comment>Title for the Auto error handling dropdown in the AI agents settings page.</comment>
   </data>
   <data name="AIAgents_AutoErrorHandlingCaptionPrefix" xml:space="preserve">
-    <value>Одаберите начин на који се третирају грешке терминала. Доступно у PowerShell, bash и WSL bash. </value>
+    <value>Одаберите начин на који се третирају грешке терминала. Инсталира интеграцију shell-а за аутоматско руковање грешкама у окружењима PowerShell, bash и WSL bash. </value>
     <comment>{Locked="PowerShell","bash","WSL bash"} Caption under the Auto error handling title; the trailing space separates this prefix from the inline AIAgents_AutoErrorHandlingCaptionLink hyperlink that follows.</comment>
   </data>
   <data name="AIAgents_AutoErrorHandlingCaptionLink" xml:space="preserve">
