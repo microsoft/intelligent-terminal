@@ -6020,8 +6020,13 @@ async fn sync_host_history(state: &MasterStateInner, agent: &AgentCli) -> Option
 /// whatever it is handed, so every candidate is re-checked with
 /// [`crate::session_registry::title_is_displayable`] here, at the point of
 /// mutation, and not only where [`host_titles_via_acp`] builds the map. The
-/// row's own `cli_source` is the stamp to check against: it is the CLI that
-/// actually produced the session.
+/// row's own `cli_source` is the stamp to check against when it has one — it
+/// is the CLI that actually produced the session — falling back to
+/// `listing_cli` for a row `row_refreshable_by_connected_agent` admitted while
+/// unstamped. Without that fallback an unstamped row would skip the
+/// provider-specific placeholder check entirely and adopt, say, OpenCode's
+/// `New session - <timestamp>`; the candidate came from the listing agent, so
+/// that agent's provider is the right rule to judge it by.
 async fn refresh_titles_from_listing(
     reg: &dyn crate::session_registry::SessionRegistry,
     titles: &std::collections::HashMap<String, String>,
@@ -6038,7 +6043,8 @@ async fn refresh_titles_from_listing(
         let Some(title) = titles.get(row.session_id.0.as_ref()) else {
             continue;
         };
-        if !crate::session_registry::title_is_displayable(row.cli_source.as_ref(), title) {
+        let judging_cli = row.cli_source.as_ref().or(listing_cli);
+        if !crate::session_registry::title_is_displayable(judging_cli, title) {
             continue;
         }
         if reg.adopt_agent_title(&row.session_id, title).await {

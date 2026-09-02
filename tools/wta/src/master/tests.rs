@@ -9620,6 +9620,56 @@ async fn refresh_titles_from_listing_skips_rows_from_another_cli() {
     );
 }
 
+/// Copilot review finding: an unstamped row (`cli_source == None`, which
+/// `row_refreshable_by_connected_agent` deliberately admits) would skip the
+/// provider-specific placeholder check if the row's own stamp were the only
+/// thing consulted. The candidate came from the listing agent, so that agent's
+/// provider is the correct rule to judge it by.
+#[tokio::test]
+async fn refresh_titles_from_listing_judges_unstamped_rows_by_the_listing_cli() {
+    use crate::agent_sessions::CliSource;
+    use std::collections::HashMap;
+
+    let state = make_state();
+    let mut unstamped = crate::session_registry::SessionInfo::new(
+        acp::schema::v1::SessionId::new("sid-unstamped".to_string()),
+        std::path::PathBuf::from("/repo/project"),
+    );
+    assert!(
+        unstamped.cli_source.is_none(),
+        "this test is only meaningful for a row with no cli stamp"
+    );
+    unstamped.title = Some("Real Summary".to_string());
+    state.registry.upsert(unstamped).await;
+
+    let titles = HashMap::from([(
+        "sid-unstamped".to_string(),
+        "New session - 2026-07-23T01:14:00.422Z".to_string(),
+    )]);
+    assert!(
+        !refresh_titles_from_listing(&*state.registry, &titles, Some(&CliSource::OpenCode)).await,
+        "the listing agent's provider must supply the placeholder rule"
+    );
+    assert_eq!(
+        state
+            .registry
+            .lookup(&acp::schema::v1::SessionId::new(
+                "sid-unstamped".to_string()
+            ))
+            .await
+            .unwrap()
+            .title
+            .as_deref(),
+        Some("Real Summary")
+    );
+
+    // The same string is a legitimate title for a CLI that has no such
+    // placeholder convention, so the fallback must not over-reject.
+    assert!(
+        refresh_titles_from_listing(&*state.registry, &titles, Some(&CliSource::Copilot)).await
+    );
+}
+
 /// Authority is the session id, not `SessionInfo::location`. Only the
 /// born-bound path calls `set_location`, so an ordinary `session_hook` row for
 /// a CLI running inside WSL keeps the reducer's default `Host` while its title
@@ -9633,7 +9683,7 @@ async fn refresh_titles_from_listing_retitles_an_unstamped_in_distro_row() {
     let state = make_state();
     let mut hook_row = crate::session_registry::SessionInfo::new(
         acp::schema::v1::SessionId::new("sid-in-distro".to_string()),
-        std::path::PathBuf::from("/home/yuazha/repo"),
+        std::path::PathBuf::from("/home/dev/repo"),
     );
     hook_row.cli_source = Some(CliSource::Copilot);
     hook_row.title = Some("first user message echoed as a title".to_string());

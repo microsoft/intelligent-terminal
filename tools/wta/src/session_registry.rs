@@ -1235,9 +1235,11 @@ pub trait SessionRegistry: Send + Sync {
     /// on it forever. This is the counterpart primitive that lets the poll
     /// re-adopt the agent's current answer.
     ///
-    /// Callers must first establish that the listing agent owns this row (see
-    /// `master::row_titled_by_listing_agent`) and must filter placeholder and
-    /// injected-context candidates, since this method applies whatever it is
+    /// Callers must first establish that the listing agent owns this row (in
+    /// master that is `row_refreshable_by_connected_agent` plus a session-id
+    /// match against that agent's own `session/list`) and must filter
+    /// placeholder and injected-context candidates with
+    /// [`title_is_displayable`], since this method applies whatever it is
     /// given.
     ///
     /// [`upgrade_title_if_synthetic`]: SessionRegistry::upgrade_title_if_synthetic
