@@ -1,5 +1,5 @@
 #Requires -Modules @{ ModuleName='Pester'; ModuleVersion='5.0.0' }
-# Release checklist section 8 (C279, C280, C281) - how a single agent hook is routed
+# Release checklist section 8 (C287, C288, C289) - how a single agent hook is routed
 # from `wtcli` through every connected helper into the master session registry.
 #
 # Why these live at E2E rather than in a unit test: the WTA unit tests exercise one
