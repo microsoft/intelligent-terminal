@@ -149,8 +149,8 @@
   </data>
   <!-- ═══ FRE Settings Page ═══ -->
   <data name="FreOverlay_SettingsTitle.Text" xml:space="preserve">
-    <value>அறிவாண் முனையம்-க்கு வரவேற்கிறோம்</value>
-    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
+    <value>உங்கள் முனையத்திற்கான AI முகவரை அமைக்கவும்</value>
+    <comment>{Locked="Copilot","Claude","Gemini"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_SettingsSubtitlePrefix" xml:space="preserve">
     <value>இப்போது என்ன அமைக்க வேண்டும் என்பதைத் தேர்வு செய்யுங்கள். இவற்றை எப்போது வேண்டுமானாலும் மாற்றலாம். </value>

@@ -150,8 +150,8 @@
   </data>
   <!-- ═══ FRE Settings Page ═══ -->
   <data name="FreOverlay_SettingsTitle.Text" xml:space="preserve">
-    <value>ইন্টেলিজেন্ট টাৰ্মিনেল লৈ স্বাগতম</value>
-    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
+    <value>আপোনাৰ টাৰ্মিনেল এজেণ্ট ছেট আপ কৰক</value>
+    <comment>{Locked="Copilot","Claude","Gemini"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_SettingsSubtitlePrefix" xml:space="preserve">
     <value>এতিয়া কি ছেট আপ কৰিব বাছনি কৰক। আপুনি যিকোনো সময়তে এইবোৰ সলনি কৰিব পাৰে। </value>

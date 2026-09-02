@@ -1525,7 +1525,15 @@ namespace winrt::Microsoft::Terminal::Control::implementation
     winrt::Windows::Foundation::Size ControlCore::FontSizeInDips() const
     {
         const auto fontSize = _actualFont.GetSize();
-        const auto scale = 1.0f / _compositionScale;
+        // `_compositionScale` is 0 until `Initialize()` runs, which only
+        // happens once the control has been laid out with a non-zero size. A
+        // control that never got there — an agent pane restored straight into
+        // the stashed state, say — would otherwise divide by zero here and
+        // hand every caller an infinite font size, poisoning any layout math
+        // built on `CharacterDimensions` or `MinimumSize`. Fall back to the
+        // unscaled font, which is the right answer at 100% and a finite one
+        // everywhere else.
+        const auto scale = _compositionScale > 0 ? 1.0f / _compositionScale : 1.0f;
         return {
             fontSize.width * scale,
             fontSize.height * scale,

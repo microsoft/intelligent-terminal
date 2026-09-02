@@ -47,7 +47,7 @@ $publicFns = @(
     'Send-AgentMouseEvent', 'Send-AgentMouseClick',
     'Open-AgentCommandMenu', 'Get-AgentMenuSelection', 'Invoke-AgentMenuItem',
     'Test-AgentPopupShown', 'Wait-AgentPermission', 'Resolve-AgentPermission', 'Assert-AgentPaneText',
-    'Set-ClipboardImage',
+    'Get-ClipboardSnapshot', 'Restore-ClipboardSnapshot', 'Set-ClipboardImage',
     'Wait-AutoErrorHandling', 'Wait-AutoErrorHandlingDetection', 'Wait-WtCommandFailure', 'Send-AutoErrorHandlingState', 'Invoke-FailingCommand', 'Get-WtSessions', 'Invoke-Wta',
     'Open-SessionList', 'Close-SessionList', 'Test-SessionListShown', 'Get-SessionViewRenderRegex', 'Get-SessionRows',
     'Get-SessionListSelection', 'Select-SessionRow', 'Resume-Session', 'Get-SessionListJson',

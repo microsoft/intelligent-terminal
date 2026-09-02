@@ -34,6 +34,48 @@ namespace winrt::TerminalApp::implementation
         // active, the next press closes the pane; otherwise it switches
         // into sessions view.
         bool IsSessionsView() const noexcept { return _isSessionsView; }
+        winrt::hstring AgentSessionId() const noexcept { return _agentSessionId; }
+        void SetAgentSessionId(const winrt::hstring& sessionId) noexcept { _agentSessionId = sessionId; }
+
+        // The agent identity this pane is currently running, as an
+        // `AgentPaneBackend` token (`claude`, `wsl:Ubuntu:claude`, ...), plus
+        // the launch command when it names a custom provider.
+        //
+        // Refreshed from the tab immediately before every save rather than
+        // cached at creation: `/agent` switches the running agent through
+        // `OnAgentSwitchRequested`, and a stale copy here would persist the
+        // agent the pane started with instead of the one it ended up on.
+        void SetAgentRestoreIdentity(const winrt::hstring& identity, const winrt::hstring& customCommand) noexcept
+        {
+            // An ACP session belongs to the agent that created it. If the tab
+            // has switched agents since this session was recorded, the id is
+            // not resumable by the agent we are about to persist — asking the
+            // new agent to load it fails with "no rollout found for thread id"
+            // and the pane comes back empty anyway, minus the error.
+            if (!_agentSessionId.empty() && _agentSessionOwner != identity)
+            {
+                _agentSessionId = {};
+                _agentSessionOwner = {};
+            }
+
+            _agentRestoreIdentity = identity;
+            _agentRestoreCustomCommand = customCommand;
+        }
+
+        // The agent that owned `_agentSessionId` when it was recorded. Always
+        // written together with a non-empty session id.
+        void SetAgentSessionOwner(const winrt::hstring& agentIdentity) noexcept
+        {
+            _agentSessionOwner = agentIdentity;
+        }
+
+        // The wta executable the pane was launched with. Only cosmetic — a
+        // restore re-detects wta rather than trusting a saved path — so it is
+        // captured once and never refreshed.
+        void SetAgentRestoreExecutable(const winrt::hstring& executablePath) noexcept
+        {
+            _wtaExecutablePath = executablePath;
+        }
 
         // --- Per-pane auto-error-handling diagnostics state ---
         // Driven by inbound auto-error-handling state events for this pane's
@@ -158,6 +200,11 @@ namespace winrt::TerminalApp::implementation
         // and hides the agent logo. Driven by TerminalPage::OnAgentStateChanged
         // (the single writer for view-derived UI state).
         bool _isSessionsView{ false };
+        winrt::hstring _agentSessionId{};
+        winrt::hstring _agentSessionOwner{};
+        winrt::hstring _agentRestoreIdentity{};
+        winrt::hstring _agentRestoreCustomCommand{};
+        winrt::hstring _wtaExecutablePath{};
 
         // --- Auto error handling diagnostics state (projected by the window bottom bar) ---
         AutoErrorHandlingState _autoErrorHandlingState{ AutoErrorHandlingState::Idle };
@@ -193,7 +240,6 @@ namespace winrt::TerminalApp::implementation
 
         void _refreshLabel();
         void _refreshLogo();
-
     };
 }
 

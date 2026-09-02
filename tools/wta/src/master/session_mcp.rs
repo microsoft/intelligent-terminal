@@ -847,6 +847,12 @@ async fn serve_connection(
                 None
             };
             if message.get("method").and_then(Value::as_str) == Some("tools/call") {
+                crate::telemetry::log_session_mcp_tool_called(
+                    message
+                        .pointer("/params/name")
+                        .and_then(Value::as_str)
+                        .unwrap_or(""),
+                );
                 let session_id = match &capability {
                     CapabilityResolution::Bound(session_id) => Some(session_id.to_string()),
                     CapabilityResolution::Pending | CapabilityResolution::Unknown => None,
@@ -1372,6 +1378,27 @@ mod tests {
         assert!(registry.try_begin_user_input(session_id.clone()).is_err());
         drop(lease);
         assert!(registry.try_begin_user_input(session_id).is_ok());
+    }
+
+    #[tokio::test]
+    async fn closing_session_revokes_committed_capability_but_not_replacement() {
+        let registry = CapabilityRegistry::default();
+        let owner = AgentInstanceId::new_v4();
+        let session_id = acp::schema::v1::SessionId::new("session");
+        let committed = registry.prepare(owner, None).await;
+        assert!(registry.bind(&committed, session_id.clone()).await);
+        let replacement = registry.prepare(owner, Some(session_id.clone())).await;
+
+        assert!(registry.remove_session(&session_id).await);
+
+        assert!(matches!(
+            registry.resolve(&committed.secret).await,
+            CapabilityResolution::Unknown
+        ));
+        assert!(matches!(
+            registry.resolve(&replacement.secret).await,
+            CapabilityResolution::Bound(found) if found == session_id
+        ));
     }
 
     #[tokio::test]

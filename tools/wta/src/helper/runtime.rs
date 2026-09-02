@@ -18,6 +18,21 @@ use crate::{agent_registry, app, event, logging, protocol, shell};
 
 use super::config::{HelperConfig, InitialView};
 
+fn seed_initial_tab_state(
+    tab: &mut app::TabSession,
+    start_stashed: bool,
+    initial_pane_position: Option<&str>,
+) {
+    tab.pane_open = !start_stashed;
+    tab.agent_pane_position = match initial_pane_position {
+        Some("left") => Some("left"),
+        Some("right") => Some("right"),
+        Some("top" | "up") => Some("up"),
+        Some("bottom") => Some("bottom"),
+        _ => None,
+    };
+}
+
 #[cfg(windows)]
 fn install_descendant_job() -> Result<()> {
     use std::os::windows::io::{AsRawHandle, FromRawHandle, OwnedHandle};
@@ -135,6 +150,68 @@ pub(super) async fn run_default_tui_over_pipe(
         pipe_name,
     )
     .await
+}
+
+async fn resolve_app_source_cwd(
+    source: &crate::agent_source::AgentSource,
+    normalized_supplied_cwd: Option<String>,
+    legacy_environment_cwd: Option<String>,
+) -> Option<String> {
+    if let Some(cwd) = normalized_supplied_cwd.filter(|cwd| !cwd.is_empty()) {
+        return Some(cwd);
+    }
+    crate::agent_source::resolve_source_cwd(source, legacy_environment_cwd.as_deref()).await
+}
+
+#[cfg(test)]
+mod cwd_tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn normalized_host_cwd_wins_over_legacy_environment_cwd() {
+        let source = crate::agent_source::AgentSource::Host;
+
+        assert_eq!(
+            resolve_app_source_cwd(
+                &source,
+                Some(r"C:\work\project".to_string()),
+                Some(r"C:\Windows\System32".to_string()),
+            )
+            .await
+            .as_deref(),
+            Some(r"C:\work\project")
+        );
+    }
+
+    #[tokio::test]
+    async fn legacy_environment_cwd_is_only_a_normalized_fallback() {
+        let source = crate::agent_source::AgentSource::Host;
+
+        assert_eq!(
+            resolve_app_source_cwd(&source, None, Some(r" C:\legacy\workspace ".to_string()),)
+                .await
+                .as_deref(),
+            Some(r"C:\legacy\workspace")
+        );
+    }
+
+    #[tokio::test]
+    async fn normalized_wsl_cwd_wins_over_legacy_windows_environment_cwd() {
+        let source = crate::agent_source::AgentSource::Wsl {
+            distro: "Ubuntu".to_string(),
+        };
+
+        assert_eq!(
+            resolve_app_source_cwd(
+                &source,
+                Some("/home/user/project".to_string()),
+                Some(r"C:\Windows\System32".to_string()),
+            )
+            .await
+            .as_deref(),
+            Some("/home/user/project")
+        );
+    }
 }
 
 /// Discover our own pane identity by matching our PID against WT's pane list.
@@ -950,7 +1027,11 @@ async fn run_acp_app(
                         .tab_sessions
                         .entry(owner_tab_id.clone())
                         .or_default();
-                    tab.pane_open = !config.start_stashed;
+                    seed_initial_tab_state(
+                        tab,
+                        config.start_stashed,
+                        config.initial_pane_position.as_deref(),
+                    );
                     app_state.tab_id = Some(owner_tab_id.clone());
                     app_state.owner_tab_id = Some(owner_tab_id.clone());
                 }
@@ -1209,7 +1290,11 @@ async fn run_acp_app(
                     // pane_open=true. The exception is `--start-stashed`
                     // (pre-warm path) where C++ has already stashed the
                     // pane — see comment on the earlier seed block.
-                    tab.pane_open = !config.start_stashed;
+                    seed_initial_tab_state(
+                        tab,
+                        config.start_stashed,
+                        config.initial_pane_position.as_deref(),
+                    );
                     app_state.tab_id = Some(owner_tab_id.clone());
 
                     // Publish an initial chip-target state for this tab so
@@ -1230,10 +1315,15 @@ async fn run_acp_app(
             app_state.source_session_id = std::env::var("WTA_SOURCE_SESSION_ID")
                 .ok()
                 .filter(|s| !s.is_empty());
-            app_state.source_cwd = std::env::var("WTA_SOURCE_CWD")
+            let legacy_source_cwd = std::env::var("WTA_SOURCE_CWD")
                 .ok()
-                .filter(|s| !s.is_empty())
-                .or_else(|| agent_source_cwd.clone());
+                .filter(|s| !s.is_empty());
+            app_state.source_cwd = resolve_app_source_cwd(
+                &agent_source,
+                agent_source_cwd.clone(),
+                legacy_source_cwd,
+            )
+            .await;
 
             // ── env-gated raw agent_event chat logging (diagnostics) ──────
             app_state.log_agent_events = std::env::var("WTA_LOG_AGENT_EVENT")
@@ -1251,4 +1341,22 @@ async fn run_acp_app(
             app_state.run(terminal, event_rx, ui_event_rx).await
         })
         .await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn initial_tab_state_seeds_restored_pane_position() {
+        let mut tab = app::TabSession::default();
+
+        seed_initial_tab_state(&mut tab, true, Some("top"));
+        assert!(!tab.pane_open);
+        assert_eq!(tab.agent_pane_position, Some("up"));
+
+        seed_initial_tab_state(&mut tab, false, Some("right"));
+        assert!(tab.pane_open);
+        assert_eq!(tab.agent_pane_position, Some("right"));
+    }
 }

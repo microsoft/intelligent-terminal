@@ -782,6 +782,8 @@ fn test_prompt(id: u64, text: &str, is_auto_error_handling: bool) -> PromptSubmi
             .then_some(AutoErrorHandlingTextKind::UserRequest),
         agent_command: false,
         images: Vec::new(),
+        is_byok: false,
+        agent_id: "copilot".to_string(),
     }
 }
 
@@ -1979,15 +1981,21 @@ async fn session_notification_routes_user_message_replay_chunk() {
     client
         .session_notification(notif(
             "s1",
-            acp::schema::v1::SessionUpdate::UserMessageChunk(acp::schema::v1::ContentChunk::new(
-                "prior prompt".into(),
-            )),
+            acp::schema::v1::SessionUpdate::UserMessageChunk(
+                acp::schema::v1::ContentChunk::new("prior prompt".into())
+                    .message_id("prior-message"),
+            ),
         ))
         .await
         .unwrap();
     match rx.try_recv() {
-        Ok(AppEvent::UserMessageReplayChunk { session_id, text }) => {
+        Ok(AppEvent::UserMessageReplayChunk {
+            session_id,
+            message_id,
+            text,
+        }) => {
             assert_eq!(session_id, "s1");
+            assert_eq!(message_id.as_deref(), Some("prior-message"));
             assert_eq!(text, "prior prompt");
         }
         _ => panic!("expected UserMessageReplayChunk"),

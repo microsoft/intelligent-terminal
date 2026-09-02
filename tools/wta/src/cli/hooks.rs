@@ -56,12 +56,20 @@ pub(crate) fn run_install(cli: HooksCliFilter, only_missing: bool, json_mode: bo
         })
         .map(|c| c.name)
         .collect();
+    let install_report = build_install_report(scope, &report, &spawn_failures, &missing);
+    for cli in &install_report.clis {
+        let attempted = plan.iter().any(|(kind, action)| {
+            kind.name() == cli.name
+                && !matches!(action, crate::agent_hooks_installer::InstallAction::Skip)
+        });
+        let outcome = if attempted { cli.outcome } else { "skipped" };
+        crate::telemetry::log_hook_operation_completed("Install", cli.name, outcome);
+    }
 
     if json_mode {
         // Emitted for both outcomes: the Settings UI needs the per-CLI
         // breakdown precisely when the run failed, and the exit code below
         // still carries pass/fail for scripts.
-        let install_report = build_install_report(scope, &report, &spawn_failures, &missing);
         println!(
             "{}",
             serde_json::to_string_pretty(&install_report)
@@ -266,6 +274,19 @@ pub(crate) fn run_status(json_mode: bool) -> Result<()> {
 
 pub(crate) fn run_uninstall(cli: HooksCliFilter, json_mode: bool) -> Result<()> {
     let report = crate::agent_hooks_installer::uninstall(cli.into_scope());
+    for cli in &report.clis {
+        let outcome = if !cli.attempted {
+            "skipped"
+        } else if cli.plugin_uninstalled == Some(false)
+            || cli.marketplace_removed == Some(false)
+            || !cli.staging_dir_removed
+        {
+            "failed"
+        } else {
+            "succeeded"
+        };
+        crate::telemetry::log_hook_operation_completed("Uninstall", cli.name, outcome);
+    }
     if json_mode {
         println!(
             "{}",

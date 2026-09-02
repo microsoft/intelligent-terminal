@@ -22,6 +22,13 @@
 //   - AgentResponseComplete    (ACP prompt request completes)
 //   - AutoErrorHandlingDetected (the WT event classifier identifies an error)
 //   - AutoErrorHandlingResolved (the next command succeeds in the same pane)
+//   - SlashCommandInvoked      (a built-in slash command is dispatched)
+//   - SessionsViewOpened       (the agent sessions view is opened)
+//   - SessionResumeInvoked     (a session resume route is dispatched)
+//   - SessionMcpToolCalled     (a session MCP tool is invoked)
+//   - HookOperationCompleted   (a hook install/uninstall operation completes)
+//   - DelegateInvoked          (delegation is triggered by an agent)
+//   - AgentColdStartComplete   (a new agent process is spawned and initialized)
 //
 // Conventions:
 //   - Per-event description: documented in the Rust doc comment above each
@@ -46,6 +53,13 @@ use tracelogging as tlg;
 // telemetry header (`ProjectTelemetry.h`). See the build script for header
 // resolution and the panic-on-miss policy.
 include!(concat!(env!("OUT_DIR"), "/telemetry_codegen.rs"));
+
+fn sanitize_agent_id(agent_id: &str) -> &str {
+    match agent_id {
+        "copilot" | "claude" | "codex" | "gemini" | "opencode" => agent_id,
+        _ => "custom",
+    }
+}
 
 /// Register the ETW provider. Safe to call multiple times — the underlying
 /// `TraceLoggingRegister`-style API is guarded by a `Once`, so only the
@@ -153,8 +167,11 @@ pub fn log_agent_prompt_sent(
     prompt_byte_len: u32,
     is_auto_error_handling: bool,
     template_kind: &str,
+    is_byok: bool,
+    agent_id: &str,
 ) {
     let is_auto_error_handling_i32: i32 = if is_auto_error_handling { 1 } else { 0 };
+    let is_byok_i32: i32 = if is_byok { 1 } else { 0 };
     tlg::write_event!(
         AGENT_PROVIDER,
         "AgentPromptSent",
@@ -163,6 +180,8 @@ pub fn log_agent_prompt_sent(
         str8("SessionId", session_id),
         u32("PromptLengthBytes", &prompt_byte_len),
         bool32("IsAutoErrorHandling", &is_auto_error_handling_i32),
+        bool32("IsByok", &is_byok_i32),
+        str8("AgentId", sanitize_agent_id(agent_id)),
         str8("TemplateKind", template_kind),
         str8("Route", "AcpDispatch"),
         u64("PartA_PrivTags", &PDT_PRODUCT_AND_SERVICE_USAGE),
@@ -183,6 +202,7 @@ pub fn log_agent_response_first_token(
     session_id: &str,
     first_token_latency_ms: f64,
     chunk_byte_len: u32,
+    agent_id: &str,
 ) {
     tlg::write_event!(
         AGENT_PROVIDER,
@@ -192,6 +212,7 @@ pub fn log_agent_response_first_token(
         str8("SessionId", session_id),
         f64("FirstTokenLatencyMs", &first_token_latency_ms),
         u32("ChunkLengthBytes", &chunk_byte_len),
+        str8("AgentId", sanitize_agent_id(agent_id)),
         u64("PartA_PrivTags", &PDT_PRODUCT_AND_SERVICE_PERFORMANCE),
     );
 }
@@ -221,8 +242,11 @@ pub fn log_agent_response_complete(
     total_duration_ms: f64,
     raw_stdout_bytes_after_prompt: u64,
     success: bool,
+    is_byok: bool,
+    agent_id: &str,
 ) {
     let success_i32: i32 = if success { 1 } else { 0 };
+    let is_byok_i32: i32 = if is_byok { 1 } else { 0 };
     tlg::write_event!(
         AGENT_PROVIDER,
         "AgentResponseComplete",
@@ -232,6 +256,112 @@ pub fn log_agent_response_complete(
         f64("TotalDurationMs", &total_duration_ms),
         u64("TotalResponseBytes", &raw_stdout_bytes_after_prompt),
         bool32("Success", &success_i32),
+        bool32("IsByok", &is_byok_i32),
+        str8("AgentId", sanitize_agent_id(agent_id)),
+        u64("PartA_PrivTags", &PDT_PRODUCT_AND_SERVICE_PERFORMANCE),
+    );
+}
+
+/// Emitted when WTA dispatches one of its registered slash commands.
+pub fn log_slash_command_invoked(command_name: &str) {
+    tlg::write_event!(
+        AGENT_PROVIDER,
+        "SlashCommandInvoked",
+        level(Verbose),
+        keyword(MICROSOFT_KEYWORD_MEASURES),
+        str8("CommandName", command_name),
+        u64("PartA_PrivTags", &PDT_PRODUCT_AND_SERVICE_USAGE),
+    );
+}
+
+/// Emitted when the agent session management view is opened.
+pub fn log_sessions_view_opened() {
+    tlg::write_event!(
+        AGENT_PROVIDER,
+        "SessionsViewOpened",
+        level(Verbose),
+        keyword(MICROSOFT_KEYWORD_MEASURES),
+        u64("PartA_PrivTags", &PDT_PRODUCT_AND_SERVICE_USAGE),
+    );
+}
+
+/// Emitted when the user dispatches a session resume operation.
+pub fn log_session_resume_invoked(route: &str, agent_id: &str) {
+    tlg::write_event!(
+        AGENT_PROVIDER,
+        "SessionResumeInvoked",
+        level(Verbose),
+        keyword(MICROSOFT_KEYWORD_MEASURES),
+        str8("Route", route),
+        str8("AgentId", sanitize_agent_id(agent_id)),
+        u64("PartA_PrivTags", &PDT_PRODUCT_AND_SERVICE_USAGE),
+    );
+}
+
+/// Emitted once for each session MCP function invocation. Unknown function
+/// names are bucketed so model-provided strings never become telemetry fields.
+pub fn log_session_mcp_tool_called(tool_name: &str) {
+    let sanitized = match tool_name {
+        "terminal_send" | "terminal_open" | "terminal_open_and_send" | "request_user_input" => {
+            tool_name
+        }
+        _ => "unknown",
+    };
+    tlg::write_event!(
+        AGENT_PROVIDER,
+        "SessionMcpToolCalled",
+        level(Verbose),
+        keyword(MICROSOFT_KEYWORD_MEASURES),
+        str8("ToolName", sanitized),
+        u64("PartA_PrivTags", &PDT_PRODUCT_AND_SERVICE_USAGE),
+    );
+}
+
+/// Emitted for each supported CLI affected by hook install or uninstall.
+pub fn log_hook_operation_completed(operation: &str, cli: &str, outcome: &str) {
+    tlg::write_event!(
+        AGENT_PROVIDER,
+        "HookOperationCompleted",
+        level(Verbose),
+        keyword(MICROSOFT_KEYWORD_MEASURES),
+        str8("Operation", operation),
+        str8("Cli", cli),
+        str8("Outcome", outcome),
+        u64("PartA_PrivTags", &PDT_PRODUCT_AND_SERVICE_USAGE),
+    );
+}
+
+/// Emitted when an agent recommendation invokes the configured delegate.
+pub fn log_delegate_invoked(trigger_source: &str) {
+    tlg::write_event!(
+        AGENT_PROVIDER,
+        "DelegateInvoked",
+        level(Verbose),
+        keyword(MICROSOFT_KEYWORD_MEASURES),
+        str8("TriggerSource", trigger_source),
+        u64("PartA_PrivTags", &PDT_PRODUCT_AND_SERVICE_USAGE),
+    );
+}
+
+/// Emitted when a newly spawned agent process finishes its initialize flow.
+pub fn log_agent_cold_start_complete(
+    agent_id: &str,
+    source: &str,
+    duration_ms: f64,
+    success: bool,
+    failure_kind: &str,
+) {
+    let success_i32: i32 = if success { 1 } else { 0 };
+    tlg::write_event!(
+        AGENT_PROVIDER,
+        "AgentColdStartComplete",
+        level(Verbose),
+        keyword(MICROSOFT_KEYWORD_MEASURES),
+        str8("AgentId", sanitize_agent_id(agent_id)),
+        str8("Source", source),
+        f64("DurationMs", &duration_ms),
+        bool32("Success", &success_i32),
+        str8("FailureKind", failure_kind),
         u64("PartA_PrivTags", &PDT_PRODUCT_AND_SERVICE_PERFORMANCE),
     );
 }
@@ -255,7 +385,11 @@ pub fn log_auto_error_handling_detected(severity: &str, method: &str, pane_id: &
 /// (exit 0) in the same pane. `time_since_handling_started_ms` is a monotonic
 /// duration (`Instant::elapsed`) from starting the flow to observing the
 /// successful exit, not wall-clock.
-pub fn log_auto_error_handling_resolved(pane_id: &str, time_since_handling_started_ms: f64) {
+pub fn log_auto_error_handling_resolved(
+    pane_id: &str,
+    time_since_handling_started_ms: f64,
+    agent_id: &str,
+) {
     tlg::write_event!(
         AGENT_PROVIDER,
         "AutoErrorHandlingResolved",
@@ -266,6 +400,7 @@ pub fn log_auto_error_handling_resolved(pane_id: &str, time_since_handling_start
             "TimeSinceHandlingStartedMs",
             &time_since_handling_started_ms
         ),
+        str8("AgentId", sanitize_agent_id(agent_id)),
         u64("PartA_PrivTags", &PDT_PRODUCT_AND_SERVICE_USAGE),
     );
 }

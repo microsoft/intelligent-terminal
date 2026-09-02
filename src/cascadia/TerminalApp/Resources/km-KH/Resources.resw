@@ -36,8 +36,8 @@
   </data>
   <!-- ═══ FRE Settings Page ═══ -->
   <data name="FreOverlay_SettingsTitle.Text" xml:space="preserve">
-    <value>សូមស្វាគមន៍មកកាន់ ស្ថានីយឆ្លាតវៃ</value>
-    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
+    <value>រៀបចំភ្នាក់ងារ AI សម្រាប់តេរ្មីណលរបស់អ្នក</value>
+    <comment>{Locked="Copilot","Claude","Gemini"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_SettingsSubtitlePrefix" xml:space="preserve">
     <value>ជ្រើសរើសអ្វីដែលត្រូវដំឡើងឥឡូវនេះ។ អ្នកអាចផ្លាស់ប្តូរទាំងនេះបានគ្រប់ពេល។ </value>

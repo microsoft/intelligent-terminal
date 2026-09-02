@@ -137,6 +137,7 @@ pub enum AppEvent {
     },
     UserMessageReplayChunk {
         session_id: String,
+        message_id: Option<String>,
         text: String,
     },
     AgentMessageEnd {

@@ -94,15 +94,15 @@ pub fn active_pane_wsl_distro(active: Option<&serde_json::Value>) -> Option<&str
 
 /// Resolve the cwd sent to an ACP agent running in `source`.
 ///
-/// Host agents preserve the pre-WSL-backend behavior and use WTA's own cwd.
-/// WSL agents require an absolute POSIX path, so translate the common WT
-/// forms and resolve `~`/relative paths against the distro's real `$HOME`.
+/// Host agents use the working directory reported by Terminal. WSL agents
+/// require an absolute POSIX path, so translate the common WT forms and
+/// resolve `~`/relative paths against the distro's real `$HOME`.
 pub async fn resolve_source_cwd(source: &AgentSource, reported: Option<&str>) -> Option<String> {
+    let reported = reported.map(str::trim).filter(|cwd| !cwd.is_empty());
     let AgentSource::Wsl { distro } = source else {
-        return None;
+        return reported.map(str::to_string);
     };
 
-    let reported = reported.map(str::trim).filter(|cwd| !cwd.is_empty());
     if let Some(cwd) = reported.and_then(|cwd| normalize_wsl_cwd(distro, cwd)) {
         return Some(cwd);
     }
@@ -115,11 +115,17 @@ pub async fn resolve_source_cwd(source: &AgentSource, reported: Option<&str>) ->
         Some(relative) if relative.starts_with("~/") => {
             Some(format!("{}/{}", home.trim_end_matches('/'), &relative[2..]))
         }
-        Some(relative) if !relative.contains(':') && !relative.starts_with('\\') => {
-            Some(format!("{}/{}", home.trim_end_matches('/'), relative))
-        }
+        Some(relative) if !relative.contains(':') && !relative.starts_with('\\') => Some(format!(
+            "{}/{}",
+            home.trim_end_matches('/'),
+            normalize_wsl_relative_cwd(relative)
+        )),
         _ => Some(home),
     }
+}
+
+fn normalize_wsl_relative_cwd(cwd: &str) -> String {
+    cwd.replace('\\', "/").trim_start_matches("./").to_string()
 }
 
 fn normalize_wsl_cwd(distro: &str, cwd: &str) -> Option<String> {
@@ -211,6 +217,18 @@ mod tests {
         );
     }
 
+    #[tokio::test]
+    async fn host_source_preserves_reported_cwd() {
+        assert_eq!(
+            resolve_source_cwd(&AgentSource::Host, Some(r"C:\work\project")).await,
+            Some(r"C:\work\project".to_string())
+        );
+        assert_eq!(
+            resolve_source_cwd(&AgentSource::Host, Some("  ")).await,
+            None
+        );
+    }
+
     #[test]
     fn wsl_cwd_normalizes_terminal_path_forms() {
         assert_eq!(
@@ -247,5 +265,13 @@ mod tests {
         ] {
             assert_eq!(normalize_wsl_cwd("Ubuntu", cwd).as_deref(), Some("/"));
         }
+    }
+
+    #[test]
+    fn wsl_relative_cwd_uses_posix_separators() {
+        assert_eq!(normalize_wsl_relative_cwd(r"foo\bar"), "foo/bar");
+        assert_eq!(normalize_wsl_relative_cwd(r".\foo"), "foo");
+        assert_eq!(normalize_wsl_relative_cwd("./foo"), "foo");
+        assert_eq!(normalize_wsl_relative_cwd("../foo"), "../foo");
     }
 }

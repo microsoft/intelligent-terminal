@@ -1118,6 +1118,19 @@ pub struct App {
     // None (falling back to `DEFAULT_TAB_ID`) for manual `wta` runs.
     // Lazily extended on each new `tab_changed` event.
     pub(crate) tab_sessions: HashMap<String, TabSession>,
+    /// The session load handed to the ACP client but not yet completed.
+    ///
+    /// An ACP handshake or authentication failure drops `load_session_rx`
+    /// along with the request it was still carrying, and `try_start_acp`
+    /// builds the replacement client a brand-new channel pair — so nothing
+    /// re-issues it. The replacement would then quietly open a fresh session
+    /// while the pane keeps saying "Resuming session …" and the projection
+    /// keeps advertising the old id.
+    ///
+    /// Only meaningful while the target tab still has `loading_session` set;
+    /// every path that finishes or abandons a load clears that flag, which is
+    /// what keeps this from re-issuing a load nobody is waiting for.
+    pub(crate) pending_session_load: Option<LoadSessionForTab>,
     // Reverse lookup: ACP `SessionId` → tab id. Populated from
     // `AgentConnected` (the startup session, bound to whichever tab the
     // process owns) and `SessionAttached` (lazily-created sessions for
@@ -1407,6 +1420,7 @@ impl App {
             show_notification_banner: false,
             auto_error_handling_with_agent_enabled,
             tab_sessions,
+            pending_session_load: None,
             session_to_tab: HashMap::new(),
             agent_sessions: crate::agent_sessions::AgentSessionRegistry::new(),
             agent_supports_load_session: false,
@@ -1529,6 +1543,19 @@ impl App {
         tracing::info!(target: "acp", has_event_tx = self.event_tx.is_some(), has_deferred = self.deferred_acp.is_some(), post_login_auth, "try_start_acp triggered");
 
         let cloud_models = self.cloud_models.clone();
+        // A previous attempt may have died with the queued session load still
+        // sitting in `load_session_rx`. The tab's `loading_session` flag is the
+        // authority on whether anyone is still waiting for it — every path that
+        // completes or abandons a load clears that flag.
+        let pending_load = self
+            .pending_session_load
+            .as_ref()
+            .filter(|pending| {
+                self.tab_sessions
+                    .get(&pending.tab_id)
+                    .is_some_and(|tab| tab.loading_session)
+            })
+            .cloned();
         if let (Some(ref tx), Some(ref mut params)) = (&self.event_tx, &mut self.deferred_acp) {
             // If channels were consumed by a previous (failed) attempt, create fresh ones.
             // Also update all sender fields on self so the App routes to the new ACP client.
@@ -1620,6 +1647,7 @@ impl App {
                     // Taken before `owner_tab_opt` is moved into the client.
                     let recovery_tab_id = owner_tab_opt.clone();
                     let recovery_agent_id = self.current_agent_id.clone();
+                    let pending_load_sid = pending_load.as_ref().map(|p| p.session_id.clone());
                     let event_tx_for_pipe = event_tx.clone();
                     let proposal_channels = Arc::clone(&self.proposal_channels);
                     tokio::task::spawn_local(async move {
@@ -1632,7 +1660,13 @@ impl App {
                             agent_source,
                             source_cwd,
                             owner_tab_opt,
-                            None, // initial_load_session_id: already handled by the dead initial task
+                            // Re-supply the load the dead task never got to.
+                            // Without it the replacement skips straight to a
+                            // bootstrap `session/new`, so the pane silently
+                            // comes back as a cold start while still showing
+                            // "Resuming session …" and still projecting the
+                            // session id the restore asked for.
+                            pending_load_sid,
                             event_tx_for_pipe.clone(),
                             prompt_rx,
                             cancel_rx,
@@ -1714,6 +1748,21 @@ impl App {
                             }
                         }
                     });
+
+                    // Re-issue the load on the freshly created channel. The
+                    // `initial_load_session_id` above only tells the client to
+                    // skip its bootstrap `session/new`; the `load_session` call
+                    // itself is driven from this side.
+                    if let Some(request) = pending_load {
+                        tracing::info!(
+                            target: "acp_load_session",
+                            tab_id = %request.tab_id,
+                            session_id = %request.session_id,
+                            "re-issuing pending session load onto the reconnected client"
+                        );
+                        let _ = self.load_session_tx.send(request);
+                        self.pending_session_load = None;
+                    }
                 } else {
                     // Unreachable in the shipped product: wta only runs as a
                     // wta-master-attached helper, so deferred reconnect params
@@ -1849,6 +1898,15 @@ impl App {
                 .find(|model| model.selection_id == selected)
                 .map(|model| model.selection_id.as_str())
         })
+    }
+
+    fn current_model_is_byok(&self) -> bool {
+        self.selected_custom_model_id().is_some()
+            || self.current_model_id.as_deref().is_some_and(|selected| {
+                self.custom_model_catalog
+                    .iter()
+                    .any(|model| model.selection_id == selected)
+            })
     }
 
     fn resolve_current_model_id(&self, agent_model_id: Option<String>) -> Option<String> {
@@ -2675,6 +2733,18 @@ impl App {
         };
         let action = decide_enter_action(&row);
 
+        match &action {
+            EnterAction::ResumeInAgentPane { .. } => crate::telemetry::log_session_resume_invoked(
+                "AgentPane",
+                known_cli_id(&s.cli_source).unwrap_or("custom"),
+            ),
+            EnterAction::ResumeCliFlag { .. } => crate::telemetry::log_session_resume_invoked(
+                "Cli",
+                known_cli_id(&s.cli_source).unwrap_or("custom"),
+            ),
+            EnterAction::Focus { .. } | EnterAction::NotResumable { .. } => {}
+        }
+
         tracing::info!(
             target: "agents_view",
             key = %s.key,
@@ -3145,6 +3215,7 @@ impl App {
     }
 
     pub(crate) fn open_agents_view_for_tab(&mut self, tab_id: String) {
+        crate::telemetry::log_sessions_view_opened();
         {
             let tab = self.tab_mut(&tab_id);
             tab.agents_view.search_query.clear();
@@ -3492,6 +3563,15 @@ impl App {
             tab.usage_staleness = crate::usage::UsageStaleness::default();
             tab.clear_completed_turns();
             tab.session_id = None;
+            // The new agent starts with nothing to resume. Everything else
+            // that constitutes a conversation is cleared just above, so this
+            // flag has to go with it: `resumable_session_id` gates on it, and
+            // leaving it set makes the fresh session of the agent we are
+            // rebinding to look resumable. A save taken before the user talks
+            // to that agent would then record a session it never wrote to
+            // disk, and the restore fails with "Resource not found".
+            tab.has_meaningful_conversation = false;
+            tab.meaningful_conversation_before_load = None;
             tab.loading_session = false;
             tab.loading_target_session_id = None;
             tab.model_override = None;
@@ -4719,12 +4799,23 @@ impl App {
                 || tab.agents_view.rescan_in_flight)
     }
 
+    /// True while the current tab is rehydrating a previous conversation
+    /// through ACP `session/load`. Keeps the "Resuming session …" shimmer
+    /// animating for the whole load, including the part that runs after the
+    /// connection is already established and the per-tab turn counter is idle.
+    pub(crate) fn resume_in_flight(&self) -> bool {
+        self.current_tab().loading_session
+    }
+
     fn has_activity_indicator(&self) -> bool {
         if self.mode == AppMode::Setup || self.mode == AppMode::Auth {
             return true; // spinner always ticks in setup/auth mode
         }
         if matches!(self.state, ConnectionState::Connecting(_)) {
             return true; // connecting shimmer
+        }
+        if self.resume_in_flight() {
+            return true; // "Resuming session …" shimmer
         }
         if self.agents_view_awaiting_snapshot() {
             return true; // agents-view "Loading" shimmer
@@ -5182,6 +5273,7 @@ impl App {
     /// for clearing the input and cursor before calling this.
     fn handle_slash_command(&mut self, cmd: ParsedCommand) {
         let in_flight = self.current_tab().turn.is_in_flight();
+        crate::telemetry::log_slash_command_invoked(cmd.spec.name);
         tracing::info!(
             target: "slash_cmd",
             name = cmd.spec.name,
@@ -5261,7 +5353,7 @@ impl App {
             .clone()
             .unwrap_or_else(|| DEFAULT_TAB_ID.to_string());
         let _ = self.new_session_tx.send(NewSessionForTab {
-            tab_id,
+            tab_id: tab_id.clone(),
             cwd: self.source_cwd.clone(),
         });
         if let Some(session_id) = self.current_tab().session_id.clone() {
@@ -5275,7 +5367,12 @@ impl App {
         tab.usage_staleness = crate::usage::UsageStaleness::default();
         tab.clear_completed_turns();
         tab.session_id = None;
+        tab.has_meaningful_conversation = false;
+        tab.meaningful_conversation_before_load = None;
+        tab.loading_session = false;
+        tab.loading_target_session_id = None;
         tab.scroll_to_bottom();
+        self.project_tab_state(&tab_id);
     }
 
     /// `/fix [hint]` — run the Auto error handling prompt on demand against the active
@@ -5330,7 +5427,9 @@ impl App {
         };
 
         let hint = hint.trim().to_string();
-        let prompt = PromptSubmission::new_auto_error_handling(hint.clone(), Some(pane_context));
+        let prompt = PromptSubmission::new_auto_error_handling(hint.clone(), Some(pane_context))
+            .with_byok(self.current_model_is_byok())
+            .with_agent_id(self.current_agent_id.clone());
         let submitted = SubmittedPrompt {
             id: prompt.id,
             text: prompt.text.clone(),
@@ -5453,6 +5552,13 @@ impl App {
             tab.usage_staleness = crate::usage::UsageStaleness::default();
             tab.clear_completed_turns();
             tab.session_id = None;
+            tab.has_meaningful_conversation = false;
+            tab.meaningful_conversation_before_load = None;
+            tab.loading_session = false;
+            tab.loading_target_session_id = None;
+        }
+        for tab_id in self.tab_sessions.keys().cloned().collect::<Vec<_>>() {
+            self.project_tab_state(&tab_id);
         }
         let _ = self.restart_tx.send(AgentLifecycleRequest::RestartMaster);
         self.publish_agent_status();
@@ -5842,6 +5948,11 @@ impl App {
             tab.usage = None;
             tab.usage_staleness = crate::usage::UsageStaleness::default();
             tab.clear_completed_turns();
+            tab.selected_completed_turn_idx = None;
+            tab.has_meaningful_conversation = false;
+            tab.meaningful_conversation_before_load = None;
+            tab.loading_session = false;
+            tab.loading_target_session_id = None;
             tab.scroll_to_bottom();
         }
         if let Some(session_id) = removed_session_id {
@@ -5859,6 +5970,7 @@ impl App {
             tab_id: tab_id.to_string(),
             notify_master: false,
         });
+        self.project_tab_state(tab_id);
 
         tracing::info!(
             target: "tab_session",

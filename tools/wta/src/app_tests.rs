@@ -1852,7 +1852,25 @@ fn load_session_applied_when_target_tab_matches_owner() {
         Some("old-session"),
         "the previous session remains authoritative until load succeeds"
     );
+    assert!(app.tab_sessions["OWNER-TAB"].has_meaningful_conversation);
+    assert_eq!(
+        app.tab_sessions["OWNER-TAB"].resumable_session_id(),
+        Some("sess-abc")
+    );
     assert!(app.session_model_configs.contains_key("old-session"));
+
+    // The request is also retained. If the ACP client dies before it consumes
+    // this, `load_session_rx` is dropped with the request still in it and the
+    // reconnect gets a brand-new channel pair — so `try_start_acp` has to be
+    // able to re-issue it, or the replacement quietly opens a fresh session
+    // while the pane keeps saying "Resuming session …".
+    let pending = app
+        .pending_session_load
+        .as_ref()
+        .expect("an in-flight load must be retained for a possible reconnect");
+    assert_eq!(pending.tab_id, "OWNER-TAB");
+    assert_eq!(pending.session_id, "sess-abc");
+    assert_eq!(pending.cwd.as_deref(), Some("C:/foo"));
 }
 
 #[test]
@@ -1980,6 +1998,42 @@ fn session_attached_for_bootstrap_does_not_close_load_replay_window() {
 }
 
 #[test]
+fn agent_connected_does_not_add_disclaimer_while_resuming() {
+    let (mut app, _load_session_rx) = make_app_with_load_session_channel();
+    app.tab_id = Some("OWNER-TAB".to_string());
+    app.owner_tab_id = Some("OWNER-TAB".to_string());
+    app.tab_sessions
+        .insert("OWNER-TAB".to_string(), TabSession::default());
+
+    app.handle_event(AppEvent::WtEvent {
+        method: "load_session".to_string(),
+        pane_id: String::new(),
+        tab_id: None,
+        params: json!({
+            "tab_id": "OWNER-TAB",
+            "session_id": "sess-target",
+            "cwd": "",
+        }),
+    });
+
+    app.handle_event(AppEvent::AgentConnected {
+        name: "Copilot".to_string(),
+        model: None,
+        version: None,
+        session_id: "sess-bootstrap".to_string(),
+        available_models: Vec::new(),
+        current_model_id: None,
+        load_session_supported: true,
+        image_supported: true,
+    });
+
+    assert!(!app.tab_sessions["OWNER-TAB"]
+        .messages
+        .iter()
+        .any(|message| matches!(message, ChatMessage::Disclaimer)));
+}
+
+#[test]
 fn set_agent_state_preserves_owner_pane_position() {
     let mut app = test_app();
     app.window_id = Some("window-1".into());
@@ -2047,6 +2101,57 @@ fn session_attached_for_load_target_closes_replay_window() {
     );
 }
 
+// The status row only gets height when `should_show_activity` says so, and
+// `render_activity` draws into whatever that allocates. A resume outlives the
+// `Connecting` state it starts in — `session/load` only runs once the
+// handshake is done, and can take tens of seconds — so leaving it out of the
+// gate collapsed the row the moment the connection completed: the resume
+// shimmer was drawn into a zero-height area and the pane went blank for the
+// rest of the load, with no way to tell a slow resume from a hang.
+#[test]
+fn a_resume_keeps_the_status_row_after_the_connection_completes() {
+    let (mut app, _load_session_rx) = make_app_with_load_session_channel();
+    app.owner_tab_id = Some("OWNER-TAB".to_string());
+    app.tab_id = Some("OWNER-TAB".to_string());
+    app.tab_sessions
+        .insert("OWNER-TAB".to_string(), TabSession::default());
+    app.state = ConnectionState::Connected;
+
+    assert!(
+        !crate::ui::chat::should_show_activity(&app),
+        "an idle connected pane needs no status row"
+    );
+
+    app.handle_event(AppEvent::WtEvent {
+        method: "load_session".to_string(),
+        pane_id: String::new(),
+        tab_id: None,
+        params: json!({
+            "tab_id": "OWNER-TAB",
+            "session_id": "sess-target",
+            "cwd": "",
+        }),
+    });
+
+    assert!(app.tab_sessions["OWNER-TAB"].loading_session);
+    assert!(
+        crate::ui::chat::should_show_activity(&app),
+        "a resume must hold the status row open for the whole session/load, \
+         not just while the connection is still being established"
+    );
+
+    app.handle_event(AppEvent::SessionAttached {
+        tab_id: "OWNER-TAB".to_string(),
+        session_id: "sess-target".to_string(),
+        available_models: vec![],
+        current_model_id: None,
+    });
+    assert!(
+        !crate::ui::chat::should_show_activity(&app),
+        "and is released once the resume is done"
+    );
+}
+
 /// TabError must clear both flags so a subsequent load can re-open
 /// the window cleanly.
 #[test]
@@ -2077,21 +2182,59 @@ fn tab_error_clears_load_target() {
     assert!(app.tab_sessions["OWNER-TAB"]
         .loading_target_session_id
         .is_none());
+    assert!(!app.tab_sessions["OWNER-TAB"].has_meaningful_conversation);
 }
 
-/// Replayed history must be packed into collapsed CompletedTurn rows
-/// after session/load completes. Each User message opens a new turn;
-/// the prompt header is a short preview (the full original User text
-/// is kept as the first details entry so expanding shows everything).
-/// Subsequent non-User messages become later details. Default
-/// `expanded: false` so the resumed transcript doesn't dump as one
-/// long wall.
 #[test]
-fn pack_replayed_messages_groups_into_collapsed_turns() {
+fn tab_error_restores_the_previous_meaningful_session() {
+    let (mut app, _load_session_rx) = make_app_with_load_session_channel();
+    app.owner_tab_id = Some("OWNER-TAB".to_string());
+    app.tab_sessions.insert(
+        "OWNER-TAB".to_string(),
+        TabSession {
+            session_id: Some("old-session".to_string()),
+            has_meaningful_conversation: true,
+            ..Default::default()
+        },
+    );
+
+    app.handle_event(AppEvent::WtEvent {
+        method: "load_session".to_string(),
+        pane_id: String::new(),
+        tab_id: None,
+        params: json!({
+            "tab_id": "OWNER-TAB",
+            "session_id": "replacement-session",
+            "cwd": "",
+        }),
+    });
+    app.handle_event(AppEvent::TabError {
+        tab_id: "OWNER-TAB".to_string(),
+        message: "load failed".to_string(),
+    });
+
+    assert_eq!(
+        app.tab_sessions["OWNER-TAB"].resumable_session_id(),
+        Some("old-session")
+    );
+}
+
+/// Replayed history must be packed into CompletedTurn rows after session/load
+/// completes. Each User message opens a new turn and WTA's composed prompt is
+/// reduced back to the original user request.
+#[test]
+fn pack_replayed_messages_groups_into_expanded_turns() {
     let mut tab = TabSession::default();
     tab.messages = vec![
         ChatMessage::System("Resuming session abc...".to_string()),
-        ChatMessage::User("# Terminal Agent\nYou are...".to_string()),
+        ChatMessage::User(
+            r#"# Terminal Agent
+You are...
+
+## User Request
+get time"#
+                .to_string(),
+        ),
         ChatMessage::Agent("Hello, I am ready.".to_string()),
         ChatMessage::User("list files".to_string()),
         ChatMessage::ToolCall {
@@ -2120,26 +2263,126 @@ fn pack_replayed_messages_groups_into_collapsed_turns() {
     assert_eq!(tab.completed_turns.len(), 2);
 
     let t0 = &tab.completed_turns[0];
-    // Preview shows first non-empty line + ellipsis (extra lines below).
-    assert_eq!(t0.prompt, "# Terminal Agent…");
-    // details = [original full User, Agent reply].
-    assert_eq!(t0.details.len(), 2);
+    // Header is the request the user actually typed, not the template wrapper.
+    assert_eq!(t0.prompt, "get time");
+    assert_eq!(t0.details.len(), 1);
+    assert!(matches!(&t0.details[0], ChatMessage::Agent(_)));
     assert!(
-        matches!(&t0.details[0], ChatMessage::User(s) if s.starts_with("# Terminal Agent\nYou are"))
+        t0.expanded,
+        "replayed turn must match live expanded rendering"
     );
-    assert!(matches!(&t0.details[1], ChatMessage::Agent(_)));
-    assert!(!t0.expanded, "replayed turn must default to collapsed");
     assert!(t0.trailing_marker.is_none());
 
     let t1 = &tab.completed_turns[1];
     // Short single-line prompt — no ellipsis.
     assert_eq!(t1.prompt, "list files");
-    // details = [original User, ToolCall, Agent].
-    assert_eq!(t1.details.len(), 3);
-    assert!(matches!(&t1.details[0], ChatMessage::User(s) if s == "list files"));
-    assert!(matches!(&t1.details[1], ChatMessage::ToolCall { .. }));
-    assert!(matches!(&t1.details[2], ChatMessage::Agent(_)));
-    assert!(!t1.expanded);
+    assert_eq!(t1.details.len(), 2);
+    assert!(matches!(&t1.details[0], ChatMessage::ToolCall { .. }));
+    assert!(matches!(&t1.details[1], ChatMessage::Agent(_)));
+    assert!(t1.expanded);
+}
+
+// A replayed turn is stored expanded, and expanded rendering reads
+// `turn.prompt` verbatim (`build_completed_turn_lines`), collapsing it only
+// when the turn is collapsed. Storing a preview here instead of the request
+// would make the truncation permanent: a restored turn could never show more
+// than the first line, however far the user expands it.
+#[test]
+fn pack_replayed_turns_keep_the_whole_prompt() {
+    let long_line = "x".repeat(200);
+    let request = format!("first line\nsecond line\n{long_line}");
+
+    let mut tab = TabSession::default();
+    tab.messages = vec![
+        ChatMessage::User(format!(
+            "# Terminal Agent\n...\n\n## User Request\n{request}"
+        )),
+        ChatMessage::Agent("done".to_string()),
+    ];
+
+    tab.pack_replayed_messages_into_turns();
+
+    assert_eq!(tab.completed_turns.len(), 1);
+    let turn = &tab.completed_turns[0];
+    assert!(turn.expanded);
+    assert_eq!(turn.prompt, request);
+    assert!(
+        !turn.prompt.ends_with('…'),
+        "the stored prompt must be the request, not its collapsed preview"
+    );
+    // The collapsed header is still a one-line preview — that is the
+    // renderer's job, not something baked into the stored turn.
+    assert_eq!(
+        collapsed_prompt_preview(&turn.prompt),
+        "first line…",
+        "collapsing stays available at render time"
+    );
+}
+
+#[test]
+fn pack_replayed_recommendation_reuses_live_turn_formatting() {
+    let mut tab = TabSession::default();
+    tab.messages = vec![
+        ChatMessage::User(
+            r#"# Terminal Agent
+...
+
+## User Request
+get time"#
+                .to_string(),
+        ),
+        ChatMessage::Agent(
+            r#"```json
+{
+  "recommended_choice": 1,
+  "choices": [{
+    "choice": 1,
+    "title": "Get the current time",
+    "rationale": "Displays the current time.",
+    "actions": [{
+      "type": "send",
+      "parent": "old-pane-id",
+      "input": "Get-Date -Format 'HH:mm:ss'"
+    }]
+  }]
+}
+```"#
+                .to_string(),
+        ),
+    ];
+
+    tab.pack_replayed_messages_into_turns();
+
+    assert_eq!(tab.completed_turns.len(), 1);
+    let turn = &tab.completed_turns[0];
+    assert_eq!(turn.prompt, "get time");
+    assert!(turn.expanded);
+    assert_eq!(
+        turn.details,
+        vec![ChatMessage::Agent(
+            "Suggested 1 option:\n  ✓ 1. Run: Get-Date -Format 'HH:mm:ss'".to_string()
+        )]
+    );
+}
+
+#[test]
+fn render_replayed_turn_matches_live_expanded_conversation() {
+    let mut app = test_app();
+    app.state = ConnectionState::Connected;
+    let tab = app.current_tab_mut();
+    tab.messages = vec![
+        ChatMessage::User(
+            "# Terminal Agent\nSYSTEM_PROMPT_MUST_NOT_RENDER\n\n## User Request\nREAL_USER_REQUEST"
+                .to_string(),
+        ),
+        ChatMessage::Agent("RESTORED_AGENT_REPLY".to_string()),
+    ];
+    tab.pack_replayed_messages_into_turns();
+
+    let rendered = render_to_text(&mut app, 80, 24);
+    assert!(rendered.contains("REAL_USER_REQUEST"));
+    assert!(rendered.contains("RESTORED_AGENT_REPLY"));
+    assert!(!rendered.contains("SYSTEM_PROMPT_MUST_NOT_RENDER"));
 }
 
 /// Preview logic: huge single-line prompt must clip to the cap with
@@ -2177,7 +2420,7 @@ fn pack_replayed_messages_preserves_pre_user_orphans() {
     assert!(matches!(&tab.messages[1], ChatMessage::Agent(s) if s == "stray context dump"));
     assert_eq!(tab.completed_turns.len(), 1);
     assert_eq!(tab.completed_turns[0].prompt, "hi");
-    assert!(!tab.completed_turns[0].expanded);
+    assert!(tab.completed_turns[0].expanded);
 }
 
 /// Empty messages must no-op (no panic, no spurious turn).
@@ -2190,8 +2433,8 @@ fn pack_replayed_messages_empty_is_noop() {
 }
 
 /// Integration: SessionAttached for the load target must trigger
-/// packing — replayed User/Agent rows must end up as collapsed
-/// CompletedTurn entries, not loose ChatMessage rows.
+/// packing — replayed User/Agent rows must end up as expanded CompletedTurn
+/// entries, matching live chat rendering rather than loose ChatMessage rows.
 #[test]
 fn session_attached_for_load_target_packs_replayed_history() {
     let (mut app, _load_session_rx) = make_app_with_load_session_channel();
@@ -2232,10 +2475,13 @@ fn session_attached_for_load_target_packs_replayed_history() {
     assert_eq!(
         tab.completed_turns.len(),
         2,
-        "both replayed user prompts must become collapsed CompletedTurn rows"
+        "both replayed user prompts must become CompletedTurn rows"
     );
     for turn in &tab.completed_turns {
-        assert!(!turn.expanded, "replayed turns default collapsed");
+        assert!(
+            turn.expanded,
+            "replayed turns must match live expanded rendering"
+        );
     }
     // Resume is silent now — no "Resuming…" marker is posted, so after
     // packing the replayed User/Agent rows into turns nothing is left in
@@ -2245,6 +2491,133 @@ fn session_attached_for_load_target_packs_replayed_history() {
         "resume must not leave any loose chat messages, got {:?}",
         tab.messages
     );
+}
+
+#[test]
+fn replay_message_ids_preserve_user_only_recommendation_turns() {
+    let mut app = app_loading_replayed_session();
+
+    app.handle_event(AppEvent::UserMessageReplayChunk {
+        session_id: "sess-target".to_string(),
+        message_id: Some("recommendation-turn".to_string()),
+        text: "# Terminal Agent\n\n## User Request\nos ".to_string(),
+    });
+    app.handle_event(AppEvent::UserMessageReplayChunk {
+        session_id: "sess-target".to_string(),
+        message_id: Some("recommendation-turn".to_string()),
+        text: "version".to_string(),
+    });
+    app.handle_event(AppEvent::UserMessageReplayChunk {
+        session_id: "sess-target".to_string(),
+        message_id: Some("chat-turn".to_string()),
+        text: "## User Request\nHow is the day".to_string(),
+    });
+    app.handle_event(AppEvent::AgentMessageChunk {
+        session_id: "sess-target".to_string(),
+        text: "It is going well.".to_string(),
+    });
+    app.handle_event(AppEvent::SessionAttached {
+        tab_id: "OWNER-TAB".to_string(),
+        session_id: "sess-target".to_string(),
+        available_models: vec![],
+        current_model_id: None,
+    });
+
+    let turns = &app.tab_sessions["OWNER-TAB"].completed_turns;
+    assert_eq!(turns.len(), 2);
+    assert_eq!(turns[0].prompt, "os version");
+    assert!(turns[0].details.is_empty());
+    assert_eq!(turns[1].prompt, "How is the day");
+    assert_eq!(
+        turns[1].details,
+        vec![ChatMessage::Agent("It is going well.".to_string())]
+    );
+}
+
+#[test]
+fn hidden_proposal_tool_calls_delimit_replayed_user_messages_without_ids() {
+    let mut app = app_loading_replayed_session();
+
+    app.handle_event(AppEvent::UserMessageReplayChunk {
+        session_id: "sess-target".to_string(),
+        message_id: None,
+        text: "## User Request\nHow are you".to_string(),
+    });
+    app.handle_event(AppEvent::AgentMessageChunk {
+        session_id: "sess-target".to_string(),
+        text: "I am doing well.".to_string(),
+    });
+    app.handle_event(AppEvent::UserMessageReplayChunk {
+        session_id: "sess-target".to_string(),
+        message_id: None,
+        text: "## User Request\nos version".to_string(),
+    });
+    app.handle_event(AppEvent::HideToolCall {
+        session_id: "sess-target".to_string(),
+        id: "proposal-os-version".to_string(),
+    });
+    app.handle_event(AppEvent::UserMessageReplayChunk {
+        session_id: "sess-target".to_string(),
+        message_id: None,
+        text: "## User Request\nlist file size".to_string(),
+    });
+    app.handle_event(AppEvent::HideToolCall {
+        session_id: "sess-target".to_string(),
+        id: "proposal-file-size".to_string(),
+    });
+    app.handle_event(AppEvent::UserMessageReplayChunk {
+        session_id: "sess-target".to_string(),
+        message_id: None,
+        text: "## User Request\nHow is the day".to_string(),
+    });
+    app.handle_event(AppEvent::AgentMessageChunk {
+        session_id: "sess-target".to_string(),
+        text: "It is going well.".to_string(),
+    });
+    app.handle_event(AppEvent::SessionAttached {
+        tab_id: "OWNER-TAB".to_string(),
+        session_id: "sess-target".to_string(),
+        available_models: vec![],
+        current_model_id: None,
+    });
+
+    let turns = &app.tab_sessions["OWNER-TAB"].completed_turns;
+    assert_eq!(turns.len(), 4);
+    assert_eq!(turns[0].prompt, "How are you");
+    assert_eq!(
+        turns[0].details,
+        vec![ChatMessage::Agent("I am doing well.".to_string())]
+    );
+    assert_eq!(turns[1].prompt, "os version");
+    assert!(turns[1].details.is_empty());
+    assert_eq!(turns[2].prompt, "list file size");
+    assert!(turns[2].details.is_empty());
+    assert_eq!(turns[3].prompt, "How is the day");
+    assert_eq!(
+        turns[3].details,
+        vec![ChatMessage::Agent("It is going well.".to_string())]
+    );
+}
+
+fn app_loading_replayed_session() -> App {
+    let (mut app, _load_session_rx) = make_app_with_load_session_channel();
+    app.owner_tab_id = Some("OWNER-TAB".to_string());
+    app.tab_sessions
+        .insert("OWNER-TAB".to_string(), TabSession::default());
+    app.session_to_tab
+        .insert("sess-target".to_string(), "OWNER-TAB".to_string());
+
+    app.handle_event(AppEvent::WtEvent {
+        method: "load_session".to_string(),
+        pane_id: String::new(),
+        tab_id: None,
+        params: json!({
+            "tab_id": "OWNER-TAB",
+            "session_id": "sess-target",
+            "cwd": "",
+        }),
+    });
+    app
 }
 
 // ─── WtNotification auto-dismiss ────────────────────────────────────────
@@ -2607,6 +2980,49 @@ fn born_bound_registration_uses_current_master_request_sender() {
         }
         other => panic!("expected SessionBornBound, got {other:?}"),
     }
+}
+
+#[test]
+fn restored_shell_agent_session_registers_as_born_bound() {
+    let (mut app, mut master_rx) = test_app_with_master_rx();
+    let agent_session_id = "8f924227-22df-4e54-aa18-3471107b567b";
+    let pane_id = "F6BAB379-8942-4F5F-9E7F-078EA1AB9463";
+
+    app.handle_event(AppEvent::WtEvent {
+        method: "session_born_bound".to_string(),
+        pane_id: pane_id.to_string(),
+        tab_id: None,
+        params: json!({
+            "agent_session_id": agent_session_id,
+            "agent": "copilot",
+            "cwd": r"C:\project",
+        }),
+    });
+
+    let session = app
+        .agent_sessions
+        .get(&agent_session_id.to_string())
+        .expect("restored session should be live locally");
+    assert_eq!(session.status, crate::agent_sessions::AgentStatus::Idle);
+    assert_eq!(
+        session.pane_session_id.as_deref(),
+        Some("f6bab379-8942-4f5f-9e7f-078ea1ab9463")
+    );
+    assert_eq!(
+        session.cli_source,
+        crate::agent_sessions::CliSource::Copilot
+    );
+
+    assert!(matches!(
+        master_rx.try_recv(),
+        Ok(crate::protocol::acp::client::MasterExtRequest::SessionBornBound {
+            event: crate::agent_sessions::SessionEvent::SessionStarted {
+                key,
+                pane_session_id,
+                ..
+            },
+        }) if key == agent_session_id && pane_session_id == pane_id
+    ));
 }
 
 #[test]
@@ -4633,6 +5049,44 @@ fn agents_snapshot_failed_ignores_stale_request_id() {
         app.current_tab().agents_view.refetch_in_flight,
         "stale failure must not clear the fresh in-flight gate"
     );
+}
+
+/// A resume drives its own indicator, so the shimmer has to keep ticking for
+/// the whole `session/load` — including the part that runs once the connection
+/// is established and the per-tab turn counter has gone idle.
+#[test]
+fn resume_in_flight_keeps_the_activity_shimmer_ticking() {
+    let (mut app, _master_rx) = test_app_with_master_rx();
+    app.state = ConnectionState::Connected;
+    assert!(!app.resume_in_flight());
+
+    let before = app.activity_frame;
+    app.handle_event(AppEvent::Tick);
+    assert_eq!(
+        app.activity_frame, before,
+        "a connected, idle pane has nothing to animate"
+    );
+    assert!(
+        !app.event_requires_redraw(&AppEvent::Tick),
+        "an idle pane must not repaint on every tick"
+    );
+
+    app.current_tab_mut().loading_session = true;
+    assert!(app.resume_in_flight());
+
+    let before = app.activity_frame;
+    app.handle_event(AppEvent::Tick);
+    assert_ne!(
+        app.activity_frame, before,
+        "the resuming indicator must keep animating while session/load runs"
+    );
+    // Advancing the counter is useless on its own: a tick that does not ask
+    // for a repaint leaves the shimmer frozen on screen.
+    assert!(
+        app.event_requires_redraw(&AppEvent::Tick),
+        "a resuming pane must repaint so the shimmer actually moves"
+    );
+    assert!(app.has_activity_indicator());
 }
 
 /// The loading-shimmer signal: true only while the agents view is open
@@ -9461,6 +9915,95 @@ fn double_click_in_input_dialog_preserves_word_selection() {
 }
 
 #[test]
+fn ctrl_a_selects_current_rendered_frame_without_altering_input() {
+    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+
+    let mut app = test_app();
+    app.state = ConnectionState::Connected;
+    app.current_tab_mut().completed_turns.push(CompletedTurn {
+        prompt: "SELECT_ALL_PROMPT".into(),
+        details: vec![ChatMessage::Agent("SELECT_ALL_REPLY".into())],
+        expanded: true,
+        trailing_marker: None,
+    });
+    app.current_tab_mut().input = "SELECT_ALL_DRAFT".into();
+    let rendered = render_to_text(&mut app, 80, 16);
+    assert!(rendered.contains("SELECT_ALL_PROMPT"));
+    assert!(rendered.contains("SELECT_ALL_REPLY"));
+    assert!(rendered.contains("SELECT_ALL_DRAFT"));
+
+    app.handle_event(AppEvent::Key(KeyEvent::new(
+        KeyCode::Char('a'),
+        KeyModifiers::CONTROL,
+    )));
+
+    let selected = app
+        .text_selection
+        .selected_text()
+        .expect("plain Ctrl+A must select the current rendered frame");
+    assert!(selected.contains("SELECT_ALL_PROMPT"));
+    assert!(selected.contains("SELECT_ALL_REPLY"));
+    assert!(selected.contains("SELECT_ALL_DRAFT"));
+    assert_eq!(app.current_tab().input, "SELECT_ALL_DRAFT");
+
+    app.handle_event(AppEvent::Key(KeyEvent::new(
+        KeyCode::Char('a'),
+        KeyModifiers::CONTROL | KeyModifiers::SHIFT,
+    )));
+    assert!(
+        app.text_selection.selected_text().is_none(),
+        "Ctrl+Shift+A must remain on the generic TerminalControl select-all path",
+    );
+}
+
+#[cfg(windows)]
+#[test]
+fn right_click_copies_and_clears_ctrl_a_selection() {
+    use crossterm::event::{
+        KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEvent, MouseEventKind,
+    };
+
+    let _clipboard_guard = crate::clipboard_image::CLIPBOARD_TEST_LOCK
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let original_clipboard = crate::win32::read_paste_string_from_clipboard().ok();
+    let mut app = test_app();
+    app.state = ConnectionState::Connected;
+    app.current_tab_mut().input = "SELECT_ALL_RIGHT_CLICK".into();
+    render_to_text(&mut app, 80, 16);
+    app.handle_event(AppEvent::Key(KeyEvent::new(
+        KeyCode::Char('a'),
+        KeyModifiers::CONTROL,
+    )));
+    assert!(app
+        .text_selection
+        .selected_text()
+        .is_some_and(|text| text.contains("SELECT_ALL_RIGHT_CLICK")));
+
+    crate::win32::copy_text_to_clipboard("SELECT_ALL_RIGHT_CLICK_SENTINEL")
+        .expect("clipboard setup must succeed");
+    app.handle_event(AppEvent::Mouse(MouseEvent {
+        kind: MouseEventKind::Down(MouseButton::Right),
+        column: 0,
+        row: 0,
+        modifiers: KeyModifiers::NONE,
+    }));
+
+    assert!(crate::win32::read_paste_string_from_clipboard()
+        .expect("right-click copy must be readable")
+        .contains("SELECT_ALL_RIGHT_CLICK"));
+    assert!(app.text_selection.selected_text().is_none());
+    assert!(app
+        .transient_hint
+        .as_ref()
+        .is_some_and(|(hint, _)| hint == &t!("system.selection_copied")));
+    if let Some(original_clipboard) = original_clipboard {
+        crate::win32::copy_text_to_clipboard(&original_clipboard)
+            .expect("original clipboard text must be restored");
+    }
+}
+
+#[test]
 fn completed_turn_user_input_multi_click_preserves_turn_state_and_text_selection() {
     use crossterm::event::{KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
 
@@ -10368,6 +10911,69 @@ fn render_chat_welcome_hint() {
     assert!(
         !probe.trim().is_empty() && text.contains(&probe),
         "chat must paint the welcome title ({title:?}); rendered:\n{text}"
+    );
+}
+
+#[test]
+fn resuming_pane_paints_resuming_not_connecting() {
+    // A resume runs `session/load` while the helper is still `Connecting`, so
+    // the activity line has to prefer the resume. Testing the connection first
+    // reported "Connecting to agent…" for the whole restore and the resuming
+    // label was unreachable on the one path it exists for.
+    let mut app = test_app();
+    app.state = ConnectionState::Connecting("Connecting...".to_string());
+    app.current_tab_mut().loading_session = true;
+    app.current_tab_mut().loading_target_session_id =
+        Some("aaaaaaaa-1111-2222-3333-444444444444".to_string());
+
+    let text = render_to_text(&mut app, 80, 24);
+    assert!(
+        text.contains("aaaaaaaa"),
+        "the resuming line must name the session being restored; rendered:\n{text}"
+    );
+
+    let connecting = t!("connection.connecting_activity").into_owned();
+    let probe: String = connecting.chars().take(8).collect();
+    assert!(
+        !probe.trim().is_empty() && !text.contains(&probe),
+        "a resuming pane must not fall back to the connecting line ({connecting:?}); rendered:\n{text}"
+    );
+}
+
+#[test]
+fn resuming_pane_does_not_paint_the_first_run_welcome() {
+    // A restored conversation is not a first run, so the hint must be gone by
+    // the time the replayed history lands. `load_session` can arrive after the
+    // connect that already decided this was a first run, so the handler has to
+    // retract it rather than merely decline to set it.
+    let (mut app, _load_session_rx) = make_app_with_load_session_channel();
+    app.owner_tab_id = Some("OWNER-TAB".to_string());
+    app.tab_sessions
+        .insert("OWNER-TAB".to_string(), TabSession::default());
+    app.state = ConnectionState::Connected;
+    app.show_welcome_hint = true;
+
+    app.handle_event(AppEvent::WtEvent {
+        method: "load_session".to_string(),
+        pane_id: String::new(),
+        tab_id: None,
+        params: json!({
+            "tab_id": "OWNER-TAB",
+            "session_id": "sess-resume",
+        }),
+    });
+
+    assert!(
+        !app.show_welcome_hint,
+        "a resume must retract the first-run welcome hint"
+    );
+
+    let text = render_to_text(&mut app, 80, 24);
+    let title = t!("chat.welcome_title").into_owned();
+    let probe: String = title.chars().take(6).collect();
+    assert!(
+        !probe.trim().is_empty() && !text.contains(&probe),
+        "a resuming pane must not paint the welcome title ({title:?}); rendered:\n{text}"
     );
 }
 
@@ -13196,7 +13802,7 @@ fn input_history_preserves_multiline_entries_atomically() {
 }
 
 #[test]
-fn submitting_prompt_records_only_that_tab_history() {
+fn submitting_prompt_records_only_that_tab_conversation() {
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
     let mut app = test_app();
     app.tab_sessions
@@ -13905,4 +14511,139 @@ fn usage_projection_contains_context_cost_and_explicit_null() {
         &TabSession::default(),
     );
     assert!(cleared["params"]["usage"].is_null());
+}
+
+#[test]
+fn agent_state_projection_includes_agent_session_id() {
+    let mut tab = TabSession {
+        session_id: Some("agent-session-1".to_string()),
+        has_meaningful_conversation: true,
+        ..Default::default()
+    };
+
+    let event = super::app_status_projection::build_agent_state_changed_event("TAB-1", &tab);
+    assert_eq!(
+        event["params"]["agent_session_id"],
+        serde_json::json!("agent-session-1")
+    );
+
+    tab.loading_target_session_id = Some("agent-session-2".to_string());
+    let loading = super::app_status_projection::build_agent_state_changed_event("TAB-1", &tab);
+    assert_eq!(
+        loading["params"]["agent_session_id"],
+        serde_json::json!("agent-session-2")
+    );
+
+    let cleared = super::app_status_projection::build_agent_state_changed_event(
+        "TAB-1",
+        &TabSession::default(),
+    );
+    assert!(cleared["params"]["agent_session_id"].is_null());
+}
+
+#[test]
+fn resumable_session_id_requires_a_meaningful_conversation() {
+    let mut tab = TabSession {
+        session_id: Some("fresh-session".to_string()),
+        ..Default::default()
+    };
+    assert_eq!(tab.resumable_session_id(), None);
+
+    tab.has_meaningful_conversation = true;
+    assert_eq!(tab.resumable_session_id(), Some("fresh-session"));
+}
+
+// Switching agents rebinds the helper and the new agent opens a session of its
+// own, empty until the user talks to it. Everything else that constitutes a
+// conversation is cleared on rebind, and the meaningfulness flag has to be
+// cleared with it — otherwise the previous agent's conversation makes the new
+// agent's untouched session look resumable, and a save records a session the
+// new agent never wrote to disk (`session/load` then fails with
+// "Resource not found").
+#[test]
+fn agent_rebind_clears_meaningful_conversation() {
+    let (mut app, _restart_rx) = test_app_with_restart_rx();
+    app.owner_tab_id = Some("owner-tab".into());
+    app.window_id = Some("window-1".into());
+    app.tab_id = Some("owner-tab".into());
+    app.current_agent_id = "copilot".into();
+
+    {
+        let tab = app.tab_mut("owner-tab");
+        tab.session_id = Some("copilot-session".to_string());
+        tab.has_meaningful_conversation = true;
+        assert_eq!(tab.resumable_session_id(), Some("copilot-session"));
+    }
+
+    app.handle_event(AppEvent::WtEvent {
+        method: "rebind_agent".into(),
+        pane_id: String::new(),
+        tab_id: None,
+        params: json!({
+            "operation_id": "agent-rebind",
+            "generation": 1,
+            "window_id": "window-1",
+            "tab_id": "owner-tab",
+            "agent_id": "claude",
+            "agent_source": "host",
+        }),
+    });
+
+    let tab = app.tab_mut("owner-tab");
+    assert!(!tab.has_meaningful_conversation);
+    assert_eq!(tab.meaningful_conversation_before_load, None);
+    assert_eq!(tab.resumable_session_id(), None);
+}
+
+#[test]
+fn resumable_session_id_uses_the_load_target_during_replay() {
+    let tab = TabSession {
+        loading_session: true,
+        loading_target_session_id: Some("loaded-session".to_string()),
+        has_meaningful_conversation: true,
+        ..Default::default()
+    };
+    assert_eq!(tab.resumable_session_id(), Some("loaded-session"));
+}
+
+// Submitting a prompt is not yet proof the agent has taken it: the caller
+// still has to dispatch it over ACP, and the agent only writes the session to
+// disk once it starts handling it. A save landing in that window would record
+// a `session/new` id the agent never persisted, and the restore would fail
+// with "Resource not found" — the same class of failure the rebind fix
+// addresses. Agent activity for the turn is what makes the id safe to keep.
+#[test]
+fn a_submitted_prompt_is_not_resumable_until_the_agent_answers() {
+    let mut app = test_app();
+    app.tab_mut(DEFAULT_TAB_ID).session_id = Some("fresh-session".to_string());
+
+    submit_test_prompt(&mut app, "hello");
+    assert_eq!(
+        app.tab_mut(DEFAULT_TAB_ID).resumable_session_id(),
+        None,
+        "a prompt the agent has not answered yet must not be persisted as resumable"
+    );
+
+    app.turn_observe_chunk(DEFAULT_TAB_ID, ChunkKind::Message, "hi");
+    assert_eq!(
+        app.tab_mut(DEFAULT_TAB_ID).resumable_session_id(),
+        Some("fresh-session")
+    );
+}
+
+// A turn can finish without ever streaming a visible chunk (a tool-only turn).
+// The turn boundary itself is still proof the agent processed the prompt.
+#[test]
+fn a_turn_with_no_chunks_still_makes_the_session_resumable() {
+    let mut app = test_app();
+    app.tab_mut(DEFAULT_TAB_ID).session_id = Some("fresh-session".to_string());
+
+    submit_test_prompt(&mut app, "hello");
+    assert_eq!(app.tab_mut(DEFAULT_TAB_ID).resumable_session_id(), None);
+
+    app.turn_close(DEFAULT_TAB_ID);
+    assert_eq!(
+        app.tab_mut(DEFAULT_TAB_ID).resumable_session_id(),
+        Some("fresh-session")
+    );
 }

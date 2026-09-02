@@ -2048,6 +2048,23 @@ void CascadiaSettings::LogSettingChanges(bool isJsonLoad) const
             {
                 emitIntelligentFeatureConfigured("AgentPanePosition", agentPanePosition.c_str());
             }
+            emitIntelligentFeatureConfigured("QuotaUsage", _globals->ShowTokenUsageAndCost() ? L"true" : L"false");
+            emitIntelligentFeatureConfigured(
+                "VerticalTabs",
+                _globals->TabLayout() == Model::TabLayout::Vertical ? L"true" : L"false");
+
+            for (const auto& provider : _globals->CustomModelProviders())
+            {
+                TraceLoggingWrite(g_hSettingsModelProvider,
+                                  "CustomModelProviderConfigured",
+                                  TraceLoggingDescription("Event emitted for each configured custom model provider"),
+                                  TraceLoggingBoolean(!provider.ApiKeyCredential().empty(), "HasApiKey"),
+                                  TraceLoggingBoolean(provider.ApiKeyRequired(), "ApiKeyRequired"),
+                                  TraceLoggingValue(branding, "Branding"),
+                                  TraceLoggingValue(distribution, "Distribution"),
+                                  TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
+                                  TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage));
+            }
         }
     }
 }

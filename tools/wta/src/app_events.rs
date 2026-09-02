@@ -243,6 +243,20 @@ impl App {
         tab.completed_turn_selection_visible_pending = click.previous_selection_pending;
     }
 
+    fn register_born_bound_session(&mut self, event: crate::agent_sessions::SessionEvent) {
+        self.agent_sessions.apply(event.clone());
+        if self
+            .master_request_tx
+            .send(crate::protocol::acp::client::MasterExtRequest::SessionBornBound { event })
+            .is_err()
+        {
+            tracing::warn!(
+                target: "coordinator",
+                "born-bound registration queue is unavailable",
+            );
+        }
+    }
+
     fn copy_text_selection(&mut self) -> bool {
         let Some(text) = self.text_selection.selected_text() else {
             return false;
@@ -324,6 +338,12 @@ impl App {
         match event {
             AppEvent::Key(key) => {
                 self.cancel_completed_turn_click();
+                let is_select_all = matches!(key.code, KeyCode::Char('a'))
+                    && key.modifiers == KeyModifiers::CONTROL;
+                if is_select_all {
+                    self.text_selection.select_all();
+                    return;
+                }
                 let is_copy = matches!(key.code, KeyCode::Char('c'))
                     && key.modifiers.contains(KeyModifiers::CONTROL);
                 if is_copy && self.copy_text_selection() {
@@ -511,6 +531,10 @@ impl App {
                 if self.mode == AppMode::Setup
                     || self.mode == AppMode::Auth
                     || self.agents_view_awaiting_snapshot()
+                    // Keep the resuming indicator animating for the whole
+                    // `session/load`, which outlives the connecting state it
+                    // usually starts in.
+                    || self.resume_in_flight()
                     // Keep the connecting indicator animating during the
                     // pipe-connect → ACP init → session/new handshake so a cold
                     // start (which can run tens of seconds) doesn't look frozen
@@ -632,13 +656,18 @@ impl App {
                     self.setup = None;
                 }
                 // Show welcome hint on first-ever connect (persisted in state.json).
+                // A pane that is restoring a previous conversation is not a
+                // first run, so it never gets the hint — and because that is
+                // decided without persisting anything, the next genuinely
+                // fresh pane still shows it.
+                //
                 // The disclaimer card is pushed as a `ChatMessage::Disclaimer`
                 // on every agent-pane startup that lands on an empty chat (no
                 // prior completed turns and no other in-flight messages), so
                 // a session restored with history doesn't get a disclaimer
                 // injected on top. Once shown it's allowed to be cleared by
                 // a subsequent turn — the next startup re-pushes it.
-                if !welcome_shown_in_state() {
+                if !welcome_shown_in_state() && !self.resume_in_flight() {
                     self.show_welcome_hint = true;
                 }
                 // Bind the startup session to whichever tab we own.
@@ -660,6 +689,7 @@ impl App {
                         .iter()
                         .any(|m| !matches!(m, ChatMessage::Disclaimer));
                 if !has_real_content
+                    && !tab.loading_session
                     && !tab
                         .messages
                         .iter()
@@ -668,6 +698,7 @@ impl App {
                     tab.messages.insert(0, ChatMessage::Disclaimer);
                 }
                 self.publish_agent_status();
+                self.project_tab_state(&bind_tab);
             }
             AppEvent::SessionAttached {
                 tab_id,
@@ -714,6 +745,7 @@ impl App {
                     tab.pack_replayed_messages_into_turns();
                     tab.loading_session = false;
                     tab.loading_target_session_id = None;
+                    tab.meaningful_conversation_before_load = None;
                     tab.scroll_to_bottom();
                 }
                 // Per-session model lists could differ — surface the new
@@ -744,6 +776,7 @@ impl App {
                     }
                 }
                 self.publish_agent_status();
+                self.project_tab_state(&tab_id);
             }
             AppEvent::UsageReported {
                 session_id,
@@ -948,11 +981,17 @@ impl App {
                 tab.loading_target_session_id = None;
                 tab.replay_agent_buffer.clear();
                 tab.replay_user_buffer.clear();
+                tab.replay_user_message_id = None;
+                tab.has_meaningful_conversation = tab
+                    .meaningful_conversation_before_load
+                    .take()
+                    .unwrap_or(false);
                 tab.timing_note = None;
                 tab.turn = TurnState::Idle;
                 tab.active_direct_proposal_id = None;
                 tab.messages.push(ChatMessage::Error(message));
                 tab.scroll_to_bottom();
+                self.project_tab_state(&tab_id);
             }
             AppEvent::TabSystemMessage { tab_id, message } => {
                 let tab = self.tab_mut(&tab_id);
@@ -1275,10 +1314,7 @@ impl App {
                 // as a ChatMessage::User so the chat stays in turn
                 // order.
                 if tab.loading_session {
-                    if !tab.replay_user_buffer.is_empty() {
-                        let text = std::mem::take(&mut tab.replay_user_buffer);
-                        tab.messages.push(ChatMessage::User(text));
-                    }
+                    tab.flush_replay_user_buffer();
                     tab.replay_agent_buffer.push_str(&text);
                     return;
                 }
@@ -1287,7 +1323,11 @@ impl App {
                 // machine drops late chunks and stale Auto error handling generations.
                 self.turn_observe_chunk(&session_id, ChunkKind::Message, &text);
             }
-            AppEvent::UserMessageReplayChunk { session_id, text } => {
+            AppEvent::UserMessageReplayChunk {
+                session_id,
+                message_id,
+                text,
+            } => {
                 // Replayed historical user prompt from a `session/load`
                 // SessionUpdate. Only meaningful during the load window;
                 // dropped otherwise. A new user_message_chunk after a
@@ -1300,6 +1340,16 @@ impl App {
                 if !tab.replay_agent_buffer.is_empty() {
                     let prev = std::mem::take(&mut tab.replay_agent_buffer);
                     tab.messages.push(ChatMessage::Agent(prev));
+                }
+                let starts_new_message = matches!(
+                    (&tab.replay_user_message_id, &message_id),
+                    (Some(current), Some(incoming)) if current != incoming
+                );
+                if starts_new_message {
+                    tab.flush_replay_user_buffer();
+                }
+                if tab.replay_user_message_id.is_none() {
+                    tab.replay_user_message_id = message_id;
                 }
                 tab.replay_user_buffer.push_str(&text);
             }
@@ -1339,10 +1389,7 @@ impl App {
                 // follows ACP event order instead of drawing the streaming
                 // buffer after every eagerly inserted tool card.
                 if tab.loading_session {
-                    if !tab.replay_user_buffer.is_empty() {
-                        let text = std::mem::take(&mut tab.replay_user_buffer);
-                        tab.messages.push(ChatMessage::User(text));
-                    }
+                    tab.flush_replay_user_buffer();
                     if !tab.replay_agent_buffer.is_empty() {
                         let text = std::mem::take(&mut tab.replay_agent_buffer);
                         tab.messages.push(ChatMessage::Agent(text));
@@ -1495,6 +1542,13 @@ impl App {
             }
             AppEvent::HideToolCall { session_id, id } => {
                 let tab = self.session_tab_mut(&session_id);
+                // Copilot currently omits ACP messageId during session/load,
+                // but recommendation-only turns still replay their hidden
+                // proposal tool call. Use that as the turn boundary without
+                // restoring the card itself.
+                if tab.loading_session {
+                    tab.flush_replay_user_buffer();
+                }
                 tab.messages.retain(
                     |message| !matches!(message, ChatMessage::ToolCall { id: message_id, .. } if message_id == &id),
                 );
@@ -1512,10 +1566,7 @@ impl App {
                 }
                 let tab = self.session_tab_mut(&session_id);
                 if tab.loading_session {
-                    if !tab.replay_user_buffer.is_empty() {
-                        let text = std::mem::take(&mut tab.replay_user_buffer);
-                        tab.messages.push(ChatMessage::User(text));
-                    }
+                    tab.flush_replay_user_buffer();
                     if !tab.replay_agent_buffer.is_empty() {
                         let text = std::mem::take(&mut tab.replay_agent_buffer);
                         tab.messages.push(ChatMessage::Agent(text));
@@ -1840,18 +1891,7 @@ impl App {
                 self.handle_agents_snapshot_failed(request_id);
             }
             AppEvent::RegisterBornBoundSession { event } => {
-                if self
-                    .master_request_tx
-                    .send(
-                        crate::protocol::acp::client::MasterExtRequest::SessionBornBound { event },
-                    )
-                    .is_err()
-                {
-                    tracing::warn!(
-                        target: "coordinator",
-                        "born-bound registration queue is unavailable",
-                    );
-                }
+                self.register_born_bound_session(event);
             }
             AppEvent::MasterMutationCompleted { request_id } => {
                 tracing::debug!(target: "agents_view", request_id, "master mutation completed; refetching open views");
@@ -1893,6 +1933,45 @@ impl App {
                             .messages
                             .push(ChatMessage::AgentEvent(detail));
                     }
+                    return;
+                }
+
+                if method == "session_born_bound" {
+                    let agent_session_id = params
+                        .get("agent_session_id")
+                        .and_then(|value| value.as_str())
+                        .unwrap_or("");
+                    let agent = params
+                        .get("agent")
+                        .and_then(|value| value.as_str())
+                        .unwrap_or("");
+                    if agent_session_id.is_empty() || pane_id.is_empty() || agent.is_empty() {
+                        tracing::warn!(
+                            target: "session_hook",
+                            agent_session_id,
+                            pane_id,
+                            agent,
+                            "ignoring incomplete restored session born-bound event"
+                        );
+                        return;
+                    }
+
+                    self.register_born_bound_session(
+                        crate::agent_sessions::SessionEvent::SessionStarted {
+                            key: agent_session_id.to_string(),
+                            cli_source: crate::session_registry::SessionHookCliSource::Known(
+                                agent.to_string(),
+                            )
+                            .into(),
+                            pane_session_id: pane_id,
+                            cwd: params
+                                .get("cwd")
+                                .and_then(|value| value.as_str())
+                                .map(std::path::PathBuf::from)
+                                .unwrap_or_default(),
+                            title: String::new(),
+                        },
+                    );
                     return;
                 }
 
@@ -2373,6 +2452,12 @@ impl App {
                         tab.usage = None;
                         tab.usage_staleness = crate::usage::UsageStaleness::default();
                         tab.clear_completed_turns();
+                        tab.selected_completed_turn_idx = None;
+                        if !tab.loading_session {
+                            tab.meaningful_conversation_before_load =
+                                Some(tab.has_meaningful_conversation);
+                        }
+                        tab.has_meaningful_conversation = true;
                         // Open the replay window: chunk handlers will
                         // now accept session/update events for this
                         // tab even though `turn` stays Idle. Closed by
@@ -2384,10 +2469,10 @@ impl App {
                         // close it).
                         tab.loading_session = true;
                         tab.loading_target_session_id = Some(session_id.to_string());
-                        // Resume is intentionally silent — no "Resuming…"
-                        // marker — so a resumed pane presents exactly like a
-                        // normal connection. `loading_session` still opens the
-                        // replay window; any past content just streams in above.
+                        // `loading_session` both opens the replay window and
+                        // drives the "Resuming session …" indicator, so the
+                        // user knows a conversation is on its way in rather
+                        // than watching a pane that looks like a cold start.
                     }
                     // If the load_session target IS the active tab, push the
                     // (now Chat) view to C++ so the bar drops the "Agent
@@ -2399,11 +2484,22 @@ impl App {
                     if tab_id == self.active_tab_key() {
                         self.project_active_tab_state();
                     }
-                    let _ = self.load_session_tx.send(LoadSessionForTab {
+                    // A resume can be requested after the connect that already
+                    // decided this was a first run. Retract the hint rather
+                    // than paint it over a conversation being restored.
+                    self.show_welcome_hint = false;
+                    self.project_tab_state(tab_id);
+                    let request = LoadSessionForTab {
                         tab_id: tab_id.to_string(),
                         session_id: session_id.to_string(),
                         cwd,
-                    });
+                    };
+                    // Remember it: if the ACP client dies before consuming
+                    // this, `load_session_rx` is dropped with the request
+                    // still in it and the reconnect gets a fresh channel
+                    // pair, so `try_start_acp` has to re-issue it.
+                    self.pending_session_load = Some(request.clone());
+                    let _ = self.load_session_tx.send(request);
                     return;
                 }
 
@@ -2824,6 +2920,7 @@ impl App {
                                     crate::telemetry::log_auto_error_handling_resolved(
                                         pane_id.as_str(),
                                         elapsed_ms,
+                                        &self.current_agent_id,
                                     );
                                 }
                                 // `turn_cancel` owns the full cleanup: bumps

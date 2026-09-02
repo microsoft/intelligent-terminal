@@ -18,6 +18,7 @@ pub(crate) struct HelperConfig {
     pub(crate) no_auto_error_handling_with_agent: bool,
     pub(crate) setup: Option<String>,
     pub(crate) initial_view: InitialView,
+    pub(crate) initial_pane_position: Option<String>,
     pub(crate) owner_tab_id: Option<String>,
     pub(crate) owner_window_id: Option<String>,
     pub(crate) initial_load_session_id: Option<String>,
