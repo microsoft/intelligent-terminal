@@ -202,8 +202,10 @@
                 <ScrollViewer x:Name="SettingsFormScroller"
                               Grid.Row="1"
                               HorizontalAlignment="Stretch"
+                              HorizontalContentAlignment="Stretch"
                               VerticalScrollBarVisibility="Auto">
                     <StackPanel Spacing="4"
+                                Width="{Binding ActualWidth, ElementName=SettingsFormScroller}"
                                 MaxWidth="{StaticResource StandardControlMaxWidth}"
                                 HorizontalAlignment="Center">
                         <!--  Agent  -->
@@ -339,7 +341,7 @@
                                 </StackPanel>
                                 <ComboBox x:Name="AutoErrorHandlingComboBox"
                                           Grid.Column="1"
-                                          MinWidth="320"
+                                          Width="400"
                                           HorizontalAlignment="Right"
                                           VerticalAlignment="Center"
                                           SelectionChanged="_OnAutoErrorHandlingSelectionChanged" />
