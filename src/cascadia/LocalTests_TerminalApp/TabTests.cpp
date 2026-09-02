@@ -220,7 +220,7 @@ namespace TerminalAppLocalTests
         TEST_METHOD(BuildStartupActionsContentStashesAgentFirstPaneAsNewTab);
         TEST_METHOD(BuildStartupActionsContentStashesAgentLaterSplitAsExistingTab);
         TEST_METHOD(TransferredAgentContentFirstPaneDefersTabRekey);
-        TEST_METHOD(ProtocolTabProfileSourceSkipsAgentPane);
+        TEST_METHOD(SourceTerminalPaneSkipsAgentPane);
         TEST_METHOD(TransferredAgentContentSplitPaneRetiresDestinationAgentPane);
         TEST_METHOD(TransferredAgentStatusReplaysMissedTabRekey);
 
@@ -2067,7 +2067,7 @@ namespace TerminalAppLocalTests
         });
     }
 
-    void TabTests::ProtocolTabProfileSourceSkipsAgentPane()
+    void TabTests::SourceTerminalPaneSkipsAgentPane()
     {
         auto page = _commonSetup();
 
@@ -2088,26 +2088,32 @@ namespace TerminalAppLocalTests
             VERIFY_IS_NOT_NULL(agentPane);
             agentPane->IsAgentPane(true);
 
-            // `_SplitPane` focuses the new pane, exactly like opening the agent
-            // pane and driving its session picker does.
+            // `_SplitPane` focuses the new pane, exactly like clicking into the
+            // agent pane or driving its session picker does.
             page->_SplitPane(focusedTab, SplitDirection::Down, 0.3f, agentPane);
             VERIFY_IS_NOT_NULL(focusedTab->GetActivePane());
             VERIFY_IS_TRUE(focusedTab->GetActivePane()->IsAgentPane());
 
-            // Sanity check that this is the state that used to leak the agent
-            // pane's profile into protocol-created tabs.
+            // This is the state that used to leak the agent pane's identity
+            // into protocol tabs, delegate agent selection, and delegate cwd.
             const auto focusedProfile = focusedTab->GetFocusedProfile();
             VERIFY_IS_NOT_NULL(focusedProfile);
             VERIFY_ARE_EQUAL(L"profile1", focusedProfile.Name());
 
-            const auto sourcePane = page->_ProtocolTabProfileSourcePane(focusedTab);
+            const auto sourcePane = page->_SourceTerminalPaneForTab(focusedTab);
             VERIFY_IS_NOT_NULL(sourcePane);
             VERIFY_IS_FALSE(sourcePane->IsAgentPane());
             VERIFY_IS_TRUE(sourcePane == terminalPane);
 
-            const auto sourceContent = sourcePane->GetContent().try_as<winrt::TerminalApp::TerminalPaneContent>();
-            VERIFY_IS_NOT_NULL(sourceContent);
-            VERIFY_ARE_EQUAL(L"profile0", sourceContent.GetProfile().Name());
+            // The source pane is deliberately not `_lastActive`, so resolving
+            // its profile must not go through `Pane::GetFocusedProfile()` —
+            // that returns null here, which is what silently dropped the
+            // profile's `commandPaletteAgent`.
+            VERIFY_IS_NULL(sourcePane->GetFocusedProfile());
+
+            const auto sourceProfile = page->_SourceTerminalProfileForTab(focusedTab);
+            VERIFY_IS_NOT_NULL(sourceProfile);
+            VERIFY_ARE_EQUAL(L"profile0", sourceProfile.Name());
         });
     }
 

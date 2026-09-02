@@ -574,51 +574,8 @@ namespace winrt::TerminalApp::implementation
     // away then takes the whole tab with it, because a lone agent pane
     // collapses its subtree (see `Pane::_CloseChildRoutine`).
     //
-    // So skip agent panes: prefer the pane the agent pane was opened from, then
-    // any other terminal pane on the tab, and finally report "nothing usable"
-    // so the caller falls back to the user's global default profile.
-    std::shared_ptr<Pane> TerminalPage::_ProtocolTabProfileSourcePane(const winrt::com_ptr<Tab>& tab)
-    {
-        if (!tab)
-        {
-            return nullptr;
-        }
-
-        // Only terminal panes carry a profile; agent panes wrap one but must
-        // never be picked, and scratchpad-style content has none at all.
-        const auto isProfileSource = [](const std::shared_ptr<Pane>& pane) {
-            return pane &&
-                   !pane->IsAgentPane() &&
-                   pane->GetContent().try_as<TerminalApp::TerminalPaneContent>() != nullptr;
-        };
-
-        if (const auto activePane = tab->GetActivePane(); isProfileSource(activePane))
-        {
-            return activePane;
-        }
-
-        const auto rootPane = tab->GetRootPane();
-        if (!rootPane)
-        {
-            return nullptr;
-        }
-
-        std::shared_ptr<Pane> sourcePane{ nullptr };
-        rootPane->WalkTree([&](const auto& pane) {
-            if (!isProfileSource(pane))
-            {
-                return;
-            }
-            // The pane the user was working in when the agent pane took focus
-            // is the best match; otherwise settle for the first terminal pane.
-            if (!sourcePane || pane->IsSourceOfAgentPane())
-            {
-                sourcePane = pane;
-            }
-        });
-        return sourcePane;
-    }
-
+    // `_SourceTerminalPaneForTab` is what keeps the agent pane out of the
+    // lookup; see its comment in TerminalPage.cpp.
     IAsyncOperation<Protocol::TabCreationResult> TerminalPage::CreateProtocolTab(NewTerminalArgs args, bool background)
     {
         auto strong = get_strong();
@@ -641,9 +598,7 @@ namespace winrt::TerminalApp::implementation
         // session (same intent as PR #366); fall back to the user's global
         // default profile when there is no focused terminal. Either way this is
         // never left empty — that's what re-introduces the auto-closing
-        // "Defaults" profile. `_ProtocolTabProfileSourcePane` is what keeps the
-        // agent pane out of that lookup — see its comment for why pinning the
-        // agent pane's profile is even worse than the "Defaults" profile.
+        // "Defaults" profile.
         //
         // Scope this narrowly to the case that actually hits the bug: a
         // commandline with no explicit profile selection. A caller that omits
@@ -655,15 +610,9 @@ namespace winrt::TerminalApp::implementation
         if (args && !args.Commandline().empty() && args.Profile().empty() && !args.ProfileIndex())
         {
             auto profileGuid = _settings.GlobalSettings().DefaultProfile();
-            if (const auto sourcePane = _ProtocolTabProfileSourcePane(_GetFocusedTabImpl()))
+            if (const auto sourceProfile = _SourceTerminalProfileForTab(_GetFocusedTabImpl()))
             {
-                if (const auto termContent = sourcePane->GetContent().try_as<TerminalApp::TerminalPaneContent>())
-                {
-                    if (const auto sourceProfile = termContent.GetProfile())
-                    {
-                        profileGuid = sourceProfile.Guid();
-                    }
-                }
+                profileGuid = sourceProfile.Guid();
             }
             args.Profile(::Microsoft::Console::Utils::GuidToString(profileGuid));
         }
