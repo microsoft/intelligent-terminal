@@ -1242,16 +1242,16 @@
     <comment>Header for choosing which AI agent backend is used by this profile.</comment>
   </data>
   <data name="Profile_AgentPaneBackend.HelpText" xml:space="preserve">
-    <value>Choisissez l’agent compatible avec ACP à utiliser dans le volet de l’agent. Pour ce profil, ce choix est prioritaire sur la sélection globale du volet de l’agent.</value>
-    <comment>{Locked="ACP"} Description for the per-profile AI agent setting.</comment>
+    <value>Choisissez l’agent ACP utilisé par le volet de l'agent lorsque ce profil est actif. Ce choix remplace la sélection « Volet de l'agent » de la page de paramètres « Agents ».</value>
+    <comment>{Locked="ACP"} Description for the per-profile AI agent setting. "Agent pane" and "Agent" name the section and page this setting overrides — translate them the same way as AIAgents_AcpGroupHeader and Nav_AIAgents.</comment>
   </data>
   <data name="Profile_CommandPaletteAgent.Header" xml:space="preserve">
     <value>Agent de la palette de commandes</value>
     <comment>Header for choosing which AI agent handles command palette delegation for this profile.</comment>
   </data>
   <data name="Profile_CommandPaletteAgent.HelpText" xml:space="preserve">
-    <value>Choisissez l’agent utilisé pour la délégation depuis la palette de commandes dans ce profil. Cette sélection est prioritaire sur le paramètre global de l’agent délégué.</value>
-    <comment>Description for the per-profile command palette agent setting. Here “agent” means an AI agent, not a proxy or human agent.</comment>
+    <value>Choisissez l’agent qui répond aux requêtes précédées de « ? » dans la palette de commandes lorsque ce profil est actif. Ce choix remplace la sélection « Palette de commandes » de la page de paramètres « Agents ».</value>
+    <comment>{Locked="?"} Description for the per-profile command palette agent setting. "Command palette" and "Agent" name the section and page this setting overrides — translate them the same way as AIAgents_DelegateGroupHeader and Nav_AIAgents. Here "agent" means an AI agent, not a proxy or human agent.</comment>
   </data>
   <data name="Profile_AgentPaneBackend_AgentFormat" xml:space="preserve">
     <value>{0} · {1}</value>
@@ -2832,9 +2832,17 @@
   <data name="AIAgents_AcpAgent.Header" xml:space="preserve"><value>Agent</value><comment>Header for the setting that specifies which AI agent CLI powers the agent pane.</comment></data>
   <data name="AIAgents_AcpAgent.HelpText" xml:space="preserve"><value>Choisissez l'agent utilisé dans le volet de l'agent. Tout agent ACP compatible sera détecté.</value><comment>Supplementary description for the agent pane agent setting. {Locked="ACP"}</comment></data>
   <data name="AIAgents_AcpModel.Header" xml:space="preserve"><value>Modèle</value><comment>Header for the setting that specifies the model used by the agent pane agent.</comment></data>
-  <data name="AIAgents_AcpModel.HelpText" xml:space="preserve"><value>Choisissez le modèle utilisé par cet agent.</value><comment>Supplementary description for the model setting.</comment></data>
+  <data name="AIAgents_AcpModel.HelpText" xml:space="preserve">
+    <value>Choisissez le modèle utilisé par cet agent. Si aucun modèle n’est défini, l’agent utilise son propre modèle par défaut. Les modèles apparaissent dans la liste une fois le volet de l'agent connecté.</value>
+    <comment>Supplementary description for the model setting. Explains the empty/"no model" state and why the list can be empty before the agent pane connects.
+In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+  </data>
   <data name="AIAgents_DelegateAgent.Header" xml:space="preserve"><value>Agent</value><comment>Header for the setting that specifies which agent CLI handles command palette / on-demand requests.</comment></data>
-  <data name="AIAgents_DelegateAgent.HelpText" xml:space="preserve"><value>Choisissez l'agent utilisé pour les actions rapides dans la palette de commandes.</value><comment>Supplementary description for the command palette agent setting.</comment></data>
+  <data name="AIAgents_DelegateAgent.HelpText" xml:space="preserve">
+    <value>Choisissez l’agent qui répond aux requêtes que vous saisissez dans la palette de commandes avec le préfixe « ? ». Chaque requête s’exécute dans un nouvel onglet, séparément du volet de l'agent.</value>
+    <comment>{Locked="?"} Supplementary description for the command palette agent setting. "?" is the literal ASCII prefix typed in the command palette (same prefix as Actions_CommandPaletteLaunchModeAgentDelegation).
+In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+  </data>
   <data name="AIAgents_AutoFix.Header" xml:space="preserve"><value>Suggérer automatiquement des correctifs pour les commandes en échec</value><comment>Header for the toggle that enables automatic fix suggestions when commands fail.</comment></data>
   <data name="AIAgents_AutoFix.HelpText" xml:space="preserve"><value>Lorsque cette option est activée, l'agent IA analyse automatiquement les commandes en échec et propose un correctif. Lorsqu'elle est désactivée, les commandes en échec affichent une indication cliquable dans la barre d'état — appuyez sur Ctrl+Alt+. ou cliquez sur l'indication pour demander un correctif.</value><comment>Supplementary description for the auto-error-detection setting.</comment></data>
   <data name="AIAgents_ShowTokenUsageAndCost.Header" xml:space="preserve"><value>Afficher l’utilisation du contexte et le coût de la session</value><comment>Header for a setting that shows available context-window usage and session cost in the terminal bottom bar. Session cost is reported for the active AI session. Keep 'session cost' generic and do not add a specific unit. Either value may be unavailable.</comment></data>
@@ -2859,7 +2867,10 @@
   </data>
   <data name="AIAgents_HooksGroupHeader.Text" xml:space="preserve"><value>Hooks d'agent</value><comment>Section header for the Agent Hooks installer (lets users install hook scripts that report agent CLI activity to the agent pane).</comment></data>
   <data name="AIAgents_HooksInstall.Header" xml:space="preserve"><value>Installer les scripts de hook d'agent</value><comment>Header for the Agent Hooks install section.</comment></data>
-  <data name="AIAgents_HooksInstall.HelpText" xml:space="preserve"><value>Suivez les sessions sur les agents. Requis pour la gestion des sessions d'agent.</value><comment>Description for the Agent Hooks install section.</comment></data>
+  <data name="AIAgents_HooksInstall.HelpText" xml:space="preserve">
+    <value>Installe un script hook dans vos CLIs d’agent afin que les sessions qu’elles démarrent en dehors du volet de l'agent restent affichées dans la gestion des sessions d'agent. Disponible pour Copilot, Claude, Codex, Gemini et OpenCode.</value>
+    <comment>{Locked="hook","CLI","Copilot","Claude","Codex","Gemini","OpenCode"} Help text shown under the expandable section header. Explains what the hooks do and which agents support them. Pluralize "CLI" the way your language does; do not carry over the English "-s".</comment>
+  </data>
   <data name="AIAgents_HooksInstallButton.Content" xml:space="preserve"><value>Installer les hooks</value><comment>Button label that triggers installation of the wt-agent-hooks plugin/extension into all detected agent CLIs (Copilot, Claude, Codex, Gemini).</comment></data>
   <data name="AIAgents_HooksRefreshButton.Content" xml:space="preserve"><value>Actualiser</value><comment>Button label that re-detects which agent CLIs are present and which already have hooks installed.</comment></data>
   <data name="Settings_PortableModeInfoLink.NavigateUri" xml:space="preserve"><value>https://go.microsoft.com/fwlink/?linkid=2229086</value><comment>{Locked}</comment></data>
@@ -2993,5 +3004,25 @@
   <data name="AIAgents_OpenAICompatibleModelDescription" xml:space="preserve">
     <value>{} | {} | Compatible avec OpenAI</value>
     <comment>{Locked="{}","OpenAI"} The first {} is replaced with the provider name; the second is replaced with its location.</comment>
+  </data>
+  <data name="AIAgents_CustomAcpCommand.PlaceholderText" xml:space="preserve">
+    <value>par ex. my-agent --acp --stdio</value>
+    <comment>{Locked="my-agent --acp --stdio"} Placeholder inside the box where the command for a custom agent pane agent is typed. Translate only the "e.g." lead-in; the sample command is an example command line.</comment>
+  </data>
+  <data name="AIAgents_CustomAcpCommandHint.Text" xml:space="preserve">
+    <value>Entrez la commande qui démarre votre CLI en mode ACP. La plupart des CLIs nécessitent pour cela un indicateur, par exemple qwen.cmd --acp.</value>
+    <comment>{Locked="CLI","ACP","qwen.cmd --acp"} Hint shown under the box where the command for a custom agent pane agent is typed. Pluralize "CLI" the way your language does; do not carry over the English "-s".</comment>
+  </data>
+  <data name="AIAgents_CustomDelegateCommand.PlaceholderText" xml:space="preserve">
+    <value>par ex. my-cli --flag</value>
+    <comment>{Locked="my-cli --flag"} Placeholder inside the box where the command for a custom command palette agent is typed. Translate only the "e.g." lead-in; the sample command is an example command line.</comment>
+  </data>
+  <data name="AIAgents_CustomDelegateCommandHint.Text" xml:space="preserve">
+    <value>Entrez la commande qui démarre votre CLI. La palette de commandes l’exécute comme une session interactive normale, donc aucun indicateur ACP n’est nécessaire, par exemple qwen.cmd.</value>
+    <comment>{Locked="CLI","ACP","qwen.cmd"} Hint shown under the box where the command for a custom command palette agent is typed. Contrasts with the agent pane command, which does need an ACP flag.</comment>
+  </data>
+  <data name="AIAgents_HooksInstallRowDescription.Text" xml:space="preserve">
+    <value>Installe les hooks pour chaque CLI d’agent prise en charge trouvée dans votre PATH. Relancez cette opération après avoir installé une autre CLI d’agent.</value>
+    <comment>{Locked="hooks","CLI","PATH"} Description under the "Install agent hook script" row label inside the Agent session tracking expander. Explains what the adjacent button acts on and when to run it again.</comment>
   </data>
 </root>

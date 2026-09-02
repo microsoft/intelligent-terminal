@@ -1242,16 +1242,16 @@
     <comment>Header for choosing which AI agent backend is used by this profile.</comment>
   </data>
   <data name="Profile_AgentPaneBackend.HelpText" xml:space="preserve">
-    <value>에이전트 창에서 사용할 ACP 지원 에이전트를 선택하세요. 이 프로필에서는 이 선택 항목이 전역 에이전트 창 선택 항목보다 우선합니다.</value>
-    <comment>{Locked="ACP"} Description for the per-profile AI agent setting.</comment>
+    <value>이 프로필이 활성 상태일 때 에이전트 창에서 사용할 ACP 에이전트를 선택하세요. 이 선택은 에이전트 설정 페이지의 에이전트 창 선택보다 우선합니다.</value>
+    <comment>{Locked="ACP"} Description for the per-profile AI agent setting. "Agent pane" and "Agent" name the section and page this setting overrides — translate them the same way as AIAgents_AcpGroupHeader and Nav_AIAgents.</comment>
   </data>
   <data name="Profile_CommandPaletteAgent.Header" xml:space="preserve">
     <value>명령 팔레트 에이전트</value>
     <comment>Header for choosing which AI agent handles command palette delegation for this profile.</comment>
   </data>
   <data name="Profile_CommandPaletteAgent.HelpText" xml:space="preserve">
-    <value>이 프로필에서 명령 팔레트 위임에 사용할 에이전트를 선택합니다. 이 선택은 전역 위임 에이전트 설정보다 우선합니다.</value>
-    <comment>Description for the per-profile command palette agent setting. Here “agent” means an AI agent, not a proxy or human agent.</comment>
+    <value>이 프로필이 활성 상태일 때 명령 팔레트의 "?" 프롬프트에 응답할 에이전트를 선택하세요. 이 선택은 에이전트 설정 페이지의 명령 팔레트 선택보다 우선합니다.</value>
+    <comment>{Locked="?"} Description for the per-profile command palette agent setting. "Command palette" and "Agent" name the section and page this setting overrides — translate them the same way as AIAgents_DelegateGroupHeader and Nav_AIAgents. Here "agent" means an AI agent, not a proxy or human agent.</comment>
   </data>
   <data name="Profile_AgentPaneBackend_AgentFormat" xml:space="preserve">
     <value>{0} · {1}</value>
@@ -2853,16 +2853,18 @@
     <comment>Header for the setting that specifies the model used by the agent pane agent.</comment>
   </data>
   <data name="AIAgents_AcpModel.HelpText" xml:space="preserve">
-    <value>이 에이전트에 사용할 모델을 선택하세요.</value>
-    <comment>Supplementary description for the model setting.</comment>
+    <value>이 에이전트가 사용할 모델을 선택하세요. 모델을 설정하지 않으면 에이전트가 자체 기본 모델을 선택합니다. 에이전트 창이 연결되면 모델이 목록에 표시됩니다.</value>
+    <comment>Supplementary description for the model setting. Explains the empty/"no model" state and why the list can be empty before the agent pane connects.
+In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="AIAgents_DelegateAgent.Header" xml:space="preserve">
     <value>에이전트</value>
     <comment>Header for the setting that specifies which agent CLI handles command palette / on-demand requests.</comment>
   </data>
   <data name="AIAgents_DelegateAgent.HelpText" xml:space="preserve">
-    <value>명령 팔레트의 빠른 작업에 사용할 에이전트를 선택하세요.</value>
-    <comment>Supplementary description for the command palette agent setting.</comment>
+    <value>명령 팔레트에서 "?" 접두사를 붙여 입력한 프롬프트에 응답할 에이전트를 선택하세요. 각 프롬프트는 에이전트 창과 별개로 새 탭에서 실행됩니다.</value>
+    <comment>{Locked="?"} Supplementary description for the command palette agent setting. "?" is the literal ASCII prefix typed in the command palette (same prefix as Actions_CommandPaletteLaunchModeAgentDelegation).
+In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="AIAgents_AutoFix.Header" xml:space="preserve">
     <value>실패한 명령에 대한 수정 사항 자동 제안</value>
@@ -2907,8 +2909,8 @@
     <comment>Header for the Agent Hooks install section.</comment>
   </data>
   <data name="AIAgents_HooksInstall.HelpText" xml:space="preserve">
-    <value>에이전트 간에 세션을 추적합니다. 에이전트 세션 관리에 필요합니다.</value>
-    <comment>Help text shown under the expandable section header.</comment>
+    <value>에이전트 CLI에 hook 스크립트를 설치하여 각 CLI가 에이전트 창 밖에서 시작한 세션도 에이전트 세션 관리에 표시되도록 합니다. Copilot, Claude, Codex, Gemini, OpenCode에서 사용할 수 있습니다.</value>
+    <comment>{Locked="hook","CLI","Copilot","Claude","Codex","Gemini","OpenCode"} Help text shown under the expandable section header. Explains what the hooks do and which agents support them. Pluralize "CLI" the way your language does; do not carry over the English "-s".</comment>
   </data>
   <data name="AIAgents_HooksInstallButton.Content" xml:space="preserve">
     <value>Hooks 설치</value>
@@ -3052,5 +3054,25 @@
   <data name="AIAgents_OpenAICompatibleModelDescription" xml:space="preserve">
     <value>{} | {} | OpenAI 호환</value>
     <comment>{Locked="{}","OpenAI"} The first {} is replaced with the provider name; the second is replaced with its location.</comment>
+  </data>
+  <data name="AIAgents_CustomAcpCommand.PlaceholderText" xml:space="preserve">
+    <value>예: my-agent --acp --stdio</value>
+    <comment>{Locked="my-agent --acp --stdio"} Placeholder inside the box where the command for a custom agent pane agent is typed. Translate only the "e.g." lead-in; the sample command is an example command line.</comment>
+  </data>
+  <data name="AIAgents_CustomAcpCommandHint.Text" xml:space="preserve">
+    <value>CLI를 ACP 모드로 시작하는 명령을 입력하세요. 대부분의 CLI에는 이 모드를 위한 플래그가 필요합니다(예: qwen.cmd --acp).</value>
+    <comment>{Locked="CLI","ACP","qwen.cmd --acp"} Hint shown under the box where the command for a custom agent pane agent is typed. Pluralize "CLI" the way your language does; do not carry over the English "-s".</comment>
+  </data>
+  <data name="AIAgents_CustomDelegateCommand.PlaceholderText" xml:space="preserve">
+    <value>예: my-cli --flag</value>
+    <comment>{Locked="my-cli --flag"} Placeholder inside the box where the command for a custom command palette agent is typed. Translate only the "e.g." lead-in; the sample command is an example command line.</comment>
+  </data>
+  <data name="AIAgents_CustomDelegateCommandHint.Text" xml:space="preserve">
+    <value>CLI를 시작하는 명령을 입력하세요. 명령 팔레트에서 일반 대화형 세션으로 실행하므로 ACP 플래그가 필요하지 않습니다(예: qwen.cmd).</value>
+    <comment>{Locked="CLI","ACP","qwen.cmd"} Hint shown under the box where the command for a custom command palette agent is typed. Contrasts with the agent pane command, which does need an ACP flag.</comment>
+  </data>
+  <data name="AIAgents_HooksInstallRowDescription.Text" xml:space="preserve">
+    <value>PATH에서 찾은 지원되는 모든 에이전트 CLI에 hooks를 설치합니다. 다른 에이전트 CLI를 설치한 후 다시 실행하세요.</value>
+    <comment>{Locked="hooks","CLI","PATH"} Description under the "Install agent hook script" row label inside the Agent session tracking expander. Explains what the adjacent button acts on and when to run it again.</comment>
   </data>
 </root>

@@ -738,14 +738,16 @@
     <value>Модел</value>
     <comment>Header for the setting that specifies the model used by the agent pane agent.</comment>
   </data><data name="AIAgents_AcpModel.HelpText" xml:space="preserve">
-    <value>Изаберите модел који овај агент користи.</value>
-    <comment>Supplementary description for the model setting.</comment>
+    <value>Изаберите модел који овај агент користи. Када модел није подешен, агент бира сопствени подразумевани модел. Модели се појављују на листи када се панел агента повеже.</value>
+    <comment>Supplementary description for the model setting. Explains the empty/"no model" state and why the list can be empty before the agent pane connects.
+In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data><data name="AIAgents_DelegateAgent.Header" xml:space="preserve">
     <value>Агент</value>
     <comment>Header for the setting that specifies which agent CLI handles command palette / on-demand requests.</comment>
   </data><data name="AIAgents_DelegateAgent.HelpText" xml:space="preserve">
-    <value>Изаберите агента који се користи за брзе радње у палети команди.</value>
-    <comment>Supplementary description for the command palette agent setting.</comment>
+    <value>Изаберите агента који одговара на упите које унесете у палети команди са префиксом „?“. Сваки упит се покреће на новој картици, одвојено од панела агента.</value>
+    <comment>{Locked="?"} Supplementary description for the command palette agent setting. "?" is the literal ASCII prefix typed in the command palette (same prefix as Actions_CommandPaletteLaunchModeAgentDelegation).
+In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data><data name="AIAgents_AutoFix.Header" xml:space="preserve">
     <value>Аутоматски предложи исправке за неуспеле команде</value>
     <comment>Header for the toggle that enables automatic fix suggestions when commands fail.</comment>
@@ -783,8 +785,8 @@
     <value>Инсталирај Hook скрипте агента</value>
     <comment>Header for the Agent Hooks install section.</comment>
   </data><data name="AIAgents_HooksInstall.HelpText" xml:space="preserve">
-    <value>Пратите сесије међу агентима. Неопходно за управљање сесијама агената.</value>
-    <comment>Help text shown under the expandable section header.</comment>
+    <value>Инсталира hook скрипту у CLI алате ваших агената како би се сесије које покрену изван панела агента и даље приказивале у управљању сесијама агената. Доступно за Copilot, Claude, Codex, Gemini и OpenCode.</value>
+    <comment>{Locked="hook","CLI","Copilot","Claude","Codex","Gemini","OpenCode"} Help text shown under the expandable section header. Explains what the hooks do and which agents support them. Pluralize "CLI" the way your language does; do not carry over the English "-s".</comment>
   </data><data name="AIAgents_HooksInstallButton.Content" xml:space="preserve">
     <value>Инсталирај Hooks</value>
     <comment>Button label that triggers installation of the wt-agent-hooks plugin/extension into all detected agent CLIs (Copilot, Claude, Codex, Gemini).</comment>
@@ -1344,16 +1346,16 @@
     <comment>Header for choosing which AI agent backend is used by this profile.</comment>
   </data>
   <data name="Profile_AgentPaneBackend.HelpText" xml:space="preserve">
-    <value>Изаберите агента компатибилног са ACP који ће се користити у панелу агента. За овај профил, овај избор има предност над глобалним избором агента за панел.</value>
-    <comment>{Locked="ACP"} Description for the per-profile AI agent setting.</comment>
+    <value>Изаберите ACP агента који се користи у панелу агента док је овај профил активан. Ова поставка има предност над избором у одељку „Панел агента“ на страници подешавања „Агенти“.</value>
+    <comment>{Locked="ACP"} Description for the per-profile AI agent setting. "Agent pane" and "Agent" name the section and page this setting overrides — translate them the same way as AIAgents_AcpGroupHeader and Nav_AIAgents.</comment>
   </data>
   <data name="Profile_CommandPaletteAgent.Header" xml:space="preserve">
     <value>Агент за палету команди</value>
     <comment>Header for choosing which AI agent handles command palette delegation for this profile.</comment>
   </data>
   <data name="Profile_CommandPaletteAgent.HelpText" xml:space="preserve">
-    <value>Изаберите агента који се користи за делегирање из палете команди у овом профилу. Овај избор има предност над глобалном поставком агента за делегирање.</value>
-    <comment>Description for the per-profile command palette agent setting. Here “agent” means an AI agent, not a proxy or human agent.</comment>
+    <value>Изаберите агента који одговара на „?“ упите из палете команди док је овај профил активан. Ова поставка има предност над избором у одељку „Палета команди“ на страници подешавања „Агенти“.</value>
+    <comment>{Locked="?"} Description for the per-profile command palette agent setting. "Command palette" and "Agent" name the section and page this setting overrides — translate them the same way as AIAgents_DelegateGroupHeader and Nav_AIAgents. Here "agent" means an AI agent, not a proxy or human agent.</comment>
   </data>
   <data name="Profile_AgentPaneBackend_AgentFormat" xml:space="preserve">
     <value>{0} · {1}</value>
@@ -3050,5 +3052,25 @@
   <data name="AIAgents_OpenAICompatibleModelDescription" xml:space="preserve">
     <value>{} | {} | Компатибилно са OpenAI</value>
     <comment>{Locked="{}","OpenAI"} The first {} is replaced with the provider name; the second is replaced with its location.</comment>
+  </data>
+  <data name="AIAgents_CustomAcpCommand.PlaceholderText" xml:space="preserve">
+    <value>нпр. my-agent --acp --stdio</value>
+    <comment>{Locked="my-agent --acp --stdio"} Placeholder inside the box where the command for a custom agent pane agent is typed. Translate only the "e.g." lead-in; the sample command is an example command line.</comment>
+  </data>
+  <data name="AIAgents_CustomAcpCommandHint.Text" xml:space="preserve">
+    <value>Унесите команду која покреће ваш CLI у режиму ACP. Већини CLI алата је за то потребна заставица — на пример, qwen.cmd --acp.</value>
+    <comment>{Locked="CLI","ACP","qwen.cmd --acp"} Hint shown under the box where the command for a custom agent pane agent is typed. Pluralize "CLI" the way your language does; do not carry over the English "-s".</comment>
+  </data>
+  <data name="AIAgents_CustomDelegateCommand.PlaceholderText" xml:space="preserve">
+    <value>нпр. my-cli --flag</value>
+    <comment>{Locked="my-cli --flag"} Placeholder inside the box where the command for a custom command palette agent is typed. Translate only the "e.g." lead-in; the sample command is an example command line.</comment>
+  </data>
+  <data name="AIAgents_CustomDelegateCommandHint.Text" xml:space="preserve">
+    <value>Унесите команду која покреће ваш CLI. Палета команди је покреће као уобичајену интерактивну сесију, тако да заставица ACP није потребна — на пример, qwen.cmd.</value>
+    <comment>{Locked="CLI","ACP","qwen.cmd"} Hint shown under the box where the command for a custom command palette agent is typed. Contrasts with the agent pane command, which does need an ACP flag.</comment>
+  </data>
+  <data name="AIAgents_HooksInstallRowDescription.Text" xml:space="preserve">
+    <value>Инсталира hooks за сваки подржани CLI агента пронађен у PATH. Покрените ово поново након што инсталирате други CLI агента.</value>
+    <comment>{Locked="hooks","CLI","PATH"} Description under the "Install agent hook script" row label inside the Agent session tracking expander. Explains what the adjacent button acts on and when to run it again.</comment>
   </data>
 </root>

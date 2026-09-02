@@ -30,7 +30,7 @@ The FRE only sets up the session-tracking hooks for the agents you went through 
    - Codex: [Steps 3.3.1 – 3.3.3](./installing-dependencies.md#33-openai-codex-bring-your-own) — same wrapper-via-`npx` pattern as Claude.
    - Gemini: [Section 3.4](./installing-dependencies.md#34-gemini-cli-bring-your-own) — Gemini speaks ACP natively, so no wrapper is needed; just install the CLI itself.
 
-2. **Re-install the session-tracking hooks.** Open Intelligent Terminal **Settings → Agent**, scroll to the **Agent session tracking (hooks)** row ("Track sessions across agents. Required for agent session management."), expand it, and click the **Install hooks** button next to *Install agent hook script*. This wires the newly installed CLI into agent session management so its sessions show up in the panel.
+2. **Re-install the session-tracking hooks.** Open Intelligent Terminal **Settings → Agent**, scroll to the **Agent session tracking (hooks)** row ("Installs a hook script into your agent CLIs so the sessions they start outside the agent pane still show up in agent session management."), expand it, and click the **Install hooks** button next to *Install agent hook script*. This wires the newly installed CLI into agent session management so its sessions show up in the panel.
 
 ## 4. Can I use a custom ACP-compatible agent (Qwen, Cline, Goose, Cursor, …)?
 
