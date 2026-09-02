@@ -1,0 +1,1117 @@
+
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Provider Directory Search</title>
+    <link rel="stylesheet" href="/css/site.css?v=l2vDAllVK-Z9abe2kl9kWDMMeYNhkJuRYm7dstl2n4I" />
+    <link rel="stylesheet" href="/DenticalWebsite.styles.css?v=-ddiUU0-1kPmbbI3db3bU6w5UiIp6cic5DisoHi7J-w" />
+    <link rel="stylesheet" href="/css/custom-apps.css?v=MnaMBoA1YQ9GIAbN56KAzR4pUVgxHIgzJsO51qNsBDk">
+
+    <!-- head content, for all pages -->
+    <!-- Use highest compatibility mode -->
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+
+    <!-- http://t.co/dKP3o1e -->
+    <meta name="HandheldFriendly" content="True">
+    <!-- for Blackberry, AvantGo -->
+    <meta name="MobileOptimized" content="320">
+    <!-- for Windows mobile -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, minimum-scale=1.0">
+
+    <!-- For all browsers -->
+    <link rel="stylesheet" href="/css/cagov.core.css?v=ObqcJA9yMMe9q__QODQuiN34mPhCPf4VWWf6Zko2RaM">
+    <link rel="stylesheet" href="/css/custom.css?v=WlXanJd-M3DcYjKqfD-Vl43ftU_sxSfHAzbOWWgdPko">
+
+    <!-- Color Scheme -->
+    <link rel="stylesheet" href="/css/colorscheme-oceanside.css?v=qFLxldcIyykcgsmSh3aLf8pvVoCS6FPMndKY5nGh5tc">
+
+    <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon-180x180.png">
+    <link rel="apple-touch-icon" sizes="152x152" href="/images/apple-touch-icon-152x152.png">
+    <link rel="apple-touch-icon" sizes="144x144" href="/images/apple-touch-icon-144x144.png">
+    <link rel="apple-touch-icon" sizes="120x120" href="/images/apple-touch-icon-120x120.png">
+    <link rel="apple-touch-icon" sizes="114x114" href="/images/apple-touch-icon-114x114.png">
+    <link rel="apple-touch-icon" sizes="72x72" href="/images/apple-touch-icon-72x72.png">
+    <link rel="apple-touch-icon" sizes="57x57" href="/images/apple-touch-icon-57x57.png">
+    <link rel="apple-touch-icon" href="/images/apple-touch-icon.png">
+
+    <link rel="icon" href="/favicon.ico" type="image/x-icon">
+    <link rel="manifest" href="/site.webmanifest">
+
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <meta name="apple-mobile-web-app-title" content="Medi-Cal Dental">
+
+    <!--Google Analytics 4 -->
+    <script type="text/javascript" src="/ruxitagentjs_ICA7NVfqrux_10343260715123811.js" data-dtconfig="rid=RID_-134123532|rpid=1607503326|domain=ca.gov|reportUrl=/rb_459ae2d9-98e2-4924-beac-c8f0f09fb053|app=8c5608cd24cc2f5e|cuc=90elfkpb|owasp=1|mel=100000|expw=1|featureHash=ICA7NVfqrux|dpvc=1|lastModification=1786879716502|tp=500,50,0|rdnt=1|uxrgce=1|srbbv=2|agentUri=/ruxitagentjs_ICA7NVfqrux_10343260715123811.js"></script><script async src="https://www.googletagmanager.com/gtag/js?id=G-1CEWEWFPWS"></script>
+    <script>
+        window.dataLayer = window.dataLayer || [];
+        function gtag() { dataLayer.push(arguments); }
+        gtag('js', new Date());
+
+        gtag('config', 'G-1CEWEWFPWS'); // individual agency GA4 measurement ID (no statewide setup)
+    </script>
+
+    <!-- Google Tag Manager -->
+    <script>
+        (function (w, d, s, l, i) {
+            w[l] = w[l] || []; w[l].push({
+                'gtm.start':
+                    new Date().getTime(), event: 'gtm.js'
+            }); var f = d.getElementsByTagName(s)[0],
+                j = d.createElement(s), dl = l != 'dataLayer' ? '&l=' + l : ''; j.async = true; j.src =
+                    'https://www.googletagmanager.com/gtm.js?id=' + i + dl; f.parentNode.insertBefore(j, f);
+        })(window, document, 'script', 'dataLayer', 'GTM-KVM7FWBP');</script>
+    <!-- End Google Tag Manager -->
+
+
+
+
+</head>
+<body>
+    <!-- Google Tag Manager (noscript) -->
+    <noscript b-xzte0h2bb7>
+        <iframe b-xzte0h2bb7 src="https://www.googletagmanager.com/ns.html?id=GTM-KVM7FWBP" height="0" width="0" style="display:none;visibility:hidden" title="Google Tag Manager"></iframe>
+    </noscript>
+    <!-- End Google Tag Manager (noscript) -->
+
+  
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+   
+
+ 
+
+
+
+    <header b-xzte0h2bb7 role="banner" id="header" class="global-header fixed">
+
+        <div b-xzte0h2bb7 id="skip-to-content">
+            <a b-xzte0h2bb7 href="#main-content">Skip to Main Content</a>
+        </div>
+
+       
+        <div b-xzte0h2bb7 class="utility-header">
+            <div b-xzte0h2bb7 class="container">
+                <div b-xzte0h2bb7 class="group flex-row">
+                    <div b-xzte0h2bb7 class="social-media-links">
+                        <div b-xzte0h2bb7 class="header-cagov-logo"><a b-xzte0h2bb7 href="https://ca.gov"><span b-xzte0h2bb7 class="sr-only">CA.gov</span><img b-xzte0h2bb7 src="/images/Ca-Gov-Logo-Gold.svg" class="pos-rel" alt="CA.gov logo" aria-hidden="true"></a></div>
+                    </div>
+                    <div b-xzte0h2bb7 class="settings-links">
+                        <a b-xzte0h2bb7 href="/Translate/Translate"><span b-xzte0h2bb7 class="ca-gov-icon-globe" aria-hidden="true"></span> Translate</a>
+                        <button b-xzte0h2bb7 id="btnSettings" class="btn btn-sm btn-primary" data-bs-toggle="collapse" data-bs-target="#siteSettings" aria-expanded="false" aria-controls="siteSettings">
+                            <span b-xzte0h2bb7 class="ca-gov-icon-gear" aria-hidden="true"></span>
+                            Settings
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <!-- Settings Bar -->
+        <!-- Settings Bar - Page Structure Part 2 -->
+        <div b-xzte0h2bb7 class="site-settings section section-standout collapse collapsed" id="siteSettings">
+            <div b-xzte0h2bb7 class="container p-y">
+                <div b-xzte0h2bb7 class="btn-group btn-group-justified-sm" aria-label="contrastMode">
+                    <div b-xzte0h2bb7 class="btn-group">
+                        <button b-xzte0h2bb7 type="button"
+                                class="btn btn-standout disableHighContrastMode">
+                            Default
+                        </button>
+                    </div>
+                    <div b-xzte0h2bb7 class="btn-group">
+                        <button b-xzte0h2bb7 type="button" class="btn btn-standout enableHighContrastMode">
+                            High
+                            Contrast
+                        </button>
+                    </div>
+                </div>
+
+                <div b-xzte0h2bb7 class="btn-group" aria-label="textSizeMode">
+                    <div b-xzte0h2bb7 class="btn-group"><button b-xzte0h2bb7 type="button" class="btn btn-standout resetTextSize">Reset</button></div>
+                    <div b-xzte0h2bb7 class="btn-group">
+                        <button b-xzte0h2bb7 type="button" class="btn btn-standout increaseTextSize">
+                            <span b-xzte0h2bb7 class="hidden-xs">Increase Font Size</span><span b-xzte0h2bb7 class="visible-xs">
+                                Font <span b-xzte0h2bb7 class="sr-only">Increase</span><span b-xzte0h2bb7 class="ca-gov-icon-plus-line small"
+                                                                                aria-hidden="true"></span>
+                            </span>
+                        </button>
+                    </div>
+                    <div b-xzte0h2bb7 class="btn-group">
+                        <button b-xzte0h2bb7 type="button" class="btn btn-standout decreaseTextSize">
+                            <span b-xzte0h2bb7 class="hidden-xs">Decrease Font Size</span><span b-xzte0h2bb7 class="visible-xs">
+                                Font <span b-xzte0h2bb7 class="sr-only">Decrease</span><span b-xzte0h2bb7 class="ca-gov-icon-minus-line small"
+                                                                                aria-hidden="true"></span>
+                            </span>
+                        </button>
+                    </div>
+                    <div b-xzte0h2bb7 class="btn-group">
+                        <button b-xzte0h2bb7 type="button" class="btn btn-standout dyslexicFont">Dyslexic Font</button>
+                    </div>
+                </div>
+
+                <button b-xzte0h2bb7 type="button" class="close" data-bs-toggle="collapse" data-bs-target="#siteSettings"
+                        aria-label="Close">
+                    <span b-xzte0h2bb7 aria-hidden="true" class=" ca-gov-icon-close-mark"></span>
+                </button>
+            </div>
+        </div>
+
+        <!-- Include Branding -->
+        <!-- Branding - Page Structure Part 3 -->
+        <div b-xzte0h2bb7 class="section-default">
+            <div b-xzte0h2bb7 class="branding">
+                <div b-xzte0h2bb7 class="header-organization-banner">
+                    <a b-xzte0h2bb7 href="/">
+                        <div b-xzte0h2bb7 class="logo-assets">
+                            <img b-xzte0h2bb7 src="/images/DHCS_logo_combo.svg" alt="Department of Health Care Services (DHCS) Medi-Cal Dental logo" class="m-l-0 p-l-0 m-t-sm p-t-0" alt="DHCS Medi-Cal Dental logo">
+
+                        </div>
+                    </a>
+                </div>
+            </div>
+        </div>
+        <!-- Include Mobile Controls -->
+        <!-- Mobile Controls - Page Structure Part 4 -->
+        <div b-xzte0h2bb7 class="mobile-controls">
+            <span b-xzte0h2bb7 class="mobile-control-group mobile-header-icons">
+                <!-- Add more mobile controls here. These will be on the right side of the mobile page header section -->
+            </span>
+            <div b-xzte0h2bb7 class="mobile-control-group main-nav-icons">
+                <button b-xzte0h2bb7 class="mobile-control toggle-search">
+                    <span b-xzte0h2bb7 class="ca-gov-icon-search hidden-print m-l-sm" aria-hidden="true"></span><span b-xzte0h2bb7 class="sr-only">Search</span>
+                </button>
+                <button b-xzte0h2bb7 id="nav-icon3" class="mobile-control toggle-menu" aria-expanded="false" aria-controls="navigation"
+                        data-bs-toggle="collapse" data-bs-target="#navigation">
+                    <span b-xzte0h2bb7></span>
+                    <span b-xzte0h2bb7></span>
+                    <span b-xzte0h2bb7></span>
+                    <span b-xzte0h2bb7></span>
+                    <span b-xzte0h2bb7 class="sr-only">Menu</span>
+                </button>
+
+            </div>
+        </div>
+
+        <div b-xzte0h2bb7 class="navigation-search full-width-nav container">
+
+            <div b-xzte0h2bb7 id="head-search" class="search-container featured-search">
+               
+                <div b-xzte0h2bb7 class="container">
+                    <form id="Search" class="pos-rel" action="/serp.html">
+                        <span b-xzte0h2bb7 class="sr-only" id="SearchInput">Custom Google Search</span>
+                        <input b-xzte0h2bb7 type="text" name="q" aria-labelledby="SearchInput" placeholder="Search this website"
+                               class="height-50 border-0 p-x-sm w-100 search-textfield" />
+                        <button b-xzte0h2bb7 type="submit" class="pos-abs gsc-search-button top-0 width-50 height-50 border-0 bg-transparent">
+                            <span b-xzte0h2bb7 class="ca-gov-icon-search font-size-30 color-gray" aria-hidden="true"></span><span b-xzte0h2bb7 class="sr-only">Submit</span>
+                        </button>
+                        <div b-xzte0h2bb7 class="width-50 height-50 close-search-btn">
+                            <button b-xzte0h2bb7 class="close-search gsc-clear-button width-50 height-50 border-0 bg-transparent pos-rel"
+                                    type="reset">
+                                <span b-xzte0h2bb7 class="sr-only">Close Search</span><span b-xzte0h2bb7 class="ca-gov-icon-close-mark"
+                                                                               aria-hidden="true"></span>
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+
+
+            <!-- Include Navigation -->
+            <!-- Navigation - Page Structure Part 6 -->
+            <nav b-xzte0h2bb7 id="navigation" class="main-navigation singlelevel">
+                <ul b-xzte0h2bb7 id="nav_list" class="top-level-nav">
+                    <li b-xzte0h2bb7 class="nav-item m-r-md">
+                        <a class="first-level-link" href="/Members/Members">Members</a>
+                    </li>
+                    <li b-xzte0h2bb7 class="nav-item m-r-md">
+                        <a class="first-level-link" href="/Providers/DentalProviders">Providers</a>
+                    </li>
+                    <li b-xzte0h2bb7 class="nav-item m-r-md">
+                        <a class="first-level-link" href="/Related/RelatedInfo">Related</a>
+                    </li>
+                    <li b-xzte0h2bb7 class="nav-item m-r-md">
+                        <a class="first-level-link" href="/Contact_Us/ContactUs">Contact Us</a>
+                    </li>
+                </ul>
+            </nav>
+
+
+        </div>
+
+    </header>
+
+    
+
+<script src="https://code.jquery.com/jquery-3.6.0.min.js" type="text/javascript"></script>
+<script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyBxQHAqQKHyylnUEYaJ4V2XZeh0xq8DLk4&amp;libraries&amp;libraries=places"></script>
+<style>
+    .gm-style-iw div * {
+        overflow: hidden !important;
+    }
+
+    .pt-25px {
+        padding-top: 25px !important;
+    }
+</style>
+
+
+<script type="text/javascript">
+    var searchInput = 'location';
+    $(document).ready(function () {
+        var autocomplete;
+        autocomplete = new google.maps.places.Autocomplete((document.getElementById(searchInput)), {
+            componentRestrictions: { country: ["us"] },
+            types: ['geocode']
+
+        });
+
+        google.maps.event.addListener(autocomplete, 'place_changed', function () {
+            var near_place = autocomplete.getPlace();
+        });
+    });
+</script>
+<div class="header-image height-100 shadow"
+     style="background-image: url('/images/background.jpg');">
+</div>
+<div id="main-content" class="main-content">
+
+    <!-- main content -->
+    <div class="section bg-transparent pt-25px" role="main">
+
+        <main class="main-primary">
+
+            <!-- bread crumbs -->
+            <nav aria-label="Breadcrumb">
+                <ol class="breadcrumb font-size-16">
+                    <li><a href="/" title="Home page">Home</a></li>
+                    <li><a href="/Members/Members" title="Members page">Members</a></li>
+                    <li><a href="/Members/Medi_Cal_Dental/Find_A_Dentist/FindADentist">Find-A-Dentist</a></li>
+                    <li class="active">Medi-Cal Provider Directory</li>
+                </ol>
+            </nav>
+
+            <!-- body -->
+            <div class="container p-y-md">
+                <div class="container p-y-md">
+
+                    <h1>Medi-Cal Provider Directory</h1>
+
+                    <p>
+                        If you cannot find a dentist in your area who is accepting new patients, please contact the Medi-Cal Telephone Service Center for additional help at 1-800-322-6384.
+                    </p>
+
+                    <p>
+                        <strong>Show only providers accepting new patients:</strong>
+                        The "Show only providers accepting new patients" field provides users an option to limit search results to dentists that currently accept new patients belonging to the selected benefit plan.
+                    </p>
+
+                    <p>
+                        <strong>Note:</strong>
+                        Many dentists will accept new patients for one-time emergency visits even if they do not accept them as long term patients. If a patient is in need of emergency treatment, avoid selecting the "Show only providers accepting new patients" option to allow the greatest number of possible dentists to be returned in the search results.
+                    </p>
+
+                    <p>
+                        <strong>Note:</strong>
+                        Some dentists require a referral from another dentist before they will accept new patients. Families should contact dentists to confirm whether they are currently accepting new patients under the selected benefit plan and for details regarding their referral policies.
+                    </p>
+                </div>
+            </div>
+
+            <strong> <a href="./DentalProviderDirectorySearch" class="query-toggle"><button id="searchagain" class="btn btn-primary">Search Again</button></a></strong>
+            <strong> <a href="javascript:void(0)" class="query-toggle"><button id="showmap" value="" class="btn btn-primary">Show Map</button></a></strong>
+
+
+            <br>
+            <div id="googleMap" style="width:100%;height:500px;border:1px solid black;display:none;"></div>
+
+
+            <!-- Display the returned results as VCards -->
+            <!--Blazor:{"type":"server","prerenderId":"7383939176e045f9a4de76223eed3483","key":{"locationHash":"DAAC19997168683D9C4E7A2D6443C20B10A2AD920BD9EAE946F254C9C4F5E260:0","formattedComponentKey":""},"sequence":0,"descriptor":"CfDJ8G8EelBqQcVEqY0\u002Biq7k1NheYKALB6LOfCXUHJhmEWzvdMmNfyfeFjW3dEbA\u002B/hkpIwfUHcgq1H720rc/ECIgdvNjm8A1bp9hc\u002Bzj56Oe\u002BbxyTFcnaQ3LaliWAkcR1XnD97aEXrFwZis710azudJmqp1HI8eSWDK70A8Gsk7Ixqe1QOAdW9Cmp7wr9hmGBzJ5kOBpWIWIE1QPbzYUW9rlsXaPCEXhR1E3ijOwHVTsxtw816MvxA516rnesLnmacDLGAn2hyymiO25iHpI3rQqduFKka8GhnygYqZMr\u002Bc57ZCzWQkneLmNgfpvUMQxqXYUTsXgPYBRqOfagZwyzv0DrZt3tbbYMhBb\u002Bck8DBzz5FpOJxeVL\u002Bb3uav4rA7BZ/kc45HGagySE0S1c2qb7MGE86RzcrAbj5kr21OV6wdjQH33qNzuYX0km4VPpFgBoKRa6GmxpZ76T4kv1WShuLqzyS9mDDTeexWkjfFcZJON86oaPpCJ1c54S6fudQkSHHg9iU3vCyjAiMHDNlz7x34TTxRlz9xvshU73sskMmUKBFE"}--><p class="query-summary"><input type="hidden" id="totalcount" value="1">
+
+	Showing <span>1 to 10</span> of <span>1115</span>
+	within <span>100</span> miles
+	of <span>95127</span><span> Medi-Cal Dental Program</span>.
+</p><input type="hidden" id="marker-org-1" value="TRAN, PHONG THANH, DDS" />
+	<input type="hidden" id="marker-latitude-1" value="37.3504" />
+	<input type="hidden" id="marker-longitude-1" value="-121.8133" /><div style="margin-bottom:0;padding:0" id="vCard-div-1" class="vcard pd"><article style="margin-bottom:0;padding:1" class="vcard pd" id="vCard-tooltip-1"><p class="office" style="margin:0">Dental Office Name: <strong>SUNSHINE DENTAL OFFICE</strong></p><p class="office" style="margin:0">Dental Provider Name: <strong>TRAN, PHONG THANH, DDS</strong></p><p id="loc-1-1" class="adr" style="margin:0"><span class="street-address" style="line-height:1.0">1450 S WHITE RD STE 20 </span>
+			    <span class="locality" style="line-height:1.0">SAN JOSE</span>,
+				<abbr class="region" style="line-height:1.0">CA</abbr>
+				<span class="postal-code" style="line-height:1.0">95127</span></p>
+			<p style="margin:0"><span>(408) 926-0110</span></p>
+
+			<p style="margin:0"><a href="https://" target="_blank"></a></p><p style="line-height:1.0"><font color="#014F01">Accepting new patients</font></p></article><span style="padding: 0px 15px">Provider Type of Practice: <span>Dental Practice</span></span><p style="line-height:1.5;margin-bottom:0;padding: 0 15px;">
+			Specialty:
+General Practitioner</p><ol data-aria-accordion data-multi data-transition data-default="none" id="acc_1-1-1" class="accordion"><li><h3 data-aria-accordion-heading class="accordion__heading"><button type="button" aria-controls="acc_1-1_panel_1-1" id="acc_1-1_panel_1_trigger-1" class="accordion__trigger" aria-expanded="false" data-current="false">
+							Notes
+						</button></h3>
+
+					
+					<div data-aria-accordion-panel class="accordion__panel--transition accordion__panel" id="acc_1-1_panel_1-1" aria-hidden="true"><ul style="list-style-type: none;padding-inline-start: 0px;" class="note"><li class="distance"><a href="https://www.google.com/maps?saddr=95127&amp;daddr=1450 S WHITE RD STE 20 &#x2B;SAN JOSE&#x2B;CA&#x2B;95127" rel="external" target="_blank">Get Directions</a>
+								&nbsp<a href="javascript:void(0)" onclick="initialize(1,37.3504,-121.8133)" class="mapTrigger">Show On Map</a></li>
+
+							
+							<li class="plan">MEDI-CAL DENTAL PROGRAM</li>
+
+							
+							<li class="languages">
+								Languages Spoken:
+English, Spanish, Vietnamese</li><li class="services">Accepting CHIP patients</li><li class="services">Wheelchair Access</li><li class="services"> Special Accommodations: Exam Room, Restroom</li><li class="services"> Patients with Special Healthcare Needs: Physical Disabilities, Developmental Delays, Learning Difficulties, Behavioral Challenges, Emotional Challenges</li><li class="lastUpdateDate">Last update date: 9/2/2026</li></ul></div></li></ol></div><input type="hidden" id="marker-org-2" value="DAO, NINH ANH, DDS INC" />
+	<input type="hidden" id="marker-latitude-2" value="37.3235" />
+	<input type="hidden" id="marker-longitude-2" value="-121.7951" /><div style="margin-bottom:0;padding:0" id="vCard-div-2" class="vcard pd"><article style="margin-bottom:0;padding:1" class="vcard pd" id="vCard-tooltip-2"><p class="office" style="margin:0">Dental Office Name: <strong>CONCEPT DENTAL</strong></p><p class="office" style="margin:0">Dental Provider Name: <strong>DAO, NINH ANH, DDS INC</strong></p><p id="loc-1-2" class="adr" style="margin:0"><span class="street-address" style="line-height:1.0">2830 S WHITE RD </span>
+			    <span class="locality" style="line-height:1.0">SAN JOSE</span>,
+				<abbr class="region" style="line-height:1.0">CA</abbr>
+				<span class="postal-code" style="line-height:1.0">95148</span></p>
+			<p style="margin:0"><span>(408) 238-0212</span></p>
+
+			<p style="margin:0"><a href="https://" target="_blank"></a></p><p style="line-height:1.0"><font color="#014F01">Accepting new patients</font></p></article><span style="padding: 0px 15px">Provider Type of Practice: <span>Dental Practice</span></span><p style="line-height:1.5;margin-bottom:0;padding: 0 15px;">
+			Specialty:
+General Practitioner</p><ol data-aria-accordion data-multi data-transition data-default="none" id="acc_1-1-2" class="accordion"><li><h3 data-aria-accordion-heading class="accordion__heading"><button type="button" aria-controls="acc_1-1_panel_1-2" id="acc_1-1_panel_1_trigger-2" class="accordion__trigger" aria-expanded="false" data-current="false">
+							Notes
+						</button></h3>
+
+					
+					<div data-aria-accordion-panel class="accordion__panel--transition accordion__panel" id="acc_1-1_panel_1-2" aria-hidden="true"><ul style="list-style-type: none;padding-inline-start: 0px;" class="note"><li class="distance"><a href="https://www.google.com/maps?saddr=95127&amp;daddr=2830 S WHITE RD &#x2B;SAN JOSE&#x2B;CA&#x2B;95148" rel="external" target="_blank">Get Directions</a>
+								&nbsp<a href="javascript:void(0)" onclick="initialize(2,37.3235,-121.7951)" class="mapTrigger">Show On Map</a></li>
+
+							
+							<li class="plan">MEDI-CAL DENTAL PROGRAM</li>
+
+							
+							<li class="languages">
+								Languages Spoken:
+English, Spanish, Vietnamese, Cantonese</li><li class="services">Wheelchair Access</li><li class="lastUpdateDate">Last update date: 9/2/2026</li></ul></div></li></ol></div><input type="hidden" id="marker-org-3" value="TRAMMIE BUI, D.D.S., INC" />
+	<input type="hidden" id="marker-latitude-3" value="37.3166" />
+	<input type="hidden" id="marker-longitude-3" value="-121.7939" /><div style="margin-bottom:0;padding:0" id="vCard-div-3" class="vcard pd"><article style="margin-bottom:0;padding:1" class="vcard pd" id="vCard-tooltip-3"><p class="office" style="margin:0">Dental Office Name: <strong>RADIANT SMILE DENTISTRY</strong></p><p class="office" style="margin:0">Dental Provider Name: <strong>TRAMMIE BUI, D.D.S., INC</strong></p><p id="loc-1-3" class="adr" style="margin:0"><span class="street-address" style="line-height:1.0">3151 S. WHITE RD 211</span>
+			    <span class="locality" style="line-height:1.0">SAN JOSE</span>,
+				<abbr class="region" style="line-height:1.0">CA</abbr>
+				<span class="postal-code" style="line-height:1.0">95148</span></p>
+			<p style="margin:0"><span>(408) 258-5682</span></p>
+
+			<p style="margin:0"><a href="https://" target="_blank"></a></p><p style="line-height:1.0"><font color="#014F01">Accepting new patients</font></p></article><span style="padding: 0px 15px">Provider Type of Practice: <span>Dental Practice</span></span><p style="line-height:1.5;margin-bottom:0;padding: 0 15px;">
+			Specialty:
+General Practitioner</p><ol data-aria-accordion data-multi data-transition data-default="none" id="acc_1-1-3" class="accordion"><li><h3 data-aria-accordion-heading class="accordion__heading"><button type="button" aria-controls="acc_1-1_panel_1-3" id="acc_1-1_panel_1_trigger-3" class="accordion__trigger" aria-expanded="false" data-current="false">
+							Notes
+						</button></h3>
+
+					
+					<div data-aria-accordion-panel class="accordion__panel--transition accordion__panel" id="acc_1-1_panel_1-3" aria-hidden="true"><ul style="list-style-type: none;padding-inline-start: 0px;" class="note"><li class="distance"><a href="https://www.google.com/maps?saddr=95127&amp;daddr=3151 S. WHITE RD 211&#x2B;SAN JOSE&#x2B;CA&#x2B;95148" rel="external" target="_blank">Get Directions</a>
+								&nbsp<a href="javascript:void(0)" onclick="initialize(3,37.3166,-121.7939)" class="mapTrigger">Show On Map</a></li>
+
+							
+							<li class="plan">MEDI-CAL DENTAL PROGRAM</li>
+
+							
+							<li class="languages">
+								Languages Spoken:
+English, Vietnamese</li><li class="services">Wheelchair Access</li><li class="lastUpdateDate">Last update date: 9/2/2026</li></ul></div></li></ol></div><input type="hidden" id="marker-org-4" value="GURDIP NARULA DENTAL CORPORATION" />
+	<input type="hidden" id="marker-latitude-4" value="37.3243" />
+	<input type="hidden" id="marker-longitude-4" value="-121.7982" /><div style="margin-bottom:0;padding:0" id="vCard-div-4" class="vcard pd"><article style="margin-bottom:0;padding:1" class="vcard pd" id="vCard-tooltip-4"><p class="office" style="margin:0">Dental Office Name: <strong>KHALSA DENTAL CARE</strong></p><p class="office" style="margin:0">Dental Provider Name: <strong>GURDIP NARULA DENTAL CORPORATION</strong></p><p id="loc-1-4" class="adr" style="margin:0"><span class="street-address" style="line-height:1.0">2850 QUIMBY RD STE 145 </span>
+			    <span class="locality" style="line-height:1.0">SAN JOSE</span>,
+				<abbr class="region" style="line-height:1.0">CA</abbr>
+				<span class="postal-code" style="line-height:1.0">95148</span></p>
+			<p style="margin:0"><span>(408) 274-5000</span></p>
+
+			<p style="margin:0"><a href="https://" target="_blank"></a></p><p style="line-height:1.0"><font color="#D22B2B">Not accepting new patients</font></p></article><span style="padding: 0px 15px">Provider Type of Practice: <span>Dental Practice</span></span><p style="line-height:1.5;margin-bottom:0;padding: 0 15px;">
+			Specialty:
+General Practitioner</p><ol data-aria-accordion data-multi data-transition data-default="none" id="acc_1-1-4" class="accordion"><li><h3 data-aria-accordion-heading class="accordion__heading"><button type="button" aria-controls="acc_1-1_panel_1-4" id="acc_1-1_panel_1_trigger-4" class="accordion__trigger" aria-expanded="false" data-current="false">
+							Notes
+						</button></h3>
+
+					
+					<div data-aria-accordion-panel class="accordion__panel--transition accordion__panel" id="acc_1-1_panel_1-4" aria-hidden="true"><ul style="list-style-type: none;padding-inline-start: 0px;" class="note"><li class="distance"><a href="https://www.google.com/maps?saddr=95127&amp;daddr=2850 QUIMBY RD STE 145 &#x2B;SAN JOSE&#x2B;CA&#x2B;95148" rel="external" target="_blank">Get Directions</a>
+								&nbsp<a href="javascript:void(0)" onclick="initialize(4,37.3243,-121.7982)" class="mapTrigger">Show On Map</a></li>
+
+							
+							<li class="plan">MEDI-CAL DENTAL PROGRAM</li>
+
+							
+							<li class="languages">
+								Languages Spoken:
+English</li><li class="services">Wheelchair Access</li><li class="lastUpdateDate">Last update date: 9/2/2026</li></ul></div></li></ol></div><input type="hidden" id="marker-org-5" value="NGUYEN AND TRAN DENTAL CORPORATION" />
+	<input type="hidden" id="marker-latitude-5" value="37.3295" />
+	<input type="hidden" id="marker-longitude-5" value="-121.7971" /><div style="margin-bottom:0;padding:0" id="vCard-div-5" class="vcard pd"><article style="margin-bottom:0;padding:1" class="vcard pd" id="vCard-tooltip-5"><p class="office" style="margin:0">Dental Office Name: <strong>TOOTH FAIRY COTTAGE</strong></p><p class="office" style="margin:0">Dental Provider Name: <strong>NGUYEN AND TRAN DENTAL CORPORATION</strong></p><p id="loc-1-5" class="adr" style="margin:0"><span class="street-address" style="line-height:1.0">2680 S WHITE RD STE 255 </span>
+			    <span class="locality" style="line-height:1.0">SAN JOSE</span>,
+				<abbr class="region" style="line-height:1.0">CA</abbr>
+				<span class="postal-code" style="line-height:1.0">95148</span></p>
+			<p style="margin:0"><span>(408) 238-2647</span></p>
+
+			<p style="margin:0"><a href="https://" target="_blank"></a></p><p style="line-height:1.0"><font color="#014F01">Accepting new patients</font></p></article><span style="padding: 0px 15px">Provider Type of Practice: <span>Dental Practice</span></span><p style="line-height:1.5;margin-bottom:0;padding: 0 15px;">
+			Specialty:
+General Practitioner, Pedodontist</p><ol data-aria-accordion data-multi data-transition data-default="none" id="acc_1-1-5" class="accordion"><li><h3 data-aria-accordion-heading class="accordion__heading"><button type="button" aria-controls="acc_1-1_panel_1-5" id="acc_1-1_panel_1_trigger-5" class="accordion__trigger" aria-expanded="false" data-current="false">
+							Notes
+						</button></h3>
+
+					
+					<div data-aria-accordion-panel class="accordion__panel--transition accordion__panel" id="acc_1-1_panel_1-5" aria-hidden="true"><ul style="list-style-type: none;padding-inline-start: 0px;" class="note"><li class="distance"><a href="https://www.google.com/maps?saddr=95127&amp;daddr=2680 S WHITE RD STE 255 &#x2B;SAN JOSE&#x2B;CA&#x2B;95148" rel="external" target="_blank">Get Directions</a>
+								&nbsp<a href="javascript:void(0)" onclick="initialize(5,37.3295,-121.7971)" class="mapTrigger">Show On Map</a></li>
+
+							
+							<li class="plan">MEDI-CAL DENTAL PROGRAM</li>
+
+							
+							<li class="languages">
+								Languages Spoken:
+English, Spanish, Tagalog, Vietnamese</li><li class="services">Wheelchair Access</li><li class="lastUpdateDate">Last update date: 9/2/2026</li></ul></div></li></ol></div><input type="hidden" id="marker-org-6" value="NGUYEN, DUONG, DDS INC" />
+	<input type="hidden" id="marker-latitude-6" value="37.3568" />
+	<input type="hidden" id="marker-longitude-6" value="-121.82" /><div style="margin-bottom:0;padding:0" id="vCard-div-6" class="vcard pd"><article style="margin-bottom:0;padding:1" class="vcard pd" id="vCard-tooltip-6"><p class="office" style="margin:0">Dental Provider Name: <strong>NGUYEN, DUONG, DDS INC</strong></p><p id="loc-1-6" class="adr" style="margin:0"><span class="street-address" style="line-height:1.0">1075 S WHITE RD STE 60</span>
+			    <span class="locality" style="line-height:1.0">SAN JOSE</span>,
+				<abbr class="region" style="line-height:1.0">CA</abbr>
+				<span class="postal-code" style="line-height:1.0">95127</span></p>
+			<p style="margin:0"><span>(408) 272-8883</span></p>
+
+			<p style="margin:0"><a href="https://" target="_blank"></a></p><p style="line-height:1.0"><font color="#014F01">Accepting new patients</font></p></article><span style="padding: 0px 15px">Provider Type of Practice: <span>Dental Practice</span></span><p style="line-height:1.5;margin-bottom:0;padding: 0 15px;">
+			Specialty:
+General Practitioner</p><ol data-aria-accordion data-multi data-transition data-default="none" id="acc_1-1-6" class="accordion"><li><h3 data-aria-accordion-heading class="accordion__heading"><button type="button" aria-controls="acc_1-1_panel_1-6" id="acc_1-1_panel_1_trigger-6" class="accordion__trigger" aria-expanded="false" data-current="false">
+							Notes
+						</button></h3>
+
+					
+					<div data-aria-accordion-panel class="accordion__panel--transition accordion__panel" id="acc_1-1_panel_1-6" aria-hidden="true"><ul style="list-style-type: none;padding-inline-start: 0px;" class="note"><li class="distance"><a href="https://www.google.com/maps?saddr=95127&amp;daddr=1075 S WHITE RD STE 60&#x2B;SAN JOSE&#x2B;CA&#x2B;95127" rel="external" target="_blank">Get Directions</a>
+								&nbsp<a href="javascript:void(0)" onclick="initialize(6,37.3568,-121.82)" class="mapTrigger">Show On Map</a></li>
+
+							
+							<li class="plan">MEDI-CAL DENTAL PROGRAM</li>
+
+							
+							<li class="languages">
+								Languages Spoken:
+English, Spanish</li><li class="services">Wheelchair Access</li><li class="lastUpdateDate">Last update date: 9/2/2026</li></ul></div></li></ol></div><input type="hidden" id="marker-org-7" value="NGUYEN, CAMTAM, DDS INC" />
+	<input type="hidden" id="marker-latitude-7" value="37.3513" />
+	<input type="hidden" id="marker-longitude-7" value="-121.8273" /><div style="margin-bottom:0;padding:0" id="vCard-div-7" class="vcard pd"><article style="margin-bottom:0;padding:1" class="vcard pd" id="vCard-tooltip-7"><p class="office" style="margin:0">Dental Office Name: <strong>PREMIER DENTAL PRACTICE</strong></p><p class="office" style="margin:0">Dental Provider Name: <strong>NGUYEN, CAMTAM, DDS INC</strong></p><p id="loc-1-7" class="adr" style="margin:0"><span class="street-address" style="line-height:1.0">1057 E CAPITOL EXPY </span>
+			    <span class="locality" style="line-height:1.0">SAN JOSE</span>,
+				<abbr class="region" style="line-height:1.0">CA</abbr>
+				<span class="postal-code" style="line-height:1.0">95121</span></p>
+			<p style="margin:0"><span>(408) 972-2911</span></p>
+
+			<p style="margin:0"><a href="https://" target="_blank"></a></p><p style="line-height:1.0"><font color="#D22B2B">Not accepting new patients</font></p></article><span style="padding: 0px 15px">Provider Type of Practice: <span>Dental Practice</span></span><p style="line-height:1.5;margin-bottom:0;padding: 0 15px;">
+			Specialty:
+General Practitioner</p><ol data-aria-accordion data-multi data-transition data-default="none" id="acc_1-1-7" class="accordion"><li><h3 data-aria-accordion-heading class="accordion__heading"><button type="button" aria-controls="acc_1-1_panel_1-7" id="acc_1-1_panel_1_trigger-7" class="accordion__trigger" aria-expanded="false" data-current="false">
+							Notes
+						</button></h3>
+
+					
+					<div data-aria-accordion-panel class="accordion__panel--transition accordion__panel" id="acc_1-1_panel_1-7" aria-hidden="true"><ul style="list-style-type: none;padding-inline-start: 0px;" class="note"><li class="distance"><a href="https://www.google.com/maps?saddr=95127&amp;daddr=1057 E CAPITOL EXPY &#x2B;SAN JOSE&#x2B;CA&#x2B;95121" rel="external" target="_blank">Get Directions</a>
+								&nbsp<a href="javascript:void(0)" onclick="initialize(7,37.3513,-121.8273)" class="mapTrigger">Show On Map</a></li>
+
+							
+							<li class="plan">MEDI-CAL DENTAL PROGRAM</li>
+
+							
+							<li class="languages">
+								Languages Spoken:
+English, Vietnamese</li><li class="services">Wheelchair Access</li><li class="services">Cultural Competency Training Completed</li><li class="lastUpdateDate">Last update date: 9/2/2026</li></ul></div></li></ol></div><input type="hidden" id="marker-org-8" value="NGUYEN, THAO MINH, DDS INC" />
+	<input type="hidden" id="marker-latitude-8" value="37.3533" />
+	<input type="hidden" id="marker-longitude-8" value="-121.8243" /><div style="margin-bottom:0;padding:0" id="vCard-div-8" class="vcard pd"><article style="margin-bottom:0;padding:1" class="vcard pd" id="vCard-tooltip-8"><p class="office" style="margin:0">Dental Office Name: <strong>SMILEWORLD DENTAL CLINIC</strong></p><p class="office" style="margin:0">Dental Provider Name: <strong>NGUYEN, THAO MINH, DDS INC</strong></p><p id="loc-1-8" class="adr" style="margin:0"><span class="street-address" style="line-height:1.0">2811 STORY RD STE 50 </span>
+			    <span class="locality" style="line-height:1.0">SAN JOSE</span>,
+				<abbr class="region" style="line-height:1.0">CA</abbr>
+				<span class="postal-code" style="line-height:1.0">95127</span></p>
+			<p style="margin:0"><span>(408) 929-9797</span></p>
+
+			<p style="margin:0"><a href="https://" target="_blank"></a></p><p style="line-height:1.0"><font color="#014F01">Accepting new patients</font></p></article><span style="padding: 0px 15px">Provider Type of Practice: <span>Dental Practice</span></span><p style="line-height:1.5;margin-bottom:0;padding: 0 15px;">
+			Specialty:
+General Practitioner</p><ol data-aria-accordion data-multi data-transition data-default="none" id="acc_1-1-8" class="accordion"><li><h3 data-aria-accordion-heading class="accordion__heading"><button type="button" aria-controls="acc_1-1_panel_1-8" id="acc_1-1_panel_1_trigger-8" class="accordion__trigger" aria-expanded="false" data-current="false">
+							Notes
+						</button></h3>
+
+					
+					<div data-aria-accordion-panel class="accordion__panel--transition accordion__panel" id="acc_1-1_panel_1-8" aria-hidden="true"><ul style="list-style-type: none;padding-inline-start: 0px;" class="note"><li class="distance"><a href="https://www.google.com/maps?saddr=95127&amp;daddr=2811 STORY RD STE 50 &#x2B;SAN JOSE&#x2B;CA&#x2B;95127" rel="external" target="_blank">Get Directions</a>
+								&nbsp<a href="javascript:void(0)" onclick="initialize(8,37.3533,-121.8243)" class="mapTrigger">Show On Map</a></li>
+
+							
+							<li class="plan">MEDI-CAL DENTAL PROGRAM</li>
+
+							
+							<li class="languages">
+								Languages Spoken:
+English, Spanish, Vietnamese</li><li class="services">Wheelchair Access</li><li class="lastUpdateDate">Last update date: 9/2/2026</li></ul></div></li></ol></div><input type="hidden" id="marker-org-9" value="SHAH, JOLLY, DDS DENTAL CORPORATION" />
+	<input type="hidden" id="marker-latitude-9" value="37.3813" />
+	<input type="hidden" id="marker-longitude-9" value="-121.8288" /><div style="margin-bottom:0;padding:0" id="vCard-div-9" class="vcard pd"><article style="margin-bottom:0;padding:1" class="vcard pd" id="vCard-tooltip-9"><p class="office" style="margin:0">Dental Office Name: <strong>AARISHA DENTAL OFFICE</strong></p><p class="office" style="margin:0">Dental Provider Name: <strong>SHAH, JOLLY, DDS DENTAL CORPORATION</strong></p><p id="loc-1-9" class="adr" style="margin:0"><span class="street-address" style="line-height:1.0">3465 MCKEE RD </span>
+			    <span class="locality" style="line-height:1.0">SAN JOSE</span>,
+				<abbr class="region" style="line-height:1.0">CA</abbr>
+				<span class="postal-code" style="line-height:1.0">95127</span></p>
+			<p style="margin:0"><span>(408) 929-8811</span></p>
+
+			<p style="margin:0"><a href="https://WWW.AARISHADENTAL.COM" target="_blank">www.aarishadental.com</a></p><p style="line-height:1.0"><font color="#D22B2B">Not accepting new patients</font></p></article><span style="padding: 0px 15px">Provider Type of Practice: <span>Dental Practice</span></span><p style="line-height:1.5;margin-bottom:0;padding: 0 15px;">
+			Specialty:
+General Practitioner</p><ol data-aria-accordion data-multi data-transition data-default="none" id="acc_1-1-9" class="accordion"><li><h3 data-aria-accordion-heading class="accordion__heading"><button type="button" aria-controls="acc_1-1_panel_1-9" id="acc_1-1_panel_1_trigger-9" class="accordion__trigger" aria-expanded="false" data-current="false">
+							Notes
+						</button></h3>
+
+					
+					<div data-aria-accordion-panel class="accordion__panel--transition accordion__panel" id="acc_1-1_panel_1-9" aria-hidden="true"><ul style="list-style-type: none;padding-inline-start: 0px;" class="note"><li class="distance"><a href="https://www.google.com/maps?saddr=95127&amp;daddr=3465 MCKEE RD &#x2B;SAN JOSE&#x2B;CA&#x2B;95127" rel="external" target="_blank">Get Directions</a>
+								&nbsp<a href="javascript:void(0)" onclick="initialize(9,37.3813,-121.8288)" class="mapTrigger">Show On Map</a></li>
+
+							
+							<li class="plan">MEDI-CAL DENTAL PROGRAM</li>
+
+							
+							<li class="languages">
+								Languages Spoken:
+English, Spanish, Vietnamese, Punjabi, Hindi</li><li class="services">Wheelchair Access</li><li class="services"> Special Accommodations: Exam Room, Exterior Building, Interior Building, Parking, Restroom, Medical Equipment, Patient Areas, Patient Diagnostic and Treatment Use</li><li class="lastUpdateDate">Last update date: 9/2/2026</li></ul></div></li></ol></div><input type="hidden" id="marker-org-10" value="MOJICA, FRANCISCA, DDS PROFESSIONAL CORP" />
+	<input type="hidden" id="marker-latitude-10" value="37.3666" />
+	<input type="hidden" id="marker-longitude-10" value="-121.8283" /><div style="margin-bottom:0;padding:0" id="vCard-div-10" class="vcard pd"><article style="margin-bottom:0;padding:1" class="vcard pd" id="vCard-tooltip-10"><p class="office" style="margin:0">Dental Office Name: <strong>LA AMISTAD DENTAL OFFICE</strong></p><p class="office" style="margin:0">Dental Provider Name: <strong>MOJICA, FRANCISCA, DDS PROFESSIONAL CORP</strong></p><p id="loc-1-10" class="adr" style="margin:0"><span class="street-address" style="line-height:1.0">22 N WHITE RD STE 40 </span>
+			    <span class="locality" style="line-height:1.0">SAN JOSE</span>,
+				<abbr class="region" style="line-height:1.0">CA</abbr>
+				<span class="postal-code" style="line-height:1.0">95127</span></p>
+			<p style="margin:0"><span>(408) 254-4402</span></p>
+
+			<p style="margin:0"><a href="https://" target="_blank"></a></p><p style="line-height:1.0"><font color="#014F01">Accepting new patients</font></p></article><span style="padding: 0px 15px">Provider Type of Practice: <span>Dental Practice</span></span><p style="line-height:1.5;margin-bottom:0;padding: 0 15px;">
+			Specialty:
+General Practitioner</p><ol data-aria-accordion data-multi data-transition data-default="none" id="acc_1-1-10" class="accordion"><li><h3 data-aria-accordion-heading class="accordion__heading"><button type="button" aria-controls="acc_1-1_panel_1-10" id="acc_1-1_panel_1_trigger-10" class="accordion__trigger" aria-expanded="false" data-current="false">
+							Notes
+						</button></h3>
+
+					
+					<div data-aria-accordion-panel class="accordion__panel--transition accordion__panel" id="acc_1-1_panel_1-10" aria-hidden="true"><ul style="list-style-type: none;padding-inline-start: 0px;" class="note"><li class="distance"><a href="https://www.google.com/maps?saddr=95127&amp;daddr=22 N WHITE RD STE 40 &#x2B;SAN JOSE&#x2B;CA&#x2B;95127" rel="external" target="_blank">Get Directions</a>
+								&nbsp<a href="javascript:void(0)" onclick="initialize(10,37.3666,-121.8283)" class="mapTrigger">Show On Map</a></li>
+
+							
+							<li class="plan">MEDI-CAL DENTAL PROGRAM</li>
+
+							
+							<li class="languages">
+								Languages Spoken:
+English, Spanish</li><li class="services">Wheelchair Access</li><li class="lastUpdateDate">Last update date: 9/2/2026</li></ul></div></li></ol></div><!--Blazor:{"prerenderId":"7383939176e045f9a4de76223eed3483"}-->
+
+            <!-- Display the returned results as VCards -->
+
+            <form id="navPage" method="post" role="form">
+                <input type="hidden" name="page-function" id="page-function" value="">
+
+                <nav aria-label="Page Navigation">
+                            <input type="hidden" id="returned-providers-records" value="10">
+                                <button id="buttonPrev" disabled class="previous" style="float: left"><a><span aria-hidden="true">←</span> Prev</a></button>
+                                <button id="buttonNext" onclick="incrementPage()" class="next" style="float: right"><a>Next<span aria-hidden="true">→</span></a></button>
+
+                </nav>
+            <input name="__RequestVerificationToken" type="hidden" value="CfDJ8G8EelBqQcVEqY0-iq7k1NgGxBz1308HYeHBDBwXFpIw-Y1w3GrNnQEy_TPDNAsf81waDWBImClYs10YpqkB6ZqQivyh8LWQPnNefUBHAQgS0vR9ZhNKNXBs9pDzTtN6hYYRknwXO4jgWyJsCJ5DGYU" /></form>
+
+            <script>
+                function incrementPage() {
+                    var page = document.getElementById("page-function")
+                    page.value = "increment";
+                }
+
+                function decrementPage() {
+                    var page = document.getElementById("page-function")
+                    page.value = "decrement";
+                }
+            </script>
+
+            <section id="query" class="new">
+                </br>
+                <!--<p align="left">Enter the appropriate information below to view a list of Dental Providers who may be accepting new Medi-Cal patients. This is not a guarantee they will be available to accept additional patients at the time you contact them. If you cannot find a dentist in your area who is accepting new patients, please contact the Medi-Cal Telephone Service Center for additional help at 1-800-322-6384.</p>-->
+                <style>
+                    .form-control {
+                        appearance: auto;
+                    }
+
+                    .form-inline .form-control {
+                        padding: 0.375rem 0.75rem;
+                        font-size: 1rem;
+                        font-weight: 400;
+                        line-height: 1.3;
+                        color: #212529;
+                        border: 1px solid #ced4da;
+                        border-radius: 0.25rem;
+                        transition: border-color 0.15s ease-in-out, box-shadow 0.15s ease-in-out;
+                    }
+                </style>
+
+
+            </section>
+
+            <script type="text/javascript">
+                $('input[name="state"]').on('change', function () {
+                    $('select[name="countyCode"]').attr('disabled', this.value == "other");
+                    $('select[name="countyCode"]').val("");
+                });
+
+                $(document).ready(function () {
+                    $("#search").click(function () {
+                        $("#showmap").prop('value', '');
+                        $("#showmap").text("Show Map");
+                        $('#showmap').show();
+                        $('#googleMap').hide();
+                    });
+                });
+
+                $(document).ready(function () {
+                    $("#cancel").click(function () {
+                        $("#showmap").prop('value', '');
+                        $("#showmap").text("Show Map");
+                        $('#showmap').show();
+                        $('#googleMap').hide();
+                    });
+                });
+            </script>
+
+            <script>
+
+                $(document).ready(function () {
+                    $("#showmap").click(function () {
+
+                        var markers = [];
+                        var locations = [];
+                        var mapStatus = document.getElementById('showmap').value;
+
+                        if (mapStatus == "hidemap") {
+                            $("#showmap").prop('value', '');
+                            $("#showmap").text("Show Map");
+                            $('#googleMap').hide();
+                        } else if (!mapStatus && mapStatus != "hidemap") {
+
+                            var i = 0;
+                            var acceptFlag;
+                            var acceptingVal;
+                            var acceptText;
+                            var acceptNewPatients = "Accepting new patients";
+                            var notAcceptNewPatients = "Not accepting new patients";
+
+                            // get the records count from the VCards creation process
+                            recordCountOnPage = $("#returned-providers-records").val();
+
+                            //alert("recordCountOnPage = " + recordCountOnPage)
+                            if (recordCountOnPage != NaN && recordCountOnPage > 0) {
+
+                                for (i = 0; i < recordCountOnPage; i++) {
+                                    locations[i] = [];
+                                    for (j = 0; j <= 2; j++) {
+                                        if (j == 0) {
+                                            locations[i][j] = document.getElementById("vCard-tooltip-" + (i + 1)).outerHTML;
+                                        }
+                                        if (j == 1) {
+                                            locations[i][j] = document.getElementById("marker-latitude-" + (i + 1)).value;
+                                        }
+                                        if (j == 2) {
+                                            locations[i][j] = document.getElementById("marker-longitude-" + (i + 1)).value;
+                                        }
+                                    }
+                                }
+
+                                var googleDivBox = document.getElementById("googleMap");
+                                window.scrollTo(0, 250);
+                                googleDivBox.style.display = 'block';
+
+                                var map;
+                                var infowindow = new google.maps.InfoWindow({
+                                    content: '<div style=".gm-style-iw">Message appears here</div>',
+                                });
+                                var lat = document.getElementById("marker-latitude-" + (1))?.value;
+                                var long = document.getElementById("marker-longitude-" + (1))?.value;
+
+                                var countyCodeVal = $("#countyCode").val();
+                                var zipCode = $("#location").val();
+                                var zoomLevel = 5;
+
+                                if ((null != countyCodeVal && countyCodeVal.trim().length > 0) || (null != zipCode && zipCode.trim().length > 0)) {
+                                    zoomLevel = 10;
+                                }
+
+                                if (1 == $("#returned-providers-records").val()) {
+                                    zoomLevel = 15;
+                                }
+
+                                map = new google.maps.Map(document.getElementById('googleMap'), {
+                                    zoom: zoomLevel,
+                                    center: new google.maps.LatLng(lat, long),
+                                    mapTypeId: google.maps.MapTypeId.ROADMAP
+                                });
+
+                                for (var i = 0; i < locations.length; i++) {
+
+                                    //alert("locations[i][1] = " + locations[i][1] + " locations[i][2] = " + locations[i][2])
+
+                                    var position = new google.maps.LatLng(locations[i][1], locations[i][2]);
+                                    var newMarker = new google.maps.Marker({
+                                        position: position,
+                                        map: map
+                                    });
+
+                                    // Allow each marker to have an info window
+                                    google.maps.event.addListener(newMarker, 'click', (function (newMarker, i) {
+                                        return function () {
+                                            infowindow.setContent(locations[i][0]);
+                                            infowindow.open(map, newMarker);
+                                        }
+                                    })(newMarker, i));
+                                }
+
+                                $("#showmap").text("Hide Map");
+                                $("#showmap").prop('value', 'hidemap');
+                                $("#mapvalue").prop('value', 'previousmap');
+                            }
+                        }
+                    });
+                });
+            </script>
+
+            <script>
+
+                var recordCountOnPage = 0;
+                var markers = [];
+                var locations = [];
+
+                function initialize(selectedvcardInfo, selectedLattitude, selectedLongitude) {
+
+                    recordCountOnPage = $("#returned-providers-records").val();
+                    //alert("recordCountOnPage = " + recordCountOnPage);
+
+
+                    for (i = 0; i < recordCountOnPage; i++) {
+                        locations[i] = [];
+                        for (j = 0; j <= 2; j++) {
+                            if (j == 0) {
+                                locations[i][j] = document.getElementById("vCard-tooltip-" + (i + 1)).outerHTML;
+                            }
+                            if (j == 1) {
+                                locations[i][j] = document.getElementById("marker-latitude-" + (i + 1)).value;
+                            }
+                            if (j == 2) {
+                                locations[i][j] = document.getElementById("marker-longitude-" + (i + 1)).value;
+                            }
+                        }
+                    }
+
+                    var vcardFirst = document.getElementById("vCard-tooltip-" + selectedvcardInfo).outerHTML;
+                    var cloneObject = document.getElementById("vCard-tooltip-" + selectedvcardInfo).cloneNode(true);
+
+                    cloneObject.id = "customId";
+                    cloneObject.style.backgroundColor = 'white';
+                    cloneObject.style.width = '250px';
+                    cloneObject.style.height = '100px';
+                    console.log("cloneObject .id ====>" + cloneObject.id);
+                    var googleDivBox = document.getElementById("googleMap");
+
+                    window.scrollTo(0, 250);
+                    googleDivBox.style.display = 'block';
+
+                    var map = new google.maps.Map(document.getElementById('googleMap'), {
+                        zoom: 15,
+                        center: new google.maps.LatLng(selectedLattitude, selectedLongitude),
+                        mapTypeId: google.maps.MapTypeId.ROADMAP
+                    });
+
+                    var infowindow = new google.maps.InfoWindow({
+                        content: '<div style=".gm-style-iw">Message appears here</div>',
+                    });
+
+                    var firstMarker = new google.maps.Marker({
+                        position: new google.maps.LatLng(selectedLattitude, selectedLongitude),
+                        map: map
+                    });
+
+                    infowindow.setContent(cloneObject);
+                    infowindow.open(map, firstMarker);
+
+                    for (var i = 0; i < locations.length; i++) {
+                        var newMarker = new google.maps.Marker({
+                            position: new google.maps.LatLng(locations[i][1], locations[i][2]),
+                            map: map
+                        });
+
+                        google.maps.event.addListener(newMarker, 'click', (function (newMarker, i) {
+                            return function () {
+                                //alert("infowindow.setContent ::" + locations[i][0])
+                                infowindow.setContent(locations[i][0]);
+                                //alert("infowindow.open ::" + locations[i][0])
+                                infowindow.open(map, newMarker);
+                            }
+                        })(newMarker, i));
+
+                        markers.push(newMarker);
+                    }
+
+                    var showmapValue = $("#showmap").val();
+                    var mapValue = $("#mapvalue").val();
+
+                    if (mapValue == "previousmap") {
+                        $("#showmap").prop('value', '');
+                        $("#showmap").text("Show Previous Map");
+                    } else {
+                        $("#showmap").prop('value', 'hidemap');
+                        $("#showmap").text("Hide Map");
+                        $('#showmap').show();
+                    }
+                }
+            </script>
+
+            <script type="text/javascript">
+                var searchInput = 'location';
+                $(document).ready(function () {
+                    var autocomplete;
+                    autocomplete = new google.maps.places.Autocomplete((document.getElementById(searchInput)), {
+                        componentRestrictions: { country: ["us"] },
+                        types: ['geocode']
+
+                    });
+
+                    google.maps.event.addListener(autocomplete, 'place_changed', function () {
+                        var near_place = autocomplete.getPlace();
+                    });
+                });
+            </script>
+
+
+        </main>
+
+    </div>
+
+</div>
+
+
+    <!-- Global Footer - Page Structure Part 7 -->
+    <footer b-xzte0h2bb7 id="footer" class="global-footer">
+        <button b-xzte0h2bb7 class="return-top"><span b-xzte0h2bb7 class="sr-only">Back to top</span></button>
+        <cagov-back-to-top b-xzte0h2bb7 data-hide-after="7000" data-label="Back to top">
+        </cagov-back-to-top>
+
+        <section b-xzte0h2bb7 aria-label="footer links and information">
+            <div b-xzte0h2bb7 class="section section-impact m-y-sm">
+                <div b-xzte0h2bb7 class="container">
+                    <div b-xzte0h2bb7 class="row">
+                        <div b-xzte0h2bb7 class="full">
+                            <ul b-xzte0h2bb7 class="footer-links">
+                                <li b-xzte0h2bb7 class="m-r-sm">
+                                    <a b-xzte0h2bb7 href="http://www.dhcs.ca.gov/Pages/Language_Access.aspx#arabic" aria-label="العربية link to DHCS Non-discrimination and language access website in Arabic" class="sub-nav-link font-size-15 text-white">العربية</a>
+                                </li>
+                                <li b-xzte0h2bb7 class="m-r-sm">
+                                    <a b-xzte0h2bb7 href="http://www.dhcs.ca.gov/Pages/Language_Access.aspx#armenian" aria-label="Հայերեն link to DHCS Non-discrimination and language access website in Armenian" class="sub-nav-link font-size-15 text-white">Հայերեն</a>
+                                </li>
+                                <li b-xzte0h2bb7 class="m-r-sm">
+                                    <a b-xzte0h2bb7 href="http://www.dhcs.ca.gov/Pages/Language_Access.aspx#cambodian" aria-label="ខ្មែរ link to DHCS Non-discrimination and language access website in Cambodian" class="sub-nav-link font-size-15 text-white">ខ្មែរ</a>
+                                </li>
+                                <li b-xzte0h2bb7 class="m-r-sm">
+                                    <a b-xzte0h2bb7 href="http://www.dhcs.ca.gov/Pages/Language_Access.aspx#chinese" aria-label="中国 link to DHCS Non-discrimination and language access website in Chinese" class="sub-nav-link font-size-15 text-white">中国</a>
+                                </li>
+                                <li b-xzte0h2bb7 class="m-r-sm">
+                                    <a b-xzte0h2bb7 href="http://www.dhcs.ca.gov/Pages/Language_Access.aspx#farsi" aria-label="فارسی link to DHCS Non-discrimination and language access website in Farsi" class="sub-nav-link font-size-15 text-white">فارسی</a>
+                                </li>
+                                <li b-xzte0h2bb7 class="m-r-sm">
+                                    <a b-xzte0h2bb7 href="http://www.dhcs.ca.gov/Pages/Language_Access.aspx#hindi" aria-label="हिंदी link to DHCS Non-discrimination and language access website in Hindi" class="sub-nav-link font-size-15 text-white">हिंदी</a>
+                                </li>
+                                <li b-xzte0h2bb7 class="m-r-sm">
+                                    <a b-xzte0h2bb7 href="http://www.dhcs.ca.gov/Pages/Language_Access.aspx#hmong" aria-label="Hmoob link to DHCS Non-discrimination and language access website in Hmoob" class="sub-nav-link font-size-15 text-white">Hmoob</a>
+                                </li>
+                                <li b-xzte0h2bb7 class="m-r-sm">
+                                    <a b-xzte0h2bb7 href="http://www.dhcs.ca.gov/Pages/Language_Access.aspx#japanese" aria-label="日本語 link to DHCS Non-discrimination and language access website in Japanese" class="sub-nav-link font-size-15 text-white">日本語</a>
+                                </li>
+                                <li b-xzte0h2bb7 class="m-r-sm">
+                                    <a b-xzte0h2bb7 href="http://www.dhcs.ca.gov/Pages/Language_Access.aspx#korean" aria-label="한국의 link to DHCS Non-discrimination and language access website in Korean" class="sub-nav-link font-size-15 text-white">한국의</a>
+                                </li>
+                                <li b-xzte0h2bb7 class="m-r-sm">
+                                    <a b-xzte0h2bb7 href="http://www.dhcs.ca.gov/Pages/Language_Access.aspx#laotian" aria-label="ລາວ link to DHCS Non-discrimination and language access website in Laotian" class="sub-nav-link font-size-15 text-white">ລາວ</a>
+                                </li>
+                                <li b-xzte0h2bb7 class="m-r-sm">
+                                    <a b-xzte0h2bb7 href="http://www.dhcs.ca.gov/Pages/Language_Access.aspx#punjabi" aria-label="ਪੰਜਾਬੀ link to DHCS Non-discrimination and language access website in Punjabi" class="sub-nav-link font-size-15 text-white">ਪੰਜਾਬੀ</a>
+                                </li>
+                                <li b-xzte0h2bb7 class="m-r-sm">
+                                    <a b-xzte0h2bb7 href="http://www.dhcs.ca.gov/Pages/Language_Access.aspx#russian" aria-label="Русский link to DHCS Non-discrimination and language access website in Russian" class="sub-nav-link font-size-15 text-white">Русский</a>
+                                </li>
+                                <li b-xzte0h2bb7 class="m-r-sm">
+                                    <a b-xzte0h2bb7 href="http://www.dhcs.ca.gov/Pages/Language_Access.aspx#spanish" aria-label="Español link to DHCS Non-discrimination and language access website in Spanish" class="sub-nav-link font-size-15 text-white">Español</a>
+                                </li>
+                                <li b-xzte0h2bb7 class="m-r-sm">
+                                    <a b-xzte0h2bb7 href="http://www.dhcs.ca.gov/Pages/Language_Access.aspx#tagalog" aria-label="Tagalog link to DHCS Non-discrimination and language access website in Tagalog" class="sub-nav-link font-size-15 text-white">Tagalog</a>
+                                </li>
+                                <li b-xzte0h2bb7 class="m-r-sm">
+                                    <a b-xzte0h2bb7 href="http://www.dhcs.ca.gov/Pages/Language_Access.aspx#thai" aria-label="ภาษาไทย link to DHCS Non-discrimination and language access website in Thai" class="sub-nav-link font-size-15 text-white">ภาษาไทย</a>
+                                </li>
+                                <li b-xzte0h2bb7 class="m-r-sm">
+                                    <a b-xzte0h2bb7 href="http://www.dhcs.ca.gov/Pages/Language_Access.aspx#vietnamese" aria-label="Tiếng Việt link to DHCS Non-discrimination and language access website in Vietnamese" class="sub-nav-link font-size-15 text-white">Tiếng Việt</a>
+                                </li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <div b-xzte0h2bb7 class="container m-y-sm">
+            <div b-xzte0h2bb7 class="row">
+                <div b-xzte0h2bb7 class="three-quarters">
+                    <ul b-xzte0h2bb7 class="footer-links">
+                        <li b-xzte0h2bb7 class="m-r-sm"><a b-xzte0h2bb7 href="https://www.dhcs.ca.gov/pages/use.aspx" class="font-size-15">Conditions of Use</a></li>
+                        <li b-xzte0h2bb7 class="m-r-sm"><a class="font-size-15" href="/Privacy_Policy/PrivacyPolicy">Privacy Policy</a></li>
+                        <li b-xzte0h2bb7 class="m-r-sm"><a b-xzte0h2bb7 href="/MCD_documents/members/nondiscrimination_notice.pdf" class="font-size-15">Nondiscrimination Policy</a></li>
+                        <li b-xzte0h2bb7 class="m-r-sm"><a class="font-size-15" href="/Accessibility/Accessibility">Accessibility</a></li>
+                        <li b-xzte0h2bb7 class="m-r-sm"><a b-xzte0h2bb7 href="https://www.dhcs.ca.gov/Documents/Web-Accessibility-Cert.pdf" class="font-size-15">Accessibility Certificate</a></li>
+                        <li b-xzte0h2bb7 class="m-r-sm"><a b-xzte0h2bb7 href="/MCD_documents/members/language_assistance.pdf" class="font-size-15">Language Access</a></li>
+                    </ul>
+                </div>
+                <div b-xzte0h2bb7 class="quarter text-right">
+                    <ul b-xzte0h2bb7 class="socialsharer-container">
+                        <li b-xzte0h2bb7>
+                            <a b-xzte0h2bb7 href="/">
+                                <span b-xzte0h2bb7 class="ca-gov-icon-home"
+                                      aria-hidden="true"></span><span b-xzte0h2bb7 class="sr-only">Home</span>
+                            </a>
+                        </li>
+                        <li b-xzte0h2bb7>
+                            <a href="/Providers/ProviderEmailListSignUp">
+                                <span b-xzte0h2bb7 class="ca-gov-icon-email"
+                                      aria-hidden="true"></span><span b-xzte0h2bb7 class="sr-only">Provider Email List</span>
+                            </a>
+                        </li>
+                        <li b-xzte0h2bb7>
+                            <a href="/Contact_Us/ContactUs">
+                                <span b-xzte0h2bb7 class="ca-gov-icon-phone"
+                                      aria-hidden="true"></span><span b-xzte0h2bb7 class="sr-only">Contact</span>
+                            </a>
+                        </li>
+                    </ul>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Copyright Statement -->
+        <div b-xzte0h2bb7 class="copyright bg-white">
+            <div b-xzte0h2bb7 class="container">
+                Copyright &copy;<script>document.write(new Date().getFullYear())</script> State of California
+            </div>
+        </div>
+    </footer>
+
+    <!-- Extra Decorative Content -->
+    <div b-xzte0h2bb7 class="decoration-last">&nbsp;</div>
+
+    <script src="/lib/jquery/dist/jquery.min.js?v=82hEkGrSMJh3quMSG4f7FbngmAPLTDM63H4eNayS4Us"></script>
+    <script src="/js/cagov.core.js?v=Nl1UN1yFbnbXzSnbH1d08NJYvXc0aCWqMlDhcQvR66Q"></script>
+    <script src="/js/site.js?v=4q1jwFhaPaZgr8WAUSrux6hAuh0XDg9kPS3xIVq36I0"></script>
+
+    <script>
+
+        $(document).ready(function () {
+            //SET MAXIMUM DATE TO TODAY'S DATE
+            try { $("#providerDOB").max = new Date().toLocaleDateString('fr-ca'); } catch (e) { }
+
+            // Backward compatability fix for removing wrapper on new "sections"
+            $('.main-primary > .section').closest('div.wrapper').removeClass('wrapper');
+
+            $("#Referred_by").change(function (event) {
+                if (this.value === 'Other') {
+                    document.getElementById("other").style.visibility = 'visible'
+                    document.getElementById("other").required = true;
+                    document.getElementById("other").value = '';
+                    document.getElementById("med_dent_ref_dept").style.visibility = 'hidden'
+                    document.getElementById("med_dent_ref_dept").required = false;
+                    document.getElementById("med_dent_ref_dept").value = '';
+                } else if (this.value === 'Medi-Cal Dental Internal Referral') {
+                    document.getElementById("other").style.visibility = 'hidden'
+                    document.getElementById("other").required = false;
+                    document.getElementById("other").value = '';
+                    document.getElementById("med_dent_ref_dept").style.visibility = 'visible'
+                    document.getElementById("med_dent_ref_dept").required = true;
+                    document.getElementById("med_dent_ref_dept").value = '';
+                } else {
+                    document.getElementById("other").style.visibility = 'hidden'
+                    document.getElementById("other").required = false;
+                    document.getElementById("other").value = '';
+                    document.getElementById("med_dent_ref_dept").style.visibility = 'hidden'
+                    document.getElementById("med_dent_ref_dept").required = false;
+                    document.getElementById("med_dent_ref_dept").value = '';
+                }
+
+            });
+            // $("#pmp_referred_by").click(function (event) {
+            //     myFunction();
+            // });
+            // $("#pdp_referred_by").click(function (event) {
+            //     myFunction();
+            // });
+            // $("#mdsd_referred_by").click(function (event) {
+            //     myFunction();
+            // });
+
+            // function myFunction() {
+            //     document.getElementById("other").required = false;
+            //     document.getElementById("med_dent_ref_dept").required = false;
+            //     document.getElementById("other").value = '';
+            //     document.getElementById("med_dent_ref_dept").value = '';
+            // }
+
+            // $("#med_referred_by").click(function (event) {
+            //     document.getElementById("med_dent_ref_dept").required = true;
+            //     document.getElementById("other").required = false;
+            //     document.getElementById("other").value = '';
+            // });
+
+            // $("#other_referred_by").click(function (event) {
+            //     document.getElementById("other").required = true;
+            //     document.getElementById("med_dent_ref_dept").required = false;
+            //     document.getElementById("med_dent_ref_dept").value = '';
+            // });
+
+            $("#case_mgmt_yes").click(function (event) {
+                document.getElementById("case_mgmt_serv_agency").required = true;
+                document.getElementById("case_mgmt_serv_cont_name").required = true;
+                document.getElementById("case_mgmt_serv_cont_addr").required = true;
+                document.getElementById("case_mgmt_serv_cont_phone").required = true;
+            });
+
+            $("#case_mgmt_no").click(function (event) {
+                document.getElementById("case_mgmt_serv_agency").required = false;
+                document.getElementById("case_mgmt_serv_cont_name").required = false;
+                document.getElementById("case_mgmt_serv_cont_addr").required = false;
+                document.getElementById("case_mgmt_serv_cont_phone").required = false;
+            });
+
+            // $("#med_dent_ref_dept").change(function (event) {
+            //     var ref_dept_label = "Medi-Cal Dental Internal Referral Department - ";
+            //     $('#med_referred_by').val(ref_dept_label.concat(document.getElementById("med_dent_ref_dept").value));
+            // });
+
+            // $("#other").change(function (event) {
+            //     var other_label = "Other - ";
+            //     $('#other_referred_by').val(other_label.concat(document.getElementById("other").value));
+            // });
+
+            // Settings
+            $("#btnSettings").on("click", function () {
+                $("#siteSettings").removeClass("d-none");
+            });
+
+            $(".close").on("click", function () {
+                $("#siteSettings").addClass("d-none");
+            });
+        });
+
+    </script>
+
+
+    <!-- Google Translate Widget -->
+
+    <script type="text/javascript">
+        function googleTranslateElementInit() {
+            new google.translate.TranslateElement({ pageLanguage: 'en' }, 'google_translate_element');
+        }
+    </script>
+
+    <script type="text/javascript" src="//translate.google.com/translate_a/element.js?cb=googleTranslateElementInit">
+    </script>
+
+    
+
+</body>
+</html>
