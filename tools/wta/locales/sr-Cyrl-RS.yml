@@ -239,5 +239,5 @@ config_picker.title: "Конфигурација сесије (↑ ↓ • Enter
 system.no_config_options: "Повезани агент није рекламирао ниједну опцију сесије која се може конфигурисати."
 # {option} is an Agent-provided option name; {error} is the ACP error.
 system.config_update_failed: "Ажурирање опције %{option} није успело: %{error}"
-system.provider_command_blocked_by_policy: "%{command}: Yolo ╤Ç╨╡╨╢╨╕╨╝ ╤ÿ╨╡ ╨╛╨╜╨╡╨╝╨╛╨│╤â╤¢╨╡╨╜ ╨┐╨╛╨╗╨╕╤é╨╕╨║╨╛╨╝ ╨▓╨░╤ê╨╡ ╨╛╤Ç╨│╨░╨╜╨╕╨╖╨░╤å╨╕╤ÿ╨╡."  # {Locked="Yolo","%{command}"} Shown when AllowYoloMode blocks a provider-advertised privileged command.
+system.provider_command_blocked_by_policy: "%{command}: Yolo режим је онемогућен политиком ваше организације."  # {Locked="Yolo","%{command}"} Shown when AllowYoloMode blocks a provider-advertised privileged command.
 system.model_unknown: "Непознат модел %{model} — унесите /model да видите доступну листу."  # {Locked="%{model}","/model"}

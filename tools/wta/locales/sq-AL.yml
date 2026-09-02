@@ -238,5 +238,5 @@ config_picker.title: "Konfigurimi i seancës (↑ ↓ • Enter • Esc)"
 system.no_config_options: "Agjenti i lidhur nuk njoftoi asnjë opsion seance të konfigurueshëm."
 # {option} is an Agent-provided option name; {error} is the ACP error.
 system.config_update_failed: "Dështoi përditësimi i %{option}: %{error}"
-system.provider_command_blocked_by_policy: "%{command}: Modaliteti Yolo ├½sht├½ ├ºaktivizuar nga politika e organizat├½s suaj."  # {Locked="Yolo","%{command}"} Shown when AllowYoloMode blocks a provider-advertised privileged command.
+system.provider_command_blocked_by_policy: "%{command}: Modaliteti Yolo është çaktivizuar nga politika e organizatës suaj."  # {Locked="Yolo","%{command}"} Shown when AllowYoloMode blocks a provider-advertised privileged command.
 system.model_unknown: "Model i panjohur %{model} — shkruani /model për të parë listën e disponueshme."  # {Locked="%{model}","/model"}

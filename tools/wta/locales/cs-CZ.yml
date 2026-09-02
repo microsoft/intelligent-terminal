@@ -241,5 +241,5 @@ config_picker.title: "Konfigurace relace (↑ ↓ • Enter • Esc)"
 system.no_config_options: "Připojený agent nenabídl žádné možnosti relace k nastavení."
 # {option} is an Agent-provided option name; {error} is the ACP error.
 system.config_update_failed: "Aktualizace %{option} se nezdařila: %{error}"
-system.provider_command_blocked_by_policy: "%{command}: Re┼╛im Yolo je zak├íz├ín z├ísadami va┼í├¡ organizace."  # {Locked="Yolo","%{command}"} Shown when AllowYoloMode blocks a provider-advertised privileged command.
+system.provider_command_blocked_by_policy: "%{command}: Režim Yolo je zakázán zásadami vaší organizace."  # {Locked="Yolo","%{command}"} Shown when AllowYoloMode blocks a provider-advertised privileged command.
 system.model_unknown: "Neznámý model %{model} — zadáním /model zobrazíte dostupný seznam."  # {Locked="%{model}","/model"}

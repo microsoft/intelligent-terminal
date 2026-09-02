@@ -239,5 +239,5 @@ config_picker.title: "სესიის კონფიგურაცია (�
 system.no_config_options: "დაკავშირებულ აგენტს არ გამოუცხადებია სესიის კონფიგურირებადი პარამეტრები."
 # {option} is an Agent-provided option name; {error} is the ACP error.
 system.config_update_failed: "%{option}-ის განახლება ვერ შესრულდა: %{error}"
-system.provider_command_blocked_by_policy: "%{command}: Yolo ßâáßâößâƒßâÿßâ¢ßâÿ ßâùßâÑßâòßâößâ£ßâÿ ßâ¥ßâáßâÆßâÉßâ£ßâÿßâûßâÉßâ¬ßâÿßâÿßâí ßâ₧ßâ¥ßâÜßâÿßâóßâÿßâÖßâÿßâù ßâÆßâÉßâ¢ßâ¥ßâáßâùßâúßâÜßâÿßâÉ."  # {Locked="Yolo","%{command}"} Shown when AllowYoloMode blocks a provider-advertised privileged command.
+system.provider_command_blocked_by_policy: "%{command}: Yolo რეჟიმი თქვენი ორგანიზაციის პოლიტიკით გამორთულია."  # {Locked="Yolo","%{command}"} Shown when AllowYoloMode blocks a provider-advertised privileged command.
 system.model_unknown: "უცნობი მოდელი %{model} — აკრიფეთ /model ხელმისაწვდომი სიის სანახავად."  # {Locked="%{model}","/model"}

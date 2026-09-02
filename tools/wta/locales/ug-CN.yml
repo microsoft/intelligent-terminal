@@ -248,5 +248,5 @@ config_picker.title: "ئەڭگىمە سەپلىمىسى (↑ ↓ • Enter • E
 system.no_config_options: "أۇلانغان ۋاكالەتچى ھېچقانداق سەپلىگىلى بولىدىغان ئەڭگىمە تاللانمىلىرىنى ئېلان قىلمىدى."
 # {option} is an Agent-provided option name; {error} is the ACP error.
 system.config_update_failed: "%{option} نى يېڭىلاش مەغلۇپ بولدى: %{error}"
-system.provider_command_blocked_by_policy: "%{command}: Yolo mode ╪¬█ò╪┤┘â┘ë┘ä╪º╪¬┘ë┌¡┘ë╪▓┘å┘ë┌¡ ╪│┘ë┘è╪º╪│┘ë╪¬┘ë ╪¿┘ë┘ä█ò┘å ┌å█ò┘â┘ä█ò┘å┌»█ò┘å."  # {Locked="Yolo","%{command}"} Shown when AllowYoloMode blocks a provider-advertised privileged command.
+system.provider_command_blocked_by_policy: "%{command}: Yolo mode تەشكىلاتىڭىزنىڭ سىياسىتى بىلەن چەكلەنگەن."  # {Locked="Yolo","%{command}"} Shown when AllowYoloMode blocks a provider-advertised privileged command.
 system.model_unknown: "نامەلۇم مودېل %{model} — ئىشلەتكىلى بولىدىغان تىزىملىكنى كۆرۈش ئۈچۈن /model نى كىرگۈزۈڭ."  # {Locked="%{model}","/model"}

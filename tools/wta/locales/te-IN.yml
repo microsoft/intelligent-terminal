@@ -240,5 +240,5 @@ config_picker.title: "సెషన్ కాన్ఫిగరేషన్ (↑ 
 system.no_config_options: "కనెక్ట్ చేయబడిన ఏజెంట్ కాన్ఫిగర్ చేయదగిన సెషన్ ఎంపికలను ప్రచారం చేయలేదు."
 # {option} is an Agent-provided option name; {error} is the ACP error.
 system.config_update_failed: "%{option}ను నవీకరించడం విఫలమైంది: %{error}"
-system.provider_command_blocked_by_policy: "%{command}: α░«α▒Ç α░╕α░éα░╕α▒ìα░Ñ α░╡α░┐α░ºα░╛α░¿α░é α░╡α░▓α▒ìα░▓ Yolo mode α░¿α░┐α░▓α░┐α░¬α░┐α░╡α▒çα░»α░¼α░íα░┐α░éα░ªα░┐."  # {Locked="Yolo","%{command}"} Shown when AllowYoloMode blocks a provider-advertised privileged command.
+system.provider_command_blocked_by_policy: "%{command}: మీ సంస్థ విధానం వల్ల Yolo mode నిలిపివేయబడింది."  # {Locked="Yolo","%{command}"} Shown when AllowYoloMode blocks a provider-advertised privileged command.
 system.model_unknown: "తెలియని మోడల్ %{model} — అందుబాటులో ఉన్న జాబితాను చూడటానికి /model టైప్ చేయండి."  # {Locked="%{model}","/model"}

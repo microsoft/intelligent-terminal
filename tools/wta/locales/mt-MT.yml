@@ -238,5 +238,5 @@ config_picker.title: "Konfigurazzjoni tas-sessjoni (↑ ↓ • Enter • Esc)"
 system.no_config_options: "L-aġent konness ma rreklama l-ebda għażla ta’ sessjoni konfigurabbli."
 # {option} is an Agent-provided option name; {error} is the ACP error.
 system.config_update_failed: "Naqas milli jaġġorna %{option}: %{error}"
-system.provider_command_blocked_by_policy: "%{command}: Il-modalit├á Yolo hija di┼╝attivata mill-politika tal-organizzazzjoni tieg─ºek."  # {Locked="Yolo","%{command}"} Shown when AllowYoloMode blocks a provider-advertised privileged command.
+system.provider_command_blocked_by_policy: "%{command}: Il-modalità Yolo hija diżattivata mill-politika tal-organizzazzjoni tiegħek."  # {Locked="Yolo","%{command}"} Shown when AllowYoloMode blocks a provider-advertised privileged command.
 system.model_unknown: "Mudell mhux magħruf %{model} — ittajpja /model biex tara l-lista disponibbli."  # {Locked="%{model}","/model"}

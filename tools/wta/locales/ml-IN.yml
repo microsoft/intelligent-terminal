@@ -240,5 +240,5 @@ config_picker.title: "സെഷൻ കോൺഫിഗറേഷൻ (↑ ↓ • E
 system.no_config_options: "ബന്ധിപ്പിച്ച ഏജന്റ് കോൺഫിഗർ ചെയ്യാവുന്ന സെഷൻ ഓപ്ഷനുകളൊന്നും പരസ്യപ്പെടുത്തിയില്ല."
 # {option} is an Agent-provided option name; {error} is the ACP error.
 system.config_update_failed: "%{option} അപ്‌ഡേറ്റ് ചെയ്യുന്നതിൽ പരാജയപ്പെട്ടു: %{error}"
-system.provider_command_blocked_by_policy: "%{command}: α┤¿α┤┐α┤Öα╡ìα┤Öα┤│α╡üα┤ƒα╡å α┤╕α┤éα┤ÿα┤ƒα┤¿α┤»α╡üα┤ƒα╡å α┤¿α┤»α┤é α┤òα┤╛α┤░α┤úα┤é Yolo mode α┤¬α╡ìα┤░α┤╡α╡╝α┤ñα╡ìα┤ñα┤¿α┤░α┤╣α┤┐α┤ñα┤«α┤╛α┤úα╡ì."  # {Locked="Yolo","%{command}"} Shown when AllowYoloMode blocks a provider-advertised privileged command.
+system.provider_command_blocked_by_policy: "%{command}: നിങ്ങളുടെ സംഘടനയുടെ നയം കാരണം Yolo mode പ്രവർത്തനരഹിതമാണ്."  # {Locked="Yolo","%{command}"} Shown when AllowYoloMode blocks a provider-advertised privileged command.
 system.model_unknown: "അറിയാത്ത മോഡൽ %{model} — ലഭ്യമായ പട്ടിക കാണാൻ /model ടൈപ്പ് ചെയ്യുക."  # {Locked="%{model}","/model"}

@@ -240,5 +240,5 @@ config_picker.title: "ସେସନ୍ କନ୍ଫିଗରେସନ୍ (↑ ↓
 system.no_config_options: "ସଂଯୋଜିତ ଏଜେଣ୍ଟ୍ କୌଣସି କନ୍ଫିଗର୍-ଯୋଗ୍ୟ ସେସନ୍ ବିକଳ୍ପ ବିଜ୍ଞାପିତ କରିନାହିଁ।"
 # {option} is an Agent-provided option name; {error} is the ACP error.
 system.config_update_failed: "%{option} ଅପଡେଟ୍ କରିବାରେ ବିଫଳ ହେଲା: %{error}"
-system.provider_command_blocked_by_policy: "%{command}: α¼åα¼¬α¼úα¼Öα¡ìα¼ò α¼╕α¼éα¼ùα¼áα¼¿α¼░ α¼¿α¡Çα¼ñα¼┐ α¼ªα¡ìα¡▒α¼╛α¼░α¼╛ Yolo mode α¼¿α¼┐α¼╖α¡ìα¼òα¡ìα¼░α¼┐α¡ƒ α¼òα¼░α¼╛α¼»α¼╛α¼çα¼¢α¼┐αÑñ"  # {Locked="Yolo","%{command}"} Shown when AllowYoloMode blocks a provider-advertised privileged command.
+system.provider_command_blocked_by_policy: "%{command}: ଆପଣଙ୍କ ସଂଗଠନର ନୀତି ଦ୍ୱାରା Yolo mode ନିଷ୍କ୍ରିୟ କରାଯାଇଛି।"  # {Locked="Yolo","%{command}"} Shown when AllowYoloMode blocks a provider-advertised privileged command.
 system.model_unknown: "ଅଜଣା ମଡେଲ %{model} — ଉପଲବ୍ଧ ତାଲିକା ଦେଖିବାକୁ /model ଟାଇପ୍ କରନ୍ତୁ।"  # {Locked="%{model}","/model"}

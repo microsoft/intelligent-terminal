@@ -239,5 +239,5 @@ config_picker.title: "Sesijas konfigurācija (↑ ↓ • Enter • Esc)"
 system.no_config_options: "Savienotais aģents nereklamēja nekādas konfigurējamas sesijas opcijas."
 # {option} is an Agent-provided option name; {error} is the ACP error.
 system.config_update_failed: "Neizdevās atjaunināt opciju %{option}: %{error}"
-system.provider_command_blocked_by_policy: "%{command}: Yolo re┼╛─½mu ir atsp─ôjojusi j┼½su organiz─ücijas politika."  # {Locked="Yolo","%{command}"} Shown when AllowYoloMode blocks a provider-advertised privileged command.
+system.provider_command_blocked_by_policy: "%{command}: Yolo režīmu ir atspējojusi jūsu organizācijas politika."  # {Locked="Yolo","%{command}"} Shown when AllowYoloMode blocks a provider-advertised privileged command.
 system.model_unknown: "Nezināms modelis %{model} — ierakstiet /model, lai redzētu pieejamo sarakstu."  # {Locked="%{model}","/model"}

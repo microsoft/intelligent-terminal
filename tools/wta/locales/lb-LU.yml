@@ -239,5 +239,5 @@ config_picker.title: "Sessiounskonfiguratioun (↑ ↓ • Enter • Esc)"
 system.no_config_options: "Den ugeschlossenen Agent huet keng konfiguréierbar Sessiounsoptiounen ugekënnegt."
 # {option} is an Agent-provided option name; {error} is the ACP error.
 system.config_update_failed: "%{option} konnt net aktualiséiert ginn: %{error}"
-system.provider_command_blocked_by_policy: "%{command}: De Yolo-Modus ass duerch d'Politik vun ├ärer Organisatioun deaktiv├⌐iert."  # {Locked="Yolo","%{command}"} Shown when AllowYoloMode blocks a provider-advertised privileged command.
+system.provider_command_blocked_by_policy: "%{command}: De Yolo-Modus ass duerch d'Politik vun Ärer Organisatioun deaktivéiert."  # {Locked="Yolo","%{command}"} Shown when AllowYoloMode blocks a provider-advertised privileged command.
 system.model_unknown: "Onbekannte Modell %{model} — tippt /model fir d'verfügbar Lëscht ze gesinn."  # {Locked="%{model}","/model"}

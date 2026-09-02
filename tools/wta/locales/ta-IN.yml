@@ -240,5 +240,5 @@ config_picker.title: "அமர்வு காண்ஃபிகரேஷன்
 system.no_config_options: "இணைக்கப்பட்ட ஏஜென்ட் எந்த உள்ளமைக்கக்கூடிய அமர்வு விருப்பங்களையும் விளம்பரம் செய்யவில்லை."
 # {option} is an Agent-provided option name; {error} is the ACP error.
 system.config_update_failed: "%{option} ஐப் புதுப்பிப்பது தோல்வியடைந்தது: %{error}"
-system.provider_command_blocked_by_policy: "%{command}: α«ëα«Öα»ìα«òα«│α»ì α«¿α«┐α«▒α»üα«╡α«⌐α«ñα»ìα«ñα«┐α«⌐α»ì α«òα»èα«│α»ìα«òα»êα«»α«╛α«▓α»ì Yolo mode α««α»üα«ƒα«òα»ìα«òα«¬α»ìα«¬α«ƒα»ìα«ƒα»üα«│α»ìα«│α«ñα»ü."  # {Locked="Yolo","%{command}"} Shown when AllowYoloMode blocks a provider-advertised privileged command.
+system.provider_command_blocked_by_policy: "%{command}: உங்கள் நிறுவனத்தின் கொள்கையால் Yolo mode முடக்கப்பட்டுள்ளது."  # {Locked="Yolo","%{command}"} Shown when AllowYoloMode blocks a provider-advertised privileged command.
 system.model_unknown: "அறியப்படாத மாதிரி %{model} — கிடைக்கும் பட்டியலைக் காண /model எனத் தட்டச்சு செய்யவும்."  # {Locked="%{model}","/model"}

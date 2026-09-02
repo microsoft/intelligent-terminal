@@ -238,5 +238,5 @@ config_picker.title: "Cumraíocht seisiúin (↑ ↓ • Enter • Esc)"
 system.no_config_options: "Níor fhógair an gníomhaire nasctha aon roghanna seisiúin in-cumraithe."
 # {option} is an Agent-provided option name; {error} is the ACP error.
 system.config_update_failed: "Theip ar nuashonrú %{option}: %{error}"
-system.provider_command_blocked_by_policy: "%{command}: T├í m├│d Yolo d├¡chumasaithe ag polasa├¡ dΓÇÖeagra├¡ochta."  # {Locked="Yolo","%{command}"} Shown when AllowYoloMode blocks a provider-advertised privileged command.
+system.provider_command_blocked_by_policy: "%{command}: Tá mód Yolo díchumasaithe ag polasaí d’eagraíochta."  # {Locked="Yolo","%{command}"} Shown when AllowYoloMode blocks a provider-advertised privileged command.
 system.model_unknown: "Samhail anaithnid %{model} — clóscríobh /model chun an liosta atá ar fáil a fheiceáil."  # {Locked="%{model}","/model"}

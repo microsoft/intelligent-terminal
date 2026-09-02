@@ -239,5 +239,5 @@ config_picker.title: "תצורת הפעלה (↑ ↓ • Enter • Esc)"
 system.no_config_options: "הסוכן המחובר לא פרסם אפשרויות הפעלה הניתנות לקביעת תצורה."
 # {option} is an Agent-provided option name; {error} is the ACP error.
 system.config_update_failed: "עדכון %{option} נכשל: %{error}"
-system.provider_command_blocked_by_policy: "%{command}: ╫₧╫ª╫æ Yolo ╫₧╫ò╫⌐╫æ╫¬ ╫ó╫£-╫Ö╫ô╫Ö ╫₧╫ô╫Ö╫á╫Ö╫ò╫¬ ╫ö╫É╫¿╫Æ╫ò╫ƒ ╫⌐╫£╫Ü."  # {Locked="Yolo","%{command}"} Shown when AllowYoloMode blocks a provider-advertised privileged command.
+system.provider_command_blocked_by_policy: "%{command}: מצב Yolo מושבת על-ידי מדיניות הארגון שלך."  # {Locked="Yolo","%{command}"} Shown when AllowYoloMode blocks a provider-advertised privileged command.
 system.model_unknown: "מודל לא ידוע %{model} — הקלד /model כדי לראות את הרשימה הזמינה."  # {Locked="%{model}","/model"}

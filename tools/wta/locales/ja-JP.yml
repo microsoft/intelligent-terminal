@@ -234,5 +234,5 @@ config_picker.title: "セッションの構成 (↑ ↓ • Enter • Esc)"
 system.no_config_options: "接続されているエージェントは、構成可能なセッション オプションを一切通知しませんでした。"
 # {option} is an Agent-provided option name; {error} is the ACP error.
 system.config_update_failed: "%{option} の更新に失敗しました: %{error}"
-system.provider_command_blocked_by_policy: "%{command}: Yolo πâóπâ╝πâëπü»τ╡äτ╣öπü«πâ¥πâ¬πé╖πâ╝πü½πéêπüúπüªτäíσè╣πü½πü¬πüúπüªπüäπü╛πüÖπÇé"  # {Locked="Yolo","%{command}"} Shown when AllowYoloMode blocks a provider-advertised privileged command.
+system.provider_command_blocked_by_policy: "%{command}: Yolo モードは組織のポリシーによって無効になっています。"  # {Locked="Yolo","%{command}"} Shown when AllowYoloMode blocks a provider-advertised privileged command.
 system.model_unknown: "不明なモデル %{model} — 利用可能な一覧を表示するには /model と入力してください。"  # {Locked="%{model}","/model"}

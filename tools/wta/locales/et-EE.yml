@@ -239,5 +239,5 @@ config_picker.title: "Seansi konfigureerimine (↑ ↓ • Enter • Esc)"
 system.no_config_options: "Ühendatud agent ei teavitanud ühestki konfigureeritavast seansisuvandist."
 # {option} is an Agent-provided option name; {error} is the ACP error.
 system.config_update_failed: "Valiku %{option} värskendamine nurjus: %{error}"
-system.provider_command_blocked_by_policy: "%{command}: Yolo-re┼╛iim on teie asutuse poliitikaga keelatud."  # {Locked="Yolo","%{command}"} Shown when AllowYoloMode blocks a provider-advertised privileged command.
+system.provider_command_blocked_by_policy: "%{command}: Yolo-režiim on teie asutuse poliitikaga keelatud."  # {Locked="Yolo","%{command}"} Shown when AllowYoloMode blocks a provider-advertised privileged command.
 system.model_unknown: "Tundmatu mudel %{model} — tippige /model saadaolevate mudelite loendi nägemiseks."  # {Locked="%{model}","/model"}

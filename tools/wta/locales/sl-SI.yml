@@ -239,5 +239,5 @@ config_picker.title: "Konfiguracija seje (↑ ↓ • Enter • Esc)"
 system.no_config_options: "Povezani agent ni objavil nobenih nastavljivih možnosti seje."
 # {option} is an Agent-provided option name; {error} is the ACP error.
 system.config_update_failed: "Posodobitev možnosti %{option} ni uspela: %{error}"
-system.provider_command_blocked_by_policy: "%{command}: Na─ìin Yolo je onemogo─ìen s pravilnikom va┼íe organizacije."  # {Locked="Yolo","%{command}"} Shown when AllowYoloMode blocks a provider-advertised privileged command.
+system.provider_command_blocked_by_policy: "%{command}: Način Yolo je onemogočen s pravilnikom vaše organizacije."  # {Locked="Yolo","%{command}"} Shown when AllowYoloMode blocks a provider-advertised privileged command.
 system.model_unknown: "Neznan model %{model} — vnesite /model za prikaz razpoložljivega seznama."  # {Locked="%{model}","/model"}

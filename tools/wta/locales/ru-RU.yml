@@ -239,5 +239,5 @@ config_picker.title: "Конфигурация сеанса (↑ ↓ • Enter �
 system.no_config_options: "Подключённый агент не объявил ни одного настраиваемого параметра сеанса."
 # {option} is an Agent-provided option name; {error} is the ACP error.
 system.config_update_failed: "Не удалось обновить %{option}: %{error}"
-system.provider_command_blocked_by_policy: "%{command}: ╨á╨╡╨╢╨╕╨╝ Yolo ╨╛╤é╨║╨╗╤Ä╤ç╨╡╨╜ ╨┐╨╛╨╗╨╕╤é╨╕╨║╨╛╨╣ ╨▓╨░╤ê╨╡╨╣ ╨╛╤Ç╨│╨░╨╜╨╕╨╖╨░╤å╨╕╨╕."  # {Locked="Yolo","%{command}"} Shown when AllowYoloMode blocks a provider-advertised privileged command.
+system.provider_command_blocked_by_policy: "%{command}: Режим Yolo отключен политикой вашей организации."  # {Locked="Yolo","%{command}"} Shown when AllowYoloMode blocks a provider-advertised privileged command.
 system.model_unknown: "Неизвестная модель %{model} — введите /model, чтобы увидеть доступный список."  # {Locked="%{model}","/model"}

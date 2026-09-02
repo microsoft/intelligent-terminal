@@ -240,5 +240,5 @@ config_picker.title: "Διαμόρφωση περιόδου λειτουργία
 system.no_config_options: "Ο συνδεδεμένος παράγοντας δεν διαφήμισε καμία διαμορφώσιμη επιλογή περιόδου λειτουργίας."
 # {option} is an Agent-provided option name; {error} is the ACP error.
 system.config_update_failed: "Αποτυχία ενημέρωσης του %{option}: %{error}"
-system.provider_command_blocked_by_policy: "%{command}: ╬ù ╬╗╬╡╬╣╧ä╬┐╧à╧ü╬│╬»╬▒ Yolo ╬╡╬»╬╜╬▒╬╣ ╬▒╧Ç╬╡╬╜╬╡╧ü╬│╬┐╧Ç╬┐╬╣╬╖╬╝╬¡╬╜╬╖ ╬▒╧Ç╧î ╧ä╬╖╬╜ ╧Ç╬┐╬╗╬╣╧ä╬╣╬║╬« ╧ä╬┐╧à ╬┐╧ü╬│╬▒╬╜╬╣╧â╬╝╬┐╧ì ╧â╬▒╧é."  # {Locked="Yolo","%{command}"} Shown when AllowYoloMode blocks a provider-advertised privileged command.
+system.provider_command_blocked_by_policy: "%{command}: Η λειτουργία Yolo είναι απενεργοποιημένη από την πολιτική του οργανισμού σας."  # {Locked="Yolo","%{command}"} Shown when AllowYoloMode blocks a provider-advertised privileged command.
 system.model_unknown: "Άγνωστο μοντέλο %{model} — πληκτρολογήστε /model για να δείτε τη διαθέσιμη λίστα."  # {Locked="%{model}","/model"}

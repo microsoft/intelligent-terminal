@@ -240,5 +240,5 @@ config_picker.title: "ಸೆಷನ್ ಸಂರಚನೆ (↑ ↓ • Enter • 
 system.no_config_options: "ಸಂಪರ್ಕಿತ ಏಜೆಂಟ್ ಯಾವುದೇ ಸಂರಚಿಸಬಹುದಾದ ಸೆಷನ್ ಆಯ್ಕೆಗಳನ್ನು ಜಾಹೀರಾತು ಮಾಡಿಲ್ಲ."
 # {option} is an Agent-provided option name; {error} is the ACP error.
 system.config_update_failed: "%{option} ಅಪ್‌ಡೇಟ್ ಮಾಡಲು ವಿಫಲವಾಗಿದೆ: %{error}"
-system.provider_command_blocked_by_policy: "%{command}: α▓¿α▓┐α▓«α│ìα▓« α▓╕α▓éα▓╕α│ìα▓Ñα│åα▓» α▓¿α│Çα▓ñα▓┐α▓»α▓┐α▓éα▓ª Yolo mode α▓¿α▓┐α▓╖α│ìα▓òα│ìα▓░α▓┐α▓»α▓ùα│èα▓éα▓íα▓┐α▓ªα│å."  # {Locked="Yolo","%{command}"} Shown when AllowYoloMode blocks a provider-advertised privileged command.
+system.provider_command_blocked_by_policy: "%{command}: ನಿಮ್ಮ ಸಂಸ್ಥೆಯ ನೀತಿಯಿಂದ Yolo mode ನಿಷ್ಕ್ರಿಯಗೊಂಡಿದೆ."  # {Locked="Yolo","%{command}"} Shown when AllowYoloMode blocks a provider-advertised privileged command.
 system.model_unknown: "ಅಪರಿಚಿತ ಮಾದರಿ %{model} — ಲಭ್ಯವಿರುವ ಪಟ್ಟಿಯನ್ನು ನೋಡಲು /model ಟೈಪ್ ಮಾಡಿ."  # {Locked="%{model}","/model"}

@@ -242,5 +242,5 @@ config_picker.title: "ছিচেন কনফিগাৰেচন (↑ ↓ �
 system.no_config_options: "সংযুক্ত এজেণ্টে কোনো কনফিগাৰযোগ্য ছিচেন বিকল্প বিজ্ঞাপন কৰা নাছিল।"
 # {option} is an Agent-provided option name; {error} is the ACP error.
 system.config_update_failed: "আপডেট কৰিবলৈ ব্যৰ্থ হ’ল %{option}: %{error}"
-system.provider_command_blocked_by_policy: "%{command}: αªåαª¬αºïαª¿αª╛αº░ αª╕αªéαªùαªáαª¿αº░ αª¿αºÇαªñαª┐αª»αª╝αºç Yolo mode αª¿αª┐αª╖αºìαªòαºìαº░αª┐αª»αª╝ αªòαº░αª┐αª¢αºçαÑñ"  # {Locked="Yolo","%{command}"} Shown when AllowYoloMode blocks a provider-advertised privileged command.
+system.provider_command_blocked_by_policy: "%{command}: আপোনাৰ সংগঠনৰ নীতিয়ে Yolo mode নিষ্ক্ৰিয় কৰিছে।"  # {Locked="Yolo","%{command}"} Shown when AllowYoloMode blocks a provider-advertised privileged command.
 system.model_unknown: "অজ্ঞাত মডেল %{model} — উপলব্ধ তালিকা চাবলৈ /model টাইপ কৰক।"  # {Locked="%{model}","/model"}

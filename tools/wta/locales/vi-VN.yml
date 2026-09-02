@@ -239,5 +239,5 @@ config_picker.title: "Cấu hình phiên (↑ ↓ • Enter • Esc)"
 system.no_config_options: "Agent được kết nối không quảng cáo bất kỳ tùy chọn phiên nào có thể cấu hình."
 # {option} is an Agent-provided option name; {error} is the ACP error.
 system.config_update_failed: "Không thể cập nhật %{option}: %{error}"
-system.provider_command_blocked_by_policy: "%{command}: Chß║┐ ─æß╗Ö Yolo bß╗ï v├┤ hiß╗çu h├│a bß╗ƒi ch├¡nh s├ích cß╗ºa tß╗ò chß╗⌐c cß╗ºa bß║ín."  # {Locked="Yolo","%{command}"} Shown when AllowYoloMode blocks a provider-advertised privileged command.
+system.provider_command_blocked_by_policy: "%{command}: Chế độ Yolo bị vô hiệu hóa bởi chính sách của tổ chức của bạn."  # {Locked="Yolo","%{command}"} Shown when AllowYoloMode blocks a provider-advertised privileged command.
 system.model_unknown: "Mô hình không xác định %{model} — nhập /model để xem danh sách khả dụng."  # {Locked="%{model}","/model"}

@@ -239,5 +239,5 @@ config_picker.title: "Sessionskonfiguration (↑ ↓ • Enter • Esc)"
 system.no_config_options: "Den anslutna agenten annonserade inga konfigurerbara sessionsalternativ."
 # {option} is an Agent-provided option name; {error} is the ACP error.
 system.config_update_failed: "Det gick inte att uppdatera %{option}: %{error}"
-system.provider_command_blocked_by_policy: "%{command}: Yolo-l├ñget ├ñr inaktiverat av organisationens policy."  # {Locked="Yolo","%{command}"} Shown when AllowYoloMode blocks a provider-advertised privileged command.
+system.provider_command_blocked_by_policy: "%{command}: Yolo-läget är inaktiverat av organisationens policy."  # {Locked="Yolo","%{command}"} Shown when AllowYoloMode blocks a provider-advertised privileged command.
 system.model_unknown: "Okänd modell %{model} — skriv /model för att se den tillgängliga listan."  # {Locked="%{model}","/model"}

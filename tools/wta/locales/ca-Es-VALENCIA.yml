@@ -241,5 +241,5 @@ config_picker.title: "Configuració de la sessió (↑ ↓ • Enter • Esc)"
 system.no_config_options: "L’agent connectat no ha anunciat cap opció de sessió configurable."
 # {option} is an Agent-provided option name; {error} is the ACP error.
 system.config_update_failed: "No s’ha pogut actualitzar %{option}: %{error}"
-system.provider_command_blocked_by_policy: "%{command}: El mode Yolo est├á deshabilitat per la pol├¡tica de la vostra organitzaci├│."  # {Locked="Yolo","%{command}"} Shown when AllowYoloMode blocks a provider-advertised privileged command.
+system.provider_command_blocked_by_policy: "%{command}: El mode Yolo està deshabilitat per la política de la vostra organització."  # {Locked="Yolo","%{command}"} Shown when AllowYoloMode blocks a provider-advertised privileged command.
 system.model_unknown: "Model desconegut %{model} — escriviu /model per a vore la llista disponible."  # {Locked="%{model}","/model"}

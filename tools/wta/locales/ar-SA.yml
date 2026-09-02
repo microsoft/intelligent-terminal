@@ -241,5 +241,5 @@ config_picker.title: "تكوين الجلسة (↑ ↓ • Enter • Esc)"
 system.no_config_options: "لم يعلن عامل الذكاء الاصطناعي المتصل عن أي خيارات جلسة قابلة للتكوين."
 # {option} is an Agent-provided option name; {error} is the ACP error.
 system.config_update_failed: "فشل تحديث %{option}: %{error}"
-system.provider_command_blocked_by_policy: "%{command}: ╪¬┘à ╪¬╪╣╪╖┘è┘ä ┘ê╪╢╪╣ Yolo ╪¿┘ê╪º╪│╪╖╪⌐ ┘å┘ç╪¼ ┘à╪ñ╪│╪│╪¬┘â."  # {Locked="Yolo","%{command}"} Shown when AllowYoloMode blocks a provider-advertised privileged command.
+system.provider_command_blocked_by_policy: "%{command}: تم تعطيل وضع Yolo بواسطة نهج مؤسستك."  # {Locked="Yolo","%{command}"} Shown when AllowYoloMode blocks a provider-advertised privileged command.
 system.model_unknown: "نموذج غير معروف %{model} — اكتب /model لعرض القائمة المتاحة."  # {Locked="%{model}","/model"}

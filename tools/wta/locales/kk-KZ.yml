@@ -239,5 +239,5 @@ config_picker.title: "Сеанс конфигурациясы (↑ ↓ • Enter
 system.no_config_options: "Қосылған агент ешқандай бапталатын сеанс опцияларын жарияламады."
 # {option} is an Agent-provided option name; {error} is the ACP error.
 system.config_update_failed: "%{option} жаңарту сәтсіз аяқталды: %{error}"
-system.provider_command_blocked_by_policy: "%{command}: Yolo mode ╥▒╨╣╤ï╨╝╤ï╥ú╤ï╨╖╨┤╤ï╥ú ╤ü╨░╤Å╤ü╨░╤é╤ï ╨░╤Ç╥¢╤ï╨╗╤ï ╙⌐╤ê╤û╤Ç╤û╨╗╨│╨╡╨╜."  # {Locked="Yolo","%{command}"} Shown when AllowYoloMode blocks a provider-advertised privileged command.
+system.provider_command_blocked_by_policy: "%{command}: Yolo mode ұйымыңыздың саясаты арқылы өшірілген."  # {Locked="Yolo","%{command}"} Shown when AllowYoloMode blocks a provider-advertised privileged command.
 system.model_unknown: "Белгісіз модель %{model} — қолжетімді тізімді көру үшін /model теріңіз."  # {Locked="%{model}","/model"}

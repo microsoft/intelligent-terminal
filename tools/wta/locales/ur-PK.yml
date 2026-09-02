@@ -240,5 +240,5 @@ config_picker.title: "سیشن کنفیگریشن (↑ ↓ • Enter • Esc)"
 system.no_config_options: "منسلک ایجنٹ نے کسی بھی قابل کنفیگر سیشن کے اختیارات کی تشہیر نہیں کی۔"
 # {option} is an Agent-provided option name; {error} is the ACP error.
 system.config_update_failed: "%{option} کو اپ ڈیٹ کرنے میں ناکام: %{error}"
-system.provider_command_blocked_by_policy: "%{command}: ╪ó┘╛ ┌⌐█î ╪¬┘å╪╕█î┘à ┌⌐█î ┘╛╪º┘ä█î╪│█î ┌⌐█Æ ╪¿╪º╪╣╪½ Yolo mode ╪║█î╪▒ ┘ü╪╣╪º┘ä █ü█Æ█ö"  # {Locked="Yolo","%{command}"} Shown when AllowYoloMode blocks a provider-advertised privileged command.
+system.provider_command_blocked_by_policy: "%{command}: آپ کی تنظیم کی پالیسی کے باعث Yolo mode غیر فعال ہے۔"  # {Locked="Yolo","%{command}"} Shown when AllowYoloMode blocks a provider-advertised privileged command.
 system.model_unknown: "نامعلوم ماڈل %{model} — دستیاب فہرست دیکھنے کے لیے /model ٹائپ کریں۔"  # {Locked="%{model}","/model"}

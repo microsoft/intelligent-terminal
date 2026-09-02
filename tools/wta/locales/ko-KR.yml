@@ -234,5 +234,5 @@ config_picker.title: "세션 구성 (↑ ↓ • Enter • Esc)"
 system.no_config_options: "연결된 에이전트가 구성 가능한 세션 옵션을 알리지 않았습니다."
 # {option} is an Agent-provided option name; {error} is the ACP error.
 system.config_update_failed: "%{option} 업데이트 실패: %{error}"
-system.provider_command_blocked_by_policy: "%{command}: ∞í░∞ºü∞¥ÿ ∞áò∞▒à∞£╝δí£ ∞¥╕φò┤ Yolo δ¬¿δô£Ω░Ç δ╣äφÖ£∞ä▒φÖöδÉÿ∞û┤ ∞₧ê∞è╡δïêδïñ."  # {Locked="Yolo","%{command}"} Shown when AllowYoloMode blocks a provider-advertised privileged command.
+system.provider_command_blocked_by_policy: "%{command}: 조직의 정책으로 인해 Yolo 모드가 비활성화되어 있습니다."  # {Locked="Yolo","%{command}"} Shown when AllowYoloMode blocks a provider-advertised privileged command.
 system.model_unknown: "알 수 없는 모델 %{model} — 사용 가능한 목록을 보려면 /model을 입력하세요."  # {Locked="%{model}","/model"}

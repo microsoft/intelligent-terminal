@@ -240,5 +240,5 @@ config_picker.title: "सत्र संफिग्रेशन (↑ ↓ • E
 system.no_config_options: "जोडिल्ल्या एजंटान कसलेच संफिग्रेशन करपासारखे सत्र पर्याय सांगले नानात."
 # {option} is an Agent-provided option name; {error} is the ACP error.
 system.config_update_failed: "%{option} अद्ययावत करपाक अपेस आले: %{error}"
-system.provider_command_blocked_by_policy: "%{command}: αññαÑüαñ«αñÜαÑìαñ»αñ╛ αñ╕αñéαñÿαñƒαñ¿αÑçαñÜαÑìαñ»αñ╛ αñºαÑïαñ░αñúαñ╛αñ¿ Yolo mode αñ¼αñéαñª αñòαÑçαñ▓αÑìαñ▓αÑï αñåαñ╕αñ╛."  # {Locked="Yolo","%{command}"} Shown when AllowYoloMode blocks a provider-advertised privileged command.
+system.provider_command_blocked_by_policy: "%{command}: तुमच्या संघटनेच्या धोरणान Yolo mode बंद केल्लो आसा."  # {Locked="Yolo","%{command}"} Shown when AllowYoloMode blocks a provider-advertised privileged command.
 system.model_unknown: "अज्ञात मॉडेल %{model} — उपलब्ध वळेरी पळोवपाक /model टायप करात."  # {Locked="%{model}","/model"}
