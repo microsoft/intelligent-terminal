@@ -48,16 +48,17 @@
                 <Setter Property="Template">
                     <Setter.Value>
                         <ControlTemplate TargetType="local:SettingContainer">
-                            <Grid Style="{StaticResource NonExpanderGrid}">
-                                <Grid.RowDefinitions>
-                                    <RowDefinition Height="Auto" />
-                                    <RowDefinition Height="Auto" />
-                                </Grid.RowDefinitions>
-                                <ContentPresenter Margin="0,12,8,8"
+                            <Grid ColumnSpacing="24"
+                                  Style="{StaticResource NonExpanderGrid}">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <ContentPresenter Margin="0,12,0,12"
                                                   Content="{TemplateBinding Header}" />
-                                <ContentPresenter Grid.Row="1"
-                                                  Margin="0,0,0,12"
-                                                  HorizontalAlignment="Stretch"
+                                <ContentPresenter Grid.Column="1"
+                                                  HorizontalAlignment="Right"
+                                                  VerticalAlignment="Center"
                                                   Content="{TemplateBinding Content}" />
                             </Grid>
                         </ControlTemplate>
@@ -347,7 +348,7 @@
                 </local:SettingContainer.Header>
                 <ComboBox x:Uid="AIAgents_AutoErrorHandlingComboBox"
                           AutomationProperties.AccessibilityView="Content"
-                          HorizontalAlignment="Stretch"
+                          MaxWidth="400"
                           ItemTemplate="{StaticResource AutoErrorHandlingComboBoxTemplate}"
                           ItemsSource="{x:Bind ViewModel.AutoErrorHandlingList, Mode=OneWay}"
                           SelectedItem="{x:Bind ViewModel.CurrentAutoErrorHandling, Mode=TwoWay}"
