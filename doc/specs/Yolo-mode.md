@@ -138,10 +138,16 @@ The effective desired state is:
 effective_yolo = global_default && !policy_blocked
 ```
 
-There is no session override map. All sessions follow the current effective
-global value. The client-reconciled-session marker prevents `SessionAttached`
-from issuing a duplicate native operation after lazy first-prompt setup; it is
-not a user preference or persisted override.
+`YoloState` has no session override map, and WTA persists no per-session Yolo
+preference. By default, each session is reconciled to the current effective
+global value. A reviewed native value selected manually through `/config`
+changes only the current ACP session without changing `YoloState`, so that
+session can differ until a later global or policy reconciliation, session
+replacement, or reset reapplies the global value.
+
+The client-reconciled-session marker prevents `SessionAttached` from issuing a
+duplicate native operation after lazy first-prompt setup; it is not a user
+preference or persisted override.
 
 No Yolo runtime state is written to the session history index, hook data, or
 `state.json`.
