@@ -214,7 +214,7 @@
     <value>Ionnsaich mar a chàraicheas tu seo a làimh</value>
     <comment>Hyperlink shown below an FRE setup error message. Opens step-by-step manual setup instructions in the browser.</comment>
   </data>  <data name="FreOverlay_AutoErrorHandlingShellIntegrationHintPrefix" xml:space="preserve">
-    <value>A’ stàladh amalachadh shligean airson làimhseachadh mhearachdan fèin-ghluasadach ann an PowerShell, bash, agus WSL bash. </value>
+    <value>Ma chuireas tu seo air thèid co-aonachadh shell a stàladh gus fàilligidhean àithne a lorg. Ri fhaighinn ann an PowerShell, bash agus WSL bash. </value>
     <comment>{Locked="PowerShell","bash","WSL bash"} Hint shown under the Auto error handling dropdown in the first-run wizard. The trailing space is intentional — it separates this prefix from the inline FreOverlay_AutoErrorHandlingShellIntegrationHintLink hyperlink that follows.</comment>
   </data>
   <data name="FreOverlay_AutoErrorHandlingShellIntegrationHintLink" xml:space="preserve">

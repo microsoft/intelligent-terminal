@@ -2925,7 +2925,7 @@
     <comment>Title for the Auto error handling dropdown in the AI agents settings page.</comment>
   </data>
   <data name="AIAgents_AutoErrorHandlingCaptionPrefix" xml:space="preserve">
-    <value>ターミナル エラーの処理方法を選択します。PowerShell、bash、および WSL bash での自動エラー処理のためのシェル統合をインストールします。 </value>
+    <value>ターミナル エラーの処理方法を選択します。これを有効にすると、コマンドの失敗を検出するためのシェル統合がインストールされます。PowerShell、bash、WSL bash で利用できます。 </value>
     <comment>{Locked="PowerShell","bash","WSL bash"} Caption under the Auto error handling title; the trailing space separates this prefix from the inline AIAgents_AutoErrorHandlingCaptionLink hyperlink that follows.</comment>
   </data>
   <data name="AIAgents_AutoErrorHandlingCaptionLink" xml:space="preserve">

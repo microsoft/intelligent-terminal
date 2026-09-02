@@ -1232,7 +1232,7 @@
     <comment>Description for the Auto error handling dropdown in the first-run wizard.</comment>
   </data>
   <data name="FreOverlay_AutoErrorHandlingShellIntegrationHintPrefix" xml:space="preserve">
-    <value>Instala la integración de shell para la gestión automática de errores en PowerShell, bash y WSL bash. </value>
+    <value>Habilitar esto instalará la integración de shell para detectar errores de comandos. Disponible en PowerShell, bash y WSL bash. </value>
     <comment>{Locked="PowerShell","bash","WSL bash"} Hint shown under the Auto error handling dropdown in the first-run wizard. The trailing space is intentional — it separates this prefix from the inline FreOverlay_AutoErrorHandlingShellIntegrationHintLink hyperlink that follows.</comment>
   </data>
   <data name="FreOverlay_AutoErrorHandlingShellIntegrationHintLink" xml:space="preserve">

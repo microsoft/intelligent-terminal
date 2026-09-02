@@ -2964,7 +2964,7 @@
     <comment>Title for the Auto error handling dropdown in the AI agents settings page.</comment>
   </data>
   <data name="AIAgents_AutoErrorHandlingCaptionPrefix" xml:space="preserve">
-    <value>Выберите способ обработки ошибок терминала. Устанавливает интеграцию оболочки для автоматической обработки ошибок в PowerShell, bash и WSL bash. </value>
+    <value>Выберите способ обработки ошибок терминала. Включение этой функции установит интеграцию оболочки для обнаружения сбоев команд. Доступно в PowerShell, bash и WSL bash. </value>
     <comment>{Locked="PowerShell","bash","WSL bash"} Caption under the Auto error handling title; the trailing space separates this prefix from the inline AIAgents_AutoErrorHandlingCaptionLink hyperlink that follows.</comment>
   </data>
   <data name="AIAgents_AutoErrorHandlingCaptionLink" xml:space="preserve">

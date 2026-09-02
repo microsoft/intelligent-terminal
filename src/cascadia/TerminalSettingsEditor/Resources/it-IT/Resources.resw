@@ -2925,7 +2925,7 @@
     <comment>Title for the Auto error handling dropdown in the AI agents settings page.</comment>
   </data>
   <data name="AIAgents_AutoErrorHandlingCaptionPrefix" xml:space="preserve">
-    <value>Scegli come vengono gestiti gli errori del terminale. Installa l'integrazione della shell per la gestione automatica degli errori in PowerShell, bash e WSL bash. </value>
+    <value>Scegli come vengono gestiti gli errori del terminale. L'abilitazione di questa opzione installerà l'integrazione shell per rilevare gli errori dei comandi. Disponibile in PowerShell, bash e WSL bash. </value>
     <comment>{Locked="PowerShell","bash","WSL bash"} Caption under the Auto error handling title; the trailing space separates this prefix from the inline AIAgents_AutoErrorHandlingCaptionLink hyperlink that follows.</comment>
   </data>
   <data name="AIAgents_AutoErrorHandlingCaptionLink" xml:space="preserve">

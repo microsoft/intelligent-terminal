@@ -2925,7 +2925,7 @@
     <comment>Title for the Auto error handling dropdown in the AI agents settings page.</comment>
   </data>
   <data name="AIAgents_AutoErrorHandlingCaptionPrefix" xml:space="preserve">
-    <value>選擇如何處理終端錯誤。安裝 shell 集成，以便在 PowerShell、bash 和 WSL bash 中自動處理錯誤。 </value>
+    <value>選擇如何處理終端錯誤。啟用此功能將安裝 Shell 整合，以偵測命令失敗。適用於 PowerShell、bash 和 WSL bash。 </value>
     <comment>{Locked="PowerShell","bash","WSL bash"} Caption under the Auto error handling title; the trailing space separates this prefix from the inline AIAgents_AutoErrorHandlingCaptionLink hyperlink that follows.</comment>
   </data>
   <data name="AIAgents_AutoErrorHandlingCaptionLink" xml:space="preserve">
