@@ -29,10 +29,41 @@
                 <TextBlock Text="{x:Bind EnumName, Mode=OneWay}" />
             </DataTemplate>
 
+            <DataTemplate x:Key="AutoErrorHandlingComboBoxTemplate"
+                          x:DataType="local:EnumEntry">
+                <TextBlock Text="{x:Bind EnumName, Mode=OneWay}"
+                           TextWrapping="WrapWholeWords" />
+            </DataTemplate>
+
             <DataTemplate x:Key="AcpModelEntryTemplate"
                           x:DataType="local:AcpModelEntry">
                 <TextBlock Text="{x:Bind DisplayName}" />
             </DataTemplate>
+
+            <Style x:Key="AutoErrorHandlingSettingContainerStyle"
+                   TargetType="local:SettingContainer">
+                <Setter Property="Margin" Value="0,4,0,0" />
+                <Setter Property="IsTabStop" Value="False" />
+                <Setter Property="MaxWidth" Value="{StaticResource StandardControlMaxWidth}" />
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="local:SettingContainer">
+                            <Grid Style="{StaticResource NonExpanderGrid}">
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                </Grid.RowDefinitions>
+                                <ContentPresenter Margin="0,12,8,8"
+                                                  Content="{TemplateBinding Header}" />
+                                <ContentPresenter Grid.Row="1"
+                                                  Margin="0,0,0,12"
+                                                  HorizontalAlignment="Stretch"
+                                                  Content="{TemplateBinding Content}" />
+                            </Grid>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
         </ResourceDictionary>
     </Page.Resources>
 
@@ -294,7 +325,8 @@
                     IsOn="{x:Bind ViewModel.ShowTokenUsageAndCost, Mode=TwoWay}" />
             </local:SettingContainer>
 
-            <local:SettingContainer x:Name="AutoErrorHandling">
+            <local:SettingContainer x:Name="AutoErrorHandling"
+                                    Style="{StaticResource AutoErrorHandlingSettingContainerStyle}">
                 <local:SettingContainer.Header>
                     <StackPanel>
                         <TextBlock x:Uid="AIAgents_AutoErrorHandlingTitle"
@@ -315,7 +347,8 @@
                 </local:SettingContainer.Header>
                 <ComboBox x:Uid="AIAgents_AutoErrorHandlingComboBox"
                           AutomationProperties.AccessibilityView="Content"
-                          ItemTemplate="{StaticResource EnumComboBoxTemplate}"
+                          HorizontalAlignment="Stretch"
+                          ItemTemplate="{StaticResource AutoErrorHandlingComboBoxTemplate}"
                           ItemsSource="{x:Bind ViewModel.AutoErrorHandlingList, Mode=OneWay}"
                           SelectedItem="{x:Bind ViewModel.CurrentAutoErrorHandling, Mode=TwoWay}"
                           Style="{StaticResource ComboBoxSettingStyle}" />
