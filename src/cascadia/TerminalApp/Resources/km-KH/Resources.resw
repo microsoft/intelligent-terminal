@@ -170,7 +170,7 @@
     <value>ស្វែងយល់ពីរបៀបជួសជុលវាដោយដៃ</value>
     <comment>Hyperlink shown below an FRE setup error message. Opens step-by-step manual setup instructions in the browser.</comment>
   </data>  <data name="FreOverlay_AutoErrorHandlingShellIntegrationHintPrefix" xml:space="preserve">
-    <value>ដំឡើងការរួមបញ្ចូលសែលសម្រាប់ការដោះស្រាយកំហុសដោយស្វ័យប្រវត្តិនៅក្នុង PowerShell, bash និង WSL bash ។ </value>
+    <value>អាចប្រើបាននៅក្នុង PowerShell, bash និង WSL bash។ </value>
     <comment>{Locked="PowerShell","bash","WSL bash"} Hint shown under the Auto error handling dropdown in the first-run wizard. The trailing space is intentional — it separates this prefix from the inline FreOverlay_AutoErrorHandlingShellIntegrationHintLink hyperlink that follows.</comment>
   </data>
   <data name="FreOverlay_AutoErrorHandlingShellIntegrationHintLink" xml:space="preserve">

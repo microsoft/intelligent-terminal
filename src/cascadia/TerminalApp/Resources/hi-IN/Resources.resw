@@ -334,7 +334,7 @@
     <value>मैन्युअल रूप से इसे ठीक करना सीखें</value>
     <comment>Hyperlink shown below an FRE setup error message. Opens step-by-step manual setup instructions in the browser.</comment>
   </data>  <data name="FreOverlay_AutoErrorHandlingShellIntegrationHintPrefix" xml:space="preserve">
-    <value>PowerShell, bash और WSL bash में स्वचालित त्रुटि प्रबंधन के लिए shell एकीकरण इंस्टॉल करता है। </value>
+    <value>PowerShell, bash और WSL bash में उपलब्ध है। </value>
     <comment>{Locked="PowerShell","bash","WSL bash"} Hint shown under the Auto error handling dropdown in the first-run wizard. The trailing space is intentional — it separates this prefix from the inline FreOverlay_AutoErrorHandlingShellIntegrationHintLink hyperlink that follows.</comment>
   </data>
   <data name="FreOverlay_AutoErrorHandlingShellIntegrationHintLink" xml:space="preserve">
