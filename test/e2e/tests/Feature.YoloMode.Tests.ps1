@@ -34,10 +34,9 @@ Describe 'Feature custom-provider permission baseline' -ForEach $script:PackageC
         Import-Module (Join-Path $PSScriptRoot '..\ItE2E\ItE2E.psd1') -Force
         $script:fixtureLog = Join-Path $env:TEMP "ite2e-yolo-permission-$([guid]::NewGuid().ToString('N')).log"
         $fixture = (Resolve-Path (Join-Path $PSScriptRoot '..\fixtures\Mock-AcpPermissionAgent.ps1')).Path
-        if ($fixture -match '\s' -or $script:fixtureLog -match '\s') {
-            throw 'The custom ACP fixture requires whitespace-free test paths'
-        }
-        $fixtureCommand = "pwsh -NoProfile -File $fixture -LogPath $script:fixtureLog"
+        $fixtureInvocation = "& '$($fixture.Replace("'", "''"))' -LogPath '$($script:fixtureLog.Replace("'", "''"))'"
+        $encodedInvocation = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($fixtureInvocation))
+        $fixtureCommand = "pwsh -NoProfile -EncodedCommand $encodedInvocation"
         $script:app = Start-Terminal -Package $Package -PassFre $true -Settings @{
             acpAgent = 'custom:yolo-permission-fixture'
             acpCustomCommand = $fixtureCommand

@@ -234,6 +234,8 @@ Describe 'Feature suite package selection' -Tag 'Unit' {
         $suite | Should -Match 'openCodeInstalled\s*=.*Get-Command\s+opencode'
         $suite | Should -Not -Match 'Get-AgentAcpStatus.*opencode acp'
         $suite | Should -Not -Match 'AgentYoloStatusText|/yolo (?:on|off)'
+        $suite | Should -Not -Match 'requires whitespace-free test paths'
+        $suite | Should -Match '-EncodedCommand\s+\$encodedInvocation'
     }
 }
 

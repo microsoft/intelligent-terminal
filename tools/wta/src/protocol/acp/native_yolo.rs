@@ -204,17 +204,34 @@ impl NativeYoloState {
                 )
         });
         if !acknowledged {
-            let error = NativeYoloApplyError::known(format!(
+            return Err(NativeYoloApplyError::known(format!(
                 "provider did not acknowledge config option '{config_id}' value '{value}' for session '{}'",
                 operation.session_id
-            ));
-            return Err(if operation.enabled {
-                error
-            } else {
-                error.requiring_restart()
-            });
+            ))
+            .requiring_restart());
         }
         self.record_from_config_update(&operation.session_id, config_options);
+        if operation.enabled {
+            let reversible = matches!(
+                self.sessions.read().unwrap().get(&operation.session_id),
+                Some(ProviderSessionState::Available(NativeYoloChannel::ConfigOption {
+                    config_id: acknowledged_id,
+                    enable_value,
+                    restore_value,
+                    current_value,
+                })) if acknowledged_id == config_id
+                    && enable_value == value
+                    && current_value == value
+                    && restore_value != value
+            );
+            if !reversible {
+                return Err(NativeYoloApplyError::known(format!(
+                    "provider did not acknowledge a reversible config option '{config_id}' value '{value}' for session '{}'",
+                    operation.session_id
+                ))
+                .requiring_restart());
+            }
+        }
         Ok(())
     }
 

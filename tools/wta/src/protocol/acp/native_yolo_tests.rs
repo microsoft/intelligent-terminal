@@ -20,6 +20,7 @@ enum ConfigResponse {
     Echo,
     CurrentValue(&'static str),
     MissingOption,
+    UnrestorableEnable,
 }
 
 fn discover(agent_id: &str, response: &str, enabled: bool) -> Result<NativeYoloAction, String> {
@@ -123,9 +124,22 @@ fn spawn_apply_mock_with_response(
                     }
                     let response_value = match config_response {
                         ConfigResponse::CurrentValue(value) => value,
-                        ConfigResponse::Echo | ConfigResponse::MissingOption => &value,
+                        ConfigResponse::Echo
+                        | ConfigResponse::MissingOption
+                        | ConfigResponse::UnrestorableEnable => &value,
                     };
-                    let option = if config_id == "allow_all" {
+                    let option = if matches!(config_response, ConfigResponse::UnrestorableEnable) {
+                        serde_json::json!({
+                            "id": config_id,
+                            "name": "Allow All",
+                            "category": "permissions",
+                            "type": "select",
+                            "currentValue": response_value,
+                            "options": [
+                                {"value": "on", "name": "On"}
+                            ]
+                        })
+                    } else if config_id == "allow_all" {
                         serde_json::json!({
                             "id": config_id,
                             "name": "Allow All",
@@ -998,6 +1012,90 @@ fn reconciliation_disable_requires_returned_native_config_option() {
 
         assert!(error.restart_required());
         assert!(error.to_string().contains("did not acknowledge"));
+    });
+}
+
+#[test]
+fn reconciliation_enable_requires_returned_native_config_option() {
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    tokio::task::LocalSet::new().block_on(&runtime, async {
+        let state = NativeYoloState::new();
+        state.set_resolved_agent_id(Some(crate::agent_registry::COPILOT_AGENT_ID));
+        let response: acp::schema::v1::NewSessionResponse = serde_json::from_str(
+            r#"{
+                "sessionId": "missing-enable-config-session",
+                "configOptions": [{
+                    "id": "allow_all", "name": "Allow All", "category": "permissions",
+                    "type": "select", "currentValue": "off",
+                    "options": [{"value": "on", "name": "On"}, {"value": "off", "name": "Off"}]
+                }]
+            }"#,
+        )
+        .unwrap();
+        let session_id = response.session_id.clone();
+        state.record_from_new_session(&response);
+        let connection = spawn_apply_mock_with_config_response(
+            Arc::new(Mutex::new(Vec::new())),
+            ConfigResponse::MissingOption,
+        );
+        let operation = state.reserve_operation(session_id, true);
+
+        let error = state
+            .apply_reserved_with_timeout(
+                &connection,
+                operation,
+                std::time::Duration::from_millis(100),
+            )
+            .await
+            .unwrap_err();
+
+        assert!(error.restart_required());
+        assert!(error.to_string().contains("did not acknowledge"));
+    });
+}
+
+#[test]
+fn reconciliation_enable_requires_reversible_acknowledgement() {
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    tokio::task::LocalSet::new().block_on(&runtime, async {
+        let state = NativeYoloState::new();
+        state.set_resolved_agent_id(Some(crate::agent_registry::COPILOT_AGENT_ID));
+        let response: acp::schema::v1::NewSessionResponse = serde_json::from_str(
+            r#"{
+                "sessionId": "unrestorable-enable-config-session",
+                "configOptions": [{
+                    "id": "allow_all", "name": "Allow All", "category": "permissions",
+                    "type": "select", "currentValue": "off",
+                    "options": [{"value": "on", "name": "On"}, {"value": "off", "name": "Off"}]
+                }]
+            }"#,
+        )
+        .unwrap();
+        let session_id = response.session_id.clone();
+        state.record_from_new_session(&response);
+        let connection = spawn_apply_mock_with_config_response(
+            Arc::new(Mutex::new(Vec::new())),
+            ConfigResponse::UnrestorableEnable,
+        );
+        let operation = state.reserve_operation(session_id, true);
+
+        let error = state
+            .apply_reserved_with_timeout(
+                &connection,
+                operation,
+                std::time::Duration::from_millis(100),
+            )
+            .await
+            .unwrap_err();
+
+        assert!(error.restart_required());
+        assert!(error.to_string().contains("reversible"));
     });
 }
 
