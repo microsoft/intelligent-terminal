@@ -223,39 +223,39 @@
     <value>Nastavování...</value>
   </data>
   <data name="FreOverlay_InstallError_BlockedByPolicy" xml:space="preserve">
-    <value>⚠ Instalace {0} byla zablokována zásadami Správce balíčků systému Windows. Pokud používáte spravované zařízení, kontaktujte správce IT.</value>
+    <value>Instalace {0} byla zablokována zásadami Správce balíčků systému Windows. Pokud používáte spravované zařízení, kontaktujte správce IT.</value>
     <comment>FRE setup error. {0} is the package display name. Shown when winget returned BlockedByPolicy.</comment>
   </data>
   <data name="FreOverlay_InstallError_Generic" xml:space="preserve">
-    <value>⚠ Nepodařilo se nainstalovat {0} (kód chyby {1}). Podrobnosti najdete v protokolu, nebo nainstalujte {0} ručně.</value>
+    <value>Nepodařilo se nainstalovat {0} (kód chyby {1}). Podrobnosti najdete v protokolu, nebo nainstalujte {0} ručně.</value>
     <comment>FRE setup error fallback. {0} is the package display name (appears twice). {1} is a pre-formatted HRESULT string like "0x80190194".</comment>
   </data>
   <data name="FreOverlay_InstallError_GenericNoCode" xml:space="preserve">
-    <value>⚠ Nepodařilo se nainstalovat {0}. Podrobnosti najdete v protokolu, nebo nainstalujte {0} ručně.</value>
+    <value>Nepodařilo se nainstalovat {0}. Podrobnosti najdete v protokolu, nebo nainstalujte {0} ručně.</value>
     <comment>FRE setup error fallback used when no actionable error code is available. {0} is the package display name (appears twice).</comment>
   </data>
   <data name="FreOverlay_InstallError_InstallerFailed" xml:space="preserve">
-    <value>⚠ Instalační program {0} oznámil chybu (kód {1}). Podrobnosti najdete v protokolu, nebo nainstalujte {0} ručně.</value>
+    <value>Instalační program {0} oznámil chybu (kód {1}). Podrobnosti najdete v protokolu, nebo nainstalujte {0} ručně.</value>
     <comment>FRE setup error. {0} is the package display name (appears twice). {1} is the installer-reported error code as a decimal number.</comment>
   </data>
   <data name="FreOverlay_InstallError_Network" xml:space="preserve">
-    <value>⚠ Při instalaci {0} se nepodařilo spojit se Správcem balíčků systému Windows. Zkontrolujte připojení k internetu (VPN, proxy server nebo brána firewall ho můžou blokovat) a zkuste to znovu.</value>
+    <value>Při instalaci {0} se nepodařilo spojit se Správcem balíčků systému Windows. Zkontrolujte připojení k internetu (VPN, proxy server nebo brána firewall ho můžou blokovat) a zkuste to znovu.</value>
     <comment>{Locked="VPN"} FRE setup error. {0} is the package display name. Shown when winget couldn't reach its catalog or download failed with a network-class HRESULT.</comment>
   </data>
   <data name="FreOverlay_InstallError_NoCompatibleInstaller" xml:space="preserve">
-    <value>⚠ V tomto systému není k dispozici žádný kompatibilní instalační program pro {0} (verze operačního systému nebo architektura nemusí být podporovaná). Nainstalujte {0} ručně.</value>
+    <value>V tomto systému není k dispozici žádný kompatibilní instalační program pro {0} (verze operačního systému nebo architektura nemusí být podporovaná). Nainstalujte {0} ručně.</value>
     <comment>FRE setup error. {0} is the package display name (appears twice).</comment>
   </data>
   <data name="FreOverlay_InstallError_PackageNotFound" xml:space="preserve">
-    <value>⚠ {0} se nenašel v katalogu Správce balíčků systému Windows. Zkuste aktualizovat zdroje winget nebo nainstalujte {0} ručně.</value>
+    <value>{0} se nenašel v katalogu Správce balíčků systému Windows. Zkuste aktualizovat zdroje winget nebo nainstalujte {0} ručně.</value>
     <comment>{Locked="winget"} FRE setup error. {0} is the package display name (appears twice).</comment>
   </data>
   <data name="FreOverlay_InstallError_Timeout" xml:space="preserve">
-    <value>⚠ Instalace {0} trvala déle než 20 minut. Intelligent Terminal přestal čekat, ale instalační program může stále běžet na pozadí. Zkontrolujte Task Manager, nebo to zkuste znovu později.</value>
+    <value>Instalace {0} trvala déle než 20 minut. Intelligent Terminal přestal čekat, ale instalační program může stále běžet na pozadí. Zkontrolujte Task Manager, nebo to zkuste znovu později.</value>
     <comment>{Locked="Intelligent Terminal","Task Manager"} FRE setup error. {0} is the package display name.</comment>
   </data>
   <data name="FreOverlay_InstallErrorWingetMissing" xml:space="preserve">
-    <value>⚠ Správce balíčků systému Windows (winget) není nainstalovaný nebo není dostupný. Nejdřív ho nainstalujte a pak to zkuste znovu.</value>
+    <value>Správce balíčků systému Windows (winget) není nainstalovaný nebo není dostupný. Nejdřív ho nainstalujte a pak to zkuste znovu.</value>
     <comment>{Locked="winget"} Error shown in the FRE setup overlay when a prerequisite install was attempted but winget itself is not available on this system.</comment>
   </data>
   <data name="FreOverlay_PackageDisplayName_Copilot" xml:space="preserve">
@@ -348,9 +348,9 @@
     <value>Povolte aplikaci Intelligent Terminal přístup k prostředí shell a automatickou detekci chyb.</value>
   </data>
 <data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
-    <value>⚠ Nepodařilo se nainstalovat integraci prostředí. Detekce chyb byla vypnuta. Můžete ji znovu zapnout a zkusit to znovu, nebo uložit a pokračovat bez ní.</value>
+    <value>Nepodařilo se nainstalovat integraci prostředí. Detekce chyb byla vypnuta. Můžete ji znovu zapnout a zkusit to znovu, nebo uložit a pokračovat bez ní.</value>
   </data><data name="FreOverlay_InstallErrorHooks" xml:space="preserve">
-    <value>⚠ Nepodařilo se nainstalovat session hooks. Správa relací byla vypnuta. Můžete ji znovu zapnout a zkusit to znovu, nebo uložit a pokračovat bez ní.</value>
+    <value>Nepodařilo se nainstalovat session hooks. Správa relací byla vypnuta. Můžete ji znovu zapnout a zkusit to znovu, nebo uložit a pokračovat bez ní.</value>
     <comment>{Locked="hooks"}</comment>
   </data><data name="FreOverlay_ErrorHelpLink" xml:space="preserve">
     <value>Zjistěte, jak to opravit ručně</value>
@@ -366,7 +366,7 @@
     <comment>Body of an error dialog shown after the user tries to install PowerShell shell integration but their PowerShell execution policy (Restricted or AllSigned) is blocking scripts. A separate "Learn how to fix this manually" hyperlink (FreOverlay_ErrorHelpLink) is rendered on its own line below this sentence. {Locked="PowerShell"}</comment>
   </data>
   <data name="FreOverlay_InstallErrorShellIntegrationExecutionPolicy" xml:space="preserve">
-    <value>⚠ Zásady spouštění PowerShellu blokují skripty. Detekce chyb byla vypnuta.</value>
+    <value>Zásady spouštění PowerShellu blokují skripty. Detekce chyb byla vypnuta.</value>
     <comment>{Locked="PowerShell"}</comment>
   </data>
   <data name="UsageGroup/[using:Windows.UI.Xaml.Automation]AutomationProperties/Name" xml:space="preserve"><value>Použití</value><comment>Accessibility name for the session usage summary in the terminal bottom bar.</comment></data>

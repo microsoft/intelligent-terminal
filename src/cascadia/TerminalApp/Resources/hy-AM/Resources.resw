@@ -110,39 +110,39 @@
     <value>Կարգավորում...</value>
   </data>
   <data name="FreOverlay_InstallError_BlockedByPolicy" xml:space="preserve">
-    <value>⚠ {0}-ի տեղադրումն արգելափակվել է Windows Package Manager-ի քաղաքականության կողմից։ Եթե կառավարելի սարքի վրա եք, կապվեք ձեր IT ադմինիստրատորի հետ։</value>
+    <value>{0}-ի տեղադրումն արգելափակվել է Windows Package Manager-ի քաղաքականության կողմից։ Եթե կառավարելի սարքի վրա եք, կապվեք ձեր IT ադմինիստրատորի հետ։</value>
     <comment>FRE setup error. {0} is the package display name.</comment>
   </data>
   <data name="FreOverlay_InstallError_Generic" xml:space="preserve">
-    <value>⚠ Չհաջողվեց տեղադրել {0}-ը (սխալի կոդը՝ {1})։ Մանրամասների համար դիտեք գրանցամատյանը, կամ տեղադրեք {0}-ը ձեռքով։</value>
+    <value>Չհաջողվեց տեղադրել {0}-ը (սխալի կոդը՝ {1})։ Մանրամասների համար դիտեք գրանցամատյանը, կամ տեղադրեք {0}-ը ձեռքով։</value>
     <comment>FRE setup error fallback. {0} is the package display name (appears twice). {1} is a pre-formatted HRESULT string.</comment>
   </data>
   <data name="FreOverlay_InstallError_GenericNoCode" xml:space="preserve">
-    <value>⚠ Չհաջողվեց տեղադրել {0}-ը։ Մանրամասների համար դիտեք գրանցամատյանը, կամ տեղադրեք {0}-ը ձեռքով։</value>
+    <value>Չհաջողվեց տեղադրել {0}-ը։ Մանրամասների համար դիտեք գրանցամատյանը, կամ տեղադրեք {0}-ը ձեռքով։</value>
     <comment>FRE setup error fallback used when no actionable error code is available. {0} is the package display name (appears twice).</comment>
   </data>
   <data name="FreOverlay_InstallError_InstallerFailed" xml:space="preserve">
-    <value>⚠ {0}-ի տեղադրիչը հաղորդեց սխալ (կոդ՝ {1})։ Ստուգեք գրանցամատյանը մանրամասների համար, կամ տեղադրեք {0}-ը ձեռքով։</value>
+    <value>{0}-ի տեղադրիչը հաղորդեց սխալ (կոդ՝ {1})։ Ստուգեք գրանցամատյանը մանրամասների համար, կամ տեղադրեք {0}-ը ձեռքով։</value>
     <comment>FRE setup error. {0} is the package display name (appears twice). {1} is decimal error code.</comment>
   </data>
   <data name="FreOverlay_InstallError_Network" xml:space="preserve">
-    <value>⚠ {0}-ը տեղադրելիս չհաջողվեց կապ հաստատել Windows Package Manager-ի հետ։ Ստուգեք ինտերնետ կապը (VPN-ը, պրոքսին կամ հրապատը կարող են արգելափակել այն) և նորից փորձեք։</value>
+    <value>{0}-ը տեղադրելիս չհաջողվեց կապ հաստատել Windows Package Manager-ի հետ։ Ստուգեք ինտերնետ կապը (VPN-ը, պրոքսին կամ հրապատը կարող են արգելափակել այն) և նորից փորձեք։</value>
     <comment>{Locked="VPN"} FRE setup error. {0} is the package display name.</comment>
   </data>
   <data name="FreOverlay_InstallError_NoCompatibleInstaller" xml:space="preserve">
-    <value>⚠ Այս համակարգում {0}-ի համար համատեղելի տեղադրիչ հասանելի չէ (OS-ի տարբերակը կամ ճարտարապետությունը կարող է չաջակցվել)։ Տեղադրեք {0}-ը ձեռքով։</value>
+    <value>Այս համակարգում {0}-ի համար համատեղելի տեղադրիչ հասանելի չէ (OS-ի տարբերակը կամ ճարտարապետությունը կարող է չաջակցվել)։ Տեղադրեք {0}-ը ձեռքով։</value>
     <comment>FRE setup error. {0} is the package display name (appears twice).</comment>
   </data>
   <data name="FreOverlay_InstallError_PackageNotFound" xml:space="preserve">
-    <value>⚠ {0}-ը չի գտնվել Windows Package Manager-ի կատալոգում։ Փորձեք թարմացնել winget աղբյուրները, կամ տեղադրեք {0}-ը ձեռքով։</value>
+    <value>{0}-ը չի գտնվել Windows Package Manager-ի կատալոգում։ Փորձեք թարմացնել winget աղբյուրները, կամ տեղադրեք {0}-ը ձեռքով։</value>
     <comment>{Locked="winget"} FRE setup error. {0} is the package display name (appears twice).</comment>
   </data>
   <data name="FreOverlay_InstallError_Timeout" xml:space="preserve">
-    <value>⚠ {0}-ի տեղադրումը տևեց ավելի քան 20 րոպե։ Intelligent Terminal-ը դադարեց սպասել, բայց տեղադրիչը կարող է դեռ աշխատել հետին պլանում։ Ստուգեք Task Manager-ը, կամ փորձեք ավելի ուշ։</value>
+    <value>{0}-ի տեղադրումը տևեց ավելի քան 20 րոպե։ Intelligent Terminal-ը դադարեց սպասել, բայց տեղադրիչը կարող է դեռ աշխատել հետին պլանում։ Ստուգեք Task Manager-ը, կամ փորձեք ավելի ուշ։</value>
     <comment>{Locked="Intelligent Terminal","Task Manager"} FRE setup error. {0} is the package display name.</comment>
   </data>
   <data name="FreOverlay_InstallErrorWingetMissing" xml:space="preserve">
-    <value>⚠ Windows Package Manager-ը (winget) տեղադրված չէ կամ հասանելի չէ։ Նախ տեղադրեք այն, ապա նորից փորձեք:</value>
+    <value>Windows Package Manager-ը (winget) տեղադրված չէ կամ հասանելի չէ։ Նախ տեղադրեք այն, ապա նորից փորձեք:</value>
     <comment>{Locked="winget"} Error shown in the FRE setup overlay when a prerequisite install was attempted but winget itself is not available on this system.</comment>
   </data>
   <data name="FreOverlay_PackageDisplayName_Copilot" xml:space="preserve">
@@ -234,9 +234,9 @@
     <value>Թույլ տվեք Intelligent Terminal-ին մուտք գործել ձեր թաղանթ և ավտոմատ կերպով հայտնաբերել սխալները։</value>
   </data>
 <data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
-    <value>⚠ Shell-ի ինտեգրացիայի տեղադրումը ձախողվեց։ Սխալների հայտնաբերումը անջատվել է։ Կարող եք նորից միացնել և նորից փորձել, կամ պահել առանց դրա շարունակելու համար։</value>
+    <value>Shell-ի ինտեգրացիայի տեղադրումը ձախողվեց։ Սխալների հայտնաբերումը անջատվել է։ Կարող եք նորից միացնել և նորից փորձել, կամ պահել առանց դրա շարունակելու համար։</value>
   </data><data name="FreOverlay_InstallErrorHooks" xml:space="preserve">
-    <value>⚠ Session hooks տեղադրումը ձախողվեց։ Նիստերի կառավարումը անջատվել է։ Կարող եք նորից միացնել և նորից փորձել, կամ պահել առանց դրա շարունակելու համար։</value>
+    <value>Session hooks տեղադրումը ձախողվեց։ Նիստերի կառավարումը անջատվել է։ Կարող եք նորից միացնել և նորից փորձել, կամ պահել առանց դրա շարունակելու համար։</value>
     <comment>{Locked="hooks"}</comment>
   </data><data name="FreOverlay_ErrorHelpLink" xml:space="preserve">
     <value>Իմացեք, թե ինչպես սա շտկել ձեռքով</value>
@@ -252,7 +252,7 @@
     <comment>Body of an error dialog shown after the user tries to install PowerShell shell integration but their PowerShell execution policy (Restricted or AllSigned) is blocking scripts. A separate "Learn how to fix this manually" hyperlink (FreOverlay_ErrorHelpLink) is rendered on its own line below this sentence. {Locked="PowerShell"}</comment>
   </data>
   <data name="FreOverlay_InstallErrorShellIntegrationExecutionPolicy" xml:space="preserve">
-    <value>⚠ PowerShell-ի կատարման քաղաքականությունն արգելափակում է սկրիպտները։ Սխալների հայտնաբերումն անջատված է։</value>
+    <value>PowerShell-ի կատարման քաղաքականությունն արգելափակում է սկրիպտները։ Սխալների հայտնաբերումն անջատված է։</value>
     <comment>{Locked="PowerShell"}</comment>
   </data>
   <data name="UsageGroup/[using:Windows.UI.Xaml.Automation]AutomationProperties/Name" xml:space="preserve"><value>Օգտագործում</value><comment>Accessibility name for the session usage summary in the terminal bottom bar.</comment></data>

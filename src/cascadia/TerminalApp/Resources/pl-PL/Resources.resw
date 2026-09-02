@@ -223,39 +223,39 @@
     <value>Konfigurowanie...</value>
   </data>
   <data name="FreOverlay_InstallError_BlockedByPolicy" xml:space="preserve">
-    <value>⚠ Instalacja {0} została zablokowana przez zasady Menedżera pakietów systemu Windows. Jeśli używasz urządzenia zarządzanego, skontaktuj się z administratorem IT.</value>
+    <value>Instalacja {0} została zablokowana przez zasady Menedżera pakietów systemu Windows. Jeśli używasz urządzenia zarządzanego, skontaktuj się z administratorem IT.</value>
     <comment>FRE setup error. {0} is the package display name. Shown when winget returned BlockedByPolicy.</comment>
   </data>
   <data name="FreOverlay_InstallError_Generic" xml:space="preserve">
-    <value>⚠ Nie udało się zainstalować {0} (kod błędu {1}). Szczegóły znajdziesz w dzienniku albo zainstaluj {0} ręcznie.</value>
+    <value>Nie udało się zainstalować {0} (kod błędu {1}). Szczegóły znajdziesz w dzienniku albo zainstaluj {0} ręcznie.</value>
     <comment>FRE setup error fallback. {0} is the package display name (appears twice). {1} is a pre-formatted HRESULT string like "0x80190194".</comment>
   </data>
   <data name="FreOverlay_InstallError_GenericNoCode" xml:space="preserve">
-    <value>⚠ Nie udało się zainstalować {0}. Szczegóły znajdziesz w dzienniku albo zainstaluj {0} ręcznie.</value>
+    <value>Nie udało się zainstalować {0}. Szczegóły znajdziesz w dzienniku albo zainstaluj {0} ręcznie.</value>
     <comment>FRE setup error fallback used when no actionable error code is available. {0} is the package display name (appears twice).</comment>
   </data>
   <data name="FreOverlay_InstallError_InstallerFailed" xml:space="preserve">
-    <value>⚠ Instalator {0} zgłosił błąd (kod {1}). Szczegóły znajdziesz w dzienniku albo zainstaluj {0} ręcznie.</value>
+    <value>Instalator {0} zgłosił błąd (kod {1}). Szczegóły znajdziesz w dzienniku albo zainstaluj {0} ręcznie.</value>
     <comment>FRE setup error. {0} is the package display name (appears twice). {1} is the installer-reported error code as a decimal number.</comment>
   </data>
   <data name="FreOverlay_InstallError_Network" xml:space="preserve">
-    <value>⚠ Nie udało się połączyć z Menedżerem pakietów systemu Windows podczas instalowania {0}. Sprawdź połączenie internetowe (VPN, serwer proxy lub zapora mogą je blokować) i spróbuj ponownie.</value>
+    <value>Nie udało się połączyć z Menedżerem pakietów systemu Windows podczas instalowania {0}. Sprawdź połączenie internetowe (VPN, serwer proxy lub zapora mogą je blokować) i spróbuj ponownie.</value>
     <comment>{Locked="VPN"} FRE setup error. {0} is the package display name. Shown when winget couldn't reach its catalog or download failed with a network-class HRESULT.</comment>
   </data>
   <data name="FreOverlay_InstallError_NoCompatibleInstaller" xml:space="preserve">
-    <value>⚠ Na tym systemie nie jest dostępny zgodny instalator dla {0} (wersja systemu operacyjnego lub architektura może nie być obsługiwana). Zainstaluj {0} ręcznie.</value>
+    <value>Na tym systemie nie jest dostępny zgodny instalator dla {0} (wersja systemu operacyjnego lub architektura może nie być obsługiwana). Zainstaluj {0} ręcznie.</value>
     <comment>FRE setup error. {0} is the package display name (appears twice).</comment>
   </data>
   <data name="FreOverlay_InstallError_PackageNotFound" xml:space="preserve">
-    <value>⚠ Nie znaleziono {0} w katalogu Menedżera pakietów systemu Windows. Spróbuj odświeżyć źródła winget albo zainstaluj {0} ręcznie.</value>
+    <value>Nie znaleziono {0} w katalogu Menedżera pakietów systemu Windows. Spróbuj odświeżyć źródła winget albo zainstaluj {0} ręcznie.</value>
     <comment>{Locked="winget"} FRE setup error. {0} is the package display name (appears twice).</comment>
   </data>
   <data name="FreOverlay_InstallError_Timeout" xml:space="preserve">
-    <value>⚠ Instalowanie {0} trwało dłużej niż 20 minut. Intelligent Terminal przestał czekać, ale instalator może nadal działać w tle. Sprawdź Task Manager albo spróbuj ponownie później.</value>
+    <value>Instalowanie {0} trwało dłużej niż 20 minut. Intelligent Terminal przestał czekać, ale instalator może nadal działać w tle. Sprawdź Task Manager albo spróbuj ponownie później.</value>
     <comment>{Locked="Intelligent Terminal","Task Manager"} FRE setup error. {0} is the package display name.</comment>
   </data>
   <data name="FreOverlay_InstallErrorWingetMissing" xml:space="preserve">
-    <value>⚠ Menedżer pakietów systemu Windows (winget) nie jest zainstalowany lub nie jest dostępny. Najpierw go zainstaluj, a następnie spróbuj ponownie.</value>
+    <value>Menedżer pakietów systemu Windows (winget) nie jest zainstalowany lub nie jest dostępny. Najpierw go zainstaluj, a następnie spróbuj ponownie.</value>
     <comment>{Locked="winget"} Error shown in the FRE setup overlay when a prerequisite install was attempted but winget itself is not available on this system.</comment>
   </data>
   <data name="FreOverlay_PackageDisplayName_Copilot" xml:space="preserve">
@@ -348,9 +348,9 @@
     <value>Zezwól aplikacji Intelligent Terminal na dostęp do powłoki i automatyczne wykrywanie błędów.</value>
   </data>
 <data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
-    <value>⚠ Nie udało się zainstalować integracji powłoki. Wykrywanie błędów zostało wyłączone. Możesz je ponownie włączyć i spróbować ponownie lub zapisać, aby kontynuować bez nich.</value>
+    <value>Nie udało się zainstalować integracji powłoki. Wykrywanie błędów zostało wyłączone. Możesz je ponownie włączyć i spróbować ponownie lub zapisać, aby kontynuować bez nich.</value>
   </data><data name="FreOverlay_InstallErrorHooks" xml:space="preserve">
-    <value>⚠ Nie udało się zainstalować session hooks. Zarządzanie sesjami zostało wyłączone. Możesz je ponownie włączyć i spróbować ponownie lub zapisać, aby kontynuować bez nich.</value>
+    <value>Nie udało się zainstalować session hooks. Zarządzanie sesjami zostało wyłączone. Możesz je ponownie włączyć i spróbować ponownie lub zapisać, aby kontynuować bez nich.</value>
     <comment>{Locked="hooks"}</comment>
   </data><data name="FreOverlay_ErrorHelpLink" xml:space="preserve">
     <value>Dowiedz się, jak to ręcznie naprawić</value>
@@ -366,7 +366,7 @@
     <comment>Body of an error dialog shown after the user tries to install PowerShell shell integration but their PowerShell execution policy (Restricted or AllSigned) is blocking scripts. A separate "Learn how to fix this manually" hyperlink (FreOverlay_ErrorHelpLink) is rendered on its own line below this sentence. {Locked="PowerShell"}</comment>
   </data>
   <data name="FreOverlay_InstallErrorShellIntegrationExecutionPolicy" xml:space="preserve">
-    <value>⚠ Zasady wykonywania programu PowerShell blokują skrypty. Wykrywanie błędów wyłączone.</value>
+    <value>Zasady wykonywania programu PowerShell blokują skrypty. Wykrywanie błędów wyłączone.</value>
     <comment>{Locked="PowerShell"}</comment>
   </data>
   <data name="UsageGroup/[using:Windows.UI.Xaml.Automation]AutomationProperties/Name" xml:space="preserve"><value>Użycie</value><comment>Accessibility name for the session usage summary in the terminal bottom bar.</comment></data>
