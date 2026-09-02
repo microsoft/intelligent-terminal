@@ -582,6 +582,10 @@
                                 MaxWidth="440" Spacing="2"
                                 Visibility="Collapsed">
                         <Grid ColumnSpacing="6">
+                            <Grid.Resources>
+                                <SolidColorBrush x:Key="ErrorForegroundBrush"
+                                                 Color="#FFFF6B6B" />
+                            </Grid.Resources>
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="Auto" />
                                 <ColumnDefinition Width="*" />
@@ -590,12 +594,13 @@
                                       Glyph="&#xE7BA;"
                                       FontFamily="{ThemeResource SymbolThemeFontFamily}"
                                       FontSize="13"
-                                      Foreground="#FFFF6B6B"
+                                      Foreground="{StaticResource ErrorForegroundBrush}"
                                       VerticalAlignment="Top"
                                       Margin="0,1,0,0" />
                             <TextBlock Grid.Column="1"
                                        x:Name="ErrorText"
-                                       Foreground="#FFFF6B6B" FontSize="13"
+                                       Foreground="{StaticResource ErrorForegroundBrush}"
+                                       FontSize="13"
                                        TextWrapping="Wrap"
                                        AutomationProperties.LiveSetting="Assertive" />
                         </Grid>
