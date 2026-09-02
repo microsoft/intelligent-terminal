@@ -5893,20 +5893,15 @@ async fn host_titles_via_acp(agent: &AgentCli) -> std::collections::HashMap<Stri
         .filter_map(|row| {
             row.title
                 .clone()
+                // Drop candidates that must never become a display name — most
+                // notably the delegate's injected first-message echo, which an
+                // agent CLI (e.g. Copilot) briefly reports as a session's
+                // `session/list` title before it generates its real summary and
+                // which embeds the `## Terminal Context (pane …)` block.
+                // `refresh_titles_from_listing` applies the same predicate at
+                // the point of mutation.
                 .filter(|title| {
-                    // Drop the delegate's injected first-message echo. An agent CLI
-                    // (e.g. Copilot) can briefly report the baked `?<prompt>` — which
-                    // embeds the `## Terminal Context (pane …)` block — as a session's
-                    // `session/list` title before it generates its real summary.
-                    // Adopting it would leak the injected context (pane GUID included)
-                    // and, being non-synthetic, lock the row out of the later upgrade
-                    // to the CLI's real name. Skipping it leaves the born-bound row
-                    // synthetic so a subsequent poll adopts the real summary instead.
-                    !title.is_empty()
-                        && !crate::session_registry::title_is_injected_context_echo(title)
-                        && !agent.cli_source.as_ref().is_some_and(|cli| {
-                            crate::agent_sessions::title_is_placeholder(cli, title)
-                        })
+                    crate::session_registry::title_is_displayable(agent.cli_source.as_ref(), title)
                 })
                 .map(|title| (row.session_id.to_string(), title))
         })
@@ -5984,7 +5979,81 @@ async fn sync_host_history(state: &MasterStateInner, agent: &AgentCli) -> Option
         }
     }
 
+    // Title refresh: the agent CLI owns a session's display name and keeps
+    // rewriting it (Copilot reports the first user message until it generates
+    // a summary), so re-adopt the current listing title for every row this
+    // agent owns — not just the still-synthetic ones, which is all
+    // `refresh_synthetic_titles_from` can do. A row that latched the transient
+    // first-message echo is non-synthetic and would otherwise display it
+    // forever. Uses the UNFILTERED title map so live Class-A agent-pane rows,
+    // which `host_history_via_acp` subtracts, are refreshed too, and reuses the
+    // same 2 s-cached `session/list` fetch this function already made.
+    if refresh_titles_from_listing(
+        &*state.registry,
+        &host_titles_via_acp(agent).await,
+        listing_cli,
+    )
+    .await
+    {
+        changed = true;
+    }
+
     Some((changed, rows.len()))
+}
+
+/// Adopt `titles` (session_id → the listing agent's own `session/list` title)
+/// for every registry row that agent owns, replacing a stale real title rather
+/// than only filling a synthetic one. Returns true if any row changed.
+///
+/// Authority is `row_refreshable_by_connected_agent` plus the session id
+/// itself, and deliberately NOT `SessionInfo::location`. Host Copilot and an
+/// in-distro Copilot share a `CliSource` while enumerating disjoint stores, but
+/// the id is what separates them: a host agent's listing simply never contains
+/// an in-distro session id (`doc/specs/wsl-session-management.md` calls a
+/// host/WSL key collision astronomically unlikely). Gating on `location` would
+/// instead *lose* refreshes, because only the born-bound path stamps it —
+/// an ordinary `session_hook` row for a CLI running inside WSL keeps the
+/// reducer's default `Host`, so the in-distro agent that actually holds its
+/// title would be skipped.
+///
+/// [`crate::session_registry::SessionRegistry::adopt_agent_title`] overwrites
+/// whatever it is handed, so every candidate is re-checked with
+/// [`crate::session_registry::title_is_displayable`] here, at the point of
+/// mutation, and not only where [`host_titles_via_acp`] builds the map. The
+/// row's own `cli_source` is the stamp to check against: it is the CLI that
+/// actually produced the session.
+async fn refresh_titles_from_listing(
+    reg: &dyn crate::session_registry::SessionRegistry,
+    titles: &std::collections::HashMap<String, String>,
+    listing_cli: Option<&crate::agent_sessions::CliSource>,
+) -> bool {
+    if titles.is_empty() {
+        return false;
+    }
+    let mut changed = false;
+    for row in reg.snapshot().await {
+        if !row_refreshable_by_connected_agent(&row, listing_cli) {
+            continue;
+        }
+        let Some(title) = titles.get(row.session_id.0.as_ref()) else {
+            continue;
+        };
+        if !crate::session_registry::title_is_displayable(row.cli_source.as_ref(), title) {
+            continue;
+        }
+        if reg.adopt_agent_title(&row.session_id, title).await {
+            // The title itself is user content (a chat summary), so log only
+            // the identity of the row that changed.
+            tracing::info!(
+                target: "master_history",
+                key = %row.session_id.0,
+                cli = ?listing_cli,
+                "title refresh: adopted updated session/list title"
+            );
+            changed = true;
+        }
+    }
+    changed
 }
 
 /// Whether a registry row is a stale host-history row to drop during reconcile:
@@ -8017,7 +8086,14 @@ async fn refresh_synthetic_titles_from(
 /// session while this agent is copilot) can never appear in it — skip it
 /// rather than issue a per-event round-trip that can't match. A `None` cli on
 /// either side is treated as "attempt" (the lookup simply no-ops when the id is
-/// absent); this leniency is safe only because the upgrade is non-destructive.
+/// absent).
+///
+/// That leniency stays safe for the destructive caller
+/// ([`refresh_titles_from_listing`], which overwrites rather than fills) because
+/// the session id is the real authority: an unstamped row only gets a title when
+/// the listing agent actually returned that exact id, which makes it that
+/// agent's own session. Reconcile is deliberately stricter — see
+/// [`is_stale_host_history_row`] — because deletion cannot be justified that way.
 fn row_refreshable_by_connected_agent(
     info: &crate::session_registry::SessionInfo,
     conn_cli: Option<&crate::agent_sessions::CliSource>,
