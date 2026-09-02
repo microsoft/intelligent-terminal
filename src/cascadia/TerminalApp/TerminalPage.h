@@ -902,6 +902,7 @@ namespace winrt::TerminalApp::implementation
         std::optional<uint32_t> _GetTabIndex(const TerminalApp::Tab& tab) const noexcept;
         TerminalApp::Tab _GetFocusedTab() const noexcept;
         winrt::com_ptr<Tab> _GetFocusedTabImpl() const noexcept;
+        static std::shared_ptr<Pane> _ProtocolTabProfileSourcePane(const winrt::com_ptr<Tab>& tab);
         TerminalApp::Tab _GetTabByTabViewItem(const IInspectable& tabViewItem) const noexcept;
 
         // Spec A §4.1: routing indirection so TabManagement.cpp doesn't have to

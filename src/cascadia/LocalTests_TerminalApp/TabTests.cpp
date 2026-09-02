@@ -220,6 +220,7 @@ namespace TerminalAppLocalTests
         TEST_METHOD(BuildStartupActionsContentStashesAgentFirstPaneAsNewTab);
         TEST_METHOD(BuildStartupActionsContentStashesAgentLaterSplitAsExistingTab);
         TEST_METHOD(TransferredAgentContentFirstPaneDefersTabRekey);
+        TEST_METHOD(ProtocolTabProfileSourceSkipsAgentPane);
         TEST_METHOD(TransferredAgentContentSplitPaneRetiresDestinationAgentPane);
         TEST_METHOD(TransferredAgentStatusReplaysMissedTabRekey);
 
@@ -2063,6 +2064,50 @@ namespace TerminalAppLocalTests
             const auto pendingSourceProfileGuid = impl->TakePendingAgentSourceProfileGuid();
             VERIFY_IS_TRUE(pendingSourceProfileGuid.has_value());
             VERIFY_IS_TRUE(pendingSourceProfileGuid.value() == sourceProfileGuid);
+        });
+    }
+
+    void TabTests::ProtocolTabProfileSourceSkipsAgentPane()
+    {
+        auto page = _commonSetup();
+
+        TestOnUIThread([&]() {
+            const auto focusedTab = page->_GetFocusedTabImpl();
+            VERIFY_IS_NOT_NULL(focusedTab);
+
+            const auto terminalPane = focusedTab->GetActivePane();
+            VERIFY_IS_NOT_NULL(terminalPane);
+            VERIFY_IS_FALSE(terminalPane->IsAgentPane());
+
+            // The real agent pane runs the hidden "Agent Pane" profile, which
+            // is `closeOnExit: always`. Stand in for it with a profile that is
+            // not the tab's (and not the global default) so the assertions
+            // below can tell the two apart.
+            NewTerminalArgs agentArgs{ 1 };
+            auto agentPane = page->_WrapInAgentPaneContent(page->_MakePane(agentArgs, nullptr, nullptr));
+            VERIFY_IS_NOT_NULL(agentPane);
+            agentPane->IsAgentPane(true);
+
+            // `_SplitPane` focuses the new pane, exactly like opening the agent
+            // pane and driving its session picker does.
+            page->_SplitPane(focusedTab, SplitDirection::Down, 0.3f, agentPane);
+            VERIFY_IS_NOT_NULL(focusedTab->GetActivePane());
+            VERIFY_IS_TRUE(focusedTab->GetActivePane()->IsAgentPane());
+
+            // Sanity check that this is the state that used to leak the agent
+            // pane's profile into protocol-created tabs.
+            const auto focusedProfile = focusedTab->GetFocusedProfile();
+            VERIFY_IS_NOT_NULL(focusedProfile);
+            VERIFY_ARE_EQUAL(L"profile1", focusedProfile.Name());
+
+            const auto sourcePane = page->_ProtocolTabProfileSourcePane(focusedTab);
+            VERIFY_IS_NOT_NULL(sourcePane);
+            VERIFY_IS_FALSE(sourcePane->IsAgentPane());
+            VERIFY_IS_TRUE(sourcePane == terminalPane);
+
+            const auto sourceContent = sourcePane->GetContent().try_as<winrt::TerminalApp::TerminalPaneContent>();
+            VERIFY_IS_NOT_NULL(sourceContent);
+            VERIFY_ARE_EQUAL(L"profile0", sourceContent.GetProfile().Name());
         });
     }
 
