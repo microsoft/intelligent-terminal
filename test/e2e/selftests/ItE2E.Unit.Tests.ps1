@@ -150,6 +150,22 @@ Describe 'Configuration backup and restore' -Tag 'Unit' {
         Test-Path -LiteralPath $app.StatePath | Should -BeFalse
     }
 
+    It 'records missing configuration when the fresh package directory is absent' {
+        $localState = Join-Path $TestDrive 'fresh-package\LocalState'
+        $app = [pscustomobject]@{
+            SettingsPath = Join-Path $localState 'settings.json'
+            StatePath = Join-Path $localState 'state.json'
+        }
+
+        Backup-WtConfig -App $app
+
+        Test-Path -LiteralPath "$($app.SettingsPath).e2ebak.missing" | Should -BeTrue
+        Test-Path -LiteralPath "$($app.StatePath).e2ebak.missing" | Should -BeTrue
+        Restore-WtConfig -App $app
+        Test-Path -LiteralPath $app.SettingsPath | Should -BeFalse
+        Test-Path -LiteralPath $app.StatePath | Should -BeFalse
+    }
+
     It 'recovers a stale missing-file marker before taking a new snapshot' {
         $app = [pscustomobject]@{
             SettingsPath = Join-Path $TestDrive 'stale-settings.json'

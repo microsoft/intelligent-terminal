@@ -24,6 +24,8 @@ function Backup-WtConfig {
             Write-ItLog -Level INFO -Message "Backed up $f"
         }
         else {
+            $parent = Split-Path $missing -Parent
+            if (-not (Test-Path $parent)) { New-Item -ItemType Directory -Force -Path $parent | Out-Null }
             [System.IO.File]::WriteAllBytes($missing, [byte[]]::new(0))
             Write-ItLog -Level INFO -Message "Recorded that $f did not exist before the test"
         }
