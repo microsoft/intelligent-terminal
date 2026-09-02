@@ -574,8 +574,9 @@ namespace winrt::TerminalApp::implementation
     // away then takes the whole tab with it, because a lone agent pane
     // collapses its subtree (see `Pane::_CloseChildRoutine`).
     //
-    // `_SourceTerminalPaneForTab` is what keeps the agent pane out of the
-    // lookup; see its comment in TerminalPage.cpp.
+    // `_SourceTerminalProfileForTab` is what keeps the agent pane out of that
+    // lookup — it resolves through `_SourceTerminalPaneForTab`, whose comment
+    // in TerminalPage.cpp explains the ordering.
     IAsyncOperation<Protocol::TabCreationResult> TerminalPage::CreateProtocolTab(NewTerminalArgs args, bool background)
     {
         auto strong = get_strong();
