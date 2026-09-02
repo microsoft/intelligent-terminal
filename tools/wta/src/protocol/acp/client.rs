@@ -280,6 +280,22 @@ fn publish_session_config_options(
     });
 }
 
+fn publish_current_native_config_options(
+    event_tx: &mpsc::UnboundedSender<AppEvent>,
+    native_yolo: &super::native_yolo::NativeYoloState,
+    session_id: &acp::schema::v1::SessionId,
+    operation: &super::native_yolo::NativeYoloOperation,
+    options: Option<&[acp::schema::v1::SessionConfigOption]>,
+) -> bool {
+    if !native_yolo.operation_is_current(operation) {
+        return false;
+    }
+    if options.is_some() {
+        publish_session_config_options(event_tx, native_yolo, session_id, options);
+    }
+    true
+}
+
 /// User-initiated request to resume a historical agent session by calling
 /// the ACP `session/load` method, binding the loaded session to a
 /// specific WT tab. Emitted by the session management view's Enter
@@ -2424,10 +2440,18 @@ async fn apply_native_yolo_checked(
     state: &ClientState,
     operation: super::native_yolo::NativeYoloOperation,
     timeout: std::time::Duration,
-) -> std::result::Result<(), super::native_yolo::NativeYoloApplyError> {
+) -> std::result::Result<
+    Option<Vec<acp::schema::v1::SessionConfigOption>>,
+    super::native_yolo::NativeYoloApplyError,
+> {
     state
         .native_yolo
-        .apply_reserved_with_policy_timeout(conn, operation, timeout, Some(&state.yolo_state))
+        .apply_reserved_with_policy_timeout_and_config(
+            conn,
+            operation,
+            timeout,
+            Some(&state.yolo_state),
+        )
         .await
 }
 
@@ -3816,12 +3840,21 @@ fn dispatch_master_ext_request_with_yolo_timeout(
                         match apply_native_yolo_checked(
                             &conn,
                             &client_state,
-                            operation,
+                            operation.clone(),
                             yolo_reconcile_timeout,
                         )
                         .await
                         {
-                            Ok(()) => {
+                            Ok(config_options) => {
+                                if !publish_current_native_config_options(
+                                    &event_tx,
+                                    &client_state.native_yolo,
+                                    &session_id,
+                                    &operation,
+                                    config_options.as_deref(),
+                                ) {
+                                    continue;
+                                }
                                 tracing::info!(
                                     target: "acp",
                                     session_id = %session_id.0,
@@ -4830,12 +4863,14 @@ async fn dispatch_prompt_body(
                     return;
                 }
             }
-            Ok(()) => {
-                if !client_task
-                    .state
-                    .native_yolo
-                    .operation_is_current(&operation)
-                {
+            Ok(config_options) => {
+                if !publish_current_native_config_options(
+                    &event_tx_task,
+                    &client_task.state.native_yolo,
+                    &prompt_session_id,
+                    &operation,
+                    config_options.as_deref(),
+                ) {
                     tracing::info!(
                         target: "yolo",
                         session_id = %prompt_session_id_str,

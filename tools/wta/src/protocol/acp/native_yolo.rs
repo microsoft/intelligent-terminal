@@ -434,6 +434,18 @@ impl NativeYoloState {
         rpc_timeout: Duration,
         yolo_state: Option<&crate::app_contracts::SharedYoloState>,
     ) -> Result<(), NativeYoloApplyError> {
+        self.apply_reserved_with_policy_timeout_and_config(conn, operation, rpc_timeout, yolo_state)
+            .await
+            .map(|_| ())
+    }
+
+    pub(super) async fn apply_reserved_with_policy_timeout_and_config(
+        &self,
+        conn: &crate::protocol::acp::conn::ClientLink,
+        operation: NativeYoloOperation,
+        rpc_timeout: Duration,
+        yolo_state: Option<&crate::app_contracts::SharedYoloState>,
+    ) -> Result<Option<Vec<acp::schema::v1::SessionConfigOption>>, NativeYoloApplyError> {
         let lease = {
             let gate = self
                 .operation_gates
@@ -451,7 +463,7 @@ impl NativeYoloState {
         let _guard = lease.gate.lock().await;
         let result = async {
             if !self.operation_is_current(&operation) {
-                return Ok(());
+                return Ok(None);
             }
             if operation.enabled
                 && yolo_state.is_some_and(|state| state.lock().unwrap().policy_blocked())
@@ -472,7 +484,7 @@ impl NativeYoloState {
             let action = self
                 .action_for(&operation.session_id, operation.enabled)
                 .map_err(NativeYoloApplyError::known)?;
-            match &action {
+            let config_options = match &action {
                 NativeYoloAction::SetConfigOption { config_id, value } => {
                     let response = tokio::time::timeout(
                         rpc_timeout,
@@ -492,7 +504,7 @@ impl NativeYoloState {
                         ))
                     })?;
                     if !self.operation_is_current(&operation) {
-                        return Ok(());
+                        return Ok(None);
                     }
                     let response = response
                         .map_err(|error| NativeYoloApplyError::known(error.to_string()))?;
@@ -502,6 +514,7 @@ impl NativeYoloState {
                         value,
                         &response.config_options,
                     )?;
+                    Some(response.config_options)
                 }
                 NativeYoloAction::SetMode { mode_id } => {
                     let response = tokio::time::timeout(
@@ -519,15 +532,16 @@ impl NativeYoloState {
                         ))
                     })?;
                     if !self.operation_is_current(&operation) {
-                        return Ok(());
+                        return Ok(None);
                     }
                     response
                         .map_err(|error| NativeYoloApplyError::known(error.to_string()))?;
                     self.record_current_mode(&operation.session_id, mode_id);
+                    None
                 }
-                NativeYoloAction::Noop => {}
-            }
-            Ok(())
+                NativeYoloAction::Noop => None,
+            };
+            Ok(config_options)
         }
         .await;
         result

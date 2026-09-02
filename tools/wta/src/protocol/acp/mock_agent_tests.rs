@@ -15,9 +15,9 @@
 use super::{
     dispatch_cancel, dispatch_drop_session, dispatch_load_session, dispatch_master_ext_request,
     dispatch_master_ext_request_with_yolo_timeout, dispatch_new_session, dispatch_prompt,
-    dispatch_rename_session, take_retired_session_result, AutofixTextKind, CancelRequest,
-    DropSessionRequest, LoadSessionForTab, MasterExtRequest, NewSessionForTab, PromptSubmission,
-    RenameSessionRequest,
+    dispatch_rename_session, publish_current_native_config_options, take_retired_session_result,
+    AutofixTextKind, CancelRequest, DropSessionRequest, LoadSessionForTab, MasterExtRequest,
+    NewSessionForTab, PromptSubmission, RenameSessionRequest,
 };
 use super::{ClientState, PromptUsageIdentity, ProviderProbeCapture, WtaClient};
 use crate::app_contracts::{AppEvent, PlanEntry, PlanEntryStatus};
@@ -1311,10 +1311,17 @@ async fn native_yolo_active_permission_request_remains_pending_for_user() {
                 &h.proposal_channels,
             );
 
+            let mut published_config_value = None;
             let responder = tokio::time::timeout(std::time::Duration::from_secs(5), async {
                 loop {
                     match h.event_rx.recv().await {
                         Some(AppEvent::PermissionRequest { responder, .. }) => break responder,
+                        Some(AppEvent::SessionConfigUpdated { options, .. }) => {
+                            published_config_value = options
+                                .iter()
+                                .find(|option| option.id == "mode")
+                                .map(|option| option.current_value.clone());
+                        }
                         Some(_) => continue,
                         None => panic!("event channel closed before permission request"),
                     }
@@ -1327,6 +1334,11 @@ async fn native_yolo_active_permission_request_remains_pending_for_user() {
                 *h.seen_config_updates.lock().unwrap(),
                 vec![("mode".to_string(), "bypassPermissions".to_string())],
                 "the supported provider must acknowledge native Yolo before prompting"
+            );
+            assert_eq!(
+                published_config_value.as_deref(),
+                Some("bypassPermissions"),
+                "lazy startup must publish the provider-acknowledged config value before prompting"
             );
             assert!(
                 h.permission_outcome.lock().unwrap().is_none(),
@@ -3075,6 +3087,120 @@ async fn rejected_reconcile_yolo_disable_requests_restart() {
             );
         })
         .await;
+}
+
+#[tokio::test]
+async fn successful_reconcile_publishes_returned_config_options() {
+    let local = tokio::task::LocalSet::new();
+    local
+        .run_until(async {
+            let mut h = connect_for_dispatch(MockBehavior::Reply);
+            h.client
+                .state
+                .native_yolo
+                .set_resolved_agent_id(Some(crate::agent_registry::CLAUDE_AGENT_ID));
+            let response: acp::schema::v1::NewSessionResponse =
+                serde_json::from_value(serde_json::json!({
+                    "sessionId": "reconcile-config-update-session",
+                    "configOptions": [{
+                        "id": "mode",
+                        "name": "Mode",
+                        "category": "mode",
+                        "type": "select",
+                        "currentValue": "default",
+                        "options": [
+                            {"value": "default", "name": "Default"},
+                            {"value": "bypassPermissions", "name": "Bypass Permissions"}
+                        ]
+                    }]
+                }))
+                .unwrap();
+            let session_id = response.session_id.clone();
+            h.client
+                .state
+                .native_yolo
+                .record_from_new_session(&response);
+            let tab_to_session = Arc::new(tokio::sync::Mutex::new(HashMap::new()));
+
+            dispatch_master_ext_request(
+                MasterExtRequest::ReconcileSessionYolo {
+                    reconcile_id: 62,
+                    sessions: vec![(session_id.clone(), true)],
+                    fail_closed: false,
+                },
+                &h.conn,
+                &h.event_tx,
+                &tab_to_session,
+                Arc::clone(&h.client.state),
+            );
+
+            let mut config_updated = false;
+            let mut reconcile_completed = false;
+            tokio::time::timeout(std::time::Duration::from_secs(1), async {
+                while !config_updated || !reconcile_completed {
+                    match h.event_rx.recv().await {
+                        Some(AppEvent::SessionConfigUpdated {
+                            session_id: updated_session,
+                            options,
+                        }) if updated_session == session_id.to_string() => {
+                            assert_eq!(options.len(), 1);
+                            assert_eq!(options[0].id, "mode");
+                            assert_eq!(options[0].current_value, "bypassPermissions");
+                            assert!(options[0].native_yolo);
+                            config_updated = true;
+                        }
+                        Some(AppEvent::RuntimeYoloReconcileCompleted {
+                            reconcile_id: 62,
+                            result,
+                            ..
+                        }) => {
+                            result.unwrap();
+                            reconcile_completed = true;
+                        }
+                        Some(_) => continue,
+                        None => panic!("event channel closed before reconciliation updates"),
+                    }
+                }
+            })
+            .await
+            .expect("reconciliation must publish config options and completion");
+        })
+        .await;
+}
+
+#[test]
+fn superseded_reconcile_does_not_publish_stale_config_options() {
+    let native_yolo = crate::protocol::acp::native_yolo::NativeYoloState::new();
+    native_yolo.set_resolved_agent_id(Some(crate::agent_registry::CLAUDE_AGENT_ID));
+    let response: acp::schema::v1::NewSessionResponse = serde_json::from_value(serde_json::json!({
+        "sessionId": "superseded-config-publication",
+        "configOptions": [{
+            "id": "mode",
+            "name": "Mode",
+            "category": "mode",
+            "type": "select",
+            "currentValue": "default",
+            "options": [
+                {"value": "default", "name": "Default"},
+                {"value": "bypassPermissions", "name": "Bypass Permissions"}
+            ]
+        }]
+    }))
+    .unwrap();
+    let session_id = response.session_id.clone();
+    native_yolo.record_from_new_session(&response);
+    let stale_operation = native_yolo.reserve_operation(session_id.clone(), true);
+    let _newer_operation = native_yolo.reserve_operation(session_id.clone(), false);
+    let (event_tx, mut event_rx) = mpsc::unbounded_channel();
+
+    assert!(!publish_current_native_config_options(
+        &event_tx,
+        &native_yolo,
+        &session_id,
+        &stale_operation,
+        response.config_options.as_deref(),
+    ));
+    assert!(event_rx.try_recv().is_err());
 }
 
 #[tokio::test]

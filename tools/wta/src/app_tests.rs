@@ -4003,6 +4003,37 @@ fn initial_load_placeholder_binds_and_gates_the_helper_owner_tab() {
 }
 
 #[test]
+fn runtime_yolo_update_excludes_tabs_waiting_for_session_attach() {
+    use crate::protocol::acp::client::MasterExtRequest;
+
+    let (mut app, mut master_rx) = test_app_with_master_rx();
+    app.tab_sessions
+        .insert("stable-tab".into(), TabSession::default());
+    app.tab_sessions
+        .insert("pending-tab".into(), TabSession::default());
+    app.tab_sessions.get_mut("stable-tab").unwrap().session_id = Some("stable-session".into());
+    app.tab_sessions.get_mut("pending-tab").unwrap().session_id = Some("old-session".into());
+    app.session_to_tab
+        .insert("stable-session".into(), "stable-tab".into());
+    app.session_to_tab
+        .insert("old-session".into(), "pending-tab".into());
+    app.pending_yolo_session_tabs.insert("pending-tab".into());
+
+    app.apply_runtime_yolo_config(Some(true), Some(false));
+
+    let MasterExtRequest::ReconcileSessionYolo { sessions, .. } = master_rx
+        .try_recv()
+        .expect("the stable session must reconcile")
+    else {
+        panic!("expected ReconcileSessionYolo");
+    };
+    assert_eq!(sessions.len(), 1);
+    assert_eq!(sessions[0].0.to_string(), "stable-session");
+    assert!(sessions[0].1);
+    assert!(app.pending_yolo_session_tabs.contains("pending-tab"));
+}
+
+#[test]
 fn overlapping_fail_closed_reconciles_require_every_acknowledgement() {
     use crate::protocol::acp::client::MasterExtRequest;
 

@@ -5627,8 +5627,9 @@ impl App {
         let sessions = {
             let state = self.yolo_state.lock().unwrap();
             self.session_to_tab
-                .keys()
-                .map(|session_id| {
+                .iter()
+                .filter(|(_, tab_id)| !self.pending_yolo_session_tabs.contains(*tab_id))
+                .map(|(session_id, _)| {
                     (
                         agent_client_protocol::schema::v1::SessionId::new(session_id.clone()),
                         state.effective(session_id),
