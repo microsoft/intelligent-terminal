@@ -68,9 +68,9 @@ Describe 'Feature: ACP agent-pane protocol experience' -Tag 'Feature' -Skip:(-no
         Send-AgentPrompt -App $script:app -PaneSessionId $script:agentPane -Text 'TOOL_FLOW' | Out-Null
 
         Assert-AgentPaneText -App $script:app -PaneSessionId $script:agentPane `
-            -Pattern 'TOOL_OUTPUT_MARKER' -TimeoutSec 30
+            -Pattern 'AFTER_TOOL_MARKER' -TimeoutSec 30
         $rendered = Get-AgentPaneText -App $script:app -PaneSessionId $script:agentPane -MaxLines 100
-        foreach ($marker in @('TOOL_DETAIL_MARKER', 'PLAN_MARKER', 'AFTER_TOOL_MARKER')) {
+        foreach ($marker in @('TOOL_DETAIL_MARKER', 'TOOL_OUTPUT_MARKER', 'PLAN_MARKER')) {
             $rendered | Should -Match $marker -Because 'the complete ACP transcript must remain visible with its tool output'
         }
 

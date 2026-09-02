@@ -185,7 +185,7 @@ Net effect: UT shrinks the manual matrix to "did the wiring and UI connect", not
 
 ### Agent pane settings and slash commands
 
-- [ ] `C286` `[new]` `[UT✓]` `[E2E]` **Yolo setting persists:** The global `agentPane.yoloMode` setting round-trips and supplies the default for new sessions. _(PR #505; UT: SettingsModel round-trip and effective policy tests; E2E: `Feature.YoloMode`.)_
+- [ ] `C287` `[new]` `[UT✓]` `[E2E]` **Yolo setting persists:** The global `agentPane.yoloMode` setting round-trips and supplies the default for new sessions. _(PR #505; UT: SettingsModel round-trip and effective policy tests; E2E: `Feature.YoloMode`.)_
 - [ ] `C288` `[new]` `[LOCAL]` **Yolo completes a real tool task:** With provider-native Yolo enabled, a real agent model completes a bounded write/read task in a disposable directory and restores its prior mode afterward. _(PR #505; token-consuming local acceptance only, intentionally excluded from publish and CI.)_
 - [ ] `C289` `[new]` `[LOCAL]` **Provider-native Yolo works across supported agents:** Claude, Codex, and Gemini each acknowledge their reviewed native ACP mode, complete a bounded real-model tool task, and restore the prior mode. _(PR #505; token-consuming local acceptance only, intentionally excluded from publish and CI.)_
 - [x] `C290` `[new]` `[UT✓]` **Yolo never answers ACP permissions:** After a supported provider acknowledges native Yolo, an ACP `session/request_permission` remains pending until the user explicitly selects a provider option. _(PR #505; deterministic mock-ACP coverage.)_

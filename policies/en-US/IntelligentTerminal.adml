@@ -46,7 +46,7 @@ If you enable this policy or do not configure it, users can toggle auto-fix in s
       <string id="AllowYoloMode">Allow Provider Yolo Mode</string>
       <string id="AllowYoloModeText">Controls whether users can ask an AI agent provider to enable its advertised ACP session Yolo mode. Each provider defines the resulting confirmation behavior, permissions, sandbox, file access, and network access.
 
-    If you enable this policy or do not configure it, users can enable provider Yolo mode globally or for an individual ACP session. Providers without a supported ACP session mode continue to ask for permission. If you disable this policy, provider Yolo mode is forced off and users cannot enable it with the /yolo command.</string>
+    If you enable this policy or do not configure it, users can configure the global provider Yolo default in Settings. Providers without a supported ACP session mode continue to ask for permission. If you disable this policy, provider Yolo mode is forced off for all sessions and the global setting cannot be enabled.</string>
       <string id="AllowAgentSessionHooks">Allow Agent Session Hooks</string>
       <string id="AllowAgentSessionHooksText">Controls whether agent session tracking hooks can be installed in Intelligent Terminal. Hooks integrate with agents (GitHub Copilot, Claude, Gemini) to track sessions across tools.
 

@@ -208,10 +208,9 @@ fn provider_yolo_command_is_not_reserved_and_submits_as_a_normal_prompt() {
         session_id: "session-1".into(),
         commands: vec![session_command("yolo", "Provider Yolo mode", None)],
     });
-    type_input(&mut app, "/yol");
+    type_input(&mut app, "/yolo");
 
     assert_eq!(popup_command_names(&app), vec!["yolo"]);
-    type_input(&mut app, "o");
     app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
 
     assert!(app.current_tab().input.is_empty());
