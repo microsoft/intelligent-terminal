@@ -1755,7 +1755,7 @@ impl App {
                 );
                 let hook_event = ev.clone();
                 self.agent_sessions.apply(ev);
-                self.publish_session_hook(hook_event);
+                self.publish_session_hook(hook_event, None);
             }
             AppEvent::AliveSnapshotLoaded(items) => {
                 let count = items.len();
@@ -1907,15 +1907,26 @@ impl App {
                 // tab routing; runs before the same-pane skip because we want
                 // to record events from our own pane too.
                 if method == "agent_event" {
+                    // One `wtcli` hook invocation stamps one `broadcast_id` and
+                    // the COM fan-out delivers it to every helper, so master
+                    // dedupes on it. A single event can expand into several
+                    // `SessionEvent`s, so qualify the id with the emit site's
+                    // slot — never a positional index, which would differ
+                    // between a helper that already knows the session and one
+                    // that does not (see `HookSlot`).
+                    let broadcast_id = params.get("broadcast_id").and_then(|v| v.as_str());
                     let mut hook_events = Vec::new();
                     let _ = route_agent_event_to_registry_with_hook_sink(
                         &mut self.agent_sessions,
                         pane_id.as_str(),
                         &params,
-                        |event| hook_events.push(event),
+                        |event, slot| hook_events.push((event, slot)),
                     );
-                    for event in hook_events {
-                        self.publish_session_hook(event);
+                    for (event, slot) in hook_events {
+                        self.publish_session_hook(
+                            event,
+                            broadcast_id.map(|id| format!("{id}#{}", slot.as_str())),
+                        );
                     }
                     // Diagnostics aid: surface the raw event payload in the
                     // active tab's chat so a developer can correlate hook
@@ -2677,7 +2688,7 @@ impl App {
                                 pane_session_id: pane_id.clone(),
                             };
                             self.agent_sessions.apply(event.clone());
-                            self.publish_session_hook(event);
+                            self.publish_session_hook(event, None);
                             tracing::info!(
                                 target: "helper_wt_event",
                                 pane_id = %pane_id,
@@ -2696,7 +2707,7 @@ impl App {
                                 reason,
                             };
                             self.agent_sessions.apply(event.clone());
-                            self.publish_session_hook(event);
+                            self.publish_session_hook(event, None);
                         }
                         _ => {}
                     }
@@ -2763,7 +2774,7 @@ impl App {
                             pane_session_id: pane_id.clone(),
                         };
                         self.agent_sessions.apply(event.clone());
-                        self.publish_session_hook(event);
+                        self.publish_session_hook(event, None);
                     }
                 }
 

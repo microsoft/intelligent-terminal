@@ -105,6 +105,49 @@ pub use turn_state::{AutofixContext, ChunkKind, SubmittedPrompt, TurnOutcome, Tu
 const MVP_SESSIONS_ORIGIN_FILTER: crate::agent_sessions::OriginFilter =
     crate::agent_sessions::OriginFilter::ShellOnly;
 
+/// A session hook queued for master, paired with the `broadcast_id` of the
+/// `wtcli` invocation that produced it.
+///
+/// The COM `agent_event` broadcast reaches every helper, and each one forwards
+/// it, so master needs the id to collapse those copies back into one. `None`
+/// marks a hook the helper minted itself (resume bookkeeping, born-bound
+/// registration) — those never traverse the fan-out and must always apply.
+pub type QueuedSessionHook = (crate::agent_sessions::SessionEvent, Option<String>);
+
+/// Stable per-`agent_event` slot, used to qualify the `broadcast_id` when one
+/// event publishes several `SessionEvent`s.
+///
+/// The slot is derived from the *emit site*, never from a position in the
+/// emitted sequence. `session_known` is per-helper local state, so a helper
+/// that has not yet seen the session prepends a synthetic start while a helper
+/// that has does not. A positional index would therefore give the same logical
+/// event different keys on different helpers — defeating dedupe — and worse,
+/// would alias one helper's synthetic start onto another helper's real event,
+/// dropping a genuine state transition.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum HookSlot {
+    /// The placeholder row minted for an event about a session this helper has
+    /// not seen start.
+    SyntheticStart,
+    /// The `ToolStarting` split out of a user-input tool call, published
+    /// alongside the `Notification` that the same event also produces.
+    UserInputTool,
+    /// The event the hook actually reported.
+    Primary,
+}
+
+impl HookSlot {
+    /// Suffix appended to the `broadcast_id`. Stable across helpers and across
+    /// releases — changing a value re-splits dedupe during a rolling upgrade.
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::SyntheticStart => "start",
+            Self::UserInputTool => "tool",
+            Self::Primary => "primary",
+        }
+    }
+}
+
 /// Resolve the `/sessions` origin filter for this process.
 ///
 /// Defaults to [`MVP_SESSIONS_ORIGIN_FILTER`]. The `WTA_SESSIONS_SHOW_AGENT_PANE`
@@ -439,7 +482,7 @@ pub fn route_agent_event_to_registry(
     pane_session_id: &str,
     params: &serde_json::Value,
 ) -> bool {
-    route_agent_event_to_registry_with_hook_sink(reg, pane_session_id, params, |_| {})
+    route_agent_event_to_registry_with_hook_sink(reg, pane_session_id, params, |_, _| {})
 }
 
 pub fn route_agent_event_to_registry_with_hook_sink<F>(
@@ -449,7 +492,7 @@ pub fn route_agent_event_to_registry_with_hook_sink<F>(
     mut hook_sink: F,
 ) -> bool
 where
-    F: FnMut(crate::agent_sessions::SessionEvent),
+    F: FnMut(crate::agent_sessions::SessionEvent, HookSlot),
 {
     use crate::agent_sessions::{CliSource, SessionEvent};
     use std::path::PathBuf;
@@ -579,7 +622,28 @@ where
     // shadow the real session (one with the real sid, one with `pane:`
     // key, both pointing at the same agent — see PR B debug session log
     // around 2026-05-28T00:30 for the user-visible repro).
-    let needs_synthetic_start = event != "agent.session.started" && !session_known;
+    //
+    // A synthetic start is only meaningful for events that imply the session is
+    // still running — they need a row to land on. Terminal events describe a
+    // session that is already over, so fabricating a start for one WTA has never
+    // seen materializes a permanent `Ended` row titled after the cwd basename
+    // (repro: an abandoned CLI session's `agent.session.end` produced a
+    // "yuazha" row in `/sessions` that no reconcile pass can ever prune,
+    // because `is_stale_host_history_row` only prunes ids the agent itself
+    // listed and later stopped listing).
+    //
+    // `agent.error` is deliberately NOT excluded: it reports a session that is
+    // still live but failing, and its `ConnectionFailed` reducer resolves the
+    // row through `active_by_pane` (see `agent_sessions.rs`). Without the
+    // synthetic start there is no pane mapping, so a first-observed connection
+    // failure would silently no-op instead of surfacing as `Error`.
+    let needs_synthetic_start = !matches!(
+        event,
+        "agent.session.started"
+            | "agent.session.start"
+            | "agent.session.stopped"
+            | "agent.session.end"
+    ) && !session_known;
     if needs_synthetic_start {
         let synthetic_event = SessionEvent::SessionStarted {
             key: key.clone(),
@@ -590,7 +654,7 @@ where
         };
         reg.apply(synthetic_event.clone());
         if !key_is_synthetic {
-            hook_sink(synthetic_event);
+            hook_sink(synthetic_event, HookSlot::SyntheticStart);
         }
     }
 
@@ -619,7 +683,7 @@ where
                     tool_name,
                 };
                 reg.apply(tool_event.clone());
-                hook_sink(tool_event);
+                hook_sink(tool_event, HookSlot::UserInputTool);
                 let message = payload
                     .get("tool_input")
                     .and_then(|ti| {
@@ -727,7 +791,7 @@ where
     // and would land in master's registry as a duplicate row alongside
     // the real ACP session.
     if !key_is_synthetic {
-        hook_sink(ev);
+        hook_sink(ev, HookSlot::Primary);
     }
 
     // Stamp `AgentPane` origin on the live session if the agent-pane
@@ -1169,7 +1233,7 @@ pub struct App {
     /// no-op outside the integration loop.
     agent_event_tx: Option<mpsc::UnboundedSender<AppEvent>>,
     /// Helper-mode fire-and-forget publisher for `intellterm.wta/session_hook`.
-    session_hook_tx: Option<mpsc::UnboundedSender<crate::agent_sessions::SessionEvent>>,
+    session_hook_tx: Option<mpsc::UnboundedSender<QueuedSessionHook>>,
     /// Hot-updatable delegate config, shared with the recommendation
     /// executor (`run_recommendation_executor`). Rebuilt in place on an
     /// `agent_config_changed` settings event so the configured delegate
@@ -1796,10 +1860,7 @@ impl App {
         self.agent_event_tx = Some(tx);
     }
 
-    pub fn set_session_hook_tx(
-        &mut self,
-        tx: mpsc::UnboundedSender<crate::agent_sessions::SessionEvent>,
-    ) {
+    pub fn set_session_hook_tx(&mut self, tx: mpsc::UnboundedSender<QueuedSessionHook>) {
         self.session_hook_tx = Some(tx);
     }
 
@@ -2625,9 +2686,13 @@ impl App {
         );
     }
 
-    fn publish_session_hook(&self, event: crate::agent_sessions::SessionEvent) {
+    fn publish_session_hook(
+        &self,
+        event: crate::agent_sessions::SessionEvent,
+        broadcast_id: Option<String>,
+    ) {
         if let Some(tx) = &self.session_hook_tx {
-            if let Err(err) = tx.send(event) {
+            if let Err(err) = tx.send((event, broadcast_id)) {
                 tracing::warn!(
                     target: "session_hook",
                     error = %err,
@@ -2984,7 +3049,7 @@ impl App {
         let resume_event =
             crate::agent_sessions::SessionEvent::ResumeDispatched { key: key.clone() };
         self.agent_sessions.apply(resume_event.clone());
-        self.publish_session_hook(resume_event);
+        self.publish_session_hook(resume_event, None);
         self.dispatch_session_resume_dispatched_rpc(&key);
         // for hook-less CLIs (Gemini) so a future `PaneClosed` can
         // transition the row to Ended; harmless duplicate work for
@@ -3121,7 +3186,7 @@ impl App {
         let resume_event =
             crate::agent_sessions::SessionEvent::ResumeDispatched { key: key.clone() };
         self.agent_sessions.apply(resume_event.clone());
-        self.publish_session_hook(resume_event);
+        self.publish_session_hook(resume_event, None);
         self.dispatch_session_resume_dispatched_rpc(&key);
 
         let mut params = serde_json::Map::new();

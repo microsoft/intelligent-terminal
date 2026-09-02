@@ -487,8 +487,12 @@ pub enum WtaExtRequest {
     FocusSession(FocusSessionParams),
     /// `_intellterm.wta/sessions/list` — full registry snapshot.
     SessionsList(SessionsListParams),
-    /// `_intellterm.wta/session_hook` — a real per-session hook event.
-    SessionHook(crate::agent_sessions::SessionEvent),
+    /// `_intellterm.wta/session_hook` — a real per-session hook event, paired
+    /// with the optional `broadcast_id` that identifies the single `wtcli`
+    /// hook invocation it came from. Every subscribed helper forwards the same
+    /// broadcast, so master dedupes on that id; `None` means apply
+    /// unconditionally.
+    SessionHook(crate::agent_sessions::SessionEvent, Option<String>),
     /// `_intellterm.wta/session_born_bound` — a #266 binding-only registration
     /// (same body as `SessionHook` plus an optional `wsl_distro` → binding-only
     /// semantics). The second field is the WSL distro when the born-bound
@@ -538,7 +542,13 @@ pub fn parse_ext_request(req: acp::schema::v1::ExtRequest) -> WtaExtRequest {
     } else if ext_method_matches(&req.method, INTELLTERM_METHOD_SESSIONS_LIST) {
         decode!(SessionsList, parse_sessions_list_params)
     } else if ext_method_matches(&req.method, INTELLTERM_METHOD_SESSION_HOOK) {
-        decode!(SessionHook, parse_session_hook_params)
+        match parse_session_hook_params(&req.params) {
+            Ok((ev, broadcast_id)) => WtaExtRequest::SessionHook(ev, broadcast_id),
+            Err(err) => WtaExtRequest::Malformed {
+                method: req.method.to_string(),
+                error: err.to_string(),
+            },
+        }
     } else if ext_method_matches(&req.method, INTELLTERM_METHOD_SESSION_BORN_BOUND) {
         match parse_born_bound_params(&req.params) {
             Ok((ev, wsl_distro)) => WtaExtRequest::SessionBornBound(ev, wsl_distro),
@@ -884,12 +894,28 @@ pub struct SessionHookResponse {
 }
 
 /// Build a fire-and-forget helper → master `session_hook` ExtRequest.
+///
+/// `broadcast_id` is the per-hook-invocation dedupe key stamped by `wtcli`
+/// (see `BuildAgentHookEventJson`). Every helper subscribed to the COM
+/// broadcast forwards the same hook, so master needs it to collapse those N
+/// copies into one. `None` — born-bound registrations, resume bookkeeping, or
+/// a `wtcli` predating the field — means "apply every copy", the behavior
+/// before deduplication existed.
 pub fn build_session_hook_request(
     event: &crate::agent_sessions::SessionEvent,
+    broadcast_id: Option<&str>,
 ) -> acp::schema::v1::ExtRequest {
     let params = SessionHookParams::from(event);
+    let mut value =
+        serde_json::to_value(&params).expect("SessionHookParams serialization is infallible");
+    if let (Some(obj), Some(id)) = (value.as_object_mut(), broadcast_id) {
+        obj.insert(
+            "broadcast_id".to_string(),
+            serde_json::Value::String(id.to_string()),
+        );
+    }
     let json =
-        serde_json::to_string(&params).expect("SessionHookParams serialization is infallible");
+        serde_json::to_string(&value).expect("serde_json::Value serialization is infallible");
     let raw = serde_json::value::RawValue::from_string(json)
         .expect("serde_json::to_string always produces valid JSON");
     acp::schema::v1::ExtRequest::new(INTELLTERM_METHOD_SESSION_HOOK, Arc::from(raw))
@@ -940,11 +966,31 @@ fn build_born_bound_request_inner(
     acp::schema::v1::ExtRequest::new(INTELLTERM_METHOD_SESSION_BORN_BOUND, Arc::from(raw))
 }
 
-/// Parse a master-bound `session_hook` body into the canonical reducer event.
+/// Parse a master-bound `session_hook` body into the canonical reducer event
+/// plus the optional per-invocation dedupe key stamped by `wtcli`.
+///
+/// `SessionHookParams` is an internally-tagged enum, so the extra
+/// `broadcast_id` member is ignored by the event decode and read separately
+/// here. A missing or empty id yields `None`, which master treats as
+/// "not dedupable" — the behavior for every sender predating the field.
 pub fn parse_session_hook_params(
     raw: &serde_json::value::RawValue,
-) -> Result<crate::agent_sessions::SessionEvent, serde_json::Error> {
-    serde_json::from_str::<SessionHookParams>(raw.get()).map(Into::into)
+) -> Result<(crate::agent_sessions::SessionEvent, Option<String>), serde_json::Error> {
+    #[derive(serde::Deserialize)]
+    struct BroadcastIdField {
+        #[serde(default)]
+        broadcast_id: Option<String>,
+    }
+    let event: crate::agent_sessions::SessionEvent =
+        serde_json::from_str::<SessionHookParams>(raw.get()).map(Into::into)?;
+    // A malformed `broadcast_id` (present but the wrong JSON type) must not
+    // reject an otherwise valid hook: losing dedupe degrades to today's
+    // duplicate-apply behavior, while dropping the event loses session state.
+    let broadcast_id = serde_json::from_str::<BroadcastIdField>(raw.get())
+        .ok()
+        .and_then(|f| f.broadcast_id)
+        .filter(|id| !id.is_empty());
+    Ok((event, broadcast_id))
 }
 
 /// Parse a born-bound body into `(event, wsl_distro)`. Reuses
@@ -958,7 +1004,9 @@ pub fn parse_born_bound_params(
         #[serde(default)]
         wsl_distro: Option<String>,
     }
-    let event = parse_session_hook_params(raw)?;
+    // Born-bound registrations are minted by the helper, not fanned out over
+    // the COM broadcast, so they carry no dedupe key to preserve.
+    let (event, _broadcast_id) = parse_session_hook_params(raw)?;
     // Propagate a malformed `wsl_distro` (present but the wrong JSON type) as a
     // parse error so the master answers `invalid_params`, rather than silently
     // dropping the distro and mislabelling the row as a host session. A missing
@@ -3499,8 +3547,8 @@ mod tests {
             matches!(parse_ext_request(build_sessions_list_request(true)), WtaExtRequest::SessionsList(p) if p.rescan)
         );
         assert!(matches!(
-            parse_ext_request(build_session_hook_request(&ev)),
-            WtaExtRequest::SessionHook(_)
+            parse_ext_request(build_session_hook_request(&ev, None)),
+            WtaExtRequest::SessionHook(..)
         ));
         assert!(matches!(
             parse_ext_request(build_born_bound_request(&ev)),
@@ -3534,8 +3582,10 @@ mod tests {
             WtaExtRequest::SessionsList(_)
         ));
         assert!(matches!(
-            parse_ext_request(strip_leading_underscore(build_session_hook_request(&ev))),
-            WtaExtRequest::SessionHook(_)
+            parse_ext_request(strip_leading_underscore(build_session_hook_request(
+                &ev, None
+            ))),
+            WtaExtRequest::SessionHook(..)
         ));
         assert!(matches!(
             parse_ext_request(strip_leading_underscore(build_born_bound_request(&ev))),
@@ -3710,11 +3760,15 @@ mod tests {
         ];
 
         for event in cases {
-            let request = build_session_hook_request(&event);
+            let request = build_session_hook_request(&event, None);
             assert_eq!(&*request.method, INTELLTERM_METHOD_SESSION_HOOK);
-            let parsed = parse_session_hook_params(&request.params)
+            let (parsed, broadcast_id) = parse_session_hook_params(&request.params)
                 .expect("session_hook request params must decode");
             assert_eq!(parsed, event);
+            assert_eq!(
+                broadcast_id, None,
+                "no id was stamped, so none must be reported"
+            );
         }
     }
 
@@ -3730,8 +3784,8 @@ mod tests {
             title: "custom".to_string(),
         };
 
-        let request = build_session_hook_request(&event);
-        let parsed =
+        let request = build_session_hook_request(&event, None);
+        let (parsed, _) =
             parse_session_hook_params(&request.params).expect("unknown cli_source must round-trip");
         assert_eq!(parsed, event);
     }
@@ -3752,7 +3806,7 @@ mod tests {
             "born-bound must use its own method, not session_hook"
         );
         // Body is the same wire shape, so the master parses it identically.
-        let parsed =
+        let (parsed, _) =
             parse_session_hook_params(&request.params).expect("born-bound body must round-trip");
         assert_eq!(parsed, event);
     }
@@ -3776,7 +3830,9 @@ mod tests {
         assert_eq!(ev_host, event);
         assert_eq!(distro_host, None);
         assert_eq!(
-            parse_session_hook_params(&host.params).expect("host body is hook-shaped"),
+            parse_session_hook_params(&host.params)
+                .expect("host body is hook-shaped")
+                .0,
             event,
             "host born-bound body must stay compatible with the plain hook parser",
         );
@@ -3789,7 +3845,8 @@ mod tests {
         assert_eq!(distro_wsl.as_deref(), Some("Ubuntu"));
         assert_eq!(
             parse_session_hook_params(&wsl.params)
-                .expect("wsl body ignores the extra wsl_distro key"),
+                .expect("wsl body ignores the extra wsl_distro key")
+                .0,
             event,
             "the extra wsl_distro key must not break the plain hook parser",
         );

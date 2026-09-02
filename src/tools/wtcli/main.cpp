@@ -199,6 +199,22 @@ static std::string GuidToString(const GUID& g)
     return winrt::to_string(winrt::hstring{ ws });
 }
 
+// Mint the per-invocation dedupe key carried by an agent hook event. One wtcli
+// process handles exactly one hook, so a fresh GUID here is stable across the
+// COM fan-out to every subscribed helper and lets wta-master collapse the N
+// forwarded copies back into one. Returns an empty string on failure, which
+// `BuildAgentHookEventJson` treats as "no id" — master then applies every copy,
+// the pre-existing behavior.
+static std::string NewBroadcastId()
+{
+    GUID id{};
+    if (FAILED(CoCreateGuid(&id)))
+    {
+        return {};
+    }
+    return GuidToString(id);
+}
+
 static GUID GuidFromString(const std::string& target, bool quiet = false)
 {
     auto wstr = winrt::to_hstring(target);
@@ -986,6 +1002,7 @@ int wmain(int argc, wchar_t** argv)
                     input,
                     paneId,
                     AgentSessionIdFromEnvironment(agentHookCliSource),
+                    NewBroadcastId(),
                     event))
             {
                 return;

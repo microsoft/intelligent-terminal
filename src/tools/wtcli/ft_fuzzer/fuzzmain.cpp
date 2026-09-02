@@ -43,9 +43,9 @@ static int FuzzOneInput(const uint8_t* data, size_t size)
     }
 
     // Split the entire input into segments for use across all targets.
-    // We need 6 segments: [eventType] [cliSource] [hookJson]
-    // [sessionId] [agentSessionId] [eventTypeFilter].
-    auto parts = SplitInput(data, size, 6);
+    // We need 7 segments: [eventType] [cliSource] [hookJson]
+    // [sessionId] [agentSessionId] [eventTypeFilter] [broadcastId].
+    auto parts = SplitInput(data, size, 7);
 
     // ── Target 1: BuildSendEventJson ──
     // Fuzz all three input parameters: eventType, paramsJson, and sessionId.
@@ -55,9 +55,11 @@ static int FuzzOneInput(const uint8_t* data, size_t size)
     }
 
     // ── Target 2: BuildAgentHookEventJson ──
+    // `broadcastId` is fuzzed too: it rides the measured envelope, so an
+    // oversized id must not defeat the `kMaxHookEventChars` budget.
     {
         Json::Value evt;
-        wtcli::BuildAgentHookEventJson(parts[0], parts[1], parts[2], parts[3], parts[4], evt);
+        wtcli::BuildAgentHookEventJson(parts[0], parts[1], parts[2], parts[3], parts[4], parts[6], evt);
     }
 
     // ── Target 3: MatchesEventFilter ──

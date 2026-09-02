@@ -602,7 +602,7 @@ fn copilot_sidekick_hook_session_is_ignored() {
         &mut reg,
         "11111111-1111-1111-1111-111111111111",
         &params,
-        |event| published.push(event),
+        |event, _| published.push(event),
     );
 
     assert!(
@@ -616,6 +616,200 @@ fn copilot_sidekick_hook_session_is_ignored() {
     assert!(
         published.is_empty(),
         "an internal sidekick event must not reach master"
+    );
+}
+
+/// A terminal event for a session WTA has never seen must not fabricate a row.
+///
+/// Repro from a live `wta-main_master.log`: Copilot CLI emitted
+/// `agent.session.end` for `3dfe96df-…`, an abandoned session with zero turns
+/// that WTA had never observed starting. The synthetic-start branch only
+/// excluded `agent.session.started`, so the router invented a `SessionStarted`
+/// titled after the cwd basename ("yuazha"), published it to master, then
+/// immediately published the `SessionStopped`. The result was a permanent
+/// `Ended` row in `/sessions` that no reconcile pass can prune —
+/// `is_stale_host_history_row` only drops ids the listing agent itself
+/// returned and later stopped returning.
+#[test]
+fn terminal_agent_event_for_unknown_session_does_not_fabricate_a_row() {
+    use crate::agent_sessions::{AgentSessionRegistry, SessionEvent};
+
+    for event in ["agent.session.end", "agent.session.stopped"] {
+        let mut reg = AgentSessionRegistry::new();
+        let params = json!({
+            "event": event,
+            "cli_source": "copilot",
+            "agent_session_id": "abandoned-sid",
+            "payload": {
+                "cwd": r#"C:\Users\yuazha"#,
+                "reason": "user_exit"
+            }
+        });
+        let mut published = Vec::<SessionEvent>::new();
+
+        route_agent_event_to_registry_with_hook_sink(
+            &mut reg,
+            "dd7141e2-a8d7-4766-b7ee-77c286cafe83",
+            &params,
+            |ev, _| published.push(ev),
+        );
+
+        assert!(
+            reg.get(&"abandoned-sid".to_string()).is_none(),
+            "{event} for an unseen session must not materialize a row; \
+             an `Ended` ghost here is unprunable by reconcile"
+        );
+        assert!(
+            !published
+                .iter()
+                .any(|ev| matches!(ev, SessionEvent::SessionStarted { .. })),
+            "{event} must never publish a fabricated SessionStarted to master"
+        );
+    }
+}
+
+/// `agent.error` is NOT a terminal event and must keep its synthetic start.
+///
+/// It reports a session that is still live but failing, and its
+/// `ConnectionFailed` reducer resolves the row through `active_by_pane` rather
+/// than the session key. Without a row — and therefore without a pane binding —
+/// a first-observed connection failure silently no-ops, losing the only signal
+/// that the agent broke.
+#[test]
+fn agent_error_for_unknown_session_still_records_the_failure() {
+    use crate::agent_sessions::{AgentSessionRegistry, AgentStatus, SessionEvent};
+
+    let mut reg = AgentSessionRegistry::new();
+    let pane = "dd7141e2-a8d7-4766-b7ee-77c286cafe83";
+    let params = json!({
+        "event": "agent.error",
+        "cli_source": "copilot",
+        "agent_session_id": "failing-sid",
+        "payload": { "cwd": r#"C:\repo"#, "error": "agent CLI exited 1" }
+    });
+    let mut published = Vec::<SessionEvent>::new();
+
+    route_agent_event_to_registry_with_hook_sink(&mut reg, pane, &params, |ev, _| {
+        published.push(ev)
+    });
+
+    let row = reg
+        .get(&"failing-sid".to_string())
+        .expect("agent.error must still create the row its reducer needs");
+    assert_eq!(
+        row.status,
+        AgentStatus::Error,
+        "the pane-keyed ConnectionFailed must reach the freshly-created row"
+    );
+    assert_eq!(row.last_error.as_deref(), Some("agent CLI exited 1"));
+    assert!(
+        published
+            .iter()
+            .any(|ev| matches!(ev, SessionEvent::ConnectionFailed { .. })),
+        "master must learn about the failure too"
+    );
+}
+
+/// The dedupe suffix must come from the emit site, not from a position in the
+/// emitted sequence.
+///
+/// `session_known` is per-helper local state: a helper that has already seen
+/// the session emits only the real event, while one that has not prepends a
+/// synthetic start. With positional indices the real event would be `#0` on the
+/// first helper and `#1` on the second, so master would dedupe nothing — and
+/// worse, the unaware helper's synthetic start (`#0`) would alias onto the
+/// aware helper's real event and suppress a genuine transition.
+#[test]
+fn hook_slots_are_stable_regardless_of_local_session_knowledge() {
+    use crate::agent_sessions::{AgentSessionRegistry, CliSource, SessionEvent};
+    use crate::app::HookSlot;
+    use std::path::PathBuf;
+
+    let pane = "11111111-1111-1111-1111-111111111111";
+    let params = json!({
+        "event": "agent.tool.starting",
+        "cli_source": "copilot",
+        "agent_session_id": "shared-sid",
+        "payload": { "cwd": r#"C:\repo"#, "tool_name": "edit" }
+    });
+
+    // Helper A has never seen the session: synthetic start, then the real event.
+    let mut unaware = AgentSessionRegistry::new();
+    let mut slots_unaware = Vec::new();
+    route_agent_event_to_registry_with_hook_sink(&mut unaware, pane, &params, |_, slot| {
+        slots_unaware.push(slot)
+    });
+
+    // Helper B already knows it, so it emits only the real event.
+    let mut aware = AgentSessionRegistry::new();
+    aware.apply(SessionEvent::SessionStarted {
+        key: "shared-sid".into(),
+        cli_source: CliSource::Copilot,
+        pane_session_id: pane.into(),
+        cwd: PathBuf::from(r#"C:\repo"#),
+        title: "known".into(),
+    });
+    aware.take_dirty();
+    let mut slots_aware = Vec::new();
+    route_agent_event_to_registry_with_hook_sink(&mut aware, pane, &params, |_, slot| {
+        slots_aware.push(slot)
+    });
+
+    assert_eq!(
+        slots_unaware
+            .iter()
+            .filter(|slot| **slot == HookSlot::Primary)
+            .count(),
+        1,
+        "exactly one primary event per route"
+    );
+    assert_eq!(
+        slots_aware,
+        vec![HookSlot::Primary],
+        "a helper that knows the session emits only the primary event"
+    );
+    assert_eq!(
+        slots_unaware,
+        vec![HookSlot::SyntheticStart, HookSlot::Primary],
+        "an unaware helper prepends a placeholder, but the real event keeps \
+         the same Primary slot — so both helpers produce an identical key for it"
+    );
+}
+
+/// Guard the other half of the same condition: a *non*-terminal event for an
+/// unknown session still needs its placeholder row, otherwise the event has
+/// nothing to land on. Complements
+/// `helper_agent_event_queues_synthetic_start_and_followup_hook`, which covers
+/// the same path through `handle_event`.
+#[test]
+fn non_terminal_agent_event_for_unknown_session_still_synthesizes_a_start() {
+    use crate::agent_sessions::{AgentSessionRegistry, SessionEvent};
+
+    let mut reg = AgentSessionRegistry::new();
+    let params = json!({
+        "event": "agent.tool.starting",
+        "cli_source": "copilot",
+        "agent_session_id": "live-sid",
+        "payload": { "cwd": r#"C:\repo"#, "tool_name": "edit" }
+    });
+    let mut published = Vec::<SessionEvent>::new();
+
+    route_agent_event_to_registry_with_hook_sink(
+        &mut reg,
+        "11111111-1111-1111-1111-111111111111",
+        &params,
+        |ev, _| published.push(ev),
+    );
+
+    assert!(
+        reg.get(&"live-sid".to_string()).is_some(),
+        "a tool event for an unseen live session must still create its row"
+    );
+    assert!(
+        published
+            .iter()
+            .any(|ev| matches!(ev, SessionEvent::SessionStarted { .. })),
+        "the synthetic start must still reach master for live sessions"
     );
 }
 
@@ -659,7 +853,7 @@ fn sessionless_notification_falls_back_to_recent_live_cli_session() {
     });
 
     let mut published: Vec<SessionEvent> = Vec::new();
-    route_agent_event_to_registry_with_hook_sink(&mut reg, unrelated_pane, &params, |ev| {
+    route_agent_event_to_registry_with_hook_sink(&mut reg, unrelated_pane, &params, |ev, _| {
         published.push(ev)
     });
 
@@ -721,7 +915,7 @@ fn copilot_tool_finished_keeps_working_only_agent_stop_idles() {
             "agent_session_id": sid,
             "payload": { "tool_name": "read_file" }
         });
-        route_agent_event_to_registry_with_hook_sink(reg, pane, &params, |_| {});
+        route_agent_event_to_registry_with_hook_sink(reg, pane, &params, |_, _| {});
     };
 
     // User prompt → Working (turn start).
@@ -795,7 +989,7 @@ fn notification_with_real_session_id_skips_fallback() {
         "payload": { "message": "explicit" }
     });
     let unrelated_pane = "99999999-9999-9999-9999-999999999999";
-    route_agent_event_to_registry_with_hook_sink(&mut reg, unrelated_pane, &params, |_| {});
+    route_agent_event_to_registry_with_hook_sink(&mut reg, unrelated_pane, &params, |_, _| {});
 
     assert_eq!(
         reg.get(&"target".to_string()).unwrap().status,
@@ -836,7 +1030,7 @@ fn sessionless_notification_with_unknown_cli_does_not_fall_back() {
         &mut reg,
         "99999999-9999-9999-9999-999999999999",
         &params,
-        |_| {},
+        |_, _| {},
     );
 
     assert_ne!(
@@ -882,7 +1076,7 @@ fn empty_pane_session_start_does_not_evict_a_bound_session() {
         "agent_session_id": "paneless-sid",
         "payload": { "cwd": "C:\\elsewhere" }
     });
-    route_agent_event_to_registry_with_hook_sink(&mut reg, "", &params, |_| {});
+    route_agent_event_to_registry_with_hook_sink(&mut reg, "", &params, |_, _| {});
 
     let bystander = reg
         .get(&"bystander-sid".to_string())
@@ -921,7 +1115,7 @@ fn empty_pane_session_start_is_not_registered_in_active_by_pane() {
         "agent_session_id": "paneless-sid",
         "payload": {}
     });
-    route_agent_event_to_registry_with_hook_sink(&mut reg, "", &params, |_| {});
+    route_agent_event_to_registry_with_hook_sink(&mut reg, "", &params, |_, _| {});
     reg.take_dirty();
 
     // A PaneClosed for the empty "pane" must not resolve to the row.
@@ -943,7 +1137,7 @@ fn empty_pane_session_start_is_not_registered_in_active_by_pane() {
         "agent_session_id": "paneless-sid-2",
         "payload": {}
     });
-    route_agent_event_to_registry_with_hook_sink(&mut reg, "", &params2, |_| {});
+    route_agent_event_to_registry_with_hook_sink(&mut reg, "", &params2, |_, _| {});
     assert_eq!(
         reg.get(&"paneless-sid".to_string()).unwrap().status,
         AgentStatus::Idle,
@@ -981,7 +1175,7 @@ fn claude_idle_prompt_notification_leaves_turn_end_idle_intact() {
         "agent_session_id": "claude-sid",
         "payload": {}
     });
-    route_agent_event_to_registry_with_hook_sink(&mut reg, pane, &turn_end, |_| {});
+    route_agent_event_to_registry_with_hook_sink(&mut reg, pane, &turn_end, |_, _| {});
     assert_eq!(
         reg.get(&"claude-sid".to_string()).unwrap().status,
         AgentStatus::Idle,
@@ -1000,7 +1194,7 @@ fn claude_idle_prompt_notification_leaves_turn_end_idle_intact() {
         }
     });
     let mut published: Vec<SessionEvent> = Vec::new();
-    route_agent_event_to_registry_with_hook_sink(&mut reg, pane, &idle_prompt, |ev| {
+    route_agent_event_to_registry_with_hook_sink(&mut reg, pane, &idle_prompt, |ev, _| {
         published.push(ev)
     });
 
@@ -1050,7 +1244,7 @@ fn claude_permission_prompt_notification_still_sets_attention() {
         &mut reg,
         "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
         &params,
-        |_| {},
+        |_, _| {},
     );
 
     let s = reg.get(&"claude-sid".to_string()).unwrap();
@@ -1093,7 +1287,7 @@ fn notification_without_a_known_type_still_sets_attention() {
             &mut reg,
             "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
             &params,
-            |_| {},
+            |_, _| {},
         );
 
         assert_eq!(
@@ -1137,7 +1331,7 @@ fn idle_prompt_does_not_demote_a_pending_permission_prompt() {
         &mut reg,
         "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
         &idle_prompt,
-        |_| {},
+        |_, _| {},
     );
 
     let s = reg.get(&"claude-sid".to_string()).unwrap();
@@ -1235,7 +1429,7 @@ fn helper_agent_event_queues_session_hook_while_updating_local_registry() {
         }),
     });
 
-    let queued = rx.try_recv().expect("session_hook event queued");
+    let (queued, broadcast_id) = rx.try_recv().expect("session_hook event queued");
     assert_eq!(
         queued,
         crate::agent_sessions::SessionEvent::SessionStarted {
@@ -1245,6 +1439,10 @@ fn helper_agent_event_queues_session_hook_while_updating_local_registry() {
             cwd: std::path::PathBuf::from(r#"C:\repo\hook"#),
             title: "hook".to_string(),
         }
+    );
+    assert_eq!(
+        broadcast_id, None,
+        "an agent_event without a broadcast_id must stay undedupable"
     );
     assert!(
         app.agent_sessions.has_session(&"sid-hook".to_string()),
@@ -1275,14 +1473,17 @@ fn helper_agent_event_queues_synthetic_start_and_followup_hook() {
 
     assert!(matches!(
         rx.try_recv().expect("synthetic SessionStarted queued"),
-        crate::agent_sessions::SessionEvent::SessionStarted { ref key, .. } if key == "sid-tool"
+        (crate::agent_sessions::SessionEvent::SessionStarted { ref key, .. }, _) if key == "sid-tool"
     ));
     assert_eq!(
         rx.try_recv().expect("ToolStarting queued"),
-        crate::agent_sessions::SessionEvent::ToolStarting {
-            key: "sid-tool".to_string(),
-            tool_name: "edit".to_string(),
-        }
+        (
+            crate::agent_sessions::SessionEvent::ToolStarting {
+                key: "sid-tool".to_string(),
+                tool_name: "edit".to_string(),
+            },
+            None
+        )
     );
 }
 
@@ -1360,7 +1561,7 @@ fn helper_agent_event_with_real_agent_session_id_still_publishes_to_master() {
     // Should publish at least one event (likely synthetic
     // SessionStarted + ToolStarting). Both must have the REAL key.
     let mut count = 0;
-    while let Ok(evt) = rx.try_recv() {
+    while let Ok((evt, _broadcast_id)) = rx.try_recv() {
         match evt {
             crate::agent_sessions::SessionEvent::SessionStarted { key, .. } => {
                 assert_eq!(key, "real-sid-deadbeef", "real session id preserved");

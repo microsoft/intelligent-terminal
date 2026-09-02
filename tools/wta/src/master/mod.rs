@@ -248,6 +248,50 @@ struct HelperRoute {
     consecutive_drops: Arc<std::sync::atomic::AtomicU64>,
 }
 
+/// Bounded record of the `broadcast_id`s master has already applied.
+///
+/// `wtcli` mints one id per hook invocation (`BuildAgentHookEventJson`), then
+/// the COM `SendEvent` fan-out delivers that single hook to every subscribed
+/// helper, each of which forwards it to master. Without this, master applied
+/// one real hook once per live helper and re-broadcast `sessions/changed` for
+/// each — an N^2 push storm that also double-counted lifecycle transitions.
+///
+/// Bounded by insertion order rather than by time: correctness only needs the
+/// window to outlive one COM fan-out (observed at a few milliseconds), while a
+/// fixed cap keeps a long-lived master from growing without limit. Genuinely
+/// repeated events are unaffected — two consecutive `ToolCompleted` for the
+/// same session serialize identically but carry distinct ids.
+#[derive(Default)]
+struct SeenBroadcastIds {
+    seen: HashSet<String>,
+    order: std::collections::VecDeque<String>,
+}
+
+impl SeenBroadcastIds {
+    /// Sized against the delivery backlog, not against event rate: each COM
+    /// subscriber queue in `TerminalProtocolComServer` holds 4096 events, and
+    /// one `agent_event` can occupy up to three slots here (synthetic start,
+    /// user-input tool, primary). 4096 * 3 = 12288 is the worst case a stalled
+    /// helper can replay behind, so this leaves roughly a 5x margin. At ~60
+    /// bytes per id the whole window is a few megabytes.
+    const CAPACITY: usize = 65536;
+
+    /// Records `id`, returning `true` when it is new (apply the event) and
+    /// `false` when it is a replay from a sibling helper (drop it).
+    fn insert_new(&mut self, id: &str) -> bool {
+        if !self.seen.insert(id.to_string()) {
+            return false;
+        }
+        self.order.push_back(id.to_string());
+        if self.order.len() > Self::CAPACITY {
+            if let Some(evicted) = self.order.pop_front() {
+                self.seen.remove(&evicted);
+            }
+        }
+        true
+    }
+}
+
 /// State shared between the master's `acp::Client` impl (receives
 /// notifications from the agent CLI) and each helper's `acp::Agent`
 /// impl (receives requests from one helper).
@@ -301,6 +345,10 @@ struct MasterStateInner {
     /// `session_to_helper`, then subordinate state such as `registry`.
     /// Route reads do not need the lifecycle gate.
     pub(crate) registry: Arc<dyn crate::session_registry::SessionRegistry>,
+    /// Dedupes the N copies of one hook that arrive via the COM fan-out. See
+    /// [`SeenBroadcastIds`]. Independent lock, taken before `registry` and
+    /// released immediately, so it never widens the reducer's critical section.
+    seen_broadcast_ids: Mutex<SeenBroadcastIds>,
     /// Per-helper subscribers for `intellterm.wta/*` ExtNotifications
     /// fanned out from master. Populated by `serve_helper` on connect
     /// and removed on disconnect (or whenever a send fails). Keyed by
@@ -3846,7 +3894,9 @@ impl HelperHandler {
                 let agent = self.agent.get().cloned();
                 handle_sessions_list(&self.state, agent.as_deref(), &p).await
             }
-            Req::SessionHook(ev) => handle_session_hook(&self.state, ev, false).await,
+            Req::SessionHook(ev, broadcast_id) => {
+                handle_session_hook(&self.state, ev, false, broadcast_id.as_deref()).await
+            }
             Req::SessionBornBound(ev, wsl_distro) => {
                 handle_session_born_bound(&self.state, ev, wsl_distro).await
             }
@@ -4244,6 +4294,7 @@ async fn run_master_loop(config: MasterConfig, pipe_name: String) -> Result<()> 
         pending_usage: Mutex::new(HashMap::new()),
         usage_generation: watch::channel(0u64).0,
         registry: crate::session_registry::InMemoryRegistry::shared(),
+        seen_broadcast_ids: Mutex::new(SeenBroadcastIds::default()),
         helper_ext_subscribers: Mutex::new(HashMap::new()),
         wt,
         agents: Mutex::new(HashMap::new()),
@@ -6127,11 +6178,36 @@ async fn handle_sessions_list(
 /// "synthetic" title (cwd basename / empty) and try to upgrade it from the
 /// agent's raw ACP `session/list` titles. Session management view renders from
 /// master's snapshot, so the upgrade must happen here.
+///
+/// `broadcast_id` identifies the originating `wtcli` hook invocation. Every
+/// subscribed helper forwards the same broadcast, so the first copy wins and
+/// the rest short-circuit before the reducer and before any `sessions/changed`
+/// fan-out. `None` (born-bound, resume bookkeeping, or a `wtcli` predating the
+/// field) applies unconditionally.
 async fn handle_session_hook(
     state: &MasterStateInner,
     event: crate::agent_sessions::SessionEvent,
     is_born_bound: bool,
+    broadcast_id: Option<&str>,
 ) -> acp::Result<acp::schema::v1::ExtResponse> {
+    if let Some(id) = broadcast_id {
+        if !state.seen_broadcast_ids.lock().await.insert_new(id) {
+            tracing::debug!(
+                target: "session_hook",
+                broadcast_id = %id,
+                event = ?event,
+                "dropped replay of a hook already applied from a sibling helper"
+            );
+            // `applied: false` is the same answer an idempotent no-op gets, and
+            // the helper's publish path is fire-and-forget, so a replayed
+            // sender needs no distinct signal.
+            return Ok(acp::schema::v1::ExtResponse::new(
+                crate::session_registry::build_session_hook_response(false)
+                    .0
+                    .into(),
+            ));
+        }
+    }
     // Split by event kind so field diagnosis of session-state bugs survives at
     // the default release level: terminal/lifecycle transitions (session
     // start/stop, pane closed, connection failed) stay at info; the
@@ -6247,7 +6323,7 @@ async fn handle_session_born_bound(
 ) -> acp::Result<acp::schema::v1::ExtResponse> {
     // Capture the key before `event` is moved into the reducer.
     let key = session_event_key(&event).map(str::to_owned);
-    let response = handle_session_hook(state, event, true).await?;
+    let response = handle_session_hook(state, event, true, None).await?;
     if let (Some(distro), Some(key)) = (wsl_distro, key) {
         let sid = acp::schema::v1::SessionId::new(key);
         let changed = state
