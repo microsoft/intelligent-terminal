@@ -2429,6 +2429,24 @@ fn provider_command_blocked_by_policy(command_name: &str) -> String {
     .into_owned()
 }
 
+fn publish_retryable_lazy_yolo_error(event_tx: &mpsc::UnboundedSender<AppEvent>, session_id: &str) {
+    let retry = t!("setup.option.retry_detection").into_owned();
+    let message = t!(
+        "system.config_update_failed",
+        option = "Yolo",
+        error = retry.as_str()
+    )
+    .into_owned();
+    let _ = event_tx.send(AppEvent::AgentError {
+        session_id: Some(session_id.to_string()),
+        failure: AgentFailure::Protocol {
+            code: -32003,
+            message: message.clone(),
+        },
+        message,
+    });
+}
+
 /// Discover the provider-advertised ACP Yolo capability. `SessionAttached`
 /// applies the latest effective state after the App binds the session.
 fn record_native_yolo(resp: &acp::schema::v1::NewSessionResponse, state: &ClientState) {
@@ -4865,6 +4883,7 @@ async fn dispatch_prompt_body(
                     "provider-native Yolo state could not be established before first prompt"
                 );
                 if !enabled || policy_blocked || restart_required {
+                    publish_retryable_lazy_yolo_error(&event_tx_task, &prompt_session_id_str);
                     let _ = event_tx_task.send(AppEvent::RuntimeYoloReconcileCompleted {
                         reconcile_id: 0,
                         fail_closed: !enabled,
@@ -4888,21 +4907,7 @@ async fn dispatch_prompt_body(
                         session_id = %prompt_session_id_str,
                         "ending first prompt with a retryable error because its lazy-session Yolo operation was superseded"
                     );
-                    let retry = t!("setup.option.retry_detection").into_owned();
-                    let message = t!(
-                        "system.config_update_failed",
-                        option = "Yolo",
-                        error = retry.as_str()
-                    )
-                    .into_owned();
-                    let _ = event_tx_task.send(AppEvent::AgentError {
-                        session_id: Some(prompt_session_id_str.clone()),
-                        failure: AgentFailure::Protocol {
-                            code: -32003,
-                            message: message.clone(),
-                        },
-                        message,
-                    });
+                    publish_retryable_lazy_yolo_error(&event_tx_task, &prompt_session_id_str);
                     in_flight_tabs_task.lock().unwrap().remove(&tab_key_task);
                     return;
                 }

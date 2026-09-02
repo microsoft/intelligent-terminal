@@ -1280,6 +1280,152 @@ async fn superseded_lazy_yolo_operation_reports_retryable_error_instead_of_silen
 }
 
 #[tokio::test]
+async fn policy_blocked_lazy_yolo_operation_reports_retryable_error_instead_of_silent_turn_end() {
+    let local = tokio::task::LocalSet::new();
+    local
+        .run_until(async {
+            let mut h = connect_for_dispatch(MockBehavior::Reply);
+            let blocker_h = connect_for_dispatch(MockBehavior::Reply);
+            h.client
+                .state
+                .native_yolo
+                .set_resolved_agent_id(Some(crate::agent_registry::CLAUDE_AGENT_ID));
+            h.client
+                .state
+                .yolo_state
+                .lock()
+                .unwrap()
+                .update_runtime(true, false);
+            h.new_session_advertises_native_yolo
+                .store(true, Ordering::SeqCst);
+            h.conn
+                .initialize(acp::schema::v1::InitializeRequest::new(
+                    acp::schema::ProtocolVersion::LATEST,
+                ))
+                .await
+                .expect("initialize failed");
+            blocker_h
+                .conn
+                .initialize(acp::schema::v1::InitializeRequest::new(
+                    acp::schema::ProtocolVersion::LATEST,
+                ))
+                .await
+                .expect("blocker initialize failed");
+
+            let preexisting = h
+                .conn
+                .new_session(acp::schema::v1::NewSessionRequest::new("/test"))
+                .await
+                .expect("preexisting session failed");
+            h.client
+                .state
+                .native_yolo
+                .record_from_new_session(&preexisting);
+            blocker_h.hang_native_updates.store(true, Ordering::SeqCst);
+            let blocker_state = Arc::clone(&h.client.state.native_yolo);
+            let blocker_conn = blocker_h.conn.clone();
+            let blocker_session = preexisting.session_id.clone();
+            let blocker = tokio::task::spawn_local(async move {
+                blocker_state
+                    .apply(&blocker_conn, blocker_session, true)
+                    .await
+            });
+            tokio::time::timeout(
+                std::time::Duration::from_secs(2),
+                blocker_h.native_update_started.notified(),
+            )
+            .await
+            .expect("blocking native update did not acquire the session gate");
+
+            let (tab_to_session, in_flight, cancel_signals, memo) = fresh_dispatch_state();
+            dispatch_prompt(
+                test_prompt(1, "must receive a policy error", false),
+                &h.conn,
+                &tab_to_session,
+                &memo,
+                &in_flight,
+                &cancel_signals,
+                &h.event_tx,
+                &h.shell_mgr,
+                &h.prompt_timing,
+                &h.client,
+                &PromptUsageIdentity::default(),
+                false,
+                false,
+                true,
+                &h.proposal_channels,
+            );
+
+            let session_id = tokio::time::timeout(std::time::Duration::from_secs(2), async {
+                loop {
+                    if let Some(session_id) = tab_to_session.lock().await.get("0").cloned() {
+                        break session_id;
+                    }
+                    tokio::task::yield_now().await;
+                }
+            })
+            .await
+            .expect("lazy session was not bound");
+            h.client
+                .state
+                .yolo_state
+                .lock()
+                .unwrap()
+                .update_runtime(true, true);
+            blocker_h.hang_native_updates.store(false, Ordering::SeqCst);
+            blocker_h.native_update_release.notify_one();
+
+            let mut saw_reconcile_error = false;
+            let mut retryable_error = None;
+            let mut terminal_event_order = Vec::new();
+            tokio::time::timeout(std::time::Duration::from_secs(5), async {
+                loop {
+                    match h.event_rx.recv().await {
+                        Some(AppEvent::RuntimeYoloReconcileCompleted {
+                            reconcile_id: 0,
+                            result: Err(_),
+                            ..
+                        }) => {
+                            saw_reconcile_error = true;
+                            terminal_event_order.push("reconcile");
+                        }
+                        Some(AppEvent::AgentError {
+                            session_id: Some(completed_session),
+                            failure: crate::protocol::acp::failure::AgentFailure::Protocol { .. },
+                            message,
+                        }) => {
+                            assert_eq!(completed_session, session_id.to_string());
+                            retryable_error = Some(message);
+                            terminal_event_order.push("error");
+                        }
+                        Some(AppEvent::AgentMessageEnd { .. }) => {
+                            panic!("policy-blocked lazy prompt reached an unexpected turn end")
+                        }
+                        Some(_) => continue,
+                        None => panic!("event channel closed before retryable policy error"),
+                    }
+                    if saw_reconcile_error && retryable_error.is_some() {
+                        break;
+                    }
+                }
+            })
+            .await
+            .expect("policy-blocked lazy prompt ended without a retryable error");
+
+            assert!(saw_reconcile_error);
+            assert!(retryable_error.unwrap().contains("Yolo"));
+            assert_eq!(terminal_event_order, ["error", "reconcile"]);
+            assert!(h.seen_prompts.lock().unwrap().is_empty());
+            assert!(in_flight.lock().unwrap().is_empty());
+            blocker
+                .await
+                .expect("blocking operation task panicked")
+                .unwrap();
+        })
+        .await;
+}
+
+#[tokio::test]
 async fn native_yolo_active_permission_request_remains_pending_for_user() {
     let local = tokio::task::LocalSet::new();
     local
