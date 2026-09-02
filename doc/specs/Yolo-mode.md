@@ -130,7 +130,7 @@ The runtime state has three relevant pieces:
 |---|---|---|
 | Global default and policy gate | `YoloState` | Helper process; initialized and hot-updated from Terminal settings |
 | Native capability and captured restore value | `NativeYoloState` | Exact ACP session generation |
-| Pending reconciliation and config gates | `App` and `NativeYoloState` | Until acknowledgement, known failure, or agent reset |
+| Pending reconciliation and config gates | `App` and `NativeYoloState` | Until acknowledgement, known enable failure, or agent reset; failed disables and unknown outcomes remain fail-closed until Agent CLI replacement |
 
 The effective desired state is:
 
