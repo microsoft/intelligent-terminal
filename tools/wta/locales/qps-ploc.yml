@@ -43,7 +43,7 @@ chat.activity_thinking: "[Ţĥïñķïñğ…!!]"
 # {Locked="Intelligent Terminal"} - product name, do not translate
 chat.welcome_title: "[Ŵéĺçöḿé ţö Intelligent Terminal!!]"
 # {Locked="Intelligent Terminal","AI"} - product name and acronym, do not translate
-chat.welcome_disclaimer: "[Intelligent Terminal ûśéś AI. Çĥéçķ ƒöŕ ḿïśţåķéś.!!]"
+chat.welcome_disclaimer: "[Intelligent Terminal ûśéś AI.!!]"
 chat.plan_header: "[Ṗĺåñ:!!]"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}
@@ -51,6 +51,17 @@ chat.plan_marker_pending: "[ ]"  # {Locked}
 chat.autofix_prompt_label: "[(Åûţö-ðïåĝñöšéð å réçéñţ çöɱɱåñð ƒåïĺûré!!)]"
 chat.turn_canceled: "[(çåñçéĺéð!!)]"
 chat.turn_executed: "[→ éẋéçûţéð: %{title}!!]"
+# Persistent tool-category labels shown after a status marker and before a subject.
+chat.tool_kind.run: "[Ŕûñ!!]"
+chat.tool_kind.read: "[Ŕéåð!!]"
+chat.tool_kind.search: "[Ŝéåŕçĥ!!]"
+chat.tool_kind.edit: "[Éðïţ!!]"
+chat.tool_kind.delete: "[Ðéĺéţé!!]"
+chat.tool_kind.move: "[Ḿöṽé!!]"
+chat.tool_kind.fetch: "[Ƒéţçĥ!!]"
+chat.tool_kind.think: "[Ţĥïñķ!!]"
+chat.tool_kind.mode: "[Ḿöðé!!]"
+chat.tool_kind.other: "[Ţööĺ!!]"
 
 # ── Input placeholders (src/ui/input.rs) ────────────────────────────────────
 input.placeholder.connected: "[Àśķ åñÿţĥïñğ, / ƒöŕ çöḿḿåñďś..!!!! !!!!]"  # {Locked="/"}
@@ -136,8 +147,8 @@ system.resuming_session: "[Ŕéśûḿïñğ śéśśïöñ %{session_id}...!!!!
 system.unknown_command: "[Ûñķñöŵñ çöḿḿåñď \"%{command}\" — śéñţ åś ṗŕöḿṗţ. Ţÿṗé /help ƒöŕ ţĥé ĺïśţ.!!!! !!!! !!!! !!!! !!!!]"  # {Locked="/help"}
 system.busy_use_stop: "[Ŵåïţ ƒöŕ ţĥé çûŕŕéñţ ṗŕöḿṗţ ţö ƒïñïśĥ, öŕ /stop ƒïŕśţ.!!!! !!!! !!!! !!!!]"  # {Locked="/stop"}
 system.cannot_focus_session: "[Çåññöţ ƒöçûś śéśśïöñ %{session_id}: ïţ åṗṗéåŕś ĺïṽé ƀûţ ñö ṗåñé ĞÛÎĎ ïś ƀöûñď ÿéţ. Ţŕÿ åğåïñ ïñ å ḿöḿéñţ.!!!! !!!! !!!! !!!! !!!! !!!! !!!!]"
-system.cannot_resume_no_load_session: "[Çåññöţ ŕéśûḿé ïñ åğéñţ ṗåñé: %{agent} ďïď ñöţ åďṽéŕţïśé ţĥé ACP `loadSession` çåṗåƀïĺïţÿ. Ṗŕéśś Enter (ŵïţĥöûţ Shift) ţö ŕéśûḿé ïñ å ñéŵ ţéŕḿïñåĺ ṗåñé ïñśţéåď.!!!! !!!! !!!! !!!! !!!! !!!! !!!! !!!!]"  # {Locked="ACP","loadSession","Enter","Shift"}
-system.cannot_resume_no_resume_flag: "[Çåññöţ ŕéśûḿé %{agent} śéśśïöñ: ţĥïś åğéñţ ĥåś ñö `--resume`-śţÿĺé ƒĺåğ. Ṗŕéśś Shift+Enter ţö ţŕÿ ŕéśûḿïñğ ïñśïďé ţĥé åğéñţ ṗåñé ṽïå ACP ïñśţéåď.!!!! !!!! !!!! !!!! !!!! !!!! !!!! !!!!]"  # {Locked="--resume","Shift","Enter","ACP"}
+system.cannot_resume_no_load_session: "[Çåññöţ ŕéśûḿé ïñ åğéñţ ṗåñé: %{agent} ďïď ñöţ åďṽéŕţïśé ţĥé ACP `loadSession` çåṗåƀïĺïţÿ.!!!! !!!! !!!! !!!! !!!! !!!! !!!! !!!!]"  # {Locked="ACP","loadSession"}
+system.cannot_resume_no_resume_flag: "[Çåññöţ ŕéśûḿé %{agent} śéśśïöñ: ţĥïś åğéñţ ĥåś ñö `--resume`-śţÿĺé ƒĺåğ.!!!! !!!! !!!! !!!! !!!! !!!! !!!! !!!!]"  # {Locked="--resume"}
 system.cannot_resume_unknown_agent: "[Çåññöţ ŕéśûḿé śéśśïöñ %{session_id}: ïţś śöûŕçé åğéñţ ïś ûñķñöŵñ ţö ţĥïś ƀûïĺď.!!!! !!!! !!!! !!!! !!!!]"
 system.cannot_resume_phantom_via_flag: "[Çåññöţ ŕéśûḿé %{agent} śéśśïöñ %{session_id}: ïţ ŵåś śţåŕţéď ƀûţ ñéṽéŕ åççûḿûĺåţéď åñÿ çöñṽéŕśåţïöñ, śö %{agent} ïţśéĺƒ ŵöûĺď ŕéĵéçţ ţĥé ŕéśûḿé. Ŕéḿöṽïñğ ţĥé ŕöŵ.!!!! !!!! !!!! !!!! !!!! !!!! !!!! !!!!]"
 system.cannot_resume_phantom_via_load: "[Çåññöţ ŕéśûḿé %{agent} śéśśïöñ %{session_id}: ïţ ŵåś śţåŕţéď ƀûţ ñéṽéŕ åççûḿûĺåţéď åñÿ çöñṽéŕśåţïöñ, śö %{agent} ŵöûĺď ŕéĵéçţ ţĥé ĺöåď. Ŕéḿöṽïñğ ţĥé ŕöŵ.!!!! !!!! !!!! !!!! !!!! !!!! !!!!]"
@@ -179,7 +190,7 @@ hooks.marketplace_path_stale: "[⚠ ḿåŕķéţṗĺåçé ṗåţĥ śţåĺ�
 hooks.installed_but_disabled: "[⚠ ïñśţåĺĺéď ƀûţ ďïśåƀĺéď!!!! !!!!]"
 hooks.not_installed: "[✗ ñöţ ïñśţåĺĺéď!!]"
 hooks.uninstall_skipped: "[śķïṗṗéď (CLI ñöţ öñ PATH)!!!! !!!!]"
-hooks.install_attempted: "[wt-agent-hooks ïñśţåĺĺ åţţéḿṗţéď (ïďéḿṗöţéñţ). Ŕûñ `wta hooks status` ţö ïñśṗéçţ ţĥé ŕéśûĺţ. Ţŕåçé ĺöğ: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log!!!! !!!! !!!! !!!! !!!! !!!! !!!!]"
+hooks.install_succeeded: "[✓ wt-agent-hooks ïñśţåĺĺéď ƒöŕ %{clis}!!!! !!!! !!!!]"
 # ── Relative time + date formatting (src/ui/agents_view.rs) ─────────────────
 time.just_now: "just now"
 time.minute_singular: "%{count} minute ago"
@@ -216,8 +227,17 @@ system.agent_switch_unavailable: "[Àğéñţ śŵïţçĥïñğ ïś ûñåṽ�
 
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "[Ṗïçķ ţĥé ḿöďéĺ ƒöŕ ţĥïś ṗåñé (/model <id> ţö śŵïţçĥ ďïŕéçţĺÿ)!!!! !!!! !!!! !!!!]"  # {Locked="/model","<id>"}
+commands.config.summary: "[Çöñƒïğûŕé ţĥïś åğéñţ śéśśïöñ!!!! !!!! !!!! !!!!]"  # Agent means an AI coding agent; shown for the /config command. {Locked="/config"}
 commands.move.summary: "[Ḿöṽé ţĥïś ţåƀ'ś åğéñţ ṗåñé (/move <position>)!!!! !!!! !!!!]"  # {Locked="/move","<position>"}
 model_picker.title: "[Ŝéĺéçţ ḿöďéĺ (↑ ↓ • Enter • Esc)!!!! !!!!]"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "[Ţĥé çöññéçţéď åğéñţ ďïď ñöţ åďṽéŕţïśé åñÿ śéĺéçţåƀĺé ḿöďéĺś.!!!! !!!! !!!! !!!!]"
 system.model_set: "[Ḿöďéĺ ƒöŕ ţĥïś ṗåñé śéţ ţö %{model}.!!!! !!!! !!!!]"  # {Locked="%{model}"}
+
+# ── Session configuration picker (src/ui/config_popup.rs) ───────────────────
+# {Locked="↑","↓","Enter","Esc","ACP"} - key names and protocol name
+config_picker.title: "[Śéśśïöñ çöñƒïğûŕåţïöñ (↑ ↓ • Enter • Esc)!!!! !!!! !!!!]"
+# Shown when /config is used but the AI agent exposed no ACP select options.
+system.no_config_options: "[Ţĥé çöññéçţéď åğéñţ ďïď ñöţ åďṽéŕţïśé åñÿ çöñƒïğûŕåƀĺé śéśśïöñ öṗţïöñś.!!!! !!!! !!!! !!!! !!!!]"
+# {option} is an Agent-provided option name; {error} is the ACP error.
+system.config_update_failed: "[ƒåïĺéď ţö ûṗďåţé %{option}: %{error}!!!! !!!! !!!!]"
 system.model_unknown: "[Ûñķñöŵñ ḿöďéĺ %{model} — ţÿṗé /model ţö śéé ţĥé åṽåïĺåƀĺé ĺïśţ.!!!! !!!! !!!! !!!!]"  # {Locked="%{model}","/model"}

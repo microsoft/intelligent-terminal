@@ -41,7 +41,7 @@ auth.login_failed_help_default: "  กด Enter เพื่อลองอี�
 chat.activity_thinking: "กำลังคิด…"
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 chat.welcome_title: "ยินดีต้อนรับสู่ เทอร์มินัลอัจฉริยะ!"
-chat.welcome_disclaimer: "เทอร์มินัลอัจฉริยะ ใช้ AI ตรวจสอบข้อผิดพลาด."
+chat.welcome_disclaimer: "เทอร์มินัลอัจฉริยะ ใช้ AI."
 chat.plan_header: "แผน:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}
@@ -49,6 +49,17 @@ chat.plan_marker_pending: "[ ]"  # {Locked}
 chat.autofix_prompt_label: "วินิจฉัยความล้มเหลวของคำสั่งล่าสุดโดยอัตโนมัติ"
 chat.turn_canceled: "(ยกเลิกแล้ว)"
 chat.turn_executed: "→ ดำเนินการแล้ว: %{title}"
+# ป้ายหมวดหมู่เครื่องมือแบบถาวรที่แสดงหลังเครื่องหมายสถานะและก่อนหัวข้อ
+chat.tool_kind.run: "เรียกใช้"
+chat.tool_kind.read: "อ่าน"
+chat.tool_kind.search: "ค้นหา"
+chat.tool_kind.edit: "แก้ไข"
+chat.tool_kind.delete: "ลบ"
+chat.tool_kind.move: "ย้าย"
+chat.tool_kind.fetch: "ดึงข้อมูล"
+chat.tool_kind.think: "คิด"
+chat.tool_kind.mode: "โหมด"
+chat.tool_kind.other: "เครื่องมือ"
 
 # ── Input placeholders (src/ui/input.rs) ────────────────────────────────────
 input.placeholder.connected: "ถามอะไรก็ได้, / สำหรับคำสั่ง.."  # {Locked="/"}
@@ -134,8 +145,8 @@ system.resuming_session: "กำลังดำเนินเซสชัน %{
 system.unknown_command: "ไม่รู้จักคำสั่ง \"%{command}\" — ส่งเป็นพรอมต์แล้ว พิมพ์ /help เพื่อดูรายการ"  # {Locked="/help"}
 system.busy_use_stop: "รอให้พรอมต์ปัจจุบันเสร็จ หรือใช้ /stop ก่อน"  # {Locked="/stop"}
 system.cannot_focus_session: "ไม่สามารถโฟกัสเซสชัน %{session_id}: ดูเหมือนว่ายังทำงานอยู่ แต่ยังไม่ได้ผูก GUID ของแผง ลองอีกครั้งในอีกสักครู่"
-system.cannot_resume_no_load_session: "ไม่สามารถดำเนินการต่อในแผงเอเจนต์: %{agent} ไม่ได้ประกาศความสามารถ ACP `loadSession` กด Enter (โดยไม่กด Shift) เพื่อดำเนินการต่อในแผงเทอร์มินัลใหม่แทน"  # {Locked="ACP","loadSession","Enter","Shift"}
-system.cannot_resume_no_resume_flag: "ไม่สามารถดำเนินเซสชัน %{agent} ต่อ: เอเจนต์นี้ไม่มีแฟล็กแบบ `--resume` กด Shift+Enter เพื่อลองดำเนินการต่อภายในแผงเอเจนต์ผ่าน ACP แทน"  # {Locked="--resume","Shift","Enter","ACP"}
+system.cannot_resume_no_load_session: "ไม่สามารถดำเนินการต่อในแผงเอเจนต์: %{agent} ไม่ได้ประกาศความสามารถ ACP `loadSession`"  # {Locked="ACP","loadSession"}
+system.cannot_resume_no_resume_flag: "ไม่สามารถดำเนินเซสชัน %{agent} ต่อ: เอเจนต์นี้ไม่มีแฟล็กแบบ `--resume`"  # {Locked="--resume"}
 system.cannot_resume_unknown_agent: "ไม่สามารถดำเนินเซสชัน %{session_id} ต่อ: ไม่รู้จักเอเจนต์ต้นทางในบิลด์นี้"
 system.cannot_resume_phantom_via_flag: "ไม่สามารถดำเนินเซสชัน %{agent} %{session_id} ต่อ: เซสชันนี้เริ่มแล้วแต่ไม่เคยมีการสนทนาสะสม ดังนั้น %{agent} เองจะปฏิเสธการดำเนินการต่อ กำลังลบแถว"
 system.cannot_resume_phantom_via_load: "ไม่สามารถดำเนินเซสชัน %{agent} %{session_id} ต่อ: เซสชันนี้เริ่มแล้วแต่ไม่เคยมีการสนทนาสะสม ดังนั้น %{agent} จะปฏิเสธการโหลด กำลังลบแถว"
@@ -177,7 +188,7 @@ hooks.marketplace_path_stale: "⚠ เส้นทาง marketplace ล้า�
 hooks.installed_but_disabled: "⚠ ติดตั้งแล้วแต่ถูกปิดใช้งาน"
 hooks.not_installed: "✗ ยังไม่ได้ติดตั้ง"
 hooks.uninstall_skipped: "ข้ามแล้ว (CLI ไม่อยู่ใน PATH)"
-hooks.install_attempted: "พยายามติดตั้ง wt-agent-hooks แล้ว (idempotent) เรียกใช้ `wta hooks status` เพื่อตรวจสอบผลลัพธ์ ไฟล์บันทึก: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"
+hooks.install_succeeded: "✓ ติดตั้ง wt-agent-hooks แล้ว สำหรับ %{clis}"
 
 # ── Relative time and date formatting ─────────────────────────────────────
 time.just_now: "เมื่อสักครู่"
@@ -215,8 +226,17 @@ system.agent_switch_unavailable: "การสลับตัวแทนจะ�
 
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "เลือกโมเดลสำหรับแผงนี้ (/model <id> เพื่อสลับโดยตรง)"  # {Locked="/model","<id>"}
+commands.config.summary: "กำหนดค่าเซสชันตัวแทนนี้"  # Agent means an AI coding agent; shown for the /config command. {Locked="/config"}
 commands.move.summary: "ย้ายแผงเอเจนต์ของแท็บนี้ (/move <position>)"  # {Locked="/move","<position>"}
 model_picker.title: "เลือกโมเดล (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "เอเจนต์ที่เชื่อมต่ออยู่ไม่ได้ประกาศโมเดลที่เลือกได้"
 system.model_set: "ตั้งค่าโมเดลสำหรับแผงนี้เป็น %{model} แล้ว"  # {Locked="%{model}"}
+
+# ── Session configuration picker (src/ui/config_popup.rs) ───────────────────
+# {Locked="↑","↓","Enter","Esc","ACP"} - key names and protocol name
+config_picker.title: "การกำหนดค่าเซสชัน (↑ ↓ • Enter • Esc)"
+# Shown when /config is used but the AI agent exposed no ACP select options.
+system.no_config_options: "ตัวแทนที่เชื่อมต่อไม่ได้โฆษณาตัวเลือกเซสชันที่กำหนดค่าได้"
+# {option} is an Agent-provided option name; {error} is the ACP error.
+system.config_update_failed: "อัปเดต %{option} ไม่สำเร็จ: %{error}"
 system.model_unknown: "ไม่รู้จักโมเดล %{model} — พิมพ์ /model เพื่อดูรายการที่มีอยู่"  # {Locked="%{model}","/model"}

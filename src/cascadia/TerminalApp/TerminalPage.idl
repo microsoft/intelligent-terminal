@@ -165,13 +165,19 @@ namespace TerminalApp
 
         // Inbound event from `/agent` carrying
         // {method:"switch_agent",params:{window_id,tab_id,agent_id}}.
-        // Applies a runtime override and rebuilds only the target tab.
+        // Applies a runtime override and rebinds the target tab's helper when
+        // the execution source is unchanged.
         void OnAgentSwitchRequested(String eventJson);
 
         // Inbound event from WTA carrying {method:"close_agent_pane",params:{...}}.
         // Emitted when the user presses Ctrl+C twice in the agent pane TUI.
         // The page tears down the shared agent pane; wta dies with its ConPty.
         void OnCloseAgentPaneRequested(String eventJson);
+
+        // Inbound event from WTA carrying
+        // {method:"request_default_paste",params:{window_id,tab_id,pane_id}}.
+        // Routes WTA's no-selection right-click through the existing host paste action.
+        void OnDefaultPasteRequested(String eventJson);
 
         // Inbound event from WTA carrying
         // {method:"agent_state_changed",params:{tab_id,view,pane_open}}.
@@ -188,6 +194,13 @@ namespace TerminalApp
         // tab's StableId so wta calls ACP `session/load` for that tab.
         void OnResumeInNewAgentTabRequested(String eventJson);
 
+        // Inbound event from a hookless WTA delegate carrying
+        // {method:"pane_agent_session_changed",
+        //  params:{pane_id,agent_session_id,resume_commandline}}.
+        // Records the known pane/agent binding so a persisted layout can
+        // resume the agent CLI even when no agent hook is installed.
+        void OnPaneAgentSessionChanged(String eventJson);
+
         // Inbound event from WTA carrying
         // {method:"set_agent_chip_target",params:{tab_id, pane_session_id?}}.
         // Helper override for which pane in the tab gets the blue "Agent"
@@ -203,12 +216,8 @@ namespace TerminalApp
         // fresh agent CLI session under the same stable master pipe.
         void OnRestartAgentStackRequested(String eventJson);
 
-        // Inbound event from WTA carrying
-        // {method:"restart_agent_pane",params:{tab_id, session_id?, reason}}.
-        // Emitted by wta-master when a helper's pipe disconnects (crash or
-        // clean exit). The page resolves the owning tab by StableId and
-        // re-warms a fresh helper, resuming `session_id`. Suppressed when
-        // the pane was torn down deliberately (Ctrl+C×2, tab close).
-        void OnAgentPaneRestartRequested(String eventJson);
+        // Inbound completion for a destructive agent-session retirement:
+        // {method:"agent_sessions_retired",params:{operation_id,success,reason,failed_tabs}}.
+        void OnAgentSessionsRetired(String eventJson);
     }
 }

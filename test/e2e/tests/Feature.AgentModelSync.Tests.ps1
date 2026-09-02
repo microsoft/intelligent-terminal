@@ -34,9 +34,7 @@ Describe 'Feature: ACP model synchronization' -Tag 'Feature' -Skip:(-not $script
         Clear-AgentInput -App $script:app | Out-Null
         Invoke-AgentMenuItem -App $script:app -Name '/model'
 
-        $titleRe = Get-WtaLocalizedTextRegex -Key 'model_picker.title'
-        if (-not $titleRe) { $titleRe = '(?i)Select model' }
-        Assert-AgentPaneText -App $script:app -Pattern $titleRe -TimeoutSec 10
+        Assert-AgentPaneText -App $script:app -Pattern '(?m)^┌Model' -TimeoutSec 10
 
         $picker = Get-AgentPaneText -App $script:app -MaxLines 40
         $picker | Should -Match '(?m)^\s*[│║|]\s*>\s+Effective Model\s*[│║|]\s*$' -Because 'the config_option_update model must replace the stale session/new selection'

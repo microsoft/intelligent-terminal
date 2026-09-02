@@ -37,7 +37,7 @@ auth.login_failed_help_default: "  按 Enter 重试,或按 Esc 返回。"  # {Lo
 # ── 聊天视图 (src/ui/chat.rs) ──────────────────────────────────────────────
 chat.activity_thinking: "思考中…"
 chat.welcome_title: "欢迎使用智能终端！"
-chat.welcome_disclaimer: "智能终端使用 AI。请检查是否有误。"
+chat.welcome_disclaimer: "智能终端使用 AI。"
 chat.plan_header: "计划："
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}
@@ -45,6 +45,17 @@ chat.plan_marker_pending: "[ ]"  # {Locked}
 chat.autofix_prompt_label: "已自动诊断最近的一次命令失败"
 chat.turn_canceled: "(已取消)"
 chat.turn_executed: "→ 已执行: %{title}"
+# 在状态标记之后、操作对象之前显示的持久工具类别标签。
+chat.tool_kind.run: "运行"
+chat.tool_kind.read: "读取"
+chat.tool_kind.search: "搜索"
+chat.tool_kind.edit: "编辑"
+chat.tool_kind.delete: "删除"
+chat.tool_kind.move: "移动"
+chat.tool_kind.fetch: "获取"
+chat.tool_kind.think: "思考"
+chat.tool_kind.mode: "模式"
+chat.tool_kind.other: "工具"
 
 # ── 输入占位符 (src/ui/input.rs) ────────────────────────────────────────────
 input.placeholder.connected: "随意提问，/ 查看命令.."  # {Locked="/"}
@@ -130,8 +141,8 @@ system.resuming_session: "正在恢复会话 %{session_id}..."
 system.unknown_command: "未知命令 \"%{command}\" — 已作为提示发送。键入 /help 查看列表。"  # {Locked="/help"}
 system.busy_use_stop: "请等待当前提示完成，或先执行 /stop。"  # {Locked="/stop"}
 system.cannot_focus_session: "无法聚焦会话 %{session_id}：它看起来处于活动状态，但尚未绑定窗格 GUID。请稍后重试。"
-system.cannot_resume_no_load_session: "无法在智能体窗格中恢复：%{agent} 未公布 ACP `loadSession` 功能。请改按 Enter（不按 Shift）以在新的终端窗格中恢复。"  # {Locked="ACP","loadSession","Enter","Shift"}
-system.cannot_resume_no_resume_flag: "无法恢复 %{agent} 会话：此智能体没有 `--resume` 样式的标志。请按 Shift+Enter，改为尝试通过 ACP 在智能体窗格内恢复。"  # {Locked="--resume","Shift","Enter","ACP"}
+system.cannot_resume_no_load_session: "无法在智能体窗格中恢复：%{agent} 未公布 ACP `loadSession` 功能。"  # {Locked="ACP","loadSession"}
+system.cannot_resume_no_resume_flag: "无法恢复 %{agent} 会话：此智能体没有 `--resume` 样式的标志。"  # {Locked="--resume"}
 system.cannot_resume_unknown_agent: "无法恢复会话 %{session_id}：此版本无法识别其源智能体。"
 system.cannot_resume_phantom_via_flag: "无法恢复 %{agent} 会话 %{session_id}：它已启动但从未积累任何对话，因此 %{agent} 本身会拒绝恢复。正在移除此行。"
 system.cannot_resume_phantom_via_load: "无法恢复 %{agent} 会话 %{session_id}：它已启动但从未积累任何对话，因此 %{agent} 会拒绝加载。正在移除此行。"
@@ -173,7 +184,7 @@ hooks.marketplace_path_stale: "⚠ 商店路径已过期"
 hooks.installed_but_disabled: "⚠ 已安装但已禁用"
 hooks.not_installed: "✗ 未安装"
 hooks.uninstall_skipped: "已跳过（CLI 不在 PATH 上）"
-hooks.install_attempted: "wt-agent-hooks 安装已尝试（幂等）。运行 `wta hooks status` 检查结果。跟踪日志：%LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"
+hooks.install_succeeded: "✓ 已为 %{clis} 安装 wt-agent-hooks"
 # ── Relative time + date formatting (src/ui/agents_view.rs) ─────────────────
 time.just_now: "刚刚"
 time.minute_singular: "%{count} 分钟前"
@@ -210,8 +221,17 @@ system.agent_switch_unavailable: "在 Windows Terminal 标签页之外，智能�
 
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "为此窗格选择模型（使用 /model <id> 可直接切换）"  # {Locked="/model","<id>"}
+commands.config.summary: "配置此智能体会话"  # Agent means an AI coding agent; shown for the /config command. {Locked="/config"}
 commands.move.summary: "移动此标签页的智能体窗格 (/move <position>)"  # {Locked="/move","<position>"}
 model_picker.title: "选择模型（↑ ↓ • Enter • Esc）"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "已连接的智能体未公布任何可选模型。"
 system.model_set: "此窗格的模型已设置为 %{model}。"  # {Locked="%{model}"}
+
+# ── Session configuration picker (src/ui/config_popup.rs) ───────────────────
+# {Locked="↑","↓","Enter","Esc","ACP"} - key names and protocol name
+config_picker.title: "会话配置（↑ ↓ • Enter • Esc）"
+# Shown when /config is used but the AI agent exposed no ACP select options.
+system.no_config_options: "已连接的智能体未公布任何可配置的会话选项。"
+# {option} is an Agent-provided option name; {error} is the ACP error.
+system.config_update_failed: "更新 %{option} 失败：%{error}"
 system.model_unknown: "未知模型 %{model} — 键入 /model 查看可用列表。"  # {Locked="%{model}","/model"}

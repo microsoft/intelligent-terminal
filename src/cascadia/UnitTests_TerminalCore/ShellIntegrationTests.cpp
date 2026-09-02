@@ -52,6 +52,11 @@ class TerminalCoreUnitTests::ShellIntegrationTests final
     TEST_METHOD(PowerShell_ScriptContent_HandlesNullLastExitCode);
     TEST_METHOD(PowerShell_ScriptContent_TracksUnhistoriedErrors);
     TEST_METHOD(PowerShell_ScriptContent_GatesRestrictedLanguageFeatures);
+    TEST_METHOD(PowerShell_ScriptContent_ReArmsFromReadLineBoundary);
+    TEST_METHOD(PowerShell_ScriptContent_ReArmIsBestEffortAndSkipsWithoutWrapper);
+    TEST_METHOD(PowerShell_ScriptContent_RestoresStatusSignalBeforeDelegating);
+    TEST_METHOD(PowerShell_ScriptContent_GuardsAgainstChainingPromptModules);
+    TEST_METHOD(PowerShell_ScriptContent_RendersFailSafe);
 
     // Install scenarios.
     TEST_METHOD(Install_EmptyPath_Fails);
@@ -489,8 +494,184 @@ void ShellIntegrationTests::PowerShell_ScriptContent_GatesRestrictedLanguageFeat
                    L"Constrained Language Mode must bypass static parser and reference-identity method calls");
 }
 
-// ─── Install ──────────────────────────────────────────────────────────────────
+void ShellIntegrationTests::PowerShell_ScriptContent_ReArmsFromReadLineBoundary()
+{
+    const auto script = ShellIntegrationScriptContent();
 
+    // The re-arm must be driven from the PSReadLine boundary, NOT from prompt.
+    // That boundary runs once per command and BEFORE the user's command, so it
+    // cannot disturb the $? the next prompt reads. Calling it from prompt would
+    // silently corrupt every OSC 133;D exit code.
+    //
+    // innerReadLine is anchored to readLineWrapper, NOT to rearmCall: if the
+    // call were dropped from the wrapper, searching from rearmCall would match
+    // the later function DEFINITION and npos would then compare as maximum,
+    // letting a broken script pass.
+    const auto readLineWrapper = script.find("function Global:PSConsoleHostReadLine");
+    const auto innerReadLine = script.find("$Global:__ShellInteg_OriginalPSConsoleHostReadLine @args", readLineWrapper);
+    const auto rearmCall = script.find("__ShellInteg_Rearm", readLineWrapper);
+    const auto promptStart = script.find("function prompt");
+
+    // Detection is by object identity against our own scriptblock — never by
+    // text matching, which a renderer could accidentally satisfy.
+    const auto rearmFunc = script.find("function Global:__ShellInteg_Rearm");
+    VERIFY_ARE_NOT_EQUAL(std::string::npos, rearmFunc,
+                         L"__ShellInteg_Rearm must exist");
+    // -eq, NOT a static reference-equality method: re-arm runs at script load and
+    // from the readline boundary, and a static method call under Constrained
+    // Language Mode aborts the enclosing script even from inside try/catch.
+    const auto identityCheck = script.find("if ($current -eq $Global:__ShellInteg_Wrapper) { return }", rearmFunc);
+    const auto noStaticCall = script.substr(rearmFunc).find("[object]::ReferenceEquals");
+    const auto adopt = script.find("$Global:__ShellInteg_OriginalPrompt = $current", identityCheck);
+    const auto reinstall = script.find("Set-Item Function:\\global:prompt $Global:__ShellInteg_Wrapper", adopt);
+
+    // The wrapper identity is captured once, after prompt is defined.
+    const auto wrapperCapture = script.find("$Global:__ShellInteg_Wrapper = $function:prompt");
+
+    VERIFY_ARE_NOT_EQUAL(std::string::npos, reinstall);
+    VERIFY_ARE_NOT_EQUAL(std::string::npos, wrapperCapture);
+    VERIFY_ARE_NOT_EQUAL(std::string::npos, innerReadLine);
+    VERIFY_IS_TRUE(readLineWrapper < rearmCall && rearmCall < innerReadLine,
+                   L"Re-arm must run at the PSReadLine boundary before delegating to the real reader");
+    VERIFY_IS_TRUE(promptStart < wrapperCapture,
+                   L"The wrapper scriptblock must be captured after prompt is defined");
+    VERIFY_IS_TRUE(rearmFunc < identityCheck && identityCheck < adopt && adopt < reinstall,
+                   L"Re-arm must detect replacement by object identity, adopt the newcomer, then reinstall the wrapper");
+    VERIFY_ARE_EQUAL(std::string::npos, noStaticCall,
+                     L"Re-arm must not invoke static methods - blocked in Constrained Language Mode, and the failure aborts the script even from inside try/catch");
+}
+
+void ShellIntegrationTests::PowerShell_ScriptContent_ReArmIsBestEffortAndSkipsWithoutWrapper()
+{
+    const auto script = ShellIntegrationScriptContent();
+    const auto rearmFunc = script.find("function Global:__ShellInteg_Rearm");
+
+    // Guard 1: when an OLDER version of this script already owns the session,
+    // __ShellInteg_Installed is set, so our wrapper was never created. Re-arming
+    // then would install $null over prompt AND adopt the older wrapper as the
+    // prompt to wrap, making it delegate to itself (call depth overflow).
+    const auto nullWrapperGuard = script.find("if ($null -eq $Global:__ShellInteg_Wrapper) { return }", rearmFunc);
+
+    // Guard 2: re-arm runs from PSConsoleHostReadLine and at script load, so it
+    // must never throw. `prompt` can be ReadOnly/Constant in a hardened profile,
+    // which makes Set-Item raise SessionStateUnauthorizedAccessException.
+    const auto tryStart = script.find("try {", nullWrapperGuard);
+    const auto guardedSetItem = script.find("Set-Item Function:\\global:prompt $Global:__ShellInteg_Wrapper -ErrorAction Stop", tryStart);
+    const auto catchAll = script.find("catch {", guardedSetItem);
+
+    VERIFY_ARE_NOT_EQUAL(std::string::npos, catchAll);
+    VERIFY_IS_TRUE(rearmFunc < nullWrapperGuard,
+                   L"Re-arm must no-op when no wrapper of our own exists");
+    VERIFY_IS_TRUE(nullWrapperGuard < tryStart &&
+                       tryStart < guardedSetItem &&
+                       guardedSetItem < catchAll,
+                   L"Re-arm must reinstall inside try/catch with -ErrorAction Stop so a read-only prompt cannot break the input path");
+}
+
+void ShellIntegrationTests::PowerShell_ScriptContent_RestoresStatusSignalBeforeDelegating()
+{
+    const auto script = ShellIntegrationScriptContent();
+    const auto promptStart = script.find("function prompt");
+
+    // The wrapper reads $? first, and its own work then overwrites it. A wrapped
+    // prompt that reads $? (Oh My Posh's status segment, starship, posh-git)
+    // would otherwise always see success. $? cannot be assigned, so it is
+    // reproduced — and the reproduction MUST be the statement immediately before
+    // the delegation, or the intervening statements clobber it again.
+    const auto successCase = script.find("if ($gle -eq 0) { $null = $true }", promptStart);
+    const auto failureCase = script.find("Get-Variable '__ShellInteg_NoSuchVariable__' -ErrorAction Ignore", successCase);
+    const auto delegation = script.find("$originalOutput = & $Global:__ShellInteg_OriginalPrompt", failureCase);
+
+    VERIFY_ARE_NOT_EQUAL(std::string::npos, delegation);
+    VERIFY_IS_TRUE(successCase < failureCase && failureCase < delegation,
+                   L"The success/failure signal must be restored immediately before delegating to the wrapped prompt");
+
+    // -ErrorAction Ignore is load-bearing: SilentlyContinue and Write-Error both
+    // set $? but ALSO append to $Error, so the wrapped prompt would see a
+    // fabricated error record every failed command.
+    VERIFY_IS_TRUE(script.find("Get-Variable '__ShellInteg_NoSuchVariable__' -ErrorAction SilentlyContinue") == std::string::npos,
+                   L"Forcing $? false must not pollute $Error");
+}
+
+void ShellIntegrationTests::PowerShell_ScriptContent_GuardsAgainstChainingPromptModules()
+{
+    const auto script = ShellIntegrationScriptContent();
+    const auto promptStart = script.find("function prompt");
+
+    // A module may CHAIN rather than replace: capture the current prompt (ours)
+    // and call it from inside its own. Once adopted, delegating calls back into
+    // us — an unbounded mutual-delegation cycle without this guard.
+    const auto reentryGuard = script.find("if ($Global:__ShellInteg_Rendering)", promptStart);
+    const auto servePrev = script.find("return (& $Global:__ShellInteg_PrevPrompt)", reentryGuard);
+    // With nothing displaced left to serve, contribute an empty string — never
+    // fabricated prompt text. The chaining module renders its own text around
+    // whatever we return.
+    const auto emptyWhenExhausted = script.find("return ''", servePrev);
+    const auto setFlag = script.find("$Global:__ShellInteg_Rendering = $true", emptyWhenExhausted);
+    const auto delegation = script.find("$originalOutput = & $Global:__ShellInteg_OriginalPrompt", setFlag);
+    const auto clearFlag = script.find("finally { $Global:__ShellInteg_Rendering = $false }", delegation);
+
+    // The displaced renderer is retained so the chained module still has real
+    // prompt text to wrap.
+    const auto retainPrev = script.find("$Global:__ShellInteg_PrevPrompt = $Global:__ShellInteg_OriginalPrompt");
+
+    VERIFY_ARE_NOT_EQUAL(std::string::npos, clearFlag);
+    VERIFY_ARE_NOT_EQUAL(std::string::npos, retainPrev);
+    VERIFY_ARE_NOT_EQUAL(std::string::npos, emptyWhenExhausted);
+    VERIFY_IS_TRUE(promptStart < reentryGuard && reentryGuard < servePrev && servePrev < emptyWhenExhausted,
+                   L"reentry must be detected before any rendering work, serve the displaced prompt, then contribute nothing rather than fabricating text");
+    VERIFY_IS_TRUE(setFlag < delegation && delegation < clearFlag,
+                   L"The reentrancy flag must be set around the delegation and cleared in finally");
+}
+
+void ShellIntegrationTests::PowerShell_ScriptContent_RendersFailSafe()
+{
+    const auto script = ShellIntegrationScriptContent();
+    const auto promptStart = script.find("function prompt");
+
+    // Shell integration is a convenience; a broken prompt is not. Any exception
+    // in the render path — ours or the wrapped prompt's — must degrade to the
+    // wrapped prompt without marks rather than throwing on EVERY prompt.
+    const auto renderTry = script.find("try {", promptStart);
+    const auto normalReturn = script.find("return \"${prefix}${originalOutput}${suffix}\"", renderTry);
+    const auto renderCatch = script.find("catch {", normalReturn);
+    const auto failSafeFlag = script.find("$Global:__ShellInteg_Rendering = $true", renderCatch);
+    const auto degradeToPrompt = script.find("try { return (& $Global:__ShellInteg_OriginalPrompt) }", failSafeFlag);
+    const auto lastResort = script.find("return ''", degradeToPrompt);
+    const auto failSafeClear = script.find("finally { $Global:__ShellInteg_Rendering = $false }", lastResort);
+
+    VERIFY_ARE_NOT_EQUAL(std::string::npos, failSafeClear);
+    VERIFY_IS_TRUE(renderTry < normalReturn &&
+                       normalReturn < renderCatch &&
+                       renderCatch < failSafeFlag &&
+                       failSafeFlag < degradeToPrompt &&
+                       degradeToPrompt < lastResort &&
+                       lastResort < failSafeClear,
+                   L"The fail-safe must hold the reentrancy flag while degrading, or an adopted chaining prompt recurses to the call-depth limit");
+
+    // This wrapper must never invent visible prompt text. When the wrapped
+    // prompt itself throws there is nothing to show, so it returns an empty
+    // string and the HOST supplies its own default. Fabricating an imitation
+    // "PS <cwd>> " would alter the visible prompt, which is exactly what this
+    // component promises not to do.
+    VERIFY_ARE_EQUAL(std::string::npos,
+                     script.find("return \"PS $($executionContext.SessionState.Path.CurrentLocation)> \""),
+                     L"The prompt path must not fabricate prompt text");
+
+    // The wrapped prompt must be invoked at most ONCE per render. Its failure is
+    // caught at the delegation itself, so it cannot escape to the outer catch
+    // and be run a second time — which would duplicate any side effects the
+    // user's prompt has (git calls, logging, its own error reporting).
+    const auto delegation = script.find("try     { $originalOutput = & $Global:__ShellInteg_OriginalPrompt }", promptStart);
+    const auto delegationCatch = script.find("catch   { $originalOutput = '' }", delegation);
+
+    VERIFY_ARE_NOT_EQUAL(std::string::npos, delegationCatch,
+                         L"The delegation must catch its own failure so the wrapped prompt runs at most once per render");
+    VERIFY_IS_TRUE(delegation < delegationCatch && delegationCatch < normalReturn,
+                   L"The delegation's catch must precede the normal return");
+}
+
+// ─── Install ──────────────────────────────────────────────────────────────────
 void ShellIntegrationTests::Install_EmptyPath_Fails()
 {
     const auto r = Install(L"");

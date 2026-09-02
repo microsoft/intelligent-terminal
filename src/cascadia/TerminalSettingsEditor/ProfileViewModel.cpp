@@ -55,22 +55,11 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         return id.empty() ? winrt::hstring{ L"Agent" } : winrt::hstring{ id };
     }
 
-    static bool _HostAgentInstalled(const std::wstring_view id)
-    {
-        wchar_t path[MAX_PATH];
-        const std::wstring executable{ id };
-        if (SearchPathW(nullptr, executable.c_str(), L".exe", MAX_PATH, path, nullptr) > 0)
-        {
-            return true;
-        }
-        const auto commandShim = executable + L".cmd";
-        return SearchPathW(nullptr, commandShim.c_str(), nullptr, MAX_PATH, path, nullptr) > 0;
-    }
-
     static void _RebuildAgentBackendList(
         const Windows::Foundation::Collections::IObservableVector<Editor::AgentEntry>& list,
         const std::wstring_view globalId,
         const std::wstring_view selected,
+        const std::unordered_set<std::wstring>& availableHostAgents,
         const std::wstring_view wslDistro,
         const std::vector<std::wstring>& availableWslAgents,
         const std::vector<::Microsoft::Terminal::Settings::Model::AgentRegistry::BuiltinAgent>& allowedAgents)
@@ -89,7 +78,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         bool globalEntryAdded = false;
         for (const auto& agent : allowedAgents)
         {
-            if (_HostAgentInstalled(agent.id))
+            if (availableHostAgents.contains(std::wstring{ agent.id }))
             {
                 const bool isGlobalAgent = agent.id == globalId;
                 entries.emplace_back(winrt::make<implementation::AgentEntry>(
@@ -367,9 +356,13 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         }
     }
 
-    void ProfileViewModel::_RebuildAgentBackendLists(
-        const std::wstring_view wslDistro,
-        const std::vector<std::wstring>& availableWslAgents)
+    void ProfileViewModel::SetAvailableHostAgents(const std::unordered_set<std::wstring>& availableHostAgents)
+    {
+        _availableHostAgents = availableHostAgents;
+        _RebuildAgentBackendLists();
+    }
+
+    void ProfileViewModel::_RebuildAgentBackendLists()
     {
         namespace Registry = ::Microsoft::Terminal::Settings::Model::AgentRegistry;
         const auto& globals = _appSettings.GlobalSettings();
@@ -377,15 +370,17 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
             _agentPaneBackendList,
             std::wstring_view{ globals.EffectiveAcpAgent() },
             std::wstring_view{ AgentPaneBackend() },
-            wslDistro,
-            availableWslAgents,
+            _availableHostAgents,
+            _availableWslDistro,
+            _availableWslAgents,
             Registry::FilteredAcpAgents());
         _RebuildAgentBackendList(
             _commandPaletteAgentList,
             std::wstring_view{ globals.EffectiveDelegateAgent() },
             std::wstring_view{ CommandPaletteAgent() },
-            wslDistro,
-            availableWslAgents,
+            _availableHostAgents,
+            _availableWslDistro,
+            _availableWslAgents,
             Registry::FilteredDelegateAgents());
         _NotifyChanges(
             L"AgentPaneBackendList",
@@ -400,12 +395,16 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         const auto commandline = std::wstring{ Commandline() };
         if (::Microsoft::Terminal::ShellIntegration::IsWslProfile(commandline))
         {
-            _RebuildAgentBackendLists(L"WSL", {});
+            _availableWslDistro = L"WSL";
+            _availableWslAgents.clear();
+            _RebuildAgentBackendLists();
             _ProbeWslAgentPaneBackendsAsync(commandline, generation);
         }
         else
         {
-            _RebuildAgentBackendLists({}, {});
+            _availableWslDistro.clear();
+            _availableWslAgents.clear();
+            _RebuildAgentBackendLists();
         }
     }
 
@@ -462,7 +461,9 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         co_await wil::resume_foreground(dispatcher);
         if (generation == _agentPaneBackendProbeGeneration)
         {
-            _RebuildAgentBackendLists(distro, availableAgents);
+            _availableWslDistro = std::move(distro);
+            _availableWslAgents = std::move(availableAgents);
+            _RebuildAgentBackendLists();
         }
     }
 

@@ -298,18 +298,18 @@ pub async fn run_recommendation_executor(
         let delegate_agents = delegate_agents.lock().unwrap().clone();
         let result =
             match bind_choice_target(&mut exec.choice, exec.context.target_pane_id.as_deref()) {
-            Ok(()) => {
-                execute_choice(
-                    &exec.choice,
-                    exec.insert_only,
-                    &shell_mgr,
-                    &delegate_agents,
-                    &event_tx,
-                )
-                .await
-            }
-            Err(err) => Err(err),
-        };
+                Ok(()) => {
+                    execute_choice(
+                        &exec.choice,
+                        exec.insert_only,
+                        &shell_mgr,
+                        &delegate_agents,
+                        &event_tx,
+                    )
+                    .await
+                }
+                Err(err) => Err(err),
+            };
         match result {
             Ok(()) => {}
             Err(err) => {
@@ -715,7 +715,6 @@ fn validate_action(action: &RecommendedAction) -> Result<()> {
             ensure_non_empty("input", input)?;
         }
         RecommendedAction::OpenAndSend {
-            target,
             parent,
             input,
             agent,
@@ -729,33 +728,27 @@ fn validate_action(action: &RecommendedAction) -> Result<()> {
             if let Some(agent) = agent.as_deref() {
                 ensure_non_empty("agent", agent)?;
             }
-            validate_direction(direction.as_deref(), target)?;
+            validate_direction(direction.as_deref())?;
         }
         RecommendedAction::Open {
-            target,
-            parent,
-            direction,
-            ..
+            parent, direction, ..
         } => {
             if let Some(parent) = parent.as_deref() {
                 ensure_non_empty("parent", parent)?;
             }
-            validate_direction(direction.as_deref(), target)?;
+            validate_direction(direction.as_deref())?;
         }
     }
 
     Ok(())
 }
 
-fn validate_direction(direction: Option<&str>, target: &OpenTarget) -> Result<()> {
+fn validate_direction(direction: Option<&str>) -> Result<()> {
     let Some(value) = direction else {
         return Ok(());
     };
     if value.is_empty() {
         bail!("field 'direction' must not be empty");
-    }
-    if matches!(target, OpenTarget::Tab) {
-        bail!("field 'direction' is only valid when target is 'panel'");
     }
     match value {
         "right" | "left" | "up" | "down" | "auto" | "automatic" => Ok(()),
@@ -1385,6 +1378,63 @@ pub(crate) fn build_wsl_delegate_commandline(
     Ok(escape_for_intermediate_shell(&bash_command))
 }
 
+pub(crate) fn build_delegate_resume_commandline(
+    runtime: &DelegateAgentRuntime,
+    session_id: &str,
+) -> Result<String> {
+    let commandline = runtime.commandline.trim();
+    if commandline.is_empty() {
+        bail!("delegate agent runtime commandline is empty");
+    }
+    let profile = agent_registry::lookup_profile_by_id(agent_registry::resolve_agent_id_from_cmd(
+        commandline,
+    ));
+    if profile.resume_flag.is_empty() {
+        bail!("delegate agent does not support resume");
+    }
+    let resolved = resolve_commandline_executable(commandline);
+    let resume = format!(
+        "{} {} {}",
+        resolved,
+        profile.resume_flag,
+        quote_windows_commandline_arg(session_id)
+    );
+    if needs_shell_launch(&resolved) {
+        Ok(format!("cmd /c {resume}"))
+    } else {
+        Ok(resume)
+    }
+}
+
+pub(crate) fn build_wsl_delegate_resume_commandline(
+    runtime: &DelegateAgentRuntime,
+    session_id: &str,
+) -> Result<String> {
+    let agent_cmd = runtime.commandline.trim();
+    if agent_cmd.is_empty() {
+        bail!("delegate agent runtime commandline is empty");
+    }
+    let profile =
+        agent_registry::lookup_profile_by_id(agent_registry::resolve_agent_id_from_cmd(agent_cmd));
+    if profile.resume_flag.is_empty() {
+        bail!("delegate agent does not support resume");
+    }
+
+    let mut parts: Vec<String> = split_windows_commandline(agent_cmd)
+        .into_iter()
+        .map(|token| sh_quote(&token))
+        .collect();
+    if parts.is_empty() {
+        bail!("delegate agent runtime commandline is empty");
+    }
+    parts.push(sh_quote(profile.resume_flag));
+    parts.push(sh_quote(session_id));
+    Ok(escape_for_intermediate_shell(&format!(
+        "exec {}",
+        parts.join(" ")
+    )))
+}
+
 /// Escape a bash command so it survives the single round of double-quote-context
 /// shell expansion the `wsl.exe` interop applies to `bash -lc "<cmd>"` before the
 /// inner login bash sees it.
@@ -1706,9 +1756,10 @@ fn extract_balanced_json_object(text: &str) -> Option<&str> {
 mod tests {
     use super::{
         bind_choice_target, build_delegate_launch_commandline,
-        build_delegate_launch_commandline_with_session, build_pwsh_base64_launch,
-        build_shell_multiline_delegate_launch, build_windows_powershell_base64_launch,
-        build_wsl_delegate_commandline, default_delegate_agent_runtimes,
+        build_delegate_launch_commandline_with_session, build_delegate_resume_commandline,
+        build_pwsh_base64_launch, build_shell_multiline_delegate_launch,
+        build_windows_powershell_base64_launch, build_wsl_delegate_commandline,
+        build_wsl_delegate_resume_commandline, default_delegate_agent_runtimes,
         escape_for_intermediate_shell, execute_choice, is_direct_known_agent_command,
         parse_autofix_response, parse_recommendation_set, pinned_session_id_for_runtime,
         pwsh_available, resolve_agent_profile, resolve_created_pane_id, sanitize_windows_agent_cwd,
@@ -1904,7 +1955,7 @@ mod tests {
             Some("Fix the build and report back"),
             None,
         )
-                .unwrap();
+        .unwrap();
 
         assert!(!commandline.contains("--model"));
         // May be wrapped as "cmd /c copilot ..." if copilot.exe isn't on PATH.
@@ -2089,7 +2140,7 @@ mod tests {
     #[test]
     fn pinned_session_id_appended_for_adapter_launch_command() {
         // Regression for the agent-identification bug behind PR review: an
-        // adapter-style launch ("npx -y @agentclientprotocol/claude-agent-acp@0.59.0" ->
+        // adapter-style launch ("npx -y @agentclientprotocol/claude-agent-acp@0.65.0" ->
         // claude) must still be recognized as a pinnable agent. The old
         // `split_whitespace().next()` + lookup_profile saw "npx" ->
         // DEFAULT_PROFILE -> no --session-id; `resolve_agent_id_from_cmd`
@@ -2098,7 +2149,7 @@ mod tests {
             id: "claude".to_string(),
             name: "Claude".to_string(),
             description: "Launches claude as a delegate agent.".to_string(),
-            commandline: "npx -y @agentclientprotocol/claude-agent-acp@0.59.0".to_string(),
+            commandline: "npx -y @agentclientprotocol/claude-agent-acp@0.65.0".to_string(),
             prompt_delivery: DelegatePromptDelivery::LaunchWithStartupPrompt,
             model: None,
         };
@@ -2209,7 +2260,7 @@ mod tests {
             Some("Inspect the repo and summarize"),
             None,
         )
-                .unwrap();
+        .unwrap();
 
         assert_eq!(
             commandline,
@@ -2615,7 +2666,7 @@ mod tests {
     }
 
     #[test]
-    fn rejects_open_tab_with_direction() {
+    fn accepts_open_tab_with_direction() {
         let text = r#"```json
 {
   "recommended_choice": 1,
@@ -2635,7 +2686,7 @@ mod tests {
 }
 ```"#;
 
-        assert!(parse_recommendation_set(text).is_err());
+        assert!(parse_recommendation_set(text).is_ok());
     }
 
     #[test]
@@ -3021,6 +3072,45 @@ mod tests {
     }
 
     #[test]
+    fn delegate_resume_commandline_uses_registered_resume_syntax() {
+        let claude = base64_runtime("claude.exe");
+        assert_eq!(
+            build_delegate_resume_commandline(&claude, "session id").expect("cmd"),
+            "claude.exe --resume \"session id\""
+        );
+
+        let codex = base64_runtime("codex.exe");
+        assert_eq!(
+            build_delegate_resume_commandline(&codex, "abc").expect("cmd"),
+            "codex.exe resume abc"
+        );
+    }
+
+    #[test]
+    fn delegate_resume_wraps_batch_shims_with_cmd() {
+        let root = std::env::temp_dir().join(format!("wta resume shim {}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&root).expect("create temp directory");
+        let shim = root.join("claude.cmd");
+        std::fs::write(&shim, "@echo off").expect("write shim");
+
+        let quoted_shim = super::quote_windows_commandline_arg(&shim.to_string_lossy());
+        let runtime = base64_runtime(&quoted_shim);
+        let cmd = build_delegate_resume_commandline(&runtime, "abc").expect("cmd");
+        assert!(cmd.starts_with("cmd /c "), "commandline: {cmd}");
+        assert!(cmd.contains("--resume abc"), "commandline: {cmd}");
+
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn wsl_delegate_resume_commandline_is_shell_quoted() {
+        let runtime = base64_runtime("claude");
+        let cmd =
+            build_wsl_delegate_resume_commandline(&runtime, "session's id").expect("resume cmd");
+        assert_eq!(cmd, r"exec 'claude' '--resume' 'session'\\''s id'");
+    }
+
+    #[test]
     fn escape_for_intermediate_shell_escapes_expansion_chars() {
         assert_eq!(escape_for_intermediate_shell("a$b`c\\d"), "a\\$b\\`c\\\\d");
         assert_eq!(escape_for_intermediate_shell("plain text"), "plain text");
@@ -3354,7 +3444,7 @@ mod tests {
             r#""C:\npm tools\codex.cmd" --search"#
         ));
         assert!(!is_direct_known_agent_command(
-            "npx -y @agentclientprotocol/codex-acp@1.1.4"
+            "npx -y @agentclientprotocol/codex-acp@1.1.13"
         ));
     }
 

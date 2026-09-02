@@ -41,7 +41,7 @@ auth.login_failed_help_default: "  Apăsați Enter pentru a încerca din nou, sa
 chat.activity_thinking: "Se gândește..."
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 chat.welcome_title: "Bun venit la Terminal Inteligent!"
-chat.welcome_disclaimer: "Terminal Inteligent folosește AI. Verificați erorile."
+chat.welcome_disclaimer: "Terminal Inteligent folosește AI."
 chat.plan_header: "Plan:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}
@@ -49,6 +49,17 @@ chat.plan_marker_pending: "[ ]"  # {Locked}
 chat.autofix_prompt_label: "Eșec recent al comenzii diagnosticat automat"
 chat.turn_canceled: "(anulat)"
 chat.turn_executed: "→ executat: %{title}"
+# Etichete persistente pentru categoriile de instrumente, afișate după un marcator de stare și înaintea subiectului.
+chat.tool_kind.run: "Rulare"
+chat.tool_kind.read: "Citire"
+chat.tool_kind.search: "Căutare"
+chat.tool_kind.edit: "Editare"
+chat.tool_kind.delete: "Ștergere"
+chat.tool_kind.move: "Mutare"
+chat.tool_kind.fetch: "Preluare"
+chat.tool_kind.think: "Gândire"
+chat.tool_kind.mode: "Mod"
+chat.tool_kind.other: "Instrument"
 
 # ── Input placeholders (src/ui/input.rs) ────────────────────────────────────
 input.placeholder.connected: "Întrebați orice, / pentru comenzi.."  # {Locked="/"}
@@ -134,8 +145,8 @@ system.resuming_session: "Se reia sesiunea %{session_id}..."
 system.unknown_command: "Comandă necunoscută \"%{command}\" — trimisă ca solicitare. Tastați /help pentru listă."  # {Locked="/help"}
 system.busy_use_stop: "Așteptați finalizarea solicitării curente sau folosiți mai întâi /stop."  # {Locked="/stop"}
 system.cannot_focus_session: "Nu se poate focaliza sesiunea %{session_id}: pare activă, dar încă nu este legat niciun GUID de panou. Încercați din nou în câteva momente."
-system.cannot_resume_no_load_session: "Nu se poate relua în panoul agentului: %{agent} nu a anunțat capacitatea ACP `loadSession`. Apăsați Enter (fără Shift) pentru a relua în schimb într-un panou de terminal nou."  # {Locked="ACP","loadSession","Enter","Shift"}
-system.cannot_resume_no_resume_flag: "Nu se poate relua sesiunea %{agent}: acest agent nu are un semnalizator de tip `--resume`. Apăsați Shift+Enter pentru a încerca reluarea în panoul agentului prin ACP."  # {Locked="--resume","Shift","Enter","ACP"}
+system.cannot_resume_no_load_session: "Nu se poate relua în panoul agentului: %{agent} nu a anunțat capacitatea ACP `loadSession`."  # {Locked="ACP","loadSession"}
+system.cannot_resume_no_resume_flag: "Nu se poate relua sesiunea %{agent}: acest agent nu are un semnalizator de tip `--resume`."  # {Locked="--resume"}
 system.cannot_resume_unknown_agent: "Nu se poate relua sesiunea %{session_id}: agentul său sursă este necunoscut acestei compilări WTA."
 system.cannot_resume_phantom_via_flag: "Nu se poate relua sesiunea %{agent} %{session_id}: a fost pornită, dar nu a acumulat nicio conversație, așa că %{agent} însuși ar respinge reluarea. Se elimină rândul."
 system.cannot_resume_phantom_via_load: "Nu se poate relua sesiunea %{agent} %{session_id}: a fost pornită, dar nu a acumulat nicio conversație, așa că %{agent} ar respinge încărcarea. Se elimină rândul."
@@ -177,7 +188,7 @@ hooks.marketplace_path_stale: "⚠ marketplace path stale"
 hooks.installed_but_disabled: "⚠ installed but disabled"
 hooks.not_installed: "✗ not installed"
 hooks.uninstall_skipped: "skipped (CLI not on PATH)"
-hooks.install_attempted: "wt-agent-hooks install attempted (idempotent). Run `wta hooks status` to inspect the result. Trace log: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"
+hooks.install_succeeded: "✓ wt-agent-hooks instalat pentru %{clis}"
 # ── Relative time + date formatting (src/ui/agents_view.rs) ─────────────────
 time.just_now: "chiar acum"
 time.minute_singular: "acum %{count} minut"
@@ -214,8 +225,17 @@ system.agent_switch_unavailable: "Comutarea agentului nu este disponibilă în a
 
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "Alegeți modelul pentru acest panou (/model <id> pentru a comuta direct)"  # {Locked="/model","<id>"}
+commands.config.summary: "Configurați această sesiune del agent"  # Agent means an AI coding agent; shown for the /config command. {Locked="/config"}
 commands.move.summary: "Mutați panoul agentului al acestei file (/move <position>)"  # {Locked="/move","<position>"}
 model_picker.title: "Selectați modelul (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "Agentul conectat nu a anunțat niciun model selectabil."
 system.model_set: "Modelul pentru acest panou a fost setat la %{model}."  # {Locked="%{model}"}
+
+# ── Session configuration picker (src/ui/config_popup.rs) ───────────────────
+# {Locked="↑","↓","Enter","Esc","ACP"} - key names and protocol name
+config_picker.title: "Configurare sesiune (↑ ↓ • Enter • Esc)"
+# Shown when /config is used but the AI agent exposed no ACP select options.
+system.no_config_options: "Agentul conectat nu a anunțat nicio opțiune de sesiune configurabilă."
+# {option} is an Agent-provided option name; {error} is the ACP error.
+system.config_update_failed: "Nu s-a putut actualiza %{option}: %{error}"
 system.model_unknown: "Model necunoscut %{model} — tastați /model pentru a vedea lista disponibilă."  # {Locked="%{model}","/model"}

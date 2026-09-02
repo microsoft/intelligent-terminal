@@ -1,6 +1,6 @@
 {
   "name": "wt-agent-hooks",
-  "version": "0.1.4",
+  "version": "0.1.6",
   "description": "Forward Codex hook events to Windows Terminal for session-management UI.",
   "author": {
     "name": "Agentic Terminal"

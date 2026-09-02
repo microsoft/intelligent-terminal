@@ -23,6 +23,7 @@ $models = @(
     @{ value = 'initial-model'; name = 'Initial Model' }
     @{ value = 'effective-model'; name = 'Effective Model' }
 )
+$currentModel = 'initial-model'
 
 while ($null -ne ($line = [Console]::In.ReadLine())) {
     $request = $line | ConvertFrom-Json
@@ -55,7 +56,7 @@ while ($null -ne ($line = [Console]::In.ReadLine())) {
                             name = 'Model'
                             category = 'model'
                             type = 'select'
-                            currentValue = 'initial-model'
+                            currentValue = $currentModel
                             options = $models
                         }
                     )
@@ -63,10 +64,27 @@ while ($null -ne ($line = [Console]::In.ReadLine())) {
             }
         }
         { $_ -in @('session/set_config_option', 'session/set_model') } {
+            $currentModel = if ($request.params.value) {
+                [string]$request.params.value
+            }
+            else {
+                [string]$request.params.modelId
+            }
             Send-AcpMessage @{
                 jsonrpc = '2.0'
                 id = $request.id
-                result = @{}
+                result = @{
+                    configOptions = @(
+                        @{
+                            id = 'model'
+                            name = 'Model'
+                            category = 'model'
+                            type = 'select'
+                            currentValue = $currentModel
+                            options = $models
+                        }
+                    )
+                }
             }
         }
     }

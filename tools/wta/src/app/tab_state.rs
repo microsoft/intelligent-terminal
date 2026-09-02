@@ -1,4 +1,5 @@
-use std::collections::{HashMap, VecDeque};
+use std::cell::RefCell;
+use std::collections::{HashSet, VecDeque};
 
 use serde::{Deserialize, Serialize};
 
@@ -18,6 +19,58 @@ pub enum NoticeKind {
     Error,
 }
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ToolCallKind {
+    Read,
+    Edit,
+    Delete,
+    Move,
+    Search,
+    Execute,
+    Think,
+    Fetch,
+    SwitchMode,
+    #[default]
+    Other,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ToolCallOutput {
+    pub text: String,
+    #[serde(default)]
+    pub truncated: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ToolCallLocation {
+    pub path: String,
+    #[serde(default)]
+    pub line: Option<u32>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ToolCallContent {
+    Text(ToolCallOutput),
+    Diff {
+        path: String,
+        #[serde(default)]
+        old_text: Option<ToolCallOutput>,
+        new_text: ToolCallOutput,
+    },
+    Terminal {
+        id: String,
+        #[serde(default)]
+        output: Option<ToolCallOutput>,
+        #[serde(default)]
+        exit_code: Option<i64>,
+    },
+    Attachment {
+        label: String,
+        #[serde(default)]
+        uri: Option<String>,
+    },
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum ChatMessage {
     User(String),
@@ -32,6 +85,8 @@ pub enum ChatMessage {
         id: String,
         title: String,
         status: String,
+        #[serde(default)]
+        kind: ToolCallKind,
         /// Concise path/command hint pulled from the ACP tool call's
         /// `locations` or summarized `raw_input`. `None` when no useful
         /// target was reported or the title already states it verbatim.
@@ -40,6 +95,21 @@ pub enum ChatMessage {
         /// Commands render on their own indented line below the title.
         #[serde(default)]
         location_is_command: bool,
+        /// Working directory reported by the Agent for an execute tool.
+        #[serde(default)]
+        cwd: Option<String>,
+        /// Bounded text reported through ACP tool-call content/raw output.
+        #[serde(default)]
+        output: Option<ToolCallOutput>,
+        /// Process exit code, only when explicitly reported by the Agent.
+        #[serde(default)]
+        exit_code: Option<i64>,
+        /// Standard ACP tool content, retained for expanded details.
+        #[serde(default)]
+        content: Vec<ToolCallContent>,
+        /// All standard ACP locations, including optional line numbers.
+        #[serde(default)]
+        locations: Vec<ToolCallLocation>,
     },
     Plan(Vec<PlanEntry>),
     Error(String),
@@ -47,7 +117,7 @@ pub enum ChatMessage {
     /// codes, OSC sequences). Distinct from `Error` so we can theme it
     /// differently and skip autofix wiring.
     AgentEvent(String),
-    /// "Intelligent Terminal uses AI. Check for mistakes" disclaimer.
+    /// "Intelligent Terminal uses AI." disclaimer.
     /// Pushed on every agent-pane startup,
     /// no persistence gating — getting cleared by the next turn is fine,
     /// the next pane startup re-pushes it.
@@ -104,8 +174,7 @@ pub struct CompletedTurn {
 /// Maximum displayed characters for a collapsed turn header preview.
 /// Picked so the `▶ > <preview>…` row stays well under a typical 120-col
 /// wrap width even after the chevron + prompt prefix; longer prompts get
-/// truncated with a trailing ellipsis. The full original text is always
-/// preserved in the turn's first `details` entry.
+/// truncated with a trailing ellipsis.
 const COLLAPSED_PROMPT_PREVIEW_CHARS: usize = 80;
 
 /// Build the single-line preview shown in a collapsed `CompletedTurn`
@@ -137,6 +206,14 @@ pub fn collapsed_prompt_preview(text: &str) -> String {
     out
 }
 
+fn replay_user_request(text: &str) -> &str {
+    const DELIMITER: &str = "## User Request\n";
+    text.rsplit_once(DELIMITER)
+        .map(|(_, request)| request.trim())
+        .filter(|request| !request.is_empty())
+        .unwrap_or_else(|| text.trim())
+}
+
 pub struct PermissionState {
     pub tool_call_id: String,
     /// Fallback single-line text used when the panel cannot fit a full card.
@@ -152,6 +229,70 @@ pub struct PermissionState {
     pub options: Vec<PermOption>,
     pub selected: usize,
     pub responder: Option<tokio::sync::oneshot::Sender<String>>,
+}
+
+pub struct UserInputState {
+    pub request_id: String,
+    pub request: crate::agent_tools::user_input::UserInputRequest,
+    pub selected: usize,
+    pub input: String,
+    pub cursor_pos: usize,
+    pub responder:
+        Option<tokio::sync::oneshot::Sender<crate::agent_tools::user_input::UserInputResponse>>,
+}
+
+impl UserInputState {
+    pub fn selection_count(&self) -> usize {
+        self.request.choices.len() + usize::from(self.request.allow_freeform)
+    }
+
+    pub fn freeform_selected(&self) -> bool {
+        self.request.allow_freeform && self.selected == self.request.choices.len()
+    }
+
+    pub fn insert_input_char(&mut self, character: char) {
+        super::input_edit::TextEditor::new(&mut self.input, &mut self.cursor_pos)
+            .insert_char(character);
+    }
+
+    pub fn delete_before_cursor(&mut self) {
+        super::input_edit::TextEditor::new(&mut self.input, &mut self.cursor_pos)
+            .delete_before_cursor();
+    }
+
+    pub fn delete_at_cursor(&mut self) {
+        super::input_edit::TextEditor::new(&mut self.input, &mut self.cursor_pos)
+            .delete_at_cursor();
+    }
+
+    pub fn move_cursor_left(&mut self) {
+        super::input_edit::TextEditor::new(&mut self.input, &mut self.cursor_pos).move_left();
+    }
+
+    pub fn move_cursor_right(&mut self) {
+        super::input_edit::TextEditor::new(&mut self.input, &mut self.cursor_pos).move_right();
+    }
+
+    pub fn move_cursor_word_left(&mut self) {
+        super::input_edit::TextEditor::new(&mut self.input, &mut self.cursor_pos).move_word_left();
+    }
+
+    pub fn move_cursor_word_right(&mut self) {
+        super::input_edit::TextEditor::new(&mut self.input, &mut self.cursor_pos).move_word_right();
+    }
+
+    pub fn move_cursor_home(&mut self) {
+        super::input_edit::TextEditor::new(&mut self.input, &mut self.cursor_pos).move_home();
+    }
+
+    pub fn move_cursor_end(&mut self) {
+        super::input_edit::TextEditor::new(&mut self.input, &mut self.cursor_pos).move_end();
+    }
+
+    pub fn delete_word_before_cursor(&mut self) {
+        super::input_edit::TextEditor::new(&mut self.input, &mut self.cursor_pos)
+            .delete_word_before_cursor();
+    }
 }
 
 impl PermissionState {
@@ -182,11 +323,97 @@ pub enum RecommendationFocus {
 ///
 /// `by` deliberately does NOT clamp to `max` — the bound may be stale at
 /// input time (the lazy chat build only learns `max` after exhausting
-/// history). Clamping happens on the next `set_max`.
+/// history). Rendering clamps and retries in the same frame when it discovers
+/// that the requested offset exceeds the real history.
 #[derive(Debug, Default, Clone, Copy)]
 pub struct Scroll {
     pub offset: usize,
     pub max: usize,
+}
+
+#[derive(Debug, Default)]
+struct CompletedTurnHeightCache {
+    wrap_width: usize,
+    turn_count: usize,
+    heights: Vec<Option<usize>>,
+    known_height_sum: usize,
+    known_height_count: usize,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct CompletedTurnViewportAnchor {
+    pub index: usize,
+    pub row: usize,
+    pub row_offset: usize,
+}
+
+#[derive(Debug, Default)]
+pub(crate) struct CompletedTurnLayoutState {
+    height_cache: RefCell<CompletedTurnHeightCache>,
+    visible_anchors: Vec<CompletedTurnViewportAnchor>,
+    viewport_anchor: Option<CompletedTurnViewportAnchor>,
+}
+
+impl CompletedTurnHeightCache {
+    fn clear(&mut self) {
+        *self = Self::default();
+    }
+
+    fn sync(&mut self, wrap_width: usize, turn_count: usize) {
+        if self.wrap_width != wrap_width || turn_count < self.turn_count {
+            self.wrap_width = wrap_width;
+            self.heights.clear();
+            self.known_height_sum = 0;
+            self.known_height_count = 0;
+        }
+        self.turn_count = turn_count;
+        self.heights.resize(turn_count, None);
+    }
+
+    fn get(&mut self, index: usize, wrap_width: usize, turn_count: usize) -> Option<usize> {
+        self.sync(wrap_width, turn_count);
+        self.heights.get(index).copied().flatten()
+    }
+
+    fn set(&mut self, index: usize, height: usize, wrap_width: usize, turn_count: usize) {
+        self.sync(wrap_width, turn_count);
+        if let Some(entry) = self.heights.get_mut(index) {
+            if let Some(previous) = entry.replace(height) {
+                self.known_height_sum = self
+                    .known_height_sum
+                    .saturating_sub(previous)
+                    .saturating_add(height);
+            } else {
+                self.known_height_sum = self.known_height_sum.saturating_add(height);
+                self.known_height_count = self.known_height_count.saturating_add(1);
+            }
+        }
+    }
+
+    fn invalidate(&mut self, index: usize) {
+        if let Some(entry) = self.heights.get_mut(index) {
+            if let Some(height) = entry.take() {
+                self.known_height_sum = self.known_height_sum.saturating_sub(height);
+                self.known_height_count = self.known_height_count.saturating_sub(1);
+            }
+        }
+    }
+
+    fn estimated_total(&mut self, wrap_width: usize, turn_count: usize) -> usize {
+        self.sync(wrap_width, turn_count);
+        if self.known_height_count == 0 {
+            return turn_count;
+        }
+        let average_height = self
+            .known_height_sum
+            .saturating_add(self.known_height_count - 1)
+            / self.known_height_count;
+        self.known_height_sum.saturating_add(
+            turn_count
+                .saturating_sub(self.known_height_count)
+                .saturating_mul(average_height),
+        )
+    }
 }
 
 impl Scroll {
@@ -224,6 +451,74 @@ pub(crate) struct PendingTerminalActionProposal {
     pub recommendations: super::RecommendationSet,
 }
 
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
+pub enum ConfigPickerState {
+    #[default]
+    Closed,
+    Options {
+        selected: usize,
+    },
+    Values {
+        option_id: String,
+        selected: usize,
+        parent_selected: Option<usize>,
+    },
+}
+
+impl ConfigPickerState {
+    pub fn is_open(&self) -> bool {
+        !matches!(self, Self::Closed)
+    }
+
+    pub fn selected(&self) -> usize {
+        match self {
+            Self::Closed => 0,
+            Self::Options { selected } | Self::Values { selected, .. } => *selected,
+        }
+    }
+
+    pub fn option_id(&self) -> Option<&str> {
+        match self {
+            Self::Values { option_id, .. } => Some(option_id),
+            _ => None,
+        }
+    }
+
+    pub fn reconcile(&mut self, options: &[crate::app_contracts::AcpSessionConfigOption]) {
+        let next = match std::mem::take(self) {
+            Self::Closed => Self::Closed,
+            Self::Options { selected } if !options.is_empty() => Self::Options {
+                selected: selected.min(options.len() - 1),
+            },
+            Self::Values {
+                option_id,
+                selected,
+                parent_selected,
+            } => {
+                let value_count = options
+                    .iter()
+                    .find(|option| option.id == option_id)
+                    .map(|option| option.values.len());
+                match value_count {
+                    Some(value_count) if value_count > 0 => Self::Values {
+                        option_id,
+                        selected: selected.min(value_count - 1),
+                        parent_selected,
+                    },
+                    _ => parent_selected
+                        .filter(|_| !options.is_empty())
+                        .map(|selected| Self::Options {
+                            selected: selected.min(options.len() - 1),
+                        })
+                        .unwrap_or(Self::Closed),
+                }
+            }
+            Self::Options { .. } => Self::Closed,
+        };
+        *self = next;
+    }
+}
+
 /// Everything that conceptually belongs to one tab's conversation: the
 /// message history, the streaming buffer of the in-flight prompt, the
 /// pending tool calls, the recommendations panel state, etc.
@@ -244,21 +539,33 @@ pub struct TabSession {
     // Conversation history
     pub messages: Vec<ChatMessage>,
     pub completed_turns: Vec<CompletedTurn>,
+    /// UI-only disclosure state keyed by the ACP session's tool-call IDs.
+    pub(crate) expanded_completed_tool_calls: HashSet<String>,
+    pub(crate) completed_turn_layout: CompletedTurnLayoutState,
+    /// Latched after the first prompt or session/load. A pre-warmed session/new
+    /// alone must not become resumable; `/clear` keeps the same session resumable.
+    pub has_meaningful_conversation: bool,
+    /// Preserves whether the current session is resumable while a replacement
+    /// `session/load` is in flight so a failed load can roll back cleanly.
+    pub(crate) meaningful_conversation_before_load: Option<bool>,
     /// Tab/Shift+Tab selects a past turn (most recent first). Enter then
     /// toggles `CompletedTurn.expanded`. None means no selection — Enter
     /// goes to the input/prompt path as before.
     pub selected_completed_turn_idx: Option<usize>,
+    /// Set when keyboard navigation changes the completed-turn selection.
+    /// The chat render pass consumes it after adjusting scroll just enough to
+    /// reveal the selected turn.
+    pub completed_turn_selection_visible_pending: bool,
     pub chat_scroll: Scroll,
 
-    // Streaming state
-    pub pending_agent_response: String,
-    /// Accumulator for `session/update` user_message_chunk events
-    /// arriving during an ACP `session/load` replay (the historical
-    /// user prompt for the next replayed turn). Flushed as a
-    /// `ChatMessage::User` whenever a turn boundary is detected — an
-    /// agent message / thought / tool call starts, OR the load
-    /// completes (SessionAttached for the loading tab).
-    pub pending_user_replay: String,
+    // Session replay state. These buffers are used only while loading_session
+    // is true and never share storage with a live turn.
+    pub replay_agent_buffer: String,
+    pub replay_user_buffer: String,
+    /// ACP message id for `replay_user_buffer`. Chunks with the same id belong
+    /// to one user message; an id change is a turn boundary even when the
+    /// preceding turn produced only an out-of-band recommendation card.
+    pub replay_user_message_id: Option<String>,
     /// True between the inbound `load_session` event and the
     /// `SessionAttached` event that closes out the ACP `session/load`
     /// call. While set, session/update chunk handlers accept chunks
@@ -279,22 +586,23 @@ pub struct TabSession {
     // (see `doc/specs/turn-state-refactor.md`).
     pub turn: TurnState,
     pub activity_frame: usize,
-    /// Typewriter reveal cursor: how many characters of the *user-visible*
-    /// streaming text are currently shown. The full text lives in
-    /// `turn.buffer()`; the renderer only emits the first `reveal_chars`
-    /// chars of it. Advanced toward the full length by `RevealTick`
-    /// (`advance_reveal`), reset to 0 when a new turn starts streaming, and
-    /// made irrelevant on finalize (the committed message renders in full).
+    /// Ephemeral ACP thought text shown only until visible assistant output
+    /// or another structured activity begins. It never enters `messages` or
+    /// `completed_turns`.
+    pub(crate) streaming_thought: String,
+    /// Typewriter reveal cursor for the currently visible thought or final
+    /// assistant-text item. Advanced toward its full length by `RevealTick`.
     pub reveal_chars: usize,
     pub timing_note: Option<String>,
     pub selection_visible_pending: bool,
 
-    // Tool calls / permission
-    pub tool_calls: HashMap<String, (String, String)>,
+    // Blocking action queues
     /// FIFO of pending permission requests for this session. The front
     /// entry is the one currently rendered and accepting keys; the rest
     /// queue up.
     pub permission: VecDeque<PermissionState>,
+    /// FIFO of blocking clarification requests from the session MCP tool.
+    pub user_input: VecDeque<UserInputState>,
     // Recommendation card UI focus (the set itself lives on
     // `turn.recommendations()`).
     pub selected_recommendation: usize,
@@ -336,6 +644,10 @@ pub struct TabSession {
     pub model_picker_open: bool,
     /// Highlighted row in the open model picker.
     pub model_picker_selected: usize,
+    /// Navigation state for the ACP session configuration picker.
+    pub config_picker: ConfigPickerState,
+    /// Config option currently awaiting a `session/set_config_option` response.
+    pub config_pending_id: Option<String>,
     /// True while the `/agent` picker is open for this tab.
     pub agent_picker_open: bool,
     /// Highlighted row in `App::available_agents`.
@@ -358,24 +670,235 @@ pub struct TabSession {
 }
 
 impl TabSession {
+    const MAX_STREAMING_THOUGHT_CHARS: usize = 4000;
+
+    /// Returns the ACP session id only after the conversation is worth restoring.
+    pub(crate) fn resumable_session_id(&self) -> Option<&str> {
+        self.has_meaningful_conversation.then_some(
+            self.loading_target_session_id
+                .as_deref()
+                .or(self.session_id.as_deref()),
+        )?
+    }
+
+    pub(crate) fn cached_completed_turn_height(
+        &self,
+        index: usize,
+        wrap_width: usize,
+    ) -> Option<usize> {
+        self.completed_turn_layout.height_cache.borrow_mut().get(
+            index,
+            wrap_width,
+            self.completed_turns.len(),
+        )
+    }
+
+    pub(crate) fn cache_completed_turn_height(
+        &self,
+        index: usize,
+        wrap_width: usize,
+        height: usize,
+    ) {
+        self.completed_turn_layout.height_cache.borrow_mut().set(
+            index,
+            height,
+            wrap_width,
+            self.completed_turns.len(),
+        );
+    }
+
+    pub(crate) fn invalidate_completed_turn_height(&self, index: usize) {
+        self.completed_turn_layout
+            .height_cache
+            .borrow_mut()
+            .invalidate(index);
+    }
+
+    pub(crate) fn estimated_completed_turn_height(&self, wrap_width: usize) -> usize {
+        self.completed_turn_layout
+            .height_cache
+            .borrow_mut()
+            .estimated_total(wrap_width, self.completed_turns.len())
+    }
+
+    pub(crate) fn completed_turn_viewport_anchor(&self) -> Option<CompletedTurnViewportAnchor> {
+        self.completed_turn_layout.viewport_anchor
+    }
+
+    pub(crate) fn finish_completed_turn_layout(
+        &mut self,
+        visible_anchors: Vec<CompletedTurnViewportAnchor>,
+    ) {
+        self.completed_turn_layout.visible_anchors = visible_anchors;
+        self.completed_turn_layout.viewport_anchor = None;
+    }
+
+    pub(crate) fn clear_completed_turns(&mut self) {
+        self.completed_turns.clear();
+        self.expanded_completed_tool_calls.clear();
+        self.completed_turn_layout = CompletedTurnLayoutState::default();
+    }
+
+    pub(crate) fn completed_tool_call_expanded(&self, id: &str) -> bool {
+        self.expanded_completed_tool_calls.contains(id)
+    }
+
+    pub(crate) fn toggle_completed_tool_call(
+        &mut self,
+        turn_index: usize,
+        detail_index: usize,
+    ) -> bool {
+        let Some(ChatMessage::ToolCall { id, .. }) = self
+            .completed_turns
+            .get(turn_index)
+            .and_then(|turn| turn.details.get(detail_index))
+        else {
+            return false;
+        };
+        let id = id.clone();
+        self.completed_turn_layout.viewport_anchor = self
+            .completed_turn_layout
+            .visible_anchors
+            .iter()
+            .copied()
+            .find(|anchor| anchor.index == turn_index);
+        if !self.expanded_completed_tool_calls.insert(id.clone()) {
+            self.expanded_completed_tool_calls.remove(&id);
+        }
+        self.invalidate_completed_turn_height(turn_index);
+        true
+    }
+
+    pub(crate) fn toggle_completed_tool_group(
+        &mut self,
+        turn_index: usize,
+        first_detail_index: usize,
+        detail_count: usize,
+    ) -> bool {
+        let Some(turn) = self.completed_turns.get(turn_index) else {
+            return false;
+        };
+        let ids = turn
+            .details
+            .iter()
+            .skip(first_detail_index)
+            .take(detail_count)
+            .filter_map(|message| match message {
+                ChatMessage::ToolCall { id, .. } => Some(id.clone()),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        if ids.len() != detail_count || ids.is_empty() {
+            return false;
+        }
+
+        self.completed_turn_layout.viewport_anchor = self
+            .completed_turn_layout
+            .visible_anchors
+            .iter()
+            .copied()
+            .find(|anchor| anchor.index == turn_index);
+        let expand = ids
+            .iter()
+            .any(|id| !self.expanded_completed_tool_calls.contains(id));
+        if expand {
+            self.expanded_completed_tool_calls.extend(ids);
+        } else {
+            for id in ids {
+                self.expanded_completed_tool_calls.remove(&id);
+            }
+        }
+        self.invalidate_completed_turn_height(turn_index);
+        true
+    }
+
+    pub(crate) fn toggle_all_completed_tool_calls(&mut self) -> bool {
+        let tool_calls = self
+            .completed_turns
+            .iter()
+            .flat_map(|turn| &turn.details)
+            .filter_map(|message| match message {
+                ChatMessage::ToolCall { id, .. } => Some(id.clone()),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        if tool_calls.is_empty() {
+            return false;
+        }
+
+        self.completed_turn_layout.viewport_anchor = self
+            .completed_turn_layout
+            .visible_anchors
+            .iter()
+            .copied()
+            .filter(|anchor| anchor.row_offset == 0)
+            .last();
+        let expand = tool_calls
+            .iter()
+            .any(|id| !self.expanded_completed_tool_calls.contains(id));
+        if expand {
+            self.expanded_completed_tool_calls.extend(tool_calls);
+        } else {
+            self.expanded_completed_tool_calls.clear();
+        }
+        self.completed_turn_layout.height_cache.get_mut().clear();
+        true
+    }
+
+    pub(crate) fn invalidate_pending_paste(&mut self) {
+        self.paste_pending = false;
+        self.paste_generation = self.paste_generation.wrapping_add(1);
+    }
+
     pub fn scroll_to_bottom(&mut self) {
         self.chat_scroll.offset = 0;
     }
 
-    pub(crate) fn should_show_thinking(&self) -> bool {
+    fn can_show_turn_activity(&self) -> bool {
         self.turn.is_in_flight()
             && self.turn.recommendations().is_none()
             && self.permission.is_empty()
+            && self.user_input.is_empty()
+            && self
+                .streaming_agent_text()
+                .is_none_or(|text| text.trim().is_empty())
+            && !self.messages.iter().any(|message| {
+                matches!(
+                    message,
+                    ChatMessage::ToolCall { status, .. }
+                        if status.eq_ignore_ascii_case("pending")
+                            || status.eq_ignore_ascii_case("inprogress")
+                            || status.eq_ignore_ascii_case("running")
+                )
+            })
+    }
+
+    fn has_visible_streaming_thought(&self) -> bool {
+        self.streaming_thought_text()
+            .is_some_and(|text| !text.trim().is_empty())
+    }
+
+    pub(crate) fn should_show_thinking(&self) -> bool {
+        self.can_show_turn_activity() && !self.has_visible_streaming_thought()
+    }
+
+    pub(crate) fn should_show_inline_thinking(&self) -> bool {
+        self.turn.is_in_flight() && !self.should_show_thinking()
     }
 
     /// Whether the input box is the live, enterable caret target.
     pub fn input_has_nav_focus(&self) -> bool {
-        self.selected_completed_turn_idx.is_none()
-            && (self.turn.recommendations().is_none()
-                || self.recommendation_focus == RecommendationFocus::Input)
+        self.selected_completed_turn_idx.is_none() && self.input_can_receive_nav_focus()
+    }
+
+    pub fn input_can_receive_nav_focus(&self) -> bool {
+        (self.turn.recommendations().is_none()
+            || self.recommendation_focus == RecommendationFocus::Input)
             && self.permission.is_empty()
+            && self.user_input.is_empty()
             && !self.paste_pending
             && !self.model_picker_open
+            && !self.config_picker.is_open()
             && !self.agent_picker_open
     }
 
@@ -410,32 +933,121 @@ impl TabSession {
 
     pub fn clear_chat_history(&mut self) {
         self.messages.clear();
-        self.tool_calls.clear();
+        self.clear_streaming_thought();
         self.permission.clear();
+        self.user_input.clear();
         self.activity_frame = 0;
-        self.pending_agent_response.clear();
-        self.pending_user_replay.clear();
+        self.replay_agent_buffer.clear();
+        self.replay_user_buffer.clear();
+        self.replay_user_message_id = None;
         self.chat_scroll.reset();
         self.timing_note = None;
         self.selection_visible_pending = false;
+        self.clear_completed_turn_selection();
         self.turn = TurnState::Idle;
         self.clear_recommendations();
         self.attachments
             .remove_tokens_from_input(&mut self.input, &mut self.cursor_pos);
         self.clear_history_draft_attachments();
-        self.paste_pending = false;
-        self.paste_generation = self.paste_generation.wrapping_add(1);
+        self.invalidate_pending_paste();
     }
 
     pub fn flush_load_replay_pending(&mut self) {
-        if !self.pending_user_replay.is_empty() {
-            let text = std::mem::take(&mut self.pending_user_replay);
-            self.messages.push(ChatMessage::User(text));
-        }
-        if !self.pending_agent_response.is_empty() {
-            let text = std::mem::take(&mut self.pending_agent_response);
+        self.flush_replay_user_buffer();
+        if !self.replay_agent_buffer.is_empty() {
+            let text = std::mem::take(&mut self.replay_agent_buffer);
             self.messages.push(ChatMessage::Agent(text));
         }
+    }
+
+    pub fn flush_replay_user_buffer(&mut self) {
+        if !self.replay_user_buffer.is_empty() {
+            let text = std::mem::take(&mut self.replay_user_buffer);
+            self.messages.push(ChatMessage::User(text));
+        }
+        self.replay_user_message_id = None;
+    }
+
+    pub fn append_agent_chunk(&mut self, text: &str) {
+        match self.messages.last_mut() {
+            Some(ChatMessage::Agent(current)) => current.push_str(text),
+            _ => {
+                self.messages.push(ChatMessage::Agent(text.to_string()));
+                self.reveal_chars = 0;
+            }
+        }
+    }
+
+    pub fn append_thought_chunk(&mut self, text: &str) {
+        if text.is_empty() {
+            self.clear_streaming_thought();
+            return;
+        }
+        if self.streaming_thought.is_empty() {
+            if self.streaming_agent_text().is_none() {
+                self.reveal_chars = 0;
+            }
+        }
+        self.streaming_thought.push_str(text);
+
+        let char_count = self.streaming_thought.chars().count();
+        let remove_chars = char_count.saturating_sub(Self::MAX_STREAMING_THOUGHT_CHARS);
+        if remove_chars > 0 {
+            let cut_at = self
+                .streaming_thought
+                .char_indices()
+                .nth(remove_chars)
+                .map_or(self.streaming_thought.len(), |(index, _)| index);
+            self.streaming_thought.drain(..cut_at);
+            if self.streaming_agent_text().is_none() {
+                self.reveal_chars = self.reveal_chars.saturating_sub(remove_chars);
+            }
+        }
+    }
+
+    pub fn clear_streaming_thought(&mut self) {
+        self.streaming_thought.clear();
+        if self.streaming_agent_text().is_none() {
+            self.reveal_chars = 0;
+        }
+    }
+
+    pub fn streaming_thought_text(&self) -> Option<&str> {
+        (!self.streaming_thought.is_empty()).then_some(self.streaming_thought.as_str())
+    }
+
+    pub fn streaming_agent_message_index(&self) -> Option<usize> {
+        self.turn
+            .is_streaming()
+            .then(|| self.messages.len().checked_sub(1))
+            .flatten()
+            .filter(|index| matches!(self.messages.get(*index), Some(ChatMessage::Agent(_))))
+    }
+
+    pub fn streaming_agent_text(&self) -> Option<&str> {
+        let index = self.streaming_agent_message_index()?;
+        match self.messages.get(index) {
+            Some(ChatMessage::Agent(text)) => Some(text),
+            _ => None,
+        }
+    }
+
+    pub fn active_agent_text(&self) -> String {
+        self.messages
+            .iter()
+            .filter_map(|message| match message {
+                ChatMessage::Agent(text) => Some(text.as_str()),
+                _ => None,
+            })
+            .collect::<Vec<_>>()
+            .join("")
+    }
+
+    pub fn take_current_turn_details(&mut self) -> Vec<ChatMessage> {
+        std::mem::take(&mut self.messages)
+            .into_iter()
+            .filter(|message| !matches!(message, ChatMessage::User(_)))
+            .collect()
     }
 
     pub fn pack_replayed_messages_into_turns(&mut self) {
@@ -452,17 +1064,36 @@ impl TabSession {
                         self.completed_turns.push(CompletedTurn {
                             prompt,
                             details,
-                            expanded: false,
+                            expanded: true,
                             trailing_marker: None,
                         });
                     }
-                    let preview = collapsed_prompt_preview(&text);
-                    let details = vec![ChatMessage::User(text)];
-                    current = Some((preview, details));
+                    // A replayed prompt still carries the terminal-agent
+                    // template, so the header shows only the request the user
+                    // actually typed; the wrapper is never rendered.
+                    // Keep the full request. The renderer collapses a turn
+                    // header itself (`build_completed_turn_lines`), so storing
+                    // a preview here would make the truncation permanent — an
+                    // expanded restored turn could never show more than the
+                    // first line.
+                    current = Some((replay_user_request(&text).to_string(), Vec::new()));
                 }
                 other => {
                     if let Some((_, details)) = current.as_mut() {
-                        details.push(other);
+                        match other {
+                            ChatMessage::Agent(text) => {
+                                if let Ok(recommendations) =
+                                    crate::coordinator::parse_recommendation_set(&text)
+                                {
+                                    details.push(ChatMessage::Agent(
+                                        super::format_recommendations_for_chat(&recommendations),
+                                    ));
+                                } else {
+                                    details.push(ChatMessage::Agent(text));
+                                }
+                            }
+                            other => details.push(other),
+                        }
                     } else {
                         kept.push(other);
                     }
@@ -473,7 +1104,7 @@ impl TabSession {
             self.completed_turns.push(CompletedTurn {
                 prompt,
                 details,
-                expanded: false,
+                expanded: true,
                 trailing_marker: None,
             });
         }
@@ -483,7 +1114,7 @@ impl TabSession {
     pub fn select_older_completed_turn(&mut self) {
         let len = self.completed_turns.len();
         if len == 0 {
-            self.selected_completed_turn_idx = None;
+            self.clear_completed_turn_selection();
             return;
         }
         self.selected_completed_turn_idx = match self.selected_completed_turn_idx {
@@ -491,12 +1122,13 @@ impl TabSession {
             Some(0) => None,
             Some(index) => Some(index - 1),
         };
+        self.completed_turn_selection_visible_pending = self.selected_completed_turn_idx.is_some();
     }
 
     pub fn select_newer_completed_turn(&mut self) {
         let len = self.completed_turns.len();
         if len == 0 {
-            self.selected_completed_turn_idx = None;
+            self.clear_completed_turn_selection();
             return;
         }
         self.selected_completed_turn_idx = match self.selected_completed_turn_idx {
@@ -504,23 +1136,48 @@ impl TabSession {
             Some(index) if index + 1 >= len => None,
             Some(index) => Some(index + 1),
         };
+        self.completed_turn_selection_visible_pending = self.selected_completed_turn_idx.is_some();
+    }
+
+    pub fn clear_completed_turn_selection(&mut self) {
+        self.selected_completed_turn_idx = None;
+        self.completed_turn_selection_visible_pending = false;
+    }
+
+    pub fn select_completed_turn(&mut self, index: usize) -> bool {
+        if index >= self.completed_turns.len() {
+            return false;
+        }
+        self.selected_completed_turn_idx = Some(index);
+        self.completed_turn_selection_visible_pending = true;
+        true
+    }
+
+    pub fn toggle_completed_turn(&mut self, index: usize) -> bool {
+        let Some(turn) = self.completed_turns.get_mut(index) else {
+            return false;
+        };
+        self.completed_turn_layout.viewport_anchor = self
+            .completed_turn_layout
+            .visible_anchors
+            .iter()
+            .copied()
+            .find(|anchor| anchor.index == index && anchor.row_offset == 0);
+        turn.expanded = !turn.expanded;
+        self.completed_turn_layout
+            .height_cache
+            .get_mut()
+            .invalidate(index);
+        true
     }
 
     pub fn toggle_selected_completed_turn(&mut self) {
         let Some(index) = self.selected_completed_turn_idx else {
             return;
         };
-        if let Some(turn) = self.completed_turns.get_mut(index) {
-            turn.expanded = !turn.expanded;
+        if self.toggle_completed_turn(index) {
+            self.completed_turn_selection_visible_pending = true;
         }
-    }
-
-    pub fn current_turn_details(&self) -> Vec<ChatMessage> {
-        self.messages
-            .iter()
-            .filter(|message| !matches!(message, ChatMessage::User(_)))
-            .cloned()
-            .collect()
     }
 }
 

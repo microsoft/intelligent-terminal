@@ -1,13 +1,17 @@
 use crate::app::{App, AppMode, View, DEFAULT_TAB_ID};
 use ratatui::prelude::*;
 
+use super::config_popup;
 use super::{
     action_panel, agent_popup, agents_view, auth, chat, command_popup, debug_panel, input,
-    model_popup, permission, recommendations, setup,
+    model_popup, permission, recommendations, setup, user_input,
 };
 
 pub fn render(frame: &mut Frame, app: &mut App) {
     let area = frame.area();
+    app.completed_turn_hits.clear();
+    app.completed_turn_action_links.clear();
+    app.input_dialog_area = None;
 
     // Auth mode: show auth screen above the input box
     if app.mode == AppMode::Auth {
@@ -52,6 +56,7 @@ pub fn render(frame: &mut Frame, app: &mut App) {
         let tab_id = app.tab_id.as_deref().unwrap_or(DEFAULT_TAB_ID).to_string();
         let activity_frame = app.activity_frame as usize;
         let cli_filter = app.current_cli_filter();
+        let source_filter = app.current_location_filter();
         let origin_filter = app.sessions_origin_filter;
         let pane_focused = app.pane_focused;
         let tab = app.tab_sessions.entry(tab_id).or_default();
@@ -76,6 +81,7 @@ pub fn render(frame: &mut Frame, app: &mut App) {
             &mut tab.agents_list_state,
             activity_frame,
             cli_filter.as_ref(),
+            &source_filter,
             origin_filter,
             show_loading,
             &tab.agents_view.search_query,
@@ -122,22 +128,43 @@ pub fn render(frame: &mut Frame, app: &mut App) {
     // height prediction and rendering in sync when a short pane switches
     // permission/recommendation content between full and compact forms.
     let chat_content_width = main_area.width.saturating_sub(2); // h_chat 1+1 padding
-    let chat_estimate = chat::estimated_block_height(app, chat_content_width);
-    let recommendation_natural_height = app
-        .current_tab()
-        .turn
-        .recommendations()
-        .map(|recommendations| {
-            action_panel::recommendation_panel_height(recommendations, main_area.width)
-        });
-    let permission_natural_height = app
-        .current_tab()
-        .permission
-        .front()
-        .map(|permission| {
-            action_panel::permission_card_height(permission, main_area.width)
-                .min(u16::MAX as usize) as u16
-        });
+    let chat_estimate = chat::estimated_block_height(app, chat_content_width, main_area.height);
+    let recommendation_natural_height =
+        app.current_tab()
+            .turn
+            .recommendations()
+            .map(|recommendations| {
+                action_panel::recommendation_panel_height(recommendations, main_area.width)
+            });
+    let permission_natural_height = app.current_tab().permission.front().map(|permission| {
+        let queue = &app.current_tab().permission;
+        let queued = queue
+            .iter()
+            .skip(1)
+            .take(permission::MAX_QUEUE_PREVIEW)
+            .map(|queued| {
+                queued
+                    .target
+                    .as_deref()
+                    .filter(|target| !target.is_empty())
+                    .unwrap_or(&queued.title)
+                    .lines()
+                    .next()
+                    .unwrap_or("")
+                    .to_string()
+            });
+        let hidden = queue
+            .len()
+            .saturating_sub(1 + permission::MAX_QUEUE_PREVIEW);
+        action_panel::permission_queue_card_height(
+            permission,
+            queue.len(),
+            queued,
+            hidden,
+            main_area.width,
+        )
+        .min(u16::MAX as usize) as u16
+    });
     let panel_layout = action_panel::plan(action_panel::LayoutRequest {
         available_rows: main_area.height,
         input_height,
@@ -195,14 +222,9 @@ pub fn render(frame: &mut Frame, app: &mut App) {
         ])
         .split(chunks[6]);
 
-    chat::render(frame, app, h_chat[1]);
+    chat::render(frame, app, h_chat[1], h_chat[2]);
     app.sync_rec_scroll_max(main_area.width, panel_layout.recommendation_height);
-    recommendations::render(
-        frame,
-        app,
-        h_rec[1],
-        panel_layout.recommendation_mode,
-    );
+    recommendations::render(frame, app, h_rec[1], panel_layout.recommendation_mode);
     if !app.current_tab().permission.is_empty() {
         permission::render(frame, app, h_perm[1]);
     }
@@ -231,6 +253,7 @@ pub fn render(frame: &mut Frame, app: &mut App) {
         recommendations::render_hint(frame, chunks[5]);
     }
     chat::render_activity(frame, app, h_activity[1]);
+    app.input_dialog_area = Some(chunks[7]);
     input::render(frame, app, chunks[7]);
 
     if let Some(debug_area) = debug_area {
@@ -253,8 +276,16 @@ pub fn render(frame: &mut Frame, app: &mut App) {
         model_popup::render_popup(frame, model_state, chunks[7]);
     }
 
+    if let Some(config_state) = app.config_popup_state() {
+        config_popup::render_popup(frame, config_state, chunks[7]);
+    }
+
     if let Some(agent_state) = app.agent_popup_state() {
         agent_popup::render_popup(frame, agent_state, chunks[7]);
+    }
+
+    if let Some(request) = app.current_tab().user_input.front() {
+        user_input::render(frame, request, chunks[7]);
     }
 
     // `/help` overlay sits on top of everything so the user can always

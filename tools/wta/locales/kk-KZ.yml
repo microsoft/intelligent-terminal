@@ -41,7 +41,7 @@ auth.login_failed_help_default: "  Қайталау үшін Enter пернес�
 chat.activity_thinking: "Ойланып жатырмын…"
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 chat.welcome_title: "Зияткер терминал-ға қош келдіңіз!"
-chat.welcome_disclaimer: "Зияткер терминал AI пайдаланады. Қателерді тексеріңіз."
+chat.welcome_disclaimer: "Зияткер терминал AI пайдаланады."
 chat.plan_header: "Жоспар:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}
@@ -49,6 +49,17 @@ chat.plan_marker_pending: "[ ]"  # {Locked}
 chat.autofix_prompt_label: "Соңғы пәрмен қателігі автоматты түрде диагноз қойылды"
 chat.turn_canceled: "(бас тартылды)"
 chat.turn_executed: "→ орындалды: %{title}"
+# Күй белгісінен кейін және тақырыптың алдында көрсетілетін тұрақты құрал санаты белгілері.
+chat.tool_kind.run: "Іске қосу"
+chat.tool_kind.read: "Оқу"
+chat.tool_kind.search: "Іздеу"
+chat.tool_kind.edit: "Өңдеу"
+chat.tool_kind.delete: "Жою"
+chat.tool_kind.move: "Жылжыту"
+chat.tool_kind.fetch: "Алу"
+chat.tool_kind.think: "Ойлау"
+chat.tool_kind.mode: "Режим"
+chat.tool_kind.other: "Құрал"
 
 # ── Input placeholders (src/ui/input.rs) ────────────────────────────────────
 input.placeholder.connected: "Кез келген сұрақ қойыңыз, / командалар үшін.."  # {Locked="/"}
@@ -147,8 +158,8 @@ system.resuming_session: "%{session_id} сеансы жалғастырылуд�
 system.unknown_command: "Белгісіз пәрмен \"%{command}\" — сұрау ретінде жіберілді. Тізім үшін /help теріңіз."  # {Locked="/help"}
 system.busy_use_stop: "Ағымдағы сұрау аяқталғанын күтіңіз немесе алдымен /stop пайдаланыңыз."  # {Locked="/stop"}
 system.cannot_focus_session: "%{session_id} сеансына фокус қою мүмкін емес: ол белсенді сияқты, бірақ әлі ешбір панель GUID-і байланыстырылмаған. Сәлден кейін қайталап көріңіз."
-system.cannot_resume_no_load_session: "Агент панелінде жалғастыру мүмкін емес: %{agent} ACP `loadSession` мүмкіндігін жарияламады. Оның орнына жаңа терминал панелінде жалғастыру үшін Enter (Shift баспай) басыңыз."  # {Locked="ACP","loadSession","Enter","Shift"}
-system.cannot_resume_no_resume_flag: "%{agent} сеансын жалғастыру мүмкін емес: бұл агентте `--resume` үлгісіндегі жалауша жоқ. Оның орнына ACP арқылы агент панелінде жалғастырып көру үшін Shift+Enter басыңыз."  # {Locked="--resume","Shift","Enter","ACP"}
+system.cannot_resume_no_load_session: "Агент панелінде жалғастыру мүмкін емес: %{agent} ACP `loadSession` мүмкіндігін жарияламады."  # {Locked="ACP","loadSession"}
+system.cannot_resume_no_resume_flag: "%{agent} сеансын жалғастыру мүмкін емес: бұл агентте `--resume` үлгісіндегі жалауша жоқ."  # {Locked="--resume"}
 system.cannot_resume_unknown_agent: "%{session_id} сеансын жалғастыру мүмкін емес: оның бастапқы агенті осы WTA құрастыруына белгісіз."
 system.cannot_resume_phantom_via_flag: "%{agent} %{session_id} сеансын жалғастыру мүмкін емес: ол басталған, бірақ ешқандай әңгіме жиналмаған, сондықтан %{agent} өзі жалғастыруды қабылдамайды. Жол жойылуда."
 system.cannot_resume_phantom_via_load: "%{agent} %{session_id} сеансын жалғастыру мүмкін емес: ол басталған, бірақ ешқандай әңгіме жиналмаған, сондықтан %{agent} жүктеуді қабылдамайды. Жол жойылуда."
@@ -190,7 +201,7 @@ hooks.marketplace_path_stale: "⚠ marketplace жолы ескірген"
 hooks.installed_but_disabled: "⚠ орнатылған бірақ өшірілген"
 hooks.not_installed: "✗ орнатылмаған"
 hooks.uninstall_skipped: "өткізілді (CLI PATH-те емес)"
-hooks.install_attempted: "wt-agent-hooks орнату әрекеті жасалды (idempotent). Нәтижені тексеру үшін `wta hooks status` іске қосыңыз. Із журналы: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"
+hooks.install_succeeded: "✓ wt-agent-hooks %{clis} үшін орнатылған"
 # ── Relative time and date formatting ───────────────────────────────────────
 time.just_now: "жаңа ғана"
 time.minute_singular: "%{count} минут бұрын"
@@ -215,8 +226,17 @@ system.agent_switch_unavailable: "Агентті ауыстыру Windows Termin
 
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "Осы панель үшін модельді таңдаңыз (тікелей ауыстыру үшін /model <id>)"  # {Locked="/model","<id>"}
+commands.config.summary: "Осы агент сеансын конфигурациялау"  # Agent means an AI coding agent; shown for the /config command. {Locked="/config"}
 commands.move.summary: "Осы қойындының агент панелін жылжыту (/move <position>)"  # {Locked="/move","<position>"}
 model_picker.title: "Модельді таңдаңыз (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "Қосылған агент таңдауға болатын ешбір модельді жарияламады."
 system.model_set: "Осы панельдің моделі %{model} етіп орнатылды."  # {Locked="%{model}"}
+
+# ── Session configuration picker (src/ui/config_popup.rs) ───────────────────
+# {Locked="↑","↓","Enter","Esc","ACP"} - key names and protocol name
+config_picker.title: "Сеанс конфигурациясы (↑ ↓ • Enter • Esc)"
+# Shown when /config is used but the AI agent exposed no ACP select options.
+system.no_config_options: "Қосылған агент ешқандай бапталатын сеанс опцияларын жарияламады."
+# {option} is an Agent-provided option name; {error} is the ACP error.
+system.config_update_failed: "%{option} жаңарту сәтсіз аяқталды: %{error}"
 system.model_unknown: "Белгісіз модель %{model} — қолжетімді тізімді көру үшін /model теріңіз."  # {Locked="%{model}","/model"}

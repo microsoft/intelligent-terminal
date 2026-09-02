@@ -4,6 +4,8 @@
 //! boundaries. Mutable UI state remains owned by `app`.
 
 mod agent;
+mod command;
+mod config;
 mod diagnostics;
 mod event;
 mod model;
@@ -12,6 +14,8 @@ mod plan;
 mod preflight;
 
 pub use agent::AvailableAgent;
+pub use command::{AcpSessionCommand, CompletionBehavior};
+pub use config::{AcpSessionConfigOption, AcpSessionConfigValue};
 pub use diagnostics::{DebugDir, DebugMessage};
 pub use event::AppEvent;
 pub use model::AcpModelInfo;

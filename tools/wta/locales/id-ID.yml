@@ -41,7 +41,7 @@ auth.login_failed_help_default: "  Tekan Enter untuk mencoba lagi, atau Esc untu
 chat.activity_thinking: "Berpikir…"
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 chat.welcome_title: "Selamat datang di Terminal Cerdas!"
-chat.welcome_disclaimer: "Terminal Cerdas menggunakan AI. Periksa kesalahan."
+chat.welcome_disclaimer: "Terminal Cerdas menggunakan AI."
 chat.plan_header: "Rencana:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}
@@ -49,6 +49,17 @@ chat.plan_marker_pending: "[ ]"  # {Locked}
 chat.autofix_prompt_label: "Kegagalan perintah terbaru terdiagnosis otomatis"
 chat.turn_canceled: "(dibatalkan)"
 chat.turn_executed: "→ dijalankan: %{title}"
+# Label kategori alat persisten yang ditampilkan setelah penanda status dan sebelum subjek.
+chat.tool_kind.run: "Jalankan"
+chat.tool_kind.read: "Baca"
+chat.tool_kind.search: "Cari"
+chat.tool_kind.edit: "Edit"
+chat.tool_kind.delete: "Hapus"
+chat.tool_kind.move: "Pindahkan"
+chat.tool_kind.fetch: "Ambil"
+chat.tool_kind.think: "Pikirkan"
+chat.tool_kind.mode: "Mode"
+chat.tool_kind.other: "Alat"
 
 # ── Input placeholders (src/ui/input.rs) ────────────────────────────────────
 input.placeholder.connected: "Tanyakan apa saja, / untuk perintah.."  # {Locked="/"}
@@ -134,8 +145,8 @@ system.resuming_session: "Melanjutkan sesi %{session_id}..."
 system.unknown_command: "Perintah tidak dikenal \"%{command}\" — dikirim sebagai prompt. Ketik /help untuk daftar."  # {Locked="/help"}
 system.busy_use_stop: "Tunggu hingga prompt saat ini selesai, atau jalankan /stop terlebih dahulu."  # {Locked="/stop"}
 system.cannot_focus_session: "Tidak dapat memfokuskan sesi %{session_id}: sesi tampak aktif, tetapi GUID panel belum terikat. Coba lagi sebentar lagi."
-system.cannot_resume_no_load_session: "Tidak dapat melanjutkan di panel agen: %{agent} tidak mengiklankan kapabilitas ACP `loadSession`. Tekan Enter (tanpa Shift) untuk melanjutkan di panel terminal baru sebagai gantinya."  # {Locked="ACP","loadSession","Enter","Shift"}
-system.cannot_resume_no_resume_flag: "Tidak dapat melanjutkan sesi %{agent}: agen ini tidak memiliki flag bergaya `--resume`. Tekan Shift+Enter untuk mencoba melanjutkan di dalam panel agen melalui ACP sebagai gantinya."  # {Locked="--resume","Shift","Enter","ACP"}
+system.cannot_resume_no_load_session: "Tidak dapat melanjutkan di panel agen: %{agent} tidak mengiklankan kapabilitas ACP `loadSession`."  # {Locked="ACP","loadSession"}
+system.cannot_resume_no_resume_flag: "Tidak dapat melanjutkan sesi %{agent}: agen ini tidak memiliki flag bergaya `--resume`."  # {Locked="--resume"}
 system.cannot_resume_unknown_agent: "Tidak dapat melanjutkan sesi %{session_id}: agen sumbernya tidak dikenal oleh build ini."
 system.cannot_resume_phantom_via_flag: "Tidak dapat melanjutkan sesi %{agent} %{session_id}: sesi ini dimulai tetapi tidak pernah mengumpulkan percakapan apa pun, sehingga %{agent} sendiri akan menolak pelanjutan. Menghapus baris."
 system.cannot_resume_phantom_via_load: "Tidak dapat melanjutkan sesi %{agent} %{session_id}: sesi ini dimulai tetapi tidak pernah mengumpulkan percakapan apa pun, sehingga %{agent} akan menolak pemuatan. Menghapus baris."
@@ -177,7 +188,7 @@ hooks.marketplace_path_stale: "⚠ jalur marketplace sudah usang"
 hooks.installed_but_disabled: "⚠ terinstal tetapi dinonaktifkan"
 hooks.not_installed: "✗ belum terinstal"
 hooks.uninstall_skipped: "dilewati (CLI tidak ada di PATH)"
-hooks.install_attempted: "Instalasi wt-agent-hooks dicoba (idempotent). Jalankan `wta hooks status` untuk memeriksa hasil. Log: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"
+hooks.install_succeeded: "✓ wt-agent-hooks terinstal untuk %{clis}"
 
 # ── Relative time and date formatting ─────────────────────────────────────
 time.just_now: "baru saja"
@@ -215,8 +226,17 @@ system.agent_switch_unavailable: "Peralihan agen tidak tersedia di luar tab Wind
 
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "Pilih model untuk panel ini (/model <id> untuk beralih langsung)"  # {Locked="/model","<id>"}
+commands.config.summary: "Konfigurasikan sesi agent ini"  # Agent means an AI coding agent; shown for the /config command. {Locked="/config"}
 commands.move.summary: "Pindahkan panel agen tab ini (/move <position>)"  # {Locked="/move","<position>"}
 model_picker.title: "Pilih model (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "Agen yang terhubung tidak mengiklankan model apa pun yang dapat dipilih."
 system.model_set: "Model untuk panel ini diatur ke %{model}."  # {Locked="%{model}"}
+
+# ── Session configuration picker (src/ui/config_popup.rs) ───────────────────
+# {Locked="↑","↓","Enter","Esc","ACP"} - key names and protocol name
+config_picker.title: "Konfigurasi sesi (↑ ↓ • Enter • Esc)"
+# Shown when /config is used but the AI agent exposed no ACP select options.
+system.no_config_options: "Agent yang terhubung tidak mengiklankan opsi sesi apa pun yang dapat dikonfigurasi."
+# {option} is an Agent-provided option name; {error} is the ACP error.
+system.config_update_failed: "Gagal memperbarui %{option}: %{error}"
 system.model_unknown: "Model tidak dikenal %{model} — ketik /model untuk melihat daftar yang tersedia."  # {Locked="%{model}","/model"}

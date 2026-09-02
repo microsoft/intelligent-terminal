@@ -63,6 +63,7 @@ namespace winrt::Microsoft::Terminal::Control::implementation
 
         bool CopySelectionToClipboard(bool dismissSelection, bool singleLine, bool withControlSequences, const CopyFormat formats);
         void PasteTextFromClipboard();
+        void EnableAgentPasteShortcutFallback(bool enabled) noexcept { _agentPasteShortcutFallbackEnabled = enabled; }
         void SelectAll();
         bool ToggleBlockSelection();
         void ToggleMarkMode();
@@ -289,6 +290,7 @@ namespace winrt::Microsoft::Terminal::Control::implementation
         bool _initializedTerminal{ false };
         bool _quickFixButtonCollapsible{ false };
         bool _quickFixesAvailable{ false };
+        bool _agentPasteShortcutFallbackEnabled{ false };
         til::CoordType _quickFixBufferPos{};
 
         std::shared_ptr<ThrottledFunc<>> _playWarningBell;
@@ -331,6 +333,8 @@ namespace winrt::Microsoft::Terminal::Control::implementation
         Windows::Foundation::Collections::IObservableVector<Windows::UI::Xaml::Controls::ICommandBarElement> _originalSelectedSecondaryElements{ nullptr };
 
         Control::CursorDisplayState _cursorVisibility{ Control::CursorDisplayState::Default };
+        winrt::Windows::UI::Core::CoreCursor _completedTurnPriorPointerCursor{ nullptr };
+        bool _completedTurnActionHovered{ false };
 
         inline bool _IsClosing() const noexcept
         {
@@ -423,6 +427,9 @@ namespace winrt::Microsoft::Terminal::Control::implementation
         void _handleSearchResults(SearchResults results);
 
         void _hoveredHyperlinkChanged(const IInspectable& sender, const IInspectable& args);
+        void _setCompletedTurnActionHover(CompletedTurnAction action);
+        void _restoreCompletedTurnActionPointer();
+        void _reassertCompletedTurnActionPointer();
         safe_void_coroutine _updateSelectionMarkers(IInspectable sender, Control::UpdateSelectionMarkersEventArgs args);
 
         void _coreFontSizeChanged(const IInspectable& s, const Control::FontSizeChangedArgs& args);

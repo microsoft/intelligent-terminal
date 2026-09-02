@@ -21,15 +21,15 @@ impl App {
             ConnectionState::Failed(_) => "failed",
             ConnectionState::Disconnected => "disconnected",
         };
-        // Include selected_agent only once — when connected after user selection.
-        // This avoids triggering _RebuildAgentStack mid-FRE.
+        // Include selected_agent only once, after the selected Agent connects,
+        // so C++ persists only a completed first-run selection.
         let selected = if self.state == ConnectionState::Connected {
             self.pending_agent_selection.take()
         } else {
             None
         };
         let display_model = self
-            .current_model_display()
+            .confirmed_model_display()
             .or_else(|| self.agent_model.clone());
         let mut params = serde_json::json!({
             "agent_id": self.current_agent_id,
@@ -146,11 +146,13 @@ pub(super) fn build_agent_state_changed_event(
     let usage = tab.usage.as_ref().map(|snapshot| {
         crate::usage::UsageProjection::with_staleness(snapshot, tab.usage_staleness)
     });
+    let projected_session_id = tab.resumable_session_id();
     serde_json::json!({
         "type": "event",
         "method": "agent_state_changed",
         "params": {
             "tab_id": target_tab,
+            "agent_session_id": projected_session_id,
             "view": view,
             "pane_open": tab.pane_open,
             "pane_position": tab.agent_pane_position,

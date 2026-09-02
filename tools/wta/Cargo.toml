@@ -34,6 +34,7 @@ windows-sys = { version = "0.61", features = [
     "Win32_System_Console",
     "Win32_System_DataExchange",
     "Win32_System_Environment",
+    "Win32_System_JobObjects",
     "Win32_System_Memory",
     "Win32_System_Registry",
     "Win32_System_Threading",
@@ -60,3 +61,8 @@ sys-locale = "0.3"
 # (issue #287). Already in the lockfile as a transitive dep of clap, so
 # promoting it to a direct dep does not change the resolved graph.
 strsim = "0.11"
+# RFC 3339 parsing for ACP `SessionInfo::updated_at`. Already in the lockfile
+# as a transitive dep of ratatui and tracing-appender, so promoting it to a
+# direct dep does not change the resolved graph; only the `parsing` feature
+# is added on top of what those crates already enable.
+time = { version = "0.3", features = ["parsing"] }

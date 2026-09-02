@@ -41,7 +41,7 @@ auth.login_failed_help_default: "  Tryck på Enter för att försöka igen, elle
 chat.activity_thinking: "Tänker..."
 # {Locked="Intelligent Terminal"} - product name, do not translate
 chat.welcome_title: "Välkommen till Intelligent Terminal!"
-chat.welcome_disclaimer: "Intelligent Terminal använder AI. Kontrollera om det finns fel."
+chat.welcome_disclaimer: "Intelligent Terminal använder AI."
 chat.plan_header: "Plan:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}
@@ -49,6 +49,17 @@ chat.plan_marker_pending: "[ ]"  # {Locked}
 chat.autofix_prompt_label: "Automatiskt diagnostiserat ett nyligen inträffat kommandofel"
 chat.turn_canceled: "(avbruten)"
 chat.turn_executed: "→ utförd: %{title}"
+# Beständiga verktygskategorier som visas efter en statusmarkör och före ett ämne.
+chat.tool_kind.run: "Körning"
+chat.tool_kind.read: "Läsning"
+chat.tool_kind.search: "Sökning"
+chat.tool_kind.edit: "Redigering"
+chat.tool_kind.delete: "Borttagning"
+chat.tool_kind.move: "Flytt"
+chat.tool_kind.fetch: "Hämtning"
+chat.tool_kind.think: "Tänkande"
+chat.tool_kind.mode: "Läge"
+chat.tool_kind.other: "Verktyg"
 
 # ── Input placeholders (src/ui/input.rs) ────────────────────────────────────
 input.placeholder.connected: "Fråga vad som helst, / för kommandon.."  # {Locked="/"}
@@ -134,8 +145,8 @@ system.resuming_session: "Återupptar session %{session_id}..."
 system.unknown_command: "Okänt kommando \"%{command}\" — skickades som prompt. Skriv /help för listan."
 system.busy_use_stop: "Vänta tills den aktuella prompten är klar, eller använd /stop först."
 system.cannot_focus_session: "Det går inte att fokusera på session %{session_id}: den verkar vara aktiv men inget fönster-GUID är bundet ännu. Försök igen om en stund."
-system.cannot_resume_no_load_session: "Det går inte att återuppta i agentfönstret: %{agent} annonserade inte ACP `loadSession`-funktionen. Tryck på Enter (utan Shift) för att i stället återuppta i ett nytt terminalfönster."
-system.cannot_resume_no_resume_flag: "Det går inte att återuppta %{agent}-sessionen: den här agenten har ingen `--resume`-liknande flagga. Tryck på Shift+Enter för att i stället försöka återuppta inne i agentfönstret via ACP."
+system.cannot_resume_no_load_session: "Det går inte att återuppta i agentfönstret: %{agent} annonserade inte ACP `loadSession`-funktionen."
+system.cannot_resume_no_resume_flag: "Det går inte att återuppta %{agent}-sessionen: den här agenten har ingen `--resume`-liknande flagga."
 system.cannot_resume_unknown_agent: "Det går inte att återuppta session %{session_id}: dess källagent är okänd för den här versionen."
 system.cannot_resume_phantom_via_flag: "Det går inte att återuppta %{agent}-sessionen %{session_id}: den startades men samlade aldrig någon konversation, så %{agent} skulle själv avvisa återupptagningen. Tar bort raden."
 system.cannot_resume_phantom_via_load: "Det går inte att återuppta %{agent}-sessionen %{session_id}: den startades men samlade aldrig någon konversation, så %{agent} skulle avvisa inläsningen. Tar bort raden."
@@ -177,7 +188,7 @@ hooks.marketplace_path_stale: "⚠ marketplace path stale"
 hooks.installed_but_disabled: "⚠ installed but disabled"
 hooks.not_installed: "✗ not installed"
 hooks.uninstall_skipped: "skipped (CLI not on PATH)"
-hooks.install_attempted: "wt-agent-hooks install attempted (idempotent). Run `wta hooks status` to inspect the result. Trace log: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"
+hooks.install_succeeded: "✓ wt-agent-hooks installed for %{clis}"
 
 # ── Relative time and date formatting (src/ui/agents_view.rs) ───────────────
 time.just_now: "nyss"
@@ -215,8 +226,17 @@ system.agent_switch_unavailable: "Agentbyte är inte tillgängligt utanför en W
 
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "Välj modellen för den här panelen (/model <id> för att växla direkt)"  # {Locked="/model","<id>"}
+commands.config.summary: "Konfigurera den här agentsessionen"  # Agent means an AI coding agent; shown for the /config command. {Locked="/config"}
 commands.move.summary: "Flytta agentpanelen för den här fliken (/move <position>)"  # {Locked="/move","<position>"}
 model_picker.title: "Välj modell (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "Den anslutna agenten annonserade inga valbara modeller."
 system.model_set: "Modellen för den här panelen är inställd på %{model}."  # {Locked="%{model}"}
+
+# ── Session configuration picker (src/ui/config_popup.rs) ───────────────────
+# {Locked="↑","↓","Enter","Esc","ACP"} - key names and protocol name
+config_picker.title: "Sessionskonfiguration (↑ ↓ • Enter • Esc)"
+# Shown when /config is used but the AI agent exposed no ACP select options.
+system.no_config_options: "Den anslutna agenten annonserade inga konfigurerbara sessionsalternativ."
+# {option} is an Agent-provided option name; {error} is the ACP error.
+system.config_update_failed: "Det gick inte att uppdatera %{option}: %{error}"
 system.model_unknown: "Okänd modell %{model} — skriv /model för att se den tillgängliga listan."  # {Locked="%{model}","/model"}

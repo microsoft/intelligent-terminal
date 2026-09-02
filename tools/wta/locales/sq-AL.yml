@@ -41,7 +41,7 @@ auth.login_failed_help_default: "  Shtypni Enter për të riprovuar, ose Esc pë
 chat.activity_thinking: "Po mendoj..."
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 chat.welcome_title: "Mirë se vini në Terminali inteligjent!"
-chat.welcome_disclaimer: "Terminali inteligjent përdor AI. Kontrolloni për gabime."
+chat.welcome_disclaimer: "Terminali inteligjent përdor AI."
 chat.plan_header: "Plani:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}
@@ -49,6 +49,17 @@ chat.plan_marker_pending: "[ ]"  # {Locked}
 chat.autofix_prompt_label: "Dështim i fundit i komandës është diagnostikuar automatikisht"
 chat.turn_canceled: "(anuluar)"
 chat.turn_executed: "→ ekzekutuar: %{title}"
+# Etiketa të përhershme të kategorive të mjeteve, të shfaqura pas shënuesit të gjendjes dhe para subjektit.
+chat.tool_kind.run: "Ekzekutim"
+chat.tool_kind.read: "Lexim"
+chat.tool_kind.search: "Kërkim"
+chat.tool_kind.edit: "Redaktim"
+chat.tool_kind.delete: "Fshirje"
+chat.tool_kind.move: "Zhvendosje"
+chat.tool_kind.fetch: "Marrje"
+chat.tool_kind.think: "Arsyetim"
+chat.tool_kind.mode: "Modalitet"
+chat.tool_kind.other: "Mjet"
 
 # ── Input placeholders (src/ui/input.rs) ────────────────────────────────────
 input.placeholder.connected: "Pyetni çfarëdo, / për komandat.."  # {Locked="/"}
@@ -134,8 +145,8 @@ system.resuming_session: "Po rifillon sesioni %{session_id}..."
 system.unknown_command: "Komandë e panjohur \"%{command}\" — u dërgua si kërkesë. Shkruani /help për listën."  # {Locked="/help"}
 system.busy_use_stop: "Prisni që kërkesa aktuale të përfundojë, ose përdorni më parë /stop."  # {Locked="/stop"}
 system.cannot_focus_session: "Nuk mund të fokusohet sesioni %{session_id}: duket aktiv, por ende nuk është lidhur asnjë GUID paneli. Provojeni përsëri pas pak."
-system.cannot_resume_no_load_session: "Nuk mund të rifillohet në panelin e agjentit: %{agent} nuk shpalli aftësinë ACP `loadSession`. Shtypni Enter (pa Shift) për ta rifilluar në një panel të ri terminali në vend të kësaj."  # {Locked="ACP","loadSession","Enter","Shift"}
-system.cannot_resume_no_resume_flag: "Nuk mund të rifillohet sesioni %{agent}: ky agjent nuk ka flamur të stilit `--resume`. Shtypni Shift+Enter për të provuar rifillimin brenda panelit të agjentit përmes ACP."  # {Locked="--resume","Shift","Enter","ACP"}
+system.cannot_resume_no_load_session: "Nuk mund të rifillohet në panelin e agjentit: %{agent} nuk shpalli aftësinë ACP `loadSession`."  # {Locked="ACP","loadSession"}
+system.cannot_resume_no_resume_flag: "Nuk mund të rifillohet sesioni %{agent}: ky agjent nuk ka flamur të stilit `--resume`."  # {Locked="--resume"}
 system.cannot_resume_unknown_agent: "Nuk mund të rifillohet sesioni %{session_id}: agjenti i tij burimor është i panjohur për këtë ndërtim të WTA."
 system.cannot_resume_phantom_via_flag: "Nuk mund të rifillohet sesioni %{agent} %{session_id}: ai u nis, por nuk grumbulloi kurrë asnjë bisedë, prandaj vetë %{agent} do ta refuzonte rifillimin. Po hiqet rreshti."
 system.cannot_resume_phantom_via_load: "Nuk mund të rifillohet sesioni %{agent} %{session_id}: ai u nis, por nuk grumbulloi kurrë asnjë bisedë, prandaj %{agent} do ta refuzonte ngarkimin. Po hiqet rreshti."
@@ -177,7 +188,7 @@ hooks.marketplace_path_stale: "⚠ marketplace path stale"
 hooks.installed_but_disabled: "⚠ installed but disabled"
 hooks.not_installed: "✗ not installed"
 hooks.uninstall_skipped: "skipped (CLI not on PATH)"
-hooks.install_attempted: "wt-agent-hooks install attempted (idempotent). Run `wta hooks status` to inspect the result. Trace log: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"
+hooks.install_succeeded: "✓ wt-agent-hooks installed for %{clis}"
 # ── Relative time + date formatting (src/ui/agents_view.rs) ─────────────────
 time.just_now: "pikërisht tani"
 time.minute_singular: "%{count} minut më parë"
@@ -214,8 +225,17 @@ system.agent_switch_unavailable: "Ndryshimi i agjentit nuk është i disponuesh�
 
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "Zgjidhni modelin për këtë panel (/model <id> për të kaluar drejtpërdrejt)"  # {Locked="/model","<id>"}
+commands.config.summary: "Konfiguroni këtë seancë të agjentit"  # Agent means an AI coding agent; shown for the /config command. {Locked="/config"}
 commands.move.summary: "Lëvizni panelin e agjentit të kësaj skede (/move <position>)"  # {Locked="/move","<position>"}
 model_picker.title: "Zgjidhni modelin (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "Agjenti i lidhur nuk shpalli asnjë model të zgjedhshëm."
 system.model_set: "Modeli për këtë panel u caktua në %{model}."  # {Locked="%{model}"}
+
+# ── Session configuration picker (src/ui/config_popup.rs) ───────────────────
+# {Locked="↑","↓","Enter","Esc","ACP"} - key names and protocol name
+config_picker.title: "Konfigurimi i seancës (↑ ↓ • Enter • Esc)"
+# Shown when /config is used but the AI agent exposed no ACP select options.
+system.no_config_options: "Agjenti i lidhur nuk njoftoi asnjë opsion seance të konfigurueshëm."
+# {option} is an Agent-provided option name; {error} is the ACP error.
+system.config_update_failed: "Dështoi përditësimi i %{option}: %{error}"
 system.model_unknown: "Model i panjohur %{model} — shkruani /model për të parë listën e disponueshme."  # {Locked="%{model}","/model"}

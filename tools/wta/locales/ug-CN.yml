@@ -41,7 +41,7 @@ auth.login_failed_help_default: "  قايتا سىناش ئۈچۈن Enter نى �
 chat.activity_thinking: "ئويلىنىۋاتىدۇ…"
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 chat.welcome_title: "ئەقلىي تېرمىنال ھە خوش كەلدىڭىز!"
-chat.welcome_disclaimer: "ئەقلىي تېرمىنال AI ئىشلىتىدۇ. خاتالىقلارنى تەكشۈرۈڭ."
+chat.welcome_disclaimer: "ئەقلىي تېرمىنال AI ئىشلىتىدۇ."
 chat.plan_header: "پىلان:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}
@@ -49,6 +49,17 @@ chat.plan_marker_pending: "[ ]"  # {Locked}
 chat.autofix_prompt_label: "يېقىنقى بۇيرۇق مەغلۇبىيىتى ئاپتوماتىك دىئاگنوز قىلىندى"
 chat.turn_canceled: "(ئەمەلدىن قالدۇرۇلدى)"
 chat.turn_executed: "→ ئىجرا قىلىندى: %{title}"
+# ھالەت بەلگىسىدىن كېيىن ۋە تېمىدىن بۇرۇن كۆرسىتىلىدىغان دائىملىق قورال تۈرى بەلگىلىرى.
+chat.tool_kind.run: "ئىجرا"
+chat.tool_kind.read: "ئوقۇش"
+chat.tool_kind.search: "ئىزدەش"
+chat.tool_kind.edit: "تەھرىرلەش"
+chat.tool_kind.delete: "ئۆچۈرۈش"
+chat.tool_kind.move: "يۆتكەش"
+chat.tool_kind.fetch: "ئېلىش"
+chat.tool_kind.think: "ئويلاش"
+chat.tool_kind.mode: "ھالەت"
+chat.tool_kind.other: "قورال"
 
 # ── Input placeholders (src/ui/input.rs) ────────────────────────────────────────────────────────────────────
 input.placeholder.connected: "ئىختىيارچە سوراڭ، / بۇيرۇقلار ئۈچۈن.."  # {Locked="/"}
@@ -156,8 +167,8 @@ system.resuming_session: "سۆزلىشىش %{session_id} داۋاملاشتۇر�
 system.unknown_command: "نامەلۇم بۇيرۇق \"%{command}\" — prompt سۈپىتىدە يوللاندى. تىزىملىك ئۈچۈن /help نى كىرگۈزۈڭ."  # {Locked="/help"} — slash-command name.
 system.busy_use_stop: "ھازىرقى prompt تاماملانغۇچە كۈتۈڭ، ياكى ئالدى بىلەن /stop قىلىڭ."  # {Locked="/stop"} — slash-command name.
 system.cannot_focus_session: "سۆزلىشىش %{session_id} غا فوكۇسلىغىلى بولمايدۇ: ئۇ live كۆرۈنىدۇ، ئەمما تېخى ھېچقانداق pane GUID باغلانمىغان. بىر ئازدىن كېيىن قايتا سىناڭ."
-system.cannot_resume_no_load_session: "agent pane دا داۋاملاشتۇرغىلى بولمايدۇ: %{agent} ACP `loadSession` ئىقتىدارىنى ئېلان قىلمىغان. ئۇنىڭ ئورنىغا يېڭى terminal pane دا داۋاملاشتۇرۇش ئۈچۈن Enter (Shift يوق) بېسىڭ."  # {Locked="ACP","loadSession","Enter","Shift"} — protocol/UI terms.
-system.cannot_resume_no_resume_flag: "%{agent} سۆزلىشىشىنى داۋاملاشتۇرغىلى بولمايدۇ: بۇ agent دا `--resume` شەكلىدىكى flag يوق. ئۇنىڭ ئورنىغا ACP ئارقىلىق agent pane ئىچىدە داۋاملاشتۇرۇشنى سىناش ئۈچۈن Shift+Enter بېسىڭ."  # {Locked="--resume","Shift","Enter","ACP"} — flag and UI terms.
+system.cannot_resume_no_load_session: "agent pane دا داۋاملاشتۇرغىلى بولمايدۇ: %{agent} ACP `loadSession` ئىقتىدارىنى ئېلان قىلمىغان."  # {Locked="ACP","loadSession"} — protocol/UI terms.
+system.cannot_resume_no_resume_flag: "%{agent} سۆزلىشىشىنى داۋاملاشتۇرغىلى بولمايدۇ: بۇ agent دا `--resume` شەكلىدىكى flag يوق."  # {Locked="--resume"} — flag and UI terms.
 system.cannot_resume_unknown_agent: "سۆزلىشىش %{session_id} نى داۋاملاشتۇرغىلى بولمايدۇ: ئۇنىڭ مەنبە agent ى بۇ WTA build ئۈچۈن نامەلۇم."
 system.cannot_resume_phantom_via_flag: "%{agent} سۆزلىشىشى %{session_id} نى داۋاملاشتۇرغىلى بولمايدۇ: ئۇ باشلانغان، ئەمما ھېچقانداق سۆھبەت توپلانمىغان، شۇڭا %{agent} ئۆزى resume نى رەت قىلىدۇ. قۇر ئۆچۈرۈلۈۋاتىدۇ."
 system.cannot_resume_phantom_via_load: "%{agent} سۆزلىشىشى %{session_id} نى داۋاملاشتۇرغىلى بولمايدۇ: ئۇ باشلانغان، ئەمما ھېچقانداق سۆھبەت توپلانمىغان، شۇڭا %{agent} load نى رەت قىلىدۇ. قۇر ئۆچۈرۈلۈۋاتىدۇ."
@@ -199,7 +210,7 @@ hooks.marketplace_path_stale: "⚠ marketplace يولى ئەسكىردى"
 hooks.installed_but_disabled: "⚠ ئورنىتىلدى بىراق چەكلەنگەن"
 hooks.not_installed: "✗ ئورنىتىلمىغان"
 hooks.uninstall_skipped: "ئاتلىدى (CLI PATH دا ئەمەس)"
-hooks.install_attempted: "wt-agent-hooks ئورنىتىش سىنالدى (idempotent). نەتىجىنى تەكشۈرۈش ئۈچۈن `wta hooks status` نى ئىجرا قىلىڭ. ئىز خاتىرىسى: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"
+hooks.install_succeeded: "✓ wt-agent-hooks %{clis} ئۈچۈن ئورنىتىلدى"
 # ── Relative time and date formatting ───────────────────────────────────────
 time.just_now: "ھازىرلا"
 time.minute_singular: "%{count} مىنۇت بۇرۇن"
@@ -224,8 +235,17 @@ system.agent_switch_unavailable: "ۋاكالەتچى ئالماشتۇرۇشنى 
 
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "بۇ تاختا ئۈچۈن مودېل تاللاڭ (بىۋاسىتە الماشتۇرۇش ئۈچۈن /model <id>)"  # {Locked="/model","<id>"}
+commands.config.summary: "بۇ ۋاكالەتچى ئەڭگىمەسىنى سەپلەش"  # Agent means an AI coding agent; shown for the /config command. {Locked="/config"}
 commands.move.summary: "بۇ بەتنىڭ AI ئاگېنتى تاختىسىنى يۆتكەش (/move <position>)"  # {Locked="/move","<position>"}
 model_picker.title: "مودېل تاللاڭ (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "ئۇلانغان AI ئاگېنتى تاللىغىلى بولىدىغان ھېچقانداق مودېل ئېلان قىلمىدى."
 system.model_set: "بۇ تاختا ئۈچۈن مودېل %{model} قىلىپ بەلگىلەندى."  # {Locked="%{model}"}
+
+# ── Session configuration picker (src/ui/config_popup.rs) ───────────────────
+# {Locked="↑","↓","Enter","Esc","ACP"} - key names and protocol name
+config_picker.title: "ئەڭگىمە سەپلىمىسى (↑ ↓ • Enter • Esc)"
+# Shown when /config is used but the AI agent exposed no ACP select options.
+system.no_config_options: "أۇلانغان ۋاكالەتچى ھېچقانداق سەپلىگىلى بولىدىغان ئەڭگىمە تاللانمىلىرىنى ئېلان قىلمىدى."
+# {option} is an Agent-provided option name; {error} is the ACP error.
+system.config_update_failed: "%{option} نى يېڭىلاش مەغلۇپ بولدى: %{error}"
 system.model_unknown: "نامەلۇم مودېل %{model} — ئىشلەتكىلى بولىدىغان تىزىملىكنى كۆرۈش ئۈچۈن /model نى كىرگۈزۈڭ."  # {Locked="%{model}","/model"}

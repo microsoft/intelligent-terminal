@@ -44,7 +44,20 @@ auth.login_failed_help_default: "  Press Enter to retry, or Esc to go back."  # 
 # ── Chat view (src/ui/chat.rs) ──────────────────────────────────────────────
 chat.activity_thinking: "Thinking…"
 chat.welcome_title: "Welcome to Intelligent Terminal!"
-chat.welcome_disclaimer: "Intelligent Terminal uses AI. Check for mistakes."
+chat.welcome_disclaimer: "Intelligent Terminal uses AI."  # {Locked="AI"}
+# Persistent semantic type labels shown after a tool call's status marker.
+# These are action categories, not status words. "Run" means execute a shell
+# command, "Think" means internal AI reasoning, and "Tool" is the safe fallback.
+chat.tool_kind.run: "Run"
+chat.tool_kind.read: "Read"
+chat.tool_kind.search: "Search"
+chat.tool_kind.edit: "Edit"
+chat.tool_kind.delete: "Delete"
+chat.tool_kind.move: "Move"
+chat.tool_kind.fetch: "Fetch"
+chat.tool_kind.think: "Think"
+chat.tool_kind.mode: "Mode"
+chat.tool_kind.other: "Tool"
 # Header label for the AI agent's step-by-step plan section
 chat.plan_header: "Plan:"
 chat.plan_marker_completed: "[x]"  # {Locked}
@@ -91,6 +104,7 @@ commands.stop.summary: "Cancel the in-flight prompt"
 commands.sessions.summary: "Open the historical sessions picker (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
 commands.agent.summary: "Pick the agent for this tab (/agent <id> to switch directly)"  # {Locked="/agent","<id>"}
 commands.model.summary: "Pick the model for this pane (/model <id> to switch directly)"  # {Locked="/model","<id>"}
+commands.config.summary: "Configure this agent session"  # Agent means an AI coding agent; shown for the /config command. {Locked="/config"}
 commands.move.summary: "Move this tab's agent pane (/move <position>)"  # {Locked="/move","<position>"}
 
 # ── Agent picker (src/ui/agent_popup.rs) ────────────────────────────────────
@@ -112,6 +126,14 @@ system.no_models: "The connected agent did not advertise any selectable models."
 system.model_set: "Model for this pane set to %{model}."
 # {model} is the unrecognized text the user typed after /model.
 system.model_unknown: "Unknown model %{model} — type /model to see the available list."
+
+# ── Session configuration picker (src/ui/config_popup.rs) ───────────────────
+# {Locked="↑","↓","Enter","Esc","ACP"} - key names and protocol name
+config_picker.title: "Session configuration (↑ ↓ • Enter • Esc)"
+# Shown when /config is used but the AI agent exposed no ACP select options.
+system.no_config_options: "The connected agent did not advertise any configurable session options."
+# {option} is an Agent-provided option name; {error} is the ACP error.
+system.config_update_failed: "Failed to update %{option}: %{error}"
 
 # ── Recommendations panel (src/ui/recommendations.rs) ───────────────────────
 # {Locked="Enter","Esc","↑","↓","←","→","↵"} - key names and arrow/Return-key
@@ -211,11 +233,11 @@ system.resuming_session: "Resuming session %{session_id}..."  # Shown briefly wh
 system.unknown_command: "Unknown command \"%{command}\" — sent as prompt. Type /help for the list."  # Slash-command fallback when the user types an unknown /command. %{command} is the raw token (e.g. "foo"). {Locked="/help"} — slash-command name.
 system.busy_use_stop: "Wait for the current prompt to finish, or /stop first."  # Shown when the user runs /new while a prompt is still in flight. {Locked="/stop"} — slash-command name.
 system.cannot_focus_session: "Cannot focus session %{session_id}: it appears live but no pane GUID is bound yet. Try again in a moment."  # Shown when Enter on a Session-management row says Live but no terminal pane is bound yet (cold-startup race). %{session_id} is an opaque id.
-system.cannot_resume_no_load_session: "Cannot resume in agent pane: %{agent} did not advertise the ACP `loadSession` capability. Press Enter (without Shift) to resume in a new terminal pane instead."  # Shown when Shift+Enter tries to resume a session in a new agent pane but the connected agent did not advertise the ACP `loadSession` capability. %{agent} is the agent display name (e.g. "Copilot"). {Locked="ACP","loadSession","Enter","Shift"} — protocol/UI terms.
-system.cannot_resume_no_resume_flag: "Cannot resume %{agent} session: this agent has no `--resume`-style flag. Press Shift+Enter to try resuming inside the agent pane via ACP instead."  # Shown when Enter tries to resume a session via the agent's own --resume flag, but that agent's CLI has no resume flag (e.g. Codex). %{agent} is the agent display name. {Locked="--resume","Shift","Enter","ACP"} — flag and UI terms.
+system.cannot_resume_no_load_session: "Cannot resume in agent pane: %{agent} did not advertise the ACP `loadSession` capability."  # Shown when Enter on an agent-pane-origin row tries to resume a session in a new agent pane but the connected agent did not advertise the ACP `loadSession` capability. %{agent} is the agent display name (e.g. "Copilot"). {Locked="ACP","loadSession"} — protocol terms.
+system.cannot_resume_no_resume_flag: "Cannot resume %{agent} session: this agent has no `--resume`-style flag."  # Shown when Enter tries to resume a session via the agent's own --resume flag, but that agent's CLI has no resume flag (e.g. Codex). %{agent} is the agent display name. {Locked="--resume"} — flag name.
 system.cannot_resume_unknown_agent: "Cannot resume session %{session_id}: its source agent is unknown to this build."  # Shown when Enter on a Session-management row references an agent that this build of WTA doesn't recognize. %{session_id} is an opaque id.
 system.cannot_resume_phantom_via_flag: "Cannot resume %{agent} session %{session_id}: it was started but never accumulated any conversation, so %{agent} itself would reject the resume. Removing the row."  # Shown when Enter on a Session-management row matches an on-disk session that was started but never accumulated any conversation. %{agent} = display name, %{session_id} = opaque id.
-system.cannot_resume_phantom_via_load: "Cannot resume %{agent} session %{session_id}: it was started but never accumulated any conversation, so %{agent} would reject the load. Removing the row."  # Same case as cannot_resume_phantom_via_flag but via ACP loadSession (Shift+Enter path).
+system.cannot_resume_phantom_via_load: "Cannot resume %{agent} session %{session_id}: it was started but never accumulated any conversation, so %{agent} would reject the load. Removing the row."  # Same case as cannot_resume_phantom_via_flag but via ACP loadSession (agent-pane resume path).
 system.fallback.this_agent: "this agent"  # Fallback noun used inside the cannot_resume_* messages above when the source agent is unknown (e.g. a custom agent).
 system.fallback.connected_agent: "the connected agent"  # Fallback noun used inside cannot_resume_no_load_session when the connected agent display name is empty.
 
@@ -262,7 +284,9 @@ hooks.installed_but_disabled: "⚠ installed but disabled"
 # Shown when a shell hook is not yet installed
 hooks.not_installed: "✗ not installed"
 hooks.uninstall_skipped: "skipped (CLI not on PATH)"
-hooks.install_attempted: "wt-agent-hooks install attempted (idempotent). Run `wta hooks status` to inspect the result. Trace log: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"
+# Confirmation printed by `wta hooks install` once the install is verified.
+# %{clis} = comma-separated agent CLI names, e.g. "copilot, claude".
+hooks.install_succeeded: "✓ wt-agent-hooks installed for %{clis}"
 
 # ── Relative time + date formatting (src/ui/agents_view.rs) ─────────────────
 # rust-i18n 3.x has no CLDR plural support — only string interpolation. So we

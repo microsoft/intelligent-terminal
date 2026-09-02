@@ -49,6 +49,17 @@ chat.plan_marker_pending: "[ ]"  # {Locked}
 chat.autofix_prompt_label: "حالیہ کمانڈ کی ناکامی کا خودکار طور پر تشخیص کیا گیا"
 chat.turn_canceled: "(منسوخ)"
 chat.turn_executed: "→ پر عمل کر دیا گیا: %{title}"
+# مستقل ٹول زمرہ لیبل، جو اسٹیٹس نشان کے بعد اور موضوع سے پہلے دکھائے جاتے ہیں۔
+chat.tool_kind.run: "چلانا"
+chat.tool_kind.read: "پڑھنا"
+chat.tool_kind.search: "تلاش"
+chat.tool_kind.edit: "ترمیم"
+chat.tool_kind.delete: "حذف"
+chat.tool_kind.move: "منتقل کرنا"
+chat.tool_kind.fetch: "حاصل کرنا"
+chat.tool_kind.think: "سوچنا"
+chat.tool_kind.mode: "وضع"
+chat.tool_kind.other: "ٹول"
 
 # ── ان پٹ پلیس ہولڈرز (src/ui/input.rs) ────────────────────────────────────
 input.placeholder.connected: "کچھ بھی پوچھیں، / کمانڈز کے لیے.."  # {Locked="/"}
@@ -147,8 +158,8 @@ system.resuming_session: "سیشن %{session_id} دوبارہ شروع کیا ج
 system.unknown_command: "نامعلوم کمانڈ \"%{command}\" — پرامپٹ کے طور پر بھیجی گئی۔ فہرست کے لیے /help ٹائپ کریں۔"  # {Locked="/help"} — slash-command name.
 system.busy_use_stop: "موجودہ پرامپٹ ختم ہونے تک انتظار کریں، یا پہلے /stop کریں۔"  # {Locked="/stop"} — slash-command name.
 system.cannot_focus_session: "سیشن %{session_id} پر فوکس نہیں کیا جا سکتا: یہ live لگتا ہے مگر ابھی کوئی pane GUID باؤنڈ نہیں ہے۔ کچھ دیر بعد دوبارہ کوشش کریں۔"
-system.cannot_resume_no_load_session: "agent pane میں دوبارہ شروع نہیں کیا جا سکتا: %{agent} نے ACP `loadSession` صلاحیت کا اعلان نہیں کیا۔ اس کے بجائے نئے terminal pane میں دوبارہ شروع کرنے کے لیے Enter (Shift کے بغیر) دبائیں۔"  # {Locked="ACP","loadSession","Enter","Shift"} — protocol/UI terms.
-system.cannot_resume_no_resume_flag: "%{agent} سیشن دوبارہ شروع نہیں کیا جا سکتا: اس agent کے پاس `--resume` طرز کا flag نہیں ہے۔ اس کے بجائے ACP کے ذریعے agent pane کے اندر دوبارہ شروع کرنے کی کوشش کے لیے Shift+Enter دبائیں۔"  # {Locked="--resume","Shift","Enter","ACP"} — flag and UI terms.
+system.cannot_resume_no_load_session: "agent pane میں دوبارہ شروع نہیں کیا جا سکتا: %{agent} نے ACP `loadSession` صلاحیت کا اعلان نہیں کیا۔"  # {Locked="ACP","loadSession"} — protocol/UI terms.
+system.cannot_resume_no_resume_flag: "%{agent} سیشن دوبارہ شروع نہیں کیا جا سکتا: اس agent کے پاس `--resume` طرز کا flag نہیں ہے۔"  # {Locked="--resume"} — flag and UI terms.
 system.cannot_resume_unknown_agent: "سیشن %{session_id} دوبارہ شروع نہیں کیا جا سکتا: اس کا ماخذ agent اس WTA build کے لیے نامعلوم ہے۔"
 system.cannot_resume_phantom_via_flag: "%{agent} سیشن %{session_id} دوبارہ شروع نہیں کیا جا سکتا: یہ شروع ہوا تھا مگر اس میں کوئی گفتگو جمع نہیں ہوئی، اس لیے %{agent} خود resume کو مسترد کر دے گا۔ قطار ہٹائی جا رہی ہے۔"
 system.cannot_resume_phantom_via_load: "%{agent} سیشن %{session_id} دوبارہ شروع نہیں کیا جا سکتا: یہ شروع ہوا تھا مگر اس میں کوئی گفتگو جمع نہیں ہوئی، اس لیے %{agent} load کو مسترد کر دے گا۔ قطار ہٹائی جا رہی ہے۔"
@@ -190,7 +201,7 @@ hooks.marketplace_path_stale: "⚠ مارکیٹ پلیس پاتھ پرانا ہ�
 hooks.installed_but_disabled: "⚠ انسٹال ہے لیکن غیر فعال ہے"
 hooks.not_installed: "✗ انسٹال نہیں ہے"
 hooks.uninstall_skipped: "چھوڑ دیا گیا (CLI PATH میں نہیں ہے)"
-hooks.install_attempted: "wt-agent-hooks انسٹال کی کوشش کی گئی (آئیڈمپوٹنٹ)۔ نتیجہ جانچنے کے لیے `wta hooks status` چلائیں۔ ٹریس لاگ: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"
+hooks.install_succeeded: "✓ wt-agent-hooks %{clis} کے لیے انسٹال ہے"
 
 # ── Relative time and date formatting ─────────────────────────────────────
 time.just_now: "ابھی"
@@ -216,8 +227,17 @@ system.agent_switch_unavailable: "ونڈوز ٹرمینل ٹیب سے باہر �
 
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "اس پین کے لیے ماڈل منتخب کریں (براہ راست تبدیل کرنے کے لیے /model <id>)"  # {Locked="/model","<id>"}
+commands.config.summary: "اس ایجنٹ سیشن کو ترتيب دیں"  # Agent means an AI coding agent; shown for the /config command. {Locked="/config"}
 commands.move.summary: "اس ٹیب کے ایجنٹ پین کو منتقل کریں (/move <position>)"  # {Locked="/move","<position>"}
 model_picker.title: "ماڈل منتخب کریں (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "منسلک ایجنٹ نے کوئی قابلِ انتخاب ماڈل ظاہر نہیں کیا۔"
 system.model_set: "اس پین کے لیے ماڈل %{model} پر سیٹ کر دیا گیا۔"  # {Locked="%{model}"}
+
+# ── Session configuration picker (src/ui/config_popup.rs) ───────────────────
+# {Locked="↑","↓","Enter","Esc","ACP"} - key names and protocol name
+config_picker.title: "سیشن کنفیگریشن (↑ ↓ • Enter • Esc)"
+# Shown when /config is used but the AI agent exposed no ACP select options.
+system.no_config_options: "منسلک ایجنٹ نے کسی بھی قابل کنفیگر سیشن کے اختیارات کی تشہیر نہیں کی۔"
+# {option} is an Agent-provided option name; {error} is the ACP error.
+system.config_update_failed: "%{option} کو اپ ڈیٹ کرنے میں ناکام: %{error}"
 system.model_unknown: "نامعلوم ماڈل %{model} — دستیاب فہرست دیکھنے کے لیے /model ٹائپ کریں۔"  # {Locked="%{model}","/model"}

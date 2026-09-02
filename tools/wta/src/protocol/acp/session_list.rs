@@ -2,12 +2,11 @@
 //!
 //! Drives the minimal client side of an ACP connection — `initialize`
 //! then `session/list` — over an already-spawned agent process's piped
-//! stdio. Two callers need exactly this exchange, so it lives here once:
+//! stdio. It lives here, separate from its caller, so the exchange stays
+//! reusable for any diagnostic or scan that needs a one-shot session list:
 //!
-//! * the `probe-sessions` diagnostic ([`super::probe`]), which spawns a
-//!   Windows-side agent and dumps the raw result; and
-//! * the production WSL history scan ([`crate::wsl_acp`]), which spawns the
-//!   distro's CLI through `wsl.exe` and maps the rows into `AgentSession`s.
+//! * the `probe-sessions` diagnostic ([`super::probe`]) spawns a
+//!   Windows-side agent and dumps the raw result.
 //!
 //! Callers must drive this inside a tokio `LocalSet`: the stderr drain and the
 //! ACP connection I/O are spawned via [`tokio::task::spawn_local`] (the
@@ -58,8 +57,10 @@ pub(crate) async fn fetch_session_list(
     let stderr_log = AgentStderrLog::new(client_label.to_string());
     let stderr_task = child.stderr.take().map(|stderr| stderr_log.drain(stderr));
 
-    let (conn, handle_io) =
-        conn::spawn_client(acp::Client.builder().name("wta-session-list"), conn::byte_streams(outgoing, incoming));
+    let (conn, handle_io) = conn::spawn_client(
+        acp::Client.builder().name("wta-session-list"),
+        conn::byte_streams(outgoing, incoming),
+    );
     let io_label = client_label.to_string();
     tokio::task::spawn_local(async move {
         if let Err(e) = handle_io.await {

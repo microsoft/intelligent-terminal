@@ -58,11 +58,11 @@ namespace Microsoft::Terminal::AcpModels
     {
         if (agentId == L"claude")
         {
-            return L"npx -y @agentclientprotocol/claude-agent-acp";
+            return L"npx -y @agentclientprotocol/claude-agent-acp@0.65.0";
         }
         if (agentId == L"codex")
         {
-            return L"npx -y @agentclientprotocol/codex-acp@1.1.4";
+            return L"npx -y @agentclientprotocol/codex-acp@1.1.13";
         }
         if (agentId == L"opencode")
         {

@@ -55,6 +55,7 @@ pub fn render(frame: &mut Frame, app: &App, area: Rect) {
         area.height.saturating_sub(2) as usize,
     );
     let attachment_ranges = tab.attachments.token_ranges().collect::<Vec<_>>();
+    let prepared_command_range = app.prepared_command_range();
     let ghost_suffix = app.command_ghost_suffix();
 
     // The caret is painted as a buffer cell (not the OS cursor) in every
@@ -126,6 +127,7 @@ pub fn render(frame: &mut Frame, app: &App, area: Rect) {
                         line,
                         viewport.visible_line_starts[i],
                         &attachment_ranges,
+                        prepared_command_range.as_ref(),
                         viewport.cursor_col,
                         ghost_suffix,
                     );
@@ -137,6 +139,7 @@ pub fn render(frame: &mut Frame, app: &App, area: Rect) {
                         line,
                         viewport.visible_line_starts[i],
                         &attachment_ranges,
+                        prepared_command_range.as_ref(),
                     );
                     if i == viewport.cursor_row {
                         if let Some(suffix) = ghost_suffix {
@@ -172,6 +175,7 @@ fn push_caret_spans(
     line: &str,
     line_start: usize,
     attachment_ranges: &[std::ops::Range<usize>],
+    prepared_command_range: Option<&std::ops::Range<usize>>,
     caret_col: usize,
     ghost_suffix: Option<&str>,
 ) {
@@ -199,7 +203,13 @@ fn push_caret_spans(
         .map(|c| c.to_string())
         .unwrap_or_else(|| " ".to_string());
 
-    push_styled_input(spans, &before, line_start, attachment_ranges);
+    push_styled_input(
+        spans,
+        &before,
+        line_start,
+        attachment_ranges,
+        prepared_command_range,
+    );
     // Reverse video so the caret block uses the scheme's own fg/bg and stays
     // visible on light schemes too (a hardcoded white block vanished on a
     // light background once the pane follows the scheme — #234).
@@ -212,10 +222,15 @@ fn push_caret_spans(
         },
     ));
     if !after.is_empty() {
-        let after_start = line_start
-            + before.len()
-            + caret_ch.map(|ch| ch.len_utf8()).unwrap_or_default();
-        push_styled_input(spans, &after, after_start, attachment_ranges);
+        let after_start =
+            line_start + before.len() + caret_ch.map(|ch| ch.len_utf8()).unwrap_or_default();
+        push_styled_input(
+            spans,
+            &after,
+            after_start,
+            attachment_ranges,
+            prepared_command_range,
+        );
     }
 
     let ghost_rest: String = ghost_chars.collect();
@@ -229,44 +244,40 @@ fn push_styled_input(
     text: &str,
     source_start: usize,
     attachment_ranges: &[std::ops::Range<usize>],
+    prepared_command_range: Option<&std::ops::Range<usize>>,
 ) {
     if text.is_empty() {
         return;
     }
 
     let mut run = String::new();
-    let mut run_is_attachment = None;
+    let mut run_style = None;
     for (offset, ch) in text.char_indices() {
         let source_pos = source_start + offset;
-        let is_attachment = attachment_ranges
+        let style = if attachment_ranges
             .iter()
-            .any(|range| range.contains(&source_pos));
-        if run_is_attachment.is_some_and(|current| current != is_attachment) {
-            let style = if run_is_attachment == Some(true) {
-                theme::ATTACHMENT_TOKEN
-            } else {
-                theme::INPUT_TEXT
-            };
-            spans.push(Span::styled(std::mem::take(&mut run), style));
+            .any(|range| range.contains(&source_pos))
+        {
+            theme::ATTACHMENT_TOKEN
+        } else if prepared_command_range.is_some_and(|range| range.contains(&source_pos)) {
+            theme::COMMAND_TOKEN
+        } else {
+            theme::INPUT_TEXT
+        };
+        if run_style.is_some_and(|current| current != style) {
+            spans.push(Span::styled(
+                std::mem::take(&mut run),
+                run_style.unwrap_or(theme::INPUT_TEXT),
+            ));
         }
-        run_is_attachment = Some(is_attachment);
+        run_style = Some(style);
         run.push(ch);
     }
-    let style = if run_is_attachment == Some(true) {
-        theme::ATTACHMENT_TOKEN
-    } else {
-        theme::INPUT_TEXT
-    };
-    spans.push(Span::styled(run, style));
+    spans.push(Span::styled(run, run_style.unwrap_or(theme::INPUT_TEXT)));
 }
 
 pub(crate) fn input_viewport(input: &str, cursor_pos: usize, total_width: u16) -> InputViewport {
-    input_viewport_with_max_rows(
-        input,
-        cursor_pos,
-        total_width,
-        INPUT_MAX_INNER_ROWS,
-    )
+    input_viewport_with_max_rows(input, cursor_pos, total_width, INPUT_MAX_INNER_ROWS)
 }
 
 fn input_viewport_with_max_rows(
@@ -288,8 +299,7 @@ fn input_viewport_with_max_rows(
         0
     };
     let visible_lines = wrapped.lines[scroll_row..scroll_row + visible_rows].to_vec();
-    let visible_line_starts =
-        wrapped.line_starts[scroll_row..scroll_row + visible_rows].to_vec();
+    let visible_line_starts = wrapped.line_starts[scroll_row..scroll_row + visible_rows].to_vec();
 
     InputViewport {
         visible_lines,
@@ -467,7 +477,7 @@ mod tests {
     fn caret_past_end_of_short_line_uses_blank_cell() {
         // Short line: the caret sits in the blank cell right after the text.
         let mut spans = Vec::new();
-        push_caret_spans(&mut spans, "ab", 0, &[], 2, None);
+        push_caret_spans(&mut spans, "ab", 0, &[], None, 2, None);
 
         assert_eq!(spans.len(), 2);
         assert_eq!(spans[0].content.as_ref(), "ab");
@@ -477,7 +487,7 @@ mod tests {
     #[test]
     fn caret_in_middle_splits_before_glyph_after() {
         let mut spans = Vec::new();
-        push_caret_spans(&mut spans, "abcd", 0, &[], 1, None);
+        push_caret_spans(&mut spans, "abcd", 0, &[], None, 1, None);
 
         assert_eq!(spans.len(), 3);
         assert_eq!(spans[0].content.as_ref(), "a");
@@ -488,7 +498,7 @@ mod tests {
     #[test]
     fn ghost_suffix_starts_under_end_caret() {
         let mut spans = Vec::new();
-        push_caret_spans(&mut spans, "/agent co", 0, &[], 9, Some("pilot"));
+        push_caret_spans(&mut spans, "/agent co", 0, &[], None, 9, Some("pilot"));
 
         assert_eq!(spans.len(), 3);
         assert_eq!(spans[0].content.as_ref(), "/agent co");
@@ -502,12 +512,25 @@ mod tests {
         let text = format!("a{token}b");
         let mut spans = Vec::new();
 
-        push_styled_input(&mut spans, &text, 0, &[1..1 + token.len()]);
+        push_styled_input(&mut spans, &text, 0, &[1..1 + token.len()], None);
 
         assert_eq!(spans.len(), 3);
         assert_eq!(spans[0].content.as_ref(), "a");
         assert_eq!(spans[1].content.as_ref(), token);
         assert_eq!(spans[1].style, theme::ATTACHMENT_TOKEN);
         assert_eq!(spans[2].content.as_ref(), "b");
+    }
+
+    #[test]
+    fn prepared_command_range_renders_as_a_distinct_token() {
+        let mut spans = Vec::new();
+
+        push_styled_input(&mut spans, "/intent describe it", 0, &[], Some(&(0..7)));
+
+        assert_eq!(spans.len(), 2);
+        assert_eq!(spans[0].content.as_ref(), "/intent");
+        assert_eq!(spans[0].style, theme::COMMAND_TOKEN);
+        assert_eq!(spans[1].content.as_ref(), " describe it");
+        assert_eq!(spans[1].style, theme::INPUT_TEXT);
     }
 }

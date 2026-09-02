@@ -169,7 +169,8 @@ pub fn log_agent_prompt_sent(
     );
 }
 
-/// Emitted when the agent's first text chunk arrives back over ACP.
+/// Emitted when the agent's first user-visible text chunk arrives over ACP,
+/// including an ephemeral thought chunk when the provider reports one first.
 /// `first_token_latency_ms` is a monotonic duration (`Instant::elapsed`)
 /// from prompt dispatch to first token, not wall-clock.
 ///

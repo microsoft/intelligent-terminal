@@ -21,12 +21,25 @@
             <RowDefinition Height="*" />
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
+        <!--
+            Spec A §5.1: the first column is the vertical-tabs rail. Width
+            defaults to 0 so horizontal layouts render identically; code-behind
+            (_ApplyVerticalLayoutReshape) sets the width and moves TabRow into
+            column 0 with RowSpan=4 when the layout flips to vertical.
+        -->
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition x:Name="VerticalRailColumn" Width="0" />
+            <ColumnDefinition Width="*" />
+        </Grid.ColumnDefinitions>
 
         <local:TabRowControl x:Name="TabRow"
                              Grid.Row="0"
+                             Grid.ColumnSpan="2"
                              KeyUp="_KeyDownHandler" />
 
-        <StackPanel Grid.Row="1"
+        <StackPanel x:Name="InfoBarsPanel"
+                    Grid.Row="1"
+                    Grid.ColumnSpan="2"
                     Background="{ThemeResource ApplicationPageBackgroundThemeBrush}">
             <mux:InfoBar x:Name="KeyboardServiceWarningInfoBar"
                          x:Load="False"
@@ -41,6 +54,15 @@
                             Click="_KeyboardServiceWarningInfoDismissHandler" />
                 </mux:InfoBar.ActionButton>
             </mux:InfoBar>
+
+            <mux:InfoBar x:Name="TabLayoutRestartInfoBar"
+                         x:Uid="TabLayoutRestartInfoBar"
+                         x:Load="False"
+                         CornerRadius="0"
+                         IsClosable="True"
+                         IsIconVisible="True"
+                         IsOpen="False"
+                         Severity="Informational" />
 
             <mux:InfoBar x:Name="CloseOnExitInfoBar"
                          x:Uid="CloseOnExitInfoBar"
@@ -57,18 +79,9 @@
             </mux:InfoBar>
         </StackPanel>
 
-        <!-- Solid filler behind TabContent so any transparent edge pixels
-             (pane border, padding rounding, etc.) between the pane and the
-             BottomBar read as a seamless continuation of the BottomBar
-             instead of showing the desktop behind the window. Uses the
-             BottomBar color so the gap — if any — visually merges into
-             the bar. Declared before TabContent so it sits behind. -->
-        <Border Grid.Row="2"
-                Background="#000000"
-                IsHitTestVisible="False" />
-
         <Grid x:Name="TabContent"
               Grid.Row="2"
+              Grid.ColumnSpan="2"
               HorizontalAlignment="Stretch"
               VerticalAlignment="Stretch">
             <Grid.Background>
@@ -80,36 +93,18 @@
              window chrome, but its state reflects the *active tab*'s agent
              pane (toggle lit when active tab has an AgentPaneContent,
              diagnostics from the active tab's autofix state, etc.).
-             Wrapped in a Border so we can draw a 1-pixel divider between
-             the terminal pane and the bar. The divider is a child Border
-             (not BorderThickness) because XAML's BorderBrush paints the
-             thickness strip OUTSIDE the Background fill — so a
-             semi-transparent BorderBrush would alpha-blend against the
-             transparent window underneath instead of the bar's black.
-             Stacking a 1px Border on top of the solid-black outer Border
-             makes the alpha blend correctly. -->
+             The top border uses the TabViewBackground theme resource. -->
         <Border x:Name="BottomBarRoot"
                 Grid.Row="3"
+                Grid.ColumnSpan="2"
                 Background="#000000"
+                BorderBrush="{ThemeResource TabViewBackground}"
+                BorderThickness="0,1,0,0"
                 VerticalAlignment="Top">
-        <Grid>
-            <Grid.RowDefinitions>
-                <RowDefinition Height="1" />
-                <RowDefinition Height="40" />
-            </Grid.RowDefinitions>
-
-            <!-- Divider: design spec #FFFFFF26 (= XAML #26FFFFFF, white 15% alpha).
-                 Sits on the outer Border's #000000, so it renders as a subtle
-                 dark-gray hairline. -->
-            <Border Grid.Row="0" Background="#26FFFFFF" />
-
         <Grid x:Name="BottomBar"
-              Grid.Row="1"
+              Height="40"
               Padding="12,0,12,0"
               HorizontalAlignment="Stretch">
-            <Grid.Background>
-                <SolidColorBrush Color="#000000" />
-            </Grid.Background>
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="Auto" />
@@ -254,7 +249,6 @@
             </Button>
 
         </Grid>
-        </Grid>
         </Border>
 
         <!--
@@ -276,10 +270,12 @@
 
         <local:AboutDialog x:Name="AboutDialog"
                            Grid.Row="2"
+                           Grid.ColumnSpan="2"
                            x:Load="False" />
 
         <ContentDialog x:Name="ConfirmCloseDialog"
                        Grid.Row="2"
+                       Grid.ColumnSpan="2"
                        x:Load="False"
                        DefaultButton="Primary">
             <CheckBox x:Uid="DontAskAgainCheckBox" />
@@ -288,12 +284,14 @@
         <ContentDialog x:Name="CloseReadOnlyDialog"
                        x:Uid="CloseReadOnlyDialog"
                        Grid.Row="2"
+                       Grid.ColumnSpan="2"
                        x:Load="False"
                        DefaultButton="Close" />
 
         <ContentDialog x:Name="MultiLinePasteDialog"
                        x:Uid="MultiLinePasteDialog"
                        Grid.Row="2"
+                       Grid.ColumnSpan="2"
                        x:Load="False"
                        DefaultButton="Primary">
             <StackPanel>
@@ -314,12 +312,14 @@
         <ContentDialog x:Name="LargePasteDialog"
                        x:Uid="LargePasteDialog"
                        Grid.Row="2"
+                       Grid.ColumnSpan="2"
                        x:Load="False"
                        DefaultButton="Primary" />
 
         <ContentDialog x:Name="ControlNoticeDialog"
                        x:Uid="ControlNoticeDialog"
                        Grid.Row="2"
+                       Grid.ColumnSpan="2"
                        x:Load="False"
                        DefaultButton="Primary">
             <TextBlock IsTextSelectionEnabled="True"
@@ -334,6 +334,7 @@
         <ContentDialog x:Name="UriErrorDialog"
                        x:Uid="UriErrorDialog"
                        Grid.Row="2"
+                       Grid.ColumnSpan="2"
                        x:Load="False"
                        DefaultButton="Close">
             <TextBlock IsTextSelectionEnabled="True"
@@ -349,6 +350,7 @@
 
         <local:CommandPalette x:Name="CommandPaletteElement"
                               Grid.Row="2"
+                              Grid.ColumnSpan="2"
                               VerticalAlignment="Stretch"
                               x:Load="False"
                               PreviewKeyDown="_KeyDownHandler"
@@ -356,6 +358,7 @@
 
         <local:SuggestionsControl x:Name="SuggestionsElement"
                                   Grid.Row="2"
+                                  Grid.ColumnSpan="2"
                                   HorizontalAlignment="Left"
                                   VerticalAlignment="Top"
                                   x:Load="False"
@@ -367,6 +370,7 @@
         <local:FreOverlay x:Name="FreOverlayElement"
                           Grid.Row="0"
                           Grid.RowSpan="4"
+                          Grid.ColumnSpan="2"
                           HorizontalAlignment="Stretch"
                           VerticalAlignment="Stretch"
                           x:Load="False"

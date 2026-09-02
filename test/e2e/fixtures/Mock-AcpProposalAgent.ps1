@@ -37,11 +37,10 @@ function Invoke-ProposalTool {
         id = 1
         method = 'tools/call'
         params = @{
-            name = 'request_terminal_actions'
+            name = 'run_command_in_current_shell'
             arguments = @{
-                type = 'send'
-                title = "Run echo $Marker"
-                input = "echo $Marker"
+                summary = "Run echo $Marker"
+                command = "echo $Marker"
             }
         }
     } | ConvertTo-Json -Depth 12 -Compress

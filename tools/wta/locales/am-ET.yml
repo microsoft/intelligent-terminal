@@ -41,7 +41,7 @@ auth.login_failed_help_default: "  እንደገና ለመሞከር Enter ይጫ�
 chat.activity_thinking: "በማሰብ…"
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 chat.welcome_title: "እንኳን ወደ ብልህ ተርሚናል በደህና መጡ!"
-chat.welcome_disclaimer: "ብልህ ተርሚናል AI ይጠቀማል። ስህተቶችን ያረጋግጡ።"
+chat.welcome_disclaimer: "ብልህ ተርሚናል AI ይጠቀማል።"
 chat.plan_header: "እቅድ፡"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}
@@ -49,6 +49,17 @@ chat.plan_marker_pending: "[ ]"  # {Locked}
 chat.autofix_prompt_label: "የቅርብ ጊዜ ትዕዛዝ ብልሽት በራስ-ሰር ተመርምሯል"
 chat.turn_canceled: "(ተሰርዟል)"
 chat.turn_executed: "→ ተፈጽሟል: %{title}"
+# Persistent tool-category labels shown after a status marker and before a subject.
+chat.tool_kind.run: "አሂድ"
+chat.tool_kind.read: "አንብብ"
+chat.tool_kind.search: "ፈልግ"
+chat.tool_kind.edit: "አርትዕ"
+chat.tool_kind.delete: "ሰርዝ"
+chat.tool_kind.move: "አንቀሳቅስ"
+chat.tool_kind.fetch: "አምጣ"
+chat.tool_kind.think: "አስብ"
+chat.tool_kind.mode: "ሁነታ"
+chat.tool_kind.other: "መሣሪያ"
 
 # ── Input placeholders (src/ui/input.rs) ────────────────────────────────────
 input.placeholder.connected: "Ask anything, / for commands.."  # {Locked="/"}
@@ -136,8 +147,8 @@ system.resuming_session: "ክፍለ ጊዜ %{session_id} እንደገና በመ�
 system.unknown_command: "ያልታወቀ ትዕዛዝ \"%{command}\" — እንደ ጥያቄ ተልኳል። ዝርዝሩን ለማየት /help ይተይቡ።"  # {Locked="/help"} — slash-command name.
 system.busy_use_stop: "የአሁኑ ጥያቄ እስኪያልቅ ይጠብቁ፣ ወይም መጀመሪያ /stop ያድርጉ።"  # {Locked="/stop"} — slash-command name.
 system.cannot_focus_session: "ክፍለ ጊዜ %{session_id} ላይ ትኩረት ማድረግ አይቻልም፦ በቀጥታ ያለ ይመስላል ግን ገና የpane GUID የለም። ከጥቂት ጊዜ በኋላ እንደገና ይሞክሩ።"
-system.cannot_resume_no_load_session: "በagent pane ውስጥ መቀጠል አይቻልም፦ %{agent} የACP `loadSession` ችሎታን አላስታወቀም። በምትኩ በአዲስ terminal pane ውስጥ ለመቀጠል Enter (Shift ያለ) ይጫኑ።"  # {Locked="ACP","loadSession","Enter","Shift"} — protocol/UI terms.
-system.cannot_resume_no_resume_flag: "የ%{agent} ክፍለ ጊዜን መቀጠል አይቻልም፦ ይህ agent የ`--resume` አይነት ሰንደቅ የለውም። በምትኩ በagent pane ውስጥ በACP ለመቀጠል Shift+Enter ይጫኑ።"  # {Locked="--resume","Shift","Enter","ACP"} — flag and UI terms.
+system.cannot_resume_no_load_session: "በagent pane ውስጥ መቀጠል አይቻልም፦ %{agent} የACP `loadSession` ችሎታን አላስታወቀም።"  # {Locked="ACP","loadSession"} — protocol/UI terms.
+system.cannot_resume_no_resume_flag: "የ%{agent} ክፍለ ጊዜን መቀጠል አይቻልም፦ ይህ agent የ`--resume` አይነት ሰንደቅ የለውም።"  # {Locked="--resume"} — flag and UI terms.
 system.cannot_resume_unknown_agent: "ክፍለ ጊዜ %{session_id} መቀጠል አይቻልም፦ የምንጩ agent በዚህ WTA ግንባታ አይታወቅም።"
 system.cannot_resume_phantom_via_flag: "የ%{agent} ክፍለ ጊዜ %{session_id} መቀጠል አይቻልም፦ ተጀምሯል ግን ምንም ውይይት አልተከማቸበትም፣ ስለዚህ %{agent} ራሱ መቀጠሉን ይከለክላል። ረድፉን በማስወገድ ላይ።"
 system.cannot_resume_phantom_via_load: "የ%{agent} ክፍለ ጊዜ %{session_id} መቀጠል አይቻልም፦ ተጀምሯል ግን ምንም ውይይት አልተከማቸበትም፣ ስለዚህ %{agent} መጫኑን ይከለክላል። ረድፉን በማስወገድ ላይ።"
@@ -179,7 +190,7 @@ hooks.marketplace_path_stale: "⚠ marketplace path stale"
 hooks.installed_but_disabled: "⚠ installed but disabled"
 hooks.not_installed: "✗ not installed"
 hooks.uninstall_skipped: "skipped (CLI not on PATH)"
-hooks.install_attempted: "wt-agent-hooks install attempted (idempotent). Run `wta hooks status` to inspect the result. Trace log: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"
+hooks.install_succeeded: "✓ wt-agent-hooks ለ%{clis} ተጠቅሟል"
 # ── Relative time + date formatting (src/ui/agents_view.rs) ─────────────────
 time.just_now: "አሁን"
 time.minute_singular: "%{count} ደቂቃ በፊት"
@@ -216,8 +227,17 @@ system.agent_switch_unavailable: "የኤጅንት መቀያየር ከWindows Ter
 
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "ለዚህ ፓነል ሞዴሉን ይምረጡ (በቀጥታ ለመቀየር /model <id>)"  # {Locked="/model","<id>"}
+commands.config.summary: "የዚህን ኤጀንት ክፍለ-ጊዜ ያዋቅሩ"  # Agent means an AI coding agent; shown for the /config command. {Locked="/config"}
 commands.move.summary: "የዚህን ትር ኤጅንት ገጽታ ያንቀሳቅሱ (/move <position>)"  # {Locked="/move","<position>"}
 model_picker.title: "ሞዴል ይምረጡ (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "የተገናኘው ኤጅንት ምንም ሊመረጥ የሚችል ሞዴል አላስታወቀም።"
 system.model_set: "የዚህ ፓነል ሞዴል ወደ %{model} ተቀናብሯል።"  # {Locked="%{model}"}
+
+# ── Session configuration picker (src/ui/config_popup.rs) ───────────────────
+# {Locked="↑","↓","Enter","Esc","ACP"} - key names and protocol name
+config_picker.title: "የክፍለ-ጊዜ ውቅር (↑ ↓ • Enter • Esc)"
+# Shown when /config is used but the AI agent exposed no ACP select options.
+system.no_config_options: "የተገናኘው ኤጀንት ምንም የሚዋቀሩ የክፍለ-ጊዜ አማራጮችን አላስተዋወቀም።"
+# {option} is an Agent-provided option name; {error} is the ACP error.
+system.config_update_failed: "%{option} ማዘመን አልተሳካም፦ %{error}"
 system.model_unknown: "ያልታወቀ ሞዴል %{model} — የሚገኘውን ዝርዝር ለማየት /model ይተይቡ።"  # {Locked="%{model}","/model"}

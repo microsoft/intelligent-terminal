@@ -41,7 +41,7 @@ auth.login_failed_help_default: "  اضغط على Enter لإعادة المحا
 chat.activity_thinking: "جارٍ التفكير…"
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 chat.welcome_title: "مرحبًا بك في الوحدة الطرفية الذكية!"
-chat.welcome_disclaimer: "يستخدم الوحدة الطرفية الذكية الذكاء الاصطناعي. تحقق من الأخطاء."
+chat.welcome_disclaimer: "يستخدم الوحدة الطرفية الذكية الذكاء الاصطناعي."
 chat.plan_header: "الخطة:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}
@@ -49,6 +49,17 @@ chat.plan_marker_pending: "[ ]"  # {Locked}
 chat.autofix_prompt_label: "تم التشخيص التلقائي لفشل أمر حديث"
 chat.turn_canceled: "(تم الإلغاء)"
 chat.turn_executed: "→ تم التنفيذ: %{title}"
+# Persistent tool-category labels shown after a status marker and before a subject.
+chat.tool_kind.run: "تشغيل"
+chat.tool_kind.read: "قراءة"
+chat.tool_kind.search: "بحث"
+chat.tool_kind.edit: "تحرير"
+chat.tool_kind.delete: "حذف"
+chat.tool_kind.move: "نقل"
+chat.tool_kind.fetch: "جلب"
+chat.tool_kind.think: "تفكير"
+chat.tool_kind.mode: "وضع"
+chat.tool_kind.other: "أداة"
 
 # ── عناصر نائبة للإدخال (src/ui/input.rs) ────────────────────────────────────
 input.placeholder.connected: "اسأل أي شيء، / للأوامر.."  # {Locked="/"}
@@ -149,8 +160,8 @@ system.resuming_session: "جارٍ استئناف الجلسة %{session_id}..."
 system.unknown_command: "أمر غير معروف \"%{command}\" — تم إرساله كطلب. اكتب /help لعرض القائمة."  # {Locked="/help"} — slash-command name.
 system.busy_use_stop: "انتظر حتى ينتهي الطلب الحالي، أو استخدم /stop أولًا."  # {Locked="/stop"} — slash-command name.
 system.cannot_focus_session: "يتعذر التركيز على الجلسة %{session_id}: تبدو نشطة، لكن لم يتم ربط GUID للوحة بعد. حاول مرة أخرى بعد قليل."
-system.cannot_resume_no_load_session: "يتعذر الاستئناف في لوحة العامل: لم يعلن %{agent} عن إمكانية ACP `loadSession`. اضغط Enter (من دون Shift) للاستئناف في لوحة طرفية جديدة بدلًا من ذلك."  # {Locked="ACP","loadSession","Enter","Shift"} — protocol/UI terms.
-system.cannot_resume_no_resume_flag: "يتعذر استئناف جلسة %{agent}: لا يحتوي هذا العامل على علامة بنمط `--resume`. اضغط Shift+Enter لمحاولة الاستئناف داخل لوحة العامل عبر ACP بدلًا من ذلك."  # {Locked="--resume","Shift","Enter","ACP"} — flag and UI terms.
+system.cannot_resume_no_load_session: "يتعذر الاستئناف في لوحة العامل: لم يعلن %{agent} عن إمكانية ACP `loadSession`."  # {Locked="ACP","loadSession"} — protocol/UI terms.
+system.cannot_resume_no_resume_flag: "يتعذر استئناف جلسة %{agent}: لا يحتوي هذا العامل على علامة بنمط `--resume`."  # {Locked="--resume"} — flag and UI terms.
 system.cannot_resume_unknown_agent: "يتعذر استئناف الجلسة %{session_id}: عامل المصدر غير معروف لهذا الإصدار من WTA."
 system.cannot_resume_phantom_via_flag: "يتعذر استئناف جلسة %{agent} %{session_id}: بدأت لكنها لم تجمع أي محادثة، لذلك سيرفض %{agent} نفسه الاستئناف. تتم إزالة الصف."
 system.cannot_resume_phantom_via_load: "يتعذر استئناف جلسة %{agent} %{session_id}: بدأت لكنها لم تجمع أي محادثة، لذلك سيرفض %{agent} التحميل. تتم إزالة الصف."
@@ -192,7 +203,7 @@ hooks.marketplace_path_stale: "⚠ مسار المتجر قديم"
 hooks.installed_but_disabled: "⚠ مثبّت ولكن معطّل"
 hooks.not_installed: "✗ غير مثبّت"
 hooks.uninstall_skipped: "تم التخطي (CLI ليس في PATH)"
-hooks.install_attempted: "تمت محاولة تثبيت wt-agent-hooks (متساوي القوة). شغّل `wta hooks status` لفحص النتيجة. سجل التتبع: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"
+hooks.install_succeeded: "✓ تم تثبيت wt-agent-hooks لـ %{clis}"
 # ── Relative time and date formatting ───────────────────────────────────────
 time.just_now: "الآن"
 time.minute_singular: "منذ دقيقة واحدة"
@@ -217,8 +228,17 @@ system.agent_switch_unavailable: "تبديل عامل الذكاء الاصطن�
 
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "اختر النموذج لهذه اللوحة (/model <id> للتبديل مباشرةً)"  # {Locked="/model","<id>"}
+commands.config.summary: "تكوين جلسة عامل الذكاء الاصطناعي هذه"  # Agent means an AI coding agent; shown for the /config command. {Locked="/config"}
 commands.move.summary: "نقل لوحة عامل الذكاء الاصطناعي لعلامة التبويب هذه (/move <position>)"  # {Locked="/move","<position>"}
 model_picker.title: "اختر النموذج (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "لم يُعلن عامل الذكاء الاصطناعي المتصل عن أي نماذج قابلة للاختيار."
 system.model_set: "تم تعيين نموذج هذه اللوحة إلى %{model}."  # {Locked="%{model}"}
+
+# ── Session configuration picker (src/ui/config_popup.rs) ───────────────────
+# {Locked="↑","↓","Enter","Esc","ACP"} - key names and protocol name
+config_picker.title: "تكوين الجلسة (↑ ↓ • Enter • Esc)"
+# Shown when /config is used but the AI agent exposed no ACP select options.
+system.no_config_options: "لم يعلن عامل الذكاء الاصطناعي المتصل عن أي خيارات جلسة قابلة للتكوين."
+# {option} is an Agent-provided option name; {error} is the ACP error.
+system.config_update_failed: "فشل تحديث %{option}: %{error}"
 system.model_unknown: "نموذج غير معروف %{model} — اكتب /model لعرض القائمة المتاحة."  # {Locked="%{model}","/model"}

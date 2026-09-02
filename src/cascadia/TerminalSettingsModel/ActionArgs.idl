@@ -195,6 +195,15 @@ namespace Microsoft.Terminal.Settings.Model
         UInt64 ContentId{ get; set; };
 
         String ToCommandline();
+
+        // Keep new members at the end to preserve the ABI slots of existing members.
+
+        // Settable form of `INewContentArgs.Type`, which the interface only
+        // exposes as a getter. An agent pane is a terminal pane that carries a
+        // content type, so the type has to be assignable on `NewTerminalArgs`
+        // itself. Declared as a method rather than a property so it doesn't
+        // collide with the inherited read-only `Type`.
+        void SetContentType(String type);
     };
 
     [default_interface] runtimeclass ActionEventArgs : IActionEventArgs

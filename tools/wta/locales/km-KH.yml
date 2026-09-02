@@ -43,7 +43,7 @@ auth.login_failed_help_default: "  ចុច Enter ដើម្បីព្យ�
 chat.activity_thinking: "កំពុងគិត…"
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 chat.welcome_title: "សូមស្វាគមន៍មកកាន់ ស្ថានីយឆ្លាតវៃ!"
-chat.welcome_disclaimer: "ស្ថានីយឆ្លាតវៃ ប្រើ AI។ ពិនិត្យមើលកំហុស។"
+chat.welcome_disclaimer: "ស្ថានីយឆ្លាតវៃ ប្រើ AI។"
 # Header label for the AI agent’s step-by-step plan section
 chat.plan_header: "ផែនការ:"
 chat.plan_marker_completed: "[x]"  # {Locked}
@@ -52,6 +52,17 @@ chat.plan_marker_pending: "[ ]"  # {Locked}
 chat.autofix_prompt_label: "បរាជ័យពាក្យបញ្ជាថ្មីៗត្រូវបានធ្វើរោគវិនិច្ឆ័យដោយស្វ័យប្រវត្តិ"
 chat.turn_canceled: "(បានបោះបង់)"
 chat.turn_executed: "→ បានដំណើរការ: %{title}"
+# ស្លាកប្រភេទឧបករណ៍អចិន្ត្រៃយ៍ដែលបង្ហាញបន្ទាប់ពីសញ្ញាស្ថានភាព និងមុនប្រធានបទ។
+chat.tool_kind.run: "ដំណើរការ"
+chat.tool_kind.read: "អាន"
+chat.tool_kind.search: "ស្វែងរក"
+chat.tool_kind.edit: "កែសម្រួល"
+chat.tool_kind.delete: "លុប"
+chat.tool_kind.move: "ផ្លាស់ទី"
+chat.tool_kind.fetch: "ទាញយក"
+chat.tool_kind.think: "គិត"
+chat.tool_kind.mode: "របៀប"
+chat.tool_kind.other: "ឧបករណ៍"
 
 # ── Input placeholders (src/ui/input.rs) ────────────────────────────────────────────────────────────────────
 input.placeholder.connected: "សួរអ្វីក៏បាន, / សម្រាប់ពាក្យបញ្ជា.."  # {Locked="/"}
@@ -148,8 +159,8 @@ system.resuming_session: "កំពុងបន្តវគ្គ %{session_id}.
 system.unknown_command: "មិនស្គាល់ពាក្យបញ្ជា \"%{command}\" — បានផ្ញើជាសំណើ។ វាយ /help ដើម្បីមើលបញ្ជី។"  # {Locked="/help"}
 system.busy_use_stop: "រង់ចាំឱ្យសំណើបច្ចុប្បន្នបញ្ចប់ ឬប្រើ /stop ជាមុន។"  # {Locked="/stop"}
 system.cannot_focus_session: "មិនអាចផ្តោតទៅលើវគ្គ %{session_id}: វាហាក់ដូចជាកំពុងដំណើរការ ប៉ុន្តែមិនទាន់បានភ្ជាប់ GUID របស់ផ្តាំងនៅឡើយទេ។ សូមសាកល្បងម្ដងទៀតបន្តិចទៀត។"
-system.cannot_resume_no_load_session: "មិនអាចបន្តនៅក្នុងផ្តាំងអេជេន្ត់បានទេ: %{agent} មិនបានប្រកាសសមត្ថភាព ACP `loadSession` ទេ។ ចុច Enter (ដោយមិនចុច Shift) ដើម្បីបន្តនៅក្នុងផ្តាំង terminal ថ្មីជំនួសវិញ។"  # {Locked="ACP","loadSession","Enter","Shift"}
-system.cannot_resume_no_resume_flag: "មិនអាចបន្តវគ្គ %{agent} បានទេ: អេជេន្ត់នេះមិនមាន flag រចនាប័ទ្ម `--resume` ទេ។ ចុច Shift+Enter ដើម្បីសាកល្បងបន្តនៅក្នុងផ្តាំងអេជេន្ត់តាម ACP ជំនួសវិញ។"  # {Locked="--resume","Shift","Enter","ACP"}
+system.cannot_resume_no_load_session: "មិនអាចបន្តនៅក្នុងផ្តាំងអេជេន្ត់បានទេ: %{agent} មិនបានប្រកាសសមត្ថភាព ACP `loadSession` ទេ។"  # {Locked="ACP","loadSession"}
+system.cannot_resume_no_resume_flag: "មិនអាចបន្តវគ្គ %{agent} បានទេ: អេជេន្ត់នេះមិនមាន flag រចនាប័ទ្ម `--resume` ទេ។"  # {Locked="--resume"}
 system.cannot_resume_unknown_agent: "មិនអាចបន្តវគ្គ %{session_id} បានទេ: អេជេន្ត់ប្រភពរបស់វាមិនត្រូវបានស្គាល់ដោយ build នេះទេ។"
 system.cannot_resume_phantom_via_flag: "មិនអាចបន្តវគ្គ %{agent} %{session_id} បានទេ: វាត្រូវបានចាប់ផ្តើម ប៉ុន្តែមិនដែលមានការសន្ទនាណាមួយទេ ដូច្នេះ %{agent} ខ្លួនឯងនឹងបដិសេធការបន្ត។ កំពុងលុបជួរដេក។"
 system.cannot_resume_phantom_via_load: "មិនអាចបន្តវគ្គ %{agent} %{session_id} បានទេ: វាត្រូវបានចាប់ផ្តើម ប៉ុន្តែមិនដែលមានការសន្ទនាណាមួយទេ ដូច្នេះ %{agent} នឹងបដិសេធការផ្ទុក។ កំពុងលុបជួរដេក។"
@@ -193,7 +204,7 @@ hooks.marketplace_path_stale: "⚠ ផ្លូវ marketplace ហួសសម�
 hooks.installed_but_disabled: "⚠ បានតំឡើងប៉ុន្តែត្រូវបានបិទ"
 hooks.not_installed: "✗ មិនត្រូវបានតំឡើង"
 hooks.uninstall_skipped: "រំលង (CLI មិននៅលើ PATH)"
-hooks.install_attempted: "wt-agent-hooks install attempted (idempotent). Run `wta hooks status` to inspect the result. Trace log: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"
+hooks.install_succeeded: "✓ wt-agent-hooks បានតំឡើងសម្រាប់ %{clis}"
 
 # ── Relative time and date formatting ─────────────────────────────────────
 time.just_now: "ទើបតែឥឡូវនេះ"
@@ -231,8 +242,17 @@ system.agent_switch_unavailable: "ការផ្លាស់ប្តូរភ�
 
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "ជ្រើសរើសម៉ូដែលសម្រាប់ផ្តាំងនេះ (/model <id> ដើម្បីប្តូរដោយផ្ទាល់)"  # {Locked="/model","<id>"}
+commands.config.summary: "កំណត់រចនាសម្ព័ន្ធសម័យភ្នាក់ងារនេះ"  # Agent means an AI coding agent; shown for the /config command. {Locked="/config"}
 commands.move.summary: "ផ្លាស់ទីផ្ទាំងភ្នាក់ងារនៃផ្ទាំងនេះ (/move <position>)"  # {Locked="/move","<position>"}
 model_picker.title: "ជ្រើសរើសម៉ូដែល (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "AI អេជេន្ត់ដែលបានភ្ជាប់មិនបានប្រកាសម៉ូដែលណាមួយដែលអាចជ្រើសរើសបានទេ។"
 system.model_set: "ម៉ូដែលសម្រាប់ផ្តាំងនេះត្រូវបានកំណត់ទៅ %{model}។"  # {Locked="%{model}"}
+
+# ── Session configuration picker (src/ui/config_popup.rs) ───────────────────
+# {Locked="↑","↓","Enter","Esc","ACP"} - key names and protocol name
+config_picker.title: "ការកំណត់រចនាសម្ព័ន្ធសម័យ (↑ ↓ • Enter • Esc)"
+# Shown when /config is used but the AI agent exposed no ACP select options.
+system.no_config_options: "ភ្នាក់ងារដែលបានភ្ជាប់មិនបានផ្សព្វផ្សាយជម្រើសសម័យដែលកែសម្រួលបានឡើយ។"
+# {option} is an Agent-provided option name; {error} is the ACP error.
+system.config_update_failed: "បរាជ័យក្នុងការធ្វើបច្ចុប្បន្នភាព %{option}: %{error}"
 system.model_unknown: "មិនស្គាល់ម៉ូដែល %{model} — វាយ /model ដើម្បីមើលបញ្ជីដែលមាន។"  # {Locked="%{model}","/model"}

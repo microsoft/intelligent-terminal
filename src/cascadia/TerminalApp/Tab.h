@@ -42,7 +42,8 @@ namespace winrt::TerminalApp::implementation
                                                                           std::shared_ptr<Pane> newPane);
 
         std::pair<std::shared_ptr<Pane>, std::shared_ptr<Pane>> SplitPaneAtRoot(winrt::Microsoft::Terminal::Settings::Model::SplitDirection splitType,
-                                                                                 std::shared_ptr<Pane> newPane);
+                                                                                std::shared_ptr<Pane> newPane,
+                                                                                float splitSize = 0.5f);
 
         void ToggleSplitOrientation();
         void UpdateIcon(const winrt::hstring& iconPath, const winrt::Microsoft::Terminal::Settings::Model::IconStyle iconStyle);

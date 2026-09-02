@@ -122,7 +122,7 @@ enum ModelSwitchChannel {
     /// Legacy `session/set_model`.
     Legacy,
     /// Legacy after the agent rejected `session/set_config_option`.
-    LegacyFallback,
+    LegacyFallback { config_id: String },
     /// `session/set_config_option` carrying this config id (e.g. `"model"`).
     Config { config_id: String },
 }
@@ -145,7 +145,7 @@ fn record_loaded_channel_config(session_id: &str, config_id: &str) {
     let mut channels = MODEL_SWITCHES.write().unwrap();
     if !matches!(
         channels.get(session_id),
-        Some(ModelSwitchChannel::LegacyFallback)
+        Some(ModelSwitchChannel::LegacyFallback { .. })
     ) {
         channels.insert(
             session_id.to_string(),
@@ -154,6 +154,17 @@ fn record_loaded_channel_config(session_id: &str, config_id: &str) {
             },
         );
     }
+}
+
+pub(crate) fn is_model_config(session_id: &str, config_id: &str) -> bool {
+    matches!(
+        MODEL_SWITCHES.read().unwrap().get(session_id),
+        Some(ModelSwitchChannel::Config {
+            config_id: known_id
+        }) | Some(ModelSwitchChannel::LegacyFallback {
+            config_id: known_id
+        }) if known_id == config_id
+    )
 }
 
 pub(crate) fn forget_session(session_id: &str) {
@@ -188,7 +199,7 @@ pub(crate) fn models_from_load_session(
 ) -> (Vec<AcpModelInfo>, Option<String>) {
     let had_confirmed_fallback = matches!(
         MODEL_SWITCHES.read().unwrap().get(session_id),
-        Some(ModelSwitchChannel::LegacyFallback)
+        Some(ModelSwitchChannel::LegacyFallback { .. })
     );
     if !had_confirmed_fallback {
         forget_session(session_id);
@@ -280,7 +291,7 @@ pub(crate) async fn apply_session_model(
     conn: &crate::protocol::acp::conn::ClientLink,
     session_id: acp::schema::v1::SessionId,
     model_id: String,
-) -> acp::Result<()> {
+) -> acp::Result<Option<Vec<acp::schema::v1::SessionConfigOption>>> {
     // Snapshot under the read lock and release it before the await — the lock
     // guard isn't Send and must not be held across the suspension point.
     let session_key = session_id.to_string();
@@ -295,24 +306,28 @@ pub(crate) async fn apply_session_model(
             match conn
                 .set_session_config_option(acp::schema::v1::SetSessionConfigOptionRequest::new(
                     session_id.clone(),
-                    config_id,
+                    config_id.clone(),
                     model_id.as_str(),
                 ))
                 .await
             {
-                Ok(_) => Ok(()),
+                Ok(response) => Ok(Some(response.config_options)),
                 Err(e) if e.code == acp::ErrorCode::MethodNotFound => {
-                    MODEL_SWITCHES
-                        .write()
-                        .unwrap()
-                        .insert(session_key, ModelSwitchChannel::LegacyFallback);
-                    apply_legacy_set_model(conn, session_id, model_id).await
+                    MODEL_SWITCHES.write().unwrap().insert(
+                        session_key,
+                        ModelSwitchChannel::LegacyFallback { config_id },
+                    );
+                    apply_legacy_set_model(conn, session_id, model_id)
+                        .await
+                        .map(|()| None)
                 }
                 Err(e) => Err(e),
             }
         }
-        ModelSwitchChannel::Legacy | ModelSwitchChannel::LegacyFallback => {
-            apply_legacy_set_model(conn, session_id, model_id).await
+        ModelSwitchChannel::Legacy | ModelSwitchChannel::LegacyFallback { .. } => {
+            apply_legacy_set_model(conn, session_id, model_id)
+                .await
+                .map(|()| None)
         }
     }
 }
@@ -444,9 +459,9 @@ mod tests {
                     "options": [{"value": "haiku", "name": "Haiku"}]
                 }]
             }))
-        .expect("valid config option update");
+            .expect("valid config option update");
         let (models, current) = models_from_config_options("background", &update.config_options)
-                .expect("model selector");
+            .expect("model selector");
         assert_eq!(models[0].id, "haiku");
         assert_eq!(current.as_deref(), Some("haiku"));
         assert_eq!(
@@ -618,7 +633,9 @@ mod tests {
             );
             assert_eq!(
                 channel_for("s-fallback"),
-                ModelSwitchChannel::LegacyFallback,
+                ModelSwitchChannel::LegacyFallback {
+                    config_id: "model".into()
+                },
                 "MethodNotFound on set_config_option must flip the channel to Legacy"
             );
 
@@ -633,11 +650,13 @@ mod tests {
                         "options": [{"value": "haiku", "name": "Haiku"}]
                     }]
                 }))
-            .expect("valid load_session response");
+                .expect("valid load_session response");
             let _ = models_from_load_session("s-fallback", &loaded);
             assert_eq!(
                 channel_for("s-fallback"),
-                ModelSwitchChannel::LegacyFallback,
+                ModelSwitchChannel::LegacyFallback {
+                    config_id: "model".into()
+                },
                 "loading a session must preserve a confirmed Legacy fallback"
             );
         });

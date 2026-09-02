@@ -30,6 +30,9 @@ namespace Microsoft.Terminal.Settings.Editor
         String Id { get; };
         String BaseUrl { get; };
         String ModelsDisplayText { get; };
+        Boolean IsApiKeyMissing { get; };
+        String RemovalErrorMessage { get; };
+        Boolean HasRemovalError { get; };
         void Remove();
     }
 
@@ -80,10 +83,12 @@ namespace Microsoft.Terminal.Settings.Editor
         AcpModelEntry CurrentAcpModelEntry;
         PERMANENT_OBSERVABLE_PROJECTED_SETTING(String, AcpModel);
         Windows.Foundation.Collections.IObservableVector<CustomModelProviderEntry> CustomModelProviders { get; };
+        Boolean ShowCustomModelProvidersExpander { get; };
         Boolean IsCustomModelProvidersExpanded;
         Boolean IsAddingCustomModelProvider { get; };
         String NewCustomModelProviderBaseUrl;
         String NewCustomModelId;
+        String NewCustomModelProviderApiKey;
         Boolean CanSaveCustomModelProvider { get; };
         String CustomModelProviderUnsupportedMessage { get; };
         void AddCustomModelProvider();
@@ -116,8 +121,11 @@ namespace Microsoft.Terminal.Settings.Editor
 
         // ── Agent Hooks ──────────────────────────────────────────────────
         // Drives the "Agent session tracking (hooks)" expander. Shape:
-        //   Row 1 always: "Install hooks" button — runs `wta hooks install`
-        //                 across every CLI on PATH (idempotent).
+        //   Row 1 always: "Install hooks" button — runs
+        //                 `wta hooks install --only-missing` across every CLI
+        //                 on PATH. Missing / partial / stale bridges are
+        //                 installed, complete but out-of-date ones are
+        //                 upgraded, and complete current ones are left alone.
         //   Rows 2+ : one per CLI that currently has any hook state on
         //             disk (marketplace registered OR plugin installed),
         //             whether fully installed or partial. Each row exposes
@@ -152,7 +160,6 @@ namespace Microsoft.Terminal.Settings.Editor
         Boolean ShowOpenCodeHooksSubtitle { get; };
         Boolean CanInstallAgentHooks { get; };
         Boolean CanRemoveAgentHooks { get; };
-        Boolean CanRemoveOpenCodeHooks { get; };
         Boolean IsInstallingAgentHooks { get; };
         String AgentHooksInstallSummary { get; };
         // True iff AgentHooksInstallSummary is non-empty — gates the

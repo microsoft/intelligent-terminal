@@ -66,9 +66,11 @@
     'PowerShell shell integration installed' = 'PowerShell shell integration emits|PowerShell-level errors emit a non-zero command-finished mark on Windows PowerShell 5\.1'
 
     # §4 session view / focus
-    # NOTE: 'Shift+Enter behavior works' is NOT E2E-mapped — its contract (Live row Shift+Enter ->
-    # FocusPane) is deterministically covered by the Rust unit test
-    # shift_enter_on_class_a_live_row_focuses; focus-pane semantics aren't stably observable in E2E.
+    # NOTE: 'Only a bare Enter activates a row' is NOT E2E-mapped — its contract (a modified Enter
+    # never activates a row) is deterministically covered by the Rust unit tests
+    # modified_enter_on_live_row_dispatches_nothing / modified_enter_on_class_a_dead_row_dispatches_nothing /
+    # modified_enter_on_class_b_dead_row_dispatches_nothing; "nothing happened" and focus-pane
+    # semantics aren't stably observable in E2E.
     #
     # NOTE: 'Idle state is correct' is covered end-to-end by Feature.SessionState (the It name
     # contains the item title, so the report auto-credits it): it runs a real shell copilot
@@ -114,10 +116,15 @@
     # §10 diagnostics — bug-report zip (Feature.BugReport). The "Report a bug (collect logs)"
     # command palette entry zips the logs dir to the Desktop; assert it contains agent logs.
     'Bug report zip includes agent logs' = 'Bug report zip includes agent logs'
-    # §10 diagnostics — hook trace log (Feature.HookTrace). A hooked copilot prompt is traced.
-    'Hook trace log is written'         = 'Hook trace log is written'
+    # §10 diagnostics — native hook bridge (Feature.HookTrace).
+    'Native hook bridge publishes events' = 'wtcli agent-hook publishes a pane-scoped, redacted agent event'
+    # §8 legacy PowerShell hook bundle compatibility (Feature.LegacyHookBundle). The pane-less
+    # case pins that `wtcli send-event` without -p publishes an EMPTY pane_id rather than
+    # resolving the focused pane, which used to evict that pane's real session.
+    'Legacy hook bundle without WT_SESSION stays unattributed' = 'without WT_SESSION publishes unattributed'
     # §2 agent pane paste (Feature.Paste) — only the multiline case satisfies C065.
-    'Paste works'                       = 'Paste works \(multiline clipboard text stays in one agent draft without submitting\)'
+    'Paste works'                       = 'Paste works \(multiline text remains in one agent draft without submitting\)'
+    'Completed turns toggle and select from rendered prompt targets' = 'Clicking a multiline prompt row selects and collapses its completed turn'
     # §7 multi-window (Feature.MultiWindow) — move an agent tab to a new window via the command
     # palette (moveTab window:new), assert chat preserved + closing the source window is safe.
     'Move tab to new window preserves chat' = 'Move tab to new window preserves chat'

@@ -41,7 +41,7 @@ auth.login_failed_help_default: "  വീണ്ടും ശ്രമിക്�
 chat.activity_thinking: "ചിന്തിക്കുന്നു…"
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 chat.welcome_title: "ഇന്റലിജന്റ് ടെർമിനൽ-ലേക്ക് സ്വാഗതം!"
-chat.welcome_disclaimer: "ഇന്റലിജന്റ് ടെർമിനൽ AI ഉപയോഗിക്കുന്നു. തെറ്റുകൾ പരിശോധിക്കുക."
+chat.welcome_disclaimer: "ഇന്റലിജന്റ് ടെർമിനൽ AI ഉപയോഗിക്കുന്നു."
 chat.plan_header: "പദ്ധതി:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}
@@ -49,6 +49,17 @@ chat.plan_marker_pending: "[ ]"  # {Locked}
 chat.autofix_prompt_label: "സമീപകാല കമാൻഡ് പരാജയം സ്വയം നിർണ്ണയിച്ചു"
 chat.turn_canceled: "(റദ്ദാക്കി)"
 chat.turn_executed: "→ നടപ്പിലാക്കി: %{title}"
+# Persistent tool-category labels shown after a status marker and before a subject.
+chat.tool_kind.run: "പ്രവർത്തിപ്പിക്കുക"
+chat.tool_kind.read: "വായിക്കുക"
+chat.tool_kind.search: "തിരയുക"
+chat.tool_kind.edit: "തിരുത്തുക"
+chat.tool_kind.delete: "ഇല്ലാതാക്കുക"
+chat.tool_kind.move: "നീക്കുക"
+chat.tool_kind.fetch: "കൊണ്ടുവരിക"
+chat.tool_kind.think: "ചിന്തിക്കുക"
+chat.tool_kind.mode: "മോഡ്"
+chat.tool_kind.other: "ഉപകരണം"
 
 # ── ഇന്‍പുട്ട് പ്ലേസ്‌ഹോള്‍ഡറുകള്‍ (src/ui/input.rs) ────────────────────────────────────
 input.placeholder.connected: "എന്തും ചോദിക്കൂ, / കമാന്‍ഡുകള്‍ക്ക്.."  # {Locked="/"}
@@ -147,8 +158,8 @@ system.resuming_session: "സെഷൻ %{session_id} പുനരാരംഭി
 system.unknown_command: "അറിയാത്ത കമാൻഡ് \"%{command}\" — പ്രോംപ്റ്റായി അയച്ചു. പട്ടികയ്ക്കായി /help ടൈപ്പ് ചെയ്യുക."  # {Locked="/help"} — slash-command name.
 system.busy_use_stop: "നിലവിലെ പ്രോംപ്റ്റ് പൂർത്തിയാകുന്നത് വരെ കാത്തിരിക്കുക, അല്ലെങ്കിൽ ആദ്യം /stop ചെയ്യുക."  # {Locked="/stop"} — slash-command name.
 system.cannot_focus_session: "സെഷൻ %{session_id} ഫോക്കസ് ചെയ്യാനാകില്ല: അത് live ആയി തോന്നുന്നു, പക്ഷേ pane GUID ഇനിയും ബൗണ്ട് ചെയ്തിട്ടില്ല. കുറച്ച് കഴിഞ്ഞ് വീണ്ടും ശ്രമിക്കുക."
-system.cannot_resume_no_load_session: "agent pane-ൽ പുനരാരംഭിക്കാൻ കഴിയില്ല: %{agent} ACP `loadSession` കഴിവ് പ്രഖ്യാപിച്ചിട്ടില്ല. പകരം പുതിയ terminal pane-ൽ പുനരാരംഭിക്കാൻ Enter (Shift ഇല്ലാതെ) അമർത്തുക."  # {Locked="ACP","loadSession","Enter","Shift"} — protocol/UI terms.
-system.cannot_resume_no_resume_flag: "%{agent} സെഷൻ പുനരാരംഭിക്കാൻ കഴിയില്ല: ഈ agent-ന് `--resume` ശൈലിയിലുള്ള flag ഇല്ല. പകരം ACP വഴി agent pane-നുള്ളിൽ പുനരാരംഭിക്കാൻ Shift+Enter അമർത്തി ശ്രമിക്കുക."  # {Locked="--resume","Shift","Enter","ACP"} — flag and UI terms.
+system.cannot_resume_no_load_session: "agent pane-ൽ പുനരാരംഭിക്കാൻ കഴിയില്ല: %{agent} ACP `loadSession` കഴിവ് പ്രഖ്യാപിച്ചിട്ടില്ല."  # {Locked="ACP","loadSession"} — protocol/UI terms.
+system.cannot_resume_no_resume_flag: "%{agent} സെഷൻ പുനരാരംഭിക്കാൻ കഴിയില്ല: ഈ agent-ന് `--resume` ശൈലിയിലുള്ള flag ഇല്ല."  # {Locked="--resume"} — flag and UI terms.
 system.cannot_resume_unknown_agent: "സെഷൻ %{session_id} പുനരാരംഭിക്കാൻ കഴിയില്ല: ഇതിന്റെ ഉറവിട agent ഈ WTA build-ന് അറിയില്ല."
 system.cannot_resume_phantom_via_flag: "%{agent} സെഷൻ %{session_id} പുനരാരംഭിക്കാൻ കഴിയില്ല: അത് തുടങ്ങിയിരുന്നു, പക്ഷേ ഒരു സംഭാഷണവും ശേഖരിച്ചിട്ടില്ല; അതിനാൽ %{agent} തന്നെ resume നിരസിക്കും. വരി നീക്കം ചെയ്യുന്നു."
 system.cannot_resume_phantom_via_load: "%{agent} സെഷൻ %{session_id} പുനരാരംഭിക്കാൻ കഴിയില്ല: അത് തുടങ്ങിയിരുന്നു, പക്ഷേ ഒരു സംഭാഷണവും ശേഖരിച്ചിട്ടില്ല; അതിനാൽ %{agent} load നിരസിക്കും. വരി നീക്കം ചെയ്യുന്നു."
@@ -190,7 +201,7 @@ hooks.marketplace_path_stale: "⚠ മാര്‍ക്കറ്റ്‌പ്
 hooks.installed_but_disabled: "⚠ ഇന്‍സ്റ്റാള്‍ ചെയ്തിട്ടുണ്ട് പക്ഷേ നിഷ്ക്രിയമാക്കിയിട്ടുണ്ട്"
 hooks.not_installed: "✗ ഇന്‍സ്റ്റാള്‍ ചെയ്തിട്ടില്ല"
 hooks.uninstall_skipped: "ഒഴിവാക്കി (CLI PATH-ല്‍ ഇല്ല)"
-hooks.install_attempted: "wt-agent-hooks ഇന്‍സ്റ്റാള്‍ ശ്രമിച്ചു (ഐഡംപോറ്റന്റ്). ഫലം പരിശോധിക്കാന്‍ `wta hooks status` പ്രവര്‍ത്തിപ്പിക്കുക. ട്രേസ് ലോഗ്: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"
+hooks.install_succeeded: "✓ wt-agent-hooks %{clis}-ന് ഇന്‍സ്റ്റാള്‍ ചെയ്തിട്ടുണ്ട്"
 
 # ── Relative time and date formatting ─────────────────────────────────────
 time.just_now: "ഇപ്പോഴേ"
@@ -216,8 +227,17 @@ system.agent_switch_unavailable: "വിൻഡോസ് ടെർമിനൽ �
 
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "ഈ പേനിനായി മോഡൽ തിരഞ്ഞെടുക്കുക (നേരിട്ട് മാറാൻ /model <id>)"  # {Locked="/model","<id>"}
+commands.config.summary: "ഈ ഏജന്റ് സെഷൻ കോൺഫിഗർ ചെയ്യുക"  # Agent means an AI coding agent; shown for the /config command. {Locked="/config"}
 commands.move.summary: "ഈ ടാബിന്റെ ഏജന്റ് പേൻ നീക്കുക (/move <position>)"  # {Locked="/move","<position>"}
 model_picker.title: "മോഡൽ തിരഞ്ഞെടുക്കുക (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "കണക്റ്റുചെയ്‌ത agent തിരഞ്ഞെടുക്കാവുന്ന ഒരു മോഡലും പ്രഖ്യാപിച്ചില്ല."
 system.model_set: "ഈ പേനിനായുള്ള മോഡൽ %{model} ആയി സജ്ജമാക്കി."  # {Locked="%{model}"}
+
+# ── Session configuration picker (src/ui/config_popup.rs) ───────────────────
+# {Locked="↑","↓","Enter","Esc","ACP"} - key names and protocol name
+config_picker.title: "സെഷൻ കോൺഫിഗറേഷൻ (↑ ↓ • Enter • Esc)"
+# Shown when /config is used but the AI agent exposed no ACP select options.
+system.no_config_options: "ബന്ധിപ്പിച്ച ഏജന്റ് കോൺഫിഗർ ചെയ്യാവുന്ന സെഷൻ ഓപ്ഷനുകളൊന്നും പരസ്യപ്പെടുത്തിയില്ല."
+# {option} is an Agent-provided option name; {error} is the ACP error.
+system.config_update_failed: "%{option} അപ്‌ഡേറ്റ് ചെയ്യുന്നതിൽ പരാജയപ്പെട്ടു: %{error}"
 system.model_unknown: "അറിയാത്ത മോഡൽ %{model} — ലഭ്യമായ പട്ടിക കാണാൻ /model ടൈപ്പ് ചെയ്യുക."  # {Locked="%{model}","/model"}

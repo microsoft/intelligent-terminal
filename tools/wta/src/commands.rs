@@ -3,10 +3,12 @@
 //! The user types `/foo` in the input box; on Enter, [`parse`] resolves the
 //! input to a [`ParsedCommand`] (or returns `None`, in which case the line is
 //! sent as a normal prompt). The autocomplete popup uses [`matches`] for
-//! prefix-filtered suggestions.
+//! substring-filtered suggestions, with prefix matches ranked first.
 //!
 //! See `tools/wta/src/app.rs` `App::handle_slash_command` for dispatch and
 //! `tools/wta/src/ui/command_popup.rs` for rendering.
+
+use crate::app_contracts::CompletionBehavior;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CommandKind {
@@ -16,41 +18,34 @@ pub enum CommandKind {
     New,
     /// Run the auto-fix prompt on demand.
     ///
-    /// Submits the dedicated `auto-fix.md` template plus the active
+    /// Submits the `auto-fix.md` instruction overlay plus the active
     /// terminal pane's recent output to the agent — the same pipeline the
     /// error-triggered autofix uses (`PromptSubmission::is_autofix`), but
     /// invoked manually. Any text after `/fix` is passed through as an
     /// extra hint to steer the diagnosis (`/fix the path looks wrong`).
     Fix,
-    /// Reset the agent CLI subprocess.
-    ///
-    /// * Standalone wta: tears down + respawns the agent CLI in-process;
-    ///   tabs lazily get fresh sessions on the next prompt.
-    /// * Helper mode: fires a `restart_agent_stack` `SendEvent` to the C++
-    ///   side, which mirrors the path settings reload already takes when
-    ///   `acpAgent` changes: tear down every agent pane (master + helper
-    ///   processes die with them), force `SharedWta::Restart()` to bypass
-    ///   refcount and respawn master on the *same stable pipe name*, and
-    ///   re-toggle the active tab's agent pane. The new helper auto-
-    ///   connects to the new master. Visible UX: agent panes flash closed
-    ///   and reopen with a clean session; nothing requires the user to
-    ///   restart Windows Terminal.
+    /// Replace the shared master and Agent CLI pool. Each viable helper keeps
+    /// its pane and reconnects its immutable binding over the stable pipe with
+    /// a clean session. Only an unavailable helper requires pane recreation.
     Restart,
     Sessions,
     /// Pick the ACP agent for this Windows Terminal tab.
     ///
     /// Bare `/agent` opens an interactive picker containing only agents that
     /// are both host-policy-allowed and installed on this machine;
-    /// `/agent <id>` switches directly. The helper asks Windows Terminal to
-    /// rebuild only its owning tab, so the choice remains a runtime per-tab
+    /// `/agent <id>` switches directly by rebinding the existing helper when
+    /// the execution source is unchanged. The choice remains a runtime per-tab
     /// override and never changes the global `acpAgent` setting.
     Agent,
     /// Pick the ACP model for *this* agent pane.
     ///
-    /// Bare `/model` opens an interactive picker listing configured BYOM
-    /// models. Cloud/native models are intentionally omitted; model changes
-    /// are made through Settings because they require an agent restart.
+    /// Bare `/model` opens an interactive picker listing configured BYOK
+    /// models. Cloud/native models are intentionally omitted; global model
+    /// changes remain managed through Settings and follow each agent's live
+    /// switch or reconnect capability.
     Model,
+    /// Configure the current ACP session using Agent-provided config options.
+    Config,
     /// Move this tab's agent pane without changing the global pane-position
     /// setting or any other tab.
     Move,
@@ -63,6 +58,7 @@ pub struct CommandSpec {
     /// time so the popup follows the current locale.
     pub summary_key: &'static str,
     pub kind: CommandKind,
+    pub completion_behavior: CompletionBehavior,
 }
 
 impl CommandSpec {
@@ -83,52 +79,68 @@ pub const REGISTRY: &[CommandSpec] = &[
         name: "help",
         summary_key: "commands.help.summary",
         kind: CommandKind::Help,
+        completion_behavior: CompletionBehavior::ExecuteImmediately,
     },
     CommandSpec {
         name: "clear",
         summary_key: "commands.clear.summary",
         kind: CommandKind::Clear,
+        completion_behavior: CompletionBehavior::ExecuteImmediately,
     },
     CommandSpec {
         name: "new",
         summary_key: "commands.new.summary",
         kind: CommandKind::New,
+        completion_behavior: CompletionBehavior::ExecuteImmediately,
     },
     CommandSpec {
         name: "fix",
         summary_key: "commands.fix.summary",
         kind: CommandKind::Fix,
+        completion_behavior: CompletionBehavior::OptionalFreeText,
     },
     CommandSpec {
         name: "restart",
         summary_key: "commands.restart.summary",
         kind: CommandKind::Restart,
+        completion_behavior: CompletionBehavior::ExecuteImmediately,
     },
     CommandSpec {
         name: "stop",
         summary_key: "commands.stop.summary",
         kind: CommandKind::Stop,
+        completion_behavior: CompletionBehavior::ExecuteImmediately,
     },
     CommandSpec {
         name: "sessions",
         summary_key: "commands.sessions.summary",
         kind: CommandKind::Sessions,
+        completion_behavior: CompletionBehavior::ExecuteImmediately,
     },
     CommandSpec {
         name: "agent",
         summary_key: "commands.agent.summary",
         kind: CommandKind::Agent,
+        completion_behavior: CompletionBehavior::OpenPicker,
     },
     CommandSpec {
         name: "model",
         summary_key: "commands.model.summary",
         // `/model <id>` switches directly; bare `/model` opens the picker.
         kind: CommandKind::Model,
+        completion_behavior: CompletionBehavior::OpenPicker,
+    },
+    CommandSpec {
+        name: "config",
+        summary_key: "commands.config.summary",
+        kind: CommandKind::Config,
+        completion_behavior: CompletionBehavior::OpenPicker,
     },
     CommandSpec {
         name: "move",
         summary_key: "commands.move.summary",
         kind: CommandKind::Move,
+        completion_behavior: CompletionBehavior::OpenPicker,
     },
 ];
 
@@ -269,15 +281,16 @@ pub fn lookup(name: &str) -> Option<&'static CommandSpec> {
         .find(|spec| spec.name.eq_ignore_ascii_case(name))
 }
 
-/// Prefix-match against the registry (case-insensitive). An empty prefix
-/// returns the full registry in declaration order. Used by the autocomplete
-/// popup.
-pub fn matches(prefix: &str) -> Vec<&'static CommandSpec> {
-    let needle = prefix.trim().to_ascii_lowercase();
-    REGISTRY
+/// Substring-match against the registry (case-insensitive), ranking prefix
+/// matches before other contains matches. An empty query returns the full
+/// registry in declaration order. Used by the autocomplete popup.
+pub fn matches(query: &str) -> Vec<&'static CommandSpec> {
+    let needle = query.trim().to_ascii_lowercase();
+    let (prefix_matches, contains_matches): (Vec<_>, Vec<_>) = REGISTRY
         .iter()
-        .filter(|spec| spec.name.starts_with(&needle))
-        .collect()
+        .filter(|spec| spec.name.contains(&needle))
+        .partition(|spec| spec.name.starts_with(&needle));
+    prefix_matches.into_iter().chain(contains_matches).collect()
 }
 
 /// Resolve a `/move` argument from either its full name or one-letter alias.
@@ -285,7 +298,7 @@ pub fn lookup_move_position(value: &str) -> Option<&'static MovePositionSpec> {
     let value = value.trim();
     MOVE_POSITIONS.iter().find(|position| {
         position.name.eq_ignore_ascii_case(value) || position.alias.eq_ignore_ascii_case(value)
-        })
+    })
 }
 
 /// Prefix-match `/move` positions by full name or one-letter alias.
@@ -451,7 +464,7 @@ mod tests {
     }
 
     #[test]
-    fn matches_filters_by_prefix() {
+    fn matches_filters_by_substring_and_ranks_prefixes_first() {
         let all = matches("");
         assert_eq!(all.len(), REGISTRY.len());
 
@@ -459,15 +472,57 @@ mod tests {
         assert_eq!(h.len(), 1);
         assert_eq!(h[0].name, "help");
 
+        let middle = matches("lear");
+        assert_eq!(middle.len(), 1);
+        assert_eq!(middle[0].name, "clear");
+
+        let ranked: Vec<_> = matches("st").into_iter().map(|spec| spec.name).collect();
+        assert_eq!(ranked, vec!["stop", "restart"]);
+
         let none = matches("zzz");
         assert!(none.is_empty());
     }
 
     #[test]
     fn matches_case_insensitive() {
-        let h = matches("HE");
-        assert_eq!(h.len(), 1);
-        assert_eq!(h[0].name, "help");
+        let sessions = matches("IONS");
+        assert_eq!(sessions.len(), 1);
+        assert_eq!(sessions[0].name, "sessions");
+    }
+
+    #[test]
+    fn registry_declares_completion_behavior_for_every_command() {
+        use CompletionBehavior::{
+            ExecuteImmediately, OpenPicker, OptionalFreeText, RequireFreeText,
+        };
+
+        let actual = REGISTRY
+            .iter()
+            .map(|spec| (spec.name, spec.completion_behavior))
+            .collect::<Vec<_>>();
+
+        assert_eq!(
+            actual,
+            vec![
+                ("help", ExecuteImmediately),
+                ("clear", ExecuteImmediately),
+                ("new", ExecuteImmediately),
+                ("fix", OptionalFreeText),
+                ("restart", ExecuteImmediately),
+                ("stop", ExecuteImmediately),
+                ("sessions", ExecuteImmediately),
+                ("agent", OpenPicker),
+                ("model", OpenPicker),
+                ("config", OpenPicker),
+                ("move", OpenPicker),
+            ]
+        );
+        assert!(
+            !actual
+                .iter()
+                .any(|(_, behavior)| *behavior == RequireFreeText),
+            "required free-text commands currently come from the ACP session registry"
+        );
     }
 
     #[test]

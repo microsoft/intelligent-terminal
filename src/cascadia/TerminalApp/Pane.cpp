@@ -2,6 +2,7 @@
 // Licensed under the MIT license.
 
 #include "pch.h"
+#include "../inc/AgentPaneRestore.h"
 #include "Pane.h"
 
 using namespace winrt::Windows::Foundation;
@@ -103,7 +104,21 @@ INewContentArgs Pane::GetTerminalArgsForPane(BuildStartupKind kind) const
     {
         return nullptr;
     }
-    return _content.GetNewTerminalArgs(kind);
+    auto args = _content.GetNewTerminalArgs(kind);
+
+    // A stashed agent pane is still in the tree — `StashAgentPane` only hides
+    // it — so it serializes like any other pane. Record that it was toggled
+    // away in the content type it already carries, rather than spending a
+    // separate persisted field on one bit.
+    if (kind == BuildStartupKind::Persist && _isAgentPane && _hidden)
+    {
+        if (const auto terminalArgs = args.try_as<winrt::Microsoft::Terminal::Settings::Model::NewTerminalArgs>())
+        {
+            terminalArgs.SetContentType(winrt::hstring{ ::Microsoft::Terminal::AgentPaneRestore::StashedPaneType });
+        }
+    }
+
+    return args;
 }
 
 // Method Description:
@@ -143,34 +158,58 @@ Pane::BuildStartupState Pane::BuildStartupActions(uint32_t currentId, uint32_t n
         return { .args = {}, .firstPane = shared_from_this(), .focusedPaneId = std::nullopt, .panesCreated = 0 };
     }
 
-    // Agent panes participate in cross-window move (Content / MovePane); their
-    // conpty + helper child survive via the ContentId reattach mechanism (see
-    // _MakePane), and the helper process is unchanged across the drag.
+    // An agent pane is an ordinary terminal pane hosting a `wta` helper, so it
+    // persists like any other pane: `AgentPaneContent::GetNewTerminalArgs`
+    // stamps it with an agent content type and rewrites its command line into
+    // the stable resume form. A stashed pane is still in the tree (it is only
+    // hidden), so it is serialized too and comes back stashed.
     //
-    // Persistence (BuildStartupKind::Persist, i.e. app restart) is different:
-    // an agent pane's command line is session-specific (it points at the
-    // previous run's wta-master named pipe and an owner-tab-id that no longer
-    // exist), and after a restart there is no live master / helper / conpty
-    // session left to rehydrate. Replaying that saved command line launches a
-    // broken `wta --connect-master <dead-pipe>` that fails its ACP transport
-    // and, combined with the per-tab pre-warmed agent pane each restored tab
-    // already re-creates, leaves the window littered with dead panes (#275).
+    // What it cannot do is take part in the ordinary tree walk, for two
+    // reasons that both come from how it is replayed:
     //
-    // So we never persist agent panes into the saved window layout: when one
-    // child of this split is an agent-pane leaf, collapse the split and only
-    // serialize the other child. The user can re-open the agent pane after
-    // restore to get a fresh one.
+    //  * It must arrive as a `splitPane`. Only `_HandleSplitPane` knows to
+    //    divert an agent content type to `_RestoreAgentPaneFromLayout`;
+    //    `_HandleNewTab` has no such hook, so an agent pane that the walk
+    //    happened to hand back as `firstPane` — which is what a leading-edge
+    //    `agentPanePosition` of `left` or `top` produces — would be replayed
+    //    as a literal command line.
+    //  * It must arrive last. The restore path attaches it with
+    //    `SplitPaneAtRoot`, so anything replayed after it would be splitting a
+    //    tree that already has the agent pane at its root, and would split the
+    //    agent pane itself whenever the restore left it focused.
+    //
+    // So lift it out of the walk: serialize the sibling subtree, then append
+    // the agent pane's split. The direction is flipped for a leading-edge pane
+    // so it still lands back on the side the user had it on.
+    auto buildAgentSplitPane = [&](const auto& agentPane, const bool leadingEdge) {
+        ActionAndArgs actionAndArgs;
+        actionAndArgs.Action(ShortcutAction::SplitPane);
+        const auto horizontal = _splitState == SplitState::Horizontal;
+        const auto splitDirection = leadingEdge ?
+                                        (horizontal ? SplitDirection::Up : SplitDirection::Left) :
+                                        (horizontal ? SplitDirection::Down : SplitDirection::Right);
+        // `splitSize` is the fraction the *new* pane takes, while
+        // `_desiredSplitPosition` always sizes the first child.
+        const auto splitSize = leadingEdge ? _desiredSplitPosition : 1.0f - _desiredSplitPosition;
+        SplitPaneArgs args{ SplitType::Manual, splitDirection, splitSize, agentPane->GetTerminalArgsForPane(kind) };
+        actionAndArgs.Args(args);
+
+        return actionAndArgs;
+    };
+
     if (kind == BuildStartupKind::Persist)
     {
         const auto firstIsAgentLeaf = _firstChild->_IsLeaf() && _firstChild->_isAgentPane;
         const auto secondIsAgentLeaf = _secondChild->_IsLeaf() && _secondChild->_isAgentPane;
-        if (firstIsAgentLeaf && !secondIsAgentLeaf)
+        if (firstIsAgentLeaf != secondIsAgentLeaf)
         {
-            return _secondChild->BuildStartupActions(currentId, nextId, kind);
-        }
-        if (secondIsAgentLeaf && !firstIsAgentLeaf)
-        {
-            return _firstChild->BuildStartupActions(currentId, nextId, kind);
+            const auto& agentChild = firstIsAgentLeaf ? _firstChild : _secondChild;
+            const auto& siblingChild = firstIsAgentLeaf ? _secondChild : _firstChild;
+
+            auto state = siblingChild->BuildStartupActions(currentId, nextId, kind);
+            state.args.emplace_back(buildAgentSplitPane(agentChild, firstIsAgentLeaf));
+            state.panesCreated += 1;
+            return state;
         }
     }
 
@@ -509,6 +548,12 @@ std::shared_ptr<Pane> Pane::NextPane(const std::shared_ptr<Pane> targetPane)
     std::shared_ptr<Pane> nextPane = nullptr;
     auto foundTarget = false;
 
+    // A hidden leaf is not in the visual tree — a stashed agent pane is the
+    // only one today — so in-order navigation has to step over it. Landing on
+    // one focuses something the user cannot see, and every subsequent action
+    // that acts on "the active pane" is then aimed at the wrong pane.
+    const auto isNavigable = [](const auto& pane) { return pane->_IsLeaf() && !pane->_hidden; };
+
     auto foundNext = WalkTree([&](const auto& pane) {
         // If we are a parent pane we don't want to move to one of our children
         if (foundTarget && targetPane->_HasChild(pane))
@@ -517,13 +562,13 @@ std::shared_ptr<Pane> Pane::NextPane(const std::shared_ptr<Pane> targetPane)
         }
         // In case the target pane is the last pane in the tree, keep a reference
         // to the first leaf so we can wrap around.
-        if (firstLeaf == nullptr && pane->_IsLeaf())
+        if (firstLeaf == nullptr && isNavigable(pane))
         {
             firstLeaf = pane;
         }
 
         // If we've found the target pane already, get the next leaf pane.
-        if (foundTarget && pane->_IsLeaf())
+        if (foundTarget && isNavigable(pane))
         {
             nextPane = pane;
             return true;
@@ -571,6 +616,10 @@ std::shared_ptr<Pane> Pane::PreviousPane(const std::shared_ptr<Pane> targetPane)
     std::shared_ptr<Pane> lastLeaf = nullptr;
     auto foundTarget = false;
 
+    // See `NextPane`: a hidden leaf is not in the visual tree and must not be
+    // a navigation target.
+    const auto isNavigable = [](const auto& pane) { return pane->_IsLeaf() && !pane->_hidden; };
+
     WalkTree([&](auto pane) {
         if (pane == targetPane)
         {
@@ -583,7 +632,7 @@ std::shared_ptr<Pane> Pane::PreviousPane(const std::shared_ptr<Pane> targetPane)
             }
         }
 
-        if (pane->_IsLeaf())
+        if (isNavigable(pane))
         {
             lastLeaf = pane;
         }
@@ -1353,12 +1402,19 @@ void Pane::UpdateSettings(const CascadiaSettings& settings)
 // Arguments:
 // - pane: the new pane to add
 // - splitType: How the pane should be attached
+// - splitSize: the fraction of the split the *attached* pane should occupy
 // Return Value:
 // - the new reference to the child created from the current pane.
-std::shared_ptr<Pane> Pane::AttachPane(std::shared_ptr<Pane> pane, SplitDirection splitType)
+std::shared_ptr<Pane> Pane::AttachPane(std::shared_ptr<Pane> pane, SplitDirection splitType, const float splitSize)
 {
+    // `_Split` sizes the *first* child, which is the attached pane only when
+    // it lands on the leading edge. Invert for the other two directions so
+    // `splitSize` always describes the pane being attached.
+    const auto requestedSize = splitType == SplitDirection::Left || splitType == SplitDirection::Up ?
+                                   1.0f - splitSize :
+                                   splitSize;
     // Splice the new pane into the tree
-    const auto [first, _] = _Split(splitType, .5, pane);
+    const auto [first, _] = _Split(splitType, requestedSize, pane);
 
     // If the new pane has a child that was the focus, re-focus it
     // to steal focus from the currently focused pane.
@@ -3426,15 +3482,11 @@ void Pane::SetAgentChipVisible(bool value)
 }
 
 // The connection's session GUID for terminal panes. Returns the empty
-// guid for non-terminal panes (e.g. branch nodes, agent panes, snippets).
+// guid for non-terminal panes (e.g. branch nodes and snippets).
 // Used by Tab to match a protocol-supplied pane id to a Pane.
 winrt::guid Pane::GetSessionId() const
 {
-    // Mirror `_getSessionIdFromPane` in TerminalPage.Protocol.cpp:
-    // walk content → control → connection and read the SessionId. Using
-    // GetContent() (instead of `_content` directly) keeps the non-leaf
-    // case to a clean nullptr without needing an explicit leaf check.
-    if (const auto termContent = GetContent().try_as<winrt::TerminalApp::TerminalPaneContent>())
+    if (const auto termContent = _getTerminalContent())
     {
         if (const auto control = termContent.GetTermControl())
         {
@@ -3708,9 +3760,7 @@ void Pane::_SetSplitterCursor(bool /*resizing*/)
     {
         return;
     }
-    const auto cursorType = (_splitState == SplitState::Vertical)
-                                ? winrt::Windows::UI::Core::CoreCursorType::SizeWestEast
-                                : winrt::Windows::UI::Core::CoreCursorType::SizeNorthSouth;
+    const auto cursorType = (_splitState == SplitState::Vertical) ? winrt::Windows::UI::Core::CoreCursorType::SizeWestEast : winrt::Windows::UI::Core::CoreCursorType::SizeNorthSouth;
     if (!_splitterPriorCursor)
     {
         _splitterPriorCursor = cw.PointerCursor();
@@ -3789,9 +3839,7 @@ void Pane::_splitterPointerMoved(const winrt::Windows::Foundation::IInspectable&
         return;
     }
 
-    const auto delta = changeWidth
-                           ? (point.X - _splitterDragStartPointer.X)
-                           : (point.Y - _splitterDragStartPointer.Y);
+    const auto delta = changeWidth ? (point.X - _splitterDragStartPointer.X) : (point.Y - _splitterDragStartPointer.Y);
 
     const auto requested = _splitterDragStartPosition + static_cast<float>(delta / totalSize);
     const auto clamped = _ClampSplitPosition(changeWidth, requested, static_cast<float>(totalSize));

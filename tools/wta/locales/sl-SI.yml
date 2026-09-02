@@ -41,7 +41,7 @@ auth.login_failed_help_default: "  Pritisnite Enter za ponovni poskus ali Esc za
 chat.activity_thinking: "Razmišljam..."
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 chat.welcome_title: "Dobrodošli v Inteligentni Terminal!"
-chat.welcome_disclaimer: "Inteligentni Terminal uporablja AI. Preverite napake."
+chat.welcome_disclaimer: "Inteligentni Terminal uporablja AI."
 chat.plan_header: "Načrt:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}
@@ -49,6 +49,17 @@ chat.plan_marker_pending: "[ ]"  # {Locked}
 chat.autofix_prompt_label: "Samodejno diagnosticirana nedavna napaka ukaza"
 chat.turn_canceled: "(preklicano)"
 chat.turn_executed: "→ izvedeno: %{title}"
+# Stalne oznake kategorij orodij, prikazane za oznako stanja in pred predmetom.
+chat.tool_kind.run: "Zagon"
+chat.tool_kind.read: "Branje"
+chat.tool_kind.search: "Iskanje"
+chat.tool_kind.edit: "Urejanje"
+chat.tool_kind.delete: "Brisanje"
+chat.tool_kind.move: "Premik"
+chat.tool_kind.fetch: "Pridobivanje"
+chat.tool_kind.think: "Razmišljanje"
+chat.tool_kind.mode: "Način"
+chat.tool_kind.other: "Orodje"
 
 # ── Input placeholders (src/ui/input.rs) ────────────────────────────────────
 input.placeholder.connected: "Vprašajte karkoli, / za ukaze.."  # {Locked="/"}
@@ -143,8 +154,8 @@ system.resuming_session: "Nadaljevanje seje %{session_id}..."
 system.unknown_command: "Neznan ukaz \"%{command}\" — poslan kot poziv. Za seznam vnesite /help."  # {Locked="/help"}
 system.busy_use_stop: "Počakajte, da se trenutni poziv dokonča, ali najprej uporabite /stop."  # {Locked="/stop"}
 system.cannot_focus_session: "Seje %{session_id} ni mogoče fokusirati: videti je aktivna, vendar še ni vezan noben GUID podokna. Poskusite znova čez trenutek."
-system.cannot_resume_no_load_session: "Ni mogoče nadaljevati v podoknu agenta: %{agent} ni oglaševal zmožnosti ACP `loadSession`. Pritisnite Enter (brez Shift), da namesto tega nadaljujete v novem terminalskem podoknu."  # {Locked="ACP","loadSession","Enter","Shift"}
-system.cannot_resume_no_resume_flag: "Seje %{agent} ni mogoče nadaljevati: ta agent nima zastavice v slogu `--resume`. Pritisnite Shift+Enter, da poskusite nadaljevati v podoknu agenta prek ACP."  # {Locked="--resume","Shift","Enter","ACP"}
+system.cannot_resume_no_load_session: "Ni mogoče nadaljevati v podoknu agenta: %{agent} ni oglaševal zmožnosti ACP `loadSession`."  # {Locked="ACP","loadSession"}
+system.cannot_resume_no_resume_flag: "Seje %{agent} ni mogoče nadaljevati: ta agent nima zastavice v slogu `--resume`."  # {Locked="--resume"}
 system.cannot_resume_unknown_agent: "Seje %{session_id} ni mogoče nadaljevati: njen izvorni agent tej graditvi WTA ni znan."
 system.cannot_resume_phantom_via_flag: "Seje %{agent} %{session_id} ni mogoče nadaljevati: bila je zagnana, vendar ni nikoli zbrala nobenega pogovora, zato bi sam %{agent} zavrnil nadaljevanje. Vrstica se odstranjuje."
 system.cannot_resume_phantom_via_load: "Seje %{agent} %{session_id} ni mogoče nadaljevati: bila je zagnana, vendar ni nikoli zbrala nobenega pogovora, zato bi %{agent} zavrnil nalaganje. Vrstica se odstranjuje."
@@ -186,7 +197,7 @@ hooks.marketplace_path_stale: "⚠ marketplace path stale"
 hooks.installed_but_disabled: "⚠ installed but disabled"
 hooks.not_installed: "✗ not installed"
 hooks.uninstall_skipped: "skipped (CLI not on PATH)"
-hooks.install_attempted: "wt-agent-hooks install attempted (idempotent). Run `wta hooks status` to inspect the result. Trace log: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"
+hooks.install_succeeded: "✓ wt-agent-hooks installed for %{clis}"
 
 # ── Relative time + date formatting (src/ui/agents_view.rs) ─────────────────
 # rust-i18n has no CLDR plural support; Rust selects singular vs. other.
@@ -215,8 +226,17 @@ system.agent_switch_unavailable: "Preklapljanje agentov ni na voljo zunaj zavihk
 
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "Izberite model za to podokno (/model <id> za neposreden preklop)"  # {Locked="/model","<id>"}
+commands.config.summary: "Konfigurirajte to sejo agenta"  # Agent means an AI coding agent; shown for the /config command. {Locked="/config"}
 commands.move.summary: "Premakni podokno agenta za ta zavihek (/move <position>)"  # {Locked="/move","<position>"}
 model_picker.title: "Izberi model (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "Povezani agent ni oglaševal nobenega izbirljivega modela."
 system.model_set: "Model za to podokno je nastavljen na %{model}."  # {Locked="%{model}"}
+
+# ── Session configuration picker (src/ui/config_popup.rs) ───────────────────
+# {Locked="↑","↓","Enter","Esc","ACP"} - key names and protocol name
+config_picker.title: "Konfiguracija seje (↑ ↓ • Enter • Esc)"
+# Shown when /config is used but the AI agent exposed no ACP select options.
+system.no_config_options: "Povezani agent ni objavil nobenih nastavljivih možnosti seje."
+# {option} is an Agent-provided option name; {error} is the ACP error.
+system.config_update_failed: "Posodobitev možnosti %{option} ni uspela: %{error}"
 system.model_unknown: "Neznan model %{model} — vnesite /model za prikaz razpoložljivega seznama."  # {Locked="%{model}","/model"}

@@ -1,8 +1,8 @@
 # Multi-Window Behavior of the Agent Pane
 
 Author: kaitao@microsoft.com
-Date: 2026-05-26 (post-Z follow-ups: per-tab + per-window event routing
-hardening B12–B20; agent-pane stash/restore B4–B11)
+Date: 2026-08-14 (post-Z follow-ups: per-tab + per-window event routing,
+agent-pane stash/restore, and per-tab independent agent pooling)
 Branch: `dev/vanzue/window-management`
 Status: Helper + master architecture (Z-M1 through Z-M6) is shipped and
 default. Post-Z work tightened the multi-tab + multi-window event
@@ -14,19 +14,20 @@ See "Design history" for the rationale of the original pivot.
 - **Each agent pane runs as its own `wta-helper` process** spawned by
   Windows Terminal as a normal conpty child (same Win32 pattern as today's
   legacy mode and any other conpty-backed pane).
-- **One `wta-master` process per Terminal process** owns the single agent
-  CLI subprocess (claude / copilot / gemini).
+- **One `wta-master` process per Terminal process** lazily owns a pool of
+  agent CLI subprocesses keyed by agent identity, execution source, and
+  command line.
 - Helpers connect to the master via a **named pipe** and speak **ACP
-  JSON-RPC** — the master multiplexes per-tab `sessionId`s onto its single
-  ACP connection to the agent CLI.
+  JSON-RPC** — helpers with the same agent key share one ACP connection, and
+  the master routes every `sessionId` to its owning helper and agent instance.
 - TermControl ↔ helper communication is plain conpty (no custom protocol);
   helper ↔ master is plain ACP JSON-RPC over a pipe; master ↔ agent CLI is
   plain ACP JSON-RPC over stdio. **No bespoke wire format is invented.**
 
 ```
 WT (one process, N windows)
- └─ SharedWta singleton spawns ─► wta-master ◄──── ACP JSON-RPC ───► agent CLI
-                                       ▲                              (one child)
+ └─ SharedWta singleton spawns ─► wta-master ◄──── ACP JSON-RPC ───► agent CLI pool
+                                       ▲                         (one per active key)
                                        │ ACP JSON-RPC over named pipe
                                        │
  (per agent pane:)                     │
@@ -246,16 +247,16 @@ WindowsTerminal.exe (one process)
 ```
 
 - **`wta-master`**: singleton per Terminal process, spawned by
-  `SharedWta` on first agent-pane request. Headless (no UI). Owns the
-  single ACP connection to the agent CLI subprocess. Listens on a
-  named pipe for helper connections.
+  `SharedWta` on first agent-pane request. Headless (no UI). Lazily owns an
+  ACP connection per active agent key and listens on a named pipe for helper
+  connections.
 - **`wta-helper`**: one per agent pane. Conpty child of its
   TerminalControl. Runs the full Ratatui chat UI for one tab.
   Connects to master via named pipe; speaks ACP JSON-RPC as a
   client.
-- **`agent CLI`**: existing claude/copilot/gemini ACP-protocol
-  subprocess. One per master (= one per Terminal process). Owns N
-  ACP sessions internally, one per attached helper.
+- **`agent CLI`**: an ACP-protocol subprocess such as Copilot, Claude, Codex,
+  Gemini, or OpenCode. One warm process per distinct agent key owns the ACP
+  sessions for helpers sharing that key.
 
 ### 2. Per-pane attachment model
 
@@ -442,23 +443,22 @@ target window's own `tab_changed` for the new id and the helper's
 per-tab state isn't clobbered by a fresh default. See "Per-tab +
 per-window event routing" below for the full model.
 
-Master does nothing — the SessionId ↔ helper-connection mapping is
-unaffected by the drag (helper process identity stays the same).
+Master keeps the SessionId ↔ helper-connection mapping intact (the helper
+process identity does not change) while rekeying tab ownership, pending
+session ownership, orphan bookkeeping, and any ordered-retirement fences from
+the old StableId to the new one. This is migration bookkeeping, not recovery:
+no process restarts and no ACP `session/load` occurs.
 
 #### Master crash
 
 `SharedWta::_OnProcessExited` (existing wait-callback) fires. State is
 cleared so the next `AcquirePane` respawns the master. All existing
 helpers' pipe connections drop:
-- Helper detects pipe disconnect → surfaces a "disconnected from
-  master" banner in its TUI.
-- User can keep typing locally; submission fails until master
-  reconnects.
-- On next `AcquirePane`, a fresh master spawns. Helpers reconnect (via
-  retry loop in helper).
-
-(Auto-reconnect protocol is part of Phase 5 testing — see
-implementation plan.)
+- Each helper detects pipe EOF, ends its TUI, and exits.
+- The Agent Pane profile's `closeOnExit:"always"` closes each pane.
+- No helper reconnects and crash handling never calls `session/load`.
+- A later user-initiated pane open calls `AcquirePane`, which creates a
+  fresh master, helper, and ACP session.
 
 #### Helper crash
 
@@ -521,7 +521,7 @@ in its `_tabs` collection. Affected events:
 - `agent_status` (model, state, available models)
 - `autofix_state` (bar snapshot)
 - `close_agent_pane` (Ctrl+C×2 in TUI)
-- `resume_in_new_agent_tab` (slash-command / Shift+Enter on session row)
+- `resume_in_new_agent_tab` (slash-command / Enter on an agent-pane session row)
 
 **The `switch_tab_session` owner-lock.** A `tab_changed` is broadcast
 to every helper subscribed to the COM event bus. Pre-B20, every helper
@@ -597,14 +597,14 @@ calls `Tab::StashAgentPane()`, `true` calls `Tab::RestoreStashedAgentPane`
 if the pane is stashed; otherwise `_AutoCreateHiddenAgentPaneShared`
 (first-open).
 
-### 9. Per-tab independent agents (future)
+### 9. Per-tab independent agents
 
-`AttachPaneParams.agent_id` is currently metadata-only because the
-master holds a single agent CLI subprocess shared across helpers.
-Future: master could maintain a pool of agent CLI subprocesses keyed
-by `agent_id`. Each helper requests sessions from the agent CLI
-matching its `agent_id`. Wire format is already extensible (see Z-R4
-risk below). Not in v1.
+The master maintains a lazy agent CLI pool keyed by the master-resolved agent
+identity, execution source, and command line. Each helper declares its agent ID
+during `initialize`; policy filtering and command reconstruction remain
+master-owned. Helpers with the same key reuse one process, while different keys
+can spawn in parallel. Dead processes are reaped from the pool and restarted
+on demand.
 
 ## What needs to change
 
@@ -806,8 +806,9 @@ architecture:
   helper exits and master refcount decrements.
 - Last-pane close: close last agent pane, verify master exits via
   Job Object.
-- Master crash: kill master mid-conversation, verify helpers
-  surface error and reconnect on next prompt.
+- Master crash: kill master mid-conversation, verify helpers and panes
+  exit, no session is loaded automatically, and a later explicit pane
+  open creates a fresh session.
 - Helper crash: kill helper, verify only its pane is affected.
 - Resize: window resize → conpty resize → helper sees it via
   crossterm `Event::Resize` (no `_internal.resize_pane` needed).
@@ -860,11 +861,10 @@ v1 ships with the simple behavior; future extension is non-breaking.
 
 ### Z-R5. Agent CLI version skew across helpers
 
-A helper started under master version A may continue running when
-master is restarted at version B (e.g. user updates Terminal mid-
-session). The new master may speak a different ACP protocol version
-than the helper. Mitigation: helper performs `initialize` handshake
-on reconnect; on incompatible version, surfaces a clear error.
+A helper never survives a master restart: master pipe EOF terminates
+the helper and closes its pane. A later explicit pane open starts a
+new helper, whose normal `initialize` handshake detects any ACP
+protocol incompatibility before creating a fresh session.
 
 ### Z-R6. Master spawn race
 
@@ -918,11 +918,12 @@ work:
 - **Restructuring agent pane UI to XAML**: Z keeps the Ratatui TUI
   model. Migration to native XAML chat UI is a separate larger spec.
 
-## Future work
+## Deferred future work (not current behavior)
 
-- **F1**: `TabSession` checkpoint + restore across master restarts.
-  Persists chat history to disk; helper reattach via ACP
-  `session/load`. Not blocked by Z but only useful after it.
+- **F1 (deferred proposal)**: `TabSession` checkpoint + restore across
+  master restarts. This would persist chat history to disk and reattach
+  via ACP `session/load`; current crash handling deliberately does
+  neither.
 - **F2**: Per-pane different agent CLI. Master spawns additional
   agent CLI processes keyed by `agent_id`; routes helpers to the
   matching child. Wire format already supports it via
@@ -931,6 +932,7 @@ work:
   hostile or buggy callers. Deprioritized.
 - **F4**: Migration of agent pane UI from Ratatui TUI to native
   XAML chat surface. Separate, larger spec.
-- **F5**: Master high-availability — if master crashes, helpers
-  reconnect to a freshly-respawned master and resume via ACP
-  `session/load`. Builds on F1.
+- **F5 (deferred proposal)**: Master high-availability, in which helpers
+  reconnect to a freshly respawned master and resume via ACP
+  `session/load`. This is explicitly non-current and would require a
+  separate safety design before implementation. Builds on F1.

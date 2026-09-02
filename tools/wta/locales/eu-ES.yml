@@ -41,7 +41,7 @@ auth.login_failed_help_default: "  Sakatu Enter berriro saiatzeko, edo Esc atzer
 chat.activity_thinking: "Pentsatzen…"
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 chat.welcome_title: "Ongi etorri Terminal Adimenduna-era!"
-chat.welcome_disclaimer: "Terminal Adimenduna-ek AI erabiltzen du. Egiaztatu akatsak."
+chat.welcome_disclaimer: "Terminal Adimenduna-ek AI erabiltzen du."
 chat.plan_header: "Plana:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}
@@ -49,6 +49,17 @@ chat.plan_marker_pending: "[ ]"  # {Locked}
 chat.autofix_prompt_label: "Azken komando-hutsegite bat automatikoki diagnostikatua"
 chat.turn_canceled: "(bertan behera utzita)"
 chat.turn_executed: "→ exekutatuta: %{title}"
+# Persistent tool-category labels shown after a status marker and before a subject.
+chat.tool_kind.run: "Exekutatu"
+chat.tool_kind.read: "Irakurri"
+chat.tool_kind.search: "Bilatu"
+chat.tool_kind.edit: "Editatu"
+chat.tool_kind.delete: "Ezabatu"
+chat.tool_kind.move: "Mugitu"
+chat.tool_kind.fetch: "Eskuratu"
+chat.tool_kind.think: "Pentsatu"
+chat.tool_kind.mode: "Modua"
+chat.tool_kind.other: "Tresna"
 
 # ── Sarrera-leku-markak (src/ui/input.rs) ────────────────────────────────────
 input.placeholder.connected: "Galdetu edozer, / komandoetarako.."  # {Locked="/"}
@@ -134,8 +145,8 @@ system.resuming_session: "%{session_id} saioa berrekiten..."
 system.unknown_command: "Komando ezezaguna \"%{command}\" — gonbita gisa bidali da. Idatzi /help zerrenda ikusteko."
 system.busy_use_stop: "Itxaron uneko gonbita amaitu arte, edo erabili /stop lehenik."
 system.cannot_focus_session: "Ezin da %{session_id} saioa fokuratu: aktibo dagoela dirudi, baina oraindik ez dago panelaren GUIDik lotuta. Saiatu berriro une batean."
-system.cannot_resume_no_load_session: "Ezin da agente-panelean berrekin: %{agent} agenteak ez du ACP `loadSession` gaitasuna iragarri. Sakatu Enter (Shift gabe) terminal-panel berri batean berrekiteko."
-system.cannot_resume_no_resume_flag: "Ezin da %{agent} saioa berrekin: agente honek ez du `--resume` estiloko banderarik. Sakatu Shift+Enter ACP bidez agente-panelaren barruan berrekiten saiatzeko."
+system.cannot_resume_no_load_session: "Ezin da agente-panelean berrekin: %{agent} agenteak ez du ACP `loadSession` gaitasuna iragarri."
+system.cannot_resume_no_resume_flag: "Ezin da %{agent} saioa berrekin: agente honek ez du `--resume` estiloko banderarik."
 system.cannot_resume_unknown_agent: "Ezin da %{session_id} saioa berrekin: bere jatorrizko agentea ezezaguna da eraikuntza honentzat."
 system.cannot_resume_phantom_via_flag: "Ezin da %{agent} saioa %{session_id} berrekin: hasi zen, baina ez zuen inoiz elkarrizketarik metatu; beraz, %{agent} agenteak berak berrekitea baztertuko luke. Errenkada kentzen."
 system.cannot_resume_phantom_via_load: "Ezin da %{agent} saioa %{session_id} berrekin: hasi zen, baina ez zuen inoiz elkarrizketarik metatu; beraz, %{agent} agenteak karga baztertuko luke. Errenkada kentzen."
@@ -177,7 +188,7 @@ hooks.marketplace_path_stale: "⚠ merkatu-bidea zaharkitua"
 hooks.installed_but_disabled: "⚠ instalatuta baina desgaituta"
 hooks.not_installed: "✗ instalatu gabe"
 hooks.uninstall_skipped: "saltatu da (CLI ez dago PATH-ean)"
-hooks.install_attempted: "wt-agent-hooks instalatzea saiatu da (idempotentea). Exekutatu `wta hooks status` emaitza ikusteko. Aztarna-loga: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"
+hooks.install_succeeded: "✓ wt-agent-hooks instalatuta %{clis}(r)entzat"
 
 # ── Relative time + date formatting (src/ui/agents_view.rs) ─────────────────
 time.just_now: "oraintxe"
@@ -215,8 +226,17 @@ system.agent_switch_unavailable: "Agente-aldaketa ez dago erabilgarri Windows Te
 
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "Aukeratu panel honetarako modeloa (/model <id> zuzenean aldatzeko)"  # {Locked="/model","<id>"}
+commands.config.summary: "Konfiguratu agentearen saio hau"  # Agent means an AI coding agent; shown for the /config command. {Locked="/config"}
 commands.move.summary: "Mugitu fitxa honen agente-panela (/move <position>)"  # {Locked="/move","<position>"}
 model_picker.title: "Hautatu modeloa (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "Konektatutako agenteak ez du modelo hautagarririk iragarri."
 system.model_set: "Panel honetarako modeloa %{model} gisa ezarri da."  # {Locked="%{model}"}
+
+# ── Session configuration picker (src/ui/config_popup.rs) ───────────────────
+# {Locked="↑","↓","Enter","Esc","ACP"} - key names and protocol name
+config_picker.title: "Saioaren konfigurazioa (↑ ↓ • Enter • Esc)"
+# Shown when /config is used but the AI agent exposed no ACP select options.
+system.no_config_options: "Konektatutako agenteak ez du saio-aukera konfiguragarririk iragarri."
+# {option} is an Agent-provided option name; {error} is the ACP error.
+system.config_update_failed: "Ezin izan da %{option} eguneratu: %{error}"
 system.model_unknown: "%{model} modelo ezezaguna — idatzi /model erabilgarri dagoen zerrenda ikusteko."  # {Locked="%{model}","/model"}

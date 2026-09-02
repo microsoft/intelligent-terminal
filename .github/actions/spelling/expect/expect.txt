@@ -9,6 +9,7 @@ acidev
 ACIOSS
 ACL'd
 acp
+Acq
 actctx
 ACTCTXW
 activedir
@@ -1420,6 +1421,8 @@ reparenting
 REPH
 replatformed
 Replymessage
+repointed
+repointing
 reportfileaccesses
 repositorypath
 rerasterize

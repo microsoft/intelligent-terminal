@@ -2894,17 +2894,21 @@
     <value>Después de instalar, ejecuta /hooks en Codex y aprueba para confiar en los nuevos controladores de eventos.</value>
     <comment>One-line reminder shown under the Codex CLI row in the Agent Hooks section. Codex requires per-command trust before hook handlers run; users must execute /hooks inside Codex and approve. {Locked="/hooks","Codex"}</comment>
   </data>
+  <data name="AIAgents_HooksRestartNote.Text" xml:space="preserve">
+    <value>Los cambios se aplican la próxima vez que se inicia un agente. Reinicie todos los agentes abiertos para aplicarlos.</value>
+    <comment>Persistent note shown under the "Install agent hook script" row in the Agent session tracking section. Warns that installing or removing hooks only affects agents started afterwards. In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+  </data>
   <data name="AIAgents_HooksLocateWtaFailedSummary" xml:space="preserve">
     <value>Error: no se pudo encontrar wta.exe</value>
     <comment>Failure summary shown when the Settings UI cannot find the WTA helper executable. {Locked="wta.exe"}</comment>
   </data>
   <data name="AIAgents_HooksRemovedSummary" xml:space="preserve">
-    <value>Hooks quitados. Reinicie todos los agentes abiertos para descartar los hooks anteriores.</value>
-    <comment>Success summary shown after removing agent session tracking hooks. {Locked="Hooks","hooks"}</comment>
+    <value>Hooks quitados.</value>
+    <comment>Success summary shown after removing agent session tracking hooks. {Locked="Hooks"}</comment>
   </data>
   <data name="AIAgents_HooksInstalledSummary" xml:space="preserve">
-    <value>Hooks instalados. Reinicie todos los agentes abiertos para recoger los nuevos hooks.</value>
-    <comment>Success summary shown after installing agent session tracking hooks. {Locked="Hooks","hooks"}</comment>
+    <value>Hooks instalados.</value>
+    <comment>Success summary shown after installing agent session tracking hooks. {Locked="Hooks"}</comment>
   </data>
   <data name="AIAgents_HooksRemovalFailedSummary" xml:space="preserve">
     <value>Error al quitar Hook. Consulte {0} para obtener detalles.</value>
@@ -2913,6 +2917,10 @@
   <data name="AIAgents_HooksInstallationFailedSummary" xml:space="preserve">
     <value>Error de instalación de Hooks. Consulte {0} para obtener detalles.</value>
     <comment>Failure summary shown when installing agent session tracking hooks fails. {Locked="Hooks","{0}"} {0} is replaced with the package-aware, versioned wta-install-hooks.log path at runtime.</comment>
+  </data>
+  <data name="AIAgents_HooksInstallationFailedForSummary" xml:space="preserve">
+    <value>Error de instalación de Hooks para {0}. Consulte {1} para obtener detalles.</value>
+    <comment>Failure summary shown when installing agent session tracking hooks fails for specific CLIs. {Locked="Hooks","{0}","{1}"} {0} is replaced with a comma-separated list of CLI names (brand names, never translated); {1} is replaced with the package-aware, versioned wta-install-hooks.log path at runtime.</comment>
   </data>
   <data name="AIAgents_AutoErrorDetectionTitle.Text" xml:space="preserve">
     <value>Detección automática de errores</value>
@@ -2930,8 +2938,8 @@
     <value>Permita que Terminal Inteligente envíe errores a su agente para sugerir correcciones automáticamente.</value>
   </data>
   <data name="AIAgents_CustomModels.Header" xml:space="preserve">
-    <value>Proveedores BYOM</value>
-    <comment>Section header for user-configured model providers. {Locked="BYOM"}</comment>
+    <value>Proveedores BYOK</value>
+    <comment>Section header for user-configured model providers. {Locked="BYOK"}</comment>
   </data>
   <data name="AIAgents_CustomModels.HelpText" xml:space="preserve">
     <value>Use un punto de conexión de API de Chat Completions compatible con OpenAI. Admite GitHub Copilot y OpenCode.</value>
@@ -2940,6 +2948,14 @@
   <data name="AIAgents_CustomProviderUnsupportedForAgent" xml:space="preserve">
     <value>{0} no admite proveedores personalizados de Chat Completions compatibles con OpenAI. Los proveedores guardados seguirán disponibles al cambiar a GitHub Copilot u OpenCode.</value>
     <comment>{Locked="OpenAI","Chat Completions","GitHub Copilot","OpenCode"} {0} is replaced with the current AI agent display name. Explains that saved providers remain available for supported agents.</comment>
+  </data>
+  <data name="AIAgents_CustomProviderApiKeyMissing.Text" xml:space="preserve">
+    <value>Falta la clave de API. Quite y vuelva a agregar este proveedor.</value>
+    <comment>Inline error below a cloud BYOK provider when its saved Windows Credential Manager API key is missing. {Locked="API","BYOK"}</comment>
+  </data>
+  <data name="AIAgents_CustomProviderCredentialRemovalFailed" xml:space="preserve">
+    <value>No se pudo quitar la clave de API guardada del Administrador de credenciales de Windows. Quite manualmente la credencial genérica llamada "{0}" y vuelva a intentarlo.</value>
+    <comment>Error shown when Windows Credential Manager fails to delete a saved BYOK provider key. {0} is replaced with the exact Generic Credential target so the user can remove it manually. {Locked="API","BYOK","{0}"}</comment>
   </data>
   <data name="AIAgents_CustomProviderRemove.Content" xml:space="preserve">
     <value>Quitar</value>
@@ -2952,6 +2968,10 @@
   <data name="AIAgents_CustomModelId.Header" xml:space="preserve">
     <value>ID de modelo</value>
     <comment>Header for the custom provider model identifier input. {Locked="ID"}</comment>
+  </data>
+  <data name="AIAgents_CustomProviderApiKey.Header" xml:space="preserve">
+    <value>Clave de API (opcional)</value>
+    <comment>Header for the optional custom provider credential input. {Locked="API"}</comment>
   </data>
   <data name="AIAgents_CustomProviderAdd.Content" xml:space="preserve">
     <value>Agregar nuevo</value>
@@ -2966,8 +2986,8 @@
     <comment>Button that cancels adding a provider.</comment>
   </data>
   <data name="AIAgents_BYOKModelDisplayName" xml:space="preserve">
-    <value>{} (custom provider)</value>
-    <comment>{Locked="{}","custom provider"} {} is replaced with the provider-specific model identifier.</comment>
+    <value>{} (BYOK)</value>
+    <comment>{Locked="{}","BYOK"} {} is replaced with the provider-specific model identifier.</comment>
   </data>
   <data name="AIAgents_OpenAICompatibleModelDescription" xml:space="preserve">
     <value>{} | {} | Compatible con OpenAI</value>

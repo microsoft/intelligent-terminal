@@ -41,7 +41,7 @@ auth.login_failed_help_default: "  Dréckt Enter fir nach eng Kéier ze probéie
 chat.activity_thinking: "Denkt no…"
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 chat.welcome_title: "Wëllkomm am Intelligenten Terminal!"
-chat.welcome_disclaimer: "Intelligenten Terminal benotzt KI. Kuckt no Feeler."
+chat.welcome_disclaimer: "Intelligenten Terminal benotzt KI."
 chat.plan_header: "Plang:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}
@@ -49,6 +49,17 @@ chat.plan_marker_pending: "[ ]"  # {Locked}
 chat.autofix_prompt_label: "Rezent Kommandoversoen automatesch diagnostizéiert"
 chat.turn_canceled: "(ofgebrach)"
 chat.turn_executed: "→ ausgeféiert: %{title}"
+# Persistent tool-category labels shown after a status marker and before a subject.
+chat.tool_kind.run: "Ausféieren"
+chat.tool_kind.read: "Liesen"
+chat.tool_kind.search: "Sichen"
+chat.tool_kind.edit: "Änneren"
+chat.tool_kind.delete: "Läschen"
+chat.tool_kind.move: "Réckelen"
+chat.tool_kind.fetch: "Ofruffen"
+chat.tool_kind.think: "Denken"
+chat.tool_kind.mode: "Modus"
+chat.tool_kind.other: "Tool"
 
 # ── Input-Plazhalter (src/ui/input.rs) ────────────────────────────────────
 input.placeholder.connected: "Froen eppes, / fir Kommandoen.."  # {Locked="/"}
@@ -134,8 +145,8 @@ system.resuming_session: "Sessioun %{session_id} gëtt weidergefouert..."
 system.unknown_command: "Onbekannte Commande \"%{command}\" — als Prompt geschéckt. Tippt /help fir d’Lëscht."
 system.busy_use_stop: "Waart bis den aktuelle Prompt fäerdeg ass, oder benotzt fir d’éischt /stop."
 system.cannot_focus_session: "Sessioun %{session_id} kann net fokusséiert ginn: si schéngt aktiv ze sinn, mee et ass nach kee Fënster-GUID gebonnen. Probéiert et gläich nach eng Kéier."
-system.cannot_resume_no_load_session: "Kann net am Agent-Fënster weiderfueren: %{agent} huet d’ACP `loadSession`-Fäegkeet net ugekënnegt. Dréckt Enter (ouni Shift) fir amplaz an engem neien Terminal-Fënster weiderzefueren."
-system.cannot_resume_no_resume_flag: "Kann %{agent}-Sessioun net weiderfueren: dësen Agent huet kee `--resume`-ähnleche Fändel. Dréckt Shift+Enter fir amplaz am Agent-Fënster iwwer ACP weiderzefueren."
+system.cannot_resume_no_load_session: "Kann net am Agent-Fënster weiderfueren: %{agent} huet d’ACP `loadSession`-Fäegkeet net ugekënnegt."
+system.cannot_resume_no_resume_flag: "Kann %{agent}-Sessioun net weiderfueren: dësen Agent huet kee `--resume`-ähnleche Fändel."
 system.cannot_resume_unknown_agent: "Kann Sessioun %{session_id} net weiderfueren: hire Quell-Agent ass dësem Build onbekannt."
 system.cannot_resume_phantom_via_flag: "Kann %{agent}-Sessioun %{session_id} net weiderfueren: si gouf gestart, mee et ass ni e Gespréich entstanen, dofir géif %{agent} selwer d’Weiderféierung refuséieren. Rei gëtt ewechgeholl."
 system.cannot_resume_phantom_via_load: "Kann %{agent}-Sessioun %{session_id} net weiderfueren: si gouf gestart, mee et ass ni e Gespréich entstanen, dofir géif %{agent} d’Luede refuséieren. Rei gëtt ewechgeholl."
@@ -177,7 +188,7 @@ hooks.marketplace_path_stale: "⚠ Marketplace-Wee verélzt"
 hooks.installed_but_disabled: "⚠ installéiert awer deaktivéiert"
 hooks.not_installed: "✗ net installéiert"
 hooks.uninstall_skipped: "iwwersprong (CLI net op PATH)"
-hooks.install_attempted: "wt-agent-hooks Installatioun probéiert (idempotent). Féiert `wta hooks status` aus fir d'Resultat z'iwwerpréiwen. Trace-Log: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"
+hooks.install_succeeded: "✓ wt-agent-hooks installéiert fir %{clis}"
 
 # ── Relative time and date formatting (src/ui/agents_view.rs) ───────────────
 time.just_now: "elo grad"
@@ -215,8 +226,17 @@ system.agent_switch_unavailable: "D'Agenten-Umschalten ass ausserhalb vun engem 
 
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "Wielt de Modell fir dës Panell (/model <id> fir direkt ze wiesselen)"  # {Locked="/model","<id>"}
+commands.config.summary: "Dës Agent-Sessioun konfiguréieren"  # Agent means an AI coding agent; shown for the /config command. {Locked="/config"}
 commands.move.summary: "Deen Agent-Panell vun dësem Tab réckelen (/move <position>)"  # {Locked="/move","<position>"}
 model_picker.title: "Modell auswielen (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "Den ugeschlossenen Agent huet keng auswielbar Modeller ugekënnegt."
 system.model_set: "De Modell fir dës Panell gouf op %{model} gesat."  # {Locked="%{model}"}
+
+# ── Session configuration picker (src/ui/config_popup.rs) ───────────────────
+# {Locked="↑","↓","Enter","Esc","ACP"} - key names and protocol name
+config_picker.title: "Sessiounskonfiguratioun (↑ ↓ • Enter • Esc)"
+# Shown when /config is used but the AI agent exposed no ACP select options.
+system.no_config_options: "Den ugeschlossenen Agent huet keng konfiguréierbar Sessiounsoptiounen ugekënnegt."
+# {option} is an Agent-provided option name; {error} is the ACP error.
+system.config_update_failed: "%{option} konnt net aktualiséiert ginn: %{error}"
 system.model_unknown: "Onbekannte Modell %{model} — tippt /model fir d'verfügbar Lëscht ze gesinn."  # {Locked="%{model}","/model"}

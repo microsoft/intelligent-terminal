@@ -16,7 +16,7 @@
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
 
-        <!--  ========= Agent bar (Figma: 36px tall, 1px bottom hairline) =========
+        <!--  ========= Agent bar (36px tall, 1px bottom border) =========
               Only a bottom hairline: the top edge sits against the terminal
               pane / focused-pane border above, which already provides the
               separation, so a top border would double it up (#348).  -->
@@ -24,7 +24,7 @@
                 Grid.Row="0"
                 Height="36"
                 Background="#FF000000"
-                BorderBrush="#26FFFFFF"
+                BorderBrush="{ThemeResource TabViewBackground}"
                 BorderThickness="0,0,0,1">
             <Grid Padding="10,0,0,0">
                 <!--  Left cluster: logo + label. History and other actions

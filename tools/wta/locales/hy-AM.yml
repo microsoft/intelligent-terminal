@@ -43,7 +43,7 @@ auth.login_failed_help_default: "  Սեղմեք Enter՝ նորից փորձել�
 # ── Chat view (src/ui/chat.rs) ──────────────────────────────────────────────────────────────────────
 chat.activity_thinking: "Մտածում եմ…"
 chat.welcome_title: "Բարի գալուստ Խելացի տերմինալ!"
-chat.welcome_disclaimer: "Խելացի տերմինալ-ը օգտագործում է AI: Ստուգեք սխալները."
+chat.welcome_disclaimer: "Խելացի տերմինալ-ը օգտագործում է AI."
 # Header label for the AI agent's step-by-step plan section
 chat.plan_header: "Պլան՝"
 chat.plan_marker_completed: "[x]"  # {Locked}
@@ -52,6 +52,17 @@ chat.plan_marker_pending: "[ ]"  # {Locked}
 chat.autofix_prompt_label: "Վերջին հրամանի ձախողումը ինքնաշխատ ախտորոշվել է"
 chat.turn_canceled: "(չեղարկվել է)"
 chat.turn_executed: "→ կատարվել է: %{title}"
+# Գործիքի կատեգորիայի մշտական պիտակներ, որոնք ցուցադրվում են վիճակի նշիչից հետո և թեմայից առաջ։
+chat.tool_kind.run: "Գործարկել"
+chat.tool_kind.read: "Կարդալ"
+chat.tool_kind.search: "Որոնել"
+chat.tool_kind.edit: "Խմբագրել"
+chat.tool_kind.delete: "Ջնջել"
+chat.tool_kind.move: "Տեղափոխել"
+chat.tool_kind.fetch: "Ստանալ"
+chat.tool_kind.think: "Մտածել"
+chat.tool_kind.mode: "Ռեժիմ"
+chat.tool_kind.other: "Գործիք"
 
 # ── Input placeholders (src/ui/input.rs) ──────────────────────────────────────────────────────────────────
 input.placeholder.connected: "Հարցրեք ցանկացած, / հրամանների համար.."  # {Locked="/"}
@@ -161,8 +172,8 @@ system.resuming_session: "Վերսկսվում է աշխատաշրջանը %{ses
 system.unknown_command: "Անհայտ հրաման \"%{command}\" — ուղարկվել է որպես հուշում։ Ցանկի համար մուտքագրեք /help։"  # {Locked="/help"} — slash-command name.
 system.busy_use_stop: "Սպասեք, մինչև ընթացիկ հուշումն ավարտվի, կամ նախ օգտագործեք /stop։"  # {Locked="/stop"} — slash-command name.
 system.cannot_focus_session: "Չհաջողվեց կենտրոնանալ աշխատաշրջանի %{session_id} վրա. այն կարծես live է, բայց դեռ որևէ pane GUID կապված չէ։ Փորձեք մի փոքր հետո։"
-system.cannot_resume_no_load_session: "Չի կարող վերսկսվել agent pane-ում. %{agent}-ը չի հայտարարել ACP `loadSession` հնարավորության մասին։ Փոխարենը նոր terminal pane-ում վերսկսելու համար սեղմեք Enter (առանց Shift)։"  # {Locked="ACP","loadSession","Enter","Shift"} — protocol/UI terms.
-system.cannot_resume_no_resume_flag: "Չի կարող վերսկսվել %{agent} աշխատաշրջանը. այս agent-ը չունի `--resume` ոճի flag։ Փոխարենը ACP-ի միջոցով agent pane-ի ներսում վերսկսելու համար սեղմեք Shift+Enter։"  # {Locked="--resume","Shift","Enter","ACP"} — flag and UI terms.
+system.cannot_resume_no_load_session: "Չի կարող վերսկսվել agent pane-ում. %{agent}-ը չի հայտարարել ACP `loadSession` հնարավորության մասին։"  # {Locked="ACP","loadSession"} — protocol/UI terms.
+system.cannot_resume_no_resume_flag: "Չի կարող վերսկսվել %{agent} աշխատաշրջանը. այս agent-ը չունի `--resume` ոճի flag։"  # {Locked="--resume"} — flag and UI terms.
 system.cannot_resume_unknown_agent: "Չի կարող վերսկսվել աշխատաշրջանը %{session_id}. դրա աղբյուր agent-ը անհայտ է WTA-ի այս build-ին։"
 system.cannot_resume_phantom_via_flag: "Չի կարող վերսկսվել %{agent} աշխատաշրջանը %{session_id}. այն սկսվել էր, բայց որևէ զրույց չէր կուտակել, ուստի %{agent}-ն ինքը կմերժեր վերսկսումը։ Հեռացվում է տողը։"
 system.cannot_resume_phantom_via_load: "Չի կարող վերսկսվել %{agent} աշխատաշրջանը %{session_id}. այն սկսվել էր, բայց որևէ զրույց չէր կուտակել, ուստի %{agent}-ը կմերժեր բեռնումը։ Հեռացվում է տողը։"
@@ -206,7 +217,7 @@ hooks.marketplace_path_stale: "⚠ marketplace ճանապարհը հնացած �
 hooks.installed_but_disabled: "⚠ տեղադրված է, բայց անջատված է"
 hooks.not_installed: "✗ տեղադրված չէ"
 hooks.uninstall_skipped: "բաց թողվեց (CLI-ն PATH-ում չէ)"
-hooks.install_attempted: "wt-agent-hooks տեղադրման փորձ կատարվեց (իդեմպոտենտ)։ Գործարկեք `wta hooks status` արդյունքը ստուգելու համար։ Հետագծման մատյան՝ %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"
+hooks.install_succeeded: "✓ wt-agent-hooks-ը տեղադրված է %{clis}-ի համար"
 # ── Relative time and date formatting ───────────────────────────────────────
 time.just_now: "հենց նոր"
 time.minute_singular: "1 րոպե առաջ"
@@ -231,8 +242,17 @@ system.agent_switch_unavailable: "Գործակալի փոխարկումը հաս
 
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "Ընտրեք մոդելն այս վահանակի համար (/model <id>՝ ուղղակիորեն փոխելու համար)"  # {Locked="/model","<id>"}
+commands.config.summary: "Կարգավորել գործակալի այս աշխատաշրջանը"  # Agent means an AI coding agent; shown for the /config command. {Locked="/config"}
 commands.move.summary: "Տեղափոխել այս ներդիրի ագենտի վահանակը (/move <position>)"  # {Locked="/move","<position>"}
 model_picker.title: "Ընտրեք մոդելը (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "Միացված ագենտը չհայտարարեց ընտրելի մոդելների մասին։"
 system.model_set: "Այս վահանակի մոդելը սահմանվել է %{model}։"  # {Locked="%{model}"}
+
+# ── Session configuration picker (src/ui/config_popup.rs) ───────────────────
+# {Locked="↑","↓","Enter","Esc","ACP"} - key names and protocol name
+config_picker.title: "Աշխատաշրջանի կարգավորում (↑ ↓ • Enter • Esc)"
+# Shown when /config is used but the AI agent exposed no ACP select options.
+system.no_config_options: "Միացված գործակալը չի հայտարարել աշխատաշրջանի կարգավորելի տարբերակներ:"
+# {option} is an Agent-provided option name; {error} is the ACP error.
+system.config_update_failed: "Չհաջողվեց թարմացնել %{option}-ը. %{error}"
 system.model_unknown: "Անհայտ մոդել %{model} — մուտքագրեք /model՝ հասանելի ցանկը տեսնելու համար։"  # {Locked="%{model}","/model"}

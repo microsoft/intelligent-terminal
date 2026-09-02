@@ -41,7 +41,7 @@ auth.login_failed_help_default: "  Πατήστε Enter για να δοκιμά
 chat.activity_thinking: "Σκέφτομαι…"
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 chat.welcome_title: "Καλώς ήρθατε στο Έξυπνο Τερματικό!"
-chat.welcome_disclaimer: "Το Έξυπνο Τερματικό χρησιμοποιεί AI. Ελέγξτε για σφάλματα."
+chat.welcome_disclaimer: "Το Έξυπνο Τερματικό χρησιμοποιεί AI."
 chat.plan_header: "Σχέδιο:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}
@@ -49,6 +49,17 @@ chat.plan_marker_pending: "[ ]"  # {Locked}
 chat.autofix_prompt_label: "Αυτόματη διάγνωση πρόσφατης αποτυχίας εντολής"
 chat.turn_canceled: "(ακυρώθηκε)"
 chat.turn_executed: "→ εκτελέστηκε: %{title}"
+# Persistent tool-category labels shown after a status marker and before a subject.
+chat.tool_kind.run: "Εκτέλεση"
+chat.tool_kind.read: "Ανάγνωση"
+chat.tool_kind.search: "Αναζήτηση"
+chat.tool_kind.edit: "Επεξεργασία"
+chat.tool_kind.delete: "Διαγραφή"
+chat.tool_kind.move: "Μετακίνηση"
+chat.tool_kind.fetch: "Ανάκτηση"
+chat.tool_kind.think: "Σκέψη"
+chat.tool_kind.mode: "Λειτουργία"
+chat.tool_kind.other: "Εργαλείο"
 
 # ── Input placeholders (src/ui/input.rs) ────────────────────────────────────
 input.placeholder.connected: "Ρωτήστε οτιδήποτε, / για εντολές.."  # {Locked="/"}
@@ -136,8 +147,8 @@ system.resuming_session: "Συνέχιση της περιόδου λειτου�
 system.unknown_command: "Άγνωστη εντολή \"%{command}\" — στάλθηκε ως προτροπή. Πληκτρολογήστε /help για τη λίστα."  # {Locked="/help"} — slash-command name.
 system.busy_use_stop: "Περιμένετε να ολοκληρωθεί η τρέχουσα προτροπή ή χρησιμοποιήστε πρώτα /stop."  # {Locked="/stop"} — slash-command name.
 system.cannot_focus_session: "Δεν είναι δυνατή η εστίαση στην περίοδο λειτουργίας %{session_id}: φαίνεται ενεργή, αλλά δεν έχει συνδεθεί ακόμα GUID τμήματος παραθύρου. Δοκιμάστε ξανά σε λίγο."
-system.cannot_resume_no_load_session: "Δεν είναι δυνατή η συνέχιση στο τμήμα παραθύρου agent: ο %{agent} δεν δήλωσε τη δυνατότητα ACP `loadSession`. Πατήστε Enter (χωρίς Shift) για συνέχιση σε νέο τμήμα παραθύρου τερματικού αντ' αυτού."  # {Locked="ACP","loadSession","Enter","Shift"} — protocol/UI terms.
-system.cannot_resume_no_resume_flag: "Δεν είναι δυνατή η συνέχιση της περιόδου λειτουργίας %{agent}: αυτός ο agent δεν έχει σημαία τύπου `--resume`. Πατήστε Shift+Enter για να δοκιμάσετε συνέχιση μέσα στο τμήμα παραθύρου agent μέσω ACP αντ' αυτού."  # {Locked="--resume","Shift","Enter","ACP"} — flag and UI terms.
+system.cannot_resume_no_load_session: "Δεν είναι δυνατή η συνέχιση στο τμήμα παραθύρου agent: ο %{agent} δεν δήλωσε τη δυνατότητα ACP `loadSession`."  # {Locked="ACP","loadSession"} — protocol/UI terms.
+system.cannot_resume_no_resume_flag: "Δεν είναι δυνατή η συνέχιση της περιόδου λειτουργίας %{agent}: αυτός ο agent δεν έχει σημαία τύπου `--resume`."  # {Locked="--resume"} — flag and UI terms.
 system.cannot_resume_unknown_agent: "Δεν είναι δυνατή η συνέχιση της περιόδου λειτουργίας %{session_id}: ο agent προέλευσης είναι άγνωστος σε αυτήν την έκδοση του WTA."
 system.cannot_resume_phantom_via_flag: "Δεν είναι δυνατή η συνέχιση της περιόδου λειτουργίας %{agent} %{session_id}: ξεκίνησε αλλά δεν συγκέντρωσε ποτέ καμία συνομιλία, επομένως ο ίδιος ο %{agent} θα απέρριπτε τη συνέχιση. Κατάργηση της γραμμής."
 system.cannot_resume_phantom_via_load: "Δεν είναι δυνατή η συνέχιση της περιόδου λειτουργίας %{agent} %{session_id}: ξεκίνησε αλλά δεν συγκέντρωσε ποτέ καμία συνομιλία, επομένως ο %{agent} θα απέρριπτε τη φόρτωση. Κατάργηση της γραμμής."
@@ -179,7 +190,7 @@ hooks.marketplace_path_stale: "⚠ η διαδρομή marketplace είναι π
 hooks.installed_but_disabled: "⚠ εγκατεστημένο αλλά απενεργοποιημένο"
 hooks.not_installed: "✗ δεν έχει εγκατασταθεί"
 hooks.uninstall_skipped: "παραλείφθηκε (το CLI δεν βρίσκεται στο PATH)"
-hooks.install_attempted: "Δοκιμάστηκε η εγκατάσταση wt-agent-hooks (idempotent). Εκτελέστε `wta hooks status` για έλεγχο αποτελεσμάτων. Αρχείο καταγραφής: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"
+hooks.install_succeeded: "✓ Το wt-agent-hooks είναι εγκατεστημένο για %{clis}"
 # ── Relative time + date formatting (src/ui/agents_view.rs) ─────────────────
 time.just_now: "μόλις τώρα"
 time.minute_singular: "πριν από %{count} λεπτό"
@@ -216,8 +227,17 @@ system.agent_switch_unavailable: "Η εναλλαγή πρακτόρων δεν 
 
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "Επιλέξτε το μοντέλο για αυτό το πλαίσιο (/model <id> για άμεση εναλλαγή)"  # {Locked="/model","<id>"}
+commands.config.summary: "Διαμόρφωση αυτής της περιόδου λειτουργίας παράγοντα"  # Agent means an AI coding agent; shown for the /config command. {Locked="/config"}
 commands.move.summary: "Μετακίνηση του πλαισίου παράγοντα αυτής της καρτέλας (/move <position>)"  # {Locked="/move","<position>"}
 model_picker.title: "Επιλέξτε μοντέλο (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "Ο συνδεδεμένος agent δεν δήλωσε κανένα επιλέξιμο μοντέλο."
 system.model_set: "Το μοντέλο για αυτό το πλαίσιο ορίστηκε σε %{model}."  # {Locked="%{model}"}
+
+# ── Session configuration picker (src/ui/config_popup.rs) ───────────────────
+# {Locked="↑","↓","Enter","Esc","ACP"} - key names and protocol name
+config_picker.title: "Διαμόρφωση περιόδου λειτουργίας (↑ ↓ • Enter • Esc)"
+# Shown when /config is used but the AI agent exposed no ACP select options.
+system.no_config_options: "Ο συνδεδεμένος παράγοντας δεν διαφήμισε καμία διαμορφώσιμη επιλογή περιόδου λειτουργίας."
+# {option} is an Agent-provided option name; {error} is the ACP error.
+system.config_update_failed: "Αποτυχία ενημέρωσης του %{option}: %{error}"
 system.model_unknown: "Άγνωστο μοντέλο %{model} — πληκτρολογήστε /model για να δείτε τη διαθέσιμη λίστα."  # {Locked="%{model}","/model"}

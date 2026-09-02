@@ -127,6 +127,10 @@ pub(crate) struct Cli {
     #[arg(long, value_enum, default_value_t = InitialView::Chat)]
     pub(crate) initial_view: InitialView,
 
+    /// Initial per-tab agent pane position restored by Windows Terminal.
+    #[arg(long, hide = true, value_parser = ["left", "right", "top", "up", "bottom"])]
+    pub(crate) initial_pane_position: Option<String>,
+
     /// UI language override, passed by Windows Terminal from the
     /// `settings.json` `Language` field. When present, wta uses this
     /// directly for i18n instead of detecting the OS locale — ensuring
@@ -181,17 +185,6 @@ pub(crate) struct Cli {
     /// state. Hidden because only WT's pre-warm path should set it.
     #[arg(long, hide = true)]
     pub(crate) start_stashed: bool,
-
-    /// Degraded-open mode: the helper is being spawned for a pane the user
-    /// opened *while wta-master is known to be down* (it died unexpectedly and
-    /// hasn't been recovered via /restart — see C++ `SharedWta::IsDegraded`).
-    /// Rather than the helper retrying the dead master pipe for ~75s and
-    /// showing a spinner, it comes up immediately in the disconnected state
-    /// (the same transport-lost view an orphaned pane shows), so the user can
-    /// /restart right there instead of hunting for another pane. Hidden — only
-    /// WT's degraded-open path should set it.
-    #[arg(long, hide = true)]
-    pub(crate) assume_master_down: bool,
 
     // Legacy flags (hidden, backward compat)
     #[arg(long, hide = true)]
@@ -418,6 +411,11 @@ pub(crate) enum Command {
         #[arg(long)]
         wsl_distro: String,
     },
+    /// List built-in ACP agents that WTA can launch on the Windows host.
+    /// Used by FRE, Settings, and automatic agent selection so those surfaces
+    /// share WTA's executable resolution with the actual ACP spawn path.
+    #[command(hide = true)]
+    ProbeHostAgents,
     /// Diagnostic: spawn an agent CLI, ACP `initialize`, then call
     /// `session/list` (`list_sessions`) and print what it returns.
     /// Used to evaluate whether ACP session enumeration can replace
@@ -437,19 +435,6 @@ pub(crate) enum Command {
         /// "copilot --acp --stdio" or "npx -y @agentclientprotocol/claude-agent-acp").
         #[arg(long)]
         agent: String,
-    },
-    /// Diagnostic: run the production WSL history scan
-    /// (`wsl_acp::scan_running_distros_acp`) end-to-end against the
-    /// currently-running distros and print the discovered sessions as
-    /// JSON. Exercises the real `wsl.exe` spawn + ACP `session/list` path
-    /// that seeds the `/sessions` view. Prints `[]` when no distro is
-    /// running or none answer.
-    ProbeWslSessions {
-        /// Restrict to one CLI (`copilot` | `claude` | `codex`). Omitted
-        /// scans the three ACP-capable built-ins (Gemini has no
-        /// `session/list`).
-        #[arg(long)]
-        cli: Option<String>,
     },
     /// Submit a typed terminal-action proposal directly to the Helper that
     /// owns the current turn. Intended to be run by an agent session using
@@ -513,11 +498,19 @@ impl SessionsOriginArg {
 #[derive(Subcommand, Debug)]
 pub(crate) enum HooksAction {
     /// (Re-)install the wt-agent-hooks bridge. Installs for all supported
-    /// CLIs by default, or a single CLI with `--cli`.
+    /// CLIs by default, or a single CLI with `--cli`. `--only-missing` skips
+    /// CLIs that are already current and upgrades the ones that are behind.
+    /// With `--json` returns a structured per-CLI outcome report.
     Install {
         /// Which CLI to install for. Default: `all`.
         #[arg(long, value_enum, default_value_t = HooksCliFilter::All)]
         cli: HooksCliFilter,
+        /// Skip CLIs whose hook bridge is already complete and current. A
+        /// complete but out-of-date bridge is upgraded rather than
+        /// re-installed, because a second `install` no-ops; missing, partial,
+        /// disabled and stale-path bridges are installed as usual.
+        #[arg(long)]
+        only_missing: bool,
     },
     /// Print per-CLI install state. Returns JSON with `--json`,
     /// or a human-readable table by default.

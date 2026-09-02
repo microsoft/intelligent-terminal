@@ -41,7 +41,7 @@ auth.login_failed_help_default: "  पुन्हा प्रयत्न क�
 chat.activity_thinking: "विचार करत आहे…"
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 chat.welcome_title: "इंटेलिजंट टर्मिनल मध्ये आपले स्वागत आहे!"
-chat.welcome_disclaimer: "इंटेलिजंट टर्मिनल AI वापरते. चुकांची तपासणी करा."
+chat.welcome_disclaimer: "इंटेलिजंट टर्मिनल AI वापरते."
 chat.plan_header: "योजना:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}
@@ -49,6 +49,17 @@ chat.plan_marker_pending: "[ ]"  # {Locked}
 chat.autofix_prompt_label: "अलीकडील कमांड अपयशाचे स्वयंचलितपणे निदान केले"
 chat.turn_canceled: "(रद्द केले)"
 chat.turn_executed: "→ अंमलात आणले: %{title}"
+# Persistent tool-category labels shown after a status marker and before a subject.
+chat.tool_kind.run: "चालवा"
+chat.tool_kind.read: "वाचा"
+chat.tool_kind.search: "शोधा"
+chat.tool_kind.edit: "संपादित करा"
+chat.tool_kind.delete: "हटवा"
+chat.tool_kind.move: "हलवा"
+chat.tool_kind.fetch: "आणा"
+chat.tool_kind.think: "विचार करा"
+chat.tool_kind.mode: "मोड"
+chat.tool_kind.other: "साधन"
 
 # ── इनपुट प्लेसहोल्डर (src/ui/input.rs) ────────────────────────────────────
 input.placeholder.connected: "काहीही विचारा, / कमांडसाठी.."  # {Locked="/"}
@@ -147,8 +158,8 @@ system.resuming_session: "सत्र %{session_id} पुन्हा सु�
 system.unknown_command: "अज्ञात आदेश \"%{command}\" — प्रॉम्प्ट म्हणून पाठवला. यादीसाठी /help टाइप करा."  # {Locked="/help"} — slash-command name.
 system.busy_use_stop: "सध्याचा प्रॉम्प्ट पूर्ण होईपर्यंत प्रतीक्षा करा, किंवा आधी /stop करा."  # {Locked="/stop"} — slash-command name.
 system.cannot_focus_session: "सत्र %{session_id} वर फोकस करता येत नाही: ते live दिसते पण अजून कोणताही pane GUID जोडलेला नाही. थोड्या वेळाने पुन्हा प्रयत्न करा."
-system.cannot_resume_no_load_session: "agent pane मध्ये पुन्हा सुरू करता येत नाही: %{agent} ने ACP `loadSession` क्षमता जाहीर केलेली नाही. त्याऐवजी नवीन terminal pane मध्ये पुन्हा सुरू करण्यासाठी Enter (Shift शिवाय) दाबा."  # {Locked="ACP","loadSession","Enter","Shift"} — protocol/UI terms.
-system.cannot_resume_no_resume_flag: "%{agent} सत्र पुन्हा सुरू करता येत नाही: या agent कडे `--resume`-शैलीचा flag नाही. त्याऐवजी ACP द्वारे agent pane मध्ये पुन्हा सुरू करण्याचा प्रयत्न करण्यासाठी Shift+Enter दाबा."  # {Locked="--resume","Shift","Enter","ACP"} — flag and UI terms.
+system.cannot_resume_no_load_session: "agent pane मध्ये पुन्हा सुरू करता येत नाही: %{agent} ने ACP `loadSession` क्षमता जाहीर केलेली नाही."  # {Locked="ACP","loadSession"} — protocol/UI terms.
+system.cannot_resume_no_resume_flag: "%{agent} सत्र पुन्हा सुरू करता येत नाही: या agent कडे `--resume`-शैलीचा flag नाही."  # {Locked="--resume"} — flag and UI terms.
 system.cannot_resume_unknown_agent: "सत्र %{session_id} पुन्हा सुरू करता येत नाही: त्याचा स्रोत agent या WTA build साठी अज्ञात आहे."
 system.cannot_resume_phantom_via_flag: "%{agent} सत्र %{session_id} पुन्हा सुरू करता येत नाही: ते सुरू झाले होते पण कोणतेही संभाषण साठवले गेले नाही, म्हणून %{agent} स्वतः resume नाकारेल. पंक्ती काढत आहे."
 system.cannot_resume_phantom_via_load: "%{agent} सत्र %{session_id} पुन्हा सुरू करता येत नाही: ते सुरू झाले होते पण कोणतेही संभाषण साठवले गेले नाही, म्हणून %{agent} load नाकारेल. पंक्ती काढत आहे."
@@ -190,7 +201,7 @@ hooks.marketplace_path_stale: "⚠ मार्केटप्लेस पथ �
 hooks.installed_but_disabled: "⚠ इंस्टॉल आहे पण अक्षम आहे"
 hooks.not_installed: "✗ इंस्टॉल नाही"
 hooks.uninstall_skipped: "वगळले (CLI PATH वर नाही)"
-hooks.install_attempted: "wt-agent-hooks इंस्टॉल प्रयत्न केला (आइडेम्पोटंट). परिणाम तपासण्यासाठी `wta hooks status` चालवा. ट्रेस लॉग: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"
+hooks.install_succeeded: "✓ wt-agent-hooks %{clis} साठी इंस्टॉल आहे"
 
 # ── Relative time and date formatting ─────────────────────────────────────
 time.just_now: "आत्ताच"
@@ -216,8 +227,17 @@ system.agent_switch_unavailable: "विंडोज टर्मिनल ट�
 
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "या पेनसाठी मॉडेल निवडा (थेट स्विच करण्यासाठी /model <id>)"  # {Locked="/model","<id>"}
+commands.config.summary: "हे एजंट सत्र कॉन्फिगर करा"  # Agent means an AI coding agent; shown for the /config command. {Locked="/config"}
 commands.move.summary: "या टॅबचे एजंट पेन हलवा (/move <position>)"  # {Locked="/move","<position>"}
 model_picker.title: "मॉडेल निवडा (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "कनेक्ट केलेल्या agent ने कोणतेही निवडण्यायोग्य मॉडेल जाहीर केले नाही."
 system.model_set: "या पेनसाठी मॉडेल %{model} वर सेट केले."  # {Locked="%{model}"}
+
+# ── Session configuration picker (src/ui/config_popup.rs) ───────────────────
+# {Locked="↑","↓","Enter","Esc","ACP"} - key names and protocol name
+config_picker.title: "सत्र कॉन्फिगरेशन (↑ ↓ • Enter • Esc)"
+# Shown when /config is used but the AI agent exposed no ACP select options.
+system.no_config_options: "कनेक्ट केलेल्या एजंटने कोणतेही कॉन्फिगर करण्यायोग्य सत्र पर्याय घोषित केले नाहीत."
+# {option} is an Agent-provided option name; {error} is the ACP error.
+system.config_update_failed: "%{option} अपडेट करण्यात अपयशी: %{error}"
 system.model_unknown: "अज्ञात मॉडेल %{model} — उपलब्ध यादी पाहण्यासाठी /model टाइप करा."  # {Locked="%{model}","/model"}

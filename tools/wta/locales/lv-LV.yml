@@ -41,7 +41,7 @@ auth.login_failed_help_default: "  Nospiediet Enter, lai mēģinātu vēlreiz, v
 chat.activity_thinking: "Domā..."
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 chat.welcome_title: "Laipni lūdzam Viedais Terminālis!"
-chat.welcome_disclaimer: "Viedais Terminālis izmanto AI. Pārbaudiet kļūdas."
+chat.welcome_disclaimer: "Viedais Terminālis izmanto AI."
 chat.plan_header: "Plāns:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}
@@ -49,6 +49,17 @@ chat.plan_marker_pending: "[ ]"  # {Locked}
 chat.autofix_prompt_label: "Automātiski diagnosticēta nesena komandas kļūme"
 chat.turn_canceled: "(atcelts)"
 chat.turn_executed: "→ izpildīts: %{title}"
+# Persistent tool-category labels shown after a status marker and before a subject.
+chat.tool_kind.run: "Izpildīt"
+chat.tool_kind.read: "Lasīt"
+chat.tool_kind.search: "Meklēt"
+chat.tool_kind.edit: "Rediģēt"
+chat.tool_kind.delete: "Dzēst"
+chat.tool_kind.move: "Pārvietot"
+chat.tool_kind.fetch: "Iegūt"
+chat.tool_kind.think: "Domāt"
+chat.tool_kind.mode: "Režīms"
+chat.tool_kind.other: "Rīks"
 
 # ── Input placeholders (src/ui/input.rs) ────────────────────────────────────
 input.placeholder.connected: "Jautājiet jebko, / komandām.."  # {Locked="/"}
@@ -134,8 +145,8 @@ system.resuming_session: "Tiek atsākta sesija %{session_id}..."
 system.unknown_command: "Nezināma komanda \"%{command}\" — nosūtīta kā uzvedne. Sarakstam ierakstiet /help."  # {Locked="/help"}
 system.busy_use_stop: "Uzgaidiet, līdz pašreizējā uzvedne tiek pabeigta, vai vispirms izmantojiet /stop."  # {Locked="/stop"}
 system.cannot_focus_session: "Nevar fokusēt sesiju %{session_id}: tā šķiet aktīva, bet vēl nav piesaistīts neviens rūts GUID. Pēc brīža mēģiniet vēlreiz."
-system.cannot_resume_no_load_session: "Nevar atsākt aģenta rūtī: %{agent} nepaziņoja ACP `loadSession` iespēju. Nospiediet Enter (bez Shift), lai tā vietā atsāktu jaunā termināļa rūtī."  # {Locked="ACP","loadSession","Enter","Shift"}
-system.cannot_resume_no_resume_flag: "Nevar atsākt %{agent} sesiju: šim aģentam nav `--resume` stila karoga. Nospiediet Shift+Enter, lai mēģinātu atsākt aģenta rūtī, izmantojot ACP."  # {Locked="--resume","Shift","Enter","ACP"}
+system.cannot_resume_no_load_session: "Nevar atsākt aģenta rūtī: %{agent} nepaziņoja ACP `loadSession` iespēju."  # {Locked="ACP","loadSession"}
+system.cannot_resume_no_resume_flag: "Nevar atsākt %{agent} sesiju: šim aģentam nav `--resume` stila karoga."  # {Locked="--resume"}
 system.cannot_resume_unknown_agent: "Nevar atsākt sesiju %{session_id}: tās avota aģents šim WTA būvējumam nav zināms."
 system.cannot_resume_phantom_via_flag: "Nevar atsākt %{agent} sesiju %{session_id}: tā tika sākta, bet tajā nav uzkrāta neviena saruna, tāpēc pats %{agent} noraidītu atsākšanu. Rinda tiek noņemta."
 system.cannot_resume_phantom_via_load: "Nevar atsākt %{agent} sesiju %{session_id}: tā tika sākta, bet tajā nav uzkrāta neviena saruna, tāpēc %{agent} noraidītu ielādi. Rinda tiek noņemta."
@@ -177,7 +188,7 @@ hooks.marketplace_path_stale: "⚠ marketplace path stale"
 hooks.installed_but_disabled: "⚠ installed but disabled"
 hooks.not_installed: "✗ not installed"
 hooks.uninstall_skipped: "skipped (CLI not on PATH)"
-hooks.install_attempted: "wt-agent-hooks install attempted (idempotent). Run `wta hooks status` to inspect the result. Trace log: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"
+hooks.install_succeeded: "✓ wt-agent-hooks installed for %{clis}"
 
 # ── Relative time and date formatting (src/ui/agents_view.rs) ───────────────
 time.just_now: "tikko"
@@ -215,8 +226,17 @@ system.agent_switch_unavailable: "Aģenta pārslēgšana nav pieejama ārpus Win
 
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "Izvēlieties šīs rūts modeli (/model <id>, lai pārslēgtu tieši)"  # {Locked="/model","<id>"}
+commands.config.summary: "Konfigurēt šo aģenta sesiju"  # Agent means an AI coding agent; shown for the /config command. {Locked="/config"}
 commands.move.summary: "Pārvietot šīs cilnes aģenta paneli (/move <position>)"  # {Locked="/move","<position>"}
 model_picker.title: "Izvēlieties modeli (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "Pievienotais aģents nepaziņoja nevienu atlasāmu modeli."
 system.model_set: "Šīs rūts modelis iestatīts uz %{model}."  # {Locked="%{model}"}
+
+# ── Session configuration picker (src/ui/config_popup.rs) ───────────────────
+# {Locked="↑","↓","Enter","Esc","ACP"} - key names and protocol name
+config_picker.title: "Sesijas konfigurācija (↑ ↓ • Enter • Esc)"
+# Shown when /config is used but the AI agent exposed no ACP select options.
+system.no_config_options: "Savienotais aģents nereklamēja nekādas konfigurējamas sesijas opcijas."
+# {option} is an Agent-provided option name; {error} is the ACP error.
+system.config_update_failed: "Neizdevās atjaunināt opciju %{option}: %{error}"
 system.model_unknown: "Nezināms modelis %{model} — ierakstiet /model, lai redzētu pieejamo sarakstu."  # {Locked="%{model}","/model"}

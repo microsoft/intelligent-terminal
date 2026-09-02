@@ -41,7 +41,7 @@ auth.login_failed_help_default: "  დააჭირეთ Enter-ს ხელ�
 chat.activity_thinking: "ვფიქრობ…"
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 chat.welcome_title: "ჭკვიანი ტერმინალი-ში მოგესალმებით!"
-chat.welcome_disclaimer: "ჭკვიანი ტერმინალი იყენებს AI-ს. შეამოწმეთ შეცდომები."
+chat.welcome_disclaimer: "ჭკვიანი ტერმინალი იყენებს AI-ს."
 chat.plan_header: "გეგმა:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}
@@ -49,6 +49,17 @@ chat.plan_marker_pending: "[ ]"  # {Locked}
 chat.autofix_prompt_label: "ბრძანების ბოლო შეცდომა ავტომატურად დიაგნოსტირებულია"
 chat.turn_canceled: "(გაუქმდა)"
 chat.turn_executed: "→ შესრულდა: %{title}"
+# ხელსაწყოს კატეგორიის მუდმივი წარწერები, რომლებიც გამოჩნდება სტატუსის ნიშნულის შემდეგ და თემის წინ.
+chat.tool_kind.run: "გაშვება"
+chat.tool_kind.read: "წაკითხვა"
+chat.tool_kind.search: "ძიება"
+chat.tool_kind.edit: "რედაქტირება"
+chat.tool_kind.delete: "წაშლა"
+chat.tool_kind.move: "გადატანა"
+chat.tool_kind.fetch: "მიღება"
+chat.tool_kind.think: "ფიქრი"
+chat.tool_kind.mode: "რეჟიმი"
+chat.tool_kind.other: "ხელსაწყო"
 
 # ── შეყვანის ადგილმჩვენებლები (src/ui/input.rs) ────────────────────────────────────
 input.placeholder.connected: "იკითხეთ რაც გნებავთ, / ბრძანებებისთვის.."  # {Locked="/"}
@@ -147,8 +158,8 @@ system.resuming_session: "სესიის %{session_id} გაგრძელ
 system.unknown_command: "უცნობი ბრძანება \"%{command}\" — გაიგზავნა მოთხოვნად. სიისთვის აკრიფეთ /help."  # {Locked="/help"} — slash-command name.
 system.busy_use_stop: "დაელოდეთ მიმდინარე მოთხოვნის დასრულებას, ან ჯერ გამოიყენეთ /stop."  # {Locked="/stop"} — slash-command name.
 system.cannot_focus_session: "სესიაზე %{session_id} ფოკუსირება შეუძლებელია: ჩანს, რომ live არის, მაგრამ pane GUID ჯერ მიბმული არ არის. სცადეთ ცოტა ხანში."
-system.cannot_resume_no_load_session: "agent pane-ში გაგრძელება შეუძლებელია: %{agent}-მა ACP `loadSession` შესაძლებლობა არ გამოაცხადა. ამის ნაცვლად ახალ terminal pane-ში გასაგრძელებლად დააჭირეთ Enter-ს (Shift-ის გარეშე)."  # {Locked="ACP","loadSession","Enter","Shift"} — protocol/UI terms.
-system.cannot_resume_no_resume_flag: "%{agent} სესიის გაგრძელება შეუძლებელია: ამ agent-ს `--resume` სტილის flag არ აქვს. ამის ნაცვლად ACP-ის საშუალებით agent pane-ში გაგრძელების საცდელად დააჭირეთ Shift+Enter-ს."  # {Locked="--resume","Shift","Enter","ACP"} — flag and UI terms.
+system.cannot_resume_no_load_session: "agent pane-ში გაგრძელება შეუძლებელია: %{agent}-მა ACP `loadSession` შესაძლებლობა არ გამოაცხადა."  # {Locked="ACP","loadSession"} — protocol/UI terms.
+system.cannot_resume_no_resume_flag: "%{agent} სესიის გაგრძელება შეუძლებელია: ამ agent-ს `--resume` სტილის flag არ აქვს."  # {Locked="--resume"} — flag and UI terms.
 system.cannot_resume_unknown_agent: "სესიის %{session_id} გაგრძელება შეუძლებელია: მისი წყარო agent უცნობია WTA-ის ამ build-ისთვის."
 system.cannot_resume_phantom_via_flag: "%{agent} სესიის %{session_id} გაგრძელება შეუძლებელია: ის დაიწყო, მაგრამ არცერთი საუბარი არ დაუგროვებია, ამიტომ %{agent} თვითონ უარყოფს გაგრძელებას. მწკრივის წაშლა."
 system.cannot_resume_phantom_via_load: "%{agent} სესიის %{session_id} გაგრძელება შეუძლებელია: ის დაიწყო, მაგრამ არცერთი საუბარი არ დაუგროვებია, ამიტომ %{agent} უარყოფს ჩატვირთვას. მწკრივის წაშლა."
@@ -190,7 +201,7 @@ hooks.marketplace_path_stale: "⚠ მარკეტის ბილიკი �
 hooks.installed_but_disabled: "⚠ დაინსტალირებული, მაგრამ გათიშული"
 hooks.not_installed: "✗ არ არის დაინსტალირებული"
 hooks.uninstall_skipped: "გამოტოვებული (CLI არ არის PATH-ზე)"
-hooks.install_attempted: "wt-agent-hooks ინსტალაცია სცადეს (იდემპოტენტური). გაუშვით `wta hooks status` შედეგის სანახავად. თრეის ლოგი: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"
+hooks.install_succeeded: "✓ wt-agent-hooks დაინსტალირებულია %{clis}-სთვის"
 # ── Relative time and date formatting ───────────────────────────────────────
 time.just_now: "ახლახან"
 time.minute_singular: "1 წუთის წინ"
@@ -215,8 +226,17 @@ system.agent_switch_unavailable: "აგენტის გადართვა
 
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "აირჩიეთ მოდელი ამ პანელისთვის (/model <id> პირდაპირ გადასართავად)"  # {Locked="/model","<id>"}
+commands.config.summary: "აგენტის ამ სესიის კონფიგურაცია"  # Agent means an AI coding agent; shown for the /config command. {Locked="/config"}
 commands.move.summary: "ამ ჩანართის აგენტის პანელის გადატანა (/move <position>)"  # {Locked="/move","<position>"}
 model_picker.title: "აირჩიეთ მოდელი (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "დაკავშირებულმა აგენტმა არცერთი ასარჩევი მოდელი არ გამოაცხადა."
 system.model_set: "ამ პანელის მოდელად დაყენდა %{model}."  # {Locked="%{model}"}
+
+# ── Session configuration picker (src/ui/config_popup.rs) ───────────────────
+# {Locked="↑","↓","Enter","Esc","ACP"} - key names and protocol name
+config_picker.title: "სესიის კონფიგურაცია (↑ ↓ • Enter • Esc)"
+# Shown when /config is used but the AI agent exposed no ACP select options.
+system.no_config_options: "დაკავშირებულ აგენტს არ გამოუცხადებია სესიის კონფიგურირებადი პარამეტრები."
+# {option} is an Agent-provided option name; {error} is the ACP error.
+system.config_update_failed: "%{option}-ის განახლება ვერ შესრულდა: %{error}"
 system.model_unknown: "უცნობი მოდელი %{model} — აკრიფეთ /model ხელმისაწვდომი სიის სანახავად."  # {Locked="%{model}","/model"}

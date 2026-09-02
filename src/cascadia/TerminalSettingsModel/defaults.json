@@ -20,6 +20,8 @@
     "showTabsInTitlebar": true,
     "showTerminalTitleInTitlebar": true,
     "tabWidthMode": "equal",
+    "tabLayout": "horizontal",
+    "tabLayoutVerticalWidth": 220,
     "tabSwitcherMode": "inOrder",
     "showAdminShield": true,
 
@@ -44,7 +46,12 @@
             "hidden": true,
             "padding": "8, 8, 8, 0",
             "scrollbarState": "hidden",
-            "closeOnExit": "always",
+            // `graceful`, not `always`: a helper that exits cleanly takes its
+            // pane with it, but one that was killed leaves the pane behind
+            // exactly like every other profile. That is what lets a saved
+            // layout still describe the agent pane when wta died first — a
+            // system shutdown kills wta while Terminal's own save is queued.
+            "closeOnExit": "graceful",
             "suppressApplicationTitle": true
         },
         {

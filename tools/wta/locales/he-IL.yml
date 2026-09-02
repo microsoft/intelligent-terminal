@@ -41,7 +41,7 @@ auth.login_failed_help_default: "  הקש Enter כדי לנסות שוב, או E
 chat.activity_thinking: "חושב…"
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 chat.welcome_title: "ברוכים הבאים ל-מסוף חכם!"
-chat.welcome_disclaimer: "מסוף חכם משתמש ב-AI. בדוק אם יש שגיאות."
+chat.welcome_disclaimer: "מסוף חכם משתמש ב-AI."
 chat.plan_header: "תוכנית:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}
@@ -49,6 +49,17 @@ chat.plan_marker_pending: "[ ]"  # {Locked}
 chat.autofix_prompt_label: "כשל פקודה אחרון אובחן אוטומטית"
 chat.turn_canceled: "(בוטל)"
 chat.turn_executed: "→ בוצע: %{title}"
+# תוויות קבועות של קטגוריות כלים, המוצגות אחרי סמן מצב ולפני הנושא.
+chat.tool_kind.run: "הפעלה"
+chat.tool_kind.read: "קריאה"
+chat.tool_kind.search: "חיפוש"
+chat.tool_kind.edit: "עריכה"
+chat.tool_kind.delete: "מחיקה"
+chat.tool_kind.move: "העברה"
+chat.tool_kind.fetch: "אחזור"
+chat.tool_kind.think: "חשיבה"
+chat.tool_kind.mode: "מצב"
+chat.tool_kind.other: "כלי"
 
 # ── מצייני מיקום לקלט (src/ui/input.rs) ────────────────────────────────────
 input.placeholder.connected: "שאל כל דבר, / לפקודות.."  # {Locked="/"}
@@ -147,8 +158,8 @@ system.resuming_session: "מחדש את ההפעלה %{session_id}..."
 system.unknown_command: "פקודה לא ידועה \"%{command}\" — נשלחה כהנחיה. הקלד /help לקבלת הרשימה."  # {Locked="/help"} — slash-command name.
 system.busy_use_stop: "המתן עד שההנחיה הנוכחית תסתיים, או הפעל תחילה /stop."  # {Locked="/stop"} — slash-command name.
 system.cannot_focus_session: "לא ניתן להתמקד בהפעלה %{session_id}: היא נראית פעילה, אך עדיין לא משויך GUID של חלונית. נסה שוב בעוד רגע."
-system.cannot_resume_no_load_session: "לא ניתן לחדש בחלונית הסוכן: %{agent} לא פרסם את יכולת ACP `loadSession`. הקש Enter (ללא Shift) כדי לחדש בחלונית מסוף חדשה במקום זאת."  # {Locked="ACP","loadSession","Enter","Shift"} — protocol/UI terms.
-system.cannot_resume_no_resume_flag: "לא ניתן לחדש את ההפעלה של %{agent}: לסוכן זה אין דגל בסגנון `--resume`. הקש Shift+Enter כדי לנסות לחדש בתוך חלונית הסוכן דרך ACP במקום זאת."  # {Locked="--resume","Shift","Enter","ACP"} — flag and UI terms.
+system.cannot_resume_no_load_session: "לא ניתן לחדש בחלונית הסוכן: %{agent} לא פרסם את יכולת ACP `loadSession`."  # {Locked="ACP","loadSession"} — protocol/UI terms.
+system.cannot_resume_no_resume_flag: "לא ניתן לחדש את ההפעלה של %{agent}: לסוכן זה אין דגל בסגנון `--resume`."  # {Locked="--resume"} — flag and UI terms.
 system.cannot_resume_unknown_agent: "לא ניתן לחדש את ההפעלה %{session_id}: סוכן המקור שלה אינו מוכר לבנייה זו של WTA."
 system.cannot_resume_phantom_via_flag: "לא ניתן לחדש את ההפעלה %{agent} %{session_id}: היא הופעלה אך מעולם לא צברה שיחה כלשהי, ולכן %{agent} עצמו ידחה את החידוש. מסיר את השורה."
 system.cannot_resume_phantom_via_load: "לא ניתן לחדש את ההפעלה %{agent} %{session_id}: היא הופעלה אך מעולם לא צברה שיחה כלשהי, ולכן %{agent} ידחה את הטעינה. מסיר את השורה."
@@ -190,7 +201,7 @@ hooks.marketplace_path_stale: "⚠ נתיב חנות מיושן"
 hooks.installed_but_disabled: "⚠ מותקן אך מושבת"
 hooks.not_installed: "✗ לא מותקן"
 hooks.uninstall_skipped: "דולג (CLI לא נמצא ב-PATH)"
-hooks.install_attempted: "בוצע ניסיון התקנת wt-agent-hooks (אידמפוטנטי). הפעל `wta hooks status` כדי לבדוק את התוצאה. יומן מעקב: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"
+hooks.install_succeeded: "✓ wt-agent-hooks מותקן עבור %{clis}"
 # ── Relative time and date formatting ───────────────────────────────────────
 time.just_now: "עכשיו"
 time.minute_singular: "לפני דקה אחת"
@@ -215,8 +226,17 @@ system.agent_switch_unavailable: "מעבר בין סוכנים אינו זמין
 
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "בחר את המודל עבור חלונית זו (/model <id> למעבר ישיר)"  # {Locked="/model","<id>"}
+commands.config.summary: "קבע את תצורת הפעלה זו של הסוכן"  # Agent means an AI coding agent; shown for the /config command. {Locked="/config"}
 commands.move.summary: "העבר את חלונית הסוכן של כרטיסייה זו (/move <position>)"  # {Locked="/move","<position>"}
 model_picker.title: "בחר מודל (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "הסוכן המחובר לא פרסם מודלים הניתנים לבחירה."
 system.model_set: "המודל עבור חלונית זו הוגדר ל-%{model}."  # {Locked="%{model}"}
+
+# ── Session configuration picker (src/ui/config_popup.rs) ───────────────────
+# {Locked="↑","↓","Enter","Esc","ACP"} - key names and protocol name
+config_picker.title: "תצורת הפעלה (↑ ↓ • Enter • Esc)"
+# Shown when /config is used but the AI agent exposed no ACP select options.
+system.no_config_options: "הסוכן המחובר לא פרסם אפשרויות הפעלה הניתנות לקביעת תצורה."
+# {option} is an Agent-provided option name; {error} is the ACP error.
+system.config_update_failed: "עדכון %{option} נכשל: %{error}"
 system.model_unknown: "מודל לא ידוע %{model} — הקלד /model כדי לראות את הרשימה הזמינה."  # {Locked="%{model}","/model"}

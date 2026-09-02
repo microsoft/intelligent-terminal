@@ -41,7 +41,7 @@ auth.login_failed_help_default: "  Pindutin ang Enter para subukang muli, o Esc 
 chat.activity_thinking: "Nag-iisip…"
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 chat.welcome_title: "Maligayang pagdating sa Matalinong Terminal!"
-chat.welcome_disclaimer: "Gumagamit ang Matalinong Terminal ng AI. Suriin ang mga pagkakamali."
+chat.welcome_disclaimer: "Gumagamit ang Matalinong Terminal ng AI."
 chat.plan_header: "Plano:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}
@@ -49,6 +49,17 @@ chat.plan_marker_pending: "[ ]"  # {Locked}
 chat.autofix_prompt_label: "Awtomatikong na-diagnose ang kamakailang pagkabigo ng command"
 chat.turn_canceled: "(kinansela)"
 chat.turn_executed: "→ naisagawa: %{title}"
+# Mga permanenteng label ng kategorya ng tool na ipinapakita pagkatapos ng pananda ng katayuan at bago ang paksa.
+chat.tool_kind.run: "Patakbuhin"
+chat.tool_kind.read: "Basahin"
+chat.tool_kind.search: "Hanapin"
+chat.tool_kind.edit: "I-edit"
+chat.tool_kind.delete: "Tanggalin"
+chat.tool_kind.move: "Ilipat"
+chat.tool_kind.fetch: "Kunin"
+chat.tool_kind.think: "Mag-isip"
+chat.tool_kind.mode: "Mode"
+chat.tool_kind.other: "Tool"
 
 # ── Input placeholders (src/ui/input.rs) ────────────────────────────────────
 input.placeholder.connected: "Magtanong ng kahit ano, / para sa mga command.."  # {Locked="/"}
@@ -134,8 +145,8 @@ system.resuming_session: "Ipinagpapatuloy ang session %{session_id}..."
 system.unknown_command: "Hindi kilalang command \"%{command}\" — ipinadala bilang prompt. I-type ang /help para sa listahan."  # {Locked="/help"}
 system.busy_use_stop: "Hintaying matapos ang kasalukuyang prompt, o mag-/stop muna."  # {Locked="/stop"}
 system.cannot_focus_session: "Hindi ma-focus ang session %{session_id}: mukhang live ito pero wala pang naka-bind na pane GUID. Subukan muli pagkalipas ng ilang sandali."
-system.cannot_resume_no_load_session: "Hindi maipagpatuloy sa agent pane: hindi in-advertise ng %{agent} ang ACP `loadSession` capability. Pindutin ang Enter (nang walang Shift) para ipagpatuloy na lang sa bagong terminal pane."  # {Locked="ACP","loadSession","Enter","Shift"}
-system.cannot_resume_no_resume_flag: "Hindi maipagpatuloy ang %{agent} session: walang `--resume`-style flag ang agent na ito. Pindutin ang Shift+Enter para subukang ipagpatuloy sa loob ng agent pane sa pamamagitan ng ACP."  # {Locked="--resume","Shift","Enter","ACP"}
+system.cannot_resume_no_load_session: "Hindi maipagpatuloy sa agent pane: hindi in-advertise ng %{agent} ang ACP `loadSession` capability."  # {Locked="ACP","loadSession"}
+system.cannot_resume_no_resume_flag: "Hindi maipagpatuloy ang %{agent} session: walang `--resume`-style flag ang agent na ito."  # {Locked="--resume"}
 system.cannot_resume_unknown_agent: "Hindi maipagpatuloy ang session %{session_id}: hindi kilala ng build na ito ang source agent nito."
 system.cannot_resume_phantom_via_flag: "Hindi maipagpatuloy ang %{agent} session %{session_id}: nagsimula ito pero hindi kailanman nakaipon ng anumang pag-uusap, kaya tatanggihan ng %{agent} mismo ang resume. Inaalis ang row."
 system.cannot_resume_phantom_via_load: "Hindi maipagpatuloy ang %{agent} session %{session_id}: nagsimula ito pero hindi kailanman nakaipon ng anumang pag-uusap, kaya tatanggihan ng %{agent} ang load. Inaalis ang row."
@@ -177,7 +188,7 @@ hooks.marketplace_path_stale: "⚠ luma na ang marketplace path"
 hooks.installed_but_disabled: "⚠ naka-install pero naka-disable"
 hooks.not_installed: "✗ hindi naka-install"
 hooks.uninstall_skipped: "nilaktawan (wala ang CLI sa PATH)"
-hooks.install_attempted: "Sinubukang i-install ang wt-agent-hooks (idempotent). Patakbuhin ang `wta hooks status` para suriin ang resulta. Trace log: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"
+hooks.install_succeeded: "✓ Naka-install ang wt-agent-hooks para sa %{clis}"
 
 # ── Relative time and date formatting ─────────────────────────────────────
 time.just_now: "ngayon lang"
@@ -215,8 +226,17 @@ system.agent_switch_unavailable: "Hindi available ang paglipat ng agent sa labas
 
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "Piliin ang modelo para sa pane na ito (/model <id> para magpalit nang diretso)"  # {Locked="/model","<id>"}
+commands.config.summary: "I-configure ang session ng agent na ito"  # Agent means an AI coding agent; shown for the /config command. {Locked="/config"}
 commands.move.summary: "Ilipat ang agent pane ng tab na ito (/move <position>)"  # {Locked="/move","<position>"}
 model_picker.title: "Pumili ng modelo (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "Hindi nag-advertise ang nakakonektang agent ng anumang napipiling modelo."
 system.model_set: "Itinakda sa %{model} ang modelo para sa pane na ito."  # {Locked="%{model}"}
+
+# ── Session configuration picker (src/ui/config_popup.rs) ───────────────────
+# {Locked="↑","↓","Enter","Esc","ACP"} - key names and protocol name
+config_picker.title: "Configuration ng session (↑ ↓ • Enter • Esc)"
+# Shown when /config is used but the AI agent exposed no ACP select options.
+system.no_config_options: "Walang inianunsyong anumang pwedeng i-configure na opsyon sa session ang nakakonektang agent."
+# {option} is an Agent-provided option name; {error} is the ACP error.
+system.config_update_failed: "Bigo sa pag-update ng %{option}: %{error}"
 system.model_unknown: "Hindi kilalang modelo %{model} — i-type ang /model para makita ang available na listahan."  # {Locked="%{model}","/model"}

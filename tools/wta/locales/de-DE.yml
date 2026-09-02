@@ -41,7 +41,7 @@ auth.login_failed_help_default: "  Drücken Sie Enter, um es erneut zu versuchen
 chat.activity_thinking: "Denke nach…"
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 chat.welcome_title: "Willkommen bei Intelligentes Terminal!"
-chat.welcome_disclaimer: "Intelligentes Terminal verwendet KI. Auf Fehler prüfen."
+chat.welcome_disclaimer: "Intelligentes Terminal verwendet KI."
 chat.plan_header: "Plan:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}
@@ -49,6 +49,17 @@ chat.plan_marker_pending: "[ ]"  # {Locked}
 chat.autofix_prompt_label: "Kürzlicher Befehlsfehler automatisch diagnostiziert"
 chat.turn_canceled: "(abgebrochen)"
 chat.turn_executed: "→ ausgeführt: %{title}"
+# Persistent tool-category labels shown after a status marker and before a subject.
+chat.tool_kind.run: "Ausführen"
+chat.tool_kind.read: "Lesen"
+chat.tool_kind.search: "Suchen"
+chat.tool_kind.edit: "Bearbeiten"
+chat.tool_kind.delete: "Löschen"
+chat.tool_kind.move: "Verschieben"
+chat.tool_kind.fetch: "Abrufen"
+chat.tool_kind.think: "Denken"
+chat.tool_kind.mode: "Modus"
+chat.tool_kind.other: "Werkzeug"
 
 # ── Eingabeplatzhalter (src/ui/input.rs) ────────────────────────────────────────────
 input.placeholder.connected: "Frag etwas, / für Befehle.."  # {Locked="/"}
@@ -136,8 +147,8 @@ system.resuming_session: "Sitzung %{session_id} wird fortgesetzt..."
 system.unknown_command: "Unbekannter Befehl \"%{command}\" — als Prompt gesendet. Geben Sie /help ein, um die Liste anzuzeigen."
 system.busy_use_stop: "Warten Sie, bis der aktuelle Prompt abgeschlossen ist, oder verwenden Sie zuerst /stop."
 system.cannot_focus_session: "Sitzung %{session_id} kann nicht fokussiert werden: Sie scheint aktiv zu sein, aber es ist noch keine Bereichs-GUID gebunden. Versuchen Sie es gleich erneut."
-system.cannot_resume_no_load_session: "Fortsetzen im Agentbereich nicht möglich: %{agent} hat die ACP-`loadSession`-Funktion nicht angekündigt. Drücken Sie Enter (ohne Shift), um stattdessen in einem neuen Terminalbereich fortzusetzen."
-system.cannot_resume_no_resume_flag: "%{agent}-Sitzung kann nicht fortgesetzt werden: Dieser Agent verfügt über kein `--resume`-ähnliches Flag. Drücken Sie Shift+Enter, um stattdessen das Fortsetzen im Agentbereich über ACP zu versuchen."
+system.cannot_resume_no_load_session: "Fortsetzen im Agentbereich nicht möglich: %{agent} hat die ACP-`loadSession`-Funktion nicht angekündigt."
+system.cannot_resume_no_resume_flag: "%{agent}-Sitzung kann nicht fortgesetzt werden: Dieser Agent verfügt über kein `--resume`-ähnliches Flag."
 system.cannot_resume_unknown_agent: "Sitzung %{session_id} kann nicht fortgesetzt werden: Der Quellagent ist diesem Build unbekannt."
 system.cannot_resume_phantom_via_flag: "%{agent}-Sitzung %{session_id} kann nicht fortgesetzt werden: Sie wurde gestartet, hat aber nie eine Unterhaltung angesammelt, sodass %{agent} selbst das Fortsetzen ablehnen würde. Zeile wird entfernt."
 system.cannot_resume_phantom_via_load: "%{agent}-Sitzung %{session_id} kann nicht fortgesetzt werden: Sie wurde gestartet, hat aber nie eine Unterhaltung angesammelt, sodass %{agent} das Laden ablehnen würde. Zeile wird entfernt."
@@ -179,7 +190,7 @@ hooks.marketplace_path_stale: "⚠ Marketplace-Pfad veraltet"
 hooks.installed_but_disabled: "⚠ Installiert, aber deaktiviert"
 hooks.not_installed: "✗ Nicht installiert"
 hooks.uninstall_skipped: "Übersprungen (CLI nicht im PATH)"
-hooks.install_attempted: "wt-agent-hooks Installation versucht (idempotent). Führen Sie `wta hooks status` aus, um das Ergebnis zu überprüfen. Ablaufverfolgungsprotokoll: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"
+hooks.install_succeeded: "✓ wt-agent-hooks für %{clis} installiert"
 
 # ── Relative time + date formatting (src/ui/agents_view.rs) ─────────────────
 time.just_now: "gerade eben"
@@ -217,8 +228,17 @@ system.agent_switch_unavailable: "Das Umschalten des Agenten ist außerhalb eine
 
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "Modell für diesen Bereich auswählen (/model <id> zum direkten Wechseln)"  # {Locked="/model","<id>"}
+commands.config.summary: "Diese Agenten-Sitzung konfigurieren"  # Agent means an AI coding agent; shown for the /config command. {Locked="/config"}
 commands.move.summary: "Agentenbereich dieser Registerkarte verschieben (/move <position>)"  # {Locked="/move","<position>"}
 model_picker.title: "Modell auswählen (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "Der verbundene Agent hat keine auswählbaren Modelle angekündigt."
 system.model_set: "Modell für diesen Bereich auf %{model} festgelegt."  # {Locked="%{model}"}
+
+# ── Session configuration picker (src/ui/config_popup.rs) ───────────────────
+# {Locked="↑","↓","Enter","Esc","ACP"} - key names and protocol name
+config_picker.title: "Sitzungskonfiguration (↑ ↓ • Enter • Esc)"
+# Shown when /config is used but the AI agent exposed no ACP select options.
+system.no_config_options: "Der verbundene Agent hat keine konfigurierbaren Sitzungsoptionen angekündigt."
+# {option} is an Agent-provided option name; {error} is the ACP error.
+system.config_update_failed: "%{option} konnte nicht aktualisiert werden: %{error}"
 system.model_unknown: "Unbekanntes Modell %{model} — geben Sie /model ein, um die verfügbare Liste anzuzeigen."  # {Locked="%{model}","/model"}

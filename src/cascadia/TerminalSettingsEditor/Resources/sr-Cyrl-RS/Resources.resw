@@ -2952,17 +2952,21 @@
     <value>Након инсталације, покрените /hooks у Codex-у и одобрите да бисте веровали новим обрађивачима догађаја.</value>
     <comment>One-line reminder shown under the Codex CLI row in the Agent Hooks section. Codex requires per-command trust before hook handlers run; users must execute /hooks inside Codex and approve. {Locked="/hooks","Codex"}</comment>
   </data>
+  <data name="AIAgents_HooksRestartNote.Text" xml:space="preserve">
+    <value>Промене ступају на снагу при следећем покретању агента. Поново покрените све отворене агенте да бисте их применили.</value>
+    <comment>Persistent note shown under the "Install agent hook script" row in the Agent session tracking section. Warns that installing or removing hooks only affects agents started afterwards. In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+  </data>
   <data name="AIAgents_HooksLocateWtaFailedSummary" xml:space="preserve">
     <value>Неуспех: није могуће пронаћи wta.exe</value>
     <comment>Failure summary shown when the Settings UI cannot find the WTA helper executable. {Locked="wta.exe"}</comment>
   </data>
   <data name="AIAgents_HooksRemovedSummary" xml:space="preserve">
-    <value>Hooks су уклоњени. Поново покрените све отворене агенте да бисте одбацили претходне hooks.</value>
-    <comment>Success summary shown after removing agent session tracking hooks. {Locked="Hooks","hooks"}</comment>
+    <value>Hooks су уклоњени.</value>
+    <comment>Success summary shown after removing agent session tracking hooks. {Locked="Hooks"}</comment>
   </data>
   <data name="AIAgents_HooksInstalledSummary" xml:space="preserve">
-    <value>Hooks су инсталирани. Поново покрените све отворене агенте да бисте преузели нове hooks.</value>
-    <comment>Success summary shown after installing agent session tracking hooks. {Locked="Hooks","hooks"}</comment>
+    <value>Hooks су инсталирани.</value>
+    <comment>Success summary shown after installing agent session tracking hooks. {Locked="Hooks"}</comment>
   </data>
   <data name="AIAgents_HooksRemovalFailedSummary" xml:space="preserve">
     <value>Уклањање Hook није успело. Детаље потражите у {0}.</value>
@@ -2971,6 +2975,10 @@
   <data name="AIAgents_HooksInstallationFailedSummary" xml:space="preserve">
     <value>Инсталација Hooks није успела. Детаље потражите у {0}.</value>
     <comment>Failure summary shown when installing agent session tracking hooks fails. {Locked="Hooks","{0}"} {0} is replaced with the package-aware, versioned wta-install-hooks.log path at runtime.</comment>
+  </data>
+  <data name="AIAgents_HooksInstallationFailedForSummary" xml:space="preserve">
+    <value>Инсталација Hooks за {0} није успела. Детаље потражите у {1}.</value>
+    <comment>Failure summary shown when installing agent session tracking hooks fails for specific CLIs. {Locked="Hooks","{0}","{1}"} {0} is replaced with a comma-separated list of CLI names (brand names, never translated); {1} is replaced with the package-aware, versioned wta-install-hooks.log path at runtime.</comment>
   </data>
   <data name="AIAgents_AutoErrorDetectionTitle.Text" xml:space="preserve">
     <value>Аутоматско откривање грешака</value>
@@ -2988,8 +2996,8 @@
     <value>Дозволите да Интелигентни Терминал шаље грешке вашем агенту ради аутоматског предлагања исправки.</value>
   </data>
   <data name="AIAgents_CustomModels.Header" xml:space="preserve">
-    <value>Добављачи BYOM</value>
-    <comment>Section header for user-configured model providers. {Locked="BYOM"}</comment>
+    <value>Добављачи BYOK</value>
+    <comment>Section header for user-configured model providers. {Locked="BYOK"}</comment>
   </data>
   <data name="AIAgents_CustomModels.HelpText" xml:space="preserve">
     <value>Користите крајњу тачку API-ја Chat Completions компатибилну са OpenAI-јем. Подржава GitHub Copilot и OpenCode.</value>
@@ -2998,6 +3006,14 @@
   <data name="AIAgents_CustomProviderUnsupportedForAgent" xml:space="preserve">
     <value>{0} не подржава прилагођене добављаче Chat Completions компатибилне са OpenAI-јем. Сачувани добављачи остају доступни када пређете на GitHub Copilot или OpenCode.</value>
     <comment>{Locked="OpenAI","Chat Completions","GitHub Copilot","OpenCode"} {0} is replaced with the current AI agent display name. Explains that saved providers remain available for supported agents.</comment>
+  </data>
+  <data name="AIAgents_CustomProviderApiKeyMissing.Text" xml:space="preserve">
+    <value>Недостаје API кључ. Уклоните и поново додајте овог добављача.</value>
+    <comment>Inline error below a cloud BYOK provider when its saved Windows Credential Manager API key is missing. {Locked="API","BYOK"}</comment>
+  </data>
+  <data name="AIAgents_CustomProviderCredentialRemovalFailed" xml:space="preserve">
+    <value>Није могуће уклонити сачувани API кључ из Windows менаџера акредитива. Ручно уклоните генерички акредитив под називом „{0}“, а затим покушајте поново.</value>
+    <comment>Error shown when Windows Credential Manager fails to delete a saved BYOK provider key. {0} is replaced with the exact Generic Credential target so the user can remove it manually. {Locked="API","BYOK","{0}"}</comment>
   </data>
   <data name="AIAgents_CustomProviderRemove.Content" xml:space="preserve">
     <value>Уклони</value>
@@ -3010,6 +3026,10 @@
   <data name="AIAgents_CustomModelId.Header" xml:space="preserve">
     <value>ID модела</value>
     <comment>Header for the custom provider model identifier input. {Locked="ID"}</comment>
+  </data>
+  <data name="AIAgents_CustomProviderApiKey.Header" xml:space="preserve">
+    <value>API кључ (опционално)</value>
+    <comment>Header for the optional custom provider credential input. {Locked="API"}</comment>
   </data>
   <data name="AIAgents_CustomProviderAdd.Content" xml:space="preserve">
     <value>Додај новог добављача</value>
@@ -3024,8 +3044,8 @@
     <comment>Button that cancels adding a provider.</comment>
   </data>
   <data name="AIAgents_BYOKModelDisplayName" xml:space="preserve">
-    <value>{} (custom provider)</value>
-    <comment>{Locked="{}","custom provider"} {} is replaced with the provider-specific model identifier.</comment>
+    <value>{} (BYOK)</value>
+    <comment>{Locked="{}","BYOK"} {} is replaced with the provider-specific model identifier.</comment>
   </data>
   <data name="AIAgents_OpenAICompatibleModelDescription" xml:space="preserve">
     <value>{} | {} | Компатибилно са OpenAI</value>

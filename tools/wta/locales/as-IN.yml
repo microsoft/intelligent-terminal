@@ -41,7 +41,7 @@ auth.login_failed_help_default: "  পুনৰ চেষ্টা কৰিব�
 chat.activity_thinking: "চিন্তা কৰি আছে…"
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 chat.welcome_title: "ইন্টেলিজেন্ট টাৰ্মিনেল লৈ স্বাগতম!"
-chat.welcome_disclaimer: "ইন্টেলিজেন্ট টাৰ্মিনেল-এ AI ব্যৱহাৰ কৰে। ভুলৰ বাবে পৰীক্ষা কৰক।"
+chat.welcome_disclaimer: "ইন্টেলিজেন্ট টাৰ্মিনেল-এ AI ব্যৱহাৰ কৰে।"
 chat.plan_header: "পৰিকল্পনা:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}
@@ -49,6 +49,17 @@ chat.plan_marker_pending: "[ ]"  # {Locked}
 chat.autofix_prompt_label: "শেহতীয়া আদেশ বিফলতা স্বয়ংক্ৰিয়ভাৱে নিৰ্ণয় কৰা হৈছে"
 chat.turn_canceled: "(বাতিল কৰা হৈছে)"
 chat.turn_executed: "→ সম্পাদন কৰা হ’ল: %{title}"
+# Persistent tool-category labels shown after a status marker and before a subject.
+chat.tool_kind.run: "চলাও"
+chat.tool_kind.read: "পঢ়া"
+chat.tool_kind.search: "সন্ধান"
+chat.tool_kind.edit: "সম্পাদনা"
+chat.tool_kind.delete: "মচা"
+chat.tool_kind.move: "স্থানান্তৰ"
+chat.tool_kind.fetch: "আনয়ন"
+chat.tool_kind.think: "চিন্তা"
+chat.tool_kind.mode: "মোড"
+chat.tool_kind.other: "সঁজুলি"
 
 # ── ইনপুট প্লেচহ'ল্ডাৰ (src/ui/input.rs) ────────────────────────────────────
 input.placeholder.connected: "যিকোনো কথা সুধিব, / কমাণ্ডৰ বাবে.."  # {Locked="/"}
@@ -149,8 +160,8 @@ system.resuming_session: "সত্ৰ %{session_id} পুনৰাৰম্ভ
 system.unknown_command: "অজানা কমাণ্ড \"%{command}\" — প্ৰম্প্ট হিচাপে পঠিওৱা হ'ল। তালিকাৰ বাবে /help টাইপ কৰক।"  # {Locked="/help"} — slash-command name.
 system.busy_use_stop: "বৰ্তমানৰ প্ৰম্প্ট শেষ হোৱালৈ অপেক্ষা কৰক, অথবা আগতে /stop কৰক।"  # {Locked="/stop"} — slash-command name.
 system.cannot_focus_session: "সত্ৰ %{session_id} ফোকাচ কৰিব নোৱাৰি: ই live যেন লাগে কিন্তু এতিয়াও কোনো pane GUID বান্ধা হোৱা নাই। অলপ পাছত পুনৰ চেষ্টা কৰক।"
-system.cannot_resume_no_load_session: "agent pane-ত পুনৰাৰম্ভ কৰিব নোৱাৰি: %{agent}-এ ACP `loadSession` ক্ষমতা ঘোষণা কৰা নাই। তাৰ সলনি নতুন terminal pane-ত পুনৰাৰম্ভ কৰিবলৈ Enter (Shift নোহোৱাকৈ) টিপক।"  # {Locked="ACP","loadSession","Enter","Shift"} — protocol/UI terms.
-system.cannot_resume_no_resume_flag: "%{agent} সত্ৰ পুনৰাৰম্ভ কৰিব নোৱাৰি: এই agent-ৰ `--resume`-ধৰণৰ flag নাই। তাৰ সলনি ACP-ৰ জৰিয়তে agent pane-ৰ ভিতৰত পুনৰাৰম্ভ কৰিবলৈ Shift+Enter টিপি চেষ্টা কৰক।"  # {Locked="--resume","Shift","Enter","ACP"} — flag and UI terms.
+system.cannot_resume_no_load_session: "agent pane-ত পুনৰাৰম্ভ কৰিব নোৱাৰি: %{agent}-এ ACP `loadSession` ক্ষমতা ঘোষণা কৰা নাই।"  # {Locked="ACP","loadSession"} — protocol/UI terms.
+system.cannot_resume_no_resume_flag: "%{agent} সত্ৰ পুনৰাৰম্ভ কৰিব নোৱাৰি: এই agent-ৰ `--resume`-ধৰণৰ flag নাই।"  # {Locked="--resume"} — flag and UI terms.
 system.cannot_resume_unknown_agent: "সত্ৰ %{session_id} পুনৰাৰম্ভ কৰিব নোৱাৰি: ইয়াৰ উৎস agent এই WTA build-ৰ বাবে অজানা।"
 system.cannot_resume_phantom_via_flag: "%{agent} সত্ৰ %{session_id} পুনৰাৰম্ভ কৰিব নোৱাৰি: ই আৰম্ভ হৈছিল কিন্তু কোনো কথোপকথন সঞ্চিত হোৱা নাই, সেয়ে %{agent} নিজেই resume নাকচ কৰিব। শাৰী আঁতৰোৱা হৈছে।"
 system.cannot_resume_phantom_via_load: "%{agent} সত্ৰ %{session_id} পুনৰাৰম্ভ কৰিব নোৱাৰি: ই আৰম্ভ হৈছিল কিন্তু কোনো কথোপকথন সঞ্চিত হোৱা নাই, সেয়ে %{agent}-এ load নাকচ কৰিব। শাৰী আঁতৰোৱা হৈছে।"
@@ -192,7 +203,7 @@ hooks.marketplace_path_stale: "⚠ মাৰ্কেটপ্লেচ পা�
 hooks.installed_but_disabled: "⚠ ইনষ্টল কৰা হৈছে কিন্তু নিষ্ক্ৰিয়"
 hooks.not_installed: "✗ ইনষ্টল কৰা হোৱা নাই"
 hooks.uninstall_skipped: "এৰি দিয়া হৈছে (CLI PATH ত নাই)"
-hooks.install_attempted: "wt-agent-hooks ইনষ্টল চেষ্টা কৰা হৈছে (আইডেম্পটেণ্ট)। ফলাফল পৰীক্ষা কৰিবলৈ `wta hooks status` চলাওক। ট্ৰেচ লগ: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"
+hooks.install_succeeded: "✓ wt-agent-hooks %{clis} ৰ বাবে ইনষ্টল কৰা হৈছে"
 
 # ── Relative time and date formatting ─────────────────────────────────────
 time.just_now: "এতিয়াই"
@@ -218,8 +229,17 @@ system.agent_switch_unavailable: "উইণ্ড’জ টাৰ্মিনে
 
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "এই পেনৰ বাবে মডেল বাছনি কৰক (পোনপটীয়াকৈ সলাবলৈ /model <id>)"  # {Locked="/model","<id>"}
+commands.config.summary: "এই এজেণ্ট ছিচেন কনফিগাৰ কৰক"  # Agent means an AI coding agent; shown for the /config command. {Locked="/config"}
 commands.move.summary: "এই টেবৰ এজেণ্ট পেন স্থানান্তৰ কৰক (/move <position>)"  # {Locked="/move","<position>"}
 model_picker.title: "মডেল বাছনি কৰক (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "সংযুক্ত এজেণ্টে কোনো বাছনিযোগ্য মডেল ঘোষণা কৰা নাই।"
 system.model_set: "এই পেনৰ বাবে মডেল %{model} লৈ ছেট কৰা হ'ল।"  # {Locked="%{model}"}
+
+# ── Session configuration picker (src/ui/config_popup.rs) ───────────────────
+# {Locked="↑","↓","Enter","Esc","ACP"} - key names and protocol name
+config_picker.title: "ছিচেন কনফিগাৰেচন (↑ ↓ • Enter • Esc)"
+# Shown when /config is used but the AI agent exposed no ACP select options.
+system.no_config_options: "সংযুক্ত এজেণ্টে কোনো কনফিগাৰযোগ্য ছিচেন বিকল্প বিজ্ঞাপন কৰা নাছিল।"
+# {option} is an Agent-provided option name; {error} is the ACP error.
+system.config_update_failed: "আপডেট কৰিবলৈ ব্যৰ্থ হ’ল %{option}: %{error}"
 system.model_unknown: "অজ্ঞাত মডেল %{model} — উপলব্ধ তালিকা চাবলৈ /model টাইপ কৰক।"  # {Locked="%{model}","/model"}

@@ -1,6 +1,7 @@
 param(
     [Parameter(Mandatory)][int]$Port,
-    [Parameter(Mandatory)][string]$LogPath
+    [Parameter(Mandatory)][string]$LogPath,
+    [string]$ExpectedApiKey
 )
 
 $ErrorActionPreference = 'Stop'
@@ -49,7 +50,17 @@ try {
             else {
                 ''
             }
-            $request = @{ path = $path; body = $body } | ConvertTo-Json -Compress
+            $authorizationMatch = if ($ExpectedApiKey) {
+                $headerText -match "(?im)^Authorization:\s*Bearer\s+$([regex]::Escape($ExpectedApiKey))\s*$"
+            }
+            else {
+                $null
+            }
+            $request = @{
+                path = $path
+                body = $body
+                authorizationMatch = $authorizationMatch
+            } | ConvertTo-Json -Compress
             Add-Content -LiteralPath $LogPath -Value "REQUEST|$request" -Encoding utf8
 
             $first = @{
@@ -59,7 +70,7 @@ try {
                 model = 'ite2e-model'
                 choices = @(@{
                     index = 0
-                    delta = @{ role = 'assistant'; content = 'BYOM fixture response' }
+                    delta = @{ role = 'assistant'; content = 'BYOK fixture response' }
                     finish_reason = $null
                 })
             } | ConvertTo-Json -Depth 8 -Compress

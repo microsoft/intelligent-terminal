@@ -26,7 +26,15 @@ fn cli_initial_load_session_id_defaults_to_none() {
     let cli = Cli::try_parse_from(["wta"]).expect("no flags must parse");
     assert!(cli.initial_load_session_id.is_none());
     assert!(cli.initial_load_cwd.is_none());
+    assert!(cli.initial_pane_position.is_none());
     assert!(!cli.follows_global_acp_model);
+}
+
+#[test]
+fn cli_parses_initial_pane_position() {
+    let cli = Cli::try_parse_from(["wta", "--initial-pane-position", "left"])
+        .expect("restored pane position must parse");
+    assert_eq!(cli.initial_pane_position.as_deref(), Some("left"));
 }
 
 #[test]
@@ -232,7 +240,7 @@ fn process_label_subcommands() {
 
     let probe_sources =
         Cli::try_parse_from(["wta", "probe-agent-sources", "--wsl-distro", "Ubuntu-24.04"])
-    .unwrap();
+            .unwrap();
     assert_eq!(process_label(&probe_sources), "probe");
     assert!(Cli::try_parse_from(["wta", "probe-agent-sources"]).is_err());
 
@@ -243,9 +251,6 @@ fn process_label_subcommands() {
     let probe_host =
         Cli::try_parse_from(["wta", "probe-host-sessions", "--agent", "copilot"]).unwrap();
     assert_eq!(process_label(&probe_host), "probe");
-
-    let probe_wsl = Cli::try_parse_from(["wta", "probe-wsl-sessions"]).unwrap();
-    assert_eq!(process_label(&probe_wsl), "probe");
 
     // Any other subcommand is a short-lived wtcli-style client.
     let sessions = Cli::try_parse_from(["wta", "sessions", "list"]).unwrap();
@@ -323,6 +328,31 @@ fn hooks_cli_filter_into_scope_maps_each_variant() {
         HooksCliFilter::OpenCode.into_scope(),
         CliScope::One(CliKind::OpenCode)
     ));
+}
+
+/// `--only-missing` is the Settings "Install hooks" button's contract with
+/// wta. It must stay opt-in: a bare `wta hooks install` remains the full
+/// (re)install a user reaches for when something is broken.
+#[test]
+fn hooks_install_only_missing_is_opt_in() {
+    use crate::cli::args::HooksAction;
+
+    let default = Cli::try_parse_from(["wta", "hooks", "install"]).expect("flags must parse");
+    match default.command {
+        Some(Command::Hooks {
+            action: HooksAction::Install { only_missing, .. },
+        }) => assert!(!only_missing),
+        other => panic!("expected Command::Hooks/Install, got {other:?}"),
+    }
+
+    let opted = Cli::try_parse_from(["wta", "hooks", "install", "--only-missing"])
+        .expect("flags must parse");
+    match opted.command {
+        Some(Command::Hooks {
+            action: HooksAction::Install { only_missing, .. },
+        }) => assert!(only_missing),
+        other => panic!("expected Command::Hooks/Install, got {other:?}"),
+    }
 }
 
 // ── json_str_or_num: tolerant scalar extraction for human table rows ─────────

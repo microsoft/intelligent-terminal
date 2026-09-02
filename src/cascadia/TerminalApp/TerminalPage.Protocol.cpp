@@ -12,11 +12,14 @@
 // The ComServer calls .get() on the returned IAsyncOperation to block.
 
 #include "pch.h"
+#include "ContentManager.h"
 #include "TerminalPage.h"
+#include "SharedWta.h"
 #include "../../types/inc/utils.hpp"
 #include "../TerminalSettingsAppAdapterLib/TerminalSettings.h"
 
 #include <wil/resource.h>
+#include <json/json.h>
 #include "../TerminalProtocol/ProtocolParsing.h"
 
 namespace ProtocolParsing = Microsoft::Terminal::Protocol::Parsing;
@@ -699,7 +702,7 @@ namespace winrt::TerminalApp::implementation
             if (!foundPane)
                 continue;
 
-            foundPane->Close();
+            _HandleClosePaneRequested(foundPane);
             co_return true;
         }
 

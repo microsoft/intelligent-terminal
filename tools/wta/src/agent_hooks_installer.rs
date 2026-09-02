@@ -8,9 +8,8 @@
 //
 // The wta agent-pane registry transitions a session out of `IDLE` only when
 // it receives `agent_event` broadcasts from the COM server. Those events
-// originate from a small PowerShell bridge (`send-event.ps1`) that the
-// CLI invokes through its hook system. If the user hasn't run a manual
-// plugin-install step, the CLI never invokes the bridge, the registry
+// originate from the native `wtcli agent-hook` bridge. If the user hasn't run
+// a manual plugin-install step, the CLI never invokes the bridge, the registry
 // stays empty, and the session management list looks frozen.
 //
 // Bundle = single source of truth (issue #20)
@@ -24,17 +23,20 @@
 //       .claude-plugin/marketplace.json
 //       wt-agent-hooks/                    <- the plugin folder Claude copies
 //         .claude-plugin/plugin.json
-//         hooks/{hooks.json,send-event.ps1}
+//         hooks/hooks.json
 //     copilot/                             <- passed to `copilot plugin marketplace add`
-//       (same shape; only hooks.json differs from claude/ — `-CliSource copilot`)
+//       .github/plugin/marketplace.json
+//       wt-agent-hooks/
+//         plugin.json                      <- Copilot-native root manifest
+//         hooks/hooks.json
 //     gemini-extension/                    <- passed to `gemini extensions install`
 //       gemini-extension.json
-//       hooks/{hooks.json,send-event.ps1}
+//       hooks/hooks.json
 //     codex/                               <- passed to `codex plugin marketplace add`
 //       .agents/plugins/marketplace.json   <- Codex's mandatory sentinel location
 //       wt-agent-hooks/                    <- the plugin folder Codex copies
 //         .codex-plugin/plugin.json
-//         hooks/{hooks.json,send-event.ps1}
+//         hooks/hooks.json
 //
 // The MSIX package ships this directory next to `wta.exe` (see
 // `CascadiaPackage.wapproj`'s `wt-agent-hooks` Content glob), so at runtime
@@ -89,7 +91,7 @@
 // Public surface for `wta hooks <action>` (Track 2 / #18)
 // -------------------------------------------------------
 //
-// In addition to the install entry point [`ensure_installed`], this module
+// In addition to the install entry point [`apply_install_plan`], this module
 // exposes two read-only / best-effort APIs the Settings UI and
 // `Verify-AgentHooks.ps1` consume:
 //
@@ -134,7 +136,7 @@ const MARKETPLACE_NAME: &str = "wt-local";
 const GEMINI_EXTENSION_DIR_NAME: &str = "wt-agent-hooks";
 
 const OPENCODE_PLUGIN_JS: &str = "wt-agent-hooks.js";
-const OPENCODE_BRIDGE_PS1: &str = "send-event.ps1";
+const OPENCODE_LEGACY_BRIDGE_PS1: &str = "send-event.ps1";
 const OPENCODE_MANIFEST: &str = "plugin.json";
 const OPENCODE_SUPPORT_DIR: &str = "wt-agent-hooks";
 const OPENCODE_MANAGED_MARKER: &str = "Managed by Intelligent Terminal: wt-agent-hooks";
@@ -143,7 +145,13 @@ const OPENCODE_MANIFEST_MANAGED_BY: &str = "Intelligent Terminal: wt-agent-hooks
 /// Schema version of the JSON returned by [`status`]. Bumped when the shape
 /// or the set of possible string-enum values changes.
 ///
-/// v3 (this version): added `marketplace_path` and `marketplace_path_valid`
+/// v4 (this version): added the per-CLI `installed_version` and
+/// `bundle_version` fields. Every other field answers "is something
+/// installed?"; neither answered "is it the build this wta ships?", which is
+/// the question a half-finished upgrade or a marketplace pointed at a stale
+/// worktree actually leaves open. Both are omitted when unknown.
+///
+/// v3: added `marketplace_path` and `marketplace_path_valid`
 /// per-CLI fields (#25). `marketplace_registered: true` no longer implies the
 /// registered `source.path` actually exists on disk; consumers should consult
 /// `marketplace_path_valid` for that.
@@ -151,7 +159,7 @@ const OPENCODE_MANIFEST_MANAGED_BY: &str = "Intelligent Terminal: wt-agent-hooks
 /// v2: `bundle_source.kind` no longer includes `"embedded"` (the embedded
 /// `include_str!` fallback was removed in #20). Possible kinds are
 /// `env` / `exe-sibling` / `dev-tree` / `none`.
-const STATUS_SCHEMA_VERSION: u32 = 3;
+const STATUS_SCHEMA_VERSION: u32 = 4;
 
 /// Schema version of the JSON returned by [`uninstall`].
 ///
@@ -163,6 +171,14 @@ const STATUS_SCHEMA_VERSION: u32 = 3;
 /// installs never write to either path; uninstall sweeps them so users
 /// upgrading from older wta builds don't end up with orphan files.
 const UNINSTALL_SCHEMA_VERSION: u32 = 2;
+
+/// Schema version of the JSON returned by `wta hooks install --json`.
+///
+/// v1: initial shape — `clis[]` of `{ name, outcome, reason? }` where
+/// `outcome` is `installed` / `skipped` / `failed`. Exists so the Settings
+/// UI can name the CLI that failed instead of showing a single generic
+/// "installation failed" line whose only remedy is reading the trace log.
+const INSTALL_SCHEMA_VERSION: u32 = 1;
 
 // ---------------------------------------------------------------------------
 // Public CLI enum (consumed by `wta hooks --cli=<name>`)
@@ -189,6 +205,8 @@ fn opencode_status(on_path: bool, bin_path: Option<String>, home: Option<&Path>)
         marketplace_path_valid: false,
         plugin_installed: false,
         plugin_enabled: false,
+        installed_version: None,
+        bundle_version: None,
         detection_fallback: None,
     };
     let Some(home) = home else { return out };
@@ -200,9 +218,7 @@ fn opencode_status(on_path: bool, bin_path: Option<String>, home: Option<&Path>)
         .unwrap_or(false);
     let managed_support = opencode_manifest_is_managed(&support_dir.join(OPENCODE_MANIFEST));
     let managed = managed_js || managed_support;
-    let complete = managed_js
-        && managed_support
-        && support_dir.join(OPENCODE_BRIDGE_PS1).is_file();
+    let complete = managed_js && managed_support;
     out.marketplace_registered = managed;
     out.marketplace_path = managed.then(|| dir.to_string_lossy().into_owned());
     out.marketplace_path_valid = complete;
@@ -310,6 +326,11 @@ impl CliScope {
 ///     valid (validity isn't local-filesystem-shaped). `false` when no entry
 ///     was found or the directory has been pruned out from under us
 ///     (the #21 staleness symptom this field exists to catch).
+///
+/// `installed_version` / `bundle_version` (schema v4) are the two halves of
+/// "is the CLI running the hooks this wta ships?". They are deliberately
+/// separate from the boolean flags: a CLI can be fully, validly installed and
+/// still be a release behind, which every other field reports as healthy.
 #[derive(Debug, Clone, Serialize)]
 pub struct CliStatus {
     pub name: &'static str,
@@ -322,6 +343,17 @@ pub struct CliStatus {
     pub marketplace_path_valid: bool,
     pub plugin_installed: bool,
     pub plugin_enabled: bool,
+    /// `MAJOR.MINOR.PATCH` of the hook plugin the CLI currently has
+    /// installed. `None` when nothing is installed, or when the CLI and its
+    /// on-disk records both decline to say — "unknown version" is a normal
+    /// state here, never an error.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub installed_version: Option<String>,
+    /// `MAJOR.MINOR.PATCH` this wta's own hook bundle would install for the
+    /// CLI. `None` when the bundle is unresolvable (`bundle_source.kind ==
+    /// "none"`) or its manifest carries no parseable version.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub bundle_version: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub detection_fallback: Option<&'static str>,
 }
@@ -342,15 +374,31 @@ impl CliStatus {
             marketplace_path_valid: false,
             plugin_installed: false,
             plugin_enabled: false,
+            installed_version: None,
+            bundle_version: None,
             detection_fallback: None,
         }
+    }
+
+    /// Apply a parsed `plugin list` result to the row.
+    ///
+    /// The listing answers four fields at once, `installed_version` among
+    /// them. Applying them through one helper is what keeps a CLI from
+    /// silently dropping the version the CLI just reported and falling back
+    /// to the on-disk readers — which report what was *recorded*, not what is
+    /// loaded, and can disagree.
+    fn apply_presence(&mut self, presence: PluginPresence, marketplace_registered: bool) {
+        self.plugin_installed = presence.installed;
+        self.plugin_enabled = presence.enabled;
+        self.installed_version = presence.version.map(|v| v.to_string());
+        self.marketplace_registered = marketplace_registered;
     }
 }
 
 /// Top-level shape of `wta hooks status --json`. `bundle_source`
 /// reports which entry in the bundle lookup chain supplied the hook
-/// files for the running `wta` process — useful when debugging "why is
-/// this machine running an old `send-event.ps1`?" support tickets.
+/// files for the running `wta` process — useful when debugging stale
+/// installed hook commands.
 #[derive(Debug, Clone, Serialize)]
 pub struct StatusReport {
     pub schema_version: u32,
@@ -408,6 +456,43 @@ pub struct UninstallReport {
 impl UninstallReport {
     pub fn succeeded(&self) -> bool {
         self.clis.iter().all(CliUninstallResult::succeeded)
+    }
+}
+
+/// Per-CLI outcome of an install run, as reported by
+/// `wta hooks install --json`.
+///
+/// `outcome` is a stable string rather than a serialized enum so the C++
+/// consumer can treat an unrecognized value as "not a failure" instead of
+/// failing the whole parse when this list grows.
+#[derive(Debug, Clone, Serialize)]
+pub struct CliInstallResult {
+    pub name: &'static str,
+    /// `"installed"` | `"skipped"` | `"failed"`.
+    pub outcome: &'static str,
+    /// Present only for `failed`, and only when we have a specific reason
+    /// beyond "hooks aren't registered afterwards".
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
+}
+
+pub const INSTALL_OUTCOME_INSTALLED: &str = "installed";
+pub const INSTALL_OUTCOME_SKIPPED: &str = "skipped";
+pub const INSTALL_OUTCOME_FAILED: &str = "failed";
+
+/// Top-level shape of `wta hooks install --json`.
+#[derive(Debug, Clone, Serialize)]
+pub struct InstallReport {
+    pub schema_version: u32,
+    pub clis: Vec<CliInstallResult>,
+}
+
+impl InstallReport {
+    pub fn new(clis: Vec<CliInstallResult>) -> Self {
+        Self {
+            schema_version: INSTALL_SCHEMA_VERSION,
+            clis,
+        }
     }
 }
 
@@ -572,39 +657,186 @@ mod bundle {
 // Public install entry points
 // ---------------------------------------------------------------------------
 
-/// Top-level entry point. Run once at wta startup. Idempotent and silent on
-/// failure: if a CLI isn't installed, we skip it; if its settings.json is
-/// malformed, we leave it alone.
-pub fn ensure_installed() {
-    ensure_installed_scoped(CliScope::All);
+/// What one CLI's install attempt actually did.
+///
+/// The three states matter because "nothing happened" and "something went
+/// wrong" are not the same answer, and the previous `bool` return conflated
+/// them: a CLI that simply isn't on the machine reported `false`, exactly like
+/// a plugin install that failed. Callers that surface failures to the user need
+/// to tell those apart, or every machine without Gemini installed would report
+/// a Gemini install error.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum InstallOutcome {
+    /// The install commands ran and reported success.
+    Installed,
+    /// Nothing was attempted — the CLI isn't present, or no bundle resolved.
+    Skipped,
+    /// An install command ran and failed. Carries a user-facing reason.
+    Failed(String),
 }
 
-/// Install hooks for the specified scope (all CLIs or a single one).
-pub fn ensure_installed_scoped(scope: CliScope) {
+impl InstallOutcome {
+    /// True only when the install actually landed. Preserves the meaning the
+    /// old `bool` return carried at its call sites.
+    fn installed(&self) -> bool {
+        matches!(self, InstallOutcome::Installed)
+    }
+}
+
+/// A per-CLI install failure, ready to show the user.
+#[derive(Debug, Clone)]
+pub struct InstallFailure {
+    pub cli: &'static str,
+    pub reason: String,
+}
+
+/// What an install pass should do for one CLI.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum InstallAction {
+    /// The bridge is complete and not known to be behind the bundle. Nothing
+    /// to do.
+    Skip,
+    /// Nothing usable is registered — or what is registered is partial,
+    /// disabled, or points at a path that no longer exists. Run the first-run
+    /// install flow.
+    Install,
+    /// The bridge is complete but older than the bundle. Run the per-CLI
+    /// upgrade flow, **not** the install flow: every supported CLI answers a
+    /// second `plugin install` with "already installed" and changes nothing,
+    /// so installing here would report a success that never happened.
+    Upgrade,
+}
+
+/// Decide what an install pass should do for one CLI, from its status row.
+///
+/// Pure — no IO, no spawns. Splits the cases the Settings "Install hooks"
+/// button has to tell apart:
+///
+///   * incomplete in any way (not on PATH, marketplace missing or pointing at
+///     a pruned path, plugin missing or disabled, or a verdict that came from
+///     filesystem heuristics rather than the CLI itself) → [`InstallAction::Install`];
+///   * complete but registered against a directory other than the bundle this
+///     wta ships, or a release behind it → [`InstallAction::Upgrade`], because
+///     `install` cannot do either: a second `plugin install` reports "already
+///     installed" and `marketplace add` no-ops on an already-registered name,
+///     so neither the version nor the path would move;
+///   * complete, current, and correctly registered → [`InstallAction::Skip`].
+///
+/// An unreadable version on either side lands in `Skip`: we can't prove the
+/// bridge is stale, running `install` against it would no-op anyway, and
+/// [`upgrade_installed_hooks`] re-checks it at master startup with a richer
+/// probe than [`CliStatus`] carries.
+///
+/// `expected_dir` is the directory `cli`'s registration should name — see
+/// [`expected_registration_dir_for`]. `None` disables the path check, which is
+/// the right default when no bundle is resolvable: there is nothing to point a
+/// registration at.
+pub fn decide_install_action(
+    cli: CliKind,
+    status: &CliStatus,
+    expected_dir: Option<&Path>,
+) -> InstallAction {
+    let complete = status.binary_on_path
+        && status.marketplace_registered
+        && status.marketplace_path_valid
+        && status.plugin_installed
+        && status.plugin_enabled
+        && status.detection_fallback.is_none();
+    if !complete {
+        return InstallAction::Install;
+    }
+    // A complete, current install can still be registered against the bundle
+    // a previous Intelligent Terminal build shipped. `marketplace_path_valid`
+    // above misses it whenever that directory still exists — another worktree,
+    // a package version not yet cleaned up — and the version comparison below
+    // misses it always, because both trees carry the same hook version. Route
+    // it to the upgrade flow, whose per-CLI probe picks the right repair.
+    if registration_moved(cli, status, expected_dir) {
+        return InstallAction::Upgrade;
+    }
+    let parse = |v: &Option<String>| v.as_deref().and_then(|s| s.parse::<Version>().ok());
+    match (
+        parse(&status.installed_version),
+        parse(&status.bundle_version),
+    ) {
+        (Some(installed), Some(bundled)) if installed < bundled => InstallAction::Upgrade,
+        _ => InstallAction::Skip,
+    }
+}
+
+/// True when the CLI's recorded `wt-local` registration names a directory
+/// outside the one this wta expects.
+///
+/// Only Copilot, Claude and Codex record a marketplace source in
+/// `marketplace_path`. Gemini and OpenCode reuse the field for the directory
+/// they install *into*, which is never the bundle, so comparing it would
+/// report them as moved on every pass.
+fn registration_moved(cli: CliKind, status: &CliStatus, expected_dir: Option<&Path>) -> bool {
+    if !matches!(cli, CliKind::Copilot | CliKind::Claude | CliKind::Codex) {
+        return false;
+    }
+    let (Some(recorded), Some(expected)) = (status.marketplace_path.as_deref(), expected_dir)
+    else {
+        return false;
+    };
+    !path_under_dir(Path::new(recorded), expected)
+}
+
+/// The directory `cli`'s `wt-local` registration is expected to name, or
+/// `None` when no bundle is resolvable.
+///
+/// Shared by the install planner and the startup upgrade check so both judge
+/// a registration against the same directory.
+pub fn expected_registration_dir_for(cli: CliKind) -> Option<PathBuf> {
+    bundle::resolve_cli_dir(cli).map(|dir| expected_registration_dir(cli, &dir))
+}
+
+/// Execute a per-CLI plan of [`InstallAction`]s.
+///
+/// Per-CLI failures are recorded and the loop continues — one CLI's broken
+/// install must not hide the others. `Skip` entries are accepted and ignored
+/// so callers may pass a full plan or a pre-filtered one.
+pub fn apply_install_plan(plan: &[(CliKind, InstallAction)]) -> Vec<InstallFailure> {
     let Some(home) = home_dir() else {
         tracing::debug!(target: "agent_hooks", "no HOME/USERPROFILE; skipping");
-        return;
+        return Vec::new();
     };
-    if scope.includes(CliKind::Claude) {
-        install_for_claude(&home);
+    let mut failures = Vec::new();
+    for (cli, action) in plan.iter().copied() {
+        let failure = match action {
+            InstallAction::Skip => None,
+            InstallAction::Install => match install_one(cli, &home) {
+                InstallOutcome::Failed(reason) => Some(reason),
+                InstallOutcome::Installed | InstallOutcome::Skipped => None,
+            },
+            InstallAction::Upgrade => upgrade_one_cli(cli, &home, read_bundled_version(cli)).err(),
+        };
+        if let Some(reason) = failure {
+            failures.push(InstallFailure {
+                cli: cli.name(),
+                reason,
+            });
+        }
     }
-    if scope.includes(CliKind::Copilot) {
-        install_for_copilot(&home);
-    }
-    if scope.includes(CliKind::Gemini) {
-        install_for_gemini(&home);
-    }
-    if scope.includes(CliKind::Codex) {
-        install_for_codex(&home);
-    }
-    if scope.includes(CliKind::OpenCode) {
-        install_for_opencode(&home);
+    failures
+}
+
+/// Per-CLI dispatch for the first-run install flow.
+fn install_one(cli: CliKind, home: &Path) -> InstallOutcome {
+    match cli {
+        CliKind::Copilot => install_for_copilot(home),
+        CliKind::Claude => install_for_claude(home),
+        CliKind::Gemini => install_for_gemini(home),
+        CliKind::Codex => install_for_codex(home),
+        CliKind::OpenCode => install_for_opencode(home),
     }
 }
 
-/// Run the installer against a specific home directory. Split out from
-/// [`ensure_installed`] so tests can drive it with an isolated tempdir
-/// without mutating `USERPROFILE`/`HOME` for the whole process.
+/// Run every per-CLI install flow against a specific home directory.
+///
+/// Test-only: it exists so tests can drive the installers against an isolated
+/// tempdir without mutating `USERPROFILE`/`HOME` for the whole process.
+#[cfg(test)]
 fn ensure_installed_in(home: &Path) {
     install_for_claude(home);
     install_for_copilot(home);
@@ -660,13 +892,13 @@ fn cli_binary_on_path(cli: CliKind) -> bool {
 ///   2. Resolve the static `claude/` bundle directory.
 ///   3. Spawn `claude plugin marketplace add <bundle>/claude`.
 ///   4. Spawn `claude plugin install wt-agent-hooks@wt-local`.
-fn install_for_claude(home: &Path) {
+fn install_for_claude(home: &Path) -> InstallOutcome {
     if !cli_binary_on_path(CliKind::Claude) {
         tracing::debug!(
             target: "agent_hooks",
             "claude not on PATH; skipping hook install (CLI not installed)",
         );
-        return;
+        return InstallOutcome::Skipped;
     }
     // `~/.claude` may not exist yet on a freshly installed Claude Code
     // that the user hasn't launched. The downstream `claude plugin
@@ -699,7 +931,7 @@ fn install_for_claude(home: &Path) {
                 "no wt-agent-hooks/ bundle found next to wta.exe or in dev tree; \
                  skipping Claude plugin install (set WTA_HOOKS_BUNDLE_DIR to override)",
             );
-            return;
+            return InstallOutcome::Skipped;
         }
     };
 
@@ -738,7 +970,7 @@ fn install_for_claude(home: &Path) {
             err = %e,
             "claude plugin marketplace add failed; aborting plugin install",
         );
-        return;
+        return InstallOutcome::Failed(format!("claude plugin marketplace add failed: {e}"));
     }
 
     let plugin_ref = format!("{}@{}", PLUGIN_NAME, MARKETPLACE_NAME);
@@ -754,7 +986,9 @@ fn install_for_claude(home: &Path) {
             plugin = %plugin_ref,
             "claude plugin install failed",
         );
+        return InstallOutcome::Failed(format!("claude plugin install {plugin_ref} failed: {e}"));
     }
+    InstallOutcome::Installed
 }
 
 /// Install hooks for Codex CLI by spawning `codex plugin marketplace add`
@@ -769,13 +1003,13 @@ fn install_for_claude(home: &Path) {
 /// Trust step: after install, the user must run `/hooks` inside Codex
 /// to trust the plugin before any events fire. That's documented in
 /// the slice-C README; this function returns success on registration.
-fn install_for_codex(_home: &Path) -> bool {
+fn install_for_codex(_home: &Path) -> InstallOutcome {
     if !cli_binary_on_path(CliKind::Codex) {
         tracing::debug!(
             target: "agent_hooks",
             "codex not on PATH; skipping hook install (CLI not installed)",
         );
-        return false;
+        return InstallOutcome::Skipped;
     }
     // Intentionally no `~/.codex` existence check: a freshly installed
     // Codex CLI may not have populated that dir yet, and `codex plugin
@@ -789,7 +1023,7 @@ fn install_for_codex(_home: &Path) -> bool {
                 "no wt-agent-hooks/codex bundle found next to wta.exe or in dev tree; \
                  skipping Codex plugin install (set WTA_HOOKS_BUNDLE_DIR to override)",
             );
-            return false;
+            return InstallOutcome::Skipped;
         }
     };
 
@@ -800,28 +1034,18 @@ fn install_for_codex(_home: &Path) -> bool {
     let bundle_dir = staged_dir.as_deref().unwrap_or(&bundle_dir);
 
     let bundle_path = bundle_dir.to_string_lossy().into_owned();
-    if let Err(e) = run_plugin_cli(
-        "codex",
-        &["plugin", "marketplace", "add", &bundle_path],
-        "agent_hooks",
-        &["already registered"],
-    ) {
+    if let Err(e) = codex_marketplace_add(&bundle_path) {
         tracing::warn!(
             target: "agent_hooks",
             err = %e,
             "codex plugin marketplace add failed; aborting plugin install",
         );
-        return false;
+        return InstallOutcome::Failed(format!("codex plugin marketplace add failed: {e}"));
     }
 
     let plugin_ref = format!("{}@{}", PLUGIN_NAME, MARKETPLACE_NAME);
-    match run_plugin_cli(
-        "codex",
-        &["plugin", "add", &plugin_ref],
-        "agent_hooks",
-        &[],
-    ) {
-        Ok(()) => true,
+    match run_plugin_cli("codex", &["plugin", "add", &plugin_ref], "agent_hooks", &[]) {
+        Ok(()) => InstallOutcome::Installed,
         Err(e) => {
             tracing::warn!(
                 target: "agent_hooks",
@@ -829,8 +1053,73 @@ fn install_for_codex(_home: &Path) -> bool {
                 plugin = %plugin_ref,
                 "codex plugin add failed",
             );
-            false
+            InstallOutcome::Failed(format!("codex plugin add {plugin_ref} failed: {e}"))
         }
+    }
+}
+
+/// `codex plugin marketplace add`, dropping a conflicting `wt-local`
+/// registration first.
+///
+/// Codex refuses to repoint an existing marketplace — "marketplace 'wt-local'
+/// is already added from a different source; remove it before adding this
+/// source" — where Copilot's entry is rewritten in place beforehand and Claude
+/// simply overwrites its own. That refusal is reached through the ordinary
+/// install flow whenever an Intelligent Terminal upgrade has pruned the
+/// package directory the old registration named: the status row reads
+/// incomplete, the plan says `Install`, and the add then fails, leaving Codex
+/// hooks broken with no path to recovery.
+///
+/// So do what the error asks. The registered root is read first rather than
+/// matched out of stderr, because the wording is Codex's to change and the
+/// listing is already parsed elsewhere. A registration that already names
+/// `bundle_path` is left alone — removing and re-adding it would drop the
+/// plugin's enabled state for no reason.
+fn codex_marketplace_add(bundle_path: &str) -> Result<(), std::io::Error> {
+    if let Some(registered) = codex_registered_marketplace_root() {
+        if !paths_equivalent(Path::new(&registered), Path::new(bundle_path)) {
+            tracing::info!(
+                target: "agent_hooks",
+                old = %registered,
+                new = %bundle_path,
+                "codex marketplace registered from another source; removing before re-adding",
+            );
+            // Best-effort: if the remove fails the add below reports the real
+            // problem, and there is nothing better to do with the error here.
+            let _ = run_plugin_cli(
+                "codex",
+                &["plugin", "marketplace", "remove", MARKETPLACE_NAME],
+                "agent_hooks",
+                &[
+                    "not registered",
+                    "not found",
+                    "not configured",
+                    "not installed",
+                ],
+            );
+        }
+    }
+    run_plugin_cli(
+        "codex",
+        &["plugin", "marketplace", "add", bundle_path],
+        "agent_hooks",
+        &["already registered"],
+    )
+}
+
+/// The directory Codex has `wt-local` registered against, per
+/// `codex plugin marketplace list`. `None` when the listing can't be read or
+/// carries no entry for us — both mean "nothing to repoint".
+fn codex_registered_marketplace_root() -> Option<String> {
+    let outcome = run_plugin_cli_capture("codex", &["plugin", "marketplace", "list"]).ok()?;
+    if !outcome.success {
+        return None;
+    }
+    let (registered, path) = parse_codex_marketplace_list(&outcome.stdout);
+    if registered {
+        path
+    } else {
+        None
     }
 }
 
@@ -841,7 +1130,8 @@ fn maybe_stage_bundle_for_codex(source: &Path) -> Option<PathBuf> {
     if !is_under_windows_apps(source) {
         return None;
     }
-    let root = crate::runtime_paths::intelligent_terminal_root()?;
+    // Staging copy is transient cache → the `LocalCache\Local` root.
+    let root = crate::runtime_paths::intelligent_terminal_local_root()?;
     let staged = root.join(STAGING_SUBDIR).join(CliKind::Codex.dir_name());
     match restage_bundle_dir(source, &staged) {
         Ok(()) => {
@@ -867,13 +1157,13 @@ fn maybe_stage_bundle_for_codex(source: &Path) -> Option<PathBuf> {
 }
 
 /// Install hooks for Copilot CLI by spawning `copilot plugin install`.
-fn install_for_copilot(home: &Path) {
+fn install_for_copilot(home: &Path) -> InstallOutcome {
     if !cli_binary_on_path(CliKind::Copilot) {
         tracing::debug!(
             target: "copilot_hooks",
             "copilot not on PATH; skipping hook install (CLI not installed)",
         );
-        return;
+        return InstallOutcome::Skipped;
     }
     // `~/.copilot` may not exist yet on a freshly installed Copilot CLI
     // that the user hasn't launched. `copilot plugin install` creates
@@ -891,7 +1181,7 @@ fn install_for_copilot(home: &Path) {
                 "no wt-agent-hooks/ bundle found next to wta.exe or in dev tree; \
                  skipping Copilot plugin install (set WTA_HOOKS_BUNDLE_DIR to override)",
             );
-            return;
+            return InstallOutcome::Skipped;
         }
     };
 
@@ -929,7 +1219,7 @@ fn install_for_copilot(home: &Path) {
             err = %e,
             "copilot plugin marketplace add failed; aborting plugin install",
         );
-        return;
+        return InstallOutcome::Failed(format!("copilot plugin marketplace add failed: {e}"));
     }
 
     let plugin_ref = format!("{}@{}", PLUGIN_NAME, MARKETPLACE_NAME);
@@ -945,7 +1235,7 @@ fn install_for_copilot(home: &Path) {
             plugin = %plugin_ref,
             "copilot plugin install failed",
         );
-        return;
+        return InstallOutcome::Failed(format!("copilot plugin install {plugin_ref} failed: {e}"));
     }
 
     // Round-7 cleanup: a previous wta wrote files to `_direct/` (which
@@ -968,16 +1258,17 @@ fn install_for_copilot(home: &Path) {
             );
         }
     }
+    InstallOutcome::Installed
 }
 
 /// Install hooks for Gemini CLI by spawning `gemini extensions install`.
-fn install_for_gemini(_home: &Path) -> bool {
+fn install_for_gemini(_home: &Path) -> InstallOutcome {
     if !cli_binary_on_path(CliKind::Gemini) {
         tracing::debug!(
             target: "gemini_hooks",
             "gemini not on PATH; skipping hook install (CLI not installed)",
         );
-        return false;
+        return InstallOutcome::Skipped;
     }
 
     // Intentionally no `~/.gemini` existence check: a freshly installed
@@ -992,7 +1283,7 @@ fn install_for_gemini(_home: &Path) -> bool {
                 "no wt-agent-hooks/ bundle found next to wta.exe or in dev tree; \
                  skipping Gemini extension install (set WTA_HOOKS_BUNDLE_DIR to override)",
             );
-            return false;
+            return InstallOutcome::Skipped;
         }
     };
 
@@ -1039,14 +1330,14 @@ fn install_for_gemini(_home: &Path) -> bool {
         "gemini_hooks",
         &["already installed", "installed successfully and enabled"],
     ) {
-        Ok(()) => true,
+        Ok(()) => InstallOutcome::Installed,
         Err(e) => {
             tracing::warn!(
                 target: "gemini_hooks",
                 err = %e,
                 "gemini extensions install failed",
             );
-            false
+            InstallOutcome::Failed(format!("gemini extensions install failed: {e}"))
         }
     }
 }
@@ -1106,8 +1397,7 @@ fn copy_opencode_bundle(source: &Path, home: &Path) -> std::io::Result<()> {
         false
     };
     if support_dir.exists() {
-        let managed_support =
-            opencode_manifest_is_managed(&support_dir.join(OPENCODE_MANIFEST))
+        let managed_support = opencode_manifest_is_managed(&support_dir.join(OPENCODE_MANIFEST))
             || installed_js_managed;
         if !managed_support {
             return Err(std::io::Error::new(
@@ -1123,12 +1413,12 @@ fn copy_opencode_bundle(source: &Path, home: &Path) -> std::io::Result<()> {
     let copy_result = (|| {
         fs::create_dir_all(&destination)?;
         fs::create_dir_all(&support_dir)?;
-        fs::copy(
-            source.join(OPENCODE_BRIDGE_PS1),
-            support_dir.join(OPENCODE_BRIDGE_PS1),
-        )?;
         fs::copy(source.join(OPENCODE_PLUGIN_JS), &installed_js)?;
-        // Commit the new version last. If either runtime file fails to copy,
+        let legacy_bridge = support_dir.join(OPENCODE_LEGACY_BRIDGE_PS1);
+        if legacy_bridge.exists() {
+            fs::remove_file(legacy_bridge)?;
+        }
+        // Commit the new version last. If the runtime file fails to copy,
         // the old manifest keeps the upgrade eligible for retry.
         fs::copy(
             source.join(OPENCODE_MANIFEST),
@@ -1142,7 +1432,6 @@ fn copy_opencode_bundle(source: &Path, home: &Path) -> std::io::Result<()> {
             let _ = fs::remove_file(&installed_js);
         }
         if !support_dir_existed {
-            let _ = fs::remove_file(support_dir.join(OPENCODE_BRIDGE_PS1));
             let _ = fs::remove_file(support_dir.join(OPENCODE_MANIFEST));
             let _ = fs::remove_dir(&support_dir);
         }
@@ -1150,23 +1439,23 @@ fn copy_opencode_bundle(source: &Path, home: &Path) -> std::io::Result<()> {
     copy_result
 }
 
-fn install_for_opencode(home: &Path) -> bool {
+fn install_for_opencode(home: &Path) -> InstallOutcome {
     if !cli_binary_on_path(CliKind::OpenCode) {
         tracing::debug!(
             target: "agent_hooks",
             "opencode not on PATH; skipping hook install (CLI not installed)",
         );
-        return false;
+        return InstallOutcome::Skipped;
     }
     let Some(bundle_dir) = bundle::resolve_cli_dir(CliKind::OpenCode) else {
         tracing::warn!(
             target: "agent_hooks",
             "no wt-agent-hooks/opencode bundle found; skipping OpenCode plugin install",
         );
-        return false;
+        return InstallOutcome::Skipped;
     };
     match copy_opencode_bundle(&bundle_dir, home) {
-        Ok(()) => true,
+        Ok(()) => InstallOutcome::Installed,
         Err(e) => {
             tracing::warn!(
                 target: "agent_hooks",
@@ -1174,7 +1463,7 @@ fn install_for_opencode(home: &Path) -> bool {
                 source = %bundle_dir.display(),
                 "OpenCode plugin install failed",
             );
-            false
+            InstallOutcome::Failed(format!("OpenCode plugin file copy failed: {e}"))
         }
     }
 }
@@ -1223,13 +1512,139 @@ pub fn status_scoped(scope: CliScope) -> StatusReport {
 
 fn status_for(cli: CliKind, home: Option<&Path>) -> CliStatus {
     let (on_path, bin_path) = locate_binary(cli);
-    match cli {
+    let mut out = match cli {
         CliKind::Copilot => copilot_status(on_path, bin_path, home),
         CliKind::Claude => claude_status(on_path, bin_path, home),
         CliKind::Gemini => gemini_status(on_path, bin_path, home),
         CliKind::Codex => codex_status(on_path, bin_path, home),
         CliKind::OpenCode => opencode_status(on_path, bin_path, home),
+    };
+    // Read unconditionally: the bundle version is the only half of the
+    // comparison that still means something when nothing is installed
+    // ("`hooks install` would give you 0.1.5").
+    out.bundle_version = read_bundled_version(cli).map(|v| v.to_string());
+    // The per-CLI query above already answered this for the CLIs whose
+    // listing carries a version. For the rest — and for every path that fell
+    // back to fs heuristics because the CLI wouldn't answer — read it off
+    // disk instead of spawning the CLI a second time.
+    if out.plugin_installed && out.installed_version.is_none() {
+        out.installed_version = installed_version_from_disk(cli, home).map(|v| v.to_string());
     }
+    out
+}
+
+/// Read the installed hook version from the CLI's own on-disk records.
+///
+/// Spawn-free by design. `status` already pays for one CLI query per CLI
+/// (~1-3s of Node startup for Claude/Copilot/Gemini); a second query issued
+/// purely to learn a version number would roughly double the wall-clock of
+/// `wta hooks status`, which is the command people run *because* something is
+/// already slow or broken.
+///
+/// `None` whenever the version can't be established — callers render that as
+/// "unknown", never as an error.
+fn installed_version_from_disk(cli: CliKind, home: Option<&Path>) -> Option<Version> {
+    let home = home?;
+    match cli {
+        CliKind::Copilot => read_installed_copilot_any(home).ok().flatten()?.version,
+        CliKind::Gemini => read_installed_gemini(home).ok().flatten()?.version,
+        CliKind::OpenCode => read_installed_opencode(home).ok().flatten()?.version,
+        // Claude and Codex both unpack into `<cache>/<plugin>/<version>/`.
+        CliKind::Claude => newest_live_cached_version(&claude_plugin_cache_dir(home)),
+        CliKind::Codex => newest_live_cached_version(&codex_plugin_cache_dir(home)),
+    }
+}
+
+/// State of a *live* Copilot plugin, read from the marketplace directory it
+/// is registered against.
+///
+/// Installing from a local marketplace directory makes Copilot load the plugin
+/// live: nothing is copied and no entry lands in `config.json`'s
+/// `installedPlugins`, so [`read_installed_copilot`] finds nothing at all. The
+/// version in effect is whatever `plugin.json` under the registered directory
+/// says right now — which is also what makes it worth reporting, because a
+/// registration pointing at a stale worktree really is running a different
+/// version from the bundle this wta ships.
+///
+/// `None` when the registration doesn't resolve to a readable manifest, so a
+/// pruned directory falls through to the copied record rather than masking it.
+fn read_live_copilot(home: &Path) -> Option<InstalledInfo> {
+    let info = copilot_marketplace_info(home);
+    if !info.valid {
+        return None;
+    }
+    let dir = info.path?;
+    let version = read_version_field(&Path::new(&dir).join(PLUGIN_NAME).join("plugin.json"))?;
+    Some(InstalledInfo {
+        version: Some(version),
+        enabled: copilot_plugin_enabled(home),
+        loads_live: true,
+        registered_source: Some(PathBuf::from(&dir)),
+        gemini_source: None,
+        gemini_type: None,
+    })
+}
+
+/// Whether `~/.copilot/settings.json` has our plugin switched on.
+///
+/// A live plugin records enablement here rather than on an `installedPlugins`
+/// entry. `copilot plugin install` writes the entry as `true` on its own —
+/// verified against CLI 1.0.81-9 with a fresh profile, where `marketplace add`
+/// alone leaves no `enabledPlugins` key and the install adds one without any
+/// toggle. Defaulting a missing key to enabled here is tolerance for a future
+/// CLI that stops writing it, not a claim that the key is normally absent:
+/// [`read_stale_live_copilot`] relies on the entry to tell an install from a
+/// marketplace that was only ever registered.
+fn copilot_plugin_enabled(home: &Path) -> bool {
+    let path = home.join(".copilot").join("settings.json");
+    let Ok(text) = fs::read_to_string(&path) else {
+        return true;
+    };
+    let Ok(v) = serde_json::from_str::<Value>(&strip_jsonc_line_comments(&text)) else {
+        return true;
+    };
+    v.get("enabledPlugins")
+        .and_then(|m| m.get(format!("{}@{}", PLUGIN_NAME, MARKETPLACE_NAME)))
+        .and_then(Value::as_bool)
+        .unwrap_or(true)
+}
+
+/// Highest version directory under a plugin cache root that is still live.
+///
+/// Superseded versions are not deleted at upgrade time — Claude leaves the old
+/// directory in place and drops an `.orphaned_at` marker inside it. Taking the
+/// plain maximum would therefore keep reporting a version the CLI stopped
+/// loading (a real machine here had 0.1.4 through 0.1.7 side by side, three of
+/// them orphaned).
+fn newest_live_cached_version(plugin_cache_dir: &Path) -> Option<Version> {
+    let entries = fs::read_dir(plugin_cache_dir).ok()?;
+    entries
+        .flatten()
+        .filter(|e| {
+            let path = e.path();
+            path.is_dir() && !path.join(".orphaned_at").exists()
+        })
+        .filter_map(|e| {
+            let name = e.file_name();
+            name.to_str()?.parse::<Version>().ok()
+        })
+        .max()
+}
+
+fn claude_plugin_cache_dir(home: &Path) -> PathBuf {
+    home.join(".claude")
+        .join("plugins")
+        .join("cache")
+        .join(MARKETPLACE_NAME)
+        .join(PLUGIN_NAME)
+}
+
+fn codex_plugin_cache_dir(home: &Path) -> PathBuf {
+    home.join(".codex")
+        .join("plugins")
+        .join("cache")
+        .join(MARKETPLACE_NAME)
+        .join(PLUGIN_NAME)
 }
 
 fn locate_binary(cli: CliKind) -> (bool, Option<String>) {
@@ -1249,6 +1664,8 @@ fn copilot_status(on_path: bool, bin_path: Option<String>, home: Option<&Path>) 
         marketplace_path_valid: false,
         plugin_installed: false,
         plugin_enabled: false,
+        installed_version: None,
+        bundle_version: None,
         detection_fallback: None,
     };
     if !on_path {
@@ -1283,13 +1700,11 @@ fn copilot_status(on_path: bool, bin_path: Option<String>, home: Option<&Path>) 
         .map(|o| parse_copilot_plugin_list(&o.stdout));
     // 2. marketplace list (text).
     let mkt_ok = join_or_run_plugin_cli(mkt_handle, "copilot", &["plugin", "marketplace", "list"])
-    .filter(|o| o.success)
-    .map(|o| parse_copilot_marketplace_list(&o.stdout));
+        .filter(|o| o.success)
+        .map(|o| parse_copilot_marketplace_list(&o.stdout));
 
     if let (Some(p), Some(m)) = (plugin_presence, mkt_ok) {
-        out.plugin_installed = p.installed;
-        out.plugin_enabled = p.enabled;
-        out.marketplace_registered = m;
+        out.apply_presence(p, m);
     } else {
         copilot_fs_fallback(&mut out, home);
     }
@@ -1447,6 +1862,8 @@ fn claude_status(on_path: bool, bin_path: Option<String>, home: Option<&Path>) -
         marketplace_path_valid: false,
         plugin_installed: false,
         plugin_enabled: false,
+        installed_version: None,
+        bundle_version: None,
         detection_fallback: None,
     };
     if !on_path {
@@ -1470,8 +1887,8 @@ fn claude_status(on_path: bool, bin_path: Option<String>, home: Option<&Path>) -
 
     let plugin_json =
         join_or_run_plugin_cli(plugin_handle, "claude", &["plugin", "list", "--json"])
-    .filter(|o| o.success)
-    .and_then(|o| parse_claude_plugin_list_json(&o.stdout));
+            .filter(|o| o.success)
+            .and_then(|o| parse_claude_plugin_list_json(&o.stdout));
     let mkt_json = join_or_run_plugin_cli(
         mkt_handle,
         "claude",
@@ -1481,9 +1898,7 @@ fn claude_status(on_path: bool, bin_path: Option<String>, home: Option<&Path>) -
     .and_then(|o| parse_claude_marketplace_list_json(&o.stdout));
 
     if let (Some(p), Some(m)) = (plugin_json, mkt_json) {
-        out.plugin_installed = p.installed;
-        out.plugin_enabled = p.enabled;
-        out.marketplace_registered = m;
+        out.apply_presence(p, m);
     } else {
         claude_fs_fallback(&mut out, home);
     }
@@ -1506,12 +1921,7 @@ fn claude_fs_fallback(out: &mut CliStatus, home: Option<&Path>) {
     // Claude copies the plugin into ~/.claude/plugins/cache/<marketplace>/
     // <plugin>/<version>/ at install time; presence of any version dir is
     // a good fs-only "is installed" signal.
-    let plugin_cache_root = home
-        .join(".claude")
-        .join("plugins")
-        .join("cache")
-        .join(MARKETPLACE_NAME)
-        .join(PLUGIN_NAME);
+    let plugin_cache_root = claude_plugin_cache_dir(home);
     let plugin_dir_exists = plugin_cache_root
         .read_dir()
         .map(|mut iter| iter.next().is_some())
@@ -1535,6 +1945,8 @@ fn gemini_status(on_path: bool, bin_path: Option<String>, home: Option<&Path>) -
         marketplace_path_valid: false,
         plugin_installed: false,
         plugin_enabled: false,
+        installed_version: None,
+        bundle_version: None,
         detection_fallback: None,
     };
     if !on_path {
@@ -1556,6 +1968,7 @@ fn gemini_status(on_path: bool, bin_path: Option<String>, home: Option<&Path>) -
             if let Some(p) = parse_gemini_extensions_list_json(payload) {
                 out.plugin_installed = p.installed;
                 out.plugin_enabled = p.enabled;
+                out.installed_version = p.version.map(|v| v.to_string());
                 out.marketplace_registered = p.installed;
                 populate_marketplace_path(&mut out, CliKind::Gemini, home);
                 return out;
@@ -1614,6 +2027,15 @@ struct MarketplaceInfo {
 /// the CLI's on-disk source-of-truth file. Side-effect free; missing /
 /// unreadable files leave the defaults (`None` / `false`) in place.
 fn populate_marketplace_path(out: &mut CliStatus, cli: CliKind, home: Option<&Path>) {
+    if let Some(recorded) = out.marketplace_path.as_deref() {
+        // The CLI itself already named the registered root. Its answer wins:
+        // for Codex the fallback reader below can only see the plugin cache
+        // directory, which is not the registration this field documents, and
+        // overwriting the CLI's answer with it loses the one path that says
+        // where the plugin was installed from.
+        out.marketplace_path_valid = Path::new(recorded).is_dir();
+        return;
+    }
     let Some(home) = home else { return };
     let info = match cli {
         CliKind::Copilot => copilot_marketplace_info(home),
@@ -1738,8 +2160,32 @@ fn parse_copilot_plugin_list(stdout: &str) -> PluginPresence {
     let entry = stdout.lines().find(|line| line.contains(&needle));
     PluginPresence {
         installed: entry.is_some(),
-        enabled: entry.is_some_and(|line| !line.to_ascii_lowercase().contains("[disabled]")),
+        // Copied plugins render the state as `[disabled]`; live plugins
+        // (installed from a local marketplace directory) render it as
+        // `(enabled)` / `(disabled)`. Accept both delimiters so a disabled
+        // live plugin isn't reported as enabled.
+        enabled: entry.is_some_and(|line| {
+            let lower = line.to_ascii_lowercase();
+            !lower.contains("[disabled]") && !lower.contains("(disabled)")
+        }),
+        version: entry.and_then(parse_copilot_list_version),
     }
+}
+
+/// Pull the version out of a `copilot plugin list` entry line.
+///
+/// Copilot renders it as a parenthesized `v`-prefixed token, both for copied
+/// entries (`• wt-agent-hooks@wt-local (v0.1.0)`) and live ones
+/// (`• wt-agent-hooks@wt-local (v0.1.6) (enabled)`). The line also carries
+/// `(enabled)` / `[disabled]` state markers, so match on the `v` prefix plus a
+/// successful semver parse rather than on "first parenthesized group".
+///
+/// `None` when the line carries no parseable version — the caller falls back
+/// to the CLI's on-disk records.
+fn parse_copilot_list_version(line: &str) -> Option<Version> {
+    line.split(['(', ')', '[', ']', ' ', '\t'])
+        .filter_map(|token| token.strip_prefix('v'))
+        .find_map(|token| token.parse::<Version>().ok())
 }
 
 /// Search for our marketplace name in the `Registered marketplaces:`
@@ -1774,6 +2220,11 @@ fn parse_copilot_marketplace_list(stdout: &str) -> bool {
 struct PluginPresence {
     installed: bool,
     enabled: bool,
+    /// Version the CLI itself reported, when its listing carries one.
+    /// `None` means "this CLI's list output doesn't say" — the caller falls
+    /// back to the CLI's on-disk records rather than paying a second spawn
+    /// just to learn a version number.
+    version: Option<Version>,
 }
 
 /// Parse `claude plugin list --json` output. Returns `None` if the JSON
@@ -1796,12 +2247,17 @@ fn parse_claude_plugin_list_json(stdout: &str) -> Option<PluginPresence> {
             return Some(PluginPresence {
                 installed: true,
                 enabled,
+                version: entry
+                    .get("version")
+                    .and_then(|x| x.as_str())
+                    .and_then(|s| s.parse::<Version>().ok()),
             });
         }
     }
     Some(PluginPresence {
         installed: false,
         enabled: false,
+        version: None,
     })
 }
 
@@ -1832,12 +2288,17 @@ fn parse_gemini_extensions_list_json(stdout: &str) -> Option<PluginPresence> {
             return Some(PluginPresence {
                 installed: true,
                 enabled,
+                version: entry
+                    .get("version")
+                    .and_then(|x| x.as_str())
+                    .and_then(|s| s.parse::<Version>().ok()),
             });
         }
     }
     Some(PluginPresence {
         installed: false,
         enabled: false,
+        version: None,
     })
 }
 
@@ -1847,25 +2308,25 @@ fn parse_gemini_extensions_list_json(stdout: &str) -> Option<PluginPresence> {
 /// exists, and `root_path` is the remainder of that row trimmed.
 fn parse_codex_marketplace_list(stdout: &str) -> (bool, Option<String>) {
     for line in stdout.lines() {
-       let line = line.trim();
-       // Skip header and blank lines.
-       if line.is_empty() || line.starts_with("MARKETPLACE") {
-           continue;
-       }
-       let mut split = line.splitn(2, char::is_whitespace);
-       let name = match split.next() {
-           Some(s) => s.trim(),
-           None => continue,
-       };
-       if name == MARKETPLACE_NAME {
-           let rest = split.next().unwrap_or("").trim();
+        let line = line.trim();
+        // Skip header and blank lines.
+        if line.is_empty() || line.starts_with("MARKETPLACE") {
+            continue;
+        }
+        let mut split = line.splitn(2, char::is_whitespace);
+        let name = match split.next() {
+            Some(s) => s.trim(),
+            None => continue,
+        };
+        if name == MARKETPLACE_NAME {
+            let rest = split.next().unwrap_or("").trim();
             let path = if rest.is_empty() {
                 None
             } else {
                 Some(rest.to_string())
             };
-           return (true, path);
-       }
+            return (true, path);
+        }
     }
     (false, None)
 }
@@ -1878,44 +2339,45 @@ fn parse_codex_plugin_list(stdout: &str) -> bool {
     // We accept either the qualified or bare form (forward-compat).
     let qualified = format!("{}@{}", PLUGIN_NAME, MARKETPLACE_NAME);
     for line in stdout.lines() {
-       let line = line.trim_end();
-       if line.is_empty()
-           || line.starts_with("PLUGIN")
-           || line.starts_with("Marketplace ")
-           || line.starts_with("C:\\")
-           || line.starts_with('/')
-           || line.starts_with('.')
-       {
-           continue;
-       }
-       let mut cols = line.split_whitespace();
-       let name = match cols.next() {
-           Some(s) => s,
-           None => continue,
-       };
-       let matches = name == PLUGIN_NAME || name == qualified;
-       if !matches {
-           continue;
-       }
-       let rest: Vec<&str> = cols.collect();
-       if rest.is_empty() {
-           return false;
-       }
-       // Status column starts here. Only an "installed*" status
-       // (installed / installed, enabled / installed, disabled)
-       // counts as installed — "not installed", "available", and
-       // any other status mean the plugin is not active.
-       return rest[0].starts_with("installed");
+        let line = line.trim_end();
+        if line.is_empty()
+            || line.starts_with("PLUGIN")
+            || line.starts_with("Marketplace ")
+            || line.starts_with("C:\\")
+            || line.starts_with('/')
+            || line.starts_with('.')
+        {
+            continue;
+        }
+        let mut cols = line.split_whitespace();
+        let name = match cols.next() {
+            Some(s) => s,
+            None => continue,
+        };
+        let matches = name == PLUGIN_NAME || name == qualified;
+        if !matches {
+            continue;
+        }
+        let rest: Vec<&str> = cols.collect();
+        if rest.is_empty() {
+            return false;
+        }
+        // Status column starts here. Only an "installed*" status
+        // (installed / installed, enabled / installed, disabled)
+        // counts as installed — "not installed", "available", and
+        // any other status mean the plugin is not active.
+        return rest[0].starts_with("installed");
     }
     false
 }
 
 /// Parse `codex plugin list` for the auto-upgrade flow. Returns
 /// `Some(InstalledInfo)` only when the wt-agent-hooks row reports an
-/// `installed*` status, extracting the version (column 3) and the
-/// enabled flag (`installed, enabled` vs `installed, disabled`).
-/// Returns `None` for "not installed" / "available" / missing rows so
-/// the caller treats the plugin as absent.
+/// `installed*` status, extracting the version (column 3), the enabled
+/// flag (`installed, enabled` vs `installed, disabled`), and the PATH
+/// column (which lives under the marketplace directory Codex is
+/// registered against). Returns `None` for "not installed" /
+/// "available" / missing rows so the caller treats the plugin as absent.
 ///
 /// Sibling of [`parse_codex_plugin_list`]; that function returns a
 /// bool used by the install verifier, this one returns the richer
@@ -1933,17 +2395,17 @@ fn parse_codex_plugin_list_entry(stdout: &str) -> Option<InstalledInfo> {
         {
             continue;
         }
-        let mut cols = line.split_whitespace();
-        let name = cols.next()?;
+        let cols = whitespace_tokens(line);
+        let (_, name) = *cols.first()?;
         if name != PLUGIN_NAME && name != qualified {
             continue;
         }
-        let rest: Vec<&str> = cols.collect();
+        let rest = &cols[1..];
         // Must start with "installed" (rules out "not installed",
         // "available", etc.).
         if !rest
             .first()
-            .map(|s| s.starts_with("installed"))
+            .map(|(_, s)| s.starts_with("installed"))
             .unwrap_or(false)
         {
             return None;
@@ -1953,19 +2415,67 @@ fn parse_codex_plugin_list_entry(stdout: &str) -> Option<InstalledInfo> {
         // subcommand, but be defensive in case that changes.
         let enabled = rest
             .get(1)
-            .map(|s| !s.starts_with("disabled"))
+            .map(|(_, s)| !s.starts_with("disabled"))
             .unwrap_or(true);
-        // Version: first token after the status column that parses as
-        // semver. Skips past the status word(s) and any "-" placeholder.
-        let version = rest.iter().skip(1).find_map(|t| t.parse::<Version>().ok());
+        // Version column: first token after the status word(s) that parses
+        // as semver, or the "-" Codex prints when it has no version to
+        // report. Its offset also anchors the PATH column below.
+        let version_at = rest
+            .iter()
+            .skip(1)
+            .position(|(_, t)| t.parse::<Version>().is_ok() || *t == "-")
+            .map(|i| i + 1);
+        let version = version_at.and_then(|i| rest[i].1.parse::<Version>().ok());
+        // PATH column: everything left on the line after the version token,
+        // so a directory containing spaces survives (the packaged bundle
+        // lives under `C:\Program Files\WindowsApps\...`). Splitting on
+        // whitespace and taking one token would truncate exactly the paths
+        // real users have.
+        let registered_source = version_at
+            .map(|i| {
+                let (start, token) = rest[i];
+                line[start + token.len()..].trim()
+            })
+            .filter(|path| !path.is_empty() && *path != "-")
+            .map(PathBuf::from);
         return Some(InstalledInfo {
             version,
             enabled,
+            loads_live: false,
+            registered_source,
             gemini_source: None,
             gemini_type: None,
         });
     }
     None
+}
+
+/// Whitespace-separated tokens of `line` paired with their byte offsets.
+///
+/// Column-formatted CLI output has a trailing free-form column (a path)
+/// that may itself contain whitespace. Keeping each token's offset lets a
+/// parser consume the fixed columns and then take the rest of the line
+/// verbatim.
+fn whitespace_tokens(line: &str) -> Vec<(usize, &str)> {
+    let mut out = Vec::new();
+    let mut cursor = 0;
+    for token in line.split_whitespace() {
+        // `token` is a slice of `line[cursor..]` and they are visited in
+        // order, so the search always succeeds; the offset is the point.
+        //
+        // Give up on the whole line rather than skipping a token if it ever
+        // doesn't: a dropped column shifts every reading after it, so the
+        // version and PATH would be taken from the wrong places and land as a
+        // confident but wrong upgrade decision. An empty list instead makes
+        // the caller read the row as absent, which is the conservative answer.
+        let Some(relative) = line[cursor..].find(token) else {
+            return Vec::new();
+        };
+        let start = cursor + relative;
+        out.push((start, token));
+        cursor = start + token.len();
+    }
+    out
 }
 
 // ---------------------------------------------------------------------------
@@ -2259,7 +2769,7 @@ fn opencode_uninstall(home: Option<&Path>) -> CliUninstallResult {
 
     out.attempted = true;
     let mut removed = true;
-    let bridge = support_dir.join(OPENCODE_BRIDGE_PS1);
+    let bridge = support_dir.join(OPENCODE_LEGACY_BRIDGE_PS1);
     if bridge.exists() {
         if let Err(e) = fs::remove_file(&bridge) {
             removed = false;
@@ -2287,11 +2797,8 @@ fn opencode_uninstall(home: Option<&Path>) -> CliUninstallResult {
         if support_dir_empty {
             if let Err(e) = fs::remove_dir(&support_dir) {
                 removed = false;
-                out.messages.push(format!(
-                    "failed to remove {}: {}",
-                    support_dir.display(),
-                    e
-                ));
+                out.messages
+                    .push(format!("failed to remove {}: {}", support_dir.display(), e));
             }
         }
     }
@@ -2421,10 +2928,20 @@ fn legacy_staging_dirs(cli: CliKind) -> Vec<PathBuf> {
     }
     // #20-first-commit-style embedded-fallback materialization.
     dirs.push(root.join("hook-bundle-fallback").join(cli.dir_name()));
-    // Active WindowsApps-workaround staging (Claude only — Copilot and
-    // Gemini don't trip the `cpSync` EPERM that motivated this).
-    if matches!(cli, CliKind::Claude) {
+    // Active WindowsApps-workaround staging (Claude and Codex only —
+    // Copilot and Gemini don't trip the `cpSync` EPERM that motivated this).
+    if matches!(cli, CliKind::Claude | CliKind::Codex) {
         dirs.push(root.join(STAGING_SUBDIR).join(cli.dir_name()));
+        // Pre-#124 staging lived under the `LocalState` root, before staging
+        // was reclassified as cache. Codex kept writing there until the root
+        // fix, so an install predating it leaves a copy behind that the cache
+        // root alone never sweeps.
+        if let Some(state_root) = crate::runtime_paths::intelligent_terminal_root() {
+            let legacy = state_root.join(STAGING_SUBDIR).join(cli.dir_name());
+            if !dirs.iter().any(|d| paths_equivalent(d, &legacy)) {
+                dirs.push(legacy);
+            }
+        }
     }
     dirs
 }
@@ -3063,15 +3580,34 @@ fn cleanup_stale_copilot_marketplace(
 }
 
 /// Compare two filesystem paths for equivalence. Trailing path
-/// separators are normalized away and on Windows the comparison is
+/// separators are normalized away, a Windows `\\?\C:` verbatim-disk prefix is
+/// folded to its plain `C:` form, and on Windows the comparison is
 /// case-insensitive (ASCII-fold; matches typical NTFS semantics for the
 /// kinds of paths we deal with — drive letters, ASCII directory names).
+/// Other verbatim prefixes (`\\?\UNC\…`) are compared as-is; no CLI we
+/// register with has been seen to record one.
 /// We avoid `canonicalize` because the stale path may no longer exist
 /// on disk, which is precisely the case we want to detect and rewrite.
 fn paths_equivalent(a: &Path, b: &Path) -> bool {
     fn normalize(p: &Path) -> Vec<String> {
         p.components()
             .map(|c| {
+                // `\\?\C:\x` and `C:\x` name the same directory, and CLIs
+                // differ on which form they record: Codex stores the
+                // verbatim form in config.toml even though it was handed the
+                // plain one. Comparing the raw prefixes would report every
+                // such registration as moved and reinstall on every check.
+                #[cfg(windows)]
+                let s = match c {
+                    std::path::Component::Prefix(prefix) => match prefix.kind() {
+                        std::path::Prefix::VerbatimDisk(disk) => {
+                            format!("{}:", disk as char)
+                        }
+                        _ => prefix.as_os_str().to_string_lossy().into_owned(),
+                    },
+                    _ => c.as_os_str().to_string_lossy().into_owned(),
+                };
+                #[cfg(not(windows))]
                 let s = c.as_os_str().to_string_lossy().into_owned();
                 if cfg!(windows) {
                     s.to_ascii_lowercase()
@@ -3102,6 +3638,8 @@ fn codex_status(on_path: bool, bin_path: Option<String>, home: Option<&Path>) ->
         marketplace_path_valid: false,
         plugin_installed: false,
         plugin_enabled: false,
+        installed_version: None,
+        bundle_version: None,
         detection_fallback: None,
     };
     if !on_path {
@@ -3128,24 +3666,32 @@ fn codex_status(on_path: bool, bin_path: Option<String>, home: Option<&Path>) ->
     );
 
     let mkt = join_or_run_plugin_cli(mkt_handle, "codex", &["plugin", "marketplace", "list"])
-    .filter(|o| o.success)
-    .map(|o| parse_codex_marketplace_list(&o.stdout));
+        .filter(|o| o.success)
+        .map(|o| parse_codex_marketplace_list(&o.stdout));
     let plugin = join_or_run_plugin_cli(
         plugin_handle,
         "codex",
         &["plugin", "list", "--marketplace", MARKETPLACE_NAME],
     )
     .filter(|o| o.success)
-    .map(|o| parse_codex_plugin_list(&o.stdout));
+    .map(|o| {
+        // Two views of the same stdout: the boolean the install verifier has
+        // always used, and the richer row that carries the version column.
+        (
+            parse_codex_plugin_list(&o.stdout),
+            parse_codex_plugin_list_entry(&o.stdout).and_then(|i| i.version),
+        )
+    });
 
     match (mkt, plugin) {
-        (Some((registered, path)), Some(installed)) => {
+        (Some((registered, path)), Some((installed, version))) => {
             out.marketplace_registered = registered;
             if path.is_some() {
                 out.marketplace_path = path;
             }
             out.plugin_installed = installed;
             out.plugin_enabled = installed;
+            out.installed_version = version.map(|v| v.to_string());
         }
         _ => {
             codex_fs_fallback(&mut out, home);
@@ -3169,7 +3715,7 @@ fn codex_fs_fallback(out: &mut CliStatus, home: Option<&Path>) {
     // a prior remove should not count.
     out.marketplace_registered = dir_has_entries(&cache_root);
 
-    let plugin_root = cache_root.join(PLUGIN_NAME);
+    let plugin_root = codex_plugin_cache_dir(home);
     let installed = dir_has_entries(&plugin_root);
     out.plugin_installed = installed;
     out.plugin_enabled = installed; // Codex has no separate enable flag.
@@ -3343,6 +3889,20 @@ fn uninstall_for_codex(home: Option<&Path>) -> CliUninstallResult {
 // produced by the pure `decide_upgrade` function (testable without spawning
 // any CLI).
 //
+// Moved registrations
+// -------------------
+//
+// The version comparison above is blind to the failure an Intelligent
+// Terminal upgrade actually causes. The package directory is versioned, so a
+// new build lands the same hook version at a new path while each CLI's
+// `wt-local` registration still names the old one. Copilot loads that
+// directory live and silently drops the plugin once it is gone; Claude and
+// Codex keep running their cached copy but have no path back to a bundle for
+// any later update. So `decide_upgrade` also compares the registered path
+// against the directory we expect it to name, and routes a mismatch to the
+// same repair a version bump would take (`plugin update` for Copilot/Claude,
+// uninstall + reinstall for Codex, which has no `plugin update`).
+//
 // Trigger-point caveat
 // --------------------
 //
@@ -3405,8 +3965,19 @@ fn read_version_field(path: &Path) -> Option<Version> {
 /// / malformed.
 fn read_bundled_version(cli: CliKind) -> Option<Version> {
     let dir = bundle::resolve_cli_dir(cli)?;
-    let manifest = match cli {
-        CliKind::Copilot | CliKind::Claude => dir
+    read_version_field(&bundle_manifest_path(cli, &dir))
+}
+
+/// Path of the manifest carrying the bundle version, within a per-CLI bundle
+/// directory.
+///
+/// Doubles as the marker for a complete copy of that directory: it is the
+/// deepest file every layout has, so its presence is evidence a recursive
+/// copy reached the end rather than the shell of one that failed partway.
+fn bundle_manifest_path(cli: CliKind, dir: &Path) -> PathBuf {
+    match cli {
+        CliKind::Copilot => dir.join("wt-agent-hooks").join("plugin.json"),
+        CliKind::Claude => dir
             .join("wt-agent-hooks")
             .join(".claude-plugin")
             .join("plugin.json"),
@@ -3416,8 +3987,19 @@ fn read_bundled_version(cli: CliKind) -> Option<Version> {
             .join("plugin.json"),
         CliKind::Gemini => dir.join("gemini-extension.json"),
         CliKind::OpenCode => dir.join(OPENCODE_MANIFEST),
-    };
-    read_version_field(&manifest)
+    }
+}
+
+/// Whether a staging directory holds a usable copy of the bundle.
+///
+/// `copy_dir_recursive` creates the destination before writing into it and
+/// `maybe_stage_bundle_for_*` falls back to the package path when the copy
+/// errors, so a half-written staging directory can outlive a failed staging
+/// attempt. Treating its mere existence as proof would point
+/// [`expected_registration_dir`] at a directory the install never registered
+/// against, and read a correct registration as moved on every check.
+fn staged_bundle_is_usable(cli: CliKind, staged: &Path) -> bool {
+    bundle_manifest_path(cli, staged).is_file()
 }
 
 // ---- Installed-state readers ----------------------------------------------
@@ -3431,6 +4013,21 @@ fn read_bundled_version(cli: CliKind) -> Option<Version> {
 struct InstalledInfo {
     version: Option<Version>,
     enabled: bool,
+    /// The CLI loads the plugin in place from the registered marketplace
+    /// directory instead of keeping its own copy, so the bundle on disk is
+    /// already what runs and there is nothing to push an upgrade into.
+    /// Copilot-only today; every other CLI copies.
+    loads_live: bool,
+    /// The directory the CLI's `wt-local` registration names, or a path
+    /// underneath it. Carried so the decision can tell "registered against
+    /// the bundle we ship" from "registered against some other tree", which
+    /// is a repoint, not an upgrade — and which version comparison cannot
+    /// see, because both trees usually carry the same hook version.
+    ///
+    /// Populated for Copilot, Claude, and Codex. `None` means the probe
+    /// could not determine the registration, which is treated as "don't
+    /// repoint" rather than as evidence of staleness.
+    registered_source: Option<PathBuf>,
     /// Gemini-only: the recorded install source path from
     /// `.gemini-extension-install.json`. `None` for Copilot/Claude.
     gemini_source: Option<PathBuf>,
@@ -3440,10 +4037,81 @@ struct InstalledInfo {
     gemini_type: Option<String>,
 }
 
-/// Read Copilot's installed-plugin entry directly from
-/// `~/.copilot/config.json`. Pure file IO — no spawn.
+/// Outcome of reading a CLI's installed-plugin state. `Ok(None)` means "no
+/// record found"; `Err` carries a user-facing reason the record was
+/// unreadable.
 type InstalledProbe = Result<Option<InstalledInfo>, String>;
 
+/// Copilot's installed-plugin state as its own on-disk records describe it.
+///
+/// A `wt-local` registration that still resolves to a readable plugin
+/// directory wins over `config.json`'s `installedPlugins`. Copilot loads a
+/// directory marketplace *live* and ignores any copied record for the same
+/// plugin: Copilot CLI 1.0.81-9 lists only the live entry even when
+/// `installedPlugins` still carries a populated `cache_path` for an older
+/// version. Preferring the copied record there would report a version the CLI
+/// stopped loading — the same wrong answer as the `v?` this replaced, only
+/// harder to notice because it looks like a real number.
+fn read_installed_copilot_any(home: &Path) -> InstalledProbe {
+    if let Some(live) = read_live_copilot(home) {
+        return Ok(Some(live));
+    }
+    let copied = read_installed_copilot(home)?;
+    if copied.is_some() {
+        return Ok(copied);
+    }
+    Ok(read_stale_live_copilot(home))
+}
+
+/// A `wt-local` registration that no longer resolves to a readable plugin
+/// directory.
+///
+/// This is what an Intelligent Terminal upgrade leaves behind. The package
+/// directory is versioned, so a new build lands beside `wta.exe` at a new
+/// path while the registration still names the old one, and the moment the
+/// old package is removed Copilot silently drops the plugin: `copilot plugin
+/// list` reports "No plugins installed" and exits 0, and no hook fires again.
+///
+/// The install itself survives — `enabledPlugins` still carries it, and
+/// rewriting `source.path` alone brings the plugin straight back with no
+/// reinstall. So this has to reach `decide_upgrade` as a live install whose
+/// source has moved, not as "nothing installed", which would skip the one
+/// repair that runs without the user opening Settings.
+///
+/// The `enabledPlugins` entry is required: a marketplace registered but never
+/// installed from is genuinely not installed, and treating it otherwise would
+/// send `upgrade_copilot` after a plugin that was never there.
+fn read_stale_live_copilot(home: &Path) -> Option<InstalledInfo> {
+    let enabled = copilot_enabled_plugin_entry(home)?;
+    let dir = copilot_marketplace_info(home).path?;
+    Some(InstalledInfo {
+        // Unreadable, and deliberately not guessed: the decision below turns
+        // on the source path, not on the version.
+        version: None,
+        enabled,
+        loads_live: true,
+        registered_source: Some(PathBuf::from(dir)),
+        gemini_source: None,
+        gemini_type: None,
+    })
+}
+
+/// Our `enabledPlugins` entry, or `None` when Copilot has no record of the
+/// plugin at all. `Some(false)` means installed but switched off.
+fn copilot_enabled_plugin_entry(home: &Path) -> Option<bool> {
+    let path = home.join(".copilot").join("settings.json");
+    let text = fs::read_to_string(&path).ok()?;
+    let v = serde_json::from_str::<Value>(&strip_jsonc_line_comments(&text)).ok()?;
+    Some(
+        v.get("enabledPlugins")?
+            .get(format!("{}@{}", PLUGIN_NAME, MARKETPLACE_NAME))?
+            .as_bool()
+            .unwrap_or(true),
+    )
+}
+
+/// Read Copilot's copied-install entry directly from
+/// `~/.copilot/config.json`. Pure file IO — no spawn.
 fn read_installed_copilot(home: &Path) -> InstalledProbe {
     let path = home.join(".copilot").join("config.json");
     let text = match fs::read_to_string(&path) {
@@ -3459,8 +4127,7 @@ fn read_installed_copilot(home: &Path) -> InstalledProbe {
         .and_then(|entries| {
             entries.iter().find(|entry| {
                 entry.get("name").and_then(Value::as_str) == Some(PLUGIN_NAME)
-                    && entry.get("marketplace").and_then(Value::as_str)
-                        == Some(MARKETPLACE_NAME)
+                    && entry.get("marketplace").and_then(Value::as_str) == Some(MARKETPLACE_NAME)
             })
         })
     else {
@@ -3477,6 +4144,8 @@ fn read_installed_copilot(home: &Path) -> InstalledProbe {
     Ok(Some(InstalledInfo {
         version,
         enabled,
+        loads_live: false,
+        registered_source: None,
         gemini_source: None,
         gemini_type: None,
     }))
@@ -3485,7 +4154,11 @@ fn read_installed_copilot(home: &Path) -> InstalledProbe {
 /// Spawn `claude plugin list --json` and locate our plugin. One-shot
 /// Node spawn; the fast-path short-circuit in `upgrade_installed_hooks`
 /// ensures this only runs after a bundle version change.
-fn read_installed_claude() -> InstalledProbe {
+///
+/// The listing describes the copy under `~/.claude/plugins/cache/`, which
+/// says nothing about the marketplace directory that copy came from, so
+/// the registration is read separately from `known_marketplaces.json`.
+fn read_installed_claude(home: &Path) -> InstalledProbe {
     let outcome = run_plugin_cli_capture("claude", &["plugin", "list", "--json"])
         .map_err(|error| format!("claude plugin list failed to start: {}", error))?;
     if !outcome.success {
@@ -3515,6 +4188,11 @@ fn read_installed_claude() -> InstalledProbe {
         return Ok(Some(InstalledInfo {
             version,
             enabled,
+            loads_live: false,
+            // Recorded path, not a validated one: a registration naming a
+            // directory that no longer exists is exactly the state that
+            // needs repointing.
+            registered_source: claude_marketplace_info(home).path.map(PathBuf::from),
             gemini_source: None,
             gemini_type: None,
         }));
@@ -3588,6 +4266,8 @@ fn read_installed_gemini(home: &Path) -> InstalledProbe {
         // purposes, default to `enabled: true` here; the fallback path
         // re-queries via CLI before any destructive action.
         enabled: true,
+        loads_live: false,
+        registered_source: None,
         gemini_source,
         gemini_type,
     }))
@@ -3607,12 +4287,14 @@ fn read_installed_opencode(home: &Path) -> InstalledProbe {
     if !managed_js && !managed_support {
         return Ok(None);
     }
-    let complete = managed_js && managed_support && support_dir.join(OPENCODE_BRIDGE_PS1).is_file();
+    let complete = managed_js && managed_support;
     Ok(Some(InstalledInfo {
         // A partial managed install must go through OpenCodeCopy even when its
         // surviving manifest already has the current bundle version.
         version: complete.then(|| read_version_field(&manifest)).flatten(),
         enabled: true,
+        loads_live: false,
+        registered_source: None,
         gemini_source: None,
         gemini_type: None,
     }))
@@ -3626,6 +4308,13 @@ fn read_installed_opencode(home: &Path) -> InstalledProbe {
 enum SkipReason {
     NotInstalled,
     Disabled,
+    /// Installed, but the CLI loads it in place from the bundle directory —
+    /// there is no copy to push a newer version into. Distinct from
+    /// `NotInstalled`, which is what this used to look like before
+    /// `read_live_copilot` recognized the shape, and from `UpToDate`, which
+    /// would be a coincidence of the two versions matching rather than a
+    /// statement that an upgrade cannot apply.
+    LiveInstall,
     UpToDate,
     UnknownInstalledVersion,
     UnknownBundleVersion,
@@ -3660,13 +4349,17 @@ enum UpgradeAction {
 /// installed state. Pure function — no IO. All branches covered by
 /// `upgrade_decision_*` tests.
 ///
-/// `current_bundle_dir` is only consulted for Gemini (to decide whether
-/// the recorded install source still lives under the current bundle).
+/// `expected_dir` is the directory a `wt-local` registration should name
+/// for this CLI on this machine — the resolved bundle, or the staging copy
+/// when the bundle lives under WindowsApps (see
+/// [`expected_registration_dir`]). It is consulted to tell a registration
+/// that moved from one that is still correct, and by Gemini to decide
+/// whether an in-place `extensions update` can work.
 fn decide_upgrade(
     cli: CliKind,
     bundle_version: Option<Version>,
     installed: Option<&InstalledInfo>,
-    current_bundle_dir: Option<&Path>,
+    expected_dir: Option<&Path>,
 ) -> UpgradeAction {
     let Some(bundle_version) = bundle_version else {
         return UpgradeAction::Skip(SkipReason::UnknownBundleVersion);
@@ -3676,6 +4369,49 @@ fn decide_upgrade(
     };
     if !installed.enabled {
         return UpgradeAction::Skip(SkipReason::Disabled);
+    }
+    // Whether the CLI's `wt-local` registration still names the directory we
+    // expect. `None` when either side is unknown: an unresolvable bundle
+    // couldn't be repointed to even if we wanted to, and a probe that can't
+    // read the registration has produced no evidence of staleness.
+    let registration_moved = match (&installed.registered_source, expected_dir) {
+        (Some(src), Some(expected)) => Some(!path_under_dir(src, expected)),
+        _ => None,
+    };
+    // A live install runs whatever is in the directory it is registered
+    // against, so there is no copy to push a newer bundle into — but only
+    // while that directory is the bundle this wta ships. A registration left
+    // pointing at another tree keeps loading *that* tree's hooks, and the
+    // repair is the repoint in `upgrade_copilot`, not a version bump. Version
+    // comparison can't stand in for this: the two trees usually carry the
+    // same hook version, so a stale registration reads as up to date.
+    if installed.loads_live {
+        return if registration_moved.unwrap_or(false) {
+            UpgradeAction::UpdatePlugin
+        } else {
+            UpgradeAction::Skip(SkipReason::LiveInstall)
+        };
+    }
+    // A copied install keeps running out of its own cache, so a moved
+    // registration doesn't break it today — but the marketplace it was
+    // installed from is what every later update resolves against, and an
+    // Intelligent Terminal upgrade lands the new bundle at a new versioned
+    // path. Once the old path is gone the CLI has no way back to a bundle,
+    // and the version comparison below can't see any of this because both
+    // trees carry the same hook version. Repair it the same way a version
+    // bump would be delivered.
+    if registration_moved.unwrap_or(false) {
+        match cli {
+            CliKind::Claude => return UpgradeAction::UpdatePlugin,
+            // Codex has no `plugin update`, and `marketplace add` is a no-op
+            // against an already-registered name, so the repoint has to go
+            // through the uninstall + reinstall in `upgrade_codex`.
+            CliKind::Codex => return UpgradeAction::CodexReinstall,
+            // Copilot copied installs predate the live-install shape and
+            // record no marketplace path; Gemini and OpenCode have no
+            // marketplace at all. Nothing to repoint.
+            CliKind::Copilot | CliKind::Gemini | CliKind::OpenCode => {}
+        }
     }
     let Some(installed_version) = installed.version else {
         if cli == CliKind::OpenCode {
@@ -3693,10 +4429,8 @@ fn decide_upgrade(
             // Auto-update only `local` installs; `git`/`link` are user
             // configurations we don't second-guess.
             let is_local = installed.gemini_type.as_deref() == Some("local");
-            let source_under_bundle = match (&installed.gemini_source, current_bundle_dir) {
-                (Some(src), Some(bundle_dir)) => {
-                    src.is_dir() && gemini_source_under_bundle(src, bundle_dir)
-                }
+            let source_under_bundle = match (&installed.gemini_source, expected_dir) {
+                (Some(src), Some(bundle_dir)) => src.is_dir() && path_under_dir(src, bundle_dir),
                 _ => false,
             };
             if is_local && source_under_bundle {
@@ -3709,16 +4443,51 @@ fn decide_upgrade(
     }
 }
 
-/// True when `source` resolves under (or equals) `bundle_dir`. Used to
-/// detect when Gemini's recorded install source still points into the
-/// currently-resolved MSIX bundle dir — only then is in-place
-/// `extensions update` safe. Uses `paths_equivalent` semantics
-/// (case-insensitive on Windows, no canonicalize).
-fn gemini_source_under_bundle(source: &Path, bundle_dir: &Path) -> bool {
-    // Walk `source`'s ancestors and check for path equivalence.
-    let mut cur = Some(source);
+/// The directory a CLI's `wt-local` registration is expected to name.
+///
+/// Usually the resolved bundle itself. Claude and Codex re-stage a bundle
+/// that lives under WindowsApps before handing it to the CLI
+/// (`maybe_stage_bundle_for_claude` / `maybe_stage_bundle_for_codex`), so a
+/// packaged install is legitimately registered against the staging copy.
+/// Comparing those against the bundle alone would read every packaged
+/// registration as moved and reinstall on each upgrade check.
+///
+/// Staging is best-effort at install time and falls back to the original
+/// path, so the bundle itself stays acceptable: callers use
+/// [`path_under_dir`], and a registration naming the bundle is rejected only
+/// when staging actually produced a usable copy — see
+/// [`staged_bundle_is_usable`], which is what keeps a failed staging attempt
+/// from making a correct registration look moved.
+fn expected_registration_dir(cli: CliKind, bundle_dir: &Path) -> PathBuf {
+    if !matches!(cli, CliKind::Claude | CliKind::Codex) || !is_under_windows_apps(bundle_dir) {
+        return bundle_dir.to_path_buf();
+    }
+    match crate::runtime_paths::intelligent_terminal_local_root() {
+        Some(root) => {
+            let staged = root.join(STAGING_SUBDIR).join(cli.dir_name());
+            if staged_bundle_is_usable(cli, &staged) {
+                staged
+            } else {
+                bundle_dir.to_path_buf()
+            }
+        }
+        None => bundle_dir.to_path_buf(),
+    }
+}
+
+/// True when `path` resolves under (or equals) `dir`.
+///
+/// Used to test a recorded install source or plugin location against the
+/// directory it is expected to live in: Gemini records the extension source
+/// it installed from, and Codex reports the plugin directory rather than the
+/// marketplace root. Uses `paths_equivalent` semantics (case-insensitive on
+/// Windows, no canonicalize) because the recorded path may no longer exist,
+/// which is precisely the case worth detecting.
+fn path_under_dir(path: &Path, dir: &Path) -> bool {
+    // Walk `path`'s ancestors and check for path equivalence.
+    let mut cur = Some(path);
     while let Some(c) = cur {
-        if paths_equivalent(c, bundle_dir) {
+        if paths_equivalent(c, dir) {
             return true;
         }
         cur = c.parent();
@@ -3761,12 +4530,7 @@ impl UpgradeState {
         }
     }
 
-    fn record_completed(
-        &mut self,
-        cli: CliKind,
-        version: Option<String>,
-        completed: bool,
-    ) -> bool {
+    fn record_completed(&mut self, cli: CliKind, version: Option<String>, completed: bool) -> bool {
         if !completed {
             return false;
         }
@@ -3817,6 +4581,25 @@ impl UpgradeState {
 fn upgrade_state_path() -> Option<PathBuf> {
     crate::runtime_paths::intelligent_terminal_local_root()
         .map(|root| root.join("hooks-upgrade-state.json"))
+}
+
+/// Cache token standing for "this CLI has already been checked against this
+/// bundle".
+///
+/// The hook version alone is not enough. An Intelligent Terminal upgrade
+/// installs to a versioned package directory, so the bundle moves to a new
+/// path on every release while the hook version usually stays put — and a
+/// live install registered against the old path stops loading the moment that
+/// package is removed. Folding the resolved directory into the token makes
+/// the package move a cache miss, which is the only automatic signal that a
+/// registration needs repointing.
+///
+/// `None` when either half is unresolvable, which keeps the full check
+/// running rather than caching an answer we can't describe.
+fn bundle_fingerprint(version: Option<&Version>, dir: Option<&Path>) -> Option<String> {
+    let version = version?;
+    let dir = dir?;
+    Some(format!("{} {}", version, dir.display()))
 }
 
 /// Load the cached bundle versions. Crash-safe: any IO/parse failure
@@ -3986,27 +4769,30 @@ pub fn upgrade_installed_hooks() {
     let mut state_dirty = false;
     for cli in CliKind::ALL.iter().copied() {
         let bundle_version = read_bundled_version(cli);
-        let bundle_version_str = bundle_version.map(|v| v.to_string());
+        let fingerprint = bundle_fingerprint(
+            bundle_version.as_ref(),
+            bundle::resolve_cli_dir(cli).as_deref(),
+        );
 
-        // Fast path: bundle version matches the cached entry → nothing
+        // Fast path: bundle fingerprint matches the cached entry → nothing
         // changed since last time we checked this CLI. Skip without any
         // further IO or spawn.
-        if bundle_version_str.is_some() && bundle_version_str.as_deref() == state.get(cli) {
+        if fingerprint.is_some() && fingerprint.as_deref() == state.get(cli) {
             tracing::debug!(
                 target: "agent_hooks",
                 cli = cli.name(),
-                bundle = ?bundle_version_str,
+                bundle = ?fingerprint,
                 "fast-path cache hit; no upgrade needed",
             );
             continue;
         }
 
         // Cache miss (or first ever run): do the full per-CLI check.
-        let completed = upgrade_one_cli(cli, &home, bundle_version);
+        let completed = upgrade_one_cli(cli, &home, bundle_version).is_ok();
 
         // Cache completed checks, including intentional skips. Failed
         // OpenCode file copies must retry on the next startup.
-        if state.record_completed(cli, bundle_version_str, completed) {
+        if state.record_completed(cli, fingerprint, completed) {
             state_dirty = true;
         } else {
             tracing::warn!(
@@ -4024,17 +4810,38 @@ pub fn upgrade_installed_hooks() {
     }
 }
 
-/// Per-CLI upgrade entry: read installed state, decide, dispatch.
-fn upgrade_one_cli(cli: CliKind, home: &Path, bundle_version: Option<Version>) -> bool {
-    let probe = match cli {
-        CliKind::Copilot => read_installed_copilot(home),
+/// Read the version of the hook plugin a CLI currently has installed.
+///
+/// Returns `None` when nothing is installed, the CLI name is unknown, or the
+/// version can't be determined; callers treat that as "unknown", never as an
+/// error.
+///
+/// Used by `wta hooks install` to report the version it actually verified.
+/// Reading it back from the CLI rather than printing the bundle version is
+/// deliberate: the bundle version is what we *tried* to install, and asserting
+/// that without checking is the same class of claim that made a failed install
+/// look successful.
+pub fn installed_plugin_version(cli_name: &str) -> Option<String> {
+    let home = home_dir()?;
+    let cli = CliKind::ALL.iter().find(|k| k.name() == cli_name)?;
+    probe_installed(*cli, &home)
+        .ok()
+        .flatten()
+        .and_then(|info| info.version)
+        .map(|v| v.to_string())
+}
+
+/// Per-CLI dispatch for reading installed-plugin state.
+fn probe_installed(cli: CliKind, home: &Path) -> InstalledProbe {
+    match cli {
+        CliKind::Copilot => read_installed_copilot_any(home),
         CliKind::Claude => {
             // `claude plugin list --json` requires the CLI on PATH; if
             // it isn't, treat as "not installed" rather than spawning.
             if which::which("claude").is_err() {
                 Ok(None)
             } else {
-                read_installed_claude()
+                read_installed_claude(home)
             }
         }
         CliKind::Codex => {
@@ -4044,7 +4851,20 @@ fn upgrade_one_cli(cli: CliKind, home: &Path, bundle_version: Option<Version>) -
         }
         CliKind::Gemini => read_installed_gemini(home),
         CliKind::OpenCode => read_installed_opencode(home),
-    };
+    }
+}
+
+/// Per-CLI upgrade entry: read installed state, decide, dispatch.
+///
+/// `Err` carries a user-facing reason so `wta hooks install` can name what
+/// went wrong per CLI; `upgrade_installed_hooks` only needs the pass/fail bit
+/// because the individual upgrade helpers already log their own errors.
+fn upgrade_one_cli(
+    cli: CliKind,
+    home: &Path,
+    bundle_version: Option<Version>,
+) -> Result<(), String> {
+    let probe = probe_installed(cli, home);
     let installed = match probe {
         Ok(installed) => installed,
         Err(error) => {
@@ -4054,16 +4874,18 @@ fn upgrade_one_cli(cli: CliKind, home: &Path, bundle_version: Option<Version>) -
                 err = %error,
                 "failed to detect installed hook version; leaving cache unchanged for retry",
             );
-            return false;
+            return Err(format!(
+                "failed to detect the installed hook version: {error}"
+            ));
         }
     };
 
-    let current_bundle_dir = bundle::resolve_cli_dir(cli);
+    let expected_dir = expected_registration_dir_for(cli);
     let action = decide_upgrade(
         cli,
         bundle_version,
         installed.as_ref(),
-        current_bundle_dir.as_deref(),
+        expected_dir.as_deref(),
     );
 
     tracing::info!(
@@ -4071,11 +4893,13 @@ fn upgrade_one_cli(cli: CliKind, home: &Path, bundle_version: Option<Version>) -
         cli = cli.name(),
         installed_version = ?installed.as_ref().and_then(|i| i.version),
         bundle_version = ?bundle_version,
+        registered_source = ?installed.as_ref().and_then(|i| i.registered_source.as_deref()),
+        expected_dir = ?expected_dir.as_deref(),
         action = ?action,
         "upgrade decision",
     );
 
-    match action {
+    let succeeded = match action {
         UpgradeAction::Skip(_) => true,
         UpgradeAction::UpdatePlugin => match cli {
             CliKind::Copilot => upgrade_copilot(home),
@@ -4121,7 +4945,18 @@ fn upgrade_one_cli(cli: CliKind, home: &Path, bundle_version: Option<Version>) -
         UpgradeAction::CodexReinstall => upgrade_codex(home),
         UpgradeAction::GeminiUpdateInPlace => upgrade_gemini_in_place(),
         UpgradeAction::GeminiReinstall => upgrade_gemini_reinstall(home),
-        UpgradeAction::OpenCodeCopy => install_for_opencode(home),
+        UpgradeAction::OpenCodeCopy => install_for_opencode(home).installed(),
+    };
+    if succeeded {
+        Ok(())
+    } else {
+        // The helper that failed has already logged the concrete command and
+        // stderr; threading that string back through five `bool`-returning
+        // upgrade paths would be a bigger change than the report is worth.
+        Err(format!(
+            "{} hook upgrade failed; see wta-install-hooks.log",
+            cli.name()
+        ))
     }
 }
 
@@ -4205,12 +5040,10 @@ fn upgrade_claude(home: &Path) -> bool {
 /// Git marketplaces (not the local `wt-local` marketplace), so we
 /// re-run the same uninstall + install flow used at first-run.
 ///
-/// Trust hashes recorded in `~/.codex/config.toml` survive the
-/// reinstall as long as the hook command strings in `hooks.json`
-/// don't change — the hashes are computed over the command string
-/// (which uses the literal `${PLUGIN_ROOT}` token, not a resolved
-/// path), so they stay stable even when the bundle dir moves between
-/// MSIX version directories.
+/// Trust hashes recorded in `~/.codex/config.toml` normally survive the
+/// reinstall while hook commands stay unchanged. Bundle 0.1.5 intentionally
+/// changed them from PowerShell to `wtcli agent-hook`, so existing users must
+/// approve the new native commands once through `/hooks`.
 fn upgrade_codex(home: &Path) -> bool {
     // 1. Uninstall — `uninstall_for_codex` already tolerates
     //    "not installed" / "not registered" idempotency, so it's safe
@@ -4231,7 +5064,7 @@ fn upgrade_codex(home: &Path) -> bool {
     // 2. Reinstall pointing at the current bundle dir. Reuse the
     //    existing install flow so we pick up the WindowsApps staging
     //    and `already registered` tolerance handling.
-    install_for_codex(home)
+    install_for_codex(home).installed()
 }
 
 fn upgrade_gemini_in_place() -> bool {
@@ -4303,7 +5136,7 @@ fn upgrade_gemini_reinstall(home: &Path) -> bool {
     // 3. Reinstall pointing at the current bundle dir. Reuse the
     //    existing install flow so we pick up the same staging /
     //    consent / libuv-crash tolerances.
-    let install_succeeded = install_for_gemini(home);
+    let install_succeeded = install_for_gemini(home).installed();
 
     // 4. Restore disabled state if needed.
     let state_restored = if !was_enabled {

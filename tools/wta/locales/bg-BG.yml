@@ -41,7 +41,7 @@ auth.login_failed_help_default: "  Натиснете Enter, за да опит�
 chat.activity_thinking: "Мисля..."
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 chat.welcome_title: "Добре дошли в Интелигентен Терминал!"
-chat.welcome_disclaimer: "Интелигентен Терминал използва AI. Проверявайте за грешки."
+chat.welcome_disclaimer: "Интелигентен Терминал използва AI."
 chat.plan_header: "План:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}
@@ -49,6 +49,17 @@ chat.plan_marker_pending: "[ ]"  # {Locked}
 chat.autofix_prompt_label: "Автоматично диагностициран скорошен неуспех на команда"
 chat.turn_canceled: "(отменено)"
 chat.turn_executed: "→ изпълнено: %{title}"
+# Persistent tool-category labels shown after a status marker and before a subject.
+chat.tool_kind.run: "Изпълнение"
+chat.tool_kind.read: "Четене"
+chat.tool_kind.search: "Търсене"
+chat.tool_kind.edit: "Редактиране"
+chat.tool_kind.delete: "Изтриване"
+chat.tool_kind.move: "Преместване"
+chat.tool_kind.fetch: "Извличане"
+chat.tool_kind.think: "Мислене"
+chat.tool_kind.mode: "Режим"
+chat.tool_kind.other: "Инструмент"
 
 # ── Input placeholders (src/ui/input.rs) ────────────────────────────────────
 input.placeholder.connected: "Попитайте каквото и да е, / за команди.."  # {Locked="/"}
@@ -145,8 +156,8 @@ system.resuming_session: "Възобновяване на сесия %{session_i
 system.unknown_command: "Неизвестна команда \"%{command}\" — изпратена като подкана. Въведете /help за списъка."  # {Locked="/help"}
 system.busy_use_stop: "Изчакайте текущата подкана да завърши или първо използвайте /stop."  # {Locked="/stop"}
 system.cannot_focus_session: "Не може да се фокусира сесия %{session_id}: изглежда активна, но още няма свързан GUID на панел. Опитайте отново след малко."
-system.cannot_resume_no_load_session: "Не може да се възобнови в панела на агента: %{agent} не обяви възможността ACP `loadSession`. Натиснете Enter (без Shift), за да възобновите в нов терминален панел вместо това."  # {Locked="ACP","loadSession","Enter","Shift"}
-system.cannot_resume_no_resume_flag: "Не може да се възобнови сесията на %{agent}: този агент няма флаг в стил `--resume`. Натиснете Shift+Enter, за да опитате възобновяване в панела на агента чрез ACP вместо това."  # {Locked="--resume","Shift","Enter","ACP"}
+system.cannot_resume_no_load_session: "Не може да се възобнови в панела на агента: %{agent} не обяви възможността ACP `loadSession`."  # {Locked="ACP","loadSession"}
+system.cannot_resume_no_resume_flag: "Не може да се възобнови сесията на %{agent}: този агент няма флаг в стил `--resume`."  # {Locked="--resume"}
 system.cannot_resume_unknown_agent: "Не може да се възобнови сесия %{session_id}: изходният ѝ агент е неизвестен за тази компилация на WTA."
 system.cannot_resume_phantom_via_flag: "Не може да се възобнови сесията на %{agent} %{session_id}: тя е стартирана, но никога не е натрупала разговор, така че самият %{agent} би отхвърлил възобновяването. Редът се премахва."
 system.cannot_resume_phantom_via_load: "Не може да се възобнови сесията на %{agent} %{session_id}: тя е стартирана, но никога не е натрупала разговор, така че %{agent} би отхвърлил зареждането. Редът се премахва."
@@ -188,7 +199,7 @@ hooks.marketplace_path_stale: "⚠ marketplace path stale"
 hooks.installed_but_disabled: "⚠ installed but disabled"
 hooks.not_installed: "✗ not installed"
 hooks.uninstall_skipped: "skipped (CLI not on PATH)"
-hooks.install_attempted: "wt-agent-hooks install attempted (idempotent). Run `wta hooks status` to inspect the result. Trace log: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"
+hooks.install_succeeded: "✓ wt-agent-hooks installed for %{clis}"
 
 # ── Relative time + date formatting (src/ui/agents_view.rs) ─────────────────
 # rust-i18n has no CLDR plural support; Rust selects singular vs. other.
@@ -217,8 +228,17 @@ system.agent_switch_unavailable: "Превключването на агенти
 
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "Изберете модела за този панел (/model <id> за директно превключване)"  # {Locked="/model","<id>"}
+commands.config.summary: "Конфигуриране на тази сесия на агента"  # Agent means an AI coding agent; shown for the /config command. {Locked="/config"}
 commands.move.summary: "Преместване на панела на агента за този раздел (/move <position>)"  # {Locked="/move","<position>"}
 model_picker.title: "Изберете модел (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "Свързаният агент не обяви никакви избираеми модели."
 system.model_set: "Моделът за този панел е зададен на %{model}."  # {Locked="%{model}"}
+
+# ── Session configuration picker (src/ui/config_popup.rs) ───────────────────
+# {Locked="↑","↓","Enter","Esc","ACP"} - key names and protocol name
+config_picker.title: "Конфигурация на сесията (↑ ↓ • Enter • Esc)"
+# Shown when /config is used but the AI agent exposed no ACP select options.
+system.no_config_options: "Свързаният агент не е обявил опции за сесия, които могат да се конфигурират."
+# {option} is an Agent-provided option name; {error} is the ACP error.
+system.config_update_failed: "Актуализирането на %{option} беше неуспешно: %{error}"
 system.model_unknown: "Неизвестен модел %{model} — въведете /model, за да видите наличния списък."  # {Locked="%{model}","/model"}

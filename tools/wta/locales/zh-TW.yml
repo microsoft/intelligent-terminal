@@ -37,7 +37,7 @@ auth.login_failed_help_default: "  按 Enter 重試，或按 Esc 返回。"  # {
 # ── 聊天檢視 (src/ui/chat.rs) ──────────────────────────────────────────────
 chat.activity_thinking: "思考中…"
 chat.welcome_title: "歡迎使用智能終端！"
-chat.welcome_disclaimer: "智能終端使用 AI。請檢查是否有誤。"
+chat.welcome_disclaimer: "智能終端使用 AI。"
 chat.plan_header: "計畫："
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}
@@ -45,6 +45,17 @@ chat.plan_marker_pending: "[ ]"  # {Locked}
 chat.autofix_prompt_label: "已自動診斷最近的一次命令失敗"
 chat.turn_canceled: "(已取消)"
 chat.turn_executed: "→ 已執行: %{title}"
+# 顯示在狀態標記之後、操作對象之前的持續性工具類別標籤。
+chat.tool_kind.run: "執行"
+chat.tool_kind.read: "讀取"
+chat.tool_kind.search: "搜尋"
+chat.tool_kind.edit: "編輯"
+chat.tool_kind.delete: "刪除"
+chat.tool_kind.move: "移動"
+chat.tool_kind.fetch: "擷取"
+chat.tool_kind.think: "思考"
+chat.tool_kind.mode: "模式"
+chat.tool_kind.other: "工具"
 
 # ── 輸入預留位置 (src/ui/input.rs) ────────────────────────────────────────────
 input.placeholder.connected: "隨意提問，/ 查看命令.."  # {Locked="/"}
@@ -130,8 +141,8 @@ system.resuming_session: "正在恢復工作階段 %{session_id}..."
 system.unknown_command: "未知命令 \"%{command}\" — 已作為提示傳送。輸入 /help 查看清單。"  # {Locked="/help"}
 system.busy_use_stop: "請等待目前提示完成，或先執行 /stop。"  # {Locked="/stop"}
 system.cannot_focus_session: "無法聚焦工作階段 %{session_id}：它似乎處於即時狀態，但尚未繫結窗格 GUID。請稍後再試。"
-system.cannot_resume_no_load_session: "無法在智能體窗格中恢復：%{agent} 未公布 ACP `loadSession` 功能。請改按 Enter（不按 Shift）以在新的終端機窗格中恢復。"  # {Locked="ACP","loadSession","Enter","Shift"}
-system.cannot_resume_no_resume_flag: "無法恢復 %{agent} 工作階段：此智能體沒有 `--resume` 樣式旗標。請按 Shift+Enter，改為嘗試透過 ACP 在智能體窗格內恢復。"  # {Locked="--resume","Shift","Enter","ACP"}
+system.cannot_resume_no_load_session: "無法在智能體窗格中恢復：%{agent} 未公布 ACP `loadSession` 功能。"  # {Locked="ACP","loadSession"}
+system.cannot_resume_no_resume_flag: "無法恢復 %{agent} 工作階段：此智能體沒有 `--resume` 樣式旗標。"  # {Locked="--resume"}
 system.cannot_resume_unknown_agent: "無法恢復工作階段 %{session_id}：此版本無法識別其來源智能體。"
 system.cannot_resume_phantom_via_flag: "無法恢復 %{agent} 工作階段 %{session_id}：它已啟動但從未累積任何對話，因此 %{agent} 本身會拒絕恢復。正在移除此列。"
 system.cannot_resume_phantom_via_load: "無法恢復 %{agent} 工作階段 %{session_id}：它已啟動但從未累積任何對話，因此 %{agent} 會拒絕載入。正在移除此列。"
@@ -173,7 +184,7 @@ hooks.marketplace_path_stale: "⚠ 商店路徑已過期"
 hooks.installed_but_disabled: "⚠ 已安裝但已停用"
 hooks.not_installed: "✗ 未安裝"
 hooks.uninstall_skipped: "已略過（CLI 不在 PATH 上）"
-hooks.install_attempted: "wt-agent-hooks 安裝已嘗試（冪等）。執行 `wta hooks status` 檢查結果。追蹤記錄：%LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"
+hooks.install_succeeded: "✓ 已為 %{clis} 安裝 wt-agent-hooks"
 # ── Relative time + date formatting (src/ui/agents_view.rs) ─────────────────
 time.just_now: "剛剛"
 time.minute_singular: "%{count} 分鐘前"
@@ -210,8 +221,17 @@ system.agent_switch_unavailable: "在 Windows Terminal 分頁之外，無法切�
 
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "為此窗格選擇模型（使用 /model <id> 可直接切換）"  # {Locked="/model","<id>"}
+commands.config.summary: "設定此智能體工作階段"  # Agent means an AI coding agent; shown for the /config command. {Locked="/config"}
 commands.move.summary: "移動此分頁的智能體窗格 (/move <position>)"  # {Locked="/move","<position>"}
 model_picker.title: "選擇模型（↑ ↓ • Enter • Esc）"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "已連線的智能體未公布任何可選取的模型。"
 system.model_set: "此窗格的模型已設定為 %{model}。"  # {Locked="%{model}"}
+
+# ── Session configuration picker (src/ui/config_popup.rs) ───────────────────
+# {Locked="↑","↓","Enter","Esc","ACP"} - key names and protocol name
+config_picker.title: "工作階段設定（↑ ↓ • Enter • Esc）"
+# Shown when /config is used but the AI agent exposed no ACP select options.
+system.no_config_options: "已連線的智能體未公布任何可設定的工作階段選項。"
+# {option} is an Agent-provided option name; {error} is the ACP error.
+system.config_update_failed: "更新 %{option} 失敗：%{error}"
 system.model_unknown: "未知模型 %{model} — 輸入 /model 查看可用清單。"  # {Locked="%{model}","/model"}

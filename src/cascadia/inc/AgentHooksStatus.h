@@ -3,9 +3,10 @@
 //
 // AgentHooksStatus.h
 //
-// Pure parser + formatter for the JSON contract emitted by
-// `wta hooks status --json` (see tools/wta/src/agent_hooks_installer.rs ::
-// StatusReport). Lives in src/cascadia/inc/ so the Settings UI
+// Pure parser + formatter for the JSON contracts emitted by
+// `wta hooks status --json` and `wta hooks install --json` (see
+// tools/wta/src/agent_hooks_installer.rs :: StatusReport / InstallReport).
+// Lives in src/cascadia/inc/ so the Settings UI
 // (TerminalSettingsEditor::AIAgentsViewModel) and the unit tests in
 // ut_app can both consume it without a project-reference cycle.
 //
@@ -27,14 +28,19 @@
 namespace Microsoft::Terminal::AgentHooks
 {
     // Major schema version this code understands. The wta-side type is
-    // pinned at 3 (see STATUS_SCHEMA_VERSION in agent_hooks_installer.rs);
+    // pinned at 4 (see STATUS_SCHEMA_VERSION in agent_hooks_installer.rs);
     // mismatch produces a parse failure rather than silent mis-render.
+    //
+    // v4 added `installed_version` / `bundle_version` per CLI — the boolean
+    // flags say whether hooks are installed, these say *which build*, which
+    // is the part a stale marketplace path or a skipped upgrade leaves
+    // wrong while every other field still reads healthy.
     //
     // v3 added `marketplace_path` and `marketplace_path_valid` per CLI
     // (#25) — `marketplace_registered: true` no longer implies the
     // registered `source.path` actually exists on disk; consumers should
     // consult `marketplacePathValid` for that.
-    inline constexpr uint32_t SupportedStatusSchemaVersion = 3;
+    inline constexpr uint32_t SupportedStatusSchemaVersion = 4;
 
     // One entry of `clis[]` from the JSON report.
     struct CliStatus
@@ -54,6 +60,14 @@ namespace Microsoft::Terminal::AgentHooks
         bool marketplacePathValid{ false };
         bool pluginInstalled{ false };
         bool pluginEnabled{ false };
+        // v4: `MAJOR.MINOR.PATCH` of the hook plugin the CLI currently has
+        // installed. Absent when nothing is installed, or when neither the
+        // CLI nor its on-disk records name a version — "unknown version" is
+        // an ordinary state, not an error.
+        std::optional<std::string> installedVersion;
+        // v4: `MAJOR.MINOR.PATCH` the wta that produced this report would
+        // install. Absent when its hook bundle is unresolvable.
+        std::optional<std::string> bundleVersion;
         std::optional<std::string> detectionFallback; // e.g. "fs"
     };
 
@@ -142,6 +156,14 @@ namespace Microsoft::Terminal::AgentHooks
             {
                 cli.marketplacePath = entry["marketplace_path"].asString();
             }
+            if (entry.isMember("installed_version") && entry["installed_version"].isString())
+            {
+                cli.installedVersion = entry["installed_version"].asString();
+            }
+            if (entry.isMember("bundle_version") && entry["bundle_version"].isString())
+            {
+                cli.bundleVersion = entry["bundle_version"].asString();
+            }
             if (entry.isMember("detection_fallback") && entry["detection_fallback"].isString())
             {
                 cli.detectionFallback = entry["detection_fallback"].asString();
@@ -182,14 +204,28 @@ namespace Microsoft::Terminal::AgentHooks
         return nullptr;
     }
 
+    // Drives per-CLI row visibility in Settings. A row exists only while the
+    // CLI has hook state to act on, so "Remove" is never offered against a
+    // CLI that has nothing installed. Merely having the CLI on PATH is not
+    // enough — installation is driven by the single "Install hooks" button,
+    // not per-row, so a detected-but-uninstalled row would carry no action.
     inline bool HasHookState(const CliStatus* cli)
     {
         return cli && (cli->marketplaceRegistered || cli->pluginInstalled);
     }
 
-    inline bool ShouldShowDetectedOrConfiguredHookRow(const CliStatus* cli)
+    // The row-visibility decision itself, named so the five call sites in
+    // AIAgentsViewModel share one predicate instead of each re-deriving it.
+    //
+    // Deliberately NOT `cli->binaryOnPath || HasHookState(cli)`. OpenCode
+    // used to be special-cased that way so new users could discover the
+    // integration, which left its row on screen after an uninstall with a
+    // permanently disabled Remove button — the only per-row action there is.
+    // Keep this as the single seam so that regression stays covered by
+    // ShouldShowHookRow's tests.
+    inline bool ShouldShowHookRow(const CliStatus* cli)
     {
-        return cli && (cli->binaryOnPath || HasHookState(cli));
+        return HasHookState(cli);
     }
 
     // True when at least one CLI binary is on PATH — drives the
@@ -287,5 +323,139 @@ namespace Microsoft::Terminal::AgentHooks
             text += L" (filesystem fallback)";
         }
         return text;
+    }
+
+    // -----------------------------------------------------------------------
+    // `wta hooks install --json`
+    // -----------------------------------------------------------------------
+
+    // Major schema version of the install report this code understands.
+    // Pinned against INSTALL_SCHEMA_VERSION in agent_hooks_installer.rs.
+    inline constexpr uint32_t SupportedInstallSchemaVersion = 1;
+
+    inline constexpr std::string_view InstallOutcomeFailed = "failed";
+
+    // One entry of `clis[]` from the install report.
+    struct CliInstallResult
+    {
+        std::string name;
+        // "installed" | "skipped" | "failed". Compared as a string rather
+        // than mapped to an enum so a value added on the wta side lands as
+        // "not a failure" instead of failing the whole parse.
+        std::string outcome;
+        // Only present for failures, and only when wta has a specific
+        // reason beyond "nothing got registered".
+        std::optional<std::string> reason;
+    };
+
+    struct InstallReport
+    {
+        uint32_t schemaVersion{ 0 };
+        std::vector<CliInstallResult> clis;
+    };
+
+    // Returns nullopt on malformed JSON, a missing `clis` array, or an
+    // unsupported schema_version. Note that `wta hooks install --json`
+    // prints this report and *then* exits non-zero on failure, so callers
+    // must capture output independently of the exit code.
+    inline std::optional<InstallReport> ParseInstallReportJson(std::string_view json)
+    {
+        if (json.empty())
+        {
+            return std::nullopt;
+        }
+
+        Json::Value root;
+        {
+            Json::CharReaderBuilder rb;
+            const std::unique_ptr<Json::CharReader> reader{ rb.newCharReader() };
+            std::string errs;
+            if (!reader->parse(json.data(), json.data() + json.size(), &root, &errs))
+            {
+                return std::nullopt;
+            }
+        }
+        if (!root.isObject())
+        {
+            return std::nullopt;
+        }
+
+        InstallReport out;
+        if (!root.isMember("schema_version") || !root["schema_version"].isUInt())
+        {
+            return std::nullopt;
+        }
+        out.schemaVersion = root["schema_version"].asUInt();
+        if (out.schemaVersion != SupportedInstallSchemaVersion)
+        {
+            return std::nullopt;
+        }
+
+        if (!root.isMember("clis") || !root["clis"].isArray())
+        {
+            return std::nullopt;
+        }
+        for (const auto& entry : root["clis"])
+        {
+            if (!entry.isObject())
+            {
+                return std::nullopt;
+            }
+            CliInstallResult cli;
+            if (!entry.isMember("name") || !entry["name"].isString())
+            {
+                return std::nullopt;
+            }
+            cli.name = entry["name"].asString();
+            if (entry.isMember("outcome") && entry["outcome"].isString())
+            {
+                cli.outcome = entry["outcome"].asString();
+            }
+            if (entry.isMember("reason") && entry["reason"].isString())
+            {
+                cli.reason = entry["reason"].asString();
+            }
+            out.clis.push_back(std::move(cli));
+        }
+
+        return out;
+    }
+
+    // Display name for a CLI id. Mirrors the per-row titles in
+    // AIAgents.xaml so the failure summary names each CLI exactly the way
+    // the list above it does. All five are brand names, so none of them
+    // are translated. An unrecognized id falls through to its raw name
+    // rather than being dropped — a CLI wta knows about but this build
+    // doesn't should still be reportable.
+    inline std::wstring CliDisplayName(std::string_view name)
+    {
+        if (name == "copilot") return L"GitHub Copilot";
+        if (name == "claude") return L"Claude Code";
+        if (name == "gemini") return L"Gemini CLI";
+        if (name == "codex") return L"Codex CLI";
+        if (name == "opencode") return L"OpenCode";
+        return std::wstring{ name.begin(), name.end() };
+    }
+
+    // Comma-joined display names of every CLI that failed to install.
+    // Empty when nothing failed, which the caller treats as "the run failed
+    // for a reason the report doesn't attribute to any one CLI" and falls
+    // back to the generic message.
+    inline std::wstring FormatFailedCliList(const InstallReport& report)
+    {
+        std::wstring out;
+        for (const auto& cli : report.clis)
+        {
+            if (cli.outcome != InstallOutcomeFailed)
+            {
+                continue;
+            }
+            if (!out.empty())
+            {
+                out += L", ";
+            }
+            out += CliDisplayName(cli.name);
+        }
+        return out;
     }
 }

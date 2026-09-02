@@ -41,7 +41,7 @@ auth.login_failed_help_default: "  Trykk Enter for å prøve på nytt, eller Esc
 chat.activity_thinking: "Tenker..."
 # {Locked="Intelligent Terminal"} - product name, do not translate
 chat.welcome_title: "Velkommen til Intelligent Terminal!"
-chat.welcome_disclaimer: "Intelligent Terminal bruker AI. Se etter feil."
+chat.welcome_disclaimer: "Intelligent Terminal bruker AI."
 chat.plan_header: "Plan:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}
@@ -49,6 +49,17 @@ chat.plan_marker_pending: "[ ]"  # {Locked}
 chat.autofix_prompt_label: "Nylig kommandofeil diagnostisert automatisk"
 chat.turn_canceled: "(avbrutt)"
 chat.turn_executed: "→ utført: %{title}"
+# Persistent tool-category labels shown after a status marker and before a subject.
+chat.tool_kind.run: "Kjør"
+chat.tool_kind.read: "Les"
+chat.tool_kind.search: "Søk"
+chat.tool_kind.edit: "Rediger"
+chat.tool_kind.delete: "Slett"
+chat.tool_kind.move: "Flytt"
+chat.tool_kind.fetch: "Hent"
+chat.tool_kind.think: "Tenk"
+chat.tool_kind.mode: "Modus"
+chat.tool_kind.other: "Verktøy"
 
 # ── Input placeholders (src/ui/input.rs) ────────────────────────────────────
 input.placeholder.connected: "Spør om hva som helst, / for kommandoer.."  # {Locked="/"}
@@ -134,8 +145,8 @@ system.resuming_session: "Fortsetter økten %{session_id}..."
 system.unknown_command: "Ukjent kommando \"%{command}\" — sendt som ledetekst. Skriv /help for listen."
 system.busy_use_stop: "Vent til gjeldende ledetekst er ferdig, eller bruk /stop først."
 system.cannot_focus_session: "Kan ikke fokusere økten %{session_id}: den ser ut til å være aktiv, men ingen rute-GUID er bundet ennå. Prøv igjen om et øyeblikk."
-system.cannot_resume_no_load_session: "Kan ikke fortsette i agentruten: %{agent} annonserte ikke ACP `loadSession`-funksjonen. Trykk Enter (uten Shift) for å fortsette i en ny terminalrute i stedet."
-system.cannot_resume_no_resume_flag: "Kan ikke fortsette %{agent}-økten: denne agenten har ikke noe `--resume`-lignende flagg. Trykk Shift+Enter for å prøve å fortsette inne i agentruten via ACP i stedet."
+system.cannot_resume_no_load_session: "Kan ikke fortsette i agentruten: %{agent} annonserte ikke ACP `loadSession`-funksjonen."
+system.cannot_resume_no_resume_flag: "Kan ikke fortsette %{agent}-økten: denne agenten har ikke noe `--resume`-lignende flagg."
 system.cannot_resume_unknown_agent: "Kan ikke fortsette økten %{session_id}: kildeagenten er ukjent for denne byggen."
 system.cannot_resume_phantom_via_flag: "Kan ikke fortsette %{agent}-økten %{session_id}: den ble startet, men samlet aldri opp noen samtale, så %{agent} ville selv avvise fortsettelsen. Fjerner raden."
 system.cannot_resume_phantom_via_load: "Kan ikke fortsette %{agent}-økten %{session_id}: den ble startet, men samlet aldri opp noen samtale, så %{agent} ville avvise innlastingen. Fjerner raden."
@@ -177,7 +188,7 @@ hooks.marketplace_path_stale: "⚠ marketplace path stale"
 hooks.installed_but_disabled: "⚠ installed but disabled"
 hooks.not_installed: "✗ not installed"
 hooks.uninstall_skipped: "skipped (CLI not on PATH)"
-hooks.install_attempted: "wt-agent-hooks install attempted (idempotent). Run `wta hooks status` to inspect the result. Trace log: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"
+hooks.install_succeeded: "✓ wt-agent-hooks installert for %{clis}"
 
 # ── Relative time and date formatting (src/ui/agents_view.rs) ───────────────
 time.just_now: "akkurat nå"
@@ -215,8 +226,17 @@ system.agent_switch_unavailable: "Agentskifting er ikke tilgjengelig utenfor en 
 
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "Velg modellen for dette panelet (/model <id> for å bytte direkte)"  # {Locked="/model","<id>"}
+commands.config.summary: "Konfigurer denne agentsesjonen"  # Agent means an AI coding agent; shown for the /config command. {Locked="/config"}
 commands.move.summary: "Flytt agentpanelet for denne fanen (/move <position>)"  # {Locked="/move","<position>"}
 model_picker.title: "Velg modell (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "Den tilkoblede agenten annonserte ingen valgbare modeller."
 system.model_set: "Modellen for dette panelet er satt til %{model}."  # {Locked="%{model}"}
+
+# ── Session configuration picker (src/ui/config_popup.rs) ───────────────────
+# {Locked="↑","↓","Enter","Esc","ACP"} - key names and protocol name
+config_picker.title: "Sesjonskonfigurasjon (↑ ↓ • Enter • Esc)"
+# Shown when /config is used but the AI agent exposed no ACP select options.
+system.no_config_options: "Den tilkoblede agenten annonserte ingen konfigurerbare sesjonsalternativer."
+# {option} is an Agent-provided option name; {error} is the ACP error.
+system.config_update_failed: "Klarte ikke å oppdatere %{option}: %{error}"
 system.model_unknown: "Ukjent modell %{model} — skriv /model for å se den tilgjengelige listen."  # {Locked="%{model}","/model"}

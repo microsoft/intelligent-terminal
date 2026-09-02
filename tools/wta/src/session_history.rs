@@ -1,14 +1,17 @@
 //! Shared mapping of ACP `session/list` rows into `AgentSession`s.
 //!
-//! One source of truth for both the host scan (master's already-running
-//! agent) and the WSL scan (`wsl_acp`). Class-A (agent-pane) rows are
+//! One source of truth for master's host scan (of its already-running agent)
+//! and for the `probe-host-sessions` diagnostic in [`crate::cli::probes`].
+//! Class-A (agent-pane) rows are
 //! filtered out by `session_id` against the `agent_pane_origin` index —
 //! the picker's MVP filter hides WTA-created sessions; ACP `session/list`
 //! returns them, so we subtract them here.
 
 use crate::agent_sessions::{AgentSession, AgentStatus, CliSource, SessionLocation, SessionOrigin};
 use std::collections::HashSet;
-use std::time::SystemTime;
+use std::time::{Duration, SystemTime};
+use time::format_description::well_known::Rfc3339;
+use time::OffsetDateTime;
 
 pub(crate) fn acp_session_to_agent_session(
     info: &agent_client_protocol::schema::v1::SessionInfo,
@@ -19,13 +22,13 @@ pub(crate) fn acp_session_to_agent_session(
     let last = info
         .updated_at
         .as_deref()
-        .and_then(crate::history_loader::parse_iso_to_system_time)
+        .and_then(parse_iso_to_system_time)
         .unwrap_or(SystemTime::UNIX_EPOCH);
     let title = info
         .title
         .clone()
         .filter(|s| !s.is_empty())
-        .unwrap_or_else(|| crate::history_loader::short_id(&key, cli_label(cli)));
+        .unwrap_or_else(|| short_id(&key, cli_label(cli)));
     AgentSession {
         key,
         cli_source: cli.clone(),
@@ -75,6 +78,37 @@ pub(crate) fn cli_label(cli: &CliSource) -> &'static str {
     }
 }
 
+/// Parse an RFC 3339 timestamp into `SystemTime`.
+///
+/// Covers what agents put in ACP `SessionInfo::updated_at` — `Z` and
+/// numeric-offset forms, with or without fractional seconds — and, as a
+/// legacy concession, an offset-less `YYYY-MM-DDTHH:MM:SS`, which is read
+/// as UTC. Returns `None` for malformed input and for anything before the
+/// Unix epoch, so callers can keep treating `SystemTime` as an offset from
+/// `UNIX_EPOCH` (never panics).
+pub(crate) fn parse_iso_to_system_time(s: &str) -> Option<SystemTime> {
+    let s = s.trim();
+    let parsed = OffsetDateTime::parse(s, &Rfc3339)
+        // No `Z` and no `±HH:MM` — assume UTC rather than dropping the value.
+        .or_else(|_| OffsetDateTime::parse(&format!("{s}Z"), &Rfc3339))
+        .ok()?;
+    // `try_from` rejects pre-epoch timestamps. `checked_add` is used because
+    // `SystemTime::from(OffsetDateTime)` is implemented as
+    // `SystemTime::UNIX_EPOCH + duration`, and that `Add` impl panics on
+    // overflow. `time` caps years at 9999 unless the `large-dates` feature is
+    // on, and feature unification puts that outside our control, so fail
+    // closed rather than rely on the cap.
+    let seconds = u64::try_from(parsed.unix_timestamp()).ok()?;
+    SystemTime::UNIX_EPOCH.checked_add(Duration::new(seconds, parsed.nanosecond()))
+}
+
+/// Fallback display label for a session the agent listed without a title:
+/// the CLI name plus the first 8 characters of its session id.
+pub(crate) fn short_id(id: &str, cli: &str) -> String {
+    let head: String = id.chars().take(8).collect();
+    format!("{} {}", cli, head)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -84,7 +118,10 @@ mod tests {
     use std::path::PathBuf;
 
     fn info(id: &str, cwd: &str) -> acp::schema::v1::SessionInfo {
-        acp::schema::v1::SessionInfo::new(acp::schema::v1::SessionId::new(id.to_string()), PathBuf::from(cwd))
+        acp::schema::v1::SessionInfo::new(
+            acp::schema::v1::SessionId::new(id.to_string()),
+            PathBuf::from(cwd),
+        )
     }
 
     #[test]
@@ -133,6 +170,86 @@ mod tests {
             SessionLocation::Host,
             &CliSource::Copilot,
         );
-        assert_eq!(copilot.len(), 1, "the placeholder shape is OpenCode-specific");
+        assert_eq!(
+            copilot.len(),
+            1,
+            "the placeholder shape is OpenCode-specific"
+        );
+    }
+
+    #[test]
+    fn parse_iso_handles_positive_offset() {
+        // 2026-05-27T10:53:09+08:00 is 2026-05-27T02:53:09Z
+        let t1 = parse_iso_to_system_time("2026-05-27T10:53:09+08:00").unwrap();
+        let t2 = parse_iso_to_system_time("2026-05-27T02:53:09Z").unwrap();
+        assert_eq!(t1, t2);
+    }
+
+    #[test]
+    fn parse_iso_handles_negative_offset() {
+        // 2026-05-27T02:53:09-05:00 is 2026-05-27T07:53:09Z
+        let t1 = parse_iso_to_system_time("2026-05-27T02:53:09-05:00").unwrap();
+        let t2 = parse_iso_to_system_time("2026-05-27T07:53:09Z").unwrap();
+        assert_eq!(t1, t2);
+    }
+
+    #[test]
+    fn parse_iso_rejects_pre_1970_years() {
+        assert!(parse_iso_to_system_time("1969-12-31T23:59:59Z").is_none());
+    }
+
+    #[test]
+    fn parse_iso_rejects_invalid_month() {
+        assert!(parse_iso_to_system_time("2026-13-01T00:00:00Z").is_none());
+        assert!(parse_iso_to_system_time("2026-00-01T00:00:00Z").is_none());
+    }
+
+    #[test]
+    fn parse_iso_rejects_invalid_day_for_month() {
+        assert!(parse_iso_to_system_time("2026-02-30T00:00:00Z").is_none());
+        assert!(parse_iso_to_system_time("2026-05-32T00:00:00Z").is_none());
+        assert!(parse_iso_to_system_time("2026-04-31T00:00:00Z").is_none()); // April has 30
+    }
+
+    #[test]
+    fn parse_iso_rejects_invalid_time_components() {
+        assert!(parse_iso_to_system_time("2026-05-28T25:30:00Z").is_none());
+        assert!(parse_iso_to_system_time("2026-05-28T10:60:00Z").is_none());
+        assert!(parse_iso_to_system_time("2026-05-28T10:30:60Z").is_none());
+    }
+
+    #[test]
+    fn parse_iso_accepts_february_29_leap_year() {
+        // 2024 IS a leap year; 2023 is not.
+        assert!(parse_iso_to_system_time("2024-02-29T00:00:00Z").is_some());
+        assert!(parse_iso_to_system_time("2023-02-29T00:00:00Z").is_none());
+    }
+
+    #[test]
+    fn parse_iso_reads_timestamps_without_offset_as_utc() {
+        // Not RFC 3339 (no `Z`, no offset), but accepted by the legacy
+        // hand-rolled parser, so the fallback keeps reading it as UTC.
+        let naive = parse_iso_to_system_time("2026-05-27T10:53:09").unwrap();
+        let utc = parse_iso_to_system_time("2026-05-27T10:53:09Z").unwrap();
+        assert_eq!(naive, utc);
+    }
+
+    #[test]
+    fn parse_iso_preserves_fractional_seconds() {
+        // The conversion builds its own `Duration`, so sub-second precision
+        // has to be carried across explicitly.
+        let whole = parse_iso_to_system_time("2026-06-24T04:42:14Z").unwrap();
+        let frac = parse_iso_to_system_time("2026-06-24T04:42:14.588Z").unwrap();
+        assert_eq!(
+            frac.duration_since(whole).unwrap(),
+            Duration::from_millis(588)
+        );
+    }
+
+    #[test]
+    fn parse_iso_rejects_malformed_input() {
+        assert!(parse_iso_to_system_time("").is_none());
+        assert!(parse_iso_to_system_time("not a timestamp").is_none());
+        assert!(parse_iso_to_system_time("2026-05-27").is_none());
     }
 }

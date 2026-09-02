@@ -41,7 +41,7 @@ auth.login_failed_help_default: "  Druk Enter om weer te probeer, of Esc om teru
 chat.activity_thinking: "Dink na…"
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 chat.welcome_title: "Welkom by Intelligente Terminaal!"
-chat.welcome_disclaimer: "Intelligente Terminaal gebruik AI. Kyk vir foute."
+chat.welcome_disclaimer: "Intelligente Terminaal gebruik AI."
 chat.plan_header: "Plan:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}
@@ -49,6 +49,17 @@ chat.plan_marker_pending: "[ ]"  # {Locked}
 chat.autofix_prompt_label: "Onlangse opdragmislukking outomaties gediagnoseer"
 chat.turn_canceled: "(gekanselleer)"
 chat.turn_executed: "→ uitgevoer: %{title}"
+# Persistent tool-category labels shown after a status marker and before a subject.
+chat.tool_kind.run: "Uitvoer"
+chat.tool_kind.read: "Lees"
+chat.tool_kind.search: "Soek"
+chat.tool_kind.edit: "Wysig"
+chat.tool_kind.delete: "Skrap"
+chat.tool_kind.move: "Skuif"
+chat.tool_kind.fetch: "Haal"
+chat.tool_kind.think: "Dink"
+chat.tool_kind.mode: "Modus"
+chat.tool_kind.other: "Hulpmiddel"
 
 # ── Invoerplekhouers (src/ui/input.rs) ────────────────────────────────────
 input.placeholder.connected: "Vra enigiets, / vir opdragte.."  # {Locked="/"}
@@ -136,8 +147,8 @@ system.resuming_session: "Hervat sessie %{session_id}..."
 system.unknown_command: "Onbekende opdrag \"%{command}\" — as opdrag gestuur. Tik /help vir die lys."
 system.busy_use_stop: "Wag totdat die huidige opdrag klaar is, of gebruik eers /stop."
 system.cannot_focus_session: "Kan nie op sessie %{session_id} fokus nie: dit lyk aktief, maar geen paneel-GUID is nog gebind nie. Probeer oor ’n oomblik weer."
-system.cannot_resume_no_load_session: "Kan nie in agentpaneel hervat nie: %{agent} het nie die ACP `loadSession`-vermoë aangekondig nie. Druk Enter (sonder Shift) om eerder in ’n nuwe terminaalpaneel te hervat."
-system.cannot_resume_no_resume_flag: "Kan nie %{agent}-sessie hervat nie: hierdie agent het geen `--resume`-styl vlag nie. Druk Shift+Enter om eerder via ACP binne die agentpaneel te probeer hervat."
+system.cannot_resume_no_load_session: "Kan nie in agentpaneel hervat nie: %{agent} het nie die ACP `loadSession`-vermoë aangekondig nie."
+system.cannot_resume_no_resume_flag: "Kan nie %{agent}-sessie hervat nie: hierdie agent het geen `--resume`-styl vlag nie."
 system.cannot_resume_unknown_agent: "Kan nie sessie %{session_id} hervat nie: die bronagent is onbekend aan hierdie bouweergawe."
 system.cannot_resume_phantom_via_flag: "Kan nie %{agent}-sessie %{session_id} hervat nie: dit is begin maar het nooit enige gesprek opgebou nie, dus sou %{agent} self die hervat verwerp. Verwyder die ry."
 system.cannot_resume_phantom_via_load: "Kan nie %{agent}-sessie %{session_id} hervat nie: dit is begin maar het nooit enige gesprek opgebou nie, dus sou %{agent} die laai verwerp. Verwyder die ry."
@@ -179,7 +190,7 @@ hooks.marketplace_path_stale: "⚠ markpad verouderd"
 hooks.installed_but_disabled: "⚠ geïnstalleer maar gedeaktiveer"
 hooks.not_installed: "✗ nie geïnstalleer nie"
 hooks.uninstall_skipped: "oorgeslaan (CLI nie op PATH nie)"
-hooks.install_attempted: "wt-agent-hooks-installasie probeer (idempotent). Voer `wta hooks status` uit om die resultaat te ondersoek. Spoerlog: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"
+hooks.install_succeeded: "✓ wt-agent-hooks geïnstalleer vir %{clis}"
 # ── Relative time + date formatting (src/ui/agents_view.rs) ─────────────────
 time.just_now: "nou net"
 time.minute_singular: "%{count} minuut gelede"
@@ -216,8 +227,17 @@ system.agent_switch_unavailable: "Agent-oorskakeling is nie beskikbaar buite 'n 
 
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "Kies die model vir hierdie paneel (/model <id> om direk oor te skakel)"  # {Locked="/model","<id>"}
+commands.config.summary: "Stel hierdie agent-sessie op"  # Agent means an AI coding agent; shown for the /config command. {Locked="/config"}
 commands.move.summary: "Skuif hierdie oortjie se agentpaneel (/move <position>)"  # {Locked="/move","<position>"}
 model_picker.title: "Kies model (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "Die gekoppelde agent het geen kiesbare modelle aangekondig nie."
 system.model_set: "Model vir hierdie paneel gestel op %{model}."  # {Locked="%{model}"}
+
+# ── Session configuration picker (src/ui/config_popup.rs) ───────────────────
+# {Locked="↑","↓","Enter","Esc","ACP"} - key names and protocol name
+config_picker.title: "Sessie-konfigurasie (↑ ↓ • Enter • Esc)"
+# Shown when /config is used but the AI agent exposed no ACP select options.
+system.no_config_options: "Die gekoppelde agent het geen konfigureerbare sessie-opsies geadverteer nie."
+# {option} is an Agent-provided option name; {error} is the ACP error.
+system.config_update_failed: "Kon nie %{option} bywerk nie: %{error}"
 system.model_unknown: "Onbekende model %{model} — tik /model om die beskikbare lys te sien."  # {Locked="%{model}","/model"}

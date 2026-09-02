@@ -41,7 +41,7 @@ auth.login_failed_help_default: "  Pulse Enter para reintentar, o Esc para volve
 chat.activity_thinking: "Pensando…"
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 chat.welcome_title: "¡Bienvenido a Terminal Inteligente!"
-chat.welcome_disclaimer: "Terminal Inteligente usa IA. Compruebe si hay errores."
+chat.welcome_disclaimer: "Terminal Inteligente usa IA."
 chat.plan_header: "Plan:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}
@@ -49,6 +49,17 @@ chat.plan_marker_pending: "[ ]"  # {Locked}
 chat.autofix_prompt_label: "Diagnosticado automáticamente un fallo reciente de un comando"
 chat.turn_canceled: "(cancelado)"
 chat.turn_executed: "→ ejecutado: %{title}"
+# Persistent tool-category labels shown after a status marker and before a subject.
+chat.tool_kind.run: "Ejecutar"
+chat.tool_kind.read: "Leer"
+chat.tool_kind.search: "Buscar"
+chat.tool_kind.edit: "Editar"
+chat.tool_kind.delete: "Eliminar"
+chat.tool_kind.move: "Mover"
+chat.tool_kind.fetch: "Obtener"
+chat.tool_kind.think: "Pensar"
+chat.tool_kind.mode: "Modo"
+chat.tool_kind.other: "Herramienta"
 
 # ── Marcadores de posición de entrada (src/ui/input.rs) ────────────────────────────────────────────
 input.placeholder.connected: "Pregunte lo que sea, / para comandos.."  # {Locked="/"}
@@ -134,8 +145,8 @@ system.resuming_session: "Reanudando la sesión %{session_id}..."
 system.unknown_command: "Comando desconocido \"%{command}\" — enviado como indicación. Escriba /help para ver la lista."
 system.busy_use_stop: "Espere a que termine la indicación actual, o use /stop primero."
 system.cannot_focus_session: "No se puede enfocar la sesión %{session_id}: parece activa, pero aún no hay ningún GUID de panel enlazado. Vuelva a intentarlo dentro de un momento."
-system.cannot_resume_no_load_session: "No se puede reanudar en el panel de agente: %{agent} no anunció la funcionalidad ACP `loadSession`. Presione Enter (sin Shift) para reanudar en un nuevo panel de terminal."
-system.cannot_resume_no_resume_flag: "No se puede reanudar la sesión de %{agent}: este agente no tiene una marca de estilo `--resume`. Presione Shift+Enter para intentar reanudar dentro del panel de agente mediante ACP."
+system.cannot_resume_no_load_session: "No se puede reanudar en el panel de agente: %{agent} no anunció la funcionalidad ACP `loadSession`."
+system.cannot_resume_no_resume_flag: "No se puede reanudar la sesión de %{agent}: este agente no tiene una marca de estilo `--resume`."
 system.cannot_resume_unknown_agent: "No se puede reanudar la sesión %{session_id}: su agente de origen es desconocido para esta compilación."
 system.cannot_resume_phantom_via_flag: "No se puede reanudar la sesión de %{agent} %{session_id}: se inició, pero nunca acumuló ninguna conversación, por lo que %{agent} rechazaría la reanudación. Quitando la fila."
 system.cannot_resume_phantom_via_load: "No se puede reanudar la sesión de %{agent} %{session_id}: se inició, pero nunca acumuló ninguna conversación, por lo que %{agent} rechazaría la carga. Quitando la fila."
@@ -177,7 +188,7 @@ hooks.marketplace_path_stale: "⚠ Ruta del marketplace obsoleta"
 hooks.installed_but_disabled: "⚠ Instalado pero deshabilitado"
 hooks.not_installed: "✗ No instalado"
 hooks.uninstall_skipped: "Omitido (CLI no está en el PATH)"
-hooks.install_attempted: "Instalación de wt-agent-hooks intentada (idempotente). Ejecute `wta hooks status` para inspeccionar el resultado. Registro de seguimiento: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"
+hooks.install_succeeded: "✓ wt-agent-hooks instalado para %{clis}"
 
 # ── Relative time + date formatting (src/ui/agents_view.rs) ─────────────────
 time.just_now: "ahora mismo"
@@ -215,8 +226,17 @@ system.agent_switch_unavailable: "El cambio de agente no está disponible fuera 
 
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "Elija el modelo para este panel (/model <id> para cambiar directamente)"  # {Locked="/model","<id>"}
+commands.config.summary: "Configurar esta sesión del agente"  # Agent means an AI coding agent; shown for the /config command. {Locked="/config"}
 commands.move.summary: "Mover el panel del agente de esta pestaña (/move <position>)"  # {Locked="/move","<position>"}
 model_picker.title: "Seleccionar modelo (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "El agente conectado no anunció ningún modelo seleccionable."
 system.model_set: "El modelo para este panel se ha establecido en %{model}."  # {Locked="%{model}"}
+
+# ── Session configuration picker (src/ui/config_popup.rs) ───────────────────
+# {Locked="↑","↓","Enter","Esc","ACP"} - key names and protocol name
+config_picker.title: "Configuración de la sesión (↑ ↓ • Enter • Esc)"
+# Shown when /config is used but the AI agent exposed no ACP select options.
+system.no_config_options: "El agente conectado no anunció ninguna opción de sesión configurable."
+# {option} is an Agent-provided option name; {error} is the ACP error.
+system.config_update_failed: "Error al actualizar %{option}: %{error}"
 system.model_unknown: "Modelo desconocido %{model} — escriba /model para ver la lista disponible."  # {Locked="%{model}","/model"}

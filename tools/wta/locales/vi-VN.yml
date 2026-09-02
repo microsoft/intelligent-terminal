@@ -41,7 +41,7 @@ auth.login_failed_help_default: "  Nhấn Enter để thử lại hoặc Esc đ�
 chat.activity_thinking: "Đang suy nghĩ…"
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 chat.welcome_title: "Chào mừng bạn đến Đầu cuối thông minh!"
-chat.welcome_disclaimer: "Đầu cuối thông minh sử dụng AI. Hãy kiểm tra lỗi."
+chat.welcome_disclaimer: "Đầu cuối thông minh sử dụng AI."
 chat.plan_header: "Kế hoạch:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}
@@ -49,6 +49,17 @@ chat.plan_marker_pending: "[ ]"  # {Locked}
 chat.autofix_prompt_label: "Đã tự động chẩn đoán một lỗi lệnh gần đây"
 chat.turn_canceled: "(đã hủy)"
 chat.turn_executed: "→ đã thực thi: %{title}"
+# Nhãn danh mục công cụ cố định, hiển thị sau dấu trạng thái và trước đối tượng.
+chat.tool_kind.run: "Chạy"
+chat.tool_kind.read: "Đọc"
+chat.tool_kind.search: "Tìm kiếm"
+chat.tool_kind.edit: "Chỉnh sửa"
+chat.tool_kind.delete: "Xóa"
+chat.tool_kind.move: "Di chuyển"
+chat.tool_kind.fetch: "Truy xuất"
+chat.tool_kind.think: "Suy luận"
+chat.tool_kind.mode: "Chế độ"
+chat.tool_kind.other: "Công cụ"
 
 # ── Input placeholders (src/ui/input.rs) ────────────────────────────────────
 input.placeholder.connected: "Hỏi bất cứ điều gì, / cho lệnh.."  # {Locked="/"}
@@ -134,8 +145,8 @@ system.resuming_session: "Đang tiếp tục phiên %{session_id}..."
 system.unknown_command: "Lệnh không xác định \"%{command}\" — đã gửi dưới dạng lời nhắc. Nhập /help để xem danh sách."  # {Locked="/help"}
 system.busy_use_stop: "Hãy đợi lời nhắc hiện tại hoàn tất, hoặc chạy /stop trước."  # {Locked="/stop"}
 system.cannot_focus_session: "Không thể tập trung vào phiên %{session_id}: phiên có vẻ đang hoạt động nhưng chưa có GUID bảng nào được liên kết. Hãy thử lại sau giây lát."
-system.cannot_resume_no_load_session: "Không thể tiếp tục trong bảng tác nhân: %{agent} không quảng bá khả năng ACP `loadSession`. Thay vào đó, nhấn Enter (không nhấn Shift) để tiếp tục trong bảng terminal mới."  # {Locked="ACP","loadSession","Enter","Shift"}
-system.cannot_resume_no_resume_flag: "Không thể tiếp tục phiên %{agent}: tác nhân này không có cờ kiểu `--resume`. Nhấn Shift+Enter để thử tiếp tục bên trong bảng tác nhân thông qua ACP."  # {Locked="--resume","Shift","Enter","ACP"}
+system.cannot_resume_no_load_session: "Không thể tiếp tục trong bảng tác nhân: %{agent} không quảng bá khả năng ACP `loadSession`."  # {Locked="ACP","loadSession"}
+system.cannot_resume_no_resume_flag: "Không thể tiếp tục phiên %{agent}: tác nhân này không có cờ kiểu `--resume`."  # {Locked="--resume"}
 system.cannot_resume_unknown_agent: "Không thể tiếp tục phiên %{session_id}: tác nhân nguồn của phiên không được bản dựng này nhận dạng."
 system.cannot_resume_phantom_via_flag: "Không thể tiếp tục phiên %{agent} %{session_id}: phiên đã được khởi tạo nhưng chưa từng tích lũy cuộc trò chuyện nào, nên chính %{agent} sẽ từ chối tiếp tục. Đang xóa hàng."
 system.cannot_resume_phantom_via_load: "Không thể tiếp tục phiên %{agent} %{session_id}: phiên đã được khởi tạo nhưng chưa từng tích lũy cuộc trò chuyện nào, nên %{agent} sẽ từ chối tải. Đang xóa hàng."
@@ -177,7 +188,7 @@ hooks.marketplace_path_stale: "⚠ đường dẫn marketplace đã cũ"
 hooks.installed_but_disabled: "⚠ đã cài đặt nhưng bị tắt"
 hooks.not_installed: "✗ chưa cài đặt"
 hooks.uninstall_skipped: "đã bỏ qua (CLI không nằm trong PATH)"
-hooks.install_attempted: "Đã thử cài đặt wt-agent-hooks (idempotent). Chạy `wta hooks status` để kiểm tra kết quả. Nhật ký: %LOCALAPPDATA%\\IntelligentTerminal\\logs\\wta-install-hooks.log"
+hooks.install_succeeded: "✓ wt-agent-hooks đã cài đặt cho %{clis}"
 
 # ── Relative time and date formatting ─────────────────────────────────────
 time.just_now: "vừa xong"
@@ -215,8 +226,17 @@ system.agent_switch_unavailable: "Tính năng chuyển đổi agent không khả
 
 # ── Model picker (/model) ───────────────────────────────────────────────────
 commands.model.summary: "Chọn mô hình cho bảng này (/model <id> để chuyển trực tiếp)"  # {Locked="/model","<id>"}
+commands.config.summary: "Cấu hình phiên agent này"  # Agent means an AI coding agent; shown for the /config command. {Locked="/config"}
 commands.move.summary: "Di chuyển bảng tác nhân AI của tab này (/move <position>)"  # {Locked="/move","<position>"}
 model_picker.title: "Chọn mô hình (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "Tác nhân AI đã kết nối không quảng bá bất kỳ mô hình nào có thể chọn."
 system.model_set: "Mô hình cho bảng này được đặt thành %{model}."  # {Locked="%{model}"}
+
+# ── Session configuration picker (src/ui/config_popup.rs) ───────────────────
+# {Locked="↑","↓","Enter","Esc","ACP"} - key names and protocol name
+config_picker.title: "Cấu hình phiên (↑ ↓ • Enter • Esc)"
+# Shown when /config is used but the AI agent exposed no ACP select options.
+system.no_config_options: "Agent được kết nối không quảng cáo bất kỳ tùy chọn phiên nào có thể cấu hình."
+# {option} is an Agent-provided option name; {error} is the ACP error.
+system.config_update_failed: "Không thể cập nhật %{option}: %{error}"
 system.model_unknown: "Mô hình không xác định %{model} — nhập /model để xem danh sách khả dụng."  # {Locked="%{model}","/model"}
