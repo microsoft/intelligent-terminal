@@ -10686,6 +10686,95 @@ fn double_click_in_input_dialog_preserves_word_selection() {
 }
 
 #[test]
+fn ctrl_a_selects_current_rendered_frame_without_altering_input() {
+    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+
+    let mut app = test_app();
+    app.state = ConnectionState::Connected;
+    app.current_tab_mut().completed_turns.push(CompletedTurn {
+        prompt: "SELECT_ALL_PROMPT".into(),
+        details: vec![ChatMessage::Agent("SELECT_ALL_REPLY".into())],
+        expanded: true,
+        trailing_marker: None,
+    });
+    app.current_tab_mut().input = "SELECT_ALL_DRAFT".into();
+    let rendered = render_to_text(&mut app, 80, 16);
+    assert!(rendered.contains("SELECT_ALL_PROMPT"));
+    assert!(rendered.contains("SELECT_ALL_REPLY"));
+    assert!(rendered.contains("SELECT_ALL_DRAFT"));
+
+    app.handle_event(AppEvent::Key(KeyEvent::new(
+        KeyCode::Char('a'),
+        KeyModifiers::CONTROL,
+    )));
+
+    let selected = app
+        .text_selection
+        .selected_text()
+        .expect("plain Ctrl+A must select the current rendered frame");
+    assert!(selected.contains("SELECT_ALL_PROMPT"));
+    assert!(selected.contains("SELECT_ALL_REPLY"));
+    assert!(selected.contains("SELECT_ALL_DRAFT"));
+    assert_eq!(app.current_tab().input, "SELECT_ALL_DRAFT");
+
+    app.handle_event(AppEvent::Key(KeyEvent::new(
+        KeyCode::Char('a'),
+        KeyModifiers::CONTROL | KeyModifiers::SHIFT,
+    )));
+    assert!(
+        app.text_selection.selected_text().is_none(),
+        "Ctrl+Shift+A must remain on the generic TerminalControl select-all path",
+    );
+}
+
+#[cfg(windows)]
+#[test]
+fn right_click_copies_and_clears_ctrl_a_selection() {
+    use crossterm::event::{
+        KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEvent, MouseEventKind,
+    };
+
+    let _clipboard_guard = crate::clipboard_image::CLIPBOARD_TEST_LOCK
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let original_clipboard = crate::win32::read_paste_string_from_clipboard().ok();
+    let mut app = test_app();
+    app.state = ConnectionState::Connected;
+    app.current_tab_mut().input = "SELECT_ALL_RIGHT_CLICK".into();
+    render_to_text(&mut app, 80, 16);
+    app.handle_event(AppEvent::Key(KeyEvent::new(
+        KeyCode::Char('a'),
+        KeyModifiers::CONTROL,
+    )));
+    assert!(app
+        .text_selection
+        .selected_text()
+        .is_some_and(|text| text.contains("SELECT_ALL_RIGHT_CLICK")));
+
+    crate::win32::copy_text_to_clipboard("SELECT_ALL_RIGHT_CLICK_SENTINEL")
+        .expect("clipboard setup must succeed");
+    app.handle_event(AppEvent::Mouse(MouseEvent {
+        kind: MouseEventKind::Down(MouseButton::Right),
+        column: 0,
+        row: 0,
+        modifiers: KeyModifiers::NONE,
+    }));
+
+    assert!(crate::win32::read_paste_string_from_clipboard()
+        .expect("right-click copy must be readable")
+        .contains("SELECT_ALL_RIGHT_CLICK"));
+    assert!(app.text_selection.selected_text().is_none());
+    assert!(app
+        .transient_hint
+        .as_ref()
+        .is_some_and(|(hint, _)| hint == &t!("system.selection_copied")));
+    if let Some(original_clipboard) = original_clipboard {
+        crate::win32::copy_text_to_clipboard(&original_clipboard)
+            .expect("original clipboard text must be restored");
+    }
+}
+
+#[test]
 fn completed_turn_user_input_multi_click_preserves_turn_state_and_text_selection() {
     use crossterm::event::{KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
 

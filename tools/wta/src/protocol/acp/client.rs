@@ -86,6 +86,8 @@ pub struct PromptSubmission {
     /// the agent advertised `promptCapabilities.image`). Empty for the common
     /// text-only and all auto-fix prompts.
     pub images: Vec<crate::clipboard_image::PastedImage>,
+    is_byok: bool,
+    agent_id: String,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -370,6 +372,8 @@ impl PromptSubmission {
             autofix_text_kind,
             agent_command: false,
             images: Vec::new(),
+            is_byok: false,
+            agent_id: String::new(),
         }
     }
 
@@ -379,6 +383,24 @@ impl PromptSubmission {
 
     pub fn is_agent_command(&self) -> bool {
         self.agent_command
+    }
+
+    pub fn with_byok(mut self, is_byok: bool) -> Self {
+        self.is_byok = is_byok;
+        self
+    }
+
+    pub fn is_byok(&self) -> bool {
+        self.is_byok
+    }
+
+    pub fn with_agent_id(mut self, agent_id: String) -> Self {
+        self.agent_id = agent_id;
+        self
+    }
+
+    pub fn agent_id(&self) -> &str {
+        &self.agent_id
     }
 
     /// Attach pasted images (Alt+V) to a human-entered prompt.
@@ -4848,6 +4870,8 @@ async fn dispatch_prompt_body(
         prompt.id,
         &prompt.text,
         prompt.submitted_at_unix_s,
+        prompt.is_byok(),
+        prompt.agent_id(),
     );
     let (text, prompt_source, resolved_target_pane) = if prompt.is_agent_command() {
         (prompt.text.clone(), "agent_command".to_string(), None)
@@ -4932,6 +4956,8 @@ async fn dispatch_prompt_body(
             TemplateKind::Planner if prompt.is_agent_command() => "AgentCommand",
             TemplateKind::Planner => "Planner",
         },
+        prompt.is_byok(),
+        prompt.agent_id(),
     );
 
     // Register a cancel oneshot for this prompt. The cancel

@@ -9648,6 +9648,264 @@ async fn refresh_synthetic_titles_from_skips_when_id_absent() {
     );
 }
 
+// ── refresh_titles_from_listing ─────────────────────────────────
+
+/// The reported bug: Copilot reports a session's first user message as its
+/// `session/list` title until it generates a real summary. That echo is an
+/// ordinary non-synthetic title, so `refresh_synthetic_titles_from` skipped the
+/// row forever and the session view kept showing the first message.
+#[tokio::test]
+async fn refresh_titles_from_listing_adopts_changed_real_title() {
+    use crate::agent_sessions::CliSource;
+    use std::collections::HashMap;
+
+    let state = make_state();
+    let mut row = crate::session_registry::SessionInfo::new(
+        acp::schema::v1::SessionId::new("sid-stale".to_string()),
+        std::path::PathBuf::from("/repo/project"),
+    );
+    row.cli_source = Some(CliSource::Copilot);
+    row.title = Some("first user message echoed as a title".to_string());
+    state.registry.upsert(row).await;
+
+    let titles = HashMap::from([(
+        "sid-stale".to_string(),
+        "Check Copilot Resume Hooks".to_string(),
+    )]);
+    assert!(
+        refresh_titles_from_listing(&*state.registry, &titles, Some(&CliSource::Copilot)).await
+    );
+    assert_eq!(
+        state
+            .registry
+            .lookup(&acp::schema::v1::SessionId::new("sid-stale".to_string()))
+            .await
+            .unwrap()
+            .title
+            .as_deref(),
+        Some("Check Copilot Resume Hooks")
+    );
+
+    // Steady state must not report a change, or every poll would broadcast.
+    assert!(
+        !refresh_titles_from_listing(&*state.registry, &titles, Some(&CliSource::Copilot)).await
+    );
+}
+
+#[tokio::test]
+async fn refresh_titles_from_listing_skips_rows_from_another_cli() {
+    use crate::agent_sessions::CliSource;
+    use std::collections::HashMap;
+
+    let state = make_state();
+    let mut other_cli = crate::session_registry::SessionInfo::new(
+        acp::schema::v1::SessionId::new("sid-claude".to_string()),
+        std::path::PathBuf::from("/repo/project"),
+    );
+    other_cli.cli_source = Some(CliSource::Claude);
+    other_cli.title = Some("claude title".to_string());
+    state.registry.upsert(other_cli).await;
+
+    let titles = HashMap::from([("sid-claude".to_string(), "hijacked".to_string())]);
+    assert!(
+        !refresh_titles_from_listing(&*state.registry, &titles, Some(&CliSource::Copilot)).await
+    );
+    assert_eq!(
+        state
+            .registry
+            .lookup(&acp::schema::v1::SessionId::new("sid-claude".to_string()))
+            .await
+            .unwrap()
+            .title
+            .as_deref(),
+        Some("claude title")
+    );
+}
+
+/// Copilot review finding: an unstamped row (`cli_source == None`, which
+/// `row_refreshable_by_connected_agent` deliberately admits) would skip the
+/// provider-specific placeholder check if the row's own stamp were the only
+/// thing consulted. The candidate came from the listing agent, so that agent's
+/// provider is the correct rule to judge it by.
+#[tokio::test]
+async fn refresh_titles_from_listing_judges_unstamped_rows_by_the_listing_cli() {
+    use crate::agent_sessions::CliSource;
+    use std::collections::HashMap;
+
+    let state = make_state();
+    let mut unstamped = crate::session_registry::SessionInfo::new(
+        acp::schema::v1::SessionId::new("sid-unstamped".to_string()),
+        std::path::PathBuf::from("/repo/project"),
+    );
+    assert!(
+        unstamped.cli_source.is_none(),
+        "this test is only meaningful for a row with no cli stamp"
+    );
+    unstamped.title = Some("Real Summary".to_string());
+    state.registry.upsert(unstamped).await;
+
+    let titles = HashMap::from([(
+        "sid-unstamped".to_string(),
+        "New session - 2026-07-23T01:14:00.422Z".to_string(),
+    )]);
+    assert!(
+        !refresh_titles_from_listing(&*state.registry, &titles, Some(&CliSource::OpenCode)).await,
+        "the listing agent's provider must supply the placeholder rule"
+    );
+    assert_eq!(
+        state
+            .registry
+            .lookup(&acp::schema::v1::SessionId::new(
+                "sid-unstamped".to_string()
+            ))
+            .await
+            .unwrap()
+            .title
+            .as_deref(),
+        Some("Real Summary")
+    );
+
+    // The same string is a legitimate title for a CLI that has no such
+    // placeholder convention, so the fallback must not over-reject.
+    assert!(
+        refresh_titles_from_listing(&*state.registry, &titles, Some(&CliSource::Copilot)).await
+    );
+}
+
+/// Authority is the session id, not `SessionInfo::location`. Only the
+/// born-bound path calls `set_location`, so an ordinary `session_hook` row for
+/// a CLI running inside WSL keeps the reducer's default `Host` while its title
+/// lives in the in-distro agent's listing. Gating on `location` would skip
+/// exactly that row forever.
+#[tokio::test]
+async fn refresh_titles_from_listing_retitles_an_unstamped_in_distro_row() {
+    use crate::agent_sessions::{CliSource, SessionLocation};
+    use std::collections::HashMap;
+
+    let state = make_state();
+    let mut hook_row = crate::session_registry::SessionInfo::new(
+        acp::schema::v1::SessionId::new("sid-in-distro".to_string()),
+        std::path::PathBuf::from("/home/dev/repo"),
+    );
+    hook_row.cli_source = Some(CliSource::Copilot);
+    hook_row.title = Some("first user message echoed as a title".to_string());
+    assert_eq!(
+        hook_row.location,
+        SessionLocation::Host,
+        "an ordinary session_hook row is created with the reducer's default"
+    );
+    state.registry.upsert(hook_row).await;
+
+    // The listing comes from the Ubuntu Copilot agent, whose rows would be
+    // stamped `Wsl { Ubuntu }` had they been seeded through `sync_host_history`.
+    let titles = HashMap::from([("sid-in-distro".to_string(), "Real Summary".to_string())]);
+    assert!(
+        refresh_titles_from_listing(&*state.registry, &titles, Some(&CliSource::Copilot)).await
+    );
+    assert_eq!(
+        state
+            .registry
+            .lookup(&acp::schema::v1::SessionId::new(
+                "sid-in-distro".to_string()
+            ))
+            .await
+            .unwrap()
+            .title
+            .as_deref(),
+        Some("Real Summary")
+    );
+}
+
+/// `adopt_agent_title` overwrites unconditionally, so a candidate that must
+/// never be displayed would not merely stick (the pre-`adopt` failure mode) but
+/// actively clobber a good title on every poll. The guard lives at the point of
+/// mutation, not only where `host_titles_via_acp` builds the map.
+#[tokio::test]
+async fn refresh_titles_from_listing_rejects_undisplayable_candidates() {
+    use crate::agent_sessions::CliSource;
+    use std::collections::HashMap;
+
+    let state = make_state();
+    for (id, cli) in [
+        ("sid-echo", CliSource::Copilot),
+        ("sid-placeholder", CliSource::OpenCode),
+        ("sid-empty", CliSource::Copilot),
+    ] {
+        let mut row = crate::session_registry::SessionInfo::new(
+            acp::schema::v1::SessionId::new(id.to_string()),
+            std::path::PathBuf::from("/repo/project"),
+        );
+        row.cli_source = Some(cli);
+        row.title = Some("Real Summary".to_string());
+        state.registry.upsert(row).await;
+    }
+
+    let titles = HashMap::from([
+        (
+            "sid-echo".to_string(),
+            format!(
+                "hi test\n\n{}8A9B4ABA-BEB4-4F94-B0D3-55569420B902)\n```\nPowerShell 7.6.3\n```",
+                crate::session_registry::TERMINAL_CONTEXT_TITLE_MARKER
+            ),
+        ),
+        (
+            "sid-placeholder".to_string(),
+            "New session - 2026-07-23T01:14:00.422Z".to_string(),
+        ),
+        ("sid-empty".to_string(), String::new()),
+    ]);
+
+    // A `None` listing cli is the lenient case that reaches every row, so this
+    // also proves the guard does not depend on the cli gate.
+    assert!(!refresh_titles_from_listing(&*state.registry, &titles, None).await);
+    for id in ["sid-echo", "sid-placeholder", "sid-empty"] {
+        assert_eq!(
+            state
+                .registry
+                .lookup(&acp::schema::v1::SessionId::new(id.to_string()))
+                .await
+                .unwrap()
+                .title
+                .as_deref(),
+            Some("Real Summary"),
+            "{id} must keep its real title"
+        );
+    }
+}
+
+#[tokio::test]
+async fn refresh_titles_from_listing_ignores_unlisted_rows() {
+    use crate::agent_sessions::CliSource;
+
+    let state = make_state();
+    let mut row = crate::session_registry::SessionInfo::new(
+        acp::schema::v1::SessionId::new("sid-unlisted".to_string()),
+        std::path::PathBuf::from("/repo/project"),
+    );
+    row.cli_source = Some(CliSource::Copilot);
+    row.title = Some("kept".to_string());
+    state.registry.upsert(row).await;
+
+    assert!(
+        !refresh_titles_from_listing(
+            &*state.registry,
+            &std::collections::HashMap::new(),
+            Some(&CliSource::Copilot),
+        )
+        .await
+    );
+    assert_eq!(
+        state
+            .registry
+            .lookup(&acp::schema::v1::SessionId::new("sid-unlisted".to_string()))
+            .await
+            .unwrap()
+            .title
+            .as_deref(),
+        Some("kept")
+    );
+}
+
 #[test]
 fn row_refreshable_skips_only_definitively_cross_cli() {
     use crate::agent_sessions::CliSource;

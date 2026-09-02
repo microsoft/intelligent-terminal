@@ -251,7 +251,9 @@ impl App {
         }
 
         let prompt =
-            PromptSubmission::new_autofix_failure(notification.summary.clone(), Some(pane_context));
+            PromptSubmission::new_autofix_failure(notification.summary.clone(), Some(pane_context))
+                .with_byok(self.current_model_is_byok())
+                .with_agent_id(self.current_agent_id.clone());
         let submitted = SubmittedPrompt {
             id: prompt.id,
             text: prompt.text.clone(),

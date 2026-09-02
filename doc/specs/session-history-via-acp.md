@@ -387,8 +387,9 @@ Implemented and verified on the feature branch:
   `spawn_wsl_seed` (async WSL), `host_history_via_acp` → `host_session_list_raw`
   (the `Arc<[SessionInfo]>` 2 s cache), the `sync_host_history` /
   `is_stale_host_history_row` reconcile, `host_titles_via_acp` + the
-  synthetic-title refresh (`refresh_synthetic_titles_from`,
-  `try_refresh_title_via_acp`, `row_refreshable_by_connected_agent`,
+  title refresh (`refresh_synthetic_titles_from`, `try_refresh_title_via_acp`
+  for still-synthetic rows, `refresh_titles_from_listing` for rows whose
+  CLI-side title has since changed, `row_refreshable_by_connected_agent`,
   `host_list_cache`).
 - The on-disk loaders, title parsers, the resume phantom-guard, **and the live
   phantom-prune flow** were deleted; `session_watcher` was kept. Phantom cleanup

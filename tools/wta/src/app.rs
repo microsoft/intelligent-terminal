@@ -1913,6 +1913,15 @@ impl App {
         })
     }
 
+    fn current_model_is_byok(&self) -> bool {
+        self.selected_custom_model_id().is_some()
+            || self.current_model_id.as_deref().is_some_and(|selected| {
+                self.custom_model_catalog
+                    .iter()
+                    .any(|model| model.selection_id == selected)
+            })
+    }
+
     fn resolve_current_model_id(&self, agent_model_id: Option<String>) -> Option<String> {
         self.selected_custom_model_id()
             .map(str::to_string)
@@ -2763,6 +2772,18 @@ impl App {
         };
         let action = decide_enter_action(&row);
 
+        match &action {
+            EnterAction::ResumeInAgentPane { .. } => crate::telemetry::log_session_resume_invoked(
+                "AgentPane",
+                known_cli_id(&s.cli_source).unwrap_or("custom"),
+            ),
+            EnterAction::ResumeCliFlag { .. } => crate::telemetry::log_session_resume_invoked(
+                "Cli",
+                known_cli_id(&s.cli_source).unwrap_or("custom"),
+            ),
+            EnterAction::Focus { .. } | EnterAction::NotResumable { .. } => {}
+        }
+
         tracing::info!(
             target: "agents_view",
             key = %s.key,
@@ -3233,6 +3254,7 @@ impl App {
     }
 
     pub(crate) fn open_agents_view_for_tab(&mut self, tab_id: String) {
+        crate::telemetry::log_sessions_view_opened();
         {
             let tab = self.tab_mut(&tab_id);
             tab.agents_view.search_query.clear();
@@ -5295,6 +5317,7 @@ impl App {
     /// for clearing the input and cursor before calling this.
     fn handle_slash_command(&mut self, cmd: ParsedCommand) {
         let in_flight = self.current_tab().turn.is_in_flight();
+        crate::telemetry::log_slash_command_invoked(cmd.spec.name);
         tracing::info!(
             target: "slash_cmd",
             name = cmd.spec.name,
@@ -5468,7 +5491,9 @@ impl App {
         };
 
         let hint = hint.trim().to_string();
-        let prompt = PromptSubmission::new_autofix(hint.clone(), Some(pane_context));
+        let prompt = PromptSubmission::new_autofix(hint.clone(), Some(pane_context))
+            .with_byok(self.current_model_is_byok())
+            .with_agent_id(self.current_agent_id.clone());
         let submitted = SubmittedPrompt {
             id: prompt.id,
             text: prompt.text.clone(),

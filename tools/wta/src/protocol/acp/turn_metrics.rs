@@ -118,6 +118,8 @@ struct ActivePromptTiming {
     permission_requested_at_unix_s: Option<f64>,
     permission_wait_total_s: f64,
     event_count: u64,
+    is_byok: bool,
+    agent_id: String,
 }
 
 /// Concurrent-prompt-aware timing tracker. With M3's spawn-per-prompt
@@ -138,6 +140,8 @@ impl PromptTimingState {
         prompt_id: u64,
         prompt_text: &str,
         submitted_at_unix_s: f64,
+        is_byok: bool,
+        agent_id: &str,
     ) {
         let now = now_unix_s();
         let preview = prompt_preview(prompt_text);
@@ -164,6 +168,8 @@ impl PromptTimingState {
                 permission_requested_at_unix_s: None,
                 permission_wait_total_s: 0.0,
                 event_count: 0,
+                is_byok,
+                agent_id: agent_id.to_string(),
             },
         );
         drop(active);
@@ -251,6 +257,7 @@ impl PromptTimingState {
                 let submitted_at_unix_s = active.submitted_at_unix_s;
                 let prompt_sent_at = active.prompt_sent_at_unix_s;
                 let prompt_sent_at_mono = active.prompt_sent_at_mono;
+                let agent_id = active.agent_id.clone();
                 let details = format!(
                     "text_len={} since_prompt_sent={} first_visible_text_gap={} gap_source={}",
                     text_len,
@@ -274,6 +281,7 @@ impl PromptTimingState {
                         session_id,
                         first_token_latency_ms,
                         u32::try_from(text_len).unwrap_or(u32::MAX),
+                        &agent_id,
                     );
                 }
             }
@@ -500,6 +508,8 @@ impl PromptTimingState {
                 total_duration_ms,
                 active_prompt.bytes_read_after_prompt as u64,
                 success,
+                active_prompt.is_byok,
+                &active_prompt.agent_id,
             );
         }
 

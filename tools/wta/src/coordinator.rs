@@ -521,6 +521,9 @@ async fn execute_choice(
                     "open_and_send resolved target={} pane_id={}",
                     target_label, pane_id
                 ));
+                if runtime.is_some() {
+                    crate::telemetry::log_delegate_invoked("Agent");
+                }
                 let _ = event_tx.send(AppEvent::ExecutionInfo(format!(
                     "Opened {} pane {}.",
                     target_label, pane_id
