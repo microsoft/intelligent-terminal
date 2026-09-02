@@ -4079,6 +4079,39 @@ async fn session_notification_tool_call_update_surfaces_raw_output_message() {
     }
 }
 
+#[tokio::test]
+async fn session_notification_tool_call_update_surfaces_stdout_and_nonzero_exit() {
+    let (client, mut rx) = bare_client();
+    client
+        .session_notification(notif(
+            "s1",
+            acp::schema::v1::SessionUpdate::ToolCallUpdate(acp::schema::v1::ToolCallUpdate::new(
+                acp::schema::v1::ToolCallId::new("tc-1"),
+                acp::schema::v1::ToolCallUpdateFields::new()
+                    .status(acp::schema::v1::ToolCallStatus::Completed)
+                    .raw_output(serde_json::json!({
+                        "stdout": "TOOL_OUTPUT_MARKER",
+                        "exitCode": 7
+                    })),
+            )),
+        ))
+        .await
+        .unwrap();
+
+    match rx.try_recv() {
+        Ok(AppEvent::ToolCallUpdate {
+            output, exit_code, ..
+        }) => {
+            assert_eq!(
+                output.expect("expected stdout update").text,
+                "TOOL_OUTPUT_MARKER"
+            );
+            assert_eq!(exit_code, Some(7));
+        }
+        _ => panic!("expected ToolCallUpdate"),
+    }
+}
+
 /// A `ToolCallUpdate` with no supported fields is dropped.
 #[tokio::test]
 async fn session_notification_tool_call_update_without_status_is_dropped() {

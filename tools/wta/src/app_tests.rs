@@ -12787,7 +12787,7 @@ fn tool_call_partial_update_preserves_status_and_replaces_reported_output() {
         session_id: DEFAULT_TAB_ID.into(),
         id: "tool".into(),
         title: Some("bash".into()),
-        status: None,
+        status: Some("Completed".into()),
         kind: Some(ToolCallKind::Execute),
         location: Some("cargo test".into()),
         location_is_command: true,
@@ -12798,7 +12798,7 @@ fn tool_call_partial_update_preserves_status_and_replaces_reported_output() {
         content: None,
         locations: None,
         cwd: Some(expected_cwd.into()),
-        exit_code: None,
+        exit_code: Some(7),
     });
 
     let Some(ChatMessage::ToolCall {
@@ -12808,13 +12808,14 @@ fn tool_call_partial_update_preserves_status_and_replaces_reported_output() {
         location,
         cwd,
         output,
+        exit_code,
         ..
     }) = app.current_tab().messages.last()
     else {
         panic!("expected tool-call card");
     };
     assert_eq!(title, "bash");
-    assert_eq!(status, "InProgress");
+    assert_eq!(status, "Completed");
     assert_eq!(*kind, ToolCallKind::Execute);
     assert_eq!(location.as_deref(), Some("cargo test"));
     assert_eq!(cwd.as_deref(), Some(expected_cwd));
@@ -12822,6 +12823,8 @@ fn tool_call_partial_update_preserves_status_and_replaces_reported_output() {
         output.as_ref().map(|output| output.text.as_str()),
         Some("running tests")
     );
+    assert_eq!(*exit_code, Some(7));
+    assert!(render_to_text(&mut app, 80, 20).contains("running tests"));
 }
 
 #[test]
