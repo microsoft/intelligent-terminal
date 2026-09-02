@@ -204,10 +204,10 @@
                               HorizontalAlignment="Stretch"
                               HorizontalContentAlignment="Stretch"
                               VerticalScrollBarVisibility="Auto">
-                    <StackPanel Spacing="4"
-                                Width="{Binding ActualWidth, ElementName=SettingsFormScroller}"
-                                MaxWidth="{StaticResource StandardControlMaxWidth}"
-                                HorizontalAlignment="Center">
+                    <Grid>
+                        <StackPanel Spacing="4"
+                                    MaxWidth="{StaticResource StandardControlMaxWidth}"
+                                    HorizontalAlignment="Stretch">
                         <!--  Agent  -->
                         <Border Background="{ThemeResource ExpanderHeaderBackground}"
                                 BorderBrush="{ThemeResource ExpanderHeaderBorderBrush}"
@@ -299,8 +299,8 @@
                                 Padding="16,12">
                             <Grid ColumnSpacing="24">
                                 <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="3*" />
+                                    <ColumnDefinition Width="2*" />
                                 </Grid.ColumnDefinitions>
                                 <StackPanel Grid.Column="0" Spacing="2">
                                     <TextBlock x:Uid="FreOverlay_AutoErrorHandlingLabel"
@@ -341,8 +341,7 @@
                                 </StackPanel>
                                 <ComboBox x:Name="AutoErrorHandlingComboBox"
                                           Grid.Column="1"
-                                          Width="400"
-                                          HorizontalAlignment="Right"
+                                          HorizontalAlignment="Stretch"
                                           VerticalAlignment="Center"
                                           SelectionChanged="_OnAutoErrorHandlingSelectionChanged" />
                             </Grid>
@@ -471,7 +470,8 @@
                                               HorizontalAlignment="Right" MinWidth="0" />
                             </Grid>
                         </Border>
-                    </StackPanel>
+                        </StackPanel>
+                    </Grid>
                 </ScrollViewer>
 
                 <!--  "Saving / installing in progress" overlay. Sits in
