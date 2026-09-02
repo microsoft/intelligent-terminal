@@ -153,7 +153,6 @@ system.cannot_resume_phantom_via_load: "Tidak dapat menyambung semula sesi %{age
 system.fallback.this_agent: "ejen ini"
 system.fallback.connected_agent: "ejen yang disambungkan"
 
-
 # ── Runtime CLI output (src/main.rs) ────────────────────────────────────────
 output.no_windows: "Tiada tetingkap ditemui."
 output.no_tabs: "Tiada tab ditemui."
@@ -229,7 +228,6 @@ system.agent_switch_unavailable: "Peralihan ejen tidak tersedia di luar tab Wind
 commands.model.summary: "Pilih model untuk anak tetingkap ini (/model <id> untuk menukar terus)"  # {Locked="/model","<id>"}
 commands.config.summary: "Konfigurasi sesi ejen ini"  # Agent means an AI coding agent; shown for the /config command. {Locked="/config"}
 commands.move.summary: "Alihkan anak tetingkap ejen tab ini (/move <position>)"  # {Locked="/move","<position>"}
-
 model_picker.title: "Pilih model (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "Ejen yang disambungkan tidak mengiklankan sebarang model yang boleh dipilih."
 system.model_set: "Model untuk anak tetingkap ini ditetapkan kepada %{model}."  # {Locked="%{model}"}
@@ -241,4 +239,5 @@ config_picker.title: "Konfigurasi sesi (↑ ↓ • Enter • Esc)"
 system.no_config_options: "Ejen yang disambungkan tidak mengiklankan sebarang pilihan sesi yang boleh dikonfigurasi."
 # {option} is an Agent-provided option name; {error} is the ACP error.
 system.config_update_failed: "Gagal mengemas kini %{option}: %{error}"
+system.provider_command_blocked_by_policy: "%{command}: Mod Yolo dilumpuhkan oleh dasar organisasi anda."  # {Locked="Yolo","%{command}"} Shown when AllowYoloMode blocks a provider-advertised privileged command.
 system.model_unknown: "Model tidak diketahui %{model} — taip /model untuk melihat senarai yang tersedia."  # {Locked="%{model}","/model"}

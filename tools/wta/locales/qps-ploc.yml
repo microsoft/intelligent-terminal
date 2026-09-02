@@ -155,7 +155,6 @@ system.cannot_resume_phantom_via_load: "[Çåññöţ ŕéśûḿé %{agent} ś�
 system.fallback.this_agent: "[ţĥïś åğéñţ!!]"
 system.fallback.connected_agent: "[ţĥé çöññéçţéď åğéñţ!!!! !!!!]"
 
-
 # ── Runtime CLI output (src/main.rs) ────────────────────────────────────────
 output.no_windows: "[Ñö ŵïñďöŵś ƒöûñď.!!]"
 output.no_tabs: "[Ñö ţåƀś ƒöûñď.!!]"
@@ -230,7 +229,6 @@ system.agent_switch_unavailable: "[Àğéñţ śŵïţçĥïñğ ïś ûñåṽ�
 commands.model.summary: "[Ṗïçķ ţĥé ḿöďéĺ ƒöŕ ţĥïś ṗåñé (/model <id> ţö śŵïţçĥ ďïŕéçţĺÿ)!!!! !!!! !!!! !!!!]"  # {Locked="/model","<id>"}
 commands.config.summary: "[Çöñƒïğûŕé ţĥïś åğéñţ śéśśïöñ!!!! !!!! !!!! !!!!]"  # Agent means an AI coding agent; shown for the /config command. {Locked="/config"}
 commands.move.summary: "[Ḿöṽé ţĥïś ţåƀ'ś åğéñţ ṗåñé (/move <position>)!!!! !!!! !!!!]"  # {Locked="/move","<position>"}
-
 model_picker.title: "[Ŝéĺéçţ ḿöďéĺ (↑ ↓ • Enter • Esc)!!!! !!!!]"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "[Ţĥé çöññéçţéď åğéñţ ďïď ñöţ åďṽéŕţïśé åñÿ śéĺéçţåƀĺé ḿöďéĺś.!!!! !!!! !!!! !!!!]"
 system.model_set: "[Ḿöďéĺ ƒöŕ ţĥïś ṗåñé śéţ ţö %{model}.!!!! !!!! !!!!]"  # {Locked="%{model}"}
@@ -242,4 +240,5 @@ config_picker.title: "[Śéśśïöñ çöñƒïğûŕåţïöñ (↑ ↓ • En
 system.no_config_options: "[Ţĥé çöññéçţéď åğéñţ ďïď ñöţ åďṽéŕţïśé åñÿ çöñƒïğûŕåƀĺé śéśśïöñ öṗţïöñś.!!!! !!!! !!!! !!!! !!!!]"
 # {option} is an Agent-provided option name; {error} is the ACP error.
 system.config_update_failed: "[ƒåïĺéď ţö ûṗďåţé %{option}: %{error}!!!! !!!! !!!!]"
+system.provider_command_blocked_by_policy: "%{command}: [Yolo ß╕┐├╢─Å├⌐ ├»┼¢ ─Å├»┼¢├Ñ╞Ç─║├⌐─Å ╞Ç├┐ ├┐├╢├╗┼ò ├╢┼ò─ƒ├Ñ├▒├»┼╛├Ñ┼ú├»├╢├▒'┼¢ ß╣ù├╢─║├»├º├┐.!!!! !!!! !!!!]"  # {Locked="Yolo","%{command}"} Shown when AllowYoloMode blocks a provider-advertised privileged command.
 system.model_unknown: "[Ûñķñöŵñ ḿöďéĺ %{model} — ţÿṗé /model ţö śéé ţĥé åṽåïĺåƀĺé ĺïśţ.!!!! !!!! !!!! !!!!]"  # {Locked="%{model}","/model"}

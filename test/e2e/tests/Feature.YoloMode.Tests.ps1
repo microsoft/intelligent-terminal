@@ -228,8 +228,12 @@ Describe 'Feature AllowYoloMode policy' -ForEach $script:PackageCase -Tag 'Featu
                 Should -BeTrue -Because 'the policy check targets Copilot''s advertised command, not ordinary prompt text'
             Clear-AgentInput -App $app -PaneSessionId $agentSession.PaneSessionId | Out-Null
             Send-AgentPrompt -App $app -PaneSessionId $agentSession.PaneSessionId -Text '/allow_all' | Out-Null
+            $policyError = Get-WtaLocalizedTextRegex -Key 'system.provider_command_blocked_by_policy'
+            $policyError = $policyError.Replace(
+                [regex]::Escape('%{command}'),
+                [regex]::Escape('/allow_all'))
             Assert-AgentPaneText -App $app -PaneSessionId $agentSession.PaneSessionId `
-                -Pattern 'AllowYoloMode.*?/allow_all' -TimeoutSec 15
+                -Pattern $policyError -TimeoutSec 15
             $blockedLog = Wait-Until -TimeoutSec 15 -IntervalSec 0.5 `
                 -Because 'the helper to record that policy suppressed the provider command before ACP' -Condition {
                     $log = Get-ItLogText -App $app -Name 'wta-main_helper-*.log' -SinceStart

@@ -1613,8 +1613,8 @@ async fn policy_block_rejects_copilot_allow_all_agent_command_before_acp() {
             })
             .await
             .expect("timed out waiting for policy rejection");
-            assert!(message.contains("AllowYoloMode"));
             assert!(message.contains("/allow_all"));
+            assert!(message.contains("Yolo mode is disabled"));
             assert!(h.seen_prompts.lock().unwrap().is_empty());
         })
         .await;

@@ -153,7 +153,6 @@ system.cannot_resume_phantom_via_load: "%{agent} sesión %{session_id} mana kuti
 system.fallback.this_agent: "kay agent"
 system.fallback.connected_agent: "tinkisqa agent"
 
-
 # ── Runtime CLI output (src/main.rs) ────────────────────────────────────────
 output.no_windows: "Mana ventana tarikusqachu."
 output.no_tabs: "Mana ripa tarikusqachu."
@@ -228,7 +227,6 @@ system.agent_switch_unavailable: "Agente cambiaqkuna manam tarikunchu Windows Te
 commands.model.summary: "Kay k'itipaq modelo akllay (/model <id> qillqay kikinmanta t'ikranapaq)"  # {Locked="/model","<id>"}
 commands.config.summary: "Kay agente nisqap t'inkinta allichay"  # Agent means an AI coding agent; shown for the /config command. {Locked="/config"}
 commands.move.summary: "Kay hunt'a k'itipi agente k'itita astay (/move <position>)"  # {Locked="/move","<position>"}
-
 model_picker.title: "Modelo akllay (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "Tinkisqa agente mana ima akllana modelotapas willarqachu."
 system.model_set: "Kay k'itipaq modelo %{model} nisqaman churasqa."  # {Locked="%{model}"}
@@ -240,4 +238,5 @@ config_picker.title: "T'inki allichay (↑ ↓ • Enter • Esc)"
 system.no_config_options: "T'inkisqa agente mana ima allichana t'inki akllanatahpas riqsichimurqanchu."
 # {option} is an Agent-provided option name; {error} is the ACP error.
 system.config_update_failed: "%{option} machkhapay pantarun: %{error}"
+system.provider_command_blocked_by_policy: "%{command}: Yolo mode nisqaqa organizaci├│nniykip pol├¡tica rurasqanrayku deshabilitasqa kachkan."  # {Locked="Yolo","%{command}"} Shown when AllowYoloMode blocks a provider-advertised privileged command.
 system.model_unknown: "Mana riqsisqa modelo %{model} — akllana lista rikunaykipaq /model qillqay."  # {Locked="%{model}","/model"}

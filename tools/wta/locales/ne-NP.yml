@@ -166,7 +166,6 @@ system.cannot_resume_phantom_via_load: "%{agent} सत्र %{session_id} प�
 system.fallback.this_agent: "यो agent"
 system.fallback.connected_agent: "जोडिएको agent"
 
-
 # ── रनटाइम CLI आउटपुट (src/main.rs) ────────────────────────────────────────
 output.no_windows: "कुनै विन्डो भेटिएन।"
 output.no_tabs: "कुनै ट्याब भेटिएन।"
@@ -230,7 +229,6 @@ system.agent_switch_unavailable: "विन्डोज टर्मिनल �
 commands.model.summary: "यो पेनका लागि मोडेल छान्नुहोस् (सिधै बदल्न /model <id>)"  # {Locked="/model","<id>"}
 commands.config.summary: "यो एजेन्ट सत्र कन्फिगर गर्नुहोस्"  # Agent means an AI coding agent; shown for the /config command. {Locked="/config"}
 commands.move.summary: "यो ट्याबको एजेन्ट पेन सार्नुहोस् (/move <position>)"  # {Locked="/move","<position>"}
-
 model_picker.title: "मोडेल छान्नुहोस् (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "जोडिएको agent ले कुनै पनि छान्न मिल्ने मोडेल घोषणा गरेन।"
 system.model_set: "यो पेनका लागि मोडेल %{model} मा सेट गरियो।"  # {Locked="%{model}"}
@@ -242,4 +240,5 @@ config_picker.title: "सत्र कन्फिगरेसन (↑ ↓ • E
 system.no_config_options: "जอดिएको एजेन्टले कुनै कन्फिगर योग्य सत्र विकल्पहरू विज्ञापन गरेन।"
 # {option} is an Agent-provided option name; {error} is the ACP error.
 system.config_update_failed: "%{option} अद्यावधिक गर्न असफल भयो: %{error}"
+system.provider_command_blocked_by_policy: "%{command}: αññαñ¬αñ╛αñêαñéαñòαÑï αñ╕αñéαñ╕αÑìαñÑαñ╛αñòαÑï αñ¿αÑÇαññαñ┐αñòαñ╛ αñòαñ╛αñ░αñú Yolo mode αñ¿αñ┐αñ╖αÑìαñòαÑìαñ░αñ┐αñ» αñùαñ░αñ┐αñÅαñòαÑï αñ¢αÑñ"  # {Locked="Yolo","%{command}"} Shown when AllowYoloMode blocks a provider-advertised privileged command.
 system.model_unknown: "अज्ञात मोडेल %{model} — उपलब्ध सूची हेर्न /model टाइप गर्नुहोस्।"  # {Locked="%{model}","/model"}

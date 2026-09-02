@@ -153,7 +153,6 @@ system.cannot_resume_phantom_via_load: "Não é possível retomar a sessão de %
 system.fallback.this_agent: "este agente"
 system.fallback.connected_agent: "o agente ligado"
 
-
 # ── Saída da CLI em tempo de execução (src/main.rs) ────────────────────────────────────────
 output.no_windows: "Nenhuma janela encontrada."
 output.no_tabs: "Nenhum separador encontrado."
@@ -229,7 +228,6 @@ system.agent_switch_unavailable: "A alternância de agente não está disponíve
 commands.model.summary: "Escolha o modelo para este painel (/model <id> para mudar diretamente)"  # {Locked="/model","<id>"}
 commands.config.summary: "Configurar esta sessão do agente"  # Agent means an AI coding agent; shown for the /config command. {Locked="/config"}
 commands.move.summary: "Mover o painel do agente deste separador (/move <position>)"  # {Locked="/move","<position>"}
-
 model_picker.title: "Selecionar modelo (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "O agente ligado não anunciou nenhum modelo selecionável."
 system.model_set: "Modelo para este painel definido como %{model}."  # {Locked="%{model}"}
@@ -241,4 +239,5 @@ config_picker.title: "Configuração da sessão (↑ ↓ • Enter • Esc)"
 system.no_config_options: "O agente ligado não anunciou quaisquer opções de sessão configuráveis."
 # {option} is an Agent-provided option name; {error} is the ACP error.
 system.config_update_failed: "Falha ao atualizar %{option}: %{error}"
+system.provider_command_blocked_by_policy: "%{command}: O modo Yolo est├í desativado pela pol├¡tica da sua organiza├º├úo."  # {Locked="Yolo","%{command}"} Shown when AllowYoloMode blocks a provider-advertised privileged command.
 system.model_unknown: "Modelo desconhecido %{model} — escreva /model para ver a lista disponível."  # {Locked="%{model}","/model"}

@@ -92,6 +92,16 @@ Describe 'Localized WTA text matching' -Tag 'Unit' {
         $pattern | Should -Not -BeNullOrEmpty
         'Open Tab' | Should -Match $pattern
     }
+
+    It 'matches a substituted provider command in localized policy text' {
+        $pattern = Get-WtaLocalizedTextRegex -Key 'system.provider_command_blocked_by_policy'
+        $pattern = $pattern.Replace(
+            [regex]::Escape('%{command}'),
+            [regex]::Escape('/allow_all'))
+
+        $pattern | Should -Not -BeNullOrEmpty
+        "/allow_all: Yolo mode is disabled by your organization's policy." | Should -Match $pattern
+    }
 }
 
 Describe 'Agent settings cleanup' -Tag 'Unit' {

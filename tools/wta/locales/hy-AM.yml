@@ -180,7 +180,6 @@ system.cannot_resume_phantom_via_load: "Չի կարող վերսկսվել %{age
 system.fallback.this_agent: "այս agent-ը"
 system.fallback.connected_agent: "միացված agent-ը"
 
-
 # ── Runtime CLI output (src/main.rs) ──────────────────────────────────────────────────────────────────
 output.no_windows: "Պատուհաններ չեն գտնվել։"
 output.no_tabs: "Ներդիրներ չեն գտնվել։"
@@ -245,7 +244,6 @@ system.agent_switch_unavailable: "Գործակալի փոխարկումը հաս
 commands.model.summary: "Ընտրեք մոդելն այս վահանակի համար (/model <id>՝ ուղղակիորեն փոխելու համար)"  # {Locked="/model","<id>"}
 commands.config.summary: "Կարգավորել գործակալի այս աշխատաշրջանը"  # Agent means an AI coding agent; shown for the /config command. {Locked="/config"}
 commands.move.summary: "Տեղափոխել այս ներդիրի ագենտի վահանակը (/move <position>)"  # {Locked="/move","<position>"}
-
 model_picker.title: "Ընտրեք մոդելը (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "Միացված ագենտը չհայտարարեց ընտրելի մոդելների մասին։"
 system.model_set: "Այս վահանակի մոդելը սահմանվել է %{model}։"  # {Locked="%{model}"}
@@ -257,4 +255,5 @@ config_picker.title: "Աշխատաշրջանի կարգավորում (↑ ↓ �
 system.no_config_options: "Միացված գործակալը չի հայտարարել աշխատաշրջանի կարգավորելի տարբերակներ:"
 # {option} is an Agent-provided option name; {error} is the ACP error.
 system.config_update_failed: "Չհաջողվեց թարմացնել %{option}-ը. %{error}"
+system.provider_command_blocked_by_policy: "%{command}: Yolo mode-╒¿ ╒í╒╢╒╗╒í╒┐╒╛╒í╒« ╒º ╒▒╒Ñ╓Ç ╒»╒í╒ª╒┤╒í╒»╒Ñ╓Ç╒║╒╕╓é╒⌐╒╡╒í╒╢ ╓ä╒í╒▓╒í╓ä╒í╒»╒í╒╢╒╕╓é╒⌐╒╡╒í╒┤╒ó╓ë"  # {Locked="Yolo","%{command}"} Shown when AllowYoloMode blocks a provider-advertised privileged command.
 system.model_unknown: "Անհայտ մոդել %{model} — մուտքագրեք /model՝ հասանելի ցանկը տեսնելու համար։"  # {Locked="%{model}","/model"}

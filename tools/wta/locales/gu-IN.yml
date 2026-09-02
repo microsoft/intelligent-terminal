@@ -166,7 +166,6 @@ system.cannot_resume_phantom_via_load: "%{agent} સત્ર %{session_id} ફ�
 system.fallback.this_agent: "આ agent"
 system.fallback.connected_agent: "જોડાયેલ agent"
 
-
 # ── રનટાઇમ CLI આઉટપુટ (src/main.rs) ────────────────────────────────────────
 output.no_windows: "કોઈ વિન્ડો મળી નથી."
 output.no_tabs: "કોઈ ટૅબ મળી નથી."
@@ -230,7 +229,6 @@ system.agent_switch_unavailable: "વિન્ડોઝ ટર્મિનલ �
 commands.model.summary: "આ પેન માટે મોડેલ પસંદ કરો (સીધું બદલવા /model <id>)"  # {Locked="/model","<id>"}
 commands.config.summary: "આ એજન્ટ સત્ર કન્ફિગર કરો"  # Agent means an AI coding agent; shown for the /config command. {Locked="/config"}
 commands.move.summary: "આ ટેબની એજન્ટ પેન ખસેડો (/move <position>)"  # {Locked="/move","<position>"}
-
 model_picker.title: "મોડેલ પસંદ કરો (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "જોડાયેલ એજન્ટે કોઈ પસંદ કરી શકાય તેવા મોડેલ જાહેર કર્યા નથી."
 system.model_set: "આ પેન માટેનું મોડેલ %{model} પર સેટ કર્યું."  # {Locked="%{model}"}
@@ -242,4 +240,5 @@ config_picker.title: "સત્ર કન્ફિગરેશન (↑ ↓ • E
 system.no_config_options: "કનેક્ટેડ એજન્ટે કોઈ કન્ફિગર કરી શકાય તેવા સત્ર વિકલ્પોની જાહેરાત કરી નથી."
 # {option} is an Agent-provided option name; {error} is the ACP error.
 system.config_update_failed: "%{option} અપડેટ કરવામાં નિષ્ફળ: %{error}"
+system.provider_command_blocked_by_policy: "%{command}: α¬ñα¬«α¬╛α¬░α½Ç α¬╕α¬éα¬╕α½ìα¬Ñα¬╛α¬¿α½Ç α¬¿α½Çα¬ñα¬┐ α¬ªα½ìα¬╡α¬╛α¬░α¬╛ Yolo mode α¬àα¬òα½ìα¬╖α¬« α¬òα¬░α¬╡α¬╛α¬«α¬╛α¬é α¬åα¬╡α½ìα¬»α½üα¬é α¬¢α½ç."  # {Locked="Yolo","%{command}"} Shown when AllowYoloMode blocks a provider-advertised privileged command.
 system.model_unknown: "અજ્ઞાત મોડેલ %{model} — ઉપલબ્ધ સૂચિ જોવા /model ટાઇપ કરો."  # {Locked="%{model}","/model"}

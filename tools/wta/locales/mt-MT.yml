@@ -153,7 +153,6 @@ system.cannot_resume_phantom_via_load: "Ma tistax tkompli s-sessjoni ta’ %{age
 system.fallback.this_agent: "dan l-aġent"
 system.fallback.connected_agent: "l-aġent konness"
 
-
 # ── Output CLI waqt l-eżekuzzjoni (src/main.rs) ────────────────────────────────────
 output.no_windows: "Ma nstabet l-ebda tieqa."
 output.no_tabs: "Ma nstab l-ebda tab."
@@ -228,7 +227,6 @@ system.agent_switch_unavailable: "L-iswiċċjar tal-aġent mhuwiex disponibbli b
 commands.model.summary: "Agħżel il-mudell għal dan il-pannell (/model <id> biex tibdel direttament)"  # {Locked="/model","<id>"}
 commands.config.summary: "Ikkonfigura din is-sessjoni tal-aġent"  # Agent means an AI coding agent; shown for the /config command. {Locked="/config"}
 commands.move.summary: "Mexxi l-pannell tal-aġent ta' dan it-tab (/move <position>)"  # {Locked="/move","<position>"}
-
 model_picker.title: "Agħżel mudell (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "L-aġent konness ma rreklama l-ebda mudell li jista' jintgħażel."
 system.model_set: "Il-mudell għal dan il-pannell ġie ssettjat għal %{model}."  # {Locked="%{model}"}
@@ -240,4 +238,5 @@ config_picker.title: "Konfigurazzjoni tas-sessjoni (↑ ↓ • Enter • Esc)"
 system.no_config_options: "L-aġent konness ma rreklama l-ebda għażla ta’ sessjoni konfigurabbli."
 # {option} is an Agent-provided option name; {error} is the ACP error.
 system.config_update_failed: "Naqas milli jaġġorna %{option}: %{error}"
+system.provider_command_blocked_by_policy: "%{command}: Il-modalit├á Yolo hija di┼╝attivata mill-politika tal-organizzazzjoni tieg─ºek."  # {Locked="Yolo","%{command}"} Shown when AllowYoloMode blocks a provider-advertised privileged command.
 system.model_unknown: "Mudell mhux magħruf %{model} — ittajpja /model biex tara l-lista disponibbli."  # {Locked="%{model}","/model"}

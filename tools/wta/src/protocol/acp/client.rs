@@ -2404,6 +2404,15 @@ fn log_acp_new_session_result(
     );
 }
 
+fn provider_command_blocked_by_policy(command_name: &str) -> String {
+    let command = format!("/{command_name}");
+    t!(
+        "system.provider_command_blocked_by_policy",
+        command = command.as_str()
+    )
+    .into_owned()
+}
+
 /// Discover the provider-advertised ACP Yolo capability. `SessionAttached`
 /// applies the latest effective state after the App binds the session.
 fn record_native_yolo(resp: &acp::schema::v1::NewSessionResponse, state: &ClientState) {
@@ -4873,8 +4882,7 @@ async fn dispatch_prompt_body(
                 "AllowYoloMode blocked provider command /{}",
                 command_name
             );
-            let message =
-                format!("the AllowYoloMode policy blocks provider command '/{command_name}'");
+            let message = provider_command_blocked_by_policy(command_name);
             let _ = event_tx_task.send(AppEvent::AgentError {
                 session_id: Some(prompt_session_id_str.clone()),
                 failure: AgentFailure::Protocol {
@@ -5045,9 +5053,7 @@ async fn dispatch_prompt_body(
                     let command_name = privileged_agent_command
                         .as_deref()
                         .unwrap_or("privileged command");
-                    let message = format!(
-                        "the AllowYoloMode policy blocks provider command '/{command_name}'"
-                    );
+                    let message = provider_command_blocked_by_policy(command_name);
                     tracing::warn!(
                         target: "yolo",
                         session_id = %prompt_session_id_str,

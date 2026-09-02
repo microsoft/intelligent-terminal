@@ -153,7 +153,6 @@ system.cannot_resume_phantom_via_load: "ไม่สามารถดำเน�
 system.fallback.this_agent: "เอเจนต์นี้"
 system.fallback.connected_agent: "เอเจนต์ที่เชื่อมต่ออยู่"
 
-
 # ── Runtime CLI output (src/main.rs) ────────────────────────────────────────
 output.no_windows: "ไม่พบหน้าต่าง"
 output.no_tabs: "ไม่พบแท็บ"
@@ -229,7 +228,6 @@ system.agent_switch_unavailable: "การสลับตัวแทนจะ�
 commands.model.summary: "เลือกโมเดลสำหรับแผงนี้ (/model <id> เพื่อสลับโดยตรง)"  # {Locked="/model","<id>"}
 commands.config.summary: "กำหนดค่าเซสชันตัวแทนนี้"  # Agent means an AI coding agent; shown for the /config command. {Locked="/config"}
 commands.move.summary: "ย้ายแผงเอเจนต์ของแท็บนี้ (/move <position>)"  # {Locked="/move","<position>"}
-
 model_picker.title: "เลือกโมเดล (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "เอเจนต์ที่เชื่อมต่ออยู่ไม่ได้ประกาศโมเดลที่เลือกได้"
 system.model_set: "ตั้งค่าโมเดลสำหรับแผงนี้เป็น %{model} แล้ว"  # {Locked="%{model}"}
@@ -241,4 +239,5 @@ config_picker.title: "การกำหนดค่าเซสชัน (↑ �
 system.no_config_options: "ตัวแทนที่เชื่อมต่อไม่ได้โฆษณาตัวเลือกเซสชันที่กำหนดค่าได้"
 # {option} is an Agent-provided option name; {error} is the ACP error.
 system.config_update_failed: "อัปเดต %{option} ไม่สำเร็จ: %{error}"
+system.provider_command_blocked_by_policy: "%{command}: α╣éα╕½α╕íα╕ö Yolo α╕ûα╕╣α╕üα╕¢α╕┤α╕öα╣âα╕èα╣ëα╕çα╕▓α╕Öα╣éα╕öα╕óα╕Öα╣éα╕óα╕Üα╕▓α╕óα╕éα╕¡α╕çα╕¡α╕çα╕äα╣îα╕üα╕úα╕äα╕╕α╕ô"  # {Locked="Yolo","%{command}"} Shown when AllowYoloMode blocks a provider-advertised privileged command.
 system.model_unknown: "ไม่รู้จักโมเดล %{model} — พิมพ์ /model เพื่อดูรายการที่มีอยู่"  # {Locked="%{model}","/model"}

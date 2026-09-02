@@ -166,7 +166,6 @@ system.cannot_resume_phantom_via_load: "%{agent} ಸೆಷನ್ %{session_id} �
 system.fallback.this_agent: "ಈ agent"
 system.fallback.connected_agent: "ಸಂಪರ್ಕಿತ agent"
 
-
 # ── ರನ್‌ಟೈಮ್ CLI ಔಟ್‌ಪುಟ್ (src/main.rs) ────────────────────────────────────────
 output.no_windows: "ಯಾವುದೇ ವಿಂಡೋಗಳು ಕಂಡುಬಂದಿಲ್ಲ."
 output.no_tabs: "ಯಾವುದೇ ಟ್ಯಾಬ್‌ಗಳು ಕಂಡುಬಂದಿಲ್ಲ."
@@ -230,7 +229,6 @@ system.agent_switch_unavailable: "ವಿಂಡೋಸ್ ಟರ್ಮಿನಲ್
 commands.model.summary: "ಈ ಪೇನ್‌ಗಾಗಿ ಮಾದರಿಯನ್ನು ಆಯ್ಕೆಮಾಡಿ (ನೇರವಾಗಿ ಬದಲಾಯಿಸಲು /model <id>)"  # {Locked="/model","<id>"}
 commands.config.summary: "ಈ ಏಜೆಂಟ್ ಸೆಷನ್ ಸಂರಚಿಸಿ"  # Agent means an AI coding agent; shown for the /config command. {Locked="/config"}
 commands.move.summary: "ಈ ಟ್ಯಾಬ್‌ನ ಏಜೆಂ트 ಪೇನ್ ಅನ್ನು ಸರಿಸಿ (/move <position>)"  # {Locked="/move","<position>"}
-
 model_picker.title: "ಮಾದರಿ ಆಯ್ಕೆಮಾಡಿ (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "ಸಂಪರ್ಕಿತ ಏಜೆಂಟ್ ಯಾವುದೇ ಆಯ್ಕೆ ಮಾಡಬಹುದಾದ ಮಾದರಿಗಳನ್ನು ಪ್ರಕಟಿಸಲಿಲ್ಲ."
 system.model_set: "ಈ ಪೇನ್‌ಗಾಗಿ ಮಾದರಿಯನ್ನು %{model} ಗೆ ಹೊಂದಿಸಲಾಗಿದೆ."  # {Locked="%{model}"}
@@ -242,4 +240,5 @@ config_picker.title: "ಸೆಷನ್ ಸಂರಚನೆ (↑ ↓ • Enter • 
 system.no_config_options: "ಸಂಪರ್ಕಿತ ಏಜೆಂಟ್ ಯಾವುದೇ ಸಂರಚಿಸಬಹುದಾದ ಸೆಷನ್ ಆಯ್ಕೆಗಳನ್ನು ಜಾಹೀರಾತು ಮಾಡಿಲ್ಲ."
 # {option} is an Agent-provided option name; {error} is the ACP error.
 system.config_update_failed: "%{option} ಅಪ್‌ಡೇಟ್ ಮಾಡಲು ವಿಫಲವಾಗಿದೆ: %{error}"
+system.provider_command_blocked_by_policy: "%{command}: α▓¿α▓┐α▓«α│ìα▓« α▓╕α▓éα▓╕α│ìα▓Ñα│åα▓» α▓¿α│Çα▓ñα▓┐α▓»α▓┐α▓éα▓ª Yolo mode α▓¿α▓┐α▓╖α│ìα▓òα│ìα▓░α▓┐α▓»α▓ùα│èα▓éα▓íα▓┐α▓ªα│å."  # {Locked="Yolo","%{command}"} Shown when AllowYoloMode blocks a provider-advertised privileged command.
 system.model_unknown: "ಅಪರಿಚಿತ ಮಾದರಿ %{model} — ಲಭ್ಯವಿರುವ ಪಟ್ಟಿಯನ್ನು ನೋಡಲು /model ಟೈಪ್ ಮಾಡಿ."  # {Locked="%{model}","/model"}

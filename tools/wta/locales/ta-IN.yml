@@ -166,7 +166,6 @@ system.cannot_resume_phantom_via_load: "%{agent} அமர்வு %{session_id
 system.fallback.this_agent: "இந்த agent"
 system.fallback.connected_agent: "இணைக்கப்பட்ட agent"
 
-
 # ── இயக்க நேர CLI வெளியீடு (src/main.rs) ────────────────────────────────────────
 output.no_windows: "சாளரங்கள் கிடைக்கவில்லை."
 output.no_tabs: "தாவல்கள் கிடைக்கவில்லை."
@@ -230,7 +229,6 @@ system.agent_switch_unavailable: "விண்டோஸ் டெர்மின
 commands.model.summary: "இந்தப் பலகத்திற்கான மாதிரியைத் தேர்ந்தெடுக்கவும் (நேரடியாக மாற்ற /model <id>)"  # {Locked="/model","<id>"}
 commands.config.summary: "இந்த ஏஜென்ட் அமர்வை காண்ஃபிகர் செய்யவும்"  # Agent means an AI coding agent; shown for the /config command. {Locked="/config"}
 commands.move.summary: "இந்தத் தாவலின் ஏஜெண்ட் பலகத்தை நகர்த்தவும் (/move <position>)"  # {Locked="/move","<position>"}
-
 model_picker.title: "மாதிரியைத் தேர்ந்தெடுக்கவும் (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "இணைக்கப்பட்ட ஏஜெண்ட் தேர்ந்தெடுக்கக்கூடிய எந்த மாதிரியையும் அறிவிக்கவில்லை."
 system.model_set: "இந்தப் பலகத்திற்கான மாதிரி %{model} ஆக அமைக்கப்பட்டது."  # {Locked="%{model}"}
@@ -242,4 +240,5 @@ config_picker.title: "அமர்வு காண்ஃபிகரேஷன்
 system.no_config_options: "இணைக்கப்பட்ட ஏஜென்ட் எந்த உள்ளமைக்கக்கூடிய அமர்வு விருப்பங்களையும் விளம்பரம் செய்யவில்லை."
 # {option} is an Agent-provided option name; {error} is the ACP error.
 system.config_update_failed: "%{option} ஐப் புதுப்பிப்பது தோல்வியடைந்தது: %{error}"
+system.provider_command_blocked_by_policy: "%{command}: α«ëα«Öα»ìα«òα«│α»ì α«¿α«┐α«▒α»üα«╡α«⌐α«ñα»ìα«ñα«┐α«⌐α»ì α«òα»èα«│α»ìα«òα»êα«»α«╛α«▓α»ì Yolo mode α««α»üα«ƒα«òα»ìα«òα«¬α»ìα«¬α«ƒα»ìα«ƒα»üα«│α»ìα«│α«ñα»ü."  # {Locked="Yolo","%{command}"} Shown when AllowYoloMode blocks a provider-advertised privileged command.
 system.model_unknown: "அறியப்படாத மாதிரி %{model} — கிடைக்கும் பட்டியலைக் காண /model எனத் தட்டச்சு செய்யவும்."  # {Locked="%{model}","/model"}

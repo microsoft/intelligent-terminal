@@ -162,7 +162,6 @@ system.cannot_resume_phantom_via_load: "Не вдається відновити
 system.fallback.this_agent: "цей агент"
 system.fallback.connected_agent: "підключений агент"
 
-
 # ── Вивід CLI під час виконання (src/main.rs) ────────────────────────────────────────
 output.no_windows: "Вікна не знайдено."
 output.no_tabs: "Вкладки не знайдено."
@@ -229,7 +228,6 @@ system.agent_switch_unavailable: "Перемикання агентів недо
 commands.model.summary: "Виберіть модель для цієї панелі (/model <id> для прямого перемикання)"  # {Locked="/model","<id>"}
 commands.config.summary: "Налаштувати цей сеанс агента"  # Agent means an AI coding agent; shown for the /config command. {Locked="/config"}
 commands.move.summary: "Перемістити панель агента цієї вкладки (/move <position>)"  # {Locked="/move","<position>"}
-
 model_picker.title: "Виберіть модель (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "Підключений агент не оголосив жодної моделі, яку можна вибрати."
 system.model_set: "Модель для цієї панелі встановлено на %{model}."  # {Locked="%{model}"}
@@ -241,4 +239,5 @@ config_picker.title: "Конфігурація сеансу (↑ ↓ • Enter �
 system.no_config_options: "Підключений агент не оголосив жодного налаштовуваного параметра сеансу."
 # {option} is an Agent-provided option name; {error} is the ACP error.
 system.config_update_failed: "Не вдалося оновити %{option}: %{error}"
+system.provider_command_blocked_by_policy: "%{command}: ╨á╨╡╨╢╨╕╨╝ Yolo ╨▓╨╕╨╝╨║╨╜╨╡╨╜╨╛ ╨┐╨╛╨╗╤û╤é╨╕╨║╨╛╤Ä ╨▓╨░╤ê╨╛╤ù ╨╛╤Ç╨│╨░╨╜╤û╨╖╨░╤å╤û╤ù."  # {Locked="Yolo","%{command}"} Shown when AllowYoloMode blocks a provider-advertised privileged command.
 system.model_unknown: "Невідома модель %{model} — введіть /model, щоб переглянути доступний список."  # {Locked="%{model}","/model"}

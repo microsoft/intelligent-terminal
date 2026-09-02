@@ -155,7 +155,6 @@ system.cannot_resume_phantom_via_load: "%{agent}-Sitzung %{session_id} kann nich
 system.fallback.this_agent: "dieser Agent"
 system.fallback.connected_agent: "der verbundene Agent"
 
-
 # ── Laufzeit-CLI-Ausgabe (src/main.rs) ────────────────────────────────────────
 output.no_windows: "Keine Fenster gefunden."
 output.no_tabs: "Keine Registerkarten gefunden."
@@ -231,7 +230,6 @@ system.agent_switch_unavailable: "Das Umschalten des Agenten ist außerhalb eine
 commands.model.summary: "Modell für diesen Bereich auswählen (/model <id> zum direkten Wechseln)"  # {Locked="/model","<id>"}
 commands.config.summary: "Diese Agenten-Sitzung konfigurieren"  # Agent means an AI coding agent; shown for the /config command. {Locked="/config"}
 commands.move.summary: "Agentenbereich dieser Registerkarte verschieben (/move <position>)"  # {Locked="/move","<position>"}
-
 model_picker.title: "Modell auswählen (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "Der verbundene Agent hat keine auswählbaren Modelle angekündigt."
 system.model_set: "Modell für diesen Bereich auf %{model} festgelegt."  # {Locked="%{model}"}
@@ -243,4 +241,5 @@ config_picker.title: "Sitzungskonfiguration (↑ ↓ • Enter • Esc)"
 system.no_config_options: "Der verbundene Agent hat keine konfigurierbaren Sitzungsoptionen angekündigt."
 # {option} is an Agent-provided option name; {error} is the ACP error.
 system.config_update_failed: "%{option} konnte nicht aktualisiert werden: %{error}"
+system.provider_command_blocked_by_policy: "%{command}: Der Yolo-Modus ist durch die Richtlinie Ihrer Organisation deaktiviert."  # {Locked="Yolo","%{command}"} Shown when AllowYoloMode blocks a provider-advertised privileged command.
 system.model_unknown: "Unbekanntes Modell %{model} — geben Sie /model ein, um die verfügbare Liste anzuzeigen."  # {Locked="%{model}","/model"}

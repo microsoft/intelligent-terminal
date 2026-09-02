@@ -153,7 +153,6 @@ system.cannot_resume_phantom_via_load: "Tidak dapat melanjutkan sesi %{agent} %{
 system.fallback.this_agent: "agen ini"
 system.fallback.connected_agent: "agen yang terhubung"
 
-
 # ── Runtime CLI output (src/main.rs) ────────────────────────────────────────
 output.no_windows: "Tidak ada jendela ditemukan."
 output.no_tabs: "Tidak ada tab ditemukan."
@@ -229,7 +228,6 @@ system.agent_switch_unavailable: "Peralihan agen tidak tersedia di luar tab Wind
 commands.model.summary: "Pilih model untuk panel ini (/model <id> untuk beralih langsung)"  # {Locked="/model","<id>"}
 commands.config.summary: "Konfigurasikan sesi agent ini"  # Agent means an AI coding agent; shown for the /config command. {Locked="/config"}
 commands.move.summary: "Pindahkan panel agen tab ini (/move <position>)"  # {Locked="/move","<position>"}
-
 model_picker.title: "Pilih model (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "Agen yang terhubung tidak mengiklankan model apa pun yang dapat dipilih."
 system.model_set: "Model untuk panel ini diatur ke %{model}."  # {Locked="%{model}"}
@@ -241,4 +239,5 @@ config_picker.title: "Konfigurasi sesi (↑ ↓ • Enter • Esc)"
 system.no_config_options: "Agent yang terhubung tidak mengiklankan opsi sesi apa pun yang dapat dikonfigurasi."
 # {option} is an Agent-provided option name; {error} is the ACP error.
 system.config_update_failed: "Gagal memperbarui %{option}: %{error}"
+system.provider_command_blocked_by_policy: "%{command}: Mode Yolo dinonaktifkan oleh kebijakan organisasi Anda."  # {Locked="Yolo","%{command}"} Shown when AllowYoloMode blocks a provider-advertised privileged command.
 system.model_unknown: "Model tidak dikenal %{model} — ketik /model untuk melihat daftar yang tersedia."  # {Locked="%{model}","/model"}

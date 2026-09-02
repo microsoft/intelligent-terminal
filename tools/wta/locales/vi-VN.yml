@@ -153,7 +153,6 @@ system.cannot_resume_phantom_via_load: "Không thể tiếp tục phiên %{agent
 system.fallback.this_agent: "tác nhân này"
 system.fallback.connected_agent: "tác nhân đã kết nối"
 
-
 # ── Runtime CLI output (src/main.rs) ────────────────────────────────────────
 output.no_windows: "Không tìm thấy cửa sổ nào."
 output.no_tabs: "Không tìm thấy tab nào."
@@ -229,7 +228,6 @@ system.agent_switch_unavailable: "Tính năng chuyển đổi agent không khả
 commands.model.summary: "Chọn mô hình cho bảng này (/model <id> để chuyển trực tiếp)"  # {Locked="/model","<id>"}
 commands.config.summary: "Cấu hình phiên agent này"  # Agent means an AI coding agent; shown for the /config command. {Locked="/config"}
 commands.move.summary: "Di chuyển bảng tác nhân AI của tab này (/move <position>)"  # {Locked="/move","<position>"}
-
 model_picker.title: "Chọn mô hình (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "Tác nhân AI đã kết nối không quảng bá bất kỳ mô hình nào có thể chọn."
 system.model_set: "Mô hình cho bảng này được đặt thành %{model}."  # {Locked="%{model}"}
@@ -241,4 +239,5 @@ config_picker.title: "Cấu hình phiên (↑ ↓ • Enter • Esc)"
 system.no_config_options: "Agent được kết nối không quảng cáo bất kỳ tùy chọn phiên nào có thể cấu hình."
 # {option} is an Agent-provided option name; {error} is the ACP error.
 system.config_update_failed: "Không thể cập nhật %{option}: %{error}"
+system.provider_command_blocked_by_policy: "%{command}: Chß║┐ ─æß╗Ö Yolo bß╗ï v├┤ hiß╗çu h├│a bß╗ƒi ch├¡nh s├ích cß╗ºa tß╗ò chß╗⌐c cß╗ºa bß║ín."  # {Locked="Yolo","%{command}"} Shown when AllowYoloMode blocks a provider-advertised privileged command.
 system.model_unknown: "Mô hình không xác định %{model} — nhập /model để xem danh sách khả dụng."  # {Locked="%{model}","/model"}

@@ -153,7 +153,6 @@ system.cannot_resume_phantom_via_load: "%{agent} seanssi %{session_id} ei saa j�
 system.fallback.this_agent: "see agent"
 system.fallback.connected_agent: "ühendatud agent"
 
-
 # ── Runtime CLI output (src/main.rs) ────────────────────────────────────────
 output.no_windows: "Aknaid ei leitud."
 output.no_tabs: "Vahekaarte ei leitud."
@@ -229,7 +228,6 @@ system.agent_switch_unavailable: "Agendi vahetamine pole väljaspool Windows Ter
 commands.model.summary: "Valige selle paani mudel (/model <id> otse vahetamiseks)"  # {Locked="/model","<id>"}
 commands.config.summary: "Konfigureerige see agendiseanss"  # Agent means an AI coding agent; shown for the /config command. {Locked="/config"}
 commands.move.summary: "Teisalda selle vahekaardi agendipaneel (/move <position>)"  # {Locked="/move","<position>"}
-
 model_picker.title: "Valige mudel (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "Ühendatud agent ei reklaaminud ühtegi valitavat mudelit."
 system.model_set: "Selle paani mudeliks määrati %{model}."  # {Locked="%{model}"}
@@ -241,4 +239,5 @@ config_picker.title: "Seansi konfigureerimine (↑ ↓ • Enter • Esc)"
 system.no_config_options: "Ühendatud agent ei teavitanud ühestki konfigureeritavast seansisuvandist."
 # {option} is an Agent-provided option name; {error} is the ACP error.
 system.config_update_failed: "Valiku %{option} värskendamine nurjus: %{error}"
+system.provider_command_blocked_by_policy: "%{command}: Yolo-re┼╛iim on teie asutuse poliitikaga keelatud."  # {Locked="Yolo","%{command}"} Shown when AllowYoloMode blocks a provider-advertised privileged command.
 system.model_unknown: "Tundmatu mudel %{model} — tippige /model saadaolevate mudelite loendi nägemiseks."  # {Locked="%{model}","/model"}

@@ -168,7 +168,6 @@ system.cannot_resume_phantom_via_load: "%{agent} সত্ৰ %{session_id} প�
 system.fallback.this_agent: "এই agent"
 system.fallback.connected_agent: "সংযুক্ত agent"
 
-
 # ── ৰানটাইম CLI আউটপুট (src/main.rs) ────────────────────────────────────────
 output.no_windows: "কোনো উইণ্ড' পোৱা নগল।"
 output.no_tabs: "কোনো টেব পোৱা নগল।"
@@ -232,7 +231,6 @@ system.agent_switch_unavailable: "উইণ্ড’জ টাৰ্মিনে
 commands.model.summary: "এই পেনৰ বাবে মডেল বাছনি কৰক (পোনপটীয়াকৈ সলাবলৈ /model <id>)"  # {Locked="/model","<id>"}
 commands.config.summary: "এই এজেণ্ট ছিচেন কনফিগাৰ কৰক"  # Agent means an AI coding agent; shown for the /config command. {Locked="/config"}
 commands.move.summary: "এই টেবৰ এজেণ্ট পেন স্থানান্তৰ কৰক (/move <position>)"  # {Locked="/move","<position>"}
-
 model_picker.title: "মডেল বাছনি কৰক (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "সংযুক্ত এজেণ্টে কোনো বাছনিযোগ্য মডেল ঘোষণা কৰা নাই।"
 system.model_set: "এই পেনৰ বাবে মডেল %{model} লৈ ছেট কৰা হ'ল।"  # {Locked="%{model}"}
@@ -244,4 +242,5 @@ config_picker.title: "ছিচেন কনফিগাৰেচন (↑ ↓ �
 system.no_config_options: "সংযুক্ত এজেণ্টে কোনো কনফিগাৰযোগ্য ছিচেন বিকল্প বিজ্ঞাপন কৰা নাছিল।"
 # {option} is an Agent-provided option name; {error} is the ACP error.
 system.config_update_failed: "আপডেট কৰিবলৈ ব্যৰ্থ হ’ল %{option}: %{error}"
+system.provider_command_blocked_by_policy: "%{command}: αªåαª¬αºïαª¿αª╛αº░ αª╕αªéαªùαªáαª¿αº░ αª¿αºÇαªñαª┐αª»αª╝αºç Yolo mode αª¿αª┐αª╖αºìαªòαºìαº░αª┐αª»αª╝ αªòαº░αª┐αª¢αºçαÑñ"  # {Locked="Yolo","%{command}"} Shown when AllowYoloMode blocks a provider-advertised privileged command.
 system.model_unknown: "অজ্ঞাত মডেল %{model} — উপলব্ধ তালিকা চাবলৈ /model টাইপ কৰক।"  # {Locked="%{model}","/model"}

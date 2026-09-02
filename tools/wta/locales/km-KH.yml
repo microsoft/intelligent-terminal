@@ -167,7 +167,6 @@ system.cannot_resume_phantom_via_load: "មិនអាចបន្តវគ្�
 system.fallback.this_agent: "អេជេន្ត់នេះ"
 system.fallback.connected_agent: "អេជេន្ត់ដែលបានភ្ជាប់"
 
-
 # ── Runtime CLI output (src/main.rs) ──────────────────────────────────────────────────────────────────
 output.no_windows: "រកមិនឃើញបង្អូច។"
 output.no_tabs: "រកមិនឃើញផ្ទាំង។"
@@ -245,7 +244,6 @@ system.agent_switch_unavailable: "ការផ្លាស់ប្តូរភ�
 commands.model.summary: "ជ្រើសរើសម៉ូដែលសម្រាប់ផ្តាំងនេះ (/model <id> ដើម្បីប្តូរដោយផ្ទាល់)"  # {Locked="/model","<id>"}
 commands.config.summary: "កំណត់រចនាសម្ព័ន្ធសម័យភ្នាក់ងារនេះ"  # Agent means an AI coding agent; shown for the /config command. {Locked="/config"}
 commands.move.summary: "ផ្លាស់ទីផ្ទាំងភ្នាក់ងារនៃផ្ទាំងនេះ (/move <position>)"  # {Locked="/move","<position>"}
-
 model_picker.title: "ជ្រើសរើសម៉ូដែល (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "AI អេជេន្ត់ដែលបានភ្ជាប់មិនបានប្រកាសម៉ូដែលណាមួយដែលអាចជ្រើសរើសបានទេ។"
 system.model_set: "ម៉ូដែលសម្រាប់ផ្តាំងនេះត្រូវបានកំណត់ទៅ %{model}។"  # {Locked="%{model}"}
@@ -257,4 +255,5 @@ config_picker.title: "ការកំណត់រចនាសម្ព័ន្�
 system.no_config_options: "ភ្នាក់ងារដែលបានភ្ជាប់មិនបានផ្សព្វផ្សាយជម្រើសសម័យដែលកែសម្រួលបានឡើយ។"
 # {option} is an Agent-provided option name; {error} is the ACP error.
 system.config_update_failed: "បរាជ័យក្នុងការធ្វើបច្ចុប្បន្នភាព %{option}: %{error}"
+system.provider_command_blocked_by_policy: "%{command}: Yolo mode ß₧ÅßƒÆß₧Üß₧╝ß₧£ß₧öß₧╢ß₧ôß₧öß₧╖ß₧æß₧èßƒäß₧Öß₧éßƒäß₧¢ß₧ôß₧Ößƒäß₧öß₧╢ß₧Öß₧Üß₧öß₧ƒßƒïß₧ƒßƒÆß₧Éß₧╢ß₧ößƒÉß₧ôß₧óßƒÆß₧ôß₧Çßƒö"  # {Locked="Yolo","%{command}"} Shown when AllowYoloMode blocks a provider-advertised privileged command.
 system.model_unknown: "មិនស្គាល់ម៉ូដែល %{model} — វាយ /model ដើម្បីមើលបញ្ជីដែលមាន។"  # {Locked="%{model}","/model"}

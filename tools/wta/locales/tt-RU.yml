@@ -166,7 +166,6 @@ system.cannot_resume_phantom_via_load: "%{agent} %{session_id} сеансын д
 system.fallback.this_agent: "бу агент"
 system.fallback.connected_agent: "тоташкан агент"
 
-
 # ── Runtime CLI output (src/main.rs) ────────────────────────────────────────
 output.no_windows: "Тәрәзәләр табылмады."
 output.no_tabs: "Таблар табылмады."
@@ -229,7 +228,6 @@ system.agent_switch_unavailable: "Агентны күчерү Windows Terminal �
 commands.model.summary: "Бу панель өчен модель сайлагыз (туры алыштыру өчен /model <id>)"  # {Locked="/model","<id>"}
 commands.config.summary: "Бу агент сессиясын көйләү"  # Agent means an AI coding agent; shown for the /config command. {Locked="/config"}
 commands.move.summary: "Бу салынманың агент панелен күчерү (/move <position>)"  # {Locked="/move","<position>"}
-
 model_picker.title: "Модель сайлагыз (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "Тоташкан агент бер дә сайлап була торган модель игълан итмәде."
 system.model_set: "Бу панель өчен модель %{model} итеп билгеләнде."  # {Locked="%{model}"}
@@ -241,4 +239,5 @@ config_picker.title: "Сессия конфигурациясе (↑ ↓ • Ent
 system.no_config_options: "Тоташтырылган агент бернинде көйләп була торган сессия параметрларын белдермәде."
 # {option} is an Agent-provided option name; {error} is the ACP error.
 system.config_update_failed: "%{option} яңарту уңышсыз булды: %{error}"
+system.provider_command_blocked_by_policy: "%{command}: Yolo mode ╨╛╨╡╤ê╨╝╨░╨│╤ï╨╖ ╤ü╙Ö╤Å╤ü╙Ö╤é╨╡ ╨▒╤â╨╡╨╜╤ç╨░ ╤ü╥»╨╜╨┤╨╡╤Ç╨╡╨╗╨│╙Ö╨╜."  # {Locked="Yolo","%{command}"} Shown when AllowYoloMode blocks a provider-advertised privileged command.
 system.model_unknown: "Билгесез модель %{model} — мөмкин булган исемлекне күрү өчен /model языгыз."  # {Locked="%{model}","/model"}

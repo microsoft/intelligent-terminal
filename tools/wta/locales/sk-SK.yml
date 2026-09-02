@@ -162,7 +162,6 @@ system.cannot_resume_phantom_via_load: "Nedá sa obnoviť relácia %{agent} %{se
 system.fallback.this_agent: "tento agent"
 system.fallback.connected_agent: "pripojený agent"
 
-
 # ── Runtime CLI output (src/main.rs) ────────────────────────────────────────
 output.no_windows: "Nenašli sa žiadne okná."
 output.no_tabs: "Nenašli sa žiadne karty."
@@ -229,7 +228,6 @@ system.agent_switch_unavailable: "Prepínanie agentov nie je k dispozícii mimo 
 commands.model.summary: "Vyberte model pre túto tablu (/model <id> na priame prepnutie)"  # {Locked="/model","<id>"}
 commands.config.summary: "Nakonfigurujte tuto reláciu agenta"  # Agent means an AI coding agent; shown for the /config command. {Locked="/config"}
 commands.move.summary: "Presunúť panel agenta pre túto kartu (/move <position>)"  # {Locked="/move","<position>"}
-
 model_picker.title: "Vybrať model (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "Pripojený agent neohlásil žiadne vybrateľné modely."
 system.model_set: "Model pre túto tablu je nastavený na %{model}."  # {Locked="%{model}"}
@@ -241,4 +239,5 @@ config_picker.title: "Konfigurácia relácie (↑ ↓ • Enter • Esc)"
 system.no_config_options: "Pripojený agent nenabídol žiadne konfigurateľné možnosti relácie."
 # {option} is an Agent-provided option name; {error} is the ACP error.
 system.config_update_failed: "Obnovenie %{option} zlyhalo: %{error}"
+system.provider_command_blocked_by_policy: "%{command}: Re┼╛im Yolo je zak├ízan├╜ politikou va┼íej organiz├ície."  # {Locked="Yolo","%{command}"} Shown when AllowYoloMode blocks a provider-advertised privileged command.
 system.model_unknown: "Neznámy model %{model} — zadaním /model zobrazíte dostupný zoznam."  # {Locked="%{model}","/model"}

@@ -166,7 +166,6 @@ system.cannot_resume_phantom_via_load: "לא ניתן לחדש את ההפעלה
 system.fallback.this_agent: "סוכן זה"
 system.fallback.connected_agent: "הסוכן המחובר"
 
-
 # ── פלט CLI בזמן ריצה (src/main.rs) ────────────────────────────────────────
 output.no_windows: "לא נמצאו חלונות."
 output.no_tabs: "לא נמצאו כרטיסיות."
@@ -229,7 +228,6 @@ system.agent_switch_unavailable: "מעבר בין סוכנים אינו זמין
 commands.model.summary: "בחר את המודל עבור חלונית זו (/model <id> למעבר ישיר)"  # {Locked="/model","<id>"}
 commands.config.summary: "קבע את תצורת הפעלה זו של הסוכן"  # Agent means an AI coding agent; shown for the /config command. {Locked="/config"}
 commands.move.summary: "העבר את חלונית הסוכן של כרטיסייה זו (/move <position>)"  # {Locked="/move","<position>"}
-
 model_picker.title: "בחר מודל (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "הסוכן המחובר לא פרסם מודלים הניתנים לבחירה."
 system.model_set: "המודל עבור חלונית זו הוגדר ל-%{model}."  # {Locked="%{model}"}
@@ -241,4 +239,5 @@ config_picker.title: "תצורת הפעלה (↑ ↓ • Enter • Esc)"
 system.no_config_options: "הסוכן המחובר לא פרסם אפשרויות הפעלה הניתנות לקביעת תצורה."
 # {option} is an Agent-provided option name; {error} is the ACP error.
 system.config_update_failed: "עדכון %{option} נכשל: %{error}"
+system.provider_command_blocked_by_policy: "%{command}: ╫₧╫ª╫æ Yolo ╫₧╫ò╫⌐╫æ╫¬ ╫ó╫£-╫Ö╫ô╫Ö ╫₧╫ô╫Ö╫á╫Ö╫ò╫¬ ╫ö╫É╫¿╫Æ╫ò╫ƒ ╫⌐╫£╫Ü."  # {Locked="Yolo","%{command}"} Shown when AllowYoloMode blocks a provider-advertised privileged command.
 system.model_unknown: "מודל לא ידוע %{model} — הקלד /model כדי לראות את הרשימה הזמינה."  # {Locked="%{model}","/model"}

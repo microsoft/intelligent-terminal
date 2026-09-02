@@ -153,7 +153,6 @@ system.cannot_resume_phantom_via_load: "Det går inte att återuppta %{agent}-se
 system.fallback.this_agent: "den här agenten"
 system.fallback.connected_agent: "den anslutna agenten"
 
-
 # ── Runtime CLI output (src/main.rs) ────────────────────────────────────────
 output.no_windows: "Inga fönster hittades."
 output.no_tabs: "Inga flikar hittades."
@@ -229,7 +228,6 @@ system.agent_switch_unavailable: "Agentbyte är inte tillgängligt utanför en W
 commands.model.summary: "Välj modellen för den här panelen (/model <id> för att växla direkt)"  # {Locked="/model","<id>"}
 commands.config.summary: "Konfigurera den här agentsessionen"  # Agent means an AI coding agent; shown for the /config command. {Locked="/config"}
 commands.move.summary: "Flytta agentpanelen för den här fliken (/move <position>)"  # {Locked="/move","<position>"}
-
 model_picker.title: "Välj modell (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "Den anslutna agenten annonserade inga valbara modeller."
 system.model_set: "Modellen för den här panelen är inställd på %{model}."  # {Locked="%{model}"}
@@ -241,4 +239,5 @@ config_picker.title: "Sessionskonfiguration (↑ ↓ • Enter • Esc)"
 system.no_config_options: "Den anslutna agenten annonserade inga konfigurerbara sessionsalternativ."
 # {option} is an Agent-provided option name; {error} is the ACP error.
 system.config_update_failed: "Det gick inte att uppdatera %{option}: %{error}"
+system.provider_command_blocked_by_policy: "%{command}: Yolo-l├ñget ├ñr inaktiverat av organisationens policy."  # {Locked="Yolo","%{command}"} Shown when AllowYoloMode blocks a provider-advertised privileged command.
 system.model_unknown: "Okänd modell %{model} — skriv /model för att se den tillgängliga listan."  # {Locked="%{model}","/model"}

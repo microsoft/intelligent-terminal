@@ -155,7 +155,6 @@ system.cannot_resume_phantom_via_load: "Kan nie %{agent}-sessie %{session_id} he
 system.fallback.this_agent: "hierdie agent"
 system.fallback.connected_agent: "die gekoppelde agent"
 
-
 # ── CLI-uitvoer tydens uitvoering (src/main.rs) ────────────────────────────────────
 output.no_windows: "Geen vensters gevind nie."
 output.no_tabs: "Geen oortjies gevind nie."
@@ -230,7 +229,6 @@ system.agent_switch_unavailable: "Agent-oorskakeling is nie beskikbaar buite 'n 
 commands.model.summary: "Kies die model vir hierdie paneel (/model <id> om direk oor te skakel)"  # {Locked="/model","<id>"}
 commands.config.summary: "Stel hierdie agent-sessie op"  # Agent means an AI coding agent; shown for the /config command. {Locked="/config"}
 commands.move.summary: "Skuif hierdie oortjie se agentpaneel (/move <position>)"  # {Locked="/move","<position>"}
-
 model_picker.title: "Kies model (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "Die gekoppelde agent het geen kiesbare modelle aangekondig nie."
 system.model_set: "Model vir hierdie paneel gestel op %{model}."  # {Locked="%{model}"}
@@ -242,4 +240,5 @@ config_picker.title: "Sessie-konfigurasie (↑ ↓ • Enter • Esc)"
 system.no_config_options: "Die gekoppelde agent het geen konfigureerbare sessie-opsies geadverteer nie."
 # {option} is an Agent-provided option name; {error} is the ACP error.
 system.config_update_failed: "Kon nie %{option} bywerk nie: %{error}"
+system.provider_command_blocked_by_policy: "%{command}: Yolo-modus is deur jou organisasie se beleid gedeaktiveer."  # {Locked="Yolo","%{command}"} Shown when AllowYoloMode blocks a provider-advertised privileged command.
 system.model_unknown: "Onbekende model %{model} — tik /model om die beskikbare lys te sien."  # {Locked="%{model}","/model"}

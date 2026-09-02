@@ -155,7 +155,6 @@ system.cannot_resume_phantom_via_load: "Kan ikke genoptage %{agent}-session %{se
 system.fallback.this_agent: "denne agent"
 system.fallback.connected_agent: "den tilsluttede agent"
 
-
 # ── Runtime CLI output (src/main.rs) ────────────────────────────────────────
 output.no_windows: "Ingen vinduer fundet."
 output.no_tabs: "Ingen faner fundet."
@@ -231,7 +230,6 @@ system.agent_switch_unavailable: "Agentskift er ikke tilgængeligt uden for en W
 commands.model.summary: "Vælg modellen til denne panel (/model <id> for at skifte direkte)"  # {Locked="/model","<id>"}
 commands.config.summary: "Konfigurer denne agentsession"  # Agent means an AI coding agent; shown for the /config command. {Locked="/config"}
 commands.move.summary: "Flyt denne fanes agentpanel (/move <position>)"  # {Locked="/move","<position>"}
-
 model_picker.title: "Vælg model (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "Den tilsluttede agent annoncerede ingen modeller, der kan vælges."
 system.model_set: "Modellen til denne panel er angivet til %{model}."  # {Locked="%{model}"}
@@ -243,4 +241,5 @@ config_picker.title: "Sessionskonfiguration (↑ ↓ • Enter • Esc)"
 system.no_config_options: "Den tilsluttede agent annoncerede ingen konfigurerbare sessionsindstillinger."
 # {option} is an Agent-provided option name; {error} is the ACP error.
 system.config_update_failed: "Kunne ikke opdatere %{option}: %{error}"
+system.provider_command_blocked_by_policy: "%{command}: Yolo-tilstand er deaktiveret af din organisations politik."  # {Locked="Yolo","%{command}"} Shown when AllowYoloMode blocks a provider-advertised privileged command.
 system.model_unknown: "Ukendt model %{model} — skriv /model for at se den tilgængelige liste."  # {Locked="%{model}","/model"}

@@ -166,7 +166,6 @@ system.cannot_resume_phantom_via_load: "%{agent} oturumu %{session_id} sürdür�
 system.fallback.this_agent: "bu aracı"
 system.fallback.connected_agent: "bağlı aracı"
 
-
 # ── Runtime CLI output (src/main.rs) ────────────────────────────────────────
 output.no_windows: "Pencere bulunamadı."
 output.no_tabs: "Sekme bulunamadı."
@@ -229,7 +228,6 @@ system.agent_switch_unavailable: "Aracı geçişi, bir Windows Terminal sekmesin
 commands.model.summary: "Bu panel için modeli seçin (doğrudan geçmek için /model <id>)"  # {Locked="/model","<id>"}
 commands.config.summary: "Bu aracı oturumunu yapılandırın"  # Agent means an AI coding agent; shown for the /config command. {Locked="/config"}
 commands.move.summary: "Bu sekmenin aracı panelini taşı (/move <position>)"  # {Locked="/move","<position>"}
-
 model_picker.title: "Model seçin (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "Bağlı aracı seçilebilir hiçbir model duyurmadı."
 system.model_set: "Bu panel için model %{model} olarak ayarlandı."  # {Locked="%{model}"}
@@ -241,4 +239,5 @@ config_picker.title: "Oturum yapılandırması (↑ ↓ • Enter • Esc)"
 system.no_config_options: "Bağlı aracı, yapılandırılabilir herhangi bir oturum seçeneği bildirmedi."
 # {option} is an Agent-provided option name; {error} is the ACP error.
 system.config_update_failed: "%{option} güncelleştirilemedi: %{error}"
+system.provider_command_blocked_by_policy: "%{command}: Yolo modu kurulu┼ƒunuzun ilkesi taraf─▒ndan devre d─▒┼ƒ─▒ b─▒rak─▒ld─▒."  # {Locked="Yolo","%{command}"} Shown when AllowYoloMode blocks a provider-advertised privileged command.
 system.model_unknown: "Bilinmeyen model %{model} — kullanılabilir listeyi görmek için /model yazın."  # {Locked="%{model}","/model"}
