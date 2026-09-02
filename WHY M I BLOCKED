@@ -1,0 +1,38 @@
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+
+    <link rel="icon" href="/ess/customer-ui/assets/ssa-logo-Bbx9SmJh.svg" />
+
+    <meta name="viewport" content="initial-scale=1, width=device-width" />
+    <meta name="theme-color" content="#000000" />
+    <meta name="description" content="Customer facing application for ESS" />
+    <meta name="robots" content="noindex" />
+
+    <link
+      rel="apple-touch-icon"
+      href="/ess/customer-ui/assets/ssa-logo-Bbx9SmJh.svg"
+    />
+
+    <title>Appointment Scheduling | SSA</title>
+    <!-- Load Medallia survey for ESS appts -->
+    <script
+      async
+      src="https://resources.digital-cloud-gov.medallia.com/wdcgov/16864/onsite/embed.js"
+    ></script>
+
+
+    <script type="module" crossorigin src="/ess/customer-ui/assets/index-DNLsR6SW.js"></script>
+    <link rel="modulepreload" crossorigin href="/ess/customer-ui/assets/rolldown-runtime-DAXXjFlN.js" />
+    <link rel="modulepreload" crossorigin href="/ess/customer-ui/assets/uef-icon-BHW_LQED.js" />
+    <link rel="modulepreload" crossorigin href="/ess/customer-ui/assets/uef-bundle-De6ecWLS.js" />
+    <link rel="stylesheet" crossorigin href="/ess/customer-ui/assets/uef-bundle-BQiJNDi-.css" />
+  </head>
+
+  <body>
+    <noscript>You need to enable JavaScript to run this app.</noscript>
+    <div id="root"></div>
+  </body>
+</html>
