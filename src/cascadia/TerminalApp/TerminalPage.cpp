@@ -1349,28 +1349,79 @@ namespace winrt::TerminalApp::implementation
         };
     }
 
-    static winrt::Microsoft::Terminal::Settings::Model::Profile _GetAgentSourceProfile(
-        const winrt::com_ptr<Tab>& tab)
+    // The pane the user is actually working in, ignoring the agent pane.
+    //
+    // The agent pane is a real focusable pane, so once the user clicks into it
+    // (or drives its session picker) it becomes the tab's `_activePane` and
+    // starts answering "where is the user?" on behalf of the terminal pane it
+    // was opened from. Everything that derives *user context* — the profile a
+    // delegate/protocol tab should inherit, the cwd a delegated agent should
+    // start in — has to look past it, or it silently picks up the hidden
+    // "Agent Pane" profile and the helper process's own working directory.
+    //
+    // Order: the active pane when it is an ordinary terminal pane, then the
+    // pane the agent pane was opened from, then any other terminal pane on the
+    // tab. Returns nullptr when the tab has no terminal pane at all.
+    //
+    // Deliberately does NOT go through `Pane::GetFocusedProfile()`: that
+    // resolves through `GetActivePane()` (`_lastActive`), and the pane we want
+    // here is by definition *not* the active one, so it would always come back
+    // empty in exactly the case this helper exists for.
+    std::shared_ptr<Pane> TerminalPage::_SourceTerminalPaneForTab(const winrt::com_ptr<Tab>& tab)
     {
         if (!tab)
         {
             return nullptr;
         }
 
-        auto sourcePane = tab->GetActivePane();
-        if (sourcePane && sourcePane->IsAgentPane())
+        // Only terminal panes carry a profile and a working directory. Agent
+        // panes wrap one but must never be picked; scratchpad-style content
+        // has neither.
+        const auto isSourceCandidate = [](const std::shared_ptr<Pane>& pane) {
+            return pane &&
+                   !pane->IsAgentPane() &&
+                   pane->GetContent().try_as<TerminalApp::TerminalPaneContent>() != nullptr;
+        };
+
+        if (const auto activePane = tab->GetActivePane(); isSourceCandidate(activePane))
         {
-            if (const auto rootPane = tab->GetRootPane())
+            return activePane;
+        }
+
+        const auto rootPane = tab->GetRootPane();
+        if (!rootPane)
+        {
+            return nullptr;
+        }
+
+        std::shared_ptr<Pane> sourcePane{ nullptr };
+        rootPane->WalkTree([&](const auto& pane) {
+            if (!isSourceCandidate(pane))
             {
-                rootPane->WalkTree([&](const auto& pane) {
-                    if (pane->IsSourceOfAgentPane())
-                    {
-                        sourcePane = pane;
-                    }
-                });
+                return;
+            }
+            // `IsSourceOfAgentPane` records the pane the user was working in
+            // when the agent pane took focus, so it is the precise answer;
+            // otherwise settle for the first terminal pane on the tab.
+            if (!sourcePane || pane->IsSourceOfAgentPane())
+            {
+                sourcePane = pane;
+            }
+        });
+        return sourcePane;
+    }
+
+    winrt::Microsoft::Terminal::Settings::Model::Profile TerminalPage::_SourceTerminalProfileForTab(
+        const winrt::com_ptr<Tab>& tab)
+    {
+        if (const auto sourcePane = _SourceTerminalPaneForTab(tab))
+        {
+            if (const auto termContent = sourcePane->GetContent().try_as<TerminalApp::TerminalPaneContent>())
+            {
+                return termContent.GetProfile();
             }
         }
-        return sourcePane ? sourcePane->GetFocusedProfile() : tab->GetFocusedProfile();
+        return nullptr;
     }
 
     static const winrt::guid& _ProfileDefaultsAgentBackendGuid()
@@ -1388,7 +1439,7 @@ namespace winrt::TerminalApp::implementation
                    profile.Guid();
     }
 
-    static winrt::Microsoft::Terminal::Settings::Model::Profile _ResolveAgentSourceProfile(
+    winrt::Microsoft::Terminal::Settings::Model::Profile TerminalPage::_ResolveAgentSourceProfile(
         const winrt::com_ptr<Tab>& tab,
         const winrt::Microsoft::Terminal::Settings::Model::CascadiaSettings& settings)
     {
@@ -1410,7 +1461,7 @@ namespace winrt::TerminalApp::implementation
                 return settings.ProfileDefaults();
             }
         }
-        return _GetAgentSourceProfile(tab);
+        return _SourceTerminalProfileForTab(tab);
     }
 
     // The agent identity a restored agent pane has to record.
@@ -1648,7 +1699,7 @@ namespace winrt::TerminalApp::implementation
         auto delegateModel = globals.DelegateModel();
         winrt::hstring delegateSource{ L"host" };
         winrt::hstring delegateWslDistro;
-        if (const auto sourceProfile = _GetAgentSourceProfile(_GetFocusedTabImpl()))
+        if (const auto sourceProfile = _SourceTerminalProfileForTab(_GetFocusedTabImpl()))
         {
             const auto configuredValue = sourceProfile.CommandPaletteAgent();
             const std::wstring_view configured{ configuredValue };
@@ -1757,11 +1808,19 @@ namespace winrt::TerminalApp::implementation
             cmdline += L" --delegate-model " + quoteArg(std::wstring_view{ delegateModel });
         }
 
-        // Pass CWD from the active pane.
+        // Pass CWD from the pane the user is working in. `_GetActiveControl()`
+        // would hand back the agent pane's own control whenever the agent pane
+        // holds focus (which it does whenever the user just interacted with
+        // it), and the wta-helper process inherits WindowsTerminal.exe's
+        // working directory — so the delegated agent would start in
+        // `C:\Windows\system32` instead of the user's project.
         winrt::hstring activeCwd;
-        if (const auto& activeControl = _GetActiveControl())
+        if (const auto sourcePane = _SourceTerminalPaneForTab(_GetFocusedTabImpl()))
         {
-            activeCwd = activeControl.WorkingDirectory();
+            if (const auto& sourceControl = sourcePane->GetTerminalControl())
+            {
+                activeCwd = sourceControl.WorkingDirectory();
+            }
         }
         if (activeCwd.empty())
         {
