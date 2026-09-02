@@ -5,7 +5,7 @@
 # after HKLM — the same code path and value semantics as a machine GPO, without touching HKLM.
 # Same approach as the WinPS execution-policy suite (Feature.FreExecutionPolicy.Tests.ps1).
 #
-# Auto-error-handling policy semantics are deliberately narrow: blocking
+# Auto error handling policy semantics are deliberately narrow: blocking
 # AllowAutoErrorHandling prevents only automatic sending to the agent. A configured third mode
 # degrades to detect-only, so command-failure detection remains active. The normal policy test
 # uses the canonical value. Legacy AllowAutoFix appears only in explicitly marked fallback and

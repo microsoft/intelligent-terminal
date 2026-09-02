@@ -251,7 +251,7 @@ pub fn log_auto_error_handling_detected(severity: &str, method: &str, pane_id: &
     );
 }
 
-/// Emitted when the next command after Auto-error-handling starts succeeds
+/// Emitted when the next command after Auto error handling starts succeeds
 /// (exit 0) in the same pane. `time_since_handling_started_ms` is a monotonic
 /// duration (`Instant::elapsed`) from starting the flow to observing the
 /// successful exit, not wall-clock.

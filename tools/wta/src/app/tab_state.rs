@@ -115,7 +115,7 @@ pub enum ChatMessage {
     Error(String),
     /// Informational WT event surfaced inline in the chat (e.g. shell exit
     /// codes, OSC sequences). Distinct from `Error` so we can theme it
-    /// differently and skip Auto-error-handling wiring.
+    /// differently and skip Auto error handling wiring.
     AgentEvent(String),
     /// "Intelligent Terminal uses AI." disclaimer.
     /// Pushed on every agent-pane startup,
@@ -522,7 +522,7 @@ impl ConfigPickerState {
 /// mutating shared `App` fields.
 #[derive(Default)]
 pub struct TabSession {
-    /// Per-tab Auto-error-handling state machine (see `AutoErrorHandlingState`).
+    /// Per-tab Auto error handling state machine (see `AutoErrorHandlingState`).
     pub auto_error_handling: AutoErrorHandlingState,
     pub(crate) pending_terminal_action_proposal: Option<PendingTerminalActionProposal>,
     pub(crate) active_direct_proposal_id: Option<String>,

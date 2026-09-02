@@ -35,10 +35,10 @@ Highest-priority residual risks:
 | **Create/split over COM** | `CreateTab` / `SplitPane` can spawn attacker-chosen commands as WT children. | Still exposed through COM and stock `wtcli.exe`. |
 | **Event broadcast disclosure** | legacy `agent_event` envelopes are broadcast to every subscribed COM caller; a pane-context subscriber can passively observe other panes' agent prompts and tool calls. | No per-subscriber filtering; only observed platform COM activation behavior gates `Subscribe`. |
 | **Prompt injection** | COM access does not prove the LLM's requested action is safe. | Confirmation settings exist in the settings model, but they default to `auto` and the current implementation does not enforce them on the runtime operation paths reviewed here. |
-| **Auto-error-handling-triggered context disclosure** | When Auto-error-handling is set to `Detect errors and send them to the agent for fixes automatically.`, crafted OSC 133 failure marks can trigger analysis that reads source-pane context and sends it to the Agent CLI / LLM before any fix-execution confirmation. | `"autoErrorHandling": "detectErrorsAutomatically"` is the fresh-install default, so detection is enabled but agent submission remains opt-in. After the third option is selected, no per-event analysis confirmation is implemented. |
+| **Auto error handling-triggered context disclosure** | When Auto error handling is set to `Detect errors and send them to the agent for fixes automatically.`, crafted OSC 133 failure marks can trigger analysis that reads source-pane context and sends it to the Agent CLI / LLM before any fix-execution confirmation. | `"autoErrorHandling": "detectErrorsAutomatically"` is the fresh-install default, so detection is enabled but agent submission remains opt-in. After the third option is selected, no per-event analysis confirmation is implemented. |
 | **Delegation context disclosure** | `wta delegate` / `?<prompt>` reads active-pane context and passes it to the delegate Agent CLI / LLM as startup prompt context. | No context-specific confirmation or redaction; the assembled delegate command line may also appear in process and diagnostic surfaces. |
 | **Scrollback/log disclosure** | Pane output and diagnostic logs may contain secrets, source code, prompts, or command output. | Redaction is not implemented. |
-| **Settings persistence via filesystem** | A process running as the user can overwrite `settings.json` and persistently change agent selection, Auto-error-handling behavior, or future AI policy knobs. | No meta-confirmation when WT reads policy-relevant settings and launches WTA / agent processes with those values. |
+| **Settings persistence via filesystem** | A process running as the user can overwrite `settings.json` and persistently change agent selection, Auto error handling behavior, or future AI policy knobs. | No meta-confirmation when WT reads policy-relevant settings and launches WTA / agent processes with those values. |
 
 Key security claim post-revert: shell input is **not** held behind a separate capability boundary. Any caller with COM `IProtocolServer` access can call `SendInput`. The earlier inherited-pipe gating that restricted direct shell input to WT-launched WTA processes has been removed.
 
@@ -124,7 +124,7 @@ flowchart TB
     User -- "terminal I/O<br/>key events" --> WT
     WT -- "rendered output<br/>display updates" --> User
 
-    Settings -- "settings load<br/>agent, delegate, Auto-error-handling,<br/>confirmation settings<br/>(not runtime-enforced today)" --> SettingsModel
+    Settings -- "settings load<br/>agent, delegate, Auto error handling,<br/>confirmation settings<br/>(not runtime-enforced today)" --> SettingsModel
     SettingsModel -- "resolved launch config" --> WT
 
     WT -- "launch agent-pane wta.exe<br/>WT_COM_CLSID" --> WTAAgent
@@ -134,7 +134,7 @@ flowchart TB
     InPane -- "ConPTY stdout<br/>VT / OSC 133 / AgentEvent" --> WT
     DelegateAgent -- "ConPTY stdout<br/>VT / OSC / optional hooks" --> WT
     WT -- "render/capture output" --> Scroll
-    WT -- "VT/OSC,<br/>Auto-error-handling events" --> EventBus
+    WT -- "VT/OSC,<br/>Auto error handling events" --> EventBus
 
     WTAAgent -- "spawn wtcli<br/>for WT operations<br/>(including send-keys)" --> WTCLI
     WTADelegate -- "GetActivePane / ReadPaneOutput /<br/>CreateTab(commandline)<br/>via wtcli / COM" --> WTCLI
@@ -252,7 +252,7 @@ COM caller restriction in this document means the observed Windows packaged-COM 
 | Asset | Sensitivity | Notes |
 |---|---|---|
 | Shell stdin | Critical | Ability to execute commands as the user. |
-| `settings.json` | Critical | Can change agent binaries, delegate behavior, Auto-error-handling behavior, and confirmation setting knobs. |
+| `settings.json` | Critical | Can change agent binaries, delegate behavior, Auto error handling behavior, and confirmation setting knobs. |
 | Pane scrollback | Sensitive | May include secrets, command output, source, or copied file contents. |
 | Process environment | Sensitive | May include customer secrets. `WT_COM_CLSID` itself is non-secret routing metadata. |
 | Agent hook configuration / bundle | Sensitive | Persistent third-party CLI plugin or extension config under user-writable CLI directories, plus the `wt-agent-hooks` bundle resolved from packaged, env-override, or dev-tree locations. Controls what native hook command future Agent CLI sessions execute. |
@@ -308,7 +308,7 @@ attacker-controlled user-context process (in-pane shell, Agent CLI, etc.)
   -> future WT launch path reads weakened AI settings / attacker command
 ```
 
-The mutation path is a direct filesystem write. This is not a new OS privilege — the attacker already runs as the user — but it can persistently change AI behavior without any in-band confirmation. Agent selection, custom agent commands, delegate behavior, Auto-error-handling, and future confirmation knobs are all policy-relevant even if some knobs are not enforced today. An Agent CLI (semi-trusted) and a pane-context process can both reach the file: `settings.json` lives at a well-known per-user path that any user-context process can discover via `%LOCALAPPDATA%` or by enumerating package data, so path knowledge is not a meaningful gate. The mitigation is therefore at the *read* side: WT's settings-load / agent-launch path must meta-confirm policy-relevant changes before honoring them, rather than relying on the file being write-protected.
+The mutation path is a direct filesystem write. This is not a new OS privilege — the attacker already runs as the user — but it can persistently change AI behavior without any in-band confirmation. Agent selection, custom agent commands, delegate behavior, Auto error handling, and future confirmation knobs are all policy-relevant even if some knobs are not enforced today. An Agent CLI (semi-trusted) and a pane-context process can both reach the file: `settings.json` lives at a well-known per-user path that any user-context process can discover via `%LOCALAPPDATA%` or by enumerating package data, so path knowledge is not a meaningful gate. The mitigation is therefore at the *read* side: WT's settings-load / agent-launch path must meta-confirm policy-relevant changes before honoring them, rather than relying on the file being write-protected.
 
 For backward compatibility, the legacy boolean keys `autoErrorDetectionEnabled`
 and `autoFixEnabled` are accepted only as migration inputs to the canonical
@@ -379,7 +379,7 @@ Delegation is an agent-launch and context-transfer path, not a direct shell-inpu
 | WTA binary substitution | Supply chain / EoP | High | Production intent is co-located packaged `wta.exe`, but `_DetectWtaPath()` also supports local dev and PATH fallbacks. Any resolved WTA binary runs with WTA's normal environment (`WT_COM_CLSID` etc.) and can drive WT over COM. |
 | Diagnostic logs may disclose sensitive data | Information disclosure | Medium | WTA logs may contain command lines, event payload summaries, errors, and metadata. Raw user/agent content (prompts, responses, terminal output, typed input) is gated to `trace` level; the shipping `info` default and `debug` log lengths/ids/enums, not content. Known examples include `wta-main_*.log`, `wta-delegate.log`, `terminal-agent-pane.log`, and `wta-install-hooks.log` under `logs\<pkgver>\`. Retention is bounded (only the current version's dir kept, daily cli rotation, 3-day per-PID helper prune). |
 | Direct `settings.json` file write | Tampering | Critical for persistent AI-policy bypass; not OS privilege escalation | Inherits filesystem ACL behavior; no meta-confirmation for policy changes before WT honors the changed settings in future WTA / agent launches. |
-| Crafted OSC marks for Auto-error-handling | Information disclosure / Prompt injection / Tampering | High when agent submission is enabled | OSC 133 is shell-controlled. The fresh-install default, `"autoErrorHandling": "detectErrorsAutomatically"`, does not contact the agent. After the user selects `Detect errors and send them to the agent for fixes automatically.`, a crafted failure mark can trigger WTA's analysis path to submit an agent prompt and read source-pane context via `wt_read_last_prompt` / `wt_read_pane_output` before any per-event confirmation. User interaction still gates applying a proposed fix, but pane-context disclosure and prompt-injection exposure can happen during analysis. |
+| Crafted OSC marks for Auto error handling | Information disclosure / Prompt injection / Tampering | High when agent submission is enabled | OSC 133 is shell-controlled. The fresh-install default, `"autoErrorHandling": "detectErrorsAutomatically"`, does not contact the agent. After the user selects `Detect errors and send them to the agent for fixes automatically.`, a crafted failure mark can trigger WTA's analysis path to submit an agent prompt and read source-pane context via `wt_read_last_prompt` / `wt_read_pane_output` before any per-event confirmation. User interaction still gates applying a proposed fix, but pane-context disclosure and prompt-injection exposure can happen during analysis. |
 | Delegation context disclosure | Information disclosure / Prompt injection | High | `wta delegate` / `?<prompt>` reads the active pane's recent output (`ReadPaneOutput(..., 30)`) and appends it as terminal context to the delegate prompt. It then uses COM `CreateTab(commandline)` to have WT launch the delegate Agent CLI in a new tab, not `send_input`. Sensitive pane data can be disclosed to the Agent CLI / LLM and exposed through command-line or diagnostic surfaces without a separate context confirmation. |
 
 ### Scope boundary note
@@ -419,7 +419,7 @@ Same-user OS process introspection and handle-table attacks against WTA are inte
 | Per-turn rate limit for shell-input calls | Roadmap | Agent runaway / prompt-injection loops |
 | Pin or verify built-in Agent CLI binary identity and ACP adapter provenance | Partial — known-location / PATH resolution only; no signature pinning; `npx` adapter package versions / sources are not pinned or vendored | Agent CLI and adapter supply chain |
 | Pin or verify WTA binary identity and remove PATH fallback from production launches | Planned | WTA binary substitution |
-| Auto-error-handling opt-in / first-run hardening | Implemented for fresh installs: `"autoErrorHandling": "detectErrorsAutomatically"` detects locally, while `Detect errors and send them to the agent for fixes automatically.` remains opt-in; no per-event analysis confirmation exists after opt-in | Reduces default pane-context disclosure; agent-enabled Auto-error-handling remains exposed to crafted failure marks |
+| Auto error handling opt-in / first-run hardening | Implemented for fresh installs: `"autoErrorHandling": "detectErrorsAutomatically"` detects locally, while `Detect errors and send them to the agent for fixes automatically.` remains opt-in; no per-event analysis confirmation exists after opt-in | Reduces default pane-context disclosure; agent-enabled Auto error handling remains exposed to crafted failure marks |
 | Delegation context confirmation and prompt transport hardening | Not implemented; delegate prompt is enriched with recent active-pane output and launched through startup command line | Pane-context disclosure to delegate Agent CLI / LLM and command-line/log surfaces |
 
 ---
@@ -427,7 +427,7 @@ Same-user OS process introspection and handle-table attacks against WTA are inte
 ## 8. Residual Risks
 
 1. **Terminal-scoped COM surface, including `SendInput`.** A pane-context COM caller can spawn WT child processes (`CreateTab`, `SplitPane`), inject keystrokes into any pane it knows the session GUID of (`SendInput`), read sensitive state, close or focus panes, spoof pane-local variables, and subscribe to cross-pane agent events. After the 2026-05-21 revert, `SendInput` is part of this surface.
-2. **Prompt and context disclosure.** Auto-error-handling, delegation, `ReadPaneOutput`, and diagnostic logs can move pane content, prompts, command lines, event payloads, or model output to Agent CLI / LLM / filesystem surfaces without redaction today.
+2. **Prompt and context disclosure.** Auto error handling, delegation, `ReadPaneOutput`, and diagnostic logs can move pane content, prompts, command lines, event payloads, or model output to Agent CLI / LLM / filesystem surfaces without redaction today.
 3. **Persistent filesystem trust.** Any user-context process can overwrite `settings.json`, and hook installation persists third-party CLI config outside WT. Policy-relevant settings, hook bundles, hook-side `wtcli.exe`, Agent CLI binaries, ACP adapters, and WTA fallback paths all need production-grade provenance or consent checks.
 4. **Platform-dependent COM security.** Cross-integrity COM behavior should be regression-tested with the real `IProtocolServer` IID or a harmless method such as `GetCapabilities`; `IUnknown`-only activation is not sufficient evidence.
 
@@ -441,7 +441,7 @@ Same-user OS process introspection and handle-table attacks against WTA are inte
 | **P0** | Add per-subscriber filtering / authorization to `Subscribe` + `SendEvent` so a pane-context COM subscriber cannot passively observe other panes' agent events. |
 | **P0** | Implement runtime confirmation enforcement for read/create/input operation classes before treating `aiIntegration.confirmation.*` as a mitigation. |
 | **P0** | After enforcement exists, change fresh-install confirmation defaults from `auto` to `prompt`. |
-| **P1** | Add meta-confirmation for changes to `aiIntegration.confirmation.*`, Auto-error-handling, and agent command settings in the WT settings-load / agent-launch path. |
+| **P1** | Add meta-confirmation for changes to `aiIntegration.confirmation.*`, Auto error handling, and agent command settings in the WT settings-load / agent-launch path. |
 | **P1** | Scrub `WT_COM_CLSID` from Agent CLI child environments, or make COM authorization independent of inherited pane environment. |
 | **P1** | Add structured audit logging and log rotation. |
 | **P1** | Add redaction for pane context and diagnostic logs. |
@@ -449,7 +449,7 @@ Same-user OS process introspection and handle-table attacks against WTA are inte
 | **P1** | Add per-turn shell-input rate limiting. |
 | **P1** | Add source-pane / target-pane authorization for `SendInput`, or explicitly document that any COM-allowed caller may target any pane by session GUID. |
 | **P1** | Scope or authorize lower-impact COM mutations (`ClosePane`, `FocusPane`, `SetSessionVariable`) separately from process creation. |
-| **P1** | Add clear Auto-error-handling context-disclosure consent and consider per-event analysis confirmation or source validation for crafted OSC failure marks. |
+| **P1** | Add clear Auto error handling context-disclosure consent and consider per-event analysis confirmation or source validation for crafted OSC failure marks. |
 | **P1** | Add delegation context confirmation/redaction and avoid putting full pane context into delegate command lines or diagnostic logs. |
 | **P2** | Migrate read methods (`ReadPaneOutput`, `GetSettings`, topology reads) after mutation methods. |
 | **P2** | Tighten built-in Agent CLI resolution and binary identity checks, and pin/vendor/verify ACP adapter packages launched through package managers such as `npx -y`. |

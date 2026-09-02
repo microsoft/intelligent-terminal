@@ -1284,7 +1284,7 @@ impl App {
                 }
 
                 // Append directly to the ordered active transcript. The state
-                // machine drops late chunks and stale Auto-error-handling generations.
+                // machine drops late chunks and stale Auto error handling generations.
                 self.turn_observe_chunk(&session_id, ChunkKind::Message, &text);
             }
             AppEvent::UserMessageReplayChunk { session_id, text } => {
@@ -1869,7 +1869,7 @@ impl App {
                 tracing::trace!(target: "auto_error_handling", method = %method, pane_id = %pane_id, tab_id = ?tab_id, self_pane_id = ?self.pane_id, "WtEvent");
 
                 // Hook bridge events: fire-and-forget into the agent registry
-                // so the agent session view stays current. Unrelated to Auto-error-handling /
+                // so the agent session view stays current. Unrelated to Auto error handling /
                 // tab routing; runs before the same-pane skip because we want
                 // to record events from our own pane too.
                 if method == "agent_event" {
@@ -1901,7 +1901,7 @@ impl App {
                 // pane_id is the failing
                 // pane — NOT our own — so this check must run before the
                 // same-pane skip below. Ignore the event if we don't
-                // actually have a cached Auto-error-handling result for it.
+                // actually have a cached Auto error handling result for it.
                 if method == "auto_error_handling_execute_result" {
                     self.handle_auto_error_handling_execute_result_request(&pane_id);
                     return;
@@ -2055,7 +2055,7 @@ impl App {
                             target: "agent_config",
                             old = self.auto_error_handling_with_agent_enabled,
                             new = enabled,
-                            "Auto-error-handling send-to-agent mode hot-reloaded from settings change",
+                            "Auto error handling send-to-agent mode hot-reloaded from settings change",
                         );
                         self.auto_error_handling_with_agent_enabled = enabled;
                     }
@@ -2210,7 +2210,7 @@ impl App {
                     if let Some(new_tab_id) = params.get("tab_id").and_then(|v| v.as_str()) {
                         // switch_tab_session calls project_active_tab_state
                         // at its end — that pushes the new tab's view AND
-                        // Auto-error-handling bar snapshot to C++ in one shot.
+                        // Auto error handling bar snapshot to C++ in one shot.
                         self.switch_tab_session(new_tab_id.to_string());
                     } else {
                         tracing::warn!(target: "tab_session", "tab_changed: missing tab_id in params");
@@ -2737,7 +2737,7 @@ impl App {
                     WtEventSeverity::Critical | WtEventSeverity::Actionable => {
                         self.show_notification_banner = true;
                         // Only OSC-133;D vt_sequence events have the exit
-                        // code + live shell buffer needed to drive Auto-error-handling.
+                        // code + live shell buffer needed to drive Auto error handling.
                         // `connection_state: closed`/`failed` is just process
                         // termination — banner-only.
                         if method == "vt_sequence" {

@@ -302,7 +302,7 @@ impl From<ProposalOpenTargetWire> for OpenTarget {
 /// Action wire shape. Deliberately has no session/helper/window/tab/pane id
 /// field. The helper captures the active working pane for the prompt and
 /// supplies it separately as trusted metadata; model-authored JSON cannot
-/// redirect a send or panel action to another pane. Auto-error-handling continues to bind
+/// redirect a send or panel action to another pane. Auto error handling continues to bind
 /// its failing pane at card-execution time.
 ///
 /// `agent: Option<String>` from [`RecommendedAction`] is intentionally not
@@ -713,8 +713,8 @@ pub fn build_recommendation_set(
     }
 
     if origin_is_auto_error_handling {
-        // Auto-error-handling MVP policy: exactly one choice, exactly one Send action.
-        // No Open/OpenAndSend — Auto-error-handling never spawns a new pane. `parent`
+        // Auto error handling MVP policy: exactly one choice, exactly one Send action.
+        // No Open/OpenAndSend — Auto error handling never spawns a new pane. `parent`
         // is stripped/ignored unconditionally; the real failing pane is
         // bound by the caller (App::turn_execute_card's existing autofill),
         // exactly like today's manual `/fix` flow.

@@ -2961,31 +2961,31 @@
   </data>
   <data name="AIAgents_AutoErrorHandlingTitle.Text" xml:space="preserve">
     <value>Автоматическая обработка ошибок</value>
-    <comment>Title for the Auto-error-handling dropdown in the AI agents settings page.</comment>
+    <comment>Title for the Auto error handling dropdown in the AI agents settings page.</comment>
   </data>
   <data name="AIAgents_AutoErrorHandlingCaptionPrefix" xml:space="preserve">
     <value>Выберите способ обработки ошибок терминала. Доступно в PowerShell, bash и WSL bash. </value>
-    <comment>{Locked="PowerShell","bash","WSL bash"} Caption under the Auto-error-handling title; the trailing space separates this prefix from the inline AIAgents_AutoErrorHandlingCaptionLink hyperlink that follows.</comment>
+    <comment>{Locked="PowerShell","bash","WSL bash"} Caption under the Auto error handling title; the trailing space separates this prefix from the inline AIAgents_AutoErrorHandlingCaptionLink hyperlink that follows.</comment>
   </data>
   <data name="AIAgents_AutoErrorHandlingCaptionLink" xml:space="preserve">
     <value>Показать все поддерживаемые оболочки</value>
-    <comment>Inline hyperlink text that follows AIAgents_AutoErrorHandlingCaptionPrefix; opens the documentation listing every shell that supports Auto-error-handling.</comment>
+    <comment>Inline hyperlink text that follows AIAgents_AutoErrorHandlingCaptionPrefix; opens the documentation listing every shell that supports Auto error handling.</comment>
   </data>
   <data name="AIAgents_AutoErrorHandling_Off" xml:space="preserve">
     <value>Выкл</value>
-    <comment>The first option in the Auto-error-handling dropdown. It disables automatic terminal error detection and fixes.</comment>
+    <comment>The first option in the Auto error handling dropdown. It disables automatic terminal error detection and fixes.</comment>
   </data>
   <data name="AIAgents_AutoErrorHandling_DetectErrorsAutomatically" xml:space="preserve">
     <value>Автоматически обнаруживайте ошибки</value>
-    <comment>The second option in the Auto-error-handling dropdown. It detects terminal errors automatically without sending them to an AI agent. Here "agent" means an AI intelligent agent, not a proxy or human agent.</comment>
+    <comment>The second option in the Auto error handling dropdown. It detects terminal errors automatically without sending them to an AI agent. Here "agent" means an AI intelligent agent, not a proxy or human agent.</comment>
   </data>
   <data name="AIAgents_AutoErrorHandling_DetectErrorsAndSendToAgentForFixesAutomatically" xml:space="preserve">
     <value>Обнаруживайте ошибки и автоматически отправляйте их агенту для исправления.</value>
-    <comment>The third option in the Auto-error-handling dropdown. It detects terminal errors and sends them to an AI agent for automatic fixes. Here "agent" means an AI intelligent agent, not a proxy or human agent.</comment>
+    <comment>The third option in the Auto error handling dropdown. It detects terminal errors and sends them to an AI agent for automatic fixes. Here "agent" means an AI intelligent agent, not a proxy or human agent.</comment>
   </data>
   <data name="AIAgents_AutoErrorHandlingComboBox.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
     <value>Автоматическая обработка ошибок</value>
-    <comment>Automation name for the Auto-error-handling dropdown in the AI agents settings page.</comment>
+    <comment>Automation name for the Auto error handling dropdown in the AI agents settings page.</comment>
   </data>
   <data name="AIAgents_CustomModels.Header" xml:space="preserve">
     <value>Поставщики BYOK</value>

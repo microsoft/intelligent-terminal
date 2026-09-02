@@ -174,7 +174,7 @@ pub fn parse_recommendation_set(text: &str) -> Result<RecommendationSet> {
     Ok(parsed)
 }
 
-/// The result of parsing an Auto-error-handling response.
+/// The result of parsing an Auto error handling response.
 #[derive(Debug, Clone)]
 pub enum AutoErrorHandlingDecision {
     /// AI found a single-command fix.
@@ -188,7 +188,7 @@ pub enum AutoErrorHandlingDecision {
     Ignore,
 }
 
-/// Parse a response from the minimal Auto-error-handling prompt.
+/// Parse a response from the minimal Auto error handling prompt.
 ///
 /// Expected formats:
 ///   {"action": "fix",     "title": "...", "command": "...",     "rationale": "..."}
@@ -201,7 +201,7 @@ pub fn parse_auto_error_handling_response(text: &str) -> AutoErrorHandlingDecisi
     let json = match extract_json_code_block(text).or_else(|| extract_first_json_object(text)) {
         Some(j) => j,
         None => {
-            tracing::warn!(target: "auto_error_handling", "no JSON in Auto-error-handling response; ignoring");
+            tracing::warn!(target: "auto_error_handling", "no JSON in Auto error handling response; ignoring");
             return AutoErrorHandlingDecision::Ignore;
         }
     };
@@ -209,7 +209,7 @@ pub fn parse_auto_error_handling_response(text: &str) -> AutoErrorHandlingDecisi
     let value: serde_json::Value = match serde_json::from_str(json) {
         Ok(v) => v,
         Err(e) => {
-            tracing::warn!(target: "auto_error_handling", "failed to parse Auto-error-handling JSON: {e}; ignoring");
+            tracing::warn!(target: "auto_error_handling", "failed to parse Auto error handling JSON: {e}; ignoring");
             return AutoErrorHandlingDecision::Ignore;
         }
     };
@@ -264,7 +264,7 @@ pub fn parse_auto_error_handling_response(text: &str) -> AutoErrorHandlingDecisi
         }
         Some("ignore") | None => AutoErrorHandlingDecision::Ignore,
         Some(other) => {
-            tracing::warn!(target: "auto_error_handling", "unknown Auto-error-handling action {other:?}; ignoring");
+            tracing::warn!(target: "auto_error_handling", "unknown Auto error handling action {other:?}; ignoring");
             AutoErrorHandlingDecision::Ignore
         }
     }
@@ -710,7 +710,7 @@ pub(crate) fn validate_recommendation_set_for_coordinator_target(
 fn validate_action(action: &RecommendedAction) -> Result<()> {
     match action {
         RecommendedAction::Send { parent: _, input } => {
-            // parent may be empty for Auto-error-handling actions (filled in at execution time)
+            // parent may be empty for Auto error handling actions (filled in at execution time)
             ensure_non_empty("input", input)?;
         }
         RecommendedAction::OpenAndSend {

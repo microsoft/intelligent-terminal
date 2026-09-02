@@ -446,7 +446,7 @@ fn slash_fix_when_idle_submits_auto_error_handling_turn() {
 
     assert!(
         !app.current_tab().turn.is_idle(),
-        "/fix on an idle tab must submit an Auto-error-handling turn"
+        "/fix on an idle tab must submit an Auto error handling turn"
     );
     assert_eq!(
         app.current_tab().auto_error_handling.generation,

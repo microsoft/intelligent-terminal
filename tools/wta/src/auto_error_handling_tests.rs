@@ -1,5 +1,5 @@
-//! Auto-error-handling-trigger reducer tests, split out of the large `app.rs` test module
-//! so the per-tab Auto-error-handling gating logic lives in one place. Declared as a child
+//! Auto error handling-trigger reducer tests, split out of the large `app.rs` test module
+//! so the per-tab Auto error handling gating logic lives in one place. Declared as a child
 //! of `app` (via `#[path]` in app.rs) so it can reach `App`'s private
 //! `maybe_trigger_auto_error_handling` / `trigger_auto_error_handling_inner` dispatch and the
 //! `pub(super)` `AutoErrorHandlingState` fields.
@@ -48,11 +48,11 @@ fn cold_start_drops_auto_error_handling_when_not_connected() {
         app.tab_sessions
             .values()
             .all(|t| t.auto_error_handling.pane_id.is_none()),
-        "a failure before Connected must not start Auto-error-handling on any tab"
+        "a failure before Connected must not start Auto error handling on any tab"
     );
     assert!(
         app.tab_sessions.values().all(|t| t.turn.is_idle()),
-        "a failure before Connected must not submit an Auto-error-handling turn"
+        "a failure before Connected must not submit an Auto error handling turn"
     );
 }
 
@@ -71,11 +71,11 @@ fn missing_tab_id_drops_auto_error_handling() {
         app.tab_sessions
             .values()
             .all(|t| t.auto_error_handling.pane_id.is_none()),
-        "a notification without tab_id must not start Auto-error-handling"
+        "a notification without tab_id must not start Auto error handling"
     );
     assert!(
         app.tab_sessions.values().all(|t| t.turn.is_idle()),
-        "a notification without tab_id must not submit an Auto-error-handling turn"
+        "a notification without tab_id must not submit an Auto error handling turn"
     );
 }
 
@@ -104,7 +104,7 @@ fn detect_only_emits_detected_without_submitting_turn() {
     );
     assert!(
         app.tab_mut(tab).turn.is_idle(),
-        "detect-only mode must not submit an Auto-error-handling turn"
+        "detect-only mode must not submit an Auto error handling turn"
     );
 }
 
@@ -184,7 +184,7 @@ fn dismiss_result_protocol_method_clears_review_result() {
     ));
 }
 
-/// Single-flight, same pane: re-triggering Auto-error-handling for the *same* failing pane
+/// Single-flight, same pane: re-triggering Auto error handling for the *same* failing pane
 /// while a turn is already in flight must re-emit the bar state only — it must
 /// not bump the generation or submit a second turn (the agent is already
 /// working on it).
@@ -205,7 +205,7 @@ fn busy_same_pane_reemit_does_not_resubmit() {
     );
     assert!(
         !app.tab_mut(tab).turn.is_idle(),
-        "first trigger must submit an Auto-error-handling turn"
+        "first trigger must submit an Auto error handling turn"
     );
     let gen_after_first = app.tab_mut(tab).auto_error_handling.generation;
 
@@ -224,7 +224,7 @@ fn busy_same_pane_reemit_does_not_resubmit() {
 }
 
 /// Single-flight, different pane: a failure in a *different* pane while the
-/// tab already has an Auto-error-handling turn in flight is dropped: the
+/// tab already has an Auto error handling turn in flight is dropped: the
 /// original pane stays active and the new pane is not adopted.
 #[test]
 fn busy_different_pane_is_dropped() {
@@ -259,7 +259,7 @@ fn busy_different_pane_is_dropped() {
 
 /// End-to-end negative: a *successful* command (osc:133;D;0) routed through the
 /// real `handle_event` dispatcher must classify as silent and never arm
-/// Auto-error-handling. This is the "successful commands ignored" half of the detection
+/// Auto error handling. This is the "successful commands ignored" half of the detection
 /// contract — `classify_wt_event`'s exit-code split is unit-tested separately,
 /// this asserts the dispatcher honors it.
 #[test]
@@ -283,10 +283,10 @@ fn success_exit_code_does_not_start_auto_error_handling() {
         app.tab_sessions
             .values()
             .all(|t| t.auto_error_handling.pane_id.is_none()),
-        "a successful command (exit 0) must not start Auto-error-handling"
+        "a successful command (exit 0) must not start Auto error handling"
     );
     assert!(
         app.tab_sessions.values().all(|t| t.turn.is_idle()),
-        "a successful command (exit 0) must not submit an Auto-error-handling turn"
+        "a successful command (exit 0) must not submit an Auto error handling turn"
     );
 }

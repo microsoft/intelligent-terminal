@@ -367,7 +367,7 @@ pub struct WtNotification {
     pub pane_id: String,
     /// WT tab StableId that owns the failing pane. `None` when the
     /// underlying event predates the tab_id wire (older WT builds) or
-    /// arrived without a tab context. Auto-error-handling routing treats absence as
+    /// arrived without a tab context. Auto error handling routing treats absence as
     /// "cannot route — drop with warn", to avoid the old failure mode
     /// where the fix landed in whatever tab happened to be active.
     pub tab_id: Option<String>,
@@ -1202,7 +1202,7 @@ pub struct App {
     #[cfg(test)]
     pub last_dispatched_command: Option<DispatchedCommand>,
     /// Source pane GUID (set from `WTA_SOURCE_SESSION_ID` env var by the
-    /// launching pane). Used by Auto-error-handling to attribute which pane originated
+    /// launching pane). Used by Auto error handling to attribute which pane originated
     /// the failing command we're about to fix.
     pub source_session_id: Option<String>,
     /// Source pane working directory (set from `WTA_SOURCE_CWD`).
@@ -5278,13 +5278,13 @@ impl App {
         tab.scroll_to_bottom();
     }
 
-    /// `/fix [hint]` — run the Auto-error-handling prompt on demand against the active
-    /// terminal pane. Reuses the error-triggered Auto-error-handling pipeline
+    /// `/fix [hint]` — run the Auto error handling prompt on demand against the active
+    /// terminal pane. Reuses the error-triggered Auto error handling pipeline
     /// (`PromptSubmission::is_auto_error_handling`): the agent receives the `auto-error-handling.md`
     /// instruction overlay plus the working pane's recent output, and any `hint` typed
     /// after `/fix` is appended as an extra steer.
     ///
-    /// Differences from auto-triggered Auto-error-handling (`maybe_trigger_auto_error_handling`):
+    /// Differences from auto-triggered Auto error handling (`maybe_trigger_auto_error_handling`):
     /// there is no failing-pane notification, so (1) the helper's captured
     /// source pane is resolved in the ACP client task; and
     /// (2) the turn context starts without a target and is late-bound once
@@ -5310,7 +5310,7 @@ impl App {
             .clone()
             .unwrap_or_else(|| DEFAULT_TAB_ID.to_string());
 
-        // Bump generation so any stale in-flight Auto-error-handling response is dropped,
+        // Bump generation so any stale in-flight Auto error handling response is dropped,
         // and clear a result awaiting review — mirrors
         // `maybe_trigger_auto_error_handling`.
         let generation = {
@@ -5532,7 +5532,7 @@ impl App {
     /// Owner-lock: when `self.owner_tab_id` is set (i.e. this is a per-tab
     /// helper spawned for a specific agent pane), `tab_changed` events for
     /// a *different* tab are no-ops. The helper's TUI / per-tab state /
-    /// Auto-error-handling bar are anchored to the owner tab; without this guard, two
+    /// Auto error handling bar are anchored to the owner tab; without this guard, two
     /// helpers in the same window both process every tab switch and the
     /// non-owner's stale `tab_sessions[<other tab>]` default snapshot
     /// (created via `.or_default()` below) clobbers the owner's real
@@ -5581,7 +5581,7 @@ impl App {
         self.rebuild_model_catalog_from_agent_state();
         self.publish_agent_status();
 
-        // The new active tab's `current_view` (and Auto-error-handling bar) is now
+        // The new active tab's `current_view` (and Auto error handling bar) is now
         // authoritative for the shared C++ agent pane. Re-emit so the bar
         // title and bottom-bar highlight match the tab we just switched to;
         // without this, C++'s global flag stays on the previous tab's view
@@ -5666,14 +5666,14 @@ impl App {
     /// StableId when the user drags a tab into another window; the
     /// underlying helper process survives the drag (conpty + TermControl
     /// reattach via WT's ContentId mechanism) but the tab key WT uses to
-    /// address us has changed. Without this, Auto-error-handling / set_agent_state /
+    /// address us has changed. Without this, Auto error handling / set_agent_state /
     /// any other event WT broadcasts with the new id would miss every
     /// entry keyed under the old id.
     ///
     /// Concretely re-keys: `self.tab_id`, `self.tab_sessions` (HashMap key),
     /// `self.session_to_tab` (values), and any cached
     /// `wt_notifications.tab_id` matching the old id. Triggers a
-    /// re-projection so the bottom-bar Auto-error-handling snapshot, agent-pane view,
+    /// re-projection so the bottom-bar Auto error handling snapshot, agent-pane view,
     /// and pane_open flag are republished under the new identity.
     ///
     /// No-op when `new_tab_id == old_tab_id`. If the old tab id is unknown,
@@ -5776,7 +5776,7 @@ impl App {
         );
 
         // Re-publish the (now-renamed) active tab so the bottom-bar
-        // Auto-error-handling snapshot, agent-pane view, and pane_open flag are
+        // Auto error handling snapshot, agent-pane view, and pane_open flag are
         // republished under the new identity. Without this, C++'s
         // mirrored state would still be tagged with the old id on the
         // next event round-trip.
@@ -6319,9 +6319,9 @@ fn now_unix_s() -> f64 {
 #[path = "slash_command_tests.rs"]
 mod slash_command_tests;
 
-// Auto-error-handling-trigger reducer tests. Same `#[path]` child-of-`app` pattern as
+// Auto error handling-trigger reducer tests. Same `#[path]` child-of-`app` pattern as
 // slash_command_tests so they can reach `App`'s private dispatch methods and
-// the `pub(super)` Auto-error-handling state fields.
+// the `pub(super)` Auto error handling state fields.
 #[cfg(test)]
 #[path = "auto_error_handling_tests.rs"]
 mod auto_error_handling_tests;

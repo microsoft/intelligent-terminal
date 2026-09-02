@@ -62,7 +62,7 @@ function Clear-WtConfig {
         launch deterministic and provider-pure.
 
         We REMOVE every agent/AI top-level key (acp*, delegate*, agentPane*, canonical and
-        migrated Auto-error-handling keys,
+        migrated Auto error handling keys,
         showToken*, aiIntegration*) while PRESERVING the rest of the file (profiles, theme, keybindings). A
         full schema-only wipe is deliberately NOT used: WindowsTerminal rejects a settings.json
         with no usable profile and pops a "Failed to load settings" dialog that would destabilize

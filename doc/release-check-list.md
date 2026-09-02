@@ -17,7 +17,7 @@ Use this checklist to validate and sign off an Intelligent Terminal release. Eac
 
 Read the markers to decide where to spend manual effort — don't re-test what the unit tests already lock down:
 
-- **`[x]` pure `[UT✓]`** — the logic is fully verified by a unit test that re-runs on every build. Do **not** manually test these in isolation; just let them ride along in the final end-to-end smoke pass. (Examples: slash-command dispatch, Auto-error-handling option gating, settings persistence.)
+- **`[x]` pure `[UT✓]`** — the logic is fully verified by a unit test that re-runs on every build. Do **not** manually test these in isolation; just let them ride along in the final end-to-end smoke pass. (Examples: slash-command dispatch, Auto error handling option gating, settings persistence.)
 - **`[UT✓]` + `[E2E]` (box left unchecked)** — the **decision/logic half is already UT-covered**, so during E2E you only need to confirm the **UI / interaction half** works (the pane actually opens, the row actually shows the state, the picker renders). You do **not** need to re-verify the underlying branches — those are guarded by UT and regress automatically. (Examples: `Ctrl+Shift+.` opens the pane, session-state display, Enter resume, `/model` picker.)
 - **`[E2E]` / `[MANUAL]`** — no UT safety net; test these fully by hand / automation.
 
@@ -34,7 +34,7 @@ Net effect: UT shrinks the manual matrix to "did the wiring and UI connect", not
 
 ## 0. First-run experience (FRE)
 
-**Feature definition:** FRE guides first-time users through agent selection, pane position, Auto-error-handling, and session-management hook setup.
+**Feature definition:** FRE guides first-time users through agent selection, pane position, Auto error handling, and session-management hook setup.
 
 - [ ] `C007` `[E2E]` **FRE opens correctly:** A clean user profile launches the FRE instead of skipping directly to the terminal.
 - [ ] `C008` `[E2E]` **FRE can be completed:** The user can go through every page, save settings, and enter the main terminal window.
@@ -43,7 +43,7 @@ Net effect: UT shrinks the manual matrix to "did the wiring and UI connect", not
 - [ ] `C011` `[E2E]` **FRE save progress works:** The progress UI appears while setup/install work is running and returns to a usable state.
 - [x] `C012` `[UT✓]` `[E2E]` **FRE error messages are actionable:** Install/auth/setup failures show a useful message instead of a silent failure or raw OS error. _(UT: `classify_connection_closed_is_actionable` + `classify_connection_failed_is_critical` classify agent connection failures into actionable/critical categories that drive the user-facing message rather than a raw error; `auth_error_routes_to_signin_not_connection_lost` routes auth failures to a sign-in prompt.)_
 - [ ] `C214` `[new]` `[UT~]` `[E2E]` **FRE execution-policy detection is correct:** FRE flags a genuinely blocking PowerShell execution policy but does **not** false-block when a load-induced execution-policy probe merely times out; an unknown/unreadable policy is treated conservatively (as blocking). _(#336/#338/#309; UT: execution-policy gate.)_
-- [ ] `C013` `[UT~]` `[E2E]` **FRE respects policy locks:** If agent, Auto-error-handling, or session-management policy is locked, affected controls are disabled and explain why. _(UT: `IsAgentPolicyLocked`, effective-setting gates.)_
+- [ ] `C013` `[UT~]` `[E2E]` **FRE respects policy locks:** If agent, Auto error handling, or session-management policy is locked, affected controls are disabled and explain why. _(UT: `IsAgentPolicyLocked`, effective-setting gates.)_
 - [ ] `C014` `[UT~]` `[MANUAL]` **FRE RTL/localized layout is usable:** Layout mirrors correctly for RTL locales and text is not clipped in localized builds. _(UT: `IsRtlLocale`.)_
 
 ### FRE agent selection
@@ -54,10 +54,10 @@ Net effect: UT shrinks the manual matrix to "did the wiring and UI connect", not
 - [ ] `C018` `[UT~]` `[E2E]` **Unavailable non-Copilot agents:** Claude/Codex/Gemini that are not installed do not appear as broken selectable options.
 - [ ] `C019` `[UT✓]` `[E2E]` **Agent selection persists:** The selected agent remains selected after FRE completion and app restart. _(UT: `BuiltInAcpAgentRoundtrips`.)_
 
-### FRE Auto-error-handling
+### FRE Auto error handling
 
-- [ ] `C020` `[UT✓]` `[E2E]` **All Auto-error-handling options appear:** The description says "Choose how terminal errors are handled." and the picker shows exactly `Off`; `Detect errors automatically`; `Detect errors and send them to the agent for fixes automatically.` _(UT: enum serialization and option population.)_
-- [ ] `C021` `[UT✓]` `[E2E]` **`Off` works:** Command failures do not produce Auto-error-handling activity.
+- [ ] `C020` `[UT✓]` `[E2E]` **All Auto error handling options appear:** The description says "Choose how terminal errors are handled." and the picker shows exactly `Off`; `Detect errors automatically`; `Detect errors and send them to the agent for fixes automatically.` _(UT: enum serialization and option population.)_
+- [ ] `C021` `[UT✓]` `[E2E]` **`Off` works:** Command failures do not produce Auto error handling activity.
 - [ ] `C022` `[UT✓]` `[E2E]` **`Detect errors automatically` works:** Shell failures are detected when shell integration is available, but they are not sent to the agent.
 - [ ] `C023` `[UT✓]` `[E2E]` **`Detect errors and send them to the agent for fixes automatically.` works:** A detected failure can be sent to a connected agent, which can return a proposed fix.
 - [ ] `C024` `[UT✓]` `[E2E]` **The picker stores one valid state:** Switching options never produces an invalid combination or leaves obsolete dependent controls visible.
@@ -81,7 +81,7 @@ Net effect: UT shrinks the manual matrix to "did the wiring and UI connect", not
 
 ## 1. Settings > AI Agents
 
-**Feature definition:** Settings is the post-FRE configuration surface for built-in agents, custom agents, model selection, pane position, Auto-error-handling, and session hooks.
+**Feature definition:** Settings is the post-FRE configuration surface for built-in agents, custom agents, model selection, pane position, Auto error handling, and session hooks.
 
 - [ ] `C036` `[E2E]` **AI Agents page opens:** Settings opens the AI Agents page without layout glitches.
 - [ ] `C037` `[UT~]` `[E2E]` **Built-in agent dropdown works:** Copilot, Claude, Codex, and Gemini entries show correct installed/available state. _(UT: registry/filter logic.)_
@@ -91,8 +91,8 @@ Net effect: UT shrinks the manual matrix to "did the wiring and UI connect", not
 - [ ] `C041` `[UT✓]` `[E2E]` **Model changes apply:** Changing `acpModel` affects new agent-pane sessions and does not corrupt existing settings. _(UT: `build_acp_command` model handling.)_
 - [ ] `C042` `[UT✓]` `[E2E]` **Delegate model changes apply:** Changing `delegateModel` affects new delegate-agent launches. _(UT: command construction.)_
 - [ ] `C043` `[UT✓]` `[E2E]` **Pane position setting works:** Bottom/right/left/top can be selected and saved. _(UT: `AgentPanePositionRoundtripsAndDefaults`.)_
-- [ ] `C044` `[UT✓]` `[E2E]` **Auto-error-handling options match FRE:** Settings explains that the control chooses how terminal errors are handled and shows exactly `Off`; `Detect errors automatically`; `Detect errors and send them to the agent for fixes automatically.` _(UT: enum settings round-trip.)_
-- [ ] `C045` `[UT✓]` `[E2E]` **Auto-error-handling behavior matches FRE:** Each selected option has the same detection and agent-submission behavior in Settings and FRE.
+- [ ] `C044` `[UT✓]` `[E2E]` **Auto error handling options match FRE:** Settings explains that the control chooses how terminal errors are handled and shows exactly `Off`; `Detect errors automatically`; `Detect errors and send them to the agent for fixes automatically.` _(UT: enum settings round-trip.)_
+- [ ] `C045` `[UT✓]` `[E2E]` **Auto error handling behavior matches FRE:** Each selected option has the same detection and agent-submission behavior in Settings and FRE.
 - [ ] `C046` `[UT~]` `[E2E]` **Session hooks install works:** Install hooks button detects supported CLIs and reports success/failure clearly. _(UT: status parse.)_
 - [ ] `C047` `[E2E]` **Session hooks remove works:** Per-CLI remove buttons remove hook state without breaking the Settings page.
 - [ ] `C048` `[UT~]` `[E2E]` **Policy lock UI works:** Locked controls are disabled and show the policy message. _(UT: Effective*/IsLocked gates.)_
@@ -219,49 +219,49 @@ Net effect: UT shrinks the manual matrix to "did the wiring and UI connect", not
 - [x] `C085` `[UT✓]` `[E2E]` **View switch preserves input:** Draft prompt text is not unexpectedly lost when switching views. _(E2E `Feature.SessionList` 'View switch preserves the draft input': types a draft, switches chat↔sessions via the bottom-bar buttons (SessionToggleButton/AgentToggleButton — not the `/sessions` slash that would type into the draft, not Esc which is overloaded), observing the view via the `AgentLabelText` UIA element (winapp get-value, no jsonl pane ambiguity), then asserts the draft survives. UT: `view_switch_preserves_chat_draft_input` drives the Esc key handler and asserts draft + cursor survive.)_
 - [ ] `C086` `[E2E]` **View switch preserves connection:** Agent connection state remains correct after switching views.
 
-## 3. Auto-error-handling flow
+## 3. Auto error handling flow
 
-**Feature definition:** Auto-error-handling detects terminal command failures. With `Detect errors and send them to the agent for fixes automatically.`, it captures relevant pane context, asks the configured agent for a fix, and accepts actionable fixes only through a Direct Helper Proposal before offering Insert or Run.
+**Feature definition:** Auto error handling detects terminal command failures. With `Detect errors and send them to the agent for fixes automatically.`, it captures relevant pane context, asks the configured agent for a fix, and accepts actionable fixes only through a Direct Helper Proposal before offering Insert or Run.
 
 ### Shell integration and detection
 
 - [ ] `C087` `[E2E]` **PowerShell shell integration installed:** Supported PowerShell profiles emit command-finished events, including non-zero marks for PowerShell-level failures on Windows PowerShell 5.1.
 - [ ] `C219` `[new]` `[E2E]` **Bash / WSL shell integration installed:** Supported bash and WSL-bash profiles emit command-finished events, and the injected `PROMPT_COMMAND` is safe under `set -u` (no errors in strict-mode shells). _(#340.)_
 - [ ] `C250` `[new]` `[E2E]` **Bash PROMPT_COMMAND rewrites preserve semantic prompt boundaries:** In Intelligent Terminal, a user hook that rebuilds `PS1` still produces one ordered `OSC 133;D/A/B` cycle per command; the same user-wide integration script stays inert in other terminals. _(#468; E2E: `Feature.BashPromptIntegration`.)_
-- [ ] `C220` `[new]` `[E2E]` **Shells self-report identity (`OSC 9001;ShellType`):** The terminal knows which shell owns a pane — including after a nested shell (`pwsh` → `wsl` → `exit`) returns — so Auto-error-handling proposes commands for the *current* shell (no PowerShell commands inside a WSL/bash pane). `wtcli list-panes` exposes the live shell + version per pane. _(#345.)_
+- [ ] `C220` `[new]` `[E2E]` **Shells self-report identity (`OSC 9001;ShellType`):** The terminal knows which shell owns a pane — including after a nested shell (`pwsh` → `wsl` → `exit`) returns — so Auto error handling proposes commands for the *current* shell (no PowerShell commands inside a WSL/bash pane). `wtcli list-panes` exposes the live shell + version per pane. _(#345.)_
 - [ ] `C088` `[E2E]` **Missing shell integration is safe:** Without shell integration, failures do not crash or produce broken UI.
 - [x] `C089` `[UT✓]` **Failure detection works:** A failing command emits an event and is detected by Intelligent Terminal. _(UT: `classify_wt_event`.)_
-- [x] `C090` `[UT✓]` **Successful commands ignored:** Successful commands do not produce Auto-error-handling activity. _(UT: failure classification.)_
-- [ ] `C230` `[new]` `[E2E]` **PowerShell parser errors produce exactly one agent request:** A malformed PowerShell command emits a non-zero completion mark and submits one Auto-error-handling turn when the third option is selected. _(#474; E2E: internal parser pipeline coverage.)_
-- [ ] `C231` `[new]` `[E2E]` **Parser-error prompt redraw does not repeat the request:** Pressing Enter on the fresh prompt after a parser error does not replay the prior failure or submit another Auto-error-handling turn. _(#474; E2E: internal parser pipeline coverage.)_
-- [ ] `C232` `[new]` `[E2E]` **Successful PowerShell commands produce no request:** A normal PowerShell command emits a zero-exit completion mark and does not submit an Auto-error-handling turn. _(#474; E2E: internal parser pipeline coverage.)_
+- [x] `C090` `[UT✓]` **Successful commands ignored:** Successful commands do not produce Auto error handling activity. _(UT: failure classification.)_
+- [ ] `C230` `[new]` `[E2E]` **PowerShell parser errors produce exactly one agent request:** A malformed PowerShell command emits a non-zero completion mark and submits one Auto error handling turn when the third option is selected. _(#474; E2E: internal parser pipeline coverage.)_
+- [ ] `C231` `[new]` `[E2E]` **Parser-error prompt redraw does not repeat the request:** Pressing Enter on the fresh prompt after a parser error does not replay the prior failure or submit another Auto error handling turn. _(#474; E2E: internal parser pipeline coverage.)_
+- [ ] `C232` `[new]` `[E2E]` **Successful PowerShell commands produce no request:** A normal PowerShell command emits a zero-exit completion mark and does not submit an Auto error handling turn. _(#474; E2E: internal parser pipeline coverage.)_
 - [ ] `C233` `[new]` `[E2E]` **Handled non-terminating PowerShell errors produce no request:** A command that handles a non-terminating error and completes successfully remains distinct from a parser failure. _(#474; E2E: internal parser pipeline coverage.)_
-- [x] `C091` `[UT✓]` **`Off` suppresses processing:** Failures do not produce Auto-error-handling activity.
+- [x] `C091` `[UT✓]` **`Off` suppresses processing:** Failures do not produce Auto error handling activity.
 - [x] `C092` `[UT✓]` **`Detect errors automatically` observes failures locally:** Failure notifications are observed without contacting the agent.
 - [x] `C093` `[UT✓]` **`Detect errors automatically` suppresses agent calls:** Detection can show expected local UI but does not ask the agent for a fix.
 - [x] `C094` `[UT✓]` **`Detect errors and send them to the agent for fixes automatically.` contacts the agent:** With a connected helper, a proposed fix is requested.
 - [x] `C095` `[UT✓]` **Cold-start behavior is acceptable:** If failure happens before the helper is connected, UI stays stable and no stale proposed fix appears later.
 
-### Auto-error-handling with the agent pane
+### Auto error handling with the agent pane
 
-- [ ] `C096` `[E2E]` **Visible agent pane flow works:** Auto-error-handling works when the agent pane is visible.
-- [ ] `C097` `[E2E]` **Stashed agent pane flow works:** Auto-error-handling works when the per-tab agent pane is pre-warmed but hidden.
-- [ ] `C098` `[E2E]` **Auto-error-handling opens/restores UI correctly:** The proposed-fix UI appears in the expected pane/tab and does not steal unrelated focus unexpectedly.
+- [ ] `C096` `[E2E]` **Visible agent pane flow works:** Auto error handling works when the agent pane is visible.
+- [ ] `C097` `[E2E]` **Stashed agent pane flow works:** Auto error handling works when the per-tab agent pane is pre-warmed but hidden.
+- [ ] `C098` `[E2E]` **Auto error handling opens/restores UI correctly:** The proposed-fix UI appears in the expected pane/tab and does not steal unrelated focus unexpectedly.
 - [ ] `C099` `[E2E]` **Insert proposed fix works:** A proposed fix can be inserted into the source pane.
 - [ ] `C100` `[E2E]` **Run proposed fix works:** A proposed fix can be run in the source pane.
 - [ ] `C101` `[UT✓]` `[E2E]` **Reject/dismiss works:** The user can dismiss a proposed fix without side effects.
-- [ ] `C102` `[UT✓]` `[E2E]` **Auto-error-handling target pane is correct:** A failure in one pane does not offer or run a fix in the wrong pane. _(UT: target-tab routing.)_
-- [ ] `C103` `[E2E]` `[MANUAL]` **Auto-error-handling with Copilot works:** Copilot submits a valid Direct Helper Proposal and the card presents a useful proposed fix.
-- [ ] `C104` `[E2E]` **Auto-error-handling with non-Copilot agents works:** A non-Copilot built-in agent (Claude/Codex/Gemini) and a custom ACP agent each execute the canonical command, complete permission arming, and submit a usable Direct Helper Proposal through the same path.
+- [ ] `C102` `[UT✓]` `[E2E]` **Auto error handling target pane is correct:** A failure in one pane does not offer or run a fix in the wrong pane. _(UT: target-tab routing.)_
+- [ ] `C103` `[E2E]` `[MANUAL]` **Auto error handling with Copilot works:** Copilot submits a valid Direct Helper Proposal and the card presents a useful proposed fix.
+- [ ] `C104` `[E2E]` **Auto error handling with non-Copilot agents works:** A non-Copilot built-in agent (Claude/Codex/Gemini) and a custom ACP agent each execute the canonical command, complete permission arming, and submit a usable Direct Helper Proposal through the same path.
 - [ ] `C221` `[new]` `[E2E]` `[MANUAL]` **Environment-aware answers/fixes:** For a failed or "how do I use X" prompt, the agent investigates the live environment first — checks whether the command actually exists on PATH and surfaces local scripts / near-matches for a mistyped command — instead of giving generic advice or fixing a nonexistent command. _(#306.)_
 - [ ] `C246` `[new]` `[E2E]` **Profile-defined PowerShell aliases resolve through packaged WTA:** A command defined only in the current user's PowerShell profile is reported as an alias with its real target by the shipped `wta resolve-command` CLI. _(#286/#418; E2E: `Feature.CommandResolution`.)_
 
-### Auto-error-handling across layout changes
+### Auto error handling across layout changes
 
 - [ ] `C105` `[UT~]` `[E2E]` **Split pane routing works:** A failure in a split pane is routed to the correct tab/pane. _(UT: tab/pane routing.)_
 - [x] `C106` `[UT✓]` `[E2E]` **Moved tab routing works:** After moving a tab to another window, failures route to the correct agent pane. _(UT: owner-tab routing; the agent-request half has dedicated E2E coverage.)_
 - [x] `C107` `[UT✓]` `[E2E]` **Multi-window routing works:** Multiple windows with agent panes do not cross-route proposed fixes. _(UT: helpers filter inbound events by window and owner-tab identity.)_
-- [ ] `C108` `[UT~]` `[E2E]` **Closed pane cleanup works:** Auto-error-handling does not target a pane that has already closed.
+- [ ] `C108` `[UT~]` `[E2E]` **Closed pane cleanup works:** Auto error handling does not target a pane that has already closed.
 
 ## 4. Session management
 
@@ -338,7 +338,7 @@ Net effect: UT shrinks the manual matrix to "did the wiring and UI connect", not
 - [ ] `C148` `[UT✓]` `[E2E]` **Edit custom ACP agent:** Editing updates the command used by new agent panes.
 - [ ] `C149` `[UT~]` `[E2E]` **Delete custom ACP agent:** Deleting returns to a valid built-in/default selection.
 - [ ] `C150` `[UT~]` `[E2E]` **Model selection visible:** Model picker/textbox remains visible when custom agent is selected.
-- [ ] `C151` `[E2E]` **Custom agent runs the standard agent-pane behaviours:** A configured custom ACP agent can chat, request a command/tool action, insert/run into the pane, and participate in Auto-error-handling — the same agent-pane behaviours verified in depth with Copilot.
+- [ ] `C151` `[E2E]` **Custom agent runs the standard agent-pane behaviours:** A configured custom ACP agent can chat, request a command/tool action, insert/run into the pane, and participate in Auto error handling — the same agent-pane behaviours verified in depth with Copilot.
 - [ ] `C152` `[UT~]` `[E2E]` **Custom failure is safe:** Bad command, missing executable, or non-ACP behavior shows a clear error and does not crash Terminal. _(UT: failure classification.)_
 
 ### Custom delegate agent
@@ -352,10 +352,10 @@ Net effect: UT shrinks the manual matrix to "did the wiring and UI connect", not
 
 ## 7. Multi-pane and multi-window behavior
 
-**Feature definition:** Agent state, session routing, and Auto-error-handling routing are per-tab and per-window. Moving tabs/windows should not lose or cross-route agent context.
+**Feature definition:** Agent state, session routing, and Auto error handling routing are per-tab and per-window. Moving tabs/windows should not lose or cross-route agent context.
 
 - [ ] `C159` `[E2E]` **Split pane does not break chat:** Splitting the terminal pane keeps agent pane chat usable.
-- [ ] `C160` `[UT~]` `[E2E]` **Split pane target selection is correct:** Agent insert/run and Auto-error-handling target the intended non-agent pane. _(UT: routing core.)_
+- [ ] `C160` `[UT~]` `[E2E]` **Split pane target selection is correct:** Agent insert/run and Auto error handling target the intended non-agent pane. _(UT: routing core.)_
 - [ ] `C161` `[UT~]` `[E2E]` **Multiple tabs work:** Each tab has its own agent pane/session state. _(UT: per-tab state.)_
 - [ ] `C162` `[E2E]` **Multiple agent panes work:** Opening agent panes in multiple tabs does not mix conversations.
 - [ ] `C227` `[E2E]` **Per-tab agent switching is isolated:** `/agent <id>` can switch one tab to a different built-in agent without rebuilding sibling tabs, losing either conversation, or restarting the shared master.
@@ -363,7 +363,7 @@ Net effect: UT shrinks the manual matrix to "did the wiring and UI connect", not
 - [ ] `C163` `[UT~]` `[E2E]` **Move tab to new window preserves chat:** Both the `moveTab` action and tab-strip drag preserve the live helper, ACP SessionId, chat history, and routing identity; neither path performs crash recovery or `session/load`. _(UT: `tab_renamed_rekeys_active_tab_and_session_map`, `tab_renamed_sends_rename_session_request_to_acp_client`.)_
 - [ ] `C224` `[new]` `[E2E]` **Agent-created terminals inherit the active profile:** A terminal/tab the agent opens inherits the active pane's profile (e.g. an agent working in an Ubuntu session spawns new tabs in Ubuntu, not the default PowerShell profile). _(#366, closes #351.)_
 - [x] `C164` `[UT✓]` `[E2E]` **Move tab to new window preserves session routing:** Session events remain associated with the moved tab. _(UT: `tab_renamed_rekeys_active_tab_and_session_map`, `master_tab_rename_rekeys_live_and_orphan_ownership`, and `active_retirement_follows_tab_rename_and_clears_moved_fence_on_disconnect`; E2E: `Feature.MultiWindow` sends a fresh prompt to the moved agent pane by its pinned session id after the move and asserts it answers, LLM-skip-guarded.)_
-- [ ] `C165` `[UT~]` `[E2E]` **Move tab to new window preserves Auto-error-handling:** Failures still route to the moved tab/pane.
+- [ ] `C165` `[UT~]` `[E2E]` **Move tab to new window preserves Auto error handling:** Failures still route to the moved tab/pane.
 - [x] `C166` `[UT✓]` `[E2E]` **Multiple windows do not cross-route:** Events from one window do not mutate another window's agent pane/session UI. _(UT: `wt_event_critical_from_other_tab_does_not_surface_in_owner_tab` — a helper owning tab A DROPS a connection-failure event broadcast from tab B (no banner, no chat, no notification), the exact cross-route isolation contract; helpers filter inbound events by window_id + owner_tab_id.)_
 - [ ] `C167` `[E2E]` **Close source window is safe:** Closing a source window after moving a tab does not kill the moved tab's agent state.
 - [ ] `C168` `[E2E]` **Close target tab cleans up:** Closing moved tabs cleans up helper/session state without affecting other tabs.
@@ -396,7 +396,7 @@ Net effect: UT shrinks the manual matrix to "did the wiring and UI connect", not
 
 - [ ] `C177` `[E2E]` **Packaged `wta.exe` is present:** WTA is deployed next to WindowsTerminal in the package layout.
 - [ ] `C178` `[E2E]` **Packaged identity works:** WTA/wtcli can activate the Terminal protocol COM server from packaged context.
-- [ ] `C179` `[E2E]` **Wrong unpackaged WTA is not used:** The agent pane and Auto-error-handling do not accidentally use a stale dev-build WTA.
+- [ ] `C179` `[E2E]` **Wrong unpackaged WTA is not used:** The agent pane and Auto error handling do not accidentally use a stale dev-build WTA.
 - [ ] `C180` `[E2E]` **`WT_COM_CLSID` is injected:** Shell panes and agent panes inherit protocol discovery environment as expected.
 - [ ] `C181` `[E2E]` **`wtcli list-panes` works:** Basic WT protocol query succeeds from a pane.
 - [ ] `C182` `[E2E]` **`wtcli capture-pane` works:** Pane output capture succeeds.
@@ -433,7 +433,7 @@ Net effect: UT shrinks the manual matrix to "did the wiring and UI connect", not
 - [ ] `C199` `[MANUAL]` **Narrator reads FRE controls:** FRE controls have useful names/help text.
 - [ ] `C200` `[MANUAL]` **Narrator reads Settings controls:** AI Agents settings controls have useful names/help text.
 - [ ] `C201` `[MANUAL]` **Narrator reads agent pane state:** Connection/status changes are understandable.
-- [ ] `C202` `[MANUAL]` **High contrast theme works:** FRE, Settings, agent pane, and Auto-error-handling UI remain readable.
+- [ ] `C202` `[MANUAL]` **High contrast theme works:** FRE, Settings, agent pane, and Auto error handling UI remain readable.
 - [ ] `C203` `[MANUAL]` **Light/dark theme works:** UI is readable in both themes.
 - [ ] `C204` `[MANUAL]` **Text scaling works:** 125%, 150%, and 200% scaling do not clip critical controls.
 - [x] `C205` `[UT✓]` `[MANUAL]` **Localization strings are present:** New user-facing strings are localized or intentionally locked. _(UT: `locale_parity_tests::every_locale_has_all_en_us_keys` enforces that every WTA `locales/*.yml` (all 89, incl. pseudo-locales) contains every en-US key — so no agent-feature user-facing string is missing a translation. The C++ `.resw` locales remain enforced by the loc pipeline/manual.)_
@@ -442,7 +442,7 @@ Net effect: UT shrinks the manual matrix to "did the wiring and UI connect", not
 
 ## 12. Release decision
 
-- [ ] `C208` `[MANUAL]` **All P0/P1 issues resolved:** No blocking agent pane, Auto-error-handling, FRE, session, custom-agent, or packaging bugs remain.
+- [ ] `C208` `[MANUAL]` **All P0/P1 issues resolved:** No blocking agent pane, Auto error handling, FRE, session, custom-agent, or packaging bugs remain.
 - [ ] `C209` `[MANUAL]` **Known limitations documented:** Any intentionally deferred behavior is documented in release notes.
 - [ ] `C210` `[E2E]` `[MANUAL]` **Upgrade path signed off:** Existing users upgrading from the previous release keep settings/hooks in a valid state.
 - [ ] `C211` `[E2E]` `[MANUAL]` **Fresh install signed off:** New users can complete FRE and use the default agent flow.
@@ -457,4 +457,4 @@ Net effect: UT shrinks the manual matrix to "did the wiring and UI connect", not
 - Slash commands: `tools\wta\src\commands.rs`.
 - Session state model: `tools\wta\src\agent_sessions.rs`, `tools\wta\AGENTS.md`.
 - Multi-window agent pane architecture: `doc\specs\Multi-window-agent-pane.md`.
-- Auto-error-handling flow, logging, and runtime layout: `AGENTS.md`.
+- Auto error handling flow, logging, and runtime layout: `AGENTS.md`.

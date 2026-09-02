@@ -475,7 +475,7 @@ async fn run_acp_app(
                             .unwrap_or(serde_json::Value::Null);
                         // Read `pane_id` (current name) with a fallback
                         // to `session_id` (the old name before the
-                        // per-tab Auto-error-handling routing PR renamed it). The
+                        // per-tab Auto error handling routing PR renamed it). The
                         // C++ TerminalPage side now emits `pane_id` for
                         // `connection_state` / `vt_sequence`, but the
                         // wtcli `send-event` builder
@@ -1226,7 +1226,7 @@ async fn run_acp_app(
                 }
             }
 
-            // ── source-pane context (Auto-error-handling attribution) ─────────────────
+            // ── source-pane context (Auto error handling attribution) ─────────────────
             app_state.source_session_id = std::env::var("WTA_SOURCE_SESSION_ID")
                 .ok()
                 .filter(|s| !s.is_empty());

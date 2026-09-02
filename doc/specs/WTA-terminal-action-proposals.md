@@ -164,8 +164,8 @@ tools targeting `new_tab`, the initial tab title. `working_directory`,
 `split_direction`, and `profile` map to the existing internal fields without
 changing trusted active-pane routing.
 
-Auto-error-handling uses only `run_command_in_current_shell`; the Helper supplies the
-trusted Auto-error-handling origin and requires the resulting internal `Send` action.
+Auto error handling uses only `run_command_in_current_shell`; the Helper supplies the
+trusted Auto error handling origin and requires the resulting internal `Send` action.
 
 Tool result statuses:
 
@@ -214,7 +214,7 @@ An MCP terminal-action request is accepted only when:
 6. strict schema, size, count, origin, target, and delegate policy passes.
 
 The active binding contains the trusted prompt ID, active pane target, and
-Auto-error-handling bit. These values never come from model input.
+Auto error handling bit. These values never come from model input.
 
 An accepted MCP proposal transitions synchronously:
 

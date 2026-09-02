@@ -61,7 +61,7 @@ Describe 'Feature: Legacy triggerAutofix parse compatibility' -Tag 'Feature' -Sk
     }
     AfterAll { if ($script:app) { Stop-Terminal -App $script:app } }
 
-    It 'Legacy triggerAutofix still parses to the canonical Auto-error-handling action' {
+    It 'Legacy triggerAutofix still parses to the canonical Auto error handling action' {
         if (-not (Test-WtWindowKeyFocusable -App $script:app)) {
             Set-ItResult -Skipped -Because 'WT window cannot take foreground for the Legacy compatibility binding'
             return

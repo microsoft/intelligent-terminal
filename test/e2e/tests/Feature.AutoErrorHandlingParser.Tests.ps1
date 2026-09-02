@@ -3,10 +3,10 @@
 #
 # Feature.ShellIntegration.Tests.ps1 verifies the PowerShell-side OSC 133 contract in
 # isolation. Feature.AutoErrorHandlingPane.Tests.ps1 verifies the existing
-# Auto-error-handling UI and actions
+# Auto error handling UI and actions
 # with ordinary command failures. This suite closes the integration gap between them:
 # a real PowerShell parser error must cross the complete shell -> WT protocol -> WTA
-# pipeline and submit exactly one Auto-error-handling prompt, while ambiguous successful commands
+# pipeline and submit exactly one Auto error handling prompt, while ambiguous successful commands
 # must not submit one.
 
 BeforeDiscovery {
@@ -17,7 +17,7 @@ BeforeDiscovery {
     )
 }
 
-Describe 'Feature: PowerShell parser errors trigger Auto-error-handling end-to-end' -Tag 'Feature' -Skip:(-not $script:Ready) {
+Describe 'Feature: PowerShell parser errors trigger Auto error handling end-to-end' -Tag 'Feature' -Skip:(-not $script:Ready) {
     BeforeAll {
         Import-Module (Join-Path $PSScriptRoot '..\ItE2E\ItE2E.psd1') -Force
         $script:app = Start-Terminal -Package (Get-ItTestPackage) -PassFre $true -Settings @{
@@ -26,7 +26,7 @@ Describe 'Feature: PowerShell parser errors trigger Auto-error-handling end-to-e
         }
         Open-AgentPane -App $script:app | Out-Null
         Wait-AgentReady -App $script:app -TimeoutSec 60 |
-            Should -BeTrue -Because 'Auto-error-handling requires a connected ACP session'
+            Should -BeTrue -Because 'Auto error handling requires a connected ACP session'
         $script:sid = (Get-ActivePane -App $script:app).session_id
     }
     AfterAll { if ($script:app) { Stop-Terminal -App $script:app } }
@@ -45,13 +45,13 @@ Describe 'Feature: PowerShell parser errors trigger Auto-error-handling end-to-e
                 $_.method -eq 'agent_event' -and
                 "$($_.params.payload.initial_prompt)" -match 'command failed|Diagnose the error'
             }
-            $autoErrorHandling | Should -Not -BeNullOrEmpty -Because 'the parser failure mark must reach the Auto-error-handling dispatcher'
+            $autoErrorHandling | Should -Not -BeNullOrEmpty -Because 'the parser failure mark must reach the Auto error handling dispatcher'
 
             Start-Sleep -Seconds 2
             @(Get-WtEvents -Listener $listener -Predicate {
                     $_.method -eq 'agent_event' -and
                     "$($_.params.payload.initial_prompt)" -match 'command failed|Diagnose the error'
-                }) | Should -HaveCount 1 -Because 'one malformed command must submit one Auto-error-handling turn'
+                }) | Should -HaveCount 1 -Because 'one malformed command must submit one Auto error handling turn'
         }
         finally { Stop-WtEventListener -Listener $listener }
     }
@@ -71,13 +71,13 @@ Describe 'Feature: PowerShell parser errors trigger Auto-error-handling end-to-e
             @(Get-WtEvents -Listener $listener -Predicate {
                     $_.method -eq 'agent_event' -and
                     "$($_.params.payload.initial_prompt)" -match 'command failed|Diagnose the error'
-                }) | Should -BeNullOrEmpty -Because 'a prompt redraw must not submit another Auto-error-handling turn'
+                }) | Should -BeNullOrEmpty -Because 'a prompt redraw must not submit another Auto error handling turn'
         }
         finally { Stop-WtEventListener -Listener $listener }
     }
 }
 
-Describe 'Feature: successful PowerShell completion does not trigger Auto-error-handling' -Tag 'Feature' -Skip:(-not $script:Ready) {
+Describe 'Feature: successful PowerShell completion does not trigger Auto error handling' -Tag 'Feature' -Skip:(-not $script:Ready) {
     BeforeAll {
         Import-Module (Join-Path $PSScriptRoot '..\ItE2E\ItE2E.psd1') -Force
         $script:app = Start-Terminal -Package (Get-ItTestPackage) -PassFre $true -Settings @{
@@ -86,7 +86,7 @@ Describe 'Feature: successful PowerShell completion does not trigger Auto-error-
         }
         Open-AgentPane -App $script:app | Out-Null
         Wait-AgentReady -App $script:app -TimeoutSec 60 |
-            Should -BeTrue -Because 'negative assertions require a connected Auto-error-handling pipeline'
+            Should -BeTrue -Because 'negative assertions require a connected Auto error handling pipeline'
         $script:sid = (Get-ActivePane -App $script:app).session_id
     }
     AfterAll { if ($script:app) { Stop-Terminal -App $script:app } }

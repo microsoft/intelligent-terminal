@@ -3617,7 +3617,7 @@ namespace winrt::TerminalApp::implementation
         // the diagnostics-group connection gate below. No agent pane (or a
         // not-yet/never-connected one) reads false → group hidden.
         bool agentConnected = false;
-        // Auto-error-handling state must NOT be gated on pane visibility. The
+        // Auto error handling state must NOT be gated on pane visibility. The
         // helper keeps running and detecting command failures even when
         // the agent pane is stashed (pre-warm path: helper is spawned
         // and connected from the moment the tab opens, with the pane
@@ -7444,7 +7444,7 @@ namespace winrt::TerminalApp::implementation
                             //
                             // Detect-only mode still needs these events to
                             // surface the Detected pill. The selected
-                            // Auto-error-handling mode is hot-reloaded into WTA.
+                            // Auto error handling mode is hot-reloaded into WTA.
                             auto seqStr = winrt::to_string(seq);
                             static constexpr std::string_view agentPrefix = "AgentEvent;";
                             static constexpr std::string_view osc133Prefix = "osc:133;";
@@ -7586,7 +7586,7 @@ namespace winrt::TerminalApp::implementation
                                 return;
 
                             // connection_state is pane-lifecycle plumbing that
-                            // WTA needs regardless of Auto-error-handling mode —
+                            // WTA needs regardless of Auto error handling mode —
                             // it drives session-list demotion (PaneClosed)
                             // when an agent CLI exits and the pane is closed.
                             // Volume is low (a handful of events per pane

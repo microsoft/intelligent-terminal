@@ -159,7 +159,7 @@ namespace winrt::TerminalApp::implementation
         // (the single writer for view-derived UI state).
         bool _isSessionsView{ false };
 
-        // --- Auto-error-handling diagnostics state (projected by the window bottom bar) ---
+        // --- Auto error handling diagnostics state (projected by the window bottom bar) ---
         AutoErrorHandlingState _autoErrorHandlingState{ AutoErrorHandlingState::Idle };
         winrt::hstring _lastErrorPaneId{};
         winrt::hstring _fixPreview{};

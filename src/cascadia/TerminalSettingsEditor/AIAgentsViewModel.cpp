@@ -1069,7 +1069,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         }
     }
 
-    // ── Auto-error-handling ────────────────────────────────────────────────
+    // ── Auto error handling ────────────────────────────────────────────────
 
     winrt::Windows::Foundation::IInspectable AIAgentsViewModel::CurrentAutoErrorHandling()
     {

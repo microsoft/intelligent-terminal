@@ -1,4 +1,4 @@
-//! Per-tab Auto-error-handling bottom-bar state machine.
+//! Per-tab Auto error handling bottom-bar state machine.
 //!
 //! Owns the bar-snapshot data types and the `impl App` methods that drive
 //! the Detected -> Analyzing -> Review lifecycle (trigger / emit / execute /
@@ -9,7 +9,7 @@
 
 use super::*;
 
-/// Per-tab Auto-error-handling state machine. Each tab tracks its own detected,
+/// Per-tab Auto error handling state machine. Each tab tracks its own detected,
 /// pending, and review state independently so a failure in a background tab
 /// doesn't clobber the active tab's state and vice versa.
 /// The bottom-bar projection is per-tab too: WTA only emits
@@ -45,7 +45,7 @@ pub struct AutoErrorHandlingState {
     pub trigger_echo_pane: Option<String>,
 }
 
-/// Snapshot of the bottom-bar Auto-error-handling state for one tab. Mirrors
+/// Snapshot of the bottom-bar Auto error handling state for one tab. Mirrors
 /// the `state` field of the `auto_error_handling_state` protocol event so we
 /// can rebuild the payload from the cached snapshot when the tab becomes active.
 #[derive(Debug, Clone, Default)]
@@ -68,7 +68,7 @@ pub enum AutoErrorHandlingBarSnapshot {
     /// bar invites the user to open the pane and review. Once the pane
     /// opens, the snapshot flips to `Idle` (the result is already visible
     /// there, so the bar goes quiet). Replaces the old dual result states:
-    /// Auto-error-handling no longer auto-executes, so a fix and an
+    /// Auto error handling no longer auto-executes, so a fix and an
     /// explanation surface identically (open pane → review → act manually).
     Review {
         pane_id: String,
@@ -77,7 +77,7 @@ pub enum AutoErrorHandlingBarSnapshot {
 }
 
 impl App {
-    /// Auto-error-handling: when a command fails in another pane, ask the coordinator
+    /// Auto error handling: when a command fails in another pane, ask the coordinator
     /// agent to produce a result. The user confirms before execution.
     pub(super) fn maybe_trigger_auto_error_handling(&mut self, notification: &WtNotification) {
         self.trigger_auto_error_handling_inner(notification, false);
@@ -112,7 +112,7 @@ impl App {
         // must not be allowed to eat a real shell command failure.
 
         // Resolve the target tab: the tab that owns the failing pane.
-        // Without it we can't route Auto-error-handling to the right ACP session
+        // Without it we can't route Auto error handling to the right ACP session
         // (the prior code fell back to `self.tab_id` and would land the
         // fix in whichever tab WTA happened to be focused on — see
         // comment block at `maybe_trigger_auto_error_handling` head). In release
@@ -124,7 +124,7 @@ impl App {
                 tracing::warn!(
                     target: "auto_error_handling",
                     pane_id = %notification.pane_id,
-                    "dropping Auto-error-handling request: notification missing tab_id (older WT build?)",
+                    "dropping Auto error handling request: notification missing tab_id (older WT build?)",
                 );
                 return;
             }
@@ -185,7 +185,7 @@ impl App {
                     target: "auto_error_handling",
                     pane_id = %notification.pane_id,
                     tab_id = %target_tab_id,
-                    "Auto-error-handling re-triggered for same pane while pending; re-emitting only",
+                    "Auto error handling re-triggered for same pane while pending; re-emitting only",
                 );
                 // This branch is only reached on a fresh D event (the
                 // dispatcher routes vt_sequence here); arm the echo gate.
@@ -199,13 +199,13 @@ impl App {
                 );
             } else {
                 // Different pane while busy: drop. The user can Esc the
-                // current Auto-error-handling turn to free the slot.
+                // current Auto error handling turn to free the slot.
                 tracing::info!(
                     target: "auto_error_handling",
                     pane_id = %notification.pane_id,
                     tab_id = %target_tab_id,
                     active_pane = ?active_pane_dbg,
-                    "skipping Auto-error-handling request: previous turn still in flight",
+                    "skipping Auto error handling request: previous turn still in flight",
                 );
             }
             return;
@@ -213,7 +213,7 @@ impl App {
 
         // For all other cases (different pane, completed result, or Idle):
         // bump the target tab's generation to stale any in-flight response,
-        // then submit a new Auto-error-handling turn via the state machine.
+        // then submit a new Auto error handling turn via the state machine.
         let new_gen = {
             let tab = self.tab_mut(&target_tab_id);
             tab.auto_error_handling.generation = tab.auto_error_handling.generation.wrapping_add(1);
@@ -264,7 +264,7 @@ impl App {
         // queued correctly (the ACP layer creates the session lazily when
         // it processes the prompt).
         self.turn_submit_prompt_for_tab(&target_tab_id, submitted);
-        tracing::info!(target: "auto_error_handling", pane_id = %notification.pane_id, tab_id = %target_tab_id, generation = new_gen, "sending Auto-error-handling prompt");
+        tracing::info!(target: "auto_error_handling", pane_id = %notification.pane_id, tab_id = %target_tab_id, generation = new_gen, "sending Auto error handling prompt");
         let _ = self.prompt_tx.send(prompt);
 
         // Light up the bottom-bar diagnostic icon in "Pending" state — the
@@ -287,13 +287,13 @@ impl App {
         );
     }
 
-    // ── Auto-error-handling state signalling ───────────────────────────────
+    // ── Auto error handling state signalling ───────────────────────────────
     //
-    // Notifies TerminalPage about Auto-error-handling progress via a JSON event on
+    // Notifies TerminalPage about Auto error handling progress via a JSON event on
     // the SendEvent bus. The COM server special-cases method=="auto_error_handling_state"
     // and dispatches to TerminalPage.OnAutoErrorHandlingStateChanged (UI thread).
     //
-    // Per-tab projection: the bar shows the active tab's Auto-error-handling state. Each
+    // Per-tab projection: the bar shows the active tab's Auto error handling state. Each
     // emit_auto_error_handling_state_* stores the new snapshot on the target tab AND
     // only forwards to WT when the target tab is currently active. On
     // tab_changed, `project_active_tab_state` re-emits the new active
@@ -403,7 +403,7 @@ impl App {
     ) {
         let active_tab = self.active_tab_key().to_string();
         let active_pane = self.current_tab().auto_error_handling.pane_id.clone();
-        tracing::info!(target: "auto_error_handling", requested_pane = %requested_pane_id, active_pane = ?active_pane, has_recommendations = self.current_tab().turn.recommendations().is_some(), "Auto-error-handling execute request received");
+        tracing::info!(target: "auto_error_handling", requested_pane = %requested_pane_id, active_pane = ?active_pane, has_recommendations = self.current_tab().turn.recommendations().is_some(), "Auto error handling execute request received");
         // Only execute if the active tab's pane matches the request.
         // The bar always reflects the active tab, so the click must target
         // it. The pane_id check prevents a stale UI click from running
@@ -574,7 +574,7 @@ pub(super) fn send_bar_event(snapshot: &AutoErrorHandlingBarSnapshot, tab_id: Op
     };
     // Tag with tab_id so C++ routes the bottom-bar update to the right
     // tab's AgentPaneContent (the window-level bar reflects the active tab's
-    // Auto-error-handling state). Without this, a non-active tab could
+    // Auto error handling state). Without this, a non-active tab could
     // clobber the bar.
     if let Some(t) = tab_id {
         if let Some(params) = evt.get_mut("params").and_then(|v| v.as_object_mut()) {

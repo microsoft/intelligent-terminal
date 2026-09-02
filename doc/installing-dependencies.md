@@ -151,7 +151,7 @@ fetched on demand at run time, so its only prerequisite is Node.js.
 **Why you need it:** GitHub Copilot is the **default agent** in Intelligent
 Terminal and the only agent the first-run experience installs on your
 behalf. It powers the agent pane, the `?<prompt>` command-palette
-delegation, and Auto-error-handling.
+delegation, and Auto error handling.
 
 #### Installed automatically by the first-run experience
 
@@ -461,7 +461,7 @@ without it) and restart Intelligent Terminal once.
 
 **Why you need it:** Shell integration teaches your shell to emit **OSC 133**
 marks after every prompt. Intelligent Terminal uses these marks to detect
-command boundaries and exit codes, which powers Auto-error-handling, command
+command boundaries and exit codes, which powers Auto error handling, command
 navigation, and the bottom-bar agent state. Without these marks Intelligent
 Terminal cannot tell when a command finished or whether it failed.
 
@@ -600,11 +600,11 @@ Notes and limitations:
   or that ship **without bash** (for example, Alpine), are **not yet
   supported**.
 
-### Configure Auto-error-handling
+### Configure Auto error handling
 
 Once shell integration is in place (and, for PowerShell, the execution policy
 is set), open **Settings → AI Agents** inside Intelligent Terminal and choose
-an **Auto-error-handling** option:
+an **Auto error handling** option:
 
 - `Off`
 - `Detect errors automatically`

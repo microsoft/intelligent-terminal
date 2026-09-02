@@ -1,13 +1,13 @@
-# Configuring PowerShell for Auto-error-handling
+# Configuring PowerShell for Auto error handling
 
 > **This page has moved.** Shell integration now covers PowerShell 7,
 > Windows PowerShell, Git Bash, and per-distro WSL bash. The full guide
 > lives at:
 >
-> **→ [Configuring Shells for Auto-error-handling](./configuring-shell-integration-autofix.md)**
+> **→ [Configuring Shells for Auto error handling](./configuring-shell-integration-autofix.md)**
 >
 > This stub preserves the legacy `autofix` URL so existing bookmarks,
-> issues, and external links keep working. Auto-error-handling is the
+> issues, and external links keep working. Auto error handling is the
 > current feature name.
 
 ## PowerShell-specific snippet

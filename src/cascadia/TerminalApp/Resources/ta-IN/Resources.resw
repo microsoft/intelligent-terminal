@@ -252,12 +252,12 @@
     <comment>{Locked="hooks"}</comment>
   </data>
   <data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
-    <value>ஷெல் ஒருங்கிணைப்பை நிறுவுவதில் தோல்வி. Auto-error-handling முடக்கப்பட்டுள்ளது. நீங்கள் அதை மீண்டும் இயக்கி மீண்டும் முயற்சிக்கலாம், அல்லது அது இல்லாமல் தொடர சேமிக்கலாம்.</value>
-    <comment>{Locked="Auto-error-handling"} FRE setup error. Auto-error-handling was turned off because shell integration could not be installed.</comment>
+    <value>ஷெல் ஒருங்கிணைப்பை நிறுவுவதில் தோல்வி. Auto error handling முடக்கப்பட்டுள்ளது. நீங்கள் அதை மீண்டும் இயக்கி மீண்டும் முயற்சிக்கலாம், அல்லது அது இல்லாமல் தொடர சேமிக்கலாம்.</value>
+    <comment>{Locked="Auto error handling"} FRE setup error. Auto error handling was turned off because shell integration could not be installed.</comment>
   </data>
   <data name="FreOverlay_InstallErrorShellIntegrationExecutionPolicy" xml:space="preserve">
-    <value>PowerShell செயல்படுத்தல் கொள்கை ஸ்கிரிப்ட்களைத் தடுக்கிறது. Auto-error-handling முடக்கப்பட்டுள்ளது.</value>
-    <comment>{Locked="PowerShell","Auto-error-handling"} FRE setup error. PowerShell execution policy blocked scripts, so Auto-error-handling was turned off.</comment>
+    <value>PowerShell செயல்படுத்தல் கொள்கை ஸ்கிரிப்ட்களைத் தடுக்கிறது. Auto error handling முடக்கப்பட்டுள்ளது.</value>
+    <comment>{Locked="PowerShell","Auto error handling"} FRE setup error. PowerShell execution policy blocked scripts, so Auto error handling was turned off.</comment>
   </data>
   <data name="FreOverlay_InstallErrorWingetMissing" xml:space="preserve">
     <value>Windows Package Manager (winget) நிறுவப்படவில்லை அல்லது கிடைக்கவில்லை. முதலில் அதை நிறுவி, பின்னர் மீண்டும் முயற்சிக்கவும்.</value>
@@ -324,34 +324,34 @@
   </data>
   <data name="FreOverlay_AutoErrorHandlingLabel.Text" xml:space="preserve">
     <value>தானியங்கி பிழை கையாளுதல்</value>
-    <comment>Label for the Auto-error-handling dropdown in the first-run wizard.</comment>
+    <comment>Label for the Auto error handling dropdown in the first-run wizard.</comment>
   </data>
   <data name="FreOverlay_AutoErrorHandlingDescription.Text" xml:space="preserve">
     <value>டெர்மினல் பிழைகள் எவ்வாறு கையாளப்படுகின்றன என்பதைத் தேர்ந்தெடுக்கவும்.</value>
-    <comment>Description for the Auto-error-handling dropdown in the first-run wizard.</comment>
+    <comment>Description for the Auto error handling dropdown in the first-run wizard.</comment>
   </data>
   <data name="FreOverlay_ErrorHelpLink" xml:space="preserve">
     <value>இதை கைமுறையாக சரிசெய்வது எப்படி என்பதை அறிக</value>
     <comment>Hyperlink shown below an FRE setup error message. Opens step-by-step manual setup instructions in the browser.</comment>
   </data>  <data name="FreOverlay_AutoErrorHandlingShellIntegrationHintPrefix" xml:space="preserve">
     <value>PowerShell, bash மற்றும் WSL bash ஆகியவற்றில் தானியங்கி பிழை கையாளுதலுக்கான shell ஒருங்கிணைப்பை நிறுவுகிறது. </value>
-    <comment>{Locked="PowerShell","bash","WSL bash"} Hint shown under the Auto-error-handling dropdown in the first-run wizard. The trailing space is intentional — it separates this prefix from the inline FreOverlay_AutoErrorHandlingShellIntegrationHintLink hyperlink that follows.</comment>
+    <comment>{Locked="PowerShell","bash","WSL bash"} Hint shown under the Auto error handling dropdown in the first-run wizard. The trailing space is intentional — it separates this prefix from the inline FreOverlay_AutoErrorHandlingShellIntegrationHintLink hyperlink that follows.</comment>
   </data>
   <data name="FreOverlay_AutoErrorHandlingShellIntegrationHintLink" xml:space="preserve">
     <value>ஆதரிக்கப்படும் அனைத்து shell-களையும் காண்க</value>
-    <comment>Inline hyperlink text that follows FreOverlay_AutoErrorHandlingShellIntegrationHintPrefix and opens the documentation listing every shell that supports Auto-error-handling.</comment>
+    <comment>Inline hyperlink text that follows FreOverlay_AutoErrorHandlingShellIntegrationHintPrefix and opens the documentation listing every shell that supports Auto error handling.</comment>
   </data>
   <data name="FreOverlay_AutoErrorHandling_Off" xml:space="preserve">
     <value>நிறுத்து</value>
-    <comment>The first option in the Auto-error-handling dropdown. It disables automatic terminal error detection and fixes.</comment>
+    <comment>The first option in the Auto error handling dropdown. It disables automatic terminal error detection and fixes.</comment>
   </data>
   <data name="FreOverlay_AutoErrorHandling_DetectErrorsAutomatically" xml:space="preserve">
     <value>பிழைகளைத் தானாகக் கண்டறியவும்</value>
-    <comment>The second option in the Auto-error-handling dropdown. It detects terminal errors automatically without sending them to an AI agent. Here "agent" means an AI intelligent agent, not a proxy or human agent.</comment>
+    <comment>The second option in the Auto error handling dropdown. It detects terminal errors automatically without sending them to an AI agent. Here "agent" means an AI intelligent agent, not a proxy or human agent.</comment>
   </data>
   <data name="FreOverlay_AutoErrorHandling_DetectErrorsAndSendToAgentForFixesAutomatically" xml:space="preserve">
     <value>பிழைகளைக் கண்டறிந்து, அவற்றைத் தானாக சரிசெய்ய AI முகவருக்கு அனுப்பவும்.</value>
-    <comment>The third option in the Auto-error-handling dropdown. It detects terminal errors and sends them to an AI agent for automatic fixes. Here "agent" means an AI intelligent agent, not a proxy or human agent.</comment>
+    <comment>The third option in the Auto error handling dropdown. It detects terminal errors and sends them to an AI agent for automatic fixes. Here "agent" means an AI intelligent agent, not a proxy or human agent.</comment>
   </data>
   <data name="InitShellIntegrationExecutionPolicyErrorMessage" xml:space="preserve">
     <value>PowerShell செயல்படுத்தல் கொள்கை ஸ்கிரிப்ட்களைத் தடுக்கிறது.</value>

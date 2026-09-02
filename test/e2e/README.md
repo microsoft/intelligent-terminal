@@ -15,9 +15,9 @@ authenticated ACP agents. Current inventory (case counts come from static Pester
 |---|---|---|
 | `Feature.Packaging.Tests.ps1` | §9 packaging/protocol (incl. WT_COM_CLSID injected into pane shells) + §10 logging + log retention/cleanup | 18 |
 | `Feature.WtcliPublishStdin.Tests.ps1` | PR #652: WTA/wtcli stdin transport delivers command-line-limit-sized events intact and preserves positional compatibility | 3 |
-| `Feature.Settings.Tests.ps1` | §1 Settings>AI Agents + §0 FRE settings/positions/Auto-error-handling/session-mgmt, including Legacy JSON migration | 17 |
+| `Feature.Settings.Tests.ps1` | §1 Settings>AI Agents + §0 FRE settings/positions/Auto error handling/session-mgmt, including Legacy JSON migration | 17 |
 | `Feature.FreFlow.Tests.ps1` | §0 FRE overlay click-through (Next→Save, privacy link, close-safety) | 5 |
-| `Feature.FreAgentSetup.Tests.ps1` | §0 FRE agent picker, three-state Auto-error-handling picker, session hints, and token display | 6 |
+| `Feature.FreAgentSetup.Tests.ps1` | §0 FRE agent picker, three-state Auto error handling picker, session hints, and token display | 6 |
 | `Feature.FreExecutionPolicy.Tests.ps1` | §0 FRE execution-policy verdict (deterministic via registry; **Dev**, auto-skips) | 3 (1 conditional skip) |
 | `Feature.AgentPolicy.Tests.ps1` | Canonical agent policies plus Legacy `AllowAutoFix` fallback/precedence compatibility | 6 |
 | `Feature.AgentPaneInteraction.Tests.ps1` | open/hide/focus, input/rendering, slash, Copilot chat | 14 |
@@ -33,8 +33,8 @@ authenticated ACP agents. Current inventory (case counts come from static Pester
 | `Feature.CompletedTurnSelection.Tests.ps1` | Completed-turn Tab/Up/Down selection keeps focused history inside the chat viewport | 1 |
 | `Feature.AutoErrorHandlingModes.Tests.ps1` | Canonical `autoErrorHandling` Off / detect-only / send-to-agent behavior | 3 |
 | `Feature.AutoErrorHandlingActions.Tests.ps1` | Canonical action/protocol request + Legacy `triggerAutofix` parse compatibility | 2 |
-| `Feature.AutoErrorHandlingPane.Tests.ps1` | Direct Helper Auto-error-handling proposal card render/insert/run/reject/target/stashed + layout | 12 |
-| `Feature.AutoErrorHandlingParser.Tests.ps1` | issue #474: PowerShell ParserError-to-Auto-error-handling pipeline + negative controls | 4 |
+| `Feature.AutoErrorHandlingPane.Tests.ps1` | Direct Helper Auto error handling proposal card render/insert/run/reject/target/stashed + layout | 12 |
+| `Feature.AutoErrorHandlingParser.Tests.ps1` | issue #474: PowerShell ParserError-to-Auto error handling pipeline + negative controls | 4 |
 | `Feature.CommandResolution.Tests.ps1` | PR #418: packaged WTA resolves PowerShell profile-only aliases to their real targets | 1 |
 | `Feature.SessionList.Tests.ps1` | session view (button + `/sessions` slash), session states, view switching (incl. draft-preservation), focus/restore | 13 (+1 skip) |
 | `Feature.NonAsciiCwd.Tests.ps1` | issue #641: a non-ASCII starting directory survives `wtcli` argv → COM → `CreateProcessW`, so the resume launch path connects and starts in that directory | 2 |
@@ -65,7 +65,7 @@ set. Environment-dependent items are tracked and auto-skipped when their prerequ
 **other agent CLIs** (`Feature.AgentMatrix.Tests.ps1` now covers Claude/Codex/Gemini chat,
 auth-gated per CLI — each Context runs only when that CLI is installed *and* authenticated,
 else skips); custom agents; multi-window drag; hook/CLI install; policy locks; IME/paste; WSL
-Auto-error-handling in WSL (needs a dev build with OSC 9001 ShellType + a running distro); WT window-level
+Auto error handling in WSL (needs a dev build with OSC 9001 ShellType + a running distro); WT window-level
 keyboard accelerators (command palette / Delegate `Alt+Shift+B` / pane hotkeys — not
 injectable via UIA/send-keys in this harness); and manual release-sign-off gates.
 
@@ -139,7 +139,7 @@ Import-Module Pester
 Invoke-Pester test/e2e/selftests -Tag Unit    # hermetic, no terminal needed
 Invoke-Pester test/e2e/selftests -Tag Live    # launches/closes the real terminal
 Invoke-Pester test/e2e/selftests -Tag AI      # AI oracle (needs an agent CLI, e.g. copilot)
-Invoke-Pester test/e2e/selftests -Tag Agent   # agent pane + Auto-error-handling (needs copilot auth)
+Invoke-Pester test/e2e/selftests -Tag Agent   # agent pane + Auto error handling (needs copilot auth)
 Invoke-Pester test/e2e/selftests              # everything (34 tests)
 ```
 
@@ -253,14 +253,14 @@ restores the backup.
   envelope is `{ "method": "<name>", "params": {...}, "type": "event" }` — the event **name
   is `.method`** (`vt_sequence`, `agent_event`, …), and `.type` is *always* `"event"`. Start
   the listener *before* the triggering action, then `Wait-WtEvent`/`Assert-WtEvent`.
-- **Auto-error-handling signals**: a failed command emits `method=vt_sequence,
+- **Auto error handling signals**: a failed command emits `method=vt_sequence,
   params.sequence ~ "osc:133;D;<nonzero>"` (`Wait-WtCommandFailure`). Detect-only mode is
   observable through `Wait-AutoErrorHandlingDetection`; send-to-agent mode submits a prompt
   observable
   as `method=agent_event` whose `params.payload.initial_prompt` contains "A command failed.
   Diagnose…" — note this rides on the `agent.session.start` sub-event, not `agent.prompt.submit`
   (`Wait-AutoErrorHandling`). WTA sends UI state as `auto_error_handling_state`; activating a
-  detected failure emits `auto_error_handling_request_analysis`. Auto-error-handling **de-dupes
+  detected failure emits `auto_error_handling_request_analysis`. Auto error handling **de-dupes
   repeated identical failures**, so tests use a unique bogus command each time.
 
 ## Limitations

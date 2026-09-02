@@ -1,5 +1,5 @@
 #Requires -Modules @{ ModuleName='Pester'; ModuleVersion='5.0.0' }
-# Release checklist §1 Settings>AI Agents + §0 FRE settings/positions/Auto-error-handling/session-mgmt.
+# Release checklist §1 Settings>AI Agents + §0 FRE settings/positions/Auto error handling/session-mgmt.
 # Settings are top-level keys in settings.json (hot-reloaded); FRE completion + choices
 # persist in state.json/settings.json. Deterministic — no LLM.
 #   Invoke-Pester test/e2e/tests -Tag Feature
@@ -45,7 +45,7 @@ Describe 'Feature §1 Settings > AI Agents' -Tag 'Feature' -Skip:(-not $script:R
         Set-WtPanePosition -App $script:app -Position 'right' | Out-Null
         Assert-Setting -App $script:app -Key 'agentPanePosition' -Value 'right'
     }
-    It 'Auto-error-handling options match FRE (all three enum values persist)' {
+    It 'Auto error handling options match FRE (all three enum values persist)' {
         foreach ($mode in 'off', 'detectErrorsAutomatically', 'detectErrorsAndSendToAgentForFixesAutomatically') {
             Set-WtAutoErrorHandling -App $script:app -Mode $mode | Out-Null
             Assert-Setting -App $script:app -Key 'autoErrorHandling' -Value $mode
@@ -89,7 +89,7 @@ Describe 'Feature §0 FRE settings, positions, auto-error, session mgmt' -Tag 'F
         }
     }
 
-    Context 'FRE Auto-error-handling setting' {
+    Context 'FRE Auto error handling setting' {
         It 'The option persists (all three valid states round-trip)' {
             foreach ($mode in 'off', 'detectErrorsAutomatically', 'detectErrorsAndSendToAgentForFixesAutomatically') {
                 Set-WtAutoErrorHandling -App $script:app -Mode $mode | Out-Null
@@ -111,7 +111,7 @@ Describe 'Feature §0 FRE settings, positions, auto-error, session mgmt' -Tag 'F
         }
     }
 
-    Describe 'Feature §1 Settings Legacy Auto-error-handling JSON compatibility' -Tag 'Feature' -Skip:(-not $script:Ready) {
+    Describe 'Feature §1 Settings Legacy Auto error handling JSON compatibility' -Tag 'Feature' -Skip:(-not $script:Ready) {
         BeforeAll {
             Import-Module (Join-Path $PSScriptRoot '..\ItE2E\ItE2E.psd1') -Force
         }

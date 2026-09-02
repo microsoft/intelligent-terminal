@@ -1,7 +1,7 @@
 #Requires -Modules @{ ModuleName='Pester'; ModuleVersion='5.0.0' }
 # Release checklist §0 FRE — the FRE-overlay-specific agent-setup items that ARE automatable via
 # winapp UIA but were previously left manual. The FRE's SECOND page (reached via NextButton) hosts
-# the agent dropdown, the Auto-error-handling picker, the session-management toggle + its install hint, and
+# the agent dropdown, the Auto error handling picker, the session-management toggle + its install hint, and
 # the pane-position picker, all as named XAML controls. Deterministic: assert on those controls /
 # their rendered state — no agent/LLM involved.
 #
@@ -65,7 +65,7 @@ Describe 'Feature §0 FRE agent setup (overlay controls)' -Tag 'Feature' -Skip:(
         Invoke-UiElement -App $script:app -Selector 'SessionManagementToggle' | Out-Null
     }
 
-    It 'All Auto-error-handling options appear' {
+    It 'All Auto error handling options appear' {
         Invoke-UiElement -App $script:app -Selector 'AutoErrorHandlingComboBox' | Out-Null
         Start-Sleep -Milliseconds 500
         $tree = Get-UiTree -App $script:app -Depth 20

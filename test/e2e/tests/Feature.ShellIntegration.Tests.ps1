@@ -2,7 +2,7 @@
 # Release checklist §3 "Shell integration and detection" — the two pure-[E2E] items that had
 # no automated coverage:
 #   * "PowerShell shell integration installed" — a shell-integrated pane emits command-finished
-#     OSC 133;D;<exit> marks (the foundation Auto-error-handling detection relies on).
+#     OSC 133;D;<exit> marks (the foundation Auto error handling detection relies on).
 #   * "Missing shell integration is safe" — a non-integrated shell (cmd.exe) that fails a
 #     command does not crash Windows Terminal or break the protocol surface.
 #
@@ -14,7 +14,7 @@ BeforeDiscovery { $script:Ready = [bool](Get-AppxPackage | Where-Object { $_.Nam
 Describe 'Feature §3 Shell integration and detection' -Tag 'Feature' -Skip:(-not $script:Ready) {
     BeforeAll {
         Import-Module (Join-Path $PSScriptRoot '..\ItE2E\ItE2E.psd1') -Force
-        # Auto-error-handling OFF: this suite is about the shell-integration marks themselves, not
+        # Auto error handling OFF: this suite is about the shell-integration marks themselves, not
         # the downstream UI (covered by Feature.AutoErrorHandlingPane.Tests.ps1). No agent is
         # pinned — these tests never open the agent pane, so leaving acpAgent at its default avoids
         # an unnecessary copilot install/auth dependency (the pre-warmed helper is irrelevant here).

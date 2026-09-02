@@ -4,7 +4,7 @@ Below is our guidance for how to report issues, propose new features, and submit
 
 Intelligent Terminal is a fork of [Windows Terminal](https://github.com/microsoft/terminal) with native agent integration. Much of the contribution workflow mirrors upstream Windows Terminal; project-specific differences are called out below.
 
-> **Filing bugs in shared / upstream code.** Intelligent Terminal periodically syncs shared code from [microsoft/terminal](https://github.com/microsoft/terminal). If the bug you've found also reproduces on stock Windows Terminal — e.g., in the renderer, VT parser, text buffer, settings model, or other inherited code — please file (and ideally fix) it [upstream at microsoft/terminal](https://github.com/microsoft/terminal/issues). The fix will flow back to Intelligent Terminal at the next sync. Bugs that only reproduce in Intelligent Terminal (agent pane, WTA, Auto-error-handling, hooks, command-palette `?` prefix, etc.) belong in [this repo](https://github.com/microsoft/intelligent-terminal/issues).
+> **Filing bugs in shared / upstream code.** Intelligent Terminal periodically syncs shared code from [microsoft/terminal](https://github.com/microsoft/terminal). If the bug you've found also reproduces on stock Windows Terminal — e.g., in the renderer, VT parser, text buffer, settings model, or other inherited code — please file (and ideally fix) it [upstream at microsoft/terminal](https://github.com/microsoft/terminal/issues). The fix will flow back to Intelligent Terminal at the next sync. Bugs that only reproduce in Intelligent Terminal (agent pane, WTA, Auto error handling, hooks, command-palette `?` prefix, etc.) belong in [this repo](https://github.com/microsoft/intelligent-terminal/issues).
 
 ## Open Development Workflow
 

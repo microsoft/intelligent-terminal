@@ -47,11 +47,11 @@ pub struct SubmittedPrompt {
     pub auto_error_handling: Option<AutoErrorHandlingContext>,
 }
 
-/// Extra context attached to Auto-error-handling-initiated turns.
+/// Extra context attached to Auto error handling-initiated turns.
 #[derive(Debug, Clone, PartialEq)]
 pub struct AutoErrorHandlingContext {
     /// `App.auto_error_handling_generation` at submit time. Compared against current
-    /// generation on every chunk / end event; mismatch means a newer Auto-error-handling
+    /// generation on every chunk / end event; mismatch means a newer Auto error handling
     /// (or an Esc cancel) has invalidated this turn — drop the response.
     pub generation: u64,
 }
@@ -59,7 +59,7 @@ pub struct AutoErrorHandlingContext {
 /// What the assistant produced for the user this turn.
 #[derive(Debug, Clone, PartialEq)]
 pub enum TurnOutcome {
-    /// Recommendation card is visible. Unified across Auto-error-handling Fix and
+    /// Recommendation card is visible. Unified across Auto error handling Fix and
     /// planner-mode task suggestions.
     Recommendation(RecommendationSet),
     /// The user acted on a recommendation before the Agent finished. The
@@ -161,14 +161,14 @@ impl TurnState {
         }
     }
 
-    /// Auto-error-handling generation snapshot for the current turn, if any.
+    /// Auto error handling generation snapshot for the current turn, if any.
     pub fn auto_error_handling_generation(&self) -> Option<u64> {
         self.prompt()
             .and_then(|p| p.auto_error_handling.as_ref())
             .map(|a| a.generation)
     }
 
-    /// Whether the current turn is an Auto-error-handling turn.
+    /// Whether the current turn is an Auto error handling turn.
     pub fn is_auto_error_handling(&self) -> bool {
         self.prompt()
             .map(|p| p.auto_error_handling.is_some())

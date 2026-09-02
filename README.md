@@ -21,7 +21,7 @@
   - [Agent Status Bar](#agent-status-bar)
   - [Agent Pane](#agent-pane)
   - [Agent Management](#agent-management)
-  - [Auto-error-handling](#auto-error-handling)
+  - [Auto error handling](#auto-error-handling)
   - [Command Palette](#command-palette)
 - [Data & Privacy](#data--privacy)
 - [Building the Code](#building-the-code)
@@ -118,7 +118,7 @@ Everything is configurable through Intelligent Terminal settings, under "Agent" 
 | Agent and model | GitHub Copilot (default), or any ACP-compatible agent CLI, including custom or local agents. Configurable for both the agent pane and command palette. Each agent pane can also override its model on the fly with `/model`; changing the global setting here overrides every pane. |
 | Custom providers (BYOK) | Bring your own provider credentials and model through GitHub Copilot or OpenCode using an OpenAI-compatible Chat Completions endpoint. Add a provider under Agent settings with a Base URL, Model ID, and optional API key, then select it from `/model`. API keys are stored in Windows Credential Manager; keyless local endpoints such as Ollama remain supported. |
 | Pane placement | Top, Bottom (default), Left, Right |
-| Auto-error-handling | Choose **Off**, **Detect errors automatically**, or **Detect errors and send them to the agent for fixes automatically.** |
+| Auto error handling | Choose **Off**, **Detect errors automatically**, or **Detect errors and send them to the agent for fixes automatically.** |
 | Agent session tracking (hooks) | Allows Intelligent Terminal to track active agent sessions and their status in the session management UI |
 | Token usage display | Show or hide token usage and cost in the agent status bar |
 
@@ -134,7 +134,7 @@ You can also pin a specific agent to a profile. Open a profile in Settings (for 
   <img src="./images/intelligent-terminal-status-bar.png" alt="Screenshot of the agent status bar at the bottom of the terminal window">
 </p>
 
-The agent status bar sits at the bottom of the window and gives you quick access to everything agent-related. On the left: the agent pane toggle (hotkey: <kbd>Ctrl+Shift+.</kbd>) and the Auto-error-handling icon (hotkey: <kbd>Ctrl+Alt+.</kbd>), which lights up when a fixable error is detected. On the right: the agent management icon (hotkey: <kbd>Ctrl+Shift+/</kbd>) that opens your session management panel. It's a persistent, minimal control surface so you're never more than one click away from your agents. The status bar can also display your current token usage and cost as you work; toggle this on or off in Agent settings.
+The agent status bar sits at the bottom of the window and gives you quick access to everything agent-related. On the left: the agent pane toggle (hotkey: <kbd>Ctrl+Shift+.</kbd>) and the Auto error handling icon (hotkey: <kbd>Ctrl+Alt+.</kbd>), which lights up when a fixable error is detected. On the right: the agent management icon (hotkey: <kbd>Ctrl+Shift+/</kbd>) that opens your session management panel. It's a persistent, minimal control surface so you're never more than one click away from your agents. The status bar can also display your current token usage and cost as you work; toggle this on or off in Agent settings.
 
 ### Agent Pane
 
@@ -188,13 +188,13 @@ API key:   <optional>
 
 View all active agents, their status, and past sessions. Pick up a workflow where you left off or check on a long-running task. Click the agent management icon in the status bar or press <kbd>Ctrl+Shift+/</kbd> to open it.
 
-### Auto-error-handling
+### Auto error handling
 
 <p align="center">
-  <img src="./images/intelligent-terminal-auto-error-handling.png" alt="Screenshot of Auto-error-handling with a fix ready">
+  <img src="./images/intelligent-terminal-auto-error-handling.png" alt="Screenshot of Auto error handling with a fix ready">
 </p>
 
-When a command fails, an indicator appears in the agent status bar. Click it or press <kbd>Ctrl+Alt+.</kbd> to open the agent pane with the error context already loaded. The agent can explain what happened and propose or run a fix. Set **Auto-error-handling** to **Off**, **Detect errors automatically**, or **Detect errors and send them to the agent for fixes automatically.** You can also trigger a fix at any time from the agent pane with the `/fix` slash command.
+When a command fails, an indicator appears in the agent status bar. Click it or press <kbd>Ctrl+Alt+.</kbd> to open the agent pane with the error context already loaded. The agent can explain what happened and propose or run a fix. Set **Auto error handling** to **Off**, **Detect errors automatically**, or **Detect errors and send them to the agent for fixes automatically.** You can also trigger a fix at any time from the agent pane with the `/fix` slash command.
 
 ### Command Palette
 
@@ -231,7 +231,7 @@ All of this is held in memory for the active session only and discarded when the
 ### Controls
 
 - Choose your agent CLI at any time in Settings > Agent
-- Set **Auto-error-handling** to **Off** to prevent shell output from being detected automatically
+- Set **Auto error handling** to **Off** to prevent shell output from being detected automatically
 - Intelligent Terminal always asks before running commands on your behalf in your shell
 
 Intelligent Terminal only collects usage data and sends it to Microsoft to help improve our products and services. Read our [privacy statement](https://go.microsoft.com/fwlink/?LinkID=824704) to learn more. See [PRIVACY.md](./PRIVACY.md) for details and instructions on how to disable telemetry.

@@ -263,7 +263,7 @@ WindowsTerminal.exe (one process)
 Each agent pane has its own `wta-helper` process. The helper owns
 exactly one tab's worth of state:
 
-- One `TabSession` (chat history, turn state, Auto-error-handling state, input
+- One `TabSession` (chat history, turn state, Auto error handling state, input
   editor) — same struct as legacy `wta`, but the helper holds it for
   exactly one tab.
 - One `RenderCtx`-equivalent — a Ratatui `Terminal<CrosstermBackend<Stdout>>`
@@ -289,15 +289,15 @@ State held by master:
   `--language`,
   `--delegate-agent`, `--delegate-model` (Sprint 4 wiring carries
   over).
-- Existing WT-COM event subscription (Auto-error-handling, agent_state_changed,
+- Existing WT-COM event subscription (Auto error handling, agent_state_changed,
   etc.) — master fans out the relevant events to the helper that
   owns the affected tab.
 
 State **not** held by master:
 - No chat history (lives in helpers).
 - No render state (lives in helpers).
-- No per-tab Auto-error-handling state machine (helper-local; master only forwards
-  Auto-error-handling events from WT).
+- No per-tab Auto error handling state machine (helper-local; master only forwards
+  Auto error handling events from WT).
 
 ### 4. wta-helper responsibilities
 
@@ -324,7 +324,7 @@ replaced by an ACP-client-over-named-pipe.
 | TerminalControl ↔ wta-helper | Standard conpty (existing `ConptyConnection`) | Same as every other pane; full console-input fidelity |
 | wta-helper ↔ wta-master | ACP JSON-RPC over named pipe (`\\.\pipe\wta-master-<guid>`) | Reuses the protocol both sides already speak |
 | wta-master ↔ agent CLI | ACP JSON-RPC over stdio (existing) | Unchanged from today |
-| Terminal ↔ wta-master | Existing COM `IProtocolEventCallback` / `SendEvent` for Auto-error-handling, agent_state_changed, etc. | Existing channel, no change |
+| Terminal ↔ wta-master | Existing COM `IProtocolEventCallback` / `SendEvent` for Auto error handling, agent_state_changed, etc. | Existing channel, no change |
 
 **No new IDL.** **No `_internal.*` event family.** **No custom binary
 protocol.** Everything off-the-shelf.
@@ -520,7 +520,7 @@ in its `_tabs` collection. Affected events:
 
 - `agent_state_changed` (view, pane_open snapshot)
 - `agent_status` (model, state, available models)
-- `auto_error_handling_state` (Auto-error-handling bar snapshot)
+- `auto_error_handling_state` (Auto error handling bar snapshot)
 - `close_agent_pane` (Ctrl+C×2 in TUI)
 - `resume_in_new_agent_tab` (slash-command / Enter on an agent-pane session row)
 
@@ -648,7 +648,7 @@ on demand.
   passed to master, master inherits.
 - Sprint 5 #2: `_ensurePageEventsRegistered` per-window
   registration in `TerminalProtocolComServer.cpp`. Still needed for
-  Auto-error-handling and other non-agent events.
+  Auto error handling and other non-agent events.
 - Sprint 5 #3: non-headless wta's `_internal.*` event drop. Becomes
   moot when `_internal.*` events go away entirely.
 - All wta TUI code: `tools/wta/src/ui/*`, `event.rs`, `app.rs`'s
@@ -814,9 +814,9 @@ architecture:
 - Helper crash: kill helper, verify only its pane is affected.
 - Resize: window resize → conpty resize → helper sees it via
   crossterm `Event::Resize` (no `_internal.resize_pane` needed).
-- Settings reload (Auto-error-handling option): verify master receives the
+- Settings reload (Auto error handling option): verify master receives the
   COM event and forwards to all helpers; helpers update their
-  Auto-error-handling UI state.
+  Auto error handling UI state.
 
 **Total: ~10-15 days.**
 
@@ -896,7 +896,7 @@ work:
   `Tab::StashAgentPane`/`RestoreStashedAgentPane` — helper + ACP
   session + chat history preserved across the toggle. See
   "Agent pane toggle = stash, not destroy" above.
-- **Auto-error-handling routing** is per-tab; `auto_error_handling_state` carries `tab_id`
+- **Auto error handling routing** is per-tab; `auto_error_handling_state` carries `tab_id`
   (= owner_tab_id of the helper that emitted it) and C++ routes by
   `_FindTabByStableId` rather than fanning out to every pane.
 - **Bottom bar / diagnostics** is per-tab; the bar reads the active

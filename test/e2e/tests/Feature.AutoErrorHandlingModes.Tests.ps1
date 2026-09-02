@@ -1,5 +1,5 @@
 #Requires -Modules @{ ModuleName='Pester'; ModuleVersion='5.0.0' }
-# Canonical three-state Auto-error-handling behavior. Each mode gets a fresh process so settings,
+# Canonical three-state Auto error handling behavior. Each mode gets a fresh process so settings,
 # helper logs, and request state cannot bleed between cases.
 
 BeforeDiscovery {
@@ -10,7 +10,7 @@ BeforeDiscovery {
     )
 }
 
-Describe 'Feature: Auto-error-handling Off mode' -Tag 'Feature' -Skip:(-not $script:Ready) {
+Describe 'Feature: Auto error handling Off mode' -Tag 'Feature' -Skip:(-not $script:Ready) {
     BeforeAll {
         Import-Module (Join-Path $PSScriptRoot '..\ItE2E\ItE2E.psd1') -Force
         $script:app = Start-Terminal -Package (Get-ItTestPackage) -PassFre $true -Settings @{
@@ -22,7 +22,7 @@ Describe 'Feature: Auto-error-handling Off mode' -Tag 'Feature' -Skip:(-not $scr
     }
     AfterAll { if ($script:app) { Stop-Terminal -App $script:app } }
 
-    It 'Off works (failures produce no Auto-error-handling activity)' {
+    It 'Off works (failures produce no Auto error handling activity)' {
         $sid = (Get-ActivePane -App $script:app).session_id
         $tag = "ITE2E_OFF_$(Get-Random)"
         $listener = Start-WtEventListener -App $script:app
@@ -42,7 +42,7 @@ Describe 'Feature: Auto-error-handling Off mode' -Tag 'Feature' -Skip:(-not $scr
     }
 }
 
-Describe 'Feature: Auto-error-handling detect-only mode' -Tag 'Feature' -Skip:(-not $script:Ready) {
+Describe 'Feature: Auto error handling detect-only mode' -Tag 'Feature' -Skip:(-not $script:Ready) {
     BeforeAll {
         Import-Module (Join-Path $PSScriptRoot '..\ItE2E\ItE2E.psd1') -Force
         $script:app = Start-Terminal -Package (Get-ItTestPackage) -PassFre $true -Settings @{
@@ -68,7 +68,7 @@ Describe 'Feature: Auto-error-handling detect-only mode' -Tag 'Feature' -Skip:(-
     }
 }
 
-Describe 'Feature: Auto-error-handling send-to-agent mode' -Tag 'Feature' -Skip:(-not $script:Ready) {
+Describe 'Feature: Auto error handling send-to-agent mode' -Tag 'Feature' -Skip:(-not $script:Ready) {
     BeforeAll {
         Import-Module (Join-Path $PSScriptRoot '..\ItE2E\ItE2E.psd1') -Force
         $script:app = Start-Terminal -Package (Get-ItTestPackage) -PassFre $true -Settings @{

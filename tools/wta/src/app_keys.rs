@@ -761,7 +761,7 @@ impl App {
                         && !self.current_tab().turn.is_idle()) =>
             {
                 // Dismiss an actionable result card or cancel an in-flight
-                // Auto-error-handling request.
+                // Auto error handling request.
                 // `turn_cancel` bumps generation, emits auto_error_handling_state_cleared,
                 // and resets the state machine to Idle.
                 let session_id = self.current_tab().session_id.clone();
@@ -783,7 +783,7 @@ impl App {
                     }
                 }
             }
-            // Dismiss the bottom-bar Review indicator (Auto-error-handling produced an
+            // Dismiss the bottom-bar Review indicator (Auto error handling produced an
             // explanation, not an executable fix). Reachable only when the user
             // is interacting with this TUI — i.e. the agent pane is currently
             // visible. Other dismiss paths: clicking the bar (opens pane), or

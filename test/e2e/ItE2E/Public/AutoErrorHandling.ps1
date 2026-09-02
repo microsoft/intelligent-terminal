@@ -1,4 +1,4 @@
-# AutoErrorHandling.ps1 — Auto-error-handling primitives.
+# AutoErrorHandling.ps1 — Auto error handling primitives.
 #
 # Observable signals on the `wtcli listen` stream (envelope is always
 # {method,params,type:"event"} — the event NAME is `.method`, not `.type`):
@@ -57,18 +57,18 @@ function Wait-WtCommandFailure {
 function Wait-AutoErrorHandling {
     <#
     .SYNOPSIS
-        Wait for an Auto-error-handling request to be submitted to the agent. Prefers the
+        Wait for an Auto error handling request to be submitted to the agent. Prefers the
         protocol event and falls back to the helper's structured log because current
         production builds do not consistently forward the agent_event to wtcli listeners.
     .NOTES
-        The Auto-error-handling prompt's `initial_prompt` ("A command failed. Diagnose...") rides on the
+        The Auto error handling prompt's `initial_prompt` ("A command failed. Diagnose...") rides on the
         `agent.session.start` agent_event, NOT `agent.prompt.submit` (which carries no
         prompt). So we key on the prompt content across any agent_event.
     #>
     [CmdletBinding()]
     param([Parameter(Mandatory, ValueFromPipeline)]$Listener, [string]$TabId, [int]$TimeoutSec = 45)
     process {
-        Wait-Until -TimeoutSec $TimeoutSec -IntervalSec 0.4 -Because 'an Auto-error-handling request event or helper log' -Condition {
+        Wait-Until -TimeoutSec $TimeoutSec -IntervalSec 0.4 -Because 'an Auto error handling request event or helper log' -Condition {
             $event = @(Get-WtEvents -Listener $Listener -Predicate {
                     $_.method -eq 'agent_event' -and
                     ("$($_.params.payload.initial_prompt)" -match 'command failed|Diagnose the error') -and
@@ -78,10 +78,10 @@ function Wait-AutoErrorHandling {
 
             $log = Get-ItLogText -App $Listener.App -Name 'wta-main_helper-*.log' -SinceStart
             $pattern = if ($TabId) {
-                'sending Auto-error-handling prompt.*tab_id=' + [regex]::Escape($TabId)
+                'sending Auto error handling prompt.*tab_id=' + [regex]::Escape($TabId)
             }
             else {
-                'sending Auto-error-handling prompt'
+                'sending Auto error handling prompt'
             }
             if ($log -match $pattern) {
                 return [pscustomobject]@{ method = 'helper_log'; line = $Matches[0] }
@@ -101,7 +101,7 @@ function Wait-AutoErrorHandlingDetection {
     [CmdletBinding()]
     param([Parameter(Mandatory, ValueFromPipeline)]$Listener, [string]$PaneId, [int]$TimeoutSec = 25)
     process {
-        Wait-Until -TimeoutSec $TimeoutSec -IntervalSec 0.4 -Because 'Auto-error-handling detect-only state' -Condition {
+        Wait-Until -TimeoutSec $TimeoutSec -IntervalSec 0.4 -Because 'Auto error handling detect-only state' -Condition {
             $log = Get-ItLogText -App $Listener.App -Name 'wta-main_helper-*.log' -SinceStart
             $line = @($log -split '\r?\n' | Where-Object {
                     $_ -match 'detect-only mode.*Detected pill.*no agent call' -and

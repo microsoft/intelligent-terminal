@@ -5515,7 +5515,7 @@ fn auto_error_handling_still_triggers_for_non_agent_pane() {
     // The target tab's turn (not the active tab's) should be in-flight.
     assert!(
         !app.tab_mut("test-tab").turn.is_idle(),
-        "Auto-error-handling prompt should be in-flight on the target tab"
+        "Auto error handling prompt should be in-flight on the target tab"
     );
 }
 
@@ -6113,7 +6113,7 @@ fn connecting_state_advances_activity_frame_on_tick() {
 /// a shell command failure — it carries no exit code, no command
 /// context, and the pane is gone so any follow-up ReadPaneOutput
 /// would trip E_FAIL. The dispatcher in `handle_event` only routes
-/// `vt_sequence` events to Auto-error-handling; this asserts the connection_state
+/// `vt_sequence` events to Auto error handling; this asserts the connection_state
 /// path stays banner-only.
 #[test]
 fn connection_state_closed_does_not_trigger_auto_error_handling_even_when_binding_cleared() {
@@ -6157,13 +6157,13 @@ fn connection_state_closed_does_not_trigger_auto_error_handling_even_when_bindin
         app.tab_sessions
             .values()
             .all(|t| t.auto_error_handling.pane_id.is_none()),
-        "connection_state:closed must never start Auto-error-handling — no exit code, \
+        "connection_state:closed must never start Auto error handling — no exit code, \
          no command context, pane is dead so subsequent ReadPaneOutput \
          would throw E_FAIL"
     );
     assert!(
         app.current_tab().turn.is_idle(),
-        "no Auto-error-handling prompt should be in-flight"
+        "no Auto error handling prompt should be in-flight"
     );
     // The pane-closed event surfaces via the banner / `wt_notifications`,
     // never in chat. Chat is the agent dialogue surface.
@@ -6180,7 +6180,7 @@ fn connection_state_closed_does_not_trigger_auto_error_handling_even_when_bindin
 /// "agent-bound" pane implies the binding is a ghost — typically left
 /// over from a hook that misreported `pane_id`, or from the previous
 /// agent CLI having exited without the registry catching it yet.
-/// Real-world repro: Auto-error-handling runs Copilot, Copilot's hooks emit events
+/// Real-world repro: Auto error handling runs Copilot, Copilot's hooks emit events
 /// with `pane_id` = the source (user's) pane, registry registers the
 /// user's PowerShell pane as Copilot-bound, then the next typo there
 /// silently dies in the suppression check.
@@ -6217,13 +6217,13 @@ fn ghost_agent_binding_does_not_suppress_shell_failure() {
     assert_eq!(
         app.tab_mut("test-tab").auto_error_handling.pane_id.as_deref(),
         Some(pane),
-        "shell failure must start Auto-error-handling even when the registry still holds a stale agent binding for the pane"
+        "shell failure must start Auto error handling even when the registry still holds a stale agent binding for the pane"
     );
 }
 
 /// Positive coverage: a vt_sequence (osc:133;D;1) in a normal shell pane
-/// still fires Auto-error-handling (the proper command-failure signal). Ensures the
-/// new "vt_sequence-only" routing doesn't silently disable Auto-error-handling.
+/// still fires Auto error handling (the proper command-failure signal). Ensures the
+/// new "vt_sequence-only" routing doesn't silently disable Auto error handling.
 #[test]
 fn vt_sequence_failure_in_normal_pane_still_triggers_auto_error_handling() {
     let mut app = test_app();
@@ -6247,7 +6247,7 @@ fn vt_sequence_failure_in_normal_pane_still_triggers_auto_error_handling() {
             .pane_id
             .as_deref(),
         Some(pane),
-        "vt_sequence osc:133;D;<non-zero> in a normal pane must still start Auto-error-handling"
+        "vt_sequence osc:133;D;<non-zero> in a normal pane must still start Auto error handling"
     );
 }
 
@@ -6368,7 +6368,7 @@ fn pending_survives_trigger_echo_dismisses_on_next_prompt_start() {
     );
 }
 
-/// User clicks the Detected pill on a stable prompt → Auto-error-handling
+/// User clicks the Detected pill on a stable prompt → Auto error handling
 /// transitions Detected → Pending → Review via the agent call. No D
 /// event is in flight during this transition, so no echo A is
 /// coming. The next prompt-start the user produces must dismiss on
@@ -6422,7 +6422,7 @@ fn force_from_detected_does_not_arm_echo_gate() {
 /// Returning to Idle clears the echo guard. Otherwise, a stale
 /// `trigger_echo_pane` could swallow a real prompt-start that arrives
 /// long after the state has already been cleared by other means
-/// (e.g. the user clicked the Review pill, then the Auto-error-handling
+/// (e.g. the user clicked the Review pill, then the Auto error handling
 /// re-fires later in the same pane).
 #[test]
 fn trigger_echo_pane_clears_when_state_returns_to_idle() {
@@ -11169,7 +11169,7 @@ fn submit_auto_error_handling_prompt(app: &mut App, pane: &str) {
     app.turn_submit_prompt(DEFAULT_TAB_ID, prompt);
 }
 
-/// Submit a manual-`/fix`-style Auto-error-handling turn: an Auto-error-handling context whose
+/// Submit a manual-`/fix`-style Auto error handling turn: an Auto error handling context whose
 /// `target_pane_id` is empty (the App doesn't know the working pane until
 /// the client task resolves it and plumbs it back).
 fn submit_fix_prompt(app: &mut App, id: u64) {
@@ -13551,7 +13551,7 @@ fn chip_target_uses_turn_context_instead_of_model_parent() {
 #[test]
 fn chip_target_falls_back_to_auto_error_handling_target_when_send_parent_empty() {
     let mut app = test_app();
-    // Planner-emitted Send actions in Auto-error-handling turns leave `parent`
+    // Planner-emitted Send actions in Auto error handling turns leave `parent`
     // blank — `turn_execute_card` fills it from `target_pane_id` at
     // execute time. The chip should already point there now.
     stage_surfaced_recommendation(

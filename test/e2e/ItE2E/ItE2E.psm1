@@ -40,7 +40,7 @@ $publicFns = @(
     # Observe
     'Get-ItLogDir', 'Initialize-LogOffsets', 'Get-ItLogText', 'Start-WtEventListener', 'Get-WtEvents',
     'Wait-WtEvent', 'Stop-WtEventListener', 'Get-ContextBundle', 'ConvertTo-ContextText',
-    # Agent / Auto-error-handling / Sessions
+    # Agent / Auto error handling / Sessions
     'Open-AgentPane', 'Set-AgentPaneFocus', 'Wait-AgentReady', 'Get-AgentCliStatus', 'Get-WtaLocalizedTextRegex', 'Get-WtReswTextValues', 'Get-WtReswTextRegex', 'Get-RecommendationCardRegex', 'Get-PendingTerminalActionProposal', 'Wait-TerminalActionProposal', 'Resolve-AgentOwnerTabId', 'Send-AgentPrompt', 'Wait-AgentState',
     'Test-AgentPaneOpen', 'Stop-AgentPane', 'Restore-AgentPane', 'Get-AgentPaneSessions', 'Get-AgentPaneSession', 'Wait-NewAgentPaneSession', 'Get-AgentPaneText',
     'Send-AgentKey', 'Send-AgentShiftEnter', 'Clear-AgentInput', 'Send-AgentWin32Key', 'Send-AgentAltV',

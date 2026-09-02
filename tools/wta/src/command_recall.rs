@@ -1,6 +1,6 @@
-//! Local command recall for Auto-error-handling (issue #287).
+//! Local command recall for Auto error handling (issue #287).
 //!
-//! When a command fails with a "not found" error, the Auto-error-handling agent used to
+//! When a command fails with a "not found" error, the Auto error handling agent used to
 //! give generic advice without knowing whether the command even exists on the
 //! user's machine — so it never suggested the *local* PowerShell scripts and
 //! programs on PATH that the user most likely mistyped.
@@ -214,7 +214,7 @@ fn sorted_chars(s: &str) -> Vec<char> {
 /// exists, or nothing is close enough).
 pub async fn powershell_near_matches(shell_exe: &str, token: &str) -> Option<Vec<String>> {
     // Cheap in-process pre-gate: a plain PATH program resolves here without
-    // spawning anything, so the common Auto-error-handling case (a failed build/test/git
+    // spawning anything, so the common Auto error handling case (a failed build/test/git
     // where the program exists) never pays the enumerate cost.
     if which::which(token).is_ok() {
         return None;

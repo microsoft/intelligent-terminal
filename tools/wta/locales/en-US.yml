@@ -64,7 +64,7 @@ chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}
 chat.plan_marker_pending: "[ ]"  # {Locked}
 # Prompt-line label shown on a completed turn that was auto-triggered by
-# Auto-error-handling (a command failure in another pane), rather than typed by the user.
+# Auto error handling (a command failure in another pane), rather than typed by the user.
 chat.auto_error_handling_prompt_label: "Auto-diagnosed a recent command failure"
 # Trailing marker on a chat turn that the user canceled (pressed Esc).
 chat.turn_canceled: "(canceled)"

@@ -8,7 +8,7 @@
 
 The per-turn lifecycle in `TabSession` is currently encoded in 10+ scattered
 boolean / Option fields plus 4 App-level fields. Each event handler (Enter,
-AgentMessageChunk, AgentMessageEnd, Esc, Auto-error-handling request) reads and
+AgentMessageChunk, AgentMessageEnd, Esc, Auto error handling request) reads and
 writes its own subset of them. Recent bugs all trace to the same root cause:
 adding a flag for one concern (`eagerly_finalized`) collided with an existing
 "clean up" function (`clear_recommendations`) that was reused across four
@@ -23,7 +23,7 @@ its own cleanup; nothing leaks between intents.
 | ID | Decision |
 |---|---|
 | #1 | Drop `pending_thought_response`. `AgentThoughtChunk` only drives the state into `Streaming`; no buffer accumulation. |
-| #2 | The Auto-error-handling context generation snapshots the current generation at submit time. `observe_chunk` / `close_turn` compare against current; mismatch = stale, drop. |
+| #2 | The Auto error handling context generation snapshots the current generation at submit time. `observe_chunk` / `close_turn` compare against current; mismatch = stale, drop. |
 | #3 | `Idle → Submitted` explicitly clears `messages`, `tool_calls`, `permission`, `chat_scroll`. No more relying on the `clear_chat_history` side effect. |
 | #4 | `Surfaced { end_pending: true }` **rejects** new prompt submissions (consistent with ACP single-flight). Execute card and Esc cancel are still allowed. |
 | #5 | One-shot cutover, not dual-track. Invariant assertions step is dropped. |
@@ -57,7 +57,7 @@ struct AutoErrorHandlingContext {
 }
 
 enum TurnOutcome {
-    Recommendation(RecommendationSet),   // card visible (Auto-error-handling Fix / planner task unified)
+    Recommendation(RecommendationSet),   // card visible (Auto error handling Fix / planner task unified)
     ChatTurn,                            // prose / explain text already committed to completed_turns
     Empty,                               // no visible response (cancelled / model returned nothing parseable)
 }
@@ -100,7 +100,7 @@ Each method:
 - Computes the state transition by reading `tab.turn`.
 - Mutates `tab.turn` to the new state (or leaves it unchanged for ignored cases).
 - Performs the corresponding side effects: clearing orthogonal tab fields,
-  emitting Auto-error-handling state events, calling `log_selection_phase_for`,
+  emitting Auto error handling state events, calling `log_selection_phase_for`,
   dispatching to the coordinator, updating
   `TabSession.auto_error_handling.result_pane_id`.
 
@@ -127,19 +127,19 @@ state preserves the single-flight gate.
 |---|---|---|---|
 | User submits prompt (chat or planner) | `Idle` / `Surfaced{end_pending:false}` | `Submitted` | Clear messages / tool_calls / permission / chat_scroll. Push User msg. Send to ACP. Log `prompt_received`. |
 | User submits while busy | `Submitted` / `Streaming` / `Surfaced{end_pending:true}` | unchanged | Push System "Agent is busy, wait…" message. |
-| Auto-error-handling sends a failure to the agent | any | Submitted with Auto-error-handling context | Increment the internal generation. Snapshot it into the submitted prompt. Clear messages / tool calls. Emit the pending state. Log. |
+| Auto error handling sends a failure to the agent | any | Submitted with Auto error handling context | Increment the internal generation. Snapshot it into the submitted prompt. Clear messages / tool calls. Emit the pending state. Log. |
 | `AgentThoughtChunk` | `Submitted` / `Streaming` | `Streaming` (buf unchanged) | Log. |
 | `AgentMessageChunk` (first) | `Submitted` | `Streaming(buf=text)` | Log. |
 | `AgentMessageChunk` (later) | `Streaming` | `Streaming(buf+=text)` | Call `try_eager_surface`. |
 | `AgentMessageChunk` | `Surfaced` (trailing) | unchanged | Drop. |
 | `AgentMessageChunk` | stale (gen mismatch) | unchanged | Drop. |
-| Eager surface (Fix / planner Recommendation) | `Streaming` | `Surfaced{Recommendation, end_pending:true}` | Emit the armed state for Auto-error-handling. Log the selection phase. |
-| Eager surface (Auto-error-handling Explain) | `Streaming` | `Surfaced{ChatTurn, end_pending:true}` | Commit the completed turn. Emit the result state and record its pane. |
+| Eager surface (Fix / planner Recommendation) | `Streaming` | `Surfaced{Recommendation, end_pending:true}` | Emit the armed state for Auto error handling. Log the selection phase. |
+| Eager surface (Auto error handling Explain) | `Streaming` | `Surfaced{ChatTurn, end_pending:true}` | Commit the completed turn. Emit the result state and record its pane. |
 | `AgentMessageEnd` (no eager fired) | `Streaming` | `Surfaced{...}` | Final parse. Same emits / logs as eager path but with non-`_eager` phase names. |
 | `AgentMessageEnd` (after eager) | `Surfaced{end_pending:true}` | `Surfaced{end_pending:false}` | Log `prompt_complete`. ACP single-flight released. |
 | `AgentMessageEnd` | stale | unchanged | Drop. |
-| User executes card | `Surfaced{Recommendation, ep}` | `Surfaced{Empty, ep}` | Dispatch `ChoiceExecution` to coordinator. Clear the Auto-error-handling state when applicable. Log. |
-| User Esc cancel | `Submitted` / `Streaming` / `Surfaced` | `Idle` | Increment the generation so stale chunks cannot pollute the next Auto-error-handling request. Clear the state when applicable. Log. |
+| User executes card | `Surfaced{Recommendation, ep}` | `Surfaced{Empty, ep}` | Dispatch `ChoiceExecution` to coordinator. Clear the Auto error handling state when applicable. Log. |
+| User Esc cancel | `Submitted` / `Streaming` / `Surfaced` | `Idle` | Increment the generation so stale chunks cannot pollute the next Auto error handling request. Clear the state when applicable. Log. |
 | User Enter on history turn | `Idle` / `Surfaced` | unchanged | Toggle CompletedTurn.expanded. |
 
 ## Field disposition
@@ -158,7 +158,7 @@ state preserves the single-flight gate.
 
 ### Removed from `App`
 
-- The internal Auto-error-handling target pane moved into the submitted prompt.
+- The internal Auto error handling target pane moved into the submitted prompt.
 - The internal in-flight generation moved into the submitted prompt.
 
 ### Kept on `TabSession` (orthogonal to turn state)
@@ -175,7 +175,7 @@ state preserves the single-flight gate.
 
 ### Kept on `App`
 
-- The internal generation counter increments for each Auto-error-handling request and Esc cancellation.
+- The internal generation counter increments for each Auto error handling request and Esc cancellation.
 - The result pane ID drives the bottom-bar explanation indicator and is mutated by transitions.
 - `pane_id` / `tab_id` / `window_id` — protocol bindings
 
@@ -200,7 +200,7 @@ the UI gate held until ACP single-flight releases.
 ### Step 1 — Define types (~1.5 h)
 
 - New file `tools/wta/src/app/turn_state.rs`.
-- Define the turn state, submitted prompt, Auto-error-handling context, outcome,
+- Define the turn state, submitted prompt, Auto error handling context, outcome,
   and chunk kind.
 - Implement pure helpers listed above.
 - Add unit tests covering each helper for every state variant.
@@ -212,17 +212,17 @@ the UI gate held until ACP single-flight releases.
   `close_turn`, `execute_card`, `cancel_turn`, `user_can_submit`.
 - These methods own all side effects: clearing orthogonal tab fields, emitting
   bottom-bar events, logging selection phases, dispatching to the coordinator,
-  updating the Auto-error-handling result pane.
+  updating the Auto error handling result pane.
 - Methods exist but no event handler calls them yet — `cargo build` passes
   with unused-method warnings.
 
 ### Step 3 — One-shot cutover (~4–5 h)
 
 - Rewrite `AgentMessageChunk` / `AgentThoughtChunk` / `AgentMessageEnd` /
-  Enter / Esc / internal Auto-error-handling handlers to call only the new App
+  Enter / Esc / internal Auto error handling handlers to call only the new App
   methods.
 - Delete the old eager-finalization and response-surfacing helpers for
-  Auto-error-handling, planning, recommendations, and ordinary agent responses —
+  Auto error handling, planning, recommendations, and ordinary agent responses —
   their logic is absorbed by the new transition methods.
 - Migrate UI renderers in `chat.rs`, `layout.rs`, `recommendations.rs`,
   `input.rs` to read `tab.turn.*` accessors instead of the removed fields.
@@ -230,22 +230,22 @@ the UI gate held until ACP single-flight releases.
 - Fix all compile errors.
 - Preserve all `prompt_timing` phase log names:
   prompt receipt, planner readiness, first transport/event/text, selection
-  readiness, Auto-error-handling fix/explanation/ignore outcomes, and prompt
+  readiness, Auto error handling fix/explanation/ignore outcomes, and prompt
   completion.
 
 ### Step 4 — Scenario verification + integration tests (~2 h)
 
 Manual scenarios — each must match the transition table:
 
-- Auto-error-handling typo: `listdir` → Fix card surfaces, Enter dispatches `Get-ChildItem`.
-- Auto-error-handling install: `claude` (uninstalled) → Explain chat turn, bottom-bar result.
+- Auto error handling typo: `listdir` → Fix card surfaces, Enter dispatches `Get-ChildItem`.
+- Auto error handling install: `claude` (uninstalled) → Explain chat turn, bottom-bar result.
 - Planner chat: "Why is the sky blue?" → prose streams in, commits as chat turn.
 - Planner task: "How many items in this folder?" → prose preamble streams,
   card surfaces with the proposed command.
 - Execute-during-eager race: surface eager, press Enter before
   AgentMessageEnd arrives. Card dispatches, no duplicate completed turn.
 - Esc mid-stream: cancel during streaming, no orphan state.
-- Stale Auto-error-handling request: a new error fires while the old request is
+- Stale Auto error handling request: a new error fires while the old request is
   streaming. The old response is dropped at chunk-level via generation check.
 - Back-to-back prompts: submit one, wait for full completion, submit another.
   Both render correctly.
@@ -270,7 +270,7 @@ Integration tests:
    field; `TurnState::spinner_label()` returns Option<&str>, animation runs
    if Some.
 
-3. **Internal state-event call sites** — every Auto-error-handling transition has a
+3. **Internal state-event call sites** — every Auto error handling transition has a
    corresponding bottom-bar emit. Easy to miss one during cutover. Mitigation:
    the transition table is the checklist.
 

@@ -1220,7 +1220,7 @@ namespace winrt::TerminalApp::implementation
             ErrorText().Text(RS_(L"FreOverlay_InstallErrorShellIntegrationExecutionPolicy"));
             url += L"#41-powershell";
             // Same remediation as generic shell-integration failure: turn
-            // off Auto-error-handling so the user can save and continue. Once
+            // off Auto error handling so the user can save and continue. Once
             // they fix execution policy they can re-enable it from Settings.
             _SelectAutoErrorHandling(Model::AutoErrorHandling::Off);
             if (_settings)
@@ -1231,7 +1231,7 @@ namespace winrt::TerminalApp::implementation
         case FreProblemKind::ShellIntegration:
             ErrorText().Text(RS_(L"FreOverlay_InstallErrorShellIntegration"));
             url += L"#4-shell-integration";
-            // Remediation: turn off Auto-error-handling so the user can save
+            // Remediation: turn off Auto error handling so the user can save
             // and continue without shell integration.
             _SelectAutoErrorHandling(Model::AutoErrorHandling::Off);
             if (_settings)

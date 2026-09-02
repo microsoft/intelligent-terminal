@@ -77,7 +77,7 @@ fn load_auto_error_handling_prompt_template_from_root(
         let user_path = prompt_root.join(AUTO_ERROR_HANDLING_USER_PROMPT_FILE_NAME);
         if let Ok(content) = fs::read_to_string(&user_path) {
             return PlannerPromptTemplate {
-                display_name: "Auto-error-handling Instructions".to_string(),
+                display_name: "Auto error handling Instructions".to_string(),
                 content,
                 source_label: format!("user:{}", user_path.display()),
             };
@@ -86,7 +86,7 @@ fn load_auto_error_handling_prompt_template_from_root(
         let default_path = prompt_root.join(AUTO_ERROR_HANDLING_DEFAULT_PROMPT_FILE_NAME);
         if let Ok(content) = fs::read_to_string(&default_path) {
             return PlannerPromptTemplate {
-                display_name: "Auto-error-handling Instructions".to_string(),
+                display_name: "Auto error handling Instructions".to_string(),
                 content,
                 source_label: format!("default:{}", default_path.display()),
             };
@@ -94,7 +94,7 @@ fn load_auto_error_handling_prompt_template_from_root(
     }
 
     PlannerPromptTemplate {
-        display_name: "Auto-error-handling Instructions".to_string(),
+        display_name: "Auto error handling Instructions".to_string(),
         content: embedded_default_prompt.to_string(),
         source_label: "embedded:auto-error-handling.md".to_string(),
     }
@@ -346,14 +346,14 @@ mod tests {
             .contains("A requested destination alone never implies delegation"));
         assert!(EMBEDDED_DEFAULT_PROMPT.contains("running a command in a new tab or split"));
         assert!(EMBEDDED_DEFAULT_PROMPT.contains("only when another agent should own the work"));
-        // Auto-error-handling is deliberately restricted to
+        // Auto error handling is deliberately restricted to
         // `run_command_in_current_shell`. The helper rejects any other action
         // for this turn type, so naming workspace or delegation tools would
         // invite a call that cannot be accepted.
         for tool in ["create_workspace", "delegate_task_in_new_workspace"] {
             assert!(
                 !EMBEDDED_AUTO_ERROR_HANDLING_PROMPT.contains(tool),
-                "Auto-error-handling prompt must not name {tool}"
+                "Auto error handling prompt must not name {tool}"
             );
         }
         assert!(EMBEDDED_DEFAULT_PROMPT.contains("Submit exactly one action"));

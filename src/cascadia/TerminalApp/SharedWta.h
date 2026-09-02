@@ -241,7 +241,7 @@ namespace winrt::TerminalApp::implementation
         /// **Ignored on subsequent acquires** — the singleton is
         /// already running by then. Runtime settings updates flow
         /// over the existing event channels
-        /// (e.g. the Auto-error-handling send-to-agent gate).
+        /// (e.g. the Auto error handling send-to-agent gate).
         ///
         /// Every successful `AcquirePane` MUST be paired with exactly
         /// one `ReleasePane` when the caller's agent pane closes.

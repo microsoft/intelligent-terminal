@@ -74,7 +74,7 @@ Describe 'Feature: Bash semantic prompt integration' -Tag 'Feature' -Skip:(-not 
     It 'Bash PROMPT_COMMAND rewrites preserve semantic prompt boundaries' {
         (Test-Until -TimeoutSec 90 -IntervalSec 1 -Condition {
                 Test-Path $script:integrationScript
-            }) | Should -BeTrue -Because 'the explicit Auto-error-handling setting must install the packaged Bash integration'
+            }) | Should -BeTrue -Because 'the explicit Auto error handling setting must install the packaged Bash integration'
 
         $posixScript = $script:integrationScript.Replace('\', '/')
         $outside = Invoke-Native -FilePath $script:GitBash -Arguments @(

@@ -19,7 +19,7 @@ enum DirectProposalEvaluation {
 //
 // Source of truth for the per-turn lifecycle (see
 // `doc/specs/turn-state-refactor.md`). Every event handler — chunk arrival,
-// end-of-turn, Enter on a card, Esc / Ctrl+C cancel, Auto-error-handling trigger — goes
+// end-of-turn, Enter on a card, Esc / Ctrl+C cancel, Auto error handling trigger — goes
 // through one of these methods.
 // ─────────────────────────────────────────────────────────────────────────
 
@@ -37,7 +37,7 @@ impl App {
 
     /// Identical to `turn_submit_prompt` but takes the target tab's id
     /// directly, bypassing the `session_id → tab_id` lookup. Used by the
-    /// Auto-error-handling path so a failure in a background tab installs the turn on
+    /// Auto error handling path so a failure in a background tab installs the turn on
     /// that tab even when its ACP session hasn't been created yet (the ACP
     /// layer lazy-creates one when the prompt is dispatched).
     pub fn turn_submit_prompt_for_tab(&mut self, tab_id: &str, prompt: SubmittedPrompt) {
@@ -73,7 +73,7 @@ impl App {
         tab.rec_scroll.reset();
         tab.pending_terminal_action_proposal = None;
         tab.active_direct_proposal_id = None;
-        // Auto-error-handling prompts are synthesized by the system; they don't render
+        // Auto error handling prompts are synthesized by the system; they don't render
         // as a User bubble (the user already sees the error line in the
         // failing pane).
         if !is_auto_error_handling {
@@ -89,7 +89,7 @@ impl App {
         // had pinned the chip onto that card's pane, release it now so the
         // chip falls back to source-of-agent while the new turn is in
         // flight. Note: this only matters for the new-turn case; the
-        // freshly-submitted Auto-error-handling path overrides chip via the eventual
+        // freshly-submitted Auto error handling path overrides chip via the eventual
         // `turn_surface_*` callback once recommendations arrive.
         let owned_tab = tab_id.to_string();
         self.recompute_chip_override(&owned_tab);
@@ -98,7 +98,7 @@ impl App {
     /// Observe a streamed chunk. Lifecycle state records only whether output
     /// started; visible text appends directly to the ordered transcript.
     pub fn turn_observe_chunk(&mut self, session_id: &str, kind: ChunkKind, text: &str) -> bool {
-        // Stale Auto-error-handling check: if the chunk belongs to an Auto-error-handling turn whose
+        // Stale Auto error handling check: if the chunk belongs to an Auto error handling turn whose
         // generation no longer matches the tab's counter, drop it.
         let tab = self.session_tab_mut(session_id);
         let current_gen = tab.auto_error_handling.generation;
@@ -108,7 +108,7 @@ impl App {
                     target: "auto_error_handling",
                     inflight_gen = gen,
                     current_gen,
-                    "dropping stale Auto-error-handling chunk",
+                    "dropping stale Auto error handling chunk",
                 );
                 return false;
             }
@@ -221,7 +221,7 @@ impl App {
             let current_generation = self.session_tab(session_id).auto_error_handling.generation;
             if turn_generation != Some(current_generation) {
                 return DirectProposalEvaluation::Stale(
-                    "Auto-error-handling turn was superseded".to_string(),
+                    "Auto error handling turn was superseded".to_string(),
                 );
             }
         }
@@ -384,12 +384,12 @@ impl App {
     /// Close the in-flight turn on `AgentMessageEnd`. Dispatches across
     /// four termination paths:
     ///
-    /// 1. Stale Auto-error-handling discard (newer trigger or Esc cancelled this turn).
+    /// 1. Stale Auto error handling discard (newer trigger or Esc cancelled this turn).
     /// 2. A direct proposal already surfaced — release the UI gate.
     /// 3. `Submitted` with no chunks — model returned nothing.
     /// 4. `Streaming` with a buffer — commit it as assistant text.
     pub fn turn_close(&mut self, session_id: &str) {
-        // (1) Stale Auto-error-handling discard.
+        // (1) Stale Auto error handling discard.
         let current_gen = self.session_tab(session_id).auto_error_handling.generation;
         if let Some(gen) = self
             .session_tab(session_id)
@@ -401,7 +401,7 @@ impl App {
                     target: "auto_error_handling",
                     inflight_gen = gen,
                     current_gen,
-                    "discarding stale Auto-error-handling turn at close",
+                    "discarding stale Auto error handling turn at close",
                 );
                 self.turn_clear_agent_activity(session_id);
                 let tab = self.session_tab_mut(session_id);
@@ -453,7 +453,7 @@ impl App {
             return;
         }
 
-        // (3) Submitted, no chunks. For Auto-error-handling this would leave the bar
+        // (3) Submitted, no chunks. For Auto error handling this would leave the bar
         //     stuck in Pending; clear it explicitly.
         let is_auto_error_handling = match &self.session_tab(session_id).turn {
             TurnState::Streaming { prompt } => prompt.auto_error_handling.is_some(),
@@ -477,7 +477,7 @@ impl App {
 
     /// Path (3): close a turn that received `AgentMessageEnd` with no
     /// streamed content. Emits `auto_error_handling_state_cleared` if it was an
-    /// Auto-error-handling turn so the bottom bar doesn't stick in Pending.
+    /// Auto error handling turn so the bottom bar doesn't stick in Pending.
     fn turn_close_no_chunks(&mut self, session_id: &str) {
         let target_tab = self.tab_for_session(session_id);
         let tab = self.session_tab_mut(session_id);
@@ -869,7 +869,7 @@ impl App {
             );
         }
 
-        // Esc on a Send card or in-flight Auto-error-handling exits the chip-override
+        // Esc on a Send card or in-flight Auto error handling exits the chip-override
         // state; release whatever the helper had pinned. C++ falls back to
         // source-of-agent driven rendering.
         self.recompute_chip_override(&target_tab);
@@ -920,14 +920,14 @@ impl App {
         self.recompute_chip_override(&target_tab);
     }
 
-    /// Surface an Auto-error-handling fix as an actionable result card.
+    /// Surface an Auto error handling fix as an actionable result card.
     fn turn_surface_fix(
         &mut self,
         session_id: &str,
         recommendations: RecommendationSet,
         phase_name: &str,
     ) {
-        // Defensive: only Auto-error-handling turns surface a fix card here.
+        // Defensive: only Auto error handling turns surface a fix card here.
         let prompt = self.session_tab(session_id).turn.prompt();
         let Some(prompt) = prompt.filter(|prompt| prompt.auto_error_handling.is_some()) else {
             return;
@@ -950,7 +950,7 @@ impl App {
         // pending review and surface the bar accordingly (Review when the
         // pane is closed, Idle when it's already open). The recommendation
         // card still lives in the turn below so the user can act on it
-        // inside the pane — Auto-error-handling no longer auto-executes.
+        // inside the pane — Auto error handling no longer auto-executes.
         if let Some(pane_id) = bar_pane.as_ref() {
             {
                 let auto_error_handling = &mut self.tab_mut(&target_tab).auto_error_handling;
@@ -982,10 +982,10 @@ impl App {
         self.recompute_chip_override(&target_tab);
     }
 
-    /// Surface an Auto-error-handling Explain answer as a chat turn and
+    /// Surface an Auto error handling Explain answer as a chat turn and
     /// bottom-bar Review indicator.
     fn turn_surface_explain(&mut self, session_id: &str, phase_name: &str) {
-        // Defensive: only Auto-error-handling turns surface an explain answer here.
+        // Defensive: only Auto error handling turns surface an explain answer here.
         let prompt = self.session_tab(session_id).turn.prompt();
         let Some(prompt) = prompt.filter(|prompt| prompt.auto_error_handling.is_some()) else {
             return;

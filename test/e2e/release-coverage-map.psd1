@@ -3,7 +3,7 @@
     # -> regex matched against test full-names (Describe.Context.It). Add only entries you are
     # CONFIDENT about. Unmapped items fall through to "manual" — never assert a false [x].
 
-    # §2 Insert/Run/target — covered by both Auto-error-handling and chat proposals
+    # §2 Insert/Run/target — covered by both Auto error handling and chat proposals
     'Insert into pane works'            = 'Insert proposed fix works|inserted into the active shell pane'
     'Run in pane works'                 = 'Run proposed fix works|runs in the active shell pane'
     'Command target is correct'         = 'Insert returns keyboard focus to the target shell pane'
@@ -52,10 +52,10 @@
     # ("/restart reconnects and answers"), which would otherwise credit this item incorrectly.
     'Non-Copilot agents chat works'     = 'non-Copilot agent.*connects and answers'
 
-    # §3 Auto-error-handling (Copilot)
+    # §3 Auto error handling (Copilot)
     'Visible agent pane flow works'     = 'Visible agent pane flow works'
     'Stashed agent pane flow works'     = 'Stashed agent pane flow works'
-    'Auto-error-handling with Copilot works' = 'Auto-error-handling with Copilot works'
+    'Auto error handling with Copilot works' = 'Auto error handling with Copilot works'
 
     # §3 shell integration
     'PowerShell shell integration installed' = 'PowerShell shell integration emits|PowerShell-level errors emit a non-zero command-finished mark on Windows PowerShell 5\.1'

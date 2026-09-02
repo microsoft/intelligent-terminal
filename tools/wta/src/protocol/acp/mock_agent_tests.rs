@@ -897,7 +897,7 @@ async fn dispatch_prompt_round_trips_through_agent() {
             );
             assert!(
                 seen[0].contains("Working in Windows Terminal"),
-                "a non-Auto-error-handling prompt must carry the terminal template"
+                "a non-Auto error handling prompt must carry the terminal template"
             );
 
             // The session is cached before the prompt is sent, so it's already
@@ -1167,8 +1167,8 @@ async fn dispatch_prompt_new_session_failure_emits_error_and_releases_slot() {
         .await;
 }
 
-/// First-turn Auto-error-handling installs the base terminal-agent prompt and adds the
-/// Auto-error-handling instruction overlay.
+/// First-turn Auto error handling installs the base terminal-agent prompt and adds the
+/// Auto error handling instruction overlay.
 #[tokio::test]
 async fn dispatch_prompt_first_auto_error_handling_includes_base_and_overlay() {
     let local = tokio::task::LocalSet::new();
@@ -1207,8 +1207,8 @@ async fn dispatch_prompt_first_auto_error_handling_includes_base_and_overlay() {
             let seen = h.seen_prompts.lock().unwrap().clone();
             assert_eq!(seen.len(), 1);
             assert!(
-                seen[0].contains("Auto-error-handling Instructions"),
-                "Auto-error-handling prompt must carry its instruction overlay"
+                seen[0].contains("Auto error handling Instructions"),
+                "Auto error handling prompt must carry its instruction overlay"
             );
             assert!(
                 seen[0].contains("# Working in Windows Terminal"),
@@ -1216,7 +1216,7 @@ async fn dispatch_prompt_first_auto_error_handling_includes_base_and_overlay() {
             );
             assert!(
                 seen[0].contains("fix the build"),
-                "Auto-error-handling prompt must still carry the user's text"
+                "Auto error handling prompt must still carry the user's text"
             );
         })
         .await;

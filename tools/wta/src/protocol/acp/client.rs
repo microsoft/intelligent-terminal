@@ -74,7 +74,7 @@ pub struct PromptSubmission {
     pub text: String,
     pub pane_context: Option<PaneContext>,
     pub submitted_at_unix_s: f64,
-    /// Distinguishes planner prompts from manual and automatic Auto-error-handling
+    /// Distinguishes planner prompts from manual and automatic Auto error handling
     /// inputs. Automatic summaries are untrusted diagnostic context, while
     /// text supplied to `/fix` is user intent.
     pub auto_error_handling_text_kind: Option<AutoErrorHandlingTextKind>,
@@ -84,7 +84,7 @@ pub struct PromptSubmission {
     /// Images pasted into the input via Alt+V. Sent to the agent as ACP
     /// `ContentBlock::Image` blocks appended after the text block (only when
     /// the agent advertised `promptCapabilities.image`). Empty for the common
-    /// text-only and all Auto-error-handling prompts.
+    /// text-only and all Auto error handling prompts.
     pub images: Vec<crate::clipboard_image::PastedImage>,
 }
 

@@ -18,7 +18,7 @@ terminal. WTA fills that gap:
 - **AI wants to run a command?** → WTA opens a pane in Windows Terminal and runs it
 - **AI wants to read command output?** → WTA pulls the content from the terminal and returns it
 - **User wants to drive the terminal via natural-language chat?** → WTA renders a TUI chat surface inside an agent pane; AI executes on your behalf
-- **A command just failed?** → Auto-error-handling detects it and offers a result via the agent
+- **A command just failed?** → Auto error handling detects it and offers a result via the agent
 
 ---
 
@@ -69,7 +69,7 @@ the ratatui chat UI (`app.rs`) but, instead of spawning its own agent CLI,
 connects to master over the pipe and speaks ACP JSON-RPC. *From the helper's
 perspective, master is the agent.* The helper owns the user-facing side effects:
 the TUI, permission prompts, `ShellManager` (for the agent's `create_terminal`),
-Auto-error-handling, and the per-tab session model.
+Auto error handling, and the per-tab session model.
 
 Entry: `src/helper/mod.rs` → `crate::run_default_tui_over_pipe` (in `main.rs`).
 
@@ -159,7 +159,7 @@ tools.
 | **Entry / CLI** | `src/main.rs` | clap parsing, role/subcommand dispatch, protocol discovery, locale normalization |
 | **Master** | `src/master/mod.rs` | ACP multiplexer singleton: owns the lazy agent CLI pool, serves helpers over the pipe, routes per-session notifications |
 | **Helper** | `src/helper/mod.rs` | Thin per-pane entry; reuses `run_default_tui_over_pipe` with the pipe as ACP transport |
-| **App / TUI** | `src/app.rs` (+ `src/app/*.rs`) | TUI state machine and event loop; per-tab sessions, Auto-error-handling, permission, session-management view |
+| **App / TUI** | `src/app.rs` (+ `src/app/*.rs`) | TUI state machine and event loop; per-tab sessions, Auto error handling, permission, session-management view |
 | **ACP client** | `src/protocol/acp/client.rs` | Agent-CLI client + helper-side `WtaClient`; prompt templating, model select, probe, failure handling |
 | **Coordinator** | `src/coordinator.rs` | `?<prompt>` delegate execution |
 | **Session tracking** | `src/agent_sessions.rs`, `src/session_registry.rs`, `src/session_watcher/*` | Session registry + CLI-log status classification (claude/copilot/codex/gemini) |
@@ -270,7 +270,7 @@ liveness model, hooks auto-upgrade, third-party notice generation).
   `session/new` round-trips to that CLI; `initialize` is cached per process.
 - Helpers are **pre-warmed per tab** at tab creation (`--start-stashed`), so the
   ACP session connects in the background even before the user opens the pane —
-  this is what lets Auto-error-handling work on a stashed pane.
+  this is what lets Auto error handling work on a stashed pane.
 - Toggling an agent pane **stashes** it (helper + conpty + ACP session survive);
   the pane is only destroyed on tab close or `Ctrl+C ×2` in the TUI.
 - If master dies, helpers exit on pipe EOF and `closeOnExit:"always"` closes
@@ -305,5 +305,5 @@ Fallback: if WT pane creation fails, WTA downgrades to the local-child path.
 
 - Helper+master architecture: ✅ current primary (and only) runtime model
 - COM/CLI control plane: ✅ done; sole WT transport
-- Auto-error-handling, delegate (`?<prompt>`), session-management view, hooks auto-upgrade: ✅ shipped
+- Auto error handling, delegate (`?<prompt>`), session-management view, hooks auto-upgrade: ✅ shipped
 - MCP server mode, standalone single-process TUI: ❌ removed

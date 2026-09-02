@@ -6,7 +6,7 @@
 > / OpenConsole code that Intelligent Terminal forks from.
 >
 > **Intelligent Terminal-specific telemetry** (events emitted by WTA,
-> agent-pane lifecycle, Auto-error-handling, hooks installation, etc.) is **not yet
+> agent-pane lifecycle, Auto error handling, hooks installation, etc.) is **not yet
 > catalogued here**. See [`PRIVACY.md`](./PRIVACY.md) for IT-specific
 > privacy information and how to disable telemetry.
 

@@ -39,7 +39,7 @@ Reference copy:
 - `%LOCALAPPDATA%\IntelligentTerminal\prompts\terminal-agent.default.md`
 
 WTA sends `terminal-agent.md` once on an ACP session's first prompt, including
-when that prompt starts Auto-error-handling. Later prompts send only current
-runtime context, per-turn instructions, and user input. Auto-error-handling
+when that prompt starts Auto error handling. Later prompts send only current
+runtime context, per-turn instructions, and user input. Auto error handling
 turns add `auto-error-handling.md` as an instruction overlay; they do not create
 a separate agent mode or cause the base prompt to be resent.
