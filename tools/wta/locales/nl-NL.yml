@@ -46,7 +46,7 @@ chat.plan_header: "Plan:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}
 chat.plan_marker_pending: "[ ]"  # {Locked}
-chat.autofix_prompt_label: "Recente opdrachtfout automatisch gediagnosticeerd"
+chat.auto_error_handling_prompt_label: "Recente opdrachtfout automatisch gediagnosticeerd"
 chat.turn_canceled: "(geannuleerd)"
 chat.turn_executed: "→ uitgevoerd: %{title}"
 # Persistent tool-category labels shown after a status marker and before a subject.
@@ -205,7 +205,7 @@ time.days_other: "%{count} dagen geleden"
 commands.help.summary: "Deze opdrachtlijst weergeven"
 commands.clear.summary: "Chatgeschiedenis wissen (sessie blijft behouden)"
 commands.new.summary: "Een nieuwe ACP-sessie starten (geschiedenis verwijderen)"
-commands.fix.summary: "Diagnose uitvoeren op de actieve terminal en een oplossing voorstellen (/fix <hint>)"  # {Locked="/fix","<hint>"}
+commands.fix.summary: "Diagnoseer de actieve terminal en stel een oplossing voor (/fix <hint>)"  # {Locked="/fix","<hint>"}
 commands.restart.summary: "Agent opnieuw starten"
 commands.stop.summary: "De actieve prompt annuleren"
 commands.sessions.summary: "De selector voor eerdere sessies openen (Ctrl+Shift+/)"

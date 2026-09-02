@@ -1091,28 +1091,21 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
     <comment>In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_AgentDescription.Text" xml:space="preserve">
-    <value>에이전트 창에서 사용할 ACP 지원 에이전트를 선택합니다.</value>
+    <value>에이전트 창에 사용할 에이전트를 선택하세요. ACP에 대해 자세히 알아보세요.</value>
     <comment>{Locked="ACP"}
-In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+Here "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a proxy, human agent, or representative. ACP is displayed as a hyperlink.</comment>
   </data>
   <data name="FreOverlay_AgentInstallHint.Text" xml:space="preserve">
-    <value>이 에이전트에는 Node.js 및 NPX가 필요하며, 아직 설치되지 않은 경우 자동으로 설치됩니다.</value>
-    <comment>{Locked="Node.js","NPX"}
-In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
-  </data>
-  <data name="FreOverlay_AutoErrorLabel.Text" xml:space="preserve">
-    <value>자동 오류 제안</value>
-  </data>
-  <data name="FreOverlay_AutoErrorDescription.Text" xml:space="preserve">
-    <value>Intelligent Terminal이 오류를 에이전트로 보내 수정 사항을 자동으로 제안하도록 허용합니다.</value>
-    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
+    <value>컴퓨터에 Node.js 런타임이 아직 없으면 설치합니다.</value>
+    <comment>{Locked="Node.js"}
+This hint appears when selecting an AI agent whose Node.js runtime may need to be installed automatically.</comment>
   </data>
   <data name="FreOverlay_SessionLabel.Text" xml:space="preserve">
     <value>세션 관리</value>
   </data>
   <data name="FreOverlay_SessionDescription.Text" xml:space="preserve">
-    <value>지능형 터미널이 실행 중이거나 활성 상태인 에이전트의 상태를 추적할 수 있도록 허용합니다.</value>
-    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name. In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+    <value>실행 중인 에이전트 세션과 이전 에이전트 세션을 추적합니다.</value>
+    <comment>Description for session tracking in the first-run wizard. In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_SessionHint.Text" xml:space="preserve">
     <value>이를 활성화하면 에이전트 전체에서 세션을 추적하기 위한 통합 hooks가 설치됩니다.</value>
@@ -1201,7 +1194,8 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
     <comment>{Locked="hooks"}</comment>
   </data>
   <data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
-    <value>셸 통합을 설치하지 못했습니다. 오류 감지가 꺼졌습니다. 다시 사용하도록 설정하고 다시 시도하거나, 저장하여 이 기능 없이 계속할 수 있습니다.</value>
+    <value>셸 통합을 설치하지 못했습니다. Auto error handling 기능이 꺼졌습니다. 다시 사용하도록 설정하고 다시 시도하거나, 저장하여 이 기능 없이 계속할 수 있습니다.</value>
+    <comment>{Locked="Auto error handling"} FRE setup error. Auto error handling was turned off because shell integration could not be installed.</comment>
   </data>
   <data name="FreOverlay_ErrorHelpLink" xml:space="preserve">
     <value>수동으로 해결하는 방법 알아보기</value>
@@ -1233,10 +1227,6 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
     <value>오류 감지됨: 분석 중…</value>
     <comment>Short status label shown next to the diagnostics button while an automatic error analysis is in progress.</comment>
   </data>
-  <data name="Diagnostics_ErrorArmedLabelFormat" xml:space="preserve">
-    <value>오류 감지됨: {0} 키로 수정</value>
-    <comment>Short status label shown next to the diagnostics button when a fix is ready. {0} is replaced with the keyboard shortcut.</comment>
-  </data>
   <data name="Diagnostics_ErrorDetectedLabelFormat" xml:space="preserve">
     <value>에이전트에게 수정 제안을 요청하려면 {0}를 클릭하거나 누르세요</value>
     <comment>Short status label shown next to the diagnostics button when an error is detected and a fix can be requested. {0} is replaced with the keyboard shortcut.</comment>
@@ -1252,26 +1242,6 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
   <data name="Diagnostics_ErrorDetectedTooltipFormat" xml:space="preserve">
     <value>오류가 감지되었습니다. AI 에이전트에게 진단과 수정 제안을 요청하려면 {0}를 클릭하거나 누르세요.</value>
     <comment>Tooltip for the diagnostics button when an error is detected and a fix can be requested. {0} is replaced with the keyboard shortcut.</comment>
-  </data>
-  <data name="Diagnostics_FixReadyTooltipFormat" xml:space="preserve">
-    <value>수정 준비됨 — {0} 키로 적용</value>
-    <comment>Tooltip for the diagnostics button when a fix is ready. {0} is replaced with the keyboard shortcut.</comment>
-  </data>
-  <data name="Diagnostics_FixReadyTooltipWithPreviewFormat" xml:space="preserve">
-    <value>수정 준비됨 — {0} 키로 적용: {1}</value>
-    <comment>Tooltip for the diagnostics button when a fix is ready. {0} is replaced with the keyboard shortcut; {1} is a preview of the suggested command or fix.</comment>
-  </data>
-  <data name="Diagnostics_SuggestionReadyLabel" xml:space="preserve">
-    <value>제안 준비됨 — 에이전트 창 열기</value>
-    <comment>Short status label shown next to the diagnostics button when a suggestion is available in the agent pane.</comment>
-  </data>
-  <data name="Diagnostics_SuggestionTooltipIntro" xml:space="preserve">
-    <value>자동 수정에서 직접 수정을 거부했습니다. </value>
-    <comment>First sentence of the diagnostics tooltip when automatic fix generation declines to apply a fix directly. Preserve the trailing space; additional guidance follows in the same tooltip.</comment>
-  </data>
-  <data name="Diagnostics_SuggestionTooltipInstruction" xml:space="preserve">
-    <value>여기를 클릭하거나 Ctrl+Shift+.를 눌러 에이전트 창을 열고 전체 제안을 읽으세요.</value>
-    <comment>Second sentence of the diagnostics tooltip when a suggestion is available. {Locked="Ctrl+Shift+."}</comment>
   </data>
   <data name="Diagnostics_Tooltip" xml:space="preserve">
     <value>진단</value>
@@ -1293,25 +1263,41 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
     <value>Terminal Protocol</value>
     <comment>Title for the teaching tip that displays Terminal Protocol connection information. {Locked="Terminal Protocol"}</comment>
   </data>
-  <data name="FreOverlay_AutoDetectLabel.Text" xml:space="preserve">
-    <value>자동 오류 검색</value>
+  <data name="FreOverlay_AutoErrorHandlingLabel.Text" xml:space="preserve">
+    <value>자동 오류 처리</value>
+    <comment>Label for the Auto error handling dropdown in the first-run wizard.</comment>
   </data>
-  <data name="FreOverlay_AutoDetectDescription.Text" xml:space="preserve">
-    <value>Intelligent Terminal이 셸에 액세스하여 오류를 자동으로 검색하도록 허용합니다.</value>
+  <data name="FreOverlay_AutoErrorHandlingDescription.Text" xml:space="preserve">
+    <value>터미널 오류 처리 방법을 선택합니다.</value>
+    <comment>Description for the Auto error handling dropdown in the first-run wizard.</comment>
   </data>
-  <data name="FreOverlay_AutoDetectShellIntegrationHintPrefix" xml:space="preserve">
-    <value>이를 활성화하면 명령 실패를 감지하기 위한 셸 통합이 설치됩니다. </value>
+  <data name="FreOverlay_AutoErrorHandlingShellIntegrationHintPrefix" xml:space="preserve">
+    <value>이를 활성화하면 명령 실패를 감지하기 위한 셸 통합이 설치됩니다. PowerShell, bash 및 WSL bash에서 사용할 수 있습니다. </value>
+    <comment>{Locked="PowerShell","bash","WSL bash"} Hint shown under the Auto error handling dropdown in the first-run wizard. The trailing space is intentional — it separates this prefix from the inline FreOverlay_AutoErrorHandlingShellIntegrationHintLink hyperlink that follows.</comment>
   </data>
-  <data name="FreOverlay_AutoDetectShellIntegrationHintLink" xml:space="preserve">
-    <value>자세한 정보</value>
+  <data name="FreOverlay_AutoErrorHandlingShellIntegrationHintLink" xml:space="preserve">
+    <value>지원되는 모든 셸 보기</value>
+    <comment>Inline hyperlink text that follows FreOverlay_AutoErrorHandlingShellIntegrationHintPrefix and opens the documentation listing every shell that supports Auto error handling.</comment>
+  </data>
+  <data name="FreOverlay_AutoErrorHandling_Off" xml:space="preserve">
+    <value>끄기</value>
+    <comment>The first option in the Auto error handling dropdown. It disables automatic terminal error detection and fixes.</comment>
+  </data>
+  <data name="FreOverlay_AutoErrorHandling_DetectErrorsAutomatically" xml:space="preserve">
+    <value>오류를 자동으로 감지합니다</value>
+    <comment>The second option in the Auto error handling dropdown. It detects terminal errors automatically without sending them to an AI agent. Here "agent" means an AI intelligent agent, not a proxy or human agent.</comment>
+  </data>
+  <data name="FreOverlay_AutoErrorHandling_DetectErrorsAndSendToAgentForFixesAutomatically" xml:space="preserve">
+    <value>오류를 감지하고 수정을 위해 에이전트에 자동으로 보냅니다</value>
+    <comment>The third option in the Auto error handling dropdown. It detects terminal errors and sends them to an AI agent for automatic fixes. Here "agent" means an AI intelligent agent, not a proxy or human agent.</comment>
   </data>
   <data name="InitShellIntegrationExecutionPolicyErrorMessage" xml:space="preserve">
     <value>PowerShell 실행 정책이 스크립트를 차단하고 있습니다.</value>
     <comment>Body of an error dialog shown after the user tries to install PowerShell shell integration but their PowerShell execution policy (Restricted or AllSigned) is blocking scripts. A separate "Learn how to fix this manually" hyperlink (FreOverlay_ErrorHelpLink) is rendered on its own line below this sentence. {Locked="PowerShell"}</comment>
   </data>
   <data name="FreOverlay_InstallErrorShellIntegrationExecutionPolicy" xml:space="preserve">
-    <value>PowerShell 실행 정책이 스크립트를 차단하고 있습니다. 오류 감지가 꺼졌습니다.</value>
-    <comment>{Locked="PowerShell"}</comment>
+    <value>PowerShell 실행 정책이 스크립트를 차단하고 있습니다. Auto error handling 기능이 꺼졌습니다.</value>
+    <comment>{Locked="PowerShell","Auto error handling"} FRE setup error. PowerShell execution policy blocked scripts, so Auto error handling was turned off.</comment>
   </data>
   <data name="UsageGroup/[using:Windows.UI.Xaml.Automation]AutomationProperties/Name" xml:space="preserve"><value>사용량</value><comment>Accessibility name for the session usage summary in the terminal bottom bar.</comment></data>
   <data name="Usage_TokensUnit" xml:space="preserve"><value>토큰</value><comment>Unit label for AI context-window token counts. Translate this term using the established AI/LLM terminology for the locale.</comment></data>

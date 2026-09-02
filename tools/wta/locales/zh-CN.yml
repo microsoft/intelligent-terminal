@@ -42,7 +42,7 @@ chat.plan_header: "计划："
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}
 chat.plan_marker_pending: "[ ]"  # {Locked}
-chat.autofix_prompt_label: "已自动诊断最近的一次命令失败"
+chat.auto_error_handling_prompt_label: "已自动诊断最近的一次命令失败"
 chat.turn_canceled: "(已取消)"
 chat.turn_executed: "→ 已执行: %{title}"
 # 在状态标记之后、操作对象之前显示的持久工具类别标签。
@@ -200,7 +200,7 @@ time.days_other: "%{count} 天前"
 commands.help.summary: "显示此命令列表"
 commands.clear.summary: "清除聊天记录（保留会话）"
 commands.new.summary: "启动新的 ACP 会话（清空历史记录）"
-commands.fix.summary: "诊断活动终端并建议修复方法（/fix <hint>）"  # {Locked="/fix","<hint>"}
+commands.fix.summary: "诊断活动终端并提出修复方案（/fix <hint>）"  # {Locked="/fix","<hint>"}
 commands.restart.summary: "重启智能体"
 commands.stop.summary: "取消进行中的提示"
 commands.sessions.summary: "打开历史会话选择器（Ctrl+Shift+/）"

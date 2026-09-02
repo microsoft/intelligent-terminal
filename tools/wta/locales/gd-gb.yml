@@ -46,7 +46,7 @@ chat.plan_header: "Plana:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}
 chat.plan_marker_pending: "[ ]"  # {Locked}
-chat.autofix_prompt_label: "Air breithneachadh gu fèin-obrachail air fàilligeadh àithne o chionn ghoirid"
+chat.auto_error_handling_prompt_label: "Air breithneachadh gu fèin-obrachail air fàilligeadh àithne o chionn ghoirid"
 chat.turn_canceled: "(air a sgur)"
 chat.turn_executed: "→ air a chur an gnìomh: %{title}"
 # Leubailean maireannach roinn-seòrsa inneil a chithear às dèidh comharra inbhe agus ron chuspair.
@@ -204,7 +204,7 @@ time.days_other: "%{count} làithean air ais"
 commands.help.summary: "Show this command list"
 commands.clear.summary: "Clear the chat scrollback (keeps session)"
 commands.new.summary: "Start a fresh ACP session (drops history)"  # {Locked="ACP"}
-commands.fix.summary: "Diagnose the active terminal and suggest a fix (/fix <hint>)"  # {Locked="/fix","<hint>"}
+commands.fix.summary: "Dèan breithneachadh air an tèirmineal ghnìomhach agus cuir ceartachadh air adhart (/fix <hint>)"  # {Locked="/fix","<hint>"}
 commands.restart.summary: "Restart agent"
 commands.stop.summary: "Cancel the in-flight prompt"
 commands.sessions.summary: "Open the historical sessions picker (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}

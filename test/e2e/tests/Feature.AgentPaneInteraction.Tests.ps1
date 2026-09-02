@@ -136,7 +136,7 @@ Describe 'Feature: agent pane open/hide/focus + input + slash + chat' -Tag 'Feat
             if (-not $titleRe) { $titleRe = '(?i)Select model' }
             Assert-AgentPaneText -App $script:app -Pattern $titleRe -TimeoutSec 15
             # Prove a selectable model row actually rendered, rather than guessing model names
-            # (auto/claude/gpt drift with releases and "auto" matches "autofix"/"automatic"):
+            # (auto/claude/gpt drift with releases and "auto" also matches "automatic"):
             # the picker marks its highlighted row with the "> " selector (model_popup.rs
             # highlight_symbol), drawn INSIDE the popup's left border — e.g. "│>  ● Claude …".
             # Require a popup border char (│/║/|) immediately before the marker so a Markdown

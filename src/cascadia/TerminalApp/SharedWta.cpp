@@ -785,7 +785,7 @@ namespace winrt::TerminalApp::implementation
         // listens on the named pipe for helper connections (see
         // doc/specs/Multi-window-agent-pane.md, "Target architecture").
         // extraArgs carries per-process settings (--agent, --agent-id,
-        // --acp-model, --no-autofix, --language, ...) so the master
+        // --acp-model, --no-auto-error-handling-with-agent, --language, ...) so the master
         // can pass them through to the agent CLI it spawns. Each
         // element is escaped here via QuoteAndEscapeCommandlineArg
         // so callers don't have to think about quoting.

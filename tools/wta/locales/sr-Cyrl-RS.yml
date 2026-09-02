@@ -46,7 +46,7 @@ chat.plan_header: "План:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}
 chat.plan_marker_pending: "[ ]"  # {Locked}
-chat.autofix_prompt_label: "Аутоматски дијагностикован недавни неуспех команде"
+chat.auto_error_handling_prompt_label: "Аутоматски дијагностикован недавни неуспех команде"
 chat.turn_canceled: "(отказано)"
 chat.turn_executed: "→ извршено: %{title}"
 # Трајне ознаке категорија алата приказане после ознаке статуса и пре предмета.
@@ -79,7 +79,7 @@ commands.help_close_hint: "  Esc        Затвори ову помоћ"  # {Lo
 commands.help.summary: "Прикажи ову листу команди"
 commands.clear.summary: "Обриши историју ћаскања (задржава сесију)"
 commands.new.summary: "Покрени нову сесију ACP (одбацује историју)"  # {Locked="ACP"}
-commands.fix.summary: "Diagnose the active terminal and suggest a fix (/fix <hint>)"  # {Locked="/fix","<hint>"}
+commands.fix.summary: "Дијагностикуј активни терминал и предложи исправку (/fix <hint>)"  # {Locked="/fix","<hint>"}
 commands.restart.summary: "Поново покрени агента"
 commands.stop.summary: "Откажи упит у току"
 commands.sessions.summary: "Отвори бирач претходних сесија (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}

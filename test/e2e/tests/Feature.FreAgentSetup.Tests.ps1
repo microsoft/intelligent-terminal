@@ -1,13 +1,11 @@
 #Requires -Modules @{ ModuleName='Pester'; ModuleVersion='5.0.0' }
 # Release checklist §0 FRE — the FRE-overlay-specific agent-setup items that ARE automatable via
 # winapp UIA but were previously left manual. The FRE's SECOND page (reached via NextButton) hosts
-# the agent dropdown, the auto-error toggles, the session-management toggle + its install hint, and
+# the agent dropdown, the Auto error handling picker, the session-management toggle + its install hint, and
 # the pane-position picker, all as named XAML controls. Deterministic: assert on those controls /
 # their rendered state — no agent/LLM involved.
 #
 # Not covered here (genuinely not cleanly UIA-observable, kept manual/UT):
-#   * detection→suggestion "disabled" dependency — the toggle tree exposes only [on]/[off], not the
-#     enabled/disabled state (the dependency itself is UT-locked: EffectiveAutoFixFalseWhenDetectionOff);
 #   * "Copilot without install" / "install failure messages" — need a destructive uninstalled/failed
 #     CLI state to induce.
 
@@ -27,7 +25,7 @@ Describe 'Feature §0 FRE agent setup (overlay controls)' -Tag 'Feature' -Skip:(
     BeforeAll {
         Import-Module (Join-Path $PSScriptRoot '..\ItE2E\ItE2E.psd1') -Force
         $script:app = Start-TerminalFre -Package (Get-ItTestPackage)
-        # Advance to the settings page (agent dropdown / toggles / hint / position live here).
+        # Advance to the settings page (agent dropdown / picker / hints / position live here).
         Invoke-UiElement -App $script:app -Selector 'NextButton' -TimeoutSec 10 | Out-Null
         Start-Sleep -Seconds 1
         # Locale-robust "(installed)" suffix from the FreOverlay_AgentStatusInstalled resource, so
@@ -67,23 +65,36 @@ Describe 'Feature §0 FRE agent setup (overlay controls)' -Tag 'Feature' -Skip:(
         Invoke-UiElement -App $script:app -Selector 'SessionManagementToggle' | Out-Null
     }
 
-    It 'Detection/suggestion dependency (the suggestion toggle disables when detection is off)' {
-        $detectOn = { (Get-UiElement -App $script:app -Selector 'AutoDetectToggle').toggleState -eq 'on' }
-        # Drive detection ON — the suggestion toggle must then be ENABLED (user can flip it).
-        if (-not (& $detectOn)) { Invoke-UiElement -App $script:app -Selector 'AutoDetectToggle' | Out-Null; Start-Sleep -Milliseconds 800 }
-        (& $detectOn) | Should -BeTrue
-        Test-UiElementEnabled -App $script:app -Selector 'AutoErrorToggle' |
-            Should -BeTrue -Because 'with detection on, the suggestion toggle is user-settable'
-
-        # Turn detection OFF — the suggestion toggle must become DISABLED (greyed / not settable).
-        Invoke-UiElement -App $script:app -Selector 'AutoDetectToggle' | Out-Null
-        $disabled = Test-Until -TimeoutSec 8 -IntervalSec 1 -Condition {
-            -not (Test-UiElementEnabled -App $script:app -Selector 'AutoErrorToggle')
+    It 'All Auto error handling options appear' {
+        Invoke-UiElement -App $script:app -Selector 'AutoErrorHandlingComboBox' | Out-Null
+        Start-Sleep -Milliseconds 500
+        $tree = Get-UiTree -App $script:app -Depth 20
+        foreach ($option in @(
+                @{ Key = 'FreOverlay_AutoErrorHandling_Off'; Fallback = 'Off' },
+                @{ Key = 'FreOverlay_AutoErrorHandling_DetectErrorsAutomatically'; Fallback = 'Detect errors automatically' },
+                @{ Key = 'FreOverlay_AutoErrorHandling_DetectErrorsAndSendToAgentForFixesAutomatically'; Fallback = 'Detect errors and send them to the agent for fixes automatically' }
+            )) {
+            $pattern = Get-WtReswTextRegex -Key $option.Key
+            if (-not $pattern) { $pattern = [regex]::Escape($option.Fallback) }
+            $tree | Should -Match $pattern -Because 'the FRE picker must expose exactly the canonical three-state choices'
         }
-        $disabled | Should -BeTrue -Because 'suggestion cannot be enabled when detection is off (master-detail dependency)'
+    }
 
-        # Restore detection ON so the overlay is left in its default state.
-        Invoke-UiElement -App $script:app -Selector 'AutoDetectToggle' | Out-Null
+    It 'The picker stores one valid state' {
+        foreach ($option in @(
+                @{ Key = 'FreOverlay_AutoErrorHandling_Off'; Fallback = 'Off' },
+                @{ Key = 'FreOverlay_AutoErrorHandling_DetectErrorsAutomatically'; Fallback = 'Detect errors automatically' },
+                @{ Key = 'FreOverlay_AutoErrorHandling_DetectErrorsAndSendToAgentForFixesAutomatically'; Fallback = 'Detect errors and send them to the agent for fixes automatically' }
+            )) {
+            Invoke-UiElement -App $script:app -Selector 'AutoErrorHandlingComboBox' | Out-Null
+            Start-Sleep -Milliseconds 300
+            $tree = Get-UiTree -App $script:app -Depth 20
+            $label = @(Get-WtReswTextValues -Key $option.Key | Where-Object { $tree -match [regex]::Escape($_) }) | Select-Object -First 1
+            if (-not $label) { $label = $option.Fallback }
+            Invoke-UiElement -App $script:app -Selector $label | Out-Null
+            (Get-UiValue -App $script:app -Selector 'AutoErrorHandlingComboBox') |
+                Should -Match ([regex]::Escape($label)) -Because 'selecting a canonical option must leave the picker in that one valid state'
+        }
     }
 
     It 'Token usage toggle is present and defaults off' {

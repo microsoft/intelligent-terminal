@@ -50,8 +50,7 @@ command setting.
     "delegateModel": "",
     "delegateCustomCommand": "",
     "agentPanePosition": "bottom",
-    "autoErrorDetectionEnabled": true,
-    "autoFixEnabled": false,
+    "autoErrorHandling": "detectErrorsAutomatically",
     "aiIntegration.coordinator.enabled": false,
     "aiIntegration.coordinator.commandline": "wta",
     "aiIntegration.coordinator.profile": "{fd19208a-412b-4857-8a2d-9ca592b4b16e}",
@@ -83,7 +82,7 @@ Important invariants:
   ACP session, or chat history.
 - Per-tab events carry tab and window identity. Route responses to the owning
   tab instead of broadcasting across panes or windows.
-- Autofix requires a connected helper session. Failures received before the
+- Auto error handling requires a connected helper session. Failures received before the
   session connects are not replayed later.
 - Terminal mutation requested by an agent goes through the confirmation-gated
   session MCP action path. Agent-owned shell tools are a separate execution

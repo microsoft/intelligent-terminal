@@ -1093,28 +1093,21 @@
     <comment>In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_AgentDescription.Text" xml:space="preserve">
-    <value>选择在智能体窗格中使用的支持 ACP 的智能体。</value>
+    <value>选择用于智能体窗格的智能体。详细了解 ACP。</value>
     <comment>{Locked="ACP"}
-In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+Here "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a proxy, human agent, or representative. ACP is displayed as a hyperlink.</comment>
   </data>
   <data name="FreOverlay_AgentInstallHint.Text" xml:space="preserve">
-    <value>此智能体需要 Node.js 和 NPX，如果尚未安装，将自动安装。</value>
-    <comment>{Locked="Node.js","NPX"}
-In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
-  </data>
-  <data name="FreOverlay_AutoErrorLabel.Text" xml:space="preserve">
-    <value>自动错误建议</value>
-  </data>
-  <data name="FreOverlay_AutoErrorDescription.Text" xml:space="preserve">
-    <value>允许 Intelligent Terminal 将错误发送给你的智能体以自动建议修复。</value>
-    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
+    <value>如果计算机上尚未安装 Node.js 运行时，则会进行安装。</value>
+    <comment>{Locked="Node.js"}
+This hint appears when selecting an AI agent whose Node.js runtime may need to be installed automatically.</comment>
   </data>
   <data name="FreOverlay_SessionLabel.Text" xml:space="preserve">
     <value>会话管理</value>
   </data>
   <data name="FreOverlay_SessionDescription.Text" xml:space="preserve">
-    <value>授予智能终端跟踪正在运行或活动中的智能体状态的权限。</value>
-    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name. In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+    <value>跟踪正在运行和过去的智能体会话。</value>
+    <comment>Description for session tracking in the first-run wizard. In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_SessionHint.Text" xml:space="preserve">
     <value>启用此功能将安装集成 hooks，以跟踪跨智能体的会话。</value>
@@ -1203,7 +1196,8 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
     <comment>{Locked="hooks"}</comment>
   </data>
   <data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
-    <value>安装 Shell 集成失败。错误检测已关闭。您可以重新启用并重试，或保存以继续而不使用它。</value>
+    <value>安装 Shell 集成失败。Auto error handling 已关闭。您可以重新启用并重试，或保存以继续而不使用它。</value>
+    <comment>{Locked="Auto error handling"} FRE setup error. Auto error handling was turned off because shell integration could not be installed.</comment>
   </data>
   <data name="FreOverlay_ErrorHelpLink" xml:space="preserve">
     <value>了解如何手动修复此问题</value>
@@ -1235,10 +1229,6 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
     <value>检测到错误：正在分析…</value>
     <comment>Short status label shown next to the diagnostics button while an automatic error analysis is in progress.</comment>
   </data>
-  <data name="Diagnostics_ErrorArmedLabelFormat" xml:space="preserve">
-    <value>检测到错误：按 {0} 修复</value>
-    <comment>Short status label shown next to the diagnostics button when a fix is ready. {0} is replaced with the keyboard shortcut.</comment>
-  </data>
   <data name="Diagnostics_ErrorDetectedLabelFormat" xml:space="preserve">
     <value>单击或按 {0} 向智能体请求建议的修复</value>
     <comment>Short status label shown next to the diagnostics button when an error is detected and a fix can be requested. {0} is replaced with the keyboard shortcut.</comment>
@@ -1254,26 +1244,6 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
   <data name="Diagnostics_ErrorDetectedTooltipFormat" xml:space="preserve">
     <value>已检测到错误。单击或按 {0}，让 AI 智能体进行诊断并建议修复。</value>
     <comment>Tooltip for the diagnostics button when an error is detected and a fix can be requested. {0} is replaced with the keyboard shortcut.</comment>
-  </data>
-  <data name="Diagnostics_FixReadyTooltipFormat" xml:space="preserve">
-    <value>修复已就绪 — 按 {0} 应用</value>
-    <comment>Tooltip for the diagnostics button when a fix is ready. {0} is replaced with the keyboard shortcut.</comment>
-  </data>
-  <data name="Diagnostics_FixReadyTooltipWithPreviewFormat" xml:space="preserve">
-    <value>修复已就绪 — 按 {0} 应用：{1}</value>
-    <comment>Tooltip for the diagnostics button when a fix is ready. {0} is replaced with the keyboard shortcut; {1} is a preview of the suggested command or fix.</comment>
-  </data>
-  <data name="Diagnostics_SuggestionReadyLabel" xml:space="preserve">
-    <value>建议已就绪 — 打开智能体窗格</value>
-    <comment>Short status label shown next to the diagnostics button when a suggestion is available in the agent pane.</comment>
-  </data>
-  <data name="Diagnostics_SuggestionTooltipIntro" xml:space="preserve">
-    <value>自动修复已拒绝直接修复此问题。 </value>
-    <comment>First sentence of the diagnostics tooltip when automatic fix generation declines to apply a fix directly. Preserve the trailing space; additional guidance follows in the same tooltip.</comment>
-  </data>
-  <data name="Diagnostics_SuggestionTooltipInstruction" xml:space="preserve">
-    <value>单击此处或按 Ctrl+Shift+. 打开智能体窗格并阅读完整建议。</value>
-    <comment>Second sentence of the diagnostics tooltip when a suggestion is available. {Locked="Ctrl+Shift+."}</comment>
   </data>
   <data name="Diagnostics_Tooltip" xml:space="preserve">
     <value>诊断</value>
@@ -1295,25 +1265,41 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
     <value>Terminal Protocol</value>
     <comment>Title for the teaching tip that displays Terminal Protocol connection information. {Locked="Terminal Protocol"}</comment>
   </data>
-  <data name="FreOverlay_AutoDetectLabel.Text" xml:space="preserve">
-    <value>自动错误检测</value>
+  <data name="FreOverlay_AutoErrorHandlingLabel.Text" xml:space="preserve">
+    <value>自动错误处理</value>
+    <comment>Label for the Auto error handling dropdown in the first-run wizard.</comment>
   </data>
-  <data name="FreOverlay_AutoDetectDescription.Text" xml:space="preserve">
-    <value>允许 Intelligent Terminal 访问你的 shell 并自动检测错误。</value>
+  <data name="FreOverlay_AutoErrorHandlingDescription.Text" xml:space="preserve">
+    <value>选择如何处理终端错误。</value>
+    <comment>Description for the Auto error handling dropdown in the first-run wizard.</comment>
   </data>
-  <data name="FreOverlay_AutoDetectShellIntegrationHintPrefix" xml:space="preserve">
-    <value>启用此功能将安装 shell 集成，以检测命令失败。 </value>
+  <data name="FreOverlay_AutoErrorHandlingShellIntegrationHintPrefix" xml:space="preserve">
+    <value>启用此功能将安装 shell 集成，以检测命令失败。适用于 PowerShell、bash 和 WSL bash。 </value>
+    <comment>{Locked="PowerShell","bash","WSL bash"} Hint shown under the Auto error handling dropdown in the first-run wizard. The trailing space is intentional — it separates this prefix from the inline FreOverlay_AutoErrorHandlingShellIntegrationHintLink hyperlink that follows.</comment>
   </data>
-  <data name="FreOverlay_AutoDetectShellIntegrationHintLink" xml:space="preserve">
-    <value>了解详细信息</value>
+  <data name="FreOverlay_AutoErrorHandlingShellIntegrationHintLink" xml:space="preserve">
+    <value>查看所有受支持的 shell</value>
+    <comment>Inline hyperlink text that follows FreOverlay_AutoErrorHandlingShellIntegrationHintPrefix and opens the documentation listing every shell that supports Auto error handling.</comment>
+  </data>
+  <data name="FreOverlay_AutoErrorHandling_Off" xml:space="preserve">
+    <value>关</value>
+    <comment>The first option in the Auto error handling dropdown. It disables automatic terminal error detection and fixes.</comment>
+  </data>
+  <data name="FreOverlay_AutoErrorHandling_DetectErrorsAutomatically" xml:space="preserve">
+    <value>自动检测错误</value>
+    <comment>The second option in the Auto error handling dropdown. It detects terminal errors automatically without sending them to an AI agent. Here "agent" means an AI intelligent agent, not a proxy or human agent.</comment>
+  </data>
+  <data name="FreOverlay_AutoErrorHandling_DetectErrorsAndSendToAgentForFixesAutomatically" xml:space="preserve">
+    <value>检测错误并自动将其发送给智能体进行修复</value>
+    <comment>The third option in the Auto error handling dropdown. It detects terminal errors and sends them to an AI agent for automatic fixes. Here "agent" means an AI intelligent agent, not a proxy or human agent.</comment>
   </data>
   <data name="InitShellIntegrationExecutionPolicyErrorMessage" xml:space="preserve">
     <value>PowerShell 执行策略正在阻止脚本。</value>
     <comment>Body of an error dialog shown after the user tries to install PowerShell shell integration but their PowerShell execution policy (Restricted or AllSigned) is blocking scripts. A separate "Learn how to fix this manually" hyperlink (FreOverlay_ErrorHelpLink) is rendered on its own line below this sentence. {Locked="PowerShell"}</comment>
   </data>
   <data name="FreOverlay_InstallErrorShellIntegrationExecutionPolicy" xml:space="preserve">
-    <value>PowerShell 执行策略正在阻止脚本。错误检测已关闭。</value>
-    <comment>{Locked="PowerShell"}</comment>
+    <value>PowerShell 执行策略正在阻止脚本。Auto error handling 已关闭。</value>
+    <comment>{Locked="PowerShell","Auto error handling"} FRE setup error. PowerShell execution policy blocked scripts, so Auto error handling was turned off.</comment>
   </data>
   <data name="UsageGroup/[using:Windows.UI.Xaml.Automation]AutomationProperties/Name" xml:space="preserve"><value>用量</value><comment>Accessibility name for the session usage summary in the terminal bottom bar.</comment></data>
   <data name="Usage_TokensUnit" xml:space="preserve"><value>词元</value><comment>Unit label for AI context-window token counts. Translate this term using the established AI/LLM terminology for the locale.</comment></data>

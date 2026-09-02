@@ -20,7 +20,7 @@
 
 .EXAMPLE
     pwsh -File test/e2e/Invoke-ItE2EReport.ps1 -Tag Feature
-    pwsh -File test/e2e/Invoke-ItE2EReport.ps1 -Path test/e2e/tests/Feature.AutofixPane.Tests.ps1
+    pwsh -File test/e2e/Invoke-ItE2EReport.ps1 -Path test/e2e/tests/Feature.AutoErrorHandlingPane.Tests.ps1
     pwsh -File test/e2e/Invoke-ItE2EReport.ps1            # full suite -> test/e2e/artifacts/
 #>
 [CmdletBinding()]

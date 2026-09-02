@@ -848,7 +848,7 @@ int wmain(int argc, wchar_t** argv)
     std::string publishJson;
     bool publishFromStdin = false;
     auto* publishCmd = app.add_subcommand("publish", "Forward raw JSON to SendEvent");
-    auto* publishJsonOption = publishCmd->add_option("json", publishJson, "Full event JSON (e.g. {\"method\":\"autofix_state\",\"params\":{...}})");
+    auto* publishJsonOption = publishCmd->add_option("json", publishJson, "Full event JSON (e.g. {\"method\":\"auto_error_handling_state\",\"params\":{...}})");
     auto* publishStdinOption = publishCmd->add_flag("--stdin", publishFromStdin, "Read the full UTF-8 event JSON from stdin");
     publishJsonOption->excludes(publishStdinOption);
     publishCmd->require_option(1, 1);

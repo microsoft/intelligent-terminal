@@ -263,7 +263,7 @@ WindowsTerminal.exe (one process)
 Each agent pane has its own `wta-helper` process. The helper owns
 exactly one tab's worth of state:
 
-- One `TabSession` (chat history, turn state, autofix state, input
+- One `TabSession` (chat history, turn state, Auto error handling state, input
   editor) — same struct as legacy `wta`, but the helper holds it for
   exactly one tab.
 - One `RenderCtx`-equivalent — a Ratatui `Terminal<CrosstermBackend<Stdout>>`
@@ -285,18 +285,19 @@ State held by master:
   `protocol/acp/client.rs` machinery.
 - A table mapping `ACP SessionId → helper-connection`.
 - Process-wide config inherited from spawn cmdline: `--agent`,
-  `--agent-id`, `--acp-model`, `--no-autofix`, `--language`,
+  `--agent-id`, `--acp-model`, `--no-auto-error-handling-with-agent`,
+  `--language`,
   `--delegate-agent`, `--delegate-model` (Sprint 4 wiring carries
   over).
-- Existing WT-COM event subscription (autofix, agent_state_changed,
+- Existing WT-COM event subscription (Auto error handling, agent_state_changed,
   etc.) — master fans out the relevant events to the helper that
   owns the affected tab.
 
 State **not** held by master:
 - No chat history (lives in helpers).
 - No render state (lives in helpers).
-- No per-tab autofix state machine (helper-local; master only forwards
-  autofix events from WT).
+- No per-tab Auto error handling state machine (helper-local; master only forwards
+  Auto error handling events from WT).
 
 ### 4. wta-helper responsibilities
 
@@ -323,7 +324,7 @@ replaced by an ACP-client-over-named-pipe.
 | TerminalControl ↔ wta-helper | Standard conpty (existing `ConptyConnection`) | Same as every other pane; full console-input fidelity |
 | wta-helper ↔ wta-master | ACP JSON-RPC over named pipe (`\\.\pipe\wta-master-<guid>`) | Reuses the protocol both sides already speak |
 | wta-master ↔ agent CLI | ACP JSON-RPC over stdio (existing) | Unchanged from today |
-| Terminal ↔ wta-master | Existing COM `IProtocolEventCallback` / `SendEvent` for autofix, agent_state_changed, etc. | Existing channel, no change |
+| Terminal ↔ wta-master | Existing COM `IProtocolEventCallback` / `SendEvent` for Auto error handling, agent_state_changed, etc. | Existing channel, no change |
 
 **No new IDL.** **No `_internal.*` event family.** **No custom binary
 protocol.** Everything off-the-shelf.
@@ -353,7 +354,7 @@ Per agent pane:
  │           --agent-id copilot
  │           --owner-tab-id "{guid}"
  │           --initial-view chat
- │           [--no-autofix] [--language ja] ...
+ │           [--language ja] ...
  │
  ├─ TermControl spawns helper as conpty child
  │   └─ helper inherits conpty slave-in/out HANDLEs as stdin/stdout
@@ -509,7 +510,7 @@ mutates per-tab or per-window state includes the relevant ids in its
 | `tab_changed` | yes | yes | skip if `our_window != target_window`; then owner-lock in `switch_tab_session` |
 | `tab_closed` | yes | yes | skip if `our_window != target_window` |
 | `tab_renamed` | old + new | dest | owner-match self-filters; non-owners ignore |
-| `autofix_execute` | yes (+ pane_id) | n/a | route by `tab_id` / `pane_id` |
+| `auto_error_handling_execute_result` | yes (+ pane_id) | n/a | route by `tab_id` / `pane_id` |
 
 **Outbound events from helpers carry `tab_id`** (= owner_tab_id). C++
 fans the COM event out to every `TerminalPage` (the shared master can't
@@ -519,7 +520,7 @@ in its `_tabs` collection. Affected events:
 
 - `agent_state_changed` (view, pane_open snapshot)
 - `agent_status` (model, state, available models)
-- `autofix_state` (bar snapshot)
+- `auto_error_handling_state` (Auto error handling bar snapshot)
 - `close_agent_pane` (Ctrl+C×2 in TUI)
 - `resume_in_new_agent_tab` (slash-command / Enter on an agent-pane session row)
 
@@ -642,11 +643,12 @@ on demand.
   CREATE_SUSPENDED, RegisterWaitForSingleObject all unchanged.
 - Sprint 2 + Sprint 9 work: GPO policy check, cwd resolution,
   per-process settings propagation via cmdline (`--agent`,
-  `--agent-id`, `--no-autofix`, `--language`, model overrides) —
+  `--agent-id`, `--no-auto-error-handling-with-agent`, `--language`,
+  model overrides) —
   passed to master, master inherits.
 - Sprint 5 #2: `_ensurePageEventsRegistered` per-window
   registration in `TerminalProtocolComServer.cpp`. Still needed for
-  autofix and other non-agent events.
+  Auto error handling and other non-agent events.
 - Sprint 5 #3: non-headless wta's `_internal.*` event drop. Becomes
   moot when `_internal.*` events go away entirely.
 - All wta TUI code: `tools/wta/src/ui/*`, `event.rs`, `app.rs`'s
@@ -717,8 +719,8 @@ on demand.
   - Special-case `session/new`: master forwards, records the
     returned `SessionId → helper-connection` mapping before
     responding to the helper.
-- Master also subscribes to existing WT COM events (`autofix_state`,
-  `agent_state_changed`, etc.) and forwards them to the relevant
+- Master also subscribes to existing WT COM events
+  (`auto_error_handling_state`, `agent_state_changed`, etc.) and forwards them to the relevant
   helper (looking up `tab_id` → helper from the SessionId map plus
   the helper's announced `owner-tab-id`).
 - Unit tests: simulate 2 helpers, verify per-session routing,
@@ -753,7 +755,7 @@ on demand.
     wta.exe --connect-master <pipe> --owner-tab-id <stable-id>
             --agent-id <effective-agent>
             --initial-view chat
-            [--no-autofix] [--language <lang>] [...]
+            [--language <lang>] [...]
     ```
   - Wire via existing `ConptyConnection` (the same machinery legacy
     mode uses).
@@ -812,9 +814,9 @@ architecture:
 - Helper crash: kill helper, verify only its pane is affected.
 - Resize: window resize → conpty resize → helper sees it via
   crossterm `Event::Resize` (no `_internal.resize_pane` needed).
-- Settings reload (autofix toggle): verify master receives the
+- Settings reload (Auto error handling option): verify master receives the
   COM event and forwards to all helpers; helpers update their
-  autofix UI state.
+  Auto error handling UI state.
 
 **Total: ~10-15 days.**
 
@@ -894,7 +896,7 @@ work:
   `Tab::StashAgentPane`/`RestoreStashedAgentPane` — helper + ACP
   session + chat history preserved across the toggle. See
   "Agent pane toggle = stash, not destroy" above.
-- **Autofix routing** is per-tab; `autofix_state` carries `tab_id`
+- **Auto error handling routing** is per-tab; `auto_error_handling_state` carries `tab_id`
   (= owner_tab_id of the helper that emitted it) and C++ routes by
   `_FindTabByStableId` rather than fanning out to every pane.
 - **Bottom bar / diagnostics** is per-tab; the bar reads the active

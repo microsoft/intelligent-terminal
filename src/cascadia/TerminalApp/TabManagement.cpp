@@ -230,10 +230,10 @@ namespace winrt::TerminalApp::implementation
         // stashed via `Tab::StashAgentPane`, so the user only sees the
         // terminal pane. Toggling the agent pane (`Ctrl+Shift+.` /
         // `Ctrl+Shift+/` / bottom-bar button) is just a stash/restore.
-        // The point of pre-warming is autofix: autofix routes through the
+        // The point of pre-warming is auto-error-handling, which routes through the
         // agent helper, and gating it on "user has opened the pane at least
-        // once" silently broke autofix on every fresh tab. With pre-warm,
-        // autofix works on every tab from the moment the tab opens.
+        // once" silently broke it on every fresh tab. With pre-warm,
+        // auto-error-handling works on every tab from the moment the tab opens.
         //
         // Defer the spawn so tab initialization is not blocked on conpty and
         // helper startup.
@@ -309,7 +309,7 @@ namespace winrt::TerminalApp::implementation
                 });
 
                 // Pre-warm a stashed agent pane on this tab so the helper is
-                // running from the start (autofix needs it). A transferred
+                // running from the start (auto-error-handling needs it). A transferred
                 // pane keeps its existing helper and skips this path, and a
                 // tab created while a startup batch is replaying skips it so a
                 // blank pre-warm cannot race the agent pane that batch is

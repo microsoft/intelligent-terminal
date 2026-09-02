@@ -35,7 +35,7 @@ namespace TerminalApp
         // this back via the active tab when refreshing the bar.
         void SetAgentPanePosition(String position);
 
-        // Raised whenever cached bottom-bar-affecting state changes (autofix
+        // Raised whenever cached bottom-bar-affecting state changes (auto-error-handling
         // state, sessions-view flag, agent-position). The outer page
         // subscribes to refresh the window-level bottom bar when the firing
         // pane belongs to the active tab.

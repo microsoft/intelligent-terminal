@@ -163,26 +163,19 @@
     <comment>In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_AgentDescription.Text" xml:space="preserve">
-    <value>Zgjidhni agjentin që përdoret në panelin e agjentit dhe mbështet ACP.</value>
-    <comment>{Locked="ACP"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+    <value>Zgjidhni agjentin për panelin tuaj të agjentit. Mësoni më shumë rreth ACP.</value>
+    <comment>{Locked="ACP"} Here "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a proxy, human agent, or representative. ACP is displayed as a hyperlink.</comment>
   </data>
   <data name="FreOverlay_AgentInstallHint.Text" xml:space="preserve">
-    <value>Ky agjent kërkon Node.js dhe NPX, të cilat do të instalohen automatikisht nëse nuk janë tashmë të pranishme.</value>
-    <comment>{Locked="Node.js","NPX"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
-  </data>
-  <data name="FreOverlay_AutoErrorLabel.Text" xml:space="preserve">
-    <value>Sugjerimi automatik i gabimeve</value>
-  </data>
-  <data name="FreOverlay_AutoErrorDescription.Text" xml:space="preserve">
-    <value>Lejoni Intelligent Terminal të dërgojë gabimet te agjenti juaj për të sugjeruar rregullime automatikisht.</value>
-    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
+    <value>Instalon mjedisin e ekzekutimit Node.js nëse nuk është tashmë në kompjuterin tuaj.</value>
+    <comment>{Locked="Node.js"} This hint appears when selecting an AI agent whose Node.js runtime may need to be installed automatically.</comment>
   </data>
   <data name="FreOverlay_SessionLabel.Text" xml:space="preserve">
     <value>Menaxhimi i seancave</value>
   </data>
   <data name="FreOverlay_SessionDescription.Text" xml:space="preserve">
-    <value>Jepini Terminali inteligjent leje për të ndjekur statusin e agjentëve tuaj në ekzekutim ose aktiv.</value>
-    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
+    <value>Ndiqni seancat e agjentit që janë në ekzekutim dhe ato të mëparshme.</value>
+    <comment>Description for session tracking in the first-run wizard. In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_SessionHint.Text" xml:space="preserve">
     <value>Aktivizimi i kësaj do të instalojë hooks integrimi për ndjekjen e seancave midis agjentëve tuaj.</value>
@@ -281,10 +274,6 @@
     <value>U zbulua gabim: po analizohet…</value>
     <comment>Short status label shown next to the diagnostics button while an automatic error analysis is in progress.</comment>
   </data>
-  <data name="Diagnostics_ErrorArmedLabelFormat" xml:space="preserve">
-    <value>U zbulua gabim: {0} për ta rregulluar</value>
-    <comment>Short status label shown next to the diagnostics button when a fix is ready. {0} is replaced with the keyboard shortcut.</comment>
-  </data>
   <data name="Diagnostics_ErrorDetectedLabelFormat" xml:space="preserve">
     <value>Klikoni ose shtypni {0} për t'i kërkuar agjentit një rregullim të sugjeruar</value>
     <comment>Short status label shown next to the diagnostics button when an error is detected and a fix can be requested. {0} is replaced with the keyboard shortcut.</comment>
@@ -300,26 +289,6 @@
   <data name="Diagnostics_ErrorDetectedTooltipFormat" xml:space="preserve">
     <value>U zbulua një gabim. Klikoni ose shtypni {0} që t'i kërkoni agjentit të IA të diagnostikojë dhe të sugjerojë një zgjidhje.</value>
     <comment>Tooltip for the diagnostics button when an error is detected and a fix can be requested. {0} is replaced with the keyboard shortcut.</comment>
-  </data>
-  <data name="Diagnostics_FixReadyTooltipFormat" xml:space="preserve">
-    <value>Rregullimi është gati — {0} për ta zbatuar</value>
-    <comment>Tooltip for the diagnostics button when a fix is ready. {0} is replaced with the keyboard shortcut.</comment>
-  </data>
-  <data name="Diagnostics_FixReadyTooltipWithPreviewFormat" xml:space="preserve">
-    <value>Rregullimi është gati — {0} për ta zbatuar: {1}</value>
-    <comment>Tooltip for the diagnostics button when a fix is ready. {0} is replaced with the keyboard shortcut; {1} is a preview of the suggested command or fix.</comment>
-  </data>
-  <data name="Diagnostics_SuggestionReadyLabel" xml:space="preserve">
-    <value>Sugjerimi është gati — hapni panelin e agjentit</value>
-    <comment>Short status label shown next to the diagnostics button when a suggestion is available in the agent pane.</comment>
-  </data>
-  <data name="Diagnostics_SuggestionTooltipIntro" xml:space="preserve">
-    <value>Rregullimi automatik refuzoi ta rregullojë këtë drejtpërdrejt. </value>
-    <comment>First sentence of the diagnostics tooltip when automatic fix generation declines to apply a fix directly. Preserve the trailing space; additional guidance follows in the same tooltip.</comment>
-  </data>
-  <data name="Diagnostics_SuggestionTooltipInstruction" xml:space="preserve">
-    <value>Klikoni këtu ose shtypni Ctrl+Shift+. për të hapur panelin e agjentit dhe për të lexuar sugjerimin e plotë.</value>
-    <comment>Second sentence of the diagnostics tooltip when a suggestion is available. {Locked="Ctrl+Shift+."}</comment>
   </data>
   <data name="Diagnostics_Tooltip" xml:space="preserve">
     <value>Diagnostikime</value>
@@ -341,33 +310,50 @@
     <value>Terminal Protocol</value>
     <comment>Title for the teaching tip that displays Terminal Protocol connection information. {Locked="Terminal Protocol"}</comment>
   </data>
-  <data name="FreOverlay_AutoDetectLabel.Text" xml:space="preserve">
-    <value>Zbulimi automatik i gabimeve</value>
+  <data name="FreOverlay_AutoErrorHandlingLabel.Text" xml:space="preserve">
+    <value>Trajtimi automatik i gabimeve</value>
+    <comment>Label for the Auto error handling dropdown in the first-run wizard.</comment>
   </data>
-  <data name="FreOverlay_AutoDetectDescription.Text" xml:space="preserve">
-    <value>Lejoni Intelligent Terminal të hyjë në guaskën tuaj dhe të zbulojë gabimet automatikisht.</value>
+  <data name="FreOverlay_AutoErrorHandlingDescription.Text" xml:space="preserve">
+    <value>Zgjidhni se si trajtohen gabimet e terminalit.</value>
+    <comment>Description for the Auto error handling dropdown in the first-run wizard.</comment>
   </data>
 <data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
-    <value>Instalimi i integrimit të shell-it dështoi. Zbulimi i gabimeve është çaktivizuar. Mund ta riaktivizoni dhe të provoni përsëri, ose të ruani për të vazhduar pa të.</value>
+    <value>Instalimi i integrimit të shell-it dështoi. Auto error handling është çaktivizuar. Mund ta riaktivizoni dhe të provoni përsëri, ose të ruani për të vazhduar pa të.</value>
+    <comment>{Locked="Auto error handling"} FRE setup error. Auto error handling was turned off because shell integration could not be installed.</comment>
   </data><data name="FreOverlay_InstallErrorHooks" xml:space="preserve">
     <value>Instalimi i session hooks dështoi. Menaxhimi i sesioneve është çaktivizuar. Mund ta riaktivizoni dhe të provoni përsëri, ose të ruani për të vazhduar pa të.</value>
     <comment>{Locked="hooks"}</comment>
   </data><data name="FreOverlay_ErrorHelpLink" xml:space="preserve">
     <value>Mësoni si ta rregulloni këtë manualisht</value>
     <comment>Hyperlink shown below an FRE setup error message. Opens step-by-step manual setup instructions in the browser.</comment>
-  </data>  <data name="FreOverlay_AutoDetectShellIntegrationHintPrefix" xml:space="preserve">
-    <value>Aktivizimi i kësaj do të instalojë integrimin e shell për të zbuluar dështimet e komandave. </value>
+  </data>  <data name="FreOverlay_AutoErrorHandlingShellIntegrationHintPrefix" xml:space="preserve">
+    <value>Aktivizimi i kësaj do të instalojë integrimin e shell për të zbuluar dështimet e komandave. E disponueshme në PowerShell, bash dhe WSL bash. </value>
+    <comment>{Locked="PowerShell","bash","WSL bash"} Hint shown under the Auto error handling dropdown in the first-run wizard. The trailing space is intentional — it separates this prefix from the inline FreOverlay_AutoErrorHandlingShellIntegrationHintLink hyperlink that follows.</comment>
   </data>
-  <data name="FreOverlay_AutoDetectShellIntegrationHintLink" xml:space="preserve">
-    <value>Mësoni më shumë</value>
+  <data name="FreOverlay_AutoErrorHandlingShellIntegrationHintLink" xml:space="preserve">
+    <value>Shiko të gjitha shell-et e mbështetura</value>
+    <comment>Inline hyperlink text that follows FreOverlay_AutoErrorHandlingShellIntegrationHintPrefix and opens the documentation listing every shell that supports Auto error handling.</comment>
+  </data>
+  <data name="FreOverlay_AutoErrorHandling_Off" xml:space="preserve">
+    <value>Joaktiv</value>
+    <comment>The first option in the Auto error handling dropdown. It disables automatic terminal error detection and fixes.</comment>
+  </data>
+  <data name="FreOverlay_AutoErrorHandling_DetectErrorsAutomatically" xml:space="preserve">
+    <value>Zbuloni gabimet automatikisht</value>
+    <comment>The second option in the Auto error handling dropdown. It detects terminal errors automatically without sending them to an AI agent. Here "agent" means an AI intelligent agent, not a proxy or human agent.</comment>
+  </data>
+  <data name="FreOverlay_AutoErrorHandling_DetectErrorsAndSendToAgentForFixesAutomatically" xml:space="preserve">
+    <value>Zbuloni gabimet dhe dërgojini automatikisht te agjenti i AI-së për korrigjim</value>
+    <comment>The third option in the Auto error handling dropdown. It detects terminal errors and sends them to an AI agent for automatic fixes. Here "agent" means an AI intelligent agent, not a proxy or human agent.</comment>
   </data>
   <data name="InitShellIntegrationExecutionPolicyErrorMessage" xml:space="preserve">
     <value>Politika e ekzekutimit të PowerShell po bllokon skriptet.</value>
     <comment>Body of an error dialog shown after the user tries to install PowerShell shell integration but their PowerShell execution policy (Restricted or AllSigned) is blocking scripts. A separate "Learn how to fix this manually" hyperlink (FreOverlay_ErrorHelpLink) is rendered on its own line below this sentence. {Locked="PowerShell"}</comment>
   </data>
   <data name="FreOverlay_InstallErrorShellIntegrationExecutionPolicy" xml:space="preserve">
-    <value>Politika e ekzekutimit të PowerShell po bllokon skriptet. Zbulimi i gabimeve u çaktivizua.</value>
-    <comment>{Locked="PowerShell"}</comment>
+    <value>Politika e ekzekutimit të PowerShell po bllokon skriptet. Auto error handling është çaktivizuar.</value>
+    <comment>{Locked="PowerShell","Auto error handling"} FRE setup error. PowerShell execution policy blocked scripts, so Auto error handling was turned off.</comment>
   </data>
   <data name="UsageGroup/[using:Windows.UI.Xaml.Automation]AutomationProperties/Name" xml:space="preserve"><value>Përdorimi</value><comment>Accessibility name for the session usage summary in the terminal bottom bar.</comment></data>
   <data name="Usage_TokensUnit" xml:space="preserve"><value>tokenë</value><comment>Unit label for AI context-window token counts. Translate this term using the established AI/LLM terminology for the locale.</comment></data>

@@ -46,7 +46,7 @@ chat.plan_header: "Plán:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}
 chat.plan_marker_pending: "[ ]"  # {Locked}
-chat.autofix_prompt_label: "Automaticky diagnostikované nedávne zlyhanie príkazu"
+chat.auto_error_handling_prompt_label: "Automaticky diagnostikované nedávne zlyhanie príkazu"
 chat.turn_canceled: "(zrušené)"
 chat.turn_executed: "→ vykonané: %{title}"
 # Trvalé označenia kategórií nástrojov zobrazené za značkou stavu a pred predmetom.
@@ -79,7 +79,7 @@ commands.help_close_hint: "  Esc        Zatvoriť túto pomoc"  # {Locked="Esc"}
 commands.help.summary: "Zobraziť tento zoznam príkazov"
 commands.clear.summary: "Vymazať históriu chatu (relácia zostane zachovaná)"
 commands.new.summary: "Spustiť novú reláciu ACP (zahodí históriu)"  # {Locked="ACP"}
-commands.fix.summary: "Diagnostikovať aktívny terminál a navrhnúť opravu (/fix <hint>)"  # {Locked="/fix","<hint>"}
+commands.fix.summary: "Diagnostikujte aktívny terminál a navrhnite opravu (/fix <hint>)"  # {Locked="/fix","<hint>"}
 commands.restart.summary: "Reštartovať agenta"
 commands.stop.summary: "Zrušiť prebiehajúcu výzvu"
 commands.sessions.summary: "Otvoriť výber historických relácií (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}

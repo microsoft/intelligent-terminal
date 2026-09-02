@@ -46,7 +46,7 @@ chat.plan_header: "ਯੋਜਨਾ:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}
 chat.plan_marker_pending: "[ ]"  # {Locked}
-chat.autofix_prompt_label: "ਹਾਲੀਆ ਕਮਾਂਡ ਅਸਫਲਤਾ ਆਪਣੇ ਆਪ ਨਿਦਾਨ ਕੀਤੀ ਗਈ"
+chat.auto_error_handling_prompt_label: "ਹਾਲੀਆ ਕਮਾਂਡ ਅਸਫਲਤਾ ਆਪਣੇ ਆਪ ਨਿਦਾਨ ਕੀਤੀ ਗਈ"
 chat.turn_canceled: "(ਰੱਦ ਕੀਤਾ ਗਿਆ)"
 chat.turn_executed: "→ ਚਲਾਇਆ ਗਿਆ: %{title}"
 # Persistent tool-category labels shown after a status marker and before a subject.
@@ -82,7 +82,7 @@ commands.help_close_hint: "  Esc        ਇਹ ਮਦਦ ਬੰਦ ਕਰੋ"  #
 commands.help.summary: "ਇਹ ਕਮਾਂਡ ਸੂਚੀ ਦਿਖਾਓ"
 commands.clear.summary: "ਚੈਟ ਸਕ੍ਰੋਲਬੈਕ ਸਾਫ਼ ਕਰੋ (ਸੈਸ਼ਨ ਰੱਖਦਾ ਹੈ)"
 commands.new.summary: "ਨਵਾਂ ACP ਸੈਸ਼ਨ ਸ਼ੁਰੂ ਕਰੋ (ਇਤਿਹਾਸ ਹਟਾਉਂਦਾ ਹੈ)"  # {Locked="ACP"}
-commands.fix.summary: "Diagnose the active terminal and suggest a fix (/fix <hint>)"  # {Locked="/fix","<hint>"}
+commands.fix.summary: "ਸਰਗਰਮ ਟਰਮੀਨਲ ਦੀ ਜਾਂਚ ਕਰੋ ਅਤੇ ਹੱਲ ਦਾ ਪ੍ਰਸਤਾਵ ਦਿਓ (/fix <hint>)"  # {Locked="/fix","<hint>"}
 commands.restart.summary: "ਏਜੰਟ ਮੁੜ-ਚਾਲੂ ਕਰੋ"
 commands.stop.summary: "ਚੱਲ ਰਹੇ ਪ੍ਰਾਂਪਟ ਨੂੰ ਰੱਦ ਕਰੋ"
 commands.sessions.summary: "ਇਤਿਹਾਸਕ ਸੈਸ਼ਨ ਪਿਕਰ ਖੋਲ੍ਹੋ (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}

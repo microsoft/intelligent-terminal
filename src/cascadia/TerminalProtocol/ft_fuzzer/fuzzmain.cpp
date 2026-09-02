@@ -25,7 +25,7 @@ static int FuzzOneInput(const uint8_t* data, size_t size)
     // ── Target 1: ClassifySendEvent ──
     // Feed fuzzed data as a SendEvent JSON payload. Exercises JSON parsing,
     // method field inspection, and params.event validation across all 3
-    // dispatch routes (AutofixState, AgentStatus, Broadcast).
+    // dispatch routes (AutoErrorHandlingState, AgentStatus, Broadcast).
     {
         Json::Value evt;
         ProtocolParsing::ClassifySendEvent(input, evt);

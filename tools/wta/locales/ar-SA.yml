@@ -46,7 +46,7 @@ chat.plan_header: "الخطة:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}
 chat.plan_marker_pending: "[ ]"  # {Locked}
-chat.autofix_prompt_label: "تم التشخيص التلقائي لفشل أمر حديث"
+chat.auto_error_handling_prompt_label: "تم التشخيص التلقائي لفشل أمر حديث"
 chat.turn_canceled: "(تم الإلغاء)"
 chat.turn_executed: "→ تم التنفيذ: %{title}"
 # Persistent tool-category labels shown after a status marker and before a subject.
@@ -83,7 +83,7 @@ commands.help_close_hint: "  Esc        إغلاق هذه المساعدة"  # {
 commands.help.summary: "إظهار قائمة الأوامر هذه"
 commands.clear.summary: "مسح سجل تمرير الدردشة (مع الاحتفاظ بالجلسة)"
 commands.new.summary: "بدء جلسة ACP جديدة (حذف السجل)"  # {Locked="ACP"}
-commands.fix.summary: "Diagnose the active terminal and suggest a fix (/fix <hint>)"  # {Locked="/fix","<hint>"}
+commands.fix.summary: "شخّص الوحدة الطرفية النشطة واقترح إصلاحًا (/fix <hint>)"  # {Locked="/fix","<hint>"}
 commands.restart.summary: "إعادة تشغيل عامل الذكاء الاصطناعي"
 commands.stop.summary: "إلغاء الأمر قيد التنفيذ"
 commands.sessions.summary: "فتح منتقي الجلسات التاريخية (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}

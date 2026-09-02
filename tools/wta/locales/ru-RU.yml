@@ -46,7 +46,7 @@ chat.plan_header: "План:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}
 chat.plan_marker_pending: "[ ]"  # {Locked}
-chat.autofix_prompt_label: "Автоматически диагностирован недавний сбой команды"
+chat.auto_error_handling_prompt_label: "Автоматически диагностирован недавний сбой команды"
 chat.turn_canceled: "(отменено)"
 chat.turn_executed: "→ выполнено: %{title}"
 # Постоянные метки категорий инструментов, отображаемые после маркера состояния и перед объектом действия.
@@ -79,7 +79,7 @@ commands.help_close_hint: "  Esc        Закрыть эту справку"  #
 commands.help.summary: "Показать этот список команд"
 commands.clear.summary: "Очистить историю чата (сеанс сохраняется)"
 commands.new.summary: "Начать новый сеанс ACP (история будет удалена)"  # {Locked="ACP"}
-commands.fix.summary: "Диагностировать активный терминал и предложить исправление (/fix <hint>)"  # {Locked="/fix","<hint>"}
+commands.fix.summary: "Диагностируйте активный терминал и предложите исправление (/fix <hint>)"  # {Locked="/fix","<hint>"}
 commands.restart.summary: "Перезапустить агент"
 commands.stop.summary: "Отменить выполняющийся запрос"
 commands.sessions.summary: "Открыть выбор прошлых сеансов (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}

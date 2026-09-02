@@ -15,7 +15,7 @@ pub(crate) struct HelperConfig {
     pub(crate) cloud_models: Option<String>,
     pub(crate) delegate_agent: Option<String>,
     pub(crate) delegate_model: Option<String>,
-    pub(crate) no_autofix: bool,
+    pub(crate) no_auto_error_handling_with_agent: bool,
     pub(crate) setup: Option<String>,
     pub(crate) initial_view: InitialView,
     pub(crate) initial_pane_position: Option<String>,

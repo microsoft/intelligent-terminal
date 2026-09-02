@@ -192,7 +192,7 @@ tools/wta/src/
 +-- master/mod.rs             wta-master: owns the agent CLI pool, multiplexes helpers
 +-- helper/mod.rs             wta-helper: per-pane entry (reuses the TUI over a pipe)
 +-- app.rs                     TUI state machine, event loop, per-tab sessions
-|   +-- app/autofix.rs         Autofix detection + suggestion
+|   +-- app/auto_error_handling.rs         Auto error handling detection + review
 |   +-- app/turn_state.rs      Per-turn state machine
 +-- event.rs                   Crossterm event reader
 +-- coordinator.rs             Delegate (?<prompt>) execution

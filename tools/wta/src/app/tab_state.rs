@@ -7,7 +7,7 @@ use crate::app_contracts::{PermOption, PlanEntry};
 use crate::commands::{CommandSpec, MovePositionSpec};
 
 use super::input_edit::InputHistory;
-use super::{TabAutofixState, TurnState};
+use super::{AutoErrorHandlingState, TurnState};
 
 pub(crate) const DEFAULT_TAB_ID: &str = "0";
 
@@ -115,7 +115,7 @@ pub enum ChatMessage {
     Error(String),
     /// Informational WT event surfaced inline in the chat (e.g. shell exit
     /// codes, OSC sequences). Distinct from `Error` so we can theme it
-    /// differently and skip autofix wiring.
+    /// differently and skip Auto error handling wiring.
     AgentEvent(String),
     /// "Intelligent Terminal uses AI." disclaimer.
     /// Pushed on every agent-pane startup,
@@ -447,7 +447,7 @@ pub(crate) struct PendingTerminalActionProposal {
     pub proposal_id: String,
     pub session_id: String,
     pub prompt_id: u64,
-    pub is_autofix: bool,
+    pub is_auto_error_handling: bool,
     pub recommendations: super::RecommendationSet,
 }
 
@@ -529,8 +529,8 @@ impl ConfigPickerState {
 /// mutating shared `App` fields.
 #[derive(Default)]
 pub struct TabSession {
-    /// Per-tab autofix state machine (see `TabAutofixState`).
-    pub autofix: TabAutofixState,
+    /// Per-tab Auto error handling state machine (see `AutoErrorHandlingState`).
+    pub auto_error_handling: AutoErrorHandlingState,
     pub(crate) pending_terminal_action_proposal: Option<PendingTerminalActionProposal>,
     pub(crate) active_direct_proposal_id: Option<String>,
     pub usage: Option<crate::usage::UsageSnapshot>,

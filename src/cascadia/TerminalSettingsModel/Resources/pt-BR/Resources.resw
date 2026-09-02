@@ -1002,8 +1002,8 @@
   <data name="OpenAgentSessionsCommandKey" xml:space="preserve">
     <value>Abrir lista de sessões do agente de IA</value>
   </data>
-  <data name="TriggerAutofixCommandKey" xml:space="preserve">
-    <value>Acionar correção automática</value>
+  <data name="TriggerAutoErrorHandlingCommandKey" xml:space="preserve">
+    <value>Tratamento automático de erros</value>
   </data>
   <data name="PromptActionArgumentLocalized" xml:space="preserve">
     <value>Solicitação</value>

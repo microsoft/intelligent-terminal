@@ -27,7 +27,7 @@ This spec migrates the master/helper ACP plane to 1.0 and, in the same effort,
 re-expresses master's bespoke fan-in/fan-out as a library-managed **conductor**
 with composable **proxies**. Heading toward the ACP-proxy model is the real prize:
 
-- **Modularity** — each cross-cutting concern (autofix, prompt/context injection,
+- **Modularity** — each cross-cutting concern (Auto error handling, prompt/context injection,
   delegate/recommendation) becomes a self-contained proxy with a clear
   ACP-method boundary, instead of accreting in `app.rs`.
 - **Free orchestration** — proxies are **reorderable, insertable, and removable by
@@ -106,7 +106,7 @@ flowchart TB
         TUI["TUI / render / input / overlays"]
         CONN["connection / auth / lifecycle"]
         TAB["multi-tab routing<br/>owner_tab_id / window_id"]
-        AFX["autofix<br/>classify_wt_event · submit_autofix_prompt"]
+        AFX["Auto error handling<br/>classify failure · submit prompt"]
         CTX["context / prompt injection<br/>persona · planner · template"]
         REC["delegate / recommendation<br/>RecommendationSet · cards"]
         SESS["session mgmt view<br/>agent_sessions.rs"]
@@ -192,7 +192,7 @@ flowchart TB
     end
 
     subgraph proxies["composable transform proxies — lifted out of app.rs / session subsystem, chained via _proxy/*"]
-        AFX["autofix proxy<br/>off-wire WtEvent → inject session/prompt"]
+        AFX["Auto error handling proxy<br/>off-wire WtEvent → inject session/prompt"]
         CTX["context / prompt-injection proxy<br/>rewrite session/prompt (persona + template)"]
         REC["delegate / recommendation proxy<br/>parse RecommendationSet from session/update"]
         SLU["session: list-union proxy<br/>union host + WSL history from session/list"]
@@ -242,7 +242,7 @@ flowchart TB
 > plumbing that stays.
 >
 > The transform cores lift out into composable proxies: the three solid ones
-> (autofix / context / delegate) plus the session family. **"Folds into"** on the
+> (Auto error handling / context / delegate) plus the session family. **"Folds into"** on the
 > model / permission shims means each is thin enough to be **absorbed into a
 > neighbor** (model-pinning → the context proxy; permission-policy → the conductor)
 > instead of being its own proxy — but either *could* be a standalone proxy; it is a
@@ -349,7 +349,7 @@ lifecycle." The former is an inner part of the latter, not a replacement.
   fan-out with `start_session_proxy` / `ProxySessionMessages`. Keep our N:1
   bridge skeleton.
 - **Phase 2 — extract transform proxies.** Move the three strong transform cores
-  out of `app.rs` — **autofix**, **context/prompt injection**, and
+  out of `app.rs` — **Auto error handling**, **context/prompt injection**, and
   **delegate/recommendation** — into standalone proxies wired via
   `_proxy/initialize` / `_proxy/successor`. This is where `_proxy/*` first becomes
   relevant, and it needs no further master change. See
@@ -647,14 +647,14 @@ it is TUI/state/connection/tab plumbing that stays in the helper.
 | Auth / connection / lifecycle | `auth\|login\|preflight\|setup` 529; ConnectionState; AgentConnected/Error/Busy/SoftStop | ❌ conductor/helper plumbing | — | — |
 | TUI view / input / state | render, chip, scroll, help/debug overlay, Key/Resize/Focus, RevealTick (heavy render lives in `ui/`) | ❌ stays in helper UI | — | — |
 | Multi-tab routing | `tab_session\|tab_changed\|renamed` 161; owner_tab_id/window_id; session_to_tab | ❌ helper's N-tab fan-out | — | — |
-| **Autofix** | `classify_*` (10), `classify_wt_event`, `submit_autofix_prompt`, `fix_target_pane`, `AutofixTargetResolved`, WtEvent (303) | ✅ proxy | off-wire `WtEvent` → inject `session/prompt`: classify an actionable failure (OSC 133;D exit / connection state) and inject a fix prompt | `app/autofix.rs` |
+| **Auto error handling** | failure classification, prompt submission, target-pane resolution, WtEvent (303) | ✅ proxy | off-wire `WtEvent` → inject `session/prompt`: classify an actionable failure (OSC 133;D exit / connection state) and inject a fix prompt | `tools/wta/src/app/auto_error_handling.rs` |
 | **Context / prompt injection** | `prompt\|persona\|planner` 355; PromptTemplateLoaded; `turn_submit_prompt`; `turn_close_finalize_planner` | ✅ proxy | `session/new` (build) + `session/prompt` (rewrite): prepend persona / template / context | `protocol/acp/prompt.rs` |
 | **Delegate / recommendation** | `delegate\|recommend\|coordinator` 252; recommendation_tx; ChoiceExecution; DispatchedCommand; `turn_surface_recommendation` | ✅ proxy | `session/update` (response): parse a `RecommendationSet`, surface Run/Insert cards | `coordinator.rs` |
 | Model pinning / override | `model` 282; `apply_global_acp_model`; `send_session_model`; SessionAttached re-apply; acp_model | 🟡 shim | `session/new` (request): rewrite the model field — folds into **context** | `apply_global_acp_model` |
 | Permission policy | `permission` (11 fns, 113); PermissionState; auto-confirm settings | 🟡 shim | `request_permission` (agent→client): auto-decide per settings; card UI stays in helper — folds into the **conductor** | `ui/permission.rs` (policy slice) |
 | Session registry / alive mirror | `agent_sessions\|alive\|session_to_tab` 270; AliveSnapshot/Added/Removed/JoinUpgrade | 🟡→✅ splits into the session-proxy family (list-union / enrichment / activity — see the criterion table below); only process-liveness + cross-window sync stay in the conductor | 3× `session/list` + `session/update` (see below) | `session_registry` / `agent_sessions` / `wsl_acp` |
 
-**Verdict: 3 strong proxies out of `app.rs` (autofix / context / delegate); ~5–6
+**Verdict: 3 strong proxies out of `app.rs` (Auto error handling / context / delegate); ~5–6
 upper bound for the app.rs extraction.** The `Session registry / alive mirror` row
 is *not* an app.rs core — it splits into the separate session-proxy family out of
 the session subsystem (counted under *Proxy criterion & count* below). The last two
@@ -665,7 +665,7 @@ only turned master into the Conductor.)
 
 #### Structure after Phase 2 (conductor + chained transform proxies)
 
-The conductor from Phase 1 is unchanged; the three `app.rs` transform cores (autofix
+The conductor from Phase 1 is unchanged; the three `app.rs` transform cores (Auto error handling
 / context / delegate) become standalone proxies chained between the conductor and
 the agent via `_proxy/initialize` / `_proxy/successor` — and the session-proxy family
 + the model / permission shims chain in the same way. The full chain below carries
@@ -680,7 +680,7 @@ flowchart LR
     subgraph master["wta-master Conductor"]
         CB["build_session_from<br/>start_session_proxy chain"]
     end
-    AFX["autofix proxy<br/>WtEvent → inject session/prompt"]
+    AFX["Auto error handling proxy<br/>WtEvent → inject session/prompt"]
     CTX["context/prompt proxy<br/>rewrite session/prompt"]
     REC["delegate/recommendation proxy<br/>parse RecommendationSet"]
     SLU["session: list-union proxy<br/>host + WSL history (session/list)"]
@@ -707,7 +707,7 @@ flowchart LR
 > N:1 bridge + `ProxySessionMessages`; the proxies are pure 1:1 transforms in the
 > chain. `app.rs` keeps the cards/pickers + TUI/tab/connection plumbing; only each
 > proxy's decision/transform core moved out. Landing order within Phase 2: the three
-> `app.rs` cores (autofix / context / delegate) first, then the `session:` family
+> `app.rs` cores (Auto error handling / context / delegate) first, then the `session:` family
 > (from the session subsystem), with model / permission as optional fold-in shims.
 
 ### Proxy criterion & count (how many proxies, and why)
@@ -727,7 +727,7 @@ core` row is the counter-example — no ACP seam, so it stays in the conductor/h
 
 | Concern | ACP method intercepted | Transform | Standalone viability | Likely outcome |
 |---|---|---|---|---|
-| autofix | off-wire `WtEvent` → inject `session/prompt` | inject a fix prompt | existing `app/autofix.rs` (566) + tests; clear boundary | ✅ standalone |
+| Auto error handling | off-wire `WtEvent` → inject `session/prompt` | inject a fix prompt | existing `tools/wta/src/app/auto_error_handling.rs` (566) + tests; clear boundary | ✅ standalone |
 | context / prompt injection | `session/prompt` (request) | prepend template / persona | existing `prompt.rs` (347); clear transform pipeline | ✅ standalone |
 | delegate / recommendation | `session/update` (response) | parse `RecommendationSet`, surface cards | existing `coordinator.rs` (1861); clear boundary | ✅ standalone |
 | session: list-union (discovery) | `session/list` (response) | union host + WSL history from the agent's `session/list` (already master-fetched), subtract Class-A index | host+WSL history **already** routes through `session/list`, so the seam exists | ✅ standalone (1 of 1–2) |
@@ -737,7 +737,7 @@ core` row is the counter-example — no ACP seam, so it stays in the conductor/h
 | model pinning | `session/new` (request) | rewrite the model field | the whole job is "rewrite one field if an override is set" — a few lines, not a pipeline | 🔸 folds into context, or a conductor option |
 | permission policy | `request_permission` (agent→client) | auto-decide per settings | the bulk is the card UI (`ui/permission.rs`), which stays in the helper; only the policy slice is proxy-able | 🔸 folds into the conductor/context |
 
-**Net count: ~6 meaningful proxies** — autofix, context, delegate, plus the
+**Net count: ~6 meaningful proxies** — Auto error handling, context, delegate, plus the
 **session family** (list-union, `_meta` enrichment, activity observer) — with
 model + permission as optional thin shims **and a residual non-proxy session core**
 (process-liveness + cross-window state sync) that stays in the conductor. The
@@ -785,7 +785,7 @@ caveats bound what *stays*:
    sync), so they stay in the conductor. The subsystem shrinks (optimistically
    30–50%), it does not vanish.
 
-**Suggested landing order:** (1) the 3 solid proxies (autofix / context /
+**Suggested landing order:** (1) the 3 solid proxies (Auto error handling / context /
 delegate) — existing module backing, clear ACP-method boundaries, most test
 migration; (2) the **session family** as a separate, larger workstream — slice it
 into the `session/list` list-union + enrichment proxies and the `session/update`
@@ -903,13 +903,13 @@ transform on the helper↔agent wire), which is a *different axis* from `app.rs`
 
 | Metric | Today | After |
 |---|---|---|
-| Reasoned units | 2 monoliths (`app.rs` 16K + hand-rolled `master`) | ~7–8 units (lean App + library conductor + autofix/context/delegate + the ~2–3 session proxies, ± marginal model/permission + a residual session core) |
+| Reasoned units | 2 monoliths (`app.rs` 16K + hand-rolled `master`) | ~7–8 units (lean App + library conductor + Auto error handling/context/delegate + the ~2–3 session proxies, ± marginal model/permission + a residual session core) |
 | master per-session routing | hand-rolled `session_to_helper` fan-in/fan-out | library `ProxySessionMessages` → **~60–70% deletable** (3 of 6 mapping rows) |
-| `app.rs` decoupling | 3 transform cores share App's ~50 fields + the `AppEvent` match | autofix / context / delegate move out as standalone proxies, own state |
+| `app.rs` decoupling | 3 transform cores share App's ~50 fields + the `AppEvent` match | Auto error handling / context / delegate move out as standalone proxies, own state |
 | `app.rs` size | 16,137 lines | ≈ **−20–25%** (~3–4K transform-glue lines move out) → still ~12–13K |
 
 Why `app.rs` does **not** collapse: rendering already lives in `ui/` (15 files),
-and the autofix/coordinator/prompt cores already live in `app/autofix.rs` (566),
+and the Auto error handling/coordinator/prompt cores already live in `tools/wta/src/app/auto_error_handling.rs` (566),
 `coordinator.rs` (1861), `protocol/acp/prompt.rs` (347) — yet `app.rs` is still
 16K. What remains is the **central event reactor**: ~50 `AppEvent` variants + the
 dispatch match, per-tab `TabSession` wiring, the ~50 `App` fields, and ~6.3K test
@@ -920,11 +920,11 @@ connection/auth state machine, the tab registry) outside this spec's scope.
 **Testability** — concentrated, real gains:
 
 - Of ~204 `app.rs` tests, **~55 (~27%) target extractable-proxy concerns**
-  (autofix 21, permission 15, prompt 13, delegate 6, model 6) and can become
+  (Auto error handling 21, permission 15, prompt 13, delegate 6, model 6) and can become
   **standalone proxy unit tests** — feed ACP messages in, assert transformed ACP
   out, with no TUI/App/`ShellManager` harness. Reuses the library's dispatch
   model + the existing `connect_for_dispatch` / `DispatchHarness` pattern.
-- Exemplar: autofix's `classify_*` fns (`classify_osc133_*`, `classify_connection_*`)
+- Exemplar: Auto error handling's `classify_*` fns (`classify_osc133_*`, `classify_connection_*`)
   are already near-pure; extraction makes them genuinely unit-scoped.
 - The other **~73%** are not "blocked from being unit tests" — they simply
   **aren't proxy tests by category**: render/UI tests (47) exercise `ui/` modules
@@ -950,7 +950,7 @@ connection/auth state machine, the tab registry) outside this spec's scope.
 
 ## Future considerations
 
-- Phase 2 turns autofix/context-injection into composable proxies — reorderable
+- Phase 2 turns Auto error handling/context-injection into composable proxies — reorderable
   and insertable by config rather than code.
 - MCP-over-ACP (`with_mcp_server`) could replace `wtcli` shell-outs for WT
   control (Phase 3).

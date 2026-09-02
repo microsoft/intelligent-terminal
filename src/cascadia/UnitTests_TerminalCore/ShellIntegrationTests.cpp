@@ -1378,7 +1378,7 @@ void ShellIntegrationTests::Bash_ScriptContent_HasIdempotencyGuardAndOscSequence
     // Bash-only + interactive-only guards.
     VERIFY_IS_TRUE(_Contains(script, "BASH_VERSION"));
     VERIFY_IS_TRUE(_Contains(script, "case \"${-:-}\" in *i*"));
-    // The three OSC sequences the autofix pipeline downstream depends on.
+    // The three OSC sequences the auto-error-handling pipeline downstream depends on.
     VERIFY_IS_TRUE(_Contains(script, "133;D;%s"));
     VERIFY_IS_TRUE(_Contains(script, "133;A"));
     VERIFY_IS_TRUE(_Contains(script, "133;B"));

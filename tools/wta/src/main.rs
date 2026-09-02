@@ -120,7 +120,7 @@ fn helper_config(cli: Cli) -> helper::config::HelperConfig {
         cloud_models: cli.cloud_models,
         delegate_agent: cli.delegate_agent,
         delegate_model: cli.delegate_model,
-        no_autofix: cli.no_autofix,
+        no_auto_error_handling_with_agent: cli.no_auto_error_handling_with_agent,
         setup: cli.setup,
         initial_view: match cli.initial_view {
             InitialView::Chat => helper::config::InitialView::Chat,

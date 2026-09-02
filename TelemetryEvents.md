@@ -50,8 +50,7 @@ load:
 
 | `FeatureName` | `FeatureValue` |
 |---|---|
-| `AutoErrorDetection` | `true` or `false` |
-| `AutoFix` | `true` or `false` |
+| `AutoErrorHandling` | `off`, `detectErrorsAutomatically`, or `detectErrorsAndSendToAgentForFixesAutomatically` |
 | `AgentPanePosition` | The controlled pane-position setting value |
 | `QuotaUsage` | `true` or `false` |
 | `VerticalTabs` | `true` or `false` |
@@ -75,15 +74,15 @@ ACP RPC failures use `AcpError` or `Timeout`. Cold-start failures use
 `SpawnFailed`, `InitializeFailed`, or `Timeout`. `AgentColdStartComplete.Source`
 is `Host` or `Wsl`.
 
-#### Agent turns and autofix
+#### Agent turns and Auto error handling
 
 | Event | Trigger | Fields |
 |---|---|---|
-| `AgentPromptSent` | WTA dispatches a prompt to an agent over ACP, including manual and automatic autofix prompts. | `SessionId`, `PromptLengthBytes`, `IsAutofix`, `IsByok`, `AgentId`, `TemplateKind`, `Route` (`AcpDispatch`) |
+| `AgentPromptSent` | WTA dispatches a prompt to an agent over ACP, including manual and automatic Auto error handling prompts. | `SessionId`, `PromptLengthBytes`, `IsAutoErrorHandling`, `IsByok`, `AgentId`, `TemplateKind`, `Route` (`AcpDispatch`) |
 | `AgentResponseFirstToken` | The first user-visible response chunk arrives. | `SessionId`, `FirstTokenLatencyMs`, `ChunkLengthBytes`, `AgentId` |
 | `AgentResponseComplete` | The ACP prompt request completes. | `SessionId`, `TotalDurationMs`, `TotalResponseBytes`, `Success`, `IsByok`, `AgentId` |
-| `ErrorDetected` | WTA's classifier identifies an actionable or critical pane error. | `Severity`, `Method`, `PaneId` |
-| `ErrorFixResolved` | The next command after an attempted fix succeeds in the same pane. | `PaneId`, `TimeSinceFixMs`, `AgentId` |
+| `AutoErrorHandlingDetected` | WTA's classifier identifies an actionable or critical pane error. | `Severity`, `Method`, `PaneId` |
+| `AutoErrorHandlingResolved` | The next command after Auto error handling starts succeeds in the same pane. | `PaneId`, `TimeSinceHandlingStartedMs`, `AgentId` |
 
 Prompt and response text is never included. Length fields contain byte counts
 only. `IsByok` is captured for the specific prompt so live model changes are

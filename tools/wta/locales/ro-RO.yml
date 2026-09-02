@@ -46,7 +46,7 @@ chat.plan_header: "Plan:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}
 chat.plan_marker_pending: "[ ]"  # {Locked}
-chat.autofix_prompt_label: "Eșec recent al comenzii diagnosticat automat"
+chat.auto_error_handling_prompt_label: "Eșec recent al comenzii diagnosticat automat"
 chat.turn_canceled: "(anulat)"
 chat.turn_executed: "→ executat: %{title}"
 # Etichete persistente pentru categoriile de instrumente, afișate după un marcator de stare și înaintea subiectului.
@@ -204,7 +204,7 @@ time.days_other: "acum %{count} de zile"
 commands.help.summary: "Afișați această listă de comenzi"
 commands.clear.summary: "Goliți istoricul derulant al chatului (păstrează sesiunea)"
 commands.new.summary: "Porniți o sesiune ACP nouă (elimină istoricul)"  # {Locked="ACP"}
-commands.fix.summary: "Diagnosticați terminalul activ și sugerați o remediere (/fix <hint>)"  # {Locked="/fix","<hint>"}
+commands.fix.summary: "Diagnosticați terminalul activ și propuneți o remediere (/fix <hint>)"  # {Locked="/fix","<hint>"}
 commands.restart.summary: "Reporniți agentul"
 commands.stop.summary: "Anulați promptul în curs"
 commands.sessions.summary: "Deschideți selectorul sesiunilor istorice (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}

@@ -1,5 +1,5 @@
 # Settings.ps1 — settings.json read/patch primitives.
-# The AI settings (acpAgent, autoFixEnabled, agentPanePosition,
+# The AI settings (acpAgent, autoErrorHandling, agentPanePosition,
 # aiIntegration.coordinator.enabled, ...) are TOP-LEVEL keys whose NAMES contain dots
 # (MTSMSettings.h), so they are set as single literal properties, not nested paths.
 
@@ -103,7 +103,15 @@ function Get-WtSetting {
 # ── Typed convenience wrappers ──
 function Set-WtAgent { param([Parameter(Mandatory, ValueFromPipeline)]$App, [Parameter(Mandatory)][string]$Agent) process { Set-WtSetting -App $App -Key 'acpAgent' -Value $Agent } }
 function Set-WtDelegateAgent { param([Parameter(Mandatory, ValueFromPipeline)]$App, [Parameter(Mandatory)][string]$Agent) process { Set-WtSetting -App $App -Key 'delegateAgent' -Value $Agent } }
-function Set-WtAutofix { param([Parameter(Mandatory, ValueFromPipeline)]$App, [Parameter(Mandatory)][bool]$Enabled) process { Set-WtSetting -App $App -Key 'autoFixEnabled' -Value $Enabled } }
+function Set-WtAutoErrorHandling {
+    param(
+        [Parameter(Mandatory, ValueFromPipeline)]$App,
+        [Parameter(Mandatory)]
+        [ValidateSet('off', 'detectErrorsAutomatically', 'detectErrorsAndSendToAgentForFixesAutomatically')]
+        [string]$Mode
+    )
+    process { Set-WtSetting -App $App -Key 'autoErrorHandling' -Value $Mode }
+}
 function Set-WtPanePosition { param([Parameter(Mandatory, ValueFromPipeline)]$App, [ValidateSet('bottom', 'right', 'top', 'left')][string]$Position) process { Set-WtSetting -App $App -Key 'agentPanePosition' -Value $Position } }
 
 function Set-WtSettings {

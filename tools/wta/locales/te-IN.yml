@@ -46,7 +46,7 @@ chat.plan_header: "ప్లాన్:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}
 chat.plan_marker_pending: "[ ]"  # {Locked}
-chat.autofix_prompt_label: "ఇటీవలి కమాండ్ వైఫల్యం స్వయంచాలకంగా నిర్ధారించబడింది"
+chat.auto_error_handling_prompt_label: "ఇటీవలి కమాండ్ వైఫల్యం స్వయంచాలకంగా నిర్ధారించబడింది"
 chat.turn_canceled: "(రద్దు చేయబడింది)"
 chat.turn_executed: "→ అమలు చేయబడింది: %{title}"
 # స్థితి గుర్తు తర్వాత, విషయానికి ముందు చూపే శాశ్వత సాధన-వర్గ లేబుళ్లు.
@@ -82,7 +82,7 @@ commands.help_close_hint: "  Esc        ఈ సహాయాన్ని మూ�
 commands.help.summary: "ఈ కమాండ్ జాబితాను చూపించు"
 commands.clear.summary: "చాట్ స్క్రోల్‌బ్యాక్‌ను క్లియర్ చేయి (సెషన్‌ను ఉంచుతుంది)"
 commands.new.summary: "కొత్త ACP సెషన్‌ను ప్రారంభించు (చరిత్రను తొలగిస్తుంది)"  # {Locked="ACP"}
-commands.fix.summary: "Diagnose the active terminal and suggest a fix (/fix <hint>)"  # {Locked="/fix","<hint>"}
+commands.fix.summary: "సక్రియ టెర్మినల్‌ను నిర్ధారించి, పరిష్కారాన్ని ప్రతిపాదించండి (/fix <hint>)"  # {Locked="/fix","<hint>"}
 commands.restart.summary: "ఏజెంట్‌ను పునఃప్రారంభించండి"
 commands.stop.summary: "నడుస్తున్న ప్రాంప్ట్‌ను రద్దు చేయి"
 commands.sessions.summary: "చారిత్రక సెషన్‌ల ఎంపికను తెరవండి (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}

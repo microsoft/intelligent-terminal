@@ -46,7 +46,7 @@ chat.plan_header: "Plan:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}
 chat.plan_marker_pending: "[ ]"  # {Locked}
-chat.autofix_prompt_label: "Automatyczne zdiagnozowanie ostatniego błędu polecenia"
+chat.auto_error_handling_prompt_label: "Automatyczne zdiagnozowanie ostatniego błędu polecenia"
 chat.turn_canceled: "(anulowano)"
 chat.turn_executed: "→ wykonano: %{title}"
 # Persistent tool-category labels shown after a status marker and before a subject.
@@ -79,7 +79,7 @@ commands.help_close_hint: "  Esc        Zamknij tę pomoc"  # {Locked="Esc"}
 commands.help.summary: "Pokaż tę listę poleceń"
 commands.clear.summary: "Wyczyść historię czatu (zachowuje sesję)"
 commands.new.summary: "Rozpocznij nową sesję ACP (usuwa historię)"  # {Locked="ACP"}
-commands.fix.summary: "Zdiagnozuj aktywny terminal i zasugeruj poprawkę (/fix <hint>)"  # {Locked="/fix","<hint>"}
+commands.fix.summary: "Zdiagnozuj aktywny terminal i zaproponuj poprawkę (/fix <hint>)"  # {Locked="/fix","<hint>"}
 commands.restart.summary: "Uruchom ponownie agenta"
 commands.stop.summary: "Anuluj trwający monit"
 commands.sessions.summary: "Otwórz wybór historycznych sesji (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}

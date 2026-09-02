@@ -966,10 +966,10 @@ impl AgentSessionRegistry {
     }
 
     /// Returns true if the given pane GUID is currently bound to an agent
-    /// CLI session (Copilot/Claude/Gemini/...). Used by the autofix path to
+    /// CLI session (Copilot/Claude/Gemini/...). Used by the Auto error handling path to
     /// suppress "command failed" classification when the failing process is
     /// actually one of our managed agent CLIs exiting — Ctrl+C in Gemini is
-    /// not a user command failure that needs auto-fix.
+    /// not a user command failure that needs Auto error handling.
     pub fn is_agent_pane(&self, pane_session_id: &str) -> bool {
         // Lowercase the lookup key — hooks emit lowercase pane GUIDs but
         // WT-native vt_sequence/connection_state events emit uppercase.

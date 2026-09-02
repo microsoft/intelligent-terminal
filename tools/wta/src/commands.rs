@@ -16,11 +16,11 @@ pub enum CommandKind {
     Clear,
     Stop,
     New,
-    /// Run the auto-fix prompt on demand.
+    /// Run the Auto error handling prompt on demand.
     ///
-    /// Submits the `auto-fix.md` instruction overlay plus the active
+    /// Submits the `auto-error-handling.md` instruction overlay plus the active
     /// terminal pane's recent output to the agent — the same pipeline the
-    /// error-triggered autofix uses (`PromptSubmission::is_autofix`), but
+    /// error-triggered Auto error handling uses (`PromptSubmission::is_auto_error_handling`), but
     /// invoked manually. Any text after `/fix` is passed through as an
     /// extra hint to steer the diagnosis (`/fix the path looks wrong`).
     Fix,

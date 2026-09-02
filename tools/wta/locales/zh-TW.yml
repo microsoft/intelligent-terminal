@@ -42,7 +42,7 @@ chat.plan_header: "計畫："
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}
 chat.plan_marker_pending: "[ ]"  # {Locked}
-chat.autofix_prompt_label: "已自動診斷最近的一次命令失敗"
+chat.auto_error_handling_prompt_label: "已自動診斷最近的一次命令失敗"
 chat.turn_canceled: "(已取消)"
 chat.turn_executed: "→ 已執行: %{title}"
 # 顯示在狀態標記之後、操作對象之前的持續性工具類別標籤。
@@ -200,7 +200,7 @@ time.days_other: "%{count} 天前"
 commands.help.summary: "顯示此命令清單"
 commands.clear.summary: "清除聊天記錄（保留工作階段）"
 commands.new.summary: "啟動新的 ACP 工作階段（清空歷史記錄）"
-commands.fix.summary: "診斷作用中的終端機並建議修正方式（/fix <hint>）"  # {Locked="/fix","<hint>"}
+commands.fix.summary: "診斷作用中的終端機並提出修正方案（/fix <hint>）"  # {Locked="/fix","<hint>"}
 commands.restart.summary: "重新啟動智能體"
 commands.stop.summary: "取消進行中的提示"
 commands.sessions.summary: "開啟歷史工作階段選擇器（Ctrl+Shift+/）"

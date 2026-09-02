@@ -39,7 +39,7 @@ Describe 'Feature: Bash semantic prompt integration' -Tag 'Feature' -Skip:(-not 
             list     = @($profile)
         }
         $script:app = Start-Terminal -Package Dev -PassFre $true -Settings @{
-            autoErrorDetectionEnabled = $true
+            autoErrorHandling = 'detectErrorsAutomatically'
             profiles                  = $profiles
         }
     }
@@ -74,7 +74,7 @@ Describe 'Feature: Bash semantic prompt integration' -Tag 'Feature' -Skip:(-not 
     It 'Bash PROMPT_COMMAND rewrites preserve semantic prompt boundaries' {
         (Test-Until -TimeoutSec 90 -IntervalSec 1 -Condition {
                 Test-Path $script:integrationScript
-            }) | Should -BeTrue -Because 'the explicit auto-fix setting must install the packaged Bash integration'
+            }) | Should -BeTrue -Because 'the explicit Auto error handling setting must install the packaged Bash integration'
 
         $posixScript = $script:integrationScript.Replace('\', '/')
         $outside = Invoke-Native -FilePath $script:GitBash -Arguments @(

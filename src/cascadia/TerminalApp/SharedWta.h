@@ -234,13 +234,14 @@ namespace winrt::TerminalApp::implementation
         /// can pass raw values (paths with spaces, settings strings
         /// with quotes) without any pre-escaping. For flag/value
         /// pairs, push them as two separate elements (`--agent`,
-        /// `<path>`); bare flags are a single element (`--no-autofix`).
-        /// Used to bake per-process settings (`--no-autofix`,
+        /// `<path>`); bare flags are a single element
+        /// (`--no-auto-error-handling-with-agent`).
+        /// Used to bake per-process settings (`--no-auto-error-handling-with-agent`,
         /// `--language`, `--acp-model`, etc.) at the first spawn.
         /// **Ignored on subsequent acquires** — the singleton is
         /// already running by then. Runtime settings updates flow
         /// over the existing event channels
-        /// (e.g. `autofix_enabled_changed`).
+        /// (e.g. the Auto error handling send-to-agent gate).
         ///
         /// Every successful `AcquirePane` MUST be paired with exactly
         /// one `ReleasePane` when the caller's agent pane closes.

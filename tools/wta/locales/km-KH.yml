@@ -49,7 +49,7 @@ chat.plan_header: "ផែនការ:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}
 chat.plan_marker_pending: "[ ]"  # {Locked}
-chat.autofix_prompt_label: "បរាជ័យពាក្យបញ្ជាថ្មីៗត្រូវបានធ្វើរោគវិនិច្ឆ័យដោយស្វ័យប្រវត្តិ"
+chat.auto_error_handling_prompt_label: "បរាជ័យពាក្យបញ្ជាថ្មីៗត្រូវបានធ្វើរោគវិនិច្ឆ័យដោយស្វ័យប្រវត្តិ"
 chat.turn_canceled: "(បានបោះបង់)"
 chat.turn_executed: "→ បានដំណើរការ: %{title}"
 # ស្លាកប្រភេទឧបករណ៍អចិន្ត្រៃយ៍ដែលបង្ហាញបន្ទាប់ពីសញ្ញាស្ថានភាព និងមុនប្រធានបទ។
@@ -221,7 +221,7 @@ time.days_other: "%{count} ថ្ងៃមុន"
 commands.help.summary: "Show this command list"
 commands.clear.summary: "Clear the chat scrollback (keeps session)"
 commands.new.summary: "Start a fresh ACP session (drops history)"  # {Locked="ACP"}
-commands.fix.summary: "Diagnose the active terminal and suggest a fix (/fix <hint>)"  # {Locked="/fix","<hint>"}
+commands.fix.summary: "ធ្វើរោគវិនិច្ឆ័យស្ថានីយសកម្ម ហើយស្នើដំណោះស្រាយកែតម្រូវ (/fix <hint>)"  # {Locked="/fix","<hint>"}
 commands.restart.summary: "Restart agent"
 commands.stop.summary: "Cancel the in-flight prompt"
 commands.sessions.summary: "Open the historical sessions picker (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}

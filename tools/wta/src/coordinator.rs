@@ -174,14 +174,13 @@ pub fn parse_recommendation_set(text: &str) -> Result<RecommendationSet> {
     Ok(parsed)
 }
 
-/// The result of parsing an autofix response.
+/// The result of parsing an Auto error handling response.
 #[derive(Debug, Clone)]
-pub enum AutofixDecision {
+pub enum AutoErrorHandlingDecision {
     /// AI found a single-command fix.
     Fix(RecommendationSet),
-    /// AI cannot auto-fix but has a useful explanation/suggestion. The caller
-    /// should surface `explanation` in the agent pane chat history and tell
-    /// the bottom bar to show a "Suggestion ready — open agent pane" indicator.
+    /// The agent cannot provide a command but has a useful explanation. The
+    /// caller should surface it in chat and show a Review indicator.
     Explain { title: String, explanation: String },
     /// AI decided no fix is appropriate; caller should silently clear state.
     /// The `explain` action makes this rare — Ignore is now a fail-safe for
@@ -189,29 +188,29 @@ pub enum AutofixDecision {
     Ignore,
 }
 
-/// Parse a response from the minimal autofix prompt.
+/// Parse a response from the minimal Auto error handling prompt.
 ///
 /// Expected formats:
 ///   {"action": "fix",     "title": "...", "command": "...",     "rationale": "..."}
 ///   {"action": "explain", "title": "...", "explanation": "..."}
 ///   {"action": "ignore"}                            // legacy fallback
 ///
-/// Returns `AutofixDecision::Ignore` for unrecognised JSON or missing required
+/// Returns `AutoErrorHandlingDecision::Ignore` for unrecognised JSON or missing required
 /// fields (fail-safe: never leave a stale Pending bar).
-pub fn parse_autofix_response(text: &str) -> AutofixDecision {
+pub fn parse_auto_error_handling_response(text: &str) -> AutoErrorHandlingDecision {
     let json = match extract_json_code_block(text).or_else(|| extract_first_json_object(text)) {
         Some(j) => j,
         None => {
-            tracing::warn!(target: "autofix", "no JSON in autofix response, ignoring");
-            return AutofixDecision::Ignore;
+            tracing::warn!(target: "auto_error_handling", "no JSON in Auto error handling response; ignoring");
+            return AutoErrorHandlingDecision::Ignore;
         }
     };
 
     let value: serde_json::Value = match serde_json::from_str(json) {
         Ok(v) => v,
         Err(e) => {
-            tracing::warn!(target: "autofix", "failed to parse autofix JSON: {e}, ignoring");
-            return AutofixDecision::Ignore;
+            tracing::warn!(target: "auto_error_handling", "failed to parse Auto error handling JSON: {e}; ignoring");
+            return AutoErrorHandlingDecision::Ignore;
         }
     };
 
@@ -220,8 +219,8 @@ pub fn parse_autofix_response(text: &str) -> AutofixDecision {
             let command = match value.get("command").and_then(|v| v.as_str()) {
                 Some(c) if !c.trim().is_empty() => c.to_string(),
                 _ => {
-                    tracing::warn!(target: "autofix", "fix response missing 'command', ignoring");
-                    return AutofixDecision::Ignore;
+                    tracing::warn!(target: "auto_error_handling", "fix response missing 'command', ignoring");
+                    return AutoErrorHandlingDecision::Ignore;
                 }
             };
             let title = value
@@ -234,7 +233,7 @@ pub fn parse_autofix_response(text: &str) -> AutofixDecision {
                 .and_then(|v| v.as_str())
                 .unwrap_or("")
                 .to_string();
-            AutofixDecision::Fix(RecommendationSet {
+            AutoErrorHandlingDecision::Fix(RecommendationSet {
                 recommended_choice: Some(1),
                 choices: vec![RecommendationChoice {
                     choice: 1,
@@ -251,22 +250,22 @@ pub fn parse_autofix_response(text: &str) -> AutofixDecision {
             let explanation = match value.get("explanation").and_then(|v| v.as_str()) {
                 Some(e) if !e.trim().is_empty() => e.to_string(),
                 _ => {
-                    tracing::warn!(target: "autofix", "explain response missing 'explanation', ignoring");
-                    return AutofixDecision::Ignore;
+                    tracing::warn!(target: "auto_error_handling", "explain response missing 'explanation', ignoring");
+                    return AutoErrorHandlingDecision::Ignore;
                 }
             };
             let title = value
                 .get("title")
                 .and_then(|v| v.as_str())
                 .filter(|t| !t.trim().is_empty())
-                .unwrap_or("Suggestion")
+                .unwrap_or("Explanation")
                 .to_string();
-            AutofixDecision::Explain { title, explanation }
+            AutoErrorHandlingDecision::Explain { title, explanation }
         }
-        Some("ignore") | None => AutofixDecision::Ignore,
+        Some("ignore") | None => AutoErrorHandlingDecision::Ignore,
         Some(other) => {
-            tracing::warn!(target: "autofix", "unknown autofix action {other:?}, ignoring");
-            AutofixDecision::Ignore
+            tracing::warn!(target: "auto_error_handling", "unknown Auto error handling action {other:?}; ignoring");
+            AutoErrorHandlingDecision::Ignore
         }
     }
 }
@@ -714,7 +713,7 @@ pub(crate) fn validate_recommendation_set_for_coordinator_target(
 fn validate_action(action: &RecommendedAction) -> Result<()> {
     match action {
         RecommendedAction::Send { parent: _, input } => {
-            // parent may be empty for auto-fix actions (filled in at execution time)
+            // parent may be empty for Auto error handling actions (filled in at execution time)
             ensure_non_empty("input", input)?;
         }
         RecommendedAction::OpenAndSend {
@@ -1764,10 +1763,11 @@ mod tests {
         build_windows_powershell_base64_launch, build_wsl_delegate_commandline,
         build_wsl_delegate_resume_commandline, default_delegate_agent_runtimes,
         escape_for_intermediate_shell, execute_choice, is_direct_known_agent_command,
-        parse_autofix_response, parse_recommendation_set, pinned_session_id_for_runtime,
-        pwsh_available, resolve_agent_profile, resolve_created_pane_id, sanitize_windows_agent_cwd,
-        AutofixDecision, DelegateAgentRuntime, DelegatePromptDelivery, OpenTarget,
-        RecommendationChoice, RecommendedAction,
+        parse_auto_error_handling_response, parse_recommendation_set,
+        pinned_session_id_for_runtime, pwsh_available, resolve_agent_profile,
+        resolve_created_pane_id, sanitize_windows_agent_cwd, AutoErrorHandlingDecision,
+        DelegateAgentRuntime, DelegatePromptDelivery, OpenTarget, RecommendationChoice,
+        RecommendedAction,
     };
     use crate::shell::wt_channel::WtChannel;
     use crate::shell::ShellManager;
@@ -2908,13 +2908,13 @@ mod tests {
     }
 
     #[test]
-    fn parse_autofix_explain_with_title_and_explanation() {
+    fn parse_auto_error_handling_explain_with_title_and_explanation() {
         let text = r#"```json
 {"action": "explain", "title": "claude is not installed",
  "explanation": "The `claude` command isn't on PATH.\n\nInstall with `npm install -g @anthropic-ai/claude-code`."}
 ```"#;
-        match parse_autofix_response(text) {
-            AutofixDecision::Explain { title, explanation } => {
+        match parse_auto_error_handling_response(text) {
+            AutoErrorHandlingDecision::Explain { title, explanation } => {
                 assert_eq!(title, "claude is not installed");
                 assert!(explanation.contains("npm install"));
             }
@@ -2923,35 +2923,35 @@ mod tests {
     }
 
     #[test]
-    fn parse_autofix_explain_falls_back_to_ignore_when_explanation_empty() {
+    fn parse_auto_error_handling_explain_falls_back_to_ignore_when_explanation_empty() {
         let text = r#"```json
 {"action": "explain", "title": "Something", "explanation": "   "}
 ```"#;
         assert!(matches!(
-            parse_autofix_response(text),
-            AutofixDecision::Ignore
+            parse_auto_error_handling_response(text),
+            AutoErrorHandlingDecision::Ignore
         ));
     }
 
     #[test]
-    fn parse_autofix_explain_uses_default_title_when_missing() {
+    fn parse_auto_error_handling_explain_uses_default_title_when_missing() {
         let text = r#"```json
-{"action": "explain", "explanation": "Some useful suggestion goes here."}
+{"action": "explain", "explanation": "Some useful explanation goes here."}
 ```"#;
-        match parse_autofix_response(text) {
-            AutofixDecision::Explain { title, .. } => assert_eq!(title, "Suggestion"),
+        match parse_auto_error_handling_response(text) {
+            AutoErrorHandlingDecision::Explain { title, .. } => assert_eq!(title, "Explanation"),
             other => panic!("expected Explain with default title, got {other:?}"),
         }
     }
 
     #[test]
-    fn parse_autofix_legacy_ignore_still_supported() {
+    fn parse_auto_error_handling_legacy_ignore_still_supported() {
         let text = r#"```json
 {"action": "ignore"}
 ```"#;
         assert!(matches!(
-            parse_autofix_response(text),
-            AutofixDecision::Ignore
+            parse_auto_error_handling_response(text),
+            AutoErrorHandlingDecision::Ignore
         ));
     }
 

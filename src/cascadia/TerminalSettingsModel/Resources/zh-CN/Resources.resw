@@ -1002,8 +1002,8 @@
   <data name="OpenAgentSessionsCommandKey" xml:space="preserve">
     <value>打开智能体会话列表</value>
   </data>
-  <data name="TriggerAutofixCommandKey" xml:space="preserve">
-    <value>触发自动修复</value>
+  <data name="TriggerAutoErrorHandlingCommandKey" xml:space="preserve">
+    <value>自动错误处理</value>
   </data>
   <data name="PromptActionArgumentLocalized" xml:space="preserve">
     <value>提示词</value>

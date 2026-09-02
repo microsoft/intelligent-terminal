@@ -46,7 +46,7 @@ chat.plan_header: "Plano:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}
 chat.plan_marker_pending: "[ ]"  # {Locked}
-chat.autofix_prompt_label: "Falha recente de comando diagnosticada automaticamente"
+chat.auto_error_handling_prompt_label: "Falha recente de comando diagnosticada automaticamente"
 chat.turn_canceled: "(cancelado)"
 chat.turn_executed: "→ executado: %{title}"
 # Persistent tool-category labels shown after a status marker and before a subject.
@@ -205,7 +205,7 @@ time.days_other: "há %{count} dias"
 commands.help.summary: "Mostrar esta lista de comandos"
 commands.clear.summary: "Limpar o histórico do chat (mantém a sessão)"
 commands.new.summary: "Iniciar uma nova sessão ACP (descarta o histórico)"
-commands.fix.summary: "Diagnosticar o terminal ativo e sugerir uma correção (/fix <hint>)"  # {Locked="/fix","<hint>"}
+commands.fix.summary: "Diagnosticar o terminal ativo e propor uma correção (/fix <hint>)"  # {Locked="/fix","<hint>"}
 commands.restart.summary: "Reiniciar agente"
 commands.stop.summary: "Cancelar o prompt em andamento"
 commands.sessions.summary: "Abrir o seletor de sessões anteriores (Ctrl+Shift+/)"

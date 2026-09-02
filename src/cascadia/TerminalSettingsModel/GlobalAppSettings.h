@@ -94,13 +94,16 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
         // empty. If a feature is blocked by policy, returns false.
         hstring EffectiveAcpAgent() const;
         hstring EffectiveDelegateAgent() const;
+        // Deprecated ABI shims. New code reads EffectiveAutoErrorHandling.
         bool EffectiveAutoErrorDetectionEnabled() const;
         bool EffectiveAutoFixEnabled() const;
+        Model::AutoErrorHandling EffectiveAutoErrorHandling() const;
 
         // Whether GPO policy is actively restricting these settings.
         bool IsAgentPolicyLocked() const;
         bool IsCustomAgentPolicyLocked() const;
         bool IsAutoFixPolicyLocked() const;
+        bool IsAutoErrorHandlingPolicyRestricted() const;
         bool IsAgentSessionHooksPolicyLocked() const;
 
         // ── Test-only seam ──────────────────────────────────────────────
@@ -119,6 +122,62 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
     INHERITABLE_SETTING_WITH_LOGGING(Model::GlobalAppSettings, type, name, jsonKey, ##__VA_ARGS__)
         MTSM_GLOBAL_SETTINGS(GLOBAL_SETTINGS_INITIALIZE)
 #undef GLOBAL_SETTINGS_INITIALIZE
+
+        _BASE_INHERITABLE_SETTING(
+            Model::GlobalAppSettings,
+            std::optional<Model::AutoErrorHandling>,
+            AutoErrorHandling,
+            Model::AutoErrorHandling::DetectErrorsAutomatically)
+
+    public:
+        Model::AutoErrorHandling AutoErrorHandling() const
+        {
+            const auto val{ _getAutoErrorHandlingImpl() };
+            return val.value_or(Model::AutoErrorHandling::DetectErrorsAutomatically);
+        }
+
+        void AutoErrorHandling(const Model::AutoErrorHandling value)
+        {
+            if (!_AutoErrorHandling.has_value() || _AutoErrorHandling.value() != value)
+            {
+                _logSettingSet("autoErrorHandling");
+            }
+            _AutoErrorHandling = value;
+        }
+
+        // Legacy ABI projections. Reads and writes translate through the
+        // canonical three-state setting; legacy JSON is handled in LayerJson.
+        bool HasAutoErrorDetectionEnabled() const { return HasAutoErrorHandling(); }
+        Model::GlobalAppSettings AutoErrorDetectionEnabledOverrideSource() { return AutoErrorHandlingOverrideSource(); }
+        void ClearAutoErrorDetectionEnabled() { ClearAutoErrorHandling(); }
+        bool AutoErrorDetectionEnabled() const { return AutoErrorHandling() != Model::AutoErrorHandling::Off; }
+        void AutoErrorDetectionEnabled(const bool value)
+        {
+            if (!value)
+            {
+                AutoErrorHandling(Model::AutoErrorHandling::Off);
+            }
+            else if (AutoErrorHandling() == Model::AutoErrorHandling::Off)
+            {
+                AutoErrorHandling(Model::AutoErrorHandling::DetectErrorsAutomatically);
+            }
+        }
+
+        bool HasAutoFixEnabled() const { return HasAutoErrorHandling(); }
+        Model::GlobalAppSettings AutoFixEnabledOverrideSource() { return AutoErrorHandlingOverrideSource(); }
+        void ClearAutoFixEnabled() { ClearAutoErrorHandling(); }
+        bool AutoFixEnabled() const { return AutoErrorHandling() == Model::AutoErrorHandling::DetectErrorsAndSendToAgentForFixesAutomatically; }
+        void AutoFixEnabled(const bool value)
+        {
+            if (value)
+            {
+                AutoErrorHandling(Model::AutoErrorHandling::DetectErrorsAndSendToAgentForFixesAutomatically);
+            }
+            else if (AutoErrorHandling() == Model::AutoErrorHandling::DetectErrorsAndSendToAgentForFixesAutomatically)
+            {
+                AutoErrorHandling(Model::AutoErrorHandling::DetectErrorsAutomatically);
+            }
+        }
 
     private:
 #ifdef NDEBUG

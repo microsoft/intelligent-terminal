@@ -49,7 +49,7 @@ chat.plan_header: "Պլան՝"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}
 chat.plan_marker_pending: "[ ]"  # {Locked}
-chat.autofix_prompt_label: "Վերջին հրամանի ձախողումը ինքնաշխատ ախտորոշվել է"
+chat.auto_error_handling_prompt_label: "Վերջին հրամանի ձախողումը ինքնաշխատ ախտորոշվել է"
 chat.turn_canceled: "(չեղարկվել է)"
 chat.turn_executed: "→ կատարվել է: %{title}"
 # Գործիքի կատեգորիայի մշտական պիտակներ, որոնք ցուցադրվում են վիճակի նշիչից հետո և թեմայից առաջ։
@@ -88,7 +88,7 @@ commands.help_close_hint: "  Esc        Փակել օգնությունը"  # {L
 commands.help.summary: "Ցուցադրել այս հրամանների ցանկը"
 commands.clear.summary: "Մաքրել զրույցի ոլորման պատմությունը (նիստը պահպանվում է)"
 commands.new.summary: "Սկսել նոր ACP նիստ (ջնջել պատմությունը)"  # {Locked="ACP"}
-commands.fix.summary: "Diagnose the active terminal and suggest a fix (/fix <hint>)"  # {Locked="/fix","<hint>"}
+commands.fix.summary: "Ախտորոշեք ակտիվ տերմինալը և առաջարկեք ուղղում (/fix <hint>)"  # {Locked="/fix","<hint>"}
 commands.restart.summary: "Վերագործարկել ագենտը"
 commands.stop.summary: "Չեղարկել ընթացիկ հարցումը"
 commands.sessions.summary: "Բացել պատմական նիստերի ընտրիչը (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}

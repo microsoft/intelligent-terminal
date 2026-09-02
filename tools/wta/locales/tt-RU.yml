@@ -46,7 +46,7 @@ chat.plan_header: "План:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}
 chat.plan_marker_pending: "[ ]"  # {Locked}
-chat.autofix_prompt_label: "Соңгы команда хатасы автоматик рәвештә диагнозланды"
+chat.auto_error_handling_prompt_label: "Соңгы команда хатасы автоматик рәвештә диагнозланды"
 chat.turn_canceled: "(гамәлдән чыгарылды)"
 chat.turn_executed: "→ үтәлде: %{title}"
 # Хәл билгесеннән соң һәм объект алдыннан күрсәтелә торган даими корал категориясе тамгалары.
@@ -82,7 +82,7 @@ commands.help_close_hint: "  Esc        Бу ярдәмне ябу"  # {Locked="
 commands.help.summary: "Бу боерыклар исемлеген күрсәтү"
 commands.clear.summary: "Чат әйләндерү тарихын чистарту (сеансны саклый)"
 commands.new.summary: "Яңа ACP сеансын башлау (тарихны ташлый)"  # {Locked="ACP"}
-commands.fix.summary: "Diagnose the active terminal and suggest a fix (/fix <hint>)"  # {Locked="/fix","<hint>"}
+commands.fix.summary: "Актив терминалга диагностика ясап, төзәтү тәкъдим итегез (/fix <hint>)"  # {Locked="/fix","<hint>"}
 commands.restart.summary: "Агентны яңадан старт"
 commands.stop.summary: "Башкарылучы сорауны кире кагу"
 commands.sessions.summary: "Тарихи сеанслар сайлагычын ачу (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}

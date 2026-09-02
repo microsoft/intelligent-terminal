@@ -46,7 +46,7 @@ chat.plan_header: "Plan:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}
 chat.plan_marker_pending: "[ ]"  # {Locked}
-chat.autofix_prompt_label: "Son əmr xətası avtomatik diaqnoz edildi"
+chat.auto_error_handling_prompt_label: "Son əmr xətası avtomatik diaqnoz edildi"
 chat.turn_canceled: "(ləğv edildi)"
 chat.turn_executed: "→ icra edildi: %{title}"
 # Persistent tool-category labels shown after a status marker and before a subject.
@@ -83,7 +83,7 @@ commands.help_close_hint: "  Esc        Bu köməyi bağla"  # {Locked="Esc"}
 commands.help.summary: "Bu əmr siyahısını göstər"
 commands.clear.summary: "Söhbət sürüşmə tarixçəsini təmizlə (sessiyanı saxlayır)"
 commands.new.summary: "Təzə ACP sessiyası başlat (tarixçəni silir)"  # {Locked="ACP"}
-commands.fix.summary: "Diagnose the active terminal and suggest a fix (/fix <hint>)"  # {Locked="/fix","<hint>"}
+commands.fix.summary: "Aktiv terminala diaqnoz qoy və düzəliş təklif et (/fix <hint>)"  # {Locked="/fix","<hint>"}
 commands.restart.summary: "Agenti yenidən başlat"
 commands.stop.summary: "İcra olunan sorğunu ləğv et"
 commands.sessions.summary: "Tarixi sessiyalar seçicisini aç (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}

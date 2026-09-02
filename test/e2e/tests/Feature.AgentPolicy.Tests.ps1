@@ -5,16 +5,11 @@
 # after HKLM — the same code path and value semantics as a machine GPO, without touching HKLM.
 # Same approach as the WinPS execution-policy suite (Feature.FreExecutionPolicy.Tests.ps1).
 #
-# These are DETERMINISTIC, LLM-free assertions: they assert the ABSENCE of a policy-gated
-# behavior, which does not depend on any model output. The gate is enforced at TWO points and
-# this suite leans on the source-level one:
-#   * TerminalPage.cpp:5172-5173 — the VtSequenceReceived handler early-returns when
-#     IsAutoFixPolicyLocked() is true, BEFORE raising the protocol event. So with the policy
-#     Blocked the autofix pipeline is gated AT THE SOURCE: a failing command's OSC 133;D mark is
-#     not even forwarded to wtcli listeners, and no autofix prompt is ever submitted.
-#   * TerminalPage.cpp:1695-1697 — the WTA helper is additionally spawned with --no-autofix.
-# Positive control: Feature.AutofixPane.Tests.ps1 — the IDENTICAL setup WITHOUT this policy DOES
-# fire autofix, so a clean run here proves the policy (not a broken pane) suppressed it.
+# Auto error handling policy semantics are deliberately narrow: blocking
+# AllowAutoErrorHandling prevents only automatic sending to the agent. A configured third mode
+# degrades to detect-only, so command-failure detection remains active. The normal policy test
+# uses the canonical value. Legacy AllowAutoFix appears only in explicitly marked fallback and
+# precedence compatibility cases.
 #
 # REQUIRES A WRITABLE POLICY HIVE: the `Software\Policies` subtree is ACL-restricted to
 # administrators. Run test/e2e/tools/Enable-WtAgentPolicyTesting.ps1 ONCE (elevated) to grant
@@ -30,37 +25,91 @@ BeforeDiscovery {
     $script:PolicyControllable = Test-WtAgentPolicyControllable
 }
 
-Describe 'Feature §1 agent Group Policy locks (AllowAutoFix)' -Tag 'Feature' -Skip:(-not ($script:Ready -and $script:PolicyControllable)) {
+Describe 'Feature §1 agent Group Policy locks (AllowAutoErrorHandling)' -Tag 'Feature' -Skip:(-not ($script:Ready -and $script:PolicyControllable)) {
     BeforeAll {
         Import-Module (Join-Path $PSScriptRoot '..\ItE2E\ItE2E.psd1') -Force
-        # Block autofix by POLICY while leaving the user setting ON — so the ONLY thing that can
-        # suppress autofix is the GPO. Set before launch (the policy snapshot is read at startup).
-        $script:policyState = Set-WtAgentPolicy -Policy @{ AllowAutoFix = 'Blocked' }
-        $script:app = Start-Terminal -Package (Get-ItTestPackage) -PassFre $true -Settings @{ acpAgent = 'copilot'; autoFixEnabled = $true }
+        $script:policyState = Set-WtAgentPolicy -Policy @{ AllowAutoErrorHandling = 'Blocked' }
+        $script:app = Start-Terminal -Package (Get-ItTestPackage) -PassFre $true -Settings @{
+            acpAgent = 'copilot'
+            autoErrorHandling = 'detectErrorsAndSendToAgentForFixesAutomatically'
+        }
         Open-AgentPane -App $script:app | Out-Null
-        Wait-AgentReady -App $script:app -TimeoutSec 60 | Should -BeTrue -Because 'the agent pane still connects under an autofix policy block (the gate suppresses autofix, not the pane)'
+        Wait-AgentReady -App $script:app -TimeoutSec 60 | Should -BeTrue -Because 'the agent pane still connects when only automatic error submission is policy-blocked'
     }
     AfterAll {
         if ($script:app) { Stop-Terminal -App $script:app }
         if ($script:policyState) { Restore-WtAgentPolicy -State $script:policyState }
     }
 
-    It 'AllowAutoFix=Blocked suppresses autofix end-to-end on a real command failure' {
+    It 'AllowAutoErrorHandling=Blocked degrades send-to-agent mode to detect-only' {
         $sid = (Get-ActivePane -App $script:app).session_id
         $listener = Start-WtEventListener -App $script:app
         try {
             Start-Sleep -Milliseconds 400
-            # Unique command so autofix de-dup can never be the reason nothing fires.
             Invoke-FailingCommand -App $script:app -SessionId $sid -Command "ggit$(Get-Random) status" | Out-Null
+            { Wait-WtCommandFailure -Listener $listener -PaneId $sid -TimeoutSec 20 } |
+                Should -Not -Throw -Because 'policy must not turn shell failure detection off'
+            { Wait-AutoErrorHandlingDetection -Listener $listener -PaneId $sid -TimeoutSec 20 } |
+                Should -Not -Throw -Because 'the blocked third mode must degrade to detect-only'
+            { Wait-AutoErrorHandling -Listener $listener -TimeoutSec 8 } |
+                Should -Throw -Because 'detect-only policy degradation must not contact the agent'
+        }
+        finally { Stop-WtEventListener -Listener $listener }
+    }
+}
 
-            # The policy gate early-returns in the VtSequenceReceived handler before the autofix
-            # pipeline runs (TerminalPage.cpp:5172-5173), so the failing command never produces an
-            # autofix request. Deterministic and LLM-free. (Positive control: Feature.AutofixPane
-            # — the identical setup WITHOUT this policy DOES fire autofix, so a clean pass here
-            # means the policy suppressed it, not a dead pane: the pane already reached Connected
-            # in BeforeAll.)
-            { Wait-Autofix -Listener $listener -TimeoutSec 25 } |
-                Should -Throw -Because 'AllowAutoFix=Blocked must prevent autofix from asking the agent for a fix'
+Describe 'Feature §1 agent Group Policy Legacy AllowAutoFix fallback compatibility' -Tag 'Feature' -Skip:(-not ($script:Ready -and $script:PolicyControllable)) {
+    BeforeAll {
+        Import-Module (Join-Path $PSScriptRoot '..\ItE2E\ItE2E.psd1') -Force
+        $script:policyState = Set-WtAgentPolicy -Policy @{ AllowAutoErrorHandling = $null; AllowAutoFix = 'Blocked' }
+        $script:app = Start-Terminal -Package (Get-ItTestPackage) -PassFre $true -Settings @{
+            acpAgent = 'copilot'
+            autoErrorHandling = 'detectErrorsAndSendToAgentForFixesAutomatically'
+        }
+        Open-AgentPane -App $script:app | Out-Null
+        Wait-AgentReady -App $script:app -TimeoutSec 60 | Should -BeTrue
+    }
+    AfterAll {
+        if ($script:app) { Stop-Terminal -App $script:app }
+        if ($script:policyState) { Restore-WtAgentPolicy -State $script:policyState }
+    }
+
+    It 'Legacy AllowAutoFix=Blocked remains a fallback and degrades to detect-only' {
+        $sid = (Get-ActivePane -App $script:app).session_id
+        $listener = Start-WtEventListener -App $script:app
+        try {
+            Invoke-FailingCommand -App $script:app -SessionId $sid -Command "ggit$(Get-Random) status" | Out-Null
+            { Wait-AutoErrorHandlingDetection -Listener $listener -PaneId $sid -TimeoutSec 20 } | Should -Not -Throw
+            { Wait-AutoErrorHandling -Listener $listener -TimeoutSec 8 } |
+                Should -Throw -Because 'the Legacy fallback must retain the canonical detect-only policy behavior'
+        }
+        finally { Stop-WtEventListener -Listener $listener }
+    }
+}
+
+Describe 'Feature §1 agent Group Policy canonical precedence over Legacy AllowAutoFix' -Tag 'Feature' -Skip:(-not ($script:Ready -and $script:PolicyControllable)) {
+    BeforeAll {
+        Import-Module (Join-Path $PSScriptRoot '..\ItE2E\ItE2E.psd1') -Force
+        $script:policyState = Set-WtAgentPolicy -Policy @{ AllowAutoErrorHandling = 'Allowed'; AllowAutoFix = 'Blocked' }
+        $script:app = Start-Terminal -Package (Get-ItTestPackage) -PassFre $true -Settings @{
+            acpAgent = 'copilot'
+            autoErrorHandling = 'detectErrorsAndSendToAgentForFixesAutomatically'
+        }
+        Open-AgentPane -App $script:app | Out-Null
+        Wait-AgentReady -App $script:app -TimeoutSec 60 | Should -BeTrue
+    }
+    AfterAll {
+        if ($script:app) { Stop-Terminal -App $script:app }
+        if ($script:policyState) { Restore-WtAgentPolicy -State $script:policyState }
+    }
+
+    It 'AllowAutoErrorHandling takes precedence over Legacy AllowAutoFix' {
+        $sid = (Get-ActivePane -App $script:app).session_id
+        $listener = Start-WtEventListener -App $script:app
+        try {
+            Invoke-FailingCommand -App $script:app -SessionId $sid -Command "ggit$(Get-Random) status" | Out-Null
+            { Wait-AutoErrorHandling -Listener $listener -TimeoutSec 45 } |
+                Should -Not -Throw -Because 'the canonical Allowed value must outrank the Legacy Blocked fallback'
         }
         finally { Stop-WtEventListener -Listener $listener }
     }

@@ -163,26 +163,19 @@
     <comment>In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_AgentDescription.Text" xml:space="preserve">
-    <value>ഏജന്റ് പെയ്നിൽ ഉപയോഗിക്കുന്നതും ACP പിന്തുണയ്ക്കുന്നതുമായ ഏജന്റിനെ തിരഞ്ഞെടുക്കുക.</value>
-    <comment>{Locked="ACP"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+    <value>നിങ്ങളുടെ ഏജന്റ് പെയ്നിനായി ഏജന്റിനെ തിരഞ്ഞെടുക്കുക. ACP-യെക്കുറിച്ച് കൂടുതലറിയുക.</value>
+    <comment>{Locked="ACP"} Here "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a proxy, human agent, or representative. ACP is displayed as a hyperlink.</comment>
   </data>
   <data name="FreOverlay_AgentInstallHint.Text" xml:space="preserve">
-    <value>ഈ ഏജന്റിന് Node.js-ഉം NPX-ഉം ആവശ്യമാണ്, ഇതിനകം ഇല്ലെങ്കിൽ സ്വയമേവ ഇൻസ്റ്റാൾ ചെയ്യപ്പെടും.</value>
-    <comment>{Locked="Node.js","NPX"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
-  </data>
-  <data name="FreOverlay_AutoErrorLabel.Text" xml:space="preserve">
-    <value>സ്വയമേവയുള്ള പിശക് നിർദ്ദേശം</value>
-  </data>
-  <data name="FreOverlay_AutoErrorDescription.Text" xml:space="preserve">
-    <value>പരിഹാരങ്ങൾ സ്വയമേവ നിർദ്ദേശിക്കാൻ നിങ്ങളുടെ ഏജന്റിലേക്ക് പിശകുകൾ അയയ്ക്കാൻ Intelligent Terminal-നെ അനുവദിക്കുക.</value>
-    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
+    <value>നിങ്ങളുടെ മെഷീനിൽ Node.js റൺടൈം ഇതിനകം ഇല്ലെങ്കിൽ അത് ഇൻസ്റ്റാൾ ചെയ്യുന്നു.</value>
+    <comment>{Locked="Node.js"} This hint appears when selecting an AI agent whose Node.js runtime may need to be installed automatically.</comment>
   </data>
   <data name="FreOverlay_SessionLabel.Text" xml:space="preserve">
     <value>സെഷൻ മാനേജ്മെന്റ്</value>
   </data>
   <data name="FreOverlay_SessionDescription.Text" xml:space="preserve">
-    <value>ഇന്റലിജന്റ് ടെർമിനൽ-ന് നിങ്ങളുടെ പ്രവർത്തിക്കുന്ന അല്ലെങ്കിൽ സജീവ ഏജന്റുമാരുടെ സ്ഥിതി ട്രാക്ക് ചെയ്യാൻ അനുമതി നൽകുക.</value>
-    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name. In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+    <value>നിങ്ങളുടെ പ്രവർത്തിക്കുന്നതും കഴിഞ്ഞതുമായ ഏജന്റ് സെഷനുകൾ ട്രാക്ക് ചെയ്യുക.</value>
+    <comment>Description for session tracking in the first-run wizard. In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_SessionHint.Text" xml:space="preserve">
     <value>ഇത് പ്രവർത്തനക്ഷമമാക്കുന്നത് നിങ്ങളുടെ ഏജന്റുകളിലുടനീളം സെഷനുകൾ ട്രാക്ക് ചെയ്യാൻ ഇന്റഗ്രേഷൻ hooks ഇൻസ്റ്റാൾ ചെയ്യും.</value>
@@ -259,11 +252,12 @@
     <comment>{Locked="hooks"}</comment>
   </data>
   <data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
-    <value>ഷെൽ ഇന്റഗ്രേഷൻ ഇൻസ്റ്റാൾ ചെയ്യുന്നതിൽ പരാജയപ്പെട്ടു. പിശക് കണ്ടെത്തൽ ഓഫ് ചെയ്തിരിക്കുന്നു. നിങ്ങൾക്ക് ഇത് വീണ്ടും പ്രവർത്തനക്ഷമമാക്കി വീണ്ടും ശ്രമിക്കാം, അല്ലെങ്കിൽ ഇത് ഇല്ലാതെ തുടരാൻ സേവ് ചെയ്യാം.</value>
+    <value>ഷെൽ ഇന്റഗ്രേഷൻ ഇൻസ്റ്റാൾ ചെയ്യുന്നതിൽ പരാജയപ്പെട്ടു. Auto error handling ഓഫ് ചെയ്തിരിക്കുന്നു. നിങ്ങൾക്ക് ഇത് വീണ്ടും പ്രവർത്തനക്ഷമമാക്കി വീണ്ടും ശ്രമിക്കാം, അല്ലെങ്കിൽ ഇത് ഇല്ലാതെ തുടരാൻ സേവ് ചെയ്യാം.</value>
+    <comment>{Locked="Auto error handling"} FRE setup error. Auto error handling was turned off because shell integration could not be installed.</comment>
   </data>
   <data name="FreOverlay_InstallErrorShellIntegrationExecutionPolicy" xml:space="preserve">
-    <value>PowerShell എക്സിക്യൂഷൻ പോളിസി സ്ക്രിപ്റ്റുകളെ തടയുന്നു. പിശക് കണ്ടെത്തൽ ഓഫ് ചെയ്തു.</value>
-    <comment>{Locked="PowerShell"}</comment>
+    <value>PowerShell എക്സിക്യൂഷൻ പോളിസി സ്ക്രിപ്റ്റുകളെ തടയുന്നു. Auto error handling ഓഫ് ചെയ്തിരിക്കുന്നു.</value>
+    <comment>{Locked="PowerShell","Auto error handling"} FRE setup error. PowerShell execution policy blocked scripts, so Auto error handling was turned off.</comment>
   </data>
   <data name="FreOverlay_InstallErrorWingetMissing" xml:space="preserve">
     <value>Windows Package Manager (winget) ഇൻസ്റ്റാൾ ചെയ്തിട്ടില്ല അല്ലെങ്കിൽ ലഭ്യമല്ല. ആദ്യം അത് ഇൻസ്റ്റാൾ ചെയ്യുക, തുടർന്ന് വീണ്ടും ശ്രമിക്കുക.</value>
@@ -292,10 +286,6 @@
     <value>പിശക് കണ്ടെത്തി: വിശകലനം ചെയ്യുന്നു…</value>
     <comment>Short status label shown next to the diagnostics button while an automatic error analysis is in progress.</comment>
   </data>
-  <data name="Diagnostics_ErrorArmedLabelFormat" xml:space="preserve">
-    <value>പിശക് കണ്ടെത്തി: പരിഹരിക്കാൻ {0}</value>
-    <comment>Short status label shown next to the diagnostics button when a fix is ready. {0} is replaced with the keyboard shortcut.</comment>
-  </data>
   <data name="Diagnostics_ErrorDetectedLabelFormat" xml:space="preserve">
     <value>നിർദ്ദേശിച്ച പരിഹാരത്തിനായി ഏജന്റിനോട് ആവശ്യപ്പെടാൻ {0} ക്ലിക്ക് ചെയ്യുകയോ അമർത്തുകയോ ചെയ്യുക</value>
     <comment>Short status label shown next to the diagnostics button when an error is detected and a fix can be requested. {0} is replaced with the keyboard shortcut.</comment>
@@ -311,26 +301,6 @@
   <data name="Diagnostics_ErrorDetectedTooltipFormat" xml:space="preserve">
     <value>പിശക് കണ്ടെത്തി. AI ഏജന്റിനെ പ്രശ്നം നിർണയിച്ച് പരിഹാരം നിർദ്ദേശിക്കാൻ ആവശ്യപ്പെടാൻ {0} ക്ലിക്കുചെയ്യുക അല്ലെങ്കിൽ അമർത്തുക.</value>
     <comment>Tooltip for the diagnostics button when an error is detected and a fix can be requested. {0} is replaced with the keyboard shortcut.</comment>
-  </data>
-  <data name="Diagnostics_FixReadyTooltipFormat" xml:space="preserve">
-    <value>പരിഹാരം തയ്യാറാണ് — പ്രയോഗിക്കാൻ {0}</value>
-    <comment>Tooltip for the diagnostics button when a fix is ready. {0} is replaced with the keyboard shortcut.</comment>
-  </data>
-  <data name="Diagnostics_FixReadyTooltipWithPreviewFormat" xml:space="preserve">
-    <value>പരിഹാരം തയ്യാറാണ് — പ്രയോഗിക്കാൻ {0}: {1}</value>
-    <comment>Tooltip for the diagnostics button when a fix is ready. {0} is replaced with the keyboard shortcut; {1} is a preview of the suggested command or fix.</comment>
-  </data>
-  <data name="Diagnostics_SuggestionReadyLabel" xml:space="preserve">
-    <value>നിർദ്ദേശം തയ്യാറാണ് — ഏജന്റ് പെയിൻ തുറക്കുക</value>
-    <comment>Short status label shown next to the diagnostics button when a suggestion is available in the agent pane.</comment>
-  </data>
-  <data name="Diagnostics_SuggestionTooltipIntro" xml:space="preserve">
-    <value>Auto-fix ഇത് നേരിട്ട് പരിഹരിക്കാൻ നിരസിച്ചു. </value>
-    <comment>First sentence of the diagnostics tooltip when automatic fix generation declines to apply a fix directly. Preserve the trailing space; additional guidance follows in the same tooltip.</comment>
-  </data>
-  <data name="Diagnostics_SuggestionTooltipInstruction" xml:space="preserve">
-    <value>ഏജന്റ് പെയിൻ തുറന്ന് പൂർണ്ണ നിർദ്ദേശം വായിക്കാൻ ഇവിടെ ക്ലിക്ക് ചെയ്യുക അല്ലെങ്കിൽ Ctrl+Shift+. അമർത്തുക.</value>
-    <comment>Second sentence of the diagnostics tooltip when a suggestion is available. {Locked="Ctrl+Shift+."}</comment>
   </data>
   <data name="Diagnostics_Tooltip" xml:space="preserve">
     <value>ഡയഗ്നോസ്റ്റിക്സ്</value>
@@ -352,20 +322,36 @@
     <value>Terminal Protocol</value>
     <comment>Title for the teaching tip that displays Terminal Protocol connection information. {Locked="Terminal Protocol"}</comment>
   </data>
-  <data name="FreOverlay_AutoDetectLabel.Text" xml:space="preserve">
-    <value>സ്വയമേവയുള്ള പിശക് കണ്ടെത്തൽ</value>
+  <data name="FreOverlay_AutoErrorHandlingLabel.Text" xml:space="preserve">
+    <value>യാന്ത്രിക പിശക് കൈകാര്യം ചെയ്യൽ</value>
+    <comment>Label for the Auto error handling dropdown in the first-run wizard.</comment>
   </data>
-  <data name="FreOverlay_AutoDetectDescription.Text" xml:space="preserve">
-    <value>നിങ്ങളുടെ ഷെല്ലിലേക്ക് പ്രവേശിക്കാനും പിശകുകൾ സ്വയമേവ കണ്ടെത്താനും Intelligent Terminal-നെ അനുവദിക്കുക.</value>
+  <data name="FreOverlay_AutoErrorHandlingDescription.Text" xml:space="preserve">
+    <value>ടെർമിനൽ പിശകുകൾ എങ്ങനെ കൈകാര്യം ചെയ്യണമെന്ന് തിരഞ്ഞെടുക്കുക.</value>
+    <comment>Description for the Auto error handling dropdown in the first-run wizard.</comment>
   </data>
   <data name="FreOverlay_ErrorHelpLink" xml:space="preserve">
     <value>ഇത് സ്വമേധയാ എങ്ങനെ പരിഹരിക്കാമെന്ന് അറിയുക</value>
     <comment>Hyperlink shown below an FRE setup error message. Opens step-by-step manual setup instructions in the browser.</comment>
-  </data>  <data name="FreOverlay_AutoDetectShellIntegrationHintPrefix" xml:space="preserve">
-    <value>ഇത് പ്രവർത്തനക്ഷമമാക്കുന്നത് കമാൻഡ് പരാജയങ്ങൾ കണ്ടെത്താൻ shell ഇന്റഗ്രേഷൻ ഇൻസ്റ്റാൾ ചെയ്യും. </value>
+  </data>  <data name="FreOverlay_AutoErrorHandlingShellIntegrationHintPrefix" xml:space="preserve">
+    <value>ഇത് പ്രവർത്തനക്ഷമമാക്കുന്നത് കമാൻഡ് പരാജയങ്ങൾ കണ്ടെത്താൻ shell ഇന്റഗ്രേഷൻ ഇൻസ്റ്റാൾ ചെയ്യും. PowerShell, bash, WSL bash എന്നിവയിൽ ലഭ്യമാണ്. </value>
+    <comment>{Locked="PowerShell","bash","WSL bash"} Hint shown under the Auto error handling dropdown in the first-run wizard. The trailing space is intentional — it separates this prefix from the inline FreOverlay_AutoErrorHandlingShellIntegrationHintLink hyperlink that follows.</comment>
   </data>
-  <data name="FreOverlay_AutoDetectShellIntegrationHintLink" xml:space="preserve">
-    <value>കൂടുതലറിയുക</value>
+  <data name="FreOverlay_AutoErrorHandlingShellIntegrationHintLink" xml:space="preserve">
+    <value>പിന്തുണയ്ക്കുന്ന എല്ലാ shell-കളും കാണുക</value>
+    <comment>Inline hyperlink text that follows FreOverlay_AutoErrorHandlingShellIntegrationHintPrefix and opens the documentation listing every shell that supports Auto error handling.</comment>
+  </data>
+  <data name="FreOverlay_AutoErrorHandling_Off" xml:space="preserve">
+    <value>ഓഫ്</value>
+    <comment>The first option in the Auto error handling dropdown. It disables automatic terminal error detection and fixes.</comment>
+  </data>
+  <data name="FreOverlay_AutoErrorHandling_DetectErrorsAutomatically" xml:space="preserve">
+    <value>പിശകുകൾ സ്വയമേവ കണ്ടെത്തുക</value>
+    <comment>The second option in the Auto error handling dropdown. It detects terminal errors automatically without sending them to an AI agent. Here "agent" means an AI intelligent agent, not a proxy or human agent.</comment>
+  </data>
+  <data name="FreOverlay_AutoErrorHandling_DetectErrorsAndSendToAgentForFixesAutomatically" xml:space="preserve">
+    <value>പിശകുകൾ കണ്ടെത്തി അവ സ്വയമേവ പരിഹരിക്കുന്നതിനായി AI ഏജൻ്റിന് അയയ്ക്കുക</value>
+    <comment>The third option in the Auto error handling dropdown. It detects terminal errors and sends them to an AI agent for automatic fixes. Here "agent" means an AI intelligent agent, not a proxy or human agent.</comment>
   </data>
   <data name="InitShellIntegrationExecutionPolicyErrorMessage" xml:space="preserve">
     <value>PowerShell എക്സിക്യൂഷൻ പോളിസി സ്ക്രിപ്റ്റുകളെ തടയുന്നു.</value>

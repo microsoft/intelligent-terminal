@@ -42,6 +42,7 @@ namespace SettingsModelUnitTests
         TEST_METHOD(KeybindingsWithoutVkey);
         TEST_METHOD(DefaultAgentKeybindings);
         TEST_METHOD(AgentActionsParse);
+        TEST_METHOD(LegacyAutoErrorHandlingActionIdMigrates);
     };
 
     void KeyBindingsTests::KeyChords()
@@ -787,13 +788,18 @@ namespace SettingsModelUnitTests
             const auto chord{ KeyChordSerialization::FromString(winrt::hstring{ keys }) };
             VERIFY_IS_NOT_NULL(chord, NoThrowString().Format(L"chord must parse: %.*s", static_cast<int>(keys.size()), keys.data()));
             const auto& cmd{ actionMap.GetActionByKeyChord(chord) };
-            VERIFY_IS_NOT_NULL(cmd, NoThrowString().Format(L"a default command must be bound to %.*s", static_cast<int>(keys.size()), keys.data()));
+            if (!cmd)
+            {
+                VERIFY_IS_NOT_NULL(cmd, NoThrowString().Format(L"a default command must be bound to %.*s", static_cast<int>(keys.size()), keys.data()));
+                return;
+            }
             VERIFY_ARE_EQUAL(winrt::hstring{ expectedId }, cmd.ID());
         };
 
         verifyBinding(L"ctrl+shift+period", L"Terminal.OpenAgentPane");
         verifyBinding(L"ctrl+shift+i", L"Terminal.FocusAgentPane");
         verifyBinding(L"ctrl+shift+/", L"Terminal.OpenAgentSessions");
+        verifyBinding(L"ctrl+alt+period", L"Terminal.TriggerAutoErrorHandling");
         verifyBinding(L"alt+shift+b", L"Terminal.OpenBackgroundAgent");
         verifyBinding(L"alt+shift+/", L"Terminal.OpenAgentDelegation");
     }
@@ -811,13 +817,15 @@ namespace SettingsModelUnitTests
             { "keys": ["ctrl+b"], "id": "Test.FocusAgentPane",      "command": "focusAgentPane" },
             { "keys": ["ctrl+d"], "id": "Test.OpenAgentSessions",   "command": "openAgentSessions" },
             { "keys": ["ctrl+e"], "id": "Test.OpenBackgroundAgent", "command": "openBackgroundAgent" },
+            { "keys": ["ctrl+f"], "id": "Test.AutoErrorHandling",  "command": "triggerAutoErrorHandling" },
+            { "keys": ["ctrl+h"], "id": "Test.LegacyAutofix",      "command": "triggerAutofix" },
             { "keys": ["ctrl+g"], "id": "Test.AgentDelegation",     "command": { "action": "commandPalette", "launchMode": "agentDelegation" } }
         ])" };
 
         const auto json = VerifyParseSucceeded(bindingsString);
         auto actionMap = winrt::make_self<implementation::ActionMap>();
         actionMap->LayerJson(json, OriginTag::None);
-        VERIFY_ARE_EQUAL(5u, actionMap->_KeyMap.size());
+        VERIFY_ARE_EQUAL(7u, actionMap->_KeyMap.size());
 
         // Look up by stable action ID — this tests the command-keyword → action
         // parse directly, without depending on KeyChord hashing internals.
@@ -831,6 +839,8 @@ namespace SettingsModelUnitTests
         VERIFY_ARE_EQUAL(ShortcutAction::FocusAgentPane, actionFor(L"Test.FocusAgentPane").Action());
         VERIFY_ARE_EQUAL(ShortcutAction::OpenAgentSessions, actionFor(L"Test.OpenAgentSessions").Action());
         VERIFY_ARE_EQUAL(ShortcutAction::OpenBackgroundAgent, actionFor(L"Test.OpenBackgroundAgent").Action());
+        VERIFY_ARE_EQUAL(ShortcutAction::TriggerAutoErrorHandling, actionFor(L"Test.AutoErrorHandling").Action());
+        VERIFY_ARE_EQUAL(ShortcutAction::TriggerAutoErrorHandling, actionFor(L"Test.LegacyAutofix").Action());
 
         {
             auto actionAndArgs = actionFor(L"Test.AgentDelegation");
@@ -838,6 +848,21 @@ namespace SettingsModelUnitTests
             const auto& realArgs = actionAndArgs.Args().as<ToggleCommandPaletteArgs>();
             VERIFY_ARE_EQUAL(realArgs.LaunchMode(), CommandPaletteLaunchMode::AgentDelegation);
         }
+    }
+
+    void KeyBindingsTests::LegacyAutoErrorHandlingActionIdMigrates()
+    {
+        const auto actionMap = winrt::make_self<implementation::ActionMap>();
+        actionMap->LayerJson(
+            VerifyParseSucceeded(R"([ { "keys": "ctrl+alt+a", "id": "Terminal.TriggerAutofix" } ])"),
+            OriginTag::User);
+
+        const auto chord{ KeyChordSerialization::FromString(L"ctrl+alt+a") };
+        VERIFY_ARE_EQUAL(1u, actionMap->_KeyMap.size());
+        VERIFY_ARE_EQUAL(
+            winrt::hstring{ L"Terminal.TriggerAutoErrorHandling" },
+            actionMap->_KeyMap.at(chord));
+        VERIFY_IS_TRUE(actionMap->FixupsAppliedDuringLoad());
     }
 
     void KeyBindingsTests::LayerScancodeKeybindings()

@@ -256,7 +256,7 @@ namespace winrt::TerminalApp::implementation
         Windows::Foundation::IAsyncOperation<bool> CloseProtocolPane(winrt::guid sessionId);
         Windows::Foundation::IAsyncOperation<bool> SendProtocolInput(winrt::guid sessionId, hstring text);
         Windows::Foundation::IAsyncOperation<bool> FocusProtocolPane(winrt::guid sessionId);
-        void OnAutofixStateChanged(hstring eventJson);
+        void OnAutoErrorHandlingStateChanged(hstring eventJson);
         void OnAgentStatusChanged(hstring eventJson);
         void OnAgentSwitchRequested(hstring eventJson);
         void OnCloseAgentPaneRequested(hstring eventJson);
@@ -491,7 +491,7 @@ namespace winrt::TerminalApp::implementation
         // running wta-helper(s) so they update in place. ACP model binding
         // changes are reconciled separately so unready helpers can be
         // recreated before the settings snapshot advances. This remains the
-        // unified dispatch point for the autofix gate, delegate agent/model,
+        // unified dispatch point for auto-error-handling, delegate agent/model,
         // and credential-free model catalogs.
         // `delegateAgent` holds the resolved effective value (custom-command
         // ids already expanded).
@@ -501,20 +501,20 @@ namespace winrt::TerminalApp::implementation
             std::wstring delegateModel;
             std::wstring customModelSelection;
             std::vector<::Microsoft::Terminal::CustomModels::CatalogEntry> customModels;
-            bool autofixEnabled{ false };
+            bool autoErrorHandlingWithAgentEnabled{ false };
         };
         AgentRuntimeConfigSnapshot _lastAgentRuntimeConfig{};
         bool _agentRuntimeConfigInitialized{ false };
-        // Snapshot of EffectiveAutoErrorDetectionEnabled at last
+        // Snapshot of whether EffectiveAutoErrorHandling detects errors at last
         // SetSettings call. Drives the silent shell-integration reconcile
         // (Install when ON, Uninstall when OFF) on first-load and on
         // every change — handles both Settings-UI toggle-off (which
         // previously left our $PROFILE block behind) and roaming
         // settings.json arriving on a fresh machine (which previously
         // never ran the install).
-        bool _lastAutoErrorDetectionEnabled{ false };
-        bool _lastAutoErrorDetectionHasExplicit{ false };
-        bool _autoErrorDetectionSnapshotInitialized{ false };
+        bool _lastAutoErrorHandlingDetectsErrors{ false };
+        bool _lastAutoErrorHandlingHasExplicit{ false };
+        bool _autoErrorHandlingSnapshotInitialized{ false };
         // Cross-thread "latest desired state" for the shell-integration
         // reconcile. SetSettings (UI thread) stores the current value
         // *before* spawning the fire-and-forget reconcile; the coroutine
@@ -675,7 +675,8 @@ namespace winrt::TerminalApp::implementation
             const Json::Value& params);
         void _FlushPendingAgentSettingsReconciliation();
         // Build the per-process flag/value pairs that the wta-master
-        // inherits at spawn time (--agent, --agent-id, --no-autofix,
+        // inherits at spawn time (--agent, --agent-id,
+        // --no-auto-error-handling-with-agent,
         // --language, --acp-model, --delegate-agent, --delegate-model).
         // Single source of truth shared by `_AutoCreateHiddenAgentPaneShared`
         // (first acquire) and `_ReconcileAgentSettings` (settings-change-driven
@@ -706,7 +707,7 @@ namespace winrt::TerminalApp::implementation
         // (`Tab::StashAgentPane`) so the user sees only the terminal pane.
         // Focus stays on the original terminal; no telemetry fires (the
         // pane wasn't *opened*, just pre-warmed). This is what makes
-        // autofix work without the user ever opening the agent pane.
+        // auto-error-handling work without the user ever opening the agent pane.
         bool _AutoCreateHiddenAgentPaneShared(winrt::com_ptr<Tab> tab,
                                               bool intoSessionsView = false,
                                               bool autoStash = false,

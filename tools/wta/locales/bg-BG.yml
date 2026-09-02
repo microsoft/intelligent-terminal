@@ -46,7 +46,7 @@ chat.plan_header: "План:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}
 chat.plan_marker_pending: "[ ]"  # {Locked}
-chat.autofix_prompt_label: "Автоматично диагностициран скорошен неуспех на команда"
+chat.auto_error_handling_prompt_label: "Автоматично диагностициран скорошен неуспех на команда"
 chat.turn_canceled: "(отменено)"
 chat.turn_executed: "→ изпълнено: %{title}"
 # Persistent tool-category labels shown after a status marker and before a subject.
@@ -80,7 +80,7 @@ commands.help_close_hint: "  Esc        Затваряне на тази пом�
 commands.help.summary: "Показване на този списък с команди"
 commands.clear.summary: "Изчистване на хронологията на чата (сесията се запазва)"
 commands.new.summary: "Стартиране на нова сесия ACP (изтрива хронологията)"  # {Locked="ACP"}
-commands.fix.summary: "Diagnose the active terminal and suggest a fix (/fix <hint>)"  # {Locked="/fix","<hint>"}
+commands.fix.summary: "Диагностицирайте активния терминал и предложете корекция (/fix <hint>)"  # {Locked="/fix","<hint>"}
 commands.restart.summary: "Рестартирай агента"
 commands.stop.summary: "Отмяна на текущата подкана"
 commands.sessions.summary: "Отваряне на избора на предишни сесии (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}

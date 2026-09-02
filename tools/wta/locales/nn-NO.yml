@@ -46,7 +46,7 @@ chat.plan_header: "Plan:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}
 chat.plan_marker_pending: "[ ]"  # {Locked}
-chat.autofix_prompt_label: "Nyleg kommandofeil diagnostisert automatisk"
+chat.auto_error_handling_prompt_label: "Nyleg kommandofeil diagnostisert automatisk"
 chat.turn_canceled: "(avbroten)"
 chat.turn_executed: "→ utført: %{title}"
 # Persistent tool-category labels shown after a status marker and before a subject.
@@ -205,7 +205,7 @@ time.days_other: "%{count} dagar sidan"
 commands.help.summary: "Vis denne kommandolista"
 commands.clear.summary: "Tøm rulleloggen for chatten (beheld økta)"
 commands.new.summary: "Start ei ny ACP-økt (forkastar historikk)"  # {Locked="ACP"}
-commands.fix.summary: "Diagnostiser den aktive terminalen og føreslå ei løysing (/fix <hint>)"  # {Locked="/fix","<hint>"}
+commands.fix.summary: "Diagnostiser den aktive terminalen og legg fram eit løysingsforslag (/fix <hint>)"  # {Locked="/fix","<hint>"}
 commands.restart.summary: "Start agenten på nytt"
 commands.stop.summary: "Avbryt den pågåande førespurnaden"
 commands.sessions.summary: "Opne veljaren for historiske økter (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}

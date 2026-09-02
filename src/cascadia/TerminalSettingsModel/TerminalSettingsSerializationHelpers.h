@@ -107,6 +107,15 @@ JSON_ENUM_MAPPER(::winrt::Microsoft::Terminal::Settings::Model::ConfirmOnClose)
     }
 };
 
+JSON_ENUM_MAPPER(::winrt::Microsoft::Terminal::Settings::Model::AutoErrorHandling)
+{
+    JSON_MAPPINGS(3) = {
+        pair_type{ "off", ValueType::Off },
+        pair_type{ "detectErrorsAutomatically", ValueType::DetectErrorsAutomatically },
+        pair_type{ "detectErrorsAndSendToAgentForFixesAutomatically", ValueType::DetectErrorsAndSendToAgentForFixesAutomatically },
+    };
+};
+
 JSON_FLAG_MAPPER(::winrt::Microsoft::Terminal::Settings::Model::BellStyle)
 {
     static constexpr std::array<pair_type, 7> mappings = {

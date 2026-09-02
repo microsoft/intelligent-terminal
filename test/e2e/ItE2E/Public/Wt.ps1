@@ -192,7 +192,7 @@ function Invoke-RunCommand {
 }
 
 function Send-WtEvent {
-    <# Inject an event to all listeners (e.g. autofix_state) via wtcli send-event. #>
+    <# Inject an event (e.g. auto_error_handling_state) via wtcli send-event. #>
     [CmdletBinding()]
     param(
         [Parameter(Mandatory, ValueFromPipeline)]$App,

@@ -46,7 +46,7 @@ chat.plan_header: "Plan:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}
 chat.plan_marker_pending: "[ ]"  # {Locked}
-chat.autofix_prompt_label: "Automatiskt diagnostiserat ett nyligen inträffat kommandofel"
+chat.auto_error_handling_prompt_label: "Automatiskt diagnostiserat ett nyligen inträffat kommandofel"
 chat.turn_canceled: "(avbruten)"
 chat.turn_executed: "→ utförd: %{title}"
 # Beständiga verktygskategorier som visas efter en statusmarkör och före ett ämne.
@@ -205,7 +205,7 @@ time.days_other: "%{count} dagar sedan"
 commands.help.summary: "Visa den här kommandolistan"
 commands.clear.summary: "Rensa chattens rullningshistorik (behåller sessionen)"
 commands.new.summary: "Starta en ny ACP-session (slänger historiken)"  # {Locked="ACP"}
-commands.fix.summary: "Diagnostisera den aktiva terminalen och föreslå en korrigering (/fix <hint>)"  # {Locked="/fix","<hint>"}
+commands.fix.summary: "Diagnostisera den aktiva terminalen och lägg fram ett korrigeringsförslag (/fix <hint>)"  # {Locked="/fix","<hint>"}
 commands.restart.summary: "Starta om agenten"
 commands.stop.summary: "Avbryt den pågående prompten"
 commands.sessions.summary: "Öppna väljaren för historiska sessioner (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}

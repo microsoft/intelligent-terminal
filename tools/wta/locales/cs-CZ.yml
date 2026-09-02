@@ -46,7 +46,7 @@ chat.plan_header: "Plán:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}
 chat.plan_marker_pending: "[ ]"  # {Locked}
-chat.autofix_prompt_label: "Automaticky diagnostikováno nedávné selhání příkazu"
+chat.auto_error_handling_prompt_label: "Automaticky diagnostikováno nedávné selhání příkazu"
 chat.turn_canceled: "(zrušeno)"
 chat.turn_executed: "→ provedeno: %{title}"
 # Persistent tool-category labels shown after a status marker and before a subject.
@@ -80,7 +80,7 @@ commands.help_close_hint: "  Esc        Zavřít tuto nápovědu"  # {Locked="Es
 commands.help.summary: "Zobrazit tento seznam příkazů"
 commands.clear.summary: "Vymazat historii chatu (zachová relaci)"
 commands.new.summary: "Spustit novou relaci ACP (zahodí historii)"  # {Locked="ACP"}
-commands.fix.summary: "Diagnostikovat aktivní terminál a navrhnout opravu (/fix <hint>)"  # {Locked="/fix","<hint>"}
+commands.fix.summary: "Diagnostikujte aktivní terminál a navrhněte opravu (/fix <hint>)"  # {Locked="/fix","<hint>"}
 commands.restart.summary: "Restartovat agenta"
 commands.stop.summary: "Zrušit probíhající výzvu"
 commands.sessions.summary: "Otevřít výběr historických relací (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}

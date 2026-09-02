@@ -154,9 +154,9 @@ namespace TerminalApp
         Windows.Foundation.IAsyncOperation<Boolean> FocusProtocolPane(Guid sessionId);
         event Windows.Foundation.TypedEventHandler<Object, String> ProtocolVtSequenceReceived;
 
-        // Inbound event from WTA carrying {method:"autofix_state",params:{state,pane_id,...}}
+        // Inbound event from WTA carrying the current auto-error-handling state.
         // Called by the COM server on the UI thread after receiving a SendEvent from WTA.
-        void OnAutofixStateChanged(String eventJson);
+        void OnAutoErrorHandlingStateChanged(String eventJson);
 
         // Inbound event from WTA carrying {method:"agent_status",params:{name,version,model,state}}.
         // Called by the COM server on the UI thread; the page forwards the values

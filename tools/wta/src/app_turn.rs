@@ -19,7 +19,7 @@ enum DirectProposalEvaluation {
 //
 // Source of truth for the per-turn lifecycle (see
 // `doc/specs/turn-state-refactor.md`). Every event handler — chunk arrival,
-// end-of-turn, Enter on a card, Esc / Ctrl+C cancel, autofix trigger — goes
+// end-of-turn, Enter on a card, Esc / Ctrl+C cancel, Auto error handling trigger — goes
 // through one of these methods.
 // ─────────────────────────────────────────────────────────────────────────
 
@@ -37,7 +37,7 @@ impl App {
 
     /// Identical to `turn_submit_prompt` but takes the target tab's id
     /// directly, bypassing the `session_id → tab_id` lookup. Used by the
-    /// autofix path so a failure in a background tab installs the turn on
+    /// Auto error handling path so a failure in a background tab installs the turn on
     /// that tab even when its ACP session hasn't been created yet (the ACP
     /// layer lazy-creates one when the prompt is dispatched).
     pub fn turn_submit_prompt_for_tab(&mut self, tab_id: &str, prompt: SubmittedPrompt) {
@@ -46,12 +46,12 @@ impl App {
             prompt.submitted_at_unix_s,
             "prompt_received",
             &format!(
-                "autofix={} text_chars={}",
-                prompt.autofix.is_some(),
+                "auto_error_handling={} text_chars={}",
+                prompt.auto_error_handling.is_some(),
                 prompt.text.chars().count()
             ),
         );
-        let is_autofix = prompt.autofix.is_some();
+        let is_auto_error_handling = prompt.auto_error_handling.is_some();
         let user_text = prompt.text.clone();
         let tab = self.tab_mut(tab_id);
         // Per Decision #3, every Idle→Submitted transition explicitly clears
@@ -73,10 +73,10 @@ impl App {
         tab.rec_scroll.reset();
         tab.pending_terminal_action_proposal = None;
         tab.active_direct_proposal_id = None;
-        // Autofix prompts are synthesized by the system; they don't render
+        // Auto error handling prompts are synthesized by the system; they don't render
         // as a User bubble (the user already sees the error line in the
         // failing pane).
-        if !is_autofix {
+        if !is_auto_error_handling {
             tab.messages.push(ChatMessage::User(user_text));
         }
         tab.scroll_to_bottom();
@@ -98,7 +98,7 @@ impl App {
         // had pinned the chip onto that card's pane, release it now so the
         // chip falls back to source-of-agent while the new turn is in
         // flight. Note: this only matters for the new-turn case; the
-        // freshly-submitted autofix path overrides chip via the eventual
+        // freshly-submitted Auto error handling path overrides chip via the eventual
         // `turn_surface_*` callback once recommendations arrive.
         let owned_tab = tab_id.to_string();
         self.recompute_chip_override(&owned_tab);
@@ -108,17 +108,17 @@ impl App {
     /// Observe a streamed chunk. Lifecycle state records only whether output
     /// started; visible text appends directly to the ordered transcript.
     pub fn turn_observe_chunk(&mut self, session_id: &str, kind: ChunkKind, text: &str) -> bool {
-        // Stale-autofix check: if the chunk belongs to an autofix turn whose
+        // Stale Auto error handling check: if the chunk belongs to an Auto error handling turn whose
         // generation no longer matches the tab's counter, drop it.
         let tab = self.session_tab_mut(session_id);
-        let current_gen = tab.autofix.generation;
-        if let Some(gen) = tab.turn.autofix_generation() {
+        let current_gen = tab.auto_error_handling.generation;
+        if let Some(gen) = tab.turn.auto_error_handling_generation() {
             if gen != current_gen {
                 tracing::debug!(
-                    target: "autofix",
+                    target: "auto_error_handling",
                     inflight_gen = gen,
                     current_gen,
-                    "dropping stale autofix chunk",
+                    "dropping stale Auto error handling chunk",
                 );
                 return false;
             }
@@ -228,12 +228,17 @@ impl App {
             );
         }
 
-        let is_autofix = self.session_tab(session_id).turn.is_autofix();
-        if is_autofix {
-            let turn_generation = self.session_tab(session_id).turn.autofix_generation();
-            let current_generation = self.session_tab(session_id).autofix.generation;
+        let is_auto_error_handling = self.session_tab(session_id).turn.is_auto_error_handling();
+        if is_auto_error_handling {
+            let turn_generation = self
+                .session_tab(session_id)
+                .turn
+                .auto_error_handling_generation();
+            let current_generation = self.session_tab(session_id).auto_error_handling.generation;
             if turn_generation != Some(current_generation) {
-                return DirectProposalEvaluation::Stale("autofix turn was superseded".to_string());
+                return DirectProposalEvaluation::Stale(
+                    "Auto error handling turn was superseded".to_string(),
+                );
             }
         }
 
@@ -242,7 +247,7 @@ impl App {
                 parse_proposal_payload(payload.as_bytes())
             }
             crate::agent_tools::action_proposal::pipe::ProposalPayloadSource::Mcp(tool) => {
-                parse_mcp_action_payload(tool, payload.as_bytes(), is_autofix)
+                parse_mcp_action_payload(tool, payload.as_bytes(), is_auto_error_handling)
             }
         };
         let wire = match wire {
@@ -256,7 +261,7 @@ impl App {
             .and_then(|guard| guard.first().map(|runtime| runtime.id.clone()));
         let recommendations = match build_recommendation_set(
             &wire,
-            is_autofix,
+            is_auto_error_handling,
             configured_delegate_id.as_deref(),
             active_target,
             self.pane_id.as_deref(),
@@ -270,7 +275,7 @@ impl App {
             proposal_id: proposal_id.to_string(),
             session_id: session_id.to_string(),
             prompt_id,
-            is_autofix,
+            is_auto_error_handling,
             recommendations,
         });
         DirectProposalEvaluation::Presented
@@ -356,7 +361,7 @@ impl App {
                 if prompt.id == pending.prompt_id => {}
             _ => return false,
         }
-        if pending.is_autofix {
+        if pending.is_auto_error_handling {
             self.turn_surface_fix(
                 &pending.session_id,
                 pending.recommendations,
@@ -395,20 +400,24 @@ impl App {
     /// Close the in-flight turn on `AgentMessageEnd`. Dispatches across
     /// four termination paths:
     ///
-    /// 1. Stale-autofix discard (newer trigger or Esc cancelled this turn).
+    /// 1. Stale Auto error handling discard (newer trigger or Esc cancelled this turn).
     /// 2. A direct proposal already surfaced — release the UI gate.
     /// 3. `Submitted` with no chunks — model returned nothing.
     /// 4. `Streaming` with a buffer — commit it as assistant text.
     pub fn turn_close(&mut self, session_id: &str) {
-        // (1) Stale-autofix discard.
-        let current_gen = self.session_tab(session_id).autofix.generation;
-        if let Some(gen) = self.session_tab(session_id).turn.autofix_generation() {
+        // (1) Stale Auto error handling discard.
+        let current_gen = self.session_tab(session_id).auto_error_handling.generation;
+        if let Some(gen) = self
+            .session_tab(session_id)
+            .turn
+            .auto_error_handling_generation()
+        {
             if gen != current_gen {
                 tracing::info!(
-                    target: "autofix",
+                    target: "auto_error_handling",
                     inflight_gen = gen,
                     current_gen,
-                    "discarding stale autofix turn at close",
+                    "discarding stale Auto error handling turn at close",
                 );
                 self.turn_clear_agent_activity(session_id);
                 let tab = self.session_tab_mut(session_id);
@@ -472,10 +481,10 @@ impl App {
             return;
         }
 
-        // (3) Submitted, no chunks. For autofix this would leave the bar
+        // (3) Submitted, no chunks. For Auto error handling this would leave the bar
         //     stuck in Pending; clear it explicitly.
-        let is_autofix = match &self.session_tab(session_id).turn {
-            TurnState::Streaming { prompt } => prompt.autofix.is_some(),
+        let is_auto_error_handling = match &self.session_tab(session_id).turn {
+            TurnState::Streaming { prompt } => prompt.auto_error_handling.is_some(),
             TurnState::Submitted(_) => {
                 self.turn_close_no_chunks(session_id);
                 return;
@@ -486,8 +495,8 @@ impl App {
 
         // (4) Typed action cards arrive only through the direct proposal
         // channel. Streamed assistant content is always prose.
-        if is_autofix {
-            self.turn_close_finalize_autofix_text(session_id);
+        if is_auto_error_handling {
+            self.turn_close_finalize_auto_error_handling_text(session_id);
         } else {
             self.turn_close_finalize_chat(session_id);
         }
@@ -495,16 +504,16 @@ impl App {
     }
 
     /// Path (3): close a turn that received `AgentMessageEnd` with no
-    /// streamed content. Emits `autofix_state_cleared` if it was an
-    /// autofix turn so the bottom bar doesn't stick in Pending.
+    /// streamed content. Emits `auto_error_handling_state_cleared` if it was an
+    /// Auto error handling turn so the bottom bar doesn't stick in Pending.
     fn turn_close_no_chunks(&mut self, session_id: &str) {
         let target_tab = self.tab_for_session(session_id);
         let tab = self.session_tab_mut(session_id);
         let prompt = tab.turn.prompt().cloned().expect("prompt set");
         // Empty `target_pane_id` (manual `/fix`) is not a real pane — filter
         // it out so an empty-response turn doesn't emit a bottom-bar event.
-        let autofix_pane = prompt
-            .autofix
+        let auto_error_handling_pane = prompt
+            .auto_error_handling
             .as_ref()
             .and(prompt.context.target_pane_id().map(str::to_string));
         tab.turn = TurnState::Surfaced {
@@ -512,42 +521,46 @@ impl App {
             outcome: TurnOutcome::Empty,
             end_pending: true,
         };
-        if autofix_pane.is_some() {
-            self.emit_autofix_state_cleared(&target_tab);
-            let autofix = &mut self.session_tab_mut(session_id).autofix;
-            autofix.pane_id = None;
-            autofix.armed_at = None;
+        if auto_error_handling_pane.is_some() {
+            self.emit_auto_error_handling_state_cleared(&target_tab);
+            let auto_error_handling = &mut self.session_tab_mut(session_id).auto_error_handling;
+            auto_error_handling.pane_id = None;
+            auto_error_handling.started_at = None;
         }
         self.turn_release_end_pending(session_id);
         self.turn_clear_agent_activity(session_id);
     }
 
-    fn turn_close_finalize_autofix_text(&mut self, session_id: &str) {
+    fn turn_close_finalize_auto_error_handling_text(&mut self, session_id: &str) {
         if !self
             .session_tab(session_id)
             .active_agent_text()
             .trim()
             .is_empty()
         {
-            self.turn_surface_explain(session_id, "autofix_text");
+            self.turn_surface_explain(session_id, "auto_error_handling_text");
             self.turn_release_end_pending(session_id);
             return;
         }
 
         let target_tab = self.tab_for_session(session_id);
-        let pane_id = self.session_tab(session_id).autofix.pane_id.clone();
+        let pane_id = self
+            .session_tab(session_id)
+            .auto_error_handling
+            .pane_id
+            .clone();
         if pane_id.is_some() {
-            self.emit_autofix_state_cleared(&target_tab);
+            self.emit_auto_error_handling_state_cleared(&target_tab);
         }
-        let autofix = &mut self.session_tab_mut(session_id).autofix;
-        autofix.pane_id = None;
-        autofix.armed_at = None;
+        let auto_error_handling = &mut self.session_tab_mut(session_id).auto_error_handling;
+        auto_error_handling.pane_id = None;
+        auto_error_handling.started_at = None;
         let tab = self.session_tab_mut(session_id);
         let prompt = tab.turn.prompt().cloned().expect("prompt set");
         let details = tab.take_current_turn_details();
         if !details.is_empty() {
             tab.completed_turns.push(CompletedTurn {
-                prompt: t!("chat.autofix_prompt_label").into_owned(),
+                prompt: t!("chat.auto_error_handling_prompt_label").into_owned(),
                 details,
                 expanded: true,
                 trailing_marker: None,
@@ -598,8 +611,8 @@ impl App {
     ) {
         let tab = self.session_tab_mut(session_id);
         let prompt = tab.turn.prompt().cloned().expect("prompt set");
-        let prompt_label = if prompt.autofix.is_some() {
-            t!("chat.autofix_prompt_label").into_owned()
+        let prompt_label = if prompt.auto_error_handling.is_some() {
+            t!("chat.auto_error_handling_prompt_label").into_owned()
         } else {
             prompt.text
         };
@@ -709,14 +722,14 @@ impl App {
             .session_tab(session_id)
             .turn
             .prompt()
-            .and_then(|p| p.autofix.as_ref())
+            .and_then(|p| p.auto_error_handling.as_ref())
             .is_some()
         {
-            self.emit_autofix_state_cleared(&target_tab);
+            self.emit_auto_error_handling_state_cleared(&target_tab);
         }
-        let autofix = &mut self.session_tab_mut(session_id).autofix;
-        autofix.pane_id = None;
-        autofix.armed_at = None;
+        let auto_error_handling = &mut self.session_tab_mut(session_id).auto_error_handling;
+        auto_error_handling.pane_id = None;
+        auto_error_handling.started_at = None;
         let tab = self.session_tab_mut(session_id);
         let TurnState::Surfaced {
             prompt,
@@ -759,7 +772,7 @@ impl App {
     }
 
     /// User pressed Esc — cancel the in-flight turn. Bumps
-    /// `autofix_generation` so any chunks that arrive after this point are
+    /// `auto_error_handling_generation` so any chunks that arrive after this point are
     /// dropped by the stale-check in `turn_observe_chunk`.
     pub fn turn_cancel(&mut self, session_id: &str) {
         let direct_proposal_id = self
@@ -769,22 +782,22 @@ impl App {
         let target_tab = self.tab_for_session(session_id);
         let pane_id = {
             let tab = self.session_tab_mut(session_id);
-            tab.autofix.generation = tab.autofix.generation.wrapping_add(1);
+            tab.auto_error_handling.generation = tab.auto_error_handling.generation.wrapping_add(1);
             tab.turn
                 .prompt()
                 .and_then(|prompt| {
                     prompt
-                        .autofix
+                        .auto_error_handling
                         .as_ref()
                         .and(prompt.context.target_pane_id().map(str::to_string))
                 })
-                .or_else(|| tab.autofix.pane_id.clone())
+                .or_else(|| tab.auto_error_handling.pane_id.clone())
         };
         if pane_id.is_some() {
-            self.emit_autofix_state_cleared(&target_tab);
+            self.emit_auto_error_handling_state_cleared(&target_tab);
         }
         let tab = self.session_tab_mut(session_id);
-        tab.autofix.armed_at = None;
+        tab.auto_error_handling.started_at = None;
         let canceled_marker = t!("chat.turn_canceled").into_owned();
         // Three paths into cancel:
         //   - Submitted / Streaming → commit a fresh completed_turn (prompt +
@@ -795,15 +808,15 @@ impl App {
         //   - Other states (Idle / Surfaced{Empty / ChatTurn}) → no-op.
         let new_turn_data: Option<(String, Option<String>, String)> = match &tab.turn {
             TurnState::Submitted(prompt) => {
-                let label = match prompt.autofix.as_ref() {
-                    Some(_) => t!("chat.autofix_prompt_label").into_owned(),
+                let label = match prompt.auto_error_handling.as_ref() {
+                    Some(_) => t!("chat.auto_error_handling_prompt_label").into_owned(),
                     None => prompt.text.clone(),
                 };
                 Some((label, None, canceled_marker.clone()))
             }
             TurnState::Streaming { prompt } => {
-                let label = match prompt.autofix.as_ref() {
-                    Some(_) => t!("chat.autofix_prompt_label").into_owned(),
+                let label = match prompt.auto_error_handling.as_ref() {
+                    Some(_) => t!("chat.auto_error_handling_prompt_label").into_owned(),
                     None => prompt.text.clone(),
                 };
                 Some((label, None, canceled_marker.clone()))
@@ -813,8 +826,8 @@ impl App {
                 outcome: TurnOutcome::Recommendation(recommendations),
                 end_pending: true,
             } => {
-                let label = match prompt.autofix.as_ref() {
-                    Some(_) => t!("chat.autofix_prompt_label").into_owned(),
+                let label = match prompt.auto_error_handling.as_ref() {
+                    Some(_) => t!("chat.auto_error_handling_prompt_label").into_owned(),
                     None => prompt.text.clone(),
                 };
                 Some((
@@ -832,8 +845,8 @@ impl App {
                     },
                 end_pending: true,
             } => {
-                let label = match prompt.autofix.as_ref() {
-                    Some(_) => t!("chat.autofix_prompt_label").into_owned(),
+                let label = match prompt.auto_error_handling.as_ref() {
+                    Some(_) => t!("chat.auto_error_handling_prompt_label").into_owned(),
                     None => prompt.text.clone(),
                 };
                 Some((label, Some(summary.clone()), trailing_marker.clone()))
@@ -866,7 +879,7 @@ impl App {
                 tab.invalidate_completed_turn_height(index);
             }
         }
-        tab.autofix.pane_id = None;
+        tab.auto_error_handling.pane_id = None;
         tab.selected_recommendation = 0;
         tab.selected_button = 0;
         tab.recommendation_focus = RecommendationFocus::Button;
@@ -884,7 +897,7 @@ impl App {
             );
         }
 
-        // Esc on a Send card or in-flight autofix exits the chip-override
+        // Esc on a Send card or in-flight Auto error handling exits the chip-override
         // state; release whatever the helper had pinned. C++ falls back to
         // source-of-agent driven rendering.
         self.recompute_chip_override(&target_tab);
@@ -935,21 +948,21 @@ impl App {
         self.recompute_chip_override(&target_tab);
     }
 
-    /// Surface an autofix Fix recommendation as an Armed card.
+    /// Surface an Auto error handling fix as an actionable result card.
     fn turn_surface_fix(
         &mut self,
         session_id: &str,
         recommendations: RecommendationSet,
         phase_name: &str,
     ) {
-        // Defensive: only autofix turns surface a fix card here.
+        // Defensive: only Auto error handling turns surface a fix card here.
         let prompt = self.session_tab(session_id).turn.prompt();
-        let Some(prompt) = prompt.filter(|prompt| prompt.autofix.is_some()) else {
+        let Some(prompt) = prompt.filter(|prompt| prompt.auto_error_handling.is_some()) else {
             return;
         };
         // A manual `/fix` may have no concrete failing pane. Still surface the
         // card below, but skip the
-        // bottom-bar / suggested-pane side effects — they key off a real
+        // bottom-bar / result-pane side effects — they key off a real
         // failing pane (the Review pill, the Ctrl+Alt+. hotkey target).
         let bar_pane = prompt.context.target_pane_id().map(str::to_string);
         self.log_selection_phase_for(
@@ -965,15 +978,15 @@ impl App {
         // pending review and surface the bar accordingly (Review when the
         // pane is closed, Idle when it's already open). The recommendation
         // card still lives in the turn below so the user can act on it
-        // inside the pane — autofix no longer auto-executes.
+        // inside the pane — Auto error handling no longer auto-executes.
         if let Some(pane_id) = bar_pane.as_ref() {
             {
-                let autofix = &mut self.tab_mut(&target_tab).autofix;
-                autofix.suggested_pane_id = Some(pane_id.clone());
-                autofix.pane_id = None;
-                autofix.armed_at = None;
+                let auto_error_handling = &mut self.tab_mut(&target_tab).auto_error_handling;
+                auto_error_handling.result_pane_id = Some(pane_id.clone());
+                auto_error_handling.pane_id = None;
+                auto_error_handling.started_at = None;
             }
-            self.emit_autofix_state_result(&target_tab, pane_id);
+            self.update_auto_error_handling_review_state(&target_tab, pane_id);
         }
         let rec_idx = recommended_choice_index(&recommendations);
         let tab = self.session_tab_mut(session_id);
@@ -997,17 +1010,17 @@ impl App {
         self.recompute_chip_override(&target_tab);
     }
 
-    /// Surface an autofix Explain answer as a chat turn + bottom-bar
-    /// Suggested indicator.
+    /// Surface an Auto error handling Explain answer as a chat turn and
+    /// bottom-bar Review indicator.
     fn turn_surface_explain(&mut self, session_id: &str, phase_name: &str) {
-        // Defensive: only autofix turns surface an explain answer here.
+        // Defensive: only Auto error handling turns surface an explain answer here.
         let prompt = self.session_tab(session_id).turn.prompt();
-        let Some(prompt) = prompt.filter(|prompt| prompt.autofix.is_some()) else {
+        let Some(prompt) = prompt.filter(|prompt| prompt.auto_error_handling.is_some()) else {
             return;
         };
         // A manual `/fix` may have no concrete failing pane: surface the
         // explanation, but skip the bottom-bar /
-        // suggested-pane side effects below.
+        // result-pane side effects below.
         let bar_pane = prompt.context.target_pane_id().map(str::to_string);
         let response_chars = self
             .session_tab(session_id)
@@ -1020,12 +1033,12 @@ impl App {
             &format!("pane={bar_pane:?} chars={response_chars}"),
         );
 
-        let turn_prompt_label = t!("chat.autofix_prompt_label").into_owned();
+        let turn_prompt_label = t!("chat.auto_error_handling_prompt_label").into_owned();
         {
             let tab = self.session_tab_mut(session_id);
             let details = tab.take_current_turn_details();
             // Auto-expand the auto-diagnosed-error turn: when the user
-            // clicks the Suggested pill they came here specifically to
+            // opens the Review result they came here specifically to
             // read the explanation, so showing the collapsed preview
             // would force a second click.
             tab.completed_turns.push(CompletedTurn {
@@ -1044,11 +1057,11 @@ impl App {
         if let Some(pane_id) = bar_pane.as_ref() {
             {
                 let tab = self.session_tab_mut(session_id);
-                tab.autofix.suggested_pane_id = Some(pane_id.clone());
-                tab.autofix.pane_id = None;
-                tab.autofix.armed_at = None;
+                tab.auto_error_handling.result_pane_id = Some(pane_id.clone());
+                tab.auto_error_handling.pane_id = None;
+                tab.auto_error_handling.started_at = None;
             }
-            self.emit_autofix_state_result(&target_tab, pane_id);
+            self.update_auto_error_handling_review_state(&target_tab, pane_id);
         }
 
         let tab = self.session_tab_mut(session_id);

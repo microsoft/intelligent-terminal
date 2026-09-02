@@ -46,7 +46,7 @@ chat.plan_header: "योजना:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}
 chat.plan_marker_pending: "[ ]"  # {Locked}
-chat.autofix_prompt_label: "हाल की कमांड विफलता का स्वतः निदान किया गया"
+chat.auto_error_handling_prompt_label: "हाल की कमांड विफलता का स्वतः निदान किया गया"
 chat.turn_canceled: "(रद्द कर दिया गया)"
 chat.turn_executed: "→ निष्पादित: %{title}"
 # स्थिति चिह्न के बाद और विषय से पहले दिखने वाले स्थायी टूल-श्रेणी लेबल।
@@ -82,7 +82,7 @@ commands.help_close_hint: "  Esc        यह सहायता बंद क�
 commands.help.summary: "यह कमांड सूची दिखाएँ"
 commands.clear.summary: "चैट स्क्रॉलबैक साफ़ करें (सत्र बनाए रखता है)"
 commands.new.summary: "नया ACP सत्र शुरू करें (इतिहास हटाता है)"  # {Locked="ACP"}
-commands.fix.summary: "सक्रिय टर्मिनल का निदान करें और सुधार सुझाएँ (/fix <hint>)"  # {Locked="/fix","<hint>"}
+commands.fix.summary: "सक्रिय टर्मिनल का निदान करें और सुधार का प्रस्ताव दें (/fix <hint>)"  # {Locked="/fix","<hint>"}
 commands.restart.summary: "एजेंट पुनः आरंभ करें"
 commands.stop.summary: "चल रहे प्रॉम्प्ट को रद्द करें"
 commands.sessions.summary: "ऐतिहासिक सत्र पिकर खोलें (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}

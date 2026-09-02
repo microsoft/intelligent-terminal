@@ -2038,8 +2038,12 @@ void CascadiaSettings::LogSettingChanges(bool isJsonLoad) const
         };
         if (isJsonLoad)
         {
-            emitIntelligentFeatureConfigured("AutoErrorDetection", _globals->AutoErrorDetectionEnabled() ? L"true" : L"false");
-            emitIntelligentFeatureConfigured("AutoFix", _globals->AutoFixEnabled() ? L"true" : L"false");
+            const auto autoErrorHandling = _globals->EffectiveAutoErrorHandling();
+            const auto autoErrorHandlingValue =
+                autoErrorHandling == AutoErrorHandling::Off ? L"off" :
+                autoErrorHandling == AutoErrorHandling::DetectErrorsAutomatically ? L"detectErrorsAutomatically" :
+                                                                                    L"detectErrorsAndSendToAgentForFixesAutomatically";
+            emitIntelligentFeatureConfigured("AutoErrorHandling", autoErrorHandlingValue);
             if (const auto agentPanePosition = _globals->AgentPanePosition(); !agentPanePosition.empty())
             {
                 emitIntelligentFeatureConfigured("AgentPanePosition", agentPanePosition.c_str());

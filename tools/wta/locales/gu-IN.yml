@@ -46,7 +46,7 @@ chat.plan_header: "યોજના:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}
 chat.plan_marker_pending: "[ ]"  # {Locked}
-chat.autofix_prompt_label: "તાજેતરની આદેશ નિષ્ફળતાનું આપમેળે નિદાન કરવામાં આવ્યું"
+chat.auto_error_handling_prompt_label: "તાજેતરની આદેશ નિષ્ફળતાનું આપમેળે નિદાન કરવામાં આવ્યું"
 chat.turn_canceled: "(રદ કરેલ)"
 chat.turn_executed: "→ ચલાવાયું: %{title}"
 # સ્થિતિ ચિહ્ન પછી અને વિષય પહેલાં દર્શાવાતા કાયમી સાધન-શ્રેણી લેબલ.
@@ -82,7 +82,7 @@ commands.help_close_hint: "  Esc        આ સહાય બંધ કરો"  #
 commands.help.summary: "આ કમાન્ડ સૂચિ બતાવો"
 commands.clear.summary: "ચેટ સ્ક્રોલબેક સાફ કરો (સત્ર જાળવે છે)"
 commands.new.summary: "નવું ACP સત્ર શરૂ કરો (ઇતિહાસ કાઢી નાખે છે)"  # {Locked="ACP"}
-commands.fix.summary: "Diagnose the active terminal and suggest a fix (/fix <hint>)"  # {Locked="/fix","<hint>"}
+commands.fix.summary: "સક્રિય ટર્મિનલનું નિદાન કરો અને સુધારાનો પ્રસ્તાવ મૂકો (/fix <hint>)"  # {Locked="/fix","<hint>"}
 commands.restart.summary: "એજન્ટ ફરી શરૂ કરો"
 commands.stop.summary: "ચાલુ પ્રોમ્પ્ટ રદ કરો"
 commands.sessions.summary: "ઐતિહાસિક સત્રોનું પિકર ખોલો (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}

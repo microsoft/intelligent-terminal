@@ -1276,7 +1276,7 @@ safe_void_coroutine AppHost::_WindowInitializedHandler(const winrt::Windows::Fou
     // wins the race against the existing-helper rekey), and the new
     // window's `TerminalPage::ProtocolVtSequenceReceived` never gets
     // wired into the COM fan-out — events the new window raises (e.g.
-    // `autofix_execute` from the Ctrl+Alt+. handler) end up with no
+    // `auto_error_handling_request_analysis` from the Ctrl+Alt+. handler) end up with no
     // listener and silently disappear. Retrying registration here, when
     // we know the page is actually ready, closes that hole. Cheap
     // (O(n) over a small N) and idempotent.

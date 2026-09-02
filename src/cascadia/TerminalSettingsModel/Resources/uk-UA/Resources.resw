@@ -981,7 +981,7 @@
   <data name="OpenAgentPaneCommandKey" xml:space="preserve"><value>Перемкнути агента ШІ</value></data>
   <data name="FocusAgentPaneCommandKey" xml:space="preserve"><value>Перевести фокус на панель агента ШІ</value></data>
   <data name="OpenAgentSessionsCommandKey" xml:space="preserve"><value>Відкрити список сеансів агента ШІ</value></data>
-  <data name="TriggerAutofixCommandKey" xml:space="preserve"><value>Запустити автовиправлення</value></data>
+  <data name="TriggerAutoErrorHandlingCommandKey" xml:space="preserve"><value>Автоматична обробка помилок</value></data>
   <data name="PromptActionArgumentLocalized" xml:space="preserve"><value>Запит</value></data>
   <data name="BugReportCommandKey" xml:space="preserve"><value>Повідомити про помилку (зібрати журнали)</value></data>
   <data name="OpenBackgroundAgentCommandKey" xml:space="preserve">

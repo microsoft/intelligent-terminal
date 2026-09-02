@@ -163,26 +163,19 @@
     <comment>In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_AgentDescription.Text" xml:space="preserve">
-    <value>முகவர் பலகத்தில் பயன்படுத்தப்படும் மற்றும் ACP ஆதரவு கொண்ட முகவரைத் தேர்ந்தெடுக்கவும்.</value>
-    <comment>{Locked="ACP"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+    <value>உங்கள் முகவர் பலகத்திற்கான முகவரைத் தேர்ந்தெடுக்கவும். ACP பற்றி மேலும் அறிக.</value>
+    <comment>{Locked="ACP"} Here "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a proxy, human agent, or representative. ACP is displayed as a hyperlink.</comment>
   </data>
   <data name="FreOverlay_AgentInstallHint.Text" xml:space="preserve">
-    <value>இந்த முகவருக்கு Node.js மற்றும் NPX தேவை, ஏற்கனவே இல்லாவிட்டால் தானாக நிறுவப்படும்.</value>
-    <comment>{Locked="Node.js","NPX"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
-  </data>
-  <data name="FreOverlay_AutoErrorLabel.Text" xml:space="preserve">
-    <value>தானியங்கி பிழை பரிந்துரை</value>
-  </data>
-  <data name="FreOverlay_AutoErrorDescription.Text" xml:space="preserve">
-    <value>தீர்வுகளைத் தானாகவே பரிந்துரைக்க உங்கள் முகவருக்குப் பிழைகளை அனுப்ப Intelligent Terminal-ஐ அனுமதிக்கவும்.</value>
-    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
+    <value>உங்கள் கணினியில் Node.js இயக்க நேரம் ஏற்கனவே இல்லை என்றால் அதை நிறுவும்.</value>
+    <comment>{Locked="Node.js"} This hint appears when selecting an AI agent whose Node.js runtime may need to be installed automatically.</comment>
   </data>
   <data name="FreOverlay_SessionLabel.Text" xml:space="preserve">
     <value>அமர்வு மேலாண்மை</value>
   </data>
   <data name="FreOverlay_SessionDescription.Text" xml:space="preserve">
-    <value>அறிவாண் முனையம்-க்கு உங்கள் இயங்கும் அல்லது செயலில் உள்ள முகவர்களின் நிலையைக் கண்காணிக்க அனுமதி வழங்கவும்.</value>
-    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name. In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+    <value>உங்கள் இயங்கும் மற்றும் கடந்த முகவர் அமர்வுகளைக் கண்காணிக்கவும்.</value>
+    <comment>Description for session tracking in the first-run wizard. In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_SessionHint.Text" xml:space="preserve">
     <value>இதை இயக்குவது உங்கள் முகவர்களெங்கும் அமர்வுகளைக் கண்காணிக்க ஒருங்கிணைப்பு hooks-ஐ நிறுவும்.</value>
@@ -259,11 +252,12 @@
     <comment>{Locked="hooks"}</comment>
   </data>
   <data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
-    <value>ஷெல் ஒருங்கிணைப்பை நிறுவுவதில் தோல்வி. பிழை கண்டறிதல் முடக்கப்பட்டுள்ளது. நீங்கள் அதை மீண்டும் இயக்கி மீண்டும் முயற்சிக்கலாம், அல்லது அது இல்லாமல் தொடர சேமிக்கலாம்.</value>
+    <value>ஷெல் ஒருங்கிணைப்பை நிறுவுவதில் தோல்வி. Auto error handling முடக்கப்பட்டுள்ளது. நீங்கள் அதை மீண்டும் இயக்கி மீண்டும் முயற்சிக்கலாம், அல்லது அது இல்லாமல் தொடர சேமிக்கலாம்.</value>
+    <comment>{Locked="Auto error handling"} FRE setup error. Auto error handling was turned off because shell integration could not be installed.</comment>
   </data>
   <data name="FreOverlay_InstallErrorShellIntegrationExecutionPolicy" xml:space="preserve">
-    <value>PowerShell செயல்படுத்தல் கொள்கை ஸ்கிரிப்ட்களைத் தடுக்கிறது. பிழை கண்டறிதல் முடக்கப்பட்டது.</value>
-    <comment>{Locked="PowerShell"}</comment>
+    <value>PowerShell செயல்படுத்தல் கொள்கை ஸ்கிரிப்ட்களைத் தடுக்கிறது. Auto error handling முடக்கப்பட்டுள்ளது.</value>
+    <comment>{Locked="PowerShell","Auto error handling"} FRE setup error. PowerShell execution policy blocked scripts, so Auto error handling was turned off.</comment>
   </data>
   <data name="FreOverlay_InstallErrorWingetMissing" xml:space="preserve">
     <value>Windows Package Manager (winget) நிறுவப்படவில்லை அல்லது கிடைக்கவில்லை. முதலில் அதை நிறுவி, பின்னர் மீண்டும் முயற்சிக்கவும்.</value>
@@ -292,10 +286,6 @@
     <value>பிழை கண்டறியப்பட்டது: பகுப்பாய்வு செய்கிறது…</value>
     <comment>Short status label shown next to the diagnostics button while an automatic error analysis is in progress.</comment>
   </data>
-  <data name="Diagnostics_ErrorArmedLabelFormat" xml:space="preserve">
-    <value>பிழை கண்டறியப்பட்டது: சரிசெய்ய {0}</value>
-    <comment>Short status label shown next to the diagnostics button when a fix is ready. {0} is replaced with the keyboard shortcut.</comment>
-  </data>
   <data name="Diagnostics_ErrorDetectedLabelFormat" xml:space="preserve">
     <value>பரிந்துரைக்கப்பட்ட திருத்தத்தை முகவரிடம் கேட்க {0}-ஐ கிளிக் செய்யவும் அல்லது அழுத்தவும்</value>
     <comment>Short status label shown next to the diagnostics button when an error is detected and a fix can be requested. {0} is replaced with the keyboard shortcut.</comment>
@@ -311,26 +301,6 @@
   <data name="Diagnostics_ErrorDetectedTooltipFormat" xml:space="preserve">
     <value>பிழை கண்டறியப்பட்டது. AI முகவர் கண்டறிந்து தீர்வை பரிந்துரைக்க {0}-ஐ கிளிக் செய்யவும் அல்லது அழுத்தவும்.</value>
     <comment>Tooltip for the diagnostics button when an error is detected and a fix can be requested. {0} is replaced with the keyboard shortcut.</comment>
-  </data>
-  <data name="Diagnostics_FixReadyTooltipFormat" xml:space="preserve">
-    <value>சரி தயாராக உள்ளது — பயன்படுத்த {0}</value>
-    <comment>Tooltip for the diagnostics button when a fix is ready. {0} is replaced with the keyboard shortcut.</comment>
-  </data>
-  <data name="Diagnostics_FixReadyTooltipWithPreviewFormat" xml:space="preserve">
-    <value>சரி தயாராக உள்ளது — பயன்படுத்த {0}: {1}</value>
-    <comment>Tooltip for the diagnostics button when a fix is ready. {0} is replaced with the keyboard shortcut; {1} is a preview of the suggested command or fix.</comment>
-  </data>
-  <data name="Diagnostics_SuggestionReadyLabel" xml:space="preserve">
-    <value>பரிந்துரை தயாராக உள்ளது — எஜென்ட் பேனைத் திறக்கவும்</value>
-    <comment>Short status label shown next to the diagnostics button when a suggestion is available in the agent pane.</comment>
-  </data>
-  <data name="Diagnostics_SuggestionTooltipIntro" xml:space="preserve">
-    <value>Auto-fix இதை நேரடியாகச் சரிசெய்ய மறுத்தது. </value>
-    <comment>First sentence of the diagnostics tooltip when automatic fix generation declines to apply a fix directly. Preserve the trailing space; additional guidance follows in the same tooltip.</comment>
-  </data>
-  <data name="Diagnostics_SuggestionTooltipInstruction" xml:space="preserve">
-    <value>எஜென்ட் பேனைத் திறந்து முழு பரிந்துரையைப் படிக்க இங்கே கிளிக் செய்யவும் அல்லது Ctrl+Shift+. அழுத்தவும்.</value>
-    <comment>Second sentence of the diagnostics tooltip when a suggestion is available. {Locked="Ctrl+Shift+."}</comment>
   </data>
   <data name="Diagnostics_Tooltip" xml:space="preserve">
     <value>கண்டறிதல்கள்</value>
@@ -352,20 +322,36 @@
     <value>Terminal Protocol</value>
     <comment>Title for the teaching tip that displays Terminal Protocol connection information. {Locked="Terminal Protocol"}</comment>
   </data>
-  <data name="FreOverlay_AutoDetectLabel.Text" xml:space="preserve">
-    <value>தானியங்கி பிழை கண்டறிதல்</value>
+  <data name="FreOverlay_AutoErrorHandlingLabel.Text" xml:space="preserve">
+    <value>தானியங்கி பிழை கையாளுதல்</value>
+    <comment>Label for the Auto error handling dropdown in the first-run wizard.</comment>
   </data>
-  <data name="FreOverlay_AutoDetectDescription.Text" xml:space="preserve">
-    <value>உங்கள் ஷெல்லை அணுகவும் பிழைகளைத் தானாகவே கண்டறியவும் Intelligent Terminal-ஐ அனுமதிக்கவும்.</value>
+  <data name="FreOverlay_AutoErrorHandlingDescription.Text" xml:space="preserve">
+    <value>டெர்மினல் பிழைகள் எவ்வாறு கையாளப்படுகின்றன என்பதைத் தேர்ந்தெடுக்கவும்.</value>
+    <comment>Description for the Auto error handling dropdown in the first-run wizard.</comment>
   </data>
   <data name="FreOverlay_ErrorHelpLink" xml:space="preserve">
     <value>இதை கைமுறையாக சரிசெய்வது எப்படி என்பதை அறிக</value>
     <comment>Hyperlink shown below an FRE setup error message. Opens step-by-step manual setup instructions in the browser.</comment>
-  </data>  <data name="FreOverlay_AutoDetectShellIntegrationHintPrefix" xml:space="preserve">
-    <value>இதை இயக்குவது கட்டளைத் தோல்விகளைக் கண்டறிய shell ஒருங்கிணைப்பை நிறுவும். </value>
+  </data>  <data name="FreOverlay_AutoErrorHandlingShellIntegrationHintPrefix" xml:space="preserve">
+    <value>இதை இயக்குவது கட்டளைத் தோல்விகளைக் கண்டறிய shell ஒருங்கிணைப்பை நிறுவும். PowerShell, bash மற்றும் WSL bash ஆகியவற்றில் கிடைக்கிறது. </value>
+    <comment>{Locked="PowerShell","bash","WSL bash"} Hint shown under the Auto error handling dropdown in the first-run wizard. The trailing space is intentional — it separates this prefix from the inline FreOverlay_AutoErrorHandlingShellIntegrationHintLink hyperlink that follows.</comment>
   </data>
-  <data name="FreOverlay_AutoDetectShellIntegrationHintLink" xml:space="preserve">
-    <value>மேலும் அறிக</value>
+  <data name="FreOverlay_AutoErrorHandlingShellIntegrationHintLink" xml:space="preserve">
+    <value>ஆதரிக்கப்படும் அனைத்து shell-களையும் காண்க</value>
+    <comment>Inline hyperlink text that follows FreOverlay_AutoErrorHandlingShellIntegrationHintPrefix and opens the documentation listing every shell that supports Auto error handling.</comment>
+  </data>
+  <data name="FreOverlay_AutoErrorHandling_Off" xml:space="preserve">
+    <value>நிறுத்து</value>
+    <comment>The first option in the Auto error handling dropdown. It disables automatic terminal error detection and fixes.</comment>
+  </data>
+  <data name="FreOverlay_AutoErrorHandling_DetectErrorsAutomatically" xml:space="preserve">
+    <value>பிழைகளைத் தானாகக் கண்டறியவும்</value>
+    <comment>The second option in the Auto error handling dropdown. It detects terminal errors automatically without sending them to an AI agent. Here "agent" means an AI intelligent agent, not a proxy or human agent.</comment>
+  </data>
+  <data name="FreOverlay_AutoErrorHandling_DetectErrorsAndSendToAgentForFixesAutomatically" xml:space="preserve">
+    <value>பிழைகளைக் கண்டறிந்து, அவற்றைத் தானாக சரிசெய்ய AI முகவருக்கு அனுப்பவும்</value>
+    <comment>The third option in the Auto error handling dropdown. It detects terminal errors and sends them to an AI agent for automatic fixes. Here "agent" means an AI intelligent agent, not a proxy or human agent.</comment>
   </data>
   <data name="InitShellIntegrationExecutionPolicyErrorMessage" xml:space="preserve">
     <value>PowerShell செயல்படுத்தல் கொள்கை ஸ்கிரிப்ட்களைத் தடுக்கிறது.</value>

@@ -46,7 +46,7 @@ chat.plan_header: "योजना:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}
 chat.plan_marker_pending: "[ ]"  # {Locked}
-chat.autofix_prompt_label: "अद्ल्या आदेश अपयशाचें स्वयं-निदान केलें"
+chat.auto_error_handling_prompt_label: "अद्ल्या आदेश अपयशाचें स्वयं-निदान केलें"
 chat.turn_canceled: "(रद्द केल्लें)"
 chat.turn_executed: "→ निश्पादीत: %{title}"
 # स्थिती चिन्हा उपरांत आनी विशया आदीं दाखोवपी कायम साधन-वर्ग लेबलां.
@@ -82,7 +82,7 @@ commands.help_close_hint: "  Esc        ही मजत बंद करात"
 commands.help.summary: "ही कमांड वळेरी दाखयात"
 commands.clear.summary: "चॅट स्क्रोलबॅक साफ करात (सत्र दवरता)"
 commands.new.summary: "नवें ACP सत्र सुरू करात (इतिहास काडून उडयता)"  # {Locked="ACP"}
-commands.fix.summary: "Diagnose the active terminal and suggest a fix (/fix <hint>)"  # {Locked="/fix","<hint>"}
+commands.fix.summary: "सक्रीय टर्मिनलाचें निदान करात आनी दुरुस्तीचो प्रस्ताव दियात (/fix <hint>)"  # {Locked="/fix","<hint>"}
 commands.restart.summary: "एजंट परत सुरू करात"
 commands.stop.summary: "चालू आशिल्लो प्रॉम्प्ट रद्द करात"
 commands.sessions.summary: "इतिहासीक सत्र पिकर उगडात (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}

@@ -46,7 +46,7 @@ chat.plan_header: "پىلان:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}
 chat.plan_marker_pending: "[ ]"  # {Locked}
-chat.autofix_prompt_label: "يېقىنقى بۇيرۇق مەغلۇبىيىتى ئاپتوماتىك دىئاگنوز قىلىندى"
+chat.auto_error_handling_prompt_label: "يېقىنقى بۇيرۇق مەغلۇبىيىتى ئاپتوماتىك دىئاگنوز قىلىندى"
 chat.turn_canceled: "(ئەمەلدىن قالدۇرۇلدى)"
 chat.turn_executed: "→ ئىجرا قىلىندى: %{title}"
 # ھالەت بەلگىسىدىن كېيىن ۋە تېمىدىن بۇرۇن كۆرسىتىلىدىغان دائىملىق قورال تۈرى بەلگىلىرى.
@@ -85,7 +85,7 @@ commands.help_close_hint: "  Esc        بۇ ياردەمنى تاقاش"  # {Lo
 commands.help.summary: "بۇ بۇيرۇق تىزىملىكىنى كۆرسىتىش"
 commands.clear.summary: "سۆھبەتنىڭ سىيرىلىش تارىخىنى تازىلاش (سېسىيەنى ساقلايدۇ)"
 commands.new.summary: "يېڭى ACP سېسىيەسىنى باشلاش (تارىخنى تاشلايدۇ)"  # {Locked="ACP"}
-commands.fix.summary: "Diagnose the active terminal and suggest a fix (/fix <hint>)"  # {Locked="/fix","<hint>"}
+commands.fix.summary: "ئاكتىپ تېرمىنالغا دىياگنوز قويۇپ، تۈزىتىش چارىسىنى ئوتتۇرىغا قويۇڭ (/fix <hint>)"  # {Locked="/fix","<hint>"}
 commands.restart.summary: "AI ئاگېنتىنى قايتا قوزغات"
 commands.stop.summary: "ئىجرا قىلىنىۋاتقان سوراقنى بىكار قىلىش"
 commands.sessions.summary: "تارىخىي سېسىيەلەر تاللىغۇچىنى ئېچىش (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}

@@ -46,7 +46,7 @@ chat.plan_header: "Plan:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}
 chat.plan_marker_pending: "[ ]"  # {Locked}
-chat.autofix_prompt_label: "Kürzlicher Befehlsfehler automatisch diagnostiziert"
+chat.auto_error_handling_prompt_label: "Kürzlicher Befehlsfehler automatisch diagnostiziert"
 chat.turn_canceled: "(abgebrochen)"
 chat.turn_executed: "→ ausgeführt: %{title}"
 # Persistent tool-category labels shown after a status marker and before a subject.
@@ -207,7 +207,7 @@ time.days_other: "vor %{count} Tagen"
 commands.help.summary: "Diese Befehlsliste anzeigen"
 commands.clear.summary: "Chatverlauf löschen (Sitzung bleibt erhalten)"
 commands.new.summary: "Eine neue ACP-Sitzung starten (Verlauf verwerfen)"
-commands.fix.summary: "Das aktive Terminal diagnostizieren und eine Korrektur vorschlagen (/fix <hint>)"  # {Locked="/fix","<hint>"}
+commands.fix.summary: "Das aktive Terminal diagnostizieren und eine Lösung vorschlagen (/fix <hint>)"  # {Locked="/fix","<hint>"}
 commands.restart.summary: "Agent neu starten"
 commands.stop.summary: "Laufende Eingabe abbrechen"
 commands.sessions.summary: "Auswahl historischer Sitzungen öffnen (Ctrl+Shift+/)"

@@ -10,10 +10,15 @@ const EMBEDDED_DEFAULT_PROMPT: &str = include_str!(concat!(
     "/prompts/terminal-agent.md"
 ));
 
-const AUTOFIX_USER_PROMPT_FILE_NAME: &str = "auto-fix.md";
-const AUTOFIX_DEFAULT_PROMPT_FILE_NAME: &str = "auto-fix.default.md";
-const EMBEDDED_AUTOFIX_PROMPT: &str =
-    include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/prompts/auto-fix.md"));
+const AUTO_ERROR_HANDLING_USER_PROMPT_FILE_NAME: &str = "auto-error-handling.md";
+const AUTO_ERROR_HANDLING_DEFAULT_PROMPT_FILE_NAME: &str = "auto-error-handling.default.md";
+// Persisted prompt customizations from builds before the feature rename.
+const LEGACY_ERROR_HANDLING_USER_PROMPT_FILE_NAME: &str = "auto-fix.md";
+const LEGACY_ERROR_HANDLING_DEFAULT_PROMPT_FILE_NAME: &str = "auto-fix.default.md";
+const EMBEDDED_AUTO_ERROR_HANDLING_PROMPT: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/prompts/auto-error-handling.md"
+));
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct PlannerPromptTemplate {
@@ -22,10 +27,10 @@ pub(crate) struct PlannerPromptTemplate {
     pub display_name: String,
 }
 
-pub(crate) fn load_autofix_prompt_template() -> PlannerPromptTemplate {
-    load_autofix_prompt_template_from_root(
+pub(crate) fn load_auto_error_handling_prompt_template() -> PlannerPromptTemplate {
+    load_auto_error_handling_prompt_template_from_root(
         runtime_prompt_root().as_deref(),
-        EMBEDDED_AUTOFIX_PROMPT,
+        EMBEDDED_AUTO_ERROR_HANDLING_PROMPT,
     )
 }
 
@@ -62,26 +67,26 @@ fn runtime_prompt_root() -> Option<PathBuf> {
     crate::runtime_paths::runtime_prompt_root()
 }
 
-fn load_autofix_prompt_template_from_root(
+fn load_auto_error_handling_prompt_template_from_root(
     prompt_root: Option<&Path>,
     embedded_default_prompt: &str,
 ) -> PlannerPromptTemplate {
     if let Some(prompt_root) = prompt_root {
-        let _ = seed_autofix_prompt_files(prompt_root, embedded_default_prompt);
+        let _ = seed_auto_error_handling_prompt_files(prompt_root, embedded_default_prompt);
 
-        let user_path = prompt_root.join(AUTOFIX_USER_PROMPT_FILE_NAME);
+        let user_path = prompt_root.join(AUTO_ERROR_HANDLING_USER_PROMPT_FILE_NAME);
         if let Ok(content) = fs::read_to_string(&user_path) {
             return PlannerPromptTemplate {
-                display_name: "Auto-Fix Instructions".to_string(),
+                display_name: "Auto error handling Instructions".to_string(),
                 content,
                 source_label: format!("user:{}", user_path.display()),
             };
         }
 
-        let default_path = prompt_root.join(AUTOFIX_DEFAULT_PROMPT_FILE_NAME);
+        let default_path = prompt_root.join(AUTO_ERROR_HANDLING_DEFAULT_PROMPT_FILE_NAME);
         if let Ok(content) = fs::read_to_string(&default_path) {
             return PlannerPromptTemplate {
-                display_name: "Auto-Fix Instructions".to_string(),
+                display_name: "Auto error handling Instructions".to_string(),
                 content,
                 source_label: format!("default:{}", default_path.display()),
             };
@@ -89,9 +94,9 @@ fn load_autofix_prompt_template_from_root(
     }
 
     PlannerPromptTemplate {
-        display_name: "Auto-Fix Instructions".to_string(),
+        display_name: "Auto error handling Instructions".to_string(),
         content: embedded_default_prompt.to_string(),
-        source_label: "embedded:auto-fix.md".to_string(),
+        source_label: "embedded:auto-error-handling.md".to_string(),
     }
 }
 
@@ -146,15 +151,16 @@ fn extract_prompt_display_name(content: &str) -> String {
     "Prompt".to_string()
 }
 
-fn seed_autofix_prompt_files(
+fn seed_auto_error_handling_prompt_files(
     prompt_root: &Path,
     embedded_default_prompt: &str,
 ) -> std::io::Result<()> {
     fs::create_dir_all(prompt_root)?;
+    migrate_legacy_error_handling_prompt(prompt_root)?;
 
-    let default_path = prompt_root.join(AUTOFIX_DEFAULT_PROMPT_FILE_NAME);
+    let default_path = prompt_root.join(AUTO_ERROR_HANDLING_DEFAULT_PROMPT_FILE_NAME);
     let previous_default = fs::read_to_string(&default_path).ok();
-    let user_path = prompt_root.join(AUTOFIX_USER_PROMPT_FILE_NAME);
+    let user_path = prompt_root.join(AUTO_ERROR_HANDLING_USER_PROMPT_FILE_NAME);
     let existing_user = fs::read_to_string(&user_path).ok();
 
     write_if_changed(&default_path, embedded_default_prompt)?;
@@ -171,6 +177,30 @@ fn seed_autofix_prompt_files(
     Ok(())
 }
 
+fn migrate_legacy_error_handling_prompt(prompt_root: &Path) -> std::io::Result<()> {
+    let user_path = prompt_root.join(AUTO_ERROR_HANDLING_USER_PROMPT_FILE_NAME);
+    if user_path.exists() {
+        return Ok(());
+    }
+
+    let legacy_user_path = prompt_root.join(LEGACY_ERROR_HANDLING_USER_PROMPT_FILE_NAME);
+    let legacy_user = match fs::read_to_string(&legacy_user_path) {
+        Ok(content) => content,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(error) => return Err(error),
+    };
+    let legacy_default =
+        fs::read_to_string(prompt_root.join(LEGACY_ERROR_HANDLING_DEFAULT_PROMPT_FILE_NAME)).ok();
+
+    // Only carry forward a customization. An untouched legacy user file is
+    // replaced by the current embedded default during normal seeding.
+    if legacy_default.as_deref() != Some(legacy_user.as_str()) {
+        write_if_changed(&user_path, &legacy_user)?;
+    }
+
+    Ok(())
+}
+
 fn seed_prompt_files(prompt_root: &Path, embedded_default_prompt: &str) -> std::io::Result<()> {
     fs::create_dir_all(prompt_root)?;
 
@@ -181,7 +211,7 @@ fn seed_prompt_files(prompt_root: &Path, embedded_default_prompt: &str) -> std::
 
     write_if_changed(&default_path, embedded_default_prompt)?;
 
-    // See the note in `seed_autofix_prompt_files`: only (re)seed an absent or
+    // See the note in `seed_auto_error_handling_prompt_files`: only (re)seed an absent or
     // still-default user file, and route through `write_if_changed` so an
     // unchanged file is never rewritten and concurrent readers never see a
     // truncated file.
@@ -234,9 +264,11 @@ fn write_atomic(path: &Path, content: &str) -> std::io::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::{
-        load_planner_prompt_template_from_root, merge_runtime_sections, DEFAULT_PROMPT_FILE_NAME,
-        EMBEDDED_AUTOFIX_PROMPT, EMBEDDED_DEFAULT_PROMPT, RUNTIME_CONTEXT_MARKER,
-        USER_PROMPT_FILE_NAME,
+        load_auto_error_handling_prompt_template_from_root, load_planner_prompt_template_from_root,
+        merge_runtime_sections, AUTO_ERROR_HANDLING_USER_PROMPT_FILE_NAME,
+        DEFAULT_PROMPT_FILE_NAME, EMBEDDED_AUTO_ERROR_HANDLING_PROMPT, EMBEDDED_DEFAULT_PROMPT,
+        LEGACY_ERROR_HANDLING_DEFAULT_PROMPT_FILE_NAME,
+        LEGACY_ERROR_HANDLING_USER_PROMPT_FILE_NAME, RUNTIME_CONTEXT_MARKER, USER_PROMPT_FILE_NAME,
     };
     use std::fs;
     use std::path::PathBuf;
@@ -279,7 +311,7 @@ mod tests {
 
     #[test]
     fn embedded_prompts_use_the_mcp_tool_schema_as_authority() {
-        for prompt in [EMBEDDED_DEFAULT_PROMPT, EMBEDDED_AUTOFIX_PROMPT] {
+        for prompt in [EMBEDDED_DEFAULT_PROMPT, EMBEDDED_AUTO_ERROR_HANDLING_PROMPT] {
             assert!(prompt.contains("provides an MCP server for this session"));
             assert!(prompt.contains("run_command_in_current_shell"));
             assert!(!prompt.contains("request_terminal_actions"));
@@ -314,19 +346,20 @@ mod tests {
             .contains("A requested destination alone never implies delegation"));
         assert!(EMBEDDED_DEFAULT_PROMPT.contains("running a command in a new tab or split"));
         assert!(EMBEDDED_DEFAULT_PROMPT.contains("only when another agent should own the work"));
-        // Autofix is deliberately restricted to `run_command_in_current_shell` — the Helper
-        // rejects any other action for an autofix turn — so naming workspace
-        // or delegation tools there would invite a call that cannot be accepted.
+        // Auto error handling is deliberately restricted to
+        // `run_command_in_current_shell`. The helper rejects any other action
+        // for this turn type, so naming workspace or delegation tools would
+        // invite a call that cannot be accepted.
         for tool in ["create_workspace", "delegate_task_in_new_workspace"] {
             assert!(
-                !EMBEDDED_AUTOFIX_PROMPT.contains(tool),
-                "autofix prompt must not name {tool}"
+                !EMBEDDED_AUTO_ERROR_HANDLING_PROMPT.contains(tool),
+                "Auto error handling prompt must not name {tool}"
             );
         }
         assert!(EMBEDDED_DEFAULT_PROMPT.contains("Submit exactly one action"));
         assert!(EMBEDDED_DEFAULT_PROMPT.contains("`request_user_input`"));
         assert!(EMBEDDED_DEFAULT_PROMPT.contains("instead of guessing"));
-        assert!(EMBEDDED_AUTOFIX_PROMPT
+        assert!(EMBEDDED_AUTO_ERROR_HANDLING_PROMPT
             .contains("Submit exactly one `run_command_in_current_shell` call"));
     }
 
@@ -406,6 +439,62 @@ mod tests {
         assert_eq!(
             fs::read_to_string(prompt_root.join(USER_PROMPT_FILE_NAME)).unwrap(),
             "custom user prompt"
+        );
+
+        let _ = fs::remove_dir_all(prompt_root);
+    }
+
+    #[test]
+    fn auto_error_handling_loader_migrates_legacy_custom_prompt() {
+        let prompt_root = temp_prompt_root("migrate-legacy-error-handling-custom");
+        fs::create_dir_all(&prompt_root).unwrap();
+        fs::write(
+            prompt_root.join(LEGACY_ERROR_HANDLING_DEFAULT_PROMPT_FILE_NAME),
+            "old default",
+        )
+        .unwrap();
+        fs::write(
+            prompt_root.join(LEGACY_ERROR_HANDLING_USER_PROMPT_FILE_NAME),
+            "custom prompt",
+        )
+        .unwrap();
+
+        let template =
+            load_auto_error_handling_prompt_template_from_root(Some(&prompt_root), "new default");
+
+        assert_eq!(template.content, "custom prompt");
+        assert_eq!(
+            fs::read_to_string(prompt_root.join(AUTO_ERROR_HANDLING_USER_PROMPT_FILE_NAME))
+                .unwrap(),
+            "custom prompt"
+        );
+
+        let _ = fs::remove_dir_all(prompt_root);
+    }
+
+    #[test]
+    fn auto_error_handling_loader_replaces_unedited_legacy_prompt() {
+        let prompt_root = temp_prompt_root("replace-legacy-error-handling-default");
+        fs::create_dir_all(&prompt_root).unwrap();
+        fs::write(
+            prompt_root.join(LEGACY_ERROR_HANDLING_DEFAULT_PROMPT_FILE_NAME),
+            "old default",
+        )
+        .unwrap();
+        fs::write(
+            prompt_root.join(LEGACY_ERROR_HANDLING_USER_PROMPT_FILE_NAME),
+            "old default",
+        )
+        .unwrap();
+
+        let template =
+            load_auto_error_handling_prompt_template_from_root(Some(&prompt_root), "new default");
+
+        assert_eq!(template.content, "new default");
+        assert_eq!(
+            fs::read_to_string(prompt_root.join(AUTO_ERROR_HANDLING_USER_PROMPT_FILE_NAME))
+                .unwrap(),
+            "new default"
         );
 
         let _ = fs::remove_dir_all(prompt_root);

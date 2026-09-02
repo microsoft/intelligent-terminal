@@ -19,6 +19,9 @@ using namespace winrt::Microsoft::Terminal::Settings::Model;
 
 namespace winrt::Microsoft::Terminal::Settings::Model::implementation
 {
+    static constexpr std::wstring_view LegacyTriggerAutofixId{ L"Terminal.TriggerAutofix" };
+    static constexpr std::wstring_view TriggerAutoErrorHandlingId{ L"Terminal.TriggerAutoErrorHandling" };
+
     com_ptr<ActionMap> ActionMap::FromJson(const Json::Value& json, const OriginTag origin)
     {
         auto result = make_self<ActionMap>();
@@ -99,6 +102,11 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
                 // if the "id" field doesn't exist in the json, then idJson will be an empty string which is fine
                 winrt::hstring idJson;
                 JsonUtils::GetValueForKey(jsonBlock, IDKey, idJson);
+                if (std::wstring_view{ idJson } == LegacyTriggerAutofixId)
+                {
+                    idJson = winrt::hstring{ TriggerAutoErrorHandlingId };
+                    _fixupsAppliedDuringLoad = true;
+                }
 
                 // any existing keybinding with the same keychord in this layer will get overwritten
                 _KeyMap.insert_or_assign(keys, idJson);

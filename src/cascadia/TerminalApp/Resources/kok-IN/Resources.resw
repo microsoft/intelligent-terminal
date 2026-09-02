@@ -164,26 +164,19 @@
     <comment>In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_AgentDescription.Text" xml:space="preserve">
-    <value>एजेंट पेनांत वापरतात तो ACP समर्थीत एजेंट वेंचात.</value>
-    <comment>{Locked="ACP"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+    <value>तुमच्या एजेंट पेनाखातीर एजेंट वेंचात. ACP विशीं चड जाणून घेयात.</value>
+    <comment>{Locked="ACP"} Here "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a proxy, human agent, or representative. ACP is displayed as a hyperlink.</comment>
   </data>
   <data name="FreOverlay_AgentInstallHint.Text" xml:space="preserve">
-    <value>ह्या एजेंटाक Node.js आनी NPX जाय, जें पयलींच नासत जाल्यार आपशींच इन्स्टॉल जातलें.</value>
-    <comment>{Locked="Node.js","NPX"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
-  </data>
-  <data name="FreOverlay_AutoErrorLabel.Text" xml:space="preserve">
-    <value>स्वयंचलित त्रुटी सुचोवणी</value>
-  </data>
-  <data name="FreOverlay_AutoErrorDescription.Text" xml:space="preserve">
-    <value>Intelligent Terminal क आपशीच उपाय सुचोवपाक तुमच्या एजंटाक त्रुटी धाडपाक परवानगी दियात.</value>
-    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
+    <value>तुमच्या मशीनार Node.js रनटायम पयलींच नासल्यार तो इन्स्टॉल करता.</value>
+    <comment>{Locked="Node.js"} This hint appears when selecting an AI agent whose Node.js runtime may need to be installed automatically.</comment>
   </data>
   <data name="FreOverlay_SessionLabel.Text" xml:space="preserve">
     <value>सत्र वेवस्थापन</value>
   </data>
   <data name="FreOverlay_SessionDescription.Text" xml:space="preserve">
-    <value>इंटेलिजंट टर्मिनल क तुमच्या चालू वा सक्रिय एजेंटांची स्थिती मागोवपाक परवानगी द्यात.</value>
-    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name. In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+    <value>तुमचीं चालू आनी आदलीं एजंट सत्रां मागोवात.</value>
+    <comment>Description for session tracking in the first-run wizard. In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_SessionHint.Text" xml:space="preserve">
     <value>हें सक्षम केल्यार तुमच्या एजेंटां मदीं सत्रांचो मागोवो घेवपाक एकत्रीकरण hooks इन्स्टॉल जातले.</value>
@@ -260,11 +253,12 @@
     <comment>{Locked="hooks"}</comment>
   </data>
   <data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
-    <value>शेल एकीकरण इन्स्टॉल करपाक अपेशी. चूक सोद बंद केल्या. तुमी तें परतून सक्षम करून परतून यत्न करूं येता, वा ताचे बगर फुडें वचपाक सांबाळात.</value>
+    <value>शेल एकीकरण इन्स्टॉल करपाक अपेशी. Auto error handling बंद केला. तुमी तें परतून सक्षम करून परतून यत्न करूं येता, वा ताचे बगर फुडें वचपाक सांबाळात.</value>
+    <comment>{Locked="Auto error handling"} FRE setup error. Auto error handling was turned off because shell integration could not be installed.</comment>
   </data>
   <data name="FreOverlay_InstallErrorShellIntegrationExecutionPolicy" xml:space="preserve">
-    <value>PowerShell एक्झिक्यूशन धोरणान स्क्रिप्ट्स आडावपी आसा. चूक सोद बंद केल्या.</value>
-    <comment>{Locked="PowerShell"}</comment>
+    <value>PowerShell एक्झिक्यूशन धोरणान स्क्रिप्ट्स आडावपी आसा. Auto error handling बंद केला.</value>
+    <comment>{Locked="PowerShell","Auto error handling"} FRE setup error. PowerShell execution policy blocked scripts, so Auto error handling was turned off.</comment>
   </data>
   <data name="FreOverlay_InstallErrorWingetMissing" xml:space="preserve">
     <value>Windows Package Manager (winget) इन्स्टॉल केल्लो ना वा उपलब्ध ना. पयलीं तो इन्स्टॉल करात, मागीर परतून यत्न करात.</value>
@@ -293,10 +287,6 @@
     <value>त्रुटी मेळ्ळी: विश्लेषण जाता…</value>
     <comment>Short status label shown next to the diagnostics button while an automatic error analysis is in progress.</comment>
   </data>
-  <data name="Diagnostics_ErrorArmedLabelFormat" xml:space="preserve">
-    <value>त्रुटी मेळ्ळी: दुरुस्त करपाक {0}</value>
-    <comment>Short status label shown next to the diagnostics button when a fix is ready. {0} is replaced with the keyboard shortcut.</comment>
-  </data>
   <data name="Diagnostics_ErrorDetectedLabelFormat" xml:space="preserve">
     <value>एजेंटाक सुचयिल्ली दुरुस्ती विचारपाक {0} क्लिक करात वा दामात</value>
     <comment>Short status label shown next to the diagnostics button when an error is detected and a fix can be requested. {0} is replaced with the keyboard shortcut.</comment>
@@ -312,26 +302,6 @@
   <data name="Diagnostics_ErrorDetectedTooltipFormat" xml:space="preserve">
     <value>चूक मेळ्ळी. AI एजेंटाक निदान करून दुरुस्तीक सुचोवपाक सांगपाक {0} क्लिक करात वा दामात.</value>
     <comment>Tooltip for the diagnostics button when an error is detected and a fix can be requested. {0} is replaced with the keyboard shortcut.</comment>
-  </data>
-  <data name="Diagnostics_FixReadyTooltipFormat" xml:space="preserve">
-    <value>दुरुस्ती तयार — लागू करपाक {0}</value>
-    <comment>Tooltip for the diagnostics button when a fix is ready. {0} is replaced with the keyboard shortcut.</comment>
-  </data>
-  <data name="Diagnostics_FixReadyTooltipWithPreviewFormat" xml:space="preserve">
-    <value>दुरुस्ती तयार — लागू करपाक {0}: {1}</value>
-    <comment>Tooltip for the diagnostics button when a fix is ready. {0} is replaced with the keyboard shortcut; {1} is a preview of the suggested command or fix.</comment>
-  </data>
-  <data name="Diagnostics_SuggestionReadyLabel" xml:space="preserve">
-    <value>सुचोवणी तयार — एजंट पेन उगडात</value>
-    <comment>Short status label shown next to the diagnostics button when a suggestion is available in the agent pane.</comment>
-  </data>
-  <data name="Diagnostics_SuggestionTooltipIntro" xml:space="preserve">
-    <value>Auto-fix हें थेट दुरुस्त करपाक न्हय म्हणलें. </value>
-    <comment>First sentence of the diagnostics tooltip when automatic fix generation declines to apply a fix directly. Preserve the trailing space; additional guidance follows in the same tooltip.</comment>
-  </data>
-  <data name="Diagnostics_SuggestionTooltipInstruction" xml:space="preserve">
-    <value>एजंट पेन उगडपाक आनी पुराय सुचोवणी वाचपाक हांगा क्लिक करात वा Ctrl+Shift+. दामात.</value>
-    <comment>Second sentence of the diagnostics tooltip when a suggestion is available. {Locked="Ctrl+Shift+."}</comment>
   </data>
   <data name="Diagnostics_Tooltip" xml:space="preserve">
     <value>निदान</value>
@@ -353,20 +323,36 @@
     <value>Terminal Protocol</value>
     <comment>Title for the teaching tip that displays Terminal Protocol connection information. {Locked="Terminal Protocol"}</comment>
   </data>
-  <data name="FreOverlay_AutoDetectLabel.Text" xml:space="preserve">
-    <value>स्वयंचलित त्रुटी सोद</value>
+  <data name="FreOverlay_AutoErrorHandlingLabel.Text" xml:space="preserve">
+    <value>स्वयंचलीत त्रुटी हाताळणी</value>
+    <comment>Label for the Auto error handling dropdown in the first-run wizard.</comment>
   </data>
-  <data name="FreOverlay_AutoDetectDescription.Text" xml:space="preserve">
-    <value>Intelligent Terminal क तुमच्या शेलांत प्रवेश करपाक आनी त्रुटी आपशीच सोदपाक परवानगी दियात.</value>
+  <data name="FreOverlay_AutoErrorHandlingDescription.Text" xml:space="preserve">
+    <value>टर्मिनल त्रुटी कशी हाताळटात तें निवडात.</value>
+    <comment>Description for the Auto error handling dropdown in the first-run wizard.</comment>
   </data>
   <data name="FreOverlay_ErrorHelpLink" xml:space="preserve">
     <value>हें मेन्युअल रितीन कशें दुरुस्त करचें तें शिका</value>
     <comment>Hyperlink shown below an FRE setup error message. Opens step-by-step manual setup instructions in the browser.</comment>
-  </data>  <data name="FreOverlay_AutoDetectShellIntegrationHintPrefix" xml:space="preserve">
-    <value>हें सक्षम केल्यार कमांड अपेसां सोदपाक shell एकत्रीकरण इन्स्टॉल जातले. </value>
+  </data>  <data name="FreOverlay_AutoErrorHandlingShellIntegrationHintPrefix" xml:space="preserve">
+    <value>हें सक्षम केल्यार कमांड अपेसां सोदपाक shell एकत्रीकरण इन्स्टॉल जातले. PowerShell, bash आनी WSL bash त उपलब्ध आसा. </value>
+    <comment>{Locked="PowerShell","bash","WSL bash"} Hint shown under the Auto error handling dropdown in the first-run wizard. The trailing space is intentional — it separates this prefix from the inline FreOverlay_AutoErrorHandlingShellIntegrationHintLink hyperlink that follows.</comment>
   </data>
-  <data name="FreOverlay_AutoDetectShellIntegrationHintLink" xml:space="preserve">
-    <value>अदीक जाणून घ्यात</value>
+  <data name="FreOverlay_AutoErrorHandlingShellIntegrationHintLink" xml:space="preserve">
+    <value>सगळे समर्थीत shell पळयात</value>
+    <comment>Inline hyperlink text that follows FreOverlay_AutoErrorHandlingShellIntegrationHintPrefix and opens the documentation listing every shell that supports Auto error handling.</comment>
+  </data>
+  <data name="FreOverlay_AutoErrorHandling_Off" xml:space="preserve">
+    <value>बंद</value>
+    <comment>The first option in the Auto error handling dropdown. It disables automatic terminal error detection and fixes.</comment>
+  </data>
+  <data name="FreOverlay_AutoErrorHandling_DetectErrorsAutomatically" xml:space="preserve">
+    <value>त्रुटी आपशीच सोदात</value>
+    <comment>The second option in the Auto error handling dropdown. It detects terminal errors automatically without sending them to an AI agent. Here "agent" means an AI intelligent agent, not a proxy or human agent.</comment>
+  </data>
+  <data name="FreOverlay_AutoErrorHandling_DetectErrorsAndSendToAgentForFixesAutomatically" xml:space="preserve">
+    <value>चुको सोदून काडात आनी आपोआप सुदारपा खातीर एआय एजंटाक धाडात</value>
+    <comment>The third option in the Auto error handling dropdown. It detects terminal errors and sends them to an AI agent for automatic fixes. Here "agent" means an AI intelligent agent, not a proxy or human agent.</comment>
   </data>
   <data name="InitShellIntegrationExecutionPolicyErrorMessage" xml:space="preserve">
     <value>PowerShell एक्झिक्यूशन धोरणान स्क्रिप्ट्स आडावपी आसा.</value>

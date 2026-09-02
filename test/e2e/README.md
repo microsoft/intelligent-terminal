@@ -9,15 +9,17 @@ Design rationale is captured in the inline notes below and in each suite's heade
 The `tests/` folder implements the `[E2E]` items from
 `doc/release-check-list.md` that are automatable on one machine. Copilot drives
 the baseline suites, while the agent matrix covers other installed and
-authenticated ACP agents. Current status (run on the Store package):
+authenticated ACP agents. Current inventory (case counts come from static Pester discovery):
 
 | Suite (file) | Covers | Cases |
 |---|---|---|
 | `Feature.Packaging.Tests.ps1` | §9 packaging/protocol (incl. WT_COM_CLSID injected into pane shells) + §10 logging + log retention/cleanup | 18 |
 | `Feature.WtcliPublishStdin.Tests.ps1` | PR #652: WTA/wtcli stdin transport delivers command-line-limit-sized events intact and preserves positional compatibility | 3 |
-| `Feature.Settings.Tests.ps1` | §1 Settings>AI Agents + §0 FRE settings/positions/auto-error/session-mgmt | 18 |
+| `Feature.Settings.Tests.ps1` | §1 Settings>AI Agents + §0 FRE settings/positions/Auto error handling/session-mgmt, including Legacy JSON migration | 17 |
 | `Feature.FreFlow.Tests.ps1` | §0 FRE overlay click-through (Next→Save, privacy link, close-safety) | 5 |
+| `Feature.FreAgentSetup.Tests.ps1` | §0 FRE agent picker, three-state Auto error handling picker, session hints, and token display | 6 |
 | `Feature.FreExecutionPolicy.Tests.ps1` | §0 FRE execution-policy verdict (deterministic via registry; **Dev**, auto-skips) | 3 (1 conditional skip) |
+| `Feature.AgentPolicy.Tests.ps1` | Canonical agent policies plus Legacy `AllowAutoFix` fallback/precedence compatibility | 6 |
 | `Feature.AgentPaneInteraction.Tests.ps1` | open/hide/focus, input/rendering, slash, Copilot chat | 14 |
 | `Feature.AgentProtocolExperience.Tests.ps1` | PRs #599/#601/#606/#610/#611/#612/#616/#634/#683: intent-based terminal actions (including empty workspaces and configured delegation), ACP tool/transcript rendering, clarification input, session configuration, model title, and replacement cleanup across the deployed helper/master boundary | 8 |
 | `Feature.AgentImageAttachmentEditing.Tests.ps1` | PR #536: inline image tokens move and delete atomically while preserving adjacent prompt text | 1 |
@@ -30,8 +32,10 @@ authenticated ACP agents. Current status (run on the Store package):
 | `Feature.AgentSelectAll.Tests.ps1` | Plain Ctrl+A selects the current WTA-rendered frame; Ctrl+C copies through the existing clipboard path and clears selection without stale replay | 1 |
 | `Feature.PromptHistory.Tests.ps1` | PR #478: per-tab Up/Down prompt recall, draft restoration, and multiline preservation; PR #614: completed-turn collapse/expand rendering | 4 |
 | `Feature.CompletedTurnSelection.Tests.ps1` | Completed-turn Tab/Up/Down selection keeps focused history inside the chat viewport | 1 |
-| `Feature.AutofixPane.Tests.ps1` | Direct Helper Autofix proposal card render/insert/run/reject/target/stashed + across layout | 10 |
-| `Feature.AutofixParser.Tests.ps1` | issue #474: PowerShell ParserError-to-Autofix pipeline + success/handled-error/blank-input negative controls | 4 |
+| `Feature.AutoErrorHandlingModes.Tests.ps1` | Canonical `autoErrorHandling` Off / detect-only / send-to-agent behavior | 3 |
+| `Feature.AutoErrorHandlingActions.Tests.ps1` | Canonical action/protocol request + Legacy `triggerAutofix` parse compatibility | 2 |
+| `Feature.AutoErrorHandlingPane.Tests.ps1` | Direct Helper Auto error handling proposal card render/insert/run/reject/stashed, including real dual-pane target routing isolation and layout changes | 12 |
+| `Feature.AutoErrorHandlingParser.Tests.ps1` | issue #474: PowerShell ParserError-to-Auto error handling pipeline + negative controls | 4 |
 | `Feature.CommandResolution.Tests.ps1` | PR #418: packaged WTA resolves PowerShell profile-only aliases to their real targets | 1 |
 | `Feature.SessionList.Tests.ps1` | session view (button + `/sessions` slash), session states, view switching (incl. draft-preservation), focus/restore | 13 (+1 skip) |
 | `Feature.NonAsciiCwd.Tests.ps1` | issue #641: a non-ASCII starting directory survives `wtcli` argv → COM → `CreateProcessW`, so the resume launch path connects and starts in that directory | 2 |
@@ -56,19 +60,16 @@ authenticated ACP agents. Current status (run on the Store package):
 | `Feature.AgentChat.Tests.ps1` / `Feature.AgentPopup.Tests.ps1` | agent chat + `/` popup/menu interaction | 1 + 3 |
 | `Feature.AgentPaneMove.Tests.ps1` | PR #429: `/move` stays per-tab, preserves global position, and restores agent input focus | 1 |
 
-**Coverage: 142 of 144 automatable `[E2E]` checklist items are implemented.**
-**Test status: 127 baseline feature cases pass + 3 documented skips** (`wta sessions list` is
-identity-gated — see `Feature.SessionList.Tests.ps1`), plus 2 PR #481 WSL-backend cases and 2
-PR #488 delegate-source cases that run only when a runnable distro (and, for the #481 chat
-case, an installed+authenticated native agent) is available. The 142 implemented checklist
-items map to the baseline cases plus the deterministic settings/persistence assertions. The
-remaining new items are the two profile agent picker UIs; they stay explicit E2E work rather
-than being falsely credited by the JSON-level runtime tests. Other
-environment-dependent items are tracked and auto-skipped when their prerequisite is absent:
+Static discovery currently finds **232 Feature tests**. Live pass/fail and release-checklist
+coverage are generated by `Invoke-ItE2EReport.ps1`; they are intentionally not hard-coded here
+because installed agents, policies, WSL, package branding, and authentication change the runnable
+set. The two profile agent picker UIs remain explicit E2E work rather than being falsely credited
+by JSON-level runtime tests. Environment-dependent items are tracked and auto-skipped when their
+prerequisite is absent:
 **other agent CLIs** (`Feature.AgentMatrix.Tests.ps1` now covers Claude/Codex/Gemini chat,
 auth-gated per CLI — each Context runs only when that CLI is installed *and* authenticated,
 else skips); custom agents; multi-window drag; hook/CLI install; policy locks; IME/paste; WSL
-autofix (needs a dev build with OSC 9001 ShellType + a running distro); WT window-level
+Auto error handling in WSL (needs a dev build with OSC 9001 ShellType + a running distro); WT window-level
 keyboard accelerators (command palette / Delegate `Alt+Shift+B` / pane hotkeys — not
 injectable via UIA/send-keys in this harness); and manual release-sign-off gates.
 
@@ -142,8 +143,8 @@ Import-Module Pester
 Invoke-Pester test/e2e/selftests -Tag Unit    # hermetic, no terminal needed
 Invoke-Pester test/e2e/selftests -Tag Live    # launches/closes the real terminal
 Invoke-Pester test/e2e/selftests -Tag AI      # AI oracle (needs an agent CLI, e.g. copilot)
-Invoke-Pester test/e2e/selftests -Tag Agent   # agent pane + autofix (needs copilot auth)
-Invoke-Pester test/e2e/selftests              # everything (30 tests)
+Invoke-Pester test/e2e/selftests -Tag Agent   # agent pane + Auto error handling (needs copilot auth)
+Invoke-Pester test/e2e/selftests              # everything (34 tests)
 ```
 
 The self-tests are the framework's own proof: every primitive is exercised against a
@@ -157,7 +158,7 @@ in-repo path `test/e2e/artifacts/`** (override with `-OutDir`; the dir is git-ig
 ```powershell
 pwsh -File test/e2e/Invoke-ItE2EReport.ps1                 # full suite -> test/e2e/artifacts/
 pwsh -File test/e2e/Invoke-ItE2EReport.ps1 -Tag Feature
-pwsh -File test/e2e/Invoke-ItE2EReport.ps1 -Path test/e2e/tests/Feature.AutofixPane.Tests.ps1
+pwsh -File test/e2e/Invoke-ItE2EReport.ps1 -Path test/e2e/tests/Feature.AutoErrorHandlingPane.Tests.ps1
 ```
 
 Outputs (all under `test/e2e/artifacts/`):
@@ -243,7 +244,7 @@ restores the backup.
   `wtcli.exe` in the package install dir connects fine without needing the AppExecutionAlias.
 - **FRE**: completion is the `agentFreCompleted` flag in the shared `state.json`;
   `Invoke-FrePass` sets it instantly.
-- **Settings**: the AI keys (`acpAgent`, `autoFixEnabled`, `agentPanePosition`,
+- **Settings**: the AI keys (`acpAgent`, `autoErrorHandling`, `agentPanePosition`,
   `aiIntegration.coordinator.enabled`, …) are *top-level* properties whose names contain
   dots. `Set-WtSetting` patches them and waits for the on-disk write.
 - **UI selectors**: prefer XAML `AutomationProperties.AutomationId` (confirmed present:
@@ -256,11 +257,14 @@ restores the backup.
   envelope is `{ "method": "<name>", "params": {...}, "type": "event" }` — the event **name
   is `.method`** (`vt_sequence`, `agent_event`, …), and `.type` is *always* `"event"`. Start
   the listener *before* the triggering action, then `Wait-WtEvent`/`Assert-WtEvent`.
-- **Autofix signals**: a failed command emits `method=vt_sequence, params.sequence ~
-  "osc:133;D;<nonzero>"` (`Wait-WtCommandFailure`); autofix then submits a prompt observable
+- **Auto error handling signals**: a failed command emits `method=vt_sequence,
+  params.sequence ~ "osc:133;D;<nonzero>"` (`Wait-WtCommandFailure`). Detect-only mode is
+  observable through `Wait-AutoErrorHandlingDetection`; send-to-agent mode submits a prompt
+  observable
   as `method=agent_event` whose `params.payload.initial_prompt` contains "A command failed.
   Diagnose…" — note this rides on the `agent.session.start` sub-event, not `agent.prompt.submit`
-  (`Wait-Autofix`). This build emits no dedicated `autofix_state` event. Autofix **de-dupes
+  (`Wait-AutoErrorHandling`). WTA sends UI state as `auto_error_handling_state`; activating a
+  detected failure emits `auto_error_handling_request_analysis`. Auto error handling **de-dupes
   repeated identical failures**, so tests use a unique bogus command each time.
 
 ## Limitations
@@ -290,7 +294,7 @@ test/e2e/
               Wt.ps1            panes/tabs/input/capture/events (wtcli)
               Settings.ps1 Fre.ps1  settings.json / state.json
               Ui.ps1            winapp ui wrappers
-              Agent.ps1 Autofix.ps1 Sessions.ps1
+              Agent.ps1 AutoErrorHandling.ps1 Sessions.ps1
               Observe.ps1       logs / event stream / context bundle
               Verify.ps1        Assert-* oracles
   selftests/  *.Tests.ps1       Pester proof for every primitive

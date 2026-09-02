@@ -53,9 +53,9 @@ Describe 'ItE2E live primitives' -Tag 'Live' -Skip:(-not $script:HasPackage) {
             Set-WtSetting -App $script:app -Key 'acpAgent' -Value 'gemini' | Out-Null
             Assert-Setting -App $script:app -Key 'acpAgent' -Value 'gemini'
         }
-        It 'toggles autoFixEnabled via the typed wrapper' {
-            Set-WtAutofix -App $script:app -Enabled $true | Out-Null
-            Assert-Setting -App $script:app -Key 'autoFixEnabled' -Value $true
+        It 'sets autoErrorHandling via the typed wrapper' {
+            Set-WtAutoErrorHandling -App $script:app -Mode 'detectErrorsAutomatically' | Out-Null
+            Assert-Setting -App $script:app -Key 'autoErrorHandling' -Value 'detectErrorsAutomatically'
         }
     }
 

@@ -1061,26 +1061,19 @@
     <value>Agent</value>
   </data>
   <data name="FreOverlay_AgentDescription.Text" xml:space="preserve">
-    <value>Wählen Sie den Agenten aus, der im Agentbereich verwendet wird und ACP unterstützt.</value>
-    <comment>{Locked="ACP"}</comment>
+    <value>Wählen Sie den Agenten für Ihren Agentbereich aus. Weitere Informationen zu ACP.</value>
+    <comment>{Locked="ACP"} Here "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a proxy, human agent, or representative. ACP is displayed as a hyperlink.</comment>
   </data>
   <data name="FreOverlay_AgentInstallHint.Text" xml:space="preserve">
-    <value>Dieser Agent erfordert Node.js und NPX, die automatisch installiert werden, falls noch nicht vorhanden.</value>
-    <comment>{Locked="Node.js","NPX"}</comment>
-  </data>
-  <data name="FreOverlay_AutoErrorLabel.Text" xml:space="preserve">
-    <value>Automatischer Fehlervorschlag</value>
-  </data>
-  <data name="FreOverlay_AutoErrorDescription.Text" xml:space="preserve">
-    <value>Erlauben Sie Intelligent Terminal, Fehler an Ihren Agent zu senden, um automatisch Korrekturen vorzuschlagen.</value>
-    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
+    <value>Installiert die Node.js-Laufzeit, wenn sie noch nicht auf Ihrem Computer vorhanden ist.</value>
+    <comment>{Locked="Node.js"} This hint appears when selecting an AI agent whose Node.js runtime may need to be installed automatically.</comment>
   </data>
   <data name="FreOverlay_SessionLabel.Text" xml:space="preserve">
     <value>Sitzungsverwaltung</value>
   </data>
   <data name="FreOverlay_SessionDescription.Text" xml:space="preserve">
-    <value>Erteilen Sie Intelligentes Terminal die Berechtigung, den Status Ihrer laufenden oder aktiven Agenten zu verfolgen.</value>
-    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
+    <value>Verfolgen Sie Ihre laufenden und vergangenen Agentensitzungen.</value>
+    <comment>Description for session tracking in the first-run wizard. In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_SessionHint.Text" xml:space="preserve">
     <value>Durch Aktivieren werden Integrations-hooks installiert, um Sitzungen über Ihre Agenten hinweg zu verfolgen.</value>
@@ -1168,7 +1161,8 @@
     <comment>{Locked="hooks"}</comment>
   </data>
   <data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
-    <value>Die Shell-Integration konnte nicht installiert werden. Die Fehlererkennung wurde deaktiviert. Sie können sie erneut aktivieren und es noch einmal versuchen, oder speichern, um ohne sie fortzufahren.</value>
+    <value>Die Shell-Integration konnte nicht installiert werden. Die Funktion Auto error handling wurde deaktiviert. Sie können sie erneut aktivieren und es noch einmal versuchen, oder speichern, um ohne sie fortzufahren.</value>
+    <comment>{Locked="Auto error handling"} FRE setup error. Auto error handling was turned off because shell integration could not be installed.</comment>
   </data>
   <data name="FreOverlay_ErrorHelpLink" xml:space="preserve">
     <value>Erfahren Sie, wie Sie dies manuell beheben</value>
@@ -1196,10 +1190,6 @@
     <value>Fehler erkannt: wird analysiert…</value>
     <comment>Kurze Statusbeschriftung neben der Diagnoseschaltfläche, während eine Fehleranalyse läuft.</comment>
   </data>
-  <data name="Diagnostics_ErrorArmedLabelFormat" xml:space="preserve">
-    <value>Fehler erkannt: {0} zum Beheben</value>
-    <comment>Kurze Statusbeschriftung, wenn eine Korrektur bereit ist. {0} ist das Tastenkürzel.</comment>
-  </data>
   <data name="Diagnostics_ErrorDetectedLabelFormat" xml:space="preserve">
     <value>Klicken oder drücken Sie {0}, um den Agent um einen Lösungsvorschlag zu bitten</value>
     <comment>Short status label shown next to the diagnostics button when an error is detected and a fix can be requested. {0} is replaced with the keyboard shortcut.</comment>
@@ -1215,26 +1205,6 @@
   <data name="Diagnostics_ErrorDetectedTooltipFormat" xml:space="preserve">
     <value>Fehler erkannt. Klicken oder drücken Sie {0}, um den KI-Agenten zu bitten, den Fehler zu diagnostizieren und eine Lösung vorzuschlagen.</value>
     <comment>Tooltip for the diagnostics button when an error is detected and a fix can be requested. {0} is replaced with the keyboard shortcut.</comment>
-  </data>
-  <data name="Diagnostics_FixReadyTooltipFormat" xml:space="preserve">
-    <value>Korrektur bereit — {0} zum Anwenden</value>
-    <comment>Tooltip, wenn eine Korrektur bereit ist. {0} ist das Tastenkürzel.</comment>
-  </data>
-  <data name="Diagnostics_FixReadyTooltipWithPreviewFormat" xml:space="preserve">
-    <value>Korrektur bereit — {0} zum Anwenden: {1}</value>
-    <comment>Tooltip, wenn eine Korrektur bereit ist. {0} ist das Tastenkürzel; {1} ist eine Vorschau.</comment>
-  </data>
-  <data name="Diagnostics_SuggestionReadyLabel" xml:space="preserve">
-    <value>Vorschlag bereit — Agentbereich öffnen</value>
-    <comment>Statusbeschriftung, wenn ein Vorschlag im Agentbereich verfügbar ist.</comment>
-  </data>
-  <data name="Diagnostics_SuggestionTooltipIntro" xml:space="preserve">
-    <value>Auto-Fix konnte dies nicht direkt beheben. </value>
-    <comment>Erster Satz des Diagnose-Tooltips, wenn die automatische Korrektur abgelehnt wurde. Bewahrt das nachgestellte Leerzeichen.</comment>
-  </data>
-  <data name="Diagnostics_SuggestionTooltipInstruction" xml:space="preserve">
-    <value>Hier klicken oder Strg+Umschalt+. drücken, um den Agentbereich zu öffnen und den vollständigen Vorschlag zu lesen.</value>
-    <comment>{Locked="Ctrl+Shift+."}</comment>
   </data>
   <data name="Diagnostics_Tooltip" xml:space="preserve">
     <value>Diagnose</value>
@@ -1256,25 +1226,41 @@
     <value>Terminal Protocol</value>
     <comment>{Locked="Terminal Protocol"}</comment>
   </data>
-  <data name="FreOverlay_AutoDetectLabel.Text" xml:space="preserve">
-    <value>Automatische Fehlererkennung</value>
+  <data name="FreOverlay_AutoErrorHandlingLabel.Text" xml:space="preserve">
+    <value>Automatische Fehlerbehandlung</value>
+    <comment>Label for the Auto error handling dropdown in the first-run wizard.</comment>
   </data>
-  <data name="FreOverlay_AutoDetectDescription.Text" xml:space="preserve">
-    <value>Erlauben Sie Intelligent Terminal, auf Ihre Shell zuzugreifen und Fehler automatisch zu erkennen.</value>
+  <data name="FreOverlay_AutoErrorHandlingDescription.Text" xml:space="preserve">
+    <value>Wählen Sie aus, wie mit Terminalfehlern umgegangen wird.</value>
+    <comment>Description for the Auto error handling dropdown in the first-run wizard.</comment>
   </data>
-  <data name="FreOverlay_AutoDetectShellIntegrationHintPrefix" xml:space="preserve">
-    <value>Wenn Sie diese Option aktivieren, wird Shellintegration installiert, um Befehlsfehler zu erkennen. </value>
+  <data name="FreOverlay_AutoErrorHandlingShellIntegrationHintPrefix" xml:space="preserve">
+    <value>Wenn Sie diese Option aktivieren, wird Shellintegration installiert, um Befehlsfehler zu erkennen. Verfügbar in PowerShell, bash und WSL bash. </value>
+    <comment>{Locked="PowerShell","bash","WSL bash"} Hint shown under the Auto error handling dropdown in the first-run wizard. The trailing space is intentional — it separates this prefix from the inline FreOverlay_AutoErrorHandlingShellIntegrationHintLink hyperlink that follows.</comment>
   </data>
-  <data name="FreOverlay_AutoDetectShellIntegrationHintLink" xml:space="preserve">
-    <value>Weitere Informationen</value>
+  <data name="FreOverlay_AutoErrorHandlingShellIntegrationHintLink" xml:space="preserve">
+    <value>Alle unterstützten Shells anzeigen</value>
+    <comment>Inline hyperlink text that follows FreOverlay_AutoErrorHandlingShellIntegrationHintPrefix and opens the documentation listing every shell that supports Auto error handling.</comment>
+  </data>
+  <data name="FreOverlay_AutoErrorHandling_Off" xml:space="preserve">
+    <value>Aus</value>
+    <comment>The first option in the Auto error handling dropdown. It disables automatic terminal error detection and fixes.</comment>
+  </data>
+  <data name="FreOverlay_AutoErrorHandling_DetectErrorsAutomatically" xml:space="preserve">
+    <value>Fehler automatisch erkennen</value>
+    <comment>The second option in the Auto error handling dropdown. It detects terminal errors automatically without sending them to an AI agent. Here "agent" means an AI intelligent agent, not a proxy or human agent.</comment>
+  </data>
+  <data name="FreOverlay_AutoErrorHandling_DetectErrorsAndSendToAgentForFixesAutomatically" xml:space="preserve">
+    <value>Fehler erkennen und automatisch zur Behebung an den Agenten senden</value>
+    <comment>The third option in the Auto error handling dropdown. It detects terminal errors and sends them to an AI agent for automatic fixes. Here "agent" means an AI intelligent agent, not a proxy or human agent.</comment>
   </data>
   <data name="InitShellIntegrationExecutionPolicyErrorMessage" xml:space="preserve">
     <value>Die PowerShell-Ausführungsrichtlinie blockiert Skripts.</value>
     <comment>Body of an error dialog shown after the user tries to install PowerShell shell integration but their PowerShell execution policy (Restricted or AllSigned) is blocking scripts. A separate "Learn how to fix this manually" hyperlink (FreOverlay_ErrorHelpLink) is rendered on its own line below this sentence. {Locked="PowerShell"}</comment>
   </data>
   <data name="FreOverlay_InstallErrorShellIntegrationExecutionPolicy" xml:space="preserve">
-    <value>Die PowerShell-Ausführungsrichtlinie blockiert Skripts. Fehlererkennung deaktiviert.</value>
-    <comment>{Locked="PowerShell"}</comment>
+    <value>Die PowerShell-Ausführungsrichtlinie blockiert Skripts. Die Funktion Auto error handling wurde deaktiviert.</value>
+    <comment>{Locked="PowerShell","Auto error handling"} FRE setup error. PowerShell execution policy blocked scripts, so Auto error handling was turned off.</comment>
   </data>
   <data name="UsageGroup/[using:Windows.UI.Xaml.Automation]AutomationProperties/Name" xml:space="preserve"><value>Nutzung</value><comment>Accessibility name for the session usage summary in the terminal bottom bar.</comment></data>
   <data name="Usage_TokensUnit" xml:space="preserve"><value>Token</value><comment>Unit label for AI context-window token counts. Translate this term using the established AI/LLM terminology for the locale.</comment></data>

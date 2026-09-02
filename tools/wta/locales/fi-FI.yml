@@ -46,7 +46,7 @@ chat.plan_header: "Suunnitelma:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}
 chat.plan_marker_pending: "[ ]"  # {Locked}
-chat.autofix_prompt_label: "Äskettäinen komentovirhe diagnosoitu automaattisesti"
+chat.auto_error_handling_prompt_label: "Äskettäinen komentovirhe diagnosoitu automaattisesti"
 chat.turn_canceled: "(peruutettu)"
 chat.turn_executed: "→ suoritettu: %{title}"
 # Persistent tool-category labels shown after a status marker and before a subject.
@@ -205,7 +205,7 @@ time.days_other: "%{count} päivää sitten"
 commands.help.summary: "Näytä tämä komentoluettelo"
 commands.clear.summary: "Tyhjennä keskustelun vierityshistoria (säilyttää istunnon)"
 commands.new.summary: "Aloita uusi ACP-istunto (poistaa historian)"  # {Locked="ACP"}
-commands.fix.summary: "Diagnosoi aktiivinen pääte ja ehdota korjausta (/fix <hint>)"  # {Locked="/fix","<hint>"}
+commands.fix.summary: "Diagnosoi aktiivinen pääte ja esitä korjausehdotus (/fix <hint>)"  # {Locked="/fix","<hint>"}
 commands.restart.summary: "Käynnistä agentti uudelleen"
 commands.stop.summary: "Peruuta käynnissä oleva kehote"
 commands.sessions.summary: "Avaa aiempien istuntojen valitsin (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}

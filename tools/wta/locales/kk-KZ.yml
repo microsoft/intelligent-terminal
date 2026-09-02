@@ -46,7 +46,7 @@ chat.plan_header: "Жоспар:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}
 chat.plan_marker_pending: "[ ]"  # {Locked}
-chat.autofix_prompt_label: "Соңғы пәрмен қателігі автоматты түрде диагноз қойылды"
+chat.auto_error_handling_prompt_label: "Соңғы пәрмен қателігі автоматты түрде диагноз қойылды"
 chat.turn_canceled: "(бас тартылды)"
 chat.turn_executed: "→ орындалды: %{title}"
 # Күй белгісінен кейін және тақырыптың алдында көрсетілетін тұрақты құрал санаты белгілері.
@@ -82,7 +82,7 @@ commands.help_close_hint: "  Esc        Бұл көмекті жабу"  # {Lock
 commands.help.summary: "Осы командалар тізімін көрсету"
 commands.clear.summary: "Чаттың айналдыру журналын тазалау (сеансты сақтайды)"
 commands.new.summary: "Жаңа ACP сеансын бастау (тарихты жояды)"  # {Locked="ACP"}
-commands.fix.summary: "Diagnose the active terminal and suggest a fix (/fix <hint>)"  # {Locked="/fix","<hint>"}
+commands.fix.summary: "Белсенді терминалды диагностикалап, түзету ұсыныңыз (/fix <hint>)"  # {Locked="/fix","<hint>"}
 commands.restart.summary: "Агентті қайта іске қосу"
 commands.stop.summary: "Орындалып жатқан сұраудан бас тарту"
 commands.sessions.summary: "Тарихи сеанстар таңдағышын ашу (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}

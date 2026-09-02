@@ -46,7 +46,7 @@
         <decimal value="0" />
       </disabledValue>
     </policy>
-    <policy name="AllowAutoFix" class="Both" displayName="$(string.AllowAutoFix)" explainText="$(string.AllowAutoFixText)" key="Software\Policies\Microsoft\IntelligentTerminal" valueName="AllowAutoFix">
+    <policy name="AllowAutoErrorHandling" class="Both" displayName="$(string.AllowAutoErrorHandling)" explainText="$(string.AllowAutoErrorHandlingText)" key="Software\Policies\Microsoft\IntelligentTerminal" valueName="AllowAutoErrorHandling">
       <parentCategory ref="IntelligentTerminal" />
       <supportedOn ref="SUPPORTED_IntelligentTerminal_AgentPolicy" />
       <enabledValue>

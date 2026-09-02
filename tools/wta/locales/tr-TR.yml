@@ -46,7 +46,7 @@ chat.plan_header: "Plan:"
 chat.plan_marker_completed: "[x]"  # {Locked}
 chat.plan_marker_in_progress: "[>]"  # {Locked}
 chat.plan_marker_pending: "[ ]"  # {Locked}
-chat.autofix_prompt_label: "Son komut hatası otomatik olarak teşhis edildi"
+chat.auto_error_handling_prompt_label: "Son komut hatası otomatik olarak teşhis edildi"
 chat.turn_canceled: "(iptal edildi)"
 chat.turn_executed: "→ yürütüldü: %{title}"
 # Durum işaretinden sonra ve konudan önce gösterilen kalıcı araç kategorisi etiketleri.
@@ -82,7 +82,7 @@ commands.help_close_hint: "  Esc        Bu yardımı kapat"  # {Locked="Esc"}
 commands.help.summary: "Bu komut listesini göster"
 commands.clear.summary: "Sohbet kaydırma geçmişini temizle (oturumu korur)"
 commands.new.summary: "Yeni bir ACP oturumu başlat (geçmişi bırakır)"  # {Locked="ACP"}
-commands.fix.summary: "Etkin terminali tanıla ve bir düzeltme öner (/fix <hint>)"  # {Locked="/fix","<hint>"}
+commands.fix.summary: "Etkin terminali tanıla ve bir düzeltme teklif et (/fix <hint>)"  # {Locked="/fix","<hint>"}
 commands.restart.summary: "Aracıyı yeniden başlat"
 commands.stop.summary: "Devam eden istemi iptal et"
 commands.sessions.summary: "Geçmiş oturum seçicisini aç (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}

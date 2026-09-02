@@ -1,4 +1,4 @@
-//! Pluggable prompt-context injection for ACP planner / autofix prompts.
+//! Pluggable prompt-context injection for ACP planner / Auto error handling prompts.
 //!
 //! Prompts shipped to the agent CLI carry a set of `### …` runtime context
 //! sections (delegate agents, terminal layout, shell info, the failing
@@ -246,11 +246,11 @@ pub(super) fn shell_from_active(active: &serde_json::Value) -> Option<String> {
 
 /// Resolve a pane's full JSON (`shell`, `cwd`, `session_id`, `pid`, …) by its
 /// **session id**, enumerating windows → tabs → panes via the protocol. Used by
-/// error-triggered autofix, where the failing pane can live in a non-focused
+/// error-triggered Auto error handling, where the failing pane can live in a non-focused
 /// tab and so is **not** the active pane returned by `get_active_pane`.
 ///
 /// We deliberately resolve by session id rather than scoping `list_panes` to a
-/// tab: in autofix `PaneContext.tab_id` is the WT tab *StableId* (see
+/// tab: in Auto error handling `PaneContext.tab_id` is the WT tab *StableId* (see
 /// `WtNotification.tab_id`), not the numeric protocol tab index that
 /// `list_panes` expects, so scoping by it would never match and would silently
 /// fall back to the wrong (active) pane. Enumerating by session id — using each
@@ -274,7 +274,7 @@ async fn resolve_pane_by_session_id(
         };
         for tab in tabs_arr {
             // Protocol tab index (from `list_tabs`), which `list_panes` accepts
-            // — NOT the autofix StableId.
+            // — NOT the Auto error handling StableId.
             let Some(tab_id) = json_str_or_num(tab.get("tab_id")) else {
                 continue;
             };
@@ -400,7 +400,7 @@ pub(super) struct ResolvedProviderContext {
 }
 
 pub(super) async fn resolve_provider_context(
-    is_autofix: bool,
+    is_auto_error_handling: bool,
     wt_connected: bool,
     shell_mgr: &ShellManager,
     pane_context: Option<&PaneContext>,
@@ -412,12 +412,16 @@ pub(super) async fn resolve_provider_context(
         resolved_fix_pane: None,
         planner_terminal_context: None,
         resolved_planner_pane: None,
-        command_resolver_invocation: command_resolver_invocation(is_autofix, None, None),
+        command_resolver_invocation: command_resolver_invocation(
+            is_auto_error_handling,
+            None,
+            None,
+        ),
     };
     if !wt_connected {
         return resolved;
     }
-    if !is_autofix {
+    if !is_auto_error_handling {
         if let Some(context) = build_terminal_context(shell_mgr, pane_context).await {
             resolved.planner_terminal_context = Some(context.json);
             resolved.resolved_planner_pane = Some(context.target_pane_id);
@@ -428,7 +432,7 @@ pub(super) async fn resolve_provider_context(
 
     let active = shell_mgr.wt_get_active_pane().await.ok();
 
-    // Explicit source pane (error-triggered autofix) wins; otherwise fall
+    // Explicit source pane (error-triggered Auto error handling) wins; otherwise fall
     // back to the resolved active working pane (`/fix`). An active pane that
     // is itself an agent pane is skipped — there's no terminal output there.
     let explicit_source = pane_context.and_then(|ctx| ctx.source_pane_id.clone());
@@ -455,11 +459,11 @@ pub(super) async fn resolve_provider_context(
     // The pane whose shell/cwd describe the FAILING command — drives the
     // `### Shell Context` header and the command-not-found near-match gate.
     // For a manual `/fix` the active pane IS the source. But error-triggered
-    // autofix can fire for a pane in a *non-focused* tab, so deriving the
+    // Auto error handling can fire for a pane in a *non-focused* tab, so deriving the
     // shell from `wt_get_active_pane()` would describe the wrong pane (e.g.
     // a failing pwsh pane while bash is active) and mis-gate the near-match.
     // Resolve the explicit source pane's JSON by *session id* (not by
-    // `PaneContext.tab_id`, which in autofix is a StableId `list_panes`
+    // `PaneContext.tab_id`, which in Auto error handling is a StableId `list_panes`
     // won't accept — see `resolve_pane_by_session_id`). If that lookup fails,
     // omit shell context rather than borrowing an unrelated active pane.
     resolved.context_pane = match explicit_source.as_deref() {
@@ -476,7 +480,7 @@ pub(super) async fn resolve_provider_context(
             target: "acp.terminal_context",
             source_pane_id = %source_pane_id,
             shell = ?resolved.shell_exe,
-            mode = "autofix",
+            mode = "auto_error_handling",
             "terminal_context_target_resolved"
         );
         resolved.terminal_output = read_pane_last_message(
@@ -496,26 +500,26 @@ pub(super) async fn resolve_provider_context(
 ///
 /// [`resolve_provider_context`] resolves the expensive shared bits (the active
 /// pane, its canonical shell, the failing pane's last output) **once** and
-/// lends them here, so providers never re-query WT. Autofix-only fields are
+/// lends them here, so providers never re-query WT. Auto error handling-only fields are
 /// `None` for planner turns and vice-versa; providers gate on them in
 /// [`applies`](ContextProvider::applies).
 pub(super) struct ContextRequest<'a> {
-    /// True for an auto-fix / `/fix` turn; false for a planner turn.
-    pub(super) is_autofix: bool,
+    /// True for an Auto error handling or `/fix` turn; false for a planner turn.
+    pub(super) is_auto_error_handling: bool,
     /// Whether the WT protocol channel is live (pane queries are meaningful).
     pub(super) wt_connected: bool,
     /// Shell manager for providers that query WT directly (planner terminal
     /// context).
     pub(super) shell_mgr: &'a ShellManager,
-    /// Autofix only: the JSON of the pane whose shell/cwd describe the failing
-    /// command (the source pane — for error-triggered autofix this can be a
+    /// Auto error handling only: the JSON of the pane whose shell/cwd describe the failing
+    /// command (the source pane — for error-triggered Auto error handling this can be a
     /// pane in a non-focused tab, not the active pane). `None` when WT is not
     /// connected / no pane resolved.
     pub(super) context_pane: Option<&'a serde_json::Value>,
-    /// Autofix only: the canonical shell exe of the failing pane
+    /// Auto error handling only: the canonical shell exe of the failing pane
     /// (`pwsh.exe` / `cmd.exe` / `wsl.exe` …), from its pid.
     pub(super) shell_exe: Option<&'a str>,
-    /// Autofix only: the failing pane's last `[command + output]` buffer.
+    /// Auto error handling only: the failing pane's last `[command + output]` buffer.
     pub(super) terminal_output: Option<&'a str>,
     /// Planner only: terminal context assembled with its authoritative target.
     pub(super) planner_terminal_context: Option<&'a str>,
@@ -561,7 +565,7 @@ pub(super) trait ContextProvider: Send + Sync {
 }
 
 /// The ordered provider chain `build_prompt_text` runs. Order is the order
-/// sections appear in the prompt; mutually-exclusive planner / autofix
+/// sections appear in the prompt; mutually-exclusive planner / Auto error handling
 /// providers self-gate via [`ContextProvider::applies`], so the same chain
 /// serves both turn kinds.
 ///
@@ -573,7 +577,7 @@ pub(super) fn default_providers() -> &'static [&'static dyn ContextProvider] {
         &CommandResolverProvider,
         &DelegateAgentsProvider,
         &TerminalContextProvider,
-        // Autofix turns.
+        // Auto error handling turns.
         &ShellContextProvider,
         &TerminalOutputProvider,
         &CommandNotFoundProvider,
@@ -586,11 +590,11 @@ pub(super) fn default_providers() -> &'static [&'static dyn ContextProvider] {
 struct CommandResolverProvider;
 
 pub(super) fn command_resolver_invocation(
-    is_autofix: bool,
+    is_auto_error_handling: bool,
     planner_shell: Option<&str>,
     planner_pane: Option<&serde_json::Value>,
 ) -> Option<crate::agent_tools::command_resolution::CommandResolverInvocation> {
-    if is_autofix
+    if is_auto_error_handling
         || planner_shell.is_some_and(|shell| {
             !crate::agent_tools::command_resolution::has_applicable_source(shell)
         })
@@ -669,7 +673,7 @@ impl ContextProvider for DelegateAgentsProvider {
     }
 
     fn applies(&self, req: &ContextRequest<'_>) -> bool {
-        !req.is_autofix
+        !req.is_auto_error_handling
     }
 
     async fn provide(&self, _req: &ContextRequest<'_>) -> Option<ContextSection> {
@@ -692,7 +696,7 @@ impl ContextProvider for TerminalContextProvider {
     }
 
     fn applies(&self, req: &ContextRequest<'_>) -> bool {
-        !req.is_autofix && req.wt_connected && req.planner_terminal_context.is_some()
+        !req.is_auto_error_handling && req.wt_connected && req.planner_terminal_context.is_some()
     }
 
     async fn provide(&self, req: &ContextRequest<'_>) -> Option<ContextSection> {
@@ -704,7 +708,7 @@ impl ContextProvider for TerminalContextProvider {
     }
 }
 
-/// Autofix: a small `{shell, cwd, locale}` header so the agent picks the right
+/// Auto error handling: a small `{shell, cwd, locale}` header so the agent picks the right
 /// shell syntax for any file-edit fix it suggests.
 struct ShellContextProvider;
 
@@ -715,7 +719,7 @@ impl ContextProvider for ShellContextProvider {
     }
 
     fn applies(&self, req: &ContextRequest<'_>) -> bool {
-        req.is_autofix && req.context_pane.is_some()
+        req.is_auto_error_handling && req.context_pane.is_some()
     }
 
     async fn provide(&self, req: &ContextRequest<'_>) -> Option<ContextSection> {
@@ -738,7 +742,7 @@ impl ContextProvider for ShellContextProvider {
     }
 }
 
-/// Autofix: the failing pane's last `[command + output]` buffer.
+/// Auto error handling: the failing pane's last `[command + output]` buffer.
 struct TerminalOutputProvider;
 
 #[async_trait]
@@ -748,7 +752,7 @@ impl ContextProvider for TerminalOutputProvider {
     }
 
     fn applies(&self, req: &ContextRequest<'_>) -> bool {
-        req.is_autofix && req.terminal_output.is_some()
+        req.is_auto_error_handling && req.terminal_output.is_some()
     }
 
     async fn provide(&self, req: &ContextRequest<'_>) -> Option<ContextSection> {
@@ -760,7 +764,7 @@ impl ContextProvider for TerminalOutputProvider {
     }
 }
 
-/// Autofix: local "did you mean" near-matches when the failing command does not
+/// Auto error handling: local "did you mean" near-matches when the failing command does not
 /// resolve on this machine (issue #287). PowerShell-only in v1; the matching
 /// logic lives in [`crate::command_recall`], this provider just gates and
 /// formats it into a section.
@@ -773,7 +777,7 @@ impl ContextProvider for CommandNotFoundProvider {
     }
 
     fn applies(&self, req: &ContextRequest<'_>) -> bool {
-        req.is_autofix
+        req.is_auto_error_handling
             && req.terminal_output.is_some()
             && req
                 .shell_exe
@@ -789,7 +793,7 @@ impl ContextProvider for CommandNotFoundProvider {
             target: "acp.terminal_context",
             token = %token,
             matches = ?matches,
-            mode = "autofix",
+            mode = "auto_error_handling",
             "near_matches_resolved"
         );
         Some(ContextSection {
@@ -982,7 +986,7 @@ mod tests {
 
     fn req_planner(mgr: &ShellManager, wt_connected: bool) -> ContextRequest<'_> {
         ContextRequest {
-            is_autofix: false,
+            is_auto_error_handling: false,
             wt_connected,
             shell_mgr: mgr,
             context_pane: None,
@@ -1015,11 +1019,11 @@ mod tests {
     fn delegate_agents_applies_only_to_planner() {
         let mgr = ShellManager::new();
         assert!(DelegateAgentsProvider.applies(&req_planner(&mgr, true)));
-        let autofix = ContextRequest {
-            is_autofix: true,
+        let auto_error_handling = ContextRequest {
+            is_auto_error_handling: true,
             ..req_planner(&mgr, true)
         };
-        assert!(!DelegateAgentsProvider.applies(&autofix));
+        assert!(!DelegateAgentsProvider.applies(&auto_error_handling));
     }
 
     #[test]
@@ -1047,13 +1051,14 @@ mod tests {
             ..req_planner(&mgr, true)
         };
         assert!(!CommandResolverProvider.applies(&wsl));
-        let autofix_invocation = command_resolver_invocation(true, Some("pwsh"), Some(&pane));
-        let autofix = ContextRequest {
-            is_autofix: true,
-            command_resolver_invocation: autofix_invocation.as_ref(),
+        let auto_error_handling_invocation =
+            command_resolver_invocation(true, Some("pwsh"), Some(&pane));
+        let auto_error_handling = ContextRequest {
+            is_auto_error_handling: true,
+            command_resolver_invocation: auto_error_handling_invocation.as_ref(),
             ..req_planner(&mgr, true)
         };
-        assert!(!CommandResolverProvider.applies(&autofix));
+        assert!(!CommandResolverProvider.applies(&auto_error_handling));
     }
 
     #[test]
@@ -1112,16 +1117,16 @@ mod tests {
     }
 
     #[test]
-    fn shell_context_requires_autofix_with_context_pane() {
+    fn shell_context_requires_auto_error_handling_with_context_pane() {
         let mgr = ShellManager::new();
         let pane = serde_json::json!({ "cwd": "C:\\proj" });
         let with_pane = ContextRequest {
-            is_autofix: true,
+            is_auto_error_handling: true,
             context_pane: Some(&pane),
             ..req_planner(&mgr, true)
         };
         assert!(ShellContextProvider.applies(&with_pane));
-        // Planner turn never ships the autofix shell header.
+        // Planner turn never ships the Auto error handling shell header.
         let planner = ContextRequest {
             context_pane: Some(&pane),
             ..req_planner(&mgr, true)
@@ -1133,7 +1138,7 @@ mod tests {
     fn command_not_found_gates_on_powershell_and_output() {
         let mgr = ShellManager::new();
         let base = ContextRequest {
-            is_autofix: true,
+            is_auto_error_handling: true,
             shell_exe: Some("pwsh.exe"),
             terminal_output: Some("gti status\n..."),
             ..req_planner(&mgr, true)
@@ -1142,7 +1147,7 @@ mod tests {
 
         // Non-PowerShell shell: feature is PowerShell-only in v1.
         let bash = ContextRequest {
-            is_autofix: true,
+            is_auto_error_handling: true,
             shell_exe: Some("bash"),
             terminal_output: Some("gti status"),
             ..req_planner(&mgr, true)
@@ -1151,14 +1156,14 @@ mod tests {
 
         // No captured output: nothing to extract a token from.
         let no_output = ContextRequest {
-            is_autofix: true,
+            is_auto_error_handling: true,
             shell_exe: Some("pwsh.exe"),
             terminal_output: None,
             ..req_planner(&mgr, true)
         };
         assert!(!CommandNotFoundProvider.applies(&no_output));
 
-        // Planner turn: never runs the autofix-only provider.
+        // Planner turn: never runs the Auto error handling-only provider.
         let planner = ContextRequest {
             shell_exe: Some("pwsh.exe"),
             terminal_output: Some("gti status"),

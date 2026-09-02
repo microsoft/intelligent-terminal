@@ -267,6 +267,6 @@ state:
 | F7 | connecting looked frozen | covered by `Reconnecting`/`Connecting` spinner |
 | F8 | agent-side session leak | **fixed** §5.4 |
 | F9 | routing to a dead helper | already graceful |
-| F10 | autofix dropped in non-`Connected` | expected after terminal failure; a new explicit session starts clean |
+| F10 | Auto error handling request dropped in non-`Connected` | expected after terminal failure; a new explicit session starts clean |
 | — | **auth mis-routing (new)** | **fixed** typed `AuthRequired` |
 | — | **silent hung agent (new)** | **fixed** §5.1 `Unresponsive` |

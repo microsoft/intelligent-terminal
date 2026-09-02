@@ -991,7 +991,7 @@
   <data name="OpenAgentPaneCommandKey" xml:space="preserve"><value>Alternar agente de IA</value></data>
   <data name="FocusAgentPaneCommandKey" xml:space="preserve"><value>Enfocar el panel del agente de IA</value></data>
   <data name="OpenAgentSessionsCommandKey" xml:space="preserve"><value>Abrir lista de sesiones del agente de IA</value></data>
-  <data name="TriggerAutofixCommandKey" xml:space="preserve"><value>Ejecutar corrección automática</value></data>
+  <data name="TriggerAutoErrorHandlingCommandKey" xml:space="preserve"><value>Gestión automática de errores</value></data>
   <data name="PromptActionArgumentLocalized" xml:space="preserve"><value>Consulta</value></data>
   <data name="BugReportCommandKey" xml:space="preserve"><value>Informar de un error (recopilar registros)</value></data>
   <data name="OpenBackgroundAgentCommandKey" xml:space="preserve">

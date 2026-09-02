@@ -107,7 +107,9 @@ static constexpr std::string_view OpenCWDKey{ "openCWD" };
 static constexpr std::string_view OpenAgentPaneKey{ "openAgentPane" };
 static constexpr std::string_view FocusAgentPaneKey{ "focusAgentPane" };
 static constexpr std::string_view OpenAgentSessionsKey{ "openAgentSessions" };
-static constexpr std::string_view TriggerAutofixKey{ "triggerAutofix" };
+static constexpr std::string_view TriggerAutoErrorHandlingKey{ "triggerAutoErrorHandling" };
+// Parse-only compatibility alias for settings written before the action was renamed.
+static constexpr std::string_view LegacyTriggerAutofixKey{ "triggerAutofix" };
 static constexpr std::string_view OpenBackgroundAgentKey{ "openBackgroundAgent" };
 static constexpr std::string_view ShowProtocolInfoKey{ "showProtocolInfo" };
 static constexpr std::string_view BugReportKey{ "bugReport" };
@@ -137,6 +139,7 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
     static constexpr til::static_map ActionKeyNamesMap{
 #define ON_ALL_ACTIONS(action) KEY_TO_ACTION_PAIR(action)
         ALL_SHORTCUT_ACTIONS
+        KeyToActionPair{ LegacyTriggerAutofixKey, ShortcutAction::TriggerAutoErrorHandling },
     // Don't include the INTERNAL_SHORTCUT_ACTIONS here
 #undef ON_ALL_ACTIONS
     };

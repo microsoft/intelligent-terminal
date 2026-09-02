@@ -3528,17 +3528,17 @@ fn settings_agent_rebind_targets_owner_and_resets_only_agent_state() {
             proposal_id: "old-proposal".into(),
             session_id: "old-session".into(),
             prompt_id: 42,
-            is_autofix: false,
+            is_auto_error_handling: false,
             recommendations: RecommendationSet {
                 recommended_choice: None,
                 choices: Vec::new(),
             },
         });
         tab.active_direct_proposal_id = Some("old-direct-proposal".into());
-        tab.autofix.generation = 7;
-        tab.autofix.pane_id = Some("failing-pane".into());
-        tab.autofix.suggested_pane_id = Some("failing-pane".into());
-        tab.autofix.bar_snapshot = AutofixBarSnapshot::Pending {
+        tab.auto_error_handling.generation = 7;
+        tab.auto_error_handling.pane_id = Some("failing-pane".into());
+        tab.auto_error_handling.result_pane_id = Some("failing-pane".into());
+        tab.auto_error_handling.bar_snapshot = AutoErrorHandlingBarSnapshot::Pending {
             pane_id: "failing-pane".into(),
             summary: "old failure".into(),
         };
@@ -3594,12 +3594,16 @@ fn settings_agent_rebind_targets_owner_and_resets_only_agent_state() {
     assert!(!app.current_tab().agent_picker_open);
     assert!(app.current_tab().pending_terminal_action_proposal.is_none());
     assert!(app.current_tab().active_direct_proposal_id.is_none());
-    assert_eq!(app.current_tab().autofix.generation, 8);
-    assert!(app.current_tab().autofix.pane_id.is_none());
-    assert!(app.current_tab().autofix.suggested_pane_id.is_none());
+    assert_eq!(app.current_tab().auto_error_handling.generation, 8);
+    assert!(app.current_tab().auto_error_handling.pane_id.is_none());
+    assert!(app
+        .current_tab()
+        .auto_error_handling
+        .result_pane_id
+        .is_none());
     assert!(matches!(
-        app.current_tab().autofix.bar_snapshot,
-        AutofixBarSnapshot::Idle
+        app.current_tab().auto_error_handling.bar_snapshot,
+        AutoErrorHandlingBarSnapshot::Idle
     ));
     assert_eq!(app.mode, AppMode::Chat);
     assert!(!app.preflight_setup_active);
@@ -5937,10 +5941,10 @@ fn closing_other_tab_preserves_per_tab_view_when_tab_changed_follows() {
 }
 
 #[test]
-fn autofix_still_triggers_for_non_agent_pane() {
+fn auto_error_handling_still_triggers_for_non_agent_pane() {
     let mut app = test_app();
     app.state = ConnectionState::Connected;
-    app.autofix_enabled = true;
+    app.auto_error_handling_with_agent_enabled = true;
     // No SessionStarted apply -> pane is not an agent pane.
     let pane = "non-agent-pane-guid";
 
@@ -5952,17 +5956,20 @@ fn autofix_still_triggers_for_non_agent_pane() {
         acknowledged: false,
         age_ticks: 0,
     };
-    app.maybe_trigger_autofix(&notification);
+    app.maybe_trigger_auto_error_handling(&notification);
 
     assert_eq!(
-        app.tab_mut("test-tab").autofix.pane_id.as_deref(),
+        app.tab_mut("test-tab")
+            .auto_error_handling
+            .pane_id
+            .as_deref(),
         Some(pane),
-        "autofix must still arm normal panes when a command fails"
+        "auto_error_handling must still arm normal panes when a command fails"
     );
     // The target tab's turn (not the active tab's) should be in-flight.
     assert!(
         !app.tab_mut("test-tab").turn.is_idle(),
-        "autofix prompt should be in-flight on the target tab"
+        "Auto error handling prompt should be in-flight on the target tab"
     );
 }
 
@@ -6560,15 +6567,15 @@ fn connecting_state_advances_activity_frame_on_tick() {
 /// a shell command failure — it carries no exit code, no command
 /// context, and the pane is gone so any follow-up ReadPaneOutput
 /// would trip E_FAIL. The dispatcher in `handle_event` only routes
-/// `vt_sequence` events to autofix; this asserts the connection_state
+/// `vt_sequence` events to Auto error handling; this asserts the connection_state
 /// path stays banner-only.
 #[test]
-fn connection_state_closed_does_not_trigger_autofix_even_when_binding_cleared() {
+fn connection_state_closed_does_not_trigger_auto_error_handling_even_when_binding_cleared() {
     use crate::agent_sessions::{CliSource, SessionEvent};
     use std::path::PathBuf;
     let mut app = test_app();
     app.state = ConnectionState::Connected;
-    app.autofix_enabled = true;
+    app.auto_error_handling_with_agent_enabled = true;
     let pane = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee";
 
     // Bind, then unbind — mirrors the Copilot order: agent.session.end
@@ -6603,14 +6610,14 @@ fn connection_state_closed_does_not_trigger_autofix_even_when_binding_cleared() 
     assert!(
         app.tab_sessions
             .values()
-            .all(|t| t.autofix.pane_id.is_none()),
-        "connection_state:closed must never arm autofix — no exit code, \
+            .all(|t| t.auto_error_handling.pane_id.is_none()),
+        "connection_state:closed must never start Auto error handling — no exit code, \
          no command context, pane is dead so subsequent ReadPaneOutput \
          would throw E_FAIL"
     );
     assert!(
         app.current_tab().turn.is_idle(),
-        "no autofix prompt should be in-flight"
+        "no Auto error handling prompt should be in-flight"
     );
     // The pane-closed event surfaces via the banner / `wt_notifications`,
     // never in chat. Chat is the agent dialogue surface.
@@ -6627,7 +6634,7 @@ fn connection_state_closed_does_not_trigger_autofix_even_when_binding_cleared() 
 /// "agent-bound" pane implies the binding is a ghost — typically left
 /// over from a hook that misreported `pane_id`, or from the previous
 /// agent CLI having exited without the registry catching it yet.
-/// Real-world repro: autofix runs Copilot, Copilot's hooks emit events
+/// Real-world repro: Auto error handling runs Copilot, Copilot's hooks emit events
 /// with `pane_id` = the source (user's) pane, registry registers the
 /// user's PowerShell pane as Copilot-bound, then the next typo there
 /// silently dies in the suppression check.
@@ -6637,7 +6644,7 @@ fn ghost_agent_binding_does_not_suppress_shell_failure() {
     use std::path::PathBuf;
     let mut app = test_app();
     app.state = ConnectionState::Connected;
-    app.autofix_enabled = true;
+    app.auto_error_handling_with_agent_enabled = true;
     let pane = "11111111-2222-3333-4444-555555555555";
     app.agent_sessions.apply(SessionEvent::SessionStarted {
         key: "copilot-key".into(),
@@ -6662,20 +6669,20 @@ fn ghost_agent_binding_does_not_suppress_shell_failure() {
     });
 
     assert_eq!(
-        app.tab_mut("test-tab").autofix.pane_id.as_deref(),
+        app.tab_mut("test-tab").auto_error_handling.pane_id.as_deref(),
         Some(pane),
-        "shell failure must arm autofix even when the registry still holds a stale agent binding for the pane"
+        "shell failure must start Auto error handling even when the registry still holds a stale agent binding for the pane"
     );
 }
 
 /// Positive coverage: a vt_sequence (osc:133;D;1) in a normal shell pane
-/// still fires autofix (the proper command-failure signal). Ensures the
-/// new "vt_sequence-only" routing doesn't silently disable autofix.
+/// still fires Auto error handling (the proper command-failure signal). Ensures the
+/// new "vt_sequence-only" routing doesn't silently disable Auto error handling.
 #[test]
-fn vt_sequence_failure_in_normal_pane_still_triggers_autofix() {
+fn vt_sequence_failure_in_normal_pane_still_triggers_auto_error_handling() {
     let mut app = test_app();
     app.state = ConnectionState::Connected;
-    app.autofix_enabled = true;
+    app.auto_error_handling_with_agent_enabled = true;
     let pane = "fedcba98-7654-3210-fedc-ba9876543210";
 
     app.handle_event(AppEvent::WtEvent {
@@ -6689,9 +6696,12 @@ fn vt_sequence_failure_in_normal_pane_still_triggers_autofix() {
     });
 
     assert_eq!(
-        app.tab_mut("test-tab").autofix.pane_id.as_deref(),
+        app.tab_mut("test-tab")
+            .auto_error_handling
+            .pane_id
+            .as_deref(),
         Some(pane),
-        "vt_sequence osc:133;D;<non-zero> in a normal pane must still arm autofix"
+        "vt_sequence osc:133;D;<non-zero> in a normal pane must still start Auto error handling"
     );
 }
 
@@ -6712,21 +6722,24 @@ fn vt_event(pane: &str, tab: &str, seq: &str) -> AppEvent {
 fn detected_survives_trigger_echo_dismisses_on_next_prompt_start() {
     let mut app = test_app();
     app.state = ConnectionState::Connected;
-    app.autofix_enabled = false; // suggest-mode → produces Detected
+    app.auto_error_handling_with_agent_enabled = false;
     let pane = "11111111-2222-3333-4444-555555555555";
     let tab = "tab-A";
 
-    // D;1 → Detected pill armed.
+    // D;1 → Detected pill shown.
     app.handle_event(vt_event(pane, tab, "osc:133;D;1"));
     assert!(
         matches!(
-            app.tab_mut(tab).autofix.bar_snapshot,
-            AutofixBarSnapshot::Detected { .. }
+            app.tab_mut(tab).auto_error_handling.bar_snapshot,
+            AutoErrorHandlingBarSnapshot::Detected { .. }
         ),
         "D;1 must establish Detected"
     );
     assert_eq!(
-        app.tab_mut(tab).autofix.trigger_echo_pane.as_deref(),
+        app.tab_mut(tab)
+            .auto_error_handling
+            .trigger_echo_pane
+            .as_deref(),
         Some(pane),
         "trigger_echo_pane must be armed at Detected set so the immediate A is consumed"
     );
@@ -6735,13 +6748,16 @@ fn detected_survives_trigger_echo_dismisses_on_next_prompt_start() {
     app.handle_event(vt_event(pane, tab, "osc:133;A"));
     assert!(
         matches!(
-            app.tab_mut(tab).autofix.bar_snapshot,
-            AutofixBarSnapshot::Detected { .. }
+            app.tab_mut(tab).auto_error_handling.bar_snapshot,
+            AutoErrorHandlingBarSnapshot::Detected { .. }
         ),
         "the trigger-echo A must not dismiss Detected"
     );
     assert!(
-        app.tab_mut(tab).autofix.trigger_echo_pane.is_none(),
+        app.tab_mut(tab)
+            .auto_error_handling
+            .trigger_echo_pane
+            .is_none(),
         "trigger_echo_pane must be consumed by the echo A"
     );
 
@@ -6749,41 +6765,44 @@ fn detected_survives_trigger_echo_dismisses_on_next_prompt_start() {
     app.handle_event(vt_event(pane, tab, "osc:133;A"));
     assert!(
         matches!(
-            app.tab_mut(tab).autofix.bar_snapshot,
-            AutofixBarSnapshot::Idle
+            app.tab_mut(tab).auto_error_handling.bar_snapshot,
+            AutoErrorHandlingBarSnapshot::Idle
         ),
         "a subsequent A (user moved on) must dismiss Detected"
     );
 }
 
-/// Pending state (auto-suggest on path: D arms `autofix.pane_id` and
+/// Pending state (automatic agent path: D sets `auto_error_handling.pane_id` and
 /// emits Pending) must also survive the trigger-echo A and dismiss on
-/// the next user-driven prompt-start. The Pending/Armed dismiss path
+/// the next user-driven prompt-start. The Pending/Review dismiss path
 /// goes through `turn_cancel` (or its manual fallback when no ACP
 /// session is bound).
 #[test]
 fn pending_survives_trigger_echo_dismisses_on_next_prompt_start() {
     let mut app = test_app();
     app.state = ConnectionState::Connected;
-    app.autofix_enabled = true; // LLM-call path → produces Pending
+    app.auto_error_handling_with_agent_enabled = true;
     let pane = "22222222-3333-4444-5555-666666666666";
     let tab = "tab-B";
 
     app.handle_event(vt_event(pane, tab, "osc:133;D;1"));
     assert_eq!(
-        app.tab_mut(tab).autofix.pane_id.as_deref(),
+        app.tab_mut(tab).auto_error_handling.pane_id.as_deref(),
         Some(pane),
-        "D;1 must arm Pending (autofix.pane_id set)"
+        "D;1 must arm Pending (auto_error_handling.pane_id set)"
     );
     assert_eq!(
-        app.tab_mut(tab).autofix.trigger_echo_pane.as_deref(),
+        app.tab_mut(tab)
+            .auto_error_handling
+            .trigger_echo_pane
+            .as_deref(),
         Some(pane),
     );
 
     // Echo A — Pending stays.
     app.handle_event(vt_event(pane, tab, "osc:133;A"));
     assert_eq!(
-        app.tab_mut(tab).autofix.pane_id.as_deref(),
+        app.tab_mut(tab).auto_error_handling.pane_id.as_deref(),
         Some(pane),
         "trigger-echo A must not cancel Pending"
     );
@@ -6791,25 +6810,25 @@ fn pending_survives_trigger_echo_dismisses_on_next_prompt_start() {
     // Real A — turn_cancel (or manual fallback) clears pane_id and bar.
     app.handle_event(vt_event(pane, tab, "osc:133;A"));
     assert!(
-        app.tab_mut(tab).autofix.pane_id.is_none(),
+        app.tab_mut(tab).auto_error_handling.pane_id.is_none(),
         "subsequent A must cancel Pending"
     );
     assert!(
         matches!(
-            app.tab_mut(tab).autofix.bar_snapshot,
-            AutofixBarSnapshot::Idle
+            app.tab_mut(tab).auto_error_handling.bar_snapshot,
+            AutoErrorHandlingBarSnapshot::Idle
         ),
         "bar must return to Idle after Pending cancel"
     );
 }
 
-/// User clicks the Detected pill on a stable prompt → autofix
-/// transitions Detected → Pending → Armed via the LLM call. No D
+/// User clicks the Detected pill on a stable prompt → Auto error handling
+/// transitions Detected → Pending → Review via the agent call. No D
 /// event is in flight during this transition, so no echo A is
 /// coming. The next prompt-start the user produces must dismiss on
 /// the FIRST Enter, not be eaten as a fake echo.
 ///
-/// Bug repro before this fix: emit_autofix_state_pending used to
+/// Bug repro before this fix: emit_auto_error_handling_state_pending used to
 /// arm `trigger_echo_pane` unconditionally, so the forced-from-
 /// Detected path planted a gate with no echo to consume. The
 /// gate then ate the user's first real Enter.
@@ -6817,7 +6836,7 @@ fn pending_survives_trigger_echo_dismisses_on_next_prompt_start() {
 fn force_from_detected_does_not_arm_echo_gate() {
     let mut app = test_app();
     app.state = ConnectionState::Connected;
-    app.autofix_enabled = false; // suggest-mode produces Detected first
+    app.auto_error_handling_with_agent_enabled = false;
     let pane = "44444444-5555-6666-7777-888888888888";
     let tab = "tab-D";
 
@@ -6825,7 +6844,10 @@ fn force_from_detected_does_not_arm_echo_gate() {
     app.handle_event(vt_event(pane, tab, "osc:133;D;1"));
     app.handle_event(vt_event(pane, tab, "osc:133;A")); // echo
     assert!(
-        app.tab_mut(tab).autofix.trigger_echo_pane.is_none(),
+        app.tab_mut(tab)
+            .auto_error_handling
+            .trigger_echo_pane
+            .is_none(),
         "echo A must consume the gate"
     );
 
@@ -6839,9 +6861,12 @@ fn force_from_detected_does_not_arm_echo_gate() {
         acknowledged: false,
         age_ticks: 0,
     };
-    app.trigger_autofix_inner(&synth, /*forced*/ true);
+    app.trigger_auto_error_handling_inner(&synth, /*forced*/ true);
     assert!(
-        app.tab_mut(tab).autofix.trigger_echo_pane.is_none(),
+        app.tab_mut(tab)
+            .auto_error_handling
+            .trigger_echo_pane
+            .is_none(),
         "force-from-Detected path must not arm trigger_echo_pane — \
          no D is in flight, no echo A is coming, and arming would eat \
          the user's first dismiss Enter"
@@ -6851,27 +6876,33 @@ fn force_from_detected_does_not_arm_echo_gate() {
 /// Returning to Idle clears the echo guard. Otherwise, a stale
 /// `trigger_echo_pane` could swallow a real prompt-start that arrives
 /// long after the state has already been cleared by other means
-/// (e.g. the user clicked the Suggested pill, then the autofix
+/// (e.g. the user clicked the Review pill, then the Auto error handling
 /// re-fires later in the same pane).
 #[test]
 fn trigger_echo_pane_clears_when_state_returns_to_idle() {
     let mut app = test_app();
     app.state = ConnectionState::Connected;
-    app.autofix_enabled = false;
+    app.auto_error_handling_with_agent_enabled = false;
     let pane = "33333333-4444-5555-6666-777777777777";
     let tab = "tab-C";
 
     app.handle_event(vt_event(pane, tab, "osc:133;D;1"));
     assert_eq!(
-        app.tab_mut(tab).autofix.trigger_echo_pane.as_deref(),
+        app.tab_mut(tab)
+            .auto_error_handling
+            .trigger_echo_pane
+            .as_deref(),
         Some(pane)
     );
 
     // Externally clear the bar (e.g. user dismissed via Esc / pill).
     let tab_owned = tab.to_string();
-    app.emit_autofix_state_cleared(&tab_owned);
+    app.emit_auto_error_handling_state_cleared(&tab_owned);
     assert!(
-        app.tab_mut(tab).autofix.trigger_echo_pane.is_none(),
+        app.tab_mut(tab)
+            .auto_error_handling
+            .trigger_echo_pane
+            .is_none(),
         "trigger_echo_pane must be released when bar transitions to Idle, \
          otherwise the next real prompt-start would be silently swallowed"
     );
@@ -7087,7 +7118,7 @@ fn submit_test_prompt(app: &mut App, text: &str) {
         text: text.into(),
         submitted_at_unix_s: 0.0,
         context: TurnContext::default(),
-        autofix: None,
+        auto_error_handling: None,
     };
     app.turn_submit_prompt(DEFAULT_TAB_ID, prompt);
 }
@@ -7382,7 +7413,7 @@ fn permission_request_replaces_thinking_until_dismissed() {
         text: "test".into(),
         submitted_at_unix_s: 0.0,
         context: TurnContext::default(),
-        autofix: None,
+        auto_error_handling: None,
     };
     app.tab_mut(DEFAULT_TAB_ID).turn = TurnState::Surfaced {
         prompt,
@@ -7427,14 +7458,14 @@ fn permission_request_replaces_thinking_until_dismissed() {
 }
 
 #[test]
-fn surfaced_autofix_turn_accepts_follow_up_permission_request() {
+fn surfaced_auto_error_handling_turn_accepts_follow_up_permission_request() {
     let mut app = test_app();
     let prompt = SubmittedPrompt {
         id: 1,
-        text: "autofix".into(),
+        text: "auto_error_handling".into(),
         submitted_at_unix_s: 0.0,
         context: TurnContext::default(),
-        autofix: Some(AutofixContext { generation: 0 }),
+        auto_error_handling: Some(AutoErrorHandlingContext { generation: 0 }),
     };
     app.tab_mut(DEFAULT_TAB_ID).turn = TurnState::Surfaced {
         prompt,
@@ -7473,7 +7504,7 @@ fn begin_user_input_test(app: &mut App) {
         text: "test".into(),
         submitted_at_unix_s: 0.0,
         context: TurnContext::default(),
-        autofix: None,
+        auto_error_handling: None,
     });
 }
 
@@ -7825,7 +7856,7 @@ fn surfaced_recommendation_hides_thinking_before_turn_end() {
         text: "test".into(),
         submitted_at_unix_s: 0.0,
         context: TurnContext::default(),
-        autofix: None,
+        auto_error_handling: None,
     };
     app.tab_mut(DEFAULT_TAB_ID).turn = TurnState::Surfaced {
         prompt,
@@ -9421,7 +9452,7 @@ fn image_attachment_ctrl_c_clears_image_only_draft_without_arming_close() {
     app.handle_key(KeyEvent::new(KeyCode::Char('c'), KeyModifiers::CONTROL));
 
     assert!(app.current_tab().attachments.is_empty());
-    assert!(app.close_pane_armed_at.is_none());
+    assert!(app.close_pane_started_at.is_none());
 }
 
 /// the action's command body (the card shows the command, not the choice
@@ -9439,7 +9470,7 @@ fn render_recommendation_card_shows_command() {
             text: "fix it".into(),
             submitted_at_unix_s: 0.0,
             context: TurnContext::default(),
-            autofix: None,
+            auto_error_handling: None,
         },
         outcome: TurnOutcome::Recommendation(RecommendationSet {
             recommended_choice: Some(0),
@@ -11727,38 +11758,38 @@ fn render_recommendation_compact_keeps_summary_and_actions_visible() {
     );
 }
 
-fn submit_autofix_prompt(app: &mut App, pane: &str) {
+fn submit_auto_error_handling_prompt(app: &mut App, pane: &str) {
     let gen = {
         let tab = app.tab_mut(DEFAULT_TAB_ID);
-        tab.autofix.generation = tab.autofix.generation.wrapping_add(1);
-        tab.autofix.pane_id = Some(pane.into());
-        tab.autofix.generation
+        tab.auto_error_handling.generation = tab.auto_error_handling.generation.wrapping_add(1);
+        tab.auto_error_handling.pane_id = Some(pane.into());
+        tab.auto_error_handling.generation
     };
     let prompt = SubmittedPrompt {
         id: 99,
         text: "diagnose this".into(),
         submitted_at_unix_s: 0.0,
         context: TurnContext::with_target_pane(pane),
-        autofix: Some(AutofixContext { generation: gen }),
+        auto_error_handling: Some(AutoErrorHandlingContext { generation: gen }),
     };
     app.turn_submit_prompt(DEFAULT_TAB_ID, prompt);
 }
 
-/// Submit a manual-`/fix`-style autofix turn: an autofix context whose
+/// Submit a manual-`/fix`-style Auto error handling turn: an Auto error handling context whose
 /// `target_pane_id` is empty (the App doesn't know the working pane until
 /// the client task resolves it and plumbs it back).
 fn submit_fix_prompt(app: &mut App, id: u64) {
     let gen = {
         let tab = app.tab_mut(DEFAULT_TAB_ID);
-        tab.autofix.generation = tab.autofix.generation.wrapping_add(1);
-        tab.autofix.generation
+        tab.auto_error_handling.generation = tab.auto_error_handling.generation.wrapping_add(1);
+        tab.auto_error_handling.generation
     };
     let prompt = SubmittedPrompt {
         id,
         text: String::new(),
         submitted_at_unix_s: 0.0,
         context: TurnContext::default(),
-        autofix: Some(AutofixContext { generation: gen }),
+        auto_error_handling: Some(AutoErrorHandlingContext { generation: gen }),
     };
     app.turn_submit_prompt(DEFAULT_TAB_ID, prompt);
 }
@@ -12679,10 +12710,14 @@ fn end_with_no_eager_chat_fallback_commits_completed_turn() {
 }
 
 #[test]
-fn end_with_no_chunks_clears_autofix_bottom_bar() {
+fn end_with_no_chunks_clears_auto_error_handling_bottom_bar() {
     let mut app = test_app();
-    submit_autofix_prompt(&mut app, "pane-7");
-    assert!(app.tab_mut(DEFAULT_TAB_ID).autofix.pane_id.is_some());
+    submit_auto_error_handling_prompt(&mut app, "pane-7");
+    assert!(app
+        .tab_mut(DEFAULT_TAB_ID)
+        .auto_error_handling
+        .pane_id
+        .is_some());
     // No chunks arrived; AgentMessageEnd fires.
     app.turn_close(DEFAULT_TAB_ID);
     let tab = app.current_tab();
@@ -12699,20 +12734,23 @@ fn end_with_no_chunks_clears_autofix_bottom_bar() {
         tab.turn
     );
     assert!(
-        app.tab_mut(DEFAULT_TAB_ID).autofix.pane_id.is_none(),
-        "autofix.pane_id must be cleared so the bar leaves Pending"
+        app.tab_mut(DEFAULT_TAB_ID)
+            .auto_error_handling
+            .pane_id
+            .is_none(),
+        "auto_error_handling.pane_id must be cleared so the bar leaves Pending"
     );
 }
 
 #[test]
-fn stale_autofix_chunks_dropped_when_generation_diverges() {
+fn stale_auto_error_handling_chunks_dropped_when_generation_diverges() {
     let mut app = test_app();
-    submit_autofix_prompt(&mut app, "pane-1");
+    submit_auto_error_handling_prompt(&mut app, "pane-1");
     // Simulate an Esc cancel or a newer trigger bumping the counter
     // on the same tab as the in-flight prompt.
     {
         let tab = app.tab_mut(DEFAULT_TAB_ID);
-        tab.autofix.generation = tab.autofix.generation.wrapping_add(1);
+        tab.auto_error_handling.generation = tab.auto_error_handling.generation.wrapping_add(1);
     }
     let advanced = app.turn_observe_chunk(DEFAULT_TAB_ID, ChunkKind::Message, "stale");
     assert!(!advanced, "stale-gen chunks must be dropped");
@@ -12726,15 +12764,15 @@ fn stale_autofix_chunks_dropped_when_generation_diverges() {
 }
 
 #[test]
-fn stale_autofix_at_close_resets_to_idle() {
+fn stale_auto_error_handling_at_close_resets_to_idle() {
     let mut app = test_app();
-    submit_autofix_prompt(&mut app, "pane-1");
+    submit_auto_error_handling_prompt(&mut app, "pane-1");
     // A chunk advances state to Streaming.
     app.turn_observe_chunk(DEFAULT_TAB_ID, ChunkKind::Message, "partial");
     // Generation diverges (newer trigger / Esc).
     {
         let tab = app.tab_mut(DEFAULT_TAB_ID);
-        tab.autofix.generation = tab.autofix.generation.wrapping_add(1);
+        tab.auto_error_handling.generation = tab.auto_error_handling.generation.wrapping_add(1);
     }
     app.turn_close(DEFAULT_TAB_ID);
     assert!(
@@ -12751,15 +12789,19 @@ fn stale_autofix_at_close_resets_to_idle() {
 #[test]
 fn cancel_bumps_generation_and_returns_to_idle() {
     let mut app = test_app();
-    submit_autofix_prompt(&mut app, "pane-1");
-    let gen_before = app.tab_mut(DEFAULT_TAB_ID).autofix.generation;
+    submit_auto_error_handling_prompt(&mut app, "pane-1");
+    let gen_before = app.tab_mut(DEFAULT_TAB_ID).auto_error_handling.generation;
     app.turn_cancel(DEFAULT_TAB_ID);
     assert_eq!(
-        app.tab_mut(DEFAULT_TAB_ID).autofix.generation,
+        app.tab_mut(DEFAULT_TAB_ID).auto_error_handling.generation,
         gen_before.wrapping_add(1)
     );
     assert!(app.current_tab().turn.is_idle());
-    assert!(app.tab_mut(DEFAULT_TAB_ID).autofix.pane_id.is_none());
+    assert!(app
+        .tab_mut(DEFAULT_TAB_ID)
+        .auto_error_handling
+        .pane_id
+        .is_none());
 }
 
 #[test]
@@ -12872,7 +12914,7 @@ fn submit_proposal_prompt(app: &mut App, session_id: &str) {
             text: "restart it".into(),
             submitted_at_unix_s: 0.0,
             context: TurnContext::with_target_pane("pane-9"),
-            autofix: None,
+            auto_error_handling: None,
         },
     );
 }
@@ -13148,7 +13190,7 @@ fn install_recs(app: &mut App, choices: Vec<RecommendationChoice>) {
             text: "p".into(),
             submitted_at_unix_s: 0.0,
             context: TurnContext::default(),
-            autofix: None,
+            auto_error_handling: None,
         },
         outcome: TurnOutcome::Recommendation(RecommendationSet {
             recommended_choice: Some(0),
@@ -14048,7 +14090,7 @@ fn stage_surfaced_recommendation(
         context: TurnContext {
             target_pane_id: target_pane_id.map(str::to_string),
         },
-        autofix: target_pane_id.map(|_| AutofixContext { generation: 0 }),
+        auto_error_handling: target_pane_id.map(|_| AutoErrorHandlingContext { generation: 0 }),
     };
     let recs = crate::coordinator::RecommendationSet {
         recommended_choice: Some(selected),
@@ -14113,9 +14155,9 @@ fn chip_target_uses_turn_context_instead_of_model_parent() {
 }
 
 #[test]
-fn chip_target_falls_back_to_autofix_target_when_send_parent_empty() {
+fn chip_target_falls_back_to_auto_error_handling_target_when_send_parent_empty() {
     let mut app = test_app();
-    // Planner-emitted Send actions in autofix turns leave `parent`
+    // Planner-emitted Send actions in Auto error handling turns leave `parent`
     // blank — `turn_execute_card` fills it from `target_pane_id` at
     // execute time. The chip should already point there now.
     stage_surfaced_recommendation(
@@ -14131,7 +14173,7 @@ fn chip_target_falls_back_to_autofix_target_when_send_parent_empty() {
 }
 
 #[test]
-fn chip_target_filters_empty_autofix_target() {
+fn chip_target_filters_empty_auto_error_handling_target() {
     // C++ treats `pane_session_id == ""` as "no override", so emitting
     // Some("") would let the helper's dedupe believe it pinned the chip
     // while WT silently ignores the event.

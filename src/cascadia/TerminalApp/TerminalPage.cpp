@@ -65,6 +65,7 @@ using namespace winrt::Windows::UI::Xaml::Controls;
 using namespace winrt::Windows::UI::Xaml;
 using namespace winrt::Windows::UI::Xaml::Media;
 namespace AgentPolicy = ::Microsoft::Terminal::Settings::Model::AgentPolicy;
+namespace Model = winrt::Microsoft::Terminal::Settings::Model;
 using namespace ::TerminalApp;
 using namespace ::Microsoft::Console;
 using namespace ::Microsoft::Terminal::Core;
@@ -356,8 +357,8 @@ namespace winrt::TerminalApp::implementation
 
         // Shell-integration reconcile (silent, background).
         //
-        // Fires on first-load AND whenever EffectiveAutoErrorDetectionEnabled
-        // changes between settings reloads. This handles two cases that
+        // Fires on first-load and whenever the effective auto-error-handling
+        // mode starts or stops detecting errors. This handles two cases that
         // the explicit FRE/Settings-Save install paths miss:
         //
         //   1. Toggle-OFF: previously a no-op, leaving our $PROFILE block
@@ -373,9 +374,10 @@ namespace winrt::TerminalApp::implementation
         // already matches the desired state they return alreadyInstalled
         // and do no I/O beyond a read. Safe to call every reload.
         {
-            const bool currentDetection = _settings.GlobalSettings().EffectiveAutoErrorDetectionEnabled();
-            const bool hasExplicit = _settings.GlobalSettings().HasAutoErrorDetectionEnabled();
-            const bool isFirstLoad = !_autoErrorDetectionSnapshotInitialized;
+            const auto currentHandling = _settings.GlobalSettings().EffectiveAutoErrorHandling();
+            const bool currentDetection = currentHandling != Model::AutoErrorHandling::Off;
+            const bool hasExplicit = _settings.GlobalSettings().HasAutoErrorHandling();
+            const bool isFirstLoad = !_autoErrorHandlingSnapshotInitialized;
             // First load gating:
             //   - explicit value present (true or false, e.g. roaming-synced settings.json,
             //     or local user has already saved) -> reconcile, which installs or removes
@@ -387,12 +389,14 @@ namespace winrt::TerminalApp::implementation
             // even when transitioning back to the default value) AND on the false->true
             // transition of explicit-ness (covers a user/sync adding the explicit key while
             // the effective value happens to match the previously-defaulted value).
-            const bool effectiveChanged = (_lastAutoErrorDetectionEnabled != currentDetection);
-            const bool explicitTurnedOn = (!_lastAutoErrorDetectionHasExplicit && hasExplicit);
-            const bool shouldReconcile = isFirstLoad ? hasExplicit : (effectiveChanged || explicitTurnedOn);
-            _lastAutoErrorDetectionEnabled = currentDetection;
-            _lastAutoErrorDetectionHasExplicit = hasExplicit;
-            _autoErrorDetectionSnapshotInitialized = true;
+            const bool effectiveChanged = (_lastAutoErrorHandlingDetectsErrors != currentDetection);
+            const bool explicitTurnedOn = (!_lastAutoErrorHandlingHasExplicit && hasExplicit);
+            const bool shouldReconcile = isFirstLoad
+                                             ? hasExplicit
+                                             : (effectiveChanged || explicitTurnedOn);
+            _lastAutoErrorHandlingDetectsErrors = currentDetection;
+            _lastAutoErrorHandlingHasExplicit = hasExplicit;
+            _autoErrorHandlingSnapshotInitialized = true;
             if (shouldReconcile)
             {
                 // Publish latest desired state BEFORE spawning the
@@ -402,7 +406,7 @@ namespace winrt::TerminalApp::implementation
             }
         }
 
-        // Hot-reload of runtime agent config (autofix gate, delegate
+        // Hot-reload of runtime agent config (auto-error-handling gate, delegate
         // agent/model, and model catalogs). When any of these change between settings
         // reloads we push a single consolidated `agent_config_changed`
         // event to the running wta-helper(s) so they update in place,
@@ -2295,14 +2299,14 @@ namespace winrt::TerminalApp::implementation
             std::wstring{ globals.DelegateModel() },
             customModelLaunch ? customModelLaunch->selectionId : std::wstring{},
             ::Microsoft::Terminal::CustomModels::CaptureCatalog(globals.CustomModelProviders()),
-            globals.EffectiveAutoFixEnabled(),
+            globals.EffectiveAutoErrorHandling() == Model::AutoErrorHandling::DetectErrorsAndSendToAgentForFixesAutomatically,
         };
     }
 
     // Hot-propagate runtime agent config to the running wta-helper(s) over the
     // protocol event channel. A single consolidated `agent_config_changed`
     // event carries only the fields that changed:
-    //   - autofix_enabled : the auto-suggest gate (was its own event)
+    //   - auto_error_handling_with_agent_enabled : the send-to-agent gate
     //   - delegate_agent + delegate_model : the delegate-tab agent identity
     //   - cloud_models + custom_models + custom_model_selection :
     //     credential-free picker metadata and its selected entry.
@@ -2322,14 +2326,15 @@ namespace winrt::TerminalApp::implementation
         }
 
         const auto& last = _lastAgentRuntimeConfig;
-        const bool autofixChanged = last.autofixEnabled != current.autofixEnabled;
+        const bool autoErrorHandlingChanged =
+            last.autoErrorHandlingWithAgentEnabled != current.autoErrorHandlingWithAgentEnabled;
         const bool delegateChanged = last.delegateAgent != current.delegateAgent ||
                                      last.delegateModel != current.delegateModel;
         const bool customModelsChanged =
             last.customModelSelection != current.customModelSelection ||
             last.customModels != current.customModels;
 
-        if (!autofixChanged && !delegateChanged && !customModelsChanged)
+        if (!autoErrorHandlingChanged && !delegateChanged && !customModelsChanged)
         {
             _lastAgentRuntimeConfig = current;
             return;
@@ -2337,9 +2342,9 @@ namespace winrt::TerminalApp::implementation
 
         Json::Value params{ Json::objectValue };
         params["window_id"] = std::to_string(_WindowProperties.WindowId());
-        if (autofixChanged)
+        if (autoErrorHandlingChanged)
         {
-            params["autofix_enabled"] = current.autofixEnabled;
+            params["auto_error_handling_with_agent_enabled"] = current.autoErrorHandlingWithAgentEnabled;
         }
         if (delegateChanged)
         {
@@ -2904,7 +2909,7 @@ namespace winrt::TerminalApp::implementation
     }
 
     // Tells wta that the focused tab changed so it can re-project per-tab
-    // agent-pane state (view, pane_open, autofix snapshot). wta echoes the
+    // agent-pane state (view, pane_open, auto-error-handling snapshot). wta echoes the
     // authoritative state via `agent_state_changed`, which `OnAgentStateChanged`
     // applies to the local AgentPaneContent mirror and refreshes the bottom bar.
     // wta is the single source of truth for these fields, so the C++ side
@@ -3031,9 +3036,9 @@ namespace winrt::TerminalApp::implementation
                 pushFlagValue(L"--allowed-agent-ids", allowedIds);
             }
         }
-        if (!globals.EffectiveAutoFixEnabled())
+        if (globals.EffectiveAutoErrorHandling() != Model::AutoErrorHandling::DetectErrorsAndSendToAgentForFixesAutomatically)
         {
-            extraArgs.emplace_back(L"--no-autofix");
+            extraArgs.emplace_back(L"--no-auto-error-handling-with-agent");
         }
         if (const auto lang = _ResolveEffectiveLanguage(globals); !lang.empty())
         {
@@ -3226,9 +3231,8 @@ namespace winrt::TerminalApp::implementation
         // These are baked at first-spawn time only; subsequent acquires
         // reuse the same master (settings changes route through
         // `_ReconcileAgentSettings` → `SharedWta::Restart` instead). Runtime
-        // changes flow over event channels (`autofix_enabled_changed`
-        // is the existing one). See `_BuildSharedWtaExtraArgs` for the
-        // shared arg layout.
+        // changes flow over the auto-error-handling settings event.
+        // See `_BuildSharedWtaExtraArgs` for the shared arg layout.
         auto extraArgs = _BuildSharedWtaExtraArgs();
         auto environment = _BuildSharedWtaEnvironment();
 
@@ -3275,10 +3279,11 @@ namespace winrt::TerminalApp::implementation
 
         // The helper-side cmdline mirrors the per-pane subset of the
         // legacy spawn's cmdline. The master already owns --agent /
-        // --acp-model / --delegate-* / --no-autofix / --language as
+        // --acp-model / --delegate-* / --no-auto-error-handling-with-agent /
+        // --language as
         // process-wide config (passed in `extraArgs` above); the helper
         // needs them re-stated only to drive its local UI (agent name in
-        // the title bar, autofix toggle in the bar, language for its
+        // the title bar, auto-error-handling controls, and language for its
         // own UI strings).
         const auto appendHelperFlagValue = [&helperCmd](const std::wstring_view flag, const std::wstring_view value) {
             if (value.empty())
@@ -3345,9 +3350,9 @@ namespace winrt::TerminalApp::implementation
         }
         appendHelperFlagValue(L"--delegate-agent", _ResolveEffectiveDelegateAgent(globals));
         appendHelperFlagValue(L"--delegate-model", globals.DelegateModel());
-        if (!globals.EffectiveAutoFixEnabled())
+        if (globals.EffectiveAutoErrorHandling() != Model::AutoErrorHandling::DetectErrorsAndSendToAgentForFixesAutomatically)
         {
-            helperCmd.append(L" --no-autofix");
+            helperCmd.append(L" --no-auto-error-handling-with-agent");
         }
         if (const auto lang = _ResolveEffectiveLanguage(globals); !lang.empty())
         {
@@ -3414,7 +3419,7 @@ namespace winrt::TerminalApp::implementation
         // `_GetActiveControl()`: for `openInBackground=true` new tabs the
         // tab being pre-warmed is NOT the focused one, so reading from the
         // page-focused control would pick up the foreground tab's cwd and
-        // the helper would start in the wrong directory (autofix and
+        // the helper would start in the wrong directory (auto-error-handling and
         // agent context would attribute to the wrong project). Reading
         // directly from `tab` resolves to whichever pane is active on
         // this specific tab. For a WSL agent, that source cwd may be POSIX and
@@ -3721,9 +3726,8 @@ namespace winrt::TerminalApp::implementation
     }
 
     // Window-level bottom-bar "diagnostics" click. Targets the active tab's
-    // AgentPaneContent — fires the cached autofix for that tab, or asks
-    // wta to execute / dismiss / re-trigger the diagnosis depending on
-    // the autofix state.
+    // AgentPaneContent — uses the cached automatic error-handling state for
+    // that tab and asks WTA to start a diagnosis when needed.
     void TerminalPage::_DiagnosticsButtonOnClick(const winrt::Windows::Foundation::IInspectable& /*sender*/,
                                                  const winrt::Windows::UI::Xaml::RoutedEventArgs& /*eventArgs*/)
     {
@@ -3742,8 +3746,8 @@ namespace winrt::TerminalApp::implementation
         {
             return;
         }
-        using AS = winrt::TerminalApp::implementation::AgentPaneContent::AutofixState;
-        const auto state = impl->GetAutofixState();
+        using AS = winrt::TerminalApp::implementation::AgentPaneContent::AutoErrorHandlingState;
+        const auto state = impl->GetAutoErrorHandlingState();
         const auto paneId = impl->GetLastErrorPaneId();
         // Open or focus the active tab's agent pane so the user can read the
         // analysis / result in chat. Shared by Detected ("ask") and Review.
@@ -3760,7 +3764,7 @@ namespace winrt::TerminalApp::implementation
             }
             else
             {
-                _OpenOrReuseAgentPane(/*intoSessionsView*/ false, L"Autofix");
+                _OpenOrReuseAgentPane(/*intoSessionsView*/ false, L"AutoErrorHandling");
             }
         };
 
@@ -3773,7 +3777,7 @@ namespace winrt::TerminalApp::implementation
             openAgentPaneForReview();
             Json::Value params;
             params["pane_id"] = winrt::to_string(paneId);
-            _RaiseProtocolEvent("autofix_execute_from_detected", params);
+            _RaiseProtocolEvent("auto_error_handling_request_analysis", params);
             break;
         }
         case AS::Review:
@@ -3915,32 +3919,32 @@ namespace winrt::TerminalApp::implementation
                 iconRight.Visibility(isVertical ? Visibility::Visible : Visibility::Collapsed);
         }
 
-        // Diagnostics button reflects the active tab's autofix state
+        // Diagnostics button reflects the active tab's auto-error-handling state
         // (Idle when there's no agent pane).
-        using AS = winrt::TerminalApp::implementation::AgentPaneContent::AutofixState;
-        AS autofixState = AS::Idle;
+        using AS = winrt::TerminalApp::implementation::AgentPaneContent::AutoErrorHandlingState;
+        AS autoErrorHandlingState = AS::Idle;
         winrt::hstring hotkeyHint;
         winrt::hstring detectedSummary;
         // Whether the active tab's helper ACP session is Connected. Drives
         // the diagnostics-group connection gate below. No agent pane (or a
         // not-yet/never-connected one) reads false → group hidden.
         bool agentConnected = false;
-        // Autofix-state read must NOT be gated on pane visibility. The
+        // Auto error handling state must NOT be gated on pane visibility. The
         // helper keeps running and detecting command failures even when
         // the agent pane is stashed (pre-warm path: helper is spawned
         // and connected from the moment the tab opens, with the pane
-        // hidden). `OnAutofixStateChanged` writes the latest state into
+        // hidden). `OnAutoErrorHandlingStateChanged` writes the latest state into
         // AgentPaneContent's cache regardless of stash, so the bar
         // should reflect it regardless of stash too. (The toggle-button
         // highlights above DO gate on `paneOpen` — that's correct, they
         // mean "which view is currently shown.") Without this, the bar
         // shows Idle forever until the user opens the pane, which
-        // defeats autofix-without-toggle.
+        // defeats automatic handling while the pane is stashed.
         if (activeAgent)
         {
             if (const auto impl = winrt::get_self<winrt::TerminalApp::implementation::AgentPaneContent>(activeAgent))
             {
-                autofixState = impl->GetAutofixState();
+                autoErrorHandlingState = impl->GetAutoErrorHandlingState();
                 hotkeyHint = impl->GetHotkeyHint();
                 detectedSummary = impl->GetDetectedSummary();
                 agentConnected = impl->IsAgentConnected();
@@ -3985,17 +3989,18 @@ namespace winrt::TerminalApp::implementation
             //   * error detection is enabled (detect OFF = the user opted
             //     out of shell observation: no pill, no pipeline), AND
             //   * the active tab's helper ACP session is Connected (before
-            //     connect / after a failure-disconnect there's no autofix
+            //     connect / after a failure-disconnect there's no automatic
             //     capability).
             // Either false → hide the whole group rather than show a dead,
             // faded button. Event-driven, not polled: runs from the
             // AgentPaneContent::StateChanged handler (agent_status flips
             // connected/disconnected) and on settings changes. Detection is
-            // a pure C++ setting; the autofix business states
+            // a pure C++ setting; the automatic error-handling states
             // (Detected/Pending/Review) all live in the helper and arrive
-            // via `autofix_state`.
+            // via the automatic error-handling state event.
             const bool detectionEnabled =
-                _settings && _settings.GlobalSettings().EffectiveAutoErrorDetectionEnabled();
+                _settings &&
+                _settings.GlobalSettings().EffectiveAutoErrorHandling() != Model::AutoErrorHandling::Off;
             const bool showGroup = detectionEnabled && agentConnected;
             if (const auto group = DiagnosticsGroup())
             {
@@ -4009,7 +4014,7 @@ namespace winrt::TerminalApp::implementation
             auto label = DiagnosticsLabel();
             auto icon = DiagnosticsIcon();
 
-            switch (autofixState)
+            switch (autoErrorHandlingState)
             {
             case AS::Pending:
             {
@@ -6252,14 +6257,14 @@ namespace winrt::TerminalApp::implementation
 
     // (Window-level bottom bar — click handlers above target the active
     // tab's AgentPaneContent. AgentPaneContent::StateChanged fires when
-    // a tab's autofix/sessions/position state mutates; the page subscribes
+    // a tab's auto-error-handling/sessions/position state mutates; the page subscribes
     // via _WireAgentPaneEvents and refreshes the bar when the firing pane
     // is on the active tab.)
 
-    // Inbound event from WTA carrying an autofix_state update. Routed
+    // Inbound event from WTA carrying an auto-error-handling state update. Routed
     // by `tab_id` from the JSON to that tab's AgentPaneContent. Pages
     // (or tabs) without a matching AgentPaneContent no-op.
-    void TerminalPage::OnAutofixStateChanged(hstring eventJson)
+    void TerminalPage::OnAutoErrorHandlingStateChanged(hstring eventJson)
     {
         Json::Value evt;
         Json::CharReaderBuilder rb;
@@ -6276,7 +6281,7 @@ namespace winrt::TerminalApp::implementation
         }
         const auto stateStr = params["state"].asString();
 
-        using AS = winrt::TerminalApp::implementation::AgentPaneContent::AutofixState;
+        using AS = winrt::TerminalApp::implementation::AgentPaneContent::AutoErrorHandlingState;
         AS state = AS::Idle;
         if (stateStr == "pending")
         {
@@ -6316,7 +6321,7 @@ namespace winrt::TerminalApp::implementation
         const auto summary = pickStr("summary");
         const auto fixPreview = pickStr("fix_preview");
         const auto hotkeyHint = pickStr("hotkey_hint");
-        const auto suggestionTitle = pickStr("suggestion_title");
+        const auto resultTitle = pickStr("result_title");
 
         // Route by tab_id if present. Falls back to all tabs (no
         // routing) when wta omits it; in that case the event is
@@ -6330,7 +6335,7 @@ namespace winrt::TerminalApp::implementation
                 {
                     if (const auto impl = winrt::get_self<winrt::TerminalApp::implementation::AgentPaneContent>(content))
                     {
-                        impl->ApplyAutofixState(state, paneId, summary, fixPreview, hotkeyHint, suggestionTitle);
+                        impl->ApplyAutoErrorHandlingState(state, paneId, summary, fixPreview, hotkeyHint, resultTitle);
                     }
                 }
             }
@@ -6345,7 +6350,7 @@ namespace winrt::TerminalApp::implementation
                 {
                     if (const auto impl = winrt::get_self<winrt::TerminalApp::implementation::AgentPaneContent>(content))
                     {
-                        impl->ApplyAutofixState(state, paneId, summary, fixPreview, hotkeyHint, suggestionTitle);
+                        impl->ApplyAutoErrorHandlingState(state, paneId, summary, fixPreview, hotkeyHint, resultTitle);
                     }
                 }
             }
@@ -7965,15 +7970,6 @@ namespace winrt::TerminalApp::implementation
                             if (!page || !term2)
                                 return;
 
-                            // GPO-blocked gate: when administrator policy
-                            // explicitly disables auto-fix, the feature
-                            // is off across the board — no Pending, no
-                            // Detected pill, no background analysis.
-                            // `IsAutoFixPolicyLocked()` returns true only
-                            // for the Blocked policy state; Forced-on
-                            // states the user can change fall through.
-                            const auto autoFixPolicyLocked = page->_settings.GlobalSettings().IsAutoFixPolicyLocked();
-
                             // Early filter: WTA only acts on osc:133;*
                             // and AgentEvent payloads. Every other VT
                             // sequence (cursor moves, OSC 0/1 titles,
@@ -7985,13 +7981,9 @@ namespace winrt::TerminalApp::implementation
                             // fire hundreds of times a second on a
                             // busy terminal.
                             //
-                            // (The `autoFixEnabled` user setting only
-                            // controls whether WTA *automatically*
-                            // invokes the LLM; the Detected pill needs
-                            // these events too. Toggle changes
-                            // hot-reload into WTA via
-                            // `autofix_enabled_changed`, so no
-                            // user-pref gate is needed here.)
+                            // Detect-only mode still needs these events to
+                            // surface the Detected pill. The selected
+                            // Auto error handling mode is hot-reloaded into WTA.
                             auto seqStr = winrt::to_string(seq);
                             static constexpr std::string_view agentPrefix = "AgentEvent;";
                             static constexpr std::string_view osc133Prefix = "osc:133;";
@@ -8047,11 +8039,6 @@ namespace winrt::TerminalApp::implementation
                                         }
                                     }
 
-                                    if (autoFixPolicyLocked)
-                                    {
-                                        return;
-                                    }
-
                                     agentParams["pane_id"] = paneIdStr;
                                     if (!tabIdStr.empty())
                                     {
@@ -8075,21 +8062,14 @@ namespace winrt::TerminalApp::implementation
                             // isOsc133 path — forward as vt_sequence. A shell
                             // prompt after an agent exits does not clear the
                             // pane's last resumable agent-session binding.
-                            if (autoFixPolicyLocked)
-                            {
-                                return;
-                            }
-
                             // Detection gate: when the user turned error
                             // detection off ("don't access my shell"), drop
                             // the OSC 133 command marks here — no Detected
                             // pill, no forwarding to WTA, no background
                             // analysis. (Scoped to OSC 133 so AgentEvents,
-                            // a separate channel, keep flowing.) Unlike the
-                            // auto-suggest pref — which still wants the
-                            // Detected pill — detection off means we observe
-                            // nothing.
-                            if (!page->_settings.GlobalSettings().EffectiveAutoErrorDetectionEnabled())
+                            // a separate channel, keep flowing.) Off means we
+                            // observe nothing.
+                            if (page->_settings.GlobalSettings().EffectiveAutoErrorHandling() == Model::AutoErrorHandling::Off)
                                 return;
 
                             Json::Value evt;
@@ -8175,7 +8155,7 @@ namespace winrt::TerminalApp::implementation
                                 return;
 
                             // connection_state is pane-lifecycle plumbing that
-                            // wta needs regardless of AutoFix being enabled —
+                            // WTA needs regardless of Auto error handling mode —
                             // it drives session-list demotion (PaneClosed)
                             // when an agent CLI exits and the pane is closed.
                             // Volume is low (a handful of events per pane
@@ -8184,7 +8164,7 @@ namespace winrt::TerminalApp::implementation
                             // must run on the UI thread AND have a live
                             // term to compare panes against. If the term
                             // already died (close-time race), fall back
-                            // to no tab_id — autofix routing may be
+                            // to no tab_id — auto-error-handling routing may be
                             // imperfect for this one event, but the
                             // pane_id alone is sufficient for the
                             // session-list / PaneClosed prune path.

@@ -38,7 +38,7 @@ impl App {
         let is_ctrl_c =
             matches!(key.code, KeyCode::Char('c')) && key.modifiers.contains(KeyModifiers::CONTROL);
         if !is_ctrl_c {
-            self.close_pane_armed_at = None;
+            self.close_pane_started_at = None;
             // Don't clear `transient_hint` here — it has its own deadline and
             // ui::render checks expiry on each draw. Clearing on every key
             // would steal too much of the hint's visible lifetime.
@@ -716,7 +716,7 @@ impl App {
                     tab.messages
                         .push(ChatMessage::success(t!("system.cancelled").into_owned()));
                     tab.scroll_to_bottom();
-                    self.close_pane_armed_at = None;
+                    self.close_pane_started_at = None;
                 } else if !self.current_tab().input.is_empty()
                     || !self.current_tab().attachments.is_empty()
                 {
@@ -724,7 +724,7 @@ impl App {
                     // including any queued image attachments.
                     let tab = self.current_tab_mut();
                     tab.clear_input();
-                    self.close_pane_armed_at = None;
+                    self.close_pane_started_at = None;
                 } else {
                     // Idle + empty input. First press arms; second press
                     // within CLOSE_PANE_ARM_WINDOW asks WT to close the
@@ -733,15 +733,15 @@ impl App {
                     // path that should terminate wta.
                     let now = std::time::Instant::now();
                     let armed = self
-                        .close_pane_armed_at
+                        .close_pane_started_at
                         .map(|t| now.duration_since(t) < CLOSE_PANE_ARM_WINDOW)
                         .unwrap_or(false);
                     if armed {
-                        self.close_pane_armed_at = None;
+                        self.close_pane_started_at = None;
                         self.transient_hint = None;
                         self.request_close_agent_pane();
                     } else {
-                        self.close_pane_armed_at = Some(now);
+                        self.close_pane_started_at = Some(now);
                         self.transient_hint = Some((
                             t!("system.close_pane_hint").into_owned(),
                             now + CLOSE_PANE_ARM_WINDOW,
@@ -757,11 +757,12 @@ impl App {
             }
             KeyCode::Esc
                 if self.current_tab().turn.recommendations().is_some()
-                    || (self.current_tab().autofix.pane_id.is_some()
+                    || (self.current_tab().auto_error_handling.pane_id.is_some()
                         && !self.current_tab().turn.is_idle()) =>
             {
-                // Dismiss armed fix card or cancel in-flight autofix request.
-                // `turn_cancel` bumps generation, emits autofix_state_cleared,
+                // Dismiss an actionable result card or cancel an in-flight
+                // Auto error handling request.
+                // `turn_cancel` bumps generation, emits auto_error_handling_state_cleared,
                 // and resets the state machine to Idle.
                 let session_id = self.current_tab().session_id.clone();
                 if let Some(sid) = session_id {
@@ -771,30 +772,37 @@ impl App {
                     // (no chunks can be in flight in that case).
                     let pane_to_clear = {
                         let tab = self.current_tab_mut();
-                        tab.autofix.generation = tab.autofix.generation.wrapping_add(1);
-                        tab.autofix.armed_at = None;
-                        tab.autofix.pane_id.take()
+                        tab.auto_error_handling.generation =
+                            tab.auto_error_handling.generation.wrapping_add(1);
+                        tab.auto_error_handling.started_at = None;
+                        tab.auto_error_handling.pane_id.take()
                     };
                     if pane_to_clear.is_some() {
                         let active = self.active_tab_key().to_string();
-                        self.emit_autofix_state_cleared(&active);
+                        self.emit_auto_error_handling_state_cleared(&active);
                     }
                 }
             }
-            // Dismiss the bottom-bar Suggested indicator (autofix produced an
+            // Dismiss the bottom-bar Review indicator (Auto error handling produced an
             // explanation, not an executable fix). Reachable only when the user
             // is interacting with this TUI — i.e. the agent pane is currently
             // visible. Other dismiss paths: clicking the bar (opens pane), or
             // any prompt activity in any pane (exit-zero or osc:133;A).
             //
             // NOTE: this only handles the default-tui (single-process) mode.
-            // In shared-host attach mode `suggested_pane_id` lives on the host;
-            // the attach client would need to send a HostCommand::DismissSuggestion.
+            // In shared-host attach mode `result_pane_id` lives on the host;
+            // the attach client would need to send a dismiss-result command.
             // TODO: wire that path when shared-host mode is exercised.
-            KeyCode::Esc if self.current_tab().autofix.suggested_pane_id.is_some() => {
-                self.current_tab_mut().autofix.suggested_pane_id = None;
+            KeyCode::Esc
+                if self
+                    .current_tab()
+                    .auto_error_handling
+                    .result_pane_id
+                    .is_some() =>
+            {
+                self.current_tab_mut().auto_error_handling.result_pane_id = None;
                 let active = self.active_tab_key().to_string();
-                self.emit_autofix_state_cleared(&active);
+                self.emit_auto_error_handling_state_cleared(&active);
             }
             KeyCode::Esc => {
                 self.current_tab_mut().clear_input();
@@ -860,7 +868,7 @@ impl App {
                                     .map(|c| self.is_send_choice(c))
                                     .unwrap_or(false);
                             tracing::info!(
-                                target: "autofix",
+                                target: "auto_error_handling",
                                 choice = label_choice,
                                 insert_only,
                                 "Executing choice",
@@ -887,7 +895,7 @@ impl App {
                     return;
                 }
                 let _tab = self.current_tab();
-                tracing::debug!(target: "autofix", input_empty = _tab.input.is_empty(), state = ?self.state, has_recs = _tab.turn.recommendations().is_some(), autofix_pane = ?_tab.autofix.pane_id, selected_idx = _tab.selected_recommendation, "Enter");
+                tracing::debug!(target: "auto_error_handling", input_empty = _tab.input.is_empty(), state = ?self.state, has_recs = _tab.turn.recommendations().is_some(), auto_error_handling_pane = ?_tab.auto_error_handling.pane_id, selected_idx = _tab.selected_recommendation, "Enter");
                 if (!self.current_tab().input.is_empty()
                     || !self.current_tab().attachments.is_empty())
                     && self.state == ConnectionState::Connected
@@ -917,7 +925,7 @@ impl App {
                     // session is created lazily by `dispatch_prompt_body`.
                     // Fall back to a key that `session_tab_mut`'s
                     // `tab_for_session` resolves to the active tab — same
-                    // trick as `maybe_trigger_autofix` — so the state
+                    // trick as `maybe_trigger_auto_error_handling` — so the state
                     // machine still installs the turn on this tab. When
                     // `SessionAttached` later writes the real session id,
                     // subsequent chunks route here correctly.
@@ -955,7 +963,7 @@ impl App {
                         text: display_text,
                         submitted_at_unix_s: prompt.submitted_at_unix_s,
                         context: TurnContext::default(),
-                        autofix: None,
+                        auto_error_handling: None,
                     };
                     self.turn_submit_prompt(&session_id, submitted);
                     let _ = self.prompt_tx.send(prompt);

@@ -73,7 +73,7 @@ Describe 'Feature §5 delegate agent engine (wta delegate)' -Tag 'Feature' -Skip
     It 'Delegate with Copilot works (a delegate task starts and answers)' {
         # Use the repo cwd (a trusted folder) so Copilot does not gate on a folder-trust prompt and
         # auto-runs the delegated prompt. Answering is LLM/auth-dependent, so a non-answer is a
-        # precondition skip (mirrors the autofix/idle tests), not a product failure.
+        # precondition skip (mirrors the Auto error handling/idle tests), not a product failure.
         $d = & $script:RunDelegate -Prompt 'What is 2 plus 2? Reply with only the number.' -Cwd $script:repo
         $d.Tab | Should -Not -BeNullOrEmpty -Because 'the Copilot delegate task must start (new tab)'
         $sid = $d.Panes[0].session_id
