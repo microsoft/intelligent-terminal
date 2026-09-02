@@ -272,8 +272,9 @@ fn selection_contains(selection: Selection, buffer: &Buffer, point: Point) -> bo
         return false;
     }
     match selection.kind {
-        SelectionKind::All => point.x >= area.x && point.x < area.x.saturating_add(area.width),
-        SelectionKind::Lines => point.x >= area.x && point.x < area.x.saturating_add(area.width),
+        SelectionKind::All | SelectionKind::Lines => {
+            point.x >= area.x && point.x < area.x.saturating_add(area.width)
+        }
         SelectionKind::Word => {
             let min_x = selection.anchor.x.min(selection.focus.x);
             let max_x = selection.anchor.x.max(selection.focus.x);
