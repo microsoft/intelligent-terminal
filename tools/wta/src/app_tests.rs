@@ -2164,6 +2164,41 @@ fn session_attached_reconciles_stale_client_yolo_target() {
 }
 
 #[test]
+fn load_failure_then_fallback_attach_binds_the_fresh_session() {
+    let mut app = test_app();
+    let tab_id = DEFAULT_TAB_ID.to_string();
+    {
+        let tab = app.current_tab_mut();
+        tab.loading_session = true;
+        tab.loading_target_session_id = Some("missing-load-target".into());
+    }
+    app.pending_yolo_session_tabs.insert(tab_id.clone());
+
+    app.handle_event(AppEvent::TabError {
+        tab_id: tab_id.clone(),
+        message: "load failed; starting a fresh session".into(),
+    });
+    app.handle_event(AppEvent::SessionAttached {
+        tab_id: tab_id.clone(),
+        session_id: "fallback-session".into(),
+        available_models: Vec::new(),
+        current_model_id: None,
+    });
+
+    let tab = &app.tab_sessions[&tab_id];
+    assert_eq!(tab.session_id.as_deref(), Some("fallback-session"));
+    assert!(!tab.loading_session);
+    assert!(tab.loading_target_session_id.is_none());
+    assert_eq!(
+        app.session_to_tab
+            .get("fallback-session")
+            .map(String::as_str),
+        Some(tab_id.as_str())
+    );
+    assert!(!app.pending_yolo_session_tabs.contains(&tab_id));
+}
+
+#[test]
 fn agent_connected_does_not_add_disclaimer_while_resuming() {
     let (mut app, _load_session_rx) = make_app_with_load_session_channel();
     app.tab_id = Some("OWNER-TAB".to_string());

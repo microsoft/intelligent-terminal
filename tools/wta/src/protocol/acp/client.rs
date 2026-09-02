@@ -3949,6 +3949,7 @@ fn dispatch_master_ext_request_with_yolo_timeout(
                 if let Some(operation) = native_operation {
                     let enabled = operation.enabled();
                     let disabling_native_yolo = !enabled;
+                    let publication_operation = operation.clone();
                     match client_state
                         .native_yolo
                         .apply_native_config_reserved_with_policy_timeout(
@@ -3962,18 +3963,29 @@ fn dispatch_master_ext_request_with_yolo_timeout(
                         .await
                     {
                         Ok(Some(config_options)) => {
-                            publish_session_config_options(
+                            if !publish_current_native_config_options(
                                 &event_tx,
                                 &client_state.native_yolo,
                                 &session_id,
+                                &publication_operation,
                                 Some(&config_options),
-                            );
-                            let _ = event_tx.send(AppEvent::SessionConfigSetCompleted {
-                                session_id: session_id.to_string(),
-                                config_id,
-                                value,
-                                model_compat: false,
-                            });
+                            ) {
+                                let _ = event_tx.send(AppEvent::SessionConfigSetFailed {
+                                    session_id: session_id.to_string(),
+                                    config_id,
+                                    message:
+                                        "the config update was superseded by newer session state"
+                                            .to_string(),
+                                    restart_required: false,
+                                });
+                            } else {
+                                let _ = event_tx.send(AppEvent::SessionConfigSetCompleted {
+                                    session_id: session_id.to_string(),
+                                    config_id,
+                                    value,
+                                    model_compat: false,
+                                });
+                            }
                         }
                         Ok(None) => {
                             let _ = event_tx.send(AppEvent::SessionConfigSetFailed {

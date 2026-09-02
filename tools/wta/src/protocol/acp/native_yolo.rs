@@ -329,11 +329,11 @@ impl NativeYoloState {
                 "provider-native Yolo RPC timed out while setting config option '{config_id}' for session '{}'",
                 operation.session_id
             ))
-        })?
-        .map_err(|error| NativeYoloApplyError::known(error.to_string()))?;
+        })?;
         if !self.operation_is_current(&operation) {
             return Ok(None);
         }
+        let response = response.map_err(|error| NativeYoloApplyError::known(error.to_string()))?;
         self.record_acknowledged_config_update(
             &operation,
             config_id,

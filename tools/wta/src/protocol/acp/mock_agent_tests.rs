@@ -90,6 +90,7 @@ struct MockAgent {
     new_session_advertises_native_yolo: Arc<AtomicBool>,
     new_session_starts_in_native_yolo: Arc<AtomicBool>,
     fail_native_updates: Arc<AtomicBool>,
+    fail_next_native_update_after_barrier: Arc<AtomicBool>,
     hang_native_updates: Arc<AtomicBool>,
     native_update_started: Arc<tokio::sync::Notify>,
     native_update_release: Arc<tokio::sync::Notify>,
@@ -187,6 +188,12 @@ impl MockAgent {
         if self.hang_native_updates.load(Ordering::SeqCst) {
             self.native_update_started.notify_one();
             self.native_update_release.notified().await;
+        }
+        if self
+            .fail_next_native_update_after_barrier
+            .swap(false, Ordering::SeqCst)
+        {
+            return Err(acp::Error::internal_error().data("mock deferred native update failure"));
         }
         self.seen_config_updates
             .lock()
@@ -456,6 +463,7 @@ fn connect_with(
         new_session_advertises_native_yolo: Arc::new(AtomicBool::new(false)),
         new_session_starts_in_native_yolo: Arc::new(AtomicBool::new(false)),
         fail_native_updates: Arc::new(AtomicBool::new(false)),
+        fail_next_native_update_after_barrier: Arc::new(AtomicBool::new(false)),
         hang_native_updates: Arc::new(AtomicBool::new(false)),
         native_update_started: Arc::new(tokio::sync::Notify::new()),
         native_update_release: Arc::new(tokio::sync::Notify::new()),
@@ -821,6 +829,7 @@ pub(crate) struct DispatchHarness {
     pub new_session_advertises_native_yolo: Arc<AtomicBool>,
     pub new_session_starts_in_native_yolo: Arc<AtomicBool>,
     pub fail_native_updates: Arc<AtomicBool>,
+    pub fail_next_native_update_after_barrier: Arc<AtomicBool>,
     pub hang_native_updates: Arc<AtomicBool>,
     pub native_update_started: Arc<tokio::sync::Notify>,
     pub native_update_release: Arc<tokio::sync::Notify>,
@@ -862,6 +871,7 @@ fn connect_for_dispatch(behavior: MockBehavior) -> DispatchHarness {
     let new_session_advertises_native_yolo = Arc::new(AtomicBool::new(false));
     let new_session_starts_in_native_yolo = Arc::new(AtomicBool::new(false));
     let fail_native_updates = Arc::new(AtomicBool::new(false));
+    let fail_next_native_update_after_barrier = Arc::new(AtomicBool::new(false));
     let hang_native_updates = Arc::new(AtomicBool::new(false));
     let native_update_started = Arc::new(tokio::sync::Notify::new());
     let native_update_release = Arc::new(tokio::sync::Notify::new());
@@ -881,6 +891,7 @@ fn connect_for_dispatch(behavior: MockBehavior) -> DispatchHarness {
         new_session_advertises_native_yolo: new_session_advertises_native_yolo.clone(),
         new_session_starts_in_native_yolo: new_session_starts_in_native_yolo.clone(),
         fail_native_updates: fail_native_updates.clone(),
+        fail_next_native_update_after_barrier: fail_next_native_update_after_barrier.clone(),
         hang_native_updates: hang_native_updates.clone(),
         native_update_started: native_update_started.clone(),
         native_update_release: native_update_release.clone(),
@@ -908,6 +919,7 @@ fn connect_for_dispatch(behavior: MockBehavior) -> DispatchHarness {
         new_session_advertises_native_yolo,
         new_session_starts_in_native_yolo,
         fail_native_updates,
+        fail_next_native_update_after_barrier,
         hang_native_updates,
         native_update_started,
         native_update_release,
@@ -3025,6 +3037,115 @@ async fn rejected_config_yolo_disable_requests_restart() {
             })
             .await
             .expect("expected the paired SessionConfigSetFailed event");
+        })
+        .await;
+}
+
+#[tokio::test]
+async fn superseded_config_error_defers_to_the_newer_dispatched_operation() {
+    let local = tokio::task::LocalSet::new();
+    local
+        .run_until(async {
+            let mut h = connect_for_dispatch(MockBehavior::Reply);
+            h.client
+                .state
+                .native_yolo
+                .set_resolved_agent_id(Some(crate::agent_registry::CLAUDE_AGENT_ID));
+            let response: acp::schema::v1::NewSessionResponse =
+                serde_json::from_value(serde_json::json!({
+                    "sessionId": "superseded-config-error",
+                    "configOptions": [{
+                        "id": "mode",
+                        "name": "Mode",
+                        "category": "mode",
+                        "type": "select",
+                        "currentValue": "bypassPermissions",
+                        "options": [
+                            {"value": "default", "name": "Default"},
+                            {"value": "bypassPermissions", "name": "Bypass Permissions"}
+                        ]
+                    }]
+                }))
+                .unwrap();
+            let session_id = response.session_id.clone();
+            h.client
+                .state
+                .native_yolo
+                .record_from_new_session(&response);
+            let tab_to_session = Arc::new(tokio::sync::Mutex::new(HashMap::from([(
+                "tab-1".to_string(),
+                session_id.clone(),
+            )])));
+            h.hang_native_updates.store(true, Ordering::SeqCst);
+
+            dispatch_master_ext_request(
+                MasterExtRequest::SetSessionConfigOption {
+                    session_id: session_id.clone(),
+                    config_id: "mode".to_string(),
+                    value: "default".to_string(),
+                },
+                &h.conn,
+                &h.event_tx,
+                &tab_to_session,
+                Arc::clone(&h.client.state),
+            );
+            tokio::time::timeout(
+                std::time::Duration::from_secs(1),
+                h.native_update_started.notified(),
+            )
+            .await
+            .expect("the first config RPC must reach the controlled barrier");
+
+            dispatch_master_ext_request(
+                MasterExtRequest::SetSessionConfigOption {
+                    session_id,
+                    config_id: "mode".to_string(),
+                    value: "bypassPermissions".to_string(),
+                },
+                &h.conn,
+                &h.event_tx,
+                &tab_to_session,
+                Arc::clone(&h.client.state),
+            );
+            // Dispatch reserves the newer sequence synchronously before spawning its
+            // gate waiter, while the first request still owns the per-session gate.
+            h.fail_next_native_update_after_barrier
+                .store(true, Ordering::SeqCst);
+            h.hang_native_updates.store(false, Ordering::SeqCst);
+            h.native_update_release.notify_one();
+
+            let mut saw_superseded = false;
+            let mut saw_newer_completion = false;
+            tokio::time::timeout(std::time::Duration::from_secs(1), async {
+                while !saw_superseded || !saw_newer_completion {
+                    match h.event_rx.recv().await {
+                        Some(AppEvent::SessionConfigSetFailed {
+                            message,
+                            restart_required,
+                            ..
+                        }) => {
+                            assert!(message.contains("superseded"));
+                            assert!(!restart_required);
+                            saw_superseded = true;
+                        }
+                        Some(AppEvent::SessionConfigSetCompleted { value, .. }) => {
+                            assert_eq!(value, "bypassPermissions");
+                            saw_newer_completion = true;
+                        }
+                        Some(AppEvent::RuntimeYoloReconcileCompleted { .. }) => {
+                            panic!("the stale failed disable must not restart before the newer operation")
+                        }
+                        Some(_) => continue,
+                        None => panic!("event channel closed before both config results"),
+                    }
+                }
+            })
+            .await
+            .expect("both serialized config operations must complete");
+            assert_eq!(
+                *h.seen_config_updates.lock().unwrap(),
+                vec![("mode".to_string(), "bypassPermissions".to_string())]
+            );
         })
         .await;
 }
