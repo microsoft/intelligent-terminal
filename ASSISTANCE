@@ -320,7 +320,7 @@
                     <span>Social Security</span>
                 </a>
                 <!-- WCMS MAIN MENU -->
-                <nav class="wbm" arial-label="Main Menu">
+                    <nav class="wbm" aria-label="Main Menu">
                     <div class="wbm-popover" id="wbm-popover">
                         <a aria-label="close menu" class="js-wbmp-close" id="js-wbmp-close" href="#banner">X</a>
                         <details class="js-wbt" name="ssa-main-menu">
