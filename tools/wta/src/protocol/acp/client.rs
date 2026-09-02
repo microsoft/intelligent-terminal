@@ -4804,7 +4804,7 @@ async fn dispatch_prompt_body(
                 .yolo_state
                 .lock()
                 .unwrap()
-                .mark_client_reconciled(new_sid.to_string());
+                .mark_client_reconciled(new_sid.to_string(), enabled);
             let _ = event_tx_task.send(AppEvent::SessionAttached {
                 tab_id: tab_key_task.clone(),
                 session_id: new_sid.to_string(),

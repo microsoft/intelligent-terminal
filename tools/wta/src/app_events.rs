@@ -712,6 +712,23 @@ impl App {
                 available_models,
                 current_model_id,
             } => {
+                let waiting_for_different_load_target =
+                    self.tab_sessions.get(&tab_id).is_some_and(|tab| {
+                        tab.loading_session
+                            && tab
+                                .loading_target_session_id
+                                .as_deref()
+                                .is_some_and(|target| target != session_id)
+                    });
+                if waiting_for_different_load_target {
+                    tracing::debug!(
+                        target: "acp_load_session",
+                        tab = %tab_id,
+                        session_id,
+                        "ignoring unrelated SessionAttached while the load target is pending"
+                    );
+                    return;
+                }
                 let is_active_tab = self.active_tab_key() == tab_id;
                 let replaced_session_ids: Vec<String> = self
                     .session_to_tab
@@ -788,12 +805,12 @@ impl App {
                         self.send_session_model(Some(session_id.clone()), model, false);
                     }
                 }
-                let reconciled_by_client = self
-                    .yolo_state
-                    .lock()
-                    .unwrap()
-                    .take_client_reconciled(&session_id);
-                if !reconciled_by_client {
+                let (client_reconciled_target, current_target) = {
+                    let mut state = self.yolo_state.lock().unwrap();
+                    let current_target = state.effective(&session_id);
+                    (state.take_client_reconciled(&session_id), current_target)
+                };
+                if client_reconciled_target != Some(current_target) {
                     self.reconcile_session_yolo(&session_id);
                 }
                 self.publish_agent_status();

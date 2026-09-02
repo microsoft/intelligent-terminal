@@ -495,7 +495,7 @@ fn client_reconciled_session_attach_does_not_duplicate_native_yolo_rpc() {
     app.yolo_state
         .lock()
         .unwrap()
-        .mark_client_reconciled(session_id.to_string());
+        .mark_client_reconciled(session_id.to_string(), false);
 
     app.handle_event(AppEvent::SessionAttached {
         tab_id: DEFAULT_TAB_ID.into(),

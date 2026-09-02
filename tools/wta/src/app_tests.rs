@@ -2095,6 +2095,75 @@ fn session_attached_for_bootstrap_does_not_close_load_replay_window() {
 }
 
 #[test]
+fn unrelated_session_attached_keeps_load_target_yolo_gate() {
+    let (mut app, mut master_rx) = test_app_with_master_rx();
+    let (load_session_tx, mut load_session_rx) = tokio::sync::mpsc::unbounded_channel();
+    app.load_session_tx = load_session_tx;
+    app.owner_tab_id = Some("OWNER-TAB".to_string());
+    app.tab_sessions
+        .insert("OWNER-TAB".to_string(), TabSession::default());
+
+    app.handle_event(AppEvent::WtEvent {
+        method: "load_session".to_string(),
+        pane_id: String::new(),
+        tab_id: None,
+        params: json!({
+            "tab_id": "OWNER-TAB",
+            "session_id": "sess-target",
+            "cwd": "",
+        }),
+    });
+    load_session_rx
+        .try_recv()
+        .expect("load_session request must remain live");
+
+    app.handle_event(AppEvent::SessionAttached {
+        tab_id: "OWNER-TAB".to_string(),
+        session_id: "sess-unrelated".to_string(),
+        available_models: vec![],
+        current_model_id: None,
+    });
+
+    assert!(app.pending_yolo_session_tabs.contains("OWNER-TAB"));
+    assert!(!app.session_to_tab.contains_key("sess-unrelated"));
+    assert!(
+        master_rx.try_recv().is_err(),
+        "an unrelated session must not reconcile while the load target is pending"
+    );
+}
+
+#[test]
+fn session_attached_reconciles_stale_client_yolo_target() {
+    use crate::protocol::acp::client::MasterExtRequest;
+
+    let (mut app, mut master_rx) = test_app_with_master_rx();
+    let session_id = "lazy-session";
+    {
+        let mut state = app.yolo_state.lock().unwrap();
+        state.update_runtime(true, false);
+        state.mark_client_reconciled(session_id.to_string(), true);
+        state.update_runtime(false, false);
+    }
+
+    app.handle_event(AppEvent::SessionAttached {
+        tab_id: DEFAULT_TAB_ID.into(),
+        session_id: session_id.into(),
+        available_models: Vec::new(),
+        current_model_id: None,
+    });
+
+    let MasterExtRequest::ReconcileSessionYolo { sessions, .. } = master_rx
+        .try_recv()
+        .expect("App must reconcile when the client-owned target is stale")
+    else {
+        panic!("expected ReconcileSessionYolo");
+    };
+    assert_eq!(sessions.len(), 1);
+    assert_eq!(sessions[0].0.to_string(), session_id);
+    assert!(!sessions[0].1);
+}
+
+#[test]
 fn agent_connected_does_not_add_disclaimer_while_resuming() {
     let (mut app, _load_session_rx) = make_app_with_load_session_channel();
     app.tab_id = Some("OWNER-TAB".to_string());
@@ -4085,18 +4154,19 @@ fn agent_reset_clears_reconcile_state_before_reused_id_attaches() {
     app.yolo_state
         .lock()
         .unwrap()
-        .mark_client_reconciled(session_id.to_string());
+        .mark_client_reconciled(session_id.to_string(), false);
     app.pending_yolo_reconciles
         .insert(7, (HashSet::from([session_id.to_string()]), true));
 
     app.reset_agent_scoped_state();
 
     assert!(!app.yolo_state.lock().unwrap().effective(session_id));
-    assert!(!app
+    assert!(app
         .yolo_state
         .lock()
         .unwrap()
-        .take_client_reconciled(session_id));
+        .take_client_reconciled(session_id)
+        .is_none());
     assert!(app.pending_yolo_reconciles.is_empty());
 
     app.handle_event(AppEvent::SessionAttached {
