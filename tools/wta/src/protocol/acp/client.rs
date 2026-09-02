@@ -4867,10 +4867,16 @@ async fn dispatch_prompt_body(
             .native_yolo
             .privileged_agent_command(&prompt.text)
         {
+            tracing::warn!(
+                target: "yolo",
+                session_id = %prompt_session_id_str,
+                "AllowYoloMode blocked provider command /{}",
+                command_name
+            );
             let message =
                 format!("the AllowYoloMode policy blocks provider command '/{command_name}'");
             let _ = event_tx_task.send(AppEvent::AgentError {
-                session_id: Some(prompt_session_id_str),
+                session_id: Some(prompt_session_id_str.clone()),
                 failure: AgentFailure::Protocol {
                     code: -32003,
                     message: message.clone(),
@@ -4952,15 +4958,7 @@ async fn dispatch_prompt_body(
         &prompt_source,
         &text,
     );
-    if prompt.is_agent_command() {
-        tracing::info!(
-            target: "acp",
-            prompt_id = prompt.id,
-            session_id = %prompt_session_id_str,
-            prompt_len = text.len(),
-            "sending Agent command verbatim"
-        );
-    } else {
+    if !prompt.is_agent_command() {
         log_turn_trace(
             prompt.id,
             &prompt_session_id_str,
@@ -5005,6 +5003,8 @@ async fn dispatch_prompt_body(
     };
     let telemetry_is_byok = prompt.is_byok();
     let telemetry_agent_id = prompt.agent_id().to_string();
+    let telemetry_prompt_id = prompt.id;
+    let telemetry_is_agent_command = prompt.is_agent_command();
     let prompt_fut = conn_task.prompt_if(
         acp::schema::v1::PromptRequest::new(prompt_session_id.clone(), content),
         {
@@ -5013,6 +5013,15 @@ async fn dispatch_prompt_body(
                 let should_send = privileged_agent_command.is_none()
                     || !yolo_state.lock().unwrap().policy_blocked();
                 if should_send {
+                    if telemetry_is_agent_command {
+                        tracing::info!(
+                            target: "acp",
+                            prompt_id = telemetry_prompt_id,
+                            session_id = %telemetry_session_id,
+                            prompt_len = telemetry_prompt_len,
+                            "sending Agent command verbatim"
+                        );
+                    }
                     telemetry_timing.mark_prompt_sent(&telemetry_session_id);
                     crate::telemetry::log_agent_prompt_sent(
                         &telemetry_session_id,
@@ -5038,6 +5047,12 @@ async fn dispatch_prompt_body(
                         .unwrap_or("privileged command");
                     let message = format!(
                         "the AllowYoloMode policy blocks provider command '/{command_name}'"
+                    );
+                    tracing::warn!(
+                        target: "yolo",
+                        session_id = %prompt_session_id_str,
+                        "AllowYoloMode blocked provider command /{}",
+                        command_name
                     );
                     let _ = prompt_timing_task.complete(
                         &prompt_session_id_str,

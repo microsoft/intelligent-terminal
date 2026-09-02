@@ -230,6 +230,13 @@ Describe 'Feature AllowYoloMode policy' -ForEach $script:PackageCase -Tag 'Featu
             Send-AgentPrompt -App $app -PaneSessionId $agentSession.PaneSessionId -Text '/allow_all' | Out-Null
             Assert-AgentPaneText -App $app -PaneSessionId $agentSession.PaneSessionId `
                 -Pattern 'AllowYoloMode.*?/allow_all' -TimeoutSec 15
+            $blockedLog = Wait-Until -TimeoutSec 15 -IntervalSec 0.5 `
+                -Because 'the helper to record that policy suppressed the provider command before ACP' -Condition {
+                    $log = Get-ItLogText -App $app -Name 'wta-main_helper-*.log' -SinceStart
+                    if ($log -match 'AllowYoloMode blocked provider command /allow_all') { $log }
+                }
+            $blockedLog | Should -Not -Match 'sending Agent command verbatim' `
+                -Because 'a policy-blocked provider command must not cross the ACP prompt boundary'
             (Test-AgentNativeYoloUpdate -App $app -AcpSessionId $agentSession.AcpSessionId -Enabled $true) |
                 Should -BeFalse -Because 'the blocked provider command must not re-enable native Yolo'
         }
