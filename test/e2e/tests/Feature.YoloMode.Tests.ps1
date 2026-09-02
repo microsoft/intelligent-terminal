@@ -8,16 +8,13 @@ BeforeDiscovery {
     $script:Package = Get-ItTestPackage
     $script:Ready = $false
     $script:copilotStatus = if (Get-Command copilot -ErrorAction SilentlyContinue) { 'probe-failed' } else { 'not-installed' }
-    $script:openCodeStatus = if (Get-Command opencode -ErrorAction SilentlyContinue) { 'probe-failed' } else { 'not-installed' }
+    $script:openCodeInstalled = [bool](Get-Command opencode -ErrorAction SilentlyContinue)
     $script:geminiInstalled = [bool](Get-Command gemini -ErrorAction SilentlyContinue)
     try {
         $resolvedApp = Resolve-ItApp -Package $script:Package -ErrorAction Stop
         $script:Ready = Test-WinAppAvailable
         if ($script:copilotStatus -ne 'not-installed') {
             $script:copilotStatus = Get-AgentAcpStatus -App $resolvedApp -AgentCommand 'copilot --acp --stdio'
-        }
-        if ($script:openCodeStatus -ne 'not-installed') {
-            $script:openCodeStatus = Get-AgentAcpStatus -App $resolvedApp -AgentCommand 'opencode acp'
         }
     }
     catch {
@@ -27,7 +24,7 @@ BeforeDiscovery {
     $script:policyReady = (-not $script:copilotBlocked) -and (Test-WtAgentPolicyControllable)
     $script:PackageCase = @(@{
         Package = $script:Package
-        OpenCodeStatus = $script:openCodeStatus
+        OpenCodeInstalled = $script:openCodeInstalled
         GeminiInstalled = $script:geminiInstalled
     })
 }
@@ -118,39 +115,11 @@ Describe 'Feature provider-native Yolo with Copilot' -ForEach $script:PackageCas
             (Test-Until -TimeoutSec 30 -IntervalSec 0.5 -Condition {
                 Test-AgentNativeYoloUpdate -App $secondApp -AcpSessionId $agentSession.AcpSessionId -Enabled $true
             }) | Should -BeTrue -Because 'the relaunched default session must receive the persisted native Yolo setting'
-            (Test-Until -TimeoutSec 30 -IntervalSec 0.5 -Condition {
-                $label = Get-UiElement -App $secondApp -Selector 'AgentYoloStatusText'
-                $label -and $label.name -match '● Yolo'
-            }) | Should -BeTrue -Because 'the agent header must distinguish acknowledged Yolo from the persisted preference'
         }
         finally {
             if ($secondApp) { Stop-Terminal -App $secondApp -RestoreSettings $false }
             if ($firstApp) { Stop-Terminal -App $firstApp -RestoreSettings $false }
             Restore-WtConfig -App $configOwner
-        }
-    }
-
-    It 'Provider-native Yolo toggles per live session' -Skip:$script:copilotBlocked {
-        $app = Start-Terminal -Package $Package -PassFre $true -Settings @{
-            acpAgent = 'copilot'
-            'agentPane.yoloMode' = $true
-        }
-        try {
-            Open-AgentPane -App $app | Out-Null
-            Wait-AgentReady -App $app -TimeoutSec 90 | Should -BeTrue
-            $agentPane = (Wait-NewAgentPaneSession -App $app -TimeoutSec 30).PaneSessionId
-
-            Initialize-LogOffsets -App $app | Out-Null
-            Send-AgentPrompt -App $app -PaneSessionId $agentPane -Text '/yolo off' | Out-Null
-            Assert-Log -App $app -Name 'wta-main_helper-*.log' `
-                -Pattern 'provider-native Yolo updated for live session.*enabled=false' -TimeoutSec 30
-            Initialize-LogOffsets -App $app | Out-Null
-            Send-AgentPrompt -App $app -PaneSessionId $agentPane -Text '/yolo on' | Out-Null
-            Assert-Log -App $app -Name 'wta-main_helper-*.log' `
-                -Pattern 'provider-native Yolo updated for live session.*enabled=true' -TimeoutSec 30
-        }
-        finally {
-            if ($app) { Stop-Terminal -App $app }
         }
     }
 
@@ -162,7 +131,7 @@ Describe 'Feature Settings Yolo provider compatibility' -ForEach $script:Package
     }
 
     It 'Settings warns that OpenCode Yolo remains interactive' {
-        if ($OpenCodeStatus -eq 'not-installed') {
+        if (-not $OpenCodeInstalled) {
             Set-ItResult -Skipped -Because 'OpenCode is not installed, so it is intentionally absent from the default-provider picker'
             return
         }
@@ -227,38 +196,6 @@ Describe 'Feature Settings Yolo provider compatibility' -ForEach $script:Package
     }
 }
 
-Describe 'Feature unsupported provider Yolo behavior' -ForEach $script:PackageCase -Tag 'Feature' -Skip:(-not $script:Ready) {
-    BeforeAll {
-        Import-Module (Join-Path $PSScriptRoot '..\ItE2E\ItE2E.psd1') -Force
-    }
-
-    It 'Unsupported agents reject Yolo safely' {
-        if ($OpenCodeStatus -ne 'ready') {
-            Set-ItResult -Skipped -Because "OpenCode ACP prerequisite: $OpenCodeStatus"
-            return
-        }
-        $app = Start-Terminal -Package $Package -PassFre $true -Settings @{
-            acpAgent = 'opencode'
-            'agentPane.yoloMode' = $true
-        }
-        try {
-            Open-AgentPane -App $app | Out-Null
-            Wait-AgentReady -App $app -TimeoutSec 90 | Should -BeTrue
-            $agentPane = (Wait-NewAgentPaneSession -App $app -TimeoutSec 30).PaneSessionId
-            Assert-AgentPaneText -App $app -PaneSessionId $agentPane `
-                -Pattern '(?i)/yolo on: opencode does not support ACP session Yolo mode' -TimeoutSec 30
-            (Test-Until -TimeoutSec 30 -IntervalSec 0.5 -Condition {
-                $label = Get-UiElement -App $app -Selector 'AgentYoloStatusText'
-                $label -and $label.name -match '⚠ Yolo'
-            }) | Should -BeTrue -Because 'the global preference must not look active when OpenCode rejects Yolo'
-            Assert-Setting -App $app -Key 'agentPane.yoloMode' -Value $true
-        }
-        finally {
-            if ($app) { Stop-Terminal -App $app }
-        }
-    }
-}
-
 Describe 'Feature AllowYoloMode policy' -ForEach $script:PackageCase -Tag 'Feature' -Skip:(-not $script:Ready) {
     BeforeAll {
         Import-Module (Join-Path $PSScriptRoot '..\ItE2E\ItE2E.psd1') -Force
@@ -284,11 +221,6 @@ Describe 'Feature AllowYoloMode policy' -ForEach $script:PackageCase -Tag 'Featu
             (Test-Until -TimeoutSec 30 -IntervalSec 0.5 -Condition {
                 Test-AgentNativeYoloUpdate -App $app -AcpSessionId $agentSession.AcpSessionId -Enabled $false
             }) | Should -BeTrue -Because 'a live policy block must reconcile the provider session to native Yolo off'
-            $agentPane = $agentSession.PaneSessionId
-            Send-AgentPrompt -App $app -PaneSessionId $agentPane -Text '/yolo on' | Out-Null
-            $blocked = Get-WtaLocalizedTextRegex -Key 'system.yolo_blocked_by_policy'
-            if (-not $blocked) { $blocked = '(?i)Yolo mode is disabled' }
-            Assert-AgentPaneText -App $app -PaneSessionId $agentPane -Pattern $blocked -TimeoutSec 30
         }
         finally {
             if ($app) { Stop-Terminal -App $app }

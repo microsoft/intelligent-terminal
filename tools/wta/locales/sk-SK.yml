@@ -161,7 +161,6 @@ system.cannot_resume_phantom_via_flag: "Nedá sa obnoviť relácia %{agent} %{se
 system.cannot_resume_phantom_via_load: "Nedá sa obnoviť relácia %{agent} %{session_id}: bola spustená, ale nikdy nenazbierala žiadnu konverzáciu, takže %{agent} by načítanie odmietol. Riadok sa odstraňuje."
 system.fallback.this_agent: "tento agent"
 system.fallback.connected_agent: "pripojený agent"
-system.yolo_blocked_by_policy: "Režim Yolo je zakázaný politikou vašej organizácie."  # {Locked="Yolo"}
 
 
 # ── Runtime CLI output (src/main.rs) ────────────────────────────────────────
@@ -230,7 +229,6 @@ system.agent_switch_unavailable: "Prepínanie agentov nie je k dispozícii mimo 
 commands.model.summary: "Vyberte model pre túto tablu (/model <id> na priame prepnutie)"  # {Locked="/model","<id>"}
 commands.config.summary: "Nakonfigurujte tuto reláciu agenta"  # Agent means an AI coding agent; shown for the /config command. {Locked="/config"}
 commands.move.summary: "Presunúť panel agenta pre túto kartu (/move <position>)"  # {Locked="/move","<position>"}
-commands.yolo.summary: "Použite režim ACP Yolo poskytovateľa pre túto reláciu (do /new)"  # {Locked="ACP","Yolo","/new"} — slash-command names.
 
 model_picker.title: "Vybrať model (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "Pripojený agent neohlásil žiadne vybrateľné modely."

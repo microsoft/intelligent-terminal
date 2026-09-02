@@ -17,10 +17,8 @@
 //   AllowAutoFix       REG_DWORD     0 = blocked, 1 = allowed. Absent = allowed.
 //   AllowAgentSessionHooks REG_DWORD  0 = blocked, 1 = allowed. Absent = allowed.
 //   AllowYoloMode      REG_DWORD     0 = blocked, 1 = allowed. Absent = allowed.
-//                                    Gates BOTH the global agentPane.yoloMode
-//                                    setting AND the per-session `/yolo` slash
-//                                    command — when blocked, neither path may
-//                                    request a provider-native Yolo mode.
+//                                    Gates the global agentPane.yoloMode setting
+//                                    and provider-native Yolo config changes.
 
 #pragma once
 

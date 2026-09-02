@@ -165,7 +165,6 @@ system.cannot_resume_phantom_via_flag: "%{agent} सत्र %{session_id} प�
 system.cannot_resume_phantom_via_load: "%{agent} सत्र %{session_id} परत सुरू करूंक शकना: तें सुरू जालें पूण कसलोच संवाद जमा जालो ना, देखून %{agent} load नाकारतलो. ओळ काडटा."
 system.fallback.this_agent: "हो एजंट"
 system.fallback.connected_agent: "जोडिल्लो एजंट"
-system.yolo_blocked_by_policy: "तुमच्या संघटनेच्या धोरणान Yolo mode बंद केल्लो आसा."  # {Locked="Yolo"}
 
 
 # ── रनटायम CLI आउटपुट (src/main.rs) ────────────────────────────────────────
@@ -231,7 +230,6 @@ system.agent_switch_unavailable: "विंडोज टर्मिनल ट�
 commands.model.summary: "ह्या पेना खातीर मॉडेल निवडात (थेट बदलपाक /model <id>)"  # {Locked="/model","<id>"}
 commands.config.summary: "ह्या एजंट सत्राचे संफिग्रेशन करा"  # Agent means an AI coding agent; shown for the /config command. {Locked="/config"}
 commands.move.summary: "ह्या टॅबाचें एजंट पेन हलायात (/move <position>)"  # {Locked="/move","<position>"}
-commands.yolo.summary: "ह्या सत्रा खातीर निवडिल्ल्या AI एजंट प्रदात्याचो ACP Yolo मोड वापरात (/new मेरेन)"  # {Locked="ACP","Yolo","/new"} — slash-command names.
 
 model_picker.title: "मॉडेल निवडात (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "जोडिल्ल्या एजंटान कसलेच निवडपायोग्य मॉडेल जाहीर केलें ना."

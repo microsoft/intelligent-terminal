@@ -152,7 +152,6 @@ system.cannot_resume_phantom_via_flag: "Hindi maipagpatuloy ang %{agent} session
 system.cannot_resume_phantom_via_load: "Hindi maipagpatuloy ang %{agent} session %{session_id}: nagsimula ito pero hindi kailanman nakaipon ng anumang pag-uusap, kaya tatanggihan ng %{agent} ang load. Inaalis ang row."
 system.fallback.this_agent: "ang agent na ito"
 system.fallback.connected_agent: "ang nakakonektang agent"
-system.yolo_blocked_by_policy: "Na-disable ang Yolo mode ng patakaran ng iyong organisasyon."  # {Locked="Yolo"}
 
 
 # ── Runtime CLI output (src/main.rs) ────────────────────────────────────────
@@ -230,7 +229,6 @@ system.agent_switch_unavailable: "Hindi available ang paglipat ng agent sa labas
 commands.model.summary: "Piliin ang modelo para sa pane na ito (/model <id> para magpalit nang diretso)"  # {Locked="/model","<id>"}
 commands.config.summary: "I-configure ang session ng agent na ito"  # Agent means an AI coding agent; shown for the /config command. {Locked="/config"}
 commands.move.summary: "Ilipat ang agent pane ng tab na ito (/move <position>)"  # {Locked="/move","<position>"}
-commands.yolo.summary: "Gamitin ang ACP Yolo mode ng agent provider para sa session na ito (hanggang /new)"  # {Locked="ACP","Yolo","/new"} — slash-command names.
 
 model_picker.title: "Pumili ng modelo (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "Hindi nag-advertise ang nakakonektang agent ng anumang napipiling modelo."

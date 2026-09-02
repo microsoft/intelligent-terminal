@@ -165,7 +165,6 @@ system.cannot_resume_phantom_via_flag: "%{agent} ಸೆಷನ್ %{session_id} �
 system.cannot_resume_phantom_via_load: "%{agent} ಸೆಷನ್ %{session_id} ಪುನರಾರಂಭಿಸಲಾಗುವುದಿಲ್ಲ: ಅದು ಪ್ರಾರಂಭವಾಗಿತ್ತು ಆದರೆ ಯಾವುದೇ ಸಂಭಾಷಣೆ ಸಂಗ್ರಹವಾಗಿಲ್ಲ, ಆದ್ದರಿಂದ %{agent} load ಅನ್ನು ತಿರಸ್ಕರಿಸುತ್ತದೆ. ಸಾಲನ್ನು ತೆಗೆದುಹಾಕಲಾಗುತ್ತಿದೆ."
 system.fallback.this_agent: "ಈ agent"
 system.fallback.connected_agent: "ಸಂಪರ್ಕಿತ agent"
-system.yolo_blocked_by_policy: "ನಿಮ್ಮ ಸಂಸ್ಥೆಯ ನೀತಿಯಿಂದ Yolo mode ನಿಷ್ಕ್ರಿಯಗೊಂಡಿದೆ."  # {Locked="Yolo"}
 
 
 # ── ರನ್‌ಟೈಮ್ CLI ಔಟ್‌ಪುಟ್ (src/main.rs) ────────────────────────────────────────
@@ -231,7 +230,6 @@ system.agent_switch_unavailable: "ವಿಂಡೋಸ್ ಟರ್ಮಿನಲ್
 commands.model.summary: "ಈ ಪೇನ್‌ಗಾಗಿ ಮಾದರಿಯನ್ನು ಆಯ್ಕೆಮಾಡಿ (ನೇರವಾಗಿ ಬದಲಾಯಿಸಲು /model <id>)"  # {Locked="/model","<id>"}
 commands.config.summary: "ಈ ಏಜೆಂಟ್ ಸೆಷನ್ ಸಂರಚಿಸಿ"  # Agent means an AI coding agent; shown for the /config command. {Locked="/config"}
 commands.move.summary: "ಈ ಟ್ಯಾಬ್‌ನ ಏಜೆಂ트 ಪೇನ್ ಅನ್ನು ಸರಿಸಿ (/move <position>)"  # {Locked="/move","<position>"}
-commands.yolo.summary: "ಈ ಸೆಷನ್‌ಗಾಗಿ ಆಯ್ಕೆಮಾಡಿದ ಏಜೆಂಟ್ ಪೂರೈಕೆದಾರರ ACP Yolo ಮೋಡ್ ಬಳಸಿ (/new ವರೆಗೆ)"  # {Locked="ACP","Yolo","/new"} — slash-command names.
 
 model_picker.title: "ಮಾದರಿ ಆಯ್ಕೆಮಾಡಿ (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "ಸಂಪರ್ಕಿತ ಏಜೆಂಟ್ ಯಾವುದೇ ಆಯ್ಕೆ ಮಾಡಬಹುದಾದ ಮಾದರಿಗಳನ್ನು ಪ್ರಕಟಿಸಲಿಲ್ಲ."

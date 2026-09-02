@@ -165,7 +165,6 @@ system.cannot_resume_phantom_via_flag: "%{agent} सत्र %{session_id} प�
 system.cannot_resume_phantom_via_load: "%{agent} सत्र %{session_id} पुन्हा सुरू करता येत नाही: ते सुरू झाले होते पण कोणतेही संभाषण साठवले गेले नाही, म्हणून %{agent} load नाकारेल. पंक्ती काढत आहे."
 system.fallback.this_agent: "हा agent"
 system.fallback.connected_agent: "कनेक्ट केलेला agent"
-system.yolo_blocked_by_policy: "तुमच्या संस्थेच्या धोरणामुळे Yolo mode अक्षम आहे."  # {Locked="Yolo"}
 
 
 # ── रनटाइम CLI आउटपुट (src/main.rs) ────────────────────────────────────────
@@ -231,7 +230,6 @@ system.agent_switch_unavailable: "विंडोज टर्मिनल ट�
 commands.model.summary: "या पेनसाठी मॉडेल निवडा (थेट स्विच करण्यासाठी /model <id>)"  # {Locked="/model","<id>"}
 commands.config.summary: "हे एजंट सत्र कॉन्फिगर करा"  # Agent means an AI coding agent; shown for the /config command. {Locked="/config"}
 commands.move.summary: "या टॅबचे एजंट पेन हलवा (/move <position>)"  # {Locked="/move","<position>"}
-commands.yolo.summary: "या सत्रासाठी प्रदात्याचा ACP Yolo मोड वापरा (/new पर्यंत)"  # {Locked="ACP","Yolo","/new"} — slash-command names.
 
 model_picker.title: "मॉडेल निवडा (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "कनेक्ट केलेल्या agent ने कोणतेही निवडण्यायोग्य मॉडेल जाहीर केले नाही."

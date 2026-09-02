@@ -106,7 +106,6 @@ commands.agent.summary: "Pick the agent for this tab (/agent <id> to switch dire
 commands.model.summary: "Pick the model for this pane (/model <id> to switch directly)"  # {Locked="/model","<id>"}
 commands.config.summary: "Configure this agent session"  # Agent means an AI coding agent; shown for the /config command. {Locked="/config"}
 commands.move.summary: "Move this tab's agent pane (/move <position>)"  # {Locked="/move","<position>"}
-commands.yolo.summary: "Use the provider's ACP Yolo mode for this session (until /new)"  # {Locked="ACP","Yolo","/new"} — slash-command names.
 
 # ── Agent picker (src/ui/agent_popup.rs) ────────────────────────────────────
 # {Locked="↑","↓","Enter","Esc"} - key names, do not translate
@@ -241,9 +240,6 @@ system.cannot_resume_phantom_via_flag: "Cannot resume %{agent} session %{session
 system.cannot_resume_phantom_via_load: "Cannot resume %{agent} session %{session_id}: it was started but never accumulated any conversation, so %{agent} would reject the load. Removing the row."  # Same case as cannot_resume_phantom_via_flag but via ACP loadSession (agent-pane resume path).
 system.fallback.this_agent: "this agent"  # Fallback noun used inside the cannot_resume_* messages above when the source agent is unknown (e.g. a custom agent).
 system.fallback.connected_agent: "the connected agent"  # Fallback noun used inside cannot_resume_no_load_session when the connected agent display name is empty.
-
-# ── Provider-native ACP Yolo mode ───────────────────────────────────────────
-system.yolo_blocked_by_policy: "Yolo mode is disabled by your organization's policy."  # {Locked="Yolo"} Shown when /yolo is run but provider-native Yolo is blocked by the AllowYoloMode admin policy. Note this string intentionally does not spell out "/yolo" literally, so it is not a locked token here.
 
 # ── Recommendation execution (src/coordinator.rs) ───────────────────────────
 system.choice_execution_failed: "Choice %{choice} failed: %{error}"  # Shown when a recommendation card's choice fails to execute. %{choice} = numeric choice index, %{error} = error message string from the underlying failure.

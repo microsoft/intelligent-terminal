@@ -200,13 +200,14 @@ Describe 'Feature suite package selection' -Tag 'Unit' {
         $suite = Get-Content -LiteralPath $suitePath -Raw
 
         ([regex]::Matches($suite, '\bGet-ItTestPackage\b')).Count | Should -Be 1
-        ([regex]::Matches($suite, '(?m)^Describe ')).Count | Should -Be 5
-        ([regex]::Matches($suite, '(?m)^Describe .* -ForEach \$script:PackageCase\b')).Count | Should -Be 5
+        ([regex]::Matches($suite, '(?m)^Describe ')).Count | Should -Be 4
+        ([regex]::Matches($suite, '(?m)^Describe .* -ForEach \$script:PackageCase\b')).Count | Should -Be 4
         $suite | Should -Not -Match '-Package\s+Dev\b'
         $suite | Should -Not -Match 'Resolve-ItApp\s+-Package\s+(?!\$(?:script:Package|Package)\b)'
         $suite | Should -Not -Match 'Start-Terminal\s+-Package\s+(?!\$Package\b)'
-        $suite | Should -Match 'Get-AgentAcpStatus\s+-App\s+\$resolvedApp\s+-AgentCommand\s+''opencode acp'''
-        $suite | Should -Not -Match 'openCodeReady\s*=.*Get-Command\s+opencode'
+        $suite | Should -Match 'openCodeInstalled\s*=.*Get-Command\s+opencode'
+        $suite | Should -Not -Match 'Get-AgentAcpStatus.*opencode acp'
+        $suite | Should -Not -Match 'AgentYoloStatusText|/yolo (?:on|off)'
     }
 }
 

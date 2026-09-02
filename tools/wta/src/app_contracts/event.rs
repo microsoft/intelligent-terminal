@@ -51,22 +51,9 @@ pub enum AppEvent {
         available_models: Vec<AcpModelInfo>,
         current_model_id: Option<String>,
     },
-    YoloModeChangeCompleted {
-        transaction_id: u64,
-        session_id: String,
-        enabled: bool,
-        restart_required: bool,
-        result: Result<(), String>,
-    },
     RuntimeYoloReconcileCompleted {
         reconcile_id: u64,
         fail_closed: bool,
-        restart_required: bool,
-        result: Result<(), String>,
-    },
-    YoloSessionStatusChanged {
-        session_id: String,
-        enabled: bool,
         restart_required: bool,
         result: Result<(), String>,
     },

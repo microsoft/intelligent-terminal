@@ -167,7 +167,6 @@ system.cannot_resume_phantom_via_flag: "%{agent} সত্ৰ %{session_id} প�
 system.cannot_resume_phantom_via_load: "%{agent} সত্ৰ %{session_id} পুনৰাৰম্ভ কৰিব নোৱাৰি: ই আৰম্ভ হৈছিল কিন্তু কোনো কথোপকথন সঞ্চিত হোৱা নাই, সেয়ে %{agent}-এ load নাকচ কৰিব। শাৰী আঁতৰোৱা হৈছে।"
 system.fallback.this_agent: "এই agent"
 system.fallback.connected_agent: "সংযুক্ত agent"
-system.yolo_blocked_by_policy: "আপোনাৰ সংগঠনৰ নীতিয়ে Yolo mode নিষ্ক্ৰিয় কৰিছে।"  # {Locked="Yolo"}
 
 
 # ── ৰানটাইম CLI আউটপুট (src/main.rs) ────────────────────────────────────────
@@ -233,7 +232,6 @@ system.agent_switch_unavailable: "উইণ্ড’জ টাৰ্মিনে
 commands.model.summary: "এই পেনৰ বাবে মডেল বাছনি কৰক (পোনপটীয়াকৈ সলাবলৈ /model <id>)"  # {Locked="/model","<id>"}
 commands.config.summary: "এই এজেণ্ট ছিচেন কনফিগাৰ কৰক"  # Agent means an AI coding agent; shown for the /config command. {Locked="/config"}
 commands.move.summary: "এই টেবৰ এজেণ্ট পেন স্থানান্তৰ কৰক (/move <position>)"  # {Locked="/move","<position>"}
-commands.yolo.summary: "এই সত্ৰৰ বাবে প্ৰদানকাৰীৰ ACP Yolo মোড ব্যৱহাৰ কৰক (/new লৈকে)"  # {Locked="ACP","Yolo","/new"} — slash-command names.
 
 model_picker.title: "মডেল বাছনি কৰক (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "সংযুক্ত এজেণ্টে কোনো বাছনিযোগ্য মডেল ঘোষণা কৰা নাই।"

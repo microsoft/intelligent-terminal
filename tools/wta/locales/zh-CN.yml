@@ -148,7 +148,6 @@ system.cannot_resume_phantom_via_flag: "无法恢复 %{agent} 会话 %{session_i
 system.cannot_resume_phantom_via_load: "无法恢复 %{agent} 会话 %{session_id}：它已启动但从未积累任何对话，因此 %{agent} 会拒绝加载。正在移除此行。"
 system.fallback.this_agent: "此智能体"
 system.fallback.connected_agent: "已连接的智能体"
-system.yolo_blocked_by_policy: "Yolo 模式已被你所在组织的策略禁用。"  # {Locked="Yolo"}
 
 
 # ── 运行时 CLI 输出 (src/main.rs) ────────────────────────────────────────
@@ -225,7 +224,6 @@ system.agent_switch_unavailable: "在 Windows Terminal 标签页之外，智能�
 commands.model.summary: "为此窗格选择模型（使用 /model <id> 可直接切换）"  # {Locked="/model","<id>"}
 commands.config.summary: "配置此智能体会话"  # Agent means an AI coding agent; shown for the /config command. {Locked="/config"}
 commands.move.summary: "移动此标签页的智能体窗格 (/move <position>)"  # {Locked="/move","<position>"}
-commands.yolo.summary: "为此会话使用智能体提供商的 ACP Yolo 模式（直到 /new）"  # {Locked="ACP","Yolo","/new"} — slash-command names.
 
 model_picker.title: "选择模型（↑ ↓ • Enter • Esc）"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "已连接的智能体未公布任何可选模型。"

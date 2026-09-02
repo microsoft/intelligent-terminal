@@ -1,85 +1,63 @@
 # Yolo mode design
 
-Yolo mode asks a supported agent provider to enable its advertised ACP
-session mode for reduced or bypassed confirmations. The provider defines the
-resulting permissions, sandbox, file access, and network access. WTA does not
-answer ordinary provider permission requests on the user's behalf.
+Yolo mode asks a supported agent provider to apply its advertised ACP session
+capability for reduced or bypassed confirmations. The provider defines the
+resulting permission, sandbox, file-access, and network-access behavior.
+Intelligent Terminal does not answer ordinary ACP permission requests on the
+user's behalf.
 
-This document describes the current implementation, including its user
-experience, state model, built-in agent coverage, approval boundary, policy
-enforcement, and lifecycle.
-
-## Architecture and terminology
-
-Yolo mode spans several processes and scopes. The terms used throughout this
-document mean:
-
-| Term | Meaning |
-|---|---|
-| Terminal tab | A user-visible Intelligent Terminal tab. |
-| Agent pane | The AI chat pane attached to a Terminal tab. Hiding the pane stashes it; it does not normally destroy its process or chat session. |
-| `wta-helper` (helper) | The per-tab WTA process that renders the agent-pane chat UI. Each eligible Terminal tab owns one pre-warmed helper, including while its agent pane is hidden. The helper owns that tab's local Yolo default, session overrides, provider capability state, and ACP operations. |
-| `wta-master` (master) | The shared WTA process that manages Agent CLI processes and routes ACP traffic between helpers and the correct Agent instance. One master can host multiple Agent CLI instances. The master does not own the global or per-session Yolo state. |
-| Agent CLI instance | A Copilot, Claude adapter, Codex adapter, Gemini, OpenCode, or custom ACP server process managed by the master. Helpers selecting the same agent identity, execution source, and command can share one instance. |
-| ACP session | One agent conversation identified by an ACP `session_id`. This is the actual scope of `/yolo`; it is narrower than the lifetime of a tab or helper. |
-
-The relationship is:
-
-```text
-Intelligent Terminal
-  |
-  +-- Tab A
-  |     +-- agent pane
-  |           +-- wta-helper A
-  |                 +-- ACP session A
-  |
-  +-- Tab B
-        +-- agent pane
-              +-- wta-helper B
-                    +-- ACP session B
-
-wta-helper A --+
-               +--> shared wta-master --> one or more Agent CLI instances
-wta-helper B --+
-```
-
-For Yolo mode, the responsibilities are deliberately split:
-
-- Terminal reads the persistent global setting, passes its effective value to
-  each helper at startup, and hot-pushes later setting or policy changes.
-- The helper stores the default and the current ACP session override, decides
-  which provider-advertised ACP session capability to invoke, and renders
-  `/yolo` status or errors. It never answers an ordinary provider permission
-  request on the user's behalf.
-- The master only routes ACP messages. It forwards each session-scoped config
-  or mode request to the Agent instance bound to that helper.
-- The Agent applies its own advertised mode to the exact ACP `session_id`.
-
-Therefore, `/yolo` is **session-scoped**, although its state is held inside
-the per-tab helper process. Starting `/new` in the same tab creates a new ACP
-session and resets the override.
+The product exposes a persistent, provider-independent global default. It does
+not add a WTA-owned session command or a per-agent-pane status badge.
 
 ## Goals
 
-- Present provider-advertised ACP Yolo capabilities through one UI.
-- Support both a persistent global default and a temporary session override.
-- Keep each ACP session isolated when one `wta-master` hosts multiple Agent
-  CLI instances and multiplexes many helpers across them.
-- Support only reviewed canonical providers and exact advertised contracts.
-- Never claim that `/yolo off` succeeded while the provider may still be in
-  its native Yolo mode.
-- Allow administrators to disable both entry points with one policy.
+- Persist one global default in `agentPane.yoloMode`.
+- Reconcile each supported ACP session to that default through an exact,
+  provider-advertised capability.
+- Keep provider identity and ACP session routing authoritative across tabs,
+  windows, and shared Agent CLI processes.
+- Apply `AllowYoloMode` policy changes to live sessions and fail closed when a
+  disable cannot be confirmed.
+- Keep every ordinary ACP permission option under explicit user control.
+- Preserve the separate confirmation boundary for terminal action proposals.
 
 ## Non-goals
 
-- Yolo mode is not a general bypass for every Intelligent Terminal
-  confirmation surface.
-- It does not execute tool calls itself.
-- It does not change whether an agent chooses to issue a tool call.
-- It does not select `AllowOnce`, `AllowAlways`, or any other provider
-  permission response.
-- It does not synthesize a Yolo capability for an unsupported provider.
-- It does not persist a `/yolo` override across ACP sessions.
+- WTA does not register `/yolo`, `/yolo on`, or `/yolo off`.
+- WTA does not persist a per-session Yolo override.
+- The agent-pane header does not display Yolo on/off, pending, unavailable, or
+  unknown status.
+- Yolo mode is not a general bypass for Intelligent Terminal confirmation
+  surfaces.
+- WTA does not synthesize support for an unsupported or look-alike provider.
+- `ToolKind` is display metadata, not an authorization boundary.
+- Prompt instructions are not an authorization boundary.
+
+## Architecture
+
+```text
+settings.json / Settings UI / AllowYoloMode
+  -> GlobalAppSettings::EffectiveAgentPaneYoloMode()
+  -> TerminalPage helper startup and agent_config_changed
+  -> helper YoloState global default and policy gate
+  -> NativeYoloState provider contract and sequenced ACP mutation
+  -> provider-owned session behavior
+```
+
+Terminal owns the persistent setting and policy-aware effective value. Each
+helper receives `--yolo-mode` and `--yolo-policy-blocked` at startup, then
+receives later changes through `agent_config_changed`.
+
+The helper shares its runtime Yolo state with the ACP client. `App` owns prompt
+gates and reconciliation generations; `NativeYoloState` owns capability
+discovery, captured restore values, operation sequencing, lifecycle fencing,
+and bounded ACP mutations. The master supplies the canonical
+`resolved_agent_id` and routes requests to the Agent CLI instance that owns the
+exact ACP `session_id`.
+
+A helper may own several tab sessions over its lifetime, and several helpers
+may share one Agent CLI process. Every native mutation carries the exact ACP
+session ID. No operation is inferred from the currently focused tab.
 
 ## User experience
 
@@ -89,8 +67,7 @@ Settings > AI agents contains:
 
 > Use provider Yolo mode
 
-The warning explains that the agent may run commands and edit files without
-asking for confirmation. The setting is stored in `settings.json` as:
+The setting is stored as:
 
 ```jsonc
 {
@@ -98,346 +75,164 @@ asking for confirmation. The setting is stored in `settings.json` as:
 }
 ```
 
-The default is `false`.
+The default is `false`. Enabling it expresses the user's preferred default for
+supported providers; it is not proof that every provider accepted a privileged
+mode.
 
-When a helper is created, `TerminalPage` evaluates the policy-aware
-`EffectiveAgentPaneYoloMode()` value. If it is enabled, Terminal starts that
-helper with `--yolo-mode`. Later setting or policy changes are sent
-to existing helpers through `agent_config_changed`.
+The toggle remains editable when OpenCode or Gemini is the selected default
+provider. Those choices do not make the provider-independent preference
+invalid because another provider can be selected later, including through
+`/agent`.
 
-The global value is a default for every ACP session owned by that helper. It
-does not merge into, or rewrite, individual session records.
+Settings shows contextual, non-closable notices only while the effective Yolo
+preference is on and policy does not lock it:
 
-### Current-session status
+- OpenCode: warning that no reviewed native Yolo capability is available and
+  permission requests remain interactive.
+- Gemini: informational notice that workspace trust and provider policy govern
+  whether Gemini accepts its native mode.
 
-The global toggle is a provider-independent preference, not proof that the
-current ACP session entered its provider's privileged mode. The agent header
-therefore appends a provider-acknowledged status marker:
+Only administrative policy disables the toggle. Provider compatibility does
+not grey it out.
 
-| Marker | Current session state |
-| --- | --- |
-| `◌ Yolo · On…` / `◌ Yolo · Off…` | The native enable or disable operation is pending. |
-| `● Yolo · On` | The provider acknowledged native Yolo for this session. |
-| `○ Yolo · Off` | Native Yolo is off for this session. |
-| `⚠ Yolo` | The provider does not support Yolo or rejected the requested mode. |
-| `? Yolo` | The provider's final state is unknown and the agent stack is being replaced. |
+### Commands and configuration
 
-`On` and `Off` use the Terminal UI's localized toggle terminology.
+WTA intentionally has no built-in `yolo` command. A provider command named
+`yolo` received through ACP `availableCommands` remains visible in completion
+and is forwarded as an ordinary provider command; WTA must not reserve or mute
+it.
 
-Hovering the warning marker shows the provider or transport error. A known
-automatic enable rejection is also written into chat using the same
-`/yolo on: <error>` form as an explicit command; prompts then continue through
-the normal interactive permission UI. The global toggle remains enabled so the
-preference can apply again after switching to a supported provider. Provider
-switch and agent reset clear the prior session marker before the replacement
-session reports its own state. Unknown or failed disable outcomes retain the
-prompt gate and restart the agent stack fail-closed.
+The generic `/config` picker continues to expose ACP `configOptions`:
 
-### Session command
+- Copilot can expose `allow_all` with `on` and `off` values.
+- Claude can expose mode `bypassPermissions` and its restore value.
+- Codex can expose mode `agent-full-access` and its restore value.
 
-The agent chat accepts:
+Selecting one of these reviewed privileged values uses the same policy check,
+operation sequencing, timeout, and prompt gate as global reconciliation.
+Ordinary config options remain unaffected.
 
-```text
-/yolo
-/yolo on
-/yolo off
-```
-
-Bare `/yolo` means `/yolo on`. Typing `/yolo ` opens an `on`/`off` completion
-list.
-
-The command applies only to the active tab's current ACP `session_id`. On
-success, the chat displays an explicit low-emphasis status:
-
-```text
-[on marker] /yolo on
-[off marker] /yolo off
-```
-
-The actual UI uses a filled circle for on and a hollow circle for off.
-
-If a provider-native session update fails, the chat shows an error such as:
-
-```text
-/yolo off: <ACP error>
-```
-
-The prior effective state is retained. In particular, `/yolo off` never
-reports success before the provider acknowledges restoration of the prior
-session config or mode.
-
-Other command behavior:
-
-- A newer `/yolo` command for the same session supersedes any pending update;
-  stale acknowledgements from the older update are ignored.
-- Running `/yolo` before the tab has a `session_id` is currently a no-op and
-  produces no success message.
-- `/new` removes the previous session override.
-- `/restart` clears all session overrides owned by the helper.
-- Closing the helper destroys all of its in-memory override state.
-
-### Policy-blocked experience
-
-The `AllowYoloMode` administrative policy gates both the global setting and
-the session command.
-
-When the policy is blocked:
-
-- `EffectiveAgentPaneYoloMode()` returns false even if the raw JSON setting is
-  true.
-- The Settings toggle is disabled and shows the policy-lock message.
-- Terminal does not pass `--yolo-mode`.
-- Terminal passes `--yolo-command-blocked`.
-- A later policy change is hot-applied to existing helpers. Their effective
-  state becomes off immediately, session overrides are cleared, and native
-  sessions are reconciled to their captured restore values.
-- Prompt submission, including manual and automatic autofix, is gated for each
-  affected session until the provider acknowledges the requested native state.
-- If native disable fails, WTA restarts the agent stack rather than leaving a
-  policy-blocked session running in a provider-native Yolo mode.
-- `/yolo` refuses without changing state and displays:
-
-```text
-Yolo mode is disabled by your organization's policy.
-```
-
-The policy changes the effective value; it does not erase or rewrite the
-user's stored `agentPane.yoloMode` value.
+Gemini currently advertises its `yolo` capability through ACP modes rather than
+a config option. Without a WTA-owned command, Intelligent Terminal has no
+per-session control for that mode. The global default still reconciles Gemini
+sessions when provider workspace trust and policy allow it.
 
 ## State model
 
-There are three distinct pieces of state.
+The runtime state has three relevant pieces:
 
-| State | Storage | Lifetime | Mutable at runtime |
+| State | Owner | Lifetime |
 |---|---|---|
-| Global default and policy gate | `YoloState`, initialized from `GlobalAppSettings` and updated through `agent_config_changed` | Persistent setting; helper-owned runtime copy | Yes |
-| Session overrides | `YoloState::session_overrides`, a `HashMap<session_id, bool>` shared by `App` and `ClientState` | Current helper process and ACP session | Yes, through `/yolo` after acknowledgement |
-| Pending changes | `App::pending_yolo_changes`, keyed by ACP `session_id` | Until the provider-native acknowledgement arrives | Yes, internal only |
-| Pending reconciliation | `App::pending_yolo_reconciles`, keyed by transaction and target ACP session | Until startup, `/new`, settings, or policy reconciliation settles | Yes, internal only |
+| Global default and policy gate | `YoloState` | Helper process; initialized and hot-updated from Terminal settings |
+| Native capability and captured restore value | `NativeYoloState` | Exact ACP session generation |
+| Pending reconciliation and config gates | `App` and `NativeYoloState` | Until acknowledgement, known failure, or agent reset |
 
-Each session override stores the explicit value selected by `/yolo on` or
-`/yolo off`. Sessions without an override follow the current global default.
+The effective desired state is:
 
 ```text
-effective_yolo(session) =
-    false,                                      if policy is blocked
-    session_overrides[session_id],              if an override exists
-    global_default,                             otherwise
+effective_yolo = global_default && !policy_blocked
 ```
 
-Therefore:
+There is no session override map. All sessions follow the current effective
+global value. The client-reconciled-session marker prevents `SessionAttached`
+from issuing a duplicate native operation after lazy first-prompt setup; it is
+not a user preference or persisted override.
 
-| Global default | Session override | Effective state |
+No Yolo runtime state is written to the session history index, hook data, or
+`state.json`.
+
+## Session lifecycle and prompt gates
+
+A capability-ready bootstrap or attached session is reconciled to the latest
+effective global value. A lazy session establishes that value before its first
+prompt is sent. Session replacement, `/new`, tab reset/close, provider switch,
+and agent restart remove stale capability generations and pending gates.
+
+Normal prompts, manual autofix, and automatic autofix remain blocked while the
+session's provider-native reconciliation or privileged `/config` mutation is
+pending. A known enable rejection releases the gate and the provider continues
+through its normal interactive permission behavior. A failed disable or an
+unknown remote outcome retains fail-closed state until the Agent CLI stack is
+replaced.
+
+Operations are serialized per session and fenced by lifecycle generation. A
+newer desired operation supersedes an older one; stale completions cannot
+commit state for a replaced or reused session ID.
+
+Both config-option and mode mutations have a bounded timeout. ACP cancellation
+is cooperative, so a timeout is treated as an unknown provider outcome and
+requests replacement of the shared master and Agent CLI pool. Fail-closed
+multi-session reconciliation has one overall deadline and stops at the first
+failure instead of waiting once per session.
+
+## Administrative policy
+
+`AllowYoloMode` overrides the stored global preference without erasing it.
+When policy blocks Yolo mode:
+
+- `EffectiveAgentPaneYoloMode()` returns `false`.
+- Settings disables the toggle and displays the policy lock.
+- New helpers receive `--yolo-policy-blocked` and do not receive an effective
+  enabled default.
+- Existing helpers receive the change through the normal settings-reload path.
+- Every live session is reconciled to its captured nonprivileged value.
+- Prompt producers remain gated until the matching disable is acknowledged.
+- Any unconfirmed disable restarts the agent stack fail closed.
+
+Policy watchers cover HKLM and HKCU, including creation of a previously missing
+policy path by watching and rebinding from the deepest existing ancestor.
+
+## Provider contracts
+
+WTA selects a contract only from the master-attested canonical provider
+identity and the exact advertised capability shape. A similarly named custom
+option is not sufficient.
+
+| Provider | Advertised contract | Enable | Restore |
 |---|---|---|---|
-| off | None | off |
-| off | `/yolo on` | on |
-| on | None | on |
-| on | `/yolo off` (**opt out of global Yolo**) | off |
+| GitHub Copilot | `configOptions` ID `allow_all`, category `permissions`, Select values `on`/`off` | `session/set_config_option(allow_all, on)` | Captured value, normally `off` |
+| Claude | `configOptions` ID `mode` with `bypassPermissions`; legacy mode fallback | `session/set_config_option(mode, bypassPermissions)` | Captured value, normally `default` |
+| Codex | `configOptions` ID `mode` with `agent-full-access`; legacy mode fallback | `session/set_config_option(mode, agent-full-access)` | Captured value, normally `agent` |
+| Gemini | ACP mode `yolo` | `session/set_mode(yolo)` | Captured mode, normally `default` |
+| OpenCode | No reviewed reversible capability | Unsupported; normal permission UI remains | No operation |
+| Custom provider | No trusted canonical contract | Unsupported; normal permission UI remains | No operation |
 
-An explicit session choice continues to win when the user changes the global
-default. Applying a blocking policy is stronger than either setting: it
-forces every session off and clears all session overrides so they cannot
-silently reactivate if the policy is later removed.
+Codex `agent-full-access` combines `approvalPolicy=never` with
+`dangerFullAccess`. Gemini and other providers likewise own the complete
+semantics of their mode. WTA does not split permission behavior from sandbox,
+file, or network effects.
 
-### Does the state change automatically?
+Capability discovery occurs on `session/new` and `session/load`; later config
+and mode updates refresh the captured state. A fresh session that lacks a
+capability can safely remain off. A loaded or previously privileged session
+that cannot prove restoration fails closed.
 
-- The persistent global setting changes only through settings editing or
-  policy evaluation.
-- A helper receives the effective global value at startup and hot-applies
-  subsequent global or policy changes in place.
-- Runtime changes recompute every live session. WTA reconciles the provider's
-  native config or mode while preserving explicit session overrides.
-- Startup and replacement sessions gate their first prompt until native
-  reconciliation acknowledges success. A known unsupported enable falls back
-  to interactive provider permissions; disable failures remain fail-closed.
-- Disabling provider-native Yolo is fail-closed: if the ACP update fails, WTA
-  requests an agent-stack restart.
-- For a loaded session on a supported provider, a missing or malformed
-  capability cannot count as a successful disable. This protects resumed
-  sessions that may have persisted a provider-native mode.
-- `/new`, session replacement, and `/restart` remove stale session overrides.
-- An ACP server's native permission state is changed by WTA when a session is
-  created in Yolo mode or when `/yolo on|off` succeeds.
-- WTA does not continuously poll native configuration. If another actor
-  changes the provider's session config outside WTA, the two states
-  can drift until WTA applies another change or the session is replaced.
+## Permission and terminal-action boundaries
 
-No Yolo session state is written to `state.json`, the session history index,
-or the hook data. Resuming or creating another ACP session does not inherit a
-previous `/yolo` override.
+Ordinary `session/request_permission` requests always enter the normal
+interactive permission UI. WTA never selects `AllowOnce`, `AllowAlways`, or any
+other provider option, including while the global Yolo setting is enabled.
+Invalid, stale, or non-canonical proposal permissions remain cancelled.
 
-## ACP capability architecture
+`request_terminal_actions` is a separate product-owned workflow for proposed
+changes to user-owned Terminal panes. Valid proposals render a recommendation
+card and require explicit Run or Insert confirmation. Provider-native Yolo does
+not bypass that card.
 
-WTA is an ACP UI for Yolo mode. It invokes only capabilities advertised by a
-reviewed provider on the current session. It never infers support from a CLI
-flag or a similarly named custom option.
-
-The helper does not trust the Agent ID it requested. The master validates and
-resolves the selection, returns `resolved_agent_id` in private initialize
-metadata, and only that master-attested canonical identity selects a provider
-contract.
-
-`NativeYoloState` records the advertised channel and original value per ACP
-`session_id`. Config-option channels use `session/set_config_option`; legacy
-mode channels use `session/set_mode`. Turning Yolo off restores the value that
-session advertised before WTA enabled Yolo, rather than applying one global
-default to every provider.
-
-| Agent | Advertised contract | Enable operation | Disable operation |
-|---|---|---|---|
-| GitHub Copilot | `configOptions`: `allow_all`, category `permissions`, Select values `on` and `off` | `session/set_config_option(allow_all, on)` | Restore the captured value, normally `off` |
-| Claude | `configOptions`: `mode`, category `mode`, including `bypassPermissions`; legacy `modes` is accepted when config options are unavailable | `session/set_config_option(mode, bypassPermissions)` | Restore the captured mode, normally `default` |
-| Codex | `configOptions`: `mode`, category `mode`, including `agent-full-access`; legacy `modes` is accepted when config options are unavailable | `session/set_config_option(mode, agent-full-access)` | Restore the captured mode, normally `agent` |
-| Gemini | `modes` includes `yolo` | `session/set_mode(yolo)` | Restore the captured mode, normally `default` |
-| OpenCode | No reviewed ACP session Yolo capability | Unsupported; ordinary permission UI remains | No operation |
-| Custom Agent | No trusted canonical provider contract | Unsupported; ordinary permission UI remains | No operation |
-
-Codex's `agent-full-access` contract combines `approvalPolicy=never` with its
-`dangerFullAccess` sandbox policy. Gemini and other providers likewise own the
-full semantics of their advertised modes. WTA does not narrow, split, or
-reinterpret those contracts; Settings warns that the provider defines the
-resulting permissions, sandbox, file access, and network access.
-
-Capability discovery occurs on `session/new` and `session/load`, with later
-config and current-mode updates refreshing the recorded state. A missing
-capability on a new, already-off session is safe to leave unchanged. A loaded
-session on a supported provider remains fail-closed if WTA cannot confirm a
-disable, because the provider may have persisted its native mode.
-
-For `/yolo`, `App` keeps the old local state until
-`AppEvent::YoloModeChangeCompleted` arrives. On success it commits the
-explicit session override. On failure it preserves the old state and reports
-the error. Session attach performs a second reconciliation against the latest
-runtime setting so a setting change racing session creation cannot leave the
-provider in a stale mode.
-
-### Provider permission requests
-
-Ordinary `session/request_permission` requests always use the normal
-interactive permission UI, regardless of global or per-session Yolo state.
-WTA does not select `AllowOnce`, `AllowAlways`, or any other provider option.
-
-## Which tool calls may be affected?
-
-Yolo mode selects an advertised provider session mode, not a WTA-maintained
-tool allowlist. Providers may apply that mode to kinds including:
-
-- `Read`
-- `Edit`
-- `Delete`
-- `Move`
-- `Search`
-- `Execute`
-- `Think`
-- `Fetch`
-- `SwitchMode`
-- agent-defined or unknown kinds represented as `Other`
-
-`ToolKind` controls display metadata; it is not a WTA authorization boundary.
-
-This has several important consequences:
-
-- File reads, edits, deletes, shell commands, searches, network fetches, and
-  future agent-defined tools may all be affected according to the provider's
-  mode contract.
-- A tool call that the agent executes without sending
-  `session/request_permission` remains provider-owned. WTA does not intercept
-  that decision.
-- ACP `tool_call` and `tool_call_update` notifications are status/output
-  reporting. Receiving one does not itself trigger an approval decision.
-- ACP client callbacks such as terminal creation retain their normal WTA
-  handling. Provider-native Yolo does not create a new WTA callback bypass.
-
-### Terminal action proposals
-
-`request_terminal_actions` is the agent-facing method for proposing changes
-to the user's existing Terminal state. These are not ordinary agent-owned
-tool calls: they can mutate user-owned windows, tabs, and panes, including
-sending input into a pane so that a command is executed there.
-
-Terminal action proposals are always gated by Intelligent Terminal's explicit
-confirmation state. **Yolo mode does not bypass this confirmation.** Even
-when Yolo mode is on, sending text or commands into a user pane and executing
-them still requires the user to explicitly approve the proposal.
-
-The proposal channel also has its own capability and invocation validation.
-Proposal-MCP and canonical proposal permission requests use their own
-validation path:
-
-- a valid proposal proceeds to the normal permission UI for user selection;
-- an invalid, stale, or non-canonical proposal is cancelled; and
-- Yolo mode does not convert an invalid proposal into an approved one.
-
-After a user permits the validated request, the resulting action card still
-requires explicit user approval before operations such as creating, splitting,
-focusing, or closing panes, or sending input that executes a command.
-
-## Multi-tab and multi-window isolation
-
-The global default is copied into each helper and later hot-updated.
-Per-session overrides are keyed by ACP `session_id`, never by the currently
-focused tab.
-
-One `wta-master` can lazily host multiple Agent CLI instances. Each helper is
-bound to one selected Agent instance at a time, and helpers selecting the same
-agent identity, source, and command may share that instance. The native
-capability is invoked with the exact session id, so enabling one session does
-not enable another session,
-whether the sessions use the same Agent instance or different ones.
-
-Pending changes also retain the originating tab id. Completion output is sent
-back to that tab even if focus changes. Before committing, `App` verifies that
-the tab still owns the same session id; stale acknowledgements are ignored.
-
-## End-to-end flows
-
-### Global on, new session
-
-```text
-settings.json
-  -> EffectiveAgentPaneYoloMode()
-  -> wta-helper --yolo-mode
-  -> YoloState.global_default = true
-  -> session/new
-    -> discover the master-attested provider's exact advertised capability
-    -> apply its native config or mode to that session
-    -> unsupported providers remain interactive
-```
-
-### `/yolo on` with global off
-
-```text
-/yolo on
-  -> queue SetSessionYolo(session, true)
-  -> provider-native ACP operation succeeds
-  -> YoloModeChangeCompleted(Ok)
-  -> store session override = true
-  -> display success
-```
-
-### `/yolo off` with global on
-
-```text
-/yolo off
-  -> queue SetSessionYolo(session, false)
-  -> wait; keep effective state on
-  -> restore the captured provider config/mode
-  -> YoloModeChangeCompleted(Ok)
-  -> store session override = false
-  -> effective state becomes off
-  -> display success
-```
-
-If native disable fails, the session override is not changed, so the UI and
-WTA continue to describe the session as on.
+This is a workflow boundary, not a complete same-user sandbox. An Agent CLI
+that can execute arbitrary commands may reach existing WT protocol/COM surfaces
+directly. The system prompt's instruction to use `request_terminal_actions` is
+defense in depth, not authorization. See `doc/security-model.md`.
 
 ## Current limitations
 
-- `/yolo` entered before `session/new` completes is not queued.
-- Provider-native mode behavior beyond the ACP wire contract is controlled by
-  the provider and may change permissions, sandbox, file access, or network
-  access together.
-- OpenCode and custom Agents remain interactive until an explicit provider
-  contract is reviewed and implemented.
-- Live acceptance remains required for each exact packaged provider version;
-  deterministic tests cover discovery, routing, restoration, and isolation.
+- OpenCode and custom providers remain interactive until a reviewed reversible
+  ACP session capability is implemented.
+- Gemini has no per-session WTA control because its current adapter advertises
+  a mode but no corresponding config option.
+- Provider mode semantics and managed restrictions remain provider-owned.
+- WTA does not continuously poll for changes made by another actor; the next
+  config update, reconciliation, or replacement session refreshes state.
+- Live acceptance remains version-specific. Deterministic tests cover contract
+  discovery, routing, restoration, timeout handling, policy, and permission
+  invariants without consuming model quota.

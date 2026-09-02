@@ -1,6 +1,6 @@
 use std::{collections::VecDeque, ops::Range};
 
-use crate::commands::{self, MovePositionSpec, YoloOptionSpec};
+use crate::commands::{self, MovePositionSpec};
 
 use super::tab_state::TabSession;
 
@@ -282,7 +282,6 @@ impl TabSession {
         self.cursor_pos = self.input.len();
         self.command_popup_candidates.clear();
         self.move_position_candidates.clear();
-        self.yolo_option_candidates.clear();
         self.command_popup_selected = 0;
     }
 
@@ -304,7 +303,6 @@ impl TabSession {
             self.cursor_pos = self.input.len();
             self.command_popup_candidates.clear();
             self.move_position_candidates.clear();
-            self.yolo_option_candidates.clear();
             self.command_popup_selected = 0;
         }
         if self.input_history.selected.is_none() {
@@ -330,11 +328,6 @@ impl TabSession {
         if let Some(prefix) = commands::move_position_prefix(&self.input) {
             self.command_popup_candidates.clear();
             self.move_position_candidates = commands::match_move_positions(prefix);
-            self.yolo_option_candidates.clear();
-        } else if let Some(prefix) = commands::yolo_option_prefix(&self.input) {
-            self.command_popup_candidates.clear();
-            self.move_position_candidates.clear();
-            self.yolo_option_candidates = commands::match_yolo_options(prefix);
         } else if commands::is_command_prefix(&self.input) {
             // Strip leading whitespace + the `/` to get the user's
             // name query. `is_command_prefix` already guarantees the
@@ -343,15 +336,12 @@ impl TabSession {
             let name = trimmed.strip_prefix('/').unwrap_or("");
             self.command_popup_candidates = commands::matches(name);
             self.move_position_candidates.clear();
-            self.yolo_option_candidates.clear();
         } else {
             self.command_popup_candidates.clear();
             self.move_position_candidates.clear();
-            self.yolo_option_candidates.clear();
         }
-        let candidate_count = self.command_popup_candidates.len()
-            + self.move_position_candidates.len()
-            + self.yolo_option_candidates.len();
+        let candidate_count =
+            self.command_popup_candidates.len() + self.move_position_candidates.len();
         if candidate_count == 0 {
             self.command_popup_selected = 0;
         } else if self.command_popup_selected >= candidate_count {
@@ -360,9 +350,7 @@ impl TabSession {
     }
 
     pub fn command_popup_visible(&self) -> bool {
-        !self.command_popup_candidates.is_empty()
-            || !self.move_position_candidates.is_empty()
-            || !self.yolo_option_candidates.is_empty()
+        !self.command_popup_candidates.is_empty() || !self.move_position_candidates.is_empty()
     }
 
     pub fn command_popup_up(&mut self) {
@@ -373,12 +361,6 @@ impl TabSession {
 
     pub fn selected_move_position(&self) -> Option<&'static MovePositionSpec> {
         self.move_position_candidates
-            .get(self.command_popup_selected)
-            .copied()
-    }
-
-    pub fn selected_yolo_option(&self) -> Option<&'static YoloOptionSpec> {
-        self.yolo_option_candidates
             .get(self.command_popup_selected)
             .copied()
     }

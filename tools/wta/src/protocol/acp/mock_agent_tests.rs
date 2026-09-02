@@ -1088,7 +1088,7 @@ async fn lazy_session_disables_native_yolo_before_first_prompt() {
     let local = tokio::task::LocalSet::new();
     local
         .run_until(async {
-            let mut h = connect_for_dispatch(MockBehavior::Reply);
+            let h = connect_for_dispatch(MockBehavior::Reply);
             h.client
                 .state
                 .native_yolo
@@ -1134,25 +1134,6 @@ async fn lazy_session_disables_native_yolo_before_first_prompt() {
             );
 
             h.native_update_release.notify_one();
-            let status = tokio::time::timeout(std::time::Duration::from_secs(5), async {
-                loop {
-                    match h.event_rx.recv().await {
-                        Some(AppEvent::YoloSessionStatusChanged {
-                            enabled,
-                            restart_required,
-                            result,
-                            ..
-                        }) => break (enabled, restart_required, result),
-                        Some(_) => continue,
-                        None => panic!("event channel closed before Yolo status"),
-                    }
-                }
-            })
-            .await
-            .expect("timed out waiting for lazy-session Yolo status");
-            assert!(!status.0);
-            assert!(!status.1);
-            assert!(status.2.is_ok());
             tokio::time::timeout(std::time::Duration::from_secs(5), async {
                 loop {
                     if !h.seen_prompts.lock().unwrap().is_empty() {
@@ -1328,16 +1309,9 @@ async fn native_yolo_active_permission_request_remains_pending_for_user() {
                 &h.proposal_channels,
             );
 
-            let mut yolo_active = false;
             let responder = tokio::time::timeout(std::time::Duration::from_secs(5), async {
                 loop {
                     match h.event_rx.recv().await {
-                        Some(AppEvent::YoloSessionStatusChanged {
-                            enabled: true,
-                            restart_required: false,
-                            result: Ok(()),
-                            ..
-                        }) => yolo_active = true,
                         Some(AppEvent::PermissionRequest { responder, .. }) => break responder,
                         Some(_) => continue,
                         None => panic!("event channel closed before permission request"),
@@ -1346,10 +1320,6 @@ async fn native_yolo_active_permission_request_remains_pending_for_user() {
             })
             .await
             .expect("timed out waiting for permission request");
-            assert!(
-                yolo_active,
-                "the header status must acknowledge native Yolo before permission UI"
-            );
 
             assert_eq!(
                 *h.seen_config_updates.lock().unwrap(),
@@ -1421,16 +1391,9 @@ async fn lazy_session_native_disable_failure_keeps_first_prompt_blocked() {
                 &h.proposal_channels,
             );
 
-            let mut unknown_status = false;
             let event = tokio::time::timeout(std::time::Duration::from_secs(5), async {
                 loop {
                     match h.event_rx.recv().await {
-                        Some(AppEvent::YoloSessionStatusChanged {
-                            enabled: false,
-                            restart_required: true,
-                            result: Err(_),
-                            ..
-                        }) => unknown_status = true,
                         Some(AppEvent::RuntimeYoloReconcileCompleted {
                             reconcile_id,
                             fail_closed,
@@ -1448,10 +1411,6 @@ async fn lazy_session_native_disable_failure_keeps_first_prompt_blocked() {
             assert!(event.1);
             assert!(event.2);
             assert!(event.3.is_err());
-            assert!(
-                unknown_status,
-                "the header status must report an unknown native outcome before restart"
-            );
             assert!(h.seen_prompts.lock().unwrap().is_empty());
         })
         .await;
@@ -2779,75 +2738,6 @@ async fn native_disable_config_timeout_requests_restart() {
 }
 
 #[tokio::test]
-async fn rejected_slash_yolo_disable_requests_restart() {
-    let local = tokio::task::LocalSet::new();
-    local
-        .run_until(async {
-            let mut h = connect_for_dispatch(MockBehavior::Reply);
-            h.client
-                .state
-                .native_yolo
-                .set_resolved_agent_id(Some(crate::agent_registry::CLAUDE_AGENT_ID));
-            let response: acp::schema::v1::NewSessionResponse =
-                serde_json::from_value(serde_json::json!({
-                    "sessionId": "rejected-slash-disable-session",
-                    "configOptions": [{
-                        "id": "mode",
-                        "name": "Mode",
-                        "category": "mode",
-                        "type": "select",
-                        "currentValue": "bypassPermissions",
-                        "options": [
-                            {"value": "default", "name": "Default"},
-                            {"value": "bypassPermissions", "name": "Bypass Permissions"}
-                        ]
-                    }]
-                }))
-                .unwrap();
-            let session_id = response.session_id.clone();
-            h.client
-                .state
-                .native_yolo
-                .record_from_new_session(&response);
-            h.fail_native_updates.store(true, Ordering::SeqCst);
-            let tab_to_session = Arc::new(tokio::sync::Mutex::new(HashMap::new()));
-
-            dispatch_master_ext_request(
-                MasterExtRequest::SetSessionYolo {
-                    transaction_id: 51,
-                    session_id,
-                    enabled: false,
-                },
-                &h.conn,
-                &h.event_tx,
-                &tab_to_session,
-                Arc::clone(&h.client.state),
-            );
-
-            let event = tokio::time::timeout(std::time::Duration::from_secs(1), h.event_rx.recv())
-                .await
-                .expect("disable rejection must complete")
-                .expect("event channel must remain open");
-            let AppEvent::YoloModeChangeCompleted {
-                enabled,
-                restart_required,
-                result,
-                ..
-            } = event
-            else {
-                panic!("expected YoloModeChangeCompleted");
-            };
-            assert!(!enabled);
-            assert!(result.is_err());
-            assert!(
-                restart_required,
-                "a rejected disable has unknown provider state"
-            );
-        })
-        .await;
-}
-
-#[tokio::test]
 async fn rejected_config_yolo_disable_requests_restart() {
     let local = tokio::task::LocalSet::new();
     local
@@ -3170,10 +3060,10 @@ async fn timed_out_mode_yolo_change_requests_restart() {
             let tab_to_session = Arc::new(tokio::sync::Mutex::new(HashMap::new()));
 
             dispatch_master_ext_request_with_yolo_timeout(
-                MasterExtRequest::SetSessionYolo {
-                    transaction_id: 41,
-                    session_id: session_id.clone(),
-                    enabled: true,
+                MasterExtRequest::ReconcileSessionYolo {
+                    reconcile_id: 41,
+                    sessions: vec![(session_id, true)],
+                    fail_closed: false,
                 },
                 &h.conn,
                 &h.event_tx,
@@ -3193,19 +3083,17 @@ async fn timed_out_mode_yolo_change_requests_restart() {
                     .await
                     .expect("the mode timeout must produce a completion event")
                     .expect("event channel must remain open");
-            let AppEvent::YoloModeChangeCompleted {
-                transaction_id,
-                session_id: completed_session,
-                enabled,
+            let AppEvent::RuntimeYoloReconcileCompleted {
+                reconcile_id,
+                fail_closed,
                 restart_required,
                 result,
             } = event
             else {
-                panic!("expected YoloModeChangeCompleted");
+                panic!("expected RuntimeYoloReconcileCompleted");
             };
-            assert_eq!(transaction_id, 41);
-            assert_eq!(completed_session, session_id.to_string());
-            assert!(enabled);
+            assert_eq!(reconcile_id, 41);
+            assert!(!fail_closed);
             assert!(restart_required);
             assert!(result.unwrap_err().contains("setting mode 'yolo'"));
             h.native_update_release.notify_one();

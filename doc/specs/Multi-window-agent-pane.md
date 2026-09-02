@@ -909,7 +909,7 @@ work:
 
 The canonical design and current behavior are documented in
 [`Yolo-mode.md`](./Yolo-mode.md). That document covers the global and
-per-session state model, provider-native ACP modes, built-in agent support,
+policy state model, provider-native ACP session modes, built-in agent support,
 policy enforcement, and the exact terminal-action confirmation boundary.
 
 Implements GitHub issue #326 ("Allow agent pane to run with options such

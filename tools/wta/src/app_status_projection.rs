@@ -31,20 +31,6 @@ impl App {
         let display_model = self
             .confirmed_model_display()
             .or_else(|| self.agent_model.clone());
-        let yolo_status = self
-            .owner_tab_id
-            .as_deref()
-            .and_then(|tab_id| self.tab_sessions.get(tab_id))
-            .unwrap_or_else(|| self.current_tab())
-            .yolo_status
-            .clone();
-        let yolo_detail = yolo_status.detail().map(str::to_string).or_else(|| {
-            matches!(
-                yolo_status,
-                YoloUiStatus::PendingOn | YoloUiStatus::PendingOff | YoloUiStatus::PendingConfig
-            )
-            .then(|| t!("agents.loading").into_owned())
-        });
         let mut params = serde_json::json!({
             "agent_id": self.current_agent_id,
             "name": self.agent_name,
@@ -56,8 +42,6 @@ impl App {
             "available_models": self.available_models,
             "current_model_id": self.current_model_id,
             "host_catalog_ready": self.host_catalog_ready,
-            "yolo_state": yolo_status.wire_state(),
-            "yolo_detail": yolo_detail,
         });
         if let Some(agent_id) = selected {
             params["selected_agent"] = serde_json::Value::String(agent_id);

@@ -624,7 +624,6 @@ impl App {
                 session_capabilities_ready,
             } => {
                 self.pending_yolo_reconciles.clear();
-                self.pending_yolo_reconcile_targets.clear();
                 self.agent_name = name;
                 self.agent_model = model;
                 self.agent_version = version;
@@ -679,7 +678,6 @@ impl App {
                 if tab.session_id.as_deref() != Some(session_id.as_str()) {
                     tab.usage = None;
                     tab.usage_staleness = crate::usage::UsageStaleness::default();
-                    tab.yolo_status = YoloUiStatus::Hidden;
                 }
                 tab.session_id = Some(session_id.clone());
                 let has_real_content = !tab.completed_turns.is_empty()
@@ -732,7 +730,6 @@ impl App {
                     tab.config_picker = ConfigPickerState::Closed;
                     tab.config_pending_id = None;
                     tab.native_yolo_config_pending = false;
-                    tab.yolo_status = YoloUiStatus::Hidden;
                 }
                 tab.session_id = Some(session_id.clone());
                 // Close the session/load replay window only when this
@@ -790,10 +787,7 @@ impl App {
                     .lock()
                     .unwrap()
                     .take_client_reconciled(&session_id);
-                if reconciled_by_client {
-                    let enabled = self.yolo_state.lock().unwrap().effective(&session_id);
-                    self.tab_mut(&tab_id).yolo_status = YoloUiStatus::pending(enabled);
-                } else {
+                if !reconciled_by_client {
                     self.reconcile_session_yolo(&session_id);
                 }
                 self.publish_agent_status();
@@ -836,31 +830,6 @@ impl App {
                     self.publish_agent_status();
                 }
             }
-            AppEvent::YoloModeChangeCompleted {
-                transaction_id,
-                session_id,
-                enabled,
-                restart_required,
-                result,
-            } => {
-                if restart_required {
-                    tracing::error!(
-                        target: "yolo",
-                        error = %result.as_ref().err().map(String::as_str).unwrap_or("unknown provider state"),
-                        "provider-native Yolo outcome is unknown; restarting agent stack fail-closed"
-                    );
-                    let _ = self
-                        .restart_tx
-                        .send(crate::protocol::acp::client::AgentLifecycleRequest::RestartMaster);
-                }
-                self.complete_yolo_change(
-                    transaction_id,
-                    session_id,
-                    enabled,
-                    restart_required,
-                    result,
-                );
-            }
             AppEvent::RuntimeYoloReconcileCompleted {
                 reconcile_id,
                 fail_closed,
@@ -878,44 +847,12 @@ impl App {
                     }
                 }
                 if reconcile_id != 0 && !self.pending_yolo_reconciles.contains_key(&reconcile_id) {
-                    self.pending_yolo_reconcile_targets.remove(&reconcile_id);
                     tracing::debug!(
                         target: "yolo",
                         reconcile_id,
                         "ignoring stale provider-native Yolo reconciliation completion"
                     );
                     return;
-                }
-                let affected_sessions = self
-                    .pending_yolo_reconcile_targets
-                    .get(&reconcile_id)
-                    .cloned()
-                    .unwrap_or_else(|| {
-                        self.pending_yolo_reconciles
-                            .get(&reconcile_id)
-                            .map(|(sessions, _)| {
-                                sessions
-                                    .iter()
-                                    .map(|session_id| (session_id.clone(), !fail_closed))
-                                    .collect()
-                            })
-                            .unwrap_or_default()
-                    });
-                for (session_id, enabled) in affected_sessions {
-                    let pending_matches = self
-                        .bound_tab_for_session(&session_id)
-                        .and_then(|tab_id| self.tab_sessions.get(&tab_id))
-                        .is_some_and(|tab| tab.yolo_status.accepts_result(enabled));
-                    if !pending_matches {
-                        continue;
-                    }
-                    self.apply_yolo_ui_result(
-                        &session_id,
-                        enabled,
-                        restart_required,
-                        &result,
-                        true,
-                    );
                 }
                 let settled = self.pending_yolo_reconciles.get(&reconcile_id).is_some_and(
                     |(_, pending_fail_closed)| {
@@ -924,7 +861,6 @@ impl App {
                 );
                 if settled {
                     self.pending_yolo_reconciles.remove(&reconcile_id);
-                    self.pending_yolo_reconcile_targets.remove(&reconcile_id);
                 }
                 if result.is_err() && (fail_closed || restart_required) {
                     tracing::error!(
@@ -937,21 +873,6 @@ impl App {
                         .restart_tx
                         .send(crate::protocol::acp::client::AgentLifecycleRequest::RestartMaster);
                 }
-            }
-            AppEvent::YoloSessionStatusChanged {
-                session_id,
-                enabled,
-                restart_required,
-                result,
-            } => {
-                let pending_matches = self
-                    .bound_tab_for_session(&session_id)
-                    .and_then(|tab_id| self.tab_sessions.get(&tab_id))
-                    .is_some_and(|tab| tab.yolo_status.accepts_result(enabled));
-                if !pending_matches {
-                    return;
-                }
-                self.apply_yolo_ui_result(&session_id, enabled, restart_required, &result, true);
             }
             AppEvent::ModelSetCompleted {
                 session_id,
@@ -1097,19 +1018,8 @@ impl App {
                 let Some(target_tab) = target_tab else {
                     return;
                 };
-                let mut publish_yolo_status = false;
                 {
                     let tab = self.tab_mut(&target_tab);
-                    if tab.native_yolo_config_pending
-                        && matches!(tab.yolo_status, YoloUiStatus::PendingConfig)
-                    {
-                        tab.yolo_status = if restart_required {
-                            YoloUiStatus::Unknown(message.clone())
-                        } else {
-                            YoloUiStatus::Unavailable(message.clone())
-                        };
-                        publish_yolo_status = true;
-                    }
                     if !restart_required
                         && tab.config_pending_id.as_deref() == Some(config_id.as_str())
                     {
@@ -1125,9 +1035,6 @@ impl App {
                         .into_owned(),
                     ));
                     tab.scroll_to_bottom();
-                }
-                if publish_yolo_status {
-                    self.publish_agent_status();
                 }
             }
             AppEvent::TabError { tab_id, message } => {
@@ -2292,7 +2199,7 @@ impl App {
 
                     self.apply_runtime_yolo_config(
                         params.get("yolo_enabled").and_then(|v| v.as_bool()),
-                        params.get("yolo_command_blocked").and_then(|v| v.as_bool()),
+                        params.get("yolo_policy_blocked").and_then(|v| v.as_bool()),
                     );
 
                     // delegate_agent + delegate_model travel together so the

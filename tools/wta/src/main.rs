@@ -122,7 +122,7 @@ fn helper_config(cli: Cli) -> helper::config::HelperConfig {
         delegate_model: cli.delegate_model,
         no_autofix: cli.no_autofix,
         yolo_mode: cli.yolo_mode,
-        yolo_command_blocked: cli.yolo_command_blocked,
+        yolo_policy_blocked: cli.yolo_policy_blocked,
         setup: cli.setup,
         initial_view: match cli.initial_view {
             InitialView::Chat => helper::config::InitialView::Chat,

@@ -19,8 +19,8 @@
     # PR #505 provider-native Yolo. Publishable mappings are zero-token only. Real model/tool
     # acceptance intentionally stays local-only and therefore has no release-report mapping.
     'Yolo setting persists'             = 'Feature provider-native Yolo with Copilot\.Yolo setting persists'
-    'Provider-native Yolo toggles per live session' = 'Feature provider-native Yolo with Copilot\.Provider-native Yolo toggles per live session'
-    'Unsupported agents reject Yolo safely' = 'Feature unsupported provider Yolo behavior\.Unsupported agents reject Yolo safely'
+    'Settings explains OpenCode Yolo compatibility' = 'Feature Settings Yolo provider compatibility\.Settings warns that OpenCode Yolo remains interactive'
+    'Settings explains Gemini Yolo restrictions' = 'Feature Settings Yolo provider compatibility\.Settings explains Gemini workspace trust dependency'
     'AllowYoloMode policy blocks Yolo'  = 'Feature AllowYoloMode policy\.AllowYoloMode policy blocks Yolo'
     'Esc/back navigation works'         = 'Esc/back navigation works|TRIGGERS the selected option'
     # §2/§5 WT accelerators + delegation palette (Feature.AgentHotkeys) — driven via window-level

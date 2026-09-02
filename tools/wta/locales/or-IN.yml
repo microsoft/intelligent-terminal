@@ -165,7 +165,6 @@ system.cannot_resume_phantom_via_flag: "%{agent} ସେସନ୍ %{session_id} �
 system.cannot_resume_phantom_via_load: "%{agent} ସେସନ୍ %{session_id} ପୁନଃ ଆରମ୍ଭ କରିପାରିବେ ନାହିଁ: ଏହା ଆରମ୍ଭ ହୋଇଥିଲା କିନ୍ତୁ କୌଣସି କଥୋପକଥନ ସଂଗ୍ରହ କରିନଥିଲା, ସେହିପାଇଁ %{agent} load କୁ ଅସ୍ୱୀକାର କରିବ। ପଙ୍କ୍ତି ହଟାଯାଉଛି।"
 system.fallback.this_agent: "ଏହି agent"
 system.fallback.connected_agent: "ସଂଯୁକ୍ତ agent"
-system.yolo_blocked_by_policy: "ଆପଣଙ୍କ ସଂଗଠନର ନୀତି ଦ୍ୱାରା Yolo mode ନିଷ୍କ୍ରିୟ କରାଯାଇଛି।"  # {Locked="Yolo"}
 
 
 # ── ରନ୍‌ଟାଇମ୍ CLI ଆଉଟପୁଟ୍ (src/main.rs) ────────────────────────────────────────
@@ -231,7 +230,6 @@ system.agent_switch_unavailable: "ୱିଣ୍ଡୋଜ୍ ଟର୍ମିନା
 commands.model.summary: "ଏହି ପେନ୍ ପାଇଁ ମଡେଲ ବାଛନ୍ତୁ (ସିଧାସଳଖ ବଦଳାଇବାକୁ /model <id>)"  # {Locked="/model","<id>"}
 commands.config.summary: "ଏହି ଏଜେଣ୍ଟ୍ ସେସନ୍ କନ୍ଫିଗର୍ କରନ୍ତୁ"  # Agent means an AI coding agent; shown for the /config command. {Locked="/config"}
 commands.move.summary: "ଏହି ଟ୍ୟାବ୍‌ର ଏଜେଣ୍ଟ୍ ପେନ୍‌କୁ ସ୍ଥានାନ୍ତର କରନ୍ତୁ (/move <position>)"  # {Locked="/move","<position>"}
-commands.yolo.summary: "ଏହି ସେସନ୍ ପାଇଁ ପ୍ରଦାତାଙ୍କ ACP Yolo ମୋଡ୍ ବ୍ୟବହାର କରନ୍ତୁ (/new ପର୍ଯ୍ୟନ୍ତ)"  # {Locked="ACP","Yolo","/new"} — slash-command names.
 
 model_picker.title: "ମଡେଲ ବାଛନ୍ତୁ (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "ସଂଯୁକ୍ତ ଏଜେଣ୍ଟ କୌଣସି ଚୟନଯୋଗ୍ୟ ମଡେଲ ଘୋଷଣା କଲା ନାହିଁ।"

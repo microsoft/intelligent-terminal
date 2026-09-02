@@ -161,7 +161,6 @@ system.cannot_resume_phantom_via_flag: "Не може да се продолжи
 system.cannot_resume_phantom_via_load: "Не може да се продолжи сесијата на %{agent} %{session_id}: таа е стартувана, но никогаш не собрала разговор, па %{agent} би го одбил вчитувањето. Редот се отстранува."
 system.fallback.this_agent: "овој агент"
 system.fallback.connected_agent: "поврзаниот агент"
-system.yolo_blocked_by_policy: "Режимот Yolo е оневозможен од политиката на вашата организација."  # {Locked="Yolo"}
 
 
 # ── Runtime CLI output (src/main.rs) ────────────────────────────────────────
@@ -230,7 +229,6 @@ system.agent_switch_unavailable: "Префрлањето на агент не е
 commands.model.summary: "Изберете го моделот за овој панел (/model <id> за директно префрлување)"  # {Locked="/model","<id>"}
 commands.config.summary: "Конфигурирајте ја оваа сесија на агентот"  # Agent means an AI coding agent; shown for the /config command. {Locked="/config"}
 commands.move.summary: "Премести го панелот на агентот за ова јазиче (/move <position>)"  # {Locked="/move","<position>"}
-commands.yolo.summary: "Користи го ACP Yolo режимот на избраниот агент-провајдер за оваа сесија (до /new)"  # {Locked="ACP","Yolo","/new"} — slash-command names.
 
 model_picker.title: "Изберете модел (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "Поврзаниот агент не објави ниту еден модел што може да се избере."

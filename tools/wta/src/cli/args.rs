@@ -120,10 +120,10 @@ pub(crate) struct Cli {
     #[arg(long, hide = true)]
     pub(crate) yolo_mode: bool,
 
-    /// Refuse per-session `/yolo` changes when organization policy blocks
-    /// provider-native Yolo. Hidden because Terminal supplies the policy result.
+    /// Refuse provider-native Yolo changes when organization policy blocks
+    /// them. Hidden because Terminal supplies the policy result.
     #[arg(long, hide = true)]
-    pub(crate) yolo_command_blocked: bool,
+    pub(crate) yolo_policy_blocked: bool,
 
     /// Enter diagnostic setup mode with the given reason instead of connecting directly.
     /// Values: agent-missing, agent-error

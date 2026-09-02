@@ -165,7 +165,6 @@ system.cannot_resume_phantom_via_flag: "%{agent} அமர்வு %{session_id
 system.cannot_resume_phantom_via_load: "%{agent} அமர்வு %{session_id} மீண்டும் தொடங்க முடியவில்லை: அது தொடங்கப்பட்டது, ஆனால் எந்த உரையாடலும் சேர்க்கப்படவில்லை; எனவே %{agent} load-ஐ நிராகரிக்கும். வரிசை அகற்றப்படுகிறது."
 system.fallback.this_agent: "இந்த agent"
 system.fallback.connected_agent: "இணைக்கப்பட்ட agent"
-system.yolo_blocked_by_policy: "உங்கள் நிறுவனத்தின் கொள்கையால் Yolo mode முடக்கப்பட்டுள்ளது."  # {Locked="Yolo"}
 
 
 # ── இயக்க நேர CLI வெளியீடு (src/main.rs) ────────────────────────────────────────
@@ -231,7 +230,6 @@ system.agent_switch_unavailable: "விண்டோஸ் டெர்மின
 commands.model.summary: "இந்தப் பலகத்திற்கான மாதிரியைத் தேர்ந்தெடுக்கவும் (நேரடியாக மாற்ற /model <id>)"  # {Locked="/model","<id>"}
 commands.config.summary: "இந்த ஏஜென்ட் அமர்வை காண்ஃபிகர் செய்யவும்"  # Agent means an AI coding agent; shown for the /config command. {Locked="/config"}
 commands.move.summary: "இந்தத் தாவலின் ஏஜெண்ட் பலகத்தை நகர்த்தவும் (/move <position>)"  # {Locked="/move","<position>"}
-commands.yolo.summary: "இந்த அமர்வில் ஏஜென்ட் வழங்குநரின் ACP Yolo பயன்முறையைப் பயன்படுத்தவும் (/new வரை)"  # {Locked="ACP","Yolo","/new"} — slash-command names.
 
 model_picker.title: "மாதிரியைத் தேர்ந்தெடுக்கவும் (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "இணைக்கப்பட்ட ஏஜெண்ட் தேர்ந்தெடுக்கக்கூடிய எந்த மாதிரியையும் அறிவிக்கவில்லை."

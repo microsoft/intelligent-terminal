@@ -248,13 +248,6 @@ pub enum MasterExtRequest {
         model: String,
         pane_override: bool,
     },
-    /// Apply the provider-advertised ACP Yolo capability to a live session.
-    /// The App commits local state only after the provider acknowledges it.
-    SetSessionYolo {
-        transaction_id: u64,
-        session_id: acp::schema::v1::SessionId,
-        enabled: bool,
-    },
     ReconcileSessionYolo {
         reconcile_id: u64,
         sessions: Vec<(acp::schema::v1::SessionId, bool)>,
@@ -3532,13 +3525,6 @@ fn dispatch_master_ext_request_with_yolo_timeout(
     yolo_reconcile_timeout: std::time::Duration,
 ) {
     let reserved_yolo_operations = match &req {
-        MasterExtRequest::SetSessionYolo {
-            session_id,
-            enabled,
-            ..
-        } => vec![client_state
-            .native_yolo
-            .reserve_operation(session_id.clone(), *enabled)],
         MasterExtRequest::ReconcileSessionYolo { sessions, .. } => sessions
             .iter()
             .map(|(session_id, enabled)| {
@@ -3786,55 +3772,6 @@ fn dispatch_master_ext_request_with_yolo_timeout(
                     }
                 }
             }
-            MasterExtRequest::SetSessionYolo {
-                transaction_id,
-                session_id,
-                enabled,
-            } => {
-                let operation = reserved_yolo_operations
-                    .into_iter()
-                    .next()
-                    .expect("SetSessionYolo reserves one operation");
-                let (result, restart_required) = match apply_native_yolo_checked(
-                    &conn,
-                    &client_state,
-                    operation,
-                    yolo_reconcile_timeout,
-                )
-                .await
-                {
-                    Ok(()) => {
-                        tracing::info!(
-                            target: "acp",
-                            session_id = %session_id.0,
-                            enabled,
-                            "provider-native Yolo updated for live session"
-                        );
-                        (Ok(()), false)
-                    }
-                    Err(err) => {
-                        // A rejected disable does not prove that the provider
-                        // left its privileged mode. Keep the prompt gate and
-                        // replace the shared agent stack fail-closed.
-                        let restart_required = !enabled || err.restart_required();
-                        tracing::warn!(
-                            target: "acp",
-                            session_id = %session_id.0,
-                            error = ?err,
-                            enabled,
-                            "provider-native Yolo update failed"
-                        );
-                        (Err(err.to_string()), restart_required)
-                    }
-                };
-                let _ = event_tx.send(AppEvent::YoloModeChangeCompleted {
-                    transaction_id,
-                    session_id: session_id.to_string(),
-                    enabled,
-                    restart_required,
-                    result,
-                });
-            }
             MasterExtRequest::ReconcileSessionYolo {
                 reconcile_id,
                 sessions,
@@ -3845,7 +3782,6 @@ fn dispatch_master_ext_request_with_yolo_timeout(
                     for ((session_id, enabled), operation) in
                         sessions.into_iter().zip(reserved_yolo_operations)
                     {
-                        let status_operation = operation.clone();
                         match apply_native_yolo_checked(
                             &conn,
                             &client_state,
@@ -3855,17 +3791,6 @@ fn dispatch_master_ext_request_with_yolo_timeout(
                         .await
                         {
                             Ok(()) => {
-                                if client_state
-                                    .native_yolo
-                                    .operation_is_current(&status_operation)
-                                {
-                                    let _ = event_tx.send(AppEvent::YoloSessionStatusChanged {
-                                        session_id: session_id.to_string(),
-                                        enabled,
-                                        restart_required: false,
-                                        result: Ok(()),
-                                    });
-                                }
                                 tracing::info!(
                                     target: "acp",
                                     session_id = %session_id.0,
@@ -3881,14 +3806,6 @@ fn dispatch_master_ext_request_with_yolo_timeout(
                                     // the provider left its privileged mode.
                                     error.requiring_restart()
                                 };
-                                let restart_required = error.restart_required();
-                                let error_message = error.to_string();
-                                let _ = event_tx.send(AppEvent::YoloSessionStatusChanged {
-                                    session_id: session_id.to_string(),
-                                    enabled,
-                                    restart_required,
-                                    result: Err(error_message),
-                                });
                                 tracing::warn!(
                                     target: "acp",
                                     session_id = %session_id.0,
@@ -3981,12 +3898,6 @@ fn dispatch_master_ext_request_with_yolo_timeout(
                         .await
                     {
                         Ok(Some(config_options)) => {
-                            let _ = event_tx.send(AppEvent::YoloSessionStatusChanged {
-                                session_id: session_id.to_string(),
-                                enabled,
-                                restart_required: false,
-                                result: Ok(()),
-                            });
                             publish_session_config_options(
                                 &event_tx,
                                 &client_state.native_yolo,
@@ -4021,12 +3932,6 @@ fn dispatch_master_ext_request_with_yolo_timeout(
                                     result: Err(error.to_string()),
                                 });
                             }
-                            let _ = event_tx.send(AppEvent::YoloSessionStatusChanged {
-                                session_id: session_id.to_string(),
-                                enabled,
-                                restart_required: disabling_native_yolo || error.restart_required(),
-                                result: Err(error.to_string()),
-                            });
                             let _ = event_tx.send(AppEvent::SessionConfigSetFailed {
                                 session_id: session_id.to_string(),
                                 config_id,
@@ -4864,7 +4769,7 @@ async fn dispatch_prompt_body(
         .await;
         match yolo_result {
             Err(error) => {
-                // As with slash/config/reconcile, an ordinary ACP rejection
+                // As with config/reconcile, an ordinary ACP rejection
                 // cannot attest that a requested disable left privileged mode.
                 let restart_required = !enabled || error.restart_required();
                 let policy_blocked = client_task
@@ -4874,12 +4779,6 @@ async fn dispatch_prompt_body(
                     .unwrap()
                     .policy_blocked();
                 let error = error.to_string();
-                let _ = event_tx_task.send(AppEvent::YoloSessionStatusChanged {
-                    session_id: prompt_session_id_str.clone(),
-                    enabled,
-                    restart_required,
-                    result: Err(error.clone()),
-                });
                 tracing::warn!(
                     target: "yolo",
                     session_id = %prompt_session_id_str,
@@ -4929,12 +4828,6 @@ async fn dispatch_prompt_body(
                     in_flight_tabs_task.lock().unwrap().remove(&tab_key_task);
                     return;
                 }
-                let _ = event_tx_task.send(AppEvent::YoloSessionStatusChanged {
-                    session_id: prompt_session_id_str.clone(),
-                    enabled,
-                    restart_required: false,
-                    result: Ok(()),
-                });
             }
         }
     }

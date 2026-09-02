@@ -152,7 +152,6 @@ system.cannot_resume_phantom_via_flag: "Không thể tiếp tục phiên %{agent
 system.cannot_resume_phantom_via_load: "Không thể tiếp tục phiên %{agent} %{session_id}: phiên đã được khởi tạo nhưng chưa từng tích lũy cuộc trò chuyện nào, nên %{agent} sẽ từ chối tải. Đang xóa hàng."
 system.fallback.this_agent: "tác nhân này"
 system.fallback.connected_agent: "tác nhân đã kết nối"
-system.yolo_blocked_by_policy: "Chế độ Yolo bị vô hiệu hóa bởi chính sách của tổ chức của bạn."  # {Locked="Yolo"}
 
 
 # ── Runtime CLI output (src/main.rs) ────────────────────────────────────────
@@ -230,7 +229,6 @@ system.agent_switch_unavailable: "Tính năng chuyển đổi agent không khả
 commands.model.summary: "Chọn mô hình cho bảng này (/model <id> để chuyển trực tiếp)"  # {Locked="/model","<id>"}
 commands.config.summary: "Cấu hình phiên agent này"  # Agent means an AI coding agent; shown for the /config command. {Locked="/config"}
 commands.move.summary: "Di chuyển bảng tác nhân AI của tab này (/move <position>)"  # {Locked="/move","<position>"}
-commands.yolo.summary: "Sử dụng chế độ ACP Yolo của nhà cung cấp agent cho phiên này (cho đến /new)"  # {Locked="ACP","Yolo","/new"} — slash-command names.
 
 model_picker.title: "Chọn mô hình (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "Tác nhân AI đã kết nối không quảng bá bất kỳ mô hình nào có thể chọn."

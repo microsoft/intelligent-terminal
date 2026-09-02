@@ -237,66 +237,6 @@ namespace winrt::TerminalApp::implementation
         StateChanged.raise(*this, nullptr);
     }
 
-    void AgentPaneContent::UpdateYoloStatus(const winrt::hstring& state, const winrt::hstring& detail)
-    {
-        const auto status = AgentYoloStatusText();
-        std::wstring text;
-        if (state == L"pending_on")
-        {
-            text = L"◌ Yolo · ";
-            text += RS_(L"FreOverlay_ToggleOn");
-            text += L"…";
-        }
-        else if (state == L"pending_off")
-        {
-            text = L"◌ Yolo · ";
-            text += RS_(L"FreOverlay_ToggleOff");
-            text += L"…";
-        }
-        else if (state == L"pending_config")
-        {
-            text = L"◌ Yolo…";
-        }
-        else if (state == L"active")
-        {
-            text = L"● Yolo · ";
-            text += RS_(L"FreOverlay_ToggleOn");
-        }
-        else if (state == L"off")
-        {
-            text = L"○ Yolo · ";
-            text += RS_(L"FreOverlay_ToggleOff");
-        }
-        else if (state == L"unavailable")
-        {
-            text = L"⚠ Yolo";
-        }
-        else if (state == L"unknown")
-        {
-            text = L"? Yolo";
-        }
-
-        const auto badge = winrt::hstring{ text };
-        status.Text(badge);
-        status.Visibility(text.empty() ? Visibility::Collapsed : Visibility::Visible);
-        auto accessibleName = text;
-        if (!detail.empty())
-        {
-            accessibleName += L": ";
-            accessibleName += detail;
-        }
-        AutomationProperties::SetName(status, winrt::hstring{ accessibleName });
-        AutomationProperties::SetHelpText(status, detail);
-        if (detail.empty())
-        {
-            ToolTipService::SetToolTip(status, nullptr);
-        }
-        else
-        {
-            ToolTipService::SetToolTip(status, box_value(detail));
-        }
-    }
-
     // Swap the bar between two modes. Both keep the agent logo and the
     // "<agent> · <backend>" identity so the pane reads the same either way:
     //   * chat / connecting / etc. (active=false) — identity + version + model

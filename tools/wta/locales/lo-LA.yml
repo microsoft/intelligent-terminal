@@ -152,7 +152,6 @@ system.cannot_resume_phantom_via_flag: "ບໍ່ສາມາດສືບຕໍ�
 system.cannot_resume_phantom_via_load: "ບໍ່ສາມາດສືບຕໍ່ session %{agent} %{session_id}: ມັນເລີ່ມແລ້ວ ແຕ່ບໍ່ເຄີຍມີການສົນທະນາໃດໆສະສົມ, ດັ່ງນັ້ນ %{agent} ຈະປະຕິເສດການໂຫຼດ. ກຳລັງລຶບແຖວ."
 system.fallback.this_agent: "agent ນີ້"
 system.fallback.connected_agent: "agent ທີ່ເຊື່ອມຕໍ່ແລ້ວ"
-system.yolo_blocked_by_policy: "Yolo mode ຖືກປິດໂດຍນະໂຍບາຍຂອງອົງກອນຂອງທ່ານ."  # {Locked="Yolo"}
 
 
 # ── Runtime CLI output (src/main.rs) ────────────────────────────────────────
@@ -230,7 +229,6 @@ system.agent_switch_unavailable: "ການສະຫຼັບຕົວແທນ�
 commands.model.summary: "ເລືອກແບບຈຳລອງສຳລັບ pane ນີ້ (/model <id> ເພື່ອປ່ຽນໂດຍກົງ)"  # {Locked="/model","<id>"}
 commands.config.summary: "ກຳນົດຄ່າເຊດຊັນຕົວແທນນີ້"  # Agent means an AI coding agent; shown for the /config command. {Locked="/config"}
 commands.move.summary: "ຍ້າຍແຜງຕົວແທນຂອງແທັບນີ້ (/move <position>)"  # {Locked="/move","<position>"}
-commands.yolo.summary: "ໃຊ້ໂໝດ ACP Yolo ຂອງຜູ້ໃຫ້ບໍລິການ agent ທີ່ເລືອກສຳລັບ session ນີ້ (ຈົນເຖິງ /new)"  # {Locked="ACP","Yolo","/new"} — slash-command names.
 
 model_picker.title: "ເລືອກແບບຈຳລອງ (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "agent ທີ່ເຊື່ອມຕໍ່ບໍ່ໄດ້ປະກາດແບບຈຳລອງທີ່ສາມາດເລືອກໄດ້ໃດໆ."

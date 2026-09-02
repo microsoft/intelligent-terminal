@@ -2243,7 +2243,7 @@ namespace winrt::TerminalApp::implementation
         params["tab_id"] = std::string{ tabId };
         params["window_id"] = std::string{ windowId };
         params["yolo_enabled"] = config.yoloEnabled;
-        params["yolo_command_blocked"] = config.yoloCommandBlocked;
+        params["yolo_policy_blocked"] = config.yoloPolicyBlocked;
         return params;
     }
 
@@ -2254,7 +2254,7 @@ namespace winrt::TerminalApp::implementation
     //   - delegate_agent + delegate_model : the delegate-tab agent identity
     //   - cloud_models + custom_models + custom_model_selection :
     //     credential-free picker metadata and its selected entry.
-    //   - yolo_enabled + yolo_command_blocked : the policy-aware global
+    //   - yolo_enabled + yolo_policy_blocked : the policy-aware global
     //     default and administrative gate.
     void TerminalPage::_EmitAgentRuntimeConfigIfChanged()
     {
@@ -2279,7 +2279,7 @@ namespace winrt::TerminalApp::implementation
             last.customModelSelection != current.customModelSelection ||
             last.customModels != current.customModels;
         const bool yoloChanged = last.yoloEnabled != current.yoloEnabled ||
-                                 last.yoloCommandBlocked != current.yoloCommandBlocked;
+                                 last.yoloPolicyBlocked != current.yoloPolicyBlocked;
 
         if (!autofixChanged && !delegateChanged && !customModelsChanged && !yoloChanged)
         {
@@ -2307,7 +2307,7 @@ namespace winrt::TerminalApp::implementation
         if (yoloChanged)
         {
             params["yolo_enabled"] = current.yoloEnabled;
-            params["yolo_command_blocked"] = current.yoloCommandBlocked;
+            params["yolo_policy_blocked"] = current.yoloPolicyBlocked;
         }
 
         _agentPaneLog("emitting agent_config_changed (hot settings update)");
@@ -3310,20 +3310,16 @@ namespace winrt::TerminalApp::implementation
         // advertised ACP session mode. Policy-gated via
         // EffectiveAgentPaneYoloMode() (AgentPolicy::IsYoloModeAllowed()), so
         // a GPO-blocked org never spawns a helper with this flag set even if
-        // the user's settings.json has agentPane.yoloMode: true. This is
-        // independent from the per-session `/yolo` slash command, which the
-        // helper enforces itself at runtime against the same policy.
+        // the user's settings.json has agentPane.yoloMode: true.
         if (globals.EffectiveAgentPaneYoloMode())
         {
             helperCmd.append(L" --yolo-mode");
         }
-        // Independent of the global toggle above: tell the helper whether
-        // org policy blocks yolo mode outright, so its own `/yolo` slash
-        // command (a per-session override the user can flip at runtime) can
-        // refuse and explain why in a GPO-managed environment.
+        // Tell the helper whether organization policy blocks Yolo outright so
+        // runtime settings and provider config changes stay fail-closed.
         if (globals.IsYoloModePolicyLocked())
         {
-            helperCmd.append(L" --yolo-command-blocked");
+            helperCmd.append(L" --yolo-policy-blocked");
         }
         if (const auto lang = _ResolveEffectiveLanguage(globals); !lang.empty())
         {
@@ -6321,8 +6317,6 @@ namespace winrt::TerminalApp::implementation
         const auto model = pickStr("model");
         const auto state = pickStr("state");
         const auto backend = pickStr("backend");
-        const auto yoloState = pickStr("yolo_state");
-        const auto yoloDetail = pickStr("yolo_detail");
         const auto statusTabId = pickStr("tab_id");
 
         _agentPaneLog("OnAgentStatusChanged: payload=" + winrt::to_string(eventJson).substr(0, 600));
@@ -6518,7 +6512,6 @@ namespace winrt::TerminalApp::implementation
                 // and every publish_agent_status call, so the first routed
                 // status proves this pane can receive later settings events.
                 content.UpdateAgentStatus(name, version, model, state, backend);
-                impl->UpdateYoloStatus(yoloState, yoloDetail);
                 if (!helperWasReady)
                 {
                     // The user can open or switch this pane before the helper

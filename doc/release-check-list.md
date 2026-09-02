@@ -183,15 +183,15 @@ Net effect: UT shrinks the manual matrix to "did the wiring and UI connect", not
 - [ ] `C071` `[E2E]` **Run in pane works:** A validated Direct Helper Proposal can be run in the target terminal pane.
 - [ ] `C072` `[E2E]` **Command target is correct:** The Helper-injected trusted target routes Insert/Run to the intended active pane, not the agent pane itself or another tab.
 
-### Agent pane slash commands
+### Agent pane settings and slash commands
 
 - [ ] `C286` `[new]` `[UT✓]` `[E2E]` **Yolo setting persists:** The global `agentPane.yoloMode` setting round-trips and supplies the default for new sessions. _(PR #505; UT: SettingsModel round-trip and effective policy tests; E2E: `Feature.YoloMode`.)_
-- [ ] `C287` `[new]` `[UT✓]` `[E2E]` **Provider-native Yolo toggles per live session:** `/yolo on` and `/yolo off` commit only after the provider acknowledges its advertised ACP session mode. _(PR #505; UT: native coordinator and slash transaction tests; E2E: `Feature.YoloMode`.)_
 - [ ] `C288` `[new]` `[LOCAL]` **Yolo completes a real tool task:** With provider-native Yolo enabled, a real agent model completes a bounded write/read task in a disposable directory and restores its prior mode afterward. _(PR #505; token-consuming local acceptance only, intentionally excluded from publish and CI.)_
 - [ ] `C289` `[new]` `[LOCAL]` **Provider-native Yolo works across supported agents:** Claude, Codex, and Gemini each acknowledge their reviewed native ACP mode, complete a bounded real-model tool task, and restore the prior mode. _(PR #505; token-consuming local acceptance only, intentionally excluded from publish and CI.)_
 - [x] `C290` `[new]` `[UT✓]` **Yolo never answers ACP permissions:** After a supported provider acknowledges native Yolo, an ACP `session/request_permission` remains pending until the user explicitly selects a provider option. _(PR #505; deterministic mock-ACP coverage.)_
-- [ ] `C291` `[new]` `[UT✓]` `[E2E]` **Unsupported agents reject Yolo safely:** A provider without a reviewed native Yolo capability reports the unsupported operation while its connected session remains intact. Real chat usability is verified only by local token-consuming acceptance. _(PR #505; UT: unsupported-provider mapping; zero-token E2E: `Feature.YoloMode`.)_
-- [ ] `C292` `[new]` `[UT✓]` `[E2E]` **AllowYoloMode policy blocks Yolo:** The policy gate overrides a stored global-on setting and rejects per-session `/yolo on`. _(PR #505; UT: effective policy tests; E2E: `Feature.YoloMode`.)_
+- [ ] `C291` `[new]` `[UT✓]` `[E2E]` **Settings explains OpenCode Yolo compatibility:** Settings keeps the global preference editable and explains that OpenCode does not currently support native Yolo. _(PR #505; UT: provider notice matrix; zero-token E2E: `Feature.YoloMode`.)_
+- [ ] `C292` `[new]` `[UT✓]` `[E2E]` **AllowYoloMode policy blocks Yolo:** The policy gate overrides a stored global-on setting and reconciles live provider sessions to native Yolo off. _(PR #505; UT: effective policy and fail-closed reconciliation tests; E2E: `Feature.YoloMode`.)_
+- [ ] `C293` `[new]` `[UT✓]` `[E2E]` **Settings explains Gemini Yolo restrictions:** Settings keeps the global preference editable and explains that Gemini applies workspace trust and provider policy. _(PR #505; UT: provider notice matrix; zero-token E2E: `Feature.YoloMode`.)_
 - [x] `C073` `[UT✓]` **`/help` works:** Shows available commands.
 - [x] `C074` `[UT✓]` **`/clear` works:** Clears chat view as expected without breaking the session.
 - [x] `C075` `[UT✓]` **`/new` works:** Starts a fresh session.

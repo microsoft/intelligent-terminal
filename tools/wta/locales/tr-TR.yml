@@ -165,7 +165,6 @@ system.cannot_resume_phantom_via_flag: "%{agent} oturumu %{session_id} sürdür�
 system.cannot_resume_phantom_via_load: "%{agent} oturumu %{session_id} sürdürülemiyor: başlatılmış ancak hiç konuşma biriktirmemiş, bu yüzden %{agent} yüklemeyi reddederdi. Satır kaldırılıyor."
 system.fallback.this_agent: "bu aracı"
 system.fallback.connected_agent: "bağlı aracı"
-system.yolo_blocked_by_policy: "Yolo modu kuruluşunuzun ilkesi tarafından devre dışı bırakıldı."  # {Locked="Yolo"}
 
 
 # ── Runtime CLI output (src/main.rs) ────────────────────────────────────────
@@ -230,7 +229,6 @@ system.agent_switch_unavailable: "Aracı geçişi, bir Windows Terminal sekmesin
 commands.model.summary: "Bu panel için modeli seçin (doğrudan geçmek için /model <id>)"  # {Locked="/model","<id>"}
 commands.config.summary: "Bu aracı oturumunu yapılandırın"  # Agent means an AI coding agent; shown for the /config command. {Locked="/config"}
 commands.move.summary: "Bu sekmenin aracı panelini taşı (/move <position>)"  # {Locked="/move","<position>"}
-commands.yolo.summary: "Aracı sağlayıcısının ACP Yolo modunu bu oturum için kullan (/new komutuna kadar)"  # {Locked="ACP","Yolo","/new"} — slash-command names.
 
 model_picker.title: "Model seçin (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "Bağlı aracı seçilebilir hiçbir model duyurmadı."

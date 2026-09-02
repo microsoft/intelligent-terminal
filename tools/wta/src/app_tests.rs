@@ -233,26 +233,6 @@ fn tab_close_drops_state_and_requests_acp_session_close() {
 }
 
 #[test]
-fn tab_close_drops_yolo_override_and_pending_change() {
-    let (mut app, _drop_session_rx) = test_app_with_drop_session_rx();
-    let tab_id = "closed-yolo-tab";
-    let session_id = "reused-yolo-session";
-    app.tab_id = Some(tab_id.to_string());
-    app.current_tab_mut().session_id = Some(session_id.to_string());
-    app.yolo_state
-        .lock()
-        .unwrap()
-        .set_session_override(session_id.to_string(), true);
-    app.pending_yolo_changes
-        .insert(session_id.to_string(), (1, true, tab_id.to_string()));
-
-    app.drop_tab_session(tab_id);
-
-    assert!(!app.yolo_state.lock().unwrap().effective(session_id));
-    assert!(!app.pending_yolo_changes.contains_key(session_id));
-}
-
-#[test]
 fn cross_window_tab_close_only_requests_master_cleanup() {
     let (mut app, mut drop_session_rx) = test_app_with_drop_session_rx();
     app.window_id = Some("window-a".to_string());
@@ -301,29 +281,19 @@ fn reset_tab_session_clears_local_binding_without_duplicate_master_close() {
 }
 
 #[test]
-fn reset_tab_session_drops_yolo_override_and_pending_change() {
+fn reset_tab_session_clears_native_config_prompt_gate() {
     let (mut app, _drop_session_rx) = test_app_with_drop_session_rx();
     let tab_id = "reset-yolo-tab";
     let session_id = "reused-reset-session";
     app.tab_id = Some(tab_id.to_string());
     app.current_tab_mut().session_id = Some(session_id.to_string());
-    app.yolo_state
-        .lock()
-        .unwrap()
-        .set_session_override(session_id.to_string(), true);
-    app.pending_yolo_changes
-        .insert(session_id.to_string(), (1, false, tab_id.to_string()));
     app.current_tab_mut().config_pending_id = Some("mode".into());
     app.current_tab_mut().native_yolo_config_pending = true;
-    app.current_tab_mut().yolo_status = YoloUiStatus::Active;
 
     app.reset_tab_session_for(tab_id);
 
-    assert!(!app.yolo_state.lock().unwrap().effective(session_id));
-    assert!(!app.pending_yolo_changes.contains_key(session_id));
     assert!(app.current_tab().config_pending_id.is_none());
     assert!(!app.current_tab().native_yolo_config_pending);
-    assert_eq!(app.current_tab().yolo_status, YoloUiStatus::Hidden);
 }
 
 #[test]
@@ -1003,7 +973,7 @@ fn empty_pane_session_start_does_not_evict_a_bound_session() {
 /// key in that map.
 #[test]
 fn empty_pane_session_start_is_not_registered_in_active_by_pane() {
-    use crate::agent_sessions::{AgentSessionRegistry, AgentStatus, CliSource, SessionEvent};
+    use crate::agent_sessions::{AgentSessionRegistry, AgentStatus, SessionEvent};
     let mut reg = AgentSessionRegistry::new();
     let params = json!({
         "event": "agent.session.start",
@@ -3640,55 +3610,6 @@ fn runtime_policy_reconcile_gates_prompt_until_native_off_acknowledges() {
 }
 
 #[test]
-fn pending_slash_yolo_disable_gates_prompt_until_native_off_acknowledges() {
-    use crate::protocol::acp::client::MasterExtRequest;
-
-    let (mut app, mut master_rx) = test_app_with_master_rx();
-    let (prompt_tx, mut prompt_rx) = tokio::sync::mpsc::unbounded_channel();
-    app.prompt_tx = prompt_tx;
-    app.state = ConnectionState::Connected;
-    app.current_tab_mut().session_id = Some("slash-off-session".into());
-    app.yolo_state
-        .lock()
-        .unwrap()
-        .set_session_override("slash-off-session".into(), true);
-
-    app.cmd_yolo("off".into());
-    let MasterExtRequest::SetSessionYolo {
-        transaction_id,
-        session_id,
-        enabled,
-    } = master_rx
-        .try_recv()
-        .expect("/yolo off must request native disable")
-    else {
-        panic!("expected SetSessionYolo");
-    };
-    app.current_tab_mut().input = "wait for slash native off".into();
-    app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
-
-    assert_eq!(app.current_tab().input, "wait for slash native off");
-    assert!(prompt_rx.try_recv().is_err());
-
-    app.handle_event(AppEvent::YoloModeChangeCompleted {
-        transaction_id,
-        session_id: session_id.to_string(),
-        enabled,
-        restart_required: false,
-        result: Ok(()),
-    });
-    app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
-
-    assert_eq!(
-        prompt_rx
-            .try_recv()
-            .expect("prompt after slash native off")
-            .text,
-        "wait for slash native off"
-    );
-}
-
-#[test]
 fn global_on_session_attach_gates_prompt_until_native_yolo_enable_acknowledges() {
     use crate::protocol::acp::client::MasterExtRequest;
 
@@ -3710,7 +3631,6 @@ fn global_on_session_attach_gates_prompt_until_native_yolo_enable_acknowledges()
     else {
         panic!("expected ReconcileSessionYolo");
     };
-    assert_eq!(app.current_tab().yolo_status, YoloUiStatus::PendingOn);
     app.current_tab_mut().input = "wait for native on".into();
     app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
 
@@ -3723,12 +3643,6 @@ fn global_on_session_attach_gates_prompt_until_native_yolo_enable_acknowledges()
         restart_required: false,
         result: Ok(()),
     });
-    assert_eq!(app.current_tab().yolo_status, YoloUiStatus::Active);
-    assert!(app
-        .current_tab()
-        .messages
-        .iter()
-        .any(|message| matches!(message, ChatMessage::Status(text) if text == "● /yolo on")));
     app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
 
     assert_eq!(
@@ -3786,13 +3700,6 @@ fn known_global_on_failure_releases_yolo_prompt_gate_for_interactive_fallback() 
         restart_required: false,
         result: Err("provider does not support native Yolo".into()),
     });
-    assert_eq!(
-        app.current_tab().yolo_status,
-        YoloUiStatus::Unavailable("provider does not support native Yolo".into())
-    );
-    assert!(app.current_tab().messages.iter().any(
-        |message| matches!(message, ChatMessage::Error(text) if text == "/yolo on: provider does not support native Yolo")
-    ));
     app.current_tab_mut().input = "continue interactively".into();
     app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
 
@@ -3807,7 +3714,6 @@ fn unknown_yolo_enable_outcome_keeps_prompt_gate_until_agent_reset() {
     let mut app = test_app();
     let session_id = "unknown-enable-session";
     app.current_tab_mut().session_id = Some(session_id.into());
-    app.current_tab_mut().yolo_status = YoloUiStatus::PendingOn;
     app.pending_yolo_reconciles
         .insert(17, (HashSet::from([session_id.to_string()]), false));
 
@@ -3819,39 +3725,12 @@ fn unknown_yolo_enable_outcome_keeps_prompt_gate_until_agent_reset() {
     });
 
     assert!(app.pending_yolo_reconciles.contains_key(&17));
-    assert_eq!(
-        app.current_tab().yolo_status,
-        YoloUiStatus::Unknown("provider outcome unknown".into())
-    );
     app.reset_agent_scoped_state();
     assert!(app.pending_yolo_reconciles.is_empty());
-    assert_eq!(app.current_tab().yolo_status, YoloUiStatus::Hidden);
 }
 
 #[test]
-fn yolo_ui_status_projects_accessible_header_badges() {
-    assert_eq!(YoloUiStatus::Hidden.wire_state(), "hidden");
-    assert_eq!(YoloUiStatus::PendingOn.wire_state(), "pending_on");
-    assert_eq!(YoloUiStatus::PendingOff.wire_state(), "pending_off");
-    assert_eq!(YoloUiStatus::PendingConfig.wire_state(), "pending_config");
-    assert_eq!(YoloUiStatus::Active.wire_state(), "active");
-    assert_eq!(YoloUiStatus::Off.wire_state(), "off");
-    assert_eq!(
-        YoloUiStatus::Unavailable("unsupported".into()).wire_state(),
-        "unavailable"
-    );
-    assert_eq!(
-        YoloUiStatus::Unknown("uncertain".into()).wire_state(),
-        "unknown"
-    );
-    assert_eq!(
-        YoloUiStatus::Unavailable("unsupported".into()).detail(),
-        Some("unsupported")
-    );
-}
-
-#[test]
-fn superseded_native_config_clears_pending_yolo_header_status() {
+fn superseded_native_config_clears_prompt_gate() {
     let mut app = test_app();
     let session_id = "superseded-config-session";
     app.current_tab_mut().session_id = Some(session_id.into());
@@ -3859,7 +3738,6 @@ fn superseded_native_config_clears_pending_yolo_header_status() {
         .insert(session_id.into(), DEFAULT_TAB_ID.into());
     app.current_tab_mut().config_pending_id = Some("mode".into());
     app.current_tab_mut().native_yolo_config_pending = true;
-    app.current_tab_mut().yolo_status = YoloUiStatus::PendingConfig;
 
     app.handle_event(AppEvent::SessionConfigSetFailed {
         session_id: session_id.into(),
@@ -3868,10 +3746,6 @@ fn superseded_native_config_clears_pending_yolo_header_status() {
         restart_required: false,
     });
 
-    assert_eq!(
-        app.current_tab().yolo_status,
-        YoloUiStatus::Unavailable("the config update was superseded by newer session state".into())
-    );
     assert!(!app.current_tab().native_yolo_config_pending);
     assert!(app.current_tab().config_pending_id.is_none());
 }
@@ -4032,48 +3906,6 @@ fn pending_non_yolo_config_does_not_block_normal_prompts() {
 }
 
 #[test]
-fn pending_slash_yolo_change_blocks_manual_and_automatic_autofix_prompts() {
-    let mut manual = test_app();
-    let (manual_tx, mut manual_rx) = tokio::sync::mpsc::unbounded_channel();
-    manual.prompt_tx = manual_tx;
-    manual.state = ConnectionState::Connected;
-    manual.current_tab_mut().session_id = Some("manual-slash-session".into());
-    manual.pending_yolo_changes.insert(
-        "manual-slash-session".into(),
-        (41, false, DEFAULT_TAB_ID.into()),
-    );
-
-    manual.cmd_fix(false, String::new());
-
-    assert!(manual_rx.try_recv().is_err());
-    assert!(manual.current_tab().turn.is_idle());
-
-    let mut automatic = test_app();
-    let (automatic_tx, mut automatic_rx) = tokio::sync::mpsc::unbounded_channel();
-    automatic.prompt_tx = automatic_tx;
-    automatic.state = ConnectionState::Connected;
-    automatic.autofix_enabled = true;
-    automatic.tab_mut("target-tab").session_id = Some("automatic-slash-session".into());
-    automatic.pending_yolo_changes.insert(
-        "automatic-slash-session".into(),
-        (43, false, "target-tab".into()),
-    );
-    let notification = WtNotification {
-        severity: WtEventSeverity::Actionable,
-        pane_id: "failed-pane".into(),
-        tab_id: Some("target-tab".into()),
-        summary: "Command failed".into(),
-        acknowledged: false,
-        age_ticks: 0,
-    };
-
-    automatic.maybe_trigger_autofix(&notification);
-
-    assert!(automatic_rx.try_recv().is_err());
-    assert!(automatic.tab_mut("target-tab").turn.is_idle());
-}
-
-#[test]
 fn initial_load_placeholder_agent_connected_skips_yolo_reconcile() {
     use crate::protocol::acp::client::MasterExtRequest;
 
@@ -4214,25 +4046,17 @@ fn overlapping_fail_closed_reconciles_require_every_acknowledgement() {
 }
 
 #[test]
-fn agent_reset_clears_session_yolo_state_before_reused_id_attaches() {
+fn agent_reset_clears_reconcile_state_before_reused_id_attaches() {
     use crate::protocol::acp::client::MasterExtRequest;
 
     let (mut app, mut master_rx) = test_app_with_master_rx();
     let session_id = "reused-after-agent-reset";
-    {
-        let mut yolo = app.yolo_state.lock().unwrap();
-        yolo.set_session_override(session_id.to_string(), true);
-        yolo.mark_client_reconciled(session_id.to_string());
-    }
-    app.pending_yolo_changes.insert(
-        session_id.to_string(),
-        (1, true, DEFAULT_TAB_ID.to_string()),
-    );
+    app.yolo_state
+        .lock()
+        .unwrap()
+        .mark_client_reconciled(session_id.to_string());
     app.pending_yolo_reconciles
         .insert(7, (HashSet::from([session_id.to_string()]), true));
-    app.pending_yolo_reconcile_targets
-        .insert(7, HashMap::from([(session_id.to_string(), false)]));
-    app.current_tab_mut().yolo_status = YoloUiStatus::Active;
 
     app.reset_agent_scoped_state();
 
@@ -4242,10 +4066,7 @@ fn agent_reset_clears_session_yolo_state_before_reused_id_attaches() {
         .lock()
         .unwrap()
         .take_client_reconciled(session_id));
-    assert!(app.pending_yolo_changes.is_empty());
     assert!(app.pending_yolo_reconciles.is_empty());
-    assert!(app.pending_yolo_reconcile_targets.is_empty());
-    assert_eq!(app.current_tab().yolo_status, YoloUiStatus::Hidden);
 
     app.handle_event(AppEvent::SessionAttached {
         tab_id: DEFAULT_TAB_ID.into(),
@@ -4261,85 +4082,6 @@ fn agent_reset_clears_session_yolo_state_before_reused_id_attaches() {
     };
     assert_eq!(sessions[0].0.to_string(), session_id);
     assert!(!sessions[0].1);
-}
-
-#[test]
-fn new_session_request_clears_prior_yolo_header_status() {
-    let (mut app, mut new_session_rx) = test_app_with_new_session_rx();
-    app.current_tab_mut().session_id = Some("old-session".into());
-    app.current_tab_mut().yolo_status = YoloUiStatus::Active;
-
-    app.cmd_new(false);
-
-    new_session_rx
-        .try_recv()
-        .expect("/new must request a replacement session");
-    assert_eq!(app.current_tab().yolo_status, YoloUiStatus::Hidden);
-    assert!(app.current_tab().session_id.is_none());
-}
-
-#[test]
-fn unknown_stale_yolo_outcome_restarts_once_without_committing_state() {
-    let (mut app, mut restart_rx) = test_app_with_restart_rx();
-
-    app.handle_event(AppEvent::YoloModeChangeCompleted {
-        transaction_id: 99,
-        session_id: "stale-timeout-session".into(),
-        enabled: true,
-        restart_required: true,
-        result: Err("provider-native Yolo RPC timed out".into()),
-    });
-
-    assert!(matches!(
-        restart_rx
-            .try_recv()
-            .expect("unknown stale outcome must restart"),
-        crate::protocol::acp::client::AgentLifecycleRequest::RestartMaster
-    ));
-    assert!(restart_rx.try_recv().is_err());
-    assert!(!app
-        .yolo_state
-        .lock()
-        .unwrap()
-        .effective("stale-timeout-session"));
-}
-
-#[test]
-fn unknown_current_yolo_outcome_keeps_prompt_gate_until_agent_reset() {
-    let (mut app, mut restart_rx) = test_app_with_restart_rx();
-    let (prompt_tx, mut prompt_rx) = tokio::sync::mpsc::unbounded_channel();
-    app.prompt_tx = prompt_tx;
-    app.state = ConnectionState::Connected;
-    app.current_tab_mut().session_id = Some("current-timeout-session".into());
-    app.pending_yolo_changes.insert(
-        "current-timeout-session".into(),
-        (101, false, DEFAULT_TAB_ID.into()),
-    );
-
-    app.handle_event(AppEvent::YoloModeChangeCompleted {
-        transaction_id: 101,
-        session_id: "current-timeout-session".into(),
-        enabled: false,
-        restart_required: true,
-        result: Err("provider-native Yolo RPC timed out".into()),
-    });
-
-    assert!(matches!(
-        restart_rx
-            .try_recv()
-            .expect("unknown current outcome must restart"),
-        crate::protocol::acp::client::AgentLifecycleRequest::RestartMaster
-    ));
-    assert!(app
-        .pending_yolo_changes
-        .contains_key("current-timeout-session"));
-    app.current_tab_mut().input = "wait for agent reset".into();
-    app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
-    assert_eq!(app.current_tab().input, "wait for agent reset");
-    assert!(prompt_rx.try_recv().is_err());
-
-    app.reset_agent_scoped_state();
-    assert!(app.pending_yolo_changes.is_empty());
 }
 
 #[test]

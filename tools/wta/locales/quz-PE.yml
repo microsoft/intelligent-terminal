@@ -152,7 +152,6 @@ system.cannot_resume_phantom_via_flag: "%{agent} sesión %{session_id} mana kuti
 system.cannot_resume_phantom_via_load: "%{agent} sesión %{session_id} mana kutichiyta atikunchu: qallarirqan, ichaqa mana ima rimaytapas huñurqanchu; chayrayku %{agent} load nisqata mana chaskinqachu. Filata hurquchkan."
 system.fallback.this_agent: "kay agent"
 system.fallback.connected_agent: "tinkisqa agent"
-system.yolo_blocked_by_policy: "Yolo mode nisqaqa organizaciónniykip política rurasqanrayku deshabilitasqa kachkan."  # {Locked="Yolo"}
 
 
 # ── Runtime CLI output (src/main.rs) ────────────────────────────────────────
@@ -229,7 +228,6 @@ system.agent_switch_unavailable: "Agente cambiaqkuna manam tarikunchu Windows Te
 commands.model.summary: "Kay k'itipaq modelo akllay (/model <id> qillqay kikinmanta t'ikranapaq)"  # {Locked="/model","<id>"}
 commands.config.summary: "Kay agente nisqap t'inkinta allichay"  # Agent means an AI coding agent; shown for the /config command. {Locked="/config"}
 commands.move.summary: "Kay hunt'a k'itipi agente k'itita astay (/move <position>)"  # {Locked="/move","<position>"}
-commands.yolo.summary: "Kay sesiónpaq proveedorpa ACP Yolo modota llamk'achiy (/new kama)"  # {Locked="ACP","Yolo","/new"} — slash-command names.
 
 model_picker.title: "Modelo akllay (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "Tinkisqa agente mana ima akllana modelotapas willarqachu."

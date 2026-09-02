@@ -503,7 +503,7 @@ namespace winrt::TerminalApp::implementation
             std::vector<::Microsoft::Terminal::CustomModels::CatalogEntry> customModels;
             bool autofixEnabled{ false };
             bool yoloEnabled{ false };
-            bool yoloCommandBlocked{ false };
+            bool yoloPolicyBlocked{ false };
         };
         AgentRuntimeConfigSnapshot _lastAgentRuntimeConfig{};
         bool _agentRuntimeConfigInitialized{ false };

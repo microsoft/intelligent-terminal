@@ -154,7 +154,6 @@ system.cannot_resume_phantom_via_flag: "Δεν είναι δυνατή η συν
 system.cannot_resume_phantom_via_load: "Δεν είναι δυνατή η συνέχιση της περιόδου λειτουργίας %{agent} %{session_id}: ξεκίνησε αλλά δεν συγκέντρωσε ποτέ καμία συνομιλία, επομένως ο %{agent} θα απέρριπτε τη φόρτωση. Κατάργηση της γραμμής."
 system.fallback.this_agent: "αυτός ο agent"
 system.fallback.connected_agent: "ο συνδεδεμένος agent"
-system.yolo_blocked_by_policy: "Η λειτουργία Yolo είναι απενεργοποιημένη από την πολιτική του οργανισμού σας."  # {Locked="Yolo"}
 
 
 # ── Runtime CLI output (src/main.rs) ────────────────────────────────────────
@@ -231,7 +230,6 @@ system.agent_switch_unavailable: "Η εναλλαγή πρακτόρων δεν 
 commands.model.summary: "Επιλέξτε το μοντέλο για αυτό το πλαίσιο (/model <id> για άμεση εναλλαγή)"  # {Locked="/model","<id>"}
 commands.config.summary: "Διαμόρφωση αυτής της περιόδου λειτουργίας παράγοντα"  # Agent means an AI coding agent; shown for the /config command. {Locked="/config"}
 commands.move.summary: "Μετακίνηση του πλαισίου παράγοντα αυτής της καρτέλας (/move <position>)"  # {Locked="/move","<position>"}
-commands.yolo.summary: "Χρήση της λειτουργίας ACP Yolo του παρόχου για αυτή την περίοδο λειτουργίας (μέχρι /new)"  # {Locked="ACP","Yolo","/new"} — slash-command names.
 
 model_picker.title: "Επιλέξτε μοντέλο (↑ ↓ • Enter • Esc)"  # {Locked="↑","↓","Enter","Esc"}
 system.no_models: "Ο συνδεδεμένος agent δεν δήλωσε κανένα επιλέξιμο μοντέλο."
