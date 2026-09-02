@@ -70,6 +70,7 @@ Describe 'Feature: ACP agent-pane protocol experience' -Tag 'Feature' -Skip:(-no
         $rendered = Wait-Until -TimeoutSec 15 -IntervalSec 0.2 -Because 'the ordered ACP tool transcript to render' -Condition {
             $text = Get-AgentPaneText -App $script:app -PaneSessionId $script:agentPane -MaxLines 100
             if ($text -match 'TOOL_DETAIL_MARKER' -and
+                $text -match 'TOOL_OUTPUT_MARKER' -and
                 $text -match 'exit 7' -and
                 $text -match 'PLAN_MARKER' -and
                 $text -match 'AFTER_TOOL_MARKER') {

@@ -38,10 +38,10 @@ enum ToolDisplay {
 }
 
 impl ToolDisplay {
-    fn detail_level(self, phase: ToolPhase<'_>) -> ToolDetailLevel {
+    fn detail_level(self, phase: ToolPhase<'_>, nonzero_command_exit: bool) -> ToolDetailLevel {
         match self {
             Self::Completed { expanded: true } => ToolDetailLevel::Detailed,
-            _ if phase.is_successful() => ToolDetailLevel::Compact,
+            _ if phase.is_successful() && !nonzero_command_exit => ToolDetailLevel::Compact,
             _ => ToolDetailLevel::Preview,
         }
     }
@@ -1665,7 +1665,10 @@ fn build_message_lines_with_details<'a>(
                 *exit_code,
                 locations,
             );
-            let detail_level = tool_display.detail_level(presentation.phase);
+            let nonzero_command_exit = (presentation.kind == ToolCallKind::Execute
+                || presentation.target_is_command)
+                && presentation.exit_code.is_some_and(|code| code != 0);
+            let detail_level = tool_display.detail_level(presentation.phase, nonzero_command_exit);
             let (_, marker_style, detail) = tool_call_presentation(presentation.phase);
             let marker = rendered_tool_call_marker(
                 presentation.phase,
@@ -2592,6 +2595,35 @@ mod tests {
         assert_eq!(rendered[0], "✗ Run · Run tests · exit 1");
         assert_eq!(rendered[1], "  └ $ cargo test");
         assert!(rendered.iter().any(|line| line.contains("diagnostic")));
+    }
+
+    #[test]
+    fn nonzero_completed_command_keeps_output_preview() {
+        let message = ChatMessage::ToolCall {
+            id: "tool".into(),
+            title: "Run integration command".into(),
+            status: "Completed".into(),
+            kind: ToolCallKind::Execute,
+            location: Some("echo TOOL_DETAIL_MARKER".into()),
+            location_is_command: true,
+            cwd: None,
+            output: Some(ToolCallOutput {
+                text: "TOOL_OUTPUT_MARKER".into(),
+                truncated: false,
+            }),
+            exit_code: Some(7),
+            content: Vec::new(),
+            locations: Vec::new(),
+        };
+
+        let rendered: Vec<String> = build_message_lines(&message, false, false, None, 0, 120)
+            .iter()
+            .map(line_text)
+            .collect();
+
+        assert!(rendered
+            .iter()
+            .any(|line| line.contains("TOOL_OUTPUT_MARKER")));
     }
 
     #[test]
