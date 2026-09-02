@@ -188,6 +188,36 @@ impl NativeYoloState {
         sessions.insert(session_id.clone(), next);
     }
 
+    fn record_acknowledged_config_update(
+        &self,
+        operation: &NativeYoloOperation,
+        config_id: &str,
+        value: &str,
+        config_options: &[acp::schema::v1::SessionConfigOption],
+    ) -> Result<(), NativeYoloApplyError> {
+        let acknowledged = config_options.iter().any(|option| {
+            option.id.0.as_ref() == config_id
+                && matches!(
+                    &option.kind,
+                    acp::schema::v1::SessionConfigKind::Select(select)
+                        if select.current_value.0.as_ref() == value
+                )
+        });
+        if !acknowledged {
+            let error = NativeYoloApplyError::known(format!(
+                "provider did not acknowledge config option '{config_id}' value '{value}' for session '{}'",
+                operation.session_id
+            ));
+            return Err(if operation.enabled {
+                error
+            } else {
+                error.requiring_restart()
+            });
+        }
+        self.record_from_config_update(&operation.session_id, config_options);
+        Ok(())
+    }
+
     pub(crate) fn native_config_selection(
         &self,
         session_id: &acp::schema::v1::SessionId,
@@ -292,7 +322,12 @@ impl NativeYoloState {
         if !self.operation_is_current(&operation) {
             return Ok(None);
         }
-        self.record_from_config_update(&operation.session_id, &response.config_options);
+        self.record_acknowledged_config_update(
+            &operation,
+            config_id,
+            value,
+            &response.config_options,
+        )?;
         Ok(Some(response.config_options))
     }
 
@@ -449,7 +484,12 @@ impl NativeYoloState {
                     }
                     let response = response
                         .map_err(|error| NativeYoloApplyError::known(error.to_string()))?;
-                    self.record_from_config_update(&operation.session_id, &response.config_options);
+                    self.record_acknowledged_config_update(
+                        &operation,
+                        config_id,
+                        value,
+                        &response.config_options,
+                    )?;
                 }
                 NativeYoloAction::SetMode { mode_id } => {
                     let response = tokio::time::timeout(
