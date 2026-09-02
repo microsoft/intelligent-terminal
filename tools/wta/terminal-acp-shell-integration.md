@@ -304,7 +304,7 @@ std::optional<std::chrono::milliseconds> commandDuration;
 
 Enables "that command took 45 seconds" and stuck-command detection.
 
-### Error Detection Confidence Model
+### Auto-error-handling confidence model
 
 The agent should use a tiered confidence model internally (never expose scores to users):
 
@@ -316,9 +316,9 @@ The agent should use a tiered confidence model internally (never expose scores t
 | **Low** | 25-49% | Text patterns only, no exit code | Don't mention proactively. Respond if asked. |
 | **Blind** | 0-24% | TUI/SSH/no marks | Treat as raw text. Never guess. |
 
-### Shell-Specific Error Detection Matrix
+### Shell-specific Auto-error-handling signal matrix
 
-| Shell | Exit code via OSC 133;D | Exit code via API | autoMarkPrompts | Best error detection |
+| Shell | Exit code via OSC 133;D | Exit code via API | autoMarkPrompts | Best failure signal |
 |-------|:---:|:---:|:---:|---|
 | PowerShell 7+ | ✅ (with shell integration) | ❌ | ✅ (default ON) | OSC 133;D |
 | PowerShell 5.1 | ✅ (with script) | ❌ | ✅ | OSC 133;D |

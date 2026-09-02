@@ -103,39 +103,39 @@
     <value>Postavljanje...</value>
   </data>
   <data name="FreOverlay_InstallError_BlockedByPolicy" xml:space="preserve">
-    <value>⚠ Instalaciju {0} blokirala je politika Windows Package Managera. Ako koristite upravljani uređaj, obratite se IT administratoru.</value>
+    <value>Instalaciju {0} blokirala je politika Windows Package Managera. Ako koristite upravljani uređaj, obratite se IT administratoru.</value>
     <comment>FRE setup error. {0} is the package display name. Shown when winget returned BlockedByPolicy.</comment>
   </data>
   <data name="FreOverlay_InstallError_Generic" xml:space="preserve">
-    <value>⚠ Instalacija {0} nije uspjela (kod greške {1}). Detalje potražite u evidenciji ili ručno instalirajte {0}.</value>
+    <value>Instalacija {0} nije uspjela (kod greške {1}). Detalje potražite u evidenciji ili ručno instalirajte {0}.</value>
     <comment>FRE setup error fallback. {0} is the package display name (appears twice). {1} is a pre-formatted HRESULT string like "0x80190194".</comment>
   </data>
   <data name="FreOverlay_InstallError_GenericNoCode" xml:space="preserve">
-    <value>⚠ Instalacija {0} nije uspjela. Detalje potražite u evidenciji ili ručno instalirajte {0}.</value>
+    <value>Instalacija {0} nije uspjela. Detalje potražite u evidenciji ili ručno instalirajte {0}.</value>
     <comment>FRE setup error fallback used when no actionable error code is available. {0} is the package display name (appears twice).</comment>
   </data>
   <data name="FreOverlay_InstallError_InstallerFailed" xml:space="preserve">
-    <value>⚠ Instalator za {0} prijavio je grešku (kod {1}). Detalje potražite u evidenciji ili ručno instalirajte {0}.</value>
+    <value>Instalator za {0} prijavio je grešku (kod {1}). Detalje potražite u evidenciji ili ručno instalirajte {0}.</value>
     <comment>FRE setup error. {0} is the package display name (appears twice). {1} is the installer-reported error code as a decimal number.</comment>
   </data>
   <data name="FreOverlay_InstallError_Network" xml:space="preserve">
-    <value>⚠ Nije bilo moguće pristupiti Windows Package Manageru tokom instalacije {0}. Provjerite internetsku vezu (VPN, proksi ili vatrozid je možda blokiraju) i pokušajte ponovo.</value>
+    <value>Nije bilo moguće pristupiti Windows Package Manageru tokom instalacije {0}. Provjerite internetsku vezu (VPN, proksi ili vatrozid je možda blokiraju) i pokušajte ponovo.</value>
     <comment>{Locked="VPN"} FRE setup error. {0} is the package display name. Shown when winget couldn't reach its catalog or download failed with a network-class HRESULT.</comment>
   </data>
   <data name="FreOverlay_InstallError_NoCompatibleInstaller" xml:space="preserve">
-    <value>⚠ Na ovom sistemu nije dostupan kompatibilan instalator za {0} (verzija OS-a ili arhitektura možda nisu podržani). Ručno instalirajte {0}.</value>
+    <value>Na ovom sistemu nije dostupan kompatibilan instalator za {0} (verzija OS-a ili arhitektura možda nisu podržani). Ručno instalirajte {0}.</value>
     <comment>FRE setup error. {0} is the package display name (appears twice).</comment>
   </data>
   <data name="FreOverlay_InstallError_PackageNotFound" xml:space="preserve">
-    <value>⚠ {0} nije pronađen u katalogu Windows Package Managera. Pokušajte osvježiti izvore winget ili ručno instalirajte {0}.</value>
+    <value>{0} nije pronađen u katalogu Windows Package Managera. Pokušajte osvježiti izvore winget ili ručno instalirajte {0}.</value>
     <comment>{Locked="winget"} FRE setup error. {0} is the package display name (appears twice).</comment>
   </data>
   <data name="FreOverlay_InstallError_Timeout" xml:space="preserve">
-    <value>⚠ Instalacija {0} trajala je duže od 20 minuta. Intelligent Terminal je prestao čekati, ali instalator možda još radi u pozadini. Provjerite Task Manager ili pokušajte ponovo kasnije.</value>
+    <value>Instalacija {0} trajala je duže od 20 minuta. Intelligent Terminal je prestao čekati, ali instalator možda još radi u pozadini. Provjerite Task Manager ili pokušajte ponovo kasnije.</value>
     <comment>{Locked="Intelligent Terminal","Task Manager"} FRE setup error. {0} is the package display name.</comment>
   </data>
   <data name="FreOverlay_InstallErrorWingetMissing" xml:space="preserve">
-    <value>⚠ Windows Package Manager (winget) nije instaliran ili nije dostupan. Prvo ga instalirajte, a zatim pokušajte ponovo.</value>
+    <value>Windows Package Manager (winget) nije instaliran ili nije dostupan. Prvo ga instalirajte, a zatim pokušajte ponovo.</value>
     <comment>{Locked="winget"} Error shown in the FRE setup overlay when a prerequisite install was attempted but winget itself is not available on this system.</comment>
   </data>
   <data name="FreOverlay_PackageDisplayName_Copilot" xml:space="preserve">
@@ -206,9 +206,10 @@
     <comment>Description for the Auto-error-handling dropdown in the first-run wizard.</comment>
   </data>
 <data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
-    <value>⚠ Instalacija integracije ljuske nije uspjela. Otkrivanje grešaka je isključeno. Možete ga ponovo omogućiti i pokušati ponovo, ili sačuvati da biste nastavili bez toga.</value>
+    <value>Instalacija integracije ljuske nije uspjela. Auto-error-handling je isključen. Možete ga ponovo omogućiti i pokušati ponovo, ili sačuvati da biste nastavili bez toga.</value>
+    <comment>{Locked="Auto-error-handling"} FRE setup error. Auto-error-handling was turned off because shell integration could not be installed.</comment>
   </data><data name="FreOverlay_InstallErrorHooks" xml:space="preserve">
-    <value>⚠ Instalacija session hooks nije uspjela. Upravljanje sesijama je isključeno. Možete ih ponovo omogućiti i pokušati ponovo, ili sačuvati da biste nastavili bez toga.</value>
+    <value>Instalacija session hooks nije uspjela. Upravljanje sesijama je isključeno. Možete ih ponovo omogućiti i pokušati ponovo, ili sačuvati da biste nastavili bez toga.</value>
     <comment>{Locked="hooks"}</comment>
   </data><data name="FreOverlay_ErrorHelpLink" xml:space="preserve">
     <value>Naučite kako ovo ručno popraviti</value>
@@ -238,8 +239,8 @@
     <comment>Body of an error dialog shown after the user tries to install PowerShell shell integration but their PowerShell execution policy (Restricted or AllSigned) is blocking scripts. A separate "Learn how to fix this manually" hyperlink (FreOverlay_ErrorHelpLink) is rendered on its own line below this sentence. {Locked="PowerShell"}</comment>
   </data>
   <data name="FreOverlay_InstallErrorShellIntegrationExecutionPolicy" xml:space="preserve">
-    <value>⚠ PowerShell pravila izvršavanja blokiraju skripte. Otkrivanje grešaka je isključeno.</value>
-    <comment>{Locked="PowerShell"}</comment>
+    <value>PowerShell pravila izvršavanja blokiraju skripte. Auto-error-handling je isključen.</value>
+    <comment>{Locked="PowerShell","Auto-error-handling"} FRE setup error. PowerShell execution policy blocked scripts, so Auto-error-handling was turned off.</comment>
   </data>
   <data name="UsageGroup/[using:Windows.UI.Xaml.Automation]AutomationProperties/Name" xml:space="preserve"><value>Upotreba</value><comment>Accessibility name for the session usage summary in the terminal bottom bar.</comment></data>
   <data name="Usage_TokensUnit" xml:space="preserve"><value>tokeni</value><comment>Unit label for AI context-window token counts. Translate this term using the established AI/LLM terminology for the locale.</comment></data>

@@ -216,39 +216,39 @@
     <value>กำลังตั้งค่า...</value>
   </data>
   <data name="FreOverlay_InstallError_BlockedByPolicy" xml:space="preserve">
-    <value>⚠ การติดตั้ง {0} ถูกบล็อกโดยนโยบาย Windows Package Manager หากคุณใช้อุปกรณ์ที่มีการจัดการ โปรดติดต่อผู้ดูแลระบบ IT ของคุณ</value>
+    <value>การติดตั้ง {0} ถูกบล็อกโดยนโยบาย Windows Package Manager หากคุณใช้อุปกรณ์ที่มีการจัดการ โปรดติดต่อผู้ดูแลระบบ IT ของคุณ</value>
     <comment>FRE setup error. {0} is the package display name. Shown when winget returned BlockedByPolicy.</comment>
   </data>
   <data name="FreOverlay_InstallError_Generic" xml:space="preserve">
-    <value>⚠ ไม่สามารถติดตั้ง {0} ได้ (รหัสข้อผิดพลาด {1}) ตรวจสอบบันทึกเพื่อดูรายละเอียด หรือติดตั้ง {0} ด้วยตนเอง</value>
+    <value>ไม่สามารถติดตั้ง {0} ได้ (รหัสข้อผิดพลาด {1}) ตรวจสอบบันทึกเพื่อดูรายละเอียด หรือติดตั้ง {0} ด้วยตนเอง</value>
     <comment>FRE setup error fallback. {0} is the package display name (appears twice). {1} is a pre-formatted HRESULT string like "0x80190194".</comment>
   </data>
   <data name="FreOverlay_InstallError_GenericNoCode" xml:space="preserve">
-    <value>⚠ ไม่สามารถติดตั้ง {0} ได้ ตรวจสอบบันทึกเพื่อดูรายละเอียด หรือติดตั้ง {0} ด้วยตนเอง</value>
+    <value>ไม่สามารถติดตั้ง {0} ได้ ตรวจสอบบันทึกเพื่อดูรายละเอียด หรือติดตั้ง {0} ด้วยตนเอง</value>
     <comment>FRE setup error fallback used when no actionable error code is available. {0} is the package display name (appears twice).</comment>
   </data>
   <data name="FreOverlay_InstallError_InstallerFailed" xml:space="preserve">
-    <value>⚠ ตัวติดตั้ง {0} รายงานข้อผิดพลาด (รหัส {1}) ตรวจสอบบันทึกเพื่อดูรายละเอียด หรือติดตั้ง {0} ด้วยตนเอง</value>
+    <value>ตัวติดตั้ง {0} รายงานข้อผิดพลาด (รหัส {1}) ตรวจสอบบันทึกเพื่อดูรายละเอียด หรือติดตั้ง {0} ด้วยตนเอง</value>
     <comment>FRE setup error. {0} is the package display name (appears twice). {1} is the installer-reported error code as a decimal number (e.g. MSI 1603).</comment>
   </data>
   <data name="FreOverlay_InstallError_Network" xml:space="preserve">
-    <value>⚠ ไม่สามารถเชื่อมต่อกับ Windows Package Manager ขณะติดตั้ง {0} ได้ ตรวจสอบการเชื่อมต่ออินเทอร์เน็ตของคุณ (VPN, proxy หรือไฟร์วอลล์อาจบล็อกอยู่) แล้วลองอีกครั้ง</value>
+    <value>ไม่สามารถเชื่อมต่อกับ Windows Package Manager ขณะติดตั้ง {0} ได้ ตรวจสอบการเชื่อมต่ออินเทอร์เน็ตของคุณ (VPN, proxy หรือไฟร์วอลล์อาจบล็อกอยู่) แล้วลองอีกครั้ง</value>
     <comment>{Locked="VPN"} FRE setup error. {0} is the package display name. Shown when winget couldn't reach its catalog or download failed with a network-class HRESULT.</comment>
   </data>
   <data name="FreOverlay_InstallError_NoCompatibleInstaller" xml:space="preserve">
-    <value>⚠ ไม่มีตัวติดตั้งที่เข้ากันได้สำหรับ {0} บนระบบนี้ (อาจไม่รองรับเวอร์ชัน OS หรือสถาปัตยกรรม) ติดตั้ง {0} ด้วยตนเอง</value>
+    <value>ไม่มีตัวติดตั้งที่เข้ากันได้สำหรับ {0} บนระบบนี้ (อาจไม่รองรับเวอร์ชัน OS หรือสถาปัตยกรรม) ติดตั้ง {0} ด้วยตนเอง</value>
     <comment>FRE setup error. {0} is the package display name (appears twice).</comment>
   </data>
   <data name="FreOverlay_InstallError_PackageNotFound" xml:space="preserve">
-    <value>⚠ ไม่พบ {0} ในแค็ตตาล็อก Windows Package Manager ลองรีเฟรชแหล่งที่มาของ winget หรือติดตั้ง {0} ด้วยตนเอง</value>
+    <value>ไม่พบ {0} ในแค็ตตาล็อก Windows Package Manager ลองรีเฟรชแหล่งที่มาของ winget หรือติดตั้ง {0} ด้วยตนเอง</value>
     <comment>{Locked="winget"} FRE setup error. {0} is the package display name (appears twice).</comment>
   </data>
   <data name="FreOverlay_InstallError_Timeout" xml:space="preserve">
-    <value>⚠ การติดตั้ง {0} ใช้เวลานานกว่า 20 นาที Intelligent Terminal หยุดรอแล้ว แต่ตัวติดตั้งอาจยังคงทำงานอยู่เบื้องหลัง ตรวจสอบ Task Manager หรือลองอีกครั้งในภายหลัง</value>
+    <value>การติดตั้ง {0} ใช้เวลานานกว่า 20 นาที Intelligent Terminal หยุดรอแล้ว แต่ตัวติดตั้งอาจยังคงทำงานอยู่เบื้องหลัง ตรวจสอบ Task Manager หรือลองอีกครั้งในภายหลัง</value>
     <comment>{Locked="Intelligent Terminal","Task Manager"} FRE setup error. {0} is the package display name.</comment>
   </data>
   <data name="FreOverlay_InstallErrorWingetMissing" xml:space="preserve">
-    <value>⚠ Windows Package Manager (winget) ไม่ได้ติดตั้งหรือไม่พร้อมใช้งาน ติดตั้งก่อน แล้วลองอีกครั้ง</value>
+    <value>Windows Package Manager (winget) ไม่ได้ติดตั้งหรือไม่พร้อมใช้งาน ติดตั้งก่อน แล้วลองอีกครั้ง</value>
     <comment>{Locked="winget"} Error shown in the FRE setup overlay when a prerequisite install was attempted but winget itself is not available on this system.</comment>
   </data>
   <data name="FreOverlay_PackageDisplayName_Copilot" xml:space="preserve">
@@ -274,9 +274,10 @@
     <comment>Description for the Auto-error-handling dropdown in the first-run wizard.</comment>
   </data>
 <data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
-    <value>⚠ ติดตั้งการรวมเชลล์ล้มเหลว การตรวจจับข้อผิดพลาดถูกปิดใช้งาน คุณสามารถเปิดใช้งานอีกครั้งแล้วลองใหม่ หรือบันทึกเพื่อดำเนินการต่อโดยไม่ใช้</value>
+    <value>ติดตั้งการรวมเชลล์ล้มเหลว Auto-error-handling ถูกปิดใช้งาน คุณสามารถเปิดใช้งานอีกครั้งแล้วลองใหม่ หรือบันทึกเพื่อดำเนินการต่อโดยไม่ใช้</value>
+    <comment>{Locked="Auto-error-handling"} FRE setup error. Auto-error-handling was turned off because shell integration could not be installed.</comment>
   </data><data name="FreOverlay_InstallErrorHooks" xml:space="preserve">
-    <value>⚠ ติดตั้ง session hooksล้มเหลว การจัดการเซสชันถูกปิดใช้งาน คุณสามารถเปิดใช้งานอีกครั้งแล้วลองใหม่ หรือบันทึกเพื่อดำเนินการต่อโดยไม่ใช้</value>
+    <value>ติดตั้ง session hooksล้มเหลว การจัดการเซสชันถูกปิดใช้งาน คุณสามารถเปิดใช้งานอีกครั้งแล้วลองใหม่ หรือบันทึกเพื่อดำเนินการต่อโดยไม่ใช้</value>
     <comment>{Locked="hooks"}</comment>
   </data><data name="FreOverlay_ErrorHelpLink" xml:space="preserve">
     <value>เรียนรู้วิธีแก้ไขปัญหานี้ด้วยตนเอง</value>
@@ -306,8 +307,8 @@
     <comment>Body of an error dialog shown after the user tries to install PowerShell shell integration but their PowerShell execution policy (Restricted or AllSigned) is blocking scripts. A separate "Learn how to fix this manually" hyperlink (FreOverlay_ErrorHelpLink) is rendered on its own line below this sentence. {Locked="PowerShell"}</comment>
   </data>
   <data name="FreOverlay_InstallErrorShellIntegrationExecutionPolicy" xml:space="preserve">
-    <value>⚠ นโยบายการดำเนินการของ PowerShell กำลังบล็อกสคริปต์ การตรวจจับข้อผิดพลาดถูกปิดใช้งาน</value>
-    <comment>{Locked="PowerShell"}</comment>
+    <value>นโยบายการดำเนินการของ PowerShell กำลังบล็อกสคริปต์ Auto-error-handling ถูกปิดใช้งาน</value>
+    <comment>{Locked="PowerShell","Auto-error-handling"} FRE setup error. PowerShell execution policy blocked scripts, so Auto-error-handling was turned off.</comment>
   </data>
   <data name="UsageGroup/[using:Windows.UI.Xaml.Automation]AutomationProperties/Name" xml:space="preserve"><value>การใช้งาน</value><comment>Accessibility name for the session usage summary in the terminal bottom bar.</comment></data>
   <data name="Usage_TokensUnit" xml:space="preserve"><value>โทเค็น</value><comment>Unit label for AI context-window token counts. Translate this term using the established AI/LLM terminology for the locale.</comment></data>

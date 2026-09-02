@@ -80,7 +80,7 @@ commands.help_close_hint: "  Esc        Затваряне на тази пом�
 commands.help.summary: "Показване на този списък с команди"
 commands.clear.summary: "Изчистване на хронологията на чата (сесията се запазва)"
 commands.new.summary: "Стартиране на нова сесия ACP (изтрива хронологията)"  # {Locked="ACP"}
-commands.fix.summary: "Diagnose the active terminal and suggest a fix (/fix <hint>)"  # {Locked="/fix","<hint>"}
+commands.fix.summary: "Диагностицирайте активния терминал и предложете корекция (/fix <hint>)"  # {Locked="/fix","<hint>"}
 commands.restart.summary: "Рестартирай агента"
 commands.stop.summary: "Отмяна на текущата подкана"
 commands.sessions.summary: "Отваряне на избора на предишни сесии (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}

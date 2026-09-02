@@ -1140,39 +1140,39 @@ This hint appears when selecting an AI agent whose Node.js runtime may need to b
     <value>Настройка...</value>
   </data>
   <data name="FreOverlay_InstallError_BlockedByPolicy" xml:space="preserve">
-    <value>⚠ Установка {0} заблокирована политикой Диспетчера пакетов Windows. Если вы используете управляемое устройство, обратитесь к ИТ-администратору.</value>
+    <value>Установка {0} заблокирована политикой Диспетчера пакетов Windows. Если вы используете управляемое устройство, обратитесь к ИТ-администратору.</value>
     <comment>FRE setup error. {0} is the package display name. Shown when winget returned BlockedByPolicy.</comment>
   </data>
   <data name="FreOverlay_InstallError_Generic" xml:space="preserve">
-    <value>⚠ Не удалось установить {0} (код ошибки {1}). Подробности см. в журнале или установите {0} вручную.</value>
+    <value>Не удалось установить {0} (код ошибки {1}). Подробности см. в журнале или установите {0} вручную.</value>
     <comment>FRE setup error fallback. {0} is the package display name (appears twice). {1} is a pre-formatted HRESULT string like "0x80190194".</comment>
   </data>
   <data name="FreOverlay_InstallError_GenericNoCode" xml:space="preserve">
-    <value>⚠ Не удалось установить {0}. Подробности см. в журнале или установите {0} вручную.</value>
+    <value>Не удалось установить {0}. Подробности см. в журнале или установите {0} вручную.</value>
     <comment>FRE setup error fallback used when no actionable error code is available. {0} is the package display name (appears twice).</comment>
   </data>
   <data name="FreOverlay_InstallError_InstallerFailed" xml:space="preserve">
-    <value>⚠ Установщик {0} сообщил об ошибке (код {1}). Подробности см. в журнале или установите {0} вручную.</value>
+    <value>Установщик {0} сообщил об ошибке (код {1}). Подробности см. в журнале или установите {0} вручную.</value>
     <comment>FRE setup error. {0} is the package display name (appears twice). {1} is the installer-reported error code as a decimal number.</comment>
   </data>
   <data name="FreOverlay_InstallError_Network" xml:space="preserve">
-    <value>⚠ Не удалось связаться с Диспетчером пакетов Windows при установке {0}. Проверьте подключение к Интернету (VPN, прокси-сервер или брандмауэр могут его блокировать) и повторите попытку.</value>
+    <value>Не удалось связаться с Диспетчером пакетов Windows при установке {0}. Проверьте подключение к Интернету (VPN, прокси-сервер или брандмауэр могут его блокировать) и повторите попытку.</value>
     <comment>{Locked="VPN"} FRE setup error. {0} is the package display name. Shown when winget couldn't reach its catalog or download failed with a network-class HRESULT.</comment>
   </data>
   <data name="FreOverlay_InstallError_NoCompatibleInstaller" xml:space="preserve">
-    <value>⚠ В этой системе нет совместимого установщика для {0} (версия ОС или архитектура могут не поддерживаться). Установите {0} вручную.</value>
+    <value>В этой системе нет совместимого установщика для {0} (версия ОС или архитектура могут не поддерживаться). Установите {0} вручную.</value>
     <comment>FRE setup error. {0} is the package display name (appears twice).</comment>
   </data>
   <data name="FreOverlay_InstallError_PackageNotFound" xml:space="preserve">
-    <value>⚠ {0} не найден в каталоге Диспетчера пакетов Windows. Попробуйте обновить источники winget или установите {0} вручную.</value>
+    <value>{0} не найден в каталоге Диспетчера пакетов Windows. Попробуйте обновить источники winget или установите {0} вручную.</value>
     <comment>{Locked="winget"} FRE setup error. {0} is the package display name (appears twice).</comment>
   </data>
   <data name="FreOverlay_InstallError_Timeout" xml:space="preserve">
-    <value>⚠ Установка {0} заняла более 20 минут. Intelligent Terminal перестал ожидать, но установщик может по-прежнему выполняться в фоновом режиме. Проверьте Task Manager или повторите попытку позже.</value>
+    <value>Установка {0} заняла более 20 минут. Intelligent Terminal перестал ожидать, но установщик может по-прежнему выполняться в фоновом режиме. Проверьте Task Manager или повторите попытку позже.</value>
     <comment>{Locked="Intelligent Terminal","Task Manager"} FRE setup error. {0} is the package display name.</comment>
   </data>
   <data name="FreOverlay_InstallErrorWingetMissing" xml:space="preserve">
-    <value>⚠ Диспетчер пакетов Windows (winget) не установлен или недоступен. Сначала установите его, а затем повторите попытку.</value>
+    <value>Диспетчер пакетов Windows (winget) не установлен или недоступен. Сначала установите его, а затем повторите попытку.</value>
     <comment>{Locked="winget"} Error shown in the FRE setup overlay when a prerequisite install was attempted but winget itself is not available on this system.</comment>
   </data>
   <data name="FreOverlay_PackageDisplayName_Copilot" xml:space="preserve">
@@ -1185,11 +1185,12 @@ This hint appears when selecting an AI agent whose Node.js runtime may need to b
   </data>
 
   <data name="FreOverlay_InstallErrorHooks" xml:space="preserve">
-    <value>⚠ Не удалось установить session hooks. Управление сеансами отключено. Вы можете повторно включить его и попробовать снова или сохранить, чтобы продолжить без него.</value>
+    <value>Не удалось установить session hooks. Управление сеансами отключено. Вы можете повторно включить его и попробовать снова или сохранить, чтобы продолжить без него.</value>
     <comment>{Locked="hooks"}</comment>
   </data>
   <data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
-    <value>⚠ Не удалось установить интеграцию с оболочкой. Обнаружение ошибок отключено. Вы можете повторно включить его и попробовать снова или сохранить, чтобы продолжить без него.</value>
+    <value>Не удалось установить интеграцию с оболочкой. Auto-error-handling отключен. Вы можете повторно включить его и попробовать снова или сохранить, чтобы продолжить без него.</value>
+    <comment>{Locked="Auto-error-handling"} FRE setup error. Auto-error-handling was turned off because shell integration could not be installed.</comment>
   </data>
   <data name="FreOverlay_ErrorHelpLink" xml:space="preserve">
     <value>Узнайте, как исправить это вручную</value>
@@ -1290,8 +1291,8 @@ This hint appears when selecting an AI agent whose Node.js runtime may need to b
     <comment>Body of an error dialog shown after the user tries to install PowerShell shell integration but their PowerShell execution policy (Restricted or AllSigned) is blocking scripts. A separate "Learn how to fix this manually" hyperlink (FreOverlay_ErrorHelpLink) is rendered on its own line below this sentence. {Locked="PowerShell"}</comment>
   </data>
   <data name="FreOverlay_InstallErrorShellIntegrationExecutionPolicy" xml:space="preserve">
-    <value>⚠ Политика выполнения PowerShell блокирует скрипты. Обнаружение ошибок отключено.</value>
-    <comment>{Locked="PowerShell"}</comment>
+    <value>Политика выполнения PowerShell блокирует скрипты. Auto-error-handling отключен.</value>
+    <comment>{Locked="PowerShell","Auto-error-handling"} FRE setup error. PowerShell execution policy blocked scripts, so Auto-error-handling was turned off.</comment>
   </data>
   <data name="UsageGroup/[using:Windows.UI.Xaml.Automation]AutomationProperties/Name" xml:space="preserve"><value>Использование</value><comment>Accessibility name for the session usage summary in the terminal bottom bar.</comment></data>
   <data name="Usage_TokensUnit" xml:space="preserve"><value>токены</value><comment>Unit label for AI context-window token counts. Translate this term using the established AI/LLM terminology for the locale.</comment></data>

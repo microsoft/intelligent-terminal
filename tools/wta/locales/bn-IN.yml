@@ -83,7 +83,7 @@ commands.help_close_hint: "  Esc        এই সাহায্য বন্�
 commands.help.summary: "এই কমান্ড তালিকাটি দেখান"
 commands.clear.summary: "চ্যাট স্ক্রলব্যাক পরিষ্কার করুন (সেশন বজায় রাখে)"
 commands.new.summary: "নতুন ACP সেশন শুরু করুন (ইতিহাস মুছে দেয়)"  # {Locked="ACP"}
-commands.fix.summary: "Diagnose the active terminal and suggest a fix (/fix <hint>)"  # {Locked="/fix","<hint>"}
+commands.fix.summary: "সক্রিয় টার্মিনাল নির্ণয় করুন এবং একটি সমাধানের প্রস্তাব দিন (/fix <hint>)"  # {Locked="/fix","<hint>"}
 commands.restart.summary: "এজেন্ট পুনরায় চালু করুন"
 commands.stop.summary: "চলমান প্রম্পট বাতিল করুন"
 commands.sessions.summary: "ঐতিহাসিক সেশন পিকার খুলুন (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}

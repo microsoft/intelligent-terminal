@@ -217,39 +217,39 @@
     <value>در حال تنظیم...</value>
   </data>
   <data name="FreOverlay_InstallError_BlockedByPolicy" xml:space="preserve">
-    <value>⚠ نصب {0} توسط خط‌مشی مدیر بسته Windows مسدود شد. اگر از دستگاه مدیریت‌شده استفاده می‌کنید، با سرپرست IT خود تماس بگیرید.</value>
+    <value>نصب {0} توسط خط‌مشی مدیر بسته Windows مسدود شد. اگر از دستگاه مدیریت‌شده استفاده می‌کنید، با سرپرست IT خود تماس بگیرید.</value>
     <comment>FRE setup error. {0} is the package display name.</comment>
   </data>
   <data name="FreOverlay_InstallError_Generic" xml:space="preserve">
-    <value>⚠ نصب {0} ممکن نشد (کد خطا {1}). برای جزئیات، گزارش را ببینید، یا {0} را دستی نصب کنید.</value>
+    <value>نصب {0} ممکن نشد (کد خطا {1}). برای جزئیات، گزارش را ببینید، یا {0} را دستی نصب کنید.</value>
     <comment>FRE setup error fallback. {0} is the package display name (appears twice). {1} is a pre-formatted HRESULT string.</comment>
   </data>
   <data name="FreOverlay_InstallError_GenericNoCode" xml:space="preserve">
-    <value>⚠ نصب {0} ممکن نشد. برای جزئیات، گزارش را ببینید، یا {0} را دستی نصب کنید.</value>
+    <value>نصب {0} ممکن نشد. برای جزئیات، گزارش را ببینید، یا {0} را دستی نصب کنید.</value>
     <comment>FRE setup error fallback used when no actionable error code is available. {0} is the package display name (appears twice).</comment>
   </data>
   <data name="FreOverlay_InstallError_InstallerFailed" xml:space="preserve">
-    <value>⚠ نصب‌کننده {0} خطایی گزارش کرد (کد {1}). برای جزئیات، گزارش را بررسی کنید، یا {0} را دستی نصب کنید.</value>
+    <value>نصب‌کننده {0} خطایی گزارش کرد (کد {1}). برای جزئیات، گزارش را بررسی کنید، یا {0} را دستی نصب کنید.</value>
     <comment>FRE setup error. {0} is the package display name (appears twice). {1} is decimal error code.</comment>
   </data>
   <data name="FreOverlay_InstallError_Network" xml:space="preserve">
-    <value>⚠ هنگام نصب {0}، دسترسی به مدیر بسته Windows ممکن نشد. اتصال اینترنت خود را بررسی کنید (ممکن است VPN، پراکسی یا فایروال آن را مسدود کرده باشد) و دوباره تلاش کنید.</value>
+    <value>هنگام نصب {0}، دسترسی به مدیر بسته Windows ممکن نشد. اتصال اینترنت خود را بررسی کنید (ممکن است VPN، پراکسی یا فایروال آن را مسدود کرده باشد) و دوباره تلاش کنید.</value>
     <comment>{Locked="VPN"} FRE setup error. {0} is the package display name.</comment>
   </data>
   <data name="FreOverlay_InstallError_NoCompatibleInstaller" xml:space="preserve">
-    <value>⚠ نصب‌کننده سازگاری برای {0} در این سیستم در دسترس نیست (ممکن است نسخه سیستم‌عامل یا معماری پشتیبانی نشود). {0} را دستی نصب کنید.</value>
+    <value>نصب‌کننده سازگاری برای {0} در این سیستم در دسترس نیست (ممکن است نسخه سیستم‌عامل یا معماری پشتیبانی نشود). {0} را دستی نصب کنید.</value>
     <comment>FRE setup error. {0} is the package display name (appears twice).</comment>
   </data>
   <data name="FreOverlay_InstallError_PackageNotFound" xml:space="preserve">
-    <value>⚠ {0} در کاتالوگ مدیر بسته Windows یافت نشد. سعی کنید منابع winget را تازه‌سازی کنید، یا {0} را دستی نصب کنید.</value>
+    <value>{0} در کاتالوگ مدیر بسته Windows یافت نشد. سعی کنید منابع winget را تازه‌سازی کنید، یا {0} را دستی نصب کنید.</value>
     <comment>{Locked="winget"} FRE setup error. {0} is the package display name (appears twice).</comment>
   </data>
   <data name="FreOverlay_InstallError_Timeout" xml:space="preserve">
-    <value>⚠ نصب {0} بیش از 20 دقیقه طول کشید. Intelligent Terminal دیگر منتظر نماند، اما نصب‌کننده ممکن است همچنان در پس‌زمینه در حال اجرا باشد. Task Manager را بررسی کنید، یا بعداً دوباره تلاش کنید.</value>
+    <value>نصب {0} بیش از 20 دقیقه طول کشید. Intelligent Terminal دیگر منتظر نماند، اما نصب‌کننده ممکن است همچنان در پس‌زمینه در حال اجرا باشد. Task Manager را بررسی کنید، یا بعداً دوباره تلاش کنید.</value>
     <comment>{Locked="Intelligent Terminal","Task Manager"} FRE setup error. {0} is the package display name.</comment>
   </data>
   <data name="FreOverlay_InstallErrorWingetMissing" xml:space="preserve">
-    <value>⚠ مدیر بسته Windows (winget) نصب نشده یا در دسترس نیست. ابتدا آن را نصب کنید، سپس دوباره تلاش کنید.</value>
+    <value>مدیر بسته Windows (winget) نصب نشده یا در دسترس نیست. ابتدا آن را نصب کنید، سپس دوباره تلاش کنید.</value>
     <comment>{Locked="winget"} Error shown in the FRE setup overlay when a prerequisite install was attempted but winget itself is not available on this system.</comment>
   </data>
   <data name="FreOverlay_PackageDisplayName_Copilot" xml:space="preserve">
@@ -319,9 +319,10 @@
     <comment>Description for the Auto-error-handling dropdown in the first-run wizard.</comment>
   </data>
 <data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
-    <value>⚠ نصب یکپارچه‌سازی پوسته ناموفق بود. تشخیص خطا غیرفعال شده است. می‌توانید آن را دوباره فعال کنید و دوباره تلاش کنید، یا ذخیره کنید تا بدون آن ادامه دهید.</value>
+    <value>نصب یکپارچه‌سازی پوسته ناموفق بود. Auto-error-handling غیرفعال شده است. می‌توانید آن را دوباره فعال کنید و دوباره تلاش کنید، یا ذخیره کنید تا بدون آن ادامه دهید.</value>
+    <comment>{Locked="Auto-error-handling"} FRE setup error. Auto-error-handling was turned off because shell integration could not be installed.</comment>
   </data><data name="FreOverlay_InstallErrorHooks" xml:space="preserve">
-    <value>⚠ نصب session hooks ناموفق بود. مدیریت نشست غیرفعال شده است. می‌توانید آن را دوباره فعال کنید و دوباره تلاش کنید، یا ذخیره کنید تا بدون آن ادامه دهید.</value>
+    <value>نصب session hooks ناموفق بود. مدیریت نشست غیرفعال شده است. می‌توانید آن را دوباره فعال کنید و دوباره تلاش کنید، یا ذخیره کنید تا بدون آن ادامه دهید.</value>
     <comment>{Locked="hooks"}</comment>
   </data><data name="FreOverlay_ErrorHelpLink" xml:space="preserve">
     <value>با نحوه رفع این مشکل به‌صورت دستی آشنا شوید</value>
@@ -351,8 +352,8 @@
     <comment>Body of an error dialog shown after the user tries to install PowerShell shell integration but their PowerShell execution policy (Restricted or AllSigned) is blocking scripts. A separate "Learn how to fix this manually" hyperlink (FreOverlay_ErrorHelpLink) is rendered on its own line below this sentence. {Locked="PowerShell"}</comment>
   </data>
   <data name="FreOverlay_InstallErrorShellIntegrationExecutionPolicy" xml:space="preserve">
-    <value>⚠ خط‌مشی اجرای PowerShell اسکریپت‌ها را مسدود می‌کند. تشخیص خطا غیرفعال شد.</value>
-    <comment>{Locked="PowerShell"}</comment>
+    <value>خط‌مشی اجرای PowerShell اسکریپت‌ها را مسدود می‌کند. Auto-error-handling غیرفعال شده است.</value>
+    <comment>{Locked="PowerShell","Auto-error-handling"} FRE setup error. PowerShell execution policy blocked scripts, so Auto-error-handling was turned off.</comment>
   </data>
   <data name="UsageGroup/[using:Windows.UI.Xaml.Automation]AutomationProperties/Name" xml:space="preserve"><value>استفاده</value><comment>Accessibility name for the session usage summary in the terminal bottom bar.</comment></data>
   <data name="Usage_TokensUnit" xml:space="preserve"><value>توکن‌ها</value><comment>Unit label for AI context-window token counts. Translate this term using the established AI/LLM terminology for the locale.</comment></data>

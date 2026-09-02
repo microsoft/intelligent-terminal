@@ -82,7 +82,7 @@ commands.help_close_hint: "  Esc        ఈ సహాయాన్ని మూ�
 commands.help.summary: "ఈ కమాండ్ జాబితాను చూపించు"
 commands.clear.summary: "చాట్ స్క్రోల్‌బ్యాక్‌ను క్లియర్ చేయి (సెషన్‌ను ఉంచుతుంది)"
 commands.new.summary: "కొత్త ACP సెషన్‌ను ప్రారంభించు (చరిత్రను తొలగిస్తుంది)"  # {Locked="ACP"}
-commands.fix.summary: "Diagnose the active terminal and suggest a fix (/fix <hint>)"  # {Locked="/fix","<hint>"}
+commands.fix.summary: "సక్రియ టెర్మినల్‌ను నిర్ధారించి, పరిష్కారాన్ని ప్రతిపాదించండి (/fix <hint>)"  # {Locked="/fix","<hint>"}
 commands.restart.summary: "ఏజెంట్‌ను పునఃప్రారంభించండి"
 commands.stop.summary: "నడుస్తున్న ప్రాంప్ట్‌ను రద్దు చేయి"
 commands.sessions.summary: "చారిత్రక సెషన్‌ల ఎంపికను తెరవండి (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}

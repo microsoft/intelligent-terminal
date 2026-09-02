@@ -82,7 +82,7 @@ commands.help_close_hint: "  Esc        ଏହି ସାହାଯ୍ୟ ବନ�
 commands.help.summary: "ଏହି କମାଣ୍ଡ ତାଲିକା ଦେଖାନ୍ତୁ"
 commands.clear.summary: "ଚାଟ୍ ସ୍କ୍ରୋଲବ୍ୟାକ୍ ସଫା କରନ୍ତୁ (ସେସନ୍ ରଖେ)"
 commands.new.summary: "ନୂଆ ACP ସେସନ୍ ଆରମ୍ଭ କରନ୍ତୁ (ଇତିହାସ କାଢ଼ିଦିଏ)"  # {Locked="ACP"}
-commands.fix.summary: "Diagnose the active terminal and suggest a fix (/fix <hint>)"  # {Locked="/fix","<hint>"}
+commands.fix.summary: "ସକ୍ରିୟ ଟର୍ମିନାଲ୍‌ର ନିଦାନ କରନ୍ତୁ ଏବଂ ଏକ ସମାଧାନ ପ୍ରସ୍ତାବ କରନ୍ତୁ (/fix <hint>)"  # {Locked="/fix","<hint>"}
 commands.restart.summary: "ଏଜେଣ୍ଟ ପୁନଃ ଆରମ୍ଭ କରନ୍ତୁ"
 commands.stop.summary: "ଚାଲୁଥିବା ପ୍ରମ୍ପ୍ଟକୁ ବାତିଲ କରନ୍ତୁ"
 commands.sessions.summary: "ଇତିହାସିକ ସେସନ୍ ପିକର୍ ଖୋଲନ୍ତୁ (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}

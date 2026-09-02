@@ -98,7 +98,7 @@ commands.help_close_hint: "  Esc        Close this help"  # {Locked="Esc"}
 commands.help.summary: "Show this command list"
 commands.clear.summary: "Clear the chat scrollback (keeps session)"
 commands.new.summary: "Start a fresh ACP session (drops history)"  # {Locked="ACP"}
-commands.fix.summary: "Diagnose the active terminal and suggest a fix (/fix <hint>)"  # {Locked="/fix","<hint>"}
+commands.fix.summary: "Diagnose the active terminal and propose a fix (/fix <hint>)"  # {Locked="/fix","<hint>"}
 commands.restart.summary: "Restart agent"
 commands.stop.summary: "Cancel the in-flight prompt"
 commands.sessions.summary: "Open the historical sessions picker (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
@@ -138,7 +138,7 @@ system.config_update_failed: "Failed to update %{option}: %{error}"
 # ── Recommendations panel (src/ui/recommendations.rs) ───────────────────────
 # {Locked="Enter","Esc","↑","↓","←","→","↵"} - key names and arrow/Return-key
 # glyphs, do not translate
-recommendations.nav_hint: "(↑ ↓ to navigate suggestions • ← → to switch actions • Enter to select • Esc to cancel)"
+recommendations.nav_hint: "(↑ ↓ to navigate recommendations • ← → to switch actions • Enter to select • Esc to cancel)"
 recommendations.button_run_command: "[ Run command ]"
 recommendations.button_insert_in_terminal: "Insert in Terminal"
 recommendations.button_open_in_new_tab: "Open in New Tab ↵"

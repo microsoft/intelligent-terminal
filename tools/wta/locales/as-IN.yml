@@ -83,7 +83,7 @@ commands.help_close_hint: "  Esc        এই সহায় বন্ধ ক�
 commands.help.summary: "এই কমাণ্ড তালিকাখন দেখুৱাওক"
 commands.clear.summary: "চেট স্ক্ৰলবেক পৰিষ্কাৰ কৰক (ছেশ্যন ৰাখে)"
 commands.new.summary: "নতুন ACP ছেশ্যন আৰম্ভ কৰক (ইতিহাস আঁতৰায়)"  # {Locked="ACP"}
-commands.fix.summary: "Diagnose the active terminal and suggest a fix (/fix <hint>)"  # {Locked="/fix","<hint>"}
+commands.fix.summary: "সক্ৰিয় টাৰ্মিনেলটো নিৰ্ণয় কৰক আৰু এটা সমাধানৰ প্ৰস্তাৱ দিয়ক (/fix <hint>)"  # {Locked="/fix","<hint>"}
 commands.restart.summary: "এজেণ্ট পুনৰাৰম্ভ কৰক"
 commands.stop.summary: "চলি থকা প্ৰম্প্ট বাতিল কৰক"
 commands.sessions.summary: "ঐতিহাসিক ছেশ্যন পিকাৰ খোলক (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}

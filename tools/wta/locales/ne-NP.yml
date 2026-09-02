@@ -82,7 +82,7 @@ commands.help_close_hint: "  Esc        यो मद्दत बन्द ग�
 commands.help.summary: "यो आदेश सूची देखाउनुहोस्"
 commands.clear.summary: "च्याट स्क्रोलब्याक खाली गर्नुहोस् (सत्र राख्छ)"
 commands.new.summary: "नयाँ ACP सत्र सुरु गर्नुहोस् (इतिहास हटाउँछ)"  # {Locked="ACP"}
-commands.fix.summary: "Diagnose the active terminal and suggest a fix (/fix <hint>)"  # {Locked="/fix","<hint>"}
+commands.fix.summary: "सक्रिय टर्मिनलको निदान गर्नुहोस् र समाधान प्रस्ताव गर्नुहोस् (/fix <hint>)"  # {Locked="/fix","<hint>"}
 commands.restart.summary: "एजेन्ट पुन: सुरु गर्नुहोस्"
 commands.stop.summary: "चलिरहेको प्रम्प्ट रद्द गर्नुहोस्"
 commands.sessions.summary: "ऐतिहासिक सत्र पिकर खोल्नुहोस् (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}

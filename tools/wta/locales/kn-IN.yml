@@ -82,7 +82,7 @@ commands.help_close_hint: "  Esc        ಈ ಸಹಾಯವನ್ನು ಮು�
 commands.help.summary: "ಈ ಕಮಾಂಡ್ ಪಟ್ಟಿಯನ್ನು ತೋರಿಸಿ"
 commands.clear.summary: "ಚಾಟ್ ಸ್ಕ್ರೋಲ್‌ಬ್ಯಾಕ್ ಅನ್ನು ತೆರವುಗೊಳಿಸಿ (ಸೆಷನ್ ಉಳಿಸುತ್ತದೆ)"
 commands.new.summary: "ಹೊಸ ACP ಸೆಷನ್ ಆರಂಭಿಸಿ (ಇತಿಹಾಸವನ್ನು ಕೈಬಿಡುತ್ತದೆ)"  # {Locked="ACP"}
-commands.fix.summary: "Diagnose the active terminal and suggest a fix (/fix <hint>)"  # {Locked="/fix","<hint>"}
+commands.fix.summary: "ಸಕ್ರಿಯ ಟರ್ಮಿನಲ್ ಅನ್ನು ಪರಿಶೀಲಿಸಿ ಮತ್ತು ಪರಿಹಾರವನ್ನು ಪ್ರಸ್ತಾಪಿಸಿ (/fix <hint>)"  # {Locked="/fix","<hint>"}
 commands.restart.summary: "ಏಜೆಂಟ್ ಮರುಪ್ರಾರಂಭಿಸಿ"
 commands.stop.summary: "ಚಾಲನೆಯಲ್ಲಿರುವ ಪ್ರಾಂಪ್ಟ್ ಅನ್ನು ರದ್ದುಮಾಡಿ"
 commands.sessions.summary: "ಹಿಂದಿನ ಸೆಷನ್‌ಗಳ ಪಿಕರ್ ತೆರೆಯಿರಿ (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}

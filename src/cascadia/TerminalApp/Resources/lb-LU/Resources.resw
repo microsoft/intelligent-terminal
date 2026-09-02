@@ -103,39 +103,39 @@
     <value>Gëtt agestallt...</value>
   </data>
   <data name="FreOverlay_InstallError_BlockedByPolicy" xml:space="preserve">
-    <value>⚠ D'Installatioun vu {0} gouf duerch eng Windows Package Manager-Politik blockéiert. Wann Dir op engem geréierte Gerät sidd, kontaktéiert Ären IT-Administrateur.</value>
+    <value>D'Installatioun vu {0} gouf duerch eng Windows Package Manager-Politik blockéiert. Wann Dir op engem geréierte Gerät sidd, kontaktéiert Ären IT-Administrateur.</value>
     <comment>FRE setup error. {0} is the package display name. Shown when winget returned BlockedByPolicy.</comment>
   </data>
   <data name="FreOverlay_InstallError_Generic" xml:space="preserve">
-    <value>⚠ {0} konnt net installéiert ginn (Feelercode {1}). Kuckt am Log fir Detailer, oder installéiert {0} manuell.</value>
+    <value>{0} konnt net installéiert ginn (Feelercode {1}). Kuckt am Log fir Detailer, oder installéiert {0} manuell.</value>
     <comment>FRE setup error fallback. {0} is the package display name (appears twice). {1} is a pre-formatted HRESULT string like "0x80190194".</comment>
   </data>
   <data name="FreOverlay_InstallError_GenericNoCode" xml:space="preserve">
-    <value>⚠ {0} konnt net installéiert ginn. Kuckt am Log fir Detailer, oder installéiert {0} manuell.</value>
+    <value>{0} konnt net installéiert ginn. Kuckt am Log fir Detailer, oder installéiert {0} manuell.</value>
     <comment>FRE setup error fallback used when no actionable error code is available. {0} is the package display name (appears twice).</comment>
   </data>
   <data name="FreOverlay_InstallError_InstallerFailed" xml:space="preserve">
-    <value>⚠ Den Installateur vu {0} huet e Feeler gemellt (Code {1}). Kuckt am Log fir Detailer, oder installéiert {0} manuell.</value>
+    <value>Den Installateur vu {0} huet e Feeler gemellt (Code {1}). Kuckt am Log fir Detailer, oder installéiert {0} manuell.</value>
     <comment>FRE setup error. {0} is the package display name (appears twice). {1} is the installer-reported error code as a decimal number (e.g. MSI 1603).</comment>
   </data>
   <data name="FreOverlay_InstallError_Network" xml:space="preserve">
-    <value>⚠ De Windows Package Manager konnt wärend der Installatioun vu {0} net erreecht ginn. Iwwerpréift Är Internetverbindung (VPN, Proxy oder Firewall kéint se blockéieren) a probéiert et nach eng Kéier.</value>
+    <value>De Windows Package Manager konnt wärend der Installatioun vu {0} net erreecht ginn. Iwwerpréift Är Internetverbindung (VPN, Proxy oder Firewall kéint se blockéieren) a probéiert et nach eng Kéier.</value>
     <comment>{Locked="VPN"} FRE setup error. {0} is the package display name. Shown when winget couldn't reach its catalog or download failed with a network-class HRESULT.</comment>
   </data>
   <data name="FreOverlay_InstallError_NoCompatibleInstaller" xml:space="preserve">
-    <value>⚠ Kee kompatibelen Installateur fir {0} ass op dësem System verfügbar (d'Versioun vum Betribssystem oder d'Architektur gëtt eventuell net ënnerstëtzt). Installéiert {0} manuell.</value>
+    <value>Kee kompatibelen Installateur fir {0} ass op dësem System verfügbar (d'Versioun vum Betribssystem oder d'Architektur gëtt eventuell net ënnerstëtzt). Installéiert {0} manuell.</value>
     <comment>FRE setup error. {0} is the package display name (appears twice).</comment>
   </data>
   <data name="FreOverlay_InstallError_PackageNotFound" xml:space="preserve">
-    <value>⚠ {0} gouf net am Katalog vum Windows Package Manager fonnt. Probéiert d'winget-Quellen ze aktualiséieren, oder installéiert {0} manuell.</value>
+    <value>{0} gouf net am Katalog vum Windows Package Manager fonnt. Probéiert d'winget-Quellen ze aktualiséieren, oder installéiert {0} manuell.</value>
     <comment>{Locked="winget"} FRE setup error. {0} is the package display name (appears twice).</comment>
   </data>
   <data name="FreOverlay_InstallError_Timeout" xml:space="preserve">
-    <value>⚠ D'Installatioun vu {0} huet méi laang wéi 20 Minutte gedauert. Intelligent Terminal huet opgehalen ze waarden, mee den Installateur leeft eventuell nach am Hannergrond. Kuckt am Task Manager, oder probéiert et méi spéit nach eng Kéier.</value>
+    <value>D'Installatioun vu {0} huet méi laang wéi 20 Minutte gedauert. Intelligent Terminal huet opgehalen ze waarden, mee den Installateur leeft eventuell nach am Hannergrond. Kuckt am Task Manager, oder probéiert et méi spéit nach eng Kéier.</value>
     <comment>{Locked="Intelligent Terminal","Task Manager"} FRE setup error. {0} is the package display name.</comment>
   </data>
   <data name="FreOverlay_InstallErrorWingetMissing" xml:space="preserve">
-    <value>⚠ De Windows Package Manager (winget) ass net installéiert oder net verfügbar. Installéiert en als éischt a probéiert et dann nach eng Kéier.</value>
+    <value>De Windows Package Manager (winget) ass net installéiert oder net verfügbar. Installéiert en als éischt a probéiert et dann nach eng Kéier.</value>
     <comment>{Locked="winget"} Error shown in the FRE setup overlay when a prerequisite install was attempted but winget itself is not available on this system.</comment>
   </data>
   <data name="FreOverlay_PackageDisplayName_Copilot" xml:space="preserve">
@@ -205,9 +205,10 @@
     <comment>Description for the Auto-error-handling dropdown in the first-run wizard.</comment>
   </data>
 <data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
-    <value>⚠ D'Shell-Integratioun konnt net installéiert ginn. D'Feelerkennung gouf ausgeschalt. Dir kënnt se nees aktivéieren a nach eng Kéier probéieren, oder späicheren fir ouni se weiderzefueren.</value>
+    <value>D'Shell-Integratioun konnt net installéiert ginn. D'Funktioun Auto-error-handling gouf ausgeschalt. Dir kënnt se nees aktivéieren a nach eng Kéier probéieren, oder späicheren fir ouni se weiderzefueren.</value>
+    <comment>{Locked="Auto-error-handling"} FRE setup error. Auto-error-handling was turned off because shell integration could not be installed.</comment>
   </data><data name="FreOverlay_InstallErrorHooks" xml:space="preserve">
-    <value>⚠ D'Sessiouns-hooks konnten net installéiert ginn. D'Sessiounsgestioun gouf ausgeschalt. Dir kënnt se nees aktivéieren a nach eng Kéier probéieren, oder späicheren fir ouni se weiderzefueren.</value>
+    <value>D'Sessiouns-hooks konnten net installéiert ginn. D'Sessiounsgestioun gouf ausgeschalt. Dir kënnt se nees aktivéieren a nach eng Kéier probéieren, oder späicheren fir ouni se weiderzefueren.</value>
     <comment>{Locked="hooks"}</comment>
   </data><data name="FreOverlay_ErrorHelpLink" xml:space="preserve">
     <value>Léiert wéi Dir dëst manuell behieft</value>
@@ -237,8 +238,8 @@
     <comment>Body of an error dialog shown after the user tries to install PowerShell shell integration but their PowerShell execution policy (Restricted or AllSigned) is blocking scripts. A separate "Learn how to fix this manually" hyperlink (FreOverlay_ErrorHelpLink) is rendered on its own line below this sentence. {Locked="PowerShell"}</comment>
   </data>
   <data name="FreOverlay_InstallErrorShellIntegrationExecutionPolicy" xml:space="preserve">
-    <value>⚠ D'PowerShell-Ausféierungspolitik blockéiert Scripten. D'Feelerkennung ass ausgeschalt.</value>
-    <comment>{Locked="PowerShell"}</comment>
+    <value>D'PowerShell-Ausféierungspolitik blockéiert Scripten. D'Funktioun Auto-error-handling gouf ausgeschalt.</value>
+    <comment>{Locked="PowerShell","Auto-error-handling"} FRE setup error. PowerShell execution policy blocked scripts, so Auto-error-handling was turned off.</comment>
   </data>
   <data name="UsageGroup/[using:Windows.UI.Xaml.Automation]AutomationProperties/Name" xml:space="preserve"><value>Benotzung</value><comment>Accessibility name for the session usage summary in the terminal bottom bar.</comment></data>
   <data name="Usage_TokensUnit" xml:space="preserve"><value>Token</value><comment>Unit label for AI context-window token counts. Translate this term using the established AI/LLM terminology for the locale.</comment></data>

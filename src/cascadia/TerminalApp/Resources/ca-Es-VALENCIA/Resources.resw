@@ -103,39 +103,39 @@
     <value>S'està configurant...</value>
   </data>
   <data name="FreOverlay_InstallError_BlockedByPolicy" xml:space="preserve">
-    <value>⚠ La instal·lació de {0} l'ha bloquejada una directiva de l'Administrador de paquets de Windows. Si feu servir un dispositiu administrat, poseu-vos en contacte amb l'administrador de TI.</value>
+    <value>La instal·lació de {0} l'ha bloquejada una directiva de l'Administrador de paquets de Windows. Si feu servir un dispositiu administrat, poseu-vos en contacte amb l'administrador de TI.</value>
     <comment>FRE setup error. {0} is the package display name. Shown when winget returned BlockedByPolicy.</comment>
   </data>
   <data name="FreOverlay_InstallError_Generic" xml:space="preserve">
-    <value>⚠ No s'ha pogut instal·lar {0} (codi d'error {1}). Consulteu el registre per a obtindre més detalls, o instal·leu {0} manualment.</value>
+    <value>No s'ha pogut instal·lar {0} (codi d'error {1}). Consulteu el registre per a obtindre més detalls, o instal·leu {0} manualment.</value>
     <comment>FRE setup error fallback. {0} is the package display name (appears twice). {1} is a pre-formatted HRESULT string like "0x80190194".</comment>
   </data>
   <data name="FreOverlay_InstallError_GenericNoCode" xml:space="preserve">
-    <value>⚠ No s'ha pogut instal·lar {0}. Consulteu el registre per a obtindre més detalls, o instal·leu {0} manualment.</value>
+    <value>No s'ha pogut instal·lar {0}. Consulteu el registre per a obtindre més detalls, o instal·leu {0} manualment.</value>
     <comment>FRE setup error fallback used when no actionable error code is available. {0} is the package display name (appears twice).</comment>
   </data>
   <data name="FreOverlay_InstallError_InstallerFailed" xml:space="preserve">
-    <value>⚠ L'instal·lador de {0} ha notificat un error (codi {1}). Consulteu el registre per a obtindre més detalls, o instal·leu {0} manualment.</value>
+    <value>L'instal·lador de {0} ha notificat un error (codi {1}). Consulteu el registre per a obtindre més detalls, o instal·leu {0} manualment.</value>
     <comment>FRE setup error. {0} is the package display name (appears twice). {1} is the installer-reported error code as a decimal number (e.g. MSI 1603).</comment>
   </data>
   <data name="FreOverlay_InstallError_Network" xml:space="preserve">
-    <value>⚠ No s'ha pogut contactar amb l'Administrador de paquets de Windows mentre s'instal·lava {0}. Comproveu la connexió a Internet (VPN, proxy o tallafoc poden estar bloquejant-la) i torneu a provar.</value>
+    <value>No s'ha pogut contactar amb l'Administrador de paquets de Windows mentre s'instal·lava {0}. Comproveu la connexió a Internet (VPN, proxy o tallafoc poden estar bloquejant-la) i torneu a provar.</value>
     <comment>{Locked="VPN"} FRE setup error. {0} is the package display name. Shown when winget couldn't reach its catalog or download failed with a network-class HRESULT.</comment>
   </data>
   <data name="FreOverlay_InstallError_NoCompatibleInstaller" xml:space="preserve">
-    <value>⚠ No hi ha cap instal·lador compatible per a {0} disponible en este sistema (pot ser que la versió del sistema operatiu o l'arquitectura no siguen compatibles). Instal·leu {0} manualment.</value>
+    <value>No hi ha cap instal·lador compatible per a {0} disponible en este sistema (pot ser que la versió del sistema operatiu o l'arquitectura no siguen compatibles). Instal·leu {0} manualment.</value>
     <comment>FRE setup error. {0} is the package display name (appears twice).</comment>
   </data>
   <data name="FreOverlay_InstallError_PackageNotFound" xml:space="preserve">
-    <value>⚠ {0} no s'ha trobat al catàleg de l'Administrador de paquets de Windows. Proveu d'actualitzar les fonts del winget, o instal·leu {0} manualment.</value>
+    <value>{0} no s'ha trobat al catàleg de l'Administrador de paquets de Windows. Proveu d'actualitzar les fonts del winget, o instal·leu {0} manualment.</value>
     <comment>{Locked="winget"} FRE setup error. {0} is the package display name (appears twice).</comment>
   </data>
   <data name="FreOverlay_InstallError_Timeout" xml:space="preserve">
-    <value>⚠ La instal·lació de {0} ha tardat més de 20 minuts. Intelligent Terminal ha deixat d'esperar, però pot ser que l'instal·lador encara s'estiga executant en segon pla. Consulteu Task Manager, o torneu a provar més tard.</value>
+    <value>La instal·lació de {0} ha tardat més de 20 minuts. Intelligent Terminal ha deixat d'esperar, però pot ser que l'instal·lador encara s'estiga executant en segon pla. Consulteu Task Manager, o torneu a provar més tard.</value>
     <comment>{Locked="Intelligent Terminal","Task Manager"} FRE setup error. {0} is the package display name.</comment>
   </data>
   <data name="FreOverlay_InstallErrorWingetMissing" xml:space="preserve">
-    <value>⚠ L'Administrador de paquets de Windows (winget) no està instal·lat o no està disponible. Instal·leu-lo primer i torneu a provar.</value>
+    <value>L'Administrador de paquets de Windows (winget) no està instal·lat o no està disponible. Instal·leu-lo primer i torneu a provar.</value>
     <comment>{Locked="winget"} Error shown in the FRE setup overlay when a prerequisite install was attempted but winget itself is not available on this system.</comment>
   </data>
   <data name="FreOverlay_PackageDisplayName_Copilot" xml:space="preserve">
@@ -161,9 +161,10 @@
     <comment>Description for the Auto-error-handling dropdown in the first-run wizard.</comment>
   </data>
 <data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
-    <value>⚠ No s'ha pogut instal·lar la integració de l'intèrpret d'ordres. La detecció d'errors s'ha desactivat. Podeu tornar-la a activar i tornar a provar, o guardar per a continuar sense ella.</value>
+    <value>No s'ha pogut instal·lar la integració de l'intèrpret d'ordres. La funció Auto-error-handling s'ha desactivat. Podeu tornar-la a activar i tornar a provar, o guardar per a continuar sense ella.</value>
+    <comment>{Locked="Auto-error-handling"} FRE setup error. Auto-error-handling was turned off because shell integration could not be installed.</comment>
   </data><data name="FreOverlay_InstallErrorHooks" xml:space="preserve">
-    <value>⚠ No s'han pogut instal·lar els hooks de sessió. La gestió de sessions s'ha desactivat. Podeu tornar-la a activar i tornar a provar, o guardar per a continuar sense ella.</value>
+    <value>No s'han pogut instal·lar els hooks de sessió. La gestió de sessions s'ha desactivat. Podeu tornar-la a activar i tornar a provar, o guardar per a continuar sense ella.</value>
     <comment>{Locked="hooks"}</comment>
   </data><data name="FreOverlay_ErrorHelpLink" xml:space="preserve">
     <value>Apreneu com solucionar-ho manualment</value>
@@ -193,8 +194,8 @@
     <comment>Body of an error dialog shown after the user tries to install PowerShell shell integration but their PowerShell execution policy (Restricted or AllSigned) is blocking scripts. A separate "Learn how to fix this manually" hyperlink (FreOverlay_ErrorHelpLink) is rendered on its own line below this sentence. {Locked="PowerShell"}</comment>
   </data>
   <data name="FreOverlay_InstallErrorShellIntegrationExecutionPolicy" xml:space="preserve">
-    <value>⚠ La directiva d'execució de PowerShell està bloquejant els scripts. Detecció d'errors desactivada.</value>
-    <comment>{Locked="PowerShell"}</comment>
+    <value>La directiva d'execució de PowerShell està bloquejant els scripts. La funció Auto-error-handling s'ha desactivat.</value>
+    <comment>{Locked="PowerShell","Auto-error-handling"} FRE setup error. PowerShell execution policy blocked scripts, so Auto-error-handling was turned off.</comment>
   </data>
   <data name="UsageGroup/[using:Windows.UI.Xaml.Automation]AutomationProperties/Name" xml:space="preserve"><value>Ús</value><comment>Accessibility name for the session usage summary in the terminal bottom bar.</comment></data>
   <data name="Usage_TokensUnit" xml:space="preserve"><value>tokens</value><comment>Unit label for AI context-window token counts. Translate this term using the established AI/LLM terminology for the locale.</comment></data>

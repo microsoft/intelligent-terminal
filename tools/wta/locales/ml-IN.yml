@@ -82,7 +82,7 @@ commands.help_close_hint: "  Esc        ഈ സഹായം അടയ്ക്�
 commands.help.summary: "ഈ കമാൻഡ് ലിസ്റ്റ് കാണിക്കുക"
 commands.clear.summary: "ചാറ്റ് സ്ക്രോൾബാക്ക് മായ്ക്കുക (സെഷൻ നിലനിർത്തും)"
 commands.new.summary: "പുതിയ ACP സെഷൻ ആരംഭിക്കുക (ചരിത്രം ഒഴിവാക്കും)"  # {Locked="ACP"}
-commands.fix.summary: "Diagnose the active terminal and suggest a fix (/fix <hint>)"  # {Locked="/fix","<hint>"}
+commands.fix.summary: "സജീവ ടെർമിനൽ നിർണ്ണയിച്ച് ഒരു പരിഹാരം മുന്നോട്ടുവയ്ക്കുക (/fix <hint>)"  # {Locked="/fix","<hint>"}
 commands.restart.summary: "ഏജന്റ് റീസ്റ്റാർട്ട് ചെയ്യുക"
 commands.stop.summary: "നടന്നുകൊണ്ടിരിക്കുന്ന പ്രോംപ്റ്റ് റദ്ദാക്കുക"
 commands.sessions.summary: "ചരിത്ര സെഷനുകളുടെ പിക്കർ തുറക്കുക (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}

@@ -77,7 +77,7 @@ commands.help_close_hint: "[!!_  Esc        Close this help_!!]"  # {Locked="Esc
 
 # ── Recommendations panel (src/ui/recommendations.rs) ───────────────────────
 # {Locked="Enter","Esc","↵","↑","↓","←","→"} - key names and Return-key glyph, do not translate
-recommendations.nav_hint: "[!!_(↑ ↓ to navigate suggestions • ← → to switch actions • Enter to select • Esc to cancel)_!!]"
+recommendations.nav_hint: "[!!_(↑ ↓ to navigate recommendations • ← → to switch actions • Enter to select • Esc to cancel)_!!]"
 recommendations.button_run_command: "[!!_[ Run command ]_!!]"
 recommendations.button_insert_in_terminal: "[!!_Insert in Terminal_!!]"
 recommendations.button_open_in_new_tab: "[!!_Open in New Tab ↵_!!]"
@@ -203,7 +203,7 @@ time.days_other: "[!!_%{count} days ago_!!]"
 commands.help.summary: "[!!_Show this command list_!!]"
 commands.clear.summary: "[!!_Clear the chat scrollback (keeps session)_!!]"
 commands.new.summary: "[!!_Start a fresh ACP session (drops history)_!!]"
-commands.fix.summary: "[!!_Diagnose the active terminal and suggest a fix (/fix <hint>)_!!]"  # {Locked="/fix","<hint>"}
+commands.fix.summary: "[!!_Diagnose the active terminal and propose a fix (/fix <hint>)_!!]"  # {Locked="/fix","<hint>"}
 commands.restart.summary: "[!!_Restart agent_!!]"
 commands.stop.summary: "[!!_Cancel the in-flight prompt_!!]"
 commands.sessions.summary: "[!!_Open the historical sessions picker (Ctrl+Shift+/)_!!]"

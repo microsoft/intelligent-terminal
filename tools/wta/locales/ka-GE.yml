@@ -82,7 +82,7 @@ commands.help_close_hint: "  Esc        ამ დახმარების �
 commands.help.summary: "ამ ბრძანებების სიის ჩვენება"
 commands.clear.summary: "ჩატის გადახვევის ისტორიის გასუფთავება (სესია შენარჩუნდება)"
 commands.new.summary: "ახალი ACP სესიის დაწყება (ისტორიის წაშლა)"  # {Locked="ACP"}
-commands.fix.summary: "Diagnose the active terminal and suggest a fix (/fix <hint>)"  # {Locked="/fix","<hint>"}
+commands.fix.summary: "აქტიური ტერმინალის დიაგნოსტიკა და გამოსწორების შეთავაზება (/fix <hint>)"  # {Locked="/fix","<hint>"}
 commands.restart.summary: "გადატვირთეთ აგენტი"
 commands.stop.summary: "მიმდინარე მოთხოვნის გაუქმება"
 commands.sessions.summary: "ისტორიული სესიების ამრჩევის გახსნა (Ctrl+Shift+/)"  # {Locked="Ctrl+Shift+/"}
