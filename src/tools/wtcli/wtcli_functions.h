@@ -425,7 +425,7 @@ namespace wtcli
         params["pane_id"] = paneId;
         // Attached before the size check below so the dedupe key is inside the
         // measured envelope and can never be dropped by the reduction path —
-        // an event that survives truncation must still be dedupable.
+        // an event that survives truncation must still be deduplicated.
         if (!broadcastId.empty())
         {
             params["broadcast_id"] = broadcastId;

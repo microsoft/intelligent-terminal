@@ -272,13 +272,33 @@ impl SeenBroadcastIds {
     /// subscriber queue in `TerminalProtocolComServer` holds 4096 events, and
     /// one `agent_event` can occupy up to three slots here (synthetic start,
     /// user-input tool, primary). 4096 * 3 = 12288 is the worst case a stalled
-    /// helper can replay behind, so this leaves roughly a 5x margin. At ~60
-    /// bytes per id the whole window is a few megabytes.
+    /// helper can replay behind, so this leaves roughly a 5x margin.
     const CAPACITY: usize = 65536;
+
+    /// Longest id the window will store, which is what makes [`Self::CAPACITY`]
+    /// a real memory bound rather than an entry count. `wtcli` mints
+    /// `{GUID}#{slot}` — 38 + 1 + at most 7 characters — so this is generous
+    /// for every id this product produces, while capping the window at
+    /// `CAPACITY * MAX_ID_LEN` ≈ 8 MB even against a sender that ignores the
+    /// convention.
+    ///
+    /// An overlong id is treated as *not deduplicated* rather than dropped:
+    /// every copy applies, which is exactly the behavior before deduplication
+    /// existed. Dropping instead would lose session state we cannot key, and
+    /// the reducer is idempotent, so the repeat is harmless.
+    const MAX_ID_LEN: usize = 128;
 
     /// Records `id`, returning `true` when it is new (apply the event) and
     /// `false` when it is a replay from a sibling helper (drop it).
     fn insert_new(&mut self, id: &str) -> bool {
+        if id.len() > Self::MAX_ID_LEN {
+            tracing::debug!(
+                target: "session_hook",
+                len = id.len(),
+                "broadcast id exceeds the dedupe window's per-id cap; applying without deduplication"
+            );
+            return true;
+        }
         if !self.seen.insert(id.to_string()) {
             return false;
         }

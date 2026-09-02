@@ -204,7 +204,7 @@ static std::string GuidToString(const GUID& g)
 // COM fan-out to every subscribed helper and lets wta-master collapse the N
 // forwarded copies back into one. Returns an empty string on failure, which
 // `BuildAgentHookEventJson` treats as "no id" — master then applies every copy,
-// the pre-existing behavior.
+// the preexisting behavior.
 static std::string NewBroadcastId()
 {
     GUID id{};

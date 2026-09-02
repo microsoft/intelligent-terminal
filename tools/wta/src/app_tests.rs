@@ -622,14 +622,13 @@ fn copilot_sidekick_hook_session_is_ignored() {
 /// A terminal event for a session WTA has never seen must not fabricate a row.
 ///
 /// Repro from a live `wta-main_master.log`: Copilot CLI emitted
-/// `agent.session.end` for `3dfe96df-…`, an abandoned session with zero turns
-/// that WTA had never observed starting. The synthetic-start branch only
-/// excluded `agent.session.started`, so the router invented a `SessionStarted`
-/// titled after the cwd basename ("yuazha"), published it to master, then
-/// immediately published the `SessionStopped`. The result was a permanent
-/// `Ended` row in `/sessions` that no reconcile pass can prune —
-/// `is_stale_host_history_row` only drops ids the listing agent itself
-/// returned and later stopped returning.
+/// `agent.session.end` for an abandoned session with zero turns that WTA had
+/// never observed starting. The synthetic-start branch only excluded
+/// `agent.session.started`, so the router invented a `SessionStarted` titled
+/// after the cwd basename, published it to master, then immediately published
+/// the `SessionStopped`. The result was a permanent `Ended` row in `/sessions`
+/// that no reconcile pass can prune — `is_stale_host_history_row` only drops
+/// ids the listing agent itself returned and later stopped returning.
 #[test]
 fn terminal_agent_event_for_unknown_session_does_not_fabricate_a_row() {
     use crate::agent_sessions::{AgentSessionRegistry, SessionEvent};
@@ -641,7 +640,7 @@ fn terminal_agent_event_for_unknown_session_does_not_fabricate_a_row() {
             "cli_source": "copilot",
             "agent_session_id": "abandoned-sid",
             "payload": {
-                "cwd": r#"C:\Users\yuazha"#,
+                "cwd": r#"C:\Users\dev"#,
                 "reason": "user_exit"
             }
         });
@@ -777,7 +776,7 @@ fn hook_slots_are_stable_regardless_of_local_session_knowledge() {
 }
 
 /// Guard the other half of the same condition: a *non*-terminal event for an
-/// unknown session still needs its placeholder row, otherwise the event has
+/// unknown session still needs its placeholder row; otherwise the event has
 /// nothing to land on. Complements
 /// `helper_agent_event_queues_synthetic_start_and_followup_hook`, which covers
 /// the same path through `handle_event`.
@@ -1442,7 +1441,7 @@ fn helper_agent_event_queues_session_hook_while_updating_local_registry() {
     );
     assert_eq!(
         broadcast_id, None,
-        "an agent_event without a broadcast_id must stay undedupable"
+        "an agent_event without a broadcast_id must not be deduplicated"
     );
     assert!(
         app.agent_sessions.has_session(&"sid-hook".to_string()),

@@ -627,10 +627,10 @@ where
     // still running — they need a row to land on. Terminal events describe a
     // session that is already over, so fabricating a start for one WTA has never
     // seen materializes a permanent `Ended` row titled after the cwd basename
-    // (repro: an abandoned CLI session's `agent.session.end` produced a
-    // "yuazha" row in `/sessions` that no reconcile pass can ever prune,
-    // because `is_stale_host_history_row` only prunes ids the agent itself
-    // listed and later stopped listing).
+    // (repro: an abandoned CLI session's `agent.session.end` produced a row
+    // titled after its working directory in `/sessions` that no reconcile pass
+    // can ever prune, because `is_stale_host_history_row` only prunes ids the
+    // agent itself listed and later stopped listing).
     //
     // `agent.error` is deliberately NOT excluded: it reports a session that is
     // still live but failing, and its `ConnectionFailed` reducer resolves the

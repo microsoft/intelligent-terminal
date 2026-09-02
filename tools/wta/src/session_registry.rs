@@ -972,7 +972,7 @@ fn build_born_bound_request_inner(
 /// `SessionHookParams` is an internally-tagged enum, so the extra
 /// `broadcast_id` member is ignored by the event decode and read separately
 /// here. A missing or empty id yields `None`, which master treats as
-/// "not dedupable" — the behavior for every sender predating the field.
+/// "cannot be deduplicated" — the behavior for every sender predating the field.
 pub fn parse_session_hook_params(
     raw: &serde_json::value::RawValue,
 ) -> Result<(crate::agent_sessions::SessionEvent, Option<String>), serde_json::Error> {

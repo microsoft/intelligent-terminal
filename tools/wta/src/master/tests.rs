@@ -10341,6 +10341,38 @@ fn seen_broadcast_ids_evicts_oldest_beyond_capacity() {
     );
 }
 
+/// An id longer than the per-entry cap must not enter the window, or one
+/// sender could inflate a structure whose whole purpose is to stay bounded.
+/// It degrades to "apply every copy" — the behavior before deduplication
+/// existed — rather than dropping events the window cannot key.
+#[test]
+fn seen_broadcast_ids_refuses_to_store_an_overlong_id() {
+    let mut seen = SeenBroadcastIds::default();
+    let overlong = "x".repeat(SeenBroadcastIds::MAX_ID_LEN + 1);
+
+    assert!(seen.insert_new(&overlong), "an overlong id must be applied");
+    assert!(
+        seen.insert_new(&overlong),
+        "and applied again — it is never treated as a replay, so no event is lost"
+    );
+    assert!(
+        seen.seen.is_empty() && seen.order.is_empty(),
+        "nothing that large may be retained, or CAPACITY stops bounding memory"
+    );
+
+    // The boundary itself is still stored, so the cap does not silently
+    // disable dedupe for ids of a legitimate length.
+    let at_limit = "y".repeat(SeenBroadcastIds::MAX_ID_LEN);
+    assert!(
+        seen.insert_new(&at_limit),
+        "an id at the cap is still tracked"
+    );
+    assert!(
+        !seen.insert_new(&at_limit),
+        "and its replay is still suppressed"
+    );
+}
+
 #[tokio::test]
 async fn session_born_bound_marks_born_bound_not_hook_owned() {
     // #266 born-bound (WTA-launched delegate/resume) is binding-only: it must
