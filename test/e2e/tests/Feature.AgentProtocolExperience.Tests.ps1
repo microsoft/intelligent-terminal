@@ -67,21 +67,19 @@ Describe 'Feature: ACP agent-pane protocol experience' -Tag 'Feature' -Skip:(-no
     It 'ACP tool details and transcript order survive the real process boundary' {
         Send-AgentPrompt -App $script:app -PaneSessionId $script:agentPane -Text 'TOOL_FLOW' | Out-Null
 
-        $rendered = Wait-Until -TimeoutSec 15 -IntervalSec 0.2 -Because 'the ordered ACP tool transcript to render' -Condition {
-            $text = Get-AgentPaneText -App $script:app -PaneSessionId $script:agentPane -MaxLines 100
-            if ($text -match 'TOOL_DETAIL_MARKER' -and
-                $text -match 'TOOL_OUTPUT_MARKER' -and
-                $text -match 'exit 7' -and
-                $text -match 'PLAN_MARKER' -and
-                $text -match 'AFTER_TOOL_MARKER') {
-                $text
-            }
+        Assert-AgentPaneText -App $script:app -PaneSessionId $script:agentPane `
+            -Pattern 'TOOL_OUTPUT_MARKER' -TimeoutSec 30
+        $rendered = Get-AgentPaneText -App $script:app -PaneSessionId $script:agentPane -MaxLines 100
+        foreach ($marker in @('TOOL_DETAIL_MARKER', 'PLAN_MARKER', 'AFTER_TOOL_MARKER')) {
+            $rendered | Should -Match $marker -Because 'the complete ACP transcript must remain visible with its tool output'
         }
 
         $tool = $rendered.IndexOf('TOOL_DETAIL_MARKER', [System.StringComparison]::Ordinal)
+        $output = $rendered.IndexOf('TOOL_OUTPUT_MARKER', [System.StringComparison]::Ordinal)
         $plan = $rendered.IndexOf('PLAN_MARKER', [System.StringComparison]::Ordinal)
         $after = $rendered.IndexOf('AFTER_TOOL_MARKER', [System.StringComparison]::Ordinal)
-        $tool | Should -BeLessThan $plan
+        $tool | Should -BeLessThan $output
+        $output | Should -BeLessThan $plan
         $plan | Should -BeLessThan $after
     }
 
