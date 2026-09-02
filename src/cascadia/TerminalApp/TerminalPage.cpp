@@ -1184,6 +1184,41 @@ namespace winrt::TerminalApp::implementation
         return winrt::to_string(id).starts_with("custom:");
     }
 
+    // Reduce an agent name to the closed set the telemetry schema allows.
+    // Hook-reported names arrive from outside Terminal, so anything
+    // unrecognised is bucketed rather than reported verbatim — matching
+    // `sanitize_agent_id` on the WTA side.
+    static const char* _SanitizeAgentIdForTelemetry(const std::string_view agent)
+    {
+        for (const auto known : { "copilot", "claude", "codex", "gemini", "opencode" })
+        {
+            if (agent == known)
+            {
+                return known;
+            }
+        }
+        return agent.empty() ? "unknown" : "custom";
+    }
+
+    // A shell pane gained or lost the agent session that makes it
+    // resumable. Without this, a pane failing to bind is invisible — and
+    // an unbound pane can never persist a resume command line, so this is
+    // the upstream gate on every shell-pane restore.
+    static void _LogAgentSessionBindingChanged(const char* source,
+                                               const std::string_view agent,
+                                               const bool bound)
+    {
+        TraceLoggingWrite(
+            g_hTerminalAppProvider,
+            "AgentSessionBindingChanged",
+            TraceLoggingDescription("Event emitted when a shell pane is bound to or unbound from a resumable agent session"),
+            TraceLoggingValue(source, "Source"),
+            TraceLoggingValue(_SanitizeAgentIdForTelemetry(agent), "Agent"),
+            TraceLoggingBoolean(bound, "Bound"),
+            TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
+            TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage));
+    }
+
     using SelectedCustomModel = std::pair<
         winrt::Microsoft::Terminal::Settings::Model::CustomModelProvider,
         winrt::Microsoft::Terminal::Settings::Model::CustomModel>;
@@ -1516,6 +1551,24 @@ namespace winrt::TerminalApp::implementation
         const auto intoSessionsView = fields.view == ::Microsoft::Terminal::AgentPaneRestore::SessionsView;
         const auto stashed = ::Microsoft::Terminal::AgentPaneRestore::StashedPaneType == std::wstring_view{ contentArgs.Type() };
 
+        // Whether the saved agent is one policy still permits. This only
+        // observes the decision for telemetry — the gate that actually
+        // enforces it lives in `_AutoCreateHiddenAgentPaneShared`, which
+        // re-resolves the CLI from the id below. A custom agent is never
+        // in the built-in table, so it is not measurable this way and is
+        // reported through `IsCustomAgent` instead.
+        const auto agentId = tab->HasAgentOverride() ? tab->AgentIdOverride() : winrt::hstring{};
+        const auto isCustomAgent = _IsCustomAgentId(agentId);
+        auto blockedByPolicy = false;
+        if (!agentId.empty() && !isCustomAgent)
+        {
+            namespace Registry = ::Microsoft::Terminal::Settings::Model::AgentRegistry;
+            const auto allowed = Registry::FilteredAcpAgents();
+            blockedByPolicy = std::none_of(allowed.begin(), allowed.end(), [&](const auto& agent) {
+                return agent.id == std::wstring_view{ agentId };
+            });
+        }
+
         // The saved split geometry is the pane's own, not the configured
         // default: the user may have dragged the splitter, or moved this one
         // pane with `>Move agent pane`. An empty position (a split direction
@@ -1533,16 +1586,33 @@ namespace winrt::TerminalApp::implementation
             tab->AgentPanePositionOverride(savedPosition);
         }
 
-        return _AutoCreateHiddenAgentPaneShared(tab,
-                                                intoSessionsView,
-                                                /*autoStash*/ stashed,
-                                                winrt::to_string(fields.sessionId),
-                                                winrt::to_string(contentArgs.StartingDirectory()),
-                                                {},
-                                                winrt::to_string(fields.view),
-                                                std::wstring_view{ savedPosition },
-                                                splitSize,
-                                                /*focusPane*/ !stashed);
+        const auto restored = _AutoCreateHiddenAgentPaneShared(tab,
+                                                               intoSessionsView,
+                                                               /*autoStash*/ stashed,
+                                                               winrt::to_string(fields.sessionId),
+                                                               winrt::to_string(contentArgs.StartingDirectory()),
+                                                               {},
+                                                               winrt::to_string(fields.view),
+                                                               std::wstring_view{ savedPosition },
+                                                               splitSize,
+                                                               /*focusPane*/ !stashed);
+
+        const auto result = restored ? "Restored" : (blockedByPolicy ? "BlockedByPolicy" : "Failed");
+        TraceLoggingWrite(
+            g_hTerminalAppProvider,
+            "AgentPaneRestoreCompleted",
+            TraceLoggingDescription("Event emitted when an agent pane described by a saved layout is rebuilt"),
+            TraceLoggingValue(result, "Result"),
+            TraceLoggingBoolean(!fields.sessionId.empty(), "HasSessionId"),
+            TraceLoggingBoolean(!fields.agentIdentity.empty(), "HasAgentIdentity"),
+            TraceLoggingBoolean(isCustomAgent, "IsCustomAgent"),
+            TraceLoggingBoolean(stashed, "Stashed"),
+            TraceLoggingValue(intoSessionsView ? "sessions" : "chat", "View"),
+            TraceLoggingBoolean(!savedPosition.empty(), "HasSavedPosition"),
+            TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
+            TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage));
+
+        return restored;
     }
 
     // Resolve the effective delegate agent name from structured settings.
@@ -5151,18 +5221,43 @@ namespace winrt::TerminalApp::implementation
         }
 
         auto pending = std::exchange(_tabsAwaitingPrewarm, {});
+        const auto deferredCount = gsl::narrow_cast<uint32_t>(pending.size());
+        uint32_t prewarmedCount = 0;
+        uint32_t skippedCount = 0;
         for (const auto& weakTab : pending)
         {
             const auto tabImpl = weakTab.get();
             if (!tabImpl || tabImpl->FindAgentPane())
             {
+                skippedCount++;
                 continue;
             }
 
             _agentPaneLog(
                 std::string{ "_PrewarmAgentPanesAfterStartup: pre-warming stashed agent pane on tab " } +
                 winrt::to_string(tabImpl->StableId()));
-            _AutoCreateHiddenAgentPaneShared(tabImpl, /*intoSessionsView*/ false, /*autoStash*/ true);
+            if (_AutoCreateHiddenAgentPaneShared(tabImpl, /*intoSessionsView*/ false, /*autoStash*/ true))
+            {
+                prewarmedCount++;
+            }
+        }
+
+        // Deferring pre-warm is what keeps a blank helper from racing a
+        // persisted agent pane into the same tab. The counts are how a tab
+        // that ended up with two agent panes — or with none — becomes
+        // visible: `Deferred` must always equal `Prewarmed + Skipped +
+        // failures`.
+        if (deferredCount != 0)
+        {
+            TraceLoggingWrite(
+                g_hTerminalAppProvider,
+                "AgentPanePrewarmAfterStartup",
+                TraceLoggingDescription("Event emitted when pre-warm deferred by a startup replay is drained"),
+                TraceLoggingValue(deferredCount, "DeferredTabCount"),
+                TraceLoggingValue(prewarmedCount, "PrewarmedTabCount"),
+                TraceLoggingValue(skippedCount, "SkippedTabCount"),
+                TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
+                TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage));
         }
     }
 
@@ -7512,7 +7607,12 @@ namespace winrt::TerminalApp::implementation
                             (agentSessionId.empty() ||
                              binding->second.sessionId == winrt::to_hstring(agentSessionId)))
                         {
+                            const auto boundAgent = winrt::to_string(binding->second.agent);
                             _paneAgentSessions.erase(binding);
+                            // The recorded agent, not the one on the event:
+                            // a session-end notification often carries no
+                            // agent name at all.
+                            _LogAgentSessionBindingChanged("HookProtocol", boundAgent, /*bound*/ false);
                         }
                     }
                     else
@@ -7523,6 +7623,7 @@ namespace winrt::TerminalApp::implementation
                                 winrt::to_hstring(agentSessionId),
                                 winrt::to_hstring(agent),
                                 winrt::to_hstring(resumeCommandline) });
+                        _LogAgentSessionBindingChanged("HookProtocol", agent, /*bound*/ true);
                     }
                     return;
                 }
@@ -7984,6 +8085,10 @@ namespace winrt::TerminalApp::implementation
                                                         winrt::to_hstring(agentSessionId),
                                                         winrt::to_hstring(agentParams.get("cli_source", "").asString()),
                                                         resumeCommandline });
+                                                _LogAgentSessionBindingChanged(
+                                                    "VtInBand",
+                                                    agentParams.get("cli_source", "").asString(),
+                                                    /*bound*/ true);
                                             }
                                         }
                                     }
@@ -8405,6 +8510,7 @@ namespace winrt::TerminalApp::implementation
         }
 
         std::vector<ActionAndArgs> actions;
+        _AgentLayoutCounts agentCounts;
 
         for (auto tab : _tabs)
         {
@@ -8413,7 +8519,7 @@ namespace winrt::TerminalApp::implementation
             // identity out of the agent pane.
             _RefreshAgentRestoreIdentity(t);
             auto tabActions = t->BuildStartupActions(BuildStartupKind::Persist);
-            _StampAgentResumeCommandlines(tabActions);
+            agentCounts.Add(_StampAgentResumeCommandlines(tabActions));
             actions.insert(actions.end(), std::make_move_iterator(tabActions.begin()), std::make_move_iterator(tabActions.end()));
         }
 
@@ -8421,6 +8527,25 @@ namespace winrt::TerminalApp::implementation
         if (actions.empty())
         {
             return nullptr;
+        }
+
+        // Reported only when there is agent state to lose. Every save path
+        // funnels through here, including the five-minute crash-protection
+        // timer, so an unconditional event would be mostly windows that have
+        // never opened an agent pane.
+        if (agentCounts.Any())
+        {
+            TraceLoggingWrite(
+                g_hTerminalAppProvider,
+                "AgentLayoutSaved",
+                TraceLoggingDescription("Event emitted when a persisted window layout carries agent state"),
+                TraceLoggingValue(tabCount, "TabCount"),
+                TraceLoggingValue(agentCounts.agentPanes, "AgentPaneCount"),
+                TraceLoggingValue(agentCounts.stashedAgentPanes, "StashedAgentPaneCount"),
+                TraceLoggingValue(agentCounts.resumableShellPanes, "ResumableShellPaneCount"),
+                TraceLoggingValue(agentCounts.droppedBindings, "DroppedBindingCount"),
+                TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
+                TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage));
         }
 
         // if the focused tab was not the last tab, restore that
@@ -10192,6 +10317,18 @@ namespace winrt::TerminalApp::implementation
                 params["agent"] = winrt::to_string(target.agent);
                 params["cwd"] = winrt::to_string(newTerminalArgs.StartingDirectory());
                 _RaiseProtocolEvent("session_born_bound", params);
+
+                TraceLoggingWrite(
+                    g_hTerminalAppProvider,
+                    "AgentShellPaneResumed",
+                    TraceLoggingDescription("Event emitted when a restored shell pane relaunches its agent CLI to resume a conversation"),
+                    TraceLoggingValue(_SanitizeAgentIdForTelemetry(winrt::to_string(target.agent)), "Agent"),
+                    // Seeding the saved scrollback on top of the transcript
+                    // the CLI replays itself would show the conversation
+                    // twice, so this must always be true here.
+                    TraceLoggingBoolean(replaysItsOwnHistory, "BufferRestoreSuppressed"),
+                    TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
+                    TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage));
             }
         }
 

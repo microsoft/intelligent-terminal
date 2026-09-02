@@ -27,6 +27,11 @@ Terminal-specific events:
 | Event | Trigger | Fields |
 |---|---|---|
 | `AgentPaneOpened` | An agent pane is created, restored, or opened into a requested view. Closing or stashing the pane does not emit this event. | `TriggerSource`, `Branding` |
+| `AgentPaneRestoreCompleted` | A saved window layout describes an agent pane and Terminal finishes rebuilding it. | `Result`, `HasSessionId`, `HasAgentIdentity`, `IsCustomAgent`, `Stashed`, `View` (`chat` or `sessions`), `HasSavedPosition` |
+| `AgentPanePrewarmAfterStartup` | Pre-warm deferred for the duration of a startup replay is drained. Not emitted when nothing was deferred. | `DeferredTabCount`, `PrewarmedTabCount`, `SkippedTabCount` |
+| `AgentLayoutSaved` | A window layout carrying agent state is persisted. Saves with no agent panes and no resumable shell panes do not emit this event. | `TabCount`, `AgentPaneCount`, `StashedAgentPaneCount`, `ResumableShellPaneCount`, `DroppedBindingCount` |
+| `AgentSessionBindingChanged` | A shell pane gains or loses the agent session that makes it resumable. | `Source` (`HookProtocol` or `VtInBand`), `Agent`, `Bound` |
+| `AgentShellPaneResumed` | A restored shell pane relaunches its agent CLI to resume a conversation. | `Agent`, `BufferRestoreSuppressed` |
 | `CommandPaletteDispatchedAgentPrompt` | A foreground or background agent prompt is submitted through the Command Palette. | `IsBackgroundMode` |
 | `DelegateInvoked` | Terminal successfully launches `wta delegate`. | `TriggerSource` (`CommandPalette` or `Action`) |
 | `ErrorDetected` | Terminal receives the first auto-detected error state for a pane. | `Branding` |
@@ -34,6 +39,20 @@ Terminal-specific events:
 Current `AgentPaneOpened.TriggerSource` values are `Action`,
 `SessionsAction`, `Autofix`, `FirstRunExperience`, `AgentSwitch`,
 `BottomBarToggle`, `BottomBarSessions`, `SettingsReload`, and `FocusAction`.
+
+`AgentPaneRestoreCompleted.Result` is `Restored`, `BlockedByPolicy` (the
+saved agent is no longer permitted by the `AllowedAgents` policy, which the
+restore re-applies), or `Failed`.
+
+`AgentLayoutSaved.DroppedBindingCount` counts panes that held an agent
+session no resume command line could be spelled for; those panes come back
+as the plain shell they will be. `AgentShellPaneResumed.BufferRestoreSuppressed`
+is always true — a resumed pane's saved scrollback is deliberately not
+seeded, because the CLI replays its own transcript.
+
+No session identifier, command line, working directory, or session title is
+included in any of these events. `Agent` is reduced to the same controlled
+agent set used everywhere else, with `unknown` for an absent value.
 
 ### Provider: Microsoft.Windows.Terminal.Setting.Model
 
@@ -55,6 +74,12 @@ load:
 | `AgentPanePosition` | The controlled pane-position setting value |
 | `QuotaUsage` | `true` or `false` |
 | `VerticalTabs` | `true` or `false` |
+| `FirstWindowPreference` | `defaultProfile`, `persistedLayout`, or `persistedLayoutAndContent` |
+
+Restoring agent panes and agent CLI conversations after Terminal closes
+rides the saved window layout, so it is inert unless `FirstWindowPreference`
+is one of the two restore values. It is reported for that reason: without
+it there is no denominator to read agent restore rates against.
 
 ### Provider: Microsoft.Windows.Terminal.WTA
 
@@ -68,12 +93,21 @@ load:
 |---|---|---|
 | `AcpInitializeComplete` | An ACP `initialize` attempt completes or times out. | `DurationMs`, `Success`, `Route`, `FailureKind`, `AcpErrorCode` |
 | `AcpNewSessionComplete` | An ACP `session/new` attempt completes or times out. | `SessionId` (empty on failure), `DurationMs`, `Success`, `Route`, `FailureKind`, `AcpErrorCode` |
+| `AcpLoadSessionComplete` | An ACP `session/load` attempt completes or times out. Emitted once per attempt. | `SessionId`, `DurationMs`, `Success`, `Route` (`Restore` or `SessionView`), `FailureKind`, `AcpErrorCode` |
 | `AgentColdStartComplete` | A newly spawned agent process finishes or fails its ACP initialization. Warm process-pool reuse does not emit this event. | `AgentId`, `Source`, `DurationMs`, `Success`, `FailureKind` |
 
 ACP lifecycle durations use monotonic clocks. `FailureKind` is empty on success;
 ACP RPC failures use `AcpError` or `Timeout`. Cold-start failures use
 `SpawnFailed`, `InitializeFailed`, or `Timeout`. `AgentColdStartComplete.Source`
 is `Host` or `Wsl`.
+
+`AcpLoadSessionComplete` splits its failures further, because resume is the
+one flow where a single `AcpError` bucket would hide the interesting case:
+`ResourceNotFound` (the agent no longer has that session — what a stale
+persisted session id produces), `AuthRequired`, `Cancelled`, `Timeout`, or
+`AcpError` for anything else. Its `Route` says which flow asked:
+`Restore` for a pane rebuilt from a saved window layout, `SessionView` for a
+row the user activated in the Agent Session View.
 
 #### Agent turns and autofix
 
@@ -96,13 +130,33 @@ retained for schema compatibility.
 |---|---|---|
 | `SlashCommandInvoked` | WTA dispatches a registered slash command. | `CommandName`: `help`, `clear`, `new`, `fix`, `restart`, `stop`, `sessions`, `agent`, `model`, `config`, or `move` |
 | `SessionsViewOpened` | The Agent Session View is opened. | None |
-| `SessionResumeInvoked` | A resume operation is dispatched from Agent Session View. | `Route` (`AgentPane` for ACP `session/load`, or `Cli` for provider-native CLI resume), `AgentId` |
+| `SessionResumeInvoked` | A row in the Agent Session View is activated, whichever route applies. | `Route` (`AgentPane`, `Cli`, `Focus`, or `NotResumable`), `AgentId`, `NotResumableReason` |
+| `SessionResumeAbandoned` | A tab stops waiting for an in-flight `session/load` without that load completing. | `Reason` |
+| `AgentPaneResumeStarted` | A helper starts up carrying a session to restore, i.e. Terminal rebuilt this pane from a saved window layout. | `AgentId`, `View` (`chat` or `sessions`), `StartStashed` |
 | `DelegateInvoked` | An agent recommendation invokes the configured delegate through WTA. | `TriggerSource` (`Agent`) |
 | `SessionMcpToolCalled` | A session MCP function is invoked. | `ToolName`: `terminal_send`, `terminal_open`, `terminal_open_and_send`, `request_user_input`, or `unknown` |
 | `HookOperationCompleted` | Hook installation or uninstallation finishes for one supported CLI. | `Operation` (`Install` or `Uninstall`), `Cli` (`copilot`, `claude`, `gemini`, `codex`, or `opencode`), `Outcome` |
 
 Install outcomes are `installed`, `skipped`, or `failed`. Uninstall outcomes
 are `succeeded`, `skipped`, or `failed`.
+
+`SessionResumeInvoked.Route` is `AgentPane` for ACP `session/load`, `Cli` for
+a provider-native CLI resume, `Focus` for a session that is still live (the
+row focuses its existing pane), and `NotResumable` when no route applies.
+`NotResumableReason` is empty except in the last case, where it is
+`LiveWithoutPane`, `LoadSessionNotSupported`, `CliHasNoResumeFlag`, or
+`UnknownCli` — the four dead ends a user can hit.
+
+`SessionResumeAbandoned.Reason` names the lifecycle event that ended the
+wait — `AgentRebind`, `NewSession`, `ResetAgent`, `MasterRestart`, or
+`PaneClosed` — rather than collapsing them into one generic failure, since
+they are indistinguishable to the user: the pane says "Resuming session …"
+and then comes back as a cold start.
+
+`AgentPaneResumeStarted` pairs with the C++ `AgentPaneRestoreCompleted`.
+Terminal counts the panes it restored and WTA counts the ones whose helper
+actually received the request, so the gap between them is the handoff loss
+that neither side can see alone.
 
 This document enumerates every **true telemetry event** in the Windows Terminal codebase under `src\` — i.e., every `TraceLoggingWrite(...)` call site whose argument list contains one of the Microsoft telemetry keywords (`MICROSOFT_KEYWORD_MEASURES`, `MICROSOFT_KEYWORD_TELEMETRY`, or `MICROSOFT_KEYWORD_CRITICAL_DATA`) and is therefore reported to Microsoft.
 

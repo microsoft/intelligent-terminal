@@ -293,6 +293,32 @@ pub struct LoadSessionForTab {
     /// Working directory to associate with the loaded session. When
     /// `None`, falls back to the process-wide `current_dir()`.
     pub cwd: Option<String>,
+    /// Which flow asked for this resume, for telemetry only. `Restore`
+    /// is a pane rebuilt from a saved window layout (the helper was
+    /// spawned with `--initial-load-session-id`); `SessionView` is the
+    /// user activating a row in the session view. Never used for
+    /// routing — the two paths are deliberately identical past this
+    /// point.
+    pub route: LoadSessionRoute,
+}
+
+/// The flow that requested a `session/load`. Telemetry only.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum LoadSessionRoute {
+    /// The user activated a row in the session view.
+    #[default]
+    SessionView,
+    /// Terminal rebuilt this agent pane from a saved window layout.
+    Restore,
+}
+
+impl LoadSessionRoute {
+    pub fn label(self) -> &'static str {
+        match self {
+            LoadSessionRoute::SessionView => "SessionView",
+            LoadSessionRoute::Restore => "Restore",
+        }
+    }
 }
 
 /// Drop the ACP session binding for a tab WITHOUT immediately creating a
@@ -2389,6 +2415,35 @@ fn timeout_result_failure_fields<T>(
     }
 }
 
+/// Failure fields for a `session/load` attempt.
+///
+/// A refinement of [`acp_result_failure_fields`]: resume is the one flow
+/// where lumping every agent error under `AcpError` would hide the
+/// interesting case, because an expired or agent-mismatched session id
+/// comes back as `ResourceNotFound` and is the failure a stale persisted
+/// layout actually produces. Classification goes through
+/// [`AgentFailure::from_acp_error`], which matches ACP error codes rather
+/// than message text.
+fn load_session_failure_fields<T>(
+    result: &std::result::Result<acp::Result<T>, tokio::time::error::Elapsed>,
+) -> (&'static str, i32) {
+    use crate::protocol::acp::failure::AgentFailure;
+
+    let err = match result {
+        Ok(Ok(_)) => return ("", 0),
+        Ok(Err(e)) => e,
+        Err(_) => return ("Timeout", 0),
+    };
+    let code: i32 = err.code.into();
+    let kind = match AgentFailure::from_acp_error(err) {
+        AgentFailure::ResourceGone { .. } => "ResourceNotFound",
+        AgentFailure::AuthRequired { .. } => "AuthRequired",
+        AgentFailure::Cancelled => "Cancelled",
+        _ => "AcpError",
+    };
+    (kind, code)
+}
+
 fn log_acp_initialize_timeout_result(
     route: &str,
     started: std::time::Instant,
@@ -3898,7 +3953,23 @@ fn dispatch_load_session(
         // `session/load` may replay history before returning, so on large
         // session stores the call can take a while; the timeout ceiling
         // keeps us from hanging forever if the agent never responds.
+        let load_started = std::time::Instant::now();
         let load_result = tokio::time::timeout(timeout, conn.load_session(load_req)).await;
+
+        // Emitted here rather than per-branch so exactly one event covers
+        // every attempt, including the "retired" success below that
+        // returns early.
+        {
+            let (failure_kind, acp_error_code) = load_session_failure_fields(&load_result);
+            crate::telemetry::log_acp_load_session_complete(
+                &req.session_id,
+                elapsed_ms_since(load_started),
+                matches!(load_result, Ok(Ok(_))),
+                req.route.label(),
+                failure_kind,
+                acp_error_code,
+            );
+        }
 
         match load_result {
             Ok(Ok(mut resp)) => {
@@ -4721,11 +4792,11 @@ mod tests {
     use super::{
         acp_error_detail, acp_result_failure_fields, bounded_tool_output_parts,
         claim_unexpected_transport_loss, complete_prompt_request, complete_transport_shutdown,
-        inject_wta_pane_meta, is_redundant_startup_model_error, post_login_authenticate_error,
-        session_mcp_tool_from_title, stop_prompt_tasks, timeout_result_failure_fields,
-        tool_call_exit_code, tool_call_kind_label, tool_call_location_hint, tool_call_target,
-        AcpClientExit, ClientState, PromptTimingState, PromptUsageIdentity, SessionMcpTool,
-        SoftStopReason, WtaClient,
+        inject_wta_pane_meta, is_redundant_startup_model_error, load_session_failure_fields,
+        post_login_authenticate_error, session_mcp_tool_from_title, stop_prompt_tasks,
+        timeout_result_failure_fields, tool_call_exit_code, tool_call_kind_label,
+        tool_call_location_hint, tool_call_target, AcpClientExit, ClientState, PromptTimingState,
+        PromptUsageIdentity, SessionMcpTool, SoftStopReason, WtaClient,
     };
     use crate::app_contracts::AppEvent;
     use crate::protocol::acp::failure::{AgentFailure, HandshakeStage};
@@ -5857,6 +5928,45 @@ mod tests {
 
         let err: acp::Result<()> = Err(acp::Error::new(-32603, "boom"));
         assert_eq!(acp_result_failure_fields(&err), ("AcpError", -32603));
+    }
+
+    /// `load_session_failure_fields` splits the resume outcomes apart:
+    /// `ResourceNotFound` (the agent no longer has the session — what a
+    /// stale persisted session id produces) must not be lumped in with
+    /// every other agent error under `AcpError`, or the headline resume
+    /// failure becomes invisible.
+    #[tokio::test]
+    async fn load_session_failure_fields_separates_resource_not_found() {
+        let ok: Result<acp::Result<()>, tokio::time::error::Elapsed> = Ok(Ok(()));
+        assert_eq!(load_session_failure_fields(&ok), ("", 0));
+
+        let gone: Result<acp::Result<()>, tokio::time::error::Elapsed> =
+            Ok(Err(acp::Error::new(-32002, "session gone")));
+        assert_eq!(
+            load_session_failure_fields(&gone),
+            ("ResourceNotFound", -32002)
+        );
+
+        let auth: Result<acp::Result<()>, tokio::time::error::Elapsed> =
+            Ok(Err(acp::Error::new(-32000, "sign in")));
+        assert_eq!(load_session_failure_fields(&auth), ("AuthRequired", -32000));
+
+        let cancelled: Result<acp::Result<()>, tokio::time::error::Elapsed> =
+            Ok(Err(acp::Error::new(-32800, "cancelled")));
+        assert_eq!(
+            load_session_failure_fields(&cancelled),
+            ("Cancelled", -32800)
+        );
+
+        let other: Result<acp::Result<()>, tokio::time::error::Elapsed> =
+            Ok(Err(acp::Error::new(-32603, "boom")));
+        assert_eq!(load_session_failure_fields(&other), ("AcpError", -32603));
+
+        let elapsed = tokio::time::timeout(std::time::Duration::ZERO, std::future::pending::<()>())
+            .await
+            .expect_err("a zero-duration timeout over a pending future must elapse");
+        let timed_out: Result<acp::Result<()>, tokio::time::error::Elapsed> = Err(elapsed);
+        assert_eq!(load_session_failure_fields(&timed_out), ("Timeout", 0));
     }
 
     /// `timeout_result_failure_fields` forwards the inner ACP result when the

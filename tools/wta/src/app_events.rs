@@ -2479,6 +2479,14 @@ impl App {
                         tab_id: tab_id.to_string(),
                         session_id: session_id.to_string(),
                         cwd,
+                        // Only the boot-time restore path stamps this;
+                        // a resume driven from the session view (or any
+                        // other WT broadcast) is the default.
+                        route: if params.get("route").and_then(|v| v.as_str()) == Some("restore") {
+                            crate::protocol::acp::client::LoadSessionRoute::Restore
+                        } else {
+                            crate::protocol::acp::client::LoadSessionRoute::SessionView
+                        },
                     };
                     // Remember it: if the ACP client dies before consuming
                     // this, `load_session_rx` is dropped with the request

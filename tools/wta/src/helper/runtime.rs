@@ -1109,12 +1109,27 @@ async fn run_acp_app(
                                 "session_id".to_string(),
                                 serde_json::Value::String(sid.clone()),
                             );
+                            // Marks this as a durable-session restore rather
+                            // than a session-view resume. Telemetry only —
+                            // the handler treats both identically.
+                            params.insert(
+                                "route".to_string(),
+                                serde_json::Value::String("restore".to_string()),
+                            );
                             if let Some(cwd_str) = cwd {
                                 params.insert(
                                     "cwd".to_string(),
                                     serde_json::Value::String(cwd_str),
                                 );
                             }
+                            crate::telemetry::log_agent_pane_resume_started(
+                                &config.agent_id.clone().unwrap_or_else(|| {
+                                    crate::agent_registry::resolve_agent_id_from_cmd(&config.agent)
+                                        .to_string()
+                                }),
+                                config.initial_view.label(),
+                                config.start_stashed,
+                            );
                             let _ = event_tx.send(app::AppEvent::WtEvent {
                                 method: "load_session".to_string(),
                                 pane_id: String::new(),

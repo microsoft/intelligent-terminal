@@ -31,3 +31,13 @@ pub(crate) enum InitialView {
     Chat,
     Sessions,
 }
+
+impl InitialView {
+    /// Stable label for structured logging and telemetry.
+    pub(crate) fn label(self) -> &'static str {
+        match self {
+            InitialView::Chat => "chat",
+            InitialView::Sessions => "sessions",
+        }
+    }
+}
