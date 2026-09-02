@@ -72,7 +72,7 @@ namespace Microsoft::Terminal::Settings::Model::AgentPolicy
     // ── Private implementation details ──────────────────────────────────
 
     inline constexpr wchar_t PolicyRegKey[] = LR"(Software\Policies\Microsoft\IntelligentTerminal)";
-    inline constexpr wchar_t PolicyWatchRegKey[] = LR"(Software\Policies\Microsoft)";
+    inline constexpr std::wstring_view PolicyWatchRegKey{ PolicyRegKey };
 
     namespace details
     {

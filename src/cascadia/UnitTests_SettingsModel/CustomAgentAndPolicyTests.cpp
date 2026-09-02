@@ -92,6 +92,7 @@ namespace SettingsModelUnitTests
         TEST_METHOD(EffectiveAgentPaneYoloModeFalseWhenPolicyBlocked);
         TEST_METHOD(IsYoloModePolicyLockedTracksBlocked);
         TEST_METHOD(YoloSettingsNoticeRequiresInstalledSelectedProviderAndEnabledPreference);
+        TEST_METHOD(PolicyChangeWatcherTargetsProductKey);
         TEST_METHOD(PolicyChangeWatcherObservesRecursiveMutation);
         TEST_METHOD(PolicyChangeWatcherTracksPolicyCreatedFromMissingAncestors);
 
@@ -781,6 +782,13 @@ namespace SettingsModelUnitTests
 
         VERIFY_ARE_EQUAL(WAIT_OBJECT_0, WaitForSingleObject(changed.get(), 5000));
         VERIFY_IS_GREATER_THAN_OR_EQUAL(callbackCount.load(std::memory_order_relaxed), 1u);
+    }
+
+    void CustomAgentAndPolicyTests::PolicyChangeWatcherTargetsProductKey()
+    {
+        VERIFY_ARE_EQUAL(
+            std::wstring_view{ AgentPolicy::PolicyRegKey },
+            std::wstring_view{ AgentPolicy::PolicyWatchRegKey });
     }
 
     void CustomAgentAndPolicyTests::PolicyChangeWatcherTracksPolicyCreatedFromMissingAncestors()
