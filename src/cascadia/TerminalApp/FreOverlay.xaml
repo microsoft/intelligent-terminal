@@ -289,6 +289,32 @@
                             </Grid>
                         </Border>
 
+                        <!--  Pane position  -->
+                        <Border Background="{ThemeResource ExpanderHeaderBackground}"
+                                BorderBrush="{ThemeResource ExpanderHeaderBorderBrush}"
+                                BorderThickness="{ThemeResource ExpanderHeaderBorderThickness}"
+                                CornerRadius="{ThemeResource ControlCornerRadius}"
+                                MinHeight="64"
+                                Padding="16,12">
+                            <Grid ColumnSpacing="24">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0" Spacing="2">
+                                    <TextBlock x:Uid="FreOverlay_PanePositionLabel"
+                                               FontSize="14" FontWeight="SemiBold"
+                                               Foreground="White" />
+                                    <TextBlock x:Uid="FreOverlay_PanePositionDescription"
+                                               FontSize="12" Foreground="#99FFFFFF"
+                                               TextWrapping="Wrap" />
+                                </StackPanel>
+                                <ComboBox x:Name="PanePositionComboBox" Grid.Column="1"
+                                          MinWidth="120"
+                                          VerticalAlignment="Center" />
+                            </Grid>
+                        </Border>
+
                         <!--  Error detection  -->
                         <Border Background="{ThemeResource ExpanderHeaderBackground}"
                                 BorderBrush="{ThemeResource ExpanderHeaderBorderBrush}"
@@ -432,32 +458,6 @@
                                            Visibility="Collapsed"
                                            AutomationProperties.LiveSetting="Polite" />
                             </StackPanel>
-                        </Border>
-
-                        <!--  Pane position  -->
-                        <Border Background="{ThemeResource ExpanderHeaderBackground}"
-                                BorderBrush="{ThemeResource ExpanderHeaderBorderBrush}"
-                                BorderThickness="{ThemeResource ExpanderHeaderBorderThickness}"
-                                CornerRadius="{ThemeResource ControlCornerRadius}"
-                                MinHeight="64"
-                                Padding="16,12">
-                            <Grid ColumnSpacing="24">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="Auto" />
-                                </Grid.ColumnDefinitions>
-                                <StackPanel Grid.Column="0" Spacing="2">
-                                    <TextBlock x:Uid="FreOverlay_PanePositionLabel"
-                                               FontSize="14" FontWeight="SemiBold"
-                                               Foreground="White" />
-                                    <TextBlock x:Uid="FreOverlay_PanePositionDescription"
-                                               FontSize="12" Foreground="#99FFFFFF"
-                                               TextWrapping="Wrap" />
-                                </StackPanel>
-                                <ComboBox x:Name="PanePositionComboBox" Grid.Column="1"
-                                          MinWidth="120"
-                                          VerticalAlignment="Center" />
-                            </Grid>
                         </Border>
 
                         <!--  Usage and cost visibility  -->
