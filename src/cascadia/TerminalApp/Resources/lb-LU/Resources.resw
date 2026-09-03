@@ -57,12 +57,33 @@
     <value>Dësen Agent brauch Node.js an NPX, déi automatesch installéiert ginn wa se nach net do sinn.</value>
     <comment>{Locked="Node.js","NPX"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
-  <data name="FreOverlay_AutoErrorLabel.Text" xml:space="preserve">
-    <value>Automatesche Feelervirschlag</value>
+  <data name="FreOverlay_AutoErrorHandlingLabel.Text" xml:space="preserve">
+    <value>Automatesch Feelerbehandlung</value>
+    <comment>Label for the Auto error handling dropdown in the first-run wizard.</comment>
   </data>
-  <data name="FreOverlay_AutoErrorDescription.Text" xml:space="preserve">
-    <value>Erlaabt Intelligent Terminal Feeler un Ären Agent ze schécken fir automatesch Korrekturen virzeschloen.</value>
-    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
+  <data name="FreOverlay_AutoErrorHandlingDescription.Text" xml:space="preserve">
+    <value>Wielt wéi Terminalfehler gehandhabt ginn.</value>
+    <comment>Description for the Auto error handling dropdown in the first-run wizard.</comment>
+  </data>
+  <data name="FreOverlay_AutoErrorHandlingShellIntegrationHintPrefix" xml:space="preserve">
+    <value>Dëst z'aktivéieren installéiert Shell-Integratioun fir Commande-Feeler z'erkennen. Disponibel an PowerShell, bash an WSL bash. </value>
+    <comment>{Locked="PowerShell","bash","WSL bash"} Hint shown under the Auto error handling dropdown in the first-run wizard. The trailing space is intentional — it separates this prefix from the inline FreOverlay_AutoErrorHandlingShellIntegrationHintLink hyperlink that follows.</comment>
+  </data>
+  <data name="FreOverlay_AutoErrorHandlingShellIntegrationHintLink" xml:space="preserve">
+    <value>All ënnerstëtzt Shells uweisen</value>
+    <comment>Inline hyperlink text that follows FreOverlay_AutoErrorHandlingShellIntegrationHintPrefix and opens the documentation listing every shell that supports Auto error handling.</comment>
+  </data>
+  <data name="FreOverlay_AutoErrorHandling_Off" xml:space="preserve">
+    <value>Aus</value>
+    <comment>The first option in the Auto error handling dropdown. It disables automatic terminal error detection and fixes.</comment>
+  </data>
+  <data name="FreOverlay_AutoErrorHandling_DetectErrorsAutomatically" xml:space="preserve">
+    <value>Feeler automatesch erkennen</value>
+    <comment>The second option in the Auto error handling dropdown. It detects terminal errors automatically without sending them to an AI agent. Here "agent" means an AI intelligent agent, not a proxy or human agent.</comment>
+  </data>
+  <data name="FreOverlay_AutoErrorHandling_DetectErrorsAndSendToAgentForFixesAutomatically" xml:space="preserve">
+    <value>Erkennt Feeler a schéckt se automatesch un den AI-Agent fir Korrekturen</value>
+    <comment>The third option in the Auto error handling dropdown. It detects terminal errors and sends them to an AI agent for automatic fixes. Here "agent" means an AI intelligent agent, not a proxy or human agent.</comment>
   </data>
   <data name="FreOverlay_SessionLabel.Text" xml:space="preserve">
     <value>Sëtzungs-Gestioun</value>
@@ -227,12 +248,6 @@
     <value>Terminal Protocol</value>
     <comment>Title for the teaching tip that displays Terminal Protocol connection information. {Locked="Terminal Protocol"}</comment>
   </data>
-  <data name="FreOverlay_AutoDetectLabel.Text" xml:space="preserve">
-    <value>Automatesch Feelererkennung</value>
-  </data>
-  <data name="FreOverlay_AutoDetectDescription.Text" xml:space="preserve">
-    <value>Erlaabt Intelligent Terminal Zougrëff op Är Shell an d'Feeler automatesch z'erkennen.</value>
-  </data>
 <data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
     <value>D'Shell-Integratioun konnt net installéiert ginn. D'Feelerkennung gouf ausgeschalt. Dir kënnt se nees aktivéieren a nach eng Kéier probéieren, oder späicheren fir ouni se weiderzefueren.</value>
   </data><data name="FreOverlay_InstallErrorHooks" xml:space="preserve">
@@ -241,19 +256,13 @@
   </data><data name="FreOverlay_ErrorHelpLink" xml:space="preserve">
     <value>Léiert wéi Dir dëst manuell behieft</value>
     <comment>Hyperlink shown below an FRE setup error message. Opens step-by-step manual setup instructions in the browser.</comment>
-  </data>  <data name="FreOverlay_AutoDetectShellIntegrationHintPrefix" xml:space="preserve">
-    <value>Dëst z'aktivéieren installéiert Shell-Integratioun fir Commande-Feeler z'erkennen. </value>
-  </data>
-  <data name="FreOverlay_AutoDetectShellIntegrationHintLink" xml:space="preserve">
-    <value>Méi erfahren</value>
-  </data>
-  <data name="InitShellIntegrationExecutionPolicyErrorMessage" xml:space="preserve">
+  </data>  <data name="InitShellIntegrationExecutionPolicyErrorMessage" xml:space="preserve">
     <value>D'PowerShell-Ausféierungspolitik blockéiert Scripten.</value>
     <comment>Body of an error dialog shown after the user tries to install PowerShell shell integration but their PowerShell execution policy (Restricted or AllSigned) is blocking scripts. A separate "Learn how to fix this manually" hyperlink (FreOverlay_ErrorHelpLink) is rendered on its own line below this sentence. {Locked="PowerShell"}</comment>
   </data>
   <data name="FreOverlay_InstallErrorShellIntegrationExecutionPolicy" xml:space="preserve">
-    <value>D'PowerShell-Ausféierungspolitik blockéiert Scripten. D'Feelerkennung ass ausgeschalt.</value>
-    <comment>{Locked="PowerShell"}</comment>
+    <value>D'PowerShell-Ausféierungspolitik blockéiert Scripten. D'Funktioun Auto error handling gouf ausgeschalt.</value>
+    <comment>{Locked="PowerShell","Auto error handling"} FRE setup error. PowerShell execution policy blocked scripts, so Auto error handling was turned off.</comment>
   </data>
   <data name="UsageGroup/[using:Windows.UI.Xaml.Automation]AutomationProperties/Name" xml:space="preserve"><value>Benotzung</value><comment>Accessibility name for the session usage summary in the terminal bottom bar.</comment></data>
   <data name="Usage_TokensUnit" xml:space="preserve"><value>Token</value><comment>Unit label for AI context-window token counts. Translate this term using the established AI/LLM terminology for the locale.</comment></data>

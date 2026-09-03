@@ -57,12 +57,33 @@
     <value>Agent ນີ້ຕ້ອງການ Node.js ແລະ NPX ຊຶ່ງຈະຖືກຕິດຕັ້ງໂດຍອັດຕະໂນມັດຫາກຍັງບໍ່ມີ.</value>
     <comment>{Locked="Node.js","NPX"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
-  <data name="FreOverlay_AutoErrorLabel.Text" xml:space="preserve">
-    <value>ການແນະນຳຂໍ້ຜິດພາດອັດຕະໂນມັດ</value>
+  <data name="FreOverlay_AutoErrorHandlingLabel.Text" xml:space="preserve">
+    <value>ການຈັດການຂໍ້ຜິດພາດອັດຕະໂນມັດ</value>
+    <comment>Label for the Auto error handling dropdown in the first-run wizard.</comment>
   </data>
-  <data name="FreOverlay_AutoErrorDescription.Text" xml:space="preserve">
-    <value>ອະນຸຍາດໃຫ້ Intelligent Terminal ສົ່ງຂໍ້ຜິດພາດໄປຫາຕົວແທນຂອງທ່ານເພື່ອແນະນຳການແກ້ໄຂໂດຍອັດຕະໂນມັດ.</value>
-    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
+  <data name="FreOverlay_AutoErrorHandlingDescription.Text" xml:space="preserve">
+    <value>ເລືອກວິທີຈັດການຂໍ້ຜິດພາດຂອງເທີມິນັລ.</value>
+    <comment>Description for the Auto error handling dropdown in the first-run wizard.</comment>
+  </data>
+  <data name="FreOverlay_AutoErrorHandlingShellIntegrationHintPrefix" xml:space="preserve">
+    <value>ການເປີດໃຊ້ນີ້ຈະຕິດຕັ້ງການເຊື່ອມຕໍ່ shell ເພື່ອກວດພົບຄຳສັ່ງທີ່ລົ້ມເຫຼວ. ພ້ອມໃຊ້ງານໃນ PowerShell, bash ແລະ WSL bash. </value>
+    <comment>{Locked="PowerShell","bash","WSL bash"} Hint shown under the Auto error handling dropdown in the first-run wizard. The trailing space is intentional — it separates this prefix from the inline FreOverlay_AutoErrorHandlingShellIntegrationHintLink hyperlink that follows.</comment>
+  </data>
+  <data name="FreOverlay_AutoErrorHandlingShellIntegrationHintLink" xml:space="preserve">
+    <value>ເບິ່ງ shell ທີ່ຮອງຮັບທັງໝົດ</value>
+    <comment>Inline hyperlink text that follows FreOverlay_AutoErrorHandlingShellIntegrationHintPrefix and opens the documentation listing every shell that supports Auto error handling.</comment>
+  </data>
+  <data name="FreOverlay_AutoErrorHandling_Off" xml:space="preserve">
+    <value>ປິດ</value>
+    <comment>The first option in the Auto error handling dropdown. It disables automatic terminal error detection and fixes.</comment>
+  </data>
+  <data name="FreOverlay_AutoErrorHandling_DetectErrorsAutomatically" xml:space="preserve">
+    <value>ກວດຫາຂໍ້ຜິດພາດໂດຍອັດຕະໂນມັດ</value>
+    <comment>The second option in the Auto error handling dropdown. It detects terminal errors automatically without sending them to an AI agent. Here "agent" means an AI intelligent agent, not a proxy or human agent.</comment>
+  </data>
+  <data name="FreOverlay_AutoErrorHandling_DetectErrorsAndSendToAgentForFixesAutomatically" xml:space="preserve">
+    <value>ກວດພົບຂໍ້ຜິດພາດແລະສົ່ງພວກມັນໄປຫາຕົວແທນ AI ເພື່ອແກ້ໄຂອັດຕະໂນມັດ</value>
+    <comment>The third option in the Auto error handling dropdown. It detects terminal errors and sends them to an AI agent for automatic fixes. Here "agent" means an AI intelligent agent, not a proxy or human agent.</comment>
   </data>
   <data name="FreOverlay_SessionLabel.Text" xml:space="preserve">
     <value>ການຈັດການພາກສ່ວນ</value>
@@ -159,12 +180,6 @@
   <data name="FreOverlay_ToggleOff" xml:space="preserve">
     <value>ປິດ</value>
   </data>
-  <data name="FreOverlay_AutoDetectLabel.Text" xml:space="preserve">
-    <value>ການກວດຫາຂໍ້ຜິດພາດອັດຕະໂນມັດ</value>
-  </data>
-  <data name="FreOverlay_AutoDetectDescription.Text" xml:space="preserve">
-    <value>ອະນຸຍາດໃຫ້ Intelligent Terminal ເຂົ້າເຖິງເຊລຂອງທ່ານ ແລະກວດຫາຂໍ້ຜິດພາດໂດຍອັດຕະໂນມັດ.</value>
-  </data>
 <data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
     <value>ການຕິດຕັ້ງ shell integration ລົ້ມເຫລວ. ການກວດຫາຂໍ້ຜິດພາດໄດ້ຖືກປິດແລ້ວ. ທ່ານສາມາດເປີດໃຊ້ງານມັນອີກຄັ້ງແລະລອງໃຫມ່, ຫຼືບັນທຶກເພື່ອສືບຕໍ່ໂດຍບໍ່ມີມັນ.</value>
   </data><data name="FreOverlay_InstallErrorHooks" xml:space="preserve">
@@ -173,19 +188,13 @@
   </data><data name="FreOverlay_ErrorHelpLink" xml:space="preserve">
     <value>ຮຽນຮູ້ວິທີແກ້ໄຂສິ່ງນີ້ດ້ວຍຕົນເອງ</value>
     <comment>Hyperlink shown below an FRE setup error message. Opens step-by-step manual setup instructions in the browser.</comment>
-  </data>  <data name="FreOverlay_AutoDetectShellIntegrationHintPrefix" xml:space="preserve">
-    <value>ການເປີດໃຊ້ນີ້ຈະຕິດຕັ້ງການເຊື່ອມຕໍ່ shell ເພື່ອກວດພົບຄຳສັ່ງທີ່ລົ້ມເຫຼວ. </value>
-  </data>
-  <data name="FreOverlay_AutoDetectShellIntegrationHintLink" xml:space="preserve">
-    <value>ຮຽນຮູ້ເພີ່ມເຕີມ</value>
-  </data>
-  <data name="InitShellIntegrationExecutionPolicyErrorMessage" xml:space="preserve">
+  </data>  <data name="InitShellIntegrationExecutionPolicyErrorMessage" xml:space="preserve">
     <value>ນະໂຍບາຍການດຳເນີນການຂອງ PowerShell ກໍາລັງບລັອກສະຄຣິບ.</value>
     <comment>Body of an error dialog shown after the user tries to install PowerShell shell integration but their PowerShell execution policy (Restricted or AllSigned) is blocking scripts. A separate "Learn how to fix this manually" hyperlink (FreOverlay_ErrorHelpLink) is rendered on its own line below this sentence. {Locked="PowerShell"}</comment>
   </data>
   <data name="FreOverlay_InstallErrorShellIntegrationExecutionPolicy" xml:space="preserve">
-    <value>ນະໂຍບາຍການດຳເນີນການຂອງ PowerShell ກໍາລັງບລັອກສະຄຣິບ. ການກວດຫາຂໍ້ຜິດພາດຖືກປິດແລ້ວ.</value>
-    <comment>{Locked="PowerShell"}</comment>
+    <value>ນະໂຍບາຍການດຳເນີນການຂອງ PowerShell ກໍາລັງບລັອກສະຄຣິບ. Auto error handling ໄດ້ຖືກປິດແລ້ວ.</value>
+    <comment>{Locked="PowerShell","Auto error handling"} FRE setup error. PowerShell execution policy blocked scripts, so Auto error handling was turned off.</comment>
   </data>
   <data name="UsageGroup/[using:Windows.UI.Xaml.Automation]AutomationProperties/Name" xml:space="preserve"><value>ການນຳໃຊ້</value><comment>Accessibility name for the session usage summary in the terminal bottom bar.</comment></data>
   <data name="Usage_TokensUnit" xml:space="preserve"><value>ໂທເຄັນ</value><comment>Unit label for AI context-window token counts. Translate this term using the established AI/LLM terminology for the locale.</comment></data>

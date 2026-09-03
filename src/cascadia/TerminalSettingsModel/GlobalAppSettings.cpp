@@ -31,6 +31,9 @@ static constexpr std::string_view LegacyWarnAboutLargePasteKey{ "largePasteWarni
 static constexpr std::string_view LegacyWarnAboutMultiLinePasteKey{ "multiLinePasteWarning" };
 static constexpr std::string_view LegacyConfirmCloseAllTabsKey{ "confirmCloseAllTabs" };
 static constexpr std::string_view LegacyPersistedWindowLayout{ "persistedWindowLayout" };
+static constexpr std::string_view AutoErrorHandlingKey{ "autoErrorHandling" };
+static constexpr std::string_view LegacyAutoErrorDetectionEnabledKey{ "autoErrorDetectionEnabled" };
+static constexpr std::string_view LegacyAutoFixEnabledKey{ "autoFixEnabled" };
 
 // Method Description:
 // - Copies any extraneous data from the parent before completing a CreateChild call
@@ -70,6 +73,8 @@ winrt::com_ptr<GlobalAppSettings> GlobalAppSettings::Copy() const
     globals->_##name = _##name;
     MTSM_GLOBAL_SETTINGS(GLOBAL_SETTINGS_COPY)
 #undef GLOBAL_SETTINGS_COPY
+
+    globals->_AutoErrorHandling = _AutoErrorHandling;
 
     if (_colorSchemes)
     {
@@ -194,6 +199,36 @@ void GlobalAppSettings::LayerJson(const Json::Value& json, const OriginTag origi
 
     MTSM_GLOBAL_SETTINGS(GLOBAL_SETTINGS_LAYER_JSON)
 #undef GLOBAL_SETTINGS_LAYER_JSON
+
+    JsonUtils::GetValueForKey(json, AutoErrorHandlingKey, _AutoErrorHandling);
+    _logSettingIfSet(AutoErrorHandlingKey, _AutoErrorHandling.has_value());
+
+    // Migrate the two legacy booleans to the single three-state setting.
+    // The canonical key wins when both formats occur in this layer. Across
+    // layers, normal precedence still applies, including an upper legacy
+    // setting overriding a canonical value inherited from a lower layer.
+    const bool hasAutoErrorHandling = json.isMember(AutoErrorHandlingKey.data());
+    const bool hasLegacyAutoErrorDetection = json.isMember(LegacyAutoErrorDetectionEnabledKey.data());
+    const bool hasLegacyAutoFix = json.isMember(LegacyAutoFixEnabledKey.data());
+    if (!hasAutoErrorHandling && (hasLegacyAutoErrorDetection || hasLegacyAutoFix))
+    {
+        std::optional<bool> legacyAutoErrorDetection;
+        std::optional<bool> legacyAutoFix;
+        JsonUtils::GetValueForKey(json, LegacyAutoErrorDetectionEnabledKey, legacyAutoErrorDetection);
+        JsonUtils::GetValueForKey(json, LegacyAutoFixEnabledKey, legacyAutoFix);
+
+        const auto inherited = AutoErrorHandling();
+        const bool detectsErrors = legacyAutoErrorDetection.value_or(inherited != AutoErrorHandling::Off);
+        const bool sendsErrorsToAgent = legacyAutoFix.value_or(inherited == AutoErrorHandling::DetectErrorsAndSendToAgentForFixesAutomatically);
+        _AutoErrorHandling = !detectsErrors ? AutoErrorHandling::Off :
+                             sendsErrorsToAgent ? AutoErrorHandling::DetectErrorsAndSendToAgentForFixesAutomatically :
+                                                  AutoErrorHandling::DetectErrorsAutomatically;
+        _fixupsAppliedDuringLoad = true;
+    }
+    if (hasLegacyAutoErrorDetection || hasLegacyAutoFix)
+    {
+        _fixupsAppliedDuringLoad = true;
+    }
 
     // GH#11975 We only want to allow sensible values and prevent crashes, so we are clamping those values
     // We only want to assign if the value did change through clamping,
@@ -364,6 +399,8 @@ Json::Value GlobalAppSettings::ToJson()
     JsonUtils::SetValueForKey(json, jsonKey, _##name);
     MTSM_GLOBAL_SETTINGS(GLOBAL_SETTINGS_TO_JSON)
 #undef GLOBAL_SETTINGS_TO_JSON
+
+    JsonUtils::SetValueForKey(json, AutoErrorHandlingKey, _AutoErrorHandling);
 
     json[JsonKey(ActionsKey)] = _actionMap->ToJson();
     json[JsonKey(KeybindingsKey)] = _actionMap->KeyBindingsToJson();
@@ -620,25 +657,23 @@ winrt::hstring GlobalAppSettings::EffectiveDelegateAgent() const
 
 bool GlobalAppSettings::EffectiveAutoErrorDetectionEnabled() const
 {
-    return AutoErrorDetectionEnabled();
+    return EffectiveAutoErrorHandling() != AutoErrorHandling::Off;
 }
 
 bool GlobalAppSettings::EffectiveAutoFixEnabled() const
 {
-    if (!AgentPolicy::IsAutoFixAllowed())
+    return EffectiveAutoErrorHandling() == AutoErrorHandling::DetectErrorsAndSendToAgentForFixesAutomatically;
+}
+
+winrt::Microsoft::Terminal::Settings::Model::AutoErrorHandling GlobalAppSettings::EffectiveAutoErrorHandling() const
+{
+    const auto configured = AutoErrorHandling();
+    if (configured == AutoErrorHandling::DetectErrorsAndSendToAgentForFixesAutomatically &&
+        !AgentPolicy::IsAutoFixAllowed())
     {
-        return false;
+        return AutoErrorHandling::DetectErrorsAutomatically;
     }
-    // Auto-suggest depends on detection: if errors aren't being detected,
-    // there is nothing to send to the agent, so suggestion is implicitly
-    // off too. This makes the dependency hold everywhere consumers read the
-    // effective value (WTA, bottom bar) regardless of the raw settings.json
-    // value or the FRE / settings-editor UI state.
-    if (!EffectiveAutoErrorDetectionEnabled())
-    {
-        return false;
-    }
-    return AutoFixEnabled();
+    return configured;
 }
 
 bool GlobalAppSettings::IsAgentPolicyLocked() const
@@ -652,6 +687,11 @@ bool GlobalAppSettings::IsCustomAgentPolicyLocked() const
 }
 
 bool GlobalAppSettings::IsAutoFixPolicyLocked() const
+{
+    return IsAutoErrorHandlingPolicyRestricted();
+}
+
+bool GlobalAppSettings::IsAutoErrorHandlingPolicyRestricted() const
 {
     return AgentPolicy::GetAutoFixPolicy() == AgentPolicy::PolicyState::Blocked;
 }
