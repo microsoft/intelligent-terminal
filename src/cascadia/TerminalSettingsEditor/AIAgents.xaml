@@ -32,6 +32,7 @@
                             x:Uid="AIAgents_CustomAgentRemove"
                             Margin="8,0,0,0"
                             Click="{x:Bind Remove}"
+                            Loaded="CustomAgentRemove_Loaded"
                             Style="{StaticResource ExtraSmallButtonStyle}"
                             Visibility="{x:Bind RemoveButtonVisibility, Mode=OneWay}">
                         <FontIcon FontSize="12"

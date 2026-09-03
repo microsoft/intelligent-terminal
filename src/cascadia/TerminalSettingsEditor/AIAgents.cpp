@@ -11,6 +11,7 @@
 using namespace winrt::Windows::UI::Xaml;
 using namespace winrt::Windows::UI::Xaml::Controls;
 using namespace winrt::Windows::UI::Xaml::Documents;
+using namespace winrt::Windows::UI::Xaml::Media;
 using namespace winrt::Windows::UI::Xaml::Navigation;
 using namespace winrt::Microsoft::Terminal::Settings::Model;
 
@@ -50,6 +51,26 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         }
 
         Automation::AutomationProperties::SetName(AcpAgent(), agentHeader);
+    }
+
+    void AIAgents::CustomAgentRemove_Loaded(
+        const IInspectable& sender,
+        const RoutedEventArgs&)
+    {
+        const auto button = sender.as<Button>();
+        for (auto parent = VisualTreeHelper::GetParent(button);
+             parent;
+             parent = VisualTreeHelper::GetParent(parent))
+        {
+            if (parent.try_as<ComboBoxItem>())
+            {
+                return;
+            }
+        }
+
+        // ComboBox uses the same ItemTemplate for the collapsed selection.
+        // Keep removal available only on entries inside the expanded list.
+        button.Visibility(Visibility::Collapsed);
     }
 
     void AIAgents::OnNavigatedTo(const NavigationEventArgs& e)
