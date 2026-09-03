@@ -153,7 +153,8 @@
 
             <!-- Button 2: Diagnostics / Warning — clickable once a fix is armed.
                  Starts Collapsed: the group only appears while the active tab
-                 has a connected helper and an error to report. -->
+                 has error detection enabled, a connected helper, and an error
+                 to report. -->
             <StackPanel x:Name="DiagnosticsGroup"
                         Grid.Column="1"
                         Orientation="Horizontal"

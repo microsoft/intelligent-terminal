@@ -128,8 +128,8 @@ namespace winrt::TerminalApp::implementation
         // Accessors for state that the window-level bottom bar projects.
         AutofixState GetAutofixState() const noexcept { return _autofixState; }
         // True once the helper's ACP session has reached Connected (driven
-        // by the `agent_status` `state` field via UpdateAgentStatus). The
-        // One gate for the bottom-bar diagnostics group: no autofix
+        // by the `agent_status` `state` field via UpdateAgentStatus). This is
+        // one gate for the bottom-bar diagnostics group: no autofix
         // capability exists before connect (cold start) or after a
         // failure/disconnect. An actionable autofix state is also required.
         bool IsAgentConnected() const noexcept { return _agentState == L"connected"; }
