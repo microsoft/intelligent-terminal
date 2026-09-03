@@ -1,7 +1,7 @@
 use super::{
-    available_or_missing, config_action, config_channel, finish_supported_action, mode_action,
-    mode_channel, observe_mode, ConfigSpec, DiscoveryInput, ModeSpec, NativeYoloAction,
-    NativeYoloProvider, ProviderSessionState,
+    available_or_missing, config_action, config_channel, find_config_control,
+    finish_supported_action, mode_action, mode_channel, observe_mode, ConfigSpec, DiscoveryInput,
+    ModeSpec, NativeConfigControl, NativeYoloAction, NativeYoloProvider, ProviderSessionState,
 };
 
 const CONFIG: ConfigSpec = ConfigSpec {
@@ -9,6 +9,7 @@ const CONFIG: ConfigSpec = ConfigSpec {
     category: "mode",
     enable_value: "agent-full-access",
     default_restore_value: "agent",
+    require_default_restore_value: false,
 };
 
 const MODE: ModeSpec = ModeSpec {
@@ -47,6 +48,13 @@ impl NativeYoloProvider for CodexYoloProvider {
         previous: &ProviderSessionState,
     ) -> super::ChannelDiscovery {
         config_channel(Some(config_options), CONFIG, Some(previous))
+    }
+
+    fn config_control(
+        &self,
+        config_options: Option<&[agent_client_protocol::schema::v1::SessionConfigOption]>,
+    ) -> Option<NativeConfigControl> {
+        find_config_control(config_options, CONFIG)
     }
 
     fn observe_current_mode(&self, state: &mut ProviderSessionState, current_mode_id: &str) {

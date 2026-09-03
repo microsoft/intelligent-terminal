@@ -171,11 +171,14 @@ regression that can report `allow_all=off` while executing tools without
 `session/request_permission`
 ([github/copilot-cli#4537](https://github.com/github/copilot-cli/issues/4537)).
 The helper records the master-attested Copilot version and blocks every prompt
-producer while effective Yolo is off for that open-ended affected range.
-Versions `1.0.81-0` and earlier retain the normal permission path. Explicitly
-enabling Yolo still permits prompts because the user selected the provider's
-unattended mode. A future version must pass the live denied-permission probe
-before the affected range is bounded.
+producer when that exact session has acknowledged `allow_all=off` for the
+open-ended affected range. This includes a manual `/config` selection that
+differs from the global default. A missing or unsupported capability retains
+the provider's normal interactive path. Versions `1.0.81-0` and earlier retain
+the normal permission path. A session that acknowledges `allow_all=on` still
+permits prompts because the user selected the provider's unattended mode. A
+future version must pass the live denied-permission probe before the affected
+range is bounded.
 
 Operations are serialized per session and fenced by lifecycle generation. A
 newer desired operation supersedes an older one; stale completions cannot
@@ -231,6 +234,12 @@ and mode updates refresh the captured state. A fresh session that lacks a
 capability can safely remain off. A loaded or previously privileged session
 that cannot prove restoration fails closed.
 
+When an authoritative config update removes a recognized privileged selector,
+the current `/config` publication removes it as well. The helper retains only
+its session-scoped control identity until teardown so a stale UI selection
+cannot fall through the generic config path and bypass `AllowYoloMode`; the
+removed selector is not treated as a valid reversible capability.
+
 ## Permission and terminal-action boundaries
 
 Ordinary `session/request_permission` requests always enter the normal
@@ -254,9 +263,9 @@ defense in depth, not authorization. See `doc/security-model.md`.
   ACP session capability is implemented.
 - Gemini has no per-session WTA control because its current adapter advertises
   a mode but no corresponding config option.
-- Copilot CLI `1.0.81-1` and later remain usable only when Yolo is explicitly
-  enabled until the upstream ACP permission regression is fixed and a release
-  passes the denied-permission probe.
+- Copilot CLI `1.0.81-1` and later block prompts whenever the exact session
+  acknowledges `allow_all=off`, until the upstream ACP permission regression
+  is fixed and a release passes the denied-permission probe.
 - Provider mode semantics and managed restrictions remain provider-owned.
 - WTA does not continuously poll for changes made by another actor; the next
   config update, reconciliation, or replacement session refreshes state.

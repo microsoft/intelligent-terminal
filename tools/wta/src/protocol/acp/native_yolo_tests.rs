@@ -33,6 +33,31 @@ fn discover(agent_id: &str, response: &str, enabled: bool) -> Result<NativeYoloA
     state.action_for(&session_id, enabled)
 }
 
+fn record_copilot_yolo_state(
+    state: &NativeYoloState,
+    session_id: &str,
+    current_value: &str,
+) -> acp::schema::v1::SessionId {
+    let response: acp::schema::v1::NewSessionResponse = serde_json::from_value(serde_json::json!({
+        "sessionId": session_id,
+        "configOptions": [{
+            "id": "allow_all",
+            "name": "Allow All",
+            "category": "permissions",
+            "type": "select",
+            "currentValue": current_value,
+            "options": [
+                {"value": "on", "name": "On"},
+                {"value": "off", "name": "Off"}
+            ]
+        }]
+    }))
+    .unwrap();
+    let session_id = response.session_id.clone();
+    state.record_from_new_session(&response);
+    session_id
+}
+
 fn spawn_apply_mock(
     actions: Arc<Mutex<Vec<NativeYoloAction>>>,
     config_barrier: Option<ConfigApplyBarrier>,
@@ -245,13 +270,74 @@ fn discovers_copilot_allow_all_config_and_restore_value() {
 }
 
 #[test]
+fn config_discovery_skips_non_select_duplicate_before_valid_selector() {
+    let response = r#"{
+        "sessionId": "copilot-duplicate-selector",
+        "configOptions": [{
+            "id": "allow_all",
+            "name": "Allow All",
+            "category": "permissions",
+            "type": "boolean",
+            "currentValue": false
+        }, {
+            "id": "allow_all",
+            "name": "Allow All",
+            "category": "permissions",
+            "type": "select",
+            "currentValue": "off",
+            "options": [
+                {"value": "on", "name": "On"},
+                {"value": "off", "name": "Off"}
+            ]
+        }]
+    }"#;
+
+    assert_eq!(
+        discover(crate::agent_registry::COPILOT_AGENT_ID, response, true),
+        Ok(NativeYoloAction::SetConfigOption {
+            config_id: "allow_all".to_string(),
+            value: "on".to_string(),
+        })
+    );
+}
+
+#[test]
+fn copilot_selector_requires_advertised_off_value() {
+    let response = r#"{
+        "sessionId": "copilot-missing-off",
+        "configOptions": [{
+            "id": "allow_all",
+            "name": "Allow All",
+            "category": "permissions",
+            "type": "select",
+            "currentValue": "ask",
+            "options": [
+                {"value": "on", "name": "On"},
+                {"value": "ask", "name": "Ask"}
+            ]
+        }]
+    }"#;
+
+    assert!(
+        discover(crate::agent_registry::COPILOT_AGENT_ID, response, true).is_err(),
+        "Copilot native Yolo must require its exact advertised on/off contract"
+    );
+    assert_eq!(
+        discover(crate::agent_registry::COPILOT_AGENT_ID, response, false),
+        Ok(NativeYoloAction::Noop),
+        "a fresh session without the exact contract can remain on its provider default"
+    );
+}
+
+#[test]
 fn copilot_permission_regression_version_boundary_is_fail_closed() {
     let state = NativeYoloState::new();
 
     for version in ["1.0.80", "1.0.81-0"] {
         state.set_resolved_agent(Some(crate::agent_registry::COPILOT_AGENT_ID), Some(version));
+        let session_id = record_copilot_yolo_state(&state, version, "off");
         assert_eq!(
-            state.disabled_prompt_block_reason(),
+            state.disabled_prompt_block_reason(&session_id),
             None,
             "version {version} predates the ACP permission regression"
         );
@@ -259,22 +345,24 @@ fn copilot_permission_regression_version_boundary_is_fail_closed() {
 
     for version in ["1.0.81-1", "1.0.81", "1.0.82", "1.0.83-3", "invalid"] {
         state.set_resolved_agent(Some(crate::agent_registry::COPILOT_AGENT_ID), Some(version));
+        let session_id = record_copilot_yolo_state(&state, version, "off");
         let reason = state
-            .disabled_prompt_block_reason()
+            .disabled_prompt_block_reason(&session_id)
             .unwrap_or_else(|| panic!("version {version} must fail closed"));
         assert!(reason.contains(version));
         assert!(reason.contains("github/copilot-cli#4537"));
     }
 
     state.set_resolved_agent(Some(crate::agent_registry::COPILOT_AGENT_ID), None);
+    let session_id = record_copilot_yolo_state(&state, "unknown-version", "off");
     assert!(
-        state.disabled_prompt_block_reason().is_some(),
+        state.disabled_prompt_block_reason(&session_id).is_some(),
         "an unparseable or absent Copilot version cannot attest permission enforcement"
     );
 
     state.set_resolved_agent(Some(crate::agent_registry::CLAUDE_AGENT_ID), Some("1.0.82"));
     assert_eq!(
-        state.disabled_prompt_block_reason(),
+        state.disabled_prompt_block_reason(&session_id),
         None,
         "the Copilot regression must not affect other providers"
     );
@@ -749,7 +837,10 @@ fn config_update_removing_native_yolo_invalidates_stale_config_channel() {
 
         assert!(matches!(
             state.sessions.read().unwrap().get(&session_id),
-            Some(ProviderSessionState::MissingCapability { loaded: true })
+            Some(TrackedProviderSession {
+                capability: ProviderSessionState::MissingCapability { loaded: true },
+                ..
+            })
         ));
         let expected = Err(format!(
             "{agent_id} did not advertise its expected ACP session Yolo capability"
@@ -1669,6 +1760,58 @@ fn in_flight_teardown_releases_operation_gate_after_rpc() {
         apply.await.unwrap().unwrap();
 
         assert!(state.operation_gates.lock().unwrap().is_empty());
+    });
+}
+
+#[test]
+fn in_flight_ack_cannot_overwrite_reused_session_generation() {
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    tokio::task::LocalSet::new().block_on(&runtime, async {
+        let state = Arc::new(NativeYoloState::new());
+        state.set_resolved_agent_id(Some(crate::agent_registry::COPILOT_AGENT_ID));
+        let response: acp::schema::v1::NewSessionResponse = serde_json::from_str(
+            r#"{
+                "sessionId": "reused-in-flight",
+                "configOptions": [{
+                    "id": "allow_all", "name": "Allow All", "category": "permissions",
+                    "type": "select", "currentValue": "off",
+                    "options": [{"value": "on", "name": "On"}, {"value": "off", "name": "Off"}]
+                }]
+            }"#,
+        )
+        .unwrap();
+        let session_id = response.session_id.clone();
+        state.record_from_new_session(&response);
+        let barrier = ConfigApplyBarrier {
+            started: Arc::new(tokio::sync::Notify::new()),
+            release: Arc::new(tokio::sync::Notify::new()),
+        };
+        let connection = spawn_apply_mock(Arc::new(Mutex::new(Vec::new())), Some(barrier.clone()));
+        let apply = tokio::task::spawn_local({
+            let state = Arc::clone(&state);
+            let session_id = session_id.clone();
+            async move { state.apply(&connection, session_id, true).await }
+        });
+
+        barrier.started.notified().await;
+        state.forget_session(&session_id);
+        state.record_from_new_session(&response);
+        barrier.release.notify_one();
+        apply.await.unwrap().unwrap();
+
+        assert_eq!(
+            state
+                .sessions
+                .read()
+                .unwrap()
+                .get(&session_id)
+                .and_then(|session| session.capability.acknowledged_yolo_enabled()),
+            Some(false),
+            "the old generation's enable ACK must not overwrite the reused session"
+        );
     });
 }
 

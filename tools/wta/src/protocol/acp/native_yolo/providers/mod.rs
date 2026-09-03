@@ -36,6 +36,39 @@ pub(super) enum ProviderSessionState {
     Unsupported,
 }
 
+impl ProviderSessionState {
+    pub(super) fn acknowledged_yolo_enabled(&self) -> Option<bool> {
+        match self {
+            Self::Available(NativeYoloChannel::ConfigOption {
+                enable_value,
+                current_value,
+                ..
+            }) => Some(current_value == enable_value),
+            Self::Available(NativeYoloChannel::Mode {
+                enable_mode_id,
+                current_mode_id,
+                ..
+            }) => Some(current_mode_id == enable_mode_id),
+            Self::UnrestorablePrivileged => Some(true),
+            Self::MissingCapability { .. } | Self::Unsupported => None,
+        }
+    }
+
+    pub(super) fn may_be_privileged(&self) -> bool {
+        match self {
+            Self::MissingCapability { loaded } => *loaded,
+            Self::Unsupported => false,
+            _ => self.acknowledged_yolo_enabled() != Some(false),
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(super) struct NativeConfigControl {
+    pub config_id: String,
+    pub enable_value: String,
+}
+
 pub(super) enum ChannelDiscovery {
     Available(NativeYoloChannel),
     UnrestorablePrivileged,
@@ -61,6 +94,7 @@ pub(super) struct ConfigSpec {
     pub category: &'static str,
     pub enable_value: &'static str,
     pub default_restore_value: &'static str,
+    pub require_default_restore_value: bool,
 }
 
 #[derive(Clone, Copy)]
@@ -84,6 +118,13 @@ pub(super) trait NativeYoloProvider: Sync {
     fn disable(&self, state: &ProviderSessionState) -> Result<NativeYoloAction, String>;
 
     fn disabled_prompt_block_reason(&self, _agent_version: Option<&str>) -> Option<String> {
+        None
+    }
+
+    fn config_control(
+        &self,
+        _config_options: Option<&[acp::schema::v1::SessionConfigOption]>,
+    ) -> Option<NativeConfigControl> {
         None
     }
 
@@ -128,20 +169,41 @@ pub(super) fn available_or_missing(
     }
 }
 
+pub(super) fn find_config_control(
+    options: Option<&[acp::schema::v1::SessionConfigOption]>,
+    spec: ConfigSpec,
+) -> Option<NativeConfigControl> {
+    options?
+        .iter()
+        .any(|option| {
+            option.id.0.as_ref() == spec.id
+                && category_name(option.category.as_ref()).as_deref() == Some(spec.category)
+                && matches!(option.kind, acp::schema::v1::SessionConfigKind::Select(_))
+        })
+        .then(|| NativeConfigControl {
+            config_id: spec.id.to_string(),
+            enable_value: spec.enable_value.to_string(),
+        })
+}
+
 pub(super) fn config_channel(
     options: Option<&[acp::schema::v1::SessionConfigOption]>,
     spec: ConfigSpec,
     previous: Option<&ProviderSessionState>,
 ) -> ChannelDiscovery {
-    let Some(option) = options.and_then(|options| {
-        options.iter().find(|option| {
-            option.id.0.as_ref() == spec.id
-                && category_name(option.category.as_ref()).as_deref() == Some(spec.category)
+    let Some(select) = options.and_then(|options| {
+        options.iter().find_map(|option| {
+            if option.id.0.as_ref() != spec.id
+                || category_name(option.category.as_ref()).as_deref() != Some(spec.category)
+            {
+                return None;
+            }
+            match &option.kind {
+                acp::schema::v1::SessionConfigKind::Select(select) => Some(select),
+                _ => None,
+            }
         })
     }) else {
-        return ChannelDiscovery::Missing;
-    };
-    let acp::schema::v1::SessionConfigKind::Select(select) = &option.kind else {
         return ChannelDiscovery::Missing;
     };
     let current_value = select.current_value.0.as_ref();
@@ -152,7 +214,10 @@ pub(super) fn config_channel(
             ChannelDiscovery::Missing
         };
     };
-    if !values.contains(&spec.enable_value) || !values.contains(&current_value) {
+    if !values.contains(&spec.enable_value)
+        || !values.contains(&current_value)
+        || (spec.require_default_restore_value && !values.contains(&spec.default_restore_value))
+    {
         return if current_value == spec.enable_value {
             ChannelDiscovery::UnrestorablePrivileged
         } else {

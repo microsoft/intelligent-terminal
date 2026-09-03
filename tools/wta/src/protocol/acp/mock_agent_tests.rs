@@ -231,19 +231,34 @@ impl MockAgent {
             .lock()
             .unwrap()
             .push((config_id.clone(), value.clone()));
-        let option = serde_json::from_value(serde_json::json!({
-            "id": config_id,
-            "name": "Mode",
-            "category": "mode",
-            "type": "select",
-            "currentValue": value,
-            "options": [
-                {"value": "default", "name": "Default"},
-                {"value": "plan", "name": "Plan"},
-                {"value": "bypassPermissions", "name": "Bypass Permissions"}
-            ]
-        }))
-        .map_err(|error| acp::Error::internal_error().data(error.to_string()))?;
+        let option = if config_id == "allow_all" {
+            serde_json::json!({
+                "id": config_id,
+                "name": "Allow All",
+                "category": "permissions",
+                "type": "select",
+                "currentValue": value,
+                "options": [
+                    {"value": "on", "name": "On"},
+                    {"value": "off", "name": "Off"}
+                ]
+            })
+        } else {
+            serde_json::json!({
+                "id": config_id,
+                "name": "Mode",
+                "category": "mode",
+                "type": "select",
+                "currentValue": value,
+                "options": [
+                    {"value": "default", "name": "Default"},
+                    {"value": "plan", "name": "Plan"},
+                    {"value": "bypassPermissions", "name": "Bypass Permissions"}
+                ]
+            })
+        };
+        let option = serde_json::from_value(option)
+            .map_err(|error| acp::Error::internal_error().data(error.to_string()))?;
         Ok(acp::schema::v1::SetSessionConfigOptionResponse::new(vec![
             option,
         ]))
@@ -989,6 +1004,59 @@ fn test_prompt(id: u64, text: &str, is_autofix: bool) -> PromptSubmission {
     }
 }
 
+fn record_copilot_yolo_state(
+    harness: &DispatchHarness,
+    session_id: &str,
+    current_value: &str,
+) -> acp::schema::v1::SessionId {
+    let response: acp::schema::v1::NewSessionResponse = serde_json::from_value(serde_json::json!({
+        "sessionId": session_id,
+        "configOptions": [{
+            "id": "allow_all",
+            "name": "Allow All",
+            "category": "permissions",
+            "type": "select",
+            "currentValue": current_value,
+            "options": [
+                {"value": "on", "name": "On"},
+                {"value": "off", "name": "Off"}
+            ]
+        }]
+    }))
+    .unwrap();
+    let session_id = response.session_id.clone();
+    harness
+        .client
+        .state
+        .native_yolo
+        .record_from_new_session(&response);
+    session_id
+}
+
+fn observe_copilot_yolo_state(
+    harness: &DispatchHarness,
+    session_id: &acp::schema::v1::SessionId,
+    current_value: &str,
+) {
+    let options = vec![serde_json::from_value(serde_json::json!({
+        "id": "allow_all",
+        "name": "Allow All",
+        "category": "permissions",
+        "type": "select",
+        "currentValue": current_value,
+        "options": [
+            {"value": "on", "name": "On"},
+            {"value": "off", "name": "Off"}
+        ]
+    }))
+    .unwrap()];
+    harness
+        .client
+        .state
+        .native_yolo
+        .record_from_config_update(session_id, &options);
+}
+
 /// Single-flight: a prompt for a tab that already has a turn in flight must
 /// emit `AgentBusy` and NOT start a second turn (no `conn.prompt`, the agent
 /// never sees the text).
@@ -1053,7 +1121,13 @@ async fn copilot_permission_regression_blocks_prompt_when_yolo_is_off() {
                 ))
                 .await
                 .expect("initialize failed");
+            let session_id =
+                record_copilot_yolo_state(&h, "affected-copilot-disabled-session", "off");
             let (tab_to_session, in_flight, cancel_signals, memo) = fresh_dispatch_state();
+            tab_to_session
+                .lock()
+                .await
+                .insert("0".to_string(), session_id);
 
             dispatch_prompt(
                 test_prompt(1, "must not reach unsafe Copilot ACP", false),
@@ -1094,6 +1168,226 @@ async fn copilot_permission_regression_blocks_prompt_when_yolo_is_off() {
                 in_flight.lock().unwrap().is_empty(),
                 "the rejected prompt must release the single-flight gate"
             );
+        })
+        .await;
+}
+
+#[tokio::test]
+async fn copilot_permission_regression_preserves_missing_capability_interactive_path() {
+    let local = tokio::task::LocalSet::new();
+    local
+        .run_until(async {
+            let mut h = connect_for_dispatch(MockBehavior::Reply);
+            h.client.state.native_yolo.set_resolved_agent(
+                Some(crate::agent_registry::COPILOT_AGENT_ID),
+                Some("1.0.82"),
+            );
+            h.conn
+                .initialize(acp::schema::v1::InitializeRequest::new(
+                    acp::schema::ProtocolVersion::LATEST,
+                ))
+                .await
+                .expect("initialize failed");
+            let (tab_to_session, in_flight, cancel_signals, memo) = fresh_dispatch_state();
+
+            dispatch_prompt(
+                test_prompt(1, "unsupported capability remains interactive", false),
+                &h.conn,
+                &tab_to_session,
+                &memo,
+                &in_flight,
+                &cancel_signals,
+                &h.event_tx,
+                &h.shell_mgr,
+                &h.prompt_timing,
+                &h.client,
+                &PromptUsageIdentity::default(),
+                false,
+                false,
+                true,
+                &h.proposal_channels,
+            );
+
+            let chunk = next_agent_chunk(&mut h.event_rx).await;
+            assert!(chunk.contains("unsupported capability remains interactive"));
+            assert_eq!(h.seen_prompts.lock().unwrap().len(), 1);
+        })
+        .await;
+}
+
+#[tokio::test]
+async fn copilot_permission_regression_blocks_acknowledged_off_with_global_on() {
+    let local = tokio::task::LocalSet::new();
+    local
+        .run_until(async {
+            let mut h = connect_for_dispatch(MockBehavior::Reply);
+            h.client.state.native_yolo.set_resolved_agent(
+                Some(crate::agent_registry::COPILOT_AGENT_ID),
+                Some("1.0.82"),
+            );
+            h.client
+                .state
+                .yolo_state
+                .lock()
+                .unwrap()
+                .update_runtime(true, false);
+            h.conn
+                .initialize(acp::schema::v1::InitializeRequest::new(
+                    acp::schema::ProtocolVersion::LATEST,
+                ))
+                .await
+                .expect("initialize failed");
+            let session_id = record_copilot_yolo_state(&h, "manual-config-disabled-session", "on");
+            let (tab_to_session, in_flight, cancel_signals, memo) = fresh_dispatch_state();
+            tab_to_session
+                .lock()
+                .await
+                .insert("0".to_string(), session_id.clone());
+            dispatch_master_ext_request(
+                MasterExtRequest::SetSessionConfigOption {
+                    session_id: session_id.clone(),
+                    config_id: "allow_all".to_string(),
+                    value: "off".to_string(),
+                },
+                &h.conn,
+                &h.event_tx,
+                &tab_to_session,
+                Arc::clone(&h.client.state),
+            );
+            tokio::time::timeout(std::time::Duration::from_secs(2), async {
+                loop {
+                    match h.event_rx.recv().await {
+                        Some(AppEvent::SessionConfigSetCompleted {
+                            session_id: completed_session,
+                            config_id,
+                            value,
+                            ..
+                        }) if completed_session == session_id.to_string()
+                            && config_id == "allow_all"
+                            && value == "off" =>
+                        {
+                            break;
+                        }
+                        Some(_) => continue,
+                        None => panic!("event channel closed before manual config completion"),
+                    }
+                }
+            })
+            .await
+            .expect("manual Copilot off must acknowledge before prompt dispatch");
+
+            dispatch_prompt(
+                test_prompt(1, "manual off must not reach affected Copilot", false),
+                &h.conn,
+                &tab_to_session,
+                &memo,
+                &in_flight,
+                &cancel_signals,
+                &h.event_tx,
+                &h.shell_mgr,
+                &h.prompt_timing,
+                &h.client,
+                &PromptUsageIdentity::default(),
+                false,
+                false,
+                true,
+                &h.proposal_channels,
+            );
+
+            let failure = tokio::time::timeout(std::time::Duration::from_secs(2), async {
+                loop {
+                    match h.event_rx.recv().await {
+                        Some(AppEvent::AgentError { message, .. }) => break message,
+                        Some(_) => continue,
+                        None => panic!("event channel closed before the compatibility error"),
+                    }
+                }
+            })
+            .await
+            .expect("acknowledged Copilot off must fail closed even when global Yolo is on");
+            assert!(failure.contains("permission"));
+            assert!(h.seen_prompts.lock().unwrap().is_empty());
+            assert!(in_flight.lock().unwrap().is_empty());
+        })
+        .await;
+}
+
+#[tokio::test]
+async fn manual_native_enable_with_global_off_allows_prompt_after_ack() {
+    let local = tokio::task::LocalSet::new();
+    local
+        .run_until(async {
+            let mut h = connect_for_dispatch(MockBehavior::Reply);
+            h.client.state.native_yolo.set_resolved_agent(
+                Some(crate::agent_registry::COPILOT_AGENT_ID),
+                Some("1.0.82"),
+            );
+            h.conn
+                .initialize(acp::schema::v1::InitializeRequest::new(
+                    acp::schema::ProtocolVersion::LATEST,
+                ))
+                .await
+                .expect("initialize failed");
+            let session_id = record_copilot_yolo_state(&h, "manual-config-enabled-session", "off");
+            let (tab_to_session, in_flight, cancel_signals, memo) = fresh_dispatch_state();
+            tab_to_session
+                .lock()
+                .await
+                .insert("0".to_string(), session_id.clone());
+            dispatch_master_ext_request(
+                MasterExtRequest::SetSessionConfigOption {
+                    session_id: session_id.clone(),
+                    config_id: "allow_all".to_string(),
+                    value: "on".to_string(),
+                },
+                &h.conn,
+                &h.event_tx,
+                &tab_to_session,
+                Arc::clone(&h.client.state),
+            );
+            tokio::time::timeout(std::time::Duration::from_secs(2), async {
+                loop {
+                    match h.event_rx.recv().await {
+                        Some(AppEvent::SessionConfigSetCompleted {
+                            session_id: completed_session,
+                            config_id,
+                            value,
+                            ..
+                        }) if completed_session == session_id.to_string()
+                            && config_id == "allow_all"
+                            && value == "on" =>
+                        {
+                            break;
+                        }
+                        Some(_) => continue,
+                        None => panic!("event channel closed before manual config completion"),
+                    }
+                }
+            })
+            .await
+            .expect("manual Copilot enable must acknowledge before prompt dispatch");
+
+            dispatch_prompt(
+                test_prompt(1, "manual enable may reach Copilot", false),
+                &h.conn,
+                &tab_to_session,
+                &memo,
+                &in_flight,
+                &cancel_signals,
+                &h.event_tx,
+                &h.shell_mgr,
+                &h.prompt_timing,
+                &h.client,
+                &PromptUsageIdentity::default(),
+                false,
+                false,
+                true,
+                &h.proposal_channels,
+            );
+
+            let chunk = next_agent_chunk(&mut h.event_rx).await;
+            assert!(chunk.contains("manual enable may reach Copilot"));
+            assert_eq!(h.seen_prompts.lock().unwrap().len(), 1);
         })
         .await;
 }
@@ -1170,6 +1464,7 @@ async fn copilot_permission_regression_rechecks_hot_disable_at_send_boundary() {
                 .await
                 .expect("initialize failed");
 
+            let session_id = record_copilot_yolo_state(&h, "hot-manual-config-session", "on");
             let context_started = Arc::new(tokio::sync::Notify::new());
             let context_release = Arc::new(tokio::sync::Notify::new());
             h.shell_mgr = Arc::new(ShellManager::new().with_wt_channel(Arc::new(
@@ -1179,7 +1474,108 @@ async fn copilot_permission_regression_rechecks_hot_disable_at_send_boundary() {
                 },
             )));
             let (tab_to_session, in_flight, cancel_signals, memo) = fresh_dispatch_state();
+            tab_to_session
+                .lock()
+                .await
+                .insert("0".to_string(), session_id.clone());
             let mut prompt = test_prompt(1, "must stop after hot disable", false);
+            prompt.pane_context = Some(crate::pane_context::PaneContext {
+                pane_id: Some("agent-pane".to_string()),
+                tab_id: Some("0".to_string()),
+                window_id: Some("window-1".to_string()),
+                cwd: Some("C:\\work".to_string()),
+                source_pane_id: None,
+            });
+
+            dispatch_prompt(
+                prompt,
+                &h.conn,
+                &tab_to_session,
+                &memo,
+                &in_flight,
+                &cancel_signals,
+                &h.event_tx,
+                &h.shell_mgr,
+                &h.prompt_timing,
+                &h.client,
+                &PromptUsageIdentity::default(),
+                true,
+                false,
+                true,
+                &h.proposal_channels,
+            );
+
+            tokio::time::timeout(
+                std::time::Duration::from_secs(2),
+                context_started.notified(),
+            )
+            .await
+            .expect("prompt context build must reach the controlled barrier");
+            observe_copilot_yolo_state(&h, &session_id, "off");
+            context_release.notify_one();
+
+            let failure = tokio::time::timeout(std::time::Duration::from_secs(2), async {
+                loop {
+                    match h.event_rx.recv().await {
+                        Some(AppEvent::AgentError { message, .. }) => break message,
+                        Some(_) => continue,
+                        None => panic!("event channel closed before the compatibility error"),
+                    }
+                }
+            })
+            .await
+            .expect("hot disable must fail closed before prompt dispatch");
+            assert!(failure.contains("permission"));
+            assert!(
+                h.seen_prompts.lock().unwrap().is_empty(),
+                "the hot-disabled prompt must not cross the ACP send boundary"
+            );
+            assert!(
+                in_flight.lock().unwrap().is_empty(),
+                "the rejected prompt must release the single-flight gate"
+            );
+        })
+        .await;
+}
+
+#[tokio::test]
+async fn hot_policy_blocks_acknowledged_on_before_send_boundary() {
+    let local = tokio::task::LocalSet::new();
+    local
+        .run_until(async {
+            let mut h = connect_for_dispatch(MockBehavior::Reply);
+            h.client.state.native_yolo.set_resolved_agent(
+                Some(crate::agent_registry::COPILOT_AGENT_ID),
+                Some("1.0.82"),
+            );
+            h.client
+                .state
+                .yolo_state
+                .lock()
+                .unwrap()
+                .update_runtime(true, false);
+            h.conn
+                .initialize(acp::schema::v1::InitializeRequest::new(
+                    acp::schema::ProtocolVersion::LATEST,
+                ))
+                .await
+                .expect("initialize failed");
+
+            let session_id = record_copilot_yolo_state(&h, "hot-policy-session", "on");
+            let context_started = Arc::new(tokio::sync::Notify::new());
+            let context_release = Arc::new(tokio::sync::Notify::new());
+            h.shell_mgr = Arc::new(ShellManager::new().with_wt_channel(Arc::new(
+                BlockingPromptContextChannel {
+                    started: Arc::clone(&context_started),
+                    release: Arc::clone(&context_release),
+                },
+            )));
+            let (tab_to_session, in_flight, cancel_signals, memo) = fresh_dispatch_state();
+            tab_to_session
+                .lock()
+                .await
+                .insert("0".to_string(), session_id);
+            let mut prompt = test_prompt(1, "policy must stop this prompt", false);
             prompt.pane_context = Some(crate::pane_context::PaneContext {
                 pane_id: Some("agent-pane".to_string()),
                 tab_id: Some("0".to_string()),
@@ -1217,7 +1613,7 @@ async fn copilot_permission_regression_rechecks_hot_disable_at_send_boundary() {
                 .yolo_state
                 .lock()
                 .unwrap()
-                .update_runtime(false, false);
+                .update_runtime(true, true);
             context_release.notify_one();
 
             let failure = tokio::time::timeout(std::time::Duration::from_secs(2), async {
@@ -1225,21 +1621,109 @@ async fn copilot_permission_regression_rechecks_hot_disable_at_send_boundary() {
                     match h.event_rx.recv().await {
                         Some(AppEvent::AgentError { message, .. }) => break message,
                         Some(_) => continue,
-                        None => panic!("event channel closed before the compatibility error"),
+                        None => panic!("event channel closed before the policy safety error"),
                     }
                 }
             })
             .await
-            .expect("hot disable must fail closed before prompt dispatch");
-            assert!(failure.contains("permission"));
-            assert!(
-                h.seen_prompts.lock().unwrap().is_empty(),
-                "the hot-disabled prompt must not cross the ACP send boundary"
+            .expect("hot policy must block until native off is acknowledged");
+            assert!(failure.contains("Yolo"));
+            assert!(h.seen_prompts.lock().unwrap().is_empty());
+            assert!(in_flight.lock().unwrap().is_empty());
+        })
+        .await;
+}
+
+#[tokio::test]
+async fn superseding_disable_with_enable_keeps_prompt_blocked_until_enable_ack() {
+    let local = tokio::task::LocalSet::new();
+    local
+        .run_until(async {
+            let mut h = connect_for_dispatch(MockBehavior::Reply);
+            h.client.state.native_yolo.set_resolved_agent(
+                Some(crate::agent_registry::COPILOT_AGENT_ID),
+                Some("1.0.82"),
             );
-            assert!(
-                in_flight.lock().unwrap().is_empty(),
-                "the rejected prompt must release the single-flight gate"
+            h.client
+                .state
+                .yolo_state
+                .lock()
+                .unwrap()
+                .update_runtime(true, false);
+            let session_id = record_copilot_yolo_state(&h, "superseded-disable-session", "on");
+            let (tab_to_session, in_flight, cancel_signals, memo) = fresh_dispatch_state();
+            tab_to_session
+                .lock()
+                .await
+                .insert("0".to_string(), session_id.clone());
+
+            h.hang_native_updates.store(true, Ordering::SeqCst);
+            dispatch_master_ext_request(
+                MasterExtRequest::SetSessionConfigOption {
+                    session_id: session_id.clone(),
+                    config_id: "allow_all".to_string(),
+                    value: "off".to_string(),
+                },
+                &h.conn,
+                &h.event_tx,
+                &tab_to_session,
+                Arc::clone(&h.client.state),
             );
+            tokio::time::timeout(
+                std::time::Duration::from_secs(2),
+                h.native_update_started.notified(),
+            )
+            .await
+            .expect("disable must acquire the native operation gate");
+
+            dispatch_master_ext_request(
+                MasterExtRequest::SetSessionConfigOption {
+                    session_id,
+                    config_id: "allow_all".to_string(),
+                    value: "on".to_string(),
+                },
+                &h.conn,
+                &h.event_tx,
+                &tab_to_session,
+                Arc::clone(&h.client.state),
+            );
+            tokio::task::yield_now().await;
+
+            dispatch_prompt(
+                test_prompt(1, "must wait for superseding enable ACK", false),
+                &h.conn,
+                &tab_to_session,
+                &memo,
+                &in_flight,
+                &cancel_signals,
+                &h.event_tx,
+                &h.shell_mgr,
+                &h.prompt_timing,
+                &h.client,
+                &PromptUsageIdentity::default(),
+                false,
+                false,
+                true,
+                &h.proposal_channels,
+            );
+
+            let failure = tokio::time::timeout(std::time::Duration::from_secs(2), async {
+                loop {
+                    match h.event_rx.recv().await {
+                        Some(AppEvent::AgentError { message, .. }) => break message,
+                        Some(_) => continue,
+                        None => panic!("event channel closed before pending-operation error"),
+                    }
+                }
+            })
+            .await
+            .expect("superseding enable must stay gated until its provider ACK");
+            assert!(failure.contains("Yolo"));
+            assert!(h.seen_prompts.lock().unwrap().is_empty());
+            assert!(in_flight.lock().unwrap().is_empty());
+
+            h.hang_native_updates.store(false, Ordering::SeqCst);
+            h.native_update_release.notify_one();
         })
         .await;
 }
@@ -3259,6 +3743,139 @@ async fn policy_block_rejects_privileged_generic_config_before_acp() {
                     "blocked privileged config must never reach ACP: provider={agent_id}"
                 );
             }
+        })
+        .await;
+}
+
+#[tokio::test]
+async fn malformed_copilot_selector_cannot_bypass_policy_through_config() {
+    let local = tokio::task::LocalSet::new();
+    local
+        .run_until(async {
+            let mut h = connect_for_dispatch(MockBehavior::Reply);
+            h.client.state.native_yolo.set_resolved_agent(
+                Some(crate::agent_registry::COPILOT_AGENT_ID),
+                Some("1.0.80"),
+            );
+            let response: acp::schema::v1::NewSessionResponse =
+                serde_json::from_value(serde_json::json!({
+                    "sessionId": "malformed-copilot-policy-session",
+                    "configOptions": [{
+                        "id": "allow_all",
+                        "name": "Allow All",
+                        "category": "permissions",
+                        "type": "select",
+                        "currentValue": "ask",
+                        "options": [
+                            {"value": "on", "name": "On"},
+                            {"value": "ask", "name": "Ask"}
+                        ]
+                    }]
+                }))
+                .unwrap();
+            let session_id = response.session_id.clone();
+            h.client
+                .state
+                .native_yolo
+                .record_from_new_session(&response);
+            h.client
+                .state
+                .yolo_state
+                .lock()
+                .unwrap()
+                .update_runtime(false, true);
+            let tab_to_session = Arc::new(tokio::sync::Mutex::new(HashMap::from([(
+                "tab-1".to_string(),
+                session_id.clone(),
+            )])));
+
+            dispatch_master_ext_request(
+                MasterExtRequest::SetSessionConfigOption {
+                    session_id,
+                    config_id: "allow_all".to_string(),
+                    value: "on".to_string(),
+                },
+                &h.conn,
+                &h.event_tx,
+                &tab_to_session,
+                Arc::clone(&h.client.state),
+            );
+
+            let message = tokio::time::timeout(std::time::Duration::from_secs(2), async {
+                loop {
+                    match h.event_rx.recv().await {
+                        Some(AppEvent::SessionConfigSetFailed { message, .. }) => break message,
+                        Some(_) => continue,
+                        None => panic!("event channel closed before config rejection"),
+                    }
+                }
+            })
+            .await
+            .expect("malformed Copilot enable must be rejected before ACP");
+            assert!(message.contains("policy") || message.contains("native Yolo transition"));
+            assert!(
+                h.seen_config_updates.lock().unwrap().is_empty(),
+                "the malformed privileged config must not reach ACP"
+            );
+        })
+        .await;
+}
+
+#[tokio::test]
+async fn disappeared_copilot_selector_stale_enable_cannot_bypass_policy() {
+    let local = tokio::task::LocalSet::new();
+    local
+        .run_until(async {
+            let mut h = connect_for_dispatch(MockBehavior::Reply);
+            h.client.state.native_yolo.set_resolved_agent(
+                Some(crate::agent_registry::COPILOT_AGENT_ID),
+                Some("1.0.80"),
+            );
+            let session_id =
+                record_copilot_yolo_state(&h, "disappeared-copilot-policy-session", "off");
+            h.client
+                .state
+                .native_yolo
+                .record_from_config_update(&session_id, &[]);
+            h.client
+                .state
+                .yolo_state
+                .lock()
+                .unwrap()
+                .update_runtime(false, true);
+            let tab_to_session = Arc::new(tokio::sync::Mutex::new(HashMap::from([(
+                "tab-1".to_string(),
+                session_id.clone(),
+            )])));
+
+            dispatch_master_ext_request(
+                MasterExtRequest::SetSessionConfigOption {
+                    session_id,
+                    config_id: "allow_all".to_string(),
+                    value: "on".to_string(),
+                },
+                &h.conn,
+                &h.event_tx,
+                &tab_to_session,
+                Arc::clone(&h.client.state),
+            );
+
+            let message = tokio::time::timeout(std::time::Duration::from_secs(2), async {
+                loop {
+                    match h.event_rx.recv().await {
+                        Some(AppEvent::SessionConfigSetFailed { message, .. }) => break message,
+                        Some(_) => continue,
+                        None => panic!("event channel closed before stale config rejection"),
+                    }
+                }
+            })
+            .await
+            .expect("stale Copilot enable must be rejected before ACP");
+            assert!(message.contains("policy") || message.contains("native Yolo transition"));
+            assert!(
+                h.seen_config_updates.lock().unwrap().is_empty(),
+                "a stale privileged config selection must not reach ACP"
+            );
         })
         .await;
 }

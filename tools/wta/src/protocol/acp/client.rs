@@ -2438,6 +2438,12 @@ fn provider_permission_contract_blocked(error: &str) -> String {
     .into_owned()
 }
 
+fn provider_disable_pending() -> String {
+    provider_permission_contract_blocked(
+        "the provider has not acknowledged the required nonprivileged session state",
+    )
+}
+
 fn publish_retryable_lazy_yolo_error(event_tx: &mpsc::UnboundedSender<AppEvent>, session_id: &str) {
     let retry = t!("setup.option.retry_detection").into_owned();
     let message = t!(
@@ -4928,32 +4934,57 @@ async fn dispatch_prompt_body(
         }
     }
 
-    let yolo_enabled = client_task
+    let policy_blocked = client_task
         .state
         .yolo_state
         .lock()
         .unwrap()
-        .effective(&prompt_session_id_str);
-    if !yolo_enabled {
-        if let Some(error) = client_task.state.native_yolo.disabled_prompt_block_reason() {
-            tracing::error!(
-                target: "yolo",
-                session_id = %prompt_session_id_str,
-                error = %error,
-                "blocking prompt because the provider cannot attest disabled permissions"
-            );
-            let message = provider_permission_contract_blocked(&error);
-            let _ = event_tx_task.send(AppEvent::AgentError {
-                session_id: Some(prompt_session_id_str),
-                failure: AgentFailure::Protocol {
-                    code: -32003,
-                    message: message.clone(),
-                },
-                message,
-            });
-            in_flight_tabs_task.lock().unwrap().remove(&tab_key_task);
-            return;
-        }
+        .policy_blocked();
+    if client_task
+        .state
+        .native_yolo
+        .prompt_must_wait_for_disable(&prompt_session_id, policy_blocked)
+    {
+        let message = provider_disable_pending();
+        tracing::error!(
+            target: "yolo",
+            session_id = %prompt_session_id_str,
+            "blocking prompt until the provider acknowledges disabled permissions"
+        );
+        let _ = event_tx_task.send(AppEvent::AgentError {
+            session_id: Some(prompt_session_id_str),
+            failure: AgentFailure::Protocol {
+                code: -32003,
+                message: message.clone(),
+            },
+            message,
+        });
+        in_flight_tabs_task.lock().unwrap().remove(&tab_key_task);
+        return;
+    }
+
+    if let Some(error) = client_task
+        .state
+        .native_yolo
+        .disabled_prompt_block_reason(&prompt_session_id)
+    {
+        tracing::error!(
+            target: "yolo",
+            session_id = %prompt_session_id_str,
+            error = %error,
+            "blocking prompt because the provider cannot attest disabled permissions"
+        );
+        let message = provider_permission_contract_blocked(&error);
+        let _ = event_tx_task.send(AppEvent::AgentError {
+            session_id: Some(prompt_session_id_str),
+            failure: AgentFailure::Protocol {
+                code: -32003,
+                message: message.clone(),
+            },
+            message,
+        });
+        in_flight_tabs_task.lock().unwrap().remove(&tab_key_task);
+        return;
     }
 
     if client_task
@@ -5088,7 +5119,7 @@ async fn dispatch_prompt_body(
         .map(str::to_string);
     let yolo_state = Arc::clone(&client_task.state.yolo_state);
     let native_yolo = Arc::clone(&client_task.state.native_yolo);
-    let final_permission_contract_error = Arc::new(Mutex::new(None::<String>));
+    let final_yolo_safety_error = Arc::new(Mutex::new(None::<(String, &'static str)>));
     let telemetry_timing = Arc::clone(&prompt_timing_task);
     let telemetry_session_id = prompt_session_id_str.clone();
     let telemetry_prompt_len = u32::try_from(text.len()).unwrap_or(u32::MAX);
@@ -5106,24 +5137,30 @@ async fn dispatch_prompt_body(
         acp::schema::v1::PromptRequest::new(prompt_session_id.clone(), content),
         {
             let privileged_agent_command = privileged_agent_command.clone();
-            let final_permission_contract_error = Arc::clone(&final_permission_contract_error);
-            let guard_session_id = telemetry_session_id.clone();
+            let final_yolo_safety_error = Arc::clone(&final_yolo_safety_error);
+            let guard_session_id = prompt_session_id.clone();
             move || {
-                let (policy_blocked, yolo_enabled) = {
-                    let state = yolo_state.lock().unwrap();
-                    (
-                        privileged_agent_command.is_some() && state.policy_blocked(),
-                        state.effective(&guard_session_id),
-                    )
-                };
-                let permission_contract_error = if !policy_blocked && !yolo_enabled {
-                    native_yolo.disabled_prompt_block_reason()
-                } else {
+                let policy_blocked = yolo_state.lock().unwrap().policy_blocked();
+                let provider_command_blocked = privileged_agent_command.is_some() && policy_blocked;
+                let yolo_safety_error = if provider_command_blocked {
                     None
+                } else if native_yolo
+                    .prompt_must_wait_for_disable(&guard_session_id, policy_blocked)
+                {
+                    Some((provider_disable_pending(), "yolo_disable_pending"))
+                } else {
+                    native_yolo
+                        .disabled_prompt_block_reason(&guard_session_id)
+                        .map(|error| {
+                            (
+                                provider_permission_contract_blocked(&error),
+                                "permission_contract_blocked",
+                            )
+                        })
                 };
-                let should_send = !policy_blocked && permission_contract_error.is_none();
-                if let Some(error) = permission_contract_error {
-                    *final_permission_contract_error.lock().unwrap() = Some(error);
+                let should_send = !provider_command_blocked && yolo_safety_error.is_none();
+                if let Some(error) = yolo_safety_error {
+                    *final_yolo_safety_error.lock().unwrap() = Some(error);
                 }
                 if should_send {
                     if telemetry_is_agent_command {
@@ -5155,20 +5192,15 @@ async fn dispatch_prompt_body(
         result = &mut prompt_fut => {
             match result {
                 Ok(None) => {
-                    let permission_contract_error =
-                        final_permission_contract_error.lock().unwrap().take();
+                    let yolo_safety_error = final_yolo_safety_error.lock().unwrap().take();
                     let (message, completion_reason) =
-                        if let Some(error) = permission_contract_error {
+                        if let Some(error) = yolo_safety_error {
                             tracing::error!(
                                 target: "yolo",
                                 session_id = %prompt_session_id_str,
-                                error = %error,
-                                "blocking prompt at send boundary because the provider cannot attest disabled permissions"
+                                "blocking prompt at send boundary because Yolo safety is not established"
                             );
-                            (
-                                provider_permission_contract_blocked(&error),
-                                "permission_contract_blocked",
-                            )
+                            error
                         } else {
                             let command_name = privileged_agent_command
                                 .as_deref()

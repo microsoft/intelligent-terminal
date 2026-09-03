@@ -1,6 +1,7 @@
 use super::{
-    available_or_missing, config_action, config_channel, finish_supported_action, ConfigSpec,
-    DiscoveryInput, NativeYoloAction, NativeYoloProvider, ProviderSessionState,
+    available_or_missing, config_action, config_channel, find_config_control,
+    finish_supported_action, ConfigSpec, DiscoveryInput, NativeConfigControl, NativeYoloAction,
+    NativeYoloProvider, ProviderSessionState,
 };
 
 const CONFIG: ConfigSpec = ConfigSpec {
@@ -8,6 +9,7 @@ const CONFIG: ConfigSpec = ConfigSpec {
     category: "permissions",
     enable_value: "on",
     default_restore_value: "off",
+    require_default_restore_value: true,
 };
 
 pub(super) struct CopilotYoloProvider;
@@ -78,6 +80,13 @@ impl NativeYoloProvider for CopilotYoloProvider {
                 "GitHub Copilot CLI {version} cannot enforce ACP permission requests while Yolo is off because of github/copilot-cli#4537. Use Copilot CLI 1.0.81-0 or earlier, or explicitly enable Yolo if organization policy permits."
             )
         })
+    }
+
+    fn config_control(
+        &self,
+        config_options: Option<&[agent_client_protocol::schema::v1::SessionConfigOption]>,
+    ) -> Option<NativeConfigControl> {
+        find_config_control(config_options, CONFIG)
     }
 
     fn is_privileged_agent_command(&self, command_name: &str) -> bool {
