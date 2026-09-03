@@ -762,13 +762,19 @@ impl App {
     /// `autofix_generation` so any chunks that arrive after this point are
     /// dropped by the stale-check in `turn_observe_chunk`.
     pub fn turn_cancel(&mut self, session_id: &str) {
-        let direct_proposal_id = self
-            .session_tab(session_id)
-            .active_direct_proposal_id
-            .clone();
         let target_tab = self.tab_for_session(session_id);
+        self.turn_cancel_for_tab(&target_tab);
+    }
+
+    /// Cancel the in-flight turn owned by a tab. Pane lifecycle cleanup uses
+    /// this before a lazily-created ACP session necessarily has an ID.
+    pub(super) fn turn_cancel_for_tab(&mut self, target_tab: &str) {
+        let direct_proposal_id = self
+            .tab_sessions
+            .get(target_tab)
+            .and_then(|tab| tab.active_direct_proposal_id.clone());
         let pane_id = {
-            let tab = self.session_tab_mut(session_id);
+            let tab = self.tab_mut(target_tab);
             tab.autofix.generation = tab.autofix.generation.wrapping_add(1);
             tab.turn
                 .prompt()
@@ -781,9 +787,9 @@ impl App {
                 .or_else(|| tab.autofix.pane_id.clone())
         };
         if pane_id.is_some() {
-            self.emit_autofix_state_cleared(&target_tab);
+            self.emit_autofix_state_cleared(target_tab);
         }
-        let tab = self.session_tab_mut(session_id);
+        let tab = self.tab_mut(target_tab);
         tab.autofix.armed_at = None;
         let canceled_marker = t!("chat.turn_canceled").into_owned();
         // Three paths into cancel:
@@ -887,7 +893,7 @@ impl App {
         // Esc on a Send card or in-flight autofix exits the chip-override
         // state; release whatever the helper had pinned. C++ falls back to
         // source-of-agent driven rendering.
-        self.recompute_chip_override(&target_tab);
+        self.recompute_chip_override(target_tab);
     }
 
     // ── Internal surface helpers (shared between eager and end-of-turn). ──

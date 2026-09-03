@@ -2803,6 +2803,14 @@ impl App {
                     }
                 }
 
+                if method == "connection_state"
+                    && params.get("state").and_then(|v| v.as_str()) == Some("closed")
+                {
+                    if let Some(event_tab) = tab_id.as_deref() {
+                        self.handle_autofix_pane_closed(event_tab, &pane_id);
+                    }
+                }
+
                 // Telemetry: emit ErrorDetected for any non-acknowledged
                 // critical/actionable classification. Acknowledged events are
                 // the auto-silenced "unknown"/"connected"/success cases.

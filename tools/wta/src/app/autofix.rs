@@ -479,6 +479,45 @@ impl App {
         self.recompute_chip_override(&active_tab);
     }
 
+    /// Clear autofix state whose source pane has closed. Cancelling a matching
+    /// turn also advances its generation so late agent output cannot restore
+    /// a result for a pane that no longer exists.
+    pub(super) fn handle_autofix_pane_closed(&mut self, target_tab_id: &str, pane_id: &str) {
+        let Some(tab) = self.tab_sessions.get(target_tab_id) else {
+            return;
+        };
+        let turn_matches = tab.turn.prompt().is_some_and(|prompt| {
+            prompt.autofix.is_some() && prompt.context.target_pane_id() == Some(pane_id)
+        });
+        let snapshot_matches = match &tab.autofix.bar_snapshot {
+            AutofixBarSnapshot::Detected {
+                pane_id: source, ..
+            }
+            | AutofixBarSnapshot::Pending {
+                pane_id: source, ..
+            }
+            | AutofixBarSnapshot::Review {
+                pane_id: source, ..
+            } => source == pane_id,
+            AutofixBarSnapshot::Idle => false,
+        };
+        let state_matches = tab.autofix.pane_id.as_deref() == Some(pane_id)
+            || tab.autofix.suggested_pane_id.as_deref() == Some(pane_id)
+            || snapshot_matches;
+
+        if turn_matches {
+            self.turn_cancel_for_tab(target_tab_id);
+        } else if state_matches {
+            let tab = self.tab_mut(target_tab_id);
+            tab.autofix.generation = tab.autofix.generation.wrapping_add(1);
+            if tab.autofix.pane_id.as_deref() == Some(pane_id) {
+                tab.autofix.pane_id = None;
+                tab.autofix.armed_at = None;
+            }
+            self.emit_autofix_state_cleared(target_tab_id);
+        }
+    }
+
     pub(super) fn emit_autofix_state_cleared(&mut self, target_tab_id: &str) {
         // `cleared` carries no pane info — C++ clears its
         // `lastErrorSessionId` based on the state alone. Reusing the
