@@ -77,8 +77,15 @@ impl<'a> ToolPresentation<'a> {
         exit_code: Option<i64>,
         locations: &'a [ToolCallLocation],
     ) -> Self {
+        let reported_phase = ToolPhase::from_status(status);
+        let nonzero_command_exit = (kind == ToolCallKind::Execute || target_is_command)
+            && exit_code.is_some_and(|code| code != 0);
         Self {
-            phase: ToolPhase::from_status(status),
+            phase: if reported_phase.is_successful() && nonzero_command_exit {
+                ToolPhase::Failed(None)
+            } else {
+                reported_phase
+            },
             kind,
             title,
             target: target.or_else(|| locations.first().map(|location| location.path.as_str())),

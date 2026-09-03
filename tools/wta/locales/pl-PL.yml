@@ -239,4 +239,5 @@ config_picker.title: "Konfiguracja sesji (↑ ↓ • Enter • Esc)"
 system.no_config_options: "Połączony agent nie zakomunikował żadnych konfigurowalnych opcji sesji."
 # {option} is an Agent-provided option name; {error} is the ACP error.
 system.config_update_failed: "Nie udało się zaktualizować opcji %{option}: %{error}"
+system.provider_command_blocked_by_policy: "%{command}: Tryb Yolo jest wyłączony przez zasady twojej organizacji."  # {Locked="Yolo","%{command}"} Shown when AllowYoloMode blocks a provider-advertised privileged command.
 system.model_unknown: "Nieznany model %{model} — wpisz /model, aby zobaczyć dostępną listę."  # {Locked="%{model}","/model"}

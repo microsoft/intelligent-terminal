@@ -905,6 +905,20 @@ work:
 - **Pre-warming**: not implemented. First user toggle creates the
   helper on demand.
 
+### Z-R9. Provider-native Yolo mode
+
+The canonical design and current behavior are documented in
+[`Yolo-mode.md`](./Yolo-mode.md). That document covers the global and
+policy state model, provider-native ACP session modes, built-in agent support,
+policy enforcement, and the exact terminal-action confirmation boundary.
+
+Implements GitHub issue #326 ("Allow agent pane to run with options such
+as `--allow-all`"). The implementation avoids agent-specific process flags
+and acts as an ACP UI: it invokes reviewed per-session capabilities for
+Copilot, Claude, Codex, and Gemini. OpenCode and custom ACP agents remain on
+the normal interactive permission path. WTA never answers an ordinary
+provider `session/request_permission` on the user's behalf.
+
 ## What this does NOT solve (out of scope)
 
 - **Cross-process Terminal instances**: if WT is configured for

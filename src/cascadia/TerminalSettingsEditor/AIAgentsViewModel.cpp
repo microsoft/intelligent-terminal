@@ -127,6 +127,34 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
             std::wstring_view{ command });
     }
 
+    bool AIAgentsViewModel::_IsSelectedAcpAgentAvailable() const
+    {
+        if (_isAddingCustomAcpAgent)
+        {
+            return false;
+        }
+
+        const auto selectedAgent = _GlobalSettings.AcpAgent();
+        for (uint32_t i = 0; i < _acpAgentList.Size(); ++i)
+        {
+            const auto entry = _acpAgentList.GetAt(i);
+            if (!entry.IsAddNew() && entry.Id() == selectedAgent)
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    ::Microsoft::Terminal::Settings::Model::AgentRegistry::YoloSettingsNotice AIAgentsViewModel::_YoloSettingsNotice() const
+    {
+        return ::Microsoft::Terminal::Settings::Model::AgentRegistry::GetYoloSettingsNotice(
+            std::wstring_view{ _GlobalSettings.AcpAgent() },
+            AgentPaneYoloMode(),
+            IsYoloModePolicyLocked(),
+            _IsSelectedAcpAgentAvailable());
+    }
+
     void AIAgentsViewModel::_AppendAddNewEntry(IObservableVector<Editor::AgentEntry>& list)
     {
         auto entry = winrt::make_self<AgentEntry>(L"__add_new__", L"+ Add New...", true);
@@ -976,7 +1004,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
             _isAddingCustomAcpAgent = true;
             _editingCustomAcpAgentId = L"";
             _customAcpCommand = L"";
-            _NotifyChanges(L"IsAddingCustomAcpAgent", L"IsCustomAcpAgentSelected", L"CustomAcpCommand", L"ShowAcpModel", L"CustomModelProviderUnsupportedMessage");
+            _NotifyChanges(L"IsAddingCustomAcpAgent", L"IsCustomAcpAgentSelected", L"CustomAcpCommand", L"ShowAcpModel", L"CustomModelProviderUnsupportedMessage", L"ShowOpenCodeYoloWarning", L"ShowGeminiYoloInfo");
             return;
         }
         auto idStr = winrt::to_string(value.Id());
@@ -1019,7 +1047,9 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
                            L"ShowAcpModelTextBox",
                            L"AcpModel",
                            L"CurrentAcpModelEntry",
-                           L"CustomModelProviderUnsupportedMessage");
+                           L"CustomModelProviderUnsupportedMessage",
+                           L"ShowOpenCodeYoloWarning",
+                           L"ShowGeminiYoloInfo");
             return;
         }
         if (value.Id() == _GlobalSettings.AcpAgent())
@@ -1031,7 +1061,9 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
                                L"IsCustomAcpAgentSelected",
                                L"CustomAcpCommand",
                                L"ShowAcpModel",
-                               L"CustomModelProviderUnsupportedMessage");
+                               L"CustomModelProviderUnsupportedMessage",
+                               L"ShowOpenCodeYoloWarning",
+                               L"ShowGeminiYoloInfo");
             }
             return;
         }
@@ -1052,7 +1084,9 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
                            L"HasAcpModelList",
                            L"ShowAcpModelTextBox",
                            L"AcpModel",
-                           L"CustomModelProviderUnsupportedMessage");
+                           L"CustomModelProviderUnsupportedMessage",
+                           L"ShowOpenCodeYoloWarning",
+                           L"ShowGeminiYoloInfo");
         }
     }
 
@@ -1207,7 +1241,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
             winrt::single_threaded_vector<Model::AcpModelInfo>().GetView(),
             L"");
         _TriggerAcpModelProbe();
-        _NotifyChanges(L"CurrentAcpAgent", L"IsAddingCustomAcpAgent", L"IsCustomAcpAgentSelected", L"ShowAcpModel", L"CustomAcpCommandPreview", L"AcpModel", L"CustomModelProviderUnsupportedMessage");
+        _NotifyChanges(L"CurrentAcpAgent", L"IsAddingCustomAcpAgent", L"IsCustomAcpAgentSelected", L"ShowAcpModel", L"CustomAcpCommandPreview", L"AcpModel", L"CustomModelProviderUnsupportedMessage", L"ShowOpenCodeYoloWarning", L"ShowGeminiYoloInfo");
     }
 
     void AIAgentsViewModel::SaveCustomDelegateAgent()
@@ -1245,7 +1279,13 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
     {
         _isAddingCustomAcpAgent = false;
         _editingCustomAcpAgentId = L"";
-        _NotifyChanges(L"IsAddingCustomAcpAgent", L"IsCustomAcpAgentSelected", L"CurrentAcpAgent", L"ShowAcpModel", L"CustomModelProviderUnsupportedMessage");
+        _NotifyChanges(L"IsAddingCustomAcpAgent",
+                       L"IsCustomAcpAgentSelected",
+                       L"CurrentAcpAgent",
+                       L"ShowAcpModel",
+                       L"CustomModelProviderUnsupportedMessage",
+                       L"ShowOpenCodeYoloWarning",
+                       L"ShowGeminiYoloInfo");
     }
 
     void AIAgentsViewModel::CancelCustomDelegateAgent()
@@ -1292,7 +1332,13 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
                 _GlobalSettings.AcpModel(L"");
                 _TriggerAcpModelProbe();
             }
-            _NotifyChanges(L"CurrentAcpAgent", L"IsAddingCustomAcpAgent", L"IsCustomAcpAgentSelected", L"ShowAcpModel", L"CustomModelProviderUnsupportedMessage");
+            _NotifyChanges(L"CurrentAcpAgent",
+                           L"IsAddingCustomAcpAgent",
+                           L"IsCustomAcpAgentSelected",
+                           L"ShowAcpModel",
+                           L"CustomModelProviderUnsupportedMessage",
+                           L"ShowOpenCodeYoloWarning",
+                           L"ShowGeminiYoloInfo");
         }
     }
 
@@ -1397,6 +1443,41 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
     {
         return !_GlobalSettings.IsAutoFixPolicyLocked() &&
                _GlobalSettings.EffectiveAutoErrorDetectionEnabled();
+    }
+
+    // ── Yolo mode (provider-native ACP mode) ─────────────────────────────
+
+    bool AIAgentsViewModel::AgentPaneYoloMode() const
+    {
+        return _GlobalSettings.EffectiveAgentPaneYoloMode();
+    }
+
+    void AIAgentsViewModel::AgentPaneYoloMode(bool value)
+    {
+        // Reject writes when org policy blocks yolo mode (the toggle is
+        // disabled in that case, but guard against races).
+        if (_GlobalSettings.IsYoloModePolicyLocked())
+        {
+            return;
+        }
+        if (_GlobalSettings.AgentPaneYoloMode() == value) return;
+        _GlobalSettings.AgentPaneYoloMode(value);
+        _NotifyChanges(L"HasAgentPaneYoloMode", L"AgentPaneYoloMode", L"ShowOpenCodeYoloWarning", L"ShowGeminiYoloInfo");
+    }
+
+    bool AIAgentsViewModel::HasAgentPaneYoloMode() const
+    {
+        return _GlobalSettings.HasAgentPaneYoloMode();
+    }
+
+    bool AIAgentsViewModel::ShowOpenCodeYoloWarning() const
+    {
+        return _YoloSettingsNotice() == ::Microsoft::Terminal::Settings::Model::AgentRegistry::YoloSettingsNotice::Unavailable;
+    }
+
+    bool AIAgentsViewModel::ShowGeminiYoloInfo() const
+    {
+        return _YoloSettingsNotice() == ::Microsoft::Terminal::Settings::Model::AgentRegistry::YoloSettingsNotice::Conditional;
     }
 
     // ── Pane position ────────────────────────────────────────────────────

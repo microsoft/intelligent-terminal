@@ -306,12 +306,48 @@
                           Style="{StaticResource ComboBoxSettingStyle}" />
             </local:SettingContainer>
 
+            <!--  Global Yolo preference: asks supported providers to enable
+                their advertised ACP session mode. High-risk toggle, so it
+                is disabled outright (IsYoloModePolicyLocked) when the
+                AllowYoloMode GPO policy blocks it.  -->
+            <local:SettingContainer x:Name="AgentPaneYoloMode"
+                                    x:Uid="AIAgents_YoloMode">
+                <StackPanel>
+                    <ToggleSwitch AutomationProperties.AutomationId="AgentPaneYoloModeToggle"
+                                  IsOn="{x:Bind ViewModel.AgentPaneYoloMode, Mode=TwoWay}"
+                                  IsEnabled="{x:Bind mtu:Converters.InvertBoolean(ViewModel.IsYoloModePolicyLocked), Mode=OneWay}"
+                                  Style="{StaticResource ToggleSwitchInExpanderStyle}" />
+                    <TextBlock x:Uid="AIAgents_PolicyLocked"
+                               Visibility="{x:Bind ViewModel.IsYoloModePolicyLocked, Mode=OneWay}"
+                               Opacity="0.6"
+                               Margin="0,4,0,0" />
+                </StackPanel>
+            </local:SettingContainer>
+            <muxc:InfoBar x:Uid="AIAgents_YoloOpenCodeWarning"
+                          AutomationProperties.AutomationId="OpenCodeYoloCompatibilityInfoBar"
+                          HorizontalAlignment="Stretch"
+                          IsClosable="False"
+                          IsOpen="{x:Bind ViewModel.ShowOpenCodeYoloWarning, Mode=OneWay}"
+                          Margin="0,4,0,0"
+                          MaxWidth="1000"
+                          Severity="Warning"
+                          Visibility="{x:Bind ViewModel.ShowOpenCodeYoloWarning, Mode=OneWay}" />
+            <muxc:InfoBar x:Uid="AIAgents_YoloGeminiInfo"
+                          AutomationProperties.AutomationId="GeminiYoloCompatibilityInfoBar"
+                          HorizontalAlignment="Stretch"
+                          IsClosable="False"
+                          IsOpen="{x:Bind ViewModel.ShowGeminiYoloInfo, Mode=OneWay}"
+                          Margin="0,4,0,0"
+                          MaxWidth="1000"
+                          Severity="Informational"
+                          Visibility="{x:Bind ViewModel.ShowGeminiYoloInfo, Mode=OneWay}" />
+
             <local:SettingContainer x:Name="ShowTokenUsageAndCost"
-                        x:Uid="AIAgents_ShowTokenUsageAndCost">
+                                    x:Uid="AIAgents_ShowTokenUsageAndCost">
                 <ToggleSwitch x:Name="ShowTokenUsageAndCostToggle"
                               MinWidth="0"
                               AutomationProperties.AccessibilityView="Content"
-                    IsOn="{x:Bind ViewModel.ShowTokenUsageAndCost, Mode=TwoWay}" />
+                              IsOn="{x:Bind ViewModel.ShowTokenUsageAndCost, Mode=TwoWay}" />
             </local:SettingContainer>
 
             <!--  Automatic error detection (parent) + Automatic error

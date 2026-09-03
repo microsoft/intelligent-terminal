@@ -243,20 +243,6 @@ impl App {
         tab.completed_turn_selection_visible_pending = click.previous_selection_pending;
     }
 
-    fn register_born_bound_session(&mut self, event: crate::agent_sessions::SessionEvent) {
-        self.agent_sessions.apply(event.clone());
-        if self
-            .master_request_tx
-            .send(crate::protocol::acp::client::MasterExtRequest::SessionBornBound { event })
-            .is_err()
-        {
-            tracing::warn!(
-                target: "coordinator",
-                "born-bound registration queue is unavailable",
-            );
-        }
-    }
-
     fn copy_text_selection(&mut self) -> bool {
         let Some(text) = self.text_selection.selected_text() else {
             return false;
@@ -334,10 +320,30 @@ impl App {
         Some(request)
     }
 
+    fn register_born_bound_session(&mut self, event: crate::agent_sessions::SessionEvent) {
+        self.agent_sessions.apply(event.clone());
+        if self
+            .master_request_tx
+            .send(crate::protocol::acp::client::MasterExtRequest::SessionBornBound { event })
+            .is_err()
+        {
+            tracing::warn!(
+                target: "coordinator",
+                "born-bound registration queue is unavailable",
+            );
+        }
+    }
+
     pub(super) fn handle_event(&mut self, event: AppEvent) {
         match event {
             AppEvent::Key(key) => {
                 self.cancel_completed_turn_click();
+                let is_select_all = matches!(key.code, KeyCode::Char('a'))
+                    && key.modifiers == KeyModifiers::CONTROL;
+                if is_select_all {
+                    self.text_selection.select_all();
+                    return;
+                }
                 let is_copy = matches!(key.code, KeyCode::Char('c'))
                     && key.modifiers.contains(KeyModifiers::CONTROL);
                 if is_copy && self.copy_text_selection() {
@@ -525,15 +531,15 @@ impl App {
                 if self.mode == AppMode::Setup
                     || self.mode == AppMode::Auth
                     || self.agents_view_awaiting_snapshot()
-                    // Keep the resuming indicator animating for the whole
-                    // `session/load`, which outlives the connecting state it
-                    // usually starts in.
-                    || self.resume_in_flight()
                     // Keep the connecting indicator animating during the
                     // pipe-connect → ACP init → session/new handshake so a cold
                     // start (which can run tens of seconds) doesn't look frozen
                     // (F7). Without this the chat sat static with no progress.
                     || matches!(self.state, ConnectionState::Connecting(_))
+                    // Keep the resuming indicator animating for the whole
+                    // `session/load`, which outlives the connecting state it
+                    // usually starts in.
+                    || self.resume_in_flight()
                 {
                     self.activity_frame = self.activity_frame.wrapping_add(1);
                 }
@@ -621,7 +627,9 @@ impl App {
                 current_model_id,
                 load_session_supported,
                 image_supported,
+                session_capabilities_ready,
             } => {
+                self.pending_yolo_reconciles.clear();
                 self.agent_name = name;
                 self.agent_model = model;
                 self.agent_version = version;
@@ -650,11 +658,6 @@ impl App {
                     self.setup = None;
                 }
                 // Show welcome hint on first-ever connect (persisted in state.json).
-                // A pane that is restoring a previous conversation is not a
-                // first run, so it never gets the hint — and because that is
-                // decided without persisting anything, the next genuinely
-                // fresh pane still shows it.
-                //
                 // The disclaimer card is pushed as a `ChatMessage::Disclaimer`
                 // on every agent-pane startup that lands on an empty chat (no
                 // prior completed turns and no other in-flight messages), so
@@ -666,9 +669,15 @@ impl App {
                 }
                 // Bind the startup session to whichever tab we own.
                 let bind_tab = self
-                    .tab_id
+                    .owner_tab_id
                     .clone()
+                    .or_else(|| self.tab_id.clone())
                     .unwrap_or_else(|| DEFAULT_TAB_ID.to_string());
+                if session_capabilities_ready {
+                    self.pending_yolo_session_tabs.remove(&bind_tab);
+                } else {
+                    self.pending_yolo_session_tabs.insert(bind_tab.clone());
+                }
                 self.session_to_tab
                     .insert(session_id.clone(), bind_tab.clone());
                 let tab = self.tab_mut(&bind_tab);
@@ -676,7 +685,7 @@ impl App {
                     tab.usage = None;
                     tab.usage_staleness = crate::usage::UsageStaleness::default();
                 }
-                tab.session_id = Some(session_id);
+                tab.session_id = Some(session_id.clone());
                 let has_real_content = !tab.completed_turns.is_empty()
                     || tab
                         .messages
@@ -691,6 +700,9 @@ impl App {
                 {
                     tab.messages.insert(0, ChatMessage::Disclaimer);
                 }
+                if session_capabilities_ready {
+                    self.reconcile_session_yolo(&session_id);
+                }
                 self.publish_agent_status();
                 self.project_tab_state(&bind_tab);
             }
@@ -700,6 +712,23 @@ impl App {
                 available_models,
                 current_model_id,
             } => {
+                let waiting_for_different_load_target =
+                    self.tab_sessions.get(&tab_id).is_some_and(|tab| {
+                        tab.loading_session
+                            && tab
+                                .loading_target_session_id
+                                .as_deref()
+                                .is_some_and(|target| target != session_id)
+                    });
+                if waiting_for_different_load_target {
+                    tracing::debug!(
+                        target: "acp_load_session",
+                        tab = %tab_id,
+                        session_id,
+                        "ignoring unrelated SessionAttached while the load target is pending"
+                    );
+                    return;
+                }
                 let is_active_tab = self.active_tab_key() == tab_id;
                 let replaced_session_ids: Vec<String> = self
                     .session_to_tab
@@ -712,12 +741,19 @@ impl App {
                 for replaced_session_id in replaced_session_ids {
                     self.session_to_tab.remove(&replaced_session_id);
                     self.session_model_configs.remove(&replaced_session_id);
+                    self.clear_yolo_session_state(&replaced_session_id);
                     self.session_config_options.remove(&replaced_session_id);
                     self.session_commands.remove(&replaced_session_id);
                 }
                 self.session_to_tab
                     .insert(session_id.clone(), tab_id.clone());
+                self.pending_yolo_session_tabs.remove(&tab_id);
                 let tab = self.tab_mut(&tab_id);
+                if tab.session_id.as_deref() != Some(session_id.as_str()) {
+                    tab.config_picker = ConfigPickerState::Closed;
+                    tab.config_pending_id = None;
+                    tab.native_yolo_config_pending = false;
+                }
                 tab.session_id = Some(session_id.clone());
                 // Close the session/load replay window only when this
                 // attach is for the session we asked to load. An
@@ -769,6 +805,14 @@ impl App {
                         self.send_session_model(Some(session_id.clone()), model, false);
                     }
                 }
+                let (client_reconciled_target, current_target) = {
+                    let mut state = self.yolo_state.lock().unwrap();
+                    let current_target = state.effective(&session_id);
+                    (state.take_client_reconciled(&session_id), current_target)
+                };
+                if client_reconciled_target != Some(current_target) {
+                    self.reconcile_session_yolo(&session_id);
+                }
                 self.publish_agent_status();
                 self.project_tab_state(&tab_id);
             }
@@ -807,6 +851,50 @@ impl App {
                     self.agent_current_model_id = current_model_id;
                     self.rebuild_model_catalog_from_agent_state();
                     self.publish_agent_status();
+                }
+            }
+            AppEvent::RuntimeYoloReconcileCompleted {
+                reconcile_id,
+                fail_closed,
+                restart_required,
+                result,
+            } => {
+                if reconcile_id == 0 && restart_required {
+                    // Lazy-session and native `/config` operations do not
+                    // allocate an App reconcile id. Their unknown outcome
+                    // still replaces the shared master, so gate every live
+                    // session until reset tears down the old agent state.
+                    let sessions = self.session_to_tab.keys().cloned().collect::<HashSet<_>>();
+                    if !sessions.is_empty() {
+                        self.pending_yolo_reconciles.insert(0, (sessions, true));
+                    }
+                }
+                if reconcile_id != 0 && !self.pending_yolo_reconciles.contains_key(&reconcile_id) {
+                    tracing::debug!(
+                        target: "yolo",
+                        reconcile_id,
+                        "ignoring stale provider-native Yolo reconciliation completion"
+                    );
+                    return;
+                }
+                let settled = self.pending_yolo_reconciles.get(&reconcile_id).is_some_and(
+                    |(_, pending_fail_closed)| {
+                        result.is_ok() || (!*pending_fail_closed && !restart_required)
+                    },
+                );
+                if settled {
+                    self.pending_yolo_reconciles.remove(&reconcile_id);
+                }
+                if result.is_err() && (fail_closed || restart_required) {
+                    tracing::error!(
+                        target: "yolo",
+                        error = %result.as_ref().unwrap_err(),
+                        unknown_outcome = restart_required,
+                        "provider-native Yolo reconciliation failed; restarting agent stack fail-closed"
+                    );
+                    let _ = self
+                        .restart_tx
+                        .send(crate::protocol::acp::client::AgentLifecycleRequest::RestartMaster);
                 }
             }
             AppEvent::ModelSetCompleted {
@@ -913,6 +1001,7 @@ impl App {
                     let tab = self.tab_mut(&target_tab);
                     if tab.config_pending_id.as_deref() == Some(config_id.as_str()) {
                         tab.config_pending_id = None;
+                        tab.native_yolo_config_pending = false;
                     }
                     let message = if model_compat {
                         tab.model_override = Some(value.clone());
@@ -940,6 +1029,7 @@ impl App {
                 session_id,
                 config_id,
                 message,
+                restart_required,
             } => {
                 let option_name = self
                     .session_config_options
@@ -951,21 +1041,27 @@ impl App {
                 let Some(target_tab) = target_tab else {
                     return;
                 };
-                let tab = self.tab_mut(&target_tab);
-                if tab.config_pending_id.as_deref() == Some(config_id.as_str()) {
-                    tab.config_pending_id = None;
+                {
+                    let tab = self.tab_mut(&target_tab);
+                    if !restart_required
+                        && tab.config_pending_id.as_deref() == Some(config_id.as_str())
+                    {
+                        tab.config_pending_id = None;
+                        tab.native_yolo_config_pending = false;
+                    }
+                    tab.messages.push(ChatMessage::error(
+                        t!(
+                            "system.config_update_failed",
+                            option = option_name.as_str(),
+                            error = message.as_str()
+                        )
+                        .into_owned(),
+                    ));
+                    tab.scroll_to_bottom();
                 }
-                tab.messages.push(ChatMessage::error(
-                    t!(
-                        "system.config_update_failed",
-                        option = option_name.as_str(),
-                        error = message.as_str()
-                    )
-                    .into_owned(),
-                ));
-                tab.scroll_to_bottom();
             }
             AppEvent::TabError { tab_id, message } => {
+                self.pending_yolo_session_tabs.remove(&tab_id);
                 // Scoped error for a specific tab. Bypasses the global
                 // auth-fallback / ConnectionState::Failed flip in
                 // AgentError because the error is local to one tab's
@@ -1949,7 +2045,6 @@ impl App {
                         );
                         return;
                     }
-
                     self.register_born_bound_session(
                         crate::agent_sessions::SessionEvent::SessionStarted {
                             key: agent_session_id.to_string(),
@@ -2030,7 +2125,10 @@ impl App {
                     let recovers_retirement_failure =
                         matches!(&self.auth_recovery_state, AuthRecoveryState::Idle)
                             && matches!(&self.state, ConnectionState::Failed(_));
-                    if !completes_auth_recovery && !recovers_retirement_failure {
+                    if !completes_auth_recovery
+                        && !recovers_retirement_failure
+                        && !self.restart_without_acp_pending
+                    {
                         return;
                     }
                     if self.deferred_acp.is_none() {
@@ -2047,6 +2145,7 @@ impl App {
                         %request_id,
                         "replacement master is ready; reconnecting retained helper"
                     );
+                    self.restart_without_acp_pending = false;
                     if completes_auth_recovery {
                         // Invalidate the longer master-readiness timer and arm
                         // the normal connection deadline for this new phase.
@@ -2124,6 +2223,11 @@ impl App {
                         );
                         self.autofix_enabled = enabled;
                     }
+
+                    self.apply_runtime_yolo_config(
+                        params.get("yolo_enabled").and_then(|v| v.as_bool()),
+                        params.get("yolo_policy_blocked").and_then(|v| v.as_bool()),
+                    );
 
                     // delegate_agent + delegate_model travel together so the
                     // delegate runtime table can be rebuilt in one shot.
@@ -2460,6 +2564,7 @@ impl App {
                         // user knows a conversation is on its way in rather
                         // than watching a pane that looks like a cold start.
                     }
+                    self.pending_yolo_session_tabs.insert(tab_id.to_string());
                     // If the load_session target IS the active tab, push the
                     // (now Chat) view to C++ so the bar drops the "Agent
                     // sessions" label that the user was looking at when they
@@ -2485,7 +2590,24 @@ impl App {
                     // still in it and the reconnect gets a fresh channel
                     // pair, so `try_start_acp` has to re-issue it.
                     self.pending_session_load = Some(request.clone());
-                    let _ = self.load_session_tx.send(request);
+                    if self.load_session_tx.send(request).is_err() {
+                        self.pending_session_load = None;
+                        self.pending_yolo_session_tabs.remove(tab_id);
+                        let tab = self.tab_mut(tab_id);
+                        tab.loading_session = false;
+                        tab.loading_target_session_id = None;
+                        tab.replay_agent_buffer.clear();
+                        tab.replay_user_buffer.clear();
+                        tab.replay_user_message_id = None;
+                        tab.has_meaningful_conversation = tab
+                            .meaningful_conversation_before_load
+                            .take()
+                            .unwrap_or(false);
+                        tab.messages
+                            .push(ChatMessage::Error(t!("connection.lost").into_owned()));
+                        tab.scroll_to_bottom();
+                        self.project_tab_state(tab_id);
+                    }
                     return;
                 }
 
@@ -2791,6 +2913,12 @@ impl App {
                         );
                         return;
                     }
+                }
+
+                if method == "connection_state"
+                    && params.get("state").and_then(|v| v.as_str()) == Some("closed")
+                {
+                    self.handle_autofix_pane_closed(tab_id.as_deref(), &pane_id);
                 }
 
                 // Telemetry: emit ErrorDetected for any non-acknowledged

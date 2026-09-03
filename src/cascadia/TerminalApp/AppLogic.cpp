@@ -336,6 +336,42 @@ namespace winrt::TerminalApp::implementation
             });
     }
 
+    void AppLogic::_RegisterAgentPolicyChange()
+    {
+        const auto weakSelf = get_weak();
+        const auto dispatcher = DispatcherQueue::GetForCurrentThread();
+        const auto createWatcher = [weakSelf, dispatcher](const HKEY root) {
+            return ::Microsoft::Terminal::Settings::Model::AgentPolicy::CreatePolicyChangeWatcher(
+                root,
+                [weakSelf, dispatcher](wil::RegistryChangeKind) noexcept {
+                    try
+                    {
+                        dispatcher.TryEnqueue([weakSelf]() noexcept {
+                            try
+                            {
+                                if (const auto self = weakSelf.get())
+                                {
+                                    // Rebind first so creation or deletion of a missing policy
+                                    // ancestor cannot leave the next path segment unwatched.
+                                    self->_RegisterAgentPolicyChange();
+
+                                    // AgentPolicy is header-only, so TerminalApp and SettingsModel
+                                    // each own a cache. Refresh this module now; the settings reload
+                                    // refreshes SettingsModel and emits the runtime-config diff.
+                                    ::Microsoft::Terminal::Settings::Model::AgentPolicy::Reload();
+                                    self->ReloadSettingsThrottled();
+                                }
+                            }
+                            CATCH_LOG()
+                        });
+                    }
+                    CATCH_LOG()
+                });
+        };
+        _machineAgentPolicyWatcher = createWatcher(HKEY_LOCAL_MACHINE);
+        _userAgentPolicyWatcher = createWatcher(HKEY_CURRENT_USER);
+    }
+
     void AppLogic::_ApplyLanguageSettingChange() noexcept
     try
     {
@@ -418,6 +454,7 @@ namespace winrt::TerminalApp::implementation
         {
             // Register for directory change notification.
             _RegisterSettingsChange();
+            _RegisterAgentPolicyChange();
             return;
         }
 

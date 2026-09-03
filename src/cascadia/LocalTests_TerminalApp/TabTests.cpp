@@ -17,6 +17,8 @@
 #include "../UnitTests_Control/MockControlSettings.h"
 #include "CppWinrtTailored.h"
 
+#include <winrt/Windows.UI.Xaml.Automation.h>
+
 using namespace Microsoft::Console;
 using namespace TerminalApp;
 using namespace winrt::TerminalApp;
@@ -220,8 +222,12 @@ namespace TerminalAppLocalTests
         TEST_METHOD(BuildStartupActionsContentStashesAgentFirstPaneAsNewTab);
         TEST_METHOD(BuildStartupActionsContentStashesAgentLaterSplitAsExistingTab);
         TEST_METHOD(TransferredAgentContentFirstPaneDefersTabRekey);
+        TEST_METHOD(SourceTerminalPaneSkipsAgentPane);
         TEST_METHOD(TransferredAgentContentSplitPaneRetiresDestinationAgentPane);
         TEST_METHOD(TransferredAgentStatusReplaysMissedTabRekey);
+        TEST_METHOD(PendingAgentOpenSurvivesStartupProjection);
+        TEST_METHOD(InitialSessionsViewSurvivesStartupProjection);
+        TEST_METHOD(AgentReadyRuntimeConfigIncludesCurrentYoloState);
 
         TEST_METHOD(NextMRUTab);
         TEST_METHOD(VerifyCommandPaletteTabSwitcherOrder);
@@ -2066,6 +2072,56 @@ namespace TerminalAppLocalTests
         });
     }
 
+    void TabTests::SourceTerminalPaneSkipsAgentPane()
+    {
+        auto page = _commonSetup();
+
+        TestOnUIThread([&]() {
+            const auto focusedTab = page->_GetFocusedTabImpl();
+            VERIFY_IS_NOT_NULL(focusedTab);
+
+            const auto terminalPane = focusedTab->GetActivePane();
+            VERIFY_IS_NOT_NULL(terminalPane);
+            VERIFY_IS_FALSE(terminalPane->IsAgentPane());
+
+            // The real agent pane runs the hidden "Agent Pane" profile, which
+            // is `closeOnExit: always`. Stand in for it with a profile that is
+            // not the tab's (and not the global default) so the assertions
+            // below can tell the two apart.
+            NewTerminalArgs agentArgs{ 1 };
+            auto agentPane = page->_WrapInAgentPaneContent(page->_MakePane(agentArgs, nullptr, nullptr));
+            VERIFY_IS_NOT_NULL(agentPane);
+            agentPane->IsAgentPane(true);
+
+            // `_SplitPane` focuses the new pane, exactly like clicking into the
+            // agent pane or driving its session picker does.
+            page->_SplitPane(focusedTab, SplitDirection::Down, 0.3f, agentPane);
+            VERIFY_IS_NOT_NULL(focusedTab->GetActivePane());
+            VERIFY_IS_TRUE(focusedTab->GetActivePane()->IsAgentPane());
+
+            // This is the state that used to leak the agent pane's identity
+            // into protocol tabs, delegate agent selection, and delegate cwd.
+            const auto focusedProfile = focusedTab->GetFocusedProfile();
+            VERIFY_IS_NOT_NULL(focusedProfile);
+            VERIFY_ARE_EQUAL(L"profile1", focusedProfile.Name());
+
+            const auto sourcePane = page->_SourceTerminalPaneForTab(focusedTab);
+            VERIFY_IS_NOT_NULL(sourcePane);
+            VERIFY_IS_FALSE(sourcePane->IsAgentPane());
+            VERIFY_IS_TRUE(sourcePane == terminalPane);
+
+            // The source pane is deliberately not `_lastActive`, so resolving
+            // its profile must not go through `Pane::GetFocusedProfile()` —
+            // that returns null here, which is what silently dropped the
+            // profile's `commandPaletteAgent`.
+            VERIFY_IS_NULL(sourcePane->GetFocusedProfile());
+
+            const auto sourceProfile = page->_SourceTerminalProfileForTab(focusedTab);
+            VERIFY_IS_NOT_NULL(sourceProfile);
+            VERIFY_ARE_EQUAL(L"profile0", sourceProfile.Name());
+        });
+    }
+
     void TabTests::_verifyBuildStartupActionsContentStashesAgentPane(const SplitDirection splitDirection,
                                                                      const winrt::TerminalApp::implementation::AgentPaneDragStash::AttachDisposition expectedDisposition,
                                                                      const winrt::guid& sourceProfileGuid)
@@ -2250,19 +2306,160 @@ namespace TerminalAppLocalTests
             VERIFY_IS_TRUE(impl->IsAgentConnected());
             VERIFY_IS_TRUE(impl->GetAgentName() == L"Copilot");
             VERIFY_IS_TRUE(impl->GetAgentModel() == L"model-a");
-            VERIFY_ARE_EQUAL(1u, protocolEvents.size());
+            VERIFY_IS_NULL(impl->GetRoot().FindName(L"AgentYoloStatusText"));
+            VERIFY_ARE_EQUAL(2u, protocolEvents.size());
             VERIFY_IS_TRUE(protocolEvents[0]["method"].asString() == "tab_renamed");
             VERIFY_IS_TRUE(protocolEvents[0]["params"]["old_tab_id"].asString() == winrt::to_string(oldTabId));
             VERIFY_IS_TRUE(protocolEvents[0]["params"]["new_tab_id"].asString() == winrt::to_string(focusedTab->StableId()));
+            VERIFY_IS_TRUE(protocolEvents[1]["method"].asString() == "set_agent_state");
+            VERIFY_IS_TRUE(protocolEvents[1]["params"]["tab_id"].asString() == winrt::to_string(focusedTab->StableId()));
+            VERIFY_IS_TRUE(protocolEvents[1]["params"]["view"].asString() == "chat");
+            VERIFY_IS_TRUE(protocolEvents[1]["params"]["pane_open"].asBool());
             VERIFY_IS_TRUE(impl->TransferSourceTabId().empty());
 
             sendStatus(focusedTab->StableId(), "model-b");
 
             VERIFY_IS_TRUE(impl->GetAgentModel() == L"model-b");
-            VERIFY_ARE_EQUAL(1u, protocolEvents.size());
+            VERIFY_ARE_EQUAL(2u, protocolEvents.size());
 
             page->ProtocolVtSequenceReceived(token);
         });
+    }
+
+    void TabTests::PendingAgentOpenSurvivesStartupProjection()
+    {
+        auto page = _commonSetup();
+
+        TestOnUIThread([&]() {
+            const auto focusedTab = page->_GetFocusedTabImpl();
+            VERIFY_IS_NOT_NULL(focusedTab);
+
+            auto agentPane = page->_WrapInAgentPaneContent(page->_MakePane(nullptr, nullptr, nullptr));
+            VERIFY_IS_NOT_NULL(agentPane);
+            agentPane->IsAgentPane(true);
+            page->_SplitPane(focusedTab, SplitDirection::Left, 0.5f, agentPane);
+
+            std::vector<Json::Value> protocolEvents;
+            const auto token = page->ProtocolVtSequenceReceived(
+                [&](auto&&, const winrt::hstring& payload) {
+                    Json::Value event;
+                    Json::CharReaderBuilder readerBuilder;
+                    std::istringstream stream{ winrt::to_string(payload) };
+                    std::string errors;
+                    if (Json::parseFromStream(readerBuilder, stream, &event, &errors))
+                    {
+                        protocolEvents.emplace_back(std::move(event));
+                    }
+                });
+
+            page->_RequestAgentStateForTab(focusedTab, "chat", /*pane_open*/ true);
+            VERIFY_ARE_EQUAL(1u, protocolEvents.size());
+
+            Json::Value stale{ Json::objectValue };
+            stale["type"] = "event";
+            stale["method"] = "agent_state_changed";
+            stale["params"]["tab_id"] = winrt::to_string(focusedTab->StableId());
+            stale["params"]["view"] = "chat";
+            stale["params"]["pane_open"] = false;
+            Json::StreamWriterBuilder writerBuilder;
+            writerBuilder["indentation"] = "";
+            page->OnAgentStateChanged(winrt::to_hstring(Json::writeString(writerBuilder, stale)));
+            VERIFY_IS_FALSE(focusedTab->HasStashedAgentPane());
+
+            Json::Value ready{ Json::objectValue };
+            ready["type"] = "event";
+            ready["method"] = "agent_status";
+            ready["params"]["agent_id"] = "copilot";
+            ready["params"]["name"] = "";
+            ready["params"]["state"] = "connecting";
+            ready["params"]["tab_id"] = winrt::to_string(focusedTab->StableId());
+            page->OnAgentStatusChanged(winrt::to_hstring(Json::writeString(writerBuilder, ready)));
+
+            VERIFY_ARE_EQUAL(2u, protocolEvents.size());
+            VERIFY_IS_TRUE(protocolEvents[1]["method"].asString() == "set_agent_state");
+            VERIFY_IS_TRUE(protocolEvents[1]["params"]["view"].asString() == "chat");
+            VERIFY_IS_TRUE(protocolEvents[1]["params"]["pane_open"].asBool());
+            page->ProtocolVtSequenceReceived(token);
+        });
+    }
+
+    void TabTests::InitialSessionsViewSurvivesStartupProjection()
+    {
+        auto page = _commonSetup();
+
+        TestOnUIThread([&]() {
+            const auto focusedTab = page->_GetFocusedTabImpl();
+            VERIFY_IS_NOT_NULL(focusedTab);
+
+            auto agentPane = page->_WrapInAgentPaneContent(page->_MakePane(nullptr, nullptr, nullptr));
+            VERIFY_IS_NOT_NULL(agentPane);
+            agentPane->IsAgentPane(true);
+            page->_SplitPane(focusedTab, SplitDirection::Left, 0.5f, agentPane);
+            const auto content = focusedTab->FindAgentPaneContent();
+            VERIFY_IS_NOT_NULL(content);
+            content.SetSessionsView(true);
+
+            Json::Value stale{ Json::objectValue };
+            stale["type"] = "event";
+            stale["method"] = "agent_state_changed";
+            stale["params"]["tab_id"] = winrt::to_string(focusedTab->StableId());
+            stale["params"]["view"] = "chat";
+            stale["params"]["pane_open"] = false;
+            Json::StreamWriterBuilder writerBuilder;
+            writerBuilder["indentation"] = "";
+            page->OnAgentStateChanged(winrt::to_hstring(Json::writeString(writerBuilder, stale)));
+
+            const auto impl = winrt::get_self<winrt::TerminalApp::implementation::AgentPaneContent>(content);
+            VERIFY_IS_TRUE(impl->IsSessionsView());
+            VERIFY_IS_FALSE(focusedTab->HasStashedAgentPane());
+
+            std::vector<Json::Value> protocolEvents;
+            const auto token = page->ProtocolVtSequenceReceived(
+                [&](auto&&, const winrt::hstring& payload) {
+                    Json::Value event;
+                    Json::CharReaderBuilder readerBuilder;
+                    std::istringstream stream{ winrt::to_string(payload) };
+                    std::string errors;
+                    if (Json::parseFromStream(readerBuilder, stream, &event, &errors))
+                    {
+                        protocolEvents.emplace_back(std::move(event));
+                    }
+                });
+
+            Json::Value ready{ Json::objectValue };
+            ready["type"] = "event";
+            ready["method"] = "agent_status";
+            ready["params"]["agent_id"] = "copilot";
+            ready["params"]["name"] = "";
+            ready["params"]["state"] = "connecting";
+            ready["params"]["tab_id"] = winrt::to_string(focusedTab->StableId());
+            page->OnAgentStatusChanged(winrt::to_hstring(Json::writeString(writerBuilder, ready)));
+
+            VERIFY_ARE_EQUAL(1u, protocolEvents.size());
+            VERIFY_IS_TRUE(protocolEvents[0]["method"].asString() == "set_agent_state");
+            VERIFY_IS_TRUE(protocolEvents[0]["params"]["view"].asString() == "sessions");
+            VERIFY_IS_TRUE(protocolEvents[0]["params"]["pane_open"].asBool());
+            page->ProtocolVtSequenceReceived(token);
+        });
+    }
+
+    void TabTests::AgentReadyRuntimeConfigIncludesCurrentYoloState()
+    {
+        winrt::TerminalApp::implementation::TerminalPage::AgentRuntimeConfigSnapshot config;
+        config.yoloEnabled = false;
+        config.yoloPolicyBlocked = true;
+
+        const auto payload = winrt::TerminalApp::implementation::TerminalPage::_BuildAgentReadyRuntimeConfigPayload(
+            "tab-a",
+            "42",
+            config);
+
+        VERIFY_ARE_EQUAL("tab-a", payload["tab_id"].asString());
+        VERIFY_ARE_EQUAL("42", payload["window_id"].asString());
+        VERIFY_IS_TRUE(payload["yolo_enabled"].isBool());
+        VERIFY_IS_FALSE(payload["yolo_enabled"].asBool());
+        VERIFY_IS_TRUE(payload["yolo_policy_blocked"].isBool());
+        VERIFY_IS_TRUE(payload["yolo_policy_blocked"].asBool());
     }
 
     void TabTests::NextMRUTab()

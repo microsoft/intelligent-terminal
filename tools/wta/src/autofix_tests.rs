@@ -214,3 +214,93 @@ fn success_exit_code_does_not_arm_autofix() {
         "a successful command (exit 0) must not submit an autofix turn"
     );
 }
+
+fn closed_event(pane: &str, tab: &str) -> AppEvent {
+    AppEvent::WtEvent {
+        method: "connection_state".to_string(),
+        pane_id: pane.to_string(),
+        tab_id: Some(tab.to_string()),
+        params: serde_json::json!({
+            "session_id": pane,
+            "state": "closed",
+        }),
+    }
+}
+
+fn closed_event_without_tab(pane: &str) -> AppEvent {
+    AppEvent::WtEvent {
+        method: "connection_state".to_string(),
+        pane_id: pane.to_string(),
+        tab_id: None,
+        params: serde_json::json!({
+            "session_id": pane,
+            "state": "closed",
+        }),
+    }
+}
+
+#[test]
+fn closing_source_pane_clears_detected_autofix() {
+    let mut app = test_app();
+    app.state = ConnectionState::Connected;
+    app.autofix_enabled = false;
+    let pane = "pane-detected";
+    let tab = "tab-detected";
+
+    app.maybe_trigger_autofix(&failure_notification(pane, Some(tab)));
+    app.handle_event(closed_event(pane, tab));
+
+    assert!(matches!(
+        app.tab_mut(tab).autofix.bar_snapshot,
+        AutofixBarSnapshot::Idle
+    ));
+    assert!(app.tab_mut(tab).autofix.trigger_echo_pane.is_none());
+}
+
+#[test]
+fn closing_source_pane_cancels_pending_autofix() {
+    let mut app = test_app();
+    app.state = ConnectionState::Connected;
+    app.autofix_enabled = true;
+    let pane = "pane-pending";
+    let tab = "tab-pending";
+
+    app.maybe_trigger_autofix(&failure_notification(pane, Some(tab)));
+    let generation = app.tab_mut(tab).autofix.generation;
+    // UI-initiated pane close currently races tab lookup in C++ and commonly
+    // arrives without tab_id. The pane ID is globally unique and must still
+    // resolve the owning tab's autofix state.
+    app.handle_event(closed_event_without_tab(pane));
+
+    let tab = app.tab_mut(tab);
+    assert!(tab.turn.is_idle());
+    assert!(tab.autofix.pane_id.is_none());
+    assert!(matches!(tab.autofix.bar_snapshot, AutofixBarSnapshot::Idle));
+    assert_eq!(tab.autofix.generation, generation.wrapping_add(1));
+}
+
+#[test]
+fn closing_source_pane_clears_review_but_unrelated_close_does_not() {
+    let mut app = test_app();
+    let pane = "pane-review";
+    let tab = "tab-review";
+    {
+        let tab = app.tab_mut(tab);
+        tab.autofix.suggested_pane_id = Some(pane.to_string());
+        tab.autofix.bar_snapshot = AutofixBarSnapshot::Review {
+            pane_id: pane.to_string(),
+            hotkey_hint: "Ctrl+Alt+.".to_string(),
+        };
+    }
+
+    app.handle_event(closed_event("other-pane", tab));
+    assert!(matches!(
+        app.tab_mut(tab).autofix.bar_snapshot,
+        AutofixBarSnapshot::Review { .. }
+    ));
+
+    app.handle_event(closed_event(pane, tab));
+    let tab = app.tab_mut(tab);
+    assert!(tab.autofix.suggested_pane_id.is_none());
+    assert!(matches!(tab.autofix.bar_snapshot, AutofixBarSnapshot::Idle));
+}

@@ -55,6 +55,15 @@ mod tests {
         keys
     }
 
+    fn provider_command_policy_value(path: &Path) -> Option<String> {
+        let body = std::fs::read_to_string(path)
+            .unwrap_or_else(|e| panic!("failed to read {}: {e}", path.display()));
+        body.lines()
+            .find_map(|line| line.strip_prefix("system.provider_command_blocked_by_policy: "))
+            .and_then(|value| value.split("  #").next())
+            .map(|value| value.trim_matches('"').to_string())
+    }
+
     #[test]
     fn every_locale_has_all_en_us_keys() {
         let dir = locales_dir();
@@ -110,6 +119,41 @@ mod tests {
              string):\n{}",
             failures.len(),
             failures.join("\n")
+        );
+    }
+
+    #[test]
+    fn provider_command_policy_values_preserve_tokens_and_are_not_mojibake() {
+        let dir = locales_dir();
+        let mut failures = Vec::new();
+
+        for entry in std::fs::read_dir(&dir).expect("read locales dir") {
+            let path = entry.expect("dir entry").path();
+            if path.extension().and_then(|extension| extension.to_str()) != Some("yml") {
+                continue;
+            }
+            let Some(value) = provider_command_policy_value(&path) else {
+                continue;
+            };
+            let contains_yolo_token = value
+                .split(|character: char| !character.is_ascii_alphanumeric())
+                .any(|token| token == "Yolo");
+            if !value.contains("%{command}")
+                || !contains_yolo_token
+                || value
+                    .chars()
+                    .any(|character| ('\u{2500}'..='\u{259f}').contains(&character))
+                || value.contains("ΓÇ")
+                || value.contains("ßâ")
+            {
+                failures.push(path.file_name().unwrap().to_string_lossy().to_string());
+            }
+        }
+
+        assert!(
+            failures.is_empty(),
+            "provider-command policy text has missing locked tokens or mojibake in: {}",
+            failures.join(", ")
         );
     }
 }

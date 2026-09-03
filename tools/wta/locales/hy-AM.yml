@@ -255,4 +255,5 @@ config_picker.title: "Աշխատաշրջանի կարգավորում (↑ ↓ �
 system.no_config_options: "Միացված գործակալը չի հայտարարել աշխատաշրջանի կարգավորելի տարբերակներ:"
 # {option} is an Agent-provided option name; {error} is the ACP error.
 system.config_update_failed: "Չհաջողվեց թարմացնել %{option}-ը. %{error}"
+system.provider_command_blocked_by_policy: "%{command}: Yolo mode-ը անջատված է ձեր կազմակերպության քաղաքականությամբ։"  # {Locked="Yolo","%{command}"} Shown when AllowYoloMode blocks a provider-advertised privileged command.
 system.model_unknown: "Անհայտ մոդել %{model} — մուտքագրեք /model՝ հասանելի ցանկը տեսնելու համար։"  # {Locked="%{model}","/model"}

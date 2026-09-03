@@ -250,6 +250,11 @@ pub enum MasterExtRequest {
         model: String,
         pane_override: bool,
     },
+    ReconcileSessionYolo {
+        reconcile_id: u64,
+        sessions: Vec<(acp::schema::v1::SessionId, bool)>,
+        fail_closed: bool,
+    },
     SetSessionConfigOption {
         session_id: acp::schema::v1::SessionId,
         config_id: String,
@@ -259,16 +264,36 @@ pub enum MasterExtRequest {
 
 fn publish_session_config_options(
     event_tx: &mpsc::UnboundedSender<AppEvent>,
+    native_yolo: &super::native_yolo::NativeYoloState,
     session_id: &acp::schema::v1::SessionId,
     options: Option<&[acp::schema::v1::SessionConfigOption]>,
 ) {
-    let options = options
+    let mut options = options
         .map(crate::protocol::acp::session_config::select_options)
         .unwrap_or_default();
+    for option in &mut options {
+        option.native_yolo = native_yolo.is_native_config_option(session_id, &option.id);
+    }
     let _ = event_tx.send(AppEvent::SessionConfigUpdated {
         session_id: session_id.to_string(),
         options,
     });
+}
+
+fn publish_current_native_config_options(
+    event_tx: &mpsc::UnboundedSender<AppEvent>,
+    native_yolo: &super::native_yolo::NativeYoloState,
+    session_id: &acp::schema::v1::SessionId,
+    operation: &super::native_yolo::NativeYoloOperation,
+    options: Option<&[acp::schema::v1::SessionConfigOption]>,
+) -> bool {
+    if !native_yolo.operation_is_current(operation) {
+        return false;
+    }
+    if options.is_some() {
+        publish_session_config_options(event_tx, native_yolo, session_id, options);
+    }
+    true
 }
 
 /// User-initiated request to resume a historical agent session by calling
@@ -514,6 +539,8 @@ struct ClientState {
     event_tx: mpsc::UnboundedSender<AppEvent>,
     shell_mgr: Arc<ShellManager>,
     prompt_timing: Arc<PromptTimingState>,
+    native_yolo: Arc<super::native_yolo::NativeYoloState>,
+    yolo_state: crate::app_contracts::SharedYoloState,
     provider_probe_capture: ProviderProbeCapture,
     standard_usage_sessions: Mutex<HashSet<String>>,
     proposal_channels: Arc<crate::agent_tools::action_proposal::channel::ProposalChannelManager>,
@@ -1265,18 +1292,6 @@ impl WtaClient {
             .permission_requested(&session_id, &description);
 
         if let Some(tool) = session_mcp_tool {
-            let Some(option) = args
-                .options
-                .iter()
-                .find(|option| option.kind == acp::schema::v1::PermissionOptionKind::AllowOnce)
-            else {
-                self.state
-                    .prompt_timing
-                    .permission_resolved(&session_id, "proposal_cancelled");
-                return Ok(acp::schema::v1::RequestPermissionResponse::new(
-                    acp::schema::v1::RequestPermissionOutcome::Cancelled,
-                ));
-            };
             let permission_result = match tool {
                 SessionMcpTool::TerminalAction(_) => self
                     .state
@@ -1288,9 +1303,9 @@ impl WtaClient {
                 target: "session_mcp_permission",
                 session_id = %session_id,
                 tool = tool.name(),
-                approved = permission_result.is_ok(),
+                validated = permission_result.is_ok(),
                 status = ?permission_result.as_ref().err().map(|failure| failure.status),
-                "silently resolving session MCP permission"
+                "validating session MCP permission before user selection"
             );
             if permission_result.is_err() {
                 self.state
@@ -1300,29 +1315,11 @@ impl WtaClient {
                     acp::schema::v1::RequestPermissionOutcome::Cancelled,
                 ));
             }
-            self.state
-                .prompt_timing
-                .permission_resolved(&session_id, "session_mcp_allow_once");
-            return Ok(acp::schema::v1::RequestPermissionResponse::new(
-                acp::schema::v1::RequestPermissionOutcome::Selected(
-                    acp::schema::v1::SelectedPermissionOutcome::new(option.option_id.clone()),
-                ),
-            ));
         }
 
         if let Some(command) = canonical_proposal_permission_command(&args) {
             match crate::agent_tools::action_proposal::invocation::parse(command) {
                 Ok(invocation) => {
-                    let Some(option) = args.options.iter().find(|option| {
-                        option.kind == acp::schema::v1::PermissionOptionKind::AllowOnce
-                    }) else {
-                        self.state
-                            .prompt_timing
-                            .permission_resolved(&session_id, "proposal_cancelled");
-                        return Ok(acp::schema::v1::RequestPermissionResponse::new(
-                            acp::schema::v1::RequestPermissionOutcome::Cancelled,
-                        ));
-                    };
                     let permission_result = self
                         .state
                         .proposal_channels
@@ -1330,9 +1327,9 @@ impl WtaClient {
                     tracing::info!(
                         target: "proposal_permission",
                         session_id = %session_id,
-                        approved = permission_result.is_ok(),
+                        validated = permission_result.is_ok(),
                         status = ?permission_result.as_ref().err().map(|failure| failure.status),
-                        "silently resolving canonical proposal permission"
+                        "validating canonical proposal permission before user selection"
                     );
                     if permission_result.is_err() {
                         self.state
@@ -1342,16 +1339,6 @@ impl WtaClient {
                             acp::schema::v1::RequestPermissionOutcome::Cancelled,
                         ));
                     }
-                    self.state
-                        .prompt_timing
-                        .permission_resolved(&session_id, "proposal_allow_once");
-                    return Ok(acp::schema::v1::RequestPermissionResponse::new(
-                        acp::schema::v1::RequestPermissionOutcome::Selected(
-                            acp::schema::v1::SelectedPermissionOutcome::new(
-                                option.option_id.clone(),
-                            ),
-                        ),
-                    ));
                 }
                 Err(reason) if looks_like_proposal_command(command) => {
                     tracing::info!(
@@ -1434,6 +1421,7 @@ impl WtaClient {
         args: acp::schema::v1::SessionNotification,
     ) -> acp::Result<()> {
         let kind = session_update_kind(&args.update);
+        let session_id = args.session_id.clone();
         let sid = args.session_id.0.to_string();
         if self.state.provider_probe_capture.is_active(&sid) {
             if let acp::schema::v1::SessionUpdate::AgentMessageChunk(chunk) = &args.update {
@@ -1684,6 +1672,11 @@ impl WtaClient {
                     snapshot,
                 });
             }
+            acp::schema::v1::SessionUpdate::CurrentModeUpdate(update) => {
+                self.state
+                    .native_yolo
+                    .record_current_mode(&session_id, update.current_mode_id.0.as_ref());
+            }
             acp::schema::v1::SessionUpdate::AvailableCommandsUpdate(update) => {
                 let commands =
                     crate::protocol::acp::session_commands::normalize(&update.available_commands);
@@ -1693,18 +1686,21 @@ impl WtaClient {
                 });
             }
             acp::schema::v1::SessionUpdate::ConfigOptionUpdate(update) => {
+                self.state
+                    .native_yolo
+                    .record_from_config_update(&session_id, &update.config_options);
                 let (available_models, current_model_id) =
                     crate::protocol::acp::model_select::models_from_config_options(
                         &sid,
                         &update.config_options,
                     )
                     .unwrap_or_default();
-                let _ = self.state.event_tx.send(AppEvent::SessionConfigUpdated {
-                    session_id: sid.clone(),
-                    options: crate::protocol::acp::session_config::select_options(
-                        &update.config_options,
-                    ),
-                });
+                publish_session_config_options(
+                    &self.state.event_tx,
+                    &self.state.native_yolo,
+                    &session_id,
+                    Some(&update.config_options),
+                );
                 let _ = self.state.event_tx.send(AppEvent::ModelConfigUpdated {
                     session_id: sid,
                     available_models,
@@ -2424,6 +2420,74 @@ fn log_acp_new_session_result(
     );
 }
 
+fn provider_command_blocked_by_policy(command_name: &str) -> String {
+    let command = format!("/{command_name}");
+    t!(
+        "system.provider_command_blocked_by_policy",
+        command = command.as_str()
+    )
+    .into_owned()
+}
+
+fn provider_permission_contract_blocked(error: &str) -> String {
+    t!(
+        "system.config_update_failed",
+        option = "Yolo",
+        error = error
+    )
+    .into_owned()
+}
+
+fn provider_disable_pending() -> String {
+    provider_permission_contract_blocked(
+        "the provider has not acknowledged the required nonprivileged session state",
+    )
+}
+
+fn publish_retryable_lazy_yolo_error(event_tx: &mpsc::UnboundedSender<AppEvent>, session_id: &str) {
+    let retry = t!("setup.option.retry_detection").into_owned();
+    let message = t!(
+        "system.config_update_failed",
+        option = "Yolo",
+        error = retry.as_str()
+    )
+    .into_owned();
+    let _ = event_tx.send(AppEvent::AgentError {
+        session_id: Some(session_id.to_string()),
+        failure: AgentFailure::Protocol {
+            code: -32003,
+            message: message.clone(),
+        },
+        message,
+    });
+}
+
+/// Discover the provider-advertised ACP Yolo capability. `SessionAttached`
+/// applies the latest effective state after the App binds the session.
+fn record_native_yolo(resp: &acp::schema::v1::NewSessionResponse, state: &ClientState) {
+    state.native_yolo.record_from_new_session(resp);
+}
+
+async fn apply_native_yolo_checked(
+    conn: &conn::ClientLink,
+    state: &ClientState,
+    operation: super::native_yolo::NativeYoloOperation,
+    timeout: std::time::Duration,
+) -> std::result::Result<
+    Option<Vec<acp::schema::v1::SessionConfigOption>>,
+    super::native_yolo::NativeYoloApplyError,
+> {
+    state
+        .native_yolo
+        .apply_reserved_with_policy_timeout_and_config(
+            conn,
+            operation,
+            timeout,
+            Some(&state.yolo_state),
+        )
+        .await
+}
+
 /// Handle a `session/load` failure (Err or timeout) in the
 /// `load_session_rx` arm of `run_acp_client_over_pipe`.
 ///
@@ -2446,6 +2510,7 @@ async fn handle_load_failure(
     error_message: String,
     _proposal_channels: Arc<crate::agent_tools::action_proposal::channel::ProposalChannelManager>,
     proposal_mcp_enabled: bool,
+    client_state: Arc<ClientState>,
 ) {
     if let Some(old) = old_sid {
         // Mid-life session management load failure path: restore prior binding.
@@ -2506,13 +2571,19 @@ async fn handle_load_failure(
             crate::agent_pane_origin::append_default(new_sid.0.as_ref(), pane_for_index);
             let (available_models, current_model_id) =
                 crate::protocol::acp::model_select::models_from_new_session(&resp);
+            record_native_yolo(&resp, &client_state);
             let _ = event_tx.send(AppEvent::SessionAttached {
                 tab_id,
                 session_id: new_sid.to_string(),
                 available_models,
                 current_model_id,
             });
-            publish_session_config_options(&event_tx, &new_sid, resp.config_options.as_deref());
+            publish_session_config_options(
+                &event_tx,
+                &client_state.native_yolo,
+                &new_sid,
+                resp.config_options.as_deref(),
+            );
         }
         Err(e) => {
             tracing::error!(
@@ -2545,6 +2616,7 @@ pub async fn run_acp_client_over_pipe(
     source_cwd: Option<String>,
     owner_tab_id: Option<String>,
     initial_load_session_id: Option<String>,
+    yolo_state: crate::app_contracts::SharedYoloState,
     event_tx: mpsc::UnboundedSender<AppEvent>,
     mut prompt_rx: mpsc::UnboundedReceiver<PromptSubmission>,
     mut cancel_rx: mpsc::UnboundedReceiver<CancelRequest>,
@@ -2659,16 +2731,18 @@ pub async fn run_acp_client_over_pipe(
     let outgoing = write_half.compat_write();
     let incoming = read_half.compat();
 
+    let native_yolo = Arc::new(super::native_yolo::NativeYoloState::new());
     let state = Arc::new(ClientState {
         event_tx: event_tx.clone(),
         shell_mgr: shell_mgr.clone(),
         prompt_timing: prompt_timing.clone(),
+        native_yolo,
+        yolo_state,
         provider_probe_capture: ProviderProbeCapture::default(),
         standard_usage_sessions: Mutex::new(HashSet::new()),
         proposal_channels: Arc::clone(&proposal_channels),
         hidden_tool_calls: std::sync::Mutex::new(std::collections::HashMap::new()),
     });
-
     let client = WtaClient {
         state: state.clone(),
     };
@@ -2914,6 +2988,13 @@ pub async fn run_acp_client_over_pipe(
             .context("initialize over master pipe failed")
         })?;
     let wta_meta = crate::session_registry::extract_wta_meta(&mut init_resp.meta);
+    state.native_yolo.set_resolved_agent(
+        wta_meta.resolved_agent_id.as_deref(),
+        init_resp
+            .agent_info
+            .as_ref()
+            .map(|info| info.version.as_str()),
+    );
     let cloud_catalog = crate::protocol::acp::model_select::cloud_catalog_from_wta_meta(&wta_meta);
     if matches!(&agent_source, crate::agent_source::AgentSource::Host)
         && !cloud_catalog.models.is_empty()
@@ -3192,6 +3273,7 @@ pub async fn run_acp_client_over_pipe(
 
             let (available_models, current_model_id) =
                 crate::protocol::acp::model_select::models_from_new_session(&session);
+            record_native_yolo(&session, &state);
             let session_config = session
                 .config_options
                 .as_deref()
@@ -3293,7 +3375,13 @@ pub async fn run_acp_client_over_pipe(
         current_model_id,
         load_session_supported,
         image_supported,
+        session_capabilities_ready: has_bootstrap,
     });
+    for option in &mut session_config {
+        option.native_yolo = state
+            .native_yolo
+            .is_native_config_option(&session_id, &option.id);
+    }
     let _ = event_tx.send(AppEvent::SessionConfigUpdated {
         session_id: session_id.to_string(),
         options: session_config,
@@ -3363,7 +3451,13 @@ pub async fn run_acp_client_over_pipe(
                 });
             }
             Some(req) = master_ext_rx.recv() => {
-                dispatch_master_ext_request(req, &conn, &event_tx, &tab_to_session);
+                dispatch_master_ext_request(
+                    req,
+                    &conn,
+                    &event_tx,
+                    &tab_to_session,
+                    Arc::clone(&state),
+                );
             }
             Some(req) = restart_rx.recv() => {
                 match req {
@@ -3422,6 +3516,7 @@ pub async fn run_acp_client_over_pipe(
                     &template_memo,
                     &cancel_signals,
                     &event_tx,
+                    Arc::clone(&state),
                     is_agent_pane,
                     true,
                     "HelperPipeNewSessionForTab",
@@ -3436,6 +3531,7 @@ pub async fn run_acp_client_over_pipe(
                     &tab_to_session,
                     &cancel_signals,
                     &event_tx,
+                    Arc::clone(&state),
                     true,
                     true,
                     std::time::Duration::from_secs(60),
@@ -3450,6 +3546,7 @@ pub async fn run_acp_client_over_pipe(
                     &tab_to_session,
                     &template_memo,
                     &cancel_signals,
+                    &state,
                 ).await;
             }
             Some(req) = rename_session_rx.recv() => {
@@ -3499,7 +3596,50 @@ fn dispatch_master_ext_request(
     conn: &conn::ClientLink,
     event_tx: &mpsc::UnboundedSender<AppEvent>,
     tab_to_session: &Arc<tokio::sync::Mutex<HashMap<String, acp::schema::v1::SessionId>>>,
+    client_state: Arc<ClientState>,
 ) {
+    dispatch_master_ext_request_with_yolo_timeout(
+        req,
+        conn,
+        event_tx,
+        tab_to_session,
+        client_state,
+        super::native_yolo::NATIVE_YOLO_RPC_TIMEOUT,
+    );
+}
+
+fn dispatch_master_ext_request_with_yolo_timeout(
+    req: MasterExtRequest,
+    conn: &conn::ClientLink,
+    event_tx: &mpsc::UnboundedSender<AppEvent>,
+    tab_to_session: &Arc<tokio::sync::Mutex<HashMap<String, acp::schema::v1::SessionId>>>,
+    client_state: Arc<ClientState>,
+    yolo_reconcile_timeout: std::time::Duration,
+) {
+    let reserved_yolo_operations = match &req {
+        MasterExtRequest::ReconcileSessionYolo { sessions, .. } => sessions
+            .iter()
+            .map(|(session_id, enabled)| {
+                client_state
+                    .native_yolo
+                    .reserve_operation(session_id.clone(), *enabled)
+            })
+            .collect(),
+        MasterExtRequest::SetSessionConfigOption {
+            session_id,
+            config_id,
+            value,
+        } => client_state
+            .native_yolo
+            .native_config_selection(session_id, config_id, value)
+            .map(|enabled| {
+                vec![client_state
+                    .native_yolo
+                    .reserve_operation(session_id.clone(), enabled)]
+            })
+            .unwrap_or_default(),
+        _ => Vec::new(),
+    };
     let conn = conn.clone();
     let event_tx = event_tx.clone();
     let tab_to_session = Arc::clone(tab_to_session);
@@ -3684,6 +3824,7 @@ fn dispatch_master_ext_request(
                                     .unwrap_or_default();
                                 publish_session_config_options(
                                     &event_tx,
+                                    &client_state.native_yolo,
                                     &sid,
                                     Some(&config_options),
                                 );
@@ -3723,6 +3864,96 @@ fn dispatch_master_ext_request(
                     }
                 }
             }
+            MasterExtRequest::ReconcileSessionYolo {
+                reconcile_id,
+                sessions,
+                fail_closed,
+            } => {
+                let reconcile = async {
+                    let mut failure = None;
+                    for ((session_id, enabled), operation) in
+                        sessions.into_iter().zip(reserved_yolo_operations)
+                    {
+                        match apply_native_yolo_checked(
+                            &conn,
+                            &client_state,
+                            operation.clone(),
+                            yolo_reconcile_timeout,
+                        )
+                        .await
+                        {
+                            Ok(config_options) => {
+                                if !publish_current_native_config_options(
+                                    &event_tx,
+                                    &client_state.native_yolo,
+                                    &session_id,
+                                    &operation,
+                                    config_options.as_deref(),
+                                ) {
+                                    continue;
+                                }
+                                tracing::info!(
+                                    target: "acp",
+                                    session_id = %session_id.0,
+                                    enabled,
+                                    "provider-native Yolo updated for live session"
+                                );
+                            }
+                            Err(error) => {
+                                let error = if enabled {
+                                    error
+                                } else {
+                                    // A rejected disable does not attest that
+                                    // the provider left its privileged mode.
+                                    error.requiring_restart()
+                                };
+                                tracing::warn!(
+                                    target: "acp",
+                                    session_id = %session_id.0,
+                                    enabled,
+                                    error = %error,
+                                    "provider-native Yolo runtime reconciliation failed"
+                                );
+                                if fail_closed || error.restart_required() {
+                                    return Err(error);
+                                }
+                                failure.get_or_insert(error);
+                            }
+                        }
+                    }
+                    failure.map_or(Ok(()), Err)
+                };
+                let (result, restart_required) = if fail_closed {
+                    match tokio::time::timeout(yolo_reconcile_timeout, reconcile).await {
+                        Ok(result) => {
+                            let restart_required = result
+                                .as_ref()
+                                .err()
+                                .is_some_and(|error| error.restart_required());
+                            (result.map_err(|error| error.to_string()), restart_required)
+                        }
+                        Err(_) => (
+                            Err(format!(
+                                "provider-native Yolo reconciliation timed out after {yolo_reconcile_timeout:?}"
+                            )),
+                            true,
+                        ),
+                    }
+                } else {
+                    let result = reconcile.await;
+                    let restart_required = result
+                        .as_ref()
+                        .err()
+                        .is_some_and(|error| error.restart_required());
+                    (result.map_err(|error| error.to_string()), restart_required)
+                };
+                let _ = event_tx.send(AppEvent::RuntimeYoloReconcileCompleted {
+                    reconcile_id,
+                    fail_closed,
+                    restart_required,
+                    result,
+                });
+            }
             MasterExtRequest::SetSessionConfigOption {
                 session_id,
                 config_id,
@@ -3737,7 +3968,91 @@ fn dispatch_master_ext_request(
                         session_id: session_id.to_string(),
                         config_id,
                         message: "the session is no longer active".to_string(),
+                        restart_required: false,
                     });
+                    return;
+                }
+
+                let native_operation = reserved_yolo_operations.into_iter().next().or_else(|| {
+                    client_state
+                        .native_yolo
+                        .native_config_selection(&session_id, &config_id, &value)
+                        .map(|enabled| {
+                            client_state
+                                .native_yolo
+                                .reserve_operation(session_id.clone(), enabled)
+                        })
+                });
+                if let Some(operation) = native_operation {
+                    let enabled = operation.enabled();
+                    let disabling_native_yolo = !enabled;
+                    let publication_operation = operation.clone();
+                    match client_state
+                        .native_yolo
+                        .apply_native_config_reserved_with_policy_timeout(
+                            &conn,
+                            operation,
+                            &config_id,
+                            &value,
+                            &client_state.yolo_state,
+                            yolo_reconcile_timeout,
+                        )
+                        .await
+                    {
+                        Ok(Some(config_options)) => {
+                            if !publish_current_native_config_options(
+                                &event_tx,
+                                &client_state.native_yolo,
+                                &session_id,
+                                &publication_operation,
+                                Some(&config_options),
+                            ) {
+                                let _ = event_tx.send(AppEvent::SessionConfigSetFailed {
+                                    session_id: session_id.to_string(),
+                                    config_id,
+                                    message:
+                                        "the config update was superseded by newer session state"
+                                            .to_string(),
+                                    restart_required: false,
+                                });
+                            } else {
+                                let _ = event_tx.send(AppEvent::SessionConfigSetCompleted {
+                                    session_id: session_id.to_string(),
+                                    config_id,
+                                    value,
+                                    model_compat: false,
+                                });
+                            }
+                        }
+                        Ok(None) => {
+                            let _ = event_tx.send(AppEvent::SessionConfigSetFailed {
+                                session_id: session_id.to_string(),
+                                config_id,
+                                message: "the config update was superseded by newer session state"
+                                    .to_string(),
+                                restart_required: false,
+                            });
+                        }
+                        Err(error) => {
+                            // Any failed disable leaves the provider's actual
+                            // privilege state unknown, even for an ordinary ACP
+                            // rejection rather than a transport timeout.
+                            if disabling_native_yolo || error.restart_required() {
+                                let _ = event_tx.send(AppEvent::RuntimeYoloReconcileCompleted {
+                                    reconcile_id: 0,
+                                    fail_closed: disabling_native_yolo,
+                                    restart_required: true,
+                                    result: Err(error.to_string()),
+                                });
+                            }
+                            let _ = event_tx.send(AppEvent::SessionConfigSetFailed {
+                                session_id: session_id.to_string(),
+                                config_id,
+                                message: error.to_string(),
+                                restart_required: disabling_native_yolo || error.restart_required(),
+                            });
+                        }
+                    }
                     return;
                 }
 
@@ -3765,6 +4080,9 @@ fn dispatch_master_ext_request(
                 match result {
                     Ok(config_options) => {
                         if let Some(config_options) = config_options {
+                            client_state
+                                .native_yolo
+                                .record_from_config_update(&session_id, &config_options);
                             let (available_models, current_model_id) =
                                 crate::protocol::acp::model_select::models_from_config_options(
                                     session_id.0.as_ref(),
@@ -3773,6 +4091,7 @@ fn dispatch_master_ext_request(
                                 .unwrap_or_default();
                             publish_session_config_options(
                                 &event_tx,
+                                &client_state.native_yolo,
                                 &session_id,
                                 Some(&config_options),
                             );
@@ -3802,6 +4121,7 @@ fn dispatch_master_ext_request(
                             session_id: session_id.to_string(),
                             config_id,
                             message: error.to_string(),
+                            restart_required: false,
                         });
                     }
                 }
@@ -3830,6 +4150,7 @@ fn dispatch_load_session(
     tab_to_session: &Arc<tokio::sync::Mutex<HashMap<String, acp::schema::v1::SessionId>>>,
     cancel_signals: &Arc<std::sync::Mutex<HashMap<String, tokio::sync::oneshot::Sender<()>>>>,
     event_tx: &mpsc::UnboundedSender<AppEvent>,
+    client_state: Arc<ClientState>,
     inject_pane_meta: bool,
     use_load_failure_handler: bool,
     timeout: std::time::Duration,
@@ -3926,7 +4247,11 @@ fn dispatch_load_session(
                     .filter(|old| old.0.as_ref() != session_id.0.as_ref())
                 {
                     crate::protocol::acp::model_select::forget_session(old.0.as_ref());
+                    client_state.native_yolo.forget_session(old);
                 }
+                client_state
+                    .native_yolo
+                    .record_from_load_session(&session_id, &resp);
                 // The agent replays past content via session/update
                 // notifications that route through the existing
                 // session_to_tab map. SessionAttached primes that mapping.
@@ -3947,6 +4272,7 @@ fn dispatch_load_session(
                 });
                 publish_session_config_options(
                     &event_tx,
+                    &client_state.native_yolo,
                     &session_id,
                     resp.config_options.as_deref(),
                 );
@@ -3977,6 +4303,7 @@ fn dispatch_load_session(
                     message,
                     &proposal_channels,
                     proposal_mcp_enabled,
+                    Arc::clone(&client_state),
                 )
                 .await;
             }
@@ -4007,6 +4334,7 @@ fn dispatch_load_session(
                     message,
                     &proposal_channels,
                     proposal_mcp_enabled,
+                    Arc::clone(&client_state),
                 )
                 .await;
             }
@@ -4030,6 +4358,7 @@ async fn dispatch_load_failure(
     message: String,
     proposal_channels: &Arc<crate::agent_tools::action_proposal::channel::ProposalChannelManager>,
     proposal_mcp_enabled: bool,
+    client_state: Arc<ClientState>,
 ) {
     if use_load_failure_handler {
         handle_load_failure(
@@ -4042,6 +4371,7 @@ async fn dispatch_load_failure(
             message,
             Arc::clone(proposal_channels),
             proposal_mcp_enabled,
+            client_state,
         )
         .await;
     } else {
@@ -4074,6 +4404,7 @@ fn dispatch_new_session(
     template_memo: &TemplateMemo,
     cancel_signals: &Arc<std::sync::Mutex<HashMap<String, tokio::sync::oneshot::Sender<()>>>>,
     event_tx: &mpsc::UnboundedSender<AppEvent>,
+    client_state: Arc<ClientState>,
     is_agent_pane: bool,
     inject_pane_meta: bool,
     log_label: &'static str,
@@ -4105,6 +4436,7 @@ fn dispatch_new_session(
         if let Some(ref old) = old_sid {
             let old_str = old.to_string();
             crate::protocol::acp::model_select::forget_session(&old_str);
+            client_state.native_yolo.forget_session(old);
             template_memo.forget(&old_str).await;
             if let Some(sig) = cancel_signals.lock().unwrap().remove(&old_str) {
                 let _ = sig.send(());
@@ -4129,9 +4461,8 @@ fn dispatch_new_session(
         let mut new_session = match new_session_result {
             Ok(s) => s,
             Err(e) => {
-                let _ = event_tx.send(AppEvent::AgentError {
-                    session_id: None,
-                    failure: AgentFailure::from_acp_error(&e),
+                let _ = event_tx.send(AppEvent::TabError {
+                    tab_id: req.tab_id.clone(),
                     message: format!("/new failed for tab {}: {}", req.tab_id, e),
                 });
                 return;
@@ -4165,6 +4496,7 @@ fn dispatch_new_session(
         }
         let (available_models, current_model_id) =
             crate::protocol::acp::model_select::models_from_new_session(&new_session);
+        record_native_yolo(&new_session, &client_state);
         {
             let mut g = tab_to_session.lock().await;
             g.insert(req.tab_id.clone(), new_sid.clone());
@@ -4176,7 +4508,12 @@ fn dispatch_new_session(
             available_models,
             current_model_id,
         });
-        publish_session_config_options(&event_tx, &new_sid, new_session.config_options.as_deref());
+        publish_session_config_options(
+            &event_tx,
+            &client_state.native_yolo,
+            &new_sid,
+            new_session.config_options.as_deref(),
+        );
     });
 }
 
@@ -4192,6 +4529,7 @@ async fn dispatch_drop_session(
     tab_to_session: &Arc<tokio::sync::Mutex<HashMap<String, acp::schema::v1::SessionId>>>,
     template_memo: &TemplateMemo,
     cancel_signals: &Arc<std::sync::Mutex<HashMap<String, tokio::sync::oneshot::Sender<()>>>>,
+    client_state: &ClientState,
 ) {
     tracing::info!(
         target: "acp_drop_session",
@@ -4205,6 +4543,7 @@ async fn dispatch_drop_session(
     if let Some(old) = old_sid {
         let old_str = old.to_string();
         crate::protocol::acp::model_select::forget_session(&old_str);
+        client_state.native_yolo.forget_session(&old);
         template_memo.forget(&old_str).await;
         if let Some(sig) = cancel_signals.lock().unwrap().remove(&old_str) {
             let _ = sig.send(());
@@ -4438,10 +4777,10 @@ async fn dispatch_prompt_body(
     proposal_channels: Arc<crate::agent_tools::action_proposal::channel::ProposalChannelManager>,
 ) {
     // Resolve (or lazily create) the ACP session for this tab.
-    let prompt_session_id = {
+    let (prompt_session_id, lazy_yolo_operation) = {
         let mut g = tab_to_session_task.lock().await;
         if let Some(sid) = g.get(&tab_key_task) {
-            sid.clone()
+            (sid.clone(), None)
         } else {
             let cwd = prompt
                 .pane_context
@@ -4498,6 +4837,23 @@ async fn dispatch_prompt_body(
             }
             let (available_models, current_model_id) =
                 crate::protocol::acp::model_select::models_from_new_session(&new_session);
+            record_native_yolo(&new_session, &client_task.state);
+            let enabled = client_task
+                .state
+                .yolo_state
+                .lock()
+                .unwrap()
+                .effective(new_sid.0.as_ref());
+            let yolo_operation = client_task
+                .state
+                .native_yolo
+                .reserve_operation(new_sid.clone(), enabled);
+            client_task
+                .state
+                .yolo_state
+                .lock()
+                .unwrap()
+                .mark_client_reconciled(new_sid.to_string(), enabled);
             let _ = event_tx_task.send(AppEvent::SessionAttached {
                 tab_id: tab_key_task.clone(),
                 session_id: new_sid.to_string(),
@@ -4506,14 +4862,162 @@ async fn dispatch_prompt_body(
             });
             publish_session_config_options(
                 &event_tx_task,
+                &client_task.state.native_yolo,
                 &new_sid,
                 new_session.config_options.as_deref(),
             );
             g.insert(tab_key_task.clone(), new_sid.clone());
-            new_sid
+            (new_sid, Some((enabled, yolo_operation)))
         }
     };
     let prompt_session_id_str = prompt_session_id.to_string();
+
+    if let Some((enabled, operation)) = lazy_yolo_operation {
+        let yolo_result = apply_native_yolo_checked(
+            &conn_task,
+            &client_task.state,
+            operation.clone(),
+            super::native_yolo::NATIVE_YOLO_RPC_TIMEOUT,
+        )
+        .await;
+        match yolo_result {
+            Err(error) => {
+                // As with config/reconcile, an ordinary ACP rejection
+                // cannot attest that a requested disable left privileged mode.
+                let restart_required = !enabled || error.restart_required();
+                let policy_blocked = client_task
+                    .state
+                    .yolo_state
+                    .lock()
+                    .unwrap()
+                    .policy_blocked();
+                let error = error.to_string();
+                tracing::warn!(
+                    target: "yolo",
+                    session_id = %prompt_session_id_str,
+                    enabled,
+                    restart_required,
+                    policy_blocked,
+                    error = %error,
+                    "provider-native Yolo state could not be established before first prompt"
+                );
+                if !enabled || policy_blocked || restart_required {
+                    publish_retryable_lazy_yolo_error(&event_tx_task, &prompt_session_id_str);
+                    let _ = event_tx_task.send(AppEvent::RuntimeYoloReconcileCompleted {
+                        reconcile_id: 0,
+                        fail_closed: !enabled,
+                        restart_required,
+                        result: Err(error),
+                    });
+                    in_flight_tabs_task.lock().unwrap().remove(&tab_key_task);
+                    return;
+                }
+            }
+            Ok(config_options) => {
+                if !publish_current_native_config_options(
+                    &event_tx_task,
+                    &client_task.state.native_yolo,
+                    &prompt_session_id,
+                    &operation,
+                    config_options.as_deref(),
+                ) {
+                    tracing::info!(
+                        target: "yolo",
+                        session_id = %prompt_session_id_str,
+                        "ending first prompt with a retryable error because its lazy-session Yolo operation was superseded"
+                    );
+                    publish_retryable_lazy_yolo_error(&event_tx_task, &prompt_session_id_str);
+                    in_flight_tabs_task.lock().unwrap().remove(&tab_key_task);
+                    return;
+                }
+            }
+        }
+    }
+
+    let policy_blocked = client_task
+        .state
+        .yolo_state
+        .lock()
+        .unwrap()
+        .policy_blocked();
+    if client_task
+        .state
+        .native_yolo
+        .prompt_must_wait_for_disable(&prompt_session_id, policy_blocked)
+    {
+        let message = provider_disable_pending();
+        tracing::error!(
+            target: "yolo",
+            session_id = %prompt_session_id_str,
+            "blocking prompt until the provider acknowledges disabled permissions"
+        );
+        let _ = event_tx_task.send(AppEvent::AgentError {
+            session_id: Some(prompt_session_id_str),
+            failure: AgentFailure::Protocol {
+                code: -32003,
+                message: message.clone(),
+            },
+            message,
+        });
+        in_flight_tabs_task.lock().unwrap().remove(&tab_key_task);
+        return;
+    }
+
+    if let Some(error) = client_task
+        .state
+        .native_yolo
+        .disabled_prompt_block_reason(&prompt_session_id)
+    {
+        tracing::error!(
+            target: "yolo",
+            session_id = %prompt_session_id_str,
+            error = %error,
+            "blocking prompt because the provider cannot attest disabled permissions"
+        );
+        let message = provider_permission_contract_blocked(&error);
+        let _ = event_tx_task.send(AppEvent::AgentError {
+            session_id: Some(prompt_session_id_str),
+            failure: AgentFailure::Protocol {
+                code: -32003,
+                message: message.clone(),
+            },
+            message,
+        });
+        in_flight_tabs_task.lock().unwrap().remove(&tab_key_task);
+        return;
+    }
+
+    if client_task
+        .state
+        .yolo_state
+        .lock()
+        .unwrap()
+        .policy_blocked()
+    {
+        if let Some(command_name) = client_task
+            .state
+            .native_yolo
+            .privileged_agent_command(&prompt.text)
+        {
+            tracing::warn!(
+                target: "yolo",
+                session_id = %prompt_session_id_str,
+                "AllowYoloMode blocked provider command /{}",
+                command_name
+            );
+            let message = provider_command_blocked_by_policy(command_name);
+            let _ = event_tx_task.send(AppEvent::AgentError {
+                session_id: Some(prompt_session_id_str.clone()),
+                failure: AgentFailure::Protocol {
+                    code: -32003,
+                    message: message.clone(),
+                },
+                message,
+            });
+            in_flight_tabs_task.lock().unwrap().remove(&tab_key_task);
+            return;
+        }
+    }
 
     let kind = if prompt.is_autofix() {
         TemplateKind::Autofix
@@ -4585,15 +5089,7 @@ async fn dispatch_prompt_body(
         &prompt_source,
         &text,
     );
-    if prompt.is_agent_command() {
-        tracing::info!(
-            target: "acp",
-            prompt_id = prompt.id,
-            session_id = %prompt_session_id_str,
-            prompt_len = text.len(),
-            "sending Agent command verbatim"
-        );
-    } else {
+    if !prompt.is_agent_command() {
         log_turn_trace(
             prompt.id,
             &prompt_session_id_str,
@@ -4602,25 +5098,6 @@ async fn dispatch_prompt_body(
             &text,
         );
     }
-    prompt_timing_task.mark_prompt_sent(&prompt_session_id_str);
-
-    // Telemetry: prompt dispatched over ACP. WTA emits `AgentPromptSent`
-    // for the agent-pane prompt-entry route; the C++ side emits
-    // `CommandPaletteDispatchedAgentPrompt` for the `?<prompt>` delegation
-    // route under the same provider.
-    crate::telemetry::log_agent_prompt_sent(
-        &prompt_session_id_str,
-        u32::try_from(text.len()).unwrap_or(u32::MAX),
-        prompt.is_autofix(),
-        match kind {
-            TemplateKind::Autofix => "Autofix",
-            TemplateKind::Planner if prompt.is_agent_command() => "AgentCommand",
-            TemplateKind::Planner => "Planner",
-        },
-        prompt.is_byok(),
-        prompt.agent_id(),
-    );
-
     // Register a cancel oneshot for this prompt. The cancel
     // listener picks the sender out by session_id and signals it
     // when the user presses Ctrl+C.
@@ -4635,31 +5112,148 @@ async fn dispatch_prompt_body(
     // through master → agent CLI verbatim; the agent only receives them if it
     // advertised `promptCapabilities.image` (the UI gates Alt+V on that flag).
     let content = build_prompt_content(&text, &prompt.images);
-    let prompt_fut = conn_task.prompt(acp::schema::v1::PromptRequest::new(
-        prompt_session_id.clone(),
-        content,
-    ));
+    let privileged_agent_command = client_task
+        .state
+        .native_yolo
+        .privileged_agent_command(&prompt.text)
+        .map(str::to_string);
+    let yolo_state = Arc::clone(&client_task.state.yolo_state);
+    let native_yolo = Arc::clone(&client_task.state.native_yolo);
+    let final_yolo_safety_error = Arc::new(Mutex::new(None::<(String, &'static str)>));
+    let telemetry_timing = Arc::clone(&prompt_timing_task);
+    let telemetry_session_id = prompt_session_id_str.clone();
+    let telemetry_prompt_len = u32::try_from(text.len()).unwrap_or(u32::MAX);
+    let telemetry_is_autofix = prompt.is_autofix();
+    let telemetry_source = match kind {
+        TemplateKind::Autofix => "Autofix",
+        TemplateKind::Planner if prompt.is_agent_command() => "AgentCommand",
+        TemplateKind::Planner => "Planner",
+    };
+    let telemetry_is_byok = prompt.is_byok();
+    let telemetry_agent_id = prompt.agent_id().to_string();
+    let telemetry_prompt_id = prompt.id;
+    let telemetry_is_agent_command = prompt.is_agent_command();
+    let prompt_fut = conn_task.prompt_if(
+        acp::schema::v1::PromptRequest::new(prompt_session_id.clone(), content),
+        {
+            let privileged_agent_command = privileged_agent_command.clone();
+            let final_yolo_safety_error = Arc::clone(&final_yolo_safety_error);
+            let guard_session_id = prompt_session_id.clone();
+            move || {
+                let policy_blocked = yolo_state.lock().unwrap().policy_blocked();
+                let provider_command_blocked = privileged_agent_command.is_some() && policy_blocked;
+                let yolo_safety_error = if provider_command_blocked {
+                    None
+                } else if native_yolo
+                    .prompt_must_wait_for_disable(&guard_session_id, policy_blocked)
+                {
+                    Some((provider_disable_pending(), "yolo_disable_pending"))
+                } else {
+                    native_yolo
+                        .disabled_prompt_block_reason(&guard_session_id)
+                        .map(|error| {
+                            (
+                                provider_permission_contract_blocked(&error),
+                                "permission_contract_blocked",
+                            )
+                        })
+                };
+                let should_send = !provider_command_blocked && yolo_safety_error.is_none();
+                if let Some(error) = yolo_safety_error {
+                    *final_yolo_safety_error.lock().unwrap() = Some(error);
+                }
+                if should_send {
+                    if telemetry_is_agent_command {
+                        tracing::info!(
+                            target: "acp",
+                            prompt_id = telemetry_prompt_id,
+                            session_id = %telemetry_session_id,
+                            prompt_len = telemetry_prompt_len,
+                            "sending Agent command verbatim"
+                        );
+                    }
+                    telemetry_timing.mark_prompt_sent(&telemetry_session_id);
+                    crate::telemetry::log_agent_prompt_sent(
+                        &telemetry_session_id,
+                        telemetry_prompt_len,
+                        telemetry_is_autofix,
+                        telemetry_source,
+                        telemetry_is_byok,
+                        &telemetry_agent_id,
+                    );
+                }
+                should_send
+            }
+        },
+    );
     tokio::pin!(prompt_fut);
 
     let completed_successfully = tokio::select! {
         result = &mut prompt_fut => {
-            // Peek the successful turn's stop_reason (the response is consumed
-            // by `complete_prompt_request`). A soft stop is not an error; the
-            // Err arm is classified separately by `from_acp_error`.
-            let soft_stop = result
-                .as_ref()
-                .ok()
-                .and_then(|resp| SoftStopReason::from_stop_reason(resp.stop_reason));
-            let successful = result.is_ok();
-            complete_prompt_request(
-                result,
-                soft_stop,
-                &prompt_timing_task,
-                &event_tx_task,
-                prompt_session_id_str.clone(),
-            )
-            .await;
-            successful
+            match result {
+                Ok(None) => {
+                    let yolo_safety_error = final_yolo_safety_error.lock().unwrap().take();
+                    let (message, completion_reason) =
+                        if let Some(error) = yolo_safety_error {
+                            tracing::error!(
+                                target: "yolo",
+                                session_id = %prompt_session_id_str,
+                                "blocking prompt at send boundary because Yolo safety is not established"
+                            );
+                            error
+                        } else {
+                            let command_name = privileged_agent_command
+                                .as_deref()
+                                .unwrap_or("privileged command");
+                            tracing::warn!(
+                                target: "yolo",
+                                session_id = %prompt_session_id_str,
+                                "AllowYoloMode blocked provider command /{}",
+                                command_name
+                            );
+                            (
+                                provider_command_blocked_by_policy(command_name),
+                                "policy_blocked",
+                            )
+                        };
+                    let _ = prompt_timing_task.complete(
+                        &prompt_session_id_str,
+                        false,
+                        Some(completion_reason),
+                    );
+                    let _ = event_tx_task.send(AppEvent::AgentError {
+                        session_id: Some(prompt_session_id_str.clone()),
+                        failure: AgentFailure::Protocol {
+                            code: -32003,
+                            message: message.clone(),
+                        },
+                        message,
+                    });
+                    false
+                }
+                result => {
+                    let result = result.map(|response| {
+                        response.expect("prompt guard returns None only when policy blocks")
+                    });
+                    // Peek the successful turn's stop_reason (the response is consumed
+                    // by `complete_prompt_request`). A soft stop is not an error; the
+                    // Err arm is classified separately by `from_acp_error`.
+                    let soft_stop = result
+                        .as_ref()
+                        .ok()
+                        .and_then(|resp| SoftStopReason::from_stop_reason(resp.stop_reason));
+                    let successful = result.is_ok();
+                    complete_prompt_request(
+                        result,
+                        soft_stop,
+                        &prompt_timing_task,
+                        &event_tx_task,
+                        prompt_session_id_str.clone(),
+                    )
+                    .await;
+                    successful
+                }
+            }
         }
         _ = cancel_rx => {
             // The user cancelled. Synthesize an AgentMessageEnd
@@ -4991,6 +5585,10 @@ mod tests {
             event_tx,
             shell_mgr: Arc::new(ShellManager::new()),
             prompt_timing: Arc::new(PromptTimingState::default()),
+            native_yolo: Arc::new(crate::protocol::acp::native_yolo::NativeYoloState::new()),
+            yolo_state: Arc::new(Mutex::new(crate::app_contracts::YoloState::new(
+                false, false,
+            ))),
             provider_probe_capture: super::ProviderProbeCapture::default(),
             standard_usage_sessions: Mutex::new(HashSet::new()),
             proposal_channels: manager,
@@ -4999,33 +5597,49 @@ mod tests {
         (WtaClient { state }, event_rx)
     }
 
-    #[tokio::test]
-    async fn canonical_proposal_permission_is_silent_and_does_not_gate_submission() {
-        let manager =
-            Arc::new(crate::agent_tools::action_proposal::channel::ProposalChannelManager::new());
-        let payload = r#"{"schema_version":1,"origin":"terminal_agent","choices":[{"choice":1,"title":"run test","rationale":"","actions":[{"type":"send","input":"cargo test"}]}]}"#;
-        let channel = manager
-            .issue("proposal-session".into(), 1, None, false)
-            .unwrap();
-        let command =
-            crate::agent_tools::action_proposal::invocation::render(&channel, payload).unwrap();
-        let (client, mut event_rx) = proposal_test_client(Arc::clone(&manager));
+    #[tokio::test(flavor = "current_thread")]
+    async fn canonical_proposal_permission_requires_user_selection() {
+        tokio::task::LocalSet::new()
+            .run_until(async {
+                let manager = Arc::new(
+                    crate::agent_tools::action_proposal::channel::ProposalChannelManager::new(),
+                );
+                let payload = r#"{"schema_version":1,"origin":"terminal_agent","choices":[{"choice":1,"title":"run test","rationale":"","actions":[{"type":"send","input":"cargo test"}]}]}"#;
+                let channel = manager
+                    .issue("proposal-session".into(), 1, None, false)
+                    .unwrap();
+                let command =
+                    crate::agent_tools::action_proposal::invocation::render(&channel, payload)
+                        .unwrap();
+                let (client, mut event_rx) = proposal_test_client(Arc::clone(&manager));
+                let handle = tokio::task::spawn_local(async move {
+                    client
+                        .request_permission(proposal_permission_request(&command))
+                        .await
+                });
 
-        let response = client
-            .request_permission(proposal_permission_request(&command))
-            .await
-            .unwrap();
-
-        assert!(matches!(
-            response.outcome,
-            acp::schema::v1::RequestPermissionOutcome::Selected(_)
-        ));
-        assert!(matches!(
-            event_rx.try_recv(),
-            Ok(AppEvent::HideToolCall { session_id, id })
-                if session_id == "proposal-session" && id == "proposal-tool"
-        ));
-        assert!(manager.begin_validation(&channel).is_ok());
+                assert!(matches!(
+                    event_rx.recv().await,
+                    Some(AppEvent::HideToolCall { session_id, id })
+                        if session_id == "proposal-session" && id == "proposal-tool"
+                ));
+                match event_rx.recv().await {
+                    Some(AppEvent::PermissionRequest { responder, .. }) => {
+                        responder.send("allow-once".to_string()).unwrap();
+                    }
+                    other => panic!(
+                        "expected PermissionRequest, got is_some={}",
+                        other.is_some()
+                    ),
+                }
+                let response = handle.await.unwrap().unwrap();
+                assert!(matches!(
+                    response.outcome,
+                    acp::schema::v1::RequestPermissionOutcome::Selected(_)
+                ));
+                assert!(manager.begin_validation(&channel).is_ok());
+            })
+            .await;
     }
 
     #[tokio::test]
@@ -5056,73 +5670,95 @@ mod tests {
         assert!(manager.begin_validation(&channel).is_ok());
     }
 
-    #[tokio::test]
-    async fn proposal_mcp_permission_is_silent_and_does_not_consume_submission() {
-        let manager =
-            Arc::new(crate::agent_tools::action_proposal::channel::ProposalChannelManager::new());
-        manager
-            .issue("proposal-session".into(), 1, None, false)
-            .unwrap();
-        let (client, mut event_rx) = proposal_test_client(Arc::clone(&manager));
+    #[tokio::test(flavor = "current_thread")]
+    async fn proposal_mcp_permission_requires_user_selection() {
+        tokio::task::LocalSet::new()
+            .run_until(async {
+                let manager = Arc::new(
+                    crate::agent_tools::action_proposal::channel::ProposalChannelManager::new(),
+                );
+                manager
+                    .issue("proposal-session".into(), 1, None, false)
+                    .unwrap();
+                let (client, mut event_rx) = proposal_test_client(Arc::clone(&manager));
+                let handle = tokio::task::spawn_local(async move {
+                    client
+                        .request_permission(proposal_mcp_permission_request())
+                        .await
+                });
 
-        let response = client
-            .request_permission(proposal_mcp_permission_request())
-            .await
-            .unwrap();
-
-        assert!(matches!(
-            response.outcome,
-            acp::schema::v1::RequestPermissionOutcome::Selected(_)
-        ));
-        assert!(matches!(
-            event_rx.try_recv(),
-            Ok(AppEvent::HideToolCall { session_id, id })
-                if session_id == "proposal-session" && id == "proposal-mcp-tool"
-        ));
-        assert!(manager.begin_mcp_validation("proposal-session").is_ok());
+                assert!(matches!(
+                    event_rx.recv().await,
+                    Some(AppEvent::HideToolCall { session_id, id })
+                        if session_id == "proposal-session" && id == "proposal-mcp-tool"
+                ));
+                match event_rx.recv().await {
+                    Some(AppEvent::PermissionRequest { responder, .. }) => {
+                        responder.send("allow-once".to_string()).unwrap();
+                    }
+                    other => panic!(
+                        "expected PermissionRequest, got is_some={}",
+                        other.is_some()
+                    ),
+                }
+                assert!(handle.await.unwrap().is_ok());
+                assert!(manager.begin_mcp_validation("proposal-session").is_ok());
+            })
+            .await;
     }
 
-    #[tokio::test]
-    async fn user_input_mcp_permission_is_silent() {
+    #[tokio::test(flavor = "current_thread")]
+    async fn user_input_mcp_permission_requires_user_selection() {
         use acp::schema::v1::{
             PermissionOption, PermissionOptionKind, RequestPermissionRequest, ToolCallId,
             ToolCallUpdate, ToolCallUpdateFields,
         };
 
-        let manager =
-            Arc::new(crate::agent_tools::action_proposal::channel::ProposalChannelManager::new());
-        let (client, mut event_rx) = proposal_test_client(manager);
-        let response = client
-            .request_permission(RequestPermissionRequest::new(
-                acp::schema::v1::SessionId::new("input-session"),
-                ToolCallUpdate::new(
-                    ToolCallId::new("input-tool"),
-                    ToolCallUpdateFields::new()
-                        .title("intellterm_0123456789abcdef/request_user_input")
-                        .raw_input(serde_json::json!({
-                            "question": "Choose",
-                            "choices": ["A", "B"]
-                        })),
-                ),
-                vec![PermissionOption::new(
-                    "allow-once",
-                    "Allow once",
-                    PermissionOptionKind::AllowOnce,
-                )],
-            ))
-            .await
-            .unwrap();
+        tokio::task::LocalSet::new()
+            .run_until(async {
+                let manager = Arc::new(
+                    crate::agent_tools::action_proposal::channel::ProposalChannelManager::new(),
+                );
+                let (client, mut event_rx) = proposal_test_client(manager);
+                let handle = tokio::task::spawn_local(async move {
+                    client
+                        .request_permission(RequestPermissionRequest::new(
+                            acp::schema::v1::SessionId::new("input-session"),
+                            ToolCallUpdate::new(
+                                ToolCallId::new("input-tool"),
+                                ToolCallUpdateFields::new()
+                                    .title("intellterm_0123456789abcdef/request_user_input")
+                                    .raw_input(serde_json::json!({
+                                        "question": "Choose",
+                                        "choices": ["A", "B"]
+                                    })),
+                            ),
+                            vec![PermissionOption::new(
+                                "allow-once",
+                                "Allow once",
+                                PermissionOptionKind::AllowOnce,
+                            )],
+                        ))
+                        .await
+                });
 
-        assert!(matches!(
-            response.outcome,
-            acp::schema::v1::RequestPermissionOutcome::Selected(_)
-        ));
-        assert!(matches!(
-            event_rx.try_recv(),
-            Ok(AppEvent::HideToolCall { session_id, id })
-                if session_id == "input-session" && id == "input-tool"
-        ));
-        assert!(event_rx.try_recv().is_err());
+                assert!(matches!(
+                    event_rx.recv().await,
+                    Some(AppEvent::HideToolCall { session_id, id })
+                        if session_id == "input-session" && id == "input-tool"
+                ));
+                match event_rx.recv().await {
+                    Some(AppEvent::PermissionRequest { responder, .. }) => {
+                        responder.send("allow-once".to_string()).unwrap();
+                    }
+                    other => panic!(
+                        "expected PermissionRequest, got is_some={}",
+                        other.is_some()
+                    ),
+                }
+                assert!(handle.await.unwrap().is_ok());
+            })
+            .await;
     }
 
     #[tokio::test(flavor = "current_thread")]
@@ -5628,49 +6264,64 @@ mod tests {
         assert!(event_rx.try_recv().is_err());
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     async fn session_mcp_display_hides_calls_correlated_by_tool_call_id() {
-        let manager =
-            Arc::new(crate::agent_tools::action_proposal::channel::ProposalChannelManager::new());
-        manager
-            .issue("proposal-session".into(), 1, None, false)
-            .unwrap();
-        let (client, mut event_rx) = proposal_test_client(manager);
-        let response = client
-            .request_permission(proposal_mcp_permission_request())
-            .await
-            .unwrap();
-        assert!(matches!(
-            response.outcome,
-            acp::schema::v1::RequestPermissionOutcome::Selected(_)
-        ));
-        assert!(matches!(
-            event_rx.try_recv(),
-            Ok(AppEvent::HideToolCall { session_id, id })
-                if session_id == "proposal-session" && id == "proposal-mcp-tool"
-        ));
+        tokio::task::LocalSet::new()
+            .run_until(async {
+                let manager = Arc::new(
+                    crate::agent_tools::action_proposal::channel::ProposalChannelManager::new(),
+                );
+                manager
+                    .issue("proposal-session".into(), 1, None, false)
+                    .unwrap();
+                let (client, mut event_rx) = proposal_test_client(manager);
+                let request_client = client.clone();
+                let handle = tokio::task::spawn_local(async move {
+                    request_client
+                        .request_permission(proposal_mcp_permission_request())
+                        .await
+                });
 
-        client
-            .session_notification(acp::schema::v1::SessionNotification::new(
-                acp::schema::v1::SessionId::new("proposal-session"),
-                acp::schema::v1::SessionUpdate::ToolCall(
-                    acp::schema::v1::ToolCall::new(
-                        acp::schema::v1::ToolCallId::new("proposal-mcp-tool"),
-                        "run_command_in_current_shell",
-                    )
-                    .raw_input(Some(serde_json::json!({
-                        "summary": "Run test",
-                        "command": "cargo test"
-                    }))),
-                ),
-            ))
-            .await
-            .unwrap();
+                assert!(matches!(
+                    event_rx.recv().await,
+                    Some(AppEvent::HideToolCall { session_id, id })
+                        if session_id == "proposal-session" && id == "proposal-mcp-tool"
+                ));
+                match event_rx.recv().await {
+                    Some(AppEvent::PermissionRequest { responder, .. }) => {
+                        responder.send("allow-once".to_string()).unwrap();
+                    }
+                    _ => panic!("expected PermissionRequest"),
+                }
+                let response = handle.await.unwrap().unwrap();
+                assert!(matches!(
+                    response.outcome,
+                    acp::schema::v1::RequestPermissionOutcome::Selected(_)
+                ));
 
-        assert!(
-            event_rx.try_recv().is_err(),
-            "the correlated tool call must remain hidden"
-        );
+                client
+                    .session_notification(acp::schema::v1::SessionNotification::new(
+                        acp::schema::v1::SessionId::new("proposal-session"),
+                        acp::schema::v1::SessionUpdate::ToolCall(
+                            acp::schema::v1::ToolCall::new(
+                                acp::schema::v1::ToolCallId::new("proposal-mcp-tool"),
+                                "run_command_in_current_shell",
+                            )
+                            .raw_input(Some(serde_json::json!({
+                                "summary": "Run test",
+                                "command": "cargo test"
+                            }))),
+                        ),
+                    ))
+                    .await
+                    .unwrap();
+
+                assert!(
+                    event_rx.try_recv().is_err(),
+                    "the correlated tool call must remain hidden"
+                );
+            })
+            .await;
     }
 
     /// Regression for the cross-window focus bug: the helper-over-pipe
@@ -5962,7 +6613,7 @@ mod tests {
         use crate::shell::ShellManager;
         use agent_client_protocol::{self as acp};
         use std::path::PathBuf;
-        use std::sync::Arc;
+        use std::sync::{Arc, Mutex};
         use tokio::sync::mpsc;
 
         fn make_client() -> (WtaClient, mpsc::UnboundedReceiver<AppEvent>) {
@@ -5971,6 +6622,10 @@ mod tests {
                 event_tx: tx,
                 shell_mgr: Arc::new(ShellManager::new()),
                 prompt_timing: Arc::new(super::super::PromptTimingState::default()),
+                native_yolo: Arc::new(crate::protocol::acp::native_yolo::NativeYoloState::new()),
+                yolo_state: Arc::new(Mutex::new(crate::app_contracts::YoloState::new(
+                    false, false,
+                ))),
                 provider_probe_capture: super::super::ProviderProbeCapture::default(),
                 standard_usage_sessions: std::sync::Mutex::new(std::collections::HashSet::new()),
                 proposal_channels: Arc::new(

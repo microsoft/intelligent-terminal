@@ -10,6 +10,8 @@
 #include "TerminalPaneContent.h"
 #include "BasicPaneEvents.h"
 
+#include "AutofixState.h"
+
 namespace winrt::TerminalApp::implementation
 {
     struct AgentPaneContent : AgentPaneContentT<AgentPaneContent>, BasicPaneEvents
@@ -81,18 +83,9 @@ namespace winrt::TerminalApp::implementation
         // Driven by inbound `autofix_state_changed` events for this pane's
         // owning tab. The window-level bottom bar reads these accessors
         // when refreshing for the active tab.
-        enum class AutofixState
-        {
-            Idle,
-            Detected,
-            Pending,
-            // Analysis finished; the result (fix or explanation) is waiting
-            // in the agent pane chat. Surfaced only when the pane is closed
-            // — the helper decides via pane_open and sends Idle instead when
-            // it's already open. Replaces the old Armed/Suggested split:
-            // autofix no longer auto-executes, so both surface identically.
-            Review,
-        };
+        // Analysis results use Review while waiting in a closed agent pane.
+        // The helper sends Idle instead when the pane is already open.
+        using AutofixState = ::TerminalApp::Autofix::State;
         // Update the diagnostics state from an inbound autofix_state event
         // (single-writer for this pane's state). `pane_id` and other fields
         // come from the JSON payload; we only stash strings that the bar
@@ -135,10 +128,10 @@ namespace winrt::TerminalApp::implementation
         // Accessors for state that the window-level bottom bar projects.
         AutofixState GetAutofixState() const noexcept { return _autofixState; }
         // True once the helper's ACP session has reached Connected (driven
-        // by the `agent_status` `state` field via UpdateAgentStatus). The
-        // bottom-bar diagnostics group is gated on this: no autofix
+        // by the `agent_status` `state` field via UpdateAgentStatus). This is
+        // one gate for the bottom-bar diagnostics group: no autofix
         // capability exists before connect (cold start) or after a
-        // failure/disconnect, so the button must not appear at all.
+        // failure/disconnect. An actionable autofix state is also required.
         bool IsAgentConnected() const noexcept { return _agentState == L"connected"; }
         // True after the first agent_status routed to this pane. The helper
         // subscribes to WT events before it can publish that status, so this

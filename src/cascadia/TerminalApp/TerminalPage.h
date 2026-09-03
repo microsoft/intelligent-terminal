@@ -492,7 +492,7 @@ namespace winrt::TerminalApp::implementation
         // changes are reconciled separately so unready helpers can be
         // recreated before the settings snapshot advances. This remains the
         // unified dispatch point for the autofix gate, delegate agent/model,
-        // and credential-free model catalogs.
+        // credential-free model catalogs, and YOLO default/policy.
         // `delegateAgent` holds the resolved effective value (custom-command
         // ids already expanded).
         struct AgentRuntimeConfigSnapshot
@@ -502,6 +502,8 @@ namespace winrt::TerminalApp::implementation
             std::wstring customModelSelection;
             std::vector<::Microsoft::Terminal::CustomModels::CatalogEntry> customModels;
             bool autofixEnabled{ false };
+            bool yoloEnabled{ false };
+            bool yoloPolicyBlocked{ false };
         };
         AgentRuntimeConfigSnapshot _lastAgentRuntimeConfig{};
         bool _agentRuntimeConfigInitialized{ false };
@@ -629,6 +631,10 @@ namespace winrt::TerminalApp::implementation
             uint64_t generation);
         static bool _AgentSettingsChanged(const AgentSettingsSnapshot& a, const AgentSettingsSnapshot& b);
         AgentRuntimeConfigSnapshot _CaptureAgentRuntimeConfig() const;
+        static Json::Value _BuildAgentReadyRuntimeConfigPayload(
+            std::string_view tabId,
+            std::string_view windowId,
+            const AgentRuntimeConfigSnapshot& config);
         // Diffs the hot-updatable runtime config against the last snapshot
         // and, on change, emits one `agent_config_changed` event carrying
         // only the changed fields. No agent-pane teardown.
@@ -902,6 +908,9 @@ namespace winrt::TerminalApp::implementation
         std::optional<uint32_t> _GetTabIndex(const TerminalApp::Tab& tab) const noexcept;
         TerminalApp::Tab _GetFocusedTab() const noexcept;
         winrt::com_ptr<Tab> _GetFocusedTabImpl() const noexcept;
+        static std::shared_ptr<Pane> _SourceTerminalPaneForTab(const winrt::com_ptr<Tab>& tab);
+        static winrt::Microsoft::Terminal::Settings::Model::Profile _SourceTerminalProfileForTab(const winrt::com_ptr<Tab>& tab);
+        static winrt::Microsoft::Terminal::Settings::Model::Profile _ResolveAgentSourceProfile(const winrt::com_ptr<Tab>& tab, const winrt::Microsoft::Terminal::Settings::Model::CascadiaSettings& settings);
         TerminalApp::Tab _GetTabByTabViewItem(const IInspectable& tabViewItem) const noexcept;
 
         // Spec A §4.1: routing indirection so TabManagement.cpp doesn't have to

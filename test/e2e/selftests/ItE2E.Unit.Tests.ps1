@@ -85,6 +85,25 @@ Describe 'JSON helpers' -Tag 'Unit' {
     }
 }
 
+Describe 'Localized WTA text matching' -Tag 'Unit' {
+    It 'matches action labels without depending on the trailing Enter glyph encoding' {
+        $pattern = Get-WtaLocalizedTextRegex -Key 'recommendations.button_open_tab'
+
+        $pattern | Should -Not -BeNullOrEmpty
+        'Open Tab' | Should -Match $pattern
+    }
+
+    It 'matches a substituted provider command in localized policy text' {
+        $pattern = Get-WtaLocalizedTextRegex -Key 'system.provider_command_blocked_by_policy'
+        $pattern = $pattern.Replace(
+            [regex]::Escape('%{command}'),
+            [regex]::Escape('/allow_all'))
+
+        $pattern | Should -Not -BeNullOrEmpty
+        "/allow_all: Yolo mode is disabled by your organization's policy." | Should -Match $pattern
+    }
+}
+
 Describe 'Agent settings cleanup' -Tag 'Unit' {
     It 'removes showTokenUsageAndCost while preserving profiles' {
         $settingsPath = Join-Path $TestDrive 'settings.json'
@@ -108,6 +127,87 @@ Describe 'Agent settings cleanup' -Tag 'Unit' {
     }
 }
 
+Describe 'Configuration backup and restore' -Tag 'Unit' {
+    It 'restores existing configuration content' {
+        $app = [pscustomobject]@{
+            SettingsPath = Join-Path $TestDrive 'existing-settings.json'
+            StatePath = Join-Path $TestDrive 'existing-state.json'
+        }
+        '{"original":"settings"}' | Set-Content -LiteralPath $app.SettingsPath -Encoding utf8
+        '{"original":"state"}' | Set-Content -LiteralPath $app.StatePath -Encoding utf8
+
+        Backup-WtConfig -App $app
+        '{}' | Set-Content -LiteralPath $app.SettingsPath -Encoding utf8
+        '{}' | Set-Content -LiteralPath $app.StatePath -Encoding utf8
+        Restore-WtConfig -App $app
+
+        Get-Content -LiteralPath $app.SettingsPath -Raw | Should -Match '"original":"settings"'
+        Get-Content -LiteralPath $app.StatePath -Raw | Should -Match '"original":"state"'
+    }
+
+    It 'removes files created when the original configuration was absent' {
+        $app = [pscustomobject]@{
+            SettingsPath = Join-Path $TestDrive 'missing-settings.json'
+            StatePath = Join-Path $TestDrive 'missing-state.json'
+        }
+
+        Backup-WtConfig -App $app
+        '{}' | Set-Content -LiteralPath $app.SettingsPath -Encoding utf8
+        '{}' | Set-Content -LiteralPath $app.StatePath -Encoding utf8
+        Restore-WtConfig -App $app
+
+        Test-Path -LiteralPath $app.SettingsPath | Should -BeFalse
+        Test-Path -LiteralPath $app.StatePath | Should -BeFalse
+    }
+
+    It 'records missing configuration when the fresh package directory is absent' {
+        $localState = Join-Path $TestDrive 'fresh-package\LocalState'
+        $app = [pscustomobject]@{
+            SettingsPath = Join-Path $localState 'settings.json'
+            StatePath = Join-Path $localState 'state.json'
+        }
+
+        Backup-WtConfig -App $app
+
+        Test-Path -LiteralPath "$($app.SettingsPath).e2ebak.missing" | Should -BeTrue
+        Test-Path -LiteralPath "$($app.StatePath).e2ebak.missing" | Should -BeTrue
+        Restore-WtConfig -App $app
+        Test-Path -LiteralPath $app.SettingsPath | Should -BeFalse
+        Test-Path -LiteralPath $app.StatePath | Should -BeFalse
+    }
+
+    It 'recovers a stale missing-file marker before taking a new snapshot' {
+        $app = [pscustomobject]@{
+            SettingsPath = Join-Path $TestDrive 'stale-settings.json'
+            StatePath = Join-Path $TestDrive 'stale-state.json'
+        }
+        '{}' | Set-Content -LiteralPath $app.SettingsPath -Encoding utf8
+        [System.IO.File]::WriteAllBytes("$($app.SettingsPath).e2ebak.missing", [byte[]]::new(0))
+
+        Backup-WtConfig -App $app
+
+        Test-Path -LiteralPath $app.SettingsPath | Should -BeFalse
+        Test-Path -LiteralPath "$($app.SettingsPath).e2ebak.missing" | Should -BeTrue
+        Restore-WtConfig -App $app
+    }
+
+    It 'recovers a stale backup before taking a new snapshot' {
+        $app = [pscustomobject]@{
+            SettingsPath = Join-Path $TestDrive 'crashed-settings.json'
+            StatePath = Join-Path $TestDrive 'crashed-state.json'
+        }
+        '{"test":"contaminated"}' | Set-Content -LiteralPath $app.SettingsPath -Encoding utf8
+        '{"original":"settings"}' | Set-Content -LiteralPath "$($app.SettingsPath).e2ebak" -Encoding utf8
+
+        Backup-WtConfig -App $app
+
+        Get-Content -LiteralPath $app.SettingsPath -Raw | Should -Match '"original":"settings"'
+        '{}' | Set-Content -LiteralPath $app.SettingsPath -Encoding utf8
+        Restore-WtConfig -App $app
+        Get-Content -LiteralPath $app.SettingsPath -Raw | Should -Match '"original":"settings"'
+    }
+}
+
 Describe 'Resolve-ItApp' -Tag 'Unit' {
     It 'resolves a descriptor with the expected shape when a package is installed' {
         $installed = Get-AppxPackage | Where-Object { $_.Name -like '*IntelligentTerminal*' }
@@ -117,6 +217,25 @@ Describe 'Resolve-ItApp' -Tag 'Unit' {
         $app.AppUserModelId | Should -Match '!'
         $app.SettingsPath | Should -Match 'LocalState\\settings\.json$'
         $app.WtcliPath | Should -Not -BeNullOrEmpty
+    }
+}
+
+Describe 'Feature suite package selection' -Tag 'Unit' {
+    It 'resolves the Yolo suite package once and uses it for every app operation' {
+        $suitePath = Join-Path $PSScriptRoot '..\tests\Feature.YoloMode.Tests.ps1'
+        $suite = Get-Content -LiteralPath $suitePath -Raw
+
+        ([regex]::Matches($suite, '\bGet-ItTestPackage\b')).Count | Should -Be 1
+        ([regex]::Matches($suite, '(?m)^Describe ')).Count | Should -Be 4
+        ([regex]::Matches($suite, '(?m)^Describe .* -ForEach \$script:PackageCase\b')).Count | Should -Be 4
+        $suite | Should -Not -Match '-Package\s+Dev\b'
+        $suite | Should -Not -Match 'Resolve-ItApp\s+-Package\s+(?!\$(?:script:Package|Package)\b)'
+        $suite | Should -Not -Match 'Start-Terminal\s+-Package\s+(?!\$Package\b)'
+        $suite | Should -Match 'openCodeInstalled\s*=.*Get-Command\s+opencode'
+        $suite | Should -Not -Match 'Get-AgentAcpStatus.*opencode acp'
+        $suite | Should -Not -Match 'AgentYoloStatusText|/yolo (?:on|off)'
+        $suite | Should -Not -Match 'requires whitespace-free test paths'
+        $suite | Should -Match '-EncodedCommand\s+\$encodedInvocation'
     }
 }
 
@@ -159,6 +278,51 @@ Describe 'Start-Terminal startup ordering' -Tag 'Unit' {
 
             $app.Hwnd | Should -Be 9001
             $script:startupOrder | Should -Be @('hwnd', 'com')
+        }
+    }
+}
+
+Describe 'Agent readiness log boundary' -Tag 'Unit' {
+    It 'checks failures only in the current launch log slice' {
+        InModuleScope ItE2E {
+            $script:observedOffset = $null
+            $app = [pscustomobject]@{
+                LogStartOffset = @{ 'wta-main_helper-old.log' = 200 }
+                PreLaunchLogStartOffset = @{ 'wta-main_helper-old.log' = 100 }
+            }
+
+            Mock Open-AgentPane
+            Mock Get-AgentConnectedPlaceholderRegex { 'connected-never-matches' }
+            Mock Get-AgentPaneText { '' }
+            Mock Get-ItLogText {
+                param($App)
+                $script:observedOffset = $App.LogStartOffset['wta-main_helper-old.log']
+                'class=auth_required'
+            }
+            Mock Write-ItLog
+
+            Wait-AgentReady -App $app -TimeoutSec 1 | Should -BeFalse
+            $script:observedOffset | Should -Be 100
+        }
+    }
+
+    It 'matches native Yolo updates by launch slice and ACP session' {
+        InModuleScope ItE2E {
+            $script:observedOffset = $null
+            $app = [pscustomobject]@{
+                LogStartOffset = @{ 'wta-main_helper-old.log' = 200 }
+                PreLaunchLogStartOffset = @{ 'wta-main_helper-old.log' = 100 }
+            }
+            Mock Get-ItLogText {
+                param($App)
+                $script:observedOffset = $App.LogStartOffset['wta-main_helper-old.log']
+                'session_id=session-a provider-native Yolo updated for live session enabled=true'
+            }
+
+            Test-AgentNativeYoloUpdate -App $app -AcpSessionId 'session-a' -Enabled $true | Should -BeTrue
+            Test-AgentNativeYoloUpdate -App $app -AcpSessionId 'session-b' -Enabled $true | Should -BeFalse
+            Test-AgentNativeYoloUpdate -App $app -AcpSessionId 'session-a' -Enabled $false | Should -BeFalse
+            $script:observedOffset | Should -Be 100
         }
     }
 }

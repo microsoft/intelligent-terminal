@@ -224,39 +224,39 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
     <value>Konfigurerer...</value>
   </data>
   <data name="FreOverlay_InstallError_BlockedByPolicy" xml:space="preserve">
-    <value>⚠ Installasjon av {0} vart blokkert av ein Windows Pakkebehandling-policy. Viss du brukar ei administrert eining, kontaktar du IT-administratoren.</value>
+    <value>Installasjon av {0} vart blokkert av ein Windows Pakkebehandling-policy. Viss du brukar ei administrert eining, kontaktar du IT-administratoren.</value>
     <comment>FRE setup error. {0} is the package display name. Shown when winget returned BlockedByPolicy.</comment>
   </data>
   <data name="FreOverlay_InstallError_Generic" xml:space="preserve">
-    <value>⚠ Kunne ikkje installere {0} (feilkode {1}). Sjekk loggen for detaljar, eller installer {0} manuelt.</value>
+    <value>Kunne ikkje installere {0} (feilkode {1}). Sjekk loggen for detaljar, eller installer {0} manuelt.</value>
     <comment>FRE setup error fallback. {0} is the package display name (appears twice). {1} is a pre-formatted HRESULT string like "0x80190194".</comment>
   </data>
   <data name="FreOverlay_InstallError_GenericNoCode" xml:space="preserve">
-    <value>⚠ Kunne ikkje installere {0}. Sjekk loggen for detaljar, eller installer {0} manuelt.</value>
+    <value>Kunne ikkje installere {0}. Sjekk loggen for detaljar, eller installer {0} manuelt.</value>
     <comment>FRE setup error fallback used when no actionable error code is available. {0} is the package display name (appears twice).</comment>
   </data>
   <data name="FreOverlay_InstallError_InstallerFailed" xml:space="preserve">
-    <value>⚠ Installasjonsprogrammet for {0} rapporterte ein feil (kode {1}). Sjekk loggen for detaljar, eller installer {0} manuelt.</value>
+    <value>Installasjonsprogrammet for {0} rapporterte ein feil (kode {1}). Sjekk loggen for detaljar, eller installer {0} manuelt.</value>
     <comment>FRE setup error. {0} is the package display name (appears twice). {1} is the installer-reported error code as a decimal number (e.g. MSI 1603).</comment>
   </data>
   <data name="FreOverlay_InstallError_Network" xml:space="preserve">
-    <value>⚠ Fekk ikkje kontakt med Windows Pakkebehandling under installasjon av {0}. Sjekk internettilkoplinga (VPN, proxy eller brannmur kan blokkere henne) og prøv igjen.</value>
+    <value>Fekk ikkje kontakt med Windows Pakkebehandling under installasjon av {0}. Sjekk internettilkoplinga (VPN, proxy eller brannmur kan blokkere henne) og prøv igjen.</value>
     <comment>{Locked="VPN"} FRE setup error. {0} is the package display name. Shown when winget couldn't reach its catalog or download failed with a network-class HRESULT.</comment>
   </data>
   <data name="FreOverlay_InstallError_NoCompatibleInstaller" xml:space="preserve">
-    <value>⚠ Det finst ikkje noko kompatibelt installasjonsprogram for {0} på dette systemet (OS-versjonen eller arkitekturen er kanskje ikkje støtta). Installer {0} manuelt.</value>
+    <value>Det finst ikkje noko kompatibelt installasjonsprogram for {0} på dette systemet (OS-versjonen eller arkitekturen er kanskje ikkje støtta). Installer {0} manuelt.</value>
     <comment>FRE setup error. {0} is the package display name (appears twice).</comment>
   </data>
   <data name="FreOverlay_InstallError_PackageNotFound" xml:space="preserve">
-    <value>⚠ {0} vart ikkje funnen i katalogen til Windows Pakkebehandling. Prøv å oppdatere winget-kjeldene, eller installer {0} manuelt.</value>
+    <value>{0} vart ikkje funnen i katalogen til Windows Pakkebehandling. Prøv å oppdatere winget-kjeldene, eller installer {0} manuelt.</value>
     <comment>{Locked="winget"} FRE setup error. {0} is the package display name (appears twice).</comment>
   </data>
   <data name="FreOverlay_InstallError_Timeout" xml:space="preserve">
-    <value>⚠ Installasjon av {0} tok meir enn 20 minutt. Intelligent Terminal slutta å vente, men installasjonsprogrammet kan framleis køyre i bakgrunnen. Sjekk Task Manager, eller prøv igjen seinare.</value>
+    <value>Installasjon av {0} tok meir enn 20 minutt. Intelligent Terminal slutta å vente, men installasjonsprogrammet kan framleis køyre i bakgrunnen. Sjekk Task Manager, eller prøv igjen seinare.</value>
     <comment>{Locked="Intelligent Terminal","Task Manager"} FRE setup error. {0} is the package display name.</comment>
   </data>
   <data name="FreOverlay_InstallErrorWingetMissing" xml:space="preserve">
-    <value>⚠ Windows Pakkebehandling (winget) er ikkje installert eller ikkje tilgjengeleg. Installer han først, og prøv deretter på nytt.</value>
+    <value>Windows Pakkebehandling (winget) er ikkje installert eller ikkje tilgjengeleg. Installer han først, og prøv deretter på nytt.</value>
     <comment>{Locked="winget"} Error shown in the FRE setup overlay when a prerequisite install was attempted but winget itself is not available on this system.</comment>
   </data>
   <data name="FreOverlay_PackageDisplayName_Copilot" xml:space="preserve">
@@ -348,9 +348,9 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
     <value>Gi Intelligent Terminal løyve til å få tilgang til skalet og automatisk oppdage feil.</value>
   </data>
 <data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
-    <value>⚠ Kunne ikkje installere skalintegrasjon. Feiloppdaging er slått av. Du kan aktivere den på nytt og prøve igjen, eller lagre for å halde fram utan den.</value>
+    <value>Kunne ikkje installere skalintegrasjon. Feiloppdaging er slått av. Du kan aktivere den på nytt og prøve igjen, eller lagre for å halde fram utan den.</value>
   </data><data name="FreOverlay_InstallErrorHooks" xml:space="preserve">
-    <value>⚠ Kunne ikkje installere session hooks. Sesjonshandtering er slått av. Du kan aktivere den på nytt og prøve igjen, eller lagre for å halde fram utan den.</value>
+    <value>Kunne ikkje installere session hooks. Sesjonshandtering er slått av. Du kan aktivere den på nytt og prøve igjen, eller lagre for å halde fram utan den.</value>
     <comment>{Locked="hooks"}</comment>
   </data><data name="FreOverlay_ErrorHelpLink" xml:space="preserve">
     <value>Finn ut korleis du løyser dette manuelt</value>
@@ -366,7 +366,7 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
     <comment>Body of an error dialog shown after the user tries to install PowerShell shell integration but their PowerShell execution policy (Restricted or AllSigned) is blocking scripts. A separate "Learn how to fix this manually" hyperlink (FreOverlay_ErrorHelpLink) is rendered on its own line below this sentence. {Locked="PowerShell"}</comment>
   </data>
   <data name="FreOverlay_InstallErrorShellIntegrationExecutionPolicy" xml:space="preserve">
-    <value>⚠ PowerShell-utføringspolicyen blokkerer skript. Feiloppdaging slått av.</value>
+    <value>PowerShell-utføringspolicyen blokkerer skript. Feiloppdaging slått av.</value>
     <comment>{Locked="PowerShell"}</comment>
   </data>
   <data name="UsageGroup/[using:Windows.UI.Xaml.Automation]AutomationProperties/Name" xml:space="preserve"><value>Bruk</value><comment>Accessibility name for the session usage summary in the terminal bottom bar.</comment></data>

@@ -10,6 +10,7 @@
 #include "ViewModelHelpers.h"
 #include "Utils.h"
 #include "../inc/AgentHooksStatus.h"
+#include "../inc/AgentRegistry.h"
 #include "../inc/CustomModelCredential.h"
 #include "../inc/CustomModelProviderUtils.h"
 
@@ -167,11 +168,18 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         PERMANENT_OBSERVABLE_PROJECTED_SETTING(_GlobalSettings, ShowTokenUsageAndCost);
         bool CanSuggestErrors() const;
 
+        bool AgentPaneYoloMode() const;
+        void AgentPaneYoloMode(bool value);
+        bool HasAgentPaneYoloMode() const;
+        bool ShowOpenCodeYoloWarning() const;
+        bool ShowGeminiYoloInfo() const;
+
         // GPO policy lock indicators
         bool IsAgentPolicyLocked() const { return _GlobalSettings.IsAgentPolicyLocked(); }
         bool IsCustomAgentPolicyLocked() const { return _GlobalSettings.IsCustomAgentPolicyLocked(); }
         bool IsAutoFixPolicyLocked() const { return _GlobalSettings.IsAutoFixPolicyLocked(); }
         bool IsAgentSessionHooksPolicyLocked() const { return _GlobalSettings.IsAgentSessionHooksPolicyLocked(); }
+        bool IsYoloModePolicyLocked() const { return _GlobalSettings.IsYoloModePolicyLocked(); }
 
         winrt::Windows::Foundation::Collections::IObservableVector<winrt::Microsoft::Terminal::Settings::Editor::EnumEntry> AgentPanePositionList();
         winrt::Windows::Foundation::IInspectable CurrentAgentPanePosition();
@@ -299,6 +307,8 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
             bool isAcpAgent);
         void _DeleteCustomAcpAgent(const winrt::hstring& settingsId);
         void _DeleteCustomDelegateAgent(const winrt::hstring& settingsId);
+        bool _IsSelectedAcpAgentAvailable() const;
+        ::Microsoft::Terminal::Settings::Model::AgentRegistry::YoloSettingsNotice _YoloSettingsNotice() const;
         Editor::AgentEntry _FindEntryById(
             const winrt::Windows::Foundation::Collections::IObservableVector<Editor::AgentEntry>& list,
             const winrt::hstring& id) const;

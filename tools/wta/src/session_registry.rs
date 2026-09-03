@@ -45,13 +45,19 @@ pub struct WtaMeta {
     /// only for diagnostics / back-compat; helpers no longer set it.
     pub agent_cmd: Option<String>,
     /// Canonical agent id (`copilot` / `claude` / `gemini` / …) the
-    /// helper's tab wants. **This is the authoritative selector**: the
-    /// master reconstructs the agent command internally from this id
+    /// helper's tab requests. The master validates this selection and
+    /// reconstructs the agent command internally from this id
     /// (`agent_registry::build_acp_command`) and never executes a string
     /// supplied over the pipe. Also stamps the per-session `cli_source`
     /// so the F2 view labels each row with its real CLI. `None` on older
-    /// helpers — master then falls back to its own `--agent` default.
+    /// helpers — master then falls back to its own `--agent` default. This
+    /// request is not trusted for agent-specific permission behavior; the
+    /// helper uses `resolved_agent_id` returned by the master.
     pub agent_id: Option<String>,
+    /// Canonical agent id selected by the master after allowlist validation
+    /// and fallback resolution. Returned only in the initialize response so
+    /// helper-side agent-specific behavior never trusts its own request.
+    pub resolved_agent_id: Option<String>,
     /// Model override the tab wants (e.g. `gpt-5`). Folded into the
     /// reconstructed command by `build_acp_command` for agents that
     /// take a `--model` flag (adapter agents ignore it and receive the
@@ -102,6 +108,7 @@ impl WtaMeta {
         blank(&self.pane_session_id)
             && blank(&self.agent_cmd)
             && blank(&self.agent_id)
+            && blank(&self.resolved_agent_id)
             && blank(&self.model)
             && blank(&self.provider_binding)
             && blank(&self.agent_source)
@@ -153,6 +160,7 @@ pub fn extract_wta_meta(meta: &mut Option<acp::schema::v1::Meta>) -> WtaMeta {
         pane_session_id: str_field("pane_session_id"),
         agent_cmd: str_field("agent_cmd"),
         agent_id: str_field("agent_id"),
+        resolved_agent_id: str_field("resolved_agent_id"),
         model: str_field("model"),
         provider_binding: str_field("provider_binding"),
         agent_source: str_field("agent_source"),
@@ -194,6 +202,7 @@ pub fn inject_wta_meta(meta: &mut Option<acp::schema::v1::Meta>, wta: &WtaMeta) 
     put("pane_session_id", &wta.pane_session_id);
     put("agent_cmd", &wta.agent_cmd);
     put("agent_id", &wta.agent_id);
+    put("resolved_agent_id", &wta.resolved_agent_id);
     put("model", &wta.model);
     put("provider_binding", &wta.provider_binding);
     put("agent_source", &wta.agent_source);
@@ -1222,6 +1231,28 @@ pub trait SessionRegistry: Send + Sync {
         sid: &acp::schema::v1::SessionId,
         candidate: &str,
     ) -> bool;
+
+    /// Atomically replace `title` for `sid` with the listing agent's current
+    /// `session/list` title, whatever the row already holds. Returns `true`
+    /// iff the title actually changed. The candidate must be non-empty.
+    ///
+    /// The CLI owns a session's display name and keeps rewriting it: Copilot
+    /// reports the session's *first user message* until it generates a real
+    /// summary, then swaps in the summary. [`upgrade_title_if_synthetic`]
+    /// cannot recover from that, because the transient first-message echo is
+    /// an ordinary non-synthetic title — adopting it once would freeze the row
+    /// on it forever. This is the counterpart primitive that lets the poll
+    /// re-adopt the agent's current answer.
+    ///
+    /// Callers must first establish that the listing agent owns this row (in
+    /// master that is `row_refreshable_by_connected_agent` plus a session-id
+    /// match against that agent's own `session/list`) and must filter
+    /// placeholder and injected-context candidates with
+    /// [`title_is_displayable`], since this method applies whatever it is
+    /// given.
+    ///
+    /// [`upgrade_title_if_synthetic`]: SessionRegistry::upgrade_title_if_synthetic
+    async fn adopt_agent_title(&self, sid: &acp::schema::v1::SessionId, candidate: &str) -> bool;
 }
 
 /// Production implementation. Uses `tokio::sync::Mutex` for parity with the
@@ -1267,8 +1298,8 @@ pub(crate) fn title_is_synthetic(info: &SessionInfo) -> bool {
 
 /// The literal heading the delegate `?<prompt>` flow injects into the prompt it
 /// bakes into a freshly launched agent CLI: `"<prompt>\n\n## Terminal Context
-/// (pane <id>)\n```…```"` (built in `main.rs`, which references this same
-/// constant so the two can't drift).
+/// (pane <id>)\n```…```"` (built in `cli/delegate.rs`, which references this
+/// same constant so the two can't drift).
 ///
 /// Agent CLIs (e.g. Copilot) briefly surface a session's *first user message* as
 /// its `session/list` title before they generate their real chat summary. For a
@@ -1281,12 +1312,36 @@ pub(crate) const TERMINAL_CONTEXT_TITLE_MARKER: &str = "## Terminal Context (pan
 /// [`TERMINAL_CONTEXT_TITLE_MARKER`]) rather than a real CLI-generated summary.
 ///
 /// Such a title must not be adopted as a session's display title: it leaks the
-/// injected terminal context (pane GUID included), and adopting it would lock
-/// the row out of the later upgrade to the CLI's real summary name (an echoed
-/// title is non-synthetic, so `refresh_synthetic_titles_from` would skip it
-/// forever). Callers drop it so the row stays synthetic and keeps upgrading.
+/// injected terminal context (pane GUID and the captured pane output included)
+/// into the session list for the whole window before the CLI generates its real
+/// summary. Callers drop it so the row keeps its own title and the next poll
+/// adopts the summary instead.
+///
+/// This filter is load-bearing for
+/// [`SessionRegistry::adopt_agent_title`], which overwrites whatever it is
+/// handed: an unfiltered echo would not merely stick (the pre-`adopt` failure
+/// mode, where a non-synthetic echo locked the row out of every later upgrade)
+/// but actively replace a good title, and be re-adopted on every 5 s poll until
+/// the summary lands.
 pub(crate) fn title_is_injected_context_echo(title: &str) -> bool {
     title.contains(TERMINAL_CONTEXT_TITLE_MARKER)
+}
+
+/// Whether a `session/list` title reported for `cli` is fit to become a
+/// session's display name.
+///
+/// The single source of truth for "is this candidate usable", shared by the
+/// producer (`master::host_titles_via_acp`, which builds the title map) and the
+/// destructive consumer (`master::refresh_titles_from_listing`, which feeds
+/// [`SessionRegistry::adopt_agent_title`]). An agent's *latest* answer is not
+/// automatically a *displayable* one: it can be empty, the delegate's injected
+/// first-message echo, or a CLI's own untouched-session placeholder. Keeping
+/// both ends on one predicate means a future caller can't reintroduce a
+/// clobbering candidate by rebuilding the map by hand.
+pub(crate) fn title_is_displayable(cli: Option<&CliSource>, title: &str) -> bool {
+    !title.is_empty()
+        && !title_is_injected_context_echo(title)
+        && !cli.is_some_and(|cli| crate::agent_sessions::title_is_placeholder(cli, title))
 }
 
 #[async_trait::async_trait]
@@ -1403,6 +1458,21 @@ impl SessionRegistry for InMemoryRegistry {
         if !title_is_synthetic(entry) {
             return false;
         }
+        if entry.title.as_deref() == Some(candidate) {
+            return false;
+        }
+        entry.title = Some(candidate.to_string());
+        true
+    }
+
+    async fn adopt_agent_title(&self, sid: &acp::schema::v1::SessionId, candidate: &str) -> bool {
+        if candidate.is_empty() {
+            return false;
+        }
+        let mut guard = self.inner.lock().await;
+        let Some(entry) = guard.sessions.get_mut(sid) else {
+            return false;
+        };
         if entry.title.as_deref() == Some(candidate) {
             return false;
         }
@@ -2208,12 +2278,13 @@ mod tests {
 
     #[test]
     fn title_is_injected_context_echo_detects_delegate_marker_only() {
-        // Mirrors the `?<prompt>` prompt built in `main.rs` from
+        // Mirrors the `?<prompt>` prompt built in `cli/delegate.rs` from
         // `TERMINAL_CONTEXT_TITLE_MARKER`: an agent CLI can echo this whole first
         // user message back as a `session/list` title before it generates a real
-        // summary. Such an echo must be dropped (see `host_titles_via_acp`) so the
-        // born-bound row stays synthetic and keeps upgrading — the counterpart
-        // behaviour is covered by `refresh_synthetic_titles_from_skips_when_id_absent`.
+        // summary. Such an echo must be dropped (see `host_titles_via_acp`), or
+        // `adopt_agent_title` would overwrite the row's title with the injected
+        // pane GUID and captured pane output on every poll until the summary
+        // lands.
         let echo = format!(
             "hi test\n\n{}8A9B4ABA-BEB4-4F94-B0D3-55569420B902)\n```\nPowerShell 7.6.3\n```",
             TERMINAL_CONTEXT_TITLE_MARKER
@@ -2226,6 +2297,35 @@ mod tests {
         ));
         assert!(!title_is_injected_context_echo("hi test"));
         assert!(!title_is_injected_context_echo(""));
+    }
+
+    #[test]
+    fn title_is_displayable_rejects_empty_echo_and_provider_placeholder() {
+        assert!(title_is_displayable(
+            Some(&CliSource::Copilot),
+            "Check Copilot Resume Hooks"
+        ));
+        assert!(title_is_displayable(None, "Check Copilot Resume Hooks"));
+        assert!(!title_is_displayable(Some(&CliSource::Copilot), ""));
+        assert!(!title_is_displayable(
+            Some(&CliSource::Copilot),
+            &format!("hi\n\n{TERMINAL_CONTEXT_TITLE_MARKER}pane-1)\n```\nx\n```")
+        ));
+        // An unknown cli can't recognize a provider placeholder, but the echo
+        // and empty checks still apply.
+        assert!(!title_is_displayable(
+            None,
+            &format!("hi\n\n{TERMINAL_CONTEXT_TITLE_MARKER}pane-1)\n```\nx\n```")
+        ));
+        let placeholder = "New session - 2026-07-23T01:14:00.422Z";
+        assert!(!title_is_displayable(
+            Some(&CliSource::OpenCode),
+            placeholder
+        ));
+        assert!(
+            title_is_displayable(Some(&CliSource::Copilot), placeholder),
+            "another CLI's placeholder shape is a real title here"
+        );
     }
 
     #[tokio::test]
@@ -2349,6 +2449,79 @@ mod tests {
         assert_eq!(found.last_activity_at_ms, Some(123_456_789));
         assert_eq!(found.origin, Some(SessionOrigin::Unknown));
         assert_eq!(found.cwd, PathBuf::from("C:\\Users\\alice"));
+    }
+
+    // ── adopt_agent_title ───────────────────────────────────────────
+
+    #[tokio::test]
+    async fn adopt_agent_title_replaces_a_stale_real_title() {
+        // Copilot surfaces the first user message as a session's
+        // `session/list` title until it generates a summary. That echo is
+        // non-synthetic, so `upgrade_title_if_synthetic` can never correct it.
+        let reg = InMemoryRegistry::new();
+        reg.upsert(info_with(
+            "s1",
+            "/repo/proj",
+            Some("first user message echoed as a title"),
+        ))
+        .await;
+        let sid = acp::schema::v1::SessionId::new("s1".to_string());
+        assert!(
+            !reg.upgrade_title_if_synthetic(&sid, "Check Copilot Resume Hooks")
+                .await
+        );
+        assert!(
+            reg.adopt_agent_title(&sid, "Check Copilot Resume Hooks")
+                .await
+        );
+        assert_eq!(
+            reg.lookup(&sid).await.unwrap().title.as_deref(),
+            Some("Check Copilot Resume Hooks")
+        );
+    }
+
+    #[tokio::test]
+    async fn adopt_agent_title_is_a_no_op_for_empty_same_or_missing() {
+        let reg = InMemoryRegistry::new();
+        reg.upsert(info_with("s1", "/repo/proj", Some("Same")))
+            .await;
+        let sid = acp::schema::v1::SessionId::new("s1".to_string());
+        // Empty candidate must never blank out a title.
+        assert!(!reg.adopt_agent_title(&sid, "").await);
+        // Steady state returns false so the poll doesn't broadcast every tick.
+        assert!(!reg.adopt_agent_title(&sid, "Same").await);
+        assert_eq!(
+            reg.lookup(&sid).await.unwrap().title.as_deref(),
+            Some("Same")
+        );
+        assert!(
+            !reg.adopt_agent_title(
+                &acp::schema::v1::SessionId::new("nope".to_string()),
+                "Real Title"
+            )
+            .await
+        );
+    }
+
+    #[tokio::test]
+    async fn adopt_agent_title_preserves_other_fields() {
+        let reg = InMemoryRegistry::new();
+        let mut row = info_with("s1", "/repo/proj", Some("old"));
+        row.pane_session_id = Some("pane-abc".to_string());
+        row.status = Some(AgentStatus::Working);
+        row.cli_source = Some(CliSource::Copilot);
+        row.last_activity_at_ms = Some(123_456_789);
+        reg.upsert(row).await;
+
+        let sid = acp::schema::v1::SessionId::new("s1".to_string());
+        assert!(reg.adopt_agent_title(&sid, "new").await);
+
+        let found = reg.lookup(&sid).await.unwrap();
+        assert_eq!(found.title.as_deref(), Some("new"));
+        assert_eq!(found.pane_session_id.as_deref(), Some("pane-abc"));
+        assert_eq!(found.status, Some(AgentStatus::Working));
+        assert_eq!(found.cli_source, Some(CliSource::Copilot));
+        assert_eq!(found.last_activity_at_ms, Some(123_456_789));
     }
 
     // ── _meta.wta extract / inject ──────────────────────────────────
@@ -3968,6 +4141,7 @@ mod tests {
         let original = WtaMeta {
             agent_cmd: Some("npx -y @agentclientprotocol/claude-agent-acp@0.65.0".to_string()),
             agent_id: Some("gemini".to_string()),
+            resolved_agent_id: Some("copilot".to_string()),
             model: Some("gemini-2.5-pro".to_string()),
             provider_binding: Some("custom:provider-openrouter:qwen/qwen3.5-9b".to_string()),
             agent_source: Some("wsl".to_string()),
@@ -4023,6 +4197,7 @@ mod tests {
                 pane_session_id: Some("  ".to_string()),
                 agent_cmd: Some(String::new()),
                 agent_id: Some("\t".to_string()),
+                resolved_agent_id: Some(" ".to_string()),
                 model: Some(" ".to_string()),
                 provider_binding: Some(" ".to_string()),
                 agent_source: Some(" ".to_string()),
@@ -4065,6 +4240,7 @@ mod tests {
                 pane_session_id: Some("  ".to_string()),
                 agent_cmd: Some(String::new()),
                 agent_id: Some("\t".to_string()),
+                resolved_agent_id: Some(" ".to_string()),
                 model: Some(" ".to_string()),
                 provider_binding: Some(" ".to_string()),
                 agent_source: Some(" ".to_string()),

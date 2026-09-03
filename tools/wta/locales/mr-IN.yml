@@ -240,4 +240,5 @@ config_picker.title: "सत्र कॉन्फिगरेशन (↑ ↓ �
 system.no_config_options: "कनेक्ट केलेल्या एजंटने कोणतेही कॉन्फिगर करण्यायोग्य सत्र पर्याय घोषित केले नाहीत."
 # {option} is an Agent-provided option name; {error} is the ACP error.
 system.config_update_failed: "%{option} अपडेट करण्यात अपयशी: %{error}"
+system.provider_command_blocked_by_policy: "%{command}: तुमच्या संस्थेच्या धोरणामुळे Yolo mode अक्षम आहे."  # {Locked="Yolo","%{command}"} Shown when AllowYoloMode blocks a provider-advertised privileged command.
 system.model_unknown: "अज्ञात मॉडेल %{model} — उपलब्ध यादी पाहण्यासाठी /model टाइप करा."  # {Locked="%{model}","/model"}
