@@ -1433,6 +1433,7 @@ namespace winrt::TerminalApp::implementation
         {
             const auto& globals = _settings.GlobalSettings();
             globals.AcpAgent(agentId);
+            globals.ClearAgentPaneYoloModeIfUnavailableDefault();
             globals.DelegateAgent(agentId);
             globals.AutoErrorDetectionEnabled(AutoDetectToggle().IsOn());
             globals.AutoFixEnabled(AutoErrorToggle().IsOn());

@@ -286,16 +286,14 @@
                           Style="{StaticResource ComboBoxSettingStyle}" />
             </local:SettingContainer>
 
-            <!--  Global Yolo preference: asks supported providers to enable
-                their advertised ACP session mode. High-risk toggle, so it
-                is disabled outright (IsYoloModePolicyLocked) when the
-                AllowYoloMode GPO policy blocks it.  -->
+            <!--  Default-provider Yolo preference. Policy and provider
+                capability decide whether the toggle is editable.  -->
             <local:SettingContainer x:Name="AgentPaneYoloMode"
                                     x:Uid="AIAgents_YoloMode">
                 <StackPanel>
                     <ToggleSwitch AutomationProperties.AutomationId="AgentPaneYoloModeToggle"
                                   IsOn="{x:Bind ViewModel.AgentPaneYoloMode, Mode=TwoWay}"
-                                  IsEnabled="{x:Bind mtu:Converters.InvertBoolean(ViewModel.IsYoloModePolicyLocked), Mode=OneWay}"
+                                  IsEnabled="{x:Bind ViewModel.CanEnableAgentPaneYoloMode, Mode=OneWay}"
                                   Style="{StaticResource ToggleSwitchInExpanderStyle}" />
                     <TextBlock x:Uid="AIAgents_PolicyLocked"
                                Visibility="{x:Bind ViewModel.IsYoloModePolicyLocked, Mode=OneWay}"

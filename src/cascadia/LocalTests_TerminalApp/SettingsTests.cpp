@@ -76,6 +76,8 @@ namespace TerminalAppLocalTests
         TEST_METHOD(TestAgentSettingsFocusGate);
         TEST_METHOD(TestAgentPaneRebindCapability);
         TEST_METHOD(TestAgentPaneSwitchCapability);
+        TEST_METHOD(TestDefaultProviderYoloInheritance);
+        TEST_METHOD(TestHotDefaultProviderYoloUsesOutgoingBinding);
         TEST_METHOD(TestAgentPaneSettingsRebindRouting);
         TEST_METHOD(TestAgentPaneModelHotUpdateRouting);
 
@@ -2069,6 +2071,63 @@ namespace TerminalAppLocalTests
         const auto payload = Page::_BuildAgentPaneSettingsRebindPayload(wslCodex);
         VERIFY_ARE_EQUAL(std::string{ "wsl" }, payload["agent_source"].asString());
         VERIFY_ARE_EQUAL(std::string{ "Ubuntu" }, payload["wsl_distro"].asString());
+    }
+
+    void SettingsTests::TestDefaultProviderYoloInheritance()
+    {
+        using Page = winrt::TerminalApp::implementation::TerminalPage;
+
+        VERIFY_IS_TRUE(Page::_ResolveAutomaticYoloForAgentBinding(
+            true, false, L"copilot", L"copilot", true, false));
+        VERIFY_IS_TRUE(Page::_ResolveAutomaticYoloForAgentBinding(
+            true, false, L"CoPiLoT", L"copilot", false, true));
+        VERIFY_IS_FALSE(Page::_ResolveAutomaticYoloForAgentBinding(
+            true, false, L"copilot", L"claude", false, true));
+        VERIFY_IS_FALSE(Page::_ResolveAutomaticYoloForAgentBinding(
+            true, false, L"copilot", L"claude", true, false));
+        VERIFY_IS_FALSE(Page::_ResolveAutomaticYoloForAgentBinding(
+            true, false, L"opencode", L"opencode", false, true));
+        VERIFY_IS_FALSE(Page::_ResolveAutomaticYoloForAgentBinding(
+            true, false, L"", L"", false, true));
+        VERIFY_IS_FALSE(Page::_ResolveAutomaticYoloForAgentBinding(
+            false, false, L"copilot", L"copilot", true, false));
+        VERIFY_IS_FALSE(Page::_ResolveAutomaticYoloForAgentBinding(
+            true, true, L"copilot", L"copilot", true, false));
+        VERIFY_IS_FALSE(Page::_ResolveAutomaticYoloForAgentBinding(
+            true, false, L"opencode", L"opencode", true, false));
+
+        // Overrides outside this PR's /agent scope retain the existing
+        // global behavior until their owning paths adopt this resolver.
+        VERIFY_IS_TRUE(Page::_ResolveAutomaticYoloForAgentBinding(
+            true, false, L"opencode", L"claude", false, false));
+    }
+
+    void SettingsTests::TestHotDefaultProviderYoloUsesOutgoingBinding()
+    {
+        using Page = winrt::TerminalApp::implementation::TerminalPage;
+
+        Page::AgentRuntimeConfigSnapshot previous;
+        previous.defaultAgentId = L"copilot";
+        previous.yoloEnabled = false;
+
+        Page::AgentRuntimeConfigSnapshot current;
+        current.defaultAgentId = L"gemini";
+        current.yoloEnabled = true;
+
+        Page::AgentPaneSettingsBinding globalFollower;
+        globalFollower.agentId = L"gemini";
+        globalFollower.followsGlobalAcpModel = true;
+        VERIFY_IS_FALSE(Page::_ResolveHotAutomaticYoloForAgentBinding(
+            previous, current, globalFollower, L"copilot", false));
+        VERIFY_IS_TRUE(Page::_ResolveHotAutomaticYoloForAgentBinding(
+            previous, current, globalFollower, L"gemini", false));
+        VERIFY_IS_FALSE(Page::_ResolveHotAutomaticYoloForAgentBinding(
+            previous, current, globalFollower, L"", false));
+
+        Page::AgentPaneSettingsBinding agentOverride;
+        agentOverride.agentId = L"gemini";
+        VERIFY_IS_TRUE(Page::_ResolveHotAutomaticYoloForAgentBinding(
+            previous, current, agentOverride, L"gemini", true));
     }
 
     void SettingsTests::TestAgentPaneModelHotUpdateRouting()

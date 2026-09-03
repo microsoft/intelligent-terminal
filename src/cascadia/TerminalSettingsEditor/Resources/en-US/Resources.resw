@@ -829,12 +829,12 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
     <comment>Value shown in the agent pane position dropdown (selects which side of the terminal the agent pane opens on). Translation should match the existing FreOverlay_PanePositionLeft string used in the first-run experience.</comment>
   </data>
   <data name="AIAgents_YoloMode.Header" xml:space="preserve">
-    <value>Use provider Yolo mode</value>
-    <comment>{Locked="Yolo"} Header for the global setting that asks each AI agent provider to enable its advertised ACP session Yolo capability.</comment>
+    <value>Use Yolo mode for the default agent provider</value>
+    <comment>{Locked="Yolo"} Header for the setting that requests Yolo mode when an agent pane starts with the Settings default provider.</comment>
   </data>
   <data name="AIAgents_YoloMode.HelpText" xml:space="preserve">
-    <value>Uses the agent provider's ACP session mode to reduce or bypass confirmations. The provider defines the resulting permissions, sandbox, file access, and network access. Providers without a supported mode continue to ask for permission.</value>
-    <comment>{Locked="ACP"} Risk warning shown under the Yolo toggle. Here provider means the selected AI agent provider, not a network provider.</comment>
+    <value>Requests Yolo mode when an agent pane starts with the default provider. The provider defines which confirmations, sandbox restrictions, file access, and network access change. Switching providers in an agent pane does not turn Yolo mode on for a non-default provider.</value>
+    <comment>{Locked="Yolo"} Risk warning shown under the default-provider Yolo toggle. "Provider" means the selected AI agent provider, not a network provider.</comment>
   </data>
   <data name="AIAgents_HooksInstall.Header" xml:space="preserve">
     <value>Agent session tracking (hooks)</value>
@@ -3107,8 +3107,8 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
     <value>{} | {} | OpenAI-compatible</value>
     <comment>{Locked="{}","OpenAI"} The first {} is replaced with the provider name; the second is replaced with its location.</comment>
   </data>
-  <data name="AIAgents_YoloOpenCodeWarning.Title" xml:space="preserve"><value>Yolo mode is unavailable for OpenCode</value><comment>{Locked="Yolo","OpenCode"} InfoBar title shown on the AI Agents settings page when global Yolo mode is on and the installed selected default provider is OpenCode.</comment></data>
-  <data name="AIAgents_YoloOpenCodeWarning.Message" xml:space="preserve"><value>OpenCode does not advertise a supported native Yolo mode. Permission requests remain interactive even when this setting is on.</value><comment>{Locked="OpenCode","Yolo"} InfoBar message shown on the AI Agents settings page. "Advertise" means the provider reports a supported native ACP session capability. "Interactive" means the user must still choose permission options manually.</comment></data>
+  <data name="AIAgents_YoloOpenCodeWarning.Title" xml:space="preserve"><value>Yolo mode is unavailable for OpenCode</value><comment>{Locked="Yolo","OpenCode"} InfoBar title shown on the AI Agents settings page when OpenCode is the Settings default provider.</comment></data>
+  <data name="AIAgents_YoloOpenCodeWarning.Message" xml:space="preserve"><value>OpenCode doesn't provide a supported Yolo mode, so this setting is turned off and unavailable.</value><comment>{Locked="OpenCode","Yolo"} InfoBar message shown when OpenCode is the Settings default. It explains why the Yolo toggle is off and unavailable.</comment></data>
   <data name="AIAgents_YoloGeminiInfo.Title" xml:space="preserve"><value>Gemini Yolo mode depends on workspace trust</value><comment>{Locked="Gemini","Yolo"} InfoBar title shown on the AI Agents settings page when global Yolo mode is on and the installed selected default provider is Gemini.</comment></data>
   <data name="AIAgents_YoloGeminiInfo.Message" xml:space="preserve"><value>Gemini enables Yolo mode only when its workspace trust and provider policy allow it.</value><comment>{Locked="Gemini","Yolo"} InfoBar message shown on the AI Agents settings page. Workspace trust and provider policy are owned by Gemini, not by Intelligent Terminal.</comment></data>
 </root>

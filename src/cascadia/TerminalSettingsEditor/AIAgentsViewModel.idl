@@ -186,5 +186,6 @@ namespace Microsoft.Terminal.Settings.Editor
 
         Boolean ShowOpenCodeYoloWarning { get; };
         Boolean ShowGeminiYoloInfo { get; };
+        Boolean CanEnableAgentPaneYoloMode { get; };
     }
 }

@@ -10,11 +10,15 @@ BeforeDiscovery {
     $script:copilotStatus = if (Get-Command copilot -ErrorAction SilentlyContinue) { 'probe-failed' } else { 'not-installed' }
     $script:openCodeInstalled = [bool](Get-Command opencode -ErrorAction SilentlyContinue)
     $script:geminiInstalled = [bool](Get-Command gemini -ErrorAction SilentlyContinue)
+    $script:geminiStatus = if ($script:geminiInstalled) { 'probe-failed' } else { 'not-installed' }
     try {
         $resolvedApp = Resolve-ItApp -Package $script:Package -ErrorAction Stop
         $script:Ready = Test-WinAppAvailable
         if ($script:copilotStatus -ne 'not-installed') {
             $script:copilotStatus = Get-AgentAcpStatus -App $resolvedApp -AgentCommand 'copilot --acp --stdio'
+        }
+        if ($script:geminiStatus -ne 'not-installed') {
+            $script:geminiStatus = Get-AgentAcpStatus -App $resolvedApp -AgentCommand 'gemini --acp'
         }
     }
     catch {
@@ -26,6 +30,7 @@ BeforeDiscovery {
         Package = $script:Package
         OpenCodeInstalled = $script:openCodeInstalled
         GeminiInstalled = $script:geminiInstalled
+        GeminiStatus = $script:geminiStatus
     })
 }
 
@@ -124,12 +129,107 @@ Describe 'Feature provider-native Yolo with Copilot' -ForEach $script:PackageCas
 
 }
 
+Describe 'Feature default-provider Yolo through /agent' -ForEach $script:PackageCase -Tag 'Feature' -Skip:(-not $script:Ready) {
+    BeforeAll {
+        Import-Module (Join-Path $PSScriptRoot '..\ItE2E\ItE2E.psd1') -Force
+    }
+
+    It '/agent Yolo stays scoped to the default provider' -Skip:($script:copilotBlocked -or $GeminiStatus -ne 'ready') {
+        $app = Start-Terminal -Package $Package -PassFre $true -Settings @{
+            acpAgent = 'copilot'
+            'agentPane.yoloMode' = $true
+        }
+        try {
+            Open-AgentPane -App $app | Out-Null
+            Wait-AgentReady -App $app -TimeoutSec 90 | Should -BeTrue
+            $shellPane = Get-ActivePane -App $app
+            $defaultSession = Wait-NewAgentPaneSession -App $app -OwnerPaneSessionId $shellPane.session_id -TimeoutSec 30
+            (Test-Until -TimeoutSec 30 -IntervalSec 0.5 -Condition {
+                Test-AgentNativeYoloUpdate -App $app -AcpSessionId $defaultSession.AcpSessionId -Enabled $true
+            }) | Should -BeTrue -Because 'the Settings default provider must inherit the persisted Yolo preference'
+
+            Initialize-LogOffsets -App $app | Out-Null
+            Send-AgentPrompt -App $app -PaneSessionId $defaultSession.PaneSessionId -Text '/agent gemini' | Out-Null
+            $geminiSession = Wait-Until -TimeoutSec 90 -IntervalSec 0.5 -Because 'Gemini /agent session' -Condition {
+                Get-AgentPaneSessions -App $app |
+                    Where-Object { $_.AcpSessionId -and $_.AcpSessionId -ne $defaultSession.AcpSessionId } |
+                    Select-Object -Last 1
+            }
+            Wait-AgentReady -App $app -PaneSessionId $geminiSession.PaneSessionId -TimeoutSec 90 |
+                Should -BeTrue
+            (Test-Until -TimeoutSec 30 -IntervalSec 0.5 -Condition {
+                Test-AgentNativeYoloUpdate -App $app -AcpSessionId $geminiSession.AcpSessionId -Enabled $false
+            }) | Should -BeTrue -Because 'a non-default /agent provider must be actively reconciled to Yolo off'
+            (Test-AgentNativeYoloUpdate -App $app -AcpSessionId $geminiSession.AcpSessionId -Enabled $true) |
+                Should -BeFalse
+
+            Send-AgentPrompt -App $app -PaneSessionId $geminiSession.PaneSessionId -Text '/agent copilot' | Out-Null
+            $restoredSession = Wait-Until -TimeoutSec 90 -IntervalSec 0.5 -Because 'restored default Copilot session' -Condition {
+                Get-AgentPaneSessions -App $app |
+                    Where-Object {
+                        $_.AcpSessionId -and
+                        $_.AcpSessionId -notin @($defaultSession.AcpSessionId, $geminiSession.AcpSessionId)
+                    } |
+                    Select-Object -Last 1
+            }
+            Wait-AgentReady -App $app -PaneSessionId $restoredSession.PaneSessionId -TimeoutSec 90 |
+                Should -BeTrue
+            (Test-Until -TimeoutSec 30 -IntervalSec 0.5 -Condition {
+                Test-AgentNativeYoloUpdate -App $app -AcpSessionId $restoredSession.AcpSessionId -Enabled $true
+            }) | Should -BeTrue -Because 'switching back to the default provider must restore the persisted preference'
+
+            Assert-Setting -App $app -Key 'acpAgent' -Value 'copilot'
+            Assert-Setting -App $app -Key 'agentPane.yoloMode' -Value $true
+        }
+        finally {
+            if ($app) { Stop-Terminal -App $app }
+        }
+    }
+
+    It 'Settings provider change never enables Yolo on the outgoing provider' -Skip:($script:copilotBlocked -or $GeminiStatus -ne 'ready') {
+        $app = Start-Terminal -Package $Package -PassFre $true -Settings @{
+            acpAgent = 'copilot'
+            'agentPane.yoloMode' = $false
+        }
+        try {
+            Open-AgentPane -App $app | Out-Null
+            Wait-AgentReady -App $app -TimeoutSec 90 | Should -BeTrue
+            $shellPane = Get-ActivePane -App $app
+            $copilotSession = Wait-NewAgentPaneSession -App $app -OwnerPaneSessionId $shellPane.session_id -TimeoutSec 30
+            (Test-Until -TimeoutSec 30 -IntervalSec 0.5 -Condition {
+                Test-AgentNativeYoloUpdate -App $app -AcpSessionId $copilotSession.AcpSessionId -Enabled $false
+            }) | Should -BeTrue
+
+            Initialize-LogOffsets -App $app | Out-Null
+            $settings = Get-WtSettingsObject -App $app
+            $settings.acpAgent = 'gemini'
+            $settings.'agentPane.yoloMode' = $true
+            $settings | ConvertTo-Json -Depth 64 |
+                Set-Content -LiteralPath $app.SettingsPath -Encoding utf8
+
+            $geminiSession = Wait-Until -TimeoutSec 90 -IntervalSec 0.5 -Because 'Settings-rebound Gemini session' -Condition {
+                Get-AgentPaneSessions -App $app |
+                    Where-Object { $_.AcpSessionId -and $_.AcpSessionId -ne $copilotSession.AcpSessionId } |
+                    Select-Object -Last 1
+            }
+            Wait-AgentReady -App $app -PaneSessionId $geminiSession.PaneSessionId -TimeoutSec 90 |
+                Should -BeTrue -Because 'the settings change must finish rebinding before the negative assertion'
+
+            (Test-AgentNativeYoloUpdate -App $app -AcpSessionId $copilotSession.AcpSessionId -Enabled $true) |
+                Should -BeFalse -Because 'the future provider preference must not be applied to the outgoing provider'
+        }
+        finally {
+            if ($app) { Stop-Terminal -App $app }
+        }
+    }
+}
+
 Describe 'Feature Settings Yolo provider compatibility' -ForEach $script:PackageCase -Tag 'Feature' -Skip:(-not $script:Ready) {
     BeforeAll {
         Import-Module (Join-Path $PSScriptRoot '..\ItE2E\ItE2E.psd1') -Force
     }
 
-    It 'Settings warns that OpenCode Yolo remains interactive' {
+    It 'OpenCode Yolo is forced off and disabled' {
         if (-not $OpenCodeInstalled) {
             Set-ItResult -Skipped -Because 'OpenCode is not installed, so it is intentionally absent from the default-provider picker'
             return
@@ -147,17 +247,24 @@ Describe 'Feature Settings Yolo provider compatibility' -ForEach $script:Package
             }
             Invoke-SettingsNav -App $app -NavItem 'AIAgentsNavItem' | Out-Null
 
+            $settingsTree = Get-UiTree -App $app -Depth 8
+            $settingsText = $settingsTree -replace '\s+', ' '
+            $settingsText | Should -Match (Get-WtReswTextRegex -Key 'AIAgents_YoloMode.Header')
             Wait-UiElement -App $app -Selector 'OpenCodeYoloCompatibilityInfoBar' -TimeoutSec 15 | Out-Null
             $title = Get-WtReswTextRegex -Key 'AIAgents_YoloOpenCodeWarning.Title'
             (Get-UiTree -App $app -Selector 'OpenCodeYoloCompatibilityInfoBar' -Depth 4) |
                 Should -Match $title -Because 'the warning must explain the selected default provider limitation'
             Test-UiElementExists -App $app -Selector 'GeminiYoloCompatibilityInfoBar' -TimeoutSec 1 |
                 Should -BeFalse -Because 'only the selected default provider should have a compatibility notice'
+            Test-UiElementEnabled -App $app -Selector 'AgentPaneYoloModeToggle' |
+                Should -BeFalse -Because 'OpenCode cannot enter a reviewed provider-native Yolo mode'
+            (Get-UiElement -App $app -Selector 'AgentPaneYoloModeToggle').toggleState |
+                Should -Be 'off'
 
-            Invoke-UiElement -App $app -Selector 'AgentPaneYoloModeToggle' | Out-Null
-            Wait-UiElement -App $app -Selector 'OpenCodeYoloCompatibilityInfoBar' -Gone -TimeoutSec 10 | Out-Null
-            Invoke-UiElement -App $app -Selector 'AgentPaneYoloModeToggle' | Out-Null
-            Wait-UiElement -App $app -Selector 'OpenCodeYoloCompatibilityInfoBar' -TimeoutSec 10 | Out-Null
+            Invoke-UiElement -App $app -Selector 'SaveButton' | Out-Null
+            (Test-Until -TimeoutSec 15 -IntervalSec 0.5 -Condition {
+                (Get-WtSettingsObject -App $app).'agentPane.yoloMode' -eq $false
+            }) | Should -BeTrue -Because 'saving OpenCode as default must persist Yolo off'
         }
         finally {
             if ($app) { Stop-Terminal -App $app }
@@ -188,6 +295,8 @@ Describe 'Feature Settings Yolo provider compatibility' -ForEach $script:Package
                 Should -Match $title -Because 'the informational notice must describe Gemini workspace trust'
             Test-UiElementExists -App $app -Selector 'OpenCodeYoloCompatibilityInfoBar' -TimeoutSec 1 |
                 Should -BeFalse -Because 'only the selected default provider should have a compatibility notice'
+            Test-UiElementEnabled -App $app -Selector 'AgentPaneYoloModeToggle' |
+                Should -BeTrue -Because 'Gemini Yolo remains available when its trust prerequisites are met'
         }
         finally {
             if ($app) { Stop-Terminal -App $app }
@@ -217,6 +326,9 @@ Describe 'Feature AllowYoloMode policy' -ForEach $script:PackageCase -Tag 'Featu
 
             Initialize-LogOffsets -App $app | Out-Null
             Set-WtAgentPolicy -Policy @{ AllowYoloMode = 'Blocked' } | Out-Null
+            (Test-Until -TimeoutSec 15 -IntervalSec 0.5 -Condition {
+                (Get-WtSettingsObject -App $app).'agentPane.yoloMode' -eq $false
+            }) | Should -BeTrue -Because 'a policy block must clear the persisted Yolo preference'
             (Test-Until -TimeoutSec 30 -IntervalSec 0.5 -Condition {
                 Test-AgentNativeYoloUpdate -App $app -AcpSessionId $agentSession.AcpSessionId -Enabled $false
             }) | Should -BeTrue -Because 'a live policy block must reconcile the provider session to native Yolo off'

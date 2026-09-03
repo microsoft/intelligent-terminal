@@ -226,8 +226,8 @@ Describe 'Feature suite package selection' -Tag 'Unit' {
         $suite = Get-Content -LiteralPath $suitePath -Raw
 
         ([regex]::Matches($suite, '\bGet-ItTestPackage\b')).Count | Should -Be 1
-        ([regex]::Matches($suite, '(?m)^Describe ')).Count | Should -Be 4
-        ([regex]::Matches($suite, '(?m)^Describe .* -ForEach \$script:PackageCase\b')).Count | Should -Be 4
+        ([regex]::Matches($suite, '(?m)^Describe ')).Count | Should -Be 5
+        ([regex]::Matches($suite, '(?m)^Describe .* -ForEach \$script:PackageCase\b')).Count | Should -Be 5
         $suite | Should -Not -Match '-Package\s+Dev\b'
         $suite | Should -Not -Match 'Resolve-ItApp\s+-Package\s+(?!\$(?:script:Package|Package)\b)'
         $suite | Should -Not -Match 'Start-Terminal\s+-Package\s+(?!\$Package\b)'
@@ -236,6 +236,50 @@ Describe 'Feature suite package selection' -Tag 'Unit' {
         $suite | Should -Not -Match 'AgentYoloStatusText|/yolo (?:on|off)'
         $suite | Should -Not -Match 'requires whitespace-free test paths'
         $suite | Should -Match '-EncodedCommand\s+\$encodedInvocation'
+    }
+
+    It 'keeps OpenCode Yolo title comments aligned with forced-off behavior' {
+        $resourceRoot = Join-Path $PSScriptRoot '..\..\..\src\cascadia\TerminalSettingsEditor\Resources'
+        $localeDirectories = @(Get-ChildItem -LiteralPath $resourceRoot -Directory)
+        $comments = @($localeDirectories | ForEach-Object {
+            [xml]$xml = Get-Content -LiteralPath (Join-Path $_.FullName 'Resources.resw') -Raw
+            [string]($xml.root.data |
+                    Where-Object name -eq 'AIAgents_YoloOpenCodeWarning.Title' |
+                    Select-Object -First 1).comment
+        })
+
+        $comments.Count | Should -Be $localeDirectories.Count
+        @($comments | Select-Object -Unique).Count | Should -Be 1
+        $comments[0] | Should -Match 'OpenCode is the Settings default provider'
+        $comments[0] | Should -Not -Match 'global Yolo mode is on'
+    }
+}
+
+Describe 'Yolo Settings save normalization' -Tag 'Unit' {
+    It 'clears unavailable and policy-blocked Yolo before writing Settings' {
+        $mainPagePath = Join-Path $PSScriptRoot '..\..\..\src\cascadia\TerminalSettingsEditor\MainPage.cpp'
+        $source = Get-Content -LiteralPath $mainPagePath -Raw
+        $saveHandler = [regex]::Match(
+            $source,
+            '(?s)void MainPage::SaveButton_Click.*?(?=void MainPage::ResetButton_Click)').Value
+
+        $saveHandler | Should -Match 'ClearAgentPaneYoloModeIfUnavailableDefault\(\);'
+        $saveHandler | Should -Match 'ClearAgentPaneYoloModeIfPolicyBlocked\(\);'
+        $saveHandler | Should -Match '(?s)ClearAgentPaneYoloModeIfUnavailableDefault\(\);.*ClearAgentPaneYoloModeIfPolicyBlocked\(\);.*WriteSettingsToDisk\(\)'
+    }
+}
+
+Describe 'Agent provider identity ownership' -Tag 'Unit' {
+    It 'updates the current provider only from helper status' {
+        $terminalPagePath = Join-Path $PSScriptRoot '..\..\..\src\cascadia\TerminalApp\TerminalPage.cpp'
+        $source = Get-Content -LiteralPath $terminalPagePath -Raw
+        $rebindHandler = [regex]::Match(
+            $source,
+            '(?s)void TerminalPage::_RaiseAgentPaneRebindRequest.*?(?=TerminalPage::AgentRuntimeConfigSnapshot)').Value
+
+        $rebindHandler | Should -Match '_RaiseProtocolEvent\("rebind_agent", params\);'
+        $rebindHandler | Should -Not -Match 'AgentCurrentId\('
+        $source | Should -Match 'statusTab->AgentCurrentId\(agentId\);'
     }
 }
 

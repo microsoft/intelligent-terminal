@@ -6,14 +6,17 @@ resulting permission, sandbox, file-access, and network-access behavior.
 Intelligent Terminal does not answer ordinary ACP permission requests on the
 user's behalf.
 
-The product exposes a persistent, provider-independent global default. It does
-not add a WTA-owned session command or a per-agent-pane status badge.
+The product exposes a persistent preference for the provider selected as the
+Settings default. It does not add a WTA-owned session command or a
+per-agent-pane status badge.
 
 ## Goals
 
-- Persist one global default in `agentPane.yoloMode`.
-- Reconcile each supported ACP session to that default through an exact,
-  provider-advertised capability.
+- Persist one default-provider preference in `agentPane.yoloMode`.
+- Reconcile supported ACP sessions that use the Settings default provider to
+  that preference through an exact, provider-advertised capability.
+- Keep a provider selected through `/agent` off unless its canonical ID matches
+  the Settings default.
 - Keep provider identity and ACP session routing authoritative across tabs,
   windows, and shared Agent CLI processes.
 - Apply `AllowYoloMode` policy changes to live sessions and fail closed when a
@@ -38,15 +41,17 @@ not add a WTA-owned session command or a per-agent-pane status badge.
 ```text
 settings.json / Settings UI / AllowYoloMode
   -> GlobalAppSettings::EffectiveAgentPaneYoloMode()
-  -> TerminalPage helper startup and agent_config_changed
-  -> helper YoloState global default and policy gate
+  -> TerminalPage default/current-provider decision
+  -> helper startup, rebind_agent, and agent_config_changed
+  -> helper YoloState resolved desired value and policy gate
   -> NativeYoloState provider contract and sequenced ACP mutation
   -> provider-owned session behavior
 ```
 
-Terminal owns the persistent setting and policy-aware effective value. Each
-helper receives `--yolo-mode` and `--yolo-policy-blocked` at startup, then
-receives later changes through `agent_config_changed`.
+Terminal owns the persistent setting, policy-aware value, and decision about
+whether it applies to a tab's current provider. Each helper receives the
+resolved desired value at startup and rebind, then receives later changes
+through `agent_config_changed`.
 
 The helper shares its runtime Yolo state with the ACP client. `App` owns prompt
 gates and reconciliation generations; `NativeYoloState` owns capability
@@ -61,11 +66,11 @@ session ID. No operation is inferred from the currently focused tab.
 
 ## User experience
 
-### Global setting
+### Default-provider setting
 
 Settings > AI agents contains:
 
-> Use provider Yolo mode
+> Use Yolo mode for the default agent provider
 
 The setting is stored as:
 
@@ -75,25 +80,37 @@ The setting is stored as:
 }
 ```
 
-The default is `false`. Enabling it expresses the user's preferred default for
-supported providers; it is not proof that every provider accepted a privileged
-mode.
+The default is `false`. Enabling it requests provider-native Yolo for agent
+panes using the Settings default provider; it is not proof that the provider
+accepted a privileged mode. Changing the default among Copilot, Claude, Codex,
+and Gemini preserves the current preference.
 
-The toggle remains editable when OpenCode or Gemini is the selected default
-provider. Those choices do not make the provider-independent preference
-invalid because another provider can be selected later, including through
-`/agent`.
+When OpenCode is selected as the Settings default, Settings clears the
+preference, renders the toggle Off and disabled, and shows a non-closable
+warning that OpenCode does not provide a supported Yolo mode. A legacy
+OpenCode-plus-On value is treated as Off and is normalized when the user next
+saves Settings. Custom providers retain their existing behavior without a
+dedicated compatibility message.
 
-Settings shows contextual, non-closable notices only while the effective Yolo
-preference is on and policy does not lock it:
+Gemini keeps the toggle enabled. While it is On, Settings shows the existing
+non-closable informational notice that workspace trust and provider policy
+govern whether Gemini accepts its native mode.
 
-- OpenCode: warning that no reviewed native Yolo capability is available and
-  permission requests remain interactive.
-- Gemini: informational notice that workspace trust and provider policy govern
-  whether Gemini accepts its native mode.
+Administrative policy disables the toggle and takes precedence over provider
+compatibility notices.
 
-Only administrative policy disables the toggle. Provider compatibility does
-not grey it out.
+### Runtime provider selection
+
+`/agent` does not change the persisted preference. A provider whose canonical
+ID differs from the Settings default is actively reconciled to native Off, and
+the first prompt remains gated until that transition reaches a known safe
+result. Switching back to the default provider reapplies the persisted value
+and waits for its native acknowledgement.
+
+Provider identity comparison is case-insensitive and ignores model and
+Host/WSL execution source. Existing `/agent` override tabs retain their
+provider when the Settings default changes, but recompute whether the
+preference applies. Default-following tabs keep their existing rebind behavior.
 
 ### Commands and configuration
 
@@ -119,8 +136,8 @@ Ordinary config options remain unaffected.
 
 Gemini currently advertises its `yolo` capability through ACP modes rather than
 a config option. Without a WTA-owned command, Intelligent Terminal has no
-per-session control for that mode. The global default still reconciles Gemini
-sessions when provider workspace trust and policy allow it.
+per-session control for that mode. The default-provider preference reconciles
+Gemini sessions when provider workspace trust and policy allow it.
 
 ## State model
 
@@ -128,21 +145,25 @@ The runtime state has three relevant pieces:
 
 | State | Owner | Lifetime |
 |---|---|---|
-| Global default and policy gate | `YoloState` | Helper process; initialized and hot-updated from Terminal settings |
+| Resolved automatic desired value and policy gate | `YoloState` | Helper process; initialized and hot-updated from Terminal settings and `/agent` rebinds |
 | Native capability and captured restore value | `NativeYoloState` | Exact ACP session generation |
 | Pending reconciliation and config gates | `App` and `NativeYoloState` | Until acknowledgement, known enable failure, or agent reset; failed disables and unknown outcomes remain fail-closed until Agent CLI replacement |
 
 The effective desired state is:
 
 ```text
-effective_yolo = global_default && !policy_blocked
+automatic_yolo =
+    configured_default &&
+    !policy_blocked &&
+    current_provider_id == settings_default_provider_id
 ```
 
-`YoloState` has no session override map, and WTA persists no per-session Yolo
-preference. By default, each session is reconciled to the current effective
-global value. A reviewed native value selected manually through `/config`
-changes only the current ACP session without changing `YoloState`, so that
-session can differ until a later global or policy reconciliation, session
+`YoloState` has no persisted session preference map. Terminal resolves whether
+the Settings preference applies to the helper's current provider, and each new
+session is reconciled to that value. A reviewed native value selected manually
+through `/config` changes only the current ACP session without changing the
+persisted setting, so that session can differ until a later Settings or policy
+reconciliation, session
 replacement, or reset reapplies the global value.
 
 The client-reconciled-session marker prevents `SessionAttached` from issuing a
@@ -192,10 +213,12 @@ failure instead of waiting once per session.
 
 ## Administrative policy
 
-`AllowYoloMode` overrides the stored global preference without erasing it.
-When policy blocks Yolo mode:
+`AllowYoloMode` overrides and clears the stored preference. When policy blocks
+Yolo mode:
 
 - `EffectiveAgentPaneYoloMode()` returns `false`.
+- The in-memory setting and `settings.json` are normalized to
+  `agentPane.yoloMode=false`.
 - Settings disables the toggle and displays the policy lock.
 - New helpers receive `--yolo-policy-blocked` and do not receive an effective
   enabled default.
@@ -205,6 +228,9 @@ When policy blocks Yolo mode:
   advertised `/allow_all` command are rejected before reaching the provider.
 - Prompt producers remain gated until the matching disable is acknowledged.
 - Any unconfirmed disable restarts the agent stack fail closed.
+
+Removing the policy does not restore the previous On value; the user must
+enable the setting again.
 
 Policy watchers cover HKLM and HKCU, including creation of a previously missing
 policy path by watching and rebinding from the deepest existing ancestor.

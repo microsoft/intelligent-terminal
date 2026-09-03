@@ -161,6 +161,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         bool AgentPaneYoloMode() const;
         void AgentPaneYoloMode(bool value);
         bool HasAgentPaneYoloMode() const;
+        bool CanEnableAgentPaneYoloMode() const;
         bool ShowOpenCodeYoloWarning() const;
         bool ShowGeminiYoloInfo() const;
 

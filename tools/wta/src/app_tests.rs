@@ -178,6 +178,20 @@ fn agent_rebind_event(tab_id: &str, generation: u64, agent_id: &str) -> AppEvent
     )
 }
 
+fn agent_rebind_event_with_yolo(
+    tab_id: &str,
+    generation: u64,
+    agent_id: &str,
+    yolo_enabled: bool,
+) -> AppEvent {
+    let mut event = agent_rebind_event(tab_id, generation, agent_id);
+    if let AppEvent::WtEvent { params, .. } = &mut event {
+        params["yolo_enabled"] = json!(yolo_enabled);
+        params["yolo_policy_blocked"] = json!(false);
+    }
+    event
+}
+
 fn agent_rebind_event_for_window(
     window_id: &str,
     tab_id: &str,
@@ -4815,6 +4829,95 @@ fn settings_model_rebind_preserves_custom_provider_selection() {
             .as_ref()
             .and_then(|params| params.custom_model_selection.as_deref()),
         Some("custom:provider:model-a")
+    );
+}
+
+#[test]
+fn settings_agent_rebind_applies_resolved_yolo_before_new_session() {
+    let (mut app, mut restart_rx) = test_app_with_restart_rx();
+    app.owner_tab_id = Some("owner-tab".into());
+    app.window_id = Some("window-1".into());
+    app.tab_id = Some("owner-tab".into());
+    app.current_agent_id = "copilot".into();
+    app.tab_mut("owner-tab");
+    app.yolo_state.lock().unwrap().update_runtime(true, false);
+    app.set_master_pipe_acp_params(
+        "master-pipe".into(),
+        "copilot --acp".into(),
+        Some("copilot".into()),
+        None,
+        None,
+        crate::agent_source::AgentSource::Host,
+        None,
+        Some("owner-tab".into()),
+        Arc::clone(&app.shell_mgr),
+        true,
+    );
+
+    app.handle_event(agent_rebind_event_with_yolo(
+        "owner-tab",
+        1,
+        "claude",
+        false,
+    ));
+
+    assert!(
+        !app.yolo_state.lock().unwrap().global_default(),
+        "the rebind target must replace the old provider's inherited Yolo state before session/new"
+    );
+    assert!(matches!(
+        restart_rx.try_recv(),
+        Ok(AgentLifecycleRequest::RebindAgent(AgentReconnectRequest {
+            agent_id,
+            ..
+        })) if agent_id == "claude"
+    ));
+}
+
+#[test]
+fn settings_agent_rebind_yolo_target_is_generation_fenced_and_backward_compatible() {
+    let (mut app, mut restart_rx) = test_app_with_restart_rx();
+    app.owner_tab_id = Some("owner-tab".into());
+    app.window_id = Some("window-1".into());
+    app.tab_id = Some("owner-tab".into());
+    app.current_agent_id = "copilot".into();
+    app.tab_mut("owner-tab");
+    app.set_master_pipe_acp_params(
+        "master-pipe".into(),
+        "copilot --acp".into(),
+        Some("copilot".into()),
+        None,
+        None,
+        crate::agent_source::AgentSource::Host,
+        None,
+        Some("owner-tab".into()),
+        Arc::clone(&app.shell_mgr),
+        true,
+    );
+
+    app.handle_event(agent_rebind_event_with_yolo("owner-tab", 2, "claude", true));
+    assert!(app.yolo_state.lock().unwrap().global_default());
+    assert!(restart_rx.try_recv().is_ok());
+
+    app.handle_event(agent_rebind_event_with_yolo("owner-tab", 1, "codex", false));
+    assert!(
+        app.yolo_state.lock().unwrap().global_default(),
+        "a stale rebind must not replace the current Yolo target"
+    );
+
+    app.handle_event(agent_rebind_event_with_yolo(
+        "owner-tab",
+        3,
+        "gemini",
+        false,
+    ));
+    assert!(!app.yolo_state.lock().unwrap().global_default());
+
+    app.yolo_state.lock().unwrap().update_runtime(true, false);
+    app.handle_event(agent_rebind_event("owner-tab", 4, "copilot"));
+    assert!(
+        app.yolo_state.lock().unwrap().global_default(),
+        "an older host that omits Yolo fields must preserve the current setting"
     );
 }
 

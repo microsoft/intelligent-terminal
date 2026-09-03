@@ -184,6 +184,8 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
     {
         namespace Reg = ::Microsoft::Terminal::Settings::Model::AgentRegistry;
 
+        _GlobalSettings.ClearAgentPaneYoloModeIfUnavailableDefault();
+
         // Refresh PATH from the Windows registry so SearchPathW can find
         // CLIs installed after Terminal launched (e.g. WinGet\Links).
         try
@@ -857,13 +859,14 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
             _isAddingCustomAcpAgent = true;
             _customAcpCommand = _GlobalSettings.AcpCustomCommand();
             _GlobalSettings.AcpAgent(value.Id());
-            _NotifyChanges(L"IsAddingCustomAcpAgent", L"IsCustomAcpAgentSelected", L"CustomAcpCommand", L"ShowAcpModel", L"ShowOpenCodeYoloWarning", L"ShowGeminiYoloInfo");
+            _NotifyChanges(L"IsAddingCustomAcpAgent", L"IsCustomAcpAgentSelected", L"CustomAcpCommand", L"ShowAcpModel", L"AgentPaneYoloMode", L"CanEnableAgentPaneYoloMode", L"ShowOpenCodeYoloWarning", L"ShowGeminiYoloInfo");
             return;
         }
         if (value.Id() != _GlobalSettings.AcpAgent())
         {
             _isAddingCustomAcpAgent = false;
             _GlobalSettings.AcpAgent(value.Id());
+            _GlobalSettings.ClearAgentPaneYoloModeIfUnavailableDefault();
             // Native model ids are agent-specific; the shared BYOK selection
             // is stored separately and survives agent switches.
             _GlobalSettings.AcpModel(L"");
@@ -876,6 +879,8 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
                            L"ShowAcpModelTextBox",
                            L"AcpModel",
                            L"CustomModelProviderUnsupportedMessage",
+                           L"AgentPaneYoloMode",
+                           L"CanEnableAgentPaneYoloMode",
                            L"ShowOpenCodeYoloWarning",
                            L"ShowGeminiYoloInfo");
         }
@@ -990,7 +995,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
             winrt::single_threaded_vector<Model::AcpModelInfo>().GetView(),
             L"");
         _TriggerAcpModelProbe();
-        _NotifyChanges(L"CurrentAcpAgent", L"IsAddingCustomAcpAgent", L"IsCustomAcpAgentSelected", L"ShowAcpModel", L"CustomAcpCommandPreview", L"AcpModel", L"CustomModelProviderUnsupportedMessage", L"ShowOpenCodeYoloWarning", L"ShowGeminiYoloInfo");
+        _NotifyChanges(L"CurrentAcpAgent", L"IsAddingCustomAcpAgent", L"IsCustomAcpAgentSelected", L"ShowAcpModel", L"CustomAcpCommandPreview", L"AcpModel", L"CustomModelProviderUnsupportedMessage", L"AgentPaneYoloMode", L"CanEnableAgentPaneYoloMode", L"ShowOpenCodeYoloWarning", L"ShowGeminiYoloInfo");
     }
 
     void AIAgentsViewModel::SaveCustomDelegateAgent()
@@ -1046,6 +1051,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
             _GlobalSettings.AcpCustomCommand(L"");
             _isAddingCustomAcpAgent = false;
             _GlobalSettings.AcpAgent(bareId);
+            _GlobalSettings.ClearAgentPaneYoloModeIfUnavailableDefault();
             // Remove custom entry from dropdown
             for (uint32_t i = 0; i < _acpAgentList.Size(); ++i)
             {
@@ -1055,7 +1061,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
                     break;
                 }
             }
-            _NotifyChanges(L"CurrentAcpAgent", L"IsAddingCustomAcpAgent", L"IsCustomAcpAgentSelected", L"ShowAcpModel", L"CustomModelProviderUnsupportedMessage", L"ShowOpenCodeYoloWarning", L"ShowGeminiYoloInfo");
+            _NotifyChanges(L"CurrentAcpAgent", L"IsAddingCustomAcpAgent", L"IsCustomAcpAgentSelected", L"ShowAcpModel", L"CustomModelProviderUnsupportedMessage", L"AgentPaneYoloMode", L"CanEnableAgentPaneYoloMode", L"ShowOpenCodeYoloWarning", L"ShowGeminiYoloInfo");
         }
     }
 
@@ -1155,7 +1161,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
     {
         // Reject writes when org policy blocks yolo mode (the toggle is
         // disabled in that case, but guard against races).
-        if (_GlobalSettings.IsYoloModePolicyLocked())
+        if (!CanEnableAgentPaneYoloMode())
         {
             return;
         }
@@ -1167,6 +1173,15 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
     bool AIAgentsViewModel::HasAgentPaneYoloMode() const
     {
         return _GlobalSettings.HasAgentPaneYoloMode();
+    }
+
+    bool AIAgentsViewModel::CanEnableAgentPaneYoloMode() const
+    {
+        const auto effectiveAgent = _GlobalSettings.EffectiveAcpAgent();
+        return !_GlobalSettings.IsYoloModePolicyLocked() &&
+               !effectiveAgent.empty() &&
+               !::Microsoft::Terminal::Settings::Model::AgentRegistry::IsYoloSettingUnavailableForDefaultAgent(
+                   std::wstring_view{ effectiveAgent });
     }
 
     bool AIAgentsViewModel::ShowOpenCodeYoloWarning() const

@@ -89,9 +89,13 @@ namespace SettingsModelUnitTests
         TEST_METHOD(AutoErrorSettingsRoundtrip);
         TEST_METHOD(EffectiveAutoFixFalseWhenDetectionOff);
         TEST_METHOD(AgentPaneYoloModeRoundtripsAndDefaults);
+        TEST_METHOD(EffectiveAgentPaneYoloModeFalseForOpenCode);
+        TEST_METHOD(EffectiveAgentPaneYoloModeFalseWhenDefaultAgentBlocked);
+        TEST_METHOD(OpenCodeDefaultClearsStoredAgentPaneYoloMode);
         TEST_METHOD(EffectiveAgentPaneYoloModeFalseWhenPolicyBlocked);
+        TEST_METHOD(PolicyBlockClearsStoredAgentPaneYoloMode);
         TEST_METHOD(IsYoloModePolicyLockedTracksBlocked);
-        TEST_METHOD(YoloSettingsNoticeRequiresInstalledSelectedProviderAndEnabledPreference);
+        TEST_METHOD(YoloSettingsNoticeTracksSelectedProviderAndPreference);
         TEST_METHOD(PolicyChangeWatcherTargetsProductKey);
         TEST_METHOD(PolicyChangeWatcherObservesRecursiveMutation);
         TEST_METHOD(PolicyChangeWatcherTracksPolicyCreatedFromMissingAncestors);
@@ -673,6 +677,57 @@ namespace SettingsModelUnitTests
         VERIFY_IS_FALSE(defaulted->GlobalSettings().EffectiveAgentPaneYoloMode());
     }
 
+    void CustomAgentAndPolicyTests::EffectiveAgentPaneYoloModeFalseForOpenCode()
+    {
+        const auto openCode = MakeSettings(
+            R"("acpAgent": "opencode", "agentPane.yoloMode": true)");
+        SetPolicy(MakePolicy());
+        VERIFY_IS_TRUE(openCode->GlobalSettings().AgentPaneYoloMode());
+        VERIFY_IS_FALSE(openCode->GlobalSettings().EffectiveAgentPaneYoloMode());
+
+        const auto custom = MakeSettings(
+            R"("acpAgent": "custom:local", "agentPane.yoloMode": true)");
+        VERIFY_IS_TRUE(custom->GlobalSettings().EffectiveAgentPaneYoloMode());
+    }
+
+    void CustomAgentAndPolicyTests::EffectiveAgentPaneYoloModeFalseWhenDefaultAgentBlocked()
+    {
+        const auto builtIn = MakeSettings(
+            R"("acpAgent": "copilot", "agentPane.yoloMode": true)");
+        SetPolicy(MakePolicy(
+            std::set<std::wstring, AgentPolicy::CaseInsensitiveLess>{ L"gemini" }));
+        VERIFY_ARE_EQUAL(winrt::hstring{}, builtIn->GlobalSettings().EffectiveAcpAgent());
+        VERIFY_IS_TRUE(builtIn->GlobalSettings().AgentPaneYoloMode());
+        VERIFY_IS_FALSE(builtIn->GlobalSettings().EffectiveAgentPaneYoloMode());
+
+        const auto custom = MakeSettings(
+            R"("acpAgent": "custom:local", "agentPane.yoloMode": true)");
+        SetPolicy(MakePolicy(
+            /*allowedAgents*/ std::nullopt,
+            AgentPolicy::PolicyState::Blocked));
+        VERIFY_ARE_EQUAL(winrt::hstring{}, custom->GlobalSettings().EffectiveAcpAgent());
+        VERIFY_IS_TRUE(custom->GlobalSettings().AgentPaneYoloMode());
+        VERIFY_IS_FALSE(custom->GlobalSettings().EffectiveAgentPaneYoloMode());
+    }
+
+    void CustomAgentAndPolicyTests::OpenCodeDefaultClearsStoredAgentPaneYoloMode()
+    {
+        const auto openCode = MakeSettings(
+            R"("acpAgent": "opencode", "agentPane.yoloMode": true)");
+        const auto openCodeGlobals = openCode->GlobalSettings();
+        const auto openCodeImpl = winrt::get_self<implementation::GlobalAppSettings>(openCodeGlobals);
+        VERIFY_IS_TRUE(openCodeImpl->ClearAgentPaneYoloModeIfUnavailableDefault());
+        VERIFY_IS_FALSE(openCodeGlobals.AgentPaneYoloMode());
+        VERIFY_IS_FALSE(openCodeImpl->ClearAgentPaneYoloModeIfUnavailableDefault());
+
+        const auto custom = MakeSettings(
+            R"("acpAgent": "custom:opencode", "agentPane.yoloMode": true)");
+        const auto customGlobals = custom->GlobalSettings();
+        const auto customImpl = winrt::get_self<implementation::GlobalAppSettings>(customGlobals);
+        VERIFY_IS_FALSE(customImpl->ClearAgentPaneYoloModeIfUnavailableDefault());
+        VERIFY_IS_TRUE(customGlobals.AgentPaneYoloMode());
+    }
+
     void CustomAgentAndPolicyTests::EffectiveAgentPaneYoloModeFalseWhenPolicyBlocked()
     {
         // The AllowYoloMode admin policy overrides the user's toggle: even
@@ -688,7 +743,21 @@ namespace SettingsModelUnitTests
         VERIFY_IS_TRUE(settings->GlobalSettings().AgentPaneYoloMode());
     }
 
-    void CustomAgentAndPolicyTests::YoloSettingsNoticeRequiresInstalledSelectedProviderAndEnabledPreference()
+    void CustomAgentAndPolicyTests::PolicyBlockClearsStoredAgentPaneYoloMode()
+    {
+        const auto settings = MakeSettings(R"("agentPane.yoloMode": true)");
+        SetPolicy(MakePolicy(/*allowedAgents*/ std::nullopt,
+                              /*customAgents*/ AgentPolicy::PolicyState::NotConfigured,
+                              /*yoloMode*/ AgentPolicy::PolicyState::Blocked));
+
+        const auto globals = settings->GlobalSettings();
+        const auto impl = winrt::get_self<implementation::GlobalAppSettings>(globals);
+        VERIFY_IS_TRUE(impl->ClearAgentPaneYoloModeIfPolicyBlocked());
+        VERIFY_IS_FALSE(globals.AgentPaneYoloMode());
+        VERIFY_IS_FALSE(impl->ClearAgentPaneYoloModeIfPolicyBlocked());
+    }
+
+    void CustomAgentAndPolicyTests::YoloSettingsNoticeTracksSelectedProviderAndPreference()
     {
         using namespace ::Microsoft::Terminal::Settings::Model::AgentRegistry;
 
@@ -697,12 +766,14 @@ namespace SettingsModelUnitTests
         VERIFY_ARE_EQUAL(YoloSettingsNotice::Conditional,
                          GetYoloSettingsNotice(L"gemini", true, false, true));
         VERIFY_ARE_EQUAL(YoloSettingsNotice::None,
-                         GetYoloSettingsNotice(L"copilot", true, false, true));
+                         GetYoloSettingsNotice(L"gemini", false, false, true));
         VERIFY_ARE_EQUAL(YoloSettingsNotice::None,
+                         GetYoloSettingsNotice(L"copilot", true, false, true));
+        VERIFY_ARE_EQUAL(YoloSettingsNotice::Unavailable,
                          GetYoloSettingsNotice(L"opencode", false, false, true));
         VERIFY_ARE_EQUAL(YoloSettingsNotice::None,
                          GetYoloSettingsNotice(L"opencode", true, true, true));
-        VERIFY_ARE_EQUAL(YoloSettingsNotice::None,
+        VERIFY_ARE_EQUAL(YoloSettingsNotice::Unavailable,
                          GetYoloSettingsNotice(L"opencode", true, false, false));
         VERIFY_ARE_EQUAL(YoloSettingsNotice::None,
                          GetYoloSettingsNotice(L"custom:opencode", true, false, true));

@@ -97,6 +97,8 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
         bool EffectiveAutoErrorDetectionEnabled() const;
         bool EffectiveAutoFixEnabled() const;
         bool EffectiveAgentPaneYoloMode() const;
+        bool ClearAgentPaneYoloModeIfUnavailableDefault();
+        bool ClearAgentPaneYoloModeIfPolicyBlocked();
 
         // Whether GPO policy is actively restricting these settings.
         bool IsAgentPolicyLocked() const;

@@ -190,5 +190,7 @@ namespace Microsoft.Terminal.Settings.Model
         INHERITABLE_SETTING(Boolean, AgentPaneYoloMode);
         Boolean EffectiveAgentPaneYoloMode { get; };
         Boolean IsYoloModePolicyLocked { get; };
+        Boolean ClearAgentPaneYoloModeIfPolicyBlocked();
+        Boolean ClearAgentPaneYoloModeIfUnavailableDefault();
     }
 }

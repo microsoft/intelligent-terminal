@@ -25,6 +25,8 @@ struct AgentReconnectWire {
     custom_model_selection: Option<String>,
     agent_source: String,
     wsl_distro: Option<String>,
+    yolo_enabled: Option<bool>,
+    yolo_policy_blocked: Option<bool>,
 }
 
 impl App {
@@ -164,6 +166,7 @@ impl App {
         self.last_agent_rebind_window_id = Some(request.window_id.clone());
         self.last_agent_rebind_generation = request.generation;
         self.prepare_agent_reconnect(&request);
+        self.apply_runtime_yolo_config(wire.yolo_enabled, wire.yolo_policy_blocked);
 
         let disconnect_in_progress = matches!(
             &self.agent_reconnect_state,
