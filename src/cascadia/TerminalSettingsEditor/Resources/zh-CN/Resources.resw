@@ -1250,8 +1250,8 @@
     <comment>Header for choosing which AI agent handles command palette delegation for this profile.</comment>
   </data>
   <data name="Profile_CommandPaletteAgent.HelpText" xml:space="preserve">
-    <value>选择此配置文件处于活动状态时负责回答命令面板中“?”提示的智能体。此设置会覆盖“智能体”设置页面上的“命令面板”选择。</value>
-    <comment>{Locked="?"} Description for the per-profile command palette agent setting. "Command palette" and "Agent" name the section and page this setting overrides — translate them the same way as AIAgents_DelegateGroupHeader and Nav_AIAgents. Here "agent" means an AI agent, not a proxy or human agent.</comment>
+    <value>选择此配置文件处于活动状态时用于处理命令面板提示和其他委派操作的智能体。此选择优先于全局委派智能体设置。</value>
+    <comment>Description for the per-profile command palette agent setting. This agent is used by command palette prompts and other delegation actions, including opening an interactive delegate-agent tab. Here "agent" means an AI agent, not a proxy or human agent.</comment>
   </data>
   <data name="Profile_AgentPaneBackend_AgentFormat" xml:space="preserve">
     <value>{0} · {1}</value>
@@ -2853,17 +2853,16 @@
     <comment>Header for the setting that specifies the model used by the agent pane agent.</comment>
   </data>
   <data name="AIAgents_AcpModel.HelpText" xml:space="preserve">
-    <value>选择此智能体使用的模型。未设置模型时，智能体会自行选择默认模型。智能体窗格连接后，模型才会显示在列表中。</value>
-    <comment>Supplementary description for the model setting. Explains the empty/"no model" state and why the list can be empty before the agent pane connects.
-In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+    <value>选择此智能体使用的模型。</value>
+    <comment>Supplementary description for the model setting.</comment>
   </data>
   <data name="AIAgents_DelegateAgent.Header" xml:space="preserve">
     <value>智能体</value>
     <comment>Header for the setting that specifies which agent CLI handles command palette / on-demand requests.</comment>
   </data>
   <data name="AIAgents_DelegateAgent.HelpText" xml:space="preserve">
-    <value>选择负责回答你在命令面板中输入并以“?”为前缀的提示的智能体。每个提示都会在新的选项卡中运行，与智能体窗格相互独立。</value>
-    <comment>{Locked="?"} Supplementary description for the command palette agent setting. "?" is the literal ASCII prefix typed in the command palette (same prefix as Actions_CommandPaletteLaunchModeAgentDelegation).
+    <value>选择用于处理命令面板提示和其他委派操作的智能体，包括打开交互式委派智能体选项卡。</value>
+    <comment>Supplementary description for the command palette agent setting. This agent is used by command palette prompts and other delegation actions, including opening an interactive delegate-agent tab.
 In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="AIAgents_AutoFix.Header" xml:space="preserve">
@@ -2909,8 +2908,8 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
     <comment>Header for the Agent Hooks install section.</comment>
   </data>
   <data name="AIAgents_HooksInstall.HelpText" xml:space="preserve">
-    <value>将 hook 脚本安装到你的智能体 CLI 中，以便它们在智能体窗格之外启动的会话仍会显示在智能体会话管理中。适用于 Copilot、Claude、Codex、Gemini 和 OpenCode。</value>
-    <comment>{Locked="hook","CLI","Copilot","Claude","Codex","Gemini","OpenCode"} Help text shown under the expandable section header. Explains what the hooks do and which agents support them. Pluralize "CLI" the way your language does; do not carry over the English "-s".</comment>
+    <value>智能体会话管理需要此功能。系统会将 Hooks 安装到检测到的每个智能体（Copilot、Claude、Codex、Gemini）中，以便它们将会话和状态报告给智能体窗格。安装后，请重启所有已打开的智能体。</value>
+    <comment>Description for the Agent Hooks install section. {Locked="Hooks","Copilot","Claude","Codex","Gemini"}</comment>
   </data>
   <data name="AIAgents_HooksInstallButton.Content" xml:space="preserve">
     <value>安装 Hooks</value>
@@ -3060,19 +3059,15 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
     <comment>{Locked="my-agent --acp --stdio"} Placeholder inside the box where the command for a custom agent pane agent is typed. Translate only the "e.g." lead-in; the sample command is an example command line.</comment>
   </data>
   <data name="AIAgents_CustomAcpCommandHint.Text" xml:space="preserve">
-    <value>输入用于以 ACP 模式启动你的 CLI 的命令。大多数 CLI 都需要为此指定一个标志，例如 qwen.cmd --acp。</value>
-    <comment>{Locked="CLI","ACP","qwen.cmd --acp"} Hint shown under the box where the command for a custom agent pane agent is typed. Pluralize "CLI" the way your language does; do not carry over the English "-s".</comment>
+    <value>输入用于以 ACP 模式启动你的 CLI 的命令。大多数 CLI 都需要为此指定一个标志。</value>
+    <comment>{Locked="CLI","ACP"} Hint shown under the box where the command for a custom agent pane agent is typed. The example command is supplied by AIAgents_CustomAcpCommand.PlaceholderText. Pluralize "CLI" the way your language does; do not carry over the English "-s".</comment>
   </data>
   <data name="AIAgents_CustomDelegateCommand.PlaceholderText" xml:space="preserve">
     <value>例如 my-cli --flag</value>
     <comment>{Locked="my-cli --flag"} Placeholder inside the box where the command for a custom command palette agent is typed. Translate only the "e.g." lead-in; the sample command is an example command line.</comment>
   </data>
   <data name="AIAgents_CustomDelegateCommandHint.Text" xml:space="preserve">
-    <value>输入用于启动你的 CLI 的命令。命令面板会将其作为普通交互式会话运行，因此不需要 ACP 标志，例如 qwen.cmd。</value>
-    <comment>{Locked="CLI","ACP","qwen.cmd"} Hint shown under the box where the command for a custom command palette agent is typed. Contrasts with the agent pane command, which does need an ACP flag.</comment>
-  </data>
-  <data name="AIAgents_HooksInstallRowDescription.Text" xml:space="preserve">
-    <value>为在 PATH 中找到的每个受支持的智能体 CLI 安装 hooks。安装另一个智能体 CLI 后，请再次运行此操作。</value>
-    <comment>{Locked="hooks","CLI","PATH"} Description under the "Install agent hook script" row label inside the Agent session tracking expander. Explains what the adjacent button acts on and when to run it again.</comment>
+    <value>输入用于启动你的 CLI 的命令。命令面板会将其作为普通交互式会话运行，因此不需要 ACP 标志。</value>
+    <comment>{Locked="CLI","ACP"} Hint shown under the box where the command for a custom command palette agent is typed. The example command is supplied by AIAgents_CustomDelegateCommand.PlaceholderText.</comment>
   </data>
 </root>

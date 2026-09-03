@@ -420,14 +420,6 @@
                                 <StackPanel Grid.Column="0" VerticalAlignment="Center" Spacing="2">
                                     <TextBlock x:Uid="AIAgents_HooksInstallRowLabel"
                                                TextWrapping="Wrap" />
-                                    <!--  The button is a one-shot action with no visible
-                                          state, so the row has to say what it touches and
-                                          when to run it again (a CLI installed later is
-                                          not wired up until this is re-run).  -->
-                                    <TextBlock x:Uid="AIAgents_HooksInstallRowDescription"
-                                               Style="{StaticResource CaptionTextBlockStyle}"
-                                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                               TextWrapping="Wrap" />
                                     <TextBlock Text="{x:Bind ViewModel.AgentHooksInstallSummary, Mode=OneWay}"
                                                Visibility="{x:Bind ViewModel.HasAgentHooksInstallSummary, Mode=OneWay}"
                                                Style="{StaticResource CaptionTextBlockStyle}"
