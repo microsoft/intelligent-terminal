@@ -3013,4 +3013,12 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
     <value>Geben Sie den Befehl ein, mit dem Ihre CLI gestartet wird. Die Befehlspalette führt ihn als normale interaktive Sitzung aus, sodass kein ACP-Flag erforderlich ist.</value>
     <comment>{Locked="CLI","ACP"} Hint shown under the box where the command for a custom command palette agent is typed. The example command is supplied by AIAgents_CustomDelegateCommand.PlaceholderText.</comment>
   </data>
+  <data name="AIAgents_CustomAcpCommand.[using:Windows.UI.Xaml.Automation]AutomationProperties.HelpText" xml:space="preserve">
+    <value>Geben Sie den Befehl ein, mit dem Ihre CLI im ACP-Modus gestartet wird.</value>
+    <comment>{Locked="CLI","ACP"} Screen reader help text for the custom agent pane command input. Matches AIAgents_CustomAcpCommandHint.Text.</comment>
+  </data>
+  <data name="AIAgents_CustomDelegateCommand.[using:Windows.UI.Xaml.Automation]AutomationProperties.HelpText" xml:space="preserve">
+    <value>Geben Sie den Befehl ein, mit dem Ihre CLI gestartet wird. Die Befehlspalette führt ihn als normale interaktive Sitzung aus, sodass kein ACP-Flag erforderlich ist.</value>
+    <comment>{Locked="CLI","ACP"} Screen reader help text for the custom command palette agent input. Matches AIAgents_CustomDelegateCommandHint.Text.</comment>
+  </data>
 </root>

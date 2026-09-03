@@ -3070,4 +3070,12 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
     <value>CLI를 시작하는 명령을 입력하세요. 명령 팔레트에서 일반 대화형 세션으로 실행하므로 ACP 플래그가 필요하지 않습니다.</value>
     <comment>{Locked="CLI","ACP"} Hint shown under the box where the command for a custom command palette agent is typed. The example command is supplied by AIAgents_CustomDelegateCommand.PlaceholderText.</comment>
   </data>
+  <data name="AIAgents_CustomAcpCommand.[using:Windows.UI.Xaml.Automation]AutomationProperties.HelpText" xml:space="preserve">
+    <value>CLI를 ACP 모드로 시작하는 명령을 입력하세요.</value>
+    <comment>{Locked="CLI","ACP"} Screen reader help text for the custom agent pane command input. Matches AIAgents_CustomAcpCommandHint.Text.</comment>
+  </data>
+  <data name="AIAgents_CustomDelegateCommand.[using:Windows.UI.Xaml.Automation]AutomationProperties.HelpText" xml:space="preserve">
+    <value>CLI를 시작하는 명령을 입력하세요. 명령 팔레트에서 일반 대화형 세션으로 실행하므로 ACP 플래그가 필요하지 않습니다.</value>
+    <comment>{Locked="CLI","ACP"} Screen reader help text for the custom command palette agent input. Matches AIAgents_CustomDelegateCommandHint.Text.</comment>
+  </data>
 </root>

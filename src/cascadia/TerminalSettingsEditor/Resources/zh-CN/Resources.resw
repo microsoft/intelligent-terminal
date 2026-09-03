@@ -3070,4 +3070,12 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
     <value>输入用于启动你的 CLI 的命令。命令面板会将其作为普通交互式会话运行，因此不需要 ACP 标志。</value>
     <comment>{Locked="CLI","ACP"} Hint shown under the box where the command for a custom command palette agent is typed. The example command is supplied by AIAgents_CustomDelegateCommand.PlaceholderText.</comment>
   </data>
+  <data name="AIAgents_CustomAcpCommand.[using:Windows.UI.Xaml.Automation]AutomationProperties.HelpText" xml:space="preserve">
+    <value>输入用于以 ACP 模式启动你的 CLI 的命令。</value>
+    <comment>{Locked="CLI","ACP"} Screen reader help text for the custom agent pane command input. Matches AIAgents_CustomAcpCommandHint.Text.</comment>
+  </data>
+  <data name="AIAgents_CustomDelegateCommand.[using:Windows.UI.Xaml.Automation]AutomationProperties.HelpText" xml:space="preserve">
+    <value>输入用于启动你的 CLI 的命令。命令面板会将其作为普通交互式会话运行，因此不需要 ACP 标志。</value>
+    <comment>{Locked="CLI","ACP"} Screen reader help text for the custom command palette agent input. Matches AIAgents_CustomDelegateCommandHint.Text.</comment>
+  </data>
 </root>
