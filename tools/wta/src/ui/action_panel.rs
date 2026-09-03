@@ -8,6 +8,7 @@ use super::recommendations::recommendation_display_text;
 pub(crate) const COMPACT_RECOMMENDATION_HEIGHT: u16 = 2;
 const COMPACT_PERMISSION_HEIGHT: u16 = 1;
 const ACTIVITY_HEIGHT: u16 = 1;
+const QUEUE_HINT_HEIGHT: u16 = 1;
 const CHAT_MIN_HEIGHT: u16 = 1;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -27,6 +28,7 @@ pub(crate) struct ActionPanelLayout {
     pub hint_height: u16,
     pub recommendation_hint_height: u16,
     pub activity_height: u16,
+    pub queue_hint_height: u16,
     pub input_height: u16,
 }
 
@@ -36,6 +38,7 @@ pub(crate) struct LayoutRequest {
     pub chat_natural_height: u16,
     pub hint_requested: bool,
     pub activity_requested: bool,
+    pub queue_hint_requested: bool,
     pub recommendation_natural_height: Option<u16>,
     pub permission_natural_height: Option<u16>,
 }
@@ -45,8 +48,10 @@ pub(crate) struct LayoutRequest {
 /// Input and the active action form the hard interactive base. A pending
 /// permission is modal and suppresses recommendations. Recommendations use a
 /// two-row summary until a five-row card shell fits. Activity and navigation
-/// hints share one status row, with activity taking precedence. Chat and the
-/// status row yield first if the host reports fewer than seven rows.
+/// hints share one status row, with activity taking precedence. The
+/// queued-prompt row is the lowest-priority reservation and is dropped before
+/// the interactive base degrades. Chat and the status row yield first if the
+/// host reports fewer than seven rows.
 pub(crate) fn plan(request: LayoutRequest) -> ActionPanelLayout {
     let mut result = ActionPanelLayout {
         chat_height: 0,
@@ -57,6 +62,7 @@ pub(crate) fn plan(request: LayoutRequest) -> ActionPanelLayout {
         hint_height: 0,
         recommendation_hint_height: 0,
         activity_height: 0,
+        queue_hint_height: 0,
         input_height: super::input::INPUT_MIN_HEIGHT,
     };
 
@@ -118,9 +124,23 @@ pub(crate) fn plan(request: LayoutRequest) -> ActionPanelLayout {
         .saturating_add(result.recommendation_hint_height)
         .saturating_add(result.hint_height);
 
+    // The queued-prompt indicator is informational: reserve its row only
+    // while the minimum input box, one chat row, the action panel, and the
+    // status row still fit without it.
+    if request.queue_hint_requested {
+        let spare = request
+            .available_rows
+            .saturating_sub(allocated_status_height)
+            .saturating_sub(action_rows)
+            .saturating_sub(result.chat_height)
+            .saturating_sub(super::input::INPUT_MIN_HEIGHT);
+        result.queue_hint_height = QUEUE_HINT_HEIGHT.min(spare);
+    }
+
     let input_capacity = request
         .available_rows
         .saturating_sub(allocated_status_height)
+        .saturating_sub(result.queue_hint_height)
         .saturating_sub(action_rows)
         .saturating_sub(result.chat_height);
     result.input_height = request.input_height.min(input_capacity);
@@ -129,6 +149,7 @@ pub(crate) fn plan(request: LayoutRequest) -> ActionPanelLayout {
         .available_rows
         .saturating_sub(result.input_height)
         .saturating_sub(allocated_status_height)
+        .saturating_sub(result.queue_hint_height)
         .saturating_sub(action_rows);
     result.chat_height = request.chat_natural_height.min(chat_capacity);
     result
@@ -223,6 +244,7 @@ mod tests {
             chat_natural_height: 4,
             hint_requested: true,
             activity_requested: false,
+            queue_hint_requested: false,
             recommendation_natural_height: Some(6),
             permission_natural_height: None,
         }
@@ -236,6 +258,7 @@ mod tests {
             layout.hint_height,
             layout.recommendation_hint_height,
             layout.activity_height,
+            layout.queue_hint_height,
             layout.input_height,
         ]
         .into_iter()
@@ -264,6 +287,7 @@ mod tests {
                     chat_natural_height: 20,
                     hint_requested: true,
                     activity_requested: true,
+                    queue_hint_requested: true,
                     recommendation_natural_height: None,
                     permission_natural_height: Some(12),
                 },
@@ -273,6 +297,7 @@ mod tests {
                     chat_natural_height: 20,
                     hint_requested: true,
                     activity_requested: true,
+                    queue_hint_requested: true,
                     recommendation_natural_height: None,
                     permission_natural_height: None,
                 },
@@ -341,6 +366,7 @@ mod tests {
             chat_natural_height: 4,
             hint_requested: true,
             activity_requested: false,
+            queue_hint_requested: false,
             recommendation_natural_height: Some(6),
             permission_natural_height: Some(5),
         };
@@ -364,6 +390,7 @@ mod tests {
             chat_natural_height: 4,
             hint_requested: false,
             activity_requested: false,
+            queue_hint_requested: false,
             recommendation_natural_height: Some(6),
             permission_natural_height: None,
         });
@@ -388,6 +415,53 @@ mod tests {
     #[test]
     fn wrapped_line_count_uses_display_width_for_cjk() {
         assert_eq!(wrapped_line_count("你好", 3), 2);
+    }
+
+    #[test]
+    fn queued_prompt_row_is_reserved_only_above_the_interactive_base() {
+        let request = |rows| LayoutRequest {
+            available_rows: rows,
+            input_height: 3,
+            chat_natural_height: 4,
+            hint_requested: false,
+            activity_requested: true,
+            queue_hint_requested: true,
+            recommendation_natural_height: None,
+            permission_natural_height: None,
+        };
+
+        // input(3) + activity(1) + chat_min(1) exactly fills five rows, so the
+        // indicator has to yield rather than displace the input box.
+        let tight = plan(request(5));
+        assert_eq!(tight.queue_hint_height, 0);
+        assert_eq!(tight.input_height, 3);
+        assert_eq!(tight.activity_height, 1);
+        assert_eq!(tight.chat_height, 1);
+
+        let roomy = plan(request(12));
+        assert_eq!(roomy.queue_hint_height, 1);
+        assert_eq!(roomy.input_height, 3);
+        assert_eq!(roomy.chat_height, 4);
+        assert_eq!(allocated_height(roomy), 9);
+    }
+
+    #[test]
+    fn queued_prompt_row_never_pushes_the_plan_past_the_host() {
+        for rows in 0..=32 {
+            for activity_requested in [false, true] {
+                let layout = plan(LayoutRequest {
+                    available_rows: rows,
+                    input_height: 8,
+                    chat_natural_height: 20,
+                    hint_requested: true,
+                    activity_requested,
+                    queue_hint_requested: true,
+                    recommendation_natural_height: Some(6),
+                    permission_natural_height: None,
+                });
+                assert!(allocated_height(layout) <= u32::from(rows));
+            }
+        }
     }
 
     #[test]

@@ -691,27 +691,17 @@ impl App {
                 return;
             }
             KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                // In-flight: state is Submitted/Streaming or Surfaced{end_pending}.
-                let in_flight = !self.current_tab().turn.is_idle()
-                    && !matches!(
-                        self.current_tab().turn,
-                        TurnState::Surfaced {
-                            end_pending: false,
-                            ..
-                        }
-                    );
+                // Ctrl+C stops every item of work on this tab, unlike Esc
+                // which first peels the newest queued prompt as an undo.
+                let in_flight = self.current_tab().turn.is_in_flight();
+                let discarded = self.discard_current_pending_prompts();
                 if in_flight {
-                    // Send a session/cancel to the ACP client. The client
-                    // will fire the protocol notification and signal the
-                    // per-prompt oneshot so the spawned task drops out of
-                    // conn.prompt() immediately.
-                    let session_id = self.current_tab().session_id.clone();
-                    if let Some(sid) = session_id.clone() {
-                        let _ = self.cancel_tx.send(CancelRequest { session_id: sid });
-                    }
-                    if let Some(sid) = session_id {
-                        self.turn_cancel(&sid);
-                    }
+                    self.cancel_active_in_flight_turn();
+                    self.close_pane_armed_at = None;
+                } else if discarded > 0 {
+                    // A disconnected/error transition can leave queued work
+                    // without an in-flight head. Still make Ctrl+C a full
+                    // stop rather than arming pane close.
                     let tab = self.current_tab_mut();
                     tab.messages
                         .push(ChatMessage::success(t!("system.cancelled").into_owned()));
@@ -756,15 +746,30 @@ impl App {
                 self.dismiss_notifications();
             }
             KeyCode::Esc
-                if self.current_tab().turn.recommendations().is_some()
-                    || (self.current_tab().autofix.pane_id.is_some()
-                        && !self.current_tab().turn.is_idle()) =>
+                if self.current_tab().input.is_empty()
+                    && self.current_tab().attachments.is_empty()
+                    && !self.current_tab().pending_prompts.is_empty() =>
+            {
+                self.undo_latest_queued_prompt();
+            }
+            KeyCode::Esc
+                if self.current_tab().input.is_empty()
+                    && self.current_tab().attachments.is_empty()
+                    && self.current_tab().pending_prompts.is_empty()
+                    && (self.current_tab().turn.recommendations().is_some()
+                        || (self.current_tab().autofix.pane_id.is_some()
+                            && !self.current_tab().turn.is_idle())) =>
             {
                 // Dismiss armed fix card or cancel in-flight autofix request.
                 // `turn_cancel` bumps generation, emits autofix_state_cleared,
                 // and resets the state machine to Idle.
                 let session_id = self.current_tab().session_id.clone();
                 if let Some(sid) = session_id {
+                    if self.current_tab().turn.is_in_flight() {
+                        let _ = self.cancel_tx.send(CancelRequest {
+                            session_id: sid.clone(),
+                        });
+                    }
                     self.turn_cancel(&sid);
                 } else {
                     // No session attached yet — fall back to manual cleanup
@@ -888,18 +893,17 @@ impl App {
                 }
                 let _tab = self.current_tab();
                 tracing::debug!(target: "autofix", input_empty = _tab.input.is_empty(), state = ?self.state, has_recs = _tab.turn.recommendations().is_some(), autofix_pane = ?_tab.autofix.pane_id, selected_idx = _tab.selected_recommendation, "Enter");
-                if (!self.current_tab().input.is_empty()
-                    || !self.current_tab().attachments.is_empty())
+                if self.current_tab().has_submittable_input()
                     && self.state == ConnectionState::Connected
                 {
-                    // Same-tab single-flight: refuse a new prompt if the
-                    // turn isn't accepting one. The ACP transport rejects
-                    // too, but bouncing here keeps the user's input intact.
-                    if !self.current_tab().turn.accepts_new_prompt() {
-                        let tab = self.current_tab_mut();
-                        tab.messages
-                            .push(ChatMessage::warning(t!("system.agent_busy").into_owned()));
-                        tab.scroll_to_bottom();
+                    // Hold user work locally while this tab's ACP turn,
+                    // permission prompt, or session replay cannot accept it.
+                    // The queue preserves attachment payloads as well as text
+                    // and drains FIFO after the current turn completes.
+                    if !self.current_tab().accepts_typed_prompt()
+                        || !self.current_tab().pending_prompts.is_empty()
+                    {
+                        self.enqueue_current_prompt();
                         return;
                     }
                     let is_agent_command = self
@@ -952,11 +956,21 @@ impl App {
                     }
                     let submitted = SubmittedPrompt {
                         id: prompt.id,
-                        text: display_text,
+                        text: display_text.clone(),
                         submitted_at_unix_s: prompt.submitted_at_unix_s,
                         context: TurnContext::default(),
                         autofix: None,
                     };
+                    let tab_id = self.active_tab_key().to_string();
+                    self.tab_mut(&tab_id).queued_dispatch =
+                        Some(super::tab_state::QueuedDispatch {
+                            prompt_id: prompt.id,
+                            prompt: super::tab_state::QueuedPrompt::new(
+                                text,
+                                display_text,
+                                prompt.images.clone(),
+                            ),
+                        });
                     self.turn_submit_prompt(&session_id, submitted);
                     let _ = self.prompt_tx.send(prompt);
                 }

@@ -69,6 +69,7 @@ fn agent_command_on_enter(input: &str, selected: Option<&AvailableAgent>) -> Opt
     })
 }
 
+mod app_queue;
 mod attachments;
 mod autofix;
 mod input_edit;
@@ -1743,6 +1744,7 @@ impl App {
                                 } else {
                                     let _ = event_tx_for_pipe.send(AppEvent::AgentError {
                                         session_id: None,
+                                        prompt_id: None,
                                         failure,
                                         message: format!(
                                             "helper ACP transport failed on reconnect: {e:#}"
@@ -1780,6 +1782,7 @@ impl App {
                     );
                     let _ = event_tx.send(AppEvent::AgentError {
                         session_id: None,
+                        prompt_id: None,
                         failure: crate::protocol::acp::failure::AgentFailure::HandshakeFailed {
                             stage: crate::protocol::acp::failure::HandshakeStage::Initialize,
                             detail: "missing wta-master connection".to_string(),
@@ -4106,6 +4109,22 @@ impl App {
         })
     }
 
+    /// Finds the unique in-flight turn that owns an immutable prompt ID.
+    ///
+    /// ACP terminal events can arrive after a tab drag rekeys the session
+    /// map. They must never fall back to the active tab and mutate a newer
+    /// turn.
+    fn tab_for_in_flight_prompt(&self, prompt_id: u64) -> Option<String> {
+        self.tab_sessions.iter().find_map(|(tab_id, tab)| {
+            (tab.turn.is_in_flight()
+                && tab
+                    .turn
+                    .prompt()
+                    .is_some_and(|prompt| prompt.id == prompt_id))
+            .then(|| tab_id.clone())
+        })
+    }
+
     /// Mutable view of the tab that owns the given session id. Lazily
     /// creates the `TabSession` if missing.
     pub fn session_tab_mut(&mut self, session_id: &str) -> &mut TabSession {
@@ -4321,14 +4340,17 @@ impl App {
             AppEvent::PromptTargetResolved { .. } => "prompt_target_resolved",
             AppEvent::AgentError { .. } => "agent_error",
             AppEvent::MasterDisconnected => "master_disconnected",
-            AppEvent::AgentSoftStop { .. } => "agent_soft_stop",
             AppEvent::AgentBusy { .. } => "agent_busy",
             AppEvent::TabRenamed { .. } => "tab_renamed",
             AppEvent::ExecutionInfo(_) => "execution_info",
+            AppEvent::RecommendationExecutionCompleted { .. } => {
+                "recommendation_execution_completed"
+            }
             AppEvent::AgentThoughtChunk { .. } => "agent_thought_chunk",
             AppEvent::AgentMessageChunk { .. } => "agent_message_chunk",
             AppEvent::UserMessageReplayChunk { .. } => "user_message_replay_chunk",
             AppEvent::AgentMessageEnd { .. } => "agent_message_end",
+            AppEvent::AgentTurnCompleted { .. } => "agent_turn_completed",
             AppEvent::TimingMetric { .. } => "timing_metric",
             AppEvent::ToolCall { .. } => "tool_call",
             AppEvent::ToolCallUpdate { .. } => "tool_call_update",
@@ -5320,14 +5342,10 @@ impl App {
     /// stop. `in_flight` is the active tab's turn state, captured by the
     /// dispatcher before any mutation.
     fn cmd_stop(&mut self, in_flight: bool) {
+        let discarded = self.discard_current_pending_prompts();
         if in_flight {
-            let session_id = self.current_tab().session_id.clone();
-            if let Some(sid) = session_id.clone() {
-                let _ = self.cancel_tx.send(CancelRequest { session_id: sid });
-            }
-            if let Some(sid) = session_id {
-                self.turn_cancel(&sid);
-            }
+            self.cancel_active_in_flight_turn();
+        } else if discarded > 0 {
             let tab = self.current_tab_mut();
             tab.messages
                 .push(ChatMessage::success(t!("system.cancelled").into_owned()));

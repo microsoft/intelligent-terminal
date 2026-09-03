@@ -852,6 +852,7 @@ async fn run_acp_app(
                             };
                             let _ = event_tx_for_pipe.send(app::AppEvent::AgentError {
                                 session_id: None,
+                                prompt_id: None,
                                 failure,
                                 message,
                             });

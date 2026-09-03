@@ -14,6 +14,7 @@ mod line_diff;
 mod model_popup;
 mod permission;
 mod popup;
+mod queued_hint;
 mod recommendations;
 pub mod setup;
 pub mod shimmer;
