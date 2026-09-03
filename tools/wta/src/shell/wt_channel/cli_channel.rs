@@ -14,6 +14,8 @@ const WTCLI_LISTENER_RETRY_INITIAL: Duration = Duration::from_millis(250);
 const WTCLI_LISTENER_RETRY_MAX: Duration = Duration::from_secs(5);
 const WTCLI_LISTENER_READY_TIMEOUT: Duration = Duration::from_secs(15);
 const WTCLI_LISTENER_STDERR_MAX: usize = 16 * 1024;
+const WTCLI_LISTENER_MAX_CONSECUTIVE_FAILURES: u32 = 8;
+const WTCLI_LISTENER_STABLE_UPTIME: Duration = Duration::from_secs(30);
 
 #[derive(Debug)]
 enum WtcliOneShotError {
@@ -206,6 +208,18 @@ fn json_id_as_str(v: &serde_json::Value) -> Option<String> {
 fn is_listener_ready_marker(value: &serde_json::Value, token: &str) -> bool {
     value.get("_wtcli").and_then(|value| value.as_str()) == Some("listener_ready")
         && value.get("token").and_then(|value| value.as_str()) == Some(token)
+}
+
+fn next_listener_failure_count(current: u32, subscribed: bool, uptime: Duration) -> u32 {
+    if subscribed && uptime >= WTCLI_LISTENER_STABLE_UPTIME {
+        1
+    } else {
+        current.saturating_add(1)
+    }
+}
+
+fn listener_retry_exhausted(consecutive_failures: u32) -> bool {
+    consecutive_failures >= WTCLI_LISTENER_MAX_CONSECUTIVE_FAILURES
 }
 
 /// Resolve the full path to `wtcli.exe` at startup.
@@ -595,8 +609,10 @@ impl CliChannel {
     /// The protocol server can be temporarily unavailable while Terminal is
     /// still starting. `wtcli listen` exits immediately in that window (for
     /// example with `E_NOINTERFACE`); a one-shot reader then leaves master
-    /// permanently blind to hooks and pane lifecycle events. Keep restarting
-    /// until this channel is dropped or a replacement reader shuts us down.
+    /// permanently blind to hooks and pane lifecycle events. Retry transient
+    /// failures, but stop after eight consecutive unstable attempts so a
+    /// permanently broken COM registration cannot create a process/log storm.
+    /// A subscription that stays healthy for 30 seconds resets the count.
     pub async fn start_reader(self: &std::sync::Arc<Self>) -> bool {
         let wtcli = self.wtcli_path.clone();
         let weak = std::sync::Arc::downgrade(self);
@@ -611,6 +627,7 @@ impl CliChannel {
             let ready_token = format!("wta-{parent_pid}");
             let mut ready_tx = Some(ready_tx);
             let mut retry_delay = WTCLI_LISTENER_RETRY_INITIAL;
+            let mut consecutive_failures = 0u32;
             loop {
                 if weak.upgrade().is_none() {
                     return;
@@ -632,13 +649,28 @@ impl CliChannel {
                 let mut child = match command.spawn() {
                     Ok(child) => child,
                     Err(error) => {
+                        consecutive_failures = next_listener_failure_count(
+                            consecutive_failures,
+                            false,
+                            Duration::ZERO,
+                        );
                         tracing::warn!(
                             target: "wtcli",
                             path = %wtcli,
                             %error,
+                            consecutive_failures,
+                            max_failures = WTCLI_LISTENER_MAX_CONSECUTIVE_FAILURES,
                             retry_ms = retry_delay.as_millis(),
-                            "WT protocol event listener spawn failed; retrying"
+                            "WT protocol event listener spawn failed"
                         );
+                        if listener_retry_exhausted(consecutive_failures) {
+                            tracing::error!(
+                                target: "wtcli",
+                                consecutive_failures,
+                                "WT protocol event listener reached its retry limit; live session status will remain stale until this WTA process restarts"
+                            );
+                            return;
+                        }
                         tokio::select! {
                             _ = &mut shutdown_rx => return,
                             _ = tokio::time::sleep(retry_delay) => {}
@@ -648,6 +680,7 @@ impl CliChannel {
                     }
                 };
                 let listener_pid = child.id();
+                let listener_started_at = tokio::time::Instant::now();
                 tracing::info!(
                     target: "wtcli",
                     ?listener_pid,
@@ -772,17 +805,39 @@ impl CliChannel {
                 if matches!(exit_reason, "shutdown_requested" | "channel_dropped") {
                     return;
                 }
-                if subscribed {
+
+                let stable_subscription =
+                    subscribed && listener_started_at.elapsed() >= WTCLI_LISTENER_STABLE_UPTIME;
+                if stable_subscription {
                     retry_delay = WTCLI_LISTENER_RETRY_INITIAL;
+                }
+                consecutive_failures = next_listener_failure_count(
+                    consecutive_failures,
+                    subscribed,
+                    listener_started_at.elapsed(),
+                );
+                if listener_retry_exhausted(consecutive_failures) {
+                    tracing::error!(
+                        target: "wtcli",
+                        pid = listener_pid,
+                        reason = exit_reason,
+                        consecutive_failures,
+                        "WT protocol event listener reached its retry limit; live session status will remain stale until this WTA process restarts"
+                    );
+                    return;
+                }
+
+                if subscribed && consecutive_failures == 1 {
                     // The listener had a valid subscription and then died.
-                    // Re-spawn immediately: COM broadcasts are not replayed, so
-                    // an intentional backoff here would create a guaranteed
-                    // hook-loss window. Backoff is reserved for attempts that
-                    // never subscribed successfully.
+                    // Re-spawn the first time immediately: COM broadcasts are
+                    // not replayed. Repeated quick post-subscribe exits retain
+                    // the consecutive-failure count and enter the same backoff
+                    // as pre-subscribe failures, preventing a tight loop.
                     tracing::warn!(
                         target: "wtcli",
                         pid = listener_pid,
                         reason = exit_reason,
+                        consecutive_failures,
                         "subscribed WT protocol event listener exited; restarting immediately"
                     );
                     continue;
@@ -791,6 +846,8 @@ impl CliChannel {
                     target: "wtcli",
                     pid = listener_pid,
                     reason = exit_reason,
+                    consecutive_failures,
+                    max_failures = WTCLI_LISTENER_MAX_CONSECUTIVE_FAILURES,
                     retry_ms = retry_delay.as_millis(),
                     "WT protocol event listener exited; retrying"
                 );
@@ -1076,6 +1133,29 @@ mod tests {
             &serde_json::json!({"method": "agent_event", "token": "wta-42"}),
             "wta-42"
         ));
+    }
+
+    #[test]
+    fn listener_retry_limit_counts_only_consecutive_unstable_failures() {
+        let mut failures = 0;
+        for expected in 1..WTCLI_LISTENER_MAX_CONSECUTIVE_FAILURES {
+            failures = next_listener_failure_count(failures, false, Duration::ZERO);
+            assert_eq!(failures, expected);
+            assert!(!listener_retry_exhausted(failures));
+        }
+        failures = next_listener_failure_count(failures, true, Duration::from_secs(1));
+        assert!(listener_retry_exhausted(failures));
+
+        // A subscription that stayed healthy long enough starts a new failure
+        // streak. A fast subscribe/exit loop deliberately does not.
+        assert_eq!(
+            next_listener_failure_count(
+                WTCLI_LISTENER_MAX_CONSECUTIVE_FAILURES - 1,
+                true,
+                WTCLI_LISTENER_STABLE_UPTIME
+            ),
+            1
+        );
     }
 
     #[tokio::test]
