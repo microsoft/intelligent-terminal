@@ -34,7 +34,7 @@
                             Click="{x:Bind Remove}"
                             Loaded="CustomAgentRemove_Loaded"
                             Style="{StaticResource ExtraSmallButtonStyle}"
-                            Visibility="{x:Bind RemoveButtonVisibility, Mode=OneWay}">
+                            Visibility="Collapsed">
                         <FontIcon FontSize="12"
                                   Glyph="&#xE711;" />
                     </Button>
