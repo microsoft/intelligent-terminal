@@ -2835,8 +2835,6 @@
   <data name="AIAgents_AcpModel.HelpText" xml:space="preserve"><value>Choisissez le modèle utilisé par cet agent.</value><comment>Supplementary description for the model setting.</comment></data>
   <data name="AIAgents_DelegateAgent.Header" xml:space="preserve"><value>Agent</value><comment>Header for the setting that specifies which agent CLI handles command palette / on-demand requests.</comment></data>
   <data name="AIAgents_DelegateAgent.HelpText" xml:space="preserve"><value>Choisissez l'agent utilisé pour les actions rapides dans la palette de commandes.</value><comment>Supplementary description for the command palette agent setting.</comment></data>
-  <data name="AIAgents_AutoFix.Header" xml:space="preserve"><value>Suggérer automatiquement des correctifs pour les commandes en échec</value><comment>Header for the toggle that enables automatic fix suggestions when commands fail.</comment></data>
-  <data name="AIAgents_AutoFix.HelpText" xml:space="preserve"><value>Lorsque cette option est activée, l'agent IA analyse automatiquement les commandes en échec et propose un correctif. Lorsqu'elle est désactivée, les commandes en échec affichent une indication cliquable dans la barre d'état — appuyez sur Ctrl+Alt+. ou cliquez sur l'indication pour demander un correctif.</value><comment>Supplementary description for the auto-error-detection setting.</comment></data>
   <data name="AIAgents_ShowTokenUsageAndCost.Header" xml:space="preserve"><value>Afficher l’utilisation du contexte et le coût de la session</value><comment>Header for a setting that shows available context-window usage and session cost in the terminal bottom bar. Session cost is reported for the active AI session. Keep 'session cost' generic and do not add a specific unit. Either value may be unavailable.</comment></data>
   <data name="AIAgents_ShowTokenUsageAndCost.HelpText" xml:space="preserve"><value>Lorsqu’ils sont disponibles, afficher l’utilisation de la fenêtre de contexte et le coût de la session dans la barre inférieure du terminal.</value><comment>Supplementary description for the usage visibility setting. Session cost is reported for the active AI session. Keep 'session cost' generic and do not add a specific unit. Either value may be unavailable.</comment></data>
   <data name="AIAgents_PanePosition.Header" xml:space="preserve"><value>Position du volet</value><comment>Header for the setting that controls where the agent pane appears relative to the active pane.</comment></data>
@@ -2923,20 +2921,33 @@
     <value>Échec de l’installation Hooks pour {0}. Consultez {1} pour plus de détails.</value>
     <comment>Failure summary shown when installing agent session tracking hooks fails for specific CLIs. {Locked="Hooks","{0}","{1}"} {0} is replaced with a comma-separated list of CLI names (brand names, never translated); {1} is replaced with the package-aware, versioned wta-install-hooks.log path at runtime.</comment>
   </data>
-  <data name="AIAgents_AutoErrorDetectionTitle.Text" xml:space="preserve">
-    <value>Détection automatique des erreurs</value>
+  <data name="AIAgents_AutoErrorHandlingTitle.Text" xml:space="preserve">
+    <value>Gestion automatique des erreurs</value>
+    <comment>Title for the Auto error handling dropdown in the AI agents settings page.</comment>
   </data>
-  <data name="AIAgents_AutoErrorDetectionCaptionPrefix" xml:space="preserve">
-    <value>Autorisez Terminal Intelligent à accéder à votre shell et à détecter automatiquement les erreurs. Disponible dans PowerShell, bash et WSL bash. </value>
+  <data name="AIAgents_AutoErrorHandlingCaptionPrefix" xml:space="preserve">
+    <value>Choisissez la façon dont les erreurs de terminal sont gérées. L'activation de cette option installera l'intégration shell pour détecter les échecs de commande. Disponible dans PowerShell, bash et WSL bash. </value>
+    <comment>{Locked="PowerShell","bash","WSL bash"} Caption under the Auto error handling title; the trailing space separates this prefix from the inline AIAgents_AutoErrorHandlingCaptionLink hyperlink that follows.</comment>
   </data>
-  <data name="AIAgents_AutoErrorDetectionCaptionLink" xml:space="preserve">
+  <data name="AIAgents_AutoErrorHandlingCaptionLink" xml:space="preserve">
     <value>Afficher tous les shells pris en charge</value>
+    <comment>Inline hyperlink text that follows AIAgents_AutoErrorHandlingCaptionPrefix; opens the documentation listing every shell that supports Auto error handling.</comment>
   </data>
-  <data name="AIAgents_AutoErrorSuggestionTitle.Text" xml:space="preserve">
-    <value>Suggestion automatique des erreurs</value>
+  <data name="AIAgents_AutoErrorHandling_Off" xml:space="preserve">
+    <value>Désactivé</value>
+    <comment>The third option in the Error detection dropdown. It disables automatic terminal error detection and fixes.</comment>
   </data>
-  <data name="AIAgents_AutoErrorSuggestionCaption.Text" xml:space="preserve">
-    <value>Autorisez Terminal Intelligent à envoyer les erreurs à votre agent pour suggérer automatiquement des correctifs.</value>
+  <data name="AIAgents_AutoErrorHandling_DetectErrorsAutomatically" xml:space="preserve">
+    <value>Détectez automatiquement les erreurs</value>
+    <comment>The first option in the Error detection dropdown. It detects terminal errors automatically without sending them to an AI agent. Here "agent" means an AI intelligent agent, not a proxy or human agent.</comment>
+  </data>
+  <data name="AIAgents_AutoErrorHandling_DetectErrorsAndSendToAgentForFixesAutomatically" xml:space="preserve">
+    <value>Détectez les erreurs et envoyez-les automatiquement à l’agent pour qu’il les corrige</value>
+    <comment>The second option in the Error detection dropdown. It detects terminal errors and sends them to an AI agent for automatic fixes. Here "agent" means an AI intelligent agent, not a proxy or human agent.</comment>
+  </data>
+  <data name="AIAgents_AutoErrorHandlingComboBox.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Gestion automatique des erreurs</value>
+    <comment>Automation name for the Auto error handling dropdown in the AI agents settings page.</comment>
   </data>
   <data name="AIAgents_CustomModels.Header" xml:space="preserve">
     <value>Fournisseurs BYOK</value>

@@ -2864,14 +2864,6 @@
     <value>选择用于命令面板快速操作的智能体。</value>
     <comment>Supplementary description for the command palette agent setting.</comment>
   </data>
-  <data name="AIAgents_AutoFix.Header" xml:space="preserve">
-    <value>自动为失败的命令建议修复方案</value>
-    <comment>Header for the toggle that enables automatic fix suggestions when commands fail.</comment>
-  </data>
-  <data name="AIAgents_AutoFix.HelpText" xml:space="preserve">
-    <value>启用后,AI 智能体将自动分析失败的命令并提出修复建议。禁用后,失败的命令会在状态栏中显示一个可点击的提示 — 按 Ctrl+Alt+. 或单击该提示以请求修复。</value>
-    <comment>Supplementary description for the auto-error-detection setting.</comment>
-  </data>
   <data name="AIAgents_ShowTokenUsageAndCost.Header" xml:space="preserve"><value>显示上下文用量和会话成本</value><comment>Header for a setting that shows available context-window usage and session cost in the terminal bottom bar. Session cost is reported for the active AI session. Keep 'session cost' generic and do not add a specific unit. Either value may be unavailable.</comment></data>
   <data name="AIAgents_ShowTokenUsageAndCost.HelpText" xml:space="preserve"><value>如果有相关数据，请在终端底栏中显示上下文窗口用量和会话成本。</value><comment>Supplementary description for the usage visibility setting. Session cost is reported for the active AI session. Keep 'session cost' generic and do not add a specific unit. Either value may be unavailable.</comment></data>
   <data name="AIAgents_PanePosition.Header" xml:space="preserve">
@@ -2982,20 +2974,33 @@
     <value>{0} 的 Hooks 安装失败。请查看 {1} 获取详细信息。</value>
     <comment>Failure summary shown when installing agent session tracking hooks fails for specific CLIs. {Locked="Hooks","{0}","{1}"} {0} is replaced with a comma-separated list of CLI names (brand names, never translated); {1} is replaced with the package-aware, versioned wta-install-hooks.log path at runtime.</comment>
   </data>
-  <data name="AIAgents_AutoErrorDetectionTitle.Text" xml:space="preserve">
-    <value>自动错误检测</value>
+  <data name="AIAgents_AutoErrorHandlingTitle.Text" xml:space="preserve">
+    <value>自动错误处理</value>
+    <comment>Title for the Auto error handling dropdown in the AI agents settings page.</comment>
   </data>
-  <data name="AIAgents_AutoErrorDetectionCaptionPrefix" xml:space="preserve">
-    <value>允许智能终端访问你的 shell 并自动检测错误。适用于 PowerShell、bash 和 WSL bash。 </value>
+  <data name="AIAgents_AutoErrorHandlingCaptionPrefix" xml:space="preserve">
+    <value>选择如何处理终端错误。启用此功能将安装 shell 集成，以检测命令失败。适用于 PowerShell、bash 和 WSL bash。 </value>
+    <comment>{Locked="PowerShell","bash","WSL bash"} Caption under the Auto error handling title; the trailing space separates this prefix from the inline AIAgents_AutoErrorHandlingCaptionLink hyperlink that follows.</comment>
   </data>
-  <data name="AIAgents_AutoErrorDetectionCaptionLink" xml:space="preserve">
+  <data name="AIAgents_AutoErrorHandlingCaptionLink" xml:space="preserve">
     <value>查看所有受支持的 shell</value>
+    <comment>Inline hyperlink text that follows AIAgents_AutoErrorHandlingCaptionPrefix; opens the documentation listing every shell that supports Auto error handling.</comment>
   </data>
-  <data name="AIAgents_AutoErrorSuggestionTitle.Text" xml:space="preserve">
-    <value>自动错误建议</value>
+  <data name="AIAgents_AutoErrorHandling_Off" xml:space="preserve">
+    <value>关</value>
+    <comment>The third option in the Error detection dropdown. It disables automatic terminal error detection and fixes.</comment>
   </data>
-  <data name="AIAgents_AutoErrorSuggestionCaption.Text" xml:space="preserve">
-    <value>允许智能终端将错误发送给你的代理以自动建议修复。</value>
+  <data name="AIAgents_AutoErrorHandling_DetectErrorsAutomatically" xml:space="preserve">
+    <value>自动检测错误</value>
+    <comment>The first option in the Error detection dropdown. It detects terminal errors automatically without sending them to an AI agent. Here "agent" means an AI intelligent agent, not a proxy or human agent.</comment>
+  </data>
+  <data name="AIAgents_AutoErrorHandling_DetectErrorsAndSendToAgentForFixesAutomatically" xml:space="preserve">
+    <value>检测错误并自动将其发送给智能体进行修复</value>
+    <comment>The second option in the Error detection dropdown. It detects terminal errors and sends them to an AI agent for automatic fixes. Here "agent" means an AI intelligent agent, not a proxy or human agent.</comment>
+  </data>
+  <data name="AIAgents_AutoErrorHandlingComboBox.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>自动错误处理</value>
+    <comment>Automation name for the Auto error handling dropdown in the AI agents settings page.</comment>
   </data>
   <data name="AIAgents_CustomModels.Header" xml:space="preserve">
     <value>BYOK 提供商</value>

@@ -85,8 +85,9 @@ namespace SettingsModelUnitTests
         TEST_METHOD(AcpRuntimeModelsAreScopedByAgent);
         TEST_METHOD(AgentPanePositionRoundtripsAndDefaults);
         TEST_METHOD(ShowTokenUsageAndCostRoundtripsAndDefaultsOff);
-        TEST_METHOD(AutoErrorSettingsRoundtrip);
-        TEST_METHOD(EffectiveAutoFixFalseWhenDetectionOff);
+        TEST_METHOD(AutoErrorHandlingRoundtripsAndDefaultsToDetection);
+        TEST_METHOD(LegacyAutoErrorSettingsMigrate);
+        TEST_METHOD(AutoErrorHandlingPolicyRestrictsAgentMode);
 
         TEST_CLASS_CLEANUP(ClassCleanup)
         {
@@ -124,11 +125,13 @@ namespace SettingsModelUnitTests
 
         static std::shared_ptr<AgentPolicy::PolicySnapshot> MakePolicy(
             std::optional<std::set<std::wstring, AgentPolicy::CaseInsensitiveLess>> allowedAgents = std::nullopt,
-            AgentPolicy::PolicyState customAgents = AgentPolicy::PolicyState::NotConfigured)
+            AgentPolicy::PolicyState customAgents = AgentPolicy::PolicyState::NotConfigured,
+            AgentPolicy::PolicyState autoFix = AgentPolicy::PolicyState::NotConfigured)
         {
             auto snap = std::make_shared<AgentPolicy::PolicySnapshot>();
             snap->allowedAgents = std::move(allowedAgents);
             snap->customAgents = customAgents;
+            snap->autoFix = autoFix;
             return snap;
         }
 
@@ -619,31 +622,94 @@ namespace SettingsModelUnitTests
         VERIFY_IS_FALSE(defaulted->GlobalSettings().ShowTokenUsageAndCost());
     }
 
-    void CustomAgentAndPolicyTests::AutoErrorSettingsRoundtrip()
+    void CustomAgentAndPolicyTests::AutoErrorHandlingRoundtripsAndDefaultsToDetection()
     {
-        const auto settings = MakeSettings(R"("autoErrorDetectionEnabled": true, "autoFixEnabled": true)");
-        VERIFY_IS_TRUE(settings->GlobalSettings().AutoErrorDetectionEnabled());
-        VERIFY_IS_TRUE(settings->GlobalSettings().AutoFixEnabled());
-
-        const auto off = MakeSettings(R"("autoErrorDetectionEnabled": false, "autoFixEnabled": false)");
+        const auto off = MakeSettings(R"("autoErrorHandling": "off")");
+        VERIFY_ARE_EQUAL(AutoErrorHandling::Off, off->GlobalSettings().AutoErrorHandling());
         VERIFY_IS_FALSE(off->GlobalSettings().AutoErrorDetectionEnabled());
         VERIFY_IS_FALSE(off->GlobalSettings().AutoFixEnabled());
+
+        const auto detect = MakeSettings(R"("autoErrorHandling": "detectErrorsAutomatically")");
+        VERIFY_ARE_EQUAL(AutoErrorHandling::DetectErrorsAutomatically, detect->GlobalSettings().AutoErrorHandling());
+        VERIFY_IS_TRUE(detect->GlobalSettings().AutoErrorDetectionEnabled());
+        VERIFY_IS_FALSE(detect->GlobalSettings().AutoFixEnabled());
+
+        const auto send = MakeSettings(R"("autoErrorHandling": "detectErrorsAndSendToAgentForFixesAutomatically")");
+        VERIFY_ARE_EQUAL(AutoErrorHandling::DetectErrorsAndSendToAgentForFixesAutomatically, send->GlobalSettings().AutoErrorHandling());
+        VERIFY_IS_TRUE(send->GlobalSettings().AutoErrorDetectionEnabled());
+        VERIFY_IS_TRUE(send->GlobalSettings().AutoFixEnabled());
+
+        const auto defaulted = MakeSettings({});
+        VERIFY_ARE_EQUAL(AutoErrorHandling::DetectErrorsAutomatically, defaulted->GlobalSettings().AutoErrorHandling());
+
+        auto projected = winrt::make_self<implementation::GlobalAppSettings>();
+        projected->AutoErrorHandling(AutoErrorHandling::Off);
+        VERIFY_IS_FALSE(projected->AutoErrorDetectionEnabled());
+        VERIFY_IS_FALSE(projected->AutoFixEnabled());
+        projected->AutoFixEnabled(true);
+        VERIFY_ARE_EQUAL(AutoErrorHandling::DetectErrorsAndSendToAgentForFixesAutomatically, projected->AutoErrorHandling());
+        projected->AutoErrorDetectionEnabled(false);
+        VERIFY_ARE_EQUAL(AutoErrorHandling::Off, projected->AutoErrorHandling());
+        projected->AutoErrorDetectionEnabled(true);
+        VERIFY_ARE_EQUAL(AutoErrorHandling::DetectErrorsAutomatically, projected->AutoErrorHandling());
+        const auto projectedJson = projected->ToJson();
+        VERIFY_ARE_EQUAL(std::string{ "detectErrorsAutomatically" }, projectedJson["autoErrorHandling"].asString());
+        VERIFY_IS_FALSE(projectedJson.isMember("autoErrorDetectionEnabled"));
+        VERIFY_IS_FALSE(projectedJson.isMember("autoFixEnabled"));
     }
 
-    void CustomAgentAndPolicyTests::EffectiveAutoFixFalseWhenDetectionOff()
+    void CustomAgentAndPolicyTests::LegacyAutoErrorSettingsMigrate()
     {
-        // Auto-suggest depends on detection: even with autoFixEnabled=true, the
-        // effective value must be false when detection is off, so failures with
-        // nothing to detect never reach the agent.
-        const auto detectionOff = MakeSettings(
-            R"("autoErrorDetectionEnabled": false, "autoFixEnabled": true)");
-        SetPolicy(MakePolicy()); // autoFix NotConfigured → allowed
-        VERIFY_IS_FALSE(detectionOff->GlobalSettings().EffectiveAutoFixEnabled());
+        const auto off = MakeSettings(R"("autoErrorDetectionEnabled": false, "autoFixEnabled": true)");
+        VERIFY_ARE_EQUAL(AutoErrorHandling::Off, off->GlobalSettings().AutoErrorHandling());
+        VERIFY_IS_TRUE(winrt::get_self<implementation::GlobalAppSettings>(off->GlobalSettings())->FixupsAppliedDuringLoad());
 
-        // Both on (and policy allows) → effective true.
-        const auto bothOn = MakeSettings(
-            R"("autoErrorDetectionEnabled": true, "autoFixEnabled": true)");
-        SetPolicy(MakePolicy());
-        VERIFY_IS_TRUE(bothOn->GlobalSettings().EffectiveAutoFixEnabled());
+        const auto detect = MakeSettings(R"("autoErrorDetectionEnabled": true, "autoFixEnabled": false)");
+        VERIFY_ARE_EQUAL(AutoErrorHandling::DetectErrorsAutomatically, detect->GlobalSettings().AutoErrorHandling());
+
+        const auto send = MakeSettings(R"("autoErrorDetectionEnabled": true, "autoFixEnabled": true)");
+        VERIFY_ARE_EQUAL(AutoErrorHandling::DetectErrorsAndSendToAgentForFixesAutomatically, send->GlobalSettings().AutoErrorHandling());
+
+        const auto detectionOnlyKey = MakeSettings(R"("autoErrorDetectionEnabled": false)");
+        VERIFY_ARE_EQUAL(AutoErrorHandling::Off, detectionOnlyKey->GlobalSettings().AutoErrorHandling());
+
+        const auto fixOnlyKey = MakeSettings(R"("autoFixEnabled": true)");
+        VERIFY_ARE_EQUAL(AutoErrorHandling::DetectErrorsAndSendToAgentForFixesAutomatically, fixOnlyKey->GlobalSettings().AutoErrorHandling());
+
+        const auto newKeyWins = MakeSettings(
+            R"("autoErrorHandling": "off", "autoErrorDetectionEnabled": true, "autoFixEnabled": true)");
+        VERIFY_ARE_EQUAL(AutoErrorHandling::Off, newKeyWins->GlobalSettings().AutoErrorHandling());
+
+        auto layered = winrt::make_self<implementation::GlobalAppSettings>();
+        layered->LayerJson(VerifyParseSucceeded(R"({ "autoErrorHandling": "off" })"), OriginTag::None);
+        layered->LayerJson(VerifyParseSucceeded(R"({ "autoErrorDetectionEnabled": true })"), OriginTag::None);
+        VERIFY_ARE_EQUAL(AutoErrorHandling::DetectErrorsAutomatically, layered->AutoErrorHandling());
+
+        layered = winrt::make_self<implementation::GlobalAppSettings>();
+        layered->LayerJson(VerifyParseSucceeded(R"({ "autoFixEnabled": true })"), OriginTag::None);
+        layered->LayerJson(VerifyParseSucceeded(R"({ "autoErrorDetectionEnabled": true })"), OriginTag::None);
+        VERIFY_ARE_EQUAL(AutoErrorHandling::DetectErrorsAndSendToAgentForFixesAutomatically, layered->AutoErrorHandling());
+
+        const auto serialized = send->ToJson();
+        VERIFY_ARE_EQUAL(std::string{ "detectErrorsAndSendToAgentForFixesAutomatically" }, serialized["autoErrorHandling"].asString());
+        VERIFY_IS_FALSE(serialized.isMember("autoErrorDetectionEnabled"));
+        VERIFY_IS_FALSE(serialized.isMember("autoFixEnabled"));
+        VERIFY_IS_TRUE(send->GlobalSettings().AutoErrorDetectionEnabled());
+        VERIFY_IS_TRUE(send->GlobalSettings().AutoFixEnabled());
+    }
+
+    void CustomAgentAndPolicyTests::AutoErrorHandlingPolicyRestrictsAgentMode()
+    {
+        const auto settings = MakeSettings(
+            R"("autoErrorHandling": "detectErrorsAndSendToAgentForFixesAutomatically")");
+        SetPolicy(MakePolicy(
+            std::nullopt,
+            AgentPolicy::PolicyState::NotConfigured,
+            AgentPolicy::PolicyState::Blocked));
+
+        VERIFY_ARE_EQUAL(
+            AutoErrorHandling::DetectErrorsAutomatically,
+            settings->GlobalSettings().EffectiveAutoErrorHandling());
+        VERIFY_IS_TRUE(settings->GlobalSettings().IsAutoErrorHandlingPolicyRestricted());
     }
 }
