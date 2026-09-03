@@ -41,6 +41,7 @@ windows-sys = { version = "0.61", features = [
     "Win32_UI_Shell",
     "Win32_UI_WindowsAndMessaging",
 ] }
+
 # Image decode/encode for clipboard-paste (Alt+V). Minimal feature set: decode
 # the clipboard DIB (BMP) and re-encode to PNG for ACP `ContentBlock::Image`.
 image = { version = "0.25", default-features = false, features = ["bmp", "png"] }
@@ -66,3 +67,6 @@ strsim = "0.11"
 # direct dep does not change the resolved graph; only the `parsing` feature
 # is added on top of what those crates already enable.
 time = { version = "0.3", features = ["parsing"] }
+
+[dev-dependencies]
+tokio = { version = "1", features = ["test-util"] }

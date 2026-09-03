@@ -2156,6 +2156,101 @@ async fn new_session_timeout_is_enforced_by_master_forwarder() {
         .await;
 }
 
+#[test]
+fn load_session_cwd_conversion_is_single_attempt_and_namespace_aware() {
+    use crate::protocol::acp::cwd_format::{CwdTarget, PathFormat};
+
+    assert_eq!(
+        convert_cwd_for_single_attempt(
+            Path::new(r"C:\repo"),
+            CwdTarget::Explicit(PathFormat::Posix),
+        ),
+        PathBuf::from("/mnt/c/repo")
+    );
+    assert_eq!(
+        convert_cwd_for_single_attempt(
+            Path::new("/mnt/c/repo"),
+            CwdTarget::Detected(PathFormat::Windows),
+        ),
+        PathBuf::from(r"C:\repo")
+    );
+    assert_eq!(
+        convert_cwd_for_single_attempt(Path::new(r"C:\repo"), CwdTarget::Unknown),
+        PathBuf::from(r"C:\repo")
+    );
+    assert_eq!(
+        convert_cwd_for_single_attempt(
+            Path::new(r"\\wsl.localhost\Ubuntu\home\me\repo"),
+            CwdTarget::ExplicitWsl("Ubuntu".to_string()),
+        ),
+        PathBuf::from("/home/me/repo")
+    );
+    assert_eq!(
+        convert_cwd_for_single_attempt(
+            Path::new("//server/share"),
+            CwdTarget::Explicit(PathFormat::Posix),
+        ),
+        PathBuf::from("//server/share")
+    );
+    assert_eq!(
+        convert_cwd_for_single_attempt(
+            Path::new("//var/log"),
+            CwdTarget::Detected(PathFormat::Posix),
+        ),
+        PathBuf::from("//var/log")
+    );
+    assert_eq!(
+        convert_cwd_for_single_attempt(
+            Path::new("//wsl$/Ubuntu/home/me/repo"),
+            CwdTarget::ExplicitWsl("Ubuntu".to_string()),
+        ),
+        PathBuf::from("/home/me/repo")
+    );
+    assert_eq!(
+        convert_cwd_for_single_attempt(
+            Path::new("///var/log"),
+            CwdTarget::Explicit(PathFormat::Posix),
+        ),
+        PathBuf::from("///var/log")
+    );
+    for cwd in ["C:", r"C:relative"] {
+        assert_eq!(
+            convert_cwd_for_single_attempt(Path::new(cwd), CwdTarget::Explicit(PathFormat::Posix),),
+            PathBuf::from("/tmp")
+        );
+        assert_eq!(
+            convert_cwd_for_single_attempt(
+                Path::new(cwd),
+                CwdTarget::ExplicitWsl("Ubuntu".to_string()),
+            ),
+            PathBuf::from("/tmp")
+        );
+        assert_eq!(
+            convert_cwd_for_single_attempt(Path::new(cwd), CwdTarget::Unknown),
+            PathBuf::from(cwd)
+        );
+    }
+}
+
+#[tokio::test(start_paused = true)]
+async fn cwd_target_resolution_respects_the_operation_deadline() {
+    use crate::protocol::acp::cwd_format::CwdTarget;
+
+    let started = tokio::time::Instant::now();
+    let deadline = started + std::time::Duration::from_millis(250);
+    let result = resolve_cwd_target_until(deadline, async {
+        tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+        CwdTarget::Unknown
+    })
+    .await;
+
+    assert!(result.is_err());
+    assert_eq!(
+        tokio::time::Instant::now().duration_since(started),
+        std::time::Duration::from_millis(250)
+    );
+}
+
 #[tokio::test]
 async fn failed_pending_session_cleanup_retires_close_marked_recovery_state() {
     let state = make_state();
