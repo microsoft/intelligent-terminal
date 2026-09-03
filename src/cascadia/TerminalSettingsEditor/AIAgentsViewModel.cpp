@@ -257,9 +257,9 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
 
         std::vector<Editor::EnumEntry> autoErrorHandlingEntries;
         const std::pair<winrt::hstring, Model::AutoErrorHandling> autoErrorHandlingOptions[] = {
-            { RS_(L"AIAgents_AutoErrorHandling_Off"), Model::AutoErrorHandling::Off },
             { RS_(L"AIAgents_AutoErrorHandling_DetectErrorsAutomatically"), Model::AutoErrorHandling::DetectErrorsAutomatically },
             { RS_(L"AIAgents_AutoErrorHandling_DetectErrorsAndSendToAgentForFixesAutomatically"), Model::AutoErrorHandling::DetectErrorsAndSendToAgentForFixesAutomatically },
+            { RS_(L"AIAgents_AutoErrorHandling_Off"), Model::AutoErrorHandling::Off },
         };
         for (const auto& [displayName, value] : autoErrorHandlingOptions)
         {

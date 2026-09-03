@@ -263,9 +263,9 @@ namespace winrt::TerminalApp::implementation
         auto handlingItems = AutoErrorHandlingComboBox().Items();
         handlingItems.Clear();
         const std::pair<winrt::hstring, Model::AutoErrorHandling> handlingOptions[] = {
-            { RS_(L"FreOverlay_AutoErrorHandling_Off"), Model::AutoErrorHandling::Off },
             { RS_(L"FreOverlay_AutoErrorHandling_DetectErrorsAutomatically"), Model::AutoErrorHandling::DetectErrorsAutomatically },
             { RS_(L"FreOverlay_AutoErrorHandling_DetectErrorsAndSendToAgentForFixesAutomatically"), Model::AutoErrorHandling::DetectErrorsAndSendToAgentForFixesAutomatically },
+            { RS_(L"FreOverlay_AutoErrorHandling_Off"), Model::AutoErrorHandling::Off },
         };
         for (const auto& [label, value] : handlingOptions)
         {
