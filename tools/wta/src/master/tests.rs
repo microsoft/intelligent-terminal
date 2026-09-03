@@ -1195,7 +1195,6 @@ fn make_state_with_retirement_pending_timeout(
         pending_usage: Mutex::new(HashMap::new()),
         usage_generation: watch::channel(0u64).0,
         registry: crate::session_registry::InMemoryRegistry::shared(),
-        seen_broadcast_ids: Mutex::new(SeenBroadcastIds::default()),
         helper_ext_subscribers: Mutex::new(HashMap::new()),
         wt: None,
         agents: Mutex::new(HashMap::new()),
@@ -9115,7 +9114,6 @@ fn make_state_with_wt(wt: Arc<dyn crate::shell::wt_channel::WtChannel>) -> Arc<M
         pending_usage: Mutex::new(HashMap::new()),
         usage_generation: watch::channel(0u64).0,
         registry: crate::session_registry::InMemoryRegistry::shared(),
-        seen_broadcast_ids: Mutex::new(SeenBroadcastIds::default()),
         helper_ext_subscribers: Mutex::new(HashMap::new()),
         wt: Some(wt),
         agents: Mutex::new(HashMap::new()),
@@ -9419,7 +9417,7 @@ async fn session_hook_broadcasts_sessions_changed_after_valid_payload() {
         cwd: std::path::PathBuf::from("/tmp"),
         title: String::new(),
     };
-    let response = handle_session_hook(&state, event, false, None)
+    let response = handle_session_hook(&state, event, false)
         .await
         .expect("valid session_hook accepted");
     assert_eq!(response.0.get(), r#"{"applied":true}"#);
@@ -10179,7 +10177,7 @@ async fn session_hook_marks_session_hook_owned_then_watcher_is_ignored() {
         cwd: std::path::PathBuf::from("C:\\repo"),
         title: String::new(),
     };
-    handle_session_hook(&state, event, false, None)
+    handle_session_hook(&state, event, false)
         .await
         .expect("valid session_hook accepted");
 
@@ -10206,173 +10204,6 @@ async fn session_hook_marks_session_hook_owned_then_watcher_is_ignored() {
     );
 }
 
-/// The COM `agent_event` broadcast reaches every subscribed helper and each one
-/// forwards it, so master used to apply one real hook N times — and re-broadcast
-/// `sessions/changed` for each, an N^2 push storm. Observed live with three
-/// helpers: one `SessionStarted` produced three `received helper session hook`
-/// lines and nine `sessions/changed` writes.
-///
-/// The first copy wins; later copies carrying the same `broadcast_id` must
-/// short-circuit before the reducer.
-#[tokio::test]
-async fn replayed_broadcast_id_is_applied_once_across_sibling_helpers() {
-    let state = make_state();
-    let event = || crate::agent_sessions::SessionEvent::SessionStarted {
-        key: "sid-fanout".to_string(),
-        cli_source: crate::agent_sessions::CliSource::Copilot,
-        pane_session_id: "pane-fanout".to_string(),
-        cwd: std::path::PathBuf::from("C:\\repo"),
-        title: String::new(),
-    };
-
-    let first = handle_session_hook(&state, event(), false, Some("bcast-1#0"))
-        .await
-        .expect("first copy accepted");
-    assert_eq!(
-        first.0.get(),
-        r#"{"applied":true}"#,
-        "the first copy must reach the reducer"
-    );
-
-    for _ in 0..2 {
-        let replay = handle_session_hook(&state, event(), false, Some("bcast-1#0"))
-            .await
-            .expect("replayed copy is still a valid request");
-        assert_eq!(
-            replay.0.get(),
-            r#"{"applied":false}"#,
-            "a sibling helper's replay must not re-apply the event"
-        );
-    }
-}
-
-/// One `agent_event` can expand into several `SessionEvent`s (a synthetic start
-/// plus the real one; a user-input `ToolStarting` plus its `Notification`). The
-/// helper suffixes each with its index, so siblings must survive — deduping
-/// them against each other would silently drop half of every compound event.
-#[tokio::test]
-async fn sibling_events_from_one_broadcast_are_not_deduped_against_each_other() {
-    let state = make_state();
-    let started = crate::agent_sessions::SessionEvent::SessionStarted {
-        key: "sid-compound".to_string(),
-        cli_source: crate::agent_sessions::CliSource::Copilot,
-        pane_session_id: "pane-compound".to_string(),
-        cwd: std::path::PathBuf::from("C:\\repo"),
-        title: String::new(),
-    };
-    let tool = crate::agent_sessions::SessionEvent::ToolStarting {
-        key: "sid-compound".to_string(),
-        tool_name: "ask_user".to_string(),
-    };
-
-    handle_session_hook(&state, started, false, Some("bcast-2#0"))
-        .await
-        .expect("synthetic start accepted");
-    handle_session_hook(&state, tool, false, Some("bcast-2#1"))
-        .await
-        .expect("sibling event accepted");
-
-    let row = state
-        .registry
-        .lookup(&acp::schema::v1::SessionId::new("sid-compound".to_string()))
-        .await
-        .expect("row exists");
-    assert_eq!(
-        row.status,
-        Some(crate::agent_sessions::AgentStatus::Working),
-        "the sibling ToolStarting must still apply, not be swallowed as a replay"
-    );
-}
-
-/// Absent id — a `wtcli` predating the field, born-bound registrations, resume
-/// bookkeeping — must keep the pre-deduplication behavior of applying every
-/// copy. Silently dropping these would lose session state outright.
-#[tokio::test]
-async fn hooks_without_a_broadcast_id_are_never_deduped() {
-    let state = make_state();
-    for _ in 0..3 {
-        let response = handle_session_hook(
-            &state,
-            crate::agent_sessions::SessionEvent::SessionStarted {
-                key: "sid-no-id".to_string(),
-                cli_source: crate::agent_sessions::CliSource::Copilot,
-                pane_session_id: "pane-no-id".to_string(),
-                cwd: std::path::PathBuf::from("C:\\repo"),
-                title: String::new(),
-            },
-            false,
-            None,
-        )
-        .await
-        .expect("id-less hook accepted");
-        assert_eq!(
-            response.0.get(),
-            r#"{"applied":true}"#,
-            "without an id every copy must still be applied"
-        );
-    }
-}
-
-/// The seen-set is bounded by insertion order, so a long-lived master cannot
-/// grow without limit. Eviction is FIFO: the oldest id is forgotten first, and
-/// only ids still inside the window suppress a replay.
-#[test]
-fn seen_broadcast_ids_evicts_oldest_beyond_capacity() {
-    let mut seen = SeenBroadcastIds::default();
-    assert!(seen.insert_new("first"), "a fresh id is new");
-    assert!(!seen.insert_new("first"), "an immediate repeat is a replay");
-
-    for i in 0..SeenBroadcastIds::CAPACITY {
-        seen.insert_new(&format!("filler-{i}"));
-    }
-
-    assert!(
-        seen.insert_new("first"),
-        "the oldest id must be evicted once capacity is exceeded"
-    );
-    assert_eq!(
-        seen.order.len(),
-        seen.seen.len(),
-        "the ordering queue and the lookup set must stay in step"
-    );
-    assert!(
-        seen.order.len() <= SeenBroadcastIds::CAPACITY,
-        "the window must stay bounded"
-    );
-}
-
-/// An id longer than the per-entry cap must not enter the window, or one
-/// sender could inflate a structure whose whole purpose is to stay bounded.
-/// It degrades to "apply every copy" — the behavior before deduplication
-/// existed — rather than dropping events the window cannot key.
-#[test]
-fn seen_broadcast_ids_refuses_to_store_an_overlong_id() {
-    let mut seen = SeenBroadcastIds::default();
-    let overlong = "x".repeat(SeenBroadcastIds::MAX_ID_LEN + 1);
-
-    assert!(seen.insert_new(&overlong), "an overlong id must be applied");
-    assert!(
-        seen.insert_new(&overlong),
-        "and applied again — it is never treated as a replay, so no event is lost"
-    );
-    assert!(
-        seen.seen.is_empty() && seen.order.is_empty(),
-        "nothing that large may be retained, or CAPACITY stops bounding memory"
-    );
-
-    // The boundary itself is still stored, so the cap does not silently
-    // disable dedupe for ids of a legitimate length.
-    let at_limit = "y".repeat(SeenBroadcastIds::MAX_ID_LEN);
-    assert!(
-        seen.insert_new(&at_limit),
-        "an id at the cap is still tracked"
-    );
-    assert!(
-        !seen.insert_new(&at_limit),
-        "and its replay is still suppressed"
-    );
-}
-
 #[tokio::test]
 async fn session_born_bound_marks_born_bound_not_hook_owned() {
     // #266 born-bound (WTA-launched delegate/resume) is binding-only: it must
@@ -10386,7 +10217,7 @@ async fn session_born_bound_marks_born_bound_not_hook_owned() {
         cwd: std::path::PathBuf::from("C:\\repo"),
         title: String::new(),
     };
-    handle_session_hook(&state, event, true, None)
+    handle_session_hook(&state, event, true)
         .await
         .expect("valid born-bound accepted");
 
@@ -10503,7 +10334,7 @@ async fn real_hook_takes_over_born_bound_session() {
         cwd: std::path::PathBuf::from("C:\\repo"),
         title: String::new(),
     };
-    handle_session_hook(&state, bb, true, None)
+    handle_session_hook(&state, bb, true)
         .await
         .expect("born-bound accepted");
     assert!(state.born_bound.lock().await.contains(&sid));
@@ -10513,7 +10344,7 @@ async fn real_hook_takes_over_born_bound_session() {
         key: "bb-takeover".to_string(),
         tool_name: "Bash".to_string(),
     };
-    handle_session_hook(&state, hook, false, None)
+    handle_session_hook(&state, hook, false)
         .await
         .expect("real hook accepted");
 
@@ -10539,7 +10370,7 @@ async fn resume_binding_events_are_born_bound_not_hook_owned() {
     let dispatched = crate::agent_sessions::SessionEvent::ResumeDispatched {
         key: "sid-resume".to_string(),
     };
-    handle_session_hook(&state, dispatched, false, None)
+    handle_session_hook(&state, dispatched, false)
         .await
         .expect("resume dispatched accepted");
     assert!(
@@ -10555,7 +10386,7 @@ async fn resume_binding_events_are_born_bound_not_hook_owned() {
         key: "sid-resume".to_string(),
         pane_session_id: "pane-resume".to_string(),
     };
-    handle_session_hook(&state, assigned, false, None)
+    handle_session_hook(&state, assigned, false)
         .await
         .expect("resume pane assigned accepted");
     assert!(
@@ -10584,7 +10415,7 @@ async fn resume_binding_events_clear_a_stale_hook_ownership_claim() {
         cwd: std::path::PathBuf::from("C:\\repo"),
         title: String::new(),
     };
-    handle_session_hook(&state, first_run, false, None)
+    handle_session_hook(&state, first_run, false)
         .await
         .expect("real hook accepted");
     assert!(state.hook_owned.lock().await.contains(&sid));
@@ -10592,7 +10423,7 @@ async fn resume_binding_events_clear_a_stale_hook_ownership_claim() {
     let dispatched = crate::agent_sessions::SessionEvent::ResumeDispatched {
         key: "sid-rerun".to_string(),
     };
-    handle_session_hook(&state, dispatched, false, None)
+    handle_session_hook(&state, dispatched, false)
         .await
         .expect("resume dispatched accepted");
 
@@ -10618,7 +10449,7 @@ async fn born_bound_delegate_clears_a_stale_hook_ownership_claim() {
         key: "sid-delegate".to_string(),
         tool_name: "Bash".to_string(),
     };
-    handle_session_hook(&state, earlier, false, None)
+    handle_session_hook(&state, earlier, false)
         .await
         .expect("real hook accepted");
     assert!(state.hook_owned.lock().await.contains(&sid));
@@ -10630,10 +10461,169 @@ async fn born_bound_delegate_clears_a_stale_hook_ownership_claim() {
         cwd: std::path::PathBuf::from("C:\\repo"),
         title: String::new(),
     };
-    handle_session_hook(&state, born, true, None)
+    handle_session_hook(&state, born, true)
         .await
         .expect("born-bound accepted");
 
     assert!(!state.hook_owned.lock().await.contains(&sid));
     assert!(state.born_bound.lock().await.contains(&sid));
+}
+
+/// The authoritative hook path is the master's own COM subscription, not a
+/// helper's pipe. One `agent_event` for an unseen session must create the row,
+/// apply the reported transition, and claim hook ownership in one pass.
+#[tokio::test]
+async fn master_com_agent_event_routes_directly_into_the_registry() {
+    let state = make_state();
+    let sid = acp::schema::v1::SessionId::new("direct-hook".to_string());
+
+    handle_master_wt_event(
+        &state,
+        serde_json::json!({
+            "method": "agent_event",
+            "params": {
+                "event": "agent.tool.starting",
+                "cli_source": "copilot",
+                "agent_session_id": "direct-hook",
+                "pane_id": "pane-direct",
+                "payload": {
+                    "cwd": "C:\\repo",
+                    "tool_name": "edit"
+                }
+            }
+        }),
+    )
+    .await;
+
+    let row = state.registry.lookup(&sid).await.expect("row created");
+    assert_eq!(
+        row.status,
+        Some(crate::agent_sessions::AgentStatus::Working)
+    );
+    assert_eq!(row.pane_session_id.as_deref(), Some("pane-direct"));
+    assert!(
+        state.hook_owned.lock().await.contains(&sid),
+        "a real COM hook must suppress the hookless watcher just like the old \
+         helper-forwarded path did"
+    );
+}
+
+/// A direct COM SessionStarted can beat the helper callback that reports the
+/// pane assigned by resume. The callback is then a reducer no-op; it must not
+/// downgrade the current hook-owned generation to born-bound and re-enable the
+/// watcher against live hook state.
+#[tokio::test]
+async fn late_resume_pane_assignment_preserves_direct_hook_ownership() {
+    let state = make_state();
+    let sid = acp::schema::v1::SessionId::new("direct-resume-race".to_string());
+
+    handle_master_wt_event(
+        &state,
+        serde_json::json!({
+            "method": "agent_event",
+            "params": {
+                "event": "agent.session.start",
+                "cli_source": "copilot",
+                "agent_session_id": "direct-resume-race",
+                "pane_id": "pane-resume-race",
+                "payload": { "cwd": "C:\\repo" }
+            }
+        }),
+    )
+    .await;
+    assert!(state.hook_owned.lock().await.contains(&sid));
+
+    let response = handle_session_hook(
+        &state,
+        crate::agent_sessions::SessionEvent::ResumePaneAssigned {
+            key: "direct-resume-race".to_string(),
+            pane_session_id: "pane-resume-race".to_string(),
+        },
+        false,
+    )
+    .await
+    .expect("late binding callback accepted");
+    assert_eq!(
+        response.0.get(),
+        r#"{"applied":false}"#,
+        "the callback is a no-op because the hook already bound this pane"
+    );
+    assert!(
+        state.hook_owned.lock().await.contains(&sid),
+        "a no-op binding callback must not erase current hook ownership"
+    );
+    assert!(
+        !state.born_bound.lock().await.contains(&sid),
+        "the no-op callback must not reclassify the current generation"
+    );
+}
+
+/// Regression for the cwd-basename ghost: a terminal hook for a session master
+/// has never seen must not invent a SessionStarted before applying the end.
+#[tokio::test]
+async fn master_com_terminal_hook_for_unknown_session_creates_no_row() {
+    let state = make_state();
+    let sid = acp::schema::v1::SessionId::new("direct-ghost".to_string());
+
+    handle_master_wt_event(
+        &state,
+        serde_json::json!({
+            "method": "agent_event",
+            "params": {
+                "event": "agent.session.end",
+                "cli_source": "copilot",
+                "agent_session_id": "direct-ghost",
+                "pane_id": "pane-ghost",
+                "payload": {
+                    "cwd": "C:\\Users\\dev",
+                    "reason": "user_exit"
+                }
+            }
+        }),
+    )
+    .await;
+
+    assert!(
+        state.registry.lookup(&sid).await.is_none(),
+        "a session that only ever reported its end must not materialize"
+    );
+    assert!(
+        !state.hook_owned.lock().await.contains(&sid),
+        "a no-op terminal event must not claim watcher ownership"
+    );
+}
+
+/// False-positive control for terminal-event suppression. `agent.error`
+/// describes a live but failing session; its pane-keyed reducer needs the
+/// synthetic start to establish the binding before ConnectionFailed lands.
+#[tokio::test]
+async fn master_com_agent_error_for_unknown_session_records_the_failure() {
+    let state = make_state();
+    let sid = acp::schema::v1::SessionId::new("direct-error".to_string());
+
+    handle_master_wt_event(
+        &state,
+        serde_json::json!({
+            "method": "agent_event",
+            "params": {
+                "event": "agent.error",
+                "cli_source": "copilot",
+                "agent_session_id": "direct-error",
+                "pane_id": "pane-error",
+                "payload": {
+                    "cwd": "C:\\repo",
+                    "error": "agent CLI exited 1"
+                }
+            }
+        }),
+    )
+    .await;
+
+    let row = state
+        .registry
+        .lookup(&sid)
+        .await
+        .expect("failure row created");
+    assert_eq!(row.status, Some(crate::agent_sessions::AgentStatus::Error));
+    assert_eq!(row.last_error.as_deref(), Some("agent CLI exited 1"));
 }

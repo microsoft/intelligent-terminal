@@ -602,7 +602,7 @@ fn copilot_sidekick_hook_session_is_ignored() {
         &mut reg,
         "11111111-1111-1111-1111-111111111111",
         &params,
-        |event, _| published.push(event),
+        |event| published.push(event),
     );
 
     assert!(
@@ -650,7 +650,7 @@ fn terminal_agent_event_for_unknown_session_does_not_fabricate_a_row() {
             &mut reg,
             "dd7141e2-a8d7-4766-b7ee-77c286cafe83",
             &params,
-            |ev, _| published.push(ev),
+            |ev| published.push(ev),
         );
 
         assert!(
@@ -688,9 +688,7 @@ fn agent_error_for_unknown_session_still_records_the_failure() {
     });
     let mut published = Vec::<SessionEvent>::new();
 
-    route_agent_event_to_registry_with_hook_sink(&mut reg, pane, &params, |ev, _| {
-        published.push(ev)
-    });
+    route_agent_event_to_registry_with_hook_sink(&mut reg, pane, &params, |ev| published.push(ev));
 
     let row = reg
         .get(&"failing-sid".to_string())
@@ -706,72 +704,6 @@ fn agent_error_for_unknown_session_still_records_the_failure() {
             .iter()
             .any(|ev| matches!(ev, SessionEvent::ConnectionFailed { .. })),
         "master must learn about the failure too"
-    );
-}
-
-/// The dedupe suffix must come from the emit site, not from a position in the
-/// emitted sequence.
-///
-/// `session_known` is per-helper local state: a helper that has already seen
-/// the session emits only the real event, while one that has not prepends a
-/// synthetic start. With positional indices the real event would be `#0` on the
-/// first helper and `#1` on the second, so master would dedupe nothing — and
-/// worse, the unaware helper's synthetic start (`#0`) would alias onto the
-/// aware helper's real event and suppress a genuine transition.
-#[test]
-fn hook_slots_are_stable_regardless_of_local_session_knowledge() {
-    use crate::agent_sessions::{AgentSessionRegistry, CliSource, SessionEvent};
-    use crate::app::HookSlot;
-    use std::path::PathBuf;
-
-    let pane = "11111111-1111-1111-1111-111111111111";
-    let params = json!({
-        "event": "agent.tool.starting",
-        "cli_source": "copilot",
-        "agent_session_id": "shared-sid",
-        "payload": { "cwd": r#"C:\repo"#, "tool_name": "edit" }
-    });
-
-    // Helper A has never seen the session: synthetic start, then the real event.
-    let mut unaware = AgentSessionRegistry::new();
-    let mut slots_unaware = Vec::new();
-    route_agent_event_to_registry_with_hook_sink(&mut unaware, pane, &params, |_, slot| {
-        slots_unaware.push(slot)
-    });
-
-    // Helper B already knows it, so it emits only the real event.
-    let mut aware = AgentSessionRegistry::new();
-    aware.apply(SessionEvent::SessionStarted {
-        key: "shared-sid".into(),
-        cli_source: CliSource::Copilot,
-        pane_session_id: pane.into(),
-        cwd: PathBuf::from(r#"C:\repo"#),
-        title: "known".into(),
-    });
-    aware.take_dirty();
-    let mut slots_aware = Vec::new();
-    route_agent_event_to_registry_with_hook_sink(&mut aware, pane, &params, |_, slot| {
-        slots_aware.push(slot)
-    });
-
-    assert_eq!(
-        slots_unaware
-            .iter()
-            .filter(|slot| **slot == HookSlot::Primary)
-            .count(),
-        1,
-        "exactly one primary event per route"
-    );
-    assert_eq!(
-        slots_aware,
-        vec![HookSlot::Primary],
-        "a helper that knows the session emits only the primary event"
-    );
-    assert_eq!(
-        slots_unaware,
-        vec![HookSlot::SyntheticStart, HookSlot::Primary],
-        "an unaware helper prepends a placeholder, but the real event keeps \
-         the same Primary slot — so both helpers produce an identical key for it"
     );
 }
 
@@ -797,7 +729,7 @@ fn non_terminal_agent_event_for_unknown_session_still_synthesizes_a_start() {
         &mut reg,
         "11111111-1111-1111-1111-111111111111",
         &params,
-        |ev, _| published.push(ev),
+        |ev| published.push(ev),
     );
 
     assert!(
@@ -852,7 +784,7 @@ fn sessionless_notification_falls_back_to_recent_live_cli_session() {
     });
 
     let mut published: Vec<SessionEvent> = Vec::new();
-    route_agent_event_to_registry_with_hook_sink(&mut reg, unrelated_pane, &params, |ev, _| {
+    route_agent_event_to_registry_with_hook_sink(&mut reg, unrelated_pane, &params, |ev| {
         published.push(ev)
     });
 
@@ -914,7 +846,7 @@ fn copilot_tool_finished_keeps_working_only_agent_stop_idles() {
             "agent_session_id": sid,
             "payload": { "tool_name": "read_file" }
         });
-        route_agent_event_to_registry_with_hook_sink(reg, pane, &params, |_, _| {});
+        route_agent_event_to_registry_with_hook_sink(reg, pane, &params, |_| {});
     };
 
     // User prompt → Working (turn start).
@@ -988,7 +920,7 @@ fn notification_with_real_session_id_skips_fallback() {
         "payload": { "message": "explicit" }
     });
     let unrelated_pane = "99999999-9999-9999-9999-999999999999";
-    route_agent_event_to_registry_with_hook_sink(&mut reg, unrelated_pane, &params, |_, _| {});
+    route_agent_event_to_registry_with_hook_sink(&mut reg, unrelated_pane, &params, |_| {});
 
     assert_eq!(
         reg.get(&"target".to_string()).unwrap().status,
@@ -1029,7 +961,7 @@ fn sessionless_notification_with_unknown_cli_does_not_fall_back() {
         &mut reg,
         "99999999-9999-9999-9999-999999999999",
         &params,
-        |_, _| {},
+        |_| {},
     );
 
     assert_ne!(
@@ -1075,7 +1007,7 @@ fn empty_pane_session_start_does_not_evict_a_bound_session() {
         "agent_session_id": "paneless-sid",
         "payload": { "cwd": "C:\\elsewhere" }
     });
-    route_agent_event_to_registry_with_hook_sink(&mut reg, "", &params, |_, _| {});
+    route_agent_event_to_registry_with_hook_sink(&mut reg, "", &params, |_| {});
 
     let bystander = reg
         .get(&"bystander-sid".to_string())
@@ -1114,7 +1046,7 @@ fn empty_pane_session_start_is_not_registered_in_active_by_pane() {
         "agent_session_id": "paneless-sid",
         "payload": {}
     });
-    route_agent_event_to_registry_with_hook_sink(&mut reg, "", &params, |_, _| {});
+    route_agent_event_to_registry_with_hook_sink(&mut reg, "", &params, |_| {});
     reg.take_dirty();
 
     // A PaneClosed for the empty "pane" must not resolve to the row.
@@ -1136,7 +1068,7 @@ fn empty_pane_session_start_is_not_registered_in_active_by_pane() {
         "agent_session_id": "paneless-sid-2",
         "payload": {}
     });
-    route_agent_event_to_registry_with_hook_sink(&mut reg, "", &params2, |_, _| {});
+    route_agent_event_to_registry_with_hook_sink(&mut reg, "", &params2, |_| {});
     assert_eq!(
         reg.get(&"paneless-sid".to_string()).unwrap().status,
         AgentStatus::Idle,
@@ -1174,7 +1106,7 @@ fn claude_idle_prompt_notification_leaves_turn_end_idle_intact() {
         "agent_session_id": "claude-sid",
         "payload": {}
     });
-    route_agent_event_to_registry_with_hook_sink(&mut reg, pane, &turn_end, |_, _| {});
+    route_agent_event_to_registry_with_hook_sink(&mut reg, pane, &turn_end, |_| {});
     assert_eq!(
         reg.get(&"claude-sid".to_string()).unwrap().status,
         AgentStatus::Idle,
@@ -1193,7 +1125,7 @@ fn claude_idle_prompt_notification_leaves_turn_end_idle_intact() {
         }
     });
     let mut published: Vec<SessionEvent> = Vec::new();
-    route_agent_event_to_registry_with_hook_sink(&mut reg, pane, &idle_prompt, |ev, _| {
+    route_agent_event_to_registry_with_hook_sink(&mut reg, pane, &idle_prompt, |ev| {
         published.push(ev)
     });
 
@@ -1243,7 +1175,7 @@ fn claude_permission_prompt_notification_still_sets_attention() {
         &mut reg,
         "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
         &params,
-        |_, _| {},
+        |_| {},
     );
 
     let s = reg.get(&"claude-sid".to_string()).unwrap();
@@ -1286,7 +1218,7 @@ fn notification_without_a_known_type_still_sets_attention() {
             &mut reg,
             "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
             &params,
-            |_, _| {},
+            |_| {},
         );
 
         assert_eq!(
@@ -1330,7 +1262,7 @@ fn idle_prompt_does_not_demote_a_pending_permission_prompt() {
         &mut reg,
         "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
         &idle_prompt,
-        |_, _| {},
+        |_| {},
     );
 
     let s = reg.get(&"claude-sid".to_string()).unwrap();
@@ -1408,8 +1340,16 @@ fn session_info_to_agent_session_unstamped_row_falls_to_historical() {
     ));
 }
 
+/// The helper must NOT forward agent CLI hooks to master.
+///
+/// Master subscribes to the same COM `agent_event` broadcast and routes it
+/// itself, so a helper that also forwarded would make master apply one real
+/// hook once per live helper — the N-times amplification this architecture
+/// removes. What the helper still owes is its own pane->session binding, which
+/// the OSC 133;A agent-exit heuristic and the autofix target logic read
+/// synchronously and cannot wait on a master round-trip for.
 #[test]
-fn helper_agent_event_queues_session_hook_while_updating_local_registry() {
+fn helper_agent_event_updates_local_binding_without_forwarding() {
     let mut app = test_app();
     let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
     app.set_session_hook_tx(tx);
@@ -1419,38 +1359,32 @@ fn helper_agent_event_queues_session_hook_while_updating_local_registry() {
         pane_id: "pane-hook".to_string(),
         tab_id: Some("tab-1".to_string()),
         params: json!({
-            "event": "agent.session.started",
+            "event": "agent.session.start",
             "cli_source": "copilot",
             "agent_session_id": "sid-hook",
-            "payload": {
-                "cwd": r#"C:\repo\hook"#,
-            }
+            "payload": { "cwd": r#"C:\repo\hook"# }
         }),
     });
 
-    let (queued, broadcast_id) = rx.try_recv().expect("session_hook event queued");
-    assert_eq!(
-        queued,
-        crate::agent_sessions::SessionEvent::SessionStarted {
-            key: "sid-hook".to_string(),
-            cli_source: crate::agent_sessions::CliSource::Copilot,
-            pane_session_id: "pane-hook".to_string(),
-            cwd: std::path::PathBuf::from(r#"C:\repo\hook"#),
-            title: "hook".to_string(),
-        }
-    );
-    assert_eq!(
-        broadcast_id, None,
-        "an agent_event without a broadcast_id must not be deduplicated"
-    );
     assert!(
         app.agent_sessions.has_session(&"sid-hook".to_string()),
-        "local registry mutation remains in place"
+        "the helper still needs the local row its pane-binding lookups read"
+    );
+    assert!(
+        app.agent_sessions.is_agent_pane("pane-hook"),
+        "the pane binding is the whole reason the helper routes this at all"
+    );
+    assert!(
+        rx.try_recv().is_err(),
+        "an agent CLI hook must never be forwarded to master; master routes the \
+         same broadcast itself, so forwarding would apply it once per helper"
     );
 }
 
+/// A hook for a session this helper has not seen still binds the pane locally,
+/// and still does not reach master.
 #[test]
-fn helper_agent_event_queues_synthetic_start_and_followup_hook() {
+fn helper_agent_event_for_unknown_session_binds_locally_only() {
     let mut app = test_app();
     let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
     app.set_session_hook_tx(tx);
@@ -1463,119 +1397,54 @@ fn helper_agent_event_queues_synthetic_start_and_followup_hook() {
             "event": "agent.tool.starting",
             "cli_source": "copilot",
             "agent_session_id": "sid-tool",
-            "payload": {
-                "cwd": r#"C:\repo\tool"#,
-                "tool_name": "edit"
-            }
+            "payload": { "cwd": r#"C:\repo\tool"#, "tool_name": "edit" }
         }),
     });
 
-    assert!(matches!(
-        rx.try_recv().expect("synthetic SessionStarted queued"),
-        (crate::agent_sessions::SessionEvent::SessionStarted { ref key, .. }, _) if key == "sid-tool"
-    ));
-    assert_eq!(
-        rx.try_recv().expect("ToolStarting queued"),
-        (
-            crate::agent_sessions::SessionEvent::ToolStarting {
-                key: "sid-tool".to_string(),
-                tool_name: "edit".to_string(),
-            },
-            None
-        )
+    assert!(
+        app.agent_sessions.has_session(&"sid-tool".to_string()),
+        "the synthetic start still materializes the local row"
     );
-}
-
-#[test]
-fn helper_agent_event_without_agent_session_id_does_not_publish_synthetic_to_master() {
-    // Regression for the user-reported duplicate session management row:
-    //   "system32  Error                          29 minutes ago"
-    //   "Agent pane session b832a8d3: system32  Active · copilot"
-    //
-    // When an agent_event arrives with no agent_session_id (broken
-    // hook, race, or hook from a workspace shell pane that doesn't
-    // own an ACP session), the helper used to synthesize a
-    // `pane:<guid>` placeholder, apply it locally, AND publish it to
-    // master. Master then surfaced the placeholder as a separate
-    // session management row alongside the real session, both pointing
-    // at the same
-    // underlying pane — hence the duplicate.
-    //
-    // Fix: keep the synthetic placeholder local for helper
-    // bookkeeping (is_agent_pane / OSC handler), but DO NOT publish
-    // events with `pane:<guid>` keys to master.
-    let mut app = test_app();
-    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
-    app.set_session_hook_tx(tx);
-
-    // Tool event with NO agent_session_id, NO existing pane binding
-    // → resolve_or_synthesize_key returns "pane:<guid>", synthetic
-    // placeholder created locally, but nothing published to master.
-    app.handle_event(AppEvent::WtEvent {
-        method: "agent_event".to_string(),
-        pane_id: "pane-orphan".to_string(),
-        tab_id: Some("tab-1".to_string()),
-        params: json!({
-            "event": "agent.tool.starting",
-            "cli_source": "copilot",
-            "payload": {
-                "cwd": r#"C:\repo\hook"#,
-                "tool_name": "edit"
-            }
-        }),
-    });
-
     assert!(
         rx.try_recv().is_err(),
-        "synthetic pane:<guid> events must NOT be published to master"
+        "neither the synthetic start nor the tool event may reach master"
     );
-    // Local registry still has the placeholder for helper-side
-    // is_agent_pane / OSC handler bookkeeping.
-    assert!(app.agent_sessions.is_agent_pane("pane-orphan"));
 }
 
+/// Pane lifecycle events the helper OBSERVES (rather than receives as a CLI
+/// hook) are still published: they originate here, not from the COM hook
+/// broadcast, so master has no other source for them.
 #[test]
-fn helper_agent_event_with_real_agent_session_id_still_publishes_to_master() {
-    // Defense against overcorrection: the synthetic-key gate above
-    // must not block legitimate events with real agent_session_ids.
+fn helper_still_publishes_events_it_originates() {
+    use crate::agent_sessions::{CliSource, SessionEvent};
+    use std::path::PathBuf;
     let mut app = test_app();
     let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
     app.set_session_hook_tx(tx);
+    let pane = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee";
 
-    app.handle_event(AppEvent::WtEvent {
-        method: "agent_event".to_string(),
-        pane_id: "pane-real".to_string(),
-        tab_id: Some("tab-1".to_string()),
-        params: json!({
-            "event": "agent.tool.starting",
-            "cli_source": "copilot",
-            "agent_session_id": "real-sid-deadbeef",
-            "payload": {
-                "cwd": r#"C:\repo\hook"#,
-                "tool_name": "edit"
-            }
-        }),
+    app.agent_sessions.apply(SessionEvent::SessionStarted {
+        key: "shell-sid".into(),
+        cli_source: CliSource::Gemini,
+        pane_session_id: pane.into(),
+        cwd: PathBuf::from("/work"),
+        title: "t".into(),
     });
 
-    // Should publish at least one event (likely synthetic
-    // SessionStarted + ToolStarting). Both must have the REAL key.
-    let mut count = 0;
-    while let Ok((evt, _broadcast_id)) = rx.try_recv() {
-        match evt {
-            crate::agent_sessions::SessionEvent::SessionStarted { key, .. } => {
-                assert_eq!(key, "real-sid-deadbeef", "real session id preserved");
-                count += 1;
-            }
-            crate::agent_sessions::SessionEvent::ToolStarting { key, .. } => {
-                assert_eq!(key, "real-sid-deadbeef", "real session id preserved");
-                count += 1;
-            }
-            other => panic!("unexpected event: {:?}", other),
-        }
-    }
+    app.handle_event(AppEvent::WtEvent {
+        method: "vt_sequence".to_string(),
+        pane_id: pane.to_string(),
+        tab_id: None,
+        params: json!({ "session_id": pane, "sequence": "osc:133;A" }),
+    });
+
     assert!(
-        count >= 1,
-        "at least one real-keyed event must reach master"
+        matches!(
+            rx.try_recv(),
+            Ok(SessionEvent::PaneClosed { ref pane_session_id }) if pane_session_id == pane
+        ),
+        "the OSC 133;A agent-exit inference is the helper's own observation, and \
+         master cannot derive it from the hook stream"
     );
 }
 

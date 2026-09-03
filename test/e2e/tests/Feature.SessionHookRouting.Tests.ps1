@@ -1,14 +1,14 @@
 #Requires -Modules @{ ModuleName='Pester'; ModuleVersion='5.0.0' }
-# Release checklist section 8 (C287, C288, C289) - how a single agent hook is routed
-# from `wtcli` through every connected helper into the master session registry.
+# Release checklist section 8 (C287, C288, C289) - how one agent hook is routed
+# from `wtcli` directly into the master session registry.
 #
 # Why these live at E2E rather than in a unit test: the WTA unit tests exercise one
 # helper's routing function and the master's handler in isolation, inside a single
-# process. The defects these cases guard only exist in the fan-out itself - one
-# `wtcli agent-hook` invocation becomes one COM broadcast that reaches EVERY
-# subscribed helper process, each of which independently forwards it to master over
-# its own named pipe. No unit test can span that boundary, and it is exactly where
-# master used to apply one real hook N times.
+# process. The defect only exists at the real process boundary: one
+# `wtcli agent-hook` invocation becomes one COM broadcast that reaches master AND
+# every helper. Master must route its own copy exactly once while helpers update
+# only their local pane bindings; if a helper forwards, the old N-times
+# amplification returns.
 #
 #   Invoke-Pester test/e2e/tests/Feature.SessionHookRouting.Tests.ps1 -Tag Feature
 
@@ -63,28 +63,6 @@ Describe 'Feature: session hook fan-out routing' -Tag 'Feature' -Skip:(-not $scr
             Invoke-RunCommand -App $script:app -SessionId $script:shellPane -Command $cmd -SettleSec $SettleSec | Out-Null
         }
 
-        function script:Get-HookApplyTally {
-            <#
-            .SYNOPSIS
-                Count master's replay rejections per fully-qualified broadcast id.
-            .DESCRIPTION
-                The master log is the earliest deterministic signal that separates
-                "applied once" from "applied N times": the reducer is idempotent, so
-                the resulting registry row looks identical either way, and the
-                sessions/changed fan-out is not externally observable. Returns a map
-                of '<guid>#<slot>' -> dropped count.
-            #>
-            param([Parameter(Mandatory)][string]$Text)
-            $tally = @{}
-            foreach ($line in ($Text -split "`r?`n")) {
-                if ($line -match 'dropped replay of a hook already applied.*broadcast_id=(?<id>[0-9A-Fa-f-]+#\w+)') {
-                    $id = $Matches['id']
-                    if (-not $tally.ContainsKey($id)) { $tally[$id] = 0 }
-                    $tally[$id]++
-                }
-            }
-            $tally
-        }
     }
 
     AfterAll { if ($script:app) { Stop-Terminal -App $script:app } }
@@ -94,12 +72,11 @@ Describe 'Feature: session hook fan-out routing' -Tag 'Feature' -Skip:(-not $scr
         # helper, so a single SessionStarted was applied 3x with 3 helpers and
         # master re-broadcast sessions/changed for each copy.
         #
-        # `agent.tool.starting` for a session master has never seen deliberately
-        # expands into TWO published events - a synthetic start plus the tool event.
-        # They must dedupe INDEPENDENTLY: an earlier attempt keyed the dedupe on the
-        # event's position in that expansion, which is per-helper state (a helper
-        # that already knows the session emits no synthetic start), so one helper's
-        # placeholder aliased onto another helper's real event and suppressed it.
+        # The fixed architecture has no replay protocol at all: master subscribes
+        # to the COM broadcast directly, while every helper updates only its local
+        # pane binding. `agent.tool.starting` for an unseen session deliberately
+        # expands into TWO master transitions - a synthetic start plus the tool
+        # event - and each must appear exactly once.
         $sid = "fanout-$([guid]::NewGuid())"
         Initialize-LogOffsets -App $script:app | Out-Null
 
@@ -109,32 +86,24 @@ Describe 'Feature: session hook fan-out routing' -Tag 'Feature' -Skip:(-not $scr
             tool_name  = 'edit'
         }
 
-        $tally = Wait-Until -TimeoutSec 30 -Because 'master to record its replay rejections for the broadcast' -Condition {
-            $text = Get-ItLogText -App $script:app -Name 'wta-main_master.log' -SinceStart
-            $t = script:Get-HookApplyTally -Text $text
-            if ($t.Keys.Count -ge 1) { $t }
+        $processed = Wait-Until -TimeoutSec 30 -Because 'master to process its COM copy of the hook' -Condition {
+            $master = Get-ItLogText -App $script:app -Name 'wta-main_master.log' -SinceStart
+            @($master -split "`r?`n" |
+                    Where-Object { $_ -match 'processed COM agent hook' -and $_ -match [regex]::Escape($sid) }) |
+                Select-Object -First 1
         }
 
-        # A fan-out actually happened. Without this the case would still pass on a
-        # single-helper machine even with the dedupe deleted.
-        ($tally.Values | Measure-Object -Sum).Sum |
-            Should -BeGreaterThan 0 -Because 'more than one helper must have forwarded the same broadcast, or this case proves nothing'
+        @($processed).Count |
+            Should -Be 1 -Because 'one raw COM hook must be processed exactly once no matter how many helpers are alive'
+        $processed | Should -Match 'transition_count=2' -Because 'the unseen-session start and the reported tool event must both land'
+        $processed | Should -Match 'changed=true' -Because 'the post-reducer breadcrumb must prove state actually changed'
+        $processed | Should -Match 'final_status=Some\(Working\)' -Because 'the final authoritative state must reflect the tool event, not stop after the synthetic start'
 
-        # Both expansion slots survived, each deduped on its own key. If the suffix
-        # were positional these would collide and one slot would be missing.
-        $slots = @($tally.Keys | ForEach-Object { ($_ -split '#')[1] } | Sort-Object -Unique)
-        $slots | Should -Contain 'start' -Because 'the synthetic start for an unseen session is published on its own slot'
-        $slots | Should -Contain 'primary' -Because 'the reported tool event keeps its own slot and must not be swallowed as a replay of the start'
-
-        # The load-bearing assertion: exactly one apply, whatever the helper count.
-        $text = Get-ItLogText -App $script:app -Name 'wta-main_master.log' -SinceStart
-        $applied = @([regex]::Matches($text, 'received helper session hook event=(?<kind>\w+) \{ key: "(?<key>[^"]+)"') |
-                Where-Object { $_.Groups['key'].Value -eq $sid } |
-                ForEach-Object { $_.Groups['kind'].Value })
-        @($applied | Where-Object { $_ -eq 'SessionStarted' }).Count |
-            Should -Be 1 -Because 'the synthetic start must be applied once no matter how many helpers forwarded it'
-        @($applied | Where-Object { $_ -eq 'ToolStarting' }).Count |
-            Should -Be 1 -Because 'the reported tool event must be applied once, and must not be lost to the start slot'
+        # A helper-forwarded synthetic start is a lifecycle event and therefore
+        # logged at info even in Release builds. Its absence is a stable,
+        # non-debug oracle that helpers kept the broadcast local.
+        $master = Get-ItLogText -App $script:app -Name 'wta-main_master.log' -SinceStart
+        $master | Should -Not -Match "received helper session hook.*$([regex]::Escape($sid))" -Because 'helpers maintain local bindings only; forwarding would recreate the N-times amplification'
     }
 
     It 'Terminal hook for an unknown session creates no row' {
@@ -155,9 +124,13 @@ Describe 'Feature: session hook fan-out routing' -Tag 'Feature' -Skip:(-not $scr
         # dropped command cannot masquerade as the fix working.
         $applied = Wait-Until -TimeoutSec 30 -Because 'master to process the terminal hook' -Condition {
             $text = Get-ItLogText -App $script:app -Name 'wta-main_master.log' -SinceStart
-            if ($text -match "SessionStopped \{ key: `"$([regex]::Escape($sid))`"") { $true }
+            @($text -split "`r?`n" |
+                    Where-Object { $_ -match 'processed COM agent hook' -and $_ -match [regex]::Escape($sid) }) |
+                Select-Object -First 1
         }
-        $applied | Should -BeTrue -Because 'the hook must actually reach master for the absence below to mean anything'
+        $applied | Should -Match 'transition_count=1' -Because 'only the real SessionStopped may be planned; a synthetic start would make this two'
+        $applied | Should -Match 'changed=false' -Because 'stopping an unseen session must be a reducer no-op'
+        $applied | Should -Match 'final_status=None' -Because 'no registry row may survive'
 
         # Oracle note: `wta sessions list` would be the more direct state oracle, but
         # it is identity-gated outside the package (see Feature.SessionList) and
@@ -165,8 +138,7 @@ Describe 'Feature: session hook fan-out routing' -Tag 'Feature' -Skip:(-not $scr
         # deterministic product-owned signal, and it is where the fabricated row was
         # first observable.
         $text = Get-ItLogText -App $script:app -Name 'wta-main_master.log' -SinceStart
-        $text | Should -Not -Match "SessionStarted \{ key: `"$([regex]::Escape($sid))`"" -Because 'a terminal event must never fabricate a start for a session WTA has not seen'
-        $text | Should -Not -Match 'title: "hook-routing-ghost"' -Because 'the cwd basename must not become a session title'
+        $text | Should -Not -Match "received helper session hook.*$([regex]::Escape($sid))" -Because 'the terminal hook must come from master COM routing, not a helper forward'
     }
 
     It 'Agent error for an unknown session still records the failure' {
@@ -188,11 +160,12 @@ Describe 'Feature: session hook fan-out routing' -Tag 'Feature' -Skip:(-not $scr
         # ConnectionFailed reducer has nothing to resolve and the failure is lost.
         $created = Wait-Until -TimeoutSec 30 -Because 'master to create the row the failure reducer needs' -Condition {
             $text = Get-ItLogText -App $script:app -Name 'wta-main_master.log' -SinceStart
-            if ($text -match "SessionStarted \{ key: `"$([regex]::Escape($sid))`"") { $true }
+            @($text -split "`r?`n" |
+                    Where-Object { $_ -match 'processed COM agent hook' -and $_ -match [regex]::Escape($sid) }) |
+                Select-Object -First 1
         }
-        $created | Should -BeTrue -Because 'a connection failure must stay visible even when master never saw the session start'
-
-        $text = Get-ItLogText -App $script:app -Name 'wta-main_master.log' -SinceStart
-        $text | Should -Match 'ConnectionFailed' -Because 'the failure itself must also reach master, not just the row it lands on'
+        $created | Should -Match 'transition_count=2' -Because 'the synthetic start and ConnectionFailed must both land'
+        $created | Should -Match 'changed=true' -Because 'the post-reducer breadcrumb must prove the failure changed state'
+        $created | Should -Match 'final_status=Some\(Error\)' -Because 'the authoritative row must finish in Error, not merely be created'
     }
 }

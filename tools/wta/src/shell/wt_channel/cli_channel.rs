@@ -10,6 +10,9 @@ use crate::app_contracts::DebugMessage;
 
 const WTCLI_ONE_SHOT_TIMEOUT: Duration = Duration::from_secs(30);
 const WTCLI_ONE_SHOT_REAP_TIMEOUT: Duration = Duration::from_secs(2);
+const WTCLI_LISTENER_RETRY_INITIAL: Duration = Duration::from_millis(250);
+const WTCLI_LISTENER_RETRY_MAX: Duration = Duration::from_secs(5);
+const WTCLI_LISTENER_READY_TIMEOUT: Duration = Duration::from_secs(15);
 
 #[derive(Debug)]
 enum WtcliOneShotError {
@@ -168,6 +171,11 @@ fn json_id_as_str(v: &serde_json::Value) -> Option<String> {
         serde_json::Value::Number(n) => Some(n.to_string()),
         _ => None,
     }
+}
+
+fn is_listener_ready_marker(value: &serde_json::Value, token: &str) -> bool {
+    value.get("_wtcli").and_then(|value| value.as_str()) == Some("listener_ready")
+        && value.get("token").and_then(|value| value.as_str()) == Some(token)
 }
 
 /// Resolve the full path to `wtcli.exe` at startup.
@@ -553,118 +561,222 @@ impl CliChannel {
 
     /// Start background event listener (wraps `wtcli listen --json`).
     /// wtcli inherits WT_COM_CLSID from this process's env.
-    pub async fn start_reader(self: &std::sync::Arc<Self>) {
+    ///
+    /// The protocol server can be temporarily unavailable while Terminal is
+    /// still starting. `wtcli listen` exits immediately in that window (for
+    /// example with `E_NOINTERFACE`); a one-shot reader then leaves master
+    /// permanently blind to hooks and pane lifecycle events. Keep restarting
+    /// until this channel is dropped or a replacement reader shuts us down.
+    pub async fn start_reader(self: &std::sync::Arc<Self>) -> bool {
         let wtcli = self.wtcli_path.clone();
         let weak = std::sync::Arc::downgrade(self);
         let (shutdown_tx, mut shutdown_rx) = oneshot::channel();
+        let (ready_tx, ready_rx) = oneshot::channel();
         if let Some(previous) = self.listener_shutdown.lock().unwrap().replace(shutdown_tx) {
             let _ = previous.send(());
         }
         tokio::spawn(async move {
             let parent_pid = std::process::id();
             let parent_pid_arg = parent_pid.to_string();
-            let mut command = tokio::process::Command::new(&wtcli);
-            command
-                .args(["--json", "listen", "--parent-pid", &parent_pid_arg])
-                .stdout(std::process::Stdio::piped())
-                .stderr(std::process::Stdio::null())
-                .kill_on_drop(true);
-            let mut child = match command.spawn() {
-                Ok(child) => child,
-                Err(err) => {
-                    tracing::warn!(
-                        target: "wtcli",
-                        path = %wtcli,
-                        %err,
-                        "WT protocol event listener spawn failed"
-                    );
+            let ready_token = format!("wta-{parent_pid}");
+            let mut ready_tx = Some(ready_tx);
+            let mut retry_delay = WTCLI_LISTENER_RETRY_INITIAL;
+            loop {
+                if weak.upgrade().is_none() {
                     return;
                 }
-            };
-            let listener_pid = child.id();
-            tracing::info!(
-                target: "wtcli",
-                ?listener_pid,
-                parent_pid,
-                "started WT protocol event listener"
-            );
 
-            let stdout = child.stdout.take().unwrap();
-            let mut reader = tokio::io::BufReader::new(stdout);
-            let mut line = String::new();
+                let mut command = tokio::process::Command::new(&wtcli);
+                command
+                    .args([
+                        "--json",
+                        "listen",
+                        "--parent-pid",
+                        &parent_pid_arg,
+                        "--ready-token",
+                        &ready_token,
+                    ])
+                    .stdout(std::process::Stdio::piped())
+                    .stderr(std::process::Stdio::piped())
+                    .kill_on_drop(true);
+                let mut child = match command.spawn() {
+                    Ok(child) => child,
+                    Err(error) => {
+                        tracing::warn!(
+                            target: "wtcli",
+                            path = %wtcli,
+                            %error,
+                            retry_ms = retry_delay.as_millis(),
+                            "WT protocol event listener spawn failed; retrying"
+                        );
+                        tokio::select! {
+                            _ = &mut shutdown_rx => return,
+                            _ = tokio::time::sleep(retry_delay) => {}
+                        }
+                        retry_delay = (retry_delay * 2).min(WTCLI_LISTENER_RETRY_MAX);
+                        continue;
+                    }
+                };
+                let listener_pid = child.id();
+                tracing::info!(
+                    target: "wtcli",
+                    ?listener_pid,
+                    parent_pid,
+                    "started WT protocol event listener"
+                );
 
-            let exit_reason = loop {
-                line.clear();
-                use tokio::io::AsyncBufReadExt;
-                tokio::select! {
-                    _ = &mut shutdown_rx => break "shutdown_requested",
-                    result = reader.read_line(&mut line) => {
-                        match result {
-                            Ok(0) => break "stdout_closed",
-                            Ok(_) => {
-                                let Some(this) = weak.upgrade() else {
-                                    break "channel_dropped";
-                                };
-                                if let Ok(val) = serde_json::from_str::<serde_json::Value>(line.trim()) {
-                                    let tx = this.event_tx.lock().unwrap();
-                                    if let Some(tx) = tx.as_ref() {
-                                        let _ = tx.send(val);
+                let stdout = child.stdout.take().expect("listener stdout was piped");
+                let stderr = child.stderr.take();
+                let stderr_task = tokio::spawn(async move { read_pipe(stderr).await });
+                let mut reader = tokio::io::BufReader::new(stdout);
+                let mut line = String::new();
+                let mut subscribed = false;
+
+                let exit_reason = loop {
+                    line.clear();
+                    use tokio::io::AsyncBufReadExt;
+                    tokio::select! {
+                        _ = &mut shutdown_rx => break "shutdown_requested",
+                        result = reader.read_line(&mut line) => {
+                            match result {
+                                Ok(0) => break "stdout_closed",
+                                Ok(_) => {
+                                    let Some(this) = weak.upgrade() else {
+                                        break "channel_dropped";
+                                    };
+                                    if let Ok(val) = serde_json::from_str::<serde_json::Value>(line.trim()) {
+                                        let is_ready =
+                                            is_listener_ready_marker(&val, &ready_token);
+                                        if is_ready {
+                                            subscribed = true;
+                                            retry_delay = WTCLI_LISTENER_RETRY_INITIAL;
+                                            if let Some(tx) = ready_tx.take() {
+                                                let _ = tx.send(());
+                                            }
+                                            continue;
+                                        }
+                                        let tx = this.event_tx.lock().unwrap();
+                                        if let Some(tx) = tx.as_ref() {
+                                            let _ = tx.send(val);
+                                        }
                                     }
                                 }
-                            }
-                            Err(error) => {
-                                tracing::warn!(
-                                    target: "wtcli",
-                                    pid = listener_pid,
-                                    %error,
-                                    "wtcli event listener stdout read failed"
-                                );
-                                break "stdout_error";
+                                Err(error) => {
+                                    tracing::warn!(
+                                        target: "wtcli",
+                                        pid = listener_pid,
+                                        %error,
+                                        "wtcli event listener stdout read failed"
+                                    );
+                                    break "stdout_error";
+                                }
                             }
                         }
                     }
-                }
-            };
+                };
 
-            drop(reader);
-            tracing::info!(
-                target: "wtcli",
-                pid = listener_pid,
-                reason = exit_reason,
-                "stopping wtcli event listener"
-            );
-            if let Err(error) = child.start_kill() {
-                tracing::debug!(
+                drop(reader);
+                tracing::info!(
                     target: "wtcli",
                     pid = listener_pid,
                     reason = exit_reason,
-                    %error,
-                    "wtcli event listener kill request was unnecessary or failed"
+                    "stopping wtcli event listener"
                 );
-            }
-            match child.wait().await {
-                Ok(status) => tracing::info!(
+                if let Err(error) = child.start_kill() {
+                    tracing::debug!(
+                        target: "wtcli",
+                        pid = listener_pid,
+                        reason = exit_reason,
+                        %error,
+                        "wtcli event listener kill request was unnecessary or failed"
+                    );
+                }
+                let status = child.wait().await;
+                let stderr = match stderr_task.await {
+                    Ok(Ok(bytes)) => String::from_utf8_lossy(&bytes).trim().to_string(),
+                    Ok(Err(error)) => {
+                        tracing::warn!(
+                            target: "wtcli",
+                            pid = listener_pid,
+                            %error,
+                            "wtcli event listener stderr read failed"
+                        );
+                        String::new()
+                    }
+                    Err(error) => {
+                        tracing::warn!(
+                            target: "wtcli",
+                            pid = listener_pid,
+                            %error,
+                            "wtcli event listener stderr task failed"
+                        );
+                        String::new()
+                    }
+                };
+                match status {
+                    Ok(status) => tracing::info!(
+                        target: "wtcli",
+                        pid = listener_pid,
+                        reason = exit_reason,
+                        %status,
+                        stderr,
+                        "wtcli event listener reaped"
+                    ),
+                    Err(error) => tracing::warn!(
+                        target: "wtcli",
+                        pid = listener_pid,
+                        reason = exit_reason,
+                        %error,
+                        stderr,
+                        "failed to reap wtcli event listener"
+                    ),
+                }
+
+                if matches!(exit_reason, "shutdown_requested" | "channel_dropped") {
+                    return;
+                }
+                if subscribed {
+                    retry_delay = WTCLI_LISTENER_RETRY_INITIAL;
+                    // The listener had a valid subscription and then died.
+                    // Re-spawn immediately: COM broadcasts are not replayed, so
+                    // an intentional backoff here would create a guaranteed
+                    // hook-loss window. Backoff is reserved for attempts that
+                    // never subscribed successfully.
+                    tracing::warn!(
+                        target: "wtcli",
+                        pid = listener_pid,
+                        reason = exit_reason,
+                        "subscribed WT protocol event listener exited; restarting immediately"
+                    );
+                    continue;
+                }
+                tracing::warn!(
                     target: "wtcli",
                     pid = listener_pid,
                     reason = exit_reason,
-                    %status,
-                    "wtcli event listener reaped"
-                ),
-                Err(error) => tracing::warn!(
-                    target: "wtcli",
-                    pid = listener_pid,
-                    reason = exit_reason,
-                    %error,
-                    "failed to reap wtcli event listener"
-                ),
+                    retry_ms = retry_delay.as_millis(),
+                    "WT protocol event listener exited; retrying"
+                );
+                tokio::select! {
+                    _ = &mut shutdown_rx => return,
+                    _ = tokio::time::sleep(retry_delay) => {}
+                }
+                retry_delay = (retry_delay * 2).min(WTCLI_LISTENER_RETRY_MAX);
             }
-            tracing::info!(
-                target: "wtcli",
-                listener_pid = ?child.id(),
-                parent_pid,
-                "WT protocol event listener ended"
-            );
         });
+
+        match tokio::time::timeout(WTCLI_LISTENER_READY_TIMEOUT, ready_rx).await {
+            Ok(Ok(())) => true,
+            Ok(Err(_)) => false,
+            Err(_) => {
+                tracing::warn!(
+                    target: "wtcli",
+                    timeout_ms = WTCLI_LISTENER_READY_TIMEOUT.as_millis(),
+                    "WT protocol event listener did not report a successful subscription"
+                );
+                false
+            }
+        }
     }
 
     /// Run a wtcli subcommand and return the parsed JSON output.
@@ -914,6 +1026,20 @@ impl WtChannel for CliChannel {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn listener_readiness_marker_requires_the_matching_token() {
+        let marker = serde_json::json!({
+            "_wtcli": "listener_ready",
+            "token": "wta-42"
+        });
+        assert!(is_listener_ready_marker(&marker, "wta-42"));
+        assert!(!is_listener_ready_marker(&marker, "wta-43"));
+        assert!(!is_listener_ready_marker(
+            &serde_json::json!({"method": "agent_event", "token": "wta-42"}),
+            "wta-42"
+        ));
+    }
 
     #[tokio::test]
     async fn one_shot_captures_output() {

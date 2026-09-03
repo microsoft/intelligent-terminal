@@ -3342,25 +3342,20 @@ pub async fn run_acp_client_over_pipe(
             _ = periodic_refetch.tick() => {
                 let _ = event_tx.send(AppEvent::SessionsChanged);
             }
-            Some((event, broadcast_id)) = session_hook_rx.recv() => {
+            Some(event) = session_hook_rx.recv() => {
                 let conn_for_hook = conn.clone();
                 tokio::task::spawn_local(async move {
-                    let req = crate::session_registry::build_session_hook_request(
-                        &event,
-                        broadcast_id.as_deref(),
-                    );
+                    let req = crate::session_registry::build_session_hook_request(&event);
                     match conn_for_hook.ext_method(req).await {
                         Ok(response) => tracing::debug!(
                             target: "session_hook",
                             event = ?event,
-                            broadcast_id = ?broadcast_id,
                             response = %response.0.get(),
                             "session_hook sent to master"
                         ),
                         Err(err) => tracing::warn!(
                             target: "session_hook",
                             event = ?event,
-                            broadcast_id = ?broadcast_id,
                             error = ?err,
                             "session_hook ext-request to master failed"
                         ),

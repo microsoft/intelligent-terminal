@@ -261,18 +261,6 @@ namespace wtcli
     // Build an agent hook event directly from the hook JSON delivered on stdin.
     // This is the native equivalent of the former PowerShell bridge.
     //
-    // |broadcastId| identifies this single hook invocation. The COM `SendEvent`
-    // below fans out to every subscribed helper, and each one independently
-    // forwards the event to wta-master — so master used to apply one real hook
-    // N times, once per live helper, and re-broadcast `sessions/changed` N
-    // times for each (an N^2 push storm). Stamping the id here, where one hook
-    // invocation is exactly one wtcli process, gives master a precise dedupe
-    // key: replays share an id, while genuinely repeated events (two
-    // consecutive `ToolCompleted` for the same session carry identical bodies)
-    // get distinct ones. Callers that cannot mint an id may pass an empty
-    // string; the member is then omitted and master falls back to applying
-    // every copy, which is exactly today's behavior.
-    //
     // Returns false for malformed JSON or missing routing metadata and leaves
     // outEvt untouched. Empty or whitespace-only stdin is accepted as a null
     // payload because some lifecycle hooks do not provide a body. A body that
@@ -284,7 +272,6 @@ namespace wtcli
         const std::string& hookJson,
         const std::string& paneId,
         const std::string& environmentSessionId,
-        const std::string& broadcastId,
         Json::Value& outEvt)
     {
         if (eventType.empty() || cliSource.empty() || paneId.empty())
@@ -423,13 +410,6 @@ namespace wtcli
         params["agent_session_id"] = agentSessionId;
         params["event"] = eventType;
         params["pane_id"] = paneId;
-        // Attached before the size check below so the dedupe key is inside the
-        // measured envelope and can never be dropped by the reduction path —
-        // an event that survives truncation must still be deduplicated.
-        if (!broadcastId.empty())
-        {
-            params["broadcast_id"] = broadcastId;
-        }
         params["payload"] = payload;
 
         Json::Value event;
