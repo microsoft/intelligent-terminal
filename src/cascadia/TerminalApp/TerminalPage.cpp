@@ -4021,13 +4021,14 @@ namespace winrt::TerminalApp::implementation
 
         if (auto diagBtn = DiagnosticsButton())
         {
-            // Show gate — the diagnostics group appears only when BOTH:
+            // Show gate — the diagnostics group appears only when ALL:
             //   * error detection is enabled (detect OFF = the user opted
             //     out of shell observation: no pill, no pipeline), AND
             //   * the active tab's helper ACP session is Connected (before
             //     connect / after a failure-disconnect there's no autofix
-            //     capability).
-            // Either false → hide the whole group rather than show a dead,
+            //     capability), AND
+            //   * an error is detected, being analyzed, or ready for review.
+            // Otherwise hide the whole group rather than show a dead,
             // faded button. Event-driven, not polled: runs from the
             // AgentPaneContent::StateChanged handler (agent_status flips
             // connected/disconnected) and on settings changes. Detection is
@@ -4036,7 +4037,8 @@ namespace winrt::TerminalApp::implementation
             // via `autofix_state`.
             const bool detectionEnabled =
                 _settings && _settings.GlobalSettings().EffectiveAutoErrorDetectionEnabled();
-            const bool showGroup = detectionEnabled && agentConnected;
+            const bool hasDiagnostics = ::TerminalApp::Autofix::HasDiagnostics(autofixState);
+            const bool showGroup = detectionEnabled && agentConnected && hasDiagnostics;
             if (const auto group = DiagnosticsGroup())
             {
                 group.Visibility(showGroup ? Visibility::Visible : Visibility::Collapsed);
@@ -4136,17 +4138,7 @@ namespace winrt::TerminalApp::implementation
             case AS::Idle:
             default:
             {
-                diagBtn.Opacity(0.5);
                 diagBtn.IsEnabled(false);
-                ToolTipService::SetToolTip(
-                    diagBtn,
-                    box_value(RS_(L"Diagnostics_Tooltip")));
-                if (icon)
-                {
-                    icon.Foreground(
-                        winrt::Windows::UI::Xaml::Media::SolidColorBrush{
-                            winrt::Windows::UI::ColorHelper::FromArgb(255, 0xB0, 0xB0, 0xB0) });
-                }
                 if (label)
                 {
                     label.Visibility(Visibility::Collapsed);
