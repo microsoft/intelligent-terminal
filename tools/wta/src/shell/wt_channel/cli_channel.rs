@@ -13,6 +13,7 @@ const WTCLI_ONE_SHOT_REAP_TIMEOUT: Duration = Duration::from_secs(2);
 const WTCLI_LISTENER_RETRY_INITIAL: Duration = Duration::from_millis(250);
 const WTCLI_LISTENER_RETRY_MAX: Duration = Duration::from_secs(5);
 const WTCLI_LISTENER_READY_TIMEOUT: Duration = Duration::from_secs(15);
+const WTCLI_LISTENER_STDERR_MAX: usize = 16 * 1024;
 
 #[derive(Debug)]
 enum WtcliOneShotError {
@@ -80,6 +81,35 @@ where
         pipe.read_to_end(&mut bytes).await?;
     }
     Ok(bytes)
+}
+
+/// Drain a pipe to EOF while retaining only a bounded diagnostic prefix.
+///
+/// `AsyncReadExt::take` would bound memory but stop draining after the limit;
+/// a noisy long-lived child could then block forever when the OS pipe fills.
+/// Keep consuming and discard the tail instead.
+async fn read_pipe_bounded<R>(pipe: Option<R>, max_bytes: usize) -> std::io::Result<(Vec<u8>, bool)>
+where
+    R: tokio::io::AsyncRead + Unpin,
+{
+    use tokio::io::AsyncReadExt;
+
+    let mut retained = Vec::with_capacity(max_bytes);
+    let mut truncated = false;
+    if let Some(mut pipe) = pipe {
+        let mut chunk = [0u8; 4096];
+        loop {
+            let read = pipe.read(&mut chunk).await?;
+            if read == 0 {
+                break;
+            }
+            let remaining = max_bytes.saturating_sub(retained.len());
+            let keep = remaining.min(read);
+            retained.extend_from_slice(&chunk[..keep]);
+            truncated |= keep < read;
+        }
+    }
+    Ok((retained, truncated))
 }
 
 async fn run_wtcli_one_shot(
@@ -627,7 +657,9 @@ impl CliChannel {
 
                 let stdout = child.stdout.take().expect("listener stdout was piped");
                 let stderr = child.stderr.take();
-                let stderr_task = tokio::spawn(async move { read_pipe(stderr).await });
+                let stderr_task = tokio::spawn(async move {
+                    read_pipe_bounded(stderr, WTCLI_LISTENER_STDERR_MAX).await
+                });
                 let mut reader = tokio::io::BufReader::new(stdout);
                 let mut line = String::new();
                 let mut subscribed = false;
@@ -692,8 +724,11 @@ impl CliChannel {
                     );
                 }
                 let status = child.wait().await;
-                let stderr = match stderr_task.await {
-                    Ok(Ok(bytes)) => String::from_utf8_lossy(&bytes).trim().to_string(),
+                let (stderr, stderr_truncated) = match stderr_task.await {
+                    Ok(Ok((bytes, truncated))) => (
+                        String::from_utf8_lossy(&bytes).trim().to_string(),
+                        truncated,
+                    ),
                     Ok(Err(error)) => {
                         tracing::warn!(
                             target: "wtcli",
@@ -701,7 +736,7 @@ impl CliChannel {
                             %error,
                             "wtcli event listener stderr read failed"
                         );
-                        String::new()
+                        (String::new(), false)
                     }
                     Err(error) => {
                         tracing::warn!(
@@ -710,7 +745,7 @@ impl CliChannel {
                             %error,
                             "wtcli event listener stderr task failed"
                         );
-                        String::new()
+                        (String::new(), false)
                     }
                 };
                 match status {
@@ -720,6 +755,7 @@ impl CliChannel {
                         reason = exit_reason,
                         %status,
                         stderr,
+                        stderr_truncated,
                         "wtcli event listener reaped"
                     ),
                     Err(error) => tracing::warn!(
@@ -728,6 +764,7 @@ impl CliChannel {
                         reason = exit_reason,
                         %error,
                         stderr,
+                        stderr_truncated,
                         "failed to reap wtcli event listener"
                     ),
                 }
@@ -1039,6 +1076,29 @@ mod tests {
             &serde_json::json!({"method": "agent_event", "token": "wta-42"}),
             "wta-42"
         ));
+    }
+
+    #[tokio::test]
+    async fn bounded_pipe_reader_keeps_a_prefix_and_drains_the_tail() {
+        use tokio::io::AsyncWriteExt;
+
+        // Tiny OS-side capacity makes this a drain test, not just a truncation
+        // test: a reader that stopped at 128 bytes would leave the writer
+        // blocked before it could finish 32 KiB.
+        let (mut writer, reader) = tokio::io::duplex(64);
+        let payload = vec![b'x'; 32 * 1024];
+        let write_task = tokio::spawn(async move {
+            writer.write_all(&payload).await.unwrap();
+            writer.shutdown().await.unwrap();
+        });
+
+        let (retained, truncated) = read_pipe_bounded(Some(reader), 128)
+            .await
+            .expect("pipe read succeeds");
+        write_task.await.expect("writer was fully drained");
+
+        assert_eq!(retained, vec![b'x'; 128]);
+        assert!(truncated);
     }
 
     #[tokio::test]

@@ -744,6 +744,51 @@ fn non_terminal_agent_event_for_unknown_session_still_synthesizes_a_start() {
     );
 }
 
+/// Both spellings accepted as a real session-start hook must supersede the
+/// pane-keyed placeholder created while the agent session id was unavailable.
+/// Leaving the placeholder behind produces a second local row for one pane and
+/// can make later PaneClosed/origin lookups resolve the wrong session.
+#[test]
+fn singular_session_start_drops_the_earlier_pane_placeholder() {
+    use crate::agent_sessions::AgentSessionRegistry;
+
+    let pane = "AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE";
+    let placeholder = format!("pane:{}", pane.to_ascii_lowercase());
+    let mut reg = AgentSessionRegistry::new();
+
+    route_agent_event_to_registry(
+        &mut reg,
+        pane,
+        &json!({
+            "event": "agent.tool.starting",
+            "cli_source": "copilot",
+            "agent_session_id": "",
+            "payload": { "cwd": r#"C:\repo"#, "tool_name": "edit" }
+        }),
+    );
+    assert!(
+        reg.has_session(&placeholder),
+        "the missing-id event establishes the helper-local placeholder"
+    );
+
+    route_agent_event_to_registry(
+        &mut reg,
+        pane,
+        &json!({
+            "event": "agent.session.start",
+            "cli_source": "copilot",
+            "agent_session_id": "real-session-id",
+            "payload": { "cwd": r#"C:\repo"# }
+        }),
+    );
+
+    assert!(
+        !reg.has_session(&placeholder),
+        "the singular start spelling must remove the superseded placeholder"
+    );
+    assert!(reg.has_session(&"real-session-id".to_string()));
+}
+
 /// Bug-1 fix (PR #73 follow-up): an `agent.notification` hook event
 /// arrives with neither `agent_session_id` nor a `pane_session_id`
 /// resolving to a live session — exactly the shape Copilot CLI's

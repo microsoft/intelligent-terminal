@@ -518,7 +518,8 @@ pub fn plan_agent_event(
         });
     }
 
-    plan.supersedes_pane_placeholders = event == "agent.session.started";
+    plan.supersedes_pane_placeholders =
+        matches!(event, "agent.session.started" | "agent.session.start");
 
     let primary = match event {
         "agent.session.started" | "agent.session.start" => SessionEvent::SessionStarted {
