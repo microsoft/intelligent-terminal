@@ -2956,13 +2956,37 @@
     <value>Base URL</value>
     <comment>Header for the custom provider endpoint input. {Locked="URL"}</comment>
   </data>
+  <data name="AIAgents_CustomProviderBaseUrl.PlaceholderText" xml:space="preserve">
+    <value>https://api.openai.com/v1</value>
+    <comment>{Locked="https://api.openai.com/v1"} Example of a valid OpenAI-compatible API root shown inside the custom provider endpoint input.</comment>
+  </data>
+  <data name="AIAgents_CustomProviderBaseUrlHint.Text" xml:space="preserve">
+    <value>Include the OpenAI-compatible root, for example "https://api.openai.com/v1" or "https://api.together.xyz/v1".</value>
+    <comment>{Locked="OpenAI","https://api.openai.com/v1","https://api.together.xyz/v1"} Hint below the custom provider endpoint input.</comment>
+  </data>
   <data name="AIAgents_CustomModelId.Header" xml:space="preserve">
     <value>Model ID</value>
     <comment>Header for the custom provider model identifier input. {Locked="ID"}</comment>
   </data>
+  <data name="AIAgents_CustomModelId.PlaceholderText" xml:space="preserve">
+    <value>gpt-4o</value>
+    <comment>{Locked="gpt-4o"} Example of a valid provider model identifier shown inside the custom model ID input.</comment>
+  </data>
+  <data name="AIAgents_CustomModelIdHint.Text" xml:space="preserve">
+    <value>Use the provider's exact model identifier, for example "gpt-4o" or "llama3.2".</value>
+    <comment>{Locked="gpt-4o","llama3.2"} Hint below the custom model ID input.</comment>
+  </data>
   <data name="AIAgents_CustomProviderApiKey.Header" xml:space="preserve">
     <value>API key (optional)</value>
     <comment>Header for the optional custom provider credential input. {Locked="API"}</comment>
+  </data>
+  <data name="AIAgents_CustomProviderApiKey.PlaceholderText" xml:space="preserve">
+    <value>sk-...</value>
+    <comment>{Locked="sk-..."} Example API key format shown inside the optional custom provider credential input.</comment>
+  </data>
+  <data name="AIAgents_CustomProviderApiKeyHint.Text" xml:space="preserve">
+    <value>Leave blank if the endpoint doesn't require authentication. API keys are stored in Windows Credential Manager.</value>
+    <comment>{Locked="API"} Hint below the optional custom provider credential input. Use the established localized product name for Windows Credential Manager.</comment>
   </data>
   <data name="AIAgents_CustomProviderAdd.Content" xml:space="preserve">
     <value>Add New</value>

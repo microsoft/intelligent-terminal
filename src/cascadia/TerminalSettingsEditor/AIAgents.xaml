@@ -256,13 +256,37 @@
                             BorderThickness="0,1,0,0"
                             Padding="0,16,0,16"
                             Visibility="{x:Bind ViewModel.IsAddingCustomModelProvider, Mode=OneWay}">
-                        <StackPanel Spacing="8">
-                            <TextBox x:Uid="AIAgents_CustomProviderBaseUrl"
-                                     Text="{x:Bind ViewModel.NewCustomModelProviderBaseUrl, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                            <TextBox x:Uid="AIAgents_CustomModelId"
-                                     Text="{x:Bind ViewModel.NewCustomModelId, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                            <PasswordBox x:Uid="AIAgents_CustomProviderApiKey"
-                                         Password="{x:Bind ViewModel.NewCustomModelProviderApiKey, Mode=TwoWay}" />
+                        <StackPanel Spacing="12">
+                            <StackPanel Spacing="4">
+                                <TextBox x:Uid="AIAgents_CustomProviderBaseUrl"
+                                         AutomationProperties.HelpText="{Binding Text, ElementName=CustomProviderBaseUrlHint}"
+                                         Text="{x:Bind ViewModel.NewCustomModelProviderBaseUrl, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                <TextBlock x:Name="CustomProviderBaseUrlHint"
+                                           x:Uid="AIAgents_CustomProviderBaseUrlHint"
+                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                           Style="{StaticResource CaptionTextBlockStyle}"
+                                           TextWrapping="Wrap" />
+                            </StackPanel>
+                            <StackPanel Spacing="4">
+                                <TextBox x:Uid="AIAgents_CustomModelId"
+                                         AutomationProperties.HelpText="{Binding Text, ElementName=CustomModelIdHint}"
+                                         Text="{x:Bind ViewModel.NewCustomModelId, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                <TextBlock x:Name="CustomModelIdHint"
+                                           x:Uid="AIAgents_CustomModelIdHint"
+                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                           Style="{StaticResource CaptionTextBlockStyle}"
+                                           TextWrapping="Wrap" />
+                            </StackPanel>
+                            <StackPanel Spacing="4">
+                                <PasswordBox x:Uid="AIAgents_CustomProviderApiKey"
+                                             AutomationProperties.HelpText="{Binding Text, ElementName=CustomProviderApiKeyHint}"
+                                             Password="{x:Bind ViewModel.NewCustomModelProviderApiKey, Mode=TwoWay}" />
+                                <TextBlock x:Name="CustomProviderApiKeyHint"
+                                           x:Uid="AIAgents_CustomProviderApiKeyHint"
+                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                           Style="{StaticResource CaptionTextBlockStyle}"
+                                           TextWrapping="Wrap" />
+                            </StackPanel>
                             <StackPanel Orientation="Horizontal" Spacing="8">
                                 <Button x:Uid="AIAgents_CustomProviderSave"
                                         IsEnabled="{x:Bind ViewModel.CanSaveCustomModelProvider, Mode=OneWay}"
