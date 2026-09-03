@@ -129,22 +129,20 @@ pub(super) async fn run_default_tui_over_pipe(
     };
     let shell_mgr = Arc::new(shell_mgr);
 
-    let pane_identity = if wt_connected {
-        discover_pane_identity(&shell_mgr).await
-    } else {
-        None
-    };
-
-    // Connection failures to wta-master (pipe connect give-up, ACP initialize
-    // timeout/failure) are logged at their source (target=helper) and again in
-    // `run_acp_tui_mode`'s exit branch, which `process::exit`s rather than
-    // returning Err — so there's no point wrapping the result here.
+    // Pane identity is supplied by WT at spawn time — never discovered.
+    // `WT_SESSION` (set by ConptyConnection for every pane) is this pane's id,
+    // and `--owner-window-id` / `--owner-tab-id` carry the window and the
+    // stable tab GUID. An earlier implementation enumerated every window, tab
+    // and pane over `wtcli` to match its own PID, which cost one process spawn
+    // per window plus one per tab (0.3-0.8s, scaling with the user's open tab
+    // count) *before* the TUI entered the alt-screen, so the pane sat blank for
+    // the duration. Two of the three values it returned were then discarded or
+    // overwritten by the flags below anyway.
     run_acp_tui_mode(
         config,
         shell_mgr,
         wt_connected,
         debug_rx,
-        pane_identity,
         wt_event_rx,
         wt_protocol_channel,
         pipe_name,
@@ -214,57 +212,6 @@ mod cwd_tests {
     }
 }
 
-/// Discover our own pane identity by matching our PID against WT's pane list.
-async fn discover_pane_identity(shell_mgr: &ShellManager) -> Option<(String, String, String)> {
-    let our_pid = std::process::id();
-
-    // WT IDs may arrive as JSON strings or numbers (COM returns numeric) — accept both.
-    fn id_str(v: Option<&serde_json::Value>) -> Option<String> {
-        match v {
-            Some(serde_json::Value::String(s)) => Some(s.clone()),
-            Some(serde_json::Value::Number(n)) => Some(n.to_string()),
-            _ => None,
-        }
-    }
-
-    let windows = shell_mgr.wt_list_windows().await.ok()?;
-    let windows_arr = windows.get("windows")?.as_array()?;
-
-    for win in windows_arr {
-        let window_id = match id_str(win.get("window_id")) {
-            Some(w) => w,
-            None => continue,
-        };
-        let tabs = shell_mgr.wt_list_tabs(&window_id).await.ok()?;
-        let tabs_arr = tabs.get("tabs")?.as_array()?;
-
-        for tab in tabs_arr {
-            let tab_id_str = match id_str(tab.get("tab_id")) {
-                Some(t) => t,
-                None => continue,
-            };
-            let panes = shell_mgr
-                .wt_list_panes(&tab_id_str, Some(&window_id))
-                .await
-                .ok()?;
-            let panes_arr = panes.get("panes")?.as_array()?;
-
-            for pane in panes_arr {
-                if let Some(pid) = pane.get("pid").and_then(|v| v.as_u64()) {
-                    if pid == our_pid as u64 {
-                        let pane_id = match id_str(pane.get("session_id")) {
-                            Some(p) => p,
-                            None => continue,
-                        };
-                        return Some((pane_id, tab_id_str.clone(), window_id.to_string()));
-                    }
-                }
-            }
-        }
-    }
-    None
-}
-
 struct TuiRestoreGuard {
     armed: bool,
 }
@@ -302,7 +249,6 @@ async fn run_acp_tui_mode(
     shell_mgr: Arc<ShellManager>,
     wt_connected: bool,
     debug_rx: tokio::sync::mpsc::UnboundedReceiver<app::DebugMessage>,
-    pane_identity: Option<(String, String, String)>,
     wt_event_rx: Option<tokio::sync::mpsc::UnboundedReceiver<serde_json::Value>>,
     wt_protocol_channel: Option<Arc<CliChannel>>,
     connect_master_pipe: String,
@@ -329,7 +275,6 @@ async fn run_acp_tui_mode(
         shell_mgr,
         wt_connected,
         debug_rx,
-        pane_identity,
         wt_event_rx,
         wt_protocol_channel,
         connect_master_pipe,
@@ -401,7 +346,6 @@ async fn run_acp_app(
     shell_mgr: Arc<ShellManager>,
     wt_connected: bool,
     mut debug_rx: tokio::sync::mpsc::UnboundedReceiver<app::DebugMessage>,
-    pane_identity: Option<(String, String, String)>,
     wt_event_rx: Option<tokio::sync::mpsc::UnboundedReceiver<serde_json::Value>>,
     wt_protocol_channel: Option<Arc<CliChannel>>,
     connect_master_pipe: String,
@@ -1219,15 +1163,10 @@ async fn run_acp_app(
             // its `session/list` snapshot. See
             // doc/specs/per-cli-history-filtering.md.
 
-            if let Some((pane_id, _tab_id, window_id)) = pane_identity {
-                app_state.pane_id = Some(pane_id);
-                // discover_pane_identity returns the legacy unstable tab
-                // index, not the GUID — ignore it. The stable owner-tab GUID
-                // is passed by WT via --owner-tab-id (see below) and seeded
-                // directly into app_state.tab_id.
-                app_state.window_id = Some(window_id);
-            }
-            else if let Some(pane_id) = std::env::var("WT_SESSION")
+            // Pane id comes from `WT_SESSION`, which ConptyConnection sets on
+            // every pane it spawns. This is authoritative and free; the window
+            // and tab ids are seeded from the `--owner-*` flags just below.
+            if let Some(pane_id) = std::env::var("WT_SESSION")
                 .ok()
                 .map(|value| value.trim().to_string())
                 .filter(|value| !value.is_empty())
@@ -1235,7 +1174,7 @@ async fn run_acp_app(
                 tracing::info!(
                     target: "tab_session",
                     pane_id = %pane_id,
-                    "seeded app_state.pane_id from WT_SESSION fallback"
+                    "seeded app_state.pane_id from WT_SESSION"
                 );
                 app_state.pane_id = Some(pane_id);
             }

@@ -221,15 +221,36 @@ pub async fn powershell_near_matches(shell_exe: &str, token: &str) -> Option<Vec
     }
 
     let names = cached_powershell_commands(shell_exe).await?;
+    near_matches_from_names(token, &names)
+}
 
-    // Full existence gate: the token may resolve as a cmdlet / function /
-    // alias / external `.ps1` that `which` can't see. If so, it wasn't a
-    // not-found — inject nothing.
-    if command_exists(token, &names) {
+/// Non-blocking counterpart to [`powershell_near_matches`].
+///
+/// Identical ranking, but it never waits on a PowerShell subprocess: if the
+/// command cache is cold it starts the enumerate in the background and returns
+/// `None` for this turn. Used on the prompt path, where a best-effort hint must
+/// not delay the agent's response (see [`cached_powershell_commands_now`]).
+pub fn powershell_near_matches_now(shell_exe: &str, token: &str) -> Option<Vec<String>> {
+    if which::which(token).is_ok() {
         return None;
     }
 
-    let matches = rank_near_matches(token, &names, MAX_NEAR_MATCHES);
+    let names = cached_powershell_commands_now(shell_exe)?;
+    near_matches_from_names(token, &names)
+}
+
+/// Shared tail of the near-match computation: the full existence gate plus
+/// ranking. Split out so the blocking and non-blocking entry points cannot
+/// drift in behaviour.
+fn near_matches_from_names(token: &str, names: &[String]) -> Option<Vec<String>> {
+    // Full existence gate: the token may resolve as a cmdlet / function /
+    // alias / external `.ps1` that `which` can't see. If so, it wasn't a
+    // not-found — inject nothing.
+    if command_exists(token, names) {
+        return None;
+    }
+
+    let matches = rank_near_matches(token, names, MAX_NEAR_MATCHES);
     if matches.is_empty() {
         None
     } else {
@@ -404,21 +425,90 @@ static COMMAND_CACHE: std::sync::OnceLock<
 
 /// Cached wrapper over [`enumerate_powershell_commands`]; see [`COMMAND_CACHE`].
 async fn cached_powershell_commands(shell_exe: &str) -> Option<std::sync::Arc<Vec<String>>> {
-    let cache =
-        COMMAND_CACHE.get_or_init(|| std::sync::Mutex::new(std::collections::HashMap::new()));
-    let key = format!(
-        "{}|{}",
-        shell_exe.to_ascii_lowercase(),
-        std::env::var("PATH").unwrap_or_default()
-    );
-    if let Some(hit) = cache.lock().ok().and_then(|m| m.get(&key).cloned()) {
+    let key = command_cache_key(shell_exe);
+    if let Some(hit) = lookup_cached_commands(&key) {
         return Some(hit);
     }
     let names = std::sync::Arc::new(enumerate_powershell_commands(shell_exe).await?);
-    if let Ok(mut m) = cache.lock() {
+    if let Ok(mut m) = command_cache().lock() {
         m.insert(key, names.clone());
     }
     Some(names)
+}
+
+fn command_cache(
+) -> &'static std::sync::Mutex<std::collections::HashMap<String, std::sync::Arc<Vec<String>>>> {
+    COMMAND_CACHE.get_or_init(|| std::sync::Mutex::new(std::collections::HashMap::new()))
+}
+
+fn command_cache_key(shell_exe: &str) -> String {
+    format!(
+        "{}|{}",
+        shell_exe.to_ascii_lowercase(),
+        std::env::var("PATH").unwrap_or_default()
+    )
+}
+
+fn lookup_cached_commands(key: &str) -> Option<std::sync::Arc<Vec<String>>> {
+    command_cache().lock().ok().and_then(|m| m.get(key).cloned())
+}
+
+/// Tracks shells whose enumerate is already running, so concurrent turns queue
+/// behind one subprocess instead of each spawning their own PowerShell.
+static COMMAND_WARM_INFLIGHT: std::sync::OnceLock<
+    std::sync::Mutex<std::collections::HashSet<String>>,
+> = std::sync::OnceLock::new();
+
+fn warm_inflight() -> &'static std::sync::Mutex<std::collections::HashSet<String>> {
+    COMMAND_WARM_INFLIGHT.get_or_init(|| std::sync::Mutex::new(std::collections::HashSet::new()))
+}
+
+/// Non-blocking read of the command cache.
+///
+/// Returns the names only if they are **already** cached. On a miss it kicks off
+/// the enumerate in the background and returns `None` immediately, so the caller
+/// can proceed without waiting.
+///
+/// Why this exists: the profile-loading enumerate is bounded by
+/// [`PROFILE_ENUMERATE_TIMEOUT`] and falls back to a second `-NoProfile`
+/// subprocess, so a user whose interactive profile is slow pays up to ~6s. That
+/// cost was previously charged to the first autofix turn of every pane, *before*
+/// the prompt was sent — a measured 5.82s stall on one real turn. Near-match
+/// hints are a best-effort enhancement, so a cold cache now degrades to "no hint
+/// this turn" rather than delaying the agent's entire response.
+fn cached_powershell_commands_now(shell_exe: &str) -> Option<std::sync::Arc<Vec<String>>> {
+    let key = command_cache_key(shell_exe);
+    if let Some(hit) = lookup_cached_commands(&key) {
+        return Some(hit);
+    }
+
+    // Cold: start (at most) one background enumerate for this key.
+    let should_spawn = warm_inflight()
+        .lock()
+        .map(|mut inflight| inflight.insert(key.clone()))
+        .unwrap_or(false);
+    if should_spawn {
+        let shell_exe = shell_exe.to_string();
+        tokio::task::spawn(async move {
+            let started = std::time::Instant::now();
+            let names = enumerate_powershell_commands(&shell_exe).await;
+            if let Some(names) = names {
+                if let Ok(mut m) = command_cache().lock() {
+                    m.insert(command_cache_key(&shell_exe), std::sync::Arc::new(names));
+                }
+            }
+            if let Ok(mut inflight) = warm_inflight().lock() {
+                inflight.remove(&command_cache_key(&shell_exe));
+            }
+            tracing::debug!(
+                target: "acp.terminal_context",
+                shell = %shell_exe,
+                dt = started.elapsed().as_secs_f64(),
+                "command enumerate warmed in background"
+            );
+        });
+    }
+    None
 }
 
 /// Enumerate the shell's command names (cmdlets, applications, external
@@ -918,6 +1008,57 @@ mod integration_tests {
         assert!(
             got.is_none(),
             "expected None for the existing cmdlet, got {got:?}"
+        );
+    }
+
+    /// The prompt path must never block on the PowerShell enumerate.
+    ///
+    /// Regression guard for the measured 5.82s first-autofix-turn stall: a cold
+    /// command cache made `command_not_found` spawn a profile-loading
+    /// PowerShell (4s timeout) plus a `-NoProfile` fallback *before* the prompt
+    /// was sent. `powershell_near_matches_now` must return promptly on a cold
+    /// cache rather than waiting for that subprocess.
+    #[tokio::test]
+    async fn near_matches_now_does_not_block_on_a_cold_cache() {
+        let Some(shell) = powershell_host() else {
+            eprintln!("no PowerShell host installed; skipping");
+            return;
+        };
+        // A key that cannot already be cached, so this is guaranteed to be the
+        // cold path (the miss also kicks off the background warm).
+        let cold_shell = format!("{shell}?cold-{}", std::process::id());
+
+        let started = std::time::Instant::now();
+        let _ = powershell_near_matches_now(&cold_shell, "gti-not-a-real-command");
+        let elapsed = started.elapsed();
+
+        assert!(
+            elapsed < std::time::Duration::from_millis(500),
+            "cold-cache near-match lookup must not block the prompt path, took {elapsed:?}"
+        );
+    }
+
+    /// Once the cache is warm, the non-blocking path must produce the same
+    /// answer as the awaiting path — the speedup must not cost the feature.
+    #[tokio::test]
+    async fn near_matches_now_matches_blocking_result_when_warm() {
+        let Some(shell) = powershell_host() else {
+            eprintln!("no PowerShell host installed; skipping");
+            return;
+        };
+        // The command cache is keyed on `PATH`, and sibling tests mutate `PATH`
+        // to install script fixtures. Hold the same guard they do so a
+        // concurrent mutation can't invalidate the cache between the two
+        // lookups below and turn the warm hit into a miss.
+        let _guard = PATH_GUARD.lock().unwrap_or_else(|e| e.into_inner());
+
+        // Populate the cache through the blocking path first.
+        let blocking = powershell_near_matches(&shell, "Get-ChildItm").await;
+        // Now the same query must resolve from cache without awaiting.
+        let non_blocking = powershell_near_matches_now(&shell, "Get-ChildItm");
+        assert_eq!(
+            blocking, non_blocking,
+            "warm non-blocking lookup must agree with the blocking lookup"
         );
     }
 
