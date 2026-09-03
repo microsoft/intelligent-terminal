@@ -185,5 +185,9 @@ namespace Microsoft.Terminal.Settings.Model
         Theme CurrentTheme { get; };
 
         Boolean ShouldUsePersistedLayout();
+
+        // Keep new members at the end to preserve the existing WinRT ABI.
+        INHERITABLE_SETTING(IVector<String>, AcpCustomCommands);
+        INHERITABLE_SETTING(IVector<String>, DelegateCustomCommands);
     }
 }

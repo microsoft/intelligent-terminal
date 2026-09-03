@@ -24,6 +24,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         winrt::hstring DisplayLabel() const;
         bool IsInstalled() const { return _isInstalled; }
         bool IsAddNew() const { return _isAddNew; }
+        winrt::hstring CustomCommand() const { return _customCommand; }
         winrt::Windows::UI::Xaml::Visibility RemoveButtonVisibility() const noexcept
         {
             return _remove ?
@@ -33,6 +34,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         void Remove();
 
         void SetAddNew(bool value) { _isAddNew = value; }
+        void SetCustomCommand(winrt::hstring value) { _customCommand = std::move(value); }
         void SetRemove(std::function<void()> remove) { _remove = std::move(remove); }
 
     private:
@@ -40,6 +42,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         winrt::hstring _displayName;
         bool _isInstalled;
         bool _isAddNew{ false };
+        winrt::hstring _customCommand;
         std::function<void()> _remove;
     };
 
@@ -243,6 +246,8 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         bool _isAddingCustomModelProvider{ false };
         winrt::hstring _customAcpCommand;
         winrt::hstring _customDelegateCommand;
+        winrt::hstring _editingCustomAcpAgentId;
+        winrt::hstring _editingCustomDelegateAgentId;
         winrt::hstring _newCustomModelProviderBaseUrl;
         winrt::hstring _newCustomModelId;
         winrt::hstring _newCustomModelProviderApiKey;
@@ -280,12 +285,22 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         Editor::AgentEntry _CreateCustomAgentEntry(
             const winrt::hstring& settingsId,
             const winrt::hstring& displayName,
+            const winrt::hstring& customCommand,
             bool isAcpAgent);
         static bool _CustomCommandMatchesId(
             const winrt::hstring& command,
             const winrt::hstring& settingsId);
-        static void _RemoveOtherCustomEntries(
-            const winrt::Windows::Foundation::Collections::IObservableVector<Editor::AgentEntry>& list,
+        static winrt::Windows::Foundation::Collections::IVector<winrt::hstring> _NormalizeCustomCommands(
+            const winrt::Windows::Foundation::Collections::IVector<winrt::hstring>& commands);
+        static winrt::Windows::Foundation::Collections::IVector<winrt::hstring> _UpdateCustomCommands(
+            const winrt::Windows::Foundation::Collections::IVector<winrt::hstring>& commands,
+            const winrt::hstring& originalId,
+            const winrt::hstring& command);
+        static winrt::Windows::Foundation::Collections::IVector<winrt::hstring> _RemoveCustomCommand(
+            const winrt::Windows::Foundation::Collections::IVector<winrt::hstring>& commands,
+            const winrt::hstring& settingsId);
+        static winrt::hstring _FindCustomCommand(
+            const winrt::Windows::Foundation::Collections::IVector<winrt::hstring>& commands,
             const winrt::hstring& settingsId);
         void _DeleteCustomAcpAgent(const winrt::hstring& settingsId);
         void _DeleteCustomDelegateAgent(const winrt::hstring& settingsId);
@@ -300,7 +315,10 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         void _MaybeAppendCustomEntry(
             winrt::Windows::Foundation::Collections::IObservableVector<Editor::AgentEntry>& list,
             const winrt::hstring& customCommand,
-            const winrt::hstring& currentAgentId,
+            bool isAcpAgent);
+        void _RebuildCustomEntries(
+            winrt::Windows::Foundation::Collections::IObservableVector<Editor::AgentEntry>& list,
+            const winrt::Windows::Foundation::Collections::IVector<winrt::hstring>& commands,
             bool isAcpAgent);
 
         // Agent Hooks state

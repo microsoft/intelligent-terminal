@@ -85,7 +85,9 @@ Author(s):
     X(bool, AutoFixEnabled, "autoFixEnabled", false)                                                                                                                                                    \
     X(bool, ShowTokenUsageAndCost, "showTokenUsageAndCost", false)                                                                                                                                      \
     X(hstring, AcpCustomCommand, "acpCustomCommand", L"")                                                                                                                                              \
+    X(winrt::Windows::Foundation::Collections::IVector<winrt::hstring>, AcpCustomCommands, "acpCustomCommands", winrt::single_threaded_vector<winrt::hstring>())                                         \
     X(hstring, DelegateCustomCommand, "delegateCustomCommand", L"")                                                                                                                                    \
+    X(winrt::Windows::Foundation::Collections::IVector<winrt::hstring>, DelegateCustomCommands, "delegateCustomCommands", winrt::single_threaded_vector<winrt::hstring>())                               \
     X(hstring, AgentPanePosition, "agentPanePosition", L"bottom")                                                                                                                                       \
     X(bool, AiCoordinatorEnabled, "aiIntegration.coordinator.enabled", false)                                                                                                                          \
     X(hstring, AiCoordinatorCommandline, "aiIntegration.coordinator.commandline", L"wta")                                                                                                                     \

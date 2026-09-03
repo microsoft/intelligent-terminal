@@ -17,6 +17,7 @@ namespace Microsoft.Terminal.Settings.Editor
         Boolean IsAddNew { get; };
         Windows.UI.Xaml.Visibility RemoveButtonVisibility { get; };
         void Remove();
+        String CustomCommand { get; };
     }
 
     runtimeclass AcpModelEntry
