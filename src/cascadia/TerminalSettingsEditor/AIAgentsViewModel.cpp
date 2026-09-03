@@ -1072,7 +1072,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         auto idStr = winrt::to_string(value.Id());
         if (idStr.starts_with("custom:"))
         {
-            if (_isAddingCustomAcpAgent && _GlobalSettings.AcpAgent() == value.Id()) return;
+            if (_GlobalSettings.AcpAgent() == value.Id()) return;
             const bool agentChanged = _GlobalSettings.AcpAgent() != value.Id();
             _isAddingCustomAcpAgent = true;
             _editingCustomAcpAgentId = value.Id();
@@ -1158,7 +1158,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         auto idStr = winrt::to_string(value.Id());
         if (idStr.starts_with("custom:"))
         {
-            if (_isAddingCustomDelegateAgent && _GlobalSettings.DelegateAgent() == value.Id()) return;
+            if (_GlobalSettings.DelegateAgent() == value.Id()) return;
             _isAddingCustomDelegateAgent = true;
             _editingCustomDelegateAgentId = value.Id();
             _customDelegateCommand = value.CustomCommand();
