@@ -1267,7 +1267,7 @@
   </data>
   <data name="Profile_CommandPaletteAgent.HelpText" xml:space="preserve">
     <value>Виберіть агента, який використовується для запитів із палітри команд та інших дій делегування, поки цей профіль активний. Цей вибір має пріоритет над глобальним параметром агента делегування.</value>
-    <comment>Description for the per-profile command palette agent setting. This agent is used by command palette prompts and other delegation actions, including opening an interactive delegate-agent tab. Here "agent" means an AI agent, not a proxy or human agent.</comment>
+    <comment>Description for the per-profile command palette agent setting. This agent is used by command palette prompts and other delegation actions. Here "agent" means an AI agent, not a proxy or human agent.</comment>
   </data>
   <data name="Profile_AgentPaneBackend_AgentFormat" xml:space="preserve">
     <value>{0} · {1}</value>
@@ -2533,8 +2533,8 @@
   <data name="AIAgents_AcpModel.HelpText" xml:space="preserve"><value>Виберіть модель, яку використовує цей агент.</value><comment>Supplementary description for the model setting.</comment></data>
   <data name="AIAgents_DelegateAgent.Header" xml:space="preserve"><value>Агент</value><comment>Header for the setting that specifies which agent CLI handles command palette / on-demand requests.</comment></data>
   <data name="AIAgents_DelegateAgent.HelpText" xml:space="preserve">
-    <value>Виберіть агента, який використовується для запитів із палітри команд та інших дій делегування, зокрема для відкриття інтерактивної вкладки агента делегування.</value>
-    <comment>Supplementary description for the command palette agent setting. This agent is used by command palette prompts and other delegation actions, including opening an interactive delegate-agent tab.
+    <value>Виберіть агента, який використовується для запитів із палітри команд та інших дій делегування.</value>
+    <comment>Supplementary description for the command palette agent setting. This agent is used by command palette prompts and other delegation actions.
 In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="AIAgents_AutoFix.Header" xml:space="preserve"><value>Автовиявлення помилок</value><comment>Header for the toggle that enables automatic fix suggestions when commands fail.</comment></data>
@@ -2706,8 +2706,8 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
     <comment>{Locked="my-agent --acp --stdio"} Placeholder inside the box where the command for a custom agent pane agent is typed. Translate only the "e.g." lead-in; the sample command is an example command line.</comment>
   </data>
   <data name="AIAgents_CustomAcpCommandHint.Text" xml:space="preserve">
-    <value>Введіть команду, яка запускає ваш CLI в режимі ACP. Більшості засобів CLI для цього потрібен прапорець.</value>
-    <comment>{Locked="CLI","ACP"} Hint shown under the box where the command for a custom agent pane agent is typed. The example command is supplied by AIAgents_CustomAcpCommand.PlaceholderText. Pluralize "CLI" the way your language does; do not carry over the English "-s".</comment>
+    <value>Введіть команду, яка запускає ваш CLI в режимі ACP.</value>
+    <comment>{Locked="CLI","ACP"} Hint shown under the box where the command for a custom agent pane agent is typed. The example command is supplied by AIAgents_CustomAcpCommand.PlaceholderText.</comment>
   </data>
   <data name="AIAgents_CustomDelegateCommand.PlaceholderText" xml:space="preserve">
     <value>напр. my-cli --flag</value>

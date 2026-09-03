@@ -1251,7 +1251,7 @@
   </data>
   <data name="Profile_CommandPaletteAgent.HelpText" xml:space="preserve">
     <value>Scegli l'agente usato per i prompt del riquadro comandi e altre azioni di delega mentre questo profilo è attivo. Questa selezione ha la precedenza sull'impostazione globale dell'agente delegato.</value>
-    <comment>Description for the per-profile command palette agent setting. This agent is used by command palette prompts and other delegation actions, including opening an interactive delegate-agent tab. Here "agent" means an AI agent, not a proxy or human agent.</comment>
+    <comment>Description for the per-profile command palette agent setting. This agent is used by command palette prompts and other delegation actions. Here "agent" means an AI agent, not a proxy or human agent.</comment>
   </data>
   <data name="Profile_AgentPaneBackend_AgentFormat" xml:space="preserve">
     <value>{0} · {1}</value>
@@ -2834,8 +2834,8 @@
   <data name="AIAgents_AcpModel.HelpText" xml:space="preserve"><value>Scegli il modello usato da questo agente.</value></data>
   <data name="AIAgents_DelegateAgent.Header" xml:space="preserve"><value>Agente</value></data>
   <data name="AIAgents_DelegateAgent.HelpText" xml:space="preserve">
-    <value>Scegli l'agente usato per i prompt del riquadro comandi e altre azioni di delega, inclusa l'apertura di una scheda interattiva dell'agente delegato.</value>
-    <comment>Supplementary description for the command palette agent setting. This agent is used by command palette prompts and other delegation actions, including opening an interactive delegate-agent tab.
+    <value>Scegli l'agente usato per i prompt del riquadro comandi e altre azioni di delega.</value>
+    <comment>Supplementary description for the command palette agent setting. This agent is used by command palette prompts and other delegation actions.
 In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="AIAgents_AutoFix.Header" xml:space="preserve"><value>Suggerisci automaticamente correzioni per i comandi non riusciti</value></data>
@@ -3002,8 +3002,8 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
     <comment>{Locked="my-agent --acp --stdio"} Placeholder inside the box where the command for a custom agent pane agent is typed. Translate only the "e.g." lead-in; the sample command is an example command line.</comment>
   </data>
   <data name="AIAgents_CustomAcpCommandHint.Text" xml:space="preserve">
-    <value>Immetti il comando che avvia la tua CLI in modalità ACP. La maggior parte delle CLI richiede un flag a tale scopo.</value>
-    <comment>{Locked="CLI","ACP"} Hint shown under the box where the command for a custom agent pane agent is typed. The example command is supplied by AIAgents_CustomAcpCommand.PlaceholderText. Pluralize "CLI" the way your language does; do not carry over the English "-s".</comment>
+    <value>Immetti il comando che avvia la tua CLI in modalità ACP.</value>
+    <comment>{Locked="CLI","ACP"} Hint shown under the box where the command for a custom agent pane agent is typed. The example command is supplied by AIAgents_CustomAcpCommand.PlaceholderText.</comment>
   </data>
   <data name="AIAgents_CustomDelegateCommand.PlaceholderText" xml:space="preserve">
     <value>ad es. my-cli --flag</value>

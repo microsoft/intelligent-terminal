@@ -1251,7 +1251,7 @@
   </data>
   <data name="Profile_CommandPaletteAgent.HelpText" xml:space="preserve">
     <value>このプロファイルがアクティブな間、コマンド パレットのプロンプトやその他の委任アクションに使用するエージェントを選択します。この選択は、グローバルな委任エージェント設定より優先されます。</value>
-    <comment>Description for the per-profile command palette agent setting. This agent is used by command palette prompts and other delegation actions, including opening an interactive delegate-agent tab. Here "agent" means an AI agent, not a proxy or human agent.</comment>
+    <comment>Description for the per-profile command palette agent setting. This agent is used by command palette prompts and other delegation actions. Here "agent" means an AI agent, not a proxy or human agent.</comment>
   </data>
   <data name="Profile_AgentPaneBackend_AgentFormat" xml:space="preserve">
     <value>{0} · {1}</value>
@@ -2834,8 +2834,8 @@
   <data name="AIAgents_AcpModel.HelpText" xml:space="preserve"><value>このエージェントで使用するモデルを選択します。</value><comment>Supplementary description for the model setting.</comment></data>
   <data name="AIAgents_DelegateAgent.Header" xml:space="preserve"><value>エージェント</value><comment>Header for the setting that specifies which agent CLI handles command palette / on-demand requests.</comment></data>
   <data name="AIAgents_DelegateAgent.HelpText" xml:space="preserve">
-    <value>コマンド パレットのプロンプトや、対話型の委任エージェント タブを開く操作など、その他の委任アクションに使用するエージェントを選択します。</value>
-    <comment>Supplementary description for the command palette agent setting. This agent is used by command palette prompts and other delegation actions, including opening an interactive delegate-agent tab.
+    <value>コマンド パレットのプロンプトやその他の委任アクションに使用するエージェントを選択します。</value>
+    <comment>Supplementary description for the command palette agent setting. This agent is used by command palette prompts and other delegation actions.
 In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="AIAgents_AutoFix.Header" xml:space="preserve"><value>失敗したコマンドの修正候補を自動的に提案する</value><comment>Header for the toggle that enables automatic fix suggestions when commands fail.</comment></data>
@@ -3002,8 +3002,8 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
     <comment>{Locked="my-agent --acp --stdio"} Placeholder inside the box where the command for a custom agent pane agent is typed. Translate only the "e.g." lead-in; the sample command is an example command line.</comment>
   </data>
   <data name="AIAgents_CustomAcpCommandHint.Text" xml:space="preserve">
-    <value>CLI を ACP モードで起動するコマンドを入力します。ほとんどの CLI では、そのためのフラグが必要です。</value>
-    <comment>{Locked="CLI","ACP"} Hint shown under the box where the command for a custom agent pane agent is typed. The example command is supplied by AIAgents_CustomAcpCommand.PlaceholderText. Pluralize "CLI" the way your language does; do not carry over the English "-s".</comment>
+    <value>CLI を ACP モードで起動するコマンドを入力します。</value>
+    <comment>{Locked="CLI","ACP"} Hint shown under the box where the command for a custom agent pane agent is typed. The example command is supplied by AIAgents_CustomAcpCommand.PlaceholderText.</comment>
   </data>
   <data name="AIAgents_CustomDelegateCommand.PlaceholderText" xml:space="preserve">
     <value>例: my-cli --flag</value>

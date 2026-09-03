@@ -1251,7 +1251,7 @@
   </data>
   <data name="Profile_CommandPaletteAgent.HelpText" xml:space="preserve">
     <value>选择此配置文件处于活动状态时用于处理命令面板提示和其他委派操作的智能体。此选择优先于全局委派智能体设置。</value>
-    <comment>Description for the per-profile command palette agent setting. This agent is used by command palette prompts and other delegation actions, including opening an interactive delegate-agent tab. Here "agent" means an AI agent, not a proxy or human agent.</comment>
+    <comment>Description for the per-profile command palette agent setting. This agent is used by command palette prompts and other delegation actions. Here "agent" means an AI agent, not a proxy or human agent.</comment>
   </data>
   <data name="Profile_AgentPaneBackend_AgentFormat" xml:space="preserve">
     <value>{0} · {1}</value>
@@ -2861,8 +2861,8 @@
     <comment>Header for the setting that specifies which agent CLI handles command palette / on-demand requests.</comment>
   </data>
   <data name="AIAgents_DelegateAgent.HelpText" xml:space="preserve">
-    <value>选择用于处理命令面板提示和其他委派操作的智能体，包括打开交互式委派智能体选项卡。</value>
-    <comment>Supplementary description for the command palette agent setting. This agent is used by command palette prompts and other delegation actions, including opening an interactive delegate-agent tab.
+    <value>选择用于处理命令面板提示和其他委派操作的智能体。</value>
+    <comment>Supplementary description for the command palette agent setting. This agent is used by command palette prompts and other delegation actions.
 In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="AIAgents_AutoFix.Header" xml:space="preserve">
@@ -3059,8 +3059,8 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
     <comment>{Locked="my-agent --acp --stdio"} Placeholder inside the box where the command for a custom agent pane agent is typed. Translate only the "e.g." lead-in; the sample command is an example command line.</comment>
   </data>
   <data name="AIAgents_CustomAcpCommandHint.Text" xml:space="preserve">
-    <value>输入用于以 ACP 模式启动你的 CLI 的命令。大多数 CLI 都需要为此指定一个标志。</value>
-    <comment>{Locked="CLI","ACP"} Hint shown under the box where the command for a custom agent pane agent is typed. The example command is supplied by AIAgents_CustomAcpCommand.PlaceholderText. Pluralize "CLI" the way your language does; do not carry over the English "-s".</comment>
+    <value>输入用于以 ACP 模式启动你的 CLI 的命令。</value>
+    <comment>{Locked="CLI","ACP"} Hint shown under the box where the command for a custom agent pane agent is typed. The example command is supplied by AIAgents_CustomAcpCommand.PlaceholderText.</comment>
   </data>
   <data name="AIAgents_CustomDelegateCommand.PlaceholderText" xml:space="preserve">
     <value>例如 my-cli --flag</value>

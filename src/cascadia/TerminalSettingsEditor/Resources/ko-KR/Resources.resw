@@ -1251,7 +1251,7 @@
   </data>
   <data name="Profile_CommandPaletteAgent.HelpText" xml:space="preserve">
     <value>이 프로필이 활성 상태일 때 명령 팔레트 프롬프트와 기타 위임 작업에 사용할 에이전트를 선택하세요. 이 선택은 전역 위임 에이전트 설정보다 우선합니다.</value>
-    <comment>Description for the per-profile command palette agent setting. This agent is used by command palette prompts and other delegation actions, including opening an interactive delegate-agent tab. Here "agent" means an AI agent, not a proxy or human agent.</comment>
+    <comment>Description for the per-profile command palette agent setting. This agent is used by command palette prompts and other delegation actions. Here "agent" means an AI agent, not a proxy or human agent.</comment>
   </data>
   <data name="Profile_AgentPaneBackend_AgentFormat" xml:space="preserve">
     <value>{0} · {1}</value>
@@ -2861,8 +2861,8 @@
     <comment>Header for the setting that specifies which agent CLI handles command palette / on-demand requests.</comment>
   </data>
   <data name="AIAgents_DelegateAgent.HelpText" xml:space="preserve">
-    <value>명령 팔레트 프롬프트와 대화형 위임 에이전트 탭 열기를 비롯한 기타 위임 작업에 사용할 에이전트를 선택하세요.</value>
-    <comment>Supplementary description for the command palette agent setting. This agent is used by command palette prompts and other delegation actions, including opening an interactive delegate-agent tab.
+    <value>명령 팔레트 프롬프트와 기타 위임 작업에 사용할 에이전트를 선택하세요.</value>
+    <comment>Supplementary description for the command palette agent setting. This agent is used by command palette prompts and other delegation actions.
 In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="AIAgents_AutoFix.Header" xml:space="preserve">
@@ -3059,8 +3059,8 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
     <comment>{Locked="my-agent --acp --stdio"} Placeholder inside the box where the command for a custom agent pane agent is typed. Translate only the "e.g." lead-in; the sample command is an example command line.</comment>
   </data>
   <data name="AIAgents_CustomAcpCommandHint.Text" xml:space="preserve">
-    <value>CLI를 ACP 모드로 시작하는 명령을 입력하세요. 대부분의 CLI에는 이를 위한 플래그가 필요합니다.</value>
-    <comment>{Locked="CLI","ACP"} Hint shown under the box where the command for a custom agent pane agent is typed. The example command is supplied by AIAgents_CustomAcpCommand.PlaceholderText. Pluralize "CLI" the way your language does; do not carry over the English "-s".</comment>
+    <value>CLI를 ACP 모드로 시작하는 명령을 입력하세요.</value>
+    <comment>{Locked="CLI","ACP"} Hint shown under the box where the command for a custom agent pane agent is typed. The example command is supplied by AIAgents_CustomAcpCommand.PlaceholderText.</comment>
   </data>
   <data name="AIAgents_CustomDelegateCommand.PlaceholderText" xml:space="preserve">
     <value>예: my-cli --flag</value>

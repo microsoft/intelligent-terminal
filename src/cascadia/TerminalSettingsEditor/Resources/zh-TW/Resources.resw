@@ -1251,7 +1251,7 @@
   </data>
   <data name="Profile_CommandPaletteAgent.HelpText" xml:space="preserve">
     <value>選擇此設定檔作用中時用於處理命令選擇區提示和其他委派動作的智能體。此選取項目優先於全域委派智能體設定。</value>
-    <comment>Description for the per-profile command palette agent setting. This agent is used by command palette prompts and other delegation actions, including opening an interactive delegate-agent tab. Here "agent" means an AI agent, not a proxy or human agent.</comment>
+    <comment>Description for the per-profile command palette agent setting. This agent is used by command palette prompts and other delegation actions. Here "agent" means an AI agent, not a proxy or human agent.</comment>
   </data>
   <data name="Profile_AgentPaneBackend_AgentFormat" xml:space="preserve">
     <value>{0} · {1}</value>
@@ -2834,8 +2834,8 @@
   <data name="AIAgents_AcpModel.HelpText" xml:space="preserve"><value>選擇此代理使用的模型。</value><comment>Supplementary description for the model setting.</comment></data>
   <data name="AIAgents_DelegateAgent.Header" xml:space="preserve"><value>代理</value><comment>Header for the setting that specifies which agent CLI handles command palette / on-demand requests.</comment></data>
   <data name="AIAgents_DelegateAgent.HelpText" xml:space="preserve">
-    <value>選擇用於處理命令選擇區提示和其他委派動作的智能體，包括開啟互動式委派智能體索引標籤。</value>
-    <comment>Supplementary description for the command palette agent setting. This agent is used by command palette prompts and other delegation actions, including opening an interactive delegate-agent tab.
+    <value>選擇用於處理命令選擇區提示和其他委派動作的智能體。</value>
+    <comment>Supplementary description for the command palette agent setting. This agent is used by command palette prompts and other delegation actions.
 In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="AIAgents_AutoFix.Header" xml:space="preserve"><value>自動為失敗的命令建議修正</value><comment>Header for the toggle that enables automatic fix suggestions when commands fail.</comment></data>
@@ -3002,8 +3002,8 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
     <comment>{Locked="my-agent --acp --stdio"} Placeholder inside the box where the command for a custom agent pane agent is typed. Translate only the "e.g." lead-in; the sample command is an example command line.</comment>
   </data>
   <data name="AIAgents_CustomAcpCommandHint.Text" xml:space="preserve">
-    <value>輸入以 ACP 模式啟動您的 CLI 的命令。大多數 CLI 都需要為此使用旗標。</value>
-    <comment>{Locked="CLI","ACP"} Hint shown under the box where the command for a custom agent pane agent is typed. The example command is supplied by AIAgents_CustomAcpCommand.PlaceholderText. Pluralize "CLI" the way your language does; do not carry over the English "-s".</comment>
+    <value>輸入以 ACP 模式啟動您的 CLI 的命令。</value>
+    <comment>{Locked="CLI","ACP"} Hint shown under the box where the command for a custom agent pane agent is typed. The example command is supplied by AIAgents_CustomAcpCommand.PlaceholderText.</comment>
   </data>
   <data name="AIAgents_CustomDelegateCommand.PlaceholderText" xml:space="preserve">
     <value>例如 my-cli --flag</value>
