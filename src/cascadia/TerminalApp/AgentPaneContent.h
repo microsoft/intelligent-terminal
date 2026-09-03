@@ -10,6 +10,8 @@
 #include "TerminalPaneContent.h"
 #include "BasicPaneEvents.h"
 
+#include "AutofixState.h"
+
 namespace winrt::TerminalApp::implementation
 {
     struct AgentPaneContent : AgentPaneContentT<AgentPaneContent>, BasicPaneEvents
@@ -81,18 +83,9 @@ namespace winrt::TerminalApp::implementation
         // Driven by inbound `autofix_state_changed` events for this pane's
         // owning tab. The window-level bottom bar reads these accessors
         // when refreshing for the active tab.
-        enum class AutofixState
-        {
-            Idle,
-            Detected,
-            Pending,
-            // Analysis finished; the result (fix or explanation) is waiting
-            // in the agent pane chat. Surfaced only when the pane is closed
-            // — the helper decides via pane_open and sends Idle instead when
-            // it's already open. Replaces the old Armed/Suggested split:
-            // autofix no longer auto-executes, so both surface identically.
-            Review,
-        };
+        // Analysis results use Review while waiting in a closed agent pane.
+        // The helper sends Idle instead when the pane is already open.
+        using AutofixState = ::TerminalApp::Autofix::State;
         // Update the diagnostics state from an inbound autofix_state event
         // (single-writer for this pane's state). `pane_id` and other fields
         // come from the JSON payload; we only stash strings that the bar

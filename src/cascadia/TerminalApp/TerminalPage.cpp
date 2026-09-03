@@ -3997,10 +3997,7 @@ namespace winrt::TerminalApp::implementation
             // via `autofix_state`.
             const bool detectionEnabled =
                 _settings && _settings.GlobalSettings().EffectiveAutoErrorDetectionEnabled();
-            const bool hasDiagnostics =
-                autofixState == AS::Detected ||
-                autofixState == AS::Pending ||
-                autofixState == AS::Review;
+            const bool hasDiagnostics = ::TerminalApp::Autofix::HasDiagnostics(autofixState);
             const bool showGroup = detectionEnabled && agentConnected && hasDiagnostics;
             if (const auto group = DiagnosticsGroup())
             {
