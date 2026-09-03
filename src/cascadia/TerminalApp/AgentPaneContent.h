@@ -136,9 +136,9 @@ namespace winrt::TerminalApp::implementation
         AutofixState GetAutofixState() const noexcept { return _autofixState; }
         // True once the helper's ACP session has reached Connected (driven
         // by the `agent_status` `state` field via UpdateAgentStatus). The
-        // bottom-bar diagnostics group is gated on this: no autofix
+        // One gate for the bottom-bar diagnostics group: no autofix
         // capability exists before connect (cold start) or after a
-        // failure/disconnect, so the button must not appear at all.
+        // failure/disconnect. An actionable autofix state is also required.
         bool IsAgentConnected() const noexcept { return _agentState == L"connected"; }
         // True after the first agent_status routed to this pane. The helper
         // subscribes to WT events before it can publish that status, so this
