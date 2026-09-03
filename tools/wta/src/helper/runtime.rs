@@ -488,13 +488,23 @@ async fn run_acp_app(
                 }
             });
 
-            // Start the background protocol reader and trigger lazy event registration.
-            // start_reader() claims stdout/stderr streams and must complete before any requests.
+            // Start the protocol listener without gating helper/ACP startup on
+            // its readiness. If COM is temporarily unavailable, chat and
+            // Autofix still work; the reader retries in the background and
+            // only helper-local pane/session status may lag.
             // get_capabilities triggers _ensurePageEventsRegistered() on the WT server.
             if let Some(ref protocol_ch) = wt_protocol_channel {
                 tracing::info!("start_reader: starting...");
-                protocol_ch.start_reader().await;
-                tracing::info!("start_reader: done, sending get_capabilities...");
+                let reader = Arc::clone(protocol_ch);
+                tokio::spawn(async move {
+                    if !reader.start_reader().await {
+                        tracing::warn!(
+                            target: "wtcli",
+                            "helper WT event listener is still reconnecting; local session status may be stale"
+                        );
+                    }
+                });
+                tracing::info!("start_reader: launched, sending get_capabilities...");
                 match protocol_ch
                     .request("get_capabilities", serde_json::json!({}))
                     .await

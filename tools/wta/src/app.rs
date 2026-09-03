@@ -105,6 +105,12 @@ pub use turn_state::{AutofixContext, ChunkKind, SubmittedPrompt, TurnOutcome, Tu
 const MVP_SESSIONS_ORIGIN_FILTER: crate::agent_sessions::OriginFilter =
     crate::agent_sessions::OriginFilter::ShellOnly;
 
+/// A session event the helper itself originates and sends to master (resume
+/// bookkeeping, pane lifecycle). Agent CLI hooks are NOT queued here: master
+/// subscribes to the COM broadcast and routes them itself, so one hook produces
+/// one master-side apply regardless of helper count.
+pub type QueuedSessionHook = crate::agent_sessions::SessionEvent;
+
 /// Resolve the `/sessions` origin filter for this process.
 ///
 /// Defaults to [`MVP_SESSIONS_ORIGIN_FILTER`]. The `WTA_SESSIONS_SHOW_AGENT_PANE`
@@ -422,6 +428,205 @@ pub const CONSUMED_PAYLOAD_KEYS: &[&str] = &[
 /// from the degraded payload and the notification loses its question text.
 pub const CONSUMED_TOOL_INPUT_KEYS: &[&str] = &["question", "prompt", "message"];
 
+/// Registry facts the `agent_event` decision needs.
+///
+/// The caller resolves these against whichever registry it owns — the helper's
+/// synchronous `AgentSessionRegistry`, or master's async trait-object registry
+/// via a snapshot — which keeps [`plan_agent_event`] itself pure.
+#[derive(Debug, Clone)]
+pub struct AgentEventFacts {
+    /// Key the event resolves to, already through the pane / cli fallbacks.
+    pub key: String,
+    /// Whether a row already exists for `key`.
+    pub session_known: bool,
+}
+
+/// What one `agent_event` implies.
+#[derive(Debug, Default)]
+pub struct AgentEventPlan {
+    /// Session events to apply, in emit order. Empty when the hook is
+    /// deliberately ignored (tool completions, `idle_prompt` notifications).
+    pub events: Vec<crate::agent_sessions::SessionEvent>,
+    /// Set when a real `agent.session.started` should supersede any
+    /// `pane:`-keyed placeholder previously minted for this pane.
+    pub supersedes_pane_placeholders: bool,
+}
+
+/// Translate one `agent_event` payload into the session events it implies.
+///
+/// Pure by construction. Master and the helper own different registries — an
+/// async trait object versus a synchronous struct — but they must agree
+/// *exactly* on what a hook means, so the taxonomy lives here instead of being
+/// written twice and drifting: which events map to which transition, when a
+/// synthetic start is warranted, and how a user-input tool call splits into a
+/// tool event plus the notification the prompt UI renders.
+pub fn plan_agent_event(
+    event: &str,
+    payload: &serde_json::Value,
+    pane_session_id: &str,
+    cli_source: &crate::agent_sessions::CliSource,
+    facts: &AgentEventFacts,
+) -> AgentEventPlan {
+    use crate::agent_sessions::SessionEvent;
+    use std::path::PathBuf;
+
+    let mut plan = AgentEventPlan::default();
+    let key = facts.key.clone();
+
+    let cwd = payload
+        .get("cwd")
+        .and_then(|v| v.as_str())
+        .map(PathBuf::from)
+        .unwrap_or_default();
+    let synth_title = if facts.session_known {
+        String::new()
+    } else {
+        cwd.file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("")
+            .to_string()
+    };
+
+    // A synthetic start is only meaningful for events that imply the session is
+    // still running — they need a row to land on. Terminal events describe a
+    // session that is already over, so fabricating a start for one WTA has
+    // never seen materializes a permanent `Ended` row titled after the cwd
+    // basename (repro: an abandoned CLI session's `agent.session.end` produced
+    // a row titled after its working directory in `/sessions` that no reconcile
+    // pass can ever prune, because `is_stale_host_history_row` only prunes ids
+    // the agent itself listed and later stopped listing).
+    //
+    // `agent.error` is deliberately NOT excluded: it reports a session that is
+    // still live but failing, and its `ConnectionFailed` reducer resolves the
+    // row through the pane binding. Without the synthetic start there is no
+    // such binding, so a first-observed connection failure would silently
+    // no-op instead of surfacing as `Error`.
+    let needs_synthetic_start = !matches!(
+        event,
+        "agent.session.started"
+            | "agent.session.start"
+            | "agent.session.stopped"
+            | "agent.session.end"
+    ) && !facts.session_known;
+    if needs_synthetic_start {
+        plan.events.push(SessionEvent::SessionStarted {
+            key: key.clone(),
+            cli_source: cli_source.clone(),
+            pane_session_id: pane_session_id.to_string(),
+            cwd: cwd.clone(),
+            title: synth_title.clone(),
+        });
+    }
+
+    plan.supersedes_pane_placeholders =
+        matches!(event, "agent.session.started" | "agent.session.start");
+
+    let primary = match event {
+        "agent.session.started" | "agent.session.start" => SessionEvent::SessionStarted {
+            key,
+            cli_source: cli_source.clone(),
+            pane_session_id: pane_session_id.to_string(),
+            cwd,
+            title: synth_title,
+        },
+        "agent.tool.starting" => {
+            let tool_name = payload
+                .get("tool_name")
+                .or_else(|| payload.get("toolName"))
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+            if crate::agent_sessions::is_user_input_tool(&tool_name) {
+                // A user-input tool is two facts: the agent started a tool, and
+                // it is now blocked on the user. Both must land, so the tool
+                // event is emitted alongside the notification the prompt UI
+                // renders.
+                plan.events.push(SessionEvent::ToolStarting {
+                    key: key.clone(),
+                    tool_name,
+                });
+                let message = payload
+                    .get("tool_input")
+                    .and_then(|ti| {
+                        ti.get("question")
+                            .or_else(|| ti.get("prompt"))
+                            .or_else(|| ti.get("message"))
+                    })
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("waiting for user input")
+                    .to_string();
+                SessionEvent::Notification { key, message }
+            } else {
+                SessionEvent::ToolStarting { key, tool_name }
+            }
+        }
+        "agent.prompt.submit" => SessionEvent::ToolStarting {
+            key,
+            tool_name: "prompt".to_string(),
+        },
+        // Tool completion does NOT end the turn. Copilot and Gemini fire a
+        // `tool.finished` per tool — often several per turn, in parallel
+        // batches — but the agent keeps working until it emits `agent.stop`.
+        // Mapping each completion to `ToolCompleted` made multi-tool turns
+        // flicker to Idle and sit there during the agent's between-tool
+        // thinking. The arm stays so an older installed bundle that still
+        // emits them is ignored rather than mis-routed.
+        "agent.tool.completed" | "agent.tool.finished" | "agent.tool.failed" => {
+            plan.events.clear();
+            return plan;
+        }
+        "agent.stop" | "agent.subagent.stop" => SessionEvent::ToolCompleted { key },
+        "agent.notification" => {
+            // Claude's `Notification` hook covers two cases. `permission_prompt`
+            // is genuinely Attention: nothing proceeds until the user acts.
+            // `idle_prompt` fires *after* `agent.stop` already moved the row to
+            // Idle, so treating it as Attention would park every session at
+            // "waiting for your input" between turns. Unknown types stay
+            // Attention on purpose — over-reporting costs a stale badge the
+            // next event clears, under-reporting loses a permission request.
+            let notification_type = payload
+                .get("notification_type")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
+            if notification_type == "idle_prompt" {
+                plan.events.clear();
+                return plan;
+            }
+            SessionEvent::Notification {
+                key,
+                message: payload
+                    .get("message")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string(),
+            }
+        }
+        "agent.session.stopped" | "agent.session.end" => SessionEvent::SessionStopped {
+            key,
+            reason: payload
+                .get("reason")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string(),
+        },
+        "agent.error" => SessionEvent::ConnectionFailed {
+            pane_session_id: pane_session_id.to_string(),
+            reason: payload
+                .get("error")
+                .and_then(|v| v.as_str())
+                .or_else(|| payload.get("message").and_then(|v| v.as_str()))
+                .unwrap_or("agent error")
+                .to_string(),
+        },
+        _ => {
+            plan.events.clear();
+            return plan;
+        }
+    };
+    plan.events.push(primary);
+    plan
+}
+
 /// Route a parsed `agent_event` payload into the AgentSessionRegistry.
 ///
 /// `pane_session_id` is the **WT pane GUID** ($env:WT_SESSION in the
@@ -431,6 +636,13 @@ pub const CONSUMED_TOOL_INPUT_KEYS: &[&str] = &["question", "prompt", "message"]
 /// `asid` local) and is what we use as the registry key when known —
 /// see the module-level docs in `agent_sessions.rs` for the
 /// distinction.
+///
+/// This maintains **helper-local** state only: the pane→session binding the
+/// OSC 133;A agent-exit heuristic and the autofix target logic read
+/// synchronously. The authoritative registry lives in master, which routes the
+/// same COM broadcast itself — see `handle_master_wt_event`. Nothing here is
+/// forwarded, so N helpers observing one hook produce one master-side apply
+/// rather than N.
 ///
 /// Returns `true` if the registry was updated and the UI should redraw.
 #[allow(dead_code)]
@@ -442,6 +654,8 @@ pub fn route_agent_event_to_registry(
     route_agent_event_to_registry_with_hook_sink(reg, pane_session_id, params, |_| {})
 }
 
+/// As [`route_agent_event_to_registry`], but reports every event it applied.
+/// The sink is an observation point for tests — it is not a publish path.
 pub fn route_agent_event_to_registry_with_hook_sink<F>(
     reg: &mut crate::agent_sessions::AgentSessionRegistry,
     pane_session_id: &str,
@@ -451,8 +665,7 @@ pub fn route_agent_event_to_registry_with_hook_sink<F>(
 where
     F: FnMut(crate::agent_sessions::SessionEvent),
 {
-    use crate::agent_sessions::{CliSource, SessionEvent};
-    use std::path::PathBuf;
+    use crate::agent_sessions::CliSource;
 
     let event = params.get("event").and_then(|v| v.as_str()).unwrap_or("");
     if !event.starts_with("agent.") {
@@ -550,183 +763,21 @@ where
         .get("payload")
         .cloned()
         .unwrap_or(serde_json::Value::Null);
-    let cwd = payload
-        .get("cwd")
-        .and_then(|v| v.as_str())
-        .map(PathBuf::from)
-        .unwrap_or_default();
-    let cwd_label = cwd
-        .file_name()
-        .and_then(|n| n.to_str())
-        .unwrap_or("")
-        .to_string();
 
-    let session_known = reg.has_session(&key);
-    let synth_title: String = if session_known {
-        String::new()
-    } else {
-        cwd_label.clone()
+    let facts = AgentEventFacts {
+        key: key.clone(),
+        session_known: reg.has_session(&key),
     };
-    // A `pane:<guid>` key means we couldn't resolve a real ACP session id
-    // from the event payload (broken hook, race between hook arrival and
-    // `new_session` reaching master, etc.) AND the cli-source fallback
-    // above (`most_recent_live_session_for_cli`) didn't find a live
-    // session to attach to. Keep the local placeholder for helper
-    // bookkeeping (so `is_agent_pane(pane_id)` works for the OSC 133;A
-    // handler) but DO NOT publish these to master — master only ever
-    // learns about real ACP sessions via `new_session`/`load_session`,
-    // and feeding it synthetic rows produces duplicate session management entries that
-    // shadow the real session (one with the real sid, one with `pane:`
-    // key, both pointing at the same agent — see PR B debug session log
-    // around 2026-05-28T00:30 for the user-visible repro).
-    let needs_synthetic_start = event != "agent.session.started" && !session_known;
-    if needs_synthetic_start {
-        let synthetic_event = SessionEvent::SessionStarted {
-            key: key.clone(),
-            cli_source: cli_source.clone(),
-            pane_session_id: pane_session_id.to_string(),
-            cwd: cwd.clone(),
-            title: synth_title.clone(),
-        };
-        reg.apply(synthetic_event.clone());
-        if !key_is_synthetic {
-            hook_sink(synthetic_event);
-        }
-    }
+    let plan = plan_agent_event(event, &payload, pane_session_id, &cli_source, &facts);
 
-    if event == "agent.session.started" && !asid.is_empty() {
+    // A real `agent.session.started` supersedes any `pane:`-keyed placeholder
+    // minted for this pane while the id was still unknown.
+    if plan.supersedes_pane_placeholders && !asid.is_empty() {
         reg.drop_synthetic_for_pane(pane_session_id);
     }
 
-    let ev = match event {
-        "agent.session.started" | "agent.session.start" => SessionEvent::SessionStarted {
-            key,
-            cli_source,
-            pane_session_id: pane_session_id.to_string(),
-            cwd,
-            title: synth_title,
-        },
-        "agent.tool.starting" => {
-            let tool_name = payload
-                .get("tool_name")
-                .or_else(|| payload.get("toolName"))
-                .and_then(|v| v.as_str())
-                .unwrap_or("")
-                .to_string();
-            if crate::agent_sessions::is_user_input_tool(&tool_name) {
-                let tool_event = SessionEvent::ToolStarting {
-                    key: key.clone(),
-                    tool_name,
-                };
-                reg.apply(tool_event.clone());
-                hook_sink(tool_event);
-                let message = payload
-                    .get("tool_input")
-                    .and_then(|ti| {
-                        ti.get("question")
-                            .or_else(|| ti.get("prompt"))
-                            .or_else(|| ti.get("message"))
-                    })
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("waiting for user input")
-                    .to_string();
-                SessionEvent::Notification { key, message }
-            } else {
-                SessionEvent::ToolStarting { key, tool_name }
-            }
-        }
-        "agent.prompt.submit" => SessionEvent::ToolStarting {
-            key,
-            tool_name: "prompt".to_string(),
-        },
-        // Tool completion does NOT end the turn. Copilot and Gemini fire a
-        // `tool.finished` per tool — often several per turn, in parallel
-        // batches — but the agent keeps working (thinking, streaming text,
-        // running the next tool) until it emits `agent.stop`. Mapping each
-        // `tool.finished` to `ToolCompleted` made multi-tool turns flicker to
-        // Idle and, worse, sit at Idle during the agent's between-tool thinking
-        // (Copilot fires only one `prompt.submit` + one `agent.stop` per user
-        // request, with many tool pairs in between). So ignore tool completions
-        // here and let `agent.stop` own the turn-end → Idle, mirroring the
-        // watcher's turn-based `classify_copilot` / `classify_codex`, which also
-        // ignore `tool.execution_complete`.
-        //
-        // Because these are dropped, no bundle subscribes them any more: each
-        // one cost a shell spawn (~400ms under PowerShell) plus a COM round
-        // trip, per tool call, to be discarded here. Copilot's `PostToolUse` /
-        // `PostToolUseFailure`, Gemini's `AfterTool`, and OpenCode's
-        // `tool.execute.after` were all removed. The arm stays so an older
-        // installed bundle that still emits them is ignored rather than
-        // mis-routed.
-        "agent.tool.completed" | "agent.tool.finished" | "agent.tool.failed" => {
-            return reg.take_dirty();
-        }
-        "agent.stop" | "agent.subagent.stop" => SessionEvent::ToolCompleted { key },
-        "agent.notification" => {
-            // Not every notification means "the agent is blocked on you".
-            // Claude's `Notification` hook covers two cases, distinguished by
-            // `notification_type`:
-            //
-            //   * `permission_prompt` — the agent wants approval for a tool.
-            //     Genuinely Attention: nothing proceeds until the user acts.
-            //   * `idle_prompt` — the agent already finished its turn and has
-            //     simply been sitting at an empty prompt for 60s. It fires
-            //     *after* `agent.stop` has correctly moved the row to Idle, so
-            //     treating it as Attention parks every session at "Claude is
-            //     waiting for your input" between turns.
-            //
-            // Drop `idle_prompt` and let `agent.stop` keep ownership of the
-            // turn-end transition, the same division of labour the tool
-            // completion arm above relies on. Deliberately *not* mapped to
-            // Idle: an unanswered `permission_prompt` also goes idle after
-            // 60s, and demoting that row would hide a pending approval.
-            //
-            // Unknown types stay Attention on purpose. Over-reporting costs a
-            // stale badge the next event clears; under-reporting loses a
-            // permission request with no other signal that it happened.
-            let notification_type = payload
-                .get("notification_type")
-                .and_then(|v| v.as_str())
-                .unwrap_or("");
-            if notification_type == "idle_prompt" {
-                return reg.take_dirty();
-            }
-            SessionEvent::Notification {
-                key,
-                message: payload
-                    .get("message")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("")
-                    .to_string(),
-            }
-        }
-        "agent.session.stopped" | "agent.session.end" => SessionEvent::SessionStopped {
-            key,
-            reason: payload
-                .get("reason")
-                .and_then(|v| v.as_str())
-                .unwrap_or("")
-                .to_string(),
-        },
-        "agent.error" => SessionEvent::ConnectionFailed {
-            pane_session_id: pane_session_id.to_string(),
-            reason: payload
-                .get("error")
-                .and_then(|v| v.as_str())
-                .or_else(|| payload.get("message").and_then(|v| v.as_str()))
-                .unwrap_or("agent error")
-                .to_string(),
-        },
-        _ => return reg.take_dirty(),
-    };
-
-    reg.apply(ev.clone());
-    // Same synthetic-key gate as the SessionStarted placeholder above:
-    // events keyed by `pane:<guid>` are helper-local bookkeeping only
-    // and must NOT be published to master. Their session_id is fake
-    // and would land in master's registry as a duplicate row alongside
-    // the real ACP session.
-    if !key_is_synthetic {
+    for ev in plan.events {
+        reg.apply(ev.clone());
         hook_sink(ev);
     }
 
@@ -1173,7 +1224,7 @@ pub struct App {
     /// no-op outside the integration loop.
     agent_event_tx: Option<mpsc::UnboundedSender<AppEvent>>,
     /// Helper-mode fire-and-forget publisher for `intellterm.wta/session_hook`.
-    session_hook_tx: Option<mpsc::UnboundedSender<crate::agent_sessions::SessionEvent>>,
+    session_hook_tx: Option<mpsc::UnboundedSender<QueuedSessionHook>>,
     /// Hot-updatable delegate config, shared with the recommendation
     /// executor (`run_recommendation_executor`). Rebuilt in place on an
     /// `agent_config_changed` settings event so the configured delegate
@@ -1801,10 +1852,7 @@ impl App {
         self.agent_event_tx = Some(tx);
     }
 
-    pub fn set_session_hook_tx(
-        &mut self,
-        tx: mpsc::UnboundedSender<crate::agent_sessions::SessionEvent>,
-    ) {
+    pub fn set_session_hook_tx(&mut self, tx: mpsc::UnboundedSender<QueuedSessionHook>) {
         self.session_hook_tx = Some(tx);
     }
 

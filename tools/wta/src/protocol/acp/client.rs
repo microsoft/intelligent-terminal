@@ -2553,7 +2553,7 @@ pub async fn run_acp_client_over_pipe(
     mut drop_session_rx: mpsc::UnboundedReceiver<DropSessionRequest>,
     mut rename_session_rx: mpsc::UnboundedReceiver<RenameSessionRequest>,
     mut restart_rx: mpsc::UnboundedReceiver<AgentLifecycleRequest>,
-    mut session_hook_rx: mpsc::UnboundedReceiver<crate::agent_sessions::SessionEvent>,
+    mut session_hook_rx: mpsc::UnboundedReceiver<crate::app::QueuedSessionHook>,
     mut master_ext_rx: mpsc::UnboundedReceiver<MasterExtRequest>,
     shell_mgr: Arc<ShellManager>,
     wt_connected: bool,

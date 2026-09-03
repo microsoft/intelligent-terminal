@@ -487,7 +487,9 @@ pub enum WtaExtRequest {
     FocusSession(FocusSessionParams),
     /// `_intellterm.wta/sessions/list` — full registry snapshot.
     SessionsList(SessionsListParams),
-    /// `_intellterm.wta/session_hook` — a real per-session hook event.
+    /// `_intellterm.wta/session_hook` — a helper-originated session event
+    /// (resume bookkeeping, pane lifecycle). Agent CLI hooks reach master over
+    /// the COM broadcast instead.
     SessionHook(crate::agent_sessions::SessionEvent),
     /// `_intellterm.wta/session_born_bound` — a #266 binding-only registration
     /// (same body as `SessionHook` plus an optional `wsl_distro` → binding-only
@@ -884,6 +886,10 @@ pub struct SessionHookResponse {
 }
 
 /// Build a fire-and-forget helper → master `session_hook` ExtRequest.
+///
+/// Still used for events the helper itself originates (resume bookkeeping,
+/// born-bound registration). Agent CLI hooks do NOT travel this path: master
+/// subscribes to the COM broadcast and routes them itself.
 pub fn build_session_hook_request(
     event: &crate::agent_sessions::SessionEvent,
 ) -> acp::schema::v1::ExtRequest {
@@ -946,7 +952,6 @@ pub fn parse_session_hook_params(
 ) -> Result<crate::agent_sessions::SessionEvent, serde_json::Error> {
     serde_json::from_str::<SessionHookParams>(raw.get()).map(Into::into)
 }
-
 /// Parse a born-bound body into `(event, wsl_distro)`. Reuses
 /// [`parse_session_hook_params`] for the event (it ignores the extra
 /// `wsl_distro` key) and separately extracts the optional distro.
@@ -959,6 +964,7 @@ pub fn parse_born_bound_params(
         wsl_distro: Option<String>,
     }
     let event = parse_session_hook_params(raw)?;
+
     // Propagate a malformed `wsl_distro` (present but the wrong JSON type) as a
     // parse error so the master answers `invalid_params`, rather than silently
     // dropping the distro and mislabelling the row as a host session. A missing
@@ -1839,6 +1845,17 @@ fn apply_event_locked(state: &mut RegistryState, ev: SessionEvent) -> bool {
             let Some(entry) = state.sessions.get_mut(&sid) else {
                 return false;
             };
+            // Idempotent, unlike the `remove`-based PaneClosed arm above: the
+            // pane binding survives a failure, so a repeat would otherwise
+            // re-report a change every time. Every helper in the window
+            // observes the same WT `connection_state: failed` and publishes
+            // its own copy, so without this each one re-broadcasts
+            // `sessions/changed` for a row that already says exactly this.
+            if entry.status == Some(AgentStatus::Error)
+                && entry.last_error.as_deref() == Some(reason.as_str())
+            {
+                return false;
+            }
             entry.status = Some(AgentStatus::Error);
             entry.last_error = Some(reason);
             entry.last_activity_at_ms = Some(now);
@@ -3029,6 +3046,56 @@ mod tests {
         assert_eq!(row.status, Some(crate::agent_sessions::AgentStatus::Error));
         assert_eq!(row.last_error.as_deref(), Some("ECONNRESET"));
         assert_eq!(row.pane_session_id.as_deref(), Some("p"));
+    }
+
+    /// Master's counterpart to the helper-side idempotency test. Every helper
+    /// publishes its own copy of the same WT `connection_state: failed`, and
+    /// `apply_event`'s return value gates the `sessions/changed` broadcast — so
+    /// a repeat that reports `true` would push one notification per helper for
+    /// a row that already says exactly this.
+    #[tokio::test]
+    async fn master_reducer_repeated_connection_failure_reports_no_change() {
+        let reg = InMemoryRegistry::new();
+        reg.apply_event(crate::agent_sessions::SessionEvent::SessionStarted {
+            key: "sid".into(),
+            cli_source: crate::agent_sessions::CliSource::Claude,
+            pane_session_id: "p".into(),
+            cwd: PathBuf::from("C:\\x"),
+            title: "t".into(),
+        })
+        .await;
+
+        let first = reg
+            .apply_event(crate::agent_sessions::SessionEvent::ConnectionFailed {
+                pane_session_id: "p".into(),
+                reason: "ECONNRESET".into(),
+            })
+            .await;
+        assert!(first, "the first failure must land and broadcast");
+
+        let repeat = reg
+            .apply_event(crate::agent_sessions::SessionEvent::ConnectionFailed {
+                pane_session_id: "p".into(),
+                reason: "ECONNRESET".into(),
+            })
+            .await;
+        assert!(
+            !repeat,
+            "a sibling helper's identical copy must not re-broadcast"
+        );
+
+        let changed = reg
+            .apply_event(crate::agent_sessions::SessionEvent::ConnectionFailed {
+                pane_session_id: "p".into(),
+                reason: "pipe closed".into(),
+            })
+            .await;
+        assert!(changed, "a different reason is new information");
+        let row = reg
+            .lookup(&acp::schema::v1::SessionId::new("sid"))
+            .await
+            .unwrap();
+        assert_eq!(row.last_error.as_deref(), Some("pipe closed"));
     }
 
     #[tokio::test]

@@ -1913,16 +1913,17 @@ impl App {
                 // tab routing; runs before the same-pane skip because we want
                 // to record events from our own pane too.
                 if method == "agent_event" {
-                    let mut hook_events = Vec::new();
-                    let _ = route_agent_event_to_registry_with_hook_sink(
+                    // Helper-local only. Master subscribes to the same COM
+                    // broadcast and routes the hook into the authoritative
+                    // registry itself (`handle_master_wt_event`), so forwarding
+                    // from here would apply one real hook once per live helper.
+                    // What the helper still needs is the pane→session binding
+                    // its OSC 133;A and autofix paths read synchronously.
+                    let _ = route_agent_event_to_registry(
                         &mut self.agent_sessions,
                         pane_id.as_str(),
                         &params,
-                        |event| hook_events.push(event),
                     );
-                    for event in hook_events {
-                        self.publish_session_hook(event);
-                    }
                     // Diagnostics aid: surface the raw event payload in the
                     // active tab's chat so a developer can correlate hook
                     // wire-format with registry behavior. Off by default.

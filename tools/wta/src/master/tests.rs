@@ -10726,3 +10726,162 @@ async fn born_bound_delegate_clears_a_stale_hook_ownership_claim() {
     assert!(!state.hook_owned.lock().await.contains(&sid));
     assert!(state.born_bound.lock().await.contains(&sid));
 }
+
+/// The authoritative hook path is the master's own COM subscription, not a
+/// helper's pipe. One `agent_event` for an unseen session must create the row,
+/// apply the reported transition, and claim hook ownership in one pass.
+#[tokio::test]
+async fn master_com_agent_event_routes_directly_into_the_registry() {
+    let state = make_state();
+    let sid = acp::schema::v1::SessionId::new("direct-hook".to_string());
+
+    handle_master_wt_event(
+        &state,
+        serde_json::json!({
+            "method": "agent_event",
+            "params": {
+                "event": "agent.tool.starting",
+                "cli_source": "copilot",
+                "agent_session_id": "direct-hook",
+                "pane_id": "pane-direct",
+                "payload": {
+                    "cwd": "C:\\repo",
+                    "tool_name": "edit"
+                }
+            }
+        }),
+    )
+    .await;
+
+    let row = state.registry.lookup(&sid).await.expect("row created");
+    assert_eq!(
+        row.status,
+        Some(crate::agent_sessions::AgentStatus::Working)
+    );
+    assert_eq!(row.pane_session_id.as_deref(), Some("pane-direct"));
+    assert!(
+        state.hook_owned.lock().await.contains(&sid),
+        "a real COM hook must suppress the hookless watcher just like the old \
+         helper-forwarded path did"
+    );
+}
+
+/// A direct COM SessionStarted can beat the helper callback that reports the
+/// pane assigned by resume. The callback is then a reducer no-op; it must not
+/// downgrade the current hook-owned generation to born-bound and re-enable the
+/// watcher against live hook state.
+#[tokio::test]
+async fn late_resume_pane_assignment_preserves_direct_hook_ownership() {
+    let state = make_state();
+    let sid = acp::schema::v1::SessionId::new("direct-resume-race".to_string());
+
+    handle_master_wt_event(
+        &state,
+        serde_json::json!({
+            "method": "agent_event",
+            "params": {
+                "event": "agent.session.start",
+                "cli_source": "copilot",
+                "agent_session_id": "direct-resume-race",
+                "pane_id": "pane-resume-race",
+                "payload": { "cwd": "C:\\repo" }
+            }
+        }),
+    )
+    .await;
+    assert!(state.hook_owned.lock().await.contains(&sid));
+
+    let response = handle_session_hook(
+        &state,
+        crate::agent_sessions::SessionEvent::ResumePaneAssigned {
+            key: "direct-resume-race".to_string(),
+            pane_session_id: "pane-resume-race".to_string(),
+        },
+        false,
+    )
+    .await
+    .expect("late binding callback accepted");
+    assert_eq!(
+        response.0.get(),
+        r#"{"applied":false}"#,
+        "the callback is a no-op because the hook already bound this pane"
+    );
+    assert!(
+        state.hook_owned.lock().await.contains(&sid),
+        "a no-op binding callback must not erase current hook ownership"
+    );
+    assert!(
+        !state.born_bound.lock().await.contains(&sid),
+        "the no-op callback must not reclassify the current generation"
+    );
+}
+
+/// Regression for the cwd-basename ghost: a terminal hook for a session master
+/// has never seen must not invent a SessionStarted before applying the end.
+#[tokio::test]
+async fn master_com_terminal_hook_for_unknown_session_creates_no_row() {
+    let state = make_state();
+    let sid = acp::schema::v1::SessionId::new("direct-ghost".to_string());
+
+    handle_master_wt_event(
+        &state,
+        serde_json::json!({
+            "method": "agent_event",
+            "params": {
+                "event": "agent.session.end",
+                "cli_source": "copilot",
+                "agent_session_id": "direct-ghost",
+                "pane_id": "pane-ghost",
+                "payload": {
+                    "cwd": "C:\\Users\\dev",
+                    "reason": "user_exit"
+                }
+            }
+        }),
+    )
+    .await;
+
+    assert!(
+        state.registry.lookup(&sid).await.is_none(),
+        "a session that only ever reported its end must not materialize"
+    );
+    assert!(
+        !state.hook_owned.lock().await.contains(&sid),
+        "a no-op terminal event must not claim watcher ownership"
+    );
+}
+
+/// False-positive control for terminal-event suppression. `agent.error`
+/// describes a live but failing session; its pane-keyed reducer needs the
+/// synthetic start to establish the binding before ConnectionFailed lands.
+#[tokio::test]
+async fn master_com_agent_error_for_unknown_session_records_the_failure() {
+    let state = make_state();
+    let sid = acp::schema::v1::SessionId::new("direct-error".to_string());
+
+    handle_master_wt_event(
+        &state,
+        serde_json::json!({
+            "method": "agent_event",
+            "params": {
+                "event": "agent.error",
+                "cli_source": "copilot",
+                "agent_session_id": "direct-error",
+                "pane_id": "pane-error",
+                "payload": {
+                    "cwd": "C:\\repo",
+                    "error": "agent CLI exited 1"
+                }
+            }
+        }),
+    )
+    .await;
+
+    let row = state
+        .registry
+        .lookup(&sid)
+        .await
+        .expect("failure row created");
+    assert_eq!(row.status, Some(crate::agent_sessions::AgentStatus::Error));
+    assert_eq!(row.last_error.as_deref(), Some("agent CLI exited 1"));
+}

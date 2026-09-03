@@ -760,10 +760,18 @@ impl AgentSessionRegistry {
             } => {
                 if let Some(key) = self.active_by_pane.get(&pane_session_id).cloned() {
                     if let Some(entry) = self.sessions.get_mut(&key) {
-                        entry.status = AgentStatus::Error;
-                        entry.last_error = Some(reason);
-                        entry.last_activity_at = now;
-                        self.dirty = true;
+                        // Idempotent for the same reason as master's reducer:
+                        // the pane binding survives a failure, so a repeat
+                        // carrying no new information must not mark the
+                        // registry dirty and force a redraw.
+                        let unchanged = entry.status == AgentStatus::Error
+                            && entry.last_error.as_deref() == Some(reason.as_str());
+                        if !unchanged {
+                            entry.status = AgentStatus::Error;
+                            entry.last_error = Some(reason);
+                            entry.last_activity_at = now;
+                            self.dirty = true;
+                        }
                     }
                 }
             }
@@ -3351,6 +3359,59 @@ mod tests {
         reg.apply_master_session_ended("never-seen");
         assert!(reg.sessions.is_empty());
         assert!(!reg.take_dirty());
+    }
+
+    /// Every helper in the window observes the same WT `connection_state:
+    /// failed` and publishes its own copy. Unlike `PaneClosed`, whose reducer
+    /// is idempotent by construction (it *removes* the pane binding, so a
+    /// repeat finds nothing), a failure leaves the binding in place — so the
+    /// repeat must be recognised explicitly or every copy marks the registry
+    /// dirty and forces a redraw.
+    #[test]
+    fn repeated_connection_failure_with_the_same_reason_is_not_a_change() {
+        let mut reg = AgentSessionRegistry::new();
+        let pane = "pane-conn-fail";
+        reg.apply(SessionEvent::SessionStarted {
+            key: "sid-conn".into(),
+            cli_source: CliSource::Copilot,
+            pane_session_id: pane.into(),
+            cwd: PathBuf::from("/work"),
+            title: "t".into(),
+        });
+        reg.take_dirty();
+
+        reg.apply(SessionEvent::ConnectionFailed {
+            pane_session_id: pane.into(),
+            reason: "agent CLI exited 1".into(),
+        });
+        assert!(reg.take_dirty(), "the first failure must land");
+        assert_eq!(
+            reg.get(&"sid-conn".to_string()).unwrap().status,
+            AgentStatus::Error
+        );
+
+        reg.apply(SessionEvent::ConnectionFailed {
+            pane_session_id: pane.into(),
+            reason: "agent CLI exited 1".into(),
+        });
+        assert!(
+            !reg.take_dirty(),
+            "a sibling helper's identical copy carries no new information"
+        );
+
+        // A *different* reason is new information and must still land.
+        reg.apply(SessionEvent::ConnectionFailed {
+            pane_session_id: pane.into(),
+            reason: "pipe closed".into(),
+        });
+        assert!(reg.take_dirty(), "a changed reason must update the row");
+        assert_eq!(
+            reg.get(&"sid-conn".to_string())
+                .unwrap()
+                .last_error
+                .as_deref(),
+            Some("pipe closed")
+        );
     }
 
     #[test]
