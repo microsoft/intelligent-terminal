@@ -227,6 +227,18 @@ fn closed_event(pane: &str, tab: &str) -> AppEvent {
     }
 }
 
+fn closed_event_without_tab(pane: &str) -> AppEvent {
+    AppEvent::WtEvent {
+        method: "connection_state".to_string(),
+        pane_id: pane.to_string(),
+        tab_id: None,
+        params: serde_json::json!({
+            "session_id": pane,
+            "state": "closed",
+        }),
+    }
+}
+
 #[test]
 fn closing_source_pane_clears_detected_autofix() {
     let mut app = test_app();
@@ -255,7 +267,10 @@ fn closing_source_pane_cancels_pending_autofix() {
 
     app.maybe_trigger_autofix(&failure_notification(pane, Some(tab)));
     let generation = app.tab_mut(tab).autofix.generation;
-    app.handle_event(closed_event(pane, tab));
+    // UI-initiated pane close currently races tab lookup in C++ and commonly
+    // arrives without tab_id. The pane ID is globally unique and must still
+    // resolve the owning tab's autofix state.
+    app.handle_event(closed_event_without_tab(pane));
 
     let tab = app.tab_mut(tab);
     assert!(tab.turn.is_idle());
