@@ -1242,7 +1242,7 @@
     <comment>Header for choosing which AI agent backend is used by this profile.</comment>
   </data>
   <data name="Profile_AgentPaneBackend.HelpText" xml:space="preserve">
-    <value>選擇此設定檔作用中時智能體窗格使用的 ACP 智能體。此設定會覆寫「AI 智能體」設定頁面上的「智能體窗格」選擇。</value>
+    <value>選擇此設定檔作用中時代理窗格使用的 ACP 代理。此設定會覆寫「AI 代理」設定頁面上的「代理窗格」選擇。</value>
     <comment>{Locked="ACP"} Description for the per-profile AI agent setting. "Agent pane" and "Agent" name the section and page this setting overrides — translate them the same way as AIAgents_AcpGroupHeader and Nav_AIAgents.</comment>
   </data>
   <data name="Profile_CommandPaletteAgent.Header" xml:space="preserve">
@@ -1250,7 +1250,7 @@
     <comment>Header for choosing which AI agent handles command palette delegation for this profile.</comment>
   </data>
   <data name="Profile_CommandPaletteAgent.HelpText" xml:space="preserve">
-    <value>選擇此設定檔作用中時用於處理命令選擇區提示和其他委派動作的智能體。此選取項目優先於全域委派智能體設定。</value>
+    <value>選擇此設定檔作用中時用於處理命令選擇區提示和其他委派動作的代理。此選取項目優先於全域委派代理設定。</value>
     <comment>Description for the per-profile command palette agent setting. This agent is used by command palette prompts and other delegation actions. Here "agent" means an AI agent, not a proxy or human agent.</comment>
   </data>
   <data name="Profile_AgentPaneBackend_AgentFormat" xml:space="preserve">
@@ -2834,7 +2834,7 @@
   <data name="AIAgents_AcpModel.HelpText" xml:space="preserve"><value>選擇此代理使用的模型。</value><comment>Supplementary description for the model setting.</comment></data>
   <data name="AIAgents_DelegateAgent.Header" xml:space="preserve"><value>代理</value><comment>Header for the setting that specifies which agent CLI handles command palette / on-demand requests.</comment></data>
   <data name="AIAgents_DelegateAgent.HelpText" xml:space="preserve">
-    <value>選擇用於處理命令選擇區提示和其他委派動作的智能體。</value>
+    <value>選擇用於處理命令選擇區提示和其他委派動作的代理。</value>
     <comment>Supplementary description for the command palette agent setting. This agent is used by command palette prompts and other delegation actions.
 In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
