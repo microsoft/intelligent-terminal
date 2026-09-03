@@ -1,0 +1,19 @@
+self.document = self;
+self.window = self;
+self.window.SW_global_data = {
+    "Pk2k0d": "/_/CloudConsoleServiceWorkerUi/jserror"
+};
+self.window._DumpException = function(e) {
+    throw e;
+}
+;
+if (self.trustedTypes && self.trustedTypes.createPolicy) {
+    var policy = self.trustedTypes.createPolicy('boqServiceWorkerPolicy', {
+        createScriptURL: function(unused) {
+            return 'https:\/\/www.gstatic.com\/_\/mss\/boq-cloud-client\/_\/js\/k\x3dboq-cloud-client.CloudConsoleServiceWorker.en_US.z68wMdATAJE.2018.O\/am\x3dCIAAAw\/d\x3d1\/rs\x3dAJ563L-1eJ5nqgGJusP1LGguwn2BQro6qQ\/m\x3dbase';
+        }
+    });
+    importScripts(policy.createScriptURL(''));
+} else {
+    importScripts('https:\/\/www.gstatic.com\/_\/mss\/boq-cloud-client\/_\/js\/k\x3dboq-cloud-client.CloudConsoleServiceWorker.en_US.z68wMdATAJE.2018.O\/am\x3dCIAAAw\/d\x3d1\/rs\x3dAJ563L-1eJ5nqgGJusP1LGguwn2BQro6qQ\/m\x3dbase');
+}
