@@ -2973,15 +2973,15 @@
   </data>
   <data name="AIAgents_AutoErrorHandling_Off" xml:space="preserve">
     <value>Desativado</value>
-    <comment>The first option in the Auto error handling dropdown. It disables automatic terminal error detection and fixes.</comment>
+    <comment>The third option in the Error detection dropdown. It disables automatic terminal error detection and fixes.</comment>
   </data>
   <data name="AIAgents_AutoErrorHandling_DetectErrorsAutomatically" xml:space="preserve">
     <value>Detecte erros automaticamente</value>
-    <comment>The second option in the Auto error handling dropdown. It detects terminal errors automatically without sending them to an AI agent. Here "agent" means an AI intelligent agent, not a proxy or human agent.</comment>
+    <comment>The first option in the Error detection dropdown. It detects terminal errors automatically without sending them to an AI agent. Here "agent" means an AI intelligent agent, not a proxy or human agent.</comment>
   </data>
   <data name="AIAgents_AutoErrorHandling_DetectErrorsAndSendToAgentForFixesAutomatically" xml:space="preserve">
     <value>Detecte erros e envie-os automaticamente ao agente para correção</value>
-    <comment>The third option in the Auto error handling dropdown. It detects terminal errors and sends them to an AI agent for automatic fixes. Here "agent" means an AI intelligent agent, not a proxy or human agent.</comment>
+    <comment>The second option in the Error detection dropdown. It detects terminal errors and sends them to an AI agent for automatic fixes. Here "agent" means an AI intelligent agent, not a proxy or human agent.</comment>
   </data>
   <data name="AIAgents_AutoErrorHandlingComboBox.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
     <value>Tratamento automático de erros</value>

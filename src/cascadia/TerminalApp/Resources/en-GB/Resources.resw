@@ -167,12 +167,12 @@
     <comment>{Locked="Node.js","NPX"}</comment>
   </data>
   <data name="FreOverlay_AutoErrorHandlingLabel.Text" xml:space="preserve">
-    <value>Auto error handling</value>
-    <comment>Label for the Auto error handling dropdown in the first-run wizard.</comment>
+    <value>Error detection</value>
+    <comment>Label for the Error detection dropdown in the first-run wizard.</comment>
   </data>
   <data name="FreOverlay_AutoErrorHandlingDescription.Text" xml:space="preserve">
-    <value>Choose how terminal errors are handled.</value>
-    <comment>Description for the Auto error handling dropdown in the first-run wizard.</comment>
+    <value>Have your agent detect errors in the shell or send failed commands to your agent automatically, no prompt needed.</value>
+    <comment>Description for the Error detection dropdown in the first-run wizard. Here "agent" refers to an AI intelligent agent, not a proxy or human agent.</comment>
   </data>
   <data name="FreOverlay_AutoErrorHandlingShellIntegrationHintPrefix" xml:space="preserve">
     <value>Enabling this will install shell integration to detect command failures. Available in PowerShell, bash, and WSL bash. </value>
@@ -184,15 +184,15 @@
   </data>
   <data name="FreOverlay_AutoErrorHandling_Off" xml:space="preserve">
     <value>Off</value>
-    <comment>The first option in the Auto error handling dropdown. It disables automatic terminal error detection and fixes.</comment>
+    <comment>The third option in the Error detection dropdown. It disables automatic terminal error detection and fixes.</comment>
   </data>
   <data name="FreOverlay_AutoErrorHandling_DetectErrorsAutomatically" xml:space="preserve">
     <value>Detect errors automatically</value>
-    <comment>The second option in the Auto error handling dropdown. It detects terminal errors automatically without sending them to an AI agent. Here "agent" means an AI intelligent agent, not a proxy or human agent.</comment>
+    <comment>The first option in the Error detection dropdown. It detects terminal errors automatically without sending them to an AI agent. Here "agent" means an AI intelligent agent, not a proxy or human agent.</comment>
   </data>
   <data name="FreOverlay_AutoErrorHandling_DetectErrorsAndSendToAgentForFixesAutomatically" xml:space="preserve">
     <value>Detect errors and send them to the agent for fixes automatically</value>
-    <comment>The third option in the Auto error handling dropdown. It detects terminal errors and sends them to an AI agent for automatic fixes. Here "agent" means an AI intelligent agent, not a proxy or human agent.</comment>
+    <comment>The second option in the Error detection dropdown. It detects terminal errors and sends them to an AI agent for automatic fixes. Here "agent" means an AI intelligent agent, not a proxy or human agent.</comment>
   </data>
   <data name="FreOverlay_SessionLabel.Text" xml:space="preserve">
     <value>Session management</value>
