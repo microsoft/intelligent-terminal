@@ -538,6 +538,19 @@ fn slash_sessions_opens_agents_view() {
 #[test]
 fn slash_restart_resets_connection_and_clears_sessions() {
     let mut app = test_app();
+    let shell_mgr = Arc::clone(&app.shell_mgr);
+    app.set_master_pipe_acp_params(
+        r"\\.\pipe\test-master".into(),
+        "test-agent".into(),
+        Some("claude".into()),
+        None,
+        None,
+        crate::agent_source::AgentSource::Host,
+        None,
+        Some("owner-tab".into()),
+        shell_mgr,
+        true,
+    );
     app.state = ConnectionState::Connected;
     app.session_id = "live-sid".to_string();
     app.current_tab_mut().session_id = Some("tab-sid".into());
@@ -564,6 +577,23 @@ fn slash_restart_resets_connection_and_clears_sessions() {
         app.current_tab().messages.is_empty(),
         "/restart must wipe per-tab chat history"
     );
+    assert!(
+        app.restart_without_acp_pending,
+        "a closed lifecycle receiver must leave the helper waiting for replacement-master readiness"
+    );
+
+    app.handle_event(AppEvent::WtEvent {
+        method: "agent_master_restarted".into(),
+        pane_id: String::new(),
+        tab_id: None,
+        params: serde_json::json!({ "operation_id": "restart-after-failed-startup" }),
+    });
+
+    assert!(
+        app.pending_acp_start,
+        "replacement-master readiness must reconnect when the original ACP task already exited"
+    );
+    assert!(!app.restart_without_acp_pending);
 }
 
 #[test]
