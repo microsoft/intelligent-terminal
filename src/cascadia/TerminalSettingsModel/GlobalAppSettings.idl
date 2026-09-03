@@ -190,5 +190,8 @@ namespace Microsoft.Terminal.Settings.Model
         INHERITABLE_SETTING(Boolean, AgentPaneYoloMode);
         Boolean EffectiveAgentPaneYoloMode { get; };
         Boolean IsYoloModePolicyLocked { get; };
+
+        INHERITABLE_SETTING(IVector<String>, AcpCustomCommands);
+        INHERITABLE_SETTING(IVector<String>, DelegateCustomCommands);
     }
 }
