@@ -290,18 +290,13 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         static bool _CustomCommandMatchesId(
             const winrt::hstring& command,
             const winrt::hstring& settingsId);
-        static winrt::Windows::Foundation::Collections::IVector<winrt::hstring> _NormalizeCustomCommands(
-            const winrt::Windows::Foundation::Collections::IVector<winrt::hstring>& commands);
-        static winrt::Windows::Foundation::Collections::IVector<winrt::hstring> _UpdateCustomCommands(
-            const winrt::Windows::Foundation::Collections::IVector<winrt::hstring>& commands,
+        void _UpsertCustomEntry(
+            const winrt::Windows::Foundation::Collections::IObservableVector<Editor::AgentEntry>& list,
             const winrt::hstring& originalId,
-            const winrt::hstring& command);
-        static winrt::Windows::Foundation::Collections::IVector<winrt::hstring> _RemoveCustomCommand(
-            const winrt::Windows::Foundation::Collections::IVector<winrt::hstring>& commands,
-            const winrt::hstring& settingsId);
-        static winrt::hstring _FindCustomCommand(
-            const winrt::Windows::Foundation::Collections::IVector<winrt::hstring>& commands,
-            const winrt::hstring& settingsId);
+            const winrt::hstring& settingsId,
+            const winrt::hstring& displayName,
+            const winrt::hstring& command,
+            bool isAcpAgent);
         void _DeleteCustomAcpAgent(const winrt::hstring& settingsId);
         void _DeleteCustomDelegateAgent(const winrt::hstring& settingsId);
         Editor::AgentEntry _FindEntryById(
@@ -315,10 +310,6 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         void _MaybeAppendCustomEntry(
             winrt::Windows::Foundation::Collections::IObservableVector<Editor::AgentEntry>& list,
             const winrt::hstring& customCommand,
-            bool isAcpAgent);
-        void _RebuildCustomEntries(
-            winrt::Windows::Foundation::Collections::IObservableVector<Editor::AgentEntry>& list,
-            const winrt::Windows::Foundation::Collections::IVector<winrt::hstring>& commands,
             bool isAcpAgent);
 
         // Agent Hooks state

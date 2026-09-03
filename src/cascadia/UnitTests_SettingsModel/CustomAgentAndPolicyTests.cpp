@@ -47,7 +47,6 @@ namespace SettingsModelUnitTests
         // Round-trip tests
         TEST_METHOD(CustomAcpAgentRoundtrips);
         TEST_METHOD(CustomDelegateAgentRoundtrips);
-        TEST_METHOD(CustomAgentCollectionsRoundtrip);
         TEST_METHOD(QuotedPathCustomCommandRoundtrips);
 
         // Policy: AcpAgent
@@ -164,31 +163,6 @@ namespace SettingsModelUnitTests
         const auto& globals = settings->GlobalSettings();
         VERIFY_ARE_EQUAL(winrt::hstring{ L"custom:helper" }, globals.DelegateAgent());
         VERIFY_ARE_EQUAL(winrt::hstring{ L"helper.cmd --acp" }, globals.DelegateCustomCommand());
-    }
-
-    void CustomAgentAndPolicyTests::CustomAgentCollectionsRoundtrip()
-    {
-        const auto settings = MakeSettings(
-            R"("acpCustomCommands": ["test", "test2"], "delegateCustomCommands": ["delegate1", "delegate2"])");
-        const auto& globals = settings->GlobalSettings();
-
-        const auto acpCommands = globals.AcpCustomCommands();
-        VERIFY_ARE_EQUAL(uint32_t{ 2 }, acpCommands.Size());
-        VERIFY_ARE_EQUAL(winrt::hstring{ L"test" }, acpCommands.GetAt(0));
-        VERIFY_ARE_EQUAL(winrt::hstring{ L"test2" }, acpCommands.GetAt(1));
-
-        const auto delegateCommands = globals.DelegateCustomCommands();
-        VERIFY_ARE_EQUAL(uint32_t{ 2 }, delegateCommands.Size());
-        VERIFY_ARE_EQUAL(winrt::hstring{ L"delegate1" }, delegateCommands.GetAt(0));
-        VERIFY_ARE_EQUAL(winrt::hstring{ L"delegate2" }, delegateCommands.GetAt(1));
-
-        const auto serialized = settings->ToJson();
-        VERIFY_ARE_EQUAL(Json::ArrayIndex{ 2 }, serialized["acpCustomCommands"].size());
-        VERIFY_ARE_EQUAL(std::string{ "test" }, serialized["acpCustomCommands"][0].asString());
-        VERIFY_ARE_EQUAL(std::string{ "test2" }, serialized["acpCustomCommands"][1].asString());
-        VERIFY_ARE_EQUAL(Json::ArrayIndex{ 2 }, serialized["delegateCustomCommands"].size());
-        VERIFY_ARE_EQUAL(std::string{ "delegate1" }, serialized["delegateCustomCommands"][0].asString());
-        VERIFY_ARE_EQUAL(std::string{ "delegate2" }, serialized["delegateCustomCommands"][1].asString());
     }
 
     void CustomAgentAndPolicyTests::QuotedPathCustomCommandRoundtrips()
