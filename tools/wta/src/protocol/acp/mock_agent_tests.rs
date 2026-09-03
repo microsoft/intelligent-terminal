@@ -1791,6 +1791,70 @@ async fn policy_block_rejects_copilot_allow_all_agent_command_before_acp() {
 }
 
 #[tokio::test]
+async fn policy_block_rejects_copilot_allow_all_before_command_classification() {
+    let local = tokio::task::LocalSet::new();
+    local
+        .run_until(async {
+            let mut h = connect_for_dispatch(MockBehavior::Reply);
+            h.conn
+                .initialize(acp::schema::v1::InitializeRequest::new(
+                    acp::schema::ProtocolVersion::LATEST,
+                ))
+                .await
+                .expect("initialize failed");
+            h.client
+                .state
+                .native_yolo
+                .set_resolved_agent_id(Some(crate::agent_registry::COPILOT_AGENT_ID));
+            h.client
+                .state
+                .yolo_state
+                .lock()
+                .unwrap()
+                .update_runtime(false, true);
+
+            let (tab_to_session, in_flight, cancel_signals, memo) = fresh_dispatch_state();
+            dispatch_prompt(
+                test_prompt(1, "/allow_all", false),
+                &h.conn,
+                &tab_to_session,
+                &memo,
+                &in_flight,
+                &cancel_signals,
+                &h.event_tx,
+                &h.shell_mgr,
+                &h.prompt_timing,
+                &h.client,
+                &PromptUsageIdentity::default(),
+                false,
+                false,
+                true,
+                &h.proposal_channels,
+            );
+
+            let message = tokio::time::timeout(std::time::Duration::from_secs(5), async {
+                loop {
+                    match h.event_rx.recv().await {
+                        Some(AppEvent::AgentError { message, .. }) => break message,
+                        Some(AppEvent::AgentMessageChunk { .. }) => {
+                            panic!("unclassified policy-blocked /allow_all reached the ACP agent")
+                        }
+                        Some(_) => continue,
+                        None => panic!("event channel closed before policy rejection"),
+                    }
+                }
+            })
+            .await
+            .expect("timed out waiting for unclassified policy rejection");
+            assert!(message.contains("/allow_all"));
+            assert!(message.contains("Yolo mode is disabled"));
+            assert!(h.seen_prompts.lock().unwrap().is_empty());
+            assert!(in_flight.lock().unwrap().is_empty());
+        })
+        .await;
+}
+
+#[tokio::test]
 async fn dispatch_prompt_does_not_advertise_unavailable_proposals() {
     let local = tokio::task::LocalSet::new();
     local

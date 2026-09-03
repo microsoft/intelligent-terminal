@@ -4915,13 +4915,12 @@ async fn dispatch_prompt_body(
         }
     }
 
-    if prompt.is_agent_command()
-        && client_task
-            .state
-            .yolo_state
-            .lock()
-            .unwrap()
-            .policy_blocked()
+    if client_task
+        .state
+        .yolo_state
+        .lock()
+        .unwrap()
+        .policy_blocked()
     {
         if let Some(command_name) = client_task
             .state
@@ -5041,15 +5040,10 @@ async fn dispatch_prompt_body(
     // through master → agent CLI verbatim; the agent only receives them if it
     // advertised `promptCapabilities.image` (the UI gates Alt+V on that flag).
     let content = build_prompt_content(&text, &prompt.images);
-    let privileged_agent_command = prompt
-        .is_agent_command()
-        .then(|| {
-            client_task
-                .state
-                .native_yolo
-                .privileged_agent_command(&prompt.text)
-        })
-        .flatten()
+    let privileged_agent_command = client_task
+        .state
+        .native_yolo
+        .privileged_agent_command(&prompt.text)
         .map(str::to_string);
     let yolo_state = Arc::clone(&client_task.state.yolo_state);
     let telemetry_timing = Arc::clone(&prompt_timing_task);
