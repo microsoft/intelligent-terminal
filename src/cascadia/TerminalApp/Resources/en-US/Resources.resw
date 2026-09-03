@@ -1166,7 +1166,7 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
     <comment>Text shown below the error-detection dropdown when Group Policy disables its automatic-fix option.</comment>
   </data>
   <data name="FreOverlay_SessionLabel.Text" xml:space="preserve">
-    <value>Session</value>
+    <value>Sessions</value>
   </data>
   <data name="FreOverlay_SessionDescription.Text" xml:space="preserve">
     <value>Track which agents are running and which need your attention.</value>
