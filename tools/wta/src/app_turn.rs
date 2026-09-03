@@ -663,6 +663,7 @@ impl App {
         // so we can stamp the chat history with an "executed" marker after
         // dispatch.
         let executed_title = choice.title.clone();
+        let executed_choice = choice.choice;
         let direct_proposal_id = self
             .session_tab(session_id)
             .active_direct_proposal_id
@@ -670,6 +671,11 @@ impl App {
         let insert_only =
             self.session_tab(session_id).selected_button == 1 && self.is_send_choice(&choice);
         let target_tab = self.tab_for_session(session_id);
+        let prompt_id = self
+            .session_tab(session_id)
+            .turn
+            .prompt()
+            .map(|prompt| prompt.id);
         let context = self
             .session_tab(session_id)
             .turn
@@ -685,12 +691,17 @@ impl App {
         } else {
             None
         };
+        let execution = crate::coordinator::RecommendationExecutionIdentity::new(prompt_id);
+        // Send before any local state transition, matching the pre-queue
+        // ordering exactly.
         let dispatched = self
             .recommendation_tx
             .send(crate::coordinator::ChoiceExecution {
                 choice,
                 insert_only,
                 context,
+                tab_id: target_tab.clone(),
+                execution,
             })
             .is_ok();
         if let Some(claim) = confirmation_claim {
@@ -751,11 +762,27 @@ impl App {
             outcome,
             end_pending,
         };
+        // The ACP turn may already be complete, but queued prompts must wait
+        // for the coordinator to acknowledge this action.
+        tab.pending_execution = Some(execution);
 
         // Exiting Surfaced{Recommendation} — release any chip override the
         // card had pinned. The C++ side falls back to source-of-agent.
-        let target_tab = self.tab_for_session(session_id);
         self.recompute_chip_override(&target_tab);
+
+        // No confirmation claim was outstanding, so — matching main exactly
+        // — a failed send here does not cancel the card; it still resolves
+        // as executed. But this tab now gates queued dispatch on this exact
+        // execution, and a dropped send means the coordinator will never
+        // acknowledge it, so resolve the gate immediately as a failure
+        // instead of leaving it stuck forever.
+        if !dispatched {
+            self.complete_recommendation_execution(
+                execution,
+                executed_choice,
+                Err("recommendation executor is unavailable".to_string()),
+            );
+        }
     }
 
     /// User pressed Esc — cancel the in-flight turn. Bumps
@@ -881,6 +908,20 @@ impl App {
         tab.clear_streaming_thought();
         tab.user_input.clear();
         tab.turn = TurnState::Idle;
+        // The cancelled prompt is abandoned rather than retried, so its
+        // rollback copy goes with the turn. A later dispatch pause must not
+        // resurrect it onto the queue.
+        tab.queued_dispatch = None;
+        // A cancelled turn abandons whatever coordinator action its card
+        // started; a late acknowledgement must not release the queue gate of
+        // whatever runs next on this tab.
+        tab.pending_execution = None;
+        // Cancellation and card dismissal never auto-run queued work. Keep
+        // it visible but require a later typed Enter to explicitly resume
+        // FIFO progression.
+        if !tab.pending_prompts.is_empty() {
+            tab.queue_paused = true;
+        }
         tab.pending_terminal_action_proposal = None;
         tab.active_direct_proposal_id = None;
         if let Some(proposal_id) = direct_proposal_id.as_deref() {

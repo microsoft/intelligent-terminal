@@ -108,18 +108,18 @@ pub enum AppEvent {
     },
     AgentError {
         session_id: Option<String>,
+        /// Present only for a failure of a specific submitted prompt. This
+        /// lets the App drop an error after cancel/resubmit or a tab drag.
+        prompt_id: Option<u64>,
         failure: crate::protocol::acp::failure::AgentFailure,
         message: String,
     },
     /// The helper's pipe to wta-master closed. A retained helper reconnects
     /// its existing immutable binding over the stable pipe.
     MasterDisconnected,
-    AgentSoftStop {
-        session_id: String,
-        reason: crate::protocol::acp::soft_stop::SoftStopReason,
-    },
     AgentBusy {
         tab_id: String,
+        prompt_id: u64,
     },
     TabRenamed {
         old_tab_id: String,
@@ -127,6 +127,14 @@ pub enum AppEvent {
         new_window_id: Option<String>,
     },
     ExecutionInfo(String),
+    /// Result of an asynchronous recommendation action. `tab_id` is
+    /// contextual only; exact acknowledgement routing uses `execution`.
+    RecommendationExecutionCompleted {
+        tab_id: String,
+        execution: crate::coordinator::RecommendationExecutionIdentity,
+        choice: usize,
+        result: Result<(), String>,
+    },
     AgentThoughtChunk {
         session_id: String,
         text: String,
@@ -142,6 +150,15 @@ pub enum AppEvent {
     },
     AgentMessageEnd {
         session_id: String,
+        prompt_id: u64,
+    },
+    /// Successful ACP terminal completion. Carries soft-stop metadata in the
+    /// same event so queued prompts cannot begin between final turn state and
+    /// its terminal annotation.
+    AgentTurnCompleted {
+        session_id: String,
+        prompt_id: u64,
+        soft_stop: Option<crate::protocol::acp::soft_stop::SoftStopReason>,
     },
     TimingMetric {
         session_id: String,

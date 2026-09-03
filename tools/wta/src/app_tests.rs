@@ -49,10 +49,28 @@ fn passed_for_custom_agent_falls_back_when_no_custom_suffix() {
 // `pub(super)` so the sibling `slash_command_tests` module (see the
 // `#[path]` mod in app.rs) can reuse it instead of duplicating App::new.
 pub(super) fn test_app() -> App {
-    let (prompt_tx, _prompt_rx) = tokio::sync::mpsc::unbounded_channel();
+    test_app_with_prompt_rx().0
+}
+
+/// Test app plus its prompt receiver, for state-machine tests that need to
+/// assert a local UI action was dispatched to the ACP client.
+pub(super) fn test_app_with_prompt_rx() -> (
+    App,
+    tokio::sync::mpsc::UnboundedReceiver<crate::protocol::acp::client::PromptSubmission>,
+) {
+    let (app, prompt_rx, _cancel_rx) = test_app_with_prompt_and_cancel_rx();
+    (app, prompt_rx)
+}
+
+pub(super) fn test_app_with_prompt_and_cancel_rx() -> (
+    App,
+    tokio::sync::mpsc::UnboundedReceiver<crate::protocol::acp::client::PromptSubmission>,
+    tokio::sync::mpsc::UnboundedReceiver<crate::protocol::acp::client::CancelRequest>,
+) {
+    let (prompt_tx, prompt_rx) = tokio::sync::mpsc::unbounded_channel();
     let (recommendation_tx, _recommendation_rx) = tokio::sync::mpsc::unbounded_channel();
     let (permission_tx, _permission_rx) = tokio::sync::mpsc::unbounded_channel();
-    let (cancel_tx, _cancel_rx) = tokio::sync::mpsc::unbounded_channel();
+    let (cancel_tx, cancel_rx) = tokio::sync::mpsc::unbounded_channel();
     let (new_session_tx, _new_session_rx) = tokio::sync::mpsc::unbounded_channel();
     let (load_session_tx, _load_session_rx) = tokio::sync::mpsc::unbounded_channel();
     let (drop_session_tx, _drop_session_rx) = tokio::sync::mpsc::unbounded_channel();
@@ -60,7 +78,7 @@ pub(super) fn test_app() -> App {
     let (restart_tx, _restart_rx) = tokio::sync::mpsc::unbounded_channel();
     let debug_capture = Arc::new(AtomicBool::new(false));
     let (master_tx, _master_rx) = tokio::sync::mpsc::unbounded_channel();
-    App::new(
+    let app = App::new(
         prompt_tx,
         recommendation_tx,
         permission_tx,
@@ -75,7 +93,8 @@ pub(super) fn test_app() -> App {
         true,
         false,
         Arc::new(crate::shell::ShellManager::new()),
-    )
+    );
+    (app, prompt_rx, cancel_rx)
 }
 
 fn test_app_with_restart_rx() -> (
@@ -3631,6 +3650,7 @@ fn settings_agent_rebind_targets_owner_and_resets_only_agent_state() {
     app.handle_event(AppEvent::AgentClientFailed);
     app.handle_event(AppEvent::AgentError {
         session_id: None,
+        prompt_id: None,
         failure: crate::protocol::acp::failure::AgentFailure::HandshakeFailed {
             stage: crate::protocol::acp::failure::HandshakeStage::Initialize,
             detail: "outgoing client failed".into(),
@@ -6375,6 +6395,7 @@ fn protocol_error_ends_turn_without_failing_connection() {
 
     app.handle_event(AppEvent::AgentError {
         session_id: Some("live-session".to_string()),
+        prompt_id: None,
         failure: crate::protocol::acp::failure::AgentFailure::Protocol {
             code: -32603,
             message: "bad params".to_string(),
@@ -6397,6 +6418,7 @@ fn startup_protocol_error_fails_connection() {
 
     app.handle_event(AppEvent::AgentError {
         session_id: None,
+        prompt_id: None,
         failure: crate::protocol::acp::failure::AgentFailure::Protocol {
             code: -32603,
             message: "invalid provider configuration".to_string(),
@@ -6449,6 +6471,7 @@ fn auth_error_routes_to_signin_not_connection_lost() {
     app.state = ConnectionState::Connected;
     app.handle_event(AppEvent::AgentError {
         session_id: None,
+        prompt_id: None,
         failure: crate::protocol::acp::failure::AgentFailure::AuthRequired {
             message: "authentication required".to_string(),
         },
@@ -6465,32 +6488,118 @@ fn auth_error_routes_to_signin_not_connection_lost() {
     );
 }
 
-/// A soft stop is an *outcome*, not a connection failure: the handler must
-/// append an informational System line carrying the localized reason text,
-/// while leaving the connection `Connected` and never routing to the
-/// sign-in screen. This is what keeps soft stops off the `AgentFailure`
-/// axis — the gap the client-level emit test cannot cover.
+/// A stale prompt id — the local turn was already cancelled or replaced
+/// before this event arrived — must only suppress the tab-local turn/queue
+/// mutation. It must never suppress the auth Setup fallback: the failure
+/// still describes a real authentication problem with the connection,
+/// independent of which (if any) prompt is still locally live.
 #[test]
-fn soft_stop_appends_system_line_without_changing_state() {
+fn stale_prompt_auth_error_still_routes_to_signin() {
+    let mut app = test_app();
+    app.state = ConnectionState::Connected;
+    // No tab has an in-flight turn with this id: the local Enter that
+    // produced it was already cancelled or replaced before the ACP client's
+    // failure arrived.
+    app.handle_event(AppEvent::AgentError {
+        session_id: None,
+        prompt_id: Some(999),
+        failure: crate::protocol::acp::failure::AgentFailure::AuthRequired {
+            message: "authentication required".to_string(),
+        },
+        message: "new_session over master pipe failed: authentication required".to_string(),
+    });
+    assert_eq!(
+        app.mode,
+        AppMode::Setup,
+        "a stale prompt id must not suppress the auth Setup fallback"
+    );
+    assert!(
+        !matches!(app.state, ConnectionState::Failed(_)),
+        "an auth failure must not become a Failed connection-lost state"
+    );
+}
+
+/// Same guarantee for a non-auth connection failure: a stale prompt id must
+/// not suppress the `ConnectionState::Failed` transition or status publish
+/// that a real connection loss still requires, even though the stale id
+/// means no tab's local turn/queue state is touched.
+#[test]
+fn stale_prompt_connection_failure_still_fails_the_connection() {
+    let mut app = test_app();
+    app.state = ConnectionState::Connecting("Creating session...".to_string());
+
+    app.handle_event(AppEvent::AgentError {
+        session_id: None,
+        prompt_id: Some(999),
+        failure: crate::protocol::acp::failure::AgentFailure::Protocol {
+            code: -32603,
+            message: "invalid provider configuration".to_string(),
+        },
+        message: "session creation failed".to_string(),
+    });
+
+    assert_eq!(
+        app.state,
+        ConnectionState::Failed("session creation failed".to_string()),
+        "a stale prompt id must not suppress the connection-wide Failed transition"
+    );
+    assert!(
+        app.current_tab().messages.is_empty(),
+        "a stale prompt id must suppress only the tab-local error display"
+    );
+}
+
+/// True when the tab shows `expected` as a warning notice, whether it landed
+/// in the active transcript or in the details of the just-closed turn.
+fn tab_shows_warning(app: &App, expected: &str) -> bool {
+    let tab = app.current_tab();
+    tab.messages
+        .iter()
+        .chain(
+            tab.completed_turns
+                .iter()
+                .flat_map(|turn| turn.details.iter()),
+        )
+        .any(|message| {
+            matches!(message, ChatMessage::Notice {
+                kind: NoticeKind::Warning,
+                text,
+            } if text == expected)
+        })
+}
+
+fn start_soft_stop_turn(app: &mut App, prompt_id: u64) {
+    app.current_tab_mut().turn = TurnState::Submitted(SubmittedPrompt {
+        id: prompt_id,
+        text: "soft stop".into(),
+        submitted_at_unix_s: 0.0,
+        context: TurnContext::default(),
+        autofix: None,
+    });
+}
+
+/// A soft stop is an *outcome*, not a connection failure: the terminal
+/// completion must surface the localized reason text, while leaving the
+/// connection `Connected` and never routing to the sign-in screen. This is
+/// what keeps soft stops off the `AgentFailure` axis — the gap the
+/// client-level emit test cannot cover.
+#[test]
+fn soft_stop_appends_warning_line_without_changing_state() {
     use crate::protocol::acp::soft_stop::SoftStopReason;
     let mut app = test_app();
     app.state = ConnectionState::Connected;
+    start_soft_stop_turn(&mut app, 31);
 
-    app.handle_event(AppEvent::AgentSoftStop {
-        session_id: "0".to_string(),
-        reason: SoftStopReason::Refusal,
+    app.handle_event(AppEvent::AgentTurnCompleted {
+        session_id: DEFAULT_TAB_ID.to_string(),
+        prompt_id: 31,
+        soft_stop: Some(SoftStopReason::Refusal),
     });
 
     let expected = t!("system.stopped_refusal").into_owned();
     assert!(
-        app.current_tab()
-            .messages
-            .iter()
-            .any(|m| matches!(m, ChatMessage::Notice {
-                kind: NoticeKind::Warning,
-                text,
-            } if *text == expected)),
-        "a soft stop must append its localized warning"
+        tab_shows_warning(&app, &expected),
+        "a soft stop must surface its localized warning"
     );
     assert!(
         matches!(app.state, ConnectionState::Connected),
@@ -6524,19 +6633,15 @@ fn soft_stop_reasons_map_to_distinct_localized_lines() {
         (SoftStopReason::Refusal, "system.stopped_refusal"),
     ] {
         let mut app = test_app();
-        app.handle_event(AppEvent::AgentSoftStop {
-            session_id: "0".to_string(),
-            reason,
+        start_soft_stop_turn(&mut app, 32);
+        app.handle_event(AppEvent::AgentTurnCompleted {
+            session_id: DEFAULT_TAB_ID.to_string(),
+            prompt_id: 32,
+            soft_stop: Some(reason),
         });
         let expected = t!(key).into_owned();
         assert!(
-            app.current_tab()
-                .messages
-                .iter()
-                .any(|m| matches!(m, ChatMessage::Notice {
-                    kind: NoticeKind::Warning,
-                    text,
-                } if *text == expected)),
+            tab_shows_warning(&app, &expected),
             "reason {reason:?} must render the {key} line"
         );
     }
@@ -7081,9 +7186,13 @@ fn osc133_prompt_start_in_agent_pane_origin_is_ignored() {
 // the active tab when the id is unknown, which keeps these tests free
 // of ACP wiring.
 
+/// Prompt id used by [`submit_test_prompt`]. Terminal ACP events are routed by
+/// prompt identity, so tests must echo the id they submitted.
+const TEST_PROMPT_ID: u64 = 42;
+
 fn submit_test_prompt(app: &mut App, text: &str) {
     let prompt = SubmittedPrompt {
-        id: 42,
+        id: TEST_PROMPT_ID,
         text: text.into(),
         submitted_at_unix_s: 0.0,
         context: TurnContext::default(),
@@ -8067,8 +8176,10 @@ fn streamed_prose_and_tool_calls_preserve_acp_arrival_order() {
         0,
         "a new prose segment after a tool must start its own reveal cursor"
     );
-    app.handle_event(AppEvent::AgentMessageEnd {
+    app.handle_event(AppEvent::AgentTurnCompleted {
         session_id: DEFAULT_TAB_ID.into(),
+        prompt_id: TEST_PROMPT_ID,
+        soft_stop: None,
     });
 
     let details = &app.current_tab().completed_turns[0].details;
@@ -8098,8 +8209,10 @@ fn tool_only_turn_commits_the_ordered_tool_transcript() {
         content: Vec::new(),
         locations: Vec::new(),
     });
-    app.handle_event(AppEvent::AgentMessageEnd {
+    app.handle_event(AppEvent::AgentTurnCompleted {
         session_id: DEFAULT_TAB_ID.into(),
+        prompt_id: TEST_PROMPT_ID,
+        soft_stop: None,
     });
 
     let tab = app.current_tab();
@@ -11918,8 +12031,10 @@ fn latest_thought_remains_visible_alongside_streaming_message_until_turn_end() {
     assert!(!rendered.contains("thinking"));
     assert!(rendered.contains("Think · late visible thought"));
 
-    app.handle_event(AppEvent::AgentMessageEnd {
+    app.handle_event(AppEvent::AgentTurnCompleted {
         session_id: DEFAULT_TAB_ID.into(),
+        prompt_id: TEST_PROMPT_ID,
+        soft_stop: None,
     });
     assert_eq!(app.current_tab().streaming_thought_text(), None);
     assert!(!render_to_text(&mut app, 80, 20).contains("Think ·"));
@@ -12864,11 +12979,14 @@ fn stage_proposal_session(app: &mut App, session_id: &str) {
         .insert(session_id.to_string(), DEFAULT_TAB_ID.to_string());
 }
 
+/// Prompt id used by [`submit_proposal_prompt`].
+const PROPOSAL_PROMPT_ID: u64 = 99;
+
 fn submit_proposal_prompt(app: &mut App, session_id: &str) {
     app.turn_submit_prompt(
         session_id,
         SubmittedPrompt {
-            id: 99,
+            id: PROPOSAL_PROMPT_ID,
             text: "restart it".into(),
             submitted_at_unix_s: 0.0,
             context: TurnContext::with_target_pane("pane-9"),
@@ -12944,8 +13062,10 @@ fn direct_proposal_confirm_resolves_waiting_cli() {
     let execution = recommendation_rx.try_recv().unwrap();
     assert_eq!(execution.context.target_pane_id(), Some("pane-9"));
 
-    app.handle_event(AppEvent::AgentMessageEnd {
+    app.handle_event(AppEvent::AgentTurnCompleted {
         session_id: session_id.into(),
+        prompt_id: PROPOSAL_PROMPT_ID,
+        soft_stop: None,
     });
     let tab = app.session_tab(session_id);
     assert_eq!(tab.completed_turns.len(), 1);
@@ -13010,8 +13130,10 @@ fn direct_proposal_defers_history_until_tool_updates_finish() {
         session_id: session_id.into(),
         text: "Everything is ready.".into(),
     });
-    app.handle_event(AppEvent::AgentMessageEnd {
+    app.handle_event(AppEvent::AgentTurnCompleted {
         session_id: session_id.into(),
+        prompt_id: PROPOSAL_PROMPT_ID,
+        soft_stop: None,
     });
 
     let tab = app.session_tab(session_id);
@@ -13052,8 +13174,11 @@ fn cancel_after_direct_proposal_commits_trailing_transcript_once() {
     });
 
     app.turn_cancel(session_id);
+    // The ACP client reports a cancelled prompt through AgentMessageEnd. It
+    // must not reopen or re-commit the turn the local cancel already closed.
     app.handle_event(AppEvent::AgentMessageEnd {
         session_id: session_id.into(),
+        prompt_id: PROPOSAL_PROMPT_ID,
     });
     app.turn_cancel(session_id);
 
@@ -13882,6 +14007,8 @@ fn recommendation_card_enter_wins_over_draft_input() {
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
     let mut app = test_app();
     app.state = ConnectionState::Connected;
+    let (recommendation_tx, _recommendation_rx) = tokio::sync::mpsc::unbounded_channel();
+    app.recommendation_tx = recommendation_tx;
     app.current_tab_mut().session_id = Some(DEFAULT_TAB_ID.into());
     stage_surfaced_recommendation(&mut app, vec![send_choice("pane-A", "ls")], 0, None);
     app.current_tab_mut().input = "/help".into();
@@ -13927,6 +14054,130 @@ fn recommendation_input_focus_submits_draft_instead_of_executing_card() {
     assert!(
         matches!(app.current_tab().turn, TurnState::Submitted(_)),
         "Enter must submit the draft instead of executing the selected card",
+    );
+}
+
+/// Executing a card hands work to the coordinator after the ACP turn has
+/// already surfaced. Queued prompts must wait for that action's
+/// acknowledgement instead of racing it in the same terminal pane.
+#[test]
+fn executing_a_card_holds_the_queue_until_the_action_is_acknowledged() {
+    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+    let (mut app, mut prompt_rx) = test_app_with_prompt_rx();
+    let (recommendation_tx, mut recommendation_rx) = tokio::sync::mpsc::unbounded_channel();
+    app.recommendation_tx = recommendation_tx;
+    app.state = ConnectionState::Connected;
+    app.current_tab_mut().session_id = Some(DEFAULT_TAB_ID.into());
+
+    submit_test_prompt(&mut app, "in flight");
+    app.current_tab_mut().insert_input_str("queued follow-up");
+    app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+    assert_eq!(app.current_tab().pending_prompts.len(), 1);
+
+    stage_surfaced_recommendation(&mut app, vec![send_choice("pane-A", "ls")], 0, None);
+    app.turn_execute_card(DEFAULT_TAB_ID);
+
+    let execution = recommendation_rx
+        .try_recv()
+        .expect("executing a card must reach the coordinator")
+        .execution;
+    assert_eq!(app.current_tab().pending_execution, Some(execution));
+    assert!(
+        !app.current_tab().accepts_queued_dispatch(),
+        "an outstanding coordinator action must hold the queue closed"
+    );
+    app.handle_event(AppEvent::Tick);
+    assert!(prompt_rx.try_recv().is_err());
+
+    app.handle_event(AppEvent::RecommendationExecutionCompleted {
+        tab_id: DEFAULT_TAB_ID.into(),
+        execution,
+        choice: 1,
+        result: Ok(()),
+    });
+
+    assert!(app.current_tab().pending_execution.is_none());
+    assert_eq!(
+        prompt_rx
+            .try_recv()
+            .expect("the acknowledged action must release the queue")
+            .text,
+        "queued follow-up"
+    );
+}
+
+/// Without an outstanding direct-proposal confirmation, a dropped
+/// coordinator channel matches origin/main exactly: the card still
+/// resolves as executed rather than being cancelled. The pending_execution
+/// gate is new state main never had, so it must still be released
+/// immediately — via the same completion-ack path a real coordinator
+/// failure uses — or a queue built behind this card would stay stuck
+/// forever with no acknowledgement ever coming.
+#[test]
+fn turn_execute_card_without_confirmation_claim_resolves_when_the_executor_is_gone() {
+    let (mut app, mut prompt_rx) = test_app_with_prompt_rx();
+    // Drop the receiver immediately so the coordinator send fails.
+    let (recommendation_tx, recommendation_rx) = tokio::sync::mpsc::unbounded_channel();
+    drop(recommendation_rx);
+    app.recommendation_tx = recommendation_tx;
+    app.state = ConnectionState::Connected;
+    app.current_tab_mut().session_id = Some(DEFAULT_TAB_ID.into());
+
+    submit_test_prompt(&mut app, "in flight");
+    app.current_tab_mut().insert_input_str("queued follow-up");
+    app.handle_key(crossterm::event::KeyEvent::new(
+        crossterm::event::KeyCode::Enter,
+        crossterm::event::KeyModifiers::NONE,
+    ));
+    assert_eq!(app.current_tab().pending_prompts.len(), 1);
+
+    stage_surfaced_recommendation(&mut app, vec![send_choice("pane-A", "ls")], 0, None);
+    app.turn_execute_card(DEFAULT_TAB_ID);
+
+    assert!(
+        app.current_tab().turn.recommendations().is_none(),
+        "matching main: the card still resolves as executed, not cancelled"
+    );
+    assert!(
+        app.current_tab().pending_execution.is_none(),
+        "a dropped send must release the gate immediately — no ack can ever arrive"
+    );
+    assert!(
+        app.current_tab().queue_paused,
+        "an execution that can never be acknowledged pauses the queue, same as a failed one"
+    );
+    assert_eq!(app.current_tab().pending_prompts.len(), 1);
+    assert!(
+        prompt_rx.try_recv().is_err(),
+        "the queued follow-up must not be resent"
+    );
+}
+
+/// Submitting from the input dismisses a visible card, but only when it is
+/// the next thing to run. With work already queued, that Enter has to join
+/// the queue so FIFO order — and the card — both survive.
+#[test]
+fn input_focus_enter_joins_the_queue_instead_of_dismissing_the_card() {
+    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+    let mut app = test_app();
+    app.state = ConnectionState::Connected;
+    app.current_tab_mut().session_id = Some(DEFAULT_TAB_ID.into());
+
+    submit_test_prompt(&mut app, "in flight");
+    app.current_tab_mut().insert_input_str("first queued");
+    app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+    assert_eq!(app.current_tab().pending_prompts.len(), 1);
+
+    stage_surfaced_recommendation(&mut app, vec![send_choice("pane-A", "ls")], 0, None);
+    app.current_tab_mut().insert_input_str("second queued");
+    app.handle_key(KeyEvent::new(KeyCode::Up, KeyModifiers::NONE));
+    assert!(app.current_tab().input_has_nav_focus());
+    app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+
+    assert_eq!(app.current_tab().pending_prompts.len(), 2);
+    assert!(
+        app.current_tab().turn.recommendations().is_some(),
+        "queuing behind existing work must leave the card for the user to answer"
     );
 }
 

@@ -5,11 +5,82 @@ use serde::{Deserialize, Serialize};
 
 use crate::app_contracts::{PermOption, PlanEntry};
 use crate::commands::{CommandSpec, MovePositionSpec};
+use crate::coordinator::RecommendationExecutionIdentity;
 
 use super::input_edit::InputHistory;
 use super::{TabAutofixState, TurnState};
 
 pub(crate) const DEFAULT_TAB_ID: &str = "0";
+pub(crate) const PENDING_PROMPT_QUEUE_CAP: usize = 20;
+
+/// User work accepted while this tab's current turn cannot accept another
+/// prompt. The queue is tab-owned so background tabs never share prompts.
+pub(crate) struct QueuedPrompt {
+    text: String,
+    display_text: String,
+    images: Vec<crate::clipboard_image::PastedImage>,
+    collapsed: String,
+}
+
+impl QueuedPrompt {
+    pub(crate) fn new(
+        text: String,
+        display_text: String,
+        images: Vec<crate::clipboard_image::PastedImage>,
+    ) -> Self {
+        Self {
+            collapsed: collapse_whitespace_capped(&display_text, COLLAPSED_PREVIEW_CAP),
+            text,
+            display_text,
+            images,
+        }
+    }
+
+    pub(crate) fn collapsed_text(&self) -> &str {
+        &self.collapsed
+    }
+
+    pub(crate) fn into_parts(self) -> (String, String, Vec<crate::clipboard_image::PastedImage>) {
+        (self.text, self.display_text, self.images)
+    }
+}
+
+/// One prompt handed to the ACP transport but not yet terminally completed.
+pub(crate) struct QueuedDispatch {
+    pub(crate) prompt_id: u64,
+    pub(crate) prompt: QueuedPrompt,
+}
+
+/// Bounds the cached queue preview independently of the prompt itself. The
+/// final display-cell clipping happens in `ui::queued_hint`.
+const COLLAPSED_PREVIEW_CAP: usize = 256;
+
+fn collapse_whitespace_capped(text: &str, max_chars: usize) -> String {
+    let mut collapsed = String::new();
+    let mut chars = 0;
+
+    for word in text.split_whitespace() {
+        if chars == max_chars {
+            break;
+        }
+        if !collapsed.is_empty() {
+            collapsed.push(' ');
+            chars += 1;
+            if chars == max_chars {
+                break;
+            }
+        }
+        for ch in word.chars() {
+            if chars == max_chars {
+                break;
+            }
+            collapsed.push(ch);
+            chars += 1;
+        }
+    }
+
+    collapsed
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum NoticeKind {
@@ -557,6 +628,21 @@ pub struct TabSession {
     /// reveal the selected turn.
     pub completed_turn_selection_visible_pending: bool,
     pub chat_scroll: Scroll,
+    /// Prompts accepted while this tab was busy. They are dispatched FIFO when
+    /// the turn returns to an accepting state; Esc removes the newest item.
+    pub(crate) pending_prompts: VecDeque<QueuedPrompt>,
+    /// Every prompt handed to ACP but not yet terminally completed. Keeping
+    /// direct and queued submissions alike lets AgentBusy and recoverable
+    /// errors restore the complete text/image payload instead of losing an
+    /// optimistic local submission.
+    pub(crate) queued_dispatch: Option<QueuedDispatch>,
+    /// Errors pause automatic queue progression. A subsequent typed Enter is
+    /// an explicit user decision to resume FIFO dispatch.
+    pub(crate) queue_paused: bool,
+    /// Coordinator action started from this tab's recommendation card that
+    /// has not acknowledged yet. The ACP turn can already be complete while
+    /// the action still runs, so queued prompts wait for the result.
+    pub(crate) pending_execution: Option<RecommendationExecutionIdentity>,
 
     // Session replay state. These buffers are used only while loading_session
     // is true and never share storage with a live turn.
@@ -931,8 +1017,78 @@ impl TabSession {
         None
     }
 
+    /// Whether a prompt the user just typed can be sent immediately.
+    ///
+    /// The blocking conditions live here so a new one cannot be added to one
+    /// call site and forgotten in another: the ACP turn must accept a prompt,
+    /// no permission request may be waiting on the user, no coordinator
+    /// action may still be running, and a session replay must have finished.
+    /// A visible recommendation card is deliberately *not* a blocker —
+    /// submitting from the input is an explicit decision to dismiss it.
+    pub(crate) fn accepts_typed_prompt(&self) -> bool {
+        self.turn.accepts_new_prompt()
+            && self.pending_execution.is_none()
+            && self.permission.is_empty()
+            && !self.loading_session
+    }
+
+    /// Whether Enter has anything worth submitting.
+    ///
+    /// Whitespace-only text carries no instruction, so it counts as empty: it
+    /// must neither consume a queue slot nor reach the agent. An attachment
+    /// is submittable on its own, so image-only input stays valid even with
+    /// an empty or whitespace-only caption.
+    pub(crate) fn has_submittable_input(&self) -> bool {
+        !self.input.trim().is_empty() || !self.attachments.is_empty()
+    }
+
+    /// Whether a queued prompt may be dispatched without the user asking
+    /// again. Adds the recommendation-card gate on top of
+    /// [`Self::accepts_typed_prompt`], because an automatic dispatch would
+    /// wipe a card the user has not answered yet.
+    pub(crate) fn accepts_queued_dispatch(&self) -> bool {
+        self.accepts_typed_prompt() && self.turn.recommendations().is_none()
+    }
+
+    /// Remove the newest queued prompt, newest-first, for Esc's undo.
+    ///
+    /// Removals go through here and [`Self::clear_pending_prompts`] so the
+    /// pause flag can never outlive the queue it defers. `queue_paused` means
+    /// "do not auto-resume *these* prompts"; leaving it set once the queue is
+    /// empty would silently disable the drain for every later queue on this
+    /// tab, because a directly submitted prompt never runs the resume path in
+    /// `enqueue_current_prompt`.
+    pub(crate) fn pop_latest_pending_prompt(&mut self) -> Option<QueuedPrompt> {
+        let queued = self.pending_prompts.pop_back();
+        self.release_pause_when_queue_is_empty();
+        queued
+    }
+
+    /// Drop every queued prompt and release the pause with them. Returns how
+    /// many prompts were discarded.
+    ///
+    /// `queued_dispatch` is the queue member currently handed to the ACP
+    /// transport, so it goes with them: leaving it behind lets a later
+    /// [`App::restore_dispatched_prompt`] push an abandoned prompt back onto a
+    /// queue the user just emptied.
+    pub(crate) fn clear_pending_prompts(&mut self) -> usize {
+        let count = self.pending_prompts.len();
+        self.pending_prompts.clear();
+        self.queued_dispatch = None;
+        self.release_pause_when_queue_is_empty();
+        count
+    }
+
+    fn release_pause_when_queue_is_empty(&mut self) {
+        if self.pending_prompts.is_empty() {
+            self.queue_paused = false;
+        }
+    }
+
     pub fn clear_chat_history(&mut self) {
         self.messages.clear();
+        self.clear_pending_prompts();
+        self.pending_execution = None;
         self.clear_streaming_thought();
         self.permission.clear();
         self.user_input.clear();

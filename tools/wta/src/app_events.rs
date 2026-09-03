@@ -746,6 +746,9 @@ impl App {
                     tab.loading_session = false;
                     tab.loading_target_session_id = None;
                     tab.meaningful_conversation_before_load = None;
+                    if !tab.pending_prompts.is_empty() {
+                        tab.queue_paused = true;
+                    }
                     tab.scroll_to_bottom();
                 }
                 // Per-session model lists could differ — surface the new
@@ -976,6 +979,23 @@ impl App {
                 // auth-fallback / ConnectionState::Failed flip in
                 // AgentError because the error is local to one tab's
                 // session-load attempt, not the whole connection.
+                // TabError carries no prompt id of its own, but this event
+                // is inherently tab-scoped: the tab's current turn (if any)
+                // is exactly the prompt this load/reset attempt rejected, so
+                // it returns to the head of the queue exactly as it does for
+                // AgentError. No live prompt derivable here means only a
+                // pause, never a wildcard restore.
+                let rejected_prompt_id = self
+                    .tab_sessions
+                    .get(&tab_id)
+                    .and_then(|tab| tab.turn.prompt())
+                    .map(|prompt| prompt.id);
+                match rejected_prompt_id {
+                    Some(prompt_id) => {
+                        self.restore_dispatched_prompt(&tab_id, prompt_id);
+                    }
+                    None => self.pause_queue(&tab_id),
+                }
                 let tab = self.tab_mut(&tab_id);
                 tab.loading_session = false;
                 tab.loading_target_session_id = None;
@@ -1008,8 +1028,29 @@ impl App {
             } => {
                 self.apply_prompt_target_resolved(tab_id, prompt_id, pane_id);
             }
-            AppEvent::AgentBusy { tab_id } => {
+            AppEvent::AgentBusy {
+                tab_id: context_tab_id,
+                prompt_id,
+            } => {
+                let Some(tab_id) = self.tab_for_in_flight_prompt(prompt_id) else {
+                    tracing::debug!(
+                        target: "acp",
+                        context_tab_id = %context_tab_id,
+                        prompt_id,
+                        "dropping stale agent-busy event"
+                    );
+                    return;
+                };
+                let rolled_back = self.rollback_queued_dispatch(&tab_id, prompt_id);
                 let tab = self.tab_mut(&tab_id);
+                if !rolled_back
+                    && tab
+                        .turn
+                        .prompt()
+                        .is_some_and(|prompt| prompt.id == prompt_id)
+                {
+                    tab.turn = TurnState::Idle;
+                }
                 tab.messages
                     .push(ChatMessage::warning(t!("system.agent_busy").into_owned()));
                 tab.scroll_to_bottom();
@@ -1023,6 +1064,7 @@ impl App {
             }
             AppEvent::AgentError {
                 session_id,
+                prompt_id,
                 failure,
                 message,
             } => {
@@ -1040,6 +1082,7 @@ impl App {
                     target: "failure",
                     class = failure.class(),
                     session_id = ?session_id,
+                    prompt_id = ?prompt_id,
                     "agent failure"
                 );
 
@@ -1049,6 +1092,34 @@ impl App {
                 if failure.is_cancelled() {
                     return;
                 }
+
+                // A stale prompt id — already cancelled or replaced locally
+                // before this event arrived — must only suppress the
+                // tab-local turn/queue mutation below. It must never
+                // suppress connection-wide fallout: the auth Setup
+                // fallback, session-survival recovery, the Failed state
+                // transition, and status publishing below all still apply
+                // to whichever session/connection actually produced this
+                // failure, independent of which prompt (if any) is live.
+                let target_tab = match prompt_id {
+                    Some(prompt_id) => {
+                        let tab_id = self.tab_for_in_flight_prompt(prompt_id);
+                        if tab_id.is_none() {
+                            tracing::debug!(
+                                target: "failure",
+                                prompt_id,
+                                "stale prompt failure: local turn/queue mutation suppressed"
+                            );
+                        }
+                        tab_id
+                    }
+                    None => Some(
+                        session_id
+                            .as_deref()
+                            .map(|sid| self.tab_for_session(sid))
+                            .unwrap_or_else(|| self.active_tab_key().to_string()),
+                    ),
+                };
 
                 let session_survives = session_id.is_some()
                     && matches!(
@@ -1116,10 +1187,27 @@ impl App {
                         self.state = ConnectionState::Failed(message.clone());
                         self.publish_agent_status();
                     }
-                    let tab = match session_id.as_deref() {
-                        Some(sid) => self.session_tab_mut(sid),
-                        None => self.current_tab_mut(),
+                    let Some(target_tab) = target_tab else {
+                        return;
                     };
+                    // Exact-restore only when a live prompt can be derived —
+                    // from the event itself, or (for a connection-scoped
+                    // failure with no prompt id) from this tab's own
+                    // in-flight turn. Anything else is a pause: a stale or
+                    // absent prompt must never resurrect abandoned work.
+                    let derived_prompt_id = prompt_id.or_else(|| {
+                        self.tab_sessions
+                            .get(&target_tab)
+                            .and_then(|tab| tab.turn.prompt())
+                            .map(|prompt| prompt.id)
+                    });
+                    match derived_prompt_id {
+                        Some(id) => {
+                            self.restore_dispatched_prompt(&target_tab, id);
+                        }
+                        None => self.pause_queue(&target_tab),
+                    }
+                    let tab = self.tab_mut(&target_tab);
                     tab.activity_frame = 0;
                     tab.timing_note = None;
                     tab.turn = TurnState::Idle;
@@ -1267,31 +1355,25 @@ impl App {
                     self.show_signin_setup_screen(resolved);
                 }
             }
-            AppEvent::AgentSoftStop { session_id, reason } => {
-                use crate::protocol::acp::soft_stop::SoftStopReason;
-                // A soft stop is an *outcome*, not a connection failure — the
-                // session stays Connected and the turn already closed via
-                // AgentMessageEnd. We only append an informational line so the
-                // user knows why the reply ended (truncation / budget / refusal)
-                // instead of silently trailing off.
-                tracing::info!(
-                    target: "soft_stop",
-                    class = reason.class(),
-                    session_id = %session_id,
-                    "agent turn ended on a soft stop"
-                );
-                let msg = match reason {
-                    SoftStopReason::MaxTokens => t!("system.stopped_max_tokens"),
-                    SoftStopReason::MaxTurnRequests => t!("system.stopped_max_turn_requests"),
-                    SoftStopReason::Refusal => t!("system.stopped_refusal"),
-                };
-                let tab = self.session_tab_mut(&session_id);
-                tab.messages.push(ChatMessage::warning(msg.into_owned()));
-                tab.scroll_to_bottom();
-            }
             AppEvent::ExecutionInfo(message) => {
                 self.push_execution_info(message);
                 self.current_tab_mut().scroll_to_bottom();
+            }
+            AppEvent::RecommendationExecutionCompleted {
+                tab_id,
+                execution,
+                choice,
+                result,
+            } => {
+                if !self.complete_recommendation_execution(execution, choice, result) {
+                    tracing::debug!(
+                        target: "recommendation",
+                        context_tab_id = %tab_id,
+                        prompt_id = ?execution.prompt_id,
+                        execution_id = execution.execution_id,
+                        "dropping stale or unmatched recommendation completion"
+                    );
+                }
             }
             AppEvent::AgentThoughtChunk { session_id, text } => {
                 // Late chunk after cancel / completion is dropped by
@@ -1353,12 +1435,76 @@ impl App {
                 }
                 tab.replay_user_buffer.push_str(&text);
             }
-            AppEvent::AgentMessageEnd { session_id } => {
+            AppEvent::AgentMessageEnd {
+                session_id,
+                prompt_id,
+            } => {
+                let Some(tab_id) = self.tab_for_in_flight_prompt(prompt_id) else {
+                    return;
+                };
+                self.session_to_tab
+                    .insert(session_id.clone(), tab_id.clone());
+                self.clear_dispatched_prompt(&tab_id, prompt_id);
                 if let Some(summary) = self.session_completion_latency_summary(&session_id) {
                     self.push_execution_info(summary);
                 }
                 self.turn_close(&session_id);
                 self.session_tab_mut(&session_id).scroll_to_bottom();
+            }
+            AppEvent::AgentTurnCompleted {
+                session_id,
+                prompt_id,
+                soft_stop,
+            } => {
+                let Some(tab_id) = self.tab_for_in_flight_prompt(prompt_id) else {
+                    return;
+                };
+                self.session_to_tab.insert(session_id.clone(), tab_id);
+                let completed_before = self.session_tab(&session_id).completed_turns.len();
+                if let Some(summary) = self.session_completion_latency_summary(&session_id) {
+                    self.push_execution_info(summary);
+                }
+                self.turn_close(&session_id);
+                if let Some(reason) = soft_stop {
+                    use crate::protocol::acp::soft_stop::SoftStopReason;
+                    // A soft stop is an outcome, not a connection failure: the
+                    // session stays Connected and the turn already closed. The
+                    // notice only tells the user why the reply ended
+                    // (truncation / budget / refusal) instead of trailing off.
+                    tracing::info!(
+                        target: "soft_stop",
+                        class = reason.class(),
+                        session_id = %session_id,
+                        "agent turn ended on a soft stop"
+                    );
+                    let message = match reason {
+                        SoftStopReason::MaxTokens => t!("system.stopped_max_tokens"),
+                        SoftStopReason::MaxTurnRequests => t!("system.stopped_max_turn_requests"),
+                        SoftStopReason::Refusal => t!("system.stopped_refusal"),
+                    }
+                    .into_owned();
+                    let tab = self.session_tab_mut(&session_id);
+                    let appended = tab.completed_turns.len() > completed_before;
+                    if let Some(turn) = appended.then(|| tab.completed_turns.last_mut()).flatten() {
+                        turn.details.push(ChatMessage::warning(message));
+                    } else if let Some(prompt) = tab.turn.prompt() {
+                        let label = if prompt.autofix.is_some() {
+                            t!("chat.autofix_prompt_label").into_owned()
+                        } else {
+                            prompt.text.clone()
+                        };
+                        tab.completed_turns.push(CompletedTurn {
+                            prompt: label,
+                            details: vec![ChatMessage::warning(message)],
+                            expanded: true,
+                            trailing_marker: None,
+                        });
+                    } else {
+                        tab.messages.push(ChatMessage::warning(message));
+                    }
+                }
+                self.session_tab_mut(&session_id).scroll_to_bottom();
+                self.dispatch_after_successful_turn(&session_id, prompt_id);
             }
             AppEvent::TimingMetric { session_id, note } => {
                 self.session_tab_mut(&session_id).timing_note = Some(note);

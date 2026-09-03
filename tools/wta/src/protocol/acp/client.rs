@@ -118,6 +118,12 @@ pub struct CancelRequest {
     pub session_id: String,
 }
 
+/// Keyed by session id. `PromptSlotGuard` releases a completed prompt's
+/// entry (by session id, before the terminal event that can dispatch a
+/// queued successor onto the same session), so a late cancel can only ever
+/// resolve to whichever prompt currently owns the session's slot.
+type CancelSignals = Arc<Mutex<HashMap<String, tokio::sync::oneshot::Sender<()>>>>;
+
 /// User-initiated request to spin up a fresh ACP session for a given tab,
 /// dropping the previous session's history. Emitted by the `/new` slash
 /// command. The ACP client task removes the old SessionId from its
@@ -405,13 +411,17 @@ impl PromptSubmission {
     }
 }
 
-async fn complete_prompt_request<T>(
+async fn complete_prompt_request<T, F>(
     result: std::result::Result<T, acp::Error>,
     soft_stop: Option<SoftStopReason>,
     prompt_timing: &PromptTimingState,
     event_tx: &mpsc::UnboundedSender<AppEvent>,
     session_id: String,
-) {
+    prompt_id: u64,
+    before_terminal_event: F,
+) where
+    F: FnOnce(),
+{
     match result {
         Ok(_) => {
             let timing_note = prompt_timing.complete(&session_id, true, None);
@@ -436,17 +446,16 @@ async fn complete_prompt_request<T>(
             //
             // Once Copilot honors the spec, this delay can be removed.
             tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-            let _ = event_tx.send(AppEvent::AgentMessageEnd {
-                session_id: session_id.clone(),
+            // The UI drains queued prompts in response to this terminal
+            // event. Release the ACP client's per-tab single-flight slot
+            // first, or the newly dispatched prompt would be rejected as
+            // AgentBusy and leave the local turn state out of sync.
+            before_terminal_event();
+            let _ = event_tx.send(AppEvent::AgentTurnCompleted {
+                session_id,
+                prompt_id,
+                soft_stop,
             });
-            // A successful turn can still end on a soft stop (truncation /
-            // request-budget / refusal). It is NOT a connection failure — the
-            // session stays Connected — so it rides its own event and only
-            // appends an informational line AFTER `AgentMessageEnd` has flushed
-            // the agent's streamed content.
-            if let Some(reason) = soft_stop {
-                let _ = event_tx.send(AppEvent::AgentSoftStop { session_id, reason });
-            }
         }
         Err(e) => {
             let error_message = e.to_string();
@@ -458,8 +467,10 @@ async fn complete_prompt_request<T>(
                     note,
                 });
             }
+            before_terminal_event();
             let _ = event_tx.send(AppEvent::AgentError {
                 session_id: Some(session_id),
+                prompt_id: Some(prompt_id),
                 failure,
                 message: format!("prompt error: {}", error_message),
             });
@@ -3316,8 +3327,7 @@ pub async fn run_acp_client_over_pipe(
     let template_memo = TemplateMemo::default();
     let in_flight_tabs: Arc<std::sync::Mutex<HashSet<String>>> =
         Arc::new(std::sync::Mutex::new(HashSet::new()));
-    let cancel_signals: Arc<std::sync::Mutex<HashMap<String, tokio::sync::oneshot::Sender<()>>>> =
-        Arc::new(std::sync::Mutex::new(HashMap::new()));
+    let cancel_signals: CancelSignals = Arc::new(Mutex::new(HashMap::new()));
     let mut prompt_tasks: Vec<tokio::task::JoinHandle<()>> = Vec::new();
 
     let conn = Arc::new(conn);
@@ -3828,7 +3838,7 @@ fn dispatch_load_session(
     req: LoadSessionForTab,
     conn: &conn::ClientLink,
     tab_to_session: &Arc<tokio::sync::Mutex<HashMap<String, acp::schema::v1::SessionId>>>,
-    cancel_signals: &Arc<std::sync::Mutex<HashMap<String, tokio::sync::oneshot::Sender<()>>>>,
+    cancel_signals: &CancelSignals,
     event_tx: &mpsc::UnboundedSender<AppEvent>,
     inject_pane_meta: bool,
     use_load_failure_handler: bool,
@@ -4072,7 +4082,7 @@ fn dispatch_new_session(
     conn: &conn::ClientLink,
     tab_to_session: &Arc<tokio::sync::Mutex<HashMap<String, acp::schema::v1::SessionId>>>,
     template_memo: &TemplateMemo,
-    cancel_signals: &Arc<std::sync::Mutex<HashMap<String, tokio::sync::oneshot::Sender<()>>>>,
+    cancel_signals: &CancelSignals,
     event_tx: &mpsc::UnboundedSender<AppEvent>,
     is_agent_pane: bool,
     inject_pane_meta: bool,
@@ -4131,6 +4141,7 @@ fn dispatch_new_session(
             Err(e) => {
                 let _ = event_tx.send(AppEvent::AgentError {
                     session_id: None,
+                    prompt_id: None,
                     failure: AgentFailure::from_acp_error(&e),
                     message: format!("/new failed for tab {}: {}", req.tab_id, e),
                 });
@@ -4191,7 +4202,7 @@ async fn dispatch_drop_session(
     conn: &conn::ClientLink,
     tab_to_session: &Arc<tokio::sync::Mutex<HashMap<String, acp::schema::v1::SessionId>>>,
     template_memo: &TemplateMemo,
-    cancel_signals: &Arc<std::sync::Mutex<HashMap<String, tokio::sync::oneshot::Sender<()>>>>,
+    cancel_signals: &CancelSignals,
 ) {
     tracing::info!(
         target: "acp_drop_session",
@@ -4251,11 +4262,7 @@ async fn dispatch_drop_session(
 /// breaks a spawned prompt task out of `conn.prompt().await`) and
 /// best-effort notify the agent via `session/cancel`. Called by
 /// `run_acp_client_over_pipe`.
-fn dispatch_cancel(
-    req: CancelRequest,
-    conn: &conn::ClientLink,
-    cancel_signals: &Arc<std::sync::Mutex<HashMap<String, tokio::sync::oneshot::Sender<()>>>>,
-) {
+fn dispatch_cancel(req: CancelRequest, conn: &conn::ClientLink, cancel_signals: &CancelSignals) {
     let session_id_str = req.session_id.clone();
     tracing::info!(target: "acp_cancel", session_id = %session_id_str, "cancel requested");
     // Local oneshot first — it's the critical path for breaking the
@@ -4323,7 +4330,7 @@ fn build_prompt_content(
 async fn stop_prompt_tasks(
     prompt_tasks: &mut Vec<tokio::task::JoinHandle<()>>,
     in_flight_tabs: &Arc<std::sync::Mutex<HashSet<String>>>,
-    cancel_signals: &Arc<std::sync::Mutex<HashMap<String, tokio::sync::oneshot::Sender<()>>>>,
+    cancel_signals: &CancelSignals,
 ) {
     let signals = std::mem::take(&mut *cancel_signals.lock().unwrap());
     for (_, signal) in signals {
@@ -4343,10 +4350,55 @@ async fn complete_transport_shutdown(
     event_tx: &mpsc::UnboundedSender<AppEvent>,
     prompt_tasks: &mut Vec<tokio::task::JoinHandle<()>>,
     in_flight_tabs: &Arc<std::sync::Mutex<HashSet<String>>>,
-    cancel_signals: &Arc<std::sync::Mutex<HashMap<String, tokio::sync::oneshot::Sender<()>>>>,
+    cancel_signals: &CancelSignals,
 ) -> AcpClientExit {
     stop_prompt_tasks(prompt_tasks, in_flight_tabs, cancel_signals).await;
     complete_transport_io_task(io_result, suppress_transport_error, event_tx)
+}
+
+/// Hands one prompt's per-tab single-flight slot and cancellation bookkeeping
+/// back, at most once.
+///
+/// Terminal completion releases the slot *before* the event that wakes the
+/// App's queue drain, so by the time the finished task returns from its usage
+/// probe the slot can already belong to the next prompt on that tab. A second
+/// release would evict the successor's marker and admit two concurrent
+/// prompts for one session.
+#[derive(Clone)]
+struct PromptSlotGuard {
+    in_flight_tabs: Arc<Mutex<HashSet<String>>>,
+    cancel_signals: CancelSignals,
+    tab_key: String,
+    session_id: String,
+    released: Arc<AtomicBool>,
+}
+
+impl PromptSlotGuard {
+    fn new(
+        in_flight_tabs: &Arc<Mutex<HashSet<String>>>,
+        cancel_signals: &CancelSignals,
+        tab_key: &str,
+        session_id: &str,
+    ) -> Self {
+        Self {
+            in_flight_tabs: Arc::clone(in_flight_tabs),
+            cancel_signals: Arc::clone(cancel_signals),
+            tab_key: tab_key.to_string(),
+            session_id: session_id.to_string(),
+            released: Arc::new(AtomicBool::new(false)),
+        }
+    }
+
+    fn release(&self) {
+        if self
+            .released
+            .swap(true, std::sync::atomic::Ordering::AcqRel)
+        {
+            return;
+        }
+        self.in_flight_tabs.lock().unwrap().remove(&self.tab_key);
+        self.cancel_signals.lock().unwrap().remove(&self.session_id);
+    }
 }
 
 fn dispatch_prompt(
@@ -4355,7 +4407,7 @@ fn dispatch_prompt(
     tab_to_session: &Arc<tokio::sync::Mutex<HashMap<String, acp::schema::v1::SessionId>>>,
     template_memo: &TemplateMemo,
     in_flight_tabs: &Arc<std::sync::Mutex<HashSet<String>>>,
-    cancel_signals: &Arc<std::sync::Mutex<HashMap<String, tokio::sync::oneshot::Sender<()>>>>,
+    cancel_signals: &CancelSignals,
     event_tx: &mpsc::UnboundedSender<AppEvent>,
     shell_mgr: &Arc<ShellManager>,
     prompt_timing: &Arc<PromptTimingState>,
@@ -4377,6 +4429,7 @@ fn dispatch_prompt(
         if !g.insert(tab_key.clone()) {
             let _ = event_tx.send(AppEvent::AgentBusy {
                 tab_id: tab_key.clone(),
+                prompt_id: prompt.id,
             });
             return None;
         }
@@ -4425,7 +4478,7 @@ async fn dispatch_prompt_body(
     tab_to_session_task: Arc<tokio::sync::Mutex<HashMap<String, acp::schema::v1::SessionId>>>,
     template_memo: TemplateMemo,
     in_flight_tabs_task: Arc<std::sync::Mutex<HashSet<String>>>,
-    cancel_signals_task: Arc<std::sync::Mutex<HashMap<String, tokio::sync::oneshot::Sender<()>>>>,
+    cancel_signals_task: CancelSignals,
     event_tx_task: mpsc::UnboundedSender<AppEvent>,
     shell_mgr_task: Arc<ShellManager>,
     prompt_timing_task: Arc<PromptTimingState>,
@@ -4461,12 +4514,13 @@ async fn dispatch_prompt_body(
             let mut new_session = match new_session_result {
                 Ok(s) => s,
                 Err(e) => {
+                    in_flight_tabs_task.lock().unwrap().remove(&tab_key_task);
                     let _ = event_tx_task.send(AppEvent::AgentError {
                         session_id: None,
+                        prompt_id: Some(prompt.id),
                         failure: AgentFailure::from_acp_error(&e),
                         message: format!("new_session failed for tab {}: {}", tab_key_task, e),
                     });
-                    in_flight_tabs_task.lock().unwrap().remove(&tab_key_task);
                     return;
                 }
             };
@@ -4641,6 +4695,12 @@ async fn dispatch_prompt_body(
     ));
     tokio::pin!(prompt_fut);
 
+    let slot = PromptSlotGuard::new(
+        &in_flight_tabs_task,
+        &cancel_signals_task,
+        &tab_key_task,
+        &prompt_session_id_str,
+    );
     let completed_successfully = tokio::select! {
         result = &mut prompt_fut => {
             // Peek the successful turn's stop_reason (the response is consumed
@@ -4657,6 +4717,11 @@ async fn dispatch_prompt_body(
                 &prompt_timing_task,
                 &event_tx_task,
                 prompt_session_id_str.clone(),
+                prompt.id,
+                {
+                    let slot = slot.clone();
+                    move || slot.release()
+                },
             )
             .await;
             successful
@@ -4671,8 +4736,10 @@ async fn dispatch_prompt_body(
                 false,
                 Some("cancelled"),
             );
+            slot.release();
             let _ = event_tx_task.send(AppEvent::AgentMessageEnd {
                 session_id: prompt_session_id_str.clone(),
+                prompt_id: prompt.id,
             });
             false
         }
@@ -4708,11 +4775,8 @@ async fn dispatch_prompt_body(
         }
     }
 
-    cancel_signals_task
-        .lock()
-        .unwrap()
-        .remove(&prompt_session_id_str);
-    in_flight_tabs_task.lock().unwrap().remove(&tab_key_task);
+    // No-op when a terminal path already released it; see `PromptSlotGuard`.
+    slot.release();
 }
 
 #[cfg(test)]
@@ -4724,8 +4788,8 @@ mod tests {
         inject_wta_pane_meta, is_redundant_startup_model_error, post_login_authenticate_error,
         session_mcp_tool_from_title, stop_prompt_tasks, timeout_result_failure_fields,
         tool_call_exit_code, tool_call_kind_label, tool_call_location_hint, tool_call_target,
-        AcpClientExit, ClientState, PromptTimingState, PromptUsageIdentity, SessionMcpTool,
-        SoftStopReason, WtaClient,
+        AcpClientExit, CancelSignals, ClientState, PromptSlotGuard, PromptTimingState,
+        PromptUsageIdentity, SessionMcpTool, SoftStopReason, WtaClient,
     };
     use crate::app_contracts::AppEvent;
     use crate::protocol::acp::failure::{AgentFailure, HandshakeStage};
@@ -4800,7 +4864,7 @@ mod tests {
 
         let in_flight_tabs = Arc::new(Mutex::new(HashSet::from(["tab-1".to_string()])));
         let (cancel_tx, _cancel_rx) = tokio::sync::oneshot::channel();
-        let cancel_signals = Arc::new(Mutex::new(HashMap::from([(
+        let cancel_signals: CancelSignals = Arc::new(Mutex::new(HashMap::from([(
             "session-1".to_string(),
             cancel_tx,
         )])));
@@ -4881,7 +4945,7 @@ mod tests {
 
             let in_flight_tabs = Arc::new(Mutex::new(HashSet::from(["tab-1".to_string()])));
             let (cancel_tx, _cancel_rx) = tokio::sync::oneshot::channel();
-            let cancel_signals = Arc::new(Mutex::new(HashMap::from([(
+            let cancel_signals: CancelSignals = Arc::new(Mutex::new(HashMap::from([(
                 "session-1".to_string(),
                 cancel_tx,
             )])));
@@ -4997,6 +5061,36 @@ mod tests {
             hidden_tool_calls: Mutex::new(HashMap::new()),
         });
         (WtaClient { state }, event_rx)
+    }
+
+    /// Terminal completion releases the per-tab slot before the event that
+    /// wakes the App's queue drain, so the successor prompt can claim it while
+    /// the finished task is still running its usage probe. A second release
+    /// from that task would admit two concurrent prompts for one session.
+    #[test]
+    fn prompt_slot_is_released_at_most_once() {
+        let in_flight = Arc::new(Mutex::new(HashSet::from(["tab-1".to_string()])));
+        let cancel_signals: CancelSignals = Arc::new(Mutex::new(HashMap::new()));
+        let (sender, _receiver) = tokio::sync::oneshot::channel();
+        cancel_signals
+            .lock()
+            .unwrap()
+            .insert("session-1".to_string(), sender);
+        let slot = PromptSlotGuard::new(&in_flight, &cancel_signals, "tab-1", "session-1");
+
+        slot.release();
+        assert!(in_flight.lock().unwrap().is_empty());
+        assert!(cancel_signals.lock().unwrap().is_empty());
+
+        // The App dispatched the next queued prompt onto the freed slot.
+        in_flight.lock().unwrap().insert("tab-1".to_string());
+        slot.clone().release();
+        slot.release();
+
+        assert!(
+            in_flight.lock().unwrap().contains("tab-1"),
+            "a finished task must not evict its successor's single-flight marker"
+        );
     }
 
     #[tokio::test]
@@ -5753,9 +5847,11 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn successful_prompt_completion_emits_message_end_only() {
+    async fn successful_prompt_completion_emits_composite_terminal_event() {
         let (event_tx, mut event_rx) = mpsc::unbounded_channel();
         let prompt_timing = PromptTimingState::default();
+        let released = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let released_for_callback = std::sync::Arc::clone(&released);
 
         complete_prompt_request(
             Ok::<(), acp::Error>(()),
@@ -5763,21 +5859,33 @@ mod tests {
             &prompt_timing,
             &event_tx,
             "test-session".to_string(),
+            1,
+            move || {
+                released_for_callback.store(true, std::sync::atomic::Ordering::Relaxed);
+            },
         )
         .await;
 
         match event_rx.try_recv() {
-            Ok(AppEvent::AgentMessageEnd { session_id }) => {
+            Ok(AppEvent::AgentTurnCompleted {
+                session_id,
+                soft_stop: None,
+                ..
+            }) => {
                 assert_eq!(session_id, "test-session");
             }
-            Ok(_) => panic!("expected AgentMessageEnd"),
-            Err(err) => panic!("expected AgentMessageEnd, got channel error: {err}"),
+            Ok(_) => panic!("expected AgentTurnCompleted"),
+            Err(err) => panic!("expected AgentTurnCompleted, got channel error: {err}"),
         }
+        assert!(
+            released.load(std::sync::atomic::Ordering::Relaxed),
+            "the per-tab slot must be released before terminal completion wakes the queue drain"
+        );
         assert!(event_rx.try_recv().is_err());
     }
 
     #[tokio::test]
-    async fn soft_stop_emits_message_end_then_soft_stop() {
+    async fn soft_stop_is_carried_by_the_terminal_completion_event() {
         let (event_tx, mut event_rx) = mpsc::unbounded_channel();
         let prompt_timing = PromptTimingState::default();
 
@@ -5787,25 +5895,21 @@ mod tests {
             &prompt_timing,
             &event_tx,
             "test-session".to_string(),
+            1,
+            || {},
         )
         .await;
 
-        // Order matters: the turn-closing AgentMessageEnd must land first so the
-        // soft-stop notice appends after the agent's streamed content.
         match event_rx.try_recv() {
-            Ok(AppEvent::AgentMessageEnd { session_id }) => {
+            Ok(AppEvent::AgentTurnCompleted {
+                session_id,
+                soft_stop: Some(SoftStopReason::Refusal),
+                ..
+            }) => {
                 assert_eq!(session_id, "test-session");
             }
-            Ok(_) => panic!("expected AgentMessageEnd first"),
-            Err(err) => panic!("expected AgentMessageEnd first, got channel error: {err}"),
-        }
-        match event_rx.try_recv() {
-            Ok(AppEvent::AgentSoftStop { session_id, reason }) => {
-                assert_eq!(session_id, "test-session");
-                assert_eq!(reason, SoftStopReason::Refusal);
-            }
-            Ok(_) => panic!("expected AgentSoftStop second"),
-            Err(err) => panic!("expected AgentSoftStop second, got channel error: {err}"),
+            Ok(_) => panic!("expected composite terminal completion"),
+            Err(err) => panic!("expected terminal completion, got channel error: {err}"),
         }
         assert!(event_rx.try_recv().is_err());
     }
@@ -5821,6 +5925,8 @@ mod tests {
             &prompt_timing,
             &event_tx,
             "test-session".to_string(),
+            1,
+            || {},
         )
         .await;
 
@@ -5829,6 +5935,7 @@ mod tests {
                 session_id,
                 failure,
                 message,
+                ..
             }) => {
                 assert_eq!(session_id.as_deref(), Some("test-session"));
                 assert_eq!(message, "prompt error: boom");

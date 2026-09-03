@@ -4,7 +4,7 @@ use ratatui::prelude::*;
 use super::config_popup;
 use super::{
     action_panel, agent_popup, agents_view, auth, chat, command_popup, debug_panel, input,
-    model_popup, permission, recommendations, setup, user_input,
+    model_popup, permission, queued_hint, recommendations, setup, user_input,
 };
 
 pub fn render(frame: &mut Frame, app: &mut App) {
@@ -171,6 +171,7 @@ pub fn render(frame: &mut Frame, app: &mut App) {
         chat_natural_height: chat_estimate,
         hint_requested,
         activity_requested: chat::should_show_activity(app),
+        queue_hint_requested: queued_hint::queue_hint_requested(app),
         recommendation_natural_height,
         permission_natural_height,
     });
@@ -184,6 +185,7 @@ pub fn render(frame: &mut Frame, app: &mut App) {
             Constraint::Length(panel_layout.hint_height),
             Constraint::Length(panel_layout.recommendation_hint_height),
             Constraint::Length(panel_layout.activity_height),
+            Constraint::Length(panel_layout.queue_hint_height),
             Constraint::Length(panel_layout.input_height),
         ])
         .split(main_area);
@@ -253,39 +255,40 @@ pub fn render(frame: &mut Frame, app: &mut App) {
         recommendations::render_hint(frame, chunks[5]);
     }
     chat::render_activity(frame, app, h_activity[1]);
-    app.input_dialog_area = Some(chunks[7]);
-    input::render(frame, app, chunks[7]);
+    queued_hint::render(frame, app, chunks[7]);
+    app.input_dialog_area = Some(chunks[8]);
+    input::render(frame, app, chunks[8]);
 
     if let Some(debug_area) = debug_area {
         debug_panel::render(frame, app, debug_area);
     }
 
     // Slash-command autocomplete: pinned directly above the input box
-    // (`chunks[7]`). Anchoring to the input box rather than the filler row
+    // (`chunks[8]`). Anchoring to the input box rather than the filler row
     // keeps the popup glued to the input regardless of how much empty space
     // sits above it — otherwise a short chat leaves a tall filler and the
     // popup floats far up the pane (worst in side-by-side layouts).
     if let Some(popup_state) = app.command_popup_state() {
-        command_popup::render_popup(frame, popup_state, chunks[7]);
+        command_popup::render_popup(frame, popup_state, chunks[8]);
     }
 
     // `/model` picker modal: same anchor as the autocomplete popup. The two
     // are mutually exclusive — opening the picker clears the input, so the
     // command popup isn't visible while it's up.
     if let Some(model_state) = app.model_popup_state() {
-        model_popup::render_popup(frame, model_state, chunks[7]);
+        model_popup::render_popup(frame, model_state, chunks[8]);
     }
 
     if let Some(config_state) = app.config_popup_state() {
-        config_popup::render_popup(frame, config_state, chunks[7]);
+        config_popup::render_popup(frame, config_state, chunks[8]);
     }
 
     if let Some(agent_state) = app.agent_popup_state() {
-        agent_popup::render_popup(frame, agent_state, chunks[7]);
+        agent_popup::render_popup(frame, agent_state, chunks[8]);
     }
 
     if let Some(request) = app.current_tab().user_input.front() {
-        user_input::render(frame, request, chunks[7]);
+        user_input::render(frame, request, chunks[8]);
     }
 
     // `/help` overlay sits on top of everything so the user can always
