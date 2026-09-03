@@ -784,7 +784,11 @@ impl ContextProvider for CommandNotFoundProvider {
         let shell_exe = req.shell_exe?;
         let content = req.terminal_output?;
         let token = crate::command_recall::extract_command_token(content)?;
-        let matches = crate::command_recall::powershell_near_matches(shell_exe, &token).await?;
+        // Non-blocking: a cold command cache yields no hint for this turn and
+        // warms in the background instead of stalling the prompt on a
+        // profile-loading PowerShell enumerate (measured at 5.82s on a real
+        // turn). The next autofix turn finds it warm.
+        let matches = crate::command_recall::powershell_near_matches_now(shell_exe, &token)?;
         tracing::debug!(
             target: "acp.terminal_context",
             token = %token,

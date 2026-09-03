@@ -12917,6 +12917,58 @@ fn bounded_late_thought_does_not_rewind_revealed_assistant_response() {
     );
 }
 
+/// Time-to-first-token is the latency users compare against a bare agent CLI,
+/// so the opening burst of a turn is shown as soon as it arrives. Only the
+/// continuation is paced by the typewriter smoothing.
+#[test]
+fn first_reveal_of_a_turn_is_not_smoothed() {
+    let mut app = test_app();
+    submit_test_prompt(&mut app, "hi");
+
+    let first = "The answer to your question is as follows, in detail:";
+    app.turn_observe_chunk(DEFAULT_TAB_ID, ChunkKind::Message, first);
+    assert_eq!(
+        app.current_tab().reveal_chars,
+        0,
+        "a fresh turn starts with nothing revealed"
+    );
+
+    app.advance_reveal();
+
+    assert_eq!(
+        app.current_tab().reveal_chars,
+        first.chars().count(),
+        "the first frame of a turn must reveal the whole opening chunk, not a 3-char step"
+    );
+}
+
+/// The un-smoothed first frame must not disable smoothing for the rest of the
+/// turn — continuation chunks still animate.
+#[test]
+fn continuation_chunks_remain_smoothed_after_the_first_reveal() {
+    let mut app = test_app();
+    submit_test_prompt(&mut app, "hi");
+
+    app.turn_observe_chunk(DEFAULT_TAB_ID, ChunkKind::Message, "Start.");
+    app.advance_reveal();
+    let after_first = app.current_tab().reveal_chars;
+    assert_eq!(after_first, "Start.".chars().count());
+
+    // A large continuation must not be revealed all at once.
+    app.turn_observe_chunk(DEFAULT_TAB_ID, ChunkKind::Message, &"x".repeat(400));
+    app.advance_reveal();
+
+    let revealed = app.current_tab().reveal_chars;
+    assert!(
+        revealed > after_first,
+        "continuation must make progress, got {revealed}"
+    );
+    assert!(
+        revealed < after_first + 400,
+        "continuation must still be paced, got {revealed}"
+    );
+}
+
 #[test]
 fn structured_stream_hides_thinking_after_response_is_visible() {
     let mut app = test_app();

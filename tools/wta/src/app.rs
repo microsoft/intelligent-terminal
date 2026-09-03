@@ -4771,6 +4771,13 @@ impl App {
         // `REVEAL_CATCHUP_FRAMES` ticks (~130ms).
         const REVEAL_MIN_STEP: usize = 3;
         const REVEAL_CATCHUP_FRAMES: usize = 4;
+        // The *first* reveal of a turn is not smoothed. Time-to-first-token is
+        // the latency users actually feel (and the one they compare against a
+        // bare agent CLI), so the opening burst is shown as soon as it arrives;
+        // only the continuation is paced. Without this the first characters
+        // trail their arrival by up to `REVEAL_CATCHUP_FRAMES` ticks, which
+        // reads as the agent being slow to start rather than as smoothing.
+        const REVEAL_FIRST_CHUNK: usize = 240;
         for tab in self.tab_sessions.values_mut() {
             let Some(len) = Self::tab_visible_stream_len(tab) else {
                 continue;
@@ -4782,7 +4789,11 @@ impl App {
                 continue;
             }
             let backlog = len - tab.reveal_chars;
-            let step = REVEAL_MIN_STEP.max(backlog / REVEAL_CATCHUP_FRAMES);
+            let step = if tab.reveal_chars == 0 {
+                REVEAL_FIRST_CHUNK.max(backlog / REVEAL_CATCHUP_FRAMES)
+            } else {
+                REVEAL_MIN_STEP.max(backlog / REVEAL_CATCHUP_FRAMES)
+            };
             tab.reveal_chars = (tab.reveal_chars + step).min(len);
         }
     }
