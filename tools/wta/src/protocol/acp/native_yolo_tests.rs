@@ -245,6 +245,42 @@ fn discovers_copilot_allow_all_config_and_restore_value() {
 }
 
 #[test]
+fn copilot_permission_regression_version_boundary_is_fail_closed() {
+    let state = NativeYoloState::new();
+
+    for version in ["1.0.80", "1.0.81-0"] {
+        state.set_resolved_agent(Some(crate::agent_registry::COPILOT_AGENT_ID), Some(version));
+        assert_eq!(
+            state.disabled_prompt_block_reason(),
+            None,
+            "version {version} predates the ACP permission regression"
+        );
+    }
+
+    for version in ["1.0.81-1", "1.0.81", "1.0.82", "1.0.83-3", "invalid"] {
+        state.set_resolved_agent(Some(crate::agent_registry::COPILOT_AGENT_ID), Some(version));
+        let reason = state
+            .disabled_prompt_block_reason()
+            .unwrap_or_else(|| panic!("version {version} must fail closed"));
+        assert!(reason.contains(version));
+        assert!(reason.contains("github/copilot-cli#4537"));
+    }
+
+    state.set_resolved_agent(Some(crate::agent_registry::COPILOT_AGENT_ID), None);
+    assert!(
+        state.disabled_prompt_block_reason().is_some(),
+        "an unparseable or absent Copilot version cannot attest permission enforcement"
+    );
+
+    state.set_resolved_agent(Some(crate::agent_registry::CLAUDE_AGENT_ID), Some("1.0.82"));
+    assert_eq!(
+        state.disabled_prompt_block_reason(),
+        None,
+        "the Copilot regression must not affect other providers"
+    );
+}
+
+#[test]
 fn fresh_privileged_config_without_restore_fails_disable_closed() {
     for (name, options) in [
         ("missing-restore", r#"[{"value":"on","name":"On"}]"#),

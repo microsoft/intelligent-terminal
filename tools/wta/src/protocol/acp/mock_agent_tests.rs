@@ -96,6 +96,38 @@ struct MockAgent {
     native_update_release: Arc<tokio::sync::Notify>,
 }
 
+struct BlockingPromptContextChannel {
+    started: Arc<tokio::sync::Notify>,
+    release: Arc<tokio::sync::Notify>,
+}
+
+#[async_trait::async_trait]
+impl crate::shell::wt_channel::WtChannel for BlockingPromptContextChannel {
+    async fn request(
+        &self,
+        method: &str,
+        _params: serde_json::Value,
+    ) -> anyhow::Result<serde_json::Value> {
+        if method == "get_active_pane" {
+            self.started.notify_one();
+            self.release.notified().await;
+            return Ok(serde_json::json!({
+                "session_id": "context-pane",
+                "cwd": "C:\\work",
+                "pid": std::process::id(),
+                "is_agent_pane": false,
+            }));
+        }
+        Err(anyhow::anyhow!(
+            "BlockingPromptContextChannel: unhandled method {method}"
+        ))
+    }
+
+    fn is_available(&self) -> bool {
+        true
+    }
+}
+
 fn first_text(blocks: &[acp::schema::v1::ContentBlock]) -> String {
     blocks
         .iter()
@@ -1001,6 +1033,256 @@ async fn dispatch_prompt_busy_tab_emits_agent_busy_and_drops() {
                 h.seen_prompts.lock().unwrap().is_empty(),
                 "a busy-dropped prompt must never reach the agent"
             );
+        })
+        .await;
+}
+
+#[tokio::test]
+async fn copilot_permission_regression_blocks_prompt_when_yolo_is_off() {
+    let local = tokio::task::LocalSet::new();
+    local
+        .run_until(async {
+            let mut h = connect_for_dispatch(MockBehavior::Reply);
+            h.client.state.native_yolo.set_resolved_agent(
+                Some(crate::agent_registry::COPILOT_AGENT_ID),
+                Some("1.0.82"),
+            );
+            h.conn
+                .initialize(acp::schema::v1::InitializeRequest::new(
+                    acp::schema::ProtocolVersion::LATEST,
+                ))
+                .await
+                .expect("initialize failed");
+            let (tab_to_session, in_flight, cancel_signals, memo) = fresh_dispatch_state();
+
+            dispatch_prompt(
+                test_prompt(1, "must not reach unsafe Copilot ACP", false),
+                &h.conn,
+                &tab_to_session,
+                &memo,
+                &in_flight,
+                &cancel_signals,
+                &h.event_tx,
+                &h.shell_mgr,
+                &h.prompt_timing,
+                &h.client,
+                &PromptUsageIdentity::default(),
+                false,
+                false,
+                true,
+                &h.proposal_channels,
+            );
+
+            let failure = tokio::time::timeout(std::time::Duration::from_secs(2), async {
+                loop {
+                    match h.event_rx.recv().await {
+                        Some(AppEvent::AgentError { message, .. }) => break message,
+                        Some(_) => continue,
+                        None => panic!("event channel closed before the compatibility error"),
+                    }
+                }
+            })
+            .await
+            .expect("affected Copilot must fail closed before prompt dispatch");
+            assert!(failure.contains("1.0.82"));
+            assert!(failure.contains("permission"));
+            assert!(
+                h.seen_prompts.lock().unwrap().is_empty(),
+                "the prompt must not cross the ACP send boundary"
+            );
+            assert!(
+                in_flight.lock().unwrap().is_empty(),
+                "the rejected prompt must release the single-flight gate"
+            );
+        })
+        .await;
+}
+
+#[tokio::test]
+async fn copilot_permission_regression_allows_explicit_yolo_prompt() {
+    let local = tokio::task::LocalSet::new();
+    local
+        .run_until(async {
+            let mut h = connect_for_dispatch(MockBehavior::Reply);
+            h.client.state.native_yolo.set_resolved_agent(
+                Some(crate::agent_registry::COPILOT_AGENT_ID),
+                Some("1.0.82"),
+            );
+            h.client
+                .state
+                .yolo_state
+                .lock()
+                .unwrap()
+                .update_runtime(true, false);
+            h.conn
+                .initialize(acp::schema::v1::InitializeRequest::new(
+                    acp::schema::ProtocolVersion::LATEST,
+                ))
+                .await
+                .expect("initialize failed");
+            let (tab_to_session, in_flight, cancel_signals, memo) = fresh_dispatch_state();
+
+            dispatch_prompt(
+                test_prompt(1, "explicit Yolo may reach Copilot", false),
+                &h.conn,
+                &tab_to_session,
+                &memo,
+                &in_flight,
+                &cancel_signals,
+                &h.event_tx,
+                &h.shell_mgr,
+                &h.prompt_timing,
+                &h.client,
+                &PromptUsageIdentity::default(),
+                false,
+                false,
+                true,
+                &h.proposal_channels,
+            );
+
+            let chunk = next_agent_chunk(&mut h.event_rx).await;
+            assert!(chunk.contains("explicit Yolo may reach Copilot"));
+            assert_eq!(h.seen_prompts.lock().unwrap().len(), 1);
+        })
+        .await;
+}
+
+#[tokio::test]
+async fn copilot_permission_regression_rechecks_hot_disable_at_send_boundary() {
+    let local = tokio::task::LocalSet::new();
+    local
+        .run_until(async {
+            let mut h = connect_for_dispatch(MockBehavior::Reply);
+            h.client.state.native_yolo.set_resolved_agent(
+                Some(crate::agent_registry::COPILOT_AGENT_ID),
+                Some("1.0.82"),
+            );
+            h.client
+                .state
+                .yolo_state
+                .lock()
+                .unwrap()
+                .update_runtime(true, false);
+            h.conn
+                .initialize(acp::schema::v1::InitializeRequest::new(
+                    acp::schema::ProtocolVersion::LATEST,
+                ))
+                .await
+                .expect("initialize failed");
+
+            let context_started = Arc::new(tokio::sync::Notify::new());
+            let context_release = Arc::new(tokio::sync::Notify::new());
+            h.shell_mgr = Arc::new(ShellManager::new().with_wt_channel(Arc::new(
+                BlockingPromptContextChannel {
+                    started: Arc::clone(&context_started),
+                    release: Arc::clone(&context_release),
+                },
+            )));
+            let (tab_to_session, in_flight, cancel_signals, memo) = fresh_dispatch_state();
+            let mut prompt = test_prompt(1, "must stop after hot disable", false);
+            prompt.pane_context = Some(crate::pane_context::PaneContext {
+                pane_id: Some("agent-pane".to_string()),
+                tab_id: Some("0".to_string()),
+                window_id: Some("window-1".to_string()),
+                cwd: Some("C:\\work".to_string()),
+                source_pane_id: None,
+            });
+
+            dispatch_prompt(
+                prompt,
+                &h.conn,
+                &tab_to_session,
+                &memo,
+                &in_flight,
+                &cancel_signals,
+                &h.event_tx,
+                &h.shell_mgr,
+                &h.prompt_timing,
+                &h.client,
+                &PromptUsageIdentity::default(),
+                true,
+                false,
+                true,
+                &h.proposal_channels,
+            );
+
+            tokio::time::timeout(
+                std::time::Duration::from_secs(2),
+                context_started.notified(),
+            )
+            .await
+            .expect("prompt context build must reach the controlled barrier");
+            h.client
+                .state
+                .yolo_state
+                .lock()
+                .unwrap()
+                .update_runtime(false, false);
+            context_release.notify_one();
+
+            let failure = tokio::time::timeout(std::time::Duration::from_secs(2), async {
+                loop {
+                    match h.event_rx.recv().await {
+                        Some(AppEvent::AgentError { message, .. }) => break message,
+                        Some(_) => continue,
+                        None => panic!("event channel closed before the compatibility error"),
+                    }
+                }
+            })
+            .await
+            .expect("hot disable must fail closed before prompt dispatch");
+            assert!(failure.contains("permission"));
+            assert!(
+                h.seen_prompts.lock().unwrap().is_empty(),
+                "the hot-disabled prompt must not cross the ACP send boundary"
+            );
+            assert!(
+                in_flight.lock().unwrap().is_empty(),
+                "the rejected prompt must release the single-flight gate"
+            );
+        })
+        .await;
+}
+
+#[tokio::test]
+async fn copilot_last_good_permission_version_keeps_prompt_path_available() {
+    let local = tokio::task::LocalSet::new();
+    local
+        .run_until(async {
+            let mut h = connect_for_dispatch(MockBehavior::Reply);
+            h.client.state.native_yolo.set_resolved_agent(
+                Some(crate::agent_registry::COPILOT_AGENT_ID),
+                Some("1.0.81-0"),
+            );
+            h.conn
+                .initialize(acp::schema::v1::InitializeRequest::new(
+                    acp::schema::ProtocolVersion::LATEST,
+                ))
+                .await
+                .expect("initialize failed");
+            let (tab_to_session, in_flight, cancel_signals, memo) = fresh_dispatch_state();
+
+            dispatch_prompt(
+                test_prompt(1, "safe Copilot may request permission", false),
+                &h.conn,
+                &tab_to_session,
+                &memo,
+                &in_flight,
+                &cancel_signals,
+                &h.event_tx,
+                &h.shell_mgr,
+                &h.prompt_timing,
+                &h.client,
+                &PromptUsageIdentity::default(),
+                false,
+                false,
+                true,
+                &h.proposal_channels,
+            );
+
+            let chunk = next_agent_chunk(&mut h.event_rx).await;
+            assert!(chunk.contains("safe Copilot may request permission"));
+            assert_eq!(h.seen_prompts.lock().unwrap().len(), 1);
         })
         .await;
 }

@@ -166,6 +166,17 @@ through its normal interactive permission behavior. A failed disable or an
 unknown remote outcome retains fail-closed state until the Agent CLI stack is
 replaced.
 
+GitHub Copilot CLI versions beginning with `1.0.81-1` have an upstream ACP
+regression that can report `allow_all=off` while executing tools without
+`session/request_permission`
+([github/copilot-cli#4537](https://github.com/github/copilot-cli/issues/4537)).
+The helper records the master-attested Copilot version and blocks every prompt
+producer while effective Yolo is off for that open-ended affected range.
+Versions `1.0.81-0` and earlier retain the normal permission path. Explicitly
+enabling Yolo still permits prompts because the user selected the provider's
+unattended mode. A future version must pass the live denied-permission probe
+before the affected range is bounded.
+
 Operations are serialized per session and fenced by lifecycle generation. A
 newer desired operation supersedes an older one; stale completions cannot
 commit state for a replaced or reused session ID.
@@ -203,7 +214,7 @@ option is not sufficient.
 
 | Provider | Advertised contract | Enable | Restore |
 |---|---|---|---|
-| GitHub Copilot | `configOptions` ID `allow_all`, category `permissions`, Select values `on`/`off`; provider command `/allow_all` | `session/set_config_option(allow_all, on)` or the policy-gated provider command | Captured value, normally `off` |
+| GitHub Copilot | `configOptions` ID `allow_all`, category `permissions`, Select values `on`/`off`; provider command `/allow_all` | `session/set_config_option(allow_all, on)` or the policy-gated provider command | Captured value, normally `off`; affected CLI versions are prompt-blocked because `off` is not trustworthy |
 | Claude | `configOptions` ID `mode` with `bypassPermissions`; legacy mode fallback | `session/set_config_option(mode, bypassPermissions)` | Captured value, normally `default` |
 | Codex | `configOptions` ID `mode` with `agent-full-access`; legacy mode fallback | `session/set_config_option(mode, agent-full-access)` | Captured value, normally `agent` |
 | Gemini | ACP mode `yolo` | `session/set_mode(yolo)` | Captured mode, normally `default` |
@@ -243,6 +254,9 @@ defense in depth, not authorization. See `doc/security-model.md`.
   ACP session capability is implemented.
 - Gemini has no per-session WTA control because its current adapter advertises
   a mode but no corresponding config option.
+- Copilot CLI `1.0.81-1` and later remain usable only when Yolo is explicitly
+  enabled until the upstream ACP permission regression is fixed and a release
+  passes the denied-permission probe.
 - Provider mode semantics and managed restrictions remain provider-owned.
 - WTA does not continuously poll for changes made by another actor; the next
   config update, reconciliation, or replacement session refreshes state.

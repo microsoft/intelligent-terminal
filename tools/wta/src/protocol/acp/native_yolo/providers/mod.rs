@@ -83,6 +83,10 @@ pub(super) trait NativeYoloProvider: Sync {
     fn enable(&self, state: &ProviderSessionState) -> Result<NativeYoloAction, String>;
     fn disable(&self, state: &ProviderSessionState) -> Result<NativeYoloAction, String>;
 
+    fn disabled_prompt_block_reason(&self, _agent_version: Option<&str>) -> Option<String> {
+        None
+    }
+
     fn is_privileged_agent_command(&self, _command_name: &str) -> bool {
         false
     }
