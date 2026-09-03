@@ -1004,6 +1004,10 @@ pub struct App {
     /// Synchronizes a failed post-login ACP task with replacement-master
     /// readiness without letting a late disconnect start a duplicate client.
     auth_recovery_state: AuthRecoveryState,
+    /// `/restart` could not reach an ACP task because its lifecycle receiver
+    /// had already closed. The replacement-master readiness event must start
+    /// a fresh pipe client because no transport disconnect remains to do so.
+    restart_without_acp_pending: bool,
     /// Agent ID selected by user (FRE/preflight) — sent to C++ once connected.
     pending_agent_selection: Option<String>,
     /// Show first-run welcome hint until user sends first message.
@@ -1357,6 +1361,7 @@ impl App {
             needs_post_login_authenticate: false,
             auth_recovery_generation: 0,
             auth_recovery_state: AuthRecoveryState::Idle,
+            restart_without_acp_pending: false,
             pending_agent_selection: None,
             show_welcome_hint: false,
             deferred_acp: None,
@@ -5558,7 +5563,18 @@ impl App {
         for tab_id in self.tab_sessions.keys().cloned().collect::<Vec<_>>() {
             self.project_tab_state(&tab_id);
         }
-        let _ = self.restart_tx.send(AgentLifecycleRequest::RestartMaster);
+        if self
+            .restart_tx
+            .send(AgentLifecycleRequest::RestartMaster)
+            .is_err()
+        {
+            self.restart_without_acp_pending = true;
+            tracing::warn!(
+                target: "helper",
+                "restart lifecycle receiver is closed; asking WT to replace the shared master directly"
+            );
+            crate::wt_protocol_events::send(crate::wt_protocol_events::restart_agent_stack_event());
+        }
         self.publish_agent_status();
     }
 

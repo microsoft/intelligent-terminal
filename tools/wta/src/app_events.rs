@@ -2036,7 +2036,10 @@ impl App {
                     let recovers_retirement_failure =
                         matches!(&self.auth_recovery_state, AuthRecoveryState::Idle)
                             && matches!(&self.state, ConnectionState::Failed(_));
-                    if !completes_auth_recovery && !recovers_retirement_failure {
+                    if !completes_auth_recovery
+                        && !recovers_retirement_failure
+                        && !self.restart_without_acp_pending
+                    {
                         return;
                     }
                     if self.deferred_acp.is_none() {
@@ -2053,6 +2056,7 @@ impl App {
                         %request_id,
                         "replacement master is ready; reconnecting retained helper"
                     );
+                    self.restart_without_acp_pending = false;
                     if completes_auth_recovery {
                         // Invalidate the longer master-readiness timer and arm
                         // the normal connection deadline for this new phase.
