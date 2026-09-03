@@ -3044,12 +3044,12 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
     <comment>Failure summary shown when installing agent session tracking hooks fails for specific CLIs. {Locked="Hooks","{0}","{1}"} {0} is replaced with a comma-separated list of CLI names (brand names, never translated); {1} is replaced with the package-aware, versioned wta-install-hooks.log path at runtime.</comment>
   </data>
   <data name="AIAgents_CustomModels.Header" xml:space="preserve">
-    <value>BYOK (bring your own key) providers</value>
-    <comment>Section header for user-configured model providers. {Locked="BYOK"}</comment>
+    <value>Custom endpoint or local model</value>
+    <comment>Section header for user-configured remote endpoints or locally hosted models.</comment>
   </data>
   <data name="AIAgents_CustomModels.HelpText" xml:space="preserve">
-    <value>Use an OpenAI-compatible Chat Completions API endpoint. Supports GitHub Copilot and OpenCode.</value>
-    <comment>{Locked="OpenAI","Chat Completions API","GitHub Copilot","OpenCode"} Explains the API shape and agents supported by the shared custom provider.</comment>
+    <value>Point an agent at your own OpenAI-compatible endpoint. Learn more</value>
+    <comment>{Locked="OpenAI"} Explains that the setting connects an AI agent to a user-configured endpoint. "Learn more" is supporting copy from the design.</comment>
   </data>
   <data name="AIAgents_CustomProviderUnsupportedForAgent" xml:space="preserve">
     <value>{0} does not support custom OpenAI-compatible Chat Completions providers. Saved providers remain available when you switch to GitHub Copilot or OpenCode.</value>
@@ -3067,16 +3067,20 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
     <value>Remove</value>
     <comment>Button that removes a custom model provider.</comment>
   </data>
+  <data name="AIAgents_CustomProviderAddHeader.Text" xml:space="preserve">
+    <value>Add custom endpoint</value>
+    <comment>Heading above the form for adding a custom provider endpoint.</comment>
+  </data>
   <data name="AIAgents_CustomProviderBaseUrl.Header" xml:space="preserve">
     <value>Base URL</value>
     <comment>Header for the custom provider endpoint input. {Locked="URL"}</comment>
   </data>
   <data name="AIAgents_CustomProviderBaseUrl.PlaceholderText" xml:space="preserve">
-    <value>https://api.openai.com/v1</value>
-    <comment>{Locked="https://api.openai.com/v1"} Example of a valid OpenAI-compatible API root shown inside the custom provider endpoint input.</comment>
+    <value>https://api.example.com/v1</value>
+    <comment>{Locked="https://api.example.com/v1"} Example of a valid OpenAI-compatible API root shown inside the custom provider endpoint input.</comment>
   </data>
   <data name="AIAgents_CustomProviderBaseUrlHint.Text" xml:space="preserve">
-    <value>Include the OpenAI-compatible root, for example "https://api.openai.com/v1" or "https://api.together.xyz/v1".</value>
+    <value>Include the OpenAI-compatible root, for example https://api.openai.com/v1 or https://api.together.xyz/v1.</value>
     <comment>{Locked="OpenAI","https://api.openai.com/v1","https://api.together.xyz/v1"} Hint below the custom provider endpoint input.</comment>
   </data>
   <data name="AIAgents_CustomModelId.Header" xml:space="preserve">
@@ -3088,8 +3092,8 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
     <comment>{Locked="gpt-4o"} Example of a valid provider model identifier shown inside the custom model ID input.</comment>
   </data>
   <data name="AIAgents_CustomModelIdHint.Text" xml:space="preserve">
-    <value>Use the provider's exact model identifier, for example "gpt-4o" or "llama3.2".</value>
-    <comment>{Locked="gpt-4o","llama3.2"} Hint below the custom model ID input.</comment>
+    <value>The model name your endpoint expects, exactly as the provider writes it.</value>
+    <comment>Hint below the custom model ID input.</comment>
   </data>
   <data name="AIAgents_CustomProviderApiKey.Header" xml:space="preserve">
     <value>API key (optional)</value>
@@ -3100,16 +3104,20 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
     <comment>{Locked="sk-..."} Example API key format shown inside the optional custom provider credential input.</comment>
   </data>
   <data name="AIAgents_CustomProviderApiKeyHint.Text" xml:space="preserve">
-    <value>Leave blank if the endpoint doesn't require authentication. API keys are stored in Windows Credential Manager.</value>
+    <value>Leave blank if your endpoint does not need auth. Stored in Windows Credential Manager.</value>
     <comment>{Locked="API"} Hint below the optional custom provider credential input. Use the established localized product name for Windows Credential Manager.</comment>
   </data>
   <data name="AIAgents_CustomProviderAdd.Content" xml:space="preserve">
-    <value>Add New</value>
-    <comment>Button that starts adding a custom model provider.</comment>
+    <value>Add endpoint</value>
+    <comment>Button that starts adding a custom model provider endpoint.</comment>
   </data>
   <data name="AIAgents_CustomProviderSave.Content" xml:space="preserve">
-    <value>Save</value>
-    <comment>Button that saves a new custom model provider.</comment>
+    <value>Add and Select</value>
+    <comment>Button that adds a custom provider model and selects it as the current model.</comment>
+  </data>
+  <data name="AIAgents_CustomProviderSaveHint.Text" xml:space="preserve">
+    <value>This will add the model and select it as the current model</value>
+    <comment>Supporting text beside the button that adds and selects a custom provider model.</comment>
   </data>
   <data name="AIAgents_CustomProviderCancel.Content" xml:space="preserve">
     <value>Cancel</value>

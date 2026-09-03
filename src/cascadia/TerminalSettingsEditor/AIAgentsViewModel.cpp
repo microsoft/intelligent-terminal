@@ -471,6 +471,10 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
                 }
             }));
         _CommitCustomModelProviders();
+        _GlobalSettings.CustomModelSelection(
+            ::Microsoft::Terminal::CustomModels::SelectionId(id, modelId));
+        _GlobalSettings.AcpModel(L"");
+        _NotifyChanges(L"AcpModel", L"CurrentAcpModelEntry");
         removeUncommittedCredential.release();
         CancelCustomModelProvider();
     }

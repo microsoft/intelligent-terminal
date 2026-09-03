@@ -2642,12 +2642,12 @@
     <value>Дозвольте Інтелектуальному Терміналу надсилати помилки вашому агенту для автоматичної пропозиції виправлень.</value>
   </data>
   <data name="AIAgents_CustomModels.Header" xml:space="preserve">
-    <value>Постачальники BYOK</value>
-    <comment>Section header for user-configured model providers. {Locked="BYOK"}</comment>
+    <value>Користувацька кінцева точка або локальна модель</value>
+    <comment>Section header for user-configured remote endpoints or locally hosted models.</comment>
   </data>
   <data name="AIAgents_CustomModels.HelpText" xml:space="preserve">
-    <value>Використовуйте кінцеву точку API Chat Completions, сумісну з OpenAI. Підтримує GitHub Copilot і OpenCode.</value>
-    <comment>{Locked="OpenAI","Chat Completions API","GitHub Copilot","OpenCode"} Explains the API shape and agents supported by the shared custom provider.</comment>
+    <value>Спрямуйте агента на власну кінцеву точку, сумісну з OpenAI. Докладніше</value>
+    <comment>{Locked="OpenAI"} Explains that the setting connects an AI agent to a user-configured endpoint. "Learn more" is supporting copy from the design.</comment>
   </data>
   <data name="AIAgents_CustomProviderUnsupportedForAgent" xml:space="preserve">
     <value>{0} не підтримує користувацькі постачальники Chat Completions, сумісні з OpenAI. Збережені постачальники залишаться доступними після переходу на GitHub Copilot або OpenCode.</value>
@@ -2665,16 +2665,20 @@
     <value>Видалити</value>
     <comment>Button that removes a custom model provider.</comment>
   </data>
+  <data name="AIAgents_CustomProviderAddHeader.Text" xml:space="preserve">
+    <value>Додати користувацьку кінцеву точку</value>
+    <comment>Heading above the form for adding a custom provider endpoint.</comment>
+  </data>
   <data name="AIAgents_CustomProviderBaseUrl.Header" xml:space="preserve">
     <value>Основна URL-адреса</value>
     <comment>Header for the custom provider endpoint input. {Locked="URL"}</comment>
   </data>
   <data name="AIAgents_CustomProviderBaseUrl.PlaceholderText" xml:space="preserve">
-    <value>https://api.openai.com/v1</value>
-    <comment>{Locked="https://api.openai.com/v1"} Example of a valid OpenAI-compatible API root shown inside the custom provider endpoint input.</comment>
+    <value>https://api.example.com/v1</value>
+    <comment>{Locked="https://api.example.com/v1"} Example of a valid OpenAI-compatible API root shown inside the custom provider endpoint input.</comment>
   </data>
   <data name="AIAgents_CustomProviderBaseUrlHint.Text" xml:space="preserve">
-    <value>Укажіть корінь, сумісний з OpenAI, наприклад "https://api.openai.com/v1" або "https://api.together.xyz/v1".</value>
+    <value>Укажіть корінь, сумісний з OpenAI, наприклад https://api.openai.com/v1 або https://api.together.xyz/v1.</value>
     <comment>{Locked="OpenAI","https://api.openai.com/v1","https://api.together.xyz/v1"} Hint below the custom provider endpoint input.</comment>
   </data>
   <data name="AIAgents_CustomModelId.Header" xml:space="preserve">
@@ -2686,8 +2690,8 @@
     <comment>{Locked="gpt-4o"} Example of a valid provider model identifier shown inside the custom model ID input.</comment>
   </data>
   <data name="AIAgents_CustomModelIdHint.Text" xml:space="preserve">
-    <value>Використовуйте точний ідентифікатор моделі постачальника, наприклад "gpt-4o" або "llama3.2".</value>
-    <comment>{Locked="gpt-4o","llama3.2"} Hint below the custom model ID input.</comment>
+    <value>Назва моделі, яку очікує ваша кінцева точка, точно так, як її вказує постачальник.</value>
+    <comment>Hint below the custom model ID input.</comment>
   </data>
   <data name="AIAgents_CustomProviderApiKey.Header" xml:space="preserve">
     <value>Ключ API (необов’язково)</value>
@@ -2698,16 +2702,20 @@
     <comment>{Locked="sk-..."} Example API key format shown inside the optional custom provider credential input.</comment>
   </data>
   <data name="AIAgents_CustomProviderApiKeyHint.Text" xml:space="preserve">
-    <value>Залиште порожнім, якщо кінцева точка не потребує автентифікації. Ключі API зберігаються в Диспетчері облікових даних Windows.</value>
+    <value>Залиште порожнім, якщо кінцева точка не потребує автентифікації. Зберігається в Диспетчері облікових даних Windows.</value>
     <comment>{Locked="API"} Hint below the optional custom provider credential input. Use the established localized product name for Windows Credential Manager.</comment>
   </data>
   <data name="AIAgents_CustomProviderAdd.Content" xml:space="preserve">
-    <value>Додати новий</value>
-    <comment>Button that starts adding a custom model provider.</comment>
+    <value>Додати кінцеву точку</value>
+    <comment>Button that starts adding a custom model provider endpoint.</comment>
   </data>
   <data name="AIAgents_CustomProviderSave.Content" xml:space="preserve">
-    <value>Зберегти</value>
-    <comment>Button that saves a new custom model provider.</comment>
+    <value>Додати й вибрати</value>
+    <comment>Button that adds a custom provider model and selects it as the current model.</comment>
+  </data>
+  <data name="AIAgents_CustomProviderSaveHint.Text" xml:space="preserve">
+    <value>Це додасть модель і вибере її як поточну модель</value>
+    <comment>Supporting text beside the button that adds and selects a custom provider model.</comment>
   </data>
   <data name="AIAgents_CustomProviderCancel.Content" xml:space="preserve">
     <value>Скасувати</value>

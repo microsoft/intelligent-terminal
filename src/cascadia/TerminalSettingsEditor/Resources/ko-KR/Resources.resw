@@ -2998,12 +2998,12 @@
     <value>지능형 터미널이 오류를 에이전트로 보내 수정 사항을 자동으로 제안하도록 허용합니다.</value>
   </data>
   <data name="AIAgents_CustomModels.Header" xml:space="preserve">
-    <value>BYOK 공급자</value>
-    <comment>Section header for user-configured model providers. {Locked="BYOK"}</comment>
+    <value>사용자 지정 엔드포인트 또는 로컬 모델</value>
+    <comment>Section header for user-configured remote endpoints or locally hosted models.</comment>
   </data>
   <data name="AIAgents_CustomModels.HelpText" xml:space="preserve">
-    <value>OpenAI 호환 Chat Completions API 엔드포인트를 사용합니다. GitHub Copilot 및 OpenCode를 지원합니다.</value>
-    <comment>{Locked="OpenAI","Chat Completions API","GitHub Copilot","OpenCode"} Explains the API shape and agents supported by the shared custom provider.</comment>
+    <value>에이전트가 자체 OpenAI 호환 엔드포인트를 가리키도록 설정합니다. 자세히 알아보기</value>
+    <comment>{Locked="OpenAI"} Explains that the setting connects an AI agent to a user-configured endpoint. "Learn more" is supporting copy from the design.</comment>
   </data>
   <data name="AIAgents_CustomProviderUnsupportedForAgent" xml:space="preserve">
     <value>{0}은(는) OpenAI 호환 사용자 지정 Chat Completions 공급자를 지원하지 않습니다. 저장된 공급자는 GitHub Copilot 또는 OpenCode로 전환하면 계속 사용할 수 있습니다.</value>
@@ -3021,16 +3021,20 @@
     <value>제거</value>
     <comment>Button that removes a custom model provider.</comment>
   </data>
+  <data name="AIAgents_CustomProviderAddHeader.Text" xml:space="preserve">
+    <value>사용자 지정 엔드포인트 추가</value>
+    <comment>Heading above the form for adding a custom provider endpoint.</comment>
+  </data>
   <data name="AIAgents_CustomProviderBaseUrl.Header" xml:space="preserve">
     <value>기본 URL</value>
     <comment>Header for the custom provider endpoint input. {Locked="URL"}</comment>
   </data>
   <data name="AIAgents_CustomProviderBaseUrl.PlaceholderText" xml:space="preserve">
-    <value>https://api.openai.com/v1</value>
-    <comment>{Locked="https://api.openai.com/v1"} Example of a valid OpenAI-compatible API root shown inside the custom provider endpoint input.</comment>
+    <value>https://api.example.com/v1</value>
+    <comment>{Locked="https://api.example.com/v1"} Example of a valid OpenAI-compatible API root shown inside the custom provider endpoint input.</comment>
   </data>
   <data name="AIAgents_CustomProviderBaseUrlHint.Text" xml:space="preserve">
-    <value>예를 들어 "https://api.openai.com/v1" 또는 "https://api.together.xyz/v1"과 같은 OpenAI 호환 루트를 포함합니다.</value>
+    <value>예를 들어 https://api.openai.com/v1 또는 https://api.together.xyz/v1과 같은 OpenAI 호환 루트를 포함합니다.</value>
     <comment>{Locked="OpenAI","https://api.openai.com/v1","https://api.together.xyz/v1"} Hint below the custom provider endpoint input.</comment>
   </data>
   <data name="AIAgents_CustomModelId.Header" xml:space="preserve">
@@ -3042,8 +3046,8 @@
     <comment>{Locked="gpt-4o"} Example of a valid provider model identifier shown inside the custom model ID input.</comment>
   </data>
   <data name="AIAgents_CustomModelIdHint.Text" xml:space="preserve">
-    <value>예를 들어 "gpt-4o" 또는 "llama3.2"와 같은 공급자의 정확한 모델 식별자를 사용합니다.</value>
-    <comment>{Locked="gpt-4o","llama3.2"} Hint below the custom model ID input.</comment>
+    <value>엔드포인트에서 요구하는 모델 이름으로, 공급자가 표기한 그대로 입력합니다.</value>
+    <comment>Hint below the custom model ID input.</comment>
   </data>
   <data name="AIAgents_CustomProviderApiKey.Header" xml:space="preserve">
     <value>API 키(선택 사항)</value>
@@ -3054,16 +3058,20 @@
     <comment>{Locked="sk-..."} Example API key format shown inside the optional custom provider credential input.</comment>
   </data>
   <data name="AIAgents_CustomProviderApiKeyHint.Text" xml:space="preserve">
-    <value>엔드포인트에 인증이 필요하지 않은 경우 비워 둡니다. API 키는 Windows 자격 증명 관리자에 저장됩니다.</value>
+    <value>엔드포인트에 인증이 필요하지 않은 경우 비워 둡니다. Windows 자격 증명 관리자에 저장됩니다.</value>
     <comment>{Locked="API"} Hint below the optional custom provider credential input. Use the established localized product name for Windows Credential Manager.</comment>
   </data>
   <data name="AIAgents_CustomProviderAdd.Content" xml:space="preserve">
-    <value>새로 추가</value>
-    <comment>Button that starts adding a custom model provider.</comment>
+    <value>엔드포인트 추가</value>
+    <comment>Button that starts adding a custom model provider endpoint.</comment>
   </data>
   <data name="AIAgents_CustomProviderSave.Content" xml:space="preserve">
-    <value>저장</value>
-    <comment>Button that saves a new custom model provider.</comment>
+    <value>추가 및 선택</value>
+    <comment>Button that adds a custom provider model and selects it as the current model.</comment>
+  </data>
+  <data name="AIAgents_CustomProviderSaveHint.Text" xml:space="preserve">
+    <value>이렇게 하면 모델이 추가되고 현재 모델로 선택됩니다</value>
+    <comment>Supporting text beside the button that adds and selects a custom provider model.</comment>
   </data>
   <data name="AIAgents_CustomProviderCancel.Content" xml:space="preserve">
     <value>취소</value>

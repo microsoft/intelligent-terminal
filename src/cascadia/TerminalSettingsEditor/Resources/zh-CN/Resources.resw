@@ -2998,12 +2998,12 @@
     <value>允许智能终端将错误发送给你的代理以自动建议修复。</value>
   </data>
   <data name="AIAgents_CustomModels.Header" xml:space="preserve">
-    <value>BYOK 提供商</value>
-    <comment>Section header for user-configured model providers. {Locked="BYOK"}</comment>
+    <value>自定义终结点或本地模型</value>
+    <comment>Section header for user-configured remote endpoints or locally hosted models.</comment>
   </data>
   <data name="AIAgents_CustomModels.HelpText" xml:space="preserve">
-    <value>使用兼容 OpenAI 的 Chat Completions API 终结点。支持 GitHub Copilot 和 OpenCode。</value>
-    <comment>{Locked="OpenAI","Chat Completions API","GitHub Copilot","OpenCode"} Explains the API shape and agents supported by the shared custom provider.</comment>
+    <value>将智能体指向你自己的 OpenAI 兼容终结点。了解详细信息</value>
+    <comment>{Locked="OpenAI"} Explains that the setting connects an AI agent to a user-configured endpoint. "Learn more" is supporting copy from the design.</comment>
   </data>
   <data name="AIAgents_CustomProviderUnsupportedForAgent" xml:space="preserve">
     <value>{0} 不支持自定义的 OpenAI 兼容 Chat Completions 提供商。切换到 GitHub Copilot 或 OpenCode 后，已保存的提供商仍可使用。</value>
@@ -3021,16 +3021,20 @@
     <value>删除</value>
     <comment>Button that removes a custom model provider.</comment>
   </data>
+  <data name="AIAgents_CustomProviderAddHeader.Text" xml:space="preserve">
+    <value>添加自定义终结点</value>
+    <comment>Heading above the form for adding a custom provider endpoint.</comment>
+  </data>
   <data name="AIAgents_CustomProviderBaseUrl.Header" xml:space="preserve">
     <value>基础 URL</value>
     <comment>Header for the custom provider endpoint input. {Locked="URL"}</comment>
   </data>
   <data name="AIAgents_CustomProviderBaseUrl.PlaceholderText" xml:space="preserve">
-    <value>https://api.openai.com/v1</value>
-    <comment>{Locked="https://api.openai.com/v1"} Example of a valid OpenAI-compatible API root shown inside the custom provider endpoint input.</comment>
+    <value>https://api.example.com/v1</value>
+    <comment>{Locked="https://api.example.com/v1"} Example of a valid OpenAI-compatible API root shown inside the custom provider endpoint input.</comment>
   </data>
   <data name="AIAgents_CustomProviderBaseUrlHint.Text" xml:space="preserve">
-    <value>包含兼容 OpenAI 的根 URL，例如“https://api.openai.com/v1”或“https://api.together.xyz/v1”。</value>
+    <value>包含 OpenAI 兼容根路径，例如 https://api.openai.com/v1 或 https://api.together.xyz/v1。</value>
     <comment>{Locked="OpenAI","https://api.openai.com/v1","https://api.together.xyz/v1"} Hint below the custom provider endpoint input.</comment>
   </data>
   <data name="AIAgents_CustomModelId.Header" xml:space="preserve">
@@ -3042,8 +3046,8 @@
     <comment>{Locked="gpt-4o"} Example of a valid provider model identifier shown inside the custom model ID input.</comment>
   </data>
   <data name="AIAgents_CustomModelIdHint.Text" xml:space="preserve">
-    <value>使用提供商的确切模型标识符，例如“gpt-4o”或“llama3.2”。</value>
-    <comment>{Locked="gpt-4o","llama3.2"} Hint below the custom model ID input.</comment>
+    <value>终结点所需的模型名称，与提供商所写的完全一致。</value>
+    <comment>Hint below the custom model ID input.</comment>
   </data>
   <data name="AIAgents_CustomProviderApiKey.Header" xml:space="preserve">
     <value>API 密钥（可选）</value>
@@ -3054,16 +3058,20 @@
     <comment>{Locked="sk-..."} Example API key format shown inside the optional custom provider credential input.</comment>
   </data>
   <data name="AIAgents_CustomProviderApiKeyHint.Text" xml:space="preserve">
-    <value>如果终结点不需要身份验证，请留空。API 密钥存储在 Windows 凭据管理器中。</value>
+    <value>如果终结点不需要身份验证，请留空。存储在 Windows 凭据管理器中。</value>
     <comment>{Locked="API"} Hint below the optional custom provider credential input. Use the established localized product name for Windows Credential Manager.</comment>
   </data>
   <data name="AIAgents_CustomProviderAdd.Content" xml:space="preserve">
-    <value>新增</value>
-    <comment>Button that starts adding a custom model provider.</comment>
+    <value>添加终结点</value>
+    <comment>Button that starts adding a custom model provider endpoint.</comment>
   </data>
   <data name="AIAgents_CustomProviderSave.Content" xml:space="preserve">
-    <value>保存</value>
-    <comment>Button that saves a new custom model provider.</comment>
+    <value>添加并选择</value>
+    <comment>Button that adds a custom provider model and selects it as the current model.</comment>
+  </data>
+  <data name="AIAgents_CustomProviderSaveHint.Text" xml:space="preserve">
+    <value>这将添加该模型并将其选择为当前模型</value>
+    <comment>Supporting text beside the button that adds and selects a custom provider model.</comment>
   </data>
   <data name="AIAgents_CustomProviderCancel.Content" xml:space="preserve">
     <value>取消</value>

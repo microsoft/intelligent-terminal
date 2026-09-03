@@ -252,11 +252,12 @@
                         </ItemsControl.ItemTemplate>
                     </ItemsControl>
 
-                    <Border BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                            BorderThickness="0,1,0,0"
-                            Padding="0,16,0,16"
+                    <Border Padding="0,16,0,16"
                             Visibility="{x:Bind ViewModel.IsAddingCustomModelProvider, Mode=OneWay}">
                         <StackPanel Spacing="12">
+                            <TextBlock x:Uid="AIAgents_CustomProviderAddHeader"
+                                       FontWeight="SemiBold"
+                                       Style="{StaticResource SettingsPageItemHeaderStyle}" />
                             <StackPanel Spacing="4">
                                 <TextBox x:Uid="AIAgents_CustomProviderBaseUrl"
                                          AutomationProperties.HelpText="{Binding Text, ElementName=CustomProviderBaseUrlHint}"
@@ -287,13 +288,21 @@
                                            Style="{StaticResource CaptionTextBlockStyle}"
                                            TextWrapping="Wrap" />
                             </StackPanel>
-                            <StackPanel Orientation="Horizontal" Spacing="8">
-                                <Button x:Uid="AIAgents_CustomProviderSave"
-                                        IsEnabled="{x:Bind ViewModel.CanSaveCustomModelProvider, Mode=OneWay}"
-                                        Click="{x:Bind ViewModel.SaveCustomModelProvider}"
-                                        Style="{StaticResource AccentButtonStyle}" />
-                                <Button x:Uid="AIAgents_CustomProviderCancel"
-                                        Click="{x:Bind ViewModel.CancelCustomModelProvider}" />
+                            <StackPanel Spacing="4">
+                                <TextBlock x:Uid="AIAgents_CustomProviderSaveHint"
+                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                           Style="{StaticResource CaptionTextBlockStyle}"
+                                           TextWrapping="Wrap" />
+                                <StackPanel HorizontalAlignment="Right"
+                                            Orientation="Horizontal"
+                                            Spacing="8">
+                                    <Button x:Uid="AIAgents_CustomProviderSave"
+                                            IsEnabled="{x:Bind ViewModel.CanSaveCustomModelProvider, Mode=OneWay}"
+                                            Click="{x:Bind ViewModel.SaveCustomModelProvider}"
+                                            Style="{StaticResource AccentButtonStyle}" />
+                                    <Button x:Uid="AIAgents_CustomProviderCancel"
+                                            Click="{x:Bind ViewModel.CancelCustomModelProvider}" />
+                                </StackPanel>
                             </StackPanel>
                         </StackPanel>
                     </Border>

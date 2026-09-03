@@ -2938,12 +2938,12 @@
     <value>Permita que Terminal Inteligente envíe errores a su agente para sugerir correcciones automáticamente.</value>
   </data>
   <data name="AIAgents_CustomModels.Header" xml:space="preserve">
-    <value>Proveedores BYOK</value>
-    <comment>Section header for user-configured model providers. {Locked="BYOK"}</comment>
+    <value>Punto de conexión personalizado o modelo local</value>
+    <comment>Section header for user-configured remote endpoints or locally hosted models.</comment>
   </data>
   <data name="AIAgents_CustomModels.HelpText" xml:space="preserve">
-    <value>Use un punto de conexión de API de Chat Completions compatible con OpenAI. Admite GitHub Copilot y OpenCode.</value>
-    <comment>{Locked="OpenAI","Chat Completions API","GitHub Copilot","OpenCode"} Explains the API shape and agents supported by the shared custom provider.</comment>
+    <value>Dirija un agente a su propio punto de conexión compatible con OpenAI. Más información</value>
+    <comment>{Locked="OpenAI"} Explains that the setting connects an AI agent to a user-configured endpoint. "Learn more" is supporting copy from the design.</comment>
   </data>
   <data name="AIAgents_CustomProviderUnsupportedForAgent" xml:space="preserve">
     <value>{0} no admite proveedores personalizados de Chat Completions compatibles con OpenAI. Los proveedores guardados seguirán disponibles al cambiar a GitHub Copilot u OpenCode.</value>
@@ -2961,16 +2961,20 @@
     <value>Quitar</value>
     <comment>Button that removes a custom model provider.</comment>
   </data>
+  <data name="AIAgents_CustomProviderAddHeader.Text" xml:space="preserve">
+    <value>Agregar punto de conexión personalizado</value>
+    <comment>Heading above the form for adding a custom provider endpoint.</comment>
+  </data>
   <data name="AIAgents_CustomProviderBaseUrl.Header" xml:space="preserve">
     <value>URL base</value>
     <comment>Header for the custom provider endpoint input. {Locked="URL"}</comment>
   </data>
   <data name="AIAgents_CustomProviderBaseUrl.PlaceholderText" xml:space="preserve">
-    <value>https://api.openai.com/v1</value>
-    <comment>{Locked="https://api.openai.com/v1"} Example of a valid OpenAI-compatible API root shown inside the custom provider endpoint input.</comment>
+    <value>https://api.example.com/v1</value>
+    <comment>{Locked="https://api.example.com/v1"} Example of a valid OpenAI-compatible API root shown inside the custom provider endpoint input.</comment>
   </data>
   <data name="AIAgents_CustomProviderBaseUrlHint.Text" xml:space="preserve">
-    <value>Incluya la raíz compatible con OpenAI, por ejemplo "https://api.openai.com/v1" o "https://api.together.xyz/v1".</value>
+    <value>Incluya la raíz compatible con OpenAI, por ejemplo https://api.openai.com/v1 o https://api.together.xyz/v1.</value>
     <comment>{Locked="OpenAI","https://api.openai.com/v1","https://api.together.xyz/v1"} Hint below the custom provider endpoint input.</comment>
   </data>
   <data name="AIAgents_CustomModelId.Header" xml:space="preserve">
@@ -2982,8 +2986,8 @@
     <comment>{Locked="gpt-4o"} Example of a valid provider model identifier shown inside the custom model ID input.</comment>
   </data>
   <data name="AIAgents_CustomModelIdHint.Text" xml:space="preserve">
-    <value>Use el identificador de modelo exacto del proveedor, por ejemplo "gpt-4o" o "llama3.2".</value>
-    <comment>{Locked="gpt-4o","llama3.2"} Hint below the custom model ID input.</comment>
+    <value>El nombre del modelo que espera su punto de conexión, exactamente como lo escribe el proveedor.</value>
+    <comment>Hint below the custom model ID input.</comment>
   </data>
   <data name="AIAgents_CustomProviderApiKey.Header" xml:space="preserve">
     <value>Clave de API (opcional)</value>
@@ -2994,16 +2998,20 @@
     <comment>{Locked="sk-..."} Example API key format shown inside the optional custom provider credential input.</comment>
   </data>
   <data name="AIAgents_CustomProviderApiKeyHint.Text" xml:space="preserve">
-    <value>Deje en blanco si el punto de conexión no requiere autenticación. Las claves de API se almacenan en el Administrador de credenciales de Windows.</value>
+    <value>Déjelo en blanco si su punto de conexión no necesita autenticación. Se almacena en el Administrador de credenciales de Windows.</value>
     <comment>{Locked="API"} Hint below the optional custom provider credential input. Use the established localized product name for Windows Credential Manager.</comment>
   </data>
   <data name="AIAgents_CustomProviderAdd.Content" xml:space="preserve">
-    <value>Agregar nuevo</value>
-    <comment>Button that starts adding a custom model provider.</comment>
+    <value>Agregar punto de conexión</value>
+    <comment>Button that starts adding a custom model provider endpoint.</comment>
   </data>
   <data name="AIAgents_CustomProviderSave.Content" xml:space="preserve">
-    <value>Guardar</value>
-    <comment>Button that saves a new custom model provider.</comment>
+    <value>Agregar y seleccionar</value>
+    <comment>Button that adds a custom provider model and selects it as the current model.</comment>
+  </data>
+  <data name="AIAgents_CustomProviderSaveHint.Text" xml:space="preserve">
+    <value>Esto agregará el modelo y lo seleccionará como el modelo actual</value>
+    <comment>Supporting text beside the button that adds and selects a custom provider model.</comment>
   </data>
   <data name="AIAgents_CustomProviderCancel.Content" xml:space="preserve">
     <value>Cancelar</value>

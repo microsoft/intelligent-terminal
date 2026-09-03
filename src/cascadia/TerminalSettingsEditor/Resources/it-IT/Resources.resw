@@ -2938,12 +2938,12 @@
     <value>Consenti a Terminale Intelligente di inviare gli errori all'agente per suggerire automaticamente le correzioni.</value>
   </data>
   <data name="AIAgents_CustomModels.Header" xml:space="preserve">
-    <value>Provider BYOK</value>
-    <comment>Section header for user-configured model providers. {Locked="BYOK"}</comment>
+    <value>Endpoint personalizzato o modello locale</value>
+    <comment>Section header for user-configured remote endpoints or locally hosted models.</comment>
   </data>
   <data name="AIAgents_CustomModels.HelpText" xml:space="preserve">
-    <value>Usa un endpoint API Chat Completions compatibile con OpenAI. Supporta GitHub Copilot e OpenCode.</value>
-    <comment>{Locked="OpenAI","Chat Completions API","GitHub Copilot","OpenCode"} Explains the API shape and agents supported by the shared custom provider.</comment>
+    <value>Indirizza un agente verso il tuo endpoint compatibile con OpenAI. Scopri di più</value>
+    <comment>{Locked="OpenAI"} Explains that the setting connects an AI agent to a user-configured endpoint. "Learn more" is supporting copy from the design.</comment>
   </data>
   <data name="AIAgents_CustomProviderUnsupportedForAgent" xml:space="preserve">
     <value>{0} non supporta provider Chat Completions personalizzati compatibili con OpenAI. I provider salvati restano disponibili quando passi a GitHub Copilot o OpenCode.</value>
@@ -2961,16 +2961,20 @@
     <value>Rimuovi</value>
     <comment>Button that removes a custom model provider.</comment>
   </data>
+  <data name="AIAgents_CustomProviderAddHeader.Text" xml:space="preserve">
+    <value>Aggiungi endpoint personalizzato</value>
+    <comment>Heading above the form for adding a custom provider endpoint.</comment>
+  </data>
   <data name="AIAgents_CustomProviderBaseUrl.Header" xml:space="preserve">
     <value>URL di base</value>
     <comment>Header for the custom provider endpoint input. {Locked="URL"}</comment>
   </data>
   <data name="AIAgents_CustomProviderBaseUrl.PlaceholderText" xml:space="preserve">
-    <value>https://api.openai.com/v1</value>
-    <comment>{Locked="https://api.openai.com/v1"} Example of a valid OpenAI-compatible API root shown inside the custom provider endpoint input.</comment>
+    <value>https://api.example.com/v1</value>
+    <comment>{Locked="https://api.example.com/v1"} Example of a valid OpenAI-compatible API root shown inside the custom provider endpoint input.</comment>
   </data>
   <data name="AIAgents_CustomProviderBaseUrlHint.Text" xml:space="preserve">
-    <value>Includi la radice compatibile con OpenAI, ad esempio "https://api.openai.com/v1" o "https://api.together.xyz/v1".</value>
+    <value>Includi la radice compatibile con OpenAI, ad esempio https://api.openai.com/v1 o https://api.together.xyz/v1.</value>
     <comment>{Locked="OpenAI","https://api.openai.com/v1","https://api.together.xyz/v1"} Hint below the custom provider endpoint input.</comment>
   </data>
   <data name="AIAgents_CustomModelId.Header" xml:space="preserve">
@@ -2982,8 +2986,8 @@
     <comment>{Locked="gpt-4o"} Example of a valid provider model identifier shown inside the custom model ID input.</comment>
   </data>
   <data name="AIAgents_CustomModelIdHint.Text" xml:space="preserve">
-    <value>Usa l’identificatore esatto del modello del provider, ad esempio "gpt-4o" o "llama3.2".</value>
-    <comment>{Locked="gpt-4o","llama3.2"} Hint below the custom model ID input.</comment>
+    <value>Il nome del modello previsto dal tuo endpoint, esattamente come lo scrive il provider.</value>
+    <comment>Hint below the custom model ID input.</comment>
   </data>
   <data name="AIAgents_CustomProviderApiKey.Header" xml:space="preserve">
     <value>Chiave API (facoltativa)</value>
@@ -2994,16 +2998,20 @@
     <comment>{Locked="sk-..."} Example API key format shown inside the optional custom provider credential input.</comment>
   </data>
   <data name="AIAgents_CustomProviderApiKeyHint.Text" xml:space="preserve">
-    <value>Lascia vuoto se l’endpoint non richiede l’autenticazione. Le chiavi API vengono memorizzate in Gestione credenziali di Windows.</value>
+    <value>Lascia vuoto se il tuo endpoint non richiede autenticazione. Salvata in Gestione credenziali di Windows.</value>
     <comment>{Locked="API"} Hint below the optional custom provider credential input. Use the established localized product name for Windows Credential Manager.</comment>
   </data>
   <data name="AIAgents_CustomProviderAdd.Content" xml:space="preserve">
-    <value>Aggiungi nuovo</value>
-    <comment>Button that starts adding a custom model provider.</comment>
+    <value>Aggiungi endpoint</value>
+    <comment>Button that starts adding a custom model provider endpoint.</comment>
   </data>
   <data name="AIAgents_CustomProviderSave.Content" xml:space="preserve">
-    <value>Salva</value>
-    <comment>Button that saves a new custom model provider.</comment>
+    <value>Aggiungi e seleziona</value>
+    <comment>Button that adds a custom provider model and selects it as the current model.</comment>
+  </data>
+  <data name="AIAgents_CustomProviderSaveHint.Text" xml:space="preserve">
+    <value>Questo aggiungerà il modello e lo selezionerà come modello corrente</value>
+    <comment>Supporting text beside the button that adds and selects a custom provider model.</comment>
   </data>
   <data name="AIAgents_CustomProviderCancel.Content" xml:space="preserve">
     <value>Annulla</value>
