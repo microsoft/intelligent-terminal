@@ -1288,6 +1288,20 @@ pub(crate) fn known_cli_id(src: &crate::agent_sessions::CliSource) -> Option<&'s
     }
 }
 
+/// Report a resume that never completed.
+///
+/// Every caller clears `loading_session` as part of a wider reset, and
+/// most of those resets run with no resume pending — so the flag, not the
+/// call site, decides whether anything is reported. Each reason names a
+/// distinct lifecycle event rather than a generic failure, because from
+/// the user's side they all look the same: a pane that said "Resuming
+/// session …" and then quietly came back as a cold start.
+fn note_resume_abandoned(tab: &TabSession, reason: &str) {
+    if tab.loading_session {
+        crate::telemetry::log_session_resume_abandoned(reason);
+    }
+}
+
 pub(crate) fn session_info_to_agent_session(
     info: &crate::session_registry::SessionInfo,
 ) -> crate::agent_sessions::AgentSession {
@@ -2737,16 +2751,30 @@ impl App {
         };
         let action = decide_enter_action(&row);
 
-        match &action {
-            EnterAction::ResumeInAgentPane { .. } => crate::telemetry::log_session_resume_invoked(
-                "AgentPane",
-                known_cli_id(&s.cli_source).unwrap_or("custom"),
-            ),
-            EnterAction::ResumeCliFlag { .. } => crate::telemetry::log_session_resume_invoked(
-                "Cli",
-                known_cli_id(&s.cli_source).unwrap_or("custom"),
-            ),
-            EnterAction::Focus { .. } | EnterAction::NotResumable { .. } => {}
+        // Every branch reports, not just the two that resume: `Focus` is
+        // the common case for a live row, and the four `NotResumable`
+        // reasons are the dead ends a user actually runs into.
+        {
+            let agent_for_telemetry = known_cli_id(&s.cli_source).unwrap_or("custom");
+            let (route, not_resumable_reason) = match &action {
+                EnterAction::Focus { .. } => ("Focus", ""),
+                EnterAction::ResumeInAgentPane { .. } => ("AgentPane", ""),
+                EnterAction::ResumeCliFlag { .. } => ("Cli", ""),
+                EnterAction::NotResumable { reason } => (
+                    "NotResumable",
+                    match reason {
+                        NotResumableReason::LiveWithoutPane => "LiveWithoutPane",
+                        NotResumableReason::LoadSessionNotSupported => "LoadSessionNotSupported",
+                        NotResumableReason::CliHasNoResumeFlag => "CliHasNoResumeFlag",
+                        NotResumableReason::UnknownCli => "UnknownCli",
+                    },
+                ),
+            };
+            crate::telemetry::log_session_resume_invoked(
+                route,
+                agent_for_telemetry,
+                not_resumable_reason,
+            );
         }
 
         tracing::info!(
@@ -3576,6 +3604,7 @@ impl App {
             // disk, and the restore fails with "Resource not found".
             tab.has_meaningful_conversation = false;
             tab.meaningful_conversation_before_load = None;
+            note_resume_abandoned(tab, "AgentRebind");
             tab.loading_session = false;
             tab.loading_target_session_id = None;
             tab.model_override = None;
@@ -5373,6 +5402,7 @@ impl App {
         tab.session_id = None;
         tab.has_meaningful_conversation = false;
         tab.meaningful_conversation_before_load = None;
+        note_resume_abandoned(tab, "NewSession");
         tab.loading_session = false;
         tab.loading_target_session_id = None;
         tab.scroll_to_bottom();
@@ -5557,6 +5587,7 @@ impl App {
             tab.session_id = None;
             tab.has_meaningful_conversation = false;
             tab.meaningful_conversation_before_load = None;
+            note_resume_abandoned(tab, "MasterRestart");
             tab.loading_session = false;
             tab.loading_target_session_id = None;
         }
@@ -5965,6 +5996,7 @@ impl App {
             tab.selected_completed_turn_idx = None;
             tab.has_meaningful_conversation = false;
             tab.meaningful_conversation_before_load = None;
+            note_resume_abandoned(tab, "PaneClosed");
             tab.loading_session = false;
             tab.loading_target_session_id = None;
             tab.scroll_to_bottom();

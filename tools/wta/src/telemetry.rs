@@ -17,6 +17,7 @@
 // Events emitted from this module:
 //   - AcpInitializeComplete  (ACP initialize RPC completes)
 //   - AcpNewSessionComplete  (ACP session/new RPC completes)
+//   - AcpLoadSessionComplete (ACP session/load RPC completes)
 //   - AgentPromptSent          (WTA dispatches a prompt over ACP)
 //   - AgentResponseFirstToken  (ACP returns the first text chunk)
 //   - AgentResponseComplete    (ACP prompt request completes)
@@ -25,6 +26,8 @@
 //   - SlashCommandInvoked      (a built-in slash command is dispatched)
 //   - SessionsViewOpened       (the agent sessions view is opened)
 //   - SessionResumeInvoked     (a session resume route is dispatched)
+//   - SessionResumeAbandoned   (a resume is given up before session/load lands)
+//   - AgentPaneResumeStarted   (a restored agent pane begins rehydrating)
 //   - SessionMcpToolCalled     (a session MCP tool is invoked)
 //   - HookOperationCompleted   (a hook install/uninstall operation completes)
 //   - DelegateInvoked          (delegation is triggered by an agent)
@@ -262,6 +265,45 @@ pub fn log_agent_response_complete(
     );
 }
 
+/// Emitted when an ACP `session/load` RPC completes. `duration_ms` is a
+/// monotonic duration measured around the RPC attempt, not wall-clock.
+///
+/// This is the terminal step of a resume: a durable-session restore and a
+/// session-view resume both converge on it, told apart by `route`
+/// (`Restore` when the pane was rebuilt from a saved window layout,
+/// `SessionView` when the user activated a row in the session view).
+///
+/// `failure_kind` is empty on success. `Timeout` means the agent never
+/// answered; `ResourceNotFound` means the agent no longer has the session
+/// on disk (the single most common resume failure, and the one a stale
+/// persisted session id produces); `AuthRequired` and `Cancelled` are the
+/// other two typed ACP outcomes; anything else is `AcpError`. The
+/// classification comes from [`crate::protocol::acp::failure::AgentFailure`]
+/// so it tracks ACP error codes rather than message text.
+pub fn log_acp_load_session_complete(
+    session_id: &str,
+    duration_ms: f64,
+    success: bool,
+    route: &str,
+    failure_kind: &str,
+    acp_error_code: i32,
+) {
+    let success_i32: i32 = if success { 1 } else { 0 };
+    tlg::write_event!(
+        AGENT_PROVIDER,
+        "AcpLoadSessionComplete",
+        level(Verbose),
+        keyword(MICROSOFT_KEYWORD_MEASURES),
+        str8("SessionId", session_id),
+        f64("DurationMs", &duration_ms),
+        bool32("Success", &success_i32),
+        str8("Route", route),
+        str8("FailureKind", failure_kind),
+        i32("AcpErrorCode", &acp_error_code),
+        u64("PartA_PrivTags", &PDT_PRODUCT_AND_SERVICE_PERFORMANCE),
+    );
+}
+
 /// Emitted when WTA dispatches one of its registered slash commands.
 pub fn log_slash_command_invoked(command_name: &str) {
     tlg::write_event!(
@@ -285,8 +327,17 @@ pub fn log_sessions_view_opened() {
     );
 }
 
-/// Emitted when the user dispatches a session resume operation.
-pub fn log_session_resume_invoked(route: &str, agent_id: &str) {
+/// Emitted for every activation of a session view row, whichever route the
+/// pure `decide_enter_action` boundary picked.
+///
+/// `route` is `AgentPane` (ACP `session/load`), `Cli` (the provider's own
+/// resume flag), `Focus` (the session is live, so the row just focuses its
+/// pane), or `NotResumable` (no route applies). `not_resumable_reason` is
+/// empty unless `route` is `NotResumable`, where it carries the closed
+/// `NotResumableReason` set — those four buckets are the dead ends a user
+/// actually hits, so they are the reason this event covers every branch
+/// rather than only the two that resume.
+pub fn log_session_resume_invoked(route: &str, agent_id: &str, not_resumable_reason: &str) {
     tlg::write_event!(
         AGENT_PROVIDER,
         "SessionResumeInvoked",
@@ -294,6 +345,48 @@ pub fn log_session_resume_invoked(route: &str, agent_id: &str) {
         keyword(MICROSOFT_KEYWORD_MEASURES),
         str8("Route", route),
         str8("AgentId", sanitize_agent_id(agent_id)),
+        str8("NotResumableReason", not_resumable_reason),
+        u64("PartA_PrivTags", &PDT_PRODUCT_AND_SERVICE_USAGE),
+    );
+}
+
+/// Emitted when a tab stops waiting for an in-flight `session/load` without
+/// that load having completed.
+///
+/// Every one of these leaves the user looking at a pane that said
+/// "Resuming session …" and then silently became a cold start, so the
+/// `reason` set is deliberately one value per distinct lifecycle event
+/// rather than a single generic failure: `AgentRebind`, `NewSession`,
+/// `ResetAgent`, `MasterRestart`, or `PaneClosed`.
+pub fn log_session_resume_abandoned(reason: &str) {
+    tlg::write_event!(
+        AGENT_PROVIDER,
+        "SessionResumeAbandoned",
+        level(Verbose),
+        keyword(MICROSOFT_KEYWORD_MEASURES),
+        str8("Reason", reason),
+        u64("PartA_PrivTags", &PDT_PRODUCT_AND_SERVICE_USAGE),
+    );
+}
+
+/// Emitted when a helper starts up carrying a session to restore — i.e.
+/// Terminal rebuilt this agent pane from a saved window layout and handed
+/// the conversation back through `--initial-load-session-id`.
+///
+/// Pairs with the C++ `AgentPaneRestoreCompleted`: Terminal counts the
+/// panes it restored, this counts the ones whose helper actually received
+/// the request, so the gap between them is the C++ → WTA handoff loss that
+/// neither side can see alone.
+pub fn log_agent_pane_resume_started(agent_id: &str, view: &str, start_stashed: bool) {
+    let start_stashed_i32: i32 = if start_stashed { 1 } else { 0 };
+    tlg::write_event!(
+        AGENT_PROVIDER,
+        "AgentPaneResumeStarted",
+        level(Verbose),
+        keyword(MICROSOFT_KEYWORD_MEASURES),
+        str8("AgentId", sanitize_agent_id(agent_id)),
+        str8("View", view),
+        bool32("StartStashed", &start_stashed_i32),
         u64("PartA_PrivTags", &PDT_PRODUCT_AND_SERVICE_USAGE),
     );
 }

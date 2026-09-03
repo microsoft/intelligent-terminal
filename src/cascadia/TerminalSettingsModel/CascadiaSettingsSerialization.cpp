@@ -2048,6 +2048,24 @@ void CascadiaSettings::LogSettingChanges(bool isJsonLoad) const
             emitIntelligentFeatureConfigured(
                 "VerticalTabs",
                 _globals->TabLayout() == Model::TabLayout::Vertical ? L"true" : L"false");
+            // Durable session — restoring agent panes and agent CLI
+            // conversations — rides the saved window layout, so it does
+            // nothing at all unless this is set to one of the restore
+            // options. Without it there is no denominator to read agent
+            // restore rates against.
+            emitIntelligentFeatureConfigured(
+                "FirstWindowPreference",
+                [&]() -> const wchar_t* {
+                    switch (_globals->FirstWindowPreference())
+                    {
+                    case Model::FirstWindowPreference::PersistedLayout:
+                        return L"persistedLayout";
+                    case Model::FirstWindowPreference::PersistedLayoutAndContent:
+                        return L"persistedLayoutAndContent";
+                    default:
+                        return L"defaultProfile";
+                    }
+                }());
 
             for (const auto& provider : _globals->CustomModelProviders())
             {

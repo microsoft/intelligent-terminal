@@ -832,7 +832,34 @@ namespace winrt::TerminalApp::implementation
 
         safe_void_coroutine _ExportTab(const Tab& tab, winrt::hstring filepath);
         void _RefreshAgentRestoreIdentity(Tab* tab);
-        void _StampAgentResumeCommandlines(std::vector<winrt::Microsoft::Terminal::Settings::Model::ActionAndArgs>& actions);
+        // How much agent state a save is about to write. Gathered while
+        // stamping resume command lines because that pass already has to
+        // classify every action; `GetWindowLayout` accumulates it across
+        // tabs and reports it once per save.
+        struct _AgentLayoutCounts
+        {
+            uint32_t agentPanes{ 0 };
+            uint32_t stashedAgentPanes{ 0 };
+            uint32_t resumableShellPanes{ 0 };
+            // Panes that held an agent session we could not spell a resume
+            // for, so they persist as the plain shell they will come back
+            // as. A rise here is a resume silently going missing.
+            uint32_t droppedBindings{ 0 };
+
+            void Add(const _AgentLayoutCounts& other) noexcept
+            {
+                agentPanes += other.agentPanes;
+                stashedAgentPanes += other.stashedAgentPanes;
+                resumableShellPanes += other.resumableShellPanes;
+                droppedBindings += other.droppedBindings;
+            }
+
+            bool Any() const noexcept
+            {
+                return agentPanes || stashedAgentPanes || resumableShellPanes || droppedBindings;
+            }
+        };
+        _AgentLayoutCounts _StampAgentResumeCommandlines(std::vector<winrt::Microsoft::Terminal::Settings::Model::ActionAndArgs>& actions);
         // Pane ids whose terminal end event (`closed` / `failed`) already went
         // out on ProtocolVtSequenceReceived for the current TermControl
         // lifetime. `_SetupControl` clears any stale mark when a new control
