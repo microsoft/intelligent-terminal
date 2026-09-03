@@ -119,6 +119,7 @@ winrt::com_ptr<GlobalAppSettings> GlobalAppSettings::Copy() const
             globals->_SafeUriSchemes->Append(src);
         }
     }
+
     for (const auto& parent : _parents)
     {
         globals->AddLeastImportantParent(parent->Copy());
