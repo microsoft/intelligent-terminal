@@ -1242,16 +1242,16 @@
     <comment>Header for choosing which AI agent backend is used by this profile.</comment>
   </data>
   <data name="Profile_AgentPaneBackend.HelpText" xml:space="preserve">
-    <value>选择此配置文件处于活动状态时智能体窗格所使用的 ACP 智能体。此设置会覆盖“智能体”设置页面上的“智能体窗格”选择。</value>
-    <comment>{Locked="ACP"} Description for the per-profile AI agent setting. "Agent pane" and "Agent" name the section and page this setting overrides — translate them the same way as AIAgents_AcpGroupHeader and Nav_AIAgents.</comment>
+    <value>选择在智能体窗格中使用且支持 ACP 的智能体。对于此配置文件，此选择优先于全局智能体窗格选择。</value>
+    <comment>{Locked="ACP"} Description for the per-profile AI agent setting.</comment>
   </data>
   <data name="Profile_CommandPaletteAgent.Header" xml:space="preserve">
     <value>命令面板智能体</value>
     <comment>Header for choosing which AI agent handles command palette delegation for this profile.</comment>
   </data>
   <data name="Profile_CommandPaletteAgent.HelpText" xml:space="preserve">
-    <value>选择此配置文件处于活动状态时用于处理命令面板提示和其他委派操作的智能体。此选择优先于全局委派智能体设置。</value>
-    <comment>Description for the per-profile command palette agent setting. This agent is used by command palette prompts and other delegation actions. Here "agent" means an AI agent, not a proxy or human agent.</comment>
+    <value>选择此配置文件中用于命令面板委派的智能体。此选择优先于全局委派智能体设置。</value>
+    <comment>Description for the per-profile command palette agent setting. Here “agent” means an AI agent, not a proxy or human agent.</comment>
   </data>
   <data name="Profile_AgentPaneBackend_AgentFormat" xml:space="preserve">
     <value>{0} · {1}</value>
@@ -2861,9 +2861,8 @@
     <comment>Header for the setting that specifies which agent CLI handles command palette / on-demand requests.</comment>
   </data>
   <data name="AIAgents_DelegateAgent.HelpText" xml:space="preserve">
-    <value>选择用于处理命令面板提示和其他委派操作的智能体。</value>
-    <comment>Supplementary description for the command palette agent setting. This agent is used by command palette prompts and other delegation actions.
-In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+    <value>选择用于命令面板快速操作的智能体。</value>
+    <comment>Supplementary description for the command palette agent setting.</comment>
   </data>
   <data name="AIAgents_AutoFix.Header" xml:space="preserve">
     <value>自动为失败的命令建议修复方案</value>
@@ -3054,28 +3053,12 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
     <value>{} | {} | OpenAI 兼容</value>
     <comment>{Locked="{}","OpenAI"} The first {} is replaced with the provider name; the second is replaced with its location.</comment>
   </data>
-  <data name="AIAgents_CustomAcpCommand.PlaceholderText" xml:space="preserve">
-    <value>例如 my-agent --acp --stdio</value>
-    <comment>{Locked="my-agent --acp --stdio"} Placeholder inside the box where the command for a custom agent pane agent is typed. Translate only the "e.g." lead-in; the sample command is an example command line.</comment>
+  <data name="AIAgents_CustomAgentRemove.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>删除</value>
+    <comment>Accessible name for the X button that removes a custom agent from the agent list.</comment>
   </data>
-  <data name="AIAgents_CustomAcpCommandHint.Text" xml:space="preserve">
-    <value>输入用于以 ACP 模式启动你的 CLI 的命令。</value>
-    <comment>{Locked="CLI","ACP"} Hint shown under the box where the command for a custom agent pane agent is typed. The example command is supplied by AIAgents_CustomAcpCommand.PlaceholderText.</comment>
-  </data>
-  <data name="AIAgents_CustomDelegateCommand.PlaceholderText" xml:space="preserve">
-    <value>例如 my-cli --flag</value>
-    <comment>{Locked="my-cli --flag"} Placeholder inside the box where the command for a custom command palette agent is typed. Translate only the "e.g." lead-in; the sample command is an example command line.</comment>
-  </data>
-  <data name="AIAgents_CustomDelegateCommandHint.Text" xml:space="preserve">
-    <value>输入用于启动你的 CLI 的命令。命令面板会将其作为普通交互式会话运行，因此不需要 ACP 标志。</value>
-    <comment>{Locked="CLI","ACP"} Hint shown under the box where the command for a custom command palette agent is typed. The example command is supplied by AIAgents_CustomDelegateCommand.PlaceholderText.</comment>
-  </data>
-  <data name="AIAgents_CustomAcpCommand.[using:Windows.UI.Xaml.Automation]AutomationProperties.HelpText" xml:space="preserve">
-    <value>输入用于以 ACP 模式启动你的 CLI 的命令。</value>
-    <comment>{Locked="CLI","ACP"} Screen reader help text for the custom agent pane command input. Matches AIAgents_CustomAcpCommandHint.Text.</comment>
-  </data>
-  <data name="AIAgents_CustomDelegateCommand.[using:Windows.UI.Xaml.Automation]AutomationProperties.HelpText" xml:space="preserve">
-    <value>输入用于启动你的 CLI 的命令。命令面板会将其作为普通交互式会话运行，因此不需要 ACP 标志。</value>
-    <comment>{Locked="CLI","ACP"} Screen reader help text for the custom command palette agent input. Matches AIAgents_CustomDelegateCommandHint.Text.</comment>
+  <data name="AIAgents_CustomAgentRemove.[using:Windows.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>删除</value>
+    <comment>Tooltip for the X button that removes a custom agent from the agent list.</comment>
   </data>
 </root>

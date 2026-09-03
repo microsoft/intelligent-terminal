@@ -82,6 +82,14 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         return _displayName + L" (not installed)";
     }
 
+    void AgentEntry::Remove()
+    {
+        if (_remove)
+        {
+            _remove();
+        }
+    }
+
     // ── Helpers ──────────────────────────────────────────────────────────
 
     bool AIAgentsViewModel::_IsAgentInstalled(const wchar_t* name)
@@ -126,10 +134,65 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         list.Append(*entry);
     }
 
+    Editor::AgentEntry AIAgentsViewModel::_CreateCustomAgentEntry(
+        const winrt::hstring& settingsId,
+        const winrt::hstring& displayName,
+        const bool isAcpAgent)
+    {
+        auto entry = winrt::make_self<AgentEntry>(settingsId, displayName, true);
+        entry->SetRemove([weakThis = get_weak(), settingsId, isAcpAgent]() {
+            if (const auto self = weakThis.get())
+            {
+                if (isAcpAgent)
+                {
+                    self->_DeleteCustomAcpAgent(settingsId);
+                }
+                else
+                {
+                    self->_DeleteCustomDelegateAgent(settingsId);
+                }
+            }
+        });
+        return *entry;
+    }
+
+    bool AIAgentsViewModel::_CustomCommandMatchesId(
+        const winrt::hstring& command,
+        const winrt::hstring& settingsId)
+    {
+        if (command.empty())
+        {
+            return false;
+        }
+
+        const auto bareId = _DeriveId(command);
+        return !bareId.empty() &&
+               winrt::hstring{ L"custom:" + std::wstring_view{ bareId } } == settingsId;
+    }
+
+    void AIAgentsViewModel::_RemoveOtherCustomEntries(
+        const IObservableVector<Editor::AgentEntry>& list,
+        const winrt::hstring& settingsId)
+    {
+        for (uint32_t i = 0; i < list.Size();)
+        {
+            const auto id = list.GetAt(i).Id();
+            if (_StartsWithCustom(id) && id != settingsId)
+            {
+                list.RemoveAt(i);
+            }
+            else
+            {
+                ++i;
+            }
+        }
+    }
+
     void AIAgentsViewModel::_MaybeAppendCustomEntry(
         IObservableVector<Editor::AgentEntry>& list,
         const winrt::hstring& customCommand,
-        const winrt::hstring& currentAgentId)
+        const winrt::hstring& currentAgentId,
+        const bool isAcpAgent)
     {
         if (customCommand.empty() || !_StartsWithCustom(currentAgentId)) return;
 
@@ -146,7 +209,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         {
             if (list.GetAt(i).Id() == settingsId) return;
         }
-        list.Append(winrt::make<AgentEntry>(settingsId, displayName, true));
+        list.Append(_CreateCustomAgentEntry(settingsId, displayName, isAcpAgent));
     }
 
     // ── ViewModel ────────────────────────────────────────────────────────
@@ -189,7 +252,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         // Only show custom entry and "Add New" if custom agents are allowed by policy.
         if (!_GlobalSettings.IsCustomAgentPolicyLocked())
         {
-            _MaybeAppendCustomEntry(_acpAgentList, _GlobalSettings.AcpCustomCommand(), _GlobalSettings.AcpAgent());
+            _MaybeAppendCustomEntry(_acpAgentList, _GlobalSettings.AcpCustomCommand(), _GlobalSettings.AcpAgent(), true);
             _AppendAddNewEntry(_acpAgentList);
         }
 
@@ -232,7 +295,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         _delegateAgentList = winrt::single_threaded_observable_vector(std::move(delegateEntries));
         if (!_GlobalSettings.IsCustomAgentPolicyLocked())
         {
-            _MaybeAppendCustomEntry(_delegateAgentList, _GlobalSettings.DelegateCustomCommand(), _GlobalSettings.DelegateAgent());
+            _MaybeAppendCustomEntry(_delegateAgentList, _GlobalSettings.DelegateCustomCommand(), _GlobalSettings.DelegateAgent(), false);
             _AppendAddNewEntry(_delegateAgentList);
         }
 
@@ -646,6 +709,29 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         return nullptr;
     }
 
+    Editor::AgentEntry AIAgentsViewModel::_FindReplacementAgent(
+        const IObservableVector<Editor::AgentEntry>& list,
+        const winrt::hstring& preferredId) const
+    {
+        if (const auto preferred = _FindEntryById(list, preferredId))
+        {
+            if (!preferred.IsAddNew() && !_StartsWithCustom(preferred.Id()))
+            {
+                return preferred;
+            }
+        }
+
+        for (uint32_t i = 0; i < list.Size(); ++i)
+        {
+            const auto entry = list.GetAt(i);
+            if (!entry.IsAddNew() && !_StartsWithCustom(entry.Id()))
+            {
+                return entry;
+            }
+        }
+        return nullptr;
+    }
+
     // ── Custom agent preview & edit ──────────────────────────────────────
 
     bool AIAgentsViewModel::IsCustomAcpAgentSelected()
@@ -941,6 +1027,8 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
             ? winrt::hstring{ std::wstring_view{ bareId } + L" (custom)" }
             : bareId;
 
+        _RemoveOtherCustomEntries(_acpAgentList, settingsId);
+
         bool found = false;
         for (uint32_t i = 0; i < _acpAgentList.Size(); ++i)
         {
@@ -949,7 +1037,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         if (!found)
         {
             const auto addNewIdx = _acpAgentList.Size() - 1;
-            _acpAgentList.InsertAt(addNewIdx, winrt::make<AgentEntry>(settingsId, displayName, true));
+            _acpAgentList.InsertAt(addNewIdx, _CreateCustomAgentEntry(settingsId, displayName, true));
         }
 
         _isAddingCustomAcpAgent = false;
@@ -979,6 +1067,8 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
             ? winrt::hstring{ std::wstring_view{ bareId } + L" (custom)" }
             : bareId;
 
+        _RemoveOtherCustomEntries(_delegateAgentList, settingsId);
+
         bool found = false;
         for (uint32_t i = 0; i < _delegateAgentList.Size(); ++i)
         {
@@ -987,7 +1077,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         if (!found)
         {
             const auto addNewIdx = _delegateAgentList.Size() - 1;
-            _delegateAgentList.InsertAt(addNewIdx, winrt::make<AgentEntry>(settingsId, displayName, true));
+            _delegateAgentList.InsertAt(addNewIdx, _CreateCustomAgentEntry(settingsId, displayName, false));
         }
 
         _isAddingCustomDelegateAgent = false;
@@ -1007,44 +1097,73 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         _NotifyChanges(L"IsAddingCustomDelegateAgent", L"IsCustomDelegateAgentSelected", L"CurrentDelegateAgent", L"ShowDelegateModel");
     }
 
-    void AIAgentsViewModel::DeleteCustomAcpAgent()
+    void AIAgentsViewModel::_DeleteCustomAcpAgent(const winrt::hstring& settingsId)
     {
-        auto idStr = winrt::to_string(_GlobalSettings.AcpAgent());
-        if (idStr.starts_with("custom:"))
+        const auto idStr = winrt::to_string(settingsId);
+        if (_StartsWithCustom(settingsId))
         {
             const auto bareId = winrt::to_hstring(idStr.substr(7));
-            _GlobalSettings.AcpCustomCommand(L"");
-            _isAddingCustomAcpAgent = false;
-            _GlobalSettings.AcpAgent(bareId);
-            // Remove custom entry from dropdown
+            const bool wasSelected = _GlobalSettings.AcpAgent() == settingsId;
+            if (_CustomCommandMatchesId(_GlobalSettings.AcpCustomCommand(), settingsId))
+            {
+                _GlobalSettings.AcpCustomCommand(L"");
+            }
             for (uint32_t i = 0; i < _acpAgentList.Size(); ++i)
             {
-                if (winrt::to_string(_acpAgentList.GetAt(i).Id()) == idStr)
+                if (_acpAgentList.GetAt(i).Id() == settingsId)
                 {
                     _acpAgentList.RemoveAt(i);
                     break;
                 }
             }
+
+            if (wasSelected)
+            {
+                if (const auto replacement = _FindReplacementAgent(_acpAgentList, bareId))
+                {
+                    CurrentAcpAgent(replacement);
+                    return;
+                }
+
+                _isAddingCustomAcpAgent = false;
+                _GlobalSettings.AcpAgent(L"");
+                _GlobalSettings.AcpModel(L"");
+                _TriggerAcpModelProbe();
+            }
             _NotifyChanges(L"CurrentAcpAgent", L"IsAddingCustomAcpAgent", L"IsCustomAcpAgentSelected", L"ShowAcpModel", L"CustomModelProviderUnsupportedMessage");
         }
     }
 
-    void AIAgentsViewModel::DeleteCustomDelegateAgent()
+    void AIAgentsViewModel::_DeleteCustomDelegateAgent(const winrt::hstring& settingsId)
     {
-        auto idStr = winrt::to_string(_GlobalSettings.DelegateAgent());
-        if (idStr.starts_with("custom:"))
+        const auto idStr = winrt::to_string(settingsId);
+        if (_StartsWithCustom(settingsId))
         {
             const auto bareId = winrt::to_hstring(idStr.substr(7));
-            _GlobalSettings.DelegateCustomCommand(L"");
-            _isAddingCustomDelegateAgent = false;
-            _GlobalSettings.DelegateAgent(bareId);
+            const bool wasSelected = _GlobalSettings.DelegateAgent() == settingsId;
+            if (_CustomCommandMatchesId(_GlobalSettings.DelegateCustomCommand(), settingsId))
+            {
+                _GlobalSettings.DelegateCustomCommand(L"");
+            }
             for (uint32_t i = 0; i < _delegateAgentList.Size(); ++i)
             {
-                if (winrt::to_string(_delegateAgentList.GetAt(i).Id()) == idStr)
+                if (_delegateAgentList.GetAt(i).Id() == settingsId)
                 {
                     _delegateAgentList.RemoveAt(i);
                     break;
                 }
+            }
+
+            if (wasSelected)
+            {
+                if (const auto replacement = _FindReplacementAgent(_delegateAgentList, bareId))
+                {
+                    CurrentDelegateAgent(replacement);
+                    return;
+                }
+
+                _isAddingCustomDelegateAgent = false;
+                _GlobalSettings.DelegateAgent(L"");
             }
             _NotifyChanges(L"CurrentDelegateAgent", L"IsAddingCustomDelegateAgent", L"IsCustomDelegateAgentSelected", L"ShowDelegateModel");
         }

@@ -24,14 +24,23 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         winrt::hstring DisplayLabel() const;
         bool IsInstalled() const { return _isInstalled; }
         bool IsAddNew() const { return _isAddNew; }
+        winrt::Windows::UI::Xaml::Visibility RemoveButtonVisibility() const noexcept
+        {
+            return _remove ?
+                       winrt::Windows::UI::Xaml::Visibility::Visible :
+                       winrt::Windows::UI::Xaml::Visibility::Collapsed;
+        }
+        void Remove();
 
         void SetAddNew(bool value) { _isAddNew = value; }
+        void SetRemove(std::function<void()> remove) { _remove = std::move(remove); }
 
     private:
         winrt::hstring _id;
         winrt::hstring _displayName;
         bool _isInstalled;
         bool _isAddNew{ false };
+        std::function<void()> _remove;
     };
 
     struct AcpModelEntry : AcpModelEntryT<AcpModelEntry>
@@ -116,9 +125,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         void SaveCustomAcpAgent();
         void SaveCustomDelegateAgent();
         void CancelCustomAcpAgent();
-        void DeleteCustomAcpAgent();
         void CancelCustomDelegateAgent();
-        void DeleteCustomDelegateAgent();
 
         bool ShowAcpModel();
         winrt::Windows::Foundation::Collections::IObservableVector<Editor::AcpModelEntry> AcpModelList() const { return _acpModelList; }
@@ -270,15 +277,31 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         static bool _IsAgentInstalled(const wchar_t* name);
         static bool _IsKnownAgent(const winrt::hstring& id);
         static winrt::hstring _DeriveId(const winrt::hstring& command);
+        Editor::AgentEntry _CreateCustomAgentEntry(
+            const winrt::hstring& settingsId,
+            const winrt::hstring& displayName,
+            bool isAcpAgent);
+        static bool _CustomCommandMatchesId(
+            const winrt::hstring& command,
+            const winrt::hstring& settingsId);
+        static void _RemoveOtherCustomEntries(
+            const winrt::Windows::Foundation::Collections::IObservableVector<Editor::AgentEntry>& list,
+            const winrt::hstring& settingsId);
+        void _DeleteCustomAcpAgent(const winrt::hstring& settingsId);
+        void _DeleteCustomDelegateAgent(const winrt::hstring& settingsId);
         Editor::AgentEntry _FindEntryById(
             const winrt::Windows::Foundation::Collections::IObservableVector<Editor::AgentEntry>& list,
             const winrt::hstring& id) const;
+        Editor::AgentEntry _FindReplacementAgent(
+            const winrt::Windows::Foundation::Collections::IObservableVector<Editor::AgentEntry>& list,
+            const winrt::hstring& preferredId) const;
         void _AppendAddNewEntry(
             winrt::Windows::Foundation::Collections::IObservableVector<Editor::AgentEntry>& list);
         void _MaybeAppendCustomEntry(
             winrt::Windows::Foundation::Collections::IObservableVector<Editor::AgentEntry>& list,
             const winrt::hstring& customCommand,
-            const winrt::hstring& currentAgentId);
+            const winrt::hstring& currentAgentId,
+            bool isAcpAgent);
 
         // Agent Hooks state
         bool _copilotCliDetected{ false };

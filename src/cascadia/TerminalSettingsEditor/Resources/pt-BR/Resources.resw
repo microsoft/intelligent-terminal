@@ -1242,16 +1242,16 @@
     <comment>Header for choosing which AI agent backend is used by this profile.</comment>
   </data>
   <data name="Profile_AgentPaneBackend.HelpText" xml:space="preserve">
-    <value>Escolha o agente compatível com ACP usado pelo painel do agente enquanto este perfil estiver ativo. Isso substitui a seleção da seção "Painel do agente" na página de configurações "Agentes".</value>
-    <comment>{Locked="ACP"} Description for the per-profile AI agent setting. "Agent pane" and "Agent" name the section and page this setting overrides — translate them the same way as AIAgents_AcpGroupHeader and Nav_AIAgents.</comment>
+    <value>Escolha o agente compatível com ACP que será usado no painel do agente. Para este perfil, esta seleção tem prioridade sobre a seleção global do painel do agente.</value>
+    <comment>{Locked="ACP"} Description for the per-profile AI agent setting.</comment>
   </data>
   <data name="Profile_CommandPaletteAgent.Header" xml:space="preserve">
     <value>Agente da paleta de comandos</value>
     <comment>Header for choosing which AI agent handles command palette delegation for this profile.</comment>
   </data>
   <data name="Profile_CommandPaletteAgent.HelpText" xml:space="preserve">
-    <value>Escolha o agente usado para prompts da paleta de comandos e outras ações de delegação enquanto este perfil estiver ativo. Esta seleção tem precedência sobre a configuração global do agente delegado.</value>
-    <comment>Description for the per-profile command palette agent setting. This agent is used by command palette prompts and other delegation actions. Here "agent" means an AI agent, not a proxy or human agent.</comment>
+    <value>Escolha o agente usado para delegação pela paleta de comandos neste perfil. Esta seleção tem precedência sobre a configuração global do agente delegado.</value>
+    <comment>Description for the per-profile command palette agent setting. Here “agent” means an AI agent, not a proxy or human agent.</comment>
   </data>
   <data name="Profile_AgentPaneBackend_AgentFormat" xml:space="preserve">
     <value>{0} · {1}</value>
@@ -2853,9 +2853,7 @@
     <value>Agente</value>
   </data>
   <data name="AIAgents_DelegateAgent.HelpText" xml:space="preserve">
-    <value>Escolha o agente usado para prompts da paleta de comandos e outras ações de delegação.</value>
-    <comment>Supplementary description for the command palette agent setting. This agent is used by command palette prompts and other delegation actions.
-In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+    <value>Escolha o agente usado para ações rápidas na paleta de comandos.</value>
   </data>
   <data name="AIAgents_AutoFix.Header" xml:space="preserve">
     <value>Sugerir correções automaticamente para comandos com falha</value>
@@ -3038,28 +3036,12 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
     <value>{} | {} | Compatível com OpenAI</value>
     <comment>{Locked="{}","OpenAI"} The first {} is replaced with the provider name; the second is replaced with its location.</comment>
   </data>
-  <data name="AIAgents_CustomAcpCommand.PlaceholderText" xml:space="preserve">
-    <value>por exemplo, my-agent --acp --stdio</value>
-    <comment>{Locked="my-agent --acp --stdio"} Placeholder inside the box where the command for a custom agent pane agent is typed. Translate only the "e.g." lead-in; the sample command is an example command line.</comment>
+  <data name="AIAgents_CustomAgentRemove.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Remover</value>
+    <comment>Accessible name for the X button that removes a custom agent from the agent list.</comment>
   </data>
-  <data name="AIAgents_CustomAcpCommandHint.Text" xml:space="preserve">
-    <value>Insira o comando que inicia sua CLI no modo ACP.</value>
-    <comment>{Locked="CLI","ACP"} Hint shown under the box where the command for a custom agent pane agent is typed. The example command is supplied by AIAgents_CustomAcpCommand.PlaceholderText.</comment>
-  </data>
-  <data name="AIAgents_CustomDelegateCommand.PlaceholderText" xml:space="preserve">
-    <value>por exemplo, my-cli --flag</value>
-    <comment>{Locked="my-cli --flag"} Placeholder inside the box where the command for a custom command palette agent is typed. Translate only the "e.g." lead-in; the sample command is an example command line.</comment>
-  </data>
-  <data name="AIAgents_CustomDelegateCommandHint.Text" xml:space="preserve">
-    <value>Insira o comando que inicia sua CLI. A paleta de comandos o executa como uma sessão interativa normal, portanto, nenhum sinalizador ACP é necessário.</value>
-    <comment>{Locked="CLI","ACP"} Hint shown under the box where the command for a custom command palette agent is typed. The example command is supplied by AIAgents_CustomDelegateCommand.PlaceholderText.</comment>
-  </data>
-  <data name="AIAgents_CustomAcpCommand.[using:Windows.UI.Xaml.Automation]AutomationProperties.HelpText" xml:space="preserve">
-    <value>Insira o comando que inicia sua CLI no modo ACP.</value>
-    <comment>{Locked="CLI","ACP"} Screen reader help text for the custom agent pane command input. Matches AIAgents_CustomAcpCommandHint.Text.</comment>
-  </data>
-  <data name="AIAgents_CustomDelegateCommand.[using:Windows.UI.Xaml.Automation]AutomationProperties.HelpText" xml:space="preserve">
-    <value>Insira o comando que inicia sua CLI. A paleta de comandos o executa como uma sessão interativa normal, portanto, nenhum sinalizador ACP é necessário.</value>
-    <comment>{Locked="CLI","ACP"} Screen reader help text for the custom command palette agent input. Matches AIAgents_CustomDelegateCommandHint.Text.</comment>
+  <data name="AIAgents_CustomAgentRemove.[using:Windows.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Remover</value>
+    <comment>Tooltip for the X button that removes a custom agent from the agent list.</comment>
   </data>
 </root>
