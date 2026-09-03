@@ -4185,27 +4185,42 @@ async fn run_master_loop(config: MasterConfig, pipe_name: String) -> Result<()> 
     // `WtChannel` trait surface doesn't expose event subscription, so bind the
     // concrete channel first, subscribe, then wrap as `dyn WtChannel`.
     //
-    // This is now load-bearing: master is the sole authoritative consumer of
-    // agent hook broadcasts. Starting without WT_COM_CLSID / a COM channel
-    // would look healthy while silently losing every lifecycle event, so fail
-    // startup instead of degrading to a hook-blind master.
-    let wt_cli = Arc::new(
-        crate::shell::wt_channel::CliChannel::connect()
-            .await
-            .context("connect master WT event channel")?,
-    );
-    // Subscribe to WT events + start the reader BEFORE wrapping as
-    // `dyn WtChannel` (the trait surface doesn't expose subscription).
-    // Single-consumer: focus_session uses the same channel via request/
-    // response, which doesn't touch the event sender.
-    let wt_event_rx = Some(wt_cli.subscribe_events());
-    if !wt_cli.start_reader().await {
-        anyhow::bail!(
-            "master WT event listener did not subscribe; refusing to start without the authoritative hook path"
-        );
+    // Hook delivery is deliberately NOT a master-startup gate. If COM is
+    // temporarily unavailable, agent-pane chat, Autofix, history listing and
+    // resume still work; only real-time shell-session status can lag until the
+    // listener reconnects. This matches the preexisting product degradation
+    // mode instead of turning a session-management enhancement into a global
+    // AI-feature outage.
+    let wt_cli: Option<Arc<crate::shell::wt_channel::CliChannel>> =
+        match crate::shell::wt_channel::CliChannel::connect().await {
+            Ok(channel) => Some(Arc::new(channel)),
+            Err(error) => {
+                tracing::warn!(
+                    target: "master",
+                    %error,
+                    "master WT event channel unavailable; chat remains available but live session status may be stale"
+                );
+                None
+            }
+        };
+    // Start subscription readiness in the background. `start_reader` keeps
+    // retrying after its initial readiness timeout, so master must retain the
+    // channel but must not wait up to 15 seconds before accepting helpers.
+    let wt_event_rx = wt_cli.as_ref().map(|channel| channel.subscribe_events());
+    if let Some(channel) = wt_cli.as_ref() {
+        let channel = Arc::clone(channel);
+        tokio::task::spawn_local(async move {
+            if !channel.start_reader().await {
+                tracing::warn!(
+                    target: "master",
+                    "master WT event listener is still reconnecting; live session status may be stale"
+                );
+            }
+        });
     }
-    let wt: Option<Arc<dyn crate::shell::wt_channel::WtChannel>> =
-        Some(wt_cli as Arc<dyn crate::shell::wt_channel::WtChannel>);
+    let wt: Option<Arc<dyn crate::shell::wt_channel::WtChannel>> = wt_cli
+        .clone()
+        .map(|channel| channel as Arc<dyn crate::shell::wt_channel::WtChannel>);
 
     // Agent CLIs are spawned LAZILY by `get_or_spawn_agent` the first time
     // a helper declares an agent in its `initialize` handshake — the master
