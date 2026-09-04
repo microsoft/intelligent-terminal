@@ -3369,7 +3369,7 @@ async fn prompt_then_cancel_channels_latch_cancel_before_prompt_dispatch() {
 }
 
 #[tokio::test]
-async fn registered_cancel_settles_after_prompt_quiesces() {
+async fn registered_cancel_settles_after_prompt_finishes() {
     let local = tokio::task::LocalSet::new();
     local
         .run_until(async {

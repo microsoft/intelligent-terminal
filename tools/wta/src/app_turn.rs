@@ -955,10 +955,23 @@ impl App {
             }
         }
 
-        let Some(current_tab) = session_id
-            .and_then(|id| self.session_to_tab.get(id))
-            .cloned()
-        else {
+        let current_tab = if let Some(session_id) = session_id {
+            self.session_to_tab.get(session_id).cloned()
+        } else {
+            // Prompt IDs are process-wide unique. A pre-dispatch cancellation
+            // has no ACP session yet, so this is the stable identity when its
+            // tab was renamed before the queued prompt was consumed.
+            self.tab_sessions.iter().find_map(|(tab_id, tab)| {
+                matches!(
+                    tab.turn,
+                    TurnState::Cancelling {
+                        prompt_id: cancelling_prompt_id
+                    } if cancelling_prompt_id == prompt_id
+                )
+                .then(|| tab_id.clone())
+            })
+        };
+        let Some(current_tab) = current_tab else {
             return;
         };
         if let Some(tab) = self.tab_sessions.get_mut(&current_tab) {

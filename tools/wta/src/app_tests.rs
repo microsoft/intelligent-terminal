@@ -13798,12 +13798,11 @@ fn cancellation_settlement_requires_exact_tab_and_prompt() {
         prompt_id: 42,
         session_id: None,
     });
-    assert_eq!(
-        app.current_tab().turn,
-        TurnState::Cancelling { prompt_id: 42 }
-    );
+    assert!(app.current_tab().turn.is_idle());
     assert!(app.tab_sessions["wrong-tab"].turn.is_idle());
 
+    submit_test_prompt(&mut app, "stop another");
+    app.turn_cancel(DEFAULT_TAB_ID);
     app.handle_event(AppEvent::PromptCancellationSettled {
         tab_id: DEFAULT_TAB_ID.into(),
         prompt_id: 41,
@@ -13858,7 +13857,7 @@ fn old_tab_cancellation_settlement_finds_renamed_exact_prompt() {
     app.handle_event(AppEvent::PromptCancellationSettled {
         tab_id: DEFAULT_TAB_ID.into(),
         prompt_id: 42,
-        session_id: Some("old-session".into()),
+        session_id: None,
     });
 
     assert!(app.tab_sessions["renamed-tab"].turn.is_idle());
