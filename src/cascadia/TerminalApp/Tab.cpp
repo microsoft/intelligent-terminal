@@ -1509,10 +1509,10 @@ namespace winrt::TerminalApp::implementation
             previousActive->UpdateVisuals();
         }
 
-        // Recompute the "Agent" chip on every pane in this tab. Both the
-        // ClearActive() above and the SetSourceOfAgentPane(true) we may
-        // have just done can flip which pane is "the source", and the chip
-        // follows that signal whenever there is no protocol-driven override.
+        // Recompute the agent-related indicators on every pane in this tab.
+        // Both ClearActive() above and SetSourceOfAgentPane(true) can change
+        // the target, while pane count determines whether target indicators
+        // are needed at all.
         _UpdateAgentPaneIndicators();
 
         // Update our own title text to match the newly-active pane.
@@ -1585,7 +1585,7 @@ namespace winrt::TerminalApp::implementation
             return;
         }
 
-        int visibleNonAgentPaneCount = 0;
+        int visibleTerminalPaneCount = 0;
         bool hasAgentPane = false;
         _rootPane->WalkTree([&](const auto& pane) {
             if (pane->IsHidden())
@@ -1598,22 +1598,23 @@ namespace winrt::TerminalApp::implementation
             }
             else if (pane->GetContent().try_as<winrt::TerminalApp::TerminalPaneContent>())
             {
-                ++visibleNonAgentPaneCount;
+                ++visibleTerminalPaneCount;
             }
         });
 
-        const bool showAgentTargetIndicators = hasAgentPane && visibleNonAgentPaneCount > 1;
+        const bool showAgentTargetIndicators = hasAgentPane && visibleTerminalPaneCount > 1;
         _rootPane->WalkTree([&](const auto& pane) {
             const bool isTerminalPane = pane->GetContent().try_as<winrt::TerminalApp::TerminalPaneContent>() != nullptr;
             pane->_SetFocusBorderEnabled(!pane->IsAgentPane() &&
-                                         (!isTerminalPane || !hasAgentPane || visibleNonAgentPaneCount > 1));
+                                         (!isTerminalPane || !hasAgentPane || visibleTerminalPaneCount > 1));
+            if (!showAgentTargetIndicators)
+            {
+                pane->SetAgentChipVisible(false);
+            }
         });
 
         if (!showAgentTargetIndicators)
         {
-            _rootPane->WalkTree([](const auto& pane) {
-                pane->SetAgentChipVisible(false);
-            });
             return;
         }
 
@@ -1649,7 +1650,7 @@ namespace winrt::TerminalApp::implementation
         // points) so an "equal-but-redundant" event arriving here is the
         // signal that the C++ side should re-walk the pane tree — for
         // example to pick up a `IsSourceOfAgentPane()` transition the
-        // chip-visibility hook in `_UpdateActivePane` missed (legacy
+        // indicator refresh in `_UpdateActivePane` missed (legacy
         // call sites that mutate the flag without going through it).
         _UpdateAgentPaneIndicators();
     }

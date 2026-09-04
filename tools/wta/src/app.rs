@@ -3,7 +3,7 @@ use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ratatui::backend::CrosstermBackend;
 use ratatui::prelude::*;
 use serde::{Deserialize, Serialize};
-use std::collections::{HashMap, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::io;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -1078,6 +1078,13 @@ pub struct App {
     debug_capture_enabled: Arc<AtomicBool>,
     /// Cached for creating DeferredAcpParams after auth-error recovery.
     shell_mgr: Arc<crate::shell::ShellManager>,
+    /// Global provider-native Yolo preference, set at startup from
+    /// `--yolo-mode`. Helper-owned policy is shared with the ACP client and
+    /// the global default is hot-updatable.
+    yolo_state: crate::app_contracts::SharedYoloState,
+    next_yolo_reconcile_id: u64,
+    pending_yolo_reconciles: HashMap<u64, (HashSet<String>, bool)>,
+    pending_yolo_session_tabs: HashSet<String>,
     // Slash-command UI state. The /help overlay is global — it covers
     // the chat area regardless of which tab is active. Per-tab popup
     // state (the command-completion candidates as the user types `/he…`)
@@ -1349,6 +1356,7 @@ impl App {
         wt_connected: bool,
         autofix_enabled: bool,
         shell_mgr: Arc<crate::shell::ShellManager>,
+        yolo_state: crate::app_contracts::SharedYoloState,
     ) -> Self {
         let mut tab_sessions = HashMap::new();
         tab_sessions.insert(DEFAULT_TAB_ID.to_string(), TabSession::default());
@@ -1404,6 +1412,9 @@ impl App {
             restart_tx,
             master_request_tx,
             debug_capture_enabled,
+            next_yolo_reconcile_id: 0,
+            pending_yolo_reconciles: HashMap::new(),
+            pending_yolo_session_tabs: HashSet::new(),
             help_overlay_visible: false,
             debug_messages: Vec::new(),
             show_debug_panel: false,
@@ -1456,6 +1467,7 @@ impl App {
                 crate::agent_tools::action_proposal::channel::ProposalChannelManager::new(),
             ),
             shell_mgr,
+            yolo_state,
         }
     }
 
@@ -1618,6 +1630,7 @@ impl App {
                 let wt_connected = params.wt_connected;
                 let pipe_name_opt = params.master_pipe_name.clone();
                 let owner_tab_opt = params.owner_tab_id.clone();
+                let yolo_state = Arc::clone(&self.yolo_state);
                 // Per-tab agent identity for the multi-agent master. Prefer
                 // the canonical host-supplied id; command parsing is retained
                 // for compatibility with older deferred state.
@@ -1671,6 +1684,7 @@ impl App {
                             // "Resuming session …" and still projecting the
                             // session id the restore asked for.
                             pending_load_sid,
+                            yolo_state,
                             event_tx_for_pipe.clone(),
                             prompt_rx,
                             cancel_rx,
@@ -2403,26 +2417,52 @@ impl App {
                 self.config_picker_escape();
                 return;
             }
+            if self.yolo_reconcile_pending_for_tab(self.active_tab_key()) {
+                let tab = self.current_tab_mut();
+                tab.messages
+                    .push(ChatMessage::warning(t!("system.agent_busy").into_owned()));
+                tab.scroll_to_bottom();
+                return;
+            }
 
             let session_id = self.current_tab().session_id.clone();
             let config_id = option.id.clone();
             let value_id = value.id.clone();
+            let native_yolo = option.native_yolo;
             if let Some(session_id) = session_id {
-                let tab = self.current_tab_mut();
-                if tab.config_pending_id.is_some() {
-                    return;
+                {
+                    let tab = self.current_tab_mut();
+                    if tab.config_pending_id.is_some() {
+                        return;
+                    }
+                    tab.config_pending_id = Some(config_id.clone());
+                    tab.native_yolo_config_pending = native_yolo;
+                    tab.config_picker = parent_selected
+                        .map(|selected| ConfigPickerState::Options { selected })
+                        .unwrap_or(ConfigPickerState::Closed);
                 }
-                tab.config_pending_id = Some(config_id.clone());
-                tab.config_picker = parent_selected
-                    .map(|selected| ConfigPickerState::Options { selected })
-                    .unwrap_or(ConfigPickerState::Closed);
-                let _ = self.master_request_tx.send(
-                    crate::protocol::acp::client::MasterExtRequest::SetSessionConfigOption {
-                        session_id: agent_client_protocol::schema::v1::SessionId::new(session_id),
-                        config_id,
-                        value: value_id,
-                    },
-                );
+                if self
+                    .master_request_tx
+                    .send(
+                        crate::protocol::acp::client::MasterExtRequest::SetSessionConfigOption {
+                            session_id: agent_client_protocol::schema::v1::SessionId::new(
+                                session_id,
+                            ),
+                            config_id: config_id.clone(),
+                            value: value_id,
+                        },
+                    )
+                    .is_err()
+                {
+                    let tab = self.current_tab_mut();
+                    if tab.config_pending_id.as_deref() == Some(config_id.as_str()) {
+                        tab.config_pending_id = None;
+                        tab.native_yolo_config_pending = false;
+                    }
+                    tab.messages
+                        .push(ChatMessage::Error(t!("connection.lost").into_owned()));
+                    tab.scroll_to_bottom();
+                }
             }
             return;
         }
@@ -3560,6 +3600,9 @@ impl App {
         self.session_model_configs.clear();
         self.session_config_options.clear();
         self.session_commands.clear();
+        self.yolo_state.lock().unwrap().clear_sessions();
+        self.pending_yolo_reconciles.clear();
+        self.pending_yolo_session_tabs.clear();
         let active_tab_id = self.active_tab_key().to_string();
         for tab in self.tab_sessions.values_mut() {
             tab.clear_chat_history();
@@ -3583,6 +3626,7 @@ impl App {
             tab.model_picker_selected = 0;
             tab.config_picker = ConfigPickerState::Closed;
             tab.config_pending_id = None;
+            tab.native_yolo_config_pending = false;
             tab.agent_picker_open = false;
             tab.agent_picker_selected = 0;
             tab.pending_terminal_action_proposal = None;
@@ -4307,6 +4351,7 @@ impl App {
             AppEvent::UsageReported { .. } => "usage_reported",
             AppEvent::UsageCleared { .. } => "usage_cleared",
             AppEvent::ModelConfigUpdated { .. } => "model_config_updated",
+            AppEvent::RuntimeYoloReconcileCompleted { .. } => "runtime_yolo_reconcile_completed",
             AppEvent::ModelSetCompleted { .. } => "model_set_completed",
             AppEvent::ModelSetFailed { .. } => "model_set_failed",
             AppEvent::SessionConfigUpdated { .. } => "session_config_updated",
@@ -5356,10 +5401,18 @@ impl App {
             .tab_id
             .clone()
             .unwrap_or_else(|| DEFAULT_TAB_ID.to_string());
-        let _ = self.new_session_tx.send(NewSessionForTab {
+        let request = NewSessionForTab {
             tab_id: tab_id.clone(),
             cwd: self.source_cwd.clone(),
-        });
+        };
+        if self.new_session_tx.send(request).is_err() {
+            let tab = self.current_tab_mut();
+            tab.messages
+                .push(ChatMessage::Error(t!("connection.lost").into_owned()));
+            tab.scroll_to_bottom();
+            return;
+        }
+        self.pending_yolo_session_tabs.insert(tab_id.clone());
         if let Some(session_id) = self.current_tab().session_id.clone() {
             self.session_model_configs.remove(&session_id);
             self.session_config_options.remove(&session_id);
@@ -5370,12 +5423,18 @@ impl App {
         tab.usage = None;
         tab.usage_staleness = crate::usage::UsageStaleness::default();
         tab.clear_completed_turns();
-        tab.session_id = None;
+        tab.config_picker = ConfigPickerState::Closed;
+        tab.config_pending_id = None;
+        tab.native_yolo_config_pending = false;
+        let old_sid = tab.session_id.take();
         tab.has_meaningful_conversation = false;
         tab.meaningful_conversation_before_load = None;
         tab.loading_session = false;
         tab.loading_target_session_id = None;
         tab.scroll_to_bottom();
+        if let Some(old_sid) = old_sid {
+            self.clear_yolo_session_state(&old_sid);
+        }
         self.project_tab_state(&tab_id);
     }
 
@@ -5410,6 +5469,13 @@ impl App {
             .tab_id
             .clone()
             .unwrap_or_else(|| DEFAULT_TAB_ID.to_string());
+        if self.prompt_reconfiguration_pending_for_tab(&target_tab_id) {
+            let tab = self.tab_mut(&target_tab_id);
+            tab.messages
+                .push(ChatMessage::warning(t!("system.agent_busy").into_owned()));
+            tab.scroll_to_bottom();
+            return;
+        }
 
         // Bump generation so any stale in-flight autofix response is dropped,
         // and clear a leftover suggestion — mirrors `maybe_trigger_autofix`.
@@ -5539,6 +5605,134 @@ impl App {
         self.project_active_tab_state();
     }
 
+    pub(crate) fn apply_runtime_yolo_config(
+        &mut self,
+        global_default: Option<bool>,
+        policy_blocked: Option<bool>,
+    ) {
+        if global_default.is_none() && policy_blocked.is_none() {
+            return;
+        }
+
+        let (current_global, current_blocked) = {
+            let state = self.yolo_state.lock().unwrap();
+            (state.global_default(), state.policy_blocked())
+        };
+        let global_default = global_default.unwrap_or(current_global);
+        let policy_blocked = policy_blocked.unwrap_or(current_blocked);
+        if global_default == current_global && policy_blocked == current_blocked {
+            return;
+        }
+
+        {
+            let mut state = self.yolo_state.lock().unwrap();
+            state.update_runtime(global_default, policy_blocked);
+        }
+
+        let sessions = {
+            let state = self.yolo_state.lock().unwrap();
+            self.session_to_tab
+                .iter()
+                .filter(|(_, tab_id)| !self.pending_yolo_session_tabs.contains(*tab_id))
+                .map(|(session_id, _)| {
+                    (
+                        agent_client_protocol::schema::v1::SessionId::new(session_id.clone()),
+                        state.effective(session_id),
+                    )
+                })
+                .collect::<Vec<_>>()
+        };
+        let fail_closed = policy_blocked || sessions.iter().any(|(_, enabled)| !enabled);
+        let reconcile_id = self.begin_yolo_reconcile(&sessions, fail_closed);
+        let sent = self.master_request_tx.send(
+            crate::protocol::acp::client::MasterExtRequest::ReconcileSessionYolo {
+                reconcile_id,
+                sessions,
+                fail_closed,
+            },
+        );
+        if sent.is_err() {
+            if fail_closed {
+                let _ = self.restart_tx.send(AgentLifecycleRequest::RestartMaster);
+            } else {
+                self.pending_yolo_reconciles.remove(&reconcile_id);
+            }
+        }
+    }
+
+    fn reconcile_session_yolo(&mut self, session_id: &str) {
+        let enabled = self.yolo_state.lock().unwrap().effective(session_id);
+        let fail_closed = !enabled;
+        let sessions = vec![(
+            agent_client_protocol::schema::v1::SessionId::new(session_id.to_string()),
+            enabled,
+        )];
+        let reconcile_id = self.begin_yolo_reconcile(&sessions, fail_closed);
+        let sent = self.master_request_tx.send(
+            crate::protocol::acp::client::MasterExtRequest::ReconcileSessionYolo {
+                reconcile_id,
+                sessions,
+                fail_closed,
+            },
+        );
+        if sent.is_err() {
+            if fail_closed {
+                let _ = self.restart_tx.send(AgentLifecycleRequest::RestartMaster);
+            } else {
+                self.pending_yolo_reconciles.remove(&reconcile_id);
+            }
+        }
+    }
+
+    fn begin_yolo_reconcile(
+        &mut self,
+        sessions: &[(agent_client_protocol::schema::v1::SessionId, bool)],
+        fail_closed: bool,
+    ) -> u64 {
+        self.next_yolo_reconcile_id = self.next_yolo_reconcile_id.wrapping_add(1);
+        let reconcile_id = self.next_yolo_reconcile_id;
+        let session_ids = sessions
+            .iter()
+            .map(|(session_id, _)| session_id.to_string())
+            .collect::<HashSet<_>>();
+        if !session_ids.is_empty() {
+            self.pending_yolo_reconciles
+                .insert(reconcile_id, (session_ids, fail_closed));
+        }
+        reconcile_id
+    }
+
+    fn yolo_reconcile_pending_for_tab(&self, tab_id: &str) -> bool {
+        if self.pending_yolo_session_tabs.contains(tab_id) {
+            return true;
+        }
+        self.tab_sessions
+            .get(tab_id)
+            .and_then(|tab| tab.session_id.as_deref())
+            .is_some_and(|session_id| {
+                self.pending_yolo_reconciles
+                    .values()
+                    .any(|(sessions, _)| sessions.contains(session_id))
+            })
+    }
+
+    fn prompt_reconfiguration_pending_for_tab(&self, tab_id: &str) -> bool {
+        self.yolo_reconcile_pending_for_tab(tab_id)
+            || self
+                .tab_sessions
+                .get(tab_id)
+                .is_some_and(|tab| tab.native_yolo_config_pending)
+    }
+
+    fn clear_yolo_session_state(&mut self, session_id: &str) {
+        self.yolo_state.lock().unwrap().remove_session(session_id);
+        for (sessions, _) in self.pending_yolo_reconciles.values_mut() {
+            sessions.remove(session_id);
+        }
+        self.pending_yolo_reconciles
+            .retain(|_, (sessions, _)| !sessions.is_empty());
+    }
+
     /// `/restart` asks Windows Terminal to replace the shared master and Agent
     /// CLI pool. Viable panes, ConPTYs, and helpers stay alive and reconnect
     /// over the stable master pipe with clean ACP sessions.
@@ -5563,6 +5757,9 @@ impl App {
         for tab_id in self.tab_sessions.keys().cloned().collect::<Vec<_>>() {
             self.project_tab_state(&tab_id);
         }
+        self.yolo_state.lock().unwrap().clear_sessions();
+        self.pending_yolo_reconciles.clear();
+        self.pending_yolo_session_tabs.clear();
         if self
             .restart_tx
             .send(AgentLifecycleRequest::RestartMaster)
@@ -5734,10 +5931,12 @@ impl App {
             return;
         }
         let removed = self.tab_sessions.remove(closed_tab_id);
+        self.pending_yolo_session_tabs.remove(closed_tab_id);
         if let Some(session_id) = removed.as_ref().and_then(|tab| tab.session_id.as_ref()) {
             self.session_model_configs.remove(session_id);
             self.session_config_options.remove(session_id);
             self.session_commands.remove(session_id);
+            self.clear_yolo_session_state(session_id);
         }
         self.session_to_tab.retain(|_, tab| tab != closed_tab_id);
 
@@ -5814,6 +6013,10 @@ impl App {
                 "tab_renamed no-op: ids identical"
             );
             return;
+        }
+        if self.pending_yolo_session_tabs.remove(old_tab_id) {
+            self.pending_yolo_session_tabs
+                .insert(new_tab_id.to_string());
         }
         let had_session = if let Some(mut entry) = self.tab_sessions.remove(old_tab_id) {
             // Preserve target slot's TabSession if one was lazily
@@ -5952,12 +6155,16 @@ impl App {
     /// next tab_changed back into this tab finds an empty-but-present
     /// `TabSession` and just renders an empty chat.
     fn reset_tab_session_for(&mut self, tab_id: &str) {
+        self.pending_yolo_session_tabs.remove(tab_id);
         let mut removed_session_id = None;
         // Same wipe as the `/clear` slash command: clear in-flight chat state
         // via `clear_chat_history` AND the completed-turn history that
         // `clear_chat_history` deliberately leaves alone.
         if let Some(tab) = self.tab_sessions.get_mut(tab_id) {
             removed_session_id = tab.session_id.take();
+            tab.config_picker = ConfigPickerState::Closed;
+            tab.config_pending_id = None;
+            tab.native_yolo_config_pending = false;
             tab.clear_chat_history();
             tab.usage = None;
             tab.usage_staleness = crate::usage::UsageStaleness::default();
@@ -5973,6 +6180,7 @@ impl App {
             self.session_model_configs.remove(&session_id);
             self.session_config_options.remove(&session_id);
             self.session_commands.remove(&session_id);
+            self.clear_yolo_session_state(&session_id);
         }
 
         // Prune the reverse SessionId → tab routing so late ACP chunks for
@@ -5984,6 +6192,7 @@ impl App {
             tab_id: tab_id.to_string(),
             notify_master: false,
         });
+        self.publish_agent_status();
         self.project_tab_state(tab_id);
 
         tracing::info!(

@@ -2296,7 +2296,22 @@ namespace winrt::TerminalApp::implementation
             customModelLaunch ? customModelLaunch->selectionId : std::wstring{},
             ::Microsoft::Terminal::CustomModels::CaptureCatalog(globals.CustomModelProviders()),
             globals.EffectiveAutoFixEnabled(),
+            globals.EffectiveAgentPaneYoloMode(),
+            globals.IsYoloModePolicyLocked(),
         };
+    }
+
+    Json::Value TerminalPage::_BuildAgentReadyRuntimeConfigPayload(
+        const std::string_view tabId,
+        const std::string_view windowId,
+        const AgentRuntimeConfigSnapshot& config)
+    {
+        Json::Value params{ Json::objectValue };
+        params["tab_id"] = std::string{ tabId };
+        params["window_id"] = std::string{ windowId };
+        params["yolo_enabled"] = config.yoloEnabled;
+        params["yolo_policy_blocked"] = config.yoloPolicyBlocked;
+        return params;
     }
 
     // Hot-propagate runtime agent config to the running wta-helper(s) over the
@@ -2306,6 +2321,8 @@ namespace winrt::TerminalApp::implementation
     //   - delegate_agent + delegate_model : the delegate-tab agent identity
     //   - cloud_models + custom_models + custom_model_selection :
     //     credential-free picker metadata and its selected entry.
+    //   - yolo_enabled + yolo_policy_blocked : the policy-aware global
+    //     default and administrative gate.
     void TerminalPage::_EmitAgentRuntimeConfigIfChanged()
     {
         const auto current = _CaptureAgentRuntimeConfig();
@@ -2328,8 +2345,10 @@ namespace winrt::TerminalApp::implementation
         const bool customModelsChanged =
             last.customModelSelection != current.customModelSelection ||
             last.customModels != current.customModels;
+        const bool yoloChanged = last.yoloEnabled != current.yoloEnabled ||
+                                 last.yoloPolicyBlocked != current.yoloPolicyBlocked;
 
-        if (!autofixChanged && !delegateChanged && !customModelsChanged)
+        if (!autofixChanged && !delegateChanged && !customModelsChanged && !yoloChanged)
         {
             _lastAgentRuntimeConfig = current;
             return;
@@ -2351,6 +2370,11 @@ namespace winrt::TerminalApp::implementation
             params["custom_model_selection"] = winrt::to_string(current.customModelSelection);
             params["custom_models"] =
                 ::Microsoft::Terminal::CustomModels::CatalogToJson(current.customModels);
+        }
+        if (yoloChanged)
+        {
+            params["yolo_enabled"] = current.yoloEnabled;
+            params["yolo_policy_blocked"] = current.yoloPolicyBlocked;
         }
 
         _agentPaneLog("emitting agent_config_changed (hot settings update)");
@@ -3349,6 +3373,21 @@ namespace winrt::TerminalApp::implementation
         {
             helperCmd.append(L" --no-autofix");
         }
+        // Global Yolo preference — ask supported providers to enable their
+        // advertised ACP session mode. Policy-gated via
+        // EffectiveAgentPaneYoloMode() (AgentPolicy::IsYoloModeAllowed()), so
+        // a GPO-blocked org never spawns a helper with this flag set even if
+        // the user's settings.json has agentPane.yoloMode: true.
+        if (globals.EffectiveAgentPaneYoloMode())
+        {
+            helperCmd.append(L" --yolo-mode");
+        }
+        // Tell the helper whether organization policy blocks Yolo outright so
+        // runtime settings and provider config changes stay fail-closed.
+        if (globals.IsYoloModePolicyLocked())
+        {
+            helperCmd.append(L" --yolo-policy-blocked");
+        }
         if (const auto lang = _ResolveEffectiveLanguage(globals); !lang.empty())
         {
             appendHelperFlagValue(L"--language", lang);
@@ -3480,6 +3519,7 @@ namespace winrt::TerminalApp::implementation
         if (const auto agentContent = newPane->GetContent().try_as<winrt::TerminalApp::AgentPaneContent>())
         {
             _WireAgentPaneEvents(agentContent, tab);
+            agentContent.SetSessionsView(intoSessionsView || initialView == "sessions");
             agentContent.SetAgentPanePosition(_AgentPanePositionToContentPosition(panePosition));
             // Record the parts of this spawn a future restore cannot re-derive.
             // Everything else on `helperCmd` — the master pipe, the owner ids,
@@ -6518,35 +6558,47 @@ namespace winrt::TerminalApp::implementation
         // Full model catalogs are intentionally not placed on the helper
         // command line. Once this specific helper reports Connected without a
         // host catalog, deliver the credential-free catalogs over the existing
-        // protocol event channel. The tab id scopes the broadcast to the
-        // requesting helper; its follow-up status marks the catalog ready and
-        // prevents a response loop.
+        // protocol event channel. Every Connected status resends the current
+        // Yolo default/policy in case this helper missed a one-shot hot update
+        // between argv capture and event subscription. Applying unchanged
+        // values is idempotent and emits no follow-up status. The tab id scopes
+        // the broadcast to the requesting helper; its follow-up status marks
+        // the catalog ready and prevents a catalog response loop.
         const bool hostCatalogReady =
             params.isMember("host_catalog_ready") &&
             params["host_catalog_ready"].isBool() &&
             params["host_catalog_ready"].asBool();
-        if (usesHostCatalog &&
-            state == L"connected" &&
-            !hostCatalogReady &&
-            !agentId.empty() &&
+        const bool helperNeedsRuntimeConfig = state == L"connected";
+        const bool helperNeedsHostCatalog =
+            usesHostCatalog && !hostCatalogReady && !agentId.empty();
+        if (state == L"connected" &&
             !effectiveStatusTabId.empty() &&
-            statusTab)
+            statusTab &&
+            (helperNeedsRuntimeConfig || helperNeedsHostCatalog))
         {
             const auto& globals = _settings.GlobalSettings();
-            const auto customModels =
-                ::Microsoft::Terminal::CustomModels::CaptureCatalog(
-                    globals.CustomModelProviders());
-            Json::Value config{ Json::objectValue };
+            auto config = helperNeedsRuntimeConfig ?
+                              _BuildAgentReadyRuntimeConfigPayload(
+                                  winrt::to_string(effectiveStatusTabId),
+                                  std::to_string(_WindowProperties.WindowId()),
+                                  _CaptureAgentRuntimeConfig()) :
+                              Json::Value{ Json::objectValue };
             config["tab_id"] = winrt::to_string(effectiveStatusTabId);
-            config["target_agent_id"] = winrt::to_string(agentId);
-            config["cloud_models"] = _CloudModelOptionsToJson(agentId);
-            config["custom_models"] =
-                ::Microsoft::Terminal::CustomModels::CatalogToJson(customModels);
-            config["custom_model_selection"] =
-                _FindSelectedCustomModel(globals) ?
-                    winrt::to_string(globals.CustomModelSelection()) :
-                    std::string{};
-            _agentPaneLog("OnAgentStatusChanged: delivering model catalogs over protocol");
+            if (helperNeedsHostCatalog)
+            {
+                const auto customModels =
+                    ::Microsoft::Terminal::CustomModels::CaptureCatalog(
+                        globals.CustomModelProviders());
+                config["target_agent_id"] = winrt::to_string(agentId);
+                config["cloud_models"] = _CloudModelOptionsToJson(agentId);
+                config["custom_models"] =
+                    ::Microsoft::Terminal::CustomModels::CatalogToJson(customModels);
+                config["custom_model_selection"] =
+                    _FindSelectedCustomModel(globals) ?
+                        winrt::to_string(globals.CustomModelSelection()) :
+                        std::string{};
+            }
+            _agentPaneLog("OnAgentStatusChanged: delivering helper runtime config over protocol");
             _RaiseProtocolEvent("agent_config_changed", config);
         }
 
@@ -6556,11 +6608,24 @@ namespace winrt::TerminalApp::implementation
         const auto update = [&](const winrt::com_ptr<Tab>& tabImpl) {
             if (const auto content = tabImpl->FindAgentPaneContent())
             {
+                const auto impl = winrt::get_self<winrt::TerminalApp::implementation::AgentPaneContent>(content);
+                const bool helperWasReady = impl->IsHelperEventReady();
                 // UpdateAgentStatus also caches helper-event readiness. In
                 // helper startup, subscribe_events precedes App construction
                 // and every publish_agent_status call, so the first routed
                 // status proves this pane can receive later settings events.
                 content.UpdateAgentStatus(name, version, model, state, backend);
+                if (!helperWasReady)
+                {
+                    // The user can open or switch this pane before the helper
+                    // subscribes to WT protocol events. Re-send the locally
+                    // applied state when the first agent_status proves the
+                    // listener is ready, before a startup projection with the
+                    // helper's default pane_open=false can re-stash it.
+                    const std::string_view view = impl->IsSessionsView() ? "sessions" : "chat";
+                    const bool paneOpen = !tabImpl->HasStashedAgentPane();
+                    _RequestAgentStateForTab(tabImpl, view, paneOpen);
+                }
             }
         };
         if (!tabId.empty())
@@ -6663,6 +6728,22 @@ namespace winrt::TerminalApp::implementation
         {
             view = params["view"].asString();
             logSuffix += " view=" + *view;
+        }
+        // Before the first agent_status, the helper may not have subscribed
+        // when C++ sent the user's latest pane/view intent. During that narrow
+        // startup window, the locally applied physical state is authoritative;
+        // applying the helper's default projection can undo an open/close or
+        // view switch. The first status replays the physical state to WTA,
+        // after which normal single-writer projections resume.
+        if (const auto content = targetTab->FindAgentPaneContent())
+        {
+            const auto impl = winrt::get_self<implementation::AgentPaneContent>(content);
+            if (!impl->IsHelperEventReady())
+            {
+                wantOpen.reset();
+                view.reset();
+                logSuffix += " pre_ready_local_state_authoritative";
+            }
         }
         bool panePositionSpecified = false;
         std::optional<winrt::hstring> panePositionOverride;

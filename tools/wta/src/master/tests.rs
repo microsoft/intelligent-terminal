@@ -15,6 +15,7 @@ fn empty_agent_cell() -> AgentCell {
 fn unbound_test_agent(key: &str) -> Arc<AgentCli> {
     Arc::new(AgentCli {
         instance_id: AgentInstanceId::new_v4(),
+        resolved_agent_id: "copilot".to_string(),
         conn: client_connection_to_model_agent(
             false,
             Arc::new(std::sync::atomic::AtomicBool::new(false)),
@@ -428,6 +429,7 @@ async fn delayed_clean_probe_does_not_block_initialize_and_notifies_bound_helper
             let legacy_hit = Arc::new(std::sync::atomic::AtomicBool::new(false));
             let agent = Arc::new(AgentCli {
                 instance_id: AgentInstanceId::new_v4(),
+                resolved_agent_id: "copilot".to_string(),
                 conn: client_connection_to_model_agent(false, config_hit, legacy_hit),
                 cached_init_resp: acp::schema::v1::InitializeResponse::new(
                     acp::schema::ProtocolVersion::V1,
@@ -465,6 +467,11 @@ async fn delayed_clean_probe_does_not_block_initialize_and_notifies_bound_helper
             assert!(
                 wta_meta.proposal_mcp.is_none(),
                 "unavailable session MCP must not be advertised"
+            );
+            assert_eq!(
+                wta_meta.resolved_agent_id.as_deref(),
+                Some("copilot"),
+                "the helper must receive the master-resolved Agent identity"
             );
 
             let mut response = initialize_response_for_agent(&agent, true)
@@ -511,6 +518,55 @@ async fn delayed_clean_probe_does_not_block_initialize_and_notifies_bound_helper
 }
 
 #[tokio::test(flavor = "current_thread")]
+async fn initialize_response_preserves_ready_cloud_catalog_with_identity_and_proposal_meta() {
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let config_hit = Arc::new(std::sync::atomic::AtomicBool::new(false));
+            let legacy_hit = Arc::new(std::sync::atomic::AtomicBool::new(false));
+            let agent = AgentCli {
+                instance_id: AgentInstanceId::new_v4(),
+                resolved_agent_id: "copilot".to_string(),
+                conn: client_connection_to_model_agent(false, config_hit, legacy_hit),
+                cached_init_resp: acp::schema::v1::InitializeResponse::new(
+                    acp::schema::ProtocolVersion::V1,
+                ),
+                cli_source: Some(crate::agent_sessions::CliSource::Copilot),
+                source: crate::agent_source::AgentSource::Host,
+                cmd_key: "ready-catalog-agent".to_string(),
+                cloud_catalog: Mutex::new(NativeCloudCatalogState::Ready(NativeCloudCatalog {
+                    models: vec![crate::app::AcpModelInfo {
+                        id: "cloud-ready".to_string(),
+                        name: "Cloud Ready".to_string(),
+                        description: None,
+                    }],
+                    source: CloudCatalogSource::Helper,
+                })),
+                bound_helpers: Mutex::new(HashSet::new()),
+                host_list_cache: Mutex::new(None),
+                listed_ever: Mutex::new(HashSet::new()),
+            };
+
+            let mut response = initialize_response_for_agent(&agent, true)
+                .await
+                .expect("initialize metadata serializes");
+            let wta_meta = crate::session_registry::extract_wta_meta(&mut response.meta);
+            let catalog =
+                crate::protocol::acp::model_select::cloud_catalog_from_wta_meta(&wta_meta);
+
+            assert_eq!(
+                catalog.models.len(),
+                1,
+                "identity metadata must preserve the catalog"
+            );
+            assert_eq!(catalog.models[0].id, "cloud-ready");
+            assert_eq!(catalog.source.as_deref(), Some("helper"));
+            assert_eq!(wta_meta.resolved_agent_id.as_deref(), Some("copilot"));
+            assert_eq!(wta_meta.proposal_mcp.as_deref(), Some("http-v1"));
+        })
+        .await;
+}
+
+#[tokio::test(flavor = "current_thread")]
 async fn failed_clean_probe_is_recorded_without_catalog_delivery() {
     tokio::task::LocalSet::new()
         .run_until(async {
@@ -525,6 +581,7 @@ async fn failed_clean_probe_is_recorded_without_catalog_delivery() {
 
             let agent = Arc::new(AgentCli {
                 instance_id: AgentInstanceId::new_v4(),
+                resolved_agent_id: "copilot".to_string(),
                 conn: client_connection_to_model_agent(
                     false,
                     Arc::new(std::sync::atomic::AtomicBool::new(false)),
@@ -748,6 +805,7 @@ async fn model_scoped_agent_retires_only_after_its_final_helper_unbinds() {
             let key = "model:test-agent".to_string();
             let agent = Arc::new(AgentCli {
                 instance_id: AgentInstanceId::new_v4(),
+                resolved_agent_id: "copilot".to_string(),
                 conn: client_connection_to_model_agent(
                     false,
                     Arc::new(std::sync::atomic::AtomicBool::new(false)),
@@ -797,6 +855,7 @@ async fn helper_claim_retries_when_captured_agent_cell_is_replaced() {
             let make_agent = || {
                 Arc::new(AgentCli {
                     instance_id: AgentInstanceId::new_v4(),
+                    resolved_agent_id: "copilot".to_string(),
                     conn: client_connection_to_model_agent(
                         false,
                         Arc::new(std::sync::atomic::AtomicBool::new(false)),
@@ -1974,6 +2033,7 @@ async fn pooled_agents_keep_model_switch_channels_isolated() {
             let a_legacy_hit = Arc::new(AtomicBool::new(false));
             let agent_a = Arc::new(AgentCli {
                 instance_id: AgentInstanceId::new_v4(),
+                resolved_agent_id: "copilot".to_string(),
                 conn: client_connection_to_model_agent(
                     true,
                     Arc::clone(&a_config_hit),
@@ -1995,6 +2055,7 @@ async fn pooled_agents_keep_model_switch_channels_isolated() {
             let b_legacy_hit = Arc::new(AtomicBool::new(false));
             let agent_b = Arc::new(AgentCli {
                 instance_id: AgentInstanceId::new_v4(),
+                resolved_agent_id: "copilot".to_string(),
                 conn: client_connection_to_model_agent(
                     false,
                     Arc::clone(&b_config_hit),
@@ -2056,6 +2117,7 @@ async fn direct_resume_updates_model_switch_channel_from_load_response() {
             let legacy_hit = Arc::new(AtomicBool::new(false));
             let agent = Arc::new(AgentCli {
                 instance_id: AgentInstanceId::new_v4(),
+                resolved_agent_id: "copilot".to_string(),
                 conn: client_connection_to_model_agent(
                     false,
                     Arc::clone(&config_hit),
@@ -2118,6 +2180,7 @@ async fn new_session_timeout_is_enforced_by_master_forwarder() {
             let agent = empty_agent_cell();
             let _ = agent.set(Arc::new(AgentCli {
                 instance_id: AgentInstanceId::new_v4(),
+                resolved_agent_id: "copilot".to_string(),
                 conn: client_connection_to_pending_new_session_agent(),
                 cached_init_resp: acp::schema::v1::InitializeResponse::new(
                     acp::schema::ProtocolVersion::V1,
@@ -2271,6 +2334,7 @@ async fn load_session_gate_timeout_does_not_reach_agent_or_mutate_state() {
             assert!(agent
                 .set(Arc::new(AgentCli {
                     instance_id: agent_instance,
+                    resolved_agent_id: "copilot".to_string(),
                     conn: client_connection_to_pending_load_session_agent(load_arrivals_tx),
                     cached_init_resp,
                     cli_source: Some(crate::agent_sessions::CliSource::Copilot),
@@ -2358,6 +2422,7 @@ async fn load_session_timeout_rolls_back_replacement_state_and_releases_gate() {
             assert!(agent
                 .set(Arc::new(AgentCli {
                     instance_id: agent_instance,
+                    resolved_agent_id: "copilot".to_string(),
                     conn: client_connection_to_pending_load_session_agent(load_arrivals_tx),
                     cached_init_resp,
                     cli_source: Some(crate::agent_sessions::CliSource::Copilot),
@@ -2470,6 +2535,7 @@ async fn helper_close_session_physically_closes_and_retires_owned_session() {
             assert!(agent
                 .set(Arc::new(AgentCli {
                     instance_id: agent_instance_id,
+                    resolved_agent_id: "copilot".to_string(),
                     conn: client_connection_to_controlled_new_session_agent(
                         events_tx,
                         Arc::clone(&live_sessions),
@@ -2596,6 +2662,7 @@ async fn master_reset_tab_session_resolves_owner_and_physically_retires_session(
                 .close = Some(acp::schema::v1::SessionCloseCapabilities::new());
             let agent = Arc::new(AgentCli {
                 instance_id: agent_instance_id,
+                resolved_agent_id: "copilot".to_string(),
                 conn: client_connection_to_controlled_new_session_agent(
                     events_tx,
                     Arc::clone(&live_sessions),
@@ -2780,6 +2847,7 @@ async fn retirement_event_physically_closes_once_and_replays_completion() {
                 .close = Some(acp::schema::v1::SessionCloseCapabilities::new());
             let agent = Arc::new(AgentCli {
                 instance_id: AgentInstanceId::new_v4(),
+                resolved_agent_id: "copilot".to_string(),
                 conn: client_connection_to_controlled_new_session_agent_with_close_result(
                     events_tx,
                     Arc::clone(&live_sessions),
@@ -3370,6 +3438,7 @@ async fn scope_all_retires_ownerless_helper_live_route_directly() {
                 .close = Some(acp::schema::v1::SessionCloseCapabilities::new());
             let agent = Arc::new(AgentCli {
                 instance_id: AgentInstanceId::new_v4(),
+                resolved_agent_id: "copilot".to_string(),
                 conn: client_connection_to_controlled_new_session_agent_with_close_result(
                     events_tx,
                     Arc::clone(&live_sessions),
@@ -3489,6 +3558,7 @@ async fn scope_all_captured_helper_disconnect_still_closes_once() {
                 .close = Some(acp::schema::v1::SessionCloseCapabilities::new());
             let agent = Arc::new(AgentCli {
                 instance_id: AgentInstanceId::new_v4(),
+                resolved_agent_id: "copilot".to_string(),
                 conn: client_connection_to_controlled_new_session_agent_with_close_result(
                     events_tx,
                     Arc::clone(&live_sessions),
@@ -3577,6 +3647,7 @@ async fn scope_all_retirement_captures_orphan_after_route_drop_before_connected_
                 .close = Some(acp::schema::v1::SessionCloseCapabilities::new());
             let agent = Arc::new(AgentCli {
                 instance_id: AgentInstanceId::new_v4(),
+                resolved_agent_id: "copilot".to_string(),
                 conn: client_connection_to_controlled_new_session_agent_with_close_result(
                     events_tx,
                     Arc::clone(&live_sessions),
@@ -3792,6 +3863,7 @@ async fn orphan_retirement_blocked_cancel_uses_total_budget() {
                 .close = Some(acp::schema::v1::SessionCloseCapabilities::new());
             let agent = Arc::new(AgentCli {
                 instance_id: AgentInstanceId::new_v4(),
+                resolved_agent_id: "copilot".to_string(),
                 conn: client_connection_to_blocking_cancel_agent(events_tx),
                 cached_init_resp,
                 cli_source: Some(crate::agent_sessions::CliSource::Copilot),
@@ -3893,6 +3965,7 @@ async fn scope_all_physically_closes_ownerless_orphaned_session() {
                 .close = Some(acp::schema::v1::SessionCloseCapabilities::new());
             let agent = Arc::new(AgentCli {
                 instance_id: AgentInstanceId::new_v4(),
+                resolved_agent_id: "copilot".to_string(),
                 conn: client_connection_to_controlled_new_session_agent_with_close_result(
                     events_tx,
                     Arc::clone(&live_sessions),
@@ -3979,6 +4052,7 @@ async fn scope_all_preserves_ownerless_orphan_claimed_by_replacement_route() {
                 .close = Some(acp::schema::v1::SessionCloseCapabilities::new());
             let agent = Arc::new(AgentCli {
                 instance_id: AgentInstanceId::new_v4(),
+                resolved_agent_id: "copilot".to_string(),
                 conn: client_connection_to_controlled_new_session_agent_with_close_result(
                     events_tx,
                     Arc::clone(&live_sessions),
@@ -4300,6 +4374,7 @@ async fn scope_all_waits_for_ownerless_pending_transaction_cleanup() {
                 .close = Some(acp::schema::v1::SessionCloseCapabilities::new());
             let agent = Arc::new(AgentCli {
                 instance_id: AgentInstanceId::new_v4(),
+                resolved_agent_id: "copilot".to_string(),
                 conn: client_connection_to_controlled_new_session_agent(
                     events_tx,
                     Arc::clone(&live_sessions),
@@ -4404,6 +4479,7 @@ async fn scope_all_unsupported_retirement_reports_failed_owner_tab() {
             let live_sessions = Arc::new(Mutex::new(HashSet::from([session_id.clone()])));
             let agent = Arc::new(AgentCli {
                 instance_id: AgentInstanceId::new_v4(),
+                resolved_agent_id: "gemini".to_string(),
                 conn: client_connection_to_controlled_new_session_agent_with_close_result(
                     events_tx,
                     Arc::clone(&live_sessions),
@@ -4487,6 +4563,7 @@ async fn scope_all_starts_independent_session_closes_concurrently() {
                 .close = Some(acp::schema::v1::SessionCloseCapabilities::new());
             let agent_a = Arc::new(AgentCli {
                 instance_id: AgentInstanceId::new_v4(),
+                resolved_agent_id: "copilot".to_string(),
                 conn: client_connection_to_blocking_close_agent(events_tx.clone()),
                 cached_init_resp: cached_init_resp.clone(),
                 cli_source: Some(crate::agent_sessions::CliSource::Copilot),
@@ -4499,6 +4576,7 @@ async fn scope_all_starts_independent_session_closes_concurrently() {
             });
             let agent_b = Arc::new(AgentCli {
                 instance_id: AgentInstanceId::new_v4(),
+                resolved_agent_id: "gemini".to_string(),
                 conn: client_connection_to_blocking_close_agent(events_tx),
                 cached_init_resp,
                 cli_source: Some(crate::agent_sessions::CliSource::Gemini),
@@ -4626,6 +4704,7 @@ async fn retirement_uses_one_deadline_for_close_wait_and_forced_cleanup() {
                 .close = Some(acp::schema::v1::SessionCloseCapabilities::new());
             let agent = Arc::new(AgentCli {
                 instance_id: AgentInstanceId::new_v4(),
+                resolved_agent_id: "copilot".to_string(),
                 conn: client_connection_to_blocking_close_agent(events_tx),
                 cached_init_resp,
                 cli_source: Some(crate::agent_sessions::CliSource::Copilot),
@@ -4730,6 +4809,7 @@ async fn retirement_lifecycle_gate_wait_does_not_renew_close_budget() {
                 .close = Some(acp::schema::v1::SessionCloseCapabilities::new());
             let agent = Arc::new(AgentCli {
                 instance_id: agent_instance_id,
+                resolved_agent_id: "copilot".to_string(),
                 conn: client_connection_to_blocking_close_agent(events_tx),
                 cached_init_resp,
                 cli_source: Some(crate::agent_sessions::CliSource::Copilot),
@@ -4798,6 +4878,7 @@ async fn retirement_waits_for_and_retires_late_session_new() {
                 .close = Some(acp::schema::v1::SessionCloseCapabilities::new());
             let agent = Arc::new(AgentCli {
                 instance_id: AgentInstanceId::new_v4(),
+                resolved_agent_id: "copilot".to_string(),
                 conn: client_connection_to_controlled_new_session_agent_with_close_result(
                     events_tx,
                     Arc::clone(&live_sessions),
@@ -4912,6 +4993,7 @@ async fn retirement_timeout_cleans_before_completion_and_fences_late_session_new
                 .close = Some(acp::schema::v1::SessionCloseCapabilities::new());
             let agent = Arc::new(AgentCli {
                 instance_id: AgentInstanceId::new_v4(),
+                resolved_agent_id: "copilot".to_string(),
                 conn: client_connection_to_controlled_new_session_agent_with_close_result(
                     events_tx,
                     Arc::clone(&live_sessions),
@@ -5164,6 +5246,7 @@ async fn active_retirement_follows_tab_rename_and_clears_moved_fence_on_disconne
                 .close = Some(acp::schema::v1::SessionCloseCapabilities::new());
             let agent = Arc::new(AgentCli {
                 instance_id: AgentInstanceId::new_v4(),
+                resolved_agent_id: "copilot".to_string(),
                 conn: client_connection_to_blocking_close_agent(events_tx),
                 cached_init_resp,
                 cli_source: Some(crate::agent_sessions::CliSource::Copilot),
@@ -5295,6 +5378,7 @@ async fn close_by_tab_retires_session_new_that_finishes_after_tab_destruction() 
                 .close = Some(acp::schema::v1::SessionCloseCapabilities::new());
             let agent = Arc::new(AgentCli {
                 instance_id: agent_instance_id,
+                resolved_agent_id: "copilot".to_string(),
                 conn: client_connection_to_controlled_new_session_agent(
                     events_tx,
                     Arc::clone(&live_sessions),
@@ -5440,6 +5524,7 @@ async fn disconnect_during_session_new_fences_late_result() {
                 .close = Some(acp::schema::v1::SessionCloseCapabilities::new());
             let agent = Arc::new(AgentCli {
                 instance_id: agent_instance_id,
+                resolved_agent_id: "copilot".to_string(),
                 conn: client_connection_to_controlled_new_session_agent(
                     events_tx,
                     Arc::clone(&live_sessions),
@@ -5549,6 +5634,7 @@ async fn disconnect_tombstone_rejects_queued_replacement_after_in_flight_failure
             let live_sessions = Arc::new(Mutex::new(HashSet::new()));
             let agent = Arc::new(AgentCli {
                 instance_id: AgentInstanceId::new_v4(),
+                resolved_agent_id: "copilot".to_string(),
                 conn: client_connection_to_controlled_new_session_agent(
                     events_tx,
                     Arc::clone(&live_sessions),
@@ -5680,6 +5766,7 @@ async fn disconnect_during_session_load_fences_late_result() {
                 .close = Some(acp::schema::v1::SessionCloseCapabilities::new());
             let agent = Arc::new(AgentCli {
                 instance_id: agent_instance_id,
+                resolved_agent_id: "copilot".to_string(),
                 conn: client_connection_to_controlled_load_session_agent(
                     events_tx,
                     Arc::clone(&live_sessions),
@@ -5823,6 +5910,7 @@ async fn session_new_result_is_closed_when_helper_forwarder_disappears() {
                 .close = Some(acp::schema::v1::SessionCloseCapabilities::new());
             let agent = Arc::new(AgentCli {
                 instance_id: AgentInstanceId::new_v4(),
+                resolved_agent_id: "copilot".to_string(),
                 conn: client_connection_to_controlled_new_session_agent(
                     events_tx,
                     Arc::clone(&live_sessions),
@@ -5904,6 +5992,7 @@ async fn close_by_tab_resolves_pre_registered_load_route_without_last_session_me
                 .close = Some(acp::schema::v1::SessionCloseCapabilities::new());
             let agent = Arc::new(AgentCli {
                 instance_id: agent_instance_id,
+                resolved_agent_id: "copilot".to_string(),
                 conn: client_connection_to_controlled_new_session_agent(
                     events_tx,
                     Arc::clone(&live_sessions),
@@ -6096,6 +6185,7 @@ async fn overlapping_new_sessions_retire_the_intermediate_replacement() {
             assert!(agent
                 .set(Arc::new(AgentCli {
                     instance_id: agent_instance_id,
+                    resolved_agent_id: "copilot".to_string(),
                     conn: client_connection_to_controlled_new_session_agent(
                         events_tx,
                         Arc::clone(&live_sessions),
@@ -6272,6 +6362,7 @@ async fn unsupported_session_close_capability_cancels_and_logically_retires_sess
             assert!(agent
                 .set(Arc::new(AgentCli {
                     instance_id: agent_instance_id,
+                    resolved_agent_id: "gemini".to_string(),
                     conn: client_connection_to_controlled_new_session_agent_with_close_result(
                         events_tx,
                         Arc::clone(&live_sessions),
@@ -6446,6 +6537,7 @@ async fn advertised_but_unimplemented_session_close_cancels_and_logically_retire
                 .close = Some(acp::schema::v1::SessionCloseCapabilities::new());
             let agent = Arc::new(AgentCli {
                 instance_id: agent_instance_id,
+                resolved_agent_id: "gemini".to_string(),
                 conn: client_connection_to_controlled_new_session_agent_with_close_result(
                     events_tx,
                     Arc::clone(&live_sessions),
@@ -6610,6 +6702,7 @@ async fn close_failure_keeps_predecessor_and_does_not_create_replacement() {
             assert!(agent
                 .set(Arc::new(AgentCli {
                     instance_id: agent_instance_id,
+                    resolved_agent_id: "copilot".to_string(),
                     conn: client_connection_to_controlled_new_session_agent(
                         events_tx,
                         Arc::clone(&live_sessions),
@@ -6808,6 +6901,7 @@ async fn load_close_failure_restores_target_route_and_capability() {
                 agent
                     .set(Arc::new(AgentCli {
                         instance_id: agent_instance,
+                        resolved_agent_id: "copilot".to_string(),
                         conn: client_connection_to_controlled_new_session_agent(
                             events_tx,
                             Arc::clone(&live_sessions),
@@ -6954,6 +7048,7 @@ async fn load_close_failure_closes_target_when_restored_route_uses_another_agent
             assert!(agent
                 .set(Arc::new(AgentCli {
                     instance_id: current_agent_instance,
+                    resolved_agent_id: "copilot".to_string(),
                     conn: client_connection_to_controlled_new_session_agent(
                         events_tx,
                         Arc::clone(&live_sessions),
@@ -7078,6 +7173,7 @@ async fn run_target_rebound_during_predecessor_close_failure(rebound_to_current_
     assert!(agent
         .set(Arc::new(AgentCli {
             instance_id: current_agent_instance,
+            resolved_agent_id: "copilot".to_string(),
             conn: client_connection_to_rebind_during_close_agent(old_session.clone(), events_tx,),
             cached_init_resp,
             cli_source: Some(crate::agent_sessions::CliSource::Copilot),
@@ -7223,6 +7319,7 @@ async fn orphan_rebind_close_failure_does_not_mark_target_owned_by_another_helpe
             assert!(agent
                 .set(Arc::new(AgentCli {
                     instance_id: current_agent_instance,
+                    resolved_agent_id: "copilot".to_string(),
                     conn: client_connection_to_rebind_during_close_agent(
                         old_session.clone(),
                         events_tx,
@@ -7354,6 +7451,7 @@ async fn load_reserves_time_to_close_loaded_target_after_predecessor_timeout() {
             assert!(agent
                 .set(Arc::new(AgentCli {
                     instance_id: agent_instance_id,
+                    resolved_agent_id: "copilot".to_string(),
                     conn: client_connection_to_deadline_rollback_agent(
                         old_session.clone(),
                         events_tx,
@@ -7742,6 +7840,7 @@ async fn prompt_forward_survives_reentrant_permission() {
             let agent = empty_agent_cell();
             let _ = agent.set(Arc::new(AgentCli {
                 instance_id: AgentInstanceId::new_v4(),
+                resolved_agent_id: "copilot".to_string(),
                 conn: agent_conn,
                 cached_init_resp: acp::schema::v1::InitializeResponse::new(
                     acp::schema::ProtocolVersion::V1,
@@ -8522,6 +8621,7 @@ async fn replaced_session_already_rebound_is_not_physically_closed() {
                 .close = Some(acp::schema::v1::SessionCloseCapabilities::new());
             let agent = AgentCli {
                 instance_id: AgentInstanceId::new_v4(),
+                resolved_agent_id: "copilot".to_string(),
                 conn: client_connection_to_blocking_close_agent(events_tx),
                 cached_init_resp,
                 cli_source: Some(crate::agent_sessions::CliSource::Copilot),
@@ -8588,6 +8688,7 @@ async fn physical_close_allows_agent_callback_route_lookup_before_response() {
                 .close = Some(acp::schema::v1::SessionCloseCapabilities::new());
             let agent = AgentCli {
                 instance_id: agent_instance_id,
+                resolved_agent_id: "copilot".to_string(),
                 conn: client_connection_to_callback_close_agent(Arc::clone(&state), callback_tx),
                 cached_init_resp,
                 cli_source: Some(crate::agent_sessions::CliSource::Copilot),
@@ -8703,6 +8804,7 @@ async fn physical_close_blocks_rebind_until_retirement_completes() {
                 .close = Some(acp::schema::v1::SessionCloseCapabilities::new());
             let agent = Arc::new(AgentCli {
                 instance_id: agent_instance_id,
+                resolved_agent_id: "copilot".to_string(),
                 conn: client_connection_to_blocking_close_agent(events_tx),
                 cached_init_resp,
                 cli_source: Some(crate::agent_sessions::CliSource::Copilot),
@@ -9914,6 +10016,15 @@ fn listing_agent_from(
     source: crate::agent_source::AgentSource,
     ids: &[&str],
 ) -> Arc<AgentCli> {
+    let resolved_agent_id = match cli.as_ref() {
+        Some(crate::agent_sessions::CliSource::Claude) => "claude".to_string(),
+        Some(crate::agent_sessions::CliSource::Codex) => "codex".to_string(),
+        Some(crate::agent_sessions::CliSource::Copilot) => "copilot".to_string(),
+        Some(crate::agent_sessions::CliSource::Gemini) => "gemini".to_string(),
+        Some(crate::agent_sessions::CliSource::OpenCode) => "opencode".to_string(),
+        Some(crate::agent_sessions::CliSource::Unknown(id)) => id.clone(),
+        None => "unknown".to_string(),
+    };
     let mut cached_init_resp =
         acp::schema::v1::InitializeResponse::new(acp::schema::ProtocolVersion::V1);
     cached_init_resp
@@ -9922,6 +10033,7 @@ fn listing_agent_from(
         .list = Some(acp::schema::v1::SessionListCapabilities::default());
     Arc::new(AgentCli {
         instance_id: AgentInstanceId::new_v4(),
+        resolved_agent_id,
         conn: client_connection_to_listing_agent(ids.iter().map(|s| s.to_string()).collect()),
         cached_init_resp,
         cli_source: cli.clone(),

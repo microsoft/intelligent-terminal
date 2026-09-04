@@ -238,4 +238,5 @@ config_picker.title: "Munkamenet-konfiguráció (↑ ↓ • Enter • Esc)"
 system.no_config_options: "A csatlakoztatott ügynök nem hirdetett meg konfigurálható munkamenet-beállításokat."
 # {option} is an Agent-provided option name; {error} is the ACP error.
 system.config_update_failed: "A(z) %{option} frissítése sikertelen: %{error}"
+system.provider_command_blocked_by_policy: "%{command}: A Yolo módot a szervezet szabályzata letiltotta."  # {Locked="Yolo","%{command}"} Shown when AllowYoloMode blocks a provider-advertised privileged command.
 system.model_unknown: "Ismeretlen modell: %{model} — írja be a /model parancsot az elérhető lista megtekintéséhez."  # {Locked="%{model}","/model"}

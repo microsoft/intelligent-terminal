@@ -2902,6 +2902,8 @@
     <value>智能体 Hooks</value>
     <comment>Section header for the Agent Hooks installer (lets users install hook scripts that report agent CLI activity to the agent pane).</comment>
   </data>
+  <data name="AIAgents_YoloMode.Header" xml:space="preserve"><value>使用提供商 Yolo 模式</value><comment>{Locked=&quot;Yolo&quot;} Header for the global setting that asks each AI agent provider to enable its advertised ACP session Yolo capability.</comment></data>
+  <data name="AIAgents_YoloMode.HelpText" xml:space="preserve"><value>使用智能体提供商的 ACP 会话模式来减少或绕过确认。提供商定义由此产生的权限、沙盒、文件访问和网络访问。对于不支持相应模式的提供商，仍会请求权限。</value><comment>{Locked=&quot;ACP&quot;} Risk warning shown under the Yolo toggle. Here provider means the selected AI agent provider, not a network provider.</comment></data>
   <data name="AIAgents_HooksInstall.Header" xml:space="preserve">
     <value>安装智能体 Hook 脚本</value>
     <comment>Header for the Agent Hooks install section.</comment>
@@ -3052,5 +3054,17 @@
   <data name="AIAgents_OpenAICompatibleModelDescription" xml:space="preserve">
     <value>{} | {} | OpenAI 兼容</value>
     <comment>{Locked="{}","OpenAI"} The first {} is replaced with the provider name; the second is replaced with its location.</comment>
+  </data>
+  <data name="AIAgents_YoloOpenCodeWarning.Title" xml:space="preserve"><value>Yolo 模式不适用于 OpenCode</value><comment>{Locked="Yolo","OpenCode"} InfoBar title shown on the AI Agents settings page when global Yolo mode is on and the installed selected default provider is OpenCode.</comment></data>
+  <data name="AIAgents_YoloOpenCodeWarning.Message" xml:space="preserve"><value>OpenCode 未公布受支持的原生 Yolo 模式。即使此设置已开启，权限请求仍保持交互式。</value><comment>{Locked="OpenCode","Yolo"} InfoBar message shown on the AI Agents settings page. "Advertise" means the provider reports a supported native ACP session capability. "Interactive" means the user must still choose permission options manually.</comment></data>
+  <data name="AIAgents_YoloGeminiInfo.Title" xml:space="preserve"><value>Gemini Yolo 模式取决于工作区信任</value><comment>{Locked="Gemini","Yolo"} InfoBar title shown on the AI Agents settings page when global Yolo mode is on and the installed selected default provider is Gemini.</comment></data>
+  <data name="AIAgents_YoloGeminiInfo.Message" xml:space="preserve"><value>仅当 Gemini 的工作区信任和提供商策略允许时，Gemini 才会启用 Yolo 模式。</value><comment>{Locked="Gemini","Yolo"} InfoBar message shown on the AI Agents settings page. Workspace trust and provider policy are owned by Gemini, not by Intelligent Terminal.</comment></data>
+  <data name="AIAgents_CustomAgentRemove.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>删除</value>
+    <comment>Accessible name for the X button that removes a custom agent from the agent list.</comment>
+  </data>
+  <data name="AIAgents_CustomAgentRemove.[using:Windows.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>删除</value>
+    <comment>Tooltip for the X button that removes a custom agent from the agent list.</comment>
   </data>
 </root>

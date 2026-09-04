@@ -235,14 +235,16 @@ When an adapter requests permission for one of the three terminal-action tools
 advertised by an `intellterm_<public-id>` server, the Helper:
 
 1. verifies the trusted ACP SessionId owns the current issued turn;
-2. silently selects `AllowOnce`; and
-3. does not consume or arm proposal state.
+2. presents the provider's options through the normal permission UI; and
+3. forwards only the user's explicit selection without consuming or arming
+   proposal state.
 
-Unrelated MCP and shell permissions continue through the normal permission UI.
-Permission preflight requests for `request_user_input` are also resolved with
-`AllowOnce`: the blocking modal itself is the user-facing decision point.
-Session MCP tool-call rows are hidden because the recommendation card or
-user-input modal is the user-facing representation.
+WTA never selects `AllowOnce`, `AllowAlways`, or any other ACP permission option.
+Invalid or stale proposal permissions are cancelled. Permission preflight requests
+for `request_user_input`, unrelated MCP permissions, and shell permissions all use
+the same normal permission UI. Session MCP tool-call rows are hidden because the
+permission UI followed by the recommendation card or user-input modal is the
+user-facing representation.
 
 ## HTTP and ACP boundaries
 

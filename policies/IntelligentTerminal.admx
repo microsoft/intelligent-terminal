@@ -56,6 +56,16 @@
         <decimal value="0" />
       </disabledValue>
     </policy>
+    <policy name="AllowYoloMode" class="Both" displayName="$(string.AllowYoloMode)" explainText="$(string.AllowYoloModeText)" key="Software\Policies\Microsoft\IntelligentTerminal" valueName="AllowYoloMode">
+      <parentCategory ref="IntelligentTerminal" />
+      <supportedOn ref="SUPPORTED_IntelligentTerminal_AgentPolicy" />
+      <enabledValue>
+        <decimal value="1" />
+      </enabledValue>
+      <disabledValue>
+        <decimal value="0" />
+      </disabledValue>
+    </policy>
     <policy name="AllowAgentSessionHooks" class="Both" displayName="$(string.AllowAgentSessionHooks)" explainText="$(string.AllowAgentSessionHooksText)" key="Software\Policies\Microsoft\IntelligentTerminal" valueName="AllowAgentSessionHooks">
       <parentCategory ref="IntelligentTerminal" />
       <supportedOn ref="SUPPORTED_IntelligentTerminal_AgentPolicy" />

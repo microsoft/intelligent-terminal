@@ -412,6 +412,13 @@ async fn run_acp_app(
         config.agent_wsl_distro.as_deref(),
     );
     let agent_source_cwd = config.agent_source_cwd.clone();
+    // One helper-owned policy state is shared by the App reducer and every
+    // ACP client connection so settings and policy hot reloads take effect
+    // without process-global state or a helper restart.
+    let yolo_state = Arc::new(std::sync::Mutex::new(crate::app_contracts::YoloState::new(
+        config.yolo_mode,
+        config.yolo_policy_blocked,
+    )));
 
     let local_set = tokio::task::LocalSet::new();
     local_set
@@ -789,6 +796,7 @@ async fn run_acp_app(
                 let source_cwd = agent_source_cwd.clone();
                 let owner_tab = config.owner_tab_id.clone();
                 let initial_load_sid = config.initial_load_session_id.clone();
+                let yolo_state_for_client = Arc::clone(&yolo_state);
                 let proposal_channels_for_pipe = Arc::clone(&proposal_channels);
                 tokio::task::spawn_local(async move {
                     match protocol::acp::client::run_acp_client_over_pipe(
@@ -801,6 +809,7 @@ async fn run_acp_app(
                         source_cwd,
                         owner_tab,
                         initial_load_sid,
+                        yolo_state_for_client,
                         event_tx_for_pipe.clone(),
                         prompt_rx,
                         cancel_rx,
@@ -887,7 +896,7 @@ async fn run_acp_app(
             ));
 
             let autofix_enabled = !config.no_autofix;
-            let mut app_state = app::App::new(prompt_tx, recommendation_tx, permission_tx, cancel_tx, new_session_tx, load_session_tx, drop_session_tx, rename_session_tx, restart_tx, master_ext_tx, debug_capture_enabled, wt_connected, autofix_enabled, Arc::clone(&shell_mgr));
+            let mut app_state = app::App::new(prompt_tx, recommendation_tx, permission_tx, cancel_tx, new_session_tx, load_session_tx, drop_session_tx, rename_session_tx, restart_tx, master_ext_tx, debug_capture_enabled, wt_connected, autofix_enabled, Arc::clone(&shell_mgr), Arc::clone(&yolo_state));
             app_state.set_proposal_channels(Arc::clone(&proposal_channels));
             app_state.set_allowed_agent_ids(config.allowed_agent_ids.clone());
             // Seed the hot-updatable runtime agent config: the shared

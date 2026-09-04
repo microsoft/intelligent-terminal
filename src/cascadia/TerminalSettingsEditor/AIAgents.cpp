@@ -11,11 +11,37 @@
 using namespace winrt::Windows::UI::Xaml;
 using namespace winrt::Windows::UI::Xaml::Controls;
 using namespace winrt::Windows::UI::Xaml::Documents;
+using namespace winrt::Windows::UI::Xaml::Media;
 using namespace winrt::Windows::UI::Xaml::Navigation;
 using namespace winrt::Microsoft::Terminal::Settings::Model;
 
 namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
 {
+    static void _UpdateCustomAgentRemoveVisibility(const Button& button)
+    {
+        const auto entry = button.DataContext().try_as<Editor::AgentEntry>();
+        bool isInExpandedList = false;
+        for (auto parent = VisualTreeHelper::GetParent(button);
+             parent;
+             parent = VisualTreeHelper::GetParent(parent))
+        {
+            if (parent.try_as<ItemsPresenter>())
+            {
+                isInExpandedList = true;
+                break;
+            }
+        }
+
+        const auto visibility =
+            isInExpandedList && entry ?
+                entry.RemoveButtonVisibility() :
+                Visibility::Collapsed;
+        if (button.Visibility() != visibility)
+        {
+            button.Visibility(visibility);
+        }
+    }
+
     AIAgents::AIAgents()
     {
         InitializeComponent();
@@ -50,6 +76,29 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         }
 
         Automation::AutomationProperties::SetName(AcpAgent(), agentHeader);
+    }
+
+    void AIAgents::CustomAgentRemove_Loaded(
+        const IInspectable& sender,
+        const RoutedEventArgs&)
+    {
+        const auto button = sender.as<Button>();
+        _UpdateCustomAgentRemoveVisibility(button);
+
+        // ComboBox may reuse an expanded item's template for the collapsed
+        // selection after Save. Register once per template instance and use
+        // a weak reference so the handler does not extend its lifetime.
+        if (!button.Tag())
+        {
+            button.Tag(box_value(true));
+            const auto weakButton = make_weak(button);
+            button.LayoutUpdated([weakButton](const auto&, const auto&) {
+                if (const auto button = weakButton.get())
+                {
+                    _UpdateCustomAgentRemoveVisibility(button);
+                }
+            });
+        }
     }
 
     void AIAgents::OnNavigatedTo(const NavigationEventArgs& e)

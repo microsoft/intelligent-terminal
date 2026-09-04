@@ -15,6 +15,9 @@ namespace Microsoft.Terminal.Settings.Editor
         String DisplayLabel { get; };
         Boolean IsInstalled { get; };
         Boolean IsAddNew { get; };
+        Windows.UI.Xaml.Visibility RemoveButtonVisibility { get; };
+        void Remove();
+        String CustomCommand { get; };
     }
 
     runtimeclass AcpModelEntry
@@ -61,9 +64,7 @@ namespace Microsoft.Terminal.Settings.Editor
         void SaveCustomAcpAgent();
         void SaveCustomDelegateAgent();
         void CancelCustomAcpAgent();
-        void DeleteCustomAcpAgent();
         void CancelCustomDelegateAgent();
-        void DeleteCustomDelegateAgent();
 
         Boolean ShowAcpModel { get; };
         // List of models the connected agent advertised at session start
@@ -103,6 +104,15 @@ namespace Microsoft.Terminal.Settings.Editor
         // on and the auto-fix GPO must not be locking it off.
         Boolean CanSuggestErrors { get; };
 
+        // Global "Yolo mode" — requests each supported provider's advertised
+        // native ACP session mode. WTA never selects a permission option;
+        // providers without a reviewed native mode continue prompting.
+        // Getter/setter route through EffectiveAgentPaneYoloMode /
+        // IsYoloModePolicyLocked so the toggle reads Off and rejects writes
+        // when org policy blocks it.
+        Boolean AgentPaneYoloMode;
+        Boolean HasAgentPaneYoloMode { get; };
+
         // GPO policy lock indicators.
         // IsAgentPolicyLocked: AllowedAgents policy is active — agent
         //   dropdown options are filtered, but the control stays enabled.
@@ -113,6 +123,7 @@ namespace Microsoft.Terminal.Settings.Editor
         Boolean IsCustomAgentPolicyLocked { get; };
         Boolean IsAutoFixPolicyLocked { get; };
         Boolean IsAgentSessionHooksPolicyLocked { get; };
+        Boolean IsYoloModePolicyLocked { get; };
 
         event Windows.Foundation.TypedEventHandler<AIAgentsViewModel, Microsoft.Terminal.Settings.Model.ShellIntegrationTarget> InitShellIntegrationRequested;
 
@@ -173,5 +184,8 @@ namespace Microsoft.Terminal.Settings.Editor
         void RemoveGeminiHooks();
         void RemoveCodexHooks();
         void RemoveOpenCodeHooks();
+
+        Boolean ShowOpenCodeYoloWarning { get; };
+        Boolean ShowGeminiYoloInfo { get; };
     }
 }

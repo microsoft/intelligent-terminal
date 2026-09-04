@@ -240,4 +240,5 @@ config_picker.title: "[Śéśśïöñ çöñƒïğûŕåţïöñ (↑ ↓ • En
 system.no_config_options: "[Ţĥé çöññéçţéď åğéñţ ďïď ñöţ åďṽéŕţïśé åñÿ çöñƒïğûŕåƀĺé śéśśïöñ öṗţïöñś.!!!! !!!! !!!! !!!! !!!!]"
 # {option} is an Agent-provided option name; {error} is the ACP error.
 system.config_update_failed: "[ƒåïĺéď ţö ûṗďåţé %{option}: %{error}!!!! !!!! !!!!]"
+system.provider_command_blocked_by_policy: "%{command}: [Yolo ḿöďé ïś ďïśåƀĺéď ƀÿ ÿöûŕ öŕğåñïžåţïöñ'ś ṗöĺïçÿ.!!!! !!!! !!!!]"  # {Locked="Yolo","%{command}"} Shown when AllowYoloMode blocks a provider-advertised privileged command.
 system.model_unknown: "[Ûñķñöŵñ ḿöďéĺ %{model} — ţÿṗé /model ţö śéé ţĥé åṽåïĺåƀĺé ĺïśţ.!!!! !!!! !!!! !!!!]"  # {Locked="%{model}","/model"}

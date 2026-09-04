@@ -115,6 +115,16 @@ pub(crate) struct Cli {
     #[arg(long)]
     pub(crate) no_autofix: bool,
 
+    /// Ask supported providers to enable their advertised ACP session Yolo mode.
+    /// Hidden because Terminal owns this setting.
+    #[arg(long, hide = true)]
+    pub(crate) yolo_mode: bool,
+
+    /// Refuse provider-native Yolo changes when organization policy blocks
+    /// them. Hidden because Terminal supplies the policy result.
+    #[arg(long, hide = true)]
+    pub(crate) yolo_policy_blocked: bool,
+
     /// Enter diagnostic setup mode with the given reason instead of connecting directly.
     /// Values: agent-missing, agent-error
     #[arg(long)]

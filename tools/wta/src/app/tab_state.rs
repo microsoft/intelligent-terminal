@@ -648,6 +648,9 @@ pub struct TabSession {
     pub config_picker: ConfigPickerState,
     /// Config option currently awaiting a `session/set_config_option` response.
     pub config_pending_id: Option<String>,
+    /// The pending config option is the provider-native Yolo channel, so no
+    /// prompt may start until its provider acknowledgement arrives.
+    pub native_yolo_config_pending: bool,
     /// True while the `/agent` picker is open for this tab.
     pub agent_picker_open: bool,
     /// Highlighted row in `App::available_agents`.

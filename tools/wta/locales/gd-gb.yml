@@ -238,4 +238,5 @@ config_picker.title: "Rèiteachadh seisein (↑ ↓ • Enter • Esc)"
 system.no_config_options: "Cha do chuir an t-àidhent ceangailte roghainn seisein sam bith a ghabhas rèiteachadh an cèill."
 # {option} is an Agent-provided option name; {error} is the ACP error.
 system.config_update_failed: "Dh’fhàillig ùrachadh %{option}: %{error}"
+system.provider_command_blocked_by_policy: "%{command}: Tha modh Yolo à comas le poileasaidh na buidhne agad."  # {Locked="Yolo","%{command}"} Shown when AllowYoloMode blocks a provider-advertised privileged command.
 system.model_unknown: "Modail neo-aithnichte %{model} — sgrìobh /model gus an liosta a tha ri làimh fhaicinn."  # {Locked="%{model}","/model"}

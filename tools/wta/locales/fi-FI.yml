@@ -239,4 +239,5 @@ config_picker.title: "Istunnon määritys (↑ ↓ • Enter • Esc)"
 system.no_config_options: "Yhdistetty agentti ei ilmoittanut mitään määritettävissä olevia istuntovaihtoehtoja."
 # {option} is an Agent-provided option name; {error} is the ACP error.
 system.config_update_failed: "Kohteen %{option} päivittäminen epäonnistui: %{error}"
+system.provider_command_blocked_by_policy: "%{command}: Yolo-tila on poistettu käytöstä organisaatiosi käytännön mukaan."  # {Locked="Yolo","%{command}"} Shown when AllowYoloMode blocks a provider-advertised privileged command.
 system.model_unknown: "Tuntematon malli %{model} — kirjoita /model nähdäksesi käytettävissä olevien mallien luettelon."  # {Locked="%{model}","/model"}

@@ -20,8 +20,25 @@
 
             <DataTemplate x:Key="AgentEntryTemplate"
                           x:DataType="local:AgentEntry">
-                <TextBlock Text="{x:Bind DisplayLabel}"
-                           Opacity="{x:Bind local:AIAgents.InstalledOpacity(IsInstalled)}" />
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock VerticalAlignment="Center"
+                               Text="{x:Bind DisplayLabel}"
+                               Opacity="{x:Bind local:AIAgents.InstalledOpacity(IsInstalled)}" />
+                    <Button Grid.Column="1"
+                            x:Uid="AIAgents_CustomAgentRemove"
+                            Margin="8,0,0,0"
+                            Click="{x:Bind Remove}"
+                            Loaded="CustomAgentRemove_Loaded"
+                            Style="{StaticResource ExtraSmallButtonStyle}"
+                            Visibility="Collapsed">
+                        <FontIcon FontSize="12"
+                                  Glyph="&#xE711;" />
+                    </Button>
+                </Grid>
             </DataTemplate>
 
             <DataTemplate x:Key="EnumComboBoxTemplate"
@@ -117,27 +134,30 @@
                     <StackPanel Orientation="Vertical"
                                 Visibility="{x:Bind ViewModel.IsCustomAcpAgentSelected, Mode=OneWay}"
                                 Margin="0,8,0,0"
-                                Spacing="4">
+                                Spacing="8">
                         <TextBlock Text="{x:Bind ViewModel.CustomAcpCommandPreview, Mode=OneWay}"
                                    IsTextSelectionEnabled="True"
                                    TextWrapping="Wrap"
                                    Opacity="0.8" />
-                        <StackPanel Orientation="Horizontal" Spacing="8">
+                        <StackPanel Orientation="Horizontal"
+                                    HorizontalAlignment="Right"
+                                    Spacing="8">
                             <Button Content="Edit" Click="{x:Bind ViewModel.EditCustomAcpAgent}" />
-                            <Button Content="Delete" Click="{x:Bind ViewModel.DeleteCustomAcpAgent}" />
                         </StackPanel>
                     </StackPanel>
                     <!--  Editable panel (adding new or editing existing)  -->
                     <StackPanel Orientation="Vertical"
                                 Visibility="{x:Bind ViewModel.IsAddingCustomAcpAgent, Mode=OneWay}"
                                 Margin="0,8,0,0"
-                                Spacing="4">
+                                Spacing="8">
                         <TextBox Text="{x:Bind ViewModel.CustomAcpCommand, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                 PlaceholderText="e.g. my-agent --acp --stdio"
+                                 PlaceholderForeground="{ThemeResource TextFillColorTertiaryBrush}"
+                                 PlaceholderText="my-agent --acp --stdio"
                                  Style="{StaticResource TextBoxSettingStyle}" />
-                        <StackPanel Orientation="Horizontal" Spacing="8">
+                        <StackPanel Orientation="Horizontal"
+                                    HorizontalAlignment="Right"
+                                    Spacing="8">
                             <Button Content="Save" Click="{x:Bind ViewModel.SaveCustomAcpAgent}" Style="{StaticResource AccentButtonStyle}" />
-                            <Button Content="Delete" Click="{x:Bind ViewModel.DeleteCustomAcpAgent}" />
                             <Button Content="Cancel" Click="{x:Bind ViewModel.CancelCustomAcpAgent}" />
                         </StackPanel>
                     </StackPanel>
@@ -286,12 +306,48 @@
                           Style="{StaticResource ComboBoxSettingStyle}" />
             </local:SettingContainer>
 
+            <!--  Global Yolo preference: asks supported providers to enable
+                their advertised ACP session mode. High-risk toggle, so it
+                is disabled outright (IsYoloModePolicyLocked) when the
+                AllowYoloMode GPO policy blocks it.  -->
+            <local:SettingContainer x:Name="AgentPaneYoloMode"
+                                    x:Uid="AIAgents_YoloMode">
+                <StackPanel>
+                    <ToggleSwitch AutomationProperties.AutomationId="AgentPaneYoloModeToggle"
+                                  IsOn="{x:Bind ViewModel.AgentPaneYoloMode, Mode=TwoWay}"
+                                  IsEnabled="{x:Bind mtu:Converters.InvertBoolean(ViewModel.IsYoloModePolicyLocked), Mode=OneWay}"
+                                  Style="{StaticResource ToggleSwitchInExpanderStyle}" />
+                    <TextBlock x:Uid="AIAgents_PolicyLocked"
+                               Visibility="{x:Bind ViewModel.IsYoloModePolicyLocked, Mode=OneWay}"
+                               Opacity="0.6"
+                               Margin="0,4,0,0" />
+                </StackPanel>
+            </local:SettingContainer>
+            <muxc:InfoBar x:Uid="AIAgents_YoloOpenCodeWarning"
+                          AutomationProperties.AutomationId="OpenCodeYoloCompatibilityInfoBar"
+                          HorizontalAlignment="Stretch"
+                          IsClosable="False"
+                          IsOpen="{x:Bind ViewModel.ShowOpenCodeYoloWarning, Mode=OneWay}"
+                          Margin="0,4,0,0"
+                          MaxWidth="1000"
+                          Severity="Warning"
+                          Visibility="{x:Bind ViewModel.ShowOpenCodeYoloWarning, Mode=OneWay}" />
+            <muxc:InfoBar x:Uid="AIAgents_YoloGeminiInfo"
+                          AutomationProperties.AutomationId="GeminiYoloCompatibilityInfoBar"
+                          HorizontalAlignment="Stretch"
+                          IsClosable="False"
+                          IsOpen="{x:Bind ViewModel.ShowGeminiYoloInfo, Mode=OneWay}"
+                          Margin="0,4,0,0"
+                          MaxWidth="1000"
+                          Severity="Informational"
+                          Visibility="{x:Bind ViewModel.ShowGeminiYoloInfo, Mode=OneWay}" />
+
             <local:SettingContainer x:Name="ShowTokenUsageAndCost"
-                        x:Uid="AIAgents_ShowTokenUsageAndCost">
+                                    x:Uid="AIAgents_ShowTokenUsageAndCost">
                 <ToggleSwitch x:Name="ShowTokenUsageAndCostToggle"
                               MinWidth="0"
                               AutomationProperties.AccessibilityView="Content"
-                    IsOn="{x:Bind ViewModel.ShowTokenUsageAndCost, Mode=TwoWay}" />
+                              IsOn="{x:Bind ViewModel.ShowTokenUsageAndCost, Mode=TwoWay}" />
             </local:SettingContainer>
 
             <!--  Automatic error detection (parent) + Automatic error
@@ -606,26 +662,29 @@
                     <StackPanel Orientation="Vertical"
                                 Visibility="{x:Bind ViewModel.IsCustomDelegateAgentSelected, Mode=OneWay}"
                                 Margin="0,8,0,0"
-                                Spacing="4">
+                                Spacing="8">
                         <TextBlock Text="{x:Bind ViewModel.CustomDelegateCommandPreview, Mode=OneWay}"
                                    IsTextSelectionEnabled="True"
                                    TextWrapping="Wrap"
                                    Opacity="0.8" />
-                        <StackPanel Orientation="Horizontal" Spacing="8">
+                        <StackPanel Orientation="Horizontal"
+                                    HorizontalAlignment="Right"
+                                    Spacing="8">
                             <Button Content="Edit" Click="{x:Bind ViewModel.EditCustomDelegateAgent}" />
-                            <Button Content="Delete" Click="{x:Bind ViewModel.DeleteCustomDelegateAgent}" />
                         </StackPanel>
                     </StackPanel>
                     <StackPanel Orientation="Vertical"
                                 Visibility="{x:Bind ViewModel.IsAddingCustomDelegateAgent, Mode=OneWay}"
                                 Margin="0,8,0,0"
-                                Spacing="4">
+                                Spacing="8">
                         <TextBox Text="{x:Bind ViewModel.CustomDelegateCommand, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                 PlaceholderText="e.g. my-cli --flag"
+                                 PlaceholderForeground="{ThemeResource TextFillColorTertiaryBrush}"
+                                 PlaceholderText="my-cli --flag"
                                  Style="{StaticResource TextBoxSettingStyle}" />
-                        <StackPanel Orientation="Horizontal" Spacing="8">
+                        <StackPanel Orientation="Horizontal"
+                                    HorizontalAlignment="Right"
+                                    Spacing="8">
                             <Button Content="Save" Click="{x:Bind ViewModel.SaveCustomDelegateAgent}" Style="{StaticResource AccentButtonStyle}" />
-                            <Button Content="Delete" Click="{x:Bind ViewModel.DeleteCustomDelegateAgent}" />
                             <Button Content="Cancel" Click="{x:Bind ViewModel.CancelCustomDelegateAgent}" />
                         </StackPanel>
                     </StackPanel>

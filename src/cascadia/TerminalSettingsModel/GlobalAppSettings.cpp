@@ -119,6 +119,22 @@ winrt::com_ptr<GlobalAppSettings> GlobalAppSettings::Copy() const
             globals->_SafeUriSchemes->Append(src);
         }
     }
+    if (_AcpCustomCommands)
+    {
+        globals->_AcpCustomCommands = winrt::single_threaded_vector<hstring>();
+        for (const auto& command : *_AcpCustomCommands)
+        {
+            globals->_AcpCustomCommands->Append(command);
+        }
+    }
+    if (_DelegateCustomCommands)
+    {
+        globals->_DelegateCustomCommands = winrt::single_threaded_vector<hstring>();
+        for (const auto& command : *_DelegateCustomCommands)
+        {
+            globals->_DelegateCustomCommands->Append(command);
+        }
+    }
 
     for (const auto& parent : _parents)
     {
@@ -659,6 +675,20 @@ bool GlobalAppSettings::IsAutoFixPolicyLocked() const
 bool GlobalAppSettings::IsAgentSessionHooksPolicyLocked() const
 {
     return AgentPolicy::GetAgentSessionHooksPolicy() == AgentPolicy::PolicyState::Blocked;
+}
+
+bool GlobalAppSettings::EffectiveAgentPaneYoloMode() const
+{
+    if (!AgentPolicy::IsYoloModeAllowed())
+    {
+        return false;
+    }
+    return AgentPaneYoloMode();
+}
+
+bool GlobalAppSettings::IsYoloModePolicyLocked() const
+{
+    return AgentPolicy::GetYoloModePolicy() == AgentPolicy::PolicyState::Blocked;
 }
 
 // ── Test-only hooks ─────────────────────────────────────────────────
