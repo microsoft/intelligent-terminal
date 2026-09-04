@@ -305,6 +305,7 @@
                                 <TextBox x:Uid="AIAgents_CustomProviderBaseUrl"
                                          AutomationProperties.HelpText="{Binding Text, ElementName=CustomProviderBaseUrlHint}"
                                          PlaceholderForeground="{ThemeResource TextFillColorTertiaryBrush}"
+                                         Style="{StaticResource TextBoxSettingStyle}"
                                          Text="{x:Bind ViewModel.NewCustomModelProviderBaseUrl, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                                 <TextBlock x:Name="CustomProviderBaseUrlHint"
                                            x:Uid="AIAgents_CustomProviderBaseUrlHint"
@@ -316,6 +317,7 @@
                                 <TextBox x:Uid="AIAgents_CustomModelId"
                                          AutomationProperties.HelpText="{Binding Text, ElementName=CustomModelIdHint}"
                                          PlaceholderForeground="{ThemeResource TextFillColorTertiaryBrush}"
+                                         Style="{StaticResource TextBoxSettingStyle}"
                                          Text="{x:Bind ViewModel.NewCustomModelId, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                                 <TextBlock x:Name="CustomModelIdHint"
                                            x:Uid="AIAgents_CustomModelIdHint"
