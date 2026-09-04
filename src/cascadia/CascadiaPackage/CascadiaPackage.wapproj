@@ -25,12 +25,13 @@
     <WtaRustTarget Condition="'$(Platform)'=='x64'">x86_64-pc-windows-msvc</WtaRustTarget>
     <WtaRustTarget Condition="'$(Platform)'=='x86'">i686-pc-windows-msvc</WtaRustTarget>
     <WtaRustTarget Condition="'$(Platform)'=='ARM64'">aarch64-pc-windows-msvc</WtaRustTarget>
-    <!-- Pick only the Cargo profile matching the package configuration. Never
-         put a Debug WTA in a Release package (or vice versa). -->
+    <!-- Pick the matching Cargo profile for the package configuration so a
+         Debug F5 picks up `cargo build` output and a Release build picks up
+         the optimized release output. The opposite profile acts as a fallback. -->
     <WtaRustProfile Condition="'$(Configuration)'=='Debug'">debug</WtaRustProfile>
     <WtaRustProfile Condition="'$(Configuration)'!='Debug'">release</WtaRustProfile>
-    <WtaExplicitTargetPath>$(SolutionDir)tools\wta\target\$(WtaRustTarget)\$(WtaRustProfile)\wta.exe</WtaExplicitTargetPath>
-    <WtaExePath Condition="Exists('$(WtaExplicitTargetPath)')">$(WtaExplicitTargetPath)</WtaExePath>
+    <WtaRustFallbackProfile Condition="'$(Configuration)'=='Debug'">release</WtaRustFallbackProfile>
+    <WtaRustFallbackProfile Condition="'$(Configuration)'!='Debug'">debug</WtaRustFallbackProfile>
   </PropertyGroup>
   <PropertyGroup>
     <ProjectGuid>CA5CAD1A-224A-4171-B13A-F16E576FDD12</ProjectGuid>
@@ -116,19 +117,35 @@
   </ItemGroup>
   <!-- Deploy wta.exe (Rust-built WTA agent) into the package root.
        wta.exe discovers wtcli.exe as a sibling, so both must be co-located.
-       Only the explicit Rust target matching the package architecture and
-       configuration is accepted. The build fails rather than silently using a
-       host-target or cross-profile binary. -->
+       Search order, first existing wins:
+         1. target\$triple\$profile\wta.exe   (explicit target, matching profile)
+         2. target\$profile\wta.exe           (host target, matching profile)
+         3. target\$triple\$fallback\wta.exe  (explicit target, other profile)
+         4. target\$fallback\wta.exe          (host target, other profile)
+       Profile defaults to "debug" for Debug builds and "release" for everything
+       else, so a Debug F5 picks up plain `cargo build` output. -->
   <ItemGroup>
-    <Content Include="$(WtaExePath)" Condition="'$(WtaExePath)'!=''">
+    <Content Include="$(SolutionDir)tools\wta\target\$(WtaRustTarget)\$(WtaRustProfile)\wta.exe"
+             Condition="Exists('$(SolutionDir)tools\wta\target\$(WtaRustTarget)\$(WtaRustProfile)\wta.exe')">
+      <Link>wta.exe</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="$(SolutionDir)tools\wta\target\$(WtaRustProfile)\wta.exe"
+             Condition="!Exists('$(SolutionDir)tools\wta\target\$(WtaRustTarget)\$(WtaRustProfile)\wta.exe') And Exists('$(SolutionDir)tools\wta\target\$(WtaRustProfile)\wta.exe')">
+      <Link>wta.exe</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="$(SolutionDir)tools\wta\target\$(WtaRustTarget)\$(WtaRustFallbackProfile)\wta.exe"
+             Condition="!Exists('$(SolutionDir)tools\wta\target\$(WtaRustTarget)\$(WtaRustProfile)\wta.exe') And !Exists('$(SolutionDir)tools\wta\target\$(WtaRustProfile)\wta.exe') And Exists('$(SolutionDir)tools\wta\target\$(WtaRustTarget)\$(WtaRustFallbackProfile)\wta.exe')">
+      <Link>wta.exe</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="$(SolutionDir)tools\wta\target\$(WtaRustFallbackProfile)\wta.exe"
+             Condition="!Exists('$(SolutionDir)tools\wta\target\$(WtaRustTarget)\$(WtaRustProfile)\wta.exe') And !Exists('$(SolutionDir)tools\wta\target\$(WtaRustProfile)\wta.exe') And !Exists('$(SolutionDir)tools\wta\target\$(WtaRustTarget)\$(WtaRustFallbackProfile)\wta.exe') And Exists('$(SolutionDir)tools\wta\target\$(WtaRustFallbackProfile)\wta.exe')">
       <Link>wta.exe</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
   </ItemGroup>
-  <Target Name="VerifyMatchingWtaBuild" BeforeTargets="_ConvertItems">
-    <Error Condition="'$(WtaExePath)'==''"
-           Text="No $(WtaRustProfile) wta.exe was found for $(Platform). Checked '$(WtaExplicitTargetPath)'. Build WTA for the explicit matching target and Cargo profile before packaging; host-target and cross-profile fallbacks are not allowed." />
-  </Target>
   <!-- Deploy the static wt-agent-hooks bundle next to wta.exe.
        wta resolves <exe-dir>/wt-agent-hooks/ at runtime via
        agent_hooks_installer::bundle::candidate_roots(), feeds the per-CLI
