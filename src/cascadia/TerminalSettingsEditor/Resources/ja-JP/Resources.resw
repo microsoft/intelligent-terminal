@@ -2942,8 +2942,12 @@
     <comment>Section header for user-configured remote endpoints or locally hosted models.</comment>
   </data>
   <data name="AIAgents_CustomModels.HelpText" xml:space="preserve">
-    <value>エージェントを独自の OpenAI 互換エンドポイントに接続します。詳細情報</value>
-    <comment>{Locked="OpenAI"} Explains that the setting connects an AI agent to a user-configured endpoint. "Learn more" is supporting copy from the design.</comment>
+    <value>エージェントを独自の OpenAI 互換エンドポイントに接続します。</value>
+    <comment>{Locked="OpenAI"} Caption under the custom endpoint section title. Include any locale-appropriate spacing before the inline AIAgents_CustomModelsLearnMore hyperlink at the end of this value.</comment>
+  </data>
+  <data name="AIAgents_CustomModelsLearnMore" xml:space="preserve">
+    <value>詳細情報</value>
+    <comment>Inline hyperlink text that follows AIAgents_CustomModels.HelpText and opens documentation about custom providers.</comment>
   </data>
   <data name="AIAgents_CustomProviderUnsupportedForAgent" xml:space="preserve">
     <value>{0} は、OpenAI 互換のカスタム Chat Completions プロバイダーをサポートしていません。保存済みのプロバイダーは、GitHub Copilot または OpenCode に切り替えると使用できます。</value>

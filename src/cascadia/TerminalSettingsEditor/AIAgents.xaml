@@ -169,30 +169,75 @@
                 </Grid>
             </local:SettingContainer>
 
-            <local:SettingContainer x:Name="EmptyCustomModelProviders"
-                                    x:Uid="AIAgents_CustomModels"
-                                    Visibility="{x:Bind mtu:Converters.InvertedBooleanToVisibility(ViewModel.ShowCustomModelProvidersExpander), Mode=OneWay}">
-                <StackPanel MaxWidth="400"
-                            HorizontalAlignment="Right"
-                            Spacing="8">
-                    <Button x:Uid="AIAgents_CustomProviderAdd"
-                            HorizontalAlignment="Right"
-                            Click="{x:Bind ViewModel.AddCustomModelProvider}"
-                            Style="{StaticResource AccentButtonStyle}" />
+            <Grid x:Name="EmptyCustomModelProviders"
+                  Margin="0,4,0,0"
+                  Padding="16,0,8,0"
+                  HorizontalAlignment="Stretch"
+                  Background="{ThemeResource ExpanderHeaderBackground}"
+                  BorderBrush="{ThemeResource ExpanderHeaderBorderBrush}"
+                  BorderThickness="{ThemeResource ExpanderHeaderBorderThickness}"
+                  CornerRadius="{ThemeResource ControlCornerRadius}"
+                  MaxWidth="1000"
+                  MinHeight="64"
+                  MinWidth="{ThemeResource FlyoutThemeMinWidth}"
+                  Visibility="{x:Bind mtu:Converters.InvertedBooleanToVisibility(ViewModel.ShowCustomModelProvidersExpander), Mode=OneWay}">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <StackPanel Grid.Column="0"
+                            Padding="0,12,0,12"
+                            VerticalAlignment="Center">
+                    <TextBlock x:Name="EmptyCustomModelsHeaderText"
+                               Style="{StaticResource SettingsPageItemHeaderStyle}" />
+                    <TextBlock Style="{StaticResource CaptionTextBlockStyle}"
+                               TextWrapping="Wrap">
+                        <Run x:Name="EmptyCustomModelsCaptionPrefix"
+                             Foreground="{ThemeResource TextFillColorSecondaryBrush}" /><Hyperlink NavigateUri="https://github.com/microsoft/intelligent-terminal#custom-providers-byok">
+                            <Run x:Name="EmptyCustomModelsCaptionLink" />
+                        </Hyperlink>
+                    </TextBlock>
                 </StackPanel>
-            </local:SettingContainer>
+                <Button Grid.Column="1"
+                        x:Uid="AIAgents_CustomProviderAdd"
+                        Margin="0,12,0,12"
+                        HorizontalAlignment="Right"
+                        VerticalAlignment="Center"
+                        Click="{x:Bind ViewModel.AddCustomModelProvider}"
+                        Style="{StaticResource AccentButtonStyle}" />
+            </Grid>
 
-            <local:SettingContainer x:Name="CustomModelProvidersExpander"
-                                    x:Uid="AIAgents_CustomModels"
-                                    StartExpanded="{x:Bind ViewModel.IsCustomModelProvidersExpanded, Mode=TwoWay}"
-                                    Style="{StaticResource ExpanderSettingContainerStyleWithComplexPreview}"
-                                    Visibility="{x:Bind ViewModel.ShowCustomModelProvidersExpander, Mode=OneWay}">
-                <local:SettingContainer.CurrentValue>
-                    <Button x:Uid="AIAgents_CustomProviderAdd"
-                            VerticalAlignment="Center"
-                            Click="{x:Bind ViewModel.AddCustomModelProvider}"
-                            Style="{StaticResource AccentButtonStyle}" />
-                </local:SettingContainer.CurrentValue>
+            <muxc:Expander x:Name="CustomModelProvidersExpander"
+                           Margin="0,4,0,0"
+                           HorizontalAlignment="Stretch"
+                           HorizontalContentAlignment="Stretch"
+                           IsExpanded="{x:Bind ViewModel.IsCustomModelProvidersExpanded, Mode=TwoWay}"
+                           Visibility="{x:Bind ViewModel.ShowCustomModelProvidersExpander, Mode=OneWay}">
+                <muxc:Expander.Header>
+                    <Grid MinHeight="64">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Grid.Column="0"
+                                    VerticalAlignment="Center">
+                            <TextBlock x:Name="CustomModelsHeaderText"
+                                       Style="{StaticResource SettingsPageItemHeaderStyle}" />
+                            <TextBlock Style="{StaticResource CaptionTextBlockStyle}"
+                                       TextWrapping="Wrap">
+                                <Run x:Name="CustomModelsCaptionPrefix"
+                                     Foreground="{ThemeResource TextFillColorSecondaryBrush}" /><Hyperlink NavigateUri="https://github.com/microsoft/intelligent-terminal#custom-providers-byok">
+                                    <Run x:Name="CustomModelsCaptionLink" />
+                                </Hyperlink>
+                            </TextBlock>
+                        </StackPanel>
+                        <Button Grid.Column="1"
+                                x:Uid="AIAgents_CustomProviderAdd"
+                                VerticalAlignment="Center"
+                                Click="{x:Bind ViewModel.AddCustomModelProvider}"
+                                Style="{StaticResource AccentButtonStyle}" />
+                    </Grid>
+                </muxc:Expander.Header>
                 <StackPanel>
                     <TextBlock Margin="0,12,0,0"
                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
@@ -252,7 +297,7 @@
                         </ItemsControl.ItemTemplate>
                     </ItemsControl>
 
-                    <Border Padding="0,16,0,16"
+                    <Border Padding="0,8,0,16"
                             Visibility="{x:Bind ViewModel.IsAddingCustomModelProvider, Mode=OneWay}">
                         <StackPanel Spacing="12">
                             <TextBlock x:Uid="AIAgents_CustomProviderAddHeader"
@@ -261,6 +306,7 @@
                             <StackPanel Spacing="4">
                                 <TextBox x:Uid="AIAgents_CustomProviderBaseUrl"
                                          AutomationProperties.HelpText="{Binding Text, ElementName=CustomProviderBaseUrlHint}"
+                                         PlaceholderForeground="{ThemeResource TextFillColorTertiaryBrush}"
                                          Text="{x:Bind ViewModel.NewCustomModelProviderBaseUrl, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                                 <TextBlock x:Name="CustomProviderBaseUrlHint"
                                            x:Uid="AIAgents_CustomProviderBaseUrlHint"
@@ -271,6 +317,7 @@
                             <StackPanel Spacing="4">
                                 <TextBox x:Uid="AIAgents_CustomModelId"
                                          AutomationProperties.HelpText="{Binding Text, ElementName=CustomModelIdHint}"
+                                         PlaceholderForeground="{ThemeResource TextFillColorTertiaryBrush}"
                                          Text="{x:Bind ViewModel.NewCustomModelId, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                                 <TextBlock x:Name="CustomModelIdHint"
                                            x:Uid="AIAgents_CustomModelIdHint"
@@ -307,7 +354,7 @@
                         </StackPanel>
                     </Border>
                 </StackPanel>
-            </local:SettingContainer>
+            </muxc:Expander>
 
             <!--  Pane position  -->
             <local:SettingContainer x:Name="AgentPanePosition"

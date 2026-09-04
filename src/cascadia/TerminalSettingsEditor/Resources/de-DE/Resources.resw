@@ -2942,8 +2942,12 @@
     <comment>Section header for user-configured remote endpoints or locally hosted models.</comment>
   </data>
   <data name="AIAgents_CustomModels.HelpText" xml:space="preserve">
-    <value>Richten Sie einen Agenten auf Ihren eigenen OpenAI-kompatiblen Endpunkt aus. Weitere Informationen</value>
-    <comment>{Locked="OpenAI"} Explains that the setting connects an AI agent to a user-configured endpoint. "Learn more" is supporting copy from the design.</comment>
+    <value>Richten Sie einen Agenten auf Ihren eigenen OpenAI-kompatiblen Endpunkt aus. </value>
+    <comment>{Locked="OpenAI"} Caption under the custom endpoint section title. Include any locale-appropriate spacing before the inline AIAgents_CustomModelsLearnMore hyperlink at the end of this value.</comment>
+  </data>
+  <data name="AIAgents_CustomModelsLearnMore" xml:space="preserve">
+    <value>Weitere Informationen</value>
+    <comment>Inline hyperlink text that follows AIAgents_CustomModels.HelpText and opens documentation about custom providers.</comment>
   </data>
   <data name="AIAgents_CustomProviderUnsupportedForAgent" xml:space="preserve">
     <value>{0} unterstützt keine benutzerdefinierten OpenAI-kompatiblen Chat Completions-Anbieter. Gespeicherte Anbieter bleiben verfügbar, wenn Sie zu GitHub Copilot oder OpenCode wechseln.</value>

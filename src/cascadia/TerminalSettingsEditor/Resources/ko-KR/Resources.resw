@@ -3002,8 +3002,12 @@
     <comment>Section header for user-configured remote endpoints or locally hosted models.</comment>
   </data>
   <data name="AIAgents_CustomModels.HelpText" xml:space="preserve">
-    <value>에이전트가 자체 OpenAI 호환 엔드포인트를 가리키도록 설정합니다. 자세히 알아보기</value>
-    <comment>{Locked="OpenAI"} Explains that the setting connects an AI agent to a user-configured endpoint. "Learn more" is supporting copy from the design.</comment>
+    <value>에이전트가 자체 OpenAI 호환 엔드포인트를 가리키도록 설정합니다. </value>
+    <comment>{Locked="OpenAI"} Caption under the custom endpoint section title. Include any locale-appropriate spacing before the inline AIAgents_CustomModelsLearnMore hyperlink at the end of this value.</comment>
+  </data>
+  <data name="AIAgents_CustomModelsLearnMore" xml:space="preserve">
+    <value>자세히 알아보기</value>
+    <comment>Inline hyperlink text that follows AIAgents_CustomModels.HelpText and opens documentation about custom providers.</comment>
   </data>
   <data name="AIAgents_CustomProviderUnsupportedForAgent" xml:space="preserve">
     <value>{0}은(는) OpenAI 호환 사용자 지정 Chat Completions 공급자를 지원하지 않습니다. 저장된 공급자는 GitHub Copilot 또는 OpenCode로 전환하면 계속 사용할 수 있습니다.</value>

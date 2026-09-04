@@ -23,6 +23,18 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         PageSubtitlePrefix().Text(RS_(L"AIAgents_PageSubtitlePrefix"));
         PageSubtitlePrivacyLink().Text(RS_(L"AIAgents_PageSubtitlePrivacyLink"));
 
+        const auto customModelsHeader = RS_(L"AIAgents_CustomModels/Header");
+        const auto customModelsCaption = RS_(L"AIAgents_CustomModels/HelpText");
+        const auto customModelsLearnMore = RS_(L"AIAgents_CustomModelsLearnMore");
+        EmptyCustomModelsHeaderText().Text(customModelsHeader);
+        EmptyCustomModelsCaptionPrefix().Text(customModelsCaption);
+        EmptyCustomModelsCaptionLink().Text(customModelsLearnMore);
+        CustomModelsHeaderText().Text(customModelsHeader);
+        CustomModelsCaptionPrefix().Text(customModelsCaption);
+        CustomModelsCaptionLink().Text(customModelsLearnMore);
+        Automation::AutomationProperties::SetName(EmptyCustomModelProviders(), customModelsHeader);
+        Automation::AutomationProperties::SetName(CustomModelProvidersExpander(), customModelsHeader);
+
         // Auto-error-detection caption + inline "supported shells" hyperlink.
         AutoErrorDetectionCaptionPrefix().Text(RS_(L"AIAgents_AutoErrorDetectionCaptionPrefix"));
         AutoErrorDetectionCaptionLink().Text(RS_(L"AIAgents_AutoErrorDetectionCaptionLink"));
