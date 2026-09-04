@@ -5259,7 +5259,14 @@ async fn dispatch_prompt_body(
             );
             if prompt_started.get() {
                 drop(tracked_prompt_fut);
+                // ACP updates identify only the session, not the prompt. Do
+                // not synthesize completion on a timeout unless master can
+                // atomically retire this exact session; otherwise late output
+                // can be attached to the next turn on the same session.
                 let _ = (&mut prompt_fut).await;
+                // Some providers flush trailing chunks just after returning
+                // PromptResponse, so a scheduler yield is not a sufficient
+                // compatibility drain here.
                 tokio::time::sleep(std::time::Duration::from_millis(50)).await;
             }
             let _ = event_tx_task.send(AppEvent::AgentMessageEnd {
