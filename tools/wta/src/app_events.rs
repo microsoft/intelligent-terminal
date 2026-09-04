@@ -1450,6 +1450,13 @@ impl App {
                 self.turn_close(&session_id);
                 self.session_tab_mut(&session_id).scroll_to_bottom();
             }
+            AppEvent::PromptCancellationSettled {
+                tab_id,
+                prompt_id,
+                session_id,
+            } => {
+                self.settle_prompt_cancellation(&tab_id, prompt_id, session_id.as_deref());
+            }
             AppEvent::TimingMetric { session_id, note } => {
                 self.session_tab_mut(&session_id).timing_note = Some(note);
             }

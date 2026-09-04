@@ -179,7 +179,7 @@ impl App {
             }
             (TurnState::Surfaced { .. }, _) => false,
             // Chunks while Idle or while cancellation is draining are stale.
-            (TurnState::Idle | TurnState::Cancelling, _) => false,
+            (TurnState::Idle | TurnState::Cancelling { .. }, _) => false,
         }
     }
 
@@ -208,7 +208,7 @@ impl App {
                     "a card is already showing for this turn".to_string(),
                 );
             }
-            TurnState::Idle | TurnState::Cancelling => {
+            TurnState::Idle | TurnState::Cancelling { .. } => {
                 return DirectProposalEvaluation::Stale(
                     "no turn is in flight for this session".to_string(),
                 );
@@ -401,6 +401,9 @@ impl App {
     /// 4. `Streaming` with a buffer — commit it as assistant text.
     pub fn turn_close(&mut self, session_id: &str) {
         if self.session_tab(session_id).turn.is_cancelling() {
+            // The prompt may complete normally just before its cancel signal
+            // is observed. AgentMessageEnd is still a valid producer
+            // quiescence boundary for that cancelled turn.
             self.session_tab_mut(session_id).turn = TurnState::Idle;
             return;
         }
@@ -794,10 +797,13 @@ impl App {
     /// Cancel the in-flight turn owned by a tab. Pane lifecycle cleanup uses
     /// this before a lazily-created ACP session necessarily has an ID.
     pub(super) fn turn_cancel_for_tab(&mut self, target_tab: &str) {
-        let cancellation_pending = self
-            .tab_sessions
-            .get(target_tab)
-            .is_some_and(|tab| tab.turn.is_in_flight());
+        let cancelled_prompt_id = self.tab_sessions.get(target_tab).and_then(|tab| {
+            if tab.turn.is_in_flight() {
+                tab.turn.prompt().map(|prompt| prompt.id)
+            } else {
+                None
+            }
+        });
         let direct_proposal_id = self
             .tab_sessions
             .get(target_tab)
@@ -911,8 +917,8 @@ impl App {
         // Cancel pending session-MCP clarification responders. The user's
         // next prompt draft lives in `input` and is intentionally preserved.
         tab.user_input.clear();
-        tab.turn = if cancellation_pending {
-            TurnState::Cancelling
+        tab.turn = if let Some(prompt_id) = cancelled_prompt_id {
+            TurnState::Cancelling { prompt_id }
         } else {
             TurnState::Idle
         };
@@ -929,6 +935,42 @@ impl App {
         // state; release whatever the helper had pinned. C++ falls back to
         // source-of-agent driven rendering.
         self.recompute_chip_override(target_tab);
+    }
+
+    pub(super) fn settle_prompt_cancellation(
+        &mut self,
+        target_tab: &str,
+        prompt_id: u64,
+        session_id: Option<&str>,
+    ) {
+        if let Some(tab) = self.tab_sessions.get_mut(target_tab) {
+            if matches!(
+                tab.turn,
+                TurnState::Cancelling {
+                    prompt_id: cancelling_prompt_id
+                } if cancelling_prompt_id == prompt_id
+            ) {
+                tab.turn = TurnState::Idle;
+                return;
+            }
+        }
+
+        let Some(current_tab) = session_id
+            .and_then(|id| self.session_to_tab.get(id))
+            .cloned()
+        else {
+            return;
+        };
+        if let Some(tab) = self.tab_sessions.get_mut(&current_tab) {
+            if matches!(
+                tab.turn,
+                TurnState::Cancelling {
+                    prompt_id: cancelling_prompt_id
+                } if cancelling_prompt_id == prompt_id
+            ) {
+                tab.turn = TurnState::Idle;
+            }
+        }
     }
 
     // ── Internal surface helpers (shared between eager and end-of-turn). ──

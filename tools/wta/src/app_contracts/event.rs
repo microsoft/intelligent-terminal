@@ -151,6 +151,11 @@ pub enum AppEvent {
     AgentMessageEnd {
         session_id: String,
     },
+    PromptCancellationSettled {
+        tab_id: String,
+        prompt_id: u64,
+        session_id: Option<String>,
+    },
     TimingMetric {
         session_id: String,
         note: String,

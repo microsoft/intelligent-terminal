@@ -31,8 +31,9 @@ pub enum TurnState {
     },
     /// The user requested cancellation, but the ACP prompt has not reached
     /// its terminal boundary yet. New prompts remain blocked and all
-    /// turn-scoped updates are discarded until `AgentMessageEnd` arrives.
-    Cancelling,
+    /// turn-scoped updates are discarded until the correlated cancellation
+    /// settlement arrives.
+    Cancelling { prompt_id: u64 },
 }
 
 impl Default for TurnState {
@@ -104,7 +105,9 @@ impl TurnState {
         match self {
             TurnState::Idle => true,
             TurnState::Surfaced { end_pending, .. } => !*end_pending,
-            TurnState::Submitted(_) | TurnState::Streaming { .. } | TurnState::Cancelling => false,
+            TurnState::Submitted(_)
+            | TurnState::Streaming { .. }
+            | TurnState::Cancelling { .. } => false,
         }
     }
 
@@ -122,12 +125,12 @@ impl TurnState {
             | TurnState::Surfaced {
                 end_pending: false, ..
             }
-            | TurnState::Cancelling => false,
+            | TurnState::Cancelling { .. } => false,
         }
     }
 
     pub fn is_cancelling(&self) -> bool {
-        matches!(self, TurnState::Cancelling)
+        matches!(self, TurnState::Cancelling { .. })
     }
 
     /// True while an Agent request can still be attributed to this turn.
@@ -137,7 +140,7 @@ impl TurnState {
     /// request itself proves the Agent is still waiting; only `Idle` means
     /// there is no turn left to service.
     pub fn can_service_agent_request(&self) -> bool {
-        !matches!(self, TurnState::Idle | TurnState::Cancelling)
+        !matches!(self, TurnState::Idle | TurnState::Cancelling { .. })
     }
 
     /// The surfaced recommendation set, if the outcome is a card.
@@ -154,7 +157,7 @@ impl TurnState {
     /// Prompt info for the in-flight or just-surfaced turn.
     pub fn prompt(&self) -> Option<&SubmittedPrompt> {
         match self {
-            TurnState::Idle | TurnState::Cancelling => None,
+            TurnState::Idle | TurnState::Cancelling { .. } => None,
             TurnState::Submitted(p) => Some(p),
             TurnState::Streaming { prompt } => Some(prompt),
             TurnState::Surfaced { prompt, .. } => Some(prompt),
@@ -166,7 +169,7 @@ impl TurnState {
     /// `App::apply_prompt_target_resolved`).
     pub fn prompt_mut(&mut self) -> Option<&mut SubmittedPrompt> {
         match self {
-            TurnState::Idle | TurnState::Cancelling => None,
+            TurnState::Idle | TurnState::Cancelling { .. } => None,
             TurnState::Submitted(p) => Some(p),
             TurnState::Streaming { prompt } => Some(prompt),
             TurnState::Surfaced { prompt, .. } => Some(prompt),
@@ -305,7 +308,7 @@ mod tests {
 
     #[test]
     fn cancelling_blocks_new_prompts_and_drops_turn_updates() {
-        let s = TurnState::Cancelling;
+        let s = TurnState::Cancelling { prompt_id: 1 };
         assert!(!s.is_idle());
         assert!(!s.accepts_new_prompt());
         assert!(!s.is_in_flight());

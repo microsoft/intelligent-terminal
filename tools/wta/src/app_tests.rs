@@ -13702,7 +13702,11 @@ fn cancel_bumps_generation_and_waits_for_terminal_boundary() {
     );
     assert!(app.current_tab().turn.is_cancelling());
     assert!(app.tab_mut(DEFAULT_TAB_ID).autofix.pane_id.is_none());
-    app.turn_close(DEFAULT_TAB_ID);
+    app.handle_event(AppEvent::PromptCancellationSettled {
+        tab_id: DEFAULT_TAB_ID.into(),
+        prompt_id: 99,
+        session_id: None,
+    });
     assert!(app.current_tab().turn.is_idle());
 }
 
@@ -13726,8 +13730,230 @@ fn turn_cancel_requests_correlated_cancellation_and_enters_cancelling() {
     assert_eq!(request.tab_id, DEFAULT_TAB_ID);
     assert_eq!(request.prompt_id, 42);
     assert_eq!(request.session_id.as_deref(), Some(session_id));
-    assert!(app.current_tab().turn.is_cancelling());
+    assert_eq!(
+        app.current_tab().turn,
+        TurnState::Cancelling { prompt_id: 42 }
+    );
     assert_eq!(app.current_tab().input, "keep this draft");
+
+    app.turn_close(session_id);
+    assert!(
+        app.current_tab().turn.is_idle(),
+        "normal prompt completion racing cancellation is still a terminal boundary"
+    );
+}
+
+#[test]
+fn manual_fix_does_not_replace_a_cancelling_turn() {
+    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+
+    let mut app = test_app();
+    submit_test_prompt(&mut app, "stop this");
+    app.turn_cancel(DEFAULT_TAB_ID);
+    let cancelling = app.current_tab().turn.clone();
+    let (prompt_tx, mut prompt_rx) = tokio::sync::mpsc::unbounded_channel();
+    app.prompt_tx = prompt_tx;
+    app.current_tab_mut().input = "/fix".into();
+    app.current_tab_mut().cursor_pos = "/fix".len();
+
+    app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+
+    assert_eq!(app.current_tab().turn, cancelling);
+    assert!(
+        prompt_rx.try_recv().is_err(),
+        "/fix must not enqueue a prompt while cancellation is settling"
+    );
+}
+
+#[test]
+fn slash_new_does_not_replace_a_cancelling_turn() {
+    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+
+    let (mut app, mut new_session_rx) = test_app_with_new_session_rx();
+    submit_test_prompt(&mut app, "stop this");
+    app.turn_cancel(DEFAULT_TAB_ID);
+    let cancelling = app.current_tab().turn.clone();
+    app.current_tab_mut().input = "/new".into();
+    app.current_tab_mut().cursor_pos = "/new".len();
+
+    app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+
+    assert_eq!(app.current_tab().turn, cancelling);
+    assert!(
+        new_session_rx.try_recv().is_err(),
+        "/new must not request a replacement session while cancellation is settling"
+    );
+}
+
+#[test]
+fn cancellation_settlement_requires_exact_tab_and_prompt() {
+    let mut app = test_app();
+    submit_test_prompt(&mut app, "stop this");
+    app.turn_cancel(DEFAULT_TAB_ID);
+    app.tab_sessions
+        .insert("wrong-tab".into(), TabSession::default());
+
+    app.handle_event(AppEvent::PromptCancellationSettled {
+        tab_id: "wrong-tab".into(),
+        prompt_id: 42,
+        session_id: None,
+    });
+    assert_eq!(
+        app.current_tab().turn,
+        TurnState::Cancelling { prompt_id: 42 }
+    );
+    assert!(app.tab_sessions["wrong-tab"].turn.is_idle());
+
+    app.handle_event(AppEvent::PromptCancellationSettled {
+        tab_id: DEFAULT_TAB_ID.into(),
+        prompt_id: 41,
+        session_id: None,
+    });
+    assert_eq!(
+        app.current_tab().turn,
+        TurnState::Cancelling { prompt_id: 42 }
+    );
+
+    app.handle_event(AppEvent::PromptCancellationSettled {
+        tab_id: DEFAULT_TAB_ID.into(),
+        prompt_id: 42,
+        session_id: None,
+    });
+    assert!(app.current_tab().turn.is_idle());
+}
+
+#[test]
+fn cancellation_settlement_does_not_scan_for_an_unknown_session() {
+    let mut app = test_app();
+    submit_test_prompt(&mut app, "stop this");
+    app.turn_cancel(DEFAULT_TAB_ID);
+
+    app.handle_event(AppEvent::PromptCancellationSettled {
+        tab_id: "wrong-tab".into(),
+        prompt_id: 42,
+        session_id: Some("unknown-session".into()),
+    });
+
+    assert_eq!(
+        app.current_tab().turn,
+        TurnState::Cancelling { prompt_id: 42 }
+    );
+    assert!(!app.tab_sessions.contains_key("wrong-tab"));
+}
+
+#[test]
+fn old_tab_cancellation_settlement_finds_renamed_exact_prompt() {
+    let mut app = test_app();
+    app.current_tab_mut().session_id = Some("old-session".into());
+    app.session_to_tab
+        .insert("old-session".into(), DEFAULT_TAB_ID.into());
+    submit_test_prompt(&mut app, "stop this");
+    app.turn_cancel(DEFAULT_TAB_ID);
+    app.handle_event(AppEvent::TabRenamed {
+        old_tab_id: DEFAULT_TAB_ID.into(),
+        new_tab_id: "renamed-tab".into(),
+        new_window_id: None,
+    });
+
+    app.handle_event(AppEvent::PromptCancellationSettled {
+        tab_id: DEFAULT_TAB_ID.into(),
+        prompt_id: 42,
+        session_id: Some("old-session".into()),
+    });
+
+    assert!(app.tab_sessions["renamed-tab"].turn.is_idle());
+    assert!(!app.tab_sessions.contains_key(DEFAULT_TAB_ID));
+}
+
+#[test]
+fn old_tab_cancellation_settlement_does_not_settle_different_prompt() {
+    let mut app = test_app();
+    app.current_tab_mut().session_id = Some("old-session".into());
+    app.session_to_tab
+        .insert("old-session".into(), DEFAULT_TAB_ID.into());
+    submit_test_prompt(&mut app, "stop this");
+    app.turn_cancel(DEFAULT_TAB_ID);
+    app.handle_event(AppEvent::TabRenamed {
+        old_tab_id: DEFAULT_TAB_ID.into(),
+        new_tab_id: "renamed-tab".into(),
+        new_window_id: None,
+    });
+
+    app.handle_event(AppEvent::PromptCancellationSettled {
+        tab_id: DEFAULT_TAB_ID.into(),
+        prompt_id: 41,
+        session_id: Some("old-session".into()),
+    });
+
+    assert_eq!(
+        app.tab_sessions["renamed-tab"].turn,
+        TurnState::Cancelling { prompt_id: 42 }
+    );
+}
+
+#[test]
+fn cancellation_settlement_does_not_recreate_dropped_tab() {
+    let mut app = test_app();
+    app.tab_sessions.remove(DEFAULT_TAB_ID);
+
+    app.handle_event(AppEvent::PromptCancellationSettled {
+        tab_id: DEFAULT_TAB_ID.into(),
+        prompt_id: 99,
+        session_id: None,
+    });
+
+    assert!(!app.tab_sessions.contains_key(DEFAULT_TAB_ID));
+}
+
+#[test]
+fn cancellation_settlement_finds_renamed_turn_when_old_tab_key_was_recreated() {
+    let mut app = test_app();
+    app.current_tab_mut().session_id = Some("old-session".into());
+    app.session_to_tab
+        .insert("old-session".into(), DEFAULT_TAB_ID.into());
+    submit_test_prompt(&mut app, "old prompt");
+    app.turn_cancel(DEFAULT_TAB_ID);
+    app.handle_event(AppEvent::TabRenamed {
+        old_tab_id: DEFAULT_TAB_ID.into(),
+        new_tab_id: "renamed-tab".into(),
+        new_window_id: None,
+    });
+    app.tab_sessions
+        .insert(DEFAULT_TAB_ID.into(), Default::default());
+
+    app.handle_event(AppEvent::PromptCancellationSettled {
+        tab_id: DEFAULT_TAB_ID.into(),
+        prompt_id: 42,
+        session_id: Some("old-session".into()),
+    });
+
+    assert!(app.tab_sessions["renamed-tab"].turn.is_idle());
+    assert!(app.tab_sessions[DEFAULT_TAB_ID].turn.is_idle());
+}
+
+#[test]
+fn stale_cancellation_settlement_does_not_close_newer_turn() {
+    let mut app = test_app();
+    submit_test_prompt(&mut app, "old prompt");
+    app.turn_cancel(DEFAULT_TAB_ID);
+    app.current_tab_mut().turn = TurnState::Submitted(SubmittedPrompt {
+        id: 43,
+        text: "new prompt".into(),
+        submitted_at_unix_s: 0.0,
+        context: TurnContext::default(),
+        autofix: None,
+    });
+
+    app.handle_event(AppEvent::PromptCancellationSettled {
+        tab_id: DEFAULT_TAB_ID.into(),
+        prompt_id: 42,
+        session_id: None,
+    });
+
+    assert!(matches!(
+        app.current_tab().turn,
+        TurnState::Submitted(SubmittedPrompt { id: 43, .. })
+    ));
 }
 
 #[test]
@@ -13772,7 +13998,11 @@ fn cancel_mid_stream_preserves_visible_prose_with_canceled_marker() {
         1,
         "late cancelled-turn chunks must be discarded"
     );
-    app.turn_close(DEFAULT_TAB_ID);
+    app.handle_event(AppEvent::PromptCancellationSettled {
+        tab_id: DEFAULT_TAB_ID.into(),
+        prompt_id: 42,
+        session_id: None,
+    });
     assert!(app.current_tab().turn.is_idle());
     app.turn_cancel(DEFAULT_TAB_ID);
     assert_eq!(
@@ -13810,7 +14040,11 @@ fn cancel_mid_stream_preserves_raw_json_with_canceled_marker() {
         committed.trailing_marker
     );
     assert!(tab.messages.is_empty());
-    app.turn_close(DEFAULT_TAB_ID);
+    app.handle_event(AppEvent::PromptCancellationSettled {
+        tab_id: DEFAULT_TAB_ID.into(),
+        prompt_id: 42,
+        session_id: None,
+    });
     assert!(app.current_tab().turn.is_idle());
 }
 
@@ -14034,8 +14268,10 @@ fn cancel_after_direct_proposal_commits_trailing_transcript_once() {
     });
 
     app.turn_cancel(session_id);
-    app.handle_event(AppEvent::AgentMessageEnd {
-        session_id: session_id.into(),
+    app.handle_event(AppEvent::PromptCancellationSettled {
+        tab_id: DEFAULT_TAB_ID.into(),
+        prompt_id: 99,
+        session_id: Some(session_id.into()),
     });
     app.turn_cancel(session_id);
 
@@ -14076,8 +14312,10 @@ fn direct_proposal_cancel_before_commit_does_not_surface() {
     assert!(!commit_rx.blocking_recv().unwrap());
 
     assert!(app.session_tab(session_id).turn.is_cancelling());
-    app.handle_event(AppEvent::AgentMessageEnd {
-        session_id: session_id.into(),
+    app.handle_event(AppEvent::PromptCancellationSettled {
+        tab_id: DEFAULT_TAB_ID.into(),
+        prompt_id: 99,
+        session_id: Some(session_id.into()),
     });
     assert!(app.session_tab(session_id).turn.is_idle());
     assert_eq!(

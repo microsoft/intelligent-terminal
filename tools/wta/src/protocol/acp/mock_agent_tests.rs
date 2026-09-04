@@ -17,7 +17,8 @@ use super::{
     dispatch_master_ext_request_with_yolo_timeout, dispatch_new_session, dispatch_prompt,
     dispatch_rename_session, publish_current_native_config_options, take_retired_session_result,
     AutofixTextKind, CancelRequest, DropSessionRequest, LoadSessionForTab, MasterExtRequest,
-    NewSessionForTab, PromptCancelEntry, PromptSubmission, RenameSessionRequest,
+    NewSessionForTab, PromptCancelEntry, PromptDispatchCleanup, PromptSubmission,
+    RenameSessionRequest,
 };
 use super::{ClientState, PromptUsageIdentity, ProviderProbeCapture, WtaClient};
 use crate::app_contracts::{AppEvent, PlanEntry, PlanEntryStatus};
@@ -27,7 +28,7 @@ use crate::protocol::acp::turn_metrics::PromptTimingState;
 use crate::shell::ShellManager;
 use agent_client_protocol as acp;
 use std::collections::{HashMap, HashSet};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use tokio::sync::{mpsc, oneshot, OnceCell};
 use tokio_util::compat::{TokioAsyncReadCompatExt, TokioAsyncWriteCompatExt};
@@ -49,6 +50,8 @@ enum MockBehavior {
     /// Stream the reply in two `AgentMessageChunk`s (`MOCK_` + `OK`), then end
     /// the turn — exercises streaming coalescing.
     StreamTwoChunks,
+    /// Keep the prompt request in flight briefly so cancellation can race it.
+    DelayedReply,
 }
 
 /// Deterministic ACP agent. Implements only what the scenarios need; the rest
@@ -64,6 +67,8 @@ struct MockAgent {
     behavior: MockBehavior,
     /// Side-channel: every prompt's user text.
     seen_prompts: Arc<Mutex<Vec<String>>>,
+    /// Side-channel: number of `session/cancel` notifications received.
+    seen_cancels: Arc<AtomicUsize>,
     /// Side-channel: every image content block (mime, base64 data) that reached
     /// the agent on the wire — used by the Alt+V image-paste integration test.
     seen_images: Arc<Mutex<Vec<(String, String)>>>,
@@ -431,6 +436,9 @@ impl MockAgent {
                         }
                     });
                 }
+                MockBehavior::DelayedReply => {
+                    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+                }
             }
         }
 
@@ -440,6 +448,7 @@ impl MockAgent {
     }
 
     async fn cancel(&self, _args: acp::schema::v1::CancelNotification) -> acp::Result<()> {
+        self.seen_cancels.fetch_add(1, Ordering::SeqCst);
         Ok(())
     }
 
@@ -499,6 +508,7 @@ fn connect_with(
         conn: conn_cell.clone(),
         behavior,
         seen_prompts: seen_prompts.clone(),
+        seen_cancels: Arc::new(AtomicUsize::new(0)),
         seen_images: Arc::new(Mutex::new(Vec::new())),
         permission_outcome: permission_outcome.clone(),
         closed_sessions: Arc::new(Mutex::new(Vec::new())),
@@ -857,6 +867,7 @@ pub(crate) struct DispatchHarness {
     pub proposal_channels:
         Arc<crate::agent_tools::action_proposal::channel::ProposalChannelManager>,
     pub seen_prompts: Arc<Mutex<Vec<String>>>,
+    pub seen_cancels: Arc<AtomicUsize>,
     pub permission_outcome: Arc<Mutex<Option<String>>>,
     /// Agent-side record of every image content block (mime, base64) assembled
     /// onto the wire — the Alt+V image-paste assertion target.
@@ -907,6 +918,7 @@ fn connect_for_dispatch(behavior: MockBehavior) -> DispatchHarness {
     let wta = WtaClient { state };
 
     let seen_prompts = Arc::new(Mutex::new(Vec::new()));
+    let seen_cancels = Arc::new(AtomicUsize::new(0));
     let seen_images = Arc::new(Mutex::new(Vec::new()));
     let permission_outcome = Arc::new(Mutex::new(None));
     let closed_sessions = Arc::new(Mutex::new(Vec::new()));
@@ -927,6 +939,7 @@ fn connect_for_dispatch(behavior: MockBehavior) -> DispatchHarness {
         conn: conn_cell.clone(),
         behavior,
         seen_prompts: seen_prompts.clone(),
+        seen_cancels: seen_cancels.clone(),
         seen_images: seen_images.clone(),
         permission_outcome: permission_outcome.clone(),
         closed_sessions: closed_sessions.clone(),
@@ -955,6 +968,7 @@ fn connect_for_dispatch(behavior: MockBehavior) -> DispatchHarness {
         prompt_timing,
         proposal_channels,
         seen_prompts,
+        seen_cancels,
         permission_outcome,
         seen_images,
         closed_sessions,
@@ -978,13 +992,13 @@ fn connect_for_dispatch(behavior: MockBehavior) -> DispatchHarness {
 #[allow(clippy::type_complexity)]
 fn fresh_dispatch_state() -> (
     Arc<tokio::sync::Mutex<HashMap<String, acp::schema::v1::SessionId>>>,
-    Arc<std::sync::Mutex<HashSet<String>>>,
+    Arc<std::sync::Mutex<HashMap<String, u64>>>,
     Arc<std::sync::Mutex<HashMap<String, PromptCancelEntry>>>,
     TemplateMemo,
 ) {
     (
         Arc::new(tokio::sync::Mutex::new(HashMap::new())),
-        Arc::new(std::sync::Mutex::new(HashSet::new())),
+        Arc::new(std::sync::Mutex::new(HashMap::new())),
         Arc::new(std::sync::Mutex::new(HashMap::new())),
         TemplateMemo::default(),
     )
@@ -1068,7 +1082,7 @@ async fn dispatch_prompt_busy_tab_emits_agent_busy_and_drops() {
             let h = connect_for_dispatch(MockBehavior::Reply);
             let (tab_to_session, in_flight, cancel_signals, memo) = fresh_dispatch_state();
             // A turn is already running for the default tab ("0").
-            in_flight.lock().unwrap().insert("0".to_string());
+            in_flight.lock().unwrap().insert("0".to_string(), 0);
             let mut event_rx = h.event_rx;
 
             dispatch_prompt(
@@ -2884,7 +2898,10 @@ async fn dispatch_rename_session_rekeys_existing_and_ignores_missing() {
     let local = tokio::task::LocalSet::new();
     local
         .run_until(async {
+            let h = connect_for_dispatch(MockBehavior::Reply);
             let tab_to_session = std::sync::Arc::new(tokio::sync::Mutex::new(HashMap::new()));
+            let cancel_signals = Arc::new(Mutex::new(HashMap::new()));
+            let in_flight_tabs = Arc::new(Mutex::new(HashMap::new()));
             let sid = acp::schema::v1::SessionId::new("sess-rekey");
             super::set_helper_owner_tab_id(Some("old-tab"));
             tab_to_session
@@ -2898,7 +2915,10 @@ async fn dispatch_rename_session_rekeys_existing_and_ignores_missing() {
                     old_tab_id: "old-tab".to_string(),
                     new_tab_id: "new-tab".to_string(),
                 },
+                &h.conn,
                 &tab_to_session,
+                &cancel_signals,
+                &in_flight_tabs,
             )
             .await;
             {
@@ -2918,7 +2938,10 @@ async fn dispatch_rename_session_rekeys_existing_and_ignores_missing() {
                     old_tab_id: "ghost".to_string(),
                     new_tab_id: "phantom".to_string(),
                 },
+                &h.conn,
                 &tab_to_session,
+                &cancel_signals,
+                &in_flight_tabs,
             )
             .await;
             let g = tab_to_session.lock().await;
@@ -2926,6 +2949,229 @@ async fn dispatch_rename_session_rekeys_existing_and_ignores_missing() {
             assert!(
                 g.contains_key("new-tab"),
                 "existing binding must survive the no-op"
+            );
+        })
+        .await;
+}
+
+#[tokio::test]
+async fn dispatch_rename_session_rekeys_registered_cancellation_and_in_flight_owner() {
+    let local = tokio::task::LocalSet::new();
+    local
+        .run_until(async {
+            let h = connect_for_dispatch(MockBehavior::Reply);
+            let tab_to_session = Arc::new(tokio::sync::Mutex::new(HashMap::new()));
+            let (signal, cancelled) = oneshot::channel();
+            let cancel_signals = Arc::new(Mutex::new(HashMap::from([(
+                "old-tab".to_string(),
+                PromptCancelEntry::Registered {
+                    prompt_id: 7,
+                    signal,
+                },
+            )])));
+            let in_flight_tabs = Arc::new(Mutex::new(HashMap::from([("old-tab".to_string(), 7)])));
+
+            dispatch_rename_session(
+                RenameSessionRequest {
+                    old_tab_id: "old-tab".to_string(),
+                    new_tab_id: "new-tab".to_string(),
+                },
+                &h.conn,
+                &tab_to_session,
+                &cancel_signals,
+                &in_flight_tabs,
+            )
+            .await;
+
+            assert_eq!(
+                in_flight_tabs.lock().unwrap().get("new-tab").copied(),
+                Some(7)
+            );
+            assert!(!in_flight_tabs.lock().unwrap().contains_key("old-tab"));
+            dispatch_cancel(
+                CancelRequest {
+                    tab_id: "new-tab".to_string(),
+                    prompt_id: 7,
+                    session_id: None,
+                },
+                &h.conn,
+                &cancel_signals,
+            );
+            assert!(
+                cancelled.await.is_ok(),
+                "cancel under the renamed tab id must signal the original prompt"
+            );
+        })
+        .await;
+}
+
+#[tokio::test]
+async fn dispatch_rename_session_rekeys_pending_cancellation() {
+    let local = tokio::task::LocalSet::new();
+    local
+        .run_until(async {
+            let h = connect_for_dispatch(MockBehavior::Reply);
+            let tab_to_session = Arc::new(tokio::sync::Mutex::new(HashMap::new()));
+            let cancel_signals = Arc::new(Mutex::new(HashMap::from([(
+                "old-tab".to_string(),
+                PromptCancelEntry::Pending { prompt_id: 9 },
+            )])));
+            let in_flight_tabs = Arc::new(Mutex::new(HashMap::new()));
+
+            dispatch_rename_session(
+                RenameSessionRequest {
+                    old_tab_id: "old-tab".to_string(),
+                    new_tab_id: "new-tab".to_string(),
+                },
+                &h.conn,
+                &tab_to_session,
+                &cancel_signals,
+                &in_flight_tabs,
+            )
+            .await;
+
+            let registry = cancel_signals.lock().unwrap();
+            assert!(!registry.contains_key("old-tab"));
+            assert_eq!(
+                registry.get("new-tab").map(PromptCancelEntry::prompt_id),
+                Some(9)
+            );
+        })
+        .await;
+}
+
+#[tokio::test]
+async fn dispatch_rename_session_merges_queued_cancel_with_registered_prompt() {
+    let local = tokio::task::LocalSet::new();
+    local
+        .run_until(async {
+            let h = connect_for_dispatch(MockBehavior::Reply);
+            let sid = acp::schema::v1::SessionId::new("sess-rename-cancel");
+            let tab_to_session = Arc::new(tokio::sync::Mutex::new(HashMap::from([(
+                "old-tab".to_string(),
+                sid,
+            )])));
+            let (signal, cancelled) = oneshot::channel();
+            let cancel_signals = Arc::new(Mutex::new(HashMap::from([(
+                "old-tab".to_string(),
+                PromptCancelEntry::Registered {
+                    prompt_id: 11,
+                    signal,
+                },
+            )])));
+            let in_flight_tabs = Arc::new(Mutex::new(HashMap::from([("old-tab".to_string(), 11)])));
+
+            dispatch_cancel(
+                CancelRequest {
+                    tab_id: "new-tab".to_string(),
+                    prompt_id: 11,
+                    session_id: Some("sess-rename-cancel".to_string()),
+                },
+                &h.conn,
+                &cancel_signals,
+            );
+            assert_eq!(h.seen_cancels.load(Ordering::Acquire), 0);
+
+            dispatch_rename_session(
+                RenameSessionRequest {
+                    old_tab_id: "old-tab".to_string(),
+                    new_tab_id: "new-tab".to_string(),
+                },
+                &h.conn,
+                &tab_to_session,
+                &cancel_signals,
+                &in_flight_tabs,
+            )
+            .await;
+
+            assert!(
+                cancelled.await.is_ok(),
+                "registered prompt must be signalled"
+            );
+            for _ in 0..10 {
+                if h.seen_cancels.load(Ordering::Acquire) == 1 {
+                    break;
+                }
+                tokio::task::yield_now().await;
+            }
+            assert_eq!(h.seen_cancels.load(Ordering::Acquire), 1);
+            assert!(cancel_signals.lock().unwrap().is_empty());
+            assert_eq!(
+                *in_flight_tabs.lock().unwrap(),
+                HashMap::from([("new-tab".to_string(), 11)])
+            );
+
+            drop(PromptDispatchCleanup {
+                tab_key: "old-tab".to_string(),
+                prompt_id: 11,
+                in_flight_tabs: Arc::clone(&in_flight_tabs),
+                cancel_signals: Arc::clone(&cancel_signals),
+            });
+            assert!(in_flight_tabs.lock().unwrap().is_empty());
+        })
+        .await;
+}
+
+#[tokio::test]
+async fn dispatch_rename_session_preserves_newer_destination_identity() {
+    let local = tokio::task::LocalSet::new();
+    local
+        .run_until(async {
+            let h = connect_for_dispatch(MockBehavior::Reply);
+            let sid = acp::schema::v1::SessionId::new("sess-stale-rename");
+            let tab_to_session = Arc::new(tokio::sync::Mutex::new(HashMap::from([(
+                "old-tab".to_string(),
+                sid,
+            )])));
+            let (old_signal, old_cancelled) = oneshot::channel();
+            let cancel_signals = Arc::new(Mutex::new(HashMap::from([
+                (
+                    "old-tab".to_string(),
+                    PromptCancelEntry::Registered {
+                        prompt_id: 7,
+                        signal: old_signal,
+                    },
+                ),
+                (
+                    "new-tab".to_string(),
+                    PromptCancelEntry::Pending { prompt_id: 8 },
+                ),
+            ])));
+            let in_flight_tabs = Arc::new(Mutex::new(HashMap::from([
+                ("old-tab".to_string(), 7),
+                ("new-tab".to_string(), 8),
+            ])));
+
+            dispatch_rename_session(
+                RenameSessionRequest {
+                    old_tab_id: "old-tab".to_string(),
+                    new_tab_id: "new-tab".to_string(),
+                },
+                &h.conn,
+                &tab_to_session,
+                &cancel_signals,
+                &in_flight_tabs,
+            )
+            .await;
+
+            assert!(old_cancelled.await.is_ok(), "stale local prompt must stop");
+            tokio::task::yield_now().await;
+            assert_eq!(
+                h.seen_cancels.load(Ordering::Acquire),
+                0,
+                "a mismatched merge must not cancel the newer provider prompt"
+            );
+            assert_eq!(
+                cancel_signals
+                    .lock()
+                    .unwrap()
+                    .get("new-tab")
+                    .map(PromptCancelEntry::prompt_id),
+                Some(8)
+            );
+            assert_eq!(
+                *in_flight_tabs.lock().unwrap(),
+                HashMap::from([("new-tab".to_string(), 8)])
             );
         })
         .await;
@@ -2943,7 +3189,7 @@ async fn dispatch_cancel_fires_local_signal_and_removes_registry_entry() {
             let (tx, rx) = oneshot::channel::<()>();
             cancel_signals.lock().unwrap().insert(
                 "tab-cancel".to_string(),
-                PromptCancelEntry {
+                PromptCancelEntry::Registered {
                     prompt_id: 7,
                     signal: tx,
                 },
@@ -2969,7 +3215,7 @@ async fn dispatch_cancel_fires_local_signal_and_removes_registry_entry() {
             let (new_tx, mut new_rx) = oneshot::channel::<()>();
             cancel_signals.lock().unwrap().insert(
                 "tab-cancel".to_string(),
-                PromptCancelEntry {
+                PromptCancelEntry::Registered {
                     prompt_id: 8,
                     signal: new_tx,
                 },
@@ -2995,31 +3241,39 @@ async fn dispatch_cancel_fires_local_signal_and_removes_registry_entry() {
                     .lock()
                     .unwrap()
                     .get("tab-cancel")
-                    .map(|entry| entry.prompt_id),
+                    .map(PromptCancelEntry::prompt_id),
                 Some(8)
             );
             cancel_signals.lock().unwrap().remove("tab-cancel");
 
-            // Cancelling an unknown tab is a harmless no-op.
+            cancel_signals.lock().unwrap().insert(
+                "tab-pending".to_string(),
+                PromptCancelEntry::Pending { prompt_id: 10 },
+            );
             dispatch_cancel(
                 CancelRequest {
-                    tab_id: "ghost-tab".to_string(),
+                    tab_id: "tab-pending".to_string(),
                     prompt_id: 9,
-                    session_id: Some("ghost".to_string()),
+                    session_id: Some("sess-pending".to_string()),
                 },
                 &h.conn,
                 &cancel_signals,
             );
-            // Let the best-effort agent-notify subtask run.
-            for _ in 0..10 {
-                tokio::task::yield_now().await;
-            }
+            assert_eq!(
+                cancel_signals
+                    .lock()
+                    .unwrap()
+                    .get("tab-pending")
+                    .map(PromptCancelEntry::prompt_id),
+                Some(10),
+                "a stale cancel must not replace a newer pending prompt"
+            );
         })
         .await;
 }
 
 #[tokio::test]
-async fn first_turn_cancel_before_prompt_task_starts_prevents_dispatch() {
+async fn prompt_then_cancel_channels_latch_cancel_before_prompt_dispatch() {
     let local = tokio::task::LocalSet::new();
     local
         .run_until(async {
@@ -3033,9 +3287,29 @@ async fn first_turn_cancel_before_prompt_task_starts_prevents_dispatch() {
 
             let (tab_to_session, in_flight, cancel_signals, memo) = fresh_dispatch_state();
             let mut event_rx = h.event_rx;
+            let (prompt_tx, mut prompt_rx) = tokio::sync::mpsc::unbounded_channel();
+            let (cancel_tx, mut cancel_rx) = tokio::sync::mpsc::unbounded_channel();
 
+            prompt_tx
+                .send(test_prompt(1, "must never run", false))
+                .unwrap();
+            cancel_tx
+                .send(CancelRequest {
+                    tab_id: "0".to_string(),
+                    prompt_id: 1,
+                    session_id: Some("mock-session-1".to_string()),
+                })
+                .unwrap();
+
+            let cancel = tokio::select! {
+                biased;
+                req = cancel_rx.recv() => req.expect("cancel channel closed"),
+                _ = prompt_rx.recv() => panic!("production ordering must select cancel first"),
+            };
+            dispatch_cancel(cancel, &h.conn, &cancel_signals);
+            let prompt = prompt_rx.recv().await.expect("prompt channel closed");
             dispatch_prompt(
-                test_prompt(1, "must never run", false),
+                prompt,
                 &h.conn,
                 &tab_to_session,
                 &memo,
@@ -3051,21 +3325,18 @@ async fn first_turn_cancel_before_prompt_task_starts_prevents_dispatch() {
                 true,
                 &h.proposal_channels,
             );
-            dispatch_cancel(
-                CancelRequest {
-                    tab_id: "0".to_string(),
-                    prompt_id: 1,
-                    session_id: None,
-                },
-                &h.conn,
-                &cancel_signals,
-            );
 
             tokio::time::timeout(std::time::Duration::from_secs(5), async {
                 loop {
                     match event_rx.recv().await {
-                        Some(AppEvent::AgentMessageEnd { session_id }) => {
-                            assert_eq!(session_id, "mock-session-1");
+                        Some(AppEvent::PromptCancellationSettled {
+                            tab_id,
+                            prompt_id,
+                            session_id,
+                        }) => {
+                            assert_eq!(tab_id, "0");
+                            assert_eq!(prompt_id, 1);
+                            assert_eq!(session_id, None);
                             break;
                         }
                         Some(AppEvent::AgentMessageChunk { .. }) => {
@@ -3082,8 +3353,212 @@ async fn first_turn_cancel_before_prompt_task_starts_prevents_dispatch() {
                 h.seen_prompts.lock().unwrap().is_empty(),
                 "a latched cancel must prevent the old prompt from reaching the agent"
             );
+            assert_eq!(
+                h.seen_cancels.load(Ordering::SeqCst),
+                0,
+                "a pre-registration cancel must not notify an unstarted ACP session"
+            );
+            assert!(
+                tab_to_session.lock().await.is_empty(),
+                "a queued cancellation must not lazily create a session"
+            );
             assert!(in_flight.lock().unwrap().is_empty());
             assert!(cancel_signals.lock().unwrap().is_empty());
+        })
+        .await;
+}
+
+#[tokio::test]
+async fn registered_cancel_settles_after_prompt_quiesces() {
+    let local = tokio::task::LocalSet::new();
+    local
+        .run_until(async {
+            let h = connect_for_dispatch(MockBehavior::DelayedReply);
+            h.conn
+                .initialize(acp::schema::v1::InitializeRequest::new(
+                    acp::schema::ProtocolVersion::LATEST,
+                ))
+                .await
+                .expect("initialize failed");
+
+            let (tab_to_session, in_flight, cancel_signals, memo) = fresh_dispatch_state();
+            let mut event_rx = h.event_rx;
+            let task = dispatch_prompt(
+                test_prompt(7, "wait for cancellation", false),
+                &h.conn,
+                &tab_to_session,
+                &memo,
+                &in_flight,
+                &cancel_signals,
+                &h.event_tx,
+                &h.shell_mgr,
+                &h.prompt_timing,
+                &h.client,
+                &PromptUsageIdentity::default(),
+                false,
+                false,
+                true,
+                &h.proposal_channels,
+            )
+            .expect("prompt must be registered");
+
+            tokio::time::timeout(std::time::Duration::from_secs(5), async {
+                while h.seen_prompts.lock().unwrap().is_empty() {
+                    tokio::task::yield_now().await;
+                }
+            })
+            .await
+            .expect("prompt did not start");
+
+            dispatch_cancel(
+                CancelRequest {
+                    tab_id: "0".to_string(),
+                    prompt_id: 7,
+                    session_id: Some("mock-session-1".to_string()),
+                },
+                &h.conn,
+                &cancel_signals,
+            );
+
+            tokio::time::timeout(std::time::Duration::from_secs(5), async {
+                loop {
+                    match event_rx.recv().await {
+                        Some(AppEvent::PromptCancellationSettled {
+                            tab_id,
+                            prompt_id,
+                            session_id,
+                        }) => {
+                            assert_eq!(tab_id, "0");
+                            assert_eq!(prompt_id, 7);
+                            assert_eq!(session_id.as_deref(), Some("mock-session-1"));
+                            break;
+                        }
+                        Some(AppEvent::AgentMessageEnd { .. }) => {
+                            panic!("cancelled prompt must not emit AgentMessageEnd")
+                        }
+                        Some(_) => {}
+                        None => panic!("event channel closed before cancellation settled"),
+                    }
+                }
+            })
+            .await
+            .expect("registered cancellation did not settle");
+
+            task.await.expect("prompt task failed");
+            tokio::time::timeout(std::time::Duration::from_secs(5), async {
+                while h.seen_cancels.load(Ordering::SeqCst) != 1 {
+                    tokio::task::yield_now().await;
+                }
+            })
+            .await
+            .expect("session/cancel was not delivered");
+            assert!(in_flight.lock().unwrap().is_empty());
+            assert!(cancel_signals.lock().unwrap().is_empty());
+        })
+        .await;
+}
+
+#[tokio::test]
+async fn stale_pending_cancel_does_not_cancel_newer_prompt() {
+    let local = tokio::task::LocalSet::new();
+    local
+        .run_until(async {
+            let h = connect_for_dispatch(MockBehavior::Reply);
+            h.conn
+                .initialize(acp::schema::v1::InitializeRequest::new(
+                    acp::schema::ProtocolVersion::LATEST,
+                ))
+                .await
+                .expect("initialize failed");
+
+            let (tab_to_session, in_flight, cancel_signals, memo) = fresh_dispatch_state();
+            let mut event_rx = h.event_rx;
+            cancel_signals
+                .lock()
+                .unwrap()
+                .insert("0".to_string(), PromptCancelEntry::Pending { prompt_id: 1 });
+
+            dispatch_prompt(
+                test_prompt(2, "newer prompt must run", false),
+                &h.conn,
+                &tab_to_session,
+                &memo,
+                &in_flight,
+                &cancel_signals,
+                &h.event_tx,
+                &h.shell_mgr,
+                &h.prompt_timing,
+                &h.client,
+                &PromptUsageIdentity::default(),
+                false,
+                false,
+                true,
+                &h.proposal_channels,
+            );
+
+            tokio::time::timeout(std::time::Duration::from_secs(5), async {
+                loop {
+                    if matches!(
+                        event_rx.recv().await,
+                        Some(AppEvent::AgentMessageEnd { .. })
+                    ) {
+                        break;
+                    }
+                }
+            })
+            .await
+            .expect("newer prompt did not complete");
+            let seen_prompts = h.seen_prompts.lock().unwrap();
+            assert_eq!(seen_prompts.len(), 1);
+            assert!(seen_prompts[0].contains("newer prompt must run"));
+            assert!(in_flight.lock().unwrap().is_empty());
+            assert!(cancel_signals.lock().unwrap().is_empty());
+        })
+        .await;
+}
+
+#[tokio::test]
+async fn newer_pending_cancel_survives_stale_older_prompt() {
+    let local = tokio::task::LocalSet::new();
+    local
+        .run_until(async {
+            let h = connect_for_dispatch(MockBehavior::Reply);
+            let (tab_to_session, in_flight, cancel_signals, memo) = fresh_dispatch_state();
+            cancel_signals
+                .lock()
+                .unwrap()
+                .insert("0".to_string(), PromptCancelEntry::Pending { prompt_id: 2 });
+
+            let task = dispatch_prompt(
+                test_prompt(1, "stale prompt must not run", false),
+                &h.conn,
+                &tab_to_session,
+                &memo,
+                &in_flight,
+                &cancel_signals,
+                &h.event_tx,
+                &h.shell_mgr,
+                &h.prompt_timing,
+                &h.client,
+                &PromptUsageIdentity::default(),
+                false,
+                false,
+                true,
+                &h.proposal_channels,
+            );
+
+            assert!(task.is_none());
+            assert!(tab_to_session.lock().await.is_empty());
+            assert!(in_flight.lock().unwrap().is_empty());
+            assert!(h.seen_prompts.lock().unwrap().is_empty());
+            assert_eq!(
+                cancel_signals
+                    .lock()
+                    .unwrap()
+                    .get("0")
+                    .map(PromptCancelEntry::prompt_id),
+                Some(2)
+            );
         })
         .await;
 }
@@ -3108,7 +3583,7 @@ async fn dispatch_drop_session_closes_unbinds_and_fires_cancel_then_ignores_miss
             let (tx, rx) = oneshot::channel::<()>();
             cancel_signals.lock().unwrap().insert(
                 "t1".to_string(),
-                PromptCancelEntry {
+                PromptCancelEntry::Registered {
                     prompt_id: 1,
                     signal: tx,
                 },
@@ -3153,7 +3628,13 @@ async fn dispatch_drop_session_closes_unbinds_and_fires_cancel_then_ignores_miss
             .await
             .expect("drop must ask master to resolve and close the destroyed tab");
 
-            // No-op: dropping an unbound tab leaves the map empty, no panic.
+            // An unbound tab can still have a cancel latched ahead of prompt
+            // registration. Lifecycle operations must preserve that pending
+            // identity for the queued prompt to consume.
+            cancel_signals.lock().unwrap().insert(
+                "unbound".to_string(),
+                PromptCancelEntry::Pending { prompt_id: 3 },
+            );
             dispatch_drop_session(
                 DropSessionRequest {
                     tab_id: "unbound".to_string(),
@@ -3167,6 +3648,15 @@ async fn dispatch_drop_session_closes_unbinds_and_fires_cancel_then_ignores_miss
             )
             .await;
             assert!(tab_to_session.lock().await.is_empty());
+            assert_eq!(
+                cancel_signals
+                    .lock()
+                    .unwrap()
+                    .get("unbound")
+                    .map(PromptCancelEntry::prompt_id),
+                Some(3),
+                "drop must preserve a pending pre-registration cancel"
+            );
             tokio::time::timeout(std::time::Duration::from_secs(5), async {
                 loop {
                     if h.close_tab_requests.lock().unwrap().as_slice()
@@ -3188,7 +3678,7 @@ async fn dispatch_drop_session_closes_unbinds_and_fires_cancel_then_ignores_miss
             let (reset_tx, reset_rx) = oneshot::channel::<()>();
             cancel_signals.lock().unwrap().insert(
                 "reset-tab".to_string(),
-                PromptCancelEntry {
+                PromptCancelEntry::Registered {
                     prompt_id: 2,
                     signal: reset_tx,
                 },
@@ -3251,6 +3741,10 @@ async fn dispatch_new_session_creates_binds_and_emits_attached() {
             let h = connect_for_dispatch(MockBehavior::Reply);
             let tab_to_session = std::sync::Arc::new(tokio::sync::Mutex::new(HashMap::new()));
             let cancel_signals = Arc::new(Mutex::new(HashMap::new()));
+            cancel_signals.lock().unwrap().insert(
+                "t1".to_string(),
+                PromptCancelEntry::Pending { prompt_id: 8 },
+            );
             let memo = TemplateMemo::default();
             let mut event_rx = h.event_rx;
 
@@ -3285,6 +3779,15 @@ async fn dispatch_new_session_creates_binds_and_emits_attached() {
                 tab_to_session.lock().await.get("t1").map(|s| s.to_string()),
                 Some("mock-session-1".to_string()),
                 "new session must be bound to the tab"
+            );
+            assert_eq!(
+                cancel_signals
+                    .lock()
+                    .unwrap()
+                    .get("t1")
+                    .map(PromptCancelEntry::prompt_id),
+                Some(8),
+                "new-session lifecycle must preserve queued cancellation"
             );
         })
         .await;
@@ -3361,7 +3864,7 @@ async fn dispatch_new_session_replaces_old_and_fires_its_cancel() {
             let (tx_old, rx_old) = oneshot::channel::<()>();
             cancel_signals.lock().unwrap().insert(
                 "t1".to_string(),
-                PromptCancelEntry {
+                PromptCancelEntry::Registered {
                     prompt_id: 1,
                     signal: tx_old,
                 },
@@ -3417,6 +3920,10 @@ async fn dispatch_load_session_binds_and_emits_attached() {
             let h = connect_for_dispatch(MockBehavior::Reply);
             let tab_to_session = std::sync::Arc::new(tokio::sync::Mutex::new(HashMap::new()));
             let cancel_signals = Arc::new(Mutex::new(HashMap::new()));
+            cancel_signals.lock().unwrap().insert(
+                "t1".to_string(),
+                PromptCancelEntry::Pending { prompt_id: 9 },
+            );
             let mut event_rx = h.event_rx;
 
             dispatch_load_session(
@@ -3450,6 +3957,15 @@ async fn dispatch_load_session_binds_and_emits_attached() {
                 tab_to_session.lock().await.get("t1").map(|s| s.to_string()),
                 Some("hist-sess-7".to_string()),
                 "loaded session must be bound to the tab"
+            );
+            assert_eq!(
+                cancel_signals
+                    .lock()
+                    .unwrap()
+                    .get("t1")
+                    .map(PromptCancelEntry::prompt_id),
+                Some(9),
+                "load-session lifecycle must preserve queued cancellation"
             );
         })
         .await;

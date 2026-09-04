@@ -118,17 +118,53 @@ pub struct CancelRequest {
     pub session_id: Option<String>,
 }
 
-struct PromptCancelEntry {
-    prompt_id: u64,
-    signal: tokio::sync::oneshot::Sender<()>,
+enum PromptCancelEntry {
+    Pending {
+        prompt_id: u64,
+    },
+    Registered {
+        prompt_id: u64,
+        signal: tokio::sync::oneshot::Sender<()>,
+    },
+}
+
+impl PromptCancelEntry {
+    fn prompt_id(&self) -> u64 {
+        match self {
+            Self::Pending { prompt_id } | Self::Registered { prompt_id, .. } => *prompt_id,
+        }
+    }
+
+    fn signal_registered(self) {
+        if let Self::Registered { signal, .. } = self {
+            let _ = signal.send(());
+        }
+    }
 }
 
 type SharedPromptCancelRegistry = Arc<std::sync::Mutex<HashMap<String, PromptCancelEntry>>>;
+type SharedInFlightPrompts = Arc<std::sync::Mutex<HashMap<String, u64>>>;
+
+fn take_registered_cancel(
+    registry: &mut HashMap<String, PromptCancelEntry>,
+    tab_id: &str,
+) -> Option<tokio::sync::oneshot::Sender<()>> {
+    if !matches!(
+        registry.get(tab_id),
+        Some(PromptCancelEntry::Registered { .. })
+    ) {
+        return None;
+    }
+    match registry.remove(tab_id) {
+        Some(PromptCancelEntry::Registered { signal, .. }) => Some(signal),
+        _ => unreachable!("registered cancel entry changed while locked"),
+    }
+}
 
 struct PromptDispatchCleanup {
     tab_key: String,
     prompt_id: u64,
-    in_flight_tabs: Arc<std::sync::Mutex<HashSet<String>>>,
+    in_flight_tabs: SharedInFlightPrompts,
     cancel_signals: SharedPromptCancelRegistry,
 }
 
@@ -136,14 +172,33 @@ impl Drop for PromptDispatchCleanup {
     fn drop(&mut self) {
         {
             let mut registry = self.cancel_signals.lock().unwrap();
-            if registry
+            let matching_key = if registry
                 .get(&self.tab_key)
-                .is_some_and(|entry| entry.prompt_id == self.prompt_id)
+                .is_some_and(|entry| entry.prompt_id() == self.prompt_id)
             {
-                registry.remove(&self.tab_key);
+                Some(self.tab_key.clone())
+            } else {
+                registry.iter().find_map(|(key, entry)| {
+                    (entry.prompt_id() == self.prompt_id).then(|| key.clone())
+                })
+            };
+            if let Some(key) = matching_key {
+                registry.remove(&key);
             }
         }
-        self.in_flight_tabs.lock().unwrap().remove(&self.tab_key);
+        {
+            let mut in_flight = self.in_flight_tabs.lock().unwrap();
+            let matching_key = if in_flight.get(&self.tab_key) == Some(&self.prompt_id) {
+                Some(self.tab_key.clone())
+            } else {
+                in_flight
+                    .iter()
+                    .find_map(|(key, id)| (*id == self.prompt_id).then(|| key.clone()))
+            };
+            if let Some(key) = matching_key {
+                in_flight.remove(&key);
+            }
+        }
     }
 }
 
@@ -3431,8 +3486,7 @@ pub async fn run_acp_client_over_pipe(
     }
 
     let template_memo = TemplateMemo::default();
-    let in_flight_tabs: Arc<std::sync::Mutex<HashSet<String>>> =
-        Arc::new(std::sync::Mutex::new(HashSet::new()));
+    let in_flight_tabs: SharedInFlightPrompts = Arc::new(std::sync::Mutex::new(HashMap::new()));
     let cancel_signals = Arc::new(std::sync::Mutex::new(HashMap::new()));
     let mut prompt_tasks: Vec<tokio::task::JoinHandle<()>> = Vec::new();
 
@@ -3578,7 +3632,13 @@ pub async fn run_acp_client_over_pipe(
                 ).await;
             }
             Some(req) = rename_session_rx.recv() => {
-                dispatch_rename_session(req, &tab_to_session).await;
+                dispatch_rename_session(
+                    req,
+                    &conn,
+                    &tab_to_session,
+                    &cancel_signals,
+                    &in_flight_tabs,
+                ).await;
             }
             Some(prompt) = prompt_rx.recv() => {
                 prompt_tasks.retain(|task| !task.is_finished());
@@ -4214,10 +4274,12 @@ fn dispatch_load_session(
             g.remove(&req.tab_id)
         };
 
+        if let Some(signal) =
+            take_registered_cancel(&mut cancel_signals.lock().unwrap(), &req.tab_id)
+        {
+            let _ = signal.send(());
+        }
         if let Some(ref old) = old_sid {
-            if let Some(entry) = cancel_signals.lock().unwrap().remove(&req.tab_id) {
-                let _ = entry.signal.send(());
-            }
             if let Err(e) = conn
                 .cancel(acp::schema::v1::CancelNotification::new(old.clone()))
                 .await
@@ -4460,14 +4522,16 @@ fn dispatch_new_session(
             g.remove(&req.tab_id)
         };
 
+        if let Some(signal) =
+            take_registered_cancel(&mut cancel_signals.lock().unwrap(), &req.tab_id)
+        {
+            let _ = signal.send(());
+        }
         if let Some(ref old) = old_sid {
             let old_str = old.to_string();
             crate::protocol::acp::model_select::forget_session(&old_str);
             client_state.native_yolo.forget_session(old);
             template_memo.forget(&old_str).await;
-            if let Some(entry) = cancel_signals.lock().unwrap().remove(&req.tab_id) {
-                let _ = entry.signal.send(());
-            }
             let _ = conn
                 .cancel(acp::schema::v1::CancelNotification::new(old.clone()))
                 .await;
@@ -4567,14 +4631,14 @@ async fn dispatch_drop_session(
         let mut sessions = tab_to_session.lock().await;
         sessions.remove(&req.tab_id)
     };
+    if let Some(signal) = take_registered_cancel(&mut cancel_signals.lock().unwrap(), &req.tab_id) {
+        let _ = signal.send(());
+    }
     if let Some(old) = old_sid {
         let old_str = old.to_string();
         crate::protocol::acp::model_select::forget_session(&old_str);
         client_state.native_yolo.forget_session(&old);
         template_memo.forget(&old_str).await;
-        if let Some(entry) = cancel_signals.lock().unwrap().remove(&req.tab_id) {
-            let _ = entry.signal.send(());
-        }
     }
 
     if !req.notify_master {
@@ -4613,9 +4677,10 @@ async fn dispatch_drop_session(
     });
 }
 
-/// Signal the exact tab/prompt pair and best-effort notify the agent via
-/// `session/cancel`. Stale requests are ignored rather than risking
-/// cancellation of a newer prompt on the same session.
+/// Signal the exact registered tab/prompt pair and best-effort notify the
+/// agent via `session/cancel`. A cancel that wins the main channel select
+/// before prompt registration is latched without notifying the agent because
+/// that prompt has not started. Stale requests never replace newer state.
 fn dispatch_cancel(
     req: CancelRequest,
     conn: &conn::ClientLink,
@@ -4628,25 +4693,53 @@ fn dispatch_cancel(
         session_id = ?req.session_id,
         "cancel requested"
     );
-    // Local oneshot first — it's the critical path for breaking the
-    // spawned prompt task out of conn.prompt().
-    let matched = {
+    // Local oneshot first — it's the critical path for breaking the spawned
+    // prompt task out of conn.prompt(). With no entry, preserve this exact
+    // identity for dispatch_prompt to consume.
+    let signal = {
         let mut registry = cancel_signals.lock().unwrap();
         match registry.get(&req.tab_id) {
-            Some(entry) if entry.prompt_id == req.prompt_id => registry.remove(&req.tab_id),
-            _ => None,
+            Some(entry) if entry.prompt_id() != req.prompt_id => {
+                tracing::info!(
+                    target: "acp_cancel",
+                    tab_id = %req.tab_id,
+                    prompt_id = req.prompt_id,
+                    registered_prompt_id = entry.prompt_id(),
+                    "ignoring stale cancel request"
+                );
+                return;
+            }
+            Some(PromptCancelEntry::Pending { .. }) => {
+                tracing::debug!(
+                    target: "acp_cancel",
+                    tab_id = %req.tab_id,
+                    prompt_id = req.prompt_id,
+                    "matching cancel is already pending prompt registration"
+                );
+                return;
+            }
+            Some(PromptCancelEntry::Registered { .. }) => match registry.remove(&req.tab_id) {
+                Some(PromptCancelEntry::Registered { signal, .. }) => signal,
+                _ => unreachable!("matching registered cancel entry changed while locked"),
+            },
+            None => {
+                registry.insert(
+                    req.tab_id.clone(),
+                    PromptCancelEntry::Pending {
+                        prompt_id: req.prompt_id,
+                    },
+                );
+                tracing::debug!(
+                    target: "acp_cancel",
+                    tab_id = %req.tab_id,
+                    prompt_id = req.prompt_id,
+                    "latched cancel pending prompt registration"
+                );
+                return;
+            }
         }
     };
-    let Some(entry) = matched else {
-        tracing::info!(
-            target: "acp_cancel",
-            tab_id = %req.tab_id,
-            prompt_id = req.prompt_id,
-            "ignoring stale cancel request"
-        );
-        return;
-    };
-    let _ = entry.signal.send(());
+    let _ = signal.send(());
     let Some(session_id_str) = req.session_id else {
         return;
     };
@@ -4671,22 +4764,110 @@ fn dispatch_cancel(
 /// the shared map. No-op when `old_tab_id` is absent.
 async fn dispatch_rename_session(
     req: RenameSessionRequest,
+    conn: &conn::ClientLink,
     tab_to_session: &Arc<tokio::sync::Mutex<HashMap<String, acp::schema::v1::SessionId>>>,
+    cancel_signals: &SharedPromptCancelRegistry,
+    in_flight_tabs: &SharedInFlightPrompts,
 ) {
     rename_helper_owner_tab_id(&req.old_tab_id, &req.new_tab_id);
-    let mut g = tab_to_session.lock().await;
-    let old_existed = if let Some(sid) = g.remove(&req.old_tab_id) {
-        g.insert(req.new_tab_id.clone(), sid);
-        true
-    } else {
-        false
+    let rekeyed_session = {
+        let mut sessions = tab_to_session.lock().await;
+        if let Some(session_id) = sessions.remove(&req.old_tab_id) {
+            sessions.insert(req.new_tab_id.clone(), session_id.clone());
+            Some(session_id)
+        } else {
+            None
+        }
     };
+    let (cancel_rekeyed, cancel_merged, signals) = {
+        let mut registry = cancel_signals.lock().unwrap();
+        if let Some(entry) = registry.remove(&req.old_tab_id) {
+            match registry.remove(&req.new_tab_id) {
+                None => {
+                    registry.insert(req.new_tab_id.clone(), entry);
+                    (true, false, Vec::new())
+                }
+                Some(destination) if entry.prompt_id() == destination.prompt_id() => {
+                    // A tab rename unifies aliases for the same prompt. Pending means
+                    // cancellation already won, so no Registered sender may be lost.
+                    match (entry, destination) {
+                        (
+                            PromptCancelEntry::Pending { prompt_id },
+                            PromptCancelEntry::Pending { .. },
+                        ) => {
+                            registry.insert(
+                                req.new_tab_id.clone(),
+                                PromptCancelEntry::Pending { prompt_id },
+                            );
+                            (true, false, Vec::new())
+                        }
+                        (old, new) => {
+                            let mut signals = Vec::new();
+                            if let PromptCancelEntry::Registered { signal, .. } = old {
+                                signals.push(signal);
+                            }
+                            if let PromptCancelEntry::Registered { signal, .. } = new {
+                                signals.push(signal);
+                            }
+                            (true, true, signals)
+                        }
+                    }
+                }
+                Some(destination) => {
+                    let (keep, discard) = if entry.prompt_id() > destination.prompt_id() {
+                        (entry, destination)
+                    } else {
+                        (destination, entry)
+                    };
+                    let signal = match discard {
+                        PromptCancelEntry::Registered { signal, .. } => Some(signal),
+                        PromptCancelEntry::Pending { .. } => None,
+                    };
+                    registry.insert(req.new_tab_id.clone(), keep);
+                    (true, false, signal.into_iter().collect())
+                }
+            }
+        } else {
+            (false, false, Vec::new())
+        }
+    };
+    for signal in signals {
+        let _ = signal.send(());
+    }
+    let in_flight_rekeyed = {
+        let mut in_flight = in_flight_tabs.lock().unwrap();
+        if let Some(prompt_id) = in_flight.remove(&req.old_tab_id) {
+            in_flight
+                .entry(req.new_tab_id.clone())
+                .and_modify(|destination_id| *destination_id = (*destination_id).max(prompt_id))
+                .or_insert(prompt_id);
+            true
+        } else {
+            false
+        }
+    };
+    if cancel_merged {
+        if let Some(session_id) = rekeyed_session.clone() {
+            let conn_for_cancel = conn.clone();
+            tokio::task::spawn_local(async move {
+                if let Err(e) = conn_for_cancel
+                    .cancel(acp::schema::v1::CancelNotification::new(session_id.clone()))
+                    .await
+                {
+                    tracing::warn!(target: "acp_cancel", session_id = %session_id, error = ?e, "session/cancel rpc failed after tab rename (likely unsupported)");
+                }
+            });
+        }
+    }
     tracing::info!(
         target: "acp_rename_session",
         old_tab_id = %req.old_tab_id,
         new_tab_id = %req.new_tab_id,
-        old_existed,
-        "tab_to_session rekeyed via drag"
+        session_rekeyed = rekeyed_session.is_some(),
+        cancel_rekeyed,
+        cancel_merged,
+        in_flight_rekeyed,
+        "prompt lifecycle state rekeyed via drag"
     );
 }
 
@@ -4709,12 +4890,12 @@ fn build_prompt_content(
 
 async fn stop_prompt_tasks(
     prompt_tasks: &mut Vec<tokio::task::JoinHandle<()>>,
-    in_flight_tabs: &Arc<std::sync::Mutex<HashSet<String>>>,
+    in_flight_tabs: &SharedInFlightPrompts,
     cancel_signals: &SharedPromptCancelRegistry,
 ) {
     let signals = std::mem::take(&mut *cancel_signals.lock().unwrap());
     for (_, entry) in signals {
-        let _ = entry.signal.send(());
+        entry.signal_registered();
     }
     for task in prompt_tasks.drain(..) {
         task.abort();
@@ -4729,7 +4910,7 @@ async fn complete_transport_shutdown(
     suppress_transport_error: &AtomicBool,
     event_tx: &mpsc::UnboundedSender<AppEvent>,
     prompt_tasks: &mut Vec<tokio::task::JoinHandle<()>>,
-    in_flight_tabs: &Arc<std::sync::Mutex<HashSet<String>>>,
+    in_flight_tabs: &SharedInFlightPrompts,
     cancel_signals: &SharedPromptCancelRegistry,
 ) -> AcpClientExit {
     stop_prompt_tasks(prompt_tasks, in_flight_tabs, cancel_signals).await;
@@ -4741,7 +4922,7 @@ fn dispatch_prompt(
     conn: &conn::ClientLink,
     tab_to_session: &Arc<tokio::sync::Mutex<HashMap<String, acp::schema::v1::SessionId>>>,
     template_memo: &TemplateMemo,
-    in_flight_tabs: &Arc<std::sync::Mutex<HashSet<String>>>,
+    in_flight_tabs: &SharedInFlightPrompts,
     cancel_signals: &SharedPromptCancelRegistry,
     event_tx: &mpsc::UnboundedSender<AppEvent>,
     shell_mgr: &Arc<ShellManager>,
@@ -4758,14 +4939,62 @@ fn dispatch_prompt(
         .as_ref()
         .and_then(|c| c.tab_id.clone())
         .unwrap_or_else(|| "0".to_string());
+    let prompt_id = prompt.id;
+
+    {
+        let mut registry = cancel_signals.lock().unwrap();
+        match registry.get(&tab_key) {
+            Some(PromptCancelEntry::Pending {
+                prompt_id: pending_id,
+            }) if *pending_id == prompt_id => {
+                registry.remove(&tab_key);
+                let _ = event_tx.send(AppEvent::PromptCancellationSettled {
+                    tab_id: tab_key,
+                    prompt_id,
+                    session_id: None,
+                });
+                return None;
+            }
+            Some(PromptCancelEntry::Pending {
+                prompt_id: pending_id,
+            }) if *pending_id < prompt_id => {
+                tracing::info!(
+                    target: "acp_cancel",
+                    tab_id = %tab_key,
+                    pending_prompt_id = *pending_id,
+                    prompt_id,
+                    "discarding stale pending cancellation before newer prompt"
+                );
+                registry.remove(&tab_key);
+            }
+            Some(PromptCancelEntry::Pending {
+                prompt_id: pending_id,
+            }) => {
+                tracing::info!(
+                    target: "acp_cancel",
+                    tab_id = %tab_key,
+                    pending_prompt_id = *pending_id,
+                    prompt_id,
+                    "discarding stale queued prompt while preserving newer pending cancellation"
+                );
+                return None;
+            }
+            _ => {}
+        }
+    }
 
     {
         let mut g = in_flight_tabs.lock().unwrap();
-        if !g.insert(tab_key.clone()) {
-            let _ = event_tx.send(AppEvent::AgentBusy {
-                tab_id: tab_key.clone(),
-            });
-            return None;
+        match g.entry(tab_key.clone()) {
+            std::collections::hash_map::Entry::Vacant(entry) => {
+                entry.insert(prompt_id);
+            }
+            std::collections::hash_map::Entry::Occupied(_) => {
+                let _ = event_tx.send(AppEvent::AgentBusy {
+                    tab_id: tab_key.clone(),
+                });
+                return None;
+            }
         }
     }
 
@@ -4781,11 +5010,10 @@ fn dispatch_prompt(
     let prompt_usage_identity_task = prompt_usage_identity.clone();
     let proposal_channels_task = Arc::clone(proposal_channels);
     let tab_key_task = tab_key.clone();
-    let prompt_id = prompt.id;
     let (cancel_tx, cancel_rx) = tokio::sync::oneshot::channel::<()>();
     cancel_signals.lock().unwrap().insert(
         tab_key.clone(),
-        PromptCancelEntry {
+        PromptCancelEntry::Registered {
             prompt_id,
             signal: cancel_tx,
         },
@@ -4821,7 +5049,7 @@ async fn dispatch_prompt_body(
     conn_task: conn::ClientLink,
     tab_to_session_task: Arc<tokio::sync::Mutex<HashMap<String, acp::schema::v1::SessionId>>>,
     template_memo: TemplateMemo,
-    in_flight_tabs_task: Arc<std::sync::Mutex<HashSet<String>>>,
+    in_flight_tabs_task: SharedInFlightPrompts,
     cancel_signals_task: SharedPromptCancelRegistry,
     event_tx_task: mpsc::UnboundedSender<AppEvent>,
     shell_mgr_task: Arc<ShellManager>,
@@ -4835,6 +5063,7 @@ async fn dispatch_prompt_body(
     proposal_commands_supported: bool,
     proposal_channels: Arc<crate::agent_tools::action_proposal::channel::ProposalChannelManager>,
 ) {
+    let prompt_id = prompt.id;
     let _cleanup = PromptDispatchCleanup {
         tab_key: tab_key_task.clone(),
         prompt_id: prompt.id,
@@ -5269,8 +5498,10 @@ async fn dispatch_prompt_body(
                 // compatibility drain here.
                 tokio::time::sleep(std::time::Duration::from_millis(50)).await;
             }
-            let _ = event_tx_task.send(AppEvent::AgentMessageEnd {
-                session_id: prompt_session_id_str.clone(),
+            let _ = event_tx_task.send(AppEvent::PromptCancellationSettled {
+                tab_id: tab_key_task.clone(),
+                prompt_id,
+                session_id: Some(prompt_session_id_str.clone()),
             });
             false
         }
@@ -5378,10 +5609,11 @@ mod tests {
         acp_error_detail, acp_result_failure_fields, bounded_tool_output_parts,
         claim_unexpected_transport_loss, complete_prompt_request, complete_transport_shutdown,
         inject_wta_pane_meta, is_redundant_startup_model_error, post_login_authenticate_error,
-        session_mcp_tool_from_title, stop_prompt_tasks, timeout_result_failure_fields,
-        tool_call_exit_code, tool_call_kind_label, tool_call_location_hint, tool_call_target,
-        AcpClientExit, ClientState, PromptCancelEntry, PromptDispatchCleanup, PromptTimingState,
-        PromptUsageIdentity, SessionMcpTool, SoftStopReason, WtaClient,
+        session_mcp_tool_from_title, stop_prompt_tasks, take_registered_cancel,
+        timeout_result_failure_fields, tool_call_exit_code, tool_call_kind_label,
+        tool_call_location_hint, tool_call_target, AcpClientExit, ClientState, PromptCancelEntry,
+        PromptDispatchCleanup, PromptTimingState, PromptUsageIdentity, SessionMcpTool,
+        SoftStopReason, WtaClient,
     };
     use crate::app_contracts::AppEvent;
     use crate::protocol::acp::failure::{AgentFailure, HandshakeStage};
@@ -5392,12 +5624,12 @@ mod tests {
 
     #[test]
     fn prompt_dispatch_cleanup_preserves_newer_cancel_entry() {
-        let in_flight_tabs = Arc::new(Mutex::new(HashSet::from(["tab".to_string()])));
+        let in_flight_tabs = Arc::new(Mutex::new(HashMap::from([("tab".to_string(), 1)])));
         let cancel_signals = Arc::new(Mutex::new(HashMap::new()));
         let (newer_signal, mut newer_cancel) = tokio::sync::oneshot::channel();
         cancel_signals.lock().unwrap().insert(
             "tab".to_string(),
-            PromptCancelEntry {
+            PromptCancelEntry::Registered {
                 prompt_id: 2,
                 signal: newer_signal,
             },
@@ -5416,13 +5648,100 @@ mod tests {
                 .lock()
                 .unwrap()
                 .get("tab")
-                .map(|entry| entry.prompt_id),
+                .map(PromptCancelEntry::prompt_id),
             Some(2)
         );
         assert!(matches!(
             newer_cancel.try_recv(),
             Err(tokio::sync::oneshot::error::TryRecvError::Empty)
         ));
+    }
+
+    #[test]
+    fn prompt_dispatch_cleanup_finds_rekeyed_identity() {
+        let in_flight_tabs = Arc::new(Mutex::new(HashMap::from([("new-tab".to_string(), 7)])));
+        let cancel_signals = Arc::new(Mutex::new(HashMap::from([(
+            "new-tab".to_string(),
+            PromptCancelEntry::Pending { prompt_id: 7 },
+        )])));
+
+        drop(PromptDispatchCleanup {
+            tab_key: "old-tab".to_string(),
+            prompt_id: 7,
+            in_flight_tabs: Arc::clone(&in_flight_tabs),
+            cancel_signals: Arc::clone(&cancel_signals),
+        });
+
+        assert!(in_flight_tabs.lock().unwrap().is_empty());
+        assert!(cancel_signals.lock().unwrap().is_empty());
+    }
+
+    #[test]
+    fn prompt_dispatch_cleanup_does_not_remove_newer_rekeyed_identity() {
+        let in_flight_tabs = Arc::new(Mutex::new(HashMap::from([
+            ("old-tab".to_string(), 8),
+            ("new-tab".to_string(), 7),
+        ])));
+        let cancel_signals = Arc::new(Mutex::new(HashMap::from([
+            (
+                "old-tab".to_string(),
+                PromptCancelEntry::Pending { prompt_id: 8 },
+            ),
+            (
+                "new-tab".to_string(),
+                PromptCancelEntry::Pending { prompt_id: 7 },
+            ),
+        ])));
+
+        drop(PromptDispatchCleanup {
+            tab_key: "old-tab".to_string(),
+            prompt_id: 7,
+            in_flight_tabs: Arc::clone(&in_flight_tabs),
+            cancel_signals: Arc::clone(&cancel_signals),
+        });
+
+        assert_eq!(
+            in_flight_tabs.lock().unwrap().get("old-tab").copied(),
+            Some(8)
+        );
+        assert!(!in_flight_tabs.lock().unwrap().contains_key("new-tab"));
+        assert_eq!(
+            cancel_signals
+                .lock()
+                .unwrap()
+                .get("old-tab")
+                .map(PromptCancelEntry::prompt_id),
+            Some(8)
+        );
+        assert!(!cancel_signals.lock().unwrap().contains_key("new-tab"));
+    }
+
+    #[test]
+    fn lifecycle_cancel_take_preserves_pending_and_signals_registered() {
+        let mut registry = HashMap::from([(
+            "tab".to_string(),
+            PromptCancelEntry::Pending { prompt_id: 4 },
+        )]);
+        assert!(take_registered_cancel(&mut registry, "tab").is_none());
+        assert_eq!(
+            registry.get("tab").map(PromptCancelEntry::prompt_id),
+            Some(4)
+        );
+
+        let (signal, mut cancelled) = tokio::sync::oneshot::channel();
+        registry.insert(
+            "tab".to_string(),
+            PromptCancelEntry::Registered {
+                prompt_id: 5,
+                signal,
+            },
+        );
+        take_registered_cancel(&mut registry, "tab")
+            .expect("registered entry must be removed")
+            .send(())
+            .expect("cancel receiver must remain live");
+        assert!(registry.is_empty());
+        assert_eq!(cancelled.try_recv(), Ok(()));
     }
 
     #[test]
@@ -5489,11 +5808,11 @@ mod tests {
         })];
         started_rx.await.expect("prompt task started");
 
-        let in_flight_tabs = Arc::new(Mutex::new(HashSet::from(["tab-1".to_string()])));
+        let in_flight_tabs = Arc::new(Mutex::new(HashMap::from([("tab-1".to_string(), 1)])));
         let (cancel_tx, _cancel_rx) = tokio::sync::oneshot::channel();
         let cancel_signals = Arc::new(Mutex::new(HashMap::from([(
             "tab-1".to_string(),
-            PromptCancelEntry {
+            PromptCancelEntry::Registered {
                 prompt_id: 1,
                 signal: cancel_tx,
             },
@@ -5533,7 +5852,7 @@ mod tests {
         let intentional_shutdown = std::sync::atomic::AtomicBool::new(true);
         let (event_tx, mut event_rx) = mpsc::unbounded_channel();
         let mut prompt_tasks = Vec::new();
-        let in_flight_tabs = Arc::new(Mutex::new(HashSet::new()));
+        let in_flight_tabs = Arc::new(Mutex::new(HashMap::new()));
         let cancel_signals = Arc::new(Mutex::new(HashMap::new()));
         let io_result = tokio::spawn(async {}).await;
 
@@ -5573,11 +5892,11 @@ mod tests {
             })];
             tokio::task::yield_now().await;
 
-            let in_flight_tabs = Arc::new(Mutex::new(HashSet::from(["tab-1".to_string()])));
+            let in_flight_tabs = Arc::new(Mutex::new(HashMap::from([("tab-1".to_string(), 1)])));
             let (cancel_tx, _cancel_rx) = tokio::sync::oneshot::channel();
             let cancel_signals = Arc::new(Mutex::new(HashMap::from([(
                 "tab-1".to_string(),
-                PromptCancelEntry {
+                PromptCancelEntry::Registered {
                     prompt_id: 1,
                     signal: cancel_tx,
                 },

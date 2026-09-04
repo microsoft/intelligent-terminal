@@ -4374,6 +4374,7 @@ impl App {
             AppEvent::AgentMessageChunk { .. } => "agent_message_chunk",
             AppEvent::UserMessageReplayChunk { .. } => "user_message_replay_chunk",
             AppEvent::AgentMessageEnd { .. } => "agent_message_end",
+            AppEvent::PromptCancellationSettled { .. } => "prompt_cancellation_settled",
             AppEvent::TimingMetric { .. } => "timing_metric",
             AppEvent::ToolCall { .. } => "tool_call",
             AppEvent::ToolCallUpdate { .. } => "tool_call_update",
@@ -5322,6 +5323,7 @@ impl App {
     /// for clearing the input and cursor before calling this.
     fn handle_slash_command(&mut self, cmd: ParsedCommand) {
         let in_flight = self.current_tab().turn.is_in_flight();
+        let prompt_blocked = !self.current_tab().turn.accepts_new_prompt();
         crate::telemetry::log_slash_command_invoked(cmd.spec.name);
         tracing::info!(
             target: "slash_cmd",
@@ -5337,8 +5339,8 @@ impl App {
             CommandKind::Help => self.cmd_help(),
             CommandKind::Clear => self.cmd_clear(),
             CommandKind::Stop => self.cmd_stop(in_flight),
-            CommandKind::New => self.cmd_new(in_flight),
-            CommandKind::Fix => self.cmd_fix(in_flight, cmd.rest),
+            CommandKind::New => self.cmd_new(prompt_blocked),
+            CommandKind::Fix => self.cmd_fix(prompt_blocked, cmd.rest),
             CommandKind::Sessions => self.cmd_sessions(),
             CommandKind::Restart => self.cmd_restart(),
             CommandKind::Agent => self.cmd_agent(cmd.rest),
@@ -5386,8 +5388,8 @@ impl App {
 
     /// `/new` — start a fresh session on the active tab. Refuses while a turn
     /// is in flight (the user should `/stop` first).
-    fn cmd_new(&mut self, in_flight: bool) {
-        if in_flight {
+    fn cmd_new(&mut self, prompt_blocked: bool) {
+        if prompt_blocked {
             let tab = self.current_tab_mut();
             tab.messages.push(ChatMessage::warning(
                 t!("system.busy_use_stop").into_owned(),
