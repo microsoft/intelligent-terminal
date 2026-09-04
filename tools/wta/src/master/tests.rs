@@ -7944,6 +7944,51 @@ async fn reap_agent_keeps_key_unavailable_through_orphan_cleanup() {
         .await;
 }
 
+#[tokio::test(flavor = "current_thread")]
+async fn reap_agent_matches_all_retirement_orphan_lock_order() {
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let state = make_state();
+            let key = "copilot --acp --stdio".to_string();
+            let dead_agent = unbound_test_agent(&key);
+            let dead_instance = dead_agent.instance_id;
+            let dead_cell = Arc::new(tokio::sync::OnceCell::new());
+            assert!(dead_cell.set(dead_agent).is_ok());
+            state
+                .agents
+                .lock()
+                .await
+                .insert(key.clone(), Arc::clone(&dead_cell));
+
+            let pause = Arc::new(ReapAgentOrphanCleanupPause::default());
+            *state.reap_agent_orphan_cleanup_pause.lock().await = Some(Arc::clone(&pause));
+            let orphaned_tabs = state.orphaned_tabs.lock().await;
+            let reaper = tokio::task::spawn_local({
+                let state = Arc::clone(&state);
+                let key = key.clone();
+                let dead_cell = Arc::clone(&dead_cell);
+                async move {
+                    reap_agent(&state, &key, &dead_cell, dead_instance).await;
+                }
+            });
+
+            pause.agent_removed.notified().await;
+            pause.resume_cleanup.notify_one();
+            tokio::task::yield_now().await;
+
+            tokio::time::timeout(
+                std::time::Duration::from_secs(1),
+                state.orphaned_sessions.lock(),
+            )
+            .await
+            .expect("reaper must wait for orphaned_tabs without holding orphaned_sessions");
+
+            drop(orphaned_tabs);
+            reaper.await.expect("reaper task should complete");
+        })
+        .await;
+}
+
 /// A stale reaper must revoke its dead CLI instance's capabilities without
 /// disturbing the replacement CLI that now occupies the same pool key.
 #[tokio::test]

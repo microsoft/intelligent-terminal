@@ -5293,13 +5293,13 @@ async fn reap_agent(
             }
             // Keep the key unavailable until all generation-owned state is
             // gone. Pool publication takes `agents` first, so the consistent
-            // order is agents -> orphaned_sessions -> orphaned_tabs.
-            state.orphaned_sessions.lock().await.remove(key);
+            // order is agents -> orphaned_tabs -> orphaned_sessions.
             state
                 .orphaned_tabs
                 .lock()
                 .await
                 .retain(|_, (orphan_key, _, _)| orphan_key != key);
+            state.orphaned_sessions.lock().await.remove(key);
             true
         } else {
             false
