@@ -13707,6 +13707,28 @@ fn cancel_bumps_generation_and_waits_for_terminal_boundary() {
 }
 
 #[test]
+fn turn_cancel_requests_correlated_cancellation_and_enters_cancelling() {
+    let mut app = test_app();
+    let (cancel_tx, mut cancel_rx) = tokio::sync::mpsc::unbounded_channel();
+    app.cancel_tx = cancel_tx;
+    let session_id = "session-1";
+    app.session_to_tab
+        .insert(session_id.into(), DEFAULT_TAB_ID.into());
+    app.tab_mut(DEFAULT_TAB_ID).session_id = Some(session_id.into());
+    submit_test_prompt(&mut app, "stop this");
+
+    app.turn_cancel(session_id);
+
+    let request = cancel_rx
+        .try_recv()
+        .expect("turn_cancel must request ACP cancellation");
+    assert_eq!(request.tab_id, DEFAULT_TAB_ID);
+    assert_eq!(request.prompt_id, 42);
+    assert_eq!(request.session_id.as_deref(), Some(session_id));
+    assert!(app.current_tab().turn.is_cancelling());
+}
+
+#[test]
 fn cancel_mid_stream_preserves_visible_prose_with_canceled_marker() {
     // Esc while prose is streaming → commit partial prose as a
     // CompletedTurn (default-expanded) with the trailing_marker set

@@ -2811,6 +2811,10 @@ async fn dispatch_prompt_new_session_failure_emits_error_and_releases_slot() {
                 in_flight.lock().unwrap().is_empty(),
                 "single-flight slot must be released on new_session failure"
             );
+            assert!(
+                cancel_signals.lock().unwrap().is_empty(),
+                "new_session failure must remove the prompt's cancel entry"
+            );
             assert!(tab_to_session.lock().await.is_empty());
             assert!(h.seen_prompts.lock().unwrap().is_empty());
         })

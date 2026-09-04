@@ -763,12 +763,11 @@ impl App {
         self.recompute_chip_override(&target_tab);
     }
 
-    /// User pressed Esc — cancel the in-flight turn. Bumps
-    /// `autofix_generation` so any chunks that arrive after this point are
-    /// dropped by the stale-check in `turn_observe_chunk`.
+    /// Cancel the in-flight turn for a session and request cancellation from
+    /// the ACP client.
     pub fn turn_cancel(&mut self, session_id: &str) {
         let target_tab = self.tab_for_session(session_id);
-        self.turn_cancel_for_tab(&target_tab);
+        self.request_turn_cancel_for_tab(&target_tab);
     }
 
     pub(super) fn request_turn_cancel_for_tab(&mut self, target_tab: &str) {

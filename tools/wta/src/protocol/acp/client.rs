@@ -125,6 +125,28 @@ struct PromptCancelEntry {
 
 type SharedPromptCancelRegistry = Arc<std::sync::Mutex<HashMap<String, PromptCancelEntry>>>;
 
+struct PromptDispatchCleanup {
+    tab_key: String,
+    prompt_id: u64,
+    in_flight_tabs: Arc<std::sync::Mutex<HashSet<String>>>,
+    cancel_signals: SharedPromptCancelRegistry,
+}
+
+impl Drop for PromptDispatchCleanup {
+    fn drop(&mut self) {
+        {
+            let mut registry = self.cancel_signals.lock().unwrap();
+            if registry
+                .get(&self.tab_key)
+                .is_some_and(|entry| entry.prompt_id == self.prompt_id)
+            {
+                registry.remove(&self.tab_key);
+            }
+        }
+        self.in_flight_tabs.lock().unwrap().remove(&self.tab_key);
+    }
+}
+
 /// User-initiated request to spin up a fresh ACP session for a given tab,
 /// dropping the previous session's history. Emitted by the `/new` slash
 /// command. The ACP client task removes the old SessionId from its
@@ -4813,6 +4835,13 @@ async fn dispatch_prompt_body(
     proposal_commands_supported: bool,
     proposal_channels: Arc<crate::agent_tools::action_proposal::channel::ProposalChannelManager>,
 ) {
+    let _cleanup = PromptDispatchCleanup {
+        tab_key: tab_key_task.clone(),
+        prompt_id: prompt.id,
+        in_flight_tabs: Arc::clone(&in_flight_tabs_task),
+        cancel_signals: Arc::clone(&cancel_signals_task),
+    };
+
     // Resolve (or lazily create) the ACP session for this tab.
     let (prompt_session_id, lazy_yolo_operation) = {
         let mut g = tab_to_session_task.lock().await;
@@ -4842,7 +4871,6 @@ async fn dispatch_prompt_body(
                         failure: AgentFailure::from_acp_error(&e),
                         message: format!("new_session failed for tab {}: {}", tab_key_task, e),
                     });
-                    in_flight_tabs_task.lock().unwrap().remove(&tab_key_task);
                     return;
                 }
             };
@@ -4853,7 +4881,6 @@ async fn dispatch_prompt_body(
                     session_id = %new_session.session_id,
                     "abandoning prompt because its lazy session was retired during tab reset or close"
                 );
-                in_flight_tabs_task.lock().unwrap().remove(&tab_key_task);
                 return;
             }
             let new_sid = new_session.session_id.clone();
@@ -4946,7 +4973,6 @@ async fn dispatch_prompt_body(
                         restart_required,
                         result: Err(error),
                     });
-                    in_flight_tabs_task.lock().unwrap().remove(&tab_key_task);
                     return;
                 }
             }
@@ -4964,7 +4990,6 @@ async fn dispatch_prompt_body(
                         "ending first prompt with a retryable error because its lazy-session Yolo operation was superseded"
                     );
                     publish_retryable_lazy_yolo_error(&event_tx_task, &prompt_session_id_str);
-                    in_flight_tabs_task.lock().unwrap().remove(&tab_key_task);
                     return;
                 }
             }
@@ -4996,7 +5021,6 @@ async fn dispatch_prompt_body(
             },
             message,
         });
-        in_flight_tabs_task.lock().unwrap().remove(&tab_key_task);
         return;
     }
 
@@ -5020,7 +5044,6 @@ async fn dispatch_prompt_body(
             },
             message,
         });
-        in_flight_tabs_task.lock().unwrap().remove(&tab_key_task);
         return;
     }
 
@@ -5051,7 +5074,6 @@ async fn dispatch_prompt_body(
                 },
                 message,
             });
-            in_flight_tabs_task.lock().unwrap().remove(&tab_key_task);
             return;
         }
     }
@@ -5340,17 +5362,6 @@ async fn dispatch_prompt_body(
             }
         }
     }
-
-    {
-        let mut registry = cancel_signals_task.lock().unwrap();
-        if registry
-            .get(&tab_key_task)
-            .is_some_and(|entry| entry.prompt_id == prompt.id)
-        {
-            registry.remove(&tab_key_task);
-        }
-    }
-    in_flight_tabs_task.lock().unwrap().remove(&tab_key_task);
 }
 
 #[cfg(test)]
@@ -5362,8 +5373,8 @@ mod tests {
         inject_wta_pane_meta, is_redundant_startup_model_error, post_login_authenticate_error,
         session_mcp_tool_from_title, stop_prompt_tasks, timeout_result_failure_fields,
         tool_call_exit_code, tool_call_kind_label, tool_call_location_hint, tool_call_target,
-        AcpClientExit, ClientState, PromptCancelEntry, PromptTimingState, PromptUsageIdentity,
-        SessionMcpTool, SoftStopReason, WtaClient,
+        AcpClientExit, ClientState, PromptCancelEntry, PromptDispatchCleanup, PromptTimingState,
+        PromptUsageIdentity, SessionMcpTool, SoftStopReason, WtaClient,
     };
     use crate::app_contracts::AppEvent;
     use crate::protocol::acp::failure::{AgentFailure, HandshakeStage};
@@ -5371,6 +5382,41 @@ mod tests {
     use std::collections::{HashMap, HashSet};
     use std::sync::{Arc, Mutex};
     use tokio::sync::mpsc;
+
+    #[test]
+    fn prompt_dispatch_cleanup_preserves_newer_cancel_entry() {
+        let in_flight_tabs = Arc::new(Mutex::new(HashSet::from(["tab".to_string()])));
+        let cancel_signals = Arc::new(Mutex::new(HashMap::new()));
+        let (newer_signal, mut newer_cancel) = tokio::sync::oneshot::channel();
+        cancel_signals.lock().unwrap().insert(
+            "tab".to_string(),
+            PromptCancelEntry {
+                prompt_id: 2,
+                signal: newer_signal,
+            },
+        );
+
+        drop(PromptDispatchCleanup {
+            tab_key: "tab".to_string(),
+            prompt_id: 1,
+            in_flight_tabs: Arc::clone(&in_flight_tabs),
+            cancel_signals: Arc::clone(&cancel_signals),
+        });
+
+        assert!(in_flight_tabs.lock().unwrap().is_empty());
+        assert_eq!(
+            cancel_signals
+                .lock()
+                .unwrap()
+                .get("tab")
+                .map(|entry| entry.prompt_id),
+            Some(2)
+        );
+        assert!(matches!(
+            newer_cancel.try_recv(),
+            Err(tokio::sync::oneshot::error::TryRecvError::Empty)
+        ));
+    }
 
     #[test]
     fn fetch_target_strips_credentials_query_and_fragment() {
