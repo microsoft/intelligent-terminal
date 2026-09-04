@@ -134,12 +134,52 @@ function Get-RunnableWtaPath {
         $bundleSource = Join-Path $App.InstallLocation 'wt-agent-hooks'
         $bundleDest = Join-Path $dir 'wt-agent-hooks'
         if (Test-Path $bundleSource) {
+            $swapId = [guid]::NewGuid().ToString('N')
+            $bundleStage = "$bundleDest.staging.$swapId"
+            $bundleBackup = "$bundleDest.backup.$swapId"
+            $backupPresent = $false
             try {
-                if (Test-Path $bundleDest) { Remove-Item -LiteralPath $bundleDest -Recurse -Force -ErrorAction Stop }
-                Copy-Item -LiteralPath $bundleSource -Destination $bundleDest -Recurse -Force -ErrorAction Stop
+                Copy-Item -LiteralPath $bundleSource -Destination $bundleStage -Recurse -Force -ErrorAction Stop
+                if (Test-Path $bundleDest) {
+                    Move-Item -LiteralPath $bundleDest -Destination $bundleBackup -ErrorAction Stop
+                    $backupPresent = $true
+                }
+                try {
+                    Move-Item -LiteralPath $bundleStage -Destination $bundleDest -ErrorAction Stop
+                }
+                catch {
+                    $activationError = $_
+                    if ($backupPresent) {
+                        try {
+                            if (Test-Path $bundleDest) { Remove-Item -LiteralPath $bundleDest -Recurse -Force -ErrorAction Stop }
+                            Move-Item -LiteralPath $bundleBackup -Destination $bundleDest -ErrorAction Stop
+                            $backupPresent = $false
+                            Write-ItLog -Level WARN -Message "Hook bundle activation failed; restored prior bundle at '$bundleDest'."
+                        }
+                        catch {
+                            Write-ItLog -Level WARN -Message "Hook bundle activation and rollback failed; prior bundle retained at '$bundleBackup': $_"
+                        }
+                    }
+                    throw $activationError
+                }
+                if ($backupPresent) {
+                    try {
+                        Remove-Item -LiteralPath $bundleBackup -Recurse -Force -ErrorAction Stop
+                        $backupPresent = $false
+                    }
+                    catch {
+                        Write-ItLog -Level WARN -Message "Hook bundle activated, but backup cleanup failed; retained '$bundleBackup': $_"
+                    }
+                }
                 Write-ItLog -Level INFO -Message "Staged hook bundle -> $bundleDest"
             }
-            catch { Write-ItLog -Level WARN -Message "Could not stage packaged hook bundle: $_" }
+            catch { Write-ItLog -Level WARN -Message "Could not refresh packaged hook bundle: $_" }
+            finally {
+                if (Test-Path $bundleStage) {
+                    try { Remove-Item -LiteralPath $bundleStage -Recurse -Force -ErrorAction Stop }
+                    catch { Write-ItLog -Level WARN -Message "Could not clean hook bundle staging directory '$bundleStage': $_" }
+                }
+            }
         }
     }
     elseif ($App.WtaPath -and (Test-Path $App.WtaPath)) { $runnable = $App.WtaPath }

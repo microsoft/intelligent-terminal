@@ -351,6 +351,83 @@ Describe 'Get-RunnableWtaPath staging' -Tag 'Unit' {
             $app.PSObject.Properties.Name | Should -Not -Contain 'WtaRunnable'
         }
     }
+
+    Context 'hook bundle refresh' {
+        BeforeEach {
+            $script:originalHookTestTemp = $env:TEMP
+            $env:TEMP = $TestDrive
+            InModuleScope ItE2E {
+                $install = Join-Path $TestDrive 'WindowsApps\Hooks'
+                $bundleSource = Join-Path $install 'wt-agent-hooks'
+                New-Item -ItemType Directory -Force -Path $bundleSource | Out-Null
+                Set-Content -LiteralPath (Join-Path $bundleSource 'marker.txt') -Value 'new-hooks' -NoNewline
+                $wta = Join-Path $install 'wta.exe'
+                Set-Content -LiteralPath $wta -Value 'packaged-wta' -NoNewline
+                $app = [pscustomobject]@{
+                    Package = 'hook-test-family'
+                    Version = '1.2.3.4'
+                    InstallLocation = $install
+                    WtaPath = $wta
+                }
+                $sourceHash = (Get-FileHash -LiteralPath $wta -Algorithm SHA256).Hash
+                $stageDir = Join-Path $TestDrive "ite2e-wta\$($app.Package)\$($app.Version)\$sourceHash"
+                New-Item -ItemType Directory -Force -Path $stageDir | Out-Null
+                Copy-Item -LiteralPath $wta -Destination (Join-Path $stageDir 'wta.exe')
+                $bundleDest = Join-Path $stageDir 'wt-agent-hooks'
+                New-Item -ItemType Directory -Force -Path $bundleDest | Out-Null
+                Set-Content -LiteralPath (Join-Path $bundleDest 'marker.txt') -Value 'old-hooks' -NoNewline
+                $script:hookFixture = [pscustomobject]@{
+                    App = $app
+                    BundleSource = $bundleSource
+                    BundleDest = $bundleDest
+                    StageDir = $stageDir
+                }
+            }
+        }
+
+        AfterEach {
+            $env:TEMP = $script:originalHookTestTemp
+        }
+
+        It 'preserves the existing hook bundle when copying the replacement fails' {
+            InModuleScope ItE2E {
+                $fixture = $script:hookFixture
+                Mock Copy-Item { throw 'transient copy failure' } -ParameterFilter { $LiteralPath -eq $fixture.BundleSource }
+                Mock Write-ItLog
+
+                Get-RunnableWtaPath -App $fixture.App | Should -Be (Join-Path $fixture.StageDir 'wta.exe')
+
+                Get-Content -LiteralPath (Join-Path $fixture.BundleDest 'marker.txt') -Raw | Should -Be 'old-hooks'
+                @(Get-ChildItem -LiteralPath $fixture.StageDir -Directory | Where-Object Name -Like 'wt-agent-hooks.*').Count | Should -Be 0
+                Should -Invoke Write-ItLog -ParameterFilter { $Level -eq 'WARN' -and $Message -like '*transient copy failure*' }
+            }
+        }
+
+        It 'replaces the hook bundle and cleans swap artifacts after success' {
+            InModuleScope ItE2E {
+                $fixture = $script:hookFixture
+
+                Get-RunnableWtaPath -App $fixture.App | Should -Be (Join-Path $fixture.StageDir 'wta.exe')
+
+                Get-Content -LiteralPath (Join-Path $fixture.BundleDest 'marker.txt') -Raw | Should -Be 'new-hooks'
+                @(Get-ChildItem -LiteralPath $fixture.StageDir -Directory | Where-Object Name -Like 'wt-agent-hooks.*').Count | Should -Be 0
+            }
+        }
+
+        It 'restores the existing hook bundle when activating the staged copy fails' {
+            InModuleScope ItE2E {
+                $fixture = $script:hookFixture
+                Mock Move-Item { throw 'transient activation failure' } -ParameterFilter {
+                    $LiteralPath -like "$($fixture.BundleDest).staging.*" -and $Destination -eq $fixture.BundleDest
+                }
+
+                Get-RunnableWtaPath -App $fixture.App | Should -Be (Join-Path $fixture.StageDir 'wta.exe')
+
+                Get-Content -LiteralPath (Join-Path $fixture.BundleDest 'marker.txt') -Raw | Should -Be 'old-hooks'
+                @(Get-ChildItem -LiteralPath $fixture.StageDir -Directory | Where-Object Name -Like 'wt-agent-hooks.*').Count | Should -Be 0
+            }
+        }
+    }
 }
 
 Describe 'Feature suite package selection' -Tag 'Unit' {
