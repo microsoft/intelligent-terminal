@@ -79,6 +79,7 @@ pub(crate) struct HelperId(u64);
 type AgentCmdKey = String;
 type AgentInstanceId = uuid::Uuid;
 type AgentCell = Arc<OnceCell<Arc<AgentCli>>>;
+type WeakAgentCell = Weak<OnceCell<Arc<AgentCli>>>;
 
 struct CustomModelGeneration {
     config: crate::custom_model_provider::Config,
@@ -479,6 +480,11 @@ struct MasterStateInner {
     /// under the same command line never re-binds to a session it never had —
     /// such a resume falls back to a real `session/load` from disk.
     orphaned_sessions: Mutex<HashMap<AgentCmdKey, HashSet<acp::schema::v1::SessionId>>>,
+    /// Generations whose initializer was cancelled before its `OnceCell`
+    /// published a value. This uses a synchronous mutex so the initializer's
+    /// drop guard can tombstone the generation before `get_or_try_init` wakes
+    /// queued waiters.
+    retired_agent_cells: std::sync::Mutex<Vec<WeakAgentCell>>,
     /// Stable tab identity retained when a helper disconnect wins the race
     /// against the terminal's close-by-tab request. This lets a surviving
     /// helper physically close the now-orphaned ACP session milliseconds later.
@@ -4293,6 +4299,7 @@ async fn run_master_loop(config: MasterConfig, pipe_name: String) -> Result<()> 
         hook_owned: Mutex::new(HashSet::new()),
         born_bound: Mutex::new(HashSet::new()),
         orphaned_sessions: Mutex::new(HashMap::new()),
+        retired_agent_cells: std::sync::Mutex::new(Vec::new()),
         orphaned_tabs: Mutex::new(HashMap::new()),
     });
     {
@@ -4743,17 +4750,79 @@ impl std::fmt::Display for RetiredAgentCell {
 
 impl std::error::Error for RetiredAgentCell {}
 
+fn retired_agent_cells(state: &MasterStateInner) -> std::sync::MutexGuard<'_, Vec<WeakAgentCell>> {
+    state
+        .retired_agent_cells
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+}
+
+fn agent_cell_is_retired(state: &MasterStateInner, cell: &AgentCell) -> bool {
+    let mut retired = retired_agent_cells(state);
+    retired.retain(|candidate| candidate.strong_count() > 0);
+    let cell = Arc::downgrade(cell);
+    retired
+        .iter()
+        .any(|candidate| Weak::ptr_eq(candidate, &cell))
+}
+
+fn retire_agent_cell(state: &MasterStateInner, cell: &AgentCell) {
+    let mut retired = retired_agent_cells(state);
+    retired.retain(|candidate| candidate.strong_count() > 0);
+    let cell = Arc::downgrade(cell);
+    if !retired
+        .iter()
+        .any(|candidate| Weak::ptr_eq(candidate, &cell))
+    {
+        retired.push(cell);
+    }
+}
+
+struct AgentInitializationRetirement<'a> {
+    state: &'a MasterStateInner,
+    cell: AgentCell,
+    armed: bool,
+}
+
+impl<'a> AgentInitializationRetirement<'a> {
+    fn new(state: &'a MasterStateInner, cell: AgentCell) -> Self {
+        Self {
+            state,
+            cell,
+            armed: true,
+        }
+    }
+
+    fn retire(&mut self) {
+        if self.armed {
+            retire_agent_cell(self.state, &self.cell);
+            self.armed = false;
+        }
+    }
+
+    fn disarm(&mut self) {
+        self.armed = false;
+    }
+}
+
+impl Drop for AgentInitializationRetirement<'_> {
+    fn drop(&mut self) {
+        self.retire();
+    }
+}
+
 async fn agent_cell_is_current(
     state: &MasterStateInner,
     key: &AgentCmdKey,
     cell: &AgentCell,
 ) -> bool {
-    state
-        .agents
-        .lock()
-        .await
-        .get(key)
-        .is_some_and(|current| Arc::ptr_eq(current, cell))
+    !agent_cell_is_retired(state, cell)
+        && state
+            .agents
+            .lock()
+            .await
+            .get(key)
+            .is_some_and(|current| Arc::ptr_eq(current, cell))
 }
 
 async fn remove_agent_cell_if_current(
@@ -4785,6 +4854,12 @@ where
     loop {
         let cell = {
             let mut agents = state.agents.lock().await;
+            if agents
+                .get(key)
+                .is_some_and(|cell| agent_cell_is_retired(state, cell))
+            {
+                agents.remove(key);
+            }
             Arc::clone(
                 agents
                     .entry(key.clone())
@@ -4802,9 +4877,14 @@ where
                     return Err(anyhow!(RetiredAgentCell));
                 }
 
+                let mut retirement = AgentInitializationRetirement::new(state, Arc::clone(&cell));
                 match initialize(Arc::clone(&cell)).await {
-                    Ok(agent) => Ok(agent),
+                    Ok(agent) => {
+                        retirement.disarm();
+                        Ok(agent)
+                    }
                     Err(error) => {
+                        retirement.retire();
                         remove_agent_cell_if_current(state, key, &cell).await;
                         Err(error)
                     }

@@ -1137,6 +1137,106 @@ async fn failed_pool_generation_wakes_waiters_into_a_fresh_cell() {
         .await;
 }
 
+#[tokio::test(flavor = "current_thread")]
+async fn cancelled_pool_initializer_wakes_waiters_into_a_fresh_cell() {
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let state = make_state();
+            let key = "model:cancelled-generation-retry".to_string();
+            let cancelled_instance = AgentInstanceId::new_v4();
+            let replacement = unbound_test_agent(&key);
+            let first_started = Arc::new(tokio::sync::Notify::new());
+            let waiter_started = Arc::new(tokio::sync::Notify::new());
+            let first_cell = Arc::new(Mutex::new(None::<AgentCell>));
+            let retry_cell = Arc::new(Mutex::new(None::<AgentCell>));
+
+            let cancelled = tokio::task::spawn_local({
+                let state = Arc::clone(&state);
+                let key = key.clone();
+                let first_started = Arc::clone(&first_started);
+                let first_cell = Arc::clone(&first_cell);
+                async move {
+                    acquire_agent_from_pool(&state, &key, move |cell| {
+                        let first_started = Arc::clone(&first_started);
+                        let first_cell = Arc::clone(&first_cell);
+                        async move {
+                            *first_cell.lock().await = Some(cell);
+                            first_started.notify_one();
+                            std::future::pending::<Result<Arc<AgentCli>>>().await
+                        }
+                    })
+                    .await
+                }
+            });
+            first_started.notified().await;
+
+            let retried = tokio::task::spawn_local({
+                let state = Arc::clone(&state);
+                let key = key.clone();
+                let replacement = Arc::clone(&replacement);
+                let retry_cell = Arc::clone(&retry_cell);
+                let waiter_started = Arc::clone(&waiter_started);
+                async move {
+                    waiter_started.notify_one();
+                    acquire_agent_from_pool(&state, &key, move |cell| {
+                        let replacement = Arc::clone(&replacement);
+                        let retry_cell = Arc::clone(&retry_cell);
+                        async move {
+                            *retry_cell.lock().await = Some(cell);
+                            Ok(replacement)
+                        }
+                    })
+                    .await
+                }
+            });
+            waiter_started.notified().await;
+            assert!(
+                !retried.is_finished(),
+                "the waiter must be queued behind the first initializer"
+            );
+
+            cancelled.abort();
+            let cancellation = match cancelled.await {
+                Ok(_) => panic!("the first initializer should be cancelled"),
+                Err(error) => error,
+            };
+            assert!(cancellation.is_cancelled());
+
+            let retried = retried
+                .await
+                .expect("waiting task should complete")
+                .expect("waiting caller should initialize a fresh generation");
+            assert!(Arc::ptr_eq(&retried, &replacement));
+
+            let first_cell = first_cell
+                .lock()
+                .await
+                .clone()
+                .expect("cancelled initializer should capture its cell");
+            let retry_cell = retry_cell
+                .lock()
+                .await
+                .clone()
+                .expect("retry initializer should capture its cell");
+            assert!(
+                !Arc::ptr_eq(&first_cell, &retry_cell),
+                "a cancelled generation must never be initialized again"
+            );
+
+            reap_agent(&state, &key, &first_cell, cancelled_instance).await;
+            assert!(
+                state
+                    .agents
+                    .lock()
+                    .await
+                    .get(&key)
+                    .is_some_and(|cell| Arc::ptr_eq(cell, &retry_cell)),
+                "the cancelled generation's delayed reaper must preserve its replacement"
+            );
+        })
+        .await;
+}
+
 #[test]
 fn id_is_case_insensitive() {
     let (cmd, id) = resolve(Some(&allow_set(&["gemini"])), Some("GeMiNi"), None);
@@ -1382,6 +1482,7 @@ fn make_state_with_retirement_pending_timeout(
         hook_owned: Mutex::new(HashSet::new()),
         born_bound: Mutex::new(HashSet::new()),
         orphaned_sessions: Mutex::new(HashMap::new()),
+        retired_agent_cells: std::sync::Mutex::new(Vec::new()),
         orphaned_tabs: Mutex::new(HashMap::new()),
     })
 }
@@ -9656,6 +9757,7 @@ fn make_state_with_wt(wt: Arc<dyn crate::shell::wt_channel::WtChannel>) -> Arc<M
         hook_owned: Mutex::new(HashSet::new()),
         born_bound: Mutex::new(HashSet::new()),
         orphaned_sessions: Mutex::new(HashMap::new()),
+        retired_agent_cells: std::sync::Mutex::new(Vec::new()),
         orphaned_tabs: Mutex::new(HashMap::new()),
     })
 }
