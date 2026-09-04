@@ -89,9 +89,11 @@ pub fn render_popup(frame: &mut Frame, state: PopupState<'_>, input_area: Rect) 
             let agent_label = truncate_source_label(state.agent_label);
             let source_width = candidates
                 .iter()
-                .map(|candidate| match candidate {
-                    CommandCandidate::Client(_) => UnicodeWidthStr::width("IT"),
-                    CommandCandidate::Agent(_) => UnicodeWidthStr::width(agent_label.as_str()),
+                .filter_map(|candidate| match candidate {
+                    CommandCandidate::Client(_) => None,
+                    CommandCandidate::Agent(_) => {
+                        Some(UnicodeWidthStr::width(agent_label.as_str()))
+                    }
                 })
                 .max()
                 .unwrap_or_default();
@@ -105,7 +107,7 @@ pub fn render_popup(frame: &mut Frame, state: PopupState<'_>, input_area: Rect) 
                         }
                     };
                     let mut spans = command_name_spans(name, state.command_query);
-                    spans.push(source_badge_span(
+                    spans.extend(source_badge_span(
                         candidate,
                         agent_label.as_str(),
                         source_width,
@@ -163,13 +165,17 @@ fn source_badge_span(
     candidate: &CommandCandidate<'_>,
     agent_label: &str,
     column_width: usize,
-) -> Span<'static> {
-    let label = match candidate {
-        CommandCandidate::Client(_) => "IT",
-        CommandCandidate::Agent(_) => agent_label,
-    };
-    let padding = column_width.saturating_sub(UnicodeWidthStr::width(label));
-    Span::styled(format!("[{label}]{}  ", " ".repeat(padding)), theme::DIM)
+) -> Option<Span<'static>> {
+    match candidate {
+        CommandCandidate::Client(_) => None,
+        CommandCandidate::Agent(_) => {
+            let padding = column_width.saturating_sub(UnicodeWidthStr::width(agent_label));
+            Some(Span::styled(
+                format!("[{agent_label}]{}  ", " ".repeat(padding)),
+                theme::DIM,
+            ))
+        }
+    }
 }
 
 fn truncate_source_label(label: &str) -> String {
@@ -324,7 +330,7 @@ mod tests {
     }
 
     #[test]
-    fn source_badges_distinguish_client_and_agent_commands() {
+    fn source_badges_only_identify_agent_commands() {
         let client = CommandCandidate::Client(spec("model"));
         let agent_command = AcpSessionCommand {
             name: "usage".into(),
@@ -334,12 +340,9 @@ mod tests {
         };
         let agent = CommandCandidate::Agent(&agent_command);
 
+        assert!(source_badge_span(&client, "Copilot", 7).is_none());
         assert_eq!(
-            source_badge_span(&client, "Copilot", 7).content,
-            "[IT]       "
-        );
-        assert_eq!(
-            source_badge_span(&agent, "Copilot", 7).content,
+            source_badge_span(&agent, "Copilot", 7).unwrap().content,
             "[Copilot]  "
         );
     }
