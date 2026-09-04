@@ -1039,6 +1039,204 @@ async fn concurrent_helper_initialization_publishes_only_the_winning_agent() {
         .await;
 }
 
+#[tokio::test(flavor = "current_thread")]
+async fn failed_pool_generation_wakes_waiters_into_a_fresh_cell() {
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            use std::sync::atomic::{AtomicUsize, Ordering};
+
+            let state = make_state();
+            let key = "model:failed-generation-retry".to_string();
+            let failed_instance = AgentInstanceId::new_v4();
+            let replacement = unbound_test_agent(&key);
+            let first_started = Arc::new(tokio::sync::Notify::new());
+            let release_first = Arc::new(tokio::sync::Notify::new());
+            let first_cell = Arc::new(Mutex::new(None::<AgentCell>));
+            let retry_cell = Arc::new(Mutex::new(None::<AgentCell>));
+            let retry_initializations = Arc::new(AtomicUsize::new(0));
+
+            let failed = acquire_agent_from_pool(&state, &key, {
+                let first_started = Arc::clone(&first_started);
+                let release_first = Arc::clone(&release_first);
+                let first_cell = Arc::clone(&first_cell);
+                move |cell| {
+                    let first_started = Arc::clone(&first_started);
+                    let release_first = Arc::clone(&release_first);
+                    let first_cell = Arc::clone(&first_cell);
+                    async move {
+                        *first_cell.lock().await = Some(cell);
+                        first_started.notify_one();
+                        release_first.notified().await;
+                        Err(anyhow!("expected initialization failure"))
+                    }
+                }
+            });
+            let retried = acquire_agent_from_pool(&state, &key, {
+                let replacement = Arc::clone(&replacement);
+                let retry_cell = Arc::clone(&retry_cell);
+                let retry_initializations = Arc::clone(&retry_initializations);
+                move |cell| {
+                    let replacement = Arc::clone(&replacement);
+                    let retry_cell = Arc::clone(&retry_cell);
+                    let retry_initializations = Arc::clone(&retry_initializations);
+                    async move {
+                        retry_initializations.fetch_add(1, Ordering::SeqCst);
+                        *retry_cell.lock().await = Some(cell);
+                        Ok(replacement)
+                    }
+                }
+            });
+            let release = async {
+                first_started.notified().await;
+                release_first.notify_one();
+            };
+
+            let (failed, retried, ()) = tokio::join!(biased; failed, retried, release);
+            assert!(failed.is_err());
+            let retried = retried.expect("waiting caller should initialize a fresh generation");
+            assert!(Arc::ptr_eq(&retried, &replacement));
+            assert_eq!(retry_initializations.load(Ordering::SeqCst), 1);
+
+            let first_cell = first_cell
+                .lock()
+                .await
+                .clone()
+                .expect("failed initializer should capture its cell");
+            let retry_cell = retry_cell
+                .lock()
+                .await
+                .clone()
+                .expect("retry initializer should capture its cell");
+            assert!(
+                !Arc::ptr_eq(&first_cell, &retry_cell),
+                "a failed generation must never be initialized again"
+            );
+            assert!(
+                state
+                    .agents
+                    .lock()
+                    .await
+                    .get(&key)
+                    .is_some_and(|cell| Arc::ptr_eq(cell, &retry_cell)),
+                "the replacement generation must remain published"
+            );
+
+            // Complete the original race: the failed provider's I/O/child
+            // reaper can arrive after the waiter publishes its replacement.
+            reap_agent(&state, &key, &first_cell, failed_instance).await;
+            assert!(
+                state
+                    .agents
+                    .lock()
+                    .await
+                    .get(&key)
+                    .is_some_and(|cell| Arc::ptr_eq(cell, &retry_cell)),
+                "the failed generation's delayed reaper must preserve its replacement"
+            );
+        })
+        .await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn cancelled_pool_initializer_wakes_waiters_into_a_fresh_cell() {
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let state = make_state();
+            let key = "model:cancelled-generation-retry".to_string();
+            let cancelled_instance = AgentInstanceId::new_v4();
+            let replacement = unbound_test_agent(&key);
+            let first_started = Arc::new(tokio::sync::Notify::new());
+            let waiter_started = Arc::new(tokio::sync::Notify::new());
+            let first_cell = Arc::new(Mutex::new(None::<AgentCell>));
+            let retry_cell = Arc::new(Mutex::new(None::<AgentCell>));
+
+            let cancelled = tokio::task::spawn_local({
+                let state = Arc::clone(&state);
+                let key = key.clone();
+                let first_started = Arc::clone(&first_started);
+                let first_cell = Arc::clone(&first_cell);
+                async move {
+                    acquire_agent_from_pool(&state, &key, move |cell| {
+                        let first_started = Arc::clone(&first_started);
+                        let first_cell = Arc::clone(&first_cell);
+                        async move {
+                            *first_cell.lock().await = Some(cell);
+                            first_started.notify_one();
+                            std::future::pending::<Result<Arc<AgentCli>>>().await
+                        }
+                    })
+                    .await
+                }
+            });
+            first_started.notified().await;
+
+            let retried = tokio::task::spawn_local({
+                let state = Arc::clone(&state);
+                let key = key.clone();
+                let replacement = Arc::clone(&replacement);
+                let retry_cell = Arc::clone(&retry_cell);
+                let waiter_started = Arc::clone(&waiter_started);
+                async move {
+                    waiter_started.notify_one();
+                    acquire_agent_from_pool(&state, &key, move |cell| {
+                        let replacement = Arc::clone(&replacement);
+                        let retry_cell = Arc::clone(&retry_cell);
+                        async move {
+                            *retry_cell.lock().await = Some(cell);
+                            Ok(replacement)
+                        }
+                    })
+                    .await
+                }
+            });
+            waiter_started.notified().await;
+            assert!(
+                !retried.is_finished(),
+                "the waiter must be queued behind the first initializer"
+            );
+
+            cancelled.abort();
+            let cancellation = match cancelled.await {
+                Ok(_) => panic!("the first initializer should be cancelled"),
+                Err(error) => error,
+            };
+            assert!(cancellation.is_cancelled());
+
+            let retried = retried
+                .await
+                .expect("waiting task should complete")
+                .expect("waiting caller should initialize a fresh generation");
+            assert!(Arc::ptr_eq(&retried, &replacement));
+
+            let first_cell = first_cell
+                .lock()
+                .await
+                .clone()
+                .expect("cancelled initializer should capture its cell");
+            let retry_cell = retry_cell
+                .lock()
+                .await
+                .clone()
+                .expect("retry initializer should capture its cell");
+            assert!(
+                !Arc::ptr_eq(&first_cell, &retry_cell),
+                "a cancelled generation must never be initialized again"
+            );
+
+            reap_agent(&state, &key, &first_cell, cancelled_instance).await;
+            assert!(
+                state
+                    .agents
+                    .lock()
+                    .await
+                    .get(&key)
+                    .is_some_and(|cell| Arc::ptr_eq(cell, &retry_cell)),
+                "the cancelled generation's delayed reaper must preserve its replacement"
+            );
+        })
+        .await;
+}
+
 #[test]
 fn id_is_case_insensitive() {
     let (cmd, id) = resolve(Some(&allow_set(&["gemini"])), Some("GeMiNi"), None);
@@ -1279,10 +1477,12 @@ fn make_state_with_retirement_pending_timeout(
         retirement_completion_tx: Mutex::new(None),
         retirement_pending_timeout,
         disconnect_orphan_publication_pause: Mutex::new(None),
+        reap_agent_orphan_cleanup_pause: Mutex::new(None),
         deferred_retirement_cleanup_complete: tokio::sync::Notify::new(),
         hook_owned: Mutex::new(HashSet::new()),
         born_bound: Mutex::new(HashSet::new()),
         orphaned_sessions: Mutex::new(HashMap::new()),
+        retired_agent_cells: std::sync::Mutex::new(Vec::new()),
         orphaned_tabs: Mutex::new(HashMap::new()),
     })
 }
@@ -7427,6 +7627,92 @@ async fn orphan_rebind_close_failure_does_not_mark_target_owned_by_another_helpe
 }
 
 #[tokio::test(flavor = "current_thread")]
+async fn late_old_generation_orphan_rollback_is_not_published_or_consumed() {
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let state = make_state();
+            let key = "late-orphan-rollback-agent".to_string();
+            let helper_id = HelperId(34);
+            let session_id = SessionId::new("late-orphan-rollback-session");
+            let (notif_tx, _notif_rx) = mpsc::channel(NOTIF_CHANNEL_CAPACITY);
+
+            let dead_agent = unbound_test_agent(&key);
+            let dead_instance_id = dead_agent.instance_id;
+            let dead_cell = empty_agent_cell();
+            assert!(dead_cell.set(dead_agent).is_ok());
+            state
+                .agents
+                .lock()
+                .await
+                .insert(key.clone(), Arc::clone(&dead_cell));
+            bind_session_route(
+                &state,
+                session_id.clone(),
+                HelperRoute {
+                    helper_id,
+                    agent_instance_id: dead_instance_id,
+                    notif_tx,
+                    forwarder: Some(agent_link_to_noop_client()),
+                    consecutive_drops: Arc::new(std::sync::atomic::AtomicU64::new(0)),
+                },
+            )
+            .await;
+
+            let lifecycle_gate = session_lifecycle_gate(&state, &session_id).await;
+            let lifecycle_guard = lifecycle_gate.lock().await;
+            let rollback = tokio::task::spawn_local({
+                let state = Arc::clone(&state);
+                let key = key.clone();
+                let session_id = session_id.clone();
+                async move {
+                    rollback_orphan_rebind(
+                        &state,
+                        helper_id,
+                        &key,
+                        dead_instance_id,
+                        &session_id,
+                        None,
+                    )
+                    .await
+                }
+            });
+
+            reap_agent(&state, &key, &dead_cell, dead_instance_id).await;
+            let replacement = unbound_test_agent(&key);
+            let replacement_cell = empty_agent_cell();
+            assert!(replacement_cell.set(replacement).is_ok());
+            state
+                .agents
+                .lock()
+                .await
+                .insert(key.clone(), replacement_cell);
+
+            drop(lifecycle_guard);
+            assert_eq!(
+                rollback.await.expect("late rollback should complete"),
+                SwappedSessionRouteRollback::Restored
+            );
+            assert!(!state
+                .session_to_helper
+                .lock()
+                .await
+                .contains_key(&session_id));
+
+            let consumed = state
+                .orphaned_sessions
+                .lock()
+                .await
+                .get_mut(&key)
+                .is_some_and(|sessions| sessions.remove(&session_id));
+            assert!(
+                !consumed,
+                "a late rollback from the dead generation must not publish a stale orphan"
+            );
+        })
+        .await;
+}
+
+#[tokio::test(flavor = "current_thread")]
 async fn load_reserves_time_to_close_loaded_target_after_predecessor_timeout() {
     tokio::task::LocalSet::new()
         .run_until(async {
@@ -7593,65 +7879,215 @@ fn is_already_loaded_error_matches_message_and_data() {
 
 /// `reap_agent` must drop only the dead agent's orphan sessions, leaving
 /// a co-resident agent's (e.g. Gemini next to Copilot) orphans intact.
-#[tokio::test]
+#[tokio::test(flavor = "current_thread")]
 async fn reap_agent_drops_only_its_own_orphans() {
-    let state = make_state();
-    let key_a = "copilot --acp --stdio".to_string();
-    let key_b = "gemini --acp".to_string();
-    {
-        let mut orphans = state.orphaned_sessions.lock().await;
-        orphans
-            .entry(key_a.clone())
-            .or_default()
-            .insert(SessionId::new("a-sess"));
-        orphans
-            .entry(key_b.clone())
-            .or_default()
-            .insert(SessionId::new("b-sess"));
-    }
-    state.orphaned_tabs.lock().await.insert(
-        "tab-a".to_string(),
-        (key_a.clone(), HelperId(1), SessionId::new("a-sess")),
-    );
-    state.orphaned_tabs.lock().await.insert(
-        "tab-b".to_string(),
-        (key_b.clone(), HelperId(2), SessionId::new("b-sess")),
-    );
-    // reap only acts when the key is a live pool entry.
-    let cell = {
-        let mut agents = state.agents.lock().await;
-        let cell = Arc::new(tokio::sync::OnceCell::new());
-        agents.insert(key_a.clone(), Arc::clone(&cell));
-        cell
-    };
-    let stale_cell = Arc::new(tokio::sync::OnceCell::new());
-    reap_agent(&state, &key_a, &stale_cell, AgentInstanceId::new_v4()).await;
-    assert!(
-        state.agents.lock().await.contains_key(&key_a),
-        "a stale reaper must not remove a replacement pool entry"
-    );
-    reap_agent(&state, &key_a, &cell, AgentInstanceId::new_v4()).await;
-    let orphans = state.orphaned_sessions.lock().await;
-    assert!(
-        !orphans.contains_key(&key_a),
-        "reaped agent's orphan set must be dropped"
-    );
-    assert!(
-        orphans
-            .get(&key_b)
-            .is_some_and(|s| s.contains(&SessionId::new("b-sess"))),
-        "a co-resident agent's orphans must be untouched"
-    );
-    drop(orphans);
-    let orphaned_tabs = state.orphaned_tabs.lock().await;
-    assert!(
-        !orphaned_tabs.contains_key("tab-a"),
-        "reaping an agent must remove its stale tab fallback"
-    );
-    assert!(
-        orphaned_tabs.contains_key("tab-b"),
-        "reaping one agent must preserve another agent's tab fallback"
-    );
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let state = make_state();
+            let key_a = "copilot --acp --stdio".to_string();
+            let key_b = "gemini --acp".to_string();
+            {
+                let mut orphans = state.orphaned_sessions.lock().await;
+                orphans
+                    .entry(key_a.clone())
+                    .or_default()
+                    .insert(SessionId::new("a-sess"));
+                orphans
+                    .entry(key_b.clone())
+                    .or_default()
+                    .insert(SessionId::new("b-sess"));
+            }
+            state.orphaned_tabs.lock().await.insert(
+                "tab-a".to_string(),
+                (key_a.clone(), HelperId(1), SessionId::new("a-sess")),
+            );
+            state.orphaned_tabs.lock().await.insert(
+                "tab-b".to_string(),
+                (key_b.clone(), HelperId(2), SessionId::new("b-sess")),
+            );
+            let agent = unbound_test_agent(&key_a);
+            let instance_id = agent.instance_id;
+            let cell = Arc::new(tokio::sync::OnceCell::new());
+            assert!(cell.set(agent).is_ok());
+            state
+                .agents
+                .lock()
+                .await
+                .insert(key_a.clone(), Arc::clone(&cell));
+
+            let stale_cell = Arc::new(tokio::sync::OnceCell::new());
+            reap_agent(&state, &key_a, &stale_cell, AgentInstanceId::new_v4()).await;
+            assert!(
+                state.agents.lock().await.contains_key(&key_a),
+                "a stale reaper must not remove a replacement pool entry"
+            );
+            reap_agent(&state, &key_a, &cell, instance_id).await;
+            let orphans = state.orphaned_sessions.lock().await;
+            assert!(
+                !orphans.contains_key(&key_a),
+                "reaped agent's orphan set must be dropped"
+            );
+            assert!(
+                orphans
+                    .get(&key_b)
+                    .is_some_and(|s| s.contains(&SessionId::new("b-sess"))),
+                "a co-resident agent's orphans must be untouched"
+            );
+            drop(orphans);
+            let orphaned_tabs = state.orphaned_tabs.lock().await;
+            assert!(
+                !orphaned_tabs.contains_key("tab-a"),
+                "reaping an agent must remove its stale tab fallback"
+            );
+            assert!(
+                orphaned_tabs.contains_key("tab-b"),
+                "reaping one agent must preserve another agent's tab fallback"
+            );
+        })
+        .await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn reap_agent_keeps_key_unavailable_through_orphan_cleanup() {
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let state = make_state();
+            let key = "copilot --acp --stdio".to_string();
+            let dead_agent = unbound_test_agent(&key);
+            let dead_instance = dead_agent.instance_id;
+            let dead_cell = Arc::new(tokio::sync::OnceCell::new());
+            assert!(dead_cell.set(dead_agent).is_ok());
+            state
+                .agents
+                .lock()
+                .await
+                .insert(key.clone(), Arc::clone(&dead_cell));
+            state
+                .orphaned_sessions
+                .lock()
+                .await
+                .entry(key.clone())
+                .or_default()
+                .insert(SessionId::new("dead-session"));
+            state.orphaned_tabs.lock().await.insert(
+                "dead-tab".to_string(),
+                (key.clone(), HelperId(1), SessionId::new("dead-session")),
+            );
+
+            let pause = Arc::new(ReapAgentOrphanCleanupPause::default());
+            *state.reap_agent_orphan_cleanup_pause.lock().await = Some(Arc::clone(&pause));
+            let reaper = tokio::task::spawn_local({
+                let state = Arc::clone(&state);
+                let key = key.clone();
+                let dead_cell = Arc::clone(&dead_cell);
+                async move {
+                    reap_agent(&state, &key, &dead_cell, dead_instance).await;
+                }
+            });
+
+            pause.agent_removed.notified().await;
+            assert!(
+                state.agents.try_lock().is_err(),
+                "a replacement generation must not publish before orphan cleanup completes"
+            );
+            pause.resume_cleanup.notify_one();
+            reaper.await.expect("reaper task should complete");
+
+            let replacement = unbound_test_agent(&key);
+            let acquired = acquire_agent_from_pool(&state, &key, {
+                let state = Arc::clone(&state);
+                let key = key.clone();
+                let replacement = Arc::clone(&replacement);
+                move |_| {
+                    let state = Arc::clone(&state);
+                    let key = key.clone();
+                    let replacement = Arc::clone(&replacement);
+                    async move {
+                        state
+                            .orphaned_sessions
+                            .lock()
+                            .await
+                            .entry(key.clone())
+                            .or_default()
+                            .insert(SessionId::new("replacement-session"));
+                        state.orphaned_tabs.lock().await.insert(
+                            "replacement-tab".to_string(),
+                            (key, HelperId(2), SessionId::new("replacement-session")),
+                        );
+                        Ok(replacement)
+                    }
+                }
+            })
+            .await
+            .expect("replacement generation should publish after cleanup");
+
+            assert!(Arc::ptr_eq(&acquired, &replacement));
+            assert!(
+                state
+                    .orphaned_sessions
+                    .lock()
+                    .await
+                    .get(&key)
+                    .is_some_and(|sessions| {
+                        sessions.contains(&SessionId::new("replacement-session"))
+                    }),
+                "the old reaper must not erase replacement orphan sessions"
+            );
+            assert!(
+                state
+                    .orphaned_tabs
+                    .lock()
+                    .await
+                    .contains_key("replacement-tab"),
+                "the old reaper must not erase replacement orphan tabs"
+            );
+        })
+        .await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn reap_agent_matches_all_retirement_orphan_lock_order() {
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let state = make_state();
+            let key = "copilot --acp --stdio".to_string();
+            let dead_agent = unbound_test_agent(&key);
+            let dead_instance = dead_agent.instance_id;
+            let dead_cell = Arc::new(tokio::sync::OnceCell::new());
+            assert!(dead_cell.set(dead_agent).is_ok());
+            state
+                .agents
+                .lock()
+                .await
+                .insert(key.clone(), Arc::clone(&dead_cell));
+
+            let pause = Arc::new(ReapAgentOrphanCleanupPause::default());
+            *state.reap_agent_orphan_cleanup_pause.lock().await = Some(Arc::clone(&pause));
+            let orphaned_tabs = state.orphaned_tabs.lock().await;
+            let reaper = tokio::task::spawn_local({
+                let state = Arc::clone(&state);
+                let key = key.clone();
+                let dead_cell = Arc::clone(&dead_cell);
+                async move {
+                    reap_agent(&state, &key, &dead_cell, dead_instance).await;
+                }
+            });
+
+            pause.agent_removed.notified().await;
+            pause.resume_cleanup.notify_one();
+            tokio::task::yield_now().await;
+
+            tokio::time::timeout(
+                std::time::Duration::from_secs(1),
+                state.orphaned_sessions.lock(),
+            )
+            .await
+            .expect("reaper must wait for orphaned_tabs without holding orphaned_sessions");
+
+            drop(orphaned_tabs);
+            reaper.await.expect("reaper task should complete");
+        })
+        .await;
 }
 
 /// A stale reaper must revoke its dead CLI instance's capabilities without
@@ -7705,6 +8141,81 @@ async fn stale_reaper_revokes_only_dead_agent_capabilities() {
         1,
         "the replacement instance's capabilities must remain valid"
     );
+}
+
+#[tokio::test]
+async fn prepublication_reaper_retires_its_empty_generation() {
+    let state = make_state();
+    let key = "copilot --acp --stdio".to_string();
+    let cell = Arc::new(tokio::sync::OnceCell::new());
+    state
+        .agents
+        .lock()
+        .await
+        .insert(key.clone(), Arc::clone(&cell));
+
+    reap_agent(&state, &key, &cell, AgentInstanceId::new_v4()).await;
+
+    assert!(
+        !state.agents.lock().await.contains_key(&key),
+        "an I/O failure before publication must retire the empty generation"
+    );
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn stale_reaper_cannot_remove_replacement_published_in_same_cell() {
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let state = make_state();
+            let key = "copilot --acp --stdio".to_string();
+            let dead_instance = AgentInstanceId::new_v4();
+            let replacement = unbound_test_agent(&key);
+            let replacement_instance = replacement.instance_id;
+            let cell = Arc::new(tokio::sync::OnceCell::new());
+            assert!(cell.set(Arc::clone(&replacement)).is_ok());
+            state
+                .agents
+                .lock()
+                .await
+                .insert(key.clone(), Arc::clone(&cell));
+            state
+                .session_mcp_capabilities
+                .prepare(dead_instance, None)
+                .await;
+            state
+                .session_mcp_capabilities
+                .prepare(replacement_instance, None)
+                .await;
+
+            reap_agent(&state, &key, &cell, dead_instance).await;
+
+            assert!(
+                state
+                    .agents
+                    .lock()
+                    .await
+                    .get(&key)
+                    .is_some_and(|current| Arc::ptr_eq(current, &cell)),
+                "the dead process must not remove a replacement in the same cell"
+            );
+            assert_eq!(
+                state
+                    .session_mcp_capabilities
+                    .remove_owner(dead_instance)
+                    .await,
+                0,
+                "the dead process's capabilities must be revoked"
+            );
+            assert_eq!(
+                state
+                    .session_mcp_capabilities
+                    .remove_owner(replacement_instance)
+                    .await,
+                1,
+                "the replacement process's capabilities must remain valid"
+            );
+        })
+        .await;
 }
 
 /// Regression for the reentrant-permission deadlock: a `prompt` in flight
@@ -9241,10 +9752,12 @@ fn make_state_with_wt(wt: Arc<dyn crate::shell::wt_channel::WtChannel>) -> Arc<M
         retirement_completion_tx: Mutex::new(None),
         retirement_pending_timeout: SESSION_CLOSE_TIMEOUT,
         disconnect_orphan_publication_pause: Mutex::new(None),
+        reap_agent_orphan_cleanup_pause: Mutex::new(None),
         deferred_retirement_cleanup_complete: tokio::sync::Notify::new(),
         hook_owned: Mutex::new(HashSet::new()),
         born_bound: Mutex::new(HashSet::new()),
         orphaned_sessions: Mutex::new(HashMap::new()),
+        retired_agent_cells: std::sync::Mutex::new(Vec::new()),
         orphaned_tabs: Mutex::new(HashMap::new()),
     })
 }
