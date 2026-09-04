@@ -24,8 +24,8 @@ checklist.
   the user's request. If the user did not explicitly choose **Dev** or
   **Store/production**, use `ask_user` and wait for the answer. Never accept the
   harness's `Auto` default on the user's behalf.
-- Pin the chosen package through `ITE2E_PACKAGE=Dev` or
-  `ITE2E_PACKAGE=Store` for every live validation command.
+- Pin the chosen package through `$env:ITE2E_PACKAGE = 'Dev'` or
+  `$env:ITE2E_PACKAGE = 'Store'` for every live validation command.
 - Run `pwsh -File test/e2e/bootstrap.ps1 -Check` before live E2E validation.
 
 ## Workflow
@@ -86,9 +86,9 @@ Do not call the work complete until all of these are true:
 ## Gotchas
 
 - **Never run a live integration test with an implicit package selector.**
-  `Auto` prefers Store when both Store and Dev are installed, so an omitted
-  selector can mutate production-package state and send real agent requests
-  from the wrong build. Ask first, then pin `ITE2E_PACKAGE`.
+  `Auto` chooses from installed packages by trying Store before Dev and falling
+  back when needed, so an omitted selector can target a different package than
+  the user intended. Ask first, then pin `ITE2E_PACKAGE`.
 - **Do not test only the implementation detail named in the PR.** Reconstruct
   the end-to-end user path and assert the observable contract.
 - **Do not duplicate a unit test at E2E level.** Add the missing process,

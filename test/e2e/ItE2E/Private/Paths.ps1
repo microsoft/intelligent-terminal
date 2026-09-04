@@ -113,13 +113,14 @@ function Get-RunnableWtaPath {
 
     $runnable = $null
     if ($App.WtaPath -and (Test-Path $App.WtaPath) -and $App.WtaPath -like '*WindowsApps*') {
-        $dest = $null
+        $safePackage = $App.Package -replace '[^A-Za-z0-9._-]', '_'
+        $destContext = "$env:TEMP\ite2e-wta\$safePackage\$($App.Version)\<sha256>\wta.exe"
         try {
             $sourceHash = (Get-FileHash -LiteralPath $App.WtaPath -Algorithm SHA256 -ErrorAction Stop).Hash
-            $safePackage = $App.Package -replace '[^A-Za-z0-9._-]', '_'
             $dir = Join-Path $env:TEMP "ite2e-wta\$safePackage\$($App.Version)\$sourceHash"
             if (-not (Test-Path $dir)) { New-Item -ItemType Directory -Force -Path $dir -ErrorAction Stop | Out-Null }
             $dest = Join-Path $dir 'wta.exe'
+            $destContext = $dest
             $destHash = if (Test-Path $dest) { (Get-FileHash -LiteralPath $dest -Algorithm SHA256 -ErrorAction Stop).Hash } else { $null }
             if ($destHash -ne $sourceHash) {
                 Copy-Item -LiteralPath $App.WtaPath -Destination $dest -Force -ErrorAction Stop
@@ -130,7 +131,7 @@ function Get-RunnableWtaPath {
             $runnable = $dest
         }
         catch {
-            throw "Could not stage packaged wta '$($App.WtaPath)' to '$dest': $($_.Exception.Message)"
+            throw "Could not stage packaged wta '$($App.WtaPath)' to '$destContext': $($_.Exception.Message)"
         }
         $bundleSource = Join-Path $App.InstallLocation 'wt-agent-hooks'
         $bundleDest = Join-Path $dir 'wt-agent-hooks'

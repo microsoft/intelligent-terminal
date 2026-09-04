@@ -279,7 +279,9 @@ Describe 'Get-RunnableWtaPath staging' -Tag 'Unit' {
             }
             Mock Get-FileHash { throw 'access denied' }
 
-            { Get-RunnableWtaPath -App $app } | Should -Throw '*Could not stage packaged wta*access denied*'
+            {
+                Get-RunnableWtaPath -App $app
+            } | Should -Throw '*Could not stage packaged wta*ite2e-wta*Microsoft.IntelligentTerminal_8wekyb3d8bbwe*1.2.3.4*<sha256>*access denied*'
             $app.PSObject.Properties.Name | Should -Not -Contain 'WtaRunnable'
         }
     }
