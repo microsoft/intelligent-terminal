@@ -147,6 +147,18 @@ impl ClientLink {
         self.cx().await?.send_request(req).block_task().await
     }
 
+    pub async fn prompt_if(
+        &self,
+        req: PromptRequest,
+        should_send: impl FnOnce() -> bool,
+    ) -> acp::Result<Option<PromptResponse>> {
+        let connection = self.cx().await?;
+        if !should_send() {
+            return Ok(None);
+        }
+        connection.send_request(req).block_task().await.map(Some)
+    }
+
     /// Non-blocking counterpart of [`ClientLink::prompt`], for use **from
     /// inside an ACP `on_receive_request` dispatch handler**.
     ///

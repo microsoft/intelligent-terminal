@@ -26,6 +26,7 @@ pub enum AppEvent {
         current_model_id: Option<String>,
         load_session_supported: bool,
         image_supported: bool,
+        session_capabilities_ready: bool,
     },
     /// The old helper↔master ACP task has closed its pipe intentionally and
     /// the stable helper process may start the replacement connection.
@@ -49,6 +50,12 @@ pub enum AppEvent {
         session_id: String,
         available_models: Vec<AcpModelInfo>,
         current_model_id: Option<String>,
+    },
+    RuntimeYoloReconcileCompleted {
+        reconcile_id: u64,
+        fail_closed: bool,
+        restart_required: bool,
+        result: Result<(), String>,
     },
     ModelSetCompleted {
         session_id: String,
@@ -79,6 +86,7 @@ pub enum AppEvent {
         session_id: String,
         config_id: String,
         message: String,
+        restart_required: bool,
     },
     TabError {
         tab_id: String,

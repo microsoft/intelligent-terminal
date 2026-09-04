@@ -175,6 +175,15 @@ impl App {
             return;
         }
 
+        if self.prompt_reconfiguration_pending_for_tab(&target_tab_id) {
+            tracing::info!(
+                target: "autofix",
+                tab_id = %target_tab_id,
+                "skipping autofix while provider-native Yolo reconciliation is pending",
+            );
+            return;
+        }
+
         // Latest event always wins — but only if we can actually act on it.
         // The ACP transport single-flights at the tab level, so if the
         // target tab already has a prompt in flight, submitting another

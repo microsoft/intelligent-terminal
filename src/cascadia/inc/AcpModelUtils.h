@@ -76,7 +76,7 @@ namespace Microsoft::Terminal::AcpModels
         }
         else if (agentId == L"gemini")
         {
-            commandLine += L" --experimental-acp";
+            commandLine += L" --acp";
         }
 
         if ((agentId == L"copilot" || agentId == L"gemini") &&

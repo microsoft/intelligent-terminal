@@ -239,4 +239,5 @@ config_picker.title: "Сессия конфигурациясе (↑ ↓ • Ent
 system.no_config_options: "Тоташтырылган агент бернинде көйләп була торган сессия параметрларын белдермәде."
 # {option} is an Agent-provided option name; {error} is the ACP error.
 system.config_update_failed: "%{option} яңарту уңышсыз булды: %{error}"
+system.provider_command_blocked_by_policy: "%{command}: Yolo mode оешмагыз сәясәте буенча сүндерелгән."  # {Locked="Yolo","%{command}"} Shown when AllowYoloMode blocks a provider-advertised privileged command.
 system.model_unknown: "Билгесез модель %{model} — мөмкин булган исемлекне күрү өчен /model языгыз."  # {Locked="%{model}","/model"}

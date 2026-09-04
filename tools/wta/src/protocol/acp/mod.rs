@@ -2,6 +2,7 @@ pub mod client;
 pub mod conn;
 pub mod failure;
 pub mod model_select;
+pub mod native_yolo;
 pub mod probe;
 pub mod prompt;
 pub(crate) mod prompt_builder;

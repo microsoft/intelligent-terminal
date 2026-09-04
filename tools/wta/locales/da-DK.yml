@@ -241,4 +241,5 @@ config_picker.title: "Sessionskonfiguration (↑ ↓ • Enter • Esc)"
 system.no_config_options: "Den tilsluttede agent annoncerede ingen konfigurerbare sessionsindstillinger."
 # {option} is an Agent-provided option name; {error} is the ACP error.
 system.config_update_failed: "Kunne ikke opdatere %{option}: %{error}"
+system.provider_command_blocked_by_policy: "%{command}: Yolo-tilstand er deaktiveret af din organisations politik."  # {Locked="Yolo","%{command}"} Shown when AllowYoloMode blocks a provider-advertised privileged command.
 system.model_unknown: "Ukendt model %{model} — skriv /model for at se den tilgængelige liste."  # {Locked="%{model}","/model"}

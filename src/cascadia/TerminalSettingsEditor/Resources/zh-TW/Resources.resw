@@ -2857,6 +2857,8 @@
     <comment>Value shown in the agent pane position dropdown (selects which side of the terminal the agent pane opens on). Translation should match the existing FreOverlay_PanePositionLeft string used in the first-run experience.</comment>
   </data>
   <data name="AIAgents_HooksGroupHeader.Text" xml:space="preserve"><value>代理 Hooks</value><comment>Section header for the Agent Hooks installer (lets users install hook scripts that report agent CLI activity to the agent pane).</comment></data>
+  <data name="AIAgents_YoloMode.Header" xml:space="preserve"><value>使用提供者的 Yolo 模式</value><comment>{Locked=&quot;Yolo&quot;} Header for the global setting that asks each AI agent provider to enable its advertised ACP session Yolo capability.</comment></data>
+  <data name="AIAgents_YoloMode.HelpText" xml:space="preserve"><value>使用代理提供者的 ACP 工作階段模式，以減少或略過確認。由此產生的權限、沙盒、檔案存取權和網路存取權由提供者定義。不支援相應模式的提供者仍會要求取得權限。</value><comment>{Locked=&quot;ACP&quot;} Risk warning shown under the Yolo toggle. Here provider means the selected AI agent provider, not a network provider.</comment></data>
   <data name="AIAgents_HooksInstall.Header" xml:space="preserve"><value>安裝代理 Hook 指令碼</value><comment>Header for the Agent Hooks install section.</comment></data>
   <data name="AIAgents_HooksInstall.HelpText" xml:space="preserve"><value>跨代理追蹤工作階段。代理工作階段管理需要此功能。</value><comment>Help text shown under the expandable section header.</comment></data>
   <data name="AIAgents_HooksInstallButton.Content" xml:space="preserve"><value>安裝 Hooks</value><comment>Button label that triggers installation of the wt-agent-hooks plugin/extension into all detected agent CLIs (Copilot, Claude, Codex, Gemini).</comment></data>
@@ -2993,4 +2995,8 @@
     <value>{} | {} | OpenAI 相容</value>
     <comment>{Locked="{}","OpenAI"} The first {} is replaced with the provider name; the second is replaced with its location.</comment>
   </data>
+  <data name="AIAgents_YoloOpenCodeWarning.Title" xml:space="preserve"><value>Yolo 模式不適用於 OpenCode</value><comment>{Locked="Yolo","OpenCode"} InfoBar title shown on the AI Agents settings page when global Yolo mode is on and the installed selected default provider is OpenCode.</comment></data>
+  <data name="AIAgents_YoloOpenCodeWarning.Message" xml:space="preserve"><value>OpenCode 未公布受支援的原生 Yolo 模式。即使此設定已開啟，權限要求仍會保持互動式。</value><comment>{Locked="OpenCode","Yolo"} InfoBar message shown on the AI Agents settings page. "Advertise" means the provider reports a supported native ACP session capability. "Interactive" means the user must still choose permission options manually.</comment></data>
+  <data name="AIAgents_YoloGeminiInfo.Title" xml:space="preserve"><value>Gemini Yolo 模式取決於工作區信任</value><comment>{Locked="Gemini","Yolo"} InfoBar title shown on the AI Agents settings page when global Yolo mode is on and the installed selected default provider is Gemini.</comment></data>
+  <data name="AIAgents_YoloGeminiInfo.Message" xml:space="preserve"><value>只有在 Gemini 的工作區信任和提供者原則允許時，Gemini 才會啟用 Yolo 模式。</value><comment>{Locked="Gemini","Yolo"} InfoBar message shown on the AI Agents settings page. Workspace trust and provider policy are owned by Gemini, not by Intelligent Terminal.</comment></data>
 </root>

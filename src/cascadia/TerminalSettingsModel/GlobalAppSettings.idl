@@ -185,5 +185,10 @@ namespace Microsoft.Terminal.Settings.Model
         Theme CurrentTheme { get; };
 
         Boolean ShouldUsePersistedLayout();
+
+        // Keep new members append-only to preserve existing WinRT vtable slots.
+        INHERITABLE_SETTING(Boolean, AgentPaneYoloMode);
+        Boolean EffectiveAgentPaneYoloMode { get; };
+        Boolean IsYoloModePolicyLocked { get; };
     }
 }

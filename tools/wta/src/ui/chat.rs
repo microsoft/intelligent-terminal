@@ -2586,6 +2586,36 @@ mod tests {
     }
 
     #[test]
+    fn nonzero_completed_command_keeps_output_preview() {
+        let message = ChatMessage::ToolCall {
+            id: "tool".into(),
+            title: "Run integration command".into(),
+            status: "Completed".into(),
+            kind: ToolCallKind::Execute,
+            location: Some("echo TOOL_DETAIL_MARKER".into()),
+            location_is_command: true,
+            cwd: None,
+            output: Some(ToolCallOutput {
+                text: "TOOL_OUTPUT_MARKER".into(),
+                truncated: false,
+            }),
+            exit_code: Some(7),
+            content: Vec::new(),
+            locations: Vec::new(),
+        };
+
+        let rendered: Vec<String> = build_message_lines(&message, false, false, None, 0, 120)
+            .iter()
+            .map(line_text)
+            .collect();
+
+        assert_eq!(rendered[0], "✗ Run · Run integration command · exit 7");
+        assert!(rendered
+            .iter()
+            .any(|line| line.contains("TOOL_OUTPUT_MARKER")));
+    }
+
+    #[test]
     fn successful_truncated_tool_call_stays_compact_until_expanded() {
         let message = ChatMessage::ToolCall {
             id: "tool".into(),

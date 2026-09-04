@@ -103,6 +103,15 @@ namespace Microsoft.Terminal.Settings.Editor
         // on and the auto-fix GPO must not be locking it off.
         Boolean CanSuggestErrors { get; };
 
+        // Global "Yolo mode" — requests each supported provider's advertised
+        // native ACP session mode. WTA never selects a permission option;
+        // providers without a reviewed native mode continue prompting.
+        // Getter/setter route through EffectiveAgentPaneYoloMode /
+        // IsYoloModePolicyLocked so the toggle reads Off and rejects writes
+        // when org policy blocks it.
+        Boolean AgentPaneYoloMode;
+        Boolean HasAgentPaneYoloMode { get; };
+
         // GPO policy lock indicators.
         // IsAgentPolicyLocked: AllowedAgents policy is active — agent
         //   dropdown options are filtered, but the control stays enabled.
@@ -113,6 +122,7 @@ namespace Microsoft.Terminal.Settings.Editor
         Boolean IsCustomAgentPolicyLocked { get; };
         Boolean IsAutoFixPolicyLocked { get; };
         Boolean IsAgentSessionHooksPolicyLocked { get; };
+        Boolean IsYoloModePolicyLocked { get; };
 
         event Windows.Foundation.TypedEventHandler<AIAgentsViewModel, Microsoft.Terminal.Settings.Model.ShellIntegrationTarget> InitShellIntegrationRequested;
 
@@ -173,5 +183,8 @@ namespace Microsoft.Terminal.Settings.Editor
         void RemoveGeminiHooks();
         void RemoveCodexHooks();
         void RemoveOpenCodeHooks();
+
+        Boolean ShowOpenCodeYoloWarning { get; };
+        Boolean ShowGeminiYoloInfo { get; };
     }
 }
