@@ -8208,7 +8208,8 @@ fn render_input_box_intact_when_pane_unfocused() {
     app.state = ConnectionState::Connected;
 
     // Focused baseline: the input box paints the prompt + connected placeholder.
-    app.pane_focused = true;
+    app.handle_event(AppEvent::FocusChanged(true));
+    assert!(app.pane_focused);
     let focused = render_to_text(&mut app, 80, 24);
     let placeholder = rust_i18n::t!("input.placeholder.connected").into_owned();
     assert!(
@@ -8229,7 +8230,8 @@ fn render_input_box_intact_when_pane_unfocused() {
 
     // Focus leaves the pane: the input box must remain intact (prompt + placeholder still there),
     // i.e. losing focus does not blank or corrupt the input surface.
-    app.pane_focused = false;
+    app.handle_event(AppEvent::FocusChanged(false));
+    assert!(!app.pane_focused);
     let unfocused = render_to_text(&mut app, 80, 24);
     assert!(
         unfocused.contains('>'),

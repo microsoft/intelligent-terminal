@@ -224,6 +224,8 @@ namespace TerminalAppLocalTests
         TEST_METHOD(TransferredAgentContentSplitPaneRetiresDestinationAgentPane);
         TEST_METHOD(TransferredAgentStatusReplaysMissedTabRekey);
         TEST_METHOD(AgentPaneIndicatorsIgnoreAgentPaneInPaneCount);
+        TEST_METHOD(AgentPaneIndicatorsIgnoreNonTerminalPanes);
+        TEST_METHOD(AgentPaneIndicatorsRefreshAfterNonActivePaneClose);
 
         TEST_METHOD(NextMRUTab);
         TEST_METHOD(VerifyCommandPaletteTabSwitcherOrder);
@@ -2185,6 +2187,27 @@ namespace TerminalAppLocalTests
             VERIFY_ARE_EQUAL(2, shellPaneCount);
             VERIFY_ARE_EQUAL(1, visibleChipCount);
 
+            const auto verifyChipTarget = [&](const std::shared_ptr<Pane>& expectedTarget) {
+                int visibleChips = 0;
+                focusedTab->GetRootPane()->WalkTree([&](const auto& pane) {
+                    if (pane->_agentChip &&
+                        pane->_agentChip.Visibility() == Visibility::Visible)
+                    {
+                        ++visibleChips;
+                        VERIFY_IS_TRUE(pane == expectedTarget);
+                    }
+                });
+                VERIFY_ARE_EQUAL(1, visibleChips);
+            };
+
+            // A protocol override must move the chip to the requested terminal.
+            focusedTab->SetAgentChipOverride(shellPane->GetSessionId());
+            verifyChipTarget(shellPane);
+            focusedTab->SetAgentChipOverride(secondShellPane->GetSessionId());
+            verifyChipTarget(secondShellPane);
+            focusedTab->SetAgentChipOverride(std::nullopt);
+            verifyChipTarget(secondShellPane);
+
             // Hiding one of the two shell panes makes the target unambiguous.
             VERIFY_IS_TRUE(secondShellPane->Id().has_value());
             VERIFY_IS_TRUE(focusedTab->FocusPane(secondShellPane->Id().value()));
@@ -2203,15 +2226,143 @@ namespace TerminalAppLocalTests
             // borders, even though ShowPane does not move focus.
             focusedTab->ShowPane();
             shellPaneCount = 0;
+            visibleChipCount = 0;
             focusedTab->GetRootPane()->WalkTree([&](const auto& pane) {
                 if (!pane->IsHidden() &&
                     pane->GetContent().try_as<winrt::TerminalApp::TerminalPaneContent>())
                 {
                     ++shellPaneCount;
                     VERIFY_IS_TRUE(pane->_focusBorderEnabled);
+                    if (pane->_agentChip &&
+                        pane->_agentChip.Visibility() == Visibility::Visible)
+                    {
+                        ++visibleChipCount;
+                    }
                 }
             });
             VERIFY_ARE_EQUAL(2, shellPaneCount);
+            VERIFY_ARE_EQUAL(1, visibleChipCount);
+        });
+    }
+
+    void TabTests::AgentPaneIndicatorsIgnoreNonTerminalPanes()
+    {
+        auto page = _commonSetup();
+
+        TestOnUIThread([&]() {
+            const auto focusedTab = page->_GetFocusedTabImpl();
+            VERIFY_IS_NOT_NULL(focusedTab);
+
+            auto agentPane = page->_WrapInAgentPaneContent(page->_MakePane(nullptr, nullptr, nullptr));
+            VERIFY_IS_NOT_NULL(agentPane);
+            agentPane->IsAgentPane(true);
+            page->_SplitPane(focusedTab, SplitDirection::Down, 0.3f, agentPane);
+
+            const auto shellPane = page->_SourceTerminalPaneForTab(focusedTab);
+            VERIFY_IS_NOT_NULL(shellPane);
+            VERIFY_IS_TRUE(shellPane->Id().has_value());
+            VERIFY_IS_TRUE(focusedTab->FocusPane(shellPane->Id().value()));
+
+            const auto snippetsArgs = BaseContentArgs{ L"snippets" };
+            const auto snippetsPane = page->_MakePane(snippetsArgs, page->_GetFocusedTab(), nullptr);
+            VERIFY_IS_NOT_NULL(snippetsPane);
+            page->_SplitPane(focusedTab, SplitDirection::Right, 0.5f, snippetsPane);
+
+            VERIFY_IS_TRUE(agentPane->Id().has_value());
+            VERIFY_IS_TRUE(focusedTab->FocusPane(agentPane->Id().value()));
+
+            int terminalPaneCount = 0;
+            int nonTerminalPaneCount = 0;
+            int visibleChipCount = 0;
+            focusedTab->GetRootPane()->WalkTree([&](const auto& pane) {
+                if (pane->GetContent().try_as<winrt::TerminalApp::TerminalPaneContent>())
+                {
+                    ++terminalPaneCount;
+                    VERIFY_IS_FALSE(pane->_focusBorderEnabled);
+                }
+                else if (pane->GetContent() && !pane->IsAgentPane())
+                {
+                    ++nonTerminalPaneCount;
+                    VERIFY_IS_TRUE(pane->_focusBorderEnabled);
+                }
+
+                if (pane->_agentChip &&
+                    pane->_agentChip.Visibility() == Visibility::Visible)
+                {
+                    ++visibleChipCount;
+                }
+            });
+
+            VERIFY_ARE_EQUAL(1, terminalPaneCount);
+            VERIFY_ARE_EQUAL(1, nonTerminalPaneCount);
+            VERIFY_ARE_EQUAL(0, visibleChipCount);
+        });
+    }
+
+    void TabTests::AgentPaneIndicatorsRefreshAfterNonActivePaneClose()
+    {
+        auto page = _commonSetup();
+        std::shared_ptr<Pane> remainingShellPane;
+        std::shared_ptr<Pane> closingShellPane;
+        details::Event dispatcherDrained;
+
+        TestOnUIThread([&]() {
+            const auto focusedTab = page->_GetFocusedTabImpl();
+            VERIFY_IS_NOT_NULL(focusedTab);
+
+            auto agentPane = page->_WrapInAgentPaneContent(page->_MakePane(nullptr, nullptr, nullptr));
+            VERIFY_IS_NOT_NULL(agentPane);
+            agentPane->IsAgentPane(true);
+            page->_SplitPane(focusedTab, SplitDirection::Down, 0.3f, agentPane);
+
+            remainingShellPane = page->_SourceTerminalPaneForTab(focusedTab);
+            VERIFY_IS_NOT_NULL(remainingShellPane);
+            VERIFY_IS_TRUE(remainingShellPane->Id().has_value());
+            VERIFY_IS_TRUE(focusedTab->FocusPane(remainingShellPane->Id().value()));
+
+            page->_SplitPane(
+                focusedTab,
+                SplitDirection::Right,
+                0.5f,
+                page->_MakePane(nullptr, page->_GetFocusedTab(), nullptr));
+            closingShellPane = focusedTab->GetActivePane();
+            VERIFY_IS_NOT_NULL(closingShellPane);
+
+            VERIFY_IS_TRUE(agentPane->Id().has_value());
+            VERIFY_IS_TRUE(focusedTab->FocusPane(agentPane->Id().value()));
+            page->_HandleClosePaneRequested(closingShellPane);
+
+            const auto dispatcher = DispatcherQueue::GetForCurrentThread();
+            VERIFY_IS_NOT_NULL(dispatcher);
+            VERIFY_IS_TRUE(dispatcher.TryEnqueue(DispatcherQueuePriority::Low, [&dispatcherDrained]() {
+                dispatcherDrained.Set();
+            }));
+        });
+
+        VERIFY_SUCCEEDED(dispatcherDrained.Wait());
+
+        TestOnUIThread([&]() {
+            const auto focusedTab = page->_GetFocusedTabImpl();
+            VERIFY_IS_NOT_NULL(focusedTab);
+            VERIFY_ARE_EQUAL(2, focusedTab->GetLeafPaneCount());
+
+            int terminalPaneCount = 0;
+            int visibleChipCount = 0;
+            focusedTab->GetRootPane()->WalkTree([&](const auto& pane) {
+                if (pane->GetContent().try_as<winrt::TerminalApp::TerminalPaneContent>())
+                {
+                    ++terminalPaneCount;
+                    VERIFY_IS_FALSE(pane->_focusBorderEnabled);
+                }
+                if (pane->_agentChip &&
+                    pane->_agentChip.Visibility() == Visibility::Visible)
+                {
+                    ++visibleChipCount;
+                }
+            });
+
+            VERIFY_ARE_EQUAL(1, terminalPaneCount);
+            VERIFY_ARE_EQUAL(0, visibleChipCount);
         });
     }
 
