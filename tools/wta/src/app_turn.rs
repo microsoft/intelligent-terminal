@@ -908,6 +908,8 @@ impl App {
         tab.rec_scroll.reset();
         tab.activity_frame = 0;
         tab.clear_streaming_thought();
+        // Cancel pending session-MCP clarification responders. The user's
+        // next prompt draft lives in `input` and is intentionally preserved.
         tab.user_input.clear();
         tab.turn = if cancellation_pending {
             TurnState::Cancelling

@@ -13716,6 +13716,7 @@ fn turn_cancel_requests_correlated_cancellation_and_enters_cancelling() {
         .insert(session_id.into(), DEFAULT_TAB_ID.into());
     app.tab_mut(DEFAULT_TAB_ID).session_id = Some(session_id.into());
     submit_test_prompt(&mut app, "stop this");
+    app.current_tab_mut().input = "keep this draft".into();
 
     app.turn_cancel(session_id);
 
@@ -13726,6 +13727,7 @@ fn turn_cancel_requests_correlated_cancellation_and_enters_cancelling() {
     assert_eq!(request.prompt_id, 42);
     assert_eq!(request.session_id.as_deref(), Some(session_id));
     assert!(app.current_tab().turn.is_cancelling());
+    assert_eq!(app.current_tab().input, "keep this draft");
 }
 
 #[test]
