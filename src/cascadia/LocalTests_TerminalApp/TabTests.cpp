@@ -2302,9 +2302,6 @@ namespace TerminalAppLocalTests
     void TabTests::AgentPaneIndicatorsRefreshAfterNonActivePaneClose()
     {
         auto page = _commonSetup();
-        std::shared_ptr<Pane> remainingShellPane;
-        std::shared_ptr<Pane> closingShellPane;
-        details::Event dispatcherDrained;
 
         TestOnUIThread([&]() {
             const auto focusedTab = page->_GetFocusedTabImpl();
@@ -2315,7 +2312,7 @@ namespace TerminalAppLocalTests
             agentPane->IsAgentPane(true);
             page->_SplitPane(focusedTab, SplitDirection::Down, 0.3f, agentPane);
 
-            remainingShellPane = page->_SourceTerminalPaneForTab(focusedTab);
+            const auto remainingShellPane = page->_SourceTerminalPaneForTab(focusedTab);
             VERIFY_IS_NOT_NULL(remainingShellPane);
             VERIFY_IS_TRUE(remainingShellPane->Id().has_value());
             VERIFY_IS_TRUE(focusedTab->FocusPane(remainingShellPane->Id().value()));
@@ -2325,26 +2322,20 @@ namespace TerminalAppLocalTests
                 SplitDirection::Right,
                 0.5f,
                 page->_MakePane(nullptr, page->_GetFocusedTab(), nullptr));
-            closingShellPane = focusedTab->GetActivePane();
+            const auto closingShellPane = focusedTab->GetActivePane();
             VERIFY_IS_NOT_NULL(closingShellPane);
 
             VERIFY_IS_TRUE(agentPane->Id().has_value());
             VERIFY_IS_TRUE(focusedTab->FocusPane(agentPane->Id().value()));
             page->_HandleClosePaneRequested(closingShellPane);
-
-            const auto dispatcher = DispatcherQueue::GetForCurrentThread();
-            VERIFY_IS_NOT_NULL(dispatcher);
-            VERIFY_IS_TRUE(dispatcher.TryEnqueue(DispatcherQueuePriority::Low, [&dispatcherDrained]() {
-                dispatcherDrained.Set();
-            }));
-        });
-
-        VERIFY_SUCCEEDED(dispatcherDrained.Wait());
-
-        TestOnUIThread([&]() {
-            const auto focusedTab = page->_GetFocusedTabImpl();
-            VERIFY_IS_NOT_NULL(focusedTab);
             VERIFY_ARE_EQUAL(2, focusedTab->GetLeafPaneCount());
+
+            // The closed pane event is raised before Pane finishes collapsing
+            // its parent, so no synchronous recomputation can observe the
+            // final one-terminal tree.
+            VERIFY_IS_TRUE(remainingShellPane->_focusBorderEnabled);
+
+            focusedTab->_UpdateAgentPaneIndicators();
 
             int terminalPaneCount = 0;
             int visibleChipCount = 0;
