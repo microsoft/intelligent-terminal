@@ -3457,7 +3457,7 @@ void Pane::SetAgentChipVisible(bool value)
         _EnsureAgentChip();
         // Avoid XAML churn: if the chip is already visible and already at
         // the top of the children collection (so above the borders and any
-        // splitter), this call is a no-op. `_UpdateAgentChipVisibility`
+        // splitter), this call is a no-op. `_UpdateAgentPaneIndicators`
         // runs on every active-pane update and walks the whole tree, so
         // the repeat-true case is the common one in heavily-split tabs.
         uint32_t idx = 0;
@@ -3479,6 +3479,16 @@ void Pane::SetAgentChipVisible(bool value)
     {
         _agentChip.Visibility(Visibility::Collapsed);
     }
+}
+
+void Pane::_SetFocusBorderEnabled(bool value)
+{
+    if (_focusBorderEnabled == value)
+    {
+        return;
+    }
+    _focusBorderEnabled = value;
+    UpdateVisuals();
 }
 
 // The connection's session GUID for terminal panes. Returns the empty
@@ -3655,7 +3665,7 @@ void Pane::BroadcastString(const winrt::Microsoft::Terminal::Control::TermContro
 
 winrt::Windows::UI::Xaml::Media::SolidColorBrush Pane::_ComputeBorderColor()
 {
-    if (_lastActive)
+    if (_lastActive && !_isAgentPane && _focusBorderEnabled)
     {
         return _themeResources.focusedBorderBrush;
     }

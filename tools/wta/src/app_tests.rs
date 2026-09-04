@@ -8197,11 +8197,9 @@ fn buffer_to_text(buf: &ratatui::buffer::Buffer) -> String {
     out
 }
 
-/// Render (C063 "prompt out-of-focus appearance"): when keyboard focus leaves the agent pane
-/// (`pane_focused = false`) the input box must still look correct — the prompt marker and the
-/// connection placeholder still paint, the box is not blanked or broken. Only the caret styling
-/// changes (a solid REVERSED block when focused → DIM when not; input.rs:69/90), which is the
-/// intended out-of-focus appearance.
+/// Render (C063 "prompt out-of-focus appearance"): the input border is the
+/// agent pane's focus indicator. It turns cyan while the pane owns keyboard
+/// focus and returns to the subdued border when focus leaves.
 #[test]
 fn render_input_box_intact_when_pane_unfocused() {
     let _g = crate::test_support::lock_locale();
@@ -8217,6 +8215,17 @@ fn render_input_box_intact_when_pane_unfocused() {
         focused.contains('>') && focused.contains(&placeholder),
         "sanity: the focused input must paint the prompt + placeholder; rendered:\n{focused}"
     );
+    let focused_buffer = render_to_buffer(&mut app, 80, 24);
+    let focused_border = focused_buffer
+        .content
+        .iter()
+        .rfind(|cell| cell.symbol() == "┐")
+        .expect("focused input must paint a top-right border");
+    assert_eq!(
+        focused_border.style().fg,
+        Some(ratatui::style::Color::Cyan),
+        "focused agent pane must highlight the input border"
+    );
 
     // Focus leaves the pane: the input box must remain intact (prompt + placeholder still there),
     // i.e. losing focus does not blank or corrupt the input surface.
@@ -8229,6 +8238,17 @@ fn render_input_box_intact_when_pane_unfocused() {
     assert!(
         unfocused.contains(&placeholder),
         "the out-of-focus input must still paint the connection placeholder (box intact); rendered:\n{unfocused}"
+    );
+    let unfocused_buffer = render_to_buffer(&mut app, 80, 24);
+    let unfocused_border = unfocused_buffer
+        .content
+        .iter()
+        .rfind(|cell| cell.symbol() == "┐")
+        .expect("unfocused input must paint a top-right border");
+    assert_eq!(
+        unfocused_border.style().fg,
+        Some(ratatui::style::Color::Rgb(50, 50, 50)),
+        "unfocused agent pane must restore the subdued input border"
     );
 }
 

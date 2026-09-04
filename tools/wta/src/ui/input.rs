@@ -40,9 +40,14 @@ struct WrappedInput {
 
 pub fn render(frame: &mut Frame, app: &App, area: Rect) {
     let tab = app.current_tab();
+    let border_style = if app.pane_focused {
+        theme::INPUT_BORDER_FOCUSED
+    } else {
+        theme::INPUT_BORDER
+    };
     let block = Block::default()
         .borders(Borders::ALL)
-        .border_style(theme::INPUT_BORDER)
+        .border_style(border_style)
         .style(Style::new().bg(theme::INPUT_BG))
         .padding(Padding::new(INPUT_LEFT_PAD, 0, 0, 0));
     let text_width = area

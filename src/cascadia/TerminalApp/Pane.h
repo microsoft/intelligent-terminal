@@ -307,6 +307,7 @@ private:
     bool _broadcastEnabled{ false };
     bool _isAgentPane{ false };
     bool _isSourceOfAgentPane{ false };
+    bool _focusBorderEnabled{ true };
 
     // Mouse drag-to-resize state on the splitter.
     bool _splitterDragging{ false };
@@ -332,6 +333,7 @@ private:
     void _UpdateBorders();
     void _EnsureAgentChip();
     void _UpdateAgentChipBackground();
+    void _SetFocusBorderEnabled(bool value);
     Borders _GetCommonBorders();
     winrt::Windows::UI::Xaml::Media::SolidColorBrush _ComputeBorderColor();
 

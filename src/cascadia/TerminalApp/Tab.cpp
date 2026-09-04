@@ -1513,7 +1513,7 @@ namespace winrt::TerminalApp::implementation
         // ClearActive() above and the SetSourceOfAgentPane(true) we may
         // have just done can flip which pane is "the source", and the chip
         // follows that signal whenever there is no protocol-driven override.
-        _UpdateAgentChipVisibility();
+        _UpdateAgentPaneIndicators();
 
         // Update our own title text to match the newly-active pane.
         UpdateTitle();
@@ -1574,17 +1574,52 @@ namespace winrt::TerminalApp::implementation
         _UpdateMenuItemStates();
     }
 
-    // Recompute the "Agent" chip visibility on every pane in this tab.
-    // When the helper has supplied a session-id override (typically while a
-    // Send recommendation is selected in the agent pane), chip visibility
-    // is pinned to the pane whose connection SessionId matches. Otherwise
-    // it follows the source-of-agent flag.
-    void Tab::_UpdateAgentChipVisibility()
+    // Recompute the agent-related pane indicators. The agent pane is
+    // supplementary UI, so it does not make a single terminal pane a
+    // multi-pane layout by itself. In that case no target chip or focused
+    // pane border is needed: the only possible shell target is unambiguous.
+    void Tab::_UpdateAgentPaneIndicators()
     {
         if (!_rootPane)
         {
             return;
         }
+
+        int visibleNonAgentPaneCount = 0;
+        bool hasAgentPane = false;
+        _rootPane->WalkTree([&](const auto& pane) {
+            if (pane->IsHidden())
+            {
+                return;
+            }
+            if (pane->IsAgentPane())
+            {
+                hasAgentPane = true;
+            }
+            else if (pane->GetContent().try_as<winrt::TerminalApp::TerminalPaneContent>())
+            {
+                ++visibleNonAgentPaneCount;
+            }
+        });
+
+        const bool showAgentTargetIndicators = hasAgentPane && visibleNonAgentPaneCount > 1;
+        _rootPane->WalkTree([&](const auto& pane) {
+            const bool isTerminalPane = pane->GetContent().try_as<winrt::TerminalApp::TerminalPaneContent>() != nullptr;
+            pane->_SetFocusBorderEnabled(!pane->IsAgentPane() &&
+                                         (!isTerminalPane || !hasAgentPane || visibleNonAgentPaneCount > 1));
+        });
+
+        if (!showAgentTargetIndicators)
+        {
+            _rootPane->WalkTree([](const auto& pane) {
+                pane->SetAgentChipVisible(false);
+            });
+            return;
+        }
+
+        // When the helper has supplied a session-id override (typically while
+        // a Send recommendation is selected), pin the chip to that pane.
+        // Otherwise it follows the source-of-agent flag.
         if (_agentChipOverride.has_value())
         {
             const auto target = _agentChipOverride.value();
@@ -1616,7 +1651,7 @@ namespace winrt::TerminalApp::implementation
         // example to pick up a `IsSourceOfAgentPane()` transition the
         // chip-visibility hook in `_UpdateActivePane` missed (legacy
         // call sites that mutate the flag without going through it).
-        _UpdateAgentChipVisibility();
+        _UpdateAgentPaneIndicators();
     }
 
     void Tab::_UpdateMenuItemStates()
@@ -1721,6 +1756,19 @@ namespace winrt::TerminalApp::implementation
                             break;
                         }
                     }
+                }
+
+                // Pane::Closed is raised while the pane tree is still being
+                // collapsed. Recompute on the next UI tick so target-chip and
+                // focus-border decisions see the final tree.
+                if (const auto dispatcher = DispatcherQueue::GetForCurrentThread())
+                {
+                    dispatcher.TryEnqueue(DispatcherQueuePriority::Low, [weakThis]() {
+                        if (const auto tab = weakThis.get())
+                        {
+                            tab->_UpdateAgentPaneIndicators();
+                        }
+                    });
                 }
             }
         });
@@ -2381,6 +2429,7 @@ namespace winrt::TerminalApp::implementation
         // Restore the pane in the XAML tree.
         parent->RestorePane(_hiddenPane);
         _hiddenPane = nullptr;
+        _UpdateAgentPaneIndicators();
     }
 
     bool Tab::HasHiddenPane()
