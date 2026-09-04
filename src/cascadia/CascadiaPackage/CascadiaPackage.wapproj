@@ -30,9 +30,7 @@
     <WtaRustProfile Condition="'$(Configuration)'=='Debug'">debug</WtaRustProfile>
     <WtaRustProfile Condition="'$(Configuration)'!='Debug'">release</WtaRustProfile>
     <WtaExplicitTargetPath>$(SolutionDir)tools\wta\target\$(WtaRustTarget)\$(WtaRustProfile)\wta.exe</WtaExplicitTargetPath>
-    <WtaHostTargetPath>$(SolutionDir)tools\wta\target\$(WtaRustProfile)\wta.exe</WtaHostTargetPath>
     <WtaExePath Condition="Exists('$(WtaExplicitTargetPath)')">$(WtaExplicitTargetPath)</WtaExePath>
-    <WtaExePath Condition="'$(WtaExePath)'=='' And Exists('$(WtaHostTargetPath)')">$(WtaHostTargetPath)</WtaExePath>
   </PropertyGroup>
   <PropertyGroup>
     <ProjectGuid>CA5CAD1A-224A-4171-B13A-F16E576FDD12</ProjectGuid>
@@ -118,11 +116,9 @@
   </ItemGroup>
   <!-- Deploy wta.exe (Rust-built WTA agent) into the package root.
        wta.exe discovers wtcli.exe as a sibling, so both must be co-located.
-       Search order, first existing wins within the matching profile:
-         1. target\$triple\$profile\wta.exe   (explicit target, matching profile)
-         2. target\$profile\wta.exe           (host target, matching profile)
-       Profile defaults to "debug" for Debug builds and "release" for everything
-       else. The build fails rather than silently crossing profiles. -->
+       Only the explicit Rust target matching the package architecture and
+       configuration is accepted. The build fails rather than silently using a
+       host-target or cross-profile binary. -->
   <ItemGroup>
     <Content Include="$(WtaExePath)" Condition="'$(WtaExePath)'!=''">
       <Link>wta.exe</Link>
@@ -131,7 +127,7 @@
   </ItemGroup>
   <Target Name="VerifyMatchingWtaBuild" BeforeTargets="_ConvertItems">
     <Error Condition="'$(WtaExePath)'==''"
-           Text="No $(WtaRustProfile) wta.exe was found for $(Platform). Checked '$(WtaExplicitTargetPath)' and '$(WtaHostTargetPath)'. Build WTA with the matching Cargo profile before packaging; cross-profile fallback is not allowed." />
+           Text="No $(WtaRustProfile) wta.exe was found for $(Platform). Checked '$(WtaExplicitTargetPath)'. Build WTA for the explicit matching target and Cargo profile before packaging; host-target and cross-profile fallbacks are not allowed." />
   </Target>
   <!-- Deploy the static wt-agent-hooks bundle next to wta.exe.
        wta resolves <exe-dir>/wt-agent-hooks/ at runtime via

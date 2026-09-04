@@ -25,16 +25,6 @@ $script:ItFamilyBrand = @{
     'IntelligentTerminal_rd9vj3e6a2mbr'           = 'Dev'
 }
 
-function Get-ItRepoRoot {
-    <# Walk up from the module until we find the git root (best-effort). #>
-    $d = $PSScriptRoot
-    for ($i = 0; $i -lt 8 -and $d; $i++) {
-        if (Test-Path (Join-Path $d '.git')) { return $d }
-        $d = Split-Path $d -Parent
-    }
-    return $null
-}
-
 function Resolve-ItApp {
     <#
     .SYNOPSIS
@@ -74,17 +64,9 @@ function Resolve-ItApp {
     else { (Get-Command wtcli -ErrorAction SilentlyContinue).Source }
     $wt = if ($install -and (Test-Path (Join-Path $install 'WindowsTerminal.exe'))) { Join-Path $install 'WindowsTerminal.exe' } else { $null }
 
-    $wta = $null
-    if ($install -and (Test-Path (Join-Path $install 'wta.exe'))) { $wta = Join-Path $install 'wta.exe' }
-    else {
-        $repo = Get-ItRepoRoot
-        if ($repo) {
-            foreach ($rel in @('tools\wta\target\x86_64-pc-windows-msvc\debug\wta.exe', 'tools\wta\target\debug\wta.exe')) {
-                $cand = Join-Path $repo $rel
-                if (Test-Path $cand) { $wta = $cand; break }
-            }
-        }
-    }
+    # A deployed package must use its own co-located WTA. Falling back to a
+    # repository build can silently run Dev code while testing the Store package.
+    $wta = if ($install -and (Test-Path (Join-Path $install 'wta.exe'))) { Join-Path $install 'wta.exe' } else { $null }
 
     $localState = Join-Path $env:LOCALAPPDATA "Packages\$pfn\LocalState"
     $logRoot = Join-Path $env:LOCALAPPDATA "Packages\$pfn\LocalCache\Local\IntelligentTerminal\logs"
