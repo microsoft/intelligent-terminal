@@ -209,6 +209,31 @@ Describe 'Configuration backup and restore' -Tag 'Unit' {
 }
 
 Describe 'Resolve-ItApp' -Tag 'Unit' {
+    It 'retains the packaged wta path when WindowsApps denies existence checks' {
+        InModuleScope ItE2E {
+            $pfn = 'Microsoft.IntelligentTerminal_8wekyb3d8bbwe'
+            $install = 'C:\Program Files\WindowsApps\Microsoft.IntelligentTerminal_1.2.3.4_x64__8wekyb3d8bbwe'
+            $expectedWta = Join-Path $install 'wta.exe'
+            Mock Get-AppxPackage {
+                [pscustomobject]@{
+                    PackageFamilyName = 'Microsoft.IntelligentTerminal_8wekyb3d8bbwe'
+                    PackageFullName = 'Microsoft.IntelligentTerminal_1.2.3.4_x64__8wekyb3d8bbwe'
+                    Version = [version]'1.2.3.4'
+                    InstallLocation = 'C:\Program Files\WindowsApps\Microsoft.IntelligentTerminal_1.2.3.4_x64__8wekyb3d8bbwe'
+                }
+            }
+            Mock Get-StartApps { @() }
+            Mock Get-Command { $null }
+            Mock Test-Path { $true }
+            Mock Test-Path { $false } -ParameterFilter { $Path -eq $expectedWta }
+
+            $app = Resolve-ItApp -Package $pfn
+
+            $app.WtaPath | Should -Be $expectedWta
+            Should -Invoke Test-Path -ParameterFilter { $Path -eq $expectedWta } -Times 0
+        }
+    }
+
     It 'resolves a descriptor with the expected shape when a package is installed' {
         $installed = @(Get-AppxPackage | Where-Object { $_.Name -like '*IntelligentTerminal*' })
         if (-not $installed) { Set-ItResult -Skipped -Because 'no IT package installed'; return }

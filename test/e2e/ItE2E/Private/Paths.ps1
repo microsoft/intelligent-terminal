@@ -64,7 +64,7 @@ function Resolve-ItApp {
 
     # A deployed package must use its own co-located WTA. Falling back to a
     # repository build can silently run Dev code while testing the Store package.
-    $wta = if ($install -and (Test-Path (Join-Path $install 'wta.exe'))) { Join-Path $install 'wta.exe' } else { $null }
+    $wta = if ($install) { Join-Path $install 'wta.exe' } else { $null }
 
     $localState = Join-Path $env:LOCALAPPDATA "Packages\$pfn\LocalState"
     $logRoot = Join-Path $env:LOCALAPPDATA "Packages\$pfn\LocalCache\Local\IntelligentTerminal\logs"
