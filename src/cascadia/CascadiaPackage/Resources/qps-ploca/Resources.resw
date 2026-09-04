@@ -180,7 +180,7 @@
     <value>Щΐňδόŵѕ Ŧęřмĭŉäℓ ẅîťħ à φřеνίëẃ θƒ џрсøмΐŉğ ƒĕāŧųřэś !!! !!! !!! !!! !!! </value>
   </data>
   <data name="ShellExtension_OpenInTerminalMenuItem_Dev" xml:space="preserve">
-    <value>Open in Intelligent Terminal</value>
+    <value>Open in Intelligent Terminal Dev</value>
     <comment>{Locked} The dev build will never be seen in multiple languages</comment>
   </data>
   <data name="ShellExtension_OpenInTerminalMenuItem_Canary" xml:space="preserve">
