@@ -247,9 +247,7 @@
                     <ItemsControl ItemsSource="{x:Bind ViewModel.CustomModelProviders, Mode=OneWay}">
                         <ItemsControl.ItemTemplate>
                             <DataTemplate x:DataType="local:CustomModelProviderEntry">
-                                <Border BorderThickness="0,1,0,0"
-                                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                                        Padding="0,8">
+                                <Border Padding="0,8">
                                     <Grid>
                                         <Grid.RowDefinitions>
                                             <RowDefinition Height="Auto" />
