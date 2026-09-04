@@ -36,6 +36,10 @@ pub enum AppEvent {
     SessionAttached {
         tab_id: String,
         session_id: String,
+        /// Present only for a session lazily created by this exact prompt.
+        /// Lifecycle-created sessions (`/new`, `session/load`, startup
+        /// fallback) are not prompt-owned.
+        prompt_id: Option<u64>,
         available_models: Vec<AcpModelInfo>,
         current_model_id: Option<String>,
     },
@@ -92,6 +96,11 @@ pub enum AppEvent {
         tab_id: String,
         message: String,
     },
+    PromptError {
+        tab_id: String,
+        prompt_id: u64,
+        message: String,
+    },
     TabSystemMessage {
         tab_id: String,
         message: String,
@@ -122,6 +131,11 @@ pub enum AppEvent {
     /// The helper's pipe to wta-master closed. A retained helper reconnects
     /// its existing immutable binding over the stable pipe.
     MasterDisconnected,
+    /// The ACP client has conclusively retired its transport and no prompt
+    /// or lifecycle task owned by that client can produce more events.
+    /// Releases cancellation barriers for both dispatched and still-queued
+    /// prompts.
+    AgentTransportRetired,
     AgentSoftStop {
         session_id: String,
         reason: crate::protocol::acp::soft_stop::SoftStopReason,
@@ -152,9 +166,8 @@ pub enum AppEvent {
         session_id: String,
     },
     PromptCancellationSettled {
-        tab_id: String,
         prompt_id: u64,
-        session_id: Option<String>,
+        started: bool,
     },
     TimingMetric {
         session_id: String,

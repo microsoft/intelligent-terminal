@@ -133,6 +133,16 @@ impl TurnState {
         matches!(self, TurnState::Cancelling { .. })
     }
 
+    pub fn prompt_id(&self) -> Option<u64> {
+        match self {
+            TurnState::Idle => None,
+            TurnState::Submitted(prompt)
+            | TurnState::Streaming { prompt }
+            | TurnState::Surfaced { prompt, .. } => Some(prompt.id),
+            TurnState::Cancelling { prompt_id } => Some(*prompt_id),
+        }
+    }
+
     /// True while an Agent request can still be attributed to this turn.
     ///
     /// A surfaced turn may have released its UI busy gate before a follow-up

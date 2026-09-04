@@ -53,7 +53,6 @@ pub(super) fn test_app() -> App {
     let (prompt_tx, _prompt_rx) = tokio::sync::mpsc::unbounded_channel();
     let (recommendation_tx, _recommendation_rx) = tokio::sync::mpsc::unbounded_channel();
     let (permission_tx, _permission_rx) = tokio::sync::mpsc::unbounded_channel();
-    let (cancel_tx, _cancel_rx) = tokio::sync::mpsc::unbounded_channel();
     let (new_session_tx, _new_session_rx) = tokio::sync::mpsc::unbounded_channel();
     let (load_session_tx, _load_session_rx) = tokio::sync::mpsc::unbounded_channel();
     let (drop_session_tx, _drop_session_rx) = tokio::sync::mpsc::unbounded_channel();
@@ -65,7 +64,6 @@ pub(super) fn test_app() -> App {
         prompt_tx,
         recommendation_tx,
         permission_tx,
-        cancel_tx,
         new_session_tx,
         load_session_tx,
         drop_session_tx,
@@ -99,7 +97,6 @@ fn test_app_with_restart_rx() -> (
     let (prompt_tx, _prompt_rx) = tokio::sync::mpsc::unbounded_channel();
     let (recommendation_tx, _recommendation_rx) = tokio::sync::mpsc::unbounded_channel();
     let (permission_tx, _permission_rx) = tokio::sync::mpsc::unbounded_channel();
-    let (cancel_tx, _cancel_rx) = tokio::sync::mpsc::unbounded_channel();
     let (new_session_tx, _new_session_rx) = tokio::sync::mpsc::unbounded_channel();
     let (load_session_tx, _load_session_rx) = tokio::sync::mpsc::unbounded_channel();
     let (drop_session_tx, _drop_session_rx) = tokio::sync::mpsc::unbounded_channel();
@@ -111,7 +108,6 @@ fn test_app_with_restart_rx() -> (
             prompt_tx,
             recommendation_tx,
             permission_tx,
-            cancel_tx,
             new_session_tx,
             load_session_tx,
             drop_session_tx,
@@ -137,7 +133,6 @@ fn test_app_with_drop_session_rx() -> (
     let (prompt_tx, _prompt_rx) = tokio::sync::mpsc::unbounded_channel();
     let (recommendation_tx, _recommendation_rx) = tokio::sync::mpsc::unbounded_channel();
     let (permission_tx, _permission_rx) = tokio::sync::mpsc::unbounded_channel();
-    let (cancel_tx, _cancel_rx) = tokio::sync::mpsc::unbounded_channel();
     let (new_session_tx, _new_session_rx) = tokio::sync::mpsc::unbounded_channel();
     let (load_session_tx, _load_session_rx) = tokio::sync::mpsc::unbounded_channel();
     let (drop_session_tx, drop_session_rx) = tokio::sync::mpsc::unbounded_channel();
@@ -149,7 +144,6 @@ fn test_app_with_drop_session_rx() -> (
             prompt_tx,
             recommendation_tx,
             permission_tx,
-            cancel_tx,
             new_session_tx,
             load_session_tx,
             drop_session_tx,
@@ -308,6 +302,7 @@ fn replacement_session_clears_old_native_config_prompt_gate() {
     app.handle_event(AppEvent::SessionAttached {
         tab_id: DEFAULT_TAB_ID.into(),
         session_id: "replacement-session".into(),
+        prompt_id: None,
         available_models: Vec::new(),
         current_model_id: None,
     });
@@ -1446,7 +1441,6 @@ pub(super) fn test_app_with_master_rx() -> (
     let (prompt_tx, _prompt_rx) = tokio::sync::mpsc::unbounded_channel();
     let (recommendation_tx, _recommendation_rx) = tokio::sync::mpsc::unbounded_channel();
     let (permission_tx, _permission_rx) = tokio::sync::mpsc::unbounded_channel();
-    let (cancel_tx, _cancel_rx) = tokio::sync::mpsc::unbounded_channel();
     let (new_session_tx, _new_session_rx) = tokio::sync::mpsc::unbounded_channel();
     let (load_session_tx, _load_session_rx) = tokio::sync::mpsc::unbounded_channel();
     let (drop_session_tx, _drop_session_rx) = tokio::sync::mpsc::unbounded_channel();
@@ -1458,7 +1452,6 @@ pub(super) fn test_app_with_master_rx() -> (
         prompt_tx,
         recommendation_tx,
         permission_tx,
-        cancel_tx,
         new_session_tx,
         load_session_tx,
         drop_session_tx,
@@ -1681,7 +1674,6 @@ fn tab_renamed_sends_rename_session_request_to_acp_client() {
     let (prompt_tx, _prompt_rx) = tokio::sync::mpsc::unbounded_channel();
     let (recommendation_tx, _recommendation_rx) = tokio::sync::mpsc::unbounded_channel();
     let (permission_tx, _permission_rx) = tokio::sync::mpsc::unbounded_channel();
-    let (cancel_tx, _cancel_rx) = tokio::sync::mpsc::unbounded_channel();
     let (new_session_tx, _new_session_rx) = tokio::sync::mpsc::unbounded_channel();
     let (load_session_tx, _load_session_rx) = tokio::sync::mpsc::unbounded_channel();
     let (drop_session_tx, _drop_session_rx) = tokio::sync::mpsc::unbounded_channel();
@@ -1693,7 +1685,6 @@ fn tab_renamed_sends_rename_session_request_to_acp_client() {
         prompt_tx,
         recommendation_tx,
         permission_tx,
-        cancel_tx,
         new_session_tx,
         load_session_tx,
         drop_session_tx,
@@ -1742,7 +1733,6 @@ fn tab_renamed_noop_does_not_send_rename_session_request() {
     let (prompt_tx, _prompt_rx) = tokio::sync::mpsc::unbounded_channel();
     let (recommendation_tx, _recommendation_rx) = tokio::sync::mpsc::unbounded_channel();
     let (permission_tx, _permission_rx) = tokio::sync::mpsc::unbounded_channel();
-    let (cancel_tx, _cancel_rx) = tokio::sync::mpsc::unbounded_channel();
     let (new_session_tx, _new_session_rx) = tokio::sync::mpsc::unbounded_channel();
     let (load_session_tx, _load_session_rx) = tokio::sync::mpsc::unbounded_channel();
     let (drop_session_tx, _drop_session_rx) = tokio::sync::mpsc::unbounded_channel();
@@ -1754,7 +1744,6 @@ fn tab_renamed_noop_does_not_send_rename_session_request() {
         prompt_tx,
         recommendation_tx,
         permission_tx,
-        cancel_tx,
         new_session_tx,
         load_session_tx,
         drop_session_tx,
@@ -1835,7 +1824,6 @@ fn make_app_with_load_session_channel() -> (
     let (prompt_tx, _prompt_rx) = tokio::sync::mpsc::unbounded_channel();
     let (recommendation_tx, _recommendation_rx) = tokio::sync::mpsc::unbounded_channel();
     let (permission_tx, _permission_rx) = tokio::sync::mpsc::unbounded_channel();
-    let (cancel_tx, _cancel_rx) = tokio::sync::mpsc::unbounded_channel();
     let (new_session_tx, _new_session_rx) = tokio::sync::mpsc::unbounded_channel();
     let (load_session_tx, load_session_rx) = tokio::sync::mpsc::unbounded_channel();
     let (drop_session_tx, _drop_session_rx) = tokio::sync::mpsc::unbounded_channel();
@@ -1847,7 +1835,6 @@ fn make_app_with_load_session_channel() -> (
         prompt_tx,
         recommendation_tx,
         permission_tx,
-        cancel_tx,
         new_session_tx,
         load_session_tx,
         drop_session_tx,
@@ -2075,6 +2062,7 @@ fn session_attached_for_bootstrap_does_not_close_load_replay_window() {
     app.handle_event(AppEvent::SessionAttached {
         tab_id: "OWNER-TAB".to_string(),
         session_id: "sess-bootstrap".to_string(),
+        prompt_id: None,
         available_models: vec![],
         current_model_id: None,
     });
@@ -2120,6 +2108,7 @@ fn unrelated_session_attached_keeps_load_target_yolo_gate() {
     app.handle_event(AppEvent::SessionAttached {
         tab_id: "OWNER-TAB".to_string(),
         session_id: "sess-unrelated".to_string(),
+        prompt_id: None,
         available_models: vec![],
         current_model_id: None,
     });
@@ -2148,6 +2137,7 @@ fn session_attached_reconciles_stale_client_yolo_target() {
     app.handle_event(AppEvent::SessionAttached {
         tab_id: DEFAULT_TAB_ID.into(),
         session_id: session_id.into(),
+        prompt_id: None,
         available_models: Vec::new(),
         current_model_id: None,
     });
@@ -2181,6 +2171,7 @@ fn load_failure_then_fallback_attach_binds_the_fresh_session() {
     app.handle_event(AppEvent::SessionAttached {
         tab_id: tab_id.clone(),
         session_id: "fallback-session".into(),
+        prompt_id: None,
         available_models: Vec::new(),
         current_model_id: None,
     });
@@ -2287,6 +2278,7 @@ fn session_attached_for_load_target_closes_replay_window() {
     app.handle_event(AppEvent::SessionAttached {
         tab_id: "OWNER-TAB".to_string(),
         session_id: "sess-target".to_string(),
+        prompt_id: None,
         available_models: vec![],
         current_model_id: None,
     });
@@ -2345,6 +2337,7 @@ fn a_resume_keeps_the_status_row_after_the_connection_completes() {
     app.handle_event(AppEvent::SessionAttached {
         tab_id: "OWNER-TAB".to_string(),
         session_id: "sess-target".to_string(),
+        prompt_id: None,
         available_models: vec![],
         current_model_id: None,
     });
@@ -2668,6 +2661,7 @@ fn session_attached_for_load_target_packs_replayed_history() {
     app.handle_event(AppEvent::SessionAttached {
         tab_id: "OWNER-TAB".to_string(),
         session_id: "sess-target".to_string(),
+        prompt_id: None,
         available_models: vec![],
         current_model_id: None,
     });
@@ -2721,6 +2715,7 @@ fn replay_message_ids_preserve_user_only_recommendation_turns() {
     app.handle_event(AppEvent::SessionAttached {
         tab_id: "OWNER-TAB".to_string(),
         session_id: "sess-target".to_string(),
+        prompt_id: None,
         available_models: vec![],
         current_model_id: None,
     });
@@ -2779,6 +2774,7 @@ fn hidden_proposal_tool_calls_delimit_replayed_user_messages_without_ids() {
     app.handle_event(AppEvent::SessionAttached {
         tab_id: "OWNER-TAB".to_string(),
         session_id: "sess-target".to_string(),
+        prompt_id: None,
         available_models: vec![],
         current_model_id: None,
     });
@@ -3316,6 +3312,7 @@ fn model_config_update_before_session_attach_is_applied_on_attach() {
     app.handle_event(AppEvent::SessionAttached {
         tab_id: DEFAULT_TAB_ID.into(),
         session_id: "sid-later".into(),
+        prompt_id: None,
         available_models: vec![model_info("claude-sonnet-5")],
         current_model_id: Some("claude-sonnet-5".into()),
     });
@@ -3341,6 +3338,7 @@ fn session_attach_prunes_replaced_session_model_config() {
     app.handle_event(AppEvent::SessionAttached {
         tab_id: DEFAULT_TAB_ID.into(),
         session_id: "sid-new".into(),
+        prompt_id: None,
         available_models: vec![model_info("gpt-5.6-sol")],
         current_model_id: Some("gpt-5.6-sol".into()),
     });
@@ -3360,6 +3358,7 @@ fn background_session_attach_waits_for_tab_switch_to_update_picker() {
     app.handle_event(AppEvent::SessionAttached {
         tab_id: "background".into(),
         session_id: "sid-background".into(),
+        prompt_id: None,
         available_models: vec![model_info("gpt-5.6-sol")],
         current_model_id: Some("gpt-5.6-sol".into()),
     });
@@ -3560,6 +3559,7 @@ fn fresh_session_model_replaces_stale_agent_default() {
     app.handle_event(AppEvent::SessionAttached {
         tab_id: DEFAULT_TAB_ID.into(),
         session_id: "sid-fresh".into(),
+        prompt_id: None,
         available_models: vec![model_info("stale"), model_info("fresh")],
         current_model_id: Some("fresh".into()),
     });
@@ -3726,6 +3726,7 @@ fn global_on_session_attach_gates_prompt_until_native_yolo_enable_acknowledges()
     app.handle_event(AppEvent::SessionAttached {
         tab_id: DEFAULT_TAB_ID.into(),
         session_id: "global-on-session".into(),
+        prompt_id: None,
         available_models: Vec::new(),
         current_model_id: None,
     });
@@ -3788,6 +3789,7 @@ fn known_global_on_failure_releases_yolo_prompt_gate_for_interactive_fallback() 
     app.handle_event(AppEvent::SessionAttached {
         tab_id: DEFAULT_TAB_ID.into(),
         session_id: "unsupported-global-on".into(),
+        prompt_id: None,
         available_models: Vec::new(),
         current_model_id: None,
     });
@@ -4044,6 +4046,7 @@ fn initial_load_placeholder_agent_connected_skips_yolo_reconcile() {
     app.handle_event(AppEvent::SessionAttached {
         tab_id: DEFAULT_TAB_ID.into(),
         session_id: "loaded-session".into(),
+        prompt_id: None,
         available_models: Vec::new(),
         current_model_id: None,
     });
@@ -4207,6 +4210,7 @@ fn agent_reset_clears_reconcile_state_before_reused_id_attaches() {
     app.handle_event(AppEvent::SessionAttached {
         tab_id: DEFAULT_TAB_ID.into(),
         session_id: session_id.into(),
+        prompt_id: None,
         available_models: Vec::new(),
         current_model_id: None,
     });
@@ -4231,6 +4235,7 @@ fn fresh_session_model_does_not_replace_global_override() {
     app.handle_event(AppEvent::SessionAttached {
         tab_id: DEFAULT_TAB_ID.into(),
         session_id: "sid-fresh".into(),
+        prompt_id: None,
         available_models: vec![model_info("agent-default"), model_info("global")],
         current_model_id: Some("agent-default".into()),
     });
@@ -4264,6 +4269,7 @@ fn fresh_session_model_does_not_replace_pane_override_on_new() {
     app.handle_event(AppEvent::SessionAttached {
         tab_id: DEFAULT_TAB_ID.into(),
         session_id: "sid-new".into(),
+        prompt_id: None,
         available_models: vec![model_info("agent-default"), model_info("pane-picked")],
         current_model_id: Some("agent-default".into()),
     });
@@ -4307,6 +4313,7 @@ fn fresh_session_model_does_not_replace_custom_selection() {
     app.handle_event(AppEvent::SessionAttached {
         tab_id: DEFAULT_TAB_ID.into(),
         session_id: "sid-fresh".into(),
+        prompt_id: None,
         available_models: vec![model_info("agent-default")],
         current_model_id: Some("agent-default".into()),
     });
@@ -4493,13 +4500,18 @@ fn settings_agent_rebind_targets_owner_and_resets_only_agent_state() {
     assert!(!app.pending_acp_start);
     assert!(matches!(
         &app.agent_reconnect_state,
-        AgentReconnectState::Preflighting(_)
+        AgentReconnectState::Disconnecting(_)
     ));
     assert!(
         app.current_tab().messages.is_empty(),
         "the outgoing client's startup error must not leak into the new agent chat"
     );
 
+    app.handle_event(AppEvent::AgentTransportRetired);
+    assert!(matches!(
+        &app.agent_reconnect_state,
+        AgentReconnectState::Preflighting(_)
+    ));
     app.handle_event(AppEvent::AgentReconnectPreflightComplete {
         operation_id: "op-1".into(),
         generation: 1,
@@ -6958,6 +6970,9 @@ fn post_login_auth_recovery_shows_reconnecting_then_signin_fallback() {
         tab_id: None,
         params: json!({ "operation_id": restart_request_id }),
     });
+    assert!(!app.pending_acp_start);
+    assert!(app.reconnect_after_transport_retired);
+    app.handle_event(AppEvent::AgentTransportRetired);
     assert!(app.pending_acp_start);
     assert!(matches!(
         &app.auth_recovery_state,
@@ -7040,6 +7055,9 @@ fn auth_recovery_accepts_master_readiness_after_connection_timeout_window() {
         params: json!({ "operation_id": request_id }),
     });
 
+    assert!(!app.pending_acp_start);
+    assert!(app.reconnect_after_transport_retired);
+    app.handle_event(AppEvent::AgentTransportRetired);
     assert!(app.pending_acp_start);
     assert!(matches!(
         app.auth_recovery_state,
@@ -7131,9 +7149,12 @@ fn master_disconnect_reconnects_retained_custom_wsl_helper() {
 
     assert!(!app.should_quit);
     assert!(
-        app.pending_acp_start,
-        "master disconnect must reconnect the existing immutable binding"
+        !app.pending_acp_start,
+        "replacement client must wait until the old transport is retired"
     );
+    assert!(app.reconnect_after_transport_retired);
+    app.handle_event(AppEvent::AgentTransportRetired);
+    assert!(app.pending_acp_start);
     assert!(matches!(
         &app.agent_reconnect_state,
         AgentReconnectState::Idle
@@ -7157,12 +7178,161 @@ fn master_disconnect_reconnects_retained_custom_wsl_helper() {
 }
 
 #[test]
+fn master_disconnect_preserves_in_flight_session_load_for_reconnect() {
+    let mut app = test_app();
+    app.set_master_pipe_acp_params(
+        "master-pipe".into(),
+        "copilot --acp".into(),
+        Some("copilot".into()),
+        None,
+        None,
+        crate::agent_source::AgentSource::Host,
+        None,
+        Some(DEFAULT_TAB_ID.into()),
+        Arc::clone(&app.shell_mgr),
+        true,
+    );
+    let pending = LoadSessionForTab {
+        tab_id: DEFAULT_TAB_ID.into(),
+        session_id: "historical-session".into(),
+        cwd: Some("C:\\work".into()),
+    };
+    app.pending_session_load = Some(pending.clone());
+    app.current_tab_mut().loading_session = true;
+    app.current_tab_mut().loading_target_session_id = Some(pending.session_id.clone());
+
+    app.handle_event(AppEvent::MasterDisconnected);
+
+    assert_eq!(
+        app.pending_session_load
+            .as_ref()
+            .map(|request| request.session_id.as_str()),
+        Some("historical-session")
+    );
+    assert!(app.current_tab().loading_session);
+    assert_eq!(
+        app.current_tab().loading_target_session_id.as_deref(),
+        Some("historical-session")
+    );
+    assert!(app.reconnect_after_transport_retired);
+}
+
+#[test]
+fn master_disconnect_does_not_resurrect_abandoned_session_load() {
+    let mut app = test_app();
+    app.set_master_pipe_acp_params(
+        "master-pipe".into(),
+        "copilot --acp".into(),
+        Some("copilot".into()),
+        None,
+        None,
+        crate::agent_source::AgentSource::Host,
+        None,
+        Some(DEFAULT_TAB_ID.into()),
+        Arc::clone(&app.shell_mgr),
+        true,
+    );
+    app.pending_session_load = Some(LoadSessionForTab {
+        tab_id: DEFAULT_TAB_ID.into(),
+        session_id: "abandoned-session".into(),
+        cwd: None,
+    });
+
+    app.handle_event(AppEvent::MasterDisconnected);
+
+    assert!(app.pending_session_load.is_none());
+    assert!(!app.current_tab().loading_session);
+    assert!(app.current_tab().loading_target_session_id.is_none());
+}
+
+#[test]
+fn prompt_error_settles_only_the_matching_background_tab() {
+    let mut app = test_app();
+    app.tab_sessions
+        .insert("background-tab".into(), TabSession::default());
+    let prompt = PromptSubmission::new("background autofix".into(), None);
+    let prompt_id = prompt.id;
+    let cancellation = prompt.cancellation_token();
+    app.turn_submit_prompt_for_tab_with_cancellation(
+        "background-tab",
+        SubmittedPrompt {
+            id: prompt_id,
+            text: prompt.text,
+            submitted_at_unix_s: prompt.submitted_at_unix_s,
+            context: TurnContext::default(),
+            autofix: Some(AutofixContext { generation: 0 }),
+        },
+        cancellation,
+    );
+
+    app.handle_event(AppEvent::PromptError {
+        tab_id: "background-tab".into(),
+        prompt_id,
+        message: "lazy session failed".into(),
+    });
+
+    assert!(app.tab_sessions["background-tab"].turn.is_idle());
+    assert!(app.tab_sessions["background-tab"]
+        .active_prompt_cancellation
+        .is_none());
+    assert!(matches!(
+        app.tab_sessions["background-tab"].messages.last(),
+        Some(ChatMessage::Error(message)) if message == "lazy session failed"
+    ));
+    assert!(app.current_tab().messages.is_empty());
+}
+
+#[test]
 fn master_disconnect_without_binding_terminates_helper() {
     let mut app = test_app();
 
     app.handle_event(AppEvent::MasterDisconnected);
 
     assert!(app.should_quit);
+}
+
+#[test]
+fn tab_rename_updates_all_persisted_reconnect_identity() {
+    let mut app = test_app();
+    app.tab_id = Some(DEFAULT_TAB_ID.into());
+    app.owner_tab_id = Some(DEFAULT_TAB_ID.into());
+    app.set_master_pipe_acp_params(
+        "master-pipe".into(),
+        "copilot --acp".into(),
+        Some("copilot".into()),
+        None,
+        None,
+        crate::agent_source::AgentSource::Host,
+        None,
+        Some(DEFAULT_TAB_ID.into()),
+        Arc::clone(&app.shell_mgr),
+        true,
+    );
+    app.pending_session_load = Some(LoadSessionForTab {
+        tab_id: DEFAULT_TAB_ID.into(),
+        session_id: "historical-session".into(),
+        cwd: None,
+    });
+
+    app.handle_event(AppEvent::TabRenamed {
+        old_tab_id: DEFAULT_TAB_ID.into(),
+        new_tab_id: "renamed-tab".into(),
+        new_window_id: None,
+    });
+
+    assert_eq!(app.owner_tab_id.as_deref(), Some("renamed-tab"));
+    assert_eq!(
+        app.deferred_acp
+            .as_ref()
+            .and_then(|params| params.owner_tab_id.as_deref()),
+        Some("renamed-tab")
+    );
+    assert_eq!(
+        app.pending_session_load
+            .as_ref()
+            .map(|request| request.tab_id.as_str()),
+        Some("renamed-tab")
+    );
 }
 
 #[test]
@@ -7190,6 +7360,9 @@ fn replacement_master_recovers_helper_failed_during_session_retirement() {
         params: json!({ "operation_id": "normal-restart" }),
     });
 
+    assert!(!app.pending_acp_start);
+    assert!(app.reconnect_after_transport_retired);
+    app.handle_event(AppEvent::AgentTransportRetired);
     assert!(app.pending_acp_start);
     assert!(matches!(app.state, ConnectionState::Connecting(_)));
     assert!(matches!(&app.auth_recovery_state, AuthRecoveryState::Idle));
@@ -7228,6 +7401,9 @@ fn replacement_master_does_not_duplicate_connected_helper() {
 fn protocol_error_ends_turn_without_failing_connection() {
     let mut app = test_app();
     app.state = ConnectionState::Connected;
+    app.current_tab_mut().session_id = Some("live-session".into());
+    app.session_to_tab
+        .insert("live-session".into(), DEFAULT_TAB_ID.into());
 
     app.handle_event(AppEvent::AgentError {
         session_id: Some("live-session".to_string()),
@@ -7250,6 +7426,9 @@ fn protocol_error_ends_turn_without_failing_connection() {
 fn superseded_lazy_prompt_error_keeps_committed_user_bubble_visible() {
     let mut app = test_app();
     app.state = ConnectionState::Connected;
+    app.current_tab_mut().session_id = Some(DEFAULT_TAB_ID.to_string());
+    app.session_to_tab
+        .insert(DEFAULT_TAB_ID.to_string(), DEFAULT_TAB_ID.to_string());
     submit_test_prompt(&mut app, "keep this prompt visible");
 
     app.handle_event(AppEvent::AgentError {
@@ -7358,6 +7537,7 @@ fn soft_stop_appends_system_line_without_changing_state() {
     use crate::protocol::acp::soft_stop::SoftStopReason;
     let mut app = test_app();
     app.state = ConnectionState::Connected;
+    bind_test_session(&mut app, DEFAULT_TAB_ID);
 
     app.handle_event(AppEvent::AgentSoftStop {
         session_id: "0".to_string(),
@@ -7407,6 +7587,7 @@ fn soft_stop_reasons_map_to_distinct_localized_lines() {
         (SoftStopReason::Refusal, "system.stopped_refusal"),
     ] {
         let mut app = test_app();
+        bind_test_session(&mut app, DEFAULT_TAB_ID);
         app.handle_event(AppEvent::AgentSoftStop {
             session_id: "0".to_string(),
             reason,
@@ -7959,12 +8140,25 @@ fn osc133_prompt_start_in_agent_pane_origin_is_ignored() {
 // ─── turn-state integration tests ──────────────────────────────────────
 //
 // Drive `App` directly through the turn-state transitions in
-// `doc/specs/turn-state-refactor.md`'s table. We use the active tab's
-// `DEFAULT_TAB_ID` as the session key — `session_tab_mut` falls back to
-// the active tab when the id is unknown, which keeps these tests free
-// of ACP wiring.
+// `doc/specs/turn-state-refactor.md`'s table. Most tests bind the active tab
+// to `DEFAULT_TAB_ID`, matching production's exact SessionId routing while
+// keeping the setup terse.
+
+fn bind_test_session(app: &mut App, session_id: &str) {
+    let tab_id = app.active_tab_key().to_string();
+    app.current_tab_mut().session_id = Some(session_id.to_string());
+    app.session_to_tab.insert(session_id.to_string(), tab_id);
+}
 
 fn submit_test_prompt(app: &mut App, text: &str) {
+    let tab_id = app.active_tab_key().to_string();
+    let session_id = app
+        .current_tab()
+        .session_id
+        .clone()
+        .unwrap_or_else(|| DEFAULT_TAB_ID.to_string());
+    app.current_tab_mut().session_id = Some(session_id.clone());
+    app.session_to_tab.insert(session_id.clone(), tab_id);
     let prompt = SubmittedPrompt {
         id: 42,
         text: text.into(),
@@ -7972,7 +8166,7 @@ fn submit_test_prompt(app: &mut App, text: &str) {
         context: TurnContext::default(),
         autofix: None,
     };
-    app.turn_submit_prompt(DEFAULT_TAB_ID, prompt);
+    app.turn_submit_prompt(&session_id, prompt);
 }
 
 /// Form A end-to-end (mock-acp-agent spec, "option 2"): the mock + real
@@ -8003,6 +8197,7 @@ async fn mock_agent_reply_streams_into_app_chat() {
                 .new_session(acp::schema::v1::NewSessionRequest::new("/test"))
                 .await
                 .expect("new_session failed");
+            let session_id = session.session_id.to_string();
             conn.prompt(acp::schema::v1::PromptRequest::new(
                 session.session_id.clone(),
                 vec!["hello".into()],
@@ -8013,6 +8208,7 @@ async fn mock_agent_reply_streams_into_app_chat() {
             // Real App with an in-flight turn so streamed chunks are accepted
             // (the AgentMessageChunk handler drops chunks on an idle turn).
             let mut app = test_app();
+            bind_test_session(&mut app, &session_id);
             submit_test_prompt(&mut app, "hello");
 
             // Pump the AppEvents the real WtaClient produced into the real
@@ -8070,6 +8266,7 @@ async fn run_permission_scenario(expected_keys: &[KeyCode], want: &str) {
         .new_session(acp::schema::v1::NewSessionRequest::new("/test"))
         .await
         .expect("new_session failed");
+    let session_id = session.session_id.to_string();
     conn.prompt(acp::schema::v1::PromptRequest::new(
         session.session_id.clone(),
         vec!["do it".into()],
@@ -8079,6 +8276,7 @@ async fn run_permission_scenario(expected_keys: &[KeyCode], want: &str) {
 
     // Real App with an in-flight turn so the permission request is accepted.
     let mut app = test_app();
+    bind_test_session(&mut app, &session_id);
     submit_test_prompt(&mut app, "do it");
 
     // Pump events until the PermissionRequest is applied to the App.
@@ -8260,6 +8458,7 @@ fn perm_option_kind_matching_is_case_insensitive() {
 #[test]
 fn permission_request_replaces_thinking_until_dismissed() {
     let mut app = test_app();
+    bind_test_session(&mut app, DEFAULT_TAB_ID);
     let prompt = SubmittedPrompt {
         id: 1,
         text: "test".into(),
@@ -8312,6 +8511,7 @@ fn permission_request_replaces_thinking_until_dismissed() {
 #[test]
 fn surfaced_autofix_turn_accepts_follow_up_permission_request() {
     let mut app = test_app();
+    bind_test_session(&mut app, DEFAULT_TAB_ID);
     let prompt = SubmittedPrompt {
         id: 1,
         text: "autofix".into(),
@@ -8353,6 +8553,7 @@ fn surfaced_autofix_turn_accepts_follow_up_permission_request() {
 #[test]
 fn yolo_enabled_permission_request_remains_pending_until_user_input() {
     let mut app = test_app();
+    bind_test_session(&mut app, DEFAULT_TAB_ID);
     app.yolo_state.lock().unwrap().update_runtime(true, false);
     assert!(
         app.yolo_state.lock().unwrap().effective(DEFAULT_TAB_ID),
@@ -8405,6 +8606,7 @@ fn yolo_enabled_permission_request_remains_pending_until_user_input() {
 }
 
 fn begin_user_input_test(app: &mut App) {
+    bind_test_session(app, DEFAULT_TAB_ID);
     app.tab_mut(DEFAULT_TAB_ID).turn = TurnState::Submitted(SubmittedPrompt {
         id: 1,
         text: "test".into(),
@@ -8415,9 +8617,82 @@ fn begin_user_input_test(app: &mut App) {
 }
 
 #[test]
+fn ctrl_c_cancels_prompt_while_mcp_clarification_is_visible() {
+    let mut app = test_app();
+    submit_test_prompt(&mut app, "needs clarification");
+    app.current_tab_mut().input = "preserve this draft".into();
+    let cancellation = app
+        .current_tab()
+        .active_prompt_cancellation
+        .as_ref()
+        .expect("prompt token")
+        .token
+        .clone();
+    let (input_tx, mut input_rx) = tokio::sync::oneshot::channel();
+    let (permission_tx, mut permission_rx) = tokio::sync::oneshot::channel();
+    app.handle_event(AppEvent::UserInputRequest {
+        request_id: "clarification".into(),
+        session_id: DEFAULT_TAB_ID.into(),
+        request: crate::agent_tools::user_input::UserInputRequest {
+            question: "Which target?".into(),
+            choices: vec!["A".into()],
+            allow_freeform: true,
+        },
+        responder: input_tx,
+    });
+    let mut permission = perm_with("Allow follow-up?");
+    permission.responder = Some(permission_tx);
+    app.current_tab_mut().permission.push_back(permission);
+
+    app.handle_key(KeyEvent::new(KeyCode::Char('c'), KeyModifiers::CONTROL));
+
+    assert!(cancellation.is_cancelled());
+    assert!(app.current_tab().turn.is_cancelling());
+    assert!(app.current_tab().user_input.is_empty());
+    assert!(app.current_tab().permission.is_empty());
+    assert_eq!(app.current_tab().input, "preserve this draft");
+    assert!(matches!(
+        input_rx.try_recv(),
+        Err(tokio::sync::oneshot::error::TryRecvError::Closed)
+    ));
+    assert!(matches!(
+        permission_rx.try_recv(),
+        Err(tokio::sync::oneshot::error::TryRecvError::Closed)
+    ));
+}
+
+#[test]
+fn ctrl_c_cancels_prompt_while_permission_is_visible() {
+    let mut app = test_app();
+    submit_test_prompt(&mut app, "needs permission");
+    let cancellation = app
+        .current_tab()
+        .active_prompt_cancellation
+        .as_ref()
+        .expect("prompt token")
+        .token
+        .clone();
+    let (permission_tx, mut permission_rx) = tokio::sync::oneshot::channel();
+    let mut permission = perm_with("Allow tool?");
+    permission.responder = Some(permission_tx);
+    app.current_tab_mut().permission.push_back(permission);
+
+    app.handle_key(KeyEvent::new(KeyCode::Char('c'), KeyModifiers::CONTROL));
+
+    assert!(cancellation.is_cancelled());
+    assert!(app.current_tab().turn.is_cancelling());
+    assert!(app.current_tab().permission.is_empty());
+    assert!(matches!(
+        permission_rx.try_recv(),
+        Err(tokio::sync::oneshot::error::TryRecvError::Closed)
+    ));
+}
+
+#[test]
 fn session_load_preserves_user_input_request() {
     let mut app = test_app();
     app.current_tab_mut().loading_session = true;
+    app.current_tab_mut().loading_target_session_id = Some(DEFAULT_TAB_ID.into());
     let (responder, mut response) = tokio::sync::oneshot::channel();
 
     app.handle_event(AppEvent::UserInputRequest {
@@ -8805,6 +9080,7 @@ async fn tool_call_surfaces_card_in_chat() {
                 .new_session(acp::schema::v1::NewSessionRequest::new("/test"))
                 .await
                 .expect("new_session failed");
+            let session_id = session.session_id.to_string();
             conn.prompt(acp::schema::v1::PromptRequest::new(
                 session.session_id.clone(),
                 vec!["run it".into()],
@@ -8813,6 +9089,7 @@ async fn tool_call_surfaces_card_in_chat() {
             .expect("prompt failed");
 
             let mut app = test_app();
+            bind_test_session(&mut app, &session_id);
             submit_test_prompt(&mut app, "run it");
 
             let pumped = tokio::time::timeout(std::time::Duration::from_secs(5), async {
@@ -8874,7 +9151,7 @@ async fn pump_until(
 /// leaving an in-flight turn whose streamed notifications the caller pumps
 /// into a real `App`. Returns `()` — it only drives ACP traffic; the caller
 /// owns the `App`.
-async fn app_after_prompt(conn: &crate::protocol::acp::conn::ClientLink) {
+async fn app_after_prompt(conn: &crate::protocol::acp::conn::ClientLink) -> String {
     use agent_client_protocol as acp;
 
     conn.initialize(acp::schema::v1::InitializeRequest::new(
@@ -8892,6 +9169,7 @@ async fn app_after_prompt(conn: &crate::protocol::acp::conn::ClientLink) {
     ))
     .await
     .expect("prompt failed");
+    session.session_id.to_string()
 }
 
 /// Streaming: a reply split across two `AgentMessageChunk`s must coalesce
@@ -8904,9 +9182,10 @@ async fn streaming_two_chunks_coalesce_in_app_chat() {
     local
         .run_until(async {
             let (conn, mut event_rx) = connect_mock_agent_streaming_two_chunks();
-            app_after_prompt(&conn).await;
+            let session_id = app_after_prompt(&conn).await;
 
             let mut app = test_app();
+            bind_test_session(&mut app, &session_id);
             submit_test_prompt(&mut app, "go");
 
             // Two chunks arrive; pump each.
@@ -8938,9 +9217,10 @@ async fn tool_call_completion_updates_card_status() {
     local
         .run_until(async {
             let (conn, mut event_rx) = connect_mock_agent_completing_tool();
-            app_after_prompt(&conn).await;
+            let session_id = app_after_prompt(&conn).await;
 
             let mut app = test_app();
+            bind_test_session(&mut app, &session_id);
             submit_test_prompt(&mut app, "go");
 
             pump_until(&mut app, &mut event_rx, |ev| {
@@ -9070,9 +9350,10 @@ async fn plan_surfaces_card_in_chat() {
     local
         .run_until(async {
             let (conn, mut event_rx) = connect_mock_agent_proposing_plan();
-            app_after_prompt(&conn).await;
+            let session_id = app_after_prompt(&conn).await;
 
             let mut app = test_app();
+            bind_test_session(&mut app, &session_id);
             submit_test_prompt(&mut app, "go");
 
             pump_until(&mut app, &mut event_rx, |ev| {
@@ -12520,6 +12801,7 @@ fn completed_turn_toggle_render_is_stable_after_first_frame() {
 fn completed_tool_output_update_invalidates_cached_turn_height() {
     let mut app = test_app();
     app.state = ConnectionState::Connected;
+    bind_test_session(&mut app, DEFAULT_TAB_ID);
     app.current_tab_mut().completed_turns.push(CompletedTurn {
         prompt: "TERMINAL_CACHE_PROMPT".into(),
         details: vec![ChatMessage::ToolCall {
@@ -12667,6 +12949,14 @@ fn render_recommendation_compact_keeps_summary_and_actions_visible() {
 }
 
 fn submit_autofix_prompt(app: &mut App, pane: &str) {
+    let tab_id = app.active_tab_key().to_string();
+    let session_id = app
+        .current_tab()
+        .session_id
+        .clone()
+        .unwrap_or_else(|| DEFAULT_TAB_ID.to_string());
+    app.current_tab_mut().session_id = Some(session_id.clone());
+    app.session_to_tab.insert(session_id.clone(), tab_id);
     let gen = {
         let tab = app.tab_mut(DEFAULT_TAB_ID);
         tab.autofix.generation = tab.autofix.generation.wrapping_add(1);
@@ -12680,7 +12970,7 @@ fn submit_autofix_prompt(app: &mut App, pane: &str) {
         context: TurnContext::with_target_pane(pane),
         autofix: Some(AutofixContext { generation: gen }),
     };
-    app.turn_submit_prompt(DEFAULT_TAB_ID, prompt);
+    app.turn_submit_prompt(&session_id, prompt);
 }
 
 /// Submit a manual-`/fix`-style autofix turn: an autofix context whose
@@ -13598,7 +13888,7 @@ fn end_with_no_eager_chat_fallback_commits_completed_turn() {
         ChunkKind::Message,
         "Light scatters in the atmosphere.",
     );
-    app.turn_close(DEFAULT_TAB_ID);
+    app.turn_close("fresh-session");
     let tab = app.current_tab();
     assert!(
         matches!(
@@ -13703,43 +13993,320 @@ fn cancel_bumps_generation_and_waits_for_terminal_boundary() {
     assert!(app.current_tab().turn.is_cancelling());
     assert!(app.tab_mut(DEFAULT_TAB_ID).autofix.pane_id.is_none());
     app.handle_event(AppEvent::PromptCancellationSettled {
-        tab_id: DEFAULT_TAB_ID.into(),
         prompt_id: 99,
-        session_id: None,
+        started: false,
     });
     assert!(app.current_tab().turn.is_idle());
+    assert!(!app.current_tab().has_meaningful_conversation);
 }
 
 #[test]
-fn turn_cancel_requests_correlated_cancellation_and_enters_cancelling() {
+fn turn_cancel_signals_prompt_token_and_normal_completion_releases_ui() {
     let mut app = test_app();
-    let (cancel_tx, mut cancel_rx) = tokio::sync::mpsc::unbounded_channel();
-    app.cancel_tx = cancel_tx;
     let session_id = "session-1";
     app.session_to_tab
         .insert(session_id.into(), DEFAULT_TAB_ID.into());
     app.tab_mut(DEFAULT_TAB_ID).session_id = Some(session_id.into());
     submit_test_prompt(&mut app, "stop this");
+    let cancellation = app
+        .current_tab()
+        .active_prompt_cancellation
+        .as_ref()
+        .expect("prompt token")
+        .token
+        .clone();
     app.current_tab_mut().input = "keep this draft".into();
 
     app.turn_cancel(session_id);
 
-    let request = cancel_rx
-        .try_recv()
-        .expect("turn_cancel must request ACP cancellation");
-    assert_eq!(request.tab_id, DEFAULT_TAB_ID);
-    assert_eq!(request.prompt_id, 42);
-    assert_eq!(request.session_id.as_deref(), Some(session_id));
+    assert!(cancellation.is_cancelled());
     assert_eq!(
         app.current_tab().turn,
         TurnState::Cancelling { prompt_id: 42 }
     );
     assert_eq!(app.current_tab().input, "keep this draft");
 
-    app.turn_close(session_id);
+    app.handle_event(AppEvent::AgentMessageEnd {
+        session_id: session_id.into(),
+    });
     assert!(
         app.current_tab().turn.is_idle(),
         "normal prompt completion racing cancellation is still a terminal boundary"
+    );
+    assert!(app.current_tab().has_meaningful_conversation);
+}
+
+#[test]
+fn cancelling_lazy_prompt_binds_its_tagged_session_and_becomes_resumable() {
+    let mut app = test_app();
+    app.state = ConnectionState::Connected;
+    let prompt = PromptSubmission::new("lazy prompt".into(), None);
+    let prompt_id = prompt.id;
+    let cancellation = prompt.cancellation_token();
+    app.turn_submit_prompt_for_tab_with_cancellation(
+        DEFAULT_TAB_ID,
+        SubmittedPrompt {
+            id: prompt_id,
+            text: prompt.text,
+            submitted_at_unix_s: prompt.submitted_at_unix_s,
+            context: TurnContext::default(),
+            autofix: None,
+        },
+        cancellation,
+    );
+    app.request_turn_cancel_for_tab(DEFAULT_TAB_ID);
+
+    app.handle_event(AppEvent::SessionAttached {
+        tab_id: DEFAULT_TAB_ID.into(),
+        session_id: "lazy-session".into(),
+        prompt_id: Some(prompt_id),
+        available_models: Vec::new(),
+        current_model_id: None,
+    });
+
+    assert_eq!(
+        app.current_tab()
+            .active_prompt_cancellation
+            .as_ref()
+            .and_then(|active| active.session_id.as_deref()),
+        Some("lazy-session")
+    );
+    assert!(app.current_tab().turn.is_cancelling());
+
+    app.handle_event(AppEvent::AgentMessageEnd {
+        session_id: "lazy-session".into(),
+    });
+
+    assert!(app.current_tab().turn.is_idle());
+    assert_eq!(
+        app.current_tab().resumable_session_id(),
+        Some("lazy-session")
+    );
+}
+
+#[test]
+fn reset_invalidates_late_prompt_attachment_and_completion_only_releases_barrier() {
+    let mut app = test_app();
+    app.state = ConnectionState::Connected;
+    let prompt = PromptSubmission::new("lazy prompt".into(), None);
+    let prompt_id = prompt.id;
+    let cancellation = prompt.cancellation_token();
+    app.turn_submit_prompt_for_tab_with_cancellation(
+        DEFAULT_TAB_ID,
+        SubmittedPrompt {
+            id: prompt_id,
+            text: prompt.text,
+            submitted_at_unix_s: prompt.submitted_at_unix_s,
+            context: TurnContext::default(),
+            autofix: None,
+        },
+        cancellation,
+    );
+
+    app.reset_tab_session_for(DEFAULT_TAB_ID);
+    app.handle_event(AppEvent::SessionAttached {
+        tab_id: DEFAULT_TAB_ID.into(),
+        session_id: "retired-lazy-session".into(),
+        prompt_id: Some(prompt_id),
+        available_models: Vec::new(),
+        current_model_id: None,
+    });
+
+    assert!(app.current_tab().session_id.is_none());
+    assert!(!app.session_to_tab.contains_key("retired-lazy-session"));
+    assert!(app.current_tab().turn.is_cancelling());
+
+    app.handle_event(AppEvent::PromptCancellationSettled {
+        prompt_id,
+        started: true,
+    });
+
+    assert!(app.current_tab().turn.is_idle());
+    assert!(!app.current_tab().has_meaningful_conversation);
+    assert_eq!(app.current_tab().resumable_session_id(), None);
+}
+
+#[test]
+fn late_nonterminal_events_from_retired_session_cannot_mutate_replacement() {
+    let mut app = test_app();
+    app.state = ConnectionState::Connected;
+    app.current_tab_mut().session_id = Some("replacement-session".into());
+    app.session_to_tab
+        .insert("replacement-session".into(), DEFAULT_TAB_ID.into());
+
+    app.handle_event(AppEvent::AgentThoughtChunk {
+        session_id: "retired-session".into(),
+        text: "stale thought".into(),
+    });
+    app.handle_event(AppEvent::AgentMessageChunk {
+        session_id: "retired-session".into(),
+        text: "stale message".into(),
+    });
+    app.handle_event(AppEvent::Plan {
+        session_id: "retired-session".into(),
+        entries: Vec::new(),
+    });
+    app.handle_event(AppEvent::TimingMetric {
+        session_id: "retired-session".into(),
+        note: "stale timing".into(),
+    });
+
+    assert!(!app.current_tab().has_meaningful_conversation);
+    assert!(app.current_tab().messages.is_empty());
+    assert!(app.current_tab().timing_note.is_none());
+}
+
+#[test]
+fn queued_prompt_cancel_survives_tab_rename_without_rekeying() {
+    let mut app = test_app();
+    let (prompt_tx, mut prompt_rx) = tokio::sync::mpsc::unbounded_channel();
+    app.prompt_tx = prompt_tx;
+    let prompt = PromptSubmission::new("queued".into(), None);
+    let prompt_id = prompt.id;
+    let cancellation = prompt.cancellation_token();
+    app.turn_submit_prompt_for_tab_with_cancellation(
+        DEFAULT_TAB_ID,
+        SubmittedPrompt {
+            id: prompt_id,
+            text: prompt.text.clone(),
+            submitted_at_unix_s: prompt.submitted_at_unix_s,
+            context: TurnContext::default(),
+            autofix: None,
+        },
+        cancellation.clone(),
+    );
+    app.prompt_tx.send(prompt).unwrap();
+
+    app.request_turn_cancel_for_tab(DEFAULT_TAB_ID);
+    app.handle_event(AppEvent::TabRenamed {
+        old_tab_id: DEFAULT_TAB_ID.into(),
+        new_tab_id: "renamed-tab".into(),
+        new_window_id: None,
+    });
+
+    let queued = prompt_rx.try_recv().expect("prompt remains queued");
+    assert!(queued.cancellation_token().is_cancelled());
+    assert!(cancellation.is_cancelled());
+    assert!(matches!(
+        app.tab_sessions["renamed-tab"].turn,
+        TurnState::Cancelling {
+            prompt_id: cancelling_id
+        } if cancelling_id == prompt_id
+    ));
+
+    app.handle_event(AppEvent::PromptCancellationSettled {
+        prompt_id,
+        started: false,
+    });
+    assert!(app.tab_sessions["renamed-tab"].turn.is_idle());
+}
+
+#[test]
+fn reset_keeps_cancellation_barrier_and_preserves_next_draft() {
+    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+
+    let mut app = test_app();
+    app.state = ConnectionState::Connected;
+    let (prompt_tx, mut prompt_rx) = tokio::sync::mpsc::unbounded_channel();
+    app.prompt_tx = prompt_tx;
+    let prompt = PromptSubmission::new("old".into(), None);
+    let prompt_id = prompt.id;
+    let cancellation = prompt.cancellation_token();
+    app.turn_submit_prompt_for_tab_with_cancellation(
+        DEFAULT_TAB_ID,
+        SubmittedPrompt {
+            id: prompt_id,
+            text: prompt.text.clone(),
+            submitted_at_unix_s: prompt.submitted_at_unix_s,
+            context: TurnContext::default(),
+            autofix: None,
+        },
+        cancellation.clone(),
+    );
+    app.prompt_tx.send(prompt).unwrap();
+    app.current_tab_mut().input = "keep next draft".into();
+    app.current_tab_mut().cursor_pos = "keep next draft".len();
+
+    app.reset_tab_session_for(DEFAULT_TAB_ID);
+    assert!(cancellation.is_cancelled());
+    assert!(matches!(
+        app.current_tab().turn,
+        TurnState::Cancelling {
+            prompt_id: cancelling_id
+        } if cancelling_id == prompt_id
+    ));
+    assert_eq!(app.current_tab().input, "keep next draft");
+
+    app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+    assert_eq!(app.current_tab().input, "keep next draft");
+    assert_eq!(
+        prompt_rx.try_recv().expect("old prompt remains queued").id,
+        prompt_id
+    );
+    assert!(
+        prompt_rx.try_recv().is_err(),
+        "reset must not consume a new draft into a phantom Submitted turn"
+    );
+
+    app.handle_event(AppEvent::PromptCancellationSettled {
+        prompt_id,
+        started: false,
+    });
+    app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+    assert_ne!(
+        prompt_rx
+            .try_recv()
+            .expect("new prompt dispatches after settlement")
+            .id,
+        prompt_id
+    );
+}
+
+#[test]
+fn queued_prompt_lost_to_rebind_is_released_only_after_transport_retirement() {
+    let (mut app, mut restart_rx) = test_app_with_restart_rx();
+    app.owner_tab_id = Some(DEFAULT_TAB_ID.into());
+    app.window_id = Some("window-1".into());
+    app.current_agent_id = "copilot".into();
+    let (prompt_tx, mut prompt_rx) = tokio::sync::mpsc::unbounded_channel();
+    app.prompt_tx = prompt_tx;
+    let prompt = PromptSubmission::new("queued on old transport".into(), None);
+    let prompt_id = prompt.id;
+    let cancellation = prompt.cancellation_token();
+    app.turn_submit_prompt_for_tab_with_cancellation(
+        DEFAULT_TAB_ID,
+        SubmittedPrompt {
+            id: prompt_id,
+            text: prompt.text.clone(),
+            submitted_at_unix_s: prompt.submitted_at_unix_s,
+            context: TurnContext::default(),
+            autofix: None,
+        },
+        cancellation.clone(),
+    );
+    app.prompt_tx.send(prompt).unwrap();
+    app.current_tab_mut().input = "preserve this draft".into();
+
+    app.handle_event(agent_rebind_event(DEFAULT_TAB_ID, 1, "claude"));
+    assert!(matches!(
+        restart_rx.try_recv(),
+        Ok(AgentLifecycleRequest::RebindAgent(_))
+    ));
+    assert!(cancellation.is_cancelled());
+    assert!(app.current_tab().turn.is_cancelling());
+    assert_eq!(app.current_tab().input, "preserve this draft");
+
+    app.handle_event(AppEvent::AgentTransportRetired);
+
+    assert!(app.current_tab().turn.is_idle());
+    assert!(app.current_tab().active_prompt_cancellation.is_none());
+    assert_eq!(app.current_tab().input, "preserve this draft");
+    assert_eq!(
+        prompt_rx
+            .try_recv()
+            .expect("submission was still queued on old client")
+            .id,
+        prompt_id
     );
 }
 
@@ -13786,27 +14353,13 @@ fn slash_new_does_not_replace_a_cancelling_turn() {
 }
 
 #[test]
-fn cancellation_settlement_requires_exact_tab_and_prompt() {
+fn cancellation_settlement_requires_exact_prompt() {
     let mut app = test_app();
     submit_test_prompt(&mut app, "stop this");
     app.turn_cancel(DEFAULT_TAB_ID);
-    app.tab_sessions
-        .insert("wrong-tab".into(), TabSession::default());
-
     app.handle_event(AppEvent::PromptCancellationSettled {
-        tab_id: "wrong-tab".into(),
-        prompt_id: 42,
-        session_id: None,
-    });
-    assert!(app.current_tab().turn.is_idle());
-    assert!(app.tab_sessions["wrong-tab"].turn.is_idle());
-
-    submit_test_prompt(&mut app, "stop another");
-    app.turn_cancel(DEFAULT_TAB_ID);
-    app.handle_event(AppEvent::PromptCancellationSettled {
-        tab_id: DEFAULT_TAB_ID.into(),
         prompt_id: 41,
-        session_id: None,
+        started: false,
     });
     assert_eq!(
         app.current_tab().turn,
@@ -13814,30 +14367,308 @@ fn cancellation_settlement_requires_exact_tab_and_prompt() {
     );
 
     app.handle_event(AppEvent::PromptCancellationSettled {
-        tab_id: DEFAULT_TAB_ID.into(),
         prompt_id: 42,
-        session_id: None,
+        started: false,
     });
     assert!(app.current_tab().turn.is_idle());
 }
 
 #[test]
-fn cancellation_settlement_does_not_scan_for_an_unknown_session() {
+fn started_cancellation_settlement_marks_session_meaningful() {
     let mut app = test_app();
+    app.current_tab_mut().session_id = Some("session-1".into());
     submit_test_prompt(&mut app, "stop this");
     app.turn_cancel(DEFAULT_TAB_ID);
 
     app.handle_event(AppEvent::PromptCancellationSettled {
-        tab_id: "wrong-tab".into(),
         prompt_id: 42,
-        session_id: Some("unknown-session".into()),
+        started: true,
     });
 
-    assert_eq!(
-        app.current_tab().turn,
-        TurnState::Cancelling { prompt_id: 42 }
+    assert!(app.current_tab().turn.is_idle());
+    assert!(app.current_tab().has_meaningful_conversation);
+    let projection = super::app_status_projection::build_agent_state_changed_event(
+        DEFAULT_TAB_ID,
+        app.current_tab(),
     );
-    assert!(!app.tab_sessions.contains_key("wrong-tab"));
+    assert_eq!(
+        projection["params"]["agent_session_id"],
+        serde_json::json!("session-1"),
+        "started no-output cancellation must immediately project a resumable session"
+    );
+}
+
+#[test]
+fn transport_retirement_releases_submitted_and_cancelling_turns() {
+    let mut app = test_app();
+    app.tab_id = Some("submitted-tab".into());
+    app.tab_mut("submitted-tab").session_id = Some("submitted-session".into());
+    app.session_to_tab
+        .insert("submitted-session".into(), "submitted-tab".into());
+    app.turn_submit_prompt(
+        "submitted-session",
+        SubmittedPrompt {
+            id: 60,
+            text: "queued".into(),
+            submitted_at_unix_s: 0.0,
+            context: TurnContext::default(),
+            autofix: None,
+        },
+    );
+    let submitted_token = app.tab_sessions["submitted-tab"]
+        .active_prompt_cancellation
+        .as_ref()
+        .expect("submitted token")
+        .token
+        .clone();
+
+    app.tab_mut("cancelling-tab").session_id = Some("cancelling-session".into());
+    app.session_to_tab
+        .insert("cancelling-session".into(), "cancelling-tab".into());
+    app.turn_submit_prompt(
+        "cancelling-session",
+        SubmittedPrompt {
+            id: 61,
+            text: "running".into(),
+            submitted_at_unix_s: 0.0,
+            context: TurnContext::default(),
+            autofix: None,
+        },
+    );
+    app.turn_cancel("cancelling-session");
+
+    app.handle_event(AppEvent::AgentTransportRetired);
+
+    assert!(submitted_token.is_cancelled());
+    assert!(app.tab_sessions["submitted-tab"].turn.is_idle());
+    assert!(app.tab_sessions["cancelling-tab"].turn.is_idle());
+    assert!(app.tab_sessions["submitted-tab"]
+        .active_prompt_cancellation
+        .is_none());
+    assert!(app.tab_sessions["cancelling-tab"]
+        .active_prompt_cancellation
+        .is_none());
+}
+
+#[test]
+fn unexpected_transport_exit_releases_reset_cancellation_barrier() {
+    let mut app = test_app();
+    app.set_master_pipe_acp_params(
+        "master-pipe".into(),
+        "copilot --acp".into(),
+        Some("copilot".into()),
+        None,
+        None,
+        crate::agent_source::AgentSource::Host,
+        None,
+        Some(DEFAULT_TAB_ID.into()),
+        Arc::clone(&app.shell_mgr),
+        true,
+    );
+    app.current_tab_mut().session_id = Some("old-session".into());
+    app.session_to_tab
+        .insert("old-session".into(), DEFAULT_TAB_ID.into());
+    app.turn_submit_prompt(
+        "old-session",
+        SubmittedPrompt {
+            id: 62,
+            text: "running".into(),
+            submitted_at_unix_s: 0.0,
+            context: TurnContext::default(),
+            autofix: None,
+        },
+    );
+
+    app.handle_event(AppEvent::MasterDisconnected);
+    assert!(app.current_tab().turn.is_cancelling());
+    app.handle_event(AppEvent::AgentTransportRetired);
+
+    assert!(app.current_tab().turn.is_idle());
+    assert!(app.current_tab().active_prompt_cancellation.is_none());
+    assert!(app.pending_acp_start);
+}
+
+#[test]
+fn rebind_after_master_disconnect_uses_closed_receiver_fallback() {
+    let (mut app, mut restart_rx) = test_app_with_restart_rx();
+    app.owner_tab_id = Some(DEFAULT_TAB_ID.into());
+    app.window_id = Some("window-1".into());
+    app.current_agent_id = "copilot".into();
+    app.set_master_pipe_acp_params(
+        "master-pipe".into(),
+        "copilot --acp".into(),
+        Some("copilot".into()),
+        None,
+        None,
+        crate::agent_source::AgentSource::Host,
+        None,
+        Some(DEFAULT_TAB_ID.into()),
+        Arc::clone(&app.shell_mgr),
+        true,
+    );
+
+    restart_rx.close();
+    app.handle_event(AppEvent::MasterDisconnected);
+    app.handle_event(agent_rebind_event(DEFAULT_TAB_ID, 1, "claude"));
+
+    assert!(matches!(
+        &app.agent_reconnect_state,
+        AgentReconnectState::Disconnecting(request)
+            if request.agent_id == "claude" && request.generation == 1
+    ));
+    assert!(!app.reconnect_after_transport_retired);
+
+    app.handle_event(AppEvent::AgentTransportRetired);
+    assert!(matches!(
+        &app.agent_reconnect_state,
+        AgentReconnectState::Preflighting(request)
+            if request.agent_id == "claude" && request.generation == 1
+    ));
+
+    app.handle_event(AppEvent::AgentReconnectPreflightComplete {
+        operation_id: "op-1".into(),
+        generation: 1,
+        result: passed_preflight("claude", "Claude"),
+    });
+    assert!(app.pending_acp_start);
+}
+
+fn prepare_retired_cancellation(
+    app: &mut App,
+    tab_id: &str,
+    old_session_id: &str,
+    new_session_id: &str,
+    prompt_id: u64,
+) {
+    app.tab_mut(tab_id).session_id = Some(old_session_id.into());
+    app.session_to_tab
+        .insert(old_session_id.into(), tab_id.into());
+    app.turn_submit_prompt(
+        old_session_id,
+        SubmittedPrompt {
+            id: prompt_id,
+            text: "old prompt".into(),
+            submitted_at_unix_s: 0.0,
+            context: TurnContext::default(),
+            autofix: None,
+        },
+    );
+    app.turn_cancel(old_session_id);
+    app.reset_tab_session_for(tab_id);
+    app.handle_event(AppEvent::SessionAttached {
+        tab_id: tab_id.into(),
+        session_id: new_session_id.into(),
+        prompt_id: None,
+        available_models: Vec::new(),
+        current_model_id: None,
+    });
+}
+
+#[test]
+fn late_old_terminal_events_release_exact_barriers_without_blessing_new_sessions() {
+    let mut app = test_app();
+    app.state = ConnectionState::Connected;
+    app.tab_id = Some("active-tab".into());
+    app.tab_mut("active-tab").session_id = Some("active-session".into());
+    app.session_to_tab
+        .insert("active-session".into(), "active-tab".into());
+    app.tab_mut("active-tab")
+        .messages
+        .push(ChatMessage::info("keep me"));
+
+    prepare_retired_cancellation(
+        &mut app,
+        "ended-tab",
+        "old-ended-session",
+        "new-ended-session",
+        70,
+    );
+    prepare_retired_cancellation(
+        &mut app,
+        "error-tab",
+        "old-error-session",
+        "new-error-session",
+        71,
+    );
+    prepare_retired_cancellation(
+        &mut app,
+        "settled-tab",
+        "old-settled-session",
+        "new-settled-session",
+        72,
+    );
+
+    app.handle_event(AppEvent::AgentMessageEnd {
+        session_id: "new-ended-session".into(),
+    });
+    assert!(app.tab_sessions["ended-tab"].turn.is_cancelling());
+    assert!(!app.tab_sessions["ended-tab"].has_meaningful_conversation);
+
+    app.handle_event(AppEvent::AgentMessageEnd {
+        session_id: "old-ended-session".into(),
+    });
+    app.handle_event(AppEvent::AgentError {
+        session_id: Some("old-error-session".into()),
+        failure: crate::protocol::acp::failure::AgentFailure::Protocol {
+            code: -32000,
+            message: "late failure".into(),
+        },
+        message: "late failure".into(),
+    });
+    app.handle_event(AppEvent::PromptCancellationSettled {
+        prompt_id: 72,
+        started: true,
+    });
+
+    for tab_id in ["ended-tab", "error-tab", "settled-tab"] {
+        let tab = &app.tab_sessions[tab_id];
+        assert!(tab.turn.is_idle());
+        assert!(!tab.has_meaningful_conversation);
+        assert_eq!(tab.resumable_session_id(), None);
+        assert!(tab.messages.is_empty());
+    }
+    assert_eq!(
+        app.tab_sessions["ended-tab"].session_id.as_deref(),
+        Some("new-ended-session")
+    );
+    assert_eq!(
+        app.tab_sessions["error-tab"].session_id.as_deref(),
+        Some("new-error-session")
+    );
+    assert_eq!(
+        app.tab_sessions["settled-tab"].session_id.as_deref(),
+        Some("new-settled-session")
+    );
+    assert_eq!(app.tab_sessions["active-tab"].messages.len(), 1);
+    assert!(matches!(app.state, ConnectionState::Connected));
+}
+
+#[test]
+fn unknown_old_terminal_events_do_not_mutate_the_active_tab() {
+    let mut app = test_app();
+    app.state = ConnectionState::Connected;
+    app.current_tab_mut().session_id = Some("active-session".into());
+    app.session_to_tab
+        .insert("active-session".into(), DEFAULT_TAB_ID.into());
+    submit_test_prompt(&mut app, "still running");
+    let turn_before = app.current_tab().turn.clone();
+    let messages_before = app.current_tab().messages.clone();
+
+    app.handle_event(AppEvent::AgentMessageEnd {
+        session_id: "unknown-old-session".into(),
+    });
+    app.handle_event(AppEvent::AgentError {
+        session_id: Some("unknown-old-session".into()),
+        failure: crate::protocol::acp::failure::AgentFailure::Protocol {
+            code: -32000,
+            message: "stale".into(),
+        },
+        message: "stale".into(),
+    });
+
+    assert_eq!(app.current_tab().turn, turn_before);
+    assert_eq!(app.current_tab().messages, messages_before);
+    assert!(matches!(app.state, ConnectionState::Connected));
 }
 
 #[test]
@@ -13855,9 +14686,8 @@ fn old_tab_cancellation_settlement_finds_renamed_exact_prompt() {
     });
 
     app.handle_event(AppEvent::PromptCancellationSettled {
-        tab_id: DEFAULT_TAB_ID.into(),
         prompt_id: 42,
-        session_id: None,
+        started: false,
     });
 
     assert!(app.tab_sessions["renamed-tab"].turn.is_idle());
@@ -13879,9 +14709,8 @@ fn old_tab_cancellation_settlement_does_not_settle_different_prompt() {
     });
 
     app.handle_event(AppEvent::PromptCancellationSettled {
-        tab_id: DEFAULT_TAB_ID.into(),
         prompt_id: 41,
-        session_id: Some("old-session".into()),
+        started: true,
     });
 
     assert_eq!(
@@ -13896,9 +14725,8 @@ fn cancellation_settlement_does_not_recreate_dropped_tab() {
     app.tab_sessions.remove(DEFAULT_TAB_ID);
 
     app.handle_event(AppEvent::PromptCancellationSettled {
-        tab_id: DEFAULT_TAB_ID.into(),
         prompt_id: 99,
-        session_id: None,
+        started: false,
     });
 
     assert!(!app.tab_sessions.contains_key(DEFAULT_TAB_ID));
@@ -13921,9 +14749,8 @@ fn cancellation_settlement_finds_renamed_turn_when_old_tab_key_was_recreated() {
         .insert(DEFAULT_TAB_ID.into(), Default::default());
 
     app.handle_event(AppEvent::PromptCancellationSettled {
-        tab_id: DEFAULT_TAB_ID.into(),
         prompt_id: 42,
-        session_id: Some("old-session".into()),
+        started: false,
     });
 
     assert!(app.tab_sessions["renamed-tab"].turn.is_idle());
@@ -13944,9 +14771,8 @@ fn stale_cancellation_settlement_does_not_close_newer_turn() {
     });
 
     app.handle_event(AppEvent::PromptCancellationSettled {
-        tab_id: DEFAULT_TAB_ID.into(),
         prompt_id: 42,
-        session_id: None,
+        started: false,
     });
 
     assert!(matches!(
@@ -13998,9 +14824,8 @@ fn cancel_mid_stream_preserves_visible_prose_with_canceled_marker() {
         "late cancelled-turn chunks must be discarded"
     );
     app.handle_event(AppEvent::PromptCancellationSettled {
-        tab_id: DEFAULT_TAB_ID.into(),
         prompt_id: 42,
-        session_id: None,
+        started: true,
     });
     assert!(app.current_tab().turn.is_idle());
     app.turn_cancel(DEFAULT_TAB_ID);
@@ -14040,9 +14865,8 @@ fn cancel_mid_stream_preserves_raw_json_with_canceled_marker() {
     );
     assert!(tab.messages.is_empty());
     app.handle_event(AppEvent::PromptCancellationSettled {
-        tab_id: DEFAULT_TAB_ID.into(),
         prompt_id: 42,
-        session_id: None,
+        started: true,
     });
     assert!(app.current_tab().turn.is_idle());
 }
@@ -14077,6 +14901,7 @@ fn raw_json_assistant_text_commits_as_chat_turn() {
 fn stage_proposal_session(app: &mut App, session_id: &str) {
     app.session_to_tab
         .insert(session_id.to_string(), DEFAULT_TAB_ID.to_string());
+    app.tab_mut(DEFAULT_TAB_ID).session_id = Some(session_id.to_string());
 }
 
 fn submit_proposal_prompt(app: &mut App, session_id: &str) {
@@ -14268,9 +15093,8 @@ fn cancel_after_direct_proposal_commits_trailing_transcript_once() {
 
     app.turn_cancel(session_id);
     app.handle_event(AppEvent::PromptCancellationSettled {
-        tab_id: DEFAULT_TAB_ID.into(),
         prompt_id: 99,
-        session_id: Some(session_id.into()),
+        started: true,
     });
     app.turn_cancel(session_id);
 
@@ -14312,9 +15136,8 @@ fn direct_proposal_cancel_before_commit_does_not_surface() {
 
     assert!(app.session_tab(session_id).turn.is_cancelling());
     app.handle_event(AppEvent::PromptCancellationSettled {
-        tab_id: DEFAULT_TAB_ID.into(),
         prompt_id: 99,
-        session_id: Some(session_id.into()),
+        started: true,
     });
     assert!(app.session_tab(session_id).turn.is_idle());
     assert_eq!(
@@ -15512,6 +16335,7 @@ fn usage_reported_updates_only_the_session_owner_tab() {
         .insert("ACTIVE-TAB".to_string(), TabSession::default());
     app.tab_sessions
         .insert("OWNER-TAB".to_string(), TabSession::default());
+    app.tab_sessions.get_mut("OWNER-TAB").unwrap().session_id = Some("usage-session".to_string());
     app.session_to_tab
         .insert("usage-session".to_string(), "OWNER-TAB".to_string());
     let snapshot = usage_snapshot();
@@ -15528,6 +16352,7 @@ fn usage_reported_updates_only_the_session_owner_tab() {
 #[test]
 fn usage_reported_merges_independent_metrics_for_the_same_session() {
     let mut app = test_app();
+    app.current_tab_mut().session_id = Some("usage-session".to_string());
     app.session_to_tab
         .insert("usage-session".to_string(), DEFAULT_TAB_ID.to_string());
     app.handle_event(AppEvent::UsageReported {
@@ -15568,6 +16393,7 @@ fn usage_cleared_removes_only_owner_snapshot_without_changing_chat() {
         TabSession {
             messages: vec![ChatMessage::System("keep this message".to_string())],
             usage: Some(snapshot.clone()),
+            session_id: Some("usage-session".to_string()),
             ..Default::default()
         },
     );
@@ -15806,7 +16632,7 @@ fn a_submitted_prompt_is_not_resumable_until_the_agent_answers() {
         "a prompt the agent has not answered yet must not be persisted as resumable"
     );
 
-    app.turn_observe_chunk(DEFAULT_TAB_ID, ChunkKind::Message, "hi");
+    app.turn_observe_chunk("fresh-session", ChunkKind::Message, "hi");
     assert_eq!(
         app.tab_mut(DEFAULT_TAB_ID).resumable_session_id(),
         Some("fresh-session")

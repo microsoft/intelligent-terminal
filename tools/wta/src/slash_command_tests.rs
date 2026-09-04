@@ -469,6 +469,7 @@ fn session_attach_reconciles_latest_yolo_state() {
     app.handle_event(AppEvent::SessionAttached {
         tab_id: DEFAULT_TAB_ID.into(),
         session_id: "new-yolo-session".into(),
+        prompt_id: None,
         available_models: Vec::new(),
         current_model_id: None,
     });
@@ -500,6 +501,7 @@ fn client_reconciled_session_attach_does_not_duplicate_native_yolo_rpc() {
     app.handle_event(AppEvent::SessionAttached {
         tab_id: DEFAULT_TAB_ID.into(),
         session_id: session_id.into(),
+        prompt_id: None,
         available_models: Vec::new(),
         current_model_id: None,
     });
@@ -581,6 +583,7 @@ fn slash_restart_resets_connection_and_clears_sessions() {
         app.restart_without_acp_pending,
         "a closed lifecycle receiver must leave the helper waiting for replacement-master readiness"
     );
+    app.handle_event(AppEvent::AgentTransportRetired);
 
     app.handle_event(AppEvent::WtEvent {
         method: "agent_master_restarted".into(),

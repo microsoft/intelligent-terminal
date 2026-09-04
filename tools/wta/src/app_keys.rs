@@ -15,6 +15,46 @@ fn modifiers_allow_text_input(modifiers: KeyModifiers) -> bool {
 }
 
 impl App {
+    fn handle_global_ctrl_c(&mut self) {
+        let tab = self.current_tab();
+        let cancelling = tab.turn.is_cancelling();
+        let has_active_request =
+            tab.turn.is_in_flight() || !tab.user_input.is_empty() || !tab.permission.is_empty();
+        if has_active_request || cancelling {
+            let tab_id = self.active_tab_key().to_string();
+            self.request_turn_cancel_for_tab(&tab_id);
+            if !cancelling {
+                let tab = self.current_tab_mut();
+                tab.messages
+                    .push(ChatMessage::success(t!("system.cancelled").into_owned()));
+                tab.scroll_to_bottom();
+            }
+            self.close_pane_armed_at = None;
+        } else if !self.current_tab().input.is_empty() || !self.current_tab().attachments.is_empty()
+        {
+            let tab = self.current_tab_mut();
+            tab.clear_input();
+            self.close_pane_armed_at = None;
+        } else {
+            let now = std::time::Instant::now();
+            let armed = self
+                .close_pane_armed_at
+                .map(|t| now.duration_since(t) < CLOSE_PANE_ARM_WINDOW)
+                .unwrap_or(false);
+            if armed {
+                self.close_pane_armed_at = None;
+                self.transient_hint = None;
+                self.request_close_agent_pane();
+            } else {
+                self.close_pane_armed_at = Some(now);
+                self.transient_hint = Some((
+                    t!("system.close_pane_hint").into_owned(),
+                    now + CLOSE_PANE_ARM_WINDOW,
+                ));
+            }
+        }
+    }
+
     pub(super) fn handle_key(&mut self, key: KeyEvent) {
         // Per-keystroke and carries the raw `KeyCode` (the typed character for
         // `Char` keys) — the user's prompt can be reconstructed from this
@@ -42,6 +82,10 @@ impl App {
             // Don't clear `transient_hint` here — it has its own deadline and
             // ui::render checks expiry on each draw. Clearing on every key
             // would steal too much of the hint's visible lifetime.
+        }
+        if is_ctrl_c && self.mode == AppMode::Chat {
+            self.handle_global_ctrl_c();
+            return;
         }
 
         // The source picker is also reachable from Setup when the configured
@@ -690,56 +734,6 @@ impl App {
                 self.debug_scroll = self.debug_scroll.saturating_sub(10);
                 return;
             }
-            KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                // In-flight: state is Submitted/Streaming or Surfaced{end_pending}.
-                let in_flight = self.current_tab().turn.is_in_flight();
-                if in_flight {
-                    // Send a session/cancel to the ACP client. The client
-                    // keeps this turn active until the matching prompt reaches
-                    // its terminal boundary, preventing late output from
-                    // leaking into the next turn.
-                    let tab_id = self
-                        .tab_id
-                        .clone()
-                        .unwrap_or_else(|| DEFAULT_TAB_ID.to_string());
-                    self.request_turn_cancel_for_tab(&tab_id);
-                    let tab = self.current_tab_mut();
-                    tab.messages
-                        .push(ChatMessage::success(t!("system.cancelled").into_owned()));
-                    tab.scroll_to_bottom();
-                    self.close_pane_armed_at = None;
-                } else if !self.current_tab().input.is_empty()
-                    || !self.current_tab().attachments.is_empty()
-                {
-                    // Mirror bash readline: Ctrl+C clears the whole draft,
-                    // including any queued image attachments.
-                    let tab = self.current_tab_mut();
-                    tab.clear_input();
-                    self.close_pane_armed_at = None;
-                } else {
-                    // Idle + empty input. First press arms; second press
-                    // within CLOSE_PANE_ARM_WINDOW asks WT to close the
-                    // pane. We never set should_quit ourselves — the pane
-                    // teardown will kill our ConPty, which is the only
-                    // path that should terminate wta.
-                    let now = std::time::Instant::now();
-                    let armed = self
-                        .close_pane_armed_at
-                        .map(|t| now.duration_since(t) < CLOSE_PANE_ARM_WINDOW)
-                        .unwrap_or(false);
-                    if armed {
-                        self.close_pane_armed_at = None;
-                        self.transient_hint = None;
-                        self.request_close_agent_pane();
-                    } else {
-                        self.close_pane_armed_at = Some(now);
-                        self.transient_hint = Some((
-                            t!("system.close_pane_hint").into_owned(),
-                            now + CLOSE_PANE_ARM_WINDOW,
-                        ));
-                    }
-                }
-            }
             KeyCode::Esc if self.help_overlay_visible => {
                 self.help_overlay_visible = false;
             }
@@ -754,23 +748,8 @@ impl App {
                 // Dismiss armed fix card or cancel in-flight autofix request.
                 // `turn_cancel` bumps generation, emits autofix_state_cleared,
                 // and resets the state machine to Idle.
-                let session_id = self.current_tab().session_id.clone();
-                if let Some(sid) = session_id {
-                    self.turn_cancel(&sid);
-                } else {
-                    // No session attached yet — fall back to manual cleanup
-                    // (no chunks can be in flight in that case).
-                    let pane_to_clear = {
-                        let tab = self.current_tab_mut();
-                        tab.autofix.generation = tab.autofix.generation.wrapping_add(1);
-                        tab.autofix.armed_at = None;
-                        tab.autofix.pane_id.take()
-                    };
-                    if pane_to_clear.is_some() {
-                        let active = self.active_tab_key().to_string();
-                        self.emit_autofix_state_cleared(&active);
-                    }
-                }
+                let tab_id = self.active_tab_key().to_string();
+                self.request_turn_cancel_for_tab(&tab_id);
             }
             // Dismiss the bottom-bar Suggested indicator (autofix produced an
             // explanation, not an executable fix). Reachable only when the user
@@ -961,7 +940,11 @@ impl App {
                         context: TurnContext::default(),
                         autofix: None,
                     };
-                    self.turn_submit_prompt(&session_id, submitted);
+                    self.turn_submit_prompt_with_cancellation(
+                        &session_id,
+                        submitted,
+                        prompt.cancellation_token(),
+                    );
                     let _ = self.prompt_tx.send(prompt);
                 }
             }

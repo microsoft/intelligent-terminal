@@ -600,9 +600,6 @@ async fn run_acp_app(
 
             let shell_mgr_for_recs = Arc::clone(&shell_mgr);
 
-            // Cancel channel for Ctrl+C handling: App produces, ACP client
-            // task consumes (one listener task inside the ACP client loop).
-            let (cancel_tx, cancel_rx) = tokio::sync::mpsc::unbounded_channel();
             // /new channel: App emits a NewSessionForTab, the ACP client
             // drops the cached SessionId for that tab and re-issues
             // new_session(). The resulting SessionAttached event flows
@@ -631,8 +628,8 @@ async fn run_acp_app(
             // reset_tab_session channel: App emits a DropSessionRequest when
             // WT tells us to release a tab's binding (Ctrl+C×2 hide path).
             // ACP client removes the SessionId from tab_to_session and
-            // closes the session after cancelling any in-flight prompt; the
-            // next prompt on that tab lazily creates a fresh session.
+            // asks master to close it; App has already cancelled any active
+            // prompt through the prompt-scoped token.
             let (drop_session_tx, drop_session_rx) = tokio::sync::mpsc::unbounded_channel();
             // tab-drag rename channel: App emits a RenameSessionRequest when
             // WT mints a new stable tab id for an existing tab (cross-window
@@ -775,7 +772,6 @@ async fn run_acp_app(
                 spawn_agent_lifecycle_forwarder(restart_rx, event_tx.clone());
                 drop((
                     prompt_rx,
-                    cancel_rx,
                     new_session_rx,
                     load_session_rx,
                     drop_session_rx,
@@ -812,7 +808,6 @@ async fn run_acp_app(
                         yolo_state_for_client,
                         event_tx_for_pipe.clone(),
                         prompt_rx,
-                        cancel_rx,
                         new_session_rx,
                         load_session_rx,
                         drop_session_rx,
@@ -896,7 +891,7 @@ async fn run_acp_app(
             ));
 
             let autofix_enabled = !config.no_autofix;
-            let mut app_state = app::App::new(prompt_tx, recommendation_tx, permission_tx, cancel_tx, new_session_tx, load_session_tx, drop_session_tx, rename_session_tx, restart_tx, master_ext_tx, debug_capture_enabled, wt_connected, autofix_enabled, Arc::clone(&shell_mgr), Arc::clone(&yolo_state));
+            let mut app_state = app::App::new(prompt_tx, recommendation_tx, permission_tx, new_session_tx, load_session_tx, drop_session_tx, rename_session_tx, restart_tx, master_ext_tx, debug_capture_enabled, wt_connected, autofix_enabled, Arc::clone(&shell_mgr), Arc::clone(&yolo_state));
             app_state.set_proposal_channels(Arc::clone(&proposal_channels));
             app_state.set_allowed_agent_ids(config.allowed_agent_ids.clone());
             // Seed the hot-updatable runtime agent config: the shared

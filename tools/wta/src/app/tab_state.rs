@@ -241,6 +241,13 @@ pub struct UserInputState {
         Option<tokio::sync::oneshot::Sender<crate::agent_tools::user_input::UserInputResponse>>,
 }
 
+pub(crate) struct ActivePromptCancellation {
+    pub prompt_id: u64,
+    pub token: tokio_util::sync::CancellationToken,
+    pub session_id: Option<String>,
+    pub attachment_valid: bool,
+}
+
 impl UserInputState {
     pub fn selection_count(&self) -> usize {
         self.request.choices.len() + usize::from(self.request.allow_freeform)
@@ -585,6 +592,7 @@ pub struct TabSession {
     // Explicit per-turn lifecycle. Source of truth in the new state machine
     // (see `doc/specs/turn-state-refactor.md`).
     pub turn: TurnState,
+    pub(crate) active_prompt_cancellation: Option<ActivePromptCancellation>,
     pub activity_frame: usize,
     /// Ephemeral ACP thought text shown only until visible assistant output
     /// or another structured activity begins. It never enters `messages` or
@@ -682,6 +690,74 @@ impl TabSession {
                 .as_deref()
                 .or(self.session_id.as_deref()),
         )?
+    }
+
+    pub(crate) fn set_prompt_cancellation(
+        &mut self,
+        prompt_id: u64,
+        token: tokio_util::sync::CancellationToken,
+    ) {
+        self.active_prompt_cancellation = Some(ActivePromptCancellation {
+            prompt_id,
+            token,
+            session_id: self.session_id.clone(),
+            attachment_valid: true,
+        });
+    }
+
+    pub(crate) fn can_attach_prompt_session(&self, prompt_id: u64, session_id: &str) -> bool {
+        self.active_prompt_cancellation
+            .as_ref()
+            .is_some_and(|active| {
+                active.prompt_id == prompt_id
+                    && active.attachment_valid
+                    && active
+                        .session_id
+                        .as_deref()
+                        .is_none_or(|known| known == session_id)
+            })
+    }
+
+    pub(crate) fn bind_active_prompt_session(&mut self, prompt_id: u64, session_id: &str) {
+        if let Some(active) = self.active_prompt_cancellation.as_mut().filter(|active| {
+            active.prompt_id == prompt_id && active.attachment_valid && active.session_id.is_none()
+        }) {
+            active.session_id = Some(session_id.to_string());
+        }
+    }
+
+    pub(crate) fn invalidate_active_prompt_attachment(&mut self) {
+        if let Some(active) = self.active_prompt_cancellation.as_mut() {
+            active.attachment_valid = false;
+        }
+    }
+
+    pub(crate) fn cancel_active_prompt(&self, prompt_id: u64) {
+        if let Some(active) = self
+            .active_prompt_cancellation
+            .as_ref()
+            .filter(|active| active.prompt_id == prompt_id)
+        {
+            active.token.cancel();
+        }
+    }
+
+    pub(crate) fn active_prompt_matches_session(&self, prompt_id: u64, session_id: &str) -> bool {
+        self.active_prompt_cancellation
+            .as_ref()
+            .is_some_and(|active| {
+                active.prompt_id == prompt_id && active.session_id.as_deref() == Some(session_id)
+            })
+    }
+
+    pub(crate) fn finish_active_prompt(&mut self, prompt_id: u64) {
+        if self
+            .active_prompt_cancellation
+            .as_ref()
+            .is_some_and(|active| active.prompt_id == prompt_id)
+        {
+            self.active_prompt_cancellation = None;
+        }
     }
 
     pub(crate) fn cached_completed_turn_height(
@@ -935,6 +1011,25 @@ impl TabSession {
     }
 
     pub fn clear_chat_history(&mut self) {
+        let cancellation_barrier = match &self.turn {
+            TurnState::Submitted(prompt)
+            | TurnState::Streaming { prompt }
+            | TurnState::Surfaced {
+                prompt,
+                end_pending: true,
+                ..
+            } => Some(prompt.id),
+            TurnState::Cancelling { prompt_id } => Some(*prompt_id),
+            TurnState::Idle
+            | TurnState::Surfaced {
+                end_pending: false, ..
+            } => None,
+        };
+        if let Some(prompt_id) = cancellation_barrier {
+            self.cancel_active_prompt(prompt_id);
+        } else {
+            self.active_prompt_cancellation = None;
+        }
         self.messages.clear();
         self.clear_streaming_thought();
         self.permission.clear();
@@ -947,7 +1042,9 @@ impl TabSession {
         self.timing_note = None;
         self.selection_visible_pending = false;
         self.clear_completed_turn_selection();
-        self.turn = TurnState::Idle;
+        self.turn = cancellation_barrier
+            .map(|prompt_id| TurnState::Cancelling { prompt_id })
+            .unwrap_or(TurnState::Idle);
         self.clear_recommendations();
         self.attachments
             .remove_tokens_from_input(&mut self.input, &mut self.cursor_pos);
