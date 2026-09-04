@@ -261,6 +261,25 @@ Describe 'Get-RunnableWtaPath staging' -Tag 'Unit' {
             }
         }
     }
+
+    It 'fails explicitly instead of returning an unreadable WindowsApps path' {
+        InModuleScope ItE2E {
+            $root = Join-Path $TestDrive 'WindowsApps\Unreadable'
+            New-Item -ItemType Directory -Force -Path $root | Out-Null
+            $wta = Join-Path $root 'wta.exe'
+            Set-Content -LiteralPath $wta -Value 'packaged-wta' -NoNewline
+            $app = [pscustomobject]@{
+                Package = 'Microsoft.IntelligentTerminal_8wekyb3d8bbwe'
+                Version = '1.2.3.4'
+                InstallLocation = $root
+                WtaPath = $wta
+            }
+            Mock Get-FileHash { throw 'access denied' }
+
+            { Get-RunnableWtaPath -App $app } | Should -Throw '*Could not stage packaged wta*access denied*'
+            $app.PSObject.Properties.Name | Should -Not -Contain 'WtaRunnable'
+        }
+    }
 }
 
 Describe 'Feature suite package selection' -Tag 'Unit' {

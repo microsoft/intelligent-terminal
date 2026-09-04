@@ -29,8 +29,10 @@
          put a Debug WTA in a Release package (or vice versa). -->
     <WtaRustProfile Condition="'$(Configuration)'=='Debug'">debug</WtaRustProfile>
     <WtaRustProfile Condition="'$(Configuration)'!='Debug'">release</WtaRustProfile>
-    <WtaExePath Condition="Exists('$(SolutionDir)tools\wta\target\$(WtaRustTarget)\$(WtaRustProfile)\wta.exe')">$(SolutionDir)tools\wta\target\$(WtaRustTarget)\$(WtaRustProfile)\wta.exe</WtaExePath>
-    <WtaExePath Condition="'$(WtaExePath)'=='' And Exists('$(SolutionDir)tools\wta\target\$(WtaRustProfile)\wta.exe')">$(SolutionDir)tools\wta\target\$(WtaRustProfile)\wta.exe</WtaExePath>
+    <WtaExplicitTargetPath>$(SolutionDir)tools\wta\target\$(WtaRustTarget)\$(WtaRustProfile)\wta.exe</WtaExplicitTargetPath>
+    <WtaHostTargetPath>$(SolutionDir)tools\wta\target\$(WtaRustProfile)\wta.exe</WtaHostTargetPath>
+    <WtaExePath Condition="Exists('$(WtaExplicitTargetPath)')">$(WtaExplicitTargetPath)</WtaExePath>
+    <WtaExePath Condition="'$(WtaExePath)'=='' And Exists('$(WtaHostTargetPath)')">$(WtaHostTargetPath)</WtaExePath>
   </PropertyGroup>
   <PropertyGroup>
     <ProjectGuid>CA5CAD1A-224A-4171-B13A-F16E576FDD12</ProjectGuid>
@@ -129,7 +131,7 @@
   </ItemGroup>
   <Target Name="VerifyMatchingWtaBuild" BeforeTargets="_ConvertItems">
     <Error Condition="'$(WtaExePath)'==''"
-           Text="No $(WtaRustProfile) wta.exe was found for $(Platform). Build WTA with the matching Cargo profile before packaging; cross-profile fallback is not allowed." />
+           Text="No $(WtaRustProfile) wta.exe was found for $(Platform). Checked '$(WtaExplicitTargetPath)' and '$(WtaHostTargetPath)'. Build WTA with the matching Cargo profile before packaging; cross-profile fallback is not allowed." />
   </Target>
   <!-- Deploy the static wt-agent-hooks bundle next to wta.exe.
        wta resolves <exe-dir>/wt-agent-hooks/ at runtime via
