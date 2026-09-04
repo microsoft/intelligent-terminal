@@ -4712,6 +4712,101 @@ fn requested_model_is_explicit(agent_cmd: &str, agent_id: Option<&str>) -> bool 
 /// new agent serialize on the per-key `OnceCell`; helpers for different
 /// agents spawn in parallel because the outer map lock is held only
 /// long enough to get/insert the cell, never across the spawn.
+#[derive(Debug)]
+struct RetiredAgentCell;
+
+impl std::fmt::Display for RetiredAgentCell {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("agent-pool generation was retired")
+    }
+}
+
+impl std::error::Error for RetiredAgentCell {}
+
+async fn agent_cell_is_current(
+    state: &MasterStateInner,
+    key: &AgentCmdKey,
+    cell: &AgentCell,
+) -> bool {
+    state
+        .agents
+        .lock()
+        .await
+        .get(key)
+        .is_some_and(|current| Arc::ptr_eq(current, cell))
+}
+
+async fn remove_agent_cell_if_current(
+    state: &MasterStateInner,
+    key: &AgentCmdKey,
+    cell: &AgentCell,
+) -> bool {
+    let mut agents = state.agents.lock().await;
+    if agents
+        .get(key)
+        .is_some_and(|current| Arc::ptr_eq(current, cell))
+    {
+        agents.remove(key);
+        true
+    } else {
+        false
+    }
+}
+
+async fn acquire_agent_from_pool<F, Fut>(
+    state: &MasterStateInner,
+    key: &AgentCmdKey,
+    mut initialize: F,
+) -> Result<Arc<AgentCli>>
+where
+    F: FnMut(AgentCell) -> Fut,
+    Fut: Future<Output = Result<Arc<AgentCli>>>,
+{
+    loop {
+        let cell = {
+            let mut agents = state.agents.lock().await;
+            Arc::clone(
+                agents
+                    .entry(key.clone())
+                    .or_insert_with(|| Arc::new(tokio::sync::OnceCell::new())),
+            )
+        };
+
+        let initialized = cell
+            .get_or_try_init(|| async {
+                // A failed initializer retires its cell before waking waiters.
+                // Waiters that captured that cell must join the replacement
+                // generation instead of starting another process in the stale
+                // cell where the old process's reaper can still reach it.
+                if !agent_cell_is_current(state, key, &cell).await {
+                    return Err(anyhow!(RetiredAgentCell));
+                }
+
+                match initialize(Arc::clone(&cell)).await {
+                    Ok(agent) => Ok(agent),
+                    Err(error) => {
+                        remove_agent_cell_if_current(state, key, &cell).await;
+                        Err(error)
+                    }
+                }
+            })
+            .await;
+
+        match initialized {
+            Ok(agent) if agent_cell_is_current(state, key, &cell).await => {
+                return Ok(Arc::clone(agent));
+            }
+            Ok(agent) => {
+                // The process initialized after its generation was retired.
+                // Do not leave an untracked provider running outside the pool.
+                agent.conn.shutdown();
+            }
+            Err(error) if error.is::<RetiredAgentCell>() => {}
+            Err(error) => return Err(error),
+        }
+    }
+}
+
 async fn get_or_spawn_agent(
     state: &Arc<MasterStateInner>,
     agent_cmd: &str,
@@ -4721,21 +4816,12 @@ async fn get_or_spawn_agent(
     supplied_cloud_models: Vec<crate::app::AcpModelInfo>,
 ) -> Result<Arc<AgentCli>> {
     let key = agent_cmd_key_with_provider(agent_cmd, agent_id, source, &provider_binding);
-    let cell = {
-        let mut agents = state.agents.lock().await;
-        Arc::clone(
-            agents
-                .entry(key.clone())
-                .or_insert_with(|| Arc::new(tokio::sync::OnceCell::new())),
-        )
-    };
-    // On spawn/init failure the `OnceCell` stays uninitialized and
-    // `spawn_one_agent` kills its child, whose closing stdio ends the I/O
-    // task that then `reap_agent`s this key out of the map — so a later
-    // helper requesting the same agent gets a fresh cell and retries
-    // cleanly (no lingering dead slot, no leaked subprocess).
-    let agent = cell
-        .get_or_try_init(|| async {
+    let initialization_key = key.clone();
+    acquire_agent_from_pool(state, &key, move |cell| {
+        let key = initialization_key.clone();
+        let provider_binding = provider_binding.clone();
+        let supplied_cloud_models = supplied_cloud_models.clone();
+        async move {
             spawn_one_agent(
                 state,
                 &cell,
@@ -4747,9 +4833,9 @@ async fn get_or_spawn_agent(
                 supplied_cloud_models,
             )
             .await
-        })
-        .await?;
-    Ok(Arc::clone(agent))
+        }
+    })
+    .await
 }
 
 /// Spawn one agent CLI subprocess, wire master as its ACP client, run
@@ -5170,10 +5256,13 @@ async fn reap_agent(
 ) {
     let removed = {
         let mut agents = state.agents.lock().await;
-        if agents
+        let owns_generation = agents
             .get(key)
-            .is_some_and(|current| Arc::ptr_eq(current, cell))
-        {
+            .is_some_and(|current| Arc::ptr_eq(current, cell));
+        let owns_instance = cell
+            .get()
+            .is_none_or(|agent| agent.instance_id == instance_id);
+        if owns_generation && owns_instance {
             agents.remove(key);
             true
         } else {
