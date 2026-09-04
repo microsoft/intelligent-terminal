@@ -210,13 +210,53 @@ Describe 'Configuration backup and restore' -Tag 'Unit' {
 
 Describe 'Resolve-ItApp' -Tag 'Unit' {
     It 'resolves a descriptor with the expected shape when a package is installed' {
-        $installed = Get-AppxPackage | Where-Object { $_.Name -like '*IntelligentTerminal*' }
+        $installed = @(Get-AppxPackage | Where-Object { $_.Name -like '*IntelligentTerminal*' })
         if (-not $installed) { Set-ItResult -Skipped -Because 'no IT package installed'; return }
-        $app = Resolve-ItApp -Package Auto
+        $app = Resolve-ItApp -Package $installed[0].PackageFamilyName
         $app.Package | Should -Match 'IntelligentTerminal'
         $app.AppUserModelId | Should -Match '!'
         $app.SettingsPath | Should -Match 'LocalState\\settings\.json$'
         $app.WtcliPath | Should -Not -BeNullOrEmpty
+    }
+}
+
+Describe 'Live test package selection' -Tag 'Unit' {
+    It 'requires ITE2E_PACKAGE to be set explicitly' {
+        InModuleScope ItE2E {
+            $saved = $env:ITE2E_PACKAGE
+            try {
+                Remove-Item Env:\ITE2E_PACKAGE -ErrorAction SilentlyContinue
+                { Get-ItTestPackage } | Should -Throw '*Choose the live integration-test package explicitly*'
+            }
+            finally {
+                if ($null -eq $saved) { Remove-Item Env:\ITE2E_PACKAGE -ErrorAction SilentlyContinue }
+                else { $env:ITE2E_PACKAGE = $saved }
+            }
+        }
+    }
+
+    It 'rejects Auto and accepts an explicit package selector' {
+        InModuleScope ItE2E {
+            $saved = $env:ITE2E_PACKAGE
+            try {
+                $env:ITE2E_PACKAGE = 'Auto'
+                { Get-ItTestPackage } | Should -Throw "*'Auto' is not allowed*"
+                $env:ITE2E_PACKAGE = 'Dev'
+                Get-ItTestPackage | Should -Be 'Dev'
+            }
+            finally {
+                if ($null -eq $saved) { Remove-Item Env:\ITE2E_PACKAGE -ErrorAction SilentlyContinue }
+                else { $env:ITE2E_PACKAGE = $saved }
+            }
+        }
+    }
+
+    It 'rejects Auto before resolving or launching a terminal' {
+        InModuleScope ItE2E {
+            Mock Resolve-ItApp { throw 'must not be called' }
+            { Start-Terminal -Package Auto } | Should -Throw "*'Auto' is not allowed*"
+            Should -Invoke Resolve-ItApp -Times 0
+        }
     }
 }
 

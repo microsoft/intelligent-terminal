@@ -220,15 +220,16 @@ function Get-ItTestPackage {
     <#
     .SYNOPSIS
         Resolve which package selector the feature/self-test suites should launch.
-        Honors the ITE2E_PACKAGE env var (Auto|Store|Dev|<PackageFamilyName>); defaults
-        to 'Auto', which prefers a fully-resolvable Store install and falls back to Dev.
-        This is the single knob that lets the suites run against a dev-only machine
-        (where only the sideload package is installed) without editing each Describe.
+        Requires the ITE2E_PACKAGE env var (Store|Dev|<PackageFamilyName>). Live tests
+        must never infer a package because they mutate package state and may send real
+        agent requests.
     #>
     [CmdletBinding()]
     param()
-    if ($env:ITE2E_PACKAGE) { return $env:ITE2E_PACKAGE }
-    return 'Auto'
+    if (-not $env:ITE2E_PACKAGE -or $env:ITE2E_PACKAGE -eq 'Auto') {
+        throw "Choose the live integration-test package explicitly: set `$env:ITE2E_PACKAGE = 'Dev' or 'Store' (or an explicit PackageFamilyName). 'Auto' is not allowed."
+    }
+    return $env:ITE2E_PACKAGE
 }
 
 function Start-Terminal {
@@ -236,7 +237,7 @@ function Start-Terminal {
     .SYNOPSIS
         Resolve, (optionally) configure, launch, and attach to a deployed Intelligent
         Terminal. Returns the app context object used by every primitive.
-    .PARAMETER Package   Auto|Store|Dev|<PackageFamilyName>
+    .PARAMETER Package   Store|Dev|<PackageFamilyName>. Auto is rejected for live tests.
     .PARAMETER Settings  Hashtable of top-level settings.json keys to apply.
     .PARAMETER PassFre   Mark the agent FRE complete before launch (default $true).
     .PARAMETER Backup    Back up settings/state for restore on Stop-Terminal (default $true).
@@ -251,7 +252,7 @@ function Start-Terminal {
     #>
     [CmdletBinding()]
     param(
-        [string]$Package = 'Auto',
+        [string]$Package = (Get-ItTestPackage),
         [hashtable]$Settings,
         [bool]$PassFre = $true,
         [bool]$Backup = $true,
@@ -259,6 +260,9 @@ function Start-Terminal {
         [switch]$ShowFre,
         [int]$TimeoutSec = 60
     )
+    if ($Package -eq 'Auto') {
+        throw "Choose the live integration-test package explicitly: use -Package Dev, -Package Store, or an explicit PackageFamilyName. 'Auto' is not allowed."
+    }
     $app = Resolve-ItApp -Package $Package
     Write-ItLog -Level INFO -Message "Resolved package $($app.Package) v$($app.Version); wtcli=$($app.WtcliPath)"
 

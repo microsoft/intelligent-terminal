@@ -20,10 +20,17 @@ checklist.
 
 - Read `test/e2e/README.md` and reuse the ItE2E framework instead of creating a
   parallel harness.
+- Treat the source revision and deployed package as separate decisions. For a
+  PR, test the intended PR head/feature-branch revision through a Dev build by
+  default; a previously installed Dev package is not proof that the PR code ran.
 - Before running any live integration test, identify the target package from
   the user's request. If the user did not explicitly choose **Dev** or
-  **Store/production**, use `ask_user` and wait for the answer. Never accept the
-  harness's `Auto` default on the user's behalf.
+  **Store/production**, use `ask_user` and wait for the answer. In a PR context,
+  make **Dev built from the PR head/feature branch** the recommended/default
+  choice. Never select a package solely from installed-package discovery.
+- Use Store only when the user explicitly asks to test the production/shipped
+  build. Store results establish a production baseline; they do not validate
+  unshipped changes in the PR.
 - Pin the chosen package through `$env:ITE2E_PACKAGE = 'Dev'` or
   `$env:ITE2E_PACKAGE = 'Store'` for every live validation command.
 - Run `pwsh -File test/e2e/bootstrap.ps1 -Check` before live E2E validation.
@@ -79,16 +86,20 @@ Do not call the work complete until all of these are true:
 
 - Pre-fix evidence identifies the regression, and the fixed path crosses the
   real integration boundary.
+- For PR validation against Dev, the tested package is proven to contain the
+  intended PR head/feature-branch revision.
 - Relevant false positives, replay risks, and existing behavior are covered.
 - The correct build passes related suites and marks new checklist IDs `[x]`;
   every skip is explained.
 
 ## Gotchas
 
-- **Never run a live integration test with an implicit package selector.**
-  `Auto` chooses from installed packages by trying Store before Dev and falling
-  back when needed, so an omitted selector can target a different package than
-  the user intended. Ask first, then pin `ITE2E_PACKAGE`.
+- **Never run a live integration test with an implicit or `Auto` package
+  selector.** Ask first, then pin `ITE2E_PACKAGE`. Installed-package discovery
+  cannot establish user intent or prove that a Dev package contains PR code.
+- **Do not use Store to validate a PR's unshipped code.** Prefer a Dev package
+  built and deployed from the PR head/feature branch. Use Store only for an
+  explicitly requested production baseline and label the result accordingly.
 - **Do not test only the implementation detail named in the PR.** Reconstruct
   the end-to-end user path and assert the observable contract.
 - **Do not duplicate a unit test at E2E level.** Add the missing process,

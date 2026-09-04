@@ -34,6 +34,11 @@ Choose the branch deliberately:
 Verify merge state and a clean worktree before deleting a branch. Squash-merged
 branches may require `git branch -D` because Git cannot infer ancestry.
 
+Record the exact revision whose behavior should be validated. For an open PR,
+prefer the PR head/feature branch, or a validation branch created from that
+head. Do not test an unrelated installed Dev package and describe the result as
+PR validation.
+
 ## 2. Reconstruct the Behavioral Contract
 
 Describe the full path as components and observable handoffs:
@@ -168,8 +173,12 @@ Update the suite table in `test/e2e/README.md` when adding a new feature file.
 Before any live command, resolve the package target:
 
 - If the user explicitly requested Dev or Store/production, use that choice.
-- Otherwise call `ask_user` with exactly those choices and wait. Do not infer
-  from installed packages, the current branch, or the harness's `Auto` default.
+- Otherwise call `ask_user` with exactly those choices and wait.
+- In a PR context, label Dev as **built from the PR head/feature branch**, make
+  it the recommended/default choice, and explain that Store is the currently
+  installed production baseline. Outside a PR context, do not infer a choice.
+- Use Store only when the user explicitly selects production. A Store run
+  compares against shipped behavior; it cannot validate unshipped PR code.
 - Set `$env:ITE2E_PACKAGE = 'Dev'` or `'Store'` in the same PowerShell process
   that invokes the test runner.
 
@@ -226,11 +235,17 @@ regressions or the PR changes common harness/product infrastructure.
 
 ## 8. Prove the Correct Build Ran
 
-Build and deploy the changed area. For WTA changes, build the explicit target
-matching the package architecture before the C++ package, deploy it, select it
-with `ITE2E_PACKAGE` or `-Package Dev`, and verify a runtime version, path, log,
-or changed observable. Compilation alone does not prove the deployed package
-contains the new `wta.exe` or generated shell integration.
+For PR validation, check out the intended PR head/feature-branch revision,
+record its commit, then build and deploy the changed area into the Dev package.
+Verify a runtime version, path, log, or changed observable that ties the
+deployed package to that revision. A previously installed Dev package or a
+successful compilation does not prove the PR code ran.
+
+For WTA changes, build the explicit target matching the package architecture
+before the C++ package, deploy it, select it with `ITE2E_PACKAGE=Dev`, and prove
+the deployed package contains the refreshed `wta.exe` and generated shell
+integration. Do not substitute a Store run unless the user explicitly asked for
+a production baseline.
 
 ## 9. Deliver the Test PR
 

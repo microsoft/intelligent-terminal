@@ -115,7 +115,6 @@ either the production build or the build you're developing:
 |---|---|---|
 | `Store` | `Microsoft.IntelligentTerminal_8wekyb3d8bbwe` | The shipped/production package — real user environment. |
 | `Dev` | `IntelligentTerminal_rd9vj3e6a2mbr` | A locally **sideloaded** build (e.g. your F5 / `bx` output). Use this to validate a change before it ships. |
-| `Auto` *(default)* | First fully-resolvable of Store → Dev | Most feature suites; picks whatever is installed. |
 | *(explicit PFN)* | the family name you pass | Any other package. |
 
 ```powershell
@@ -225,18 +224,18 @@ Describe 'Agent pane' -Tag 'Live' {
 }
 ```
 
-`Start-Terminal` resolves the package, backs up `settings.json`/`state.json`, marks the
+`Start-Terminal` requires an explicit package, backs up `settings.json`/`state.json`, marks the
 FRE complete, applies your settings, launches the app, brings COM online (probes the
 per-brand `WT_COM_CLSID`), and resolves the window HWND. `Stop-Terminal` closes it and
 restores the backup.
 
-> **Picking the build**: pass `-Package Dev` / `-Package Store` (default `Auto`) — see
+> **Picking the build**: pass `-Package Dev` / `-Package Store` — see
 > [Choosing the build](#choosing-the-build-dev-vs-store). Launch is package-specific
 > (AUMID), so both builds can be installed and targeted independently. The feature/self
 > -test suites don't hardcode a build — they call `Start-Terminal -Package (Get-ItTestPackage)`,
-> which honors the `ITE2E_PACKAGE` env var (`Auto`|`Store`|`Dev`|`<PackageFamilyName>`)
-> and defaults to `Auto`. So on a dev-only machine the suites resolve to the sideload
-> build automatically; set `$env:ITE2E_PACKAGE='Store'` to pin them to the store build.
+> which requires the `ITE2E_PACKAGE` env var (`Store`|`Dev`|`<PackageFamilyName>`).
+> Set `$env:ITE2E_PACKAGE='Dev'` or `$env:ITE2E_PACKAGE='Store'` before invoking
+> live tests. `Auto` is rejected so the harness cannot select a package implicitly.
 
 
 ## How it works (key facts)

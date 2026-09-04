@@ -31,14 +31,12 @@ function Resolve-ItApp {
         Build the immutable app descriptor used by every primitive: package identity,
         binaries (wtcli/wta/WindowsTerminal), data files (settings/state), log root.
     .PARAMETER Package
-        'Auto' (prefer a fully-resolvable Store install, else Dev), 'Store', 'Dev',
-        or an explicit PackageFamilyName.
+        'Store', 'Dev', or an explicit PackageFamilyName.
     #>
     [CmdletBinding()]
-    param([string]$Package = 'Auto')
+    param([Parameter(Mandatory)][string]$Package)
 
     $candidates = switch ($Package) {
-        'Auto' { @($script:ItKnownFamilies.Store, $script:ItKnownFamilies.Dev) }
         'Store' { @($script:ItKnownFamilies.Store) }
         'Dev' { @($script:ItKnownFamilies.Dev) }
         default { @($Package) }
