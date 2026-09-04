@@ -1377,6 +1377,7 @@ fn make_state_with_retirement_pending_timeout(
         retirement_completion_tx: Mutex::new(None),
         retirement_pending_timeout,
         disconnect_orphan_publication_pause: Mutex::new(None),
+        reap_agent_orphan_cleanup_pause: Mutex::new(None),
         deferred_retirement_cleanup_complete: tokio::sync::Notify::new(),
         hook_owned: Mutex::new(HashSet::new()),
         born_bound: Mutex::new(HashSet::new()),
@@ -7525,6 +7526,92 @@ async fn orphan_rebind_close_failure_does_not_mark_target_owned_by_another_helpe
 }
 
 #[tokio::test(flavor = "current_thread")]
+async fn late_old_generation_orphan_rollback_is_not_published_or_consumed() {
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let state = make_state();
+            let key = "late-orphan-rollback-agent".to_string();
+            let helper_id = HelperId(34);
+            let session_id = SessionId::new("late-orphan-rollback-session");
+            let (notif_tx, _notif_rx) = mpsc::channel(NOTIF_CHANNEL_CAPACITY);
+
+            let dead_agent = unbound_test_agent(&key);
+            let dead_instance_id = dead_agent.instance_id;
+            let dead_cell = empty_agent_cell();
+            assert!(dead_cell.set(dead_agent).is_ok());
+            state
+                .agents
+                .lock()
+                .await
+                .insert(key.clone(), Arc::clone(&dead_cell));
+            bind_session_route(
+                &state,
+                session_id.clone(),
+                HelperRoute {
+                    helper_id,
+                    agent_instance_id: dead_instance_id,
+                    notif_tx,
+                    forwarder: Some(agent_link_to_noop_client()),
+                    consecutive_drops: Arc::new(std::sync::atomic::AtomicU64::new(0)),
+                },
+            )
+            .await;
+
+            let lifecycle_gate = session_lifecycle_gate(&state, &session_id).await;
+            let lifecycle_guard = lifecycle_gate.lock().await;
+            let rollback = tokio::task::spawn_local({
+                let state = Arc::clone(&state);
+                let key = key.clone();
+                let session_id = session_id.clone();
+                async move {
+                    rollback_orphan_rebind(
+                        &state,
+                        helper_id,
+                        &key,
+                        dead_instance_id,
+                        &session_id,
+                        None,
+                    )
+                    .await
+                }
+            });
+
+            reap_agent(&state, &key, &dead_cell, dead_instance_id).await;
+            let replacement = unbound_test_agent(&key);
+            let replacement_cell = empty_agent_cell();
+            assert!(replacement_cell.set(replacement).is_ok());
+            state
+                .agents
+                .lock()
+                .await
+                .insert(key.clone(), replacement_cell);
+
+            drop(lifecycle_guard);
+            assert_eq!(
+                rollback.await.expect("late rollback should complete"),
+                SwappedSessionRouteRollback::Restored
+            );
+            assert!(!state
+                .session_to_helper
+                .lock()
+                .await
+                .contains_key(&session_id));
+
+            let consumed = state
+                .orphaned_sessions
+                .lock()
+                .await
+                .get_mut(&key)
+                .is_some_and(|sessions| sessions.remove(&session_id));
+            assert!(
+                !consumed,
+                "a late rollback from the dead generation must not publish a stale orphan"
+            );
+        })
+        .await;
+}
+
+#[tokio::test(flavor = "current_thread")]
 async fn load_reserves_time_to_close_loaded_target_after_predecessor_timeout() {
     tokio::task::LocalSet::new()
         .run_until(async {
@@ -7754,6 +7841,104 @@ async fn reap_agent_drops_only_its_own_orphans() {
             assert!(
                 orphaned_tabs.contains_key("tab-b"),
                 "reaping one agent must preserve another agent's tab fallback"
+            );
+        })
+        .await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn reap_agent_keeps_key_unavailable_through_orphan_cleanup() {
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let state = make_state();
+            let key = "copilot --acp --stdio".to_string();
+            let dead_agent = unbound_test_agent(&key);
+            let dead_instance = dead_agent.instance_id;
+            let dead_cell = Arc::new(tokio::sync::OnceCell::new());
+            assert!(dead_cell.set(dead_agent).is_ok());
+            state
+                .agents
+                .lock()
+                .await
+                .insert(key.clone(), Arc::clone(&dead_cell));
+            state
+                .orphaned_sessions
+                .lock()
+                .await
+                .entry(key.clone())
+                .or_default()
+                .insert(SessionId::new("dead-session"));
+            state.orphaned_tabs.lock().await.insert(
+                "dead-tab".to_string(),
+                (key.clone(), HelperId(1), SessionId::new("dead-session")),
+            );
+
+            let pause = Arc::new(ReapAgentOrphanCleanupPause::default());
+            *state.reap_agent_orphan_cleanup_pause.lock().await = Some(Arc::clone(&pause));
+            let reaper = tokio::task::spawn_local({
+                let state = Arc::clone(&state);
+                let key = key.clone();
+                let dead_cell = Arc::clone(&dead_cell);
+                async move {
+                    reap_agent(&state, &key, &dead_cell, dead_instance).await;
+                }
+            });
+
+            pause.agent_removed.notified().await;
+            assert!(
+                state.agents.try_lock().is_err(),
+                "a replacement generation must not publish before orphan cleanup completes"
+            );
+            pause.resume_cleanup.notify_one();
+            reaper.await.expect("reaper task should complete");
+
+            let replacement = unbound_test_agent(&key);
+            let acquired = acquire_agent_from_pool(&state, &key, {
+                let state = Arc::clone(&state);
+                let key = key.clone();
+                let replacement = Arc::clone(&replacement);
+                move |_| {
+                    let state = Arc::clone(&state);
+                    let key = key.clone();
+                    let replacement = Arc::clone(&replacement);
+                    async move {
+                        state
+                            .orphaned_sessions
+                            .lock()
+                            .await
+                            .entry(key.clone())
+                            .or_default()
+                            .insert(SessionId::new("replacement-session"));
+                        state.orphaned_tabs.lock().await.insert(
+                            "replacement-tab".to_string(),
+                            (key, HelperId(2), SessionId::new("replacement-session")),
+                        );
+                        Ok(replacement)
+                    }
+                }
+            })
+            .await
+            .expect("replacement generation should publish after cleanup");
+
+            assert!(Arc::ptr_eq(&acquired, &replacement));
+            assert!(
+                state
+                    .orphaned_sessions
+                    .lock()
+                    .await
+                    .get(&key)
+                    .is_some_and(|sessions| {
+                        sessions.contains(&SessionId::new("replacement-session"))
+                    }),
+                "the old reaper must not erase replacement orphan sessions"
+            );
+            assert!(
+                state
+                    .orphaned_tabs
+                    .lock()
+                    .await
+                    .contains_key("replacement-tab"),
+                "the old reaper must not erase replacement orphan tabs"
             );
         })
         .await;
@@ -9421,6 +9606,7 @@ fn make_state_with_wt(wt: Arc<dyn crate::shell::wt_channel::WtChannel>) -> Arc<M
         retirement_completion_tx: Mutex::new(None),
         retirement_pending_timeout: SESSION_CLOSE_TIMEOUT,
         disconnect_orphan_publication_pause: Mutex::new(None),
+        reap_agent_orphan_cleanup_pause: Mutex::new(None),
         deferred_retirement_cleanup_complete: tokio::sync::Notify::new(),
         hook_owned: Mutex::new(HashSet::new()),
         born_bound: Mutex::new(HashSet::new()),

@@ -443,6 +443,8 @@ struct MasterStateInner {
     #[cfg(test)]
     disconnect_orphan_publication_pause: Mutex<Option<Arc<DisconnectOrphanPublicationPause>>>,
     #[cfg(test)]
+    reap_agent_orphan_cleanup_pause: Mutex<Option<Arc<ReapAgentOrphanCleanupPause>>>,
+    #[cfg(test)]
     deferred_retirement_cleanup_complete: tokio::sync::Notify,
     /// Session ids claimed by an *authoritative* producer — a native agent hook
     /// (arrives via `intellterm.wta/session_hook`) or an ACP agent-pane
@@ -472,10 +474,10 @@ struct MasterStateInner {
     /// has it (a re-load would be rejected "already loaded", or, if the
     /// orphan turn is still running, wedge behind it and hang the pane on
     /// "Resuming…"). Only recorded while the owning CLI *instance* is still
-    /// the live pool entry (checked via `Arc::ptr_eq`), and `reap_agent`
-    /// drops just that agent's set on CLI death, so a crashed-and-respawned
-    /// CLI under the same command line never re-binds to a session it never
-    /// had — such a resume falls back to a real `session/load` from disk.
+    /// the live pool entry (checked under the `agents` lock), and `reap_agent`
+    /// drops just that agent's set on CLI death, so a crashed-and-respawned CLI
+    /// under the same command line never re-binds to a session it never had —
+    /// such a resume falls back to a real `session/load` from disk.
     orphaned_sessions: Mutex<HashMap<AgentCmdKey, HashSet<acp::schema::v1::SessionId>>>,
     /// Stable tab identity retained when a helper disconnect wins the race
     /// against the terminal's close-by-tab request. This lets a surviving
@@ -495,6 +497,13 @@ struct MasterStateInner {
 struct DisconnectOrphanPublicationPause {
     routes_dropped: tokio::sync::Notify,
     resume_publication: tokio::sync::Notify,
+}
+
+#[cfg(test)]
+#[derive(Default)]
+struct ReapAgentOrphanCleanupPause {
+    agent_removed: tokio::sync::Notify,
+    resume_cleanup: tokio::sync::Notify,
 }
 
 async fn session_lifecycle_gate(
@@ -553,6 +562,7 @@ async fn rollback_orphan_rebind(
     state: &MasterStateInner,
     helper_id: HelperId,
     agent_key: &AgentCmdKey,
+    expected_agent_instance_id: AgentInstanceId,
     session_id: &acp::schema::v1::SessionId,
     previous: Option<HelperRoute>,
 ) -> SwappedSessionRouteRollback {
@@ -565,13 +575,20 @@ async fn rollback_orphan_rebind(
         (rollback, !routes.contains_key(session_id))
     };
     if rollback == SwappedSessionRouteRollback::Restored && route_absent {
-        state
-            .orphaned_sessions
-            .lock()
-            .await
-            .entry(agent_key.clone())
-            .or_default()
-            .insert(session_id.clone());
+        let agents = state.agents.lock().await;
+        let expected_instance_is_current = agents
+            .get(agent_key)
+            .and_then(|cell| cell.get())
+            .is_some_and(|agent| agent.instance_id == expected_agent_instance_id);
+        if expected_instance_is_current {
+            state
+                .orphaned_sessions
+                .lock()
+                .await
+                .entry(agent_key.clone())
+                .or_default()
+                .insert(session_id.clone());
+        }
     }
     rollback
 }
@@ -3475,6 +3492,7 @@ impl HelperHandler {
                             &self.state,
                             self.helper_id,
                             &agent.cmd_key,
+                            agent.instance_id,
                             &session_id,
                             previous_target_route,
                         )
@@ -4268,6 +4286,8 @@ async fn run_master_loop(config: MasterConfig, pipe_name: String) -> Result<()> 
         retirement_pending_timeout: SESSION_CLOSE_TIMEOUT,
         #[cfg(test)]
         disconnect_orphan_publication_pause: Mutex::new(None),
+        #[cfg(test)]
+        reap_agent_orphan_cleanup_pause: Mutex::new(None),
         #[cfg(test)]
         deferred_retirement_cleanup_complete: tokio::sync::Notify::new(),
         hook_owned: Mutex::new(HashSet::new()),
@@ -5254,6 +5274,8 @@ async fn reap_agent(
     cell: &AgentCell,
     instance_id: AgentInstanceId,
 ) {
+    #[cfg(test)]
+    let cleanup_pause = state.reap_agent_orphan_cleanup_pause.lock().await.clone();
     let removed = {
         let mut agents = state.agents.lock().await;
         let owns_generation = agents
@@ -5264,23 +5286,25 @@ async fn reap_agent(
             .is_none_or(|agent| agent.instance_id == instance_id);
         if owns_generation && owns_instance {
             agents.remove(key);
+            #[cfg(test)]
+            if let Some(pause) = cleanup_pause {
+                pause.agent_removed.notify_one();
+                pause.resume_cleanup.notified().await;
+            }
+            // Keep the key unavailable until all generation-owned state is
+            // gone. Pool publication takes `agents` first, so the consistent
+            // order is agents -> orphaned_sessions -> orphaned_tabs.
+            state.orphaned_sessions.lock().await.remove(key);
+            state
+                .orphaned_tabs
+                .lock()
+                .await
+                .retain(|_, (orphan_key, _, _)| orphan_key != key);
             true
         } else {
             false
         }
     };
-    if removed {
-        // Every session THIS CLI held died with it, so drop only this
-        // agent's orphan set — a post-respawn resume then forwards a real
-        // `session/load` (reloading from disk) instead of re-binding to a
-        // session the new CLI never had. Other agents' orphans are untouched.
-        state.orphaned_sessions.lock().await.remove(key);
-        state
-            .orphaned_tabs
-            .lock()
-            .await
-            .retain(|_, (orphan_key, _, _)| orphan_key != key);
-    }
     let capabilities_removed = state
         .session_mcp_capabilities
         .remove_owner(instance_id)
