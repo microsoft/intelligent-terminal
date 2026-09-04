@@ -1047,6 +1047,7 @@ async fn failed_pool_generation_wakes_waiters_into_a_fresh_cell() {
 
             let state = make_state();
             let key = "model:failed-generation-retry".to_string();
+            let failed_instance = AgentInstanceId::new_v4();
             let replacement = unbound_test_agent(&key);
             let first_started = Arc::new(tokio::sync::Notify::new());
             let release_first = Arc::new(tokio::sync::Notify::new());
@@ -1118,6 +1119,19 @@ async fn failed_pool_generation_wakes_waiters_into_a_fresh_cell() {
                     .get(&key)
                     .is_some_and(|cell| Arc::ptr_eq(cell, &retry_cell)),
                 "the replacement generation must remain published"
+            );
+
+            // Complete the original race: the failed provider's I/O/child
+            // reaper can arrive after the waiter publishes its replacement.
+            reap_agent(&state, &key, &first_cell, failed_instance).await;
+            assert!(
+                state
+                    .agents
+                    .lock()
+                    .await
+                    .get(&key)
+                    .is_some_and(|cell| Arc::ptr_eq(cell, &retry_cell)),
+                "the failed generation's delayed reaper must preserve its replacement"
             );
         })
         .await;
