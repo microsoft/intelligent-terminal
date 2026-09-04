@@ -285,6 +285,42 @@ Describe 'Live test package selection' -Tag 'Unit' {
     }
 }
 
+Describe 'Package-scoped process cleanup' -Tag 'Unit' {
+    It 'finds WindowsTerminal processes only under the selected package install location' {
+        InModuleScope ItE2E {
+            $app = [pscustomobject]@{
+                InstallLocation = 'C:\DevPackage\AppX'
+            }
+            Mock Get-Process {
+                @(
+                    [pscustomobject]@{ Id = 101; Path = 'C:\DevPackage\AppX\WindowsTerminal.exe' }
+                    [pscustomobject]@{ Id = 202; Path = 'C:\Program Files\WindowsApps\Microsoft.IntelligentTerminal_1.0.0.0_x64__8wekyb3d8bbwe\WindowsTerminal.exe' }
+                    [pscustomobject]@{ Id = 303; Path = 'C:\Program Files\WindowsApps\Microsoft.WindowsTerminal_1.0.0.0_x64__8wekyb3d8bbwe\WindowsTerminal.exe' }
+                )
+            }
+
+            @(Get-WtProcessesForApp -App $app).Id | Should -Be @(101)
+        }
+    }
+
+    It 'scopes stale-instance discovery to the selected app descriptor' {
+        InModuleScope ItE2E {
+            $app = [pscustomobject]@{
+                Package = 'IntelligentTerminal_rd9vj3e6a2mbr'
+                InstallLocation = 'C:\DevPackage\AppX'
+            }
+            Mock Get-CimInstance { $null }
+            Mock Get-WtProcessesForApp { @() }
+            Mock Get-AppxPackage { throw 'must not enumerate other packages' }
+
+            Stop-StaleItInstances -App $app
+
+            Should -Invoke Get-WtProcessesForApp -Times 1 -ParameterFilter { $App -eq $app }
+            Should -Invoke Get-AppxPackage -Times 0
+        }
+    }
+}
+
 Describe 'Get-RunnableWtaPath staging' -Tag 'Unit' {
     It 'isolates staged binaries independently by package family, version, and content hash' {
         InModuleScope ItE2E {
@@ -488,6 +524,7 @@ Describe 'Start-Terminal startup ordering' -Tag 'Unit' {
 
             $app.Hwnd | Should -Be 9001
             $script:startupOrder | Should -Be @('hwnd', 'com')
+            Should -Invoke Stop-StaleItInstances -Times 1 -ParameterFilter { $App -eq $fakeApp }
         }
     }
 }

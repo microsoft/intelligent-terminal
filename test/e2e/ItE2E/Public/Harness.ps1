@@ -150,28 +150,23 @@ function Stop-AppInstances {
 function Stop-StaleItInstances {
     <#
     .SYNOPSIS
-        Close any leftover Intelligent Terminal windows (BOTH the store and dev packages)
-        before a test launches.
+        Close leftover Intelligent Terminal windows for the selected package before launch.
     .DESCRIPTION
-        The harness OWNS every Intelligent Terminal window for the duration of a run: this
-        unconditionally closes/kills ALL running IT windows (store + dev) at launch time — not
-        only crashed-test leftovers, but also a window a developer started by hand, and even the
-        IT window hosting the current shell if the tests are launched from inside Intelligent
-        Terminal. So do NOT run this suite from an IT window you want to keep. (The user's stock
-        Windows Terminal is never touched — its image lives under Microsoft.WindowsTerminal_*,
-        which never matches the *IntelligentTerminal* install-location filter below.)
+        The harness owns windows for the package selected by ITE2E_PACKAGE for the duration of
+        a run. It closes stale windows from that package so the next activation is a cold start,
+        while preserving other Intelligent Terminal products and stock Windows Terminal.
 
         Any IT window already running at launch is treated as a leftover from a previous test
         whose AfterAll/Stop-Terminal didn't run (e.g. a BeforeAll that threw). Such a leftover
-        causes two real flakes:
-          * the single-instance AUMID launch hands off to the stale (often half-initialised)
-            window instead of starting fresh, so the harness attaches to a broken instance and
-            `new-tab` returns CreateTab E_FAIL (0x80004005);
-          * the store and dev packages share one per-brand COM CLSID, so a stale window of the
-            OTHER package steals wtcli's CoCreateInstance and misroutes every protocol call.
-        Closing all IT windows first makes each launch deterministic and freshly-owned.
+        causes the package-specific AUMID launch to hand off to the stale (often
+        half-initialised) window instead of starting fresh, so the harness can attach to a
+        broken instance and `new-tab` returns CreateTab E_FAIL (0x80004005).
     #>
-    [CmdletBinding()] param([int]$GraceSec = 6)
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]$App,
+        [int]$GraceSec = 6
+    )
     $ancestorIds = [System.Collections.Generic.HashSet[int]]::new()
     $ancestorId = $PID
     while ($ancestorId -gt 0 -and $ancestorIds.Add($ancestorId)) {
@@ -179,14 +174,8 @@ function Stop-StaleItInstances {
         if (-not $ancestor -or $ancestor.ParentProcessId -eq $ancestorId) { break }
         $ancestorId = [int]$ancestor.ParentProcessId
     }
-    $locs = @(Get-AppxPackage | Where-Object { $_.Name -like '*IntelligentTerminal*' } |
-            ForEach-Object { $_.InstallLocation } | Where-Object { $_ })
-    if (-not $locs) { return }
     $find = {
-        Get-Process -Name WindowsTerminal -ErrorAction SilentlyContinue | Where-Object {
-            $path = $null; try { $path = $_.Path } catch {}
-            $path -and ($locs | Where-Object { $path.StartsWith($_, [StringComparison]::OrdinalIgnoreCase) })
-        }
+        Get-WtProcessesForApp -App $App
     }
     $procs = @(& $find)
     if (-not $procs.Count) { return }
@@ -201,7 +190,7 @@ function Stop-StaleItInstances {
     }
     if (-not $procs.Count) { return }
     $staleIds = @($procs | ForEach-Object { [int]$_.Id })
-    Write-ItLog -Level INFO -Message "Cleaning $($procs.Count) stale IT instance(s) before launch: [$(($procs | ForEach-Object Id) -join ',')]"
+    Write-ItLog -Level INFO -Message "Cleaning $($procs.Count) stale $($App.Package) instance(s) before launch: [$(($procs | ForEach-Object Id) -join ',')]"
     foreach ($p in $procs) { try { $p.CloseMainWindow() | Out-Null } catch {} }
     Test-Until -TimeoutSec $GraceSec -IntervalSec 0.5 -Condition {
         -not @(Get-Process -Id $staleIds -ErrorAction SilentlyContinue).Count
@@ -213,7 +202,7 @@ function Stop-StaleItInstances {
             Write-ItLog -Level WARN -Message "Force-killed stale IT straggler pid=$staleId"
         }
     }
-    Start-Sleep -Milliseconds 500   # let the OS tear down the shared COM monarch registration
+    Start-Sleep -Milliseconds 500   # let the OS tear down this package's COM registration
 }
 
 function Get-ItTestPackage {
@@ -269,14 +258,14 @@ function Start-Terminal {
     # Per-run framework log file under TEMP.
     $script:ItE2ELogFile = Join-Path $env:TEMP ("ite2e-{0}.log" -f (Get-Date -Format 'yyyyMMdd-HHmmss'))
 
-    # Always clear leftover IT instances (store + dev) BEFORE writing config: a stale window
+    # Clear leftover instances of the selected package BEFORE writing config: a stale window
     # from a crashed prior test would otherwise be attached-to in a broken state (new-tab ->
-    # CreateTab E_FAIL 0x80004005) or steal the shared per-brand COM CLSID and misroute wtcli.
-    # Doing it before config write also stops a closing monarch's flush from clobbering the
-    # FRE/settings values we are about to write. This ALWAYS enforces cold-start semantics (a
-    # fresh monarch re-reads state.json); -ShowFre separately controls whether the FRE overlay
-    # is left showing.
-    Stop-StaleItInstances
+    # CreateTab E_FAIL 0x80004005). Doing it before config write also stops a closing monarch's
+    # flush from clobbering the FRE/settings values we are about to write. Other Intelligent
+    # Terminal products have separate package identities and brand CLSIDs and remain running.
+    # This enforces a cold start for the selected package; -ShowFre separately controls whether
+    # the FRE overlay is left showing.
+    Stop-StaleItInstances -App $app
     Initialize-LogOffsets -App $app | Out-Null
     $preLaunchLogStartOffset = if ($app.LogStartOffset) { $app.LogStartOffset.Clone() } else { @{} }
     $app | Add-Member -NotePropertyName PreLaunchLogStartOffset -NotePropertyValue $preLaunchLogStartOffset -Force
