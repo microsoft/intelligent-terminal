@@ -5403,6 +5403,7 @@ impl App {
     /// for clearing the input and cursor before calling this.
     fn handle_slash_command(&mut self, cmd: ParsedCommand) {
         let in_flight = self.current_tab().turn.is_in_flight();
+        let cancelling = self.current_tab().turn.is_cancelling();
         let prompt_blocked = !self.current_tab().turn.accepts_new_prompt();
         crate::telemetry::log_slash_command_invoked(cmd.spec.name);
         tracing::info!(
@@ -5418,7 +5419,7 @@ impl App {
         match cmd.kind {
             CommandKind::Help => self.cmd_help(),
             CommandKind::Clear => self.cmd_clear(),
-            CommandKind::Stop => self.cmd_stop(in_flight),
+            CommandKind::Stop => self.cmd_stop(in_flight, cancelling),
             CommandKind::New => self.cmd_new(prompt_blocked),
             CommandKind::Fix => self.cmd_fix(prompt_blocked, cmd.rest),
             CommandKind::Sessions => self.cmd_sessions(),
@@ -5446,17 +5447,19 @@ impl App {
     /// `/stop` — cancel the in-flight turn, or note that there is nothing to
     /// stop. `in_flight` is the active tab's turn state, captured by the
     /// dispatcher before any mutation.
-    fn cmd_stop(&mut self, in_flight: bool) {
-        if in_flight {
+    fn cmd_stop(&mut self, in_flight: bool, cancelling: bool) {
+        if in_flight || cancelling {
             let tab_id = self
                 .tab_id
                 .clone()
                 .unwrap_or_else(|| DEFAULT_TAB_ID.to_string());
             self.request_turn_cancel_for_tab(&tab_id);
-            let tab = self.current_tab_mut();
-            tab.messages
-                .push(ChatMessage::success(t!("system.cancelled").into_owned()));
-            tab.scroll_to_bottom();
+            if !cancelling {
+                let tab = self.current_tab_mut();
+                tab.messages
+                    .push(ChatMessage::success(t!("system.cancelled").into_owned()));
+                tab.scroll_to_bottom();
+            }
         } else {
             let tab = self.current_tab_mut();
             tab.messages.push(ChatMessage::info(

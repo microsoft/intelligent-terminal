@@ -390,6 +390,43 @@ fn slash_stop_when_idle_notes_nothing_to_stop() {
 }
 
 #[test]
+fn slash_stop_while_cancelling_is_idempotent() {
+    let mut app = test_app();
+    let prompt = crate::protocol::acp::client::PromptSubmission::new("stop this".into(), None);
+    let cancellation = prompt.cancellation_token();
+    app.turn_submit_prompt_for_tab_with_cancellation(
+        DEFAULT_TAB_ID,
+        SubmittedPrompt {
+            id: prompt.id,
+            text: prompt.text,
+            submitted_at_unix_s: prompt.submitted_at_unix_s,
+            context: TurnContext::default(),
+            autofix: None,
+        },
+        cancellation,
+    );
+
+    run_slash(&mut app, "stop");
+    run_slash(&mut app, "stop");
+
+    assert!(app.current_tab().turn.is_cancelling());
+    assert_eq!(
+        app.current_tab()
+            .messages
+            .iter()
+            .filter(|message| matches!(
+                message,
+                ChatMessage::Notice {
+                    kind: NoticeKind::Success,
+                    ..
+                }
+            ))
+            .count(),
+        1
+    );
+}
+
+#[test]
 fn slash_new_when_idle_resets_session() {
     let (mut app, _new_session_rx) = test_app_with_new_session_rx();
     app.current_tab_mut().session_id = Some("sid-1".into());
