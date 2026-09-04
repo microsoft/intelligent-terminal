@@ -13691,7 +13691,7 @@ fn stale_autofix_at_close_resets_to_idle() {
 }
 
 #[test]
-fn cancel_bumps_generation_and_returns_to_idle() {
+fn cancel_bumps_generation_and_waits_for_terminal_boundary() {
     let mut app = test_app();
     submit_autofix_prompt(&mut app, "pane-1");
     let gen_before = app.tab_mut(DEFAULT_TAB_ID).autofix.generation;
@@ -13700,8 +13700,10 @@ fn cancel_bumps_generation_and_returns_to_idle() {
         app.tab_mut(DEFAULT_TAB_ID).autofix.generation,
         gen_before.wrapping_add(1)
     );
-    assert!(app.current_tab().turn.is_idle());
+    assert!(app.current_tab().turn.is_cancelling());
     assert!(app.tab_mut(DEFAULT_TAB_ID).autofix.pane_id.is_none());
+    app.turn_close(DEFAULT_TAB_ID);
+    assert!(app.current_tab().turn.is_idle());
 }
 
 #[test]
@@ -13714,7 +13716,7 @@ fn cancel_mid_stream_preserves_visible_prose_with_canceled_marker() {
     app.turn_observe_chunk(DEFAULT_TAB_ID, ChunkKind::Message, "\n\nOnce upon a time");
     app.turn_cancel(DEFAULT_TAB_ID);
     let tab = app.current_tab();
-    assert!(tab.turn.is_idle(), "got {:?}", tab.turn);
+    assert!(tab.turn.is_cancelling(), "got {:?}", tab.turn);
     assert_eq!(tab.completed_turns.len(), 1);
     let committed = &tab.completed_turns[0];
     assert_eq!(committed.prompt, "tell me a story");
@@ -13736,6 +13738,18 @@ fn cancel_mid_stream_preserves_visible_prose_with_canceled_marker() {
     );
     assert!(tab.messages.is_empty(), "messages cleared on cancel");
 
+    app.turn_observe_chunk(
+        DEFAULT_TAB_ID,
+        ChunkKind::Message,
+        " stale text after cancel",
+    );
+    assert_eq!(
+        app.current_tab().completed_turns.len(),
+        1,
+        "late cancelled-turn chunks must be discarded"
+    );
+    app.turn_close(DEFAULT_TAB_ID);
+    assert!(app.current_tab().turn.is_idle());
     app.turn_cancel(DEFAULT_TAB_ID);
     assert_eq!(
         app.current_tab().completed_turns.len(),
@@ -13752,7 +13766,7 @@ fn cancel_mid_stream_preserves_raw_json_with_canceled_marker() {
     app.turn_observe_chunk(DEFAULT_TAB_ID, ChunkKind::Message, json);
     app.turn_cancel(DEFAULT_TAB_ID);
     let tab = app.current_tab();
-    assert!(tab.turn.is_idle());
+    assert!(tab.turn.is_cancelling());
     assert_eq!(tab.completed_turns.len(), 1);
     let committed = &tab.completed_turns[0];
     assert_eq!(committed.prompt, "kill pid 1234");
@@ -13772,6 +13786,8 @@ fn cancel_mid_stream_preserves_raw_json_with_canceled_marker() {
         committed.trailing_marker
     );
     assert!(tab.messages.is_empty());
+    app.turn_close(DEFAULT_TAB_ID);
+    assert!(app.current_tab().turn.is_idle());
 }
 
 #[test]
@@ -14035,6 +14051,10 @@ fn direct_proposal_cancel_before_commit_does_not_surface() {
     });
     assert!(!commit_rx.blocking_recv().unwrap());
 
+    assert!(app.session_tab(session_id).turn.is_cancelling());
+    app.handle_event(AppEvent::AgentMessageEnd {
+        session_id: session_id.into(),
+    });
     assert!(app.session_tab(session_id).turn.is_idle());
     assert_eq!(
         final_rx.blocking_recv().unwrap(),

@@ -5366,13 +5366,11 @@ impl App {
     /// dispatcher before any mutation.
     fn cmd_stop(&mut self, in_flight: bool) {
         if in_flight {
-            let session_id = self.current_tab().session_id.clone();
-            if let Some(sid) = session_id.clone() {
-                let _ = self.cancel_tx.send(CancelRequest { session_id: sid });
-            }
-            if let Some(sid) = session_id {
-                self.turn_cancel(&sid);
-            }
+            let tab_id = self
+                .tab_id
+                .clone()
+                .unwrap_or_else(|| DEFAULT_TAB_ID.to_string());
+            self.request_turn_cancel_for_tab(&tab_id);
             let tab = self.current_tab_mut();
             tab.messages
                 .push(ChatMessage::success(t!("system.cancelled").into_owned()));

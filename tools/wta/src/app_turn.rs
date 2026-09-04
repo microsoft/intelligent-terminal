@@ -178,8 +178,8 @@ impl App {
                 true
             }
             (TurnState::Surfaced { .. }, _) => false,
-            // Chunks while Idle: shouldn't happen; defensive drop.
-            (TurnState::Idle, _) => false,
+            // Chunks while Idle or while cancellation is draining are stale.
+            (TurnState::Idle | TurnState::Cancelling, _) => false,
         }
     }
 
@@ -208,7 +208,7 @@ impl App {
                     "a card is already showing for this turn".to_string(),
                 );
             }
-            TurnState::Idle => {
+            TurnState::Idle | TurnState::Cancelling => {
                 return DirectProposalEvaluation::Stale(
                     "no turn is in flight for this session".to_string(),
                 );
@@ -400,6 +400,11 @@ impl App {
     /// 3. `Submitted` with no chunks — model returned nothing.
     /// 4. `Streaming` with a buffer — commit it as assistant text.
     pub fn turn_close(&mut self, session_id: &str) {
+        if self.session_tab(session_id).turn.is_cancelling() {
+            self.session_tab_mut(session_id).turn = TurnState::Idle;
+            return;
+        }
+
         // (1) Stale-autofix discard.
         let current_gen = self.session_tab(session_id).autofix.generation;
         if let Some(gen) = self.session_tab(session_id).turn.autofix_generation() {
@@ -766,9 +771,34 @@ impl App {
         self.turn_cancel_for_tab(&target_tab);
     }
 
+    pub(super) fn request_turn_cancel_for_tab(&mut self, target_tab: &str) {
+        let (session_id, prompt_id) = self
+            .tab_sessions
+            .get(target_tab)
+            .map(|tab| {
+                (
+                    tab.session_id.clone(),
+                    tab.turn.prompt().map(|prompt| prompt.id),
+                )
+            })
+            .unwrap_or((None, None));
+        if let Some(prompt_id) = prompt_id {
+            let _ = self.cancel_tx.send(CancelRequest {
+                tab_id: target_tab.to_string(),
+                prompt_id,
+                session_id,
+            });
+        }
+        self.turn_cancel_for_tab(target_tab);
+    }
+
     /// Cancel the in-flight turn owned by a tab. Pane lifecycle cleanup uses
     /// this before a lazily-created ACP session necessarily has an ID.
     pub(super) fn turn_cancel_for_tab(&mut self, target_tab: &str) {
+        let cancellation_pending = self
+            .tab_sessions
+            .get(target_tab)
+            .is_some_and(|tab| tab.turn.is_in_flight());
         let direct_proposal_id = self
             .tab_sessions
             .get(target_tab)
@@ -880,7 +910,11 @@ impl App {
         tab.activity_frame = 0;
         tab.clear_streaming_thought();
         tab.user_input.clear();
-        tab.turn = TurnState::Idle;
+        tab.turn = if cancellation_pending {
+            TurnState::Cancelling
+        } else {
+            TurnState::Idle
+        };
         tab.pending_terminal_action_proposal = None;
         tab.active_direct_proposal_id = None;
         if let Some(proposal_id) = direct_proposal_id.as_deref() {

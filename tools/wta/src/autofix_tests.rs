@@ -273,7 +273,7 @@ fn closing_source_pane_cancels_pending_autofix() {
     app.handle_event(closed_event_without_tab(pane));
 
     let tab = app.tab_mut(tab);
-    assert!(tab.turn.is_idle());
+    assert!(tab.turn.is_cancelling());
     assert!(tab.autofix.pane_id.is_none());
     assert!(matches!(tab.autofix.bar_snapshot, AutofixBarSnapshot::Idle));
     assert_eq!(tab.autofix.generation, generation.wrapping_add(1));

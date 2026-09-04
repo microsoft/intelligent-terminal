@@ -529,7 +529,7 @@ impl App {
         let (turn_matches, state_matches) = autofix_pane_matches(tab, pane_id);
 
         if turn_matches {
-            self.turn_cancel_for_tab(&target_tab_id);
+            self.request_turn_cancel_for_tab(&target_tab_id);
         } else if state_matches {
             let tab = self.tab_mut(&target_tab_id);
             tab.autofix.generation = tab.autofix.generation.wrapping_add(1);

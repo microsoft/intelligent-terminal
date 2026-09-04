@@ -692,26 +692,17 @@ impl App {
             }
             KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                 // In-flight: state is Submitted/Streaming or Surfaced{end_pending}.
-                let in_flight = !self.current_tab().turn.is_idle()
-                    && !matches!(
-                        self.current_tab().turn,
-                        TurnState::Surfaced {
-                            end_pending: false,
-                            ..
-                        }
-                    );
+                let in_flight = self.current_tab().turn.is_in_flight();
                 if in_flight {
                     // Send a session/cancel to the ACP client. The client
-                    // will fire the protocol notification and signal the
-                    // per-prompt oneshot so the spawned task drops out of
-                    // conn.prompt() immediately.
-                    let session_id = self.current_tab().session_id.clone();
-                    if let Some(sid) = session_id.clone() {
-                        let _ = self.cancel_tx.send(CancelRequest { session_id: sid });
-                    }
-                    if let Some(sid) = session_id {
-                        self.turn_cancel(&sid);
-                    }
+                    // keeps this turn active until the matching prompt reaches
+                    // its terminal boundary, preventing late output from
+                    // leaking into the next turn.
+                    let tab_id = self
+                        .tab_id
+                        .clone()
+                        .unwrap_or_else(|| DEFAULT_TAB_ID.to_string());
+                    self.request_turn_cancel_for_tab(&tab_id);
                     let tab = self.current_tab_mut();
                     tab.messages
                         .push(ChatMessage::success(t!("system.cancelled").into_owned()));
@@ -896,10 +887,16 @@ impl App {
                     // turn isn't accepting one. The ACP transport rejects
                     // too, but bouncing here keeps the user's input intact.
                     if !self.current_tab().turn.accepts_new_prompt() {
-                        let tab = self.current_tab_mut();
-                        tab.messages
-                            .push(ChatMessage::warning(t!("system.agent_busy").into_owned()));
-                        tab.scroll_to_bottom();
+                        // Cancellation has already produced its own status
+                        // line. Keep the draft intact and wait for the real
+                        // terminal boundary instead of claiming the agent is
+                        // busy or accidentally submitting into the old turn.
+                        if !self.current_tab().turn.is_cancelling() {
+                            let tab = self.current_tab_mut();
+                            tab.messages
+                                .push(ChatMessage::warning(t!("system.agent_busy").into_owned()));
+                            tab.scroll_to_bottom();
+                        }
                         return;
                     }
                     if self.prompt_reconfiguration_pending_for_tab(self.active_tab_key()) {
