@@ -89,6 +89,18 @@ fn install_descendant_job() -> Result<()> {
     Ok(())
 }
 
+fn log_wt_event_received(event_json: &serde_json::Value) -> String {
+    let method = event_json
+        .get("method")
+        .and_then(|value| value.as_str())
+        .unwrap_or("")
+        .to_string();
+    tracing::debug!(method = %method, "wt_event_rx: received event");
+    #[cfg(debug_assertions)]
+    tracing::trace!(event = %event_json, "wt_event_rx: received event payload");
+    method
+}
+
 /// Drive the standard ACP TUI but use `pipe_name` as the ACP transport
 /// (helper mode). The helper attaches to wta-master over the supplied
 /// named pipe and forwards ACP traffic over it.
@@ -495,39 +507,7 @@ async fn run_acp_app(
                 let wt_event_tx = event_tx.clone();
                 tokio::task::spawn_local(async move {
                     while let Some(event_json) = wt_rx.recv().await {
-                        let method = event_json
-                            .get("method")
-                            .and_then(|v| v.as_str())
-                            .unwrap_or("")
-                            .to_string();
-                        // The full event envelope carries `vt_sequence` (raw
-                        // terminal output/scrollback) — keep it out of debug;
-                        // log only the method there, full JSON at trace.
-                        tracing::debug!(method = %method, "wt_event_rx: received event");
-                        if method == "agent_paste_text" {
-                            let mut redacted = event_json.clone();
-                            let paste_len = redacted
-                                .get("params")
-                                .and_then(|p| p.get("text"))
-                                .and_then(|v| v.as_str())
-                                .map(str::len);
-                            if let Some(paste_len) = paste_len {
-                                if let Some(params) =
-                                    redacted.get_mut("params").and_then(|v| v.as_object_mut())
-                                {
-                                    params.insert(
-                                        "text".to_string(),
-                                        serde_json::json!(format!(
-                                            "<redacted {} bytes>",
-                                            paste_len
-                                        )),
-                                    );
-                                }
-                            }
-                            tracing::trace!(target: "wt_event.content", event = %redacted, "wt_event_rx: full event");
-                        } else {
-                            tracing::trace!(target: "wt_event.content", event = %event_json, "wt_event_rx: full event");
-                        }
+                        let method = log_wt_event_received(&event_json);
 
                         let params = event_json
                             .get("params")
@@ -1322,6 +1302,8 @@ async fn run_acp_app(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::io::Write;
+    use std::sync::Mutex;
 
     #[test]
     fn initial_tab_state_seeds_restored_pane_position() {
@@ -1334,5 +1316,66 @@ mod tests {
         seed_initial_tab_state(&mut tab, false, Some("right"));
         assert!(tab.pane_open);
         assert_eq!(tab.agent_pane_position, Some("right"));
+    }
+
+    #[derive(Clone)]
+    struct SharedLogWriter(Arc<Mutex<Vec<u8>>>);
+
+    impl Write for SharedLogWriter {
+        fn write(&mut self, buffer: &[u8]) -> io::Result<usize> {
+            self.0.lock().unwrap().extend_from_slice(buffer);
+            Ok(buffer.len())
+        }
+
+        fn flush(&mut self) -> io::Result<()> {
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn wt_event_debug_log_excludes_event_content() {
+        let captured = Arc::new(Mutex::new(Vec::new()));
+        let writer = captured.clone();
+        let subscriber = tracing_subscriber::fmt()
+            .without_time()
+            .with_ansi(false)
+            .with_max_level(tracing::Level::DEBUG)
+            .with_writer(move || SharedLogWriter(writer.clone()))
+            .finish();
+        let event = serde_json::json!({
+            "method": "future_event",
+            "params": { "sequence": "SECRET_EVENT_CONTENT" }
+        });
+
+        let method =
+            tracing::subscriber::with_default(subscriber, || log_wt_event_received(&event));
+        let logs = String::from_utf8(captured.lock().unwrap().clone()).unwrap();
+
+        assert_eq!(method, "future_event");
+        assert!(logs.contains("method=future_event"));
+        assert!(!logs.contains("SECRET_EVENT_CONTENT"));
+    }
+
+    #[cfg(debug_assertions)]
+    #[test]
+    fn wt_event_trace_log_includes_event_content_in_debug_builds() {
+        let captured = Arc::new(Mutex::new(Vec::new()));
+        let writer = captured.clone();
+        let subscriber = tracing_subscriber::fmt()
+            .without_time()
+            .with_ansi(false)
+            .with_max_level(tracing::Level::TRACE)
+            .with_writer(move || SharedLogWriter(writer.clone()))
+            .finish();
+        let event = serde_json::json!({
+            "method": "future_event",
+            "params": { "sequence": "DEBUG_EVENT_CONTENT" }
+        });
+
+        tracing::subscriber::with_default(subscriber, || log_wt_event_received(&event));
+        let logs = String::from_utf8(captured.lock().unwrap().clone()).unwrap();
+
+        assert!(logs.contains("method=future_event"));
+        assert!(logs.contains("DEBUG_EVENT_CONTENT"));
     }
 }
