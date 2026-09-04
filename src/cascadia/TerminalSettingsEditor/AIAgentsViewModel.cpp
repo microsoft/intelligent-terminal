@@ -405,19 +405,53 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         // Only show custom entry and "Add New" if custom agents are allowed by policy.
         if (!_GlobalSettings.IsCustomAgentPolicyLocked())
         {
+            const bool hasLocalCommands = _GlobalSettings.HasAcpCustomCommands();
+            const bool hasLocalLegacyCommand = _GlobalSettings.HasAcpCustomCommand();
+            const bool hasLocalAgent = _GlobalSettings.HasAcpAgent();
             auto commands = _NormalizeCustomCommands(_GlobalSettings.AcpCustomCommands());
-            const auto legacyCommand = _GlobalSettings.AcpCustomCommand();
-            if (!legacyCommand.empty())
+            const auto effectiveLegacyCommand = _GlobalSettings.AcpCustomCommand();
+            if (!effectiveLegacyCommand.empty())
             {
                 const auto legacyId = winrt::hstring{
-                    L"custom:" + std::wstring_view{ _DeriveId(legacyCommand) }
+                    L"custom:" + std::wstring_view{ _DeriveId(effectiveLegacyCommand) }
                 };
-                commands = _UpdateCustomCommands(commands, legacyId, legacyCommand);
+                commands = _UpdateCustomCommands(commands, legacyId, effectiveLegacyCommand);
             }
-            _GlobalSettings.AcpCustomCommands(commands);
+            const bool hasLocalLegacyValue =
+                hasLocalLegacyCommand && !effectiveLegacyCommand.empty();
+            if (hasLocalCommands || hasLocalLegacyValue)
+            {
+                auto localCommands = hasLocalCommands ?
+                                         _NormalizeCustomCommands(_GlobalSettings.AcpCustomCommands()) :
+                                         winrt::single_threaded_vector<winrt::hstring>();
+                if (hasLocalLegacyValue)
+                {
+                    const auto legacyId = winrt::hstring{
+                        L"custom:" + std::wstring_view{ _DeriveId(effectiveLegacyCommand) }
+                    };
+                    localCommands = _UpdateCustomCommands(
+                        localCommands,
+                        legacyId,
+                        effectiveLegacyCommand);
+                }
+                _GlobalSettings.AcpCustomCommands(localCommands);
+            }
             const auto selectedId = _GlobalSettings.AcpAgent();
             const auto selectedCommand = _FindCustomCommand(commands, selectedId);
-            _GlobalSettings.AcpCustomCommand(selectedCommand);
+            if (!selectedCommand.empty())
+            {
+                const bool hasExplicitEmptyLegacy =
+                    hasLocalLegacyCommand && effectiveLegacyCommand.empty();
+                if (!hasExplicitEmptyLegacy &&
+                    (hasLocalCommands || hasLocalAgent || hasLocalLegacyValue))
+                {
+                    _GlobalSettings.AcpCustomCommand(selectedCommand);
+                }
+            }
+            else if (hasLocalLegacyValue)
+            {
+                _GlobalSettings.ClearAcpCustomCommand();
+            }
             _RebuildCustomEntries(_acpAgentList, commands, true);
             if (_StartsWithCustom(selectedId) && selectedCommand.empty())
             {
@@ -476,19 +510,53 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         _delegateAgentList = winrt::single_threaded_observable_vector(std::move(delegateEntries));
         if (!_GlobalSettings.IsCustomAgentPolicyLocked())
         {
+            const bool hasLocalCommands = _GlobalSettings.HasDelegateCustomCommands();
+            const bool hasLocalLegacyCommand = _GlobalSettings.HasDelegateCustomCommand();
+            const bool hasLocalAgent = _GlobalSettings.HasDelegateAgent();
             auto commands = _NormalizeCustomCommands(_GlobalSettings.DelegateCustomCommands());
-            const auto legacyCommand = _GlobalSettings.DelegateCustomCommand();
-            if (!legacyCommand.empty())
+            const auto effectiveLegacyCommand = _GlobalSettings.DelegateCustomCommand();
+            if (!effectiveLegacyCommand.empty())
             {
                 const auto legacyId = winrt::hstring{
-                    L"custom:" + std::wstring_view{ _DeriveId(legacyCommand) }
+                    L"custom:" + std::wstring_view{ _DeriveId(effectiveLegacyCommand) }
                 };
-                commands = _UpdateCustomCommands(commands, legacyId, legacyCommand);
+                commands = _UpdateCustomCommands(commands, legacyId, effectiveLegacyCommand);
             }
-            _GlobalSettings.DelegateCustomCommands(commands);
+            const bool hasLocalLegacyValue =
+                hasLocalLegacyCommand && !effectiveLegacyCommand.empty();
+            if (hasLocalCommands || hasLocalLegacyValue)
+            {
+                auto localCommands = hasLocalCommands ?
+                                         _NormalizeCustomCommands(_GlobalSettings.DelegateCustomCommands()) :
+                                         winrt::single_threaded_vector<winrt::hstring>();
+                if (hasLocalLegacyValue)
+                {
+                    const auto legacyId = winrt::hstring{
+                        L"custom:" + std::wstring_view{ _DeriveId(effectiveLegacyCommand) }
+                    };
+                    localCommands = _UpdateCustomCommands(
+                        localCommands,
+                        legacyId,
+                        effectiveLegacyCommand);
+                }
+                _GlobalSettings.DelegateCustomCommands(localCommands);
+            }
             const auto selectedId = _GlobalSettings.DelegateAgent();
             const auto selectedCommand = _FindCustomCommand(commands, selectedId);
-            _GlobalSettings.DelegateCustomCommand(selectedCommand);
+            if (!selectedCommand.empty())
+            {
+                const bool hasExplicitEmptyLegacy =
+                    hasLocalLegacyCommand && effectiveLegacyCommand.empty();
+                if (!hasExplicitEmptyLegacy &&
+                    (hasLocalCommands || hasLocalAgent || hasLocalLegacyValue))
+                {
+                    _GlobalSettings.DelegateCustomCommand(selectedCommand);
+                }
+            }
+            else if (hasLocalLegacyValue)
+            {
+                _GlobalSettings.ClearDelegateCustomCommand();
+            }
             _RebuildCustomEntries(_delegateAgentList, commands, false);
             if (_StartsWithCustom(selectedId) && selectedCommand.empty())
             {
@@ -1391,6 +1459,21 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
 
     void AIAgentsViewModel::CancelCustomAcpAgent()
     {
+        if (!_FindReplacementAgent(_acpAgentList, L""))
+        {
+            _isAddingCustomAcpAgent = true;
+            _editingCustomAcpAgentId = L"";
+            _customAcpCommand = L"";
+            _NotifyChanges(L"IsAddingCustomAcpAgent",
+                           L"IsCustomAcpAgentSelected",
+                           L"CurrentAcpAgent",
+                           L"CustomAcpCommand",
+                           L"ShowAcpModel",
+                           L"CustomModelProviderUnsupportedMessage",
+                           L"ShowOpenCodeYoloWarning",
+                           L"ShowGeminiYoloInfo");
+            return;
+        }
         _isAddingCustomAcpAgent = false;
         _editingCustomAcpAgentId = L"";
         _NotifyChanges(L"IsAddingCustomAcpAgent",
@@ -1404,6 +1487,18 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
 
     void AIAgentsViewModel::CancelCustomDelegateAgent()
     {
+        if (!_FindReplacementAgent(_delegateAgentList, L""))
+        {
+            _isAddingCustomDelegateAgent = true;
+            _editingCustomDelegateAgentId = L"";
+            _customDelegateCommand = L"";
+            _NotifyChanges(L"IsAddingCustomDelegateAgent",
+                           L"IsCustomDelegateAgentSelected",
+                           L"CurrentDelegateAgent",
+                           L"CustomDelegateCommand",
+                           L"ShowDelegateModel");
+            return;
+        }
         _isAddingCustomDelegateAgent = false;
         _editingCustomDelegateAgentId = L"";
         _NotifyChanges(L"IsAddingCustomDelegateAgent", L"IsCustomDelegateAgentSelected", L"CurrentDelegateAgent", L"ShowDelegateModel");
@@ -1437,7 +1532,9 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
                     return;
                 }
 
-                _isAddingCustomAcpAgent = false;
+                _isAddingCustomAcpAgent = true;
+                _editingCustomAcpAgentId = L"";
+                _customAcpCommand = L"";
                 _GlobalSettings.AcpAgent(L"");
                 _GlobalSettings.AcpModel(L"");
                 _TriggerAcpModelProbe();
@@ -1445,6 +1542,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
             _NotifyChanges(L"CurrentAcpAgent",
                            L"IsAddingCustomAcpAgent",
                            L"IsCustomAcpAgentSelected",
+                           L"CustomAcpCommand",
                            L"ShowAcpModel",
                            L"CustomModelProviderUnsupportedMessage",
                            L"ShowOpenCodeYoloWarning",
@@ -1480,10 +1578,16 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
                     return;
                 }
 
-                _isAddingCustomDelegateAgent = false;
+                _isAddingCustomDelegateAgent = true;
+                _editingCustomDelegateAgentId = L"";
+                _customDelegateCommand = L"";
                 _GlobalSettings.DelegateAgent(L"");
             }
-            _NotifyChanges(L"CurrentDelegateAgent", L"IsAddingCustomDelegateAgent", L"IsCustomDelegateAgentSelected", L"ShowDelegateModel");
+            _NotifyChanges(L"CurrentDelegateAgent",
+                           L"IsAddingCustomDelegateAgent",
+                           L"IsCustomDelegateAgentSelected",
+                           L"CustomDelegateCommand",
+                           L"ShowDelegateModel");
         }
     }
 
