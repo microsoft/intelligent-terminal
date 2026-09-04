@@ -120,6 +120,49 @@ Describe 'Resolve-ItApp' -Tag 'Unit' {
     }
 }
 
+Describe 'Get-RunnableWtaPath staging' -Tag 'Unit' {
+    It 'isolates same-version packaged binaries by package family and content hash' {
+        InModuleScope ItE2E {
+            $originalTemp = $env:TEMP
+            $env:TEMP = $TestDrive
+            try {
+                $storeRoot = Join-Path $TestDrive 'WindowsApps\Store'
+                $devRoot = Join-Path $TestDrive 'WindowsApps\Dev'
+                New-Item -ItemType Directory -Force -Path $storeRoot, $devRoot | Out-Null
+                $storeWta = Join-Path $storeRoot 'wta.exe'
+                $devWta = Join-Path $devRoot 'wta.exe'
+                Set-Content -LiteralPath $storeWta -Value 'store-wta' -NoNewline
+                Set-Content -LiteralPath $devWta -Value 'dev-wta' -NoNewline
+
+                $storeApp = [pscustomobject]@{
+                    Package = 'Microsoft.IntelligentTerminal_8wekyb3d8bbwe'
+                    Version = '1.2.3.4'
+                    InstallLocation = $storeRoot
+                    WtaPath = $storeWta
+                }
+                $devApp = [pscustomobject]@{
+                    Package = 'IntelligentTerminal_rd9vj3e6a2mbr'
+                    Version = '1.2.3.4'
+                    InstallLocation = $devRoot
+                    WtaPath = $devWta
+                }
+
+                $storeRunnable = Get-RunnableWtaPath -App $storeApp
+                $devRunnable = Get-RunnableWtaPath -App $devApp
+
+                $storeRunnable | Should -Not -Be $devRunnable
+                Get-Content -LiteralPath $storeRunnable -Raw | Should -Be 'store-wta'
+                Get-Content -LiteralPath $devRunnable -Raw | Should -Be 'dev-wta'
+                $storeRunnable | Should -Match ([regex]::Escape($storeApp.Package))
+                $devRunnable | Should -Match ([regex]::Escape($devApp.Package))
+            }
+            finally {
+                $env:TEMP = $originalTemp
+            }
+        }
+    }
+}
+
 Describe 'Start-Terminal startup ordering' -Tag 'Unit' {
     It 'waits for the first window before probing COM' {
         InModuleScope ItE2E {

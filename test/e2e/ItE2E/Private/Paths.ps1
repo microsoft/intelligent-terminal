@@ -123,30 +123,35 @@ function Get-RunnableWtaPath {
         The packaged wta.exe in WindowsApps cannot be launched by an external process
         ("Access is denied"), unlike wtcli. For wta subcommands that do NOT require WT
         package identity (sessions, eval), run a copy of the exact packaged binary from a
-        writable temp dir (version-matched), falling back to the repo dev build.
+        writable temp dir. Staging is isolated by package family, version, and
+        binary hash so Store and Dev packages can never reuse one another's copy.
     #>
     [CmdletBinding()] param([Parameter(Mandatory)]$App)
     if ($App.PSObject.Properties.Name -contains 'WtaRunnable' -and $App.WtaRunnable -and (Test-Path $App.WtaRunnable)) { return $App.WtaRunnable }
 
     $runnable = $null
     if ($App.WtaPath -and (Test-Path $App.WtaPath) -and $App.WtaPath -like '*WindowsApps*') {
-        $dir = Join-Path $env:TEMP "ite2e-wta\$($App.Version)"
+        $sourceHash = (Get-FileHash -LiteralPath $App.WtaPath -Algorithm SHA256).Hash
+        $safePackage = $App.Package -replace '[^A-Za-z0-9._-]', '_'
+        $dir = Join-Path $env:TEMP "ite2e-wta\$safePackage\$($App.Version)\$sourceHash"
         if (-not (Test-Path $dir)) { New-Item -ItemType Directory -Force -Path $dir | Out-Null }
         $dest = Join-Path $dir 'wta.exe'
-        if (-not (Test-Path $dest)) {
+        $destHash = if (Test-Path $dest) { (Get-FileHash -LiteralPath $dest -Algorithm SHA256).Hash } else { $null }
+        if ($destHash -ne $sourceHash) {
             try { Copy-Item -LiteralPath $App.WtaPath -Destination $dest -Force; Write-ItLog -Level INFO -Message "Staged runnable wta -> $dest" }
             catch { Write-ItLog -Level WARN -Message "Could not stage packaged wta: $_" }
         }
         $bundleSource = Join-Path $App.InstallLocation 'wt-agent-hooks'
         $bundleDest = Join-Path $dir 'wt-agent-hooks'
-        if ((Test-Path $bundleSource) -and -not (Test-Path $bundleDest)) {
+        if (Test-Path $bundleSource) {
             try {
+                if (Test-Path $bundleDest) { Remove-Item -LiteralPath $bundleDest -Recurse -Force }
                 Copy-Item -LiteralPath $bundleSource -Destination $bundleDest -Recurse -Force
                 Write-ItLog -Level INFO -Message "Staged hook bundle -> $bundleDest"
             }
             catch { Write-ItLog -Level WARN -Message "Could not stage packaged hook bundle: $_" }
         }
-        if (Test-Path $dest) { $runnable = $dest }
+        if ((Test-Path $dest) -and (Get-FileHash -LiteralPath $dest -Algorithm SHA256).Hash -eq $sourceHash) { $runnable = $dest }
     }
     if (-not $runnable -and $App.WtaPath -and (Test-Path $App.WtaPath)) { $runnable = $App.WtaPath }
     if (-not $runnable) { throw "No runnable wta.exe available for $($App.Package)." }

@@ -165,9 +165,18 @@ Update the suite table in `test/e2e/README.md` when adding a new feature file.
 
 ## 7. Validate Tests and Report Mapping
 
+Before any live command, resolve the package target:
+
+- If the user explicitly requested Dev or Store/production, use that choice.
+- Otherwise call `ask_user` with exactly those choices and wait. Do not infer
+  from installed packages, the current branch, or the harness's `Auto` default.
+- Set `$env:ITE2E_PACKAGE = 'Dev'` or `'Store'` in the same PowerShell process
+  that invokes the test runner.
+
 Verify prerequisites:
 
 ```powershell
+$env:ITE2E_PACKAGE = 'Dev' # or 'Store', as explicitly selected
 pwsh -NoProfile -File test/e2e/bootstrap.ps1 -Check
 ```
 
@@ -175,6 +184,7 @@ Run the new suite through the report driver:
 
 ```powershell
 $suite = 'test/e2e/tests/Feature.AutofixParser.Tests.ps1'
+$env:ITE2E_PACKAGE = 'Dev' # or 'Store', as explicitly selected
 pwsh -NoProfile -File test/e2e/Invoke-ItE2EReport.ps1 `
   -Path $suite `
   -UpdateReport

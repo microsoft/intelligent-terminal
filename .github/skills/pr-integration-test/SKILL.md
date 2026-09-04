@@ -20,6 +20,12 @@ checklist.
 
 - Read `test/e2e/README.md` and reuse the ItE2E framework instead of creating a
   parallel harness.
+- Before running any live integration test, identify the target package from
+  the user's request. If the user did not explicitly choose **Dev** or
+  **Store/production**, use `ask_user` and wait for the answer. Never accept the
+  harness's `Auto` default on the user's behalf.
+- Pin the chosen package through `ITE2E_PACKAGE=Dev` or
+  `ITE2E_PACKAGE=Store` for every live validation command.
 - Run `pwsh -File test/e2e/bootstrap.ps1 -Check` before live E2E validation.
 
 ## Workflow
@@ -79,6 +85,10 @@ Do not call the work complete until all of these are true:
 
 ## Gotchas
 
+- **Never run a live integration test with an implicit package selector.**
+  `Auto` prefers Store when both Store and Dev are installed, so an omitted
+  selector can mutate production-package state and send real agent requests
+  from the wrong build. Ask first, then pin `ITE2E_PACKAGE`.
 - **Do not test only the implementation detail named in the PR.** Reconstruct
   the end-to-end user path and assert the observable contract.
 - **Do not duplicate a unit test at E2E level.** Add the missing process,
