@@ -470,7 +470,6 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
                     self->_RemoveCustomModelProvider(id);
                 }
             }));
-        _CommitCustomModelProviders();
         _GlobalSettings.CustomModelSelection(
             ::Microsoft::Terminal::CustomModels::SelectionId(id, modelId));
         namespace Reg = ::Microsoft::Terminal::Settings::Model::AgentRegistry;
@@ -479,6 +478,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
             _GlobalSettings.AcpModel(L"");
             _NotifyChanges(L"AcpModel", L"CurrentAcpModelEntry");
         }
+        _CommitCustomModelProviders();
         removeUncommittedCredential.release();
         CancelCustomModelProvider();
     }
