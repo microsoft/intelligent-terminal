@@ -317,6 +317,7 @@ Describe 'Get-RunnableWtaPath staging' -Tag 'Unit' {
                 InstallLocation = $root
                 WtaPath = $wta
             }
+            Mock Test-Path { return $false } -ParameterFilter { $Path -eq $wta }
             Mock Get-FileHash { throw 'access denied' }
 
             {

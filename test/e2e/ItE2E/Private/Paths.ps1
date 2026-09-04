@@ -110,7 +110,7 @@ function Get-RunnableWtaPath {
     if ($App.PSObject.Properties.Name -contains 'WtaRunnable' -and $App.WtaRunnable -and (Test-Path $App.WtaRunnable)) { return $App.WtaRunnable }
 
     $runnable = $null
-    if ($App.WtaPath -and (Test-Path $App.WtaPath) -and $App.WtaPath -like '*WindowsApps*') {
+    if ($App.WtaPath -and $App.WtaPath -like '*WindowsApps*') {
         $safePackage = $App.Package -replace '[^A-Za-z0-9._-]', '_'
         $destContext = "$env:TEMP\ite2e-wta\$safePackage\$($App.Version)\<sha256>\wta.exe"
         try {
