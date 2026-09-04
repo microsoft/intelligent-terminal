@@ -18,6 +18,7 @@ pub enum AppEvent {
     /// BYOK session that reports no selector cannot erase clean-probed models.
     CloudModelsAvailable(Vec<AcpModelInfo>),
     AgentConnected {
+        binding_generation: u64,
         name: String,
         model: Option<String>,
         version: Option<String>,
@@ -125,6 +126,12 @@ pub enum AppEvent {
         old_tab_id: String,
         new_tab_id: String,
         new_window_id: Option<String>,
+    },
+    /// The ACP client has completed the tab-to-session rekey. Prompts for the
+    /// dragged tab may cross the ACP boundary only after this acknowledgment.
+    TabSessionRekeyed {
+        tab_id: String,
+        binding_generation: u64,
     },
     ExecutionInfo(String),
     AgentThoughtChunk {

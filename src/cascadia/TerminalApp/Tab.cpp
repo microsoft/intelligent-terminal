@@ -598,7 +598,7 @@ namespace winrt::TerminalApp::implementation
 
             const auto& stableId = _stableId;
             const auto sourceProfileGuid = _agentSourceProfileGuid;
-            _rootPane->WalkTree([&stableId, &sourceProfileGuid, firstPaneContentId](const auto& pane) {
+            _rootPane->WalkTree([this, &stableId, &sourceProfileGuid, firstPaneContentId](const auto& pane) {
                 if (!pane->_IsLeaf())
                 {
                     return false;
@@ -631,11 +631,15 @@ namespace winrt::TerminalApp::implementation
                     contentId,
                     stableId,
                     sourceProfileGuid,
-                    attachDisposition);
+                    attachDisposition,
+                    pane->SharedWtaPaneReference() ?
+                        pane->SharedWtaPaneReference()->Transfer() :
+                        nullptr);
                 if (const auto impl = winrt::get_self<implementation::AgentPaneContent>(agentContent))
                 {
                     impl->PrepareForCrossWindowTransfer();
                 }
+                _agentPanePrewarm.MarkUsed();
                 return false;
             });
         }
@@ -1149,6 +1153,14 @@ namespace winrt::TerminalApp::implementation
     {
         ASSERT_UI_THREAD();
 
+        bool closesAgentPane = false;
+        _activePane->WalkTree([&](const std::shared_ptr<Pane>& pane) {
+            closesAgentPane = closesAgentPane || (pane && pane->IsAgentPane());
+        });
+        if (closesAgentPane)
+        {
+            MarkAgentPaneExplicitlyClosed();
+        }
         _activePane->Close();
     }
 

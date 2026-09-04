@@ -137,9 +137,28 @@ namespace Microsoft::Terminal::Settings::Model::AgentRegistry
         return result;
     }
 
+    template<typename ArrayT>
+    inline std::vector<BuiltinAgent> _FilterAgents(const ArrayT& agents, const AgentPolicy::PolicySnapshot& policy)
+    {
+        std::vector<BuiltinAgent> result;
+        for (const auto& a : agents)
+        {
+            if (AgentPolicy::IsAgentAllowed(policy, a.id))
+            {
+                result.push_back(a);
+            }
+        }
+        return result;
+    }
+
     inline std::vector<BuiltinAgent> FilteredAcpAgents()
     {
         return _FilterAgents(BuiltinAcpAgents);
+    }
+
+    inline std::vector<BuiltinAgent> FilteredAcpAgents(const AgentPolicy::PolicySnapshot& policy)
+    {
+        return _FilterAgents(BuiltinAcpAgents, policy);
     }
 
     inline std::vector<BuiltinAgent> FilteredDelegateAgents()

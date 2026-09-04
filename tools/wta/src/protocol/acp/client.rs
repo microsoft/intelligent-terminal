@@ -4,7 +4,7 @@ use super::prompt_builder::{
     acp_log_built_prompt, build_prompt_text, log_turn_trace, TemplateKind, TemplateMemo,
 };
 use super::soft_stop::SoftStopReason;
-use super::turn_metrics::{now_unix_s, prompt_preview, PromptTimingState};
+use super::turn_metrics::{now_unix_s, PromptTimingState};
 use agent_client_protocol as acp;
 use anyhow::Result;
 use std::collections::{HashMap, HashSet};
@@ -68,7 +68,7 @@ fn post_login_authenticate_error(method_id: &str, e: &acp::Error) -> anyhow::Err
 #[path = "mock_agent_tests.rs"]
 pub(crate) mod mock_agent_tests;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct PromptSubmission {
     pub id: u64,
     pub text: String,
@@ -328,6 +328,7 @@ pub struct DropSessionRequest {
 pub struct RenameSessionRequest {
     pub old_tab_id: String,
     pub new_tab_id: String,
+    pub binding_generation: u64,
 }
 
 impl PromptSubmission {
@@ -398,10 +399,6 @@ impl PromptSubmission {
     pub fn with_images(mut self, images: Vec<crate::clipboard_image::PastedImage>) -> Self {
         self.images = images;
         self
-    }
-
-    pub fn preview(&self) -> String {
-        prompt_preview(&self.text)
     }
 }
 
@@ -2545,6 +2542,7 @@ pub async fn run_acp_client_over_pipe(
     source_cwd: Option<String>,
     owner_tab_id: Option<String>,
     initial_load_session_id: Option<String>,
+    binding_generation: u64,
     event_tx: mpsc::UnboundedSender<AppEvent>,
     mut prompt_rx: mpsc::UnboundedReceiver<PromptSubmission>,
     mut cancel_rx: mpsc::UnboundedReceiver<CancelRequest>,
@@ -2853,12 +2851,12 @@ pub async fn run_acp_client_over_pipe(
                 // silent (master applies its own `--agent` default).
                 agent_id: usage_family_id.clone(),
                 model: acp_model_override.clone().filter(|s| !s.trim().is_empty()),
-                provider_binding: Some(
-                    custom_model_selection
-                        .clone()
-                        .filter(|selection| !selection.trim().is_empty())
-                        .unwrap_or_else(|| "default".to_string()),
-                ),
+                // Current Terminal builds pass `default` explicitly. Preserve
+                // omission for legacy/external helpers whose provider is still
+                // configured through inherited WTA_CUSTOM_MODEL_* variables.
+                provider_binding: custom_model_selection
+                    .clone()
+                    .filter(|selection| !selection.trim().is_empty()),
                 agent_source: Some(agent_source.kind().to_string()),
                 wsl_distro: agent_source.distro().map(str::to_string),
                 cloud_models: if supplied_cloud_models.is_empty() {
@@ -3283,6 +3281,7 @@ pub async fn run_acp_client_over_pipe(
         load_session_supported, image_supported
     ));
     let _ = event_tx.send(AppEvent::AgentConnected {
+        binding_generation,
         name: agent_name,
         // We have no `--agent` cmdline to mine a model identifier
         // from; the per-session `current_model_id` covers the UI.
@@ -3453,7 +3452,13 @@ pub async fn run_acp_client_over_pipe(
                 ).await;
             }
             Some(req) = rename_session_rx.recv() => {
+                let tab_id = req.new_tab_id.clone();
+                let binding_generation = req.binding_generation;
                 dispatch_rename_session(req, &tab_to_session).await;
+                let _ = event_tx.send(AppEvent::TabSessionRekeyed {
+                    tab_id,
+                    binding_generation,
+                });
             }
             Some(prompt) = prompt_rx.recv() => {
                 prompt_tasks.retain(|task| !task.is_finished());

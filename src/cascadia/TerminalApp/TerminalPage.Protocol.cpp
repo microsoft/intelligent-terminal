@@ -164,6 +164,154 @@ namespace winrt::TerminalApp::implementation
         co_return result;
     }
 
+    IAsyncOperation<Protocol::PromptContext> TerminalPage::GetProtocolPromptContext(winrt::guid sourceSessionId, bool hasExplicitSource, int32_t fallbackLines)
+    {
+        auto strong = get_strong();
+        co_await wil::resume_foreground(Dispatcher());
+
+        Protocol::PromptContext result{};
+        std::shared_ptr<Pane> targetPane;
+        uint32_t targetTabIndex = 0;
+
+        if (hasExplicitSource)
+        {
+            for (uint32_t tabIndex = 0; tabIndex < _tabs.Size() && !targetPane; ++tabIndex)
+            {
+                const auto tabImpl = _GetTabImpl(_tabs.GetAt(tabIndex));
+                const auto rootPane = tabImpl ? tabImpl->GetRootPane() : nullptr;
+                if (rootPane)
+                {
+                    targetPane = rootPane->FindPaneBySessionId(sourceSessionId);
+                    if (targetPane)
+                    {
+                        targetTabIndex = tabIndex;
+                    }
+                }
+            }
+        }
+        else if (const auto focusedTabIndex = _GetFocusedTabIndex())
+        {
+            targetTabIndex = focusedTabIndex.value();
+            if (const auto tabImpl = _GetTabImpl(_tabs.GetAt(targetTabIndex)))
+            {
+                targetPane = tabImpl->GetActivePane();
+                if (targetPane && targetPane->IsAgentPane())
+                {
+                    if (const auto rootPane = tabImpl->GetRootPane())
+                    {
+                        rootPane->WalkTree([&](const auto& pane) {
+                            if (pane->IsSourceOfAgentPane())
+                            {
+                                targetPane = pane;
+                            }
+                        });
+                    }
+                }
+            }
+        }
+
+        const auto sessionId = targetPane ? _getSessionIdFromPane(targetPane) : winrt::guid{};
+        if (!targetPane || sessionId == winrt::guid{} || targetPane->IsAgentPane())
+        {
+            co_return result;
+        }
+
+        Protocol::PaneInfo paneInfo{};
+        paneInfo.SessionId = sessionId;
+        paneInfo.TabId = targetTabIndex;
+        if (const auto tabImpl = _GetTabImpl(_tabs.GetAt(targetTabIndex)))
+        {
+            const auto activePane = tabImpl->GetActivePane();
+            paneInfo.IsActive = activePane && activePane->IsAgentPane()
+                ? targetPane->IsSourceOfAgentPane()
+                : activePane == targetPane;
+        }
+        paneInfo.IsAgentPane = false;
+        paneInfo.Pid = _getPidFromPane(targetPane);
+
+        if (const auto termContent = targetPane->GetContent().try_as<TerminalApp::TerminalPaneContent>())
+        {
+            paneInfo.Title = termContent.Title();
+            const auto profile = termContent.GetProfile();
+            paneInfo.Profile = profile ? profile.Name() : L"";
+        }
+
+        const auto termControl = targetPane->GetTerminalControl();
+        if (!termControl)
+        {
+            co_return result;
+        }
+
+        paneInfo.Rows = termControl.ViewHeight();
+        paneInfo.Columns = 0;
+        paneInfo.Cwd = termControl.WorkingDirectory();
+        paneInfo.Shell = termControl.ShellName();
+        paneInfo.ShellVersion = termControl.ShellVersion();
+        result.Pane = paneInfo;
+
+        if (!ProtocolParsing::ShouldCapturePromptOutput(fallbackLines))
+        {
+            result.OutputSource = L"metadata_only";
+            result.FallbackReason = L"";
+            result.HasMarks = false;
+            result.LineCount = 0;
+            result.Truncated = false;
+            co_return result;
+        }
+
+        const auto tailLineLimit = fallbackLines == std::numeric_limits<int32_t>::max() ?
+                                       fallbackLines :
+                                       fallbackLines + 1;
+        hstring fallbackBuffer;
+        try
+        {
+            const auto lastPrompt = termControl.ReadLastPrompt();
+            const auto lastPromptString = winrt::to_string(lastPrompt);
+            if (!lastPromptString.empty())
+            {
+                const auto route = ProtocolParsing::ResolvePromptCaptureRoute(true, true);
+                result.Content = lastPrompt;
+                result.OutputSource = winrt::to_hstring(route.outputSource);
+                result.FallbackReason = winrt::to_hstring(route.fallbackReason);
+                result.HasMarks = route.hasMarks;
+                result.LineCount = 1 + static_cast<int32_t>(std::count(lastPromptString.begin(), lastPromptString.end(), '\n'));
+                co_return result;
+            }
+
+            const auto route = ProtocolParsing::ResolvePromptCaptureRoute(true, false);
+            result.OutputSource = winrt::to_hstring(route.outputSource);
+            result.FallbackReason = winrt::to_hstring(route.fallbackReason);
+            result.HasMarks = route.hasMarks;
+            fallbackBuffer = termControl.ReadBufferTail(tailLineLimit);
+        }
+        catch (...)
+        {
+            const auto route = ProtocolParsing::ResolvePromptCaptureRoute(false, false);
+            result.OutputSource = winrt::to_hstring(route.outputSource);
+            result.FallbackReason = winrt::to_hstring(route.fallbackReason);
+            result.HasMarks = route.hasMarks;
+            try
+            {
+                fallbackBuffer = termControl.ReadBufferTail(tailLineLimit);
+            }
+            catch (...)
+            {
+                result.Pane = {};
+                co_return result;
+            }
+        }
+
+        co_await winrt::resume_background();
+
+        const auto tail = ProtocolParsing::BuildPromptTail(
+            winrt::to_string(fallbackBuffer),
+            fallbackLines);
+        result.Truncated = tail.truncated;
+        result.Content = winrt::to_hstring(tail.content);
+        result.LineCount = tail.lineCount;
+        co_return result;
+    }
+
     IAsyncOperation<Windows::Foundation::Collections::IVector<Protocol::TabInfo>> TerminalPage::GetProtocolTabs()
     {
         auto strong = get_strong();

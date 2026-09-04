@@ -58,15 +58,28 @@ Describe 'Feature: agent pane open/hide/focus + input + slash + chat' -Tag 'Feat
             Set-WtPanePosition -App $script:app -Position 'bottom' | Out-Null
             Open-AgentPane -App $script:app | Out-Null
         }
-        It 'Tab close cleans up (closing a tab tears down its pre-warmed helper and ACP session)' {
-            # Each tab owns a helper and an ACP session. Closing the tab must cross the real
-            # Terminal -> helper -> master -> Copilot boundary and release both resources.
+        It 'Background tabs do not pre-warm unused agent helpers' {
             $rootPid = $script:app.Pid
             $before = @(Get-DescendantWtaIds -RootPid $rootPid).Count
+            $tab = New-WtTab -App $script:app -Title 'background-no-prewarm'
+            Start-Sleep -Seconds 3
+            @(Get-DescendantWtaIds -RootPid $rootPid).Count |
+                Should -Be $before -Because 'an unselected background tab must not create an unused helper'
+            Close-WtPane -App $script:app -SessionId $tab.session_id
+        }
+
+        It 'Tab close cleans up (closing a tab tears down its pre-warmed helper and ACP session)' {
+            # Background tabs stay lightweight. Once selected, the tab owns a helper and ACP
+            # session; closing it must cross Terminal -> helper -> master -> Copilot and release
+            # both resources.
+            $rootPid = $script:app.Pid
+            $before = @(Get-DescendantWtaIds -RootPid $rootPid).Count
+            $existingAgentPanes = @(Get-AgentPaneSessions -App $script:app | ForEach-Object PaneSessionId)
             $tab = New-WtTab -App $script:app -Title 'cleanup'
+            Set-WtPaneFocus -App $script:app -SessionId $tab.session_id
             $grew = Test-Until -TimeoutSec 15 -IntervalSec 1 -Condition { @(Get-DescendantWtaIds -RootPid $rootPid).Count -gt $before }
-            $grew | Should -BeTrue -Because 'a new tab pre-warms its own helper (one more wta.exe child)'
-            $agentSession = Wait-NewAgentPaneSession -App $script:app -OwnerPaneSessionId $tab.session_id -TimeoutSec 90
+            $grew | Should -BeTrue -Because 'selecting the new tab materializes its helper'
+            $agentSession = Wait-NewAgentPaneSession -App $script:app -ExcludePaneSessionId $existingAgentPanes -TimeoutSec 90
             $agentSession.AcpSessionId |
                 Should -Not -BeNullOrEmpty -Because 'the tab must own a physical Copilot ACP session before it closes'
             Initialize-LogOffsets -App $script:app | Out-Null
@@ -130,18 +143,16 @@ Describe 'Feature: agent pane open/hide/focus + input + slash + chat' -Tag 'Feat
             # Drive the REAL /model command (proven live: Copilot opens a "Select model" modal
             # listing Auto + its model variants). The old test only checked the menu rendered.
             Invoke-AgentMenuItem -App $script:app -Name '/model'
-            # The picker title is localized (model_picker.title), so match it across all bundled
-            # locales rather than hardcoding the en-US "Select model" (would fail on non-en-US).
-            $titleRe = Get-WtaLocalizedTextRegex -Key 'model_picker.title'
-            if (-not $titleRe) { $titleRe = '(?i)Select model' }
-            Assert-AgentPaneText -App $script:app -Pattern $titleRe -TimeoutSec 15
             # Prove a selectable model row actually rendered, rather than guessing model names
             # (auto/claude/gpt drift with releases and "auto" matches "autofix"/"automatic"):
             # the picker marks its highlighted row with the "> " selector (model_popup.rs
             # highlight_symbol), drawn INSIDE the popup's left border — e.g. "│>  ● Claude …".
             # Require a popup border char (│/║/|) immediately before the marker so a Markdown
             # blockquote ("> …") or a stray "->" in the chat transcript can't false-positive.
-            (Get-AgentPaneText -App $script:app -MaxLines 60) | Should -Match '(?m)^\s*[│║|]\s*>\s+\S'
+            $pickerRendered = Test-Until -TimeoutSec 15 -IntervalSec 0.5 -Condition {
+                (Get-AgentPaneText -App $script:app -MaxLines 60) -match '(?m)^\s*[│║|]\s*>\s+\S'
+            }
+            $pickerRendered | Should -BeTrue -Because '/model must render a selectable model row'
             Send-AgentKey -App $script:app -Key Escape | Out-Null
             Clear-AgentInput -App $script:app | Out-Null
         }

@@ -49,7 +49,10 @@ fn passed_for_custom_agent_falls_back_when_no_custom_suffix() {
 // `pub(super)` so the sibling `slash_command_tests` module (see the
 // `#[path]` mod in app.rs) can reuse it instead of duplicating App::new.
 pub(super) fn test_app() -> App {
-    let (prompt_tx, _prompt_rx) = tokio::sync::mpsc::unbounded_channel();
+    let (prompt_tx, prompt_rx) = tokio::sync::mpsc::unbounded_channel();
+    // Most state-only tests do not inspect dispatched prompts, but the sender
+    // must remain open so they do not accidentally exercise transport loss.
+    std::mem::forget(prompt_rx);
     let (recommendation_tx, _recommendation_rx) = tokio::sync::mpsc::unbounded_channel();
     let (permission_tx, _permission_rx) = tokio::sync::mpsc::unbounded_channel();
     let (cancel_tx, _cancel_rx) = tokio::sync::mpsc::unbounded_channel();
@@ -76,6 +79,738 @@ pub(super) fn test_app() -> App {
         false,
         Arc::new(crate::shell::ShellManager::new()),
     )
+}
+
+fn test_app_with_prompt_channels() -> (
+    App,
+    tokio::sync::mpsc::UnboundedReceiver<PromptSubmission>,
+    tokio::sync::mpsc::UnboundedReceiver<CancelRequest>,
+    tokio::sync::mpsc::UnboundedReceiver<AgentLifecycleRequest>,
+) {
+    let (prompt_tx, prompt_rx) = tokio::sync::mpsc::unbounded_channel();
+    let (recommendation_tx, _recommendation_rx) = tokio::sync::mpsc::unbounded_channel();
+    let (permission_tx, _permission_rx) = tokio::sync::mpsc::unbounded_channel();
+    let (cancel_tx, cancel_rx) = tokio::sync::mpsc::unbounded_channel();
+    let (new_session_tx, _new_session_rx) = tokio::sync::mpsc::unbounded_channel();
+    let (load_session_tx, _load_session_rx) = tokio::sync::mpsc::unbounded_channel();
+    let (drop_session_tx, _drop_session_rx) = tokio::sync::mpsc::unbounded_channel();
+    let (rename_session_tx, _rename_session_rx) = tokio::sync::mpsc::unbounded_channel();
+    let (restart_tx, restart_rx) = tokio::sync::mpsc::unbounded_channel();
+    let (master_tx, _master_rx) = tokio::sync::mpsc::unbounded_channel();
+    (
+        App::new(
+            prompt_tx,
+            recommendation_tx,
+            permission_tx,
+            cancel_tx,
+            new_session_tx,
+            load_session_tx,
+            drop_session_tx,
+            rename_session_tx,
+            restart_tx,
+            master_tx,
+            Arc::new(AtomicBool::new(false)),
+            true,
+            false,
+            Arc::new(crate::shell::ShellManager::new()),
+        ),
+        prompt_rx,
+        cancel_rx,
+        restart_rx,
+    )
+}
+
+fn connected_event(session_id: &str) -> AppEvent {
+    connected_event_for_generation(session_id, INITIAL_BINDING_GENERATION)
+}
+
+fn connected_event_for_generation(session_id: &str, binding_generation: u64) -> AppEvent {
+    AppEvent::AgentConnected {
+        binding_generation,
+        name: "Copilot".to_string(),
+        model: None,
+        version: None,
+        session_id: session_id.to_string(),
+        available_models: Vec::new(),
+        current_model_id: None,
+        load_session_supported: true,
+        image_supported: true,
+    }
+}
+
+#[test]
+fn connecting_enter_queues_one_prompt_without_acp_dispatch() {
+    let (mut app, mut prompt_rx, _cancel_rx, _restart_rx) = test_app_with_prompt_channels();
+    app.state = ConnectionState::Connecting("Initializing ACP...".to_string());
+    app.current_agent_id = "copilot".to_string();
+    app.current_tab_mut().input = "first prompt".to_string();
+    app.current_tab_mut().cursor_pos = "first prompt".len();
+
+    app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+    assert!(matches!(app.current_tab().turn, TurnState::Queued(_)));
+    assert!(matches!(
+        app.current_tab().messages.last(),
+        Some(ChatMessage::User(text)) if text == "first prompt"
+    ));
+    assert!(prompt_rx.try_recv().is_err());
+
+    app.current_tab_mut().input = "second prompt".to_string();
+    app.current_tab_mut().cursor_pos = "second prompt".len();
+    app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+    assert_eq!(app.current_tab().input, "second prompt");
+    assert!(prompt_rx.try_recv().is_err());
+}
+
+#[test]
+fn queued_prompt_ctrl_c_cancels_locally_without_acp_cancel() {
+    let (mut app, mut prompt_rx, mut cancel_rx, _restart_rx) = test_app_with_prompt_channels();
+    app.state = ConnectionState::Connecting("Initializing ACP...".to_string());
+    app.current_tab_mut().input = "queued prompt".to_string();
+    app.current_tab_mut().cursor_pos = "queued prompt".len();
+    app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+
+    app.handle_key(KeyEvent::new(KeyCode::Char('c'), KeyModifiers::CONTROL));
+
+    assert_eq!(app.current_tab().turn, TurnState::Idle);
+    assert!(prompt_rx.try_recv().is_err());
+    assert!(cancel_rx.try_recv().is_err());
+}
+
+#[test]
+fn duplicate_agent_connected_dispatches_queued_prompt_exactly_once() {
+    let (mut app, mut prompt_rx, _cancel_rx, _restart_rx) = test_app_with_prompt_channels();
+    app.state = ConnectionState::Connecting("Initializing ACP...".to_string());
+    app.current_tab_mut().input = "dispatch once".to_string();
+    app.current_tab_mut().cursor_pos = "dispatch once".len();
+    app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+
+    app.handle_event(connected_event("session-ready"));
+    assert_eq!(prompt_rx.try_recv().unwrap().text, "dispatch once");
+    assert!(matches!(app.current_tab().turn, TurnState::Submitted(_)));
+
+    app.handle_event(connected_event("session-ready"));
+    assert!(prompt_rx.try_recv().is_err());
+}
+
+#[test]
+fn closed_prompt_channel_restores_exact_queued_prompt() {
+    let (mut app, prompt_rx, _cancel_rx, _restart_rx) = test_app_with_prompt_channels();
+    app.state = ConnectionState::Connecting("Initializing ACP...".to_string());
+    app.current_tab_mut().input = "retry unchanged".to_string();
+    app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+    let expected = match &app.current_tab().turn {
+        TurnState::Queued(queued) => queued.clone(),
+        other => panic!("expected queued prompt, got {other:?}"),
+    };
+    drop(prompt_rx);
+
+    app.handle_event(connected_event("session-with-closed-channel"));
+
+    assert_eq!(app.current_tab().turn, TurnState::Queued(expected));
+    assert!(matches!(
+        app.current_tab().messages.last(),
+        Some(ChatMessage::User(text)) if text == "retry unchanged"
+    ));
+}
+
+#[test]
+fn connected_enter_closed_channel_preserves_exact_submission_until_reconnect() {
+    let (mut app, prompt_rx, _cancel_rx, _restart_rx) = test_app_with_prompt_channels();
+    app.set_master_pipe_acp_params(
+        "pipe".into(),
+        "copilot --acp --stdio".into(),
+        Some("copilot".into()),
+        None,
+        None,
+        crate::agent_source::AgentSource::Host,
+        None,
+        Some(DEFAULT_TAB_ID.into()),
+        Arc::new(crate::shell::ShellManager::new()),
+        true,
+    );
+    app.handle_event(connected_event("connected-session"));
+    app.pane_id = Some("pane-1".into());
+    app.tab_id = Some(DEFAULT_TAB_ID.into());
+    app.window_id = Some("window-1".into());
+    queue_test_image(&mut app, "race");
+    app.current_tab_mut().insert_input_str("preserve context");
+    drop(prompt_rx);
+
+    app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+
+    let (expected, visible_prompt) = match &app.current_tab().turn {
+        TurnState::Queued(queued) => {
+            assert_eq!(queued.binding_generation, INITIAL_BINDING_GENERATION);
+            assert_eq!(queued.submission.text, "preserve context");
+            assert_eq!(queued.submission.images.len(), 1);
+            assert_eq!(
+                queued
+                    .submission
+                    .pane_context
+                    .as_ref()
+                    .and_then(|context| context.pane_id.as_deref()),
+                Some("pane-1")
+            );
+            (queued.submission.clone(), queued.prompt.text.clone())
+        }
+        other => panic!("failed send must restore typed queued state, got {other:?}"),
+    };
+    assert!(app.pending_acp_start);
+    assert!(matches!(app.state, ConnectionState::Connecting(_)));
+    assert!(app
+        .current_tab()
+        .messages
+        .iter()
+        .any(|message| matches!(message, ChatMessage::User(text) if text == &visible_prompt)));
+
+    app.handle_event(AppEvent::MasterDisconnected);
+    assert!(matches!(app.current_tab().turn, TurnState::Queued(_)));
+    let (replacement_tx, mut replacement_rx) = tokio::sync::mpsc::unbounded_channel();
+    app.prompt_tx = replacement_tx;
+    app.handle_event(connected_event("replacement-session"));
+    assert_eq!(replacement_rx.try_recv().unwrap(), expected);
+    assert!(replacement_rx.try_recv().is_err());
+}
+
+#[test]
+fn fatal_connect_failure_cancels_queued_prompt_without_dispatch() {
+    let (mut app, mut prompt_rx, mut cancel_rx, _restart_rx) = test_app_with_prompt_channels();
+    app.state = ConnectionState::Connecting("Initializing ACP...".to_string());
+    app.current_tab_mut().input = "never dispatch".to_string();
+    app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+
+    app.handle_event(AppEvent::AgentError {
+        session_id: None,
+        failure: crate::protocol::acp::failure::AgentFailure::HandshakeFailed {
+            stage: crate::protocol::acp::failure::HandshakeStage::Initialize,
+            detail: "failed".to_string(),
+        },
+        message: "failed".to_string(),
+    });
+
+    assert_eq!(app.current_tab().turn, TurnState::Idle);
+    assert!(matches!(app.state, ConnectionState::Failed(_)));
+    assert!(prompt_rx.try_recv().is_err());
+    assert!(cancel_rx.try_recv().is_err());
+}
+
+#[test]
+fn auth_setup_reconnect_retains_and_dispatches_same_agent_queue() {
+    let (mut app, mut prompt_rx, _cancel_rx, _restart_rx) = test_app_with_prompt_channels();
+    app.state = ConnectionState::Connecting("Initializing ACP...".to_string());
+    app.current_agent_id = "copilot".to_string();
+    app.current_tab_mut().input = "after sign in".to_string();
+    app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+
+    app.handle_event(AppEvent::AgentError {
+        session_id: None,
+        failure: crate::protocol::acp::failure::AgentFailure::AuthRequired {
+            message: "sign in required".to_string(),
+        },
+        message: "sign in required".to_string(),
+    });
+    assert!(matches!(app.current_tab().turn, TurnState::Queued(_)));
+    assert_eq!(app.mode, AppMode::Setup);
+    assert!(prompt_rx.try_recv().is_err());
+
+    app.handle_event(connected_event("session-after-auth"));
+    assert_eq!(prompt_rx.try_recv().unwrap().text, "after sign in");
+    assert!(matches!(app.current_tab().turn, TurnState::Submitted(_)));
+}
+
+#[test]
+fn successful_acp_connection_supersedes_earlier_preflight_failure() {
+    let (mut app, mut prompt_rx, _cancel_rx, _restart_rx) = test_app_with_prompt_channels();
+    app.state = ConnectionState::Connecting("Checking agent...".to_string());
+    app.current_agent_id = "copilot".to_string();
+    app.current_tab_mut().input = "send after authoritative connect".to_string();
+    app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+
+    app.handle_event(AppEvent::PreflightComplete(PreflightResult {
+        agent_id: "copilot".to_string(),
+        display_name: "Copilot".to_string(),
+        cli_status: CheckStatus::Failed("not found".to_string()),
+        cli_path: None,
+        auth_status: CheckStatus::Skipped,
+        install_hint: String::new(),
+        install_url: String::new(),
+        auth_hint: String::new(),
+    }));
+    assert_eq!(app.mode, AppMode::Setup);
+    assert!(app.preflight_setup_active);
+    assert!(matches!(app.current_tab().turn, TurnState::Queued(_)));
+
+    app.handle_event(connected_event("late-session"));
+    assert_eq!(app.mode, AppMode::Chat);
+    assert_eq!(app.state, ConnectionState::Connected);
+    assert!(!app.preflight_setup_active);
+    assert_eq!(
+        prompt_rx.try_recv().unwrap().text,
+        "send after authoritative connect"
+    );
+}
+
+#[test]
+fn late_preflight_failure_cannot_override_successful_acp_connection() {
+    let mut app = test_app();
+    app.current_agent_id = "copilot".to_string();
+    app.handle_event(connected_event("connected-session"));
+    app.handle_event(AppEvent::PreflightComplete(PreflightResult {
+        agent_id: "copilot".to_string(),
+        display_name: "Copilot".to_string(),
+        cli_status: CheckStatus::Failed("late failure".to_string()),
+        cli_path: None,
+        auth_status: CheckStatus::Skipped,
+        install_hint: String::new(),
+        install_url: String::new(),
+        auth_hint: String::new(),
+    }));
+
+    assert_eq!(app.mode, AppMode::Chat);
+    assert_eq!(app.state, ConnectionState::Connected);
+    assert!(!app.preflight_setup_active);
+    assert!(app.setup.is_none());
+}
+
+#[test]
+fn late_startup_preflight_failure_cannot_override_master_disconnect_recovery() {
+    let mut app = test_app();
+    app.current_agent_id = "copilot".to_string();
+    app.set_master_pipe_acp_params(
+        "master-pipe".into(),
+        "copilot --acp".into(),
+        Some("copilot".into()),
+        None,
+        None,
+        crate::agent_source::AgentSource::Host,
+        None,
+        Some("owner-tab".into()),
+        Arc::clone(&app.shell_mgr),
+        true,
+    );
+
+    app.handle_event(connected_event("connected-session"));
+    app.handle_event(AppEvent::MasterDisconnected);
+    assert!(app.pending_acp_start);
+    assert!(matches!(app.state, ConnectionState::Connecting(_)));
+
+    app.handle_event(AppEvent::PreflightComplete(PreflightResult {
+        agent_id: "copilot".to_string(),
+        display_name: "Copilot".to_string(),
+        cli_status: CheckStatus::Failed("late failure".to_string()),
+        cli_path: None,
+        auth_status: CheckStatus::Skipped,
+        install_hint: String::new(),
+        install_url: String::new(),
+        auth_hint: String::new(),
+    }));
+
+    assert_eq!(app.mode, AppMode::Chat);
+    assert!(matches!(app.state, ConnectionState::Connecting(_)));
+    assert!(!app.preflight_setup_active);
+    assert!(app.setup.is_none());
+}
+
+#[test]
+fn startup_preflight_failure_still_surfaces_after_disconnect_without_connection() {
+    let mut app = test_app();
+    app.current_agent_id = "copilot".to_string();
+    app.set_master_pipe_acp_params(
+        "master-pipe".into(),
+        "copilot --acp".into(),
+        Some("copilot".into()),
+        None,
+        None,
+        crate::agent_source::AgentSource::Host,
+        None,
+        Some("owner-tab".into()),
+        Arc::clone(&app.shell_mgr),
+        true,
+    );
+
+    app.handle_event(AppEvent::MasterDisconnected);
+    app.handle_event(AppEvent::PreflightComplete(PreflightResult {
+        agent_id: "copilot".to_string(),
+        display_name: "Copilot".to_string(),
+        cli_status: CheckStatus::Failed("not found".to_string()),
+        cli_path: None,
+        auth_status: CheckStatus::Skipped,
+        install_hint: String::new(),
+        install_url: String::new(),
+        auth_hint: String::new(),
+    }));
+
+    assert_eq!(app.mode, AppMode::Setup);
+    assert!(app.preflight_setup_active);
+    assert!(app.setup.is_some());
+}
+
+#[test]
+fn explicit_agent_rebind_visibly_cancels_queued_prompt() {
+    let (mut app, mut prompt_rx, _cancel_rx, mut restart_rx) = test_app_with_prompt_channels();
+    app.state = ConnectionState::Connecting("Initializing ACP...".to_string());
+    app.current_agent_id = "copilot".to_string();
+    app.owner_tab_id = Some(DEFAULT_TAB_ID.to_string());
+    app.window_id = Some("window-1".to_string());
+    app.current_tab_mut().input = "old agent prompt".to_string();
+    app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+
+    app.handle_event(AppEvent::WtEvent {
+        method: "rebind_agent".to_string(),
+        pane_id: String::new(),
+        tab_id: Some(DEFAULT_TAB_ID.to_string()),
+        params: json!({
+            "operation_id": "rebind-1",
+            "window_id": "window-1",
+            "tab_id": DEFAULT_TAB_ID,
+            "generation": 1,
+            "agent_id": "gemini",
+            "acp_model": null,
+            "custom_model_selection": null,
+            "agent_source": "host",
+            "wsl_distro": null
+        }),
+    });
+
+    assert!(!matches!(app.current_tab().turn, TurnState::Queued(_)));
+    assert!(app.current_tab().messages.iter().any(|message| matches!(
+        message,
+        ChatMessage::Notice {
+            kind: NoticeKind::Success,
+            ..
+        }
+    )));
+    assert!(prompt_rx.try_recv().is_err());
+    assert!(matches!(
+        restart_rx.try_recv(),
+        Ok(AgentLifecycleRequest::RebindAgent(_))
+    ));
+}
+
+#[test]
+fn stale_connected_during_rebind_cannot_consume_new_binding_queue() {
+    let (mut app, mut prompt_rx, _cancel_rx, mut restart_rx) = test_app_with_prompt_channels();
+    app.current_agent_id = "copilot".to_string();
+    app.owner_tab_id = Some(DEFAULT_TAB_ID.to_string());
+    app.window_id = Some("window-1".to_string());
+    app.handle_event(AppEvent::WtEvent {
+        method: "rebind_agent".to_string(),
+        pane_id: String::new(),
+        tab_id: Some(DEFAULT_TAB_ID.to_string()),
+        params: json!({
+            "operation_id": "rebind-1",
+            "window_id": "window-1",
+            "tab_id": DEFAULT_TAB_ID,
+            "generation": 1,
+            "agent_id": "gemini",
+            "agent_source": "host"
+        }),
+    });
+    assert!(matches!(
+        restart_rx.try_recv(),
+        Ok(AgentLifecycleRequest::RebindAgent(_))
+    ));
+
+    app.current_tab_mut().input = "new binding prompt".to_string();
+    app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+    let new_generation = app.binding_generation;
+    assert!(new_generation > INITIAL_BINDING_GENERATION);
+
+    app.handle_event(connected_event_for_generation(
+        "stale-session",
+        INITIAL_BINDING_GENERATION,
+    ));
+    assert!(matches!(app.current_tab().turn, TurnState::Queued(_)));
+    assert!(prompt_rx.try_recv().is_err());
+
+    app.handle_event(connected_event_for_generation(
+        "current-session",
+        new_generation,
+    ));
+    assert_eq!(
+        prompt_rx.try_recv().unwrap().text,
+        "new binding prompt",
+        "only the authoritative binding may consume queued input"
+    );
+}
+
+#[test]
+fn transparent_master_reconnect_preserves_transcript_and_dispatches_queue() {
+    let (mut app, mut prompt_rx, _cancel_rx, _restart_rx) = test_app_with_prompt_channels();
+    app.current_agent_id = "copilot".to_string();
+    app.set_master_pipe_acp_params(
+        "pipe".to_string(),
+        "copilot --acp --stdio".to_string(),
+        Some("copilot".to_string()),
+        None,
+        None,
+        crate::agent_source::AgentSource::Host,
+        None,
+        Some(DEFAULT_TAB_ID.to_string()),
+        Arc::new(crate::shell::ShellManager::new()),
+        true,
+    );
+    app.current_tab_mut().completed_turns.push(CompletedTurn {
+        prompt: "completed prompt".to_string(),
+        details: vec![ChatMessage::Agent("completed response".to_string())],
+        expanded: true,
+        trailing_marker: None,
+    });
+    app.current_tab_mut().input = "survive reconnect".to_string();
+    app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+    app.current_tab_mut()
+        .messages
+        .push(ChatMessage::info("transport note".to_string()));
+    let expected_messages = app.current_tab().messages.clone();
+    let expected_completed_turns = app.current_tab().completed_turns.clone();
+
+    app.handle_event(AppEvent::MasterDisconnected);
+    assert!(matches!(app.current_tab().turn, TurnState::Queued(_)));
+    assert_eq!(app.current_tab().messages, expected_messages);
+    assert_eq!(app.current_tab().completed_turns, expected_completed_turns);
+    assert!(prompt_rx.try_recv().is_err());
+
+    app.handle_event(connected_event("reconnected-session"));
+    assert_eq!(prompt_rx.try_recv().unwrap().text, "survive reconnect");
+}
+
+fn configure_reconnectable_app(app: &mut App) {
+    app.current_agent_id = "copilot".to_string();
+    app.set_master_pipe_acp_params(
+        "pipe".to_string(),
+        "copilot --acp --stdio".to_string(),
+        Some("copilot".to_string()),
+        None,
+        None,
+        crate::agent_source::AgentSource::Host,
+        None,
+        Some(DEFAULT_TAB_ID.to_string()),
+        Arc::new(crate::shell::ShellManager::new()),
+        true,
+    );
+}
+
+#[test]
+fn master_disconnect_finalizes_submitted_turn_once() {
+    let mut app = test_app();
+    configure_reconnectable_app(&mut app);
+    submit_test_prompt(&mut app, "submitted");
+
+    app.handle_event(AppEvent::MasterDisconnected);
+
+    assert!(matches!(app.current_tab().turn, TurnState::Idle));
+    assert_eq!(app.current_tab().completed_turns.len(), 1);
+    let completed = &app.current_tab().completed_turns[0];
+    assert_eq!(completed.prompt, "submitted");
+    assert!(completed
+        .trailing_marker
+        .as_deref()
+        .is_some_and(|marker| marker.contains(t!("connection.reconnecting").as_ref())));
+
+    app.handle_event(AppEvent::MasterDisconnected);
+    assert_eq!(
+        app.current_tab().completed_turns.len(),
+        1,
+        "duplicate disconnect must not finalize the turn twice"
+    );
+}
+
+#[test]
+fn master_disconnect_finalizes_streaming_turn_and_preserves_partial_output() {
+    let mut app = test_app();
+    configure_reconnectable_app(&mut app);
+    submit_test_prompt(&mut app, "streaming");
+    app.turn_observe_chunk(DEFAULT_TAB_ID, ChunkKind::Message, "partial response");
+
+    app.handle_event(AppEvent::MasterDisconnected);
+
+    assert!(matches!(app.current_tab().turn, TurnState::Idle));
+    let completed = app.current_tab().completed_turns.last().unwrap();
+    assert!(completed
+        .details
+        .iter()
+        .any(|message| matches!(message, ChatMessage::Agent(text) if text == "partial response")));
+    assert!(completed.trailing_marker.is_some());
+}
+
+#[test]
+fn master_disconnect_marks_pending_surfaced_turn_without_replacing_completed_history() {
+    let mut app = test_app();
+    configure_reconnectable_app(&mut app);
+    let prompt = SubmittedPrompt {
+        id: 88,
+        text: "surfaced".into(),
+        submitted_at_unix_s: 0.0,
+        context: TurnContext::default(),
+        autofix: None,
+    };
+    app.current_tab_mut().completed_turns.push(CompletedTurn {
+        prompt: prompt.text.clone(),
+        details: vec![ChatMessage::Agent("complete response".into())],
+        expanded: true,
+        trailing_marker: None,
+    });
+    app.current_tab_mut().turn = TurnState::Surfaced {
+        prompt,
+        outcome: TurnOutcome::ChatTurn,
+        end_pending: true,
+    };
+
+    app.handle_event(AppEvent::MasterDisconnected);
+
+    assert!(matches!(app.current_tab().turn, TurnState::Idle));
+    assert_eq!(app.current_tab().completed_turns.len(), 1);
+    assert!(app.current_tab().completed_turns[0]
+        .trailing_marker
+        .as_deref()
+        .is_some_and(|marker| marker.contains(t!("connection.reconnecting").as_ref())));
+}
+
+#[test]
+fn master_disconnect_preserves_queued_prompt_and_prior_completed_turns() {
+    let (mut app, mut prompt_rx, _cancel_rx, _restart_rx) = test_app_with_prompt_channels();
+    configure_reconnectable_app(&mut app);
+    app.state = ConnectionState::Connecting("connecting".into());
+    app.current_tab_mut().completed_turns.push(CompletedTurn {
+        prompt: "earlier".into(),
+        details: vec![ChatMessage::Agent("done".into())],
+        expanded: true,
+        trailing_marker: None,
+    });
+    app.current_tab_mut().input = "queued".into();
+    app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+    let queued = app.current_tab().turn.clone();
+    let completed = app.current_tab().completed_turns.clone();
+
+    app.handle_event(AppEvent::MasterDisconnected);
+
+    assert_eq!(app.current_tab().turn, queued);
+    assert_eq!(app.current_tab().completed_turns, completed);
+    assert!(prompt_rx.try_recv().is_err());
+}
+
+#[test]
+fn tab_drag_rekeys_queued_context_and_waits_for_acp_ack() {
+    let (mut app, mut prompt_rx, _cancel_rx, _restart_rx) = test_app_with_prompt_channels();
+    let (rename_tx, mut rename_rx) = tokio::sync::mpsc::unbounded_channel();
+    app.rename_session_tx = rename_tx;
+    app.tab_id = Some(DEFAULT_TAB_ID.to_string());
+    app.window_id = Some("old-window".to_string());
+    app.current_tab_mut().input = "dragged prompt".to_string();
+    app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+
+    app.rename_tab_session(DEFAULT_TAB_ID, "new-tab", Some("new-window"));
+    let rename = rename_rx.try_recv().unwrap();
+    assert_eq!(rename.old_tab_id, DEFAULT_TAB_ID);
+    assert_eq!(rename.new_tab_id, "new-tab");
+    let queued = match &app.tab_sessions["new-tab"].turn {
+        TurnState::Queued(queued) => queued,
+        other => panic!("expected queued prompt, got {other:?}"),
+    };
+    let context = queued.submission.pane_context.as_ref().unwrap();
+    assert_eq!(context.tab_id.as_deref(), Some("new-tab"));
+    assert_eq!(context.window_id.as_deref(), Some("new-window"));
+    assert!(queued.rekey_pending);
+
+    app.handle_event(connected_event("dragged-session"));
+    assert!(prompt_rx.try_recv().is_err());
+    app.handle_event(AppEvent::TabSessionRekeyed {
+        tab_id: "new-tab".to_string(),
+        binding_generation: rename.binding_generation,
+    });
+    let dispatched = prompt_rx.try_recv().unwrap();
+    assert_eq!(
+        dispatched
+            .pane_context
+            .as_ref()
+            .and_then(|context| context.tab_id.as_deref()),
+        Some("new-tab")
+    );
+}
+
+#[test]
+fn prompt_after_tab_drag_waits_for_acp_rekey_ack() {
+    let (mut app, mut prompt_rx, _cancel_rx, _restart_rx) = test_app_with_prompt_channels();
+    let (rename_tx, mut rename_rx) = tokio::sync::mpsc::unbounded_channel();
+    app.rename_session_tx = rename_tx;
+    app.tab_id = Some(DEFAULT_TAB_ID.to_string());
+    app.window_id = Some("old-window".to_string());
+    app.handle_event(connected_event("dragged-session"));
+
+    app.rename_tab_session(DEFAULT_TAB_ID, "new-tab", Some("new-window"));
+    let rename = rename_rx.try_recv().unwrap();
+    app.current_tab_mut().input = "prompt after drag".to_string();
+    app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+
+    let queued = match &app.tab_sessions["new-tab"].turn {
+        TurnState::Queued(queued) => queued,
+        other => panic!("expected queued prompt, got {other:?}"),
+    };
+    assert_eq!(queued.binding_generation, rename.binding_generation);
+    assert!(queued.rekey_pending);
+    assert!(
+        prompt_rx.try_recv().is_err(),
+        "prompt must not reach ACP before the rekey acknowledgment"
+    );
+
+    app.handle_event(AppEvent::TabSessionRekeyed {
+        tab_id: "new-tab".to_string(),
+        binding_generation: rename.binding_generation,
+    });
+
+    assert_eq!(prompt_rx.try_recv().unwrap().text, "prompt after drag");
+}
+
+#[test]
+fn tab_drag_closed_rekey_channel_cancels_queue_and_updates_reconnect_owner() {
+    let (mut app, mut prompt_rx, _cancel_rx, _restart_rx) = test_app_with_prompt_channels();
+    app.set_master_pipe_acp_params(
+        "pipe".to_string(),
+        "copilot --acp --stdio".to_string(),
+        Some("copilot".to_string()),
+        None,
+        None,
+        crate::agent_source::AgentSource::Host,
+        None,
+        Some(DEFAULT_TAB_ID.to_string()),
+        Arc::new(crate::shell::ShellManager::new()),
+        true,
+    );
+    app.owner_tab_id = Some(DEFAULT_TAB_ID.to_string());
+    app.tab_id = Some(DEFAULT_TAB_ID.to_string());
+    app.window_id = Some("old-window".to_string());
+    app.agent_reconnect_state = AgentReconnectState::Disconnecting(AgentReconnectRequest {
+        operation_id: "rebind".to_string(),
+        window_id: "old-window".to_string(),
+        generation: 1,
+        agent_id: "copilot".to_string(),
+        acp_model: None,
+        custom_model_selection: None,
+        agent_source: crate::agent_source::AgentSource::Host,
+    });
+    app.current_tab_mut().input = "do not misroute".to_string();
+    app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+
+    app.rename_tab_session(DEFAULT_TAB_ID, "new-tab", Some("new-window"));
+
+    assert_eq!(app.tab_sessions["new-tab"].turn, TurnState::Idle);
+    assert!(app.tab_sessions["new-tab"].messages.iter().any(
+        |message| matches!(message, ChatMessage::Notice { text, .. } if text == t!("system.cancelled").as_ref())
+    ));
+    assert!(prompt_rx.try_recv().is_err());
+    assert!(app.pending_acp_start);
+    assert_eq!(app.owner_tab_id.as_deref(), Some("new-tab"));
+    assert_eq!(
+        app.deferred_acp
+            .as_ref()
+            .and_then(|params| params.owner_tab_id.as_deref()),
+        Some("new-tab")
+    );
+    assert_eq!(app.pending_tab_rekeys.len(), 1);
+    assert!(matches!(
+        &app.agent_reconnect_state,
+        AgentReconnectState::Disconnecting(request) if request.window_id == "new-window"
+    ));
 }
 
 fn test_app_with_restart_rx() -> (
@@ -913,7 +1648,7 @@ fn empty_pane_session_start_does_not_evict_a_bound_session() {
 /// key in that map.
 #[test]
 fn empty_pane_session_start_is_not_registered_in_active_by_pane() {
-    use crate::agent_sessions::{AgentSessionRegistry, AgentStatus, CliSource, SessionEvent};
+    use crate::agent_sessions::{AgentSessionRegistry, AgentStatus, SessionEvent};
     let mut reg = AgentSessionRegistry::new();
     let params = json!({
         "event": "agent.session.start",
@@ -2017,6 +2752,7 @@ fn agent_connected_does_not_add_disclaimer_while_resuming() {
     });
 
     app.handle_event(AppEvent::AgentConnected {
+        binding_generation: INITIAL_BINDING_GENERATION,
         name: "Copilot".to_string(),
         model: None,
         version: None,
@@ -3354,6 +4090,7 @@ fn fresh_agent_connection_model_replaces_stale_agent_default() {
     app.agent_current_model_id = Some("stale".into());
 
     app.handle_event(AppEvent::AgentConnected {
+        binding_generation: INITIAL_BINDING_GENERATION,
         name: "Agent".into(),
         model: None,
         version: None,
@@ -4179,6 +4916,7 @@ fn custom_model_catalog_hot_update_rebuilds_picker_without_stale_rows() {
     let mut app = test_app();
     app.current_agent_id = "copilot".into();
     app.handle_event(AppEvent::AgentConnected {
+        binding_generation: INITIAL_BINDING_GENERATION,
         name: "Copilot".into(),
         model: None,
         version: None,
@@ -4392,6 +5130,7 @@ fn same_agent_host_and_wsl_keep_host_catalogs_isolated() {
     let connect = |app: &mut App| {
         app.current_agent_id = "copilot".into();
         app.handle_event(AppEvent::AgentConnected {
+            binding_generation: INITIAL_BINDING_GENERATION,
             name: "Copilot".into(),
             model: None,
             version: None,
@@ -4478,6 +5217,7 @@ fn custom_model_hot_update_is_ignored_for_unsupported_profile_backend() {
     let mut app = test_app();
     app.current_agent_id = "claude".into();
     app.handle_event(AppEvent::AgentConnected {
+        binding_generation: INITIAL_BINDING_GENERATION,
         name: "Claude".into(),
         model: None,
         version: None,
@@ -6421,6 +7161,7 @@ fn agent_connected_restores_proposal_channels() {
     app.proposal_channels.set_agent_transport_available(false);
 
     app.handle_event(AppEvent::AgentConnected {
+        binding_generation: INITIAL_BINDING_GENERATION,
         name: "Copilot".to_string(),
         model: None,
         version: None,
@@ -14423,6 +15164,7 @@ fn usage_lifecycle_load_and_new_connection_clear_but_model_change_preserves() {
 
     app.current_tab_mut().session_id = Some("old-session".to_string());
     app.handle_event(AppEvent::AgentConnected {
+        binding_generation: INITIAL_BINDING_GENERATION,
         name: "Agent".to_string(),
         model: None,
         version: None,

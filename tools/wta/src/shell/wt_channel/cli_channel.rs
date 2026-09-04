@@ -170,6 +170,27 @@ fn json_id_as_str(v: &serde_json::Value) -> Option<String> {
     }
 }
 
+fn prompt_context_args(params: &serde_json::Value) -> Vec<String> {
+    let source = params
+        .get("source_session_id")
+        .and_then(json_id_as_str)
+        .unwrap_or_default();
+    let fallback_lines = params
+        .get("fallback_lines")
+        .and_then(|value| value.as_u64())
+        .unwrap_or(24)
+        .to_string();
+    let mut args = vec![
+        "prompt-context".to_string(),
+        "--fallback-lines".to_string(),
+        fallback_lines,
+    ];
+    if !source.is_empty() {
+        args.extend(["--source".to_string(), source]);
+    }
+    args
+}
+
 /// Resolve the full path to `wtcli.exe` at startup.
 pub(crate) fn resolve_wtcli_path() -> String {
     // 1. Explicit override via environment variable.
@@ -757,6 +778,11 @@ impl WtChannel for CliChannel {
                 }
                 self.run_wtcli(&args).await
             }
+            "get_prompt_context" => {
+                let owned_args = prompt_context_args(&params);
+                let args = owned_args.iter().map(String::as_str).collect::<Vec<_>>();
+                self.run_wtcli(&args).await
+            }
             "get_process_status" => {
                 let pane_id = params
                     .get("session_id")
@@ -914,6 +940,27 @@ impl WtChannel for CliChannel {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn prompt_context_arguments_map_source_and_fallback_lines() {
+        assert_eq!(
+            prompt_context_args(&serde_json::json!({
+                "source_session_id": "11111111-2222-3333-4444-555555555555",
+                "fallback_lines": 30,
+            })),
+            vec![
+                "prompt-context",
+                "--fallback-lines",
+                "30",
+                "--source",
+                "11111111-2222-3333-4444-555555555555",
+            ]
+        );
+        assert_eq!(
+            prompt_context_args(&serde_json::json!({})),
+            vec!["prompt-context", "--fallback-lines", "24"]
+        );
+    }
 
     #[tokio::test]
     async fn one_shot_captures_output() {

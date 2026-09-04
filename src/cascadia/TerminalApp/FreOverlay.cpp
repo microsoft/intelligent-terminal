@@ -8,6 +8,7 @@
 
 #include "../inc/AgentRegistry.h"
 #include "../inc/AgentAvailability.h"
+#include "../inc/FreAgentSetup.h"
 #include "../inc/WtaProcess.h"
 #include "../inc/ShellIntegration.h"
 #include "../inc/RtlHelper.h"
@@ -116,11 +117,11 @@ namespace winrt::TerminalApp::implementation
         }
 
         const auto allowedAgents = Reg::FilteredAcpAgents();
-        const auto availableAgents = ::Microsoft::Terminal::AgentAvailability::ProbeHostAgentIds();
+        const auto availableAgents = ::Microsoft::Terminal::AgentAvailability::GetCachedHostAgentIds();
         auto items = AgentComboBox().Items();
         items.Clear();
-        int32_t selectedIndex = 0;
-        int32_t idx = 0;
+        std::vector<std::wstring> selectableAgentIds;
+        ::Microsoft::Terminal::AgentAvailability::AgentIds selectableAgents;
 
         for (const auto& a : allowedAgents)
         {
@@ -144,18 +145,90 @@ namespace winrt::TerminalApp::implementation
             }
 
             items.Append(entry);
-
-            if (a.id == selectedId)
-            {
-                selectedIndex = idx;
-            }
-            idx++;
+            selectableAgentIds.emplace_back(a.id);
+            selectableAgents.emplace(a.id);
         }
 
-        if (items.Size() > 0)
+        const auto resolved = ::Microsoft::Terminal::AgentAvailability::SelectAvailableAllowedAgentId(
+            std::wstring_view{ selectedId },
+            selectableAgentIds,
+            selectableAgents);
+        const bool hasAgent = resolved.has_value();
+        if (resolved)
         {
-            AgentComboBox().SelectedIndex(selectedIndex);
+            for (uint32_t i = 0; i < selectableAgentIds.size(); ++i)
+            {
+                if (::Microsoft::Terminal::AgentAvailability::AgentIdEquals(selectableAgentIds[i], *resolved))
+                {
+                    AgentComboBox().SelectedIndex(gsl::narrow_cast<int32_t>(i));
+                    break;
+                }
+            }
         }
+        else
+        {
+            auto entry = winrt::make<FreAgentEntry>();
+            const auto availabilityState = ::Microsoft::Terminal::FreAgentSetup::ClassifyAvailability(
+                hasAgent,
+                !allowedAgents.empty(),
+                globals.IsAgentPolicyLocked());
+            const bool blockedByPolicy =
+                availabilityState == ::Microsoft::Terminal::FreAgentSetup::AvailabilityState::BlockedByPolicy;
+            const auto unavailableLabel = blockedByPolicy ?
+                                              RS_(L"AgentBlockedByPolicyTitle") :
+                                              RS_(L"AgentNotConfiguredTitle");
+            entry.DisplayLabel(unavailableLabel);
+            items.Append(entry);
+            AgentComboBox().SelectedIndex(0);
+
+            const auto explanation = blockedByPolicy ?
+                                         RS_(L"AgentBlockedByPolicySubtitle") :
+                                         RS_(L"AgentNotConfiguredSubtitle");
+            AgentPolicyNotice().Text(explanation);
+            AgentPolicyNotice().Visibility(Visibility::Visible);
+            Automation::AutomationProperties::SetHelpText(AgentComboBox(), explanation);
+            Automation::AutomationProperties::SetHelpText(SaveButton(), explanation);
+        }
+
+        AgentComboBox().IsEnabled(hasAgent);
+        const bool saving = SavingOverlay().Visibility() == Visibility::Visible;
+        SaveButton().IsEnabled(hasAgent && !saving);
+        SessionManagementToggle().IsEnabled(
+            hasAgent && !globals.IsAgentSessionHooksPolicyLocked());
+
+        if (hasAgent)
+        {
+            if (globals.IsAgentPolicyLocked())
+            {
+                const auto policyText = RS_(L"FreOverlay_PolicyLocked");
+                AgentPolicyNotice().Text(policyText);
+                AgentPolicyNotice().Visibility(Visibility::Visible);
+                Automation::AutomationProperties::SetHelpText(AgentComboBox(), policyText);
+            }
+            else
+            {
+                AgentPolicyNotice().Visibility(Visibility::Collapsed);
+                Automation::AutomationProperties::SetHelpText(AgentComboBox(), L"");
+            }
+            Automation::AutomationProperties::SetHelpText(SaveButton(), L"");
+        }
+    }
+
+    winrt::hstring FreOverlay::_SelectedAgentId()
+    {
+        if (const auto selected = AgentComboBox().SelectedItem())
+        {
+            if (const auto entry = selected.try_as<winrt::TerminalApp::FreAgentEntry>())
+            {
+                return entry.Id();
+            }
+        }
+        return {};
+    }
+
+    void FreOverlay::RefreshAgentAvailability()
+    {
+        _PopulateAgentComboBox();
     }
 
     // ── Initialize ──────────────────────────────────────────────────────
@@ -239,15 +312,6 @@ namespace winrt::TerminalApp::implementation
         // live install state, so this is re-run after a save to flip Copilot
         // from "(will install)" to "(installed)".
         _PopulateAgentComboBox();
-
-        // Agent dropdown — show policy notice if AllowedAgents GPO is active
-        if (globals.IsAgentPolicyLocked())
-        {
-            const auto policyText = RS_(L"FreOverlay_PolicyLocked");
-            AgentPolicyNotice().Text(policyText);
-            AgentPolicyNotice().Visibility(Visibility::Visible);
-            Automation::AutomationProperties::SetHelpText(AgentComboBox(), policyText);
-        }
 
         // Populate pane position ComboBox
         auto posItems = PanePositionComboBox().Items();
@@ -339,9 +403,10 @@ namespace winrt::TerminalApp::implementation
         // install skips the slow refresh step. Best-effort, no error UI.
         // Save will await any in-flight prewarm before its own winget call
         // to keep the two operations serialised.
+        const auto selectedAgentId = _SelectedAgentId();
         _MaybeStartPrewarm(
-            /*copilotMissing*/ !_IsAgentInstalled(L"copilot"),
-            /*nodeMissing*/ !_IsNodeInstalled());
+            /*copilotMissing*/ selectedAgentId == L"copilot" && !_IsAgentInstalled(L"copilot"),
+            /*nodeMissing*/ (selectedAgentId == L"claude" || selectedAgentId == L"codex") && !_IsNodeInstalled());
     }
 
     // ── Agent selection changed ─────────────────────────────────────────
@@ -349,6 +414,8 @@ namespace winrt::TerminalApp::implementation
     void FreOverlay::_OnAgentSelectionChanged(const IInspectable& /*sender*/,
                                               const winrt::Windows::UI::Xaml::Controls::SelectionChangedEventArgs& /*args*/)
     {
+        AgentInstallHintRow().Visibility(Visibility::Collapsed);
+
         // Show Node.js install hint for Claude/Codex (they use npx adapters)
         if (const auto selected = AgentComboBox().SelectedItem())
         {
@@ -1176,6 +1243,10 @@ namespace winrt::TerminalApp::implementation
     IAsyncOperation<bool> FreOverlay::_InstallHooksAsync(winrt::hstring agentId)
     {
         auto id = std::wstring{ agentId };
+        if (id.empty())
+        {
+            co_return false;
+        }
 
         co_await winrt::resume_background();
 
@@ -1207,6 +1278,9 @@ namespace winrt::TerminalApp::implementation
         // variable key.
         switch (kind)
         {
+        case FreProblemKind::AgentAvailability:
+            ErrorText().Text(RS_(L"AgentNotConfiguredSubtitle"));
+            break;
         case FreProblemKind::WingetMissing:
             ErrorText().Text(RS_(L"FreOverlay_InstallErrorWingetMissing"));
             url += L"#1-winget-windows-package-manager";
@@ -1408,6 +1482,12 @@ namespace winrt::TerminalApp::implementation
 
     IAsyncAction FreOverlay::_SaveAndInstallAsync()
     {
+        if (!::Microsoft::Terminal::FreAgentSetup::CanSave(std::wstring_view{ _SelectedAgentId() }))
+        {
+            _PopulateAgentComboBox();
+            co_return;
+        }
+
         auto weak = get_weak();
         // Capture the dispatcher while we're definitely on the UI thread.
         // After any subsequent `co_await` that resumes on a background
@@ -1419,21 +1499,45 @@ namespace winrt::TerminalApp::implementation
         // independent of `this`'s lifetime.
         const auto dispatcher = Dispatcher();
 
-        // 1. Read selections on the UI thread
-        winrt::hstring agentId;
-        if (const auto selected = AgentComboBox().SelectedItem())
+        // Freeze editing while we join the bounded host-agent probe. This
+        // guarantees Save cannot persist an empty/stale picker result merely
+        // because the first background refresh has not completed yet.
+        _SetSavingState(true);
+        ErrorPanel().Visibility(Visibility::Collapsed);
+        co_await winrt::resume_background();
+        try
         {
-            if (const auto entry = selected.try_as<winrt::TerminalApp::FreAgentEntry>())
-            {
-                agentId = entry.Id();
-            }
+            ::Microsoft::Terminal::AgentAvailability::RefreshHostAgentIds();
+        }
+        catch (...)
+        {
+            LOG_CAUGHT_EXCEPTION();
+        }
+        co_await winrt::resume_foreground(dispatcher);
+        if (!weak.get())
+        {
+            co_return;
+        }
+
+        // 1. Read selections on the UI thread after rebuilding from the fresh
+        // snapshot. The rebuild preserves a still-available live selection and
+        // otherwise chooses the first policy-approved available agent.
+        _PopulateAgentComboBox();
+        const auto agentId = _SelectedAgentId();
+        if (!::Microsoft::Terminal::FreAgentSetup::CanSave(std::wstring_view{ agentId }))
+        {
+            _SetSavingState(false);
+            co_return;
         }
 
         if (_settings)
         {
             const auto& globals = _settings.GlobalSettings();
-            globals.AcpAgent(agentId);
-            globals.DelegateAgent(agentId);
+            if (!agentId.empty())
+            {
+                globals.AcpAgent(agentId);
+                globals.DelegateAgent(agentId);
+            }
             globals.AutoErrorDetectionEnabled(AutoDetectToggle().IsOn());
             globals.AutoFixEnabled(AutoErrorToggle().IsOn());
             globals.ShowTokenUsageAndCost(ShowTokenUsageAndCostToggle().IsOn());
@@ -1447,12 +1551,6 @@ namespace winrt::TerminalApp::implementation
             default: globals.AgentPanePosition(L"bottom"); break;
             }
         }
-
-        // 2. Enter the "saving" state: disable the form, raise the
-        // SavingOverlay (with spinner + "Setting up..."), disable the
-        // Save button. Hide any previous error.
-        _SetSavingState(true);
-        ErrorPanel().Visibility(Visibility::Collapsed);
 
         // 3. Install prerequisites if needed (blocking — cannot proceed without these)
         const bool needsCopilot = (agentId == L"copilot") && !_IsAgentInstalled(L"copilot");
@@ -1603,6 +1701,38 @@ namespace winrt::TerminalApp::implementation
                 _agentPaneLog("[FRE] RefreshProcessPath threw an exception");
                 LOG_CAUGHT_EXCEPTION();
             }
+            ::Microsoft::Terminal::AgentAvailability::InvalidateHostAgentIds();
+            co_await winrt::resume_background();
+            ::Microsoft::Terminal::AgentAvailability::AgentIds availableAgents;
+            bool refreshSucceeded = false;
+            try
+            {
+                availableAgents =
+                    ::Microsoft::Terminal::AgentAvailability::RefreshHostAgentIds();
+                refreshSucceeded = true;
+            }
+            catch (...)
+            {
+            }
+            co_await winrt::resume_foreground(dispatcher);
+            const auto self = weak.get();
+            if (!self)
+            {
+                co_return;
+            }
+
+            const bool selectedAgentIsAvailable =
+                availableAgents.contains(std::wstring{ agentId });
+            if (!::Microsoft::Terminal::FreAgentSetup::CanContinueAfterPostInstallRefresh(
+                    refreshSucceeded,
+                    std::wstring_view{ agentId },
+                    selectedAgentIsAvailable))
+            {
+                _agentPaneLog("[WARN] [FRE] Post-install agent availability refresh failed");
+                self->_ShowProblem(FreProblemKind::AgentAvailability);
+                co_return;
+            }
+            self->_PopulateAgentComboBox();
         }
 
         // 4+5. Install hooks and shell integration. Run both, collect any
@@ -1614,9 +1744,11 @@ namespace winrt::TerminalApp::implementation
         bool shellIntegEpBlocked = false;
 
         // 4. Hooks — skip if GPO blocks it or settings unavailable.
-        if (SessionManagementToggle().IsOn() &&
-            _settings &&
-            !_settings.GlobalSettings().IsAgentSessionHooksPolicyLocked())
+        if (_settings &&
+            ::Microsoft::Terminal::FreAgentSetup::ShouldInstallHooks(
+                std::wstring_view{ agentId },
+                SessionManagementToggle().IsOn(),
+                _settings.GlobalSettings().IsAgentSessionHooksPolicyLocked()))
         {
             auto self = weak.get();
             if (!self) co_return;
@@ -1897,13 +2029,16 @@ namespace winrt::TerminalApp::implementation
         else
         {
             scroller.IsEnabled(true);
-            save.IsEnabled(true);
             overlay.Visibility(Visibility::Collapsed);
             ring.IsActive(false);
+            save.IsEnabled(::Microsoft::Terminal::FreAgentSetup::CanSave(std::wstring_view{ _SelectedAgentId() }));
             // Park focus on Save so a keyboard user (typically after an
             // error, where the form is re-enabled but ErrorPanel now
             // shows) can press Enter to retry without a mouse trip.
-            save.Focus(FocusState::Programmatic);
+            if (save.IsEnabled())
+            {
+                save.Focus(FocusState::Programmatic);
+            }
         }
     }
 }

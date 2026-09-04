@@ -29,6 +29,7 @@ use tokio::sync::Mutex;
 /// namespace so anyone else's `_meta` payload survives a round-trip
 /// through master untouched.
 pub const WTA_META_NAMESPACE: &str = "wta";
+pub const MASTER_CONTROL_CONNECTION_ROLE_V1: &str = "master-control-v1";
 
 /// The subset of `_meta.wta` we read/write today. A struct (rather than
 /// just shipping `pane_session_id: Option<String>` directly) so that
@@ -36,6 +37,10 @@ pub const WTA_META_NAMESPACE: &str = "wta";
 /// touching every call site.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct WtaMeta {
+    /// Identifies a client that talks only to master-owned extension methods.
+    /// The marker is versioned so the master can reject unsupported control
+    /// protocols without accidentally treating them as ordinary helpers.
+    pub connection_role: Option<String>,
     pub pane_session_id: Option<String>,
     /// Legacy/advisory full command line. **The master no longer spawns
     /// this** — it is a security hazard to execute an arbitrary string
@@ -99,7 +104,8 @@ impl WtaMeta {
         fn blank(field: &Option<String>) -> bool {
             field.as_deref().map_or(true, |s| s.trim().is_empty())
         }
-        blank(&self.pane_session_id)
+        blank(&self.connection_role)
+            && blank(&self.pane_session_id)
             && blank(&self.agent_cmd)
             && blank(&self.agent_id)
             && blank(&self.model)
@@ -150,6 +156,7 @@ pub fn extract_wta_meta(meta: &mut Option<acp::schema::v1::Meta>) -> WtaMeta {
             .map(String::from)
     };
     WtaMeta {
+        connection_role: str_field("connection_role"),
         pane_session_id: str_field("pane_session_id"),
         agent_cmd: str_field("agent_cmd"),
         agent_id: str_field("agent_id"),
@@ -191,6 +198,7 @@ pub fn inject_wta_meta(meta: &mut Option<acp::schema::v1::Meta>, wta: &WtaMeta) 
             wta_obj.insert(key.to_string(), serde_json::Value::String(s.clone()));
         }
     };
+    put("connection_role", &wta.connection_role);
     put("pane_session_id", &wta.pane_session_id);
     put("agent_cmd", &wta.agent_cmd);
     put("agent_id", &wta.agent_id);
@@ -4111,6 +4119,7 @@ mod tests {
     #[test]
     fn inject_then_extract_is_identity() {
         let original = WtaMeta {
+            connection_role: Some(MASTER_CONTROL_CONNECTION_ROLE_V1.to_string()),
             pane_session_id: Some("pane-X".to_string()),
             owner_tab_id: Some("{tab-owner-X}".to_string()),
             ..Default::default()
@@ -4120,6 +4129,21 @@ mod tests {
         let parsed = extract_wta_meta(&mut meta);
         assert_eq!(parsed, original, "round-trip preserves data");
         assert!(meta.is_none(), "round-trip ends with empty meta");
+    }
+
+    #[test]
+    fn master_control_connection_role_round_trips() {
+        let original = WtaMeta {
+            connection_role: Some(MASTER_CONTROL_CONNECTION_ROLE_V1.to_string()),
+            ..Default::default()
+        };
+        let mut meta: Option<acp::schema::v1::Meta> = None;
+
+        inject_wta_meta(&mut meta, &original);
+        let parsed = extract_wta_meta(&mut meta);
+
+        assert_eq!(parsed, original);
+        assert!(meta.is_none());
     }
 
     #[test]
@@ -4157,6 +4181,7 @@ mod tests {
             WTA_META_NAMESPACE.to_string(),
             serde_json::json!({
                 "pane_session_id": "",
+                "connection_role": "",
                 "agent_cmd": "",
                 "agent_id": "   ",
                 "model": "\t",
@@ -4184,6 +4209,7 @@ mod tests {
         inject_wta_meta(
             &mut meta,
             &WtaMeta {
+                connection_role: Some(" ".to_string()),
                 pane_session_id: Some("  ".to_string()),
                 agent_cmd: Some(String::new()),
                 agent_id: Some("\t".to_string()),
@@ -4226,6 +4252,7 @@ mod tests {
         assert!(WtaMeta::default().is_empty(), "all-None is empty");
         assert!(
             WtaMeta {
+                connection_role: Some(" ".to_string()),
                 pane_session_id: Some("  ".to_string()),
                 agent_cmd: Some(String::new()),
                 agent_id: Some("\t".to_string()),

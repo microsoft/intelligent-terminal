@@ -43,6 +43,372 @@ async fn add_test_agent_to_pool(state: &MasterStateInner, agent: &Arc<AgentCli>)
         .insert(agent.cmd_key.clone(), cell);
 }
 
+#[tokio::test]
+async fn native_default_prewarm_key_matches_ordinary_helper() {
+    let state = make_state();
+    let (prewarm, prewarm_request) = default_prewarm_request(&state, None, None);
+    let helper = resolve_agent_selection(
+        &state.default_agent_cmd,
+        state.default_agent_id.as_deref(),
+        state.allowed_agent_ids.as_ref(),
+        state.default_agent_id.as_deref(),
+        None,
+        Some(crate::agent_source::AgentSource::HOST_KIND),
+        None,
+        HelperId(42),
+    );
+    let prewarm_binding = resolve_provider_binding(
+        &state,
+        prewarm.agent_id.as_deref(),
+        &prewarm.source,
+        Some(&prewarm_request),
+        prewarm.explicit_selection,
+    )
+    .await
+    .unwrap();
+    let helper_binding = resolve_provider_binding(
+        &state,
+        helper.agent_id.as_deref(),
+        &helper.source,
+        Some("default"),
+        helper.explicit_selection,
+    )
+    .await
+    .unwrap();
+
+    assert!(matches!(&prewarm_binding, ProviderBinding::Native));
+    assert!(matches!(&helper_binding, ProviderBinding::Native));
+    assert_eq!(
+        agent_cmd_key_with_provider(
+            &prewarm.command,
+            prewarm.agent_id.as_deref(),
+            &prewarm.source,
+            &prewarm_binding,
+        ),
+        agent_cmd_key_with_provider(
+            &helper.command,
+            helper.agent_id.as_deref(),
+            &helper.source,
+            &helper_binding,
+        ),
+    );
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn default_prewarm_and_helper_race_share_one_process_without_session_state() {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let state = make_state();
+            let (prewarm_selection, prewarm_request) = default_prewarm_request(&state, None, None);
+            let helper_selection = resolve_agent_selection(
+                &state.default_agent_cmd,
+                state.default_agent_id.as_deref(),
+                state.allowed_agent_ids.as_ref(),
+                state.default_agent_id.as_deref(),
+                None,
+                Some(crate::agent_source::AgentSource::HOST_KIND),
+                None,
+                HelperId(42),
+            );
+            let prewarm_binding = resolve_provider_binding(
+                &state,
+                prewarm_selection.agent_id.as_deref(),
+                &prewarm_selection.source,
+                Some(&prewarm_request),
+                prewarm_selection.explicit_selection,
+            )
+            .await
+            .unwrap();
+            let helper_binding = resolve_provider_binding(
+                &state,
+                helper_selection.agent_id.as_deref(),
+                &helper_selection.source,
+                Some("default"),
+                helper_selection.explicit_selection,
+            )
+            .await
+            .unwrap();
+            assert!(matches!(&prewarm_binding, ProviderBinding::Native));
+            assert!(matches!(&helper_binding, ProviderBinding::Native));
+            let prewarm_key = agent_cmd_key_with_provider(
+                &prewarm_selection.command,
+                prewarm_selection.agent_id.as_deref(),
+                &prewarm_selection.source,
+                &prewarm_binding,
+            );
+            let helper_key = agent_cmd_key_with_provider(
+                &helper_selection.command,
+                helper_selection.agent_id.as_deref(),
+                &helper_selection.source,
+                &helper_binding,
+            );
+            assert_eq!(prewarm_key, helper_key);
+
+            let starts = Arc::new(AtomicUsize::new(0));
+            let first_starts = Arc::clone(&starts);
+            let second_starts = Arc::clone(&starts);
+            let spawned_key = prewarm_key.clone();
+            let joined_key = helper_key.clone();
+            let (prewarm, helper) = tokio::join!(
+                get_or_try_initialize_agent_with_outcome(
+                    &state,
+                    prewarm_key,
+                    move |_, _| async move {
+                        first_starts.fetch_add(1, Ordering::SeqCst);
+                        tokio::task::yield_now().await;
+                        Ok(unbound_test_agent(&spawned_key))
+                    }
+                ),
+                get_or_try_initialize_agent_with_outcome(
+                    &state,
+                    helper_key,
+                    move |_, _| async move {
+                        second_starts.fetch_add(1, Ordering::SeqCst);
+                        Ok(unbound_test_agent(&joined_key))
+                    }
+                )
+            );
+
+            let (prewarm, prewarm_disposition) = prewarm.unwrap();
+            let (helper, helper_disposition) = helper.unwrap();
+            assert_eq!(starts.load(Ordering::SeqCst), 1);
+            assert!(Arc::ptr_eq(&prewarm, &helper));
+            assert_eq!(prewarm_disposition, AgentPoolDisposition::Spawned);
+            assert_eq!(helper_disposition, AgentPoolDisposition::Joined);
+            assert_eq!(state.agents.lock().await.len(), 1);
+            assert!(state.session_to_helper.lock().await.is_empty());
+            assert!(state.helper_meta.lock().await.is_empty());
+            assert!(state.session_mcp_capabilities.is_empty().await);
+        })
+        .await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn failed_default_prewarm_cell_is_retryable() {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let state = make_state();
+            let key = "warm:default-retry".to_string();
+            let attempts = Arc::new(AtomicUsize::new(0));
+            let first_attempts = Arc::clone(&attempts);
+            let result = get_or_try_initialize_agent(&state, key.clone(), move |_, _| async move {
+                first_attempts.fetch_add(1, Ordering::SeqCst);
+                Err(anyhow!("injected prewarm failure"))
+            })
+            .await;
+            let Err(error) = result else {
+                panic!("injected prewarm failure must surface");
+            };
+            assert!(error.to_string().contains("injected prewarm failure"));
+
+            let retry_attempts = Arc::clone(&attempts);
+            let retried = get_or_try_initialize_agent(&state, key, move |_, _| async move {
+                retry_attempts.fetch_add(1, Ordering::SeqCst);
+                Ok(unbound_test_agent("warm:default-retry"))
+            })
+            .await
+            .unwrap();
+            assert_eq!(attempts.load(Ordering::SeqCst), 2);
+            assert_eq!(retried.cmd_key, "warm:default-retry");
+            let stale_attempt = AgentInstanceId::new_v4();
+            let cell = state
+                .agents
+                .lock()
+                .await
+                .get("warm:default-retry")
+                .cloned()
+                .unwrap();
+            reap_agent(
+                &state,
+                &"warm:default-retry".to_string(),
+                &cell,
+                stale_attempt,
+            )
+            .await;
+            assert!(
+                state
+                    .agents
+                    .lock()
+                    .await
+                    .get("warm:default-retry")
+                    .and_then(|cell| cell.get())
+                    .is_some_and(|agent| Arc::ptr_eq(agent, &retried)),
+                "a stale failed-attempt reaper must not remove the successful retry in the same cell"
+            );
+        })
+        .await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn default_prewarm_pool_key_does_not_capture_other_bindings() {
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let state = make_state();
+            let host = get_or_try_initialize_agent(
+                &state,
+                "warm:host-default".to_string(),
+                |_, _| async { Ok(unbound_test_agent("warm:host-default")) },
+            )
+            .await
+            .unwrap();
+            let other = get_or_try_initialize_agent(
+                &state,
+                "model:custom-provider".to_string(),
+                |_, _| async { Ok(unbound_test_agent("model:custom-provider")) },
+            )
+            .await
+            .unwrap();
+
+            assert!(!Arc::ptr_eq(&host, &other));
+            assert_eq!(state.agents.lock().await.len(), 2);
+        })
+        .await;
+}
+
+#[test]
+fn trusted_default_infers_identity_and_honors_partial_allowlist() {
+    let allowed = allow_set(&["gemini"]);
+    assert_eq!(
+        validate_trusted_default_agent("copilot --acp --stdio", None, Some(&allowed)),
+        None,
+        "an omitted --agent-id must not hide a blocked clap-default Copilot"
+    );
+    assert_eq!(
+        validate_trusted_default_agent("gemini --acp", None, Some(&allowed)),
+        Some(("gemini --acp".to_string(), Some("gemini".to_string())))
+    );
+}
+
+#[test]
+fn trusted_default_rejects_blocked_explicit_or_command_identity() {
+    let allowed = allow_set(&["codex"]);
+    assert_eq!(
+        validate_trusted_default_agent("copilot --acp --stdio", Some("copilot"), Some(&allowed)),
+        None
+    );
+    assert_eq!(
+        validate_trusted_default_agent(
+            "copilot --acp --stdio",
+            Some("custom:mislabelled"),
+            Some(&allowed)
+        ),
+        None,
+        "a custom label must not conceal a known blocked command"
+    );
+
+    let selection = resolve_agent_selection(
+        "",
+        None,
+        Some(&allowed),
+        Some("copilot"),
+        None,
+        None,
+        None,
+        HelperId(1),
+    );
+    assert!(selection.command.is_empty());
+    assert!(selection.agent_id.is_none());
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn missing_default_skips_prewarm_without_creating_a_pool_entry() {
+    let state = make_state();
+    let state = match Arc::try_unwrap(state) {
+        Ok(state) => state,
+        Err(_) => panic!("fresh state has one owner"),
+    };
+    let state = Arc::new(MasterStateInner {
+        default_agent_cmd: String::new(),
+        default_agent_id: None,
+        ..state
+    });
+
+    prewarm_default_provider(Arc::clone(&state), None, None, Vec::new()).await;
+
+    assert!(state.agents.lock().await.is_empty());
+    assert!(state.default_prewarm_key.lock().await.is_none());
+    assert!(matches!(
+        *state.initial_history_seed.borrow(),
+        InitialHistorySeedStatus::Disabled { .. }
+    ));
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn failed_default_prewarm_releases_initial_history_barrier() {
+    let state = make_state_with_initial_seed(
+        InitialHistorySeedStatus::Pending { generation: 4 },
+        INITIAL_HISTORY_SEED_WAIT_TIMEOUT,
+    );
+
+    prewarm_default_provider(
+        Arc::clone(&state),
+        None,
+        Some("custom:missing:model".into()),
+        Vec::new(),
+    )
+    .await;
+
+    assert_eq!(
+        *state.initial_history_seed.borrow(),
+        InitialHistorySeedStatus::Failed { generation: 4 }
+    );
+    assert!(state.agents.lock().await.is_empty());
+    assert!(state.default_prewarm_key.lock().await.is_none());
+}
+
+#[test]
+fn custom_model_prewarm_key_matches_default_helper_binding() {
+    let state = make_state();
+    let model = "gpt-5.5";
+    let provider = "custom:provider:model-a";
+    let (prewarm, prewarm_provider) = default_prewarm_request(&state, Some(model), Some(provider));
+    let helper = resolve_agent_selection(
+        &state.default_agent_cmd,
+        state.default_agent_id.as_deref(),
+        state.allowed_agent_ids.as_ref(),
+        state.default_agent_id.as_deref(),
+        Some(model),
+        Some(crate::agent_source::AgentSource::HOST_KIND),
+        None,
+        HelperId(42),
+    );
+    assert_eq!(prewarm_provider, provider);
+    assert_eq!(prewarm.command, helper.command);
+    assert_eq!(prewarm.agent_id, helper.agent_id);
+    assert_eq!(prewarm.source, helper.source);
+
+    let provider_binding = ProviderBinding::Custom {
+        selection_id: prewarm_provider,
+        generation: 1,
+        config: crate::custom_model_provider::Config {
+            base_url: "https://example.test/v1".to_string(),
+            model: "model-a".to_string(),
+            credential_id: Some("credential".to_string()),
+            api_key_required: true,
+            credential_resource: "test",
+        },
+    };
+    assert_eq!(
+        agent_cmd_key_with_provider(
+            &prewarm.command,
+            prewarm.agent_id.as_deref(),
+            &prewarm.source,
+            &provider_binding,
+        ),
+        agent_cmd_key_with_provider(
+            &helper.command,
+            helper.agent_id.as_deref(),
+            &helper.source,
+            &provider_binding,
+        ),
+        "prewarm and the real default helper must share one provider process"
+    );
+}
+
 #[derive(Clone)]
 struct PendingNewSessionAgent;
 
@@ -723,11 +1089,20 @@ fn provider_binding_isolated_pool_keys_do_not_expose_configuration() {
 
     let native_key =
         agent_cmd_key_with_provider(command, Some("copilot"), &source, &ProviderBinding::Native);
+    let legacy_key = agent_cmd_key_with_provider(
+        command,
+        Some("copilot"),
+        &source,
+        &ProviderBinding::LegacyEnvironment,
+    );
     let custom_key = agent_cmd_key_with_provider(command, Some("copilot"), &source, &custom);
 
     assert!(native_key.starts_with("warm:"));
+    assert!(legacy_key.starts_with("warm:"));
     assert!(custom_key.starts_with("model:"));
     assert_ne!(native_key, custom_key);
+    assert_ne!(legacy_key, native_key);
+    assert_ne!(legacy_key, custom_key);
     assert!(custom_key.contains("custom:provider:model-a@7"));
     assert!(!custom_key.contains("secret-endpoint"));
     assert!(!custom_key.contains("secret-credential"));
@@ -783,6 +1158,51 @@ async fn model_scoped_agent_retires_only_after_its_final_helper_unbinds() {
                 !state.agents.lock().await.contains_key(&key),
                 "the final helper disconnect must retire the model generation"
             );
+        })
+        .await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn pinned_default_model_agent_survives_final_helper_unbind() {
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let state = make_state();
+            let helper = HelperId(610);
+            let agent = unbound_test_agent("model:pinned-default");
+            add_test_agent_to_pool(&state, &agent).await;
+            *state.default_prewarm_key.lock().await = Some(agent.cmd_key.clone());
+
+            assert!(bind_helper_to_agent(&state, &agent, helper).await);
+            agent.bound_helpers.lock().await.remove(&helper);
+            retire_unbound_model_agent(&state, &agent).await;
+
+            assert!(state.agents.lock().await.contains_key(&agent.cmd_key));
+        })
+        .await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn changing_default_unpins_old_model_without_touching_new_entry() {
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let state = make_state();
+            let old = unbound_test_agent("model:old-default");
+            let new = unbound_test_agent("model:new-default");
+            add_test_agent_to_pool(&state, &old).await;
+            add_test_agent_to_pool(&state, &new).await;
+            *state.default_prewarm_key.lock().await = Some(old.cmd_key.clone());
+
+            *state.default_prewarm_key.lock().await = Some(new.cmd_key.clone());
+            retire_unbound_model_key(&state, &old.cmd_key).await;
+            reap_agent(&state, &old.cmd_key, &empty_agent_cell(), old.instance_id).await;
+
+            let agents = state.agents.lock().await;
+            assert!(!agents.contains_key(&old.cmd_key));
+            assert!(agents
+                .get(&new.cmd_key)
+                .and_then(|cell| cell.get())
+                .is_some_and(|current| Arc::ptr_eq(current, &new)));
+            assert_eq!(agents.len(), 1);
         })
         .await;
 }
@@ -1195,9 +1615,13 @@ fn make_state_with_retirement_pending_timeout(
         pending_usage: Mutex::new(HashMap::new()),
         usage_generation: watch::channel(0u64).0,
         registry: crate::session_registry::InMemoryRegistry::shared(),
+        initial_history_seed: watch::channel(InitialHistorySeedStatus::Disabled { generation: 0 })
+            .0,
+        initial_history_seed_wait_timeout: INITIAL_HISTORY_SEED_WAIT_TIMEOUT,
         helper_ext_subscribers: Mutex::new(HashMap::new()),
         wt: None,
         agents: Mutex::new(HashMap::new()),
+        default_prewarm_key: Mutex::new(None),
         custom_model_generations: Mutex::new(HashMap::new()),
         default_agent_cmd: "copilot --acp --stdio".to_string(),
         default_agent_id: Some("copilot".to_string()),
@@ -7495,65 +7919,72 @@ fn is_already_loaded_error_matches_message_and_data() {
 
 /// `reap_agent` must drop only the dead agent's orphan sessions, leaving
 /// a co-resident agent's (e.g. Gemini next to Copilot) orphans intact.
-#[tokio::test]
+#[tokio::test(flavor = "current_thread")]
 async fn reap_agent_drops_only_its_own_orphans() {
-    let state = make_state();
-    let key_a = "copilot --acp --stdio".to_string();
-    let key_b = "gemini --acp".to_string();
-    {
-        let mut orphans = state.orphaned_sessions.lock().await;
-        orphans
-            .entry(key_a.clone())
-            .or_default()
-            .insert(SessionId::new("a-sess"));
-        orphans
-            .entry(key_b.clone())
-            .or_default()
-            .insert(SessionId::new("b-sess"));
-    }
-    state.orphaned_tabs.lock().await.insert(
-        "tab-a".to_string(),
-        (key_a.clone(), HelperId(1), SessionId::new("a-sess")),
-    );
-    state.orphaned_tabs.lock().await.insert(
-        "tab-b".to_string(),
-        (key_b.clone(), HelperId(2), SessionId::new("b-sess")),
-    );
-    // reap only acts when the key is a live pool entry.
-    let cell = {
-        let mut agents = state.agents.lock().await;
-        let cell = Arc::new(tokio::sync::OnceCell::new());
-        agents.insert(key_a.clone(), Arc::clone(&cell));
-        cell
-    };
-    let stale_cell = Arc::new(tokio::sync::OnceCell::new());
-    reap_agent(&state, &key_a, &stale_cell, AgentInstanceId::new_v4()).await;
-    assert!(
-        state.agents.lock().await.contains_key(&key_a),
-        "a stale reaper must not remove a replacement pool entry"
-    );
-    reap_agent(&state, &key_a, &cell, AgentInstanceId::new_v4()).await;
-    let orphans = state.orphaned_sessions.lock().await;
-    assert!(
-        !orphans.contains_key(&key_a),
-        "reaped agent's orphan set must be dropped"
-    );
-    assert!(
-        orphans
-            .get(&key_b)
-            .is_some_and(|s| s.contains(&SessionId::new("b-sess"))),
-        "a co-resident agent's orphans must be untouched"
-    );
-    drop(orphans);
-    let orphaned_tabs = state.orphaned_tabs.lock().await;
-    assert!(
-        !orphaned_tabs.contains_key("tab-a"),
-        "reaping an agent must remove its stale tab fallback"
-    );
-    assert!(
-        orphaned_tabs.contains_key("tab-b"),
-        "reaping one agent must preserve another agent's tab fallback"
-    );
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let state = make_state();
+            let key_a = "copilot --acp --stdio".to_string();
+            let key_b = "gemini --acp".to_string();
+            {
+                let mut orphans = state.orphaned_sessions.lock().await;
+                orphans
+                    .entry(key_a.clone())
+                    .or_default()
+                    .insert(SessionId::new("a-sess"));
+                orphans
+                    .entry(key_b.clone())
+                    .or_default()
+                    .insert(SessionId::new("b-sess"));
+            }
+            state.orphaned_tabs.lock().await.insert(
+                "tab-a".to_string(),
+                (key_a.clone(), HelperId(1), SessionId::new("a-sess")),
+            );
+            state.orphaned_tabs.lock().await.insert(
+                "tab-b".to_string(),
+                (key_b.clone(), HelperId(2), SessionId::new("b-sess")),
+            );
+            // reap only acts when the key is a live pool entry.
+            let live_agent = unbound_test_agent(&key_a);
+            let live_instance = live_agent.instance_id;
+            let cell = {
+                let mut agents = state.agents.lock().await;
+                let cell = Arc::new(tokio::sync::OnceCell::new());
+                assert!(cell.set(live_agent).is_ok());
+                agents.insert(key_a.clone(), Arc::clone(&cell));
+                cell
+            };
+            let stale_cell = Arc::new(tokio::sync::OnceCell::new());
+            reap_agent(&state, &key_a, &stale_cell, AgentInstanceId::new_v4()).await;
+            assert!(
+                state.agents.lock().await.contains_key(&key_a),
+                "a stale reaper must not remove a replacement pool entry"
+            );
+            reap_agent(&state, &key_a, &cell, live_instance).await;
+            let orphans = state.orphaned_sessions.lock().await;
+            assert!(
+                !orphans.contains_key(&key_a),
+                "reaped agent's orphan set must be dropped"
+            );
+            assert!(
+                orphans
+                    .get(&key_b)
+                    .is_some_and(|s| s.contains(&SessionId::new("b-sess"))),
+                "a co-resident agent's orphans must be untouched"
+            );
+            drop(orphans);
+            let orphaned_tabs = state.orphaned_tabs.lock().await;
+            assert!(
+                !orphaned_tabs.contains_key("tab-a"),
+                "reaping an agent must remove its stale tab fallback"
+            );
+            assert!(
+                orphaned_tabs.contains_key("tab-b"),
+                "reaping one agent must preserve another agent's tab fallback"
+            );
+        })
+        .await;
 }
 
 /// A stale reaper must revoke its dead CLI instance's capabilities without
@@ -8894,6 +9325,232 @@ async fn sessions_list_handler_returns_registry_snapshot_payload() {
     assert_eq!(parsed.sessions, vec![row]);
 }
 
+fn make_state_with_initial_seed(
+    status: InitialHistorySeedStatus,
+    wait_timeout: std::time::Duration,
+) -> Arc<MasterStateInner> {
+    let mut state = make_state();
+    let inner = Arc::get_mut(&mut state).expect("fresh state is uniquely owned");
+    inner.initial_history_seed = watch::channel(status).0;
+    inner.initial_history_seed_wait_timeout = wait_timeout;
+    state
+}
+
+#[tokio::test]
+async fn control_sessions_list_waits_for_initial_seed_then_returns_seeded_snapshot() {
+    use crate::session_registry::{self, SessionInfo};
+
+    let state = make_state_with_initial_seed(
+        InitialHistorySeedStatus::Pending { generation: 7 },
+        std::time::Duration::from_secs(1),
+    );
+    let state_for_request = Arc::clone(&state);
+    let mut request = Box::pin(async move {
+        handle_sessions_list(
+            &state_for_request,
+            None,
+            &session_registry::SessionsListParams { rescan: false },
+        )
+        .await
+    });
+    tokio::select! {
+        biased;
+        _ = &mut request => panic!("control request completed before initial seed"),
+        _ = tokio::task::yield_now() => {}
+    }
+
+    let row = SessionInfo::new(SessionId::new("seeded"), PathBuf::from("C:\\seeded"));
+    state.registry.upsert(row.clone()).await;
+    state
+        .initial_history_seed
+        .send(InitialHistorySeedStatus::Succeeded { generation: 7 })
+        .expect("readiness receiver remains alive");
+    let response = request.await.expect("sessions/list succeeds");
+    let parsed =
+        session_registry::parse_sessions_list_response(&response.0).expect("response parses");
+    assert_eq!(parsed.sessions, vec![row]);
+    assert!(state.agents.lock().await.is_empty());
+    assert!(state.default_prewarm_key.lock().await.is_none());
+}
+
+#[tokio::test]
+async fn control_sessions_list_returns_immediately_when_seed_failed_or_disabled() {
+    for status in [
+        InitialHistorySeedStatus::Failed { generation: 3 },
+        InitialHistorySeedStatus::Disabled { generation: 0 },
+    ] {
+        let state = make_state_with_initial_seed(status, std::time::Duration::from_secs(1));
+        handle_sessions_list(
+            &state,
+            None,
+            &crate::session_registry::SessionsListParams { rescan: true },
+        )
+        .await
+        .expect("terminal readiness returns registry snapshot");
+        assert!(state.agents.lock().await.is_empty());
+        assert_eq!(*state.initial_history_seed.borrow(), status);
+    }
+}
+
+#[tokio::test]
+async fn control_sessions_list_times_out_initial_seed_once_without_pool_mutation() {
+    let state = make_state_with_initial_seed(
+        InitialHistorySeedStatus::Pending { generation: 11 },
+        std::time::Duration::ZERO,
+    );
+    let handler = control_test_handler(Arc::clone(&state));
+
+    handler
+        .ext_method(crate::session_registry::build_sessions_list_request(false))
+        .await
+        .expect("timed-out seed still returns registry snapshot");
+
+    assert_eq!(
+        *state.initial_history_seed.borrow(),
+        InitialHistorySeedStatus::TimedOut { generation: 11 }
+    );
+    assert!(handler.agent.get().is_none());
+    assert!(state.agents.lock().await.is_empty());
+    assert!(state.default_prewarm_key.lock().await.is_none());
+
+    handle_sessions_list(
+        &state,
+        None,
+        &crate::session_registry::SessionsListParams { rescan: false },
+    )
+    .await
+    .expect("subsequent list uses the current registry immediately");
+}
+
+fn control_test_handler(state: Arc<MasterStateInner>) -> HelperHandler {
+    let (notif_tx, _notif_rx) = mpsc::channel(NOTIF_CHANNEL_CAPACITY);
+    HelperHandler {
+        helper_id: HelperId(9001),
+        agent: empty_agent_cell(),
+        state,
+        replacement_gate: Arc::new(Mutex::new(())),
+        notif_tx,
+        agent_side_slot: Arc::new(OnceLock::new()),
+    }
+}
+
+fn initialize_request_with_role(role: Option<&str>) -> acp::schema::v1::InitializeRequest {
+    let mut request = acp::schema::v1::InitializeRequest::new(acp::schema::ProtocolVersion::V1);
+    crate::session_registry::inject_wta_meta(
+        &mut request.meta,
+        &crate::session_registry::WtaMeta {
+            connection_role: role.map(str::to_string),
+            agent_id: Some("gemini".to_string()),
+            provider_binding: Some("custom:must-not-resolve:model".to_string()),
+            ..Default::default()
+        },
+    );
+    request
+}
+
+#[tokio::test]
+async fn master_control_initialize_and_extensions_do_not_acquire_an_agent() {
+    let state = make_state();
+    let handler = control_test_handler(Arc::clone(&state));
+
+    let response = handler
+        .initialize(initialize_request_with_role(Some(
+            crate::session_registry::MASTER_CONTROL_CONNECTION_ROLE_V1,
+        )))
+        .await
+        .expect("supported master-control role initializes");
+    assert_eq!(response.protocol_version, acp::schema::ProtocolVersion::V1);
+    assert!(handler.agent.get().is_none());
+    assert!(state.agents.lock().await.is_empty());
+    assert!(state.custom_model_generations.lock().await.is_empty());
+
+    let event = crate::agent_sessions::SessionEvent::SessionStarted {
+        key: "control-born-bound".to_string(),
+        cli_source: crate::agent_sessions::CliSource::Copilot,
+        pane_session_id: "control-pane".to_string(),
+        cwd: PathBuf::from(r"C:\repo"),
+        title: "Control session".to_string(),
+    };
+    handler
+        .ext_method(crate::session_registry::build_born_bound_request(&event))
+        .await
+        .expect("born-bound registration succeeds without an agent");
+
+    let response = handler
+        .ext_method(crate::session_registry::build_sessions_list_request(false))
+        .await
+        .expect("sessions/list succeeds without an agent");
+    let sessions = crate::session_registry::parse_sessions_list_response(&response.0)
+        .expect("sessions/list response parses")
+        .sessions;
+    assert_eq!(sessions.len(), 1);
+    assert_eq!(sessions[0].session_id.to_string(), "control-born-bound");
+    assert!(handler.agent.get().is_none());
+    assert!(state.agents.lock().await.is_empty());
+    assert!(state.custom_model_generations.lock().await.is_empty());
+}
+
+#[tokio::test]
+async fn unsupported_master_control_version_rejects_without_pool_changes() {
+    let state = make_state();
+    let handler = control_test_handler(Arc::clone(&state));
+
+    let error = handler
+        .initialize(initialize_request_with_role(Some("master-control-v2")))
+        .await
+        .expect_err("unknown master-control version must be rejected");
+
+    assert_eq!(error.code, acp::ErrorCode::InvalidParams);
+    assert!(
+        error
+            .data
+            .as_ref()
+            .and_then(|data| data.get("message"))
+            .and_then(|message| message.as_str())
+            .is_some_and(|message| {
+                message.contains("master-control-v2")
+                    && message.contains(crate::session_registry::MASTER_CONTROL_CONNECTION_ROLE_V1)
+            }),
+        "error identifies the rejected and supported roles: {error:?}"
+    );
+    assert!(handler.agent.get().is_none());
+    assert!(state.agents.lock().await.is_empty());
+    assert!(state.custom_model_generations.lock().await.is_empty());
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn unmarked_initialize_retains_normal_agent_response() {
+    LocalSet::new()
+        .run_until(async {
+            let state = make_state();
+            let mut agent = unbound_test_agent("normal-agent");
+            Arc::get_mut(&mut agent).unwrap().cached_init_resp =
+                acp::schema::v1::InitializeResponse::new(acp::schema::ProtocolVersion::V1)
+                    .agent_info(acp::schema::v1::Implementation::new(
+                        "normal-agent",
+                        "1.0.0",
+                    ));
+            let handler = control_test_handler(Arc::clone(&state));
+            assert!(
+                handler.agent.set(Arc::clone(&agent)).is_ok(),
+                "test handler starts bound"
+            );
+
+            let response = handler
+                .initialize(initialize_request_with_role(None))
+                .await
+                .expect("unmarked helper uses normal initialize path");
+            let response = serde_json::to_value(response).expect("initialize response serializes");
+
+            assert_eq!(response["agentInfo"]["name"], "normal-agent");
+            assert!(Arc::ptr_eq(
+                handler.agent.get().expect("agent remains bound"),
+                &agent
+            ));
+        })
+        .await;
+}
+
 #[tokio::test]
 async fn drop_sessions_for_helper_broadcasts_sessions_changed() {
     use crate::session_registry::{self, SessionInfo};
@@ -9114,9 +9771,13 @@ fn make_state_with_wt(wt: Arc<dyn crate::shell::wt_channel::WtChannel>) -> Arc<M
         pending_usage: Mutex::new(HashMap::new()),
         usage_generation: watch::channel(0u64).0,
         registry: crate::session_registry::InMemoryRegistry::shared(),
+        initial_history_seed: watch::channel(InitialHistorySeedStatus::Disabled { generation: 0 })
+            .0,
+        initial_history_seed_wait_timeout: INITIAL_HISTORY_SEED_WAIT_TIMEOUT,
         helper_ext_subscribers: Mutex::new(HashMap::new()),
         wt: Some(wt),
         agents: Mutex::new(HashMap::new()),
+        default_prewarm_key: Mutex::new(None),
         custom_model_generations: Mutex::new(HashMap::new()),
         default_agent_cmd: "copilot --acp --stdio".to_string(),
         default_agent_id: Some("copilot".to_string()),
@@ -9206,6 +9867,78 @@ async fn custom_provider_binding_is_resolved_from_terminal_settings() {
         mock.calls(),
         vec![("get_settings".to_string(), serde_json::Value::Null)]
     );
+}
+
+#[tokio::test]
+async fn omitted_provider_binding_preserves_legacy_environment_override() {
+    let state = make_state();
+    let source = crate::agent_source::AgentSource::Host;
+
+    let legacy = resolve_provider_binding(
+        &state,
+        Some("copilot"),
+        &source,
+        None,
+        ExplicitAgentSelection::ImplicitDefault,
+    )
+    .await
+    .expect("omitted helper metadata should retain environment compatibility");
+    let native = resolve_provider_binding(
+        &state,
+        Some("copilot"),
+        &source,
+        Some("default"),
+        ExplicitAgentSelection::ImplicitDefault,
+    )
+    .await
+    .expect("explicit default should select the native provider");
+
+    assert!(matches!(&legacy, ProviderBinding::LegacyEnvironment));
+    assert!(matches!(
+        legacy.spawn_selection(),
+        SharedProviderSelection::Inherit
+    ));
+    assert!(matches!(&native, ProviderBinding::Native));
+    assert!(matches!(
+        native.spawn_selection(),
+        SharedProviderSelection::Disabled
+    ));
+    assert_ne!(
+        agent_cmd_key_with_provider(
+            &state.default_agent_cmd,
+            state.default_agent_id.as_deref(),
+            &source,
+            &legacy,
+        ),
+        agent_cmd_key_with_provider(
+            &state.default_agent_cmd,
+            state.default_agent_id.as_deref(),
+            &source,
+            &native,
+        ),
+        "legacy environment BYOK must remain isolated from native provider processes"
+    );
+}
+
+#[tokio::test]
+async fn wsl_helpers_ignore_host_provider_metadata() {
+    let state = make_state();
+    let source = crate::agent_source::AgentSource::Wsl {
+        distro: "Ubuntu".to_string(),
+    };
+
+    for requested in [None, Some("default"), Some("custom:provider:model-a")] {
+        let binding = resolve_provider_binding(
+            &state,
+            Some("copilot"),
+            &source,
+            requested,
+            ExplicitAgentSelection::Accepted,
+        )
+        .await
+        .expect("WSL helpers should use their distro-native provider environment");
+        assert!(matches!(binding, ProviderBinding::Native));
+    }
 }
 
 async fn assert_rejected_selection_uses_native_provider(
@@ -9950,9 +10683,9 @@ async fn each_pooled_agent_seeds_and_stamps_its_own_history() {
             let copilot = listing_agent(CliSource::Copilot, &["copilot-row"]);
             let codex = listing_agent(CliSource::Codex, &["codex-row"]);
 
-            assert_eq!(seed_host_and_broadcast(&state, &copilot).await, 1);
+            assert_eq!(seed_host_and_broadcast(&state, &copilot).await, Some(1));
             // The second agent must seed too — not be skipped as "not first".
-            assert_eq!(seed_host_and_broadcast(&state, &codex).await, 1);
+            assert_eq!(seed_host_and_broadcast(&state, &codex).await, Some(1));
 
             let rows = state.registry.snapshot().await;
             let cli_of = |id: &str| {
@@ -9968,7 +10701,7 @@ async fn each_pooled_agent_seeds_and_stamps_its_own_history() {
 
             // Codex's reconcile must not have pruned the Copilot row it never
             // listed, and vice versa.
-            assert_eq!(seed_host_and_broadcast(&state, &copilot).await, 1);
+            assert_eq!(seed_host_and_broadcast(&state, &copilot).await, Some(1));
             let rows = state.registry.snapshot().await;
             assert!(rows.iter().any(|r| r.session_id.0.as_ref() == "codex-row"));
             assert!(rows
@@ -9993,8 +10726,8 @@ async fn seeded_history_carries_the_agents_execution_source() {
             let host = listing_agent(CliSource::Copilot, &["host-row"]);
             let debian = wsl_listing_agent(CliSource::Copilot, "Debian", &["debian-row"]);
 
-            assert_eq!(seed_host_and_broadcast(&state, &host).await, 1);
-            assert_eq!(seed_host_and_broadcast(&state, &debian).await, 1);
+            assert_eq!(seed_host_and_broadcast(&state, &host).await, Some(1));
+            assert_eq!(seed_host_and_broadcast(&state, &debian).await, Some(1));
 
             let rows = state.registry.snapshot().await;
             let location_of = |id: &str| {

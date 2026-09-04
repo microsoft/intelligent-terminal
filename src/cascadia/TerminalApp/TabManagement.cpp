@@ -225,18 +225,8 @@ namespace winrt::TerminalApp::implementation
             _tabContent.Children().Append(content);
         }
 
-        // Per-tab model: pre-warm a stashed agent pane on every new terminal
-        // tab. The helper conpty child is spawned but the pane is immediately
-        // stashed via `Tab::StashAgentPane`, so the user only sees the
-        // terminal pane. Toggling the agent pane (`Ctrl+Shift+.` /
-        // `Ctrl+Shift+/` / bottom-bar button) is just a stash/restore.
-        // The point of pre-warming is autofix: autofix routes through the
-        // agent helper, and gating it on "user has opened the pane at least
-        // once" silently broke autofix on every fresh tab. With pre-warm,
-        // autofix works on every tab from the moment the tab opens.
-        //
-        // Defer the spawn so tab initialization is not blocked on conpty and
-        // helper startup.
+        // Defer transfer wiring and focused-tab prewarm until XAML has had a
+        // layout pass. Background ordinary tabs stay master-only until selected.
         if (auto dispatcher = winrt::Windows::System::DispatcherQueue::GetForCurrentThread())
         {
             auto weakSelf = get_weak();
@@ -245,13 +235,6 @@ namespace winrt::TerminalApp::implementation
             // runs, the replay may have finished even though this tab's own
             // agent pane is still queued behind it.
             const auto deferPrewarm = _startupActionReplayDepth > 0;
-            if (deferPrewarm)
-            {
-                // Queue synchronously. The low-priority callback below runs
-                // after `_PrewarmAgentPanesAfterStartup` for the last tabs of a
-                // batch, so recording there would miss them entirely.
-                _tabsAwaitingPrewarm.emplace_back(make_weak(newTabImpl));
-            }
             dispatcher.TryEnqueue(winrt::Windows::System::DispatcherQueuePriority::Low, [weakSelf, weakTab, deferPrewarm]() {
                 const auto self = weakSelf.get();
                 const auto tabImplCom = weakTab.get();
@@ -308,29 +291,20 @@ namespace winrt::TerminalApp::implementation
                     self->_RaiseProtocolEvent("tab_renamed", params);
                 });
 
-                // Pre-warm a stashed agent pane on this tab so the helper is
-                // running from the start (autofix needs it). A transferred
-                // pane keeps its existing helper and skips this path, and a
-                // tab created while a startup batch is replaying skips it so a
-                // blank pre-warm cannot race the agent pane that batch is
-                // about to restore — `_PrewarmAgentPanesAfterStartup` covers
-                // whatever the replay left without one.
-                if (deferPrewarm)
+                if (agentLeavesSeen != 0)
                 {
-                    _agentPaneLog(
-                        std::string{ "_InitializeTab(deferred): startup replay owns the agent pane for tab " } +
-                        winrt::to_string(newTabId));
+                    tabImplCom->ObserveAgentPaneMaterialized();
+                    self->_UpdateBottomBarState();
                 }
-                else if (agentLeavesSeen == 0)
+                else if (deferPrewarm)
                 {
                     _agentPaneLog(
-                        std::string{ "_InitializeTab(deferred): pre-warming stashed agent pane on tab " } +
+                        std::string{ "_InitializeTab(deferred): startup replay owns prewarm scheduling for tab " } +
                         winrt::to_string(newTabId));
-                    self->_AutoCreateHiddenAgentPaneShared(tabImplCom, /*intoSessionsView*/ false, /*autoStash*/ true);
                 }
                 else
                 {
-                    self->_UpdateBottomBarState();
+                    self->_ScheduleActiveTabAgentPanePrewarm(tabImplCom, "new_tab");
                 }
             });
         }
@@ -733,22 +707,24 @@ namespace winrt::TerminalApp::implementation
         // to drop the matching TabSession so a future tab that reuses any
         // index slot starts with a clean conversation.
         winrt::hstring closedTabStableId{};
-        size_t agentPanesOnTab = 0;
+        std::vector<std::shared_ptr<details::SharedWtaPaneReferenceToken>> agentPaneReferences;
         std::shared_ptr<Pane> rootPaneForClose{};
         if (const auto tabImpl = _GetTabImpl(tab))
         {
             closedTabStableId = tabImpl->StableId();
 
-            // Count agent panes on this tab BEFORE `tab.Shutdown()` runs.
-            // We need this for the `SharedWta::ReleasePane` decrement
-            // below — see the long comment after `tab.Shutdown()`.
+            // Capture each one-shot SharedWta ownership token before
+            // `tab.Shutdown()` removes the pane contents.
             if (const auto rootPane = tabImpl->GetRootPane())
             {
                 rootPaneForClose = rootPane;
-                rootPane->WalkTree([&agentPanesOnTab](const std::shared_ptr<Pane>& p) -> void {
+                rootPane->WalkTree([&agentPaneReferences](const std::shared_ptr<Pane>& p) -> void {
                     if (p && p->IsAgentPane())
                     {
-                        ++agentPanesOnTab;
+                        if (auto reference = p->SharedWtaPaneReference())
+                        {
+                            agentPaneReferences.emplace_back(std::move(reference));
+                        }
                     }
                 });
             }
@@ -812,9 +788,10 @@ namespace winrt::TerminalApp::implementation
             // tab adds 1 to the refcount; closing tabs never decrements,
             // so the master process is kept alive past its last live pane
             // (only `~SharedWta` at process exit truly cleans it up).
-            // Compensate by manually releasing once per agent pane that
-            // was on the tab — equivalent to what the missed `Closed`
-            // events would have done. Skipped for `movingAway` because
+            // Compensate by claiming the release token for every agent pane
+            // that was on the tab. A Closed handler may already have claimed
+            // it (notably for a transferred root pane); the one-shot claim
+            // ensures exactly one path releases. Skipped for `movingAway` because
             // the helper survives a cross-window drag (the target window's
             // re-wrapped pane is the new owner), so decrementing here
             // would prematurely zero the refcount and tear down the
@@ -823,9 +800,12 @@ namespace winrt::TerminalApp::implementation
             // close has a bounded 15-second timeout. Keep the final job-object
             // reference alive slightly longer so last-tab/window teardown
             // cannot kill wta-master before session/close completes.
-            for (size_t i = 0; i < agentPanesOnTab; ++i)
+            for (const auto& reference : agentPaneReferences)
             {
-                SharedWta::ReleasePaneAfterSessionClose();
+                if (reference->ClaimRelease())
+                {
+                    SharedWta::ReleasePaneAfterSessionClose();
+                }
             }
         }
 
@@ -1183,6 +1163,14 @@ namespace winrt::TerminalApp::implementation
         }
 
         const auto isLastPane = owningTab && owningTab->GetLeafPaneCount() == 1;
+        bool closesAgentPane = false;
+        pane->WalkTree([&](const std::shared_ptr<Pane>& candidate) {
+            closesAgentPane = closesAgentPane || (candidate && candidate->IsAgentPane());
+        });
+        if (owningTab && closesAgentPane)
+        {
+            owningTab->MarkAgentPaneExplicitlyClosed();
+        }
 
         // If this is the last pane on the last tab of a named window, persist
         // the workspace while the pane content is still alive.
@@ -1541,6 +1529,7 @@ namespace winrt::TerminalApp::implementation
             // (helper state diverged from local cache).
             if (auto tabImplForNotify = _GetTabImpl(tab))
             {
+                _ScheduleActiveTabAgentPanePrewarm(tabImplForNotify, "tab_selected");
                 _NotifyAgentTabChanged(tabImplForNotify->StableId());
             }
 

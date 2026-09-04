@@ -366,6 +366,27 @@ pub fn log_agent_cold_start_complete(
     );
 }
 
+/// Emitted when the master's best-effort default-provider prewarm completes.
+pub fn log_master_provider_prewarm_complete(
+    agent_id: &str,
+    duration_ms: f64,
+    success: bool,
+    failure_kind: &str,
+) {
+    let success_i32: i32 = if success { 1 } else { 0 };
+    tlg::write_event!(
+        AGENT_PROVIDER,
+        "MasterProviderPrewarmComplete",
+        level(Verbose),
+        keyword(MICROSOFT_KEYWORD_MEASURES),
+        str8("AgentId", sanitize_agent_id(agent_id)),
+        f64("DurationMs", &duration_ms),
+        bool32("Success", &success_i32),
+        str8("FailureKind", failure_kind),
+        u64("PartA_PrivTags", &PDT_PRODUCT_AND_SERVICE_PERFORMANCE),
+    );
+}
+
 /// Emitted when the WTA event classifier positively identifies an error in
 /// a pane (e.g., connection failed, process exited with non-zero code).
 pub fn log_error_detected(severity: &str, method: &str, pane_id: &str) {

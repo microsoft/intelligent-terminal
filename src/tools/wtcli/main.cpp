@@ -309,6 +309,27 @@ static bool TryParseU64(const std::string& s, uint64_t& out)
     return true;
 }
 
+static bool ProtocolAtLeast(const std::string& version, unsigned requiredMajor, unsigned requiredMinor)
+{
+    unsigned major = 0;
+    unsigned minor = 0;
+    const auto dot = version.find('.');
+    if (dot == std::string::npos)
+    {
+        return false;
+    }
+    const auto majorText = version.substr(0, dot);
+    const auto minorText = version.substr(dot + 1);
+    const auto majorResult = std::from_chars(majorText.data(), majorText.data() + majorText.size(), major);
+    const auto minorResult = std::from_chars(minorText.data(), minorText.data() + minorText.size(), minor);
+    if (majorResult.ec != std::errc{} || majorResult.ptr != majorText.data() + majorText.size() ||
+        minorResult.ec != std::errc{} || minorResult.ptr != minorText.data() + minorText.size())
+    {
+        return false;
+    }
+    return major > requiredMajor || (major == requiredMajor && minor >= requiredMinor);
+}
+
 // ── Main ──
 
 // `wmain` — deliberately NOT `main`. Almost every string this tool forwards to
@@ -522,6 +543,59 @@ int wmain(int argc, wchar_t** argv)
             PrintJson(output);
         else
             printf("%s\n", output["content"].asString().c_str());
+    });
+
+    // ── prompt-context ──
+    std::string promptContextSource;
+    int promptContextFallbackLines = 24;
+    auto* promptContextCmd = app.add_subcommand("prompt-context", "Resolve a pane and capture its latest prompt context");
+    promptContextCmd->add_option("-s,--source", promptContextSource, "Explicit source pane session ID (GUID)");
+    promptContextCmd->add_option("-l,--fallback-lines", promptContextFallbackLines, "Scrollback lines when prompt marks are unavailable");
+    promptContextCmd->callback([&]() {
+        std::string version;
+        auto server = ConnectToTerminal(nullptr, &version, skipAuthenticate);
+        if (!server)
+        {
+            exitCode = 1;
+            return;
+        }
+        if (!skipAuthenticate && !ProtocolAtLeast(version, 2, 3))
+        {
+            fprintf(stderr, "[wtcli] WT_PROTOCOL_UNSUPPORTED_PROMPT_CONTEXT server=%s required=2.3\n", version.c_str());
+            exitCode = 2;
+            return;
+        }
+
+        GUID source{};
+        const auto hasExplicitSource = !promptContextSource.empty();
+        if (hasExplicitSource)
+        {
+            source = GuidFromString(promptContextSource);
+            if (InlineIsEqualGUID(source, GUID{}))
+            {
+                exitCode = 1;
+                return;
+            }
+        }
+
+        Json::Value context;
+        const auto hr = CallJson([&](BSTR* j) {
+            return server->GetPromptContext(source, hasExplicitSource, promptContextFallbackLines, j);
+        }, context);
+        if (FAILED(hr))
+        {
+            fprintf(stderr, "GetPromptContext failed: 0x%08X\n", static_cast<uint32_t>(hr));
+            exitCode = 1;
+            return;
+        }
+        if (jsonMode)
+        {
+            PrintJson(context);
+        }
+        else
+        {
+            printf("%s\n", context["output"].asString().c_str());
+        }
     });
 
     // ── pane-status ──

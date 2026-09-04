@@ -13,6 +13,8 @@
 #include "../inc/CustomModelCredential.h"
 #include "../inc/CustomModelProviderUtils.h"
 
+#include <unordered_set>
+
 namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
 {
     struct AgentEntry : AgentEntryT<AgentEntry>
@@ -241,6 +243,10 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         winrt::hstring _newCustomModelProviderApiKey;
 
         winrt::event_token _acpRuntimeChangedToken{};
+        void _RebuildAcpAgentList(
+            const std::unordered_set<std::wstring>& availableAgents,
+            bool notify);
+        winrt::fire_and_forget _RefreshHostAgentAvailabilityAsync();
         void _RebuildAcpModelListFromCache();
         void _LoadCustomModelProviders();
         void _CommitCustomModelProviders();

@@ -32,6 +32,10 @@ namespace TerminalAppLocalTests
 namespace winrt::TerminalApp::implementation
 {
     struct Tab;
+    namespace details
+    {
+        class SharedWtaPaneReferenceToken;
+    }
 }
 
 enum class Borders : int
@@ -173,6 +177,14 @@ public:
 
     bool IsAgentPane() const noexcept;
     void IsAgentPane(bool value) noexcept;
+    void SetSharedWtaPaneReference(std::shared_ptr<winrt::TerminalApp::implementation::details::SharedWtaPaneReferenceToken> reference) noexcept
+    {
+        _sharedWtaPaneReference = std::move(reference);
+    }
+    std::shared_ptr<winrt::TerminalApp::implementation::details::SharedWtaPaneReferenceToken> SharedWtaPaneReference() const noexcept
+    {
+        return _sharedWtaPaneReference;
+    }
     bool IsSourceOfAgentPane() const noexcept;
     void SetSourceOfAgentPane(bool value) noexcept;
     void SetAgentChipVisible(bool value);
@@ -307,6 +319,7 @@ private:
     bool _broadcastEnabled{ false };
     bool _isAgentPane{ false };
     bool _isSourceOfAgentPane{ false };
+    std::shared_ptr<winrt::TerminalApp::implementation::details::SharedWtaPaneReferenceToken> _sharedWtaPaneReference;
 
     // Mouse drag-to-resize state on the splitter.
     bool _splitterDragging{ false };

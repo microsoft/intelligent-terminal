@@ -100,6 +100,16 @@ pub(crate) async fn build_prompt_text(
     let resolved_context =
         prompt_context::resolve_provider_context(is_autofix, wt_connected, shell_mgr, pane_context)
             .await;
+    prompt_timing_log(
+        prompt_id,
+        submitted_at_unix_s,
+        "terminal_context_rpc",
+        &format!(
+            "outcome={} dt={:.3}s",
+            resolved_context.context_rpc_outcome,
+            resolved_context.context_rpc_ms as f64 / 1000.0
+        ),
+    );
 
     // ── Provider-driven section assembly ────────────────────────────────────
     // Each `### …` context source is a `ContextProvider`; the chain self-gates
@@ -107,9 +117,10 @@ pub(crate) async fn build_prompt_text(
     // this loop. The command-not-found "did you mean" injection (issue #287) is
     // one such provider — see `prompt_context`.
     let context_request = ContextRequest {
+        prompt_id,
+        submitted_at_unix_s,
         is_autofix,
         wt_connected,
-        shell_mgr,
         context_pane: resolved_context.context_pane.as_ref(),
         shell_exe: resolved_context.shell_exe.as_deref(),
         terminal_output: resolved_context.terminal_output.as_deref(),
@@ -342,12 +353,7 @@ mod tests {
         );
     }
 
-    /// Minimal [`crate::shell::wt_channel::WtChannel`] that answers
-    /// `get_active_pane` with a canned pane and the
-    /// `list_windows`/`list_tabs`/`list_panes` enumeration with canned
-    /// payloads; every other request errors. `read_pane_last_message` degrades
-    /// to `None` on those errors, which is all the assembly tests need (no
-    /// buffer content is asserted).
+    /// Minimal channel that returns a consolidated prompt-context response.
     struct MockWtChannel {
         active_pane: serde_json::Value,
         /// Optional enumeration topology for `resolve_pane_by_session_id`:
@@ -370,6 +376,36 @@ mod tests {
             };
             match method {
                 "get_active_pane" => Ok(self.active_pane.clone()),
+                "get_prompt_context" => {
+                    let explicit = _params
+                        .get("source_session_id")
+                        .and_then(serde_json::Value::as_str);
+                    let pane = if let Some(source) = explicit {
+                        self.panes
+                            .as_ref()
+                            .and_then(|value| value.get("panes"))
+                            .and_then(serde_json::Value::as_array)
+                            .and_then(|panes| {
+                                panes.iter().find(|pane| {
+                                    pane.get("session_id").and_then(serde_json::Value::as_str)
+                                        == Some(source)
+                                })
+                            })
+                            .cloned()
+                            .ok_or_else(|| anyhow::anyhow!("source pane not found"))?
+                    } else {
+                        self.active_pane.clone()
+                    };
+                    Ok(serde_json::json!({
+                        "pane": pane,
+                        "output": "",
+                        "output_source": "scrollback",
+                        "fallback_reason": "marks_unavailable",
+                        "has_marks": false,
+                        "line_count": 0,
+                        "truncated": false,
+                    }))
+                }
                 "list_windows" => scripted(&self.windows, "list_windows"),
                 "list_tabs" => scripted(&self.tabs, "list_tabs"),
                 "list_panes" => scripted(&self.panes, "list_panes"),
@@ -390,9 +426,7 @@ mod tests {
         }))
     }
 
-    /// Shell manager whose enumeration (`list_windows`→`list_tabs`→`list_panes`)
-    /// resolves to a single window/tab containing `source_pane`, so
-    /// `resolve_pane_by_session_id` can find the failing pane.
+    /// Shell manager whose consolidated context resolves `source_pane`.
     fn shell_mgr_with_source_pane(
         active: serde_json::Value,
         source_pane: serde_json::Value,

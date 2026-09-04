@@ -78,4 +78,11 @@ import "unknwn.idl";
     HRESULT Subscribe([in] ITerminalProtocolEventSink* sink);
     HRESULT Unsubscribe();
     HRESULT SendEvent([in] BSTR eventJson);
+
+    // Appended in protocol 2.3. Keep new methods at the end for vtable
+    // compatibility with already-deployed protocol clients.
+    HRESULT GetPromptContext([in] GUID sourceSessionId,
+                             [in] boolean hasExplicitSource,
+                             [in] long fallbackLines,
+                             [out, retval] BSTR* json);
 };

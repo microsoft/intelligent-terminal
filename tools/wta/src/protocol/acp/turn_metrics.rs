@@ -94,7 +94,6 @@ pub(crate) fn prompt_timing_log(
 #[derive(Debug)]
 struct ActivePromptTiming {
     id: u64,
-    preview: String,
     submitted_at_unix_s: f64,
     received_at_unix_s: Option<f64>,
     context_ready_at_unix_s: Option<f64>,
@@ -138,19 +137,17 @@ impl PromptTimingState {
         &self,
         session_id: &str,
         prompt_id: u64,
-        prompt_text: &str,
+        _prompt_text: &str,
         submitted_at_unix_s: f64,
         is_byok: bool,
         agent_id: &str,
     ) {
         let now = now_unix_s();
-        let preview = prompt_preview(prompt_text);
         let mut active = self.active.lock().unwrap();
         active.insert(
             session_id.to_string(),
             ActivePromptTiming {
                 id: prompt_id,
-                preview: preview.clone(),
                 submitted_at_unix_s,
                 received_at_unix_s: Some(now),
                 context_ready_at_unix_s: None,
@@ -183,8 +180,6 @@ impl PromptTimingState {
                 format_elapsed(Some(submitted_at_unix_s), Some(now)),
             ),
         );
-        // User prompt preview — trace only.
-        acp_trace_content(&format!("turn {} preview={:?}", prompt_id, preview));
     }
 
     pub(crate) fn mark_context_ready(&self, session_id: &str, prompt_len: usize) {
@@ -490,12 +485,6 @@ impl PromptTimingState {
             "prompt_complete",
             &details.join(" "),
         );
-        // User prompt preview — trace only.
-        acp_trace_content(&format!(
-            "turn {} complete preview={:?}",
-            active_prompt.id, active_prompt.preview
-        ));
-
         // Telemetry: emit the prompt-complete signal with aggregate metrics.
         // Use the monotonic `Instant` (captured alongside `prompt_sent_at_unix_s`
         // in `mark_prompt_sent`) so `total_duration_ms` is wall-clock-jump-

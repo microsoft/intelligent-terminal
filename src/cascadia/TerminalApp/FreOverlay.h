@@ -30,6 +30,7 @@ namespace winrt::TerminalApp::implementation
 
         // Initialize with settings to populate controls.
         void Initialize(const winrt::Microsoft::Terminal::Settings::Model::CascadiaSettings& settings);
+        void RefreshAgentAvailability();
 
         // Event — sender must be the WinRT projected type.
         til::typed_event<winrt::TerminalApp::FreOverlay, winrt::Windows::Foundation::IInspectable> Completed;
@@ -64,10 +65,11 @@ namespace winrt::TerminalApp::implementation
         // FreWingetPackage + FreWingetFailureKind below.
         enum class FreProblemKind
         {
-            WingetMissing = 0, // hard prerequisite — winget itself unavailable
-            ShellIntegrationExecutionPolicy = 1, // optional feature — error detection blocked by PowerShell execution policy
-            ShellIntegration = 2, // optional feature — error detection (generic install failure)
-            Hooks = 3, // optional feature — session management
+            AgentAvailability = 0, // installed agent could not be verified
+            WingetMissing = 1, // hard prerequisite — winget itself unavailable
+            ShellIntegrationExecutionPolicy = 2, // optional feature — error detection blocked by PowerShell execution policy
+            ShellIntegration = 3, // optional feature — error detection (generic install failure)
+            Hooks = 4, // optional feature — session management
         };
 
         // Which winget-installed prerequisite a failure refers to. Used by
@@ -128,6 +130,7 @@ namespace winrt::TerminalApp::implementation
         // each entry with its live install state. Safe to call repeatedly (e.g.
         // after a save) and preserves the current selection.
         void _PopulateAgentComboBox();
+        winrt::hstring _SelectedAgentId();
 
         // Detect whether a generic executable is on PATH. ACP agent choices
         // use WTA's authoritative Host availability probe instead.

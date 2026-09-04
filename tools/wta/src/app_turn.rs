@@ -24,6 +24,147 @@ enum DirectProposalEvaluation {
 // ─────────────────────────────────────────────────────────────────────────
 
 impl App {
+    pub(super) fn turn_queue_prompt_for_tab(
+        &mut self,
+        tab_id: &str,
+        prompt: SubmittedPrompt,
+        submission: PromptSubmission,
+    ) {
+        self.turn_submit_prompt_for_tab(tab_id, prompt);
+        let binding_generation = self.binding_generation;
+        let rekey_pending = self.pending_tab_rekeys.iter().any(|pending| {
+            pending.new_tab_id == tab_id && pending.binding_generation == binding_generation
+        });
+        let tab = self.tab_mut(tab_id);
+        let TurnState::Submitted(prompt) = std::mem::replace(&mut tab.turn, TurnState::Idle) else {
+            unreachable!("newly installed prompt must be submitted");
+        };
+        let prompt_id = prompt.id;
+        tab.turn = TurnState::Queued(QueuedPrompt {
+            prompt,
+            submission,
+            queued_at: std::time::Instant::now(),
+            binding_generation,
+            rekey_pending,
+        });
+        tracing::info!(
+            target: "latency.prompt",
+            milestone = "queued_prompt_accepted",
+            prompt_id,
+            elapsed_ms = 0u64,
+            "prompt queued while provider connects"
+        );
+    }
+
+    pub(super) fn turn_dispatch_queued_for_tab(
+        &mut self,
+        tab_id: &str,
+        binding_generation: u64,
+    ) -> bool {
+        if binding_generation != self.binding_generation {
+            return false;
+        }
+        let queued = {
+            let tab = self.tab_mut(tab_id);
+            let state = std::mem::replace(&mut tab.turn, TurnState::Idle);
+            match state {
+                TurnState::Queued(queued)
+                    if queued.binding_generation == binding_generation && !queued.rekey_pending =>
+                {
+                    queued
+                }
+                other => {
+                    tab.turn = other;
+                    return false;
+                }
+            }
+        };
+        let elapsed_ms = queued.queued_at.elapsed().as_millis() as u64;
+        let prompt_id = queued.prompt.id;
+        let QueuedPrompt {
+            prompt,
+            submission,
+            queued_at,
+            binding_generation,
+            rekey_pending,
+        } = queued;
+        let dispatched = match self.prompt_tx.send(submission) {
+            Ok(()) => {
+                self.tab_mut(tab_id).turn = TurnState::Submitted(prompt);
+                true
+            }
+            Err(error) => {
+                self.tab_mut(tab_id).turn = TurnState::Queued(QueuedPrompt {
+                    prompt,
+                    submission: error.0,
+                    queued_at,
+                    binding_generation,
+                    rekey_pending,
+                });
+                false
+            }
+        };
+        tracing::info!(
+            target: "latency.prompt",
+            milestone = "queued_prompt_dispatched",
+            prompt_id,
+            elapsed_ms,
+            dispatched,
+            "queued prompt reached ACP dispatch"
+        );
+        dispatched
+    }
+
+    pub(super) fn turn_restore_failed_submission_for_tab(
+        &mut self,
+        tab_id: &str,
+        submission: PromptSubmission,
+        binding_generation: u64,
+    ) -> bool {
+        let tab = self.tab_mut(tab_id);
+        let state = std::mem::replace(&mut tab.turn, TurnState::Idle);
+        let TurnState::Submitted(prompt) = state else {
+            tab.turn = state;
+            return false;
+        };
+        if prompt.id != submission.id {
+            tab.turn = TurnState::Submitted(prompt);
+            return false;
+        }
+        tab.turn = TurnState::Queued(QueuedPrompt {
+            prompt,
+            submission,
+            queued_at: std::time::Instant::now(),
+            binding_generation,
+            rekey_pending: false,
+        });
+        true
+    }
+
+    pub(super) fn turn_cancel_queued_for_tab(&mut self, tab_id: &str) -> bool {
+        let Some((prompt_id, elapsed_ms)) = self.tab_sessions.get(tab_id).and_then(|tab| {
+            if let TurnState::Queued(queued) = &tab.turn {
+                Some((
+                    queued.prompt.id,
+                    queued.queued_at.elapsed().as_millis() as u64,
+                ))
+            } else {
+                None
+            }
+        }) else {
+            return false;
+        };
+        self.turn_cancel_for_tab(tab_id);
+        tracing::info!(
+            target: "latency.prompt",
+            milestone = "queued_prompt_cancelled",
+            prompt_id,
+            elapsed_ms,
+            "queued prompt cancelled before ACP dispatch"
+        );
+        true
+    }
+
     /// Transition `tab.turn` into `Submitted` for a new prompt and perform
     /// the side effects: clear stale in-flight chat state (messages, tool
     /// calls, permission, scroll), push the user bubble, log
@@ -178,8 +319,8 @@ impl App {
                 true
             }
             (TurnState::Surfaced { .. }, _) => false,
-            // Chunks while Idle: shouldn't happen; defensive drop.
-            (TurnState::Idle, _) => false,
+            // Chunks while Idle/Queued: shouldn't happen; defensive drop.
+            (TurnState::Idle | TurnState::Queued(_), _) => false,
         }
     }
 
@@ -208,7 +349,7 @@ impl App {
                     "a card is already showing for this turn".to_string(),
                 );
             }
-            TurnState::Idle => {
+            TurnState::Idle | TurnState::Queued(_) => {
                 return DirectProposalEvaluation::Stale(
                     "no turn is in flight for this session".to_string(),
                 );
@@ -800,6 +941,9 @@ impl App {
         //     pending; otherwise annotate the history committed at turn end.
         //   - Other states (Idle / Surfaced{Empty / ChatTurn}) → no-op.
         let new_turn_data: Option<(String, Option<String>, String)> = match &tab.turn {
+            TurnState::Queued(queued) => {
+                Some((queued.prompt.text.clone(), None, canceled_marker.clone()))
+            }
             TurnState::Submitted(prompt) => {
                 let label = match prompt.autofix.as_ref() {
                     Some(_) => t!("chat.autofix_prompt_label").into_owned(),
@@ -883,6 +1027,146 @@ impl App {
         tab.turn = TurnState::Idle;
         tab.pending_terminal_action_proposal = None;
         tab.active_direct_proposal_id = None;
+        if let Some(proposal_id) = direct_proposal_id.as_deref() {
+            self.proposal_channels.resolve_final(
+                proposal_id,
+                crate::agent_tools::action_proposal::channel::ProposalFinalStatus::Cancelled,
+            );
+        }
+    }
+
+    pub(super) fn turn_interrupt_in_flight_for_transport(&mut self) -> usize {
+        let tab_ids: Vec<_> = self.tab_sessions.keys().cloned().collect();
+        let mut interrupted = 0;
+        for tab_id in tab_ids {
+            let should_interrupt = self
+                .tab_sessions
+                .get(&tab_id)
+                .is_some_and(|tab| tab.turn.is_in_flight());
+            if should_interrupt {
+                self.turn_interrupt_for_transport_for_tab(&tab_id);
+                interrupted += 1;
+            }
+        }
+        interrupted
+    }
+
+    fn turn_interrupt_for_transport_for_tab(&mut self, target_tab: &str) {
+        let direct_proposal_id = self
+            .tab_sessions
+            .get(target_tab)
+            .and_then(|tab| tab.active_direct_proposal_id.clone());
+        let marker = format!(
+            "{} {}",
+            t!("system.cancelled").into_owned(),
+            t!("connection.reconnecting").into_owned()
+        );
+        let pane_id = {
+            let tab = self.tab_mut(target_tab);
+            tab.autofix.generation = tab.autofix.generation.wrapping_add(1);
+            tab.turn
+                .prompt()
+                .and_then(|prompt| {
+                    prompt
+                        .autofix
+                        .as_ref()
+                        .and_then(|_| tab.autofix.pane_id.clone())
+                })
+                .or_else(|| tab.autofix.pane_id.clone())
+        };
+        if pane_id.is_some() {
+            self.emit_autofix_state_cleared(target_tab);
+        }
+
+        let tab = self.tab_mut(target_tab);
+        let prompt = tab.turn.prompt().cloned();
+        let prompt_label = prompt.as_ref().map(|prompt| {
+            if prompt.autofix.is_some() {
+                t!("chat.autofix_prompt_label").into_owned()
+            } else {
+                prompt.text.clone()
+            }
+        });
+        let state = tab.turn.clone();
+        match state {
+            TurnState::Submitted(_) | TurnState::Streaming { .. } => {
+                let details = tab.take_current_turn_details();
+                tab.completed_turns.push(CompletedTurn {
+                    prompt: prompt_label.unwrap_or_default(),
+                    details,
+                    expanded: true,
+                    trailing_marker: Some(marker),
+                });
+            }
+            TurnState::Surfaced {
+                outcome: TurnOutcome::ChatTurn,
+                end_pending: true,
+                ..
+            } => {
+                if let Some((index, turn)) = tab.completed_turns.iter_mut().enumerate().next_back()
+                {
+                    turn.trailing_marker = Some(marker);
+                    tab.invalidate_completed_turn_height(index);
+                }
+            }
+            TurnState::Surfaced {
+                outcome: TurnOutcome::Recommendation(recommendations),
+                end_pending: true,
+                ..
+            } => {
+                let mut details = tab.take_current_turn_details();
+                details.push(ChatMessage::Agent(format_recommendations_for_chat(
+                    &recommendations,
+                )));
+                tab.completed_turns.push(CompletedTurn {
+                    prompt: prompt_label.unwrap_or_default(),
+                    details,
+                    expanded: true,
+                    trailing_marker: Some(marker),
+                });
+            }
+            TurnState::Surfaced {
+                outcome: TurnOutcome::ResolvedRecommendation { summary, .. },
+                end_pending: true,
+                ..
+            } => {
+                let mut details = tab.take_current_turn_details();
+                details.push(ChatMessage::Agent(summary));
+                tab.completed_turns.push(CompletedTurn {
+                    prompt: prompt_label.unwrap_or_default(),
+                    details,
+                    expanded: true,
+                    trailing_marker: Some(marker),
+                });
+            }
+            TurnState::Surfaced {
+                outcome: TurnOutcome::Empty,
+                end_pending: true,
+                ..
+            } => {
+                let details = tab.take_current_turn_details();
+                tab.completed_turns.push(CompletedTurn {
+                    prompt: prompt_label.unwrap_or_default(),
+                    details,
+                    expanded: true,
+                    trailing_marker: Some(marker),
+                });
+            }
+            _ => return,
+        }
+        tab.autofix.pane_id = None;
+        tab.autofix.armed_at = None;
+        tab.selected_recommendation = 0;
+        tab.selected_button = 0;
+        tab.recommendation_focus = RecommendationFocus::Button;
+        tab.rec_scroll.reset();
+        tab.activity_frame = 0;
+        tab.clear_streaming_thought();
+        tab.user_input.clear();
+        tab.turn = TurnState::Idle;
+        tab.pending_terminal_action_proposal = None;
+        tab.active_direct_proposal_id = None;
+        tab.scroll_to_bottom();
         if let Some(proposal_id) = direct_proposal_id.as_deref() {
             self.proposal_channels.resolve_final(
                 proposal_id,

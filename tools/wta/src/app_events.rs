@@ -163,7 +163,15 @@ impl App {
 
         self.last_agent_rebind_window_id = Some(request.window_id.clone());
         self.last_agent_rebind_generation = request.generation;
+        let active_tab_id = self.active_tab_key().to_string();
+        let queued_prompt_cancelled = self.turn_cancel_queued_for_tab(&active_tab_id);
         self.prepare_agent_reconnect(&request);
+        if queued_prompt_cancelled {
+            let tab = self.tab_mut(&active_tab_id);
+            tab.messages
+                .push(ChatMessage::success(t!("system.cancelled").into_owned()));
+            tab.scroll_to_bottom();
+        }
 
         let disconnect_in_progress = matches!(
             &self.agent_reconnect_state,
@@ -619,6 +627,7 @@ impl App {
                 }
             }
             AppEvent::AgentConnected {
+                binding_generation,
                 name,
                 model,
                 version,
@@ -628,6 +637,15 @@ impl App {
                 load_session_supported,
                 image_supported,
             } => {
+                if binding_generation != self.binding_generation {
+                    tracing::debug!(
+                        target: "agent_rebind",
+                        connected_generation = binding_generation,
+                        current_generation = self.binding_generation,
+                        "ignoring AgentConnected from stale binding"
+                    );
+                    return;
+                }
                 self.agent_name = name;
                 self.agent_model = model;
                 self.agent_version = version;
@@ -650,6 +668,7 @@ impl App {
                 self.auth_recovery_generation = self.auth_recovery_generation.wrapping_add(1);
                 self.proposal_channels.set_agent_transport_available(true);
                 self.preflight_setup_active = false;
+                self.startup_preflight_obsolete = true;
                 // If we were in Setup (e.g. after Retry), transition to Chat
                 if self.mode == AppMode::Setup {
                     self.mode = AppMode::Chat;
@@ -697,6 +716,7 @@ impl App {
                 {
                     tab.messages.insert(0, ChatMessage::Disclaimer);
                 }
+                self.turn_dispatch_queued_for_tab(&bind_tab, binding_generation);
                 self.publish_agent_status();
                 self.project_tab_state(&bind_tab);
             }
@@ -1021,6 +1041,30 @@ impl App {
             } => {
                 self.rename_tab_session(&old_tab_id, &new_tab_id, new_window_id.as_deref());
             }
+            AppEvent::TabSessionRekeyed {
+                tab_id,
+                binding_generation,
+            } => {
+                let binding_matches = binding_generation == self.binding_generation;
+                let pending_index = self.pending_tab_rekeys.iter().position(|pending| {
+                    pending.new_tab_id == tab_id && pending.binding_generation == binding_generation
+                });
+                let pending_matches = pending_index
+                    .and_then(|index| self.pending_tab_rekeys.remove(index))
+                    .is_some();
+                if pending_matches {
+                    if let Some(tab) = self.tab_sessions.get_mut(&tab_id) {
+                        if let TurnState::Queued(queued) = &mut tab.turn {
+                            if queued.binding_generation == binding_generation {
+                                queued.rekey_pending = false;
+                            }
+                        }
+                    }
+                }
+                if pending_matches && binding_matches && self.state == ConnectionState::Connected {
+                    self.turn_dispatch_queued_for_tab(&tab_id, binding_generation);
+                }
+            }
             AppEvent::AgentError {
                 session_id,
                 failure,
@@ -1113,6 +1157,11 @@ impl App {
                     tab.messages.retain(|m| !matches!(m, ChatMessage::Error(_)));
                 } else {
                     if !session_survives {
+                        let failed_tab_id = session_id
+                            .as_deref()
+                            .map(|sid| self.tab_for_session(sid))
+                            .unwrap_or_else(|| self.active_tab_key().to_string());
+                        self.turn_cancel_queued_for_tab(&failed_tab_id);
                         self.state = ConnectionState::Failed(message.clone());
                         self.publish_agent_status();
                     }
@@ -1144,13 +1193,15 @@ impl App {
                         );
                         return;
                     }
+                    let interrupted_turns = self.turn_interrupt_in_flight_for_transport();
                     tracing::warn!(
                         target: "helper",
                         agent_id = %self.current_agent_id,
                         source = %self.current_agent_source,
+                        interrupted_turns,
                         "master disconnected; reconnecting retained helper over stable pipe"
                     );
-                    self.reset_agent_scoped_state();
+                    self.reset_agent_transport_state();
                     self.pending_acp_start = true;
                 } else {
                     tracing::warn!(
@@ -1655,6 +1706,15 @@ impl App {
                 }
             }
             AppEvent::PreflightComplete(result) => {
+                if self.startup_preflight_obsolete {
+                    tracing::debug!(
+                        target: "preflight",
+                        agent = %result.agent_id,
+                        binding_generation = self.binding_generation,
+                        "ignoring obsolete startup preflight result after authoritative ACP connection"
+                    );
+                    return;
+                }
                 if !matches!(&self.agent_reconnect_state, AgentReconnectState::Idle) {
                     tracing::debug!(
                         target: "preflight",
@@ -1672,6 +1732,14 @@ impl App {
                         stale_agent = %result.agent_id,
                         current_agent = %self.current_agent_id,
                         "ignoring stale preflight result after agent rebind"
+                    );
+                    return;
+                }
+                if self.state == ConnectionState::Connected {
+                    tracing::debug!(
+                        target: "preflight",
+                        agent = %result.agent_id,
+                        "ignoring startup preflight result after successful ACP connection"
                     );
                     return;
                 }
@@ -2081,7 +2149,7 @@ impl App {
                             AUTH_RECOVERY_CONNECTION_TIMEOUT,
                         );
                     }
-                    self.reset_agent_scoped_state();
+                    self.reset_agent_transport_state();
                     self.pending_acp_start = true;
                     return;
                 }

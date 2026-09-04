@@ -8,7 +8,9 @@
 #pragma once
 
 #include <string>
+#include <string_view>
 #include <sstream>
+#include <vector>
 
 #include <json/json.h>
 
@@ -224,5 +226,74 @@ namespace Microsoft::Terminal::Protocol::Parsing
             return PaneOutputSource::Screen;
         }
         return PaneOutputSource::Scrollback;
+    }
+
+    struct PromptCaptureRoute
+    {
+        std::string_view outputSource;
+        std::string_view fallbackReason;
+        bool hasMarks;
+    };
+
+    inline bool ShouldCapturePromptOutput(const int32_t fallbackLines) noexcept
+    {
+        return fallbackLines > 0;
+    }
+
+    struct PromptTail
+    {
+        std::string content;
+        int32_t lineCount;
+        bool truncated;
+    };
+
+    inline PromptTail BuildPromptTail(const std::string_view boundedTail, const int32_t maxLines)
+    {
+        if (maxLines <= 0)
+        {
+            return {};
+        }
+
+        std::vector<std::string> lines;
+        std::istringstream stream{ std::string{ boundedTail } };
+        std::string line;
+        while (std::getline(stream, line))
+        {
+            if (!line.empty() && line.back() == '\r')
+            {
+                line.pop_back();
+            }
+            lines.emplace_back(std::move(line));
+        }
+
+        const bool truncated = lines.size() > static_cast<size_t>(maxLines);
+        const auto start = truncated ? lines.size() - maxLines : 0;
+        std::string content;
+        for (auto index = start; index < lines.size(); ++index)
+        {
+            if (index != start)
+            {
+                content.push_back('\n');
+            }
+            content.append(lines[index]);
+        }
+        return {
+            std::move(content),
+            static_cast<int32_t>(lines.size() - start),
+            truncated,
+        };
+    }
+
+    inline PromptCaptureRoute ResolvePromptCaptureRoute(bool lastPromptReadSucceeded, bool hasPromptContent) noexcept
+    {
+        if (lastPromptReadSucceeded && hasPromptContent)
+        {
+            return { "last_prompt", "", true };
+        }
+        return {
+            "scrollback",
+            lastPromptReadSucceeded ? "marks_unavailable" : "last_prompt_error",
+            false,
+        };
     }
 }

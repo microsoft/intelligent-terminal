@@ -611,6 +611,20 @@ impl ShellManager {
         self.wt()?.request("read_pane_output", params).await
     }
 
+    /// Resolve the effective source pane and capture its last prompt, with
+    /// scrollback fallback, in one WT protocol request.
+    pub async fn wt_get_prompt_context(
+        &self,
+        source_pane_id: Option<&str>,
+        fallback_lines: u32,
+    ) -> anyhow::Result<serde_json::Value> {
+        let mut params = serde_json::json!({ "fallback_lines": fallback_lines });
+        if let Some(source) = source_pane_id {
+            params["source_session_id"] = serde_json::Value::String(source.to_string());
+        }
+        self.wt()?.request("get_prompt_context", params).await
+    }
+
     /// Switch focus to a pane (switching tab if needed).
     pub async fn wt_focus_pane(&self, pane_id: &str) -> anyhow::Result<serde_json::Value> {
         self.wt()?

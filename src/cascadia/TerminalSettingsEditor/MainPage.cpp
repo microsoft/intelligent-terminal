@@ -161,6 +161,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         // Make sure to initialize the profiles _after_ we have initialized the color schemes page VM, because we pass
         // that VM into the appearance VMs within the profiles
         _InitializeProfilesList();
+        ::Microsoft::Terminal::AgentAvailability::InvalidateHostAgentIds();
         _ProbeHostAgentAvailabilityAsync();
 
         // Apply icons and tooltips (GH#19688, long names may be truncated) to static nav items
@@ -1102,7 +1103,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         auto weakThis = get_weak();
         co_await winrt::resume_background();
 
-        auto availableHostAgents = ::Microsoft::Terminal::AgentAvailability::ProbeHostAgentIds();
+        auto availableHostAgents = ::Microsoft::Terminal::AgentAvailability::RefreshHostAgentIds();
 
         co_await wil::resume_foreground(dispatcher);
         if (auto strongThis = weakThis.get())

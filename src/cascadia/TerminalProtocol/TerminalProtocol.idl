@@ -58,6 +58,17 @@ namespace Microsoft.Terminal.Protocol
         Boolean HasMarks;
     };
 
+    struct PromptContext
+    {
+        PaneInfo Pane;
+        String Content;
+        String OutputSource;
+        String FallbackReason;
+        Int32 LineCount;
+        Boolean Truncated;
+        Boolean HasMarks;
+    };
+
     struct ProcessStatus
     {
         Guid SessionId;
@@ -131,5 +142,9 @@ namespace Microsoft.Terminal.Protocol
 
         // Client-originated event publishing (agent → WT → listeners)
         void SendEvent(String eventJson);
+
+        // Appended in protocol 2.3. Resolves the effective source pane and
+        // captures its last prompt (with scrollback fallback) atomically.
+        PromptContext GetPromptContext(Guid sourceSessionId, Boolean hasExplicitSource, Int32 fallbackLines);
     }
 }

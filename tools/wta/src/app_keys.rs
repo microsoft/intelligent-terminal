@@ -691,15 +691,13 @@ impl App {
                 return;
             }
             KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                let active_tab_id = self.active_tab_key().to_string();
+                if self.turn_cancel_queued_for_tab(&active_tab_id) {
+                    self.close_pane_armed_at = None;
+                    return;
+                }
                 // In-flight: state is Submitted/Streaming or Surfaced{end_pending}.
-                let in_flight = !self.current_tab().turn.is_idle()
-                    && !matches!(
-                        self.current_tab().turn,
-                        TurnState::Surfaced {
-                            end_pending: false,
-                            ..
-                        }
-                    );
+                let in_flight = self.current_tab().turn.is_in_flight();
                 if in_flight {
                     // Send a session/cancel to the ACP client. The client
                     // will fire the protocol notification and signal the
@@ -754,6 +752,10 @@ impl App {
             }
             KeyCode::Esc if self.show_notification_banner => {
                 self.dismiss_notifications();
+            }
+            KeyCode::Esc if matches!(self.current_tab().turn, TurnState::Queued(_)) => {
+                let active_tab_id = self.active_tab_key().to_string();
+                self.turn_cancel_queued_for_tab(&active_tab_id);
             }
             KeyCode::Esc
                 if self.current_tab().turn.recommendations().is_some()
@@ -888,9 +890,20 @@ impl App {
                 }
                 let _tab = self.current_tab();
                 tracing::debug!(target: "autofix", input_empty = _tab.input.is_empty(), state = ?self.state, has_recs = _tab.turn.recommendations().is_some(), autofix_pane = ?_tab.autofix.pane_id, selected_idx = _tab.selected_recommendation, "Enter");
+                let connected = self.state == ConnectionState::Connected;
+                let tab_id = self.active_tab_key().to_string();
+                let rekey_pending = self.pending_tab_rekeys.iter().any(|pending| {
+                    pending.new_tab_id == tab_id
+                        && pending.binding_generation == self.binding_generation
+                });
+                let queue_while_connecting = matches!(self.state, ConnectionState::Connecting(_))
+                    && self.mode == AppMode::Chat
+                    && self.current_tab().current_view == View::Chat
+                    && !self.resume_in_flight()
+                    && !self.current_tab().loading_session;
                 if (!self.current_tab().input.is_empty()
                     || !self.current_tab().attachments.is_empty())
-                    && self.state == ConnectionState::Connected
+                    && (connected || queue_while_connecting)
                 {
                     // Same-tab single-flight: refuse a new prompt if the
                     // turn isn't accepting one. The ACP transport rejects
@@ -944,7 +957,11 @@ impl App {
                         prompt.id,
                         prompt.submitted_at_unix_s,
                         "ui_submit",
-                        &format!("preview={:?}", prompt.preview()),
+                        &format!(
+                            "text_chars={} attachments={}",
+                            prompt.text.chars().count(),
+                            prompt.images.len()
+                        ),
                     );
                     if self.show_welcome_hint {
                         self.show_welcome_hint = false;
@@ -957,8 +974,31 @@ impl App {
                         context: TurnContext::default(),
                         autofix: None,
                     };
-                    self.turn_submit_prompt(&session_id, submitted);
-                    let _ = self.prompt_tx.send(prompt);
+                    if connected && !rekey_pending {
+                        self.turn_submit_prompt(&session_id, submitted);
+                        let binding_generation = self.binding_generation;
+                        if let Err(error) = self.prompt_tx.send(prompt) {
+                            let prompt_id = error.0.id;
+                            self.turn_restore_failed_submission_for_tab(
+                                &tab_id,
+                                error.0,
+                                binding_generation,
+                            );
+                            tracing::warn!(
+                                target: "latency.prompt",
+                                milestone = "connected_prompt_send_failed",
+                                prompt_id,
+                                binding_generation,
+                                "prompt transport closed before dispatch; preserving queued submission"
+                            );
+                            if self.deferred_acp.is_some() {
+                                self.reset_agent_transport_state();
+                                self.pending_acp_start = true;
+                            }
+                        }
+                    } else {
+                        self.turn_queue_prompt_for_tab(&tab_id, submitted, prompt);
+                    }
                 }
             }
             KeyCode::Backspace if key.modifiers.contains(KeyModifiers::CONTROL) => {

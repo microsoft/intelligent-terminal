@@ -131,6 +131,17 @@ namespace TerminalAppUnitTests
         TEST_METHOD(UnexpectedExitWithoutRecoveryConditionsDoesNotRespawn);
         TEST_METHOD(DeliberateOrStaleExitDoesNotRespawn);
         TEST_METHOD(RecoveryReplacementExitDoesNotLoop);
+        TEST_METHOD(MasterLeaseOwnsProcessWithoutPanes);
+        TEST_METHOD(MasterLeaseAndPaneReleaseIndependently);
+        TEST_METHOD(FinalMasterOwnerReleasesExactlyOnce);
+        TEST_METHOD(TransferredRootCloseThenTeardownClaimsReleaseOnce);
+        TEST_METHOD(TransferredNonRootCloseClaimsReleaseOnce);
+        TEST_METHOD(TransferredRootTeardownThenCloseClaimsReleaseOnce);
+        TEST_METHOD(LeaseOnlyUnexpectedExitRecoveryRemainsBounded);
+        TEST_METHOD(AdditionalMasterLeaseDoesNotRequestDuplicateSpawn);
+        TEST_METHOD(LeaseOnlyConfigurationRefreshWaitsForPanes);
+        TEST_METHOD(DeferredConfigurationRefreshUpdatesCrashRecoveryInputs);
+        TEST_METHOD(EquivalentConfigurationDoesNotRequireReplacement);
         TEST_METHOD(AllScopeRetirementJoinsSameRequest);
         TEST_METHOD(LiveSettingsObjectSharesGeneration);
         TEST_METHOD(LaterSettingsObjectGetsNewGenerationAfterValueReuse);
@@ -423,6 +434,161 @@ namespace TerminalAppUnitTests
 
         policy.Arm(9);
         VERIFY_IS_TRUE(policy.ShouldRespawn(9, 1, false, true));
+    }
+
+    void SharedWtaTests::MasterLeaseOwnsProcessWithoutPanes()
+    {
+        details::MasterOwnershipTracker ownership;
+
+        VERIFY_IS_TRUE(ownership.AcquireLease());
+        VERIFY_IS_TRUE(ownership.HasOwners());
+        VERIFY_ARE_EQUAL(size_t{ 0 }, ownership.PaneCount());
+        VERIFY_ARE_EQUAL(size_t{ 1 }, ownership.LeaseCount());
+    }
+
+    void SharedWtaTests::MasterLeaseAndPaneReleaseIndependently()
+    {
+        details::MasterOwnershipTracker ownership;
+
+        ownership.AcquireLease();
+        ownership.AcquirePane();
+        VERIFY_IS_FALSE(ownership.ReleaseLease());
+        VERIFY_IS_TRUE(ownership.HasOwners());
+        VERIFY_ARE_EQUAL(size_t{ 1 }, ownership.PaneCount());
+        VERIFY_IS_TRUE(ownership.ReleasePane());
+        VERIFY_IS_FALSE(ownership.HasOwners());
+    }
+
+    void SharedWtaTests::FinalMasterOwnerReleasesExactlyOnce()
+    {
+        details::MasterOwnershipTracker ownership;
+
+        ownership.AcquireLease();
+        VERIFY_IS_TRUE(ownership.ReleaseLease());
+        VERIFY_IS_FALSE(ownership.ReleaseLease());
+        VERIFY_IS_FALSE(ownership.ReleasePane());
+    }
+
+    void SharedWtaTests::TransferredRootCloseThenTeardownClaimsReleaseOnce()
+    {
+        details::SharedWtaPaneReferenceToken sourceReference;
+        const auto destinationReference = sourceReference.Transfer();
+        size_t releases = 0;
+
+        releases += destinationReference->ClaimRelease() ? 1 : 0; // destination Closed handler
+        releases += destinationReference->ClaimRelease() ? 1 : 0; // destination root-tab compensation
+        releases += sourceReference.ClaimRelease() ? 1 : 0; // source teardown
+
+        VERIFY_ARE_EQUAL(size_t{ 1 }, releases);
+    }
+
+    void SharedWtaTests::TransferredNonRootCloseClaimsReleaseOnce()
+    {
+        details::SharedWtaPaneReferenceToken sourceReference;
+        const auto destinationReference = sourceReference.Transfer();
+        size_t releases = 0;
+
+        releases += sourceReference.ClaimRelease() ? 1 : 0; // source teardown
+        releases += destinationReference->ClaimRelease() ? 1 : 0; // destination Closed handler
+
+        VERIFY_ARE_EQUAL(size_t{ 1 }, releases);
+        VERIFY_IS_FALSE(destinationReference->OwnsRelease());
+    }
+
+    void SharedWtaTests::TransferredRootTeardownThenCloseClaimsReleaseOnce()
+    {
+        details::SharedWtaPaneReferenceToken sourceReference;
+        const auto destinationReference = sourceReference.Transfer();
+        size_t releases = 0;
+
+        releases += sourceReference.ClaimRelease() ? 1 : 0; // source teardown
+        releases += destinationReference->ClaimRelease() ? 1 : 0; // destination abnormal teardown
+        releases += destinationReference->ClaimRelease() ? 1 : 0; // delayed Closed handler
+
+        VERIFY_ARE_EQUAL(size_t{ 1 }, releases);
+    }
+
+    void SharedWtaTests::LeaseOnlyUnexpectedExitRecoveryRemainsBounded()
+    {
+        details::MasterOwnershipTracker ownership;
+        details::UnexpectedExitRecoveryPolicy policy;
+        ownership.AcquireLease();
+        policy.Arm(17);
+
+        VERIFY_IS_TRUE(policy.ShouldRespawn(17, ownership.HasOwners() ? 1 : 0, false, true));
+        VERIFY_IS_FALSE(policy.ShouldRespawn(18, ownership.HasOwners() ? 1 : 0, false, true));
+    }
+
+    void SharedWtaTests::AdditionalMasterLeaseDoesNotRequestDuplicateSpawn()
+    {
+        details::MasterOwnershipTracker ownership;
+
+        VERIFY_IS_TRUE(ownership.AcquireLease());
+        VERIFY_IS_FALSE(ownership.AcquireLease());
+        VERIFY_ARE_EQUAL(size_t{ 2 }, ownership.LeaseCount());
+        VERIFY_IS_FALSE(ownership.ReleaseLease());
+        VERIFY_IS_TRUE(ownership.ReleaseLease());
+    }
+
+    void SharedWtaTests::LeaseOnlyConfigurationRefreshWaitsForPanes()
+    {
+        details::MasterOwnershipTracker ownership;
+
+        ownership.AcquireLease();
+        VERIFY_IS_TRUE(ownership.IsLeaseOnly());
+        ownership.AcquirePane();
+        VERIFY_IS_FALSE(ownership.IsLeaseOnly());
+        VERIFY_IS_FALSE(ownership.ReleasePane());
+        VERIFY_IS_TRUE(ownership.IsLeaseOnly());
+    }
+
+    void SharedWtaTests::DeferredConfigurationRefreshUpdatesCrashRecoveryInputs()
+    {
+        details::MasterConfigurationTracker configuration;
+        const std::array oldArgs{ std::wstring{ L"--agent-id" }, std::wstring{ L"copilot" } };
+        const std::array newArgs{
+            std::wstring{ L"--agent-id" },
+            std::wstring{ L"codex" },
+            std::wstring{ L"--allowed-agent-ids" },
+            std::wstring{ L"codex,gemini" },
+        };
+        const std::array oldEnvironment{
+            std::pair{ std::wstring{ L"WTA_CUSTOM_MODEL_ID" }, std::wstring{ L"old" } },
+        };
+        const std::array newEnvironment{
+            std::pair{ std::wstring{ L"WTA_CUSTOM_MODEL_ID" }, std::wstring{ L"new" } },
+        };
+
+        configuration.MarkRunning(L"wta.exe", oldArgs, oldEnvironment);
+        configuration.UpdateDesired(L"wta-new.exe", newArgs, newEnvironment);
+
+        VERIFY_IS_FALSE(configuration.RunningMatchesDesired());
+        VERIFY_ARE_EQUAL(std::wstring{ L"wta-new.exe" }, configuration.Desired().wtaPath);
+        const std::vector<std::wstring> expectedArgs{ newArgs.begin(), newArgs.end() };
+        const std::vector<std::pair<std::wstring, std::wstring>> expectedEnvironment{
+            newEnvironment.begin(), newEnvironment.end()
+        };
+        VERIFY_IS_TRUE(configuration.Desired().extraArgs == expectedArgs);
+        VERIFY_IS_TRUE(configuration.Desired().environment == expectedEnvironment);
+
+        configuration.ClearRunning();
+        VERIFY_IS_TRUE(configuration.HasDesired());
+        VERIFY_IS_FALSE(configuration.RunningMatchesDesired());
+        VERIFY_IS_TRUE(configuration.Desired().extraArgs == expectedArgs);
+    }
+
+    void SharedWtaTests::EquivalentConfigurationDoesNotRequireReplacement()
+    {
+        details::MasterConfigurationTracker configuration;
+        const std::array args{ std::wstring{ L"--allowed-agent-ids" }, std::wstring{ L"copilot,codex" } };
+        const std::array environment{
+            std::pair{ std::wstring{ L"WTA_LOG" }, std::wstring{ L"debug" } },
+        };
+
+        configuration.MarkRunning(L"wta.exe", args, environment);
+        configuration.UpdateDesired(L"wta.exe", args, environment);
+
+        VERIFY_IS_TRUE(configuration.RunningMatchesDesired());
     }
 
     void SharedWtaTests::AllScopeRetirementJoinsSameRequest()

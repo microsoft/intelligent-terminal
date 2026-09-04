@@ -14,7 +14,7 @@ See "Design history" for the rationale of the original pivot.
 - **Each agent pane runs as its own `wta-helper` process** spawned by
   Windows Terminal as a normal conpty child (same Win32 pattern as today's
   legacy mode and any other conpty-backed pane).
-- **One `wta-master` process per Terminal process** lazily owns a pool of
+- **One `wta-master` process per Terminal process** owns a pool of
   agent CLI subprocesses keyed by agent identity, execution source, and
   command line.
 - Helpers connect to the master via a **named pipe** and speak **ACP
@@ -246,9 +246,10 @@ WindowsTerminal.exe (one process)
                                        (one — claude/copilot/gemini)
 ```
 
-- **`wta-master`**: singleton per Terminal process, spawned by
-  `SharedWta` on first agent-pane request. Headless (no UI). Lazily owns an
-  ACP connection per active agent key and listens on a named pipe for helper
+- **`wta-master`**: singleton per Terminal process, retained by a process-level
+  `SharedWta` lease while AI integration is eligible. Headless (no UI). It
+  pre-warms the policy-approved default host agent without creating a session,
+  lazily owns other agent keys, and listens on a named pipe for helper
   connections.
 - **`wta-helper`**: one per agent pane. Conpty child of its
   TerminalControl. Runs the full Ratatui chat UI for one tab.
@@ -268,8 +269,8 @@ exactly one tab's worth of state:
   exactly one tab.
 - One `RenderCtx`-equivalent — a Ratatui `Terminal<CrosstermBackend<Stdout>>`
   writing to the conpty slave-out via the helper's normal stdout.
-- One ACP `SessionId` (lazily allocated on first prompt; bound to this
-  helper for its lifetime).
+- One ACP `SessionId` (normally allocated while the selected tab's helper
+  connects; bound to this helper for its lifetime).
 - One JSON-RPC client connection to the master over a named pipe.
 
 There is **no shared state** across helpers. State lives in the
@@ -366,28 +367,32 @@ Per agent pane:
  ├─ helper opens named pipe to master
  │   └─ sends ACP `initialize` (handshake — master responds with cached
  │       initialize state)
- │   └─ sends ACP `session/new` lazily when the first prompt is submitted
- │       (or eagerly if --eager-session is set)
+ │   └─ normally sends ACP `session/new` before reporting Connected
  │
  └─ helper renders welcome screen; awaits user input
 ```
 
-#### Per-tab session creation (first prompt)
+#### Per-tab session creation
 
 ```
-User types a prompt, hits Enter:
- ├─ helper builds ACP `session/prompt` request
- ├─ helper: if no SessionId yet, sends `session/new` first
- │   └─ master forwards to agent CLI
+Selected tab materializes its helper:
+ ├─ helper sends `session/new`
+ │   └─ master forwards to the pre-warmed/shared agent CLI
  │   └─ agent CLI returns new SessionId
  │   └─ master records SessionId → helper-connection
  │   └─ master responds to helper with SessionId
+User types a prompt, hits Enter:
+ ├─ helper builds ACP `session/prompt` request
  ├─ helper sends `session/prompt(SessionId, text)`
  ├─ master forwards to agent CLI on the shared connection
  ├─ agent CLI emits `session/update` chunks with SessionId
  ├─ master routes each chunk to the owning helper via SessionId lookup
  └─ helper updates TabSession.messages, re-renders
 ```
+
+The helper renders and accepts one queued prompt while initialization/session
+creation is still in progress. It dispatches that prompt exactly once after the
+matching connection generation becomes ready.
 
 #### Pane close (detach)
 
@@ -902,8 +907,12 @@ work:
   (`OnAgentStateChanged`) updates from `agent_state_changed`. Cross-
   tab and cross-window leaks are gated by the `tab_id` / `window_id`
   filters described in §7.
-- **Pre-warming**: not implemented. First user toggle creates the
-  helper on demand.
+- **Pre-warming**: tiered. Terminal retains the master and pre-warms the
+  policy-approved default provider without a session. The selected eligible tab
+  owns one stashed helper/session. Merely visiting additional tabs does not
+  accumulate unused helpers: an unused speculative helper is evicted as
+  selection moves, while restored, transferred, explicitly opened, or
+  conversation-bearing panes remain alive.
 
 ## What this does NOT solve (out of scope)
 

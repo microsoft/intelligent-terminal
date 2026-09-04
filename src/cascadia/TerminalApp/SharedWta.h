@@ -16,10 +16,9 @@
 // ConptyConnection path) and connect to the master via the pipe
 // whose name `MasterPipeName()` exposes.
 //
-// Lifecycle model: reference-counted. Each agent pane calls
-// `AcquirePane` on creation and `ReleasePane` when it closes. The
-// first acquire spawns the master; the last release terminates it
-// via the Job Object. master crashes are detected via
+// Lifecycle model: reference-counted across independent process leases and
+// agent panes. The first owner spawns the master; the last release terminates
+// it via the Job Object. Master crashes are detected via
 // RegisterWaitForSingleObject; state clears so the next acquire
 // respawns cleanly, reusing the same pipe name so previously-spawned
 // helpers can reconnect.
@@ -27,6 +26,7 @@
 #include <atomic>
 #include <chrono>
 #include <deque>
+#include <memory>
 #include <mutex>
 #include <optional>
 #include <span>
@@ -207,11 +207,111 @@ namespace winrt::TerminalApp::implementation
         private:
             Generation _armedGeneration{ 0 };
         };
+
+        class MasterOwnershipTracker
+        {
+        public:
+            bool AcquirePane() noexcept;
+            bool AcquireLease() noexcept;
+            bool ReleasePane() noexcept;
+            bool ReleaseLease() noexcept;
+            bool HasOwners() const noexcept;
+            bool IsLeaseOnly() const noexcept;
+            size_t PaneCount() const noexcept;
+            size_t LeaseCount() const noexcept;
+
+        private:
+            size_t _paneCount{ 0 };
+            size_t _leaseCount{ 0 };
+        };
+
+        struct MasterLaunchConfiguration
+        {
+            std::wstring wtaPath;
+            std::vector<std::wstring> extraArgs;
+            std::vector<std::pair<std::wstring, std::wstring>> environment;
+
+            bool operator==(const MasterLaunchConfiguration&) const = default;
+        };
+
+        class MasterConfigurationTracker
+        {
+        public:
+            void UpdateDesired(
+                std::wstring_view wtaPath,
+                std::span<const std::wstring> extraArgs,
+                std::span<const std::pair<std::wstring, std::wstring>> environment);
+            void MarkRunning(
+                std::wstring_view wtaPath,
+                std::span<const std::wstring> extraArgs,
+                std::span<const std::pair<std::wstring, std::wstring>> environment);
+            void ClearRunning() noexcept;
+            bool HasDesired() const noexcept;
+            bool RunningMatchesDesired() const noexcept;
+            const MasterLaunchConfiguration& Desired() const noexcept;
+
+        private:
+            static MasterLaunchConfiguration _Capture(
+                std::wstring_view wtaPath,
+                std::span<const std::wstring> extraArgs,
+                std::span<const std::pair<std::wstring, std::wstring>> environment);
+
+            MasterLaunchConfiguration _desired;
+            std::optional<MasterLaunchConfiguration> _running;
+        };
+
+        class SharedWtaPaneReferenceToken
+        {
+        public:
+            std::shared_ptr<SharedWtaPaneReferenceToken> Transfer() noexcept
+            {
+                if (!_ownsRelease.exchange(false, std::memory_order_acq_rel))
+                {
+                    return {};
+                }
+                return std::shared_ptr<SharedWtaPaneReferenceToken>{
+                    new SharedWtaPaneReferenceToken{}
+                };
+            }
+
+            bool ClaimRelease() noexcept
+            {
+                return _ownsRelease.exchange(false, std::memory_order_acq_rel);
+            }
+
+            bool OwnsRelease() const noexcept
+            {
+                return _ownsRelease.load(std::memory_order_acquire);
+            }
+
+        private:
+            std::atomic_bool _ownsRelease{ true };
+        };
     }
 
     class SharedWta
     {
     public:
+        class MasterLease
+        {
+        public:
+            MasterLease() noexcept = default;
+            ~MasterLease();
+            MasterLease(MasterLease&& other) noexcept;
+            MasterLease& operator=(MasterLease&& other) noexcept;
+            MasterLease(const MasterLease&) = delete;
+            MasterLease& operator=(const MasterLease&) = delete;
+
+            explicit operator bool() const noexcept;
+            void Reset() noexcept;
+
+        private:
+            friend class SharedWta;
+            explicit MasterLease(SharedWta* owner) noexcept;
+
+            SharedWta* _owner{ nullptr };
+        };
+
         /// Access the process-singleton instance. The first call lazily
         /// constructs the object; subsequent calls return the same
         /// instance. Thread-safe via magic-statics.
@@ -220,9 +320,8 @@ namespace winrt::TerminalApp::implementation
         SharedWta(const SharedWta&) = delete;
         SharedWta& operator=(const SharedWta&) = delete;
 
-        /// Acquire a reference to the shared wta process. Spawns wta
-        /// on the first acquire; subsequent acquires just bump an
-        /// internal counter. Returns true on success.
+        /// Acquire a pane reference to the shared wta process. Spawns wta
+        /// when no master is running; subsequent acquires only add ownership.
         ///
         /// `wtaPath` is the full path to wta.exe — see
         /// `TerminalPage::_DetectWtaPath()`.
@@ -237,18 +336,28 @@ namespace winrt::TerminalApp::implementation
         /// `<path>`); bare flags are a single element (`--no-autofix`).
         /// Used to bake per-process settings (`--no-autofix`,
         /// `--language`, `--acp-model`, etc.) at the first spawn.
-        /// **Ignored on subsequent acquires** — the singleton is
-        /// already running by then. Runtime settings updates flow
-        /// over the existing event channels
-        /// (e.g. `autofix_enabled_changed`).
+        /// A pane acquire does not replace an already-running master.
+        /// Master-lease acquisition and settings reconciliation refresh the
+        /// trusted configuration used by lease-only replacement and crash
+        /// recovery. Runtime settings updates also flow over the existing
+        /// event channels (e.g. `autofix_enabled_changed`).
         ///
         /// Every successful `AcquirePane` MUST be paired with exactly
         /// one `ReleasePane` when the caller's agent pane closes.
-        /// When the count reaches zero the Job Object is closed,
-        /// terminating wta and every descendant it spawned.
+        /// When both pane and process-lease counts reach zero the Job Object is
+        /// closed, terminating wta and every descendant it spawned.
         bool AcquirePane(const std::wstring_view wtaPath,
                          std::span<const std::wstring> extraArgs = {},
                          std::span<const std::pair<std::wstring, std::wstring>> environment = {});
+
+        /// Acquire process-scoped ownership of the trusted default master
+        /// configuration without materializing an agent pane. The returned
+        /// move-only lease releases automatically. Pane and lease ownership are
+        /// independent; the master is retired only after both reach zero.
+        MasterLease AcquireMasterLease(
+            const std::wstring_view wtaPath,
+            std::span<const std::wstring> extraArgs = {},
+            std::span<const std::pair<std::wstring, std::wstring>> environment = {});
 
         /// Release a previously acquired reference. Calling without a
         /// matching `AcquirePane` is a no-op (safe to call from
@@ -262,17 +371,14 @@ namespace winrt::TerminalApp::implementation
         static winrt::fire_and_forget ReleasePaneAfterSessionClose();
 
         /// Force-restart the wta-master process, bypassing the
-        /// `AcquirePane`/`ReleasePane` reference count. Used by the
+        /// pane/process-lease ownership counts. Used by the
         /// `/restart` slash command and launch-configuration changes after
         /// their sessions retire. Existing panes and helpers stay alive; the
         /// replacement master listens on the same `_masterPipeName` so they
         /// can reconnect without rebuilding their physical terminal stack.
         ///
-        /// Replays the `wtaPath` + `extraArgs` cached from the first
-        /// successful spawn so the new master inherits the same
-        /// per-process settings as the one being replaced. This makes
-        /// `/restart` semantically "give me the same agent CLI but
-        /// fresh".
+        /// Replays the newest trusted `wtaPath` + `extraArgs` configuration,
+        /// including settings changes deferred while panes were live.
         ///
         /// Settings changes (acpAgent / acpModel / etc.) need to spawn
         /// the master with a *different* cmdline. For that case, call
@@ -282,13 +388,21 @@ namespace winrt::TerminalApp::implementation
         /// any subsequent crash-recovery respawn uses the same.
         ///
         /// No-op if the master isn't running, or if there were no
-        /// cached spawn args (no AcquirePane has succeeded this
+        /// cached spawn args (no ownership acquire has succeeded this
         /// process) and no fresh args were supplied. Returns true on
         /// successful respawn or no-op.
         bool Restart();
         bool Restart(const std::wstring_view wtaPath,
                      std::span<const std::wstring> extraArgs,
                      std::span<const std::pair<std::wstring, std::wstring>> environment = {});
+
+        /// Refresh the trusted default configuration only when the process is
+        /// owned exclusively by process leases. Active pane helpers continue
+        /// through their existing retirement/rebind path.
+        bool RestartIfLeaseOnly(
+            const std::wstring_view wtaPath,
+            std::span<const std::wstring> extraArgs,
+            std::span<const std::pair<std::wstring, std::wstring>> environment = {});
 
         std::string CreateRetirementRequestId();
         details::RetirementRegistration RegisterRetirement(
@@ -303,7 +417,7 @@ namespace winrt::TerminalApp::implementation
 
         /// Whether wta is currently spawned. Becomes false after a
         /// crash is observed by the wait callback, or after the last
-        /// pane releases.
+        /// owner releases.
         bool IsRunning() const noexcept;
 
         /// Native handle of the running master process, valid only
@@ -325,7 +439,7 @@ namespace winrt::TerminalApp::implementation
         /// unique GUID) and reused for the master's lifetime; each
         /// per-pane wta-helper connects to this pipe to talk ACP
         /// JSON-RPC to the master. Empty before the first
-        /// `AcquirePane`. Format: `\\.\pipe\wta-master-<GUID>`.
+        /// ownership acquire. Format: `\\.\pipe\wta-master-<GUID>`.
         std::wstring_view MasterPipeName() const noexcept;
 
     private:
@@ -341,6 +455,7 @@ namespace winrt::TerminalApp::implementation
                             std::span<const std::wstring> extraArgs,
                             std::span<const std::pair<std::wstring, std::wstring>> environment);
         wil::unique_handle _CleanupLocked();
+        void _ReleaseMasterLease() noexcept;
 
         // Wait-callback bridge — `RegisterWaitForSingleObject` requires
         // a free function. The `context` PVOID carries a monotonically
@@ -357,20 +472,17 @@ namespace winrt::TerminalApp::implementation
         details::ProcessWaitGenerationTracker _waitGeneration;
         details::UnexpectedExitRecoveryPolicy _unexpectedExitRecovery;
         DWORD _pid{ 0 };
-        size_t _refCount{ 0 };
-        // Generated lazily on first AcquirePane; reused across
+        details::MasterOwnershipTracker _ownership;
+        // Generated lazily on first ownership acquire; reused across
         // master respawns within the same Terminal process so any
         // helpers spawned with stale cmdline can still find the
         // currently-live master.
         std::wstring _masterPipeName;
-        // Cached cmdline inputs from the most recent successful
-        // `_SpawnLocked`. Replayed verbatim by `Restart()` so the
-        // refreshed master inherits the per-process settings that
-        // were in effect when this Terminal process first booted an
-        // agent pane. Empty when no successful spawn has happened.
-        std::wstring _cachedWtaPath;
-        std::vector<std::wstring> _cachedExtraArgs;
-        std::vector<std::pair<std::wstring, std::wstring>> _cachedEnvironment;
+        // The desired launch configuration is refreshed even while live panes
+        // defer replacement. The running snapshot remains separate so a later
+        // retirement still detects the pending restart, while crash recovery
+        // immediately uses the newest trusted inputs.
+        details::MasterConfigurationTracker _configuration;
         // A restart could not confirm that the retired master exited. Never
         // risk another process claiming the stable pipe in this Terminal
         // process; recovery requires restarting Terminal.

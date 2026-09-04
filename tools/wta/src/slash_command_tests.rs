@@ -891,6 +891,7 @@ fn helper_status_catalog_combines_cloud_agent_and_byok_models() {
         None,
     );
     app.handle_event(AppEvent::AgentConnected {
+        binding_generation: INITIAL_BINDING_GENERATION,
         name: "Test Agent".into(),
         model: None,
         version: None,
@@ -936,6 +937,7 @@ fn private_cloud_catalog_survives_bare_agent_model_response() {
         description: None,
     }]));
     app.handle_event(AppEvent::AgentConnected {
+        binding_generation: INITIAL_BINDING_GENERATION,
         name: "Test Agent".into(),
         model: None,
         version: None,

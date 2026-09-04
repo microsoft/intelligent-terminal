@@ -140,6 +140,9 @@ fn master_config(cli: Cli) -> master::config::MasterConfig {
         agent: cli.agent,
         agent_id: cli.agent_id,
         allowed_agent_ids: cli.allowed_agent_ids,
+        acp_model: cli.acp_model,
+        custom_model_selection: cli.custom_model_selection,
+        cloud_models: cli.cloud_models,
     }
 }
 

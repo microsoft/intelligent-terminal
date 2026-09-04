@@ -9,6 +9,7 @@
 //! effects live on `App` methods in `app.rs`.
 
 use crate::coordinator::RecommendationSet;
+use crate::protocol::acp::client::PromptSubmission;
 use crate::turn_context::TurnContext;
 
 /// Per-tab turn state.
@@ -16,6 +17,9 @@ use crate::turn_context::TurnContext;
 pub enum TurnState {
     /// No turn in flight. Input box accepts new prompts.
     Idle,
+    /// Accepted while the selected agent is still connecting. This is visible
+    /// in the transcript but has not crossed the ACP boundary.
+    Queued(QueuedPrompt),
     /// Prompt sent over ACP; awaiting first chunk.
     Submitted(SubmittedPrompt),
     /// The Agent started producing events for this prompt. Visible content
@@ -29,6 +33,17 @@ pub enum TurnState {
         outcome: TurnOutcome,
         end_pending: bool,
     },
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct QueuedPrompt {
+    pub prompt: SubmittedPrompt,
+    pub submission: PromptSubmission,
+    pub queued_at: std::time::Instant,
+    /// Immutable agent binding this input was accepted for.
+    pub binding_generation: u64,
+    /// Set while the ACP client's tab-to-session map is being rekeyed.
+    pub rekey_pending: bool,
 }
 
 impl Default for TurnState {
@@ -99,6 +114,7 @@ impl TurnState {
     pub fn accepts_new_prompt(&self) -> bool {
         match self {
             TurnState::Idle => true,
+            TurnState::Queued(_) => false,
             TurnState::Surfaced { end_pending, .. } => !*end_pending,
             _ => false,
         }
@@ -125,7 +141,10 @@ impl TurnState {
     /// request itself proves the Agent is still waiting; only `Idle` means
     /// there is no turn left to service.
     pub fn can_service_agent_request(&self) -> bool {
-        !matches!(self, TurnState::Idle)
+        matches!(
+            self,
+            TurnState::Submitted(_) | TurnState::Streaming { .. } | TurnState::Surfaced { .. }
+        )
     }
 
     /// The surfaced recommendation set, if the outcome is a card.
@@ -143,6 +162,7 @@ impl TurnState {
     pub fn prompt(&self) -> Option<&SubmittedPrompt> {
         match self {
             TurnState::Idle => None,
+            TurnState::Queued(queued) => Some(&queued.prompt),
             TurnState::Submitted(p) => Some(p),
             TurnState::Streaming { prompt } => Some(prompt),
             TurnState::Surfaced { prompt, .. } => Some(prompt),
@@ -155,6 +175,7 @@ impl TurnState {
     pub fn prompt_mut(&mut self) -> Option<&mut SubmittedPrompt> {
         match self {
             TurnState::Idle => None,
+            TurnState::Queued(queued) => Some(&mut queued.prompt),
             TurnState::Submitted(p) => Some(p),
             TurnState::Streaming { prompt } => Some(prompt),
             TurnState::Surfaced { prompt, .. } => Some(prompt),
@@ -233,6 +254,22 @@ mod tests {
         assert!(s.recommendations().is_none());
         assert!(s.prompt().is_some());
         assert!(s.is_in_flight());
+    }
+
+    #[test]
+    fn queued_state_is_busy_but_not_acp_in_flight() {
+        let state = TurnState::Queued(QueuedPrompt {
+            prompt: prompt(),
+            submission: PromptSubmission::new("hello".to_string(), None),
+            queued_at: std::time::Instant::now(),
+            binding_generation: 1,
+            rekey_pending: false,
+        });
+
+        assert!(!state.accepts_new_prompt());
+        assert!(!state.is_in_flight());
+        assert!(!state.can_service_agent_request());
+        assert!(state.prompt().is_some());
     }
 
     #[test]

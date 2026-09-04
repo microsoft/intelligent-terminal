@@ -85,7 +85,11 @@ pub use tab_state::{
     ToolCallOutput, UserInputState, View,
 };
 pub(crate) use tab_state::{CompletedTurnViewportAnchor, DEFAULT_TAB_ID};
-pub use turn_state::{AutofixContext, ChunkKind, SubmittedPrompt, TurnOutcome, TurnState};
+pub use turn_state::{
+    AutofixContext, ChunkKind, QueuedPrompt, SubmittedPrompt, TurnOutcome, TurnState,
+};
+
+pub(crate) const INITIAL_BINDING_GENERATION: u64 = 1;
 
 // ─── MVP sessions origin filter ────────────────────────────────────────────────────
 //
@@ -1022,6 +1026,9 @@ pub struct App {
     /// Controlled same-helper transition from the old ACP transport to the
     /// latest accepted Agent binding.
     agent_reconnect_state: AgentReconnectState,
+    /// Immutable identity of the selected agent/source/provider binding.
+    /// Transparent transport reconnects retain it; explicit rebinds advance it.
+    binding_generation: u64,
     suppress_next_failed_client_error: bool,
     /// Execution source paired with `current_agent_id`.
     pub current_agent_source: crate::agent_source::AgentSource,
@@ -1035,6 +1042,11 @@ pub struct App {
     /// True when preflight detected an issue and is showing Setup screen.
     /// Prevents AgentError from overriding the preflight Setup.
     preflight_setup_active: bool,
+    /// Once an ACP binding has connected successfully, the startup preflight
+    /// result is permanently obsolete. Transport recovery may temporarily
+    /// leave `state` non-Connected, but must not make that original result
+    /// authoritative again.
+    startup_preflight_obsolete: bool,
     pub agent_name: String,
     pub agent_model: Option<String>,
     pub agent_version: Option<String>,
@@ -1134,6 +1146,9 @@ pub struct App {
     /// every path that finishes or abandons a load clears that flag, which is
     /// what keeps this from re-issuing a load nobody is waiting for.
     pub(crate) pending_session_load: Option<LoadSessionForTab>,
+    /// Drag rekeys accepted by the UI but not yet acknowledged by the active
+    /// ACP client. Retained across transport replacement and replayed in order.
+    pending_tab_rekeys: VecDeque<RenameSessionRequest>,
     // Reverse lookup: ACP `SessionId` → tab id. Populated from
     // `AgentConnected` (the startup session, bound to whichever tab the
     // process owns) and `SessionAttached` (lazily-created sessions for
@@ -1370,6 +1385,7 @@ impl App {
             last_agent_rebind_generation: 0,
             last_agent_rebind_window_id: None,
             agent_reconnect_state: AgentReconnectState::Idle,
+            binding_generation: INITIAL_BINDING_GENERATION,
             suppress_next_failed_client_error: false,
             current_agent_source: crate::agent_source::AgentSource::Host,
             allowed_agent_ids: Vec::new(),
@@ -1377,6 +1393,7 @@ impl App {
             available_agents: Vec::new(),
             agent_source_probe_generation: 0,
             preflight_setup_active: false,
+            startup_preflight_obsolete: false,
             agent_name: String::new(),
             agent_model: None,
             agent_version: None,
@@ -1425,6 +1442,7 @@ impl App {
             autofix_enabled,
             tab_sessions,
             pending_session_load: None,
+            pending_tab_rekeys: VecDeque::new(),
             session_to_tab: HashMap::new(),
             agent_sessions: crate::agent_sessions::AgentSessionRegistry::new(),
             agent_supports_load_session: false,
@@ -1651,6 +1669,7 @@ impl App {
                     // Taken before `owner_tab_opt` is moved into the client.
                     let recovery_tab_id = owner_tab_opt.clone();
                     let recovery_agent_id = self.current_agent_id.clone();
+                    let binding_generation = self.binding_generation;
                     let pending_load_sid = pending_load.as_ref().map(|p| p.session_id.clone());
                     let event_tx_for_pipe = event_tx.clone();
                     let proposal_channels = Arc::clone(&self.proposal_channels);
@@ -1671,6 +1690,7 @@ impl App {
                             // "Resuming session …" and still projecting the
                             // session id the restore asked for.
                             pending_load_sid,
+                            binding_generation,
                             event_tx_for_pipe.clone(),
                             prompt_rx,
                             cancel_rx,
@@ -1766,6 +1786,15 @@ impl App {
                         );
                         let _ = self.load_session_tx.send(request);
                         self.pending_session_load = None;
+                    }
+                    for request in self.pending_tab_rekeys.iter().cloned() {
+                        if self.rename_session_tx.send(request).is_err() {
+                            tracing::warn!(
+                                target: "acp_rename_session",
+                                "replacement ACP client closed before pending tab rekeys were replayed"
+                            );
+                            break;
+                        }
                     }
                 } else {
                     // Unreachable in the shipped product: wta only runs as a
@@ -3531,18 +3560,14 @@ impl App {
         self.acp_model.clone_from(&request.acp_model);
         self.custom_model_selection
             .clone_from(&request.custom_model_selection);
+        self.binding_generation = self.binding_generation.wrapping_add(1);
         self.reset_agent_scoped_state();
     }
 
-    fn reset_agent_scoped_state(&mut self) {
+    fn reset_agent_transport_state(&mut self) {
         self.pending_acp_start = false;
-        self.pending_agent_selection = None;
         self.suppress_next_failed_client_error = false;
         self.needs_post_login_authenticate = false;
-        self.preflight_setup_active = false;
-        self.mode = AppMode::Chat;
-        self.auth = None;
-        self.setup = None;
         self.agent_name.clear();
         self.agent_model = None;
         self.agent_version = None;
@@ -3553,27 +3578,43 @@ impl App {
         self.agent_current_model_id = None;
         self.agent_supports_load_session = false;
         self.agent_supports_image = false;
-        self.host_catalog_ready = false;
-        self.cloud_models.clear();
         self.session_id.clear();
         self.session_to_tab.clear();
         self.session_model_configs.clear();
         self.session_config_options.clear();
         self.session_commands.clear();
+        for tab in self.tab_sessions.values_mut() {
+            tab.usage = None;
+            tab.usage_staleness = crate::usage::UsageStaleness::default();
+            tab.session_id = None;
+            tab.permission.clear();
+            tab.user_input.clear();
+            tab.timing_note = None;
+            tab.pending_terminal_action_proposal = None;
+            tab.active_direct_proposal_id = None;
+            if !matches!(tab.turn, TurnState::Queued(_)) {
+                tab.turn = TurnState::Idle;
+            }
+        }
+        self.proposal_channels.set_agent_transport_available(false);
+        self.state = ConnectionState::Connecting(t!("connection.starting").into_owned());
+        self.publish_agent_status();
+    }
+
+    fn reset_agent_scoped_state(&mut self) {
+        self.reset_agent_transport_state();
+        self.pending_agent_selection = None;
+        self.preflight_setup_active = false;
+        self.mode = AppMode::Chat;
+        self.auth = None;
+        self.setup = None;
+        self.host_catalog_ready = false;
+        self.cloud_models.clear();
+        self.pending_tab_rekeys.clear();
         let active_tab_id = self.active_tab_key().to_string();
         for tab in self.tab_sessions.values_mut() {
             tab.clear_chat_history();
-            tab.usage = None;
-            tab.usage_staleness = crate::usage::UsageStaleness::default();
             tab.clear_completed_turns();
-            tab.session_id = None;
-            // The new agent starts with nothing to resume. Everything else
-            // that constitutes a conversation is cleared just above, so this
-            // flag has to go with it: `resumable_session_id` gates on it, and
-            // leaving it set makes the fresh session of the agent we are
-            // rebinding to look resumable. A save taken before the user talks
-            // to that agent would then record a session it never wrote to
-            // disk, and the restore fails with "Resource not found".
             tab.has_meaningful_conversation = false;
             tab.meaningful_conversation_before_load = None;
             tab.loading_session = false;
@@ -3585,8 +3626,6 @@ impl App {
             tab.config_pending_id = None;
             tab.agent_picker_open = false;
             tab.agent_picker_selected = 0;
-            tab.pending_terminal_action_proposal = None;
-            tab.active_direct_proposal_id = None;
             tab.last_emitted_chip_override = None;
             tab.autofix.generation = tab.autofix.generation.wrapping_add(1);
             tab.autofix.pane_id = None;
@@ -3598,9 +3637,6 @@ impl App {
         if self.tab_sessions.contains_key(&active_tab_id) {
             self.emit_autofix_state_cleared(&active_tab_id);
         }
-        self.proposal_channels.set_agent_transport_available(false);
-        self.state = ConnectionState::Connecting(t!("connection.starting").into_owned());
-        self.publish_agent_status();
     }
 
     fn begin_pending_agent_reconnect_preflight(&mut self) -> Option<AgentReconnectRequest> {
@@ -4127,11 +4163,19 @@ impl App {
         terminal: &mut Terminal<CrosstermBackend<io::Stdout>>,
         mut ui_rx: mpsc::UnboundedReceiver<AppEvent>,
         mut event_rx: mpsc::UnboundedReceiver<AppEvent>,
+        helper_started_at: std::time::Instant,
     ) -> Result<()> {
         const MAX_EVENTS_PER_FRAME: usize = 64;
 
         let initial_draw_started = std::time::Instant::now();
         self.draw_frame(terminal)?;
+        tracing::info!(
+            target: "latency.startup",
+            milestone = "helper_first_frame",
+            elapsed_ms = helper_started_at.elapsed().as_millis() as u64,
+            draw_ms = initial_draw_started.elapsed().as_millis() as u64,
+            "helper rendered first frame"
+        );
         ui_trace::log_slow("initial_draw", initial_draw_started.elapsed(), || {
             self.trace_state()
         });
@@ -4324,6 +4368,7 @@ impl App {
             AppEvent::AgentSoftStop { .. } => "agent_soft_stop",
             AppEvent::AgentBusy { .. } => "agent_busy",
             AppEvent::TabRenamed { .. } => "tab_renamed",
+            AppEvent::TabSessionRekeyed { .. } => "tab_session_rekeyed",
             AppEvent::ExecutionInfo(_) => "execution_info",
             AppEvent::AgentThoughtChunk { .. } => "agent_thought_chunk",
             AppEvent::AgentMessageChunk { .. } => "agent_message_chunk",
@@ -5277,6 +5322,7 @@ impl App {
     /// for clearing the input and cursor before calling this.
     fn handle_slash_command(&mut self, cmd: ParsedCommand) {
         let in_flight = self.current_tab().turn.is_in_flight();
+        let prompt_pending = in_flight || matches!(self.current_tab().turn, TurnState::Queued(_));
         crate::telemetry::log_slash_command_invoked(cmd.spec.name);
         tracing::info!(
             target: "slash_cmd",
@@ -5292,8 +5338,8 @@ impl App {
             CommandKind::Help => self.cmd_help(),
             CommandKind::Clear => self.cmd_clear(),
             CommandKind::Stop => self.cmd_stop(in_flight),
-            CommandKind::New => self.cmd_new(in_flight),
-            CommandKind::Fix => self.cmd_fix(in_flight, cmd.rest),
+            CommandKind::New => self.cmd_new(prompt_pending),
+            CommandKind::Fix => self.cmd_fix(prompt_pending, cmd.rest),
             CommandKind::Sessions => self.cmd_sessions(),
             CommandKind::Restart => self.cmd_restart(),
             CommandKind::Agent => self.cmd_agent(cmd.rest),
@@ -5310,6 +5356,8 @@ impl App {
 
     /// `/clear` — wipe the active tab's chat history and completed turns.
     fn cmd_clear(&mut self) {
+        let tab_id = self.active_tab_key().to_string();
+        self.turn_cancel_queued_for_tab(&tab_id);
         let tab = self.current_tab_mut();
         tab.clear_chat_history();
         tab.clear_completed_turns();
@@ -5320,7 +5368,13 @@ impl App {
     /// stop. `in_flight` is the active tab's turn state, captured by the
     /// dispatcher before any mutation.
     fn cmd_stop(&mut self, in_flight: bool) {
-        if in_flight {
+        let tab_id = self.active_tab_key().to_string();
+        if self.turn_cancel_queued_for_tab(&tab_id) {
+            let tab = self.current_tab_mut();
+            tab.messages
+                .push(ChatMessage::success(t!("system.cancelled").into_owned()));
+            tab.scroll_to_bottom();
+        } else if in_flight {
             let session_id = self.current_tab().session_id.clone();
             if let Some(sid) = session_id.clone() {
                 let _ = self.cancel_tx.send(CancelRequest { session_id: sid });
@@ -5543,6 +5597,8 @@ impl App {
     /// CLI pool. Viable panes, ConPTYs, and helpers stay alive and reconnect
     /// over the stable master pipe with clean ACP sessions.
     fn cmd_restart(&mut self) {
+        let tab_id = self.active_tab_key().to_string();
+        self.turn_cancel_queued_for_tab(&tab_id);
         self.state = ConnectionState::Connecting("Restarting agent...".to_string());
         self.session_to_tab.clear();
         self.session_model_configs.clear();
@@ -5815,6 +5871,7 @@ impl App {
             );
             return;
         }
+        let old_window_id = self.window_id.clone();
         let had_session = if let Some(mut entry) = self.tab_sessions.remove(old_tab_id) {
             // Preserve target slot's TabSession if one was lazily
             // created under the new id before this event arrived — but
@@ -5827,6 +5884,15 @@ impl App {
                 }
             }
             entry.invalidate_pending_paste();
+            if let TurnState::Queued(queued) = &mut entry.turn {
+                if let Some(context) = &mut queued.submission.pane_context {
+                    context.tab_id = Some(new_tab_id.to_string());
+                    if let Some(window_id) = new_window_id {
+                        context.window_id = Some(window_id.to_string());
+                    }
+                }
+                queued.rekey_pending = true;
+            }
             self.tab_sessions.insert(new_tab_id.to_string(), entry);
             true
         } else {
@@ -5846,6 +5912,17 @@ impl App {
         let owner_matched = self.owner_tab_id.as_deref() == Some(old_tab_id);
         if owner_matched {
             self.owner_tab_id = Some(new_tab_id.to_string());
+            crate::protocol::acp::client::set_helper_owner_tab_id(Some(new_tab_id));
+            if let Some(params) = &mut self.deferred_acp {
+                if params.owner_tab_id.as_deref() == Some(old_tab_id) {
+                    params.owner_tab_id = Some(new_tab_id.to_string());
+                }
+            }
+            if let Some(load) = &mut self.pending_session_load {
+                if load.tab_id == old_tab_id {
+                    load.tab_id = new_tab_id.to_string();
+                }
+            }
             // This helper owns the dragged tab. The conpty/TermControl
             // moved to the dest window — point `self.window_id` at it so
             // subsequent set_agent_state / tab_changed events from the new
@@ -5861,6 +5938,18 @@ impl App {
                     new_window_id = wid,
                     "tab_renamed: updated self.window_id (dragged helper)"
                 );
+            }
+            if let Some(window_id) = new_window_id {
+                match &mut self.agent_reconnect_state {
+                    AgentReconnectState::Disconnecting(request)
+                    | AgentReconnectState::Preflighting(request) => {
+                        request.window_id = window_id.to_string();
+                    }
+                    AgentReconnectState::Idle => {}
+                }
+                if self.last_agent_rebind_window_id.as_deref() == old_window_id.as_deref() {
+                    self.last_agent_rebind_window_id = Some(window_id.to_string());
+                }
             }
         }
 
@@ -5921,19 +6010,32 @@ impl App {
         // of falling through to the lazy-create branch. The map lives
         // behind `Arc<Mutex<…>>` in the ACP task and can't be touched
         // from `&mut App` directly — mirror the DropSessionRequest plumb.
-        // Send-failure means the ACP task is gone; logged for traces but
-        // not actionable.
-        if let Err(e) = self.rename_session_tx.send(RenameSessionRequest {
+        let request = RenameSessionRequest {
             old_tab_id: old_tab_id.to_string(),
             new_tab_id: new_tab_id.to_string(),
-        }) {
+            binding_generation: self.binding_generation,
+        };
+        self.pending_tab_rekeys.push_back(request.clone());
+        if let Err(e) = self.rename_session_tx.send(request) {
             tracing::warn!(
                 target: "helper",
                 old_tab_id,
                 new_tab_id,
                 error = ?e,
-                "rename_session_tx send failed (ACP client task closed?)"
+                "rename_session_tx send failed; reconnecting with durable owner identity"
             );
+            if self.turn_cancel_queued_for_tab(new_tab_id) {
+                let tab = self.tab_mut(new_tab_id);
+                tab.messages
+                    .push(ChatMessage::success(t!("system.cancelled").into_owned()));
+                tab.scroll_to_bottom();
+            }
+            if self.deferred_acp.is_some() {
+                self.reset_agent_transport_state();
+                self.pending_acp_start = true;
+            } else {
+                self.pending_tab_rekeys.clear();
+            }
         }
     }
 

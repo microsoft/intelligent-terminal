@@ -51,6 +51,7 @@ const NOTIF_CHANNEL_CAPACITY: usize = 1024;
 const SESSION_NEW_TIMEOUT_SECS: u64 = 120;
 const SESSION_LOAD_TIMEOUT_SECS: u64 = 55;
 const SESSION_ROLLBACK_CLOSE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(2);
+const INITIAL_HISTORY_SEED_WAIT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(6);
 const MASTER_PIPE_DISCOVERY_FILE: &str = "master-pipe.txt";
 
 use agent_client_protocol as acp;
@@ -79,6 +80,52 @@ pub(crate) struct HelperId(u64);
 type AgentCmdKey = String;
 type AgentInstanceId = uuid::Uuid;
 type AgentCell = Arc<OnceCell<Arc<AgentCli>>>;
+
+#[derive(Clone)]
+struct AgentAttemptPublication {
+    published: watch::Receiver<bool>,
+}
+
+impl AgentAttemptPublication {
+    async fn wait(mut self) {
+        while !*self.published.borrow() {
+            if self.published.changed().await.is_err() {
+                break;
+            }
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum InitialHistorySeedStatus {
+    Disabled { generation: u64 },
+    Pending { generation: u64 },
+    Succeeded { generation: u64 },
+    Failed { generation: u64 },
+    TimedOut { generation: u64 },
+}
+
+impl InitialHistorySeedStatus {
+    fn generation(self) -> u64 {
+        match self {
+            Self::Disabled { generation }
+            | Self::Pending { generation }
+            | Self::Succeeded { generation }
+            | Self::Failed { generation }
+            | Self::TimedOut { generation } => generation,
+        }
+    }
+
+    fn outcome(self) -> &'static str {
+        match self {
+            Self::Disabled { .. } => "disabled",
+            Self::Pending { .. } => "pending",
+            Self::Succeeded { .. } => "succeeded",
+            Self::Failed { .. } => "failed",
+            Self::TimedOut { .. } => "timed_out",
+        }
+    }
+}
 
 struct CustomModelGeneration {
     config: crate::custom_model_provider::Config,
@@ -301,6 +348,11 @@ struct MasterStateInner {
     /// `session_to_helper`, then subordinate state such as `registry`.
     /// Route reads do not need the lifecycle gate.
     pub(crate) registry: Arc<dyn crate::session_registry::SessionRegistry>,
+    /// One-shot readiness for the default provider's initial history seed.
+    /// Read-only control clients may await this bounded barrier, but never
+    /// resolve or bind an agent themselves.
+    initial_history_seed: watch::Sender<InitialHistorySeedStatus>,
+    initial_history_seed_wait_timeout: std::time::Duration,
     /// Per-helper subscribers for `intellterm.wta/*` ExtNotifications
     /// fanned out from master. Populated by `serve_helper` on connect
     /// and removed on disconnect (or whenever a send fails). Keyed by
@@ -355,6 +407,11 @@ struct MasterStateInner {
     /// a background process at the cost of cold-start latency for the next
     /// tab switch; that trade-off favors warm agents for a terminal app.
     pub(crate) agents: Mutex<HashMap<AgentCmdKey, AgentCell>>,
+    /// Exact pool key currently owned by the process-global default prewarm.
+    /// Model-scoped entries normally retire after their final helper unbinds;
+    /// this key stays warm until a replacement default is pinned or the master
+    /// exits.
+    default_prewarm_key: Mutex<Option<AgentCmdKey>>,
     /// Master-only BYOK configurations keyed by the credential-free selection
     /// ID. A changed endpoint/model/credential reference advances the
     /// generation and therefore gets a new agent-pool entry.
@@ -2648,6 +2705,36 @@ impl HelperHandler {
         // otherwise falls back to the trusted `--agent` default. See
         // `resolve_agent_selection` for the full policy.
         let wta_meta = crate::session_registry::extract_wta_meta(&mut args.meta);
+        match wta_meta.connection_role.as_deref() {
+            Some(crate::session_registry::MASTER_CONTROL_CONNECTION_ROLE_V1) => {
+                tracing::debug!(
+                    target: "master",
+                    op = "initialize",
+                    helper_id = ?self.helper_id,
+                    connection_role = crate::session_registry::MASTER_CONTROL_CONNECTION_ROLE_V1,
+                    "initialized master-control client without binding an agent"
+                );
+                return Ok(acp::schema::v1::InitializeResponse::new(
+                    acp::schema::ProtocolVersion::V1,
+                ));
+            }
+            Some(role) if role.starts_with("master-control-") => {
+                tracing::warn!(
+                    target: "master",
+                    op = "initialize",
+                    helper_id = ?self.helper_id,
+                    connection_role = role,
+                    "rejecting unsupported master-control client role"
+                );
+                return Err(acp::Error::invalid_params().data(serde_json::json!({
+                    "message": format!(
+                        "unsupported master-control connection role '{role}'; supported role is '{}'",
+                        crate::session_registry::MASTER_CONTROL_CONNECTION_ROLE_V1
+                    )
+                })));
+            }
+            _ => {}
+        }
         let supplied_cloud_models: Vec<crate::app::AcpModelInfo> = wta_meta
             .cloud_models
             .as_deref()
@@ -2679,6 +2766,20 @@ impl HelperHandler {
             wta_meta.wsl_distro.as_deref(),
             self.helper_id,
         );
+        if agent_cmd.trim().is_empty() {
+            let error = anyhow!("no policy-approved default agent is configured");
+            tracing::warn!(
+                target: "master",
+                op = "initialize",
+                helper_id = ?self.helper_id,
+                requested_agent_id = ?wta_meta.agent_id,
+                "helper has no policy-approved provider to bind"
+            );
+            return Err(helper_initialize_error(
+                HelperInitializeFailure::ProviderResolution,
+                &error,
+            ));
+        }
         tracing::info!(
             target: "master",
             step = "helper→agent",
@@ -4220,10 +4321,40 @@ async fn run_master_loop(config: MasterConfig, pipe_name: String) -> Result<()> 
     // down to nothing (`Some(empty_set)` ⇒ block all) — see
     // `normalize_allowed_agent_ids` for the absent-vs-present-empty split.
     let allowed_agent_ids = normalize_allowed_agent_ids(&config.allowed_agent_ids);
+    let (default_agent_cmd, default_agent_id) = validate_trusted_default_agent(
+        &config.agent,
+        config.agent_id.as_deref(),
+        allowed_agent_ids.as_ref(),
+    )
+    .unwrap_or_default();
+    let default_prewarm_model = config.acp_model.clone();
+    let default_prewarm_provider = config.custom_model_selection.clone();
+    let default_prewarm_cloud_models = config
+        .cloud_models
+        .as_deref()
+        .and_then(|models| match serde_json::from_str(models) {
+            Ok(models) => Some(models),
+            Err(error) => {
+                tracing::warn!(
+                    target: "master.prewarm",
+                    error_kind = "invalid_cloud_catalog",
+                    %error,
+                    "default provider prewarm will omit invalid cloud-model metadata"
+                );
+                None
+            }
+        })
+        .unwrap_or_default();
+    let initial_history_seed = watch::channel(if default_agent_cmd.trim().is_empty() {
+        InitialHistorySeedStatus::Disabled { generation: 0 }
+    } else {
+        InitialHistorySeedStatus::Pending { generation: 1 }
+    })
+    .0;
     tracing::info!(
         target: "master",
         allowed_agent_ids = ?allowed_agent_ids,
-        default_agent_id = ?config.agent_id,
+        default_agent_id = ?default_agent_id,
         "agent allowlist resolved"
     );
 
@@ -4244,12 +4375,15 @@ async fn run_master_loop(config: MasterConfig, pipe_name: String) -> Result<()> 
         pending_usage: Mutex::new(HashMap::new()),
         usage_generation: watch::channel(0u64).0,
         registry: crate::session_registry::InMemoryRegistry::shared(),
+        initial_history_seed,
+        initial_history_seed_wait_timeout: INITIAL_HISTORY_SEED_WAIT_TIMEOUT,
         helper_ext_subscribers: Mutex::new(HashMap::new()),
         wt,
         agents: Mutex::new(HashMap::new()),
+        default_prewarm_key: Mutex::new(None),
         custom_model_generations: Mutex::new(HashMap::new()),
-        default_agent_cmd: config.agent.clone(),
-        default_agent_id: config.agent_id.clone(),
+        default_agent_cmd,
+        default_agent_id,
         allowed_agent_ids,
         helper_meta: Mutex::new(HashMap::new()),
         tab_ownership_gate: Mutex::new(()),
@@ -4389,6 +4523,18 @@ async fn run_master_loop(config: MasterConfig, pipe_name: String) -> Result<()> 
         "named pipe listening; awaiting helper connections"
     );
     let _pipe_discovery_guard = MasterPipeDiscoveryGuard::write(&pipe_name);
+    {
+        let prewarm_state = Arc::clone(&inner);
+        tokio::task::spawn_local(async move {
+            prewarm_default_provider(
+                prewarm_state,
+                default_prewarm_model,
+                default_prewarm_provider,
+                default_prewarm_cloud_models,
+            )
+            .await;
+        });
+    }
 
     let mut next_helper_id: u64 = 1;
     // Cheap monotonic counter for tracking concurrent helper count.
@@ -4489,6 +4635,37 @@ fn normalize_allowed_agent_ids(raw: &[String]) -> Option<std::collections::HashS
     // policy is honored fail-closed (block all) rather than collapsing back to
     // the no-policy `None`.
     Some(set)
+}
+
+fn validate_trusted_default_agent(
+    command: &str,
+    explicit_id: Option<&str>,
+    allowed_ids: Option<&std::collections::HashSet<String>>,
+) -> Option<(String, Option<String>)> {
+    let command = command.trim();
+    if command.is_empty() {
+        return None;
+    }
+
+    let explicit_id = explicit_id
+        .map(str::trim)
+        .filter(|id| !id.is_empty())
+        .map(str::to_ascii_lowercase);
+    let inferred_id = crate::agent_registry::resolve_agent_id_from_cmd(command);
+    let inferred_id = crate::agent_registry::is_known_id(inferred_id).then_some(inferred_id);
+
+    let blocked = explicit_id
+        .as_deref()
+        .filter(|id| crate::agent_registry::is_known_id(id))
+        .into_iter()
+        .chain(inferred_id)
+        .any(|id| allowed_ids.is_some_and(|allowed| !allowed.contains(id)));
+    if blocked {
+        return None;
+    }
+
+    let resolved_id = explicit_id.or_else(|| inferred_id.map(str::to_string));
+    Some((command.to_string(), resolved_id))
 }
 
 #[derive(Clone, Copy)]
@@ -4623,15 +4800,20 @@ async fn resolve_provider_binding(
         return Ok(ProviderBinding::Native);
     }
 
+    // Provider settings and their legacy environment fallback belong to the
+    // Host process. WSL agents keep using their distro-native environment even
+    // when an older helper omits provider metadata.
+    if !matches!(source, crate::agent_source::AgentSource::Host) {
+        return Ok(ProviderBinding::Native);
+    }
+
     let Some(requested_binding) = requested_binding
         .map(str::trim)
         .filter(|value| !value.is_empty())
     else {
         return Ok(ProviderBinding::LegacyEnvironment);
     };
-    if !matches!(source, crate::agent_source::AgentSource::Host)
-        || requested_binding.eq_ignore_ascii_case("default")
-    {
+    if requested_binding.eq_ignore_ascii_case("default") {
         return Ok(ProviderBinding::Native);
     }
 
@@ -4724,36 +4906,283 @@ async fn get_or_spawn_agent(
     provider_binding: ProviderBinding,
     supplied_cloud_models: Vec<crate::app::AcpModelInfo>,
 ) -> Result<Arc<AgentCli>> {
+    let (agent, disposition) = get_or_spawn_agent_with_outcome(
+        state,
+        agent_cmd,
+        agent_id,
+        source,
+        provider_binding,
+        supplied_cloud_models,
+    )
+    .await?;
+    if disposition == AgentPoolDisposition::Spawned {
+        schedule_agent_history_seed(Arc::clone(state), Arc::clone(&agent));
+    }
+    Ok(agent)
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum AgentPoolDisposition {
+    CacheHit,
+    Joined,
+    Spawned,
+}
+
+impl AgentPoolDisposition {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::CacheHit => "cache_hit",
+            Self::Joined => "joined",
+            Self::Spawned => "spawned",
+        }
+    }
+}
+
+async fn get_or_spawn_agent_with_outcome(
+    state: &Arc<MasterStateInner>,
+    agent_cmd: &str,
+    agent_id: Option<&str>,
+    source: &crate::agent_source::AgentSource,
+    provider_binding: ProviderBinding,
+    supplied_cloud_models: Vec<crate::app::AcpModelInfo>,
+) -> Result<(Arc<AgentCli>, AgentPoolDisposition)> {
     let key = agent_cmd_key_with_provider(agent_cmd, agent_id, source, &provider_binding);
-    let cell = {
-        let mut agents = state.agents.lock().await;
-        Arc::clone(
-            agents
-                .entry(key.clone())
-                .or_insert_with(|| Arc::new(tokio::sync::OnceCell::new())),
+    get_or_try_initialize_agent_with_outcome(state, key.clone(), |cell, publication| async move {
+        spawn_one_agent(
+            state,
+            &cell,
+            publication,
+            &key,
+            agent_cmd,
+            agent_id,
+            source,
+            &provider_binding,
+            supplied_cloud_models,
         )
+        .await
+    })
+    .await
+}
+
+#[cfg(test)]
+async fn get_or_try_initialize_agent<F, Fut>(
+    state: &Arc<MasterStateInner>,
+    key: AgentCmdKey,
+    initialize: F,
+) -> Result<Arc<AgentCli>>
+where
+    F: FnOnce(AgentCell, AgentAttemptPublication) -> Fut,
+    Fut: std::future::Future<Output = Result<Arc<AgentCli>>>,
+{
+    get_or_try_initialize_agent_with_outcome(state, key, initialize)
+        .await
+        .map(|(agent, _)| agent)
+}
+
+async fn get_or_try_initialize_agent_with_outcome<F, Fut>(
+    state: &Arc<MasterStateInner>,
+    key: AgentCmdKey,
+    initialize: F,
+) -> Result<(Arc<AgentCli>, AgentPoolDisposition)>
+where
+    F: FnOnce(AgentCell, AgentAttemptPublication) -> Fut,
+    Fut: std::future::Future<Output = Result<Arc<AgentCli>>>,
+{
+    let (cell, disposition) = {
+        use std::collections::hash_map::Entry;
+        let mut agents = state.agents.lock().await;
+        match agents.entry(key.clone()) {
+            Entry::Occupied(entry) => {
+                let cell = Arc::clone(entry.get());
+                let disposition = if cell.get().is_some() {
+                    AgentPoolDisposition::CacheHit
+                } else {
+                    AgentPoolDisposition::Joined
+                };
+                (cell, disposition)
+            }
+            Entry::Vacant(entry) => {
+                let cell = Arc::new(tokio::sync::OnceCell::new());
+                entry.insert(Arc::clone(&cell));
+                (cell, AgentPoolDisposition::Spawned)
+            }
+        }
     };
-    // On spawn/init failure the `OnceCell` stays uninitialized and
-    // `spawn_one_agent` kills its child, whose closing stdio ends the I/O
-    // task that then `reap_agent`s this key out of the map — so a later
-    // helper requesting the same agent gets a fresh cell and retries
-    // cleanly (no lingering dead slot, no leaked subprocess).
+    // Reapers may observe the child/I/O exit before OnceCell publishes the
+    // successful initializer result. Keep them behind this attempt-local
+    // barrier so they can compare the published instance id rather than
+    // deleting a slot that a later retry has already filled.
+    let publisher = Arc::new(std::sync::Mutex::new(None));
+    let publisher_for_init = Arc::clone(&publisher);
     let agent = cell
-        .get_or_try_init(|| async {
-            spawn_one_agent(
-                state,
-                &cell,
-                &key,
-                agent_cmd,
-                agent_id,
-                source,
+        .get_or_try_init(|| {
+            let (published_tx, published_rx) = watch::channel(false);
+            *publisher_for_init.lock().unwrap() = Some(published_tx);
+            initialize(
+                Arc::clone(&cell),
+                AgentAttemptPublication {
+                    published: published_rx,
+                },
+            )
+        })
+        .await;
+    if let Some(published) = publisher.lock().unwrap().take() {
+        let _ = published.send(true);
+    }
+    let agent = agent?;
+    Ok((Arc::clone(agent), disposition))
+}
+
+async fn prewarm_default_provider(
+    state: Arc<MasterStateInner>,
+    requested_model: Option<String>,
+    requested_provider: Option<String>,
+    supplied_cloud_models: Vec<crate::app::AcpModelInfo>,
+) {
+    let started = std::time::Instant::now();
+    if state.default_agent_cmd.trim().is_empty() {
+        let generation = state.initial_history_seed.borrow().generation();
+        state
+            .initial_history_seed
+            .send_replace(InitialHistorySeedStatus::Disabled { generation });
+        tracing::info!(
+            target: "master.prewarm",
+            milestone = "master_provider_prewarm",
+            outcome = "no_default",
+            elapsed_ms = started.elapsed().as_millis() as u64,
+            "default provider prewarm skipped"
+        );
+        return;
+    }
+
+    let (selection, provider_request) = default_prewarm_request(
+        &state,
+        requested_model.as_deref(),
+        requested_provider.as_deref(),
+    );
+    let agent_id = selection.agent_id.clone();
+    let result = match resolve_provider_binding(
+        &state,
+        selection.agent_id.as_deref(),
+        &selection.source,
+        Some(&provider_request),
+        selection.explicit_selection,
+    )
+    .await
+    {
+        Ok(provider_binding) => {
+            let key = agent_cmd_key_with_provider(
+                &selection.command,
+                selection.agent_id.as_deref(),
+                &selection.source,
                 &provider_binding,
+            );
+            let previous_key = {
+                let mut pinned = state.default_prewarm_key.lock().await;
+                pinned.replace(key.clone())
+            };
+            let result = get_or_spawn_agent_with_outcome(
+                &state,
+                &selection.command,
+                selection.agent_id.as_deref(),
+                &selection.source,
+                provider_binding,
                 supplied_cloud_models,
             )
-            .await
-        })
-        .await?;
-    Ok(Arc::clone(agent))
+            .await;
+            match result {
+                Ok((agent, disposition)) => {
+                    if let Some(previous_key) = previous_key.filter(|previous| previous != &key) {
+                        retire_unbound_model_key(&state, &previous_key).await;
+                    }
+                    Ok((agent, disposition))
+                }
+                Err(error) => {
+                    let mut pinned = state.default_prewarm_key.lock().await;
+                    if pinned.as_ref() == Some(&key) {
+                        *pinned = previous_key;
+                    }
+                    Err(error)
+                }
+            }
+        }
+        Err(error) => Err(error),
+    };
+    let elapsed_ms = started.elapsed().as_secs_f64() * 1000.0;
+    let (outcome, failure_kind) = match &result {
+        Ok((_, disposition)) => (disposition.as_str(), ""),
+        Err(_) => ("failed", "PrewarmFailed"),
+    };
+    tracing::info!(
+        target: "master.prewarm",
+        milestone = "master_provider_prewarm",
+        outcome,
+        agent_id = agent_id.as_deref().unwrap_or("custom"),
+        duration_ms = elapsed_ms,
+        "default provider prewarm complete"
+    );
+    crate::telemetry::log_master_provider_prewarm_complete(
+        agent_id.as_deref().unwrap_or("custom"),
+        elapsed_ms,
+        result.is_ok(),
+        failure_kind,
+    );
+    let generation = state.initial_history_seed.borrow().generation();
+    match result {
+        Ok((agent, _)) => {
+            let seed_succeeded = seed_host_and_broadcast(&state, &agent).await.is_some();
+            let status = if seed_succeeded {
+                InitialHistorySeedStatus::Succeeded { generation }
+            } else {
+                InitialHistorySeedStatus::Failed { generation }
+            };
+            state.initial_history_seed.send_replace(status);
+            tracing::info!(
+                target: "master_history",
+                generation,
+                outcome = status.outcome(),
+                elapsed_ms = started.elapsed().as_millis() as u64,
+                "initial default-provider history readiness completed"
+            );
+        }
+        Err(error) => {
+            let status = InitialHistorySeedStatus::Failed { generation };
+            state.initial_history_seed.send_replace(status);
+            tracing::warn!(
+                target: "master.prewarm",
+                error_kind = "provider_initialization",
+                generation,
+                "default provider prewarm failed; the next helper will retry"
+            );
+            let _ = error;
+        }
+    }
+}
+
+fn default_prewarm_request(
+    state: &MasterStateInner,
+    requested_model: Option<&str>,
+    requested_provider: Option<&str>,
+) -> (ResolvedAgentSelection, String) {
+    let requested_id = state
+        .default_agent_id
+        .as_deref()
+        .filter(|id| crate::agent_registry::is_known_id(id));
+    let selection = resolve_agent_selection(
+        &state.default_agent_cmd,
+        state.default_agent_id.as_deref(),
+        state.allowed_agent_ids.as_ref(),
+        requested_id,
+        requested_model,
+        Some(crate::agent_source::AgentSource::HOST_KIND),
+        None,
+        HelperId(0),
+    );
+    let provider_request = requested_provider
+        .filter(|selection| !selection.trim().is_empty())
+        .unwrap_or("default")
+        .to_string();
+    (selection, provider_request)
 }
 
 /// Spawn one agent CLI subprocess, wire master as its ACP client, run
@@ -4808,6 +5237,7 @@ fn format_startup_stderr(lines: &[String]) -> String {
 async fn spawn_one_agent(
     state: &Arc<MasterStateInner>,
     cell: &AgentCell,
+    publication: AgentAttemptPublication,
     key: &AgentCmdKey,
     agent_cmd: &str,
     agent_id: Option<&str>,
@@ -4983,6 +5413,7 @@ async fn spawn_one_agent(
     {
         let state = Arc::clone(state);
         let cell = Arc::clone(cell);
+        let publication = publication.clone();
         let key = key.clone();
         tokio::task::spawn_local(async move {
             match handle_io.await {
@@ -4998,6 +5429,7 @@ async fn spawn_one_agent(
                     "agent CLI ACP I/O loop ended with error — removing from pool"
                 ),
             }
+            publication.wait().await;
             reap_agent(&state, &key, &cell, instance_id).await;
         });
     }
@@ -5083,6 +5515,7 @@ async fn spawn_one_agent(
     {
         let state = Arc::clone(state);
         let cell = Arc::clone(cell);
+        let publication = publication.clone();
         let key = key.clone();
         tokio::task::spawn_local(async move {
             let status = child.wait().await;
@@ -5092,6 +5525,7 @@ async fn spawn_one_agent(
                 ?status,
                 "agent CLI exited — removing from pool (master stays up for other agents)"
             );
+            publication.wait().await;
             reap_agent(&state, &key, &cell, instance_id).await;
         });
     }
@@ -5126,27 +5560,6 @@ async fn spawn_one_agent(
         listed_ever: Mutex::new(HashSet::new()),
     });
 
-    // Seed THIS CLI's history. Every agent entering the pool seeds, not just
-    // the first: master outlives a Settings agent switch (the helper
-    // reconnects and the pool spawns the new CLI without a master restart), so
-    // gating this on "first agent wins" left the registry holding only the
-    // launch agent's rows. The session view filters by the helper's current
-    // CLI, so every switched-to agent then rendered an empty list until the
-    // user restarted Terminal.
-    {
-        let state = Arc::clone(state);
-        let agent = Arc::clone(&agent);
-        tokio::task::spawn_local(async move {
-            let count = seed_host_and_broadcast(&state, &agent).await;
-            tracing::info!(
-                target: "master_history",
-                cli = ?agent.cli_source,
-                count,
-                "agent ACP history seed complete"
-            );
-        });
-    }
-
     if start_clean_probe {
         let command = agent_cmd.to_string();
         start_clean_cloud_catalog_probe(
@@ -5158,6 +5571,21 @@ async fn spawn_one_agent(
     }
 
     Ok(agent)
+}
+
+fn schedule_agent_history_seed(state: Arc<MasterStateInner>, agent: Arc<AgentCli>) {
+    // Every newly spawned non-prewarm CLI seeds its own history. Master can
+    // outlive a Settings agent switch, so this cannot be process-global.
+    tokio::task::spawn_local(async move {
+        let count = seed_host_and_broadcast(&state, &agent).await;
+        tracing::info!(
+            target: "master_history",
+            cli = ?agent.cli_source,
+            count = count.unwrap_or(0),
+            succeeded = count.is_some(),
+            "agent ACP history seed complete"
+        );
+    });
 }
 
 /// Remove a dead agent CLI from the pool. Helpers still holding an
@@ -5176,6 +5604,9 @@ async fn reap_agent(
         if agents
             .get(key)
             .is_some_and(|current| Arc::ptr_eq(current, cell))
+            && cell
+                .get()
+                .is_some_and(|agent| agent.instance_id == instance_id)
         {
             agents.remove(key);
             true
@@ -5477,6 +5908,9 @@ async fn retire_unbound_model_agent(state: &MasterStateInner, agent: &Arc<AgentC
     if !agent.cmd_key.starts_with("model:") {
         return;
     }
+    if state.default_prewarm_key.lock().await.as_ref() == Some(&agent.cmd_key) {
+        return;
+    }
 
     let removed = {
         let mut agents = state.agents.lock().await;
@@ -5497,6 +5931,19 @@ async fn retire_unbound_model_agent(state: &MasterStateInner, agent: &Arc<AgentC
             "retiring unbound model-specific agent CLI"
         );
         agent.conn.shutdown();
+    }
+}
+
+async fn retire_unbound_model_key(state: &MasterStateInner, key: &AgentCmdKey) {
+    let agent = state
+        .agents
+        .lock()
+        .await
+        .get(key)
+        .and_then(|cell| cell.get())
+        .cloned();
+    if let Some(agent) = agent {
+        retire_unbound_model_agent(state, &agent).await;
     }
 }
 
@@ -6113,9 +6560,9 @@ fn is_stale_host_history_row(
 async fn seed_host_and_broadcast(
     state: &std::sync::Arc<MasterStateInner>,
     agent: &AgentCli,
-) -> usize {
+) -> Option<usize> {
     let Some((changed, count)) = sync_host_history(state, agent).await else {
-        return 0;
+        return None;
     };
     if changed {
         broadcast_ext_to_helpers(
@@ -6124,7 +6571,7 @@ async fn seed_host_and_broadcast(
         )
         .await;
     }
-    count
+    Some(count)
 }
 
 /// Before returning the snapshot, opportunistically upgrade any row whose title
@@ -6143,12 +6590,15 @@ async fn handle_sessions_list(
     agent: Option<&AgentCli>,
     parsed: &crate::session_registry::SessionsListParams,
 ) -> acp::Result<acp::schema::v1::ExtResponse> {
+    if agent.is_none() {
+        await_initial_history_seed(state).await;
+    }
     if let Some(agent) = agent {
         if parsed.rescan {
             // Re-pull this agent's own `session/list` and broadcast. Each pooled
             // agent — host or in-distro — enumerates its own sessions, so an
             // F5 in a WSL pane refreshes that distro through its own CLI.
-            let count = seed_host_and_broadcast(state, agent).await;
+            let count = seed_host_and_broadcast(state, agent).await.unwrap_or(0);
             tracing::info!(
                 target: "master_history",
                 cli = ?agent.cli_source,
@@ -6189,6 +6639,57 @@ async fn handle_sessions_list(
     sessions.sort_by(|l, r| l.session_id.0.cmp(&r.session_id.0));
     let raw = crate::session_registry::build_sessions_list_response(sessions);
     Ok(acp::schema::v1::ExtResponse::new(raw.into()))
+}
+
+async fn await_initial_history_seed(state: &MasterStateInner) {
+    let started = std::time::Instant::now();
+    let mut readiness = state.initial_history_seed.subscribe();
+    let initial = *readiness.borrow();
+    if !matches!(initial, InitialHistorySeedStatus::Pending { .. }) {
+        tracing::info!(
+            target: "master_history",
+            generation = initial.generation(),
+            outcome = initial.outcome(),
+            waited_ms = 0u64,
+            "control sessions/list used current history readiness"
+        );
+        return;
+    }
+
+    let generation = initial.generation();
+    let wait = async {
+        loop {
+            if readiness.changed().await.is_err() {
+                return InitialHistorySeedStatus::Failed { generation };
+            }
+            let status = *readiness.borrow();
+            if !matches!(status, InitialHistorySeedStatus::Pending { .. }) {
+                return status;
+            }
+        }
+    };
+    let status = match tokio::time::timeout(state.initial_history_seed_wait_timeout, wait).await {
+        Ok(status) => status,
+        Err(_) => {
+            let status = InitialHistorySeedStatus::TimedOut { generation };
+            if matches!(
+                *state.initial_history_seed.borrow(),
+                InitialHistorySeedStatus::Pending {
+                    generation: current
+                } if current == generation
+            ) {
+                state.initial_history_seed.send_replace(status);
+            }
+            status
+        }
+    };
+    tracing::info!(
+        target: "master_history",
+        generation,
+        outcome = status.outcome(),
+        waited_ms = started.elapsed().as_millis() as u64,
+        "control sessions/list initial history readiness resolved"
+    );
 }
 
 /// Pure async handler for the `intellterm.wta/session_hook` ExtRequest.

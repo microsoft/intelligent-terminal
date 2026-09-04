@@ -1244,6 +1244,7 @@ async fn dispatch_rename_session_rekeys_existing_and_ignores_missing() {
                 RenameSessionRequest {
                     old_tab_id: "old-tab".to_string(),
                     new_tab_id: "new-tab".to_string(),
+                    binding_generation: crate::app::INITIAL_BINDING_GENERATION,
                 },
                 &tab_to_session,
             )
@@ -1264,6 +1265,7 @@ async fn dispatch_rename_session_rekeys_existing_and_ignores_missing() {
                 RenameSessionRequest {
                     old_tab_id: "ghost".to_string(),
                     new_tab_id: "phantom".to_string(),
+                    binding_generation: crate::app::INITIAL_BINDING_GENERATION,
                 },
                 &tab_to_session,
             )

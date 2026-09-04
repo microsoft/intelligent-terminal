@@ -482,6 +482,109 @@ namespace winrt::TerminalApp::implementation::details
         Retire();
         return refCount > 0 && !spawnSuppressed && hasCachedArgs;
     }
+
+    bool MasterOwnershipTracker::AcquirePane() noexcept
+    {
+        const auto wasEmpty = !HasOwners();
+        ++_paneCount;
+        return wasEmpty;
+    }
+
+    bool MasterOwnershipTracker::AcquireLease() noexcept
+    {
+        const auto wasEmpty = !HasOwners();
+        ++_leaseCount;
+        return wasEmpty;
+    }
+
+    bool MasterOwnershipTracker::ReleasePane() noexcept
+    {
+        if (_paneCount == 0)
+        {
+            return false;
+        }
+        --_paneCount;
+        return !HasOwners();
+    }
+
+    bool MasterOwnershipTracker::ReleaseLease() noexcept
+    {
+        if (_leaseCount == 0)
+        {
+            return false;
+        }
+        --_leaseCount;
+        return !HasOwners();
+    }
+
+    bool MasterOwnershipTracker::HasOwners() const noexcept
+    {
+        return _paneCount != 0 || _leaseCount != 0;
+    }
+
+    bool MasterOwnershipTracker::IsLeaseOnly() const noexcept
+    {
+        return _paneCount == 0 && _leaseCount != 0;
+    }
+
+    size_t MasterOwnershipTracker::PaneCount() const noexcept
+    {
+        return _paneCount;
+    }
+
+    size_t MasterOwnershipTracker::LeaseCount() const noexcept
+    {
+        return _leaseCount;
+    }
+
+    MasterLaunchConfiguration MasterConfigurationTracker::_Capture(
+        const std::wstring_view wtaPath,
+        const std::span<const std::wstring> extraArgs,
+        const std::span<const std::pair<std::wstring, std::wstring>> environment)
+    {
+        return {
+            std::wstring{ wtaPath },
+            { extraArgs.begin(), extraArgs.end() },
+            { environment.begin(), environment.end() },
+        };
+    }
+
+    void MasterConfigurationTracker::UpdateDesired(
+        const std::wstring_view wtaPath,
+        const std::span<const std::wstring> extraArgs,
+        const std::span<const std::pair<std::wstring, std::wstring>> environment)
+    {
+        _desired = _Capture(wtaPath, extraArgs, environment);
+    }
+
+    void MasterConfigurationTracker::MarkRunning(
+        const std::wstring_view wtaPath,
+        const std::span<const std::wstring> extraArgs,
+        const std::span<const std::pair<std::wstring, std::wstring>> environment)
+    {
+        _running = _Capture(wtaPath, extraArgs, environment);
+        _desired = *_running;
+    }
+
+    void MasterConfigurationTracker::ClearRunning() noexcept
+    {
+        _running.reset();
+    }
+
+    bool MasterConfigurationTracker::HasDesired() const noexcept
+    {
+        return !_desired.wtaPath.empty();
+    }
+
+    bool MasterConfigurationTracker::RunningMatchesDesired() const noexcept
+    {
+        return _running && *_running == _desired;
+    }
+
+    const MasterLaunchConfiguration& MasterConfigurationTracker::Desired() const noexcept
+    {
+        return _desired;
+    }
 }
 
 namespace winrt::TerminalApp::implementation
@@ -494,6 +597,44 @@ namespace winrt::TerminalApp::implementation
         // cleanup for the master and its descendants.
         static auto* const s_instance = new SharedWta;
         return *s_instance;
+    }
+
+    SharedWta::MasterLease::MasterLease(SharedWta* const owner) noexcept :
+        _owner{ owner }
+    {
+    }
+
+    SharedWta::MasterLease::~MasterLease()
+    {
+        Reset();
+    }
+
+    SharedWta::MasterLease::MasterLease(MasterLease&& other) noexcept :
+        _owner{ std::exchange(other._owner, nullptr) }
+    {
+    }
+
+    SharedWta::MasterLease& SharedWta::MasterLease::operator=(MasterLease&& other) noexcept
+    {
+        if (this != &other)
+        {
+            Reset();
+            _owner = std::exchange(other._owner, nullptr);
+        }
+        return *this;
+    }
+
+    SharedWta::MasterLease::operator bool() const noexcept
+    {
+        return _owner != nullptr;
+    }
+
+    void SharedWta::MasterLease::Reset() noexcept
+    {
+        if (const auto owner = std::exchange(_owner, nullptr))
+        {
+            owner->_ReleaseMasterLease();
+        }
     }
 
     std::string SharedWta::CreateRetirementRequestId()
@@ -613,23 +754,64 @@ namespace winrt::TerminalApp::implementation
                 return false;
             }
         }
-        ++_refCount;
+        _ownership.AcquirePane();
         return true;
+    }
+
+    SharedWta::MasterLease SharedWta::AcquireMasterLease(
+        const std::wstring_view wtaPath,
+        std::span<const std::wstring> extraArgs,
+        std::span<const std::pair<std::wstring, std::wstring>> environment)
+    {
+        if (wtaPath.empty())
+        {
+            return {};
+        }
+
+        std::lock_guard lock{ _mtx };
+        if (_spawnSuppressed)
+        {
+            return {};
+        }
+        if (!_process.is_valid())
+        {
+            if (!_SpawnLocked(wtaPath, extraArgs, environment))
+            {
+                return {};
+            }
+        }
+        else
+        {
+            _configuration.UpdateDesired(wtaPath, extraArgs, environment);
+            if (_ownership.IsLeaseOnly() && !_configuration.RunningMatchesDesired())
+            {
+                const auto desired = _configuration.Desired();
+                if (!_RestartLocked(desired.wtaPath, desired.extraArgs, desired.environment))
+                {
+                    return {};
+                }
+            }
+        }
+
+        _ownership.AcquireLease();
+        return MasterLease{ this };
     }
 
     void SharedWta::ReleasePane()
     {
         std::lock_guard lock{ _mtx };
-        if (_refCount == 0)
+        if (_ownership.ReleasePane() && _process.is_valid())
         {
-            return;
+            _CleanupLocked();
         }
-        if (--_refCount == 0)
+    }
+
+    void SharedWta::_ReleaseMasterLease() noexcept
+    {
+        std::lock_guard lock{ _mtx };
+        if (_ownership.ReleaseLease() && _process.is_valid())
         {
-            if (_process.is_valid())
-            {
-                _CleanupLocked();
-            }
+            _CleanupLocked();
         }
     }
 
@@ -649,10 +831,12 @@ namespace winrt::TerminalApp::implementation
 
         // No cached args means we've never successfully spawned in this
         // process, so there is no trusted command line to restart.
-        if (_cachedWtaPath.empty())
+        if (!_configuration.HasDesired())
         {
             return false;
         }
+
+        const auto desired = _configuration.Desired();
 
         // A crashed master leaves retained helpers waiting on the stable pipe.
         // Respawn it directly; there is no pane recreation/AcquirePane cycle
@@ -660,12 +844,12 @@ namespace winrt::TerminalApp::implementation
         if (!_process.is_valid())
         {
             return _SpawnLocked(
-                std::wstring_view{ _cachedWtaPath },
-                _cachedExtraArgs,
-                _cachedEnvironment);
+                desired.wtaPath,
+                desired.extraArgs,
+                desired.environment);
         }
 
-        return _RestartLocked(std::wstring_view{ _cachedWtaPath }, _cachedExtraArgs, _cachedEnvironment);
+        return _RestartLocked(desired.wtaPath, desired.extraArgs, desired.environment);
     }
 
     bool SharedWta::Restart(const std::wstring_view wtaPath,
@@ -683,10 +867,11 @@ namespace winrt::TerminalApp::implementation
             return false;
         }
 
+        _configuration.UpdateDesired(wtaPath, extraArgs, environment);
+
         // Nothing live to replace (e.g. settings changed while no pane
-        // was open in any window). The next AcquirePane will _SpawnLocked
-        // with freshly-built args anyway, so we don't need to touch the
-        // cache here.
+        // was open in any window). Retain these trusted inputs for the next
+        // owned spawn.
         if (!_process.is_valid())
         {
             return true;
@@ -696,17 +881,47 @@ namespace winrt::TerminalApp::implementation
         // its reconciliation until a terminal tab regains focus. If the live master
         // already has these exact trusted arguments, restarting it again is
         // both unnecessary and disruptive to helpers in other windows.
-        const bool sameArgs = _cachedWtaPath == wtaPath &&
-                              _cachedExtraArgs.size() == extraArgs.size() &&
-                              std::equal(_cachedExtraArgs.begin(), _cachedExtraArgs.end(), extraArgs.begin()) &&
-                              _cachedEnvironment.size() == environment.size() &&
-                              std::equal(_cachedEnvironment.begin(), _cachedEnvironment.end(), environment.begin());
-        if (sameArgs)
+        if (_configuration.RunningMatchesDesired())
         {
             return true;
         }
 
-        return _RestartLocked(wtaPath, extraArgs, environment);
+        const auto desired = _configuration.Desired();
+        return _RestartLocked(desired.wtaPath, desired.extraArgs, desired.environment);
+    }
+
+    bool SharedWta::RestartIfLeaseOnly(
+        const std::wstring_view wtaPath,
+        std::span<const std::wstring> extraArgs,
+        std::span<const std::pair<std::wstring, std::wstring>> environment)
+    {
+        if (wtaPath.empty())
+        {
+            return false;
+        }
+
+        std::lock_guard lock{ _mtx };
+        if (_spawnSuppressed)
+        {
+            return false;
+        }
+        _configuration.UpdateDesired(wtaPath, extraArgs, environment);
+        if (!_ownership.IsLeaseOnly())
+        {
+            return true;
+        }
+        if (!_process.is_valid())
+        {
+            const auto desired = _configuration.Desired();
+            return _SpawnLocked(desired.wtaPath, desired.extraArgs, desired.environment);
+        }
+
+        if (_configuration.RunningMatchesDesired())
+        {
+            return true;
+        }
+        const auto desired = _configuration.Desired();
+        return _RestartLocked(desired.wtaPath, desired.extraArgs, desired.environment);
     }
 
     bool SharedWta::_RestartLocked(
@@ -950,14 +1165,8 @@ namespace winrt::TerminalApp::implementation
             _unexpectedExitRecovery.Retire();
         }
 
-        // Cache the spawn inputs so `Restart()` can replay them. Overwrites
-        // any prior cache: if a respawn after crash used different
-        // settings (none today, but the path is here), the most recent
-        // wins. Done at the very end so partial-failure paths above
-        // leave the previous cache intact.
-        _cachedWtaPath.assign(wtaPath);
-        _cachedExtraArgs.assign(extraArgs.begin(), extraArgs.end());
-        _cachedEnvironment.assign(environment.begin(), environment.end());
+        // Publish both snapshots only after every spawn step succeeds.
+        _configuration.MarkRunning(wtaPath, extraArgs, environment);
         return true;
     }
 
@@ -987,6 +1196,7 @@ namespace winrt::TerminalApp::implementation
             _unexpectedExitRecovery.Retire();
         }
         _pid = 0;
+        _configuration.ClearRunning();
         return process;
     }
 
@@ -1037,17 +1247,16 @@ namespace winrt::TerminalApp::implementation
             _waitHandle = nullptr;
         }
         _pid = 0;
+        _configuration.ClearRunning();
 
         if (_unexpectedExitRecovery.ShouldRespawn(
                 generation,
-                _refCount,
+                _ownership.HasOwners() ? 1 : 0,
                 _spawnSuppressed,
-                !_cachedWtaPath.empty()))
+                _configuration.HasDesired()))
         {
-            const std::wstring wtaPath{ _cachedWtaPath };
-            const std::vector<std::wstring> extraArgs{ _cachedExtraArgs };
-            const std::vector<std::pair<std::wstring, std::wstring>> environment{ _cachedEnvironment };
-            if (!_SpawnLocked(wtaPath, extraArgs, environment, false))
+            const auto desired = _configuration.Desired();
+            if (!_SpawnLocked(desired.wtaPath, desired.extraArgs, desired.environment, false))
             {
                 _agentPaneLog(
                     "failed to respawn wta-master after unexpected exit pid=" +

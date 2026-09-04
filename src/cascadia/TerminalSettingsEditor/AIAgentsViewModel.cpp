@@ -167,31 +167,10 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
             LOG_CAUGHT_EXCEPTION();
         }
 
-        // ACP-capable agents — use GPO-filtered list so only policy-allowed
-        // agents appear in the dropdown. Also skip agents whose CLI isn't
-        // installed — the dropdown only offers choices the user can actually
-        // launch.
-        const auto filteredAcp = Reg::FilteredAcpAgents();
-        const auto availableAcpAgents = ::Microsoft::Terminal::AgentAvailability::ProbeHostAgentIds();
-        std::vector<Editor::AgentEntry> acpEntries;
-        for (const auto& a : filteredAcp)
-        {
-            if (!availableAcpAgents.contains(std::wstring{ a.id }))
-            {
-                continue;
-            }
-            acpEntries.push_back(winrt::make<AgentEntry>(
-                winrt::hstring{ a.id },
-                winrt::hstring{ a.displayName },
-                true));
-        }
-        _acpAgentList = winrt::single_threaded_observable_vector(std::move(acpEntries));
-        // Only show custom entry and "Add New" if custom agents are allowed by policy.
-        if (!_GlobalSettings.IsCustomAgentPolicyLocked())
-        {
-            _MaybeAppendCustomEntry(_acpAgentList, _GlobalSettings.AcpCustomCommand(), _GlobalSettings.AcpAgent());
-            _AppendAddNewEntry(_acpAgentList);
-        }
+        _acpAgentList = winrt::single_threaded_observable_vector<Editor::AgentEntry>();
+        _RebuildAcpAgentList(
+            ::Microsoft::Terminal::AgentAvailability::GetCachedHostAgentIds(),
+            false);
 
         // ACP-advertised model list. Populated by TerminalPage::OnAgentStatusChanged
         // whenever wta pushes a fresh agent_status event. We hold an
@@ -264,6 +243,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         // thing the user sees in the expander before that is the Install
         // row (always present) and the help text.
         RefreshAgentHooksStatus();
+        _RefreshHostAgentAvailabilityAsync();
     }
 
     AIAgentsViewModel::~AIAgentsViewModel()
@@ -271,6 +251,103 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         if (_acpRuntimeChangedToken.value)
         {
             Model::AcpRuntimeState::Current().Changed(_acpRuntimeChangedToken);
+        }
+    }
+
+    void AIAgentsViewModel::_RebuildAcpAgentList(
+        const std::unordered_set<std::wstring>& availableAgents,
+        const bool notify)
+    {
+        if (!_acpAgentList)
+        {
+            return;
+        }
+
+        namespace Reg = ::Microsoft::Terminal::Settings::Model::AgentRegistry;
+        const auto selectedId = _GlobalSettings.AcpAgent();
+        const auto filteredAgents = Reg::FilteredAcpAgents();
+        std::vector<std::wstring> allowedAgentIds;
+        allowedAgentIds.reserve(filteredAgents.size());
+
+        _acpAgentList.Clear();
+        for (const auto& agent : filteredAgents)
+        {
+            allowedAgentIds.emplace_back(agent.id);
+            if (availableAgents.contains(std::wstring{ agent.id }))
+            {
+                _acpAgentList.Append(winrt::make<AgentEntry>(
+                    winrt::hstring{ agent.id },
+                    winrt::hstring{ agent.displayName },
+                    true));
+            }
+        }
+
+        if (!_GlobalSettings.IsCustomAgentPolicyLocked())
+        {
+            _MaybeAppendCustomEntry(
+                _acpAgentList,
+                _GlobalSettings.AcpCustomCommand(),
+                selectedId);
+            _AppendAddNewEntry(_acpAgentList);
+        }
+
+        const auto selectedEntry = _FindEntryById(_acpAgentList, selectedId);
+        if (!selectedEntry)
+        {
+            if (const auto resolved = ::Microsoft::Terminal::AgentAvailability::SelectAvailableAllowedAgentId(
+                    std::wstring_view{ selectedId },
+                    allowedAgentIds,
+                    availableAgents))
+            {
+                if (!::Microsoft::Terminal::AgentAvailability::AgentIdEquals(
+                        std::wstring_view{ selectedId },
+                        *resolved))
+                {
+                    _isAddingCustomAcpAgent = false;
+                    _GlobalSettings.AcpAgent(winrt::hstring{ *resolved });
+                    _GlobalSettings.AcpModel(L"");
+                    if (notify)
+                    {
+                        _TriggerAcpModelProbe();
+                    }
+                }
+            }
+        }
+
+        if (notify)
+        {
+            _NotifyChanges(
+                L"AcpAgentList",
+                L"CurrentAcpAgent",
+                L"IsAddingCustomAcpAgent",
+                L"IsCustomAcpAgentSelected",
+                L"ShowAcpModel",
+                L"AcpModel",
+                L"CustomModelProviderUnsupportedMessage");
+        }
+    }
+
+    winrt::fire_and_forget AIAgentsViewModel::_RefreshHostAgentAvailabilityAsync()
+    {
+        const auto dispatcher = winrt::Windows::UI::Xaml::Window::Current().Dispatcher();
+        const auto weakThis = get_weak();
+        co_await winrt::resume_background();
+
+        ::Microsoft::Terminal::AgentAvailability::AgentIds availableAgents;
+        try
+        {
+            availableAgents = ::Microsoft::Terminal::AgentAvailability::RefreshHostAgentIds();
+        }
+        catch (...)
+        {
+            LOG_CAUGHT_EXCEPTION();
+            co_return;
+        }
+
+        co_await wil::resume_foreground(dispatcher);
+        if (const auto self = weakThis.get())
+        {
+            self->_RebuildAcpAgentList(availableAgents, true);
         }
     }
 

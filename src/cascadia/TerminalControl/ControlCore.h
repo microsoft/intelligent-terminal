@@ -265,6 +265,7 @@ namespace winrt::Microsoft::Terminal::Control::implementation
         void SetReadOnlyMode(const bool readOnlyState);
 
         hstring ReadEntireBuffer() const;
+        hstring ReadBufferTail(int32_t maxLogicalLines) const;
         hstring ReadLastPrompt() const;
         Control::CommandHistoryContext CommandHistory() const;
         bool QuickFixesAvailable() const noexcept;

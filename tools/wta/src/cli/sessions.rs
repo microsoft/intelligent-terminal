@@ -4,6 +4,27 @@ use tokio_util::compat::{TokioAsyncReadCompatExt, TokioAsyncWriteCompatExt};
 
 const MASTER_NOT_RUNNING: &str = "wta-master not running. Start Windows Terminal first.";
 
+fn master_control_initialize_request(
+    name: &'static str,
+    title: &'static str,
+) -> acp::schema::v1::InitializeRequest {
+    let mut request = acp::schema::v1::InitializeRequest::new(acp::schema::ProtocolVersion::V1)
+        .client_capabilities(acp::schema::v1::ClientCapabilities::new())
+        .client_info(
+            acp::schema::v1::Implementation::new(name, env!("CARGO_PKG_VERSION")).title(title),
+        );
+    crate::session_registry::inject_wta_meta(
+        &mut request.meta,
+        &crate::session_registry::WtaMeta {
+            connection_role: Some(
+                crate::session_registry::MASTER_CONTROL_CONNECTION_ROLE_V1.to_string(),
+            ),
+            ..Default::default()
+        },
+    );
+    request
+}
+
 pub(crate) async fn run_list(
     master_override: Option<String>,
     origin_filter: crate::agent_sessions::OriginFilter,
@@ -49,14 +70,10 @@ async fn fetch_from_master(
 
     let init_started = std::time::Instant::now();
     let init_result = conn
-        .initialize(
-            acp::schema::v1::InitializeRequest::new(acp::schema::ProtocolVersion::V1)
-                .client_capabilities(acp::schema::v1::ClientCapabilities::new())
-                .client_info(
-                    acp::schema::v1::Implementation::new("wta-sessions", env!("CARGO_PKG_VERSION"))
-                        .title("Windows Terminal Agent sessions CLI"),
-                ),
-        )
+        .initialize(master_control_initialize_request(
+            "wta-sessions",
+            "Windows Terminal Agent sessions CLI",
+        ))
         .await;
     crate::telemetry::log_acp_initialize_complete(
         init_started.elapsed().as_secs_f64() * 1000.0,
@@ -134,17 +151,10 @@ pub(crate) async fn register_launched(
                 let _ = handle_io.await;
             });
 
-            conn.initialize(
-                acp::schema::v1::InitializeRequest::new(acp::schema::ProtocolVersion::V1)
-                    .client_capabilities(acp::schema::v1::ClientCapabilities::new())
-                    .client_info(
-                        acp::schema::v1::Implementation::new(
-                            "wta-delegate",
-                            env!("CARGO_PKG_VERSION"),
-                        )
-                        .title("Windows Terminal Agent delegate"),
-                    ),
-            )
+            conn.initialize(master_control_initialize_request(
+                "wta-delegate",
+                "Windows Terminal Agent delegate",
+            ))
             .await
             .map_err(|_| anyhow::anyhow!(MASTER_NOT_RUNNING))?;
 
@@ -320,6 +330,17 @@ fn format_epoch_ms_utc(ms: u64) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn master_control_initialize_request_carries_versioned_role() {
+        let mut request = master_control_initialize_request("test-control", "Test control");
+        let wta = crate::session_registry::extract_wta_meta(&mut request.meta);
+
+        assert_eq!(
+            wta.connection_role.as_deref(),
+            Some(crate::session_registry::MASTER_CONTROL_CONNECTION_ROLE_V1)
+        );
+    }
 
     #[test]
     fn json_lines_prints_one_session_info_per_line() {

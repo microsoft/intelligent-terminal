@@ -15,6 +15,146 @@ namespace TerminalAppLocalTests
 
 namespace winrt::TerminalApp::implementation
 {
+    namespace details
+    {
+        enum class AgentPanePrewarmState
+        {
+            Dormant,
+            Scheduled,
+            Materializing,
+            Materialized,
+            ExplicitlyClosed,
+        };
+
+        class AgentPanePrewarmTracker
+        {
+        public:
+            bool Schedule(const bool isSelected) noexcept
+            {
+                if (!isSelected || _state != AgentPanePrewarmState::Dormant)
+                {
+                    return false;
+                }
+                _state = AgentPanePrewarmState::Scheduled;
+                return true;
+            }
+
+            bool BeginScheduled(const bool isStillSelected) noexcept
+            {
+                if (_state != AgentPanePrewarmState::Scheduled)
+                {
+                    return false;
+                }
+                if (!isStillSelected)
+                {
+                    _state = AgentPanePrewarmState::Dormant;
+                    return false;
+                }
+                _state = AgentPanePrewarmState::Materializing;
+                _materializingSpeculatively = true;
+                return true;
+            }
+
+            bool BeginImmediate() noexcept
+            {
+                if (_state == AgentPanePrewarmState::Materializing ||
+                    _state == AgentPanePrewarmState::Materialized)
+                {
+                    return false;
+                }
+                _state = AgentPanePrewarmState::Materializing;
+                _materializingSpeculatively = false;
+                return true;
+            }
+
+            void Complete(const bool succeeded) noexcept
+            {
+                if (_state == AgentPanePrewarmState::Materializing)
+                {
+                    _state = succeeded ?
+                                 AgentPanePrewarmState::Materialized :
+                                 AgentPanePrewarmState::Dormant;
+                    _speculative = succeeded && _materializingSpeculatively;
+                }
+                _materializingSpeculatively = false;
+            }
+
+            void MarkMaterialized(const bool speculative = false) noexcept
+            {
+                if (_state != AgentPanePrewarmState::ExplicitlyClosed)
+                {
+                    _state = AgentPanePrewarmState::Materialized;
+                    _speculative = speculative;
+                }
+            }
+
+            void ObserveMaterialized() noexcept
+            {
+                if (_state != AgentPanePrewarmState::ExplicitlyClosed)
+                {
+                    _state = AgentPanePrewarmState::Materialized;
+                }
+            }
+
+            void MarkExplicitlyClosed() noexcept
+            {
+                _state = AgentPanePrewarmState::ExplicitlyClosed;
+                _speculative = false;
+                _materializingSpeculatively = false;
+            }
+
+            void MarkAbsent() noexcept
+            {
+                if (_state != AgentPanePrewarmState::ExplicitlyClosed)
+                {
+                    _state = AgentPanePrewarmState::Dormant;
+                    _speculative = false;
+                }
+            }
+
+            void MarkUsed() noexcept
+            {
+                _speculative = false;
+            }
+
+            bool EvictUnusedSpeculative() noexcept
+            {
+                if (_state == AgentPanePrewarmState::Scheduled)
+                {
+                    _state = AgentPanePrewarmState::Dormant;
+                    return false;
+                }
+                if (_state == AgentPanePrewarmState::Materialized && _speculative)
+                {
+                    _state = AgentPanePrewarmState::Dormant;
+                    _speculative = false;
+                    return true;
+                }
+                return false;
+            }
+
+            bool IsUnusedSpeculative() const noexcept
+            {
+                return _state == AgentPanePrewarmState::Materialized && _speculative;
+            }
+
+            bool IsScheduled() const noexcept
+            {
+                return _state == AgentPanePrewarmState::Scheduled;
+            }
+
+            AgentPanePrewarmState State() const noexcept
+            {
+                return _state;
+            }
+
+        private:
+            AgentPanePrewarmState _state{ AgentPanePrewarmState::Dormant };
+            bool _speculative{ false };
+            bool _materializingSpeculatively{ false };
+        };
+    }
+
     struct Tab : TabT<Tab>
     {
     public:
@@ -122,6 +262,18 @@ namespace winrt::TerminalApp::implementation
         // original orientation.
         bool RestoreStashedAgentPane(winrt::Microsoft::Terminal::Settings::Model::SplitDirection direction);
         bool HasStashedAgentPane() const;
+        bool ScheduleAgentPanePrewarm(bool isSelected) noexcept { return _agentPanePrewarm.Schedule(isSelected); }
+        bool BeginScheduledAgentPaneMaterialization(bool isStillSelected) noexcept { return _agentPanePrewarm.BeginScheduled(isStillSelected); }
+        bool BeginImmediateAgentPaneMaterialization() noexcept { return _agentPanePrewarm.BeginImmediate(); }
+        void CompleteAgentPaneMaterialization(bool succeeded) noexcept { _agentPanePrewarm.Complete(succeeded); }
+        void MarkAgentPaneMaterialized(bool speculative = false) noexcept { _agentPanePrewarm.MarkMaterialized(speculative); }
+        void ObserveAgentPaneMaterialized() noexcept { _agentPanePrewarm.ObserveMaterialized(); }
+        void MarkAgentPaneExplicitlyClosed() noexcept { _agentPanePrewarm.MarkExplicitlyClosed(); }
+        void MarkAgentPaneAbsent() noexcept { _agentPanePrewarm.MarkAbsent(); }
+        void MarkAgentPaneUsed() const noexcept { _agentPanePrewarm.MarkUsed(); }
+        bool EvictUnusedSpeculativeAgentPane() noexcept { return _agentPanePrewarm.EvictUnusedSpeculative(); }
+        bool IsUnusedSpeculativeAgentPane() const noexcept { return _agentPanePrewarm.IsUnusedSpeculative(); }
+        bool IsAgentPanePrewarmScheduled() const noexcept { return _agentPanePrewarm.IsScheduled(); }
 
         // Runtime-only position selected by `/move`. A missing override means
         // this tab follows the global AgentPanePosition setting.
@@ -260,6 +412,7 @@ namespace winrt::TerminalApp::implementation
         std::optional<winrt::guid> _agentChipOverride{};
 
         std::optional<winrt::hstring> _agentPanePositionOverride{};
+        mutable details::AgentPanePrewarmTracker _agentPanePrewarm;
 
         // Per-tab agent override (runtime-only). Empty id = follow global.
         winrt::hstring _agentIdOverride{};

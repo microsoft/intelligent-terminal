@@ -12,9 +12,9 @@
 //!    command line (the first line of the captured `[command + output]`
 //!    buffer — see `ControlCore::ReadLastPrompt`, which starts at the FTCS
 //!    command mark, so there is no prompt prefix to strip).
-//! 2. A cheap in-process `which` pre-gate: if the token resolves as a plain
-//!    PATH program, the failure was *not* a not-found, so nothing is injected
-//!    and no subprocess is spawned (the common case — failed build/test/git).
+//! 2. A cheap `which` pre-gate runs on a background blocking task. If the token
+//!    resolves as a plain PATH program, the failure was *not* a not-found, so
+//!    nothing is injected and no PowerShell subprocess is spawned.
 //! 3. Otherwise, enumerate the shell's real command list once
 //!    (`Get-Command …`) and, if the token still doesn't resolve, rank the
 //!    list by Damerau-Levenshtein ([`rank_near_matches`]) to surface the
@@ -213,10 +213,13 @@ fn sorted_chars(s: &str) -> Vec<char> {
 /// least one close existing command was found; `None` otherwise (the token
 /// exists, or nothing is close enough).
 pub async fn powershell_near_matches(shell_exe: &str, token: &str) -> Option<Vec<String>> {
-    // Cheap in-process pre-gate: a plain PATH program resolves here without
-    // spawning anything, so the common autofix case (a failed build/test/git
-    // where the program exists) never pays the enumerate cost.
-    if which::which(token).is_ok() {
+    // Keep filesystem/PATH work off the async caller. A plain PATH program
+    // resolves here without paying the PowerShell enumeration cost.
+    let gate_token = token.to_string();
+    if tokio::task::spawn_blocking(move || which::which(gate_token).is_ok())
+        .await
+        .unwrap_or(false)
+    {
         return None;
     }
 
@@ -234,6 +237,82 @@ pub async fn powershell_near_matches(shell_exe: &str, token: &str) -> Option<Vec
         None
     } else {
         Some(matches)
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CommandCacheOutcome {
+    Hit,
+    Cold,
+    Busy,
+    Failed,
+    Stale,
+}
+
+impl CommandCacheOutcome {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Hit => "hit",
+            Self::Cold => "cold",
+            Self::Busy => "busy",
+            Self::Failed => "failed",
+            Self::Stale => "stale",
+        }
+    }
+}
+
+pub struct CachedNearMatches {
+    pub matches: Option<Vec<String>>,
+    pub outcome: CommandCacheOutcome,
+    pub duration: std::time::Duration,
+}
+
+fn should_refresh_cache(outcome: CommandCacheOutcome) -> bool {
+    matches!(
+        outcome,
+        CommandCacheOutcome::Cold | CommandCacheOutcome::Stale | CommandCacheOutcome::Failed
+    )
+}
+
+/// Memory-only near-match lookup for prompt assembly. This never awaits
+/// PowerShell; cold, stale, and retryable failed entries schedule a
+/// single-flight background refresh and are omitted from the current prompt.
+pub fn powershell_near_matches_cached(shell_exe: &str, token: &str) -> CachedNearMatches {
+    let started = std::time::Instant::now();
+    let key = command_cache_key(shell_exe);
+    let entry = command_cache().lock().ok().and_then(|cache| {
+        cache.get(&key).map(|entry| match entry {
+            CommandCacheEntry::Ready { names, loaded_at } => {
+                if loaded_at.elapsed() <= COMMAND_CACHE_TTL {
+                    Ok(names.clone())
+                } else {
+                    Err(CommandCacheOutcome::Stale)
+                }
+            }
+            CommandCacheEntry::Loading(_) => Err(CommandCacheOutcome::Busy),
+            CommandCacheEntry::Failed { .. } => Err(CommandCacheOutcome::Failed),
+        })
+    });
+
+    let (matches, outcome) = match entry {
+        None => (None, CommandCacheOutcome::Cold),
+        Some(Err(outcome)) => (None, outcome),
+        Some(Ok(names)) if command_exists(token, &names) => (None, CommandCacheOutcome::Hit),
+        Some(Ok(names)) => {
+            let matches = rank_near_matches(token, &names, MAX_NEAR_MATCHES);
+            (
+                (!matches.is_empty()).then_some(matches),
+                CommandCacheOutcome::Hit,
+            )
+        }
+    };
+    if should_refresh_cache(outcome) {
+        prewarm_powershell_commands_for_token(shell_exe.to_string(), token.to_string());
+    }
+    CachedNearMatches {
+        matches,
+        outcome,
+        duration: started.elapsed(),
     }
 }
 
@@ -390,35 +469,235 @@ fn parse_resolve_output(stdout: &str) -> Option<Vec<CommandResolution>> {
         Some(resolutions)
     }
 }
-/// Process-lifetime cache of the enumerated command list, keyed by shell exe +
-/// current `PATH`. Enumerating the shell costs a profile-loading `pwsh`
-/// subprocess (the profile can take up to [`PROFILE_ENUMERATE_TIMEOUT`]); the
-/// command set is effectively static for the helper's lifetime, so cache it —
-/// the profile cost is paid once per pane, not per query. By design we do NOT
-/// detect mid-session installs — a newly added command shows up only after the
-/// tab/helper restarts. Keying on `PATH` keeps tests isolated (each sets its
-/// own `PATH` → fresh key).
-static COMMAND_CACHE: std::sync::OnceLock<
-    std::sync::Mutex<std::collections::HashMap<String, std::sync::Arc<Vec<String>>>>,
-> = std::sync::OnceLock::new();
+const COMMAND_CACHE_TTL: std::time::Duration = std::time::Duration::from_secs(15 * 60);
+const COMMAND_CACHE_FAILURE_RETRY: std::time::Duration = std::time::Duration::from_secs(30);
 
-/// Cached wrapper over [`enumerate_powershell_commands`]; see [`COMMAND_CACHE`].
+enum CommandCacheEntry {
+    Ready {
+        names: std::sync::Arc<Vec<String>>,
+        loaded_at: std::time::Instant,
+    },
+    Loading(tokio::sync::watch::Sender<bool>),
+    Failed {
+        failed_at: std::time::Instant,
+    },
+}
+
+type CommandCache = std::collections::HashMap<String, CommandCacheEntry>;
+
+static COMMAND_CACHE: std::sync::OnceLock<std::sync::Mutex<CommandCache>> =
+    std::sync::OnceLock::new();
+
+fn command_cache() -> &'static std::sync::Mutex<CommandCache> {
+    COMMAND_CACHE.get_or_init(|| std::sync::Mutex::new(std::collections::HashMap::new()))
+}
+
+fn command_cache_key(shell_exe: &str) -> String {
+    command_cache_key_with_path(shell_exe, &std::env::var("PATH").unwrap_or_default())
+}
+
+fn command_cache_key_with_path(shell_exe: &str, path: &str) -> String {
+    format!("{}|{}", shell_exe.to_ascii_lowercase(), path)
+}
+
+enum FillDecision {
+    Ready(std::sync::Arc<Vec<String>>),
+    Wait(tokio::sync::watch::Receiver<bool>),
+    Start(tokio::sync::watch::Sender<bool>),
+    Failed,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CommandCachePrewarmDisposition {
+    Hit,
+    Join,
+    Spawn,
+    Failed,
+    NotPowerShell,
+}
+
+impl CommandCachePrewarmDisposition {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Hit => "cache_hit",
+            Self::Join => "joined",
+            Self::Spawn => "spawned",
+            Self::Failed => "failed",
+            Self::NotPowerShell => "not_powershell",
+        }
+    }
+}
+
+fn begin_cache_fill(key: &str) -> FillDecision {
+    let Ok(mut cache) = command_cache().lock() else {
+        return FillDecision::Failed;
+    };
+    match cache.get(key) {
+        Some(CommandCacheEntry::Ready { names, loaded_at })
+            if loaded_at.elapsed() <= COMMAND_CACHE_TTL =>
+        {
+            FillDecision::Ready(names.clone())
+        }
+        Some(CommandCacheEntry::Loading(notify)) => FillDecision::Wait(notify.subscribe()),
+        Some(CommandCacheEntry::Failed { failed_at })
+            if failed_at.elapsed() <= COMMAND_CACHE_FAILURE_RETRY =>
+        {
+            FillDecision::Failed
+        }
+        _ => {
+            let (notify, _) = tokio::sync::watch::channel(false);
+            cache.insert(key.to_string(), CommandCacheEntry::Loading(notify.clone()));
+            FillDecision::Start(notify)
+        }
+    }
+}
+
+fn complete_cache_fill(
+    key: String,
+    notify: tokio::sync::watch::Sender<bool>,
+    result: Option<Vec<String>>,
+) -> Option<std::sync::Arc<Vec<String>>> {
+    let names = result.map(std::sync::Arc::new);
+    if let Ok(mut cache) = command_cache().lock() {
+        if let Some(ready) = names.as_ref().filter(|names| !names.is_empty()) {
+            cache.insert(
+                key,
+                CommandCacheEntry::Ready {
+                    names: ready.clone(),
+                    loaded_at: std::time::Instant::now(),
+                },
+            );
+        } else {
+            cache.insert(
+                key,
+                CommandCacheEntry::Failed {
+                    failed_at: std::time::Instant::now(),
+                },
+            );
+        }
+    }
+    let _ = notify.send(true);
+    names
+}
+
+fn abandon_cache_fill(key: &str, notify: tokio::sync::watch::Sender<bool>) {
+    if let Ok(mut cache) = command_cache().lock() {
+        if matches!(cache.get(key), Some(CommandCacheEntry::Loading(_))) {
+            cache.remove(key);
+        }
+    }
+    let _ = notify.send(true);
+}
+
 async fn cached_powershell_commands(shell_exe: &str) -> Option<std::sync::Arc<Vec<String>>> {
-    let cache =
-        COMMAND_CACHE.get_or_init(|| std::sync::Mutex::new(std::collections::HashMap::new()));
-    let key = format!(
-        "{}|{}",
-        shell_exe.to_ascii_lowercase(),
-        std::env::var("PATH").unwrap_or_default()
+    let key = command_cache_key(shell_exe);
+    loop {
+        match begin_cache_fill(&key) {
+            FillDecision::Ready(names) => return Some(names),
+            FillDecision::Failed => return None,
+            FillDecision::Wait(mut notify) => {
+                if !*notify.borrow() {
+                    let _ = notify.changed().await;
+                }
+            }
+            FillDecision::Start(notify) => {
+                return complete_cache_fill(
+                    key,
+                    notify,
+                    enumerate_powershell_commands(shell_exe).await,
+                );
+            }
+        }
+    }
+}
+
+/// Begin a best-effort, single-flight cache fill after WT readiness. The task
+/// preserves the existing profile timeout and no-profile fallback behavior.
+pub fn prewarm_powershell_commands(shell_exe: String) -> CommandCachePrewarmDisposition {
+    if !is_powershell(&shell_exe) {
+        return CommandCachePrewarmDisposition::NotPowerShell;
+    }
+    if tokio::runtime::Handle::try_current().is_err() {
+        return CommandCachePrewarmDisposition::Failed;
+    }
+    let key = command_cache_key(&shell_exe);
+    let notify = match begin_cache_fill(&key) {
+        FillDecision::Ready(_) => return CommandCachePrewarmDisposition::Hit,
+        FillDecision::Wait(_) => return CommandCachePrewarmDisposition::Join,
+        FillDecision::Failed => return CommandCachePrewarmDisposition::Failed,
+        FillDecision::Start(notify) => notify,
+    };
+    tokio::spawn(async move {
+        let started = std::time::Instant::now();
+        let result = enumerate_powershell_commands(&shell_exe).await;
+        let succeeded = result.is_some();
+        complete_cache_fill(key, notify, result);
+        tracing::debug!(
+            target: "command_recall",
+            outcome = if succeeded { "ready" } else { "failed" },
+            duration_ms = started.elapsed().as_millis() as u64,
+            "command_cache_prewarm_complete"
+        );
+    });
+    CommandCachePrewarmDisposition::Spawn
+}
+
+fn prewarm_powershell_commands_for_token(shell_exe: String, token: String) {
+    if !is_powershell(&shell_exe) || tokio::runtime::Handle::try_current().is_err() {
+        return;
+    }
+    let key = command_cache_key(&shell_exe);
+    let enumerate_shell = shell_exe.clone();
+    schedule_token_cache_fill(
+        key,
+        move || which::which(token).is_ok(),
+        move || async move { enumerate_powershell_commands(&enumerate_shell).await },
     );
-    if let Some(hit) = cache.lock().ok().and_then(|m| m.get(&key).cloned()) {
-        return Some(hit);
-    }
-    let names = std::sync::Arc::new(enumerate_powershell_commands(shell_exe).await?);
-    if let Ok(mut m) = cache.lock() {
-        m.insert(key, names.clone());
-    }
-    Some(names)
+}
+
+fn schedule_token_cache_fill<Gate, Enumerate, EnumerateFuture>(
+    key: String,
+    path_gate: Gate,
+    enumerate: Enumerate,
+) -> CommandCachePrewarmDisposition
+where
+    Gate: FnOnce() -> bool + Send + 'static,
+    Enumerate: FnOnce() -> EnumerateFuture + Send + 'static,
+    EnumerateFuture: std::future::Future<Output = Option<Vec<String>>> + Send + 'static,
+{
+    let notify = match begin_cache_fill(&key) {
+        FillDecision::Ready(_) => return CommandCachePrewarmDisposition::Hit,
+        FillDecision::Wait(_) => return CommandCachePrewarmDisposition::Join,
+        FillDecision::Failed => return CommandCachePrewarmDisposition::Failed,
+        FillDecision::Start(notify) => notify,
+    };
+    tokio::spawn(async move {
+        let started = std::time::Instant::now();
+        let path_hit = tokio::task::spawn_blocking(path_gate)
+            .await
+            .unwrap_or(false);
+        if path_hit {
+            abandon_cache_fill(&key, notify);
+            tracing::debug!(
+                target: "command_recall",
+                outcome = "path_hit",
+                duration_ms = started.elapsed().as_millis() as u64,
+                "command_cache_fill_complete"
+            );
+            return;
+        }
+
+        let result = enumerate().await;
+        let succeeded = result.is_some();
+        complete_cache_fill(key, notify, result);
+        tracing::debug!(
+            target: "command_recall",
+            outcome = if succeeded { "ready" } else { "failed" },
+            duration_ms = started.elapsed().as_millis() as u64,
+            "command_cache_fill_complete"
+        );
+    });
+    CommandCachePrewarmDisposition::Spawn
 }
 
 /// Enumerate the shell's command names (cmdlets, applications, external
@@ -520,6 +799,187 @@ mod tests {
 
     fn names(list: &[&str]) -> Vec<String> {
         list.iter().map(|s| s.to_string()).collect()
+    }
+
+    fn cache_key(label: &str) -> String {
+        command_cache_key(&format!("pwsh-{label}-{}.exe", std::process::id()))
+    }
+
+    #[test]
+    fn prompt_recall_cold_lookup_is_immediate_and_non_blocking() {
+        let shell = format!("pwsh-cold-{}.exe", std::process::id());
+        command_cache()
+            .lock()
+            .unwrap()
+            .remove(&command_cache_key(&shell));
+        let result = powershell_near_matches_cached(&shell, "gti");
+        assert_eq!(result.outcome, CommandCacheOutcome::Cold);
+        assert!(result.matches.is_none());
+        assert!(result.duration < std::time::Duration::from_millis(50));
+    }
+
+    #[test]
+    fn prompt_recall_uses_ready_cache_without_process_work() {
+        let shell = format!("pwsh-hit-{}.exe", std::process::id());
+        command_cache().lock().unwrap().insert(
+            command_cache_key(&shell),
+            CommandCacheEntry::Ready {
+                names: std::sync::Arc::new(names(&["git", "Get-Item"])),
+                loaded_at: std::time::Instant::now(),
+            },
+        );
+        let result = powershell_near_matches_cached(&shell, "gti");
+        assert_eq!(result.outcome, CommandCacheOutcome::Hit);
+        assert_eq!(result.matches, Some(names(&["git"])));
+    }
+
+    #[test]
+    fn cache_fill_is_single_flight() {
+        let key = cache_key("single-flight");
+        command_cache().lock().unwrap().remove(&key);
+        let FillDecision::Start(notify) = begin_cache_fill(&key) else {
+            panic!("first miss must own the fill");
+        };
+        assert!(matches!(begin_cache_fill(&key), FillDecision::Wait(_)));
+        complete_cache_fill(key.clone(), notify, Some(names(&["git"])));
+        assert!(matches!(begin_cache_fill(&key), FillDecision::Ready(_)));
+    }
+
+    #[tokio::test]
+    async fn prompt_refresh_spawns_one_slow_enumerator_without_blocking() {
+        let key = cache_key("slow-background-fill");
+        command_cache().lock().unwrap().remove(&key);
+        let spawn_count = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+
+        let started = std::time::Instant::now();
+        let first_count = std::sync::Arc::clone(&spawn_count);
+        let first = schedule_token_cache_fill(
+            key.clone(),
+            || false,
+            move || async move {
+                first_count.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+                Some(names(&["git"]))
+            },
+        );
+        let second_count = std::sync::Arc::clone(&spawn_count);
+        let second = schedule_token_cache_fill(
+            key.clone(),
+            || false,
+            move || async move {
+                second_count.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                Some(names(&["should-not-run"]))
+            },
+        );
+        assert!(started.elapsed() < std::time::Duration::from_millis(50));
+        assert_eq!(first, CommandCachePrewarmDisposition::Spawn);
+        assert_eq!(second, CommandCachePrewarmDisposition::Join);
+
+        let FillDecision::Wait(mut completion) = begin_cache_fill(&key) else {
+            panic!("slow fill should still be in flight");
+        };
+        tokio::time::timeout(std::time::Duration::from_secs(2), completion.changed())
+            .await
+            .expect("background fill timed out")
+            .expect("completion sender dropped");
+        assert_eq!(spawn_count.load(std::sync::atomic::Ordering::SeqCst), 1);
+        assert!(matches!(begin_cache_fill(&key), FillDecision::Ready(_)));
+    }
+
+    #[tokio::test]
+    async fn path_gate_suppresses_enumeration_in_background() {
+        let key = cache_key("path-hit");
+        command_cache().lock().unwrap().remove(&key);
+        let enumerate_count = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let count = std::sync::Arc::clone(&enumerate_count);
+
+        assert_eq!(
+            schedule_token_cache_fill(
+                key.clone(),
+                || {
+                    std::thread::sleep(std::time::Duration::from_millis(100));
+                    true
+                },
+                move || async move {
+                    count.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                    Some(names(&["must-not-run"]))
+                },
+            ),
+            CommandCachePrewarmDisposition::Spawn
+        );
+        let FillDecision::Wait(mut completion) = begin_cache_fill(&key) else {
+            panic!("PATH gate should be in flight");
+        };
+        tokio::time::timeout(std::time::Duration::from_secs(2), completion.changed())
+            .await
+            .expect("background gate timed out")
+            .expect("completion sender dropped");
+        assert_eq!(enumerate_count.load(std::sync::atomic::Ordering::SeqCst), 0);
+    }
+
+    #[test]
+    fn prompt_recall_omits_failed_busy_and_stale_entries() {
+        let shell = format!("pwsh-degraded-{}.exe", std::process::id());
+        let key = command_cache_key(&shell);
+        command_cache().lock().unwrap().insert(
+            key.clone(),
+            CommandCacheEntry::Failed {
+                failed_at: std::time::Instant::now(),
+            },
+        );
+        assert_eq!(
+            powershell_near_matches_cached(&shell, "gti").outcome,
+            CommandCacheOutcome::Failed
+        );
+
+        let (notify, _) = tokio::sync::watch::channel(false);
+        command_cache()
+            .lock()
+            .unwrap()
+            .insert(key.clone(), CommandCacheEntry::Loading(notify));
+        assert_eq!(
+            powershell_near_matches_cached(&shell, "gti").outcome,
+            CommandCacheOutcome::Busy
+        );
+
+        command_cache().lock().unwrap().insert(
+            key,
+            CommandCacheEntry::Ready {
+                names: std::sync::Arc::new(names(&["git"])),
+                loaded_at: std::time::Instant::now()
+                    - COMMAND_CACHE_TTL
+                    - std::time::Duration::from_secs(1),
+            },
+        );
+        assert_eq!(
+            powershell_near_matches_cached(&shell, "gti").outcome,
+            CommandCacheOutcome::Stale
+        );
+    }
+
+    #[test]
+    fn degraded_lookup_outcomes_are_refreshable_but_busy_is_not() {
+        for outcome in [
+            CommandCacheOutcome::Cold,
+            CommandCacheOutcome::Stale,
+            CommandCacheOutcome::Failed,
+        ] {
+            assert!(should_refresh_cache(outcome));
+        }
+        assert!(!should_refresh_cache(CommandCacheOutcome::Busy));
+        assert!(!should_refresh_cache(CommandCacheOutcome::Hit));
+    }
+
+    #[test]
+    fn command_cache_key_changes_with_shell_or_path() {
+        assert_ne!(
+            command_cache_key_with_path("pwsh.exe", "A"),
+            command_cache_key_with_path("pwsh.exe", "B")
+        );
+        assert_ne!(
+            command_cache_key_with_path("pwsh.exe", "A"),
+            command_cache_key_with_path("powershell.exe", "A")
+        );
     }
 
     #[test]

@@ -280,6 +280,19 @@ static Json::Value _toJson(const Protocol::PaneOutput& o)
     return v;
 }
 
+static Json::Value _toJson(const Protocol::PromptContext& context)
+{
+    Json::Value v;
+    v["pane"] = _toJson(context.Pane);
+    v["output"] = winrt::to_string(context.Content);
+    v["output_source"] = winrt::to_string(context.OutputSource);
+    v["fallback_reason"] = winrt::to_string(context.FallbackReason);
+    v["line_count"] = context.LineCount;
+    v["truncated"] = static_cast<bool>(context.Truncated);
+    v["has_marks"] = static_cast<bool>(context.HasMarks);
+    return v;
+}
+
 static Json::Value _toJson(const Protocol::ProcessStatus& s)
 {
     Json::Value v;
@@ -505,8 +518,9 @@ try
     // ITerminalProtocol method is gated on this call.
     Json::Value v;
     v["authenticated"] = true;
-    // 2.2 — SendInput restored on the COM surface; pane identifiers remain GUIDs.
-    v["protocol_version"] = "2.2";
+    // 2.3 — GetPromptContext resolves and captures the effective source pane in
+    // one protocol operation while preserving the existing GUID pane identity.
+    v["protocol_version"] = "2.3";
     *resultJson = _bstrFromJson(v);
     return S_OK;
 }
@@ -538,6 +552,7 @@ try
         "subscribe",
         "unsubscribe",
         "send_event",
+        "get_prompt_context",
     };
 
     Json::Value methods(Json::arrayValue);
@@ -761,6 +776,49 @@ try
     }
 
     return E_FAIL;
+}
+CATCH_RETURN()
+
+STDMETHODIMP TerminalProtocolComServer::GetPromptContext(GUID sourceSessionId, boolean hasExplicitSource, long fallbackLines, BSTR* json)
+try
+{
+    RETURN_HR_IF_NULL(E_POINTER, json);
+    *json = nullptr;
+    RETURN_HR_IF(E_NOT_VALID_STATE, !s_emperor);
+    RETURN_HR_IF(E_INVALIDARG, fallbackLines < 0);
+
+    const auto windows = s_emperor->GetWindows();
+    if (hasExplicitSource)
+    {
+        for (const auto& host : windows)
+        {
+            const auto page = _getPage(host.get());
+            if (!page)
+            {
+                continue;
+            }
+
+            auto context = page.GetProtocolPromptContext(winrt::guid{ sourceSessionId }, true, fallbackLines).get();
+            if (context.Pane.SessionId != winrt::guid{})
+            {
+                context.Pane.WindowId = host->Logic().WindowProperties().WindowId();
+                *json = _bstrFromJson(_toJson(context));
+                return S_OK;
+            }
+        }
+        return HRESULT_FROM_WIN32(ERROR_NOT_FOUND);
+    }
+
+    const auto host = _getMostRecentHost(windows);
+    RETURN_HR_IF(E_FAIL, !host);
+    const auto page = _getPage(host.get());
+    RETURN_HR_IF(E_FAIL, !page);
+
+    auto context = page.GetProtocolPromptContext({}, false, fallbackLines).get();
+    RETURN_HR_IF(E_FAIL, context.Pane.SessionId == winrt::guid{});
+    context.Pane.WindowId = host->Logic().WindowProperties().WindowId();
+    *json = _bstrFromJson(_toJson(context));
+    return S_OK;
 }
 CATCH_RETURN()
 

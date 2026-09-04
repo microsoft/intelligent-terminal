@@ -132,7 +132,7 @@ namespace Microsoft::Terminal::Settings::Model::AgentPolicy
 
     // (Re-)read all agent GPO values from the registry and cache them.
     // Called once at startup and again on settings reload.
-    inline void Reload()
+    inline std::shared_ptr<const PolicySnapshot> Reload()
     {
         auto snap = std::make_shared<PolicySnapshot>();
         snap->allowedAgents = _ReadMultiSzPolicy(L"AllowedAgents");
@@ -140,11 +140,14 @@ namespace Microsoft::Terminal::Settings::Model::AgentPolicy
         snap->autoFix = _DwordToPolicyState(_ReadDwordPolicy(L"AllowAutoFix"));
         snap->agentSessionHooks = _DwordToPolicyState(_ReadDwordPolicy(L"AllowAgentSessionHooks"));
 
+        std::shared_ptr<const PolicySnapshot> result;
         {
             std::lock_guard lock{ s_policyMutex };
             s_snapshot = std::move(snap);
+            result = s_snapshot;
         }
         s_loaded.store(true, std::memory_order_release);
+        return result;
     }
 
     // Return a thread-safe, immutable view of the cached policy.
@@ -163,14 +166,19 @@ namespace Microsoft::Terminal::Settings::Model::AgentPolicy
     }
 
     // Query cached policy. Thread-safe — returns data from the last Reload().
-    inline bool IsAgentAllowed(std::wstring_view agentId)
+    inline bool IsAgentAllowed(const PolicySnapshot& snapshot, std::wstring_view agentId)
     {
-        const auto snap = _GetSnapshot();
-        if (!snap->allowedAgents.has_value())
+        if (!snapshot.allowedAgents.has_value())
         {
             return true; // Not configured — all allowed
         }
-        return snap->allowedAgents->find(agentId) != snap->allowedAgents->end();
+        return snapshot.allowedAgents->find(agentId) != snapshot.allowedAgents->end();
+    }
+
+    inline bool IsAgentAllowed(std::wstring_view agentId)
+    {
+        const auto snap = _GetSnapshot();
+        return IsAgentAllowed(*snap, agentId);
     }
 
     inline bool IsCustomAgentAllowed()
@@ -235,6 +243,11 @@ namespace Microsoft::Terminal::Settings::Model::AgentPolicy
     inline bool IsAllowedAgentsPolicyConfigured()
     {
         return _GetSnapshot()->allowedAgents.has_value();
+    }
+
+    inline bool IsAllowedAgentsPolicyConfigured(const PolicySnapshot& snapshot)
+    {
+        return snapshot.allowedAgents.has_value();
     }
 
     // Return the current snapshot (for advanced consumers).

@@ -4,8 +4,14 @@
 #include "pch.h"
 
 #include "../TerminalApp/TerminalPage.h"
+#include "../inc/AgentAvailability.h"
+#include "../inc/FreAgentSetup.h"
+#include "../inc/AgentPolicy.h"
 #include "../UnitTests_SettingsModel/TestUtils.h"
 #include "../TerminalSettingsAppAdapterLib/TerminalSettings.h"
+
+#include <atomic>
+#include <future>
 
 using namespace Microsoft::Console;
 using namespace WEX::Logging;
@@ -78,6 +84,32 @@ namespace TerminalAppLocalTests
         TEST_METHOD(TestAgentPaneSwitchCapability);
         TEST_METHOD(TestAgentPaneSettingsRebindRouting);
         TEST_METHOD(TestAgentPaneModelHotUpdateRouting);
+        TEST_METHOD(TestAgentPanePrewarmSchedulesOnlyActiveTab);
+        TEST_METHOD(TestAgentPanePrewarmRechecksSelection);
+        TEST_METHOD(TestRestoredAgentPaneSuppressesBlankPrewarm);
+        TEST_METHOD(TestAgentPanePrewarmSuppressesDuplicates);
+        TEST_METHOD(TestExplicitlyClosedAgentPaneStaysClosedUntilRequested);
+        TEST_METHOD(TestExplicitCloseWinsMaterializedObservationRace);
+        TEST_METHOD(TestSpeculativePrewarmSelectionBudget);
+        TEST_METHOD(TestOpenedAgentPaneIsNotSpeculative);
+        TEST_METHOD(TestRestoredAndTransferredPanesAreNotSpeculative);
+        TEST_METHOD(TestExplicitCloseDuringSpeculativeMaterializationWins);
+        TEST_METHOD(TestRepeatedSelectionRetainsOneSpeculativePane);
+        TEST_METHOD(TestSettingsRecreationPreservesSpeculativeBudget);
+        TEST_METHOD(TestStartupPrewarmIgnoresSlowEmptyAvailabilityCache);
+        TEST_METHOD(TestStartupPrewarmRejectsNoAllowedAgents);
+        TEST_METHOD(TestStartupPrewarmBlockedCopilotUsesExplicitFallback);
+        TEST_METHOD(TestStartupPrewarmCustomRequiresTrustedCommand);
+        TEST_METHOD(TestStartupPrewarmAvailabilityDoesNotDuplicate);
+        TEST_METHOD(TestAgentAvailabilityUiSnapshotIsImmediateAndRefreshIsSingleFlight);
+        TEST_METHOD(TestAgentAvailabilityFailureReachesProbingAndJoinedCallersThenRetries);
+        TEST_METHOD(TestAgentAvailabilityInvalidationDuringProbeRetriesJoinedCallers);
+        TEST_METHOD(TestAgentAvailabilityInvalidationThenFailureReachesAllCallers);
+        TEST_METHOD(TestAgentAvailabilityRepeatedInvalidationIsBounded);
+        TEST_METHOD(TestTerminalPageAgentAvailabilityFailureAllowsRetry);
+        TEST_METHOD(TestAgentPickerRefreshResolvesPolicyDefaultAndPreservesSelection);
+        TEST_METHOD(TestFreAgentSetupRequiresSelectionAndGuardsHooks);
+        TEST_METHOD(TestFrePostInstallAvailabilityFailureStopsSetupAndAllowsRetry);
 
         TEST_CLASS_SETUP(ClassSetup)
         {
@@ -1625,6 +1657,649 @@ namespace TerminalAppLocalTests
         }
     }
 
+    void SettingsTests::TestAgentPanePrewarmSchedulesOnlyActiveTab()
+    {
+        winrt::TerminalApp::implementation::details::AgentPanePrewarmTracker active;
+        winrt::TerminalApp::implementation::details::AgentPanePrewarmTracker background;
+
+        VERIFY_IS_TRUE(active.Schedule(true));
+        VERIFY_IS_FALSE(background.Schedule(false));
+    }
+
+    void SettingsTests::TestAgentPanePrewarmRechecksSelection()
+    {
+        using State = winrt::TerminalApp::implementation::details::AgentPanePrewarmState;
+        winrt::TerminalApp::implementation::details::AgentPanePrewarmTracker tracker;
+
+        VERIFY_IS_TRUE(tracker.Schedule(true));
+        VERIFY_IS_FALSE(tracker.BeginScheduled(false));
+        VERIFY_ARE_EQUAL(State::Dormant, tracker.State());
+        VERIFY_IS_TRUE(tracker.Schedule(true));
+        VERIFY_IS_TRUE(tracker.BeginScheduled(true));
+        tracker.Complete(true);
+        VERIFY_ARE_EQUAL(State::Materialized, tracker.State());
+    }
+
+    void SettingsTests::TestRestoredAgentPaneSuppressesBlankPrewarm()
+    {
+        winrt::TerminalApp::implementation::details::AgentPanePrewarmTracker restored;
+        winrt::TerminalApp::implementation::details::AgentPanePrewarmTracker transferred;
+
+        restored.MarkMaterialized();
+        transferred.MarkMaterialized();
+        VERIFY_IS_FALSE(restored.Schedule(true));
+        VERIFY_IS_FALSE(transferred.Schedule(true));
+    }
+
+    void SettingsTests::TestAgentPanePrewarmSuppressesDuplicates()
+    {
+        winrt::TerminalApp::implementation::details::AgentPanePrewarmTracker tracker;
+
+        VERIFY_IS_TRUE(tracker.Schedule(true));
+        VERIFY_IS_FALSE(tracker.Schedule(true));
+        VERIFY_IS_TRUE(tracker.BeginScheduled(true));
+        VERIFY_IS_FALSE(tracker.BeginImmediate());
+    }
+
+    void SettingsTests::TestExplicitlyClosedAgentPaneStaysClosedUntilRequested()
+    {
+        using State = winrt::TerminalApp::implementation::details::AgentPanePrewarmState;
+        winrt::TerminalApp::implementation::details::AgentPanePrewarmTracker tracker;
+
+        tracker.MarkExplicitlyClosed();
+        VERIFY_IS_FALSE(tracker.Schedule(true));
+        VERIFY_ARE_EQUAL(State::ExplicitlyClosed, tracker.State());
+        VERIFY_IS_TRUE(tracker.BeginImmediate());
+    }
+
+    void SettingsTests::TestExplicitCloseWinsMaterializedObservationRace()
+    {
+        using State = winrt::TerminalApp::implementation::details::AgentPanePrewarmState;
+        winrt::TerminalApp::implementation::details::AgentPanePrewarmTracker tracker;
+
+        tracker.MarkMaterialized();
+        tracker.MarkExplicitlyClosed();
+        tracker.ObserveMaterialized();
+        tracker.MarkAbsent();
+
+        VERIFY_ARE_EQUAL(State::ExplicitlyClosed, tracker.State());
+        VERIFY_IS_FALSE(tracker.Schedule(true));
+        VERIFY_IS_TRUE(tracker.BeginImmediate());
+        tracker.Complete(true);
+        VERIFY_ARE_EQUAL(State::Materialized, tracker.State());
+    }
+
+    void SettingsTests::TestSpeculativePrewarmSelectionBudget()
+    {
+        using Tracker = winrt::TerminalApp::implementation::details::AgentPanePrewarmTracker;
+        Tracker tabs[3];
+
+        for (auto selected = 0; selected < 3; ++selected)
+        {
+            for (auto index = 0; index < 3; ++index)
+            {
+                if (index != selected)
+                {
+                    tabs[index].EvictUnusedSpeculative();
+                }
+            }
+            VERIFY_IS_TRUE(tabs[selected].Schedule(true));
+            VERIFY_IS_TRUE(tabs[selected].BeginScheduled(true));
+            tabs[selected].Complete(true);
+
+            const auto retained = std::count_if(std::begin(tabs), std::end(tabs), [](const auto& tracker) {
+                return tracker.IsUnusedSpeculative();
+            });
+            VERIFY_ARE_EQUAL(decltype(retained){ 1 }, retained);
+        }
+    }
+
+    void SettingsTests::TestOpenedAgentPaneIsNotSpeculative()
+    {
+        winrt::TerminalApp::implementation::details::AgentPanePrewarmTracker tracker;
+        VERIFY_IS_TRUE(tracker.Schedule(true));
+        VERIFY_IS_TRUE(tracker.BeginScheduled(true));
+        tracker.Complete(true);
+        VERIFY_IS_TRUE(tracker.IsUnusedSpeculative());
+
+        tracker.MarkUsed();
+        VERIFY_IS_FALSE(tracker.IsUnusedSpeculative());
+        VERIFY_IS_FALSE(tracker.EvictUnusedSpeculative());
+    }
+
+    void SettingsTests::TestRestoredAndTransferredPanesAreNotSpeculative()
+    {
+        winrt::TerminalApp::implementation::details::AgentPanePrewarmTracker restored;
+        winrt::TerminalApp::implementation::details::AgentPanePrewarmTracker transferred;
+
+        restored.MarkMaterialized();
+        transferred.MarkMaterialized();
+        transferred.MarkUsed();
+
+        VERIFY_IS_FALSE(restored.EvictUnusedSpeculative());
+        VERIFY_IS_FALSE(transferred.EvictUnusedSpeculative());
+    }
+
+    void SettingsTests::TestExplicitCloseDuringSpeculativeMaterializationWins()
+    {
+        using State = winrt::TerminalApp::implementation::details::AgentPanePrewarmState;
+        winrt::TerminalApp::implementation::details::AgentPanePrewarmTracker tracker;
+
+        VERIFY_IS_TRUE(tracker.Schedule(true));
+        VERIFY_IS_TRUE(tracker.BeginScheduled(true));
+        tracker.MarkExplicitlyClosed();
+        tracker.Complete(true);
+
+        VERIFY_ARE_EQUAL(State::ExplicitlyClosed, tracker.State());
+        VERIFY_IS_FALSE(tracker.IsUnusedSpeculative());
+        VERIFY_IS_FALSE(tracker.Schedule(true));
+    }
+
+    void SettingsTests::TestRepeatedSelectionRetainsOneSpeculativePane()
+    {
+        winrt::TerminalApp::implementation::details::AgentPanePrewarmTracker tracker;
+        VERIFY_IS_TRUE(tracker.Schedule(true));
+        VERIFY_IS_TRUE(tracker.BeginScheduled(true));
+        tracker.Complete(true);
+
+        VERIFY_IS_FALSE(tracker.Schedule(true));
+        VERIFY_IS_TRUE(tracker.IsUnusedSpeculative());
+    }
+
+    void SettingsTests::TestSettingsRecreationPreservesSpeculativeBudget()
+    {
+        using Page = winrt::TerminalApp::implementation::TerminalPage;
+        using Tracker = winrt::TerminalApp::implementation::details::AgentPanePrewarmTracker;
+        Tracker tabs[3];
+
+        VERIFY_IS_TRUE(tabs[0].Schedule(true));
+        VERIFY_IS_TRUE(tabs[0].BeginScheduled(true));
+        tabs[0].Complete(true);
+        const auto speculativeRecreation =
+            Page::_GetAgentPaneRecreationOptions(true, true, tabs[0].IsUnusedSpeculative());
+        VERIFY_IS_TRUE(speculativeRecreation.speculative);
+        tabs[0].MarkAbsent();
+        tabs[0].MarkMaterialized(speculativeRecreation.speculative);
+
+        tabs[0].EvictUnusedSpeculative();
+        VERIFY_IS_TRUE(tabs[1].Schedule(true));
+        VERIFY_IS_TRUE(tabs[1].BeginScheduled(true));
+        tabs[1].Complete(true);
+
+        const auto retained = std::count_if(std::begin(tabs), std::end(tabs), [](const auto& tracker) {
+            return tracker.IsUnusedSpeculative();
+        });
+        VERIFY_ARE_EQUAL(decltype(retained){ 1 }, retained);
+
+        const auto openedRecreation = Page::_GetAgentPaneRecreationOptions(true, false, false);
+        VERIFY_IS_FALSE(openedRecreation.speculative);
+    }
+
+    void SettingsTests::TestStartupPrewarmIgnoresSlowEmptyAvailabilityCache()
+    {
+        namespace Availability = ::Microsoft::Terminal::AgentAvailability;
+        using Page = winrt::TerminalApp::implementation::TerminalPage;
+        const std::vector<std::wstring> allowed{ L"copilot", L"codex" };
+
+        Availability::ResetCacheForTests();
+        auto reset = wil::scope_exit([]() {
+            Availability::ResetCacheForTests();
+        });
+        std::promise<void> probeStarted;
+        std::promise<void> releaseProbe;
+        const auto release = releaseProbe.get_future().share();
+        Availability::SetProbeFunctionForTests([&]() {
+            probeStarted.set_value();
+            release.wait();
+            return Availability::AgentIds{};
+        });
+        auto refresh = std::async(std::launch::async, []() {
+            return Availability::RefreshHostAgentIds();
+        });
+        probeStarted.get_future().wait();
+
+        const auto selected = Page::_ResolvePolicyApprovedDefaultAgent(
+            L"copilot",
+            {},
+            true,
+            allowed,
+            {});
+        winrt::TerminalApp::implementation::details::AgentPanePrewarmTracker helper;
+        const auto helperScheduled = helper.Schedule(true);
+        releaseProbe.set_value();
+        refresh.get();
+
+        VERIFY_IS_TRUE(selected.has_value());
+        VERIFY_ARE_EQUAL(std::wstring{ L"copilot" }, selected->id);
+        VERIFY_IS_FALSE(selected->command.empty());
+        VERIFY_IS_TRUE(helperScheduled);
+    }
+
+    void SettingsTests::TestStartupPrewarmRejectsNoAllowedAgents()
+    {
+        using Page = winrt::TerminalApp::implementation::TerminalPage;
+        const std::vector<std::wstring> allowed;
+
+        VERIFY_IS_FALSE(Page::_ResolvePolicyApprovedDefaultAgent(
+                                 L"copilot",
+                                 {},
+                                 true,
+                                 allowed,
+                                 {})
+                            .has_value());
+    }
+
+    void SettingsTests::TestStartupPrewarmBlockedCopilotUsesExplicitFallback()
+    {
+        using Page = winrt::TerminalApp::implementation::TerminalPage;
+        const std::vector<std::wstring> allowed{ L"codex" };
+
+        const auto selected = Page::_ResolvePolicyApprovedDefaultAgent(
+            L"copilot",
+            {},
+            true,
+            allowed,
+            {});
+        VERIFY_IS_TRUE(selected.has_value());
+        VERIFY_ARE_EQUAL(std::wstring{ L"codex" }, selected->id);
+        VERIFY_IS_FALSE(selected->command.empty());
+        VERIFY_IS_TRUE(selected->command.find(L"copilot") == std::wstring::npos);
+    }
+
+    void SettingsTests::TestStartupPrewarmCustomRequiresTrustedCommand()
+    {
+        using Page = winrt::TerminalApp::implementation::TerminalPage;
+        const std::vector<std::wstring> noBuiltins;
+
+        const auto valid = Page::_ResolvePolicyApprovedDefaultAgent(
+            L"custom:local",
+            L"agent.exe --acp",
+            true,
+            noBuiltins,
+            {});
+        VERIFY_IS_TRUE(valid.has_value());
+        VERIFY_ARE_EQUAL(std::wstring{ L"custom:local" }, valid->id);
+        VERIFY_ARE_EQUAL(std::wstring{ L"agent.exe --acp" }, valid->command);
+
+        VERIFY_IS_FALSE(Page::_ResolvePolicyApprovedDefaultAgent(
+                                 L"custom:local",
+                                 L" \t ",
+                                 true,
+                                 noBuiltins,
+                                 {})
+                            .has_value());
+        VERIFY_IS_FALSE(Page::_ResolvePolicyApprovedDefaultAgent(
+                                 L"custom:local",
+                                 L"agent.exe --acp",
+                                 false,
+                                 noBuiltins,
+                                 {})
+                            .has_value());
+        VERIFY_IS_FALSE(Page::_ResolvePolicyApprovedDefaultAgent(
+                                 L"custom:",
+                                 L"agent.exe --acp",
+                                 true,
+                                 noBuiltins,
+                                 {})
+                            .has_value());
+    }
+
+    void SettingsTests::TestStartupPrewarmAvailabilityDoesNotDuplicate()
+    {
+        using Page = winrt::TerminalApp::implementation::TerminalPage;
+        winrt::TerminalApp::implementation::details::MasterOwnershipTracker provider;
+        winrt::TerminalApp::implementation::details::AgentPanePrewarmTracker helper;
+
+        VERIFY_IS_TRUE(provider.AcquireLease());
+        VERIFY_IS_TRUE(helper.Schedule(true));
+        VERIFY_IS_TRUE(helper.BeginScheduled(true));
+        helper.Complete(true);
+
+        bool refreshScheduled = true;
+        VERIFY_IS_FALSE(Page::_CompleteAgentAvailabilityRefresh(refreshScheduled, 1, 1));
+        VERIFY_IS_FALSE(refreshScheduled);
+        VERIFY_IS_FALSE(provider.AcquireLease());
+        VERIFY_IS_FALSE(helper.Schedule(true));
+    }
+
+    void SettingsTests::TestAgentAvailabilityUiSnapshotIsImmediateAndRefreshIsSingleFlight()
+    {
+        namespace Availability = ::Microsoft::Terminal::AgentAvailability;
+        Availability::ResetCacheForTests();
+        auto reset = wil::scope_exit([]() {
+            Availability::ResetCacheForTests();
+        });
+
+        std::atomic<uint32_t> probeCalls{ 0 };
+        std::promise<void> probeStarted;
+        std::promise<void> releaseProbe;
+        const auto release = releaseProbe.get_future().share();
+        Availability::SetProbeFunctionForTests([&]() {
+            if (probeCalls.fetch_add(1) == 0)
+            {
+                probeStarted.set_value();
+            }
+            release.wait();
+            return Availability::AgentIds{ L"codex" };
+        });
+
+        auto firstRefresh = std::async(std::launch::async, []() {
+            return Availability::RefreshHostAgentIds();
+        });
+        probeStarted.get_future().wait();
+        auto secondRefresh = std::async(std::launch::async, []() {
+            return Availability::RefreshHostAgentIds();
+        });
+        auto uiRead = std::async(std::launch::async, []() {
+            return Availability::GetCachedHostAgentIds();
+        });
+
+        const auto uiReadStatus = uiRead.wait_for(std::chrono::milliseconds{ 100 });
+        releaseProbe.set_value();
+        VERIFY_IS_TRUE(uiReadStatus == std::future_status::ready);
+        VERIFY_IS_TRUE(uiRead.get().empty());
+
+        VERIFY_IS_TRUE(firstRefresh.get().contains(L"codex"));
+        VERIFY_IS_TRUE(secondRefresh.get().contains(L"codex"));
+        VERIFY_ARE_EQUAL(1u, probeCalls.load());
+    }
+
+    void SettingsTests::TestAgentAvailabilityInvalidationDuringProbeRetriesJoinedCallers()
+    {
+        namespace Availability = ::Microsoft::Terminal::AgentAvailability;
+        Availability::ResetCacheForTests();
+        auto reset = wil::scope_exit([]() {
+            Availability::ResetCacheForTests();
+        });
+
+        std::atomic<uint32_t> probeCalls{ 0 };
+        std::promise<void> staleProbeStarted;
+        std::promise<void> freshProbeStarted;
+        std::promise<void> releaseStaleProbe;
+        std::promise<void> releaseFreshProbe;
+        const auto releaseStale = releaseStaleProbe.get_future().share();
+        const auto releaseFresh = releaseFreshProbe.get_future().share();
+        Availability::SetProbeFunctionForTests([&]() {
+            const auto call = probeCalls.fetch_add(1);
+            if (call == 0)
+            {
+                staleProbeStarted.set_value();
+                releaseStale.wait();
+                return Availability::AgentIds{ L"codex" };
+            }
+
+            VERIFY_ARE_EQUAL(1u, call);
+            freshProbeStarted.set_value();
+            releaseFresh.wait();
+            return Availability::AgentIds{ L"claude" };
+        });
+
+        auto originalCaller = std::async(std::launch::async, []() {
+            return Availability::RefreshHostAgentIds();
+        });
+        staleProbeStarted.get_future().wait();
+
+        Availability::InvalidateHostAgentIds();
+        auto followUpCaller = std::async(std::launch::async, []() {
+            return Availability::RefreshHostAgentIds();
+        });
+        releaseStaleProbe.set_value();
+        freshProbeStarted.get_future().wait();
+
+        auto joinedCaller = std::async(std::launch::async, []() {
+            return Availability::RefreshHostAgentIds();
+        });
+        VERIFY_IS_TRUE(Availability::WaitForRefreshCallersForTests(
+            2,
+            std::chrono::seconds{ 2 }));
+        VERIFY_IS_TRUE(joinedCaller.wait_for(std::chrono::milliseconds{ 0 }) == std::future_status::timeout);
+        VERIFY_IS_TRUE(Availability::GetCachedHostAgentIds().empty());
+
+        releaseFreshProbe.set_value();
+        VERIFY_IS_TRUE(originalCaller.get().contains(L"claude"));
+        VERIFY_IS_TRUE(followUpCaller.get().contains(L"claude"));
+        VERIFY_IS_TRUE(joinedCaller.get().contains(L"claude"));
+        VERIFY_IS_FALSE(Availability::GetCachedHostAgentIds().contains(L"codex"));
+        VERIFY_ARE_EQUAL(2u, probeCalls.load());
+    }
+
+    void SettingsTests::TestAgentAvailabilityFailureReachesProbingAndJoinedCallersThenRetries()
+    {
+        namespace Availability = ::Microsoft::Terminal::AgentAvailability;
+        Availability::ResetCacheForTests();
+        auto reset = wil::scope_exit([]() {
+            Availability::ResetCacheForTests();
+        });
+
+        std::atomic<uint32_t> probeCalls{ 0 };
+        std::promise<void> failedProbeStarted;
+        std::promise<void> releaseFailedProbe;
+        const auto release = releaseFailedProbe.get_future().share();
+        Availability::SetProbeFunctionForTests([&]() {
+            if (probeCalls.fetch_add(1) == 0)
+            {
+                failedProbeStarted.set_value();
+                release.wait();
+                throw std::runtime_error{ "deterministic probe failure" };
+            }
+            return Availability::AgentIds{ L"codex" };
+        });
+
+        auto probingCaller = std::async(std::launch::async, []() {
+            return Availability::RefreshHostAgentIds();
+        });
+        failedProbeStarted.get_future().wait();
+        auto joinedCaller = std::async(std::launch::async, []() {
+            return Availability::RefreshHostAgentIds();
+        });
+        VERIFY_IS_TRUE(Availability::WaitForRefreshCallersForTests(
+            1,
+            std::chrono::seconds{ 2 }));
+        releaseFailedProbe.set_value();
+
+        bool probingCallerFailed = false;
+        try
+        {
+            static_cast<void>(probingCaller.get());
+        }
+        catch (const std::runtime_error& e)
+        {
+            probingCallerFailed = std::string_view{ e.what() } == "deterministic probe failure";
+        }
+        bool joinedCallerFailed = false;
+        try
+        {
+            static_cast<void>(joinedCaller.get());
+        }
+        catch (const std::runtime_error& e)
+        {
+            joinedCallerFailed = std::string_view{ e.what() } == "deterministic probe failure";
+        }
+
+        VERIFY_IS_TRUE(probingCallerFailed);
+        VERIFY_IS_TRUE(joinedCallerFailed);
+        VERIFY_IS_FALSE(Availability::IsHostAgentCacheValidForTests());
+        VERIFY_IS_TRUE(Availability::GetCachedHostAgentIds().empty());
+        VERIFY_ARE_EQUAL(1u, probeCalls.load());
+
+        const auto retried = Availability::RefreshHostAgentIds();
+        VERIFY_IS_TRUE(retried.contains(L"codex"));
+        VERIFY_IS_TRUE(Availability::IsHostAgentCacheValidForTests());
+        VERIFY_ARE_EQUAL(2u, probeCalls.load());
+    }
+
+    void SettingsTests::TestAgentAvailabilityInvalidationThenFailureReachesAllCallers()
+    {
+        namespace Availability = ::Microsoft::Terminal::AgentAvailability;
+        Availability::ResetCacheForTests();
+        auto reset = wil::scope_exit([]() {
+            Availability::ResetCacheForTests();
+        });
+
+        std::atomic<uint32_t> probeCalls{ 0 };
+        std::promise<void> staleProbeStarted;
+        std::promise<void> failedProbeStarted;
+        std::promise<void> releaseStaleProbe;
+        std::promise<void> releaseFailedProbe;
+        const auto releaseStale = releaseStaleProbe.get_future().share();
+        const auto releaseFailed = releaseFailedProbe.get_future().share();
+        Availability::SetProbeFunctionForTests([&]() -> Availability::AgentIds {
+            const auto call = probeCalls.fetch_add(1);
+            if (call == 0)
+            {
+                staleProbeStarted.set_value();
+                releaseStale.wait();
+                throw std::runtime_error{ "stale failure" };
+            }
+
+            VERIFY_ARE_EQUAL(1u, call);
+            failedProbeStarted.set_value();
+            releaseFailed.wait();
+            throw std::runtime_error{ "current failure" };
+        });
+
+        auto originalCaller = std::async(std::launch::async, []() {
+            return Availability::RefreshHostAgentIds();
+        });
+        staleProbeStarted.get_future().wait();
+        Availability::InvalidateHostAgentIds();
+        auto joinedCaller = std::async(std::launch::async, []() {
+            return Availability::RefreshHostAgentIds();
+        });
+        releaseStaleProbe.set_value();
+        failedProbeStarted.get_future().wait();
+        VERIFY_IS_TRUE(Availability::WaitForRefreshCallersForTests(
+            1,
+            std::chrono::seconds{ 2 }));
+        releaseFailedProbe.set_value();
+
+        for (auto* caller : { &originalCaller, &joinedCaller })
+        {
+            bool failedWithCurrentGeneration = false;
+            try
+            {
+                static_cast<void>(caller->get());
+            }
+            catch (const std::runtime_error& e)
+            {
+                failedWithCurrentGeneration = std::string_view{ e.what() } == "current failure";
+            }
+            VERIFY_IS_TRUE(failedWithCurrentGeneration);
+        }
+        VERIFY_IS_FALSE(Availability::IsHostAgentCacheValidForTests());
+        VERIFY_ARE_EQUAL(2u, probeCalls.load());
+    }
+
+    void SettingsTests::TestAgentAvailabilityRepeatedInvalidationIsBounded()
+    {
+        namespace Availability = ::Microsoft::Terminal::AgentAvailability;
+        Availability::ResetCacheForTests();
+        auto reset = wil::scope_exit([]() {
+            Availability::ResetCacheForTests();
+        });
+
+        std::atomic<uint32_t> probeCalls{ 0 };
+        Availability::SetProbeFunctionForTests([&]() {
+            ++probeCalls;
+            Availability::InvalidateHostAgentIds();
+            return Availability::AgentIds{ L"codex" };
+        });
+
+        bool boundedFailure = false;
+        try
+        {
+            static_cast<void>(Availability::RefreshHostAgentIds());
+        }
+        catch (const std::runtime_error& e)
+        {
+            boundedFailure = std::string_view{ e.what() } == "Agent availability refresh was repeatedly invalidated";
+        }
+
+        VERIFY_IS_TRUE(boundedFailure);
+        VERIFY_ARE_EQUAL(8u, probeCalls.load());
+        VERIFY_IS_FALSE(Availability::IsHostAgentCacheValidForTests());
+    }
+
+    void SettingsTests::TestTerminalPageAgentAvailabilityFailureAllowsRetry()
+    {
+        using Page = winrt::TerminalApp::implementation::TerminalPage;
+
+        bool scheduled = false;
+        uint64_t generation = 0;
+        const auto first = Page::_TryScheduleAgentAvailabilityRefresh(scheduled, generation);
+        VERIFY_IS_TRUE(first.has_value());
+        VERIFY_IS_TRUE(scheduled);
+
+        const auto joined = Page::_TryScheduleAgentAvailabilityRefresh(scheduled, generation);
+        VERIFY_IS_FALSE(joined.has_value());
+        VERIFY_ARE_EQUAL(2ull, generation);
+
+        const bool refreshAgain =
+            Page::_CompleteAgentAvailabilityRefresh(scheduled, *first, generation);
+        VERIFY_IS_TRUE(refreshAgain);
+        VERIFY_IS_FALSE(scheduled);
+
+        const auto retry = Page::_TryScheduleAgentAvailabilityRefresh(scheduled, generation);
+        VERIFY_IS_TRUE(retry.has_value());
+        VERIFY_ARE_EQUAL(3ull, *retry);
+        VERIFY_IS_TRUE(scheduled);
+    }
+
+    void SettingsTests::TestFreAgentSetupRequiresSelectionAndGuardsHooks()
+    {
+        namespace Setup = ::Microsoft::Terminal::FreAgentSetup;
+
+        VERIFY_ARE_EQUAL(
+            Setup::AvailabilityState::Unavailable,
+            Setup::ClassifyAvailability(false, true, true));
+        VERIFY_ARE_EQUAL(
+            Setup::AvailabilityState::BlockedByPolicy,
+            Setup::ClassifyAvailability(false, false, true));
+        VERIFY_ARE_EQUAL(
+            Setup::AvailabilityState::Available,
+            Setup::ClassifyAvailability(true, true, true));
+
+        VERIFY_IS_FALSE(Setup::CanSave(L""));
+        VERIFY_IS_FALSE(Setup::ShouldInstallHooks(L"", true, false));
+
+        VERIFY_IS_TRUE(Setup::CanSave(L"codex"));
+        VERIFY_IS_FALSE(Setup::ShouldInstallHooks(L"codex", false, false));
+        VERIFY_IS_FALSE(Setup::ShouldInstallHooks(L"codex", true, true));
+        VERIFY_IS_TRUE(Setup::ShouldInstallHooks(L"codex", true, false));
+    }
+
+    void SettingsTests::TestFrePostInstallAvailabilityFailureStopsSetupAndAllowsRetry()
+    {
+        namespace Setup = ::Microsoft::Terminal::FreAgentSetup;
+
+        VERIFY_IS_FALSE(Setup::CanContinueAfterPostInstallRefresh(false, L"codex", false));
+        VERIFY_IS_FALSE(Setup::CanContinueAfterPostInstallRefresh(true, L"", true));
+        VERIFY_IS_FALSE(Setup::CanContinueAfterPostInstallRefresh(true, L"codex", false));
+        VERIFY_IS_TRUE(Setup::CanContinueAfterPostInstallRefresh(true, L"codex", true));
+    }
+
+    void SettingsTests::TestAgentPickerRefreshResolvesPolicyDefaultAndPreservesSelection()
+    {
+        namespace Availability = ::Microsoft::Terminal::AgentAvailability;
+
+        const std::vector<std::wstring> codexOnly{ L"codex" };
+        const Availability::AgentIds initiallyEmpty;
+        VERIFY_IS_FALSE(
+            Availability::SelectAvailableAllowedAgentId(L"copilot", codexOnly, initiallyEmpty).has_value());
+
+        const Availability::AgentIds completed{ L"copilot", L"codex" };
+        const auto policyDefault =
+            Availability::SelectAvailableAllowedAgentId(L"copilot", codexOnly, completed);
+        VERIFY_IS_TRUE(policyDefault.has_value());
+        VERIFY_ARE_EQUAL(std::wstring{ L"codex" }, *policyDefault);
+
+        const std::vector<std::wstring> bothAllowed{ L"copilot", L"codex" };
+        const auto preserved =
+            Availability::SelectAvailableAllowedAgentId(L"codex", bothAllowed, completed);
+        VERIFY_IS_TRUE(preserved.has_value());
+        VERIFY_ARE_EQUAL(std::wstring{ L"codex" }, *preserved);
+    }
+
     void SettingsTests::TestAgentSettingsChangeClassification()
     {
         using Page = winrt::TerminalApp::implementation::TerminalPage;
@@ -1652,6 +2327,29 @@ namespace TerminalAppLocalTests
         VERIFY_ARE_EQUAL(
             ChangeKind::AgentRebind,
             Page::_ClassifyAgentSettingsChange(native, builtInAgentChange));
+
+        namespace AgentPolicy = ::Microsoft::Terminal::Settings::Model::AgentPolicy;
+        AgentPolicy::PolicySnapshot unrestrictedSnapshot;
+        auto unrestrictedPolicy = native;
+        unrestrictedPolicy.effectiveAcpAgent = L"copilot";
+        unrestrictedPolicy.allowedAcpAgents = Page::_CaptureAllowedAcpAgentIds(unrestrictedSnapshot);
+        AgentPolicy::PolicySnapshot partialSnapshot;
+        partialSnapshot.allowedAgents =
+            std::set<std::wstring, AgentPolicy::CaseInsensitiveLess>{ L"copilot", L"codex" };
+        auto partialPolicy = unrestrictedPolicy;
+        partialPolicy.allowedAcpAgents = Page::_CaptureAllowedAcpAgentIds(partialSnapshot);
+        VERIFY_ARE_EQUAL(
+            ChangeKind::RecreatePane,
+            Page::_ClassifyAgentSettingsChange(unrestrictedPolicy, partialPolicy));
+        VERIFY_ARE_EQUAL(
+            ChangeKind::None,
+            Page::_ClassifyAgentSettingsChange(partialPolicy, partialPolicy));
+
+        auto blockedDefaultPolicy = partialPolicy;
+        blockedDefaultPolicy.effectiveAcpAgent = L"codex";
+        VERIFY_ARE_EQUAL(
+            ChangeKind::RecreatePane,
+            Page::_ClassifyAgentSettingsChange(partialPolicy, blockedDefaultPolicy));
 
         auto gemini = native;
         gemini.acpAgent = L"gemini";
@@ -1740,21 +2438,25 @@ namespace TerminalAppLocalTests
         VERIFY_IS_FALSE(Page::_CanRebindAgentPane(State::Closed, true));
         VERIFY_IS_FALSE(Page::_CanRebindAgentPane(State::Failed, true));
 
-        const auto visibleActive = Page::_GetAgentPaneRecreationOptions(false, true);
+        const auto visibleActive = Page::_GetAgentPaneRecreationOptions(false, true, false);
         VERIFY_IS_FALSE(visibleActive.autoStash);
         VERIFY_IS_TRUE(visibleActive.focusPane);
+        VERIFY_IS_FALSE(visibleActive.speculative);
 
-        const auto visibleBackground = Page::_GetAgentPaneRecreationOptions(false, false);
+        const auto visibleBackground = Page::_GetAgentPaneRecreationOptions(false, false, false);
         VERIFY_IS_FALSE(visibleBackground.autoStash);
         VERIFY_IS_FALSE(visibleBackground.focusPane);
+        VERIFY_IS_FALSE(visibleBackground.speculative);
 
-        const auto stashedActive = Page::_GetAgentPaneRecreationOptions(true, true);
+        const auto stashedActive = Page::_GetAgentPaneRecreationOptions(true, true, false);
         VERIFY_IS_TRUE(stashedActive.autoStash);
         VERIFY_IS_FALSE(stashedActive.focusPane);
+        VERIFY_IS_FALSE(stashedActive.speculative);
 
-        const auto stashedBackground = Page::_GetAgentPaneRecreationOptions(true, false);
+        const auto stashedBackground = Page::_GetAgentPaneRecreationOptions(true, false, true);
         VERIFY_IS_TRUE(stashedBackground.autoStash);
         VERIFY_IS_FALSE(stashedBackground.focusPane);
+        VERIFY_IS_TRUE(stashedBackground.speculative);
     }
 
     void SettingsTests::TestAgentPaneSettingsRebindRouting()

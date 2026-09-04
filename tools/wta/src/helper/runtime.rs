@@ -96,6 +96,7 @@ pub(super) async fn run_default_tui_over_pipe(
     mut config: HelperConfig,
     pipe_name: String,
 ) -> Result<()> {
+    let helper_started_at = std::time::Instant::now();
     install_descendant_job()?;
     tracing::info!(target: "helper", pipe = %pipe_name, "=== wta-helper starting (TUI) ===");
     let agent_source = crate::agent_source::AgentSource::from_wire(
@@ -134,6 +135,38 @@ pub(super) async fn run_default_tui_over_pipe(
     } else {
         None
     };
+    if wt_connected {
+        let prewarm_shell_mgr = Arc::clone(&shell_mgr);
+        let explicit_source = std::env::var("WTA_SOURCE_SESSION_ID")
+            .ok()
+            .filter(|source| !source.trim().is_empty());
+        tokio::spawn(async move {
+            let started = std::time::Instant::now();
+            let outcome =
+                match crate::protocol::acp::prompt_context::shell_for_command_cache_prewarm(
+                    &prewarm_shell_mgr,
+                    explicit_source.as_deref(),
+                )
+                .await
+                {
+                    Some(shell) => {
+                        if crate::command_recall::is_powershell(&shell) {
+                            crate::command_recall::prewarm_powershell_commands(shell).as_str()
+                        } else {
+                            "not_powershell"
+                        }
+                    }
+                    None => "context_unavailable",
+                };
+            tracing::debug!(
+                target: "command_recall",
+                outcome,
+                explicit_source = explicit_source.is_some(),
+                duration_ms = started.elapsed().as_millis() as u64,
+                "command_cache_prewarm_probe"
+            );
+        });
+    }
 
     // Connection failures to wta-master (pipe connect give-up, ACP initialize
     // timeout/failure) are logged at their source (target=helper) and again in
@@ -148,6 +181,7 @@ pub(super) async fn run_default_tui_over_pipe(
         wt_event_rx,
         wt_protocol_channel,
         pipe_name,
+        helper_started_at,
     )
     .await
 }
@@ -306,6 +340,7 @@ async fn run_acp_tui_mode(
     wt_event_rx: Option<tokio::sync::mpsc::UnboundedReceiver<serde_json::Value>>,
     wt_protocol_channel: Option<Arc<CliChannel>>,
     connect_master_pipe: String,
+    helper_started_at: std::time::Instant,
 ) -> Result<()> {
     enable_raw_mode()?;
     let mut restore_guard = TuiRestoreGuard::new();
@@ -333,6 +368,7 @@ async fn run_acp_tui_mode(
         wt_event_rx,
         wt_protocol_channel,
         connect_master_pipe,
+        helper_started_at,
     )
     .await;
 
@@ -405,6 +441,7 @@ async fn run_acp_app(
     wt_event_rx: Option<tokio::sync::mpsc::UnboundedReceiver<serde_json::Value>>,
     wt_protocol_channel: Option<Arc<CliChannel>>,
     connect_master_pipe: String,
+    helper_started_at: std::time::Instant,
 ) -> Result<()> {
     let agent_cmd = config.agent.clone();
     let agent_source = crate::agent_source::AgentSource::from_wire(
@@ -801,6 +838,7 @@ async fn run_acp_app(
                         source_cwd,
                         owner_tab,
                         initial_load_sid,
+                        app::INITIAL_BINDING_GENERATION,
                         event_tx_for_pipe.clone(),
                         prompt_rx,
                         cancel_rx,
@@ -979,21 +1017,27 @@ async fn run_acp_app(
                 app_state.show_copilot_auth_screen();
             }
 
-            // ── Preflight: check the agent CLI before connecting ──────────
+            // ── Preflight: check the agent CLI without delaying first paint ─
             // Skip preflight when FRE is active — FRE has its own agent
             // selection + auth flow and doesn't need the preflight wizard.
             if config.setup.is_none() && !start_in_initial_auth {
-                let agent_id = canonical_agent_id.as_str();
-                let preflight_result =
-                    app::preflight_agent_in_source(agent_id, &agent_source).await;
-                tracing::info!(
-                    target: "preflight",
-                    agent_id = %preflight_result.agent_id,
-                    cli = ?preflight_result.cli_status,
-                    auth = ?preflight_result.auth_status,
-                    "preflight done (via agent_check)"
-                );
-                let _ = event_tx.send(app::AppEvent::PreflightComplete(preflight_result));
+                let agent_id = canonical_agent_id.clone();
+                let source = agent_source.clone();
+                let preflight_event_tx = event_tx.clone();
+                tokio::task::spawn_local(async move {
+                    let started = std::time::Instant::now();
+                    let preflight_result = app::preflight_agent_in_source(&agent_id, &source).await;
+                    tracing::info!(
+                        target: "preflight",
+                        agent_id = %preflight_result.agent_id,
+                        cli = ?preflight_result.cli_status,
+                        auth = ?preflight_result.auth_status,
+                        duration_ms = started.elapsed().as_millis() as u64,
+                        "preflight done (via agent_check)"
+                    );
+                    let _ =
+                        preflight_event_tx.send(app::AppEvent::PreflightComplete(preflight_result));
+                });
             }
 
             // Wire the agent_event channel so dispatch_resume's split-pane
@@ -1337,7 +1381,9 @@ async fn run_acp_app(
                 }
             }
 
-            app_state.run(terminal, event_rx, ui_event_rx).await
+            app_state
+                .run(terminal, event_rx, ui_event_rx, helper_started_at)
+                .await
         })
         .await
 }

@@ -3823,6 +3823,10 @@ namespace winrt::Microsoft::Terminal::Control::implementation
     {
         return _core.ReadEntireBuffer();
     }
+    hstring TermControl::ReadBufferTail(const int32_t maxLogicalLines) const
+    {
+        return _core.ReadBufferTail(maxLogicalLines);
+    }
     hstring TermControl::ReadLastPrompt() const
     {
         return _core.ReadLastPrompt();

@@ -33,6 +33,11 @@ namespace TerminalAppLocalTests
     class SettingsTests;
 }
 
+namespace Microsoft::Terminal::Settings::Model::AgentPolicy
+{
+    struct PolicySnapshot;
+}
+
 namespace Microsoft::Terminal::Core
 {
     class ControlKeyStates;
@@ -245,6 +250,7 @@ namespace winrt::TerminalApp::implementation
         uint32_t TabCount() const;
         Windows::Foundation::IReference<uint32_t> FocusedTabIndex() const;
         Windows::Foundation::IAsyncOperation<Microsoft::Terminal::Protocol::PaneInfo> GetProtocolActivePane();
+        Windows::Foundation::IAsyncOperation<Microsoft::Terminal::Protocol::PromptContext> GetProtocolPromptContext(winrt::guid sourceSessionId, bool hasExplicitSource, int32_t fallbackLines);
         Windows::Foundation::IAsyncOperation<Windows::Foundation::Collections::IVector<Microsoft::Terminal::Protocol::TabInfo>> GetProtocolTabs();
         Windows::Foundation::IAsyncOperation<Windows::Foundation::Collections::IVector<Microsoft::Terminal::Protocol::PaneInfo>> GetProtocolPanes(uint32_t tabIdFilter);
         Windows::Foundation::IAsyncOperation<Microsoft::Terminal::Protocol::PaneOutput> ReadProtocolPaneOutput(winrt::guid sessionId, hstring source, int32_t maxLines);
@@ -440,6 +446,13 @@ namespace winrt::TerminalApp::implementation
             std::wstring acpModel;
             std::optional<::Microsoft::Terminal::CustomModels::LaunchConfiguration> customModelLaunch;
             std::vector<std::pair<winrt::guid, std::wstring>> profileBackends;
+            std::wstring effectiveAcpAgent;
+            std::vector<std::wstring> allowedAcpAgents;
+        };
+        struct EffectiveDefaultAgent
+        {
+            std::wstring id;
+            std::wstring command;
         };
         AgentSettingsSnapshot _lastAgentSettings{};
         bool _agentSettingsSnapshotInitialized{ false };
@@ -481,6 +494,7 @@ namespace winrt::TerminalApp::implementation
         {
             bool autoStash;
             bool focusPane;
+            bool speculative;
         };
         std::string _settingsReloadRequestId;
         std::optional<std::string> _pendingAgentSettingsRequestId;
@@ -574,13 +588,32 @@ namespace winrt::TerminalApp::implementation
         // between actions, and a flag would let that inner batch clear the
         // suppression out from under the outer one.
         uint32_t _startupActionReplayDepth{ 0 };
-        // Tabs that skipped their own pre-warm because a replay was in flight.
-        // Drained when the outermost replay finishes. Recording the tabs —
-        // rather than re-scanning every tab in the window — is what keeps an
-        // unrelated `wt` handoff from resurrecting an agent pane the user
-        // deliberately closed.
+        // Focused tabs whose low-priority prewarm was deferred by startup
+        // replay. The outermost replay drains only the final focused tab.
         std::vector<winrt::weak_ref<Tab>> _tabsAwaitingPrewarm;
-        AgentSettingsSnapshot _CaptureAgentSettingsSnapshot() const;
+        SharedWta::MasterLease _sharedWtaMasterLease;
+        std::shared_ptr<const ::Microsoft::Terminal::Settings::Model::AgentPolicy::PolicySnapshot> _agentPolicySnapshot;
+        bool _agentAvailabilityRefreshScheduled{ false };
+        uint64_t _agentAvailabilityRefreshGeneration{ 0 };
+        std::chrono::steady_clock::time_point _agentStartupStarted{ std::chrono::steady_clock::now() };
+        static std::optional<uint64_t> _TryScheduleAgentAvailabilityRefresh(
+            bool& scheduled,
+            uint64_t& generation) noexcept;
+        static bool _CompleteAgentAvailabilityRefresh(
+            bool& scheduled,
+            uint64_t generation,
+            uint64_t latestGeneration) noexcept;
+        AgentSettingsSnapshot _CaptureAgentSettingsSnapshot(
+            const std::optional<EffectiveDefaultAgent>* effectiveDefault = nullptr) const;
+        static std::vector<std::wstring> _CaptureAllowedAcpAgentIds(
+            const ::Microsoft::Terminal::Settings::Model::AgentPolicy::PolicySnapshot& policy);
+        static std::optional<EffectiveDefaultAgent> _ResolvePolicyApprovedDefaultAgent(
+            std::wstring_view configuredAgentId,
+            std::wstring_view configuredCustomCommand,
+            bool customAgentsAllowed,
+            std::span<const std::wstring> allowedAgentIds,
+            std::wstring_view acpModel);
+        std::optional<EffectiveDefaultAgent> _ResolveEffectiveDefaultAgent() const;
         static AgentSettingsChangeKind _ClassifyAgentSettingsChange(
             const AgentSettingsSnapshot& previous,
             const AgentSettingsSnapshot& current);
@@ -600,7 +633,8 @@ namespace winrt::TerminalApp::implementation
             winrt::Microsoft::Terminal::TerminalConnection::ConnectionState connectionState) noexcept;
         static AgentPaneRecreationOptions _GetAgentPaneRecreationOptions(
             bool wasStashed,
-            bool isActiveTab) noexcept;
+            bool isActiveTab,
+            bool wasSpeculative) noexcept;
         static AgentPaneSettingsBinding _ResolveAgentPaneSettingsBinding(
             const AgentPaneSettingsBindingRequest& request);
         AgentPaneSettingsBinding _ResolveAgentPaneSettingsBindingForTab(
@@ -680,8 +714,20 @@ namespace winrt::TerminalApp::implementation
         // Single source of truth shared by `_AutoCreateHiddenAgentPaneShared`
         // (first acquire) and `_ReconcileAgentSettings` (settings-change-driven
         // SharedWta::Restart). Reads from `_settings.GlobalSettings()`.
-        std::vector<std::wstring> _BuildSharedWtaExtraArgs();
+        std::vector<std::wstring> _BuildSharedWtaExtraArgs(
+            const EffectiveDefaultAgent& effectiveDefault);
         std::vector<std::pair<std::wstring, std::wstring>> _BuildSharedWtaEnvironment();
+        void _EnsureSharedWtaMasterLease(
+            const std::optional<EffectiveDefaultAgent>& effectiveDefault);
+        void _ScheduleAgentAvailabilityRefresh(std::string_view reason);
+        safe_void_coroutine _RefreshAgentAvailabilityAsync(uint64_t generation, std::string reason);
+        void _ScheduleActiveTabAgentPanePrewarm(
+            const winrt::com_ptr<Tab>& tab,
+            std::string_view reason);
+        void _MaterializeScheduledAgentPane(
+            const winrt::com_ptr<Tab>& tab,
+            std::chrono::steady_clock::time_point scheduledAt,
+            std::string_view reason);
         // Helper+master agent-pane creation (Z-M3, default since Z-M6):
         // spawns a wta-helper as a normal conpty child for this pane and
         // connects it to the SharedWta-managed wta-master process over a
@@ -701,12 +747,11 @@ namespace winrt::TerminalApp::implementation
         // the prior race-prone "spawn, then broadcast `load_session` VT"
         // design).
         //
-        // `autoStash=true` is the pre-warm path called from `_InitializeTab`:
+        // `autoStash=true` is the selected-tab pre-warm path:
         // the helper conpty is spawned but the pane is immediately stashed
         // (`Tab::StashAgentPane`) so the user sees only the terminal pane.
         // Focus stays on the original terminal; no telemetry fires (the
-        // pane wasn't *opened*, just pre-warmed). This is what makes
-        // autofix work without the user ever opening the agent pane.
+        // pane wasn't *opened*, just pre-warmed).
         bool _AutoCreateHiddenAgentPaneShared(winrt::com_ptr<Tab> tab,
                                               bool intoSessionsView = false,
                                               bool autoStash = false,
@@ -716,7 +761,9 @@ namespace winrt::TerminalApp::implementation
                                               std::string_view initialView = {},
                                               std::wstring_view initialPanePosition = {},
                                               float initialPaneSize = 0.0f,
-                                              bool focusPane = true);
+                                              bool focusPane = true,
+                                              bool speculative = false);
+        void _EvictUnusedSpeculativeAgentPanes(const winrt::com_ptr<Tab>& selectedTab);
         winrt::hstring _GetAgentPaneIdentity(Tab* tab) const;
         winrt::hstring _GetAgentPaneCustomCommand(Tab* tab) const;
         void _PrewarmAgentPanesAfterStartup();

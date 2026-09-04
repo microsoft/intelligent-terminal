@@ -270,6 +270,19 @@ impl Drop for UserInputLease {
 }
 
 impl CapabilityRegistry {
+    #[cfg(test)]
+    pub(super) async fn is_empty(&self) -> bool {
+        let routes = self.routes.lock().await;
+        routes.by_capability.is_empty()
+            && routes.by_session.is_empty()
+            && routes.by_owner.is_empty()
+            && self
+                .active_user_inputs
+                .lock()
+                .map(|inputs| inputs.is_empty())
+                .unwrap_or(false)
+    }
+
     pub(super) async fn prepare(
         &self,
         owner: AgentInstanceId,

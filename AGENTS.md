@@ -76,9 +76,12 @@ The settings model is authoritative; check
 
 Important invariants:
 
-- Each eligible tab pre-warms one stashed helper. Skip pre-warm when WTA is
-  unavailable, policy blocks all agents, the tab has no active terminal, or a
-  dragged-in agent pane already exists.
+- Terminal holds a process-level WTA master lease and pre-warms the
+  policy-approved default provider without creating a session. Only the
+  selected eligible tab pre-warms a stashed helper/session; unused speculative
+  helpers are evicted as selection moves. Restored, transferred, or explicitly
+  opened panes are retained. Skip pre-warm when WTA is unavailable, policy
+  blocks all agents, or the tab has no active terminal.
 - Toggling an agent pane stashes/restores it; it does not destroy the helper,
   ACP session, or chat history.
 - Per-tab events carry tab and window identity. Route responses to the owning

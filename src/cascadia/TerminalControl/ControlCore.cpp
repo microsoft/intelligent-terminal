@@ -2453,6 +2453,50 @@ namespace winrt::Microsoft::Terminal::Control::implementation
         return hstring{ str };
     }
 
+    hstring ControlCore::ReadBufferTail(const int32_t maxLogicalLines) const
+    {
+        THROW_HR_IF(E_INVALIDARG, maxLogicalLines <= 0);
+
+        const auto lock = _terminal->LockForWriting();
+        const auto& textBuffer = _terminal->GetTextBuffer();
+        const auto lastRow = textBuffer.GetLastNonSpaceCharacter().y;
+
+        auto firstRow = lastRow;
+        int32_t logicalLines = 1;
+        while (firstRow > 0)
+        {
+            const auto previousRow = firstRow - 1;
+            if (!textBuffer.GetRowByOffset(previousRow).WasWrapForced())
+            {
+                if (logicalLines >= maxLogicalLines)
+                {
+                    break;
+                }
+                ++logicalLines;
+            }
+            firstRow = previousRow;
+        }
+
+        std::wstring str;
+        for (auto rowIndex = firstRow; rowIndex <= lastRow; ++rowIndex)
+        {
+            const auto& row = textBuffer.GetRowByOffset(rowIndex);
+            const auto rowText = row.GetText();
+            const auto strEnd = rowText.find_last_not_of(UNICODE_SPACE);
+            if (strEnd != decltype(rowText)::npos)
+            {
+                str.append(rowText.substr(0, strEnd + 1));
+            }
+
+            if (!row.WasWrapForced())
+            {
+                str.append(L"\r\n");
+            }
+        }
+
+        return hstring{ str };
+    }
+
     // Returns the most recent *finished* shell prompt — the command typed
     // at an OSC 133;B mark plus its output, sliced exactly between the
     // command-start and command-end markers. Used by external agents
