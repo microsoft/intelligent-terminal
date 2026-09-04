@@ -1501,8 +1501,8 @@ namespace winrt::TerminalApp::implementation
         _activePane->SetActive();
 
         // If the newly focused pane is an agent pane and the previously
-        // focused pane was a normal (non-agent) pane, mark it as the
-        // "source" so it retains a blue border while the agent pane is green.
+        // focused pane was a normal (non-agent) pane, mark it as the target
+        // for agent actions and the corresponding indicator.
         if (pane->IsAgentPane() && previousActive && !previousActive->IsAgentPane())
         {
             previousActive->SetSourceOfAgentPane(true);
