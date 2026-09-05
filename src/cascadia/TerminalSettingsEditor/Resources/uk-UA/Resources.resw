@@ -2711,10 +2711,6 @@
     <value>Залиште порожнім, якщо кінцева точка не потребує автентифікації. Зберігається в Диспетчері облікових даних Windows.</value>
     <comment>{Locked="API"} Hint below the optional custom provider credential input. Use the established localized product name for Windows Credential Manager.</comment>
   </data>
-  <data name="AIAgents_CustomProviderAdd.Content" xml:space="preserve">
-    <value>Додати кінцеву точку</value>
-    <comment>Button that starts adding a custom model provider endpoint.</comment>
-  </data>
   <data name="AIAgents_CustomProviderSave.Content" xml:space="preserve">
     <value>Додати й вибрати</value>
     <comment>Button that adds a custom provider model and selects it as the current model.</comment>
@@ -2722,10 +2718,6 @@
   <data name="AIAgents_CustomProviderSaveHint.Text" xml:space="preserve">
     <value>Це додасть модель і вибере її як поточну модель</value>
     <comment>Supporting text beside the button that adds and selects a custom provider model.</comment>
-  </data>
-  <data name="AIAgents_CustomProviderCancel.Content" xml:space="preserve">
-    <value>Скасувати</value>
-    <comment>Button that cancels adding a provider.</comment>
   </data>
   <data name="AIAgents_BYOKModelDisplayName" xml:space="preserve">
     <value>{} (BYOK)</value>

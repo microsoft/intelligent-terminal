@@ -3007,10 +3007,6 @@
     <value>如果您的端點不需要驗證，請保留空白。儲存於 Windows 認證管理員。</value>
     <comment>{Locked="API"} Hint below the optional custom provider credential input. Use the established localized product name for Windows Credential Manager.</comment>
   </data>
-  <data name="AIAgents_CustomProviderAdd.Content" xml:space="preserve">
-    <value>新增端點</value>
-    <comment>Button that starts adding a custom model provider endpoint.</comment>
-  </data>
   <data name="AIAgents_CustomProviderSave.Content" xml:space="preserve">
     <value>新增並選取</value>
     <comment>Button that adds a custom provider model and selects it as the current model.</comment>
@@ -3018,10 +3014,6 @@
   <data name="AIAgents_CustomProviderSaveHint.Text" xml:space="preserve">
     <value>這將會新增模型並將其選取為目前模型</value>
     <comment>Supporting text beside the button that adds and selects a custom provider model.</comment>
-  </data>
-  <data name="AIAgents_CustomProviderCancel.Content" xml:space="preserve">
-    <value>取消</value>
-    <comment>Button that cancels adding a provider.</comment>
   </data>
   <data name="AIAgents_BYOKModelDisplayName" xml:space="preserve">
     <value>{} (BYOK)</value>

@@ -189,74 +189,24 @@
                 </Grid>
             </local:SettingContainer>
 
-            <Grid x:Name="EmptyCustomModelProviders"
-                  Margin="0,4,0,0"
-                  Padding="16,0,8,0"
-                  HorizontalAlignment="Stretch"
-                  Background="{ThemeResource ExpanderHeaderBackground}"
-                  BorderBrush="{ThemeResource ExpanderHeaderBorderBrush}"
-                  BorderThickness="{ThemeResource ExpanderHeaderBorderThickness}"
-                  CornerRadius="{ThemeResource ControlCornerRadius}"
-                  MaxWidth="1000"
-                  MinHeight="64"
-                  MinWidth="{ThemeResource FlyoutThemeMinWidth}"
-                  Visibility="{x:Bind mtu:Converters.InvertedBooleanToVisibility(ViewModel.ShowCustomModelProvidersExpander), Mode=OneWay}">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="Auto" />
-                </Grid.ColumnDefinitions>
-                <StackPanel Grid.Column="0"
-                            Padding="0,12,0,12"
-                            VerticalAlignment="Center">
-                    <TextBlock x:Name="EmptyCustomModelsHeaderText"
-                               Style="{StaticResource SettingsPageItemHeaderStyle}" />
-                    <TextBlock Style="{StaticResource CaptionTextBlockStyle}"
-                               TextWrapping="Wrap">
-                        <Run x:Name="EmptyCustomModelsCaptionPrefix"
-                             Foreground="{ThemeResource TextFillColorSecondaryBrush}" /><Hyperlink NavigateUri="https://github.com/microsoft/intelligent-terminal#custom-providers-byok">
-                            <Run x:Name="EmptyCustomModelsCaptionLink" />
-                        </Hyperlink>
-                    </TextBlock>
-                </StackPanel>
-                <Button Grid.Column="1"
-                        x:Uid="AIAgents_CustomProviderAdd"
-                        Margin="0,12,0,12"
-                        HorizontalAlignment="Right"
-                        VerticalAlignment="Center"
-                        Click="{x:Bind ViewModel.AddCustomModelProvider}"
-                        Style="{StaticResource AccentButtonStyle}" />
-            </Grid>
-
             <muxc:Expander x:Name="CustomModelProvidersExpander"
                            Margin="0,4,0,0"
                            HorizontalAlignment="Stretch"
                            HorizontalContentAlignment="Stretch"
-                           IsExpanded="{x:Bind ViewModel.IsCustomModelProvidersExpanded, Mode=TwoWay}"
-                           Visibility="{x:Bind ViewModel.ShowCustomModelProvidersExpander, Mode=OneWay}">
+                           IsExpanded="{x:Bind ViewModel.IsCustomModelProvidersExpanded, Mode=TwoWay}">
                 <muxc:Expander.Header>
-                    <Grid MinHeight="64">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="Auto" />
-                        </Grid.ColumnDefinitions>
-                        <StackPanel Grid.Column="0"
-                                    VerticalAlignment="Center">
-                            <TextBlock x:Name="CustomModelsHeaderText"
-                                       Style="{StaticResource SettingsPageItemHeaderStyle}" />
-                            <TextBlock Style="{StaticResource CaptionTextBlockStyle}"
-                                       TextWrapping="Wrap">
-                                <Run x:Name="CustomModelsCaptionPrefix"
-                                     Foreground="{ThemeResource TextFillColorSecondaryBrush}" /><Hyperlink NavigateUri="https://github.com/microsoft/intelligent-terminal#custom-providers-byok">
-                                    <Run x:Name="CustomModelsCaptionLink" />
-                                </Hyperlink>
-                            </TextBlock>
-                        </StackPanel>
-                        <Button Grid.Column="1"
-                                x:Uid="AIAgents_CustomProviderAdd"
-                                VerticalAlignment="Center"
-                                Click="{x:Bind ViewModel.AddCustomModelProvider}"
-                                Style="{StaticResource AccentButtonStyle}" />
-                    </Grid>
+                    <StackPanel MinHeight="64"
+                                VerticalAlignment="Center">
+                        <TextBlock x:Name="CustomModelsHeaderText"
+                                   Style="{StaticResource SettingsPageItemHeaderStyle}" />
+                        <TextBlock Style="{StaticResource CaptionTextBlockStyle}"
+                                   TextWrapping="Wrap">
+                            <Run x:Name="CustomModelsCaptionPrefix"
+                                 Foreground="{ThemeResource TextFillColorSecondaryBrush}" /><Hyperlink NavigateUri="https://github.com/microsoft/intelligent-terminal#custom-providers-byok">
+                                <Run x:Name="CustomModelsCaptionLink" />
+                            </Hyperlink>
+                        </TextBlock>
+                    </StackPanel>
                 </muxc:Expander.Header>
                 <StackPanel>
                     <TextBlock Margin="0,12,0,0"
@@ -315,8 +265,7 @@
                         </ItemsControl.ItemTemplate>
                     </ItemsControl>
 
-                    <Border Padding="0,8,0,16"
-                            Visibility="{x:Bind ViewModel.IsAddingCustomModelProvider, Mode=OneWay}">
+                    <Border Padding="0,8,0,16">
                         <StackPanel Spacing="12">
                             <TextBlock x:Uid="AIAgents_CustomProviderAddHeader"
                                        FontWeight="SemiBold"
@@ -367,8 +316,6 @@
                                             IsEnabled="{x:Bind ViewModel.CanSaveCustomModelProvider, Mode=OneWay}"
                                             Click="{x:Bind ViewModel.SaveCustomModelProvider}"
                                             Style="{StaticResource AccentButtonStyle}" />
-                                    <Button x:Uid="AIAgents_CustomProviderCancel"
-                                            Click="{x:Bind ViewModel.CancelCustomModelProvider}" />
                                 </StackPanel>
                             </StackPanel>
                         </StackPanel>

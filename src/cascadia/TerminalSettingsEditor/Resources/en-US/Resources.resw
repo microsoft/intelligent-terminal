@@ -3119,10 +3119,6 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
     <value>Leave blank if your endpoint does not need auth. Stored in Windows Credential Manager.</value>
     <comment>{Locked="API"} Hint below the optional custom provider credential input. Use the established localized product name for Windows Credential Manager.</comment>
   </data>
-  <data name="AIAgents_CustomProviderAdd.Content" xml:space="preserve">
-    <value>Add endpoint</value>
-    <comment>Button that starts adding a custom model provider endpoint.</comment>
-  </data>
   <data name="AIAgents_CustomProviderSave.Content" xml:space="preserve">
     <value>Add and Select</value>
     <comment>Button that adds a custom provider model and selects it as the current model.</comment>
@@ -3130,10 +3126,6 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
   <data name="AIAgents_CustomProviderSaveHint.Text" xml:space="preserve">
     <value>This will add the model and select it as the current model</value>
     <comment>Supporting text beside the button that adds and selects a custom provider model.</comment>
-  </data>
-  <data name="AIAgents_CustomProviderCancel.Content" xml:space="preserve">
-    <value>Cancel</value>
-    <comment>Button that cancels adding a provider.</comment>
   </data>
   <data name="AIAgents_BYOKModelDisplayName" xml:space="preserve">
     <value>{} (BYOK)</value>
