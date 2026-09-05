@@ -3050,13 +3050,21 @@
     <value>Оставьте пустым, если конечная точка не требует проверки подлинности. Сохраняется в диспетчере учетных данных Windows.</value>
     <comment>{Locked="API"} Hint below the optional custom provider credential input. Use the established localized product name for Windows Credential Manager.</comment>
   </data>
-  <data name="AIAgents_CustomProviderSave.Content" xml:space="preserve">
+    <data name="AIAgents_CustomProviderAdd.Content" xml:space="preserve">
+    <value>Добавить нового поставщика</value>
+    <comment>Button in the final custom provider row that reveals the fields for adding another endpoint.</comment>
+  </data>
+<data name="AIAgents_CustomProviderSave.Content" xml:space="preserve">
     <value>Добавить и выбрать</value>
     <comment>Button that adds a custom provider model and selects it as the current model.</comment>
   </data>
   <data name="AIAgents_CustomProviderSaveHint.Text" xml:space="preserve">
     <value>Это действие добавит модель и выберет ее в качестве текущей модели</value>
     <comment>Supporting text beside the button that adds and selects a custom provider model.</comment>
+  </data>
+  <data name="AIAgents_CustomProviderCancel.Content" xml:space="preserve">
+    <value>Отменить</value>
+    <comment>Button that cancels adding a provider and restores the Add New row.</comment>
   </data>
   <data name="AIAgents_BYOKModelDisplayName" xml:space="preserve">
     <value>{} (BYOK)</value>

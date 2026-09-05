@@ -3050,13 +3050,21 @@
     <value>Deixe em branco se seu ponto de extremidade não precisar de autenticação. Armazenado no Gerenciador de Credenciais do Windows.</value>
     <comment>{Locked="API"} Hint below the optional custom provider credential input. Use the established localized product name for Windows Credential Manager.</comment>
   </data>
-  <data name="AIAgents_CustomProviderSave.Content" xml:space="preserve">
+    <data name="AIAgents_CustomProviderAdd.Content" xml:space="preserve">
+    <value>Adicionar novo</value>
+    <comment>Button in the final custom provider row that reveals the fields for adding another endpoint.</comment>
+  </data>
+<data name="AIAgents_CustomProviderSave.Content" xml:space="preserve">
     <value>Adicionar e selecionar</value>
     <comment>Button that adds a custom provider model and selects it as the current model.</comment>
   </data>
   <data name="AIAgents_CustomProviderSaveHint.Text" xml:space="preserve">
     <value>Isso adicionará o modelo e o selecionará como o modelo atual</value>
     <comment>Supporting text beside the button that adds and selects a custom provider model.</comment>
+  </data>
+  <data name="AIAgents_CustomProviderCancel.Content" xml:space="preserve">
+    <value>Cancelar</value>
+    <comment>Button that cancels adding a provider and restores the Add New row.</comment>
   </data>
   <data name="AIAgents_BYOKModelDisplayName" xml:space="preserve">
     <value>{} (BYOK)</value>

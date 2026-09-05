@@ -3007,13 +3007,21 @@
     <value>Leer lassen, wenn Ihr Endpunkt keine Authentifizierung erfordert. In der Windows-Anmeldeinformationsverwaltung gespeichert.</value>
     <comment>{Locked="API"} Hint below the optional custom provider credential input. Use the established localized product name for Windows Credential Manager.</comment>
   </data>
-  <data name="AIAgents_CustomProviderSave.Content" xml:space="preserve">
+    <data name="AIAgents_CustomProviderAdd.Content" xml:space="preserve">
+    <value>Neu hinzufügen</value>
+    <comment>Button in the final custom provider row that reveals the fields for adding another endpoint.</comment>
+  </data>
+<data name="AIAgents_CustomProviderSave.Content" xml:space="preserve">
     <value>Hinzufügen und auswählen</value>
     <comment>Button that adds a custom provider model and selects it as the current model.</comment>
   </data>
   <data name="AIAgents_CustomProviderSaveHint.Text" xml:space="preserve">
     <value>Dadurch wird das Modell hinzugefügt und als aktuelles Modell ausgewählt</value>
     <comment>Supporting text beside the button that adds and selects a custom provider model.</comment>
+  </data>
+  <data name="AIAgents_CustomProviderCancel.Content" xml:space="preserve">
+    <value>Abbrechen</value>
+    <comment>Button that cancels adding a provider and restores the Add New row.</comment>
   </data>
   <data name="AIAgents_BYOKModelDisplayName" xml:space="preserve">
     <value>{} (BYOK)</value>

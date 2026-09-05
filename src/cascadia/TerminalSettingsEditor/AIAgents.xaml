@@ -268,7 +268,16 @@
                         </ItemsControl.ItemTemplate>
                     </ItemsControl>
 
-                    <Border Padding="0,8,0,16">
+                    <Border Padding="0,8,0,16"
+                            Visibility="{x:Bind mtu:Converters.InvertedBooleanToVisibility(ViewModel.IsAddingCustomModelProvider), Mode=OneWay}">
+                        <Button x:Uid="AIAgents_CustomProviderAdd"
+                                HorizontalAlignment="Right"
+                                Click="{x:Bind ViewModel.AddCustomModelProvider}"
+                                Style="{StaticResource AccentButtonStyle}" />
+                    </Border>
+
+                    <Border Padding="0,8,0,16"
+                            Visibility="{x:Bind ViewModel.IsAddingCustomModelProvider, Mode=OneWay}">
                         <StackPanel Spacing="12">
                             <TextBlock x:Uid="AIAgents_CustomProviderAddHeader"
                                        FontWeight="SemiBold"
@@ -319,6 +328,8 @@
                                             IsEnabled="{x:Bind ViewModel.CanSaveCustomModelProvider, Mode=OneWay}"
                                             Click="{x:Bind ViewModel.SaveCustomModelProvider}"
                                             Style="{StaticResource AccentButtonStyle}" />
+                                    <Button x:Uid="AIAgents_CustomProviderCancel"
+                                            Click="{x:Bind ViewModel.CancelCustomModelProvider}" />
                                 </StackPanel>
                             </StackPanel>
                         </StackPanel>
