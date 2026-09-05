@@ -97,6 +97,31 @@ static winrt::com_ptr<ITerminalProtocol> ConnectToTerminal(bool* outAuthenticate
         return nullptr;
     }
 
+    // Refuse to activate a Terminal that is no longer there. The protocol class
+    // is registered as a packaged ExeServer, so CoCreateInstance does not fail
+    // when the Terminal that owned our pane has exited — DCOM starts a fresh
+    // `WindowsTerminal.exe -Embedding` instead, which has no windows and no
+    // panes and therefore nothing any of our commands can act on. That process
+    // is invisible apart from Task Manager, and it lingers.
+    //
+    // This races most often at teardown, when the last thing a pane's tooling
+    // does on its way out is publish an event to a Terminal that is already
+    // gone. WT_COM_HOST names an event that only exists while our Terminal
+    // runs, so opening it tells us which of the two situations we are in.
+    // Absent (an older Terminal, or a re-exported environment) means we can
+    // only fall back to activating and hoping.
+    wchar_t hostEvent[MAX_PATH]{};
+    if (GetEnvironmentVariableW(L"WT_COM_HOST", hostEvent, ARRAYSIZE(hostEvent)))
+    {
+        const wil::unique_handle host{ OpenEventW(SYNCHRONIZE, FALSE, hostEvent) };
+        if (!host)
+        {
+            if (!quiet)
+                fprintf(stderr, "[wtcli] The Intelligent Terminal that owns this pane has exited.\n");
+            return nullptr;
+        }
+    }
+
     winrt::com_ptr<ITerminalProtocol> server;
     auto hr = CoCreateInstance(cls, nullptr, CLSCTX_LOCAL_SERVER, __uuidof(ITerminalProtocol), server.put_void());
     if (FAILED(hr))
@@ -829,17 +854,26 @@ int wmain(int argc, wchar_t** argv)
         GetEnvironmentVariableW(L"WT_COM_CLSID", clsid, ARRAYSIZE(clsid));
         auto cl = winrt::to_string(winrt::hstring{ clsid });
 
+        // Carry the liveness handle too, or the copied environment would work
+        // until the Terminal it names exits and then start resurrecting it.
+        wchar_t hostEvent[MAX_PATH]{};
+        GetEnvironmentVariableW(L"WT_COM_HOST", hostEvent, ARRAYSIZE(hostEvent));
+        auto host = winrt::to_string(winrt::hstring{ hostEvent });
+
         if (setEnvShell == "powershell" || setEnvShell == "pwsh")
         {
             if (!cl.empty()) printf("$env:WT_COM_CLSID = '%s'\n", cl.c_str());
+            if (!host.empty()) printf("$env:WT_COM_HOST = '%s'\n", host.c_str());
         }
         else if (setEnvShell == "bash" || setEnvShell == "sh" || setEnvShell == "zsh")
         {
             if (!cl.empty()) printf("export WT_COM_CLSID='%s'\n", cl.c_str());
+            if (!host.empty()) printf("export WT_COM_HOST='%s'\n", host.c_str());
         }
         else if (setEnvShell == "cmd")
         {
             if (!cl.empty()) printf("set WT_COM_CLSID=%s\n", cl.c_str());
+            if (!host.empty()) printf("set WT_COM_HOST=%s\n", host.c_str());
         }
     });
 

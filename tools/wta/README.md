@@ -105,14 +105,23 @@ WTA discovers Windows Terminal via the `WT_COM_CLSID` environment variable. WT
 sets this in its own environment at startup and propagates it to every conpty
 shell, so any pane-launched process — including wta and wtcli — inherits it.
 
+WT propagates `WT_COM_HOST` the same way. It names an event that exists only
+while that Terminal process does, and `wtcli` checks it before activating the
+class: the CLSID is a packaged ExeServer registration, so activating it after
+the Terminal exits would make DCOM start a new, windowless
+`WindowsTerminal.exe -Embedding` rather than fail. That is a real race at
+teardown, when the last thing a pane publishes can outlive the window it was
+published to.
+
 ## Environment Variables
 
 | Variable | Required | Description |
 |----------|----------|-------------|
 | `WT_COM_CLSID` | Yes* | Stringified GUID of WT's `TerminalProtocolComServer` COM class |
+| `WT_COM_HOST` | No* | Name of a kernel event that lives exactly as long as the owning WT process; `wtcli` refuses to connect once it is gone |
 | `WTA_LOG` | No | Rust tracing filter, such as `debug` or `trace` |
 
-\* Set automatically by WT when it spawns a conpty child. If you launch `wta` from outside WT, run `eval "$(wta set-env)"` to copy the value over (only useful when you've previously captured it from a WT shell).
+\* Set automatically by WT when it spawns a conpty child. If you launch `wta` from outside WT, run `eval "$(wta set-env)"` to copy the value over (only useful when you've previously captured it from a WT shell). Without `WT_COM_HOST`, `wtcli` activates the CLSID as it always did.
 
 ## Global CLI Options
 

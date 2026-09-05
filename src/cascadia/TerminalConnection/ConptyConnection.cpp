@@ -73,10 +73,19 @@ namespace winrt::Microsoft::Terminal::TerminalConnection::implementation
             // (set by WindowEmperor::_initializeProtocolServer). These must be
             // injected here because regenerate() builds _initialEnv from the
             // registry, not the process environment block.
+            //
+            // WT_COM_HOST names a kernel object that only lives as long as this
+            // Terminal does. Panes need it as well as the CLSID: the CLSID is a
+            // packaged ExeServer registration, so a client that activates it
+            // after we exit silently starts a new, windowless Terminal instead
+            // of failing. Checking the event first is what lets a client tell
+            // those two situations apart.
             {
                 wchar_t buf[512];
                 if (GetEnvironmentVariableW(L"WT_COM_CLSID", buf, ARRAYSIZE(buf)))
                     environment.as_map().insert_or_assign(L"WT_COM_CLSID", buf);
+                if (GetEnvironmentVariableW(L"WT_COM_HOST", buf, ARRAYSIZE(buf)))
+                    environment.as_map().insert_or_assign(L"WT_COM_HOST", buf);
             }
 
             // Directory hook integrations may write diagnostics into.

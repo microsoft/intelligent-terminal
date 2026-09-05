@@ -345,7 +345,7 @@ pub(crate) enum Command {
     },
     /// Discover and print the WT COM CLSID used for protocol routing
     PipeId,
-    /// Print shell commands to set WT_COM_CLSID
+    /// Print shell commands to set WT_COM_CLSID and WT_COM_HOST
     #[command(alias = "setenv")]
     SetEnv {
         /// Shell syntax: bash (default), powershell, cmd
