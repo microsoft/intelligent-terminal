@@ -61,9 +61,6 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         Automation::AutomationProperties::SetName(EmptyCustomModelProviders(), customModelsHeader);
         Automation::AutomationProperties::SetName(CustomModelProvidersExpander(), customModelsHeader);
 
-        AutoErrorHandlingCaptionPrefix().Text(RS_(L"AIAgents_AutoErrorHandlingCaptionPrefix"));
-        AutoErrorHandlingCaptionLink().Text(RS_(L"AIAgents_AutoErrorHandlingCaptionLink"));
-
         const auto agentHeader = RS_(L"AIAgents_AcpAgent/Header");
         AcpAgentHeaderText().Text(agentHeader);
 

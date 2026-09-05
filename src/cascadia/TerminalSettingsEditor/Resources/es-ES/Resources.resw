@@ -2928,24 +2928,20 @@
     <value>Gestión automática de errores</value>
     <comment>Title for the Error detection dropdown in the AI agents settings page.</comment>
   </data>
-  <data name="AIAgents_AutoErrorHandlingCaptionPrefix" xml:space="preserve">
-    <value>Elija cómo se manejan los errores de terminal. Habilitar esto instalará la integración de shell para detectar errores de comandos. Disponible en PowerShell, bash y WSL bash. </value>
-    <comment>{Locked="PowerShell","bash","WSL bash"} Caption under the Error detection title. The first sentence describes the setting; the remaining text is the always-visible shell integration hint. The trailing space separates this prefix from the inline AIAgents_AutoErrorHandlingCaptionLink hyperlink.</comment>
-  </data>
-  <data name="AIAgents_AutoErrorHandlingCaptionLink" xml:space="preserve">
-    <value>Ver todos los shells compatibles</value>
-    <comment>Inline hyperlink text that follows AIAgents_AutoErrorHandlingCaptionPrefix; opens the documentation listing every shell that supports Auto error handling.</comment>
+  <data name="AIAgents_AutoErrorHandlingDescription.Text" xml:space="preserve">
+    <value>Permite que tu agente detecte automáticamente errores en el shell y que los comandos con errores se envíen al agente.</value>
+    <comment>Description for the Error detection setting in the AI agents settings page. Here "agent" refers to an AI intelligent agent, not a proxy or human agent.</comment>
   </data>
   <data name="AIAgents_AutoErrorHandling_Off" xml:space="preserve">
     <value>Desactivado</value>
     <comment>The third option in the Error detection dropdown. It disables automatic terminal error detection and suggestions.</comment>
   </data>
   <data name="AIAgents_AutoErrorHandling_DetectErrorsAutomatically" xml:space="preserve">
-    <value>Detecta errores automáticamente</value>
+    <value>Detectar errores</value>
     <comment>The first option in the Error detection dropdown. It enables automatic terminal error detection without sending failures to an AI agent. Here "agent" means an AI intelligent agent, not a proxy or human agent.</comment>
   </data>
   <data name="AIAgents_AutoErrorHandling_DetectErrorsAndSendToAgentForFixesAutomatically" xml:space="preserve">
-    <value>Detecta errores y envíalos automáticamente al agente para que los corrija</value>
+    <value>Detectar y corregir errores</value>
     <comment>The second option in the Error detection dropdown. It enables automatic terminal error detection and sends failures to an AI agent for suggested fixes. Here "agent" means an AI intelligent agent, not a proxy or human agent.</comment>
   </data>
   <data name="AIAgents_AutoErrorHandlingComboBox.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">

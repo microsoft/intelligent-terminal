@@ -469,13 +469,10 @@
                         <TextBlock x:Uid="AIAgents_AutoErrorHandlingTitle"
                                    Style="{StaticResource SettingsPageItemHeaderStyle}"
                                    TextWrapping="Wrap" />
-                        <TextBlock Style="{StaticResource CaptionTextBlockStyle}"
-                                   TextWrapping="Wrap">
-                            <Run x:Name="AutoErrorHandlingCaptionPrefix"
-                                 Foreground="{ThemeResource TextFillColorSecondaryBrush}" /><Hyperlink NavigateUri="https://aka.ms/intelligent-terminal-dependency#4-shell-integration">
-                                <Run x:Name="AutoErrorHandlingCaptionLink" />
-                            </Hyperlink>
-                        </TextBlock>
+                        <TextBlock x:Uid="AIAgents_AutoErrorHandlingDescription"
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                   Style="{StaticResource CaptionTextBlockStyle}"
+                                   TextWrapping="Wrap" />
                         <TextBlock x:Uid="AIAgents_PolicyLocked"
                                    Visibility="{x:Bind ViewModel.IsAutoErrorHandlingPolicyRestricted, Mode=OneWay}"
                                    Opacity="0.6"
