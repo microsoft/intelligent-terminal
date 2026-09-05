@@ -1,0 +1,900 @@
+
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <title>Everyday Xperts - Reviews</title>
+
+    <link href="https://reviews.everydayxperts.com/" rel="canonical"/>
+    <link href="/image/990fcbc74bb24b76b55fbb01c8a9f2e4?fm=png&amp;w=32&amp;h=32&amp;fit=fill&amp;s=%2BGYo6hkiNDWl%2F2FIGOAD9paVluU%3D" rel="icon"/>
+    <link href="/image/990fcbc74bb24b76b55fbb01c8a9f2e4?fm=png&amp;w=180&amp;h=180&amp;fit=fill&amp;s=iz8mnMGhtqlyXaBLMk9tV7A8EhM%3D" rel="apple-touch-icon"/>
+
+    <meta content="InkWeave" name="peak:template"/>
+
+    <meta content="width=device-width, initial-scale=1.0" name="viewport">
+
+
+
+    <style>
+        
+    </style>
+
+    
+<style>
+    :root {
+        --color-primary: #7851DF;
+        --color-secondary: #DFA609;
+        --color-accent1: #b25534;
+        --color-accent2: #f5dfd5;
+        --color-accent3: #f6f1e7;
+
+        --color-primary-contrast: #ffffff;
+        --color-primary-contrast-inverted: #000000;
+            
+
+        --color-secondary-contrast: #000000;
+        --color-secondary-contrast-inverted: #ffffff;
+            }
+</style>
+
+    
+<link crossorigin href="https://fonts.gstatic.com" rel="preconnect">
+<link crossorigin href="https://fonts.gstatic.com" rel="dns-prefetch">
+<link crossorigin href="https://fonts.googleapis.com" rel="preconnect">
+<link crossorigin href="https://fonts.googleapis.com" rel="dns-prefetch">
+
+    <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;500&amp;family=Sora:ital,wght@0,200;0,300;0,400;0,500;0,600;0,700;0,800;1,200;1,300;1,400;1,500;1,600;1,700;1,800&amp;family=Public&#x2B;Sans:ital,wght@0,200;0,300;0,400;0,500;0,600;0,700;0,800;1,200;1,300;1,400;1,500;1,600;1,700;1,800&amp;display=swap" media="print" onload="this.onload=null;this.removeAttribute('media');" rel="stylesheet"/>
+
+<style>
+    :root {
+--font-primary: 'Sora', sans-serif;
+--font-secondary: 'Public Sans', sans-serif;        --font-widget: 'Nunito', sans-serif;
+    }
+</style>
+
+    
+    <script async crossorigin="anonymous" src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-8401867388300066"></script>
+
+
+    
+    <link href="/dist/templates/ink-weave/index.css?v=bOXwItjorySqKTwqCjdpVNjCKbN6Hs95R-853vs__Gw" rel="stylesheet" />
+    
+
+
+    
+    <script defer src="/dist/templates/ink-weave/index.js?v=Euh9_XbFBCoqxkKkO1ypJA-OGlvhZKIoPyvwv76dpfI" type="text/javascript"></script>
+    
+
+
+
+<script>
+ window.enablePageBlocking = true;
+ window.leapPageBlockingDelay = 20; //ms
+ window.leapPageBlockingTimeout = 8000; //ms
+ window.leapClickThrottling = 1000; //ms
+</script></head>
+<body>
+
+
+    
+
+
+<main class="*:w-full flex flex-col h-full min-h-screen" >
+
+    
+
+
+
+
+
+
+<nav class="iw-nav relative z-50" id="menu">
+    <div class="w-full max-w-(--container-width) mx-auto px-page-x">
+        <div class="flex items-center justify-between gap-sm py-sm">
+            <a href="/" class="flex items-center shrink-0 no-underline">
+                
+
+
+    <picture class="overflow-hidden max-h-12 lg:max-h-14 max-w-[200px] lg:max-w-[260px] w-auto h-auto [&amp;_img]:!w-auto [&amp;_img]:!h-auto [&amp;_img]:!max-w-[200px] [&amp;_img]:lg:!max-w-[260px] [&amp;_img]:!max-h-12 [&amp;_img]:lg:!max-h-14">
+        <source
+            type="image/webp"
+            srcset="/image/5626db698d18481b9c9b54be94441d5d?fm=webp&amp;w=240&amp;h=240&amp;fit=max&amp;s=akWhJFM%2BLq4XEVzOEl4p2s46jxg%3D 1x, /image/5626db698d18481b9c9b54be94441d5d?fm=webp&amp;w=480&amp;h=480&amp;fit=max&amp;s=3d%2Fi2LcVw8iY2Cg8wzXUpxicQRY%3D 2x"/>
+
+        <img
+            alt="Everyday Xperts - Reviews"
+            class="h-full w-auto max-w-full object-contain "
+            decoding="async"
+            loading="lazy"
+            src="/image/5626db698d18481b9c9b54be94441d5d?fm=png&amp;w=240&amp;h=240&amp;fit=max&amp;s=b2jMq9MaIEjvO9f%2FFaVEgLJ795s%3D"
+            srcset="/image/5626db698d18481b9c9b54be94441d5d?fm=png&amp;w=240&amp;h=240&amp;fit=max&amp;s=b2jMq9MaIEjvO9f%2FFaVEgLJ795s%3D 1x, /image/5626db698d18481b9c9b54be94441d5d?fm=png&amp;w=480&amp;h=480&amp;fit=max&amp;s=svr546gkkmUORFV5V%2FHr9uUBA4Q%3D 2x"/>
+    </picture>
+
+            </a>
+
+            <div class="flex items-center gap-sm">
+                    <form class="iw-search-wrapper hidden sm:flex items-center gap-2xs pl-sm pr-2xs h-12" method="GET" action="/search/web?p=0" role="search" aria-label="Search">
+                        <input type="text" placeholder="Search articles..." class="bg-transparent border-0 outline-none text-small text-text font-body placeholder:text-muted min-w-[140px] lg:min-w-[200px] h-full px-xs" required="" value="" minlength="3" maxlength="128" name="q" aria-label="Search" />
+                        <button type="submit"
+                                class="iw-search-btn flex items-center justify-center w-8 h-8 rounded-full shrink-0"
+                                aria-label="Search">
+                            <svg width="16" height="16">
+                                <use href="#Search"/>
+                            </svg>
+                        </button>
+                    </form>
+                <button data-iw-menu-toggle
+                        class="flex items-center justify-center w-10 h-10 rounded-full transition-colors hover:bg-surface-alt cursor-pointer"
+                        aria-label="Open menu">
+                    <svg width="22" height="22" class="text-text">
+                        <use href="#OpenMenuCenter"/>
+                    </svg>
+                </button>
+            </div>
+        </div>
+    </div>
+</nav>
+
+
+
+<div class="iw-overlay-nav fixed inset-0 z-[60]" data-iw-overlay-nav>
+    <div class="iw-overlay-nav-backdrop absolute inset-0" data-iw-overlay-nav-backdrop></div>
+
+    <div class="iw-overlay-nav-content relative z-10 flex flex-col h-full overflow-y-auto px-page-x py-xl">
+        <div class="flex justify-end mb-2xl max-w-(--container-width) mx-auto w-full">
+            <button data-iw-menu-toggle
+                    class="flex items-center justify-center w-12 h-12 rounded-full text-white hover:bg-white/10 transition-colors cursor-pointer"
+                    aria-label="Close menu">
+                <svg width="24" height="24">
+                    <use href="#CloseMenu"/>
+                </svg>
+            </button>
+        </div>
+
+        <div class="flex flex-col gap-xl max-w-(--container-width) mx-auto w-full flex-1">
+                <div class="flex flex-col gap-2xs">
+                    <span class="font-meta text-meta text-white/40 uppercase tracking-widest mb-xs">Pages</span>
+                        <div class="iw-overlay-nav-item">
+                            <a href="/about"
+                               class="iw-overlay-nav-link font-heading text-h4 text-white/70 no-underline">
+                                About us
+                            </a>
+                        </div>
+                </div>
+            <div class="iw-overlay-nav-item">
+                <a href="/"
+                   class="iw-overlay-nav-link font-heading text-h4 text-white/70 no-underline">
+                    Home
+                </a>
+            </div>
+
+                <div class="iw-overlay-nav-item sm:hidden">
+                    <form class="flex items-center gap-xs mt-md" method="GET" action="/search/web?p=0" role="search" aria-label="Search">
+                        <input type="text" placeholder="Search..." class="flex-1 bg-white/10 border border-white/20 rounded-pill px-md py-xs text-white placeholder:text-white/40 font-body text-body outline-none" required="" value="" minlength="3" maxlength="128" name="q" aria-label="Search" />
+                        <button type="submit"
+                                class="iw-search-btn flex items-center justify-center w-10 h-10 rounded-full"
+                                aria-label="Search">
+                            <svg width="18" height="18">
+                                <use href="#Search"/>
+                            </svg>
+                        </button>
+                    </form>
+                </div>
+        </div>
+
+    </div>
+</div>
+
+
+
+    <section class="px-page-x py-section">
+        <div class="w-full max-w-(--container-width) mx-auto">
+            
+
+<div class="grid grid-cols-1 lg:grid-cols-[7fr_3fr] gap-md">
+        <a href="/ca-downsizing-done-right-transitioning-to-a-smaller-living-space-52b98829"
+           class="iw-card--poster relative block rounded-card overflow-hidden no-underline min-h-[320px] lg:min-h-[480px] bg-surface-alt"
+           data-iw-reveal>
+            <div class="iw-card-poster-image absolute inset-0">
+                
+
+
+        <picture class="block overflow-hidden w-full h-full object-cover">
+
+                <source media="(min-width: 768px)" srcset="/image/10c88c37a7d14cb99ff0f239e2e80f8e?fm=webp&amp;w=1400&amp;h=700&amp;s=NADI11RTMgsHJ69n6WmIyY3xUPk%3D"
+                        type="image/webp"/>
+
+                <source media="(min-width: 768px)"
+                        srcset="/image/10c88c37a7d14cb99ff0f239e2e80f8e?fm=jpg&amp;fl=progressive&amp;w=1400&amp;h=700&amp;s=PnR5SIFx2LKbWSTGbeBUA2WVT%2BQ%3D"/>
+
+                <source srcset="/image/10c88c37a7d14cb99ff0f239e2e80f8e?fm=webp&amp;w=700&amp;h=600&amp;s=5cDqzWu0UGhbi8QXsRLvkqP3Yjo%3D" type="image/webp"/>
+
+                <img alt="Downsizing Done Right: Transitioning to a Smaller Living Space" class="size-full object-cover" decoding="async" loading="lazy"
+                     src="/image/10c88c37a7d14cb99ff0f239e2e80f8e?fm=jpg&amp;fl=progressive&amp;w=700&amp;h=600&amp;s=xPhMIxgAPXWrIP9QY60YKrpoxFQ%3D"/>
+        </picture>
+
+            </div>
+            <div class="iw-card--poster-overlay absolute inset-0 z-10"></div>
+            <div class="relative z-20 flex flex-col justify-end h-full p-lg lg:p-xl">
+                    <span class="font-meta text-meta text-secondary uppercase tracking-widest">All</span>
+                <h2 class="font-display font-bold text-h2 lg:text-h1 text-white mt-xs line-clamp-3">Downsizing Done Right: Transitioning to a Smaller Living Space</h2>
+                <span class="text-small text-white/60 mt-xs">4 min read</span>
+            </div>
+        </a>
+        <div class="flex flex-col gap-md">
+                <a href="/ca-choosing-environmentally-friendly-cleaning-solutions-for-your-home-2a47b9f2"
+                   class="iw-card flex flex-col rounded-card overflow-hidden bg-(--iw-surface-tint-primary) border border-line no-underline flex-1"
+                   data-iw-reveal>
+                    <div class="iw-card-image w-full aspect-[16/9] bg-surface-alt">
+                        
+
+
+        <picture class="block overflow-hidden w-full h-full object-cover">
+
+                <source media="(min-width: 768px)" srcset="/image/1fc88108b42d4744ab7e88b6365ac690?fm=webp&amp;w=600&amp;h=400&amp;s=fcbjKyK2D8VHxGlrnwxnOMsoXFU%3D"
+                        type="image/webp"/>
+
+                <source media="(min-width: 768px)"
+                        srcset="/image/1fc88108b42d4744ab7e88b6365ac690?fm=jpg&amp;fl=progressive&amp;w=600&amp;h=400&amp;s=BahgRWe3Na3ZuzWJ34PshkfV3Ao%3D"/>
+
+                <source srcset="/image/1fc88108b42d4744ab7e88b6365ac690?fm=webp&amp;w=700&amp;h=350&amp;s=NXIyVlTupLOG6uXWHc1gvOHtK9U%3D" type="image/webp"/>
+
+                <img alt="Choosing Environmentally Friendly Cleaning Solutions for Your Home" class="size-full object-cover" decoding="async" loading="lazy"
+                     src="/image/1fc88108b42d4744ab7e88b6365ac690?fm=jpg&amp;fl=progressive&amp;w=700&amp;h=350&amp;s=9Qtyzs8BeI53MTBiQcyjdltN7Fg%3D"/>
+        </picture>
+
+                    </div>
+                    <div class="p-md flex flex-col flex-1">
+                            <span class="font-meta text-meta text-primary uppercase tracking-widest">All</span>
+                        <h3 class="iw-card-title font-heading font-bold text-h5 text-text line-clamp-2 mt-xs">Choosing Environmentally Friendly Cleaning Solutions for Your Home</h3>
+                        <span class="text-extra-small text-muted mt-auto pt-xs">4 min read</span>
+                    </div>
+                </a>
+                <a href="/ca-homeowners-organizational-blueprint-keeping-spaces-neat-23a2bc84"
+                   class="iw-card flex flex-col rounded-card overflow-hidden bg-(--iw-surface-tint-primary) border border-line no-underline flex-1"
+                   data-iw-reveal>
+                    <div class="iw-card-image w-full aspect-[16/9] bg-surface-alt">
+                        
+
+
+        <picture class="block overflow-hidden w-full h-full object-cover">
+
+                <source media="(min-width: 768px)" srcset="/image/c5bea998bf0647fcbb6b0042c7bfdbfb?fm=webp&amp;w=600&amp;h=400&amp;s=fcbjKyK2D8VHxGlrnwxnOMsoXFU%3D"
+                        type="image/webp"/>
+
+                <source media="(min-width: 768px)"
+                        srcset="/image/c5bea998bf0647fcbb6b0042c7bfdbfb?fm=jpg&amp;fl=progressive&amp;w=600&amp;h=400&amp;s=BahgRWe3Na3ZuzWJ34PshkfV3Ao%3D"/>
+
+                <source srcset="/image/c5bea998bf0647fcbb6b0042c7bfdbfb?fm=webp&amp;w=700&amp;h=350&amp;s=NXIyVlTupLOG6uXWHc1gvOHtK9U%3D" type="image/webp"/>
+
+                <img alt="Homeowner&#x27;s Organizational Blueprint: Keeping Spaces Neat" class="size-full object-cover" decoding="async" loading="lazy"
+                     src="/image/c5bea998bf0647fcbb6b0042c7bfdbfb?fm=jpg&amp;fl=progressive&amp;w=700&amp;h=350&amp;s=9Qtyzs8BeI53MTBiQcyjdltN7Fg%3D"/>
+        </picture>
+
+                    </div>
+                    <div class="p-md flex flex-col flex-1">
+                            <span class="font-meta text-meta text-primary uppercase tracking-widest">All</span>
+                        <h3 class="iw-card-title font-heading font-bold text-h5 text-text line-clamp-2 mt-xs">Homeowner&#x27;s Organizational Blueprint: Keeping Spaces Neat</h3>
+                        <span class="text-extra-small text-muted mt-auto pt-xs">4 min read</span>
+                    </div>
+                </a>
+        </div>
+</div>
+
+        </div>
+    </section>
+    <section class="px-page-x py-section bg-surface">
+        <div class="w-full max-w-(--container-width) mx-auto">
+            
+
+<div class="grid grid-cols-1 lg:grid-cols-[3fr_7fr] gap-md">
+    <div data-iw-reveal>
+            <div class="iw-mission-geo rounded-card p-lg flex flex-col justify-end min-h-[280px] lg:min-h-full relative overflow-hidden"
+                 style="background: linear-gradient(135deg, var(--color-primary), color-mix(in oklab, var(--color-primary) 70%, black));">
+                <div class="absolute inset-0 pointer-events-none"
+                     style="background: radial-gradient(circle at 80% 20%, color-mix(in oklab, var(--color-secondary) 20%, transparent), transparent 60%);"></div>
+                <div class="iw-mission-geo-line"></div>
+                <div class="relative z-10">
+                        <span class="font-meta text-extra-small uppercase tracking-widest block mb-xs"
+                              style="color: var(--color-primary-contrast); opacity: 0.7;">Our Mission</span>
+                        <p class="font-heading text-h4 leading-snug"
+                           style="color: var(--color-primary-contrast);">We bring you closer to mastering everyday life, with a unique blend of practicality and inspiration.</p>
+                </div>
+            </div>
+    </div>
+
+        <a href="/ca-energy-efficiency-at-home-reducing-bills-and-footprint-3f1bef24"
+           class="iw-card flex flex-col lg:flex-row rounded-card overflow-hidden bg-(--iw-surface-tint-primary) border border-line no-underline"
+           data-iw-reveal>
+            <div class="iw-card-image w-full lg:w-1/2 aspect-[16/9] lg:aspect-auto bg-surface-alt">
+                
+
+
+        <picture class="block overflow-hidden w-full h-full object-cover">
+
+                <source media="(min-width: 768px)" srcset="/image/0af49ab7a770425d99242cd0438b1c2a?fm=webp&amp;w=800&amp;h=600&amp;s=g91Drs4adU%2BWRk5%2FXTUUu5CAypk%3D"
+                        type="image/webp"/>
+
+                <source media="(min-width: 768px)"
+                        srcset="/image/0af49ab7a770425d99242cd0438b1c2a?fm=jpg&amp;fl=progressive&amp;w=800&amp;h=600&amp;s=VQC%2B64anCxcHb0%2Ff7cKQ52w4Ps4%3D"/>
+
+                <source srcset="/image/0af49ab7a770425d99242cd0438b1c2a?fm=webp&amp;w=700&amp;h=350&amp;s=NXIyVlTupLOG6uXWHc1gvOHtK9U%3D" type="image/webp"/>
+
+                <img alt="Energy Efficiency at Home: Reducing Bills and Footprint" class="size-full object-cover" decoding="async" loading="lazy"
+                     src="/image/0af49ab7a770425d99242cd0438b1c2a?fm=jpg&amp;fl=progressive&amp;w=700&amp;h=350&amp;s=9Qtyzs8BeI53MTBiQcyjdltN7Fg%3D"/>
+        </picture>
+
+            </div>
+            <div class="p-lg lg:p-xl flex flex-col justify-center flex-1">
+                    <span class="font-meta text-meta text-primary uppercase tracking-widest">All</span>
+                <h3 class="iw-card-title font-display font-bold text-h3 text-text mt-xs line-clamp-3">Energy Efficiency at Home: Reducing Bills and Footprint</h3>
+                <p class="text-body text-muted mt-sm line-clamp-2">
+                    In recent years, there has been a growing emphasis on creating energy-efficient homes. As resources become more scarce and inflation impacts utility expenses, achieving energy efficiency has never been more crucial. Not only does an energy-efficient home ease the burden on your wallet, but it also significantly reduces your environmental footprint. This article delves into practical ways to enhance your home&#x27;s energy efficiency, including conducting energy audits, understanding the benefits of insulation and sealing, utilizing smart thermostats, and introducing solar energy.
+                </p>
+                <span class="text-small text-muted mt-md">4 min read</span>
+            </div>
+        </a>
+</div>
+
+        </div>
+    </section>
+    <section class="px-page-x py-section">
+        <div class="w-full max-w-(--container-width) mx-auto">
+            <div class="iw-section-heading mb-lg" data-iw-reveal>
+                <h2 class="font-heading font-bold text-h3 text-text shrink-0">Popular</h2>
+            </div>
+            
+<div class="flex flex-col gap-xs">
+        <div data-iw-reveal>
+            <a href="/ca-home-security-systems-ensuring-safety-and-peace-of-mind-34c922aa"
+               class="iw-card--list group flex items-center gap-md py-md px-md rounded-xl no-underline relative">
+                <span class="font-display font-bold text-4xl text-primary/20 shrink-0 w-10 text-center select-none hidden sm:block">
+                    01
+                </span>
+
+                <div class="w-24 h-24 lg:w-28 lg:h-28 rounded-card overflow-hidden bg-surface-alt shrink-0">
+                    
+
+
+        <picture class="block overflow-hidden w-full h-full object-cover transition-transform duration-300 group-hover:scale-105">
+
+                <source media="(min-width: 768px)" srcset="/image/fae5c48e8e754ae6928b89b57d1083f2?fm=webp&amp;w=240&amp;h=240&amp;s=D1aPqunz2%2FB72g5IAvsgiIz37Sw%3D"
+                        type="image/webp"/>
+
+                <source media="(min-width: 768px)"
+                        srcset="/image/fae5c48e8e754ae6928b89b57d1083f2?fm=jpg&amp;fl=progressive&amp;w=240&amp;h=240&amp;s=6Ma4GYxgTUBLeDTLWYxjS0%2FAybc%3D"/>
+
+                <source srcset="/image/fae5c48e8e754ae6928b89b57d1083f2?fm=webp&amp;w=200&amp;h=200&amp;s=scKVGMBuuWfAIr1DMZ7ByBelGJs%3D" type="image/webp"/>
+
+                <img alt="Home Security Systems: Ensuring Safety and Peace of Mind" class="size-full object-cover" decoding="async" loading="lazy"
+                     src="/image/fae5c48e8e754ae6928b89b57d1083f2?fm=jpg&amp;fl=progressive&amp;w=200&amp;h=200&amp;s=igzyibwqGomMEq5hJJ40UMt6Czs%3D"/>
+        </picture>
+
+                </div>
+
+                <div class="flex-1 min-w-0">
+                        <span class="font-meta text-extra-small text-primary uppercase tracking-widest">All</span>
+                    <h3 class="iw-card--list-title font-heading font-bold text-h5 lg:text-h4 text-text line-clamp-2 mt-2xs">Home Security Systems: Ensuring Safety and Peace of Mind</h3>
+                    <span class="text-extra-small text-muted mt-xs block">4 min read</span>
+                </div>
+
+                <div class="iw-card--list-arrow flex items-center gap-2xs text-primary font-medium text-small shrink-0">
+                    <span class="hidden lg:inline">Read More</span>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                         stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M5 12h14M12 5l7 7-7 7"/>
+                    </svg>
+                </div>
+            </a>
+        </div>
+            <div class="h-px mx-md"
+                 style="background: linear-gradient(to right, transparent, var(--color-border), transparent);"></div>
+        <div data-iw-reveal>
+            <a href="/ca-diy-home-renovation-cost-saving-tips-and-techniques-3eb0a018"
+               class="iw-card--list group flex items-center gap-md py-md px-md rounded-xl no-underline relative">
+                <span class="font-display font-bold text-4xl text-primary/20 shrink-0 w-10 text-center select-none hidden sm:block">
+                    02
+                </span>
+
+                <div class="w-24 h-24 lg:w-28 lg:h-28 rounded-card overflow-hidden bg-surface-alt shrink-0">
+                    
+
+
+        <picture class="block overflow-hidden w-full h-full object-cover transition-transform duration-300 group-hover:scale-105">
+
+                <source media="(min-width: 768px)" srcset="/image/5b059fffd7f64b07a3b00040f431f5e5?fm=webp&amp;w=240&amp;h=240&amp;s=D1aPqunz2%2FB72g5IAvsgiIz37Sw%3D"
+                        type="image/webp"/>
+
+                <source media="(min-width: 768px)"
+                        srcset="/image/5b059fffd7f64b07a3b00040f431f5e5?fm=jpg&amp;fl=progressive&amp;w=240&amp;h=240&amp;s=6Ma4GYxgTUBLeDTLWYxjS0%2FAybc%3D"/>
+
+                <source srcset="/image/5b059fffd7f64b07a3b00040f431f5e5?fm=webp&amp;w=200&amp;h=200&amp;s=scKVGMBuuWfAIr1DMZ7ByBelGJs%3D" type="image/webp"/>
+
+                <img alt="DIY Home Renovation: Cost-Saving Tips and Techniques" class="size-full object-cover" decoding="async" loading="lazy"
+                     src="/image/5b059fffd7f64b07a3b00040f431f5e5?fm=jpg&amp;fl=progressive&amp;w=200&amp;h=200&amp;s=igzyibwqGomMEq5hJJ40UMt6Czs%3D"/>
+        </picture>
+
+                </div>
+
+                <div class="flex-1 min-w-0">
+                        <span class="font-meta text-extra-small text-primary uppercase tracking-widest">All</span>
+                    <h3 class="iw-card--list-title font-heading font-bold text-h5 lg:text-h4 text-text line-clamp-2 mt-2xs">DIY Home Renovation: Cost-Saving Tips and Techniques</h3>
+                    <span class="text-extra-small text-muted mt-xs block">5 min read</span>
+                </div>
+
+                <div class="iw-card--list-arrow flex items-center gap-2xs text-primary font-medium text-small shrink-0">
+                    <span class="hidden lg:inline">Read More</span>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                         stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M5 12h14M12 5l7 7-7 7"/>
+                    </svg>
+                </div>
+            </a>
+        </div>
+            <div class="h-px mx-md"
+                 style="background: linear-gradient(to right, transparent, var(--color-border), transparent);"></div>
+        <div data-iw-reveal>
+            <a href="/how-to-build-a-morning-routine-that-actually-sticks-1778604702"
+               class="iw-card--list group flex items-center gap-md py-md px-md rounded-xl no-underline relative">
+                <span class="font-display font-bold text-4xl text-primary/20 shrink-0 w-10 text-center select-none hidden sm:block">
+                    03
+                </span>
+
+                <div class="w-24 h-24 lg:w-28 lg:h-28 rounded-card overflow-hidden bg-surface-alt shrink-0">
+                    
+
+
+        <picture class="block overflow-hidden w-full h-full object-cover transition-transform duration-300 group-hover:scale-105">
+
+                <source media="(min-width: 768px)" srcset="/image/517b073325b04984a1f638c7e580469f?fm=webp&amp;w=240&amp;h=240&amp;s=D1aPqunz2%2FB72g5IAvsgiIz37Sw%3D"
+                        type="image/webp"/>
+
+                <source media="(min-width: 768px)"
+                        srcset="/image/517b073325b04984a1f638c7e580469f?fm=jpg&amp;fl=progressive&amp;w=240&amp;h=240&amp;s=6Ma4GYxgTUBLeDTLWYxjS0%2FAybc%3D"/>
+
+                <source srcset="/image/517b073325b04984a1f638c7e580469f?fm=webp&amp;w=200&amp;h=200&amp;s=scKVGMBuuWfAIr1DMZ7ByBelGJs%3D" type="image/webp"/>
+
+                <img alt="How to Build a Morning Routine That Actually Sticks" class="size-full object-cover" decoding="async" loading="lazy"
+                     src="/image/517b073325b04984a1f638c7e580469f?fm=jpg&amp;fl=progressive&amp;w=200&amp;h=200&amp;s=igzyibwqGomMEq5hJJ40UMt6Czs%3D"/>
+        </picture>
+
+                </div>
+
+                <div class="flex-1 min-w-0">
+                        <span class="font-meta text-extra-small text-primary uppercase tracking-widest">All</span>
+                    <h3 class="iw-card--list-title font-heading font-bold text-h5 lg:text-h4 text-text line-clamp-2 mt-2xs">How to Build a Morning Routine That Actually Sticks</h3>
+                    <span class="text-extra-small text-muted mt-xs block">5 min read</span>
+                </div>
+
+                <div class="iw-card--list-arrow flex items-center gap-2xs text-primary font-medium text-small shrink-0">
+                    <span class="hidden lg:inline">Read More</span>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                         stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M5 12h14M12 5l7 7-7 7"/>
+                    </svg>
+                </div>
+            </a>
+        </div>
+            <div class="h-px mx-md"
+                 style="background: linear-gradient(to right, transparent, var(--color-border), transparent);"></div>
+        <div data-iw-reveal>
+            <a href="/how-to-negotiate-a-lower-bill-phone-internet-insurance"
+               class="iw-card--list group flex items-center gap-md py-md px-md rounded-xl no-underline relative">
+                <span class="font-display font-bold text-4xl text-primary/20 shrink-0 w-10 text-center select-none hidden sm:block">
+                    04
+                </span>
+
+                <div class="w-24 h-24 lg:w-28 lg:h-28 rounded-card overflow-hidden bg-surface-alt shrink-0">
+                    
+
+
+        <picture class="block overflow-hidden w-full h-full object-cover transition-transform duration-300 group-hover:scale-105">
+
+                <source media="(min-width: 768px)" srcset="/image/9ca50ae89941496991e1c536e0fca6f3?fm=webp&amp;w=240&amp;h=240&amp;s=D1aPqunz2%2FB72g5IAvsgiIz37Sw%3D"
+                        type="image/webp"/>
+
+                <source media="(min-width: 768px)"
+                        srcset="/image/9ca50ae89941496991e1c536e0fca6f3?fm=jpg&amp;fl=progressive&amp;w=240&amp;h=240&amp;s=6Ma4GYxgTUBLeDTLWYxjS0%2FAybc%3D"/>
+
+                <source srcset="/image/9ca50ae89941496991e1c536e0fca6f3?fm=webp&amp;w=200&amp;h=200&amp;s=scKVGMBuuWfAIr1DMZ7ByBelGJs%3D" type="image/webp"/>
+
+                <img alt="How to Negotiate a Lower Bill (Phone, Internet, Insurance)" class="size-full object-cover" decoding="async" loading="lazy"
+                     src="/image/9ca50ae89941496991e1c536e0fca6f3?fm=jpg&amp;fl=progressive&amp;w=200&amp;h=200&amp;s=igzyibwqGomMEq5hJJ40UMt6Czs%3D"/>
+        </picture>
+
+                </div>
+
+                <div class="flex-1 min-w-0">
+                        <span class="font-meta text-extra-small text-primary uppercase tracking-widest">All</span>
+                    <h3 class="iw-card--list-title font-heading font-bold text-h5 lg:text-h4 text-text line-clamp-2 mt-2xs">How to Negotiate a Lower Bill (Phone, Internet, Insurance)</h3>
+                    <span class="text-extra-small text-muted mt-xs block">4 min read</span>
+                </div>
+
+                <div class="iw-card--list-arrow flex items-center gap-2xs text-primary font-medium text-small shrink-0">
+                    <span class="hidden lg:inline">Read More</span>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                         stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M5 12h14M12 5l7 7-7 7"/>
+                    </svg>
+                </div>
+            </a>
+        </div>
+</div>
+
+        </div>
+    </section>
+    <section class="px-page-x py-section">
+        <div class="w-full max-w-(--container-width) mx-auto">
+            
+<a href="/how-to-meal-prep-like-a-pro-a-beginners-weekly-guide"
+   class="iw-card--poster relative block rounded-card overflow-hidden no-underline aspect-auto lg:aspect-[16/9] min-h-[280px] lg:min-h-[420px] bg-surface-alt"
+   data-iw-reveal>
+    <div class="iw-card-poster-image absolute inset-0">
+        
+
+
+        <picture class="block overflow-hidden w-full h-full object-cover">
+
+                <source media="(min-width: 768px)" srcset="/image/4b6c82cdff5148429de931a95334d889?fm=webp&amp;w=1400&amp;h=700&amp;s=NADI11RTMgsHJ69n6WmIyY3xUPk%3D"
+                        type="image/webp"/>
+
+                <source media="(min-width: 768px)"
+                        srcset="/image/4b6c82cdff5148429de931a95334d889?fm=jpg&amp;fl=progressive&amp;w=1400&amp;h=700&amp;s=PnR5SIFx2LKbWSTGbeBUA2WVT%2BQ%3D"/>
+
+                <source srcset="/image/4b6c82cdff5148429de931a95334d889?fm=webp&amp;w=700&amp;h=600&amp;s=5cDqzWu0UGhbi8QXsRLvkqP3Yjo%3D" type="image/webp"/>
+
+                <img alt="How to Meal Prep Like a Pro: A Beginner&#x27;s Weekly Guide" class="size-full object-cover" decoding="async" loading="lazy"
+                     src="/image/4b6c82cdff5148429de931a95334d889?fm=jpg&amp;fl=progressive&amp;w=700&amp;h=600&amp;s=xPhMIxgAPXWrIP9QY60YKrpoxFQ%3D"/>
+        </picture>
+
+    </div>
+    <div class="iw-card--poster-overlay absolute inset-0 z-10"></div>
+    <div class="relative z-20 flex flex-col justify-end h-full p-lg lg:p-xl">
+            <span class="font-meta text-meta text-secondary uppercase tracking-widest">All</span>
+        <h2 class="font-display font-bold text-h2 lg:text-h1 text-white mt-xs max-w-(--width-content) line-clamp-3">How to Meal Prep Like a Pro: A Beginner&#x27;s Weekly Guide</h2>
+        <div class="flex items-center gap-md mt-md">
+            <span class="iw-btn-outline border-white/40 text-white! hover:text-text! hover:bg-white/10 no-underline">
+                Read more
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                     stroke-linecap="round" stroke-linejoin="round" class="ml-xs">
+                    <path d="M5 12h14M12 5l7 7-7 7"/>
+                </svg>
+            </span>
+        </div>
+    </div>
+</a>
+
+        </div>
+    </section>
+    <section class="px-page-x py-section bg-surface">
+        <div class="w-full max-w-(--container-width) mx-auto">
+            <div class="flex items-center justify-between mb-lg">
+                <div class="iw-section-heading flex-1" data-iw-reveal>
+                    <h2 class="font-heading font-bold text-h3 text-text shrink-0">More Stories</h2>
+                </div>
+                <div class="flex items-center gap-xs ml-md">
+                    <button data-iw-swiper-prev
+                            class="iw-swiper-arrow cursor-pointer flex items-center justify-center w-10 h-10 rounded-full"
+                            aria-label="Previous">
+                        <svg width="18" height="18" class="rotate-180">
+                            <use href="#arrow-right-icon"/>
+                        </svg>
+                    </button>
+                    <button data-iw-swiper-next
+                            class="iw-swiper-arrow cursor-pointer flex items-center justify-center w-10 h-10 rounded-full"
+                            aria-label="Next">
+                        <svg width="18" height="18">
+                            <use href="#arrow-right-icon"/>
+                        </svg>
+                    </button>
+                </div>
+            </div>
+            
+<div class="iw-swiper-mask">
+    <div class="iw-swiper swiper" data-iw-swiper>
+        <div class="swiper-wrapper">
+                <div class="swiper-slide">
+                    <div data-iw-reveal>
+                        <a href="/how-to-say-no-without-feeling-guilty"
+                           class="iw-card flex flex-col rounded-card overflow-hidden bg-(--iw-surface-tint-primary) border border-line no-underline h-full">
+                            <div class="iw-card-image w-full aspect-[16/9] bg-surface-alt">
+                                
+
+
+        <picture class="block overflow-hidden w-full h-full object-cover">
+
+                <source media="(min-width: 768px)" srcset="/image/70e0dceccc924ee2936f2afb6528418b?fm=webp&amp;w=600&amp;h=400&amp;s=fcbjKyK2D8VHxGlrnwxnOMsoXFU%3D"
+                        type="image/webp"/>
+
+                <source media="(min-width: 768px)"
+                        srcset="/image/70e0dceccc924ee2936f2afb6528418b?fm=jpg&amp;fl=progressive&amp;w=600&amp;h=400&amp;s=BahgRWe3Na3ZuzWJ34PshkfV3Ao%3D"/>
+
+                <source srcset="/image/70e0dceccc924ee2936f2afb6528418b?fm=webp&amp;w=400&amp;h=300&amp;s=G0hZUcwoWF6bgYjU%2FkU9oI8uOus%3D" type="image/webp"/>
+
+                <img alt="How to Say No Without Feeling Guilty" class="size-full object-cover" decoding="async" loading="lazy"
+                     src="/image/70e0dceccc924ee2936f2afb6528418b?fm=jpg&amp;fl=progressive&amp;w=400&amp;h=300&amp;s=V6vLDXDlfrY%2B6rUEB2RsXJ1c7e8%3D"/>
+        </picture>
+
+                            </div>
+                            <div class="p-md flex flex-col flex-1">
+                                    <span class="font-meta text-extra-small text-primary uppercase tracking-widest">All</span>
+                                <h3 class="iw-card-title font-heading font-bold text-h5 text-text line-clamp-2 mt-2xs">How to Say No Without Feeling Guilty</h3>
+                                <span class="text-extra-small text-muted mt-auto pt-xs">4 min read</span>
+                            </div>
+                        </a>
+                    </div>
+                </div>
+                <div class="swiper-slide">
+                    <div data-iw-reveal>
+                        <a href="/the-best-free-apps-to-organize-your-life-in-2024"
+                           class="iw-card flex flex-col rounded-card overflow-hidden bg-(--iw-surface-tint-primary) border border-line no-underline h-full">
+                            <div class="iw-card-image w-full aspect-[16/9] bg-surface-alt">
+                                
+
+
+        <picture class="block overflow-hidden w-full h-full object-cover">
+
+                <source media="(min-width: 768px)" srcset="/image/a75550e7e99c4dcc901749659bb47d8f?fm=webp&amp;w=600&amp;h=400&amp;s=fcbjKyK2D8VHxGlrnwxnOMsoXFU%3D"
+                        type="image/webp"/>
+
+                <source media="(min-width: 768px)"
+                        srcset="/image/a75550e7e99c4dcc901749659bb47d8f?fm=jpg&amp;fl=progressive&amp;w=600&amp;h=400&amp;s=BahgRWe3Na3ZuzWJ34PshkfV3Ao%3D"/>
+
+                <source srcset="/image/a75550e7e99c4dcc901749659bb47d8f?fm=webp&amp;w=400&amp;h=300&amp;s=G0hZUcwoWF6bgYjU%2FkU9oI8uOus%3D" type="image/webp"/>
+
+                <img alt="The Best Free Apps to Organize Your Life in 2024" class="size-full object-cover" decoding="async" loading="lazy"
+                     src="/image/a75550e7e99c4dcc901749659bb47d8f?fm=jpg&amp;fl=progressive&amp;w=400&amp;h=300&amp;s=V6vLDXDlfrY%2B6rUEB2RsXJ1c7e8%3D"/>
+        </picture>
+
+                            </div>
+                            <div class="p-md flex flex-col flex-1">
+                                    <span class="font-meta text-extra-small text-primary uppercase tracking-widest">All</span>
+                                <h3 class="iw-card-title font-heading font-bold text-h5 text-text line-clamp-2 mt-2xs">The Best Free Apps to Organize Your Life in 2024</h3>
+                                <span class="text-extra-small text-muted mt-auto pt-xs">4 min read</span>
+                            </div>
+                        </a>
+                    </div>
+                </div>
+                <div class="swiper-slide">
+                    <div data-iw-reveal>
+                        <a href="/how-to-deep-work-a-beginners-guide-to-focused-productivity"
+                           class="iw-card flex flex-col rounded-card overflow-hidden bg-(--iw-surface-tint-primary) border border-line no-underline h-full">
+                            <div class="iw-card-image w-full aspect-[16/9] bg-surface-alt">
+                                
+
+
+        <picture class="block overflow-hidden w-full h-full object-cover">
+
+                <source media="(min-width: 768px)" srcset="/image/ae1a00d220d44e748fdd106a3c8a0a67?fm=webp&amp;w=600&amp;h=400&amp;s=fcbjKyK2D8VHxGlrnwxnOMsoXFU%3D"
+                        type="image/webp"/>
+
+                <source media="(min-width: 768px)"
+                        srcset="/image/ae1a00d220d44e748fdd106a3c8a0a67?fm=jpg&amp;fl=progressive&amp;w=600&amp;h=400&amp;s=BahgRWe3Na3ZuzWJ34PshkfV3Ao%3D"/>
+
+                <source srcset="/image/ae1a00d220d44e748fdd106a3c8a0a67?fm=webp&amp;w=400&amp;h=300&amp;s=G0hZUcwoWF6bgYjU%2FkU9oI8uOus%3D" type="image/webp"/>
+
+                <img alt="How to Deep Work: A Beginner&#x27;s Guide to Focused Productivity" class="size-full object-cover" decoding="async" loading="lazy"
+                     src="/image/ae1a00d220d44e748fdd106a3c8a0a67?fm=jpg&amp;fl=progressive&amp;w=400&amp;h=300&amp;s=V6vLDXDlfrY%2B6rUEB2RsXJ1c7e8%3D"/>
+        </picture>
+
+                            </div>
+                            <div class="p-md flex flex-col flex-1">
+                                    <span class="font-meta text-extra-small text-primary uppercase tracking-widest">All</span>
+                                <h3 class="iw-card-title font-heading font-bold text-h5 text-text line-clamp-2 mt-2xs">How to Deep Work: A Beginner&#x27;s Guide to Focused Productivity</h3>
+                                <span class="text-extra-small text-muted mt-auto pt-xs">4 min read</span>
+                            </div>
+                        </a>
+                    </div>
+                </div>
+                <div class="swiper-slide">
+                    <div data-iw-reveal>
+                        <a href="/how-to-create-a-capsule-wardrobe-that-saves-time-and-money"
+                           class="iw-card flex flex-col rounded-card overflow-hidden bg-(--iw-surface-tint-primary) border border-line no-underline h-full">
+                            <div class="iw-card-image w-full aspect-[16/9] bg-surface-alt">
+                                
+
+
+        <picture class="block overflow-hidden w-full h-full object-cover">
+
+                <source media="(min-width: 768px)" srcset="/image/41ce04d89a8046de88294fc799ab72f9?fm=webp&amp;w=600&amp;h=400&amp;s=fcbjKyK2D8VHxGlrnwxnOMsoXFU%3D"
+                        type="image/webp"/>
+
+                <source media="(min-width: 768px)"
+                        srcset="/image/41ce04d89a8046de88294fc799ab72f9?fm=jpg&amp;fl=progressive&amp;w=600&amp;h=400&amp;s=BahgRWe3Na3ZuzWJ34PshkfV3Ao%3D"/>
+
+                <source srcset="/image/41ce04d89a8046de88294fc799ab72f9?fm=webp&amp;w=400&amp;h=300&amp;s=G0hZUcwoWF6bgYjU%2FkU9oI8uOus%3D" type="image/webp"/>
+
+                <img alt="How to Create a Capsule Wardrobe That Saves Time and Money" class="size-full object-cover" decoding="async" loading="lazy"
+                     src="/image/41ce04d89a8046de88294fc799ab72f9?fm=jpg&amp;fl=progressive&amp;w=400&amp;h=300&amp;s=V6vLDXDlfrY%2B6rUEB2RsXJ1c7e8%3D"/>
+        </picture>
+
+                            </div>
+                            <div class="p-md flex flex-col flex-1">
+                                    <span class="font-meta text-extra-small text-primary uppercase tracking-widest">All</span>
+                                <h3 class="iw-card-title font-heading font-bold text-h5 text-text line-clamp-2 mt-2xs">How to Create a Capsule Wardrobe That Saves Time and Money</h3>
+                                <span class="text-extra-small text-muted mt-auto pt-xs">4 min read</span>
+                            </div>
+                        </a>
+                    </div>
+                </div>
+                <div class="swiper-slide">
+                    <div data-iw-reveal>
+                        <a href="/how-to-make-new-friends-as-an-adult-its-not-as-hard-as-you-think"
+                           class="iw-card flex flex-col rounded-card overflow-hidden bg-(--iw-surface-tint-primary) border border-line no-underline h-full">
+                            <div class="iw-card-image w-full aspect-[16/9] bg-surface-alt">
+                                
+
+
+        <picture class="block overflow-hidden w-full h-full object-cover">
+
+                <source media="(min-width: 768px)" srcset="/image/5a4ea2965e7a43699747b3501b09c4c2?fm=webp&amp;w=600&amp;h=400&amp;s=fcbjKyK2D8VHxGlrnwxnOMsoXFU%3D"
+                        type="image/webp"/>
+
+                <source media="(min-width: 768px)"
+                        srcset="/image/5a4ea2965e7a43699747b3501b09c4c2?fm=jpg&amp;fl=progressive&amp;w=600&amp;h=400&amp;s=BahgRWe3Na3ZuzWJ34PshkfV3Ao%3D"/>
+
+                <source srcset="/image/5a4ea2965e7a43699747b3501b09c4c2?fm=webp&amp;w=400&amp;h=300&amp;s=G0hZUcwoWF6bgYjU%2FkU9oI8uOus%3D" type="image/webp"/>
+
+                <img alt="How to Make New Friends as an Adult (It&#x27;s Not as Hard as You Think)" class="size-full object-cover" decoding="async" loading="lazy"
+                     src="/image/5a4ea2965e7a43699747b3501b09c4c2?fm=jpg&amp;fl=progressive&amp;w=400&amp;h=300&amp;s=V6vLDXDlfrY%2B6rUEB2RsXJ1c7e8%3D"/>
+        </picture>
+
+                            </div>
+                            <div class="p-md flex flex-col flex-1">
+                                    <span class="font-meta text-extra-small text-primary uppercase tracking-widest">All</span>
+                                <h3 class="iw-card-title font-heading font-bold text-h5 text-text line-clamp-2 mt-2xs">How to Make New Friends as an Adult (It&#x27;s Not as Hard as You Think)</h3>
+                                <span class="text-extra-small text-muted mt-auto pt-xs">4 min read</span>
+                            </div>
+                        </a>
+                    </div>
+                </div>
+                <div class="swiper-slide">
+                    <div data-iw-reveal>
+                        <a href="/signs-you-need-to-set-better-boundaries-and-how-to-start"
+                           class="iw-card flex flex-col rounded-card overflow-hidden bg-(--iw-surface-tint-primary) border border-line no-underline h-full">
+                            <div class="iw-card-image w-full aspect-[16/9] bg-surface-alt">
+                                
+
+
+        <picture class="block overflow-hidden w-full h-full object-cover">
+
+                <source media="(min-width: 768px)" srcset="/image/43e00a6e379442adae120ade89fa8c8b?fm=webp&amp;w=600&amp;h=400&amp;s=fcbjKyK2D8VHxGlrnwxnOMsoXFU%3D"
+                        type="image/webp"/>
+
+                <source media="(min-width: 768px)"
+                        srcset="/image/43e00a6e379442adae120ade89fa8c8b?fm=jpg&amp;fl=progressive&amp;w=600&amp;h=400&amp;s=BahgRWe3Na3ZuzWJ34PshkfV3Ao%3D"/>
+
+                <source srcset="/image/43e00a6e379442adae120ade89fa8c8b?fm=webp&amp;w=400&amp;h=300&amp;s=G0hZUcwoWF6bgYjU%2FkU9oI8uOus%3D" type="image/webp"/>
+
+                <img alt="Signs You Need to Set Better Boundaries &#x2014; and How to Start" class="size-full object-cover" decoding="async" loading="lazy"
+                     src="/image/43e00a6e379442adae120ade89fa8c8b?fm=jpg&amp;fl=progressive&amp;w=400&amp;h=300&amp;s=V6vLDXDlfrY%2B6rUEB2RsXJ1c7e8%3D"/>
+        </picture>
+
+                            </div>
+                            <div class="p-md flex flex-col flex-1">
+                                    <span class="font-meta text-extra-small text-primary uppercase tracking-widest">All</span>
+                                <h3 class="iw-card-title font-heading font-bold text-h5 text-text line-clamp-2 mt-2xs">Signs You Need to Set Better Boundaries &#x2014; and How to Start</h3>
+                                <span class="text-extra-small text-muted mt-auto pt-xs">4 min read</span>
+                            </div>
+                        </a>
+                    </div>
+                </div>
+        </div>
+    </div>
+</div>
+
+        </div>
+    </section>
+<section class="px-page-x py-section">
+    <div class="w-full max-w-(--container-width) mx-auto">
+        <div class="iw-section-heading mb-lg" data-iw-reveal>
+            <h2 class="font-heading font-bold text-h3 text-text shrink-0">Explore Topics</h2>
+        </div>
+        
+
+
+    </div>
+</section>
+
+<svg xmlns="http://www.w3.org/2000/svg" style="display:none">
+    <symbol id="arrow-right-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+            stroke-linecap="round" stroke-linejoin="round">
+        <path d="M5 12h14M12 5l7 7-7 7"/>
+    </symbol>
+</svg>
+
+
+
+<footer class="mt-auto bg-(--iw-surface-tint-primary)">
+    <div class="iw-footer-rule"></div>
+    <div class="w-full max-w-(--container-width) mx-auto px-page-x py-3xl">
+        <div class="grid grid-cols-1 lg:grid-cols-[1fr_2fr] gap-xl mb-2xl">
+            <div>
+                <a href="/" class="shrink-0 no-underline inline-block">
+                    
+
+
+    <picture class="overflow-hidden max-h-8 max-w-[140px] w-auto h-auto [&amp;_img]:!w-auto [&amp;_img]:!h-auto [&amp;_img]:!max-w-[140px] [&amp;_img]:!max-h-8">
+        <source
+            type="image/webp"
+            srcset="/image/5626db698d18481b9c9b54be94441d5d?fm=webp&amp;w=240&amp;h=240&amp;fit=max&amp;s=akWhJFM%2BLq4XEVzOEl4p2s46jxg%3D 1x, /image/5626db698d18481b9c9b54be94441d5d?fm=webp&amp;w=480&amp;h=480&amp;fit=max&amp;s=3d%2Fi2LcVw8iY2Cg8wzXUpxicQRY%3D 2x"/>
+
+        <img
+            alt="Everyday Xperts - Reviews"
+            class="h-full w-auto max-w-full object-contain "
+            decoding="async"
+            loading="lazy"
+            src="/image/5626db698d18481b9c9b54be94441d5d?fm=png&amp;w=240&amp;h=240&amp;fit=max&amp;s=b2jMq9MaIEjvO9f%2FFaVEgLJ795s%3D"
+            srcset="/image/5626db698d18481b9c9b54be94441d5d?fm=png&amp;w=240&amp;h=240&amp;fit=max&amp;s=b2jMq9MaIEjvO9f%2FFaVEgLJ795s%3D 1x, /image/5626db698d18481b9c9b54be94441d5d?fm=png&amp;w=480&amp;h=480&amp;fit=max&amp;s=svr546gkkmUORFV5V%2FHr9uUBA4Q%3D 2x"/>
+    </picture>
+
+                </a>
+            </div>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-[1fr_2fr] gap-xl mb-2xl border-t border-border pt-xl">
+                <div class="flex flex-wrap gap-x-md gap-y-xs">
+                        <a href="/about"
+                           class="text-small text-muted no-underline hover:text-text transition-colors">
+                            About us
+                        </a>
+                        <a href="/about#contact-us"
+                           class="text-small text-muted no-underline hover:text-text transition-colors">
+                            Contact Us
+                        </a>
+                        <a href="/privacy"
+                           class="text-small text-muted no-underline hover:text-text transition-colors">
+                            Privacy Policy
+                        </a>
+                        <a href="/terms"
+                           class="text-small text-muted no-underline hover:text-text transition-colors">
+                            Terms of Use
+                        </a>
+                </div>
+            <div class="lg:text-right">
+                <p class="text-extra-small text-muted">
+                    &copy; 2026 Everyday Xperts - Reviews. All rights reserved.
+                </p>
+            </div>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-[1fr_2fr] gap-xl border-t border-border pt-xl">
+            <div>
+                    <p class="text-small text-muted leading-relaxed">We bring you closer to mastering everyday life, with a unique blend of practicality and inspiration.</p>
+            </div>
+            <div>
+                <p class="text-extra-small text-muted leading-relaxed">
+                    All content on this site is for general information and entertainment purposes only.
+                    It is not intended as a substitute for professional advice.
+                        <span>Please review our <a href="/privacy"
+                                                   class="underline hover:text-text transition-colors">Privacy Policy</a> for more information.</span>
+                </p>
+            </div>
+        </div>
+    </div>
+</footer>
+
+
+
+
+    <svg style="display: none;">
+<symbol id="Search" viewBox="0 0 22 22">
+    <path d="M19.25 19.25L13.7501 13.75M15.5833 9.16667C15.5833 12.7105 12.7105 15.5833 9.16667 15.5833C5.62284 15.5833 2.75 12.7105 2.75 9.16667C2.75 5.62284 5.62284 2.75 9.16667 2.75C12.7105 2.75 15.5833 5.62284 15.5833 9.16667Z" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.83333"/>
+</symbol>
+<symbol id="OpenMenuCenter" viewBox="0 0 24 24">
+    <path d="M4 6H20M4 12H12M4 18H20" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"/>
+</symbol><symbol id="CloseMenu" viewBox="0 0 24 24">
+    <path d="M18 6L6 18M6 6L18 18" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"/>
+</symbol>
+    </svg>
+
+</main>
+
+
+    
+
+
+
+
+</body>
+</html>
+
