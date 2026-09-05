@@ -239,4 +239,5 @@ config_picker.title: "Konfigurácia relácie (↑ ↓ • Enter • Esc)"
 system.no_config_options: "Pripojený agent nenabídol žiadne konfigurateľné možnosti relácie."
 # {option} is an Agent-provided option name; {error} is the ACP error.
 system.config_update_failed: "Obnovenie %{option} zlyhalo: %{error}"
+system.provider_command_blocked_by_policy: "%{command}: Režim Yolo je zakázaný politikou vašej organizácie."  # {Locked="Yolo","%{command}"} Shown when AllowYoloMode blocks a provider-advertised privileged command.
 system.model_unknown: "Neznámy model %{model} — zadaním /model zobrazíte dostupný zoznam."  # {Locked="%{model}","/model"}

@@ -15,6 +15,21 @@ jobs:
     runs-on: windows-latest # Action can only run on Windows
     if: ${{ !github.event.release.prerelease }} # Only publish stable releases to WinGet
     steps:
+      - name: Sync winget-pkgs fork with upstream
+        continue-on-error: true # wingetcreate also attempts a sync; don't fail the run on a transient API error
+        env:
+          GH_TOKEN: ${{ secrets.WINGET_TOKEN }}
+        run: |
+          # wingetcreate can only fast-forward a fork that is not too far behind upstream.
+          # A fork left untouched between releases falls thousands of commits behind and the
+          # submit step then fails with "The forked repository could not be synced with the
+          # upstream commits." Sync it up front so wingetcreate always sees a current fork.
+          $owner = (gh api user --jq '.login')
+          Write-Host "Syncing $owner/winget-pkgs with microsoft/winget-pkgs..."
+          $branch = (gh api "repos/$owner/winget-pkgs" --jq '.default_branch')
+          Write-Host "Default branch is $branch"
+          gh api -X POST "repos/$owner/winget-pkgs/merge-upstream" -f branch=$branch
+
       - name: Publish Intelligent Terminal
         run: |
           $assets = '${{ toJSON(github.event.release.assets) }}' | ConvertFrom-Json

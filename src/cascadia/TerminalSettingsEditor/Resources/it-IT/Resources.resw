@@ -2865,6 +2865,8 @@
     <comment>Value shown in the agent pane position dropdown (selects which side of the terminal the agent pane opens on). Translation should match the existing FreOverlay_PanePositionLeft string used in the first-run experience.</comment>
   </data>
   <data name="AIAgents_HooksGroupHeader.Text" xml:space="preserve"><value>Hook degli agenti</value></data>
+  <data name="AIAgents_YoloMode.Header" xml:space="preserve"><value>Usa la modalità Yolo del provider</value><comment>{Locked=&quot;Yolo&quot;} Header for the global setting that asks each AI agent provider to enable its advertised ACP session Yolo capability.</comment></data>
+  <data name="AIAgents_YoloMode.HelpText" xml:space="preserve"><value>Usa la modalità di sessione ACP del provider dell&apos;agente per ridurre o ignorare le richieste di conferma. Il provider definisce le autorizzazioni, la sandbox e l&apos;accesso ai file e alla rete risultanti. I provider senza una modalità supportata continueranno a richiedere l&apos;autorizzazione.</value><comment>{Locked=&quot;ACP&quot;} Risk warning shown under the Yolo toggle. Here provider means the selected AI agent provider, not a network provider.</comment></data>
   <data name="AIAgents_HooksInstall.Header" xml:space="preserve"><value>Installa gli script hook degli agenti</value></data>
   <data name="AIAgents_HooksInstall.HelpText" xml:space="preserve"><value>Monitora le sessioni tra agenti. Necessario per la gestione delle sessioni degli agenti.</value><comment>Description for the Agent Hooks install section.</comment></data>
   <data name="AIAgents_HooksInstallButton.Content" xml:space="preserve"><value>Installa hook</value></data>
@@ -2946,12 +2948,16 @@
     <value>Consenti a Terminale Intelligente di inviare gli errori all'agente per suggerire automaticamente le correzioni.</value>
   </data>
   <data name="AIAgents_CustomModels.Header" xml:space="preserve">
-    <value>Provider BYOK</value>
-    <comment>Section header for user-configured model providers. {Locked="BYOK"}</comment>
+    <value>Endpoint personalizzato o modello locale</value>
+    <comment>Section header for user-configured remote endpoints or locally hosted models.</comment>
   </data>
   <data name="AIAgents_CustomModels.HelpText" xml:space="preserve">
-    <value>Usa un endpoint API Chat Completions compatibile con OpenAI. Supporta GitHub Copilot e OpenCode.</value>
-    <comment>{Locked="OpenAI","Chat Completions API","GitHub Copilot","OpenCode"} Explains the API shape and agents supported by the shared custom provider.</comment>
+    <value>Indirizza un agente verso il tuo endpoint compatibile con OpenAI. </value>
+    <comment>{Locked="OpenAI"} Caption under the custom endpoint section title. Include any locale-appropriate spacing before the inline AIAgents_CustomModelsLearnMore hyperlink at the end of this value.</comment>
+  </data>
+  <data name="AIAgents_CustomModelsLearnMore" xml:space="preserve">
+    <value>Scopri di più</value>
+    <comment>Inline hyperlink text that follows AIAgents_CustomModels.HelpText and opens documentation about custom providers.</comment>
   </data>
   <data name="AIAgents_CustomProviderUnsupportedForAgent" xml:space="preserve">
     <value>{0} non supporta provider Chat Completions personalizzati compatibili con OpenAI. I provider salvati restano disponibili quando passi a GitHub Copilot o OpenCode.</value>
@@ -2969,25 +2975,57 @@
     <value>Rimuovi</value>
     <comment>Button that removes a custom model provider.</comment>
   </data>
+  <data name="AIAgents_CustomProviderAddHeader.Text" xml:space="preserve">
+    <value>Aggiungi endpoint personalizzato</value>
+    <comment>Heading above the form for adding a custom provider endpoint.</comment>
+  </data>
   <data name="AIAgents_CustomProviderBaseUrl.Header" xml:space="preserve">
     <value>URL di base</value>
     <comment>Header for the custom provider endpoint input. {Locked="URL"}</comment>
+  </data>
+  <data name="AIAgents_CustomProviderBaseUrl.PlaceholderText" xml:space="preserve">
+    <value>https://api.example.com/v1</value>
+    <comment>{Locked="https://api.example.com/v1"} Example of a valid OpenAI-compatible API root shown inside the custom provider endpoint input.</comment>
+  </data>
+  <data name="AIAgents_CustomProviderBaseUrlHint.Text" xml:space="preserve">
+    <value>Includi la radice compatibile con OpenAI, ad esempio https://api.openai.com/v1 o https://api.together.xyz/v1.</value>
+    <comment>{Locked="OpenAI","https://api.openai.com/v1","https://api.together.xyz/v1"} Hint below the custom provider endpoint input.</comment>
   </data>
   <data name="AIAgents_CustomModelId.Header" xml:space="preserve">
     <value>ID modello</value>
     <comment>Header for the custom provider model identifier input. {Locked="ID"}</comment>
   </data>
+  <data name="AIAgents_CustomModelId.PlaceholderText" xml:space="preserve">
+    <value>gpt-4o</value>
+    <comment>{Locked="gpt-4o"} Example of a valid provider model identifier shown inside the custom model ID input.</comment>
+  </data>
+  <data name="AIAgents_CustomModelIdHint.Text" xml:space="preserve">
+    <value>Il nome del modello previsto dal tuo endpoint, esattamente come lo scrive il provider.</value>
+    <comment>Hint below the custom model ID input.</comment>
+  </data>
   <data name="AIAgents_CustomProviderApiKey.Header" xml:space="preserve">
     <value>Chiave API (facoltativa)</value>
     <comment>Header for the optional custom provider credential input. {Locked="API"}</comment>
   </data>
+  <data name="AIAgents_CustomProviderApiKey.PlaceholderText" xml:space="preserve">
+    <value>sk-...</value>
+    <comment>{Locked="sk-..."} Example API key format shown inside the optional custom provider credential input.</comment>
+  </data>
+  <data name="AIAgents_CustomProviderApiKeyHint.Text" xml:space="preserve">
+    <value>Lascia vuoto se il tuo endpoint non richiede autenticazione. Salvata in Gestione credenziali di Windows.</value>
+    <comment>{Locked="API"} Hint below the optional custom provider credential input. Use the established localized product name for Windows Credential Manager.</comment>
+  </data>
   <data name="AIAgents_CustomProviderAdd.Content" xml:space="preserve">
-    <value>Aggiungi nuovo</value>
-    <comment>Button that starts adding a custom model provider.</comment>
+    <value>Aggiungi endpoint</value>
+    <comment>Button that starts adding a custom model provider endpoint.</comment>
   </data>
   <data name="AIAgents_CustomProviderSave.Content" xml:space="preserve">
-    <value>Salva</value>
-    <comment>Button that saves a new custom model provider.</comment>
+    <value>Aggiungi e seleziona</value>
+    <comment>Button that adds a custom provider model and selects it as the current model.</comment>
+  </data>
+  <data name="AIAgents_CustomProviderSaveHint.Text" xml:space="preserve">
+    <value>Questo aggiungerà il modello e lo selezionerà come modello corrente</value>
+    <comment>Supporting text beside the button that adds and selects a custom provider model.</comment>
   </data>
   <data name="AIAgents_CustomProviderCancel.Content" xml:space="preserve">
     <value>Annulla</value>
@@ -3000,5 +3038,17 @@
   <data name="AIAgents_OpenAICompatibleModelDescription" xml:space="preserve">
     <value>{} | {} | Compatibile con OpenAI</value>
     <comment>{Locked="{}","OpenAI"} The first {} is replaced with the provider name; the second is replaced with its location.</comment>
+  </data>
+  <data name="AIAgents_YoloOpenCodeWarning.Title" xml:space="preserve"><value>La modalità Yolo non è disponibile per OpenCode</value><comment>{Locked="Yolo","OpenCode"} InfoBar title shown on the AI Agents settings page when global Yolo mode is on and the installed selected default provider is OpenCode.</comment></data>
+  <data name="AIAgents_YoloOpenCodeWarning.Message" xml:space="preserve"><value>OpenCode non annuncia una modalità Yolo nativa supportata. Le richieste di autorizzazione restano interattive anche quando questa impostazione è attivata.</value><comment>{Locked="OpenCode","Yolo"} InfoBar message shown on the AI Agents settings page. "Advertise" means the provider reports a supported native ACP session capability. "Interactive" means the user must still choose permission options manually.</comment></data>
+  <data name="AIAgents_YoloGeminiInfo.Title" xml:space="preserve"><value>La modalità Yolo di Gemini dipende dall'attendibilità dell'area di lavoro</value><comment>{Locked="Gemini","Yolo"} InfoBar title shown on the AI Agents settings page when global Yolo mode is on and the installed selected default provider is Gemini.</comment></data>
+  <data name="AIAgents_YoloGeminiInfo.Message" xml:space="preserve"><value>Gemini abilita la modalità Yolo solo quando l'attendibilità dell'area di lavoro e i criteri del provider lo consentono.</value><comment>{Locked="Gemini","Yolo"} InfoBar message shown on the AI Agents settings page. Workspace trust and provider policy are owned by Gemini, not by Intelligent Terminal.</comment></data>
+  <data name="AIAgents_CustomAgentRemove.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Rimuovi</value>
+    <comment>Accessible name for the X button that removes a custom agent from the agent list.</comment>
+  </data>
+  <data name="AIAgents_CustomAgentRemove.[using:Windows.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Rimuovi</value>
+    <comment>Tooltip for the X button that removes a custom agent from the agent list.</comment>
   </data>
 </root>

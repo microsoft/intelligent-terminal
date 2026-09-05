@@ -186,7 +186,14 @@ namespace Microsoft.Terminal.Settings.Model
 
         Boolean ShouldUsePersistedLayout();
 
-        // Appended to preserve the existing interface's ABI.
+        // Keep new members append-only to preserve existing WinRT vtable slots.
+        INHERITABLE_SETTING(Boolean, AgentPaneYoloMode);
+        Boolean EffectiveAgentPaneYoloMode { get; };
+        Boolean IsYoloModePolicyLocked { get; };
+
+        INHERITABLE_SETTING(IVector<String>, AcpCustomCommands);
+        INHERITABLE_SETTING(IVector<String>, DelegateCustomCommands);
+
         INHERITABLE_SETTING(Boolean, AgentSessionManagementEnabled);
         Boolean EffectiveAgentSessionManagementEnabled { get; };
     }

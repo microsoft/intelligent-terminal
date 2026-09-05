@@ -239,4 +239,5 @@ config_picker.title: "ການກຳນົດຄ່າເຊດຊັນ (↑ �
 system.no_config_options: "ຕົວແທນທີ່ເຊື່ອມຕໍ່ບໍ່ໄດ້ໂຄສະນາຕົວເລືອກເຊດຊັນທີ່ກຳນົດຄ່າໄດ້."
 # {option} is an Agent-provided option name; {error} is the ACP error.
 system.config_update_failed: "ອັບເດດ %{option} ລົ້ມເຫຼວ: %{error}"
+system.provider_command_blocked_by_policy: "%{command}: Yolo mode ຖືກປິດໂດຍນະໂຍບາຍຂອງອົງກອນຂອງທ່ານ."  # {Locked="Yolo","%{command}"} Shown when AllowYoloMode blocks a provider-advertised privileged command.
 system.model_unknown: "ບໍ່ຮູ້ຈັກແບບຈຳລອງ %{model} — ພິມ /model ເພື່ອເບິ່ງລາຍການທີ່ມີ."  # {Locked="%{model}","/model"}

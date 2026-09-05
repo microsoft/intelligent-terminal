@@ -110,39 +110,39 @@
     <value>Ga shuidheachadh...</value>
   </data>
   <data name="FreOverlay_InstallError_BlockedByPolicy" xml:space="preserve">
-    <value>⚠ Chaidh stàladh {0} a bhacadh le poileasaidh Manaidsear Pacaidean Windows. Ma tha thu air uidheam air a stiùireadh, cuir fios chun rianaire IT agad.</value>
+    <value>Chaidh stàladh {0} a bhacadh le poileasaidh Manaidsear Pacaidean Windows. Ma tha thu air uidheam air a stiùireadh, cuir fios chun rianaire IT agad.</value>
     <comment>FRE setup error. {0} is the package display name.</comment>
   </data>
   <data name="FreOverlay_InstallError_Generic" xml:space="preserve">
-    <value>⚠ Cha b' urrainn dhuinn {0} a stàladh (còd mearachd {1}). Faic an loga airson mion-fhiosrachadh, no stàlaich {0} le làimh.</value>
+    <value>Cha b' urrainn dhuinn {0} a stàladh (còd mearachd {1}). Faic an loga airson mion-fhiosrachadh, no stàlaich {0} le làimh.</value>
     <comment>FRE setup error fallback. {0} is the package display name (appears twice). {1} is a pre-formatted HRESULT string.</comment>
   </data>
   <data name="FreOverlay_InstallError_GenericNoCode" xml:space="preserve">
-    <value>⚠ Cha b' urrainn dhuinn {0} a stàladh. Faic an loga airson mion-fhiosrachadh, no stàlaich {0} le làimh.</value>
+    <value>Cha b' urrainn dhuinn {0} a stàladh. Faic an loga airson mion-fhiosrachadh, no stàlaich {0} le làimh.</value>
     <comment>FRE setup error fallback used when no actionable error code is available. {0} is the package display name (appears twice).</comment>
   </data>
   <data name="FreOverlay_InstallError_InstallerFailed" xml:space="preserve">
-    <value>⚠ Dh'aithris stàlaichear {0} mearachd (còd {1}). Thoir sùil air an loga airson mion-fhiosrachadh, no stàlaich {0} le làimh.</value>
+    <value>Dh'aithris stàlaichear {0} mearachd (còd {1}). Thoir sùil air an loga airson mion-fhiosrachadh, no stàlaich {0} le làimh.</value>
     <comment>FRE setup error. {0} is the package display name (appears twice). {1} is decimal error code.</comment>
   </data>
   <data name="FreOverlay_InstallError_Network" xml:space="preserve">
-    <value>⚠ Cha b' urrainn dhuinn Manaidsear Pacaidean Windows a ruigsinn fhad 's a bha {0} ga stàladh. Thoir sùil air do cheangal eadar-lìn (dh'fhaodadh VPN, progsaidh no balla-teine a bhith ga bhacadh) agus feuch a-rithist.</value>
+    <value>Cha b' urrainn dhuinn Manaidsear Pacaidean Windows a ruigsinn fhad 's a bha {0} ga stàladh. Thoir sùil air do cheangal eadar-lìn (dh'fhaodadh VPN, progsaidh no balla-teine a bhith ga bhacadh) agus feuch a-rithist.</value>
     <comment>{Locked="VPN"} FRE setup error. {0} is the package display name.</comment>
   </data>
   <data name="FreOverlay_InstallError_NoCompatibleInstaller" xml:space="preserve">
-    <value>⚠ Chan eil stàlaichear co-chòrdail airson {0} ri fhaighinn air an t-siostam seo (dh'fhaodadh nach eil taic ann do dhreach an OS no dhan ailtireachd). Stàlaich {0} le làimh.</value>
+    <value>Chan eil stàlaichear co-chòrdail airson {0} ri fhaighinn air an t-siostam seo (dh'fhaodadh nach eil taic ann do dhreach an OS no dhan ailtireachd). Stàlaich {0} le làimh.</value>
     <comment>FRE setup error. {0} is the package display name (appears twice).</comment>
   </data>
   <data name="FreOverlay_InstallError_PackageNotFound" xml:space="preserve">
-    <value>⚠ Cha deach {0} a lorg ann an catalog Manaidsear Pacaidean Windows. Feuch ri tùsan winget ùrachadh, no stàlaich {0} le làimh.</value>
+    <value>Cha deach {0} a lorg ann an catalog Manaidsear Pacaidean Windows. Feuch ri tùsan winget ùrachadh, no stàlaich {0} le làimh.</value>
     <comment>{Locked="winget"} FRE setup error. {0} is the package display name (appears twice).</comment>
   </data>
   <data name="FreOverlay_InstallError_Timeout" xml:space="preserve">
-    <value>⚠ Thug stàladh {0} nas fhaide na 20 mionaid. Sguir Intelligent Terminal a bhith a' feitheamh, ach dh'fhaodadh an stàlaichear a bhith fhathast a' ruith sa chùlaibh. Thoir sùil air Task Manager, no feuch a-rithist nas fhaide air adhart.</value>
+    <value>Thug stàladh {0} nas fhaide na 20 mionaid. Sguir Intelligent Terminal a bhith a' feitheamh, ach dh'fhaodadh an stàlaichear a bhith fhathast a' ruith sa chùlaibh. Thoir sùil air Task Manager, no feuch a-rithist nas fhaide air adhart.</value>
     <comment>{Locked="Intelligent Terminal","Task Manager"} FRE setup error. {0} is the package display name.</comment>
   </data>
   <data name="FreOverlay_InstallErrorWingetMissing" xml:space="preserve">
-    <value>⚠ Chan eil Manaidsear Pacaidean Windows (winget) air a stàladh no ri fhaighinn. Stàlaich e an toiseach, agus feuch a-rithist.</value>
+    <value>Chan eil Manaidsear Pacaidean Windows (winget) air a stàladh no ri fhaighinn. Stàlaich e an toiseach, agus feuch a-rithist.</value>
     <comment>{Locked="winget"} Error shown in the FRE setup overlay when a prerequisite install was attempted but winget itself is not available on this system.</comment>
   </data>
   <data name="FreOverlay_PackageDisplayName_Copilot" xml:space="preserve">
@@ -234,9 +234,9 @@
     <value>Thoir cead do Intelligent Terminal cothrom fhaighinn air an t-slige agad agus mearachdan a lorg gu fèin-obrachail.</value>
   </data>
 <data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
-    <value>⚠ Dh'fhàillig stàladh amalachadh na slige. Chaidh lorg mhearachdan a chur dheth. 'S urrainn dhut a chur air a-rithist agus feuchainn a-rithist, no sàbhail gus leantainn às aonais.</value>
+    <value>Dh'fhàillig stàladh amalachadh na slige. Chaidh lorg mhearachdan a chur dheth. 'S urrainn dhut a chur air a-rithist agus feuchainn a-rithist, no sàbhail gus leantainn às aonais.</value>
   </data><data name="FreOverlay_InstallErrorHooks" xml:space="preserve">
-    <value>⚠ Dh'fhàillig stàladh nan session hooks. Chaidh rianachd nan seisean a chur dheth. 'S urrainn dhut a chur air a-rithist agus feuchainn a-rithist, no sàbhail gus leantainn às aonais.</value>
+    <value>Dh'fhàillig stàladh nan session hooks. Chaidh rianachd nan seisean a chur dheth. 'S urrainn dhut a chur air a-rithist agus feuchainn a-rithist, no sàbhail gus leantainn às aonais.</value>
     <comment>{Locked="hooks"}</comment>
   </data><data name="FreOverlay_ErrorHelpLink" xml:space="preserve">
     <value>Ionnsaich mar a chàraicheas tu seo a làimh</value>
@@ -252,7 +252,7 @@
     <comment>Body of an error dialog shown after the user tries to install PowerShell shell integration but their PowerShell execution policy (Restricted or AllSigned) is blocking scripts. A separate "Learn how to fix this manually" hyperlink (FreOverlay_ErrorHelpLink) is rendered on its own line below this sentence. {Locked="PowerShell"}</comment>
   </data>
   <data name="FreOverlay_InstallErrorShellIntegrationExecutionPolicy" xml:space="preserve">
-    <value>⚠ Tha poileasaidh ruith PowerShell a' bacadh sgriobtaichean. Tha lorg mhearachdan dheth.</value>
+    <value>Tha poileasaidh ruith PowerShell a' bacadh sgriobtaichean. Tha lorg mhearachdan dheth.</value>
     <comment>{Locked="PowerShell"}</comment>
   </data>
   <data name="UsageGroup/[using:Windows.UI.Xaml.Automation]AutomationProperties/Name" xml:space="preserve"><value>Cleachdadh</value><comment>Accessibility name for the session usage summary in the terminal bottom bar.</comment></data>

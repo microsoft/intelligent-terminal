@@ -1126,39 +1126,39 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
     <value>セットアップ中...</value>
   </data>
   <data name="FreOverlay_InstallError_BlockedByPolicy" xml:space="preserve">
-    <value>⚠ {0} のインストールは Windows パッケージ マネージャーのポリシーによってブロックされました。管理対象デバイスを使用している場合は、IT 管理者にお問い合わせください。</value>
+    <value>{0} のインストールは Windows パッケージ マネージャーのポリシーによってブロックされました。管理対象デバイスを使用している場合は、IT 管理者にお問い合わせください。</value>
     <comment>FRE setup error. {0} is the package display name. Shown when winget returned BlockedByPolicy.</comment>
   </data>
   <data name="FreOverlay_InstallError_Generic" xml:space="preserve">
-    <value>⚠ {0} をインストールできませんでした (エラー コード {1})。詳細についてはログを確認するか、{0} を手動でインストールしてください。</value>
+    <value>{0} をインストールできませんでした (エラー コード {1})。詳細についてはログを確認するか、{0} を手動でインストールしてください。</value>
     <comment>FRE setup error fallback. {0} is the package display name (appears twice). {1} is a pre-formatted HRESULT string like "0x80190194".</comment>
   </data>
   <data name="FreOverlay_InstallError_GenericNoCode" xml:space="preserve">
-    <value>⚠ {0} をインストールできませんでした。詳細についてはログを確認するか、{0} を手動でインストールしてください。</value>
+    <value>{0} をインストールできませんでした。詳細についてはログを確認するか、{0} を手動でインストールしてください。</value>
     <comment>FRE setup error fallback used when no actionable error code is available. {0} is the package display name (appears twice).</comment>
   </data>
   <data name="FreOverlay_InstallError_InstallerFailed" xml:space="preserve">
-    <value>⚠ {0} インストーラーからエラーが報告されました (コード {1})。詳細についてはログを確認するか、{0} を手動でインストールしてください。</value>
+    <value>{0} インストーラーからエラーが報告されました (コード {1})。詳細についてはログを確認するか、{0} を手動でインストールしてください。</value>
     <comment>FRE setup error. {0} is the package display name (appears twice). {1} is the installer-reported error code as a decimal number (e.g. MSI 1603).</comment>
   </data>
   <data name="FreOverlay_InstallError_Network" xml:space="preserve">
-    <value>⚠ {0} のインストール中に Windows パッケージ マネージャーに接続できませんでした。インターネット接続 (VPN、プロキシ、ファイアウォールによってブロックされている可能性があります) を確認して、もう一度お試しください。</value>
+    <value>{0} のインストール中に Windows パッケージ マネージャーに接続できませんでした。インターネット接続 (VPN、プロキシ、ファイアウォールによってブロックされている可能性があります) を確認して、もう一度お試しください。</value>
     <comment>{Locked="VPN"} FRE setup error. {0} is the package display name. Shown when winget couldn't reach its catalog or download failed with a network-class HRESULT.</comment>
   </data>
   <data name="FreOverlay_InstallError_NoCompatibleInstaller" xml:space="preserve">
-    <value>⚠ このシステムで使用できる {0} 用の互換性のあるインストーラーはありません (OS バージョンまたはアーキテクチャがサポートされていない可能性があります)。{0} を手動でインストールしてください。</value>
+    <value>このシステムで使用できる {0} 用の互換性のあるインストーラーはありません (OS バージョンまたはアーキテクチャがサポートされていない可能性があります)。{0} を手動でインストールしてください。</value>
     <comment>FRE setup error. {0} is the package display name (appears twice).</comment>
   </data>
   <data name="FreOverlay_InstallError_PackageNotFound" xml:space="preserve">
-    <value>⚠ Windows パッケージ マネージャー カタログに {0} が見つかりませんでした。winget ソースを更新するか、{0} を手動でインストールしてください。</value>
+    <value>Windows パッケージ マネージャー カタログに {0} が見つかりませんでした。winget ソースを更新するか、{0} を手動でインストールしてください。</value>
     <comment>{Locked="winget"} FRE setup error. {0} is the package display name (appears twice).</comment>
   </data>
   <data name="FreOverlay_InstallError_Timeout" xml:space="preserve">
-    <value>⚠ {0} のインストールに 20 分以上かかりました。Intelligent Terminal は待機を停止しましたが、インストーラーはまだバックグラウンドで実行されている可能性があります。Task Manager を確認するか、後でもう一度お試しください。</value>
+    <value>{0} のインストールに 20 分以上かかりました。Intelligent Terminal は待機を停止しましたが、インストーラーはまだバックグラウンドで実行されている可能性があります。Task Manager を確認するか、後でもう一度お試しください。</value>
     <comment>{Locked="Intelligent Terminal","Task Manager"} FRE setup error. {0} is the package display name.</comment>
   </data>
   <data name="FreOverlay_InstallErrorWingetMissing" xml:space="preserve">
-    <value>⚠ Windows パッケージ マネージャー (winget) がインストールされていないか、利用できません。先にインストールしてから、もう一度お試しください。</value>
+    <value>Windows パッケージ マネージャー (winget) がインストールされていないか、利用できません。先にインストールしてから、もう一度お試しください。</value>
     <comment>{Locked="winget"} Error shown in the FRE setup overlay when a prerequisite install was attempted but winget itself is not available on this system.</comment>
   </data>
   <data name="FreOverlay_PackageDisplayName_Copilot" xml:space="preserve">
@@ -1170,11 +1170,11 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
     <comment>{Locked="Node.js","LTS"} Product display name substituted into the FRE install error templates when reporting a winget install failure for the Node.js prerequisite.</comment>
   </data>
   <data name="FreOverlay_InstallErrorHooks" xml:space="preserve">
-    <value>⚠ session hooksのインストールに失敗しました。セッション管理がオフになりました。再度有効にしてやり直すか、保存してセッション管理なしで続行できます。</value>
+    <value>session hooksのインストールに失敗しました。セッション管理がオフになりました。再度有効にしてやり直すか、保存してセッション管理なしで続行できます。</value>
     <comment>{Locked="hooks"}</comment>
   </data>
   <data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
-    <value>⚠ シェル統合のインストールに失敗しました。エラー検出がオフになりました。再度有効にしてやり直すか、保存してエラー検出なしで続行できます。</value>
+    <value>シェル統合のインストールに失敗しました。エラー検出がオフになりました。再度有効にしてやり直すか、保存してエラー検出なしで続行できます。</value>
   </data>
   <data name="FreOverlay_ErrorHelpLink" xml:space="preserve">
     <value>手動で修正する方法について</value>
@@ -1279,7 +1279,7 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
     <comment>Body of an error dialog shown after the user tries to install PowerShell shell integration but their PowerShell execution policy (Restricted or AllSigned) is blocking scripts. A separate "Learn how to fix this manually" hyperlink (FreOverlay_ErrorHelpLink) is rendered on its own line below this sentence. {Locked="PowerShell"}</comment>
   </data>
   <data name="FreOverlay_InstallErrorShellIntegrationExecutionPolicy" xml:space="preserve">
-    <value>⚠ PowerShell の実行ポリシーがスクリプトをブロックしています。エラー検出はオフになりました。</value>
+    <value>PowerShell の実行ポリシーがスクリプトをブロックしています。エラー検出はオフになりました。</value>
     <comment>{Locked="PowerShell"}</comment>
   </data>
   <data name="UsageGroup/[using:Windows.UI.Xaml.Automation]AutomationProperties/Name" xml:space="preserve"><value>使用量</value><comment>Accessibility name for the session usage summary in the terminal bottom bar.</comment></data>

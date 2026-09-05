@@ -218,39 +218,39 @@
     <value>A configurar...</value>
   </data>
   <data name="FreOverlay_InstallError_BlockedByPolicy" xml:space="preserve">
-    <value>⚠ A instalação de {0} foi bloqueada por uma política do Gestor de Pacotes do Windows. Se estiver num dispositivo gerido, contacte o seu administrador de TI.</value>
+    <value>A instalação de {0} foi bloqueada por uma política do Gestor de Pacotes do Windows. Se estiver num dispositivo gerido, contacte o seu administrador de TI.</value>
     <comment>FRE setup error. {0} is the package display name. Shown when winget returned BlockedByPolicy.</comment>
   </data>
   <data name="FreOverlay_InstallError_Generic" xml:space="preserve">
-    <value>⚠ Não foi possível instalar {0} (código de erro {1}). Consulte o registo para obter detalhes, ou instale {0} manualmente.</value>
+    <value>Não foi possível instalar {0} (código de erro {1}). Consulte o registo para obter detalhes, ou instale {0} manualmente.</value>
     <comment>FRE setup error fallback. {0} is the package display name (appears twice). {1} is a pre-formatted HRESULT string like "0x80190194".</comment>
   </data>
   <data name="FreOverlay_InstallError_GenericNoCode" xml:space="preserve">
-    <value>⚠ Não foi possível instalar {0}. Consulte o registo para obter detalhes, ou instale {0} manualmente.</value>
+    <value>Não foi possível instalar {0}. Consulte o registo para obter detalhes, ou instale {0} manualmente.</value>
     <comment>FRE setup error fallback used when no actionable error code is available. {0} is the package display name (appears twice).</comment>
   </data>
   <data name="FreOverlay_InstallError_InstallerFailed" xml:space="preserve">
-    <value>⚠ O instalador de {0} comunicou um erro (código {1}). Consulte o registo para obter detalhes, ou instale {0} manualmente.</value>
+    <value>O instalador de {0} comunicou um erro (código {1}). Consulte o registo para obter detalhes, ou instale {0} manualmente.</value>
     <comment>FRE setup error. {0} is the package display name (appears twice). {1} is the installer-reported error code as a decimal number (e.g. MSI 1603).</comment>
   </data>
   <data name="FreOverlay_InstallError_Network" xml:space="preserve">
-    <value>⚠ Não foi possível aceder ao Gestor de Pacotes do Windows ao instalar {0}. Verifique a sua ligação à Internet (VPN, proxy ou firewall podem estar a bloquear) e tente novamente.</value>
+    <value>Não foi possível aceder ao Gestor de Pacotes do Windows ao instalar {0}. Verifique a sua ligação à Internet (VPN, proxy ou firewall podem estar a bloquear) e tente novamente.</value>
     <comment>{Locked="VPN"} FRE setup error. {0} is the package display name. Shown when winget couldn't reach its catalog or download failed with a network-class HRESULT.</comment>
   </data>
   <data name="FreOverlay_InstallError_NoCompatibleInstaller" xml:space="preserve">
-    <value>⚠ Nenhum instalador compatível para {0} está disponível neste sistema (a versão do sistema operativo ou a arquitetura poderá não ser suportada). Instale {0} manualmente.</value>
+    <value>Nenhum instalador compatível para {0} está disponível neste sistema (a versão do sistema operativo ou a arquitetura poderá não ser suportada). Instale {0} manualmente.</value>
     <comment>FRE setup error. {0} is the package display name (appears twice).</comment>
   </data>
   <data name="FreOverlay_InstallError_PackageNotFound" xml:space="preserve">
-    <value>⚠ {0} não foi encontrado no catálogo do Gestor de Pacotes do Windows. Tente atualizar as origens do winget, ou instale {0} manualmente.</value>
+    <value>{0} não foi encontrado no catálogo do Gestor de Pacotes do Windows. Tente atualizar as origens do winget, ou instale {0} manualmente.</value>
     <comment>{Locked="winget"} FRE setup error. {0} is the package display name (appears twice).</comment>
   </data>
   <data name="FreOverlay_InstallError_Timeout" xml:space="preserve">
-    <value>⚠ A instalação de {0} demorou mais de 20 minutos. Intelligent Terminal deixou de aguardar, mas o instalador poderá ainda estar em execução em segundo plano. Consulte Task Manager, ou tente novamente mais tarde.</value>
+    <value>A instalação de {0} demorou mais de 20 minutos. Intelligent Terminal deixou de aguardar, mas o instalador poderá ainda estar em execução em segundo plano. Consulte Task Manager, ou tente novamente mais tarde.</value>
     <comment>{Locked="Intelligent Terminal","Task Manager"} FRE setup error. {0} is the package display name.</comment>
   </data>
   <data name="FreOverlay_InstallErrorWingetMissing" xml:space="preserve">
-    <value>⚠ O Gestor de Pacotes do Windows (winget) não está instalado ou não está disponível. Instale-o primeiro e tente novamente.</value>
+    <value>O Gestor de Pacotes do Windows (winget) não está instalado ou não está disponível. Instale-o primeiro e tente novamente.</value>
     <comment>{Locked="winget"} Error shown in the FRE setup overlay when a prerequisite install was attempted but winget itself is not available on this system.</comment>
   </data>
   <data name="FreOverlay_PackageDisplayName_Copilot" xml:space="preserve">
@@ -342,9 +342,9 @@
     <value>Permita que o Intelligent Terminal aceda à shell e detete erros automaticamente.</value>
   </data>
 <data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
-    <value>⚠ Falha ao instalar a integração da shell. A deteção de erros foi desativada. Pode reativá-la e tentar novamente, ou guardar para continuar sem ela.</value>
+    <value>Falha ao instalar a integração da shell. A deteção de erros foi desativada. Pode reativá-la e tentar novamente, ou guardar para continuar sem ela.</value>
   </data><data name="FreOverlay_InstallErrorHooks" xml:space="preserve">
-    <value>⚠ Falha ao instalar os hooks de sessão. A gestão de sessões foi desativada. Pode reativá-la e tentar novamente, ou guardar para continuar sem ela.</value>
+    <value>Falha ao instalar os hooks de sessão. A gestão de sessões foi desativada. Pode reativá-la e tentar novamente, ou guardar para continuar sem ela.</value>
     <comment>{Locked="hooks"}</comment>
   </data><data name="FreOverlay_ErrorHelpLink" xml:space="preserve">
     <value>Saiba como corrigir isto manualmente</value>
@@ -360,7 +360,7 @@
     <comment>Body of an error dialog shown after the user tries to install PowerShell shell integration but their PowerShell execution policy (Restricted or AllSigned) is blocking scripts. A separate "Learn how to fix this manually" hyperlink (FreOverlay_ErrorHelpLink) is rendered on its own line below this sentence. {Locked="PowerShell"}</comment>
   </data>
   <data name="FreOverlay_InstallErrorShellIntegrationExecutionPolicy" xml:space="preserve">
-    <value>⚠ A política de execução do PowerShell está a bloquear scripts. Deteção de erros desativada.</value>
+    <value>A política de execução do PowerShell está a bloquear scripts. Deteção de erros desativada.</value>
     <comment>{Locked="PowerShell"}</comment>
   </data>
   <data name="UsageGroup/[using:Windows.UI.Xaml.Automation]AutomationProperties/Name" xml:space="preserve"><value>Utilização</value><comment>Accessibility name for the session usage summary in the terminal bottom bar.</comment></data>

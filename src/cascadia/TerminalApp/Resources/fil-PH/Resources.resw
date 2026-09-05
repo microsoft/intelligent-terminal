@@ -223,39 +223,39 @@
     <value>Sine-set up...</value>
   </data>
   <data name="FreOverlay_InstallError_BlockedByPolicy" xml:space="preserve">
-    <value>⚠ Na-block ng patakaran ng Windows Package Manager ang pag-install ng {0}. Kung nasa pinamamahalaang device ka, makipag-ugnayan sa iyong IT admin.</value>
+    <value>Na-block ng patakaran ng Windows Package Manager ang pag-install ng {0}. Kung nasa pinamamahalaang device ka, makipag-ugnayan sa iyong IT admin.</value>
     <comment>FRE setup error. {0} is the package display name. Shown when winget returned BlockedByPolicy.</comment>
   </data>
   <data name="FreOverlay_InstallError_Generic" xml:space="preserve">
-    <value>⚠ Hindi ma-install ang {0} (error code {1}). Tingnan ang log para sa mga detalye, o manu-manong i-install ang {0}.</value>
+    <value>Hindi ma-install ang {0} (error code {1}). Tingnan ang log para sa mga detalye, o manu-manong i-install ang {0}.</value>
     <comment>FRE setup error fallback. {0} is the package display name (appears twice). {1} is a pre-formatted HRESULT string like "0x80190194".</comment>
   </data>
   <data name="FreOverlay_InstallError_GenericNoCode" xml:space="preserve">
-    <value>⚠ Hindi ma-install ang {0}. Tingnan ang log para sa mga detalye, o manu-manong i-install ang {0}.</value>
+    <value>Hindi ma-install ang {0}. Tingnan ang log para sa mga detalye, o manu-manong i-install ang {0}.</value>
     <comment>FRE setup error fallback used when no actionable error code is available. {0} is the package display name (appears twice).</comment>
   </data>
   <data name="FreOverlay_InstallError_InstallerFailed" xml:space="preserve">
-    <value>⚠ Nag-ulat ng error ang installer ng {0} (code {1}). Tingnan ang log para sa mga detalye, o manu-manong i-install ang {0}.</value>
+    <value>Nag-ulat ng error ang installer ng {0} (code {1}). Tingnan ang log para sa mga detalye, o manu-manong i-install ang {0}.</value>
     <comment>FRE setup error. {0} is the package display name (appears twice). {1} is the installer-reported error code as a decimal number (e.g. MSI 1603).</comment>
   </data>
   <data name="FreOverlay_InstallError_Network" xml:space="preserve">
-    <value>⚠ Hindi maabot ang Windows Package Manager habang ini-install ang {0}. Suriin ang iyong koneksyon sa internet (maaaring bina-block ito ng VPN, proxy, o firewall) at subukang muli.</value>
+    <value>Hindi maabot ang Windows Package Manager habang ini-install ang {0}. Suriin ang iyong koneksyon sa internet (maaaring bina-block ito ng VPN, proxy, o firewall) at subukang muli.</value>
     <comment>{Locked="VPN"} FRE setup error. {0} is the package display name. Shown when winget couldn't reach its catalog or download failed with a network-class HRESULT.</comment>
   </data>
   <data name="FreOverlay_InstallError_NoCompatibleInstaller" xml:space="preserve">
-    <value>⚠ Walang compatible na installer para sa {0} na available sa system na ito (maaaring hindi suportado ang bersyon ng OS o architecture). Manu-manong i-install ang {0}.</value>
+    <value>Walang compatible na installer para sa {0} na available sa system na ito (maaaring hindi suportado ang bersyon ng OS o architecture). Manu-manong i-install ang {0}.</value>
     <comment>FRE setup error. {0} is the package display name (appears twice).</comment>
   </data>
   <data name="FreOverlay_InstallError_PackageNotFound" xml:space="preserve">
-    <value>⚠ Hindi natagpuan ang {0} sa catalog ng Windows Package Manager. Subukang i-refresh ang mga source ng winget, o manu-manong i-install ang {0}.</value>
+    <value>Hindi natagpuan ang {0} sa catalog ng Windows Package Manager. Subukang i-refresh ang mga source ng winget, o manu-manong i-install ang {0}.</value>
     <comment>{Locked="winget"} FRE setup error. {0} is the package display name (appears twice).</comment>
   </data>
   <data name="FreOverlay_InstallError_Timeout" xml:space="preserve">
-    <value>⚠ Tumagal nang higit sa 20 minuto ang pag-install ng {0}. Huminto sa paghihintay ang Intelligent Terminal, pero maaaring tumatakbo pa rin sa background ang installer. Suriin ang Task Manager, o subukang muli mamaya.</value>
+    <value>Tumagal nang higit sa 20 minuto ang pag-install ng {0}. Huminto sa paghihintay ang Intelligent Terminal, pero maaaring tumatakbo pa rin sa background ang installer. Suriin ang Task Manager, o subukang muli mamaya.</value>
     <comment>{Locked="Intelligent Terminal","Task Manager"} FRE setup error. {0} is the package display name.</comment>
   </data>
   <data name="FreOverlay_InstallErrorWingetMissing" xml:space="preserve">
-    <value>⚠ Hindi naka-install o hindi available ang Windows Package Manager (winget). I-install muna ito, pagkatapos ay subukang muli.</value>
+    <value>Hindi naka-install o hindi available ang Windows Package Manager (winget). I-install muna ito, pagkatapos ay subukang muli.</value>
     <comment>{Locked="winget"} Error shown in the FRE setup overlay when a prerequisite install was attempted but winget itself is not available on this system.</comment>
   </data>
   <data name="FreOverlay_PackageDisplayName_Copilot" xml:space="preserve">
@@ -279,9 +279,9 @@
     <value>Bigyan ang Intelligent Terminal ng pahintulot na i-access ang iyong shell at awtomatikong tukuyin ang mga error.</value>
   </data>
 <data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
-    <value>⚠ Nabigong i-install ang shell integration. Na-off ang error detection. Maaari mo itong i-enable ulit at subukang muli, o i-save para magpatuloy nang wala ito.</value>
+    <value>Nabigong i-install ang shell integration. Na-off ang error detection. Maaari mo itong i-enable ulit at subukang muli, o i-save para magpatuloy nang wala ito.</value>
   </data><data name="FreOverlay_InstallErrorHooks" xml:space="preserve">
-    <value>⚠ Nabigong i-install ang session hooks. Na-off ang pamamahala ng session. Maaari mo itong i-enable ulit at subukang muli, o i-save para magpatuloy nang wala ito.</value>
+    <value>Nabigong i-install ang session hooks. Na-off ang pamamahala ng session. Maaari mo itong i-enable ulit at subukang muli, o i-save para magpatuloy nang wala ito.</value>
     <comment>{Locked="hooks"}</comment>
   </data><data name="FreOverlay_ErrorHelpLink" xml:space="preserve">
     <value>Alamin kung paano ito ayusin nang manu-mano</value>
@@ -297,7 +297,7 @@
     <comment>Body of an error dialog shown after the user tries to install PowerShell shell integration but their PowerShell execution policy (Restricted or AllSigned) is blocking scripts. A separate "Learn how to fix this manually" hyperlink (FreOverlay_ErrorHelpLink) is rendered on its own line below this sentence. {Locked="PowerShell"}</comment>
   </data>
   <data name="FreOverlay_InstallErrorShellIntegrationExecutionPolicy" xml:space="preserve">
-    <value>⚠ Hinaharangan ng execution policy ng PowerShell ang mga script. Na-off ang error detection.</value>
+    <value>Hinaharangan ng execution policy ng PowerShell ang mga script. Na-off ang error detection.</value>
     <comment>{Locked="PowerShell"}</comment>
   </data>
   <data name="UsageGroup/[using:Windows.UI.Xaml.Automation]AutomationProperties/Name" xml:space="preserve"><value>Paggamit</value><comment>Accessibility name for the session usage summary in the terminal bottom bar.</comment></data>

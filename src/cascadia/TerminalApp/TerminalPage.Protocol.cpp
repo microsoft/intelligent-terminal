@@ -562,6 +562,21 @@ namespace winrt::TerminalApp::implementation
         co_return false;
     }
 
+    // Resolves the pane whose profile a protocol-created tab should inherit.
+    //
+    // `wtcli new-tab` is frequently invoked *from* the agent pane — the session
+    // picker resuming an agent CLI, delegate hand-off, and so on — so the tab's
+    // active pane is often the agent pane itself. Its hidden "Agent Pane"
+    // profile sets `closeOnExit: always`, and pinning that onto a brand-new
+    // terminal tab makes the tab vanish the moment its command exits for *any*
+    // reason, including a Ctrl+C (`STATUS_CONTROL_C_EXIT` is a non-zero exit
+    // code, so the connection lands in `Failed`, not `Closed`). The pane going
+    // away then takes the whole tab with it, because a lone agent pane
+    // collapses its subtree (see `Pane::_CloseChildRoutine`).
+    //
+    // `_SourceTerminalProfileForTab` is what keeps the agent pane out of that
+    // lookup — it resolves through `_SourceTerminalPaneForTab`, whose comment
+    // in TerminalPage.cpp explains the ordering.
     IAsyncOperation<Protocol::TabCreationResult> TerminalPage::CreateProtocolTab(NewTerminalArgs args, bool background)
     {
         auto strong = get_strong();
@@ -596,12 +611,9 @@ namespace winrt::TerminalApp::implementation
         if (args && !args.Commandline().empty() && args.Profile().empty() && !args.ProfileIndex())
         {
             auto profileGuid = _settings.GlobalSettings().DefaultProfile();
-            if (const auto focusedTab = _GetFocusedTabImpl())
+            if (const auto sourceProfile = _SourceTerminalProfileForTab(_GetFocusedTabImpl()))
             {
-                if (const auto focusedProfile = focusedTab->GetFocusedProfile())
-                {
-                    profileGuid = focusedProfile.Guid();
-                }
+                profileGuid = sourceProfile.Guid();
             }
             args.Profile(::Microsoft::Console::Utils::GuidToString(profileGuid));
         }

@@ -237,4 +237,5 @@ config_picker.title: "[!!_Session configuration (↑ ↓ • Enter • Esc)_!!]"
 system.no_config_options: "[!!_The connected agent did not advertise any configurable session options._!!]"
 # {option} is an Agent-provided option name; {error} is the ACP error.
 system.config_update_failed: "[!!_Failed to update %{option}: %{error}_!!]"
+system.provider_command_blocked_by_policy: "%{command}: [!!_Yolo mode is disabled by your organization's policy._!!]"  # {Locked="Yolo","%{command}"} Shown when AllowYoloMode blocks a provider-advertised privileged command.
 system.model_unknown: "[!!_Unknown model %{model} — type /model to see the available list._!!]"  # {Locked="%{model}","/model"}

@@ -110,39 +110,39 @@
     <value>Churachkan...</value>
   </data>
   <data name="FreOverlay_InstallError_BlockedByPolicy" xml:space="preserve">
-    <value>⚠ {0} churay Windows Package Manager kamachiywan hark'asqa karqa. Kamachisqa dispositivopi kaspa, IT admin-niykiman rimay.</value>
+    <value>{0} churay Windows Package Manager kamachiywan hark'asqa karqa. Kamachisqa dispositivopi kaspa, IT admin-niykiman rimay.</value>
     <comment>FRE setup error. {0} is the package display name.</comment>
   </data>
   <data name="FreOverlay_InstallError_Generic" xml:space="preserve">
-    <value>⚠ {0} mana churayta atirqanchu (pantay código {1}). Aswan sut'inkunapaq log nisqata qhaway, utaq {0} makillawan churay.</value>
+    <value>{0} mana churayta atirqanchu (pantay código {1}). Aswan sut'inkunapaq log nisqata qhaway, utaq {0} makillawan churay.</value>
     <comment>FRE setup error fallback. {0} is the package display name (appears twice). {1} is a pre-formatted HRESULT string.</comment>
   </data>
   <data name="FreOverlay_InstallError_GenericNoCode" xml:space="preserve">
-    <value>⚠ {0} mana churayta atirqanchu. Aswan sut'inkunapaq log nisqata qhaway, utaq {0} makillawan churay.</value>
+    <value>{0} mana churayta atirqanchu. Aswan sut'inkunapaq log nisqata qhaway, utaq {0} makillawan churay.</value>
     <comment>FRE setup error fallback used when no actionable error code is available. {0} is the package display name (appears twice).</comment>
   </data>
   <data name="FreOverlay_InstallError_InstallerFailed" xml:space="preserve">
-    <value>⚠ {0} installer pantayta willarqa (código {1}). Aswan sut'inkunapaq log nisqata qhaway, utaq {0} makillawan churay.</value>
+    <value>{0} installer pantayta willarqa (código {1}). Aswan sut'inkunapaq log nisqata qhaway, utaq {0} makillawan churay.</value>
     <comment>FRE setup error. {0} is the package display name (appears twice). {1} is decimal error code.</comment>
   </data>
   <data name="FreOverlay_InstallError_Network" xml:space="preserve">
-    <value>⚠ {0} churachkaspa Windows Package Manager-man mana chayakuyta atirqanchu. Internet tinkisqaykita qhaway (VPN, proxy utaq firewall hark'achkanman), chaymanta watiqmanta ruwarinapaq.</value>
+    <value>{0} churachkaspa Windows Package Manager-man mana chayakuyta atirqanchu. Internet tinkisqaykita qhaway (VPN, proxy utaq firewall hark'achkanman), chaymanta watiqmanta ruwarinapaq.</value>
     <comment>{Locked="VPN"} FRE setup error. {0} is the package display name.</comment>
   </data>
   <data name="FreOverlay_InstallError_NoCompatibleInstaller" xml:space="preserve">
-    <value>⚠ Kay sistemapi {0}paq tinkuq installer mana kachkanchu (OS version utaq architecture yanapasqa mana kanmanchu). {0} makillawan churay.</value>
+    <value>Kay sistemapi {0}paq tinkuq installer mana kachkanchu (OS version utaq architecture yanapasqa mana kanmanchu). {0} makillawan churay.</value>
     <comment>FRE setup error. {0} is the package display name (appears twice).</comment>
   </data>
   <data name="FreOverlay_InstallError_PackageNotFound" xml:space="preserve">
-    <value>⚠ {0} Windows Package Manager catalog nisqapi mana tarikusqachu. Ñawpaqta winget sources nisqakunata musuqyachiy, utaq {0} makillawan churay.</value>
+    <value>{0} Windows Package Manager catalog nisqapi mana tarikusqachu. Ñawpaqta winget sources nisqakunata musuqyachiy, utaq {0} makillawan churay.</value>
     <comment>{Locked="winget"} FRE setup error. {0} is the package display name (appears twice).</comment>
   </data>
   <data name="FreOverlay_InstallError_Timeout" xml:space="preserve">
-    <value>⚠ {0} churay 20 minutomanta aswan unayta apakurqa. Intelligent Terminal suyayta saqirqa, ichaqa installerqa qhipa llamk'aypi hina purichkanman. Task Manager qhaway, utaq qhipaman watiqmanta ruwariy.</value>
+    <value>{0} churay 20 minutomanta aswan unayta apakurqa. Intelligent Terminal suyayta saqirqa, ichaqa installerqa qhipa llamk'aypi hina purichkanman. Task Manager qhaway, utaq qhipaman watiqmanta ruwariy.</value>
     <comment>{Locked="Intelligent Terminal","Task Manager"} FRE setup error. {0} is the package display name.</comment>
   </data>
   <data name="FreOverlay_InstallErrorWingetMissing" xml:space="preserve">
-    <value>⚠ Windows Package Manager (winget) mana churasqachu icha mana tarikuqchu. Ñawpaqta churaruy, chaymanta watiqmanta ruwarinapaq.</value>
+    <value>Windows Package Manager (winget) mana churasqachu icha mana tarikuqchu. Ñawpaqta churaruy, chaymanta watiqmanta ruwarinapaq.</value>
     <comment>{Locked="winget"} Error shown in the FRE setup overlay when a prerequisite install was attempted but winget itself is not available on this system.</comment>
   </data>
   <data name="FreOverlay_PackageDisplayName_Copilot" xml:space="preserve">
@@ -234,9 +234,9 @@
     <value>Intelligent Terminal-man saqiy shell-niykiman yaykunanpaq hinaspa pantasqakunata unaylla tarinanpaq.</value>
   </data>
 <data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
-    <value>⚠ Shell tinkiynin churay mana allinchu karqa. Pantay taripay wichqasqa karqa. Watiqmanta atichiy ruwarinapaq, utaq waqaychay mana paywan hina siginapaq.</value>
+    <value>Shell tinkiynin churay mana allinchu karqa. Pantay taripay wichqasqa karqa. Watiqmanta atichiy ruwarinapaq, utaq waqaychay mana paywan hina siginapaq.</value>
   </data><data name="FreOverlay_InstallErrorHooks" xml:space="preserve">
-    <value>⚠ Session hooks churay mana allinchu karqa. Sesión kamachiykuna wichqasqa karqa. Watiqmanta atichiy ruwarinapaq, utaq waqaychay mana paywan hina siginapaq.</value>
+    <value>Session hooks churay mana allinchu karqa. Sesión kamachiykuna wichqasqa karqa. Watiqmanta atichiy ruwarinapaq, utaq waqaychay mana paywan hina siginapaq.</value>
     <comment>{Locked="hooks"}</comment>
   </data><data name="FreOverlay_ErrorHelpLink" xml:space="preserve">
     <value>Kayta makillawan imayna allichanaykita yachay</value>
@@ -252,7 +252,7 @@
     <comment>Body of an error dialog shown after the user tries to install PowerShell shell integration but their PowerShell execution policy (Restricted or AllSigned) is blocking scripts. A separate "Learn how to fix this manually" hyperlink (FreOverlay_ErrorHelpLink) is rendered on its own line below this sentence. {Locked="PowerShell"}</comment>
   </data>
   <data name="FreOverlay_InstallErrorShellIntegrationExecutionPolicy" xml:space="preserve">
-    <value>⚠ PowerShell ruwana kamachiy script-kunata hark'achkan. Pantay taripay wichqasqa.</value>
+    <value>PowerShell ruwana kamachiy script-kunata hark'achkan. Pantay taripay wichqasqa.</value>
     <comment>{Locked="PowerShell"}</comment>
   </data>
   <data name="UsageGroup/[using:Windows.UI.Xaml.Automation]AutomationProperties/Name" xml:space="preserve"><value>Llamk'achiy</value><comment>Accessibility name for the session usage summary in the terminal bottom bar.</comment></data>
