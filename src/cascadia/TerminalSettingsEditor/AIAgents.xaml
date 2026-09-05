@@ -479,13 +479,15 @@
                                    Margin="0,4,0,0" />
                     </StackPanel>
                 </local:SettingContainer.Header>
-                <ComboBox x:Uid="AIAgents_AutoErrorHandlingComboBox"
-                          AutomationProperties.AccessibilityView="Content"
-                          Width="{StaticResource StandardBoxMinWidth}"
-                          ItemTemplate="{StaticResource AutoErrorHandlingComboBoxTemplate}"
-                          ItemsSource="{x:Bind ViewModel.AutoErrorHandlingList, Mode=OneWay}"
-                          SelectedItem="{x:Bind ViewModel.CurrentAutoErrorHandling, Mode=TwoWay}"
-                          Style="{StaticResource ComboBoxSettingStyle}" />
+                <Grid>
+                    <ComboBox x:Uid="AIAgents_AutoErrorHandlingComboBox"
+                              AutomationProperties.AccessibilityView="Content"
+                              Width="{StaticResource StandardBoxMinWidth}"
+                              ItemTemplate="{StaticResource AutoErrorHandlingComboBoxTemplate}"
+                              ItemsSource="{x:Bind ViewModel.AutoErrorHandlingList, Mode=OneWay}"
+                              SelectedItem="{x:Bind ViewModel.CurrentAutoErrorHandling, Mode=TwoWay}"
+                              Style="{StaticResource ComboBoxSettingStyle}" />
+                </Grid>
             </local:SettingContainer>
 
             <!--  Agent session tracking (hooks) — last entry in the Agent pane group.
