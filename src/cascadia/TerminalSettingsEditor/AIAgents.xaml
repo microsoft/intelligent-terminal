@@ -224,7 +224,7 @@
                                         BorderThickness="0,0,0,1">
                                     <Grid>
                                         <Grid.RowDefinitions>
-                                            <RowDefinition Height="Auto" />
+                                            <RowDefinition Height="*" />
                                             <RowDefinition Height="Auto" />
                                         </Grid.RowDefinitions>
                                         <Grid.ColumnDefinitions>
@@ -272,11 +272,13 @@
                     <Border MinHeight="48"
                             Padding="0,4"
                             Visibility="{x:Bind mtu:Converters.InvertedBooleanToVisibility(ViewModel.IsAddingCustomModelProvider), Mode=OneWay}">
-                        <Button x:Uid="AIAgents_CustomProviderAdd"
-                                HorizontalAlignment="Right"
-                                VerticalAlignment="Center"
-                                Click="{x:Bind ViewModel.AddCustomModelProvider}"
-                                Style="{StaticResource AccentButtonStyle}" />
+                        <Grid>
+                            <Button x:Uid="AIAgents_CustomProviderAdd"
+                                    HorizontalAlignment="Right"
+                                    VerticalAlignment="Center"
+                                    Click="{x:Bind ViewModel.AddCustomModelProvider}"
+                                    Style="{StaticResource AccentButtonStyle}" />
+                        </Grid>
                     </Border>
 
                     <Border Padding="0,8,0,16"
