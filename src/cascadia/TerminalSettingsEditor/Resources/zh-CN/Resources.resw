@@ -3067,11 +3067,11 @@
     <value>如果终结点不需要身份验证，请留空。存储在 Windows 凭据管理器中。</value>
     <comment>{Locked="API"} Hint below the optional custom provider credential input. Use the established localized product name for Windows Credential Manager.</comment>
   </data>
-    <data name="AIAgents_CustomProviderAdd.Content" xml:space="preserve">
+  <data name="AIAgents_CustomProviderAdd.Content" xml:space="preserve">
     <value>新增</value>
     <comment>Button in the final custom provider row that reveals the fields for adding another endpoint.</comment>
   </data>
-<data name="AIAgents_CustomProviderSave.Content" xml:space="preserve">
+  <data name="AIAgents_CustomProviderSave.Content" xml:space="preserve">
     <value>添加并选择</value>
     <comment>Button that adds a custom provider model and selects it as the current model.</comment>
   </data>

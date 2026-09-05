@@ -3050,11 +3050,11 @@
     <value>Оставьте пустым, если конечная точка не требует проверки подлинности. Сохраняется в диспетчере учетных данных Windows.</value>
     <comment>{Locked="API"} Hint below the optional custom provider credential input. Use the established localized product name for Windows Credential Manager.</comment>
   </data>
-    <data name="AIAgents_CustomProviderAdd.Content" xml:space="preserve">
+  <data name="AIAgents_CustomProviderAdd.Content" xml:space="preserve">
     <value>Добавить нового поставщика</value>
     <comment>Button in the final custom provider row that reveals the fields for adding another endpoint.</comment>
   </data>
-<data name="AIAgents_CustomProviderSave.Content" xml:space="preserve">
+  <data name="AIAgents_CustomProviderSave.Content" xml:space="preserve">
     <value>Добавить и выбрать</value>
     <comment>Button that adds a custom provider model and selects it as the current model.</comment>
   </data>

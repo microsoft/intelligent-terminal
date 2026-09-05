@@ -220,13 +220,12 @@
                     <ItemsControl ItemsSource="{x:Bind ViewModel.CustomModelProviders, Mode=OneWay}">
                         <ItemsControl.ItemTemplate>
                             <DataTemplate x:DataType="local:CustomModelProviderEntry">
-                                <Border MinHeight="64"
-                                        Padding="0,8"
+                                <Border Padding="0,4"
                                         BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
                                         BorderThickness="0,0,0,1">
                                     <Grid>
                                         <Grid.RowDefinitions>
-                                            <RowDefinition Height="*" />
+                                            <RowDefinition Height="Auto" />
                                             <RowDefinition Height="Auto" />
                                         </Grid.RowDefinitions>
                                         <Grid.ColumnDefinitions>
@@ -271,16 +270,12 @@
                         </ItemsControl.ItemTemplate>
                     </ItemsControl>
 
-                    <Border MinHeight="64"
-                            Padding="0,8"
+                    <Border Padding="0,4"
                             Visibility="{x:Bind mtu:Converters.InvertedBooleanToVisibility(ViewModel.IsAddingCustomModelProvider), Mode=OneWay}">
-                        <Grid>
-                            <Button x:Uid="AIAgents_CustomProviderAdd"
-                                    HorizontalAlignment="Right"
-                                    VerticalAlignment="Center"
-                                    Click="{x:Bind ViewModel.AddCustomModelProvider}"
-                                    Style="{StaticResource AccentButtonStyle}" />
-                        </Grid>
+                        <Button x:Uid="AIAgents_CustomProviderAdd"
+                                HorizontalAlignment="Right"
+                                Click="{x:Bind ViewModel.AddCustomModelProvider}"
+                                Style="{StaticResource AccentButtonStyle}" />
                     </Border>
 
                     <Border Padding="0,8,0,16"

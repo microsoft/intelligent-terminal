@@ -3007,11 +3007,11 @@
     <value>Déjelo en blanco si su punto de conexión no necesita autenticación. Se almacena en el Administrador de credenciales de Windows.</value>
     <comment>{Locked="API"} Hint below the optional custom provider credential input. Use the established localized product name for Windows Credential Manager.</comment>
   </data>
-    <data name="AIAgents_CustomProviderAdd.Content" xml:space="preserve">
+  <data name="AIAgents_CustomProviderAdd.Content" xml:space="preserve">
     <value>Agregar nuevo</value>
     <comment>Button in the final custom provider row that reveals the fields for adding another endpoint.</comment>
   </data>
-<data name="AIAgents_CustomProviderSave.Content" xml:space="preserve">
+  <data name="AIAgents_CustomProviderSave.Content" xml:space="preserve">
     <value>Agregar y seleccionar</value>
     <comment>Button that adds a custom provider model and selects it as the current model.</comment>
   </data>
