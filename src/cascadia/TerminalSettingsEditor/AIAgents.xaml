@@ -484,7 +484,7 @@
                 </local:SettingContainer.Header>
                 <ComboBox x:Uid="AIAgents_AutoErrorHandlingComboBox"
                           AutomationProperties.AccessibilityView="Content"
-                          Width="400"
+                          Width="{StaticResource StandardBoxMinWidth}"
                           ItemTemplate="{StaticResource AutoErrorHandlingComboBoxTemplate}"
                           ItemsSource="{x:Bind ViewModel.AutoErrorHandlingList, Mode=OneWay}"
                           SelectedItem="{x:Bind ViewModel.CurrentAutoErrorHandling, Mode=TwoWay}"
