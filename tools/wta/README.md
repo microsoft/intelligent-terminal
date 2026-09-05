@@ -225,10 +225,10 @@ tools/wta/src/
 
 ### Build and run
 
-Run these commands from the repository root. CI resolves the
-`tools/wta/rust-toolchain.toml` `ms-prod-1.93` pin through MSRustup; local
-repo-root commands use your installed active toolchain, so changes must remain
-compatible with Rust 1.93.
+Run these commands from the repository root. GitHub automation and commands run
+from `tools/wta` resolve its public `1.93` pin; Azure DevOps installs the
+matching `ms-prod-1.93` toolchain through MSRustup. Repo-root commands use your
+installed active toolchain, so changes must remain compatible with Rust 1.93.
 
 ```bash
 # A live process may lock the output. Stop only a PID whose executable path

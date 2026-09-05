@@ -35,17 +35,22 @@
     left byte-identical.
 
 .NOTES
-    Requires `cargo` on PATH. The repo's rust-toolchain.toml pins a
-    custom channel for CI builds; for metadata-only invocations bypass
-    it by setting `$env:RUSTUP_TOOLCHAIN = 'stable'` before invoking
-    the script.
+    Requires `cargo` on PATH. Cargo runs from tools/wta so rustup discovers
+    the repository's pinned public toolchain. CI can explicitly override it
+    with RUSTUP_TOOLCHAIN.
+
+.PARAMETER Verify
+    Verify that cgmanifest.json and the generated NOTICE block contain exactly
+    the runtime Cargo dependency versions without rewriting either artifact or
+    contacting external license sources.
 
 .EXAMPLE
-    PS> $env:RUSTUP_TOOLCHAIN = 'stable'
     PS> .\build\scripts\Generate-WtaThirdPartyNotices.ps1
 #>
 [CmdletBinding()]
-param()
+param(
+    [switch]$Verify
+)
 
 $ErrorActionPreference = 'Stop'
 
@@ -71,11 +76,25 @@ $targetTriple   = 'x86_64-pc-windows-msvc'
 #    needed in this script).
 # ---------------------------------------------------------------------------
 Write-Host "Running cargo metadata for $wtaRoot\Cargo.toml (--filter-platform $targetTriple)" -ForegroundColor Cyan
-$cargoJson = & cargo metadata --format-version 1 `
-    --filter-platform $targetTriple `
-    --manifest-path (Join-Path $wtaRoot 'Cargo.toml')
-if ($LASTEXITCODE -ne 0) {
-    throw "cargo metadata failed with exit code $LASTEXITCODE. Is cargo on PATH? Try `$env:RUSTUP_TOOLCHAIN='stable'."
+$cargoArgs = @(
+    'metadata'
+    '--format-version', '1'
+    '--filter-platform', $targetTriple
+    '--manifest-path', (Join-Path $wtaRoot 'Cargo.toml')
+)
+if ($Verify) {
+    $cargoArgs += @('--locked', '--offline')
+}
+
+Push-Location $wtaRoot
+try {
+    $cargoJson = & cargo @cargoArgs
+    if ($LASTEXITCODE -ne 0) {
+        throw "cargo metadata failed with exit code $LASTEXITCODE. Is cargo on PATH?"
+    }
+}
+finally {
+    Pop-Location
 }
 $meta = $cargoJson | ConvertFrom-Json -Depth 100
 
@@ -129,6 +148,42 @@ foreach ($pkgId in $seen) {
 }
 $attributed = $attributed | Sort-Object name, version
 Write-Host "Crates to attribute: $($attributed.Count)" -ForegroundColor Cyan
+
+if ($Verify) {
+    $expected = @($attributed | ForEach-Object { "$($_.name)@$($_.version)" } | Sort-Object)
+
+    $cgManifest = Get-Content -Raw $cgManifestPath | ConvertFrom-Json -Depth 20
+    $actualCg = @(
+        $cgManifest.Registrations |
+            ForEach-Object { "$($_.component.cargo.name)@$($_.component.cargo.version)" } |
+            Sort-Object
+    )
+
+    $notice = Get-Content -Raw $noticePath
+    $beginMarker = '<!-- BEGIN wta-rust-deps'
+    $endMarker = '<!-- END wta-rust-deps -->'
+    $beginIndex = $notice.IndexOf($beginMarker, [StringComparison]::Ordinal)
+    $endIndex = $notice.IndexOf($endMarker, [StringComparison]::Ordinal)
+    if ($beginIndex -lt 0 -or $endIndex -le $beginIndex) {
+        throw 'NOTICE.md does not contain a valid WTA Rust dependency block.'
+    }
+
+    $noticeBlock = $notice.Substring($beginIndex, $endIndex - $beginIndex)
+    $actualNotice = @(
+        [regex]::Matches($noticeBlock, '(?m)^- \*\*(?<name>[^*]+)\*\* v(?<version>\S+) --') |
+            ForEach-Object { "$($_.Groups['name'].Value)@$($_.Groups['version'].Value)" } |
+            Sort-Object
+    )
+
+    $cgDiff = @(Compare-Object $expected $actualCg)
+    $noticeDiff = @(Compare-Object $expected $actualNotice)
+    if ($cgDiff.Count -gt 0 -or $noticeDiff.Count -gt 0) {
+        throw 'WTA third-party artifacts are stale. Run build/scripts/Generate-WtaThirdPartyNotices.ps1 and commit NOTICE.md and tools/wta/cgmanifest.json.'
+    }
+
+    Write-Host "Verified $($expected.Count) WTA Rust dependencies in cgmanifest.json and NOTICE.md." -ForegroundColor Green
+    return
+}
 
 # ---------------------------------------------------------------------------
 # 4. SPDX normalization + atomic-token decomposition.
@@ -475,7 +530,8 @@ foreach ($atom in ($atomToCrates.Keys | Sort-Object)) {
         $out.Add("_Canonical text reproduced from upstream ``$($src.Name)``:_")
         $out.Add('')
         $out.Add('```')
-        $out.Add($src.Text.TrimEnd())
+        $normalizedText = (($src.Text -split "`r?`n") | ForEach-Object { $_.TrimEnd() }) -join "`n"
+        $out.Add($normalizedText.TrimEnd())
         $out.Add('```')
     } else {
         $out.Add('```')

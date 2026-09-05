@@ -131,9 +131,9 @@ match the target being rebuilt. Do not kill all WTA processes by name.
 
 ## Dependencies and generated notices
 
-CI resolves the `ms-prod-1.93` pin in `rust-toolchain.toml` through MSRustup.
-The documented repo-root local commands use the installed active Rust toolchain
-while still loading the repo's static-CRT target configuration. Keep code
+GitHub automation and commands run from `tools/wta` resolve the public `1.93`
+pin in `rust-toolchain.toml`. Azure DevOps installs the matching
+`ms-prod-1.93` toolchain explicitly through MSRustup. Keep both environments
 compatible with Rust 1.93 and avoid dependencies that do not support static CRT.
 
 When `Cargo.toml`, Cargo features, or `Cargo.lock` changes the shipped
@@ -141,7 +141,6 @@ dependency graph, regenerate and commit both `tools/wta/cgmanifest.json` and the
 generated WTA block in `/NOTICE.md`:
 
 ```powershell
-$env:RUSTUP_TOOLCHAIN = 'stable'
 pwsh -File .\build\scripts\Generate-WtaThirdPartyNotices.ps1
 ```
 

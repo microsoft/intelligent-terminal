@@ -1023,7 +1023,7 @@ Applies to 2 crate(s) (directly or via composite identifiers): moxcms v0.8.1, px
 _Canonical text reproduced from upstream `SPDX:BSD-3-Clause`:_
 
 ```
-Copyright (c) <year> <owner>. 
+Copyright (c) <year> <owner>.
 
 Redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met:
 
