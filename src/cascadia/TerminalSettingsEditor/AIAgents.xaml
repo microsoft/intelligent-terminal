@@ -218,8 +218,8 @@
                     <ItemsControl ItemsSource="{x:Bind ViewModel.CustomModelProviders, Mode=OneWay}">
                         <ItemsControl.ItemTemplate>
                             <DataTemplate x:DataType="local:CustomModelProviderEntry">
-                                <Border MinHeight="48"
-                                        Padding="0,4"
+                                <Border MinHeight="64"
+                                        Padding="0,8"
                                         BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
                                         BorderThickness="0,0,0,1">
                                     <Grid>
@@ -269,8 +269,8 @@
                         </ItemsControl.ItemTemplate>
                     </ItemsControl>
 
-                    <Border MinHeight="48"
-                            Padding="0,4"
+                    <Border MinHeight="64"
+                            Padding="0,8"
                             Visibility="{x:Bind mtu:Converters.InvertedBooleanToVisibility(ViewModel.IsAddingCustomModelProvider), Mode=OneWay}">
                         <Grid>
                             <Button x:Uid="AIAgents_CustomProviderAdd"
