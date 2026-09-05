@@ -195,18 +195,19 @@
                            HorizontalContentAlignment="Stretch"
                            IsExpanded="{x:Bind ViewModel.IsCustomModelProvidersExpanded, Mode=TwoWay}">
                 <muxc:Expander.Header>
-                    <StackPanel MinHeight="64"
-                                VerticalAlignment="Center">
-                        <TextBlock x:Name="CustomModelsHeaderText"
-                                   Style="{StaticResource SettingsPageItemHeaderStyle}" />
-                        <TextBlock Style="{StaticResource CaptionTextBlockStyle}"
-                                   TextWrapping="Wrap">
-                            <Run x:Name="CustomModelsCaptionPrefix"
-                                 Foreground="{ThemeResource TextFillColorSecondaryBrush}" /><Hyperlink NavigateUri="https://github.com/microsoft/intelligent-terminal#custom-providers-byok">
-                                <Run x:Name="CustomModelsCaptionLink" />
-                            </Hyperlink>
-                        </TextBlock>
-                    </StackPanel>
+                    <Grid MinHeight="64">
+                        <StackPanel VerticalAlignment="Center">
+                            <TextBlock x:Name="CustomModelsHeaderText"
+                                       Style="{StaticResource SettingsPageItemHeaderStyle}" />
+                            <TextBlock Style="{StaticResource CaptionTextBlockStyle}"
+                                       TextWrapping="Wrap">
+                                <Run x:Name="CustomModelsCaptionPrefix"
+                                     Foreground="{ThemeResource TextFillColorSecondaryBrush}" /><Hyperlink NavigateUri="https://github.com/microsoft/intelligent-terminal#custom-providers-byok">
+                                    <Run x:Name="CustomModelsCaptionLink" />
+                                </Hyperlink>
+                            </TextBlock>
+                        </StackPanel>
+                    </Grid>
                 </muxc:Expander.Header>
                 <StackPanel>
                     <TextBlock Margin="0,12,0,0"
@@ -217,7 +218,9 @@
                     <ItemsControl ItemsSource="{x:Bind ViewModel.CustomModelProviders, Mode=OneWay}">
                         <ItemsControl.ItemTemplate>
                             <DataTemplate x:DataType="local:CustomModelProviderEntry">
-                                <Border Padding="0,4">
+                                <Border Padding="0,4"
+                                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                        BorderThickness="0,0,0,1">
                                     <Grid>
                                         <Grid.RowDefinitions>
                                             <RowDefinition Height="Auto" />
