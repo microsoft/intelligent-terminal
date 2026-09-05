@@ -69,7 +69,7 @@ Net effect: UT shrinks the manual matrix to "did the wiring and UI connect", not
 - [ ] `C027` `[E2E]` **Session management on:** Turning it on installs or updates agent hooks where supported.
 - [ ] `C028` `[E2E]` **Session hook hints:** Informational hint rows appear only when the owning toggle is on.
 - [x] `C029` `[UT✓]` `[E2E]` **Hook install failure:** Missing CLI, disabled plugin, or partial install states show a useful message and do not block FRE completion. _(E2E: `Feature.PerCliHooks` asserts `wta hooks status --json` enumerates each CLI's install state or a clear reason it can't (missing binary / unregistered marketplace); UT: `agent_hooks_installer` disabled-plugin parsers (`copilot_config_lookup_handles_disabled_plugin`, `claude_plugin_list_json_parser_reports_disabled`, etc.). FRE completion is independently covered by Feature.FreHooks.)_
-- [ ] `C030` `[UT~]` `[E2E]` **Session-management choice persists:** The choice is reflected later in Settings. _(UT: `AgentHooksStatusTests` parses the read-back state; the toggle installs hooks on Save rather than persisting a settings bool, so the persistence itself is E2E.)_
+- [ ] `C030` `[UT✓]` `[E2E]` **Session-management choice persists:** The choice is reflected later in Settings. _(UT: `AgentSessionManagementRoundtripsDefaultsOnAndHonorsPolicy`.)_
 
 ### FRE agent pane position
 
@@ -81,7 +81,7 @@ Net effect: UT shrinks the manual matrix to "did the wiring and UI connect", not
 
 ## 1. Settings > AI Agents
 
-**Feature definition:** Settings is the post-FRE configuration surface for built-in agents, custom agents, model selection, pane position, autofix, and session hooks.
+**Feature definition:** Settings is the post-FRE configuration surface for built-in agents, custom agents, model selection, pane position, autofix, and session management.
 
 - [ ] `C036` `[E2E]` **AI Agents page opens:** Settings opens the AI Agents page without layout glitches.
 - [ ] `C037` `[UT~]` `[E2E]` **Built-in agent dropdown works:** Copilot, Claude, Codex, and Gemini entries show correct installed/available state. _(UT: registry/filter logic.)_
@@ -93,8 +93,8 @@ Net effect: UT shrinks the manual matrix to "did the wiring and UI connect", not
 - [ ] `C043` `[UT✓]` `[E2E]` **Pane position setting works:** Bottom/right/left/top can be selected and saved. _(UT: `AgentPanePositionRoundtripsAndDefaults`.)_
 - [ ] `C044` `[UT✓]` `[E2E]` **Automatic error detection setting works:** Toggling detection in Settings matches FRE behavior. _(UT: `AutoErrorSettingsRoundtrip`.)_
 - [ ] `C045` `[UT✓]` `[E2E]` **Automatic error suggestion setting works:** Toggling suggestion in Settings matches FRE behavior. _(UT: `AutoErrorSettingsRoundtrip` + `EffectiveAutoFixFalseWhenDetectionOff`.)_
-- [ ] `C046` `[UT~]` `[E2E]` **Session hooks install works:** Install hooks button detects supported CLIs and reports success/failure clearly. _(UT: status parse.)_
-- [ ] `C047` `[E2E]` **Session hooks remove works:** Per-CLI remove buttons remove hook state without breaking the Settings page.
+- [ ] `C046` `[UT✓]` `[E2E]` **Session management enable reconciles hooks:** Changing Sessions from off to on asynchronously installs missing hooks and upgrades stale hooks. _(UT: `TestAgentHooksReconciliationClassification` + reconciliation planner tests.)_
+- [ ] `C047` `[UT✓]` `[E2E]` **Agent switch reconciles hooks:** Selecting a different built-in agent asynchronously reconciles hooks for that agent only; custom agents do not invoke built-in hook installation. _(UT: `TestAgentHooksReconciliationClassification`.)_
 - [ ] `C048` `[UT~]` `[E2E]` **Policy lock UI works:** Locked controls are disabled and show the policy message. _(UT: Effective*/IsLocked gates.)_
 
 ### Profile Agent pane agent
@@ -374,7 +374,7 @@ Net effect: UT shrinks the manual matrix to "did the wiring and UI connect", not
 **Feature definition:** Agent hooks record shell-pane agent sessions and enable session-management state for supported CLIs.
 
 - [ ] `C169` `[E2E]` **Install hooks from FRE works:** Session-management toggle can install supported hooks during first run.
-- [ ] `C170` `[E2E]` **Install hooks from Settings works:** Install hooks button works after FRE.
+- [ ] `C170` `[UT✓]` `[E2E]` **Automatic hook reconciliation works:** Master startup checks every detected built-in CLI when session management is enabled; enabling the setting checks all CLIs, and selecting a built-in agent checks that agent. _(UT: reconciliation planner and trigger classification tests.)_
 - [ ] `C171` `[E2E]` **Per-CLI hook install works:** Each supported CLI (Copilot/Claude/Gemini) installs its hook or reports why it can't; Codex hook/session support behaves per the current implementation.
 - [ ] `C274` `[new]` `[UT~]` `[E2E]` **Bundled hook runs inside its agent CLI:** A real agent CLI session executes the shipped hook command through its own shell and its events reach Terminal. _(#571; UT: `bundled_hook_commands_run_in_every_shell` runs each bundle's command line in that CLI's shell; E2E adds the CLI accepting the bundle.)_
 - [ ] `C265` `[new]` `[E2E]` **Hook failure never blocks the agent CLI:** When the protocol server is unreachable the hook fails silently and the agent CLI still completes its turn. _(#571.)_
@@ -385,9 +385,9 @@ Net effect: UT shrinks the manual matrix to "did the wiring and UI connect", not
 - [ ] `C271` `[new]` `[E2E]` **Legacy hook bundle degrades quietly without Terminal:** With `WT_COM_CLSID` unset — the state an uninstall leaves — a stale pre-#571 hook exits 0, prints nothing, and publishes nothing. _(#571.)_
 - [ ] `C278` `[new]` `[E2E]` **Legacy hook bundle without WT_SESSION stays unattributed:** A legacy PowerShell hook whose process never inherited `WT_SESSION` still publishes, but with an empty `pane_id` instead of the focused pane's — so it cannot evict the focused pane's real session or misdirect Enter in the session list. _(#657; `wtcli send-event` no longer falls back to `GetActivePane()`.)_
 - [ ] `C172` `[E2E]` **Hook remove works:** Removing a hook disables future session tracking for that CLI.
-- [x] `C173` `[UT✓]` `[E2E]` **Disabled plugin is respected:** Disabled agent plugin is skipped and not force-enabled. _(UT: `decide_skip_when_disabled`.)_
-- [x] `C174` `[UT✓]` `[E2E]` **Hook auto-upgrade works:** After package upgrade, previously installed hooks are updated silently when bundle version changes. _(UT: `decide_upgrade` + `upgrade_state` round-trip.)_
-- [x] `C175` `[UT✓]` `[E2E]` **Opt-in preserved:** Auto-upgrade does not install hooks into a CLI the user never opted into. _(UT: `decide_skip_when_not_installed`.)_
+- [ ] `C173` `[UT✓]` `[E2E]` **Partial or disabled hooks are repaired:** Reconciliation routes incomplete hook state through the install path and reports a failure if the agent CLI cannot repair it. _(UT: `install_action_installs_any_partial_bridge`.)_
+- [x] `C174` `[UT✓]` `[E2E]` **Hook auto-upgrade works:** Reconciliation updates an installed stale hook when its bundle version or registration path changes. _(UT: `install_action_upgrades_a_complete_but_outdated_bridge` + registration-path tests.)_
+- [ ] `C175` `[UT✓]` `[E2E]` **Missing hooks are installed automatically:** A detected built-in CLI without hooks is routed through first-install during reconciliation; absent CLIs are skipped. _(UT: reconciliation planner tests.)_
 - [ ] `C176` `[E2E]` **Hook logs are available:** Hook decisions and failures are visible in the expected WTA log files.
 
 ## 9. Packaging, process, and protocol integration

@@ -115,6 +115,10 @@ pub(crate) struct Cli {
     #[arg(long)]
     pub(crate) no_autofix: bool,
 
+    /// Disable automatic agent hook reconciliation at master startup.
+    #[arg(long, hide = true)]
+    pub(crate) no_session_management: bool,
+
     /// Enter diagnostic setup mode with the given reason instead of connecting directly.
     /// Values: agent-missing, agent-error
     #[arg(long)]

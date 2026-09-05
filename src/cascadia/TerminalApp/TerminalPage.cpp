@@ -23,6 +23,7 @@
 #include "../inc/AgentPolicy.h"
 #include "../inc/AgentPaneBackend.h"
 #include "../inc/AgentSourceUtils.h"
+#include "../inc/WtaProcess.h"
 #include "../TerminalSettingsAppAdapterLib/TerminalSettings.h"
 #include "../inc/CustomModelProviderUtils.h"
 #include "AgentPaneContent.h"
@@ -1849,6 +1850,8 @@ namespace winrt::TerminalApp::implementation
         snapshot.profileBackends.emplace_back(
             _ProfileDefaultsAgentBackendGuid(),
             std::wstring{ _settings.ProfileDefaults().AgentPaneBackend() });
+        snapshot.agentSessionManagementEnabled =
+            globals.EffectiveAgentSessionManagementEnabled();
         return snapshot;
     }
 
@@ -1954,6 +1957,68 @@ namespace winrt::TerminalApp::implementation
     bool TerminalPage::_AgentSettingsChanged(const AgentSettingsSnapshot& a, const AgentSettingsSnapshot& b)
     {
         return _ClassifyAgentSettingsChange(a, b) != AgentSettingsChangeKind::None;
+    }
+
+    TerminalPage::AgentHooksReconciliationScope TerminalPage::_ClassifyAgentHooksReconciliation(
+        const AgentSettingsSnapshot& previous,
+        const AgentSettingsSnapshot& current)
+    {
+        if (!previous.agentSessionManagementEnabled &&
+            current.agentSessionManagementEnabled)
+        {
+            return AgentHooksReconciliationScope::All;
+        }
+
+        if (current.agentSessionManagementEnabled &&
+            previous.acpAgent != current.acpAgent)
+        {
+            const auto builtIn = std::ranges::any_of(
+                ::Microsoft::Terminal::Settings::Model::AgentRegistry::BuiltinAcpAgents,
+                [&](const auto& agent) {
+                    return ::Microsoft::Terminal::Settings::Model::AgentRegistry::AgentIdEquals(
+                        agent.id,
+                        current.acpAgent);
+                });
+            if (builtIn)
+            {
+                return AgentHooksReconciliationScope::SelectedAgent;
+            }
+        }
+
+        return AgentHooksReconciliationScope::None;
+    }
+
+    winrt::fire_and_forget TerminalPage::_ReconcileAgentHooksAsync(
+        const AgentHooksReconciliationScope scope,
+        std::wstring agentId)
+    {
+        const auto strong = get_strong();
+        std::wstring args{ L"hooks install --only-missing" };
+        if (scope == AgentHooksReconciliationScope::SelectedAgent)
+        {
+            args.append(L" --cli ");
+            args.append(agentId);
+        }
+
+        co_await winrt::resume_background();
+
+        namespace Wta = ::Microsoft::Terminal::WtaProcess;
+        const auto wtaPath = Wta::ResolveWtaExePath();
+        if (wtaPath.empty())
+        {
+            _agentPaneLog("hook reconciliation skipped: wta.exe was not found");
+            co_return;
+        }
+
+        auto envBlock = Wta::BuildExtendedPathEnvBlock();
+        const auto succeeded = Wta::RunWtaAndWait(
+            wtaPath,
+            args,
+            scope == AgentHooksReconciliationScope::All ? 120'000 : 60'000,
+            envBlock.empty() ? nullptr : envBlock.data());
+        _agentPaneLog(
+            "hook reconciliation " + std::string{ succeeded ? "completed" : "failed" } +
+            (agentId.empty() ? std::string{} : " agent=" + winrt::to_string(winrt::hstring{ agentId })));
     }
 
     bool TerminalPage::_ShouldDeferAgentSettingsChange(
@@ -2975,6 +3040,10 @@ namespace winrt::TerminalApp::implementation
         if (!globals.EffectiveAutoFixEnabled())
         {
             extraArgs.emplace_back(L"--no-autofix");
+        }
+        if (!globals.EffectiveAgentSessionManagementEnabled())
+        {
+            extraArgs.emplace_back(L"--no-session-management");
         }
         if (const auto lang = _ResolveEffectiveLanguage(globals); !lang.empty())
         {
@@ -4089,7 +4158,10 @@ namespace winrt::TerminalApp::implementation
         }
 
         const auto changeKind = _ClassifyAgentSettingsChange(_lastAgentSettings, current);
-        if (changeKind == AgentSettingsChangeKind::None)
+        const auto hooksReconciliation =
+            _ClassifyAgentHooksReconciliation(_lastAgentSettings, current);
+        if (changeKind == AgentSettingsChangeKind::None &&
+            hooksReconciliation == AgentHooksReconciliationScope::None)
         {
             _agentPaneLog("_ReconcileAgentSettings: no change");
             return;
@@ -4180,6 +4252,18 @@ namespace winrt::TerminalApp::implementation
             {
                 _pendingAgentSettingsRequestId = std::move(requestId);
             }
+            return;
+        }
+
+        if (hooksReconciliation != AgentHooksReconciliationScope::None)
+        {
+            _ReconcileAgentHooksAsync(hooksReconciliation, current.acpAgent);
+        }
+
+        if (changeKind == AgentSettingsChangeKind::None)
+        {
+            _lastAgentSettings = current;
+            _agentPaneLog("_ReconcileAgentSettings: hook reconciliation started");
             return;
         }
 

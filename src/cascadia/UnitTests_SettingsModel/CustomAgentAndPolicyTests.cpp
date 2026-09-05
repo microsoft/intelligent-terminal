@@ -85,6 +85,7 @@ namespace SettingsModelUnitTests
         TEST_METHOD(AcpRuntimeModelsAreScopedByAgent);
         TEST_METHOD(AgentPanePositionRoundtripsAndDefaults);
         TEST_METHOD(ShowTokenUsageAndCostRoundtripsAndDefaultsOff);
+        TEST_METHOD(AgentSessionManagementRoundtripsDefaultsOnAndHonorsPolicy);
         TEST_METHOD(AutoErrorSettingsRoundtrip);
         TEST_METHOD(EffectiveAutoFixFalseWhenDetectionOff);
 
@@ -124,11 +125,13 @@ namespace SettingsModelUnitTests
 
         static std::shared_ptr<AgentPolicy::PolicySnapshot> MakePolicy(
             std::optional<std::set<std::wstring, AgentPolicy::CaseInsensitiveLess>> allowedAgents = std::nullopt,
-            AgentPolicy::PolicyState customAgents = AgentPolicy::PolicyState::NotConfigured)
+            AgentPolicy::PolicyState customAgents = AgentPolicy::PolicyState::NotConfigured,
+            AgentPolicy::PolicyState agentSessionHooks = AgentPolicy::PolicyState::NotConfigured)
         {
             auto snap = std::make_shared<AgentPolicy::PolicySnapshot>();
             snap->allowedAgents = std::move(allowedAgents);
             snap->customAgents = customAgents;
+            snap->agentSessionHooks = agentSessionHooks;
             return snap;
         }
 
@@ -617,6 +620,27 @@ namespace SettingsModelUnitTests
 
         const auto defaulted = MakeSettings({});
         VERIFY_IS_FALSE(defaulted->GlobalSettings().ShowTokenUsageAndCost());
+    }
+
+    void CustomAgentAndPolicyTests::AgentSessionManagementRoundtripsDefaultsOnAndHonorsPolicy()
+    {
+        const auto disabled = MakeSettings(R"("agentSessionManagementEnabled": false)");
+        SetPolicy(MakePolicy());
+        VERIFY_IS_FALSE(disabled->GlobalSettings().AgentSessionManagementEnabled());
+        VERIFY_IS_FALSE(disabled->GlobalSettings().EffectiveAgentSessionManagementEnabled());
+
+        const auto defaulted = MakeSettings({});
+        SetPolicy(MakePolicy());
+        VERIFY_IS_TRUE(defaulted->GlobalSettings().AgentSessionManagementEnabled());
+        VERIFY_IS_TRUE(defaulted->GlobalSettings().EffectiveAgentSessionManagementEnabled());
+
+        const auto blocked = MakeSettings(R"("agentSessionManagementEnabled": true)");
+        SetPolicy(MakePolicy(
+            std::nullopt,
+            AgentPolicy::PolicyState::NotConfigured,
+            AgentPolicy::PolicyState::Blocked));
+        VERIFY_IS_TRUE(blocked->GlobalSettings().AgentSessionManagementEnabled());
+        VERIFY_IS_FALSE(blocked->GlobalSettings().EffectiveAgentSessionManagementEnabled());
     }
 
     void CustomAgentAndPolicyTests::AutoErrorSettingsRoundtrip()

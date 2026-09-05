@@ -330,9 +330,9 @@ fn hooks_cli_filter_into_scope_maps_each_variant() {
     ));
 }
 
-/// `--only-missing` is the Settings "Install hooks" button's contract with
-/// wta. It must stay opt-in: a bare `wta hooks install` remains the full
-/// (re)install a user reaches for when something is broken.
+/// `--only-missing` is the automatic reconciliation contract with wta. It
+/// must stay opt-in: a bare `wta hooks install` remains the full (re)install a
+/// user reaches for when something is broken.
 #[test]
 fn hooks_install_only_missing_is_opt_in() {
     use crate::cli::args::HooksAction;
@@ -353,6 +353,16 @@ fn hooks_install_only_missing_is_opt_in() {
         }) => assert!(only_missing),
         other => panic!("expected Command::Hooks/Install, got {other:?}"),
     }
+}
+
+#[test]
+fn master_session_management_reconciliation_defaults_on_and_can_be_disabled() {
+    let default = Cli::try_parse_from(["wta", "--master", r"\\.\pipe\m"]).unwrap();
+    assert!(!default.no_session_management);
+
+    let disabled =
+        Cli::try_parse_from(["wta", "--master", r"\\.\pipe\m", "--no-session-management"]).unwrap();
+    assert!(disabled.no_session_management);
 }
 
 // ── json_str_or_num: tolerant scalar extraction for human table rows ─────────

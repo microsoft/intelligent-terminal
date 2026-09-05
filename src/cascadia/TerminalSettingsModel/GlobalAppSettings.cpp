@@ -641,6 +641,12 @@ bool GlobalAppSettings::EffectiveAutoFixEnabled() const
     return AutoFixEnabled();
 }
 
+bool GlobalAppSettings::EffectiveAgentSessionManagementEnabled() const
+{
+    return AgentPolicy::IsAgentSessionHooksAllowed() &&
+           AgentSessionManagementEnabled();
+}
+
 bool GlobalAppSettings::IsAgentPolicyLocked() const
 {
     return AgentPolicy::IsAllowedAgentsPolicyConfigured();

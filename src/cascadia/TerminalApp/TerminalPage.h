@@ -440,6 +440,7 @@ namespace winrt::TerminalApp::implementation
             std::wstring acpModel;
             std::optional<::Microsoft::Terminal::CustomModels::LaunchConfiguration> customModelLaunch;
             std::vector<std::pair<winrt::guid, std::wstring>> profileBackends;
+            bool agentSessionManagementEnabled{ true };
         };
         AgentSettingsSnapshot _lastAgentSettings{};
         bool _agentSettingsSnapshotInitialized{ false };
@@ -449,6 +450,12 @@ namespace winrt::TerminalApp::implementation
             ModelHotUpdate,
             AgentRebind,
             RecreatePane,
+        };
+        enum class AgentHooksReconciliationScope
+        {
+            None,
+            All,
+            SelectedAgent,
         };
         struct AgentPaneSettingsBindingRequest
         {
@@ -584,6 +591,12 @@ namespace winrt::TerminalApp::implementation
         static AgentSettingsChangeKind _ClassifyAgentSettingsChange(
             const AgentSettingsSnapshot& previous,
             const AgentSettingsSnapshot& current);
+        static AgentHooksReconciliationScope _ClassifyAgentHooksReconciliation(
+            const AgentSettingsSnapshot& previous,
+            const AgentSettingsSnapshot& current);
+        winrt::fire_and_forget _ReconcileAgentHooksAsync(
+            AgentHooksReconciliationScope scope,
+            std::wstring agentId);
         static bool _ShouldDeferAgentSettingsChange(
             AgentSettingsChangeKind changeKind,
             bool canHostPane,

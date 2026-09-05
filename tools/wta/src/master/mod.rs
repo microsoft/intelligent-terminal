@@ -3894,35 +3894,50 @@ pub async fn run_master_mode(config: MasterConfig, pipe_name: String) -> Result<
         ));
     }
 
-    // Kick off the auto-upgrade check on a blocking-pool thread. Fire-and-
-    // forget — the agent CLI spawn below proceeds concurrently. Fast-path
-    // cache (see `agent_hooks_installer::upgrade_installed_hooks` doc) keeps
-    // the common no-upgrade case under ~10ms; only the first run after an
-    // IT install/upgrade does any per-CLI work. Caveat: when an upgrade is
-    // actually needed, the agent CLI process master is about to spawn may
-    // miss the new hooks until its next restart.
-    //
-    // Wrap in `catch_unwind` so an unexpected panic inside the upgrade flow
-    // (or any of its transitive dependencies) doesn't get silently swallowed
-    // by tokio's fire-and-forget JoinHandle. Master keeps running either
-    // way; this just promotes the panic into a visible trace event.
-    tokio::task::spawn_blocking(|| {
-        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(
-            crate::agent_hooks_installer::upgrade_installed_hooks,
-        ));
-        if let Err(panic) = result {
-            let msg = panic
-                .downcast_ref::<&'static str>()
-                .copied()
-                .or_else(|| panic.downcast_ref::<String>().map(|s| s.as_str()))
-                .unwrap_or("<non-string panic payload>");
-            tracing::error!(
-                target: "agent_hooks",
-                panic = %msg,
-                "upgrade_installed_hooks panicked; master continues",
-            );
-        }
-    });
+    if config.session_management_enabled {
+        // Reconciliation is fire-and-forget so slow third-party plugin
+        // managers never delay ACP startup. Missing hooks are installed and
+        // stale hooks are upgraded; failures remain isolated to session status.
+        tokio::task::spawn_blocking(|| {
+            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                crate::agent_hooks_installer::reconcile_agent_hooks(
+                    crate::agent_hooks_installer::CliScope::All,
+                )
+            }));
+            match result {
+                Ok(outcome) if !outcome.succeeded() => {
+                    for failure in outcome.spawn_failures {
+                        tracing::warn!(
+                            target: "agent_hooks",
+                            cli = failure.cli,
+                            reason = %failure.reason,
+                            "hook reconciliation command failed",
+                        );
+                    }
+                    for cli in outcome.missing {
+                        tracing::warn!(
+                            target: "agent_hooks",
+                            cli,
+                            "hooks remain incomplete or stale after reconciliation",
+                        );
+                    }
+                }
+                Ok(_) => {}
+                Err(panic) => {
+                    let msg = panic
+                        .downcast_ref::<&'static str>()
+                        .copied()
+                        .or_else(|| panic.downcast_ref::<String>().map(|s| s.as_str()))
+                        .unwrap_or("<non-string panic payload>");
+                    tracing::error!(
+                        target: "agent_hooks",
+                        panic = %msg,
+                        "reconcile_agent_hooks panicked; master continues",
+                    );
+                }
+            }
+        });
+    }
 
     let local_set = LocalSet::new();
     let result = local_set

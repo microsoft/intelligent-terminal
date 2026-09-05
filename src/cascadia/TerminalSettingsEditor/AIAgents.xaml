@@ -286,14 +286,6 @@
                           Style="{StaticResource ComboBoxSettingStyle}" />
             </local:SettingContainer>
 
-            <local:SettingContainer x:Name="ShowTokenUsageAndCost"
-                        x:Uid="AIAgents_ShowTokenUsageAndCost">
-                <ToggleSwitch x:Name="ShowTokenUsageAndCostToggle"
-                              MinWidth="0"
-                              AutomationProperties.AccessibilityView="Content"
-                    IsOn="{x:Bind ViewModel.ShowTokenUsageAndCost, Mode=TwoWay}" />
-            </local:SettingContainer>
-
             <!--  Automatic error detection (parent) + Automatic error
                   suggestion (dependent child). Modeled as an Expander so the
                   hierarchy is explicit: detection's master toggle lives in the
@@ -380,206 +372,26 @@
                 </StackPanel>
             </muxc:Expander>
 
-            <!--  Agent session tracking (hooks) — last entry in the Agent pane group.
-                  Collapsible SettingContainer (Expander style). When expanded:
-                    1. Top row: "Install hooks" action (accent button) — runs
-                       the installer across every detected CLI.
-                    2. One row per CLI that has any wt-agent-hooks state on disk
-                       (whether fully installed or partial); each row carries a
-                       Remove button and an optional subtitle describing the
-                       current install state when it isn't clean.
-                  Each row is wrapped in a Border with a thin top divider to
-                  match the design's "faint separator between rows".  -->
-            <local:SettingContainer x:Name="AgentHooksInstall"
-                                    x:Uid="AIAgents_HooksInstall"
-                                    Style="{StaticResource ExpanderSettingContainerStyle}">
-                <StackPanel Orientation="Vertical">
-                    <!--  Row 1: "Install hooks" action. Always present; enabled
-                          when at least one agent CLI is on PATH. The most recent
-                          install/remove progress + result message is shown as a
-                          subtitle under the row label (same layout pattern as
-                          the per-CLI rows below).  -->
-                    <Border BorderThickness="0,1,0,0"
-                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                            Padding="0,16,0,16">
-                        <StackPanel>
-                            <Grid>
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="Auto" />
-                                </Grid.ColumnDefinitions>
-                                <StackPanel Grid.Column="0" VerticalAlignment="Center" Spacing="2">
-                                    <TextBlock x:Uid="AIAgents_HooksInstallRowLabel"
-                                               TextWrapping="Wrap" />
-                                    <TextBlock Text="{x:Bind ViewModel.AgentHooksInstallSummary, Mode=OneWay}"
-                                               Visibility="{x:Bind ViewModel.HasAgentHooksInstallSummary, Mode=OneWay}"
-                                               Style="{StaticResource CaptionTextBlockStyle}"
-                                               Opacity="0.6"
-                                               TextWrapping="Wrap" />
-                                </StackPanel>
-                                <Button Grid.Column="1"
-                                        x:Uid="AIAgents_HooksInstallButton"
-                                        Click="{x:Bind ViewModel.InstallAllAgentHooks}"
-                                        IsEnabled="{x:Bind ViewModel.CanInstallAgentHooks, Mode=OneWay}"
-                                        Style="{StaticResource AccentButtonStyle}"
-                                        MinWidth="120" />
-                            </Grid>
-                            <!--  Installing or removing hooks only affects agents that
-                                  start afterwards. This note is deliberately persistent
-                                  rather than folded into the post-action summary above:
-                                  it has to be visible before the user clicks Install,
-                                  and it also covers the per-CLI Remove buttons below,
-                                  which have no summary of their own.  -->
-                            <TextBlock x:Uid="AIAgents_HooksRestartNote"
-                                       Style="{StaticResource CaptionTextBlockStyle}"
-                                       Opacity="0.6"
-                                       TextWrapping="Wrap"
-                                       Margin="0,4,0,0" />
-                            <TextBlock x:Uid="AIAgents_PolicyLocked"
-                                       Visibility="{x:Bind ViewModel.IsAgentSessionHooksPolicyLocked, Mode=OneWay}"
-                                       Opacity="0.6"
-                                       Margin="0,4,0,0" />
-                        </StackPanel>
-                    </Border>
-                    <!--  Per-CLI rows surface installed or partial hook state.
-                          A row disappears once its hooks are removed, so the
-                          Remove button is never shown with nothing to remove.  -->
-                    <Border Visibility="{x:Bind ViewModel.ShowCopilotHookRow, Mode=OneWay}"
-                            BorderThickness="0,1,0,0"
-                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                            Padding="0,16,0,16">
-                        <Grid>
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="Auto" />
-                            </Grid.ColumnDefinitions>
-                            <StackPanel Grid.Column="0" VerticalAlignment="Center" Spacing="2">
-                                <TextBlock Text="GitHub Copilot" TextWrapping="Wrap" />
-                                <!--  Subtitle collapses to zero height when empty (no MinHeight
-                                      reservation), so the agent name stays vertically centered
-                                      in the row in the typical clean-install state.  -->
-                                <TextBlock Text="{x:Bind ViewModel.CopilotHooksSubtitle, Mode=OneWay}"
-                                           Visibility="{x:Bind ViewModel.ShowCopilotHooksSubtitle, Mode=OneWay}"
-                                           Style="{StaticResource CaptionTextBlockStyle}"
-                                           Opacity="0.6"
-                                           TextWrapping="Wrap" />
-                            </StackPanel>
-                            <Button Grid.Column="1"
-                                    x:Uid="AIAgents_HooksRemoveButton"
-                                    Click="{x:Bind ViewModel.RemoveCopilotHooks}"
-                                    IsEnabled="{x:Bind ViewModel.CanRemoveAgentHooks, Mode=OneWay}"
-                                    MinWidth="120" />
-                        </Grid>
-                    </Border>
-                    <Border Visibility="{x:Bind ViewModel.ShowClaudeHookRow, Mode=OneWay}"
-                            BorderThickness="0,1,0,0"
-                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                            Padding="0,16,0,16">
-                        <Grid>
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="Auto" />
-                            </Grid.ColumnDefinitions>
-                            <StackPanel Grid.Column="0" VerticalAlignment="Center" Spacing="2">
-                                <TextBlock Text="Claude Code" TextWrapping="Wrap" />
-                                <TextBlock Text="{x:Bind ViewModel.ClaudeHooksSubtitle, Mode=OneWay}"
-                                           Visibility="{x:Bind ViewModel.ShowClaudeHooksSubtitle, Mode=OneWay}"
-                                           Style="{StaticResource CaptionTextBlockStyle}"
-                                           Opacity="0.6"
-                                           TextWrapping="Wrap" />
-                            </StackPanel>
-                            <Button Grid.Column="1"
-                                    x:Uid="AIAgents_HooksRemoveButton"
-                                    Click="{x:Bind ViewModel.RemoveClaudeHooks}"
-                                    IsEnabled="{x:Bind ViewModel.CanRemoveAgentHooks, Mode=OneWay}"
-                                    MinWidth="120" />
-                        </Grid>
-                    </Border>
-                    <Border Visibility="{x:Bind ViewModel.ShowGeminiHookRow, Mode=OneWay}"
-                            BorderThickness="0,1,0,0"
-                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                            Padding="0,16,0,16">
-                        <Grid>
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="Auto" />
-                            </Grid.ColumnDefinitions>
-                            <StackPanel Grid.Column="0" VerticalAlignment="Center" Spacing="2">
-                                <TextBlock Text="Gemini CLI" TextWrapping="Wrap" />
-                                <TextBlock Text="{x:Bind ViewModel.GeminiHooksSubtitle, Mode=OneWay}"
-                                           Visibility="{x:Bind ViewModel.ShowGeminiHooksSubtitle, Mode=OneWay}"
-                                           Style="{StaticResource CaptionTextBlockStyle}"
-                                           Opacity="0.6"
-                                           TextWrapping="Wrap" />
-                            </StackPanel>
-                            <Button Grid.Column="1"
-                                    x:Uid="AIAgents_HooksRemoveButton"
-                                    Click="{x:Bind ViewModel.RemoveGeminiHooks}"
-                                    IsEnabled="{x:Bind ViewModel.CanRemoveAgentHooks, Mode=OneWay}"
-                                    MinWidth="120" />
-                        </Grid>
-                    </Border>
-                    <Border Visibility="{x:Bind ViewModel.ShowCodexHookRow, Mode=OneWay}"
-                            BorderThickness="0,1,0,0"
-                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                            Padding="0,16,0,16">
-                        <Grid>
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="Auto" />
-                            </Grid.ColumnDefinitions>
-                            <StackPanel Grid.Column="0" VerticalAlignment="Center" Spacing="2">
-                                <TextBlock Text="Codex CLI" TextWrapping="Wrap" />
-                                <TextBlock Text="{x:Bind ViewModel.CodexHooksSubtitle, Mode=OneWay}"
-                                           Visibility="{x:Bind ViewModel.ShowCodexHooksSubtitle, Mode=OneWay}"
-                                           Style="{StaticResource CaptionTextBlockStyle}"
-                                           Opacity="0.6"
-                                           TextWrapping="Wrap" />
-                                <!--  Codex is the only CLI whose hook commands must be
-                                      individually trusted by the user before they fire.
-                                      Surface the one-line "run /hooks and approve"
-                                      reminder right under the row title so users see it
-                                      both before clicking Install (anticipation) and
-                                      after install (the row only becomes visible once
-                                      Codex has any hook state, which is the moment the
-                                      reminder is most actionable).  -->
-                                <TextBlock x:Uid="AIAgents_CodexTrustHint"
-                                           Style="{StaticResource CaptionTextBlockStyle}"
-                                           Opacity="0.6"
-                                           TextWrapping="Wrap" />
-                            </StackPanel>
-                            <Button Grid.Column="1"
-                                    x:Uid="AIAgents_HooksRemoveButton"
-                                    Click="{x:Bind ViewModel.RemoveCodexHooks}"
-                                    IsEnabled="{x:Bind ViewModel.CanRemoveAgentHooks, Mode=OneWay}"
-                                    MinWidth="120" />
-                        </Grid>
-                    </Border>
-                    <Border Visibility="{x:Bind ViewModel.ShowOpenCodeHookRow, Mode=OneWay}"
-                            BorderThickness="0,1,0,0"
-                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                            Padding="0,16,0,16">
-                        <Grid>
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="Auto" />
-                            </Grid.ColumnDefinitions>
-                            <StackPanel Grid.Column="0" VerticalAlignment="Center" Spacing="2">
-                                <TextBlock Text="OpenCode" TextWrapping="Wrap" />
-                                <TextBlock Text="{x:Bind ViewModel.OpenCodeHooksSubtitle, Mode=OneWay}"
-                                           Visibility="{x:Bind ViewModel.ShowOpenCodeHooksSubtitle, Mode=OneWay}"
-                                           Style="{StaticResource CaptionTextBlockStyle}"
-                                           Opacity="0.6"
-                                           TextWrapping="Wrap" />
-                            </StackPanel>
-                            <Button Grid.Column="1"
-                                    x:Uid="AIAgents_HooksRemoveButton"
-                                    Click="{x:Bind ViewModel.RemoveOpenCodeHooks}"
-                                    IsEnabled="{x:Bind ViewModel.CanRemoveAgentHooks, Mode=OneWay}"
-                                    MinWidth="120" />
-                       </Grid>
-                    </Border>
+            <local:SettingContainer x:Name="AgentSessionManagement"
+                                    x:Uid="AIAgents_SessionManagement">
+                <StackPanel>
+                    <ToggleSwitch MinWidth="0"
+                                  AutomationProperties.AccessibilityView="Content"
+                                  IsOn="{x:Bind ViewModel.AgentSessionManagementEnabled, Mode=TwoWay}"
+                                  IsEnabled="{x:Bind ViewModel.CanConfigureAgentSessionManagement, Mode=OneWay}" />
+                    <TextBlock x:Uid="AIAgents_PolicyLocked"
+                               Visibility="{x:Bind ViewModel.IsAgentSessionHooksPolicyLocked, Mode=OneWay}"
+                               Opacity="0.6"
+                               Margin="0,4,0,0" />
                 </StackPanel>
+            </local:SettingContainer>
+
+            <local:SettingContainer x:Name="ShowTokenUsageAndCost"
+                                    x:Uid="AIAgents_ShowTokenUsageAndCost">
+                <ToggleSwitch x:Name="ShowTokenUsageAndCostToggle"
+                              MinWidth="0"
+                              AutomationProperties.AccessibilityView="Content"
+                              IsOn="{x:Bind ViewModel.ShowTokenUsageAndCost, Mode=TwoWay}" />
             </local:SettingContainer>
 
             <!--  ═══ Command palette group ═══  -->

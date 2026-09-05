@@ -247,7 +247,7 @@ tree. It is an independent Rust project but a **companion** to Windows Terminal:
 
 See `doc/specs/Multi-window-agent-pane.md` for the full helper+master design, and
 `tools/wta/AGENTS.md` for the per-crate conventions (logging layout, session
-liveness model, hooks auto-upgrade, third-party notice generation).
+liveness model, hooks reconciliation, third-party notice generation).
 
 ---
 
@@ -305,5 +305,5 @@ Fallback: if WT pane creation fails, WTA downgrades to the local-child path.
 
 - Helper+master architecture: ✅ current primary (and only) runtime model
 - COM/CLI control plane: ✅ done; sole WT transport
-- Autofix, delegate (`?<prompt>`), session-management view, hooks auto-upgrade: ✅ shipped
+- Autofix, delegate (`?<prompt>`), session-management view, hooks reconciliation: ✅ shipped
 - MCP server mode, standalone single-process TUI: ❌ removed
