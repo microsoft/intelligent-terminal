@@ -3154,13 +3154,9 @@ pub async fn run_acp_client_over_pipe(
             .context("initialize over master pipe failed")
         })?;
     let wta_meta = crate::session_registry::extract_wta_meta(&mut init_resp.meta);
-    state.native_yolo.set_resolved_agent(
-        wta_meta.resolved_agent_id.as_deref(),
-        init_resp
-            .agent_info
-            .as_ref()
-            .map(|info| info.version.as_str()),
-    );
+    state
+        .native_yolo
+        .set_resolved_agent_id(wta_meta.resolved_agent_id.as_deref());
     let cloud_catalog = crate::protocol::acp::model_select::cloud_catalog_from_wta_meta(&wta_meta);
     if matches!(&agent_source, crate::agent_source::AgentSource::Host)
         && !cloud_catalog.models.is_empty()
@@ -5519,29 +5515,6 @@ async fn dispatch_prompt_body(
         return;
     }
 
-    if let Some(error) = client_task
-        .state
-        .native_yolo
-        .disabled_prompt_block_reason(&prompt_session_id)
-    {
-        tracing::error!(
-            target: "yolo",
-            session_id = %prompt_session_id_str,
-            error = %error,
-            "blocking prompt because the provider cannot attest disabled permissions"
-        );
-        let message = provider_permission_contract_blocked(&error);
-        let _ = event_tx_task.send(AppEvent::AgentError {
-            session_id: Some(prompt_session_id_str),
-            failure: AgentFailure::Protocol {
-                code: -32003,
-                message: message.clone(),
-            },
-            message,
-        });
-        return;
-    }
-
     if client_task
         .state
         .yolo_state
@@ -5712,14 +5685,7 @@ async fn dispatch_prompt_body(
                 {
                     Some((provider_disable_pending(), "yolo_disable_pending"))
                 } else {
-                    native_yolo
-                        .disabled_prompt_block_reason(&guard_session_id)
-                        .map(|error| {
-                            (
-                                provider_permission_contract_blocked(&error),
-                                "permission_contract_blocked",
-                            )
-                        })
+                    None
                 };
                 let should_send = !provider_command_blocked && yolo_safety_error.is_none();
                 if let Some(error) = yolo_safety_error {

@@ -117,10 +117,6 @@ pub(super) trait NativeYoloProvider: Sync {
     fn enable(&self, state: &ProviderSessionState) -> Result<NativeYoloAction, String>;
     fn disable(&self, state: &ProviderSessionState) -> Result<NativeYoloAction, String>;
 
-    fn disabled_prompt_block_reason(&self, _agent_version: Option<&str>) -> Option<String> {
-        None
-    }
-
     fn config_control(
         &self,
         _config_options: Option<&[acp::schema::v1::SessionConfigOption]>,
