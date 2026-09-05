@@ -1,5 +1,6 @@
 pub mod client;
 pub mod conn;
+pub(crate) mod cwd_format;
 pub mod failure;
 pub mod model_select;
 pub mod native_yolo;
