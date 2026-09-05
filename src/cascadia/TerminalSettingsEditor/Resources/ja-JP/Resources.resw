@@ -2924,20 +2924,33 @@
     <value>{0} の Hooks のインストールに失敗しました。詳細については {1} を確認してください。</value>
     <comment>Failure summary shown when installing agent session tracking hooks fails for specific CLIs. {Locked="Hooks","{0}","{1}"} {0} is replaced with a comma-separated list of CLI names (brand names, never translated); {1} is replaced with the package-aware, versioned wta-install-hooks.log path at runtime.</comment>
   </data>
-  <data name="AIAgents_AutoErrorDetectionTitle.Text" xml:space="preserve">
-    <value>エラーの自動検出</value>
+  <data name="AIAgents_AutoErrorHandlingTitle.Text" xml:space="preserve">
+    <value>自動エラー処理</value>
+    <comment>Title for the Error detection dropdown in the AI agents settings page.</comment>
   </data>
-  <data name="AIAgents_AutoErrorDetectionCaptionPrefix" xml:space="preserve">
-    <value>インテリジェント ターミナルにシェルへのアクセスを許可し、エラーを自動的に検出します。PowerShell、bash、WSL bash で利用できます。 </value>
+  <data name="AIAgents_AutoErrorHandlingCaptionPrefix" xml:space="preserve">
+    <value>ターミナル エラーの処理方法を選択します。これを有効にすると、コマンドの失敗を検出するためのシェル統合がインストールされます。PowerShell、bash、WSL bash で利用できます。 </value>
+    <comment>{Locked="PowerShell","bash","WSL bash"} Caption under the Error detection title. The first sentence describes the setting; the remaining text is the always-visible shell integration hint. The trailing space separates this prefix from the inline AIAgents_AutoErrorHandlingCaptionLink hyperlink.</comment>
   </data>
-  <data name="AIAgents_AutoErrorDetectionCaptionLink" xml:space="preserve">
+  <data name="AIAgents_AutoErrorHandlingCaptionLink" xml:space="preserve">
     <value>サポートされているすべてのシェルを表示</value>
+    <comment>Inline hyperlink text that follows AIAgents_AutoErrorHandlingCaptionPrefix; opens the documentation listing every shell that supports Auto error handling.</comment>
   </data>
-  <data name="AIAgents_AutoErrorSuggestionTitle.Text" xml:space="preserve">
-    <value>エラーの自動提案</value>
+  <data name="AIAgents_AutoErrorHandling_Off" xml:space="preserve">
+    <value>オフ</value>
+    <comment>The third option in the Error detection dropdown. It disables automatic terminal error detection and fixes.</comment>
   </data>
-  <data name="AIAgents_AutoErrorSuggestionCaption.Text" xml:space="preserve">
-    <value>インテリジェント ターミナルがエラーをエージェントに送信して、修正を自動的に提案することを許可します。</value>
+  <data name="AIAgents_AutoErrorHandling_DetectErrorsAutomatically" xml:space="preserve">
+    <value>エラーを自動的に検出します</value>
+    <comment>The first option in the Error detection dropdown. It detects terminal errors automatically without sending them to an AI agent. Here "agent" means an AI intelligent agent, not a proxy or human agent.</comment>
+  </data>
+  <data name="AIAgents_AutoErrorHandling_DetectErrorsAndSendToAgentForFixesAutomatically" xml:space="preserve">
+    <value>エラーを検出し、修正のためにエージェントへ自動的に送信します</value>
+    <comment>The second option in the Error detection dropdown. It detects terminal errors and sends them to an AI agent for automatic fixes. Here "agent" means an AI intelligent agent, not a proxy or human agent.</comment>
+  </data>
+  <data name="AIAgents_AutoErrorHandlingComboBox.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>自動エラー処理</value>
+    <comment>Automation name for the Error detection dropdown in the AI agents settings page.</comment>
   </data>
   <data name="AIAgents_CustomModels.Header" xml:space="preserve">
     <value>カスタム エンドポイントまたはローカル モデル</value>

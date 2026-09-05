@@ -57,12 +57,33 @@
     <value>بۇ ۋەكىل Node.js ۋە NPX نى تەلەپ قىلىدۇ، ئەگەر ئورنىتىلمىغان بولسا ئاپتوماتىك ئورنىتىلىدۇ.</value>
     <comment>{Locked="Node.js","NPX"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
-  <data name="FreOverlay_AutoErrorLabel.Text" xml:space="preserve">
-    <value>ئاپتوماتىك خاتالىق تەكلىپى</value>
+  <data name="FreOverlay_AutoErrorHandlingLabel.Text" xml:space="preserve">
+    <value>ئاپتوماتىك خاتالىق بىر تەرەپ قىلىش</value>
+    <comment>Label for the Error detection dropdown in the first-run wizard.</comment>
   </data>
-  <data name="FreOverlay_AutoErrorDescription.Text" xml:space="preserve">
-    <value>Intelligent Terminal غا خاتالىقلارنى ۋاكالەتچىڭىزگە ئەۋەتىپ، تۈزىتىشلەرنى ئاپتوماتىك تەكلىپ قىلىشقا رۇخسەت بېرىڭ.</value>
-    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
+  <data name="FreOverlay_AutoErrorHandlingDescription.Text" xml:space="preserve">
+    <value>تېرمىنال خاتالىقلىرىنىڭ قانداق بىر تەرەپ قىلىنىدىغانلىقىنى تاللاڭ.</value>
+    <comment>Description for the Error detection dropdown in the first-run wizard. Here "agent" refers to an AI intelligent agent, not a proxy or human agent.</comment>
+  </data>
+  <data name="FreOverlay_AutoErrorHandlingShellIntegrationHintPrefix" xml:space="preserve">
+    <value>بۇنى ئاچسىڭىز، بۇيرۇق مەغلۇبىيەتلىرىنى بايقاش ئۈچۈن shell بىرلەشتۈرۈش ئورنىتىلىدۇ. PowerShell، bash ۋە WSL bash دا ئىشلەتكىلى بولىدۇ. </value>
+    <comment>{Locked="PowerShell","bash","WSL bash"} Hint shown under the Auto error handling dropdown in the first-run wizard. The trailing space is intentional — it separates this prefix from the inline FreOverlay_AutoErrorHandlingShellIntegrationHintLink hyperlink that follows.</comment>
+  </data>
+  <data name="FreOverlay_AutoErrorHandlingShellIntegrationHintLink" xml:space="preserve">
+    <value>قوللايدىغان بارلىق shell لارنى كۆرۈش</value>
+    <comment>Inline hyperlink text that follows FreOverlay_AutoErrorHandlingShellIntegrationHintPrefix and opens the documentation listing every shell that supports Auto error handling.</comment>
+  </data>
+  <data name="FreOverlay_AutoErrorHandling_Off" xml:space="preserve">
+    <value>ياپىق</value>
+    <comment>The third option in the Error detection dropdown. It disables automatic terminal error detection and fixes.</comment>
+  </data>
+  <data name="FreOverlay_AutoErrorHandling_DetectErrorsAutomatically" xml:space="preserve">
+    <value>خاتالىقلارنى ئاپتوماتىك بايقاڭ</value>
+    <comment>The first option in the Error detection dropdown. It detects terminal errors automatically without sending them to an AI agent. Here "agent" means an AI intelligent agent, not a proxy or human agent.</comment>
+  </data>
+  <data name="FreOverlay_AutoErrorHandling_DetectErrorsAndSendToAgentForFixesAutomatically" xml:space="preserve">
+    <value>خاتالىقلارنى بايقاڭ ۋە ئاپتوماتىك تۈزىتىش ئۈچۈن ئۇلارنى AI ۋاكالەتچىسىگە ئەۋەتىڭ</value>
+    <comment>The second option in the Error detection dropdown. It detects terminal errors and sends them to an AI agent for automatic fixes. Here "agent" means an AI intelligent agent, not a proxy or human agent.</comment>
   </data>
   <data name="FreOverlay_SessionLabel.Text" xml:space="preserve">
     <value>ئوتتۇرا باشقۇرۇش</value>
@@ -227,12 +248,6 @@
     <value>Terminal Protocol</value>
     <comment>Title for the teaching tip that displays Terminal Protocol connection information. {Locked="Terminal Protocol"}</comment>
   </data>
-  <data name="FreOverlay_AutoDetectLabel.Text" xml:space="preserve">
-    <value>ئاپتوماتىك خاتالىق بايقاش</value>
-  </data>
-  <data name="FreOverlay_AutoDetectDescription.Text" xml:space="preserve">
-    <value>Intelligent Terminal غا شېلىڭىزنى زىيارەت قىلىش ۋە خاتالىقلارنى ئاپتوماتىك بايقاشقا رۇخسەت بېرىڭ.</value>
-  </data>
 <data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
     <value>شېل بىرلەشتۈرۈشنى ئورنىتىش مەغلۇب بولدى. خاتالىق بايقاش تاقالدى. ئۇنى قايتا ئېچىپ قايتا سىنىيالايسىز، ياكى ئۇنىڭسىز داۋاملاشتۇرۇش ئۈچۈن ساقلىيالايسىز.</value>
   </data><data name="FreOverlay_InstallErrorHooks" xml:space="preserve">
@@ -241,19 +256,13 @@
   </data><data name="FreOverlay_ErrorHelpLink" xml:space="preserve">
     <value>بۇنى قولدا قانداق ئوڭشاشنى ئۆگىنىڭ</value>
     <comment>Hyperlink shown below an FRE setup error message. Opens step-by-step manual setup instructions in the browser.</comment>
-  </data>  <data name="FreOverlay_AutoDetectShellIntegrationHintPrefix" xml:space="preserve">
-    <value>بۇنى ئاچسىڭىز، بۇيرۇق مەغلۇبىيەتلىرىنى بايقاش ئۈچۈن shell بىرلەشتۈرۈش ئورنىتىلىدۇ. </value>
-  </data>
-  <data name="FreOverlay_AutoDetectShellIntegrationHintLink" xml:space="preserve">
-    <value>تېخىمۇ بىلىڭ</value>
-  </data>
-  <data name="InitShellIntegrationExecutionPolicyErrorMessage" xml:space="preserve">
+  </data>  <data name="InitShellIntegrationExecutionPolicyErrorMessage" xml:space="preserve">
     <value>PowerShell ئىجرا سىياسىتى قوليازمىلارنى چەكلەۋاتىدۇ.</value>
     <comment>Body of an error dialog shown after the user tries to install PowerShell shell integration but their PowerShell execution policy (Restricted or AllSigned) is blocking scripts. A separate "Learn how to fix this manually" hyperlink (FreOverlay_ErrorHelpLink) is rendered on its own line below this sentence. {Locked="PowerShell"}</comment>
   </data>
   <data name="FreOverlay_InstallErrorShellIntegrationExecutionPolicy" xml:space="preserve">
-    <value>PowerShell ئىجرا سىياسىتى قوليازمىلارنى چەكلەۋاتىدۇ. خاتالىق بايقاش تاقالدى.</value>
-    <comment>{Locked="PowerShell"}</comment>
+    <value>PowerShell ئىجرا سىياسىتى قوليازمىلارنى چەكلەۋاتىدۇ. Auto error handling تاقالدى.</value>
+    <comment>{Locked="PowerShell","Auto error handling"} FRE setup error. PowerShell execution policy blocked scripts, so Auto error handling was turned off.</comment>
   </data>
   <data name="UsageGroup/[using:Windows.UI.Xaml.Automation]AutomationProperties/Name" xml:space="preserve"><value>ئىشلىتىش</value><comment>Accessibility name for the session usage summary in the terminal bottom bar.</comment></data>
   <data name="Usage_TokensUnit" xml:space="preserve"><value>توكېنلار</value><comment>Unit label for AI context-window token counts. Translate this term using the established AI/LLM terminology for the locale.</comment></data>

@@ -21,6 +21,13 @@ using namespace winrt::Windows::Foundation;
 using namespace winrt::Windows::Foundation::Collections;
 using namespace winrt::Microsoft::Terminal::Settings::Model;
 
+namespace
+{
+    constexpr std::wstring_view AutoErrorHandlingDetect{ L"detect" };
+    constexpr std::wstring_view AutoErrorHandlingSuggest{ L"suggest" };
+    constexpr std::wstring_view AutoErrorHandlingOff{ L"off" };
+}
+
 namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
 {
     CustomModelProviderEntry::CustomModelProviderEntry(
@@ -593,6 +600,24 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
             _agentPanePositionMap.Insert(winrt::hstring{ value }, entry);
         }
         _agentPanePositionList = winrt::single_threaded_observable_vector<Editor::EnumEntry>(std::move(posEntries));
+
+        std::vector<Editor::EnumEntry> autoErrorHandlingEntries;
+        const std::pair<winrt::hstring, std::wstring_view> autoErrorHandlingOptions[] = {
+            { RS_(L"AIAgents_AutoErrorHandling_DetectErrorsAutomatically"), AutoErrorHandlingDetect },
+            { RS_(L"AIAgents_AutoErrorHandling_DetectErrorsAndSendToAgentForFixesAutomatically"), AutoErrorHandlingSuggest },
+            { RS_(L"AIAgents_AutoErrorHandling_Off"), AutoErrorHandlingOff },
+        };
+        for (const auto& [displayName, value] : autoErrorHandlingOptions)
+        {
+            if (value == AutoErrorHandlingSuggest && _GlobalSettings.IsAutoFixPolicyLocked())
+            {
+                continue;
+            }
+            autoErrorHandlingEntries.emplace_back(winrt::make<implementation::EnumEntry>(
+                displayName,
+                winrt::box_value(winrt::hstring{ value })));
+        }
+        _autoErrorHandlingList = winrt::single_threaded_observable_vector<Editor::EnumEntry>(std::move(autoErrorHandlingEntries));
 
         // Populate the Agent Hooks section's per-CLI detection + install
         // state so the UI displays meaningful labels on first paint. The
@@ -1599,68 +1624,44 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         }
     }
 
-    // ── Auto error detection ───────────────────────────────────────────────
+    // ── Auto error handling ────────────────────────────────────────────────
 
-    bool AIAgentsViewModel::AutoErrorDetectionEnabled() const
+    winrt::Windows::Foundation::IInspectable AIAgentsViewModel::CurrentAutoErrorHandling()
     {
-        return _GlobalSettings.EffectiveAutoErrorDetectionEnabled();
-    }
-
-    void AIAgentsViewModel::AutoErrorDetectionEnabled(bool value)
-    {
-        if (_GlobalSettings.AutoErrorDetectionEnabled() == value) return;
-        _GlobalSettings.AutoErrorDetectionEnabled(value);
-        // Master-detail: detection drives both the suggestion toggle's enabled
-        // state (CanSuggestErrors) and its effective value (EffectiveAutoFix
-        // Enabled flips to false when detection is off), so refresh both. The
-        // stored autoFixEnabled preference is preserved, so re-enabling
-        // detection restores the previous suggestion value rather than forcing
-        // it on.
-        _NotifyChanges(L"HasAutoErrorDetectionEnabled", L"AutoErrorDetectionEnabled",
-                       L"CanSuggestErrors", L"AutoFixEnabled");
-        // Shell integration installation is triggered on Save, not on toggle.
-    }
-
-    bool AIAgentsViewModel::HasAutoErrorDetectionEnabled() const
-    {
-        return _GlobalSettings.HasAutoErrorDetectionEnabled();
-    }
-
-    // ── AutoFix (auto-suggest) ─────────────────────────────────────────────
-
-    bool AIAgentsViewModel::AutoFixEnabled() const
-    {
-        // Master-detail: suggestion follows detection. EffectiveAutoFixEnabled
-        // returns false whenever detection is off (or GPO blocks autofix), so
-        // the toggle reads Off when the master is off; when detection is on it
-        // reflects the user's stored autoFixEnabled preference.
-        return _GlobalSettings.EffectiveAutoFixEnabled();
-    }
-
-    void AIAgentsViewModel::AutoFixEnabled(bool value)
-    {
-        // Reject writes when policy blocks autofix or detection is off (the
-        // toggle is disabled in those cases, but guard against races).
-        if (_GlobalSettings.IsAutoFixPolicyLocked() ||
-            !_GlobalSettings.EffectiveAutoErrorDetectionEnabled())
+        const std::wstring_view current =
+            !_GlobalSettings.EffectiveAutoErrorDetectionEnabled() ? AutoErrorHandlingOff :
+            _GlobalSettings.EffectiveAutoFixEnabled() ? AutoErrorHandlingSuggest :
+                                                       AutoErrorHandlingDetect;
+        for (const auto& entry : _autoErrorHandlingList)
         {
-            return;
+            if (winrt::unbox_value<winrt::hstring>(entry.EnumValue()) == current)
+            {
+                return winrt::box_value(entry);
+            }
         }
-        if (_GlobalSettings.AutoFixEnabled() == value) return;
-        _GlobalSettings.AutoFixEnabled(value);
-        _NotifyChanges(L"HasAutoFixEnabled", L"AutoFixEnabled");
-        // Shell integration installation is now triggered on Save, not on toggle.
+        return winrt::box_value(_autoErrorHandlingList.GetAt(0));
     }
 
-    bool AIAgentsViewModel::HasAutoFixEnabled() const
+    void AIAgentsViewModel::CurrentAutoErrorHandling(const winrt::Windows::Foundation::IInspectable& value)
     {
-        return _GlobalSettings.HasAutoFixEnabled();
-    }
+        if (const auto entry = value.try_as<Editor::EnumEntry>())
+        {
+            const auto selected = winrt::unbox_value<winrt::hstring>(entry.EnumValue());
+            if (selected == AutoErrorHandlingSuggest && _GlobalSettings.IsAutoFixPolicyLocked())
+            {
+                return;
+            }
 
-    bool AIAgentsViewModel::CanSuggestErrors() const
-    {
-        return !_GlobalSettings.IsAutoFixPolicyLocked() &&
-               _GlobalSettings.EffectiveAutoErrorDetectionEnabled();
+            const bool detectionEnabled = selected != AutoErrorHandlingOff;
+            const bool autoFixEnabled = selected == AutoErrorHandlingSuggest;
+            if (_GlobalSettings.AutoErrorDetectionEnabled() != detectionEnabled ||
+                _GlobalSettings.AutoFixEnabled() != autoFixEnabled)
+            {
+                _GlobalSettings.AutoErrorDetectionEnabled(detectionEnabled);
+                _GlobalSettings.AutoFixEnabled(autoFixEnabled);
+                _NotifyChanges(L"CurrentAutoErrorHandling");
+            }
+        }
     }
 
     // ── Yolo mode (provider-native ACP mode) ─────────────────────────────

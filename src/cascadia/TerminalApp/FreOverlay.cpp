@@ -202,8 +202,8 @@ namespace winrt::TerminalApp::implementation
         WelcomeSubtitleLink().Text(RS_(L"FreOverlay_WelcomeSubtitleLink"));
         SettingsSubtitlePrefix().Text(RS_(L"FreOverlay_SettingsSubtitlePrefix"));
         SettingsSubtitleLink().Text(RS_(L"FreOverlay_SettingsSubtitleLink"));
-        AutoDetectShellIntegrationHintPrefix().Text(RS_(L"FreOverlay_AutoDetectShellIntegrationHintPrefix"));
-        AutoDetectShellIntegrationHintLink().Text(RS_(L"FreOverlay_AutoDetectShellIntegrationHintLink"));
+        AutoErrorHandlingShellIntegrationHintPrefix().Text(RS_(L"FreOverlay_AutoErrorHandlingShellIntegrationHintPrefix"));
+        AutoErrorHandlingShellIntegrationHintLink().Text(RS_(L"FreOverlay_AutoErrorHandlingShellIntegrationHintLink"));
 
         // Split the description on "ACP" (locked token) so it can be rendered as an inline Hyperlink.
         {
@@ -225,10 +225,6 @@ namespace winrt::TerminalApp::implementation
         }
 
         // Set toggle On/Off labels
-        AutoDetectToggle().OnContent(winrt::box_value(RS_(L"FreOverlay_ToggleOn")));
-        AutoDetectToggle().OffContent(winrt::box_value(RS_(L"FreOverlay_ToggleOff")));
-        AutoErrorToggle().OnContent(winrt::box_value(RS_(L"FreOverlay_ToggleOn")));
-        AutoErrorToggle().OffContent(winrt::box_value(RS_(L"FreOverlay_ToggleOff")));
         ShowTokenUsageAndCostToggle().OnContent(winrt::box_value(RS_(L"FreOverlay_ToggleOn")));
         ShowTokenUsageAndCostToggle().OffContent(winrt::box_value(RS_(L"FreOverlay_ToggleOff")));
         SessionManagementToggle().OnContent(winrt::box_value(RS_(L"FreOverlay_ToggleOn")));
@@ -263,30 +259,39 @@ namespace winrt::TerminalApp::implementation
         else if (currentPos == L"top") PanePositionComboBox().SelectedIndex(3);
         else PanePositionComboBox().SelectedIndex(0); // default: bottom
 
-        // Set toggles from current settings, respecting GPO policy.
-        // Detection drives the suggestion toggle's enabled state (see
-        // _UpdateSuggestionEnabledState), so configure it first.
-        AutoDetectToggle().IsOn(globals.EffectiveAutoErrorDetectionEnabled());
+        auto handlingItems = AutoErrorHandlingComboBox().Items();
+        handlingItems.Clear();
+        const std::pair<winrt::hstring, AutoErrorHandlingMode> handlingOptions[] = {
+            { RS_(L"FreOverlay_AutoErrorHandling_DetectErrorsAutomatically"), AutoErrorHandlingMode::DetectErrorsAutomatically },
+            { RS_(L"FreOverlay_AutoErrorHandling_DetectErrorsAndSendToAgentForFixesAutomatically"), AutoErrorHandlingMode::DetectErrorsAndSendToAgentForFixesAutomatically },
+            { RS_(L"FreOverlay_AutoErrorHandling_Off"), AutoErrorHandlingMode::Off },
+        };
+        for (const auto& [label, value] : handlingOptions)
+        {
+            ComboBoxItem item;
+            item.Content(winrt::box_value(label));
+            item.Tag(winrt::box_value(static_cast<int32_t>(value)));
+            if (value == AutoErrorHandlingMode::DetectErrorsAndSendToAgentForFixesAutomatically &&
+                globals.IsAutoFixPolicyLocked())
+            {
+                item.IsEnabled(false);
+            }
+            handlingItems.Append(item);
+        }
+        _SelectAutoErrorHandling(
+            !globals.EffectiveAutoErrorDetectionEnabled() ? AutoErrorHandlingMode::Off :
+            globals.EffectiveAutoFixEnabled() ? AutoErrorHandlingMode::DetectErrorsAndSendToAgentForFixesAutomatically :
+                                                AutoErrorHandlingMode::DetectErrorsAutomatically);
+        _UpdateAutoErrorHandlingHint();
 
-        // Master-detail: EffectiveAutoFixEnabled already returns false when
-        // detection is off, so the suggestion toggle starts consistent with the
-        // master toggle (and reflects the stored preference when detection is
-        // on).
-        AutoErrorToggle().IsOn(globals.EffectiveAutoFixEnabled());
         ShowTokenUsageAndCostToggle().IsOn(globals.ShowTokenUsageAndCost());
         if (globals.IsAutoFixPolicyLocked())
         {
             const auto policyText = RS_(L"FreOverlay_PolicyLocked");
-            AutoErrorPolicyNotice().Text(policyText);
-            AutoErrorPolicyNotice().Visibility(Visibility::Visible);
-            // Accessibility: explain why the toggle is disabled
-            Automation::AutomationProperties::SetHelpText(AutoErrorToggle(), policyText);
+            AutoErrorHandlingPolicyNotice().Text(policyText);
+            AutoErrorHandlingPolicyNotice().Visibility(Visibility::Visible);
+            Automation::AutomationProperties::SetHelpText(AutoErrorHandlingComboBox(), policyText);
         }
-
-        // Apply the detection→suggestion dependency once both toggles are
-        // configured (also covers the GPO-locked case via the policy check
-        // inside the helper).
-        _UpdateSuggestionEnabledState();
 
         // Session management toggle — honour AllowAgentSessionHooks GPO
         if (globals.IsAgentSessionHooksPolicyLocked())
@@ -308,9 +313,7 @@ namespace winrt::TerminalApp::implementation
         Automation::AutomationProperties::SetName(
             SettingsPage(), RS_(L"FreOverlay_SettingsTitle/Text"));
         Automation::AutomationProperties::SetName(
-            AutoDetectToggle(), RS_(L"FreOverlay_AutoDetectLabel/Text"));
-        Automation::AutomationProperties::SetName(
-            AutoErrorToggle(), RS_(L"FreOverlay_AutoErrorLabel/Text"));
+            AutoErrorHandlingComboBox(), RS_(L"FreOverlay_AutoErrorHandlingLabel/Text"));
         Automation::AutomationProperties::SetName(
             ShowTokenUsageAndCostToggle(), RS_(L"FreOverlay_ShowTokenUsageAndCostLabel/Text"));
         Automation::AutomationProperties::SetName(
@@ -376,48 +379,52 @@ namespace winrt::TerminalApp::implementation
         }
     }
 
-    // ── Detection → suggestion dependency ───────────────────────────────
-
-    void FreOverlay::_OnAutoDetectToggled(const IInspectable& /*sender*/,
-                                          const RoutedEventArgs& /*args*/)
+    void FreOverlay::_OnAutoErrorHandlingSelectionChanged(
+        const IInspectable& /*sender*/,
+        const SelectionChangedEventArgs& /*args*/)
     {
-        _UpdateSuggestionEnabledState();
+        _UpdateAutoErrorHandlingHint();
+    }
 
-        // Hide/show the whole hint row (icon + text) — the (i) glyph would
-        // otherwise dangle when detection is off and the side-effect described
-        // by the hint no longer applies. Mirrors SessionManagementHintRow.
-        auto toggle = AutoDetectToggle();
-        auto row = AutoDetectShellIntegrationHintRow();
-        if (toggle && row)
+    FreOverlay::AutoErrorHandlingMode FreOverlay::_SelectedAutoErrorHandling()
+    {
+        if (const auto combo = AutoErrorHandlingComboBox())
         {
-            row.Visibility(toggle.IsOn() ? Visibility::Visible : Visibility::Collapsed);
+            if (const auto item = combo.SelectedItem().try_as<ComboBoxItem>())
+            {
+                return static_cast<AutoErrorHandlingMode>(winrt::unbox_value<int32_t>(item.Tag()));
+            }
+        }
+        return AutoErrorHandlingMode::Off;
+    }
+
+    void FreOverlay::_SelectAutoErrorHandling(const AutoErrorHandlingMode value)
+    {
+        if (const auto combo = AutoErrorHandlingComboBox())
+        {
+            for (uint32_t i = 0; i < combo.Items().Size(); ++i)
+            {
+                if (const auto item = combo.Items().GetAt(i).try_as<ComboBoxItem>())
+                {
+                    if (static_cast<AutoErrorHandlingMode>(winrt::unbox_value<int32_t>(item.Tag())) == value)
+                    {
+                        combo.SelectedIndex(static_cast<int32_t>(i));
+                        return;
+                    }
+                }
+            }
+            combo.SelectedIndex(0);
         }
     }
 
-    void FreOverlay::_UpdateSuggestionEnabledState()
+    void FreOverlay::_UpdateAutoErrorHandlingHint()
     {
-        // Guard: Toggled can fire during InitializeComponent before the
-        // sibling control exists.
-        auto detect = AutoDetectToggle();
-        auto suggest = AutoErrorToggle();
-        if (!detect || !suggest)
+        if (const auto row = AutoErrorHandlingShellIntegrationHintRow())
         {
-            return;
+            row.Visibility(_SelectedAutoErrorHandling() == AutoErrorHandlingMode::Off ?
+                               Visibility::Collapsed :
+                               Visibility::Visible);
         }
-
-        const bool detectionOn = detect.IsOn();
-        const bool autoFixLocked = _settings && _settings.GlobalSettings().IsAutoFixPolicyLocked();
-
-        // Master-detail: detection off ⇒ turn the suggestion off and disable it
-        // (can't configure a suggestion you can't detect).
-        // Detection on ⇒ re-enable it; its On/Off is the stored preference
-        // (set on init), so re-enabling doesn't force it on. The auto-fix GPO
-        // can still lock it off.
-        if (!detectionOn)
-        {
-            suggest.IsOn(false);
-        }
-        suggest.IsEnabled(detectionOn && !autoFixLocked);
     }
 
     // ── Page navigation ─────────────────────────────────────────────────
@@ -1215,10 +1222,9 @@ namespace winrt::TerminalApp::implementation
             ErrorText().Text(RS_(L"FreOverlay_InstallErrorShellIntegrationExecutionPolicy"));
             url += L"#41-powershell";
             // Same remediation as generic shell-integration failure: turn
-            // off error detection so the user can save and continue. Once
+            // off Auto error handling so the user can save and continue. Once
             // they fix execution policy they can re-enable it from Settings.
-            AutoDetectToggle().IsOn(false);
-            _UpdateSuggestionEnabledState();
+            _SelectAutoErrorHandling(AutoErrorHandlingMode::Off);
             if (_settings)
             {
                 _settings.GlobalSettings().AutoErrorDetectionEnabled(false);
@@ -1228,10 +1234,9 @@ namespace winrt::TerminalApp::implementation
         case FreProblemKind::ShellIntegration:
             ErrorText().Text(RS_(L"FreOverlay_InstallErrorShellIntegration"));
             url += L"#4-shell-integration";
-            // Remediation: turn off error detection (and its dependent
-            // suggestion) so the user can save and continue without it.
-            AutoDetectToggle().IsOn(false);
-            _UpdateSuggestionEnabledState();
+            // Remediation: turn off Auto error handling so the user can save
+            // and continue without shell integration.
+            _SelectAutoErrorHandling(AutoErrorHandlingMode::Off);
             if (_settings)
             {
                 _settings.GlobalSettings().AutoErrorDetectionEnabled(false);
@@ -1428,14 +1433,15 @@ namespace winrt::TerminalApp::implementation
                 agentId = entry.Id();
             }
         }
+        const auto autoErrorHandling = _SelectedAutoErrorHandling();
 
         if (_settings)
         {
             const auto& globals = _settings.GlobalSettings();
             globals.AcpAgent(agentId);
             globals.DelegateAgent(agentId);
-            globals.AutoErrorDetectionEnabled(AutoDetectToggle().IsOn());
-            globals.AutoFixEnabled(AutoErrorToggle().IsOn());
+            globals.AutoErrorDetectionEnabled(autoErrorHandling != AutoErrorHandlingMode::Off);
+            globals.AutoFixEnabled(autoErrorHandling == AutoErrorHandlingMode::DetectErrorsAndSendToAgentForFixesAutomatically);
             globals.ShowTokenUsageAndCost(ShowTokenUsageAndCostToggle().IsOn());
 
             const auto posIdx = PanePositionComboBox().SelectedIndex();
@@ -1457,12 +1463,15 @@ namespace winrt::TerminalApp::implementation
         // 3. Install prerequisites if needed (blocking — cannot proceed without these)
         const bool needsCopilot = (agentId == L"copilot") && !_IsAgentInstalled(L"copilot");
         const bool needsNode = (agentId == L"claude" || agentId == L"codex") && !_IsNodeInstalled();
+        const auto autoErrorHandlingName =
+            autoErrorHandling == AutoErrorHandlingMode::Off ? "off" :
+            autoErrorHandling == AutoErrorHandlingMode::DetectErrorsAutomatically ? "detectErrorsAutomatically" :
+                                                                                     "detectErrorsAndSendToAgentForFixesAutomatically";
 
         _agentPaneLog("[FRE] Save: agent=" + winrt::to_string(agentId)
             + " needsCopilot=" + (needsCopilot ? "y" : "n")
             + " needsNode=" + (needsNode ? "y" : "n")
-            + " detect=" + (AutoDetectToggle().IsOn() ? "on" : "off")
-            + " suggest=" + (AutoErrorToggle().IsOn() ? "on" : "off")
+            + " autoErrorHandling=" + autoErrorHandlingName
             + " tokenUsageAndCost=" + (ShowTokenUsageAndCostToggle().IsOn() ? "on" : "off")
             + " hooks=" + (SessionManagementToggle().IsOn() ? "on" : "off"));
 
@@ -1626,7 +1635,7 @@ namespace winrt::TerminalApp::implementation
             // Helper internally does co_await winrt::resume_background(),
             // so the continuation may resume on a thread-pool thread.
             // Hop back to the UI thread before the subsequent
-            // AutoDetectToggle().IsOn() read and any later _ShowProblem
+            // AutoErrorHandlingComboBox selection read and any later _ShowProblem
             // call. Without this, XAML access from the thread pool
             // throws RPC_E_WRONG_THREAD, which IAsyncAction swallows —
             // the SavingOverlay would then be stuck with no error
@@ -1642,8 +1651,8 @@ namespace winrt::TerminalApp::implementation
             }
         }
 
-        // 5. Shell integration — only when error detection is enabled.
-        if (AutoDetectToggle().IsOn())
+        // 5. Both enabled auto-error-handling modes require shell integration.
+        if (_SelectedAutoErrorHandling() != AutoErrorHandlingMode::Off)
         {
             auto self = weak.get();
             if (!self) co_return;
@@ -1804,7 +1813,7 @@ namespace winrt::TerminalApp::implementation
 
         // Guard against being called before InitializeComponent has populated
         // the named XAML elements — matches the pattern used elsewhere in
-        // this file (see _UpdateSuggestionEnabledState, _OnAutoDetectToggled).
+        // this file (see _UpdateAutoErrorHandlingHint).
         auto scroller = SettingsFormScroller();
         auto overlay = SavingOverlay();
         auto ring = SavingProgressRing();
