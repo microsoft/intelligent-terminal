@@ -89,6 +89,7 @@ namespace SettingsModelUnitTests
         TEST_METHOD(ShowTokenUsageAndCostRoundtripsAndDefaultsOff);
         TEST_METHOD(AutoErrorSettingsRoundtrip);
         TEST_METHOD(EffectiveAutoFixFalseWhenDetectionOff);
+        TEST_METHOD(AutoFixPolicyPreservesErrorDetection);
         TEST_METHOD(AgentPaneYoloModeRoundtripsAndDefaults);
         TEST_METHOD(EffectiveAgentPaneYoloModeFalseWhenPolicyBlocked);
         TEST_METHOD(IsYoloModePolicyLockedTracksBlocked);
@@ -134,12 +135,14 @@ namespace SettingsModelUnitTests
         static std::shared_ptr<AgentPolicy::PolicySnapshot> MakePolicy(
             std::optional<std::set<std::wstring, AgentPolicy::CaseInsensitiveLess>> allowedAgents = std::nullopt,
             AgentPolicy::PolicyState customAgents = AgentPolicy::PolicyState::NotConfigured,
-            AgentPolicy::PolicyState yoloMode = AgentPolicy::PolicyState::NotConfigured)
+            AgentPolicy::PolicyState yoloMode = AgentPolicy::PolicyState::NotConfigured,
+            AgentPolicy::PolicyState autoFix = AgentPolicy::PolicyState::NotConfigured)
         {
             auto snap = std::make_shared<AgentPolicy::PolicySnapshot>();
             snap->allowedAgents = std::move(allowedAgents);
             snap->customAgents = customAgents;
             snap->yoloMode = yoloMode;
+            snap->autoFix = autoFix;
             return snap;
         }
 
@@ -657,30 +660,49 @@ namespace SettingsModelUnitTests
 
     void CustomAgentAndPolicyTests::AutoErrorSettingsRoundtrip()
     {
-        const auto settings = MakeSettings(R"("autoErrorDetectionEnabled": true, "autoFixEnabled": true)");
-        VERIFY_IS_TRUE(settings->GlobalSettings().AutoErrorDetectionEnabled());
-        VERIFY_IS_TRUE(settings->GlobalSettings().AutoFixEnabled());
+        const auto enabled = MakeSettings(R"("autoErrorDetectionEnabled": true, "autoFixEnabled": true)");
+        VERIFY_IS_TRUE(enabled->GlobalSettings().AutoErrorDetectionEnabled());
+        VERIFY_IS_TRUE(enabled->GlobalSettings().AutoFixEnabled());
+
+        const auto detectionOnly = MakeSettings(R"("autoErrorDetectionEnabled": true, "autoFixEnabled": false)");
+        VERIFY_IS_TRUE(detectionOnly->GlobalSettings().AutoErrorDetectionEnabled());
+        VERIFY_IS_FALSE(detectionOnly->GlobalSettings().AutoFixEnabled());
 
         const auto off = MakeSettings(R"("autoErrorDetectionEnabled": false, "autoFixEnabled": false)");
         VERIFY_IS_FALSE(off->GlobalSettings().AutoErrorDetectionEnabled());
         VERIFY_IS_FALSE(off->GlobalSettings().AutoFixEnabled());
+
+        const auto defaulted = MakeSettings({});
+        VERIFY_IS_TRUE(defaulted->GlobalSettings().AutoErrorDetectionEnabled());
+        VERIFY_IS_FALSE(defaulted->GlobalSettings().AutoFixEnabled());
     }
 
     void CustomAgentAndPolicyTests::EffectiveAutoFixFalseWhenDetectionOff()
     {
-        // Auto-suggest depends on detection: even with autoFixEnabled=true, the
-        // effective value must be false when detection is off, so failures with
-        // nothing to detect never reach the agent.
         const auto detectionOff = MakeSettings(
             R"("autoErrorDetectionEnabled": false, "autoFixEnabled": true)");
-        SetPolicy(MakePolicy()); // autoFix NotConfigured → allowed
+        SetPolicy(MakePolicy());
         VERIFY_IS_FALSE(detectionOff->GlobalSettings().EffectiveAutoFixEnabled());
 
-        // Both on (and policy allows) → effective true.
         const auto bothOn = MakeSettings(
             R"("autoErrorDetectionEnabled": true, "autoFixEnabled": true)");
         SetPolicy(MakePolicy());
         VERIFY_IS_TRUE(bothOn->GlobalSettings().EffectiveAutoFixEnabled());
+    }
+
+    void CustomAgentAndPolicyTests::AutoFixPolicyPreservesErrorDetection()
+    {
+        const auto settings = MakeSettings(
+            R"("autoErrorDetectionEnabled": true, "autoFixEnabled": true)");
+        SetPolicy(MakePolicy(
+            std::nullopt,
+            AgentPolicy::PolicyState::NotConfigured,
+            AgentPolicy::PolicyState::NotConfigured,
+            AgentPolicy::PolicyState::Blocked));
+
+        VERIFY_IS_TRUE(settings->GlobalSettings().EffectiveAutoErrorDetectionEnabled());
+        VERIFY_IS_FALSE(settings->GlobalSettings().EffectiveAutoFixEnabled());
+        VERIFY_IS_TRUE(settings->GlobalSettings().IsAutoFixPolicyLocked());
     }
 
     void CustomAgentAndPolicyTests::AgentPaneYoloModeRoundtripsAndDefaults()

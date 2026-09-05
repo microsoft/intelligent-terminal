@@ -2925,20 +2925,29 @@
     <value>Échec de l’installation Hooks pour {0}. Consultez {1} pour plus de détails.</value>
     <comment>Failure summary shown when installing agent session tracking hooks fails for specific CLIs. {Locked="Hooks","{0}","{1}"} {0} is replaced with a comma-separated list of CLI names (brand names, never translated); {1} is replaced with the package-aware, versioned wta-install-hooks.log path at runtime.</comment>
   </data>
-  <data name="AIAgents_AutoErrorDetectionTitle.Text" xml:space="preserve">
-    <value>Détection automatique des erreurs</value>
+  <data name="AIAgents_AutoErrorHandlingTitle.Text" xml:space="preserve">
+    <value>Gestion automatique des erreurs</value>
+    <comment>Title for the Error detection dropdown in the AI agents settings page.</comment>
   </data>
-  <data name="AIAgents_AutoErrorDetectionCaptionPrefix" xml:space="preserve">
-    <value>Autorisez Terminal Intelligent à accéder à votre shell et à détecter automatiquement les erreurs. Disponible dans PowerShell, bash et WSL bash. </value>
+  <data name="AIAgents_AutoErrorHandlingDescription.Text" xml:space="preserve">
+    <value>Permettez à votre agent de détecter automatiquement les erreurs dans l’interpréteur de commandes et de lui envoyer les commandes ayant échoué.</value>
+    <comment>Umbrella description for the three-state Error detection setting in the AI agents settings page. The Detect errors option is local-only; only Detect and fix errors sends failures to the AI agent. Use the approved product copy verbatim. Here "agent" refers to an AI intelligent agent, not a proxy or human agent.</comment>
   </data>
-  <data name="AIAgents_AutoErrorDetectionCaptionLink" xml:space="preserve">
-    <value>Afficher tous les shells pris en charge</value>
+  <data name="AIAgents_AutoErrorHandling_Off" xml:space="preserve">
+    <value>Désactivé</value>
+    <comment>The third option in the Error detection dropdown. It disables automatic terminal error detection and suggestions.</comment>
   </data>
-  <data name="AIAgents_AutoErrorSuggestionTitle.Text" xml:space="preserve">
-    <value>Suggestion automatique des erreurs</value>
+  <data name="AIAgents_AutoErrorHandling_DetectErrorsAutomatically" xml:space="preserve">
+    <value>Détecter les erreurs</value>
+    <comment>The first option in the Error detection dropdown. It enables automatic terminal error detection without sending failures to an AI agent. Here "agent" means an AI intelligent agent, not a proxy or human agent.</comment>
   </data>
-  <data name="AIAgents_AutoErrorSuggestionCaption.Text" xml:space="preserve">
-    <value>Autorisez Terminal Intelligent à envoyer les erreurs à votre agent pour suggérer automatiquement des correctifs.</value>
+  <data name="AIAgents_AutoErrorHandling_DetectErrorsAndSendToAgentForFixesAutomatically" xml:space="preserve">
+    <value>Détecter et corriger les erreurs</value>
+    <comment>The second option in the Error detection dropdown. It enables automatic terminal error detection and sends failures to an AI agent for suggested fixes. Here "agent" means an AI intelligent agent, not a proxy or human agent.</comment>
+  </data>
+  <data name="AIAgents_AutoErrorHandlingComboBox.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Gestion automatique des erreurs</value>
+    <comment>Automation name for the Error detection dropdown in the AI agents settings page.</comment>
   </data>
   <data name="AIAgents_CustomModels.Header" xml:space="preserve">
     <value>Point de terminaison personnalisé ou modèle local</value>

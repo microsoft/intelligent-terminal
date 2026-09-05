@@ -61,10 +61,6 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         Automation::AutomationProperties::SetName(EmptyCustomModelProviders(), customModelsHeader);
         Automation::AutomationProperties::SetName(CustomModelProvidersExpander(), customModelsHeader);
 
-        // Auto-error-detection caption + inline "supported shells" hyperlink.
-        AutoErrorDetectionCaptionPrefix().Text(RS_(L"AIAgents_AutoErrorDetectionCaptionPrefix"));
-        AutoErrorDetectionCaptionLink().Text(RS_(L"AIAgents_AutoErrorDetectionCaptionLink"));
-
         const auto agentHeader = RS_(L"AIAgents_AcpAgent/Header");
         AcpAgentHeaderText().Text(agentHeader);
 
