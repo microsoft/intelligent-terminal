@@ -75,15 +75,15 @@
   </data>
   <data name="FreOverlay_AutoErrorHandling_Off" xml:space="preserve">
     <value>ປິດ</value>
-    <comment>The third option in the Error detection dropdown. It disables automatic terminal error detection and fixes.</comment>
+    <comment>The third option in the Error detection dropdown. It disables automatic terminal error detection and suggestions.</comment>
   </data>
   <data name="FreOverlay_AutoErrorHandling_DetectErrorsAutomatically" xml:space="preserve">
     <value>ກວດຫາຂໍ້ຜິດພາດໂດຍອັດຕະໂນມັດ</value>
-    <comment>The first option in the Error detection dropdown. It detects terminal errors automatically without sending them to an AI agent. Here "agent" means an AI intelligent agent, not a proxy or human agent.</comment>
+    <comment>The first option in the Error detection dropdown. It enables automatic terminal error detection without sending failures to an AI agent. Here "agent" means an AI intelligent agent, not a proxy or human agent.</comment>
   </data>
   <data name="FreOverlay_AutoErrorHandling_DetectErrorsAndSendToAgentForFixesAutomatically" xml:space="preserve">
     <value>ກວດພົບຂໍ້ຜິດພາດແລະສົ່ງພວກມັນໄປຫາຕົວແທນ AI ເພື່ອແກ້ໄຂອັດຕະໂນມັດ</value>
-    <comment>The second option in the Error detection dropdown. It detects terminal errors and sends them to an AI agent for automatic fixes. Here "agent" means an AI intelligent agent, not a proxy or human agent.</comment>
+    <comment>The second option in the Error detection dropdown. It enables automatic terminal error detection and sends failures to an AI agent for suggested fixes. Here "agent" means an AI intelligent agent, not a proxy or human agent.</comment>
   </data>
   <data name="FreOverlay_SessionLabel.Text" xml:space="preserve">
     <value>ການຈັດການພາກສ່ວນ</value>
