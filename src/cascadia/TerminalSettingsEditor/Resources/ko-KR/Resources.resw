@@ -2990,7 +2990,7 @@
   </data>
   <data name="AIAgents_AutoErrorHandlingDescription.Text" xml:space="preserve">
     <value>에이전트가 셸에서 오류를 자동으로 감지하고 실패한 명령을 에이전트로 보내도록 합니다.</value>
-    <comment>Description for the Error detection setting in the AI agents settings page. Here "agent" refers to an AI intelligent agent, not a proxy or human agent.</comment>
+    <comment>Umbrella description for the three-state Error detection setting in the AI agents settings page. The Detect errors option is local-only; only Detect and fix errors sends failures to the AI agent. Use the approved product copy verbatim. Here "agent" refers to an AI intelligent agent, not a proxy or human agent.</comment>
   </data>
   <data name="AIAgents_AutoErrorHandling_Off" xml:space="preserve">
     <value>끄기</value>
