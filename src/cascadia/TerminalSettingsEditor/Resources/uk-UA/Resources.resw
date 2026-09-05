@@ -2713,7 +2713,7 @@
   </data>
   <data name="AIAgents_CustomProviderAdd.Content" xml:space="preserve">
     <value>Додати кінцеву точку</value>
-    <comment>Button that starts adding a custom model provider endpoint.</comment>
+    <comment>Button in the final custom provider row that reveals the fields for adding another endpoint.</comment>
   </data>
   <data name="AIAgents_CustomProviderSave.Content" xml:space="preserve">
     <value>Додати й вибрати</value>
@@ -2725,7 +2725,7 @@
   </data>
   <data name="AIAgents_CustomProviderCancel.Content" xml:space="preserve">
     <value>Скасувати</value>
-    <comment>Button that cancels adding a provider.</comment>
+    <comment>Button that cancels adding a provider and restores the Add New row.</comment>
   </data>
   <data name="AIAgents_BYOKModelDisplayName" xml:space="preserve">
     <value>{} (BYOK)</value>

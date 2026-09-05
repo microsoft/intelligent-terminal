@@ -189,58 +189,14 @@
                 </Grid>
             </local:SettingContainer>
 
-            <Grid x:Name="EmptyCustomModelProviders"
-                  Margin="0,4,0,0"
-                  Padding="16,0,8,0"
-                  HorizontalAlignment="Stretch"
-                  Background="{ThemeResource ExpanderHeaderBackground}"
-                  BorderBrush="{ThemeResource ExpanderHeaderBorderBrush}"
-                  BorderThickness="{ThemeResource ExpanderHeaderBorderThickness}"
-                  CornerRadius="{ThemeResource ControlCornerRadius}"
-                  MaxWidth="1000"
-                  MinHeight="64"
-                  MinWidth="{ThemeResource FlyoutThemeMinWidth}"
-                  Visibility="{x:Bind mtu:Converters.InvertedBooleanToVisibility(ViewModel.ShowCustomModelProvidersExpander), Mode=OneWay}">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="Auto" />
-                </Grid.ColumnDefinitions>
-                <StackPanel Grid.Column="0"
-                            Padding="0,12,0,12"
-                            VerticalAlignment="Center">
-                    <TextBlock x:Name="EmptyCustomModelsHeaderText"
-                               Style="{StaticResource SettingsPageItemHeaderStyle}" />
-                    <TextBlock Style="{StaticResource CaptionTextBlockStyle}"
-                               TextWrapping="Wrap">
-                        <Run x:Name="EmptyCustomModelsCaptionPrefix"
-                             Foreground="{ThemeResource TextFillColorSecondaryBrush}" /><Hyperlink NavigateUri="https://github.com/microsoft/intelligent-terminal#custom-providers-byok">
-                            <Run x:Name="EmptyCustomModelsCaptionLink" />
-                        </Hyperlink>
-                    </TextBlock>
-                </StackPanel>
-                <Button Grid.Column="1"
-                        x:Uid="AIAgents_CustomProviderAdd"
-                        Margin="0,12,0,12"
-                        HorizontalAlignment="Right"
-                        VerticalAlignment="Center"
-                        Click="{x:Bind ViewModel.AddCustomModelProvider}"
-                        Style="{StaticResource AccentButtonStyle}" />
-            </Grid>
-
             <muxc:Expander x:Name="CustomModelProvidersExpander"
                            Margin="0,4,0,0"
                            HorizontalAlignment="Stretch"
                            HorizontalContentAlignment="Stretch"
-                           IsExpanded="{x:Bind ViewModel.IsCustomModelProvidersExpanded, Mode=TwoWay}"
-                           Visibility="{x:Bind ViewModel.ShowCustomModelProvidersExpander, Mode=OneWay}">
+                           IsExpanded="{x:Bind ViewModel.IsCustomModelProvidersExpanded, Mode=TwoWay}">
                 <muxc:Expander.Header>
                     <Grid MinHeight="64">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="Auto" />
-                        </Grid.ColumnDefinitions>
-                        <StackPanel Grid.Column="0"
-                                    VerticalAlignment="Center">
+                        <StackPanel VerticalAlignment="Center">
                             <TextBlock x:Name="CustomModelsHeaderText"
                                        Style="{StaticResource SettingsPageItemHeaderStyle}" />
                             <TextBlock Style="{StaticResource CaptionTextBlockStyle}"
@@ -251,14 +207,11 @@
                                 </Hyperlink>
                             </TextBlock>
                         </StackPanel>
-                        <Button Grid.Column="1"
-                                x:Uid="AIAgents_CustomProviderAdd"
-                                VerticalAlignment="Center"
-                                Click="{x:Bind ViewModel.AddCustomModelProvider}"
-                                Style="{StaticResource AccentButtonStyle}" />
                     </Grid>
                 </muxc:Expander.Header>
-                <StackPanel>
+                <!--  Offset WinUI's default vertical Expander content padding so each
+                      provider and Add New occupy one visually centered row.  -->
+                <StackPanel Margin="0,-16,0,-16">
                     <TextBlock Margin="0,12,0,0"
                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                Text="{x:Bind ViewModel.CustomModelProviderUnsupportedMessage, Mode=OneWay}"
@@ -267,7 +220,9 @@
                     <ItemsControl ItemsSource="{x:Bind ViewModel.CustomModelProviders, Mode=OneWay}">
                         <ItemsControl.ItemTemplate>
                             <DataTemplate x:DataType="local:CustomModelProviderEntry">
-                                <Border Padding="0,4">
+                                <Border Padding="0,4"
+                                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                        BorderThickness="0,0,0,1">
                                     <Grid>
                                         <Grid.RowDefinitions>
                                             <RowDefinition Height="Auto" />
@@ -314,6 +269,14 @@
                             </DataTemplate>
                         </ItemsControl.ItemTemplate>
                     </ItemsControl>
+
+                    <Border Padding="0,4"
+                            Visibility="{x:Bind mtu:Converters.InvertedBooleanToVisibility(ViewModel.IsAddingCustomModelProvider), Mode=OneWay}">
+                        <Button x:Uid="AIAgents_CustomProviderAdd"
+                                HorizontalAlignment="Right"
+                                Click="{x:Bind ViewModel.AddCustomModelProvider}"
+                                Style="{StaticResource AccentButtonStyle}" />
+                    </Border>
 
                     <Border Padding="0,8,0,16"
                             Visibility="{x:Bind ViewModel.IsAddingCustomModelProvider, Mode=OneWay}">
