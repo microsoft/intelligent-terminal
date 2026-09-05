@@ -1133,33 +1133,29 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
     <comment>{Locked="Node.js","NPX"}
 In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
-  <data name="FreOverlay_AutoErrorHandlingLabel.Text" xml:space="preserve">
-    <value>Error detection</value>
-    <comment>Label for the Error detection dropdown in the first-run wizard.</comment>
-  </data>
-  <data name="FreOverlay_AutoErrorHandlingDescription.Text" xml:space="preserve">
-    <value>Have your agent detect errors in the shell or send failed commands to your agent automatically, no prompt needed.</value>
-    <comment>Description for the Error detection dropdown in the first-run wizard. Here "agent" refers to an AI intelligent agent, not a proxy or human agent.</comment>
-  </data>
-  <data name="FreOverlay_AutoErrorHandlingShellIntegrationHintPrefix" xml:space="preserve">
-    <value>Installs shell integration to detect command failures. Available in PowerShell, bash, and WSL bash. </value>
-    <comment>{Locked="PowerShell","bash","WSL bash"} Hint shown under the Auto error handling dropdown in the first-run wizard. The trailing space is intentional — it separates this prefix from the inline FreOverlay_AutoErrorHandlingShellIntegrationHintLink hyperlink that follows.</comment>
-  </data>
-  <data name="FreOverlay_AutoErrorHandlingShellIntegrationHintLink" xml:space="preserve">
-    <value>See all supported shells</value>
-    <comment>Inline hyperlink text that follows FreOverlay_AutoErrorHandlingShellIntegrationHintPrefix and opens the documentation listing every shell that supports Auto error handling.</comment>
-  </data>
-  <data name="FreOverlay_AutoErrorHandling_Off" xml:space="preserve">
-    <value>Off</value>
-    <comment>The third option in the Error detection dropdown. It disables automatic terminal error detection and suggestions.</comment>
-  </data>
-  <data name="FreOverlay_AutoErrorHandling_DetectErrorsAutomatically" xml:space="preserve">
+  <data name="FreOverlay_AutoDetectLabel.Text" xml:space="preserve">
     <value>Automatic error detection</value>
-    <comment>The first option in the Error detection dropdown. It enables automatic terminal error detection without sending failures to an AI agent. Here "agent" means an AI intelligent agent, not a proxy or human agent.</comment>
+    <comment>Header for the toggle that lets the terminal observe the shell and detect failed commands.</comment>
   </data>
-  <data name="FreOverlay_AutoErrorHandling_DetectErrorsAndSendToAgentForFixesAutomatically" xml:space="preserve">
-    <value>Automatic error detection and suggestion</value>
-    <comment>The second option in the Error detection dropdown. It enables automatic terminal error detection and sends failures to an AI agent for suggested fixes. Here "agent" means an AI intelligent agent, not a proxy or human agent.</comment>
+  <data name="FreOverlay_AutoDetectDescription.Text" xml:space="preserve">
+    <value>Give Intelligent Terminal permission to access your shell and automatically detect errors.</value>
+    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name. Description for the automatic-error-detection toggle in the first-run wizard.</comment>
+  </data>
+  <data name="FreOverlay_AutoDetectShellIntegrationHintPrefix" xml:space="preserve">
+    <value>Enabling this will install shell integration to detect command failures. </value>
+    <comment>Hint shown under the "Automatic error detection" toggle in the first-run wizard, explaining that turning the toggle on installs shell integration into the user's shell profile. The trailing space is intentional — it separates this prefix from the inline "Learn more" hyperlink that follows.</comment>
+  </data>
+  <data name="FreOverlay_AutoDetectShellIntegrationHintLink" xml:space="preserve">
+    <value>Learn more</value>
+    <comment>Inline hyperlink text that follows FreOverlay_AutoDetectShellIntegrationHintPrefix, linking to the shell-integration documentation.</comment>
+  </data>
+  <data name="FreOverlay_AutoErrorLabel.Text" xml:space="preserve">
+    <value>Automatic error suggestion</value>
+    <comment>Header for the toggle that lets the agent automatically suggest fixes for detected errors. Depends on automatic error detection being on.</comment>
+  </data>
+  <data name="FreOverlay_AutoErrorDescription.Text" xml:space="preserve">
+    <value>Give Intelligent Terminal permission to send errors to your agent to automatically suggest fixes.</value>
+    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name. Description for the automatic-error-suggestion toggle in the first-run wizard. In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human.</comment>
   </data>
   <data name="FreOverlay_SessionLabel.Text" xml:space="preserve">
     <value>Session management</value>
@@ -1255,12 +1251,11 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
     <comment>{Locked="hooks"}</comment>
   </data>
   <data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
-    <value>Failed to install shell integration. Auto error handling has been turned off. You can re-enable it and try again, or save to continue without it.</value>
-    <comment>{Locked="Auto error handling"} FRE setup error. Auto error handling was turned off because shell integration could not be installed.</comment>
+    <value>Failed to install shell integration. Error detection has been turned off. You can re-enable it and try again, or save to continue without it.</value>
   </data>
   <data name="FreOverlay_InstallErrorShellIntegrationExecutionPolicy" xml:space="preserve">
-    <value>PowerShell execution policy is blocking scripts. Auto error handling has been turned off.</value>
-    <comment>{Locked="PowerShell","Auto error handling"} FRE setup error. PowerShell execution policy blocked scripts, so Auto error handling was turned off.</comment>
+    <value>PowerShell execution policy is blocking scripts. Error detection turned off.</value>
+    <comment>{Locked="PowerShell"}</comment>
   </data>
   <data name="FreOverlay_ErrorHelpLink" xml:space="preserve">
     <value>Learn how to fix this manually</value>

@@ -171,33 +171,12 @@
     <value>এই এজেণ্টৰ বাবে Node.js আৰু NPX প্ৰয়োজন, যদি ইতিমধ্যে নাই তেন্তে স্বয়ংক্ৰিয়ভাৱে ইনষ্টল হ'ব।</value>
     <comment>{Locked="Node.js","NPX"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
-  <data name="FreOverlay_AutoErrorHandlingLabel.Text" xml:space="preserve">
-    <value>স্বয়ংক্ৰিয় ত্ৰুটি ব্যৱস্থাপনা</value>
-    <comment>Label for the Error detection dropdown in the first-run wizard.</comment>
+  <data name="FreOverlay_AutoErrorLabel.Text" xml:space="preserve">
+    <value>স্বয়ংক্ৰিয় ত্ৰুটি পৰামৰ্শ</value>
   </data>
-  <data name="FreOverlay_AutoErrorHandlingDescription.Text" xml:space="preserve">
-    <value>টাৰ্মিনেলৰ ত্ৰুটিসমূহ কেনেকৈ ব্যৱস্থাপনা কৰা হয় বাছনি কৰক।</value>
-    <comment>Description for the Error detection dropdown in the first-run wizard. Here "agent" refers to an AI intelligent agent, not a proxy or human agent.</comment>
-  </data>
-  <data name="FreOverlay_AutoErrorHandlingShellIntegrationHintPrefix" xml:space="preserve">
-    <value>এইটো সক্ষম কৰিলে কমাণ্ড বিফলতা চিনাক্ত কৰিবলৈ shell ইণ্টিগ্ৰেশ্বন ইনষ্টল হ'ব। PowerShell, bash, আৰু WSL bash-ত উপলব্ধ। </value>
-    <comment>{Locked="PowerShell","bash","WSL bash"} Hint shown under the Auto error handling dropdown in the first-run wizard. The trailing space is intentional — it separates this prefix from the inline FreOverlay_AutoErrorHandlingShellIntegrationHintLink hyperlink that follows.</comment>
-  </data>
-  <data name="FreOverlay_AutoErrorHandlingShellIntegrationHintLink" xml:space="preserve">
-    <value>সকলো সমৰ্থিত shell চাওক</value>
-    <comment>Inline hyperlink text that follows FreOverlay_AutoErrorHandlingShellIntegrationHintPrefix and opens the documentation listing every shell that supports Auto error handling.</comment>
-  </data>
-  <data name="FreOverlay_AutoErrorHandling_Off" xml:space="preserve">
-    <value>বন্ধ</value>
-    <comment>The third option in the Error detection dropdown. It disables automatic terminal error detection and suggestions.</comment>
-  </data>
-  <data name="FreOverlay_AutoErrorHandling_DetectErrorsAutomatically" xml:space="preserve">
-    <value>ত্ৰুটিসমূহ স্বয়ংক্ৰিয়ভাৱে চিনাক্ত কৰক</value>
-    <comment>The first option in the Error detection dropdown. It enables automatic terminal error detection without sending failures to an AI agent. Here "agent" means an AI intelligent agent, not a proxy or human agent.</comment>
-  </data>
-  <data name="FreOverlay_AutoErrorHandling_DetectErrorsAndSendToAgentForFixesAutomatically" xml:space="preserve">
-    <value>ভুলসমূহ ধৰা পেলাওক আৰু স্বয়ংক্ৰিয়ভাৱে সমাধানৰ বাবে AI এজেন্টলৈ পঠাওক</value>
-    <comment>The second option in the Error detection dropdown. It enables automatic terminal error detection and sends failures to an AI agent for suggested fixes. Here "agent" means an AI intelligent agent, not a proxy or human agent.</comment>
+  <data name="FreOverlay_AutoErrorDescription.Text" xml:space="preserve">
+    <value>Intelligent Terminal ক স্বয়ংক্ৰিয়ভাৱে সমাধান পৰামৰ্শ দিবলৈ আপোনাৰ এজেণ্টলৈ ত্ৰুটি পঠিয়াবলৈ অনুমতি দিয়ক।</value>
+    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_SessionLabel.Text" xml:space="preserve">
     <value>ছেশ্বন পৰিচালনা</value>
@@ -285,7 +264,7 @@
   </data>
   <data name="FreOverlay_InstallErrorShellIntegrationExecutionPolicy" xml:space="preserve">
     <value>PowerShell এক্সিকিউচন নীতিয়ে স্ক্ৰিপ্ট অৱৰোধ কৰি আছে। ত্ৰুটি চিনাক্তকৰণ বন্ধ কৰা হ’ল।</value>
-    <comment>{Locked="PowerShell","Auto error handling"} FRE setup error. PowerShell execution policy blocked scripts, so Auto error handling was turned off.</comment>
+    <comment>{Locked="PowerShell"}</comment>
   </data>
   <data name="FreOverlay_InstallErrorWingetMissing" xml:space="preserve">
     <value>Windows Package Manager (winget) ইনষ্টল কৰা নাই বা উপলব্ধ নহয়। প্ৰথমে ইয়াক ইনষ্টল কৰক, তাৰ পিছত পুনৰ চেষ্টা কৰক।</value>
@@ -374,10 +353,22 @@
     <value>Terminal Protocol</value>
     <comment>Title for the teaching tip that displays Terminal Protocol connection information. {Locked="Terminal Protocol"}</comment>
   </data>
+  <data name="FreOverlay_AutoDetectLabel.Text" xml:space="preserve">
+    <value>স্বয়ংক্ৰিয় ত্ৰুটি চিনাক্তকৰণ</value>
+  </data>
+  <data name="FreOverlay_AutoDetectDescription.Text" xml:space="preserve">
+    <value>Intelligent Terminal ক আপোনাৰ শ্বেল ব্যৱহাৰ কৰিবলৈ আৰু ত্ৰুটিসমূহ স্বয়ংক্ৰিয়ভাৱে চিনাক্ত কৰিবলৈ অনুমতি দিয়ক।</value>
+  </data>
   <data name="FreOverlay_ErrorHelpLink" xml:space="preserve">
     <value>এইটো কেনেকৈ মেনুৱেলী ঠিক কৰিব শিকক</value>
     <comment>Hyperlink shown below an FRE setup error message. Opens step-by-step manual setup instructions in the browser.</comment>
-  </data>  <data name="InitShellIntegrationExecutionPolicyErrorMessage" xml:space="preserve">
+  </data>  <data name="FreOverlay_AutoDetectShellIntegrationHintPrefix" xml:space="preserve">
+    <value>এইটো সক্ষম কৰিলে কমাণ্ড বিফলতা চিনাক্ত কৰিবলৈ shell ইণ্টিগ্ৰেশ্বন ইনষ্টল হ'ব। </value>
+  </data>
+  <data name="FreOverlay_AutoDetectShellIntegrationHintLink" xml:space="preserve">
+    <value>অধিক জানক</value>
+  </data>
+  <data name="InitShellIntegrationExecutionPolicyErrorMessage" xml:space="preserve">
     <value>PowerShell এক্সিকিউচন নীতিয়ে স্ক্ৰিপ্ট অৱৰোধ কৰি আছে।</value>
     <comment>Body of an error dialog shown after the user tries to install PowerShell shell integration but their PowerShell execution policy (Restricted or AllSigned) is blocking scripts. A separate "Learn how to fix this manually" hyperlink (FreOverlay_ErrorHelpLink) is rendered on its own line below this sentence. {Locked="PowerShell"}</comment>
   </data>

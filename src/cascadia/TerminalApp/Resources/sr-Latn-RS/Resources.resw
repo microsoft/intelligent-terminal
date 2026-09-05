@@ -57,33 +57,12 @@
     <value>Ovaj agent zahteva Node.js i NPX, koji će biti automatski instalirani ako nisu već prisutni.</value>
     <comment>{Locked="Node.js","NPX"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
-  <data name="FreOverlay_AutoErrorHandlingLabel.Text" xml:space="preserve">
-    <value>Automatsko rukovanje greškama</value>
-    <comment>Label for the Error detection dropdown in the first-run wizard.</comment>
+  <data name="FreOverlay_AutoErrorLabel.Text" xml:space="preserve">
+    <value>Automatski predlog ispravki</value>
   </data>
-  <data name="FreOverlay_AutoErrorHandlingDescription.Text" xml:space="preserve">
-    <value>Odaberite kako se postupa sa greškama terminala.</value>
-    <comment>Description for the Error detection dropdown in the first-run wizard. Here "agent" refers to an AI intelligent agent, not a proxy or human agent.</comment>
-  </data>
-  <data name="FreOverlay_AutoErrorHandlingShellIntegrationHintPrefix" xml:space="preserve">
-    <value>Omogućavanje ovoga će instalirati integraciju shell-a za otkrivanje neuspeha komandi. Dostupno u PowerShell, bash i WSL bash. </value>
-    <comment>{Locked="PowerShell","bash","WSL bash"} Hint shown under the Auto error handling dropdown in the first-run wizard. The trailing space is intentional — it separates this prefix from the inline FreOverlay_AutoErrorHandlingShellIntegrationHintLink hyperlink that follows.</comment>
-  </data>
-  <data name="FreOverlay_AutoErrorHandlingShellIntegrationHintLink" xml:space="preserve">
-    <value>Prikaži sve podržane shell-ove</value>
-    <comment>Inline hyperlink text that follows FreOverlay_AutoErrorHandlingShellIntegrationHintPrefix and opens the documentation listing every shell that supports Auto error handling.</comment>
-  </data>
-  <data name="FreOverlay_AutoErrorHandling_Off" xml:space="preserve">
-    <value>Isklj</value>
-    <comment>The third option in the Error detection dropdown. It disables automatic terminal error detection and suggestions.</comment>
-  </data>
-  <data name="FreOverlay_AutoErrorHandling_DetectErrorsAutomatically" xml:space="preserve">
-    <value>Automatski otkrivajte greške</value>
-    <comment>The first option in the Error detection dropdown. It enables automatic terminal error detection without sending failures to an AI agent. Here "agent" means an AI intelligent agent, not a proxy or human agent.</comment>
-  </data>
-  <data name="FreOverlay_AutoErrorHandling_DetectErrorsAndSendToAgentForFixesAutomatically" xml:space="preserve">
-    <value>Otkrijte greške i automatski ih pošaljite AI agentu radi ispravki</value>
-    <comment>The second option in the Error detection dropdown. It enables automatic terminal error detection and sends failures to an AI agent for suggested fixes. Here "agent" means an AI intelligent agent, not a proxy or human agent.</comment>
+  <data name="FreOverlay_AutoErrorDescription.Text" xml:space="preserve">
+    <value>Dozvolite da Intelligent Terminal šalje greške vašem agentu radi automatskog predlaganja ispravki.</value>
+    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
   </data>
   <data name="FreOverlay_SessionLabel.Text" xml:space="preserve">
     <value>Upravljanje sesijama</value>
@@ -249,6 +228,12 @@
     <value>Terminal Protocol</value>
     <comment>Title for the teaching tip that displays Terminal Protocol connection information. {Locked="Terminal Protocol"}</comment>
   </data>
+  <data name="FreOverlay_AutoDetectLabel.Text" xml:space="preserve">
+    <value>Automatsko otkrivanje grešaka</value>
+  </data>
+  <data name="FreOverlay_AutoDetectDescription.Text" xml:space="preserve">
+    <value>Dozvolite da Intelligent Terminal pristupi vašoj komandnoj liniji i automatski otkriva greške.</value>
+  </data>
 <data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
     <value>Instalacija integracije ljuske nije uspela. Otkrivanje grešaka je isključeno. Možete ga ponovo uključiti i pokušati ponovo, ili sačuvati da nastavite bez njega.</value>
   </data><data name="FreOverlay_InstallErrorHooks" xml:space="preserve">
@@ -257,13 +242,19 @@
   </data><data name="FreOverlay_ErrorHelpLink" xml:space="preserve">
     <value>Saznajte kako da ovo ručno popravite</value>
     <comment>Hyperlink shown below an FRE setup error message. Opens step-by-step manual setup instructions in the browser.</comment>
-  </data>  <data name="InitShellIntegrationExecutionPolicyErrorMessage" xml:space="preserve">
+  </data>  <data name="FreOverlay_AutoDetectShellIntegrationHintPrefix" xml:space="preserve">
+    <value>Omogućavanje ovoga će instalirati integraciju shell-a za otkrivanje neuspeha komandi. </value>
+  </data>
+  <data name="FreOverlay_AutoDetectShellIntegrationHintLink" xml:space="preserve">
+    <value>Saznajte više</value>
+  </data>
+  <data name="InitShellIntegrationExecutionPolicyErrorMessage" xml:space="preserve">
     <value>PowerShell politika izvršavanja blokira skripte.</value>
     <comment>Body of an error dialog shown after the user tries to install PowerShell shell integration but their PowerShell execution policy (Restricted or AllSigned) is blocking scripts. A separate "Learn how to fix this manually" hyperlink (FreOverlay_ErrorHelpLink) is rendered on its own line below this sentence. {Locked="PowerShell"}</comment>
   </data>
   <data name="FreOverlay_InstallErrorShellIntegrationExecutionPolicy" xml:space="preserve">
-    <value>PowerShell politika izvršavanja blokira skripte. Auto error handling je isključen.</value>
-    <comment>{Locked="PowerShell","Auto error handling"} FRE setup error. PowerShell execution policy blocked scripts, so Auto error handling was turned off.</comment>
+    <value>PowerShell politika izvršavanja blokira skripte. Otkrivanje grešaka je isključeno.</value>
+    <comment>{Locked="PowerShell"}</comment>
   </data>
   <data name="UsageGroup/[using:Windows.UI.Xaml.Automation]AutomationProperties/Name" xml:space="preserve"><value>Upotreba</value><comment>Accessibility name for the session usage summary in the terminal bottom bar.</comment></data>
   <data name="Usage_TokensUnit" xml:space="preserve"><value>tokeni</value><comment>Unit label for AI context-window token counts. Translate this term using the established AI/LLM terminology for the locale.</comment></data>
