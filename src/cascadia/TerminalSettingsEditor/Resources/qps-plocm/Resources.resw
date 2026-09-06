@@ -2826,9 +2826,9 @@
     <value>Тĥїś ťэхť ẃĭŀł вё îⁿŝέŗŧеď вēťщ℮ěπ τĥę ρªτħѕ óƒ мџĺţīрℓé ƒĭļèś đяǿρрεδ ιйţθ ţħê ţèřмĭлªŀ. !!! !!! !!! !!! !!! !!! !!! !!! !!!</value>
     <comment>A description for what the "drag drop delimiter" setting does.</comment>
   </data>
-<data name="AIAgents_DelegateAgent.Header" xml:space="preserve"><value>Agent</value><comment>Header for the setting that specifies which agent CLI handles command palette / on-demand requests.</comment></data><data name="AIAgents_HooksRefreshButton.Content" xml:space="preserve"><value>Refresh</value><comment>Button label that re-detects which agent CLIs are present and which already have hooks installed.</comment></data><data name="AIAgents_AcpGroupHeader.Text" xml:space="preserve"><value>Agent pane</value><comment>Section header for the agent pane settings group.</comment></data><data name="AIAgents_AutoFix.Header" xml:space="preserve"><value>Auto-error detection</value><comment>Header for the toggle that enables automatic fix suggestions when commands fail.</comment></data><data name="AIAgents_YoloMode.Header" xml:space="preserve"><value>Use provider Yolo mode</value><comment>{Locked=&quot;Yolo&quot;} Header for the global setting that asks each AI agent provider to enable its advertised ACP session Yolo capability.</comment></data>
+<data name="AIAgents_DelegateAgent.Header" xml:space="preserve"><value>Agent</value><comment>Header for the setting that specifies which agent CLI handles command palette / on-demand requests.</comment></data><data name="AIAgents_AcpGroupHeader.Text" xml:space="preserve"><value>Agent pane</value><comment>Section header for the agent pane settings group.</comment></data><data name="AIAgents_AutoFix.Header" xml:space="preserve"><value>Auto-error detection</value><comment>Header for the toggle that enables automatic fix suggestions when commands fail.</comment></data><data name="AIAgents_YoloMode.Header" xml:space="preserve"><value>Use provider Yolo mode</value><comment>{Locked=&quot;Yolo&quot;} Header for the global setting that asks each AI agent provider to enable its advertised ACP session Yolo capability.</comment></data>
 <data name="AIAgents_YoloMode.HelpText" xml:space="preserve"><value>Uses the agent provider&apos;s ACP session mode to reduce or bypass confirmations. The provider defines the resulting permissions, sandbox, file access, and network access. Providers without a supported mode continue to ask for permission.</value><comment>{Locked=&quot;ACP&quot;} Risk warning shown under the Yolo toggle. Here provider means the selected AI agent provider, not a network provider.</comment></data>
-<data name="AIAgents_HooksInstall.Header" xml:space="preserve"><value>Install agent hook scripts</value><comment>Header for the Agent Hooks install section.</comment></data><data name="AIAgents_AcpModel.Header" xml:space="preserve"><value>Model</value><comment>Header for the setting that specifies the model used by the agent pane agent.</comment></data><data name="AIAgents_DelegateAgent.HelpText" xml:space="preserve"><value>Choose the agent used for quick actions in the command palette.</value><comment>Supplementary description for the command palette agent setting.</comment></data><data name="AIAgents_AcpAgent.HelpText" xml:space="preserve"><value>Choose the agent used in the agent pane. Any compatible ACP agent will be detected.</value><comment>Supplementary description for the agent pane setting. {Locked="ACP"}</comment></data><data name="AIAgents_AcpAgent.Header" xml:space="preserve"><value>Agent</value><comment>Header for the setting that specifies which AI agent CLI powers the agent pane.</comment></data><data name="AIAgents_AcpModel.HelpText" xml:space="preserve"><value>Choose the model used by this agent.</value><comment>Supplementary description for the model setting.</comment></data><data name="AIAgents_HooksGroupHeader.Text" xml:space="preserve"><value>Agent Hooks</value><comment>Section header for the Agent Hooks installer (lets users install hook scripts that report agent CLI activity to the agent pane).</comment></data><data name="AIAgents_PageSubtitle.Text" xml:space="preserve"><value>Configure how agents work across your terminal experience</value><comment>Subtitle shown beneath the page title on the AI Agents settings page.</comment></data>
+<data name="AIAgents_AcpModel.Header" xml:space="preserve"><value>Model</value><comment>Header for the setting that specifies the model used by the agent pane agent.</comment></data><data name="AIAgents_DelegateAgent.HelpText" xml:space="preserve"><value>Choose the agent used for quick actions in the command palette.</value><comment>Supplementary description for the command palette agent setting.</comment></data><data name="AIAgents_AcpAgent.HelpText" xml:space="preserve"><value>Choose the agent used in the agent pane. Any compatible ACP agent will be detected.</value><comment>Supplementary description for the agent pane setting. {Locked="ACP"}</comment></data><data name="AIAgents_AcpAgent.Header" xml:space="preserve"><value>Agent</value><comment>Header for the setting that specifies which AI agent CLI powers the agent pane.</comment></data><data name="AIAgents_AcpModel.HelpText" xml:space="preserve"><value>Choose the model used by this agent.</value><comment>Supplementary description for the model setting.</comment></data><data name="AIAgents_PageSubtitle.Text" xml:space="preserve"><value>Configure how agents work across your terminal experience</value><comment>Subtitle shown beneath the page title on the AI Agents settings page.</comment></data>
   <data name="AIAgents_PageSubtitlePrefix" xml:space="preserve">
     <value>Configure how agents work across your terminal experience.</value>
     <comment>Subtitle shown beneath the page title on the AI Agents settings page. The hyperlink in AIAgents_PageSubtitlePrivacyLink follows this sentence inline; the trailing period belongs to this prefix.</comment>
@@ -2852,8 +2852,7 @@
   <data name="AIAgents_PanePosition_Left" xml:space="preserve">
     <value>Left</value>
     <comment>Value shown in the agent pane position dropdown (selects which side of the terminal the agent pane opens on). Translation should match the existing FreOverlay_PanePositionLeft string used in the first-run experience.</comment>
-  </data><data name="AIAgents_PanePosition.Header" xml:space="preserve"><value>Pane position</value><comment>Header for the setting that controls where the agent pane appears relative to the active pane.</comment></data><data name="AIAgents_AutoFix.HelpText" xml:space="preserve"><value>Detect command errors and suggest fixes automatically.</value><comment>Supplementary description for the auto-error-detection setting.</comment></data><data name="AIAgents_HooksInstall.HelpText" xml:space="preserve"><value>Track sessions across agents. Required for agent session management.</value><comment>Help text shown under the expandable section header.</comment></data><data name="AIAgents_HooksInstallButton.Content" xml:space="preserve"><value>Install hooks</value><comment>Button label that triggers installation of the wt-agent-hooks plugin/extension into all detected agent CLIs (Copilot, Claude, Codex, Gemini).</comment></data>
-  <data name="AIAgents_SessionManagement.Header" xml:space="preserve">
+  </data><data name="AIAgents_PanePosition.Header" xml:space="preserve"><value>Pane position</value><comment>Header for the setting that controls where the agent pane appears relative to the active pane.</comment></data><data name="AIAgents_AutoFix.HelpText" xml:space="preserve"><value>Detect command errors and suggest fixes automatically.</value><comment>Supplementary description for the auto-error-detection setting.</comment></data>  <data name="AIAgents_SessionManagement.Header" xml:space="preserve">
     <value>Sessions</value>
     <comment>Title for the setting that controls agent session tracking.</comment>
   </data>
@@ -2866,62 +2865,6 @@
   <data name="AIAgents_PolicyLocked.Text" xml:space="preserve">
     <value>This setting is managed by your organization.</value>
     <comment>Text shown when Group Policy controls this feature. Standard Windows policy notice wording. {Locked=qps-ploc,qps-ploca,qps-plocm}</comment>
-  </data>
-  <data name="AIAgents_HooksInstallingSummary" xml:space="preserve">
-    <value>Installing hooks...</value>
-    <comment>Status summary shown while installing agent session tracking hooks. {Locked="hooks"}</comment>
-  </data>
-  <data name="AIAgents_HooksRemovingCopilotSummary" xml:space="preserve">
-    <value>Removing Copilot hooks...</value>
-    <comment>Status summary shown while removing agent session tracking hooks for Copilot. {Locked="Copilot","hooks"}</comment>
-  </data>
-  <data name="AIAgents_HooksRemovingClaudeSummary" xml:space="preserve">
-    <value>Removing Claude hooks...</value>
-    <comment>Status summary shown while removing agent session tracking hooks for Claude. {Locked="Claude","hooks"}</comment>
-  </data>
-  <data name="AIAgents_HooksRemovingGeminiSummary" xml:space="preserve">
-    <value>Removing Gemini hooks...</value>
-    <comment>Status summary shown while removing agent session tracking hooks for Gemini. {Locked="Gemini","hooks"}</comment>
-  </data>
-  <data name="AIAgents_HooksRemovingCodexSummary" xml:space="preserve">
-    <value>Removing Codex hooks...</value>
-    <comment>Status summary shown while removing agent session tracking hooks for Codex. {Locked="Codex","hooks"}</comment>
-  </data>
-  <data name="AIAgents_HooksRemovingOpenCodeSummary" xml:space="preserve">
-    <value>Removing OpenCode hooks...</value>
-    <comment>Status summary shown while removing agent session tracking hooks for OpenCode. {Locked="OpenCode","hooks"}</comment>
-  </data>
-  <data name="AIAgents_CodexTrustHint.Text" xml:space="preserve">
-    <value>After installing, run /hooks in Codex and approve to trust the new event handlers.</value>
-    <comment>One-line reminder shown under the Codex CLI row in the Agent Hooks section. Codex requires per-command trust before hook handlers run; users must execute /hooks inside Codex and approve. {Locked="/hooks","Codex"}</comment>
-  </data>
-  <data name="AIAgents_HooksRestartNote.Text" xml:space="preserve">
-    <value>Changes take effect the next time an agent starts. Restart any open agents to apply them.</value>
-    <comment>Persistent note shown under the "Install agent hook script" row in the Agent session tracking section. Warns that installing or removing hooks only affects agents started afterwards. In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
-  </data>
-  <data name="AIAgents_HooksLocateWtaFailedSummary" xml:space="preserve">
-    <value>Failed: could not locate wta.exe</value>
-    <comment>Failure summary shown when the Settings UI cannot find the WTA helper executable. {Locked="wta.exe"}</comment>
-  </data>
-  <data name="AIAgents_HooksRemovedSummary" xml:space="preserve">
-    <value>Hooks removed.</value>
-    <comment>Success summary shown after removing agent session tracking hooks. {Locked="Hooks"}</comment>
-  </data>
-  <data name="AIAgents_HooksInstalledSummary" xml:space="preserve">
-    <value>Hooks installed.</value>
-    <comment>Success summary shown after installing agent session tracking hooks. {Locked="Hooks"}</comment>
-  </data>
-  <data name="AIAgents_HooksRemovalFailedSummary" xml:space="preserve">
-    <value>Hook removal failed. Check {0} for details.</value>
-    <comment>Failure summary shown when removing agent session tracking hooks fails. {Locked="Hook","{0}"} {0} is replaced with the package-aware, versioned WTA log directory at runtime.</comment>
-  </data>
-  <data name="AIAgents_HooksInstallationFailedSummary" xml:space="preserve">
-    <value>Hooks installation failed. Check {0} for details.</value>
-    <comment>Failure summary shown when installing agent session tracking hooks fails. {Locked="Hooks","{0}"} {0} is replaced with the package-aware, versioned wta-install-hooks.log path at runtime.</comment>
-  </data>
-  <data name="AIAgents_HooksInstallationFailedForSummary" xml:space="preserve">
-    <value>Hooks installation failed for {0}. Check {1} for details.</value>
-    <comment>Failure summary shown when installing agent session tracking hooks fails for specific CLIs. {Locked="Hooks","{0}","{1}"} {0} is replaced with a comma-separated list of CLI names (brand names, never translated); {1} is replaced with the package-aware, versioned wta-install-hooks.log path at runtime.</comment>
   </data>
   <data name="AIAgents_AutoErrorDetectionTitle.Text" xml:space="preserve">
     <value>Automatic error detection</value>

@@ -33,9 +33,8 @@ pub(crate) fn run_install(cli: HooksCliFilter, force: bool, json_mode: bool) -> 
     }
 
     if json_mode {
-        // Emitted for both outcomes: the Settings UI needs the per-CLI
-        // breakdown precisely when the run failed, and the exit code below
-        // still carries pass/fail for scripts.
+        // Emit per-CLI diagnostics even on failure; the exit code below
+        // independently carries pass/fail for scripts.
         println!(
             "{}",
             serde_json::to_string_pretty(&install_report)
@@ -103,19 +102,9 @@ fn missing_installs(
     scope: crate::agent_hooks_installer::CliScope,
     status: &crate::agent_hooks_installer::StatusReport,
 ) -> Vec<&'static str> {
-    use crate::agent_hooks_installer::CliScope;
-
-    status
-        .clis
+    crate::agent_hooks_installer::build_reconciliation_plan(scope, status)
         .iter()
-        .filter(|entry| {
-            let in_scope = match scope {
-                CliScope::All => true,
-                CliScope::One(kind) => entry.name == kind.name(),
-            };
-            in_scope && entry.binary_on_path && !entry.plugin_installed
-        })
-        .map(|entry| entry.name)
+        .map(|(kind, _)| kind.name())
         .collect()
 }
 
@@ -403,7 +392,7 @@ fn yn(b: bool) -> &'static str {
 mod tests {
     use super::{
         build_install_report, format_bundle_source, format_install_failure, format_version_column,
-        full_install_plan,
+        full_install_plan, missing_installs,
     };
     use crate::agent_hooks_installer::{
         build_reconciliation_plan, BundleSourceInfo, CliScope, CliStatus, InstallFailure,
@@ -625,8 +614,7 @@ mod tests {
             .outcome
     }
 
-    /// The reason the JSON exists: the Settings UI needs to name the CLI that
-    /// failed. A spawn failure must be reported per-CLI, with its reason, and
+    /// A spawn failure must be reported per-CLI, with its reason, and
     /// must not contaminate the CLIs that installed fine.
     #[test]
     fn install_report_names_the_failing_cli_and_carries_its_reason() {
@@ -722,9 +710,7 @@ mod tests {
         assert_eq!(report.clis[0].name, "codex");
     }
 
-    /// The C++ parser rejects an unexpected `schema_version` outright, so the
-    /// version this code emits is part of the contract, not an implementation
-    /// detail.
+    /// The report's schema version remains part of the public CLI contract.
     #[test]
     fn install_report_pins_its_schema_version() {
         let report = build_install_report(CliScope::All, &status_of(vec![]), &no_failures(), &[]);
@@ -738,6 +724,102 @@ mod tests {
             installed_version: Some(version.to_string()),
             ..cli_with_bundle(name, Some(version))
         }
+    }
+
+    #[test]
+    fn forced_install_validation_accepts_current_hooks_and_skips_absent_clis() {
+        let status = status_of(vec![
+            installed_cli("copilot", "0.1.6"),
+            absent_cli("gemini"),
+        ]);
+        let missing = missing_installs(CliScope::All, &status);
+        assert!(missing.is_empty());
+
+        let report = build_install_report(CliScope::All, &status, &[], &missing);
+        assert_eq!(outcome_of(&report, "copilot"), "installed");
+        assert_eq!(outcome_of(&report, "gemini"), "skipped");
+    }
+
+    #[test]
+    fn forced_install_validation_rejects_incomplete_or_outdated_hooks() {
+        let healthy = installed_cli("copilot", "0.1.6");
+        let cases = [
+            CliStatus {
+                plugin_installed: false,
+                ..healthy.clone()
+            },
+            CliStatus {
+                plugin_enabled: false,
+                ..healthy.clone()
+            },
+            CliStatus {
+                marketplace_registered: false,
+                ..healthy.clone()
+            },
+            CliStatus {
+                marketplace_path_valid: false,
+                ..healthy.clone()
+            },
+            CliStatus {
+                installed_version: Some("0.1.5".to_string()),
+                ..healthy.clone()
+            },
+            CliStatus {
+                detection_fallback: Some("filesystem"),
+                ..healthy
+            },
+        ];
+        for cli in cases {
+            let status = status_of(vec![cli]);
+            let missing = missing_installs(CliScope::All, &status);
+            assert_eq!(missing, vec!["copilot"], "{status:?}");
+
+            let report = build_install_report(CliScope::All, &status, &[], &missing);
+            assert_eq!(outcome_of(&report, "copilot"), "failed", "{status:?}");
+        }
+    }
+
+    #[test]
+    fn forced_install_validation_rejects_a_stale_registration_even_at_the_current_version() {
+        use crate::agent_hooks_installer::{expected_registration_dir_for, CliKind};
+
+        let expected = expected_registration_dir_for(CliKind::Copilot)
+            .expect("the repository supplies the hook bundle");
+        let status = status_of(vec![CliStatus {
+            marketplace_path: Some(
+                expected
+                    .with_file_name("previous-hook-bundle")
+                    .to_string_lossy()
+                    .into_owned(),
+            ),
+            ..installed_cli("copilot", "0.1.6")
+        }]);
+        assert_eq!(missing_installs(CliScope::All, &status), vec!["copilot"]);
+    }
+
+    #[test]
+    fn forced_install_validation_respects_cli_scope_and_preserves_spawn_errors() {
+        use crate::agent_hooks_installer::CliKind;
+
+        let status = status_of(vec![
+            CliStatus {
+                plugin_enabled: false,
+                ..installed_cli("copilot", "0.1.6")
+            },
+            installed_cli("codex", "0.1.6"),
+        ]);
+        assert_eq!(
+            missing_installs(CliScope::One(CliKind::Copilot), &status),
+            vec!["copilot"]
+        );
+        let scope = CliScope::One(CliKind::Codex);
+        let missing = missing_installs(scope, &status);
+        assert!(missing.is_empty());
+        let failures = [failure("codex", "install failed: Access is denied")];
+        let report = build_install_report(scope, &status, &failures, &missing);
+        assert_eq!(report.clis.len(), 1);
+        assert_eq!(outcome_of(&report, "codex"), "failed");
+        assert_eq!(report.clis[0].reason, Some(failures[0].reason.clone()));
     }
 
     /// The automatic reconciliation contract: complete-and-current CLIs drop

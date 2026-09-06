@@ -2893,24 +2893,8 @@
     <value>Слева</value>
     <comment>Value shown in the agent pane position dropdown (selects which side of the terminal the agent pane opens on). Translation should match the existing FreOverlay_PanePositionLeft string used in the first-run experience.</comment>
   </data>
-  <data name="AIAgents_HooksGroupHeader.Text" xml:space="preserve">
-    <value>Hooks для агентов</value>
-  </data>
   <data name="AIAgents_YoloMode.Header" xml:space="preserve"><value>Использовать режим Yolo поставщика</value><comment>{Locked=&quot;Yolo&quot;} Header for the global setting that asks each AI agent provider to enable its advertised ACP session Yolo capability.</comment></data>
   <data name="AIAgents_YoloMode.HelpText" xml:space="preserve"><value>Использует режим сеанса ACP поставщика агента, чтобы сократить число подтверждений или обойти их. Поставщик определяет результирующие разрешения, параметры песочницы, а также доступ к файлам и сети. Поставщики без поддерживаемого режима по-прежнему будут запрашивать разрешение.</value><comment>{Locked=&quot;ACP&quot;} Risk warning shown under the Yolo toggle. Here provider means the selected AI agent provider, not a network provider.</comment></data>
-  <data name="AIAgents_HooksInstall.Header" xml:space="preserve">
-    <value>Установить скрипты Hooks для агентов</value>
-  </data>
-  <data name="AIAgents_HooksInstall.HelpText" xml:space="preserve">
-    <value>Отслеживайте сеансы между агентами. Требуется для управления сеансами агентов.</value>
-    <comment>Help text shown under the expandable section header.</comment>
-  </data>
-  <data name="AIAgents_HooksInstallButton.Content" xml:space="preserve">
-    <value>Установить Hooks</value>
-  </data>
-  <data name="AIAgents_HooksRefreshButton.Content" xml:space="preserve">
-    <value>Обновить</value>
-  </data>
   <data name="Settings_PortableModeInfoLink.NavigateUri" xml:space="preserve">
     <value>https://go.microsoft.com/fwlink/?linkid=2229086</value>
     <comment>{Locked}</comment>
@@ -2918,62 +2902,6 @@
   <data name="AIAgents_PolicyLocked.Text" xml:space="preserve">
     <value>Этот параметр управляется вашей организацией.</value>
     <comment>Text shown when Group Policy controls this feature. Standard Windows policy notice wording.</comment>
-  </data>
-  <data name="AIAgents_HooksInstallingSummary" xml:space="preserve">
-    <value>Установка hooks...</value>
-    <comment>Status summary shown while installing agent session tracking hooks. {Locked="hooks"}</comment>
-  </data>
-  <data name="AIAgents_HooksRemovingCopilotSummary" xml:space="preserve">
-    <value>Удаление Copilot hooks...</value>
-    <comment>Status summary shown while removing agent session tracking hooks for Copilot. {Locked="Copilot","hooks"}</comment>
-  </data>
-  <data name="AIAgents_HooksRemovingClaudeSummary" xml:space="preserve">
-    <value>Удаление Claude hooks...</value>
-    <comment>Status summary shown while removing agent session tracking hooks for Claude. {Locked="Claude","hooks"}</comment>
-  </data>
-  <data name="AIAgents_HooksRemovingGeminiSummary" xml:space="preserve">
-    <value>Удаление Gemini hooks...</value>
-    <comment>Status summary shown while removing agent session tracking hooks for Gemini. {Locked="Gemini","hooks"}</comment>
-  </data>
-  <data name="AIAgents_HooksRemovingCodexSummary" xml:space="preserve">
-    <value>Удаление Codex hooks...</value>
-    <comment>Status summary shown while removing agent session tracking hooks for Codex. {Locked="Codex","hooks"}</comment>
-  </data>
-  <data name="AIAgents_HooksRemovingOpenCodeSummary" xml:space="preserve">
-    <value>Удаление OpenCode hooks...</value>
-    <comment>Status summary shown while removing agent session tracking hooks for OpenCode. {Locked="OpenCode","hooks"}</comment>
-  </data>
-  <data name="AIAgents_CodexTrustHint.Text" xml:space="preserve">
-    <value>После установки выполните /hooks в Codex и подтвердите, чтобы доверять новым обработчикам событий.</value>
-    <comment>One-line reminder shown under the Codex CLI row in the Agent Hooks section. Codex requires per-command trust before hook handlers run; users must execute /hooks inside Codex and approve. {Locked="/hooks","Codex"}</comment>
-  </data>
-  <data name="AIAgents_HooksRestartNote.Text" xml:space="preserve">
-    <value>Изменения вступят в силу при следующем запуске агента. Перезапустите все открытые агенты, чтобы применить их.</value>
-    <comment>Persistent note shown under the "Install agent hook script" row in the Agent session tracking section. Warns that installing or removing hooks only affects agents started afterwards. In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
-  </data>
-  <data name="AIAgents_HooksLocateWtaFailedSummary" xml:space="preserve">
-    <value>Сбой: не удалось найти wta.exe</value>
-    <comment>Failure summary shown when the Settings UI cannot find the WTA helper executable. {Locked="wta.exe"}</comment>
-  </data>
-  <data name="AIAgents_HooksRemovedSummary" xml:space="preserve">
-    <value>Hooks удалены.</value>
-    <comment>Success summary shown after removing agent session tracking hooks. {Locked="Hooks"}</comment>
-  </data>
-  <data name="AIAgents_HooksInstalledSummary" xml:space="preserve">
-    <value>Hooks установлены.</value>
-    <comment>Success summary shown after installing agent session tracking hooks. {Locked="Hooks"}</comment>
-  </data>
-  <data name="AIAgents_HooksRemovalFailedSummary" xml:space="preserve">
-    <value>Не удалось удалить Hook. Подробности см. в {0}.</value>
-    <comment>Failure summary shown when removing agent session tracking hooks fails. {Locked="Hook","{0}"} {0} is replaced with the package-aware, versioned WTA log directory at runtime.</comment>
-  </data>
-  <data name="AIAgents_HooksInstallationFailedSummary" xml:space="preserve">
-    <value>Не удалось установить Hooks. Подробности см. в {0}.</value>
-    <comment>Failure summary shown when installing agent session tracking hooks fails. {Locked="Hooks","{0}"} {0} is replaced with the package-aware, versioned wta-install-hooks.log path at runtime.</comment>
-  </data>
-  <data name="AIAgents_HooksInstallationFailedForSummary" xml:space="preserve">
-    <value>Не удалось установить Hooks для {0}. Подробности см. в {1}.</value>
-    <comment>Failure summary shown when installing agent session tracking hooks fails for specific CLIs. {Locked="Hooks","{0}","{1}"} {0} is replaced with a comma-separated list of CLI names (brand names, never translated); {1} is replaced with the package-aware, versioned wta-install-hooks.log path at runtime.</comment>
   </data>
   <data name="AIAgents_AutoErrorDetectionTitle.Text" xml:space="preserve">
     <value>Автоматическое обнаружение ошибок</value>

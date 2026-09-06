@@ -5,10 +5,9 @@
     supported agent CLIs (Copilot, Claude, Gemini, Codex).
 
 .DESCRIPTION
-    Wrapper around `wta hooks status --json` / `wta install-hooks` /
-    `wta hooks uninstall --json`. Same JSON contract that the Settings
-    UI's "AI agents → Agent Hooks" section consumes — so the script and
-    the UI can never disagree about install state.
+    Wrapper around `wta hooks status --json` / `wta hooks install` /
+    `wta hooks uninstall --json`. Uses the JSON contracts defined in
+    tools/wta/src/agent_hooks_installer.rs for status and diagnostics.
 
     Internals are factored into named functions
     (Resolve-WtaPath, Get-AgentHooksStatus, Format-AgentHooksTable,
@@ -20,7 +19,7 @@
 .PARAMETER Mode
     Check    — print a colored status table and exit non-zero if any CLI
                  is in an inconsistent state.
-    Install  — run `wta install-hooks`, then run Check.
+    Install  — run `wta hooks install`, then run Check.
     Uninstall— run `wta hooks uninstall --cli=<filter> --json`, then Check.
 
 .PARAMETER CliFilter
@@ -73,8 +72,7 @@ $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 
 # Schema version this script understands. Mirrors STATUS_SCHEMA_VERSION
-# in tools/wta/src/agent_hooks_installer.rs and SupportedStatusSchemaVersion
-# in src/cascadia/inc/AgentHooksStatus.h. Bump in lockstep.
+# in tools/wta/src/agent_hooks_installer.rs. Bump in lockstep.
 $script:SupportedStatusSchemaVersion = 4
 
 $script:CliDisplayNames = @{
@@ -350,10 +348,10 @@ function Invoke-HooksInstall {
     param([Parameter(Mandatory)][string]$WtaPath)
 
     Write-Host ''
-    Write-Host '→ Running: wta install-hooks' -ForegroundColor Cyan
-    & $WtaPath install-hooks
+    Write-Host '→ Running: wta hooks install' -ForegroundColor Cyan
+    & $WtaPath hooks install
     if ($LASTEXITCODE -ne 0) {
-        throw "wta install-hooks exited with code $LASTEXITCODE"
+        throw "wta hooks install exited with code $LASTEXITCODE"
     }
 }
 

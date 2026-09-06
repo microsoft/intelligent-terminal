@@ -784,24 +784,8 @@
   <data name="AIAgents_PanePosition_Left" xml:space="preserve">
     <value>Лево</value>
     <comment>Value shown in the agent pane position dropdown (selects which side of the terminal the agent pane opens on). Translation should match the existing FreOverlay_PanePositionLeft string used in the first-run experience.</comment>
-  </data><data name="AIAgents_HooksGroupHeader.Text" xml:space="preserve">
-    <value>Hooks агента</value>
-    <comment>Section header for the Agent Hooks installer (lets users install hook scripts that report agent CLI activity to the agent pane).</comment>
   </data><data name="AIAgents_YoloMode.Header" xml:space="preserve"><value>Користи Yolo режим добављача</value><comment>{Locked=&quot;Yolo&quot;} Header for the global setting that asks each AI agent provider to enable its advertised ACP session Yolo capability.</comment></data>
 <data name="AIAgents_YoloMode.HelpText" xml:space="preserve"><value>Користи ACP режим сесије добављача агента да би смањио број потврда или их заобишао. Добављач дефинише резултујуће дозволе, sandbox окружење и приступ датотекама и мрежи. Добављачи без подржаног режима и даље ће тражити дозволу.</value><comment>{Locked=&quot;ACP&quot;} Risk warning shown under the Yolo toggle. Here provider means the selected AI agent provider, not a network provider.</comment></data>
-<data name="AIAgents_HooksInstall.Header" xml:space="preserve">
-    <value>Инсталирај Hook скрипте агента</value>
-    <comment>Header for the Agent Hooks install section.</comment>
-  </data><data name="AIAgents_HooksInstall.HelpText" xml:space="preserve">
-    <value>Пратите сесије међу агентима. Неопходно за управљање сесијама агената.</value>
-    <comment>Help text shown under the expandable section header.</comment>
-  </data><data name="AIAgents_HooksInstallButton.Content" xml:space="preserve">
-    <value>Инсталирај Hooks</value>
-    <comment>Button label that triggers installation of the wt-agent-hooks plugin/extension into all detected agent CLIs (Copilot, Claude, Codex, Gemini).</comment>
-  </data><data name="AIAgents_HooksRefreshButton.Content" xml:space="preserve">
-    <value>Освежи</value>
-    <comment>Button label that re-detects which agent CLIs are present and which already have hooks installed.</comment>
-  </data>
   
   
   
@@ -2933,62 +2917,6 @@
   <data name="AIAgents_PolicyLocked.Text" xml:space="preserve">
     <value>Овом поставком управља ваша организација.</value>
     <comment>Text shown when Group Policy controls this feature. Standard Windows policy notice wording.</comment>
-  </data>
-  <data name="AIAgents_HooksInstallingSummary" xml:space="preserve">
-    <value>Инсталирање hooks...</value>
-    <comment>Status summary shown while installing agent session tracking hooks. {Locked="hooks"}</comment>
-  </data>
-  <data name="AIAgents_HooksRemovingCopilotSummary" xml:space="preserve">
-    <value>Уклањање Copilot hooks...</value>
-    <comment>Status summary shown while removing agent session tracking hooks for Copilot. {Locked="Copilot","hooks"}</comment>
-  </data>
-  <data name="AIAgents_HooksRemovingClaudeSummary" xml:space="preserve">
-    <value>Уклањање Claude hooks...</value>
-    <comment>Status summary shown while removing agent session tracking hooks for Claude. {Locked="Claude","hooks"}</comment>
-  </data>
-  <data name="AIAgents_HooksRemovingGeminiSummary" xml:space="preserve">
-    <value>Уклањање Gemini hooks...</value>
-    <comment>Status summary shown while removing agent session tracking hooks for Gemini. {Locked="Gemini","hooks"}</comment>
-  </data>
-  <data name="AIAgents_HooksRemovingCodexSummary" xml:space="preserve">
-    <value>Уклањање Codex hooks...</value>
-    <comment>Status summary shown while removing agent session tracking hooks for Codex. {Locked="Codex","hooks"}</comment>
-  </data>
-  <data name="AIAgents_HooksRemovingOpenCodeSummary" xml:space="preserve">
-    <value>Уклањање OpenCode hooks...</value>
-    <comment>Status summary shown while removing agent session tracking hooks for OpenCode. {Locked="OpenCode","hooks"}</comment>
-  </data>
-  <data name="AIAgents_CodexTrustHint.Text" xml:space="preserve">
-    <value>Након инсталације, покрените /hooks у Codex-у и одобрите да бисте веровали новим обрађивачима догађаја.</value>
-    <comment>One-line reminder shown under the Codex CLI row in the Agent Hooks section. Codex requires per-command trust before hook handlers run; users must execute /hooks inside Codex and approve. {Locked="/hooks","Codex"}</comment>
-  </data>
-  <data name="AIAgents_HooksRestartNote.Text" xml:space="preserve">
-    <value>Промене ступају на снагу при следећем покретању агента. Поново покрените све отворене агенте да бисте их применили.</value>
-    <comment>Persistent note shown under the "Install agent hook script" row in the Agent session tracking section. Warns that installing or removing hooks only affects agents started afterwards. In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
-  </data>
-  <data name="AIAgents_HooksLocateWtaFailedSummary" xml:space="preserve">
-    <value>Неуспех: није могуће пронаћи wta.exe</value>
-    <comment>Failure summary shown when the Settings UI cannot find the WTA helper executable. {Locked="wta.exe"}</comment>
-  </data>
-  <data name="AIAgents_HooksRemovedSummary" xml:space="preserve">
-    <value>Hooks су уклоњени.</value>
-    <comment>Success summary shown after removing agent session tracking hooks. {Locked="Hooks"}</comment>
-  </data>
-  <data name="AIAgents_HooksInstalledSummary" xml:space="preserve">
-    <value>Hooks су инсталирани.</value>
-    <comment>Success summary shown after installing agent session tracking hooks. {Locked="Hooks"}</comment>
-  </data>
-  <data name="AIAgents_HooksRemovalFailedSummary" xml:space="preserve">
-    <value>Уклањање Hook није успело. Детаље потражите у {0}.</value>
-    <comment>Failure summary shown when removing agent session tracking hooks fails. {Locked="Hook","{0}"} {0} is replaced with the package-aware, versioned WTA log directory at runtime.</comment>
-  </data>
-  <data name="AIAgents_HooksInstallationFailedSummary" xml:space="preserve">
-    <value>Инсталација Hooks није успела. Детаље потражите у {0}.</value>
-    <comment>Failure summary shown when installing agent session tracking hooks fails. {Locked="Hooks","{0}"} {0} is replaced with the package-aware, versioned wta-install-hooks.log path at runtime.</comment>
-  </data>
-  <data name="AIAgents_HooksInstallationFailedForSummary" xml:space="preserve">
-    <value>Инсталација Hooks за {0} није успела. Детаље потражите у {1}.</value>
-    <comment>Failure summary shown when installing agent session tracking hooks fails for specific CLIs. {Locked="Hooks","{0}","{1}"} {0} is replaced with a comma-separated list of CLI names (brand names, never translated); {1} is replaced with the package-aware, versioned wta-install-hooks.log path at runtime.</comment>
   </data>
   <data name="AIAgents_AutoErrorDetectionTitle.Text" xml:space="preserve">
     <value>Аутоматско откривање грешака</value>

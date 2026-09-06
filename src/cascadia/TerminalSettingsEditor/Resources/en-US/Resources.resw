@@ -844,27 +844,6 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
     <value>Uses the agent provider's ACP session mode to reduce or bypass confirmations. The provider defines the resulting permissions, sandbox, file access, and network access. Providers without a supported mode continue to ask for permission.</value>
     <comment>{Locked="ACP"} Risk warning shown under the Yolo toggle. Here provider means the selected AI agent provider, not a network provider.</comment>
   </data>
-  <data name="AIAgents_HooksInstall.Header" xml:space="preserve">
-    <value>Agent session tracking (hooks)</value>
-    <comment>{Locked="hooks","Hook","Hooks"} Header for the expandable Agent Hooks section in the Agent pane group. Wording matches the design ask: this UX exists so the agent pane can track agent sessions through installed hooks.
-In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
-  </data>
-  <data name="AIAgents_HooksInstall.HelpText" xml:space="preserve">
-    <value>Track sessions across agents. Required for agent session management.</value>
-    <comment>Help text shown under the expandable section header.</comment>
-  </data>
-  <data name="AIAgents_HooksInstallRowLabel.Text" xml:space="preserve">
-    <value>Install agent hook script</value>
-    <comment>{Locked="hook","Hook"} Label for the first row inside the Agent session tracking expander — describes what the adjacent "Install hooks" button does.</comment>
-  </data>
-  <data name="AIAgents_HooksInstallButton.Content" xml:space="preserve">
-    <value>Install hooks</value>
-    <comment>{Locked="hooks","Hooks"} Button label inside the Agent session tracking expander. Triggers installation of the wt-agent-hooks plugin for every detected agent.</comment>
-  </data>
-  <data name="AIAgents_HooksRemoveButton.Content" xml:space="preserve">
-    <value>Remove</value>
-    <comment>Button label next to each agent row inside the Agent session tracking expander. Uninstalls the wt-agent-hooks plugin/extension for that agent.</comment>
-  </data>
   <data name="Profile_OpacitySlider.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
     <value>Background opacity</value>
     <comment>Name for a control to determine the level of opacity for the background of the control. The user can choose to make the background of the app more or less opaque.</comment>
@@ -3002,62 +2981,6 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
   <data name="AIAgents_PolicyLocked.Text" xml:space="preserve">
     <value>This setting is managed by your organization.</value>
     <comment>Text displayed when a setting is controlled by Group Policy (GPO). Standard Windows policy notice wording.</comment>
-  </data>
-  <data name="AIAgents_HooksInstallingSummary" xml:space="preserve">
-    <value>Installing hooks...</value>
-    <comment>Status summary shown while installing agent session tracking hooks. {Locked="hooks"}</comment>
-  </data>
-  <data name="AIAgents_HooksRemovingCopilotSummary" xml:space="preserve">
-    <value>Removing Copilot hooks...</value>
-    <comment>Status summary shown while removing agent session tracking hooks for Copilot. {Locked="Copilot","hooks"}</comment>
-  </data>
-  <data name="AIAgents_HooksRemovingClaudeSummary" xml:space="preserve">
-    <value>Removing Claude hooks...</value>
-    <comment>Status summary shown while removing agent session tracking hooks for Claude. {Locked="Claude","hooks"}</comment>
-  </data>
-  <data name="AIAgents_HooksRemovingGeminiSummary" xml:space="preserve">
-    <value>Removing Gemini hooks...</value>
-    <comment>Status summary shown while removing agent session tracking hooks for Gemini. {Locked="Gemini","hooks"}</comment>
-  </data>
-  <data name="AIAgents_HooksRemovingCodexSummary" xml:space="preserve">
-    <value>Removing Codex hooks...</value>
-    <comment>Status summary shown while removing agent session tracking hooks for Codex. {Locked="Codex","hooks"}</comment>
-  </data>
-  <data name="AIAgents_HooksRemovingOpenCodeSummary" xml:space="preserve">
-    <value>Removing OpenCode hooks...</value>
-    <comment>Status summary shown while removing agent session tracking hooks for OpenCode. {Locked="OpenCode","hooks"}</comment>
-  </data>
-  <data name="AIAgents_CodexTrustHint.Text" xml:space="preserve">
-    <value>After installing, run /hooks in Codex and approve to trust the new event handlers.</value>
-    <comment>One-line reminder shown under the Codex CLI row in the Agent Hooks section. Codex requires per-command trust before hook handlers run; users must execute /hooks inside Codex and approve. {Locked="/hooks","Codex"}</comment>
-  </data>
-  <data name="AIAgents_HooksRestartNote.Text" xml:space="preserve">
-    <value>Changes take effect the next time an agent starts. Restart any open agents to apply them.</value>
-    <comment>Persistent note shown under the "Install agent hook script" row in the Agent session tracking section. Warns that installing or removing hooks only affects agents started afterwards. In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
-  </data>
-  <data name="AIAgents_HooksLocateWtaFailedSummary" xml:space="preserve">
-    <value>Failed: could not locate wta.exe</value>
-    <comment>Failure summary shown when the Settings UI cannot find the WTA helper executable. {Locked="wta.exe"}</comment>
-  </data>
-  <data name="AIAgents_HooksRemovedSummary" xml:space="preserve">
-    <value>Hooks removed.</value>
-    <comment>Success summary shown after removing agent session tracking hooks. {Locked="Hooks"}</comment>
-  </data>
-  <data name="AIAgents_HooksInstalledSummary" xml:space="preserve">
-    <value>Hooks installed.</value>
-    <comment>Success summary shown after installing agent session tracking hooks. {Locked="Hooks"}</comment>
-  </data>
-  <data name="AIAgents_HooksRemovalFailedSummary" xml:space="preserve">
-    <value>Hook removal failed. Check {0} for details.</value>
-    <comment>Failure summary shown when removing agent session tracking hooks fails. {Locked="Hook","{0}"} {0} is replaced with the package-aware, versioned WTA log directory at runtime.</comment>
-  </data>
-  <data name="AIAgents_HooksInstallationFailedSummary" xml:space="preserve">
-    <value>Hooks installation failed. Check {0} for details.</value>
-    <comment>Failure summary shown when installing agent session tracking hooks fails. {Locked="Hooks","{0}"} {0} is replaced with the package-aware, versioned wta-install-hooks.log path at runtime.</comment>
-  </data>
-  <data name="AIAgents_HooksInstallationFailedForSummary" xml:space="preserve">
-    <value>Hooks installation failed for {0}. Check {1} for details.</value>
-    <comment>Failure summary shown when installing agent session tracking hooks fails for specific CLIs. {Locked="Hooks","{0}","{1}"} {0} is replaced with a comma-separated list of CLI names (brand names, never translated); {1} is replaced with the package-aware, versioned wta-install-hooks.log path at runtime.</comment>
   </data>
   <data name="AIAgents_CustomModels.Header" xml:space="preserve">
     <value>Custom endpoint or local model</value>

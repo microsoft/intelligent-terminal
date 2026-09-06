@@ -462,9 +462,7 @@ impl UninstallReport {
 /// Per-CLI outcome of an install run, as reported by
 /// `wta hooks install --json`.
 ///
-/// `outcome` is a stable string rather than a serialized enum so the C++
-/// consumer can treat an unrecognized value as "not a failure" instead of
-/// failing the whole parse when this list grows.
+/// `outcome` uses stable strings for scripts consuming the public CLI report.
 #[derive(Debug, Clone, Serialize)]
 pub struct CliInstallResult {
     pub name: &'static str,
