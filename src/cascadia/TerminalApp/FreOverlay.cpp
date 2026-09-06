@@ -1437,7 +1437,10 @@ namespace winrt::TerminalApp::implementation
             globals.DelegateAgent(agentId);
             globals.AutoErrorDetectionEnabled(AutoDetectToggle().IsOn());
             globals.AutoFixEnabled(AutoErrorToggle().IsOn());
-            globals.AgentSessionManagementEnabled(SessionManagementToggle().IsOn());
+            if (!globals.IsAgentSessionHooksPolicyLocked())
+            {
+                globals.AgentSessionManagementEnabled(SessionManagementToggle().IsOn());
+            }
             globals.ShowTokenUsageAndCost(ShowTokenUsageAndCostToggle().IsOn());
 
             const auto posIdx = PanePositionComboBox().SelectedIndex();

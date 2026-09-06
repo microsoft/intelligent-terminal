@@ -2077,7 +2077,9 @@ namespace winrt::TerminalApp::implementation
             envBlock.empty() ? nullptr : envBlock.data());
         _agentPaneLog(
             "hook reconciliation " + std::string{ succeeded ? "completed" : "failed" } +
-            (agentId.empty() ? std::string{} : " agent=" + winrt::to_string(winrt::hstring{ agentId })));
+            (scope == AgentHooksReconciliationScope::SelectedAgent && !agentId.empty() ?
+                 " agent=" + winrt::to_string(winrt::hstring{ agentId }) :
+                 std::string{}));
     }
 
     bool TerminalPage::_ShouldDeferAgentSettingsChange(

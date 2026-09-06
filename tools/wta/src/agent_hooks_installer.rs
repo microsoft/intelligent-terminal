@@ -92,7 +92,7 @@
 // -------------------------------------------------------
 //
 // In addition to the install entry point [`apply_install_plan`], this module
-// exposes two read-only / best-effort APIs diagnostics and
+// exposes two read-only / best-effort APIs that diagnostics and
 // `Verify-AgentHooks.ps1` consume:
 //
 //   * [`status`] — describe per-CLI install state without writing.
