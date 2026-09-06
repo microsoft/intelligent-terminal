@@ -728,7 +728,7 @@ pub enum InstallAction {
 /// Decide what an install pass should do for one CLI, from its status row.
 ///
 /// Pure — no IO, no spawns. Splits the cases automatic reconciliation and
-/// `wta hooks install --only-missing` have to tell apart:
+/// the default `wta hooks install` flow have to tell apart:
 ///
 ///   * incomplete in any way (not on PATH, marketplace missing or pointing at
 ///     a pruned path, plugin missing or disabled, or a verdict that came from
@@ -875,7 +875,7 @@ pub fn apply_install_plan(plan: &[(CliKind, InstallAction)]) -> Vec<InstallFailu
 /// Ensure every installed CLI in `scope` has a complete, current hook bridge.
 ///
 /// This is the single automatic reconciliation path used by master startup and
-/// by `wta hooks install --only-missing`, which Terminal invokes after session
+/// by the default `wta hooks install`, which Terminal invokes after session
 /// management is enabled or the selected built-in agent changes.
 pub fn reconcile_agent_hooks(scope: CliScope) -> ReconciliationResult {
     let pre_status = status_scoped(scope);

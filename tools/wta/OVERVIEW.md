@@ -83,7 +83,7 @@ wta new-tab -c "pwsh.exe" -n "Build"      # create a new tab
 wta split-pane -h                         # split the current pane horizontally
 wta delegate "fix this build"             # open a delegate agent in a new tab
 wta sessions list                         # inspect sessions known to master
-wta hooks install                         # install the agent-hook bridge
+wta hooks install                         # ensure the agent-hook bridge is current
 wta resolve-command which --cwd . --json  # resolve from cwd + PATH + shell-specific sources
 ```
 

@@ -374,7 +374,8 @@ checks the agent asynchronously and installs missing hooks or upgrades stale
 ones.
 
 If automatic reconciliation fails, `wta hooks install` remains the supported
-manual repair command:
+manual retry command. It applies the same smart reconciliation used by
+automatic triggers:
 
 ```powershell
 wta hooks install --cli copilot
@@ -390,8 +391,8 @@ Or install for every agent CLI that is currently on `PATH` in one go:
 wta hooks install
 ```
 
-Under the hood this runs each agent CLI's native plugin / extension
-command against the `wt-agent-hooks` bundle shipped inside the
+When reconciliation selects Install, it runs the agent CLI's native plugin /
+extension command against the `wt-agent-hooks` bundle shipped inside the
 Intelligent Terminal package:
 
 | Agent          | Native commands invoked by `wta hooks install`                                                                              |
@@ -411,6 +412,17 @@ file unless it carries Intelligent Terminal's managed-file marker.
 You do not need to run these directly — `wta hooks install` is the
 supported entry point and handles bundle staging, idempotency, and
 diagnostic logging for you.
+
+If status looks healthy but the hooks still do not run, use the explicit
+force-recovery path:
+
+```powershell
+wta hooks install --force --cli codex
+```
+
+`--force` reruns the first-install flow even when the hook bridge already
+appears installed. Close running sessions for that agent first so its plugin
+manager cannot overwrite the registration while it is being repaired.
 
 > [!IMPORTANT]
 > **Codex needs a one-time `/hooks` trust step.** After

@@ -2229,7 +2229,7 @@ fn gemini_extensions_list_json_parser_reports_the_installed_version() {
     assert_eq!(parsed.version.map(|v| v.to_string()), Some("0.1.5".into()));
 }
 
-// ---- decide_install_action (`hooks install --only-missing`) ----------
+// ---- decide_install_action (default `hooks install`) ----------------
 
 /// Most of these cases predate the registration check and carry no
 /// `marketplace_path`, so they are decided on completeness and version alone.

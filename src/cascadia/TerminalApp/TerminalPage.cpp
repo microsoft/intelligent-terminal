@@ -2052,7 +2052,7 @@ namespace winrt::TerminalApp::implementation
         std::wstring agentId)
     {
         const auto strong = get_strong();
-        std::wstring args{ L"hooks install --only-missing" };
+        std::wstring args{ L"hooks install" };
         if (scope == AgentHooksReconciliationScope::SelectedAgent)
         {
             args.append(L" --cli ");

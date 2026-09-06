@@ -2,12 +2,18 @@ use anyhow::Result;
 
 use super::args::HooksCliFilter;
 
-pub(crate) fn run_install(cli: HooksCliFilter, only_missing: bool, json_mode: bool) -> Result<()> {
+pub(crate) fn run_install(cli: HooksCliFilter, force: bool, json_mode: bool) -> Result<()> {
     // Logging is initialized in `main()`; the install attempt is observable in
     // %LOCALAPPDATA%\IntelligentTerminal\logs\wta-install-hooks.log.
     let scope = cli.into_scope();
 
-    let (plan, spawn_failures, report, missing) = if only_missing {
+    let (plan, spawn_failures, report, missing) = if force {
+        let plan = full_install_plan(scope);
+        let spawn_failures = crate::agent_hooks_installer::apply_install_plan(&plan);
+        let report = crate::agent_hooks_installer::status_scoped(scope);
+        let missing = missing_installs(scope, &report);
+        (plan, spawn_failures, report, missing)
+    } else {
         let reconciled = crate::agent_hooks_installer::reconcile_agent_hooks(scope);
         (
             reconciled.plan,
@@ -15,12 +21,6 @@ pub(crate) fn run_install(cli: HooksCliFilter, only_missing: bool, json_mode: bo
             reconciled.status,
             reconciled.missing,
         )
-    } else {
-        let plan = full_install_plan(scope);
-        let spawn_failures = crate::agent_hooks_installer::apply_install_plan(&plan);
-        let report = crate::agent_hooks_installer::status_scoped(scope);
-        let missing = missing_installs(scope, &report);
-        (plan, spawn_failures, report, missing)
     };
     let install_report = build_install_report(scope, &report, &spawn_failures, &missing);
     for cli in &install_report.clis {
@@ -79,7 +79,7 @@ pub(crate) fn run_install(cli: HooksCliFilter, only_missing: bool, json_mode: bo
 }
 
 /// Preserve the historical full-install behavior for explicit
-/// `wta hooks install` calls that do not opt into reconciliation.
+/// `wta hooks install --force` recovery calls.
 fn full_install_plan(
     scope: crate::agent_hooks_installer::CliScope,
 ) -> Vec<(
@@ -200,7 +200,7 @@ fn format_install_failure(
         // twice, once with the real reason and once with a vaguer one.
         if !spawn_failures.iter().any(|f| f.cli == *name) {
             out.push_str(&format!(
-                "\n  {name}: hooks are still missing, incomplete, disabled, or outdated after reconciliation"
+                "\n  {name}: hooks are still missing, incomplete, disabled, or outdated after the operation"
             ));
         }
     }
@@ -731,7 +731,7 @@ mod tests {
         assert_eq!(report.schema_version, 1);
     }
 
-    // ---- `--only-missing` planning ---------------------------------------
+    // ---- reconciliation planning -----------------------------------------
 
     fn installed_cli(name: &'static str, version: &str) -> CliStatus {
         CliStatus {
@@ -744,7 +744,7 @@ mod tests {
     /// out, out-of-date ones are routed to the upgrade flow, and incomplete
     /// installed CLIs are repaired.
     #[test]
-    fn only_missing_plans_skip_upgrade_and_install_separately() {
+    fn install_plans_skip_upgrade_and_install_separately() {
         use crate::agent_hooks_installer::{CliKind, InstallAction};
 
         let status = status_of(vec![
@@ -790,11 +790,11 @@ mod tests {
         assert!(build_reconciliation_plan(CliScope::All, &status).is_empty());
     }
 
-    /// Without the flag, `wta hooks install` stays a full (re)install — the
-    /// escape hatch for a break that status can't see. It must never plan an
-    /// upgrade, because it has no status to base one on.
+    /// `--force` stays a full (re)install — the escape hatch for a break that
+    /// status can't see. It must never plan an upgrade because it deliberately
+    /// bypasses status-based planning.
     #[test]
-    fn a_plain_install_plans_install_for_every_in_scope_cli() {
+    fn a_forced_install_plans_install_for_every_in_scope_cli() {
         use crate::agent_hooks_installer::{CliKind, InstallAction};
 
         assert_eq!(
@@ -814,7 +814,7 @@ mod tests {
     /// not widen a `--cli` run, and a complete CLI must still be skipped when
     /// it is the one named.
     #[test]
-    fn only_missing_respects_a_single_cli_scope() {
+    fn reconciliation_respects_a_single_cli_scope() {
         use crate::agent_hooks_installer::{CliKind, InstallAction};
 
         let status = status_of(vec![

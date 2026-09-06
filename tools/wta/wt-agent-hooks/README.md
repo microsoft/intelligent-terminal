@@ -53,31 +53,21 @@ selected built-in agent changes. Manual repair remains available through
 ```
            wta hooks install
                    │
-   ┌───────────────┼───────────────┐
-   ▼               ▼               ▼
-install_for_  install_for_  install_for_
-  claude       copilot        gemini
-   │               │               │
-resolve         resolve         resolve
-claude/         copilot/        gemini-extension/
-   │               │               │
-   ▼               ▼               ▼
- claude          copilot         gemini
- plugin          plugin          extensions
- marketplace     marketplace     install
- add ...         add ...         <bundle>
-   │               │
-   ▼               ▼
- claude          copilot
- plugin          plugin
- install         install
- wt-agent-hooks  wt-agent-hooks
- @wt-local       @wt-local
+             status + plan
+        ┌──────────┼──────────┐
+        ▼          ▼          ▼
+       skip    install_one  upgrade_one_cli
+                   │          │
+                   └────┬─────┘
+                        ▼
+          native install / update / reinstall
 ```
 
 Reconciliation installs a missing bridge for every detected CLI in scope and
 uses each CLI's own update command for an existing stale bridge, because a
 second `install` is a no-op once the plugin is registered.
+`wta hooks install --force` bypasses this plan and reruns the first-install
+flow as a manual recovery path when status cannot observe the real problem.
 
 OpenCode has no separate hook marketplace. `wta hooks install --cli opencode`
 copies `wt-agent-hooks.js` into `%XDG_CONFIG_HOME%\opencode\plugins\` when
