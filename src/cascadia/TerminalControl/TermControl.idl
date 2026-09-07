@@ -141,7 +141,9 @@ namespace Microsoft.Terminal.Control
         void SetReadOnly(Boolean readOnlyState);
 
         String ReadEntireBuffer();
+        String ReadBufferTail(Int32 maxLogicalLines, Int32 maxCharacters);
         String ReadLastPrompt();
+        String ReadLastPromptBounded(Int32 maxLogicalLines, Int32 maxCharacters);
         CommandHistoryContext CommandHistory();
         void UpdateWinGetSuggestions(Windows.Foundation.Collections.IVector<String> suggestions);
 

@@ -734,6 +734,54 @@ impl WtChannel for CliChannel {
                 self.run_wtcli(&args).await
             }
             "get_active_pane" => self.run_wtcli(&["active-pane"]).await,
+            "get_pane_context" => {
+                const MAX_CONTEXT_LINES: u64 = 1000;
+                const MAX_CONTEXT_CHARS: u64 = 100_000;
+
+                let pane_id = params
+                    .get("session_id")
+                    .map(|value| {
+                        json_id_as_str(value).ok_or_else(|| {
+                            anyhow!("get_pane_context: 'session_id' must be a string")
+                        })
+                    })
+                    .transpose()?;
+                let max_lines = params
+                    .get("max_lines")
+                    .and_then(serde_json::Value::as_u64)
+                    .ok_or_else(|| {
+                        anyhow!("get_pane_context: missing or invalid 'max_lines' parameter")
+                    })?;
+                let max_chars = params
+                    .get("max_chars")
+                    .and_then(serde_json::Value::as_u64)
+                    .ok_or_else(|| {
+                        anyhow!("get_pane_context: missing or invalid 'max_chars' parameter")
+                    })?;
+                if max_lines > MAX_CONTEXT_LINES {
+                    bail!("get_pane_context: 'max_lines' exceeds {MAX_CONTEXT_LINES}");
+                }
+                if max_chars > MAX_CONTEXT_CHARS {
+                    bail!("get_pane_context: 'max_chars' exceeds {MAX_CONTEXT_CHARS}");
+                }
+
+                let max_lines_owned = max_lines.to_string();
+                let max_chars_owned = max_chars.to_string();
+                let mut args = vec![
+                    "get-pane-context",
+                    "--max-lines",
+                    &max_lines_owned,
+                    "--max-chars",
+                    &max_chars_owned,
+                ];
+                if let Some(pane_id) = pane_id.as_deref() {
+                    if pane_id.is_empty() {
+                        bail!("get_pane_context: 'session_id' must not be empty");
+                    }
+                    args.extend(["--target", pane_id]);
+                }
+                self.run_wtcli(&args).await
+            }
             "get_settings" => self.run_wtcli(&["get-settings"]).await,
             "read_pane_output" => {
                 let pane_id = params

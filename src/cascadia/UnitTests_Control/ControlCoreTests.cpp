@@ -37,6 +37,7 @@ namespace ControlUnitTests
         TEST_METHOD(TestClearScreen);
         TEST_METHOD(TestClearAll);
         TEST_METHOD(TestReadEntireBuffer);
+        TEST_METHOD(TestReadBufferTail);
 
         TEST_METHOD(TestSelectCommandSimple);
         TEST_METHOD(TestSelectOutputSimple);
@@ -367,6 +368,41 @@ namespace ControlUnitTests
         Log::Comment(L"Check the buffer contents");
         VERIFY_ARE_EQUAL(L"This is some text\r\nwith varying amounts\r\nof whitespace\r\n",
                          core->ReadEntireBuffer());
+    }
+
+    void ControlCoreTests::TestReadBufferTail()
+    {
+        auto [settings, conn] = _createSettingsAndConnection();
+        auto core = createCore(*settings, *conn);
+        VERIFY_IS_NOT_NULL(core);
+        _standardInit(core);
+
+        for (auto i = 0; i < 200; ++i)
+        {
+            conn->WriteInput(winrt_wstring_to_array_view(fmt::format(L"line-{:03}\r\n", i)));
+        }
+
+        VERIFY_ARE_EQUAL(L"line-199\r\n", core->ReadBufferTail(1, 100));
+        VERIFY_ARE_EQUAL(
+            L"line-197\r\nline-198\r\nline-199\r\n",
+            core->ReadBufferTail(3, 100));
+        VERIFY_ARE_EQUAL(L"-199\r\n", core->ReadBufferTail(10, 6));
+
+        VERIFY_THROWS_SPECIFIC(
+            core->ReadBufferTail(0, 100),
+            wil::ResultException,
+            [](const wil::ResultException& e) { return e.GetErrorCode() == E_INVALIDARG; });
+        VERIFY_THROWS_SPECIFIC(
+            core->ReadBufferTail(1, 0),
+            wil::ResultException,
+            [](const wil::ResultException& e) { return e.GetErrorCode() == E_INVALIDARG; });
+
+        auto [unicodeSettings, unicodeConn] = _createSettingsAndConnection();
+        auto unicodeCore = createCore(*unicodeSettings, *unicodeConn);
+        VERIFY_IS_NOT_NULL(unicodeCore);
+        _standardInit(unicodeCore);
+        unicodeConn->WriteInput(winrt_wstring_to_array_view(L"A\U0001F366B\r\n"));
+        VERIFY_ARE_EQUAL(L"\U0001F366B\r\n", unicodeCore->ReadBufferTail(1, 4));
     }
 
     static void _writePrompt(const winrt::com_ptr<MockConnection>& conn, const std::wstring_view& path)

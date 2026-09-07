@@ -109,7 +109,6 @@ pub(crate) async fn build_prompt_text(
     let context_request = ContextRequest {
         is_autofix,
         wt_connected,
-        shell_mgr,
         context_pane: resolved_context.context_pane.as_ref(),
         shell_exe: resolved_context.shell_exe.as_deref(),
         terminal_output: resolved_context.terminal_output.as_deref(),
@@ -342,12 +341,8 @@ mod tests {
         );
     }
 
-    /// Minimal [`crate::shell::wt_channel::WtChannel`] that answers
-    /// `get_active_pane` with a canned pane and the
-    /// `list_windows`/`list_tabs`/`list_panes` enumeration with canned
-    /// payloads; every other request errors. `read_pane_last_message` degrades
-    /// to `None` on those errors, which is all the assembly tests need (no
-    /// buffer content is asserted).
+    /// Minimal [`crate::shell::wt_channel::WtChannel`] that returns consolidated
+    /// pane context from canned active or explicit-source pane metadata.
     struct MockWtChannel {
         active_pane: serde_json::Value,
         /// Optional enumeration topology for `resolve_pane_by_session_id`:
@@ -362,13 +357,37 @@ mod tests {
         async fn request(
             &self,
             method: &str,
-            _params: serde_json::Value,
+            params: serde_json::Value,
         ) -> anyhow::Result<serde_json::Value> {
             let scripted = |v: &Option<serde_json::Value>, what: &str| {
                 v.clone()
                     .ok_or_else(|| anyhow::anyhow!("MockWtChannel: no {what} scripted"))
             };
             match method {
+                "get_pane_context" => {
+                    let pane = if params.get("session_id").is_some() {
+                        self.panes
+                            .as_ref()
+                            .and_then(|value| value.get("panes"))
+                            .and_then(serde_json::Value::as_array)
+                            .and_then(|panes| panes.first())
+                            .cloned()
+                            .ok_or_else(|| {
+                                anyhow::anyhow!("MockWtChannel: no source pane scripted")
+                            })?
+                    } else {
+                        self.active_pane.clone()
+                    };
+                    Ok(serde_json::json!({
+                        "pane": pane,
+                        "content": serde_json::Value::Null,
+                        "output_source": "metadata_only",
+                        "fallback_reason": "",
+                        "line_count": 0,
+                        "truncated": false,
+                        "has_marks": false,
+                    }))
+                }
                 "get_active_pane" => Ok(self.active_pane.clone()),
                 "list_windows" => scripted(&self.windows, "list_windows"),
                 "list_tabs" => scripted(&self.tabs, "list_tabs"),

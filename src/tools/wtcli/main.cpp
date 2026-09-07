@@ -18,6 +18,7 @@
 
 #include <wil/resource.h>
 
+#include <algorithm>
 #include <array>
 #include <charconv>
 #include <chrono>
@@ -28,6 +29,7 @@
 #include <io.h>
 #include <iostream>
 #include <string>
+#include <string_view>
 #include <thread>
 #include <vector>
 
@@ -309,6 +311,38 @@ static bool TryParseU64(const std::string& s, uint64_t& out)
     return true;
 }
 
+static bool ProtocolAtLeast(const std::string& version, const unsigned requiredMajor, const unsigned requiredMinor)
+{
+    const auto dot = version.find('.');
+    if (dot == std::string::npos)
+    {
+        return false;
+    }
+
+    uint64_t major = 0;
+    uint64_t minor = 0;
+    if (!TryParseU64(version.substr(0, dot), major) ||
+        !TryParseU64(version.substr(dot + 1), minor))
+    {
+        return false;
+    }
+    return major > requiredMajor || (major == requiredMajor && minor >= requiredMinor);
+}
+
+static bool SupportsCapability(ITerminalProtocol* server, const std::string_view capability)
+{
+    Json::Value capabilities;
+    if (FAILED(CallJson([&](BSTR* json) { return server->GetCapabilities(json); }, capabilities)) ||
+        !capabilities.isArray())
+    {
+        return false;
+    }
+
+    return std::any_of(capabilities.begin(), capabilities.end(), [&](const auto& item) {
+        return item.isString() && item.asString() == capability;
+    });
+}
+
 // ── Main ──
 
 // `wmain` — deliberately NOT `main`. Almost every string this tool forwards to
@@ -522,6 +556,86 @@ int wmain(int argc, wchar_t** argv)
             PrintJson(output);
         else
             printf("%s\n", output["content"].asString().c_str());
+    });
+
+    // ── get-pane-context ──
+    std::string paneContextTarget;
+    int paneContextMaxLines = 30;
+    int paneContextMaxCharacters = 4000;
+    auto* paneContextCmd = app.add_subcommand("get-pane-context", "Resolve a pane and capture bounded context");
+    paneContextCmd->add_option("-t,--target", paneContextTarget, "Explicit source pane session ID (GUID)");
+    paneContextCmd->add_option("-l,--max-lines", paneContextMaxLines, "Buffer-tail lines when command marks are unavailable");
+    paneContextCmd->add_option("--max-chars", paneContextMaxCharacters, "Maximum returned content characters");
+    paneContextCmd->callback([&]() {
+        constexpr int MaxContextLines = 1000;
+        constexpr int MaxContextCharacters = 100000;
+        if (paneContextMaxLines < 0 || paneContextMaxLines > MaxContextLines)
+        {
+            fprintf(stderr, "[wtcli] --max-lines must be between 0 and %d\n", MaxContextLines);
+            exitCode = 1;
+            return;
+        }
+        if (paneContextMaxCharacters < 0 || paneContextMaxCharacters > MaxContextCharacters)
+        {
+            fprintf(stderr, "[wtcli] --max-chars must be between 0 and %d\n", MaxContextCharacters);
+            exitCode = 1;
+            return;
+        }
+
+        std::string version;
+        auto server = ConnectToTerminal(nullptr, &version, skipAuthenticate);
+        if (!server)
+        {
+            exitCode = 1;
+            return;
+        }
+
+        if (!ProtocolAtLeast(version, 2, 3) ||
+            !SupportsCapability(server.get(), "get_pane_context"))
+        {
+            fprintf(stderr,
+                    "[wtcli] WT_PROTOCOL_UNSUPPORTED_PANE_CONTEXT server=%s required=2.3\n",
+                    version.empty() ? "unknown" : version.c_str());
+            exitCode = 2;
+            return;
+        }
+
+        GUID source{};
+        const auto hasExplicitSource = !paneContextTarget.empty();
+        if (hasExplicitSource)
+        {
+            source = GuidFromString(paneContextTarget);
+            if (InlineIsEqualGUID(source, GUID{}))
+            {
+                exitCode = 1;
+                return;
+            }
+        }
+
+        Json::Value context;
+        const auto hr = CallJson([&](BSTR* json) {
+            return server->GetPaneContext(
+                source,
+                hasExplicitSource,
+                paneContextMaxLines,
+                paneContextMaxCharacters,
+                json);
+        }, context);
+        if (FAILED(hr))
+        {
+            fprintf(stderr, "GetPaneContext failed: 0x%08X\n", static_cast<uint32_t>(hr));
+            exitCode = 1;
+            return;
+        }
+
+        if (jsonMode)
+        {
+            PrintJson(context);
+        }
+        else
+        {
+            printf("%s\n", context["content"].asString().c_str());
+        }
     });
 
     // ── pane-status ──

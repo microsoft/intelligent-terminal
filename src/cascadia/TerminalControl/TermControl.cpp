@@ -3828,9 +3828,17 @@ namespace winrt::Microsoft::Terminal::Control::implementation
     {
         return _core.ReadEntireBuffer();
     }
+    hstring TermControl::ReadBufferTail(const int32_t maxLogicalLines, const int32_t maxCharacters) const
+    {
+        return _core.ReadBufferTail(maxLogicalLines, maxCharacters);
+    }
     hstring TermControl::ReadLastPrompt() const
     {
         return _core.ReadLastPrompt();
+    }
+    hstring TermControl::ReadLastPromptBounded(const int32_t maxLogicalLines, const int32_t maxCharacters) const
+    {
+        return _core.ReadLastPromptBounded(maxLogicalLines, maxCharacters);
     }
     Control::CommandHistoryContext TermControl::CommandHistory() const
     {

@@ -234,7 +234,14 @@ Net effect: UT shrinks the manual matrix to "did the wiring and UI connect", not
 
 ### Shell integration and detection
 
-- [ ] `C295` `[new]` `[E2E]` **Detected Autofix clicks remain isolated between tabs:** With errors detected in two tabs, clicking one tab's diagnostics button submits exactly one prompt for that tab and preserves the other tab's pending opt-in. _(E2E: `Feature.AutofixRouting`.)_
+- [ ] `C296` `[new]` `[E2E]` **Detected Autofix clicks remain isolated between tabs:** With errors detected in two tabs, clicking one tab's diagnostics button submits exactly one prompt for that tab and preserves the other tab's pending opt-in. _(E2E: `Feature.AutofixRouting`.)_
+- [ ] `C297` `[new]` `[E2E]` **Pane context captures the completed marked command:** A single context request returns the source pane metadata together with the completed command and its error output. _(#838; E2E: `Feature.PaneContext`.)_
+- [ ] `C298` `[new]` `[E2E]` **Pane context falls back to the newest unmarked output:** Shells without command marks return a bounded recent buffer tail with an explicit fallback reason. _(#838; E2E: `Feature.PaneContext`.)_
+- [ ] `C299` `[new]` `[E2E]` **Explicit pane context stays isolated from the focused tab and split:** Explicit context requests read the requested pane even while a different tab or split is focused. _(#838; E2E: `Feature.PaneContext`.)_
+- [ ] `C300` `[new]` `[E2E]` **Missing and closed pane context fails without active-pane fallback:** Stale or unknown pane IDs fail instead of leaking another pane's context. _(#838; E2E: `Feature.PaneContext`.)_
+- [ ] `C301` `[new]` `[E2E]` **Pane context metadata-only requests omit terminal content:** A zero line or character budget returns only pane metadata. _(#838; E2E: `Feature.PaneContext`.)_
+- [ ] `C302` `[new]` `[E2E]` **Pane context bounds preserve Unicode and truthful truncation:** Marked-command and buffer-tail captures honor their limits without splitting Unicode characters or hiding truncation. _(#838; E2E: `Feature.PaneContext`.)_
+- [ ] `C303` `[new]` `[E2E]` **Focused agent pane context resolves to its source terminal:** Default context requests use the agent pane's source shell, while explicit agent-pane requests fail. _(#838; E2E: `Feature.PaneContext`.)_
 
 - [ ] `C087` `[E2E]` **PowerShell shell integration installed:** Supported PowerShell profiles emit command-finished events, including non-zero marks for PowerShell-level failures on Windows PowerShell 5.1.
 - [ ] `C219` `[new]` `[E2E]` **Bash / WSL shell integration installed:** Supported bash and WSL-bash profiles emit command-finished events, and the injected `PROMPT_COMMAND` is safe under `set -u` (no errors in strict-mode shells). _(#340.)_

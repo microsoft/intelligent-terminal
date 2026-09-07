@@ -124,14 +124,22 @@ impl crate::shell::wt_channel::WtChannel for BlockingPromptContextChannel {
         method: &str,
         _params: serde_json::Value,
     ) -> anyhow::Result<serde_json::Value> {
-        if method == "get_active_pane" {
+        if method == "get_pane_context" {
             self.started.notify_one();
             self.release.notified().await;
             return Ok(serde_json::json!({
-                "session_id": "context-pane",
-                "cwd": "C:\\work",
-                "pid": std::process::id(),
-                "is_agent_pane": false,
+                "pane": {
+                    "session_id": "context-pane",
+                    "cwd": "C:\\work",
+                    "pid": std::process::id(),
+                    "is_agent_pane": false,
+                },
+                "content": null,
+                "output_source": "metadata_only",
+                "fallback_reason": "",
+                "line_count": 0,
+                "truncated": false,
+                "has_marks": false,
             }));
         }
         Err(anyhow::anyhow!(
