@@ -575,7 +575,7 @@ int wmain(int argc, wchar_t** argv)
     int paneContextMaxCharacters = 4000;
     auto* paneContextCmd = app.add_subcommand("get-pane-context", "Resolve a pane and capture bounded context (requires the authentication handshake)");
     auto* paneContextTargetOption = paneContextCmd->add_option("-t,--target", paneContextTarget, "Explicit source pane session ID (GUID)");
-    paneContextCmd->add_option("-l,--max-lines", paneContextMaxLines, "Buffer-tail lines when command marks are unavailable");
+    paneContextCmd->add_option("-l,--max-lines", paneContextMaxLines, "Maximum content lines for marked commands or buffer tails");
     paneContextCmd->add_option("--max-chars", paneContextMaxCharacters, "Maximum returned content characters");
     paneContextCmd->callback([&]() {
         constexpr int MaxContextLines = 1000;
