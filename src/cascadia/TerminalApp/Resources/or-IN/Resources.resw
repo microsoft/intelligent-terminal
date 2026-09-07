@@ -177,7 +177,7 @@
     <comment>Header for the dropdown that configures how the terminal handles failed commands.</comment>
   </data>
   <data name="FreOverlay_ErrorDetectionDescription.Text" xml:space="preserve">
-    <value>ଆପଣଙ୍କ ଏଜେଣ୍ଟକୁ ଶେଲ୍‌ରେ ଥିବା ତ୍ରୁଟିଗୁଡ଼ିକୁ ସ୍ୱୟଂଚାଳିତ ଭାବରେ ଚିହ୍ନଟ କରିବାକୁ ଏବଂ ବିଫଳ କମାଣ୍ଡଗୁଡ଼ିକୁ ଆପଣଙ୍କ ଏଜେଣ୍ଟକୁ ପଠାଇବାକୁ ଦିଅନ୍ତୁ।</value>
+    <value>ଶେଲ୍‌ରେ ବିଫଳ କମାଣ୍ଡଗୁଡ଼ିକୁ ସ୍ୱୟଂଚାଳିତ ଭାବରେ ଚିହ୍ନଟ କରନ୍ତୁ ଏବଂ ସ୍ୱୟଂଚାଳିତ ସମାଧାନ ପାଇଁ ଇଚ୍ଛାନୁସାରେ ସେଗୁଡ଼ିକୁ ଆପଣଙ୍କ ଏଜେଣ୍ଟକୁ ପଠାନ୍ତୁ।</value>
     <comment>Description for the error-detection dropdown in the first-run wizard. The dropdown includes detect-only, detect-and-fix, and off modes; the selected mode controls whether shell errors are detected and whether failed commands are automatically sent to the selected AI agent. In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_ErrorDetectionDetectOption.Content" xml:space="preserve">

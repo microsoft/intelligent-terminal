@@ -176,7 +176,7 @@
     <comment>Header for the dropdown that configures how the terminal handles failed commands.</comment>
   </data>
   <data name="FreOverlay_ErrorDetectionDescription.Text" xml:space="preserve">
-    <value>Benarkan ejen anda mengesan ralat dalam shell secara automatik dan menghantar perintah yang gagal kepada ejen anda.</value>
+    <value>Kesan perintah yang gagal dalam shell secara automatik dan, jika mahu, hantarkannya kepada ejen anda untuk pembaikan automatik.</value>
     <comment>Description for the error-detection dropdown in the first-run wizard. The dropdown includes detect-only, detect-and-fix, and off modes; the selected mode controls whether shell errors are detected and whether failed commands are automatically sent to the selected AI agent. In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_ErrorDetectionDetectOption.Content" xml:space="preserve">
