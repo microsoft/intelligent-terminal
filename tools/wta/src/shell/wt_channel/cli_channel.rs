@@ -968,7 +968,7 @@ impl WtChannel for CliChannel {
                 let pane_id = params
                     .get("session_id")
                     .map(|value| {
-                        json_id_as_str(value).ok_or_else(|| {
+                        value.as_str().ok_or_else(|| {
                             anyhow!("get_pane_context: 'session_id' must be a string")
                         })
                     })
@@ -1001,7 +1001,7 @@ impl WtChannel for CliChannel {
                     "--max-chars",
                     &max_chars_owned,
                 ];
-                if let Some(pane_id) = pane_id.as_deref() {
+                if let Some(pane_id) = pane_id {
                     if pane_id.is_empty() {
                         bail!("get_pane_context: 'session_id' must not be empty");
                     }
@@ -1189,6 +1189,41 @@ impl WtChannel for CliChannel {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn get_pane_context_rejects_invalid_session_ids_before_invocation() {
+        let channel =
+            CliChannel::with_test_executable(format!("missing-wtcli-{}.exe", uuid::Uuid::new_v4()));
+        for session_id in [
+            serde_json::json!(42),
+            serde_json::json!(-1),
+            serde_json::json!(1.5),
+            serde_json::json!(true),
+            serde_json::json!(false),
+            serde_json::Value::Null,
+            serde_json::json!({}),
+            serde_json::json!([]),
+            serde_json::json!(""),
+        ] {
+            let error = channel
+                .request(
+                    "get_pane_context",
+                    serde_json::json!({
+                        "session_id": session_id,
+                        "max_lines": 20,
+                        "max_chars": 1000,
+                    }),
+                )
+                .await
+                .expect_err("invalid source must fail before invoking wtcli");
+            let expected = if session_id == "" {
+                "get_pane_context: 'session_id' must not be empty"
+            } else {
+                "get_pane_context: 'session_id' must be a string"
+            };
+            assert_eq!(error.to_string(), expected, "source: {session_id}");
+        }
+    }
 
     #[test]
     fn listener_readiness_marker_requires_the_matching_token() {

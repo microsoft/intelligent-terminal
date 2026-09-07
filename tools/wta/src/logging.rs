@@ -53,10 +53,13 @@ pub(crate) fn default_filter_directive(debug_assertions: bool) -> &'static str {
 }
 
 fn explicitly_configures_acp_dependency(directives: &str) -> bool {
-    directives
-        .split(',')
-        .map(str::trim)
-        .any(|directive| directive.starts_with("agent_client_protocol"))
+    directives.split(',').map(str::trim).any(|directive| {
+        directive
+            .strip_prefix("agent_client_protocol")
+            .is_some_and(|suffix| {
+                suffix.is_empty() || suffix.starts_with('=') || suffix.starts_with("::")
+            })
+    })
 }
 
 fn apply_dependency_privacy_cap(mut filter: EnvFilter, directives: Option<&str>) -> EnvFilter {
@@ -546,6 +549,9 @@ mod tests {
     #[test]
     fn acp_dependency_payload_logging_requires_an_explicit_target() {
         assert!(explicitly_configures_acp_dependency(
+            "debug, agent_client_protocol "
+        ));
+        assert!(explicitly_configures_acp_dependency(
             "debug,agent_client_protocol=debug"
         ));
         assert!(explicitly_configures_acp_dependency(
@@ -561,34 +567,42 @@ mod tests {
 
     #[test]
     fn global_debug_filter_drops_acp_dependency_payload_bodies() {
-        let output = Arc::new(Mutex::new(Vec::new()));
-        let writer = output.clone();
-        let subscriber = tracing_subscriber::registry()
-            .with(apply_dependency_privacy_cap(
-                EnvFilter::new("debug"),
-                Some("debug"),
-            ))
-            .with(
-                fmt::layer()
-                    .without_time()
-                    .with_ansi(false)
-                    .with_writer(move || SharedWriter(writer.clone())),
-            );
+        for directives in [
+            "debug",
+            "debug,agent_client_protocol_extra=debug",
+            "debug,agent_client_protocol_extra::jsonrpc=trace",
+            &format!("debug,agent_client_protocol{}=debug", 'x'),
+        ] {
+            assert!(!explicitly_configures_acp_dependency(directives));
+            let output = Arc::new(Mutex::new(Vec::new()));
+            let writer = output.clone();
+            let subscriber = tracing_subscriber::registry()
+                .with(apply_dependency_privacy_cap(
+                    EnvFilter::new(directives),
+                    Some(directives),
+                ))
+                .with(
+                    fmt::layer()
+                        .without_time()
+                        .with_ansi(false)
+                        .with_writer(move || SharedWriter(writer.clone())),
+                );
 
-        tracing::subscriber::with_default(subscriber, || {
-            tracing::debug!(
-                target: "agent_client_protocol::jsonrpc::outgoing_actor",
-                prompt = "secret-prompt",
-                "outgoing request"
-            );
-            tracing::debug!(target: "wta_test", "visible WTA diagnostic");
-        });
+            tracing::subscriber::with_default(subscriber, || {
+                tracing::debug!(
+                    target: "agent_client_protocol::jsonrpc::outgoing_actor",
+                    prompt = "secret-prompt",
+                    "outgoing request"
+                );
+                tracing::debug!(target: "wta_test", "visible WTA diagnostic");
+            });
 
-        let bytes = output.lock().unwrap().clone();
-        let log = String::from_utf8(bytes).unwrap();
-        assert!(log.contains("visible WTA diagnostic"));
-        assert!(!log.contains("secret-prompt"));
-        assert!(!log.contains("outgoing request"));
+            let bytes = output.lock().unwrap().clone();
+            let log = String::from_utf8(bytes).unwrap();
+            assert!(log.contains("visible WTA diagnostic"));
+            assert!(!log.contains("secret-prompt"));
+            assert!(!log.contains("outgoing request"));
+        }
     }
 
     #[test]
