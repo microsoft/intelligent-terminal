@@ -7881,6 +7881,276 @@ fn vt_event(pane: &str, tab: &str, seq: &str) -> AppEvent {
     }
 }
 
+#[test]
+fn hookless_shell_errors_submit_one_correctly_routed_autofix_prompt() {
+    let mut app = test_app();
+    let (tx, mut prompts) = tokio::sync::mpsc::unbounded_channel();
+    app.prompt_tx = tx;
+    app.state = ConnectionState::Connected;
+    app.autofix_enabled = true;
+    app.owner_tab_id = Some("test-tab".into());
+    app.window_id = Some("test-window".into());
+    app.pane_id = Some("helper-pane".into());
+    let pane = "shell-without-hooks";
+    assert!(app.agent_sessions.iter_sorted().is_empty());
+
+    app.handle_event(vt_event(pane, "test-tab", "osc:133;D;0"));
+    app.handle_event(vt_event("other-shell", "other-tab", "osc:133;D;1"));
+    assert!(
+        prompts.try_recv().is_err(),
+        "success and other tabs must not submit"
+    );
+
+    app.handle_event(vt_event(pane, "test-tab", "osc:133;D;1"));
+    let prompt = prompts
+        .try_recv()
+        .expect("shell error must reach the ACP prompt queue");
+    assert!(prompt.is_autofix());
+    let context = prompt.pane_context.expect("autofix must retain its source");
+    assert_eq!(context.source_pane_id.as_deref(), Some(pane));
+    assert_eq!(context.tab_id.as_deref(), Some("test-tab"));
+    assert_eq!(context.window_id.as_deref(), Some("test-window"));
+
+    app.handle_event(vt_event(pane, "test-tab", "osc:133;A"));
+    app.handle_event(vt_event(pane, "test-tab", "osc:133;D;1"));
+    assert!(
+        prompts.try_recv().is_err(),
+        "echo/repeated failure must not double-submit"
+    );
+    assert_eq!(
+        app.tab_mut("test-tab").autofix.pane_id.as_deref(),
+        Some(pane)
+    );
+    assert_eq!(app.state, ConnectionState::Connected);
+    assert!(app.agent_sessions.iter_sorted().is_empty());
+}
+
+#[test]
+fn hookless_manual_fix_still_submits_when_auto_suggest_is_disabled() {
+    let mut app = test_app();
+    let (tx, mut prompts) = tokio::sync::mpsc::unbounded_channel();
+    app.prompt_tx = tx;
+    app.state = ConnectionState::Connected;
+    app.autofix_enabled = false;
+    app.show_welcome_hint = false;
+    bind_test_session(&mut app, "chat-without-hooks");
+
+    app.cmd_fix(false, "explain the last failure".into());
+
+    let prompt = prompts
+        .try_recv()
+        .expect("manual /fix must not require hooks");
+    assert!(prompt.is_autofix());
+    assert_eq!(prompt.text, "explain the last failure");
+    assert!(prompts.try_recv().is_err());
+    assert!(app.agent_sessions.iter_sorted().is_empty());
+    assert_eq!(app.state, ConnectionState::Connected);
+}
+
+#[test]
+fn hookless_session_snapshot_renders_and_dispatches_resume() {
+    use crate::agent_sessions::AgentStatus;
+    use crate::protocol::acp::client::MasterExtRequest;
+
+    let _locale = crate::test_support::lock_locale();
+    let (mut app, mut requests) = test_app_with_master_rx();
+    app.state = ConnectionState::Connected;
+    app.current_agent_id = "claude".into();
+    app.current_tab_mut().pane_open = true;
+    app.current_tab_mut().input = "draft without hooks".into();
+    app.current_tab_mut().cursor_pos = app.current_tab().input.len();
+    app.open_agents_view_for_tab(DEFAULT_TAB_ID.into());
+    let MasterExtRequest::SessionsList { request_id, .. } = requests.try_recv().unwrap() else {
+        panic!("opening sessions must request history without any hook");
+    };
+    let mut row = session_info_for_test("history-without-hooks");
+    row.status = Some(AgentStatus::Historical);
+    row.cwd = std::env::temp_dir();
+    app.handle_event(AppEvent::AgentsSnapshotLoaded {
+        request_id,
+        sessions: vec![row],
+    });
+    assert!(
+        app.agent_sessions.iter_sorted().is_empty(),
+        "history must not need a local hook row"
+    );
+    assert_eq!(
+        app.agents_rows_for_tab(DEFAULT_TAB_ID)[0].key,
+        "history-without-hooks"
+    );
+    assert!(render_to_text(&mut app, 100, 24).contains("history-without-hooks"));
+
+    app.handle_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
+    assert_eq!(app.current_tab().current_view, View::Chat);
+    assert_eq!(app.current_tab().input, "draft without hooks");
+    app.open_agents_view_for_tab(DEFAULT_TAB_ID.into());
+    let MasterExtRequest::SessionsList { request_id, .. } = requests.try_recv().unwrap() else {
+        panic!("reopening sessions must request history");
+    };
+    let mut row = session_info_for_test("history-without-hooks");
+    row.status = Some(AgentStatus::Historical);
+    row.cwd = std::env::temp_dir();
+    app.handle_event(AppEvent::AgentsSnapshotLoaded {
+        request_id,
+        sessions: vec![row],
+    });
+    app.current_tab_mut().agents_list_state.select(Some(0));
+    app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+    let command = app
+        .last_dispatched_command_for_test()
+        .expect("resume dispatched");
+    assert_eq!(command.kind, DispatchedCommandKind::NewTabResume);
+    assert!(command
+        .argv
+        .join(" ")
+        .contains("claude --resume history-without-hooks"));
+}
+
+#[tokio::test]
+async fn hookless_chat_streams_while_listener_readiness_is_pending() {
+    use crate::protocol::acp::client::mock_agent_tests::connect_mock_agent;
+    use agent_client_protocol as acp;
+
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            // Only this channel uses the missing executable: no PATH, COM
+            // registration or user configuration is changed.
+            let listener = Arc::new(crate::shell::wt_channel::CliChannel::with_test_executable(
+                std::env::temp_dir()
+                    .join(format!("missing-wtcli-{}.exe", uuid::Uuid::new_v4()))
+                    .to_string_lossy()
+                    .into_owned(),
+            ));
+            let mut readiness = Box::pin(listener.start_reader());
+            assert!(
+                tokio::time::timeout(std::time::Duration::from_millis(50), &mut readiness)
+                    .await
+                    .is_err(),
+                "the failed listener must actually be waiting to retry"
+            );
+
+            let (conn, mut events, _seen) = connect_mock_agent();
+            conn.initialize(acp::schema::v1::InitializeRequest::new(
+                acp::schema::ProtocolVersion::LATEST,
+            ))
+            .await
+            .unwrap();
+            let session = conn
+                .new_session(acp::schema::v1::NewSessionRequest::new("/test"))
+                .await
+                .unwrap();
+            let sid = session.session_id.to_string();
+            let mut app = test_app();
+            app.state = ConnectionState::Connected;
+            app.show_welcome_hint = false;
+            let (tx, mut prompts) = tokio::sync::mpsc::unbounded_channel();
+            app.prompt_tx = tx;
+            bind_test_session(&mut app, &sid);
+            app.current_tab_mut().input = "hookless-chat".into();
+            app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+            let prompt = prompts
+                .try_recv()
+                .expect("chat submission cannot wait for hooks");
+            assert!(!prompt.is_autofix());
+            assert_eq!(prompt.text, "hookless-chat");
+            tokio::time::timeout(
+                std::time::Duration::from_secs(5),
+                conn.prompt(acp::schema::v1::PromptRequest::new(
+                    session.session_id,
+                    vec![prompt.text.into()],
+                )),
+            )
+            .await
+            .expect("chat cannot wait for listener readiness")
+            .unwrap();
+            pump_until(&mut app, &mut events, |event| {
+                matches!(event, AppEvent::AgentMessageChunk { .. })
+            })
+            .await;
+            assert!(app
+                .current_tab()
+                .active_agent_text()
+                .contains("MOCK_OK:hookless-chat"));
+            assert!(app.agent_sessions.iter_sorted().is_empty());
+            assert_eq!(app.state, ConnectionState::Connected);
+            // Drop cancels this test's retry loop rather than leaving it alive.
+            drop(readiness);
+            drop(listener);
+        })
+        .await;
+}
+
+#[cfg(windows)]
+#[tokio::test]
+async fn hookless_listener_recovery_delivers_shell_error_to_autofix() {
+    struct Fixture(std::path::PathBuf);
+    impl Drop for Fixture {
+        fn drop(&mut self) {
+            for name in ["listener.cmd", "attempted"] {
+                let _ = std::fs::remove_file(self.0.join(name));
+            }
+            let _ = std::fs::remove_dir(&self.0);
+        }
+    }
+    let fixture =
+        Fixture(std::env::temp_dir().join(format!("wta-listener-{}", uuid::Uuid::new_v4())));
+    std::fs::create_dir(&fixture.0).unwrap();
+    let executable = fixture.0.join("listener.cmd");
+    // First process exits before subscribing. The next emits a readiness
+    // marker and an ordinary WT shell error, but never any agent hook.
+    std::fs::write(&executable, r#"@echo off
+if exist "%~dp0attempted" goto ready
+echo attempted>"%~dp0attempted"
+exit /b 1
+:ready
+echo {"_wtcli":"listener_ready","token":"%~6"}
+echo {"method":"vt_sequence","params":{"pane_id":"shell-after-recovery","tab_id":"test-tab","sequence":"osc:133;D;1"}}
+exit /b 0
+"#.replace('\n', "\r\n")).unwrap();
+    let listener = Arc::new(crate::shell::wt_channel::CliChannel::with_test_executable(
+        executable.to_string_lossy().into_owned(),
+    ));
+    let mut events = listener.subscribe_events();
+    assert!(
+        tokio::time::timeout(std::time::Duration::from_secs(10), listener.start_reader())
+            .await
+            .expect("listener must recover"),
+        "the replacement process must reach subscription readiness"
+    );
+    let event = tokio::time::timeout(std::time::Duration::from_secs(5), events.recv())
+        .await
+        .expect("WT event must be delivered")
+        .expect("event channel remains open");
+    assert_eq!(
+        event["method"], "vt_sequence",
+        "internal readiness markers must not reach App"
+    );
+    let params = event["params"].clone();
+    let mut app = test_app();
+    app.state = ConnectionState::Connected;
+    app.autofix_enabled = true;
+    app.owner_tab_id = Some("test-tab".into());
+    let (tx, mut prompts) = tokio::sync::mpsc::unbounded_channel();
+    app.prompt_tx = tx;
+    app.handle_event(AppEvent::WtEvent {
+        method: event["method"].as_str().unwrap().into(),
+        pane_id: params["pane_id"].as_str().unwrap().into(),
+        tab_id: Some(params["tab_id"].as_str().unwrap().into()),
+        params,
+    });
+    let prompt = prompts
+        .try_recv()
+        .expect("recovered event must submit Autofix, not just update a flag");
+    assert!(prompt.is_autofix());
+    assert_eq!(
+        prompt.pane_context.unwrap().source_pane_id.as_deref(),
+        Some("shell-after-recovery")
+    );
+    assert!(app.agent_sessions.iter_sorted().is_empty());
+    drop(listener);
+    drop(events);
+}
+
 /// Detected state must survive the `osc:133;A` that PowerShell emits
 /// ~1ms after the triggering `osc:133;D` — that A is the trigger's
 /// echo, not the user moving on. The NEXT prompt-start (after the

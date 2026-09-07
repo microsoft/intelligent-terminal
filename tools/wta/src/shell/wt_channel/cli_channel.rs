@@ -598,6 +598,17 @@ impl Drop for CliChannel {
 }
 
 impl CliChannel {
+    #[cfg(test)]
+    pub(crate) fn with_test_executable(wtcli_path: String) -> Self {
+        Self {
+            available: AtomicBool::new(true),
+            debug_tx: None,
+            event_tx: std::sync::Mutex::new(None),
+            listener_shutdown: std::sync::Mutex::new(None),
+            wtcli_path,
+        }
+    }
+
     pub async fn connect() -> anyhow::Result<Self> {
         // WT_COM_CLSID must be set — wtcli reads it from the environment.
         if std::env::var("WT_COM_CLSID").is_err() {
