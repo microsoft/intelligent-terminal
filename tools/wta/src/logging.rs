@@ -52,6 +52,36 @@ pub(crate) fn default_filter_directive(debug_assertions: bool) -> &'static str {
     }
 }
 
+fn explicitly_configures_acp_dependency(directives: &str) -> bool {
+    directives
+        .split(',')
+        .map(str::trim)
+        .any(|directive| directive.starts_with("agent_client_protocol"))
+}
+
+fn apply_dependency_privacy_cap(mut filter: EnvFilter, directives: Option<&str>) -> EnvFilter {
+    if !directives.is_some_and(explicitly_configures_acp_dependency) {
+        filter = filter.add_directive(
+            "agent_client_protocol=info"
+                .parse()
+                .expect("static ACP logging directive must be valid"),
+        );
+    }
+    filter
+}
+
+fn configured_filter(default_directives: &str) -> EnvFilter {
+    for variable in ["WTA_LOG", "RUST_LOG"] {
+        if let Ok(directives) = std::env::var(variable) {
+            if let Ok(filter) = EnvFilter::try_new(&directives) {
+                return apply_dependency_privacy_cap(filter, Some(&directives));
+            }
+        }
+    }
+
+    apply_dependency_privacy_cap(EnvFilter::new(default_directives), None)
+}
+
 /// Root of the WTA log tree: `<local_root>/logs` (or a temp-dir fallback).
 fn logs_root() -> std::path::PathBuf {
     crate::runtime_paths::intelligent_terminal_local_root()
@@ -120,9 +150,7 @@ pub fn init(process: &str) {
 
     let default_level = default_filter_directive(cfg!(debug_assertions));
 
-    let filter = EnvFilter::try_from_env("WTA_LOG")
-        .or_else(|_| EnvFilter::try_from_default_env())
-        .unwrap_or_else(|_| EnvFilter::new(default_level));
+    let filter = configured_filter(default_level);
 
     tracing_subscriber::registry()
         .with(filter)
@@ -449,7 +477,23 @@ fn prune_stale_helper_logs(log_dir: &Path) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::io::Write;
+    use std::sync::Arc;
     use tracing_subscriber::filter::LevelFilter;
+
+    #[derive(Clone)]
+    struct SharedWriter(Arc<Mutex<Vec<u8>>>);
+
+    impl Write for SharedWriter {
+        fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+            self.0.lock().unwrap().extend_from_slice(buf);
+            Ok(buf.len())
+        }
+
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
 
     #[test]
     fn debug_build_default_is_debug() {
@@ -486,6 +530,65 @@ mod tests {
     fn debug_default_filter_enables_debug() {
         let filter = EnvFilter::new(default_filter_directive(true));
         assert_eq!(filter.max_level_hint(), Some(LevelFilter::DEBUG));
+    }
+
+    #[test]
+    fn global_debug_does_not_explicitly_enable_acp_dependency_payloads() {
+        assert!(!explicitly_configures_acp_dependency("debug"));
+        assert!(!explicitly_configures_acp_dependency(
+            "debug,wta=trace,acp.content=trace"
+        ));
+
+        let filter = apply_dependency_privacy_cap(EnvFilter::new("debug"), Some("debug"));
+        assert!(filter.to_string().contains("agent_client_protocol=info"));
+    }
+
+    #[test]
+    fn acp_dependency_payload_logging_requires_an_explicit_target() {
+        assert!(explicitly_configures_acp_dependency(
+            "debug,agent_client_protocol=debug"
+        ));
+        assert!(explicitly_configures_acp_dependency(
+            "info,agent_client_protocol::jsonrpc=trace"
+        ));
+
+        let filter = apply_dependency_privacy_cap(
+            EnvFilter::new("debug,agent_client_protocol=debug"),
+            Some("debug,agent_client_protocol=debug"),
+        );
+        assert!(!filter.to_string().contains("agent_client_protocol=info"));
+    }
+
+    #[test]
+    fn global_debug_filter_drops_acp_dependency_payload_bodies() {
+        let output = Arc::new(Mutex::new(Vec::new()));
+        let writer = output.clone();
+        let subscriber = tracing_subscriber::registry()
+            .with(apply_dependency_privacy_cap(
+                EnvFilter::new("debug"),
+                Some("debug"),
+            ))
+            .with(
+                fmt::layer()
+                    .without_time()
+                    .with_ansi(false)
+                    .with_writer(move || SharedWriter(writer.clone())),
+            );
+
+        tracing::subscriber::with_default(subscriber, || {
+            tracing::debug!(
+                target: "agent_client_protocol::jsonrpc::outgoing_actor",
+                prompt = "secret-prompt",
+                "outgoing request"
+            );
+            tracing::debug!(target: "wta_test", "visible WTA diagnostic");
+        });
+
+        let bytes = output.lock().unwrap().clone();
+        let log = String::from_utf8(bytes).unwrap();
+        assert!(log.contains("visible WTA diagnostic"));
+        assert!(!log.contains("secret-prompt"));
+        assert!(!log.contains("outgoing request"));
     }
 
     #[test]
