@@ -11154,6 +11154,59 @@ fn render_recommendation_card_shows_command() {
     );
 }
 
+#[test]
+fn recommendation_hint_uses_panel_horizontal_inset() {
+    use crate::coordinator::{RecommendationChoice, RecommendationSet, RecommendedAction};
+
+    let _g = crate::test_support::lock_locale();
+    rust_i18n::set_locale("en-US");
+    let mut app = test_app();
+    app.state = ConnectionState::Connected;
+    app.current_tab_mut().turn = TurnState::Surfaced {
+        prompt: SubmittedPrompt {
+            id: 1,
+            text: "fix it".into(),
+            submitted_at_unix_s: 0.0,
+            context: TurnContext::default(),
+            autofix: None,
+        },
+        outcome: TurnOutcome::Recommendation(RecommendationSet {
+            recommended_choice: Some(0),
+            choices: vec![RecommendationChoice {
+                choice: 0,
+                title: "Run the fix".into(),
+                rationale: String::new(),
+                actions: vec![RecommendedAction::Send {
+                    parent: String::new(),
+                    input: "echo PADDING_XYZ".into(),
+                }],
+            }],
+        }),
+        end_pending: false,
+    };
+
+    let rendered = render_to_text(&mut app, 80, 40);
+    let command_line = rendered
+        .lines()
+        .find(|line| line.contains("PADDING_XYZ"))
+        .unwrap_or_else(|| panic!("recommendation command must be visible:\n{rendered}"));
+    assert_eq!(
+        command_line.chars().nth(1),
+        Some('│'),
+        "recommendation card must use the panel's one-cell horizontal inset:\n{rendered}"
+    );
+
+    let hint_line = rendered
+        .lines()
+        .find(|line| line.contains("navigate suggestions"))
+        .unwrap_or_else(|| panic!("recommendation navigation hint must be visible:\n{rendered}"));
+    assert_eq!(
+        hint_line.find('('),
+        Some(1),
+        "recommendation hint must align with the card's top-level horizontal lane:\n{rendered}"
+    );
+}
+
 /// Render: every `ChatMessage` variant must paint without panicking and
 /// surface its distinguishing text. Lifts the `build_message_lines` /
 /// `message_height` match arms in `ui/chat.rs` (User/System/Plan/Error/
