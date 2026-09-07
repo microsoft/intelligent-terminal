@@ -328,17 +328,14 @@ fn validate_pane_context(value: &serde_json::Value) -> Result<&serde_json::Value
     {
         return Err("pane.session_id must be a nonempty string");
     }
-    if pane.get("is_agent_pane").is_some_and(|v| !v.is_boolean()) {
+    if pane.get("is_agent_pane").is_none_or(|v| !v.is_boolean()) {
         return Err("pane.is_agent_pane must be a boolean");
     }
-    if value
-        .get("content")
-        .is_some_and(|v| !v.is_null() && !v.is_string())
-    {
-        return Err("content must be a string or null");
+    if value.get("content").is_none_or(|v| !v.is_string()) {
+        return Err("content must be a string");
     }
     for field in ["truncated", "has_marks"] {
-        if value.get(field).is_some_and(|v| !v.is_boolean()) {
+        if value.get(field).is_none_or(|v| !v.is_boolean()) {
             return Err(match field {
                 "truncated" => "truncated must be a boolean",
                 _ => "has_marks must be a boolean",
@@ -346,17 +343,14 @@ fn validate_pane_context(value: &serde_json::Value) -> Result<&serde_json::Value
         }
     }
     for field in ["output_source", "fallback_reason"] {
-        if value.get(field).is_some_and(|v| !v.is_string()) {
+        if value.get(field).is_none_or(|v| !v.is_string()) {
             return Err(match field {
                 "output_source" => "output_source must be a string",
                 _ => "fallback_reason must be a string",
             });
         }
     }
-    if value
-        .get("line_count")
-        .is_some_and(|v| v.as_u64().is_none())
-    {
+    if value.get("line_count").is_none_or(|v| v.as_u64().is_none()) {
         return Err("line_count must be a nonnegative integer");
     }
     Ok(pane)
@@ -1000,7 +994,7 @@ mod tests {
             match method {
                 "get_pane_context" => Ok(serde_json::json!({
                     "pane": self.active_pane.clone(),
-                    "content": serde_json::Value::Null,
+                    "content": "",
                     "output_source": "metadata_only",
                     "fallback_reason": "",
                     "line_count": 0,
@@ -1018,6 +1012,21 @@ mod tests {
 
     fn shell_mgr_with_pane(active_pane: serde_json::Value) -> ShellManager {
         ShellManager::new().with_wt_channel(Arc::new(MockWtChannel { active_pane }))
+    }
+
+    fn pane_context_response() -> serde_json::Value {
+        serde_json::json!({
+            "pane": {
+                "session_id": "pane-explicit",
+                "is_agent_pane": false,
+            },
+            "content": "command output",
+            "output_source": "last_command",
+            "fallback_reason": "",
+            "line_count": 1,
+            "truncated": false,
+            "has_marks": true,
+        })
     }
 
     struct RecordingPaneContextChannel {
@@ -1043,18 +1052,7 @@ mod tests {
             if let Some(response) = &self.response {
                 return Ok(response.clone());
             }
-            Ok(serde_json::json!({
-                "pane": {
-                    "session_id": "pane-explicit",
-                    "is_agent_pane": false,
-                },
-                "content": "command output",
-                "output_source": "last_command",
-                "fallback_reason": "",
-                "line_count": 1,
-                "truncated": false,
-                "has_marks": true,
-            }))
+            Ok(pane_context_response())
         }
 
         fn is_available(&self) -> bool {
@@ -1083,6 +1081,29 @@ mod tests {
         assert_eq!(params["session_id"], "pane-explicit");
         assert_eq!(params["max_lines"], 30);
         assert_eq!(params["max_chars"], 4000);
+    }
+
+    #[tokio::test]
+    async fn metadata_only_context_accepts_empty_content_and_additional_fields() {
+        let mut response = pane_context_response();
+        response["content"] = serde_json::json!("");
+        response["output_source"] = serde_json::json!("metadata_only");
+        response["line_count"] = serde_json::json!(0);
+        response["has_marks"] = serde_json::json!(false);
+        response["extension"] = serde_json::json!({"future": true});
+        let channel = Arc::new(RecordingPaneContextChannel {
+            requests: AtomicUsize::new(0),
+            params: Mutex::new(None),
+            error: None,
+            response: Some(response),
+        });
+        let mgr = ShellManager::new().with_wt_channel(channel.clone());
+        let captured = capture_pane_context(&mgr, None, 0, 4000)
+            .await
+            .expect("complete metadata-only response must remain valid");
+        assert_eq!(captured.pane["session_id"], "pane-explicit");
+        assert!(captured.output.is_none());
+        assert_eq!(channel.requests.load(Ordering::Relaxed), 1);
     }
 
     #[tokio::test]
@@ -1182,7 +1203,6 @@ mod tests {
             }
         }
 
-        let pane = serde_json::json!({"session_id": "pane-explicit", "is_agent_pane": false});
         let mut cases = vec![
             (serde_json::json!(null), "response must be an object"),
             (serde_json::json!([]), "response must be an object"),
@@ -1215,11 +1235,30 @@ mod tests {
             serde_json::json!({"pane": {"session_id": "pane-explicit", "is_agent_pane": "false"}}),
             "pane.is_agent_pane must be a boolean",
         ));
+        for (field, error) in [
+            ("content", "content must be a string"),
+            ("truncated", "truncated must be a boolean"),
+            ("has_marks", "has_marks must be a boolean"),
+            ("output_source", "output_source must be a string"),
+            ("fallback_reason", "fallback_reason must be a string"),
+            ("line_count", "line_count must be a nonnegative integer"),
+        ] {
+            let mut response = pane_context_response();
+            response.as_object_mut().unwrap().remove(field);
+            cases.push((response, error));
+        }
+        let mut response = pane_context_response();
+        response["pane"]
+            .as_object_mut()
+            .unwrap()
+            .remove("is_agent_pane");
+        cases.push((response, "pane.is_agent_pane must be a boolean"));
         for (field, invalid, error) in [
+            ("content", serde_json::json!({}), "content must be a string"),
             (
                 "content",
-                serde_json::json!({}),
-                "content must be a string or null",
+                serde_json::Value::Null,
+                "content must be a string",
             ),
             (
                 "truncated",
@@ -1247,7 +1286,7 @@ mod tests {
                 "line_count must be a nonnegative integer",
             ),
         ] {
-            let mut value = serde_json::json!({"pane": pane});
+            let mut value = pane_context_response();
             value[field] = invalid;
             cases.push((value, error));
         }

@@ -380,7 +380,7 @@ mod tests {
                     };
                     Ok(serde_json::json!({
                         "pane": pane,
-                        "content": serde_json::Value::Null,
+                        "content": "",
                         "output_source": "metadata_only",
                         "fallback_reason": "",
                         "line_count": 0,
