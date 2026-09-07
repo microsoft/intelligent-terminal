@@ -202,9 +202,6 @@ namespace winrt::TerminalApp::implementation
         WelcomeSubtitleLink().Text(RS_(L"FreOverlay_WelcomeSubtitleLink"));
         SettingsSubtitlePrefix().Text(RS_(L"FreOverlay_SettingsSubtitlePrefix"));
         SettingsSubtitleLink().Text(RS_(L"FreOverlay_SettingsSubtitleLink"));
-        AutoDetectShellIntegrationHintPrefix().Text(RS_(L"FreOverlay_AutoDetectShellIntegrationHintPrefix"));
-        AutoDetectShellIntegrationHintLink().Text(RS_(L"FreOverlay_AutoDetectShellIntegrationHintLink"));
-
         // Split the description on "ACP" (locked token) so it can be rendered as an inline Hyperlink.
         {
             const auto descStr = RS_(L"FreOverlay_AgentDescription/Text");
@@ -337,46 +334,7 @@ namespace winrt::TerminalApp::implementation
             /*nodeMissing*/ !_IsNodeInstalled());
     }
 
-    // ── Agent selection changed ─────────────────────────────────────────
-
-    void FreOverlay::_OnAgentSelectionChanged(const IInspectable& /*sender*/,
-                                              const winrt::Windows::UI::Xaml::Controls::SelectionChangedEventArgs& /*args*/)
-    {
-        // Show Node.js install hint for Claude/Codex (they use npx adapters)
-        if (const auto selected = AgentComboBox().SelectedItem())
-        {
-            if (const auto entry = selected.try_as<winrt::TerminalApp::FreAgentEntry>())
-            {
-                const auto id = entry.Id();
-                const bool needsNode = (id == L"claude" || id == L"codex");
-                AgentInstallHintRow().Visibility(needsNode ? Visibility::Visible : Visibility::Collapsed);
-            }
-        }
-    }
-
-    void FreOverlay::_OnSessionManagementToggled(const IInspectable& /*sender*/,
-                                                  const RoutedEventArgs& /*args*/)
-    {
-        // Guard: event can fire during InitializeComponent before controls exist
-        auto toggle = SessionManagementToggle();
-        // Hide/show the whole hint row (icon + text), not just the text — the
-        // monochrome FontIcon lives in the same StackPanel and would otherwise
-        // be left dangling when the toggle is off.
-        auto row = SessionManagementHintRow();
-        if (toggle && row)
-        {
-            row.Visibility(toggle.IsOn() ? Visibility::Visible : Visibility::Collapsed);
-        }
-    }
-
     // ── Error detection mode ────────────────────────────────────────────
-
-    void FreOverlay::_OnErrorDetectionSelectionChanged(
-        const IInspectable& /*sender*/,
-        const winrt::Windows::UI::Xaml::Controls::SelectionChangedEventArgs& /*args*/)
-    {
-        _UpdateErrorDetectionHintVisibility();
-    }
 
     FreOverlay::ErrorDetectionMode FreOverlay::_CurrentErrorDetectionMode()
     {
@@ -409,21 +367,6 @@ namespace winrt::TerminalApp::implementation
         if (const auto comboBox = ErrorDetectionComboBox())
         {
             comboBox.SelectedIndex(static_cast<int32_t>(mode));
-        }
-        _UpdateErrorDetectionHintVisibility();
-    }
-
-    void FreOverlay::_UpdateErrorDetectionHintVisibility()
-    {
-        // Hide the shell-integration hint when detection is off because the
-        // installation side effect described by the hint no longer applies.
-        const auto comboBox = ErrorDetectionComboBox();
-        auto row = AutoDetectShellIntegrationHintRow();
-        if (comboBox && row)
-        {
-            row.Visibility(_CurrentErrorDetectionMode() == ErrorDetectionMode::Off
-                               ? Visibility::Collapsed
-                               : Visibility::Visible);
         }
     }
 

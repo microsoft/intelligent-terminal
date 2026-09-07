@@ -238,38 +238,6 @@
                                         </Hyperlink>
                                         <Run x:Name="AgentDescriptionAfter" />
                                     </TextBlock>
-                                    <!--  AgentInstallHint row: monochrome
-                                          info glyph + text, same pattern as
-                                          the Session-management hint.  -->
-                                    <!--  Two-column Grid (NOT a horizontal
-                                          StackPanel) so the wrapping
-                                          TextBlock is constrained to the
-                                          remaining width — a horizontal
-                                          StackPanel measures its children
-                                          with infinite width and the long
-                                          localized hint would overflow the
-                                          card instead of wrapping.  -->
-                                    <Grid x:Name="AgentInstallHintRow"
-                                          Visibility="Collapsed"
-                                          Margin="0,4,0,0"
-                                          ColumnSpacing="6">
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="Auto" />
-                                            <ColumnDefinition Width="*" />
-                                        </Grid.ColumnDefinitions>
-                                        <FontIcon Grid.Column="0"
-                                                  Glyph="&#xE946;"
-                                                  FontFamily="{ThemeResource SymbolThemeFontFamily}"
-                                                  FontSize="12"
-                                                  Foreground="#99FFFFFF"
-                                                  VerticalAlignment="Top"
-                                                  Margin="0,2,0,0" />
-                                        <TextBlock Grid.Column="1"
-                                                   x:Uid="FreOverlay_AgentInstallHint"
-                                                   x:Name="AgentInstallHint"
-                                                   FontSize="12" Foreground="#99FFFFFF"
-                                                   TextWrapping="Wrap" />
-                                    </Grid>
                                     <TextBlock x:Name="AgentPolicyNotice"
                                                FontSize="12" FontStyle="Italic"
                                                Foreground="#CCFFA500" TextWrapping="Wrap"
@@ -278,8 +246,7 @@
                                 </StackPanel>
                                 <ComboBox x:Name="AgentComboBox" Grid.Column="1"
                                           MinWidth="220"
-                                          VerticalAlignment="Center"
-                                          SelectionChanged="_OnAgentSelectionChanged">
+                                          VerticalAlignment="Center">
                                     <ComboBox.ItemTemplate>
                                         <DataTemplate x:DataType="local:FreAgentEntry">
                                             <TextBlock Text="{x:Bind DisplayLabel}" />
@@ -334,40 +301,6 @@
                                     <TextBlock x:Uid="FreOverlay_ErrorDetectionDescription"
                                                FontSize="12" Foreground="#99FFFFFF"
                                                TextWrapping="Wrap" />
-                                    <!--  Hint row: monochrome info glyph
-                                          + text with inline "Learn more"
-                                          link to the shell-integration
-                                          docs. Same Grid + FontIcon
-                                          pattern as SessionManagementHint
-                                          (2 cols so the wrapping
-                                          TextBlock is width-bounded).
-                                          Run texts can't use x:Uid, so
-                                          they're set in code-behind via
-                                          RS_.  -->
-                                    <Grid x:Name="AutoDetectShellIntegrationHintRow"
-                                          Margin="0,4,0,0"
-                                          ColumnSpacing="6">
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="Auto" />
-                                            <ColumnDefinition Width="*" />
-                                        </Grid.ColumnDefinitions>
-                                        <FontIcon Grid.Column="0"
-                                                  Glyph="&#xE946;"
-                                                  FontFamily="{ThemeResource SymbolThemeFontFamily}"
-                                                  FontSize="12"
-                                                  Foreground="#99FFFFFF"
-                                                  VerticalAlignment="Top"
-                                                  Margin="0,2,0,0" />
-                                        <TextBlock Grid.Column="1"
-                                                   FontSize="12" Foreground="#99FFFFFF"
-                                                   TextWrapping="Wrap">
-                                            <Run x:Name="AutoDetectShellIntegrationHintPrefix" />
-                                            <Hyperlink NavigateUri="https://aka.ms/intelligent-terminal-dependency#4-shell-integration"
-                                                       Foreground="#FF99EBFF">
-                                                <Run x:Name="AutoDetectShellIntegrationHintLink" />
-                                            </Hyperlink>
-                                        </TextBlock>
-                                    </Grid>
                                     <TextBlock x:Name="ErrorDetectionPolicyNotice"
                                                FontSize="12" FontStyle="Italic"
                                                Foreground="#CCFFA500" TextWrapping="Wrap"
@@ -376,10 +309,8 @@
                                 </StackPanel>
                                 <ComboBox x:Name="ErrorDetectionComboBox"
                                           Grid.Column="1"
-                                          MinWidth="220"
-                                          VerticalAlignment="Center"
-                                          HorizontalAlignment="Right"
-                                          SelectionChanged="_OnErrorDetectionSelectionChanged">
+                                          MinWidth="120"
+                                          VerticalAlignment="Center">
                                     <ComboBoxItem x:Uid="FreOverlay_ErrorDetectionDetectOption" />
                                     <ComboBoxItem x:Name="ErrorDetectionAutoFixOption"
                                                   x:Uid="FreOverlay_ErrorDetectionAutoFixOption" />
@@ -408,49 +339,11 @@
                                         <TextBlock x:Uid="FreOverlay_SessionDescription"
                                                    FontSize="12" Foreground="#99FFFFFF"
                                                    TextWrapping="Wrap" />
-                                        <!--  Hint row: monochrome info glyph
-                                              (Segoe Fluent Icons) + text.
-                                              Previously the icon was an emoji
-                                              embedded in every locale string
-                                              ("ℹ "), which Windows renders via
-                                              the color emoji font. The icon
-                                              now lives in XAML so it stays
-                                              monochrome and consistent with
-                                              the rest of the FRE chrome.  -->
-                                        <!--  Two-column Grid (NOT a horizontal
-                                              StackPanel) so the wrapping
-                                              TextBlock is constrained to the
-                                              remaining width — a horizontal
-                                              StackPanel measures its children
-                                              with infinite width and the long
-                                              localized hint would overflow
-                                              the card instead of wrapping.  -->
-                                        <Grid x:Name="SessionManagementHintRow"
-                                              Margin="0,4,0,0"
-                                              ColumnSpacing="6">
-                                            <Grid.ColumnDefinitions>
-                                                <ColumnDefinition Width="Auto" />
-                                                <ColumnDefinition Width="*" />
-                                            </Grid.ColumnDefinitions>
-                                            <FontIcon Grid.Column="0"
-                                                      Glyph="&#xE946;"
-                                                      FontFamily="{ThemeResource SymbolThemeFontFamily}"
-                                                      FontSize="12"
-                                                      Foreground="#99FFFFFF"
-                                                      VerticalAlignment="Top"
-                                                      Margin="0,2,0,0" />
-                                            <TextBlock Grid.Column="1"
-                                                       x:Uid="FreOverlay_SessionHint"
-                                                       x:Name="SessionManagementHint"
-                                                       FontSize="12" Foreground="#99FFFFFF"
-                                                       TextWrapping="Wrap" />
-                                        </Grid>
                                     </StackPanel>
                                     <ToggleSwitch x:Name="SessionManagementToggle"
                                                   Grid.Column="1"
                                                   IsOn="True" VerticalAlignment="Center"
-                                                  HorizontalAlignment="Right" MinWidth="0"
-                                                  Toggled="_OnSessionManagementToggled" />
+                                                  HorizontalAlignment="Right" MinWidth="0" />
                                 </Grid>
                                 <TextBlock x:Name="SessionHooksPolicyNotice"
                                            FontSize="12" FontStyle="Italic"

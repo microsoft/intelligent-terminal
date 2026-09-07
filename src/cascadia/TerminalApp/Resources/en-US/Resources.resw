@@ -1110,8 +1110,7 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
   </data>
   <!-- ═══ FRE Settings Page ═══ -->
   <data name="FreOverlay_SettingsTitle.Text" xml:space="preserve">
-    <value>Set up your terminal agent</value>
-    <comment>{Locked="Copilot","Claude","Gemini"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+    <value>Set up your terminal</value>
   </data>
   <data name="FreOverlay_SettingsSubtitlePrefix" xml:space="preserve">
     <value>Choose what to set up now. You can change these anytime. </value>
@@ -1128,33 +1127,20 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
     <comment>{Locked="ACP"}
 In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
-  <data name="FreOverlay_AgentInstallHint.Text" xml:space="preserve">
-    <value>This agent requires Node.js and NPX, which will be installed automatically if not already present.</value>
-    <comment>{Locked="Node.js","NPX"}
-In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
-  </data>
   <data name="FreOverlay_ErrorDetectionLabel.Text" xml:space="preserve">
     <value>Error detection</value>
     <comment>Header for the dropdown that configures how the terminal handles failed commands.</comment>
   </data>
   <data name="FreOverlay_ErrorDetectionDescription.Text" xml:space="preserve">
-    <value>Have your agent detect errors in the shell or send failed commands to your agent automatically, no prompt needed.</value>
+    <value>Have your agent automatically detect errors in the shell and send failed commands to your agent.</value>
     <comment>Description for the error-detection dropdown in the first-run wizard. In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
-  <data name="FreOverlay_AutoDetectShellIntegrationHintPrefix" xml:space="preserve">
-    <value>Enabling this will install shell integration to detect command failures. </value>
-    <comment>Hint shown under the "Automatic error detection" toggle in the first-run wizard, explaining that turning the toggle on installs shell integration into the user's shell profile. The trailing space is intentional — it separates this prefix from the inline "Learn more" hyperlink that follows.</comment>
-  </data>
-  <data name="FreOverlay_AutoDetectShellIntegrationHintLink" xml:space="preserve">
-    <value>Learn more</value>
-    <comment>Inline hyperlink text that follows FreOverlay_AutoDetectShellIntegrationHintPrefix, linking to the shell-integration documentation.</comment>
-  </data>
   <data name="FreOverlay_ErrorDetectionDetectOption.Content" xml:space="preserve">
-    <value>Automatically detect errors</value>
+    <value>Detect errors</value>
     <comment>Dropdown option that detects shell errors without automatically sending failed commands to the selected AI agent.</comment>
   </data>
   <data name="FreOverlay_ErrorDetectionAutoFixOption.Content" xml:space="preserve">
-    <value>Automatically detect and fix errors with agent</value>
+    <value>Detect and fix errors</value>
     <comment>Dropdown option that detects shell errors and automatically sends failed commands to the selected AI agent. In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_ErrorDetectionOffOption.Content" xml:space="preserve">
@@ -1172,12 +1158,8 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
     <value>Track which agents are running and which need your attention.</value>
     <comment>In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
-  <data name="FreOverlay_SessionHint.Text" xml:space="preserve">
-    <value>Enabling this will install integration hooks to track sessions across your agents.</value>
-    <comment>{Locked="hooks"}</comment>
-  </data>
   <data name="FreOverlay_ShowTokenUsageAndCostLabel.Text" xml:space="preserve"><value>Token usage</value><comment>Header for a first-run toggle that shows remaining context and session cost in the terminal bottom bar.</comment></data>
-  <data name="FreOverlay_ShowTokenUsageAndCostDescription.Text" xml:space="preserve"><value>Show remaining context and session cost at the bottom of the terminal, when your agent reports them.</value><comment>Description for the token-usage visibility toggle in the first-run wizard. In this context, "agent" refers to an AI agent. Either value may be unavailable.</comment></data>
+  <data name="FreOverlay_ShowTokenUsageAndCostDescription.Text" xml:space="preserve"><value>Show remaining context and session cost when available.</value><comment>Description for the token-usage visibility toggle in the first-run wizard. Either value may be unavailable.</comment></data>
   <data name="FreOverlay_PanePositionLabel.Text" xml:space="preserve">
     <value>Agent position</value>
   </data>
