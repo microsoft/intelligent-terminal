@@ -439,9 +439,10 @@
                                     x:Uid="AIAgents_YoloMode">
                 <StackPanel>
                     <ToggleSwitch AutomationProperties.AutomationId="AgentPaneYoloModeToggle"
+                                  AutomationProperties.AccessibilityView="Content"
+                                  MinWidth="0"
                                   IsOn="{x:Bind ViewModel.AgentPaneYoloMode, Mode=TwoWay}"
-                                  IsEnabled="{x:Bind mtu:Converters.InvertBoolean(ViewModel.IsYoloModePolicyLocked), Mode=OneWay}"
-                                  Style="{StaticResource ToggleSwitchInExpanderStyle}" />
+                                  IsEnabled="{x:Bind mtu:Converters.InvertBoolean(ViewModel.IsYoloModePolicyLocked), Mode=OneWay}" />
                     <TextBlock x:Uid="AIAgents_PolicyLocked"
                                Visibility="{x:Bind ViewModel.IsYoloModePolicyLocked, Mode=OneWay}"
                                Opacity="0.6"
