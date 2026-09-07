@@ -783,7 +783,7 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
     <comment>Title for the Error detection dropdown in the AI agents settings page.</comment>
   </data>
   <data name="AIAgents_AutoErrorHandlingDescription.Text" xml:space="preserve">
-    <value>Have your agent automatically detect errors in the shell and send failed commands to your agent.</value>
+    <value>Automatically detect failed commands in the shell, and optionally send them to your agent for automatic fixes.</value>
     <comment>Umbrella description for the three-state Error detection setting in the AI agents settings page. The Detect errors option is local-only; only Detect and fix errors sends failures to the AI agent. Use the approved product copy verbatim. Here "agent" refers to an AI intelligent agent, not a proxy or human agent.</comment>
   </data>
   <data name="AIAgents_AutoErrorHandling_Off" xml:space="preserve">

@@ -2921,7 +2921,7 @@
     <comment>Title for the Error detection dropdown in the AI agents settings page.</comment>
   </data>
   <data name="AIAgents_AutoErrorHandlingDescription.Text" xml:space="preserve">
-    <value>让智能体自动检测 shell 中的错误，并将失败的命令发送给智能体。</value>
+    <value>自动检测 shell 中失败的命令，并可选择将其发送给你的智能体进行自动修复。</value>
     <comment>Umbrella description for the three-state Error detection setting in the AI agents settings page. The Detect errors option is local-only; only Detect and fix errors sends failures to the AI agent. Use the approved product copy verbatim. Here "agent" refers to an AI intelligent agent, not a proxy or human agent.</comment>
   </data>
   <data name="AIAgents_AutoErrorHandling_Off" xml:space="preserve">

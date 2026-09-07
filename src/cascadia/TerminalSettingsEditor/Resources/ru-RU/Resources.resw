@@ -2908,7 +2908,7 @@
     <comment>Title for the Error detection dropdown in the AI agents settings page.</comment>
   </data>
   <data name="AIAgents_AutoErrorHandlingDescription.Text" xml:space="preserve">
-    <value>Позвольте вашему агенту автоматически обнаруживать ошибки в оболочке и отправлять агенту команды, завершившиеся с ошибкой.</value>
+    <value>Автоматически обнаруживайте команды с ошибками в оболочке и при желании отправляйте их своему ИИ-агенту для автоматического исправления.</value>
     <comment>Umbrella description for the three-state Error detection setting in the AI agents settings page. The Detect errors option is local-only; only Detect and fix errors sends failures to the AI agent. Use the approved product copy verbatim. Here "agent" refers to an AI intelligent agent, not a proxy or human agent.</comment>
   </data>
   <data name="AIAgents_AutoErrorHandling_Off" xml:space="preserve">

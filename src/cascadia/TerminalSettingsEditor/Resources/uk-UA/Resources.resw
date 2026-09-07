@@ -2580,7 +2580,7 @@
     <comment>Title for the Error detection dropdown in the AI agents settings page.</comment>
   </data>
   <data name="AIAgents_AutoErrorHandlingDescription.Text" xml:space="preserve">
-    <value>Дозвольте агенту автоматично виявляти помилки в оболонці та надсилати агенту команди, що завершилися помилкою.</value>
+    <value>Автоматично виявляйте команди, що завершилися помилкою, в оболонці й за бажанням надсилайте їх своєму агенту ШІ для автоматичного виправлення.</value>
     <comment>Umbrella description for the three-state Error detection setting in the AI agents settings page. The Detect errors option is local-only; only Detect and fix errors sends failures to the AI agent. Use the approved product copy verbatim. Here "agent" refers to an AI intelligent agent, not a proxy or human agent.</comment>
   </data>
   <data name="AIAgents_AutoErrorHandling_Off" xml:space="preserve">
