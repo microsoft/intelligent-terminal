@@ -5889,10 +5889,10 @@ mod tests {
         acp_error_detail, acp_result_failure_fields, bounded_tool_output_parts,
         claim_unexpected_transport_loss, complete_prompt_request, complete_transport_shutdown,
         inject_wta_pane_meta, is_redundant_startup_model_error, post_login_authenticate_error,
-        retire_queued_prompt_submissions, session_mcp_tool_from_title, stop_prompt_tasks,
-        timeout_result_failure_fields, tool_call_exit_code, tool_call_kind_label,
-        tool_call_location_hint, tool_call_target, AcpClientExit, ClientState,
-        PromptDispatchCleanup, PromptSubmission, PromptTask, PromptTimingState,
+        provider_disable_pending, retire_queued_prompt_submissions, session_mcp_tool_from_title,
+        stop_prompt_tasks, timeout_result_failure_fields, tool_call_exit_code,
+        tool_call_kind_label, tool_call_location_hint, tool_call_target, AcpClientExit,
+        ClientState, PromptDispatchCleanup, PromptSubmission, PromptTask, PromptTimingState,
         PromptUsageIdentity, SessionMcpTool, SoftStopReason, WtaClient,
     };
     use crate::app_contracts::AppEvent;
@@ -5902,6 +5902,22 @@ mod tests {
     use std::sync::{Arc, Mutex};
     use tokio::sync::mpsc;
     use tokio_util::sync::CancellationToken;
+
+    #[test]
+    fn provider_disable_pending_localizes_reason() {
+        let _locale = crate::test_support::lock_locale();
+        rust_i18n::set_locale("de-DE");
+
+        let message = provider_disable_pending();
+
+        assert!(message.contains("Yolo konnte nicht aktualisiert werden"));
+        assert!(
+            !message.contains(
+                "the provider has not acknowledged the required nonprivileged session state"
+            ),
+            "pending reason must be localized: {message}"
+        );
+    }
 
     #[test]
     fn prompt_dispatch_cleanup_finds_rekeyed_identity() {
