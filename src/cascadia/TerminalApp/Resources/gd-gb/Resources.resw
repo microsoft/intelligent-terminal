@@ -34,9 +34,13 @@
   <data name="FreOverlay_NextButton.Content" xml:space="preserve">
     <value>Air adhart</value>
   </data>
+  <data name="FreOverlay_PolicyLocked" xml:space="preserve">
+    <value>Tha an roghainn seo ga stiùireadh leis a’ bhuidheann agad.</value>
+    <comment>Text shown below a disabled toggle/dropdown in the first-run experience when Group Policy controls the feature. Standard Windows policy notice wording.</comment>
+  </data>
   <!-- ═══ FRE Settings Page ═══ -->
   <data name="FreOverlay_SettingsTitle.Text" xml:space="preserve">
-    <value>Suidhich neach-gnìomha an terminal agad</value>
+    <value>Suidhich an terminal agad</value>
     <comment>{Locked="Copilot","Claude","Gemini"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_SettingsSubtitlePrefix" xml:space="preserve">
@@ -53,39 +57,48 @@
     <value>Tagh an neach-gnìomha a thèid a chleachdadh sa phanail neach-gnìomha agus a bheir taic do ACP.</value>
     <comment>{Locked="ACP"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
-  <data name="FreOverlay_AgentInstallHint.Text" xml:space="preserve">
-    <value>Feumaidh an neach-gnìomha seo Node.js agus NPX, a thèid a stàladh gu fèin-obrachail mura h-eil iad ann mar-thà.</value>
-    <comment>{Locked="Node.js","NPX"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+  <data name="FreOverlay_ErrorDetectionLabel.Text" xml:space="preserve">
+    <value>Lorg mhearachdan</value>
+    <comment>Header for the dropdown that configures how the terminal handles failed commands.</comment>
   </data>
-  <data name="FreOverlay_AutoErrorLabel.Text" xml:space="preserve">
-    <value>Moladh mhearachdan fèin-obrachail</value>
+  <data name="FreOverlay_ErrorDetectionDescription.Text" xml:space="preserve">
+    <value>Leig leis an neach-gnìomha agad mearachdan san t-slige a lorg gu fèin-obrachail agus òrdughan a dh'fhàillig a chur chun an neach-gnìomha agad.</value>
+    <comment>Description for the error-detection dropdown in the first-run wizard. In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
-  <data name="FreOverlay_AutoErrorDescription.Text" xml:space="preserve">
-    <value>Thoir cead do Intelligent Terminal mearachdan a chur gun àidseant agad gus fuasglaidhean a mholadh gu fèin-obrachail.</value>
-    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
+  <data name="FreOverlay_ErrorDetectionDetectOption.Content" xml:space="preserve">
+    <value>Lorg mearachdan</value>
+    <comment>Dropdown option that detects shell errors without automatically sending failed commands to the selected AI agent.</comment>
+  </data>
+  <data name="FreOverlay_ErrorDetectionAutoFixOption.Content" xml:space="preserve">
+    <value>Lorg agus càraich mearachdan</value>
+    <comment>Dropdown option that detects shell errors and automatically sends failed commands to the selected AI agent. In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+  </data>
+  <data name="FreOverlay_ErrorDetectionOffOption.Content" xml:space="preserve">
+    <value>Dheth</value>
+    <comment>Dropdown option that disables automatic shell error detection.</comment>
+  </data>
+  <data name="FreOverlay_ErrorDetectionAutoFixPolicyLocked" xml:space="preserve">
+    <value>Tha an roghainn càraidh fèin-obrachail ga stiùireadh leis a' bhuidheann agad.</value>
+    <comment>Text shown below the error-detection dropdown when Group Policy disables its automatic-fix option.</comment>
   </data>
   <data name="FreOverlay_SessionLabel.Text" xml:space="preserve">
-    <value>Riènrachadh sheiseanan</value>
+    <value>Seiseanan</value>
   </data>
   <data name="FreOverlay_SessionDescription.Text" xml:space="preserve">
-    <value>Thoir cead do Tèirmineal Glic inbhe nan neach-gnìomha a tha a' ruith no beòthail agad a leantainn.</value>
+    <value>Cum sùil air dè na luchd-gnìomha a tha a’ ruith agus dè an fheadhainn a dh’fheumas d’ aire.</value>
     <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
   </data>
-  <data name="FreOverlay_SessionHint.Text" xml:space="preserve">
-    <value>Ma chuireas tu seo air thèid hooks co-aonachaidh a stàladh gus seiseanan a leantainn thar nan neach-gnìomha agad.</value>
-    <comment>{Locked="hooks"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
-  </data>
-  <data name="FreOverlay_ShowTokenUsageAndCostLabel.Text" xml:space="preserve"><value>Seall cleachdadh co-theacsa agus cosgais seisean</value><comment>Header for a first-run toggle that shows available context-window usage and session cost in the terminal bottom bar. Session cost is reported for the active AI session. Keep 'session cost' generic and do not add a specific unit. Either value may be unavailable.</comment></data>
-  <data name="FreOverlay_ShowTokenUsageAndCostDescription.Text" xml:space="preserve"><value>Nuair a bhios e ri fhaighinn, seall cleachdadh na h-uinneige co-theacsa agus cosgais an t-seisein anns a’ bhàr ìosal aig a’ cheann-uidhe.</value><comment>Description for the usage visibility toggle in the first-run wizard. Session cost is reported for the active AI session. Keep 'session cost' generic and do not add a specific unit. Either value may be unavailable.</comment></data>
+  <data name="FreOverlay_ShowTokenUsageAndCostLabel.Text" xml:space="preserve"><value>Cleachdadh thòcan</value><comment>Header for a first-run toggle that shows available context-window usage and session cost in the terminal bottom bar. Session cost is reported for the active AI session. Keep 'session cost' generic and do not add a specific unit. Either value may be unavailable.</comment></data>
+  <data name="FreOverlay_ShowTokenUsageAndCostDescription.Text" xml:space="preserve"><value>Seall an co-theacsa a tha air fhàgail agus cosgais an t-seisein nuair a bhios iad rim faighinn.</value><comment>Description for the usage visibility toggle in the first-run wizard. Session cost is reported for the active AI session. Keep 'session cost' generic and do not add a specific unit. Either value may be unavailable.</comment></data>
   <data name="FreOverlay_PanePositionLabel.Text" xml:space="preserve">
-    <value>Suidheachadh panail</value>
+    <value>Suidheachadh an neach-gnìomha</value>
   </data>
   <data name="FreOverlay_PanePositionDescription.Text" xml:space="preserve">
-    <value>Càite a bheil panail an neach-gnìomha a' fosgladh an còmhair do theirminal.</value>
+    <value>Far a bheil an neach-gnìomha agad.</value>
     <comment>In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_SaveButton.Content" xml:space="preserve">
-    <value>Sàbhail</value>
+    <value>Tòisich</value>
   </data>
   <!-- ═══ FRE Dynamic strings (used from C++ code-behind) ═══ -->
   <data name="FreOverlay_AgentStatusWillInstall" xml:space="preserve">
@@ -227,12 +240,6 @@
     <value>Terminal Protocol</value>
     <comment>Title for the teaching tip that displays Terminal Protocol connection information. {Locked="Terminal Protocol"}</comment>
   </data>
-  <data name="FreOverlay_AutoDetectLabel.Text" xml:space="preserve">
-    <value>Lorg mhearachdan fèin-obrachail</value>
-  </data>
-  <data name="FreOverlay_AutoDetectDescription.Text" xml:space="preserve">
-    <value>Thoir cead do Intelligent Terminal cothrom fhaighinn air an t-slige agad agus mearachdan a lorg gu fèin-obrachail.</value>
-  </data>
 <data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
     <value>Dh'fhàillig stàladh amalachadh na slige. Chaidh lorg mhearachdan a chur dheth. 'S urrainn dhut a chur air a-rithist agus feuchainn a-rithist, no sàbhail gus leantainn às aonais.</value>
   </data><data name="FreOverlay_InstallErrorHooks" xml:space="preserve">
@@ -241,11 +248,6 @@
   </data><data name="FreOverlay_ErrorHelpLink" xml:space="preserve">
     <value>Ionnsaich mar a chàraicheas tu seo a làimh</value>
     <comment>Hyperlink shown below an FRE setup error message. Opens step-by-step manual setup instructions in the browser.</comment>
-  </data>  <data name="FreOverlay_AutoDetectShellIntegrationHintPrefix" xml:space="preserve">
-    <value>Ma chuireas tu seo air thèid co-aonachadh shell a stàladh gus fàilligidhean àithne a lorg. </value>
-  </data>
-  <data name="FreOverlay_AutoDetectShellIntegrationHintLink" xml:space="preserve">
-    <value>Faigh a-mach barrachd</value>
   </data>
   <data name="InitShellIntegrationExecutionPolicyErrorMessage" xml:space="preserve">
     <value>Tha poileasaidh ruith PowerShell a' bacadh sgriobtaichean.</value>

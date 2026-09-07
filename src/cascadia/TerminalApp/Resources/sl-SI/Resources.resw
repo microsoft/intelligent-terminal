@@ -149,7 +149,7 @@
   </data>
   <!-- ═══ FRE Settings Page ═══ -->
   <data name="FreOverlay_SettingsTitle.Text" xml:space="preserve">
-    <value>Nastavite svojega agenta AI za terminal</value>
+    <value>Nastavite terminal</value>
     <comment>{Locked="Copilot","Claude","Gemini"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_SettingsSubtitlePrefix" xml:space="preserve">
@@ -166,39 +166,31 @@
     <value>Izberite agenta, ki se uporablja v podoknu agenta in podpira ACP.</value>
     <comment>{Locked="ACP"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
-  <data name="FreOverlay_AgentInstallHint.Text" xml:space="preserve">
-    <value>Ta agent zahteva Node.js in NPX, ki bosta samodejno nameščena, če še nista prisotna.</value>
-    <comment>{Locked="Node.js","NPX"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
-  </data>
-  <data name="FreOverlay_AutoErrorLabel.Text" xml:space="preserve">
-    <value>Samodejno predlaganje napak</value>
-  </data>
-  <data name="FreOverlay_AutoErrorDescription.Text" xml:space="preserve">
-    <value>Dovolite aplikaciji Intelligent Terminal pošiljanje napak vašemu agentu za samodejno predlaganje popravkov.</value>
-    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
-  </data>
+  <data name="FreOverlay_ErrorDetectionLabel.Text" xml:space="preserve"><value>Zaznavanje napak</value></data>
+  <data name="FreOverlay_ErrorDetectionDescription.Text" xml:space="preserve"><value>Agent naj samodejno zazna napake v lupini in mu pošlje neuspele ukaze.</value></data>
+  <data name="FreOverlay_ErrorDetectionDetectOption.Content" xml:space="preserve"><value>Zaznaj napake</value></data>
+  <data name="FreOverlay_ErrorDetectionAutoFixOption.Content" xml:space="preserve"><value>Zaznaj in odpravi napake</value></data>
+  <data name="FreOverlay_ErrorDetectionOffOption.Content" xml:space="preserve"><value>Izklopljeno</value></data>
+  <data name="FreOverlay_ErrorDetectionAutoFixPolicyLocked" xml:space="preserve"><value>Možnost samodejnega odpravljanja upravlja vaša organizacija.</value></data>
+  <data name="FreOverlay_PolicyLocked" xml:space="preserve"><value>To nastavitev upravlja vaša organizacija.</value></data>
   <data name="FreOverlay_SessionLabel.Text" xml:space="preserve">
-    <value>Upravljanje sej</value>
+    <value>Seje</value>
   </data>
   <data name="FreOverlay_SessionDescription.Text" xml:space="preserve">
-    <value>Dovolite Inteligentni Terminal sledenje stanju vaših delujočih ali aktivnih agentov.</value>
+    <value>Spremljajte, kateri agenti se izvajajo in kateri potrebujejo vašo pozornost.</value>
     <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
   </data>
-  <data name="FreOverlay_SessionHint.Text" xml:space="preserve">
-    <value>Omogočanje te možnosti bo namestilo integracijske hooks za sledenje sejam med vašimi agenti.</value>
-    <comment>{Locked="hooks"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
-  </data>
-  <data name="FreOverlay_ShowTokenUsageAndCostLabel.Text" xml:space="preserve"><value>Prikaži uporabo konteksta in stroške seje</value><comment>Header for a first-run toggle that shows available context-window usage and session cost in the terminal bottom bar. Session cost is reported for the active AI session. Keep 'session cost' generic and do not add a specific unit. Either value may be unavailable.</comment></data>
-  <data name="FreOverlay_ShowTokenUsageAndCostDescription.Text" xml:space="preserve"><value>Ko je na voljo, prikaži uporabo kontekstnega okna in stroške seje v spodnji vrstici terminala.</value><comment>Description for the usage visibility toggle in the first-run wizard. Session cost is reported for the active AI session. Keep 'session cost' generic and do not add a specific unit. Either value may be unavailable.</comment></data>
+  <data name="FreOverlay_ShowTokenUsageAndCostLabel.Text" xml:space="preserve"><value>Poraba žetonov</value><comment>Header for a first-run toggle that shows available context-window usage and session cost in the terminal bottom bar. Session cost is reported for the active AI session. Keep 'session cost' generic and do not add a specific unit. Either value may be unavailable.</comment></data>
+  <data name="FreOverlay_ShowTokenUsageAndCostDescription.Text" xml:space="preserve"><value>Prikaži preostali kontekst in strošek seje, ko sta na voljo.</value><comment>Description for the usage visibility toggle in the first-run wizard. Session cost is reported for the active AI session. Keep 'session cost' generic and do not add a specific unit. Either value may be unavailable.</comment></data>
   <data name="FreOverlay_PanePositionLabel.Text" xml:space="preserve">
-    <value>Položaj podokna</value>
+    <value>Položaj agenta</value>
   </data>
   <data name="FreOverlay_PanePositionDescription.Text" xml:space="preserve">
-    <value>Kje se podokno agenta odpre glede na vaš terminal.</value>
+    <value>Kje je vaš agent.</value>
     <comment>In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_SaveButton.Content" xml:space="preserve">
-    <value>Shrani</value>
+    <value>Začnite</value>
   </data>
   <!-- ═══ FRE Dynamic strings (used from C++ code-behind) ═══ -->
   <data name="FreOverlay_AgentStatusWillInstall" xml:space="preserve">
@@ -341,12 +333,6 @@
     <value>Terminal Protocol</value>
     <comment>Title for the teaching tip that displays Terminal Protocol connection information. {Locked="Terminal Protocol"}</comment>
   </data>
-  <data name="FreOverlay_AutoDetectLabel.Text" xml:space="preserve">
-    <value>Samodejno zaznavanje napak</value>
-  </data>
-  <data name="FreOverlay_AutoDetectDescription.Text" xml:space="preserve">
-    <value>Dovolite aplikaciji Intelligent Terminal dostop do lupine in samodejno zaznavanje napak.</value>
-  </data>
 <data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
     <value>Namestitev integracije lupine ni uspela. Zaznavanje napak je bilo izklopljeno. Lahko ga znova omogočite in poskusite znova ali shranite, da nadaljujete brez njega.</value>
   </data><data name="FreOverlay_InstallErrorHooks" xml:space="preserve">
@@ -355,11 +341,6 @@
   </data><data name="FreOverlay_ErrorHelpLink" xml:space="preserve">
     <value>Naučite se, kako to popraviti ročno</value>
     <comment>Hyperlink shown below an FRE setup error message. Opens step-by-step manual setup instructions in the browser.</comment>
-  </data>  <data name="FreOverlay_AutoDetectShellIntegrationHintPrefix" xml:space="preserve">
-    <value>Omogočanje te možnosti bo namestilo integracijo lupine za zaznavanje napak ukazov. </value>
-  </data>
-  <data name="FreOverlay_AutoDetectShellIntegrationHintLink" xml:space="preserve">
-    <value>Več informacij</value>
   </data>
   <data name="InitShellIntegrationExecutionPolicyErrorMessage" xml:space="preserve">
     <value>Pravilnik o izvajanju PowerShell blokira skripte.</value>

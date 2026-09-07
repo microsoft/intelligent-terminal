@@ -149,7 +149,7 @@
   </data>
   <!-- ═══ FRE Settings Page ═══ -->
   <data name="FreOverlay_SettingsTitle.Text" xml:space="preserve">
-    <value>ตั้งค่าเอเจนต์ AI สำหรับเทอร์มินัลของคุณ</value>
+    <value>ตั้งค่าเทอร์มินัลของคุณ</value>
     <comment>{Locked="Copilot","Claude","Gemini"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_SettingsSubtitlePrefix" xml:space="preserve">
@@ -166,39 +166,31 @@
     <value>เลือกเอเจนต์ที่ใช้ในแผงเอเจนต์และรองรับ ACP</value>
     <comment>{Locked="ACP"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
-  <data name="FreOverlay_AgentInstallHint.Text" xml:space="preserve">
-    <value>เอเจนต์นี้ต้องการ Node.js และ NPX ซึ่งจะถูกติดตั้งโดยอัตโนมัติหากยังไม่ได้ติดตั้ง</value>
-    <comment>{Locked="Node.js","NPX"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
-  </data>
-  <data name="FreOverlay_AutoErrorLabel.Text" xml:space="preserve">
-    <value>การแนะนำข้อผิดพลาดอัตโนมัติ</value>
-  </data>
-  <data name="FreOverlay_AutoErrorDescription.Text" xml:space="preserve">
-    <value>อนุญาตให้ Intelligent Terminal ส่งข้อผิดพลาดไปยังตัวแทนของคุณเพื่อแนะนำการแก้ไขโดยอัตโนมัติ</value>
-    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
-  </data>
+  <data name="FreOverlay_ErrorDetectionLabel.Text" xml:space="preserve"><value>การตรวจหาข้อผิดพลาด</value></data>
+  <data name="FreOverlay_ErrorDetectionDescription.Text" xml:space="preserve"><value>ให้เอเจนต์ของคุณตรวจหาข้อผิดพลาดในเชลล์โดยอัตโนมัติและส่งคำสั่งที่ล้มเหลวไปยังเอเจนต์ของคุณ</value></data>
+  <data name="FreOverlay_ErrorDetectionDetectOption.Content" xml:space="preserve"><value>ตรวจหาข้อผิดพลาด</value></data>
+  <data name="FreOverlay_ErrorDetectionAutoFixOption.Content" xml:space="preserve"><value>ตรวจหาและแก้ไขข้อผิดพลาด</value></data>
+  <data name="FreOverlay_ErrorDetectionOffOption.Content" xml:space="preserve"><value>ปิด</value></data>
+  <data name="FreOverlay_ErrorDetectionAutoFixPolicyLocked" xml:space="preserve"><value>ตัวเลือกการแก้ไขอัตโนมัติได้รับการจัดการโดยองค์กรของคุณ</value></data>
+  <data name="FreOverlay_PolicyLocked" xml:space="preserve"><value>การตั้งค่านี้ได้รับการจัดการโดยองค์กรของคุณ</value></data>
   <data name="FreOverlay_SessionLabel.Text" xml:space="preserve">
-    <value>การจัดการเซสชัน</value>
+    <value>เซสชัน</value>
   </data>
   <data name="FreOverlay_SessionDescription.Text" xml:space="preserve">
-    <value>อนุญาตให้ เทอร์มินัลอัจฉริยะ ติดตามสถานะของเอเจนต์ที่กำลังทำงานหรือใช้งานอยู่</value>
+    <value>ติดตามว่าเอเจนต์ใดกำลังทำงานและเอเจนต์ใดต้องการให้คุณตรวจสอบ</value>
     <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name. In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
-  <data name="FreOverlay_SessionHint.Text" xml:space="preserve">
-    <value>การเปิดใช้งานนี้จะติดตั้ง hooks การรวมเพื่อติดตามเซสชันข้ามเอเจนต์ของคุณ</value>
-    <comment>{Locked="hooks"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
-  </data>
-  <data name="FreOverlay_ShowTokenUsageAndCostLabel.Text" xml:space="preserve"><value>แสดงการใช้งานบริบทและต้นทุนเซสชัน</value><comment>Header for a first-run toggle that shows available context-window usage and session cost in the terminal bottom bar. Session cost is reported for the active AI session. Keep 'session cost' generic and do not add a specific unit. Either value may be unavailable.</comment></data>
-  <data name="FreOverlay_ShowTokenUsageAndCostDescription.Text" xml:space="preserve"><value>เมื่อพร้อมใช้งาน แสดงการใช้งานหน้าต่างบริบทและต้นทุนเซสชันในแถบด้านล่างของเทอร์มินัล</value><comment>Description for the usage visibility toggle in the first-run wizard. Session cost is reported for the active AI session. Keep 'session cost' generic and do not add a specific unit. Either value may be unavailable.</comment></data>
+  <data name="FreOverlay_ShowTokenUsageAndCostLabel.Text" xml:space="preserve"><value>การใช้โทเค็น</value><comment>Header for a first-run toggle that shows available context-window usage and session cost in the terminal bottom bar. Session cost is reported for the active AI session. Keep 'session cost' generic and do not add a specific unit. Either value may be unavailable.</comment></data>
+  <data name="FreOverlay_ShowTokenUsageAndCostDescription.Text" xml:space="preserve"><value>แสดงบริบทที่เหลือและค่าใช้จ่ายของเซสชันเมื่อมีข้อมูล</value><comment>Description for the usage visibility toggle in the first-run wizard. Session cost is reported for the active AI session. Keep 'session cost' generic and do not add a specific unit. Either value may be unavailable.</comment></data>
   <data name="FreOverlay_PanePositionLabel.Text" xml:space="preserve">
-    <value>ตำแหน่งแผง</value>
+    <value>ตำแหน่งเอเจนต์</value>
   </data>
   <data name="FreOverlay_PanePositionDescription.Text" xml:space="preserve">
-    <value>ตำแหน่งที่แผงเอเจนต์จะเปิดเทียบกับเทอร์มินัลของคุณ</value>
+    <value>ตำแหน่งที่เอเจนต์ของคุณอยู่</value>
     <comment>In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_SaveButton.Content" xml:space="preserve">
-    <value>บันทึก</value>
+    <value>เริ่มต้นใช้งาน</value>
   </data>
   <!-- ═══ FRE Dynamic strings (used from C++ code-behind) ═══ -->
   <data name="FreOverlay_AgentStatusWillInstall" xml:space="preserve">
@@ -272,12 +264,6 @@
   <data name="FreOverlay_ToggleOff" xml:space="preserve">
     <value>ปิด</value>
   </data>
-  <data name="FreOverlay_AutoDetectLabel.Text" xml:space="preserve">
-    <value>การตรวจหาข้อผิดพลาดอัตโนมัติ</value>
-  </data>
-  <data name="FreOverlay_AutoDetectDescription.Text" xml:space="preserve">
-    <value>อนุญาตให้ Intelligent Terminal เข้าถึงเชลล์ของคุณและตรวจหาข้อผิดพลาดโดยอัตโนมัติ</value>
-  </data>
 <data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
     <value>ติดตั้งการรวมเชลล์ล้มเหลว การตรวจจับข้อผิดพลาดถูกปิดใช้งาน คุณสามารถเปิดใช้งานอีกครั้งแล้วลองใหม่ หรือบันทึกเพื่อดำเนินการต่อโดยไม่ใช้</value>
   </data><data name="FreOverlay_InstallErrorHooks" xml:space="preserve">
@@ -286,11 +272,6 @@
   </data><data name="FreOverlay_ErrorHelpLink" xml:space="preserve">
     <value>เรียนรู้วิธีแก้ไขปัญหานี้ด้วยตนเอง</value>
     <comment>Hyperlink shown below an FRE setup error message. Opens step-by-step manual setup instructions in the browser.</comment>
-  </data>  <data name="FreOverlay_AutoDetectShellIntegrationHintPrefix" xml:space="preserve">
-    <value>การเปิดใช้งานนี้จะติดตั้งการรวม shell เพื่อตรวจหาความล้มเหลวของคำสั่ง </value>
-  </data>
-  <data name="FreOverlay_AutoDetectShellIntegrationHintLink" xml:space="preserve">
-    <value>เรียนรู้เพิ่มเติม</value>
   </data>
   <data name="InitShellIntegrationExecutionPolicyErrorMessage" xml:space="preserve">
     <value>นโยบายการดำเนินการของ PowerShell กำลังบล็อกสคริปต์</value>

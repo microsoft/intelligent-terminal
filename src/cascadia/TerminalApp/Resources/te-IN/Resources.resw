@@ -149,7 +149,7 @@
   </data>
   <!-- ═══ FRE Settings Page ═══ -->
   <data name="FreOverlay_SettingsTitle.Text" xml:space="preserve">
-    <value>మీ టెర్మినల్ AI ఏజెంట్‌ను సెటప్ చేయండి</value>
+    <value>మీ టెర్మినల్‌ను సెటప్ చేయండి</value>
     <comment>{Locked="Copilot","Claude","Gemini"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_SettingsSubtitlePrefix" xml:space="preserve">
@@ -166,39 +166,31 @@
     <value>ఏజెంట్ పేన్‌లో ఉపయోగించే మరియు ACPకి మద్దతు ఇచ్చే ఏజెంట్‌ను ఎంచుకోండి.</value>
     <comment>{Locked="ACP"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
-  <data name="FreOverlay_AgentInstallHint.Text" xml:space="preserve">
-    <value>ఈ ఏజెంట్‌కు Node.js మరియు NPX అవసరం, ఇవి ఇప్పటికే ఉన్నవి కాకపోతే స్వయంచాలకంగా ఇన్‌స్టాల్ చేయబడతాయి.</value>
-    <comment>{Locked="Node.js","NPX"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
-  </data>
-  <data name="FreOverlay_AutoErrorLabel.Text" xml:space="preserve">
-    <value>స్వయంచాలక లోపం సూచన</value>
-  </data>
-  <data name="FreOverlay_AutoErrorDescription.Text" xml:space="preserve">
-    <value>పరిష్కారాలను స్వయంచాలకంగా సూచించడానికి మీ ఏజెంట్‌కు లోపాలను పంపడానికి Intelligent Terminal‌ను అనుమతించండి.</value>
-    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
-  </data>
+  <data name="FreOverlay_ErrorDetectionLabel.Text" xml:space="preserve"><value>లోప గుర్తింపు</value></data>
+  <data name="FreOverlay_ErrorDetectionDescription.Text" xml:space="preserve"><value>మీ ఏజెంట్ షెల్‌లో లోపాలను స్వయంచాలకంగా గుర్తించి, విఫలమైన ఆదేశాలను మీ ఏజెంట్‌కు పంపేలా చేయండి.</value></data>
+  <data name="FreOverlay_ErrorDetectionDetectOption.Content" xml:space="preserve"><value>లోపాలను గుర్తించు</value></data>
+  <data name="FreOverlay_ErrorDetectionAutoFixOption.Content" xml:space="preserve"><value>లోపాలను గుర్తించి పరిష్కరించు</value></data>
+  <data name="FreOverlay_ErrorDetectionOffOption.Content" xml:space="preserve"><value>ఆఫ్</value></data>
+  <data name="FreOverlay_ErrorDetectionAutoFixPolicyLocked" xml:space="preserve"><value>స్వయంచాలక పరిష్కార ఎంపికను మీ సంస్థ నిర్వహిస్తుంది.</value></data>
+  <data name="FreOverlay_PolicyLocked" xml:space="preserve"><value>ఈ సెట్టింగ్‌ను మీ సంస్థ నిర్వహిస్తుంది.</value></data>
   <data name="FreOverlay_SessionLabel.Text" xml:space="preserve">
-    <value>సెషన్ నిర్వహణ</value>
+    <value>సెషన్‌లు</value>
   </data>
   <data name="FreOverlay_SessionDescription.Text" xml:space="preserve">
-    <value>ఇంటెలిజెంట్ టెర్మినల్ కు మీ రన్ అవుతున్న లేదా సక్రియ ఏజెంట్‌ల స్థితిని ట్రాక్ చేయడానికి అనుమతి ఇవ్వండి.</value>
+    <value>ఏ ఏజెంట్‌లు నడుస్తున్నాయో, వేటికి మీ శ్రద్ధ అవసరమో ట్రాక్ చేయండి.</value>
     <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name. In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
-  <data name="FreOverlay_SessionHint.Text" xml:space="preserve">
-    <value>దీన్ని ఎనేబుల్ చేయడం వలన మీ ఏజెంట్‌లలో సెషన్‌లను ట్రాక్ చేయడానికి ఇంటిగ్రేషన్ hooks ఇన్‌స్టాల్ చేయబడతాయి.</value>
-    <comment>{Locked="hooks"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
-  </data>
-  <data name="FreOverlay_ShowTokenUsageAndCostLabel.Text" xml:space="preserve"><value>సందర్భ వినియోగం మరియు సెషన్ ధరను చూపండి</value><comment>Header for a first-run toggle that shows available context-window usage and session cost in the terminal bottom bar. Session cost is reported for the active AI session. Keep 'session cost' generic and do not add a specific unit. Either value may be unavailable.</comment></data>
-  <data name="FreOverlay_ShowTokenUsageAndCostDescription.Text" xml:space="preserve"><value>అందుబాటులో ఉన్నప్పుడు, టెర్మినల్ దిగువ బార్‌లో సందర్భ-విండో వినియోగం మరియు సెషన్ ధరను చూపండి.</value><comment>Description for the usage visibility toggle in the first-run wizard. Session cost is reported for the active AI session. Keep 'session cost' generic and do not add a specific unit. Either value may be unavailable.</comment></data>
+  <data name="FreOverlay_ShowTokenUsageAndCostLabel.Text" xml:space="preserve"><value>టోకెన్ వినియోగం</value><comment>Header for a first-run toggle that shows available context-window usage and session cost in the terminal bottom bar. Session cost is reported for the active AI session. Keep 'session cost' generic and do not add a specific unit. Either value may be unavailable.</comment></data>
+  <data name="FreOverlay_ShowTokenUsageAndCostDescription.Text" xml:space="preserve"><value>అందుబాటులో ఉన్నప్పుడు మిగిలిన సందర్భం మరియు సెషన్ ఖర్చును చూపండి.</value><comment>Description for the usage visibility toggle in the first-run wizard. Session cost is reported for the active AI session. Keep 'session cost' generic and do not add a specific unit. Either value may be unavailable.</comment></data>
   <data name="FreOverlay_PanePositionLabel.Text" xml:space="preserve">
-    <value>పేన్ స్థానం</value>
+    <value>ఏజెంట్ స్థానం</value>
   </data>
   <data name="FreOverlay_PanePositionDescription.Text" xml:space="preserve">
-    <value>మీ టెర్మినల్‌కు సంబంధించి ఏజెంట్ పేన్ ఎక్కడ తెరవబడుతుంది.</value>
+    <value>మీ ఏజెంట్ ఉండే స్థానం.</value>
     <comment>In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_SaveButton.Content" xml:space="preserve">
-    <value>సేవ్ చేయండి</value>
+    <value>ప్రారంభించండి</value>
   </data>
   <!-- ═══ FRE Dynamic strings (used from C++ code-behind) ═══ -->
   <data name="FreOverlay_AgentStatusWillInstall" xml:space="preserve">
@@ -352,20 +344,9 @@
     <value>Terminal Protocol</value>
     <comment>Title for the teaching tip that displays Terminal Protocol connection information. {Locked="Terminal Protocol"}</comment>
   </data>
-  <data name="FreOverlay_AutoDetectLabel.Text" xml:space="preserve">
-    <value>స్వయంచాలక లోపం గుర్తింపు</value>
-  </data>
-  <data name="FreOverlay_AutoDetectDescription.Text" xml:space="preserve">
-    <value>మీ షెల్‌ను యాక్సెస్ చేయడానికి మరియు లోపాలను స్వయంచాలకంగా గుర్తించడానికి Intelligent Terminal‌ను అనుమతించండి.</value>
-  </data>
   <data name="FreOverlay_ErrorHelpLink" xml:space="preserve">
     <value>దీన్ని మాన్యువల్‌గా ఎలా పరిష్కరించాలో తెలుసుకోండి</value>
     <comment>Hyperlink shown below an FRE setup error message. Opens step-by-step manual setup instructions in the browser.</comment>
-  </data>  <data name="FreOverlay_AutoDetectShellIntegrationHintPrefix" xml:space="preserve">
-    <value>దీన్ని ఎనేబుల్ చేయడం వలన కమాండ్ వైఫల్యాలను గుర్తించడానికి shell ఇంటిగ్రేషన్ ఇన్‌స్టాల్ చేయబడుతుంది. </value>
-  </data>
-  <data name="FreOverlay_AutoDetectShellIntegrationHintLink" xml:space="preserve">
-    <value>మరింత తెలుసుకోండి</value>
   </data>
   <data name="InitShellIntegrationExecutionPolicyErrorMessage" xml:space="preserve">
     <value>PowerShell ఎగ్జిక్యూషన్ విధానం స్క్రిప్ట్‌లను నిరోధిస్తోంది.</value>

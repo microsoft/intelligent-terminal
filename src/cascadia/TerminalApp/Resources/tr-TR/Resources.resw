@@ -149,7 +149,7 @@
   </data>
   <!-- ═══ FRE Settings Page ═══ -->
   <data name="FreOverlay_SettingsTitle.Text" xml:space="preserve">
-    <value>Terminal için AI aracınızı ayarlayın</value>
+    <value>Terminalinizi ayarlayın</value>
     <comment>{Locked="Copilot","Claude","Gemini"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_SettingsSubtitlePrefix" xml:space="preserve">
@@ -166,39 +166,31 @@
     <value>Aracı bölmesinde kullanılan ve ACP desteği olan aracıyı seçin.</value>
     <comment>{Locked="ACP"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
-  <data name="FreOverlay_AgentInstallHint.Text" xml:space="preserve">
-    <value>Bu aracı Node.js ve NPX gerektirir; bunlar henüz yüklü değilse otomatik olarak yüklenir.</value>
-    <comment>{Locked="Node.js","NPX"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
-  </data>
-  <data name="FreOverlay_AutoErrorLabel.Text" xml:space="preserve">
-    <value>Otomatik hata önerisi</value>
-  </data>
-  <data name="FreOverlay_AutoErrorDescription.Text" xml:space="preserve">
-    <value>Intelligent Terminal uygulamasının düzeltmeleri otomatik olarak önermek için hataları aracınıza göndermesine izin verin.</value>
-    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
-  </data>
+  <data name="FreOverlay_ErrorDetectionLabel.Text" xml:space="preserve"><value>Hata algılama</value></data>
+  <data name="FreOverlay_ErrorDetectionDescription.Text" xml:space="preserve"><value>Aracınızın kabuktaki hataları otomatik olarak algılamasını ve başarısız komutları aracınıza göndermesini sağlayın.</value></data>
+  <data name="FreOverlay_ErrorDetectionDetectOption.Content" xml:space="preserve"><value>Hataları algıla</value></data>
+  <data name="FreOverlay_ErrorDetectionAutoFixOption.Content" xml:space="preserve"><value>Hataları algıla ve düzelt</value></data>
+  <data name="FreOverlay_ErrorDetectionOffOption.Content" xml:space="preserve"><value>Kapalı</value></data>
+  <data name="FreOverlay_ErrorDetectionAutoFixPolicyLocked" xml:space="preserve"><value>Otomatik düzeltme seçeneği kuruluşunuz tarafından yönetiliyor.</value></data>
+  <data name="FreOverlay_PolicyLocked" xml:space="preserve"><value>Bu ayar kuruluşunuz tarafından yönetiliyor.</value></data>
   <data name="FreOverlay_SessionLabel.Text" xml:space="preserve">
-    <value>Oturum yönetimi</value>
+    <value>Oturumlar</value>
   </data>
   <data name="FreOverlay_SessionDescription.Text" xml:space="preserve">
-    <value>Akıllı Terminal'in çalışan veya etkin aracılarınızın durumunu izlemesine izin verin.</value>
+    <value>Hangi aracıların çalıştığını ve hangilerinin ilginize ihtiyaç duyduğunu izleyin.</value>
     <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
   </data>
-  <data name="FreOverlay_SessionHint.Text" xml:space="preserve">
-    <value>Bunu etkinleştirmek, aracılarınız genelinde oturumları izlemek için tümleştirme hooks yükleyecektir.</value>
-    <comment>{Locked="hooks"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
-  </data>
-  <data name="FreOverlay_ShowTokenUsageAndCostLabel.Text" xml:space="preserve"><value>Bağlam kullanımını ve oturum maliyetini göster</value><comment>Header for a first-run toggle that shows available context-window usage and session cost in the terminal bottom bar. Session cost is reported for the active AI session. Keep 'session cost' generic and do not add a specific unit. Either value may be unavailable.</comment></data>
-  <data name="FreOverlay_ShowTokenUsageAndCostDescription.Text" xml:space="preserve"><value>Mümkün olduğunda, bağlam penceresi kullanımını ve oturum maliyetini terminalin alt çubuğunda gösterin.</value><comment>Description for the usage visibility toggle in the first-run wizard. Session cost is reported for the active AI session. Keep 'session cost' generic and do not add a specific unit. Either value may be unavailable.</comment></data>
+  <data name="FreOverlay_ShowTokenUsageAndCostLabel.Text" xml:space="preserve"><value>Belirteç kullanımı</value><comment>Header for a first-run toggle that shows available context-window usage and session cost in the terminal bottom bar. Session cost is reported for the active AI session. Keep 'session cost' generic and do not add a specific unit. Either value may be unavailable.</comment></data>
+  <data name="FreOverlay_ShowTokenUsageAndCostDescription.Text" xml:space="preserve"><value>Kullanılabilir olduğunda kalan bağlamı ve oturum maliyetini gösterin.</value><comment>Description for the usage visibility toggle in the first-run wizard. Session cost is reported for the active AI session. Keep 'session cost' generic and do not add a specific unit. Either value may be unavailable.</comment></data>
   <data name="FreOverlay_PanePositionLabel.Text" xml:space="preserve">
-    <value>Panel konumu</value>
+    <value>Aracı konumu</value>
   </data>
   <data name="FreOverlay_PanePositionDescription.Text" xml:space="preserve">
-    <value>Aracı panelinin terminalinize göre açıldığı konum.</value>
+    <value>Aracınızın bulunduğu yer.</value>
     <comment>In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_SaveButton.Content" xml:space="preserve">
-    <value>Kaydet</value>
+    <value>Başlayın</value>
   </data>
   <!-- ═══ FRE Dynamic strings (used from C++ code-behind) ═══ -->
   <data name="FreOverlay_AgentStatusWillInstall" xml:space="preserve">
@@ -341,12 +333,6 @@
     <value>Terminal Protocol</value>
     <comment>Title for the teaching tip that displays Terminal Protocol connection information. {Locked="Terminal Protocol"}</comment>
   </data>
-  <data name="FreOverlay_AutoDetectLabel.Text" xml:space="preserve">
-    <value>Otomatik hata algılama</value>
-  </data>
-  <data name="FreOverlay_AutoDetectDescription.Text" xml:space="preserve">
-    <value>Intelligent Terminal uygulamasının kabuğunuza erişmesine ve hataları otomatik olarak algılamasına izin verin.</value>
-  </data>
 <data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
     <value>Kabuk tümleştirmesi yüklenemedi. Hata algılama kapatıldı. Yeniden etkinleştirip tekrar deneyebilir veya bu özellik olmadan devam etmek için kaydedebilirsiniz.</value>
   </data><data name="FreOverlay_InstallErrorHooks" xml:space="preserve">
@@ -355,11 +341,6 @@
   </data><data name="FreOverlay_ErrorHelpLink" xml:space="preserve">
     <value>Bunu el ile nasıl düzelteceğinizi öğrenin</value>
     <comment>Hyperlink shown below an FRE setup error message. Opens step-by-step manual setup instructions in the browser.</comment>
-  </data>  <data name="FreOverlay_AutoDetectShellIntegrationHintPrefix" xml:space="preserve">
-    <value>Bunu etkinleştirmek, komut hatalarını algılamak için shell tümleştirmesi yükleyecektir. </value>
-  </data>
-  <data name="FreOverlay_AutoDetectShellIntegrationHintLink" xml:space="preserve">
-    <value>Daha fazla bilgi edinin</value>
   </data>
   <data name="InitShellIntegrationExecutionPolicyErrorMessage" xml:space="preserve">
     <value>PowerShell yürütme ilkesi betikleri engelliyor.</value>

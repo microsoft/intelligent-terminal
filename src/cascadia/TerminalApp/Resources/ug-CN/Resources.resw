@@ -36,7 +36,7 @@
   </data>
   <!-- ═══ FRE Settings Page ═══ -->
   <data name="FreOverlay_SettingsTitle.Text" xml:space="preserve">
-    <value>تېرمىنال AI ۋەكىلىڭىزنى تەڭشەڭ</value>
+    <value>تېرمىنالىڭىزنى تەڭشەڭ</value>
     <comment>{Locked="Copilot","Claude","Gemini"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_SettingsSubtitlePrefix" xml:space="preserve">
@@ -53,39 +53,31 @@
     <value>ۋەكىل تاختىسىدا ئىشلىتىلىدىغان ۋە ACP نى قوللايدىغان ۋەكىلنى تاللاڭ.</value>
     <comment>{Locked="ACP"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
-  <data name="FreOverlay_AgentInstallHint.Text" xml:space="preserve">
-    <value>بۇ ۋەكىل Node.js ۋە NPX نى تەلەپ قىلىدۇ، ئەگەر ئورنىتىلمىغان بولسا ئاپتوماتىك ئورنىتىلىدۇ.</value>
-    <comment>{Locked="Node.js","NPX"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
-  </data>
-  <data name="FreOverlay_AutoErrorLabel.Text" xml:space="preserve">
-    <value>ئاپتوماتىك خاتالىق تەكلىپى</value>
-  </data>
-  <data name="FreOverlay_AutoErrorDescription.Text" xml:space="preserve">
-    <value>Intelligent Terminal غا خاتالىقلارنى ۋاكالەتچىڭىزگە ئەۋەتىپ، تۈزىتىشلەرنى ئاپتوماتىك تەكلىپ قىلىشقا رۇخسەت بېرىڭ.</value>
-    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
-  </data>
+  <data name="FreOverlay_ErrorDetectionLabel.Text" xml:space="preserve"><value>خاتالىق بايقاش</value></data>
+  <data name="FreOverlay_ErrorDetectionDescription.Text" xml:space="preserve"><value>ۋەكىلىڭىز shell دىكى خاتالىقلارنى ئاپتوماتىك بايقاپ، مەغلۇپ بولغان بۇيرۇقلارنى ۋەكىلىڭىزگە ئەۋەتسۇن.</value></data>
+  <data name="FreOverlay_ErrorDetectionDetectOption.Content" xml:space="preserve"><value>خاتالىقلارنى بايقاش</value></data>
+  <data name="FreOverlay_ErrorDetectionAutoFixOption.Content" xml:space="preserve"><value>خاتالىقلارنى بايقاش ۋە تۈزىتىش</value></data>
+  <data name="FreOverlay_ErrorDetectionOffOption.Content" xml:space="preserve"><value>تاقاق</value></data>
+  <data name="FreOverlay_ErrorDetectionAutoFixPolicyLocked" xml:space="preserve"><value>ئاپتوماتىك تۈزىتىش تاللانمىسىنى تەشكىلاتىڭىز باشقۇرىدۇ.</value></data>
+  <data name="FreOverlay_PolicyLocked" xml:space="preserve"><value>بۇ تەڭشەكنى تەشكىلاتىڭىز باشقۇرىدۇ.</value></data>
   <data name="FreOverlay_SessionLabel.Text" xml:space="preserve">
-    <value>ئوتتۇرا باشقۇرۇش</value>
+    <value>ئولتۇرۇشلار</value>
   </data>
   <data name="FreOverlay_SessionDescription.Text" xml:space="preserve">
-    <value>ئەقلىي تېرمىنال غا ئىشلىۋاتقان ياكى ئاكتىۋ ۋەكىللىرىڭىزنىڭ ھالىتىنى بايقاش ئىزنى بېرىڭ.</value>
+    <value>قايسى ۋەكىللەرنىڭ ئىجرا بولۇۋاتقانلىقىنى ۋە قايسىلىرىنىڭ دىققىتىڭىزگە موھتاج ئىكەنلىكىنى ئىزلاڭ.</value>
     <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
   </data>
-  <data name="FreOverlay_SessionHint.Text" xml:space="preserve">
-    <value>بۇنى ئاچسىڭىز، ۋەكىللىرىڭىز ئارىسىدىكى ئولتۇرۇشلارنى ئىز قوغلاش ئۈچۈن بىرلەشتۈرۈش hooks ئورنىتىلىدۇ.</value>
-    <comment>{Locked="hooks"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
-  </data>
-  <data name="FreOverlay_ShowTokenUsageAndCostLabel.Text" xml:space="preserve"><value>مەزمۇن ئىشلىتىش ۋە ئولتۇرۇش تەننەرخىنى كۆرسىتىڭ</value><comment>Header for a first-run toggle that shows available context-window usage and session cost in the terminal bottom bar. Session cost is reported for the active AI session. Keep 'session cost' generic and do not add a specific unit. Either value may be unavailable.</comment></data>
-  <data name="FreOverlay_ShowTokenUsageAndCostDescription.Text" xml:space="preserve"><value>ئىشلەتكىلى بولسا، تېرمىنالنىڭ ئاستى بالدىقىدا مەزمۇن كۆزنىكىنىڭ ئىشلىتىلىشى ۋە ئولتۇرۇش تەننەرخىنى كۆرسىتىڭ.</value><comment>Description for the usage visibility toggle in the first-run wizard. Session cost is reported for the active AI session. Keep 'session cost' generic and do not add a specific unit. Either value may be unavailable.</comment></data>
+  <data name="FreOverlay_ShowTokenUsageAndCostLabel.Text" xml:space="preserve"><value>توكن ئىشلىتىلىشى</value><comment>Header for a first-run toggle that shows available context-window usage and session cost in the terminal bottom bar. Session cost is reported for the active AI session. Keep 'session cost' generic and do not add a specific unit. Either value may be unavailable.</comment></data>
+  <data name="FreOverlay_ShowTokenUsageAndCostDescription.Text" xml:space="preserve"><value>مەۋجۇت بولغاندا قالغان كونتېكىست ۋە ئولتۇرۇش تەننەرخىنى كۆرسىتىڭ.</value><comment>Description for the usage visibility toggle in the first-run wizard. Session cost is reported for the active AI session. Keep 'session cost' generic and do not add a specific unit. Either value may be unavailable.</comment></data>
   <data name="FreOverlay_PanePositionLabel.Text" xml:space="preserve">
-    <value>تاختا ئورنى</value>
+    <value>ۋەكىل ئورنى</value>
   </data>
   <data name="FreOverlay_PanePositionDescription.Text" xml:space="preserve">
-    <value>ۋەكىل تاختىسى تېرمىنالىڭىزغا نىسبەتەن قەيەردە ئېچىلىدۇ.</value>
+    <value>ۋەكىلىڭىز تۇرىدىغان ئورۇن.</value>
     <comment>In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_SaveButton.Content" xml:space="preserve">
-    <value>ساقلاش</value>
+    <value>باشلاش</value>
   </data>
   <!-- ═══ FRE Dynamic strings (used from C++ code-behind) ═══ -->
   <data name="FreOverlay_AgentStatusWillInstall" xml:space="preserve">
@@ -227,12 +219,6 @@
     <value>Terminal Protocol</value>
     <comment>Title for the teaching tip that displays Terminal Protocol connection information. {Locked="Terminal Protocol"}</comment>
   </data>
-  <data name="FreOverlay_AutoDetectLabel.Text" xml:space="preserve">
-    <value>ئاپتوماتىك خاتالىق بايقاش</value>
-  </data>
-  <data name="FreOverlay_AutoDetectDescription.Text" xml:space="preserve">
-    <value>Intelligent Terminal غا شېلىڭىزنى زىيارەت قىلىش ۋە خاتالىقلارنى ئاپتوماتىك بايقاشقا رۇخسەت بېرىڭ.</value>
-  </data>
 <data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
     <value>شېل بىرلەشتۈرۈشنى ئورنىتىش مەغلۇب بولدى. خاتالىق بايقاش تاقالدى. ئۇنى قايتا ئېچىپ قايتا سىنىيالايسىز، ياكى ئۇنىڭسىز داۋاملاشتۇرۇش ئۈچۈن ساقلىيالايسىز.</value>
   </data><data name="FreOverlay_InstallErrorHooks" xml:space="preserve">
@@ -241,11 +227,6 @@
   </data><data name="FreOverlay_ErrorHelpLink" xml:space="preserve">
     <value>بۇنى قولدا قانداق ئوڭشاشنى ئۆگىنىڭ</value>
     <comment>Hyperlink shown below an FRE setup error message. Opens step-by-step manual setup instructions in the browser.</comment>
-  </data>  <data name="FreOverlay_AutoDetectShellIntegrationHintPrefix" xml:space="preserve">
-    <value>بۇنى ئاچسىڭىز، بۇيرۇق مەغلۇبىيەتلىرىنى بايقاش ئۈچۈن shell بىرلەشتۈرۈش ئورنىتىلىدۇ. </value>
-  </data>
-  <data name="FreOverlay_AutoDetectShellIntegrationHintLink" xml:space="preserve">
-    <value>تېخىمۇ بىلىڭ</value>
   </data>
   <data name="InitShellIntegrationExecutionPolicyErrorMessage" xml:space="preserve">
     <value>PowerShell ئىجرا سىياسىتى قوليازمىلارنى چەكلەۋاتىدۇ.</value>

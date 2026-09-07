@@ -117,6 +117,10 @@
   <resheader name="writer">
     <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
   </resheader>
+  <data name="FreOverlay_PolicyLocked" xml:space="preserve">
+    <value>এই সেটিংটি আপনার সংস্থা পরিচালনা করে।</value>
+    <comment>Text shown below a disabled toggle/dropdown in the first-run experience when Group Policy controls the feature. Standard Windows policy notice wording.</comment>
+  </data>
   <!-- ═══ FRE Welcome Page ═══ -->
   <data name="FreOverlay_WelcomeTitle.Text" xml:space="preserve">
     <value>ইন্টেলিজেন্ট টার্মিনাল-এ স্বাগতম</value>
@@ -149,7 +153,7 @@
   </data>
   <!-- ═══ FRE Settings Page ═══ -->
   <data name="FreOverlay_SettingsTitle.Text" xml:space="preserve">
-    <value>আপনার টার্মিনাল এজেন্ট সেট আপ করুন</value>
+    <value>আপনার টার্মিনাল সেট আপ করুন</value>
     <comment>{Locked="Copilot","Claude","Gemini"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_SettingsSubtitlePrefix" xml:space="preserve">
@@ -166,39 +170,36 @@
     <value>এজেন্ট পেনে ব্যবহৃত এবং ACP সমর্থন করে এমন এজেন্ট বেছে নিন।</value>
     <comment>{Locked="ACP"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
-  <data name="FreOverlay_AgentInstallHint.Text" xml:space="preserve">
-    <value>এই এজেন্টের জন্য Node.js এবং NPX প্রয়োজন, যা ইতিমধ্যে উপস্থিত না থাকলে স্বয়ংক্রিয়ভাবে ইনস্টল করা হবে।</value>
-    <comment>{Locked="Node.js","NPX"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+  <data name="FreOverlay_ErrorDetectionLabel.Text" xml:space="preserve">
+    <value>ত্রুটি শনাক্তকরণ</value>
+    <comment>Header for the dropdown that configures how the terminal handles failed commands.</comment>
   </data>
-  <data name="FreOverlay_AutoErrorLabel.Text" xml:space="preserve">
-    <value>স্বয়ংক্রিয় ত্রুটি পরামর্শ</value>
+  <data name="FreOverlay_ErrorDetectionDescription.Text" xml:space="preserve">
+    <value>আপনার এজেন্টকে শেলে স্বয়ংক্রিয়ভাবে ত্রুটি শনাক্ত করতে এবং ব্যর্থ কমান্ডগুলি আপনার এজেন্টের কাছে পাঠাতে দিন।</value>
+    <comment>Description for the error-detection dropdown in the first-run wizard. In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
-  <data name="FreOverlay_AutoErrorDescription.Text" xml:space="preserve">
-    <value>Intelligent Terminal-কে স্বয়ংক্রিয়ভাবে সমাধানের পরামর্শ দেওয়ার জন্য আপনার এজেন্টে ত্রুটি পাঠাতে অনুমতি দিন।</value>
-    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
+  <data name="FreOverlay_ErrorDetectionDetectOption.Content" xml:space="preserve">
+    <value>ত্রুটি শনাক্ত করুন</value>
+    <comment>Dropdown option that detects shell errors without automatically sending failed commands to the selected AI agent.</comment>
   </data>
   <data name="FreOverlay_SessionLabel.Text" xml:space="preserve">
-    <value>সেশন ব্যবস্থাপনা</value>
+    <value>সেশন</value>
   </data>
   <data name="FreOverlay_SessionDescription.Text" xml:space="preserve">
-    <value>ইন্টেলিজেন্ট টার্মিনাল-কে আপনার চলমান বা সক্রিয় এজেন্টগুলির অবস্থা ট্র্যাক করতে অনুমতি দিন।</value>
+    <value>কোন এজেন্টগুলি চলছে এবং কোনগুলিতে আপনার মনোযোগ প্রয়োজন তা ট্র্যাক করুন।</value>
     <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name. In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
-  <data name="FreOverlay_SessionHint.Text" xml:space="preserve">
-    <value>এটি সক্ষম করলে আপনার এজেন্টগুলোর মধ্যে সেশন ট্র্যাক করতে ইন্টিগ্রেশন hooks ইনস্টল হবে।</value>
-    <comment>{Locked="hooks"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
-  </data>
-  <data name="FreOverlay_ShowTokenUsageAndCostLabel.Text" xml:space="preserve"><value>প্রসঙ্গ ব্যবহার এবং সেশন খরচ দেখান</value><comment>Header for a first-run toggle that shows available context-window usage and session cost in the terminal bottom bar. Session cost is reported for the active AI session. Keep 'session cost' generic and do not add a specific unit. Either value may be unavailable.</comment></data>
-  <data name="FreOverlay_ShowTokenUsageAndCostDescription.Text" xml:space="preserve"><value>উপলব্ধ হলে, টার্মিনাল নীচের বারে প্রসঙ্গ-উইন্ডো ব্যবহার এবং সেশনের খরচ দেখান।</value><comment>Description for the usage visibility toggle in the first-run wizard. Session cost is reported for the active AI session. Keep 'session cost' generic and do not add a specific unit. Either value may be unavailable.</comment></data>
+  <data name="FreOverlay_ShowTokenUsageAndCostLabel.Text" xml:space="preserve"><value>টোকেন ব্যবহার</value><comment>Header for a first-run toggle that shows available context-window usage and session cost in the terminal bottom bar. Session cost is reported for the active AI session. Keep 'session cost' generic and do not add a specific unit. Either value may be unavailable.</comment></data>
+  <data name="FreOverlay_ShowTokenUsageAndCostDescription.Text" xml:space="preserve"><value>উপলভ্য হলে অবশিষ্ট প্রসঙ্গ এবং সেশনের খরচ দেখান।</value><comment>Description for the usage visibility toggle in the first-run wizard. Session cost is reported for the active AI session. Keep 'session cost' generic and do not add a specific unit. Either value may be unavailable.</comment></data>
   <data name="FreOverlay_PanePositionLabel.Text" xml:space="preserve">
-    <value>পেন অবস্থান</value>
+    <value>এজেন্টের অবস্থান</value>
   </data>
   <data name="FreOverlay_PanePositionDescription.Text" xml:space="preserve">
-    <value>আপনার টার্মিনালের সাপেক্ষে এজেন্ট পেন কোথায় খোলে।</value>
+    <value>আপনার এজেন্ট যেখানে থাকে।</value>
     <comment>In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_SaveButton.Content" xml:space="preserve">
-    <value>সংরক্ষণ করুন</value>
+    <value>শুরু করুন</value>
   </data>
   <!-- ═══ FRE Dynamic strings (used from C++ code-behind) ═══ -->
   <data name="FreOverlay_AgentStatusWillInstall" xml:space="preserve">
@@ -352,20 +353,20 @@
     <value>Terminal Protocol</value>
     <comment>Title for the teaching tip that displays Terminal Protocol connection information. {Locked="Terminal Protocol"}</comment>
   </data>
-  <data name="FreOverlay_AutoDetectLabel.Text" xml:space="preserve">
-    <value>স্বয়ংক্রিয় ত্রুটি সনাক্তকরণ</value>
+  <data name="FreOverlay_ErrorDetectionAutoFixOption.Content" xml:space="preserve">
+    <value>ত্রুটি শনাক্ত করে ঠিক করুন</value>
+    <comment>Dropdown option that detects shell errors and automatically sends failed commands to the selected AI agent. In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
-  <data name="FreOverlay_AutoDetectDescription.Text" xml:space="preserve">
-    <value>Intelligent Terminal-কে আপনার শেল অ্যাক্সেস করতে এবং স্বয়ংক্রিয়ভাবে ত্রুটি সনাক্ত করতে অনুমতি দিন।</value>
+  <data name="FreOverlay_ErrorDetectionOffOption.Content" xml:space="preserve">
+    <value>বন্ধ</value>
+    <comment>Dropdown option that disables automatic shell error detection.</comment>
   </data>
   <data name="FreOverlay_ErrorHelpLink" xml:space="preserve">
     <value>কীভাবে এটি ম্যানুয়ালি ঠিক করবেন তা শিখুন</value>
     <comment>Hyperlink shown below an FRE setup error message. Opens step-by-step manual setup instructions in the browser.</comment>
-  </data>  <data name="FreOverlay_AutoDetectShellIntegrationHintPrefix" xml:space="preserve">
-    <value>এটি সক্ষম করলে কমান্ডের ব্যর্থতা শনাক্ত করতে shell ইন্টিগ্রেশন ইনস্টল হবে। </value>
-  </data>
-  <data name="FreOverlay_AutoDetectShellIntegrationHintLink" xml:space="preserve">
-    <value>আরও জানুন</value>
+  </data>  <data name="FreOverlay_ErrorDetectionAutoFixPolicyLocked" xml:space="preserve">
+    <value>স্বয়ংক্রিয়ভাবে ঠিক করার বিকল্পটি আপনার সংস্থা পরিচালনা করে।</value>
+    <comment>Text shown below the error-detection dropdown when Group Policy disables its automatic-fix option.</comment>
   </data>
   <data name="InitShellIntegrationExecutionPolicyErrorMessage" xml:space="preserve">
     <value>PowerShell এক্সিকিউশন পলিসি স্ক্রিপ্ট ব্লক করছে।</value>

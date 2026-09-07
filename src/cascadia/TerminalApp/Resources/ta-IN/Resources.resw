@@ -149,7 +149,7 @@
   </data>
   <!-- ═══ FRE Settings Page ═══ -->
   <data name="FreOverlay_SettingsTitle.Text" xml:space="preserve">
-    <value>உங்கள் முனையத்திற்கான AI முகவரை அமைக்கவும்</value>
+    <value>உங்கள் முனையத்தை அமைக்கவும்</value>
     <comment>{Locked="Copilot","Claude","Gemini"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_SettingsSubtitlePrefix" xml:space="preserve">
@@ -166,39 +166,31 @@
     <value>முகவர் பலகத்தில் பயன்படுத்தப்படும் மற்றும் ACP ஆதரவு கொண்ட முகவரைத் தேர்ந்தெடுக்கவும்.</value>
     <comment>{Locked="ACP"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
-  <data name="FreOverlay_AgentInstallHint.Text" xml:space="preserve">
-    <value>இந்த முகவருக்கு Node.js மற்றும் NPX தேவை, ஏற்கனவே இல்லாவிட்டால் தானாக நிறுவப்படும்.</value>
-    <comment>{Locked="Node.js","NPX"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
-  </data>
-  <data name="FreOverlay_AutoErrorLabel.Text" xml:space="preserve">
-    <value>தானியங்கி பிழை பரிந்துரை</value>
-  </data>
-  <data name="FreOverlay_AutoErrorDescription.Text" xml:space="preserve">
-    <value>தீர்வுகளைத் தானாகவே பரிந்துரைக்க உங்கள் முகவருக்குப் பிழைகளை அனுப்ப Intelligent Terminal-ஐ அனுமதிக்கவும்.</value>
-    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
-  </data>
+  <data name="FreOverlay_ErrorDetectionLabel.Text" xml:space="preserve"><value>பிழை கண்டறிதல்</value></data>
+  <data name="FreOverlay_ErrorDetectionDescription.Text" xml:space="preserve"><value>உங்கள் ஏஜெண்ட் ஷெல்லில் உள்ள பிழைகளைத் தானாகக் கண்டறிந்து, தோல்வியடைந்த கட்டளைகளை உங்கள் ஏஜெண்டுக்கு அனுப்பட்டும்.</value></data>
+  <data name="FreOverlay_ErrorDetectionDetectOption.Content" xml:space="preserve"><value>பிழைகளைக் கண்டறி</value></data>
+  <data name="FreOverlay_ErrorDetectionAutoFixOption.Content" xml:space="preserve"><value>பிழைகளைக் கண்டறிந்து சரிசெய்</value></data>
+  <data name="FreOverlay_ErrorDetectionOffOption.Content" xml:space="preserve"><value>முடக்கு</value></data>
+  <data name="FreOverlay_ErrorDetectionAutoFixPolicyLocked" xml:space="preserve"><value>தானியங்கு திருத்த விருப்பம் உங்கள் நிறுவனத்தால் நிர்வகிக்கப்படுகிறது.</value></data>
+  <data name="FreOverlay_PolicyLocked" xml:space="preserve"><value>இந்த அமைப்பு உங்கள் நிறுவனத்தால் நிர்வகிக்கப்படுகிறது.</value></data>
   <data name="FreOverlay_SessionLabel.Text" xml:space="preserve">
-    <value>அமர்வு மேலாண்மை</value>
+    <value>அமர்வுகள்</value>
   </data>
   <data name="FreOverlay_SessionDescription.Text" xml:space="preserve">
-    <value>அறிவாண் முனையம்-க்கு உங்கள் இயங்கும் அல்லது செயலில் உள்ள முகவர்களின் நிலையைக் கண்காணிக்க அனுமதி வழங்கவும்.</value>
+    <value>எந்த ஏஜெண்ட்கள் இயங்குகின்றன, எவற்றுக்கு உங்கள் கவனம் தேவை என்பதைத் தடமறியுங்கள்.</value>
     <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name. In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
-  <data name="FreOverlay_SessionHint.Text" xml:space="preserve">
-    <value>இதை இயக்குவது உங்கள் முகவர்களெங்கும் அமர்வுகளைக் கண்காணிக்க ஒருங்கிணைப்பு hooks-ஐ நிறுவும்.</value>
-    <comment>{Locked="hooks"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
-  </data>
-  <data name="FreOverlay_ShowTokenUsageAndCostLabel.Text" xml:space="preserve"><value>சூழல் பயன்பாடு மற்றும் அமர்வு செலவைக் காட்டு</value><comment>Header for a first-run toggle that shows available context-window usage and session cost in the terminal bottom bar. Session cost is reported for the active AI session. Keep 'session cost' generic and do not add a specific unit. Either value may be unavailable.</comment></data>
-  <data name="FreOverlay_ShowTokenUsageAndCostDescription.Text" xml:space="preserve"><value>டெர்மினலின் கீழ்ப்பட்டியில் கிடைக்கக்கூடிய சூழல் சாளரப் பயன்பாட்டையும் அமர்வு செலவையும் காட்டவும்.</value><comment>Description for the usage visibility toggle in the first-run wizard. Session cost is reported for the active AI session. Keep 'session cost' generic and do not add a specific unit. Either value may be unavailable.</comment></data>
+  <data name="FreOverlay_ShowTokenUsageAndCostLabel.Text" xml:space="preserve"><value>டோக்கன் பயன்பாடு</value><comment>Header for a first-run toggle that shows available context-window usage and session cost in the terminal bottom bar. Session cost is reported for the active AI session. Keep 'session cost' generic and do not add a specific unit. Either value may be unavailable.</comment></data>
+  <data name="FreOverlay_ShowTokenUsageAndCostDescription.Text" xml:space="preserve"><value>கிடைக்கும்போது மீதமுள்ள சூழலையும் அமர்வுச் செலவையும் காட்டு.</value><comment>Description for the usage visibility toggle in the first-run wizard. Session cost is reported for the active AI session. Keep 'session cost' generic and do not add a specific unit. Either value may be unavailable.</comment></data>
   <data name="FreOverlay_PanePositionLabel.Text" xml:space="preserve">
-    <value>பலக நிலை</value>
+    <value>ஏஜெண்டின் நிலை</value>
   </data>
   <data name="FreOverlay_PanePositionDescription.Text" xml:space="preserve">
-    <value>உங்கள் முனையத்திற்கு சார்பாக முகவர் பலகம் எங்கே திறக்கிறது.</value>
+    <value>உங்கள் ஏஜெண்ட் இருக்கும் இடம்.</value>
     <comment>In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_SaveButton.Content" xml:space="preserve">
-    <value>சேமி</value>
+    <value>தொடங்குங்கள்</value>
   </data>
   <!-- ═══ FRE Dynamic strings (used from C++ code-behind) ═══ -->
   <data name="FreOverlay_AgentStatusWillInstall" xml:space="preserve">
@@ -352,20 +344,9 @@
     <value>Terminal Protocol</value>
     <comment>Title for the teaching tip that displays Terminal Protocol connection information. {Locked="Terminal Protocol"}</comment>
   </data>
-  <data name="FreOverlay_AutoDetectLabel.Text" xml:space="preserve">
-    <value>தானியங்கி பிழை கண்டறிதல்</value>
-  </data>
-  <data name="FreOverlay_AutoDetectDescription.Text" xml:space="preserve">
-    <value>உங்கள் ஷெல்லை அணுகவும் பிழைகளைத் தானாகவே கண்டறியவும் Intelligent Terminal-ஐ அனுமதிக்கவும்.</value>
-  </data>
   <data name="FreOverlay_ErrorHelpLink" xml:space="preserve">
     <value>இதை கைமுறையாக சரிசெய்வது எப்படி என்பதை அறிக</value>
     <comment>Hyperlink shown below an FRE setup error message. Opens step-by-step manual setup instructions in the browser.</comment>
-  </data>  <data name="FreOverlay_AutoDetectShellIntegrationHintPrefix" xml:space="preserve">
-    <value>இதை இயக்குவது கட்டளைத் தோல்விகளைக் கண்டறிய shell ஒருங்கிணைப்பை நிறுவும். </value>
-  </data>
-  <data name="FreOverlay_AutoDetectShellIntegrationHintLink" xml:space="preserve">
-    <value>மேலும் அறிக</value>
   </data>
   <data name="InitShellIntegrationExecutionPolicyErrorMessage" xml:space="preserve">
     <value>PowerShell செயல்படுத்தல் கொள்கை ஸ்கிரிப்ட்களைத் தடுக்கிறது.</value>

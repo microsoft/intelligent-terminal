@@ -35,8 +35,12 @@
     <value>ຕໍ່ໄປ</value>
   </data>
   <!-- ═══ FRE Settings Page ═══ -->
+  <data name="FreOverlay_PolicyLocked" xml:space="preserve">
+    <value>ການຕັ້ງຄ່ານີ້ຖືກຈັດການໂດຍອົງກອນຂອງທ່ານ.</value>
+    <comment>Text shown below a disabled toggle/dropdown in the first-run experience when Group Policy controls the feature. Standard Windows policy notice wording.</comment>
+  </data>
   <data name="FreOverlay_SettingsTitle.Text" xml:space="preserve">
-    <value>ຕັ້ງຄ່າ agent ສຳລັບ terminal ຂອງທ່ານ</value>
+    <value>ຕັ້ງຄ່າເທີມິນັລຂອງທ່ານ</value>
     <comment>{Locked="Copilot","Claude","Gemini"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_SettingsSubtitlePrefix" xml:space="preserve">
@@ -53,39 +57,48 @@
     <value>ເລືອກ agent ທີ່ໃຊ້ໃນແຜງ agent ແລະຮອງຮັບ ACP.</value>
     <comment>{Locked="ACP"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
-  <data name="FreOverlay_AgentInstallHint.Text" xml:space="preserve">
-    <value>Agent ນີ້ຕ້ອງການ Node.js ແລະ NPX ຊຶ່ງຈະຖືກຕິດຕັ້ງໂດຍອັດຕະໂນມັດຫາກຍັງບໍ່ມີ.</value>
-    <comment>{Locked="Node.js","NPX"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+  <data name="FreOverlay_ErrorDetectionLabel.Text" xml:space="preserve">
+    <value>ການກວດຫາຂໍ້ຜິດພາດ</value>
+    <comment>Header for the dropdown that configures how the terminal handles failed commands.</comment>
   </data>
-  <data name="FreOverlay_AutoErrorLabel.Text" xml:space="preserve">
-    <value>ການແນະນຳຂໍ້ຜິດພາດອັດຕະໂນມັດ</value>
+  <data name="FreOverlay_ErrorDetectionDescription.Text" xml:space="preserve">
+    <value>ໃຫ້ເອເຈນຂອງທ່ານກວດຫາຂໍ້ຜິດພາດໃນ shell ໂດຍອັດຕະໂນມັດ ແລະສົ່ງຄຳສັ່ງທີ່ລົ້ມເຫຼວໄປຫາເອເຈນຂອງທ່ານ.</value>
+    <comment>Description for the error-detection dropdown in the first-run wizard. In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
-  <data name="FreOverlay_AutoErrorDescription.Text" xml:space="preserve">
-    <value>ອະນຸຍາດໃຫ້ Intelligent Terminal ສົ່ງຂໍ້ຜິດພາດໄປຫາຕົວແທນຂອງທ່ານເພື່ອແນະນຳການແກ້ໄຂໂດຍອັດຕະໂນມັດ.</value>
-    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
+  <data name="FreOverlay_ErrorDetectionDetectOption.Content" xml:space="preserve">
+    <value>ກວດຫາຂໍ້ຜິດພາດ</value>
+    <comment>Dropdown option that detects shell errors without automatically sending failed commands to the selected AI agent.</comment>
+  </data>
+  <data name="FreOverlay_ErrorDetectionAutoFixOption.Content" xml:space="preserve">
+    <value>ກວດຫາ ແລະແກ້ໄຂຂໍ້ຜິດພາດ</value>
+    <comment>Dropdown option that detects shell errors and automatically sends failed commands to the selected AI agent. In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+  </data>
+  <data name="FreOverlay_ErrorDetectionOffOption.Content" xml:space="preserve">
+    <value>ປິດ</value>
+    <comment>Dropdown option that disables automatic shell error detection.</comment>
+  </data>
+  <data name="FreOverlay_ErrorDetectionAutoFixPolicyLocked" xml:space="preserve">
+    <value>ຕົວເລືອກການແກ້ໄຂອັດຕະໂນມັດຖືກຈັດການໂດຍອົງກອນຂອງທ່ານ.</value>
+    <comment>Text shown below the error-detection dropdown when Group Policy disables its automatic-fix option.</comment>
   </data>
   <data name="FreOverlay_SessionLabel.Text" xml:space="preserve">
-    <value>ການຈັດການພາກສ່ວນ</value>
+    <value>ເຊດຊັນ</value>
   </data>
   <data name="FreOverlay_SessionDescription.Text" xml:space="preserve">
-    <value>ໃຫ້ສິດ ເທອຮ໌ມິນັລອັດຊະລິຍະ ຕິດຕາມສະຖານະຂອງ agent ທີ່ກຳລັງເຮັດວຽກຢູ່ຫລືໃຊ້ງານຢູ່.</value>
+    <value>ຕິດຕາມວ່າເອເຈນໃດກຳລັງເຮັດວຽກ ແລະເອເຈນໃດຕ້ອງການຄວາມສົນໃຈຈາກທ່ານ.</value>
     <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name. In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
-  <data name="FreOverlay_SessionHint.Text" xml:space="preserve">
-    <value>ການເປີດໃຊ້ນີ້ຈະຕິດຕັ້ງ hooks ເຊື່ອມຕໍ່ເພື່ອຕິດຕາມພາກສ່ວນຂອງ agent ຂອງທ່ານ.</value>
-    <comment>{Locked="hooks"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
-  </data>
-  <data name="FreOverlay_ShowTokenUsageAndCostLabel.Text" xml:space="preserve"><value>ສະແດງການນຳໃຊ້ບໍລິບົດ ແລະຄ່າໃຊ້ຈ່າຍຂອງເຊດຊັນ</value><comment>Header for a first-run toggle that shows available context-window usage and session cost in the terminal bottom bar. Session cost is reported for the active AI session. Keep 'session cost' generic and do not add a specific unit. Either value may be unavailable.</comment></data>
-  <data name="FreOverlay_ShowTokenUsageAndCostDescription.Text" xml:space="preserve"><value>ເມື່ອມີໃຫ້, ສະແດງການໃຊ້ບໍລິບົດ-ໜ້າຈໍ ແລະຄ່າໃຊ້ຈ່າຍຂອງເຊດຊັນໃນແຖບລຸ່ມສຸດຂອງເຄື່ອງ.</value><comment>Description for the usage visibility toggle in the first-run wizard. Session cost is reported for the active AI session. Keep 'session cost' generic and do not add a specific unit. Either value may be unavailable.</comment></data>
+  <data name="FreOverlay_ShowTokenUsageAndCostLabel.Text" xml:space="preserve"><value>ການໃຊ້ໂທເຄັນ</value><comment>Header for a first-run toggle that shows available context-window usage and session cost in the terminal bottom bar. Session cost is reported for the active AI session. Keep 'session cost' generic and do not add a specific unit. Either value may be unavailable.</comment></data>
+  <data name="FreOverlay_ShowTokenUsageAndCostDescription.Text" xml:space="preserve"><value>ສະແດງບໍລິບົດທີ່ເຫຼືອ ແລະຄ່າໃຊ້ຈ່າຍຂອງເຊດຊັນເມື່ອມີຂໍ້ມູນ.</value><comment>Description for the usage visibility toggle in the first-run wizard. Session cost is reported for the active AI session. Keep 'session cost' generic and do not add a specific unit. Either value may be unavailable.</comment></data>
   <data name="FreOverlay_PanePositionLabel.Text" xml:space="preserve">
-    <value>ຕຳແຫນ່ງແຜງ</value>
+    <value>ຕຳແໜ່ງເອເຈນ</value>
   </data>
   <data name="FreOverlay_PanePositionDescription.Text" xml:space="preserve">
-    <value>ແຜງ agent ເປີດຢູ່ບ່ອນໃດທຽບກັບ terminal ຂອງທ່ານ.</value>
+    <value>ບ່ອນທີ່ເອເຈນຂອງທ່ານຢູ່.</value>
     <comment>In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_SaveButton.Content" xml:space="preserve">
-    <value>ບັນທຶກ</value>
+    <value>ເລີ່ມຕົ້ນ</value>
   </data>
   <!-- ═══ FRE Dynamic strings (used from C++ code-behind) ═══ -->
   <data name="FreOverlay_AgentStatusWillInstall" xml:space="preserve">
@@ -159,12 +172,6 @@
   <data name="FreOverlay_ToggleOff" xml:space="preserve">
     <value>ປິດ</value>
   </data>
-  <data name="FreOverlay_AutoDetectLabel.Text" xml:space="preserve">
-    <value>ການກວດຫາຂໍ້ຜິດພາດອັດຕະໂນມັດ</value>
-  </data>
-  <data name="FreOverlay_AutoDetectDescription.Text" xml:space="preserve">
-    <value>ອະນຸຍາດໃຫ້ Intelligent Terminal ເຂົ້າເຖິງເຊລຂອງທ່ານ ແລະກວດຫາຂໍ້ຜິດພາດໂດຍອັດຕະໂນມັດ.</value>
-  </data>
 <data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
     <value>ການຕິດຕັ້ງ shell integration ລົ້ມເຫລວ. ການກວດຫາຂໍ້ຜິດພາດໄດ້ຖືກປິດແລ້ວ. ທ່ານສາມາດເປີດໃຊ້ງານມັນອີກຄັ້ງແລະລອງໃຫມ່, ຫຼືບັນທຶກເພື່ອສືບຕໍ່ໂດຍບໍ່ມີມັນ.</value>
   </data><data name="FreOverlay_InstallErrorHooks" xml:space="preserve">
@@ -173,11 +180,6 @@
   </data><data name="FreOverlay_ErrorHelpLink" xml:space="preserve">
     <value>ຮຽນຮູ້ວິທີແກ້ໄຂສິ່ງນີ້ດ້ວຍຕົນເອງ</value>
     <comment>Hyperlink shown below an FRE setup error message. Opens step-by-step manual setup instructions in the browser.</comment>
-  </data>  <data name="FreOverlay_AutoDetectShellIntegrationHintPrefix" xml:space="preserve">
-    <value>ການເປີດໃຊ້ນີ້ຈະຕິດຕັ້ງການເຊື່ອມຕໍ່ shell ເພື່ອກວດພົບຄຳສັ່ງທີ່ລົ້ມເຫຼວ. </value>
-  </data>
-  <data name="FreOverlay_AutoDetectShellIntegrationHintLink" xml:space="preserve">
-    <value>ຮຽນຮູ້ເພີ່ມເຕີມ</value>
   </data>
   <data name="InitShellIntegrationExecutionPolicyErrorMessage" xml:space="preserve">
     <value>ນະໂຍບາຍການດຳເນີນການຂອງ PowerShell ກໍາລັງບລັອກສະຄຣິບ.</value>

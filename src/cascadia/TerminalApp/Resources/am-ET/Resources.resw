@@ -4,6 +4,10 @@
   <resheader name="version"><value>2.0</value></resheader>
   <resheader name="reader"><value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value></resheader>
   <resheader name="writer"><value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value></resheader>
+  <data name="FreOverlay_PolicyLocked" xml:space="preserve">
+    <value>ይህ ቅንብር በድርጅትዎ የሚተዳደር ነው።</value>
+    <comment>Text shown below a disabled toggle/dropdown in the first-run experience when Group Policy controls the feature. Standard Windows policy notice wording.</comment>
+  </data>
   <!-- ═══ FRE Welcome Page ═══ -->
   <data name="FreOverlay_WelcomeTitle.Text" xml:space="preserve">
     <value>እንኣን ወደ ብልህ ተርሚናል በደህና መጡ</value>
@@ -36,7 +40,7 @@
   </data>
   <!-- ═══ FRE Settings Page ═══ -->
   <data name="FreOverlay_SettingsTitle.Text" xml:space="preserve">
-    <value>የተርሚናል ኤጅንትዎን ያዋቅሩ</value>
+    <value>ተርሚናልዎን ያዋቅሩ</value>
     <comment>{Locked="Copilot","Claude","Gemini"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_SettingsSubtitlePrefix" xml:space="preserve">
@@ -53,39 +57,36 @@
     <value>በኤጅንት ገጽታ ውስጥ የሚጠቀመውን እና ACP የሚደግፈውን ኤጅንት ይምረጡ።</value>
     <comment>{Locked="ACP"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
-  <data name="FreOverlay_AgentInstallHint.Text" xml:space="preserve">
-    <value>ይህ ኤጅንት Node.js እና NPX ያስፈልጋል፣ ገና ካልተጠቀሙ በራሱ ይጠቀማሉ።</value>
-    <comment>{Locked="Node.js","NPX"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+  <data name="FreOverlay_ErrorDetectionLabel.Text" xml:space="preserve">
+    <value>ስህተት ማግኘት</value>
+    <comment>Header for the dropdown that configures how the terminal handles failed commands.</comment>
   </data>
-  <data name="FreOverlay_AutoErrorLabel.Text" xml:space="preserve">
-    <value>ራስ-ሰር የስህተት ጥቆማ</value>
+  <data name="FreOverlay_ErrorDetectionDescription.Text" xml:space="preserve">
+    <value>ኤጀንትዎ በሼሉ ውስጥ ያሉ ስህተቶችን በራስ-ሰር እንዲያገኝ እና ያልተሳኩ ትዕዛዞችን ወደ ኤጀንትዎ እንዲልክ ያድርጉ።</value>
+    <comment>Description for the error-detection dropdown in the first-run wizard. In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
-  <data name="FreOverlay_AutoErrorDescription.Text" xml:space="preserve">
-    <value>Intelligent Terminal እርማቶችን ራስ-ሰር ለመጠቆም ስህተቶችን ወደ ወኪልዎ እንዲልክ ይፍቀዱ።</value>
-    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
+  <data name="FreOverlay_ErrorDetectionDetectOption.Content" xml:space="preserve">
+    <value>ስህተቶችን ፈልግ</value>
+    <comment>Dropdown option that detects shell errors without automatically sending failed commands to the selected AI agent.</comment>
   </data>
   <data name="FreOverlay_SessionLabel.Text" xml:space="preserve">
-    <value>የክፍለጣ አስተዳደር</value>
+    <value>ክፍለ ጊዜዎች</value>
   </data>
   <data name="FreOverlay_SessionDescription.Text" xml:space="preserve">
-    <value>ለ ብልህ ተርሚናል የኤጅንቶችዎን ሁኔታ ለመከታተል ፍቃድ ይስጡ።</value>
+    <value>የትኞቹ ኤጀንቶች እየሰሩ እንደሆነ እና የትኞቹ ትኩረትዎን እንደሚፈልጉ ይከታተሉ።</value>
     <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
   </data>
-  <data name="FreOverlay_SessionHint.Text" xml:space="preserve">
-    <value>ይህን ማንቃት በኤጅንቶችዎ ውስጥ ክፍለጊዜዎችን ለመከታተል የውህደት hooks ይጭናል።</value>
-    <comment>{Locked="hooks"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
-  </data>
-  <data name="FreOverlay_ShowTokenUsageAndCostLabel.Text" xml:space="preserve"><value>የአውድ አጠቃቀምን እና የክፍለ ጊዜ ወጪን አሳይ</value><comment>Header for a first-run toggle that shows available context-window usage and session cost in the terminal bottom bar. Session cost is reported for the active AI session. Keep 'session cost' generic and do not add a specific unit. Either value may be unavailable.</comment></data>
-  <data name="FreOverlay_ShowTokenUsageAndCostDescription.Text" xml:space="preserve"><value>ሲገኝ የአውድ-መስኮት አጠቃቀምን እና የክፍለ ጊዜ ወጪን በተርሚናል ታችኛው አሞሌ ላይ አሳይ።</value><comment>Description for the usage visibility toggle in the first-run wizard. Session cost is reported for the active AI session. Keep 'session cost' generic and do not add a specific unit. Either value may be unavailable.</comment></data>
+  <data name="FreOverlay_ShowTokenUsageAndCostLabel.Text" xml:space="preserve"><value>የቶከን አጠቃቀም</value><comment>Header for a first-run toggle that shows available context-window usage and session cost in the terminal bottom bar. Session cost is reported for the active AI session. Keep 'session cost' generic and do not add a specific unit. Either value may be unavailable.</comment></data>
+  <data name="FreOverlay_ShowTokenUsageAndCostDescription.Text" xml:space="preserve"><value>ሲገኝ የቀረውን አውድ እና የክፍለ ጊዜ ወጪ ያሳዩ።</value><comment>Description for the usage visibility toggle in the first-run wizard. Session cost is reported for the active AI session. Keep 'session cost' generic and do not add a specific unit. Either value may be unavailable.</comment></data>
   <data name="FreOverlay_PanePositionLabel.Text" xml:space="preserve">
-    <value>የገጽታ አቀማመጥ</value>
+    <value>የኤጀንት አቀማመጥ</value>
   </data>
   <data name="FreOverlay_PanePositionDescription.Text" xml:space="preserve">
-    <value>የኤጅንት ገጽታው ከተርሚናልዎ አንጻር የት ይከፈታል።</value>
+    <value>ኤጀንትዎ የሚገኝበት ቦታ።</value>
     <comment>In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_SaveButton.Content" xml:space="preserve">
-    <value>አስቀምጥ</value>
+    <value>ይጀምሩ</value>
   </data>
   <!-- ═══ FRE Dynamic strings (used from C++ code-behind) ═══ -->
   <data name="FreOverlay_AgentStatusWillInstall" xml:space="preserve">
@@ -227,11 +228,13 @@
     <value>Terminal Protocol</value>
     <comment>Title for the teaching tip that displays Terminal Protocol connection information. {Locked="Terminal Protocol"}</comment>
   </data>
-  <data name="FreOverlay_AutoDetectLabel.Text" xml:space="preserve">
-    <value>ራስ-ሰር የስህተት ማወቅ</value>
+  <data name="FreOverlay_ErrorDetectionAutoFixOption.Content" xml:space="preserve">
+    <value>ስህተቶችን ፈልግ እና አስተካክል</value>
+    <comment>Dropdown option that detects shell errors and automatically sends failed commands to the selected AI agent. In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
-  <data name="FreOverlay_AutoDetectDescription.Text" xml:space="preserve">
-    <value>Intelligent Terminal ወደ ሼልዎ መድረስ እና ስህተቶችን ራስ-ሰር እንዲያውቅ ይፍቀዱ።</value>
+  <data name="FreOverlay_ErrorDetectionOffOption.Content" xml:space="preserve">
+    <value>ጠፍቷል</value>
+    <comment>Dropdown option that disables automatic shell error detection.</comment>
   </data>
 <data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
     <value>የሼል ውህደት መጫን አልተሳካም። የስህተት ማወቂያ ጠፍቷል። እንደገና ማንቃት እና መሞከር ይችላሉ፣ ወይም ያለ እሱ ለመቀጠል ያስቀምጡ።</value>
@@ -241,11 +244,9 @@
   </data><data name="FreOverlay_ErrorHelpLink" xml:space="preserve">
     <value>ይህንን በእጅ እንዴት እንደሚያስተካክሉ ይወቁ</value>
     <comment>Hyperlink shown below an FRE setup error message. Opens step-by-step manual setup instructions in the browser.</comment>
-  </data>  <data name="FreOverlay_AutoDetectShellIntegrationHintPrefix" xml:space="preserve">
-    <value>ይህን ማንቃት የትዕዛዝ ውድቀቶችን ለመለየት የshell ውህደት ይጭናል። </value>
-  </data>
-  <data name="FreOverlay_AutoDetectShellIntegrationHintLink" xml:space="preserve">
-    <value>ተጨማሪ ይወቁ</value>
+  </data>  <data name="FreOverlay_ErrorDetectionAutoFixPolicyLocked" xml:space="preserve">
+    <value>የራስ-ሰር ማስተካከያ አማራጩ በድርጅትዎ የሚተዳደር ነው።</value>
+    <comment>Text shown below the error-detection dropdown when Group Policy disables its automatic-fix option.</comment>
   </data>
   <data name="InitShellIntegrationExecutionPolicyErrorMessage" xml:space="preserve">
     <value>የPowerShell ማስፈጸሚያ ፖሊሲ ስክሪፕቶችን እያገደ ነው።</value>

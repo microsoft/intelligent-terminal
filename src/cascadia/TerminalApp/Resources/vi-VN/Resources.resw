@@ -149,7 +149,7 @@
   </data>
   <!-- ═══ FRE Settings Page ═══ -->
   <data name="FreOverlay_SettingsTitle.Text" xml:space="preserve">
-    <value>Thiết lập tác tử AI cho terminal của bạn</value>
+    <value>Thiết lập terminal của bạn</value>
     <comment>{Locked="Copilot","Claude","Gemini"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_SettingsSubtitlePrefix" xml:space="preserve">
@@ -166,39 +166,31 @@
     <value>Chọn tác tử được sử dụng trong bảng tác tử hỗ trợ ACP.</value>
     <comment>{Locked="ACP"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
-  <data name="FreOverlay_AgentInstallHint.Text" xml:space="preserve">
-    <value>Tác tử này yêu cầu Node.js và NPX, sẽ được cài đặt tự động nếu chưa có.</value>
-    <comment>{Locked="Node.js","NPX"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
-  </data>
-  <data name="FreOverlay_AutoErrorLabel.Text" xml:space="preserve">
-    <value>Tự động đề xuất lỗi</value>
-  </data>
-  <data name="FreOverlay_AutoErrorDescription.Text" xml:space="preserve">
-    <value>Cho phép Intelligent Terminal gửi lỗi đến tác nhân của bạn để tự động đề xuất bản sửa lỗi.</value>
-    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
-  </data>
+  <data name="FreOverlay_ErrorDetectionLabel.Text" xml:space="preserve"><value>Phát hiện lỗi</value></data>
+  <data name="FreOverlay_ErrorDetectionDescription.Text" xml:space="preserve"><value>Cho phép tác nhân tự động phát hiện lỗi trong shell và gửi các lệnh không thành công đến tác nhân của bạn.</value></data>
+  <data name="FreOverlay_ErrorDetectionDetectOption.Content" xml:space="preserve"><value>Phát hiện lỗi</value></data>
+  <data name="FreOverlay_ErrorDetectionAutoFixOption.Content" xml:space="preserve"><value>Phát hiện và sửa lỗi</value></data>
+  <data name="FreOverlay_ErrorDetectionOffOption.Content" xml:space="preserve"><value>Tắt</value></data>
+  <data name="FreOverlay_ErrorDetectionAutoFixPolicyLocked" xml:space="preserve"><value>Tùy chọn sửa tự động do tổ chức của bạn quản lý.</value></data>
+  <data name="FreOverlay_PolicyLocked" xml:space="preserve"><value>Cài đặt này do tổ chức của bạn quản lý.</value></data>
   <data name="FreOverlay_SessionLabel.Text" xml:space="preserve">
-    <value>Quản lý phiên</value>
+    <value>Phiên</value>
   </data>
   <data name="FreOverlay_SessionDescription.Text" xml:space="preserve">
-    <value>Cho phép Đầu cuối thông minh theo dõi trạng thái các tác tử đang chạy hoặc đang hoạt động.</value>
+    <value>Theo dõi tác nhân nào đang chạy và tác nhân nào cần bạn chú ý.</value>
     <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name. In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
-  <data name="FreOverlay_SessionHint.Text" xml:space="preserve">
-    <value>Bật tính năng này sẽ cài đặt các hooks tích hợp để theo dõi phiên trên các tác tử của bạn.</value>
-    <comment>{Locked="hooks"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
-  </data>
-  <data name="FreOverlay_ShowTokenUsageAndCostLabel.Text" xml:space="preserve"><value>Hiển thị mức sử dụng ngữ cảnh và chi phí phiên</value><comment>Header for a first-run toggle that shows available context-window usage and session cost in the terminal bottom bar. Session cost is reported for the active AI session. Keep 'session cost' generic and do not add a specific unit. Either value may be unavailable.</comment></data>
-  <data name="FreOverlay_ShowTokenUsageAndCostDescription.Text" xml:space="preserve"><value>Khi có sẵn, hãy hiển thị mức sử dụng cửa sổ ngữ cảnh và chi phí phiên ở thanh dưới cùng của thiết bị đầu cuối.</value><comment>Description for the usage visibility toggle in the first-run wizard. Session cost is reported for the active AI session. Keep 'session cost' generic and do not add a specific unit. Either value may be unavailable.</comment></data>
+  <data name="FreOverlay_ShowTokenUsageAndCostLabel.Text" xml:space="preserve"><value>Mức sử dụng token</value><comment>Header for a first-run toggle that shows available context-window usage and session cost in the terminal bottom bar. Session cost is reported for the active AI session. Keep 'session cost' generic and do not add a specific unit. Either value may be unavailable.</comment></data>
+  <data name="FreOverlay_ShowTokenUsageAndCostDescription.Text" xml:space="preserve"><value>Hiển thị ngữ cảnh còn lại và chi phí phiên khi có.</value><comment>Description for the usage visibility toggle in the first-run wizard. Session cost is reported for the active AI session. Keep 'session cost' generic and do not add a specific unit. Either value may be unavailable.</comment></data>
   <data name="FreOverlay_PanePositionLabel.Text" xml:space="preserve">
-    <value>Vị trí bảng</value>
+    <value>Vị trí tác nhân</value>
   </data>
   <data name="FreOverlay_PanePositionDescription.Text" xml:space="preserve">
-    <value>Vị trí bảng tác tử mở so với terminal của bạn.</value>
+    <value>Nơi tác nhân của bạn hoạt động.</value>
     <comment>In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_SaveButton.Content" xml:space="preserve">
-    <value>Lưu</value>
+    <value>Bắt đầu</value>
   </data>
   <!-- ═══ FRE Dynamic strings (used from C++ code-behind) ═══ -->
   <data name="FreOverlay_AgentStatusWillInstall" xml:space="preserve">
@@ -272,12 +264,6 @@
   <data name="FreOverlay_ToggleOff" xml:space="preserve">
     <value>Tắt</value>
   </data>
-  <data name="FreOverlay_AutoDetectLabel.Text" xml:space="preserve">
-    <value>Tự động phát hiện lỗi</value>
-  </data>
-  <data name="FreOverlay_AutoDetectDescription.Text" xml:space="preserve">
-    <value>Cho phép Intelligent Terminal truy cập shell của bạn và tự động phát hiện lỗi.</value>
-  </data>
 <data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
     <value>Không thể cài đặt tích hợp shell. Phát hiện lỗi đã bị tắt. Bạn có thể bật lại và thử lại, hoặc lưu để tiếp tục mà không có nó.</value>
   </data><data name="FreOverlay_InstallErrorHooks" xml:space="preserve">
@@ -286,11 +272,6 @@
   </data><data name="FreOverlay_ErrorHelpLink" xml:space="preserve">
     <value>Tìm hiểu cách khắc phục theo cách thủ công</value>
     <comment>Hyperlink shown below an FRE setup error message. Opens step-by-step manual setup instructions in the browser.</comment>
-  </data>  <data name="FreOverlay_AutoDetectShellIntegrationHintPrefix" xml:space="preserve">
-    <value>Bật tính năng này sẽ cài đặt tích hợp shell để phát hiện lỗi lệnh. </value>
-  </data>
-  <data name="FreOverlay_AutoDetectShellIntegrationHintLink" xml:space="preserve">
-    <value>Tìm hiểu thêm</value>
   </data>
   <data name="InitShellIntegrationExecutionPolicyErrorMessage" xml:space="preserve">
     <value>Chính sách thực thi PowerShell đang chặn các tập lệnh.</value>

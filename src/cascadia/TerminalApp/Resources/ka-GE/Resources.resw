@@ -34,9 +34,13 @@
   <data name="FreOverlay_NextButton.Content" xml:space="preserve">
     <value>შემდეგი</value>
   </data>
+  <data name="FreOverlay_PolicyLocked" xml:space="preserve">
+    <value>ამ პარამეტრს თქვენი ორგანიზაცია მართავს.</value>
+    <comment>Text shown below a disabled toggle/dropdown in the first-run experience when Group Policy controls the feature. Standard Windows policy notice wording.</comment>
+  </data>
   <!-- ═══ FRE Settings Page ═══ -->
   <data name="FreOverlay_SettingsTitle.Text" xml:space="preserve">
-    <value>დააკონფიგურირეთ თქვენი ტერმინალის აგენტი</value>
+    <value>დააყენეთ თქვენი ტერმინალი</value>
     <comment>{Locked="Copilot","Claude","Gemini"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_SettingsSubtitlePrefix" xml:space="preserve">
@@ -53,39 +57,48 @@
     <value>აირჩიეთ აგენტი, რომელიც გამოიყენება აგენტის პანელში და აქვს ACP მხარდაჭერა.</value>
     <comment>{Locked="ACP"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
-  <data name="FreOverlay_AgentInstallHint.Text" xml:space="preserve">
-    <value>ეს აგენტი მოითხოვს Node.js-სა და NPX-ს, რომლებიც ავტომატურად დაინსტალირდება, თუ უკვე არ არის.</value>
-    <comment>{Locked="Node.js","NPX"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+  <data name="FreOverlay_ErrorDetectionLabel.Text" xml:space="preserve">
+    <value>შეცდომების აღმოჩენა</value>
+    <comment>Header for the dropdown that configures how the terminal handles failed commands.</comment>
   </data>
-  <data name="FreOverlay_AutoErrorLabel.Text" xml:space="preserve">
-    <value>შეცდომების ავტომატური შემოთავაზება</value>
+  <data name="FreOverlay_ErrorDetectionDescription.Text" xml:space="preserve">
+    <value>მიეცით თქვენს აგენტს საშუალება, ავტომატურად აღმოაჩინოს შეცდომები გარსში და წარუმატებელი ბრძანებები თქვენს აგენტს გაუგზავნოს.</value>
+    <comment>Description for the error-detection dropdown in the first-run wizard. In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
-  <data name="FreOverlay_AutoErrorDescription.Text" xml:space="preserve">
-    <value>მიეცით Intelligent Terminal-ს უფლება, გაუგზავნოს შეცდომები თქვენს აგენტს გასწორებების ავტომატურად შემოთავაზებისთვის.</value>
-    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
+  <data name="FreOverlay_ErrorDetectionDetectOption.Content" xml:space="preserve">
+    <value>შეცდომების აღმოჩენა</value>
+    <comment>Dropdown option that detects shell errors without automatically sending failed commands to the selected AI agent.</comment>
+  </data>
+  <data name="FreOverlay_ErrorDetectionAutoFixOption.Content" xml:space="preserve">
+    <value>შეცდომების აღმოჩენა და გასწორება</value>
+    <comment>Dropdown option that detects shell errors and automatically sends failed commands to the selected AI agent. In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+  </data>
+  <data name="FreOverlay_ErrorDetectionOffOption.Content" xml:space="preserve">
+    <value>გამორთული</value>
+    <comment>Dropdown option that disables automatic shell error detection.</comment>
+  </data>
+  <data name="FreOverlay_ErrorDetectionAutoFixPolicyLocked" xml:space="preserve">
+    <value>ავტომატური გასწორების ვარიანტს თქვენი ორგანიზაცია მართავს.</value>
+    <comment>Text shown below the error-detection dropdown when Group Policy disables its automatic-fix option.</comment>
   </data>
   <data name="FreOverlay_SessionLabel.Text" xml:space="preserve">
-    <value>სესიების მართვა</value>
+    <value>სესიები</value>
   </data>
   <data name="FreOverlay_SessionDescription.Text" xml:space="preserve">
-    <value>მიეცით ჭკვიანი ტერმინალი-ს უფლება თვალყური ადევნოს თქვენი გაშვებული ან აქტიური აგენტების სტატუსს.</value>
+    <value>თვალი ადევნეთ, რომელი აგენტები მუშაობენ და რომელთაც სჭირდებათ თქვენი ყურადღება.</value>
     <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
   </data>
-  <data name="FreOverlay_SessionHint.Text" xml:space="preserve">
-    <value>ამის ჩართვა დააინსტალირებს ინტეგრაციის hooks-ს თქვენს აგენტებში სესიების თვალყურისდევნებისთვის.</value>
-    <comment>{Locked="hooks"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
-  </data>
-  <data name="FreOverlay_ShowTokenUsageAndCostLabel.Text" xml:space="preserve"><value>აჩვენეთ კონტექსტის გამოყენება და სესიის ღირებულება</value><comment>Header for a first-run toggle that shows available context-window usage and session cost in the terminal bottom bar. Session cost is reported for the active AI session. Keep 'session cost' generic and do not add a specific unit. Either value may be unavailable.</comment></data>
-  <data name="FreOverlay_ShowTokenUsageAndCostDescription.Text" xml:space="preserve"><value>როდესაც ხელმისაწვდომია, აჩვენეთ კონტექსტური ფანჯრის გამოყენება და სესიის ღირებულება ტერმინალის ქვედა ზოლში.</value><comment>Description for the usage visibility toggle in the first-run wizard. Session cost is reported for the active AI session. Keep 'session cost' generic and do not add a specific unit. Either value may be unavailable.</comment></data>
+  <data name="FreOverlay_ShowTokenUsageAndCostLabel.Text" xml:space="preserve"><value>ტოკენების გამოყენება</value><comment>Header for a first-run toggle that shows available context-window usage and session cost in the terminal bottom bar. Session cost is reported for the active AI session. Keep 'session cost' generic and do not add a specific unit. Either value may be unavailable.</comment></data>
+  <data name="FreOverlay_ShowTokenUsageAndCostDescription.Text" xml:space="preserve"><value>აჩვენეთ დარჩენილი კონტექსტი და სესიის ღირებულება, როცა ხელმისაწვდომია.</value><comment>Description for the usage visibility toggle in the first-run wizard. Session cost is reported for the active AI session. Keep 'session cost' generic and do not add a specific unit. Either value may be unavailable.</comment></data>
   <data name="FreOverlay_PanePositionLabel.Text" xml:space="preserve">
-    <value>პანელის პოზიცია</value>
+    <value>აგენტის პოზიცია</value>
   </data>
   <data name="FreOverlay_PanePositionDescription.Text" xml:space="preserve">
-    <value>სად იხსნება აგენტის პანელი თქვენი ტერმინალის მიმართ.</value>
+    <value>ადგილი, სადაც თქვენი აგენტია.</value>
     <comment>In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_SaveButton.Content" xml:space="preserve">
-    <value>შენახვა</value>
+    <value>დაწყება</value>
   </data>
   <!-- ═══ FRE Dynamic strings (used from C++ code-behind) ═══ -->
   <data name="FreOverlay_AgentStatusWillInstall" xml:space="preserve">
@@ -227,12 +240,6 @@
     <value>Terminal Protocol</value>
     <comment>Title for the teaching tip that displays Terminal Protocol connection information. {Locked="Terminal Protocol"}</comment>
   </data>
-  <data name="FreOverlay_AutoDetectLabel.Text" xml:space="preserve">
-    <value>შეცდომების ავტომატური აღმოჩენა</value>
-  </data>
-  <data name="FreOverlay_AutoDetectDescription.Text" xml:space="preserve">
-    <value>მიეცით Intelligent Terminal-ს უფლება, წვდომა ჰქონდეს თქვენს გარსზე და ავტომატურად აღმოაჩინოს შეცდომები.</value>
-  </data>
 <data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
     <value>გარსის ინტეგრაციის ინსტალაცია ვერ მოხერხდა. შეცდომების აღმოჩენა გამორთულია. შეგიძლიათ ხელახლა ჩართოთ და სცადოთ თავიდან, ან შეინახოთ მის გარეშე გასაგრძელებლად.</value>
   </data><data name="FreOverlay_InstallErrorHooks" xml:space="preserve">
@@ -241,11 +248,6 @@
   </data><data name="FreOverlay_ErrorHelpLink" xml:space="preserve">
     <value>შეიტყვეთ, როგორ გამოასწოროთ ეს ხელით</value>
     <comment>Hyperlink shown below an FRE setup error message. Opens step-by-step manual setup instructions in the browser.</comment>
-  </data>  <data name="FreOverlay_AutoDetectShellIntegrationHintPrefix" xml:space="preserve">
-    <value>ამის ჩართვა დააინსტალირებს shell-ის ინტეგრაციას ბრძანებების წარუმატებლობის აღმოსაჩენად. </value>
-  </data>
-  <data name="FreOverlay_AutoDetectShellIntegrationHintLink" xml:space="preserve">
-    <value>შეიტყვეთ მეტი</value>
   </data>
   <data name="InitShellIntegrationExecutionPolicyErrorMessage" xml:space="preserve">
     <value>PowerShell-ის შესრულების პოლიტიკა ბლოკავს სკრიპტებს.</value>
