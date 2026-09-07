@@ -419,6 +419,7 @@ namespace winrt::TerminalApp::implementation
         {
             impl->UpdateSettings(settings);
         }
+        GetTermControl().EnableAgentMouseWheelZoom(true);
 
         const winrt::Microsoft::Terminal::Control::KeyChord ctrlV{ Windows::System::VirtualKeyModifiers::Control, 'V', 0 };
         if (const auto actionMap = settings.ActionMap())

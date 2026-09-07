@@ -529,7 +529,28 @@ namespace winrt::Microsoft::Terminal::Control::implementation
                                           const Core::Point pixelPosition,
                                           const Control::MouseButtonState buttonState)
     {
+        return MouseWheel(modifiers, delta, pixelPosition, buttonState, false);
+    }
+
+    bool ControlInteractivity::MouseWheel(const ::Microsoft::Terminal::Core::ControlKeyStates modifiers,
+                                          const Core::Point delta,
+                                          const Core::Point pixelPosition,
+                                          const Control::MouseButtonState buttonState,
+                                          const bool prioritizeZoom)
+    {
         const auto terminalPosition = _getTerminalPosition(til::point{ pixelPosition }, false);
+        const auto ctrlPressed = modifiers.IsCtrlPressed();
+        const auto shiftPressed = modifiers.IsShiftPressed();
+
+        if (prioritizeZoom &&
+            ctrlPressed &&
+            !shiftPressed &&
+            delta.Y != 0 &&
+            _core->Settings().ScrollToZoom())
+        {
+            _mouseZoomHandler(delta.Y);
+            return false;
+        }
 
         // Short-circuit isReadOnly check to avoid warning dialog.
         //
@@ -551,9 +572,6 @@ namespace winrt::Microsoft::Terminal::Control::implementation
                                          ::base::saturated_cast<short>(delta.Y != 0 ? delta.Y : delta.X),
                                          buttonState);
         }
-
-        const auto ctrlPressed = modifiers.IsCtrlPressed();
-        const auto shiftPressed = modifiers.IsShiftPressed();
 
         if (ctrlPressed && shiftPressed && _core->Settings().ScrollToChangeOpacity())
         {
