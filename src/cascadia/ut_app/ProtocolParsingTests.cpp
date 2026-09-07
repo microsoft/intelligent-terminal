@@ -68,8 +68,14 @@ namespace TerminalAppUnitTests
         VERIFY_ARE_EQUAL(1, result.lineCount);
         VERIFY_IS_TRUE(result.truncated);
 
-        const auto lines = BuildBoundedCommand("command\r\nfirst\r\nsecond\r\n", 2, 100);
-        VERIFY_ARE_EQUAL("command\nfirst", lines.content);
+        const auto lines = BuildBoundedCommand("command\r\n"
+                                               "first\r\n"
+                                               "second\r\n",
+                                               2,
+                                               100);
+        VERIFY_ARE_EQUAL("command\n"
+                         "first",
+                         lines.content);
         VERIFY_ARE_EQUAL(2, lines.lineCount);
         VERIFY_IS_TRUE(lines.truncated);
 
@@ -82,26 +88,48 @@ namespace TerminalAppUnitTests
         VERIFY_ARE_EQUAL(2, blankLineLookahead.lineCount);
         VERIFY_IS_TRUE(blankLineLookahead.truncated);
 
-        const auto leadingBlankLines = BuildBoundedCommand("\n\ncommand\n", 10, 100);
-        VERIFY_ARE_EQUAL("\n\ncommand\n", leadingBlankLines.content);
+        const auto leadingBlankLines = BuildBoundedCommand("\n\n"
+                                                           "command\n",
+                                                           10,
+                                                           100);
+        VERIFY_ARE_EQUAL("\n\n"
+                         "command\n",
+                         leadingBlankLines.content);
         VERIFY_ARE_EQUAL(4, leadingBlankLines.lineCount);
         VERIFY_IS_FALSE(leadingBlankLines.truncated);
     }
 
     void ProtocolParsingTests::BoundedBufferTailAppliesLineAndCharacterLimits()
     {
-        const auto byLines = BuildBoundedBufferTail("first\r\nsecond\r\nthird\r\n", 2, 100);
-        VERIFY_ARE_EQUAL("second\nthird", byLines.content);
+        const auto byLines = BuildBoundedBufferTail("first\r\n"
+                                                  "second\r\n"
+                                                  "third\r\n",
+                                                  2,
+                                                  100);
+        VERIFY_ARE_EQUAL("second\n"
+                         "third",
+                         byLines.content);
         VERIFY_ARE_EQUAL(2, byLines.lineCount);
         VERIFY_IS_TRUE(byLines.truncated);
 
-        const auto byCharacters = BuildBoundedBufferTail("one\r\ntwo\r\nthree\r\n", 3, 6);
-        VERIFY_ARE_EQUAL("\nthree", byCharacters.content);
+        const auto byCharacters = BuildBoundedBufferTail("one\r\n"
+                                                       "two\r\n"
+                                                       "three\r\n",
+                                                       3,
+                                                       6);
+        VERIFY_ARE_EQUAL("\n"
+                         "three",
+                         byCharacters.content);
         VERIFY_ARE_EQUAL(2, byCharacters.lineCount);
         VERIFY_IS_TRUE(byCharacters.truncated);
 
-        const auto exact = BuildBoundedBufferTail("one\r\ntwo\r\n", 2, 7);
-        VERIFY_ARE_EQUAL("one\ntwo", exact.content);
+        const auto exact = BuildBoundedBufferTail("one\r\n"
+                                                 "two\r\n",
+                                                 2,
+                                                 7);
+        VERIFY_ARE_EQUAL("one\n"
+                         "two",
+                         exact.content);
         VERIFY_ARE_EQUAL(2, exact.lineCount);
         VERIFY_IS_FALSE(exact.truncated);
     }

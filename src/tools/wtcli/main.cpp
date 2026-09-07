@@ -563,7 +563,7 @@ int wmain(int argc, wchar_t** argv)
     int paneContextMaxLines = 30;
     int paneContextMaxCharacters = 4000;
     auto* paneContextCmd = app.add_subcommand("get-pane-context", "Resolve a pane and capture bounded context");
-    paneContextCmd->add_option("-t,--target", paneContextTarget, "Explicit source pane session ID (GUID)");
+    auto* paneContextTargetOption = paneContextCmd->add_option("-t,--target", paneContextTarget, "Explicit source pane session ID (GUID)");
     paneContextCmd->add_option("-l,--max-lines", paneContextMaxLines, "Buffer-tail lines when command marks are unavailable");
     paneContextCmd->add_option("--max-chars", paneContextMaxCharacters, "Maximum returned content characters");
     paneContextCmd->callback([&]() {
@@ -582,6 +582,19 @@ int wmain(int argc, wchar_t** argv)
             return;
         }
 
+        GUID source{};
+        const auto hasExplicitSource = paneContextTargetOption->count() != 0;
+        if (hasExplicitSource)
+        {
+            source = GuidFromString(paneContextTarget, true);
+            if (InlineIsEqualGUID(source, GUID{}))
+            {
+                fprintf(stderr, "[wtcli] Invalid session ID: %s\n", paneContextTarget.empty() ? "(empty)" : paneContextTarget.c_str());
+                exitCode = 1;
+                return;
+            }
+        }
+
         std::string version;
         auto server = ConnectToTerminal(nullptr, &version, skipAuthenticate);
         if (!server)
@@ -598,18 +611,6 @@ int wmain(int argc, wchar_t** argv)
                     version.empty() ? "unknown" : version.c_str());
             exitCode = 2;
             return;
-        }
-
-        GUID source{};
-        const auto hasExplicitSource = !paneContextTarget.empty();
-        if (hasExplicitSource)
-        {
-            source = GuidFromString(paneContextTarget);
-            if (InlineIsEqualGUID(source, GUID{}))
-            {
-                exitCode = 1;
-                return;
-            }
         }
 
         Json::Value context;

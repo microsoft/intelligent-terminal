@@ -93,6 +93,17 @@ Describe 'Feature: consolidated pane context' -Tag 'Feature' -Skip:(-not $script
     }
 
     It 'Missing and closed pane context fails without active-pane fallback' {
+        foreach ($id in @('not-a-guid', [guid]::Empty.ToString(), '')) {
+            $failure = & (Get-Module ItE2E) {
+                param($App, $Target)
+                Invoke-Native -FilePath $App.WtcliPath -Arguments @('get-pane-context', '--target', $Target) `
+                    -Environment @{ WT_COM_CLSID = $App.ComClsid }
+            } $script:app $id
+            $failure.TimedOut | Should -BeFalse
+            $failure.ExitCode | Should -Be 1
+            $failure.StdOut | Should -BeNullOrEmpty
+            ([regex]::Matches($failure.StdErr, '\[wtcli\] Invalid session ID:')).Count | Should -Be 1
+        }
         $gone = New-WtTab -App $script:app -Command 'pwsh.exe -NoLogo -NoProfile -NoExit'
         Close-WtPane -App $script:app -SessionId $gone.session_id
         foreach ($id in @($gone.session_id, [guid]::NewGuid().ToString())) {

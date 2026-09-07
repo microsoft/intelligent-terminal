@@ -164,6 +164,27 @@ namespace winrt::TerminalApp::implementation
         co_return result;
     }
 
+    // Keep UI-owned references in the caller's apartment; only immutable text
+    // and limits cross into the background operation.
+    static IAsyncOperation<Protocol::PaneContext> _buildBoundedPaneContext(
+        hstring text,
+        int32_t maxLines,
+        int32_t maxCharacters,
+        bool lastCommand)
+    {
+        co_await winrt::resume_background();
+
+        const auto utf8 = winrt::to_string(text);
+        const auto bounded = lastCommand
+            ? ProtocolParsing::BuildBoundedCommand(utf8, maxLines, maxCharacters)
+            : ProtocolParsing::BuildBoundedBufferTail(utf8, maxLines, maxCharacters);
+        Protocol::PaneContext result{};
+        result.Content = winrt::to_hstring(bounded.content);
+        result.LineCount = bounded.lineCount;
+        result.Truncated = bounded.truncated;
+        co_return result;
+    }
+
     IAsyncOperation<Protocol::PaneContext> TerminalPage::GetProtocolPaneContext(
         winrt::guid sourceSessionId,
         bool hasExplicitSource,
@@ -266,14 +287,15 @@ namespace winrt::TerminalApp::implementation
             const auto lastCommand = termControl.ReadLastPromptBounded(maxLines + 1, maxCharacters + 1);
             if (!lastCommand.empty())
             {
-                const auto bounded = ProtocolParsing::BuildBoundedCommand(
-                    winrt::to_string(lastCommand),
+                const auto bounded = co_await _buildBoundedPaneContext(
+                    lastCommand,
                     maxLines,
-                    maxCharacters);
-                result.Content = winrt::to_hstring(bounded.content);
+                    maxCharacters,
+                    true);
+                result.Content = bounded.Content;
                 result.OutputSource = L"last_command";
-                result.LineCount = bounded.lineCount;
-                result.Truncated = bounded.truncated;
+                result.LineCount = bounded.LineCount;
+                result.Truncated = bounded.Truncated;
                 result.HasMarks = true;
                 co_return result;
             }
@@ -284,6 +306,7 @@ namespace winrt::TerminalApp::implementation
         }
         catch (...)
         {
+            LOG_CAUGHT_EXCEPTION();
             result.OutputSource = L"buffer_tail";
             result.FallbackReason = L"last_command_error";
             try
@@ -292,20 +315,20 @@ namespace winrt::TerminalApp::implementation
             }
             catch (...)
             {
+                LOG_CAUGHT_EXCEPTION();
                 result.Pane = {};
                 co_return result;
             }
         }
 
-        co_await winrt::resume_background();
-
-        const auto bounded = ProtocolParsing::BuildBoundedBufferTail(
-            winrt::to_string(bufferTail),
+        const auto bounded = co_await _buildBoundedPaneContext(
+            bufferTail,
             maxLines,
-            maxCharacters);
-        result.Content = winrt::to_hstring(bounded.content);
-        result.LineCount = bounded.lineCount;
-        result.Truncated = bounded.truncated;
+            maxCharacters,
+            false);
+        result.Content = bounded.Content;
+        result.LineCount = bounded.LineCount;
+        result.Truncated = bounded.Truncated;
         co_return result;
     }
 
