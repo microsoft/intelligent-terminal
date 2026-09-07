@@ -46,10 +46,42 @@
                 <TextBlock Text="{x:Bind EnumName, Mode=OneWay}" />
             </DataTemplate>
 
+            <DataTemplate x:Key="AutoErrorHandlingComboBoxTemplate"
+                          x:DataType="local:EnumEntry">
+                <TextBlock Text="{x:Bind EnumName, Mode=OneWay}"
+                           TextWrapping="WrapWholeWords" />
+            </DataTemplate>
+
             <DataTemplate x:Key="AcpModelEntryTemplate"
                           x:DataType="local:AcpModelEntry">
                 <TextBlock Text="{x:Bind DisplayName}" />
             </DataTemplate>
+
+            <Style x:Key="AutoErrorHandlingSettingContainerStyle"
+                   TargetType="local:SettingContainer">
+                <Setter Property="Margin" Value="0,4,0,0" />
+                <Setter Property="IsTabStop" Value="False" />
+                <Setter Property="MaxWidth" Value="{StaticResource StandardControlMaxWidth}" />
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="local:SettingContainer">
+                            <Grid ColumnSpacing="24"
+                                  Style="{StaticResource NonExpanderGrid}">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <ContentPresenter Margin="0,12,0,12"
+                                                  Content="{TemplateBinding Header}" />
+                                <ContentPresenter Grid.Column="1"
+                                                  HorizontalAlignment="Right"
+                                                  VerticalAlignment="Center"
+                                                  Content="{TemplateBinding Content}" />
+                            </Grid>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
         </ResourceDictionary>
     </Page.Resources>
 
@@ -189,58 +221,14 @@
                 </Grid>
             </local:SettingContainer>
 
-            <Grid x:Name="EmptyCustomModelProviders"
-                  Margin="0,4,0,0"
-                  Padding="16,0,8,0"
-                  HorizontalAlignment="Stretch"
-                  Background="{ThemeResource ExpanderHeaderBackground}"
-                  BorderBrush="{ThemeResource ExpanderHeaderBorderBrush}"
-                  BorderThickness="{ThemeResource ExpanderHeaderBorderThickness}"
-                  CornerRadius="{ThemeResource ControlCornerRadius}"
-                  MaxWidth="1000"
-                  MinHeight="64"
-                  MinWidth="{ThemeResource FlyoutThemeMinWidth}"
-                  Visibility="{x:Bind mtu:Converters.InvertedBooleanToVisibility(ViewModel.ShowCustomModelProvidersExpander), Mode=OneWay}">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="Auto" />
-                </Grid.ColumnDefinitions>
-                <StackPanel Grid.Column="0"
-                            Padding="0,12,0,12"
-                            VerticalAlignment="Center">
-                    <TextBlock x:Name="EmptyCustomModelsHeaderText"
-                               Style="{StaticResource SettingsPageItemHeaderStyle}" />
-                    <TextBlock Style="{StaticResource CaptionTextBlockStyle}"
-                               TextWrapping="Wrap">
-                        <Run x:Name="EmptyCustomModelsCaptionPrefix"
-                             Foreground="{ThemeResource TextFillColorSecondaryBrush}" /><Hyperlink NavigateUri="https://github.com/microsoft/intelligent-terminal#custom-providers-byok">
-                            <Run x:Name="EmptyCustomModelsCaptionLink" />
-                        </Hyperlink>
-                    </TextBlock>
-                </StackPanel>
-                <Button Grid.Column="1"
-                        x:Uid="AIAgents_CustomProviderAdd"
-                        Margin="0,12,0,12"
-                        HorizontalAlignment="Right"
-                        VerticalAlignment="Center"
-                        Click="{x:Bind ViewModel.AddCustomModelProvider}"
-                        Style="{StaticResource AccentButtonStyle}" />
-            </Grid>
-
             <muxc:Expander x:Name="CustomModelProvidersExpander"
                            Margin="0,4,0,0"
                            HorizontalAlignment="Stretch"
                            HorizontalContentAlignment="Stretch"
-                           IsExpanded="{x:Bind ViewModel.IsCustomModelProvidersExpanded, Mode=TwoWay}"
-                           Visibility="{x:Bind ViewModel.ShowCustomModelProvidersExpander, Mode=OneWay}">
+                           IsExpanded="{x:Bind ViewModel.IsCustomModelProvidersExpanded, Mode=TwoWay}">
                 <muxc:Expander.Header>
                     <Grid MinHeight="64">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="Auto" />
-                        </Grid.ColumnDefinitions>
-                        <StackPanel Grid.Column="0"
-                                    VerticalAlignment="Center">
+                        <StackPanel VerticalAlignment="Center">
                             <TextBlock x:Name="CustomModelsHeaderText"
                                        Style="{StaticResource SettingsPageItemHeaderStyle}" />
                             <TextBlock Style="{StaticResource CaptionTextBlockStyle}"
@@ -251,14 +239,11 @@
                                 </Hyperlink>
                             </TextBlock>
                         </StackPanel>
-                        <Button Grid.Column="1"
-                                x:Uid="AIAgents_CustomProviderAdd"
-                                VerticalAlignment="Center"
-                                Click="{x:Bind ViewModel.AddCustomModelProvider}"
-                                Style="{StaticResource AccentButtonStyle}" />
                     </Grid>
                 </muxc:Expander.Header>
-                <StackPanel>
+                <!--  Offset WinUI's default vertical Expander content padding so each
+                      provider and Add New occupy one visually centered row.  -->
+                <StackPanel Margin="0,-16,0,-16">
                     <TextBlock Margin="0,12,0,0"
                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                Text="{x:Bind ViewModel.CustomModelProviderUnsupportedMessage, Mode=OneWay}"
@@ -267,7 +252,9 @@
                     <ItemsControl ItemsSource="{x:Bind ViewModel.CustomModelProviders, Mode=OneWay}">
                         <ItemsControl.ItemTemplate>
                             <DataTemplate x:DataType="local:CustomModelProviderEntry">
-                                <Border Padding="0,4">
+                                <Border Padding="0,4"
+                                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                        BorderThickness="0,0,0,1">
                                     <Grid>
                                         <Grid.RowDefinitions>
                                             <RowDefinition Height="Auto" />
@@ -314,6 +301,14 @@
                             </DataTemplate>
                         </ItemsControl.ItemTemplate>
                     </ItemsControl>
+
+                    <Border Padding="0,4"
+                            Visibility="{x:Bind mtu:Converters.InvertedBooleanToVisibility(ViewModel.IsAddingCustomModelProvider), Mode=OneWay}">
+                        <Button x:Uid="AIAgents_CustomProviderAdd"
+                                HorizontalAlignment="Right"
+                                Click="{x:Bind ViewModel.AddCustomModelProvider}"
+                                Style="{StaticResource AccentButtonStyle}" />
+                    </Border>
 
                     <Border Padding="0,8,0,16"
                             Visibility="{x:Bind ViewModel.IsAddingCustomModelProvider, Mode=OneWay}">
@@ -421,91 +416,34 @@
                           MaxWidth="1000"
                           Severity="Informational"
                           Visibility="{x:Bind ViewModel.ShowGeminiYoloInfo, Mode=OneWay}" />
-            <!--  Automatic error detection (parent) + Automatic error
-                  suggestion (dependent child). Modeled as an Expander so the
-                  hierarchy is explicit: detection's master toggle lives in the
-                  always-visible header; suggestion is nested in the expand body
-                  and stays disabled until detection is on (ViewModel.
-                  CanSuggestErrors). Hand-built header (vs. ExpanderSetting
-                  ContainerStyle) because that style's header-right slot is a
-                  read-only text preview and can't host the master toggle.  -->
-            <muxc:Expander x:Name="AutoErrorDetectionExpander"
-                           Margin="0,4,0,0"
-                           HorizontalAlignment="Stretch"
-                           HorizontalContentAlignment="Stretch"
-                           IsExpanded="True">
-                <muxc:Expander.Header>
-                    <Grid MinHeight="64">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="Auto" />
-                        </Grid.ColumnDefinitions>
-                        <StackPanel Grid.Column="0"
-                                    VerticalAlignment="Center"
-                                    Spacing="2">
-                            <TextBlock x:Uid="AIAgents_AutoErrorDetectionTitle"
-                                       FontWeight="SemiBold"
-                                       TextWrapping="Wrap" />
-                            <!--  Caption hosts an inline Hyperlink to the full
-                                  supported-shells list, so it is built from
-                                  Run + Hyperlink populated in code-behind (RS_)
-                                  rather than a single x:Uid (x:Uid on inline Run
-                                  is not honored in this codebase). The muted
-                                  "secondary" foreground is applied only to the
-                                  prefix Run so the Hyperlink keeps its full theme
-                                  accent contrast (matches the page-subtitle
-                                  pattern above).  -->
-                            <TextBlock Style="{StaticResource CaptionTextBlockStyle}"
-                                       TextWrapping="Wrap">
-                                <Run x:Name="AutoErrorDetectionCaptionPrefix"
-                                     Foreground="{ThemeResource TextFillColorSecondaryBrush}" /><Hyperlink NavigateUri="https://aka.ms/intelligent-terminal-dependency#4-shell-integration">
-                                    <Run x:Name="AutoErrorDetectionCaptionLink" />
-                                </Hyperlink>
-                            </TextBlock>
-                        </StackPanel>
-                        <ToggleSwitch Grid.Column="1"
-                                      MinWidth="0"
-                                      VerticalAlignment="Center"
-                                      AutomationProperties.AccessibilityView="Content"
-                                      IsOn="{x:Bind ViewModel.AutoErrorDetectionEnabled, Mode=TwoWay}" />
-                    </Grid>
-                </muxc:Expander.Header>
-                <!--  Nested dependent setting: suggestion. Plain rows (no nested
-                      SettingContainer) so it sits inside the detection Expander
-                      body with no "card-in-card" background. Greyed out
-                      whenever detection is off or auto-fix is GPO-locked
-                      (ViewModel.CanSuggestErrors). Its On/Off reflects the
-                      user's own value and is independent of the detection
-                      toggle.  -->
-                <StackPanel Margin="0,4,0,0">
-                    <Grid>
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="Auto" />
-                        </Grid.ColumnDefinitions>
-                        <StackPanel Grid.Column="0"
-                                    VerticalAlignment="Center"
-                                    Spacing="2">
-                            <TextBlock x:Uid="AIAgents_AutoErrorSuggestionTitle"
-                                       TextWrapping="Wrap" />
-                            <TextBlock x:Uid="AIAgents_AutoErrorSuggestionCaption"
-                                       Style="{StaticResource CaptionTextBlockStyle}"
-                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                       TextWrapping="Wrap" />
-                        </StackPanel>
-                        <ToggleSwitch Grid.Column="1"
-                                      MinWidth="0"
-                                      VerticalAlignment="Center"
-                                      AutomationProperties.AccessibilityView="Content"
-                                      IsOn="{x:Bind ViewModel.AutoFixEnabled, Mode=TwoWay}"
-                                      IsEnabled="{x:Bind ViewModel.CanSuggestErrors, Mode=OneWay}" />
-                    </Grid>
-                    <TextBlock x:Uid="AIAgents_PolicyLocked"
-                               Visibility="{x:Bind ViewModel.IsAutoFixPolicyLocked, Mode=OneWay}"
-                               Opacity="0.6"
-                               Margin="0,4,0,0" />
-                </StackPanel>
-            </muxc:Expander>
+
+            <local:SettingContainer x:Name="AutoErrorHandling"
+                                    Style="{StaticResource AutoErrorHandlingSettingContainerStyle}">
+                <local:SettingContainer.Header>
+                    <StackPanel>
+                        <TextBlock x:Uid="AIAgents_AutoErrorHandlingTitle"
+                                   Style="{StaticResource SettingsPageItemHeaderStyle}"
+                                   TextWrapping="Wrap" />
+                        <TextBlock x:Uid="AIAgents_AutoErrorHandlingDescription"
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                   Style="{StaticResource CaptionTextBlockStyle}"
+                                   TextWrapping="Wrap" />
+                        <TextBlock x:Uid="AIAgents_PolicyLocked"
+                                   Visibility="{x:Bind ViewModel.IsAutoErrorHandlingPolicyRestricted, Mode=OneWay}"
+                                   Opacity="0.6"
+                                   Margin="0,4,0,0" />
+                    </StackPanel>
+                </local:SettingContainer.Header>
+                <Grid>
+                    <ComboBox x:Uid="AIAgents_AutoErrorHandlingComboBox"
+                              AutomationProperties.AccessibilityView="Content"
+                              Width="{StaticResource StandardBoxMinWidth}"
+                              ItemTemplate="{StaticResource AutoErrorHandlingComboBoxTemplate}"
+                              ItemsSource="{x:Bind ViewModel.AutoErrorHandlingList, Mode=OneWay}"
+                              SelectedItem="{x:Bind ViewModel.CurrentAutoErrorHandling, Mode=TwoWay}"
+                              Style="{StaticResource ComboBoxSettingStyle}" />
+                </Grid>
+            </local:SettingContainer>
 
             <local:SettingContainer x:Name="AgentSessionManagement"
                                     x:Uid="AIAgents_SessionManagement">

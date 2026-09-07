@@ -158,18 +158,14 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         void CancelCustomModelProvider();
         bool ShowDelegateModel();
         PERMANENT_OBSERVABLE_PROJECTED_SETTING(_GlobalSettings, DelegateModel);
-        bool AutoErrorDetectionEnabled() const;
-        void AutoErrorDetectionEnabled(bool value);
-        bool HasAutoErrorDetectionEnabled() const;
-        bool AutoFixEnabled() const;
-        void AutoFixEnabled(bool value);
-        bool HasAutoFixEnabled() const;
+        winrt::Windows::Foundation::Collections::IObservableVector<Editor::EnumEntry> AutoErrorHandlingList() const { return _autoErrorHandlingList; }
+        winrt::Windows::Foundation::IInspectable CurrentAutoErrorHandling();
+        void CurrentAutoErrorHandling(const winrt::Windows::Foundation::IInspectable& value);
         bool AgentSessionManagementEnabled() const;
         void AgentSessionManagementEnabled(bool value);
         bool HasAgentSessionManagementEnabled() const;
         bool CanConfigureAgentSessionManagement() const;
         PERMANENT_OBSERVABLE_PROJECTED_SETTING(_GlobalSettings, ShowTokenUsageAndCost);
-        bool CanSuggestErrors() const;
 
         bool AgentPaneYoloMode() const;
         void AgentPaneYoloMode(bool value);
@@ -180,7 +176,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         // GPO policy lock indicators
         bool IsAgentPolicyLocked() const { return _GlobalSettings.IsAgentPolicyLocked(); }
         bool IsCustomAgentPolicyLocked() const { return _GlobalSettings.IsCustomAgentPolicyLocked(); }
-        bool IsAutoFixPolicyLocked() const { return _GlobalSettings.IsAutoFixPolicyLocked(); }
+        bool IsAutoErrorHandlingPolicyRestricted() const { return _GlobalSettings.IsAutoFixPolicyLocked(); }
         bool IsAgentSessionHooksPolicyLocked() const { return _GlobalSettings.IsAgentSessionHooksPolicyLocked(); }
         bool IsYoloModePolicyLocked() const { return _GlobalSettings.IsYoloModePolicyLocked(); }
 
@@ -200,6 +196,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
 
         winrt::Windows::Foundation::Collections::IObservableVector<winrt::Microsoft::Terminal::Settings::Editor::EnumEntry> _agentPanePositionList;
         winrt::Windows::Foundation::Collections::IMap<winrt::hstring, winrt::Microsoft::Terminal::Settings::Editor::EnumEntry> _agentPanePositionMap;
+        winrt::Windows::Foundation::Collections::IObservableVector<Editor::EnumEntry> _autoErrorHandlingList;
 
         bool _isAddingCustomAcpAgent{ false };
         bool _isAddingCustomDelegateAgent{ false };

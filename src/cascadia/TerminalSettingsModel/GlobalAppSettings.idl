@@ -166,7 +166,7 @@ namespace Microsoft.Terminal.Settings.Model
         //   lists are filtered (dropdowns stay enabled, but show fewer options).
         // IsCustomAgentPolicyLocked: AllowCustomAgents is disabled.
         // IsAutoFixPolicyLocked / IsAgentSessionHooksPolicyLocked:
-        //   the corresponding toggle/button is disabled and forced off.
+        //   the corresponding option/button is unavailable.
         Boolean IsAgentPolicyLocked { get; };
         Boolean IsCustomAgentPolicyLocked { get; };
         Boolean IsAutoFixPolicyLocked { get; };
