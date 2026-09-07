@@ -1297,6 +1297,9 @@ impl Default for View {
 #[derive(Debug, Default, Clone)]
 pub struct AgentsViewState {
     pub snapshot: Option<Vec<crate::session_registry::SessionInfo>>,
+    pub(crate) ssh_source: Option<super::ssh_session_view::SshSessionsSource>,
+    pub(crate) ssh_error: Option<String>,
+    pub(crate) ssh_fetch: Option<tokio::task::AbortHandle>,
     pub focused_sid: Option<agent_client_protocol::schema::v1::SessionId>,
     pub search_query: String,
     pub search_focused: bool,

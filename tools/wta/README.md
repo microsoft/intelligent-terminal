@@ -72,6 +72,57 @@ Short aliases are supported: `lsw`, `lst`, `lsp`, `neww`, `splitw`, `capturep`,
 
 When `-t` (target pane) is omitted, the active pane is used automatically.
 
+### Agent sessions over SSH
+
+The existing Sessions view can browse an explicitly selected Linux SSH host
+without changing the agent that serves the current tab's chat:
+
+```text
+/sessions ssh dev@linux-host
+/sessions ssh work-alias -p 2222 --cli copilot
+/sessions
+```
+
+The SSH form defaults to the currently selected built-in agent. `--cli` selects
+another built-in agent for this history view, subject to the existing agent
+policy. Bare `/sessions` returns to the chat agent's normal Windows/WSL source.
+SSH history is isolated by destination, port, agent, and viewing tab; it is
+never merged into the local live-session registry. Typing `ssh` in a shell does
+not automatically change the Sessions source.
+
+The view shows the SSH destination above the list. Use the existing search and
+arrow keys, **F5** to fetch remote history again, and **Enter** to open a native
+Terminal tab running the remote agent's own resume command in the session's
+remote working directory. Remote history is fetched on entry and explicit
+refresh, not on local session-change broadcasts. Connection failures remain
+visible; a failed refresh keeps the last successful list rather than presenting
+an empty list as success.
+
+The same history is available without a running WTA master:
+
+```powershell
+wta sessions list --ssh dev@linux-host --cli copilot --json
+wta sessions list --ssh work-alias --port 2222 --cli copilot
+```
+
+Requirements and boundaries:
+
+- Windows OpenSSH uses the existing SSH configuration and keys. Establish a
+  normal SSH connection first to verify the host key and configure key/agent
+  authentication. Background listing uses batch authentication and strict host
+  key checking; it never accepts an unknown host or prompts for a password.
+- The remote host needs a POSIX login shell and an installed, authenticated
+  agent with ACP `session/list` support. Agents that use an ACP adapter retain
+  their usual adapter/runtime requirements. No remote WTA daemon, hooks, or
+  tmux installation is needed.
+- Listing is a read-only ACP connection: it does not create an agent
+  conversation, send a prompt, expose local terminal/file tools, or forward
+  the local session MCP endpoint or provider credentials.
+- Resume restores the agent's conversation history; it does **not** attach to
+  an already-running remote process or provide persistent SSH shell sessions.
+  Remote activity/liveness, hooks, and automatic detection of manually typed
+  SSH connections are not part of this first version.
+
 ### Protocol Discovery & Environment Setup
 
 WTA finds Windows Terminal via the `WT_COM_CLSID` environment variable, which

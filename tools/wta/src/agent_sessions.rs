@@ -170,11 +170,8 @@ pub enum SessionOrigin {
     AgentPane,
 }
 
-/// Where this session's on-disk artefacts live. `Host` = the Windows
-/// user profile (`%USERPROFILE%`); `Wsl` = inside a WSL distro's ext4
-/// `$HOME`. Used for the `/sessions` row prefix and to route resume
-/// back into the distro. Defaults to `Host`; only the WSL history
-/// scanner stamps `Wsl`.
+/// Where this session's artefacts live. Remote history keeps its execution
+/// identity so listing and resume never fall back to the Windows host.
 ///
 /// Serde-serializable so `SessionInfo` can carry it across the
 /// master→helper `sessions/list` wire boundary (the `/sessions` view
@@ -187,6 +184,9 @@ pub enum SessionLocation {
     Host,
     Wsl {
         distro: String,
+    },
+    Ssh {
+        target: crate::ssh_sessions::SshTarget,
     },
 }
 
@@ -203,7 +203,7 @@ impl SessionLocation {
     pub fn distro(&self) -> Option<&str> {
         match self {
             SessionLocation::Wsl { distro } => Some(distro.as_str()),
-            SessionLocation::Host => None,
+            SessionLocation::Host | SessionLocation::Ssh { .. } => None,
         }
     }
 }

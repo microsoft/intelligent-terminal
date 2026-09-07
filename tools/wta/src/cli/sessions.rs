@@ -11,6 +11,31 @@ pub(crate) async fn run_list(
 ) -> Result<()> {
     let local = tokio::task::LocalSet::new();
     let sessions = local.run_until(fetch_from_master(master_override)).await?;
+    print_sessions(sessions, origin_filter, json_mode)
+}
+
+pub(crate) async fn run_ssh_list(
+    target: &crate::ssh_sessions::SshTarget,
+    agent_id: &str,
+    origin_filter: crate::agent_sessions::OriginFilter,
+    json_mode: bool,
+) -> Result<()> {
+    let local = tokio::task::LocalSet::new();
+    let sessions = local
+        .run_until(crate::ssh_sessions::list_sessions(target, agent_id))
+        .await?;
+    let sessions = sessions
+        .iter()
+        .map(crate::session_registry::agent_session_to_session_info)
+        .collect();
+    print_sessions(sessions, origin_filter, json_mode)
+}
+
+fn print_sessions(
+    sessions: Vec<crate::session_registry::SessionInfo>,
+    origin_filter: crate::agent_sessions::OriginFilter,
+    json_mode: bool,
+) -> Result<()> {
     // Origin filter is applied client-side: master always returns the
     // full registry so this command can act as the debug eye-of-god
     // view (default `--origin all`). `--origin shell` matches what
@@ -221,11 +246,7 @@ fn format_table(sessions: &[crate::session_registry::SessionInfo]) -> String {
     ));
     for (i, session) in sessions.iter().enumerate() {
         let sid = session.session_id.to_string();
-        let short_sid = if sid.len() > 24 {
-            &sid[..24]
-        } else {
-            sid.as_str()
-        };
+        let short_sid: String = sid.chars().take(24).collect();
         out.push_str(&format!(
             "{:<4} {:<24} {:<10} {:<10} {:<10} {:<16} {:<20} {:<20} {}\n",
             i + 1,
@@ -275,11 +296,14 @@ fn origin_label(origin: Option<&crate::agent_sessions::SessionOrigin>) -> &'stat
 
 /// Render a `SessionLocation` for the `wta sessions list` table: `host`
 /// for Windows-profile sessions, `wsl:<distro>` for sessions discovered
-/// inside a WSL distro.
+/// inside a WSL distro, and `ssh:<destination>` for remote history.
 fn location_label(location: &crate::agent_sessions::SessionLocation) -> String {
     match location {
         crate::agent_sessions::SessionLocation::Host => "host".to_string(),
         crate::agent_sessions::SessionLocation::Wsl { distro } => format!("wsl:{distro}"),
+        crate::agent_sessions::SessionLocation::Ssh { target } => {
+            format!("ssh:{}", target.display_name())
+        }
     }
 }
 
@@ -409,14 +433,67 @@ mod tests {
         wsl.location = crate::agent_sessions::SessionLocation::Wsl {
             distro: "Ubuntu".into(),
         };
+        let mut ssh = crate::session_registry::SessionInfo::new(
+            acp::schema::v1::SessionId::new("sid-ssh"),
+            std::path::PathBuf::from("/home/remote"),
+        );
+        ssh.location = crate::agent_sessions::SessionLocation::Ssh {
+            target: crate::ssh_sessions::SshTarget::new("User@Alias", Some(2222)).unwrap(),
+        };
 
-        let out = format_table(&[host, wsl]);
+        let out = format_table(&[host, wsl, ssh]);
         assert!(out.contains("LOCATION"), "LOCATION header present: {out}");
         assert!(out.contains("host"), "host location label present: {out}");
         assert!(
             out.contains("wsl:Ubuntu"),
             "wsl distro label present: {out}"
         );
+        assert!(
+            out.contains("ssh:User@Alias:2222"),
+            "SSH label present: {out}"
+        );
+    }
+
+    #[test]
+    fn remote_session_json_preserves_location_and_existing_session_info_shape() {
+        let target = crate::ssh_sessions::SshTarget::new("Alias", None).unwrap();
+        let raw = acp::schema::v1::SessionInfo::new(
+            acp::schema::v1::SessionId::new("remote-id"),
+            std::path::PathBuf::from("/remote/repo"),
+        );
+        let agent = crate::session_history::acp_session_to_agent_session(
+            &raw,
+            crate::agent_sessions::SessionLocation::Ssh {
+                target: target.clone(),
+            },
+            &crate::agent_sessions::CliSource::Copilot,
+        );
+        let row = crate::session_registry::agent_session_to_session_info(&agent);
+        let json = format_json_lines(&[row]).unwrap();
+        let parsed: crate::session_registry::SessionInfo =
+            serde_json::from_str(json.trim()).unwrap();
+        assert_eq!(parsed.session_id.to_string(), "remote-id");
+        assert_eq!(
+            parsed.location,
+            crate::agent_sessions::SessionLocation::Ssh { target }
+        );
+        assert_eq!(
+            parsed.cli_source,
+            Some(crate::agent_sessions::CliSource::Copilot)
+        );
+        assert!(parsed.pane_session_id.is_none());
+        assert_eq!(parsed.cwd, std::path::PathBuf::from("/remote/repo"));
+    }
+
+    #[test]
+    fn table_truncates_unicode_session_ids_without_splitting_utf8() {
+        let row = crate::session_registry::SessionInfo::new(
+            acp::schema::v1::SessionId::new("é".repeat(30)),
+            std::path::PathBuf::from("/remote/repo"),
+        );
+        let output = format_table(&[row]);
+        assert!(output.contains(&"é".repeat(24)));
+        assert!(!output.contains(&"é".repeat(25)));
     }
 
     #[test]
