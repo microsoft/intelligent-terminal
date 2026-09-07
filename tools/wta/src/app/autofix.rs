@@ -415,7 +415,7 @@ impl App {
                 requested_pane_id,
                 requested_tab_id,
                 active_tab,
-                "ignoring detected Autofix action with missing target or wrong tab"
+                "ignoring detected Autofix action: target is missing or tab does not match"
             );
             return;
         }
