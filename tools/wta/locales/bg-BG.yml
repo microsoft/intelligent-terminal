@@ -241,4 +241,5 @@ config_picker.title: "Конфигурация на сесията (↑ ↓ • 
 system.no_config_options: "Свързаният агент не е обявил опции за сесия, които могат да се конфигурират."
 # {option} is an Agent-provided option name; {error} is the ACP error.
 system.config_update_failed: "Актуализирането на %{option} беше неуспешно: %{error}"
+system.provider_command_blocked_by_policy: "%{command}: Режимът Yolo е забранен от политиката на вашата организация."  # {Locked="Yolo","%{command}"} Shown when AllowYoloMode blocks a provider-advertised privileged command.
 system.model_unknown: "Неизвестен модел %{model} — въведете /model, за да видите наличния списък."  # {Locked="%{model}","/model"}

@@ -3,7 +3,7 @@ use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ratatui::backend::CrosstermBackend;
 use ratatui::prelude::*;
 use serde::{Deserialize, Serialize};
-use std::collections::{HashMap, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::io;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -17,7 +17,6 @@ struct DeferredAcpParams {
     agent_source: crate::agent_source::AgentSource,
     source_cwd: Option<String>,
     prompt_rx: Option<mpsc::UnboundedReceiver<crate::protocol::acp::client::PromptSubmission>>,
-    cancel_rx: Option<mpsc::UnboundedReceiver<crate::protocol::acp::client::CancelRequest>>,
     new_session_rx: Option<mpsc::UnboundedReceiver<crate::protocol::acp::client::NewSessionForTab>>,
     load_session_rx:
         Option<mpsc::UnboundedReceiver<crate::protocol::acp::client::LoadSessionForTab>>,
@@ -136,8 +135,8 @@ use crate::coordinator::{recommended_choice_index, RecommendationChoice, Recomme
 use crate::pane_context::PaneContext;
 
 use crate::protocol::acp::client::{
-    AgentLifecycleRequest, AgentReconnectRequest, CancelRequest, DropSessionRequest,
-    LoadSessionForTab, NewSessionForTab, PromptSubmission, RenameSessionRequest,
+    AgentLifecycleRequest, AgentReconnectRequest, DropSessionRequest, LoadSessionForTab,
+    NewSessionForTab, PromptSubmission, RenameSessionRequest,
 };
 use crate::protocol::acp::turn_metrics::prompt_timing_log;
 use crate::ui;
@@ -1008,6 +1007,11 @@ pub struct App {
     /// had already closed. The replacement-master readiness event must start
     /// a fresh pipe client because no transport disconnect remains to do so.
     restart_without_acp_pending: bool,
+    /// Unexpected transport loss resets App state immediately, but a
+    /// replacement client must not start until the old client confirms that
+    /// its transport, prompt tasks, and queued submissions are retired.
+    reconnect_after_transport_retired: bool,
+    agent_transport_retirement_pending: bool,
     /// Agent ID selected by user (FRE/preflight) — sent to C++ once connected.
     pending_agent_selection: Option<String>,
     /// Show first-run welcome hint until user sends first message.
@@ -1068,7 +1072,6 @@ pub struct App {
     prompt_tx: mpsc::UnboundedSender<PromptSubmission>,
     recommendation_tx: mpsc::UnboundedSender<crate::coordinator::ChoiceExecution>,
     permission_tx: mpsc::UnboundedSender<String>,
-    cancel_tx: mpsc::UnboundedSender<CancelRequest>,
     new_session_tx: mpsc::UnboundedSender<NewSessionForTab>,
     load_session_tx: mpsc::UnboundedSender<LoadSessionForTab>,
     drop_session_tx: mpsc::UnboundedSender<DropSessionRequest>,
@@ -1078,6 +1081,13 @@ pub struct App {
     debug_capture_enabled: Arc<AtomicBool>,
     /// Cached for creating DeferredAcpParams after auth-error recovery.
     shell_mgr: Arc<crate::shell::ShellManager>,
+    /// Global provider-native Yolo preference, set at startup from
+    /// `--yolo-mode`. Helper-owned policy is shared with the ACP client and
+    /// the global default is hot-updatable.
+    yolo_state: crate::app_contracts::SharedYoloState,
+    next_yolo_reconcile_id: u64,
+    pending_yolo_reconciles: HashMap<u64, (HashSet<String>, bool)>,
+    pending_yolo_session_tabs: HashSet<String>,
     // Slash-command UI state. The /help overlay is global — it covers
     // the chat area regardless of which tab is active. Per-tab popup
     // state (the command-completion candidates as the user types `/he…`)
@@ -1338,7 +1348,6 @@ impl App {
         prompt_tx: mpsc::UnboundedSender<PromptSubmission>,
         recommendation_tx: mpsc::UnboundedSender<crate::coordinator::ChoiceExecution>,
         permission_tx: mpsc::UnboundedSender<String>,
-        cancel_tx: mpsc::UnboundedSender<CancelRequest>,
         new_session_tx: mpsc::UnboundedSender<NewSessionForTab>,
         load_session_tx: mpsc::UnboundedSender<LoadSessionForTab>,
         drop_session_tx: mpsc::UnboundedSender<DropSessionRequest>,
@@ -1349,6 +1358,7 @@ impl App {
         wt_connected: bool,
         autofix_enabled: bool,
         shell_mgr: Arc<crate::shell::ShellManager>,
+        yolo_state: crate::app_contracts::SharedYoloState,
     ) -> Self {
         let mut tab_sessions = HashMap::new();
         tab_sessions.insert(DEFAULT_TAB_ID.to_string(), TabSession::default());
@@ -1362,6 +1372,8 @@ impl App {
             auth_recovery_generation: 0,
             auth_recovery_state: AuthRecoveryState::Idle,
             restart_without_acp_pending: false,
+            reconnect_after_transport_retired: false,
+            agent_transport_retirement_pending: false,
             pending_agent_selection: None,
             show_welcome_hint: false,
             deferred_acp: None,
@@ -1396,7 +1408,6 @@ impl App {
             prompt_tx,
             recommendation_tx,
             permission_tx,
-            cancel_tx,
             new_session_tx,
             load_session_tx,
             drop_session_tx,
@@ -1404,6 +1415,9 @@ impl App {
             restart_tx,
             master_request_tx,
             debug_capture_enabled,
+            next_yolo_reconcile_id: 0,
+            pending_yolo_reconciles: HashMap::new(),
+            pending_yolo_session_tabs: HashSet::new(),
             help_overlay_visible: false,
             debug_messages: Vec::new(),
             show_debug_panel: false,
@@ -1456,6 +1470,7 @@ impl App {
                 crate::agent_tools::action_proposal::channel::ProposalChannelManager::new(),
             ),
             shell_mgr,
+            yolo_state,
         }
     }
 
@@ -1507,7 +1522,6 @@ impl App {
             agent_source,
             source_cwd,
             prompt_rx: None,
-            cancel_rx: None,
             new_session_rx: None,
             load_session_rx: None,
             drop_session_rx: None,
@@ -1519,6 +1533,7 @@ impl App {
             master_pipe_name: Some(pipe_name),
             owner_tab_id,
         });
+        self.agent_transport_retirement_pending = true;
     }
 
     /// Try to start the ACP client if login just completed.
@@ -1565,7 +1580,6 @@ impl App {
             // Also update all sender fields on self so the App routes to the new ACP client.
             if params.prompt_rx.is_none() {
                 let (ptx, prx) = mpsc::unbounded_channel();
-                let (ctx, crx) = mpsc::unbounded_channel();
                 let (ntx, nrx) = mpsc::unbounded_channel();
                 let (ltx, lrx) = mpsc::unbounded_channel();
                 let (dtx, drx) = mpsc::unbounded_channel();
@@ -1573,7 +1587,6 @@ impl App {
                 let (rtx, rrx) = mpsc::unbounded_channel();
                 let (mtx, mrx) = mpsc::unbounded_channel();
                 self.prompt_tx = ptx;
-                self.cancel_tx = ctx;
                 self.new_session_tx = ntx;
                 self.load_session_tx = ltx;
                 self.drop_session_tx = dtx;
@@ -1581,7 +1594,6 @@ impl App {
                 self.restart_tx = rtx;
                 self.master_request_tx = mtx;
                 params.prompt_rx = Some(prx);
-                params.cancel_rx = Some(crx);
                 params.new_session_rx = Some(nrx);
                 params.load_session_rx = Some(lrx);
                 params.drop_session_rx = Some(drx);
@@ -1592,7 +1604,6 @@ impl App {
 
             if let (
                 Some(prompt_rx),
-                Some(cancel_rx),
                 Some(new_session_rx),
                 Some(load_session_rx),
                 Some(drop_session_rx),
@@ -1601,7 +1612,6 @@ impl App {
                 Some(master_ext_rx),
             ) = (
                 params.prompt_rx.take(),
-                params.cancel_rx.take(),
                 params.new_session_rx.take(),
                 params.load_session_rx.take(),
                 params.drop_session_rx.take(),
@@ -1618,6 +1628,7 @@ impl App {
                 let wt_connected = params.wt_connected;
                 let pipe_name_opt = params.master_pipe_name.clone();
                 let owner_tab_opt = params.owner_tab_id.clone();
+                let yolo_state = Arc::clone(&self.yolo_state);
                 // Per-tab agent identity for the multi-agent master. Prefer
                 // the canonical host-supplied id; command parsing is retained
                 // for compatibility with older deferred state.
@@ -1654,6 +1665,7 @@ impl App {
                     let pending_load_sid = pending_load.as_ref().map(|p| p.session_id.clone());
                     let event_tx_for_pipe = event_tx.clone();
                     let proposal_channels = Arc::clone(&self.proposal_channels);
+                    self.agent_transport_retirement_pending = true;
                     tokio::task::spawn_local(async move {
                         match crate::protocol::acp::client::run_acp_client_over_pipe(
                             pipe_name,
@@ -1671,9 +1683,9 @@ impl App {
                             // "Resuming session …" and still projecting the
                             // session id the restore asked for.
                             pending_load_sid,
+                            yolo_state,
                             event_tx_for_pipe.clone(),
                             prompt_rx,
-                            cancel_rx,
                             new_session_rx,
                             load_session_rx,
                             drop_session_rx,
@@ -1764,8 +1776,12 @@ impl App {
                             session_id = %request.session_id,
                             "re-issuing pending session load onto the reconnected client"
                         );
-                        let _ = self.load_session_tx.send(request);
-                        self.pending_session_load = None;
+                        if self.load_session_tx.send(request).is_err() {
+                            tracing::warn!(
+                                target: "acp_load_session",
+                                "reconnected client rejected pending session load; retaining it for the next reconnect"
+                            );
+                        }
                     }
                 } else {
                     // Unreachable in the shipped product: wta only runs as a
@@ -2403,26 +2419,52 @@ impl App {
                 self.config_picker_escape();
                 return;
             }
+            if self.yolo_reconcile_pending_for_tab(self.active_tab_key()) {
+                let tab = self.current_tab_mut();
+                tab.messages
+                    .push(ChatMessage::warning(t!("system.agent_busy").into_owned()));
+                tab.scroll_to_bottom();
+                return;
+            }
 
             let session_id = self.current_tab().session_id.clone();
             let config_id = option.id.clone();
             let value_id = value.id.clone();
+            let native_yolo = option.native_yolo;
             if let Some(session_id) = session_id {
-                let tab = self.current_tab_mut();
-                if tab.config_pending_id.is_some() {
-                    return;
+                {
+                    let tab = self.current_tab_mut();
+                    if tab.config_pending_id.is_some() {
+                        return;
+                    }
+                    tab.config_pending_id = Some(config_id.clone());
+                    tab.native_yolo_config_pending = native_yolo;
+                    tab.config_picker = parent_selected
+                        .map(|selected| ConfigPickerState::Options { selected })
+                        .unwrap_or(ConfigPickerState::Closed);
                 }
-                tab.config_pending_id = Some(config_id.clone());
-                tab.config_picker = parent_selected
-                    .map(|selected| ConfigPickerState::Options { selected })
-                    .unwrap_or(ConfigPickerState::Closed);
-                let _ = self.master_request_tx.send(
-                    crate::protocol::acp::client::MasterExtRequest::SetSessionConfigOption {
-                        session_id: agent_client_protocol::schema::v1::SessionId::new(session_id),
-                        config_id,
-                        value: value_id,
-                    },
-                );
+                if self
+                    .master_request_tx
+                    .send(
+                        crate::protocol::acp::client::MasterExtRequest::SetSessionConfigOption {
+                            session_id: agent_client_protocol::schema::v1::SessionId::new(
+                                session_id,
+                            ),
+                            config_id: config_id.clone(),
+                            value: value_id,
+                        },
+                    )
+                    .is_err()
+                {
+                    let tab = self.current_tab_mut();
+                    if tab.config_pending_id.as_deref() == Some(config_id.as_str()) {
+                        tab.config_pending_id = None;
+                        tab.native_yolo_config_pending = false;
+                    }
+                    tab.messages
+                        .push(ChatMessage::Error(t!("connection.lost").into_owned()));
+                    tab.scroll_to_bottom();
+                }
             }
             return;
         }
@@ -3531,11 +3573,13 @@ impl App {
         self.acp_model.clone_from(&request.acp_model);
         self.custom_model_selection
             .clone_from(&request.custom_model_selection);
+        self.pending_session_load = None;
         self.reset_agent_scoped_state();
     }
 
     fn reset_agent_scoped_state(&mut self) {
         self.pending_acp_start = false;
+        self.reconnect_after_transport_retired = false;
         self.pending_agent_selection = None;
         self.suppress_next_failed_client_error = false;
         self.needs_post_login_authenticate = false;
@@ -3560,9 +3604,13 @@ impl App {
         self.session_model_configs.clear();
         self.session_config_options.clear();
         self.session_commands.clear();
+        self.yolo_state.lock().unwrap().clear_sessions();
+        self.pending_yolo_reconciles.clear();
+        self.pending_yolo_session_tabs.clear();
         let active_tab_id = self.active_tab_key().to_string();
         for tab in self.tab_sessions.values_mut() {
             tab.clear_chat_history();
+            tab.invalidate_active_prompt_attachment();
             tab.usage = None;
             tab.usage_staleness = crate::usage::UsageStaleness::default();
             tab.clear_completed_turns();
@@ -3583,6 +3631,7 @@ impl App {
             tab.model_picker_selected = 0;
             tab.config_picker = ConfigPickerState::Closed;
             tab.config_pending_id = None;
+            tab.native_yolo_config_pending = false;
             tab.agent_picker_open = false;
             tab.agent_picker_selected = 0;
             tab.pending_terminal_action_proposal = None;
@@ -3603,12 +3652,34 @@ impl App {
         self.publish_agent_status();
     }
 
+    fn pending_session_load_for_reconnect(&self) -> Option<(LoadSessionForTab, Option<bool>)> {
+        let pending = self.pending_session_load.as_ref()?;
+        let tab = self.tab_sessions.get(&pending.tab_id)?;
+        (tab.loading_session
+            && tab.loading_target_session_id.as_deref() == Some(pending.session_id.as_str()))
+        .then(|| (pending.clone(), tab.meaningful_conversation_before_load))
+    }
+
+    fn restore_pending_session_load(
+        &mut self,
+        pending: LoadSessionForTab,
+        prior_meaningful: Option<bool>,
+    ) {
+        self.pending_session_load = Some(pending.clone());
+        let tab = self.tab_mut(&pending.tab_id);
+        tab.loading_session = true;
+        tab.loading_target_session_id = Some(pending.session_id);
+        tab.has_meaningful_conversation = true;
+        tab.meaningful_conversation_before_load = prior_meaningful;
+    }
+
     fn begin_pending_agent_reconnect_preflight(&mut self) -> Option<AgentReconnectRequest> {
         let AgentReconnectState::Disconnecting(latest) =
             std::mem::take(&mut self.agent_reconnect_state)
         else {
             return None;
         };
+        self.pending_session_load = None;
         self.reset_agent_scoped_state();
         self.agent_reconnect_state = AgentReconnectState::Preflighting(latest.clone());
         if let Some(tx) = self.event_tx.clone() {
@@ -4106,6 +4177,57 @@ impl App {
         })
     }
 
+    fn current_tab_for_session(&self, session_id: &str) -> Option<String> {
+        self.tab_sessions
+            .iter()
+            .find_map(|(tab_id, tab)| {
+                (tab.loading_session
+                    && tab.loading_target_session_id.as_deref() == Some(session_id))
+                .then(|| tab_id.clone())
+            })
+            .or_else(|| {
+                self.bound_tab_for_session(session_id).filter(|tab_id| {
+                    self.tab_sessions.get(tab_id).is_some_and(|tab| {
+                        !tab.loading_session && tab.session_id.as_deref() == Some(session_id)
+                    })
+                })
+            })
+    }
+
+    fn session_tab_mut_if_current(&mut self, session_id: &str) -> Option<&mut TabSession> {
+        let tab_id = self.current_tab_for_session(session_id)?;
+        self.tab_sessions.get_mut(&tab_id)
+    }
+
+    /// Resolve a terminal prompt event without falling back to the active tab.
+    /// A retired session may still release its exact cancellation barrier, but
+    /// it is no longer allowed to mutate the replacement session on that tab.
+    fn terminal_event_tab_for_session(&self, session_id: &str) -> Option<(String, bool)> {
+        if let Some(tab_id) = self.bound_tab_for_session(session_id) {
+            let is_current = self
+                .tab_sessions
+                .get(&tab_id)
+                .is_some_and(|tab| tab.session_id.as_deref() == Some(session_id));
+            if is_current {
+                return Some((tab_id, true));
+            }
+        }
+
+        self.tab_sessions.iter().find_map(|(tab_id, tab)| {
+            let prompt_id = match &tab.turn {
+                TurnState::Cancelling { prompt_id } => *prompt_id,
+                _ => return None,
+            };
+            tab.active_prompt_cancellation
+                .as_ref()
+                .is_some_and(|active| {
+                    active.prompt_id == prompt_id
+                        && active.session_id.as_deref() == Some(session_id)
+                })
+                .then(|| (tab_id.clone(), false))
+        })
+    }
+
     /// Mutable view of the tab that owns the given session id. Lazily
     /// creates the `TabSession` if missing.
     pub fn session_tab_mut(&mut self, session_id: &str) -> &mut TabSession {
@@ -4307,6 +4429,7 @@ impl App {
             AppEvent::UsageReported { .. } => "usage_reported",
             AppEvent::UsageCleared { .. } => "usage_cleared",
             AppEvent::ModelConfigUpdated { .. } => "model_config_updated",
+            AppEvent::RuntimeYoloReconcileCompleted { .. } => "runtime_yolo_reconcile_completed",
             AppEvent::ModelSetCompleted { .. } => "model_set_completed",
             AppEvent::ModelSetFailed { .. } => "model_set_failed",
             AppEvent::SessionConfigUpdated { .. } => "session_config_updated",
@@ -4314,6 +4437,7 @@ impl App {
             AppEvent::SessionConfigSetCompleted { .. } => "session_config_set_completed",
             AppEvent::SessionConfigSetFailed { .. } => "session_config_set_failed",
             AppEvent::TabError { .. } => "tab_error",
+            AppEvent::PromptError { .. } => "prompt_error",
             AppEvent::TabSystemMessage { .. } => "tab_system_message",
             AppEvent::AgentPasteTextReady { .. } => "agent_paste_text_ready",
             AppEvent::AgentPasteTextFailed { .. } => "agent_paste_text_failed",
@@ -4321,6 +4445,7 @@ impl App {
             AppEvent::PromptTargetResolved { .. } => "prompt_target_resolved",
             AppEvent::AgentError { .. } => "agent_error",
             AppEvent::MasterDisconnected => "master_disconnected",
+            AppEvent::AgentTransportRetired => "agent_transport_retired",
             AppEvent::AgentSoftStop { .. } => "agent_soft_stop",
             AppEvent::AgentBusy { .. } => "agent_busy",
             AppEvent::TabRenamed { .. } => "tab_renamed",
@@ -4329,6 +4454,7 @@ impl App {
             AppEvent::AgentMessageChunk { .. } => "agent_message_chunk",
             AppEvent::UserMessageReplayChunk { .. } => "user_message_replay_chunk",
             AppEvent::AgentMessageEnd { .. } => "agent_message_end",
+            AppEvent::PromptCancellationSettled { .. } => "prompt_cancellation_settled",
             AppEvent::TimingMetric { .. } => "timing_metric",
             AppEvent::ToolCall { .. } => "tool_call",
             AppEvent::ToolCallUpdate { .. } => "tool_call_update",
@@ -5277,6 +5403,8 @@ impl App {
     /// for clearing the input and cursor before calling this.
     fn handle_slash_command(&mut self, cmd: ParsedCommand) {
         let in_flight = self.current_tab().turn.is_in_flight();
+        let cancelling = self.current_tab().turn.is_cancelling();
+        let prompt_blocked = !self.current_tab().turn.accepts_new_prompt();
         crate::telemetry::log_slash_command_invoked(cmd.spec.name);
         tracing::info!(
             target: "slash_cmd",
@@ -5291,9 +5419,9 @@ impl App {
         match cmd.kind {
             CommandKind::Help => self.cmd_help(),
             CommandKind::Clear => self.cmd_clear(),
-            CommandKind::Stop => self.cmd_stop(in_flight),
-            CommandKind::New => self.cmd_new(in_flight),
-            CommandKind::Fix => self.cmd_fix(in_flight, cmd.rest),
+            CommandKind::Stop => self.cmd_stop(in_flight, cancelling),
+            CommandKind::New => self.cmd_new(prompt_blocked),
+            CommandKind::Fix => self.cmd_fix(prompt_blocked, cmd.rest),
             CommandKind::Sessions => self.cmd_sessions(),
             CommandKind::Restart => self.cmd_restart(),
             CommandKind::Agent => self.cmd_agent(cmd.rest),
@@ -5319,19 +5447,19 @@ impl App {
     /// `/stop` — cancel the in-flight turn, or note that there is nothing to
     /// stop. `in_flight` is the active tab's turn state, captured by the
     /// dispatcher before any mutation.
-    fn cmd_stop(&mut self, in_flight: bool) {
-        if in_flight {
-            let session_id = self.current_tab().session_id.clone();
-            if let Some(sid) = session_id.clone() {
-                let _ = self.cancel_tx.send(CancelRequest { session_id: sid });
+    fn cmd_stop(&mut self, in_flight: bool, cancelling: bool) {
+        if in_flight || cancelling {
+            let tab_id = self
+                .tab_id
+                .clone()
+                .unwrap_or_else(|| DEFAULT_TAB_ID.to_string());
+            self.request_turn_cancel_for_tab(&tab_id);
+            if !cancelling {
+                let tab = self.current_tab_mut();
+                tab.messages
+                    .push(ChatMessage::success(t!("system.cancelled").into_owned()));
+                tab.scroll_to_bottom();
             }
-            if let Some(sid) = session_id {
-                self.turn_cancel(&sid);
-            }
-            let tab = self.current_tab_mut();
-            tab.messages
-                .push(ChatMessage::success(t!("system.cancelled").into_owned()));
-            tab.scroll_to_bottom();
         } else {
             let tab = self.current_tab_mut();
             tab.messages.push(ChatMessage::info(
@@ -5343,8 +5471,8 @@ impl App {
 
     /// `/new` — start a fresh session on the active tab. Refuses while a turn
     /// is in flight (the user should `/stop` first).
-    fn cmd_new(&mut self, in_flight: bool) {
-        if in_flight {
+    fn cmd_new(&mut self, prompt_blocked: bool) {
+        if prompt_blocked {
             let tab = self.current_tab_mut();
             tab.messages.push(ChatMessage::warning(
                 t!("system.busy_use_stop").into_owned(),
@@ -5356,10 +5484,25 @@ impl App {
             .tab_id
             .clone()
             .unwrap_or_else(|| DEFAULT_TAB_ID.to_string());
-        let _ = self.new_session_tx.send(NewSessionForTab {
+        if self
+            .pending_session_load
+            .as_ref()
+            .is_some_and(|pending| pending.tab_id == tab_id)
+        {
+            self.pending_session_load = None;
+        }
+        let request = NewSessionForTab {
             tab_id: tab_id.clone(),
             cwd: self.source_cwd.clone(),
-        });
+        };
+        if self.new_session_tx.send(request).is_err() {
+            let tab = self.current_tab_mut();
+            tab.messages
+                .push(ChatMessage::Error(t!("connection.lost").into_owned()));
+            tab.scroll_to_bottom();
+            return;
+        }
+        self.pending_yolo_session_tabs.insert(tab_id.clone());
         if let Some(session_id) = self.current_tab().session_id.clone() {
             self.session_model_configs.remove(&session_id);
             self.session_config_options.remove(&session_id);
@@ -5370,12 +5513,18 @@ impl App {
         tab.usage = None;
         tab.usage_staleness = crate::usage::UsageStaleness::default();
         tab.clear_completed_turns();
-        tab.session_id = None;
+        tab.config_picker = ConfigPickerState::Closed;
+        tab.config_pending_id = None;
+        tab.native_yolo_config_pending = false;
+        let old_sid = tab.session_id.take();
         tab.has_meaningful_conversation = false;
         tab.meaningful_conversation_before_load = None;
         tab.loading_session = false;
         tab.loading_target_session_id = None;
         tab.scroll_to_bottom();
+        if let Some(old_sid) = old_sid {
+            self.clear_yolo_session_state(&old_sid);
+        }
         self.project_tab_state(&tab_id);
     }
 
@@ -5410,6 +5559,13 @@ impl App {
             .tab_id
             .clone()
             .unwrap_or_else(|| DEFAULT_TAB_ID.to_string());
+        if self.prompt_reconfiguration_pending_for_tab(&target_tab_id) {
+            let tab = self.tab_mut(&target_tab_id);
+            tab.messages
+                .push(ChatMessage::warning(t!("system.agent_busy").into_owned()));
+            tab.scroll_to_bottom();
+            return;
+        }
 
         // Bump generation so any stale in-flight autofix response is dropped,
         // and clear a leftover suggestion — mirrors `maybe_trigger_autofix`.
@@ -5451,7 +5607,11 @@ impl App {
             has_hint = !hint.is_empty(),
             "dispatching /fix",
         );
-        self.turn_submit_prompt_for_tab(&target_tab_id, submitted);
+        self.turn_submit_prompt_for_tab_with_cancellation(
+            &target_tab_id,
+            submitted,
+            prompt.cancellation_token(),
+        );
         let _ = self.prompt_tx.send(prompt);
     }
 
@@ -5539,11 +5699,140 @@ impl App {
         self.project_active_tab_state();
     }
 
+    pub(crate) fn apply_runtime_yolo_config(
+        &mut self,
+        global_default: Option<bool>,
+        policy_blocked: Option<bool>,
+    ) {
+        if global_default.is_none() && policy_blocked.is_none() {
+            return;
+        }
+
+        let (current_global, current_blocked) = {
+            let state = self.yolo_state.lock().unwrap();
+            (state.global_default(), state.policy_blocked())
+        };
+        let global_default = global_default.unwrap_or(current_global);
+        let policy_blocked = policy_blocked.unwrap_or(current_blocked);
+        if global_default == current_global && policy_blocked == current_blocked {
+            return;
+        }
+
+        {
+            let mut state = self.yolo_state.lock().unwrap();
+            state.update_runtime(global_default, policy_blocked);
+        }
+
+        let sessions = {
+            let state = self.yolo_state.lock().unwrap();
+            self.session_to_tab
+                .iter()
+                .filter(|(_, tab_id)| !self.pending_yolo_session_tabs.contains(*tab_id))
+                .map(|(session_id, _)| {
+                    (
+                        agent_client_protocol::schema::v1::SessionId::new(session_id.clone()),
+                        state.effective(session_id),
+                    )
+                })
+                .collect::<Vec<_>>()
+        };
+        let fail_closed = policy_blocked || sessions.iter().any(|(_, enabled)| !enabled);
+        let reconcile_id = self.begin_yolo_reconcile(&sessions, fail_closed);
+        let sent = self.master_request_tx.send(
+            crate::protocol::acp::client::MasterExtRequest::ReconcileSessionYolo {
+                reconcile_id,
+                sessions,
+                fail_closed,
+            },
+        );
+        if sent.is_err() {
+            if fail_closed {
+                let _ = self.restart_tx.send(AgentLifecycleRequest::RestartMaster);
+            } else {
+                self.pending_yolo_reconciles.remove(&reconcile_id);
+            }
+        }
+    }
+
+    fn reconcile_session_yolo(&mut self, session_id: &str) {
+        let enabled = self.yolo_state.lock().unwrap().effective(session_id);
+        let fail_closed = !enabled;
+        let sessions = vec![(
+            agent_client_protocol::schema::v1::SessionId::new(session_id.to_string()),
+            enabled,
+        )];
+        let reconcile_id = self.begin_yolo_reconcile(&sessions, fail_closed);
+        let sent = self.master_request_tx.send(
+            crate::protocol::acp::client::MasterExtRequest::ReconcileSessionYolo {
+                reconcile_id,
+                sessions,
+                fail_closed,
+            },
+        );
+        if sent.is_err() {
+            if fail_closed {
+                let _ = self.restart_tx.send(AgentLifecycleRequest::RestartMaster);
+            } else {
+                self.pending_yolo_reconciles.remove(&reconcile_id);
+            }
+        }
+    }
+
+    fn begin_yolo_reconcile(
+        &mut self,
+        sessions: &[(agent_client_protocol::schema::v1::SessionId, bool)],
+        fail_closed: bool,
+    ) -> u64 {
+        self.next_yolo_reconcile_id = self.next_yolo_reconcile_id.wrapping_add(1);
+        let reconcile_id = self.next_yolo_reconcile_id;
+        let session_ids = sessions
+            .iter()
+            .map(|(session_id, _)| session_id.to_string())
+            .collect::<HashSet<_>>();
+        if !session_ids.is_empty() {
+            self.pending_yolo_reconciles
+                .insert(reconcile_id, (session_ids, fail_closed));
+        }
+        reconcile_id
+    }
+
+    fn yolo_reconcile_pending_for_tab(&self, tab_id: &str) -> bool {
+        if self.pending_yolo_session_tabs.contains(tab_id) {
+            return true;
+        }
+        self.tab_sessions
+            .get(tab_id)
+            .and_then(|tab| tab.session_id.as_deref())
+            .is_some_and(|session_id| {
+                self.pending_yolo_reconciles
+                    .values()
+                    .any(|(sessions, _)| sessions.contains(session_id))
+            })
+    }
+
+    fn prompt_reconfiguration_pending_for_tab(&self, tab_id: &str) -> bool {
+        self.yolo_reconcile_pending_for_tab(tab_id)
+            || self
+                .tab_sessions
+                .get(tab_id)
+                .is_some_and(|tab| tab.native_yolo_config_pending)
+    }
+
+    fn clear_yolo_session_state(&mut self, session_id: &str) {
+        self.yolo_state.lock().unwrap().remove_session(session_id);
+        for (sessions, _) in self.pending_yolo_reconciles.values_mut() {
+            sessions.remove(session_id);
+        }
+        self.pending_yolo_reconciles
+            .retain(|_, (sessions, _)| !sessions.is_empty());
+    }
+
     /// `/restart` asks Windows Terminal to replace the shared master and Agent
     /// CLI pool. Viable panes, ConPTYs, and helpers stay alive and reconnect
     /// over the stable master pipe with clean ACP sessions.
     fn cmd_restart(&mut self) {
         self.state = ConnectionState::Connecting("Restarting agent...".to_string());
+        self.pending_session_load = None;
         self.session_to_tab.clear();
         self.session_model_configs.clear();
         self.session_config_options.clear();
@@ -5551,6 +5840,7 @@ impl App {
         self.session_id.clear();
         for (_, tab) in self.tab_sessions.iter_mut() {
             tab.clear_chat_history();
+            tab.invalidate_active_prompt_attachment();
             tab.usage = None;
             tab.usage_staleness = crate::usage::UsageStaleness::default();
             tab.clear_completed_turns();
@@ -5563,6 +5853,9 @@ impl App {
         for tab_id in self.tab_sessions.keys().cloned().collect::<Vec<_>>() {
             self.project_tab_state(&tab_id);
         }
+        self.yolo_state.lock().unwrap().clear_sessions();
+        self.pending_yolo_reconciles.clear();
+        self.pending_yolo_session_tabs.clear();
         if self
             .restart_tx
             .send(AgentLifecycleRequest::RestartMaster)
@@ -5733,11 +6026,25 @@ impl App {
             );
             return;
         }
+        if let Some(tab) = self.tab_sessions.get(closed_tab_id) {
+            if let Some(prompt_id) = tab.turn.prompt_id() {
+                tab.cancel_active_prompt(prompt_id);
+            }
+        }
         let removed = self.tab_sessions.remove(closed_tab_id);
+        if self
+            .pending_session_load
+            .as_ref()
+            .is_some_and(|pending| pending.tab_id == closed_tab_id)
+        {
+            self.pending_session_load = None;
+        }
+        self.pending_yolo_session_tabs.remove(closed_tab_id);
         if let Some(session_id) = removed.as_ref().and_then(|tab| tab.session_id.as_ref()) {
             self.session_model_configs.remove(session_id);
             self.session_config_options.remove(session_id);
             self.session_commands.remove(session_id);
+            self.clear_yolo_session_state(session_id);
         }
         self.session_to_tab.retain(|_, tab| tab != closed_tab_id);
 
@@ -5815,6 +6122,10 @@ impl App {
             );
             return;
         }
+        if self.pending_yolo_session_tabs.remove(old_tab_id) {
+            self.pending_yolo_session_tabs
+                .insert(new_tab_id.to_string());
+        }
         let had_session = if let Some(mut entry) = self.tab_sessions.remove(old_tab_id) {
             // Preserve target slot's TabSession if one was lazily
             // created under the new id before this event arrived — but
@@ -5844,6 +6155,11 @@ impl App {
         // source window, new id is in target), drops the event, and the
         // title bar / bottom bar never picks up the helper's state.
         let owner_matched = self.owner_tab_id.as_deref() == Some(old_tab_id);
+        if let Some(params) = self.deferred_acp.as_mut() {
+            if params.owner_tab_id.as_deref() == Some(old_tab_id) {
+                params.owner_tab_id = Some(new_tab_id.to_string());
+            }
+        }
         if owner_matched {
             self.owner_tab_id = Some(new_tab_id.to_string());
             // This helper owns the dragged tab. The conpty/TermControl
@@ -5861,6 +6177,11 @@ impl App {
                     new_window_id = wid,
                     "tab_renamed: updated self.window_id (dragged helper)"
                 );
+            }
+        }
+        if let Some(pending) = self.pending_session_load.as_mut() {
+            if pending.tab_id == old_tab_id {
+                pending.tab_id = new_tab_id.to_string();
             }
         }
 
@@ -5941,24 +6262,38 @@ impl App {
     /// alive. Called when WT sends `reset_tab_session` (the Ctrl+C×2 hide
     /// path): the WT tab itself isn't going anywhere, but the user asked
     /// for a clean slate on this tab. After this:
-    ///   - Conversation history, completed turns, in-flight state are gone.
+    ///   - Conversation history and completed turns are gone.
+    ///   - An active turn remains `Cancelling` until its prompt producer
+    ///     reaches a terminal boundary.
     ///   - `session_to_tab` entries pointing at this tab are pruned so any
     ///     late ACP events for the old SessionId can't route back in.
-    ///   - The ACP client task drops the binding in `tab_to_session` and
-    ///     cancels any in-flight prompt for the old SessionId. The master
+    ///   - The ACP client task drops the binding in `tab_to_session`. The
+    ///     prompt task observes the token cancellation, and the master
     ///     consumes the same process-wide WT event and owns the physical
     ///     close; the next prompt lazily creates a fresh ACP session.
     /// Unlike `drop_tab_session`, this preserves the HashMap key — the
     /// next tab_changed back into this tab finds an empty-but-present
     /// `TabSession` and just renders an empty chat.
     fn reset_tab_session_for(&mut self, tab_id: &str) {
+        self.pending_yolo_session_tabs.remove(tab_id);
+        if self
+            .pending_session_load
+            .as_ref()
+            .is_some_and(|pending| pending.tab_id == tab_id)
+        {
+            self.pending_session_load = None;
+        }
         let mut removed_session_id = None;
         // Same wipe as the `/clear` slash command: clear in-flight chat state
         // via `clear_chat_history` AND the completed-turn history that
         // `clear_chat_history` deliberately leaves alone.
         if let Some(tab) = self.tab_sessions.get_mut(tab_id) {
             removed_session_id = tab.session_id.take();
+            tab.config_picker = ConfigPickerState::Closed;
+            tab.config_pending_id = None;
+            tab.native_yolo_config_pending = false;
             tab.clear_chat_history();
+            tab.invalidate_active_prompt_attachment();
             tab.usage = None;
             tab.usage_staleness = crate::usage::UsageStaleness::default();
             tab.clear_completed_turns();
@@ -5973,6 +6308,7 @@ impl App {
             self.session_model_configs.remove(&session_id);
             self.session_config_options.remove(&session_id);
             self.session_commands.remove(&session_id);
+            self.clear_yolo_session_state(&session_id);
         }
 
         // Prune the reverse SessionId → tab routing so late ACP chunks for
@@ -5984,6 +6320,7 @@ impl App {
             tab_id: tab_id.to_string(),
             notify_master: false,
         });
+        self.publish_agent_status();
         self.project_tab_state(tab_id);
 
         tracing::info!(

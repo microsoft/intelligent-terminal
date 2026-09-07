@@ -239,4 +239,5 @@ config_picker.title: "Sesijos konfigūracija (↑ ↓ • Enter • Esc)"
 system.no_config_options: "Prijungtas agentas nepaskelbė jokių konfigūruojamų sesijos parinkčių."
 # {option} is an Agent-provided option name; {error} is the ACP error.
 system.config_update_failed: "Nepavyko atnaujinti %{option}: %{error}"
+system.provider_command_blocked_by_policy: "%{command}: Yolo režimas išjungtas pagal jūsų organizacijos politiką."  # {Locked="Yolo","%{command}"} Shown when AllowYoloMode blocks a provider-advertised privileged command.
 system.model_unknown: "Nežinomas modelis %{model} — įveskite /model, kad pamatytumėte galimų sąrašą."  # {Locked="%{model}","/model"}

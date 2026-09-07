@@ -35,6 +35,7 @@ fn select_option(option: &acp::schema::v1::SessionConfigOption) -> Option<AcpSes
             .and_then(|category| category.as_str().map(str::to_owned)),
         current_value: select.current_value.0.to_string(),
         values,
+        native_yolo: false,
     })
 }
 

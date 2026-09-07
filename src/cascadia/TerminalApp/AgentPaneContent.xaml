@@ -26,12 +26,15 @@
                 Background="#FF000000"
                 BorderBrush="{ThemeResource TabViewBackground}"
                 BorderThickness="0,0,0,1">
-            <Grid Padding="10,0,0,0">
+            <Grid Padding="10,0,10,0">
                 <!--  Left cluster: logo + label. History and other actions
                       live on the window-level bottom agent bar.  -->
-                <StackPanel Orientation="Horizontal"
-                            VerticalAlignment="Center"
-                            Spacing="4">
+                <Grid VerticalAlignment="Center"
+                      ColumnSpacing="4">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
                     <!--  Keep agent marks as XAML vectors so their primary Fill
                           can bind to the title text's theme-aware Foreground
                           (#348). Viewbox preserves each source SVG's viewBox.  -->
@@ -94,13 +97,15 @@
                         </Viewbox>
                     </Grid>
                     <TextBlock x:Name="AgentLabelText"
+                               Grid.Column="1"
                                VerticalAlignment="Center"
                                FontFamily="Segoe UI Variable, Segoe UI"
                                FontSize="12"
                                LineHeight="16"
                                Foreground="#FFFFFFFF"
+                             TextTrimming="CharacterEllipsis"
                                Text="GitHub Copilot" />
-                </StackPanel>
+                </Grid>
             </Grid>
         </Border>
 

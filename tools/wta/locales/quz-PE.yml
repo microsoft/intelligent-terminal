@@ -238,4 +238,5 @@ config_picker.title: "T'inki allichay (↑ ↓ • Enter • Esc)"
 system.no_config_options: "T'inkisqa agente mana ima allichana t'inki akllanatahpas riqsichimurqanchu."
 # {option} is an Agent-provided option name; {error} is the ACP error.
 system.config_update_failed: "%{option} machkhapay pantarun: %{error}"
+system.provider_command_blocked_by_policy: "%{command}: Yolo mode nisqaqa organizaciónniykip política rurasqanrayku deshabilitasqa kachkan."  # {Locked="Yolo","%{command}"} Shown when AllowYoloMode blocks a provider-advertised privileged command.
 system.model_unknown: "Mana riqsisqa modelo %{model} — akllana lista rikunaykipaq /model qillqay."  # {Locked="%{model}","/model"}

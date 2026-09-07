@@ -129,12 +129,6 @@ pub(super) async fn run_default_tui_over_pipe(
     };
     let shell_mgr = Arc::new(shell_mgr);
 
-    let pane_identity = if wt_connected {
-        discover_pane_identity(&shell_mgr).await
-    } else {
-        None
-    };
-
     // Connection failures to wta-master (pipe connect give-up, ACP initialize
     // timeout/failure) are logged at their source (target=helper) and again in
     // `run_acp_tui_mode`'s exit branch, which `process::exit`s rather than
@@ -144,7 +138,6 @@ pub(super) async fn run_default_tui_over_pipe(
         shell_mgr,
         wt_connected,
         debug_rx,
-        pane_identity,
         wt_event_rx,
         wt_protocol_channel,
         pipe_name,
@@ -161,6 +154,13 @@ async fn resolve_app_source_cwd(
         return Some(cwd);
     }
     crate::agent_source::resolve_source_cwd(source, legacy_environment_cwd.as_deref()).await
+}
+
+fn normalize_spawn_identity(value: Option<&str>) -> Option<String> {
+    value
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string)
 }
 
 #[cfg(test)]
@@ -214,55 +214,24 @@ mod cwd_tests {
     }
 }
 
-/// Discover our own pane identity by matching our PID against WT's pane list.
-async fn discover_pane_identity(shell_mgr: &ShellManager) -> Option<(String, String, String)> {
-    let our_pid = std::process::id();
+#[cfg(test)]
+mod identity_tests {
+    use super::normalize_spawn_identity;
 
-    // WT IDs may arrive as JSON strings or numbers (COM returns numeric) — accept both.
-    fn id_str(v: Option<&serde_json::Value>) -> Option<String> {
-        match v {
-            Some(serde_json::Value::String(s)) => Some(s.clone()),
-            Some(serde_json::Value::Number(n)) => Some(n.to_string()),
-            _ => None,
-        }
+    #[test]
+    fn spawn_identity_trims_valid_values() {
+        assert_eq!(
+            normalize_spawn_identity(Some("  {pane-session-id}  ")).as_deref(),
+            Some("{pane-session-id}")
+        );
     }
 
-    let windows = shell_mgr.wt_list_windows().await.ok()?;
-    let windows_arr = windows.get("windows")?.as_array()?;
-
-    for win in windows_arr {
-        let window_id = match id_str(win.get("window_id")) {
-            Some(w) => w,
-            None => continue,
-        };
-        let tabs = shell_mgr.wt_list_tabs(&window_id).await.ok()?;
-        let tabs_arr = tabs.get("tabs")?.as_array()?;
-
-        for tab in tabs_arr {
-            let tab_id_str = match id_str(tab.get("tab_id")) {
-                Some(t) => t,
-                None => continue,
-            };
-            let panes = shell_mgr
-                .wt_list_panes(&tab_id_str, Some(&window_id))
-                .await
-                .ok()?;
-            let panes_arr = panes.get("panes")?.as_array()?;
-
-            for pane in panes_arr {
-                if let Some(pid) = pane.get("pid").and_then(|v| v.as_u64()) {
-                    if pid == our_pid as u64 {
-                        let pane_id = match id_str(pane.get("session_id")) {
-                            Some(p) => p,
-                            None => continue,
-                        };
-                        return Some((pane_id, tab_id_str.clone(), window_id.to_string()));
-                    }
-                }
-            }
-        }
+    #[test]
+    fn spawn_identity_rejects_missing_or_empty_values() {
+        assert_eq!(normalize_spawn_identity(None), None);
+        assert_eq!(normalize_spawn_identity(Some("")), None);
+        assert_eq!(normalize_spawn_identity(Some(" \t\r\n ")), None);
     }
-    None
 }
 
 struct TuiRestoreGuard {
@@ -302,7 +271,6 @@ async fn run_acp_tui_mode(
     shell_mgr: Arc<ShellManager>,
     wt_connected: bool,
     debug_rx: tokio::sync::mpsc::UnboundedReceiver<app::DebugMessage>,
-    pane_identity: Option<(String, String, String)>,
     wt_event_rx: Option<tokio::sync::mpsc::UnboundedReceiver<serde_json::Value>>,
     wt_protocol_channel: Option<Arc<CliChannel>>,
     connect_master_pipe: String,
@@ -329,7 +297,6 @@ async fn run_acp_tui_mode(
         shell_mgr,
         wt_connected,
         debug_rx,
-        pane_identity,
         wt_event_rx,
         wt_protocol_channel,
         connect_master_pipe,
@@ -401,7 +368,6 @@ async fn run_acp_app(
     shell_mgr: Arc<ShellManager>,
     wt_connected: bool,
     mut debug_rx: tokio::sync::mpsc::UnboundedReceiver<app::DebugMessage>,
-    pane_identity: Option<(String, String, String)>,
     wt_event_rx: Option<tokio::sync::mpsc::UnboundedReceiver<serde_json::Value>>,
     wt_protocol_channel: Option<Arc<CliChannel>>,
     connect_master_pipe: String,
@@ -412,6 +378,13 @@ async fn run_acp_app(
         config.agent_wsl_distro.as_deref(),
     );
     let agent_source_cwd = config.agent_source_cwd.clone();
+    // One helper-owned policy state is shared by the App reducer and every
+    // ACP client connection so settings and policy hot reloads take effect
+    // without process-global state or a helper restart.
+    let yolo_state = Arc::new(std::sync::Mutex::new(crate::app_contracts::YoloState::new(
+        config.yolo_mode,
+        config.yolo_policy_blocked,
+    )));
 
     let local_set = tokio::task::LocalSet::new();
     local_set
@@ -593,9 +566,6 @@ async fn run_acp_app(
 
             let shell_mgr_for_recs = Arc::clone(&shell_mgr);
 
-            // Cancel channel for Ctrl+C handling: App produces, ACP client
-            // task consumes (one listener task inside the ACP client loop).
-            let (cancel_tx, cancel_rx) = tokio::sync::mpsc::unbounded_channel();
             // /new channel: App emits a NewSessionForTab, the ACP client
             // drops the cached SessionId for that tab and re-issues
             // new_session(). The resulting SessionAttached event flows
@@ -624,8 +594,8 @@ async fn run_acp_app(
             // reset_tab_session channel: App emits a DropSessionRequest when
             // WT tells us to release a tab's binding (Ctrl+C×2 hide path).
             // ACP client removes the SessionId from tab_to_session and
-            // closes the session after cancelling any in-flight prompt; the
-            // next prompt on that tab lazily creates a fresh session.
+            // asks master to close it; App has already cancelled any active
+            // prompt through the prompt-scoped token.
             let (drop_session_tx, drop_session_rx) = tokio::sync::mpsc::unbounded_channel();
             // tab-drag rename channel: App emits a RenameSessionRequest when
             // WT mints a new stable tab id for an existing tab (cross-window
@@ -768,7 +738,6 @@ async fn run_acp_app(
                 spawn_agent_lifecycle_forwarder(restart_rx, event_tx.clone());
                 drop((
                     prompt_rx,
-                    cancel_rx,
                     new_session_rx,
                     load_session_rx,
                     drop_session_rx,
@@ -789,6 +758,7 @@ async fn run_acp_app(
                 let source_cwd = agent_source_cwd.clone();
                 let owner_tab = config.owner_tab_id.clone();
                 let initial_load_sid = config.initial_load_session_id.clone();
+                let yolo_state_for_client = Arc::clone(&yolo_state);
                 let proposal_channels_for_pipe = Arc::clone(&proposal_channels);
                 tokio::task::spawn_local(async move {
                     match protocol::acp::client::run_acp_client_over_pipe(
@@ -801,9 +771,9 @@ async fn run_acp_app(
                         source_cwd,
                         owner_tab,
                         initial_load_sid,
+                        yolo_state_for_client,
                         event_tx_for_pipe.clone(),
                         prompt_rx,
-                        cancel_rx,
                         new_session_rx,
                         load_session_rx,
                         drop_session_rx,
@@ -887,7 +857,7 @@ async fn run_acp_app(
             ));
 
             let autofix_enabled = !config.no_autofix;
-            let mut app_state = app::App::new(prompt_tx, recommendation_tx, permission_tx, cancel_tx, new_session_tx, load_session_tx, drop_session_tx, rename_session_tx, restart_tx, master_ext_tx, debug_capture_enabled, wt_connected, autofix_enabled, Arc::clone(&shell_mgr));
+            let mut app_state = app::App::new(prompt_tx, recommendation_tx, permission_tx, new_session_tx, load_session_tx, drop_session_tx, rename_session_tx, restart_tx, master_ext_tx, debug_capture_enabled, wt_connected, autofix_enabled, Arc::clone(&shell_mgr), Arc::clone(&yolo_state));
             app_state.set_proposal_channels(Arc::clone(&proposal_channels));
             app_state.set_allowed_agent_ids(config.allowed_agent_ids.clone());
             // Seed the hot-updatable runtime agent config: the shared
@@ -1219,30 +1189,21 @@ async fn run_acp_app(
             // its `session/list` snapshot. See
             // doc/specs/per-cli-history-filtering.md.
 
-            if let Some((pane_id, _tab_id, window_id)) = pane_identity {
-                app_state.pane_id = Some(pane_id);
-                // discover_pane_identity returns the legacy unstable tab
-                // index, not the GUID — ignore it. The stable owner-tab GUID
-                // is passed by WT via --owner-tab-id (see below) and seeded
-                // directly into app_state.tab_id.
-                app_state.window_id = Some(window_id);
-            }
-            else if let Some(pane_id) = std::env::var("WT_SESSION")
-                .ok()
-                .map(|value| value.trim().to_string())
-                .filter(|value| !value.is_empty())
-            {
+            // ConptyConnection supplies the helper's pane identity directly.
+            // Window and stable tab identity come from the owner arguments
+            // below, so no Terminal-wide pane enumeration is required.
+            let wt_session = std::env::var("WT_SESSION").ok();
+            if let Some(pane_id) = normalize_spawn_identity(wt_session.as_deref()) {
                 tracing::info!(
                     target: "tab_session",
                     pane_id = %pane_id,
-                    "seeded app_state.pane_id from WT_SESSION fallback"
+                    "seeded app_state.pane_id from WT_SESSION"
                 );
                 app_state.pane_id = Some(pane_id);
             }
 
             // WT knows the owning window authoritatively when it creates the
-            // helper. Prefer that seed over best-effort PID discovery so
-            // outbound per-window events work from the first render.
+            // helper, so outbound per-window events work from the first render.
             if let Some(owner_window_id) = config
                 .owner_window_id
                 .as_deref()

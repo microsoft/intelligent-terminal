@@ -111,7 +111,7 @@ flowchart TB
         REC["delegate / recommendation<br/>RecommendationSet · cards"]
         SESS["session mgmt view<br/>agent_sessions.rs"]
         MOD["model pinning<br/>apply_global_acp_model → set_session_model"]
-        PERM["permission card + auto-confirm policy<br/>ui/permission.rs"]
+        PERM["permission card + explicit user choice<br/>ui/permission.rs"]
         WC["impl acp::Client: WtaClient<br/>ClientSideConnection (helper = ACP client)"]
         TUI --- REACTOR
         CONN --- REACTOR
@@ -199,7 +199,7 @@ flowchart TB
         SLE["session: enrichment proxy<br/>title + _meta origin/liveness (session/list)"]
         SLA["session: activity observer<br/>live status Working/Idle/Attention (session/update)"]
         MOD["model-pinning shim<br/>rewrite session/new model"]
-        PERM["permission-policy shim<br/>auto-decide request_permission"]
+        PERM["permission routing<br/>forward request_permission to helper UI"]
     end
 
     subgraph master["wta-master = library Conductor"]
@@ -244,9 +244,9 @@ flowchart TB
 > The transform cores lift out into composable proxies: the three solid ones
 > (autofix / context / delegate) plus the session family. **"Folds into"** on the
 > model / permission shims means each is thin enough to be **absorbed into a
-> neighbor** (model-pinning → the context proxy; permission-policy → the conductor)
-> instead of being its own proxy — but either *could* be a standalone proxy; it is a
-> granularity choice, not a hard boundary. Each proxy is a pure 1:1 ACP transform
+> neighbor** (model-pinning → the context proxy) instead of being its own proxy.
+> Permission handling is routing plus helper UI, not a transform: it must never
+> auto-decide `request_permission`. Each proxy is a pure 1:1 ACP transform
 > inserted via `_proxy/initialize` / `_proxy/successor`, reorderable by config.
 > Library-managed pieces (green) replace the hand-rolled fan-out; the **N:1 bridge**
 > (red) is where the N helper transports land before being funneled onto the 1
@@ -651,7 +651,7 @@ it is TUI/state/connection/tab plumbing that stays in the helper.
 | **Context / prompt injection** | `prompt\|persona\|planner` 355; PromptTemplateLoaded; `turn_submit_prompt`; `turn_close_finalize_planner` | ✅ proxy | `session/new` (build) + `session/prompt` (rewrite): prepend persona / template / context | `protocol/acp/prompt.rs` |
 | **Delegate / recommendation** | `delegate\|recommend\|coordinator` 252; recommendation_tx; ChoiceExecution; DispatchedCommand; `turn_surface_recommendation` | ✅ proxy | `session/update` (response): parse a `RecommendationSet`, surface Run/Insert cards | `coordinator.rs` |
 | Model pinning / override | `model` 282; `apply_global_acp_model`; `send_session_model`; SessionAttached re-apply; acp_model | 🟡 shim | `session/new` (request): rewrite the model field — folds into **context** | `apply_global_acp_model` |
-| Permission policy | `permission` (11 fns, 113); PermissionState; auto-confirm settings | 🟡 shim | `request_permission` (agent→client): auto-decide per settings; card UI stays in helper — folds into the **conductor** | `ui/permission.rs` (policy slice) |
+| Permission routing | `permission` (11 fns, 113); PermissionState | ❌ not a transform | `request_permission` (agent→client): route to the helper card and forward only the user's selection | `ui/permission.rs` + conductor routing |
 | Session registry / alive mirror | `agent_sessions\|alive\|session_to_tab` 270; AliveSnapshot/Added/Removed/JoinUpgrade | 🟡→✅ splits into the session-proxy family (list-union / enrichment / activity — see the criterion table below); only process-liveness + cross-window sync stay in the conductor | 3× `session/list` + `session/update` (see below) | `session_registry` / `agent_sessions` / `wsl_acp` |
 
 **Verdict: 3 strong proxies out of `app.rs` (autofix / context / delegate); ~5–6
@@ -687,7 +687,7 @@ flowchart LR
     SLE["session: enrichment proxy<br/>title + _meta origin/liveness"]
     SLA["session: activity observer<br/>Working/Idle/Attention (session/update)"]
     MOD["model-pinning shim<br/>rewrite session/new model"]
-    PERM["permission-policy shim<br/>auto-decide request_permission"]
+    PERM["permission routing<br/>forward request_permission to helper UI"]
     CLI["agent CLI (plain initialize)"]
 
     H -->|"ACP/pipe"| CB
@@ -735,14 +735,14 @@ core` row is the counter-example — no ACP seam, so it stays in the conductor/h
 | session: activity (observer) | `session/update` (notification) | derive & own the live activity status (Working / Idle / Attention) for Class A (Class B activity comes from hooks / watcher, not this tap) | a 2nd live `session/update` tap (alongside delegate) | ✅ standalone |
 | session: residual core | — (no ACP seam) | process-liveness probe + cross-window mirror sync (`intellterm.wta/session_added\|removed`) + local `PaneClosed` tombstones / cold-start join + Enter dispatch | multi-client state sync / UI dispatch | ❌ **not a proxy** — stays in conductor/helper |
 | model pinning | `session/new` (request) | rewrite the model field | the whole job is "rewrite one field if an override is set" — a few lines, not a pipeline | 🔸 folds into context, or a conductor option |
-| permission policy | `request_permission` (agent→client) | auto-decide per settings | the bulk is the card UI (`ui/permission.rs`), which stays in the helper; only the policy slice is proxy-able | 🔸 folds into the conductor/context |
+| permission routing | `request_permission` (agent→client) | forward to the helper UI and return only an explicit user choice | the card UI (`ui/permission.rs`) stays in the helper; the conductor only routes the request | ❌ not a transform proxy |
 
 **Net count: ~6 meaningful proxies** — autofix, context, delegate, plus the
 **session family** (list-union, `_meta` enrichment, activity observer) — with
-model + permission as optional thin shims **and a residual non-proxy session core**
+model as an optional thin shim **and a residual non-proxy session core**
 (process-liveness + cross-window state sync) that stays in the conductor. The
 number is a **granularity choice**, not a fixed value: consolidate aggressively →
-as few as **3–4** (model into context, permission into the conductor, the session
+as few as **3–4** (model into context, permission routing in the conductor, the session
 list-union + enrichment as one, activity folded into the delegate `session/update`
 tap); slice maximally → up to **8** (one per concern). **Don't over-slice the
 session family:** the per-CLI `classify_{claude,codex,copilot,gemini}` strategies
@@ -879,7 +879,7 @@ routing (cold-start joins, tombstones, etc.).
 ### Compatibility
 
 - Agent CLIs (copilot `--acp`, claude/codex via npx adapters, gemini
-  `--experimental-acp`) are **unaffected** — they receive a normal `initialize`;
+  `--acp`) are **unaffected** — they receive a normal `initialize`;
   the proxy is transparent to them.
 - 0.10→1.0 is a breaking API change for **our** code only. The helper↔master
   named-pipe wire stays private (plain ACP) through Phase 1.

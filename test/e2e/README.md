@@ -26,7 +26,7 @@ authenticated ACP agents. Current status (run on the Store package):
 | `Feature.ByokProvider.Tests.ps1` | PR #447: Settings-selected OpenAI-compatible provider request path, credential handling, and BYOK-to-cloud restart lifecycle | 2 |
 | `Feature.AgentCompactLayout.Tests.ps1` | PR #580: compact-height recommendation, input, and Insert interaction at the real splitter minimum | 1 |
 | `Feature.ProposalMcpRouting.Tests.ps1` | PR #560: per-session proposal MCP names and two-tab Helper routing isolation | 1 |
-| `Feature.AgentMouse.Tests.ps1` | PR #506: chat wheel scrolling, draft preservation, text selection/copy, and stale-selection suppression; completed-turn full-row clicks across multiline prompts with shared keyboard selection/Enter behavior, row-end/drag guards, and input-dialog focus recovery | 4 |
+| `Feature.AgentMouse.Tests.ps1` | PR #506 and issue #790: physical chat wheel scrolling, Ctrl+wheel zoom, draft preservation, text selection/copy, and stale-selection suppression; completed-turn full-row clicks across multiline prompts with shared keyboard selection/Enter behavior, row-end/drag guards, and input-dialog focus recovery | 7 |
 | `Feature.AgentSelectAll.Tests.ps1` | Plain Ctrl+A selects the current WTA-rendered frame; Ctrl+C copies through the existing clipboard path and clears selection without stale replay | 1 |
 | `Feature.PromptHistory.Tests.ps1` | PR #478: per-tab Up/Down prompt recall, draft restoration, and multiline preservation; PR #614: completed-turn collapse/expand rendering | 4 |
 | `Feature.CompletedTurnSelection.Tests.ps1` | Completed-turn Tab/Up/Down selection keeps focused history inside the chat viewport | 1 |
@@ -40,6 +40,7 @@ authenticated ACP agents. Current status (run on the Store package):
 | `Feature.ShellIntegration.Tests.ps1` | §3 shell-integration OSC 133 marks (success/failure, ParserError dedup, handled errors, WinPS 5.1 errors) + non-integrated cmd.exe safety | 6 |
 | `Feature.BashPromptIntegration.Tests.ps1` | PR #468: Bash `PROMPT_COMMAND` PS1 rewrites preserve D/A/B boundaries; non-IT hosts remain gated | 1 (Git Bash-gated) |
 | `Feature.AgentProposedCommand.Tests.ps1` | §2 Direct Helper Proposal Insert/Run into the shell pane | 2 |
+| `Feature.YoloMode.Tests.ps1` | PR #505: zero-token global setting persistence, deterministic permission boundary, provider compatibility notices, and live policy reconciliation | 5 (OpenCode, Gemini, and policy gated) |
 | `Feature.AgentProposalFocus.Tests.ps1` | PR #533: Insert returns real window keyboard focus to the target shell pane | 1 |
 | `Feature.AgentMatrix.Tests.ps1` | §2 non-Copilot built-in agents (Claude/Codex/Gemini) connect+chat through the ACP adapter — ONE consolidated case (Copilot is the in-depth suite); skips when none installed+authed | 1 |
 | `Feature.HookTrace.Tests.ps1` | C190 + PR #571 C267-C269, C272: every shipped bundle's guarded command still delivers, `tool_input` survives only for interactive prompts, shells outside Terminal are ignored, and the broadcast envelope stays inside its budget | 5 |
@@ -56,11 +57,11 @@ authenticated ACP agents. Current status (run on the Store package):
 | `Feature.AgentChat.Tests.ps1` / `Feature.AgentPopup.Tests.ps1` | agent chat + `/` popup/menu interaction | 1 + 3 |
 | `Feature.AgentPaneMove.Tests.ps1` | PR #429: `/move` stays per-tab, preserves global position, and restores agent input focus | 1 |
 
-**Coverage: 142 of 144 automatable `[E2E]` checklist items are implemented.**
-**Test status: 127 baseline feature cases pass + 3 documented skips** (`wta sessions list` is
+**Coverage: 148 of 150 automatable `[E2E]` checklist items are implemented.**
+**Test status: 128 baseline feature cases pass + 3 documented skips** (`wta sessions list` is
 identity-gated — see `Feature.SessionList.Tests.ps1`), plus 2 PR #481 WSL-backend cases and 2
 PR #488 delegate-source cases that run only when a runnable distro (and, for the #481 chat
-case, an installed+authenticated native agent) is available. The 142 implemented checklist
+case, an installed+authenticated native agent) is available. The 148 implemented checklist
 items map to the baseline cases plus the deterministic settings/persistence assertions. The
 remaining new items are the two profile agent picker UIs; they stay explicit E2E work rather
 than being falsely credited by the JSON-level runtime tests. Other
@@ -71,6 +72,10 @@ else skips); custom agents; multi-window drag; hook/CLI install; policy locks; I
 autofix (needs a dev build with OSC 9001 ShellType + a running distro); WT window-level
 keyboard accelerators (command palette / Delegate `Alt+Shift+B` / pane hotkeys — not
 injectable via UIA/send-keys in this harness); and manual release-sign-off gates.
+
+Token-consuming simulated-real-user tests are deliberately excluded from this publishable suite
+and from CI. They live only in the feature's dev-only local validation harness and run manually
+against an exact deployed publish package with explicitly available provider quota.
 
 ## What it gives you
 
@@ -110,7 +115,6 @@ either the production build or the build you're developing:
 |---|---|---|
 | `Store` | `Microsoft.IntelligentTerminal_8wekyb3d8bbwe` | The shipped/production package — real user environment. |
 | `Dev` | `IntelligentTerminal_rd9vj3e6a2mbr` | A locally **sideloaded** build (e.g. your F5 / `bx` output). Use this to validate a change before it ships. |
-| `Auto` *(default)* | First fully-resolvable of Store → Dev | Most feature suites; picks whatever is installed. |
 | *(explicit PFN)* | the family name you pass | Any other package. |
 
 ```powershell
@@ -220,18 +224,18 @@ Describe 'Agent pane' -Tag 'Live' {
 }
 ```
 
-`Start-Terminal` resolves the package, backs up `settings.json`/`state.json`, marks the
+`Start-Terminal` requires an explicit package, backs up `settings.json`/`state.json`, marks the
 FRE complete, applies your settings, launches the app, brings COM online (probes the
 per-brand `WT_COM_CLSID`), and resolves the window HWND. `Stop-Terminal` closes it and
 restores the backup.
 
-> **Picking the build**: pass `-Package Dev` / `-Package Store` (default `Auto`) — see
+> **Picking the build**: pass `-Package Dev` / `-Package Store` — see
 > [Choosing the build](#choosing-the-build-dev-vs-store). Launch is package-specific
 > (AUMID), so both builds can be installed and targeted independently. The feature/self
 > -test suites don't hardcode a build — they call `Start-Terminal -Package (Get-ItTestPackage)`,
-> which honors the `ITE2E_PACKAGE` env var (`Auto`|`Store`|`Dev`|`<PackageFamilyName>`)
-> and defaults to `Auto`. So on a dev-only machine the suites resolve to the sideload
-> build automatically; set `$env:ITE2E_PACKAGE='Store'` to pin them to the store build.
+> which requires the `ITE2E_PACKAGE` env var (`Store`|`Dev`|`<PackageFamilyName>`).
+> Set `$env:ITE2E_PACKAGE='Dev'` or `$env:ITE2E_PACKAGE='Store'` before invoking
+> live tests. `Auto` is rejected so the harness cannot select a package implicitly.
 
 
 ## How it works (key facts)

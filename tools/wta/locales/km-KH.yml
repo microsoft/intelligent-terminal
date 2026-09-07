@@ -255,4 +255,5 @@ config_picker.title: "ការកំណត់រចនាសម្ព័ន្�
 system.no_config_options: "ភ្នាក់ងារដែលបានភ្ជាប់មិនបានផ្សព្វផ្សាយជម្រើសសម័យដែលកែសម្រួលបានឡើយ។"
 # {option} is an Agent-provided option name; {error} is the ACP error.
 system.config_update_failed: "បរាជ័យក្នុងការធ្វើបច្ចុប្បន្នភាព %{option}: %{error}"
+system.provider_command_blocked_by_policy: "%{command}: Yolo mode ត្រូវបានបិទដោយគោលនយោបាយរបស់ស្ថាប័នអ្នក។"  # {Locked="Yolo","%{command}"} Shown when AllowYoloMode blocks a provider-advertised privileged command.
 system.model_unknown: "មិនស្គាល់ម៉ូដែល %{model} — វាយ /model ដើម្បីមើលបញ្ជីដែលមាន។"  # {Locked="%{model}","/model"}

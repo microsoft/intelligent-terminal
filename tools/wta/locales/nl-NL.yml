@@ -239,4 +239,5 @@ config_picker.title: "Sessieconfiguratie (↑ ↓ • Enter • Esc)"
 system.no_config_options: "De verbonden agent heeft geen configureerbare sessie-opties geadverteerd."
 # {option} is an Agent-provided option name; {error} is the ACP error.
 system.config_update_failed: "Bijwerken van %{option} is mislukt: %{error}"
+system.provider_command_blocked_by_policy: "%{command}: Yolo-modus is uitgeschakeld door het beleid van uw organisatie."  # {Locked="Yolo","%{command}"} Shown when AllowYoloMode blocks a provider-advertised privileged command.
 system.model_unknown: "Onbekend model %{model} — typ /model om de beschikbare lijst te zien."  # {Locked="%{model}","/model"}

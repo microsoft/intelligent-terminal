@@ -331,7 +331,7 @@ namespace winrt::TerminalApp::implementation
 
         void _UpdateActivePane(std::shared_ptr<Pane> pane);
         void _UpdateMenuItemStates();
-        void _UpdateAgentChipVisibility();
+        void _UpdateAgentPaneIndicators();
 
         winrt::hstring _GetActiveTitle() const;
 

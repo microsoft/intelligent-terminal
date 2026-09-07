@@ -6,8 +6,9 @@
 //! of the crate root, so it can reach `App`'s private dispatch methods —
 //! exactly like the inline `app::tests` module it borrows `test_app` from.
 
-use super::tests::test_app;
+use super::tests::{test_app, test_app_with_master_rx, test_app_with_new_session_rx};
 use super::*;
+use crate::protocol::acp::client::MasterExtRequest;
 
 /// Dispatch a zero-arg slash command by name through the real
 /// `handle_slash_command` path, the way the Enter handler does.
@@ -194,6 +195,29 @@ fn agent_command_without_input_submits_as_a_normal_prompt() {
 }
 
 #[test]
+fn provider_yolo_command_is_not_reserved_and_submits_as_a_normal_prompt() {
+    assert!(
+        commands::lookup("yolo").is_none(),
+        "WTA must not reserve a provider-owned yolo command"
+    );
+
+    let mut app = test_app();
+    app.state = ConnectionState::Connected;
+    app.current_tab_mut().session_id = Some("session-1".into());
+    app.handle_event(AppEvent::SessionCommandsUpdated {
+        session_id: "session-1".into(),
+        commands: vec![session_command("yolo", "Provider Yolo mode", None)],
+    });
+    type_input(&mut app, "/yolo");
+
+    assert_eq!(popup_command_names(&app), vec!["yolo"]);
+    app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+
+    assert!(app.current_tab().input.is_empty());
+    assert!(app.current_tab().turn.is_in_flight());
+}
+
+#[test]
 fn agent_command_with_optional_input_enters_prepared_mode() {
     let mut app = test_app();
     app.state = ConnectionState::Connected;
@@ -366,8 +390,45 @@ fn slash_stop_when_idle_notes_nothing_to_stop() {
 }
 
 #[test]
-fn slash_new_when_idle_resets_session() {
+fn slash_stop_while_cancelling_is_idempotent() {
     let mut app = test_app();
+    let prompt = crate::protocol::acp::client::PromptSubmission::new("stop this".into(), None);
+    let cancellation = prompt.cancellation_token();
+    app.turn_submit_prompt_for_tab_with_cancellation(
+        DEFAULT_TAB_ID,
+        SubmittedPrompt {
+            id: prompt.id,
+            text: prompt.text,
+            submitted_at_unix_s: prompt.submitted_at_unix_s,
+            context: TurnContext::default(),
+            autofix: None,
+        },
+        cancellation,
+    );
+
+    run_slash(&mut app, "stop");
+    run_slash(&mut app, "stop");
+
+    assert!(app.current_tab().turn.is_cancelling());
+    assert_eq!(
+        app.current_tab()
+            .messages
+            .iter()
+            .filter(|message| matches!(
+                message,
+                ChatMessage::Notice {
+                    kind: NoticeKind::Success,
+                    ..
+                }
+            ))
+            .count(),
+        1
+    );
+}
+
+#[test]
+fn slash_new_when_idle_resets_session() {
+    let (mut app, _new_session_rx) = test_app_with_new_session_rx();
     app.current_tab_mut().session_id = Some("sid-1".into());
     app.current_tab_mut()
         .messages
@@ -377,6 +438,115 @@ fn slash_new_when_idle_resets_session() {
 
     assert_eq!(app.current_tab().session_id, None);
     assert!(app.current_tab().messages.is_empty());
+}
+
+#[test]
+fn runtime_global_change_reconciles_all_live_sessions() {
+    let (mut app, mut master_rx) = test_app_with_master_rx();
+    app.session_to_tab
+        .insert("session-a".into(), DEFAULT_TAB_ID.into());
+    app.session_to_tab
+        .insert("session-b".into(), DEFAULT_TAB_ID.into());
+
+    app.apply_runtime_yolo_config(Some(true), Some(false));
+
+    let request = master_rx.try_recv().expect("reconcile request");
+    let MasterExtRequest::ReconcileSessionYolo {
+        sessions,
+        fail_closed,
+        ..
+    } = request
+    else {
+        panic!("expected ReconcileSessionYolo");
+    };
+    assert!(!fail_closed);
+    assert!(sessions
+        .iter()
+        .any(|(session, enabled)| session.0.as_ref() == "session-a" && *enabled));
+    assert!(sessions
+        .iter()
+        .any(|(session, enabled)| session.0.as_ref() == "session-b" && *enabled));
+}
+
+#[test]
+fn runtime_policy_block_forces_off_and_clears_session_override() {
+    let (mut app, mut master_rx) = test_app_with_master_rx();
+    app.session_to_tab
+        .insert("session".into(), DEFAULT_TAB_ID.into());
+    app.yolo_state.lock().unwrap().update_runtime(true, false);
+
+    app.apply_runtime_yolo_config(Some(false), Some(true));
+
+    assert!(!app.yolo_state.lock().unwrap().effective("session"));
+    let request = master_rx.try_recv().expect("reconcile request");
+    let MasterExtRequest::ReconcileSessionYolo {
+        sessions,
+        fail_closed,
+        ..
+    } = request
+    else {
+        panic!("expected ReconcileSessionYolo");
+    };
+    assert!(fail_closed);
+    assert_eq!(sessions.len(), 1);
+    assert!(!sessions[0].1);
+
+    app.apply_runtime_yolo_config(Some(false), Some(false));
+    assert!(
+        !app.yolo_state.lock().unwrap().effective("session"),
+        "policy removal must leave the current global default off"
+    );
+}
+
+#[test]
+fn session_attach_reconciles_latest_yolo_state() {
+    let (mut app, mut master_rx) = test_app_with_master_rx();
+    app.yolo_state.lock().unwrap().update_runtime(true, false);
+
+    app.handle_event(AppEvent::SessionAttached {
+        tab_id: DEFAULT_TAB_ID.into(),
+        session_id: "new-yolo-session".into(),
+        prompt_id: None,
+        available_models: Vec::new(),
+        current_model_id: None,
+    });
+
+    let request = master_rx.try_recv().expect("attach reconcile request");
+    let MasterExtRequest::ReconcileSessionYolo {
+        sessions,
+        fail_closed,
+        ..
+    } = request
+    else {
+        panic!("expected ReconcileSessionYolo");
+    };
+    assert_eq!(sessions.len(), 1);
+    assert_eq!(sessions[0].0 .0.as_ref(), "new-yolo-session");
+    assert!(sessions[0].1);
+    assert!(!fail_closed);
+}
+
+#[test]
+fn client_reconciled_session_attach_does_not_duplicate_native_yolo_rpc() {
+    let (mut app, mut master_rx) = super::tests::test_app_with_master_rx();
+    let session_id = "client-reconciled-lazy-session";
+    app.yolo_state
+        .lock()
+        .unwrap()
+        .mark_client_reconciled(session_id.to_string(), false);
+
+    app.handle_event(AppEvent::SessionAttached {
+        tab_id: DEFAULT_TAB_ID.into(),
+        session_id: session_id.into(),
+        prompt_id: None,
+        available_models: Vec::new(),
+        current_model_id: None,
+    });
+
+    assert!(
+        master_rx.try_recv().is_err(),
+        "the client-owned lazy reconciliation must suppress the App duplicate"
+    );
 }
 
 /// Dispatch a slash command with free-form args (e.g. `/model gpt-5`) through
@@ -450,6 +620,7 @@ fn slash_restart_resets_connection_and_clears_sessions() {
         app.restart_without_acp_pending,
         "a closed lifecycle receiver must leave the helper waiting for replacement-master readiness"
     );
+    app.handle_event(AppEvent::AgentTransportRetired);
 
     app.handle_event(AppEvent::WtEvent {
         method: "agent_master_restarted".into(),
@@ -542,6 +713,7 @@ fn config_option(
                 description: Some("Write code".into()),
             },
         ],
+        native_yolo: false,
     }
 }
 
@@ -689,6 +861,7 @@ fn failed_model_config_selection_keeps_the_previous_model() {
         session_id: "session-1".into(),
         config_id: "agent-model".into(),
         message: "rejected".into(),
+        restart_required: false,
     });
 
     assert!(app.current_tab().config_pending_id.is_none());
@@ -746,6 +919,56 @@ fn config_picker_select_sends_session_scoped_option_request() {
 }
 
 #[test]
+fn failed_native_config_dispatch_clears_prompt_gate() {
+    let (mut app, master_rx) = super::tests::test_app_with_master_rx();
+    drop(master_rx);
+    app.current_tab_mut().session_id = Some("session-1".into());
+    let mut option = config_option("mode", "Mode", "mode", "ask");
+    option.native_yolo = true;
+    app.handle_event(AppEvent::SessionConfigUpdated {
+        session_id: "session-1".into(),
+        options: vec![option],
+    });
+    run_slash(&mut app, "config");
+    app.config_picker_enter();
+    app.config_picker_down();
+
+    app.config_picker_enter();
+
+    assert!(app.current_tab().config_pending_id.is_none());
+    assert!(!app.current_tab().native_yolo_config_pending);
+    assert!(matches!(
+        app.current_tab().messages.last(),
+        Some(ChatMessage::Error(message)) if message.contains("/restart")
+    ));
+}
+
+#[test]
+fn restart_required_native_config_failure_keeps_prompt_gate_until_reset() {
+    let mut app = test_app();
+    app.current_tab_mut().session_id = Some("session-1".into());
+    app.current_tab_mut().config_pending_id = Some("mode".into());
+    app.current_tab_mut().native_yolo_config_pending = true;
+    app.session_to_tab
+        .insert("session-1".into(), DEFAULT_TAB_ID.into());
+
+    app.handle_event(AppEvent::SessionConfigSetFailed {
+        session_id: "session-1".into(),
+        config_id: "mode".into(),
+        message: "provider rejected disable".into(),
+        restart_required: true,
+    });
+
+    assert_eq!(app.current_tab().config_pending_id.as_deref(), Some("mode"));
+    assert!(app.current_tab().native_yolo_config_pending);
+    assert!(app.prompt_reconfiguration_pending_for_tab(DEFAULT_TAB_ID));
+
+    app.reset_agent_scoped_state();
+    assert!(app.current_tab().config_pending_id.is_none());
+    assert!(!app.current_tab().native_yolo_config_pending);
+}
+
+#[test]
 fn unbound_background_config_update_does_not_close_current_picker() {
     let mut app = test_app();
     app.current_tab_mut().session_id = Some("current-session".into());
@@ -774,6 +997,7 @@ fn unbound_background_config_failure_does_not_pollute_current_tab() {
         session_id: "closed-session".into(),
         config_id: "mode".into(),
         message: "the session is no longer active".into(),
+        restart_required: false,
     });
 
     assert_eq!(app.current_tab().messages.len(), message_count);
@@ -903,6 +1127,7 @@ fn helper_status_catalog_combines_cloud_agent_and_byok_models() {
         current_model_id: Some("agent-only".into()),
         load_session_supported: false,
         image_supported: false,
+        session_capabilities_ready: true,
     });
 
     assert_eq!(app.available_models.len(), 3);
@@ -944,6 +1169,7 @@ fn private_cloud_catalog_survives_bare_agent_model_response() {
         current_model_id: None,
         load_session_supported: false,
         image_supported: false,
+        session_capabilities_ready: true,
     });
 
     assert_eq!(app.cloud_models.len(), 1);

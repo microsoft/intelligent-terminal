@@ -21,7 +21,12 @@ BeforeDiscovery {
 Describe 'Feature: shared agent CLI lifecycle' -Tag 'Feature' -Skip:(-not $script:Ready) {
     BeforeAll {
         Import-Module (Join-Path $PSScriptRoot '..\ItE2E\ItE2E.psd1') -Force
-        $script:app = Start-Terminal -Package Dev -PassFre $true -Settings @{ acpAgent = 'copilot' }
+        $script:app = Start-Terminal -Package Dev -PassFre $true -Settings @{
+            acpAgent = 'copilot'
+            # This suite tests shared-process lifecycle, not permission enforcement.
+            # Current Copilot CLI builds cannot submit ACP prompts with Yolo disabled.
+            'agentPane.yoloMode' = $true
+        }
 
         $script:GetMaster = {
             @(Get-CimInstance Win32_Process -Filter "Name='wta.exe'" -ErrorAction SilentlyContinue |

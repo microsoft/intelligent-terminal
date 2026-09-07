@@ -31,6 +31,13 @@ namespace Microsoft::Terminal::Settings::Model::AgentRegistry
         OpenCodeConfigContent,
     };
 
+    enum class YoloSettingsNotice
+    {
+        None,
+        Unavailable,
+        Conditional,
+    };
+
     struct BuiltinAgent
     {
         std::wstring_view id;
@@ -102,6 +109,26 @@ namespace Microsoft::Terminal::Settings::Model::AgentRegistry
             }
         }
         return true;
+    }
+
+    inline constexpr YoloSettingsNotice GetYoloSettingsNotice(const std::wstring_view agentId,
+                                                              const bool yoloModeEnabled,
+                                                              const bool policyLocked,
+                                                              const bool selectedProviderAvailable) noexcept
+    {
+        if (!yoloModeEnabled || policyLocked || !selectedProviderAvailable)
+        {
+            return YoloSettingsNotice::None;
+        }
+        if (agentId == L"opencode")
+        {
+            return YoloSettingsNotice::Unavailable;
+        }
+        if (agentId == L"gemini")
+        {
+            return YoloSettingsNotice::Conditional;
+        }
+        return YoloSettingsNotice::None;
     }
 
     inline constexpr bool SupportsLiveModelSwitch(const std::wstring_view agentId) noexcept

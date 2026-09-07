@@ -239,4 +239,5 @@ config_picker.title: "การกำหนดค่าเซสชัน (↑ �
 system.no_config_options: "ตัวแทนที่เชื่อมต่อไม่ได้โฆษณาตัวเลือกเซสชันที่กำหนดค่าได้"
 # {option} is an Agent-provided option name; {error} is the ACP error.
 system.config_update_failed: "อัปเดต %{option} ไม่สำเร็จ: %{error}"
+system.provider_command_blocked_by_policy: "%{command}: โหมด Yolo ถูกปิดใช้งานโดยนโยบายขององค์กรคุณ"  # {Locked="Yolo","%{command}"} Shown when AllowYoloMode blocks a provider-advertised privileged command.
 system.model_unknown: "ไม่รู้จักโมเดล %{model} — พิมพ์ /model เพื่อดูรายการที่มีอยู่"  # {Locked="%{model}","/model"}

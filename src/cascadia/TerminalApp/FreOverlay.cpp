@@ -267,6 +267,7 @@ namespace winrt::TerminalApp::implementation
             : ErrorDetectionMode::Detect;
         _SetErrorDetectionMode(detectionMode);
         ShowTokenUsageAndCostToggle().IsOn(globals.ShowTokenUsageAndCost());
+        SessionManagementToggle().IsOn(globals.EffectiveAgentSessionManagementEnabled());
 
         const bool autoFixLocked = globals.IsAutoFixPolicyLocked();
         ErrorDetectionAutoFixOption().IsEnabled(!autoFixLocked);
@@ -1468,6 +1469,10 @@ namespace winrt::TerminalApp::implementation
             globals.DelegateAgent(agentId);
             globals.AutoErrorDetectionEnabled(errorDetectionEnabled);
             globals.AutoFixEnabled(autoFixEnabled);
+            if (!globals.IsAgentSessionHooksPolicyLocked())
+            {
+                globals.AgentSessionManagementEnabled(SessionManagementToggle().IsOn());
+            }
             globals.ShowTokenUsageAndCost(ShowTokenUsageAndCostToggle().IsOn());
 
             const auto posIdx = PanePositionComboBox().SelectedIndex();
