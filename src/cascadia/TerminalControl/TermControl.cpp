@@ -2747,6 +2747,11 @@ namespace winrt::Microsoft::Terminal::Control::implementation
         return _core.ViewHeight();
     }
 
+    int TermControl::ViewWidth() const
+    {
+        return _core.ViewWidth();
+    }
+
     int TermControl::BufferHeight() const
     {
         return _core.BufferHeight();

@@ -61,6 +61,8 @@ Describe 'Feature: consolidated pane context' -Tag 'Feature' -Skip:(-not $script
             $context.pane.pid | Should -Be $script:shell.pid
             $context.pane.shell | Should -Be 'pwsh'
             $context.pane.cwd | Should -Not -BeNullOrEmpty
+            $context.pane.size.rows | Should -BeGreaterThan 0
+            $context.pane.size.columns | Should -BeGreaterThan 0
         }
         finally { Stop-WtEventListener -Listener $listener }
     }
@@ -121,6 +123,8 @@ Describe 'Feature: consolidated pane context' -Tag 'Feature' -Skip:(-not $script
             $context.truncated | Should -BeFalse
             $context.pane.session_id | Should -Be $script:plain.session_id
             $context.pane.pid | Should -Be $script:plain.pid
+            $context.pane.size.rows | Should -BeGreaterThan 0
+            $context.pane.size.columns | Should -BeGreaterThan 0
         }
     }
 

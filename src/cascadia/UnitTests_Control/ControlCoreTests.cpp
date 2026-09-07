@@ -130,6 +130,14 @@ namespace ControlUnitTests
 #endif
         VERIFY_IS_TRUE(core->_initializedTerminal);
         VERIFY_ARE_EQUAL(30, core->_terminal->GetViewport().Width());
+        const auto state = core.as<Control::ICoreState>();
+        VERIFY_ARE_EQUAL(30, state.ViewWidth());
+        VERIFY_ARE_EQUAL(20, state.ViewHeight());
+
+        core->SizeChanged(450, 380);
+        VERIFY_ARE_EQUAL(50, core->_terminal->GetViewport().Width());
+        VERIFY_ARE_EQUAL(50, state.ViewWidth());
+        VERIFY_ARE_EQUAL(20, state.ViewHeight());
     }
 
     void ControlCoreTests::TestAdjustAcrylic()

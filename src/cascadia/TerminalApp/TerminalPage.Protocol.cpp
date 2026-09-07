@@ -269,7 +269,7 @@ namespace winrt::TerminalApp::implementation
         }
 
         paneInfo.Rows = termControl.ViewHeight();
-        paneInfo.Columns = 0;
+        paneInfo.Columns = termControl.ViewWidth();
         paneInfo.Cwd = termControl.WorkingDirectory();
         paneInfo.Shell = termControl.ShellName();
         paneInfo.ShellVersion = termControl.ShellVersion();
