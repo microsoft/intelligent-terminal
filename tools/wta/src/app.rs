@@ -3674,10 +3674,12 @@ impl App {
     }
 
     fn begin_pending_agent_reconnect_preflight(&mut self) -> Option<AgentReconnectRequest> {
-        let AgentReconnectState::Disconnecting(latest) =
-            std::mem::take(&mut self.agent_reconnect_state)
-        else {
-            return None;
+        let latest = match std::mem::take(&mut self.agent_reconnect_state) {
+            AgentReconnectState::Disconnecting(latest) => latest,
+            state => {
+                self.agent_reconnect_state = state;
+                return None;
+            }
         };
         self.pending_session_load = None;
         self.reset_agent_scoped_state();

@@ -4525,6 +4525,62 @@ fn settings_agent_rebind_targets_owner_and_resets_only_agent_state() {
 }
 
 #[test]
+fn agent_rebind_duplicate_retirement_notification_preserves_target_preflight() {
+    let (mut app, mut restart_rx) = test_app_with_restart_rx();
+    app.owner_tab_id = Some("owner-tab".into());
+    app.window_id = Some("window-1".into());
+    app.tab_id = Some("owner-tab".into());
+    app.current_agent_id = "copilot".into();
+    app.tab_mut("owner-tab");
+    app.set_master_pipe_acp_params(
+        "master-pipe".into(),
+        "copilot --acp".into(),
+        Some("copilot".into()),
+        None,
+        None,
+        crate::agent_source::AgentSource::Host,
+        None,
+        Some("owner-tab".into()),
+        Arc::clone(&app.shell_mgr),
+        true,
+    );
+
+    app.handle_event(agent_rebind_event("owner-tab", 1, "opencode"));
+    let request = match restart_rx
+        .try_recv()
+        .expect("agent rebind should retire the current transport")
+    {
+        AgentLifecycleRequest::RebindAgent(request) => request,
+        other => panic!("expected RebindAgent, got {other:?}"),
+    };
+
+    app.handle_event(AppEvent::AgentTransportRetired);
+    assert!(matches!(
+        &app.agent_reconnect_state,
+        AgentReconnectState::Preflighting(pending)
+            if pending.agent_id == "opencode" && pending.generation == 1
+    ));
+
+    app.handle_event(AppEvent::AgentReconnectReady(request));
+    assert!(matches!(
+        &app.agent_reconnect_state,
+        AgentReconnectState::Preflighting(pending)
+            if pending.agent_id == "opencode" && pending.generation == 1
+    ));
+
+    app.handle_event(AppEvent::AgentReconnectPreflightComplete {
+        operation_id: "op-1".into(),
+        generation: 1,
+        result: passed_preflight("opencode", "OpenCode"),
+    });
+    assert!(app.pending_acp_start);
+    assert!(matches!(
+        &app.agent_reconnect_state,
+        AgentReconnectState::Idle
+    ));
+}
+
+#[test]
 fn agent_rebind_accepts_only_the_helpers_current_execution_source() {
     let (mut app, mut restart_rx) = test_app_with_restart_rx();
     app.owner_tab_id = Some("owner-tab".into());
