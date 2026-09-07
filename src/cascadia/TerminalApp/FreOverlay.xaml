@@ -202,8 +202,10 @@
                 <ScrollViewer x:Name="SettingsFormScroller"
                               Grid.Row="1"
                               HorizontalAlignment="Stretch"
+                              SizeChanged="_OnSettingsFormScrollerSizeChanged"
                               VerticalScrollBarVisibility="Auto">
-                    <StackPanel Spacing="4"
+                    <StackPanel x:Name="SettingsFormStack"
+                                Spacing="4"
                                 MaxWidth="{StaticResource StandardControlMaxWidth}"
                                 HorizontalAlignment="Center">
                         <!--  Agent  -->
@@ -272,7 +274,8 @@
                                     <TextBlock x:Uid="FreOverlay_PanePositionLabel"
                                                FontSize="14" FontWeight="SemiBold"
                                                Foreground="White" />
-                                    <TextBlock x:Uid="FreOverlay_PanePositionDescription"
+                                    <TextBlock x:Name="PanePositionDescriptionText"
+                                               x:Uid="FreOverlay_PanePositionDescription"
                                                FontSize="12" Foreground="#99FFFFFF"
                                                TextWrapping="Wrap" />
                                 </StackPanel>
@@ -298,7 +301,8 @@
                                     <TextBlock x:Uid="FreOverlay_ErrorDetectionLabel"
                                                FontSize="14" FontWeight="SemiBold"
                                                Foreground="White" />
-                                    <TextBlock x:Uid="FreOverlay_ErrorDetectionDescription"
+                                    <TextBlock x:Name="ErrorDetectionDescriptionText"
+                                               x:Uid="FreOverlay_ErrorDetectionDescription"
                                                FontSize="12" Foreground="#99FFFFFF"
                                                TextWrapping="Wrap" />
                                     <TextBlock x:Name="ErrorDetectionPolicyNotice"
@@ -336,7 +340,8 @@
                                         <TextBlock x:Uid="FreOverlay_SessionLabel"
                                                    FontSize="14" FontWeight="SemiBold"
                                                    Foreground="White" />
-                                        <TextBlock x:Uid="FreOverlay_SessionDescription"
+                                        <TextBlock x:Name="SessionDescriptionText"
+                                                   x:Uid="FreOverlay_SessionDescription"
                                                    FontSize="12" Foreground="#99FFFFFF"
                                                    TextWrapping="Wrap" />
                                     </StackPanel>
@@ -369,7 +374,8 @@
                                     <TextBlock x:Uid="FreOverlay_ShowTokenUsageAndCostLabel"
                                                FontSize="14" FontWeight="SemiBold"
                                                Foreground="White" />
-                                    <TextBlock x:Uid="FreOverlay_ShowTokenUsageAndCostDescription"
+                                    <TextBlock x:Name="TokenUsageDescriptionText"
+                                               x:Uid="FreOverlay_ShowTokenUsageAndCostDescription"
                                                FontSize="12" Foreground="#99FFFFFF"
                                                TextWrapping="Wrap" />
                                 </StackPanel>

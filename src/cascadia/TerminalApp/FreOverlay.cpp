@@ -16,6 +16,7 @@
 #include "WindowsPackageManagerFactory.h"
 
 #include <winrt/Windows.UI.Xaml.Documents.h>
+#include <limits>
 #include <mutex>
 
 using namespace winrt::Windows::Foundation;
@@ -370,6 +371,84 @@ namespace winrt::TerminalApp::implementation
         }
     }
 
+    void FreOverlay::_OnSettingsFormScrollerSizeChanged(
+        const IInspectable& /*sender*/,
+        const SizeChangedEventArgs& /*args*/)
+    {
+        _UpdateSettingsFormWidth();
+    }
+
+    void FreOverlay::_UpdateSettingsFormWidth()
+    {
+        const auto scroller = SettingsFormScroller();
+        const auto stack = SettingsFormStack();
+        const auto errorDetectionComboBox = ErrorDetectionComboBox();
+        if (!scroller || !stack || !errorDetectionComboBox)
+        {
+            return;
+        }
+
+        const Size unconstrained{
+            std::numeric_limits<float>::max(),
+            std::numeric_limits<float>::max(),
+        };
+
+        double longestDescriptionWidth = 0;
+        const auto measureDescription = [&](const TextBlock& description) {
+            description.Measure(unconstrained);
+            longestDescriptionWidth = std::max(
+                longestDescriptionWidth,
+                static_cast<double>(description.DesiredSize().Width));
+        };
+        measureDescription(AgentDescriptionText());
+        measureDescription(PanePositionDescriptionText());
+        measureDescription(ErrorDetectionDescriptionText());
+        measureDescription(SessionDescriptionText());
+        measureDescription(TokenUsageDescriptionText());
+
+        TextBlock optionProbe;
+        optionProbe.FontSize(errorDetectionComboBox.FontSize());
+        double longestOptionWidth = 0;
+        const auto measureOption = [&](const winrt::hstring& text) {
+            optionProbe.Text(text);
+            optionProbe.Measure(unconstrained);
+            longestOptionWidth = std::max(
+                longestOptionWidth,
+                static_cast<double>(optionProbe.DesiredSize().Width));
+        };
+        measureOption(RS_(L"FreOverlay_ErrorDetectionDetectOption/Content"));
+        measureOption(RS_(L"FreOverlay_ErrorDetectionAutoFixOption/Content"));
+        measureOption(RS_(L"FreOverlay_ErrorDetectionOffOption/Content"));
+
+        // Reserve enough room for the longest localized option plus the
+        // ComboBox padding and drop-down glyph when calculating the form width.
+        // The ComboBox itself keeps its XAML MinWidth and follows the selected
+        // option's natural width.
+        constexpr double comboBoxChromeWidth = 48;
+        const double errorDetectionWidth = longestOptionWidth + comboBoxChromeWidth;
+
+        double longestControlWidth = AgentComboBox().MinWidth();
+        longestControlWidth = std::max(longestControlWidth, PanePositionComboBox().MinWidth());
+        longestControlWidth = std::max(longestControlWidth, errorDetectionWidth);
+
+        constexpr double cardHorizontalPadding = 32;
+        constexpr double columnSpacing = 24;
+        constexpr double maximumFormWidth = 1000;
+        const double desiredWidth =
+            longestDescriptionWidth +
+            columnSpacing +
+            longestControlWidth +
+            cardHorizontalPadding;
+
+        const double viewportWidth = scroller.ViewportWidth() > 0
+            ? scroller.ViewportWidth()
+            : scroller.ActualWidth();
+        if (viewportWidth > 0)
+        {
+            stack.Width(std::min({ desiredWidth, viewportWidth, maximumFormWidth }));
+        }
+    }
+
     // ── Page navigation ─────────────────────────────────────────────────
 
     void FreOverlay::_OnNextButtonClick(const IInspectable& /*sender*/,
@@ -383,6 +462,7 @@ namespace winrt::TerminalApp::implementation
             [weak = get_weak()]() {
                 if (auto self = weak.get())
                 {
+                    self->_UpdateSettingsFormWidth();
                     self->SaveButton().Focus(FocusState::Programmatic);
                 }
             });
