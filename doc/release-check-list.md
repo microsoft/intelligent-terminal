@@ -233,6 +233,8 @@ Net effect: UT shrinks the manual matrix to "did the wiring and UI connect", not
 
 ### Shell integration and detection
 
+- [ ] `C295` `[new]` `[E2E]` **Detected Autofix clicks remain isolated between tabs:** With errors detected in two tabs, clicking one tab's diagnostics button submits exactly one prompt for that tab and preserves the other tab's pending opt-in. _(E2E: `Feature.AutofixRouting`.)_
+
 - [ ] `C087` `[E2E]` **PowerShell shell integration installed:** Supported PowerShell profiles emit command-finished events, including non-zero marks for PowerShell-level failures on Windows PowerShell 5.1.
 - [ ] `C219` `[new]` `[E2E]` **Bash / WSL shell integration installed:** Supported bash and WSL-bash profiles emit command-finished events, and the injected `PROMPT_COMMAND` is safe under `set -u` (no errors in strict-mode shells). _(#340.)_
 - [ ] `C250` `[new]` `[E2E]` **Bash PROMPT_COMMAND rewrites preserve semantic prompt boundaries:** In Intelligent Terminal, a user hook that rebuilds `PS1` still produces one ordered `OSC 133;D/A/B` cycle per command; the same user-wide integration script stays inert in other terminals. _(#468; E2E: `Feature.BashPromptIntegration`.)_

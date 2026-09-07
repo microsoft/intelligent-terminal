@@ -225,7 +225,10 @@ Describe 'Feature: autofix in a WSL pane (OSC 9001;ShellType end-to-end)' -Tag '
 
             # Agent pane on the (now active) WSL tab so autofix cards render here.
             Open-AgentPane -App $script:app | Out-Null
-            Wait-AgentReady -App $script:app -TimeoutSec 60 | Should -BeTrue -Because 'the agent pane must be connected for WSL autofix to render cards'
+            $script:wslAgent = Wait-Until -TimeoutSec 30 -Because 'the WSL tab helper identity' -Condition {
+                Get-AgentPaneSession -App $script:app -OwnerPaneSessionId $script:wslSid
+            }
+            Wait-AgentReady -App $script:app -PaneSessionId $script:wslAgent.PaneSessionId -TimeoutSec 60 | Should -BeTrue -Because 'the agent pane must be connected for WSL autofix to render cards'
         }
         catch {
             Write-ItLog -Level WARN -Message "WSL autofix setup failed (build without WSL-capable CreateTab / OSC 9001, or no WSL shell integration): $_"
@@ -257,14 +260,14 @@ Describe 'Feature: autofix in a WSL pane (OSC 9001;ShellType end-to-end)' -Tag '
             Invoke-FailingCommand -App $script:app -SessionId $script:wslSid -Command 'sl -la' | Out-Null
             Wait-Autofix -Listener $listener -TimeoutSec 45 | Out-Null
         } finally { Stop-WtEventListener -Listener $listener }
-        $pending = Wait-TerminalActionProposal -App $script:app -TimeoutSec 30 -ReturnOnPermission
+        $pending = Wait-TerminalActionProposal -App $script:app -PaneSessionId $script:wslAgent.PaneSessionId -TimeoutSec 30 -ReturnOnPermission
         $pending | Should -Not -BeNullOrEmpty -Because 'WSL Autofix must submit a Direct Helper Proposal'
         if ($pending.Mode -eq 'Permission') {
             # Explicit test-user selection of the provider's allow option.
-            Send-AgentKey -App $script:app -Key Y | Out-Null
+            Send-AgentKey -App $script:app -PaneSessionId $script:wslAgent.PaneSessionId -Key Y | Out-Null
         }
         $cardText = Wait-Until -TimeoutSec 60 -IntervalSec 1 -Because 'a visible WSL Autofix recommendation card' -Condition {
-            $text = Get-AgentPaneText -App $script:app -MaxLines 60
+            $text = Get-AgentPaneText -App $script:app -PaneSessionId $script:wslAgent.PaneSessionId -MaxLines 60
             if ($text -match (Get-RecommendationCardRegex)) { $text }
         }
         Assert-AI -Claim 'The suggested fix command uses Linux/bash shell syntax (e.g. ls, grep, cat, forward-slash paths). It is NOT a Windows PowerShell command (no Get-ChildItem / Select-String / cmdlet-style Verb-Noun).' -Context $cardText

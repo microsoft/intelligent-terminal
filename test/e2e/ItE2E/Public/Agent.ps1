@@ -213,11 +213,13 @@ function Wait-TerminalActionProposal {
         recommendation card directly or first presents the provider's normal permission
         UI. With -ReturnOnPermission, the latter returns Mode=Permission without selecting
         an option; the caller must simulate an explicit user choice.
+        Use -PaneSessionId to pin the rendered MCP card when several tabs have helpers.
     #>
     [CmdletBinding()] param(
         [Parameter(Mandatory, ValueFromPipeline)]$App,
         [int]$TimeoutSec = 45,
-        [switch]$ReturnOnPermission
+        [switch]$ReturnOnPermission,
+        [string]$PaneSessionId
     )
     process {
         Wait-Until -TimeoutSec $TimeoutSec -IntervalSec 0.5 -Because 'a pending terminal-action proposal' -Condition {
@@ -229,7 +231,7 @@ function Wait-TerminalActionProposal {
                 return Get-CimInstance Win32_Process -Filter "ProcessId = $($candidate.ProcessId)" -ErrorAction SilentlyContinue |
                     Where-Object { $_.CommandLine -match '(?i)(?:^|\s)propose-terminal-actions(?:\s|$)' }
             }
-            $paneText = Get-AgentPaneText -App $App -MaxLines 60
+            $paneText = Get-AgentPaneText -App $App -MaxLines 60 -PaneSessionId $PaneSessionId
             if ($paneText -match (Get-RecommendationCardRegex)) {
                 return [pscustomobject]@{ Mode = 'Mcp'; Ready = $true }
             }

@@ -2283,7 +2283,7 @@ impl App {
                     // User pressed the pill / hotkey in Detected state.
                     // Replay the trigger as if auto-suggest were on, so
                     // the LLM call fires and we transition to Pending.
-                    self.handle_autofix_execute_from_detected();
+                    self.handle_autofix_execute_from_detected(&pane_id, tab_id.as_deref());
                     return;
                 }
 

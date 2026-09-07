@@ -880,6 +880,7 @@ namespace winrt::TerminalApp::implementation
         void _RegisterTerminalEvents(Microsoft::Terminal::Control::TermControl term);
         std::string _FindSessionIdForControl(const Microsoft::Terminal::Control::TermControl& control);
         std::string _FindTabIdForControl(const Microsoft::Terminal::Control::TermControl& control);
+        std::string _FindTabIdForSessionId(std::string_view sessionId);
         void _RegisterTabEvents(Tab& hostingTab);
 
         void _DismissTabContextMenus();
