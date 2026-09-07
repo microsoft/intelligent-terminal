@@ -415,7 +415,7 @@ impl App {
                 requested_pane_id,
                 requested_tab_id,
                 active_tab,
-                "ignoring untargeted or cross-tab detected Autofix action"
+                "ignoring detected Autofix action with missing target or wrong tab"
             );
             return;
         }

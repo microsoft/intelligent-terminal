@@ -7,6 +7,7 @@ Describe 'Feature: Autofix detected action routing' -Tag 'Feature' {
         Import-Module (Join-Path $PSScriptRoot '..\ItE2E\ItE2E.psd1') -Force
         $fixture = (Resolve-Path (Join-Path $PSScriptRoot '..\fixtures\Mock-AcpInteractionAgent.ps1')).Path
         $script:requestLog = Join-Path $env:TEMP ("ite2e-autofix-routing-{0}.log" -f [guid]::NewGuid().ToString('N'))
+        New-Item -ItemType File -Path $script:requestLog | Out-Null
         $invocation = "& '$($fixture.Replace("'", "''"))' -LogPath '$($script:requestLog.Replace("'", "''"))'"
         $encoded = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($invocation))
         $command = "pwsh -NoProfile -EncodedCommand $encoded"
