@@ -14,9 +14,10 @@
 //
 // Format
 // ------
-// JSONL, one record per ACP `session/new` success, appended atomically by
-// the OS (`OpenOptions::append`). Records are intentionally small so the
-// file stays compact under heavy use:
+// JSONL, one record per ACP `session/new` success. Each record and newline
+// are buffered before writing under an exclusive file lock, preventing
+// concurrent helpers from interleaving even if a write is partial.
+// Records are intentionally small so the file stays compact under heavy use:
 //
 //   v1 (legacy, still readable):
 //     {"v":1,"session_id":"<uuid>","origin":"agent_pane","started_at":"<RFC3339-ish>"}
@@ -110,7 +111,12 @@ pub fn append_to(
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
     }
-    let mut file = OpenOptions::new().create(true).append(true).open(path)?;
+    // Windows file locking requires read or write access, not append alone.
+    let mut file = OpenOptions::new()
+        .create(true)
+        .read(true)
+        .append(true)
+        .open(path)?;
     let record = match pane_session_id {
         Some(pane) if !pane.is_empty() => serde_json::json!({
             "v": SCHEMA_VERSION,
@@ -126,8 +132,17 @@ pub fn append_to(
             "started_at": rfc3339_now(),
         }),
     };
-    writeln!(file, "{}", record)?;
+    // Keep the lock across every write_all retry; closing the file releases it
+    // on both success and error, including when another helper is waiting.
+    file.lock()?;
+    write_record(&mut file, &record)?;
     Ok(())
+}
+
+fn write_record(writer: &mut impl Write, record: &serde_json::Value) -> std::io::Result<()> {
+    let mut bytes = serde_json::to_vec(record)?;
+    bytes.push(b'\n');
+    writer.write_all(&bytes)
 }
 
 /// Load the default index into a `HashSet<String>` of session ids. Empty
@@ -231,6 +246,16 @@ pub fn load_records_from(path: &std::path::Path) -> HashMap<String, OriginRecord
         Ok(f) => f,
         Err(_) => return out, // most commonly: file does not exist yet
     };
+    // Windows byte-range locks also exclude reads. Wait for the complete
+    // append instead of treating a concurrent writer as an unreadable index.
+    if let Err(err) = file.lock_shared() {
+        tracing::warn!(
+            target: "agent_pane_origin",
+            error = %err,
+            "failed to lock origin index for reading",
+        );
+        return out;
+    }
     for line in BufReader::new(file).lines().map_while(Result::ok) {
         let trimmed = line.trim();
         if trimmed.is_empty() {
@@ -320,6 +345,128 @@ mod tests {
         let path = dir.join(format!("{}-{}.jsonl", label, std::process::id()));
         let _ = std::fs::remove_file(&path);
         path
+    }
+
+    #[test]
+    fn record_is_submitted_as_one_complete_write() {
+        struct RecordWriter(Vec<u8>);
+
+        impl Write for RecordWriter {
+            fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+                // Each append is independently scheduled by the OS. Reject any
+                // fragment that another writer could split with its own record.
+                assert_eq!(bytes.last(), Some(&b'\n'), "incomplete JSONL append");
+                serde_json::from_slice::<serde_json::Value>(bytes).unwrap();
+                self.0.extend_from_slice(bytes);
+                Ok(bytes.len())
+            }
+
+            fn flush(&mut self) -> std::io::Result<()> {
+                Ok(())
+            }
+        }
+
+        let record = serde_json::json!({
+            "v": SCHEMA_VERSION,
+            "session_id": "session-\"quoted\"\n雪",
+            "pane_session_id": "pane-\\escaped",
+        });
+        let mut writer = RecordWriter(Vec::new());
+        write_record(&mut writer, &record).unwrap();
+        assert_eq!(writer.0.iter().filter(|&&b| b == b'\n').count(), 1);
+        assert_eq!(
+            serde_json::from_slice::<serde_json::Value>(&writer.0).unwrap(),
+            record
+        );
+    }
+
+    #[test]
+    fn record_write_retries_short_writes_and_propagates_errors() {
+        struct ShortWriter {
+            bytes: Vec<u8>,
+            fail_after: Option<usize>,
+        }
+
+        impl Write for ShortWriter {
+            fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+                if self.fail_after == Some(self.bytes.len()) {
+                    return Err(std::io::ErrorKind::PermissionDenied.into());
+                }
+                let count = bytes.len().min(1);
+                self.bytes.extend_from_slice(&bytes[..count]);
+                Ok(count)
+            }
+
+            fn flush(&mut self) -> std::io::Result<()> {
+                Ok(())
+            }
+        }
+
+        let record = serde_json::json!({"session_id": "short-write"});
+        let mut writer = ShortWriter {
+            bytes: Vec::new(),
+            fail_after: None,
+        };
+        write_record(&mut writer, &record).unwrap();
+        assert_eq!(writer.bytes.last(), Some(&b'\n'));
+        assert_eq!(
+            serde_json::from_slice::<serde_json::Value>(&writer.bytes).unwrap(),
+            record
+        );
+
+        writer.bytes.clear();
+        writer.fail_after = Some(3);
+        assert_eq!(
+            write_record(&mut writer, &record).unwrap_err().kind(),
+            std::io::ErrorKind::PermissionDenied
+        );
+    }
+
+    #[test]
+    fn concurrent_appends_preserve_every_record() {
+        const WRITERS: usize = 8;
+        const RECORDS: usize = 32;
+        let path = tmp_index_path("concurrent");
+        let barrier = std::sync::Barrier::new(WRITERS);
+        std::thread::scope(|scope| {
+            for writer in 0..WRITERS {
+                let path = &path;
+                let barrier = &barrier;
+                scope.spawn(move || {
+                    barrier.wait();
+                    for record in 0..RECORDS {
+                        append_to(
+                            path,
+                            &format!("session-{writer}-{record}-\"雪\"\n"),
+                            Some(&format!("pane-{writer}")),
+                        )
+                        .unwrap();
+                    }
+                });
+            }
+        });
+
+        let contents = std::fs::read_to_string(&path).unwrap();
+        assert!(contents.ends_with('\n'));
+        assert_eq!(contents.lines().count(), WRITERS * RECORDS);
+        for line in contents.lines() {
+            let record: serde_json::Value = serde_json::from_str(line).unwrap();
+            assert_eq!(record["v"], SCHEMA_VERSION);
+            assert_eq!(record["origin"], "agent_pane");
+        }
+        let records = load_records_from(&path);
+        assert_eq!(records.len(), WRITERS * RECORDS);
+        for writer in 0..WRITERS {
+            for record in 0..RECORDS {
+                assert_eq!(
+                    records[&format!("session-{writer}-{record}-\"雪\"\n")]
+                        .pane_session_id
+                        .as_deref(),
+                    Some(format!("pane-{writer}").as_str())
+                );
+            }
+        }
+        std::fs::remove_file(path).unwrap();
     }
 
     #[test]
