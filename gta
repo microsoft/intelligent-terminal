@@ -1,0 +1,217 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+
+<!-- Global site tag (gtag.js) - Google Analytics -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-MB8T4XTWPC"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+	
+  gtag('config', 'G-MB8T4XTWPC'); //NFC GA4 Tag
+	
+  gtag('config', 'G-VYRH7BQ1FL'); //USDA GA4 Tag
+	
+  gtag('config', 'G-CSLL4ZEK4L'); //DAP GA4 Tag
+</script>
+
+
+<meta charset="utf-8">
+<meta http-equiv="X-UA-Compatible" content="IE=edge">
+<meta name="generator" content="nfc">
+<title>EmpowHR | National Finance Center</title>
+<meta http-equiv="Last-modified" content="1769719534">
+
+<meta name="author" content="TCB">
+<meta name="description" content="EmpowHR is a Human Capital Management System comprised of an integrated suite of commercial and Government applications that support all critical Human Resources (HR) Components in a single enterprise system.">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+	<link href="/Includes/styles.css" type="text/css" rel="stylesheet"><script>!function(e,t){"use strict";function n(){var e=t.getElementsByTagName("script");return e[e.length-1].src.split("/").slice(0,-1).join("/")+"/.."}var a=n()+"/images/nfc.icons.svg",o="3";if(!t.createElementNS||!t.createElementNS("http://www.w3.org/2000/svg","svg").createSVGRect)return!0;var r,i,l="localStorage"in e&&null!==e.localStorage,s=function(){t.body.insertAdjacentHTML("afterbegin",i)},c=function(){t.body?s():t.addEventListener("DOMContentLoaded",s)};if(l&&localStorage.getItem("nfcIconsVersion")==o&&(i=localStorage.getItem("nfcIcons")))return c(),!0;try{r=new XMLHttpRequest,r.open("GET",a,!0),r.onload=function(){r.status>=200&&r.status<400&&(i=r.responseText,c(),l&&(localStorage.setItem("nfcIcons",i),localStorage.setItem("nfcIconsVersion",o)))},r.send()}catch(g){}}(window,document);</script></head>
+<body>
+<a href="#maincontent" id="skipnav">Skip to Main Content</a>
+<div id="topmenu">
+            <dl>
+              <dt>Additional Links</dt>
+                <dd><a href="/about/index.php">About</a></dd>
+                <dd><a href="/careers">Careers</a></dd>
+                <dd><a href="/contact/index.php">Contact Us</a></dd>
+                <dd><a href="/subscribe/index.php" target="_blank">Subscribe</a></dd>
+            </dl>
+            <form accept-charset="UTF-8" action="https://search.usa.gov/search" id="search_form" method="get" >
+                <input name="utf8" type="hidden" value="&#x2713;" />
+                <input id="affiliate" name="affiliate" type="hidden" value="usda-nfc" />
+                <input autocomplete="off" aria-label="Search" class="usagov-search-autocomplete" placeholder="Search" id="query" name="query" type="text" />
+                <input name="commit" id="search-btn" type="submit" value="Search" />
+            </form>
+    	</div>	
+<header>
+<!-- signature lockup -->
+<h1>National Finance Center</h1>
+<h2>U.S. Department of Agriculture</h2>
+		
+        
+    
+	<button class="main_menu--button">Menu</button>
+<nav id="main_menu">
+    <ul>
+        <li ><a href="/index.php">Home</a></li>
+       
+      <li class="services menu-heading" data-place="current"><a href="#" aria-haspopup="true">Services <svg class="icon" role="presentation"><use xlink:href="#downArrow" /></svg></a>
+            <ul aria-hidden="true">
+                <li class="hrpay"><svg class="icon" role="presentation"><use xlink:href="#twoUsers" /></svg><a href="/Services/HRLOB/index.php">HR and Payroll</a></li>
+            </ul>
+        </li>
+        <li class="myNFC menu-heading"><a href="#" aria-haspopup="true">MyNFC <svg class="icon" role="presentation"><use xlink:href="#downArrow" /></svg></a>
+            <ul aria-hidden="true">
+                <li class="hrpay"><svg class="icon" role="presentation"><use xlink:href="#twoUsers" /></svg><a href="/ClientServices/HR_Payroll/index.php">HR and Payroll Clients</a></li>
+                <li class="financial"><svg class="icon" role="presentation"><use xlink:href="#money" /></svg><a href="/FSS/index.php">Financial Services Clients</a></li>
+                <li class="insurance"><svg class="icon insuranceIcon" role="presentation"><use xlink:href="#caduceus" /></svg><a href="/ClientServices/Insurance/index.php">Insurance Services Clients</a></li>
+            </ul>
+        </li>
+    </ul>
+</nav></header>
+<div role="complementary"><picture style="background-color:#0c486c;"><!--[if IE 9]><video style="display: none;"><![endif]--><source srcset="//nfc.usda.gov/images/slides/marketing/hrlob/ssd5_stratHR_l.jpg" media="(min-width: 801px)"><source srcset="//nfc.usda.gov/images/slides/marketing/hrlob/ssd5_stratHR_m.jpg" media="(min-width: 401px)"><source srcset="//nfc.usda.gov/images/slides/marketing/hrlob/ssd5_stratHR_s.jpg" media="(min-width: 0px)"><!--[if IE 9]></video><![endif]--><img srcset="//nfc.usda.gov/images/slides/marketing/hrlob/ssd5_stratHR_m.jpg" alt="Strategic Direction For Human Capital Management"></picture></div>
+<div class="ribbon" role="navigation">
+	
+<dl id="submenu" class="client-services" role="menubar">
+	<dt class="hr-overview menu-drop-down"  role="menuitem" aria-haspopup="true" tabindex="0"><svg class="icon" role="presentation"><use xlink:href="#threeUsers" /></svg>Overview</dt>
+    	<dd role="menu">
+            <dl>
+                <dt>Overview</dt>
+                    <dd role="menuitem"><a href="/Services/HRLOB/index.php">Why NFC?</a></dd>
+            </dl>
+        </dd>
+	
+    <dt class="payroll menu-drop-down"  role="menuitem" aria-haspopup="true" tabindex="0"><svg class="icon" role="presentation"><use xlink:href="#money" /></svg>Payroll</dt>
+    	<dd role="menu">
+            <dl>
+				<dt>Payroll</dt>
+                	<dd role="menuitem"><a href="/Services/HRLOB/payroll/compManagement.php">Compensation Management</a></dd>
+					<dd role="menuitem"><a href="/Services/HRLOB/payroll/timeAttendance.php">Time and Attendance</a></dd>
+					<dd role="menuitem"><a href="/Services/HRLOB/payroll/reportingAnalytics.php">Reporting and Analytics</a></dd>
+          	</dl>
+        </dd>
+	
+    <dt class="hr-solutions menu-drop-down" data-place="current" role="menuitem" aria-haspopup="true" tabindex="0"><svg class="icon" role="presentation"><use xlink:href="#graphs" /></svg>HR Solutions</dt>
+    	<dd role="menu">
+            <dl>
+				<dt>HR Solutions</dt>
+					<dd role="menuitem"><a href="/Services/HRLOB/solutions/empowHR.php">EmpowHR</a></dd>
+            </dl>
+        </dd>
+</dl>
+</div>
+<main id="maincontent">
+	
+<h3>Position Management</h3>
+	
+<p>NFC’s HR solutions at the core are position driven. EmpowHR provides the full complement of position management functionality.  Position Management allows the creation or modification of all position information, including a job code and position. Position Management is used to assign data to positions and move employees in and out of positions, as appropriate. The data that is specific to each position is the basis for organizational planning, recruitment, and career planning. This is appropriate for Federal positions as duties, responsibilities, pay, and other factors are determined by the position, not the incumbent.</p>
+	
+<p>The EmpowHR system has the ability to create and maintain Position Descriptions (PDs) and Job Analysis. Users are able to develop, edit, and store PDs in a comprehensive library and can associate a PD to an announcement in the workflow. Additionally, users have the ability to select questions from a comprehensive library in the development of job analyses. </p>
+
+<p>The system supports workforce management that allows managing and tracking of encumbered, vacant, detail, and obligated positions, to include the lifecycle of the position. EmpowHR records a complete and comprehensive audit trail that relates to and details all actions made to each position.</p>
+
+<h3>Personnel Action, Payroll Transaction, and Benefits Processing</h3>
+	
+<p>EmpowHR provides for the full processing capabilities for all personnel actions, payroll transactions, and benefits management.  These functionalities are either initiated by the Manager through a self-service module or by HR when the request is received.  Entry of the actions is supported by automated workflow processes within EmpowHR. Reports and Admin modules are available to assist with control of transaction workflow and processing validation. EmpowHR also maintains historical rows for all types of actions including payroll and benefits transactions.</p>
+	
+<h3>Person Model</h3>
+	
+<p>EmpowHR allows for the management of government, contingent, and contract workers through the Person Model. The module supports the storage and tracking of these workers within one centralized system with no redundant data and allows users to manage and report on all types of workers. The EmpowHR Person Model also includes a component that displays a summary of all badge, security clearance, and email address details for an individual.  The security clearance module enables customers to enter and track security clearance status and expiration dates.  Currently, NFC’s system does not automatically notify employees/managers of upcoming reinvestigations. However, the Person Model includes all information needed to track these manually and the system can be modified to automate the process, if a customer requests it.  Additionally, the EmpowHR Person Model provides the ability for users to track warrants and certifications and emergency contact information for employees, contingent workers, and persons of interest. Information is stored and tracked within one central repository to capture relevant data attributes and organizational relationships.</p>
+	
+<h3>Manager Self Service and Manager PAR Request</h3>
+	
+<p>EmpowHR provides customers with manager self-service capabilities for non-recruitment actions as defined by the customer through the Manager Self Service (MSS) component.  With MSS, managers are able to:</p>
+	
+<ul class="checkmarks">
+	<li>Initiate a PAR</li>
+	<li>Manage PAR Requests</li>
+	<li>Review Transactions</li>
+	<li>Delegate Approvals</li>
+	<li>Add Attachments</li>
+</ul>
+
+<p>Managers have the ability to perform personnel requests for their direct reports and their subordinates. Once a manager initiates a request, it passes through an approval workflow process that is specified by the Agency. Once the request is approved, it is submitted to the appropriate EmpowHR module for processing. Workflow processes and configuration of approved manager actions is determined by the customer during the migration process. Managers have the ability to view the data for employees in their chain of command (e.g., employee information, position information, title, grade, Bargaining Unit status, service computation date (SCD), within-grade increase (WGI) Due Date, Last Promotion Date, etc.). The chain of command is determined by tracking positions and their reporting structure, established through the “Reports To” feature in EmpowHR or through the use of Department Security Tree.</p>
+
+<p>The functionality of MSS is described below: </p>
+	
+<h4>Non-Recruitment Actions</h4>
+	
+<p>EmpowHR's MSS Manager PAR Request gives a manager or supervisor the ability to initiate certain personnel action requests for employees in their organization.   Once a PAR is initiated, it is sent through the appropriate approval workflow channels utilized an automated workflow process.  Managers can review the approval status of a request through the Review Transactions component. </p>
+
+<p>Upon final approval, the PAR is sent to the HR personnel for further processing. The point at which the request enters the HR workflow is determined by the Agency Administrator.  Once the action has been processed by HR, the initiating manager will receive a notification that the transaction has been processed.</p>
+
+<p>The types of PAR actions available through the Manager PAR Request component are configured by each Agency.</p>
+	
+<h3>Third Party Integration</h3>
+	
+<p>NFC is vendor agnostic and offers great flexibility and options with non-core offerings. NFC integrates with your Agency. Additionally, NFC maintains a public-private partnership to deliver non-core service offerings.</p>
+	
+<h3>Staff Acquisition and Onboarding</h3>
+	
+<p>USA Staffing integrates with EmpowHR, and offers a comprehensive recruiting and hiring solutions that provide a seamless process for identifying candidates, posting job announcements, assessing candidates, rating and ranking candidates, and on-boarding new employees.</p>
+	
+</main>
+
+<!--//      End Page Content        //-->
+
+<div role="contentinfo" aria-label="Page last updated or reviewed date and time">
+<p id="NFCDateTime">
+Last Updated / Reviewed: January 29, 2026</p>
+</div>
+
+<footer>
+<ul>
+	<li><a href="/index.php">Home</a></li>
+	<li><a href="https://www.usda.gov/accessibility-statement" target="_blank">USDA Accessibility Statement</a></li>
+	<li><a href="/AdditionalResources/mobile_terms_service.php">NFC Multi-Factor Authentication Mobile Terms of Service</a></li>
+	<li><a href="/AdditionalResources/sitemap.php">Site Map</a></li>
+	<li><a href="https://www.usda.gov/policies-and-links" target="_blank">USDA Policies &amp; Links</a></li>
+    <li><a href="https://www.usajobs.gov" target="_blank">USAJOBS</a></li>
+</ul>
+<ul>
+	<li><a href="/AdditionalResources/coop.php">OCFO Continuity of Operations</a></li>
+	<li><a href="https://www.usda.gov/home/privacy-policy/privacy-impact-assessments" target="_blank">USDA Privacy Impact Assessment</a></li>
+	<li><a href="/AdditionalResources/privacy_policy.php">OCFO Privacy Policy</a></li>
+	<li><a href="/contact/feedback.php">Send Us Feedback</a></li>
+	<li><a href="/AdditionalResources/FOIA_home.php">FOIA</a></li>
+	<li><a href="https://www.usda.gov/non-discrimination-statement" target="_blank">USDA Non-Discrimination Statement</a></li>
+</ul>
+<ul>
+	<li><a href="/AdditionalResources/Civil_Rights/index.php">OCFO Civil Rights Office</a></li>
+    <li><a href="https://www.opm.gov/equal-employment-opportunity/no-fear-act/#url=Notice" target="_blank">No Fear Act Law</a></li>
+    <li><a href="https://www.usda.gov/nofear/agencies" target="_blank">No Fear Act Agency Reports</a></li>
+	<li><a href="/AdditionalResources/information_quality.php">Information Quality</a></li>
+    <li><a href="https://www.ocfo.usda.gov/" target="_blank">USDA OCFO</a></li>
+    <li><a href="https://www.usda.gov/plain-writing" target="_blank">USDA Plain Writing</a></li>
+</ul>
+<ul>
+    <li><a href="https://www.usda.gov/digital-strategy" target="_blank">USDA Digital Strategy</a></li>
+    <li><a href="https://www.usda.gov/open" target="_blank">Open Government</a></li>
+    <li><a href="https://www.whitehouse.gov/" target="_blank">WhiteHouse.gov</a></li>
+    <li><a href="https://www.usda.gov/" target="_blank">USDA</a></li>
+	<li><a href="https://www.usa.gov/" target="_blank">USA.gov</a></li>
+</ul>
+</footer>
+
+<script src="/Includes/jquery.min.js"></script>
+<script src="/Includes/jquery-ui.js"></script>
+<script src="/Includes/picturefill.js"></script>
+<script src="/Includes/functions.js"></script>
+
+<script>
+
+<!-- Site Improve Analytics -->
+/*<![CDATA[*/
+(function() {
+var sz = document.createElement('script'); sz.type = 'text/javascript'; sz.async = true;
+sz.src = '//siteimproveanalytics.com/js/siteanalyze_6021813.js';
+var s = document.getElementsByTagName('script')[0]; s.parentNode.insertBefore(sz, s);
+})();
+/*]]>*/
+</script>
+<script async type="text/javascript" src="https://dap.digitalgov.gov/Universal-Federated-Analytics-Min.js?agency=USDA" id="_fed_an_ua_tag"></script>
+
+</body>
+</html>
