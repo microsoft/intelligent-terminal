@@ -2977,7 +2977,7 @@
   </data>
   <data name="AIAgents_CustomProviderCancel.Content" xml:space="preserve">
     <value>Annulla</value>
-    <comment>Button that cancels adding a provider and restores the Add New row.</comment>
+    <comment>Button that cancels adding a provider and restores the Add endpoint row.</comment>
   </data>
   <data name="AIAgents_BYOKModelDisplayName" xml:space="preserve">
     <value>{} (BYOK)</value>

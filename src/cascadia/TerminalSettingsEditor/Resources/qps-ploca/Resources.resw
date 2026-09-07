@@ -2959,7 +2959,7 @@
     <comment>{Locked="API"} Hint below the optional custom provider credential input. Use the established localized product name for Windows Credential Manager.</comment>
   </data>
   <data name="AIAgents_CustomProviderAdd.Content" xml:space="preserve">
-    <value>Add New</value>
+    <value>Add endpoint</value>
     <comment>Button in the final custom provider row that reveals the fields for adding another endpoint.</comment>
   </data>
   <data name="AIAgents_CustomProviderSave.Content" xml:space="preserve">
@@ -2972,7 +2972,7 @@
   </data>
   <data name="AIAgents_CustomProviderCancel.Content" xml:space="preserve">
     <value>Cancel</value>
-    <comment>Button that cancels adding a provider and restores the Add New row.</comment>
+    <comment>Button that cancels adding a provider and restores the Add endpoint row.</comment>
   </data>
   <data name="AIAgents_BYOKModelDisplayName" xml:space="preserve">
     <value>{} (BYOK)</value>
