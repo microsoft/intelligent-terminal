@@ -19,7 +19,30 @@ namespace TerminalAppUnitTests
         TEST_METHOD(RestartRequestIdentityIsStampedOnce);
         TEST_METHOD(BoundedCommandPreservesUtf8Characters);
         TEST_METHOD(BoundedBufferTailAppliesLineAndCharacterLimits);
+        TEST_METHOD(CapabilitySupportDistinguishesUnsupportedFromMalformed);
     };
+
+    void ProtocolParsingTests::CapabilitySupportDistinguishesUnsupportedFromMalformed()
+    {
+        for (const auto* payload : { R"(["get_pane_context"])", R"(["other","get_pane_context"])" })
+        {
+            Json::Value capabilities;
+            VERIFY_IS_TRUE(ParseJson(payload, capabilities));
+            VERIFY_ARE_EQUAL(CapabilitySupport::Supported, ClassifyCapability(capabilities, "get_pane_context"));
+        }
+        for (const auto* payload : { "[]", R"(["other"])" })
+        {
+            Json::Value capabilities;
+            VERIFY_IS_TRUE(ParseJson(payload, capabilities));
+            VERIFY_ARE_EQUAL(CapabilitySupport::Unsupported, ClassifyCapability(capabilities, "get_pane_context"));
+        }
+        for (const auto* payload : { "null", "{}", "true", "1", R"("get_pane_context")", "[null]", R"(["get_pane_context",{}])", R"([false,"get_pane_context"])" })
+        {
+            Json::Value capabilities;
+            VERIFY_IS_TRUE(ParseJson(payload, capabilities));
+            VERIFY_ARE_EQUAL(CapabilitySupport::Invalid, ClassifyCapability(capabilities, "get_pane_context"));
+        }
+    }
 
     void ProtocolParsingTests::DefaultPasteRequestUsesDirectRoute()
     {

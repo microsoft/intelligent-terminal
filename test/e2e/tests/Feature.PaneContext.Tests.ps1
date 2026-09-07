@@ -95,6 +95,9 @@ Describe 'Feature: consolidated pane context' -Tag 'Feature' -Skip:(-not $script
     }
 
     It 'Missing and closed pane context fails without active-pane fallback' {
+        {
+            Invoke-WtCli -App $script:app -Arguments @('get-pane-context') -SkipAuthenticate
+        } | Should -Throw '*requires protocol negotiation*'
         foreach ($id in @('not-a-guid', [guid]::Empty.ToString(), '')) {
             $failure = & (Get-Module ItE2E) {
                 param($App, $Target)

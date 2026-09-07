@@ -6,6 +6,7 @@
 
 #include "Formatting.h"
 #include "wtcli_functions.h"
+#include "../../cascadia/TerminalProtocol/ProtocolParsing.h"
 
 // Classic-COM Terminal protocol. Generated from
 // src/host/proxy/ITerminalProtocol.idl; found via the OpenConsoleProxy IntDir
@@ -76,7 +77,8 @@ struct EventSink : ITerminalProtocolEventSink
 static winrt::com_ptr<ITerminalProtocol> ConnectToTerminal(bool* outAuthenticated = nullptr,
                                                            std::string* outVersion = nullptr,
                                                            bool skipAuthenticate = false,
-                                                           bool quiet = false)
+                                                           bool quiet = false,
+                                                           bool requireProtocolVersion = false)
 {
     if (outAuthenticated)
         *outAuthenticated = false;
@@ -124,7 +126,9 @@ static winrt::com_ptr<ITerminalProtocol> ConnectToTerminal(bool* outAuthenticate
         std::string errs;
         auto s = winrt::to_string(winrt::hstring{ rawAuth });
         std::istringstream ss(s);
-        if (Json::parseFromStream(rb, ss, &v, &errs))
+        if (Json::parseFromStream(rb, ss, &v, &errs) &&
+            (!requireProtocolVersion || (v.isObject() && v["authenticated"].isBool() &&
+                                         v["protocol_version"].isString())))
         {
             parsed = true;
             authenticated = v["authenticated"].asBool();
@@ -311,12 +315,12 @@ static bool TryParseU64(const std::string& s, uint64_t& out)
     return true;
 }
 
-static bool ProtocolAtLeast(const std::string& version, const unsigned requiredMajor, const unsigned requiredMinor)
+static HRESULT ProtocolAtLeast(const std::string& version, const unsigned requiredMajor, const unsigned requiredMinor)
 {
     const auto dot = version.find('.');
     if (dot == std::string::npos)
     {
-        return false;
+        return E_UNEXPECTED;
     }
 
     uint64_t major = 0;
@@ -324,23 +328,30 @@ static bool ProtocolAtLeast(const std::string& version, const unsigned requiredM
     if (!TryParseU64(version.substr(0, dot), major) ||
         !TryParseU64(version.substr(dot + 1), minor))
     {
-        return false;
+        return E_UNEXPECTED;
     }
-    return major > requiredMajor || (major == requiredMajor && minor >= requiredMinor);
+    return major > requiredMajor || (major == requiredMajor && minor >= requiredMinor) ? S_OK : S_FALSE;
 }
 
-static bool SupportsCapability(ITerminalProtocol* server, const std::string_view capability)
+static HRESULT SupportsCapability(ITerminalProtocol* server, const std::string_view capability)
 {
     Json::Value capabilities;
-    if (FAILED(CallJson([&](BSTR* json) { return server->GetCapabilities(json); }, capabilities)) ||
-        !capabilities.isArray())
+    const auto hr = CallJson([&](BSTR* json) { return server->GetCapabilities(json); }, capabilities);
+    if (FAILED(hr))
     {
-        return false;
+        return hr;
     }
 
-    return std::any_of(capabilities.begin(), capabilities.end(), [&](const auto& item) {
-        return item.isString() && item.asString() == capability;
-    });
+    using namespace Microsoft::Terminal::Protocol::Parsing;
+    switch (ClassifyCapability(capabilities, capability))
+    {
+    case CapabilitySupport::Supported:
+        return S_OK;
+    case CapabilitySupport::Unsupported:
+        return S_FALSE;
+    default:
+        return E_UNEXPECTED;
+    }
 }
 
 // ── Main ──
@@ -562,7 +573,7 @@ int wmain(int argc, wchar_t** argv)
     std::string paneContextTarget;
     int paneContextMaxLines = 30;
     int paneContextMaxCharacters = 4000;
-    auto* paneContextCmd = app.add_subcommand("get-pane-context", "Resolve a pane and capture bounded context");
+    auto* paneContextCmd = app.add_subcommand("get-pane-context", "Resolve a pane and capture bounded context (requires the authentication handshake)");
     auto* paneContextTargetOption = paneContextCmd->add_option("-t,--target", paneContextTarget, "Explicit source pane session ID (GUID)");
     paneContextCmd->add_option("-l,--max-lines", paneContextMaxLines, "Buffer-tail lines when command marks are unavailable");
     paneContextCmd->add_option("--max-chars", paneContextMaxCharacters, "Maximum returned content characters");
@@ -595,16 +606,39 @@ int wmain(int argc, wchar_t** argv)
             }
         }
 
+        if (skipAuthenticate)
+        {
+            fprintf(stderr, "[wtcli] get-pane-context requires protocol negotiation; --skip-authenticate is not supported\n");
+            exitCode = 1;
+            return;
+        }
+
         std::string version;
-        auto server = ConnectToTerminal(nullptr, &version, skipAuthenticate);
+        auto server = ConnectToTerminal(nullptr, &version, skipAuthenticate, false, true);
         if (!server)
         {
             exitCode = 1;
             return;
         }
 
-        if (!ProtocolAtLeast(version, 2, 3) ||
-            !SupportsCapability(server.get(), "get_pane_context"))
+        auto support = ProtocolAtLeast(version, 2, 3);
+        if (FAILED(support))
+        {
+            fprintf(stderr, "[wtcli] Invalid protocol version (server contract error)\n");
+            exitCode = 1;
+            return;
+        }
+        if (support == S_OK)
+        {
+            support = SupportsCapability(server.get(), "get_pane_context");
+            if (FAILED(support))
+            {
+                fprintf(stderr, "[wtcli] GetCapabilities failed or returned malformed capabilities: 0x%08X\n", static_cast<uint32_t>(support));
+                exitCode = 1;
+                return;
+            }
+        }
+        if (support == S_FALSE)
         {
             fprintf(stderr,
                     "[wtcli] WT_PROTOCOL_UNSUPPORTED_PANE_CONTEXT server=%s required=2.3\n",

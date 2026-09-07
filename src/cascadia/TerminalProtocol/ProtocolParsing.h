@@ -29,6 +29,32 @@ namespace Microsoft::Terminal::Protocol::Parsing
         return Json::parseFromStream(rb, ss, &out, &errs);
     }
 
+    enum class CapabilitySupport
+    {
+        Supported,
+        Unsupported,
+        Invalid
+    };
+
+    inline CapabilitySupport ClassifyCapability(const Json::Value& capabilities, const std::string_view capability)
+    {
+        if (!capabilities.isArray())
+        {
+            return CapabilitySupport::Invalid;
+        }
+
+        bool found = false;
+        for (const auto& item : capabilities)
+        {
+            if (!item.isString())
+            {
+                return CapabilitySupport::Invalid;
+            }
+            found = found || item.asString() == capability;
+        }
+        return found ? CapabilitySupport::Supported : CapabilitySupport::Unsupported;
+    }
+
     // ── SendEvent dispatch ──
 
     // The dispatch routes for IProtocolServer::SendEvent.
@@ -298,7 +324,7 @@ namespace Microsoft::Terminal::Protocol::Parsing
             lines.emplace_back();
         }
 
-        const auto lineLimit = std::min(lines.size(), static_cast<size_t>(maxLines));
+        const auto lineLimit = (std::min)(lines.size(), static_cast<size_t>(maxLines));
         std::string content;
         for (size_t index = 0; index < lineLimit; ++index)
         {

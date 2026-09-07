@@ -312,6 +312,56 @@ struct CapturedPaneContext {
     output: Option<String>,
 }
 
+fn validate_pane_context(value: &serde_json::Value) -> Result<&serde_json::Value, &'static str> {
+    if !value.is_object() {
+        return Err("response must be an object");
+    }
+    let pane = value.get("pane").ok_or("missing required pane")?;
+    if !pane.is_object() {
+        return Err("pane must be an object");
+    }
+    if pane
+        .get("session_id")
+        .and_then(serde_json::Value::as_str)
+        .filter(|id| !id.trim().is_empty())
+        .is_none()
+    {
+        return Err("pane.session_id must be a nonempty string");
+    }
+    if pane.get("is_agent_pane").is_some_and(|v| !v.is_boolean()) {
+        return Err("pane.is_agent_pane must be a boolean");
+    }
+    if value
+        .get("content")
+        .is_some_and(|v| !v.is_null() && !v.is_string())
+    {
+        return Err("content must be a string or null");
+    }
+    for field in ["truncated", "has_marks"] {
+        if value.get(field).is_some_and(|v| !v.is_boolean()) {
+            return Err(match field {
+                "truncated" => "truncated must be a boolean",
+                _ => "has_marks must be a boolean",
+            });
+        }
+    }
+    for field in ["output_source", "fallback_reason"] {
+        if value.get(field).is_some_and(|v| !v.is_string()) {
+            return Err(match field {
+                "output_source" => "output_source must be a string",
+                _ => "fallback_reason must be a string",
+            });
+        }
+    }
+    if value
+        .get("line_count")
+        .is_some_and(|v| v.as_u64().is_none())
+    {
+        return Err("line_count must be a nonnegative integer");
+    }
+    Ok(pane)
+}
+
 async fn capture_pane_context(
     shell_mgr: &ShellManager,
     explicit_source: Option<&str>,
@@ -324,7 +374,19 @@ async fn capture_pane_context(
         .await
     {
         Ok(value) => {
-            let pane = value.get("pane")?.clone();
+            let pane = match validate_pane_context(&value) {
+                Ok(pane) => pane.clone(),
+                Err(error) => {
+                    tracing::debug!(
+                        target: "acp.terminal_context",
+                        explicit_source = explicit_source.is_some(),
+                        rpc_ms = started.elapsed().as_millis() as u64,
+                        error,
+                        "pane_context_response_contract_error"
+                    );
+                    return None;
+                }
+            };
             let protocol_truncated = value
                 .get("truncated")
                 .and_then(serde_json::Value::as_bool)
@@ -962,6 +1024,7 @@ mod tests {
         requests: AtomicUsize,
         params: Mutex<Option<serde_json::Value>>,
         error: Option<&'static str>,
+        response: Option<serde_json::Value>,
     }
 
     #[async_trait::async_trait]
@@ -976,6 +1039,9 @@ mod tests {
             *self.params.lock().unwrap() = Some(params);
             if let Some(error) = self.error {
                 anyhow::bail!("{error}");
+            }
+            if let Some(response) = &self.response {
+                return Ok(response.clone());
             }
             Ok(serde_json::json!({
                 "pane": {
@@ -1002,6 +1068,7 @@ mod tests {
             requests: AtomicUsize::new(0),
             params: Mutex::new(None),
             error: None,
+            response: None,
         });
         let mgr = ShellManager::new().with_wt_channel(channel.clone());
 
@@ -1026,6 +1093,7 @@ mod tests {
                     requests: AtomicUsize::new(0),
                     params: Mutex::new(None),
                     error: None,
+                    response: None,
                 });
                 let mgr = ShellManager::new().with_wt_channel(channel.clone());
                 let pane_context = PaneContext {
@@ -1076,6 +1144,7 @@ mod tests {
                     requests: AtomicUsize::new(0),
                     params: Mutex::new(None),
                     error: Some("GetPaneContext failed: 0x80070490"),
+                    response: None,
                 });
                 let mgr = ShellManager::new().with_wt_channel(channel.clone());
                 let pane_context = PaneContext {
@@ -1092,6 +1161,132 @@ mod tests {
                 assert!(resolved.resolved_fix_pane.is_none());
                 assert!(resolved.planner_terminal_context.is_none());
                 assert!(resolved.resolved_planner_pane.is_none());
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn malformed_pane_context_logs_contract_error_without_fallback_or_content() {
+        use tracing::instrument::WithSubscriber;
+
+        struct SharedWriter(Arc<Mutex<Vec<u8>>>);
+
+        impl std::io::Write for SharedWriter {
+            fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+                self.0.lock().unwrap().extend_from_slice(bytes);
+                Ok(bytes.len())
+            }
+
+            fn flush(&mut self) -> std::io::Result<()> {
+                Ok(())
+            }
+        }
+
+        let pane = serde_json::json!({"session_id": "pane-explicit", "is_agent_pane": false});
+        let mut cases = vec![
+            (serde_json::json!(null), "response must be an object"),
+            (serde_json::json!([]), "response must be an object"),
+            (serde_json::json!({}), "missing required pane"),
+            (serde_json::json!({"pane": null}), "pane must be an object"),
+            (serde_json::json!({"pane": []}), "pane must be an object"),
+            (
+                serde_json::json!({"pane": {}}),
+                "pane.session_id must be a nonempty string",
+            ),
+        ];
+        for id in [
+            serde_json::json!(""),
+            serde_json::json!(" "),
+            serde_json::json!({}),
+            serde_json::json!(null),
+            serde_json::json!(0),
+            serde_json::json!(42),
+            serde_json::json!(1.5),
+            serde_json::json!(true),
+            serde_json::json!(false),
+            serde_json::json!([]),
+        ] {
+            cases.push((
+                serde_json::json!({"pane": {"session_id": id}}),
+                "pane.session_id must be a nonempty string",
+            ));
+        }
+        cases.push((
+            serde_json::json!({"pane": {"session_id": "pane-explicit", "is_agent_pane": "false"}}),
+            "pane.is_agent_pane must be a boolean",
+        ));
+        for (field, invalid, error) in [
+            (
+                "content",
+                serde_json::json!({}),
+                "content must be a string or null",
+            ),
+            (
+                "truncated",
+                serde_json::json!("false"),
+                "truncated must be a boolean",
+            ),
+            (
+                "has_marks",
+                serde_json::json!(1),
+                "has_marks must be a boolean",
+            ),
+            (
+                "output_source",
+                serde_json::json!([]),
+                "output_source must be a string",
+            ),
+            (
+                "fallback_reason",
+                serde_json::json!(false),
+                "fallback_reason must be a string",
+            ),
+            (
+                "line_count",
+                serde_json::json!(-1),
+                "line_count must be a nonnegative integer",
+            ),
+        ] {
+            let mut value = serde_json::json!({"pane": pane});
+            value[field] = invalid;
+            cases.push((value, error));
+        }
+
+        for (mut response, error) in cases {
+            if response.is_object() {
+                response["private_terminal_content"] =
+                    serde_json::json!("DO_NOT_LOG_TERMINAL_CONTENT");
+            }
+            for explicit_source in [None, Some("pane-explicit")] {
+                let channel = Arc::new(RecordingPaneContextChannel {
+                    requests: AtomicUsize::new(0),
+                    params: Mutex::new(None),
+                    error: None,
+                    response: Some(response.clone()),
+                });
+                let mgr = ShellManager::new().with_wt_channel(channel.clone());
+                let logs = Arc::new(Mutex::new(Vec::new()));
+                let writer = logs.clone();
+                let subscriber = tracing_subscriber::fmt()
+                    .without_time()
+                    .with_ansi(false)
+                    .with_max_level(tracing::Level::DEBUG)
+                    .with_writer(move || SharedWriter(writer.clone()))
+                    .finish();
+                let result = capture_pane_context(&mgr, explicit_source, 30, 4000)
+                    .with_subscriber(subscriber)
+                    .await;
+                assert!(result.is_none(), "{response:?}");
+                assert_eq!(channel.requests.load(Ordering::Relaxed), 1);
+                let log = String::from_utf8(logs.lock().unwrap().clone()).unwrap();
+                assert!(
+                    log.contains("pane_context_response_contract_error"),
+                    "{log}"
+                );
+                assert!(log.contains(error), "{log}");
+                assert!(!log.contains("pane_context_legacy_fallback"), "{log}");
+                assert!(!log.contains("pane_context_request_complete"), "{log}");
+                assert!(!log.contains("DO_NOT_LOG_TERMINAL_CONTENT"), "{log}");
             }
         }
     }
