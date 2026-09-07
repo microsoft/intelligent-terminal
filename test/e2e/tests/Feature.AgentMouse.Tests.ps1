@@ -186,6 +186,11 @@ Describe 'Feature: agent pane physical wheel routing' -Tag 'Feature' -Skip:(-not
     }
 
     It 'Ctrl+wheel zooms the agent pane while plain wheel scrolls chat' -Tag 'Issue790' {
+        if (-not (Test-WtWindowKeyFocusable -App $script:wheelApp)) {
+            Set-ItResult -Skipped -Because 'WT window cannot take foreground for physical wheel input'
+            return
+        }
+
         $viewport = & $script:getAgentViewport
         $turnCount = [Math]::Max(12, $viewport.Rows + 4)
         $turns = @()

@@ -68,6 +68,7 @@ function Initialize-WtWin32Input {
     const byte VK_MENU = 0x12;   // ALT
     const uint KEYUP = 0x2;
     const uint INPUT_MOUSE = 0;
+    const uint MOUSEEVENTF_WHEEL = 0x0800;
 
     [StructLayout(LayoutKind.Sequential)]
     public struct POINT {
@@ -117,7 +118,7 @@ function Initialize-WtWin32Input {
             var inputs = new INPUT[1];
             inputs[0].type = INPUT_MOUSE;
             inputs[0].data.mouse.mouseData = unchecked((uint)delta);
-            inputs[0].data.mouse.dwFlags = 0x0800;
+            inputs[0].data.mouse.dwFlags = MOUSEEVENTF_WHEEL;
             if (SendInput(1, inputs, Marshal.SizeOf(typeof(INPUT))) != 1) return false;
         }
         return true;
