@@ -674,6 +674,176 @@ fn copilot_sidekick_hook_session_is_ignored() {
     );
 }
 
+/// A terminal event for a session WTA has never seen must not fabricate a row.
+///
+/// Repro from a live `wta-main_master.log`: Copilot CLI emitted
+/// `agent.session.end` for an abandoned session with zero turns that WTA had
+/// never observed starting. The synthetic-start branch only excluded
+/// `agent.session.started`, so the router invented a `SessionStarted` titled
+/// after the cwd basename, published it to master, then immediately published
+/// the `SessionStopped`. The result was a permanent `Ended` row in `/sessions`
+/// that no reconcile pass can prune — `is_stale_host_history_row` only drops
+/// ids the listing agent itself returned and later stopped returning.
+#[test]
+fn terminal_agent_event_for_unknown_session_does_not_fabricate_a_row() {
+    use crate::agent_sessions::{AgentSessionRegistry, SessionEvent};
+
+    for event in ["agent.session.end", "agent.session.stopped"] {
+        let mut reg = AgentSessionRegistry::new();
+        let params = json!({
+            "event": event,
+            "cli_source": "copilot",
+            "agent_session_id": "abandoned-sid",
+            "payload": {
+                "cwd": r#"C:\Users\dev"#,
+                "reason": "user_exit"
+            }
+        });
+        let mut published = Vec::<SessionEvent>::new();
+
+        route_agent_event_to_registry_with_hook_sink(
+            &mut reg,
+            "dd7141e2-a8d7-4766-b7ee-77c286cafe83",
+            &params,
+            |ev| published.push(ev),
+        );
+
+        assert!(
+            reg.get(&"abandoned-sid".to_string()).is_none(),
+            "{event} for an unseen session must not materialize a row; \
+             an `Ended` ghost here is unprunable by reconcile"
+        );
+        assert!(
+            !published
+                .iter()
+                .any(|ev| matches!(ev, SessionEvent::SessionStarted { .. })),
+            "{event} must never publish a fabricated SessionStarted to master"
+        );
+    }
+}
+
+/// `agent.error` is NOT a terminal event and must keep its synthetic start.
+///
+/// It reports a session that is still live but failing, and its
+/// `ConnectionFailed` reducer resolves the row through `active_by_pane` rather
+/// than the session key. Without a row — and therefore without a pane binding —
+/// a first-observed connection failure silently no-ops, losing the only signal
+/// that the agent broke.
+#[test]
+fn agent_error_for_unknown_session_still_records_the_failure() {
+    use crate::agent_sessions::{AgentSessionRegistry, AgentStatus, SessionEvent};
+
+    let mut reg = AgentSessionRegistry::new();
+    let pane = "dd7141e2-a8d7-4766-b7ee-77c286cafe83";
+    let params = json!({
+        "event": "agent.error",
+        "cli_source": "copilot",
+        "agent_session_id": "failing-sid",
+        "payload": { "cwd": r#"C:\repo"#, "error": "agent CLI exited 1" }
+    });
+    let mut published = Vec::<SessionEvent>::new();
+
+    route_agent_event_to_registry_with_hook_sink(&mut reg, pane, &params, |ev| published.push(ev));
+
+    let row = reg
+        .get(&"failing-sid".to_string())
+        .expect("agent.error must still create the row its reducer needs");
+    assert_eq!(
+        row.status,
+        AgentStatus::Error,
+        "the pane-keyed ConnectionFailed must reach the freshly-created row"
+    );
+    assert_eq!(row.last_error.as_deref(), Some("agent CLI exited 1"));
+    assert!(
+        published
+            .iter()
+            .any(|ev| matches!(ev, SessionEvent::ConnectionFailed { .. })),
+        "master must learn about the failure too"
+    );
+}
+
+/// Guard the other half of the same condition: a *non*-terminal event for an
+/// unknown session still needs its placeholder row; otherwise the event has
+/// nothing to land on. Complements
+/// `helper_agent_event_queues_synthetic_start_and_followup_hook`, which covers
+/// the same path through `handle_event`.
+#[test]
+fn non_terminal_agent_event_for_unknown_session_still_synthesizes_a_start() {
+    use crate::agent_sessions::{AgentSessionRegistry, SessionEvent};
+
+    let mut reg = AgentSessionRegistry::new();
+    let params = json!({
+        "event": "agent.tool.starting",
+        "cli_source": "copilot",
+        "agent_session_id": "live-sid",
+        "payload": { "cwd": r#"C:\repo"#, "tool_name": "edit" }
+    });
+    let mut published = Vec::<SessionEvent>::new();
+
+    route_agent_event_to_registry_with_hook_sink(
+        &mut reg,
+        "11111111-1111-1111-1111-111111111111",
+        &params,
+        |ev| published.push(ev),
+    );
+
+    assert!(
+        reg.get(&"live-sid".to_string()).is_some(),
+        "a tool event for an unseen live session must still create its row"
+    );
+    assert!(
+        published
+            .iter()
+            .any(|ev| matches!(ev, SessionEvent::SessionStarted { .. })),
+        "the synthetic start must still reach master for live sessions"
+    );
+}
+
+/// Both spellings accepted as a real session-start hook must supersede the
+/// pane-keyed placeholder created while the agent session id was unavailable.
+/// Leaving the placeholder behind produces a second local row for one pane and
+/// can make later PaneClosed/origin lookups resolve the wrong session.
+#[test]
+fn singular_session_start_drops_the_earlier_pane_placeholder() {
+    use crate::agent_sessions::AgentSessionRegistry;
+
+    let pane = "AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE";
+    let placeholder = format!("pane:{}", pane.to_ascii_lowercase());
+    let mut reg = AgentSessionRegistry::new();
+
+    route_agent_event_to_registry(
+        &mut reg,
+        pane,
+        &json!({
+            "event": "agent.tool.starting",
+            "cli_source": "copilot",
+            "agent_session_id": "",
+            "payload": { "cwd": r#"C:\repo"#, "tool_name": "edit" }
+        }),
+    );
+    assert!(
+        reg.has_session(&placeholder),
+        "the missing-id event establishes the helper-local placeholder"
+    );
+
+    route_agent_event_to_registry(
+        &mut reg,
+        pane,
+        &json!({
+            "event": "agent.session.start",
+            "cli_source": "copilot",
+            "agent_session_id": "real-session-id",
+            "payload": { "cwd": r#"C:\repo"# }
+        }),
+    );
+
+    assert!(
+        !reg.has_session(&placeholder),
+        "the singular start spelling must remove the superseded placeholder"
+    );
+    assert!(reg.has_session(&"real-session-id".to_string()));
+}
+
 /// Bug-1 fix (PR #73 follow-up): an `agent.notification` hook event
 /// arrives with neither `agent_session_id` nor a `pane_session_id`
 /// resolving to a live session — exactly the shape Copilot CLI's
@@ -1270,8 +1440,16 @@ fn session_info_to_agent_session_unstamped_row_falls_to_historical() {
     ));
 }
 
+/// The helper must NOT forward agent CLI hooks to master.
+///
+/// Master subscribes to the same COM `agent_event` broadcast and routes it
+/// itself, so a helper that also forwarded would make master apply one real
+/// hook once per live helper — the N-times amplification this architecture
+/// removes. What the helper still owes is its own pane->session binding, which
+/// the OSC 133;A agent-exit heuristic and the autofix target logic read
+/// synchronously and cannot wait on a master round-trip for.
 #[test]
-fn helper_agent_event_queues_session_hook_while_updating_local_registry() {
+fn helper_agent_event_updates_local_binding_without_forwarding() {
     let mut app = test_app();
     let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
     app.set_session_hook_tx(tx);
@@ -1281,34 +1459,32 @@ fn helper_agent_event_queues_session_hook_while_updating_local_registry() {
         pane_id: "pane-hook".to_string(),
         tab_id: Some("tab-1".to_string()),
         params: json!({
-            "event": "agent.session.started",
+            "event": "agent.session.start",
             "cli_source": "copilot",
             "agent_session_id": "sid-hook",
-            "payload": {
-                "cwd": r#"C:\repo\hook"#,
-            }
+            "payload": { "cwd": r#"C:\repo\hook"# }
         }),
     });
 
-    let queued = rx.try_recv().expect("session_hook event queued");
-    assert_eq!(
-        queued,
-        crate::agent_sessions::SessionEvent::SessionStarted {
-            key: "sid-hook".to_string(),
-            cli_source: crate::agent_sessions::CliSource::Copilot,
-            pane_session_id: "pane-hook".to_string(),
-            cwd: std::path::PathBuf::from(r#"C:\repo\hook"#),
-            title: "hook".to_string(),
-        }
-    );
     assert!(
         app.agent_sessions.has_session(&"sid-hook".to_string()),
-        "local registry mutation remains in place"
+        "the helper still needs the local row its pane-binding lookups read"
+    );
+    assert!(
+        app.agent_sessions.is_agent_pane("pane-hook"),
+        "the pane binding is the whole reason the helper routes this at all"
+    );
+    assert!(
+        rx.try_recv().is_err(),
+        "an agent CLI hook must never be forwarded to master; master routes the \
+         same broadcast itself, so forwarding would apply it once per helper"
     );
 }
 
+/// A hook for a session this helper has not seen still binds the pane locally,
+/// and still does not reach master.
 #[test]
-fn helper_agent_event_queues_synthetic_start_and_followup_hook() {
+fn helper_agent_event_for_unknown_session_binds_locally_only() {
     let mut app = test_app();
     let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
     app.set_session_hook_tx(tx);
@@ -1321,116 +1497,53 @@ fn helper_agent_event_queues_synthetic_start_and_followup_hook() {
             "event": "agent.tool.starting",
             "cli_source": "copilot",
             "agent_session_id": "sid-tool",
-            "payload": {
-                "cwd": r#"C:\repo\tool"#,
-                "tool_name": "edit"
-            }
+            "payload": { "cwd": r#"C:\repo\tool"#, "tool_name": "edit" }
         }),
     });
 
-    assert!(matches!(
-        rx.try_recv().expect("synthetic SessionStarted queued"),
-        crate::agent_sessions::SessionEvent::SessionStarted { ref key, .. } if key == "sid-tool"
-    ));
-    assert_eq!(
-        rx.try_recv().expect("ToolStarting queued"),
-        crate::agent_sessions::SessionEvent::ToolStarting {
-            key: "sid-tool".to_string(),
-            tool_name: "edit".to_string(),
-        }
+    assert!(
+        app.agent_sessions.has_session(&"sid-tool".to_string()),
+        "the synthetic start still materializes the local row"
     );
-}
-
-#[test]
-fn helper_agent_event_without_agent_session_id_does_not_publish_synthetic_to_master() {
-    // Regression for the user-reported duplicate session management row:
-    //   "system32  Error                          29 minutes ago"
-    //   "Agent pane session b832a8d3: system32  Active · copilot"
-    //
-    // When an agent_event arrives with no agent_session_id (broken
-    // hook, race, or hook from a workspace shell pane that doesn't
-    // own an ACP session), the helper used to synthesize a
-    // `pane:<guid>` placeholder, apply it locally, AND publish it to
-    // master. Master then surfaced the placeholder as a separate
-    // session management row alongside the real session, both pointing
-    // at the same
-    // underlying pane — hence the duplicate.
-    //
-    // Fix: keep the synthetic placeholder local for helper
-    // bookkeeping (is_agent_pane / OSC handler), but DO NOT publish
-    // events with `pane:<guid>` keys to master.
-    let mut app = test_app();
-    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
-    app.set_session_hook_tx(tx);
-
-    // Tool event with NO agent_session_id, NO existing pane binding
-    // → resolve_or_synthesize_key returns "pane:<guid>", synthetic
-    // placeholder created locally, but nothing published to master.
-    app.handle_event(AppEvent::WtEvent {
-        method: "agent_event".to_string(),
-        pane_id: "pane-orphan".to_string(),
-        tab_id: Some("tab-1".to_string()),
-        params: json!({
-            "event": "agent.tool.starting",
-            "cli_source": "copilot",
-            "payload": {
-                "cwd": r#"C:\repo\hook"#,
-                "tool_name": "edit"
-            }
-        }),
-    });
-
     assert!(
         rx.try_recv().is_err(),
-        "synthetic pane:<guid> events must NOT be published to master"
+        "neither the synthetic start nor the tool event may reach master"
     );
-    // Local registry still has the placeholder for helper-side
-    // is_agent_pane / OSC handler bookkeeping.
-    assert!(app.agent_sessions.is_agent_pane("pane-orphan"));
 }
 
+/// Keep helper exit inference as a fallback while the master's listener is
+/// unavailable. Master also reconciles prompts in COM order; duplicate
+/// PaneClosed events are harmless once the binding has been removed.
 #[test]
-fn helper_agent_event_with_real_agent_session_id_still_publishes_to_master() {
-    // Defense against overcorrection: the synthetic-key gate above
-    // must not block legitimate events with real agent_session_ids.
+fn helper_still_publishes_events_it_originates() {
+    use crate::agent_sessions::{CliSource, SessionEvent};
+    use std::path::PathBuf;
     let mut app = test_app();
     let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
     app.set_session_hook_tx(tx);
+    let pane = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee";
 
-    app.handle_event(AppEvent::WtEvent {
-        method: "agent_event".to_string(),
-        pane_id: "pane-real".to_string(),
-        tab_id: Some("tab-1".to_string()),
-        params: json!({
-            "event": "agent.tool.starting",
-            "cli_source": "copilot",
-            "agent_session_id": "real-sid-deadbeef",
-            "payload": {
-                "cwd": r#"C:\repo\hook"#,
-                "tool_name": "edit"
-            }
-        }),
+    app.agent_sessions.apply(SessionEvent::SessionStarted {
+        key: "shell-sid".into(),
+        cli_source: CliSource::Gemini,
+        pane_session_id: pane.into(),
+        cwd: PathBuf::from("/work"),
+        title: "t".into(),
     });
 
-    // Should publish at least one event (likely synthetic
-    // SessionStarted + ToolStarting). Both must have the REAL key.
-    let mut count = 0;
-    while let Ok(evt) = rx.try_recv() {
-        match evt {
-            crate::agent_sessions::SessionEvent::SessionStarted { key, .. } => {
-                assert_eq!(key, "real-sid-deadbeef", "real session id preserved");
-                count += 1;
-            }
-            crate::agent_sessions::SessionEvent::ToolStarting { key, .. } => {
-                assert_eq!(key, "real-sid-deadbeef", "real session id preserved");
-                count += 1;
-            }
-            other => panic!("unexpected event: {:?}", other),
-        }
-    }
+    app.handle_event(AppEvent::WtEvent {
+        method: "vt_sequence".to_string(),
+        pane_id: pane.to_string(),
+        tab_id: None,
+        params: json!({ "session_id": pane, "sequence": "osc:133;A" }),
+    });
+
     assert!(
-        count >= 1,
-        "at least one real-keyed event must reach master"
+        matches!(
+            rx.try_recv(),
+            Ok(SessionEvent::PaneClosed { ref pane_session_id }) if pane_session_id == pane
+        ),
+        "helper exit inference must remain available as a fallback"
     );
 }
 
@@ -7766,6 +7879,276 @@ fn vt_event(pane: &str, tab: &str, seq: &str) -> AppEvent {
         tab_id: Some(tab.to_string()),
         params: serde_json::json!({ "session_id": pane, "sequence": seq }),
     }
+}
+
+#[test]
+fn hookless_shell_errors_submit_one_correctly_routed_autofix_prompt() {
+    let mut app = test_app();
+    let (tx, mut prompts) = tokio::sync::mpsc::unbounded_channel();
+    app.prompt_tx = tx;
+    app.state = ConnectionState::Connected;
+    app.autofix_enabled = true;
+    app.owner_tab_id = Some("test-tab".into());
+    app.window_id = Some("test-window".into());
+    app.pane_id = Some("helper-pane".into());
+    let pane = "shell-without-hooks";
+    assert!(app.agent_sessions.iter_sorted().is_empty());
+
+    app.handle_event(vt_event(pane, "test-tab", "osc:133;D;0"));
+    app.handle_event(vt_event("other-shell", "other-tab", "osc:133;D;1"));
+    assert!(
+        prompts.try_recv().is_err(),
+        "success and other tabs must not submit"
+    );
+
+    app.handle_event(vt_event(pane, "test-tab", "osc:133;D;1"));
+    let prompt = prompts
+        .try_recv()
+        .expect("shell error must reach the ACP prompt queue");
+    assert!(prompt.is_autofix());
+    let context = prompt.pane_context.expect("autofix must retain its source");
+    assert_eq!(context.source_pane_id.as_deref(), Some(pane));
+    assert_eq!(context.tab_id.as_deref(), Some("test-tab"));
+    assert_eq!(context.window_id.as_deref(), Some("test-window"));
+
+    app.handle_event(vt_event(pane, "test-tab", "osc:133;A"));
+    app.handle_event(vt_event(pane, "test-tab", "osc:133;D;1"));
+    assert!(
+        prompts.try_recv().is_err(),
+        "echo/repeated failure must not double-submit"
+    );
+    assert_eq!(
+        app.tab_mut("test-tab").autofix.pane_id.as_deref(),
+        Some(pane)
+    );
+    assert_eq!(app.state, ConnectionState::Connected);
+    assert!(app.agent_sessions.iter_sorted().is_empty());
+}
+
+#[test]
+fn hookless_manual_fix_still_submits_when_auto_suggest_is_disabled() {
+    let mut app = test_app();
+    let (tx, mut prompts) = tokio::sync::mpsc::unbounded_channel();
+    app.prompt_tx = tx;
+    app.state = ConnectionState::Connected;
+    app.autofix_enabled = false;
+    app.show_welcome_hint = false;
+    bind_test_session(&mut app, "chat-without-hooks");
+
+    app.cmd_fix(false, "explain the last failure".into());
+
+    let prompt = prompts
+        .try_recv()
+        .expect("manual /fix must not require hooks");
+    assert!(prompt.is_autofix());
+    assert_eq!(prompt.text, "explain the last failure");
+    assert!(prompts.try_recv().is_err());
+    assert!(app.agent_sessions.iter_sorted().is_empty());
+    assert_eq!(app.state, ConnectionState::Connected);
+}
+
+#[test]
+fn hookless_session_snapshot_renders_and_dispatches_resume() {
+    use crate::agent_sessions::AgentStatus;
+    use crate::protocol::acp::client::MasterExtRequest;
+
+    let _locale = crate::test_support::lock_locale();
+    let (mut app, mut requests) = test_app_with_master_rx();
+    app.state = ConnectionState::Connected;
+    app.current_agent_id = "claude".into();
+    app.current_tab_mut().pane_open = true;
+    app.current_tab_mut().input = "draft without hooks".into();
+    app.current_tab_mut().cursor_pos = app.current_tab().input.len();
+    app.open_agents_view_for_tab(DEFAULT_TAB_ID.into());
+    let MasterExtRequest::SessionsList { request_id, .. } = requests.try_recv().unwrap() else {
+        panic!("opening sessions must request history without any hook");
+    };
+    let mut row = session_info_for_test("history-without-hooks");
+    row.status = Some(AgentStatus::Historical);
+    row.cwd = std::env::temp_dir();
+    app.handle_event(AppEvent::AgentsSnapshotLoaded {
+        request_id,
+        sessions: vec![row],
+    });
+    assert!(
+        app.agent_sessions.iter_sorted().is_empty(),
+        "history must not need a local hook row"
+    );
+    assert_eq!(
+        app.agents_rows_for_tab(DEFAULT_TAB_ID)[0].key,
+        "history-without-hooks"
+    );
+    assert!(render_to_text(&mut app, 100, 24).contains("history-without-hooks"));
+
+    app.handle_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
+    assert_eq!(app.current_tab().current_view, View::Chat);
+    assert_eq!(app.current_tab().input, "draft without hooks");
+    app.open_agents_view_for_tab(DEFAULT_TAB_ID.into());
+    let MasterExtRequest::SessionsList { request_id, .. } = requests.try_recv().unwrap() else {
+        panic!("reopening sessions must request history");
+    };
+    let mut row = session_info_for_test("history-without-hooks");
+    row.status = Some(AgentStatus::Historical);
+    row.cwd = std::env::temp_dir();
+    app.handle_event(AppEvent::AgentsSnapshotLoaded {
+        request_id,
+        sessions: vec![row],
+    });
+    app.current_tab_mut().agents_list_state.select(Some(0));
+    app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+    let command = app
+        .last_dispatched_command_for_test()
+        .expect("resume dispatched");
+    assert_eq!(command.kind, DispatchedCommandKind::NewTabResume);
+    assert!(command
+        .argv
+        .join(" ")
+        .contains("claude --resume history-without-hooks"));
+}
+
+#[tokio::test]
+async fn hookless_chat_streams_while_listener_readiness_is_pending() {
+    use crate::protocol::acp::client::mock_agent_tests::connect_mock_agent;
+    use agent_client_protocol as acp;
+
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            // Only this channel uses the missing executable: no PATH, COM
+            // registration or user configuration is changed.
+            let listener = Arc::new(crate::shell::wt_channel::CliChannel::with_test_executable(
+                std::env::temp_dir()
+                    .join(format!("missing-wtcli-{}.exe", uuid::Uuid::new_v4()))
+                    .to_string_lossy()
+                    .into_owned(),
+            ));
+            let mut readiness = Box::pin(listener.start_reader());
+            assert!(
+                tokio::time::timeout(std::time::Duration::from_millis(50), &mut readiness)
+                    .await
+                    .is_err(),
+                "the failed listener must actually be waiting to retry"
+            );
+
+            let (conn, mut events, _seen) = connect_mock_agent();
+            conn.initialize(acp::schema::v1::InitializeRequest::new(
+                acp::schema::ProtocolVersion::LATEST,
+            ))
+            .await
+            .unwrap();
+            let session = conn
+                .new_session(acp::schema::v1::NewSessionRequest::new("/test"))
+                .await
+                .unwrap();
+            let sid = session.session_id.to_string();
+            let mut app = test_app();
+            app.state = ConnectionState::Connected;
+            app.show_welcome_hint = false;
+            let (tx, mut prompts) = tokio::sync::mpsc::unbounded_channel();
+            app.prompt_tx = tx;
+            bind_test_session(&mut app, &sid);
+            app.current_tab_mut().input = "hookless-chat".into();
+            app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+            let prompt = prompts
+                .try_recv()
+                .expect("chat submission cannot wait for hooks");
+            assert!(!prompt.is_autofix());
+            assert_eq!(prompt.text, "hookless-chat");
+            tokio::time::timeout(
+                std::time::Duration::from_secs(5),
+                conn.prompt(acp::schema::v1::PromptRequest::new(
+                    session.session_id,
+                    vec![prompt.text.into()],
+                )),
+            )
+            .await
+            .expect("chat cannot wait for listener readiness")
+            .unwrap();
+            pump_until(&mut app, &mut events, |event| {
+                matches!(event, AppEvent::AgentMessageChunk { .. })
+            })
+            .await;
+            assert!(app
+                .current_tab()
+                .active_agent_text()
+                .contains("MOCK_OK:hookless-chat"));
+            assert!(app.agent_sessions.iter_sorted().is_empty());
+            assert_eq!(app.state, ConnectionState::Connected);
+            // Drop cancels this test's retry loop rather than leaving it alive.
+            drop(readiness);
+            drop(listener);
+        })
+        .await;
+}
+
+#[cfg(windows)]
+#[tokio::test]
+async fn hookless_listener_recovery_delivers_shell_error_to_autofix() {
+    struct Fixture(std::path::PathBuf);
+    impl Drop for Fixture {
+        fn drop(&mut self) {
+            for name in ["listener.cmd", "attempted"] {
+                let _ = std::fs::remove_file(self.0.join(name));
+            }
+            let _ = std::fs::remove_dir(&self.0);
+        }
+    }
+    let fixture =
+        Fixture(std::env::temp_dir().join(format!("wta-listener-{}", uuid::Uuid::new_v4())));
+    std::fs::create_dir(&fixture.0).unwrap();
+    let executable = fixture.0.join("listener.cmd");
+    // First process exits before subscribing. The next emits a readiness
+    // marker and an ordinary WT shell error, but never any agent hook.
+    std::fs::write(&executable, r#"@echo off
+if exist "%~dp0attempted" goto ready
+echo attempted>"%~dp0attempted"
+exit /b 1
+:ready
+echo {"_wtcli":"listener_ready","token":"%~6"}
+echo {"method":"vt_sequence","params":{"pane_id":"shell-after-recovery","tab_id":"test-tab","sequence":"osc:133;D;1"}}
+exit /b 0
+"#.replace('\n', "\r\n")).unwrap();
+    let listener = Arc::new(crate::shell::wt_channel::CliChannel::with_test_executable(
+        executable.to_string_lossy().into_owned(),
+    ));
+    let mut events = listener.subscribe_events();
+    assert!(
+        tokio::time::timeout(std::time::Duration::from_secs(10), listener.start_reader())
+            .await
+            .expect("listener must recover"),
+        "the replacement process must reach subscription readiness"
+    );
+    let event = tokio::time::timeout(std::time::Duration::from_secs(5), events.recv())
+        .await
+        .expect("WT event must be delivered")
+        .expect("event channel remains open");
+    assert_eq!(
+        event["method"], "vt_sequence",
+        "internal readiness markers must not reach App"
+    );
+    let params = event["params"].clone();
+    let mut app = test_app();
+    app.state = ConnectionState::Connected;
+    app.autofix_enabled = true;
+    app.owner_tab_id = Some("test-tab".into());
+    let (tx, mut prompts) = tokio::sync::mpsc::unbounded_channel();
+    app.prompt_tx = tx;
+    app.handle_event(AppEvent::WtEvent {
+        method: event["method"].as_str().unwrap().into(),
+        pane_id: params["pane_id"].as_str().unwrap().into(),
+        tab_id: Some(params["tab_id"].as_str().unwrap().into()),
+        params,
+    });
+    let prompt = prompts
+        .try_recv()
+        .expect("recovered event must submit Autofix, not just update a flag");
+    assert!(prompt.is_autofix());
+    assert_eq!(
+        prompt.pane_context.unwrap().source_pane_id.as_deref(),
+        Some("shell-after-recovery")
+    );
+    assert!(app.agent_sessions.iter_sorted().is_empty());
+    drop(listener);
+    drop(events);
 }
 
 /// Detected state must survive the `osc:133;A` that PowerShell emits
