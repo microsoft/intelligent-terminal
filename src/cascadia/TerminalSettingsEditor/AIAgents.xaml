@@ -304,10 +304,17 @@
 
                     <Border Padding="0,4"
                             Visibility="{x:Bind mtu:Converters.InvertedBooleanToVisibility(ViewModel.IsAddingCustomModelProvider), Mode=OneWay}">
-                        <Button x:Uid="AIAgents_CustomProviderAdd"
-                                HorizontalAlignment="Right"
-                                Click="{x:Bind ViewModel.AddCustomModelProvider}"
-                                Style="{StaticResource AccentButtonStyle}" />
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <Button Grid.Column="1"
+                                    x:Uid="AIAgents_CustomProviderAdd"
+                                    Click="{x:Bind ViewModel.AddCustomModelProvider}"
+                                    MinWidth="120"
+                                    Style="{StaticResource AccentButtonStyle}" />
+                        </Grid>
                     </Border>
 
                     <Border Padding="0,8,0,16"
