@@ -125,6 +125,7 @@
   </data>
   <data name="FreOverlay_WelcomeSubtitlePrefix" xml:space="preserve">
     <value>ତ୍ରୁଟି ବ୍ୟାଖ୍ୟା କରିବା, କମାଣ୍ଡ ପ୍ରସ୍ତୁତ କରିବା ଏବଂ କାର୍ଯ୍ୟ ଅନବ୍ଲକ କରିବାରେ ସାହାଯ୍ୟ କରିବା ପାଇଁ ଆପଣଙ୍କ ଅନ୍ତର୍ନିର୍ମିତ ସହାୟକ ସେଟଅପ୍ କରନ୍ତୁ, ଆପଣ ଯେଉଁଠାରେ କାମ କରନ୍ତି ସେଠାରେ ହିଁ। </value>
+    <comment>Text shown immediately before the FreOverlay_WelcomeSubtitleLink hyperlink. Include any spacing needed to separate the prefix from the link in the target language.</comment>
   </data>
   <data name="FreOverlay_WelcomeSubtitleLink" xml:space="preserve">
     <value>ଇଣ୍ଟେଲିଜେଣ୍ଟ ଟର୍ମିନାଲ ବିଷୟରେ ଅଧିକ ଜାଣନ୍ତୁ</value>
@@ -151,14 +152,14 @@
   <!-- ═══ FRE Settings Page ═══ -->
   <data name="FreOverlay_PolicyLocked" xml:space="preserve">
     <value>ଏହି ସେଟିଂ ଆପଣଙ୍କ ସଂସ୍ଥା ଦ୍ୱାରା ପରିଚାଳିତ।</value>
-    <comment>Text shown below a disabled toggle/dropdown in the first-run experience when Group Policy controls the feature. Standard Windows policy notice wording.</comment>
+    <comment>Text shown below a first-run setting when Group Policy manages or restricts the feature. The associated control may be disabled or filtered to allowed choices. Standard Windows policy notice wording.</comment>
   </data>
   <data name="FreOverlay_SettingsTitle.Text" xml:space="preserve">
     <value>ଆପଣଙ୍କ ଟର୍ମିନାଲ୍ ସେଟ୍ ଅପ୍ କରନ୍ତୁ</value>
-    <comment>{Locked="Copilot","Claude","Gemini"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_SettingsSubtitlePrefix" xml:space="preserve">
     <value>ବର୍ତ୍ତମାନ କ'ଣ ସେଟଅପ୍ କରିବେ ତାହା ବାଛନ୍ତୁ। ଆପଣ ଏଗୁଡ଼ିକୁ ଯେକୌଣସି ସମୟରେ ପରିବର୍ତ୍ତନ କରିପାରିବେ। </value>
+    <comment>Text shown immediately before the FreOverlay_SettingsSubtitleLink hyperlink. Include any spacing needed to separate the prefix from the link in the target language.</comment>
   </data>
   <data name="FreOverlay_SettingsSubtitleLink" xml:space="preserve">
     <value>ଡାଟା କିପରି ବ୍ୟବହୃତ ହୁଏ ତାହା ଜାଣନ୍ତୁ</value>
@@ -169,7 +170,7 @@
   </data>
   <data name="FreOverlay_AgentDescription.Text" xml:space="preserve">
     <value>ଏଜେଣ୍ଟ ପେନ୍‌ରେ ବ୍ୟବହୃତ ଏବଂ ACP ସମର୍ଥନ କରୁଥିବା ଏଜେଣ୍ଟ ବାଛନ୍ତୁ।</value>
-    <comment>{Locked="ACP"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+    <comment>{Locked="ACP"} Description for choosing an AI agent for the agent pane. The selected agent must support ACP. "ACP" is rendered as a hyperlink at runtime and must appear exactly once. In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_ErrorDetectionLabel.Text" xml:space="preserve">
     <value>ତ୍ରୁଟି ଚିହ୍ନଟ</value>
@@ -177,7 +178,7 @@
   </data>
   <data name="FreOverlay_ErrorDetectionDescription.Text" xml:space="preserve">
     <value>ଆପଣଙ୍କ ଏଜେଣ୍ଟକୁ ଶେଲ୍‌ରେ ଥିବା ତ୍ରୁଟିଗୁଡ଼ିକୁ ସ୍ୱୟଂଚାଳିତ ଭାବରେ ଚିହ୍ନଟ କରିବାକୁ ଏବଂ ବିଫଳ କମାଣ୍ଡଗୁଡ଼ିକୁ ଆପଣଙ୍କ ଏଜେଣ୍ଟକୁ ପଠାଇବାକୁ ଦିଅନ୍ତୁ।</value>
-    <comment>Description for the error-detection dropdown in the first-run wizard. In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+    <comment>Description for the error-detection dropdown in the first-run wizard. The dropdown includes detect-only, detect-and-fix, and off modes; the selected mode controls whether shell errors are detected and whether failed commands are automatically sent to the selected AI agent. In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_ErrorDetectionDetectOption.Content" xml:space="preserve">
     <value>ତ୍ରୁଟି ଚିହ୍ନଟ କରନ୍ତୁ</value>
@@ -200,16 +201,16 @@
   </data>
   <data name="FreOverlay_SessionDescription.Text" xml:space="preserve">
     <value>କେଉଁ ଏଜେଣ୍ଟଗୁଡ଼ିକ ଚାଲୁଛି ଏବଂ କେଉଁଗୁଡ଼ିକ ଆପଣଙ୍କ ଧ୍ୟାନ ଆବଶ୍ୟକ କରୁଛି ତାହା ଟ୍ରାକ୍ କରନ୍ତୁ।</value>
-    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name. In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+    <comment>In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
-  <data name="FreOverlay_ShowTokenUsageAndCostLabel.Text" xml:space="preserve"><value>ଟୋକନ୍ ବ୍ୟବହାର</value><comment>Header for a first-run toggle that shows available context-window usage and session cost in the terminal bottom bar. Session cost is reported for the active AI session. Keep 'session cost' generic and do not add a specific unit. Either value may be unavailable.</comment></data>
-  <data name="FreOverlay_ShowTokenUsageAndCostDescription.Text" xml:space="preserve"><value>ଉପଲବ୍ଧ ଥିବାବେଳେ ଅବଶିଷ୍ଟ ପ୍ରସଙ୍ଗ ଏବଂ ସେସନ୍ ମୂଲ୍ୟ ଦେଖାନ୍ତୁ।</value><comment>Description for the usage visibility toggle in the first-run wizard. Session cost is reported for the active AI session. Keep 'session cost' generic and do not add a specific unit. Either value may be unavailable.</comment></data>
+  <data name="FreOverlay_ShowTokenUsageAndCostLabel.Text" xml:space="preserve"><value>ଟୋକନ୍ ବ୍ୟବହାର</value><comment>Header for a first-run toggle that shows remaining context and session cost in the terminal bottom bar.</comment></data>
+  <data name="FreOverlay_ShowTokenUsageAndCostDescription.Text" xml:space="preserve"><value>ଉପଲବ୍ଧ ଥିବାବେଳେ ଅବଶିଷ୍ଟ ପ୍ରସଙ୍ଗ ଏବଂ ସେସନ୍ ମୂଲ୍ୟ ଦେଖାନ୍ତୁ।</value><comment>Description for the token-usage visibility toggle in the first-run wizard. Either value may be unavailable.</comment></data>
   <data name="FreOverlay_PanePositionLabel.Text" xml:space="preserve">
     <value>ଏଜେଣ୍ଟର ସ୍ଥାନ</value>
   </data>
   <data name="FreOverlay_PanePositionDescription.Text" xml:space="preserve">
     <value>ଆପଣଙ୍କ ଏଜେଣ୍ଟ ରହୁଥିବା ସ୍ଥାନ।</value>
-    <comment>In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+    <comment>Description for choosing where the AI agent pane appears within the terminal window. In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
   <data name="FreOverlay_SaveButton.Content" xml:space="preserve">
     <value>ଆରମ୍ଭ କରନ୍ତୁ</value>
@@ -217,9 +218,11 @@
   <!-- ═══ FRE Dynamic strings (used from C++ code-behind) ═══ -->
   <data name="FreOverlay_AgentStatusWillInstall" xml:space="preserve">
     <value> (ଇନ୍‌ଷ୍ଟଲ୍ ହେବ)</value>
+    <comment>Status suffix appended directly to an AI agent display name when setup will install that agent. Include any spacing and punctuation needed to separate the suffix from the agent name.</comment>
   </data>
   <data name="FreOverlay_AgentStatusInstalled" xml:space="preserve">
     <value> (ଇନ୍‌ଷ୍ଟଲ୍ ଅଛି)</value>
+    <comment>Status suffix appended directly to an AI agent display name when that agent is already installed. Include any spacing and punctuation needed to separate the suffix from the agent name.</comment>
   </data>
   <data name="FreOverlay_PanePositionBottom" xml:space="preserve">
     <value>ତଳ</value>
@@ -238,7 +241,7 @@
   </data>
   <data name="FreOverlay_InstallError_BlockedByPolicy" xml:space="preserve">
     <value>Windows Package Manager ନୀତି ଦ୍ୱାରା {0} ର ଇନ୍‌ଷ୍ଟଲେସନ୍ ଅବରୋଧ କରାଯାଇଛି। ଆପଣ ଯଦି ପରିଚାଳିତ ଡିଭାଇସ୍‌ରେ ଅଛନ୍ତି, ତେବେ ଆପଣଙ୍କ IT ଆଡମିନ୍‌ଙ୍କୁ ସମ୍ପର୍କ କରନ୍ତୁ।</value>
-    <comment>FRE setup error. {0} is the package display name. Shown when winget returned BlockedByPolicy (group policy disabled the operation).</comment>
+    <comment>FRE setup error. {0} is the package display name. Shown when winget reports BlockedByPolicy or an equivalent policy-related HRESULT.</comment>
   </data>
   <data name="FreOverlay_InstallError_Generic" xml:space="preserve">
     <value>{0} ଇନ୍‌ଷ୍ଟଲ୍ କରିପାରିଲା ନାହିଁ (ତ୍ରୁଟି କୋଡ୍ {1})। ବିବରଣୀ ପାଇଁ ଲଗ୍ ଦେଖନ୍ତୁ, କିମ୍ବା {0} କୁ ମାନୁଆଲ୍ ଭାବେ ଇନ୍‌ଷ୍ଟଲ୍ କରନ୍ତୁ।</value>
@@ -270,14 +273,15 @@
   </data>
   <data name="FreOverlay_InstallErrorHooks" xml:space="preserve">
     <value>session hooks ଇନ୍‌ଷ୍ଟଲ୍ କରିବାରେ ବିଫଳ। ସେସନ୍ ପରିଚାଳନା ବନ୍ଦ କରାଯାଇଛି। ଆପଣ ଏହାକୁ ପୁଣି ସକ୍ରିୟ କରି ପୁଣି ଚେଷ୍ଟା କରିପାରିବେ, କିମ୍ବା ଏହା ବିନା ଜାରି ରଖିବାକୁ ସେଭ୍ କରନ୍ତୁ।</value>
-    <comment>{Locked="hooks"}</comment>
+    <comment>{Locked="hooks"} FRE setup error shown when session hooks cannot be installed. Session management is turned off so setup can continue, and the user may re-enable it to retry.</comment>
   </data>
   <data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
     <value>ସେଲ୍ ଏକୀକରଣ ଇନ୍‌ଷ୍ଟଲ୍ କରିବାରେ ବିଫଳ। ତ୍ରୁଟି ଚିହ୍ନଟ ବନ୍ଦ କରାଯାଇଛି। ଆପଣ ଏହାକୁ ପୁଣି ସକ୍ରିୟ କରି ପୁଣି ଚେଷ୍ଟା କରିପାରିବେ, କିମ୍ବା ଏହା ବିନା ଜାରି ରଖିବାକୁ ସେଭ୍ କରନ୍ତୁ।</value>
+    <comment>FRE setup error shown when shell integration cannot be installed. Error detection is turned off so setup can continue, and the user may re-enable it to retry.</comment>
   </data>
   <data name="FreOverlay_InstallErrorShellIntegrationExecutionPolicy" xml:space="preserve">
     <value>PowerShell କାର୍ଯ୍ୟକାରୀ ନୀତି ସ୍କ୍ରିପ୍ଟ୍‌କୁ ଅବରୋଧ କରୁଛି। ତ୍ରୁଟି ଚିହ୍ନଟ ବନ୍ଦ କରାଗଲା।</value>
-    <comment>{Locked="PowerShell"}</comment>
+    <comment>{Locked="PowerShell"} FRE setup error shown when PowerShell execution policy prevents shell-integration scripts from running. Error detection is turned off so setup can continue.</comment>
   </data>
   <data name="FreOverlay_InstallErrorWingetMissing" xml:space="preserve">
     <value>Windows Package Manager (winget) ଇନ୍‌ଷ୍ଟଲ୍ ହୋଇନାହିଁ କିମ୍ବା ଉପଲବ୍ଧ ନୁହେଁ। ପ୍ରଥମେ ଏହାକୁ ଇନ୍‌ଷ୍ଟଲ୍ କରନ୍ତୁ, ତାପରେ ପୁଣି ଚେଷ୍ଟା କରନ୍ତୁ।</value>
