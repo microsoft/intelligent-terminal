@@ -287,7 +287,7 @@
                                                 x:Uid="AIAgents_CustomProviderRemove"
                                                 VerticalAlignment="Center"
                                                 Click="{x:Bind Remove}"
-                                                Width="120" />
+                                                Width="{StaticResource StandardBoxMinWidth}" />
                                         <muxc:InfoBar Grid.Row="1"
                                                       Grid.ColumnSpan="2"
                                                       Margin="0,12,0,0"
@@ -312,7 +312,7 @@
                             <Button Grid.Column="1"
                                     x:Uid="AIAgents_CustomProviderAdd"
                                     Click="{x:Bind ViewModel.AddCustomModelProvider}"
-                                    Width="120"
+                                    Width="{StaticResource StandardBoxMinWidth}"
                                     Style="{StaticResource AccentButtonStyle}" />
                         </Grid>
                     </Border>
