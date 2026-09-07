@@ -1,5 +1,5 @@
 #Requires -Modules @{ ModuleName='Pester'; ModuleVersion='5.0.0' }
-# Release checklist section 8 (C287, C288, C289) - how one agent hook is routed
+# Release checklist section 8 (C296, C297, C298) - how one agent hook is routed
 # from `wtcli` directly into the master session registry.
 #
 # Why these live at E2E rather than in a unit test: the WTA unit tests exercise one
@@ -33,15 +33,32 @@ Describe 'Feature: session hook fan-out routing' -Tag 'Feature' -Skip:(-not $scr
         foreach ($i in 1..2) { New-WtTab -App $script:app -Title "hook-routing-tab-$i" | Out-Null }
         Set-WtPaneFocus -App $script:app -SessionId $script:shellPane
 
-        # A fan-out is the precondition for every case here, so wait for master to
-        # actually have more than one helper rather than discovering it via a
-        # confusing assertion failure later.
-        Wait-Until -TimeoutSec 60 -Because 'master to accept more than one helper connection' -Condition {
-            $text = Get-ItLogText -App $script:app -Name 'wta-main_master.log'
-            $ids = @([regex]::Matches($text, 'helper_id=HelperId\((?<n>\d+)\)') |
-                    ForEach-Object { $_.Groups['n'].Value } | Sort-Object -Unique)
-            if ($ids.Count -ge 2) { $ids }
-        } | Should -Not -BeNullOrEmpty -Because 'a single-helper run would pass every case below even with the dedupe removed'
+        function script:Get-HookRoutingHelperListeners {
+            $processes = @(Get-CimInstance Win32_Process -Filter "Name='wta.exe' OR Name='wtcli.exe'")
+            $helpers = @($processes | Where-Object {
+                $_.ExecutablePath -eq (Join-Path $script:app.InstallLocation 'wta.exe') -and
+                $_.ParentProcessId -eq $script:app.Pid -and
+                $_.CommandLine -match '\s--connect-master\s'
+            })
+            foreach ($helper in $helpers) {
+                $listeners = @($processes | Where-Object {
+                    $_.ExecutablePath -eq (Join-Path $script:app.InstallLocation 'wtcli.exe') -and
+                    $_.ParentProcessId -eq $helper.ProcessId -and $_.CommandLine -match '\slisten\s'
+                })
+                $text = Get-ItLogText -App $script:app -Name "wta-main_helper-$($helper.ProcessId).log"
+                foreach ($listener in $listeners) {
+                    $ready = "WT protocol event listener subscribed listener_pid=Some\($($listener.ProcessId)\) parent_pid=$($helper.ProcessId)\b"
+                    if ($text -match $ready) { $listener }
+                }
+            }
+        }
+
+        # Historical HelperIds can come from previous launches. Require two
+        # live listeners in this test's process tree with successful Subscribe.
+        Wait-Until -TimeoutSec 60 -Because 'two live helper listeners to subscribe' -Condition {
+            $listeners = @(script:Get-HookRoutingHelperListeners)
+            if ($listeners.Count -ge 2) { $listeners }
+        } | Should -Not -BeNullOrEmpty
 
         function script:Invoke-HookInjection {
             <#
@@ -86,12 +103,19 @@ Describe 'Feature: session hook fan-out routing' -Tag 'Feature' -Skip:(-not $scr
             tool_name  = 'edit'
         }
 
-        $processed = Wait-Until -TimeoutSec 30 -Because 'master to process its COM copy of the hook' -Condition {
+        Wait-Until -TimeoutSec 30 -Because 'master to process its COM copy of the hook' -Condition {
             $master = Get-ItLogText -App $script:app -Name 'wta-main_master.log' -SinceStart
             @($master -split "`r?`n" |
-                    Where-Object { $_ -match 'processed COM agent hook' -and $_ -match [regex]::Escape($sid) }) |
-                Select-Object -First 1
-        }
+                    Where-Object { $_ -match 'processed COM agent hook' -and $_ -match [regex]::Escape($sid) })
+        } | Out-Null
+
+        # First prove delivery, then observe for late duplicates. Never truncate
+        # this collection: selecting the first record makes Count == 1 vacuous.
+        Start-Sleep -Seconds 2
+        @(script:Get-HookRoutingHelperListeners).Count | Should -BeGreaterOrEqual 2
+        $master = Get-ItLogText -App $script:app -Name 'wta-main_master.log' -SinceStart
+        $processed = @($master -split "`r?`n" |
+                Where-Object { $_ -match 'processed COM agent hook' -and $_ -match [regex]::Escape($sid) })
 
         @($processed).Count |
             Should -Be 1 -Because 'one raw COM hook must be processed exactly once no matter how many helpers are alive'

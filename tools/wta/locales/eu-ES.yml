@@ -239,4 +239,5 @@ config_picker.title: "Saioaren konfigurazioa (↑ ↓ • Enter • Esc)"
 system.no_config_options: "Konektatutako agenteak ez du saio-aukera konfiguragarririk iragarri."
 # {option} is an Agent-provided option name; {error} is the ACP error.
 system.config_update_failed: "Ezin izan da %{option} eguneratu: %{error}"
+system.provider_command_blocked_by_policy: "%{command}: Yolo modua desgaituta dago zure erakundearen politikagatik."  # {Locked="Yolo","%{command}"} Shown when AllowYoloMode blocks a provider-advertised privileged command.
 system.model_unknown: "%{model} modelo ezezaguna — idatzi /model erabilgarri dagoen zerrenda ikusteko."  # {Locked="%{model}","/model"}

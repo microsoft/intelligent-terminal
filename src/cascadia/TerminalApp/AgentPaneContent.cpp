@@ -9,10 +9,12 @@
 
 #include <algorithm>
 #include <cwctype>
+#include <winrt/Windows.UI.Xaml.Automation.h>
 #include <winrt/Windows.UI.Xaml.Media.h>
 
 using namespace winrt::Windows::UI;
 using namespace winrt::Windows::UI::Xaml;
+using namespace winrt::Windows::UI::Xaml::Automation;
 using namespace winrt::Windows::UI::Xaml::Controls;
 using namespace winrt::Windows::UI::Xaml::Media;
 using namespace winrt::Microsoft::Terminal::Control;
@@ -417,6 +419,7 @@ namespace winrt::TerminalApp::implementation
         {
             impl->UpdateSettings(settings);
         }
+        GetTermControl().EnableAgentMouseWheelZoom(true);
 
         const winrt::Microsoft::Terminal::Control::KeyChord ctrlV{ Windows::System::VirtualKeyModifiers::Control, 'V', 0 };
         if (const auto actionMap = settings.ActionMap())

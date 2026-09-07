@@ -166,7 +166,7 @@ namespace Microsoft.Terminal.Settings.Model
         //   lists are filtered (dropdowns stay enabled, but show fewer options).
         // IsCustomAgentPolicyLocked: AllowCustomAgents is disabled.
         // IsAutoFixPolicyLocked / IsAgentSessionHooksPolicyLocked:
-        //   the corresponding toggle/button is disabled and forced off.
+        //   the corresponding option/button is unavailable.
         Boolean IsAgentPolicyLocked { get; };
         Boolean IsCustomAgentPolicyLocked { get; };
         Boolean IsAutoFixPolicyLocked { get; };
@@ -185,5 +185,16 @@ namespace Microsoft.Terminal.Settings.Model
         Theme CurrentTheme { get; };
 
         Boolean ShouldUsePersistedLayout();
+
+        // Keep new members append-only to preserve existing WinRT vtable slots.
+        INHERITABLE_SETTING(Boolean, AgentPaneYoloMode);
+        Boolean EffectiveAgentPaneYoloMode { get; };
+        Boolean IsYoloModePolicyLocked { get; };
+
+        INHERITABLE_SETTING(IVector<String>, AcpCustomCommands);
+        INHERITABLE_SETTING(IVector<String>, DelegateCustomCommands);
+
+        INHERITABLE_SETTING(Boolean, AgentSessionManagementEnabled);
+        Boolean EffectiveAgentSessionManagementEnabled { get; };
     }
 }

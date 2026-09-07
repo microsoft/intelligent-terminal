@@ -92,7 +92,7 @@
 // -------------------------------------------------------
 //
 // In addition to the install entry point [`apply_install_plan`], this module
-// exposes two read-only / best-effort APIs the Settings UI and
+// exposes two read-only / best-effort APIs that diagnostics and
 // `Verify-AgentHooks.ps1` consume:
 //
 //   * [`status`] — describe per-CLI install state without writing.
@@ -462,9 +462,7 @@ impl UninstallReport {
 /// Per-CLI outcome of an install run, as reported by
 /// `wta hooks install --json`.
 ///
-/// `outcome` is a stable string rather than a serialized enum so the C++
-/// consumer can treat an unrecognized value as "not a failure" instead of
-/// failing the whole parse when this list grows.
+/// `outcome` uses stable strings for scripts consuming the public CLI report.
 #[derive(Debug, Clone, Serialize)]
 pub struct CliInstallResult {
     pub name: &'static str,
@@ -690,6 +688,24 @@ pub struct InstallFailure {
     pub reason: String,
 }
 
+/// Result of reconciling the installed agent CLIs with the bundled hooks.
+///
+/// The CLI install path uses the detailed fields for its structured result,
+/// while master startup only needs [`Self::succeeded`] and the logged
+/// per-CLI failures.
+pub struct ReconciliationResult {
+    pub plan: Vec<(CliKind, InstallAction)>,
+    pub spawn_failures: Vec<InstallFailure>,
+    pub status: StatusReport,
+    pub missing: Vec<&'static str>,
+}
+
+impl ReconciliationResult {
+    pub fn succeeded(&self) -> bool {
+        self.spawn_failures.is_empty() && self.missing.is_empty()
+    }
+}
+
 /// What an install pass should do for one CLI.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum InstallAction {
@@ -709,8 +725,8 @@ pub enum InstallAction {
 
 /// Decide what an install pass should do for one CLI, from its status row.
 ///
-/// Pure — no IO, no spawns. Splits the cases the Settings "Install hooks"
-/// button has to tell apart:
+/// Pure — no IO, no spawns. Splits the cases automatic reconciliation and
+/// the default `wta hooks install` flow have to tell apart:
 ///
 ///   * incomplete in any way (not on PATH, marketplace missing or pointing at
 ///     a pruned path, plugin missing or disabled, or a verdict that came from
@@ -723,9 +739,8 @@ pub enum InstallAction {
 ///   * complete, current, and correctly registered → [`InstallAction::Skip`].
 ///
 /// An unreadable version on either side lands in `Skip`: we can't prove the
-/// bridge is stale, running `install` against it would no-op anyway, and
-/// [`upgrade_installed_hooks`] re-checks it at master startup with a richer
-/// probe than [`CliStatus`] carries.
+/// bridge is stale, and running `install` against a complete bridge would
+/// no-op anyway.
 ///
 /// `expected_dir` is the directory `cli`'s registration should name — see
 /// [`expected_registration_dir_for`]. `None` disables the path check, which is
@@ -785,10 +800,44 @@ fn registration_moved(cli: CliKind, status: &CliStatus, expected_dir: Option<&Pa
 /// The directory `cli`'s `wt-local` registration is expected to name, or
 /// `None` when no bundle is resolvable.
 ///
-/// Shared by the install planner and the startup upgrade check so both judge
-/// a registration against the same directory.
+/// Shared by the install planner and per-CLI upgrade flow so both judge a
+/// registration against the same directory.
 pub fn expected_registration_dir_for(cli: CliKind) -> Option<PathBuf> {
     bundle::resolve_cli_dir(cli).map(|dir| expected_registration_dir(cli, &dir))
+}
+
+/// Build the install/upgrade plan used by every automatic hook trigger.
+///
+/// Complete current bridges are omitted. Missing, partial, disabled, or
+/// fallback-detected bridges are installed; complete stale bridges are
+/// upgraded through the CLI-specific repair path.
+pub fn build_reconciliation_plan(
+    scope: CliScope,
+    status: &StatusReport,
+) -> Vec<(CliKind, InstallAction)> {
+    CliKind::ALL
+        .iter()
+        .copied()
+        .filter(|kind| scope.includes(*kind))
+        .filter_map(|kind| {
+            let entry = status.clis.iter().find(|entry| entry.name == kind.name())?;
+            if !entry.binary_on_path {
+                return None;
+            }
+            let expected_dir = expected_registration_dir_for(kind);
+            let action = decide_install_action(kind, entry, expected_dir.as_deref());
+            tracing::info!(
+                target: "agent_hooks",
+                cli = kind.name(),
+                action = ?action,
+                "hook reconciliation plan",
+            );
+            match action {
+                InstallAction::Skip => None,
+                other => Some((kind, other)),
+            }
+        })
+        .collect()
 }
 
 /// Execute a per-CLI plan of [`InstallAction`]s.
@@ -819,6 +868,33 @@ pub fn apply_install_plan(plan: &[(CliKind, InstallAction)]) -> Vec<InstallFailu
         }
     }
     failures
+}
+
+/// Ensure every installed CLI in `scope` has a complete, current hook bridge.
+///
+/// This is the single automatic reconciliation path used by master startup and
+/// by the default `wta hooks install`, which Terminal invokes after session
+/// management is enabled or the selected built-in agent changes.
+pub fn reconcile_agent_hooks(scope: CliScope) -> ReconciliationResult {
+    let pre_status = status_scoped(scope);
+    let plan = build_reconciliation_plan(scope, &pre_status);
+    let spawn_failures = apply_install_plan(&plan);
+    let status = if plan.is_empty() {
+        pre_status
+    } else {
+        status_scoped(scope)
+    };
+    let missing = build_reconciliation_plan(scope, &status)
+        .iter()
+        .map(|(kind, _)| kind.name())
+        .collect();
+
+    ReconciliationResult {
+        plan,
+        spawn_failures,
+        status,
+        missing,
+    }
 }
 
 /// Per-CLI dispatch for the first-run install flow.
@@ -859,8 +935,8 @@ fn ensure_installed_in(home: &Path) {
 ///     CLI but hasn't launched it yet won't have `~/.<cli>` populated
 ///     (Claude, Copilot, Codex, and Gemini all create their state dir
 ///     lazily on first run / first auth). Gating on the dir caused the
-///     Settings UI's "Install hooks" button to silently no-op in that
-///     window, with only a debug-level log explaining why.
+///     automatic reconciliation to silently no-op in that window, with only a
+///     debug-level log explaining why.
 ///   * **False positives after uninstall.** Every supported CLI leaves
 ///     `~/.<cli>` behind on uninstall (logs, auth tokens, plugin state,
 ///     ...), so a dir-only check would fire "install hooks for X" even
@@ -872,9 +948,8 @@ fn ensure_installed_in(home: &Path) {
 /// don't need to pre-check for them.
 ///
 /// Probing via `which::which` matches what [`status_for`] does
-/// (`locate_binary` below) and what the dev probes in
-/// [`upgrade_installed_hooks`] use, so we stay consistent with the rest
-/// of the module.
+/// (`locate_binary` below), so detection stays consistent across status and
+/// reconciliation.
 fn cli_binary_on_path(cli: CliKind) -> bool {
     which::which(cli.name()).is_ok()
 }
@@ -1291,14 +1366,14 @@ fn install_for_gemini(_home: &Path) -> InstallOutcome {
     // `--consent --skip-settings`: defuse Gemini 0.41.2's interactive
     // security-consent and config-on-install prompts. Without them,
     // `gemini extensions install` blocks on stdin and a background
-    // install (e.g. from the Settings UI's "Install hooks" button)
+    // install (e.g. from FRE or automatic reconciliation)
     // hangs the timeout. Verified by manual probe in #17.
     //
     // `GEMINI_CLI_TRUST_WORKSPACE=true`: Gemini 0.41.2 also gates
     // `extensions install` behind a *folder-trust* prompt that
     // `--consent` does NOT cover ("Do you trust the files in this
     // folder? [y/N]"). Without this, the install hangs on stdin and
-    // the Settings UI's "Install hooks" button times out at 60s
+    // a scoped Terminal reconciliation attempt times out at 60s
     // (issue: install_for_gemini timed out in wta-install-hooks.log
     // after Claude + Copilot succeeded). The `--skip-trust` flag is
     // top-level only and isn't accepted on the `extensions install`
@@ -1939,7 +2014,7 @@ fn gemini_status(on_path: bool, bin_path: Option<String>, home: Option<&Path>) -
         binary_path: bin_path,
         // Gemini has no marketplace concept — extensions install from
         // path/git directly. Report `true` whenever the extension is
-        // installed so the Settings UI can render a uniform row.
+        // installed so diagnostics can render a uniform row.
         marketplace_registered: false,
         marketplace_path: None,
         marketplace_path_valid: false,
@@ -2001,7 +2076,7 @@ fn gemini_fs_fallback(out: &mut CliStatus, home: Option<&Path>) {
 // while every subsequent `<cli> plugin install` silently fails with
 // "source path does not exist".
 //
-// To let downstream consumers (Settings UI, `Verify-AgentHooks.ps1`)
+// To let downstream consumers (`wta hooks status`, `Verify-AgentHooks.ps1`)
 // detect that drift, we surface:
 //
 //   * `marketplace_path`        — the registered `source.path`
@@ -2094,7 +2169,7 @@ fn claude_marketplace_info(home: &Path) -> MarketplaceInfo {
 /// Gemini has no marketplace registry — the `~/.gemini/extensions/wt-agent-hooks/`
 /// directory is the install location, the source path, and the validity
 /// signal all rolled into one. Report it as the marketplace path so the
-/// Settings UI / verify script can render a uniform row across all three
+/// Diagnostics and the verify script can render a uniform row across all three
 /// CLIs.
 fn gemini_marketplace_info(home: &Path) -> MarketplaceInfo {
     let ext_dir = gemini_extension_dir(home);
@@ -2371,7 +2446,7 @@ fn parse_codex_plugin_list(stdout: &str) -> bool {
     false
 }
 
-/// Parse `codex plugin list` for the auto-upgrade flow. Returns
+/// Parse `codex plugin list` for the reconciliation upgrade flow. Returns
 /// `Some(InstalledInfo)` only when the wt-agent-hooks row reports an
 /// `installed*` status, extracting the version (column 3), the enabled
 /// flag (`installed, enabled` vs `installed, disabled`), and the PATH
@@ -2692,7 +2767,7 @@ fn gemini_uninstall(home: Option<&Path>) -> CliUninstallResult {
         //    way.
         //
         // Either substring matching converts the failure to a clean
-        // `ok` line so `wta hooks uninstall` and the Settings UI's
+        // `ok` line so `wta hooks uninstall` and other diagnostics
         // status report don't mislead users.
         out.plugin_uninstalled = Some(spawn_step(
             &mut out.messages,
@@ -3831,36 +3906,8 @@ fn uninstall_for_codex(home: Option<&Path>) -> CliUninstallResult {
 }
 
 // ---------------------------------------------------------------------------
-// Auto-upgrade on IT install / upgrade
+// Per-CLI upgrade flows
 // ---------------------------------------------------------------------------
-//
-// `upgrade_installed_hooks()` runs once at wta-master startup. Its job is to
-// re-deliver an updated `wt-agent-hooks` bundle to the CLIs the user has
-// already opted into (Settings UI / FRE "Install hooks" button, or
-// `wta hooks install`). It never auto-installs into a CLI the user hasn't
-// already accepted.
-//
-// Fast-path short-circuit
-// -----------------------
-//
-// The dominant cost on every master startup would be spawning
-// `claude plugin list --json` (Node.js cold start, ~1-2s). To keep the
-// common no-upgrade case effectively free, we record the bundle version
-// we last saw per-CLI in a tiny state file:
-//
-//     <intelligent_terminal_local_root>/hooks-upgrade-state.json
-//     { "copilot": "0.1.1", "claude": "0.1.1", "gemini": "0.1.1" }
-//
-// At startup we read each CLI's bundle plugin.json (cheap file IO) and
-// compare to the cached entry. If every entry matches, return immediately
-// without touching any CLI. Only when a bundle version changed (i.e. user
-// installed / upgraded IT, MSIX dropped a new bundle next to wta.exe) do
-// we run the full per-CLI flow for that CLI. After every full check we
-// rewrite the state file. Missing / unparseable state file → treat as
-// cache miss (one slow run, then back to the fast path).
-//
-// Per-CLI upgrade flow
-// --------------------
 //
 // Each CLI exposes a real `update` subcommand:
 //   * `copilot plugin update <name>` (verified in GitHub Copilot CLI docs)
@@ -3881,14 +3928,6 @@ fn uninstall_for_codex(home: Option<&Path>) -> CliUninstallResult {
 // `gemini extensions list -o json` before uninstall and `extensions disable`
 // after reinstall if needed.
 //
-// Skip rules
-// ----------
-//
-// For each CLI: skip if not installed, if explicitly disabled (respect the
-// user's choice), or if installed_version >= bundle_version. Decisions are
-// produced by the pure `decide_upgrade` function (testable without spawning
-// any CLI).
-//
 // Moved registrations
 // -------------------
 //
@@ -3902,16 +3941,6 @@ fn uninstall_for_codex(home: Option<&Path>) -> CliUninstallResult {
 // against the directory we expect it to name, and routes a mismatch to the
 // same repair a version bump would take (`plugin update` for Copilot/Claude,
 // uninstall + reinstall for Codex, which has no `plugin update`).
-//
-// Trigger-point caveat
-// --------------------
-//
-// Upgrade fires AT master startup but the agent CLI master spawned
-// concurrently may have already loaded its plugins by the time `plugin
-// update` finishes writing files. The freshly upgraded hooks may not take
-// effect until the next agent restart. This is acceptable because the
-// blocking alternative (await update before agent spawn) would add 1-30s
-// to every IT-upgrade boot. See doc-comment on `upgrade_installed_hooks`.
 
 /// Strict `MAJOR.MINOR.PATCH` parse. We reject anything else (prerelease,
 /// build metadata, missing fields) so bundles MUST ship plain semver. If
@@ -4151,9 +4180,7 @@ fn read_installed_copilot(home: &Path) -> InstalledProbe {
     }))
 }
 
-/// Spawn `claude plugin list --json` and locate our plugin. One-shot
-/// Node spawn; the fast-path short-circuit in `upgrade_installed_hooks`
-/// ensures this only runs after a bundle version change.
+/// Spawn `claude plugin list --json` and locate our plugin.
 ///
 /// The listing describes the copy under `~/.claude/plugins/cache/`, which
 /// says nothing about the marketplace directory that copy came from, so
@@ -4495,156 +4522,6 @@ fn path_under_dir(path: &Path, dir: &Path) -> bool {
     false
 }
 
-// ---- State file (fast-path cache) -----------------------------------------
-
-/// On-disk cache that records the bundle version we last saw per CLI.
-/// Used by `upgrade_installed_hooks` to short-circuit on the common
-/// "no IT upgrade happened" case.
-#[derive(Debug, Default, Clone)]
-struct UpgradeState {
-    copilot: Option<String>,
-    claude: Option<String>,
-    codex: Option<String>,
-    gemini: Option<String>,
-    opencode: Option<String>,
-}
-
-impl UpgradeState {
-    fn get(&self, cli: CliKind) -> Option<&str> {
-        match cli {
-            CliKind::Copilot => self.copilot.as_deref(),
-            CliKind::Claude => self.claude.as_deref(),
-            CliKind::Codex => self.codex.as_deref(),
-            CliKind::Gemini => self.gemini.as_deref(),
-            CliKind::OpenCode => self.opencode.as_deref(),
-        }
-    }
-
-    fn set(&mut self, cli: CliKind, version: Option<String>) {
-        match cli {
-            CliKind::Copilot => self.copilot = version,
-            CliKind::Claude => self.claude = version,
-            CliKind::Codex => self.codex = version,
-            CliKind::Gemini => self.gemini = version,
-            CliKind::OpenCode => self.opencode = version,
-        }
-    }
-
-    fn record_completed(&mut self, cli: CliKind, version: Option<String>, completed: bool) -> bool {
-        if !completed {
-            return false;
-        }
-        self.set(cli, version);
-        true
-    }
-
-    fn to_json(&self) -> Value {
-        let mut m = serde_json::Map::new();
-        if let Some(v) = &self.copilot {
-            m.insert("copilot".into(), Value::String(v.clone()));
-        }
-        if let Some(v) = &self.claude {
-            m.insert("claude".into(), Value::String(v.clone()));
-        }
-        if let Some(v) = &self.codex {
-            m.insert("codex".into(), Value::String(v.clone()));
-        }
-        if let Some(v) = &self.gemini {
-            m.insert("gemini".into(), Value::String(v.clone()));
-        }
-        if let Some(v) = &self.opencode {
-            m.insert("opencode".into(), Value::String(v.clone()));
-        }
-        Value::Object(m)
-    }
-
-    fn from_json(v: &Value) -> Self {
-        let obj = v.as_object();
-        let get = |key: &str| -> Option<String> {
-            obj.and_then(|o| o.get(key))
-                .and_then(|x| x.as_str())
-                .map(String::from)
-        };
-        UpgradeState {
-            copilot: get("copilot"),
-            claude: get("claude"),
-            codex: get("codex"),
-            gemini: get("gemini"),
-            opencode: get("opencode"),
-        }
-    }
-}
-
-/// Path to the upgrade-state file. Lives next to other transient wta
-/// diagnostics (`logs/`, `hook-bundle-staging/`) in the `LocalCache\Local`
-/// root. Returns `None` when the runtime root is unresolvable.
-fn upgrade_state_path() -> Option<PathBuf> {
-    crate::runtime_paths::intelligent_terminal_local_root()
-        .map(|root| root.join("hooks-upgrade-state.json"))
-}
-
-/// Cache token standing for "this CLI has already been checked against this
-/// bundle".
-///
-/// The hook version alone is not enough. An Intelligent Terminal upgrade
-/// installs to a versioned package directory, so the bundle moves to a new
-/// path on every release while the hook version usually stays put — and a
-/// live install registered against the old path stops loading the moment that
-/// package is removed. Folding the resolved directory into the token makes
-/// the package move a cache miss, which is the only automatic signal that a
-/// registration needs repointing.
-///
-/// `None` when either half is unresolvable, which keeps the full check
-/// running rather than caching an answer we can't describe.
-fn bundle_fingerprint(version: Option<&Version>, dir: Option<&Path>) -> Option<String> {
-    let version = version?;
-    let dir = dir?;
-    Some(format!("{} {}", version, dir.display()))
-}
-
-/// Load the cached bundle versions. Crash-safe: any IO/parse failure
-/// returns the empty state (= forces a full upgrade check next run).
-fn load_upgrade_state(path: &Path) -> UpgradeState {
-    match fs::read_to_string(path) {
-        Ok(t) => match serde_json::from_str::<Value>(&t) {
-            Ok(v) => UpgradeState::from_json(&v),
-            Err(_) => UpgradeState::default(),
-        },
-        Err(_) => UpgradeState::default(),
-    }
-}
-
-/// Persist the cached bundle versions. Best-effort: a write failure
-/// just means next startup repeats the full check.
-fn save_upgrade_state(path: &Path, state: &UpgradeState) {
-    if let Some(parent) = path.parent() {
-        if let Err(e) = fs::create_dir_all(parent) {
-            tracing::warn!(
-                target: "agent_hooks",
-                err = %e,
-                path = %parent.display(),
-                "failed to create upgrade-state parent dir",
-            );
-            return;
-        }
-    }
-    let pretty = match serde_json::to_string_pretty(&state.to_json()) {
-        Ok(s) => s,
-        Err(e) => {
-            tracing::warn!(target: "agent_hooks", err = %e, "failed to serialize upgrade state");
-            return;
-        }
-    };
-    if let Err(e) = fs::write(path, pretty) {
-        tracing::warn!(
-            target: "agent_hooks",
-            err = %e,
-            path = %path.display(),
-            "failed to write upgrade-state file",
-        );
-    }
-}
-
 // ---- Claude marketplace cleanup ------------------------------------------
 
 /// Mirror of `cleanup_stale_copilot_marketplace` for Claude. Rewrites
@@ -4741,75 +4618,6 @@ fn cleanup_stale_claude_marketplace(
     Ok(())
 }
 
-// ---- Public entry point ---------------------------------------------------
-
-/// Run the auto-upgrade check on all three supported CLIs. Idempotent
-/// and best-effort: any failure logs and continues with the next CLI.
-///
-/// Trigger point: called once per `wta-master` startup on a blocking-pool
-/// thread. The fast-path cache (see module-level comment) keeps the
-/// common no-upgrade case under ~10ms; only the first run after an IT
-/// install / upgrade pays the per-CLI spawn cost.
-///
-/// Trigger-point caveat: the agent CLI master spawns concurrently may
-/// have already loaded its plugins by the time `plugin update` finishes
-/// writing files. The freshly upgraded hooks may not take effect until
-/// the next agent restart.
-pub fn upgrade_installed_hooks() {
-    let Some(home) = home_dir() else {
-        tracing::debug!(target: "agent_hooks", "no HOME/USERPROFILE; skipping upgrade check");
-        return;
-    };
-    let state_path = upgrade_state_path();
-    let mut state = state_path
-        .as_ref()
-        .map(|p| load_upgrade_state(p))
-        .unwrap_or_default();
-
-    let mut state_dirty = false;
-    for cli in CliKind::ALL.iter().copied() {
-        let bundle_version = read_bundled_version(cli);
-        let fingerprint = bundle_fingerprint(
-            bundle_version.as_ref(),
-            bundle::resolve_cli_dir(cli).as_deref(),
-        );
-
-        // Fast path: bundle fingerprint matches the cached entry → nothing
-        // changed since last time we checked this CLI. Skip without any
-        // further IO or spawn.
-        if fingerprint.is_some() && fingerprint.as_deref() == state.get(cli) {
-            tracing::debug!(
-                target: "agent_hooks",
-                cli = cli.name(),
-                bundle = ?fingerprint,
-                "fast-path cache hit; no upgrade needed",
-            );
-            continue;
-        }
-
-        // Cache miss (or first ever run): do the full per-CLI check.
-        let completed = upgrade_one_cli(cli, &home, bundle_version).is_ok();
-
-        // Cache completed checks, including intentional skips. Failed
-        // OpenCode file copies must retry on the next startup.
-        if state.record_completed(cli, fingerprint, completed) {
-            state_dirty = true;
-        } else {
-            tracing::warn!(
-                target: "agent_hooks",
-                cli = cli.name(),
-                "hook upgrade failed; leaving cache unchanged for retry",
-            );
-        }
-    }
-
-    if state_dirty {
-        if let Some(path) = &state_path {
-            save_upgrade_state(path, &state);
-        }
-    }
-}
-
 /// Read the version of the hook plugin a CLI currently has installed.
 ///
 /// Returns `None` when nothing is installed, the CLI name is unknown, or the
@@ -4856,9 +4664,8 @@ fn probe_installed(cli: CliKind, home: &Path) -> InstalledProbe {
 
 /// Per-CLI upgrade entry: read installed state, decide, dispatch.
 ///
-/// `Err` carries a user-facing reason so `wta hooks install` can name what
-/// went wrong per CLI; `upgrade_installed_hooks` only needs the pass/fail bit
-/// because the individual upgrade helpers already log their own errors.
+/// `Err` carries a user-facing reason so reconciliation can name what went
+/// wrong per CLI; the individual upgrade helpers also log command details.
 fn upgrade_one_cli(
     cli: CliKind,
     home: &Path,
@@ -4872,7 +4679,7 @@ fn upgrade_one_cli(
                 target: "agent_hooks",
                 cli = cli.name(),
                 err = %error,
-                "failed to detect installed hook version; leaving cache unchanged for retry",
+                "failed to detect installed hook version; reconciliation will retry later",
             );
             return Err(format!(
                 "failed to detect the installed hook version: {error}"
@@ -5035,7 +4842,7 @@ fn upgrade_claude(home: &Path) -> bool {
     }
 }
 
-/// Codex auto-upgrade: reinstall the plugin in place. Codex has no
+/// Codex reconciliation upgrade: reinstall the plugin in place. Codex has no
 /// `plugin update` subcommand and `marketplace upgrade` only refreshes
 /// Git marketplaces (not the local `wt-local` marketplace), so we
 /// re-run the same uninstall + install flow used at first-run.
@@ -5084,7 +4891,7 @@ fn upgrade_gemini_in_place() -> bool {
             tracing::warn!(
                 target: "gemini_hooks",
                 err = %e,
-                "gemini extensions update failed; user can re-trigger via Settings UI",
+                "gemini extensions update failed; reconciliation will retry on the next trigger",
             );
             false
         }

@@ -297,6 +297,31 @@ Reconcile is deliberately stricter than title refresh:
 title upgrade is non-destructive, while `is_stale_host_history_row` requires
 both sides known and equal because deletion is not.
 
+The title an agent reports is not stable, so the poll re-adopts it rather than
+only filling a blank. Copilot answers `session/list` with a session's **first
+user message** until it generates a real summary; that echo is an ordinary
+non-synthetic title, so a synthetic-only upgrade latched it permanently and the
+session view kept showing the first message after the CLI had renamed the
+session. `refresh_titles_from_listing` therefore adopts the current listing
+title for every row `row_refreshable_by_connected_agent` admits, reusing the
+same 2 s-cached fetch, so no extra round-trip.
+
+Authority there is the session id, **not** `SessionInfo::location`. Host Copilot
+and an in-distro Copilot share a `CliSource` while enumerating disjoint stores,
+but a host listing simply never contains an in-distro session id (a host/WSL key
+collision is astronomically unlikely — see `wsl-session-management.md`). Adding a
+`location` gate would instead lose refreshes: only the born-bound path calls
+`set_location`, so an ordinary `session_hook` row for a CLI running inside WSL
+keeps the reducer's default `Host` and the in-distro agent that actually holds
+its title would be skipped forever.
+
+Because `adopt_agent_title` overwrites unconditionally, the candidate filters
+became load-bearing in a way they were not before: an injected-context echo or a
+provider placeholder would clobber a good title on every poll instead of merely
+failing to replace a synthetic one. They live in
+`session_registry::title_is_displayable` and are applied both where
+`host_titles_via_acp` builds the map and at the point of mutation.
+
 ### Consequences
 
 - The registry now holds up to `N × 50` historical rows for `N` pooled CLIs

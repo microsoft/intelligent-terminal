@@ -64,6 +64,7 @@ namespace winrt::Microsoft::Terminal::Control::implementation
         bool CopySelectionToClipboard(bool dismissSelection, bool singleLine, bool withControlSequences, const CopyFormat formats);
         void PasteTextFromClipboard();
         void EnableAgentPasteShortcutFallback(bool enabled) noexcept { _agentPasteShortcutFallbackEnabled = enabled; }
+        void EnableAgentMouseWheelZoom(bool enabled) noexcept { _agentMouseWheelZoomEnabled = enabled; }
         void SelectAll();
         bool ToggleBlockSelection();
         void ToggleMarkMode();
@@ -257,6 +258,7 @@ namespace winrt::Microsoft::Terminal::Control::implementation
         Control::ControlInteractivity _interactivity{ nullptr };
         Control::ControlCore _core{ nullptr };
         Control::IKeyBindings _keyBindings{ nullptr };
+        bool _agentMouseWheelZoomEnabled{ false };
         TsfDataProvider _tsfDataProvider{ this };
         winrt::com_ptr<SearchBoxControl> _searchBox;
 

@@ -210,16 +210,37 @@ fn is_listener_ready_marker(value: &serde_json::Value, token: &str) -> bool {
         && value.get("token").and_then(|value| value.as_str()) == Some(token)
 }
 
-fn next_listener_failure_count(current: u32, subscribed: bool, uptime: Duration) -> u32 {
-    if subscribed && uptime >= WTCLI_LISTENER_STABLE_UPTIME {
-        1
-    } else {
-        current.saturating_add(1)
-    }
+struct ListenerRetryState {
+    failures: u32,
+    delay: Duration,
 }
 
-fn listener_retry_exhausted(consecutive_failures: u32) -> bool {
-    consecutive_failures >= WTCLI_LISTENER_MAX_CONSECUTIVE_FAILURES
+impl ListenerRetryState {
+    fn new() -> Self {
+        Self {
+            failures: 0,
+            delay: WTCLI_LISTENER_RETRY_INITIAL,
+        }
+    }
+
+    /// None stops this reader; zero retries immediately. Only time spent
+    /// subscribed counts as healthy, not process startup or pipe cleanup time.
+    fn after_failure(&mut self, subscribed_uptime: Option<Duration>) -> Option<Duration> {
+        if subscribed_uptime.is_some_and(|uptime| uptime >= WTCLI_LISTENER_STABLE_UPTIME) {
+            self.failures = 0;
+            self.delay = WTCLI_LISTENER_RETRY_INITIAL;
+        }
+        self.failures = self.failures.saturating_add(1);
+        if self.failures >= WTCLI_LISTENER_MAX_CONSECUTIVE_FAILURES {
+            return None;
+        }
+        if subscribed_uptime.is_some() && self.failures == 1 {
+            return Some(Duration::ZERO);
+        }
+        let delay = self.delay;
+        self.delay = (self.delay * 2).min(WTCLI_LISTENER_RETRY_MAX);
+        Some(delay)
+    }
 }
 
 /// Resolve the full path to `wtcli.exe` at startup.
@@ -626,8 +647,7 @@ impl CliChannel {
             let parent_pid_arg = parent_pid.to_string();
             let ready_token = format!("wta-{parent_pid}");
             let mut ready_tx = Some(ready_tx);
-            let mut retry_delay = WTCLI_LISTENER_RETRY_INITIAL;
-            let mut consecutive_failures = 0u32;
+            let mut retry = ListenerRetryState::new();
             loop {
                 if weak.upgrade().is_none() {
                     return;
@@ -649,38 +669,31 @@ impl CliChannel {
                 let mut child = match command.spawn() {
                     Ok(child) => child,
                     Err(error) => {
-                        consecutive_failures = next_listener_failure_count(
-                            consecutive_failures,
-                            false,
-                            Duration::ZERO,
-                        );
+                        let retry_delay = retry.after_failure(None);
                         tracing::warn!(
                             target: "wtcli",
                             path = %wtcli,
                             %error,
-                            consecutive_failures,
+                            consecutive_failures = retry.failures,
                             max_failures = WTCLI_LISTENER_MAX_CONSECUTIVE_FAILURES,
-                            retry_ms = retry_delay.as_millis(),
                             "WT protocol event listener spawn failed"
                         );
-                        if listener_retry_exhausted(consecutive_failures) {
+                        let Some(retry_delay) = retry_delay else {
                             tracing::error!(
                                 target: "wtcli",
-                                consecutive_failures,
+                                consecutive_failures = retry.failures,
                                 "WT protocol event listener reached its retry limit; live session status will remain stale until this WTA process restarts"
                             );
                             return;
-                        }
+                        };
                         tokio::select! {
                             _ = &mut shutdown_rx => return,
                             _ = tokio::time::sleep(retry_delay) => {}
                         }
-                        retry_delay = (retry_delay * 2).min(WTCLI_LISTENER_RETRY_MAX);
                         continue;
                     }
                 };
                 let listener_pid = child.id();
-                let listener_started_at = tokio::time::Instant::now();
                 tracing::info!(
                     target: "wtcli",
                     ?listener_pid,
@@ -695,7 +708,7 @@ impl CliChannel {
                 });
                 let mut reader = tokio::io::BufReader::new(stdout);
                 let mut line = String::new();
-                let mut subscribed = false;
+                let mut subscribed_at: Option<tokio::time::Instant> = None;
 
                 let exit_reason = loop {
                     line.clear();
@@ -713,8 +726,15 @@ impl CliChannel {
                                         let is_ready =
                                             is_listener_ready_marker(&val, &ready_token);
                                         if is_ready {
-                                            subscribed = true;
-                                            retry_delay = WTCLI_LISTENER_RETRY_INITIAL;
+                                            if subscribed_at.is_none() {
+                                                subscribed_at = Some(tokio::time::Instant::now());
+                                                tracing::info!(
+                                                    target: "wtcli",
+                                                    ?listener_pid,
+                                                    parent_pid,
+                                                    "WT protocol event listener subscribed"
+                                                );
+                                            }
                                             if let Some(tx) = ready_tx.take() {
                                                 let _ = tx.send(());
                                             }
@@ -740,6 +760,7 @@ impl CliChannel {
                     }
                 };
 
+                let subscribed_uptime = subscribed_at.map(|ready| ready.elapsed());
                 drop(reader);
                 tracing::info!(
                     target: "wtcli",
@@ -806,28 +827,18 @@ impl CliChannel {
                     return;
                 }
 
-                let stable_subscription =
-                    subscribed && listener_started_at.elapsed() >= WTCLI_LISTENER_STABLE_UPTIME;
-                if stable_subscription {
-                    retry_delay = WTCLI_LISTENER_RETRY_INITIAL;
-                }
-                consecutive_failures = next_listener_failure_count(
-                    consecutive_failures,
-                    subscribed,
-                    listener_started_at.elapsed(),
-                );
-                if listener_retry_exhausted(consecutive_failures) {
+                let Some(retry_delay) = retry.after_failure(subscribed_uptime) else {
                     tracing::error!(
                         target: "wtcli",
                         pid = listener_pid,
                         reason = exit_reason,
-                        consecutive_failures,
+                        consecutive_failures = retry.failures,
                         "WT protocol event listener reached its retry limit; live session status will remain stale until this WTA process restarts"
                     );
                     return;
-                }
+                };
 
-                if subscribed && consecutive_failures == 1 {
+                if retry_delay.is_zero() {
                     // The listener had a valid subscription and then died.
                     // Re-spawn the first time immediately: COM broadcasts are
                     // not replayed. Repeated quick post-subscribe exits retain
@@ -837,7 +848,7 @@ impl CliChannel {
                         target: "wtcli",
                         pid = listener_pid,
                         reason = exit_reason,
-                        consecutive_failures,
+                        consecutive_failures = retry.failures,
                         "subscribed WT protocol event listener exited; restarting immediately"
                     );
                     continue;
@@ -846,7 +857,7 @@ impl CliChannel {
                     target: "wtcli",
                     pid = listener_pid,
                     reason = exit_reason,
-                    consecutive_failures,
+                    consecutive_failures = retry.failures,
                     max_failures = WTCLI_LISTENER_MAX_CONSECUTIVE_FAILURES,
                     retry_ms = retry_delay.as_millis(),
                     "WT protocol event listener exited; retrying"
@@ -855,7 +866,6 @@ impl CliChannel {
                     _ = &mut shutdown_rx => return,
                     _ = tokio::time::sleep(retry_delay) => {}
                 }
-                retry_delay = (retry_delay * 2).min(WTCLI_LISTENER_RETRY_MAX);
             }
         });
 
@@ -1137,24 +1147,50 @@ mod tests {
 
     #[test]
     fn listener_retry_limit_counts_only_consecutive_unstable_failures() {
-        let mut failures = 0;
-        for expected in 1..WTCLI_LISTENER_MAX_CONSECUTIVE_FAILURES {
-            failures = next_listener_failure_count(failures, false, Duration::ZERO);
-            assert_eq!(failures, expected);
-            assert!(!listener_retry_exhausted(failures));
+        let mut retry = ListenerRetryState::new();
+        for millis in [250, 500, 1000, 2000, 4000, 5000, 5000] {
+            assert_eq!(
+                retry.after_failure(None),
+                Some(Duration::from_millis(millis))
+            );
         }
-        failures = next_listener_failure_count(failures, true, Duration::from_secs(1));
-        assert!(listener_retry_exhausted(failures));
+        assert_eq!(retry.after_failure(Some(Duration::from_secs(1))), None);
+        assert_eq!(retry.failures, WTCLI_LISTENER_MAX_CONSECUTIVE_FAILURES);
+    }
 
-        // A subscription that stayed healthy long enough starts a new failure
-        // streak. A fast subscribe/exit loop deliberately does not.
+    #[test]
+    fn listener_retry_backoff_survives_quick_successful_subscriptions() {
+        let mut retry = ListenerRetryState::new();
+        for millis in [0, 250, 500, 1000, 2000, 4000, 5000] {
+            assert_eq!(
+                retry.after_failure(Some(Duration::from_secs(1))),
+                Some(Duration::from_millis(millis)),
+            );
+        }
+        assert_eq!(retry.after_failure(Some(Duration::from_secs(1))), None);
+    }
+
+    #[test]
+    fn listener_retry_resets_only_after_stable_subscribed_uptime() {
+        let mut retry = ListenerRetryState::new();
+        for _ in 0..6 {
+            assert!(retry.after_failure(None).is_some());
+        }
+        // A long connection attempt followed by a brief subscription is not
+        // healthy: only the interval after the readiness marker is supplied.
         assert_eq!(
-            next_listener_failure_count(
-                WTCLI_LISTENER_MAX_CONSECUTIVE_FAILURES - 1,
-                true,
-                WTCLI_LISTENER_STABLE_UPTIME
-            ),
-            1
+            retry.after_failure(Some(WTCLI_LISTENER_STABLE_UPTIME - Duration::from_secs(1))),
+            Some(WTCLI_LISTENER_RETRY_MAX),
+        );
+        assert_eq!(retry.failures, 7);
+        assert_eq!(
+            retry.after_failure(Some(WTCLI_LISTENER_STABLE_UPTIME)),
+            Some(Duration::ZERO),
+        );
+        assert_eq!(retry.failures, 1);
+        assert_eq!(
+            retry.after_failure(None),
+            Some(WTCLI_LISTENER_RETRY_INITIAL)
         );
     }
 

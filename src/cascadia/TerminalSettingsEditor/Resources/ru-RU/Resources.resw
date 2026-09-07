@@ -2861,13 +2861,21 @@
   <data name="AIAgents_AutoFix.HelpText" xml:space="preserve">
     <value>Если включено, ИИ-агент автоматически анализирует команды с ошибками и предлагает исправление. Если отключено, для команд с ошибками в строке состояния отображается подсказка, по которой можно щелкнуть — нажмите Ctrl+Alt+. или щелкните подсказку, чтобы запросить исправление.</value>
   </data>
-  <data name="AIAgents_ShowTokenUsageAndCost.Header" xml:space="preserve"><value>Показать использование контекста и стоимость сеанса</value><comment>Header for a setting that shows available context-window usage and session cost in the terminal bottom bar. Session cost is reported for the active AI session. Keep 'session cost' generic and do not add a specific unit. Either value may be unavailable.</comment></data>
-  <data name="AIAgents_ShowTokenUsageAndCost.HelpText" xml:space="preserve"><value>Если доступно, отображайте использование контекстного окна и стоимость сеанса в нижней панели терминала.</value><comment>Supplementary description for the usage visibility setting. Session cost is reported for the active AI session. Keep 'session cost' generic and do not add a specific unit. Either value may be unavailable.</comment></data>
+  <data name="AIAgents_SessionManagement.Header" xml:space="preserve">
+    <value>Сеансы</value>
+    <comment>Title for the setting that controls agent session tracking.</comment>
+  </data>
+  <data name="AIAgents_SessionManagement.HelpText" xml:space="preserve">
+    <value>Отслеживайте, какие ИИ-агенты запущены, а какие требуют вашего вмешательства.</value>
+    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} Description for the Sessions setting. In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+  </data>
+  <data name="AIAgents_ShowTokenUsageAndCost.Header" xml:space="preserve"><value>Использование токенов</value><comment>Header for a setting that shows available context-window usage and session cost in the terminal bottom bar. Session cost is reported for the active AI session. Keep 'session cost' generic and do not add a specific unit. Either value may be unavailable.</comment></data>
+  <data name="AIAgents_ShowTokenUsageAndCost.HelpText" xml:space="preserve"><value>Показывать оставшийся контекст и стоимость сеанса, когда они доступны</value><comment>Supplementary description for the usage visibility setting. Session cost is reported for the active AI session. Keep 'session cost' generic and do not add a specific unit. Either value may be unavailable.</comment></data>
   <data name="AIAgents_PanePosition.Header" xml:space="preserve">
     <value>Положение панели</value>
   </data>
   <data name="AIAgents_PanePosition.HelpText" xml:space="preserve">
-    <value>Где панель агента будет открываться относительно терминала.</value>
+    <value>Расположение агента</value>
   </data>
   <data name="AIAgents_PanePosition_Bottom" xml:space="preserve">
     <value>Снизу</value>
@@ -2885,22 +2893,8 @@
     <value>Слева</value>
     <comment>Value shown in the agent pane position dropdown (selects which side of the terminal the agent pane opens on). Translation should match the existing FreOverlay_PanePositionLeft string used in the first-run experience.</comment>
   </data>
-  <data name="AIAgents_HooksGroupHeader.Text" xml:space="preserve">
-    <value>Hooks для агентов</value>
-  </data>
-  <data name="AIAgents_HooksInstall.Header" xml:space="preserve">
-    <value>Установить скрипты Hooks для агентов</value>
-  </data>
-  <data name="AIAgents_HooksInstall.HelpText" xml:space="preserve">
-    <value>Отслеживайте сеансы между агентами. Требуется для управления сеансами агентов.</value>
-    <comment>Help text shown under the expandable section header.</comment>
-  </data>
-  <data name="AIAgents_HooksInstallButton.Content" xml:space="preserve">
-    <value>Установить Hooks</value>
-  </data>
-  <data name="AIAgents_HooksRefreshButton.Content" xml:space="preserve">
-    <value>Обновить</value>
-  </data>
+  <data name="AIAgents_YoloMode.Header" xml:space="preserve"><value>Использовать режим Yolo поставщика</value><comment>{Locked=&quot;Yolo&quot;} Header for the global setting that asks each AI agent provider to enable its advertised ACP session Yolo capability.</comment></data>
+  <data name="AIAgents_YoloMode.HelpText" xml:space="preserve"><value>Использует режим сеанса ACP поставщика агента, чтобы сократить число подтверждений или обойти их. Поставщик определяет результирующие разрешения, параметры песочницы, а также доступ к файлам и сети. Поставщики без поддерживаемого режима по-прежнему будут запрашивать разрешение.</value><comment>{Locked=&quot;ACP&quot;} Risk warning shown under the Yolo toggle. Here provider means the selected AI agent provider, not a network provider.</comment></data>
   <data name="Settings_PortableModeInfoLink.NavigateUri" xml:space="preserve">
     <value>https://go.microsoft.com/fwlink/?linkid=2229086</value>
     <comment>{Locked}</comment>
@@ -2909,84 +2903,41 @@
     <value>Этот параметр управляется вашей организацией.</value>
     <comment>Text shown when Group Policy controls this feature. Standard Windows policy notice wording.</comment>
   </data>
-  <data name="AIAgents_HooksInstallingSummary" xml:space="preserve">
-    <value>Установка hooks...</value>
-    <comment>Status summary shown while installing agent session tracking hooks. {Locked="hooks"}</comment>
+  <data name="AIAgents_AutoErrorHandlingTitle.Text" xml:space="preserve">
+    <value>Автоматическая обработка ошибок</value>
+    <comment>Title for the Error detection dropdown in the AI agents settings page.</comment>
   </data>
-  <data name="AIAgents_HooksRemovingCopilotSummary" xml:space="preserve">
-    <value>Удаление Copilot hooks...</value>
-    <comment>Status summary shown while removing agent session tracking hooks for Copilot. {Locked="Copilot","hooks"}</comment>
+  <data name="AIAgents_AutoErrorHandlingDescription.Text" xml:space="preserve">
+    <value>Автоматически обнаруживайте команды с ошибками в оболочке и при желании отправляйте их своему ИИ-агенту для автоматического исправления.</value>
+    <comment>Umbrella description for the three-state Error detection setting in the AI agents settings page. The Detect errors option is local-only; only Detect and fix errors sends failures to the AI agent. Use the approved product copy verbatim. Here "agent" refers to an AI intelligent agent, not a proxy or human agent.</comment>
   </data>
-  <data name="AIAgents_HooksRemovingClaudeSummary" xml:space="preserve">
-    <value>Удаление Claude hooks...</value>
-    <comment>Status summary shown while removing agent session tracking hooks for Claude. {Locked="Claude","hooks"}</comment>
+  <data name="AIAgents_AutoErrorHandling_Off" xml:space="preserve">
+    <value>Выкл</value>
+    <comment>The third option in the Error detection dropdown. It disables automatic terminal error detection and suggestions.</comment>
   </data>
-  <data name="AIAgents_HooksRemovingGeminiSummary" xml:space="preserve">
-    <value>Удаление Gemini hooks...</value>
-    <comment>Status summary shown while removing agent session tracking hooks for Gemini. {Locked="Gemini","hooks"}</comment>
+  <data name="AIAgents_AutoErrorHandling_DetectErrorsAutomatically" xml:space="preserve">
+    <value>Обнаруживать ошибки</value>
+    <comment>The first option in the Error detection dropdown. It enables automatic terminal error detection without sending failures to an AI agent. Here "agent" means an AI intelligent agent, not a proxy or human agent.</comment>
   </data>
-  <data name="AIAgents_HooksRemovingCodexSummary" xml:space="preserve">
-    <value>Удаление Codex hooks...</value>
-    <comment>Status summary shown while removing agent session tracking hooks for Codex. {Locked="Codex","hooks"}</comment>
+  <data name="AIAgents_AutoErrorHandling_DetectErrorsAndSendToAgentForFixesAutomatically" xml:space="preserve">
+    <value>Обнаруживать и исправлять ошибки</value>
+    <comment>The second option in the Error detection dropdown. It enables automatic terminal error detection and sends failures to an AI agent for suggested fixes. Here "agent" means an AI intelligent agent, not a proxy or human agent.</comment>
   </data>
-  <data name="AIAgents_HooksRemovingOpenCodeSummary" xml:space="preserve">
-    <value>Удаление OpenCode hooks...</value>
-    <comment>Status summary shown while removing agent session tracking hooks for OpenCode. {Locked="OpenCode","hooks"}</comment>
-  </data>
-  <data name="AIAgents_CodexTrustHint.Text" xml:space="preserve">
-    <value>После установки выполните /hooks в Codex и подтвердите, чтобы доверять новым обработчикам событий.</value>
-    <comment>One-line reminder shown under the Codex CLI row in the Agent Hooks section. Codex requires per-command trust before hook handlers run; users must execute /hooks inside Codex and approve. {Locked="/hooks","Codex"}</comment>
-  </data>
-  <data name="AIAgents_HooksRestartNote.Text" xml:space="preserve">
-    <value>Изменения вступят в силу при следующем запуске агента. Перезапустите все открытые агенты, чтобы применить их.</value>
-    <comment>Persistent note shown under the "Install agent hook script" row in the Agent session tracking section. Warns that installing or removing hooks only affects agents started afterwards. In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
-  </data>
-  <data name="AIAgents_HooksLocateWtaFailedSummary" xml:space="preserve">
-    <value>Сбой: не удалось найти wta.exe</value>
-    <comment>Failure summary shown when the Settings UI cannot find the WTA helper executable. {Locked="wta.exe"}</comment>
-  </data>
-  <data name="AIAgents_HooksRemovedSummary" xml:space="preserve">
-    <value>Hooks удалены.</value>
-    <comment>Success summary shown after removing agent session tracking hooks. {Locked="Hooks"}</comment>
-  </data>
-  <data name="AIAgents_HooksInstalledSummary" xml:space="preserve">
-    <value>Hooks установлены.</value>
-    <comment>Success summary shown after installing agent session tracking hooks. {Locked="Hooks"}</comment>
-  </data>
-  <data name="AIAgents_HooksRemovalFailedSummary" xml:space="preserve">
-    <value>Не удалось удалить Hook. Подробности см. в {0}.</value>
-    <comment>Failure summary shown when removing agent session tracking hooks fails. {Locked="Hook","{0}"} {0} is replaced with the package-aware, versioned WTA log directory at runtime.</comment>
-  </data>
-  <data name="AIAgents_HooksInstallationFailedSummary" xml:space="preserve">
-    <value>Не удалось установить Hooks. Подробности см. в {0}.</value>
-    <comment>Failure summary shown when installing agent session tracking hooks fails. {Locked="Hooks","{0}"} {0} is replaced with the package-aware, versioned wta-install-hooks.log path at runtime.</comment>
-  </data>
-  <data name="AIAgents_HooksInstallationFailedForSummary" xml:space="preserve">
-    <value>Не удалось установить Hooks для {0}. Подробности см. в {1}.</value>
-    <comment>Failure summary shown when installing agent session tracking hooks fails for specific CLIs. {Locked="Hooks","{0}","{1}"} {0} is replaced with a comma-separated list of CLI names (brand names, never translated); {1} is replaced with the package-aware, versioned wta-install-hooks.log path at runtime.</comment>
-  </data>
-  <data name="AIAgents_AutoErrorDetectionTitle.Text" xml:space="preserve">
-    <value>Автоматическое обнаружение ошибок</value>
-  </data>
-  <data name="AIAgents_AutoErrorDetectionCaptionPrefix" xml:space="preserve">
-    <value>Разрешите Интеллектуальному Терминалу доступ к оболочке и автоматическое обнаружение ошибок. Доступно в PowerShell, bash и WSL bash. </value>
-  </data>
-  <data name="AIAgents_AutoErrorDetectionCaptionLink" xml:space="preserve">
-    <value>Показать все поддерживаемые оболочки</value>
-  </data>
-  <data name="AIAgents_AutoErrorSuggestionTitle.Text" xml:space="preserve">
-    <value>Автоматическое предложение исправлений</value>
-  </data>
-  <data name="AIAgents_AutoErrorSuggestionCaption.Text" xml:space="preserve">
-    <value>Разрешите Интеллектуальному Терминалу отправлять ошибки агенту для автоматического предложения исправлений.</value>
+  <data name="AIAgents_AutoErrorHandlingComboBox.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Автоматическая обработка ошибок</value>
+    <comment>Automation name for the Error detection dropdown in the AI agents settings page.</comment>
   </data>
   <data name="AIAgents_CustomModels.Header" xml:space="preserve">
-    <value>Поставщики BYOK</value>
-    <comment>Section header for user-configured model providers. {Locked="BYOK"}</comment>
+    <value>Пользовательская конечная точка или локальная модель</value>
+    <comment>Section header for user-configured remote endpoints or locally hosted models.</comment>
   </data>
   <data name="AIAgents_CustomModels.HelpText" xml:space="preserve">
-    <value>Используйте конечную точку API Chat Completions, совместимую с OpenAI. Поддерживает GitHub Copilot и OpenCode.</value>
-    <comment>{Locked="OpenAI","Chat Completions API","GitHub Copilot","OpenCode"} Explains the API shape and agents supported by the shared custom provider.</comment>
+    <value>Направьте агента на собственную конечную точку, совместимую с OpenAI. </value>
+    <comment>{Locked="OpenAI"} Caption under the custom endpoint section title. Include any locale-appropriate spacing before the inline AIAgents_CustomModelsLearnMore hyperlink at the end of this value.</comment>
+  </data>
+  <data name="AIAgents_CustomModelsLearnMore" xml:space="preserve">
+    <value>Подробнее</value>
+    <comment>Inline hyperlink text that follows AIAgents_CustomModels.HelpText and opens documentation about custom providers.</comment>
   </data>
   <data name="AIAgents_CustomProviderUnsupportedForAgent" xml:space="preserve">
     <value>{0} не поддерживает пользовательские поставщики Chat Completions, совместимые с OpenAI. Сохраненные поставщики останутся доступны после переключения на GitHub Copilot или OpenCode.</value>
@@ -3004,29 +2955,61 @@
     <value>Удалить</value>
     <comment>Button that removes a custom model provider.</comment>
   </data>
+  <data name="AIAgents_CustomProviderAddHeader.Text" xml:space="preserve">
+    <value>Добавить пользовательскую конечную точку</value>
+    <comment>Heading above the form for adding a custom provider endpoint.</comment>
+  </data>
   <data name="AIAgents_CustomProviderBaseUrl.Header" xml:space="preserve">
     <value>Базовый URL</value>
     <comment>Header for the custom provider endpoint input. {Locked="URL"}</comment>
+  </data>
+  <data name="AIAgents_CustomProviderBaseUrl.PlaceholderText" xml:space="preserve">
+    <value>https://api.example.com/v1</value>
+    <comment>{Locked="https://api.example.com/v1"} Example of a valid OpenAI-compatible API root shown inside the custom provider endpoint input.</comment>
+  </data>
+  <data name="AIAgents_CustomProviderBaseUrlHint.Text" xml:space="preserve">
+    <value>Укажите корневой URL, совместимый с OpenAI, например https://api.openai.com/v1 или https://api.together.xyz/v1.</value>
+    <comment>{Locked="OpenAI","https://api.openai.com/v1","https://api.together.xyz/v1"} Hint below the custom provider endpoint input.</comment>
   </data>
   <data name="AIAgents_CustomModelId.Header" xml:space="preserve">
     <value>Идентификатор модели</value>
     <comment>Header for the custom provider model identifier input. {Locked="ID"}</comment>
   </data>
+  <data name="AIAgents_CustomModelId.PlaceholderText" xml:space="preserve">
+    <value>gpt-4o</value>
+    <comment>{Locked="gpt-4o"} Example of a valid provider model identifier shown inside the custom model ID input.</comment>
+  </data>
+  <data name="AIAgents_CustomModelIdHint.Text" xml:space="preserve">
+    <value>Имя модели, ожидаемое конечной точкой, в точности так, как его указывает поставщик.</value>
+    <comment>Hint below the custom model ID input.</comment>
+  </data>
   <data name="AIAgents_CustomProviderApiKey.Header" xml:space="preserve">
     <value>Ключ API (необязательно)</value>
     <comment>Header for the optional custom provider credential input. {Locked="API"}</comment>
   </data>
+  <data name="AIAgents_CustomProviderApiKey.PlaceholderText" xml:space="preserve">
+    <value>sk-...</value>
+    <comment>{Locked="sk-..."} Example API key format shown inside the optional custom provider credential input.</comment>
+  </data>
+  <data name="AIAgents_CustomProviderApiKeyHint.Text" xml:space="preserve">
+    <value>Оставьте пустым, если конечная точка не требует проверки подлинности. Сохраняется в диспетчере учетных данных Windows.</value>
+    <comment>{Locked="API"} Hint below the optional custom provider credential input. Use the established localized product name for Windows Credential Manager.</comment>
+  </data>
   <data name="AIAgents_CustomProviderAdd.Content" xml:space="preserve">
-    <value>Добавить нового поставщика</value>
-    <comment>Button that starts adding a custom model provider.</comment>
+    <value>Добавить конечную точку</value>
+    <comment>Button in the final custom provider row that reveals the fields for adding another endpoint.</comment>
   </data>
   <data name="AIAgents_CustomProviderSave.Content" xml:space="preserve">
-    <value>Сохранить</value>
-    <comment>Button that saves a new custom model provider.</comment>
+    <value>Добавить и выбрать</value>
+    <comment>Button that adds a custom provider model and selects it as the current model.</comment>
+  </data>
+  <data name="AIAgents_CustomProviderSaveHint.Text" xml:space="preserve">
+    <value>Это действие добавит модель и выберет ее в качестве текущей модели</value>
+    <comment>Supporting text beside the button that adds and selects a custom provider model.</comment>
   </data>
   <data name="AIAgents_CustomProviderCancel.Content" xml:space="preserve">
     <value>Отменить</value>
-    <comment>Button that cancels adding a provider.</comment>
+    <comment>Button that cancels adding a provider and restores the Add endpoint row.</comment>
   </data>
   <data name="AIAgents_BYOKModelDisplayName" xml:space="preserve">
     <value>{} (BYOK)</value>
@@ -3035,5 +3018,17 @@
   <data name="AIAgents_OpenAICompatibleModelDescription" xml:space="preserve">
     <value>{} | {} | Совместимость с OpenAI</value>
     <comment>{Locked="{}","OpenAI"} The first {} is replaced with the provider name; the second is replaced with its location.</comment>
+  </data>
+  <data name="AIAgents_YoloOpenCodeWarning.Title" xml:space="preserve"><value>Режим Yolo недоступен для OpenCode</value><comment>{Locked="Yolo","OpenCode"} InfoBar title shown on the AI Agents settings page when global Yolo mode is on and the installed selected default provider is OpenCode.</comment></data>
+  <data name="AIAgents_YoloOpenCodeWarning.Message" xml:space="preserve"><value>OpenCode не объявляет о поддерживаемом собственном режиме Yolo. Запросы разрешений остаются интерактивными, даже если этот параметр включен.</value><comment>{Locked="OpenCode","Yolo"} InfoBar message shown on the AI Agents settings page. "Advertise" means the provider reports a supported native ACP session capability. "Interactive" means the user must still choose permission options manually.</comment></data>
+  <data name="AIAgents_YoloGeminiInfo.Title" xml:space="preserve"><value>Режим Yolo в Gemini зависит от доверия рабочей области</value><comment>{Locked="Gemini","Yolo"} InfoBar title shown on the AI Agents settings page when global Yolo mode is on and the installed selected default provider is Gemini.</comment></data>
+  <data name="AIAgents_YoloGeminiInfo.Message" xml:space="preserve"><value>Gemini включает режим Yolo только тогда, когда это разрешено доверием рабочей области и политикой поставщика.</value><comment>{Locked="Gemini","Yolo"} InfoBar message shown on the AI Agents settings page. Workspace trust and provider policy are owned by Gemini, not by Intelligent Terminal.</comment></data>
+  <data name="AIAgents_CustomAgentRemove.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>Удалить</value>
+    <comment>Accessible name for the X button that removes a custom agent from the agent list.</comment>
+  </data>
+  <data name="AIAgents_CustomAgentRemove.[using:Windows.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
+    <value>Удалить</value>
+    <comment>Tooltip for the X button that removes a custom agent from the agent list.</comment>
   </data>
 </root>

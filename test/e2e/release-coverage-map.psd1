@@ -16,6 +16,12 @@
     '/model works'                      = '/model opens the model picker'
     '/agent picker works'               = '/agent appears in the slash menu and opens a keyboard-operable picker'
     'Invalid /agent selection is safe'  = '/agent rejects an unavailable id without changing the pane or global setting'
+    # PR #505 provider-native Yolo. Publishable mappings are zero-token only. Real model/tool
+    # acceptance intentionally stays local-only and therefore has no release-report mapping.
+    'Yolo setting persists'             = 'Feature provider-native Yolo with Copilot\.Yolo setting persists'
+    'Settings explains OpenCode Yolo compatibility' = 'Feature Settings Yolo provider compatibility\.Settings warns that OpenCode Yolo remains interactive'
+    'Settings explains Gemini Yolo restrictions' = 'Feature Settings Yolo provider compatibility\.Settings explains Gemini workspace trust dependency'
+    'AllowYoloMode policy blocks Yolo'  = 'Feature AllowYoloMode policy\.AllowYoloMode policy blocks Yolo'
     'Esc/back navigation works'         = 'Esc/back navigation works|TRIGGERS the selected option'
     # §2/§5 WT accelerators + delegation palette (Feature.AgentHotkeys) — driven via window-level
     # OS keystrokes (Send-WtWindowKey), which reach WT's keybinding layer (the conpty path can't).

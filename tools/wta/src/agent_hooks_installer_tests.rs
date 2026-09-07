@@ -2229,7 +2229,7 @@ fn gemini_extensions_list_json_parser_reports_the_installed_version() {
     assert_eq!(parsed.version.map(|v| v.to_string()), Some("0.1.5".into()));
 }
 
-// ---- decide_install_action (`hooks install --only-missing`) ----------
+// ---- decide_install_action (default `hooks install`) ----------------
 
 /// Most of these cases predate the registration check and carry no
 /// `marketplace_path`, so they are decided on completeness and version alone.
@@ -2288,9 +2288,7 @@ fn install_action_upgrades_a_complete_but_outdated_bridge() {
 }
 
 /// An unreadable version on either side is not proof of staleness. `install`
-/// would no-op against a complete bridge, and master startup re-checks it
-/// with a richer probe than `CliStatus` carries, so skipping is both honest
-/// and cheap.
+/// would no-op against a complete bridge, so skipping is the honest choice.
 #[test]
 fn install_action_skips_when_a_version_is_unreadable() {
     for status in [
@@ -2484,6 +2482,36 @@ fn install_action_prefers_install_over_a_moved_registration() {
         decide_install_action(CliKind::Copilot, &status, Some(&bundle)),
         InstallAction::Install
     );
+}
+
+#[test]
+fn reconciliation_plan_installs_missing_and_upgrades_stale_hooks() {
+    let missing = CliStatus {
+        marketplace_registered: false,
+        marketplace_path_valid: false,
+        plugin_installed: false,
+        plugin_enabled: false,
+        installed_version: None,
+        ..installed_status("copilot")
+    };
+    let stale = CliStatus {
+        installed_version: Some("0.1.5".into()),
+        ..installed_status("claude")
+    };
+    let current = installed_status("gemini");
+    let status = StatusReport {
+        schema_version: STATUS_SCHEMA_VERSION,
+        clis: vec![missing, stale, current],
+        bundle_source: BundleSourceInfo {
+            kind: "none",
+            path: None,
+        },
+    };
+
+    let plan = build_reconciliation_plan(CliScope::All, &status);
+    assert!(plan.contains(&(CliKind::Copilot, InstallAction::Install)));
+    assert!(plan.contains(&(CliKind::Claude, InstallAction::Upgrade)));
+    assert!(!plan.iter().any(|(cli, _)| *cli == CliKind::Gemini));
 }
 
 // ---- run_plugin_cli idempotency (#17) -------------------------------
@@ -3002,7 +3030,7 @@ fn bundle_resolves_codex_dir_in_dev_tree() {
     );
 }
 
-// ---- auto-upgrade: Version parser & ordering -----------------------
+// ---- reconciliation upgrade: Version parser & ordering ------------
 
 #[test]
 fn version_parse_accepts_plain_semver() {
@@ -3058,7 +3086,7 @@ fn version_display_round_trips() {
     assert_eq!(v.to_string(), s);
 }
 
-// ---- auto-upgrade: read_version_field ------------------------------
+// ---- reconciliation upgrade: read_version_field -------------------
 
 #[test]
 fn read_version_field_parses_plugin_json() {
@@ -3403,7 +3431,7 @@ fn read_version_field_returns_none_on_garbage_or_missing() {
     assert!(read_version_field(&bad_version).is_none());
 }
 
-// ---- auto-upgrade: read_installed_copilot --------------------------
+// ---- reconciliation upgrade: read_installed_copilot ---------------
 
 #[test]
 fn read_installed_copilot_picks_marketplace_qualified_entry() {
@@ -3784,7 +3812,7 @@ fn apply_presence_carries_the_listed_version() {
     assert_eq!(row.installed_version.as_deref(), Some("0.1.6"));
 }
 
-// ---- auto-upgrade: read_installed_gemini ---------------------------
+// ---- reconciliation upgrade: read_installed_gemini ----------------
 
 #[test]
 fn read_installed_gemini_reads_both_files() {
@@ -3836,7 +3864,7 @@ fn read_installed_gemini_tolerates_missing_install_metadata() {
     assert!(info.gemini_type.is_none());
 }
 
-// ---- auto-upgrade: decide_upgrade ----------------------------------
+// ---- reconciliation upgrade: decide_upgrade -----------------------
 
 fn installed(version: &str, enabled: bool) -> InstalledInfo {
     InstalledInfo {
@@ -4308,73 +4336,6 @@ fn decide_gemini_reinstall_when_type_is_not_local() {
     assert_eq!(a, UpgradeAction::GeminiReinstall);
 }
 
-// ---- auto-upgrade: state file --------------------------------------
-
-/// An Intelligent Terminal upgrade ships the same hook version from a new
-/// versioned package directory. Keying the cache on the version alone would
-/// hit the fast path and never notice, leaving a registration pointing at the
-/// removed package — and the plugin silently unloaded.
-#[test]
-fn bundle_fingerprint_changes_when_only_the_package_directory_moves() {
-    let v: Version = "0.1.6".parse().unwrap();
-    let old_pkg = Path::new(r"C:\pkg\IntelligentTerminal_0.8.0.2_x64\wt-agent-hooks\copilot");
-    let new_pkg = Path::new(r"C:\pkg\IntelligentTerminal_0.9.0.0_x64\wt-agent-hooks\copilot");
-
-    let before = bundle_fingerprint(Some(&v), Some(old_pkg));
-    let after = bundle_fingerprint(Some(&v), Some(new_pkg));
-    assert!(before.is_some());
-    assert_ne!(before, after);
-}
-
-/// The version still has to participate: a hook bump in place must not be
-/// mistaken for an already-checked bundle.
-#[test]
-fn bundle_fingerprint_changes_when_only_the_version_moves() {
-    let dir = Path::new(r"C:\pkg\wt-agent-hooks\copilot");
-    let before = bundle_fingerprint(Some(&"0.1.6".parse().unwrap()), Some(dir));
-    let after = bundle_fingerprint(Some(&"0.1.7".parse().unwrap()), Some(dir));
-    assert_ne!(before, after);
-}
-
-/// Either half missing means we can't describe what was checked, so no entry
-/// is cached and the full check runs again next startup.
-#[test]
-fn bundle_fingerprint_is_none_when_either_half_is_unresolvable() {
-    let v: Version = "0.1.6".parse().unwrap();
-    let dir = Path::new(r"C:\pkg\wt-agent-hooks\copilot");
-    assert_eq!(bundle_fingerprint(None, Some(dir)), None);
-    assert_eq!(bundle_fingerprint(Some(&v), None), None);
-}
-
-#[test]
-fn upgrade_state_round_trips_through_disk() {
-    let dir = unique_dir("upgrade-state-roundtrip");
-    fs::create_dir_all(&dir).unwrap();
-    let path = dir.join("hooks-upgrade-state.json");
-
-    let mut s = UpgradeState::default();
-    s.set(CliKind::Copilot, Some("0.1.1".into()));
-    s.set(CliKind::Claude, Some("0.1.1".into()));
-    s.set(CliKind::Gemini, Some("0.1.2".into()));
-    save_upgrade_state(&path, &s);
-
-    let loaded = load_upgrade_state(&path);
-    assert_eq!(loaded.get(CliKind::Copilot), Some("0.1.1"));
-    assert_eq!(loaded.get(CliKind::Claude), Some("0.1.1"));
-    assert_eq!(loaded.get(CliKind::Gemini), Some("0.1.2"));
-}
-
-#[test]
-fn failed_upgrade_does_not_advance_cached_version() {
-    let mut state = UpgradeState::default();
-    state.set(CliKind::OpenCode, Some("0.1.2".into()));
-
-    let changed = state.record_completed(CliKind::OpenCode, Some("0.1.3".into()), false);
-
-    assert!(!changed);
-    assert_eq!(state.get(CliKind::OpenCode), Some("0.1.2"));
-}
-
 #[test]
 fn uninstall_report_detects_explicit_failures() {
     let success = CliUninstallResult {
@@ -4399,32 +4360,7 @@ fn uninstall_report_detects_explicit_failures() {
     assert!(!report.succeeded());
 }
 
-#[test]
-fn upgrade_state_load_returns_default_on_missing_or_bad_file() {
-    let dir = unique_dir("upgrade-state-bad");
-    fs::create_dir_all(&dir).unwrap();
-    let missing = dir.join("missing.json");
-    let s = load_upgrade_state(&missing);
-    assert!(s.get(CliKind::Copilot).is_none());
-
-    let garbage = dir.join("garbage.json");
-    fs::write(&garbage, "not json").unwrap();
-    let s = load_upgrade_state(&garbage);
-    assert!(s.get(CliKind::Copilot).is_none());
-}
-
-#[test]
-fn upgrade_state_omits_none_entries() {
-    let mut s = UpgradeState::default();
-    s.set(CliKind::Copilot, Some("0.1.1".into()));
-    let v = s.to_json();
-    let obj = v.as_object().unwrap();
-    assert!(obj.contains_key("copilot"));
-    assert!(!obj.contains_key("claude"));
-    assert!(!obj.contains_key("gemini"));
-}
-
-// ---- auto-upgrade: cleanup_stale_claude_marketplace ----------------
+// ---- reconciliation upgrade: cleanup_stale_claude_marketplace -----
 
 #[test]
 fn cleanup_stale_claude_marketplace_noop_when_file_missing() {
@@ -4507,7 +4443,7 @@ fn cleanup_stale_claude_marketplace_skips_github_source() {
     assert_eq!(fs::read_to_string(&path).unwrap(), original);
 }
 
-// ---- auto-upgrade: path_under_dir ---------------------
+// ---- reconciliation upgrade: path_under_dir ------------------------
 
 #[test]
 fn path_under_dir_walks_ancestors() {

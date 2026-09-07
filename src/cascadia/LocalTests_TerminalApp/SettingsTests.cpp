@@ -73,6 +73,7 @@ namespace TerminalAppLocalTests
 
         TEST_METHOD(TestElevateArg);
         TEST_METHOD(TestAgentSettingsChangeClassification);
+        TEST_METHOD(TestAgentHooksReconciliationClassification);
         TEST_METHOD(TestAgentSettingsFocusGate);
         TEST_METHOD(TestAgentPaneRebindCapability);
         TEST_METHOD(TestAgentPaneSwitchCapability);
@@ -1710,6 +1711,46 @@ namespace TerminalAppLocalTests
         VERIFY_ARE_EQUAL(
             ChangeKind::RecreatePane,
             Page::_ClassifyAgentSettingsChange(customModelChange, changedCustomModel));
+    }
+
+    void SettingsTests::TestAgentHooksReconciliationClassification()
+    {
+        using Page = winrt::TerminalApp::implementation::TerminalPage;
+        using Scope = Page::AgentHooksReconciliationScope;
+
+        const Page::AgentSettingsSnapshot enabled{
+            L"copilot", L"", L"", std::nullopt, {}, true
+        };
+        VERIFY_ARE_EQUAL(
+            Scope::None,
+            Page::_ClassifyAgentHooksReconciliation(enabled, enabled));
+
+        auto turnedOff = enabled;
+        turnedOff.agentSessionManagementEnabled = false;
+        VERIFY_ARE_EQUAL(
+            Scope::None,
+            Page::_ClassifyAgentHooksReconciliation(enabled, turnedOff));
+        VERIFY_ARE_EQUAL(
+            Scope::All,
+            Page::_ClassifyAgentHooksReconciliation(turnedOff, enabled));
+
+        auto switchedAgent = enabled;
+        switchedAgent.acpAgent = L"claude";
+        VERIFY_ARE_EQUAL(
+            Scope::SelectedAgent,
+            Page::_ClassifyAgentHooksReconciliation(enabled, switchedAgent));
+
+        auto switchedCustomAgent = enabled;
+        switchedCustomAgent.acpAgent = L"custom:local";
+        VERIFY_ARE_EQUAL(
+            Scope::None,
+            Page::_ClassifyAgentHooksReconciliation(enabled, switchedCustomAgent));
+
+        auto switchedWhileDisabled = turnedOff;
+        switchedWhileDisabled.acpAgent = L"claude";
+        VERIFY_ARE_EQUAL(
+            Scope::None,
+            Page::_ClassifyAgentHooksReconciliation(turnedOff, switchedWhileDisabled));
     }
 
     void SettingsTests::TestAgentSettingsFocusGate()

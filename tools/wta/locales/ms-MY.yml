@@ -239,4 +239,5 @@ config_picker.title: "Konfigurasi sesi (↑ ↓ • Enter • Esc)"
 system.no_config_options: "Ejen yang disambungkan tidak mengiklankan sebarang pilihan sesi yang boleh dikonfigurasi."
 # {option} is an Agent-provided option name; {error} is the ACP error.
 system.config_update_failed: "Gagal mengemas kini %{option}: %{error}"
+system.provider_command_blocked_by_policy: "%{command}: Mod Yolo dilumpuhkan oleh dasar organisasi anda."  # {Locked="Yolo","%{command}"} Shown when AllowYoloMode blocks a provider-advertised privileged command.
 system.model_unknown: "Model tidak diketahui %{model} — taip /model untuk melihat senarai yang tersedia."  # {Locked="%{model}","/model"}

@@ -25,30 +25,18 @@ $script:ItFamilyBrand = @{
     'IntelligentTerminal_rd9vj3e6a2mbr'           = 'Dev'
 }
 
-function Get-ItRepoRoot {
-    <# Walk up from the module until we find the git root (best-effort). #>
-    $d = $PSScriptRoot
-    for ($i = 0; $i -lt 8 -and $d; $i++) {
-        if (Test-Path (Join-Path $d '.git')) { return $d }
-        $d = Split-Path $d -Parent
-    }
-    return $null
-}
-
 function Resolve-ItApp {
     <#
     .SYNOPSIS
         Build the immutable app descriptor used by every primitive: package identity,
         binaries (wtcli/wta/WindowsTerminal), data files (settings/state), log root.
     .PARAMETER Package
-        'Auto' (prefer a fully-resolvable Store install, else Dev), 'Store', 'Dev',
-        or an explicit PackageFamilyName.
+        'Store', 'Dev', or an explicit PackageFamilyName.
     #>
     [CmdletBinding()]
-    param([string]$Package = 'Auto')
+    param([Parameter(Mandatory)][string]$Package)
 
     $candidates = switch ($Package) {
-        'Auto' { @($script:ItKnownFamilies.Store, $script:ItKnownFamilies.Dev) }
         'Store' { @($script:ItKnownFamilies.Store) }
         'Dev' { @($script:ItKnownFamilies.Dev) }
         default { @($Package) }
@@ -74,17 +62,9 @@ function Resolve-ItApp {
     else { (Get-Command wtcli -ErrorAction SilentlyContinue).Source }
     $wt = if ($install -and (Test-Path (Join-Path $install 'WindowsTerminal.exe'))) { Join-Path $install 'WindowsTerminal.exe' } else { $null }
 
-    $wta = $null
-    if ($install -and (Test-Path (Join-Path $install 'wta.exe'))) { $wta = Join-Path $install 'wta.exe' }
-    else {
-        $repo = Get-ItRepoRoot
-        if ($repo) {
-            foreach ($rel in @('tools\wta\target\x86_64-pc-windows-msvc\debug\wta.exe', 'tools\wta\target\debug\wta.exe')) {
-                $cand = Join-Path $repo $rel
-                if (Test-Path $cand) { $wta = $cand; break }
-            }
-        }
-    }
+    # A deployed package must use its own co-located WTA. Falling back to a
+    # repository build can silently run Dev code while testing the Store package.
+    $wta = if ($install) { Join-Path $install 'wta.exe' } else { $null }
 
     $localState = Join-Path $env:LOCALAPPDATA "Packages\$pfn\LocalState"
     $logRoot = Join-Path $env:LOCALAPPDATA "Packages\$pfn\LocalCache\Local\IntelligentTerminal\logs"
@@ -123,32 +103,86 @@ function Get-RunnableWtaPath {
         The packaged wta.exe in WindowsApps cannot be launched by an external process
         ("Access is denied"), unlike wtcli. For wta subcommands that do NOT require WT
         package identity (sessions, eval), run a copy of the exact packaged binary from a
-        writable temp dir (version-matched), falling back to the repo dev build.
+        writable temp dir. Staging is isolated by package family, version, and
+        binary hash so Store and Dev packages can never reuse one another's copy.
     #>
     [CmdletBinding()] param([Parameter(Mandatory)]$App)
     if ($App.PSObject.Properties.Name -contains 'WtaRunnable' -and $App.WtaRunnable -and (Test-Path $App.WtaRunnable)) { return $App.WtaRunnable }
 
     $runnable = $null
-    if ($App.WtaPath -and (Test-Path $App.WtaPath) -and $App.WtaPath -like '*WindowsApps*') {
-        $dir = Join-Path $env:TEMP "ite2e-wta\$($App.Version)"
-        if (-not (Test-Path $dir)) { New-Item -ItemType Directory -Force -Path $dir | Out-Null }
-        $dest = Join-Path $dir 'wta.exe'
-        if (-not (Test-Path $dest)) {
-            try { Copy-Item -LiteralPath $App.WtaPath -Destination $dest -Force; Write-ItLog -Level INFO -Message "Staged runnable wta -> $dest" }
-            catch { Write-ItLog -Level WARN -Message "Could not stage packaged wta: $_" }
+    if ($App.WtaPath -and $App.WtaPath -like '*WindowsApps*') {
+        $safePackage = $App.Package -replace '[^A-Za-z0-9._-]', '_'
+        $destContext = "$env:TEMP\ite2e-wta\$safePackage\$($App.Version)\<sha256>\wta.exe"
+        try {
+            $sourceHash = (Get-FileHash -LiteralPath $App.WtaPath -Algorithm SHA256 -ErrorAction Stop).Hash
+            $dir = Join-Path $env:TEMP "ite2e-wta\$safePackage\$($App.Version)\$sourceHash"
+            if (-not (Test-Path $dir)) { New-Item -ItemType Directory -Force -Path $dir -ErrorAction Stop | Out-Null }
+            $dest = Join-Path $dir 'wta.exe'
+            $destContext = $dest
+            $destHash = if (Test-Path $dest) { (Get-FileHash -LiteralPath $dest -Algorithm SHA256 -ErrorAction Stop).Hash } else { $null }
+            if ($destHash -ne $sourceHash) {
+                Copy-Item -LiteralPath $App.WtaPath -Destination $dest -Force -ErrorAction Stop
+                Write-ItLog -Level INFO -Message "Staged runnable wta -> $dest"
+            }
+            $stagedHash = (Get-FileHash -LiteralPath $dest -Algorithm SHA256 -ErrorAction Stop).Hash
+            if ($stagedHash -ne $sourceHash) { throw "staged binary hash $stagedHash does not match source hash $sourceHash" }
+            $runnable = $dest
+        }
+        catch {
+            throw "Could not stage packaged wta '$($App.WtaPath)' to '$destContext': $($_.Exception.Message)"
         }
         $bundleSource = Join-Path $App.InstallLocation 'wt-agent-hooks'
         $bundleDest = Join-Path $dir 'wt-agent-hooks'
-        if ((Test-Path $bundleSource) -and -not (Test-Path $bundleDest)) {
+        if (Test-Path $bundleSource) {
+            $swapId = [guid]::NewGuid().ToString('N')
+            $bundleStage = "$bundleDest.staging.$swapId"
+            $bundleBackup = "$bundleDest.backup.$swapId"
+            $backupPresent = $false
             try {
-                Copy-Item -LiteralPath $bundleSource -Destination $bundleDest -Recurse -Force
+                Copy-Item -LiteralPath $bundleSource -Destination $bundleStage -Recurse -Force -ErrorAction Stop
+                if (Test-Path $bundleDest) {
+                    Move-Item -LiteralPath $bundleDest -Destination $bundleBackup -ErrorAction Stop
+                    $backupPresent = $true
+                }
+                try {
+                    Move-Item -LiteralPath $bundleStage -Destination $bundleDest -ErrorAction Stop
+                }
+                catch {
+                    $activationError = $_
+                    if ($backupPresent) {
+                        try {
+                            if (Test-Path $bundleDest) { Remove-Item -LiteralPath $bundleDest -Recurse -Force -ErrorAction Stop }
+                            Move-Item -LiteralPath $bundleBackup -Destination $bundleDest -ErrorAction Stop
+                            $backupPresent = $false
+                            Write-ItLog -Level WARN -Message "Hook bundle activation failed; restored prior bundle at '$bundleDest'."
+                        }
+                        catch {
+                            Write-ItLog -Level WARN -Message "Hook bundle activation and rollback failed; prior bundle retained at '$bundleBackup': $_"
+                        }
+                    }
+                    throw $activationError
+                }
+                if ($backupPresent) {
+                    try {
+                        Remove-Item -LiteralPath $bundleBackup -Recurse -Force -ErrorAction Stop
+                        $backupPresent = $false
+                    }
+                    catch {
+                        Write-ItLog -Level WARN -Message "Hook bundle activated, but backup cleanup failed; retained '$bundleBackup': $_"
+                    }
+                }
                 Write-ItLog -Level INFO -Message "Staged hook bundle -> $bundleDest"
             }
-            catch { Write-ItLog -Level WARN -Message "Could not stage packaged hook bundle: $_" }
+            catch { Write-ItLog -Level WARN -Message "Could not refresh packaged hook bundle: $_" }
+            finally {
+                if (Test-Path $bundleStage) {
+                    try { Remove-Item -LiteralPath $bundleStage -Recurse -Force -ErrorAction Stop }
+                    catch { Write-ItLog -Level WARN -Message "Could not clean hook bundle staging directory '$bundleStage': $_" }
+                }
+            }
         }
-        if (Test-Path $dest) { $runnable = $dest }
     }
-    if (-not $runnable -and $App.WtaPath -and (Test-Path $App.WtaPath)) { $runnable = $App.WtaPath }
+    elseif ($App.WtaPath -and (Test-Path $App.WtaPath)) { $runnable = $App.WtaPath }
     if (-not $runnable) { throw "No runnable wta.exe available for $($App.Package)." }
     $App | Add-Member -NotePropertyName WtaRunnable -NotePropertyValue $runnable -Force
     $runnable

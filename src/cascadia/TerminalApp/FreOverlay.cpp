@@ -274,6 +274,7 @@ namespace winrt::TerminalApp::implementation
         // on).
         AutoErrorToggle().IsOn(globals.EffectiveAutoFixEnabled());
         ShowTokenUsageAndCostToggle().IsOn(globals.ShowTokenUsageAndCost());
+        SessionManagementToggle().IsOn(globals.EffectiveAgentSessionManagementEnabled());
         if (globals.IsAutoFixPolicyLocked())
         {
             const auto policyText = RS_(L"FreOverlay_PolicyLocked");
@@ -1436,6 +1437,10 @@ namespace winrt::TerminalApp::implementation
             globals.DelegateAgent(agentId);
             globals.AutoErrorDetectionEnabled(AutoDetectToggle().IsOn());
             globals.AutoFixEnabled(AutoErrorToggle().IsOn());
+            if (!globals.IsAgentSessionHooksPolicyLocked())
+            {
+                globals.AgentSessionManagementEnabled(SessionManagementToggle().IsOn());
+            }
             globals.ShowTokenUsageAndCost(ShowTokenUsageAndCostToggle().IsOn());
 
             const auto posIdx = PanePositionComboBox().SelectedIndex();

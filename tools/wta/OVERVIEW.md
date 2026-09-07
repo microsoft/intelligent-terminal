@@ -83,7 +83,7 @@ wta new-tab -c "pwsh.exe" -n "Build"      # create a new tab
 wta split-pane -h                         # split the current pane horizontally
 wta delegate "fix this build"             # open a delegate agent in a new tab
 wta sessions list                         # inspect sessions known to master
-wta hooks install                         # install the agent-hook bridge
+wta hooks install                         # ensure the agent-hook bridge is current
 wta resolve-command which --cwd . --json  # resolve from cwd + PATH + shell-specific sources
 ```
 
@@ -247,7 +247,7 @@ tree. It is an independent Rust project but a **companion** to Windows Terminal:
 
 See `doc/specs/Multi-window-agent-pane.md` for the full helper+master design, and
 `tools/wta/AGENTS.md` for the per-crate conventions (logging layout, session
-liveness model, hooks auto-upgrade, third-party notice generation).
+liveness model, hooks reconciliation, third-party notice generation).
 
 ---
 
@@ -305,5 +305,5 @@ Fallback: if WT pane creation fails, WTA downgrades to the local-child path.
 
 - Helper+master architecture: ✅ current primary (and only) runtime model
 - COM/CLI control plane: ✅ done; sole WT transport
-- Autofix, delegate (`?<prompt>`), session-management view, hooks auto-upgrade: ✅ shipped
+- Autofix, delegate (`?<prompt>`), session-management view, hooks reconciliation: ✅ shipped
 - MCP server mode, standalone single-process TUI: ❌ removed

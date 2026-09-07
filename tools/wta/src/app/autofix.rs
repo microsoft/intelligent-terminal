@@ -78,6 +78,28 @@ pub enum AutofixBarSnapshot {
     },
 }
 
+fn autofix_pane_matches(tab: &TabSession, pane_id: &str) -> (bool, bool) {
+    let turn_matches = tab.turn.prompt().is_some_and(|prompt| {
+        prompt.autofix.is_some() && prompt.context.target_pane_id() == Some(pane_id)
+    });
+    let snapshot_matches = match &tab.autofix.bar_snapshot {
+        AutofixBarSnapshot::Detected {
+            pane_id: source, ..
+        }
+        | AutofixBarSnapshot::Pending {
+            pane_id: source, ..
+        }
+        | AutofixBarSnapshot::Review {
+            pane_id: source, ..
+        } => source == pane_id,
+        AutofixBarSnapshot::Idle => false,
+    };
+    let state_matches = tab.autofix.pane_id.as_deref() == Some(pane_id)
+        || tab.autofix.suggested_pane_id.as_deref() == Some(pane_id)
+        || snapshot_matches;
+    (turn_matches, state_matches)
+}
+
 impl App {
     /// Auto-fix: when a command fails in another pane, ask the coordinator
     /// agent to suggest a fix. The user confirms before execution.
@@ -149,6 +171,15 @@ impl App {
                 &target_tab_id,
                 &notification.pane_id,
                 &notification.summary,
+            );
+            return;
+        }
+
+        if self.prompt_reconfiguration_pending_for_tab(&target_tab_id) {
+            tracing::info!(
+                target: "autofix",
+                tab_id = %target_tab_id,
+                "skipping autofix while provider-native Yolo reconciliation is pending",
             );
             return;
         }
@@ -258,7 +289,11 @@ impl App {
         // lookup so a tab with no ACP session yet still gets the prompt
         // queued correctly (the ACP layer creates the session lazily when
         // it processes the prompt).
-        self.turn_submit_prompt_for_tab(&target_tab_id, submitted);
+        self.turn_submit_prompt_for_tab_with_cancellation(
+            &target_tab_id,
+            submitted,
+            prompt.cancellation_token(),
+        );
         tracing::info!(target: "autofix", pane_id = %notification.pane_id, tab_id = %target_tab_id, generation = new_gen, "sending auto-fix prompt");
         let _ = self.prompt_tx.send(prompt);
 
@@ -477,6 +512,37 @@ impl App {
         // choice directly without going through `turn_execute_card`. The
         // matched-path case already recomputes via that callee.
         self.recompute_chip_override(&active_tab);
+    }
+
+    /// Clear autofix state whose source pane has closed. Cancelling a matching
+    /// turn also advances its generation so late agent output cannot restore
+    /// a result for a pane that no longer exists.
+    pub(super) fn handle_autofix_pane_closed(&mut self, event_tab_id: Option<&str>, pane_id: &str) {
+        let target_tab_id = event_tab_id.map(str::to_string).or_else(|| {
+            self.tab_sessions.iter().find_map(|(tab_id, tab)| {
+                let (turn_matches, state_matches) = autofix_pane_matches(tab, pane_id);
+                (turn_matches || state_matches).then(|| tab_id.clone())
+            })
+        });
+        let Some(target_tab_id) = target_tab_id else {
+            return;
+        };
+        let Some(tab) = self.tab_sessions.get(&target_tab_id) else {
+            return;
+        };
+        let (turn_matches, state_matches) = autofix_pane_matches(tab, pane_id);
+
+        if turn_matches {
+            self.request_turn_cancel_for_tab(&target_tab_id);
+        } else if state_matches {
+            let tab = self.tab_mut(&target_tab_id);
+            tab.autofix.generation = tab.autofix.generation.wrapping_add(1);
+            if tab.autofix.pane_id.as_deref() == Some(pane_id) {
+                tab.autofix.pane_id = None;
+                tab.autofix.armed_at = None;
+            }
+            self.emit_autofix_state_cleared(&target_tab_id);
+        }
     }
 
     pub(super) fn emit_autofix_state_cleared(&mut self, target_tab_id: &str) {

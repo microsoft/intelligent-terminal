@@ -121,6 +121,8 @@ fn helper_config(cli: Cli) -> helper::config::HelperConfig {
         delegate_agent: cli.delegate_agent,
         delegate_model: cli.delegate_model,
         no_autofix: cli.no_autofix,
+        yolo_mode: cli.yolo_mode,
+        yolo_policy_blocked: cli.yolo_policy_blocked,
         setup: cli.setup,
         initial_view: match cli.initial_view {
             InitialView::Chat => helper::config::InitialView::Chat,
@@ -140,6 +142,7 @@ fn master_config(cli: Cli) -> master::config::MasterConfig {
         agent: cli.agent,
         agent_id: cli.agent_id,
         allowed_agent_ids: cli.allowed_agent_ids,
+        session_management_enabled: !cli.no_session_management,
     }
 }
 

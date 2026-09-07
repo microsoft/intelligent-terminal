@@ -220,14 +220,14 @@ WTA also exposes helper CLI commands for humans, agents, diagnostics, and Settin
 |---|---|---|
 | WT operation helpers | `list-*`, `active-pane`, `capture-pane`, `pane-status`, `new-tab`, `split-pane`, `kill-pane`, `wait-for`, `listen` | Route reads, mutations (including `SendInput`), and event subscription through `CliChannel` / `wtcli.exe` / COM. They do not create a separate trust boundary. |
 | Delegation helper | `delegate` | Reads active-pane context, builds a delegate Agent CLI command line, then calls COM `CreateTab(commandline)` so WT launches the delegate Agent CLI in a new ConPTY tab. This is a pane-context disclosure and COM process-creation surface. |
-| Hook-management helpers | `hooks install`, `hooks status`, `hooks uninstall` | Use third-party Agent CLI plugin / extension managers and filesystem state. They affect persistent hook configuration. |
+| Hook-management helpers | `hooks install`, `hooks install --force`, `hooks status`, `hooks uninstall` | Use third-party Agent CLI plugin / extension managers and filesystem state. They affect persistent hook configuration. The default install command performs automatic reconciliation; `--force` reruns the first-install flow as a manual recovery path. |
 | Discovery / diagnostics helpers | `pipe-id`, `set-env` / `setenv`, `info`, `test-pipe` and legacy hidden flags | Expose or test WT protocol routing metadata such as `WT_COM_CLSID`. This metadata is not a bearer secret, but it helps a process locate the COM endpoint when observed platform activation behavior allows it. |
 
 None of these helper categories grants a new authorization boundary. Direct shell input is reachable from any COM-allowed caller via `IProtocolServer::SendInput` (or `wtcli send-keys`); there is no separate capability transport gating it.
 
 ### 2.7 Agent hook bridge
 
-`wt-agent-hooks` is a persistent event bridge for interactive Claude / Copilot / Gemini CLI sessions running in terminal panes. Installation is explicit through `wta hooks install`, the Settings UI install button, or the WTA setup flow; current code does not install hooks on every ordinary WTA startup. The installer resolves the static bundle from `WTA_HOOKS_BUNDLE_DIR`, the `wta.exe` sibling `wt-agent-hooks\` directory, or a development-tree fallback, then asks each CLI's own plugin / extension manager to install it.
+`wt-agent-hooks` is a persistent event bridge for interactive Claude / Copilot / Gemini CLI sessions running in terminal panes. FRE explicitly installs hooks for its selected agent. When session management is enabled, automatic reconciliation installs missing hooks or upgrades stale hooks at `wta-master` startup, when the setting changes from off to on, and when the selected built-in agent changes. Manual repair remains available through `wta hooks install`. The installer resolves the static bundle from `WTA_HOOKS_BUNDLE_DIR`, the `wta.exe` sibling `wt-agent-hooks\` directory, or a development-tree fallback, then asks each CLI's own plugin / extension manager to install it.
 
 For supported CLI sessions where hooks are installed, manifest-driven hook systems launch `wtcli agent-hook` for lifecycle, prompt, tool, notification, and error events. The launcher requires both `WT_COM_CLSID` and `WT_SESSION`, so shared ACP processes without a pane identity return before starting `wtcli.exe`; it also forces exit code 0 if the native binary is unavailable. OpenCode performs the same environment checks in its managed JavaScript plugin and spawns the native command directly. `wtcli agent-hook` reads hook JSON from stdin, wraps it with `cli_source`, `agent_session_id`, and `payload`, and publishes directly through COM `SendEvent`. WT normalizes accepted messages to legacy `agent_event` and broadcasts them to all subscribers. WTA consumes the broadcast through `wtcli --json listen` and updates its `AgentSessionRegistry` / agent session view. This path is useful telemetry and state synchronization; it is not an authorization path for shell input.
 
@@ -315,8 +315,8 @@ The mutation path is a direct filesystem write. This is not a new OS privilege â
 Install path:
 
 ```text
-Settings UI / WTA setup / wta hooks install
-  -> agent_hooks_installer::apply_install_plan()
+FRE / automatic reconciliation / wta hooks install
+  -> agent_hooks_installer::reconcile_agent_hooks() or apply_install_plan()
   -> resolve wt-agent-hooks bundle
   -> Claude / Copilot plugin manager or Gemini extension manager
   -> persistent CLI hook registration

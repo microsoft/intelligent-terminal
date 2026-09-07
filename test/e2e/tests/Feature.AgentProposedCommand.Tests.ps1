@@ -24,7 +24,11 @@ Describe 'Feature §2 Direct Helper Proposal — Insert' -Tag 'Feature' -Skip:(-
             param($marker)
             Clear-AgentInput -App $script:app | Out-Null
             Send-AgentPrompt -App $script:app -Text "Submit a Direct Helper Proposal for exactly this shell command: echo $marker. Present the Run and Insert card now." | Out-Null
-            Wait-TerminalActionProposal -App $script:app -TimeoutSec 45 | Out-Null
+            $proposalGate = Wait-TerminalActionProposal -App $script:app -TimeoutSec 45 -ReturnOnPermission
+            if ($proposalGate.Mode -eq 'Permission') {
+                # Explicit test-user selection of the provider's allow option.
+                Send-AgentKey -App $script:app -Key Y | Out-Null
+            }
             Test-Until -TimeoutSec 10 -IntervalSec 1 -Condition {
                 $t = Get-AgentPaneText -App $script:app -MaxLines 60
                 ($t -match (Get-RecommendationCardRegex)) -and ($t -match [regex]::Escape($marker))
@@ -56,7 +60,11 @@ Describe 'Feature §2 Direct Helper Proposal — Run' -Tag 'Feature' -Skip:(-not
             param($marker)
             Clear-AgentInput -App $script:app | Out-Null
             Send-AgentPrompt -App $script:app -Text "Submit a Direct Helper Proposal for exactly this shell command: echo $marker. Present the Run and Insert card now." | Out-Null
-            Wait-TerminalActionProposal -App $script:app -TimeoutSec 45 | Out-Null
+            $proposalGate = Wait-TerminalActionProposal -App $script:app -TimeoutSec 45 -ReturnOnPermission
+            if ($proposalGate.Mode -eq 'Permission') {
+                # Explicit test-user selection of the provider's allow option.
+                Send-AgentKey -App $script:app -Key Y | Out-Null
+            }
             Test-Until -TimeoutSec 10 -IntervalSec 1 -Condition {
                 $t = Get-AgentPaneText -App $script:app -MaxLines 60
                 ($t -match (Get-RecommendationCardRegex)) -and ($t -match [regex]::Escape($marker))
