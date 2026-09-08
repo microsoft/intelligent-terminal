@@ -61,6 +61,7 @@ TerminalProtocolComServer : public Microsoft::WRL::RuntimeClass<
     STDMETHODIMP Subscribe(ITerminalProtocolEventSink* sink) override;
     STDMETHODIMP Unsubscribe() override;
     STDMETHODIMP SendEvent(BSTR eventJson) override;
+    STDMETHODIMP GetPaneContext(GUID sourceSessionId, boolean hasExplicitSource, long maxLines, long maxCharacters, BSTR* json) override;
 
     // Static setup — must be called before s_StartListening().
     static void s_setEmperor(WindowEmperor* emperor) noexcept;

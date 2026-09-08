@@ -250,6 +250,42 @@ impl App {
         tab.completed_turn_selection_visible_pending = click.previous_selection_pending;
     }
 
+    fn chat_input_has_edit_focus(&self) -> bool {
+        self.mode == AppMode::Chat
+            && self.pane_focused
+            && self.current_tab().current_view == View::Chat
+            && self.current_tab().input_has_nav_focus()
+            && !self.help_overlay_visible
+    }
+
+    pub(super) fn copy_input_selection(
+        &mut self,
+        cut: bool,
+        copy: impl FnOnce(&str) -> std::io::Result<()>,
+    ) -> bool {
+        let tab = self.current_tab();
+        if !self.chat_input_has_edit_focus() || !tab.input_all_selected || tab.input.is_empty() {
+            return false;
+        }
+        match copy(&tab.input) {
+            Ok(()) => {
+                if cut {
+                    self.current_tab_mut().delete_input_selection();
+                }
+                self.transient_hint = Some((
+                    t!("system.selection_copied").into_owned(),
+                    std::time::Instant::now() + SELECTION_COPIED_HINT_WINDOW,
+                ));
+            }
+            Err(error) => {
+                self.transient_hint = None;
+                tracing::warn!(target: "clipboard", error = %error, cut, "failed to copy selected input");
+            }
+        }
+        self.close_pane_armed_at = None;
+        true
+    }
+
     fn copy_text_selection(&mut self) -> bool {
         let Some(text) = self.text_selection.selected_text() else {
             return false;
@@ -302,7 +338,9 @@ impl App {
 
     pub(super) fn handle_right_click(&mut self) -> Option<String> {
         self.cancel_completed_turn_click();
-        if self.copy_text_selection() {
+        if self.copy_input_selection(false, crate::win32::copy_text_to_clipboard)
+            || self.copy_text_selection()
+        {
             return None;
         }
         let Some(request) = self.default_paste_request_for_current_tab() else {
@@ -345,19 +383,49 @@ impl App {
         match event {
             AppEvent::Key(key) => {
                 self.cancel_completed_turn_click();
+                if !self.chat_input_has_edit_focus() && !self.current_tab().paste_pending {
+                    self.current_tab_mut().input_all_selected = false;
+                }
                 let is_select_all = matches!(key.code, KeyCode::Char('a'))
                     && key.modifiers == KeyModifiers::CONTROL;
                 if is_select_all {
-                    self.text_selection.select_all();
+                    self.close_pane_armed_at = None;
+                    if self.chat_input_has_edit_focus() && !self.current_tab().input.is_empty() {
+                        self.text_selection.clear();
+                        self.current_tab_mut().select_all_input();
+                    } else {
+                        self.current_tab_mut().input_all_selected = false;
+                        self.text_selection.select_all();
+                    }
                     return;
                 }
                 let is_copy = matches!(key.code, KeyCode::Char('c'))
                     && key.modifiers.contains(KeyModifiers::CONTROL);
+                if is_copy && self.copy_input_selection(false, crate::win32::copy_text_to_clipboard)
+                {
+                    return;
+                }
                 if is_copy && self.copy_text_selection() {
+                    return;
+                }
+                if matches!(key.code, KeyCode::Char('x'))
+                    && key.modifiers == KeyModifiers::CONTROL
+                    && self.copy_input_selection(true, crate::win32::copy_text_to_clipboard)
+                {
+                    return;
+                }
+                if key.code == KeyCode::Esc
+                    && self.chat_input_has_edit_focus()
+                    && self.current_tab().input_all_selected
+                {
+                    self.current_tab_mut().input_all_selected = false;
                     return;
                 }
                 self.text_selection.clear();
                 self.handle_key(key);
+                if !self.chat_input_has_edit_focus() && !self.current_tab().paste_pending {
+                    self.current_tab_mut().input_all_selected = false;
+                }
             }
             AppEvent::Mouse(mouse) => match mouse.kind {
                 crossterm::event::MouseEventKind::ScrollUp
@@ -401,6 +469,7 @@ impl App {
                     }
                 }
                 crossterm::event::MouseEventKind::Down(crossterm::event::MouseButton::Left) => {
+                    self.current_tab_mut().input_all_selected = false;
                     self.text_selection.handle_mouse(mouse);
                     let click_count = self.text_selection.click_count().unwrap_or(1);
                     if click_count > 1 {
@@ -573,6 +642,9 @@ impl App {
             AppEvent::FocusChanged(focused) => {
                 self.cancel_completed_turn_click();
                 self.pane_focused = focused;
+                if !focused {
+                    self.current_tab_mut().input_all_selected = false;
+                }
             }
             AppEvent::ConnectionStage(stage) => {
                 self.state = ConnectionState::Connecting(stage);

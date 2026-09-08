@@ -25,14 +25,16 @@ authenticated ACP agents. Current status (run on the Store package):
 | `Feature.AgentModelLifecycle.Tests.ps1` | PR #554: `/model` hot-apply and Settings-driven model restart/reconnect lifecycle | 2 |
 | `Feature.ByokProvider.Tests.ps1` | PR #447: Settings-selected OpenAI-compatible provider request path, credential handling, and BYOK-to-cloud restart lifecycle | 2 |
 | `Feature.AgentCompactLayout.Tests.ps1` | PR #580: compact-height recommendation, input, and Insert interaction at the real splitter minimum | 1 |
+| `Feature.AgentPanePadding.Tests.ps1` | Issue #793: deterministic full recommendation card, navigation hint, and action alignment across the packaged WTA render boundary | 1 |
 | `Feature.ProposalMcpRouting.Tests.ps1` | PR #560: per-session proposal MCP names and two-tab Helper routing isolation | 1 |
 | `Feature.AgentMouse.Tests.ps1` | PR #506 and issue #790: physical chat wheel scrolling, Ctrl+wheel zoom, draft preservation, text selection/copy, and stale-selection suppression; completed-turn full-row clicks across multiline prompts with shared keyboard selection/Enter behavior, row-end/drag guards, and input-dialog focus recovery | 7 |
-| `Feature.AgentSelectAll.Tests.ps1` | Plain Ctrl+A selects the current WTA-rendered frame; Ctrl+C copies through the existing clipboard path and clears selection without stale replay | 1 |
+| `Feature.AgentSelectAll.Tests.ps1` | Physical Ctrl+A selects only the focused nonempty draft: exact source copy, cut/delete/replace, repeat/Esc/caret collapse, and pending-turn safety; empty input and history focus retain pane copy and stale-selection clearing. Deterministic ACP fixture; unique evidence under `ITE2E_ARTIFACT_ROOT` (default `artifacts`) | 6 |
 | `Feature.PromptHistory.Tests.ps1` | PR #478: per-tab Up/Down prompt recall, draft restoration, and multiline preservation; PR #614: completed-turn collapse/expand rendering | 4 |
 | `Feature.CompletedTurnSelection.Tests.ps1` | Completed-turn Tab/Up/Down selection keeps focused history inside the chat viewport | 1 |
 | `Feature.AutofixPane.Tests.ps1` | Direct Helper Autofix proposal card render/insert/run/reject/target/stashed + across layout + WSL shell identity and Linux fixes | 12 (2 WSL-gated) |
 | `Feature.AutofixParser.Tests.ps1` | issue #474: PowerShell ParserError-to-Autofix pipeline + success/handled-error/blank-input negative controls | 4 |
 | `Feature.AutofixRouting.Tests.ps1` | Two Detected tabs: real diagnostics clicks submit only to the selected tab's ACP session and preserve the other tab's opt-in | 1 |
+| `Feature.PaneContext.Tests.ps1` | issue #838: packaged pane-context capture, marked/unmarked output, explicit routing, missing panes, metadata-only mode, Unicode bounds, and agent-focus source resolution | 7 |
 | `Feature.CommandResolution.Tests.ps1` | PR #418: packaged WTA resolves PowerShell profile-only aliases to their real targets | 1 |
 | `Feature.SessionList.Tests.ps1` | session view (button + `/sessions` slash), session states, view switching (incl. draft-preservation), focus/restore | 13 (+1 skip) |
 | `Feature.NonAsciiCwd.Tests.ps1` | issue #641: a non-ASCII starting directory survives `wtcli` argv → COM → `CreateProcessW`, so the resume launch path connects and starts in that directory | 2 |
@@ -59,11 +61,11 @@ authenticated ACP agents. Current status (run on the Store package):
 | `Feature.AgentChat.Tests.ps1` / `Feature.AgentPopup.Tests.ps1` | agent chat + `/` popup/menu interaction | 1 + 3 |
 | `Feature.AgentPaneMove.Tests.ps1` | PR #429: `/move` stays per-tab, preserves global position, and restores agent input focus | 1 |
 
-**Coverage: 148 of 150 automatable `[E2E]` checklist items are implemented.**
-**Test status: 128 baseline feature cases pass + 3 documented skips** (`wta sessions list` is
+**Coverage: 149 of 151 automatable `[E2E]` checklist items are implemented.**
+**Test status: 129 baseline feature cases pass + 3 documented skips** (`wta sessions list` is
 identity-gated — see `Feature.SessionList.Tests.ps1`), plus 2 PR #481 WSL-backend cases and 2
 PR #488 delegate-source cases that run only when a runnable distro (and, for the #481 chat
-case, an installed+authenticated native agent) is available. The 148 implemented checklist
+case, an installed+authenticated native agent) is available. The 149 implemented checklist
 items map to the baseline cases plus the deterministic settings/persistence assertions. The
 remaining new items are the two profile agent picker UIs; they stay explicit E2E work rather
 than being falsely credited by the JSON-level runtime tests. Other
@@ -100,6 +102,9 @@ Three planes, all built on self-verifying primitives:
 - **Pester 5**: `Install-Module Pester -MinimumVersion 5.5.0 -Scope CurrentUser`
 - A deployed Intelligent Terminal package (Store `Microsoft.IntelligentTerminal_8wekyb3d8bbwe`
   or Dev `IntelligentTerminal_rd9vj3e6a2mbr`).
+- `Feature.AgentSelectAll` physical letter-key cases require an already loaded English (US)
+  keyboard layout. The suite activates it only for its own window and restores the previous
+  layout before closing, so an active IME cannot retain the probe text as a composition.
 
 One-shot setup + verify:
 
@@ -155,6 +160,120 @@ Invoke-Pester test/e2e/selftests              # everything (30 tests)
 The self-tests are the framework's own proof: every primitive is exercised against a
 running terminal (`selftests/ItE2E.Live.Tests.ps1`) and the core helpers are unit-tested
 in `selftests/ItE2E.Unit.Tests.ps1` (hermetic, no terminal needed).
+
+## Pane-context performance benchmark
+
+`Measure-PaneContext.ps1` measures issue #838's **wtcli subprocess → COM →
+capture** boundary, without sending an agent prompt or consuming model tokens.
+It attaches to **already running**, explicitly selected Dev/Store/PFN packages and
+existing pane GUIDs. It never launches/closes Terminal, changes settings/focus,
+creates fixtures, or types into panes. Package-local binaries and a readable
+package manifest are required; it does not use an ambiguous `wtcli` PATH alias
+or probe other brands' COM servers. Dependencies: Windows, PowerShell **7.2+**,
+Git, and a deployed package supporting `get-pane-context`. Neither WinApp CLI,
+agent authentication, nor Pester is needed for the benchmark itself.
+
+First prepare stable terminal output yourself, and obtain the existing pane's
+`session_id` through the harness/package-specific `wtcli`. Run the benchmark
+from a **separate process/pane**, not the pane being measured. Leave its content,
+focus, window/tab layout, and package binaries unchanged until completion:
+
+```powershell
+$env:ITE2E_PACKAGE = 'Dev'
+pwsh -NoProfile -File test\e2e\bootstrap.ps1 -Check
+
+# Replace the GUID and marker with those of an existing, settled marked pane.
+# Planner/ManualFix require this to remain the resolved active working pane.
+pwsh -NoProfile -File test\e2e\Measure-PaneContext.ps1 `
+    -Package Dev -Configuration Debug -Mode Planner `
+    -TargetPaneId '11111111-2222-3333-4444-555555555555' `
+    -Scenario 'marked-short' -ExpectedMarks Marked -ExpectedMarker 'BENCH-DONE' `
+    -Warmup 5 -Samples 40 -OutDir test\e2e\artifacts\pane-context-benchmark\debug-marked-planner
+
+# ExplicitAutofix can target an unfocused pane; no focus change is performed.
+pwsh -NoProfile -File test\e2e\Measure-PaneContext.ps1 `
+    -Package Dev -Configuration Debug -Mode ExplicitAutofix `
+    -TargetPaneId '11111111-2222-3333-4444-555555555555' `
+    -Scenario 'unmarked-long-scrollback' -ExpectedMarks Unmarked `
+    -OutDir test\e2e\artifacts\pane-context-benchmark\debug-unmarked-autofix
+```
+
+`-Package`, `-Configuration` (a label, not a build action), `-Mode`,
+`-TargetPaneId`, `-Scenario`, and `-OutDir` are mandatory; `Auto` is rejected.
+`ExplicitAutofix` also accepts an array of existing pane IDs when called from
+PowerShell with `& .\test\e2e\Measure-PaneContext.ps1 ... -TargetPaneId @($id1, $id2)`.
+Each pane gets its own paired measurements. Use distinct output directories
+under ignored `test\e2e\artifacts`; existing result files are never overwritten.
+Run marked, unmarked, and long-scrollback scenarios separately and label them
+honestly. For optional `-ExpectedMarker`, choose text that survives **both**
+paths' intentional bounds.
+
+### Baseline and interpretation
+
+- The baseline is a source-faithful PowerShell reproduction of the collector at
+  `db609f8061f81c2eb9a4bdaf3e0666392596bce4` (HEAD when #838 was restored),
+  pinned in the script. Its `prompt_context.rs` is retrieved with `git show` for
+  provenance. **That planner already used marks**, not a buffer-only read.
+- `Planner`: `active-pane` → `capture-pane --last-prompt` → optional
+  `capture-pane -l 24`. `ManualFix` uses the same sequence with 30 fallback lines.
+  `ExplicitAutofix` preserves the old **unconditional active-pane query**, then
+  walks windows → tabs → panes until the exact source GUID is found, followed by
+  marked capture / 30-line fallback. Enumeration cost depends on target position
+  and topology. Errors abort instead of being silently turned into samples.
+- No unsupported-capability request is added to the legacy baseline. The new
+  path uses **one** `get-pane-context --max-lines 24|30 --max-chars 4000`
+  subprocess (with `--target` only for explicit autofix). Its normal
+  authentication/capability negotiation remains inside that subprocess.
+- Legacy read methods still capture first and trim locally; the benchmark does
+  not retrofit bounded capture into them. Both paths use a 4000-Unicode-scalar
+  content budget, but **legacy marked output has no line cap**, while new marked
+  output also observes 24/30 lines. For oversized unmarked output, new capture
+  keeps a scalar **tail** versus legacy's scalar **prefix** of its line tail.
+  Legacy also ignores the read result's truncation flag. WTA's
+  `\n...<truncated>` prompt suffix is outside the content budget. Therefore exact
+  cross-path payload equality is **reported, not asserted**.
+- The same transport runs both paths: `.NET ProcessStartInfo.ArgumentList`,
+  no shell, UTF-8, concurrent asynchronous stdout/stderr reads, closed stdin,
+  normal authentication and a shared per-command timeout (default 20 seconds).
+  The existing harness also uses asynchronous process waits, not polling; the
+  benchmark-specific transport adds precise timing and one deadline covering
+  both process exit and pipe EOF, and fails loudly on parse/read/exit errors.
+- Each pane runs at least five warmup pairs, then at least 40 recorded pairs,
+  alternating legacy-first/new-first order. Primary `BoundaryMs` is the **sum
+  of process-start-to-exit-and-EOF durations**, excluding PowerShell parsing,
+  assertions and report writes. Secondary `CollectorMs` includes PowerShell
+  emulation overhead and is **not** a native Rust collector measurement.
+  Warmups are exported but excluded from statistics. p50/p95 use nearest rank;
+  speedup is `legacy/new`, reduction is `100*(1-new/legacy)`, including regressions.
+- Output must resolve to the requested pane with matching shell/cwd/process
+  metadata, valid Unicode/bounds, consistent mark/source metadata, and an optional
+  literal marker. Each path's payload/metadata fingerprint must stay stable.
+  Different payload hashes across paths may be expected from the bounds above.
+
+Artifacts are `samples.csv` (raw paired samples, bytes, hashes, marks, bounds),
+`requests.csv` (individual subprocess commands/timings/response bytes),
+`metadata.json` (written before measurement), and `summary.json` (written **only
+after complete validation**). Summaries include per-path request counts,
+nearest-rank p50/p95, speedups/reductions, byte metrics, payload equality,
+package version/CLSID, deployed binary hashes/versions, process identity, source
+revision/dirty status/diff hash, and benchmark source hashes. Raw terminal text
+is not saved, but pane IDs/paths and the optional marker are; keep artifacts local.
+A failed run may retain partial CSVs but has no success summary.
+
+**Scope:** this isolates old versus new **context collection on the same new
+server**, not old/new application binaries and not full prompt/LLM latency.
+Subprocess counts are not COM-call counts. Configuration labels and source
+hashes alone cannot prove a deployment came from that revision: the operator
+must build/deploy the intended code and compare packaged binary hashes.
+Debug and Release results are not interchangeable. Busy UI threads, antivirus,
+background output and changing topology can affect measurements; repeat runs.
+
+Hermetic benchmark tests (no app launches or installs):
+
+```powershell
+Invoke-Pester test\e2e\selftests\PaneContextBenchmark.Unit.Tests.ps1 -Output Detailed
+```
+
 ## Reports (HTML + precise per-failure diagnostics)
 
 `Invoke-ItE2EReport.ps1` wraps Pester and, by default, writes the report to the **fixed

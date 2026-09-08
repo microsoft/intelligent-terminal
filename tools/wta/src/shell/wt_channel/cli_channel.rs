@@ -961,6 +961,54 @@ impl WtChannel for CliChannel {
                 self.run_wtcli(&args).await
             }
             "get_active_pane" => self.run_wtcli(&["active-pane"]).await,
+            "get_pane_context" => {
+                const MAX_CONTEXT_LINES: u64 = 1000;
+                const MAX_CONTEXT_CHARS: u64 = 100_000;
+
+                let pane_id = params
+                    .get("session_id")
+                    .map(|value| {
+                        value.as_str().ok_or_else(|| {
+                            anyhow!("get_pane_context: 'session_id' must be a string")
+                        })
+                    })
+                    .transpose()?;
+                let max_lines = params
+                    .get("max_lines")
+                    .and_then(serde_json::Value::as_u64)
+                    .ok_or_else(|| {
+                        anyhow!("get_pane_context: missing or invalid 'max_lines' parameter")
+                    })?;
+                let max_chars = params
+                    .get("max_chars")
+                    .and_then(serde_json::Value::as_u64)
+                    .ok_or_else(|| {
+                        anyhow!("get_pane_context: missing or invalid 'max_chars' parameter")
+                    })?;
+                if max_lines > MAX_CONTEXT_LINES {
+                    bail!("get_pane_context: 'max_lines' exceeds {MAX_CONTEXT_LINES}");
+                }
+                if max_chars > MAX_CONTEXT_CHARS {
+                    bail!("get_pane_context: 'max_chars' exceeds {MAX_CONTEXT_CHARS}");
+                }
+
+                let max_lines_owned = max_lines.to_string();
+                let max_chars_owned = max_chars.to_string();
+                let mut args = vec![
+                    "get-pane-context",
+                    "--max-lines",
+                    &max_lines_owned,
+                    "--max-chars",
+                    &max_chars_owned,
+                ];
+                if let Some(pane_id) = pane_id {
+                    if pane_id.trim().is_empty() {
+                        bail!("get_pane_context: 'session_id' must not be empty");
+                    }
+                    args.extend(["--target", pane_id]);
+                }
+                self.run_wtcli(&args).await
+            }
             "get_settings" => self.run_wtcli(&["get-settings"]).await,
             "read_pane_output" => {
                 let pane_id = params
@@ -1141,6 +1189,45 @@ impl WtChannel for CliChannel {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn get_pane_context_rejects_invalid_session_ids_before_invocation() {
+        let channel =
+            CliChannel::with_test_executable(format!("missing-wtcli-{}.exe", uuid::Uuid::new_v4()));
+        for session_id in [
+            serde_json::json!(42),
+            serde_json::json!(-1),
+            serde_json::json!(1.5),
+            serde_json::json!(true),
+            serde_json::json!(false),
+            serde_json::Value::Null,
+            serde_json::json!({}),
+            serde_json::json!([]),
+            serde_json::json!(""),
+            serde_json::json!(" "),
+            serde_json::json!("\t"),
+            serde_json::json!("\r\n"),
+            serde_json::json!("\u{2003}"),
+        ] {
+            let error = channel
+                .request(
+                    "get_pane_context",
+                    serde_json::json!({
+                        "session_id": session_id,
+                        "max_lines": 20,
+                        "max_chars": 1000,
+                    }),
+                )
+                .await
+                .expect_err("invalid source must fail before invoking wtcli");
+            let expected = if session_id.as_str().is_some_and(|id| id.trim().is_empty()) {
+                "get_pane_context: 'session_id' must not be empty"
+            } else {
+                "get_pane_context: 'session_id' must be a string"
+            };
+            assert_eq!(error.to_string(), expected, "source: {session_id}");
+        }
+    }
 
     #[test]
     fn listener_readiness_marker_requires_the_matching_token() {

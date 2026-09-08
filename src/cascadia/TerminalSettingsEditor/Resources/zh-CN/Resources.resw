@@ -2906,8 +2906,8 @@
     <value>左侧</value>
     <comment>Value shown in the agent pane position dropdown (selects which side of the terminal the agent pane opens on). Translation should match the existing FreOverlay_PanePositionLeft string used in the first-run experience.</comment>
   </data>
-  <data name="AIAgents_YoloMode.Header" xml:space="preserve"><value>使用提供商 Yolo 模式</value><comment>{Locked=&quot;Yolo&quot;} Header for the global setting that asks each AI agent provider to enable its advertised ACP session Yolo capability.</comment></data>
-  <data name="AIAgents_YoloMode.HelpText" xml:space="preserve"><value>使用智能体提供商的 ACP 会话模式来减少或绕过确认。提供商定义由此产生的权限、沙盒、文件访问和网络访问。对于不支持相应模式的提供商，仍会请求权限。</value><comment>{Locked=&quot;ACP&quot;} Risk warning shown under the Yolo toggle. Here provider means the selected AI agent provider, not a network provider.</comment></data>
+  <data name="AIAgents_YoloMode.Header" xml:space="preserve"><value>自动批准</value><comment>Header for the Settings toggle that enables automatic approval for the AI agent running in the agent pane.</comment></data>
+  <data name="AIAgents_YoloMode.HelpText" xml:space="preserve"><value>智能体窗格中的智能体会以智能体 CLI 提供的完全权限运行</value><comment>{Locked="CLI"} Description shown under the automatic approval toggle. Agent means an AI intelligent agent in the agent pane, not a proxy or human representative. Full permissions are provided by the agent CLI.</comment></data>
   <data name="Settings_PortableModeInfoLink.NavigateUri" xml:space="preserve">
     <value>https://go.microsoft.com/fwlink/?linkid=2229086</value>
     <comment>{Locked}</comment>

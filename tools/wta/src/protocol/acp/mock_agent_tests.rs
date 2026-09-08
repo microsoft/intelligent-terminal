@@ -124,14 +124,22 @@ impl crate::shell::wt_channel::WtChannel for BlockingPromptContextChannel {
         method: &str,
         _params: serde_json::Value,
     ) -> anyhow::Result<serde_json::Value> {
-        if method == "get_active_pane" {
+        if method == "get_pane_context" {
             self.started.notify_one();
             self.release.notified().await;
             return Ok(serde_json::json!({
-                "session_id": "context-pane",
-                "cwd": "C:\\work",
-                "pid": std::process::id(),
-                "is_agent_pane": false,
+                "pane": {
+                    "session_id": "context-pane",
+                    "cwd": "C:\\work",
+                    "pid": std::process::id(),
+                    "is_agent_pane": false,
+                },
+                "content": "",
+                "output_source": "metadata_only",
+                "fallback_reason": "",
+                "line_count": 0,
+                "truncated": false,
+                "has_marks": false,
             }));
         }
         Err(anyhow::anyhow!(
@@ -1498,7 +1506,12 @@ async fn copilot_hot_disable_uses_standard_prompt_path_at_send_boundary() {
 
             let chunk = next_agent_chunk(&mut h.event_rx).await;
             assert!(chunk.contains("hot-disabled Copilot uses standard permissions"));
-            assert_eq!(h.seen_prompts.lock().unwrap().len(), 1);
+            let seen = h.seen_prompts.lock().unwrap();
+            assert_eq!(seen.len(), 1);
+            assert!(
+                seen[0].contains(r#""activeTarget":"context-pane""#),
+                "the mock context must survive validation and reach the agent prompt"
+            );
         })
         .await;
 }

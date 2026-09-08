@@ -194,6 +194,7 @@ namespace TerminalAppLocalTests
         TEST_METHOD(CreateTerminalMuxXamlType);
 
         TEST_METHOD(CreateTerminalPage);
+        TEST_METHOD(PaneContextPropagatesCaptureFailure);
         TEST_METHOD(AgentSessionRestoreRequiresPersistedBufferPath);
         TEST_METHOD(AgentPaneRestoreRecordRoundTrips);
         TEST_METHOD(PersistedLayoutAgentSessionsReceiveRestorePaths);
@@ -259,9 +260,11 @@ namespace TerminalAppLocalTests
                                                                winrt::TerminalApp::implementation::AgentPaneDragStash::AttachDisposition expectedDisposition,
                                                                const winrt::guid& sourceProfileGuid);
         void _initializeTerminalPage(winrt::com_ptr<winrt::TerminalApp::implementation::TerminalPage>& page,
-                                     CascadiaSettings initialSettings);
+                                     CascadiaSettings initialSettings,
+                                     winrt::Microsoft::Terminal::TerminalConnection::ITerminalConnection connection = nullptr);
         void _createContentManager();
-        winrt::com_ptr<winrt::TerminalApp::implementation::TerminalPage> _commonSetup();
+        winrt::com_ptr<winrt::TerminalApp::implementation::TerminalPage> _commonSetup(
+            winrt::Microsoft::Terminal::TerminalConnection::ITerminalConnection connection = nullptr);
         winrt::com_ptr<winrt::TerminalApp::implementation::WindowProperties> _windowProperties;
         winrt::com_ptr<winrt::TerminalApp::implementation::ContentManager> _contentManager;
     };
@@ -472,6 +475,46 @@ namespace TerminalAppLocalTests
         VERIFY_ARE_EQUAL(fields.view, parsed.view);
         VERIFY_ARE_EQUAL(fields.agentIdentity, parsed.agentIdentity);
         VERIFY_ARE_EQUAL(fields.customCommand, parsed.customCommand);
+    }
+
+    void TabTests::PaneContextPropagatesCaptureFailure()
+    {
+        const auto connection = winrt::make_self<TestConnection>(
+            winrt::guid{ L"{62a75f00-aaaa-bbbb-cccc-dddddddddddd}" },
+            winrt::Microsoft::Terminal::TerminalConnection::ConnectionState::Connected);
+        auto page = _commonSetup(*connection);
+        VERIFY_IS_NOT_NULL(page);
+
+        winrt::guid sessionId{};
+        winrt::TerminalApp::TerminalPage projectedPage{ nullptr };
+        TestOnUIThread([&]() {
+            projectedPage = *page;
+            const auto tab = page->_GetFocusedTabImpl();
+            VERIFY_IS_NOT_NULL(tab);
+            const auto control = tab->GetActivePane()->GetTerminalControl();
+            VERIFY_IS_NOT_NULL(control);
+            sessionId = control.Connection().SessionId();
+            VERIFY_ARE_NOT_EQUAL(winrt::guid{}, sessionId);
+        });
+
+        for (const auto explicitSource : { true, false })
+        {
+            winrt::Windows::Foundation::IAsyncOperation<winrt::Microsoft::Terminal::Protocol::PaneContext> operation{ nullptr };
+            TestOnUIThread([&]() {
+                operation = projectedPage.GetProtocolPaneContext(explicitSource ? sessionId : winrt::guid{}, explicitSource, 0, 100);
+            });
+            VERIFY_ARE_EQUAL(sessionId, operation.get().Pane.SessionId);
+
+            // Bypass COM's argument validation to make both bounded readers reject
+            // their zero-line budget. A read failure must not become "pane not found".
+            TestOnUIThread([&]() {
+                operation = projectedPage.GetProtocolPaneContext(explicitSource ? sessionId : winrt::guid{}, explicitSource, -1, 100);
+            });
+            VERIFY_THROWS_SPECIFIC(
+                operation.get(),
+                winrt::hresult_error,
+                [](const winrt::hresult_error& error) { return error.code() == E_INVALIDARG; });
+        }
     }
 
     void TabTests::PaneAgentSessionBindingRequiresPaneIdentity()
@@ -1202,10 +1245,12 @@ namespace TerminalAppLocalTests
     // Arguments:
     // - page: a TerminalPage implementation ptr that will receive the new TerminalPage instance
     // - initialSettings: a CascadiaSettings to initialize the TerminalPage with.
+    // - connection: optional in-process connection for protocol tests that do not need window layout.
     // Return Value:
     // - <none>
     void TabTests::_initializeTerminalPage(winrt::com_ptr<winrt::TerminalApp::implementation::TerminalPage>& page,
-                                           CascadiaSettings initialSettings)
+                                           CascadiaSettings initialSettings,
+                                           winrt::Microsoft::Terminal::TerminalConnection::ITerminalConnection connection)
     {
         // This is super wacky, but we can't just initialize the
         // com_ptr<impl::TerminalPage> in the lambda and assign it back out of
@@ -1237,13 +1282,16 @@ namespace TerminalAppLocalTests
         {
             VERIFY_SUCCEEDED(HRESULT_FROM_WIN32(::GetLastError()));
         }
-        page->Initialized([&waitForInitEvent](auto&&, auto&&) {
-            waitForInitEvent.Set();
-        });
+        if (!connection)
+        {
+            page->Initialized([&waitForInitEvent](auto&&, auto&&) {
+                waitForInitEvent.Set();
+            });
+        }
 
         Log::Comment(L"Create() the TerminalPage");
 
-        result = RunOnUIThread([&page]() {
+        result = RunOnUIThread([&page, connection, this]() {
             VERIFY_IS_NOT_NULL(page);
             VERIFY_IS_NOT_NULL(page->_settings);
             page->Create();
@@ -1252,11 +1300,27 @@ namespace TerminalAppLocalTests
             // Build a NewTab action, to make sure we start with one. The real
             // Terminal will always get one from AppCommandlineArgs.
             NewTerminalArgs newTerminalArgs{};
-            NewTabArgs args{ newTerminalArgs };
-            ActionAndArgs newTabAction{ ShortcutAction::NewTab, args };
-            // push the arg onto the front
-            page->_startupActions.push_back(std::move(newTabAction));
+            if (connection)
+            {
+                const auto settings = winrt::make_self<ControlUnitTests::MockControlSettings>();
+                const auto content = _contentManager->CreateCore(*settings, *settings, connection);
+                newTerminalArgs.ContentId(content.Id());
+                VERIFY_SUCCEEDED(page->_OpenNewTab(newTerminalArgs));
+            }
+            else
+            {
+                NewTabArgs args{ newTerminalArgs };
+                ActionAndArgs newTabAction{ ShortcutAction::NewTab, args };
+                // push the arg onto the front
+                page->_startupActions.push_back(std::move(newTabAction));
+            }
             Log::Comment(L"Added a single newTab action");
+
+            if (connection)
+            {
+                // Protocol queries need a real tab/control, but not rendered-window startup.
+                return;
+            }
 
             auto app = ::winrt::Windows::UI::Xaml::Application::Current();
 
@@ -1266,9 +1330,12 @@ namespace TerminalAppLocalTests
         });
         VERIFY_SUCCEEDED(result);
 
-        Log::Comment(L"Wait for the page to finish initializing...");
-        VERIFY_SUCCEEDED(waitForInitEvent.Wait());
-        Log::Comment(L"...Done");
+        if (!connection)
+        {
+            Log::Comment(L"Wait for the page to finish initializing...");
+            VERIFY_SUCCEEDED(waitForInitEvent.Wait());
+            Log::Comment(L"...Done");
+        }
 
         result = RunOnUIThread([&page]() {
             // In the real app, this isn't a problem, but doesn't happen
@@ -1546,7 +1613,8 @@ namespace TerminalAppLocalTests
     // - <none>
     // Return Value:
     // - The initialized TerminalPage, ready to use.
-    winrt::com_ptr<winrt::TerminalApp::implementation::TerminalPage> TabTests::_commonSetup()
+    winrt::com_ptr<winrt::TerminalApp::implementation::TerminalPage> TabTests::_commonSetup(
+        winrt::Microsoft::Terminal::TerminalConnection::ITerminalConnection connection)
     {
         static constexpr std::wstring_view settingsJson0{ LR"(
         {
@@ -1668,7 +1736,7 @@ namespace TerminalAppLocalTests
         // implementation _from_ the winrt object. This seems to work, even if
         // it's weird.
         winrt::com_ptr<winrt::TerminalApp::implementation::TerminalPage> page{ nullptr };
-        _initializeTerminalPage(page, settings0);
+        _initializeTerminalPage(page, settings0, connection);
 
         auto result = RunOnUIThread([&page]() {
             VERIFY_ARE_EQUAL(1u, page->_tabs.Size());

@@ -250,7 +250,14 @@ pub fn render(frame: &mut Frame, app: &mut App) {
         }
     }
     if panel_layout.recommendation_hint_height > 0 {
-        recommendations::render_hint(frame, chunks[5]);
+        recommendations::render_hint(
+            frame,
+            Rect {
+                y: chunks[5].y,
+                height: chunks[5].height,
+                ..h_rec[1]
+            },
+        );
     }
     chat::render_activity(frame, app, h_activity[1]);
     app.input_dialog_area = Some(chunks[7]);
