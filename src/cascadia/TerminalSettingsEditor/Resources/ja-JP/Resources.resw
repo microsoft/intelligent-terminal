@@ -2864,8 +2864,8 @@
     <value>左</value>
     <comment>Value shown in the agent pane position dropdown (selects which side of the terminal the agent pane opens on). Translation should match the existing FreOverlay_PanePositionLeft string used in the first-run experience.</comment>
   </data>
-  <data name="AIAgents_YoloMode.Header" xml:space="preserve"><value>プロバイダーの Yolo モードを使用する</value><comment>{Locked=&quot;Yolo&quot;} Header for the global setting that asks each AI agent provider to enable its advertised ACP session Yolo capability.</comment></data>
-  <data name="AIAgents_YoloMode.HelpText" xml:space="preserve"><value>エージェント プロバイダーの ACP セッション モードを使用して、確認を減らすか省略します。結果として適用されるアクセス許可、サンドボックス、ファイル アクセス、ネットワーク アクセスはプロバイダーが定義します。サポートされているモードがないプロバイダーでは、引き続きアクセス許可を求められます。</value><comment>{Locked=&quot;ACP&quot;} Risk warning shown under the Yolo toggle. Here provider means the selected AI agent provider, not a network provider.</comment></data>
+  <data name="AIAgents_YoloMode.Header" xml:space="preserve"><value>自動承認</value><comment>Header for the Settings toggle that enables automatic approval for the AI agent running in the agent pane.</comment></data>
+  <data name="AIAgents_YoloMode.HelpText" xml:space="preserve"><value>エージェント ペインのエージェントは、エージェント CLI によって提供される完全なアクセス許可で実行されます</value><comment>{Locked="CLI"} Description shown under the automatic approval toggle. Agent means an AI intelligent agent in the agent pane, not a proxy or human representative. Full permissions are provided by the agent CLI.</comment></data>
   <data name="Settings_PortableModeInfoLink.NavigateUri" xml:space="preserve"><value>https://go.microsoft.com/fwlink/?linkid=2229086</value><comment>{Locked}</comment></data>
   <data name="AIAgents_PolicyLocked.Text" xml:space="preserve">
     <value>この設定は組織によって管理されています。</value>

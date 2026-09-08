@@ -630,6 +630,7 @@ pub struct TabSession {
     pub input: String,
     pub cursor_pos: usize,
     pub(super) input_history: InputHistory,
+    pub(crate) input_all_selected: bool,
     pub(crate) attachments: super::attachments::PendingAttachments,
     /// True while a host-triggered text paste is reading the clipboard on a
     /// blocking worker.
@@ -1188,7 +1189,10 @@ impl TabSession {
                                     crate::coordinator::parse_recommendation_set(&text)
                                 {
                                     details.push(ChatMessage::Agent(
-                                        super::format_recommendations_for_chat(&recommendations),
+                                        super::format_recommendations_for_chat(
+                                            &recommendations,
+                                            None,
+                                        ),
                                     ));
                                 } else {
                                     details.push(ChatMessage::Agent(text));

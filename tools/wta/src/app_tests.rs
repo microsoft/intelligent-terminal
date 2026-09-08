@@ -2655,6 +2655,8 @@ fn pack_replayed_turns_keep_the_whole_prompt() {
 
 #[test]
 fn pack_replayed_recommendation_reuses_live_turn_formatting() {
+    let _locale = crate::test_support::lock_locale();
+    rust_i18n::set_locale("en-US");
     let mut tab = TabSession::default();
     tab.messages = vec![
         ChatMessage::User(
@@ -2694,7 +2696,7 @@ get time"#
     assert_eq!(
         turn.details,
         vec![ChatMessage::Agent(
-            "Suggested 1 option:\n  ✓ 1. Run: Get-Date -Format 'HH:mm:ss'".to_string()
+            "Get-Date -Format 'HH:mm:ss'".to_string()
         )]
     );
 }
@@ -11947,6 +11949,429 @@ fn double_click_in_input_dialog_preserves_word_selection() {
 }
 
 #[test]
+fn input_selection_during_queued_turn_edits_only_the_next_draft() {
+    let _locale = crate::test_support::lock_locale();
+    let mut app = test_app();
+    app.state = ConnectionState::Connected;
+    app.current_tab_mut().session_id = Some(DEFAULT_TAB_ID.into());
+    app.session_to_tab
+        .insert(DEFAULT_TAB_ID.into(), DEFAULT_TAB_ID.into());
+    let (tx, mut rx) = mpsc::unbounded_channel();
+    app.prompt_tx = tx;
+    for text in ["active request", "waiting request"] {
+        app.current_tab_mut().replace_input(text.into());
+        app.enqueue_input(None);
+    }
+    let active = rx.try_recv().unwrap();
+    let queued = app.current_tab().prompt_queue.entries[0].submission.id;
+    app.current_tab_mut().replace_input("next draft".into());
+    app.handle_event(AppEvent::Key(KeyEvent::new(
+        KeyCode::Char('a'),
+        KeyModifiers::CONTROL,
+    )));
+    assert!(app.current_tab().input_all_selected);
+    app.handle_event(AppEvent::Key(KeyEvent::new(
+        KeyCode::Char('x'),
+        KeyModifiers::NONE,
+    )));
+    assert_eq!(app.current_tab().input, "x");
+    assert_eq!(app.current_tab().turn.prompt_id(), Some(active.id));
+    assert_eq!(
+        app.current_tab().prompt_queue.entries[0].submission.id,
+        queued
+    );
+    assert_eq!(
+        app.pending_input_previews().collect::<Vec<_>>(),
+        ["1. waiting request"]
+    );
+    app.handle_event(AppEvent::Key(KeyEvent::new(
+        KeyCode::Enter,
+        KeyModifiers::NONE,
+    )));
+    assert!(!app.current_tab().input_all_selected);
+    assert!(app.current_tab().input.is_empty());
+    assert_eq!(
+        app.pending_input_previews().collect::<Vec<_>>(),
+        ["1. waiting request", "2. x"]
+    );
+    assert!(rx.try_recv().is_err());
+}
+
+#[test]
+fn input_selection_deletes_entire_draft() {
+    for key in [
+        KeyEvent::new(KeyCode::Backspace, KeyModifiers::NONE),
+        KeyEvent::new(KeyCode::Delete, KeyModifiers::NONE),
+        KeyEvent::new(KeyCode::Backspace, KeyModifiers::CONTROL),
+    ] {
+        let mut app = test_app();
+        app.current_tab_mut()
+            .replace_input("first\n\u{e9}\u{4e2d}".into());
+        app.current_tab_mut()
+            .messages
+            .push(ChatMessage::info("KEEP_HISTORY"));
+        render_to_text(&mut app, 80, 16);
+        app.handle_event(AppEvent::Key(KeyEvent::new(
+            KeyCode::Char('a'),
+            KeyModifiers::CONTROL,
+        )));
+        app.handle_event(AppEvent::Key(key));
+        assert!(
+            app.current_tab().input.is_empty(),
+            "selected draft must be deleted by {key:?}"
+        );
+        assert_eq!(app.current_tab().cursor_pos, 0);
+        assert!(render_to_text(&mut app, 80, 16).contains("KEEP_HISTORY"));
+    }
+}
+
+#[test]
+fn input_selection_repeated_select_all_then_typing_replaces_draft() {
+    let mut app = test_app();
+    app.current_tab_mut().replace_input("original draft".into());
+    render_to_text(&mut app, 80, 16);
+    for _ in 0..2 {
+        app.handle_event(AppEvent::Key(KeyEvent::new(
+            KeyCode::Char('a'),
+            KeyModifiers::CONTROL,
+        )));
+    }
+    app.handle_event(AppEvent::Key(KeyEvent::new(
+        KeyCode::Char('x'),
+        KeyModifiers::NONE,
+    )));
+    assert_eq!(app.current_tab().input, "x");
+    assert_eq!(app.current_tab().cursor_pos, 1);
+}
+
+#[test]
+fn input_selection_paste_replaces_draft_without_submitting() {
+    let mut app = test_app();
+    app.current_tab_mut().pane_open = true;
+    app.current_tab_mut().replace_input("original draft".into());
+    render_to_text(&mut app, 80, 16);
+    app.handle_event(AppEvent::Key(KeyEvent::new(
+        KeyCode::Char('a'),
+        KeyModifiers::CONTROL,
+    )));
+    app.current_tab_mut().paste_pending = true;
+    app.insert_agent_paste_text(DEFAULT_TAB_ID, 0, "new\r\n\u{4e2d}");
+    assert_eq!(app.current_tab().input, "new\n\u{4e2d}");
+    assert_eq!(app.current_tab().cursor_pos, app.current_tab().input.len());
+    assert!(app.current_tab().turn.is_idle());
+}
+
+#[test]
+fn input_selection_escape_dismisses_selection_without_clearing_draft() {
+    let mut app = test_app();
+    app.current_tab_mut().replace_input("keep draft".into());
+    render_to_text(&mut app, 80, 16);
+    app.handle_event(AppEvent::Key(KeyEvent::new(
+        KeyCode::Char('a'),
+        KeyModifiers::CONTROL,
+    )));
+    app.handle_event(AppEvent::Key(KeyEvent::new(
+        KeyCode::Esc,
+        KeyModifiers::NONE,
+    )));
+    assert_eq!(app.current_tab().input, "keep draft");
+    app.handle_event(AppEvent::Key(KeyEvent::new(
+        KeyCode::Char('!'),
+        KeyModifiers::SHIFT,
+    )));
+    assert_eq!(app.current_tab().input, "keep draft!");
+}
+
+#[test]
+fn input_selection_cursor_keys_collapse_to_start_or_end() {
+    for (key, expected) in [
+        (KeyEvent::new(KeyCode::Left, KeyModifiers::NONE), "!one two"),
+        (
+            KeyEvent::new(KeyCode::Right, KeyModifiers::NONE),
+            "one two!",
+        ),
+        (KeyEvent::new(KeyCode::Home, KeyModifiers::NONE), "!one two"),
+        (KeyEvent::new(KeyCode::End, KeyModifiers::NONE), "one two!"),
+        (
+            KeyEvent::new(KeyCode::Left, KeyModifiers::CONTROL),
+            "!one two",
+        ),
+        (
+            KeyEvent::new(KeyCode::Right, KeyModifiers::CONTROL),
+            "one two!",
+        ),
+    ] {
+        let mut app = test_app();
+        app.current_tab_mut().replace_input("one two".into());
+        app.current_tab_mut().cursor_pos = 3;
+        render_to_text(&mut app, 80, 16);
+        app.handle_event(AppEvent::Key(KeyEvent::new(
+            KeyCode::Char('a'),
+            KeyModifiers::CONTROL,
+        )));
+        app.handle_event(AppEvent::Key(key));
+        app.handle_event(AppEvent::Key(KeyEvent::new(
+            KeyCode::Char('!'),
+            KeyModifiers::SHIFT,
+        )));
+        assert_eq!(app.current_tab().input, expected, "collapse with {key:?}");
+    }
+}
+
+#[test]
+fn input_selection_highlights_draft_but_not_chat() {
+    use ratatui::style::Modifier;
+    let mut app = test_app();
+    app.current_tab_mut()
+        .messages
+        .push(ChatMessage::info("HISTORY_MARKER"));
+    app.current_tab_mut().replace_input("DRAFT_MARKER".into());
+    render_to_text(&mut app, 80, 16);
+    app.handle_event(AppEvent::Key(KeyEvent::new(
+        KeyCode::Char('a'),
+        KeyModifiers::CONTROL,
+    )));
+    let buffer = render_to_buffer(&mut app, 80, 16);
+    let text = buffer_to_text(&buffer);
+    for (marker, selected) in [("DRAFT_MARKER", true), ("HISTORY_MARKER", false)] {
+        let (x, y) = text
+            .lines()
+            .enumerate()
+            .find_map(|(row, line)| {
+                line.find(marker)
+                    .map(|index| (line[..index].chars().count() as u16, row as u16))
+            })
+            .expect("marker must be rendered");
+        for offset in 0..marker.len() as u16 {
+            assert_eq!(
+                buffer[(x + offset, y)]
+                    .modifier
+                    .contains(Modifier::REVERSED),
+                selected,
+                "{marker}"
+            );
+        }
+    }
+    assert!(
+        app.text_selection.selected_text().is_none(),
+        "editable selection must not be a frame selection"
+    );
+}
+
+#[test]
+fn input_selection_copy_and_cut_preserve_exact_source_text() {
+    let mut app = test_app();
+    let draft = "wrapped source\n\u{e9}\u{4e2d}";
+    app.current_tab_mut().replace_input(draft.into());
+    app.handle_event(AppEvent::Key(KeyEvent::new(
+        KeyCode::Char('a'),
+        KeyModifiers::CONTROL,
+    )));
+    app.close_pane_armed_at = Some(std::time::Instant::now());
+    assert!(app.copy_input_selection(false, |text| {
+        assert_eq!(text, draft);
+        Ok(())
+    }));
+    assert_eq!(app.current_tab().input, draft);
+    assert!(app.current_tab().input_all_selected);
+    assert!(app.close_pane_armed_at.is_none());
+    app.close_pane_armed_at = Some(std::time::Instant::now());
+    assert!(app.copy_input_selection(true, |text| {
+        assert_eq!(text, draft);
+        Ok(())
+    }));
+    assert!(app.current_tab().input.is_empty());
+    assert!(!app.current_tab().input_all_selected);
+    assert!(app.close_pane_armed_at.is_none());
+}
+
+#[test]
+fn input_selection_clipboard_failure_keeps_draft_and_consumes_copy() {
+    for cut in [false, true] {
+        let mut app = test_app();
+        app.current_tab_mut()
+            .replace_input("do not lose this".into());
+        app.handle_event(AppEvent::Key(KeyEvent::new(
+            KeyCode::Char('a'),
+            KeyModifiers::CONTROL,
+        )));
+        // The helper must disarm independently of the key dispatcher.
+        app.close_pane_armed_at = Some(std::time::Instant::now());
+        assert!(app.copy_input_selection(cut, |_| Err(std::io::Error::other("clipboard busy"))));
+        assert_eq!(app.current_tab().input, "do not lose this");
+        assert!(app.current_tab().input_all_selected);
+        assert!(app.close_pane_armed_at.is_none());
+    }
+}
+
+#[test]
+fn input_selection_unhandled_copy_preserves_close_arm() {
+    for cut in [false, true] {
+        let mut app = test_app();
+        app.handle_event(AppEvent::Key(KeyEvent::new(
+            KeyCode::Char('c'),
+            KeyModifiers::CONTROL,
+        )));
+        let armed = app.close_pane_armed_at;
+        assert!(armed.is_some());
+        assert!(!app.copy_input_selection(cut, |_| {
+            panic!("an unhandled event must not access the clipboard")
+        }));
+        assert_eq!(app.close_pane_armed_at, armed);
+    }
+}
+
+#[test]
+fn input_selection_copy_failure_cannot_retain_an_earlier_close_arm() {
+    for cut in [false, true] {
+        let mut app = test_app();
+        app.handle_event(AppEvent::Key(KeyEvent::new(
+            KeyCode::Char('c'),
+            KeyModifiers::CONTROL,
+        )));
+        assert!(app.close_pane_armed_at.is_some());
+        for character in "clipboard draft".chars() {
+            app.handle_event(AppEvent::Key(KeyEvent::new(
+                KeyCode::Char(character),
+                KeyModifiers::NONE,
+            )));
+        }
+        app.handle_event(AppEvent::Key(KeyEvent::new(
+            KeyCode::Char('a'),
+            KeyModifiers::CONTROL,
+        )));
+        assert!(app.current_tab().input_all_selected);
+        assert!(app.close_pane_armed_at.is_none());
+        assert!(app.copy_input_selection(cut, |_| { Err(std::io::Error::other("clipboard busy")) }));
+        assert_eq!(app.current_tab().input, "clipboard draft");
+        assert!(app.current_tab().input_all_selected);
+        assert!(app.close_pane_armed_at.is_none());
+    }
+}
+
+#[test]
+fn input_selection_requires_live_edit_focus_not_just_draft_text() {
+    for context in ["history", "card", "help", "model", "agents", "unfocused"] {
+        let mut app = test_app();
+        app.current_tab_mut().replace_input("keep draft".into());
+        match context {
+            "history" => {
+                app.current_tab_mut().completed_turns.push(CompletedTurn {
+                    prompt: "old turn".into(),
+                    details: Vec::new(),
+                    expanded: false,
+                    trailing_marker: None,
+                });
+                app.current_tab_mut().select_completed_turn(0);
+            }
+            "card" => {
+                stage_surfaced_recommendation(&mut app, vec![send_choice("pane-A", "ls")], 0, None)
+            }
+            "help" => app.help_overlay_visible = true,
+            "model" => app.current_tab_mut().model_picker_open = true,
+            "agents" => app.current_tab_mut().current_view = View::Agents,
+            "unfocused" => app.pane_focused = false,
+            _ => unreachable!(),
+        }
+        render_to_text(&mut app, 80, 20);
+        app.handle_event(AppEvent::Key(KeyEvent::new(
+            KeyCode::Char('a'),
+            KeyModifiers::CONTROL,
+        )));
+        assert!(
+            !app.current_tab().input_all_selected,
+            "{context} owns focus"
+        );
+        assert!(!app.copy_input_selection(true, |_| panic!("must not cut hidden draft")));
+        assert_eq!(app.current_tab().input, "keep draft");
+    }
+}
+
+#[test]
+fn input_selection_handles_slash_completion_and_history_without_stale_ranges() {
+    let mut app = test_app();
+    app.current_tab_mut().replace_input("/he".into());
+    assert!(app.command_popup_visible());
+    app.handle_event(AppEvent::Key(KeyEvent::new(
+        KeyCode::Char('a'),
+        KeyModifiers::CONTROL,
+    )));
+    app.handle_event(AppEvent::Key(KeyEvent::new(
+        KeyCode::Char('x'),
+        KeyModifiers::NONE,
+    )));
+    assert_eq!(app.current_tab().input, "x");
+    assert!(!app.command_popup_visible());
+    app.current_tab_mut().record_input_history("prior command");
+    app.handle_event(AppEvent::Key(KeyEvent::new(
+        KeyCode::Char('a'),
+        KeyModifiers::CONTROL,
+    )));
+    app.handle_event(AppEvent::Key(KeyEvent::new(
+        KeyCode::Up,
+        KeyModifiers::NONE,
+    )));
+    assert_eq!(app.current_tab().input, "prior command");
+    assert!(!app.current_tab().input_all_selected);
+    app.handle_event(AppEvent::Key(KeyEvent::new(
+        KeyCode::Char('!'),
+        KeyModifiers::NONE,
+    )));
+    assert_eq!(app.current_tab().input, "prior command!");
+}
+
+#[test]
+fn input_selection_deletion_removes_attachment_tokens_atomically() {
+    let mut app = test_app();
+    app.current_tab_mut().replace_input("before ".into());
+    app.current_tab_mut()
+        .insert_image_attachment(crate::clipboard_image::PastedImage {
+            data_base64: "aW1hZ2U=".into(),
+            mime_type: "image/png".into(),
+            label: "test.png".into(),
+        });
+    app.current_tab_mut().insert_input_str(" after");
+    app.handle_event(AppEvent::Key(KeyEvent::new(
+        KeyCode::Char('a'),
+        KeyModifiers::CONTROL,
+    )));
+    app.handle_event(AppEvent::Key(KeyEvent::new(
+        KeyCode::Delete,
+        KeyModifiers::NONE,
+    )));
+    assert!(app.current_tab().input.is_empty());
+    assert!(app.current_tab().attachments.is_empty());
+}
+
+#[test]
+fn input_selection_survives_resize_but_not_focus_loss_or_mouse_click() {
+    use crossterm::event::{MouseButton, MouseEvent, MouseEventKind};
+    let mut app = test_app();
+    app.current_tab_mut().replace_input("keep draft".into());
+    app.handle_event(AppEvent::Key(KeyEvent::new(
+        KeyCode::Char('a'),
+        KeyModifiers::CONTROL,
+    )));
+    app.handle_event(AppEvent::Resize(40, 12));
+    assert!(app.current_tab().input_all_selected);
+    app.handle_event(AppEvent::FocusChanged(false));
+    assert!(!app.current_tab().input_all_selected);
+    app.handle_event(AppEvent::FocusChanged(true));
+    app.handle_event(AppEvent::Key(KeyEvent::new(
+        KeyCode::Char('a'),
+        KeyModifiers::CONTROL,
+    )));
+    app.handle_event(AppEvent::Mouse(MouseEvent {
+        kind: MouseEventKind::Down(MouseButton::Left),
+        column: 0,
+        row: 0,
+        modifiers: KeyModifiers::NONE,
+    }));
+    assert!(!app.current_tab().input_all_selected);
+    assert_eq!(app.current_tab().input, "keep draft");
+}
+
+#[test]
 fn ctrl_a_selects_current_rendered_frame_without_altering_input() {
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
@@ -11959,6 +12384,7 @@ fn ctrl_a_selects_current_rendered_frame_without_altering_input() {
         trailing_marker: None,
     });
     app.current_tab_mut().input = "SELECT_ALL_DRAFT".into();
+    app.current_tab_mut().select_completed_turn(0);
     let rendered = render_to_text(&mut app, 80, 16);
     assert!(rendered.contains("SELECT_ALL_PROMPT"));
     assert!(rendered.contains("SELECT_ALL_REPLY"));
@@ -12001,7 +12427,9 @@ fn right_click_copies_and_clears_ctrl_a_selection() {
     let original_clipboard = crate::win32::read_paste_string_from_clipboard().ok();
     let mut app = test_app();
     app.state = ConnectionState::Connected;
-    app.current_tab_mut().input = "SELECT_ALL_RIGHT_CLICK".into();
+    app.current_tab_mut()
+        .messages
+        .push(ChatMessage::info("SELECT_ALL_RIGHT_CLICK"));
     render_to_text(&mut app, 80, 16);
     app.handle_event(AppEvent::Key(KeyEvent::new(
         KeyCode::Char('a'),
@@ -15985,6 +16413,8 @@ fn stage_direct_proposal(
 
 #[test]
 fn direct_proposal_confirm_resolves_waiting_cli() {
+    let _locale = crate::test_support::lock_locale();
+    rust_i18n::set_locale("en-US");
     let mut app = test_app();
     let (recommendation_tx, mut recommendation_rx) = tokio::sync::mpsc::unbounded_channel();
     app.recommendation_tx = recommendation_tx;
@@ -16017,10 +16447,226 @@ fn direct_proposal_confirm_resolves_waiting_cli() {
     });
     let tab = app.session_tab(session_id);
     assert_eq!(tab.completed_turns.len(), 1);
-    assert!(tab.completed_turns[0]
-        .trailing_marker
-        .as_deref()
-        .is_some_and(|marker| marker.contains("executed")));
+    assert_eq!(
+        tab.completed_turns[0].details.last(),
+        Some(&ChatMessage::Agent("Run: Restart-Service foo".into()))
+    );
+    assert_eq!(tab.completed_turns[0].trailing_marker, None);
+}
+
+#[test]
+fn executing_committed_recommendation_keeps_compact_summary() {
+    let _locale = crate::test_support::lock_locale();
+    rust_i18n::set_locale("en-US");
+    let mut app = test_app();
+    let (recommendation_tx, _recommendation_rx) = tokio::sync::mpsc::unbounded_channel();
+    app.recommendation_tx = recommendation_tx;
+    let manager = std::sync::Arc::new(
+        crate::agent_tools::action_proposal::channel::ProposalChannelManager::new(),
+    );
+    app.set_proposal_channels(std::sync::Arc::clone(&manager));
+    let session_id = "direct-confirm-after-end";
+    stage_proposal_session(&mut app, session_id);
+    submit_proposal_prompt(&mut app, session_id);
+    let (proposal_id, _final_rx) = stage_direct_proposal(&mut app, &manager, session_id);
+    let (commit_tx, commit_rx) = tokio::sync::oneshot::channel();
+    app.handle_event(AppEvent::DirectTerminalActionProposalCommit {
+        proposal_id,
+        responder: commit_tx,
+    });
+    assert!(commit_rx.blocking_recv().unwrap());
+
+    app.handle_event(AppEvent::AgentMessageEnd {
+        session_id: session_id.into(),
+    });
+    assert!(matches!(
+        app.session_tab(session_id).completed_turns[0].details.last(),
+        Some(ChatMessage::Agent(text)) if text == "Restart-Service foo"
+    ));
+
+    app.turn_execute_card(session_id);
+
+    let turn = &app.session_tab(session_id).completed_turns[0];
+    assert_eq!(
+        turn.details.last(),
+        Some(&ChatMessage::Agent("Run: Restart-Service foo".into()))
+    );
+    assert_eq!(turn.trailing_marker, None);
+
+    let rendered = render_to_text(&mut app, 80, 24);
+    assert!(rendered.contains("Run: Restart-Service foo"));
+    assert!(!rendered.contains("Suggested 1 option:"));
+    assert!(!rendered.contains("1. Run:"));
+    assert!(!rendered.contains("executed:"));
+}
+
+#[test]
+fn direct_proposal_history_distinguishes_localized_insert_and_run() {
+    let _locale = crate::test_support::lock_locale();
+    for (locale, run_label, insert_label) in [("en-US", "Run", "Insert"), ("zh-CN", "运行", "插入")]
+    {
+        rust_i18n::set_locale(locale);
+        for insert_only in [false, true] {
+            for end_before_action in [false, true] {
+                let mut app = test_app();
+                let (recommendation_tx, mut recommendation_rx) =
+                    tokio::sync::mpsc::unbounded_channel();
+                app.recommendation_tx = recommendation_tx;
+                let manager = std::sync::Arc::new(
+                    crate::agent_tools::action_proposal::channel::ProposalChannelManager::new(),
+                );
+                app.set_proposal_channels(std::sync::Arc::clone(&manager));
+                let session_id = "localized-action";
+                stage_proposal_session(&mut app, session_id);
+                submit_proposal_prompt(&mut app, session_id);
+                let (proposal_id, final_rx) = stage_direct_proposal(&mut app, &manager, session_id);
+                let (commit_tx, commit_rx) = tokio::sync::oneshot::channel();
+                app.handle_event(AppEvent::DirectTerminalActionProposalCommit {
+                    proposal_id,
+                    responder: commit_tx,
+                });
+                assert!(commit_rx.blocking_recv().unwrap());
+                if end_before_action {
+                    app.turn_close(session_id);
+                }
+                app.session_tab_mut(session_id).selected_button = usize::from(insert_only);
+                app.turn_execute_card(session_id);
+                assert_eq!(
+                    recommendation_rx.try_recv().unwrap().insert_only,
+                    insert_only
+                );
+                assert_eq!(
+                    final_rx.blocking_recv().unwrap(),
+                    crate::agent_tools::action_proposal::channel::ProposalFinalStatus::Confirmed
+                );
+                if !end_before_action {
+                    app.turn_close(session_id);
+                }
+
+                let label = if insert_only { insert_label } else { run_label };
+                let expected = format!("{label}: Restart-Service foo");
+                let turns = &app.session_tab(session_id).completed_turns;
+                assert_eq!(turns.len(), 1);
+                assert_eq!(turns[0].details, vec![ChatMessage::Agent(expected.clone())]);
+                assert_eq!(turns[0].trailing_marker, None);
+                let rendered = render_to_text(&mut app, 80, 24);
+                // TestBackend includes blank continuation cells after wide glyphs.
+                let compact_rendered: String =
+                    rendered.chars().filter(|c| !c.is_whitespace()).collect();
+                let compact_expected: String =
+                    expected.chars().filter(|c| !c.is_whitespace()).collect();
+                assert!(
+                    compact_rendered.contains(&compact_expected),
+                    "{locale}: {rendered}"
+                );
+                assert!(!rendered.contains("Suggested"));
+                assert!(!rendered.contains("executed:"));
+            }
+        }
+    }
+}
+
+#[test]
+fn direct_proposal_cancel_history_marks_action_not_title() {
+    let _locale = crate::test_support::lock_locale();
+    for (locale, canceled) in [("en-US", "(canceled)"), ("zh-CN", "(已取消)")] {
+        rust_i18n::set_locale(locale);
+        for end_before_cancel in [false, true] {
+            for has_prose in [false, true] {
+                let mut app = test_app();
+                let (recommendation_tx, mut recommendation_rx) =
+                    tokio::sync::mpsc::unbounded_channel();
+                app.recommendation_tx = recommendation_tx;
+                let manager = std::sync::Arc::new(
+                    crate::agent_tools::action_proposal::channel::ProposalChannelManager::new(),
+                );
+                app.set_proposal_channels(std::sync::Arc::clone(&manager));
+                let session_id = "compact-cancel";
+                stage_proposal_session(&mut app, session_id);
+                submit_proposal_prompt(&mut app, session_id);
+                let (proposal_id, final_rx) = stage_direct_proposal(&mut app, &manager, session_id);
+                let (commit_tx, commit_rx) = tokio::sync::oneshot::channel();
+                app.handle_event(AppEvent::DirectTerminalActionProposalCommit {
+                    proposal_id,
+                    responder: commit_tx,
+                });
+                assert!(commit_rx.blocking_recv().unwrap());
+                if has_prose {
+                    app.handle_event(AppEvent::AgentMessageChunk {
+                        session_id: session_id.into(),
+                        text: "Service explanation.".into(),
+                    });
+                }
+                if end_before_cancel {
+                    app.turn_close(session_id);
+                }
+                app.turn_cancel(session_id);
+                assert_eq!(
+                    final_rx.blocking_recv().unwrap(),
+                    crate::agent_tools::action_proposal::channel::ProposalFinalStatus::Cancelled
+                );
+                assert!(recommendation_rx.try_recv().is_err());
+                app.handle_event(AppEvent::PromptCancellationSettled {
+                    prompt_id: 99,
+                    started: true,
+                });
+                app.turn_cancel(session_id);
+
+                let turns = &app.session_tab(session_id).completed_turns;
+                assert_eq!(turns.len(), 1);
+                let mut expected_details = if has_prose {
+                    vec![ChatMessage::Agent("Service explanation.".into())]
+                } else {
+                    Vec::new()
+                };
+                let action = format!("Restart-Service foo {canceled}");
+                expected_details.push(ChatMessage::Agent(action.clone()));
+                assert_eq!(turns[0].details, expected_details);
+                assert_eq!(turns[0].trailing_marker, None);
+                assert!(!turns[0].prompt.contains(canceled));
+                let rendered = render_to_text(&mut app, 100, 30);
+                let compact: String = rendered.chars().filter(|c| !c.is_whitespace()).collect();
+                let compact_action: String =
+                    action.chars().filter(|c| !c.is_whitespace()).collect();
+                assert!(compact.contains(&compact_action), "{locale}: {rendered}");
+                assert!(!rendered.contains("Suggested"));
+                for label in ["Run:", "Insert:", "运行:", "插入:"] {
+                    assert!(!compact.contains(label), "{locale}: {rendered}");
+                }
+                assert!(!rendered.contains("1. Run:"));
+                assert!(!rendered.contains('✓'));
+            }
+        }
+    }
+}
+
+#[test]
+fn replayed_recommendations_do_not_assume_run_or_insert() {
+    let _locale = crate::test_support::lock_locale();
+    for locale in ["en-US", "zh-CN"] {
+        rust_i18n::set_locale(locale);
+        let mut tab = TabSession::default();
+        tab.messages = vec![
+            ChatMessage::User("show dates".into()),
+            ChatMessage::Agent(
+                serde_json::json!({
+                    "recommended_choice": 2,
+                    "choices": [
+                        {"choice": 1, "title": "Local date", "rationale": "",
+                         "actions": [{"type": "send", "parent": "", "input": "Get-Date"}]},
+                        {"choice": 2, "title": "UTC date", "rationale": "",
+                         "actions": [{"type": "send", "parent": "", "input": "Get-Date -AsUTC"}]}
+                    ]
+                })
+                .to_string(),
+            ),
+        ];
+        tab.pack_replayed_messages_into_turns();
+        assert_eq!(
+            tab.completed_turns[0].details,
+            vec![ChatMessage::Agent("Get-Date\nGet-Date -AsUTC".into())]
+        );
+    }
 }
 
 #[test]
@@ -16099,6 +16745,8 @@ fn direct_proposal_defers_history_until_tool_updates_finish() {
 
 #[test]
 fn cancel_after_direct_proposal_commits_trailing_transcript_once() {
+    let _locale = crate::test_support::lock_locale();
+    rust_i18n::set_locale("en-US");
     let mut app = test_app();
     let manager = std::sync::Arc::new(
         crate::agent_tools::action_proposal::channel::ProposalChannelManager::new(),
@@ -16132,10 +16780,11 @@ fn cancel_after_direct_proposal_commits_trailing_transcript_once() {
     assert!(tab.completed_turns[0].details.iter().any(
         |detail| matches!(detail, ChatMessage::Agent(text) if text == "Trailing explanation.")
     ));
-    assert!(tab.completed_turns[0]
-        .trailing_marker
-        .as_deref()
-        .is_some_and(|marker| marker.contains("canceled")));
+    assert_eq!(tab.completed_turns[0].trailing_marker, None);
+    assert_eq!(
+        tab.completed_turns[0].details.last(),
+        Some(&ChatMessage::Agent("Restart-Service foo (canceled)".into()))
+    );
     assert_eq!(
         final_rx.blocking_recv().unwrap(),
         crate::agent_tools::action_proposal::channel::ProposalFinalStatus::Cancelled
@@ -17146,6 +17795,69 @@ fn send_choice(parent: &str, input: &str) -> crate::coordinator::RecommendationC
             parent: parent.into(),
             input: input.into(),
         }],
+    }
+}
+
+#[test]
+fn recommendation_history_preserves_queue_barrier_for_both_end_timings() {
+    let _locale = crate::test_support::lock_locale();
+    for insert_only in [false, true] {
+        for ended_before_click in [false, true] {
+            let mut app = test_app();
+            app.state = ConnectionState::Connected;
+            app.current_tab_mut().session_id = Some(DEFAULT_TAB_ID.into());
+            app.session_to_tab
+                .insert(DEFAULT_TAB_ID.into(), DEFAULT_TAB_ID.into());
+            let (tx, mut rx) = mpsc::unbounded_channel();
+            app.prompt_tx = tx;
+            let (action_tx, mut action_rx) = mpsc::unbounded_channel();
+            app.recommendation_tx = action_tx;
+            stage_surfaced_recommendation(
+                &mut app,
+                vec![send_choice("pane", "echo merged")],
+                0,
+                Some("pane"),
+            );
+            if let TurnState::Surfaced { end_pending, .. } = &mut app.current_tab_mut().turn {
+                *end_pending = true;
+            }
+            let prompt_id = app.current_tab().turn.prompt_id().unwrap();
+            app.current_tab_mut().selected_button = usize::from(insert_only);
+            app.current_tab_mut().replace_input("follow-up".into());
+            app.enqueue_input(None);
+            if ended_before_click {
+                app.handle_event(AppEvent::AgentMessageEnd {
+                    session_id: DEFAULT_TAB_ID.into(),
+                });
+            }
+            app.turn_execute_card(DEFAULT_TAB_ID);
+            assert_eq!(
+                action_rx.try_recv().unwrap().completion,
+                Some((DEFAULT_TAB_ID.into(), prompt_id))
+            );
+            if !ended_before_click {
+                app.handle_event(AppEvent::AgentMessageEnd {
+                    session_id: DEFAULT_TAB_ID.into(),
+                });
+            }
+            let label = if insert_only {
+                t!("chat.tool_kind.insert")
+            } else {
+                t!("chat.tool_kind.run")
+            };
+            let completed = app.current_tab().completed_turns.last().unwrap();
+            assert!(completed.details.iter().any(|message| matches!(message,
+                ChatMessage::Agent(text) if text == &format!("{label}: echo merged"))));
+            assert!(completed.trailing_marker.is_none());
+            assert_eq!(app.current_tab().pending_queue_action, Some(prompt_id));
+            assert!(rx.try_recv().is_err());
+            app.handle_event(AppEvent::RecommendationExecutionSettled {
+                tab_id: DEFAULT_TAB_ID.into(),
+                prompt_id,
+                success: true,
+            });
+            assert_eq!(rx.try_recv().unwrap().text, "follow-up");
+        }
     }
 }
 

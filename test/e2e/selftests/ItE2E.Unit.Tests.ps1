@@ -485,6 +485,59 @@ Describe 'Feature suite package selection' -Tag 'Unit' {
     }
 }
 
+Describe 'Yolo Settings localization contract' -Tag 'Unit' {
+    It 'uses the PM-approved English title and description' {
+        $resourcePath = Join-Path $PSScriptRoot '..\..\..\src\cascadia\TerminalSettingsEditor\Resources\en-US\Resources.resw'
+        [xml]$resources = Get-Content -LiteralPath $resourcePath -Raw
+
+        [string]($resources.root.data |
+                Where-Object name -eq 'AIAgents_YoloMode.Header' |
+                Select-Object -First 1).value |
+            Should -Be 'Automatic approval'
+        [string]($resources.root.data |
+                Where-Object name -eq 'AIAgents_YoloMode.HelpText' |
+                Select-Object -First 1).value |
+            Should -Be 'Your agent in the agent pane runs with full permissions provided by the agent CLI'
+    }
+
+    It 'keeps every Settings locale structurally aligned' {
+        $resourceRoot = Join-Path $PSScriptRoot '..\..\..\src\cascadia\TerminalSettingsEditor\Resources'
+        $localeDirectories = @(Get-ChildItem -LiteralPath $resourceRoot -Directory)
+        $keys = @('AIAgents_YoloMode.Header', 'AIAgents_YoloMode.HelpText')
+        [xml]$english = Get-Content -LiteralPath (Join-Path $resourceRoot 'en-US\Resources.resw') -Raw
+
+        foreach ($localeDirectory in $localeDirectories) {
+            $resourcePath = Join-Path $localeDirectory.FullName 'Resources.resw'
+            $bytes = [System.IO.File]::ReadAllBytes($resourcePath)
+            ($bytes.Length -ge 3 -and
+                $bytes[0] -eq 0xEF -and
+                $bytes[1] -eq 0xBB -and
+                $bytes[2] -eq 0xBF) | Should -BeTrue -Because "$resourcePath must retain its UTF-8 BOM"
+
+            [xml]$localized = Get-Content -LiteralPath $resourcePath -Raw
+            foreach ($key in $keys) {
+                $source = @($english.root.data | Where-Object name -eq $key)
+                $target = @($localized.root.data | Where-Object name -eq $key)
+
+                $source | Should -HaveCount 1
+                $target | Should -HaveCount 1 -Because "$key must exist exactly once in $($localeDirectory.Name)"
+                [string]$target[0].value | Should -Not -BeNullOrEmpty
+                [string]$target[0].comment | Should -Be ([string]$source[0].comment)
+
+                if ($key -eq 'AIAgents_YoloMode.HelpText') {
+                    [string]$target[0].comment | Should -MatchExactly '\{Locked="CLI"\}'
+                    [string]$target[0].value | Should -MatchExactly '(?<![A-Za-z])CLI(?![A-Za-z])'
+                }
+
+                if ($localeDirectory.Name -notin @('en-US', 'qps-ploc', 'qps-ploca', 'qps-plocm')) {
+                    [string]$target[0].value |
+                        Should -Not -Be ([string]$source[0].value) -Because "$key must be translated in $($localeDirectory.Name)"
+                }
+            }
+        }
+    }
+}
+
 Describe 'Start-Terminal startup ordering' -Tag 'Unit' {
     It 'waits for the first window before probing COM' {
         InModuleScope ItE2E {

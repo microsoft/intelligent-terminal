@@ -5412,6 +5412,7 @@ impl App {
                 if candidate.completion_behavior().prepares_free_text() {
                     let tab = self.current_tab_mut();
                     tab.input = format!("/{name} ");
+                    tab.input_all_selected = false;
                     tab.cursor_pos = tab.input.len();
                     tab.refresh_command_popup();
                     return true;
@@ -5419,6 +5420,7 @@ impl App {
                 if matches!(candidate, crate::ui::CommandCandidate::Agent(_)) {
                     let tab = self.current_tab_mut();
                     tab.input = format!("/{name}");
+                    tab.input_all_selected = false;
                     tab.cursor_pos = tab.input.len();
                     tab.refresh_command_popup();
                     return false;
@@ -6558,70 +6560,66 @@ fn linux_cwd_arg(cwd: &std::path::Path) -> Option<String> {
 #[path = "app_turn.rs"]
 mod app_turn;
 
-/// Render a parsed `RecommendationSet` as the agent's "reply" text in chat.
-///
-/// Recommendation responses arrive as JSON; storing the raw JSON in a completed
-/// turn means re-expanding the prompt header reveals raw JSON instead of a
-/// CLI-style answer. This builds a single line per choice that mirrors what the
-/// recommendation cards show, prefixed with `✓` for the recommended one.
-fn format_recommendations_for_chat(set: &RecommendationSet) -> String {
+fn format_recommendation_choice_for_chat(
+    choice: &RecommendationChoice,
+    command_label: Option<&str>,
+) -> String {
     use crate::coordinator::{OpenTarget, RecommendedAction};
 
-    let header = if set.choices.len() == 1 {
-        "Suggested 1 option:".to_string()
-    } else {
-        format!("Suggested {} options:", set.choices.len())
-    };
-    let mut out = header;
+    choice
+        .actions
+        .iter()
+        .find_map(|action| match action {
+            RecommendedAction::Send { input, .. } => Some(match command_label {
+                Some(label) => format!("{label}: {input}"),
+                None => input.clone(),
+            }),
+            RecommendedAction::OpenAndSend {
+                target,
+                input,
+                agent,
+                ..
+            } => {
+                let where_ = match target {
+                    OpenTarget::Tab => "new tab",
+                    OpenTarget::Panel => "new panel",
+                };
+                let label = agent.as_deref().unwrap_or("agent");
+                Some(format!("Open {} and run {}: {}", where_, label, input))
+            }
+            RecommendedAction::Open {
+                target, cwd, title, ..
+            } => {
+                let kind = match target {
+                    OpenTarget::Tab => "tab",
+                    OpenTarget::Panel => "panel",
+                };
+                Some(match (title.as_deref(), cwd.as_deref()) {
+                    (Some(t), Some(c)) if !t.is_empty() && !c.is_empty() => {
+                        format!("Open new {} ({}) in {}", kind, t, c)
+                    }
+                    (Some(t), _) if !t.is_empty() => format!("Open new {} ({})", kind, t),
+                    (_, Some(c)) if !c.is_empty() => format!("Open new {} in {}", kind, c),
+                    _ => format!("Open new empty {}", kind),
+                })
+            }
+        })
+        .unwrap_or_else(|| choice.title.clone())
+}
 
-    for choice in &set.choices {
-        let action_text = choice
-            .actions
-            .iter()
-            .find_map(|action| match action {
-                RecommendedAction::Send { input, .. } => Some(format!("Run: {}", input)),
-                RecommendedAction::OpenAndSend {
-                    target,
-                    input,
-                    agent,
-                    ..
-                } => {
-                    let where_ = match target {
-                        OpenTarget::Tab => "new tab",
-                        OpenTarget::Panel => "new panel",
-                    };
-                    let label = agent.as_deref().unwrap_or("agent");
-                    Some(format!("Open {} and run {}: {}", where_, label, input))
-                }
-                RecommendedAction::Open {
-                    target, cwd, title, ..
-                } => {
-                    let kind = match target {
-                        OpenTarget::Tab => "tab",
-                        OpenTarget::Panel => "panel",
-                    };
-                    Some(match (title.as_deref(), cwd.as_deref()) {
-                        (Some(t), Some(c)) if !t.is_empty() && !c.is_empty() => {
-                            format!("Open new {} ({}) in {}", kind, t, c)
-                        }
-                        (Some(t), _) if !t.is_empty() => format!("Open new {} ({})", kind, t),
-                        (_, Some(c)) if !c.is_empty() => format!("Open new {} in {}", kind, c),
-                        _ => format!("Open new empty {}", kind),
-                    })
-                }
-            })
-            .unwrap_or_else(|| choice.title.clone());
-
-        let marker = if set.recommended_choice == Some(choice.choice) {
-            "✓"
-        } else {
-            " "
-        };
-        out.push('\n');
-        out.push_str(&format!("  {} {}. {}", marker, choice.choice, action_text));
-    }
-
-    out
+/// Render pending or replayed recommendations as plain action lines, not raw JSON.
+fn format_recommendations_for_chat(set: &RecommendationSet, action_status: Option<&str>) -> String {
+    set.choices
+        .iter()
+        .map(|choice| {
+            let action = format_recommendation_choice_for_chat(choice, None);
+            match action_status {
+                Some(status) => format!("{action} {status}"),
+                None => action,
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 #[path = "app_status_projection.rs"]

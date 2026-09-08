@@ -59,6 +59,10 @@ Describe 'Feature: autofix card render + reject + AI correctness' -Tag 'Feature'
             Send-AgentKey -App $script:app -Key Escape | Out-Null
             return $false
         }
+        if (-not $dismissed) {
+            Write-ItLog -Level WARN -Message ("Recommendation card remained after Escape; rendered pane:`n" +
+                (Get-AgentPaneText -App $script:app -MaxLines 60))
+        }
         $dismissed | Should -BeTrue -Because 'Esc must eventually dismiss the rendered recommendation card'
     }
     It 'Autofix target pane is correct (active shell pane is the fix target)' {

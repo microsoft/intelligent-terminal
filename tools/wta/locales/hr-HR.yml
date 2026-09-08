@@ -51,6 +51,7 @@ chat.turn_canceled: "(otkazano)"
 chat.turn_executed: "→ izvršeno: %{title}"
 # Trajne oznake kategorije alata prikazane nakon oznake statusa i prije predmeta.
 chat.tool_kind.run: "Pokreni"
+chat.tool_kind.insert: "Umetni"
 chat.tool_kind.read: "Čitaj"
 chat.tool_kind.search: "Pretraži"
 chat.tool_kind.edit: "Uredi"
@@ -274,5 +275,6 @@ config_picker.title: "Konfiguracija sesije (↑ ↓ • Enter • Esc)"
 system.no_config_options: "Povezani agent nije najavio nikakve konfigurabilne opcije sesije."
 # {option} is an Agent-provided option name; {error} is the ACP error.
 system.config_update_failed: "Ažuriranje opcije %{option} nije uspjelo: %{error}"
+system.yolo_disable_pending: "pružatelj nije potvrdio potrebno neprivilegirano stanje sesije"  # Shown after the localized failure prefix while prompts remain blocked until the AI agent provider confirms that its privileged session mode is off. Provider means an AI agent provider, not a network provider.
 system.provider_command_blocked_by_policy: "%{command}: Yolo način onemogućen je pravilima vaše organizacije."  # {Locked="Yolo","%{command}"} Shown when AllowYoloMode blocks a provider-advertised privileged command.
 system.model_unknown: "Nepoznat model %{model} — upišite /model za prikaz dostupnog popisa."  # {Locked="%{model}","/model"}

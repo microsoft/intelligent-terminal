@@ -2906,8 +2906,8 @@
     <value>왼쪽</value>
     <comment>Value shown in the agent pane position dropdown (selects which side of the terminal the agent pane opens on). Translation should match the existing FreOverlay_PanePositionLeft string used in the first-run experience.</comment>
   </data>
-  <data name="AIAgents_YoloMode.Header" xml:space="preserve"><value>공급자의 Yolo 모드 사용</value><comment>{Locked=&quot;Yolo&quot;} Header for the global setting that asks each AI agent provider to enable its advertised ACP session Yolo capability.</comment></data>
-  <data name="AIAgents_YoloMode.HelpText" xml:space="preserve"><value>에이전트 공급자의 ACP 세션 모드를 사용하여 확인 절차를 줄이거나 우회합니다. 그 결과 적용되는 권한, 샌드박스, 파일 액세스 및 네트워크 액세스는 공급자가 정의합니다. 지원되는 모드가 없는 공급자는 계속 권한을 요청합니다.</value><comment>{Locked=&quot;ACP&quot;} Risk warning shown under the Yolo toggle. Here provider means the selected AI agent provider, not a network provider.</comment></data>
+  <data name="AIAgents_YoloMode.Header" xml:space="preserve"><value>자동 승인</value><comment>Header for the Settings toggle that enables automatic approval for the AI agent running in the agent pane.</comment></data>
+  <data name="AIAgents_YoloMode.HelpText" xml:space="preserve"><value>에이전트 창의 에이전트는 에이전트 CLI에서 제공하는 모든 권한으로 실행됩니다</value><comment>{Locked="CLI"} Description shown under the automatic approval toggle. Agent means an AI intelligent agent in the agent pane, not a proxy or human representative. Full permissions are provided by the agent CLI.</comment></data>
   <data name="Settings_PortableModeInfoLink.NavigateUri" xml:space="preserve">
     <value>https://go.microsoft.com/fwlink/?linkid=2229086</value>
     <comment>{Locked}</comment>

@@ -207,6 +207,24 @@ recover shell events emitted before the helper subscribed. Concurrent side
 questions are not supported: additional prompts are follow-up turns in the main
 conversation.
 
+### Session MCP approvals and action history
+
+WTA automatically selects **Allow once** only when the tool matches the exact MCP
+server currently bound to that ACP session by master. Master overwrites provider
+metadata with that identity on each forwarded permission request and tool update;
+correlated calls must match the session, call ID, and current server identity.
+Terminal actions still require their action-card confirmation, and
+`request_user_input` still presents its question. Foreign or missing identities
+(even with the same tool name or server-name prefix) and requests without an
+**Allow once** option keep the normal permission dialog. WTA does not grant
+persistent approval automatically.
+
+Pending and replayed command suggestions show only the command, without assuming
+Run or Insert. After the user chooses, history uses the localized
+`Run: <command>` or `Insert: <command>` label. Cancelling retains the command with
+a localized cancellation status on the same line, not on the conversation title.
+History has no suggestion counts, numbering, or recommendation checkmarks.
+
 ## Debug Panel
 
 Press **F12** to open a side panel showing all JSON-RPC messages between WTA and Windows Terminal in real time.

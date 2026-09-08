@@ -7,8 +7,11 @@
 
 #pragma once
 
+#include <algorithm>
 #include <string>
 #include <sstream>
+#include <string_view>
+#include <vector>
 
 #include <json/json.h>
 
@@ -24,6 +27,32 @@ namespace Microsoft::Terminal::Protocol::Parsing
         std::string errs;
         std::istringstream ss(str);
         return Json::parseFromStream(rb, ss, &out, &errs);
+    }
+
+    enum class CapabilitySupport
+    {
+        Supported,
+        Unsupported,
+        Invalid
+    };
+
+    inline CapabilitySupport ClassifyCapability(const Json::Value& capabilities, const std::string_view capability)
+    {
+        if (!capabilities.isArray())
+        {
+            return CapabilitySupport::Invalid;
+        }
+
+        bool found = false;
+        for (const auto& item : capabilities)
+        {
+            if (!item.isString())
+            {
+                return CapabilitySupport::Invalid;
+            }
+            found = found || item.asString() == capability;
+        }
+        return found ? CapabilitySupport::Supported : CapabilitySupport::Unsupported;
     }
 
     // ── SendEvent dispatch ──
@@ -224,5 +253,140 @@ namespace Microsoft::Terminal::Protocol::Parsing
             return PaneOutputSource::Screen;
         }
         return PaneOutputSource::Scrollback;
+    }
+
+    struct BoundedContextText
+    {
+        std::string content;
+        int32_t lineCount = 0;
+        bool truncated = false;
+    };
+
+    inline size_t Utf8PrefixBytes(const std::string_view text, const size_t maxCharacters)
+    {
+        size_t offset = 0;
+        size_t characters = 0;
+        while (offset < text.size() && characters < maxCharacters)
+        {
+            ++offset;
+            while (offset < text.size() && (static_cast<unsigned char>(text[offset]) & 0xC0) == 0x80)
+            {
+                ++offset;
+            }
+            ++characters;
+        }
+        return offset;
+    }
+
+    inline size_t Utf8TailOffset(const std::string_view text, const size_t maxCharacters)
+    {
+        size_t offset = text.size();
+        size_t characters = 0;
+        while (offset > 0 && characters < maxCharacters)
+        {
+            --offset;
+            while (offset > 0 && (static_cast<unsigned char>(text[offset]) & 0xC0) == 0x80)
+            {
+                --offset;
+            }
+            ++characters;
+        }
+        return offset;
+    }
+
+    inline int32_t CountContextLines(const std::string_view text)
+    {
+        return text.empty() ? 0 : 1 + static_cast<int32_t>(std::count(text.begin(), text.end(), '\n'));
+    }
+
+    inline BoundedContextText BuildBoundedCommand(const std::string_view text, const int32_t maxLines, const int32_t maxCharacters)
+    {
+        if (maxLines <= 0 || maxCharacters <= 0 || text.empty())
+        {
+            return {};
+        }
+
+        std::vector<std::string> lines;
+        std::istringstream stream{ std::string{ text } };
+        std::string line;
+        while (std::getline(stream, line))
+        {
+            if (!line.empty() && line.back() == '\r')
+            {
+                line.pop_back();
+            }
+            lines.emplace_back(std::move(line));
+        }
+        // The bounded reader may stop immediately after a newline. Preserve
+        // that lookahead character so truncation is not mistaken for EOF.
+        if (text.back() == '\n')
+        {
+            lines.emplace_back();
+        }
+
+        const auto lineLimit = (std::min)(lines.size(), static_cast<size_t>(maxLines));
+        std::string content;
+        for (size_t index = 0; index < lineLimit; ++index)
+        {
+            if (index > 0)
+            {
+                content.push_back('\n');
+            }
+            content.append(lines[index]);
+        }
+
+        const auto end = Utf8PrefixBytes(content, static_cast<size_t>(maxCharacters));
+        const auto truncated = lineLimit < lines.size() || end < content.size();
+        content.resize(end);
+        return {
+            content,
+            CountContextLines(content),
+            truncated,
+        };
+    }
+
+    inline BoundedContextText BuildBoundedBufferTail(const std::string_view text, const int32_t maxLines, const int32_t maxCharacters)
+    {
+        if (maxLines <= 0 || maxCharacters <= 0 || text.empty())
+        {
+            return {};
+        }
+
+        std::vector<std::string> lines;
+        std::istringstream stream{ std::string{ text } };
+        std::string line;
+        while (std::getline(stream, line))
+        {
+            if (!line.empty() && line.back() == '\r')
+            {
+                line.pop_back();
+            }
+            lines.emplace_back(std::move(line));
+        }
+
+        const auto lineLimit = static_cast<size_t>(maxLines);
+        const auto startLine = lines.size() > lineLimit ? lines.size() - lineLimit : 0;
+        std::string content;
+        for (auto index = startLine; index < lines.size(); ++index)
+        {
+            if (index != startLine)
+            {
+                content.push_back('\n');
+            }
+            content.append(lines[index]);
+        }
+
+        const auto characterStart = Utf8TailOffset(content, static_cast<size_t>(maxCharacters));
+        const auto truncated = startLine > 0 || characterStart > 0;
+        if (characterStart > 0)
+        {
+            content.erase(0, characterStart);
+        }
+
+        return {
+            content,
+            CountContextLines(content),
+            truncated,
+        };
     }
 }

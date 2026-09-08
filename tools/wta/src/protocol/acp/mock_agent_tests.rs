@@ -124,14 +124,22 @@ impl crate::shell::wt_channel::WtChannel for BlockingPromptContextChannel {
         method: &str,
         _params: serde_json::Value,
     ) -> anyhow::Result<serde_json::Value> {
-        if method == "get_active_pane" {
+        if method == "get_pane_context" {
             self.started.notify_one();
             self.release.notified().await;
             return Ok(serde_json::json!({
-                "session_id": "context-pane",
-                "cwd": "C:\\work",
-                "pid": std::process::id(),
-                "is_agent_pane": false,
+                "pane": {
+                    "session_id": "context-pane",
+                    "cwd": "C:\\work",
+                    "pid": std::process::id(),
+                    "is_agent_pane": false,
+                },
+                "content": "",
+                "output_source": "metadata_only",
+                "fallback_reason": "",
+                "line_count": 0,
+                "truncated": false,
+                "has_marks": false,
             }));
         }
         Err(anyhow::anyhow!(
@@ -1499,7 +1507,12 @@ async fn copilot_hot_disable_uses_standard_prompt_path_at_send_boundary() {
 
             let chunk = next_agent_chunk(&mut h.event_rx).await;
             assert!(chunk.contains("hot-disabled Copilot uses standard permissions"));
-            assert_eq!(h.seen_prompts.lock().unwrap().len(), 1);
+            let seen = h.seen_prompts.lock().unwrap();
+            assert_eq!(seen.len(), 1);
+            assert!(
+                seen[0].contains(r#""activeTarget":"context-pane""#),
+                "the mock context must survive validation and reach the agent prompt"
+            );
         })
         .await;
 }
@@ -5602,28 +5615,35 @@ async fn session_notification_hides_proposal_tool_call_before_permission() {
 }
 
 #[tokio::test]
-async fn session_notification_hides_proposal_mcp_tool_call() {
-    let (client, mut rx) = bare_client();
-    client
-        .session_notification(notif(
+async fn session_notification_hides_only_bound_session_mcp_tool_call() {
+    let own_server = "intellterm_0123456789abcdef";
+    for server_name in [None, Some(own_server), Some("intellterm_9876543210987654")] {
+        let (client, mut rx) = bare_client();
+        let mut notification = notif(
             "s1",
             acp::schema::v1::SessionUpdate::ToolCall(acp::schema::v1::ToolCall::new(
                 acp::schema::v1::ToolCallId::new("proposal-mcp-tool"),
                 "intellterm_0123456789abcdef/run_command_in_current_shell",
             )),
-        ))
-        .await
-        .unwrap();
+        );
+        crate::agent_tools::session_mcp::stamp_server_identity(&mut notification.meta, server_name);
+        client.session_notification(notification).await.unwrap();
 
-    assert!(matches!(
-        rx.try_recv(),
-        Ok(AppEvent::HideToolCall { session_id, id })
-            if session_id == "s1" && id == "proposal-mcp-tool"
-    ));
-    assert!(
-        rx.try_recv().is_err(),
-        "session MCP ToolCall must not reach the chat UI"
-    );
+        if server_name == Some(own_server) {
+            assert!(matches!(
+                rx.try_recv(),
+                Ok(AppEvent::HideToolCall { session_id, id })
+                    if session_id == "s1" && id == "proposal-mcp-tool"
+            ));
+        } else {
+            assert!(matches!(
+                rx.try_recv(),
+                Ok(AppEvent::ToolCall { session_id, id, .. })
+                    if session_id == "s1" && id == "proposal-mcp-tool"
+            ));
+        }
+        assert!(rx.try_recv().is_err());
+    }
 }
 
 /// When the agent's own `title` already embeds the location text (common
