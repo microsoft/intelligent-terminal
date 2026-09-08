@@ -5418,6 +5418,9 @@ impl App {
                     return true;
                 }
                 if matches!(candidate, crate::ui::CommandCandidate::Agent(_)) {
+                    if !self.ensure_prompt_connection() {
+                        return true;
+                    }
                     let tab = self.current_tab_mut();
                     tab.input = format!("/{name}");
                     tab.input_all_selected = false;
@@ -5431,7 +5434,9 @@ impl App {
                         spec,
                         rest: String::new(),
                     };
-                    self.current_tab_mut().clear_input();
+                    if parsed.kind != CommandKind::Fix {
+                        self.current_tab_mut().clear_input();
+                    }
                     self.handle_slash_command(parsed);
                     return true;
                 }
@@ -5488,8 +5493,8 @@ impl App {
         }
     }
 
-    /// Dispatch a parsed slash-command. The Enter handler is responsible
-    /// for clearing the input and cursor before calling this.
+    /// Dispatch a parsed slash-command. Prompt-producing commands consume the
+    /// draft only after admission; local commands are cleared by the Enter handler.
     fn handle_slash_command(&mut self, cmd: ParsedCommand) {
         let in_flight = self.current_tab().turn.is_in_flight();
         let cancelling = self.current_tab().turn.is_cancelling();

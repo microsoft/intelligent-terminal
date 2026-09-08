@@ -75,7 +75,7 @@ fn late_soft_stop_preserves_post_stop_input_until_cancellation_settles() {
 }
 
 #[test]
-fn uncancelled_soft_stop_discards_followups_without_disconnecting() {
+fn uncancelled_soft_stop_discards_queued_requests_without_disconnecting() {
     let _locale = crate::test_support::lock_locale();
     let (mut app, mut rx) = connected_app();
     enter(&mut app, "active");

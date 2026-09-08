@@ -152,15 +152,33 @@ impl PendingAttachments {
         self.images.clear();
     }
 
-    pub fn take_for_submission(&mut self, mut input: String) -> (String, Vec<PastedImage>) {
+    pub fn payload_bytes(&self) -> usize {
+        self.images
+            .iter()
+            .map(|pending| {
+                let image = &pending.image;
+                image.data_base64.len() + image.label.len() + image.mime_type.len()
+            })
+            .sum()
+    }
+
+    pub fn submission_text(&self, mut input: String) -> String {
         for pending in self.images.iter().rev() {
             input.replace_range(pending.token_range.clone(), "");
         }
-        let images = std::mem::take(&mut self.images)
+        input
+    }
+
+    pub fn take_images(&mut self) -> Vec<PastedImage> {
+        std::mem::take(&mut self.images)
             .into_iter()
             .map(|pending| pending.image)
-            .collect();
-        (input, images)
+            .collect()
+    }
+
+    #[cfg(test)]
+    pub fn take_for_submission(&mut self, input: String) -> (String, Vec<PastedImage>) {
+        (self.submission_text(input), self.take_images())
     }
 }
 

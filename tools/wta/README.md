@@ -155,6 +155,8 @@ submit another prompt while a reply is streaming without interrupting that reply
 User requests run in submission order, one ACP turn at a time; separate messages
 are not merged or injected into an active turn. Text and image attachments belong
 to the request that was submitted, not to the next draft.
+Disconnected or failed agents do not accept new requests: the draft and its
+attachments stay in the editor with a connection error.
 
 Pending requests automatically appear directly above the input box, independently
 of chat scrolling. The pinned list shows a pending-count header and numbered,

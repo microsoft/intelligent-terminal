@@ -70,17 +70,18 @@ Describe 'Feature: ACP agent-pane protocol experience' -Tag 'Feature' -Skip:(-no
         Assert-AgentPaneText -App $script:app -PaneSessionId $script:agentPane `
             -Pattern 'AFTER_TOOL_MARKER' -TimeoutSec 30
         # Capture reads the current TUI viewport, not its off-screen chat history.
-        # Walk overlapping viewports so short panes still prove the transcript order.
+        # Alt-wheel moves one row, preserving overlap even in a short chat viewport.
         $expected = @('TOOL_DETAIL_MARKER', 'TOOL_OUTPUT_MARKER', 'PLAN_MARKER', 'AFTER_TOOL_MARKER')
         $seen = [System.Collections.Generic.List[string]]::new()
-        Send-AgentMouseEvent -App $script:app -PaneSessionId $script:agentPane -Kind ScrollUp -Count 100 | Out-Null
-        for ($step = 0; $step -lt 24 -and $seen.Count -lt $expected.Count; $step++) {
+        $scanRows = 300
+        Send-AgentMouseEvent -App $script:app -PaneSessionId $script:agentPane -Kind ScrollUp -Alt -Count $scanRows | Out-Null
+        for ($step = 0; $step -le $scanRows -and $seen.Count -lt $expected.Count; $step++) {
             $rendered = Get-AgentPaneText -App $script:app -PaneSessionId $script:agentPane -MaxLines 100
             foreach ($match in [regex]::Matches($rendered, ($expected -join '|'))) {
                 if (-not $seen.Contains($match.Value)) { $seen.Add($match.Value) }
             }
-            if ($seen.Count -lt $expected.Count) {
-                Send-AgentMouseEvent -App $script:app -PaneSessionId $script:agentPane -Kind ScrollDown | Out-Null
+            if ($seen.Count -lt $expected.Count -and $step -lt $scanRows) {
+                Send-AgentMouseEvent -App $script:app -PaneSessionId $script:agentPane -Kind ScrollDown -Alt | Out-Null
             }
         }
         ($seen -join '|') | Should -Be ($expected -join '|') -Because 'all ACP transcript markers must be readable in their original order'

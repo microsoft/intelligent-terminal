@@ -554,7 +554,7 @@ mod tests {
         let channel = Arc::new(SnapshotWtChannel {
             sealed: false.into(),
             reads: 0.into(),
-            output: "failing-command\noriginal failure evidence",
+            output: concat!("failing-command\n", "original failure evidence"),
         });
         let mgr = ShellManager::new().with_wt_channel(channel.clone());
         let ctx = PaneContext {
@@ -599,7 +599,7 @@ mod tests {
             .await;
             assert!(built_prompt.contains("\"shell\":\"bash\""));
             assert!(built_prompt.contains(r#""cwd":"C:\\frozen""#));
-            assert!(built_prompt.contains("failing-command\noriginal failure evidence"));
+            assert!(built_prompt.contains(channel.output));
             assert_eq!(target.as_deref(), Some("failed-pane"));
             assert!(!built_prompt.contains("newly-focused-pane"));
         }

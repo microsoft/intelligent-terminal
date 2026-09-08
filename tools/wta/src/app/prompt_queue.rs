@@ -148,7 +148,7 @@ impl PromptQueue {
         self.echoes.remove(pane);
     }
 
-    fn can_fit(&self, item: &QueuedRequest) -> bool {
+    fn can_fit(&self, item: &QueuedRequest, pending_image_bytes: usize) -> bool {
         let retained = |entry: &&QueuedRequest| !item.replaces_automatic(entry);
         let count = self.entries.iter().filter(retained).count();
         let bytes: usize = self
@@ -157,7 +157,11 @@ impl PromptQueue {
             .filter(retained)
             .map(QueuedRequest::bytes)
             .sum();
-        count < MAX_REQUESTS && bytes.saturating_add(item.bytes()) <= MAX_PAYLOAD_BYTES
+        count < MAX_REQUESTS
+            && bytes
+                .saturating_add(item.bytes())
+                .saturating_add(pending_image_bytes)
+                <= MAX_PAYLOAD_BYTES
     }
 
     fn insert(&mut self, item: QueuedRequest) {
@@ -344,12 +348,30 @@ impl App {
         }
     }
 
+    pub(super) fn ensure_prompt_connection(&mut self) -> bool {
+        if matches!(
+            self.state,
+            ConnectionState::Connected | ConnectionState::Connecting(_)
+        ) {
+            true
+        } else {
+            let tab = self.current_tab_mut();
+            tab.messages
+                .push(ChatMessage::Error(t!("connection.lost").into_owned()));
+            tab.scroll_to_bottom();
+            false
+        }
+    }
+
     pub(super) fn enqueue_input(&mut self, manual_fix: Option<String>) {
+        if !self.ensure_prompt_connection() {
+            return;
+        }
         let tab_id = self.active_tab_key().to_owned();
         let tab = self.current_tab();
         let display = tab.input.clone();
-        let mut attachments = tab.attachments.clone();
-        let (text, images) = attachments.take_for_submission(display.clone());
+        let text = tab.attachments.submission_text(display.clone());
+        let pending_image_bytes = tab.attachments.payload_bytes();
         let kind = if manual_fix.is_some() {
             RequestKind::ManualFix
         } else if self.agent_command_for_input(&text).is_some() {
@@ -379,25 +401,29 @@ impl App {
             }
             RequestKind::ManualFix => PromptSubmission::new_autofix(text, Some(context.clone())),
             _ => PromptSubmission::new(text, Some(context.clone())),
-        }
-        .with_images(images);
+        };
         let display_text = if kind == RequestKind::ManualFix {
             format!("/fix {}", submission.text)
         } else {
             display
         };
-        let item = QueuedRequest {
+        let mut item = QueuedRequest {
             submission,
             display_text,
             kind,
             queued_at: std::time::Instant::now(),
             capturing: kind == RequestKind::ManualFix,
         };
-        if !self.current_tab().prompt_queue.can_fit(&item) {
+        if !self
+            .current_tab()
+            .prompt_queue
+            .can_fit(&item, pending_image_bytes)
+        {
             self.queue_notice(t!("queue.full").into_owned());
             return;
         }
         let tab = self.current_tab_mut();
+        item.submission = item.submission.with_images(tab.attachments.take_images());
         tab.record_input_history(&item.submission.text);
         let request_id = item.submission.id;
         let cancellation = item.submission.cancellation_token();
@@ -478,7 +504,7 @@ impl App {
             queued_at: std::time::Instant::now(),
             capturing: true,
         };
-        if !self.tab_mut(tab_id).prompt_queue.can_fit(&item) {
+        if !self.tab_mut(tab_id).prompt_queue.can_fit(&item, 0) {
             self.tab_mut(tab_id)
                 .messages
                 .push(ChatMessage::warning(t!("queue.full").into_owned()));
@@ -768,6 +794,132 @@ mod tests {
     }
 
     #[test]
+    fn user_input_connection_admission_preserves_or_moves_attachments() {
+        let _locale = crate::test_support::lock_locale();
+        for state in [
+            ConnectionState::Disconnected,
+            ConnectionState::Failed("startup failed".into()),
+            ConnectionState::Connecting("startup".into()),
+        ] {
+            for (text, kind) in [
+                ("explain ", RequestKind::Prompt),
+                ("/fix investigate ", RequestKind::ManualFix),
+                ("/review changes ", RequestKind::AgentCommand),
+            ] {
+                let (mut app, mut rx) = app();
+                app.state = state.clone();
+                app.session_commands.insert(
+                    "queue-session".into(),
+                    vec![crate::app_contracts::AcpSessionCommand {
+                        name: "review".into(),
+                        description: "Review changes".into(),
+                        input_hint: Some("focus".into()),
+                        completion_behavior:
+                            crate::app_contracts::CompletionBehavior::OptionalFreeText,
+                    }],
+                );
+                let tab = app.current_tab_mut();
+                tab.input = text.into();
+                tab.cursor_pos = tab.input.len();
+                let image = crate::clipboard_image::PastedImage {
+                    data_base64: "aW1hZ2U=".into(),
+                    mime_type: "image/png".into(),
+                    label: "draft.png".into(),
+                };
+                let payload = image.data_base64.as_ptr();
+                tab.attachments
+                    .insert_image(&mut tab.input, &mut tab.cursor_pos, image);
+                let draft = tab.input.clone();
+                let cursor = tab.cursor_pos;
+                let ranges = tab.attachments.token_ranges().collect::<Vec<_>>();
+                tab.refresh_command_popup();
+                app.handle_event(AppEvent::Key(KeyEvent::new(
+                    KeyCode::Enter,
+                    KeyModifiers::NONE,
+                )));
+                let tab = app.current_tab();
+                assert!(rx.try_recv().is_err());
+                assert!(tab.turn.is_idle());
+                if matches!(state, ConnectionState::Connecting(_)) {
+                    assert!(tab.input.is_empty());
+                    assert!(tab.attachments.is_empty());
+                    assert_eq!(tab.prompt_queue.entries.len(), 1);
+                    let entry = &tab.prompt_queue.entries[0];
+                    assert_eq!(entry.kind, kind);
+                    assert_eq!(entry.submission.images[0].data_base64.as_ptr(), payload);
+                    assert_eq!(entry.capturing, kind == RequestKind::ManualFix);
+                    if entry.capturing {
+                        let id = entry.submission.id;
+                        app.autofix_snapshot_ready(
+                            id,
+                            Ok(crate::protocol::acp::client::AutofixSnapshot::for_test(
+                                "source",
+                            )),
+                        );
+                    }
+                    app.state = ConnectionState::Connected;
+                    app.dispatch_prompt_queues();
+                    assert_eq!(
+                        rx.try_recv().unwrap().images[0].data_base64.as_ptr(),
+                        payload
+                    );
+                } else {
+                    assert_eq!(tab.input, draft);
+                    assert_eq!(tab.cursor_pos, cursor);
+                    assert_eq!(tab.attachments.token_ranges().collect::<Vec<_>>(), ranges);
+                    assert_eq!(
+                        tab.attachments
+                            .images()
+                            .next()
+                            .unwrap()
+                            .data_base64
+                            .as_ptr(),
+                        payload
+                    );
+                    assert!(tab.prompt_queue.entries.is_empty());
+                    assert!(matches!(tab.messages.last(), Some(ChatMessage::Error(text))
+                        if text == t!("connection.lost").as_ref()));
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn unavailable_agent_command_popup_preserves_draft_and_local_commands() {
+        let _locale = crate::test_support::lock_locale();
+        for state in [
+            ConnectionState::Disconnected,
+            ConnectionState::Failed("startup failed".into()),
+        ] {
+            for input in ["/sta", "/status"] {
+                let (mut app, mut rx) = app();
+                app.state = state.clone();
+                app.session_commands.insert(
+                    "queue-session".into(),
+                    vec![crate::app_contracts::AcpSessionCommand {
+                        name: "status".into(),
+                        description: "Session status".into(),
+                        input_hint: None,
+                        completion_behavior:
+                            crate::app_contracts::CompletionBehavior::ExecuteImmediately,
+                    }],
+                );
+                app.current_tab_mut().replace_input(input.into());
+                app.current_tab_mut().refresh_command_popup();
+                assert!(app.command_popup_visible());
+                enter(&mut app, input);
+                assert_eq!(app.current_tab().input, input);
+                assert!(app.current_tab().prompt_queue.entries.is_empty());
+                assert!(rx.try_recv().is_err());
+                assert!(matches!(app.current_tab().messages.last(),
+                    Some(ChatMessage::Error(text)) if text == t!("connection.lost").as_ref()));
+                enter(&mut app, "/help");
+                assert!(app.help_overlay_visible);
+            }
+        }
+    }
+
+    #[test]
     fn fifo_keeps_active_stream_contiguous_and_drains_only_at_terminal_boundary() {
         let _locale = crate::test_support::lock_locale();
         let (mut app, mut rx) = app();
@@ -890,7 +1042,7 @@ mod tests {
         tab.input = "draft ".into();
         tab.cursor_pos = tab.input.len();
         let image = crate::clipboard_image::PastedImage {
-            data_base64: "YWJj".into(),
+            data_base64: "aW1hZ2U=".into(),
             mime_type: "image/png".into(),
             label: "draft.png".into(),
         };
@@ -1030,7 +1182,7 @@ mod tests {
         app.source_session_id = Some("original-source".into());
         app.source_cwd = Some(r"C:\original".into());
         let image = crate::clipboard_image::PastedImage {
-            data_base64: "YWJj".into(),
+            data_base64: "aW1hZ2U=".into(),
             mime_type: "image/png".into(),
             label: "sample.png".into(),
         };
@@ -1114,7 +1266,7 @@ mod tests {
         existing.display_text.push_str(&"x".repeat(padding));
         app.source_session_id = Some("source".into());
         let image = crate::clipboard_image::PastedImage {
-            data_base64: "YWJj".into(),
+            data_base64: "aW1hZ2U=".into(),
             mime_type: "image/png".into(),
             label: "sample.png".into(),
         };
@@ -1331,13 +1483,94 @@ mod tests {
             mime_type: "image/png".into(),
             label: "large.png".into(),
         };
+        let payload = image.data_base64.as_ptr();
         tab.attachments
             .insert_image(&mut tab.input, &mut tab.cursor_pos, image);
         let draft = tab.input.clone();
+        let cursor = tab.cursor_pos;
+        let ranges = tab.attachments.token_ranges().collect::<Vec<_>>();
         app.enqueue_input(None);
         assert_eq!(app.current_tab().input, draft);
-        assert!(!app.current_tab().attachments.is_empty());
+        assert_eq!(app.current_tab().cursor_pos, cursor);
+        assert_eq!(
+            app.current_tab()
+                .attachments
+                .token_ranges()
+                .collect::<Vec<_>>(),
+            ranges
+        );
+        assert_eq!(
+            app.current_tab()
+                .attachments
+                .images()
+                .next()
+                .unwrap()
+                .data_base64
+                .as_ptr(),
+            payload
+        );
         assert!(app.current_tab().prompt_queue.entries.is_empty());
+    }
+
+    #[test]
+    fn borrowed_attachment_preflight_enforces_exact_byte_limit() {
+        let _locale = crate::test_support::lock_locale();
+        for overflow in [0, 1] {
+            let (mut app, _) = app();
+            hold(&mut app);
+            let set_draft = |app: &mut App, size: usize| {
+                let tab = app.current_tab_mut();
+                tab.clear_input();
+                tab.input = "inspect ".into();
+                tab.cursor_pos = tab.input.len();
+                let image = crate::clipboard_image::PastedImage {
+                    data_base64: "x".repeat(size),
+                    mime_type: "image/png".into(),
+                    label: "sample.png".into(),
+                };
+                tab.attachments
+                    .insert_image(&mut tab.input, &mut tab.cursor_pos, image);
+            };
+            set_draft(&mut app, 1);
+            app.enqueue_input(None);
+            let overhead = app.current_tab().prompt_queue.entries[0].bytes() - 1;
+            app.current_tab_mut().cancel_pending_prompts();
+            set_draft(&mut app, MAX_PAYLOAD_BYTES - overhead + overflow);
+            let draft = app.current_tab().input.clone();
+            let payload = app
+                .current_tab()
+                .attachments
+                .images()
+                .next()
+                .unwrap()
+                .data_base64
+                .as_ptr();
+            app.enqueue_input(None);
+            let tab = app.current_tab();
+            if overflow == 0 {
+                assert_eq!(tab.prompt_queue.entries[0].bytes(), MAX_PAYLOAD_BYTES);
+                assert_eq!(
+                    tab.prompt_queue.entries[0].submission.images[0]
+                        .data_base64
+                        .as_ptr(),
+                    payload
+                );
+                assert!(tab.input.is_empty());
+                assert!(tab.attachments.is_empty());
+            } else {
+                assert!(tab.prompt_queue.entries.is_empty());
+                assert_eq!(tab.input, draft);
+                assert_eq!(
+                    tab.attachments
+                        .images()
+                        .next()
+                        .unwrap()
+                        .data_base64
+                        .as_ptr(),
+                    payload
+                );
+            }
+        }
     }
 
     #[test]
