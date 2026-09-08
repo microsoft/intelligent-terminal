@@ -8,7 +8,12 @@ BeforeDiscovery { $script:Ready = [bool]((Get-AppxPackage | Where-Object { $_.Na
 Describe 'Feature: session list + view switching + focus/restore' -Tag 'Feature' -Skip:(-not $script:Ready) {
     BeforeAll {
         Import-Module (Join-Path $PSScriptRoot '..\ItE2E\ItE2E.psd1') -Force
-        $script:app = Start-Terminal -Package (Get-ItTestPackage) -PassFre $true -Settings @{ acpAgent = 'copilot' }
+        $script:app = Start-Terminal -Package (Get-ItTestPackage) -PassFre $true -Settings @{
+            acpAgent = 'copilot'
+            # This suite tests session management, not permission enforcement.
+            # Current Copilot CLI builds cannot submit ACP prompts with Yolo disabled.
+            'agentPane.yoloMode' = $true
+        }
         Open-AgentPane -App $script:app | Out-Null
         Wait-AgentReady -App $script:app -TimeoutSec 60 | Out-Null
         # Seed a live session with a known marker so a row exists.
@@ -37,7 +42,10 @@ Describe 'Feature: session list + view switching + focus/restore' -Tag 'Feature'
         }
         It 'Session view shows rows with navigation hints' {
             Assert-AgentPaneText -App $script:app -Pattern 'to launch session|to navigate|Enter to launch' -TimeoutSec 8
-            @(Get-SessionRows -App $script:app).Count | Should -BeGreaterThan 0
+            $rowsRendered = Test-Until -TimeoutSec 8 -IntervalSec 0.5 -Condition {
+                @(Get-SessionRows -App $script:app).Count -gt 0
+            }
+            $rowsRendered | Should -BeTrue -Because 'the rendered session view must expose at least one parsed row'
         }
         It 'Session view refresh works (reopen renders the list again)' {
             Close-SessionList -App $script:app | Out-Null

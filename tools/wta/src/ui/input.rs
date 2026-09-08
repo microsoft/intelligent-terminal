@@ -40,9 +40,14 @@ struct WrappedInput {
 
 pub fn render(frame: &mut Frame, app: &App, area: Rect) {
     let tab = app.current_tab();
+    let border_style = if app.pane_focused {
+        theme::INPUT_BORDER_FOCUSED
+    } else {
+        theme::INPUT_BORDER
+    };
     let block = Block::default()
         .borders(Borders::ALL)
-        .border_style(theme::INPUT_BORDER)
+        .border_style(border_style)
         .style(Style::new().bg(theme::INPUT_BG))
         .padding(Padding::new(INPUT_LEFT_PAD, 0, 0, 0));
     let text_width = area
@@ -120,7 +125,20 @@ pub fn render(frame: &mut Frame, app: &App, area: Rect) {
                 // cursor sits on. This replaces the OS block cursor so there
                 // is nothing for WT to blink or tear, and lets `draw_frame`
                 // keep the OS cursor hidden in every state.
-                if input_active && i == viewport.cursor_row {
+                if input_active && tab.input_all_selected {
+                    let mut spans = vec![prefix];
+                    push_styled_input(
+                        &mut spans,
+                        line,
+                        viewport.visible_line_starts[i],
+                        &attachment_ranges,
+                        prepared_command_range.as_ref(),
+                    );
+                    for span in spans.iter_mut().skip(1) {
+                        span.style = span.style.add_modifier(Modifier::REVERSED);
+                    }
+                    Line::from(spans)
+                } else if input_active && i == viewport.cursor_row {
                     let mut spans = vec![prefix];
                     push_caret_spans(
                         &mut spans,

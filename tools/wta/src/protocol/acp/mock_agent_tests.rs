@@ -13,10 +13,13 @@
 //! harness and assert on real `App` state (see the spec, "option 2").
 
 use super::{
-    dispatch_cancel, dispatch_drop_session, dispatch_load_session, dispatch_master_ext_request,
-    dispatch_master_ext_request_with_yolo_timeout, dispatch_new_session, dispatch_prompt,
-    dispatch_rename_session, publish_current_native_config_options, take_retired_session_result,
-    AutofixTextKind, CancelRequest, DropSessionRequest, LoadSessionForTab, MasterExtRequest,
+    dispatch_drop_session, dispatch_drop_session_with_aliases, dispatch_load_session,
+    dispatch_load_session_with_aliases, dispatch_master_ext_request,
+    dispatch_master_ext_request_with_yolo_timeout, dispatch_new_session,
+    dispatch_new_session_with_aliases, dispatch_prompt, dispatch_prompt_with_aliases,
+    dispatch_rename_session, dispatch_rename_session_with_aliases, finalize_client_transport,
+    publish_current_native_config_options, take_retired_session_result, AutofixTextKind,
+    ClientTransportGuard, DropSessionRequest, LoadSessionForTab, MasterExtRequest,
     NewSessionForTab, PromptSubmission, RenameSessionRequest,
 };
 use super::{ClientState, PromptUsageIdentity, ProviderProbeCapture, WtaClient};
@@ -27,10 +30,13 @@ use crate::protocol::acp::turn_metrics::PromptTimingState;
 use crate::shell::ShellManager;
 use agent_client_protocol as acp;
 use std::collections::{HashMap, HashSet};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
-use tokio::sync::{mpsc, oneshot, OnceCell};
-use tokio_util::compat::{TokioAsyncReadCompatExt, TokioAsyncWriteCompatExt};
+use tokio::sync::{mpsc, OnceCell};
+use tokio_util::{
+    compat::{TokioAsyncReadCompatExt, TokioAsyncWriteCompatExt},
+    sync::CancellationToken,
+};
 
 /// What the mock does when it receives a `prompt`.
 #[derive(Clone, Copy)]
@@ -49,6 +55,8 @@ enum MockBehavior {
     /// Stream the reply in two `AgentMessageChunk`s (`MOCK_` + `OK`), then end
     /// the turn — exercises streaming coalescing.
     StreamTwoChunks,
+    /// Keep the prompt request in flight briefly so cancellation can race it.
+    DelayedReply,
 }
 
 /// Deterministic ACP agent. Implements only what the scenarios need; the rest
@@ -64,6 +72,8 @@ struct MockAgent {
     behavior: MockBehavior,
     /// Side-channel: every prompt's user text.
     seen_prompts: Arc<Mutex<Vec<String>>>,
+    /// Side-channel: number of `session/cancel` notifications received.
+    seen_cancels: Arc<AtomicUsize>,
     /// Side-channel: every image content block (mime, base64 data) that reached
     /// the agent on the wire — used by the Alt+V image-paste integration test.
     seen_images: Arc<Mutex<Vec<(String, String)>>>,
@@ -80,6 +90,9 @@ struct MockAgent {
     /// When set, `new_session` returns an error instead of a session id —
     /// simulates the agent/transport dropping during session establishment.
     fail_new_session: Arc<AtomicBool>,
+    block_new_session: Arc<AtomicBool>,
+    new_session_started: Arc<tokio::sync::Notify>,
+    new_session_release: Arc<tokio::sync::Notify>,
     /// When set, `load_session` returns an error instead of a response —
     /// simulates the agent not recognizing the session id / `session/load`
     /// being unsupported.
@@ -87,6 +100,9 @@ struct MockAgent {
     /// When set, `load_session` sleeps long enough that a short injected
     /// dispatch timeout elapses first — exercises the timeout path.
     slow_load: Arc<AtomicBool>,
+    block_load_session: Arc<AtomicBool>,
+    load_session_started: Arc<tokio::sync::Notify>,
+    load_session_release: Arc<tokio::sync::Notify>,
     new_session_advertises_native_yolo: Arc<AtomicBool>,
     new_session_starts_in_native_yolo: Arc<AtomicBool>,
     fail_native_updates: Arc<AtomicBool>,
@@ -108,14 +124,22 @@ impl crate::shell::wt_channel::WtChannel for BlockingPromptContextChannel {
         method: &str,
         _params: serde_json::Value,
     ) -> anyhow::Result<serde_json::Value> {
-        if method == "get_active_pane" {
+        if method == "get_pane_context" {
             self.started.notify_one();
             self.release.notified().await;
             return Ok(serde_json::json!({
-                "session_id": "context-pane",
-                "cwd": "C:\\work",
-                "pid": std::process::id(),
-                "is_agent_pane": false,
+                "pane": {
+                    "session_id": "context-pane",
+                    "cwd": "C:\\work",
+                    "pid": std::process::id(),
+                    "is_agent_pane": false,
+                },
+                "content": "",
+                "output_source": "metadata_only",
+                "fallback_reason": "",
+                "line_count": 0,
+                "truncated": false,
+                "has_marks": false,
             }));
         }
         Err(anyhow::anyhow!(
@@ -155,6 +179,10 @@ impl MockAgent {
         &self,
         _args: acp::schema::v1::NewSessionRequest,
     ) -> acp::Result<acp::schema::v1::NewSessionResponse> {
+        if self.block_new_session.load(Ordering::SeqCst) {
+            self.new_session_started.notify_one();
+            self.new_session_release.notified().await;
+        }
         if self.fail_new_session.load(Ordering::SeqCst) {
             return Err(acp::Error::internal_error().data("mock new_session failure".to_string()));
         }
@@ -431,6 +459,9 @@ impl MockAgent {
                         }
                     });
                 }
+                MockBehavior::DelayedReply => {
+                    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+                }
             }
         }
 
@@ -440,6 +471,7 @@ impl MockAgent {
     }
 
     async fn cancel(&self, _args: acp::schema::v1::CancelNotification) -> acp::Result<()> {
+        self.seen_cancels.fetch_add(1, Ordering::SeqCst);
         Ok(())
     }
 
@@ -447,6 +479,10 @@ impl MockAgent {
         &self,
         _args: acp::schema::v1::LoadSessionRequest,
     ) -> acp::Result<acp::schema::v1::LoadSessionResponse> {
+        if self.block_load_session.load(Ordering::SeqCst) {
+            self.load_session_started.notify_one();
+            self.load_session_release.notified().await;
+        }
         if self.slow_load.load(Ordering::SeqCst) {
             // Outlast any short injected dispatch timeout so the
             // dispatcher takes its `Err(_)` (timeout) branch, but stay
@@ -499,14 +535,21 @@ fn connect_with(
         conn: conn_cell.clone(),
         behavior,
         seen_prompts: seen_prompts.clone(),
+        seen_cancels: Arc::new(AtomicUsize::new(0)),
         seen_images: Arc::new(Mutex::new(Vec::new())),
         permission_outcome: permission_outcome.clone(),
         closed_sessions: Arc::new(Mutex::new(Vec::new())),
         seen_config_updates: Arc::new(Mutex::new(Vec::new())),
         close_tab_requests: Arc::new(Mutex::new(Vec::new())),
         fail_new_session: Arc::new(AtomicBool::new(false)),
+        block_new_session: Arc::new(AtomicBool::new(false)),
+        new_session_started: Arc::new(tokio::sync::Notify::new()),
+        new_session_release: Arc::new(tokio::sync::Notify::new()),
         fail_load_session: Arc::new(AtomicBool::new(false)),
         slow_load: Arc::new(AtomicBool::new(false)),
+        block_load_session: Arc::new(AtomicBool::new(false)),
+        load_session_started: Arc::new(tokio::sync::Notify::new()),
+        load_session_release: Arc::new(tokio::sync::Notify::new()),
         new_session_advertises_native_yolo: Arc::new(AtomicBool::new(false)),
         new_session_starts_in_native_yolo: Arc::new(AtomicBool::new(false)),
         fail_native_updates: Arc::new(AtomicBool::new(false)),
@@ -857,22 +900,28 @@ pub(crate) struct DispatchHarness {
     pub proposal_channels:
         Arc<crate::agent_tools::action_proposal::channel::ProposalChannelManager>,
     pub seen_prompts: Arc<Mutex<Vec<String>>>,
+    pub seen_cancels: Arc<AtomicUsize>,
     pub permission_outcome: Arc<Mutex<Option<String>>>,
     /// Agent-side record of every image content block (mime, base64) assembled
     /// onto the wire — the Alt+V image-paste assertion target.
     pub seen_images: Arc<Mutex<Vec<(String, String)>>>,
-    pub closed_sessions: Arc<Mutex<Vec<String>>>,
     pub seen_config_updates: Arc<Mutex<Vec<(String, String)>>>,
     pub close_tab_requests: Arc<Mutex<Vec<String>>>,
     /// Flip to `true` before dispatching to make the mock's `new_session`
     /// fail, exercising the dispatcher's session-establishment error path.
     pub fail_new_session: Arc<AtomicBool>,
+    pub block_new_session: Arc<AtomicBool>,
+    pub new_session_started: Arc<tokio::sync::Notify>,
+    pub new_session_release: Arc<tokio::sync::Notify>,
     /// Flip to `true` before dispatching to make the mock's `load_session`
     /// return an error, exercising the resume-failure path.
     pub fail_load_session: Arc<AtomicBool>,
     /// Flip to `true` before dispatching to make the mock's `load_session`
     /// sleep past a short injected timeout, exercising the resume-timeout path.
     pub slow_load: Arc<AtomicBool>,
+    pub block_load_session: Arc<AtomicBool>,
+    pub load_session_started: Arc<tokio::sync::Notify>,
+    pub load_session_release: Arc<tokio::sync::Notify>,
     pub new_session_advertises_native_yolo: Arc<AtomicBool>,
     pub new_session_starts_in_native_yolo: Arc<AtomicBool>,
     pub fail_native_updates: Arc<AtomicBool>,
@@ -907,14 +956,21 @@ fn connect_for_dispatch(behavior: MockBehavior) -> DispatchHarness {
     let wta = WtaClient { state };
 
     let seen_prompts = Arc::new(Mutex::new(Vec::new()));
+    let seen_cancels = Arc::new(AtomicUsize::new(0));
     let seen_images = Arc::new(Mutex::new(Vec::new()));
     let permission_outcome = Arc::new(Mutex::new(None));
     let closed_sessions = Arc::new(Mutex::new(Vec::new()));
     let seen_config_updates = Arc::new(Mutex::new(Vec::new()));
     let close_tab_requests = Arc::new(Mutex::new(Vec::new()));
     let fail_new_session = Arc::new(AtomicBool::new(false));
+    let block_new_session = Arc::new(AtomicBool::new(false));
+    let new_session_started = Arc::new(tokio::sync::Notify::new());
+    let new_session_release = Arc::new(tokio::sync::Notify::new());
     let fail_load_session = Arc::new(AtomicBool::new(false));
     let slow_load = Arc::new(AtomicBool::new(false));
+    let block_load_session = Arc::new(AtomicBool::new(false));
+    let load_session_started = Arc::new(tokio::sync::Notify::new());
+    let load_session_release = Arc::new(tokio::sync::Notify::new());
     let new_session_advertises_native_yolo = Arc::new(AtomicBool::new(false));
     let new_session_starts_in_native_yolo = Arc::new(AtomicBool::new(false));
     let fail_native_updates = Arc::new(AtomicBool::new(false));
@@ -927,14 +983,21 @@ fn connect_for_dispatch(behavior: MockBehavior) -> DispatchHarness {
         conn: conn_cell.clone(),
         behavior,
         seen_prompts: seen_prompts.clone(),
+        seen_cancels: seen_cancels.clone(),
         seen_images: seen_images.clone(),
         permission_outcome: permission_outcome.clone(),
         closed_sessions: closed_sessions.clone(),
         seen_config_updates: seen_config_updates.clone(),
         close_tab_requests: close_tab_requests.clone(),
         fail_new_session: fail_new_session.clone(),
+        block_new_session: block_new_session.clone(),
+        new_session_started: new_session_started.clone(),
+        new_session_release: new_session_release.clone(),
         fail_load_session: fail_load_session.clone(),
         slow_load: slow_load.clone(),
+        block_load_session: block_load_session.clone(),
+        load_session_started: load_session_started.clone(),
+        load_session_release: load_session_release.clone(),
         new_session_advertises_native_yolo: new_session_advertises_native_yolo.clone(),
         new_session_starts_in_native_yolo: new_session_starts_in_native_yolo.clone(),
         fail_native_updates: fail_native_updates.clone(),
@@ -955,14 +1018,20 @@ fn connect_for_dispatch(behavior: MockBehavior) -> DispatchHarness {
         prompt_timing,
         proposal_channels,
         seen_prompts,
+        seen_cancels,
         permission_outcome,
         seen_images,
-        closed_sessions,
         seen_config_updates,
         close_tab_requests,
         fail_new_session,
+        block_new_session,
+        new_session_started,
+        new_session_release,
         fail_load_session,
         slow_load,
+        block_load_session,
+        load_session_started,
+        load_session_release,
         new_session_advertises_native_yolo,
         new_session_starts_in_native_yolo,
         fail_native_updates,
@@ -973,18 +1042,15 @@ fn connect_for_dispatch(behavior: MockBehavior) -> DispatchHarness {
     }
 }
 
-/// Fresh, empty per-tab dispatcher state (session map, single-flight set,
-/// cancel registry, template memo) for one `dispatch_prompt` invocation.
+/// Fresh, empty per-tab dispatcher state for one `dispatch_prompt` invocation.
 #[allow(clippy::type_complexity)]
 fn fresh_dispatch_state() -> (
     Arc<tokio::sync::Mutex<HashMap<String, acp::schema::v1::SessionId>>>,
-    Arc<std::sync::Mutex<HashSet<String>>>,
-    Arc<std::sync::Mutex<HashMap<String, oneshot::Sender<()>>>>,
+    Arc<std::sync::Mutex<HashMap<String, u64>>>,
     TemplateMemo,
 ) {
     (
         Arc::new(tokio::sync::Mutex::new(HashMap::new())),
-        Arc::new(std::sync::Mutex::new(HashSet::new())),
         Arc::new(std::sync::Mutex::new(HashMap::new())),
         TemplateMemo::default(),
     )
@@ -993,6 +1059,7 @@ fn fresh_dispatch_state() -> (
 fn test_prompt(id: u64, text: &str, is_autofix: bool) -> PromptSubmission {
     PromptSubmission {
         id,
+        cancellation: CancellationToken::new(),
         text: text.to_string(),
         pane_context: None,
         submitted_at_unix_s: 0.0,
@@ -1066,9 +1133,9 @@ async fn dispatch_prompt_busy_tab_emits_agent_busy_and_drops() {
     local
         .run_until(async {
             let h = connect_for_dispatch(MockBehavior::Reply);
-            let (tab_to_session, in_flight, cancel_signals, memo) = fresh_dispatch_state();
+            let (tab_to_session, in_flight, memo) = fresh_dispatch_state();
             // A turn is already running for the default tab ("0").
-            in_flight.lock().unwrap().insert("0".to_string());
+            in_flight.lock().unwrap().insert("0".to_string(), 0);
             let mut event_rx = h.event_rx;
 
             dispatch_prompt(
@@ -1077,7 +1144,6 @@ async fn dispatch_prompt_busy_tab_emits_agent_busy_and_drops() {
                 &tab_to_session,
                 &memo,
                 &in_flight,
-                &cancel_signals,
                 &h.event_tx,
                 &h.shell_mgr,
                 &h.prompt_timing,
@@ -1106,15 +1172,15 @@ async fn dispatch_prompt_busy_tab_emits_agent_busy_and_drops() {
 }
 
 #[tokio::test]
-async fn copilot_permission_regression_blocks_prompt_when_yolo_is_off() {
+async fn copilot_yolo_off_uses_standard_prompt_path() {
     let local = tokio::task::LocalSet::new();
     local
         .run_until(async {
             let mut h = connect_for_dispatch(MockBehavior::Reply);
-            h.client.state.native_yolo.set_resolved_agent(
-                Some(crate::agent_registry::COPILOT_AGENT_ID),
-                Some("1.0.82"),
-            );
+            h.client
+                .state
+                .native_yolo
+                .set_resolved_agent_id(Some(crate::agent_registry::COPILOT_AGENT_ID));
             h.conn
                 .initialize(acp::schema::v1::InitializeRequest::new(
                     acp::schema::ProtocolVersion::LATEST,
@@ -1123,80 +1189,18 @@ async fn copilot_permission_regression_blocks_prompt_when_yolo_is_off() {
                 .expect("initialize failed");
             let session_id =
                 record_copilot_yolo_state(&h, "affected-copilot-disabled-session", "off");
-            let (tab_to_session, in_flight, cancel_signals, memo) = fresh_dispatch_state();
+            let (tab_to_session, in_flight, memo) = fresh_dispatch_state();
             tab_to_session
                 .lock()
                 .await
                 .insert("0".to_string(), session_id);
 
             dispatch_prompt(
-                test_prompt(1, "must not reach unsafe Copilot ACP", false),
+                test_prompt(1, "fixed Copilot uses the standard prompt path", false),
                 &h.conn,
                 &tab_to_session,
                 &memo,
                 &in_flight,
-                &cancel_signals,
-                &h.event_tx,
-                &h.shell_mgr,
-                &h.prompt_timing,
-                &h.client,
-                &PromptUsageIdentity::default(),
-                false,
-                false,
-                true,
-                &h.proposal_channels,
-            );
-
-            let failure = tokio::time::timeout(std::time::Duration::from_secs(2), async {
-                loop {
-                    match h.event_rx.recv().await {
-                        Some(AppEvent::AgentError { message, .. }) => break message,
-                        Some(_) => continue,
-                        None => panic!("event channel closed before the compatibility error"),
-                    }
-                }
-            })
-            .await
-            .expect("affected Copilot must fail closed before prompt dispatch");
-            assert!(failure.contains("1.0.82"));
-            assert!(failure.contains("permission"));
-            assert!(
-                h.seen_prompts.lock().unwrap().is_empty(),
-                "the prompt must not cross the ACP send boundary"
-            );
-            assert!(
-                in_flight.lock().unwrap().is_empty(),
-                "the rejected prompt must release the single-flight gate"
-            );
-        })
-        .await;
-}
-
-#[tokio::test]
-async fn copilot_permission_regression_preserves_missing_capability_interactive_path() {
-    let local = tokio::task::LocalSet::new();
-    local
-        .run_until(async {
-            let mut h = connect_for_dispatch(MockBehavior::Reply);
-            h.client.state.native_yolo.set_resolved_agent(
-                Some(crate::agent_registry::COPILOT_AGENT_ID),
-                Some("1.0.82"),
-            );
-            h.conn
-                .initialize(acp::schema::v1::InitializeRequest::new(
-                    acp::schema::ProtocolVersion::LATEST,
-                ))
-                .await
-                .expect("initialize failed");
-            let (tab_to_session, in_flight, cancel_signals, memo) = fresh_dispatch_state();
-
-            dispatch_prompt(
-                test_prompt(1, "unsupported capability remains interactive", false),
-                &h.conn,
-                &tab_to_session,
-                &memo,
-                &in_flight,
-                &cancel_signals,
                 &h.event_tx,
                 &h.shell_mgr,
                 &h.prompt_timing,
@@ -1209,22 +1213,22 @@ async fn copilot_permission_regression_preserves_missing_capability_interactive_
             );
 
             let chunk = next_agent_chunk(&mut h.event_rx).await;
-            assert!(chunk.contains("unsupported capability remains interactive"));
+            assert!(chunk.contains("fixed Copilot uses the standard prompt path"));
             assert_eq!(h.seen_prompts.lock().unwrap().len(), 1);
         })
         .await;
 }
 
 #[tokio::test]
-async fn copilot_permission_regression_blocks_acknowledged_off_with_global_on() {
+async fn manual_native_disable_with_global_on_uses_standard_prompt_path() {
     let local = tokio::task::LocalSet::new();
     local
         .run_until(async {
             let mut h = connect_for_dispatch(MockBehavior::Reply);
-            h.client.state.native_yolo.set_resolved_agent(
-                Some(crate::agent_registry::COPILOT_AGENT_ID),
-                Some("1.0.82"),
-            );
+            h.client
+                .state
+                .native_yolo
+                .set_resolved_agent_id(Some(crate::agent_registry::COPILOT_AGENT_ID));
             h.client
                 .state
                 .yolo_state
@@ -1238,7 +1242,7 @@ async fn copilot_permission_regression_blocks_acknowledged_off_with_global_on() 
                 .await
                 .expect("initialize failed");
             let session_id = record_copilot_yolo_state(&h, "manual-config-disabled-session", "on");
-            let (tab_to_session, in_flight, cancel_signals, memo) = fresh_dispatch_state();
+            let (tab_to_session, in_flight, memo) = fresh_dispatch_state();
             tab_to_session
                 .lock()
                 .await
@@ -1277,12 +1281,11 @@ async fn copilot_permission_regression_blocks_acknowledged_off_with_global_on() 
             .expect("manual Copilot off must acknowledge before prompt dispatch");
 
             dispatch_prompt(
-                test_prompt(1, "manual off must not reach affected Copilot", false),
+                test_prompt(1, "manual Copilot off uses standard permissions", false),
                 &h.conn,
                 &tab_to_session,
                 &memo,
                 &in_flight,
-                &cancel_signals,
                 &h.event_tx,
                 &h.shell_mgr,
                 &h.prompt_timing,
@@ -1294,20 +1297,9 @@ async fn copilot_permission_regression_blocks_acknowledged_off_with_global_on() 
                 &h.proposal_channels,
             );
 
-            let failure = tokio::time::timeout(std::time::Duration::from_secs(2), async {
-                loop {
-                    match h.event_rx.recv().await {
-                        Some(AppEvent::AgentError { message, .. }) => break message,
-                        Some(_) => continue,
-                        None => panic!("event channel closed before the compatibility error"),
-                    }
-                }
-            })
-            .await
-            .expect("acknowledged Copilot off must fail closed even when global Yolo is on");
-            assert!(failure.contains("permission"));
-            assert!(h.seen_prompts.lock().unwrap().is_empty());
-            assert!(in_flight.lock().unwrap().is_empty());
+            let chunk = next_agent_chunk(&mut h.event_rx).await;
+            assert!(chunk.contains("manual Copilot off uses standard permissions"));
+            assert_eq!(h.seen_prompts.lock().unwrap().len(), 1);
         })
         .await;
 }
@@ -1318,10 +1310,10 @@ async fn manual_native_enable_with_global_off_allows_prompt_after_ack() {
     local
         .run_until(async {
             let mut h = connect_for_dispatch(MockBehavior::Reply);
-            h.client.state.native_yolo.set_resolved_agent(
-                Some(crate::agent_registry::COPILOT_AGENT_ID),
-                Some("1.0.82"),
-            );
+            h.client
+                .state
+                .native_yolo
+                .set_resolved_agent_id(Some(crate::agent_registry::COPILOT_AGENT_ID));
             h.conn
                 .initialize(acp::schema::v1::InitializeRequest::new(
                     acp::schema::ProtocolVersion::LATEST,
@@ -1329,7 +1321,7 @@ async fn manual_native_enable_with_global_off_allows_prompt_after_ack() {
                 .await
                 .expect("initialize failed");
             let session_id = record_copilot_yolo_state(&h, "manual-config-enabled-session", "off");
-            let (tab_to_session, in_flight, cancel_signals, memo) = fresh_dispatch_state();
+            let (tab_to_session, in_flight, memo) = fresh_dispatch_state();
             tab_to_session
                 .lock()
                 .await
@@ -1373,7 +1365,6 @@ async fn manual_native_enable_with_global_off_allows_prompt_after_ack() {
                 &tab_to_session,
                 &memo,
                 &in_flight,
-                &cancel_signals,
                 &h.event_tx,
                 &h.shell_mgr,
                 &h.prompt_timing,
@@ -1393,15 +1384,15 @@ async fn manual_native_enable_with_global_off_allows_prompt_after_ack() {
 }
 
 #[tokio::test]
-async fn copilot_permission_regression_allows_explicit_yolo_prompt() {
+async fn enabled_copilot_yolo_uses_standard_prompt_path() {
     let local = tokio::task::LocalSet::new();
     local
         .run_until(async {
             let mut h = connect_for_dispatch(MockBehavior::Reply);
-            h.client.state.native_yolo.set_resolved_agent(
-                Some(crate::agent_registry::COPILOT_AGENT_ID),
-                Some("1.0.82"),
-            );
+            h.client
+                .state
+                .native_yolo
+                .set_resolved_agent_id(Some(crate::agent_registry::COPILOT_AGENT_ID));
             h.client
                 .state
                 .yolo_state
@@ -1414,7 +1405,7 @@ async fn copilot_permission_regression_allows_explicit_yolo_prompt() {
                 ))
                 .await
                 .expect("initialize failed");
-            let (tab_to_session, in_flight, cancel_signals, memo) = fresh_dispatch_state();
+            let (tab_to_session, in_flight, memo) = fresh_dispatch_state();
 
             dispatch_prompt(
                 test_prompt(1, "explicit Yolo may reach Copilot", false),
@@ -1422,7 +1413,6 @@ async fn copilot_permission_regression_allows_explicit_yolo_prompt() {
                 &tab_to_session,
                 &memo,
                 &in_flight,
-                &cancel_signals,
                 &h.event_tx,
                 &h.shell_mgr,
                 &h.prompt_timing,
@@ -1442,15 +1432,15 @@ async fn copilot_permission_regression_allows_explicit_yolo_prompt() {
 }
 
 #[tokio::test]
-async fn copilot_permission_regression_rechecks_hot_disable_at_send_boundary() {
+async fn copilot_hot_disable_uses_standard_prompt_path_at_send_boundary() {
     let local = tokio::task::LocalSet::new();
     local
         .run_until(async {
             let mut h = connect_for_dispatch(MockBehavior::Reply);
-            h.client.state.native_yolo.set_resolved_agent(
-                Some(crate::agent_registry::COPILOT_AGENT_ID),
-                Some("1.0.82"),
-            );
+            h.client
+                .state
+                .native_yolo
+                .set_resolved_agent_id(Some(crate::agent_registry::COPILOT_AGENT_ID));
             h.client
                 .state
                 .yolo_state
@@ -1473,12 +1463,13 @@ async fn copilot_permission_regression_rechecks_hot_disable_at_send_boundary() {
                     release: Arc::clone(&context_release),
                 },
             )));
-            let (tab_to_session, in_flight, cancel_signals, memo) = fresh_dispatch_state();
+            let (tab_to_session, in_flight, memo) = fresh_dispatch_state();
             tab_to_session
                 .lock()
                 .await
                 .insert("0".to_string(), session_id.clone());
-            let mut prompt = test_prompt(1, "must stop after hot disable", false);
+            let mut prompt =
+                test_prompt(1, "hot-disabled Copilot uses standard permissions", false);
             prompt.pane_context = Some(crate::pane_context::PaneContext {
                 pane_id: Some("agent-pane".to_string()),
                 tab_id: Some("0".to_string()),
@@ -1493,7 +1484,6 @@ async fn copilot_permission_regression_rechecks_hot_disable_at_send_boundary() {
                 &tab_to_session,
                 &memo,
                 &in_flight,
-                &cancel_signals,
                 &h.event_tx,
                 &h.shell_mgr,
                 &h.prompt_timing,
@@ -1514,25 +1504,13 @@ async fn copilot_permission_regression_rechecks_hot_disable_at_send_boundary() {
             observe_copilot_yolo_state(&h, &session_id, "off");
             context_release.notify_one();
 
-            let failure = tokio::time::timeout(std::time::Duration::from_secs(2), async {
-                loop {
-                    match h.event_rx.recv().await {
-                        Some(AppEvent::AgentError { message, .. }) => break message,
-                        Some(_) => continue,
-                        None => panic!("event channel closed before the compatibility error"),
-                    }
-                }
-            })
-            .await
-            .expect("hot disable must fail closed before prompt dispatch");
-            assert!(failure.contains("permission"));
+            let chunk = next_agent_chunk(&mut h.event_rx).await;
+            assert!(chunk.contains("hot-disabled Copilot uses standard permissions"));
+            let seen = h.seen_prompts.lock().unwrap();
+            assert_eq!(seen.len(), 1);
             assert!(
-                h.seen_prompts.lock().unwrap().is_empty(),
-                "the hot-disabled prompt must not cross the ACP send boundary"
-            );
-            assert!(
-                in_flight.lock().unwrap().is_empty(),
-                "the rejected prompt must release the single-flight gate"
+                seen[0].contains(r#""activeTarget":"context-pane""#),
+                "the mock context must survive validation and reach the agent prompt"
             );
         })
         .await;
@@ -1544,10 +1522,10 @@ async fn hot_policy_blocks_acknowledged_on_before_send_boundary() {
     local
         .run_until(async {
             let mut h = connect_for_dispatch(MockBehavior::Reply);
-            h.client.state.native_yolo.set_resolved_agent(
-                Some(crate::agent_registry::COPILOT_AGENT_ID),
-                Some("1.0.82"),
-            );
+            h.client
+                .state
+                .native_yolo
+                .set_resolved_agent_id(Some(crate::agent_registry::COPILOT_AGENT_ID));
             h.client
                 .state
                 .yolo_state
@@ -1570,7 +1548,7 @@ async fn hot_policy_blocks_acknowledged_on_before_send_boundary() {
                     release: Arc::clone(&context_release),
                 },
             )));
-            let (tab_to_session, in_flight, cancel_signals, memo) = fresh_dispatch_state();
+            let (tab_to_session, in_flight, memo) = fresh_dispatch_state();
             tab_to_session
                 .lock()
                 .await
@@ -1590,7 +1568,6 @@ async fn hot_policy_blocks_acknowledged_on_before_send_boundary() {
                 &tab_to_session,
                 &memo,
                 &in_flight,
-                &cancel_signals,
                 &h.event_tx,
                 &h.shell_mgr,
                 &h.prompt_timing,
@@ -1640,10 +1617,10 @@ async fn superseding_disable_with_enable_keeps_prompt_blocked_until_enable_ack()
     local
         .run_until(async {
             let mut h = connect_for_dispatch(MockBehavior::Reply);
-            h.client.state.native_yolo.set_resolved_agent(
-                Some(crate::agent_registry::COPILOT_AGENT_ID),
-                Some("1.0.82"),
-            );
+            h.client
+                .state
+                .native_yolo
+                .set_resolved_agent_id(Some(crate::agent_registry::COPILOT_AGENT_ID));
             h.client
                 .state
                 .yolo_state
@@ -1651,7 +1628,7 @@ async fn superseding_disable_with_enable_keeps_prompt_blocked_until_enable_ack()
                 .unwrap()
                 .update_runtime(true, false);
             let session_id = record_copilot_yolo_state(&h, "superseded-disable-session", "on");
-            let (tab_to_session, in_flight, cancel_signals, memo) = fresh_dispatch_state();
+            let (tab_to_session, in_flight, memo) = fresh_dispatch_state();
             tab_to_session
                 .lock()
                 .await
@@ -1695,7 +1672,6 @@ async fn superseding_disable_with_enable_keeps_prompt_blocked_until_enable_ack()
                 &tab_to_session,
                 &memo,
                 &in_flight,
-                &cancel_signals,
                 &h.event_tx,
                 &h.shell_mgr,
                 &h.prompt_timing,
@@ -1728,49 +1704,6 @@ async fn superseding_disable_with_enable_keeps_prompt_blocked_until_enable_ack()
         .await;
 }
 
-#[tokio::test]
-async fn copilot_last_good_permission_version_keeps_prompt_path_available() {
-    let local = tokio::task::LocalSet::new();
-    local
-        .run_until(async {
-            let mut h = connect_for_dispatch(MockBehavior::Reply);
-            h.client.state.native_yolo.set_resolved_agent(
-                Some(crate::agent_registry::COPILOT_AGENT_ID),
-                Some("1.0.81-0"),
-            );
-            h.conn
-                .initialize(acp::schema::v1::InitializeRequest::new(
-                    acp::schema::ProtocolVersion::LATEST,
-                ))
-                .await
-                .expect("initialize failed");
-            let (tab_to_session, in_flight, cancel_signals, memo) = fresh_dispatch_state();
-
-            dispatch_prompt(
-                test_prompt(1, "safe Copilot may request permission", false),
-                &h.conn,
-                &tab_to_session,
-                &memo,
-                &in_flight,
-                &cancel_signals,
-                &h.event_tx,
-                &h.shell_mgr,
-                &h.prompt_timing,
-                &h.client,
-                &PromptUsageIdentity::default(),
-                false,
-                false,
-                true,
-                &h.proposal_channels,
-            );
-
-            let chunk = next_agent_chunk(&mut h.event_rx).await;
-            assert!(chunk.contains("safe Copilot may request permission"));
-            assert_eq!(h.seen_prompts.lock().unwrap().len(), 1);
-        })
-        .await;
-}
-
 /// Full round-trip through the dispatcher: a fresh tab lazily creates a
 /// session, the assembled prompt reaches the agent, and the streamed reply is
 /// surfaced as an `AgentMessageChunk`. Proves the prompt arm wires
@@ -1789,7 +1722,7 @@ async fn dispatch_prompt_round_trips_through_agent() {
                 .await
                 .expect("initialize failed");
 
-            let (tab_to_session, in_flight, cancel_signals, memo) = fresh_dispatch_state();
+            let (tab_to_session, in_flight, memo) = fresh_dispatch_state();
             let mut event_rx = h.event_rx;
 
             dispatch_prompt(
@@ -1798,7 +1731,6 @@ async fn dispatch_prompt_round_trips_through_agent() {
                 &tab_to_session,
                 &memo,
                 &in_flight,
-                &cancel_signals,
                 &h.event_tx,
                 &h.shell_mgr,
                 &h.prompt_timing,
@@ -1882,7 +1814,7 @@ async fn lazy_session_disables_native_yolo_before_first_prompt() {
                 ))
                 .await
                 .expect("initialize failed");
-            let (tab_to_session, in_flight, cancel_signals, memo) = fresh_dispatch_state();
+            let (tab_to_session, in_flight, memo) = fresh_dispatch_state();
 
             dispatch_prompt(
                 test_prompt(1, "must wait", false),
@@ -1890,7 +1822,6 @@ async fn lazy_session_disables_native_yolo_before_first_prompt() {
                 &tab_to_session,
                 &memo,
                 &in_flight,
-                &cancel_signals,
                 &h.event_tx,
                 &h.shell_mgr,
                 &h.prompt_timing,
@@ -1952,7 +1883,7 @@ async fn superseded_lazy_yolo_operation_reports_retryable_error_instead_of_silen
                 ))
                 .await
                 .expect("initialize failed");
-            let (tab_to_session, in_flight, cancel_signals, memo) = fresh_dispatch_state();
+            let (tab_to_session, in_flight, memo) = fresh_dispatch_state();
 
             dispatch_prompt(
                 test_prompt(1, "must receive a retryable result", false),
@@ -1960,7 +1891,6 @@ async fn superseded_lazy_yolo_operation_reports_retryable_error_instead_of_silen
                 &tab_to_session,
                 &memo,
                 &in_flight,
-                &cancel_signals,
                 &h.event_tx,
                 &h.shell_mgr,
                 &h.prompt_timing,
@@ -2103,14 +2033,13 @@ async fn policy_blocked_lazy_yolo_operation_reports_retryable_error_instead_of_s
             .await
             .expect("blocking native update did not acquire the session gate");
 
-            let (tab_to_session, in_flight, cancel_signals, memo) = fresh_dispatch_state();
+            let (tab_to_session, in_flight, memo) = fresh_dispatch_state();
             dispatch_prompt(
                 test_prompt(1, "must receive a policy error", false),
                 &h.conn,
                 &tab_to_session,
                 &memo,
                 &in_flight,
-                &cancel_signals,
                 &h.event_tx,
                 &h.shell_mgr,
                 &h.prompt_timing,
@@ -2215,7 +2144,7 @@ async fn native_yolo_active_permission_request_remains_pending_for_user() {
                 ))
                 .await
                 .expect("initialize failed");
-            let (tab_to_session, in_flight, cancel_signals, memo) = fresh_dispatch_state();
+            let (tab_to_session, in_flight, memo) = fresh_dispatch_state();
 
             dispatch_prompt(
                 test_prompt(1, "permission after native Yolo", false),
@@ -2223,7 +2152,6 @@ async fn native_yolo_active_permission_request_remains_pending_for_user() {
                 &tab_to_session,
                 &memo,
                 &in_flight,
-                &cancel_signals,
                 &h.event_tx,
                 &h.shell_mgr,
                 &h.prompt_timing,
@@ -2309,7 +2237,7 @@ async fn lazy_session_native_disable_failure_keeps_first_prompt_blocked() {
                 ))
                 .await
                 .expect("initialize failed");
-            let (tab_to_session, in_flight, cancel_signals, memo) = fresh_dispatch_state();
+            let (tab_to_session, in_flight, memo) = fresh_dispatch_state();
 
             dispatch_prompt(
                 test_prompt(1, "must never send", false),
@@ -2317,7 +2245,6 @@ async fn lazy_session_native_disable_failure_keeps_first_prompt_blocked() {
                 &tab_to_session,
                 &memo,
                 &in_flight,
-                &cancel_signals,
                 &h.event_tx,
                 &h.shell_mgr,
                 &h.prompt_timing,
@@ -2367,7 +2294,7 @@ async fn dispatch_agent_command_reaches_agent_verbatim() {
                 .await
                 .expect("initialize failed");
 
-            let (tab_to_session, in_flight, cancel_signals, memo) = fresh_dispatch_state();
+            let (tab_to_session, in_flight, memo) = fresh_dispatch_state();
             let mut prompt = test_prompt(1, "/usage", false);
             prompt.agent_command = true;
 
@@ -2377,7 +2304,6 @@ async fn dispatch_agent_command_reaches_agent_verbatim() {
                 &tab_to_session,
                 &memo,
                 &in_flight,
-                &cancel_signals,
                 &h.event_tx,
                 &h.shell_mgr,
                 &h.prompt_timing,
@@ -2457,7 +2383,7 @@ async fn policy_block_allows_nonprivileged_or_non_copilot_agent_commands() {
                     .unwrap()
                     .update_runtime(false, true);
 
-                let (tab_to_session, in_flight, cancel_signals, memo) = fresh_dispatch_state();
+                let (tab_to_session, in_flight, memo) = fresh_dispatch_state();
                 let mut prompt = test_prompt(1, command, false);
                 prompt.agent_command = true;
 
@@ -2467,7 +2393,6 @@ async fn policy_block_allows_nonprivileged_or_non_copilot_agent_commands() {
                     &tab_to_session,
                     &memo,
                     &in_flight,
-                    &cancel_signals,
                     &h.event_tx,
                     &h.shell_mgr,
                     &h.prompt_timing,
@@ -2513,7 +2438,7 @@ async fn policy_block_rejects_copilot_allow_all_agent_command_before_acp() {
                 .unwrap()
                 .update_runtime(false, true);
 
-            let (tab_to_session, in_flight, cancel_signals, memo) = fresh_dispatch_state();
+            let (tab_to_session, in_flight, memo) = fresh_dispatch_state();
             let mut prompt = test_prompt(1, "/allow_all", false);
             prompt.agent_command = true;
 
@@ -2523,7 +2448,6 @@ async fn policy_block_rejects_copilot_allow_all_agent_command_before_acp() {
                 &tab_to_session,
                 &memo,
                 &in_flight,
-                &cancel_signals,
                 &h.event_tx,
                 &h.shell_mgr,
                 &h.prompt_timing,
@@ -2579,14 +2503,13 @@ async fn policy_block_rejects_copilot_allow_all_before_command_classification() 
                 .unwrap()
                 .update_runtime(false, true);
 
-            let (tab_to_session, in_flight, cancel_signals, memo) = fresh_dispatch_state();
+            let (tab_to_session, in_flight, memo) = fresh_dispatch_state();
             dispatch_prompt(
                 test_prompt(1, "/allow_all", false),
                 &h.conn,
                 &tab_to_session,
                 &memo,
                 &in_flight,
-                &cancel_signals,
                 &h.event_tx,
                 &h.shell_mgr,
                 &h.prompt_timing,
@@ -2633,7 +2556,7 @@ async fn dispatch_prompt_does_not_advertise_unavailable_proposals() {
                 .await
                 .expect("initialize failed");
 
-            let (tab_to_session, in_flight, cancel_signals, memo) = fresh_dispatch_state();
+            let (tab_to_session, in_flight, memo) = fresh_dispatch_state();
             let mut event_rx = h.event_rx;
             dispatch_prompt(
                 test_prompt(1, "hello from WSL", false),
@@ -2641,7 +2564,6 @@ async fn dispatch_prompt_does_not_advertise_unavailable_proposals() {
                 &tab_to_session,
                 &memo,
                 &in_flight,
-                &cancel_signals,
                 &h.event_tx,
                 &h.shell_mgr,
                 &h.prompt_timing,
@@ -2703,7 +2625,7 @@ async fn dispatch_prompt_sends_clipboard_image_to_agent() {
                 .await
                 .expect("initialize failed");
 
-            let (tab_to_session, in_flight, cancel_signals, memo) = fresh_dispatch_state();
+            let (tab_to_session, in_flight, memo) = fresh_dispatch_state();
             let mut event_rx = h.event_rx;
 
             // The user typed text *and* pasted an image, then pressed Enter.
@@ -2716,7 +2638,6 @@ async fn dispatch_prompt_sends_clipboard_image_to_agent() {
                 &tab_to_session,
                 &memo,
                 &in_flight,
-                &cancel_signals,
                 &h.event_tx,
                 &h.shell_mgr,
                 &h.prompt_timing,
@@ -2775,7 +2696,7 @@ async fn dispatch_prompt_new_session_failure_emits_error_and_releases_slot() {
             // Make the mock reject session establishment.
             h.fail_new_session.store(true, Ordering::SeqCst);
 
-            let (tab_to_session, in_flight, cancel_signals, memo) = fresh_dispatch_state();
+            let (tab_to_session, in_flight, memo) = fresh_dispatch_state();
             let mut event_rx = h.event_rx;
 
             dispatch_prompt(
@@ -2784,7 +2705,6 @@ async fn dispatch_prompt_new_session_failure_emits_error_and_releases_slot() {
                 &tab_to_session,
                 &memo,
                 &in_flight,
-                &cancel_signals,
                 &h.event_tx,
                 &h.shell_mgr,
                 &h.prompt_timing,
@@ -2797,13 +2717,19 @@ async fn dispatch_prompt_new_session_failure_emits_error_and_releases_slot() {
             );
 
             match tokio::time::timeout(std::time::Duration::from_secs(5), event_rx.recv()).await {
-                Ok(Some(AppEvent::AgentError { message, .. })) => {
+                Ok(Some(AppEvent::PromptError {
+                    tab_id,
+                    prompt_id,
+                    message,
+                })) => {
+                    assert_eq!(tab_id, "0");
+                    assert_eq!(prompt_id, 1);
                     assert!(
                         message.contains("new_session failed"),
                         "error must name the failed step; got {message:?}"
                     );
                 }
-                _ => panic!("expected AgentError, got nothing"),
+                _ => panic!("expected PromptError, got nothing"),
             }
             // The slot is released so a retry isn't permanently blocked, no
             // session was cached, and the agent never saw the prompt.
@@ -2832,7 +2758,7 @@ async fn dispatch_prompt_first_autofix_includes_base_and_overlay() {
                 .await
                 .expect("initialize failed");
 
-            let (tab_to_session, in_flight, cancel_signals, memo) = fresh_dispatch_state();
+            let (tab_to_session, in_flight, memo) = fresh_dispatch_state();
             let mut event_rx = h.event_rx;
 
             dispatch_prompt(
@@ -2841,7 +2767,6 @@ async fn dispatch_prompt_first_autofix_includes_base_and_overlay() {
                 &tab_to_session,
                 &memo,
                 &in_flight,
-                &cancel_signals,
                 &h.event_tx,
                 &h.shell_mgr,
                 &h.prompt_timing,
@@ -2872,15 +2797,13 @@ async fn dispatch_prompt_first_autofix_includes_base_and_overlay() {
         .await;
 }
 
-/// `dispatch_rename_session` must rekey an existing tab binding from the old
-/// tab id to the new one (cross-window drag), preserving the SessionId, and
-/// be a no-op when the old tab id is absent.
 #[tokio::test]
-async fn dispatch_rename_session_rekeys_existing_and_ignores_missing() {
+async fn dispatch_rename_session_rekeys_session_and_in_flight_owner() {
     let local = tokio::task::LocalSet::new();
     local
         .run_until(async {
-            let tab_to_session = std::sync::Arc::new(tokio::sync::Mutex::new(HashMap::new()));
+            let tab_to_session = Arc::new(tokio::sync::Mutex::new(HashMap::new()));
+            let in_flight_tabs = Arc::new(Mutex::new(HashMap::from([("old-tab".to_string(), 7)])));
             let sid = acp::schema::v1::SessionId::new("sess-rekey");
             super::set_helper_owner_tab_id(Some("old-tab"));
             tab_to_session
@@ -2888,104 +2811,693 @@ async fn dispatch_rename_session_rekeys_existing_and_ignores_missing() {
                 .await
                 .insert("old-tab".to_string(), sid.clone());
 
-            // Rekey old-tab -> new-tab.
             dispatch_rename_session(
                 RenameSessionRequest {
                     old_tab_id: "old-tab".to_string(),
                     new_tab_id: "new-tab".to_string(),
                 },
                 &tab_to_session,
+                &in_flight_tabs,
             )
             .await;
-            {
-                let g = tab_to_session.lock().await;
-                assert!(!g.contains_key("old-tab"));
-                assert_eq!(g.get("new-tab"), Some(&sid));
-            }
-            assert_eq!(
-                super::helper_owner_tab_id().as_deref(),
-                Some("new-tab"),
-                "future session metadata must use the dragged tab id"
-            );
 
-            // No-op: renaming a ghost tab leaves the map untouched.
-            dispatch_rename_session(
+            let sessions = tab_to_session.lock().await;
+            assert!(!sessions.contains_key("old-tab"));
+            assert_eq!(sessions.get("new-tab"), Some(&sid));
+            drop(sessions);
+            assert_eq!(
+                in_flight_tabs.lock().unwrap().get("new-tab").copied(),
+                Some(7)
+            );
+            assert_eq!(super::helper_owner_tab_id().as_deref(), Some("new-tab"));
+        })
+        .await;
+}
+
+#[tokio::test]
+async fn alias_chain_and_stale_cleanup_preserve_newer_prompt_owner() {
+    let local = tokio::task::LocalSet::new();
+    local
+        .run_until(async {
+            let tab_to_session = Arc::new(tokio::sync::Mutex::new(HashMap::new()));
+            let in_flight_tabs = Arc::new(Mutex::new(HashMap::from([("old-tab".to_string(), 7)])));
+            let tab_aliases = Arc::new(Mutex::new(HashMap::new()));
+            let tab_binding_generations = Arc::new(Mutex::new(HashMap::new()));
+
+            dispatch_rename_session_with_aliases(
                 RenameSessionRequest {
-                    old_tab_id: "ghost".to_string(),
-                    new_tab_id: "phantom".to_string(),
+                    old_tab_id: "old-tab".to_string(),
+                    new_tab_id: "middle-tab".to_string(),
                 },
                 &tab_to_session,
+                &in_flight_tabs,
+                &tab_aliases,
+                &tab_binding_generations,
             )
             .await;
-            let g = tab_to_session.lock().await;
-            assert!(!g.contains_key("phantom"), "missing old id must be a no-op");
-            assert!(
-                g.contains_key("new-tab"),
-                "existing binding must survive the no-op"
+            in_flight_tabs
+                .lock()
+                .unwrap()
+                .insert("middle-tab".to_string(), 8);
+            dispatch_rename_session_with_aliases(
+                RenameSessionRequest {
+                    old_tab_id: "middle-tab".to_string(),
+                    new_tab_id: "new-tab".to_string(),
+                },
+                &tab_to_session,
+                &in_flight_tabs,
+                &tab_aliases,
+                &tab_binding_generations,
+            )
+            .await;
+
+            assert_eq!(super::resolve_tab_alias(&tab_aliases, "old-tab"), "new-tab");
+            drop(super::PromptDispatchCleanup {
+                tab_key: "old-tab".to_string(),
+                prompt_id: 7,
+                in_flight_tabs: Arc::clone(&in_flight_tabs),
+                released: false,
+            });
+            assert_eq!(
+                in_flight_tabs.lock().unwrap().get("new-tab").copied(),
+                Some(8),
+                "stale cleanup must not release the newer prompt after chained rekeys"
             );
         })
         .await;
 }
 
-/// `dispatch_cancel` must fire the local per-session cancel oneshot (so an
-/// in-flight prompt task drops out of `conn.prompt().await`) and remove the
-/// signal from the registry. The agent-side `session/cancel` is best-effort.
 #[tokio::test]
-async fn dispatch_cancel_fires_local_signal_and_removes_registry_entry() {
+async fn queued_prompt_after_rename_uses_only_the_current_tab_alias() {
     let local = tokio::task::LocalSet::new();
     local
         .run_until(async {
             let h = connect_for_dispatch(MockBehavior::Reply);
-            let cancel_signals: Arc<Mutex<HashMap<String, oneshot::Sender<()>>>> =
-                Arc::new(Mutex::new(HashMap::new()));
-            let (tx, rx) = oneshot::channel::<()>();
-            cancel_signals
-                .lock()
-                .unwrap()
-                .insert("sess-cancel".to_string(), tx);
+            let (tab_to_session, in_flight, memo) = fresh_dispatch_state();
+            let tab_aliases = Arc::new(Mutex::new(HashMap::new()));
+            let tab_binding_generations = Arc::new(Mutex::new(HashMap::new()));
+            dispatch_rename_session_with_aliases(
+                RenameSessionRequest {
+                    old_tab_id: "old-tab".to_string(),
+                    new_tab_id: "new-tab".to_string(),
+                },
+                &tab_to_session,
+                &in_flight,
+                &tab_aliases,
+                &tab_binding_generations,
+            )
+            .await;
+            let mut prompt = test_prompt(81, "queued before rename", false);
+            prompt.pane_context = Some(crate::pane_context::PaneContext {
+                pane_id: None,
+                tab_id: Some("old-tab".to_string()),
+                window_id: None,
+                cwd: None,
+                source_pane_id: None,
+            });
+            let mut event_rx = h.event_rx;
+            let task = dispatch_prompt_with_aliases(
+                prompt,
+                &h.conn,
+                &tab_to_session,
+                &memo,
+                &in_flight,
+                &tab_aliases,
+                &tab_binding_generations,
+                &h.event_tx,
+                &h.shell_mgr,
+                &h.prompt_timing,
+                &h.client,
+                &PromptUsageIdentity::default(),
+                false,
+                false,
+                true,
+                &h.proposal_channels,
+            )
+            .expect("prompt must dispatch");
 
-            dispatch_cancel(
-                CancelRequest {
-                    session_id: "sess-cancel".to_string(),
+            loop {
+                match event_rx.recv().await {
+                    Some(AppEvent::SessionAttached {
+                        tab_id, prompt_id, ..
+                    }) => {
+                        assert_eq!(tab_id, "new-tab");
+                        assert_eq!(prompt_id, Some(81));
+                        break;
+                    }
+                    Some(_) => {}
+                    None => panic!("event channel closed before session attachment"),
+                }
+            }
+            task.handle.await.expect("prompt task failed");
+            let sessions = tab_to_session.lock().await;
+            assert!(!sessions.contains_key("old-tab"));
+            assert!(sessions.contains_key("new-tab"));
+        })
+        .await;
+}
+
+#[tokio::test]
+async fn in_progress_lazy_session_rename_binds_only_the_current_alias() {
+    let local = tokio::task::LocalSet::new();
+    local
+        .run_until(async {
+            let h = connect_for_dispatch(MockBehavior::Reply);
+            h.block_new_session.store(true, Ordering::SeqCst);
+            let (tab_to_session, in_flight, memo) = fresh_dispatch_state();
+            let tab_aliases = Arc::new(Mutex::new(HashMap::new()));
+            let tab_binding_generations = Arc::new(Mutex::new(HashMap::new()));
+            let mut prompt = test_prompt(82, "rename while creating", false);
+            prompt.pane_context = Some(crate::pane_context::PaneContext {
+                pane_id: None,
+                tab_id: Some("old-tab".to_string()),
+                window_id: None,
+                cwd: None,
+                source_pane_id: None,
+            });
+            let mut event_rx = h.event_rx;
+            let task = dispatch_prompt_with_aliases(
+                prompt,
+                &h.conn,
+                &tab_to_session,
+                &memo,
+                &in_flight,
+                &tab_aliases,
+                &tab_binding_generations,
+                &h.event_tx,
+                &h.shell_mgr,
+                &h.prompt_timing,
+                &h.client,
+                &PromptUsageIdentity::default(),
+                false,
+                false,
+                true,
+                &h.proposal_channels,
+            )
+            .expect("prompt must dispatch");
+
+            tokio::time::timeout(
+                std::time::Duration::from_secs(2),
+                h.new_session_started.notified(),
+            )
+            .await
+            .expect("lazy session did not reach the controlled boundary");
+            dispatch_rename_session_with_aliases(
+                RenameSessionRequest {
+                    old_tab_id: "old-tab".to_string(),
+                    new_tab_id: "new-tab".to_string(),
+                },
+                &tab_to_session,
+                &in_flight,
+                &tab_aliases,
+                &tab_binding_generations,
+            )
+            .await;
+            h.new_session_release.notify_one();
+
+            loop {
+                match event_rx.recv().await {
+                    Some(AppEvent::SessionAttached {
+                        tab_id, prompt_id, ..
+                    }) => {
+                        assert_eq!(tab_id, "new-tab");
+                        assert_eq!(prompt_id, Some(82));
+                        break;
+                    }
+                    Some(_) => {}
+                    None => panic!("event channel closed before session attachment"),
+                }
+            }
+            task.handle.await.expect("prompt task failed");
+            let sessions = tab_to_session.lock().await;
+            assert!(!sessions.contains_key("old-tab"));
+            assert!(sessions.contains_key("new-tab"));
+            assert!(in_flight.lock().unwrap().is_empty());
+        })
+        .await;
+}
+
+#[tokio::test]
+async fn retired_new_and_load_tasks_cannot_emit_after_replacement_starts() {
+    let local = tokio::task::LocalSet::new();
+    local
+        .run_until(async {
+            let h = connect_for_dispatch(MockBehavior::Reply);
+            h.block_new_session.store(true, Ordering::SeqCst);
+            let tab_to_session = Arc::new(tokio::sync::Mutex::new(HashMap::new()));
+            let tab_aliases = Arc::new(Mutex::new(HashMap::new()));
+            let tab_binding_generations = Arc::new(Mutex::new(HashMap::new()));
+            let memo = TemplateMemo::default();
+            let mut event_rx = h.event_rx;
+            let mut lifecycle_tasks = vec![dispatch_new_session_with_aliases(
+                NewSessionForTab {
+                    tab_id: "old-new-tab".to_string(),
+                    cwd: None,
                 },
                 &h.conn,
-                &cancel_signals,
-            );
+                &tab_to_session,
+                &tab_aliases,
+                &tab_binding_generations,
+                &memo,
+                &h.event_tx,
+                Arc::clone(&h.client.state),
+                false,
+                false,
+                "RetiredNewTest",
+                &h.proposal_channels,
+                false,
+            )];
 
-            // The local oneshot is fired synchronously inside dispatch_cancel.
-            assert!(rx.await.is_ok(), "local cancel signal must be fired");
-            assert!(
-                !cancel_signals.lock().unwrap().contains_key("sess-cancel"),
-                "the fired signal must be removed from the registry"
-            );
+            tokio::time::timeout(
+                std::time::Duration::from_secs(2),
+                h.new_session_started.notified(),
+            )
+            .await
+            .expect("old /new task did not start");
+            let mut guard = ClientTransportGuard {
+                conn: h.conn.clone(),
+                suppress_transport_error: Arc::new(AtomicBool::new(true)),
+                event_tx: h.event_tx.clone(),
+                io_task: Some(tokio::task::spawn_local(std::future::pending::<()>())),
+                retirement_published: false,
+            };
+            let mut prompt_tasks = Vec::new();
+            let in_flight = Arc::new(Mutex::new(HashMap::new()));
+            finalize_client_transport(
+                &mut guard,
+                false,
+                &mut prompt_tasks,
+                &in_flight,
+                &mut lifecycle_tasks,
+            )
+            .await;
+            h.event_tx
+                .send(AppEvent::SessionAttached {
+                    tab_id: "replacement-tab".to_string(),
+                    session_id: "replacement-session".to_string(),
+                    prompt_id: None,
+                    available_models: Vec::new(),
+                    current_model_id: None,
+                })
+                .unwrap();
+            h.new_session_release.notify_one();
 
-            // Cancelling an unknown session is a harmless no-op (no panic).
-            dispatch_cancel(
-                CancelRequest {
-                    session_id: "ghost".to_string(),
+            assert!(matches!(
+                event_rx.recv().await,
+                Some(AppEvent::AgentTransportRetired)
+            ));
+            assert!(matches!(
+                event_rx.recv().await,
+                Some(AppEvent::SessionAttached { tab_id, .. }) if tab_id == "replacement-tab"
+            ));
+            tokio::task::yield_now().await;
+            assert!(event_rx.try_recv().is_err());
+
+            let h = connect_for_dispatch(MockBehavior::Reply);
+            h.block_load_session.store(true, Ordering::SeqCst);
+            let tab_to_session = Arc::new(tokio::sync::Mutex::new(HashMap::new()));
+            let tab_aliases = Arc::new(Mutex::new(HashMap::new()));
+            let tab_binding_generations = Arc::new(Mutex::new(HashMap::new()));
+            let mut event_rx = h.event_rx;
+            let mut lifecycle_tasks = vec![dispatch_load_session_with_aliases(
+                LoadSessionForTab {
+                    tab_id: "old-load-tab".to_string(),
+                    session_id: "old-load-session".to_string(),
+                    cwd: None,
                 },
                 &h.conn,
-                &cancel_signals,
+                &tab_to_session,
+                &tab_aliases,
+                &tab_binding_generations,
+                &h.event_tx,
+                Arc::clone(&h.client.state),
+                false,
+                false,
+                std::time::Duration::from_secs(5),
+                &h.proposal_channels,
+                false,
+            )];
+
+            tokio::time::timeout(
+                std::time::Duration::from_secs(2),
+                h.load_session_started.notified(),
+            )
+            .await
+            .expect("old load task did not start");
+            let mut guard = ClientTransportGuard {
+                conn: h.conn.clone(),
+                suppress_transport_error: Arc::new(AtomicBool::new(true)),
+                event_tx: h.event_tx.clone(),
+                io_task: Some(tokio::task::spawn_local(std::future::pending::<()>())),
+                retirement_published: false,
+            };
+            let mut prompt_tasks = Vec::new();
+            let in_flight = Arc::new(Mutex::new(HashMap::new()));
+            finalize_client_transport(
+                &mut guard,
+                false,
+                &mut prompt_tasks,
+                &in_flight,
+                &mut lifecycle_tasks,
+            )
+            .await;
+            h.event_tx
+                .send(AppEvent::SessionAttached {
+                    tab_id: "replacement-tab".to_string(),
+                    session_id: "replacement-session".to_string(),
+                    prompt_id: None,
+                    available_models: Vec::new(),
+                    current_model_id: None,
+                })
+                .unwrap();
+            h.load_session_release.notify_one();
+
+            assert!(matches!(
+                event_rx.recv().await,
+                Some(AppEvent::AgentTransportRetired)
+            ));
+            assert!(matches!(
+                event_rx.recv().await,
+                Some(AppEvent::SessionAttached { tab_id, .. }) if tab_id == "replacement-tab"
+            ));
+            tokio::task::yield_now().await;
+            assert!(event_rx.try_recv().is_err());
+        })
+        .await;
+}
+
+#[tokio::test]
+async fn setup_unwind_still_publishes_transport_retired() {
+    let local = tokio::task::LocalSet::new();
+    local
+        .run_until(async {
+            let h = connect_for_dispatch(MockBehavior::Reply);
+            let mut event_rx = h.event_rx;
+            let guard = ClientTransportGuard {
+                conn: h.conn,
+                suppress_transport_error: Arc::new(AtomicBool::new(true)),
+                event_tx: h.event_tx,
+                io_task: Some(tokio::task::spawn_local(async {})),
+                retirement_published: false,
+            };
+
+            drop(guard);
+
+            assert!(matches!(
+                tokio::time::timeout(std::time::Duration::from_secs(2), event_rx.recv())
+                    .await
+                    .expect("transport retirement was not published"),
+                Some(AppEvent::AgentTransportRetired)
+            ));
+        })
+        .await;
+}
+
+#[tokio::test]
+async fn tab_reset_invalidates_queued_and_in_progress_session_operations() {
+    let local = tokio::task::LocalSet::new();
+    local
+        .run_until(async {
+            let h = connect_for_dispatch(MockBehavior::Reply);
+            h.block_new_session.store(true, Ordering::SeqCst);
+            let tab_to_session = Arc::new(tokio::sync::Mutex::new(HashMap::new()));
+            let tab_aliases = Arc::new(Mutex::new(HashMap::new()));
+            let tab_binding_generations = Arc::new(Mutex::new(HashMap::new()));
+            let memo = TemplateMemo::default();
+            let mut event_rx = h.event_rx;
+            let task = dispatch_new_session_with_aliases(
+                NewSessionForTab {
+                    tab_id: "reset-tab".into(),
+                    cwd: None,
+                },
+                &h.conn,
+                &tab_to_session,
+                &tab_aliases,
+                &tab_binding_generations,
+                &memo,
+                &h.event_tx,
+                Arc::clone(&h.client.state),
+                false,
+                false,
+                "ResetGenerationTest",
+                &h.proposal_channels,
+                false,
             );
-            // Let the best-effort agent-notify subtask run.
-            for _ in 0..10 {
-                tokio::task::yield_now().await;
+
+            dispatch_drop_session_with_aliases(
+                DropSessionRequest {
+                    tab_id: "reset-tab".into(),
+                    notify_master: false,
+                },
+                &h.conn,
+                &tab_to_session,
+                &tab_aliases,
+                &tab_binding_generations,
+                &memo,
+                &h.client.state,
+            )
+            .await;
+            h.new_session_release.notify_one();
+            task.await.expect("new-session task failed");
+
+            assert!(tab_to_session.lock().await.is_empty());
+            while let Ok(event) = event_rx.try_recv() {
+                assert!(
+                    !matches!(event, AppEvent::SessionAttached { .. }),
+                    "retired session operation must not attach after reset"
+                );
             }
         })
         .await;
 }
 
-/// `dispatch_drop_session` must close and unbind the tab's session, fire its
-/// in-flight cancel signal, and be a no-op for a tab that holds no session.
 #[tokio::test]
-async fn dispatch_drop_session_closes_unbinds_and_fires_cancel_then_ignores_missing() {
+async fn cancelled_queued_prompt_never_reaches_provider_or_creates_session() {
+    let local = tokio::task::LocalSet::new();
+    local
+        .run_until(async {
+            let h = connect_for_dispatch(MockBehavior::Reply);
+            let (tab_to_session, in_flight, memo) = fresh_dispatch_state();
+            let mut event_rx = h.event_rx;
+            let (prompt_tx, mut prompt_rx) = tokio::sync::mpsc::unbounded_channel();
+            let prompt = test_prompt(1, "must never run", false);
+            prompt_tx.send(prompt.clone()).unwrap();
+            prompt.cancellation.cancel();
+
+            let queued = prompt_rx.recv().await.expect("prompt channel closed");
+            let task = dispatch_prompt(
+                queued,
+                &h.conn,
+                &tab_to_session,
+                &memo,
+                &in_flight,
+                &h.event_tx,
+                &h.shell_mgr,
+                &h.prompt_timing,
+                &h.client,
+                &PromptUsageIdentity::default(),
+                false,
+                false,
+                true,
+                &h.proposal_channels,
+            )
+            .expect("cancelled prompt still owns a settlement task");
+
+            assert!(matches!(
+                event_rx.recv().await,
+                Some(AppEvent::PromptCancellationSettled {
+                    prompt_id: 1,
+                    started: false,
+                })
+            ));
+            assert!(h.seen_prompts.lock().unwrap().is_empty());
+            assert_eq!(h.seen_cancels.load(Ordering::SeqCst), 0);
+            assert!(tab_to_session.lock().await.is_empty());
+            assert!(in_flight.lock().unwrap().is_empty());
+            task.handle.await.expect("settlement task failed");
+        })
+        .await;
+}
+
+#[tokio::test]
+async fn started_prompt_cancels_its_resolved_session_before_app_attaches_it() {
+    let local = tokio::task::LocalSet::new();
+    local
+        .run_until(async {
+            let h = connect_for_dispatch(MockBehavior::DelayedReply);
+            h.conn
+                .initialize(acp::schema::v1::InitializeRequest::new(
+                    acp::schema::ProtocolVersion::LATEST,
+                ))
+                .await
+                .expect("initialize failed");
+
+            let (tab_to_session, in_flight, memo) = fresh_dispatch_state();
+            let mut event_rx = h.event_rx;
+            let prompt = test_prompt(7, "wait for cancellation", false);
+            let cancellation = prompt.cancellation.clone();
+            let task = dispatch_prompt(
+                prompt,
+                &h.conn,
+                &tab_to_session,
+                &memo,
+                &in_flight,
+                &h.event_tx,
+                &h.shell_mgr,
+                &h.prompt_timing,
+                &h.client,
+                &PromptUsageIdentity::default(),
+                false,
+                false,
+                true,
+                &h.proposal_channels,
+            )
+            .expect("prompt must dispatch");
+
+            tokio::time::timeout(std::time::Duration::from_secs(5), async {
+                while h.seen_prompts.lock().unwrap().is_empty() {
+                    tokio::task::yield_now().await;
+                }
+            })
+            .await
+            .expect("prompt did not start");
+            cancellation.cancel();
+
+            let mut attached_seen = false;
+            tokio::time::timeout(std::time::Duration::from_secs(5), async {
+                loop {
+                    match event_rx.recv().await {
+                        Some(AppEvent::SessionAttached {
+                            session_id,
+                            prompt_id,
+                            ..
+                        }) => {
+                            assert_eq!(session_id, "mock-session-1");
+                            assert_eq!(prompt_id, Some(7));
+                            attached_seen = true;
+                        }
+                        Some(AppEvent::PromptCancellationSettled {
+                            prompt_id: 7,
+                            started: true,
+                        }) => break,
+                        Some(AppEvent::AgentMessageEnd { .. }) => {
+                            panic!("cancelled prompt must settle through its prompt identity")
+                        }
+                        Some(_) => {}
+                        None => panic!("event channel closed before cancellation settled"),
+                    }
+                }
+            })
+            .await
+            .expect("started cancellation did not settle");
+
+            assert!(
+                in_flight.lock().unwrap().is_empty(),
+                "settlement must not release the UI before single-flight ownership"
+            );
+            task.handle.await.expect("prompt task failed");
+            assert!(
+                attached_seen,
+                "session attachment remained queued in App events"
+            );
+            assert_eq!(h.seen_cancels.load(Ordering::SeqCst), 1);
+        })
+        .await;
+}
+
+#[tokio::test]
+async fn cancellation_during_prompt_preparation_settles_without_provider_cancel() {
+    let local = tokio::task::LocalSet::new();
+    local
+        .run_until(async {
+            let mut h = connect_for_dispatch(MockBehavior::Reply);
+            h.conn
+                .initialize(acp::schema::v1::InitializeRequest::new(
+                    acp::schema::ProtocolVersion::LATEST,
+                ))
+                .await
+                .expect("initialize failed");
+            let context_started = Arc::new(tokio::sync::Notify::new());
+            let context_release = Arc::new(tokio::sync::Notify::new());
+            h.shell_mgr = Arc::new(ShellManager::new().with_wt_channel(Arc::new(
+                BlockingPromptContextChannel {
+                    started: Arc::clone(&context_started),
+                    release: Arc::clone(&context_release),
+                },
+            )));
+            let (tab_to_session, in_flight, memo) = fresh_dispatch_state();
+            tab_to_session.lock().await.insert(
+                "0".to_string(),
+                acp::schema::v1::SessionId::new("prepared-session"),
+            );
+            let mut prompt = test_prompt(8, "cancel during context", false);
+            prompt.pane_context = Some(crate::pane_context::PaneContext {
+                pane_id: Some("agent-pane".to_string()),
+                tab_id: Some("0".to_string()),
+                window_id: Some("window-1".to_string()),
+                cwd: Some("C:\\work".to_string()),
+                source_pane_id: None,
+            });
+            let cancellation = prompt.cancellation.clone();
+            let mut event_rx = h.event_rx;
+            let task = dispatch_prompt(
+                prompt,
+                &h.conn,
+                &tab_to_session,
+                &memo,
+                &in_flight,
+                &h.event_tx,
+                &h.shell_mgr,
+                &h.prompt_timing,
+                &h.client,
+                &PromptUsageIdentity::default(),
+                true,
+                false,
+                true,
+                &h.proposal_channels,
+            )
+            .expect("prompt must enter preparation");
+
+            tokio::time::timeout(
+                std::time::Duration::from_secs(2),
+                context_started.notified(),
+            )
+            .await
+            .expect("prompt preparation did not reach the controlled boundary");
+            cancellation.cancel();
+            context_release.notify_one();
+
+            tokio::time::timeout(std::time::Duration::from_secs(2), async {
+                loop {
+                    match event_rx.recv().await {
+                        Some(AppEvent::PromptCancellationSettled {
+                            prompt_id: 8,
+                            started: false,
+                        }) => break,
+                        Some(_) => {}
+                        None => panic!("event channel closed before cancellation settled"),
+                    }
+                }
+            })
+            .await
+            .expect("pre-dispatch cancellation did not settle");
+            assert!(in_flight.lock().unwrap().is_empty());
+            task.handle.await.expect("prompt task failed");
+            assert!(h.seen_prompts.lock().unwrap().is_empty());
+            assert_eq!(h.seen_cancels.load(Ordering::SeqCst), 0);
+        })
+        .await;
+}
+
+/// `dispatch_drop_session` unbinds local state and asks master to retire the
+/// exact tab session. Prompt cancellation is owned by the prompt token.
+#[tokio::test]
+async fn dispatch_drop_session_closes_and_unbinds_then_ignores_missing() {
     let local = tokio::task::LocalSet::new();
     local
         .run_until(async {
             let h = connect_for_dispatch(MockBehavior::Reply);
             let tab_to_session = std::sync::Arc::new(tokio::sync::Mutex::new(HashMap::new()));
-            let cancel_signals: Arc<Mutex<HashMap<String, oneshot::Sender<()>>>> =
-                Arc::new(Mutex::new(HashMap::new()));
             let memo = TemplateMemo::default();
 
             let sid = acp::schema::v1::SessionId::new("sess-drop");
@@ -2993,8 +3505,6 @@ async fn dispatch_drop_session_closes_unbinds_and_fires_cancel_then_ignores_miss
                 .lock()
                 .await
                 .insert("t1".to_string(), sid.clone());
-            let (tx, rx) = oneshot::channel::<()>();
-            cancel_signals.lock().unwrap().insert(sid.to_string(), tx);
 
             dispatch_drop_session(
                 DropSessionRequest {
@@ -3004,25 +3514,13 @@ async fn dispatch_drop_session_closes_unbinds_and_fires_cancel_then_ignores_miss
                 &h.conn,
                 &tab_to_session,
                 &memo,
-                &cancel_signals,
                 &h.client.state,
             )
             .await;
 
-            // The in-flight cancel oneshot fires before the close request completes.
-            assert!(
-                tokio::time::timeout(std::time::Duration::from_secs(5), rx)
-                    .await
-                    .is_ok(),
-                "drop must fire the in-flight cancel signal"
-            );
             assert!(
                 !tab_to_session.lock().await.contains_key("t1"),
                 "drop must unbind the tab's session"
-            );
-            assert!(
-                !cancel_signals.lock().unwrap().contains_key("sess-drop"),
-                "drop must remove the cancel signal from the registry"
             );
             tokio::time::timeout(std::time::Duration::from_secs(5), async {
                 loop {
@@ -3035,7 +3533,6 @@ async fn dispatch_drop_session_closes_unbinds_and_fires_cancel_then_ignores_miss
             .await
             .expect("drop must ask master to resolve and close the destroyed tab");
 
-            // No-op: dropping an unbound tab leaves the map empty, no panic.
             dispatch_drop_session(
                 DropSessionRequest {
                     tab_id: "unbound".to_string(),
@@ -3044,7 +3541,6 @@ async fn dispatch_drop_session_closes_unbinds_and_fires_cancel_then_ignores_miss
                 &h.conn,
                 &tab_to_session,
                 &memo,
-                &cancel_signals,
                 &h.client.state,
             )
             .await;
@@ -3067,11 +3563,6 @@ async fn dispatch_drop_session_closes_unbinds_and_fires_cancel_then_ignores_miss
                 .lock()
                 .await
                 .insert("reset-tab".to_string(), reset_sid.clone());
-            let (reset_tx, reset_rx) = oneshot::channel::<()>();
-            cancel_signals
-                .lock()
-                .unwrap()
-                .insert(reset_sid.to_string(), reset_tx);
 
             dispatch_drop_session(
                 DropSessionRequest {
@@ -3081,17 +3572,10 @@ async fn dispatch_drop_session_closes_unbinds_and_fires_cancel_then_ignores_miss
                 &h.conn,
                 &tab_to_session,
                 &memo,
-                &cancel_signals,
                 &h.client.state,
             )
             .await;
 
-            assert!(
-                tokio::time::timeout(std::time::Duration::from_secs(5), reset_rx)
-                    .await
-                    .is_ok(),
-                "WT reset must still cancel the helper-local in-flight prompt"
-            );
             assert!(!tab_to_session.lock().await.contains_key("reset-tab"));
             for _ in 0..10 {
                 tokio::task::yield_now().await;
@@ -3129,8 +3613,6 @@ async fn dispatch_new_session_creates_binds_and_emits_attached() {
         .run_until(async {
             let h = connect_for_dispatch(MockBehavior::Reply);
             let tab_to_session = std::sync::Arc::new(tokio::sync::Mutex::new(HashMap::new()));
-            let cancel_signals: Arc<Mutex<HashMap<String, oneshot::Sender<()>>>> =
-                Arc::new(Mutex::new(HashMap::new()));
             let memo = TemplateMemo::default();
             let mut event_rx = h.event_rx;
 
@@ -3142,7 +3624,6 @@ async fn dispatch_new_session_creates_binds_and_emits_attached() {
                 &h.conn,
                 &tab_to_session,
                 &memo,
-                &cancel_signals,
                 &h.event_tx,
                 Arc::clone(&h.client.state),
                 false,
@@ -3180,8 +3661,6 @@ async fn dispatch_new_session_failure_emits_tab_error_and_leaves_unbound() {
             let h = connect_for_dispatch(MockBehavior::Reply);
             h.fail_new_session.store(true, Ordering::SeqCst);
             let tab_to_session = std::sync::Arc::new(tokio::sync::Mutex::new(HashMap::new()));
-            let cancel_signals: Arc<Mutex<HashMap<String, oneshot::Sender<()>>>> =
-                Arc::new(Mutex::new(HashMap::new()));
             let memo = TemplateMemo::default();
             let mut event_rx = h.event_rx;
 
@@ -3193,7 +3672,6 @@ async fn dispatch_new_session_failure_emits_tab_error_and_leaves_unbound() {
                 &h.conn,
                 &tab_to_session,
                 &memo,
-                &cancel_signals,
                 &h.event_tx,
                 Arc::clone(&h.client.state),
                 false,
@@ -3221,17 +3699,15 @@ async fn dispatch_new_session_failure_emits_tab_error_and_leaves_unbound() {
         .await;
 }
 
-/// `dispatch_new_session` replacing an existing session: the old session's
-/// in-flight cancel signal fires, and the tab is rebound to the new session.
+/// `dispatch_new_session` replaces an existing binding. Any active prompt is
+/// independently cancelled through its prompt-scoped token.
 #[tokio::test]
-async fn dispatch_new_session_replaces_old_and_fires_its_cancel() {
+async fn dispatch_new_session_replaces_old_binding() {
     let local = tokio::task::LocalSet::new();
     local
         .run_until(async {
             let h = connect_for_dispatch(MockBehavior::Reply);
             let tab_to_session = std::sync::Arc::new(tokio::sync::Mutex::new(HashMap::new()));
-            let cancel_signals: Arc<Mutex<HashMap<String, oneshot::Sender<()>>>> =
-                Arc::new(Mutex::new(HashMap::new()));
             let memo = TemplateMemo::default();
             let mut event_rx = h.event_rx;
 
@@ -3240,11 +3716,6 @@ async fn dispatch_new_session_replaces_old_and_fires_its_cancel() {
                 .lock()
                 .await
                 .insert("t1".to_string(), old.clone());
-            let (tx_old, rx_old) = oneshot::channel::<()>();
-            cancel_signals
-                .lock()
-                .unwrap()
-                .insert(old.to_string(), tx_old);
 
             dispatch_new_session(
                 NewSessionForTab {
@@ -3254,7 +3725,6 @@ async fn dispatch_new_session_replaces_old_and_fires_its_cancel() {
                 &h.conn,
                 &tab_to_session,
                 &memo,
-                &cancel_signals,
                 &h.event_tx,
                 Arc::clone(&h.client.state),
                 false,
@@ -3264,12 +3734,6 @@ async fn dispatch_new_session_replaces_old_and_fires_its_cancel() {
                 false,
             );
 
-            assert!(
-                tokio::time::timeout(std::time::Duration::from_secs(5), rx_old)
-                    .await
-                    .is_ok(),
-                "replacing a session must fire the old session's cancel signal"
-            );
             match tokio::time::timeout(std::time::Duration::from_secs(5), event_rx.recv()).await {
                 Ok(Some(AppEvent::SessionAttached { session_id, .. })) => {
                     assert_eq!(session_id, "mock-session-1");
@@ -3295,8 +3759,6 @@ async fn dispatch_load_session_binds_and_emits_attached() {
         .run_until(async {
             let h = connect_for_dispatch(MockBehavior::Reply);
             let tab_to_session = std::sync::Arc::new(tokio::sync::Mutex::new(HashMap::new()));
-            let cancel_signals: Arc<Mutex<HashMap<String, oneshot::Sender<()>>>> =
-                Arc::new(Mutex::new(HashMap::new()));
             let mut event_rx = h.event_rx;
 
             dispatch_load_session(
@@ -3307,7 +3769,6 @@ async fn dispatch_load_session_binds_and_emits_attached() {
                 },
                 &h.conn,
                 &tab_to_session,
-                &cancel_signals,
                 &h.event_tx,
                 Arc::clone(&h.client.state),
                 false,
@@ -3346,8 +3807,6 @@ async fn dispatch_load_session_failure_inline_emits_tab_error() {
             let h = connect_for_dispatch(MockBehavior::Reply);
             h.fail_load_session.store(true, Ordering::SeqCst);
             let tab_to_session = std::sync::Arc::new(tokio::sync::Mutex::new(HashMap::new()));
-            let cancel_signals: Arc<Mutex<HashMap<String, oneshot::Sender<()>>>> =
-                Arc::new(Mutex::new(HashMap::new()));
             let mut event_rx = h.event_rx;
 
             dispatch_load_session(
@@ -3358,7 +3817,6 @@ async fn dispatch_load_session_failure_inline_emits_tab_error() {
                 },
                 &h.conn,
                 &tab_to_session,
-                &cancel_signals,
                 &h.event_tx,
                 Arc::clone(&h.client.state),
                 false,
@@ -3397,8 +3855,6 @@ async fn dispatch_load_session_failure_handler_restores_prior_binding() {
             let h = connect_for_dispatch(MockBehavior::Reply);
             h.fail_load_session.store(true, Ordering::SeqCst);
             let tab_to_session = std::sync::Arc::new(tokio::sync::Mutex::new(HashMap::new()));
-            let cancel_signals: Arc<Mutex<HashMap<String, oneshot::Sender<()>>>> =
-                Arc::new(Mutex::new(HashMap::new()));
             let mut event_rx = h.event_rx;
 
             let old = acp::schema::v1::SessionId::new("old-sess");
@@ -3415,7 +3871,6 @@ async fn dispatch_load_session_failure_handler_restores_prior_binding() {
                 },
                 &h.conn,
                 &tab_to_session,
-                &cancel_signals,
                 &h.event_tx,
                 Arc::clone(&h.client.state),
                 false,
@@ -3455,8 +3910,6 @@ async fn dispatch_load_session_timeout_emits_tab_error() {
             let h = connect_for_dispatch(MockBehavior::Reply);
             h.slow_load.store(true, Ordering::SeqCst);
             let tab_to_session = std::sync::Arc::new(tokio::sync::Mutex::new(HashMap::new()));
-            let cancel_signals: Arc<Mutex<HashMap<String, oneshot::Sender<()>>>> =
-                Arc::new(Mutex::new(HashMap::new()));
             let mut event_rx = h.event_rx;
 
             dispatch_load_session(
@@ -3467,7 +3920,6 @@ async fn dispatch_load_session_timeout_emits_tab_error() {
                 },
                 &h.conn,
                 &tab_to_session,
-                &cancel_signals,
                 &h.event_tx,
                 Arc::clone(&h.client.state),
                 false,
@@ -3753,10 +4205,10 @@ async fn malformed_copilot_selector_cannot_bypass_policy_through_config() {
     local
         .run_until(async {
             let mut h = connect_for_dispatch(MockBehavior::Reply);
-            h.client.state.native_yolo.set_resolved_agent(
-                Some(crate::agent_registry::COPILOT_AGENT_ID),
-                Some("1.0.80"),
-            );
+            h.client
+                .state
+                .native_yolo
+                .set_resolved_agent_id(Some(crate::agent_registry::COPILOT_AGENT_ID));
             let response: acp::schema::v1::NewSessionResponse =
                 serde_json::from_value(serde_json::json!({
                     "sessionId": "malformed-copilot-policy-session",
@@ -3827,10 +4279,10 @@ async fn disappeared_copilot_selector_stale_enable_cannot_bypass_policy() {
     local
         .run_until(async {
             let mut h = connect_for_dispatch(MockBehavior::Reply);
-            h.client.state.native_yolo.set_resolved_agent(
-                Some(crate::agent_registry::COPILOT_AGENT_ID),
-                Some("1.0.80"),
-            );
+            h.client
+                .state
+                .native_yolo
+                .set_resolved_agent_id(Some(crate::agent_registry::COPILOT_AGENT_ID));
             let session_id =
                 record_copilot_yolo_state(&h, "disappeared-copilot-policy-session", "off");
             h.client
@@ -5162,28 +5614,35 @@ async fn session_notification_hides_proposal_tool_call_before_permission() {
 }
 
 #[tokio::test]
-async fn session_notification_hides_proposal_mcp_tool_call() {
-    let (client, mut rx) = bare_client();
-    client
-        .session_notification(notif(
+async fn session_notification_hides_only_bound_session_mcp_tool_call() {
+    let own_server = "intellterm_0123456789abcdef";
+    for server_name in [None, Some(own_server), Some("intellterm_9876543210987654")] {
+        let (client, mut rx) = bare_client();
+        let mut notification = notif(
             "s1",
             acp::schema::v1::SessionUpdate::ToolCall(acp::schema::v1::ToolCall::new(
                 acp::schema::v1::ToolCallId::new("proposal-mcp-tool"),
                 "intellterm_0123456789abcdef/run_command_in_current_shell",
             )),
-        ))
-        .await
-        .unwrap();
+        );
+        crate::agent_tools::session_mcp::stamp_server_identity(&mut notification.meta, server_name);
+        client.session_notification(notification).await.unwrap();
 
-    assert!(matches!(
-        rx.try_recv(),
-        Ok(AppEvent::HideToolCall { session_id, id })
-            if session_id == "s1" && id == "proposal-mcp-tool"
-    ));
-    assert!(
-        rx.try_recv().is_err(),
-        "session MCP ToolCall must not reach the chat UI"
-    );
+        if server_name == Some(own_server) {
+            assert!(matches!(
+                rx.try_recv(),
+                Ok(AppEvent::HideToolCall { session_id, id })
+                    if session_id == "s1" && id == "proposal-mcp-tool"
+            ));
+        } else {
+            assert!(matches!(
+                rx.try_recv(),
+                Ok(AppEvent::ToolCall { session_id, id, .. })
+                    if session_id == "s1" && id == "proposal-mcp-tool"
+            ));
+        }
+        assert!(rx.try_recv().is_err());
+    }
 }
 
 /// When the agent's own `title` already embeds the location text (common

@@ -11,6 +11,7 @@
   </data>
   <data name="FreOverlay_WelcomeSubtitlePrefix" xml:space="preserve">
     <value>ئىچكى گە ياردەمچىڭىزنى تەڭشەڭ، خاتالىقلارنى چۈشەندۈرۈش، بۇيرۇقلارنى تۈزۈش ۋە ۋەزىپىلەرنى ھەل قىلىشتا ياردەم بېرىش. </value>
+    <comment>Text shown immediately before the FreOverlay_WelcomeSubtitleLink hyperlink. Include any spacing needed to separate the prefix from the link in the target language.</comment>
   </data>
   <data name="FreOverlay_WelcomeSubtitleLink" xml:space="preserve">
     <value>ئەقلىي تېرمىنال ھەققىدە تېخىمۇ بىلىڭ</value>
@@ -36,11 +37,11 @@
   </data>
   <!-- ═══ FRE Settings Page ═══ -->
   <data name="FreOverlay_SettingsTitle.Text" xml:space="preserve">
-    <value>تېرمىنال AI ۋەكىلىڭىزنى تەڭشەڭ</value>
-    <comment>{Locked="Copilot","Claude","Gemini"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+    <value>تېرمىنالىڭىزنى تەڭشەڭ</value>
   </data>
   <data name="FreOverlay_SettingsSubtitlePrefix" xml:space="preserve">
     <value>ھازىر نېمىنى تەڭشەشنى تاللاڭ. بۇلارنى ھەر ۋاقىتتا ئۆزگەرتەلەيسىز. </value>
+    <comment>Text shown immediately before the FreOverlay_SettingsSubtitleLink hyperlink. Include any spacing needed to separate the prefix from the link in the target language.</comment>
   </data>
   <data name="FreOverlay_SettingsSubtitleLink" xml:space="preserve">
     <value>سانلىق مەلۇماتلارنىڭ قانداق ئىشلىتىلىدىغانلىقىنى ئۆگىنىڭ</value>
@@ -51,48 +52,42 @@
   </data>
   <data name="FreOverlay_AgentDescription.Text" xml:space="preserve">
     <value>ۋەكىل تاختىسىدا ئىشلىتىلىدىغان ۋە ACP نى قوللايدىغان ۋەكىلنى تاللاڭ.</value>
-    <comment>{Locked="ACP"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+    <comment>{Locked="ACP"} Description for choosing an AI agent for the agent pane. The selected agent must support ACP. "ACP" is rendered as a hyperlink at runtime and must appear exactly once. In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
-  <data name="FreOverlay_AgentInstallHint.Text" xml:space="preserve">
-    <value>بۇ ۋەكىل Node.js ۋە NPX نى تەلەپ قىلىدۇ، ئەگەر ئورنىتىلمىغان بولسا ئاپتوماتىك ئورنىتىلىدۇ.</value>
-    <comment>{Locked="Node.js","NPX"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
-  </data>
-  <data name="FreOverlay_AutoErrorLabel.Text" xml:space="preserve">
-    <value>ئاپتوماتىك خاتالىق تەكلىپى</value>
-  </data>
-  <data name="FreOverlay_AutoErrorDescription.Text" xml:space="preserve">
-    <value>Intelligent Terminal غا خاتالىقلارنى ۋاكالەتچىڭىزگە ئەۋەتىپ، تۈزىتىشلەرنى ئاپتوماتىك تەكلىپ قىلىشقا رۇخسەت بېرىڭ.</value>
-    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
-  </data>
+  <data name="FreOverlay_ErrorDetectionLabel.Text" xml:space="preserve"><value>خاتالىق بايقاش</value><comment>Header for the dropdown that configures how the terminal handles failed commands.</comment></data>
+  <data name="FreOverlay_ErrorDetectionDescription.Text" xml:space="preserve"><value>shell دىكى مەغلۇپ بولغان بۇيرۇقلارنى ئاپتوماتىك بايقاپ، ئاپتوماتىك تۈزىتىش ئۈچۈن ئۇلارنى ئىختىيارىي ھالدا ۋەكىلىڭىزگە ئەۋەتىڭ.</value><comment>Description for the error-detection dropdown in the first-run wizard. The dropdown includes detect-only, detect-and-fix, and off modes; the selected mode controls whether shell errors are detected and whether failed commands are automatically sent to the selected AI agent. In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment></data>
+  <data name="FreOverlay_ErrorDetectionDetectOption.Content" xml:space="preserve"><value>خاتالىقلارنى بايقاش</value><comment>Dropdown option that detects shell errors without automatically sending failed commands to the selected AI agent.</comment></data>
+  <data name="FreOverlay_ErrorDetectionAutoFixOption.Content" xml:space="preserve"><value>خاتالىقلارنى بايقاش ۋە تۈزىتىش</value><comment>Dropdown option that detects shell errors and automatically sends failed commands to the selected AI agent. In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment></data>
+  <data name="FreOverlay_ErrorDetectionOffOption.Content" xml:space="preserve"><value>تاقاق</value><comment>Dropdown option that disables automatic shell error detection.</comment></data>
+  <data name="FreOverlay_ErrorDetectionAutoFixPolicyLocked" xml:space="preserve"><value>ئاپتوماتىك تۈزىتىش تاللانمىسىنى تەشكىلاتىڭىز باشقۇرىدۇ.</value><comment>Text shown below the error-detection dropdown when Group Policy disables its automatic-fix option.</comment></data>
+  <data name="FreOverlay_PolicyLocked" xml:space="preserve"><value>بۇ تەڭشەكنى تەشكىلاتىڭىز باشقۇرىدۇ.</value><comment>Text shown below a first-run setting when Group Policy manages or restricts the feature. The associated control may be disabled or filtered to allowed choices. Standard Windows policy notice wording.</comment></data>
   <data name="FreOverlay_SessionLabel.Text" xml:space="preserve">
-    <value>ئوتتۇرا باشقۇرۇش</value>
+    <value>ئولتۇرۇشلار</value>
   </data>
   <data name="FreOverlay_SessionDescription.Text" xml:space="preserve">
-    <value>ئەقلىي تېرمىنال غا ئىشلىۋاتقان ياكى ئاكتىۋ ۋەكىللىرىڭىزنىڭ ھالىتىنى بايقاش ئىزنى بېرىڭ.</value>
-    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
-  </data>
-  <data name="FreOverlay_SessionHint.Text" xml:space="preserve">
-    <value>بۇنى ئاچسىڭىز، ۋەكىللىرىڭىز ئارىسىدىكى ئولتۇرۇشلارنى ئىز قوغلاش ئۈچۈن بىرلەشتۈرۈش hooks ئورنىتىلىدۇ.</value>
-    <comment>{Locked="hooks"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
-  </data>
-  <data name="FreOverlay_ShowTokenUsageAndCostLabel.Text" xml:space="preserve"><value>مەزمۇن ئىشلىتىش ۋە ئولتۇرۇش تەننەرخىنى كۆرسىتىڭ</value><comment>Header for a first-run toggle that shows available context-window usage and session cost in the terminal bottom bar. Session cost is reported for the active AI session. Keep 'session cost' generic and do not add a specific unit. Either value may be unavailable.</comment></data>
-  <data name="FreOverlay_ShowTokenUsageAndCostDescription.Text" xml:space="preserve"><value>ئىشلەتكىلى بولسا، تېرمىنالنىڭ ئاستى بالدىقىدا مەزمۇن كۆزنىكىنىڭ ئىشلىتىلىشى ۋە ئولتۇرۇش تەننەرخىنى كۆرسىتىڭ.</value><comment>Description for the usage visibility toggle in the first-run wizard. Session cost is reported for the active AI session. Keep 'session cost' generic and do not add a specific unit. Either value may be unavailable.</comment></data>
-  <data name="FreOverlay_PanePositionLabel.Text" xml:space="preserve">
-    <value>تاختا ئورنى</value>
-  </data>
-  <data name="FreOverlay_PanePositionDescription.Text" xml:space="preserve">
-    <value>ۋەكىل تاختىسى تېرمىنالىڭىزغا نىسبەتەن قەيەردە ئېچىلىدۇ.</value>
+    <value>قايسى ۋەكىللەرنىڭ ئىجرا بولۇۋاتقانلىقىنى ۋە قايسىلىرىنىڭ دىققىتىڭىزگە موھتاج ئىكەنلىكىنى ئىزلاڭ.</value>
     <comment>In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
+  <data name="FreOverlay_ShowTokenUsageAndCostLabel.Text" xml:space="preserve"><value>توكن ئىشلىتىلىشى</value><comment>Header for a first-run toggle that shows remaining context and session cost in the terminal bottom bar.</comment></data>
+  <data name="FreOverlay_ShowTokenUsageAndCostDescription.Text" xml:space="preserve"><value>مەۋجۇت بولغاندا قالغان كونتېكىست ۋە ئولتۇرۇش تەننەرخىنى كۆرسىتىڭ.</value><comment>Description for the token-usage visibility toggle in the first-run wizard. Either value may be unavailable.</comment></data>
+  <data name="FreOverlay_PanePositionLabel.Text" xml:space="preserve">
+    <value>ۋەكىل ئورنى</value>
+  </data>
+  <data name="FreOverlay_PanePositionDescription.Text" xml:space="preserve">
+    <value>ۋەكىلىڭىز تۇرىدىغان ئورۇن.</value>
+    <comment>Description for choosing where the AI agent pane appears within the terminal window. In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+  </data>
   <data name="FreOverlay_SaveButton.Content" xml:space="preserve">
-    <value>ساقلاش</value>
+    <value>باشلاش</value>
   </data>
   <!-- ═══ FRE Dynamic strings (used from C++ code-behind) ═══ -->
   <data name="FreOverlay_AgentStatusWillInstall" xml:space="preserve">
     <value> (ئورنىتىلىدۇ)</value>
+    <comment>Status suffix appended directly to an AI agent display name when setup will install that agent. Include any spacing and punctuation needed to separate the suffix from the agent name.</comment>
   </data>
   <data name="FreOverlay_AgentStatusInstalled" xml:space="preserve">
     <value> (ئورنىتىلغان)</value>
+    <comment>Status suffix appended directly to an AI agent display name when that agent is already installed. Include any spacing and punctuation needed to separate the suffix from the agent name.</comment>
   </data>
   <data name="FreOverlay_PanePositionBottom" xml:space="preserve">
     <value>ئاستى</value>
@@ -111,35 +106,35 @@
   </data>
   <data name="FreOverlay_InstallError_BlockedByPolicy" xml:space="preserve">
     <value>{0} نى ئورنىتىش Windows Package Manager سىياسىتى تەرىپىدىن چەكلەندى. ئەگەر باشقۇرۇلىدىغان ئۈسكۈنىدە بولسىڭىز، IT باشقۇرغۇچىڭىز بىلەن ئالاقىلىشىڭ.</value>
-    <comment>FRE setup error. {0} is the package display name.</comment>
+    <comment>FRE setup error. {0} is the package display name. Shown when winget reports BlockedByPolicy or an equivalent policy-related HRESULT.</comment>
   </data>
   <data name="FreOverlay_InstallError_Generic" xml:space="preserve">
     <value>{0} نى ئورنىتالمىدى (خاتالىق كودى {1}). تەپسىلاتلار ئۈچۈن خاتىرىنى كۆرۈڭ، ياكى {0} نى قولدا ئورنىتىڭ.</value>
-    <comment>FRE setup error fallback. {0} is the package display name (appears twice). {1} is a pre-formatted HRESULT string.</comment>
+    <comment>FRE setup error fallback. {0} is the package display name (appears twice). {1} is a pre-formatted HRESULT string like "0x80190194". Shown for failure causes we don't have a more specific message for.</comment>
   </data>
   <data name="FreOverlay_InstallError_GenericNoCode" xml:space="preserve">
     <value>{0} نى ئورنىتالمىدى. تەپسىلاتلار ئۈچۈن خاتىرىنى كۆرۈڭ، ياكى {0} نى قولدا ئورنىتىڭ.</value>
-    <comment>FRE setup error fallback used when no actionable error code is available. {0} is the package display name (appears twice).</comment>
+    <comment>FRE setup error fallback used when no actionable error code is available (e.g. the catalog connect/search failed before an installer ever ran). {0} is the package display name (appears twice).</comment>
   </data>
   <data name="FreOverlay_InstallError_InstallerFailed" xml:space="preserve">
     <value>{0} ئورنىتىش پروگراممىسى خاتالىق مەلۇم قىلدى (كود {1}). تەپسىلاتلار ئۈچۈن خاتىرىنى تەكشۈرۈڭ، ياكى {0} نى قولدا ئورنىتىڭ.</value>
-    <comment>FRE setup error. {0} is the package display name (appears twice). {1} is decimal error code.</comment>
+    <comment>FRE setup error. {0} is the package display name (appears twice). {1} is the installer-reported error code as a decimal number (e.g. MSI 1603). Shown when winget reached the install phase but the installer itself failed.</comment>
   </data>
   <data name="FreOverlay_InstallError_Network" xml:space="preserve">
     <value>{0} نى ئورنىتىۋاتقاندا Windows Package Manager غا يېتىپ بارالمىدى. ئىنتېرنېت باغلىنىشىڭىزنى تەكشۈرۈڭ (VPN، ۋاكالەتچى ياكى مۇداپىئە تېمى ئۇنى توسۇۋاتقان بولۇشى مۇمكىن) ۋە قايتا سىناڭ.</value>
-    <comment>{Locked="VPN"} FRE setup error. {0} is the package display name.</comment>
+    <comment>{Locked="VPN"} FRE setup error. {0} is the package display name (FreOverlay_PackageDisplayName_Copilot or _Node). Shown when winget couldn't reach its catalog or the package download failed with a network-class HRESULT.</comment>
   </data>
   <data name="FreOverlay_InstallError_NoCompatibleInstaller" xml:space="preserve">
     <value>بۇ سىستېمىدا {0} ئۈچۈن ماس كېلىدىغان ئورنىتىش پروگراممىسى يوق (OS نەشرى ياكى قۇرۇلما قوللىماسلىقى مۇمكىن). {0} نى قولدا ئورنىتىڭ.</value>
-    <comment>FRE setup error. {0} is the package display name (appears twice).</comment>
+    <comment>FRE setup error. {0} is the package display name (appears twice). Shown when winget returned NoApplicableInstallers — the manifest exists but no installer entry matches this OS/arch/scope.</comment>
   </data>
   <data name="FreOverlay_InstallError_PackageNotFound" xml:space="preserve">
     <value>{0} Windows Package Manager كاتالوگىدىن تېپىلمىدى. winget مەنبەلىرىنى يېڭىلاپ بېقىڭ، ياكى {0} نى قولدا ئورنىتىڭ.</value>
-    <comment>{Locked="winget"} FRE setup error. {0} is the package display name (appears twice).</comment>
+    <comment>{Locked="winget"} FRE setup error. {0} is the package display name (appears twice). Shown when no manifest with the requested package ID was returned from the catalog search.</comment>
   </data>
   <data name="FreOverlay_InstallError_Timeout" xml:space="preserve">
     <value>{0} نى ئورنىتىش 20 مىنۇتتىن ئۇزۇن داۋاملاشتى. Intelligent Terminal كۈتۈشنى توختاتتى، لېكىن ئورنىتىش پروگراممىسى يەنىلا ئارقا سۇپىدا ئىجرا بولۇۋاتقان بولۇشى مۇمكىن. Task Manager نى تەكشۈرۈڭ، ياكى كېيىن قايتا سىناڭ.</value>
-    <comment>{Locked="Intelligent Terminal","Task Manager"} FRE setup error. {0} is the package display name.</comment>
+    <comment>{Locked="Intelligent Terminal","Task Manager"} FRE setup error. {0} is the package display name. Shown when our 20-minute hard timeout expired before the install completed.</comment>
   </data>
   <data name="FreOverlay_InstallErrorWingetMissing" xml:space="preserve">
     <value>Windows Package Manager (winget) ئورنىتىلمىغان ياكى ئىشلەتكىلى بولمايدۇ. ئالدى بىلەن ئۇنى ئورنىتىڭ، ئاندىن قايتا سىناڭ.</value>
@@ -227,25 +222,15 @@
     <value>Terminal Protocol</value>
     <comment>Title for the teaching tip that displays Terminal Protocol connection information. {Locked="Terminal Protocol"}</comment>
   </data>
-  <data name="FreOverlay_AutoDetectLabel.Text" xml:space="preserve">
-    <value>ئاپتوماتىك خاتالىق بايقاش</value>
-  </data>
-  <data name="FreOverlay_AutoDetectDescription.Text" xml:space="preserve">
-    <value>Intelligent Terminal غا شېلىڭىزنى زىيارەت قىلىش ۋە خاتالىقلارنى ئاپتوماتىك بايقاشقا رۇخسەت بېرىڭ.</value>
-  </data>
 <data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
     <value>شېل بىرلەشتۈرۈشنى ئورنىتىش مەغلۇب بولدى. خاتالىق بايقاش تاقالدى. ئۇنى قايتا ئېچىپ قايتا سىنىيالايسىز، ياكى ئۇنىڭسىز داۋاملاشتۇرۇش ئۈچۈن ساقلىيالايسىز.</value>
+    <comment>FRE setup error shown when shell integration cannot be installed. Error detection is turned off so setup can continue, and the user may re-enable it to retry.</comment>
   </data><data name="FreOverlay_InstallErrorHooks" xml:space="preserve">
     <value>session hooks ئورنىتىش مەغلۇب بولدى. ئەڭگىمە باشقۇرۇش تاقالدى. ئۇنى قايتا ئېچىپ قايتا سىنىيالايسىز، ياكى ئۇنىڭسىز داۋاملاشتۇرۇش ئۈچۈن ساقلىيالايسىز.</value>
-    <comment>{Locked="hooks"}</comment>
+    <comment>{Locked="hooks"} FRE setup error shown when session hooks cannot be installed. Session management is turned off so setup can continue, and the user may re-enable it to retry.</comment>
   </data><data name="FreOverlay_ErrorHelpLink" xml:space="preserve">
     <value>بۇنى قولدا قانداق ئوڭشاشنى ئۆگىنىڭ</value>
     <comment>Hyperlink shown below an FRE setup error message. Opens step-by-step manual setup instructions in the browser.</comment>
-  </data>  <data name="FreOverlay_AutoDetectShellIntegrationHintPrefix" xml:space="preserve">
-    <value>بۇنى ئاچسىڭىز، بۇيرۇق مەغلۇبىيەتلىرىنى بايقاش ئۈچۈن shell بىرلەشتۈرۈش ئورنىتىلىدۇ. </value>
-  </data>
-  <data name="FreOverlay_AutoDetectShellIntegrationHintLink" xml:space="preserve">
-    <value>تېخىمۇ بىلىڭ</value>
   </data>
   <data name="InitShellIntegrationExecutionPolicyErrorMessage" xml:space="preserve">
     <value>PowerShell ئىجرا سىياسىتى قوليازمىلارنى چەكلەۋاتىدۇ.</value>
@@ -253,7 +238,7 @@
   </data>
   <data name="FreOverlay_InstallErrorShellIntegrationExecutionPolicy" xml:space="preserve">
     <value>PowerShell ئىجرا سىياسىتى قوليازمىلارنى چەكلەۋاتىدۇ. خاتالىق بايقاش تاقالدى.</value>
-    <comment>{Locked="PowerShell"}</comment>
+    <comment>{Locked="PowerShell"} FRE setup error shown when PowerShell execution policy prevents shell-integration scripts from running. Error detection is turned off so setup can continue.</comment>
   </data>
   <data name="UsageGroup/[using:Windows.UI.Xaml.Automation]AutomationProperties/Name" xml:space="preserve"><value>ئىشلىتىش</value><comment>Accessibility name for the session usage summary in the terminal bottom bar.</comment></data>
   <data name="Usage_TokensUnit" xml:space="preserve"><value>توكېنلار</value><comment>Unit label for AI context-window token counts. Translate this term using the established AI/LLM terminology for the locale.</comment></data>

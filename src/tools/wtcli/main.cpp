@@ -6,6 +6,7 @@
 
 #include "Formatting.h"
 #include "wtcli_functions.h"
+#include "../../cascadia/TerminalProtocol/ProtocolParsing.h"
 
 // Classic-COM Terminal protocol. Generated from
 // src/host/proxy/ITerminalProtocol.idl; found via the OpenConsoleProxy IntDir
@@ -18,6 +19,7 @@
 
 #include <wil/resource.h>
 
+#include <algorithm>
 #include <array>
 #include <charconv>
 #include <chrono>
@@ -28,6 +30,7 @@
 #include <io.h>
 #include <iostream>
 #include <string>
+#include <string_view>
 #include <thread>
 #include <vector>
 
@@ -74,7 +77,8 @@ struct EventSink : ITerminalProtocolEventSink
 static winrt::com_ptr<ITerminalProtocol> ConnectToTerminal(bool* outAuthenticated = nullptr,
                                                            std::string* outVersion = nullptr,
                                                            bool skipAuthenticate = false,
-                                                           bool quiet = false)
+                                                           bool quiet = false,
+                                                           bool requireProtocolVersion = false)
 {
     if (outAuthenticated)
         *outAuthenticated = false;
@@ -122,7 +126,9 @@ static winrt::com_ptr<ITerminalProtocol> ConnectToTerminal(bool* outAuthenticate
         std::string errs;
         auto s = winrt::to_string(winrt::hstring{ rawAuth });
         std::istringstream ss(s);
-        if (Json::parseFromStream(rb, ss, &v, &errs))
+        if (Json::parseFromStream(rb, ss, &v, &errs) &&
+            (!requireProtocolVersion || (v.isObject() && v["authenticated"].isBool() &&
+                                         v["protocol_version"].isString())))
         {
             parsed = true;
             authenticated = v["authenticated"].asBool();
@@ -307,6 +313,45 @@ static bool TryParseU64(const std::string& s, uint64_t& out)
         return false;
     out = v;
     return true;
+}
+
+static HRESULT ProtocolAtLeast(const std::string& version, const unsigned requiredMajor, const unsigned requiredMinor)
+{
+    const auto dot = version.find('.');
+    if (dot == std::string::npos)
+    {
+        return E_UNEXPECTED;
+    }
+
+    uint64_t major = 0;
+    uint64_t minor = 0;
+    if (!TryParseU64(version.substr(0, dot), major) ||
+        !TryParseU64(version.substr(dot + 1), minor))
+    {
+        return E_UNEXPECTED;
+    }
+    return major > requiredMajor || (major == requiredMajor && minor >= requiredMinor) ? S_OK : S_FALSE;
+}
+
+static HRESULT SupportsCapability(ITerminalProtocol* server, const std::string_view capability)
+{
+    Json::Value capabilities;
+    const auto hr = CallJson([&](BSTR* json) { return server->GetCapabilities(json); }, capabilities);
+    if (FAILED(hr))
+    {
+        return hr;
+    }
+
+    using namespace Microsoft::Terminal::Protocol::Parsing;
+    switch (ClassifyCapability(capabilities, capability))
+    {
+    case CapabilitySupport::Supported:
+        return S_OK;
+    case CapabilitySupport::Unsupported:
+        return S_FALSE;
+    default:
+        return E_UNEXPECTED;
+    }
 }
 
 // ── Main ──
@@ -522,6 +567,110 @@ int wmain(int argc, wchar_t** argv)
             PrintJson(output);
         else
             printf("%s\n", output["content"].asString().c_str());
+    });
+
+    // ── get-pane-context ──
+    std::string paneContextTarget;
+    int paneContextMaxLines = 30;
+    int paneContextMaxCharacters = 4000;
+    auto* paneContextCmd = app.add_subcommand("get-pane-context", "Resolve a pane and capture bounded context (requires the authentication handshake)");
+    auto* paneContextTargetOption = paneContextCmd->add_option("-t,--target", paneContextTarget, "Explicit source pane session ID (GUID)");
+    paneContextCmd->add_option("-l,--max-lines", paneContextMaxLines, "Maximum content lines for marked commands or buffer tails");
+    paneContextCmd->add_option("--max-chars", paneContextMaxCharacters, "Maximum returned content characters");
+    paneContextCmd->callback([&]() {
+        constexpr int MaxContextLines = 1000;
+        constexpr int MaxContextCharacters = 100000;
+        if (paneContextMaxLines < 0 || paneContextMaxLines > MaxContextLines)
+        {
+            fprintf(stderr, "[wtcli] --max-lines must be between 0 and %d\n", MaxContextLines);
+            exitCode = 1;
+            return;
+        }
+        if (paneContextMaxCharacters < 0 || paneContextMaxCharacters > MaxContextCharacters)
+        {
+            fprintf(stderr, "[wtcli] --max-chars must be between 0 and %d\n", MaxContextCharacters);
+            exitCode = 1;
+            return;
+        }
+
+        GUID source{};
+        const auto hasExplicitSource = paneContextTargetOption->count() != 0;
+        if (hasExplicitSource)
+        {
+            source = GuidFromString(paneContextTarget, true);
+            if (InlineIsEqualGUID(source, GUID{}))
+            {
+                fprintf(stderr, "[wtcli] Invalid session ID: %s\n", paneContextTarget.empty() ? "(empty)" : paneContextTarget.c_str());
+                exitCode = 1;
+                return;
+            }
+        }
+
+        if (skipAuthenticate)
+        {
+            fprintf(stderr, "[wtcli] get-pane-context requires protocol negotiation; --skip-authenticate is not supported\n");
+            exitCode = 1;
+            return;
+        }
+
+        std::string version;
+        auto server = ConnectToTerminal(nullptr, &version, skipAuthenticate, false, true);
+        if (!server)
+        {
+            exitCode = 1;
+            return;
+        }
+
+        auto support = ProtocolAtLeast(version, 2, 3);
+        if (FAILED(support))
+        {
+            fprintf(stderr, "[wtcli] Invalid protocol version (server contract error)\n");
+            exitCode = 1;
+            return;
+        }
+        if (support == S_OK)
+        {
+            support = SupportsCapability(server.get(), "get_pane_context");
+            if (FAILED(support))
+            {
+                fprintf(stderr, "[wtcli] GetCapabilities failed or returned malformed capabilities: 0x%08X\n", static_cast<uint32_t>(support));
+                exitCode = 1;
+                return;
+            }
+        }
+        if (support == S_FALSE)
+        {
+            fprintf(stderr,
+                    "[wtcli] WT_PROTOCOL_UNSUPPORTED_PANE_CONTEXT server=%s required=2.3\n",
+                    version.empty() ? "unknown" : version.c_str());
+            exitCode = 2;
+            return;
+        }
+
+        Json::Value context;
+        const auto hr = CallJson([&](BSTR* json) {
+            return server->GetPaneContext(
+                source,
+                hasExplicitSource,
+                paneContextMaxLines,
+                paneContextMaxCharacters,
+                json);
+        }, context);
+        if (FAILED(hr))
+        {
+            fprintf(stderr, "GetPaneContext failed: 0x%08X\n", static_cast<uint32_t>(hr));
+            exitCode = 1;
+            return;
+        }
+
+        if (jsonMode)
+        {
+            PrintJson(context);
+        }
+        else
+        {
+            printf("%s\n", context["content"].asString().c_str());
+        }
     });
 
     // ── pane-status ──
@@ -1014,11 +1163,13 @@ int wmain(int argc, wchar_t** argv)
     // ── listen ──
     std::string listenTarget;
     std::string listenEventFilter;
+    std::string listenReadyToken;
     DWORD listenParentPid = 0;
     auto* listenCmd = app.add_subcommand("listen", "Stream real-time events from Windows Terminal");
     listenCmd->add_option("-t,--target", listenTarget, "Filter by session ID (GUID)");
     listenCmd->add_option("--event", listenEventFilter, "Filter by event type (supports trailing wildcard, e.g. agent.*)");
     listenCmd->add_option("--parent-pid", listenParentPid, "Exit when the specified parent process exits");
+    listenCmd->add_option("--ready-token", listenReadyToken, "Emit an internal JSON readiness marker after Subscribe succeeds");
     listenCmd->callback([&]() {
         wil::unique_handle parentProcess;
         if (listenParentPid != 0)
@@ -1072,6 +1223,16 @@ int wmain(int argc, wchar_t** argv)
             fprintf(stderr, "Subscribe failed: 0x%08X\n", static_cast<uint32_t>(hr));
             exitCode = 1;
             return;
+        }
+        if (!listenReadyToken.empty())
+        {
+            Json::Value ready{ Json::objectValue };
+            ready["_wtcli"] = "listener_ready";
+            ready["token"] = listenReadyToken;
+            Json::StreamWriterBuilder writer;
+            writer["indentation"] = "";
+            printf("%s\n", Json::writeString(writer, ready).c_str());
+            fflush(stdout);
         }
 
         DWORD waitResult = WAIT_OBJECT_0;

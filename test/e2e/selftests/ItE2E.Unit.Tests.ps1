@@ -209,14 +209,260 @@ Describe 'Configuration backup and restore' -Tag 'Unit' {
 }
 
 Describe 'Resolve-ItApp' -Tag 'Unit' {
+    It 'retains the packaged wta path when WindowsApps denies existence checks' {
+        InModuleScope ItE2E {
+            $pfn = 'Microsoft.IntelligentTerminal_8wekyb3d8bbwe'
+            $install = 'C:\Program Files\WindowsApps\Microsoft.IntelligentTerminal_1.2.3.4_x64__8wekyb3d8bbwe'
+            $expectedWta = Join-Path $install 'wta.exe'
+            Mock Get-AppxPackage {
+                [pscustomobject]@{
+                    PackageFamilyName = 'Microsoft.IntelligentTerminal_8wekyb3d8bbwe'
+                    PackageFullName = 'Microsoft.IntelligentTerminal_1.2.3.4_x64__8wekyb3d8bbwe'
+                    Version = [version]'1.2.3.4'
+                    InstallLocation = 'C:\Program Files\WindowsApps\Microsoft.IntelligentTerminal_1.2.3.4_x64__8wekyb3d8bbwe'
+                }
+            }
+            Mock Get-StartApps { @() }
+            Mock Get-Command { $null }
+            Mock Test-Path { $true }
+            Mock Test-Path { $false } -ParameterFilter { $Path -eq $expectedWta }
+
+            $app = Resolve-ItApp -Package $pfn
+
+            $app.WtaPath | Should -Be $expectedWta
+            Should -Invoke Test-Path -ParameterFilter { $Path -eq $expectedWta } -Times 0
+        }
+    }
+
     It 'resolves a descriptor with the expected shape when a package is installed' {
-        $installed = Get-AppxPackage | Where-Object { $_.Name -like '*IntelligentTerminal*' }
+        $installed = @(Get-AppxPackage | Where-Object { $_.Name -like '*IntelligentTerminal*' })
         if (-not $installed) { Set-ItResult -Skipped -Because 'no IT package installed'; return }
-        $app = Resolve-ItApp -Package Auto
+        $app = Resolve-ItApp -Package $installed[0].PackageFamilyName
         $app.Package | Should -Match 'IntelligentTerminal'
         $app.AppUserModelId | Should -Match '!'
         $app.SettingsPath | Should -Match 'LocalState\\settings\.json$'
         $app.WtcliPath | Should -Not -BeNullOrEmpty
+    }
+}
+
+Describe 'Live test package selection' -Tag 'Unit' {
+    It 'requires ITE2E_PACKAGE to be set explicitly' {
+        InModuleScope ItE2E {
+            $saved = $env:ITE2E_PACKAGE
+            try {
+                Remove-Item Env:\ITE2E_PACKAGE -ErrorAction SilentlyContinue
+                { Get-ItTestPackage } | Should -Throw '*Choose the live integration-test package explicitly*'
+            }
+            finally {
+                if ($null -eq $saved) { Remove-Item Env:\ITE2E_PACKAGE -ErrorAction SilentlyContinue }
+                else { $env:ITE2E_PACKAGE = $saved }
+            }
+        }
+    }
+
+    It 'rejects Auto and accepts an explicit package selector' {
+        InModuleScope ItE2E {
+            $saved = $env:ITE2E_PACKAGE
+            try {
+                $env:ITE2E_PACKAGE = 'Auto'
+                { Get-ItTestPackage } | Should -Throw "*'Auto' is not allowed*"
+                $env:ITE2E_PACKAGE = 'Dev'
+                Get-ItTestPackage | Should -Be 'Dev'
+            }
+            finally {
+                if ($null -eq $saved) { Remove-Item Env:\ITE2E_PACKAGE -ErrorAction SilentlyContinue }
+                else { $env:ITE2E_PACKAGE = $saved }
+            }
+        }
+    }
+
+    It 'rejects Auto before resolving or launching a terminal' {
+        InModuleScope ItE2E {
+            Mock Resolve-ItApp { throw 'must not be called' }
+            { Start-Terminal -Package Auto } | Should -Throw "*'Auto' is not allowed*"
+            Should -Invoke Resolve-ItApp -Times 0
+        }
+    }
+}
+
+Describe 'Package-scoped process cleanup' -Tag 'Unit' {
+    It 'finds WindowsTerminal processes only under the selected package install location' {
+        InModuleScope ItE2E {
+            $app = [pscustomobject]@{
+                InstallLocation = 'C:\DevPackage\AppX'
+            }
+            Mock Get-Process {
+                @(
+                    [pscustomobject]@{ Id = 101; Path = 'C:\DevPackage\AppX\WindowsTerminal.exe' }
+                    [pscustomobject]@{ Id = 202; Path = 'C:\Program Files\WindowsApps\Microsoft.IntelligentTerminal_1.0.0.0_x64__8wekyb3d8bbwe\WindowsTerminal.exe' }
+                    [pscustomobject]@{ Id = 303; Path = 'C:\Program Files\WindowsApps\Microsoft.WindowsTerminal_1.0.0.0_x64__8wekyb3d8bbwe\WindowsTerminal.exe' }
+                )
+            }
+
+            @(Get-WtProcessesForApp -App $app).Id | Should -Be @(101)
+        }
+    }
+
+    It 'scopes stale-instance discovery to the selected app descriptor' {
+        InModuleScope ItE2E {
+            $app = [pscustomobject]@{
+                Package = 'IntelligentTerminal_rd9vj3e6a2mbr'
+                InstallLocation = 'C:\DevPackage\AppX'
+            }
+            Mock Get-CimInstance { $null }
+            Mock Get-WtProcessesForApp { @() }
+            Mock Get-AppxPackage { throw 'must not enumerate other packages' }
+
+            Stop-StaleItInstances -App $app
+
+            Should -Invoke Get-WtProcessesForApp -Times 1 -ParameterFilter { $App -eq $app }
+            Should -Invoke Get-AppxPackage -Times 0
+        }
+    }
+}
+
+Describe 'Get-RunnableWtaPath staging' -Tag 'Unit' {
+    It 'isolates staged binaries independently by package family, version, and content hash' {
+        InModuleScope ItE2E {
+            $originalTemp = $env:TEMP
+            $env:TEMP = $TestDrive
+            try {
+                function New-StagingApp {
+                    param([string]$Name, [string]$Package, [string]$Version, [string]$Content)
+                    $root = Join-Path $TestDrive "WindowsApps\$Name"
+                    New-Item -ItemType Directory -Force -Path $root | Out-Null
+                    $wta = Join-Path $root 'wta.exe'
+                    Set-Content -LiteralPath $wta -Value $Content -NoNewline
+                    [pscustomobject]@{
+                        Package = $Package
+                        Version = $Version
+                        InstallLocation = $root
+                        WtaPath = $wta
+                    }
+                }
+
+                $baseline = New-StagingApp -Name Base -Package store-family -Version 1.2.3.4 -Content same-content
+                $differentPackage = New-StagingApp -Name Package -Package dev-family -Version 1.2.3.4 -Content same-content
+                $differentVersion = New-StagingApp -Name Version -Package store-family -Version 9.8.7.6 -Content same-content
+                $differentContent = New-StagingApp -Name Content -Package store-family -Version 1.2.3.4 -Content different-content
+
+                $baselinePath = Get-RunnableWtaPath -App $baseline
+                $packagePath = Get-RunnableWtaPath -App $differentPackage
+                $versionPath = Get-RunnableWtaPath -App $differentVersion
+                $contentPath = Get-RunnableWtaPath -App $differentContent
+
+                $packagePath | Should -Not -Be $baselinePath
+                $versionPath | Should -Not -Be $baselinePath
+                $contentPath | Should -Not -Be $baselinePath
+                $baselinePath | Should -Match ([regex]::Escape($baseline.Package))
+                $baselinePath | Should -Match ([regex]::Escape($baseline.Version))
+                $baselinePath | Should -Match ([regex]::Escape((Get-FileHash -LiteralPath $baseline.WtaPath -Algorithm SHA256).Hash))
+                Get-Content -LiteralPath $baselinePath -Raw | Should -Be 'same-content'
+                Get-Content -LiteralPath $contentPath -Raw | Should -Be 'different-content'
+            }
+            finally {
+                $env:TEMP = $originalTemp
+            }
+        }
+    }
+
+    It 'fails explicitly instead of returning an unreadable WindowsApps path' {
+        InModuleScope ItE2E {
+            $root = Join-Path $TestDrive 'WindowsApps\Unreadable'
+            New-Item -ItemType Directory -Force -Path $root | Out-Null
+            $wta = Join-Path $root 'wta.exe'
+            Set-Content -LiteralPath $wta -Value 'packaged-wta' -NoNewline
+            $app = [pscustomobject]@{
+                Package = 'Microsoft.IntelligentTerminal_8wekyb3d8bbwe'
+                Version = '1.2.3.4'
+                InstallLocation = $root
+                WtaPath = $wta
+            }
+            Mock Test-Path { return $false } -ParameterFilter { $Path -eq $wta }
+            Mock Get-FileHash { throw 'access denied' }
+
+            {
+                Get-RunnableWtaPath -App $app
+            } | Should -Throw '*Could not stage packaged wta*ite2e-wta*Microsoft.IntelligentTerminal_8wekyb3d8bbwe*1.2.3.4*<sha256>*access denied*'
+            $app.PSObject.Properties.Name | Should -Not -Contain 'WtaRunnable'
+        }
+    }
+
+    Context 'hook bundle refresh' {
+        BeforeEach {
+            $script:originalHookTestTemp = $env:TEMP
+            $env:TEMP = $TestDrive
+            InModuleScope ItE2E {
+                $install = Join-Path $TestDrive 'WindowsApps\Hooks'
+                $bundleSource = Join-Path $install 'wt-agent-hooks'
+                New-Item -ItemType Directory -Force -Path $bundleSource | Out-Null
+                Set-Content -LiteralPath (Join-Path $bundleSource 'marker.txt') -Value 'new-hooks' -NoNewline
+                $wta = Join-Path $install 'wta.exe'
+                Set-Content -LiteralPath $wta -Value 'packaged-wta' -NoNewline
+                $app = [pscustomobject]@{
+                    Package = 'hook-test-family'
+                    Version = '1.2.3.4'
+                    InstallLocation = $install
+                    WtaPath = $wta
+                }
+                $sourceHash = (Get-FileHash -LiteralPath $wta -Algorithm SHA256).Hash
+                $stageDir = Join-Path $TestDrive "ite2e-wta\$($app.Package)\$($app.Version)\$sourceHash"
+                New-Item -ItemType Directory -Force -Path $stageDir | Out-Null
+                Copy-Item -LiteralPath $wta -Destination (Join-Path $stageDir 'wta.exe')
+                $bundleDest = Join-Path $stageDir 'wt-agent-hooks'
+                New-Item -ItemType Directory -Force -Path $bundleDest | Out-Null
+                Set-Content -LiteralPath (Join-Path $bundleDest 'marker.txt') -Value 'old-hooks' -NoNewline
+                $script:hookFixture = [pscustomobject]@{
+                    App = $app
+                    BundleSource = $bundleSource
+                    BundleDest = $bundleDest
+                    StageDir = $stageDir
+                }
+            }
+        }
+
+        AfterEach {
+            $env:TEMP = $script:originalHookTestTemp
+        }
+
+        It 'preserves the existing hook bundle when copying the replacement fails' {
+            InModuleScope ItE2E {
+                $fixture = $script:hookFixture
+                Mock Copy-Item { throw 'transient copy failure' } -ParameterFilter { $LiteralPath -eq $fixture.BundleSource }
+                Mock Write-ItLog
+
+                Get-RunnableWtaPath -App $fixture.App | Should -Be (Join-Path $fixture.StageDir 'wta.exe')
+
+                Get-Content -LiteralPath (Join-Path $fixture.BundleDest 'marker.txt') -Raw | Should -Be 'old-hooks'
+                @(Get-ChildItem -LiteralPath $fixture.StageDir -Directory | Where-Object Name -Like 'wt-agent-hooks.*').Count | Should -Be 0
+                Should -Invoke Write-ItLog -ParameterFilter { $Level -eq 'WARN' -and $Message -like '*transient copy failure*' }
+            }
+        }
+
+        It 'replaces the hook bundle and cleans swap artifacts after success' {
+            InModuleScope ItE2E {
+                $fixture = $script:hookFixture
+
+                Get-RunnableWtaPath -App $fixture.App | Should -Be (Join-Path $fixture.StageDir 'wta.exe')
+
+                Get-Content -LiteralPath (Join-Path $fixture.BundleDest 'marker.txt') -Raw | Should -Be 'new-hooks'
+                @(Get-ChildItem -LiteralPath $fixture.StageDir -Directory | Where-Object Name -Like 'wt-agent-hooks.*').Count | Should -Be 0
+            }
+        }
+
+        It 'restores the existing hook bundle when activating the staged copy fails' {
+            InModuleScope ItE2E {
+                $fixture = $script:hookFixture
+                Mock Move-Item { throw 'transient activation failure' } -ParameterFilter {
+                    $LiteralPath -like "$($fixture.BundleDest).staging.*" -and $Destination -eq $fixture.BundleDest
+                }
+
+                Get-RunnableWtaPath -App $fixture.App | Should -Be (Join-Path $fixture.StageDir 'wta.exe')
+
+                Get-Content -LiteralPath (Join-Path $fixture.BundleDest 'marker.txt') -Raw | Should -Be 'old-hooks'
+                @(Get-ChildItem -LiteralPath $fixture.StageDir -Directory | Where-Object Name -Like 'wt-agent-hooks.*').Count | Should -Be 0
+            }
+        }
     }
 }
 
@@ -283,6 +529,59 @@ Describe 'Agent provider identity ownership' -Tag 'Unit' {
     }
 }
 
+Describe 'Yolo Settings localization contract' -Tag 'Unit' {
+    It 'uses the PM-approved English title and description' {
+        $resourcePath = Join-Path $PSScriptRoot '..\..\..\src\cascadia\TerminalSettingsEditor\Resources\en-US\Resources.resw'
+        [xml]$resources = Get-Content -LiteralPath $resourcePath -Raw
+
+        [string]($resources.root.data |
+                Where-Object name -eq 'AIAgents_YoloMode.Header' |
+                Select-Object -First 1).value |
+            Should -Be 'Automatic approval'
+        [string]($resources.root.data |
+                Where-Object name -eq 'AIAgents_YoloMode.HelpText' |
+                Select-Object -First 1).value |
+            Should -Be 'Your agent in the agent pane runs with full permissions provided by the agent CLI'
+    }
+
+    It 'keeps every Settings locale structurally aligned' {
+        $resourceRoot = Join-Path $PSScriptRoot '..\..\..\src\cascadia\TerminalSettingsEditor\Resources'
+        $localeDirectories = @(Get-ChildItem -LiteralPath $resourceRoot -Directory)
+        $keys = @('AIAgents_YoloMode.Header', 'AIAgents_YoloMode.HelpText')
+        [xml]$english = Get-Content -LiteralPath (Join-Path $resourceRoot 'en-US\Resources.resw') -Raw
+
+        foreach ($localeDirectory in $localeDirectories) {
+            $resourcePath = Join-Path $localeDirectory.FullName 'Resources.resw'
+            $bytes = [System.IO.File]::ReadAllBytes($resourcePath)
+            ($bytes.Length -ge 3 -and
+                $bytes[0] -eq 0xEF -and
+                $bytes[1] -eq 0xBB -and
+                $bytes[2] -eq 0xBF) | Should -BeTrue -Because "$resourcePath must retain its UTF-8 BOM"
+
+            [xml]$localized = Get-Content -LiteralPath $resourcePath -Raw
+            foreach ($key in $keys) {
+                $source = @($english.root.data | Where-Object name -eq $key)
+                $target = @($localized.root.data | Where-Object name -eq $key)
+
+                $source | Should -HaveCount 1
+                $target | Should -HaveCount 1 -Because "$key must exist exactly once in $($localeDirectory.Name)"
+                [string]$target[0].value | Should -Not -BeNullOrEmpty
+                [string]$target[0].comment | Should -Be ([string]$source[0].comment)
+
+                if ($key -eq 'AIAgents_YoloMode.HelpText') {
+                    [string]$target[0].comment | Should -MatchExactly '\{Locked="CLI"\}'
+                    [string]$target[0].value | Should -MatchExactly '(?<![A-Za-z])CLI(?![A-Za-z])'
+                }
+
+                if ($localeDirectory.Name -notin @('en-US', 'qps-ploc', 'qps-ploca', 'qps-plocm')) {
+                    [string]$target[0].value |
+                        Should -Not -Be ([string]$source[0].value) -Because "$key must be translated in $($localeDirectory.Name)"
+                }
+            }
+        }
+    }
+}
+
 Describe 'Start-Terminal startup ordering' -Tag 'Unit' {
     It 'waits for the first window before probing COM' {
         InModuleScope ItE2E {
@@ -322,6 +621,7 @@ Describe 'Start-Terminal startup ordering' -Tag 'Unit' {
 
             $app.Hwnd | Should -Be 9001
             $script:startupOrder | Should -Be @('hwnd', 'com')
+            Should -Invoke Stop-StaleItInstances -Times 1 -ParameterFilter { $App -eq $fakeApp }
         }
     }
 }

@@ -51,6 +51,10 @@ function Initialize-WtWin32Input {
     [DllImport("user32.dll")] public static extern bool IsIconic(IntPtr hWnd);
     [DllImport("user32.dll")] public static extern bool AllowSetForegroundWindow(uint dwProcessId);
     [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint pid);
+    [DllImport("user32.dll", SetLastError=true)] public static extern bool GetCursorPos(out POINT point);
+    [DllImport("user32.dll")] public static extern bool SetCursorPos(int x, int y);
+    [DllImport("user32.dll")] public static extern short GetAsyncKeyState(int virtualKey);
+    [DllImport("user32.dll", SetLastError=true)] public static extern uint SendInput(uint count, INPUT[] inputs, int size);
     [DllImport("kernel32.dll")] public static extern uint GetCurrentThreadId();
     [DllImport("user32.dll")] public static extern bool AttachThreadInput(uint idAttach, uint idAttachTo, bool fAttach);
     [DllImport("user32.dll")] public static extern void keybd_event(byte bVk, byte bScan, uint dwFlags, System.UIntPtr dwExtraInfo);
@@ -63,6 +67,62 @@ function Initialize-WtWin32Input {
     const uint ASFW_ANY = unchecked((uint)-1);
     const byte VK_MENU = 0x12;   // ALT
     const uint KEYUP = 0x2;
+    const uint INPUT_MOUSE = 0;
+    const uint MOUSEEVENTF_WHEEL = 0x0800;
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct POINT {
+        public int X;
+        public int Y;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct MOUSEINPUT {
+        public int dx;
+        public int dy;
+        public uint mouseData;
+        public uint dwFlags;
+        public uint time;
+        public UIntPtr dwExtraInfo;
+    }
+
+    [StructLayout(LayoutKind.Explicit)]
+    public struct INPUTUNION {
+        [FieldOffset(0)] public MOUSEINPUT mouse;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct INPUT {
+        public uint type;
+        public INPUTUNION data;
+    }
+
+    public static uint GetWindowProcessId(IntPtr hWnd) {
+        uint pid;
+        GetWindowThreadProcessId(hWnd, out pid);
+        return pid;
+    }
+
+    public static int[] GetCursorPosition() {
+        POINT point;
+        if (!GetCursorPos(out point)) throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error());
+        return new int[] { point.X, point.Y };
+    }
+
+    public static bool IsKeyDown(int virtualKey) {
+        return (GetAsyncKeyState(virtualKey) & 0x8000) != 0;
+    }
+
+    public static bool SendMouseWheel(int delta, int count) {
+        for (int wheel = 0; wheel < count; wheel++) {
+            var inputs = new INPUT[1];
+            inputs[0].type = INPUT_MOUSE;
+            inputs[0].data.mouse.mouseData = unchecked((uint)delta);
+            inputs[0].data.mouse.dwFlags = MOUSEEVENTF_WHEEL;
+            if (SendInput(1, inputs, Marshal.SizeOf(typeof(INPUT))) != 1) return false;
+        }
+        return true;
+    }
 
     // Aggressively bring a window to the foreground, defeating the foreground-lock that otherwise
     // makes SetForegroundWindow a no-op when the caller doesn't own foreground. Combines every
@@ -192,6 +252,60 @@ function Test-WtWindowKeyFocusable {
     process {
         if (-not $App.Hwnd) { return $false }
         Set-WtWindowForeground -App $App -Attempts 3 -DelayMs 150
+    }
+}
+
+function Invoke-WtWindowWheel {
+    <#
+    .SYNOPSIS
+        Send physical mouse-wheel input at an absolute screen coordinate in the test-owned window.
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory, ValueFromPipeline)]$App,
+        [Parameter(Mandatory)][int]$ScreenX,
+        [Parameter(Mandatory)][int]$ScreenY,
+        [ValidateSet(-120, 120)][int]$Delta,
+        [ValidateRange(1, 100)][int]$Count = 1,
+        [switch]$Ctrl,
+        [bool]$RestoreCursor = $true
+    )
+    process {
+        if (-not $App.Hwnd -or -not $App.Pid) {
+            throw 'Invoke-WtWindowWheel requires App.Hwnd and App.Pid from Start-Terminal.'
+        }
+        Initialize-WtWin32Input
+        $hwnd = [IntPtr][int64]$App.Hwnd
+        $actualPid = [ItE2E.ItWtWin32Input]::GetWindowProcessId($hwnd)
+        if ([int]$actualPid -ne [int]$App.Pid) {
+            throw "HWND $($App.Hwnd) belongs to process $actualPid, not expected process $($App.Pid)."
+        }
+        if (-not (Set-WtWindowForeground -App $App)) {
+            throw "Invoke-WtWindowWheel could not bring HWND $($App.Hwnd) to the foreground; no input was sent."
+        }
+
+        $original = if ($RestoreCursor) { [ItE2E.ItWtWin32Input]::GetCursorPosition() } else { $null }
+        $pressedCtrl = $false
+        try {
+            if (-not [ItE2E.ItWtWin32Input]::SetCursorPos($ScreenX, $ScreenY)) {
+                throw "Invoke-WtWindowWheel could not move the cursor to screen coordinate ($ScreenX,$ScreenY)."
+            }
+            if ($Ctrl -and -not [ItE2E.ItWtWin32Input]::IsKeyDown(0x11)) {
+                [ItE2E.ItWtWin32Input]::keybd_event(0x11, 0, 0, [UIntPtr]::Zero)
+                $pressedCtrl = $true
+            }
+            if (-not [ItE2E.ItWtWin32Input]::SendMouseWheel($Delta, $Count)) {
+                $code = [Runtime.InteropServices.Marshal]::GetLastWin32Error()
+                throw "Invoke-WtWindowWheel SendInput failed with Win32 error $code."
+            }
+        }
+        finally {
+            if ($pressedCtrl) { [ItE2E.ItWtWin32Input]::keybd_event(0x11, 0, 0x2, [UIntPtr]::Zero) }
+            if ($original) { [void][ItE2E.ItWtWin32Input]::SetCursorPos($original[0], $original[1]) }
+        }
+
+        Start-Sleep -Milliseconds 250
+        $App
     }
 }
 

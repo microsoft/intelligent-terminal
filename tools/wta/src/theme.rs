@@ -87,3 +87,4 @@ pub const AGENT_EVENT_DETAIL: Style = Style::new().fg(Color::DarkGray);
 // content behind a popup (#234).
 pub const INPUT_BG: Color = Color::Reset;
 pub const INPUT_BORDER: Style = Style::new().fg(Color::Rgb(50, 50, 50));
+pub const INPUT_BORDER_FOCUSED: Style = Style::new().fg(Color::Cyan);

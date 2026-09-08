@@ -116,6 +116,130 @@ Describe 'Feature: agent pane mouse interactions' -Tag 'Feature' -Skip:(-not $sc
 }
 
 BeforeDiscovery {
+    $script:WheelZoomReady = [bool](
+        (Get-AppxPackage | Where-Object { $_.Name -like '*IntelligentTerminal*' }) -and
+        (Get-Command pwsh -ErrorAction SilentlyContinue) -and
+        (Get-Command winapp -ErrorAction SilentlyContinue)
+    )
+}
+
+Describe 'Feature: agent pane physical wheel routing' -Tag 'Feature' -Skip:(-not $script:WheelZoomReady) {
+    BeforeAll {
+        Import-Module (Join-Path $PSScriptRoot '..\ItE2E\ItE2E.psd1') -Force
+        $script:getAgentMouseTermControlBounds = {
+            Add-Type -AssemblyName UIAutomationClient
+            Add-Type -AssemblyName UIAutomationTypes
+            $root = [System.Windows.Automation.AutomationElement]::FromHandle([IntPtr][int64]$script:wheelApp.Hwnd)
+            $condition = [System.Windows.Automation.PropertyCondition]::new(
+                [System.Windows.Automation.AutomationElement]::ClassNameProperty,
+                'TermControl')
+            $controls = $root.FindAll([System.Windows.Automation.TreeScope]::Descendants, $condition)
+            for ($index = 0; $index -lt $controls.Count; $index++) {
+                $control = $controls.Item($index)
+                if ($control.Current.Name -ne 'Agent Pane' -or $control.Current.IsOffscreen) { continue }
+                $rect = $control.Current.BoundingRectangle
+                if ($rect.Width -gt 0 -and $rect.Height -gt 0) {
+                    return [pscustomobject]@{
+                        CenterX = [int][Math]::Round($rect.Left + ($rect.Width / 2))
+                        CenterY = [int][Math]::Round($rect.Top + ($rect.Height / 2))
+                    }
+                }
+            }
+            $null
+        }
+        $fixture = (Resolve-Path (Join-Path $PSScriptRoot '..\fixtures\Mock-AcpChatAgent.ps1')).Path
+        $script:wheelFixtureDir = Join-Path $env:TEMP "ItE2E agent wheel $([guid]::NewGuid().ToString('N'))"
+        New-Item -ItemType Directory -Path $script:wheelFixtureDir | Out-Null
+        $script:wheelFixtureLog = Join-Path $script:wheelFixtureDir 'fixture.log'
+        $invocation = "& '$($fixture.Replace("'", "''"))' -LogPath '$($script:wheelFixtureLog.Replace("'", "''"))'"
+        $encoded = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($invocation))
+        $command = "pwsh -NoProfile -EncodedCommand $encoded"
+
+        $script:wheelApp = Start-Terminal -Package (Get-ItTestPackage) -PassFre $true -Settings @{
+            acpAgent = 'custom:wheel-fixture'
+            acpCustomCommand = $command
+            'experimental.scrollToZoom' = $true
+            'warning.confirmOnClose' = 'never'
+        }
+        $shell = Get-ActivePane -App $script:wheelApp
+        Open-AgentPane -App $script:wheelApp | Out-Null
+        $session = Wait-NewAgentPaneSession -App $script:wheelApp -OwnerPaneSessionId $shell.session_id -TimeoutSec 30
+        $script:wheelAgentPane = $session.PaneSessionId
+        Wait-AgentReady -App $script:wheelApp -PaneSessionId $script:wheelAgentPane -TimeoutSec 60 |
+            Should -BeTrue -Because 'the deterministic ACP fixture must connect before physical wheel input'
+        $script:getAgentViewport = {
+            $text = Get-AgentPaneText -App $script:wheelApp -PaneSessionId $script:wheelAgentPane -MaxLines 500
+            $lines = @($text -split "`r?`n")
+            [pscustomobject]@{
+                Rows = $lines.Count
+                Columns = [Math]::Max(1, [int](($lines | ForEach-Object Length | Measure-Object -Maximum).Maximum))
+                Text = $text
+            }
+        }
+    }
+
+    AfterAll {
+        if ($script:wheelApp) { Stop-Terminal -App $script:wheelApp }
+        if ($script:wheelFixtureDir -and (Test-Path -LiteralPath $script:wheelFixtureDir)) {
+            Remove-Item -LiteralPath $script:wheelFixtureDir -Recurse -Force
+        }
+    }
+
+    It 'Ctrl+wheel zooms the agent pane while plain wheel scrolls chat' -Tag 'Issue790' {
+        if (-not (Test-WtWindowKeyFocusable -App $script:wheelApp)) {
+            Set-ItResult -Skipped -Because 'WT window cannot take foreground for physical wheel input'
+            return
+        }
+
+        $viewport = & $script:getAgentViewport
+        $turnCount = [Math]::Max(12, $viewport.Rows + 4)
+        $turns = @()
+        for ($index = 0; $index -lt $turnCount; $index++) {
+            $marker = "SCROLL_TURN_$($index.ToString('00'))_$([guid]::NewGuid().ToString('N'))"
+            $turns += $marker
+            Send-AgentPrompt -App $script:wheelApp -PaneSessionId $script:wheelAgentPane -Text $marker | Out-Null
+            Assert-AgentPaneText -App $script:wheelApp -PaneSessionId $script:wheelAgentPane `
+                -Pattern ([regex]::Escape("ACK_$marker")) -TimeoutSec 10
+        }
+
+        $draftMarker = "PHYSICAL_WHEEL_DRAFT_$([guid]::NewGuid().ToString('N'))"
+        $beforeDraft = & $script:getAgentViewport
+        $fillerCount = [Math]::Ceiling(($beforeDraft.Columns * 2) / ' ZOOM_FILLER'.Length)
+        $draft = "$draftMarker$((' ZOOM_FILLER' * $fillerCount))"
+        Send-AgentPrompt -App $script:wheelApp -PaneSessionId $script:wheelAgentPane -Text $draft -NoSubmit | Out-Null
+        $bounds = & $script:getAgentMouseTermControlBounds
+        $beforePlain = & $script:getAgentViewport
+        $bounds | Should -Not -BeNullOrEmpty -Because 'the visible agent TermControl must expose physical screen bounds'
+        $oldest = $turns[0]
+        $delta = if ($beforePlain.Text -match [regex]::Escape($oldest)) { -120 } else { 120 }
+
+        Invoke-WtWindowWheel -App $script:wheelApp -ScreenX $bounds.CenterX -ScreenY $bounds.CenterY `
+            -Delta $delta -Count 24 | Out-Null
+        $afterPlainText = Wait-Until -TimeoutSec 8 -IntervalSec 0.25 -Quiet -Condition {
+            $text = Get-AgentPaneText -App $script:wheelApp -PaneSessionId $script:wheelAgentPane -MaxLines 500
+            if ($text -ne $beforePlain.Text) { $text }
+        }
+        $afterPlain = & $script:getAgentViewport
+        $afterPlainText | Should -Not -BeNullOrEmpty -Because 'physical plain wheel must scroll the WTA chat viewport'
+        $afterPlain.Text | Should -Match ([regex]::Escape($draftMarker)) -Because 'plain wheel must preserve the unsent draft'
+        $afterPlain.Rows | Should -Be $beforePlain.Rows -Because 'plain wheel must not zoom the agent pane'
+        $afterPlain.Columns | Should -Be $beforePlain.Columns -Because 'plain wheel must not change the agent font width'
+
+        Invoke-WtWindowWheel -App $script:wheelApp -ScreenX $bounds.CenterX -ScreenY $bounds.CenterY `
+            -Delta 120 -Ctrl | Out-Null
+        $afterZoom = Wait-Until -TimeoutSec 5 -IntervalSec 0.2 -Quiet -Condition {
+            $current = & $script:getAgentViewport
+            if ($current.Columns -lt $afterPlain.Columns) { $current }
+        }
+        $afterZoom | Should -Not -BeNullOrEmpty -Because "Ctrl+wheel must reduce visible columns from $($afterPlain.Columns)"
+        $afterZoom.Text | Should -Match ([regex]::Escape($draftMarker)) -Because 'Ctrl+wheel zoom must preserve the unsent draft'
+
+        Invoke-WtWindowWheel -App $script:wheelApp -ScreenX $bounds.CenterX -ScreenY $bounds.CenterY `
+            -Delta -120 -Ctrl | Out-Null
+    }
+}
+
+BeforeDiscovery {
     $script:TriangleClickReady = [bool](
         (Get-AppxPackage | Where-Object { $_.PackageFamilyName -eq 'IntelligentTerminal_rd9vj3e6a2mbr' }) -and
         (Get-Command pwsh -ErrorAction SilentlyContinue) -and

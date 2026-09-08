@@ -51,6 +51,7 @@ chat.turn_canceled: "(annulé)"
 chat.turn_executed: "→ exécuté : %{title}"
 # Étiquettes persistantes de catégorie d’outil affichées après un marqueur d’état et avant le sujet.
 chat.tool_kind.run: "Exécuter"
+chat.tool_kind.insert: "Insérer"
 chat.tool_kind.read: "Lire"
 chat.tool_kind.search: "Rechercher"
 chat.tool_kind.edit: "Modifier"
@@ -123,8 +124,25 @@ agents.status.idle: "Inactif"
 layout.welcome_hint: "  (Ctrl+Shift+. pour afficher/masquer le volet de l'agent • Ctrl+Shift+/ pour afficher/masquer la session de l'agent)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}
 
 # ── État de la connexion ────────────────────────────────────────────────────────────
-connection.starting: "Démarrage de l'agent..."
+# Preparing the AI agent connection, including preflight and reuse of a cached agent.
+connection.starting: "Préparation de la connexion à l'agent..."
 connection.reconnecting: "Reconnexion..."
+# Retiring old AI agent sessions for /restart, before the next connection phases.
+connection.restarting: "Redémarrage de l'agent..."
+# Connecting the pane to WTA's local coordinator process, not to an AI model.
+connection.coordinator: "Connexion au coordonnateur local..."
+# Initializing the helper/coordinator connection, including local preparation and AI agent initialization.
+connection.initializing: "Initialisation de la connexion à l'agent..."
+# Refreshing the user's authentication with the AI agent after login; not verifying the agent's identity.
+connection.authenticating: "Authentification auprès de l'agent..."
+# Reading the coordinator's registry snapshot, including existing history; not fetching history from the AI agent.
+connection.syncing_sessions: "Lecture de la liste des sessions..."
+# Creating the AI agent session, including local registration; internal agent progress is unknown.
+connection.creating_session: "Création de la session de l'agent..."
+# Applying the requested AI model before the connection is ready. Preserve %{model}.
+connection.selecting_model: "Définition du modèle de la session : %{model}..."  # {Locked="%{model}"}
+# Activity row while connecting to restore a conversation. Keep the actual stage first so narrow panes show it; session_id is shortened to eight characters.
+connection.resuming_stage: "%{stage} (reprise de %{session_id})"  # {Locked="%{stage}","%{session_id}"}
 connection.connecting_activity: "Connexion à l'agent…"
 connection.lost: "La connexion à l'agent a été perdue. Tapez /restart pour vous reconnecter."  # {Locked="/restart"}
 
@@ -239,5 +257,6 @@ config_picker.title: "Configuration de la session (↑ ↓ • Enter • Esc)"
 system.no_config_options: "L’agent connecté n’a annoncé aucune option de session configurable."
 # {option} is an Agent-provided option name; {error} is the ACP error.
 system.config_update_failed: "Échec de la mise à jour de %{option} : %{error}"
+system.yolo_disable_pending: "le fournisseur n’a pas confirmé l’état de session non privilégié requis"  # Shown after the localized failure prefix while prompts remain blocked until the AI agent provider confirms that its privileged session mode is off. Provider means an AI agent provider, not a network provider.
 system.provider_command_blocked_by_policy: "%{command}: Le mode Yolo est désactivé par la stratégie de votre organisation."  # {Locked="Yolo","%{command}"} Shown when AllowYoloMode blocks a provider-advertised privileged command.
 system.model_unknown: "Modèle inconnu %{model} — tapez /model pour afficher la liste disponible."  # {Locked="%{model}","/model"}

@@ -23,6 +23,7 @@
 #include "../inc/AgentPolicy.h"
 #include "../inc/AgentPaneBackend.h"
 #include "../inc/AgentSourceUtils.h"
+#include "../inc/WtaProcess.h"
 #include "../TerminalSettingsAppAdapterLib/TerminalSettings.h"
 #include "../inc/CustomModelProviderUtils.h"
 #include "AgentPaneContent.h"
@@ -1908,6 +1909,8 @@ namespace winrt::TerminalApp::implementation
         snapshot.profileBackends.emplace_back(
             _ProfileDefaultsAgentBackendGuid(),
             std::wstring{ _settings.ProfileDefaults().AgentPaneBackend() });
+        snapshot.agentSessionManagementEnabled =
+            globals.EffectiveAgentSessionManagementEnabled();
         return snapshot;
     }
 
@@ -2013,6 +2016,70 @@ namespace winrt::TerminalApp::implementation
     bool TerminalPage::_AgentSettingsChanged(const AgentSettingsSnapshot& a, const AgentSettingsSnapshot& b)
     {
         return _ClassifyAgentSettingsChange(a, b) != AgentSettingsChangeKind::None;
+    }
+
+    TerminalPage::AgentHooksReconciliationScope TerminalPage::_ClassifyAgentHooksReconciliation(
+        const AgentSettingsSnapshot& previous,
+        const AgentSettingsSnapshot& current)
+    {
+        if (!previous.agentSessionManagementEnabled &&
+            current.agentSessionManagementEnabled)
+        {
+            return AgentHooksReconciliationScope::All;
+        }
+
+        if (current.agentSessionManagementEnabled &&
+            previous.acpAgent != current.acpAgent)
+        {
+            const auto builtIn = std::ranges::any_of(
+                ::Microsoft::Terminal::Settings::Model::AgentRegistry::BuiltinAcpAgents,
+                [&](const auto& agent) {
+                    return ::Microsoft::Terminal::Settings::Model::AgentRegistry::AgentIdEquals(
+                        agent.id,
+                        current.acpAgent);
+                });
+            if (builtIn)
+            {
+                return AgentHooksReconciliationScope::SelectedAgent;
+            }
+        }
+
+        return AgentHooksReconciliationScope::None;
+    }
+
+    winrt::fire_and_forget TerminalPage::_ReconcileAgentHooksAsync(
+        const AgentHooksReconciliationScope scope,
+        std::wstring agentId)
+    {
+        const auto strong = get_strong();
+        std::wstring args{ L"hooks install" };
+        if (scope == AgentHooksReconciliationScope::SelectedAgent)
+        {
+            args.append(L" --cli ");
+            args.append(agentId);
+        }
+
+        co_await winrt::resume_background();
+
+        namespace Wta = ::Microsoft::Terminal::WtaProcess;
+        const auto wtaPath = Wta::ResolveWtaExePath();
+        if (wtaPath.empty())
+        {
+            _agentPaneLog("hook reconciliation skipped: wta.exe was not found");
+            co_return;
+        }
+
+        auto envBlock = Wta::BuildExtendedPathEnvBlock();
+        const auto succeeded = Wta::RunWtaAndWait(
+            wtaPath,
+            args,
+            scope == AgentHooksReconciliationScope::All ? 120'000 : 60'000,
+            envBlock.empty() ? nullptr : envBlock.data());
+        _agentPaneLog(
+            "hook reconciliation " + std::string{ succeeded ? "completed" : "failed" } +
+            (scope == AgentHooksReconciliationScope::SelectedAgent && !agentId.empty() ?
+                 " agent=" + winrt::to_string(winrt::hstring{ agentId }) :
+                 std::string{}));
     }
 
     bool TerminalPage::_ShouldDeferAgentSettingsChange(
@@ -3146,6 +3213,10 @@ namespace winrt::TerminalApp::implementation
         {
             extraArgs.emplace_back(L"--no-autofix");
         }
+        if (!globals.EffectiveAgentSessionManagementEnabled())
+        {
+            extraArgs.emplace_back(L"--no-session-management");
+        }
         if (const auto lang = _ResolveEffectiveLanguage(globals); !lang.empty())
         {
             pushFlagValue(L"--language", lang);
@@ -3906,6 +3977,7 @@ namespace winrt::TerminalApp::implementation
             openAgentPaneForReview();
             Json::Value params;
             params["pane_id"] = winrt::to_string(paneId);
+            params["tab_id"] = winrt::to_string(activeTab->StableId());
             _RaiseProtocolEvent("autofix_execute_from_detected", params);
             break;
         }
@@ -4273,7 +4345,10 @@ namespace winrt::TerminalApp::implementation
         }
 
         const auto changeKind = _ClassifyAgentSettingsChange(_lastAgentSettings, current);
-        if (changeKind == AgentSettingsChangeKind::None)
+        const auto hooksReconciliation =
+            _ClassifyAgentHooksReconciliation(_lastAgentSettings, current);
+        if (changeKind == AgentSettingsChangeKind::None &&
+            hooksReconciliation == AgentHooksReconciliationScope::None)
         {
             _agentPaneLog("_ReconcileAgentSettings: no change");
             return;
@@ -4364,6 +4439,18 @@ namespace winrt::TerminalApp::implementation
             {
                 _pendingAgentSettingsRequestId = std::move(requestId);
             }
+            return;
+        }
+
+        if (hooksReconciliation != AgentHooksReconciliationScope::None)
+        {
+            _ReconcileAgentHooksAsync(hooksReconciliation, current.acpAgent);
+        }
+
+        if (changeKind == AgentSettingsChangeKind::None)
+        {
+            _lastAgentSettings = current;
+            _agentPaneLog("_ReconcileAgentSettings: hook reconciliation started");
             return;
         }
 
@@ -8086,6 +8173,32 @@ namespace winrt::TerminalApp::implementation
         return {};
     }
 
+    std::string TerminalPage::_FindTabIdForSessionId(const std::string_view sessionId)
+    {
+        for (const auto& tab : _tabs)
+        {
+            const auto tabImpl = _GetTabImpl(tab);
+            if (!tabImpl)
+            {
+                continue;
+            }
+            const auto rootPane = tabImpl->GetRootPane();
+            if (!rootPane)
+            {
+                continue;
+            }
+            const auto match = rootPane->WalkTree([&](const auto& p) -> std::shared_ptr<Pane> {
+                const auto control = p->GetTerminalControl();
+                return (control && _FindSessionIdForControl(control) == sessionId) ? p : nullptr;
+            });
+            if (match)
+            {
+                return winrt::to_string(tabImpl->StableId());
+            }
+        }
+        return {};
+    }
+
     void TerminalPage::_RegisterTerminalEvents(TermControl term)
     {
         term.RaiseNotice({ this, &TerminalPage::_ControlNoticeRaisedHandler });
@@ -8118,35 +8231,34 @@ namespace winrt::TerminalApp::implementation
         // Forward VT sequences and connection state changes to protocol clients.
         // This is unconditional — if no pipe client is listening, the event raise is a noop.
         //
-        // We capture a weak ref to the TermControl and resolve the connection SessionId
-        // at event-fire time, because at _RegisterTerminalEvents time the Pane hasn't
-        // been created yet (TermControl is set up before the Pane wraps it).
+        // Capture the connection SessionId now. It is stable for the control's
+        // lifetime and lets the background VT callback avoid carrying a
+        // TermControl weak reference across threads.
         //
         // VtSequenceReceived fires on the connection reader thread (background).
-        // The dispatched continuation calls `_FindTabIdForControl`, which walks
+        // The dispatched continuation calls `_FindTabIdForSessionId`, which walks
         // `_tabs` and has UI thread affinity, so the event raise has to run on
         // the UI thread. `_FindSessionIdForControl` itself is thread-safe
-        // (only reads `Connection().SessionId()`) and could be called inline,
-        // but the rest of the work in this handler is gated on `_FindTabIdForControl`
-        // and the protocol event raise, so we just defer the whole body.
+        // (only reads `Connection().SessionId()`). The tab lookup and protocol
+        // event raise remain on the UI thread.
         {
             winrt::weak_ref<TermControl> weakTerm{ term };
+            const auto paneIdStr = _FindSessionIdForControl(term);
 
             term.VtSequenceReceived(
-                [weakThis = get_weak(), weakTerm](auto&&, const winrt::hstring& seq) {
+                [weakThis = get_weak(), paneIdStr](auto&&, const winrt::hstring& seq) {
                     auto strongThis = weakThis.get();
-                    if (!strongThis)
+                    if (!strongThis || paneIdStr.empty())
                         return;
 
-                    // Dispatch to UI thread for the `_FindTabIdForControl` walk
+                    // Dispatch to UI thread for the `_FindTabIdForSessionId` walk
                     // of `_tabs` and the protocol event raise. Fire-and-forget —
                     // don't block the connection reader thread.
                     strongThis->Dispatcher().RunAsync(
                         winrt::Windows::UI::Core::CoreDispatcherPriority::Normal,
-                        [weakThis, weakTerm, seq]() {
+                        [weakThis, paneIdStr, seq]() {
                             auto page = weakThis.get();
-                            auto term2 = weakTerm.get();
-                            if (!page || !term2)
+                            if (!page)
                                 return;
 
                             // GPO-blocked gate: when administrator policy
@@ -8186,10 +8298,7 @@ namespace winrt::TerminalApp::implementation
                                 return;
                             }
 
-                            const auto paneIdStr = page->_FindSessionIdForControl(term2);
-                            if (paneIdStr.empty())
-                                return;
-                            const auto tabIdStr = page->_FindTabIdForControl(term2);
+                            const auto tabIdStr = page->_FindTabIdForSessionId(paneIdStr);
 
                             if (isAgentEvent)
                             {
@@ -8205,13 +8314,12 @@ namespace winrt::TerminalApp::implementation
                                 {
                                     const auto eventName = agentParams["event"].asString();
                                     const auto agentSessionId = agentParams.get("agent_session_id", "").asString();
-                                    if (const auto connection = term2.Connection())
+                                    if (const auto paneSessionId = _TryParsePaneSessionId(paneIdStr))
                                     {
                                         // This event arrived in-band on this
                                         // pane's own VT stream, so the pane is
                                         // the origin by construction — there is
                                         // no reported `pane_id` to distrust.
-                                        const auto paneSessionId = connection.SessionId();
                                         if ((eventName == "agent.session.started" || eventName == "agent.session.start") &&
                                             !agentSessionId.empty() &&
                                             !agentSessionId.starts_with("sidekick-"))
@@ -8222,7 +8330,7 @@ namespace winrt::TerminalApp::implementation
                                             if (!resumeCommandline.empty())
                                             {
                                                 page->_paneAgentSessions.insert_or_assign(
-                                                    paneSessionId,
+                                                    *paneSessionId,
                                                     _PaneAgentSession{
                                                         winrt::to_hstring(agentSessionId),
                                                         winrt::to_hstring(agentParams.get("cli_source", "").asString()),

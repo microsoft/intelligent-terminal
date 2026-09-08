@@ -20,8 +20,25 @@
 
             <DataTemplate x:Key="AgentEntryTemplate"
                           x:DataType="local:AgentEntry">
-                <TextBlock Text="{x:Bind DisplayLabel}"
-                           Opacity="{x:Bind local:AIAgents.InstalledOpacity(IsInstalled)}" />
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock VerticalAlignment="Center"
+                               Text="{x:Bind DisplayLabel}"
+                               Opacity="{x:Bind local:AIAgents.InstalledOpacity(IsInstalled)}" />
+                    <Button Grid.Column="1"
+                            x:Uid="AIAgents_CustomAgentRemove"
+                            Margin="8,0,0,0"
+                            Click="{x:Bind Remove}"
+                            Loaded="CustomAgentRemove_Loaded"
+                            Style="{StaticResource ExtraSmallButtonStyle}"
+                            Visibility="Collapsed">
+                        <FontIcon FontSize="12"
+                                  Glyph="&#xE711;" />
+                    </Button>
+                </Grid>
             </DataTemplate>
 
             <DataTemplate x:Key="EnumComboBoxTemplate"
@@ -29,10 +46,42 @@
                 <TextBlock Text="{x:Bind EnumName, Mode=OneWay}" />
             </DataTemplate>
 
+            <DataTemplate x:Key="AutoErrorHandlingComboBoxTemplate"
+                          x:DataType="local:EnumEntry">
+                <TextBlock Text="{x:Bind EnumName, Mode=OneWay}"
+                           TextWrapping="WrapWholeWords" />
+            </DataTemplate>
+
             <DataTemplate x:Key="AcpModelEntryTemplate"
                           x:DataType="local:AcpModelEntry">
                 <TextBlock Text="{x:Bind DisplayName}" />
             </DataTemplate>
+
+            <Style x:Key="AutoErrorHandlingSettingContainerStyle"
+                   TargetType="local:SettingContainer">
+                <Setter Property="Margin" Value="0,4,0,0" />
+                <Setter Property="IsTabStop" Value="False" />
+                <Setter Property="MaxWidth" Value="{StaticResource StandardControlMaxWidth}" />
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="local:SettingContainer">
+                            <Grid ColumnSpacing="24"
+                                  Style="{StaticResource NonExpanderGrid}">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <ContentPresenter Margin="0,12,0,12"
+                                                  Content="{TemplateBinding Header}" />
+                                <ContentPresenter Grid.Column="1"
+                                                  HorizontalAlignment="Right"
+                                                  VerticalAlignment="Center"
+                                                  Content="{TemplateBinding Content}" />
+                            </Grid>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
         </ResourceDictionary>
     </Page.Resources>
 
@@ -117,27 +166,30 @@
                     <StackPanel Orientation="Vertical"
                                 Visibility="{x:Bind ViewModel.IsCustomAcpAgentSelected, Mode=OneWay}"
                                 Margin="0,8,0,0"
-                                Spacing="4">
+                                Spacing="8">
                         <TextBlock Text="{x:Bind ViewModel.CustomAcpCommandPreview, Mode=OneWay}"
                                    IsTextSelectionEnabled="True"
                                    TextWrapping="Wrap"
                                    Opacity="0.8" />
-                        <StackPanel Orientation="Horizontal" Spacing="8">
+                        <StackPanel Orientation="Horizontal"
+                                    HorizontalAlignment="Right"
+                                    Spacing="8">
                             <Button Content="Edit" Click="{x:Bind ViewModel.EditCustomAcpAgent}" />
-                            <Button Content="Delete" Click="{x:Bind ViewModel.DeleteCustomAcpAgent}" />
                         </StackPanel>
                     </StackPanel>
                     <!--  Editable panel (adding new or editing existing)  -->
                     <StackPanel Orientation="Vertical"
                                 Visibility="{x:Bind ViewModel.IsAddingCustomAcpAgent, Mode=OneWay}"
                                 Margin="0,8,0,0"
-                                Spacing="4">
+                                Spacing="8">
                         <TextBox Text="{x:Bind ViewModel.CustomAcpCommand, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                 PlaceholderText="e.g. my-agent --acp --stdio"
+                                 PlaceholderForeground="{ThemeResource TextFillColorTertiaryBrush}"
+                                 PlaceholderText="my-agent --acp --stdio"
                                  Style="{StaticResource TextBoxSettingStyle}" />
-                        <StackPanel Orientation="Horizontal" Spacing="8">
+                        <StackPanel Orientation="Horizontal"
+                                    HorizontalAlignment="Right"
+                                    Spacing="8">
                             <Button Content="Save" Click="{x:Bind ViewModel.SaveCustomAcpAgent}" Style="{StaticResource AccentButtonStyle}" />
-                            <Button Content="Delete" Click="{x:Bind ViewModel.DeleteCustomAcpAgent}" />
                             <Button Content="Cancel" Click="{x:Bind ViewModel.CancelCustomAcpAgent}" />
                         </StackPanel>
                     </StackPanel>
@@ -169,31 +221,29 @@
                 </Grid>
             </local:SettingContainer>
 
-            <local:SettingContainer x:Name="EmptyCustomModelProviders"
-                                    x:Uid="AIAgents_CustomModels"
-                                    Visibility="{x:Bind mtu:Converters.InvertedBooleanToVisibility(ViewModel.ShowCustomModelProvidersExpander), Mode=OneWay}">
-                <StackPanel MaxWidth="400"
-                            HorizontalAlignment="Right"
-                            Spacing="8">
-                    <Button x:Uid="AIAgents_CustomProviderAdd"
-                            HorizontalAlignment="Right"
-                            Click="{x:Bind ViewModel.AddCustomModelProvider}"
-                            Style="{StaticResource AccentButtonStyle}" />
-                </StackPanel>
-            </local:SettingContainer>
-
-            <local:SettingContainer x:Name="CustomModelProvidersExpander"
-                                    x:Uid="AIAgents_CustomModels"
-                                    StartExpanded="{x:Bind ViewModel.IsCustomModelProvidersExpanded, Mode=TwoWay}"
-                                    Style="{StaticResource ExpanderSettingContainerStyleWithComplexPreview}"
-                                    Visibility="{x:Bind ViewModel.ShowCustomModelProvidersExpander, Mode=OneWay}">
-                <local:SettingContainer.CurrentValue>
-                    <Button x:Uid="AIAgents_CustomProviderAdd"
-                            VerticalAlignment="Center"
-                            Click="{x:Bind ViewModel.AddCustomModelProvider}"
-                            Style="{StaticResource AccentButtonStyle}" />
-                </local:SettingContainer.CurrentValue>
-                <StackPanel>
+            <muxc:Expander x:Name="CustomModelProvidersExpander"
+                           Margin="0,4,0,0"
+                           HorizontalAlignment="Stretch"
+                           HorizontalContentAlignment="Stretch"
+                           IsExpanded="{x:Bind ViewModel.IsCustomModelProvidersExpanded, Mode=TwoWay}">
+                <muxc:Expander.Header>
+                    <Grid MinHeight="64">
+                        <StackPanel VerticalAlignment="Center">
+                            <TextBlock x:Name="CustomModelsHeaderText"
+                                       Style="{StaticResource SettingsPageItemHeaderStyle}" />
+                            <TextBlock Style="{StaticResource CaptionTextBlockStyle}"
+                                       TextWrapping="Wrap">
+                                <Run x:Name="CustomModelsCaptionPrefix"
+                                     Foreground="{ThemeResource TextFillColorSecondaryBrush}" /><Hyperlink NavigateUri="https://github.com/microsoft/intelligent-terminal#custom-providers-byok">
+                                    <Run x:Name="CustomModelsCaptionLink" />
+                                </Hyperlink>
+                            </TextBlock>
+                        </StackPanel>
+                    </Grid>
+                </muxc:Expander.Header>
+                <!--  Offset WinUI's default vertical Expander content padding so each
+                      provider and Add New occupy one visually centered row.  -->
+                <StackPanel Margin="0,-16,0,-16">
                     <TextBlock Margin="0,12,0,0"
                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                Text="{x:Bind ViewModel.CustomModelProviderUnsupportedMessage, Mode=OneWay}"
@@ -202,9 +252,9 @@
                     <ItemsControl ItemsSource="{x:Bind ViewModel.CustomModelProviders, Mode=OneWay}">
                         <ItemsControl.ItemTemplate>
                             <DataTemplate x:DataType="local:CustomModelProviderEntry">
-                                <Border BorderThickness="0,1,0,0"
+                                <Border Padding="0,4"
                                         BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                                        Padding="0,8">
+                                        BorderThickness="0,0,0,1">
                                     <Grid>
                                         <Grid.RowDefinitions>
                                             <RowDefinition Height="Auto" />
@@ -237,7 +287,7 @@
                                                 x:Uid="AIAgents_CustomProviderRemove"
                                                 VerticalAlignment="Center"
                                                 Click="{x:Bind Remove}"
-                                                MinWidth="120" />
+                                                Width="120" />
                                         <muxc:InfoBar Grid.Row="1"
                                                       Grid.ColumnSpan="2"
                                                       Margin="0,12,0,0"
@@ -252,29 +302,81 @@
                         </ItemsControl.ItemTemplate>
                     </ItemsControl>
 
-                    <Border BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                            BorderThickness="0,1,0,0"
-                            Padding="0,16,0,16"
+                    <Border Padding="0,4"
+                            Visibility="{x:Bind mtu:Converters.InvertedBooleanToVisibility(ViewModel.IsAddingCustomModelProvider), Mode=OneWay}">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <Button Grid.Column="1"
+                                    x:Uid="AIAgents_CustomProviderAdd"
+                                    Click="{x:Bind ViewModel.AddCustomModelProvider}"
+                                    Width="120"
+                                    Style="{StaticResource AccentButtonStyle}" />
+                        </Grid>
+                    </Border>
+
+                    <Border Padding="0,8,0,16"
                             Visibility="{x:Bind ViewModel.IsAddingCustomModelProvider, Mode=OneWay}">
-                        <StackPanel Spacing="8">
-                            <TextBox x:Uid="AIAgents_CustomProviderBaseUrl"
-                                     Text="{x:Bind ViewModel.NewCustomModelProviderBaseUrl, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                            <TextBox x:Uid="AIAgents_CustomModelId"
-                                     Text="{x:Bind ViewModel.NewCustomModelId, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                            <PasswordBox x:Uid="AIAgents_CustomProviderApiKey"
-                                         Password="{x:Bind ViewModel.NewCustomModelProviderApiKey, Mode=TwoWay}" />
-                            <StackPanel Orientation="Horizontal" Spacing="8">
-                                <Button x:Uid="AIAgents_CustomProviderSave"
-                                        IsEnabled="{x:Bind ViewModel.CanSaveCustomModelProvider, Mode=OneWay}"
-                                        Click="{x:Bind ViewModel.SaveCustomModelProvider}"
-                                        Style="{StaticResource AccentButtonStyle}" />
-                                <Button x:Uid="AIAgents_CustomProviderCancel"
-                                        Click="{x:Bind ViewModel.CancelCustomModelProvider}" />
+                        <StackPanel Spacing="12">
+                            <TextBlock x:Uid="AIAgents_CustomProviderAddHeader"
+                                       FontWeight="SemiBold"
+                                       Style="{StaticResource SettingsPageItemHeaderStyle}" />
+                            <StackPanel Spacing="4">
+                                <TextBox x:Uid="AIAgents_CustomProviderBaseUrl"
+                                         AutomationProperties.HelpText="{Binding Text, ElementName=CustomProviderBaseUrlHint}"
+                                         PlaceholderForeground="{ThemeResource TextFillColorTertiaryBrush}"
+                                         Style="{StaticResource TextBoxSettingStyle}"
+                                         Text="{x:Bind ViewModel.NewCustomModelProviderBaseUrl, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                <TextBlock x:Name="CustomProviderBaseUrlHint"
+                                           x:Uid="AIAgents_CustomProviderBaseUrlHint"
+                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                           Style="{StaticResource CaptionTextBlockStyle}"
+                                           TextWrapping="Wrap" />
+                            </StackPanel>
+                            <StackPanel Spacing="4">
+                                <TextBox x:Uid="AIAgents_CustomModelId"
+                                         AutomationProperties.HelpText="{Binding Text, ElementName=CustomModelIdHint}"
+                                         PlaceholderForeground="{ThemeResource TextFillColorTertiaryBrush}"
+                                         Style="{StaticResource TextBoxSettingStyle}"
+                                         Text="{x:Bind ViewModel.NewCustomModelId, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                <TextBlock x:Name="CustomModelIdHint"
+                                           x:Uid="AIAgents_CustomModelIdHint"
+                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                           Style="{StaticResource CaptionTextBlockStyle}"
+                                           TextWrapping="Wrap" />
+                            </StackPanel>
+                            <StackPanel Spacing="4">
+                                <PasswordBox x:Uid="AIAgents_CustomProviderApiKey"
+                                             AutomationProperties.HelpText="{Binding Text, ElementName=CustomProviderApiKeyHint}"
+                                             Password="{x:Bind ViewModel.NewCustomModelProviderApiKey, Mode=TwoWay}" />
+                                <TextBlock x:Name="CustomProviderApiKeyHint"
+                                           x:Uid="AIAgents_CustomProviderApiKeyHint"
+                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                           Style="{StaticResource CaptionTextBlockStyle}"
+                                           TextWrapping="Wrap" />
+                            </StackPanel>
+                            <StackPanel Spacing="4">
+                                <TextBlock x:Uid="AIAgents_CustomProviderSaveHint"
+                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                           Style="{StaticResource CaptionTextBlockStyle}"
+                                           TextWrapping="Wrap" />
+                                <StackPanel HorizontalAlignment="Right"
+                                            Orientation="Horizontal"
+                                            Spacing="8">
+                                    <Button x:Uid="AIAgents_CustomProviderSave"
+                                            IsEnabled="{x:Bind ViewModel.CanSaveCustomModelProvider, Mode=OneWay}"
+                                            Click="{x:Bind ViewModel.SaveCustomModelProvider}"
+                                            Style="{StaticResource AccentButtonStyle}" />
+                                    <Button x:Uid="AIAgents_CustomProviderCancel"
+                                            Click="{x:Bind ViewModel.CancelCustomModelProvider}" />
+                                </StackPanel>
                             </StackPanel>
                         </StackPanel>
                     </Border>
                 </StackPanel>
-            </local:SettingContainer>
+            </muxc:Expander>
 
             <!--  Pane position  -->
             <local:SettingContainer x:Name="AgentPanePosition"
@@ -286,15 +388,66 @@
                           Style="{StaticResource ComboBoxSettingStyle}" />
             </local:SettingContainer>
 
+            <local:SettingContainer x:Name="AutoErrorHandling"
+                                    Style="{StaticResource AutoErrorHandlingSettingContainerStyle}">
+                <local:SettingContainer.Header>
+                    <StackPanel>
+                        <TextBlock x:Uid="AIAgents_AutoErrorHandlingTitle"
+                                   Style="{StaticResource SettingsPageItemHeaderStyle}"
+                                   TextWrapping="Wrap" />
+                        <TextBlock x:Uid="AIAgents_AutoErrorHandlingDescription"
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                   Style="{StaticResource CaptionTextBlockStyle}"
+                                   TextWrapping="Wrap" />
+                        <TextBlock x:Uid="AIAgents_PolicyLocked"
+                                   Visibility="{x:Bind ViewModel.IsAutoErrorHandlingPolicyRestricted, Mode=OneWay}"
+                                   Opacity="0.6"
+                                   Margin="0,4,0,0" />
+                    </StackPanel>
+                </local:SettingContainer.Header>
+                <Grid>
+                    <ComboBox x:Uid="AIAgents_AutoErrorHandlingComboBox"
+                              AutomationProperties.AccessibilityView="Content"
+                              Width="{StaticResource StandardBoxMinWidth}"
+                              ItemTemplate="{StaticResource AutoErrorHandlingComboBoxTemplate}"
+                              ItemsSource="{x:Bind ViewModel.AutoErrorHandlingList, Mode=OneWay}"
+                              SelectedItem="{x:Bind ViewModel.CurrentAutoErrorHandling, Mode=TwoWay}"
+                              Style="{StaticResource ComboBoxSettingStyle}" />
+                </Grid>
+            </local:SettingContainer>
+
+            <local:SettingContainer x:Name="AgentSessionManagement"
+                                    x:Uid="AIAgents_SessionManagement">
+                <StackPanel>
+                    <ToggleSwitch MinWidth="0"
+                                  AutomationProperties.AccessibilityView="Content"
+                                  IsOn="{x:Bind ViewModel.AgentSessionManagementEnabled, Mode=TwoWay}"
+                                  IsEnabled="{x:Bind ViewModel.CanConfigureAgentSessionManagement, Mode=OneWay}" />
+                    <TextBlock x:Uid="AIAgents_PolicyLocked"
+                               Visibility="{x:Bind ViewModel.IsAgentSessionHooksPolicyLocked, Mode=OneWay}"
+                               Opacity="0.6"
+                               Margin="0,4,0,0" />
+                </StackPanel>
+            </local:SettingContainer>
+
+            <local:SettingContainer x:Name="ShowTokenUsageAndCost"
+                                    x:Uid="AIAgents_ShowTokenUsageAndCost">
+                <ToggleSwitch x:Name="ShowTokenUsageAndCostToggle"
+                              MinWidth="0"
+                              AutomationProperties.AccessibilityView="Content"
+                              IsOn="{x:Bind ViewModel.ShowTokenUsageAndCost, Mode=TwoWay}" />
+            </local:SettingContainer>
+
             <!--  Default-provider Yolo preference. Policy and provider
                 capability decide whether the toggle is editable.  -->
             <local:SettingContainer x:Name="AgentPaneYoloMode"
                                     x:Uid="AIAgents_YoloMode">
                 <StackPanel>
                     <ToggleSwitch AutomationProperties.AutomationId="AgentPaneYoloModeToggle"
+                                  AutomationProperties.AccessibilityView="Content"
+                                  MinWidth="0"
                                   IsOn="{x:Bind ViewModel.AgentPaneYoloMode, Mode=TwoWay}"
-                                  IsEnabled="{x:Bind ViewModel.CanEnableAgentPaneYoloMode, Mode=OneWay}"
-                                  Style="{StaticResource ToggleSwitchInExpanderStyle}" />
+                                  IsEnabled="{x:Bind ViewModel.CanEnableAgentPaneYoloMode, Mode=OneWay}" />
                     <TextBlock x:Uid="AIAgents_PolicyLocked"
                                Visibility="{x:Bind ViewModel.IsYoloModePolicyLocked, Mode=OneWay}"
                                Opacity="0.6"
@@ -320,302 +473,6 @@
                           Severity="Informational"
                           Visibility="{x:Bind ViewModel.ShowGeminiYoloInfo, Mode=OneWay}" />
 
-            <local:SettingContainer x:Name="ShowTokenUsageAndCost"
-                                    x:Uid="AIAgents_ShowTokenUsageAndCost">
-                <ToggleSwitch x:Name="ShowTokenUsageAndCostToggle"
-                              MinWidth="0"
-                              AutomationProperties.AccessibilityView="Content"
-                              IsOn="{x:Bind ViewModel.ShowTokenUsageAndCost, Mode=TwoWay}" />
-            </local:SettingContainer>
-
-            <!--  Automatic error detection (parent) + Automatic error
-                  suggestion (dependent child). Modeled as an Expander so the
-                  hierarchy is explicit: detection's master toggle lives in the
-                  always-visible header; suggestion is nested in the expand body
-                  and stays disabled until detection is on (ViewModel.
-                  CanSuggestErrors). Hand-built header (vs. ExpanderSetting
-                  ContainerStyle) because that style's header-right slot is a
-                  read-only text preview and can't host the master toggle.  -->
-            <muxc:Expander x:Name="AutoErrorDetectionExpander"
-                           Margin="0,4,0,0"
-                           HorizontalAlignment="Stretch"
-                           HorizontalContentAlignment="Stretch"
-                           IsExpanded="True">
-                <muxc:Expander.Header>
-                    <Grid MinHeight="64">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="Auto" />
-                        </Grid.ColumnDefinitions>
-                        <StackPanel Grid.Column="0"
-                                    VerticalAlignment="Center"
-                                    Spacing="2">
-                            <TextBlock x:Uid="AIAgents_AutoErrorDetectionTitle"
-                                       FontWeight="SemiBold"
-                                       TextWrapping="Wrap" />
-                            <!--  Caption hosts an inline Hyperlink to the full
-                                  supported-shells list, so it is built from
-                                  Run + Hyperlink populated in code-behind (RS_)
-                                  rather than a single x:Uid (x:Uid on inline Run
-                                  is not honored in this codebase). The muted
-                                  "secondary" foreground is applied only to the
-                                  prefix Run so the Hyperlink keeps its full theme
-                                  accent contrast (matches the page-subtitle
-                                  pattern above).  -->
-                            <TextBlock Style="{StaticResource CaptionTextBlockStyle}"
-                                       TextWrapping="Wrap">
-                                <Run x:Name="AutoErrorDetectionCaptionPrefix"
-                                     Foreground="{ThemeResource TextFillColorSecondaryBrush}" /><Hyperlink NavigateUri="https://aka.ms/intelligent-terminal-dependency#4-shell-integration">
-                                    <Run x:Name="AutoErrorDetectionCaptionLink" />
-                                </Hyperlink>
-                            </TextBlock>
-                        </StackPanel>
-                        <ToggleSwitch Grid.Column="1"
-                                      MinWidth="0"
-                                      VerticalAlignment="Center"
-                                      AutomationProperties.AccessibilityView="Content"
-                                      IsOn="{x:Bind ViewModel.AutoErrorDetectionEnabled, Mode=TwoWay}" />
-                    </Grid>
-                </muxc:Expander.Header>
-                <!--  Nested dependent setting: suggestion. Plain rows (no nested
-                      SettingContainer) so it sits inside the detection Expander
-                      body with no "card-in-card" background. Greyed out
-                      whenever detection is off or auto-fix is GPO-locked
-                      (ViewModel.CanSuggestErrors). Its On/Off reflects the
-                      user's own value and is independent of the detection
-                      toggle.  -->
-                <StackPanel Margin="0,4,0,0">
-                    <Grid>
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="Auto" />
-                        </Grid.ColumnDefinitions>
-                        <StackPanel Grid.Column="0"
-                                    VerticalAlignment="Center"
-                                    Spacing="2">
-                            <TextBlock x:Uid="AIAgents_AutoErrorSuggestionTitle"
-                                       TextWrapping="Wrap" />
-                            <TextBlock x:Uid="AIAgents_AutoErrorSuggestionCaption"
-                                       Style="{StaticResource CaptionTextBlockStyle}"
-                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                       TextWrapping="Wrap" />
-                        </StackPanel>
-                        <ToggleSwitch Grid.Column="1"
-                                      MinWidth="0"
-                                      VerticalAlignment="Center"
-                                      AutomationProperties.AccessibilityView="Content"
-                                      IsOn="{x:Bind ViewModel.AutoFixEnabled, Mode=TwoWay}"
-                                      IsEnabled="{x:Bind ViewModel.CanSuggestErrors, Mode=OneWay}" />
-                    </Grid>
-                    <TextBlock x:Uid="AIAgents_PolicyLocked"
-                               Visibility="{x:Bind ViewModel.IsAutoFixPolicyLocked, Mode=OneWay}"
-                               Opacity="0.6"
-                               Margin="0,4,0,0" />
-                </StackPanel>
-            </muxc:Expander>
-
-            <!--  Agent session tracking (hooks) — last entry in the Agent pane group.
-                  Collapsible SettingContainer (Expander style). When expanded:
-                    1. Top row: "Install hooks" action (accent button) — runs
-                       the installer across every detected CLI.
-                    2. One row per CLI that has any wt-agent-hooks state on disk
-                       (whether fully installed or partial); each row carries a
-                       Remove button and an optional subtitle describing the
-                       current install state when it isn't clean.
-                  Each row is wrapped in a Border with a thin top divider to
-                  match the design's "faint separator between rows".  -->
-            <local:SettingContainer x:Name="AgentHooksInstall"
-                                    x:Uid="AIAgents_HooksInstall"
-                                    Style="{StaticResource ExpanderSettingContainerStyle}">
-                <StackPanel Orientation="Vertical">
-                    <!--  Row 1: "Install hooks" action. Always present; enabled
-                          when at least one agent CLI is on PATH. The most recent
-                          install/remove progress + result message is shown as a
-                          subtitle under the row label (same layout pattern as
-                          the per-CLI rows below).  -->
-                    <Border BorderThickness="0,1,0,0"
-                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                            Padding="0,16,0,16">
-                        <StackPanel>
-                            <Grid>
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="Auto" />
-                                </Grid.ColumnDefinitions>
-                                <StackPanel Grid.Column="0" VerticalAlignment="Center" Spacing="2">
-                                    <TextBlock x:Uid="AIAgents_HooksInstallRowLabel"
-                                               TextWrapping="Wrap" />
-                                    <TextBlock Text="{x:Bind ViewModel.AgentHooksInstallSummary, Mode=OneWay}"
-                                               Visibility="{x:Bind ViewModel.HasAgentHooksInstallSummary, Mode=OneWay}"
-                                               Style="{StaticResource CaptionTextBlockStyle}"
-                                               Opacity="0.6"
-                                               TextWrapping="Wrap" />
-                                </StackPanel>
-                                <Button Grid.Column="1"
-                                        x:Uid="AIAgents_HooksInstallButton"
-                                        Click="{x:Bind ViewModel.InstallAllAgentHooks}"
-                                        IsEnabled="{x:Bind ViewModel.CanInstallAgentHooks, Mode=OneWay}"
-                                        Style="{StaticResource AccentButtonStyle}"
-                                        MinWidth="120" />
-                            </Grid>
-                            <!--  Installing or removing hooks only affects agents that
-                                  start afterwards. This note is deliberately persistent
-                                  rather than folded into the post-action summary above:
-                                  it has to be visible before the user clicks Install,
-                                  and it also covers the per-CLI Remove buttons below,
-                                  which have no summary of their own.  -->
-                            <TextBlock x:Uid="AIAgents_HooksRestartNote"
-                                       Style="{StaticResource CaptionTextBlockStyle}"
-                                       Opacity="0.6"
-                                       TextWrapping="Wrap"
-                                       Margin="0,4,0,0" />
-                            <TextBlock x:Uid="AIAgents_PolicyLocked"
-                                       Visibility="{x:Bind ViewModel.IsAgentSessionHooksPolicyLocked, Mode=OneWay}"
-                                       Opacity="0.6"
-                                       Margin="0,4,0,0" />
-                        </StackPanel>
-                    </Border>
-                    <!--  Per-CLI rows surface installed or partial hook state.
-                          A row disappears once its hooks are removed, so the
-                          Remove button is never shown with nothing to remove.  -->
-                    <Border Visibility="{x:Bind ViewModel.ShowCopilotHookRow, Mode=OneWay}"
-                            BorderThickness="0,1,0,0"
-                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                            Padding="0,16,0,16">
-                        <Grid>
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="Auto" />
-                            </Grid.ColumnDefinitions>
-                            <StackPanel Grid.Column="0" VerticalAlignment="Center" Spacing="2">
-                                <TextBlock Text="GitHub Copilot" TextWrapping="Wrap" />
-                                <!--  Subtitle collapses to zero height when empty (no MinHeight
-                                      reservation), so the agent name stays vertically centered
-                                      in the row in the typical clean-install state.  -->
-                                <TextBlock Text="{x:Bind ViewModel.CopilotHooksSubtitle, Mode=OneWay}"
-                                           Visibility="{x:Bind ViewModel.ShowCopilotHooksSubtitle, Mode=OneWay}"
-                                           Style="{StaticResource CaptionTextBlockStyle}"
-                                           Opacity="0.6"
-                                           TextWrapping="Wrap" />
-                            </StackPanel>
-                            <Button Grid.Column="1"
-                                    x:Uid="AIAgents_HooksRemoveButton"
-                                    Click="{x:Bind ViewModel.RemoveCopilotHooks}"
-                                    IsEnabled="{x:Bind ViewModel.CanRemoveAgentHooks, Mode=OneWay}"
-                                    MinWidth="120" />
-                        </Grid>
-                    </Border>
-                    <Border Visibility="{x:Bind ViewModel.ShowClaudeHookRow, Mode=OneWay}"
-                            BorderThickness="0,1,0,0"
-                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                            Padding="0,16,0,16">
-                        <Grid>
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="Auto" />
-                            </Grid.ColumnDefinitions>
-                            <StackPanel Grid.Column="0" VerticalAlignment="Center" Spacing="2">
-                                <TextBlock Text="Claude Code" TextWrapping="Wrap" />
-                                <TextBlock Text="{x:Bind ViewModel.ClaudeHooksSubtitle, Mode=OneWay}"
-                                           Visibility="{x:Bind ViewModel.ShowClaudeHooksSubtitle, Mode=OneWay}"
-                                           Style="{StaticResource CaptionTextBlockStyle}"
-                                           Opacity="0.6"
-                                           TextWrapping="Wrap" />
-                            </StackPanel>
-                            <Button Grid.Column="1"
-                                    x:Uid="AIAgents_HooksRemoveButton"
-                                    Click="{x:Bind ViewModel.RemoveClaudeHooks}"
-                                    IsEnabled="{x:Bind ViewModel.CanRemoveAgentHooks, Mode=OneWay}"
-                                    MinWidth="120" />
-                        </Grid>
-                    </Border>
-                    <Border Visibility="{x:Bind ViewModel.ShowGeminiHookRow, Mode=OneWay}"
-                            BorderThickness="0,1,0,0"
-                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                            Padding="0,16,0,16">
-                        <Grid>
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="Auto" />
-                            </Grid.ColumnDefinitions>
-                            <StackPanel Grid.Column="0" VerticalAlignment="Center" Spacing="2">
-                                <TextBlock Text="Gemini CLI" TextWrapping="Wrap" />
-                                <TextBlock Text="{x:Bind ViewModel.GeminiHooksSubtitle, Mode=OneWay}"
-                                           Visibility="{x:Bind ViewModel.ShowGeminiHooksSubtitle, Mode=OneWay}"
-                                           Style="{StaticResource CaptionTextBlockStyle}"
-                                           Opacity="0.6"
-                                           TextWrapping="Wrap" />
-                            </StackPanel>
-                            <Button Grid.Column="1"
-                                    x:Uid="AIAgents_HooksRemoveButton"
-                                    Click="{x:Bind ViewModel.RemoveGeminiHooks}"
-                                    IsEnabled="{x:Bind ViewModel.CanRemoveAgentHooks, Mode=OneWay}"
-                                    MinWidth="120" />
-                        </Grid>
-                    </Border>
-                    <Border Visibility="{x:Bind ViewModel.ShowCodexHookRow, Mode=OneWay}"
-                            BorderThickness="0,1,0,0"
-                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                            Padding="0,16,0,16">
-                        <Grid>
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="Auto" />
-                            </Grid.ColumnDefinitions>
-                            <StackPanel Grid.Column="0" VerticalAlignment="Center" Spacing="2">
-                                <TextBlock Text="Codex CLI" TextWrapping="Wrap" />
-                                <TextBlock Text="{x:Bind ViewModel.CodexHooksSubtitle, Mode=OneWay}"
-                                           Visibility="{x:Bind ViewModel.ShowCodexHooksSubtitle, Mode=OneWay}"
-                                           Style="{StaticResource CaptionTextBlockStyle}"
-                                           Opacity="0.6"
-                                           TextWrapping="Wrap" />
-                                <!--  Codex is the only CLI whose hook commands must be
-                                      individually trusted by the user before they fire.
-                                      Surface the one-line "run /hooks and approve"
-                                      reminder right under the row title so users see it
-                                      both before clicking Install (anticipation) and
-                                      after install (the row only becomes visible once
-                                      Codex has any hook state, which is the moment the
-                                      reminder is most actionable).  -->
-                                <TextBlock x:Uid="AIAgents_CodexTrustHint"
-                                           Style="{StaticResource CaptionTextBlockStyle}"
-                                           Opacity="0.6"
-                                           TextWrapping="Wrap" />
-                            </StackPanel>
-                            <Button Grid.Column="1"
-                                    x:Uid="AIAgents_HooksRemoveButton"
-                                    Click="{x:Bind ViewModel.RemoveCodexHooks}"
-                                    IsEnabled="{x:Bind ViewModel.CanRemoveAgentHooks, Mode=OneWay}"
-                                    MinWidth="120" />
-                        </Grid>
-                    </Border>
-                    <Border Visibility="{x:Bind ViewModel.ShowOpenCodeHookRow, Mode=OneWay}"
-                            BorderThickness="0,1,0,0"
-                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                            Padding="0,16,0,16">
-                        <Grid>
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="Auto" />
-                            </Grid.ColumnDefinitions>
-                            <StackPanel Grid.Column="0" VerticalAlignment="Center" Spacing="2">
-                                <TextBlock Text="OpenCode" TextWrapping="Wrap" />
-                                <TextBlock Text="{x:Bind ViewModel.OpenCodeHooksSubtitle, Mode=OneWay}"
-                                           Visibility="{x:Bind ViewModel.ShowOpenCodeHooksSubtitle, Mode=OneWay}"
-                                           Style="{StaticResource CaptionTextBlockStyle}"
-                                           Opacity="0.6"
-                                           TextWrapping="Wrap" />
-                            </StackPanel>
-                            <Button Grid.Column="1"
-                                    x:Uid="AIAgents_HooksRemoveButton"
-                                    Click="{x:Bind ViewModel.RemoveOpenCodeHooks}"
-                                    IsEnabled="{x:Bind ViewModel.CanRemoveAgentHooks, Mode=OneWay}"
-                                    MinWidth="120" />
-                       </Grid>
-                    </Border>
-                </StackPanel>
-            </local:SettingContainer>
-
             <!--  ═══ Command palette group ═══  -->
             <TextBlock x:Uid="AIAgents_DelegateGroupHeader"
                        Style="{StaticResource TextBlockSubHeaderStyle}" />
@@ -640,26 +497,29 @@
                     <StackPanel Orientation="Vertical"
                                 Visibility="{x:Bind ViewModel.IsCustomDelegateAgentSelected, Mode=OneWay}"
                                 Margin="0,8,0,0"
-                                Spacing="4">
+                                Spacing="8">
                         <TextBlock Text="{x:Bind ViewModel.CustomDelegateCommandPreview, Mode=OneWay}"
                                    IsTextSelectionEnabled="True"
                                    TextWrapping="Wrap"
                                    Opacity="0.8" />
-                        <StackPanel Orientation="Horizontal" Spacing="8">
+                        <StackPanel Orientation="Horizontal"
+                                    HorizontalAlignment="Right"
+                                    Spacing="8">
                             <Button Content="Edit" Click="{x:Bind ViewModel.EditCustomDelegateAgent}" />
-                            <Button Content="Delete" Click="{x:Bind ViewModel.DeleteCustomDelegateAgent}" />
                         </StackPanel>
                     </StackPanel>
                     <StackPanel Orientation="Vertical"
                                 Visibility="{x:Bind ViewModel.IsAddingCustomDelegateAgent, Mode=OneWay}"
                                 Margin="0,8,0,0"
-                                Spacing="4">
+                                Spacing="8">
                         <TextBox Text="{x:Bind ViewModel.CustomDelegateCommand, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                 PlaceholderText="e.g. my-cli --flag"
+                                 PlaceholderForeground="{ThemeResource TextFillColorTertiaryBrush}"
+                                 PlaceholderText="my-cli --flag"
                                  Style="{StaticResource TextBoxSettingStyle}" />
-                        <StackPanel Orientation="Horizontal" Spacing="8">
+                        <StackPanel Orientation="Horizontal"
+                                    HorizontalAlignment="Right"
+                                    Spacing="8">
                             <Button Content="Save" Click="{x:Bind ViewModel.SaveCustomDelegateAgent}" Style="{StaticResource AccentButtonStyle}" />
-                            <Button Content="Delete" Click="{x:Bind ViewModel.DeleteCustomDelegateAgent}" />
                             <Button Content="Cancel" Click="{x:Bind ViewModel.CancelCustomDelegateAgent}" />
                         </StackPanel>
                     </StackPanel>

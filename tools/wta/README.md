@@ -148,6 +148,22 @@ snapshots.
 | Y / N | Quick allow/reject on permission dialog |
 | Up / Down / Enter | Navigate permission options |
 
+WTA automatically selects **Allow once** only when the tool matches the exact MCP
+server currently bound to that ACP session by master. Master overwrites provider
+metadata with that identity on each forwarded permission request and tool update;
+correlated calls must match the session, call ID, and current server identity.
+Terminal actions still require their action-card confirmation, and
+`request_user_input` still presents its question. Foreign or missing identities
+(even with the same tool name or server-name prefix) and requests without an
+**Allow once** option keep the normal permission dialog. WTA does not grant
+persistent approval automatically.
+
+Pending and replayed command suggestions show only the command, without assuming
+Run or Insert. After the user chooses, history uses the localized
+`Run: <command>` or `Insert: <command>` label. Cancelling retains the command with
+a localized cancellation status on the same line, not on the conversation title.
+History has no suggestion counts, numbering, or recommendation checkmarks.
+
 ## Debug Panel
 
 Press **F12** to open a side panel showing all JSON-RPC messages between WTA and Windows Terminal in real time.
@@ -252,6 +268,20 @@ the CLI helpers directly with the packaged `wta` app execution alias.
 4. Press F12 to open the debug panel and see all protocol traffic
 5. Interact with the agent -- watch requests/responses flow in real time
 6. Use `wta list-panes`, `wta capture-pane` etc. in another pane for debugging
+
+While connecting, the chat activity row shows WTA's current operation: preparing
+the agent connection, connecting to the local coordinator, initializing the
+connection, refreshing user authentication after login (when supported), reading
+the coordinator's session registry snapshot, creating a session, or setting its
+model (when requested). Initialization and creation include local preparation
+and registration, not just waiting on the agent. `/restart` first shows
+"Restarting agent" while old sessions retire. These are local operation
+boundaries, not agent-reported progress: they do not expose internal MCP or
+model-catalog loading, and reading the registry does not fetch agent history.
+A queued session restore shows the actual connection stage first, followed by
+short resume context; once connected, it shows only "Resuming session" until
+the load completes. The pane does not become connected earlier, and these labels
+do not reduce startup time.
 
 ### Adding a new WT protocol method
 

@@ -36,7 +36,7 @@ $publicFns = @(
     # Ui
     'Get-UiTree', 'Find-UiElement', 'Get-UiElement', 'Test-UiElementEnabled', 'Invoke-UiElement', 'Invoke-UiClick', 'Get-UiTextBounds', 'Invoke-UiMouseDrag', 'Set-UiValue', 'Get-UiValue',
     'Wait-UiElement', 'Test-UiElementExists', 'Save-UiScreenshot', 'Get-WtWindowHwnds', 'Test-WinAppAvailable',
-    'Send-WtWindowKey', 'Set-WtWindowForeground', 'Test-WtWindowKeyFocusable', 'Open-WtSettings', 'Test-CommandPaletteOpen', 'Invoke-SettingsNav',
+    'Send-WtWindowKey', 'Invoke-WtWindowWheel', 'Set-WtWindowForeground', 'Test-WtWindowKeyFocusable', 'Open-WtSettings', 'Test-CommandPaletteOpen', 'Invoke-SettingsNav',
     # Observe
     'Get-ItLogDir', 'Initialize-LogOffsets', 'Get-ItLogText', 'Start-WtEventListener', 'Get-WtEvents',
     'Wait-WtEvent', 'Stop-WtEventListener', 'Get-ContextBundle', 'ConvertTo-ContextText',

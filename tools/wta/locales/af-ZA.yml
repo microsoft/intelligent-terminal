@@ -51,6 +51,7 @@ chat.turn_canceled: "(gekanselleer)"
 chat.turn_executed: "→ uitgevoer: %{title}"
 # Persistent tool-category labels shown after a status marker and before a subject.
 chat.tool_kind.run: "Uitvoer"
+chat.tool_kind.insert: "Voeg in"
 chat.tool_kind.read: "Lees"
 chat.tool_kind.search: "Soek"
 chat.tool_kind.edit: "Wysig"
@@ -124,8 +125,25 @@ agents.status.idle: "Ledig"
 layout.welcome_hint: "  (Ctrl+Shift+. om agentpaneel te wys/verberg • Ctrl+Shift+/ om agentsessie te wys/verberg)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}
 
 # ── Verbindingstoestand ────────────────────────────────────────────────────────
-connection.starting: "Agent word begin..."
+# Preparing the AI agent connection, including preflight and reuse of a cached agent.
+connection.starting: "Berei agentverbinding voor..."
 connection.reconnecting: "Herkoppel tans..."
+# Retiring old AI agent sessions for /restart, before the next connection phases.
+connection.restarting: "Herbegin agent..."
+# Connecting the pane to WTA's local coordinator process, not to an AI model.
+connection.coordinator: "Koppel tans aan plaaslike koördineerder..."
+# Initializing the helper/coordinator connection, including local preparation and AI agent initialization.
+connection.initializing: "Inisialiseer agentverbinding..."
+# Refreshing the user's authentication with the AI agent after login; not verifying the agent's identity.
+connection.authenticating: "Staaf tans die gebruiker by die agent..."
+# Reading the coordinator's registry snapshot, including existing history; not fetching history from the AI agent.
+connection.syncing_sessions: "Lees sessielys..."
+# Creating the AI agent session, including local registration; internal agent progress is unknown.
+connection.creating_session: "Skep agentsessie..."
+# Applying the requested AI model before the connection is ready. Preserve %{model}.
+connection.selecting_model: "Stel sessiemodel: %{model}..."  # {Locked="%{model}"}
+# Activity row while connecting to restore a conversation. Keep the actual stage first so narrow panes show it; session_id is shortened to eight characters.
+connection.resuming_stage: "%{stage} (hervat %{session_id})"  # {Locked="%{stage}","%{session_id}"}
 connection.connecting_activity: "Koppel tans aan agent…"
 connection.lost: "Verbinding met die agent is verloor. Tik /restart om weer te koppel."  # {Locked="/restart"}
 
@@ -240,5 +258,6 @@ config_picker.title: "Sessie-konfigurasie (↑ ↓ • Enter • Esc)"
 system.no_config_options: "Die gekoppelde agent het geen konfigureerbare sessie-opsies geadverteer nie."
 # {option} is an Agent-provided option name; {error} is the ACP error.
 system.config_update_failed: "Kon nie %{option} bywerk nie: %{error}"
+system.yolo_disable_pending: "die verskaffer het nie die vereiste nie-bevoorregte sessietoestand bevestig nie"  # Shown after the localized failure prefix while prompts remain blocked until the AI agent provider confirms that its privileged session mode is off. Provider means an AI agent provider, not a network provider.
 system.provider_command_blocked_by_policy: "%{command}: Yolo-modus is deur jou organisasie se beleid gedeaktiveer."  # {Locked="Yolo","%{command}"} Shown when AllowYoloMode blocks a provider-advertised privileged command.
 system.model_unknown: "Onbekende model %{model} — tik /model om die beskikbare lys te sien."  # {Locked="%{model}","/model"}

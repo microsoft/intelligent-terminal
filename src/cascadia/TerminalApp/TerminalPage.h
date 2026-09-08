@@ -248,6 +248,7 @@ namespace winrt::TerminalApp::implementation
         Windows::Foundation::IAsyncOperation<Windows::Foundation::Collections::IVector<Microsoft::Terminal::Protocol::TabInfo>> GetProtocolTabs();
         Windows::Foundation::IAsyncOperation<Windows::Foundation::Collections::IVector<Microsoft::Terminal::Protocol::PaneInfo>> GetProtocolPanes(uint32_t tabIdFilter);
         Windows::Foundation::IAsyncOperation<Microsoft::Terminal::Protocol::PaneOutput> ReadProtocolPaneOutput(winrt::guid sessionId, hstring source, int32_t maxLines);
+        Windows::Foundation::IAsyncOperation<Microsoft::Terminal::Protocol::PaneContext> GetProtocolPaneContext(winrt::guid sourceSessionId, bool hasExplicitSource, int32_t maxLines, int32_t maxCharacters);
         Windows::Foundation::IAsyncOperation<Microsoft::Terminal::Protocol::ProcessStatus> GetProtocolProcessStatus(winrt::guid sessionId);
         Windows::Foundation::IAsyncOperation<Microsoft::Terminal::Protocol::SessionVariable> GetProtocolSessionVariable(winrt::guid sessionId, hstring name);
         Windows::Foundation::IAsyncOperation<bool> SetProtocolSessionVariable(winrt::guid sessionId, hstring name, hstring value);
@@ -440,6 +441,7 @@ namespace winrt::TerminalApp::implementation
             std::wstring acpModel;
             std::optional<::Microsoft::Terminal::CustomModels::LaunchConfiguration> customModelLaunch;
             std::vector<std::pair<winrt::guid, std::wstring>> profileBackends;
+            bool agentSessionManagementEnabled{ true };
         };
         AgentSettingsSnapshot _lastAgentSettings{};
         bool _agentSettingsSnapshotInitialized{ false };
@@ -449,6 +451,12 @@ namespace winrt::TerminalApp::implementation
             ModelHotUpdate,
             AgentRebind,
             RecreatePane,
+        };
+        enum class AgentHooksReconciliationScope
+        {
+            None,
+            All,
+            SelectedAgent,
         };
         struct AgentPaneSettingsBindingRequest
         {
@@ -587,6 +595,12 @@ namespace winrt::TerminalApp::implementation
         static AgentSettingsChangeKind _ClassifyAgentSettingsChange(
             const AgentSettingsSnapshot& previous,
             const AgentSettingsSnapshot& current);
+        static AgentHooksReconciliationScope _ClassifyAgentHooksReconciliation(
+            const AgentSettingsSnapshot& previous,
+            const AgentSettingsSnapshot& current);
+        winrt::fire_and_forget _ReconcileAgentHooksAsync(
+            AgentHooksReconciliationScope scope,
+            std::wstring agentId);
         static bool _ShouldDeferAgentSettingsChange(
             AgentSettingsChangeKind changeKind,
             bool canHostPane,
@@ -881,6 +895,7 @@ namespace winrt::TerminalApp::implementation
         void _RegisterTerminalEvents(Microsoft::Terminal::Control::TermControl term);
         std::string _FindSessionIdForControl(const Microsoft::Terminal::Control::TermControl& control);
         std::string _FindTabIdForControl(const Microsoft::Terminal::Control::TermControl& control);
+        std::string _FindTabIdForSessionId(std::string_view sessionId);
         void _RegisterTabEvents(Tab& hostingTab);
 
         void _DismissTabContextMenus();

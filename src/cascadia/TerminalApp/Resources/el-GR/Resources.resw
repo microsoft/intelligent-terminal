@@ -4,6 +4,10 @@
   <resheader name="version"><value>2.0</value></resheader>
   <resheader name="reader"><value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value></resheader>
   <resheader name="writer"><value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value></resheader>
+  <data name="FreOverlay_PolicyLocked" xml:space="preserve">
+    <value>Αυτή η ρύθμιση τελεί υπό τη διαχείριση του οργανισμού σας.</value>
+    <comment>Text shown below a first-run setting when Group Policy manages or restricts the feature. The associated control may be disabled or filtered to allowed choices. Standard Windows policy notice wording.</comment>
+  </data>
   <!-- ═══ FRE Welcome Page ═══ -->
   <data name="FreOverlay_WelcomeTitle.Text" xml:space="preserve">
     <value>Καλώς ήρθατε στο Έξυπνο Τερματικό</value>
@@ -11,6 +15,7 @@
   </data>
   <data name="FreOverlay_WelcomeSubtitlePrefix" xml:space="preserve">
     <value>Ρυθμίστε τον ενσωματωμένο βοηθό σας για να σας βοηθά να εξηγείτε σφάλματα, να συντάσσετε εντολές και να ξεμπλοκάρετε εργασίες ακριβώς εκεί που εργάζεστε. </value>
+    <comment>Text shown immediately before the FreOverlay_WelcomeSubtitleLink hyperlink. Include any spacing needed to separate the prefix from the link in the target language.</comment>
   </data>
   <data name="FreOverlay_WelcomeSubtitleLink" xml:space="preserve">
     <value>Μάθετε περισσότερα για το Έξυπνο Τερματικό</value>
@@ -36,11 +41,11 @@
   </data>
   <!-- ═══ FRE Settings Page ═══ -->
   <data name="FreOverlay_SettingsTitle.Text" xml:space="preserve">
-    <value>Ρυθμίστε τον πράκτορα του τερματικού σας</value>
-    <comment>{Locked="Copilot","Claude","Gemini"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+    <value>Ρυθμίστε το τερματικό σας</value>
   </data>
   <data name="FreOverlay_SettingsSubtitlePrefix" xml:space="preserve">
     <value>Επιλέξτε τι θέλετε να ρυθμίσετε τώρα. Μπορείτε να αλλάξετε αυτές τις ρυθμίσεις ανά πάσα στιγμή. </value>
+    <comment>Text shown immediately before the FreOverlay_SettingsSubtitleLink hyperlink. Include any spacing needed to separate the prefix from the link in the target language.</comment>
   </data>
   <data name="FreOverlay_SettingsSubtitleLink" xml:space="preserve">
     <value>Μάθετε πώς χρησιμοποιούνται τα δεδομένα</value>
@@ -51,48 +56,47 @@
   </data>
   <data name="FreOverlay_AgentDescription.Text" xml:space="preserve">
     <value>Επιλέξτε τον πράκτορα που χρησιμοποιείται στο πλαίσιο πράκτορα και υποστηρίζει ACP.</value>
-    <comment>{Locked="ACP"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+    <comment>{Locked="ACP"} Description for choosing an AI agent for the agent pane. The selected agent must support ACP. "ACP" is rendered as a hyperlink at runtime and must appear exactly once. In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
-  <data name="FreOverlay_AgentInstallHint.Text" xml:space="preserve">
-    <value>Αυτός ο πράκτορας απαιτεί Node.js και NPX, τα οποία θα εγκατασταθούν αυτόματα αν δεν υπάρχουν ήδη.</value>
-    <comment>{Locked="Node.js","NPX"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+  <data name="FreOverlay_ErrorDetectionLabel.Text" xml:space="preserve">
+    <value>Εντοπισμός σφαλμάτων</value>
+    <comment>Header for the dropdown that configures how the terminal handles failed commands.</comment>
   </data>
-  <data name="FreOverlay_AutoErrorLabel.Text" xml:space="preserve">
-    <value>Αυτόματη πρόταση σφαλμάτων</value>
+  <data name="FreOverlay_ErrorDetectionDescription.Text" xml:space="preserve">
+    <value>Εντοπίστε αυτόματα τις αποτυχημένες εντολές στο κέλυφος και, προαιρετικά, στείλτε τις στον πράκτορά σας για αυτόματη διόρθωση.</value>
+    <comment>Description for the error-detection dropdown in the first-run wizard. The dropdown includes detect-only, detect-and-fix, and off modes; the selected mode controls whether shell errors are detected and whether failed commands are automatically sent to the selected AI agent. In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
-  <data name="FreOverlay_AutoErrorDescription.Text" xml:space="preserve">
-    <value>Επιτρέψτε στο Intelligent Terminal να στέλνει σφάλματα στον agent για αυτόματη πρόταση διορθώσεων.</value>
-    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
+  <data name="FreOverlay_ErrorDetectionDetectOption.Content" xml:space="preserve">
+    <value>Εντοπισμός σφαλμάτων</value>
+    <comment>Dropdown option that detects shell errors without automatically sending failed commands to the selected AI agent.</comment>
   </data>
   <data name="FreOverlay_SessionLabel.Text" xml:space="preserve">
-    <value>Διαχείριση συνεδριών</value>
+    <value>Συνεδρίες</value>
   </data>
   <data name="FreOverlay_SessionDescription.Text" xml:space="preserve">
-    <value>Δώστε στο Έξυπνο Τερματικό δικαίωμα παρακολούθησης της κατάστασης των ενεργών πρακτόρων σας.</value>
-    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
-  </data>
-  <data name="FreOverlay_SessionHint.Text" xml:space="preserve">
-    <value>Η ενεργοποίηση αυτής της λειτουργίας θα εγκαταστήσει hooks ενσωμάτωσης για την παρακολούθηση συνεδριών σε όλους τους πράκτορές σας.</value>
-    <comment>{Locked="hooks"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
-  </data>
-  <data name="FreOverlay_ShowTokenUsageAndCostLabel.Text" xml:space="preserve"><value>Εμφάνιση χρήσης περιβάλλοντος και κόστους περιόδου σύνδεσης</value><comment>Header for a first-run toggle that shows available context-window usage and session cost in the terminal bottom bar. Session cost is reported for the active AI session. Keep 'session cost' generic and do not add a specific unit. Either value may be unavailable.</comment></data>
-  <data name="FreOverlay_ShowTokenUsageAndCostDescription.Text" xml:space="preserve"><value>Όταν είναι διαθέσιμο, εμφανίστε τη χρήση παραθύρου περιβάλλοντος και το κόστος περιόδου σύνδεσης στην κάτω γραμμή του τερματικού.</value><comment>Description for the usage visibility toggle in the first-run wizard. Session cost is reported for the active AI session. Keep 'session cost' generic and do not add a specific unit. Either value may be unavailable.</comment></data>
-  <data name="FreOverlay_PanePositionLabel.Text" xml:space="preserve">
-    <value>Θέση πλαισίου</value>
-  </data>
-  <data name="FreOverlay_PanePositionDescription.Text" xml:space="preserve">
-    <value>Πού ανοίγει το πλαίσιο πράκτορα σε σχέση με το τερματικό σας.</value>
+    <value>Παρακολουθήστε ποιοι πράκτορες εκτελούνται και ποιοι χρειάζονται την προσοχή σας.</value>
     <comment>In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
+  <data name="FreOverlay_ShowTokenUsageAndCostLabel.Text" xml:space="preserve"><value>Χρήση διακριτικών</value><comment>Header for a first-run toggle that shows remaining context and session cost in the terminal bottom bar.</comment></data>
+  <data name="FreOverlay_ShowTokenUsageAndCostDescription.Text" xml:space="preserve"><value>Εμφάνιση του υπολειπόμενου περιβάλλοντος και του κόστους συνεδρίας, όταν είναι διαθέσιμα.</value><comment>Description for the token-usage visibility toggle in the first-run wizard. Either value may be unavailable.</comment></data>
+  <data name="FreOverlay_PanePositionLabel.Text" xml:space="preserve">
+    <value>Θέση πράκτορα</value>
+  </data>
+  <data name="FreOverlay_PanePositionDescription.Text" xml:space="preserve">
+    <value>Η θέση του πράκτορά σας.</value>
+    <comment>Description for choosing where the AI agent pane appears within the terminal window. In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+  </data>
   <data name="FreOverlay_SaveButton.Content" xml:space="preserve">
-    <value>Αποθήκευση</value>
+    <value>Έναρξη</value>
   </data>
   <!-- ═══ FRE Dynamic strings (used from C++ code-behind) ═══ -->
   <data name="FreOverlay_AgentStatusWillInstall" xml:space="preserve">
     <value> (θα εγκατασταθεί)</value>
+    <comment>Status suffix appended directly to an AI agent display name when setup will install that agent. Include any spacing and punctuation needed to separate the suffix from the agent name.</comment>
   </data>
   <data name="FreOverlay_AgentStatusInstalled" xml:space="preserve">
     <value> (εγκατεστημένο)</value>
+    <comment>Status suffix appended directly to an AI agent display name when that agent is already installed. Include any spacing and punctuation needed to separate the suffix from the agent name.</comment>
   </data>
   <data name="FreOverlay_PanePositionBottom" xml:space="preserve">
     <value>Κάτω</value>
@@ -111,35 +115,35 @@
   </data>
   <data name="FreOverlay_InstallError_BlockedByPolicy" xml:space="preserve">
     <value>Η εγκατάσταση του {0} αποκλείστηκε από πολιτική της Διαχείρισης πακέτων των Windows. Αν χρησιμοποιείτε διαχειριζόμενη συσκευή, επικοινωνήστε με τον διαχειριστή IT.</value>
-    <comment>FRE setup error. {0} is the package display name. Shown when winget returned BlockedByPolicy.</comment>
+    <comment>FRE setup error. {0} is the package display name. Shown when winget reports BlockedByPolicy or an equivalent policy-related HRESULT.</comment>
   </data>
   <data name="FreOverlay_InstallError_Generic" xml:space="preserve">
     <value>Δεν ήταν δυνατή η εγκατάσταση του {0} (κωδικός σφάλματος {1}). Ανατρέξτε στο αρχείο καταγραφής για λεπτομέρειες ή εγκαταστήστε το {0} με μη αυτόματο τρόπο.</value>
-    <comment>FRE setup error fallback. {0} is the package display name (appears twice). {1} is a pre-formatted HRESULT string like "0x80190194".</comment>
+    <comment>FRE setup error fallback. {0} is the package display name (appears twice). {1} is a pre-formatted HRESULT string like "0x80190194". Shown for failure causes we don't have a more specific message for.</comment>
   </data>
   <data name="FreOverlay_InstallError_GenericNoCode" xml:space="preserve">
     <value>Δεν ήταν δυνατή η εγκατάσταση του {0}. Ανατρέξτε στο αρχείο καταγραφής για λεπτομέρειες ή εγκαταστήστε το {0} με μη αυτόματο τρόπο.</value>
-    <comment>FRE setup error fallback used when no actionable error code is available. {0} is the package display name (appears twice).</comment>
+    <comment>FRE setup error fallback used when no actionable error code is available (e.g. the catalog connect/search failed before an installer ever ran). {0} is the package display name (appears twice).</comment>
   </data>
   <data name="FreOverlay_InstallError_InstallerFailed" xml:space="preserve">
     <value>Το πρόγραμμα εγκατάστασης του {0} ανέφερε σφάλμα (κωδικός {1}). Ανατρέξτε στο αρχείο καταγραφής για λεπτομέρειες ή εγκαταστήστε το {0} με μη αυτόματο τρόπο.</value>
-    <comment>FRE setup error. {0} is the package display name (appears twice). {1} is the installer-reported error code as a decimal number.</comment>
+    <comment>FRE setup error. {0} is the package display name (appears twice). {1} is the installer-reported error code as a decimal number (e.g. MSI 1603). Shown when winget reached the install phase but the installer itself failed.</comment>
   </data>
   <data name="FreOverlay_InstallError_Network" xml:space="preserve">
     <value>Δεν ήταν δυνατή η επικοινωνία με τη Διαχείριση πακέτων των Windows κατά την εγκατάσταση του {0}. Ελέγξτε τη σύνδεσή σας στο Internet (VPN, διακομιστής μεσολάβησης ή τείχος προστασίας ενδέχεται να την αποκλείει) και δοκιμάστε ξανά.</value>
-    <comment>{Locked="VPN"} FRE setup error. {0} is the package display name. Shown when winget couldn't reach its catalog or download failed with a network-class HRESULT.</comment>
+    <comment>{Locked="VPN"} FRE setup error. {0} is the package display name (FreOverlay_PackageDisplayName_Copilot or _Node). Shown when winget couldn't reach its catalog or the package download failed with a network-class HRESULT.</comment>
   </data>
   <data name="FreOverlay_InstallError_NoCompatibleInstaller" xml:space="preserve">
     <value>Δεν υπάρχει διαθέσιμο συμβατό πρόγραμμα εγκατάστασης για το {0} σε αυτό το σύστημα (η έκδοση του OS ή η αρχιτεκτονική ενδέχεται να μην υποστηρίζεται). Εγκαταστήστε το {0} με μη αυτόματο τρόπο.</value>
-    <comment>FRE setup error. {0} is the package display name (appears twice).</comment>
+    <comment>FRE setup error. {0} is the package display name (appears twice). Shown when winget returned NoApplicableInstallers — the manifest exists but no installer entry matches this OS/arch/scope.</comment>
   </data>
   <data name="FreOverlay_InstallError_PackageNotFound" xml:space="preserve">
     <value>Το {0} δεν βρέθηκε στον κατάλογο της Διαχείρισης πακέτων των Windows. Δοκιμάστε να ανανεώσετε τις προελεύσεις winget ή εγκαταστήστε το {0} με μη αυτόματο τρόπο.</value>
-    <comment>{Locked="winget"} FRE setup error. {0} is the package display name (appears twice).</comment>
+    <comment>{Locked="winget"} FRE setup error. {0} is the package display name (appears twice). Shown when no manifest with the requested package ID was returned from the catalog search.</comment>
   </data>
   <data name="FreOverlay_InstallError_Timeout" xml:space="preserve">
     <value>Η εγκατάσταση του {0} διήρκεσε περισσότερο από 20 λεπτά. Το Intelligent Terminal σταμάτησε να περιμένει, αλλά το πρόγραμμα εγκατάστασης μπορεί να εξακολουθεί να εκτελείται στο παρασκήνιο. Ελέγξτε το Task Manager ή δοκιμάστε ξανά αργότερα.</value>
-    <comment>{Locked="Intelligent Terminal","Task Manager"} FRE setup error. {0} is the package display name.</comment>
+    <comment>{Locked="Intelligent Terminal","Task Manager"} FRE setup error. {0} is the package display name. Shown when our 20-minute hard timeout expired before the install completed.</comment>
   </data>
   <data name="FreOverlay_InstallErrorWingetMissing" xml:space="preserve">
     <value>Η Διαχείριση πακέτων των Windows (winget) δεν είναι εγκατεστημένη ή δεν είναι διαθέσιμη. Εγκαταστήστε την πρώτα και, στη συνέχεια, δοκιμάστε ξανά.</value>
@@ -228,25 +232,26 @@
     <value>Terminal Protocol</value>
     <comment>Title for the teaching tip that displays Terminal Protocol connection information. {Locked="Terminal Protocol"}</comment>
   </data>
-  <data name="FreOverlay_AutoDetectLabel.Text" xml:space="preserve">
-    <value>Αυτόματος εντοπισμός σφαλμάτων</value>
+  <data name="FreOverlay_ErrorDetectionAutoFixOption.Content" xml:space="preserve">
+    <value>Εντοπισμός και διόρθωση σφαλμάτων</value>
+    <comment>Dropdown option that detects shell errors and automatically sends failed commands to the selected AI agent. In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
-  <data name="FreOverlay_AutoDetectDescription.Text" xml:space="preserve">
-    <value>Επιτρέψτε στο Intelligent Terminal να αποκτήσει πρόσβαση στο κέλυφος και να εντοπίζει αυτόματα σφάλματα.</value>
+  <data name="FreOverlay_ErrorDetectionOffOption.Content" xml:space="preserve">
+    <value>Ανενεργό</value>
+    <comment>Dropdown option that disables automatic shell error detection.</comment>
   </data>
 <data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
     <value>Αποτυχία εγκατάστασης της ενσωμάτωσης κελύφους. Ο εντοπισμός σφαλμάτων απενεργοποιήθηκε. Μπορείτε να τον ενεργοποιήσετε ξανά και να δοκιμάσετε ξανά, ή να αποθηκεύσετε για να συνεχίσετε χωρίς αυτόν.</value>
+    <comment>FRE setup error shown when shell integration cannot be installed. Error detection is turned off so setup can continue, and the user may re-enable it to retry.</comment>
   </data><data name="FreOverlay_InstallErrorHooks" xml:space="preserve">
     <value>Αποτυχία εγκατάστασης των session hooks. Η διαχείριση περιόδων λειτουργίας απενεργοποιήθηκε. Μπορείτε να την ενεργοποιήσετε ξανά και να δοκιμάσετε ξανά, ή να αποθηκεύσετε για να συνεχίσετε χωρίς αυτήν.</value>
-    <comment>{Locked="hooks"}</comment>
+    <comment>{Locked="hooks"} FRE setup error shown when session hooks cannot be installed. Session management is turned off so setup can continue, and the user may re-enable it to retry.</comment>
   </data><data name="FreOverlay_ErrorHelpLink" xml:space="preserve">
     <value>Μάθετε πώς να το διορθώσετε με μη αυτόματο τρόπο</value>
     <comment>Hyperlink shown below an FRE setup error message. Opens step-by-step manual setup instructions in the browser.</comment>
-  </data>  <data name="FreOverlay_AutoDetectShellIntegrationHintPrefix" xml:space="preserve">
-    <value>Η ενεργοποίηση αυτής της λειτουργίας θα εγκαταστήσει ενοποίηση shell για τον εντοπισμό αποτυχιών εντολών. </value>
-  </data>
-  <data name="FreOverlay_AutoDetectShellIntegrationHintLink" xml:space="preserve">
-    <value>Μάθετε περισσότερα</value>
+  </data>  <data name="FreOverlay_ErrorDetectionAutoFixPolicyLocked" xml:space="preserve">
+    <value>Η επιλογή αυτόματης διόρθωσης τελεί υπό τη διαχείριση του οργανισμού σας.</value>
+    <comment>Text shown below the error-detection dropdown when Group Policy disables its automatic-fix option.</comment>
   </data>
   <data name="InitShellIntegrationExecutionPolicyErrorMessage" xml:space="preserve">
     <value>Η πολιτική εκτέλεσης του PowerShell αποκλείει τα σενάρια.</value>
@@ -254,7 +259,7 @@
   </data>
   <data name="FreOverlay_InstallErrorShellIntegrationExecutionPolicy" xml:space="preserve">
     <value>Η πολιτική εκτέλεσης του PowerShell αποκλείει τα σενάρια. Ο εντοπισμός σφαλμάτων απενεργοποιήθηκε.</value>
-    <comment>{Locked="PowerShell"}</comment>
+    <comment>{Locked="PowerShell"} FRE setup error shown when PowerShell execution policy prevents shell-integration scripts from running. Error detection is turned off so setup can continue.</comment>
   </data>
   <data name="UsageGroup/[using:Windows.UI.Xaml.Automation]AutomationProperties/Name" xml:space="preserve"><value>Χρήση</value><comment>Accessibility name for the session usage summary in the terminal bottom bar.</comment></data>
   <data name="Usage_TokensUnit" xml:space="preserve"><value>διακριτικά</value><comment>Unit label for AI context-window token counts. Translate this term using the established AI/LLM terminology for the locale.</comment></data>

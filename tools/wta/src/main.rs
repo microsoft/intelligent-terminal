@@ -142,6 +142,7 @@ fn master_config(cli: Cli) -> master::config::MasterConfig {
         agent: cli.agent,
         agent_id: cli.agent_id,
         allowed_agent_ids: cli.allowed_agent_ids,
+        session_management_enabled: !cli.no_session_management,
     }
 }
 

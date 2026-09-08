@@ -79,19 +79,13 @@ impl NativeYoloOperation {
 }
 
 pub(crate) struct NativeYoloState {
-    agent: RwLock<ResolvedAgent>,
+    agent_id: RwLock<Option<String>>,
     sessions: RwLock<HashMap<acp::schema::v1::SessionId, TrackedProviderSession>>,
     session_generations: Mutex<HashMap<acp::schema::v1::SessionId, u64>>,
     operation_gates: Mutex<HashMap<acp::schema::v1::SessionId, Arc<tokio::sync::Mutex<()>>>>,
     desired_operations: Mutex<HashMap<acp::schema::v1::SessionId, DesiredOperation>>,
     next_generation: AtomicU64,
     next_operation: AtomicU64,
-}
-
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
-struct ResolvedAgent {
-    id: Option<String>,
-    version: Option<String>,
 }
 
 #[derive(Clone, Debug)]
@@ -129,7 +123,7 @@ impl Drop for OperationGateLease<'_> {
 impl NativeYoloState {
     pub(crate) fn new() -> Self {
         Self {
-            agent: RwLock::new(ResolvedAgent::default()),
+            agent_id: RwLock::new(None),
             sessions: RwLock::new(HashMap::new()),
             session_generations: Mutex::new(HashMap::new()),
             operation_gates: Mutex::new(HashMap::new()),
@@ -139,12 +133,9 @@ impl NativeYoloState {
         }
     }
 
-    pub(crate) fn set_resolved_agent(&self, agent_id: Option<&str>, agent_version: Option<&str>) {
-        let next = ResolvedAgent {
-            id: agent_id.map(str::to_string),
-            version: agent_version.map(str::to_string),
-        };
-        let mut current = self.agent.write().unwrap();
+    pub(crate) fn set_resolved_agent_id(&self, agent_id: Option<&str>) {
+        let next = agent_id.map(str::to_string);
+        let mut current = self.agent_id.write().unwrap();
         if *current != next {
             *current = next;
             self.sessions.write().unwrap().clear();
@@ -152,35 +143,6 @@ impl NativeYoloState {
             self.operation_gates.lock().unwrap().clear();
             self.desired_operations.lock().unwrap().clear();
         }
-    }
-
-    #[cfg(test)]
-    pub(crate) fn set_resolved_agent_id(&self, agent_id: Option<&str>) {
-        // Existing capability tests predate version-aware provider contracts.
-        // Keep them on the last stable Copilot version verified to request permission.
-        self.set_resolved_agent(agent_id, Some("1.0.80"));
-    }
-
-    pub(super) fn disabled_prompt_block_reason(
-        &self,
-        session_id: &acp::schema::v1::SessionId,
-    ) -> Option<String> {
-        let (provider_id, version) = {
-            let agent = self.agent.read().unwrap();
-            (agent.id.clone()?, agent.version.clone())
-        };
-        let adapter = providers::lookup(&provider_id)?;
-        let acknowledged_enabled = self
-            .sessions
-            .read()
-            .unwrap()
-            .get(session_id)?
-            .capability
-            .acknowledged_yolo_enabled();
-        if acknowledged_enabled != Some(false) {
-            return None;
-        }
-        adapter.disabled_prompt_block_reason(version.as_deref())
     }
 
     pub(super) fn prompt_must_wait_for_disable(
@@ -866,10 +828,9 @@ impl NativeYoloState {
     }
 
     fn provider_id(&self) -> String {
-        self.agent
+        self.agent_id
             .read()
             .unwrap()
-            .id
             .clone()
             .unwrap_or_else(|| "current provider".to_string())
     }

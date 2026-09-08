@@ -106,7 +106,7 @@
                       Style="{StaticResource ComboBoxSettingStyle}" />
         </local:SettingContainer>
 
-        <!--  Tab Layout (horizontal vs vertical)  -->
+        <!--  TODO: Re-enable the tab layout setting after vertical tabs stabilize.
         <local:SettingContainer x:Name="TabLayout"
                                 x:Uid="Globals_TabLayout">
             <ComboBox AutomationProperties.AccessibilityView="Content"
@@ -115,6 +115,7 @@
                       SelectedItem="{x:Bind ViewModel.CurrentTabLayout, Mode=TwoWay}"
                       Style="{StaticResource ComboBoxSettingStyle}" />
         </local:SettingContainer>
+        -->
 
         <!--  Disable Animations  -->
         <!--  NOTE: the UID is "DisablePaneAnimationsReversed" not "DisablePaneAnimations". See GH#9124 for more details.  -->

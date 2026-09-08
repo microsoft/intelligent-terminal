@@ -9,7 +9,6 @@
 #include "CustomModelProviderEntry.g.h"
 #include "ViewModelHelpers.h"
 #include "Utils.h"
-#include "../inc/AgentHooksStatus.h"
 #include "../inc/AgentRegistry.h"
 #include "../inc/CustomModelCredential.h"
 #include "../inc/CustomModelProviderUtils.h"
@@ -25,14 +24,26 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         winrt::hstring DisplayLabel() const;
         bool IsInstalled() const { return _isInstalled; }
         bool IsAddNew() const { return _isAddNew; }
+        winrt::hstring CustomCommand() const { return _customCommand; }
+        winrt::Windows::UI::Xaml::Visibility RemoveButtonVisibility() const noexcept
+        {
+            return _remove ?
+                       winrt::Windows::UI::Xaml::Visibility::Visible :
+                       winrt::Windows::UI::Xaml::Visibility::Collapsed;
+        }
+        void Remove();
 
         void SetAddNew(bool value) { _isAddNew = value; }
+        void SetCustomCommand(winrt::hstring value) { _customCommand = std::move(value); }
+        void SetRemove(std::function<void()> remove) { _remove = std::move(remove); }
 
     private:
         winrt::hstring _id;
         winrt::hstring _displayName;
         bool _isInstalled;
         bool _isAddNew{ false };
+        winrt::hstring _customCommand;
+        std::function<void()> _remove;
     };
 
     struct AcpModelEntry : AcpModelEntryT<AcpModelEntry>
@@ -117,9 +128,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         void SaveCustomAcpAgent();
         void SaveCustomDelegateAgent();
         void CancelCustomAcpAgent();
-        void DeleteCustomAcpAgent();
         void CancelCustomDelegateAgent();
-        void DeleteCustomDelegateAgent();
 
         bool ShowAcpModel();
         winrt::Windows::Foundation::Collections::IObservableVector<Editor::AcpModelEntry> AcpModelList() const { return _acpModelList; }
@@ -149,14 +158,14 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         void CancelCustomModelProvider();
         bool ShowDelegateModel();
         PERMANENT_OBSERVABLE_PROJECTED_SETTING(_GlobalSettings, DelegateModel);
-        bool AutoErrorDetectionEnabled() const;
-        void AutoErrorDetectionEnabled(bool value);
-        bool HasAutoErrorDetectionEnabled() const;
-        bool AutoFixEnabled() const;
-        void AutoFixEnabled(bool value);
-        bool HasAutoFixEnabled() const;
+        winrt::Windows::Foundation::Collections::IObservableVector<Editor::EnumEntry> AutoErrorHandlingList() const { return _autoErrorHandlingList; }
+        winrt::Windows::Foundation::IInspectable CurrentAutoErrorHandling();
+        void CurrentAutoErrorHandling(const winrt::Windows::Foundation::IInspectable& value);
+        bool AgentSessionManagementEnabled() const;
+        void AgentSessionManagementEnabled(bool value);
+        bool HasAgentSessionManagementEnabled() const;
+        bool CanConfigureAgentSessionManagement() const;
         PERMANENT_OBSERVABLE_PROJECTED_SETTING(_GlobalSettings, ShowTokenUsageAndCost);
-        bool CanSuggestErrors() const;
 
         bool AgentPaneYoloMode() const;
         void AgentPaneYoloMode(bool value);
@@ -168,7 +177,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         // GPO policy lock indicators
         bool IsAgentPolicyLocked() const { return _GlobalSettings.IsAgentPolicyLocked(); }
         bool IsCustomAgentPolicyLocked() const { return _GlobalSettings.IsCustomAgentPolicyLocked(); }
-        bool IsAutoFixPolicyLocked() const { return _GlobalSettings.IsAutoFixPolicyLocked(); }
+        bool IsAutoErrorHandlingPolicyRestricted() const { return _GlobalSettings.IsAutoFixPolicyLocked(); }
         bool IsAgentSessionHooksPolicyLocked() const { return _GlobalSettings.IsAgentSessionHooksPolicyLocked(); }
         bool IsYoloModePolicyLocked() const { return _GlobalSettings.IsYoloModePolicyLocked(); }
 
@@ -177,56 +186,6 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         void CurrentAgentPanePosition(const winrt::Windows::Foundation::IInspectable& value);
 
         til::typed_event<Editor::AIAgentsViewModel, Model::ShellIntegrationTarget> InitShellIntegrationRequested;
-
-        // ── Agent Hooks ──────────────────────────────────────────────────
-        bool IsCopilotCliDetected() const noexcept { return _copilotCliDetected; }
-        bool IsClaudeCliDetected() const noexcept { return _claudeCliDetected; }
-        bool IsGeminiCliDetected() const noexcept { return _geminiCliDetected; }
-        bool IsCodexCliDetected() const noexcept { return _codexCliDetected; }
-        bool IsOpenCodeCliDetected() const noexcept { return _openCodeCliDetected; }
-        bool IsAnyAgentCliDetected() const noexcept
-        {
-            return _copilotCliDetected || _claudeCliDetected || _geminiCliDetected || _codexCliDetected || _openCodeCliDetected;
-        }
-        // Per-CLI "row visible" flags. A CLI's row appears only while it has
-        // hook state (fully or partially installed), so removing hooks makes
-        // the row disappear — uniformly, for every CLI.
-        bool ShowCopilotHookRow() const noexcept { return _showCopilotHookRow; }
-        bool ShowClaudeHookRow() const noexcept { return _showClaudeHookRow; }
-        bool ShowGeminiHookRow() const noexcept { return _showGeminiHookRow; }
-        bool ShowCodexHookRow() const noexcept { return _showCodexHookRow; }
-        bool ShowOpenCodeHookRow() const noexcept { return _showOpenCodeHookRow; }
-        // Detail text shown under the CLI name when state isn't fully
-        // installed. Empty for fully-installed CLIs (subtitle is hidden in XAML).
-        winrt::hstring CopilotHooksSubtitle() const { return _copilotHooksSubtitle; }
-        winrt::hstring ClaudeHooksSubtitle() const { return _claudeHooksSubtitle; }
-        winrt::hstring GeminiHooksSubtitle() const { return _geminiHooksSubtitle; }
-        winrt::hstring CodexHooksSubtitle() const { return _codexHooksSubtitle; }
-        winrt::hstring OpenCodeHooksSubtitle() const { return _openCodeHooksSubtitle; }
-        bool ShowCopilotHooksSubtitle() const noexcept { return !_copilotHooksSubtitle.empty(); }
-        bool ShowClaudeHooksSubtitle() const noexcept { return !_claudeHooksSubtitle.empty(); }
-        bool ShowGeminiHooksSubtitle() const noexcept { return !_geminiHooksSubtitle.empty(); }
-        bool ShowCodexHooksSubtitle() const noexcept { return !_codexHooksSubtitle.empty(); }
-        bool ShowOpenCodeHooksSubtitle() const noexcept { return !_openCodeHooksSubtitle.empty(); }
-        bool CanInstallAgentHooks() const noexcept
-        {
-            return IsAnyAgentCliDetected() && !IsAgentSessionHooksPolicyLocked();
-        }
-        bool CanRemoveAgentHooks() const noexcept
-        {
-            return !IsAgentSessionHooksPolicyLocked();
-        }
-        bool IsInstallingAgentHooks() const noexcept { return _installingAgentHooks; }
-        winrt::hstring AgentHooksInstallSummary() const { return _agentHooksInstallSummary; }
-        bool HasAgentHooksInstallSummary() const noexcept { return !_agentHooksInstallSummary.empty(); }
-
-        void RefreshAgentHooksStatus();
-        void InstallAllAgentHooks();
-        void RemoveCopilotHooks();
-        void RemoveClaudeHooks();
-        void RemoveGeminiHooks();
-        void RemoveCodexHooks();
-        void RemoveOpenCodeHooks();
 
     private:
         Model::GlobalAppSettings _GlobalSettings;
@@ -238,6 +197,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
 
         winrt::Windows::Foundation::Collections::IObservableVector<winrt::Microsoft::Terminal::Settings::Editor::EnumEntry> _agentPanePositionList;
         winrt::Windows::Foundation::Collections::IMap<winrt::hstring, winrt::Microsoft::Terminal::Settings::Editor::EnumEntry> _agentPanePositionMap;
+        winrt::Windows::Foundation::Collections::IObservableVector<Editor::EnumEntry> _autoErrorHandlingList;
 
         bool _isAddingCustomAcpAgent{ false };
         bool _isAddingCustomDelegateAgent{ false };
@@ -245,6 +205,8 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         bool _isAddingCustomModelProvider{ false };
         winrt::hstring _customAcpCommand;
         winrt::hstring _customDelegateCommand;
+        winrt::hstring _editingCustomAcpAgentId;
+        winrt::hstring _editingCustomDelegateAgentId;
         winrt::hstring _newCustomModelProviderBaseUrl;
         winrt::hstring _newCustomModelId;
         winrt::hstring _newCustomModelProviderApiKey;
@@ -279,50 +241,47 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         static bool _IsAgentInstalled(const wchar_t* name);
         static bool _IsKnownAgent(const winrt::hstring& id);
         static winrt::hstring _DeriveId(const winrt::hstring& command);
+        Editor::AgentEntry _CreateCustomAgentEntry(
+            const winrt::hstring& settingsId,
+            const winrt::hstring& displayName,
+            const winrt::hstring& customCommand,
+            bool isAcpAgent);
+        static bool _CustomCommandMatchesId(
+            const winrt::hstring& command,
+            const winrt::hstring& settingsId);
+        static winrt::Windows::Foundation::Collections::IVector<winrt::hstring> _NormalizeCustomCommands(
+            const winrt::Windows::Foundation::Collections::IVector<winrt::hstring>& commands);
+        static winrt::Windows::Foundation::Collections::IVector<winrt::hstring> _UpdateCustomCommands(
+            const winrt::Windows::Foundation::Collections::IVector<winrt::hstring>& commands,
+            const winrt::hstring& originalId,
+            const winrt::hstring& command);
+        static winrt::Windows::Foundation::Collections::IVector<winrt::hstring> _RemoveCustomCommand(
+            const winrt::Windows::Foundation::Collections::IVector<winrt::hstring>& commands,
+            const winrt::hstring& settingsId);
+        static winrt::hstring _FindCustomCommand(
+            const winrt::Windows::Foundation::Collections::IVector<winrt::hstring>& commands,
+            const winrt::hstring& settingsId);
+        void _DeleteCustomAcpAgent(const winrt::hstring& settingsId);
+        void _DeleteCustomDelegateAgent(const winrt::hstring& settingsId);
         bool _IsSelectedAcpAgentAvailable() const;
         ::Microsoft::Terminal::Settings::Model::AgentRegistry::YoloSettingsNotice _YoloSettingsNotice() const;
         Editor::AgentEntry _FindEntryById(
             const winrt::Windows::Foundation::Collections::IObservableVector<Editor::AgentEntry>& list,
             const winrt::hstring& id) const;
+        Editor::AgentEntry _FindReplacementAgent(
+            const winrt::Windows::Foundation::Collections::IObservableVector<Editor::AgentEntry>& list,
+            const winrt::hstring& preferredId) const;
         void _AppendAddNewEntry(
             winrt::Windows::Foundation::Collections::IObservableVector<Editor::AgentEntry>& list);
         void _MaybeAppendCustomEntry(
             winrt::Windows::Foundation::Collections::IObservableVector<Editor::AgentEntry>& list,
             const winrt::hstring& customCommand,
-            const winrt::hstring& currentAgentId);
+            bool isAcpAgent);
+        void _RebuildCustomEntries(
+            winrt::Windows::Foundation::Collections::IObservableVector<Editor::AgentEntry>& list,
+            const winrt::Windows::Foundation::Collections::IVector<winrt::hstring>& commands,
+            bool isAcpAgent);
 
-        // Agent Hooks state
-        bool _copilotCliDetected{ false };
-        bool _claudeCliDetected{ false };
-        bool _geminiCliDetected{ false };
-        bool _codexCliDetected{ false };
-        bool _openCodeCliDetected{ false };
-        // Row visibility — a CLI's row shows only while it has hook state.
-        bool _showCopilotHookRow{ false };
-        bool _showClaudeHookRow{ false };
-        bool _showGeminiHookRow{ false };
-        bool _showCodexHookRow{ false };
-        bool _showOpenCodeHookRow{ false };
-        // Subtitle text per CLI; empty for fully-installed CLIs.
-        winrt::hstring _copilotHooksSubtitle;
-        winrt::hstring _claudeHooksSubtitle;
-        winrt::hstring _geminiHooksSubtitle;
-        winrt::hstring _codexHooksSubtitle;
-        winrt::hstring _openCodeHooksSubtitle;
-        bool _installingAgentHooks{ false };
-        bool _refreshingAgentHooks{ false };
-        winrt::hstring _agentHooksInstallSummary;
-
-        void _ApplyStatusReport(const std::optional<::Microsoft::Terminal::AgentHooks::StatusReport>& report);
-        winrt::fire_and_forget _RefreshAgentHooksStatusAsync();
-        // Args are passed verbatim to wta.exe (e.g. L"hooks install" or
-        // L"hooks uninstall --cli claude"). The in-progress message that
-        // appears beneath the expander while the wta process is running
-        // is set by the caller via `_agentHooksInstallSummary` before
-        // invoking this — keeps the resource lookup at the call site
-        // alongside the matching `_NotifyChanges` so the UI updates
-        // synchronously before this fire-and-forget kicks off.
-        winrt::fire_and_forget _RunHooksWtaAsync(std::wstring wtaArgs);
     };
 };
 
