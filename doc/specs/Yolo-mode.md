@@ -85,19 +85,23 @@ panes using the Settings default provider; it is not proof that the provider
 accepted a privileged mode. Changing the default among Copilot, Claude, Codex,
 and Gemini preserves the current preference.
 
-When OpenCode is selected as the Settings default, Settings clears the
-preference, renders the toggle Off and disabled, and shows a non-closable
-warning that OpenCode does not provide a supported Yolo mode. A legacy
-OpenCode-plus-On value is treated as Off and is normalized when the user next
-saves Settings. Custom providers retain their existing behavior without a
-dedicated compatibility message.
+When OpenCode is selected as the Settings default, Settings and FRE clear the
+preference and hide the disabled, Off control. A legacy OpenCode-plus-On value
+is treated as Off and is normalized when the user next saves Settings. Custom
+providers retain their existing behavior.
 
 Gemini keeps the toggle enabled. While it is On, Settings shows the existing
 non-closable informational notice that workspace trust and provider policy
 govern whether Gemini accepts its native mode.
 
-Administrative policy disables the toggle and takes precedence over provider
-compatibility notices.
+Administrative policy clears the preference and hides the disabled, Off
+control in Settings and FRE. No unavailable/policy explanation is shown beside
+the hidden setting.
+
+The first-run settings page reads the localized title and description directly
+from the SettingsEditor resource scope and persists the same
+`agentPane.yoloMode` value. This keeps Settings and FRE copy and availability
+behavior aligned without duplicating localized strings.
 
 ### Runtime provider selection
 

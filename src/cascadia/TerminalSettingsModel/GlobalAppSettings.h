@@ -98,6 +98,8 @@ namespace winrt::Microsoft::Terminal::Settings::Model::implementation
         bool EffectiveAutoFixEnabled() const;
         bool EffectiveAgentSessionManagementEnabled() const;
         bool EffectiveAgentPaneYoloMode() const;
+        bool CanEnableAgentPaneYoloMode() const;
+        bool CanEnableAgentPaneYoloModeForAgent(const winrt::hstring& agentId) const;
         bool ClearAgentPaneYoloModeIfUnavailableDefault();
         bool ClearAgentPaneYoloModeIfPolicyBlocked();
 

@@ -94,6 +94,7 @@ namespace SettingsModelUnitTests
         TEST_METHOD(AgentPaneYoloModeRoundtripsAndDefaults);
         TEST_METHOD(EffectiveAgentPaneYoloModeFalseForOpenCode);
         TEST_METHOD(EffectiveAgentPaneYoloModeFalseWhenDefaultAgentBlocked);
+        TEST_METHOD(CanEnableAgentPaneYoloModeTracksPolicyAndProvider);
         TEST_METHOD(OpenCodeDefaultClearsStoredAgentPaneYoloMode);
         TEST_METHOD(EffectiveAgentPaneYoloModeFalseWhenPolicyBlocked);
         TEST_METHOD(PolicyBlockClearsStoredAgentPaneYoloMode);
@@ -784,6 +785,36 @@ namespace SettingsModelUnitTests
         VERIFY_IS_FALSE(custom->GlobalSettings().EffectiveAgentPaneYoloMode());
     }
 
+    void CustomAgentAndPolicyTests::CanEnableAgentPaneYoloModeTracksPolicyAndProvider()
+    {
+        const auto settings = MakeSettings(R"("acpAgent": "copilot")");
+        SetPolicy(MakePolicy());
+        const auto globals = settings->GlobalSettings();
+
+        VERIFY_IS_TRUE(globals.CanEnableAgentPaneYoloMode());
+        VERIFY_IS_TRUE(globals.CanEnableAgentPaneYoloModeForAgent(L"gemini"));
+        VERIFY_IS_TRUE(globals.CanEnableAgentPaneYoloModeForAgent(L"custom:local"));
+        VERIFY_IS_FALSE(globals.CanEnableAgentPaneYoloModeForAgent(L"opencode"));
+        VERIFY_IS_FALSE(globals.CanEnableAgentPaneYoloModeForAgent(L""));
+
+        SetPolicy(MakePolicy(
+            /*allowedAgents*/ std::nullopt,
+            AgentPolicy::PolicyState::NotConfigured,
+            AgentPolicy::PolicyState::Blocked));
+        VERIFY_IS_FALSE(globals.CanEnableAgentPaneYoloMode());
+        VERIFY_IS_FALSE(globals.CanEnableAgentPaneYoloModeForAgent(L"gemini"));
+
+        SetPolicy(MakePolicy(
+            std::set<std::wstring, AgentPolicy::CaseInsensitiveLess>{ L"gemini" }));
+        VERIFY_IS_FALSE(globals.CanEnableAgentPaneYoloMode());
+        VERIFY_IS_FALSE(globals.CanEnableAgentPaneYoloModeForAgent(L"copilot"));
+
+        SetPolicy(MakePolicy(
+            /*allowedAgents*/ std::nullopt,
+            AgentPolicy::PolicyState::Blocked));
+        VERIFY_IS_FALSE(globals.CanEnableAgentPaneYoloModeForAgent(L"custom:local"));
+    }
+
     void CustomAgentAndPolicyTests::OpenCodeDefaultClearsStoredAgentPaneYoloMode()
     {
         const auto openCode = MakeSettings(
@@ -835,7 +866,7 @@ namespace SettingsModelUnitTests
     {
         using namespace ::Microsoft::Terminal::Settings::Model::AgentRegistry;
 
-        VERIFY_ARE_EQUAL(YoloSettingsNotice::Unavailable,
+        VERIFY_ARE_EQUAL(YoloSettingsNotice::None,
                          GetYoloSettingsNotice(L"opencode", true, false, true));
         VERIFY_ARE_EQUAL(YoloSettingsNotice::Conditional,
                          GetYoloSettingsNotice(L"gemini", true, false, true));
@@ -843,11 +874,11 @@ namespace SettingsModelUnitTests
                          GetYoloSettingsNotice(L"gemini", false, false, true));
         VERIFY_ARE_EQUAL(YoloSettingsNotice::None,
                          GetYoloSettingsNotice(L"copilot", true, false, true));
-        VERIFY_ARE_EQUAL(YoloSettingsNotice::Unavailable,
+        VERIFY_ARE_EQUAL(YoloSettingsNotice::None,
                          GetYoloSettingsNotice(L"opencode", false, false, true));
         VERIFY_ARE_EQUAL(YoloSettingsNotice::None,
                          GetYoloSettingsNotice(L"opencode", true, true, true));
-        VERIFY_ARE_EQUAL(YoloSettingsNotice::Unavailable,
+        VERIFY_ARE_EQUAL(YoloSettingsNotice::None,
                          GetYoloSettingsNotice(L"opencode", true, false, false));
         VERIFY_ARE_EQUAL(YoloSettingsNotice::None,
                          GetYoloSettingsNotice(L"custom:opencode", true, false, true));

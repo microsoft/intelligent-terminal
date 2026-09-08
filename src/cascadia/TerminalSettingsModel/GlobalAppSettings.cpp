@@ -686,15 +686,32 @@ bool GlobalAppSettings::IsAgentSessionHooksPolicyLocked() const
 
 bool GlobalAppSettings::EffectiveAgentPaneYoloMode() const
 {
-    const auto effectiveAgent = EffectiveAcpAgent();
-    if (!AgentPolicy::IsYoloModeAllowed() ||
-        effectiveAgent.empty() ||
-        ::Microsoft::Terminal::Settings::Model::AgentRegistry::IsYoloSettingUnavailableForDefaultAgent(
-            std::wstring_view{ effectiveAgent }))
+    if (!CanEnableAgentPaneYoloMode())
     {
         return false;
     }
     return AgentPaneYoloMode();
+}
+
+bool GlobalAppSettings::CanEnableAgentPaneYoloMode() const
+{
+    return CanEnableAgentPaneYoloModeForAgent(EffectiveAcpAgent());
+}
+
+bool GlobalAppSettings::CanEnableAgentPaneYoloModeForAgent(const winrt::hstring& agentId) const
+{
+    if (IsYoloModePolicyLocked() ||
+        agentId.empty() ||
+        ::Microsoft::Terminal::Settings::Model::AgentRegistry::IsYoloSettingUnavailableForDefaultAgent(
+            std::wstring_view{ agentId }))
+    {
+        return false;
+    }
+
+    const auto agentIdString = winrt::to_string(agentId);
+    return agentIdString.starts_with("custom:") ?
+               AgentPolicy::IsCustomAgentAllowed() :
+               AgentPolicy::IsAgentAllowed(std::wstring_view{ agentId });
 }
 
 bool GlobalAppSettings::ClearAgentPaneYoloModeIfPolicyBlocked()

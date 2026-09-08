@@ -34,7 +34,6 @@ namespace Microsoft::Terminal::Settings::Model::AgentRegistry
     enum class YoloSettingsNotice
     {
         None,
-        Unavailable,
         Conditional,
     };
 
@@ -127,7 +126,7 @@ namespace Microsoft::Terminal::Settings::Model::AgentRegistry
         }
         if (IsYoloSettingUnavailableForDefaultAgent(agentId))
         {
-            return YoloSettingsNotice::Unavailable;
+            return YoloSettingsNotice::None;
         }
         if (!selectedProviderAvailable)
         {

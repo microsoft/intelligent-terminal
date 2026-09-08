@@ -484,20 +484,83 @@ Describe 'Feature suite package selection' -Tag 'Unit' {
         $suite | Should -Match '-EncodedCommand\s+\$encodedInvocation'
     }
 
-    It 'keeps OpenCode Yolo title comments aligned with forced-off behavior' {
+    It 'hides unavailable Settings controls and removes explanatory messages' {
+        $settingsXamlPath = Join-Path $PSScriptRoot '..\..\..\src\cascadia\TerminalSettingsEditor\AIAgents.xaml'
+        $settingsXaml = Get-Content -LiteralPath $settingsXamlPath -Raw
+        $setting = [regex]::Match(
+            $settingsXaml,
+            '(?s)<local:SettingContainer x:Name="AgentPaneYoloMode".*?</local:SettingContainer>').Value
+
+        $setting | Should -Match 'Visibility="\{x:Bind ViewModel\.AgentPaneYoloModeVisibility, Mode=OneWay\}"'
+        $setting | Should -Match 'IsEnabled="\{x:Bind ViewModel\.CanEnableAgentPaneYoloMode, Mode=OneWay\}"'
+        $setting | Should -Not -Match 'AIAgents_PolicyLocked'
+        $settingsXaml | Should -Not -Match 'OpenCodeYoloCompatibilityInfoBar'
+        $settingsXaml | Should -Match 'GeminiYoloCompatibilityInfoBar'
+
+        $viewModelIdlPath = Join-Path $PSScriptRoot '..\..\..\src\cascadia\TerminalSettingsEditor\AIAgentsViewModel.idl'
+        $viewModelIdl = Get-Content -LiteralPath $viewModelIdlPath -Raw
+        $viewModelIdl | Should -Match 'Windows\.UI\.Xaml\.Visibility AgentPaneYoloModeVisibility \{ get; \};'
+        $viewModelIdl | Should -Not -Match 'ShowOpenCodeYoloWarning'
+        $viewModelCppPath = Join-Path $PSScriptRoot '..\..\..\src\cascadia\TerminalSettingsEditor\AIAgentsViewModel.cpp'
+        $viewModelCpp = Get-Content -LiteralPath $viewModelCppPath -Raw
+        $viewModelCpp | Should -Match '!\(_isAddingCustomAcpAgent && _editingCustomAcpAgentId\.empty\(\)\)'
+        $sameCustomRestore = [regex]::Match(
+            $viewModelCpp,
+            '(?s)if \(_GlobalSettings\.AcpAgent\(\) == value\.Id\(\)\).*?(?=const bool agentChanged)').Value
+        $sameCustomRestore | Should -Match 'CanEnableAgentPaneYoloMode'
+        $sameCustomRestore | Should -Match 'AgentPaneYoloModeVisibility'
+
         $resourceRoot = Join-Path $PSScriptRoot '..\..\..\src\cascadia\TerminalSettingsEditor\Resources'
         $localeDirectories = @(Get-ChildItem -LiteralPath $resourceRoot -Directory)
-        $comments = @($localeDirectories | ForEach-Object {
-            [xml]$xml = Get-Content -LiteralPath (Join-Path $_.FullName 'Resources.resw') -Raw
-            [string]($xml.root.data |
-                    Where-Object name -eq 'AIAgents_YoloOpenCodeWarning.Title' |
-                    Select-Object -First 1).comment
-        })
+        foreach ($localeDirectory in $localeDirectories) {
+            [xml]$xml = Get-Content -LiteralPath (Join-Path $localeDirectory.FullName 'Resources.resw') -Raw
+            @($xml.root.data | Where-Object name -in @(
+                'AIAgents_YoloOpenCodeWarning.Title',
+                'AIAgents_YoloOpenCodeWarning.Message'
+            )) | Should -HaveCount 0 -Because "OpenCode has no message when automatic approval is hidden in $($localeDirectory.Name)"
+        }
+    }
 
-        $comments.Count | Should -Be $localeDirectories.Count
-        @($comments | Select-Object -Unique).Count | Should -Be 1
-        $comments[0] | Should -Match 'OpenCode is the Settings default provider'
-        $comments[0] | Should -Not -Match 'global Yolo mode is on'
+    It 'reuses Settings copy and model state in the first-run experience' {
+        $freXamlPath = Join-Path $PSScriptRoot '..\..\..\src\cascadia\TerminalApp\FreOverlay.xaml'
+        $freXaml = Get-Content -LiteralPath $freXamlPath -Raw
+        $freXaml | Should -Match 'x:Name="AutomaticApprovalSetting"'
+        $freXaml | Should -Match 'x:Name="AutomaticApprovalTitle"'
+        $freXaml | Should -Match 'x:Name="AutomaticApprovalDescription"'
+        $freXaml | Should -Match 'x:Name="AutomaticApprovalToggle"'
+        $freXaml | Should -Match 'SelectionChanged="_OnAgentSelectionChanged"'
+
+        $freCppPath = Join-Path $PSScriptRoot '..\..\..\src\cascadia\TerminalApp\FreOverlay.cpp'
+        $freCpp = Get-Content -LiteralPath $freCppPath -Raw
+        $freCpp | Should -Match 'ScopedResourceLoader\s+\w+\{\s*L"Microsoft\.Terminal\.Settings\.Editor/Resources"\s*\}'
+        $freCpp | Should -Match 'AIAgents_YoloMode/Header'
+        $freCpp | Should -Match 'AIAgents_YoloMode/HelpText'
+        $freCpp | Should -Match '_UpdateAutomaticApprovalState\(\)'
+        $freCpp | Should -Match '_refreshingAgentComboBox'
+        $freCpp | Should -Match '(?s)_PopulateAgentComboBox\(\).*?scope_exit.*?_UpdateAutomaticApprovalState\(\)'
+        $freCpp | Should -Match '(?s)_OnAgentSelectionChanged.*?!_refreshingAgentComboBox.*?_UpdateAutomaticApprovalState\(\)'
+        $freCpp | Should -Match 'CanEnableAgentPaneYoloModeForAgent'
+        $freCpp | Should -Match 'AgentPaneYoloMode\(AutomaticApprovalToggle\(\)\.IsOn\(\)\)'
+        $freCpp | Should -Match 'ClearAgentPaneYoloModeIfUnavailableDefault\(\)'
+        $freCpp | Should -Match 'ClearAgentPaneYoloModeIfPolicyBlocked\(\)'
+        $freHeaderPath = Join-Path $PSScriptRoot '..\..\..\src\cascadia\TerminalApp\FreOverlay.h'
+        $freHeader = Get-Content -LiteralPath $freHeaderPath -Raw
+        $freHeader | Should -Match 'void UpdateSettings\(.*CascadiaSettings'
+        $terminalPagePath = Join-Path $PSScriptRoot '..\..\..\src\cascadia\TerminalApp\TerminalPage.cpp'
+        $terminalPage = Get-Content -LiteralPath $terminalPagePath -Raw
+        $freRefresh = [regex]::Match(
+            $terminalPage,
+            '(?s)_settings = settings;(?<refresh>.*?)(?=        if \(!firstLoad && needRefreshUI\))').Groups['refresh'].Value
+        $freRefresh | Should -Match 'FreOverlayElement\(\)'
+        $freRefresh | Should -Match 'UpdateSettings\(_settings\)'
+        $freRefresh | Should -Not -Match '_IsFreRequired\(\)'
+
+        $terminalResourceRoot = Join-Path $PSScriptRoot '..\..\..\src\cascadia\TerminalApp\Resources'
+        foreach ($resource in Get-ChildItem -LiteralPath $terminalResourceRoot -Recurse -Filter Resources.resw) {
+            [xml]$xml = Get-Content -LiteralPath $resource.FullName -Raw
+            @($xml.root.data | Where-Object name -Like 'FreOverlay_AutomaticApproval*') |
+                Should -HaveCount 0 -Because 'FRE must reuse the SettingsEditor localized copy instead of duplicating it'
+        }
     }
 }
 

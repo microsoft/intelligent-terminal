@@ -332,6 +332,14 @@ namespace winrt::TerminalApp::implementation
             }
         }
         _settings = settings;
+        if (!firstLoad)
+        {
+            if (const auto overlay = FreOverlayElement();
+                overlay && overlay.Visibility() == Visibility::Visible)
+            {
+                overlay.UpdateSettings(_settings);
+            }
+        }
         if (!firstLoad && needRefreshUI)
         {
             const auto generation =

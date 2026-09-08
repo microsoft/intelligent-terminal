@@ -224,12 +224,12 @@ Describe 'Feature default-provider Yolo through /agent' -ForEach $script:Package
     }
 }
 
-Describe 'Feature Settings Yolo provider compatibility' -ForEach $script:PackageCase -Tag 'Feature' -Skip:(-not $script:Ready) {
+Describe 'Feature Settings automatic approval availability' -ForEach $script:PackageCase -Tag 'Feature' -Skip:(-not $script:Ready) {
     BeforeAll {
         Import-Module (Join-Path $PSScriptRoot '..\ItE2E\ItE2E.psd1') -Force
     }
 
-    It 'OpenCode Yolo is forced off and disabled' {
+    It 'Settings hides unsupported automatic approval and forces it off' {
         if (-not $OpenCodeInstalled) {
             Set-ItResult -Skipped -Because 'OpenCode is not installed, so it is intentionally absent from the default-provider picker'
             return
@@ -247,19 +247,12 @@ Describe 'Feature Settings Yolo provider compatibility' -ForEach $script:Package
             }
             Invoke-SettingsNav -App $app -NavItem 'AIAgentsNavItem' | Out-Null
 
-            $settingsTree = Get-UiTree -App $app -Depth 8
-            $settingsText = $settingsTree -replace '\s+', ' '
-            $settingsText | Should -Match (Get-WtReswTextRegex -Key 'AIAgents_YoloMode.Header')
-            Wait-UiElement -App $app -Selector 'OpenCodeYoloCompatibilityInfoBar' -TimeoutSec 15 | Out-Null
-            $title = Get-WtReswTextRegex -Key 'AIAgents_YoloOpenCodeWarning.Title'
-            (Get-UiTree -App $app -Selector 'OpenCodeYoloCompatibilityInfoBar' -Depth 4) |
-                Should -Match $title -Because 'the warning must explain the selected default provider limitation'
+            Test-UiElementExists -App $app -Selector 'AgentPaneYoloModeToggle' -TimeoutSec 1 |
+                Should -BeFalse -Because 'unsupported automatic approval must be hidden instead of explained by a disabled row'
+            Test-UiElementExists -App $app -Selector 'OpenCodeYoloCompatibilityInfoBar' -TimeoutSec 1 |
+                Should -BeFalse -Because 'the hidden setting no longer needs a provider-unavailable message'
             Test-UiElementExists -App $app -Selector 'GeminiYoloCompatibilityInfoBar' -TimeoutSec 1 |
                 Should -BeFalse -Because 'only the selected default provider should have a compatibility notice'
-            Test-UiElementEnabled -App $app -Selector 'AgentPaneYoloModeToggle' |
-                Should -BeFalse -Because 'OpenCode cannot enter a reviewed provider-native Yolo mode'
-            (Get-UiElement -App $app -Selector 'AgentPaneYoloModeToggle').toggleState |
-                Should -Be 'off'
 
             Invoke-UiElement -App $app -Selector 'SaveButton' | Out-Null
             (Test-Until -TimeoutSec 15 -IntervalSec 0.5 -Condition {
@@ -271,7 +264,7 @@ Describe 'Feature Settings Yolo provider compatibility' -ForEach $script:Package
         }
     }
 
-    It 'Settings explains Gemini workspace trust dependency' {
+    It 'Settings explains Gemini automatic approval restrictions' {
         if (-not $GeminiInstalled) {
             Set-ItResult -Skipped -Because 'Gemini is not installed, so it is intentionally absent from the default-provider picker'
             return
@@ -293,10 +286,10 @@ Describe 'Feature Settings Yolo provider compatibility' -ForEach $script:Package
             $title = Get-WtReswTextRegex -Key 'AIAgents_YoloGeminiInfo.Title'
             (Get-UiTree -App $app -Selector 'GeminiYoloCompatibilityInfoBar' -Depth 4) |
                 Should -Match $title -Because 'the informational notice must describe Gemini workspace trust'
-            Test-UiElementExists -App $app -Selector 'OpenCodeYoloCompatibilityInfoBar' -TimeoutSec 1 |
-                Should -BeFalse -Because 'only the selected default provider should have a compatibility notice'
+            Test-UiElementExists -App $app -Selector 'AgentPaneYoloModeToggle' -TimeoutSec 8 |
+                Should -BeTrue -Because 'Gemini automatic approval remains visible'
             Test-UiElementEnabled -App $app -Selector 'AgentPaneYoloModeToggle' |
-                Should -BeTrue -Because 'Gemini Yolo remains available when its trust prerequisites are met'
+                Should -BeTrue -Because 'Gemini automatic approval remains available when its trust prerequisites are met'
         }
         finally {
             if ($app) { Stop-Terminal -App $app }
@@ -309,7 +302,7 @@ Describe 'Feature AllowYoloMode policy' -ForEach $script:PackageCase -Tag 'Featu
         Import-Module (Join-Path $PSScriptRoot '..\ItE2E\ItE2E.psd1') -Force
     }
 
-    It 'AllowYoloMode policy blocks Yolo' -Skip:(-not $script:policyReady) {
+    It 'AllowYoloMode hides automatic approval and turns it off' -Skip:(-not $script:policyReady) {
         $prior = Set-WtAgentPolicy -Policy @{ AllowYoloMode = 'Allowed' }
         $app = $null
         try {
@@ -354,6 +347,13 @@ Describe 'Feature AllowYoloMode policy' -ForEach $script:PackageCase -Tag 'Featu
                 -Because 'a policy-blocked provider command must not cross the ACP prompt boundary'
             (Test-AgentNativeYoloUpdate -App $app -AcpSessionId $agentSession.AcpSessionId -Enabled $true) |
                 Should -BeFalse -Because 'the blocked provider command must not re-enable native Yolo'
+
+            Open-WtSettings -App $app -TimeoutSec 20 | Out-Null
+            Invoke-SettingsNav -App $app -NavItem 'AIAgentsNavItem' | Out-Null
+            Test-UiElementExists -App $app -Selector 'AgentPaneYoloModeToggle' -TimeoutSec 1 |
+                Should -BeFalse -Because 'policy-blocked automatic approval must be hidden'
+            Test-UiElementExists -App $app -Selector 'GeminiYoloCompatibilityInfoBar' -TimeoutSec 1 |
+                Should -BeFalse -Because 'a hidden policy-blocked setting has no provider notice'
         }
         finally {
             if ($app) { Stop-Terminal -App $app }
