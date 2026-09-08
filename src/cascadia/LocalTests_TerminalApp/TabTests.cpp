@@ -923,6 +923,7 @@ namespace TerminalAppLocalTests
             page->ProcessStartupActions({});
             VERIFY_ARE_EQUAL(1u, static_cast<unsigned int>(births.size()));
             VERIFY_ARE_EQUAL(std::string{ "restored-first" }, births[0]["agent_session_id"].asString());
+            VERIFY_ARE_EQUAL(winrt::to_string(::Microsoft::Console::Utils::GuidToPlainString(firstPane)), births[0]["pane_id"].asString());
             VERIFY_ARE_EQUAL(winrt::to_string(firstTab->StableId()), births[0]["tab_id"].asString());
             VERIFY_ARE_EQUAL(windowId, births[0]["window_id"].asString());
             VERIFY_ARE_EQUAL(std::string{ "C:\\repo" }, births[0]["cwd"].asString());

@@ -7712,7 +7712,7 @@ namespace winrt::TerminalApp::implementation
                 continue;
             }
             Json::Value params;
-            params["pane_id"] = winrt::to_string(::Microsoft::Console::Utils::GuidToString(it->first));
+            params["pane_id"] = winrt::to_string(::Microsoft::Console::Utils::GuidToPlainString(it->first));
             params["agent_session_id"] = winrt::to_string(it->second.sessionId);
             params["agent"] = winrt::to_string(it->second.agent);
             params["cwd"] = winrt::to_string(it->second.cwd);
