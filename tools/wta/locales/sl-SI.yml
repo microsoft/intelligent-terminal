@@ -51,6 +51,7 @@ chat.turn_canceled: "(preklicano)"
 chat.turn_executed: "→ izvedeno: %{title}"
 # Stalne oznake kategorij orodij, prikazane za oznako stanja in pred predmetom.
 chat.tool_kind.run: "Zagon"
+chat.tool_kind.insert: "Vstavi"
 chat.tool_kind.read: "Branje"
 chat.tool_kind.search: "Iskanje"
 chat.tool_kind.edit: "Urejanje"

@@ -51,6 +51,7 @@ chat.turn_canceled: "(రద్దు చేయబడింది)"
 chat.turn_executed: "→ అమలు చేయబడింది: %{title}"
 # స్థితి గుర్తు తర్వాత, విషయానికి ముందు చూపే శాశ్వత సాధన-వర్గ లేబుళ్లు.
 chat.tool_kind.run: "అమలు"
+chat.tool_kind.insert: "చొప్పించండి"
 chat.tool_kind.read: "చదవడం"
 chat.tool_kind.search: "శోధన"
 chat.tool_kind.edit: "సవరణ"

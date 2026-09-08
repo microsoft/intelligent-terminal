@@ -51,6 +51,7 @@ chat.turn_canceled: "(ተሰርዟል)"
 chat.turn_executed: "→ ተፈጽሟል: %{title}"
 # Persistent tool-category labels shown after a status marker and before a subject.
 chat.tool_kind.run: "አሂድ"
+chat.tool_kind.insert: "አስገባ"
 chat.tool_kind.read: "አንብብ"
 chat.tool_kind.search: "ፈልግ"
 chat.tool_kind.edit: "አርትዕ"

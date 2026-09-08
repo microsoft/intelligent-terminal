@@ -51,6 +51,7 @@ chat.turn_canceled: "(cancelado)"
 chat.turn_executed: "→ executado: %{title}"
 # Etiquetas persistentes de categoría de ferramenta mostradas tras un marcador de estado e antes do asunto.
 chat.tool_kind.run: "Executar"
+chat.tool_kind.insert: "Inserir"
 chat.tool_kind.read: "Ler"
 chat.tool_kind.search: "Buscar"
 chat.tool_kind.edit: "Editar"

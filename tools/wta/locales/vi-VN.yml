@@ -51,6 +51,7 @@ chat.turn_canceled: "(đã hủy)"
 chat.turn_executed: "→ đã thực thi: %{title}"
 # Nhãn danh mục công cụ cố định, hiển thị sau dấu trạng thái và trước đối tượng.
 chat.tool_kind.run: "Chạy"
+chat.tool_kind.insert: "Chèn"
 chat.tool_kind.read: "Đọc"
 chat.tool_kind.search: "Tìm kiếm"
 chat.tool_kind.edit: "Chỉnh sửa"

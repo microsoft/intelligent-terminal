@@ -51,6 +51,7 @@ chat.turn_canceled: "(ବାତିଲ କରାଗଲା)"
 chat.turn_executed: "→ କାର୍ଯ୍ୟକାରୀ ହୋଇଛି: %{title}"
 # Persistent tool-category labels shown after a status marker and before a subject.
 chat.tool_kind.run: "ଚଲାନ୍ତୁ"
+chat.tool_kind.insert: "ସନ୍ନିବେଶ କରନ୍ତୁ"
 chat.tool_kind.read: "ପଢ଼ନ୍ତୁ"
 chat.tool_kind.search: "ସନ୍ଧାନ କରନ୍ତୁ"
 chat.tool_kind.edit: "ସମ୍ପାଦନ କରନ୍ତୁ"

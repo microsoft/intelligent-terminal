@@ -51,6 +51,7 @@ chat.turn_canceled: "(anulat)"
 chat.turn_executed: "→ executat: %{title}"
 # Etichete persistente pentru categoriile de instrumente, afișate după un marcator de stare și înaintea subiectului.
 chat.tool_kind.run: "Rulare"
+chat.tool_kind.insert: "Inserare"
 chat.tool_kind.read: "Citire"
 chat.tool_kind.search: "Căutare"
 chat.tool_kind.edit: "Editare"

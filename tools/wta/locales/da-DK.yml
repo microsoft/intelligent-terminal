@@ -51,6 +51,7 @@ chat.turn_canceled: "(annulleret)"
 chat.turn_executed: "→ udført: %{title}"
 # Persistent tool-category labels shown after a status marker and before a subject.
 chat.tool_kind.run: "Kør"
+chat.tool_kind.insert: "Indsæt"
 chat.tool_kind.read: "Læs"
 chat.tool_kind.search: "Søg"
 chat.tool_kind.edit: "Rediger"

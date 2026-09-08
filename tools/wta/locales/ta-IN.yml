@@ -51,6 +51,7 @@ chat.turn_canceled: "(ரத்து செய்யப்பட்டது)"
 chat.turn_executed: "→ செயல்படுத்தப்பட்டது: %{title}"
 # நிலைக் குறிக்குப் பிறகும் பொருளுக்கு முன்பும் காட்டப்படும் நிலையான கருவி-வகை லேபிள்கள்.
 chat.tool_kind.run: "இயக்கு"
+chat.tool_kind.insert: "செருகு"
 chat.tool_kind.read: "படி"
 chat.tool_kind.search: "தேடு"
 chat.tool_kind.edit: "திருத்து"

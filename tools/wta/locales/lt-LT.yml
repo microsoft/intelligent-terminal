@@ -51,6 +51,7 @@ chat.turn_canceled: "(atšaukta)"
 chat.turn_executed: "→ įvykdyta: %{title}"
 # Persistent tool-category labels shown after a status marker and before a subject.
 chat.tool_kind.run: "Vykdyti"
+chat.tool_kind.insert: "Įterpti"
 chat.tool_kind.read: "Skaityti"
 chat.tool_kind.search: "Ieškoti"
 chat.tool_kind.edit: "Redaguoti"

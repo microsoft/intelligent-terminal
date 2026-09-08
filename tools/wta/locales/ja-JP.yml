@@ -47,6 +47,7 @@ chat.turn_canceled: "(キャンセル済み)"
 chat.turn_executed: "→ 実行済み: %{title}"
 # ステータスマーカーの後、対象の前に表示される永続的なツールカテゴリラベル。
 chat.tool_kind.run: "実行"
+chat.tool_kind.insert: "挿入"
 chat.tool_kind.read: "読み取り"
 chat.tool_kind.search: "検索"
 chat.tool_kind.edit: "編集"

@@ -51,6 +51,7 @@ chat.turn_canceled: "(отказано)"
 chat.turn_executed: "→ извршено: %{title}"
 # Трајне ознаке категорија алата приказане после ознаке статуса и пре предмета.
 chat.tool_kind.run: "Покретање"
+chat.tool_kind.insert: "Уметање"
 chat.tool_kind.read: "Читање"
 chat.tool_kind.search: "Претрага"
 chat.tool_kind.edit: "Уређивање"

@@ -51,6 +51,7 @@ chat.turn_canceled: "(canslwyd)"
 chat.turn_executed: "→ wedi'i weithredu: %{title}"
 # Persistent tool-category labels shown after a status marker and before a subject.
 chat.tool_kind.run: "Rhedeg"
+chat.tool_kind.insert: "Mewnosod"
 chat.tool_kind.read: "Darllen"
 chat.tool_kind.search: "Chwilio"
 chat.tool_kind.edit: "Golygu"

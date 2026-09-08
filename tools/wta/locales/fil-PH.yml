@@ -51,6 +51,7 @@ chat.turn_canceled: "(kinansela)"
 chat.turn_executed: "→ naisagawa: %{title}"
 # Mga permanenteng label ng kategorya ng tool na ipinapakita pagkatapos ng pananda ng katayuan at bago ang paksa.
 chat.tool_kind.run: "Patakbuhin"
+chat.tool_kind.insert: "Ilagay"
 chat.tool_kind.read: "Basahin"
 chat.tool_kind.search: "Hanapin"
 chat.tool_kind.edit: "I-edit"

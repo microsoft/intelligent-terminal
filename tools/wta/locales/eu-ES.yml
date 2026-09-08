@@ -51,6 +51,7 @@ chat.turn_canceled: "(bertan behera utzita)"
 chat.turn_executed: "→ exekutatuta: %{title}"
 # Persistent tool-category labels shown after a status marker and before a subject.
 chat.tool_kind.run: "Exekutatu"
+chat.tool_kind.insert: "Txertatu"
 chat.tool_kind.read: "Irakurri"
 chat.tool_kind.search: "Bilatu"
 chat.tool_kind.edit: "Editatu"

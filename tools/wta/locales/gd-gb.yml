@@ -51,6 +51,7 @@ chat.turn_canceled: "(air a sgur)"
 chat.turn_executed: "→ air a chur an gnìomh: %{title}"
 # Leubailean maireannach roinn-seòrsa inneil a chithear às dèidh comharra inbhe agus ron chuspair.
 chat.tool_kind.run: "Ruith"
+chat.tool_kind.insert: "Cuir a-steach"
 chat.tool_kind.read: "Leugh"
 chat.tool_kind.search: "Lorg"
 chat.tool_kind.edit: "Deasaich"

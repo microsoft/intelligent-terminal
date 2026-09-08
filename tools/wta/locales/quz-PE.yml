@@ -51,6 +51,7 @@ chat.turn_canceled: "(saqisqa)"
 chat.turn_executed: "→ ruwasqa: %{title}"
 # Persistent tool-category labels shown after a status marker and before a subject.
 chat.tool_kind.run: "Purichiy"
+chat.tool_kind.insert: "Churay"
 chat.tool_kind.read: "Ñawinchay"
 chat.tool_kind.search: "Maskay"
 chat.tool_kind.edit: "Allichay"

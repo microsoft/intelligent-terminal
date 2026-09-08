@@ -51,6 +51,7 @@ chat.turn_canceled: "(whakakorea)"
 chat.turn_executed: "→ kua mahia: %{title}"
 # Persistent tool-category labels shown after a status marker and before a subject.
 chat.tool_kind.run: "Whakahaere"
+chat.tool_kind.insert: "Whakauruhia"
 chat.tool_kind.read: "Pānui"
 chat.tool_kind.search: "Rapu"
 chat.tool_kind.edit: "Whakatika"

@@ -51,6 +51,7 @@ chat.turn_canceled: "(בוטל)"
 chat.turn_executed: "→ בוצע: %{title}"
 # תוויות קבועות של קטגוריות כלים, המוצגות אחרי סמן מצב ולפני הנושא.
 chat.tool_kind.run: "הפעלה"
+chat.tool_kind.insert: "הכנס"
 chat.tool_kind.read: "קריאה"
 chat.tool_kind.search: "חיפוש"
 chat.tool_kind.edit: "עריכה"

@@ -51,6 +51,7 @@ chat.turn_canceled: "(hætt við)"
 chat.turn_executed: "→ keyrt: %{title}"
 # Varanleg merki verkfæraflokka sem birtast á eftir stöðumerki og á undan viðfangsefninu.
 chat.tool_kind.run: "Keyra"
+chat.tool_kind.insert: "Setja inn"
 chat.tool_kind.read: "Lesa"
 chat.tool_kind.search: "Leita"
 chat.tool_kind.edit: "Breyta"

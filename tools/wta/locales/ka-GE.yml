@@ -51,6 +51,7 @@ chat.turn_canceled: "(გაუქმდა)"
 chat.turn_executed: "→ შესრულდა: %{title}"
 # ხელსაწყოს კატეგორიის მუდმივი წარწერები, რომლებიც გამოჩნდება სტატუსის ნიშნულის შემდეგ და თემის წინ.
 chat.tool_kind.run: "გაშვება"
+chat.tool_kind.insert: "ჩასმა"
 chat.tool_kind.read: "წაკითხვა"
 chat.tool_kind.search: "ძიება"
 chat.tool_kind.edit: "რედაქტირება"

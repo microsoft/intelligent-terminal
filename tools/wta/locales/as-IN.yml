@@ -51,6 +51,7 @@ chat.turn_canceled: "(বাতিল কৰা হৈছে)"
 chat.turn_executed: "→ সম্পাদন কৰা হ’ল: %{title}"
 # Persistent tool-category labels shown after a status marker and before a subject.
 chat.tool_kind.run: "চলাও"
+chat.tool_kind.insert: "সন্নিবেশ কৰক"
 chat.tool_kind.read: "পঢ়া"
 chat.tool_kind.search: "সন্ধান"
 chat.tool_kind.edit: "সম্পাদনা"

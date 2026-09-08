@@ -51,6 +51,7 @@ chat.turn_canceled: "(ofgebrach)"
 chat.turn_executed: "→ ausgeféiert: %{title}"
 # Persistent tool-category labels shown after a status marker and before a subject.
 chat.tool_kind.run: "Ausféieren"
+chat.tool_kind.insert: "Asetzen"
 chat.tool_kind.read: "Liesen"
 chat.tool_kind.search: "Sichen"
 chat.tool_kind.edit: "Änneren"

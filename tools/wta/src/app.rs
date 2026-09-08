@@ -6569,6 +6569,57 @@ fn linux_cwd_arg(cwd: &std::path::Path) -> Option<String> {
 #[path = "app_turn.rs"]
 mod app_turn;
 
+fn format_recommendation_choice_for_chat(
+    choice: &RecommendationChoice,
+    insert_only: bool,
+) -> String {
+    use crate::coordinator::{OpenTarget, RecommendedAction};
+
+    choice
+        .actions
+        .iter()
+        .find_map(|action| match action {
+            RecommendedAction::Send { input, .. } => {
+                let label = if insert_only {
+                    t!("chat.tool_kind.insert")
+                } else {
+                    t!("chat.tool_kind.run")
+                };
+                Some(format!("{label}: {input}"))
+            }
+            RecommendedAction::OpenAndSend {
+                target,
+                input,
+                agent,
+                ..
+            } => {
+                let where_ = match target {
+                    OpenTarget::Tab => "new tab",
+                    OpenTarget::Panel => "new panel",
+                };
+                let label = agent.as_deref().unwrap_or("agent");
+                Some(format!("Open {} and run {}: {}", where_, label, input))
+            }
+            RecommendedAction::Open {
+                target, cwd, title, ..
+            } => {
+                let kind = match target {
+                    OpenTarget::Tab => "tab",
+                    OpenTarget::Panel => "panel",
+                };
+                Some(match (title.as_deref(), cwd.as_deref()) {
+                    (Some(t), Some(c)) if !t.is_empty() && !c.is_empty() => {
+                        format!("Open new {} ({}) in {}", kind, t, c)
+                    }
+                    (Some(t), _) if !t.is_empty() => format!("Open new {} ({})", kind, t),
+                    (_, Some(c)) if !c.is_empty() => format!("Open new {} in {}", kind, c),
+                    _ => format!("Open new empty {}", kind),
+                })
+            }
+        })
+        .unwrap_or_else(|| choice.title.clone())
+}
+
 /// Render a parsed `RecommendationSet` as the agent's "reply" text in chat.
 ///
 /// Recommendation responses arrive as JSON; storing the raw JSON in a completed
@@ -6576,8 +6627,6 @@ mod app_turn;
 /// CLI-style answer. This builds a single line per choice that mirrors what the
 /// recommendation cards show, prefixed with `✓` for the recommended one.
 fn format_recommendations_for_chat(set: &RecommendationSet) -> String {
-    use crate::coordinator::{OpenTarget, RecommendedAction};
-
     let header = if set.choices.len() == 1 {
         "Suggested 1 option:".to_string()
     } else {
@@ -6586,42 +6635,7 @@ fn format_recommendations_for_chat(set: &RecommendationSet) -> String {
     let mut out = header;
 
     for choice in &set.choices {
-        let action_text = choice
-            .actions
-            .iter()
-            .find_map(|action| match action {
-                RecommendedAction::Send { input, .. } => Some(format!("Run: {}", input)),
-                RecommendedAction::OpenAndSend {
-                    target,
-                    input,
-                    agent,
-                    ..
-                } => {
-                    let where_ = match target {
-                        OpenTarget::Tab => "new tab",
-                        OpenTarget::Panel => "new panel",
-                    };
-                    let label = agent.as_deref().unwrap_or("agent");
-                    Some(format!("Open {} and run {}: {}", where_, label, input))
-                }
-                RecommendedAction::Open {
-                    target, cwd, title, ..
-                } => {
-                    let kind = match target {
-                        OpenTarget::Tab => "tab",
-                        OpenTarget::Panel => "panel",
-                    };
-                    Some(match (title.as_deref(), cwd.as_deref()) {
-                        (Some(t), Some(c)) if !t.is_empty() && !c.is_empty() => {
-                            format!("Open new {} ({}) in {}", kind, t, c)
-                        }
-                        (Some(t), _) if !t.is_empty() => format!("Open new {} ({})", kind, t),
-                        (_, Some(c)) if !c.is_empty() => format!("Open new {} in {}", kind, c),
-                        _ => format!("Open new empty {}", kind),
-                    })
-                }
-            })
-            .unwrap_or_else(|| choice.title.clone());
+        let action_text = format_recommendation_choice_for_chat(choice, false);
 
         let marker = if set.recommended_choice == Some(choice.choice) {
             "✓"

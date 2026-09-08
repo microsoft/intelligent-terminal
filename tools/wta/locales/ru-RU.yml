@@ -51,6 +51,7 @@ chat.turn_canceled: "(отменено)"
 chat.turn_executed: "→ выполнено: %{title}"
 # Постоянные метки категорий инструментов, отображаемые после маркера состояния и перед объектом действия.
 chat.tool_kind.run: "Запуск"
+chat.tool_kind.insert: "Вставить"
 chat.tool_kind.read: "Чтение"
 chat.tool_kind.search: "Поиск"
 chat.tool_kind.edit: "Изменение"

@@ -51,6 +51,7 @@ chat.turn_canceled: "(ləğv edildi)"
 chat.turn_executed: "→ icra edildi: %{title}"
 # Persistent tool-category labels shown after a status marker and before a subject.
 chat.tool_kind.run: "İcra et"
+chat.tool_kind.insert: "Daxil et"
 chat.tool_kind.read: "Oxu"
 chat.tool_kind.search: "Axtar"
 chat.tool_kind.edit: "Redaktə et"

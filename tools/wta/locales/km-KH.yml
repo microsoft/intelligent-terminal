@@ -54,6 +54,7 @@ chat.turn_canceled: "(បានបោះបង់)"
 chat.turn_executed: "→ បានដំណើរការ: %{title}"
 # ស្លាកប្រភេទឧបករណ៍អចិន្ត្រៃយ៍ដែលបង្ហាញបន្ទាប់ពីសញ្ញាស្ថានភាព និងមុនប្រធានបទ។
 chat.tool_kind.run: "ដំណើរការ"
+chat.tool_kind.insert: "បញ្ចូល"
 chat.tool_kind.read: "អាន"
 chat.tool_kind.search: "ស្វែងរក"
 chat.tool_kind.edit: "កែសម្រួល"

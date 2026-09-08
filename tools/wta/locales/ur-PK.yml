@@ -51,6 +51,7 @@ chat.turn_canceled: "(منسوخ)"
 chat.turn_executed: "→ پر عمل کر دیا گیا: %{title}"
 # مستقل ٹول زمرہ لیبل، جو اسٹیٹس نشان کے بعد اور موضوع سے پہلے دکھائے جاتے ہیں۔
 chat.tool_kind.run: "چلانا"
+chat.tool_kind.insert: "داخل کریں"
 chat.tool_kind.read: "پڑھنا"
 chat.tool_kind.search: "تلاش"
 chat.tool_kind.edit: "ترمیم"

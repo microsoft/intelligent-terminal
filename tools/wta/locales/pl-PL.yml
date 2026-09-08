@@ -51,6 +51,7 @@ chat.turn_canceled: "(anulowano)"
 chat.turn_executed: "→ wykonano: %{title}"
 # Persistent tool-category labels shown after a status marker and before a subject.
 chat.tool_kind.run: "Uruchom"
+chat.tool_kind.insert: "Wstaw"
 chat.tool_kind.read: "Odczytaj"
 chat.tool_kind.search: "Wyszukaj"
 chat.tool_kind.edit: "Edytuj"

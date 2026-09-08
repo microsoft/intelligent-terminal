@@ -51,6 +51,7 @@ chat.turn_canceled: "(anuluar)"
 chat.turn_executed: "→ ekzekutuar: %{title}"
 # Etiketa të përhershme të kategorive të mjeteve, të shfaqura pas shënuesit të gjendjes dhe para subjektit.
 chat.tool_kind.run: "Ekzekutim"
+chat.tool_kind.insert: "Fut"
 chat.tool_kind.read: "Lexim"
 chat.tool_kind.search: "Kërkim"
 chat.tool_kind.edit: "Redaktim"

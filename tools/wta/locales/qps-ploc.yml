@@ -53,6 +53,7 @@ chat.turn_canceled: "[(çåñçéĺéð!!)]"
 chat.turn_executed: "[→ éẋéçûţéð: %{title}!!]"
 # Persistent tool-category labels shown after a status marker and before a subject.
 chat.tool_kind.run: "[Ŕûñ!!]"
+chat.tool_kind.insert: "[Îñśéŕţ!!!]"
 chat.tool_kind.read: "[Ŕéåð!!]"
 chat.tool_kind.search: "[Ŝéåŕçĥ!!]"
 chat.tool_kind.edit: "[Éðïţ!!]"

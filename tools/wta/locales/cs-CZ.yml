@@ -51,6 +51,7 @@ chat.turn_canceled: "(zrušeno)"
 chat.turn_executed: "→ provedeno: %{title}"
 # Persistent tool-category labels shown after a status marker and before a subject.
 chat.tool_kind.run: "Spustit"
+chat.tool_kind.insert: "Vložit"
 chat.tool_kind.read: "Číst"
 chat.tool_kind.search: "Hledat"
 chat.tool_kind.edit: "Upravit"

@@ -51,6 +51,7 @@ chat.turn_canceled: "(peruutettu)"
 chat.turn_executed: "→ suoritettu: %{title}"
 # Persistent tool-category labels shown after a status marker and before a subject.
 chat.tool_kind.run: "Suorita"
+chat.tool_kind.insert: "Lisää"
 chat.tool_kind.read: "Lue"
 chat.tool_kind.search: "Hae"
 chat.tool_kind.edit: "Muokkaa"

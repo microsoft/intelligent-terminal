@@ -51,6 +51,7 @@ chat.turn_canceled: "(bekor qilindi)"
 chat.turn_executed: "→ bajarildi: %{title}"
 # Holat belgisidan keyin va mavzudan oldin ko‘rsatiladigan doimiy vosita turkumi yorliqlari.
 chat.tool_kind.run: "Ishga tushirish"
+chat.tool_kind.insert: "Kiritish"
 chat.tool_kind.read: "O‘qish"
 chat.tool_kind.search: "Qidirish"
 chat.tool_kind.edit: "Tahrirlash"

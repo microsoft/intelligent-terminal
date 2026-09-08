@@ -49,6 +49,7 @@ chat.welcome_disclaimer: "Intelligent Terminal uses AI."  # {Locked="AI"}
 # These are action categories, not status words. "Run" means execute a shell
 # command, "Think" means internal AI reasoning, and "Tool" is the safe fallback.
 chat.tool_kind.run: "Run"
+chat.tool_kind.insert: "Insert"  # Label in action history when a shell command is inserted into the terminal without execution.
 chat.tool_kind.read: "Read"
 chat.tool_kind.search: "Search"
 chat.tool_kind.edit: "Edit"

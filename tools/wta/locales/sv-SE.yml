@@ -51,6 +51,7 @@ chat.turn_canceled: "(avbruten)"
 chat.turn_executed: "→ utförd: %{title}"
 # Beständiga verktygskategorier som visas efter en statusmarkör och före ett ämne.
 chat.tool_kind.run: "Körning"
+chat.tool_kind.insert: "Infoga"
 chat.tool_kind.read: "Läsning"
 chat.tool_kind.search: "Sökning"
 chat.tool_kind.edit: "Redigering"

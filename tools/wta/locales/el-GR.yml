@@ -51,6 +51,7 @@ chat.turn_canceled: "(ακυρώθηκε)"
 chat.turn_executed: "→ εκτελέστηκε: %{title}"
 # Persistent tool-category labels shown after a status marker and before a subject.
 chat.tool_kind.run: "Εκτέλεση"
+chat.tool_kind.insert: "Εισαγωγή"
 chat.tool_kind.read: "Ανάγνωση"
 chat.tool_kind.search: "Αναζήτηση"
 chat.tool_kind.edit: "Επεξεργασία"

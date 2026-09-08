@@ -51,6 +51,7 @@ chat.turn_canceled: "(ئەمەلدىن قالدۇرۇلدى)"
 chat.turn_executed: "→ ئىجرا قىلىندى: %{title}"
 # ھالەت بەلگىسىدىن كېيىن ۋە تېمىدىن بۇرۇن كۆرسىتىلىدىغان دائىملىق قورال تۈرى بەلگىلىرى.
 chat.tool_kind.run: "ئىجرا"
+chat.tool_kind.insert: "قىستۇرۇش"
 chat.tool_kind.read: "ئوقۇش"
 chat.tool_kind.search: "ئىزدەش"
 chat.tool_kind.edit: "تەھرىرلەش"

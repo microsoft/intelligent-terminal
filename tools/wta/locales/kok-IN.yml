@@ -51,6 +51,7 @@ chat.turn_canceled: "(रद्द केल्लें)"
 chat.turn_executed: "→ निश्पादीत: %{title}"
 # स्थिती चिन्हा उपरांत आनी विशया आदीं दाखोवपी कायम साधन-वर्ग लेबलां.
 chat.tool_kind.run: "चलयात"
+chat.tool_kind.insert: "घालात"
 chat.tool_kind.read: "वाचात"
 chat.tool_kind.search: "सोदात"
 chat.tool_kind.edit: "संपादन करात"

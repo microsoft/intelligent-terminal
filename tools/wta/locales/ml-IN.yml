@@ -51,6 +51,7 @@ chat.turn_canceled: "(റദ്ദാക്കി)"
 chat.turn_executed: "→ നടപ്പിലാക്കി: %{title}"
 # Persistent tool-category labels shown after a status marker and before a subject.
 chat.tool_kind.run: "പ്രവർത്തിപ്പിക്കുക"
+chat.tool_kind.insert: "ചേര്‍ക്കുക"
 chat.tool_kind.read: "വായിക്കുക"
 chat.tool_kind.search: "തിരയുക"
 chat.tool_kind.edit: "തിരുത്തുക"

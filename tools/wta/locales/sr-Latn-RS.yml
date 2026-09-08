@@ -51,6 +51,7 @@ chat.turn_canceled: "(otkazano)"
 chat.turn_executed: "→ izvršeno: %{title}"
 # Trajne oznake kategorija alata prikazane posle oznake statusa i pre predmeta.
 chat.tool_kind.run: "Pokretanje"
+chat.tool_kind.insert: "Ubaci"
 chat.tool_kind.read: "Čitanje"
 chat.tool_kind.search: "Pretraga"
 chat.tool_kind.edit: "Uređivanje"

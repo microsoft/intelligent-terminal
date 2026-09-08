@@ -51,6 +51,7 @@ chat.turn_canceled: "(скасовано)"
 chat.turn_executed: "→ виконано: %{title}"
 # Постійні мітки категорій інструментів, що відображаються після маркера стану та перед об’єктом дії.
 chat.tool_kind.run: "Запуск"
+chat.tool_kind.insert: "Вставити"
 chat.tool_kind.read: "Читання"
 chat.tool_kind.search: "Пошук"
 chat.tool_kind.edit: "Редагування"

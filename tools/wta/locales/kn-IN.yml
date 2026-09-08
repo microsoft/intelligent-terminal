@@ -51,6 +51,7 @@ chat.turn_canceled: "(ರದ್ದುಗೊಳಿಸಲಾಗಿದೆ)"
 chat.turn_executed: "→ ಕಾರ್ಯಗತಗೊಂಡಿದೆ: %{title}"
 # ಸ್ಥಿತಿ ಗುರುತಿನ ನಂತರ ಮತ್ತು ವಿಷಯದ ಮೊದಲು ತೋರಿಸುವ ಶಾಶ್ವತ ಉಪಕರಣ-ವರ್ಗದ ಲೇಬಲ್‌ಗಳು.
 chat.tool_kind.run: "ಚಲಾಯಿಸಿ"
+chat.tool_kind.insert: "ಸೇರಿಸಿ"
 chat.tool_kind.read: "ಓದಿ"
 chat.tool_kind.search: "ಹುಡುಕಿ"
 chat.tool_kind.edit: "ಸಂಪಾದಿಸಿ"

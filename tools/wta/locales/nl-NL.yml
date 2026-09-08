@@ -51,6 +51,7 @@ chat.turn_canceled: "(geannuleerd)"
 chat.turn_executed: "→ uitgevoerd: %{title}"
 # Persistent tool-category labels shown after a status marker and before a subject.
 chat.tool_kind.run: "Uitvoeren"
+chat.tool_kind.insert: "Invoegen"
 chat.tool_kind.read: "Lezen"
 chat.tool_kind.search: "Zoeken"
 chat.tool_kind.edit: "Bewerken"

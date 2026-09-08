@@ -51,6 +51,7 @@ chat.turn_canceled: "(रद्द केले)"
 chat.turn_executed: "→ अंमलात आणले: %{title}"
 # Persistent tool-category labels shown after a status marker and before a subject.
 chat.tool_kind.run: "चालवा"
+chat.tool_kind.insert: "घाला"
 chat.tool_kind.read: "वाचा"
 chat.tool_kind.search: "शोधा"
 chat.tool_kind.edit: "संपादित करा"

@@ -51,6 +51,7 @@ chat.turn_canceled: "(ikkanċellat)"
 chat.turn_executed: "→ ġie eżegwit: %{title}"
 # Persistent tool-category labels shown after a status marker and before a subject.
 chat.tool_kind.run: "Ħaddem"
+chat.tool_kind.insert: "Daħħal"
 chat.tool_kind.read: "Aqra"
 chat.tool_kind.search: "Fittex"
 chat.tool_kind.edit: "Editja"

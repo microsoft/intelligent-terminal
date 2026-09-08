@@ -51,6 +51,7 @@ chat.turn_canceled: "(dibatalkan)"
 chat.turn_executed: "→ dijalankan: %{title}"
 # Label kategori alat persisten yang ditampilkan setelah penanda status dan sebelum subjek.
 chat.tool_kind.run: "Jalankan"
+chat.tool_kind.insert: "Sisipkan"
 chat.tool_kind.read: "Baca"
 chat.tool_kind.search: "Cari"
 chat.tool_kind.edit: "Edit"

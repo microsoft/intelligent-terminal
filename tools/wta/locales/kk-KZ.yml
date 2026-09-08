@@ -51,6 +51,7 @@ chat.turn_canceled: "(бас тартылды)"
 chat.turn_executed: "→ орындалды: %{title}"
 # Күй белгісінен кейін және тақырыптың алдында көрсетілетін тұрақты құрал санаты белгілері.
 chat.tool_kind.run: "Іске қосу"
+chat.tool_kind.insert: "Кірістіру"
 chat.tool_kind.read: "Оқу"
 chat.tool_kind.search: "Іздеу"
 chat.tool_kind.edit: "Өңдеу"

@@ -51,6 +51,7 @@ chat.turn_canceled: "(гамәлдән чыгарылды)"
 chat.turn_executed: "→ үтәлде: %{title}"
 # Хәл билгесеннән соң һәм объект алдыннан күрсәтелә торган даими корал категориясе тамгалары.
 chat.tool_kind.run: "Эшләтү"
+chat.tool_kind.insert: "Кертү"
 chat.tool_kind.read: "Уку"
 chat.tool_kind.search: "Эзләү"
 chat.tool_kind.edit: "Үзгәртү"

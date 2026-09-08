@@ -51,6 +51,7 @@ chat.turn_canceled: "(zrušené)"
 chat.turn_executed: "→ vykonané: %{title}"
 # Trvalé označenia kategórií nástrojov zobrazené za značkou stavu a pred predmetom.
 chat.tool_kind.run: "Spustenie"
+chat.tool_kind.insert: "Vložiť"
 chat.tool_kind.read: "Čítanie"
 chat.tool_kind.search: "Hľadanie"
 chat.tool_kind.edit: "Úprava"

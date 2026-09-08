@@ -51,6 +51,7 @@ chat.turn_canceled: "(cealaithe)"
 chat.turn_executed: "→ rinneadh: %{title}"
 # Lipéid bhuana chatagóir uirlise a thaispeántar tar éis marcóir stádais agus roimh an ábhar.
 chat.tool_kind.run: "Rith"
+chat.tool_kind.insert: "Ionsáigh"
 chat.tool_kind.read: "Léigh"
 chat.tool_kind.search: "Cuardaigh"
 chat.tool_kind.edit: "Cuir in eagar"

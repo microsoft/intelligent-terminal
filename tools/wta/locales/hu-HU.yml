@@ -51,6 +51,7 @@ chat.turn_canceled: "(megszakítva)"
 chat.turn_executed: "→ végrehajtva: %{title}"
 # Az állapotjelző után és a tárgy előtt megjelenő állandó eszközkategória-címkék.
 chat.tool_kind.run: "Futtatás"
+chat.tool_kind.insert: "Beszúrás"
 chat.tool_kind.read: "Olvasás"
 chat.tool_kind.search: "Keresés"
 chat.tool_kind.edit: "Szerkesztés"

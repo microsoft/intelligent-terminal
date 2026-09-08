@@ -47,6 +47,7 @@ chat.turn_canceled: "(已取消)"
 chat.turn_executed: "→ 已执行: %{title}"
 # 在状态标记之后、操作对象之前显示的持久工具类别标签。
 chat.tool_kind.run: "运行"
+chat.tool_kind.insert: "插入"
 chat.tool_kind.read: "读取"
 chat.tool_kind.search: "搜索"
 chat.tool_kind.edit: "编辑"

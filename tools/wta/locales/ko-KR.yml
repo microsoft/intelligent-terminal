@@ -47,6 +47,7 @@ chat.turn_canceled: "(취소됨)"
 chat.turn_executed: "→ 실행됨: %{title}"
 # 상태 표시자 뒤와 대상 앞에 표시되는 영구적인 도구 범주 레이블입니다.
 chat.tool_kind.run: "실행"
+chat.tool_kind.insert: "삽입"
 chat.tool_kind.read: "읽기"
 chat.tool_kind.search: "검색"
 chat.tool_kind.edit: "편집"

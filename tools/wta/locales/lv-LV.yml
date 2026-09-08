@@ -51,6 +51,7 @@ chat.turn_canceled: "(atcelts)"
 chat.turn_executed: "→ izpildīts: %{title}"
 # Persistent tool-category labels shown after a status marker and before a subject.
 chat.tool_kind.run: "Izpildīt"
+chat.tool_kind.insert: "Ievietot"
 chat.tool_kind.read: "Lasīt"
 chat.tool_kind.search: "Meklēt"
 chat.tool_kind.edit: "Rediģēt"

@@ -51,6 +51,7 @@ chat.turn_canceled: "(iptal edildi)"
 chat.turn_executed: "→ yürütüldü: %{title}"
 # Durum işaretinden sonra ve konudan önce gösterilen kalıcı araç kategorisi etiketleri.
 chat.tool_kind.run: "Çalıştırma"
+chat.tool_kind.insert: "Ekle"
 chat.tool_kind.read: "Okuma"
 chat.tool_kind.search: "Arama"
 chat.tool_kind.edit: "Düzenleme"

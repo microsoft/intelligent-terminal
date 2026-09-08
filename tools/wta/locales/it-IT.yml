@@ -51,6 +51,7 @@ chat.turn_canceled: "(annullato)"
 chat.turn_executed: "→ eseguito: %{title}"
 # Etichette persistenti delle categorie di strumenti mostrate dopo un indicatore di stato e prima del soggetto.
 chat.tool_kind.run: "Esegui"
+chat.tool_kind.insert: "Inserisci"
 chat.tool_kind.read: "Leggi"
 chat.tool_kind.search: "Cerca"
 chat.tool_kind.edit: "Modifica"

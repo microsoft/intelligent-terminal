@@ -51,6 +51,7 @@ chat.turn_canceled: "(ຍົກເລີກແລ້ວ)"
 chat.turn_executed: "→ ດໍາເນີນການແລ້ວ: %{title}"
 # Persistent tool-category labels shown after a status marker and before a subject.
 chat.tool_kind.run: "ດໍາເນີນການ"
+chat.tool_kind.insert: "ແຊກ"
 chat.tool_kind.read: "ອ່ານ"
 chat.tool_kind.search: "ຄົ້ນຫາ"
 chat.tool_kind.edit: "ແກ້ໄຂ"

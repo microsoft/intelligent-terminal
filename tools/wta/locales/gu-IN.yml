@@ -51,6 +51,7 @@ chat.turn_canceled: "(રદ કરેલ)"
 chat.turn_executed: "→ ચલાવાયું: %{title}"
 # સ્થિતિ ચિહ્ન પછી અને વિષય પહેલાં દર્શાવાતા કાયમી સાધન-શ્રેણી લેબલ.
 chat.tool_kind.run: "ચલાવો"
+chat.tool_kind.insert: "દાખલ કરો"
 chat.tool_kind.read: "વાંચો"
 chat.tool_kind.search: "શોધો"
 chat.tool_kind.edit: "સંપાદિત કરો"
