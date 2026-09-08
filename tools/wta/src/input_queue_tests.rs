@@ -26,12 +26,20 @@ fn handle_scheduled_drain(
     let expected_tab = app
         .bound_tab_for_session(session_id)
         .expect("session is bound to a tab");
+    handle_scheduled_drain_for_tab(app, event_rx, &expected_tab);
+}
+
+fn handle_scheduled_drain_for_tab(
+    app: &mut App,
+    event_rx: &mut tokio::sync::mpsc::UnboundedReceiver<AppEvent>,
+    expected_tab: &str,
+) {
     let event = event_rx.try_recv().expect("input drain event");
     assert!(matches!(
         &event,
         AppEvent::DrainInputQueue {
             tab_id: queued_tab
-        } if queued_tab == &expected_tab
+        } if queued_tab == expected_tab
     ));
     app.handle_event(event);
 }
@@ -780,6 +788,28 @@ fn automatic_autofix_dedupes_by_pane_and_pane_close_removes_pending() {
 }
 
 #[test]
+fn queued_manual_fix_tracks_its_source_pane_and_is_dropped_on_close() {
+    let (mut app, mut prompt_rx) = test_app_with_prompt_rx();
+    bind_tab(&mut app, DEFAULT_TAB_ID, "session-1");
+    app.source_session_id = Some("pane-a".into());
+    enter_text(&mut app, "active");
+    prompt_rx.try_recv().unwrap();
+
+    enter_text(&mut app, "/fix explain this");
+
+    assert_eq!(app.current_tab().pending_inputs.len(), 1);
+    assert_eq!(
+        app.current_tab().pending_inputs[0].autofix_target_pane(),
+        Some("pane-a")
+    );
+
+    app.handle_autofix_pane_closed(None, "pane-a");
+
+    assert!(app.current_tab().pending_inputs.is_empty());
+    assert!(app.current_tab().turn.is_in_flight());
+}
+
+#[test]
 fn queues_are_isolated_by_tab_and_follow_tab_rekey() {
     let (mut app, mut prompt_rx) = test_app_with_prompt_rx();
     bind_tab(&mut app, "tab-a", "session-a");
@@ -1183,6 +1213,127 @@ fn fatal_and_unbound_prompt_errors_do_not_drain() {
     assert!(
         !unbound_app.current_tab().messages.iter().any(
             |message| matches!(message, ChatMessage::Error(text) if text == "late prompt failure")
+        ),
+        "stale failure must not surface on the active tab"
+    );
+}
+
+#[test]
+fn tab_error_wakes_fifo_drain_for_the_bound_tab() {
+    let (mut app, mut prompt_rx) = test_app_with_prompt_rx();
+    bind_tab(&mut app, DEFAULT_TAB_ID, "session-1");
+    let mut event_rx = install_app_event_queue(&mut app);
+    {
+        let tab = app.current_tab_mut();
+        tab.loading_session = true;
+        tab.loading_target_session_id = Some("loaded-session".into());
+    }
+    app.pending_yolo_session_tabs.insert(DEFAULT_TAB_ID.into());
+
+    enter_text(&mut app, "queued during failed load");
+    assert_eq!(
+        queued_texts(&app, DEFAULT_TAB_ID),
+        ["queued during failed load"]
+    );
+
+    app.handle_event(AppEvent::TabError {
+        tab_id: DEFAULT_TAB_ID.into(),
+        message: "load failed".into(),
+    });
+
+    assert!(app.current_tab().input.is_empty());
+    assert!(
+        prompt_rx.try_recv().is_err(),
+        "drain is deferred through AppEvent"
+    );
+    handle_scheduled_drain(&mut app, &mut event_rx, "session-1");
+    assert_eq!(
+        prompt_rx.try_recv().unwrap().text,
+        "queued during failed load"
+    );
+    assert!(app.current_tab().pending_inputs.is_empty());
+}
+
+#[test]
+fn prompt_error_before_binding_advances_fifo_and_preserves_the_draft() {
+    let (mut app, mut prompt_rx) = test_app_with_prompt_rx();
+    app.state = ConnectionState::Connected;
+    let mut event_rx = install_app_event_queue(&mut app);
+
+    enter_text(&mut app, "A");
+    let first = prompt_rx.try_recv().expect("A dispatched");
+    enter_text(&mut app, "B");
+    enter_text(&mut app, "C");
+    app.current_tab_mut().insert_input_str("draft");
+
+    app.handle_event(AppEvent::PromptError {
+        tab_id: DEFAULT_TAB_ID.into(),
+        prompt_id: first.id,
+        message: "new_session failed".into(),
+    });
+
+    assert_eq!(app.current_tab().input, "draft");
+    assert_eq!(queued_texts(&app, DEFAULT_TAB_ID), ["B", "C"]);
+    assert_eq!(app.current_tab().completed_turns.len(), 1);
+    assert_eq!(app.current_tab().completed_turns[0].prompt, "A");
+    assert!(matches!(
+        app.current_tab().completed_turns[0].details.last(),
+        Some(ChatMessage::Error(text)) if text == "new_session failed"
+    ));
+
+    handle_scheduled_drain_for_tab(&mut app, &mut event_rx, DEFAULT_TAB_ID);
+    let second = prompt_rx.try_recv().expect("B dispatched");
+    assert_eq!(second.text, "B");
+    assert!(prompt_rx.try_recv().is_err(), "failure must not retry A");
+    assert_eq!(queued_texts(&app, DEFAULT_TAB_ID), ["C"]);
+    assert_eq!(app.current_tab().input, "draft");
+
+    app.handle_event(AppEvent::PromptError {
+        tab_id: DEFAULT_TAB_ID.into(),
+        prompt_id: second.id,
+        message: "new_session failed again".into(),
+    });
+
+    assert_eq!(app.current_tab().input, "draft");
+    assert_eq!(queued_texts(&app, DEFAULT_TAB_ID), ["C"]);
+    assert_eq!(app.current_tab().completed_turns.len(), 2);
+    assert_eq!(app.current_tab().completed_turns[1].prompt, "B");
+    assert!(matches!(
+        app.current_tab().completed_turns[1].details.last(),
+        Some(ChatMessage::Error(text)) if text == "new_session failed again"
+    ));
+
+    handle_scheduled_drain_for_tab(&mut app, &mut event_rx, DEFAULT_TAB_ID);
+    assert_eq!(prompt_rx.try_recv().unwrap().text, "C");
+    assert!(app.current_tab().pending_inputs.is_empty());
+}
+
+#[test]
+fn stale_prompt_error_is_ignored_without_waking_the_queue() {
+    let (mut app, mut prompt_rx) = test_app_with_prompt_rx();
+    app.state = ConnectionState::Connected;
+    let mut event_rx = install_app_event_queue(&mut app);
+
+    enter_text(&mut app, "A");
+    let active = prompt_rx.try_recv().expect("A dispatched");
+    enter_text(&mut app, "B");
+
+    app.handle_event(AppEvent::PromptError {
+        tab_id: DEFAULT_TAB_ID.into(),
+        prompt_id: active.id + 1,
+        message: "stale prompt failure".into(),
+    });
+
+    assert!(event_rx.try_recv().is_err());
+    assert!(prompt_rx.try_recv().is_err());
+    assert_eq!(queued_texts(&app, DEFAULT_TAB_ID), ["B"]);
+    assert!(
+        app.current_tab().turn.is_in_flight(),
+        "stale failure must not close the active turn"
+    );
+    assert!(
+        !app.current_tab().messages.iter().any(
+            |message| matches!(message, ChatMessage::Error(text) if text == "stale prompt failure")
         ),
         "stale failure must not surface on the active tab"
     );

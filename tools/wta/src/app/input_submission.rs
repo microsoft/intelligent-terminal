@@ -26,7 +26,6 @@ impl InputEnvelope {
     pub(super) fn autofix_target_pane(&self) -> Option<&str> {
         self.autofix
             .as_ref()
-            .filter(|metadata| metadata.text_kind == AutofixTextKind::FailureSummary)
             .and(self.turn_context.target_pane_id())
     }
 

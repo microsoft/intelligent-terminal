@@ -1106,27 +1106,47 @@ impl App {
                 // auth-fallback / ConnectionState::Failed flip in
                 // AgentError because the error is local to one tab's
                 // session-load attempt, not the whole connection.
-                let tab = self.tab_mut(&tab_id);
-                tab.loading_session = false;
-                tab.loading_target_session_id = None;
-                tab.replay_agent_buffer.clear();
-                tab.replay_user_buffer.clear();
-                tab.replay_user_message_id = None;
-                tab.has_meaningful_conversation = tab
-                    .meaningful_conversation_before_load
-                    .take()
-                    .unwrap_or(false);
-                tab.timing_note = None;
-                if !tab.turn.is_cancelling() {
-                    if let Some(prompt_id) = tab.turn.prompt_id() {
-                        tab.finish_active_prompt(prompt_id);
+                {
+                    let tab = self.tab_mut(&tab_id);
+                    let prompt = (!tab.pending_inputs.is_empty())
+                        .then(|| tab.turn.prompt().cloned())
+                        .flatten();
+                    tab.loading_session = false;
+                    tab.loading_target_session_id = None;
+                    tab.replay_agent_buffer.clear();
+                    tab.replay_user_buffer.clear();
+                    tab.replay_user_message_id = None;
+                    tab.has_meaningful_conversation = tab
+                        .meaningful_conversation_before_load
+                        .take()
+                        .unwrap_or(false);
+                    tab.timing_note = None;
+                    if !tab.turn.is_cancelling() {
+                        if let Some(prompt_id) = tab.turn.prompt_id() {
+                            tab.finish_active_prompt(prompt_id);
+                        }
+                        tab.turn = TurnState::Idle;
                     }
-                    tab.turn = TurnState::Idle;
+                    tab.active_direct_proposal_id = None;
+                    tab.messages.push(ChatMessage::Error(message));
+                    if let Some(prompt) = prompt {
+                        let prompt_label = if prompt.autofix.is_some() {
+                            t!("chat.autofix_prompt_label").into_owned()
+                        } else {
+                            prompt.text.clone()
+                        };
+                        let details = tab.take_current_turn_details();
+                        tab.completed_turns.push(CompletedTurn {
+                            prompt: prompt_label,
+                            details,
+                            expanded: true,
+                            trailing_marker: None,
+                        });
+                    }
+                    tab.scroll_to_bottom();
                 }
-                tab.active_direct_proposal_id = None;
-                tab.messages.push(ChatMessage::Error(message));
-                tab.scroll_to_bottom();
                 self.project_tab_state(&tab_id);
+                self.schedule_input_queue_drain_for_tab(&tab_id);
             }
             AppEvent::PromptError {
                 tab_id,
@@ -1140,13 +1160,33 @@ impl App {
                 if !prompt_is_current {
                     return;
                 }
-                let tab = self.tab_mut(&tab_id);
-                tab.finish_active_prompt(prompt_id);
-                tab.turn = TurnState::Idle;
-                tab.timing_note = None;
-                tab.messages.push(ChatMessage::Error(message));
-                tab.scroll_to_bottom();
+                {
+                    let tab = self.tab_mut(&tab_id);
+                    let prompt = (!tab.pending_inputs.is_empty())
+                        .then(|| tab.turn.prompt().cloned())
+                        .flatten();
+                    tab.finish_active_prompt(prompt_id);
+                    tab.turn = TurnState::Idle;
+                    tab.timing_note = None;
+                    tab.messages.push(ChatMessage::Error(message));
+                    if let Some(prompt) = prompt {
+                        let prompt_label = if prompt.autofix.is_some() {
+                            t!("chat.autofix_prompt_label").into_owned()
+                        } else {
+                            prompt.text.clone()
+                        };
+                        let details = tab.take_current_turn_details();
+                        tab.completed_turns.push(CompletedTurn {
+                            prompt: prompt_label,
+                            details,
+                            expanded: true,
+                            trailing_marker: None,
+                        });
+                    }
+                    tab.scroll_to_bottom();
+                }
                 self.project_tab_state(&tab_id);
+                self.schedule_input_queue_drain_for_tab(&tab_id);
             }
             AppEvent::TabSystemMessage { tab_id, message } => {
                 let tab = self.tab_mut(&tab_id);
