@@ -148,12 +148,15 @@ snapshots.
 | Y / N | Quick allow/reject on permission dialog |
 | Up / Down / Enter | Navigate permission options |
 
-WTA automatically selects **Allow once** for recognized tools on its dynamic
-`intellterm_<session-server-id>` MCP server, including tool calls correlated by
-session and call ID. Terminal actions still require their action-card confirmation,
-and `request_user_input` still presents its question. Other tools, legacy static
-server names, and requests without an **Allow once** option keep the normal
-permission dialog; WTA does not grant persistent approval automatically.
+WTA automatically selects **Allow once** only when the tool matches the exact MCP
+server currently bound to that ACP session by master. Master overwrites provider
+metadata with that identity on each forwarded permission request and tool update;
+correlated calls must match the session, call ID, and current server identity.
+Terminal actions still require their action-card confirmation, and
+`request_user_input` still presents its question. Foreign or missing identities
+(even with the same tool name or server-name prefix) and requests without an
+**Allow once** option keep the normal permission dialog. WTA does not grant
+persistent approval automatically.
 
 ## Debug Panel
 

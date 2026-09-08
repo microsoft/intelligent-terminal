@@ -254,6 +254,7 @@ struct CapabilityRoutes {
 struct CapabilityRoute {
     session_id: Option<acp::schema::v1::SessionId>,
     owner: AgentInstanceId,
+    server_name: String,
 }
 
 struct UserInputLease {
@@ -281,9 +282,14 @@ impl CapabilityRegistry {
         let secret = Uuid::new_v4().simple().to_string();
         let hash = hash_secret(&secret);
         let mut routes = self.routes.lock().await;
-        routes
-            .by_capability
-            .insert(hash, CapabilityRoute { session_id, owner });
+        routes.by_capability.insert(
+            hash,
+            CapabilityRoute {
+                session_id,
+                owner,
+                server_name: server_name.clone(),
+            },
+        );
         routes.by_owner.entry(owner).or_default().insert(hash);
         PendingCapability {
             secret,
@@ -315,6 +321,20 @@ impl CapabilityRegistry {
     pub(super) async fn cancel(&self, pending: &PendingCapability) {
         let mut routes = self.routes.lock().await;
         Self::remove_capability(&mut routes, &pending.hash);
+    }
+
+    pub(super) async fn stamp_server_identity(
+        &self,
+        session_id: &acp::schema::v1::SessionId,
+        meta: &mut Option<acp::schema::v1::Meta>,
+    ) {
+        let routes = self.routes.lock().await;
+        let server_name = routes
+            .by_session
+            .get(session_id)
+            .and_then(|hash| routes.by_capability.get(hash))
+            .map(|route| route.server_name.as_str());
+        crate::agent_tools::session_mcp::stamp_server_identity(meta, server_name);
     }
 
     pub(super) async fn remove_owner(&self, owner: AgentInstanceId) -> usize {
@@ -1399,6 +1419,102 @@ mod tests {
             registry.resolve(&replacement.secret).await,
             CapabilityResolution::Bound(found) if found == session_id
         ));
+    }
+
+    #[tokio::test]
+    async fn published_session_mcp_tools_match_helper_permissions_and_current_identity() {
+        use crate::agent_tools::session_mcp::{dispatch, server_identity, stamp_server_identity};
+        use crate::protocol::acp::client::assert_session_mcp_permission_contract;
+
+        let registry = CapabilityRegistry::default();
+        let owner = AgentInstanceId::new_v4();
+        let session_id = acp::schema::v1::SessionId::new("proposal-session");
+        let pending = registry.prepare(owner, Some(session_id.clone())).await;
+        let other = registry.prepare(AgentInstanceId::new_v4(), None).await;
+        assert!(
+            registry
+                .bind(&other, acp::schema::v1::SessionId::new("other-session"))
+                .await
+        );
+        let acp::schema::v1::McpServer::Http(config) =
+            server_config("http://127.0.0.1:4321/mcp", &pending)
+        else {
+            panic!("expected HTTP Session MCP");
+        };
+        let acp::schema::v1::McpServer::Http(other_config) =
+            server_config("http://127.0.0.1:4321/mcp", &other)
+        else {
+            panic!("expected HTTP Session MCP");
+        };
+        let inventory = dispatch(
+            serde_json::json!({"jsonrpc": "2.0", "id": 1, "method": "tools/list"}),
+            |_, _| async { panic!("tools/list must not execute actions") },
+            |_| async { panic!("tools/list must not request user input") },
+        )
+        .await
+        .unwrap();
+        let names: Vec<String> = inventory["result"]["tools"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|tool| tool["name"].as_str().unwrap().to_string())
+            .collect();
+        assert!(!names.is_empty());
+        for name in &names {
+            assert!(format!("mcp__{}__{name}", config.name).len() <= 64);
+        }
+
+        // A prepared resume capability is usable over HTTP, but does not
+        // authorize ACP bypass until the session binding commits.
+        let mut meta = None;
+        stamp_server_identity(&mut meta, Some(&config.name));
+        registry.stamp_server_identity(&session_id, &mut meta).await;
+        assert_eq!(server_identity(meta.as_ref()), None);
+        assert_session_mcp_permission_contract(&config.name, &names, meta.clone(), false).await;
+
+        assert!(registry.bind(&pending, session_id.clone()).await);
+        stamp_server_identity(&mut meta, Some(&other_config.name));
+        registry.stamp_server_identity(&session_id, &mut meta).await;
+        assert_eq!(server_identity(meta.as_ref()), Some(config.name.as_str()));
+        assert_session_mcp_permission_contract(&config.name, &names, meta.clone(), true).await;
+        assert_session_mcp_permission_contract(&other_config.name, &names, meta.clone(), false)
+            .await;
+
+        let replacement = registry.prepare(owner, Some(session_id.clone())).await;
+        assert!(registry.bind(&replacement, session_id.clone()).await);
+        registry.stamp_server_identity(&session_id, &mut meta).await;
+        assert_eq!(
+            server_identity(meta.as_ref()),
+            Some(replacement.server_name.as_str())
+        );
+        assert_session_mcp_permission_contract(&config.name, &names, meta.clone(), false).await;
+        assert_session_mcp_permission_contract(
+            &replacement.server_name,
+            &names,
+            meta.clone(),
+            true,
+        )
+        .await;
+
+        assert!(registry.remove_session(&session_id).await);
+        stamp_server_identity(&mut meta, Some(&replacement.server_name));
+        registry.stamp_server_identity(&session_id, &mut meta).await;
+        assert_eq!(server_identity(meta.as_ref()), None);
+        assert_session_mcp_permission_contract(
+            &replacement.server_name,
+            &names,
+            meta.clone(),
+            false,
+        )
+        .await;
+
+        let rebound = registry.prepare(owner, None).await;
+        assert!(registry.bind(&rebound, session_id.clone()).await);
+        registry.remove_owner(owner).await;
+        stamp_server_identity(&mut meta, Some(&rebound.server_name));
+        registry.stamp_server_identity(&session_id, &mut meta).await;
+        assert_eq!(server_identity(meta.as_ref()), None);
+        assert_session_mcp_permission_contract(&rebound.server_name, &names, meta, false).await;
     }
 
     #[tokio::test]

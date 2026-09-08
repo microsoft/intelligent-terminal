@@ -1742,7 +1742,7 @@ fn is_already_loaded_error(err: &acp::Error) -> bool {
 impl MasterClient {
     async fn request_permission(
         &self,
-        args: acp::schema::v1::RequestPermissionRequest,
+        mut args: acp::schema::v1::RequestPermissionRequest,
     ) -> acp::Result<acp::schema::v1::RequestPermissionResponse> {
         let sid = args.session_id.clone();
         // The shared agent CLI can ask permission for an orphan session
@@ -1773,6 +1773,10 @@ impl MasterClient {
             session_id = ?sid,
             "forwarding permission request to helper"
         );
+        self.state
+            .session_mcp_capabilities
+            .stamp_server_identity(&sid, &mut args.meta)
+            .await;
         let resp = forwarder.request_permission(args).await;
         if let Err(ref e) = resp {
             tracing::warn!(
@@ -1789,13 +1793,23 @@ impl MasterClient {
 
     async fn session_notification(
         &self,
-        args: acp::schema::v1::SessionNotification,
+        mut args: acp::schema::v1::SessionNotification,
     ) -> acp::Result<()> {
         let sid = args.session_id.clone();
         // Discriminator for "what KIND of notification this is" — useful
         // when scrolling logs to see prompt/turn lifecycle without
         // tracing the full payload.
         let kind = notification_kind(&args);
+        if matches!(
+            &args.update,
+            acp::schema::v1::SessionUpdate::ToolCall(_)
+                | acp::schema::v1::SessionUpdate::ToolCallUpdate(_)
+        ) {
+            self.state
+                .session_mcp_capabilities
+                .stamp_server_identity(&sid, &mut args.meta)
+                .await;
+        }
         // Snapshot the sender, the per-route drop counter, AND the
         // owning helper_id under one map lock. `helper_id` is the
         // identity key the Closed-cleanup path uses to make sure a
