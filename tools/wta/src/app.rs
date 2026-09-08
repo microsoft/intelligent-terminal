@@ -6621,10 +6621,16 @@ fn format_recommendation_choice_for_chat(
 }
 
 /// Render pending or replayed recommendations as plain action lines, not raw JSON.
-fn format_recommendations_for_chat(set: &RecommendationSet) -> String {
+fn format_recommendations_for_chat(set: &RecommendationSet, action_status: Option<&str>) -> String {
     set.choices
         .iter()
-        .map(|choice| format_recommendation_choice_for_chat(choice, false))
+        .map(|choice| {
+            let action = format_recommendation_choice_for_chat(choice, false);
+            match action_status {
+                Some(status) => format!("{action} {status}"),
+                None => action,
+            }
+        })
         .collect::<Vec<_>>()
         .join("\n")
 }

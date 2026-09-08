@@ -15756,9 +15756,12 @@ fn direct_proposal_history_distinguishes_localized_insert_and_run() {
 }
 
 #[test]
-fn direct_proposal_cancel_history_keeps_only_status_and_transcript() {
+fn direct_proposal_cancel_history_marks_action_not_title() {
     let _locale = crate::test_support::lock_locale();
-    for (locale, canceled) in [("en-US", "(canceled)"), ("zh-CN", "(已取消)")] {
+    for (locale, run, canceled) in [
+        ("en-US", "Run", "(canceled)"),
+        ("zh-CN", "运行", "(已取消)"),
+    ] {
         rust_i18n::set_locale(locale);
         for end_before_cancel in [false, true] {
             for has_prose in [false, true] {
@@ -15803,18 +15806,22 @@ fn direct_proposal_cancel_history_keeps_only_status_and_transcript() {
 
                 let turns = &app.session_tab(session_id).completed_turns;
                 assert_eq!(turns.len(), 1);
-                let expected_details = if has_prose {
+                let mut expected_details = if has_prose {
                     vec![ChatMessage::Agent("Service explanation.".into())]
                 } else {
                     Vec::new()
                 };
+                let action = format!("{run}: Restart-Service foo {canceled}");
+                expected_details.push(ChatMessage::Agent(action.clone()));
                 assert_eq!(turns[0].details, expected_details);
-                assert_eq!(turns[0].trailing_marker.as_deref(), Some(canceled));
+                assert_eq!(turns[0].trailing_marker, None);
+                assert!(!turns[0].prompt.contains(canceled));
                 let rendered = render_to_text(&mut app, 100, 30);
                 let compact: String = rendered.chars().filter(|c| !c.is_whitespace()).collect();
-                assert!(compact.contains(canceled), "{locale}: {rendered}");
+                let compact_action: String =
+                    action.chars().filter(|c| !c.is_whitespace()).collect();
+                assert!(compact.contains(&compact_action), "{locale}: {rendered}");
                 assert!(!rendered.contains("Suggested"));
-                assert!(!rendered.contains("Restart-Service"));
                 assert!(!rendered.contains("1. Run:"));
                 assert!(!rendered.contains('✓'));
             }
@@ -15929,6 +15936,8 @@ fn direct_proposal_defers_history_until_tool_updates_finish() {
 
 #[test]
 fn cancel_after_direct_proposal_commits_trailing_transcript_once() {
+    let _locale = crate::test_support::lock_locale();
+    rust_i18n::set_locale("en-US");
     let mut app = test_app();
     let manager = std::sync::Arc::new(
         crate::agent_tools::action_proposal::channel::ProposalChannelManager::new(),
@@ -15962,10 +15971,13 @@ fn cancel_after_direct_proposal_commits_trailing_transcript_once() {
     assert!(tab.completed_turns[0].details.iter().any(
         |detail| matches!(detail, ChatMessage::Agent(text) if text == "Trailing explanation.")
     ));
-    assert!(tab.completed_turns[0]
-        .trailing_marker
-        .as_deref()
-        .is_some_and(|marker| marker.contains("canceled")));
+    assert_eq!(tab.completed_turns[0].trailing_marker, None);
+    assert_eq!(
+        tab.completed_turns[0].details.last(),
+        Some(&ChatMessage::Agent(
+            "Run: Restart-Service foo (canceled)".into()
+        ))
+    );
     assert_eq!(
         final_rx.blocking_recv().unwrap(),
         crate::agent_tools::action_proposal::channel::ProposalFinalStatus::Cancelled

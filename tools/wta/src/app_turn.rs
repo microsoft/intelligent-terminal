@@ -523,7 +523,11 @@ impl App {
                 outcome: TurnOutcome::Recommendation(recommendations),
                 end_pending: true,
                 ..
-            } => Some((format_recommendations_for_chat(recommendations), None, true)),
+            } => Some((
+                format_recommendations_for_chat(recommendations, None),
+                None,
+                true,
+            )),
             TurnState::Surfaced {
                 outcome: TurnOutcome::ResolvedRecommendation { summary },
                 end_pending: true,
@@ -744,7 +748,7 @@ impl App {
         else {
             return;
         };
-        let recommendation_summary = format_recommendations_for_chat(recommendations);
+        let recommendation_summary = format_recommendations_for_chat(recommendations, None);
         let direct_proposal_id = self
             .session_tab(session_id)
             .active_direct_proposal_id
@@ -913,8 +917,8 @@ impl App {
         //   - Submitted / Streaming → commit a fresh completed_turn (prompt +
         //     whatever streamed + canceled marker) so the user always sees
         //     that this turn happened and that they cancelled it.
-        //   - Surfaced{Recommendation}: retain the transcript and cancellation
-        //     status, but remove the unexecuted action summary.
+        //   - Surfaced{Recommendation}: mark each proposed action as cancelled,
+        //     rather than marking the conversation title.
         //   - Other states (Idle / Surfaced{Empty / ChatTurn}) → no-op.
         let new_turn_data: Option<(String, Option<String>, Option<String>)> = match &tab.turn {
             TurnState::Submitted(prompt) => {
@@ -933,14 +937,21 @@ impl App {
             }
             TurnState::Surfaced {
                 prompt,
-                outcome: TurnOutcome::Recommendation(_),
+                outcome: TurnOutcome::Recommendation(recommendations),
                 end_pending: true,
             } => {
                 let label = match prompt.autofix.as_ref() {
                     Some(_) => t!("chat.autofix_prompt_label").into_owned(),
                     None => prompt.text.clone(),
                 };
-                Some((label, None, Some(canceled_marker.clone())))
+                Some((
+                    label,
+                    Some(format_recommendations_for_chat(
+                        recommendations,
+                        Some(&canceled_marker),
+                    )),
+                    None,
+                ))
             }
             TurnState::Surfaced {
                 prompt,
@@ -960,7 +971,10 @@ impl App {
                 outcome: TurnOutcome::Recommendation(recommendations),
                 end_pending: false,
                 ..
-            } => Some(format_recommendations_for_chat(recommendations)),
+            } => Some((
+                format_recommendations_for_chat(recommendations, None),
+                format_recommendations_for_chat(recommendations, Some(&canceled_marker)),
+            )),
             _ => None,
         };
         if let Some((prompt_label, summary, trailing_marker)) = new_turn_data {
@@ -975,13 +989,14 @@ impl App {
                 trailing_marker,
             });
             tab.scroll_to_bottom();
-        } else if let Some(summary) = canceled_card_summary {
+        } else if let Some((summary, canceled_summary)) = canceled_card_summary {
             if let Some((index, last)) = tab.completed_turns.iter_mut().enumerate().next_back() {
-                if matches!(last.details.last(), Some(ChatMessage::Agent(text)) if text == &summary)
-                {
-                    last.details.pop();
+                if let Some(ChatMessage::Agent(text)) = last.details.last_mut() {
+                    if text == &summary {
+                        *text = canceled_summary;
+                    }
                 }
-                last.trailing_marker = Some(canceled_marker);
+                last.trailing_marker = None;
                 tab.invalidate_completed_turn_height(index);
             }
         }

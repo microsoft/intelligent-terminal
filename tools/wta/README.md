@@ -160,8 +160,8 @@ persistent approval automatically.
 
 Terminal-action history uses plain localized action lines such as `Run: <command>`
 or `Insert: <command>`, without suggestion counts, numbering, or recommendation
-checkmarks. Cancelling a pending action removes its unexecuted summary and keeps
-the localized cancellation status alongside any conversation text. Replayed
+checkmarks. Cancelling a pending action retains its summary with a localized
+cancellation status on each action line, not on the conversation title. Replayed
 recommendations use the same plain action-line format.
 
 ## Debug Panel

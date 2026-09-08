@@ -1186,7 +1186,10 @@ impl TabSession {
                                     crate::coordinator::parse_recommendation_set(&text)
                                 {
                                     details.push(ChatMessage::Agent(
-                                        super::format_recommendations_for_chat(&recommendations),
+                                        super::format_recommendations_for_chat(
+                                            &recommendations,
+                                            None,
+                                        ),
                                     ));
                                 } else {
                                     details.push(ChatMessage::Agent(text));
