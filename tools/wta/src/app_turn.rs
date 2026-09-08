@@ -755,7 +755,12 @@ impl App {
             .clone();
         let insert_only =
             self.session_tab(session_id).selected_button == 1 && self.is_send_choice(&choice);
-        let executed_summary = format_recommendation_choice_for_chat(&choice, insert_only);
+        let command_label = if insert_only {
+            t!("chat.tool_kind.insert")
+        } else {
+            t!("chat.tool_kind.run")
+        };
+        let executed_summary = format_recommendation_choice_for_chat(&choice, Some(&command_label));
         let target_tab = self.tab_for_session(session_id);
         let context = self
             .session_tab(session_id)

@@ -2670,7 +2670,7 @@ get time"#
     assert_eq!(
         turn.details,
         vec![ChatMessage::Agent(
-            "Run: Get-Date -Format 'HH:mm:ss'".to_string()
+            "Get-Date -Format 'HH:mm:ss'".to_string()
         )]
     );
 }
@@ -15670,7 +15670,7 @@ fn executing_committed_recommendation_keeps_compact_summary() {
     });
     assert!(matches!(
         app.session_tab(session_id).completed_turns[0].details.last(),
-        Some(ChatMessage::Agent(text)) if text == "Run: Restart-Service foo"
+        Some(ChatMessage::Agent(text)) if text == "Restart-Service foo"
     ));
 
     app.turn_execute_card(session_id);
@@ -15758,10 +15758,7 @@ fn direct_proposal_history_distinguishes_localized_insert_and_run() {
 #[test]
 fn direct_proposal_cancel_history_marks_action_not_title() {
     let _locale = crate::test_support::lock_locale();
-    for (locale, run, canceled) in [
-        ("en-US", "Run", "(canceled)"),
-        ("zh-CN", "运行", "(已取消)"),
-    ] {
+    for (locale, canceled) in [("en-US", "(canceled)"), ("zh-CN", "(已取消)")] {
         rust_i18n::set_locale(locale);
         for end_before_cancel in [false, true] {
             for has_prose in [false, true] {
@@ -15811,7 +15808,7 @@ fn direct_proposal_cancel_history_marks_action_not_title() {
                 } else {
                     Vec::new()
                 };
-                let action = format!("{run}: Restart-Service foo {canceled}");
+                let action = format!("Restart-Service foo {canceled}");
                 expected_details.push(ChatMessage::Agent(action.clone()));
                 assert_eq!(turns[0].details, expected_details);
                 assert_eq!(turns[0].trailing_marker, None);
@@ -15822,6 +15819,9 @@ fn direct_proposal_cancel_history_marks_action_not_title() {
                     action.chars().filter(|c| !c.is_whitespace()).collect();
                 assert!(compact.contains(&compact_action), "{locale}: {rendered}");
                 assert!(!rendered.contains("Suggested"));
+                for label in ["Run:", "Insert:", "运行:", "插入:"] {
+                    assert!(!compact.contains(label), "{locale}: {rendered}");
+                }
                 assert!(!rendered.contains("1. Run:"));
                 assert!(!rendered.contains('✓'));
             }
@@ -15830,9 +15830,9 @@ fn direct_proposal_cancel_history_marks_action_not_title() {
 }
 
 #[test]
-fn replayed_recommendations_have_plain_localized_action_lines() {
+fn replayed_recommendations_do_not_assume_run_or_insert() {
     let _locale = crate::test_support::lock_locale();
-    for (locale, run) in [("en-US", "Run"), ("zh-CN", "运行")] {
+    for locale in ["en-US", "zh-CN"] {
         rust_i18n::set_locale(locale);
         let mut tab = TabSession::default();
         tab.messages = vec![
@@ -15853,9 +15853,7 @@ fn replayed_recommendations_have_plain_localized_action_lines() {
         tab.pack_replayed_messages_into_turns();
         assert_eq!(
             tab.completed_turns[0].details,
-            vec![ChatMessage::Agent(format!(
-                "{run}: Get-Date\n{run}: Get-Date -AsUTC"
-            ))]
+            vec![ChatMessage::Agent("Get-Date\nGet-Date -AsUTC".into())]
         );
     }
 }
@@ -15974,9 +15972,7 @@ fn cancel_after_direct_proposal_commits_trailing_transcript_once() {
     assert_eq!(tab.completed_turns[0].trailing_marker, None);
     assert_eq!(
         tab.completed_turns[0].details.last(),
-        Some(&ChatMessage::Agent(
-            "Run: Restart-Service foo (canceled)".into()
-        ))
+        Some(&ChatMessage::Agent("Restart-Service foo (canceled)".into()))
     );
     assert_eq!(
         final_rx.blocking_recv().unwrap(),

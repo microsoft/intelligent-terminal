@@ -6571,7 +6571,7 @@ mod app_turn;
 
 fn format_recommendation_choice_for_chat(
     choice: &RecommendationChoice,
-    insert_only: bool,
+    command_label: Option<&str>,
 ) -> String {
     use crate::coordinator::{OpenTarget, RecommendedAction};
 
@@ -6579,14 +6579,10 @@ fn format_recommendation_choice_for_chat(
         .actions
         .iter()
         .find_map(|action| match action {
-            RecommendedAction::Send { input, .. } => {
-                let label = if insert_only {
-                    t!("chat.tool_kind.insert")
-                } else {
-                    t!("chat.tool_kind.run")
-                };
-                Some(format!("{label}: {input}"))
-            }
+            RecommendedAction::Send { input, .. } => Some(match command_label {
+                Some(label) => format!("{label}: {input}"),
+                None => input.clone(),
+            }),
             RecommendedAction::OpenAndSend {
                 target,
                 input,
@@ -6625,7 +6621,7 @@ fn format_recommendations_for_chat(set: &RecommendationSet, action_status: Optio
     set.choices
         .iter()
         .map(|choice| {
-            let action = format_recommendation_choice_for_chat(choice, false);
+            let action = format_recommendation_choice_for_chat(choice, None);
             match action_status {
                 Some(status) => format!("{action} {status}"),
                 None => action,

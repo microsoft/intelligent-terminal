@@ -158,11 +158,11 @@ Terminal actions still require their action-card confirmation, and
 **Allow once** option keep the normal permission dialog. WTA does not grant
 persistent approval automatically.
 
-Terminal-action history uses plain localized action lines such as `Run: <command>`
-or `Insert: <command>`, without suggestion counts, numbering, or recommendation
-checkmarks. Cancelling a pending action retains its summary with a localized
-cancellation status on each action line, not on the conversation title. Replayed
-recommendations use the same plain action-line format.
+Pending and replayed command suggestions show only the command, without assuming
+Run or Insert. After the user chooses, history uses the localized
+`Run: <command>` or `Insert: <command>` label. Cancelling retains the command with
+a localized cancellation status on the same line, not on the conversation title.
+History has no suggestion counts, numbering, or recommendation checkmarks.
 
 ## Debug Panel
 
