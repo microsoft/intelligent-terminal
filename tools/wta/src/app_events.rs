@@ -520,6 +520,13 @@ impl App {
                     }) {
                         let tab = self.current_tab_mut();
                         match pressed.hit.kind {
+                            CompletedTurnHitKind::Thought {
+                                detail_index,
+                                active,
+                            } => {
+                                tab.toggle_thought(pressed.hit.turn_index, detail_index, active);
+                                return;
+                            }
                             CompletedTurnHitKind::ToolCall { detail_index } => {
                                 tab.toggle_completed_tool_call(
                                     pressed.hit.turn_index,
@@ -1172,6 +1179,7 @@ impl App {
                 // AgentError because the error is local to one tab's
                 // session-load attempt, not the whole connection.
                 let tab = self.tab_mut(&tab_id);
+                tab.finish_thought();
                 tab.loading_session = false;
                 tab.loading_target_session_id = None;
                 tab.replay_agent_buffer.clear();
@@ -1620,6 +1628,13 @@ impl App {
                 self.current_tab_mut().scroll_to_bottom();
             }
             AppEvent::AgentThoughtChunk { session_id, text } => {
+                if let Some(tab) = self.session_tab_mut_if_current(&session_id) {
+                    if tab.loading_session {
+                        tab.flush_load_replay_pending();
+                        tab.append_thought_chunk(&text);
+                        return;
+                    }
+                }
                 // Late chunk after cancel / completion is dropped by
                 // `turn_observe_chunk` (state isn't Submitted/Streaming).
                 self.turn_observe_chunk(&session_id, ChunkKind::Thought, &text);
@@ -1642,6 +1657,7 @@ impl App {
                 // as a ChatMessage::User so the chat stays in turn
                 // order.
                 if tab.loading_session {
+                    tab.finish_thought();
                     tab.flush_replay_user_buffer();
                     tab.replay_agent_buffer.push_str(&text);
                     return;
@@ -1667,6 +1683,7 @@ impl App {
                 if !tab.loading_session {
                     return;
                 }
+                tab.finish_thought();
                 if !tab.replay_agent_buffer.is_empty() {
                     let prev = std::mem::take(&mut tab.replay_agent_buffer);
                     tab.messages.push(ChatMessage::Agent(prev));
@@ -1726,6 +1743,7 @@ impl App {
                 // follows ACP event order instead of drawing the streaming
                 // buffer after every eagerly inserted tool card.
                 if tab.loading_session {
+                    tab.finish_thought();
                     tab.flush_replay_user_buffer();
                     if !tab.replay_agent_buffer.is_empty() {
                         let text = std::mem::take(&mut tab.replay_agent_buffer);
@@ -1768,6 +1786,7 @@ impl App {
                     return;
                 }
                 // Update in-place in messages
+                tab.finish_thought();
                 for msg in &mut tab.messages {
                     if let ChatMessage::ToolCall {
                         id: ref mid,
@@ -1915,6 +1934,7 @@ impl App {
                     .get_mut(&target_tab)
                     .expect("current session tab exists");
                 if tab.loading_session {
+                    tab.finish_thought();
                     tab.flush_replay_user_buffer();
                     if !tab.replay_agent_buffer.is_empty() {
                         let text = std::mem::take(&mut tab.replay_agent_buffer);
@@ -1948,6 +1968,7 @@ impl App {
                 // user sees them one at a time (front of the queue is the
                 // one rendered + key-handled); resolving the front pops
                 // it and exposes the next.
+                tab.finish_thought();
                 tab.permission.push_back(PermissionState {
                     tool_call_id,
                     description,
@@ -1972,6 +1993,7 @@ impl App {
                 if !tab.turn.can_service_agent_request() && !tab.loading_session {
                     return;
                 }
+                tab.finish_thought();
                 tab.user_input.push_back(UserInputState {
                     request_id,
                     request,
@@ -2873,6 +2895,7 @@ impl App {
                         self.pending_session_load = None;
                         self.pending_yolo_session_tabs.remove(tab_id);
                         let tab = self.tab_mut(tab_id);
+                        tab.finish_thought();
                         tab.loading_session = false;
                         tab.loading_target_session_id = None;
                         tab.replay_agent_buffer.clear();
