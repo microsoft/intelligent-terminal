@@ -561,6 +561,11 @@ Describe 'Feature suite package selection' -Tag 'Unit' {
             @($xml.root.data | Where-Object name -Like 'FreOverlay_AutomaticApproval*') |
                 Should -HaveCount 0 -Because 'FRE must reuse the SettingsEditor localized copy instead of duplicating it'
         }
+
+        $freTestsPath = Join-Path $PSScriptRoot '..\tests\Feature.FreAgentSetup.Tests.ps1'
+        $freTests = Get-Content -LiteralPath $freTestsPath -Raw
+        $freTests | Should -Match 'Send-WtWindowKey\s+-App \$script:app\s+-Vk 0x1B'
+        $freTests | Should -Not -Match "Selector 'Light Dismiss'"
     }
 }
 

@@ -74,7 +74,7 @@ Describe 'Feature §0 FRE agent setup (overlay controls)' -Tag 'Feature' -Skip:(
         Test-UiElementExists -App $script:app -Selector 'AutoErrorToggle' -TimeoutSec 1 |
             Should -BeFalse -Because 'the subordinate automatic-error setting is removed'
 
-        Invoke-UiElement -App $script:app -Selector 'Light Dismiss' -TimeoutSec 5 | Out-Null
+        Send-WtWindowKey -App $script:app -Vk 0x1B -RequireForeground | Out-Null
         (Test-Until -TimeoutSec 5 -IntervalSec 0.2 -Condition {
             (Get-UiElement -App $script:app -Selector 'ErrorDetectionComboBox').expandState -eq 'collapsed'
         }) | Should -BeTrue -Because 'the dropdown popup must be dismissed before later setting assertions'
