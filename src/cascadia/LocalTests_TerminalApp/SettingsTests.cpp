@@ -3,6 +3,7 @@
 
 #include "pch.h"
 
+#include "../inc/AgentYoloPolicy.h"
 #include "../TerminalApp/TerminalPage.h"
 #include "../UnitTests_SettingsModel/TestUtils.h"
 #include "../TerminalSettingsAppAdapterLib/TerminalSettings.h"
@@ -2116,31 +2117,56 @@ namespace TerminalAppLocalTests
 
     void SettingsTests::TestDefaultProviderYoloInheritance()
     {
-        using Page = winrt::TerminalApp::implementation::TerminalPage;
+        namespace Policy = ::Microsoft::Terminal::Settings::Model::AgentYoloPolicy;
 
-        VERIFY_IS_TRUE(Page::_ResolveAutomaticYoloForAgentBinding(
-            true, false, L"copilot", L"copilot", true, false));
-        VERIFY_IS_TRUE(Page::_ResolveAutomaticYoloForAgentBinding(
-            true, false, L"CoPiLoT", L"copilot", false, true));
-        VERIFY_IS_FALSE(Page::_ResolveAutomaticYoloForAgentBinding(
-            true, false, L"copilot", L"claude", false, true));
-        VERIFY_IS_FALSE(Page::_ResolveAutomaticYoloForAgentBinding(
-            true, false, L"copilot", L"claude", true, false));
-        VERIFY_IS_FALSE(Page::_ResolveAutomaticYoloForAgentBinding(
-            true, false, L"opencode", L"opencode", false, true));
-        VERIFY_IS_FALSE(Page::_ResolveAutomaticYoloForAgentBinding(
-            true, false, L"", L"", false, true));
-        VERIFY_IS_FALSE(Page::_ResolveAutomaticYoloForAgentBinding(
-            false, false, L"copilot", L"copilot", true, false));
-        VERIFY_IS_FALSE(Page::_ResolveAutomaticYoloForAgentBinding(
-            true, true, L"copilot", L"copilot", true, false));
-        VERIFY_IS_FALSE(Page::_ResolveAutomaticYoloForAgentBinding(
-            true, false, L"opencode", L"opencode", true, false));
+        VERIFY_IS_TRUE(Policy::CanUserRequestEnable(false));
+        VERIFY_IS_FALSE(Policy::CanUserRequestEnable(true));
+        VERIFY_IS_TRUE(Policy::IsAutomaticProviderKnownUnsupported(L"opencode"));
+        VERIFY_IS_FALSE(Policy::IsAutomaticProviderKnownUnsupported(L"copilot"));
+        VERIFY_IS_TRUE(Policy::IsAutomaticEnableAvailable(false, L"copilot"));
+        VERIFY_IS_FALSE(Policy::IsAutomaticEnableAvailable(true, L"copilot"));
+        VERIFY_IS_FALSE(Policy::IsAutomaticEnableAvailable(false, L"opencode"));
+        VERIFY_IS_FALSE(Policy::IsAutomaticEnableAvailable(false, L""));
+
+        VERIFY_ARE_EQUAL(
+            Policy::AutomaticScope::DefaultProvider,
+            Policy::ResolveAutomaticScope(true, false));
+        VERIFY_ARE_EQUAL(
+            Policy::AutomaticScope::DefaultProvider,
+            Policy::ResolveAutomaticScope(false, true));
+        VERIFY_ARE_EQUAL(
+            Policy::AutomaticScope::LegacyGlobalPreference,
+            Policy::ResolveAutomaticScope(false, false));
+
+        const auto automatic = [](const bool configuredEnabled,
+                                  const bool policyBlocked,
+                                  const std::wstring_view defaultAgentId,
+                                  const std::wstring_view currentAgentId,
+                                  const bool usesSettingsDefaultProvider,
+                                  const bool scopeToDefaultProvider) {
+            return Policy::ShouldRequestAutomaticEnable(
+                configuredEnabled,
+                policyBlocked,
+                defaultAgentId,
+                currentAgentId,
+                Policy::ResolveAutomaticScope(
+                    usesSettingsDefaultProvider,
+                    scopeToDefaultProvider));
+        };
+
+        VERIFY_IS_TRUE(automatic(true, false, L"copilot", L"copilot", true, false));
+        VERIFY_IS_TRUE(automatic(true, false, L"CoPiLoT", L"copilot", false, true));
+        VERIFY_IS_FALSE(automatic(true, false, L"copilot", L"claude", false, true));
+        VERIFY_IS_FALSE(automatic(true, false, L"copilot", L"claude", true, false));
+        VERIFY_IS_FALSE(automatic(true, false, L"opencode", L"opencode", false, true));
+        VERIFY_IS_FALSE(automatic(true, false, L"", L"", false, true));
+        VERIFY_IS_FALSE(automatic(false, false, L"copilot", L"copilot", true, false));
+        VERIFY_IS_FALSE(automatic(true, true, L"copilot", L"copilot", true, false));
+        VERIFY_IS_FALSE(automatic(true, false, L"opencode", L"opencode", true, false));
 
         // Overrides outside this PR's /agent scope retain the existing
         // global behavior until their owning paths adopt this resolver.
-        VERIFY_IS_TRUE(Page::_ResolveAutomaticYoloForAgentBinding(
-            true, false, L"opencode", L"claude", false, false));
+        VERIFY_IS_TRUE(automatic(true, false, L"opencode", L"claude", false, false));
     }
 
     void SettingsTests::TestHotDefaultProviderYoloUsesOutgoingBinding()

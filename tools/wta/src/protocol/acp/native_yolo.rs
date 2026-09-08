@@ -406,7 +406,12 @@ impl NativeYoloState {
             if !self.operation_is_current(&operation) {
                 return Ok(None);
             }
-            if operation.enabled && yolo_state.lock().unwrap().policy_blocked() {
+            if operation.enabled
+                && !yolo_state
+                    .lock()
+                    .unwrap()
+                    .can_user_request_enable()
+            {
                 return Err(NativeYoloApplyError::known(
                     "the AllowYoloMode policy blocks this privileged provider mode".to_string(),
                 ));
@@ -628,7 +633,8 @@ impl NativeYoloState {
                 return Ok(None);
             }
             if operation.enabled
-                && yolo_state.is_some_and(|state| state.lock().unwrap().policy_blocked())
+                && yolo_state
+                    .is_some_and(|state| !state.lock().unwrap().can_user_request_enable())
             {
                 return Err(NativeYoloApplyError::known(
                     "the AllowYoloMode policy blocks provider-native Yolo".to_string(),

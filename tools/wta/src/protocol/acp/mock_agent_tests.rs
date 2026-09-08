@@ -2326,6 +2326,60 @@ async fn dispatch_agent_command_reaches_agent_verbatim() {
 }
 
 #[tokio::test]
+async fn policy_allow_forwards_privileged_agent_command_to_provider() {
+    let local = tokio::task::LocalSet::new();
+    local
+        .run_until(async {
+            let mut h = connect_for_dispatch(MockBehavior::Reply);
+            h.conn
+                .initialize(acp::schema::v1::InitializeRequest::new(
+                    acp::schema::ProtocolVersion::LATEST,
+                ))
+                .await
+                .expect("initialize failed");
+            h.client
+                .state
+                .native_yolo
+                .set_resolved_agent_id(Some(crate::agent_registry::COPILOT_AGENT_ID));
+            h.client
+                .state
+                .yolo_state
+                .lock()
+                .unwrap()
+                .update_runtime(false, false);
+
+            let (tab_to_session, in_flight, memo) = fresh_dispatch_state();
+            let mut prompt = test_prompt(1, "/allow_all", false);
+            prompt.agent_command = true;
+
+            dispatch_prompt(
+                prompt,
+                &h.conn,
+                &tab_to_session,
+                &memo,
+                &in_flight,
+                &h.event_tx,
+                &h.shell_mgr,
+                &h.prompt_timing,
+                &h.client,
+                &PromptUsageIdentity::default(),
+                false,
+                false,
+                true,
+                &h.proposal_channels,
+            );
+
+            let _ = next_agent_chunk(&mut h.event_rx).await;
+            assert_eq!(
+                h.seen_prompts.lock().unwrap().as_slice(),
+                ["/allow_all"],
+                "policy-allowed privileged commands must reach the provider unchanged"
+            );
+        })
+        .await;
+}
+
+#[tokio::test]
 async fn prompt_guard_evaluates_policy_when_the_request_is_sent() {
     let local = tokio::task::LocalSet::new();
     local

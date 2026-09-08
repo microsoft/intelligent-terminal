@@ -5,6 +5,7 @@
 #include "GlobalAppSettings.h"
 #include "../inc/AgentPolicy.h"
 #include "../inc/AgentRegistry.h"
+#include "../inc/AgentYoloPolicy.h"
 #include "../../types/inc/Utils.hpp"
 #include "JsonUtils.h"
 #include "KeyChordSerialization.h"
@@ -14,6 +15,7 @@
 #include "MediaResourceSupport.h"
 
 namespace AgentPolicy = ::Microsoft::Terminal::Settings::Model::AgentPolicy;
+namespace AgentYoloPolicy = ::Microsoft::Terminal::Settings::Model::AgentYoloPolicy;
 using namespace winrt::Microsoft::Terminal::Settings::Model::implementation;
 using namespace winrt::Windows::UI::Xaml;
 using namespace ::Microsoft::Console;
@@ -700,9 +702,8 @@ bool GlobalAppSettings::CanEnableAgentPaneYoloMode() const
 
 bool GlobalAppSettings::CanEnableAgentPaneYoloModeForAgent(const winrt::hstring& agentId) const
 {
-    if (IsYoloModePolicyLocked() ||
-        agentId.empty() ||
-        ::Microsoft::Terminal::Settings::Model::AgentRegistry::IsYoloSettingUnavailableForDefaultAgent(
+    if (!AgentYoloPolicy::IsAutomaticEnableAvailable(
+            IsYoloModePolicyLocked(),
             std::wstring_view{ agentId }))
     {
         return false;
@@ -716,7 +717,8 @@ bool GlobalAppSettings::CanEnableAgentPaneYoloModeForAgent(const winrt::hstring&
 
 bool GlobalAppSettings::ClearAgentPaneYoloModeIfPolicyBlocked()
 {
-    if (!IsYoloModePolicyLocked() || !AgentPaneYoloMode())
+    if (AgentYoloPolicy::CanUserRequestEnable(IsYoloModePolicyLocked()) ||
+        !AgentPaneYoloMode())
     {
         return false;
     }
@@ -727,7 +729,7 @@ bool GlobalAppSettings::ClearAgentPaneYoloModeIfPolicyBlocked()
 
 bool GlobalAppSettings::ClearAgentPaneYoloModeIfUnavailableDefault()
 {
-    if (!::Microsoft::Terminal::Settings::Model::AgentRegistry::IsYoloSettingUnavailableForDefaultAgent(
+    if (!AgentYoloPolicy::IsAutomaticProviderKnownUnsupported(
             std::wstring_view{ AcpAgent() }) ||
         !AgentPaneYoloMode())
     {

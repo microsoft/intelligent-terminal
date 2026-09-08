@@ -20,7 +20,7 @@ impl YoloState {
     }
 
     pub fn effective(&self, _session_id: &str) -> bool {
-        !self.policy_blocked && self.global_default
+        self.can_user_request_enable() && self.global_default
     }
 
     pub fn remove_session(&mut self, session_id: &str) {
@@ -41,11 +41,15 @@ impl YoloState {
 
     pub fn update_runtime(&mut self, global_default: bool, policy_blocked: bool) {
         self.policy_blocked = policy_blocked;
-        self.global_default = global_default && !policy_blocked;
+        self.global_default = global_default && self.can_user_request_enable();
     }
 
     pub fn global_default(&self) -> bool {
         self.global_default
+    }
+
+    pub fn can_user_request_enable(&self) -> bool {
+        !self.policy_blocked
     }
 
     pub fn policy_blocked(&self) -> bool {
@@ -60,11 +64,15 @@ mod tests {
     #[test]
     fn policy_block_fails_closed() {
         let mut state = YoloState::new(true, false);
+        assert!(state.can_user_request_enable());
+
         state.update_runtime(true, true);
+        assert!(!state.can_user_request_enable());
         assert!(!state.effective("session"));
         assert!(!state.effective("other"));
 
         state.update_runtime(false, false);
+        assert!(state.can_user_request_enable());
         assert!(!state.effective("session"));
     }
 }

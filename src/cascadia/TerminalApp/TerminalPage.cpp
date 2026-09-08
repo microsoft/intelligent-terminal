@@ -23,6 +23,7 @@
 #include "../inc/AgentPolicy.h"
 #include "../inc/AgentPaneBackend.h"
 #include "../inc/AgentSourceUtils.h"
+#include "../inc/AgentYoloPolicy.h"
 #include "../inc/WtaProcess.h"
 #include "../TerminalSettingsAppAdapterLib/TerminalSettings.h"
 #include "../inc/CustomModelProviderUtils.h"
@@ -66,6 +67,7 @@ using namespace winrt::Windows::UI::Xaml::Controls;
 using namespace winrt::Windows::UI::Xaml;
 using namespace winrt::Windows::UI::Xaml::Media;
 namespace AgentPolicy = ::Microsoft::Terminal::Settings::Model::AgentPolicy;
+namespace AgentYoloPolicy = ::Microsoft::Terminal::Settings::Model::AgentYoloPolicy;
 using namespace ::TerminalApp;
 using namespace ::Microsoft::Console;
 using namespace ::Microsoft::Terminal::Core;
@@ -2147,33 +2149,6 @@ namespace winrt::TerminalApp::implementation
                connectionState == ConnectionState::Connected;
     }
 
-    bool TerminalPage::_ResolveAutomaticYoloForAgentBinding(
-        const bool configuredEnabled,
-        const bool policyBlocked,
-        const std::wstring_view defaultAgentId,
-        const std::wstring_view currentAgentId,
-        const bool usesSettingsDefaultProvider,
-        const bool scopeToDefaultProvider) noexcept
-    {
-        if (!configuredEnabled || policyBlocked)
-        {
-            return false;
-        }
-
-        if (scopeToDefaultProvider || usesSettingsDefaultProvider)
-        {
-            return !defaultAgentId.empty() &&
-                   !currentAgentId.empty() &&
-                   !::Microsoft::Terminal::Settings::Model::AgentRegistry::IsYoloSettingUnavailableForDefaultAgent(
-                       defaultAgentId) &&
-                   ::Microsoft::Terminal::Settings::Model::AgentRegistry::AgentIdEquals(
-                       defaultAgentId,
-                       currentAgentId);
-        }
-
-        return true;
-    }
-
     bool TerminalPage::_ResolveHotAutomaticYoloForAgentBinding(
         const AgentRuntimeConfigSnapshot& previous,
         const AgentRuntimeConfigSnapshot& current,
@@ -2190,13 +2165,14 @@ namespace winrt::TerminalApp::implementation
                         current.defaultAgentId) ?
                 std::wstring_view{ previous.defaultAgentId } :
                 std::wstring_view{ binding.agentId };
-        return _ResolveAutomaticYoloForAgentBinding(
+        return AgentYoloPolicy::ShouldRequestAutomaticEnable(
             current.yoloEnabled,
             current.yoloPolicyBlocked,
             current.defaultAgentId,
             currentAgentId,
-            binding.followsGlobalAcpModel,
-            scopeToDefaultProvider);
+            AgentYoloPolicy::ResolveAutomaticScope(
+                binding.followsGlobalAcpModel,
+                scopeToDefaultProvider));
     }
 
     TerminalPage::AgentPaneRecreationOptions TerminalPage::_GetAgentPaneRecreationOptions(
@@ -2407,13 +2383,14 @@ namespace winrt::TerminalApp::implementation
 
         auto params = _BuildAgentPaneSettingsRebindPayload(binding);
         const auto runtimeConfig = _CaptureAgentRuntimeConfig();
-        params["yolo_enabled"] = _ResolveAutomaticYoloForAgentBinding(
+        params["yolo_enabled"] = AgentYoloPolicy::ShouldRequestAutomaticEnable(
             runtimeConfig.yoloEnabled,
             runtimeConfig.yoloPolicyBlocked,
             runtimeConfig.defaultAgentId,
             binding.agentId,
-            binding.followsGlobalAcpModel,
-            tab->AgentOverrideUsesDefaultYoloScope());
+            AgentYoloPolicy::ResolveAutomaticScope(
+                binding.followsGlobalAcpModel,
+                tab->AgentOverrideUsesDefaultYoloScope()));
         params["yolo_policy_blocked"] = runtimeConfig.yoloPolicyBlocked;
         params["operation_id"] = std::string{ operationId };
         params["generation"] = Json::UInt64{ generation };
@@ -3544,13 +3521,14 @@ namespace winrt::TerminalApp::implementation
         // EffectiveAgentPaneYoloMode() (AgentPolicy::IsYoloModeAllowed()), so
         // a GPO-blocked org never spawns a helper with this flag set even if
         // the user's settings.json has agentPane.yoloMode: true.
-        if (_ResolveAutomaticYoloForAgentBinding(
+        if (AgentYoloPolicy::ShouldRequestAutomaticEnable(
                 globals.AgentPaneYoloMode(),
                 globals.IsYoloModePolicyLocked(),
                 std::wstring_view{ globals.EffectiveAcpAgent() },
                 std::wstring_view{ effectiveAgentId },
-                followsGlobalAcpModel,
-                tab->AgentOverrideUsesDefaultYoloScope()))
+                AgentYoloPolicy::ResolveAutomaticScope(
+                    followsGlobalAcpModel,
+                    tab->AgentOverrideUsesDefaultYoloScope())))
         {
             helperCmd.append(L" --yolo-mode");
         }
@@ -6775,13 +6753,14 @@ namespace winrt::TerminalApp::implementation
             const auto currentAgentId = agentId.empty() ?
                                             binding.agentId :
                                             std::wstring{ agentId };
-            runtimeConfig.yoloEnabled = _ResolveAutomaticYoloForAgentBinding(
+            runtimeConfig.yoloEnabled = AgentYoloPolicy::ShouldRequestAutomaticEnable(
                 runtimeConfig.yoloEnabled,
                 runtimeConfig.yoloPolicyBlocked,
                 runtimeConfig.defaultAgentId,
                 currentAgentId,
-                binding.followsGlobalAcpModel,
-                statusTab->AgentOverrideUsesDefaultYoloScope());
+                AgentYoloPolicy::ResolveAutomaticScope(
+                    binding.followsGlobalAcpModel,
+                    statusTab->AgentOverrideUsesDefaultYoloScope()));
             auto config = helperNeedsRuntimeConfig ?
                               _BuildAgentReadyRuntimeConfigPayload(
                                   winrt::to_string(effectiveStatusTabId),

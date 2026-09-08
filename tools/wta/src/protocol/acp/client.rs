@@ -5462,12 +5462,12 @@ async fn dispatch_prompt_body(
                 // As with config/reconcile, an ordinary ACP rejection
                 // cannot attest that a requested disable left privileged mode.
                 let restart_required = !enabled || error.restart_required();
-                let policy_blocked = client_task
+                let policy_blocked = !client_task
                     .state
                     .yolo_state
                     .lock()
                     .unwrap()
-                    .policy_blocked();
+                    .can_user_request_enable();
                 let error = error.to_string();
                 tracing::warn!(
                     target: "yolo",
@@ -5514,12 +5514,12 @@ async fn dispatch_prompt_body(
         return;
     }
 
-    let policy_blocked = client_task
+    let policy_blocked = !client_task
         .state
         .yolo_state
         .lock()
         .unwrap()
-        .policy_blocked();
+        .can_user_request_enable();
     if client_task
         .state
         .native_yolo
@@ -5542,12 +5542,12 @@ async fn dispatch_prompt_body(
         return;
     }
 
-    if client_task
+    if !client_task
         .state
         .yolo_state
         .lock()
         .unwrap()
-        .policy_blocked()
+        .can_user_request_enable()
     {
         if let Some(command_name) = client_task
             .state
@@ -5703,8 +5703,10 @@ async fn dispatch_prompt_body(
                     cancelled_at_send.store(true, Ordering::Release);
                     return false;
                 }
-                let policy_blocked = yolo_state.lock().unwrap().policy_blocked();
-                let provider_command_blocked = privileged_agent_command.is_some() && policy_blocked;
+                let can_user_request_enable = yolo_state.lock().unwrap().can_user_request_enable();
+                let policy_blocked = !can_user_request_enable;
+                let provider_command_blocked =
+                    privileged_agent_command.is_some() && !can_user_request_enable;
                 let yolo_safety_error = if provider_command_blocked {
                     None
                 } else if native_yolo

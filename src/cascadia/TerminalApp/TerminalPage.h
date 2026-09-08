@@ -615,13 +615,6 @@ namespace winrt::TerminalApp::implementation
             bool helperEventReady) noexcept;
         static bool _CanRetainAgentPaneForMasterRestart(
             winrt::Microsoft::Terminal::TerminalConnection::ConnectionState connectionState) noexcept;
-        static bool _ResolveAutomaticYoloForAgentBinding(
-            bool configuredEnabled,
-            bool policyBlocked,
-            std::wstring_view defaultAgentId,
-            std::wstring_view currentAgentId,
-            bool usesSettingsDefaultProvider,
-            bool scopeToDefaultProvider) noexcept;
         static bool _ResolveHotAutomaticYoloForAgentBinding(
             const AgentRuntimeConfigSnapshot& previous,
             const AgentRuntimeConfigSnapshot& current,
