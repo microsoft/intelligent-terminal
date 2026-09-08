@@ -298,17 +298,7 @@ namespace winrt::TerminalApp::implementation
         {
             result.FallbackReason = L"marks_unavailable";
         }
-        hstring bufferTail;
-        try
-        {
-            bufferTail = termControl.ReadBufferTail(maxLines + 1, maxCharacters + maxLines + 2);
-        }
-        catch (...)
-        {
-            LOG_CAUGHT_EXCEPTION();
-            result.Pane = {};
-            co_return result;
-        }
+        const auto bufferTail = termControl.ReadBufferTail(maxLines + 1, maxCharacters + maxLines + 2);
 
         const auto bounded = co_await _buildBoundedPaneContext(
             bufferTail,
