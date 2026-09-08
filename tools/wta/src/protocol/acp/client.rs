@@ -2575,9 +2575,8 @@ fn provider_permission_contract_blocked(error: &str) -> String {
 }
 
 fn provider_disable_pending() -> String {
-    provider_permission_contract_blocked(
-        "the provider has not acknowledged the required nonprivileged session state",
-    )
+    let error = t!("system.yolo_disable_pending");
+    provider_permission_contract_blocked(error.as_ref())
 }
 
 fn publish_retryable_lazy_yolo_error(event_tx: &mpsc::UnboundedSender<AppEvent>, session_id: &str) {

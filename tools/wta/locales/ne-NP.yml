@@ -257,5 +257,6 @@ config_picker.title: "सत्र कन्फिगरेसन (↑ ↓ • E
 system.no_config_options: "जอดिएको एजेन्टले कुनै कन्फिगर योग्य सत्र विकल्पहरू विज्ञापन गरेन।"
 # {option} is an Agent-provided option name; {error} is the ACP error.
 system.config_update_failed: "%{option} अद्यावधिक गर्न असफल भयो: %{error}"
+system.yolo_disable_pending: "एजेन्ट प्रदायकले विशेषाधिकार मोड बन्द भएको आवश्यक सत्र अवस्थाको अझै पुष्टि गरेको छैन"  # Shown after the localized failure prefix while prompts remain blocked until the AI agent provider confirms that its privileged session mode is off. Provider means an AI agent provider, not a network provider.
 system.provider_command_blocked_by_policy: "%{command}: तपाईंको संस्थाको नीतिका कारण Yolo mode निष्क्रिय गरिएको छ।"  # {Locked="Yolo","%{command}"} Shown when AllowYoloMode blocks a provider-advertised privileged command.
 system.model_unknown: "अज्ञात मोडेल %{model} — उपलब्ध सूची हेर्न /model टाइप गर्नुहोस्।"  # {Locked="%{model}","/model"}

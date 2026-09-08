@@ -256,5 +256,6 @@ config_picker.title: "پیکربندی نشست (↑ ↓ • Enter • Esc)"
 system.no_config_options: "عامل متصل هیچ گزینه نشست قابل پیکربندی را تبلیغ نکرد."
 # {option} is an Agent-provided option name; {error} is the ACP error.
 system.config_update_failed: "به‌روزرسانی %{option} ناموفق بود: %{error}"
+system.yolo_disable_pending: "ارائه‌دهندهٔ عامل هوش مصنوعی تأیید نکرده است که نشست در وضعیت الزامیِ بدون امتیاز قرار دارد"  # Shown after the localized failure prefix while prompts remain blocked until the AI agent provider confirms that its privileged session mode is off. Provider means an AI agent provider, not a network provider.
 system.provider_command_blocked_by_policy: "%{command}: حالت Yolo توسط سیاست سازمان شما غیرفعال شده است."  # {Locked="Yolo","%{command}"} Shown when AllowYoloMode blocks a provider-advertised privileged command.
 system.model_unknown: "مدل ناشناخته %{model} — برای دیدن فهرست در دسترس، /model را تایپ کنید."  # {Locked="%{model}","/model"}

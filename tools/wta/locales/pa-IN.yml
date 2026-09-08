@@ -257,5 +257,6 @@ config_picker.title: "ਸੈਸ਼ਨ ਸੰਰਚਨਾ (↑ ↓ • Enter • 
 system.no_config_options: "ਜੁੜੇ ਏਜੰਟ ਨੇ ਕੋਈ ਸੰਰਚਨਾਯੋਗ ਸੈਸ਼ਨ ਵਿਕਲਪਾਂ ਦਾ ਇਸ਼ਤਿਹਾਰ ਨਹੀਂ ਦਿੱਤਾ।"
 # {option} is an Agent-provided option name; {error} is the ACP error.
 system.config_update_failed: "%{option} ਨੂੰ ਅੱਪਡੇਟ ਕਰਨ ਵਿੱਚ ਅਸਫਲ: %{error}"
+system.yolo_disable_pending: "ਏਜੰਟ ਪ੍ਰਦਾਤਾ ਨੇ ਹਾਲੇ ਉਸ ਲੋੜੀਂਦੀ ਸੈਸ਼ਨ ਸਥਿਤੀ ਦੀ ਪੁਸ਼ਟੀ ਨਹੀਂ ਕੀਤੀ ਜਿਸ ਵਿੱਚ ਵਿਸ਼ੇਸ਼ ਅਧਿਕਾਰ ਮੋਡ ਬੰਦ ਹੈ"  # Shown after the localized failure prefix while prompts remain blocked until the AI agent provider confirms that its privileged session mode is off. Provider means an AI agent provider, not a network provider.
 system.provider_command_blocked_by_policy: "%{command}: ਤੁਹਾਡੀ ਸੰਸਥਾ ਦੀ ਨੀਤੀ ਕਾਰਨ Yolo mode ਅਯੋਗ ਹੈ।"  # {Locked="Yolo","%{command}"} Shown when AllowYoloMode blocks a provider-advertised privileged command.
 system.model_unknown: "ਅਣਜਾਣ ਮਾਡਲ %{model} — ਉਪਲਬਧ ਸੂਚੀ ਵੇਖਣ ਲਈ /model ਟਾਈਪ ਕਰੋ।"  # {Locked="%{model}","/model"}

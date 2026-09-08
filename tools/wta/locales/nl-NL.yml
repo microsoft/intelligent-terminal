@@ -256,5 +256,6 @@ config_picker.title: "Sessieconfiguratie (↑ ↓ • Enter • Esc)"
 system.no_config_options: "De verbonden agent heeft geen configureerbare sessie-opties geadverteerd."
 # {option} is an Agent-provided option name; {error} is the ACP error.
 system.config_update_failed: "Bijwerken van %{option} is mislukt: %{error}"
+system.yolo_disable_pending: "de leverancier van de AI-agent heeft niet bevestigd dat de sessie zich in de vereiste niet-geprivilegieerde status bevindt"  # Shown after the localized failure prefix while prompts remain blocked until the AI agent provider confirms that its privileged session mode is off. Provider means an AI agent provider, not a network provider.
 system.provider_command_blocked_by_policy: "%{command}: Yolo-modus is uitgeschakeld door het beleid van uw organisatie."  # {Locked="Yolo","%{command}"} Shown when AllowYoloMode blocks a provider-advertised privileged command.
 system.model_unknown: "Onbekend model %{model} — typ /model om de beschikbare lijst te zien."  # {Locked="%{model}","/model"}

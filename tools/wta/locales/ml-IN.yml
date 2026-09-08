@@ -257,5 +257,6 @@ config_picker.title: "സെഷൻ കോൺഫിഗറേഷൻ (↑ ↓ • E
 system.no_config_options: "ബന്ധിപ്പിച്ച ഏജന്റ് കോൺഫിഗർ ചെയ്യാവുന്ന സെഷൻ ഓപ്ഷനുകളൊന്നും പരസ്യപ്പെടുത്തിയില്ല."
 # {option} is an Agent-provided option name; {error} is the ACP error.
 system.config_update_failed: "%{option} അപ്‌ഡേറ്റ് ചെയ്യുന്നതിൽ പരാജയപ്പെട്ടു: %{error}"
+system.yolo_disable_pending: "പ്രത്യേകാധികാര മോഡ് പ്രവർത്തനരഹിതമായിരിക്കേണ്ട സെഷൻ നില ഏജന്റ് ദാതാവ് ഇതുവരെ സ്ഥിരീകരിച്ചിട്ടില്ല"  # Shown after the localized failure prefix while prompts remain blocked until the AI agent provider confirms that its privileged session mode is off. Provider means an AI agent provider, not a network provider.
 system.provider_command_blocked_by_policy: "%{command}: നിങ്ങളുടെ സംഘടനയുടെ നയം കാരണം Yolo mode പ്രവർത്തനരഹിതമാണ്."  # {Locked="Yolo","%{command}"} Shown when AllowYoloMode blocks a provider-advertised privileged command.
 system.model_unknown: "അറിയാത്ത മോഡൽ %{model} — ലഭ്യമായ പട്ടിക കാണാൻ /model ടൈപ്പ് ചെയ്യുക."  # {Locked="%{model}","/model"}

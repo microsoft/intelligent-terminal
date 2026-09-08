@@ -256,5 +256,6 @@ config_picker.title: "Oturum yapılandırması (↑ ↓ • Enter • Esc)"
 system.no_config_options: "Bağlı aracı, yapılandırılabilir herhangi bir oturum seçeneği bildirmedi."
 # {option} is an Agent-provided option name; {error} is the ACP error.
 system.config_update_failed: "%{option} güncelleştirilemedi: %{error}"
+system.yolo_disable_pending: "AI aracı sağlayıcısı oturumun gerekli ayrıcalıksız durumda olduğunu onaylamadı"  # Shown after the localized failure prefix while prompts remain blocked until the AI agent provider confirms that its privileged session mode is off. Provider means an AI agent provider, not a network provider.
 system.provider_command_blocked_by_policy: "%{command}: Yolo modu kuruluşunuzun ilkesi tarafından devre dışı bırakıldı."  # {Locked="Yolo","%{command}"} Shown when AllowYoloMode blocks a provider-advertised privileged command.
 system.model_unknown: "Bilinmeyen model %{model} — kullanılabilir listeyi görmek için /model yazın."  # {Locked="%{model}","/model"}
