@@ -785,7 +785,7 @@
     <value>Лево</value>
     <comment>Value shown in the agent pane position dropdown (selects which side of the terminal the agent pane opens on). Translation should match the existing FreOverlay_PanePositionLeft string used in the first-run experience.</comment>
   </data><data name="AIAgents_YoloMode.Header" xml:space="preserve"><value>Аутоматско одобравање</value><comment>Header for the Settings toggle that enables automatic approval for the AI agent running in the agent pane.</comment></data>
-<data name="AIAgents_YoloMode.HelpText" xml:space="preserve"><value>Ваш агент у панелу агента ради са пуним дозволама захваљујући аутоматском одобравању које пружа сам агент</value><comment>Description shown under the automatic approval toggle. Agent means the AI intelligent agent in the agent pane, not a proxy or human representative. Full permissions and automatic approval are provided by that agent.</comment></data>
+<data name="AIAgents_YoloMode.HelpText" xml:space="preserve"><value>Ваш агент у панелу агента ради са пуним дозволама које обезбеђује CLI агента</value><comment>{Locked="CLI"} Description shown under the automatic approval toggle. Agent means an AI intelligent agent in the agent pane, not a proxy or human representative. Full permissions are provided by the agent CLI.</comment></data>
   
   
   

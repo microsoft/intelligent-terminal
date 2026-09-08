@@ -497,7 +497,7 @@ Describe 'Yolo Settings localization contract' -Tag 'Unit' {
         [string]($resources.root.data |
                 Where-Object name -eq 'AIAgents_YoloMode.HelpText' |
                 Select-Object -First 1).value |
-            Should -Be 'Your agent in the agent pane runs with full permissions using automatic approval provided by the agent'
+            Should -Be 'Your agent in the agent pane runs with full permissions provided by the agent CLI'
     }
 
     It 'keeps every Settings locale structurally aligned' {
@@ -523,6 +523,11 @@ Describe 'Yolo Settings localization contract' -Tag 'Unit' {
                 $target | Should -HaveCount 1 -Because "$key must exist exactly once in $($localeDirectory.Name)"
                 [string]$target[0].value | Should -Not -BeNullOrEmpty
                 [string]$target[0].comment | Should -Be ([string]$source[0].comment)
+
+                if ($key -eq 'AIAgents_YoloMode.HelpText') {
+                    [string]$target[0].comment | Should -MatchExactly '\{Locked="CLI"\}'
+                    [string]$target[0].value | Should -MatchExactly '(?<![A-Za-z])CLI(?![A-Za-z])'
+                }
 
                 if ($localeDirectory.Name -notin @('en-US', 'qps-ploc', 'qps-ploca', 'qps-plocm')) {
                     [string]$target[0].value |
