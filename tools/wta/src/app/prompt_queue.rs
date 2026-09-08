@@ -349,13 +349,18 @@ impl App {
     }
 
     pub(super) fn ensure_prompt_connection(&mut self) -> bool {
+        let tab_id = self.active_tab_key().to_owned();
+        self.ensure_prompt_connection_for_tab(&tab_id)
+    }
+
+    fn ensure_prompt_connection_for_tab(&mut self, tab_id: &str) -> bool {
         if matches!(
             self.state,
             ConnectionState::Connected | ConnectionState::Connecting(_)
         ) {
             true
         } else {
-            let tab = self.current_tab_mut();
+            let tab = self.tab_mut(tab_id);
             tab.messages
                 .push(ChatMessage::Error(t!("connection.lost").into_owned()));
             tab.scroll_to_bottom();
@@ -370,11 +375,11 @@ impl App {
         let tab_id = self.active_tab_key().to_owned();
         let tab = self.current_tab();
         let display = tab.input.clone();
-        let text = tab.attachments.submission_text(display.clone());
+        let history_text = tab.attachments.submission_text(display.clone());
         let pending_image_bytes = tab.attachments.payload_bytes();
         let kind = if manual_fix.is_some() {
             RequestKind::ManualFix
-        } else if self.agent_command_for_input(&text).is_some() {
+        } else if self.agent_command_for_input(&history_text).is_some() {
             RequestKind::AgentCommand
         } else {
             RequestKind::Prompt
@@ -388,12 +393,12 @@ impl App {
         };
         // Attachment tokens belong to the editor, not the /fix user intent.
         let text = if let Some(hint) = manual_fix {
-            commands::parse(&text)
+            commands::parse(&history_text)
                 .filter(|command| command.kind == CommandKind::Fix)
                 .map(|command| command.rest)
                 .unwrap_or(hint)
         } else {
-            text
+            history_text.clone()
         };
         let submission = match kind {
             RequestKind::AgentCommand => {
@@ -424,7 +429,7 @@ impl App {
         }
         let tab = self.current_tab_mut();
         item.submission = item.submission.with_images(tab.attachments.take_images());
-        tab.record_input_history(&item.submission.text);
+        tab.record_input_history(&history_text);
         let request_id = item.submission.id;
         let cancellation = item.submission.cancellation_token();
         tab.prompt_queue.insert(item);
@@ -482,6 +487,9 @@ impl App {
         summary: &str,
         forced: bool,
     ) {
+        if !self.ensure_prompt_connection_for_tab(tab_id) {
+            return;
+        }
         let context = PaneContext {
             pane_id: self.pane_id.clone(),
             tab_id: Some(tab_id.to_owned()),
@@ -915,6 +923,168 @@ mod tests {
                     Some(ChatMessage::Error(text)) if text == t!("connection.lost").as_ref()));
                 enter(&mut app, "/help");
                 assert!(app.help_overlay_visible);
+            }
+        }
+    }
+
+    #[test]
+    fn unavailable_autofix_rejects_requests_without_blocking_restart_or_retry() {
+        let _locale = crate::test_support::lock_locale();
+        for state in [
+            ConnectionState::Disconnected,
+            ConnectionState::Failed("startup failed".into()),
+        ] {
+            for automatic in [false, true] {
+                let (mut app, mut rx) = app();
+                app.show_welcome_hint = false;
+                app.autofix_enabled = automatic;
+                let notification = WtNotification {
+                    severity: WtEventSeverity::Actionable,
+                    pane_id: "failed-source".into(),
+                    tab_id: Some("queue-tab".into()),
+                    summary: "Command failed (exit 1)".into(),
+                    acknowledged: false,
+                    age_ticks: 0,
+                };
+                if !automatic {
+                    app.maybe_trigger_autofix(&notification);
+                }
+                app.state = state.clone();
+                let (restart_tx, mut restart_rx) = mpsc::unbounded_channel();
+                app.restart_tx = restart_tx;
+                if automatic {
+                    app.maybe_trigger_autofix(&notification);
+                } else {
+                    app.handle_autofix_execute_from_detected("failed-source", Some("queue-tab"));
+                }
+                let tab = app.current_tab();
+                assert!(tab.prompt_queue.entries.is_empty());
+                assert!(tab.prompt_queue.echoes.is_empty());
+                assert!(tab.autofix.detected_request_id.is_none());
+                assert!(tab.turn.is_idle());
+                assert!(matches!(tab.messages.last(), Some(ChatMessage::Error(text))
+                    if text == t!("connection.lost").as_ref()));
+                assert!(rx.try_recv().is_err());
+
+                enter(&mut app, "/restart");
+                assert!(matches!(
+                    restart_rx.try_recv(),
+                    Ok(AgentLifecycleRequest::RestartMaster)
+                ));
+                assert!(matches!(app.state, ConnectionState::Connecting(_)));
+                if automatic {
+                    app.maybe_trigger_autofix(&notification);
+                } else {
+                    app.handle_autofix_execute_from_detected("failed-source", Some("queue-tab"));
+                }
+                assert_eq!(app.current_tab().prompt_queue.entries.len(), 1);
+                super::super::tests::complete_autofix_capture(&mut app, "queue-tab");
+                assert!(rx.try_recv().is_err());
+                app.state = ConnectionState::Connected;
+                app.dispatch_prompt_queues();
+                assert_eq!(rx.try_recv().unwrap().text, notification.summary);
+                assert!(rx.try_recv().is_err());
+            }
+        }
+    }
+
+    #[test]
+    fn unavailable_autofix_reports_connection_error_only_to_owning_tab() {
+        let _locale = crate::test_support::lock_locale();
+        let (mut app, mut rx) = app();
+        app.state = ConnectionState::Failed("startup failed".into());
+        app.autofix_enabled = true;
+        app.current_tab_mut().replace_input("keep my draft".into());
+        let messages_before = app.current_tab().messages.len();
+        app.maybe_trigger_autofix(&WtNotification {
+            severity: WtEventSeverity::Actionable,
+            pane_id: "background-source".into(),
+            tab_id: Some("background-tab".into()),
+            summary: "Command failed (exit 1)".into(),
+            acknowledged: false,
+            age_ticks: 0,
+        });
+        let target = &app.tab_sessions["background-tab"];
+        assert!(target.prompt_queue.entries.is_empty());
+        assert!(
+            matches!(target.messages.last(), Some(ChatMessage::Error(text))
+            if text == t!("connection.lost").as_ref())
+        );
+        assert_eq!(app.current_tab().messages.len(), messages_before);
+        assert_eq!(app.current_tab().input, "keep my draft");
+        assert!(!app.queue_blocks_session_change());
+        assert!(rx.try_recv().is_err());
+    }
+
+    #[test]
+    fn typed_fix_history_replays_command_with_fresh_capture_without_image_tokens() {
+        let _locale = crate::test_support::lock_locale();
+        for input in [
+            "/fix ",
+            "/fix explain why this failed",
+            "/fix first\nsecond ",
+        ] {
+            for with_image in [false, true] {
+                for completed in [false, true] {
+                    let (mut app, mut rx) = app();
+                    app.show_welcome_hint = false;
+                    app.source_session_id = Some("original-source".into());
+                    let tab = app.current_tab_mut();
+                    tab.replace_input(input.into());
+                    if with_image {
+                        tab.attachments.insert_image(
+                            &mut tab.input,
+                            &mut tab.cursor_pos,
+                            crate::clipboard_image::PastedImage {
+                                data_base64: "aW1hZ2U=".into(),
+                                mime_type: "image/png".into(),
+                                label: "failure.png".into(),
+                            },
+                        );
+                    }
+                    app.handle_event(AppEvent::Key(KeyEvent::new(
+                        KeyCode::Enter,
+                        KeyModifiers::NONE,
+                    )));
+                    assert_eq!(
+                        app.current_tab().prompt_queue.entries[0].kind,
+                        RequestKind::ManualFix
+                    );
+                    if completed {
+                        super::super::tests::complete_autofix_capture(&mut app, "queue-tab");
+                        assert_eq!(rx.try_recv().unwrap().images.len(), usize::from(with_image));
+                        end(&mut app);
+                    } else {
+                        enter(&mut app, "/stop");
+                    }
+                    app.source_session_id = Some("retry-source".into());
+                    app.handle_event(AppEvent::Key(KeyEvent::new(
+                        KeyCode::Up,
+                        KeyModifiers::NONE,
+                    )));
+                    assert_eq!(app.current_tab().input, input);
+                    assert!(app.current_tab().attachments.is_empty());
+                    app.handle_event(AppEvent::Key(KeyEvent::new(
+                        KeyCode::Enter,
+                        KeyModifiers::NONE,
+                    )));
+                    let entry = &app.current_tab().prompt_queue.entries[0];
+                    assert_eq!(entry.kind, RequestKind::ManualFix);
+                    assert!(entry.capturing);
+                    assert!(rx.try_recv().is_err());
+                    super::super::tests::complete_autofix_capture(&mut app, "queue-tab");
+                    let replay = rx.try_recv().unwrap();
+                    assert_eq!(replay.text, commands::parse(input).unwrap().rest);
+                    assert_eq!(
+                        replay.autofix_text_kind,
+                        Some(crate::protocol::acp::client::AutofixTextKind::UserRequest)
+                    );
+                    assert_eq!(
+                        replay.autofix_snapshot.unwrap().source_pane_id(),
+                        "retry-source"
+                    );
+                    assert!(replay.images.is_empty());
+                }
             }
         }
     }

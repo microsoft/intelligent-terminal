@@ -156,7 +156,10 @@ User requests run in submission order, one ACP turn at a time; separate messages
 are not merged or injected into an active turn. Text and image attachments belong
 to the request that was submitted, not to the next draft.
 Disconnected or failed agents do not accept new requests: the draft and its
-attachments stay in the editor with a connection error.
+attachments stay in the editor with a connection error. Automatic Autofix and
+diagnostics activation also reject requests in these states, reporting the error
+in the owning tab rather than leaving work queued that would block `/restart`.
+Requests can be accepted again once the agent is connecting.
 
 Pending requests automatically appear directly above the input box, independently
 of chat scrolling. The pinned list shows a pending-count header and numbered,
@@ -202,6 +205,10 @@ do not replace its evidence or discard the explicit request. If the source chang
 before capture completes, the request fails visibly instead of diagnosing the wrong
 command. Disabling automatic suggestions leaves detected errors available for
 manual analysis.
+
+Input history preserves the `/fix` command prefix but does not retain image
+attachments. Resubmitting a recalled `/fix` captures the current source context
+again, rather than reusing evidence from the earlier request.
 
 Hiding the agent pane or dragging its tab between windows preserves the queue.
 The queue is not persisted across helper/app exit or crashes, and it cannot
