@@ -2575,9 +2575,8 @@ fn provider_permission_contract_blocked(error: &str) -> String {
 }
 
 fn provider_disable_pending() -> String {
-    provider_permission_contract_blocked(
-        "the provider has not acknowledged the required nonprivileged session state",
-    )
+    let error = t!("system.yolo_disable_pending");
+    provider_permission_contract_blocked(error.as_ref())
 }
 
 fn publish_retryable_lazy_yolo_error(event_tx: &mpsc::UnboundedSender<AppEvent>, session_id: &str) {
@@ -5889,10 +5888,10 @@ mod tests {
         acp_error_detail, acp_result_failure_fields, bounded_tool_output_parts,
         claim_unexpected_transport_loss, complete_prompt_request, complete_transport_shutdown,
         inject_wta_pane_meta, is_redundant_startup_model_error, post_login_authenticate_error,
-        retire_queued_prompt_submissions, session_mcp_tool_from_title, stop_prompt_tasks,
-        timeout_result_failure_fields, tool_call_exit_code, tool_call_kind_label,
-        tool_call_location_hint, tool_call_target, AcpClientExit, ClientState,
-        PromptDispatchCleanup, PromptSubmission, PromptTask, PromptTimingState,
+        provider_disable_pending, retire_queued_prompt_submissions, session_mcp_tool_from_title,
+        stop_prompt_tasks, timeout_result_failure_fields, tool_call_exit_code,
+        tool_call_kind_label, tool_call_location_hint, tool_call_target, AcpClientExit,
+        ClientState, PromptDispatchCleanup, PromptSubmission, PromptTask, PromptTimingState,
         PromptUsageIdentity, SessionMcpTool, SoftStopReason, WtaClient,
     };
     use crate::app_contracts::AppEvent;
@@ -5902,6 +5901,24 @@ mod tests {
     use std::sync::{Arc, Mutex};
     use tokio::sync::mpsc;
     use tokio_util::sync::CancellationToken;
+
+    #[test]
+    fn provider_disable_pending_localizes_reason() {
+        const ENGLISH_PENDING: &str =
+            "the provider has not acknowledged the required nonprivileged session state";
+        let _locale = crate::test_support::lock_locale();
+        rust_i18n::set_locale("de-DE");
+
+        let localized_error = t!("system.yolo_disable_pending");
+        let message = provider_disable_pending();
+
+        assert_ne!(localized_error.as_ref(), ENGLISH_PENDING);
+        assert!(message.ends_with(localized_error.as_ref()));
+        assert!(
+            !message.contains(ENGLISH_PENDING),
+            "pending reason must be localized: {message}"
+        );
+    }
 
     #[test]
     fn prompt_dispatch_cleanup_finds_rekeyed_identity() {

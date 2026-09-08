@@ -251,5 +251,6 @@ config_picker.title: "세션 구성 (↑ ↓ • Enter • Esc)"
 system.no_config_options: "연결된 에이전트가 구성 가능한 세션 옵션을 알리지 않았습니다."
 # {option} is an Agent-provided option name; {error} is the ACP error.
 system.config_update_failed: "%{option} 업데이트 실패: %{error}"
+system.yolo_disable_pending: "에이전트 공급자가 필요한 비특권 세션 상태를 아직 확인하지 않았습니다"  # Shown after the localized failure prefix while prompts remain blocked until the AI agent provider confirms that its privileged session mode is off. Provider means an AI agent provider, not a network provider.
 system.provider_command_blocked_by_policy: "%{command}: 조직의 정책으로 인해 Yolo 모드가 비활성화되어 있습니다."  # {Locked="Yolo","%{command}"} Shown when AllowYoloMode blocks a provider-advertised privileged command.
 system.model_unknown: "알 수 없는 모델 %{model} — 사용 가능한 목록을 보려면 /model을 입력하세요."  # {Locked="%{model}","/model"}

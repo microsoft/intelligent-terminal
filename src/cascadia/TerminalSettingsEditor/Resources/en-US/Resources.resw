@@ -839,12 +839,12 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
     <comment>Value shown in the agent pane position dropdown (selects which side of the terminal the agent pane opens on). Translation should match the existing FreOverlay_PanePositionLeft string used in the first-run experience.</comment>
   </data>
   <data name="AIAgents_YoloMode.Header" xml:space="preserve">
-    <value>Use provider Yolo mode</value>
-    <comment>{Locked="Yolo"} Header for the global setting that asks each AI agent provider to enable its advertised ACP session Yolo capability.</comment>
+    <value>Automatic approval</value>
+    <comment>Header for the Settings toggle that enables automatic approval for the AI agent running in the agent pane.</comment>
   </data>
   <data name="AIAgents_YoloMode.HelpText" xml:space="preserve">
-    <value>Uses the agent provider's ACP session mode to reduce or bypass confirmations. The provider defines the resulting permissions, sandbox, file access, and network access. Providers without a supported mode continue to ask for permission.</value>
-    <comment>{Locked="ACP"} Risk warning shown under the Yolo toggle. Here provider means the selected AI agent provider, not a network provider.</comment>
+    <value>Your agent in the agent pane runs with full permissions provided by the agent CLI</value>
+    <comment>{Locked="CLI"} Description shown under the automatic approval toggle. Agent means an AI intelligent agent in the agent pane, not a proxy or human representative. Full permissions are provided by the agent CLI.</comment>
   </data>
   <data name="Profile_OpacitySlider.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
     <value>Background opacity</value>

@@ -101,6 +101,7 @@ namespace winrt::Microsoft::Terminal::Control::implementation
 
         int ScrollOffset() const;
         int ViewHeight() const;
+        int ViewWidth() const;
         int BufferHeight() const;
 
         bool HasSelection() const;
@@ -176,7 +177,9 @@ namespace winrt::Microsoft::Terminal::Control::implementation
         static Windows::UI::Xaml::Thickness ParseThicknessFromPadding(const hstring padding);
 
         hstring ReadEntireBuffer() const;
+        hstring ReadBufferTail(int32_t maxLogicalLines, int32_t maxCharacters) const;
         hstring ReadLastPrompt() const;
+        hstring ReadLastPromptBounded(int32_t maxLogicalLines, int32_t maxCharacters) const;
         Control::CommandHistoryContext CommandHistory() const;
         void UpdateWinGetSuggestions(Windows::Foundation::Collections::IVector<hstring> suggestions);
 

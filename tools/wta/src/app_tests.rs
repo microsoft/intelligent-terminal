@@ -11622,6 +11622,380 @@ fn double_click_in_input_dialog_preserves_word_selection() {
 }
 
 #[test]
+fn input_selection_deletes_entire_draft() {
+    for key in [
+        KeyEvent::new(KeyCode::Backspace, KeyModifiers::NONE),
+        KeyEvent::new(KeyCode::Delete, KeyModifiers::NONE),
+        KeyEvent::new(KeyCode::Backspace, KeyModifiers::CONTROL),
+    ] {
+        let mut app = test_app();
+        app.current_tab_mut()
+            .replace_input("first\n\u{e9}\u{4e2d}".into());
+        app.current_tab_mut()
+            .messages
+            .push(ChatMessage::info("KEEP_HISTORY"));
+        render_to_text(&mut app, 80, 16);
+        app.handle_event(AppEvent::Key(KeyEvent::new(
+            KeyCode::Char('a'),
+            KeyModifiers::CONTROL,
+        )));
+        app.handle_event(AppEvent::Key(key));
+        assert!(
+            app.current_tab().input.is_empty(),
+            "selected draft must be deleted by {key:?}"
+        );
+        assert_eq!(app.current_tab().cursor_pos, 0);
+        assert!(render_to_text(&mut app, 80, 16).contains("KEEP_HISTORY"));
+    }
+}
+
+#[test]
+fn input_selection_repeated_select_all_then_typing_replaces_draft() {
+    let mut app = test_app();
+    app.current_tab_mut().replace_input("original draft".into());
+    render_to_text(&mut app, 80, 16);
+    for _ in 0..2 {
+        app.handle_event(AppEvent::Key(KeyEvent::new(
+            KeyCode::Char('a'),
+            KeyModifiers::CONTROL,
+        )));
+    }
+    app.handle_event(AppEvent::Key(KeyEvent::new(
+        KeyCode::Char('x'),
+        KeyModifiers::NONE,
+    )));
+    assert_eq!(app.current_tab().input, "x");
+    assert_eq!(app.current_tab().cursor_pos, 1);
+}
+
+#[test]
+fn input_selection_paste_replaces_draft_without_submitting() {
+    let mut app = test_app();
+    app.current_tab_mut().pane_open = true;
+    app.current_tab_mut().replace_input("original draft".into());
+    render_to_text(&mut app, 80, 16);
+    app.handle_event(AppEvent::Key(KeyEvent::new(
+        KeyCode::Char('a'),
+        KeyModifiers::CONTROL,
+    )));
+    app.current_tab_mut().paste_pending = true;
+    app.insert_agent_paste_text(DEFAULT_TAB_ID, 0, "new\r\n\u{4e2d}");
+    assert_eq!(app.current_tab().input, "new\n\u{4e2d}");
+    assert_eq!(app.current_tab().cursor_pos, app.current_tab().input.len());
+    assert!(app.current_tab().turn.is_idle());
+}
+
+#[test]
+fn input_selection_escape_dismisses_selection_without_clearing_draft() {
+    let mut app = test_app();
+    app.current_tab_mut().replace_input("keep draft".into());
+    render_to_text(&mut app, 80, 16);
+    app.handle_event(AppEvent::Key(KeyEvent::new(
+        KeyCode::Char('a'),
+        KeyModifiers::CONTROL,
+    )));
+    app.handle_event(AppEvent::Key(KeyEvent::new(
+        KeyCode::Esc,
+        KeyModifiers::NONE,
+    )));
+    assert_eq!(app.current_tab().input, "keep draft");
+    app.handle_event(AppEvent::Key(KeyEvent::new(
+        KeyCode::Char('!'),
+        KeyModifiers::SHIFT,
+    )));
+    assert_eq!(app.current_tab().input, "keep draft!");
+}
+
+#[test]
+fn input_selection_cursor_keys_collapse_to_start_or_end() {
+    for (key, expected) in [
+        (KeyEvent::new(KeyCode::Left, KeyModifiers::NONE), "!one two"),
+        (
+            KeyEvent::new(KeyCode::Right, KeyModifiers::NONE),
+            "one two!",
+        ),
+        (KeyEvent::new(KeyCode::Home, KeyModifiers::NONE), "!one two"),
+        (KeyEvent::new(KeyCode::End, KeyModifiers::NONE), "one two!"),
+        (
+            KeyEvent::new(KeyCode::Left, KeyModifiers::CONTROL),
+            "!one two",
+        ),
+        (
+            KeyEvent::new(KeyCode::Right, KeyModifiers::CONTROL),
+            "one two!",
+        ),
+    ] {
+        let mut app = test_app();
+        app.current_tab_mut().replace_input("one two".into());
+        app.current_tab_mut().cursor_pos = 3;
+        render_to_text(&mut app, 80, 16);
+        app.handle_event(AppEvent::Key(KeyEvent::new(
+            KeyCode::Char('a'),
+            KeyModifiers::CONTROL,
+        )));
+        app.handle_event(AppEvent::Key(key));
+        app.handle_event(AppEvent::Key(KeyEvent::new(
+            KeyCode::Char('!'),
+            KeyModifiers::SHIFT,
+        )));
+        assert_eq!(app.current_tab().input, expected, "collapse with {key:?}");
+    }
+}
+
+#[test]
+fn input_selection_highlights_draft_but_not_chat() {
+    use ratatui::style::Modifier;
+    let mut app = test_app();
+    app.current_tab_mut()
+        .messages
+        .push(ChatMessage::info("HISTORY_MARKER"));
+    app.current_tab_mut().replace_input("DRAFT_MARKER".into());
+    render_to_text(&mut app, 80, 16);
+    app.handle_event(AppEvent::Key(KeyEvent::new(
+        KeyCode::Char('a'),
+        KeyModifiers::CONTROL,
+    )));
+    let buffer = render_to_buffer(&mut app, 80, 16);
+    let text = buffer_to_text(&buffer);
+    for (marker, selected) in [("DRAFT_MARKER", true), ("HISTORY_MARKER", false)] {
+        let (x, y) = text
+            .lines()
+            .enumerate()
+            .find_map(|(row, line)| {
+                line.find(marker)
+                    .map(|index| (line[..index].chars().count() as u16, row as u16))
+            })
+            .expect("marker must be rendered");
+        for offset in 0..marker.len() as u16 {
+            assert_eq!(
+                buffer[(x + offset, y)]
+                    .modifier
+                    .contains(Modifier::REVERSED),
+                selected,
+                "{marker}"
+            );
+        }
+    }
+    assert!(
+        app.text_selection.selected_text().is_none(),
+        "editable selection must not be a frame selection"
+    );
+}
+
+#[test]
+fn input_selection_copy_and_cut_preserve_exact_source_text() {
+    let mut app = test_app();
+    let draft = "wrapped source\n\u{e9}\u{4e2d}";
+    app.current_tab_mut().replace_input(draft.into());
+    app.handle_event(AppEvent::Key(KeyEvent::new(
+        KeyCode::Char('a'),
+        KeyModifiers::CONTROL,
+    )));
+    app.close_pane_armed_at = Some(std::time::Instant::now());
+    assert!(app.copy_input_selection(false, |text| {
+        assert_eq!(text, draft);
+        Ok(())
+    }));
+    assert_eq!(app.current_tab().input, draft);
+    assert!(app.current_tab().input_all_selected);
+    assert!(app.close_pane_armed_at.is_none());
+    app.close_pane_armed_at = Some(std::time::Instant::now());
+    assert!(app.copy_input_selection(true, |text| {
+        assert_eq!(text, draft);
+        Ok(())
+    }));
+    assert!(app.current_tab().input.is_empty());
+    assert!(!app.current_tab().input_all_selected);
+    assert!(app.close_pane_armed_at.is_none());
+}
+
+#[test]
+fn input_selection_clipboard_failure_keeps_draft_and_consumes_copy() {
+    for cut in [false, true] {
+        let mut app = test_app();
+        app.current_tab_mut()
+            .replace_input("do not lose this".into());
+        app.handle_event(AppEvent::Key(KeyEvent::new(
+            KeyCode::Char('a'),
+            KeyModifiers::CONTROL,
+        )));
+        // The helper must disarm independently of the key dispatcher.
+        app.close_pane_armed_at = Some(std::time::Instant::now());
+        assert!(app.copy_input_selection(cut, |_| Err(std::io::Error::other("clipboard busy"))));
+        assert_eq!(app.current_tab().input, "do not lose this");
+        assert!(app.current_tab().input_all_selected);
+        assert!(app.close_pane_armed_at.is_none());
+    }
+}
+
+#[test]
+fn input_selection_unhandled_copy_preserves_close_arm() {
+    for cut in [false, true] {
+        let mut app = test_app();
+        app.handle_event(AppEvent::Key(KeyEvent::new(
+            KeyCode::Char('c'),
+            KeyModifiers::CONTROL,
+        )));
+        let armed = app.close_pane_armed_at;
+        assert!(armed.is_some());
+        assert!(!app.copy_input_selection(cut, |_| {
+            panic!("an unhandled event must not access the clipboard")
+        }));
+        assert_eq!(app.close_pane_armed_at, armed);
+    }
+}
+
+#[test]
+fn input_selection_copy_failure_cannot_retain_an_earlier_close_arm() {
+    for cut in [false, true] {
+        let mut app = test_app();
+        app.handle_event(AppEvent::Key(KeyEvent::new(
+            KeyCode::Char('c'),
+            KeyModifiers::CONTROL,
+        )));
+        assert!(app.close_pane_armed_at.is_some());
+        for character in "clipboard draft".chars() {
+            app.handle_event(AppEvent::Key(KeyEvent::new(
+                KeyCode::Char(character),
+                KeyModifiers::NONE,
+            )));
+        }
+        app.handle_event(AppEvent::Key(KeyEvent::new(
+            KeyCode::Char('a'),
+            KeyModifiers::CONTROL,
+        )));
+        assert!(app.current_tab().input_all_selected);
+        assert!(app.close_pane_armed_at.is_none());
+        assert!(app.copy_input_selection(cut, |_| { Err(std::io::Error::other("clipboard busy")) }));
+        assert_eq!(app.current_tab().input, "clipboard draft");
+        assert!(app.current_tab().input_all_selected);
+        assert!(app.close_pane_armed_at.is_none());
+    }
+}
+
+#[test]
+fn input_selection_requires_live_edit_focus_not_just_draft_text() {
+    for context in ["history", "card", "help", "model", "agents", "unfocused"] {
+        let mut app = test_app();
+        app.current_tab_mut().replace_input("keep draft".into());
+        match context {
+            "history" => {
+                app.current_tab_mut().completed_turns.push(CompletedTurn {
+                    prompt: "old turn".into(),
+                    details: Vec::new(),
+                    expanded: false,
+                    trailing_marker: None,
+                });
+                app.current_tab_mut().select_completed_turn(0);
+            }
+            "card" => {
+                stage_surfaced_recommendation(&mut app, vec![send_choice("pane-A", "ls")], 0, None)
+            }
+            "help" => app.help_overlay_visible = true,
+            "model" => app.current_tab_mut().model_picker_open = true,
+            "agents" => app.current_tab_mut().current_view = View::Agents,
+            "unfocused" => app.pane_focused = false,
+            _ => unreachable!(),
+        }
+        render_to_text(&mut app, 80, 20);
+        app.handle_event(AppEvent::Key(KeyEvent::new(
+            KeyCode::Char('a'),
+            KeyModifiers::CONTROL,
+        )));
+        assert!(
+            !app.current_tab().input_all_selected,
+            "{context} owns focus"
+        );
+        assert!(!app.copy_input_selection(true, |_| panic!("must not cut hidden draft")));
+        assert_eq!(app.current_tab().input, "keep draft");
+    }
+}
+
+#[test]
+fn input_selection_handles_slash_completion_and_history_without_stale_ranges() {
+    let mut app = test_app();
+    app.current_tab_mut().replace_input("/he".into());
+    assert!(app.command_popup_visible());
+    app.handle_event(AppEvent::Key(KeyEvent::new(
+        KeyCode::Char('a'),
+        KeyModifiers::CONTROL,
+    )));
+    app.handle_event(AppEvent::Key(KeyEvent::new(
+        KeyCode::Char('x'),
+        KeyModifiers::NONE,
+    )));
+    assert_eq!(app.current_tab().input, "x");
+    assert!(!app.command_popup_visible());
+    app.current_tab_mut().record_input_history("prior command");
+    app.handle_event(AppEvent::Key(KeyEvent::new(
+        KeyCode::Char('a'),
+        KeyModifiers::CONTROL,
+    )));
+    app.handle_event(AppEvent::Key(KeyEvent::new(
+        KeyCode::Up,
+        KeyModifiers::NONE,
+    )));
+    assert_eq!(app.current_tab().input, "prior command");
+    assert!(!app.current_tab().input_all_selected);
+    app.handle_event(AppEvent::Key(KeyEvent::new(
+        KeyCode::Char('!'),
+        KeyModifiers::NONE,
+    )));
+    assert_eq!(app.current_tab().input, "prior command!");
+}
+
+#[test]
+fn input_selection_deletion_removes_attachment_tokens_atomically() {
+    let mut app = test_app();
+    app.current_tab_mut().replace_input("before ".into());
+    app.current_tab_mut()
+        .insert_image_attachment(crate::clipboard_image::PastedImage {
+            data_base64: "aW1hZ2U=".into(),
+            mime_type: "image/png".into(),
+            label: "test.png".into(),
+        });
+    app.current_tab_mut().insert_input_str(" after");
+    app.handle_event(AppEvent::Key(KeyEvent::new(
+        KeyCode::Char('a'),
+        KeyModifiers::CONTROL,
+    )));
+    app.handle_event(AppEvent::Key(KeyEvent::new(
+        KeyCode::Delete,
+        KeyModifiers::NONE,
+    )));
+    assert!(app.current_tab().input.is_empty());
+    assert!(app.current_tab().attachments.is_empty());
+}
+
+#[test]
+fn input_selection_survives_resize_but_not_focus_loss_or_mouse_click() {
+    use crossterm::event::{MouseButton, MouseEvent, MouseEventKind};
+    let mut app = test_app();
+    app.current_tab_mut().replace_input("keep draft".into());
+    app.handle_event(AppEvent::Key(KeyEvent::new(
+        KeyCode::Char('a'),
+        KeyModifiers::CONTROL,
+    )));
+    app.handle_event(AppEvent::Resize(40, 12));
+    assert!(app.current_tab().input_all_selected);
+    app.handle_event(AppEvent::FocusChanged(false));
+    assert!(!app.current_tab().input_all_selected);
+    app.handle_event(AppEvent::FocusChanged(true));
+    app.handle_event(AppEvent::Key(KeyEvent::new(
+        KeyCode::Char('a'),
+        KeyModifiers::CONTROL,
+    )));
+    app.handle_event(AppEvent::Mouse(MouseEvent {
+        kind: MouseEventKind::Down(MouseButton::Left),
+        column: 0,
+        row: 0,
+        modifiers: KeyModifiers::NONE,
+    }));
+    assert!(!app.current_tab().input_all_selected);
+    assert_eq!(app.current_tab().input, "keep draft");
+}
+
+#[test]
 fn ctrl_a_selects_current_rendered_frame_without_altering_input() {
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
@@ -11634,6 +12008,7 @@ fn ctrl_a_selects_current_rendered_frame_without_altering_input() {
         trailing_marker: None,
     });
     app.current_tab_mut().input = "SELECT_ALL_DRAFT".into();
+    app.current_tab_mut().select_completed_turn(0);
     let rendered = render_to_text(&mut app, 80, 16);
     assert!(rendered.contains("SELECT_ALL_PROMPT"));
     assert!(rendered.contains("SELECT_ALL_REPLY"));
@@ -11676,7 +12051,9 @@ fn right_click_copies_and_clears_ctrl_a_selection() {
     let original_clipboard = crate::win32::read_paste_string_from_clipboard().ok();
     let mut app = test_app();
     app.state = ConnectionState::Connected;
-    app.current_tab_mut().input = "SELECT_ALL_RIGHT_CLICK".into();
+    app.current_tab_mut()
+        .messages
+        .push(ChatMessage::info("SELECT_ALL_RIGHT_CLICK"));
     render_to_text(&mut app, 80, 16);
     app.handle_event(AppEvent::Key(KeyEvent::new(
         KeyCode::Char('a'),

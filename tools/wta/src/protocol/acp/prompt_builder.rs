@@ -109,7 +109,6 @@ pub(crate) async fn build_prompt_text(
     let context_request = ContextRequest {
         is_autofix,
         wt_connected,
-        shell_mgr,
         context_pane: resolved_context.context_pane.as_ref(),
         shell_exe: resolved_context.shell_exe.as_deref(),
         terminal_output: resolved_context.terminal_output.as_deref(),
@@ -342,12 +341,8 @@ mod tests {
         );
     }
 
-    /// Minimal [`crate::shell::wt_channel::WtChannel`] that answers
-    /// `get_active_pane` with a canned pane and the
-    /// `list_windows`/`list_tabs`/`list_panes` enumeration with canned
-    /// payloads; every other request errors. `read_pane_last_message` degrades
-    /// to `None` on those errors, which is all the assembly tests need (no
-    /// buffer content is asserted).
+    /// Minimal [`crate::shell::wt_channel::WtChannel`] that returns consolidated
+    /// pane context from canned active or explicit-source pane metadata.
     struct MockWtChannel {
         active_pane: serde_json::Value,
         /// Optional enumeration topology for `resolve_pane_by_session_id`:
@@ -362,13 +357,41 @@ mod tests {
         async fn request(
             &self,
             method: &str,
-            _params: serde_json::Value,
+            params: serde_json::Value,
         ) -> anyhow::Result<serde_json::Value> {
             let scripted = |v: &Option<serde_json::Value>, what: &str| {
                 v.clone()
                     .ok_or_else(|| anyhow::anyhow!("MockWtChannel: no {what} scripted"))
             };
             match method {
+                "get_pane_context" => {
+                    let pane = if let Some(session_id) = params.get("session_id") {
+                        self.panes
+                            .as_ref()
+                            .and_then(|value| value.get("panes"))
+                            .and_then(serde_json::Value::as_array)
+                            .and_then(|panes| {
+                                panes
+                                    .iter()
+                                    .find(|pane| pane.get("session_id") == Some(session_id))
+                            })
+                            .cloned()
+                            .ok_or_else(|| {
+                                anyhow::anyhow!("MockWtChannel: no source pane scripted")
+                            })?
+                    } else {
+                        self.active_pane.clone()
+                    };
+                    Ok(serde_json::json!({
+                        "pane": pane,
+                        "content": "",
+                        "output_source": "metadata_only",
+                        "fallback_reason": "",
+                        "line_count": 0,
+                        "truncated": false,
+                        "has_marks": false,
+                    }))
+                }
                 "get_active_pane" => Ok(self.active_pane.clone()),
                 "list_windows" => scripted(&self.windows, "list_windows"),
                 "list_tabs" => scripted(&self.tabs, "list_tabs"),
@@ -403,6 +426,38 @@ mod tests {
             tabs: Some(serde_json::json!({ "tabs": [{ "tab_id": 0 }] })),
             panes: Some(serde_json::json!({ "panes": [source_pane] })),
         }))
+    }
+
+    #[tokio::test]
+    async fn explicit_source_mock_selects_matching_pane_and_rejects_missing_source() {
+        let mgr = ShellManager::new().with_wt_channel(Arc::new(MockWtChannel {
+            active_pane: serde_json::json!({
+                "session_id": "pane-active",
+                "is_agent_pane": false,
+            }),
+            windows: None,
+            tabs: None,
+            panes: Some(serde_json::json!({ "panes": [
+                { "session_id": "pane-first", "is_agent_pane": false, "cwd": "C:\\first" },
+                { "session_id": "pane-second", "is_agent_pane": false, "cwd": "C:\\second" },
+            ] })),
+        }));
+        for source in ["pane-first", "pane-second", "pane-missing"] {
+            let context = PaneContext {
+                source_pane_id: Some(source.to_string()),
+                ..Default::default()
+            };
+            let (built_prompt, _, _, target) =
+                build_prompt_text(1, 0.0, "inspect", None, false, &mgr, true, Some(&context)).await;
+            if source == "pane-missing" {
+                assert!(target.is_none());
+                assert!(!built_prompt.contains("### Terminal Context JSON"));
+            } else {
+                assert_eq!(target.as_deref(), Some(source));
+                assert!(built_prompt.contains(&format!(r#""activeTarget":"{source}""#)));
+            }
+            assert!(!built_prompt.contains("pane-active"));
+        }
     }
 
     /// A planner turn with `include_base_prompt=true` ships the terminal prompt,
