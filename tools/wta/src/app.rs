@@ -2946,6 +2946,8 @@ impl App {
     ///      tab's primary pane GUID to the row even for hook-less CLIs
     ///      (Gemini), allowing a later `PaneClosed` to transition the
     ///      row back to Ended.
+    ///      Host resumes also publish the known agent/session/pane identity to
+    ///      Terminal's persistence map, independently of CLI hooks or banners.
     fn dispatch_resume(&mut self, s: &crate::agent_sessions::AgentSession) {
         let cli_id = match known_cli_id(&s.cli_source) {
             Some(id) => id,
@@ -3088,18 +3090,35 @@ impl App {
         // tab's primary pane in the same shape as `split-pane --json`,
         // so the existing helper handles both.
         let cb_key = key.clone();
+        let cb_location = s.location.clone();
         let event_tx = self.agent_event_tx.clone();
-        let on_pane_id: Option<Box<dyn FnOnce(String) + Send + 'static>> = match event_tx {
-            Some(tx) => Some(Box::new(move |pane_session_id| {
-                let _ = tx.send(AppEvent::AgentSessionEvent(
-                    crate::agent_sessions::SessionEvent::ResumePaneAssigned {
-                        key: cb_key,
-                        pane_session_id,
-                    },
-                ));
-            })),
-            None => None,
-        };
+        let on_pane_id: Option<Box<dyn FnOnce(String) + Send + 'static>> =
+            Some(Box::new(move |pane_session_id| {
+                if let Some(binding) = crate::wt_protocol_events::resumed_pane_binding_event(
+                    cli_id,
+                    &cb_key,
+                    &pane_session_id,
+                    &cb_location,
+                ) {
+                    send_wt_protocol_event(binding);
+                }
+                if let Some(tx) = event_tx {
+                    if tx
+                        .send(AppEvent::AgentSessionEvent(
+                            crate::agent_sessions::SessionEvent::ResumePaneAssigned {
+                                key: cb_key,
+                                pane_session_id,
+                            },
+                        ))
+                        .is_err()
+                    {
+                        tracing::warn!(
+                            target: "agents_view",
+                            "resumed pane could not be reported to the helper event loop"
+                        );
+                    }
+                }
+            }));
         crate::shell::wt_channel::spawn_wtcli_split_then_focus_with_callback(&argv, on_pane_id);
 
         tracing::info!(

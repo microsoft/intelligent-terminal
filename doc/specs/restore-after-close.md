@@ -67,6 +67,13 @@ failed exit, so a save that happens later can still describe how to bring the CL
 back. The binding is dropped for good in `_NotifyPanesClosing`, when the pane
 itself goes away.
 
+Host sessions resumed from session management do not need a hook to establish
+this binding. After `wtcli new-tab` returns the created pane's ID, WTA publishes
+`pane_agent_session_changed` with that pane ID and the agent/session identity
+already selected for resume. The loading banner and launch command are
+presentation, not identity sources; changing or removing their text does not
+affect persistence.
+
 `_StampAgentResumeCommandlines` is the whole of the save-side work: for each
 persisted pane that has a binding, it replaces `commandline` with
 `AgentPaneRestore::BuildResumeCommandline`. That command is rebuilt from the

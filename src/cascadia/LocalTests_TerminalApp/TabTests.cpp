@@ -204,6 +204,7 @@ namespace TerminalAppLocalTests
         TEST_METHOD(PaneAgentSessionEndClearsAgentBinding);
         TEST_METHOD(ContentIdAttachedPaneEmitsEndStateForItsConnection);
         TEST_METHOD(GetWindowLayoutIncludesAgentRestoreMetadata);
+        TEST_METHOD(ResumedPaneIdentityPersistsWithoutHooksOrBannerParsing);
         TEST_METHOD(RestoredSessionBindingsWaitForTheirHelperSubscription);
         TEST_METHOD(LateRestoredSessionBindingNotifiesAfterPaneAttachment);
         TEST_METHOD(EndedRestoredSessionDoesNotReplayItsBinding);
@@ -774,6 +775,66 @@ namespace TerminalAppLocalTests
             {
                 VERIFY_FAIL(L"Expected the split pane to keep its agent session metadata.");
             }
+        });
+    }
+
+    void TabTests::ResumedPaneIdentityPersistsWithoutHooksOrBannerParsing()
+    {
+        auto page = _restoreBindingsSetup();
+        TestOnUIThread([&]() {
+            const std::array launchCommands{
+                winrt::hstring{ L"cmd /c echo Loading... && copilot" },
+                winrt::hstring{ L"copilot" }
+            };
+            const std::array sessionIds{
+                winrt::hstring{ L"known-session-1" },
+                winrt::hstring{ L"known-session-2" }
+            };
+            std::vector<ActionAndArgs> actions;
+            for (uint32_t i = 0; i < launchCommands.size(); ++i)
+            {
+                const auto tab = page->_GetTabImpl(page->_tabs.GetAt(i));
+                const auto paneId = tab->GetActiveTerminalControl().Connection().SessionId();
+                Json::Value event;
+                event["type"] = "event";
+                event["method"] = "pane_agent_session_changed";
+                event["params"]["pane_id"] = _formatPaneId(paneId);
+                event["params"]["agent"] = "copilot";
+                event["params"]["agent_session_id"] = winrt::to_string(sessionIds[i]);
+                page->OnPaneAgentSessionChanged(winrt::to_hstring(Json::writeString(Json::StreamWriterBuilder{}, event)));
+
+                NewTerminalArgs terminalArgs{};
+                terminalArgs.SessionId(paneId);
+                terminalArgs.Commandline(launchCommands[i]);
+                if (i == 0)
+                {
+                    actions.emplace_back(ShortcutAction::NewTab, NewTabArgs{ terminalArgs });
+                }
+                else
+                {
+                    actions.emplace_back(ShortcutAction::SplitPane, SplitPaneArgs{ SplitDirection::Right, 0.5f, terminalArgs });
+                }
+            }
+
+            // A launch string alone must not invent a binding for another pane.
+            NewTerminalArgs unbound{};
+            unbound.SessionId(::Microsoft::Console::Utils::CreateGuid());
+            unbound.Commandline(L"cmd /c echo Resuming copilot session display-... && copilot --resume display-id");
+            actions.emplace_back(ShortcutAction::NewTab, NewTabArgs{ unbound });
+            VERIFY_ARE_EQUAL(2u, static_cast<unsigned int>(page->_paneAgentSessions.size()));
+
+            page->_StampAgentResumeCommandlines(actions);
+            WindowLayout layout{};
+            layout.TabLayout(winrt::single_threaded_vector<ActionAndArgs>(std::move(actions)));
+            const auto saved = WindowLayout::FromJson(WindowLayout::ToJson(layout)).TabLayout();
+            VERIFY_ARE_EQUAL(3u, saved.Size());
+            VERIFY_ARE_EQUAL(
+                winrt::hstring{ LR"(cmd.exe /d /s /c "copilot --resume known-session-1")" },
+                _getTerminalArgs(saved.GetAt(0)).Commandline());
+            VERIFY_ARE_EQUAL(
+                winrt::hstring{ LR"(cmd.exe /d /s /c "copilot --resume known-session-2")" },
+                _getTerminalArgs(saved.GetAt(1)).Commandline());
+            VERIFY_ARE_EQUAL(unbound.Commandline(), _getTerminalArgs(saved.GetAt(2)).Commandline());
         });
     }
 
