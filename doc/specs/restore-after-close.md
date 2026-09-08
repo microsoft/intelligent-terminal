@@ -120,6 +120,20 @@ conversation twice and compound it on every restart. Asking what the pane will
 run — rather than consulting a persisted marker — means a pane the user pointed
 at a resume command themselves behaves the same way.
 
+Restoring also registers the shell pane's conversation as a live, **Idle**
+session without waiting for an agent hook or a new prompt. Layout replay runs
+before WTA's COM listeners subscribe, so the page retains each restored binding
+in memory instead of broadcasting it immediately. On an actual listener-ready
+acknowledgement (including a successful background reconnect), the owning helper
+requests its tab's pending bindings through `pane_agent_session_changed`.
+If layout replay is still in progress, the response waits for its outermost
+batch to finish so that later panes in the same tab are included.
+The page emits scoped `session_born_bound` events once, and only that helper
+forwards them to master. An already-arrived live hook keeps its activity,
+metadata and ownership; a pending binding is discarded if its session or
+connection ends before delivery. This handshake does not gate ACP startup,
+chat, Autofix, or session management on hook-listener availability.
+
 **The agent pane.** `_HandleSplitPane` sees the agent content type and hands the
 action to `_RestoreAgentPaneFromLayout` instead of `_MakePane`, because the pane
 cannot be built from saved state alone. That reads the session, agent, view and

@@ -641,6 +641,65 @@ fn agent_paste_text_ignores_auth_and_setup_modes_before_reading_clipboard() {
 }
 
 #[test]
+fn restored_session_bindings_request_is_scoped_and_independent_of_acp_readiness() {
+    let mut app = test_app();
+    assert!(app.restored_session_bindings_request().is_none());
+    app.owner_tab_id = Some("owning-tab".into());
+    app.tab_id = Some("focused-other-tab".into());
+    assert!(app.restored_session_bindings_request().is_none());
+    app.window_id = Some("owning-window".into());
+    app.state = ConnectionState::Disconnected;
+    let request: serde_json::Value =
+        serde_json::from_str(&app.restored_session_bindings_request().unwrap()).unwrap();
+    assert_eq!(request["type"], "event");
+    assert_eq!(request["method"], "pane_agent_session_changed");
+    assert_eq!(request["params"]["event"], "restore_bindings_requested");
+    assert_eq!(request["params"]["tab_id"], "owning-tab");
+    assert_eq!(request["params"]["window_id"], "owning-window");
+}
+
+#[test]
+fn restored_session_birth_is_forwarded_only_by_the_owning_helper() {
+    for (tab, window, expected) in [
+        ("restored-tab", "restored-window", true),
+        ("other-tab", "restored-window", false),
+        ("restored-tab", "other-window", false),
+    ] {
+        let mut app = test_app();
+        app.owner_tab_id = Some(tab.into());
+        app.window_id = Some(window.into());
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+        app.master_request_tx = tx;
+        app.handle_event(AppEvent::WtEvent {
+            method: "session_born_bound".into(),
+            pane_id: "restored-pane".into(),
+            tab_id: Some("restored-tab".into()),
+            params: json!({
+                "agent_session_id": "restored-session",
+                "agent": "copilot",
+                "cwd": r"C:\repo",
+                "window_id": "restored-window"
+            }),
+        });
+        if expected {
+            let crate::protocol::acp::client::MasterExtRequest::SessionBornBound { event } = rx
+                .try_recv()
+                .expect("owning helper forwards the restored birth")
+            else {
+                panic!("expected a binding-only registration");
+            };
+            assert!(matches!(event,
+                crate::agent_sessions::SessionEvent::SessionStarted { key, pane_session_id, .. }
+                if key == "restored-session" && pane_session_id == "restored-pane"));
+            assert!(rx.try_recv().is_err());
+        } else {
+            assert!(rx.try_recv().is_err());
+            assert!(app.agent_sessions.iter_sorted().is_empty());
+        }
+    }
+}
+
+#[test]
 fn copilot_sidekick_hook_session_is_ignored() {
     use crate::agent_sessions::{AgentSessionRegistry, SessionEvent};
 
@@ -8173,13 +8232,22 @@ exit /b 0
             .expect("listener must recover"),
         "the replacement process must reach subscription readiness"
     );
+    let ready = tokio::time::timeout(std::time::Duration::from_secs(5), events.recv())
+        .await
+        .expect("recovered subscription must announce readiness")
+        .expect("event channel remains open");
+    assert_eq!(ready["method"], "wt_listener_ready");
+    assert!(
+        ready.get("_wtcli").is_none(),
+        "raw listener tokens stay internal"
+    );
     let event = tokio::time::timeout(std::time::Duration::from_secs(5), events.recv())
         .await
         .expect("WT event must be delivered")
         .expect("event channel remains open");
     assert_eq!(
         event["method"], "vt_sequence",
-        "internal readiness markers must not reach App"
+        "ordinary events follow subscription readiness"
     );
     let params = event["params"].clone();
     let mut app = test_app();

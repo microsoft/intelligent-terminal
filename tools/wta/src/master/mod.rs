@@ -6512,6 +6512,35 @@ async fn apply_master_session_event(
         let _gate_guard = gate.lock().await;
 
         if binding_only {
+            // A delayed restore birth may arrive after the CLI's real hook.
+            // Do not demote that live generation to watcher-owned or replace
+            // its title/cwd with the persisted layout's older metadata.
+            if is_born_bound {
+                if let crate::agent_sessions::SessionEvent::SessionStarted {
+                    pane_session_id, ..
+                } = &event
+                {
+                    if let Some(row) = state.registry.lookup(&sid).await {
+                        if row
+                            .pane_session_id
+                            .as_deref()
+                            .is_some_and(|pane| pane.eq_ignore_ascii_case(pane_session_id))
+                            && matches!(
+                                row.status,
+                                Some(
+                                    crate::agent_sessions::AgentStatus::Idle
+                                        | crate::agent_sessions::AgentStatus::Working
+                                        | crate::agent_sessions::AgentStatus::Attention
+                                )
+                            )
+                            && (state.hook_owned.lock().await.contains(&sid)
+                                || state.born_bound.lock().await.contains(&sid))
+                        {
+                            return (false, None);
+                        }
+                    }
+                }
+            }
             // A born-bound registration and ResumeDispatched explicitly mark a
             // new hook-free generation even when their reducer transition is a
             // no-op (for example the history row has not arrived yet, or was

@@ -11088,6 +11088,82 @@ async fn session_hook_marks_session_hook_owned_then_watcher_is_ignored() {
 }
 
 #[tokio::test]
+async fn restored_session_birth_initializes_idle_without_waiting_for_hooks() {
+    use crate::agent_sessions::{AgentStatus, CliSource, SessionEvent};
+    for initial_status in [None, Some(AgentStatus::Historical)] {
+        let state = make_state();
+        let sid = acp::schema::v1::SessionId::new("restored-session");
+        if let Some(status) = initial_status {
+            let mut row = crate::session_registry::SessionInfo::new(
+                sid.clone(),
+                std::path::PathBuf::from("C:\\repo"),
+            );
+            row.status = Some(status);
+            state.registry.upsert(row).await;
+        }
+        handle_session_born_bound(
+            &state,
+            SessionEvent::SessionStarted {
+                key: sid.0.to_string(),
+                cli_source: CliSource::Copilot,
+                pane_session_id: "restored-pane".into(),
+                cwd: std::path::PathBuf::from("C:\\repo"),
+                title: String::new(),
+            },
+            None,
+        )
+        .await
+        .unwrap();
+        let row = state.registry.lookup(&sid).await.unwrap();
+        assert_eq!(row.status, Some(AgentStatus::Idle));
+        assert_eq!(row.pane_session_id.as_deref(), Some("restored-pane"));
+        assert!(state.born_bound.lock().await.contains(&sid));
+        assert!(!state.hook_owned.lock().await.contains(&sid));
+    }
+}
+
+#[tokio::test]
+async fn restored_session_birth_preserves_an_earlier_live_hook() {
+    use crate::agent_sessions::{AgentStatus, CliSource, SessionEvent};
+    let state = make_state();
+    let sid = acp::schema::v1::SessionId::new("restored-session");
+    let birth = SessionEvent::SessionStarted {
+        key: sid.0.to_string(),
+        cli_source: CliSource::Copilot,
+        pane_session_id: "RESTORED-PANE".into(),
+        cwd: std::path::PathBuf::from("C:\\live"),
+        title: "Live conversation title".into(),
+    };
+    handle_session_hook(&state, birth.clone(), false)
+        .await
+        .unwrap();
+    handle_session_hook(
+        &state,
+        SessionEvent::ToolStarting {
+            key: sid.0.to_string(),
+            tool_name: "prompt".into(),
+        },
+        false,
+    )
+    .await
+    .unwrap();
+    let mut replay = birth;
+    if let SessionEvent::SessionStarted { cwd, title, .. } = &mut replay {
+        *cwd = std::path::PathBuf::from("C:\\old");
+        title.clear();
+    }
+    handle_session_born_bound(&state, replay, None)
+        .await
+        .unwrap();
+    let row = state.registry.lookup(&sid).await.unwrap();
+    assert_eq!(row.status, Some(AgentStatus::Working));
+    assert_eq!(row.cwd, std::path::PathBuf::from("C:\\live"));
+    assert_eq!(row.title.as_deref(), Some("Live conversation title"));
+    assert!(state.hook_owned.lock().await.contains(&sid));
+    assert!(!state.born_bound.lock().await.contains(&sid));
+}
+
+#[tokio::test]
 async fn session_born_bound_marks_born_bound_not_hook_owned() {
     // #266 born-bound (WTA-launched delegate/resume) is binding-only: it must
     // land in `born_bound`, NOT `hook_owned`, so the watcher can still supply

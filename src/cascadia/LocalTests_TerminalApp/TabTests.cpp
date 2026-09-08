@@ -13,6 +13,7 @@
 #include "../TerminalApp/Tab.h"
 #include "../TerminalApp/CommandPalette.h"
 #include "../TerminalApp/ContentManager.h"
+#include "../TerminalApp/TerminalPaneContent.h"
 #include "../inc/AgentPaneRestore.h"
 #include "../UnitTests_Control/MockControlSettings.h"
 #include "CppWinrtTailored.h"
@@ -202,6 +203,8 @@ namespace TerminalAppLocalTests
         TEST_METHOD(PaneAgentSessionEndClearsAgentBinding);
         TEST_METHOD(ContentIdAttachedPaneEmitsEndStateForItsConnection);
         TEST_METHOD(GetWindowLayoutIncludesAgentRestoreMetadata);
+        TEST_METHOD(RestoredSessionBindingsWaitForTheirHelperSubscription);
+        TEST_METHOD(EndedRestoredSessionDoesNotReplayItsBinding);
         TEST_METHOD(AgentRestoreRecordOutlivesTheAgentPane);
         TEST_METHOD(KilledCliKeepsAgentBindingUntilPaneCloses);
         TEST_METHOD(PersistStateIncludesAgentRestoreMetadata);
@@ -262,6 +265,7 @@ namespace TerminalAppLocalTests
                                      CascadiaSettings initialSettings);
         void _createContentManager();
         winrt::com_ptr<winrt::TerminalApp::implementation::TerminalPage> _commonSetup();
+        winrt::com_ptr<winrt::TerminalApp::implementation::TerminalPage> _restoreBindingsSetup();
         winrt::com_ptr<winrt::TerminalApp::implementation::WindowProperties> _windowProperties;
         winrt::com_ptr<winrt::TerminalApp::implementation::ContentManager> _contentManager;
     };
@@ -725,6 +729,115 @@ namespace TerminalAppLocalTests
             else
             {
                 VERIFY_FAIL(L"Expected the split pane to keep its agent session metadata.");
+            }
+        });
+    }
+
+    winrt::com_ptr<winrt::TerminalApp::implementation::TerminalPage> TabTests::_restoreBindingsSetup()
+    {
+        _createContentManager();
+        winrt::com_ptr<winrt::TerminalApp::implementation::TerminalPage> page;
+        TestOnUIThread([&]() {
+            _windowProperties = winrt::make_self<winrt::TerminalApp::implementation::WindowProperties>();
+            const winrt::TerminalApp::TerminalPage projected{ *_windowProperties, *_contentManager };
+            page.copy_from(winrt::get_self<winrt::TerminalApp::implementation::TerminalPage>(projected));
+            page->_isVerticalLayout = false;
+            page->_tabView = winrt::MUX::Controls::TabView{};
+            // These tests need pane identity, not a real shell process or the
+            // application's first-run/startup UI.
+            for (auto i = 0; i < 2; ++i)
+            {
+                const auto settings = winrt::make_self<ControlUnitTests::MockControlSettings>();
+                const auto connection = winrt::make_self<TestConnection>(
+                    ::Microsoft::Console::Utils::CreateGuid(),
+                    winrt::Microsoft::Terminal::TerminalConnection::ConnectionState::Connected);
+                const winrt::Microsoft::Terminal::Control::TermControl control{ *settings, *settings, *connection };
+                const auto content = winrt::make<winrt::TerminalApp::implementation::TerminalPaneContent>(
+                    Profile{},
+                    std::shared_ptr<winrt::TerminalApp::implementation::TerminalSettingsCache>{},
+                    control);
+                const auto tab = winrt::make_self<winrt::TerminalApp::implementation::Tab>(
+                    std::make_shared<Pane>(content));
+                page->_tabs.Append(*tab);
+            }
+        });
+        return page;
+    }
+
+    void TabTests::RestoredSessionBindingsWaitForTheirHelperSubscription()
+    {
+        auto page = _restoreBindingsSetup();
+        VERIFY_IS_NOT_NULL(page);
+
+        TestOnUIThread([&]() {
+            const auto firstTab = page->_GetTabImpl(page->_tabs.GetAt(0));
+            const auto secondTab = page->_GetTabImpl(page->_tabs.GetAt(1));
+            const auto firstPane = firstTab->GetActiveTerminalControl().Connection().SessionId();
+            const auto secondPane = secondTab->GetActiveTerminalControl().Connection().SessionId();
+            page->_pendingRestoredSessionBindings[firstPane] = { L"restored-first", L"copilot", L"C:\\repo" };
+            page->_pendingRestoredSessionBindings[secondPane] = { L"restored-second", L"claude", L"C:\\other" };
+
+            std::vector<Json::Value> births;
+            const auto token = page->ProtocolVtSequenceReceived([&](auto&&, const winrt::hstring& payload) {
+                Json::Value event;
+                Json::CharReaderBuilder reader;
+                std::string errors;
+                std::istringstream stream{ winrt::to_string(payload) };
+                VERIFY_IS_TRUE(Json::parseFromStream(reader, stream, &event, &errors));
+                if (event["method"] == "session_born_bound")
+                {
+                    births.push_back(event["params"]);
+                }
+            });
+            const auto revoke = wil::scope_exit([&]() { page->ProtocolVtSequenceReceived(token); });
+            const auto request = [&](const auto& tab, const std::string& windowId) {
+                Json::Value event;
+                event["method"] = "pane_agent_session_changed";
+                event["params"]["event"] = "restore_bindings_requested";
+                event["params"]["tab_id"] = winrt::to_string(tab->StableId());
+                event["params"]["window_id"] = windowId;
+                page->OnPaneAgentSessionChanged(winrt::to_hstring(Json::writeString(Json::StreamWriterBuilder{}, event)));
+            };
+            const auto windowId = std::to_string(page->_WindowProperties.WindowId());
+            request(firstTab, "wrong-window");
+            VERIFY_IS_TRUE(births.empty());
+            VERIFY_ARE_EQUAL(2u, static_cast<unsigned int>(page->_pendingRestoredSessionBindings.size()));
+
+            page->_startupActionReplayDepth = 1;
+            request(firstTab, windowId);
+            VERIFY_IS_TRUE(births.empty());
+            VERIFY_IS_TRUE(page->_tabsAwaitingRestoredBindings.contains(firstTab->StableId()));
+            page->_startupActionReplayDepth = 0;
+            page->ProcessStartupActions({});
+            VERIFY_ARE_EQUAL(1u, static_cast<unsigned int>(births.size()));
+            VERIFY_ARE_EQUAL(std::string{ "restored-first" }, births[0]["agent_session_id"].asString());
+            VERIFY_ARE_EQUAL(winrt::to_string(firstTab->StableId()), births[0]["tab_id"].asString());
+            VERIFY_ARE_EQUAL(windowId, births[0]["window_id"].asString());
+            VERIFY_ARE_EQUAL(std::string{ "C:\\repo" }, births[0]["cwd"].asString());
+            VERIFY_ARE_EQUAL(1u, static_cast<unsigned int>(page->_pendingRestoredSessionBindings.size()));
+
+            request(firstTab, windowId);
+            VERIFY_ARE_EQUAL(1u, static_cast<unsigned int>(births.size()));
+            request(secondTab, windowId);
+            VERIFY_ARE_EQUAL(2u, static_cast<unsigned int>(births.size()));
+            VERIFY_ARE_EQUAL(std::string{ "restored-second" }, births[1]["agent_session_id"].asString());
+            VERIFY_IS_TRUE(page->_pendingRestoredSessionBindings.empty());
+        });
+    }
+
+    void TabTests::EndedRestoredSessionDoesNotReplayItsBinding()
+    {
+        auto page = _restoreBindingsSetup();
+        VERIFY_IS_NOT_NULL(page);
+        TestOnUIThread([&]() {
+            const auto tab = page->_GetTabImpl(page->_tabs.GetAt(0));
+            const auto pane = tab->GetActiveTerminalControl().Connection().SessionId();
+            const auto paneId = winrt::to_string(::Microsoft::Console::Utils::GuidToString(pane));
+            for (const auto state : { "closed", "failed" })
+            {
+                page->_pendingRestoredSessionBindings[pane] = { L"restored-session", L"copilot", L"C:\\repo" };
+                page->_TryRaiseTerminalEndStateEvent(paneId, state);
+                VERIFY_IS_TRUE(page->_pendingRestoredSessionBindings.empty());
             }
         });
     }

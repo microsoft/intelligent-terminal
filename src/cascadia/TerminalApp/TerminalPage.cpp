@@ -2498,6 +2498,7 @@ namespace winrt::TerminalApp::implementation
 
         if (const auto paneSessionId = _TryParsePaneSessionId(paneId))
         {
+            _pendingRestoredSessionBindings.erase(*paneSessionId);
             // A CLI that exited on its own leaves nothing to resume. One that
             // was killed does: `closeOnExit` only closes a pane on a graceful
             // exit, so the pane outlives the failure and has to keep the
@@ -5262,6 +5263,14 @@ namespace winrt::TerminalApp::implementation
         // startup replay whose agent panes are queued behind it.
         if (_startupActionReplayDepth == 0)
         {
+            for (const auto& tabId : std::exchange(_tabsAwaitingRestoredBindings, {}))
+            {
+                if (const auto tab = _FindTabByStableId(tabId))
+                {
+                    _ReplayRestoredSessionBindings(tab);
+                }
+            }
+
             // Not inline. Pre-warm only spawns the helper if the agent pane
             // gets a real layout pass first: `TermControl::_InitializeTerminal`
             // bails while the SwapChainPanel still measures zero, and
@@ -7661,6 +7670,40 @@ namespace winrt::TerminalApp::implementation
         _RequestAgentStateForTab(newTab, std::nullopt, /*pane_open*/ true);
     }
 
+    void TerminalPage::_ReplayRestoredSessionBindings(const winrt::com_ptr<Tab>& tab)
+    {
+        // Startup yields between panes. A restored helper can subscribe before
+        // its tab's remaining shell panes have been created.
+        if (_startupActionReplayDepth > 0)
+        {
+            _tabsAwaitingRestoredBindings.insert(tab->StableId());
+            return;
+        }
+        const auto root = tab->GetRootPane();
+        if (!root)
+        {
+            return;
+        }
+        for (auto it = _pendingRestoredSessionBindings.begin(); it != _pendingRestoredSessionBindings.end();)
+        {
+            if (!root->FindPaneBySessionId(it->first))
+            {
+                ++it;
+                continue;
+            }
+            Json::Value params;
+            params["pane_id"] = winrt::to_string(::Microsoft::Console::Utils::GuidToString(it->first));
+            params["agent_session_id"] = winrt::to_string(it->second.sessionId);
+            params["agent"] = winrt::to_string(it->second.agent);
+            params["cwd"] = winrt::to_string(it->second.cwd);
+            params["tab_id"] = winrt::to_string(tab->StableId());
+            params["window_id"] = std::to_string(_WindowProperties.WindowId());
+            it = _pendingRestoredSessionBindings.erase(it);
+            _agentPaneLog("_ReplayRestoredSessionBindings: publishing restored session " + params["agent_session_id"].asString());
+            _RaiseProtocolEvent("session_born_bound", params);
+        }
+    }
+
     void TerminalPage::OnPaneAgentSessionChanged(hstring eventJson)
     {
         Json::Value evt;
@@ -7675,6 +7718,17 @@ namespace winrt::TerminalApp::implementation
         }
 
         const auto& params = evt["params"];
+        if (params.get("event", "").asString() == "restore_bindings_requested")
+        {
+            if (params.get("window_id", "").asString() == std::to_string(_WindowProperties.WindowId()))
+            {
+                if (const auto tab = _FindTabByStableId(winrt::to_hstring(params.get("tab_id", "").asString())))
+                {
+                    _ReplayRestoredSessionBindings(tab);
+                }
+            }
+            return;
+        }
         const auto paneId = params.get("pane_id", "").asString();
         const auto agentSessionId = params.get("agent_session_id", "").asString();
         // An empty `pane_id` means "source pane unknown" — wtcli publishes that
@@ -7721,6 +7775,12 @@ namespace winrt::TerminalApp::implementation
                 {
                     if (sessionEnded)
                     {
+                        if (const auto pending = _pendingRestoredSessionBindings.find(*paneSessionId);
+                            pending != _pendingRestoredSessionBindings.end() &&
+                            (agentSessionId.empty() || pending->second.sessionId == winrt::to_hstring(agentSessionId)))
+                        {
+                            _pendingRestoredSessionBindings.erase(pending);
+                        }
                         // The agent exited, so there is nothing left to resume:
                         // drop the binding and let the pane restore as the
                         // plain shell it now is. Match the id when the event
@@ -10417,21 +10477,20 @@ namespace winrt::TerminalApp::implementation
             original->SetActive();
         }
 
-        // A resumed pane is bound to its conversation from birth. Tell wta so,
-        // reading the binding back out of the command line that is about to
-        // run rather than from a field only a restore would have set.
+        // WTA starts after layout replay, so an immediate COM broadcast here
+        // is lost. Retain the binding until its helper's listener is subscribed.
         if (hasSessionId && newTerminalArgs)
         {
             const auto target = ::Microsoft::Terminal::AgentPaneRestore::ParseResumeCommandline(
                 newTerminalArgs.Commandline());
             if (!target.agent.empty())
             {
-                Json::Value params;
-                params["pane_id"] = winrt::to_string(::Microsoft::Console::Utils::GuidToString(sessionId));
-                params["agent_session_id"] = winrt::to_string(target.sessionId);
-                params["agent"] = winrt::to_string(target.agent);
-                params["cwd"] = winrt::to_string(newTerminalArgs.StartingDirectory());
-                _RaiseProtocolEvent("session_born_bound", params);
+                _paneAgentSessions.insert_or_assign(
+                    sessionId,
+                    _PaneAgentSession{ winrt::hstring{ target.sessionId }, winrt::hstring{ target.agent }, newTerminalArgs.Commandline() });
+                _pendingRestoredSessionBindings.insert_or_assign(
+                    sessionId,
+                    _PendingRestoredSessionBinding{ winrt::hstring{ target.sessionId }, winrt::hstring{ target.agent }, newTerminalArgs.StartingDirectory() });
             }
         }
 
