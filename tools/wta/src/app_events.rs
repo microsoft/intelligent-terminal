@@ -909,7 +909,12 @@ impl App {
                     },
                 );
                 if settled {
-                    self.pending_yolo_reconciles.remove(&reconcile_id);
+                    if let Some((sessions, _)) = self.pending_yolo_reconciles.remove(&reconcile_id)
+                    {
+                        for session_id in sessions {
+                            self.schedule_input_queue_drain(&session_id);
+                        }
+                    }
                 }
                 if result.is_err() && (fail_closed || restart_required) {
                     tracing::error!(
@@ -1050,6 +1055,7 @@ impl App {
                         self.publish_agent_status();
                     }
                 }
+                self.schedule_input_queue_drain(&session_id);
             }
             AppEvent::SessionConfigSetFailed {
                 session_id,
@@ -1085,6 +1091,7 @@ impl App {
                     ));
                     tab.scroll_to_bottom();
                 }
+                self.schedule_input_queue_drain(&session_id);
             }
             AppEvent::TabError { tab_id, message } => {
                 self.pending_yolo_session_tabs.remove(&tab_id);
@@ -1218,6 +1225,7 @@ impl App {
                         tab.finish_active_prompt(prompt_id);
                         tab.turn = TurnState::Idle;
                         self.project_tab_state(target_tab);
+                        self.schedule_input_queue_drain_for_tab(target_tab);
                     }
                     return;
                 }
@@ -1252,6 +1260,7 @@ impl App {
                             tab.finish_active_prompt(prompt_id);
                             tab.turn = TurnState::Idle;
                             self.project_tab_state(target_tab);
+                            self.schedule_input_queue_drain_for_tab(target_tab);
                         }
                     }
                     return;
@@ -1262,6 +1271,11 @@ impl App {
                         &failure,
                         crate::protocol::acp::failure::AgentFailure::Protocol { .. }
                     );
+                let failed_autofix = session_survives
+                    && terminal_target
+                        .as_ref()
+                        .and_then(|(tab_id, _)| self.tab_sessions.get(tab_id))
+                        .is_some_and(|tab| tab.turn.is_autofix());
 
                 let is_auth_error = failure.is_auth();
                 if is_auth_error && !self.preflight_setup_active {
@@ -1352,7 +1366,17 @@ impl App {
                         tab.messages.push(ChatMessage::Error(message));
                     }
                     if let Some(target_tab) = target_tab {
-                        self.project_tab_state(&target_tab);
+                        if failed_autofix && should_finish_turn {
+                            let autofix = &mut self.tab_mut(&target_tab).autofix;
+                            autofix.pane_id = None;
+                            autofix.armed_at = None;
+                            self.emit_autofix_state_cleared(&target_tab);
+                        } else {
+                            self.project_tab_state(&target_tab);
+                        }
+                        if session_survives && should_finish_turn {
+                            self.schedule_input_queue_drain_for_tab(&target_tab);
+                        }
                     }
                 }
             }
@@ -1521,6 +1545,14 @@ impl App {
             }
             AppEvent::AgentSoftStop { session_id, reason } => {
                 use crate::protocol::acp::soft_stop::SoftStopReason;
+                let Some(tab_id) = self.current_tab_for_session(&session_id) else {
+                    tracing::debug!(
+                        target: "soft_stop",
+                        session_id,
+                        "ignoring soft stop for an unbound session"
+                    );
+                    return;
+                };
                 // A soft stop is an *outcome*, not a connection failure — the
                 // session stays Connected and the turn already closed via
                 // AgentMessageEnd. We only append an informational line so the
@@ -1537,11 +1569,40 @@ impl App {
                     SoftStopReason::MaxTurnRequests => t!("system.stopped_max_turn_requests"),
                     SoftStopReason::Refusal => t!("system.stopped_refusal"),
                 };
-                let Some(tab) = self.session_tab_mut_if_current(&session_id) else {
-                    return;
-                };
-                tab.messages.push(ChatMessage::warning(msg.into_owned()));
+                let warning = ChatMessage::warning(msg.into_owned());
+                let tab = self.tab_mut(&tab_id);
+                let finalize_empty_turn = matches!(
+                    &tab.turn,
+                    TurnState::Surfaced {
+                        outcome: TurnOutcome::Empty,
+                        end_pending: false,
+                        ..
+                    }
+                );
+                let history_committed = matches!(
+                    &tab.turn,
+                    TurnState::Surfaced {
+                        outcome: TurnOutcome::ChatTurn
+                            | TurnOutcome::Recommendation(_)
+                            | TurnOutcome::ResolvedRecommendation { .. },
+                        end_pending: false,
+                        ..
+                    }
+                );
+                if history_committed {
+                    if let Some(index) = tab.completed_turns.len().checked_sub(1) {
+                        tab.completed_turns[index].details.push(warning);
+                        tab.invalidate_completed_turn_height(index);
+                    } else {
+                        tab.messages.push(warning);
+                    }
+                } else {
+                    tab.messages.push(warning);
+                }
                 tab.scroll_to_bottom();
+                if finalize_empty_turn {
+                    self.turn_close_finalize_chat(&session_id);
+                }
             }
             AppEvent::ExecutionInfo(message) => {
                 self.push_execution_info(message);
@@ -1616,6 +1677,9 @@ impl App {
             }
             AppEvent::PromptCancellationSettled { prompt_id, started } => {
                 self.settle_prompt_cancellation(prompt_id, started);
+            }
+            AppEvent::DrainInputQueue { tab_id } => {
+                self.drain_input_queue(&tab_id);
             }
             AppEvent::TimingMetric { session_id, note } => {
                 if let Some(tab) = self.session_tab_mut_if_current(&session_id) {
@@ -2744,6 +2808,7 @@ impl App {
                     {
                         let tab = self.tab_mut(tab_id);
                         tab.current_view = View::Chat;
+                        tab.clear_pending_inputs();
                         tab.clear_chat_history();
                         tab.invalidate_active_prompt_attachment();
                         tab.usage = None;

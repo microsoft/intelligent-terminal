@@ -3797,7 +3797,9 @@ fn stale_fail_closed_yolo_reconcile_does_not_restart_master() {
 fn runtime_policy_reconcile_gates_prompt_until_native_off_acknowledges() {
     let mut app = test_app();
     let (prompt_tx, mut prompt_rx) = tokio::sync::mpsc::unbounded_channel();
+    let (event_tx, mut event_rx) = tokio::sync::mpsc::unbounded_channel();
     app.prompt_tx = prompt_tx;
+    app.set_event_tx(event_tx);
     app.state = ConnectionState::Connected;
     app.current_tab_mut().session_id = Some("policy-gated-session".into());
     app.session_to_tab
@@ -3807,7 +3809,8 @@ fn runtime_policy_reconcile_gates_prompt_until_native_off_acknowledges() {
     app.apply_runtime_yolo_config(Some(false), Some(true));
     app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
 
-    assert_eq!(app.current_tab().input, "must wait for native off");
+    assert!(app.current_tab().input.is_empty());
+    assert_eq!(app.current_tab().pending_inputs.len(), 1);
     assert!(prompt_rx.try_recv().is_err());
 
     let reconcile_id = *app.pending_yolo_reconciles.keys().next().unwrap();
@@ -3817,7 +3820,7 @@ fn runtime_policy_reconcile_gates_prompt_until_native_off_acknowledges() {
         restart_required: false,
         result: Ok(()),
     });
-    app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+    app.handle_event(event_rx.try_recv().expect("queued input drain"));
 
     assert!(app.current_tab().input.is_empty());
     assert_eq!(
@@ -3832,7 +3835,9 @@ fn global_on_session_attach_gates_prompt_until_native_yolo_enable_acknowledges()
 
     let (mut app, mut master_rx) = test_app_with_master_rx();
     let (prompt_tx, mut prompt_rx) = tokio::sync::mpsc::unbounded_channel();
+    let (event_tx, mut event_rx) = tokio::sync::mpsc::unbounded_channel();
     app.prompt_tx = prompt_tx;
+    app.set_event_tx(event_tx);
     app.state = ConnectionState::Connected;
     app.yolo_state.lock().unwrap().update_runtime(true, false);
 
@@ -3852,7 +3857,8 @@ fn global_on_session_attach_gates_prompt_until_native_yolo_enable_acknowledges()
     app.current_tab_mut().input = "wait for native on".into();
     app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
 
-    assert_eq!(app.current_tab().input, "wait for native on");
+    assert!(app.current_tab().input.is_empty());
+    assert_eq!(app.current_tab().pending_inputs.len(), 1);
     assert!(prompt_rx.try_recv().is_err());
 
     app.handle_event(AppEvent::RuntimeYoloReconcileCompleted {
@@ -3861,7 +3867,7 @@ fn global_on_session_attach_gates_prompt_until_native_yolo_enable_acknowledges()
         restart_required: false,
         result: Ok(()),
     });
-    app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+    app.handle_event(event_rx.try_recv().expect("queued input drain"));
 
     assert_eq!(
         prompt_rx.try_recv().expect("prompt after native on").text,
@@ -3886,7 +3892,8 @@ fn new_session_creation_gates_prompt_before_yolo_reconcile_can_start() {
     app.current_tab_mut().input = "wait for replacement mode".into();
     app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
 
-    assert_eq!(app.current_tab().input, "wait for replacement mode");
+    assert!(app.current_tab().input.is_empty());
+    assert_eq!(app.current_tab().pending_inputs.len(), 1);
     assert!(prompt_rx.try_recv().is_err());
 }
 
@@ -4053,7 +4060,7 @@ fn pending_yolo_reconcile_blocks_manual_and_automatic_autofix_prompts() {
 }
 
 #[test]
-fn pending_config_update_blocks_normal_manual_and_automatic_prompts() {
+fn pending_config_update_queues_normal_manual_and_automatic_prompts() {
     let mut normal = test_app();
     let (normal_tx, mut normal_rx) = tokio::sync::mpsc::unbounded_channel();
     normal.prompt_tx = normal_tx;
@@ -4066,7 +4073,8 @@ fn pending_config_update_blocks_normal_manual_and_automatic_prompts() {
     normal.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
 
     assert!(normal_rx.try_recv().is_err());
-    assert_eq!(normal.current_tab().input, "wait for native mode");
+    assert!(normal.current_tab().input.is_empty());
+    assert_eq!(normal.current_tab().pending_inputs.len(), 1);
     assert!(normal.current_tab().turn.is_idle());
 
     let mut manual = test_app();
@@ -4081,6 +4089,7 @@ fn pending_config_update_blocks_normal_manual_and_automatic_prompts() {
 
     assert!(manual_rx.try_recv().is_err());
     assert!(manual.current_tab().turn.is_idle());
+    assert_eq!(manual.current_tab().pending_inputs.len(), 1);
 
     let mut automatic = test_app();
     let (automatic_tx, mut automatic_rx) = tokio::sync::mpsc::unbounded_channel();
@@ -4104,6 +4113,7 @@ fn pending_config_update_blocks_normal_manual_and_automatic_prompts() {
 
     assert!(automatic_rx.try_recv().is_err());
     assert!(automatic.tab_mut("target-tab").turn.is_idle());
+    assert_eq!(automatic.tab_mut("target-tab").pending_inputs.len(), 1);
 }
 
 #[test]
@@ -4130,7 +4140,9 @@ fn initial_load_placeholder_agent_connected_skips_yolo_reconcile() {
 
     let (mut app, mut master_rx) = test_app_with_master_rx();
     let (prompt_tx, mut prompt_rx) = tokio::sync::mpsc::unbounded_channel();
+    let (event_tx, mut event_rx) = tokio::sync::mpsc::unbounded_channel();
     app.prompt_tx = prompt_tx;
+    app.set_event_tx(event_tx);
     let tab = app.current_tab_mut();
     tab.loading_session = true;
     tab.loading_target_session_id = Some("loaded-session".into());
@@ -4153,7 +4165,8 @@ fn initial_load_placeholder_agent_connected_skips_yolo_reconcile() {
     );
     app.current_tab_mut().input = "wait for loaded capabilities".into();
     app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
-    assert_eq!(app.current_tab().input, "wait for loaded capabilities");
+    assert!(app.current_tab().input.is_empty());
+    assert_eq!(app.current_tab().pending_inputs.len(), 1);
     assert!(prompt_rx.try_recv().is_err());
 
     app.handle_event(AppEvent::SessionAttached {
@@ -4178,7 +4191,7 @@ fn initial_load_placeholder_agent_connected_skips_yolo_reconcile() {
         restart_required: false,
         result: Ok(()),
     });
-    app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+    app.handle_event(event_rx.try_recv().expect("queued input drain"));
     assert_eq!(
         prompt_rx
             .try_recv()
@@ -14934,7 +14947,8 @@ fn reset_keeps_cancellation_barrier_and_preserves_next_draft() {
     assert_eq!(app.current_tab().input, "keep next draft");
 
     app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
-    assert_eq!(app.current_tab().input, "keep next draft");
+    assert!(app.current_tab().input.is_empty());
+    assert_eq!(app.current_tab().pending_inputs.len(), 1);
     assert_eq!(
         prompt_rx.try_recv().expect("old prompt remains queued").id,
         prompt_id
@@ -14948,7 +14962,9 @@ fn reset_keeps_cancellation_barrier_and_preserves_next_draft() {
         prompt_id,
         started: false,
     });
-    app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+    app.handle_event(AppEvent::DrainInputQueue {
+        tab_id: DEFAULT_TAB_ID.into(),
+    });
     assert_ne!(
         prompt_rx
             .try_recv()
@@ -15683,12 +15699,26 @@ fn direct_proposal_confirm_resolves_waiting_cli() {
     app.handle_event(AppEvent::AgentMessageEnd {
         session_id: session_id.into(),
     });
+    app.handle_event(AppEvent::AgentSoftStop {
+        session_id: session_id.into(),
+        reason: crate::protocol::acp::soft_stop::SoftStopReason::MaxTokens,
+    });
     let tab = app.session_tab(session_id);
     assert_eq!(tab.completed_turns.len(), 1);
     assert!(tab.completed_turns[0]
         .trailing_marker
         .as_deref()
         .is_some_and(|marker| marker.contains("executed")));
+    assert!(tab.completed_turns[0]
+        .details
+        .iter()
+        .any(|message| matches!(
+            message,
+            ChatMessage::Notice {
+                kind: NoticeKind::Warning,
+                ..
+            }
+        )));
 }
 
 #[test]
@@ -16650,9 +16680,23 @@ fn recommendation_card_enter_wins_over_draft_input() {
 fn recommendation_input_focus_submits_draft_instead_of_executing_card() {
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
     let mut app = test_app();
+    let (prompt_tx, mut prompt_rx) = tokio::sync::mpsc::unbounded_channel();
+    app.prompt_tx = prompt_tx;
+    let manager = std::sync::Arc::new(
+        crate::agent_tools::action_proposal::channel::ProposalChannelManager::new(),
+    );
+    let channel = manager
+        .issue(DEFAULT_TAB_ID.into(), 1, Some("pane-A".into()), false)
+        .unwrap();
+    let context = manager.begin_validation(&channel).unwrap();
+    let proposal_id = context.proposal_id;
+    let (final_tx, final_rx) = tokio::sync::oneshot::channel();
+    assert!(manager.accept_validation(&proposal_id, final_tx));
+    app.set_proposal_channels(manager);
     app.state = ConnectionState::Connected;
     app.current_tab_mut().session_id = Some(DEFAULT_TAB_ID.into());
     stage_surfaced_recommendation(&mut app, vec![send_choice("pane-A", "ls")], 0, None);
+    app.current_tab_mut().active_direct_proposal_id = Some(proposal_id);
     app.current_tab_mut().input = "new prompt".into();
     app.current_tab_mut().cursor_pos = "new prompt".len();
 
@@ -16669,6 +16713,12 @@ fn recommendation_input_focus_submits_draft_instead_of_executing_card() {
     assert!(
         matches!(app.current_tab().turn, TurnState::Submitted(_)),
         "Enter must submit the draft instead of executing the selected card",
+    );
+    assert_eq!(prompt_rx.try_recv().unwrap().text, "new prompt");
+    assert_eq!(
+        final_rx.blocking_recv().unwrap(),
+        crate::agent_tools::action_proposal::channel::ProposalFinalStatus::Cancelled,
+        "dismissing the completed card must resolve its proposal waiter",
     );
 }
 
@@ -16837,6 +16887,22 @@ fn open_choice() -> crate::coordinator::RecommendationChoice {
 fn chip_target_returns_none_when_idle() {
     let app = test_app();
     assert_eq!(app.current_tab().compute_chip_card_target(), None);
+}
+
+#[test]
+fn closing_autofix_source_pane_cancels_completed_recommendation() {
+    let mut app = test_app();
+    stage_surfaced_recommendation(
+        &mut app,
+        vec![send_choice("pane-failing", "fix --auto")],
+        0,
+        Some("pane-failing"),
+    );
+
+    app.handle_autofix_pane_closed(Some(DEFAULT_TAB_ID), "pane-failing");
+
+    assert!(app.current_tab().turn.recommendations().is_none());
+    assert!(app.current_tab().autofix.pane_id.is_none());
 }
 
 #[test]
@@ -17345,7 +17411,7 @@ fn a_turn_with_no_chunks_still_makes_the_session_resumable() {
     submit_test_prompt(&mut app, "hello");
     assert_eq!(app.tab_mut(DEFAULT_TAB_ID).resumable_session_id(), None);
 
-    app.turn_close(DEFAULT_TAB_ID);
+    app.turn_close("fresh-session");
     assert_eq!(
         app.tab_mut(DEFAULT_TAB_ID).resumable_session_id(),
         Some("fresh-session")

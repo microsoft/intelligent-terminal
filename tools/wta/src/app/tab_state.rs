@@ -7,6 +7,7 @@ use crate::app_contracts::{PermOption, PlanEntry};
 use crate::commands::{CommandSpec, MovePositionSpec};
 
 use super::input_edit::InputHistory;
+use super::input_submission::InputEnvelope;
 use super::{TabAutofixState, TurnState};
 
 pub(crate) const DEFAULT_TAB_ID: &str = "0";
@@ -629,6 +630,8 @@ pub struct TabSession {
     pub cursor_pos: usize,
     pub(super) input_history: InputHistory,
     pub(crate) attachments: super::attachments::PendingAttachments,
+    /// ACP-bound inputs waiting for this tab's current turn to finish.
+    pub(super) pending_inputs: VecDeque<InputEnvelope>,
     /// True while a host-triggered text paste is reading the clipboard on a
     /// blocking worker.
     pub paste_pending: bool,
@@ -816,6 +819,10 @@ impl TabSession {
         self.completed_turns.clear();
         self.expanded_completed_tool_calls.clear();
         self.completed_turn_layout = CompletedTurnLayoutState::default();
+    }
+
+    pub(super) fn clear_pending_inputs(&mut self) {
+        self.pending_inputs.clear();
     }
 
     pub(crate) fn completed_tool_call_expanded(&self, id: &str) -> bool {

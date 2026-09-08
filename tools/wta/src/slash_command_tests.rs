@@ -657,7 +657,7 @@ fn slash_fix_when_idle_submits_autofix_turn() {
 }
 
 #[test]
-fn slash_fix_while_busy_does_not_resubmit() {
+fn slash_fix_while_busy_queues_without_mutating_active_generation() {
     let mut app = test_app();
     app.state = ConnectionState::Connected;
     // First /fix arms an in-flight turn.
@@ -665,14 +665,21 @@ fn slash_fix_while_busy_does_not_resubmit() {
     assert!(!app.current_tab().turn.is_idle());
     let gen_after_first = app.current_tab().autofix.generation;
 
-    // Second /fix while busy must be refused (busy advisory), not resubmitted.
+    // Second /fix waits without disturbing the active turn.
     run_slash(&mut app, "fix");
     assert_eq!(
         app.current_tab().autofix.generation,
         gen_after_first,
-        "/fix while a turn is in flight must not bump generation / resubmit"
+        "queued /fix must not mutate the active autofix generation"
     );
-    assert_eq!(last_notice(&app).0, NoticeKind::Warning);
+    assert_eq!(app.current_tab().pending_inputs.len(), 1);
+    assert_eq!(
+        app.current_tab().pending_inputs[0]
+            .autofix
+            .as_ref()
+            .map(|metadata| metadata.text_kind),
+        Some(crate::protocol::acp::client::AutofixTextKind::UserRequest)
+    );
 }
 
 #[test]

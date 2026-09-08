@@ -2,12 +2,13 @@ use crate::clipboard_image::PastedImage;
 use std::ops::Range;
 
 /// Per-tab attachments queued for the next user prompt.
-#[derive(Default)]
+#[derive(Clone, Default)]
 pub(crate) struct PendingAttachments {
     images: Vec<PendingImage>,
     next_image_id: usize,
 }
 
+#[derive(Clone)]
 struct PendingImage {
     image: PastedImage,
     token_range: Range<usize>,
