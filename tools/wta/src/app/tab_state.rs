@@ -628,6 +628,7 @@ pub struct TabSession {
     pub input: String,
     pub cursor_pos: usize,
     pub(super) input_history: InputHistory,
+    pub(crate) input_all_selected: bool,
     pub(crate) attachments: super::attachments::PendingAttachments,
     /// True while a host-triggered text paste is reading the clipboard on a
     /// blocking worker.
