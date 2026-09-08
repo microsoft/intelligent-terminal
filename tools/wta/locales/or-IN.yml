@@ -136,8 +136,25 @@ agents.status.idle: "ନିଷ୍କ୍ରିୟ"
 layout.welcome_hint: "  (Ctrl+Shift+. ଏଜେଣ୍ଟ ପେନ୍ ଦେଖାନ୍ତୁ/ଲୁଚାନ୍ତୁ • Ctrl+Shift+/ ଏଜେଣ୍ଟ ସେସନ୍ ଦେଖାନ୍ତୁ/ଲୁଚାନ୍ତୁ)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}
 
 # ── ସଂଯୋଗ ସ୍ଥିତି ────────────────────────────────────────────────────────
-connection.starting: "ଏଜେଣ୍ଟ ଆରମ୍ଭ ହେଉଛି..."
+# Preparing the AI agent connection, including preflight and reuse of a cached agent.
+connection.starting: "ଏଜେଣ୍ଟ ସଂଯୋଗ ପାଇଁ ପ୍ରସ୍ତୁତି କରାଯାଉଛି..."
+# Retiring old AI agent sessions for /restart, before the next connection phases.
+connection.restarting: "ଏଜେଣ୍ଟ ପୁନଃ ଆରମ୍ଭ କରାଯାଉଛି..."
 connection.reconnecting: "ପୁଣି ସଂଯୋଗ ହେଉଛି..."
+# Connecting the pane to WTA's local coordinator process, not to an AI model.
+connection.coordinator: "ସ୍ଥାନୀୟ ସମନ୍ୱୟକ ସହ ସଂଯୋଗ କରାଯାଉଛି..."
+# Initializing the helper/coordinator connection, including local preparation and AI agent initialization.
+connection.initializing: "ଏଜେଣ୍ଟ ସଂଯୋଗର ପ୍ରାରମ୍ଭିକରଣ କରାଯାଉଛି..."
+# Refreshing the user's authentication with the AI agent after login; not verifying the agent's identity.
+connection.authenticating: "ଏଜେଣ୍ଟ ସହ ବ୍ୟବହାରକାରୀଙ୍କ ଲଗଇନ୍ ପ୍ରମାଣୀକରଣ କରାଯାଉଛି..."
+# Reading the coordinator's registry snapshot, including existing history; not fetching history from the AI agent.
+connection.syncing_sessions: "ସେସନ୍ ତାଲିକା ପଢ଼ାଯାଉଛି..."
+# Creating the AI agent session, including local registration; internal agent progress is unknown.
+connection.creating_session: "ଏଜେଣ୍ଟ ସେସନ୍ ସୃଷ୍ଟି କରାଯାଉଛି..."
+# Applying the requested AI model before the connection is ready. Preserve %{model}.
+connection.selecting_model: "ସେସନ୍ ମଡେଲ୍ ସେଟ୍ କରାଯାଉଛି: %{model}..."  # {Locked="%{model}"}
+# Activity row while connecting to restore a conversation. Keep the actual stage first so narrow panes show it; session_id is shortened to eight characters.
+connection.resuming_stage: "%{stage} (%{session_id} ପୁଣି ଚାଲୁ କରାଯାଉଛି)"  # {Locked="%{stage}","%{session_id}"}
 connection.connecting_activity: "ଏଜେଣ୍ଟ ସହ ସଂଯୋଗ ହେଉଛି…"
 connection.lost: "ଏଜେଣ୍ଟ ସହିତ ସଂଯୋଗ ହରାଇଗଲା। ପୁଣି ସଂଯୋଗ କରିବାକୁ /restart ଟାଇପ୍ କରନ୍ତୁ।"  # {Locked="/restart"}
 

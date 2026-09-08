@@ -132,8 +132,25 @@ agents.status.idle: "Простаивает"
 layout.welcome_hint: "  (Ctrl+Shift+. — показать/скрыть панель агента • Ctrl+Shift+/ — показать/скрыть сеанс агента)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}
 
 # ── Состояние подключения ────────────────────────────────────────────────────────────
-connection.starting: "Запуск агента..."
+# Preparing the AI agent connection, including preflight and reuse of a cached agent.
+connection.starting: "Подготовка подключения к агенту..."
+# Retiring old AI agent sessions for /restart, before the next connection phases.
+connection.restarting: "Перезапуск агента..."
 connection.reconnecting: "Переподключение..."
+# Connecting the pane to WTA's local coordinator process, not to an AI model.
+connection.coordinator: "Подключение к локальному координатору..."
+# Initializing the helper/coordinator connection, including local preparation and AI agent initialization.
+connection.initializing: "Инициализация подключения к агенту..."
+# Refreshing the user's authentication with the AI agent after login; not verifying the agent's identity.
+connection.authenticating: "Аутентификация пользователя у агента..."
+# Reading the coordinator's registry snapshot, including existing history; not fetching history from the AI agent.
+connection.syncing_sessions: "Чтение списка сеансов..."
+# Creating the AI agent session, including local registration; internal agent progress is unknown.
+connection.creating_session: "Создание сеанса агента..."
+# Applying the requested AI model before the connection is ready. Preserve %{model}.
+connection.selecting_model: "Установка модели сеанса: %{model}..."  # {Locked="%{model}"}
+# Activity row while connecting to restore a conversation. Keep the actual stage first so narrow panes show it; session_id is shortened to eight characters.
+connection.resuming_stage: "%{stage} (возобновление %{session_id})"  # {Locked="%{stage}","%{session_id}"}
 connection.connecting_activity: "Подключение к агенту…"
 connection.lost: "Подключение к агенту потеряно. Введите /restart, чтобы подключиться снова."  # {Locked="/restart"}
 

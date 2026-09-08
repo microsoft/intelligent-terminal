@@ -136,8 +136,25 @@ agents.status.idle: "بیکار"
 layout.welcome_hint: "  (Ctrl+Shift+. نمایش/پنهان کردن پنل عامل هوش مصنوعی • Ctrl+Shift+/ نمایش/پنهان کردن نشست عامل هوش مصنوعی)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}
 
 # ── وضعیت اتصال ────────────────────────────────────────────────────────
-connection.starting: "در حال راه‌اندازی عامل هوش مصنوعی..."
+# Preparing the AI agent connection, including preflight and reuse of a cached agent.
+connection.starting: "در حال آماده‌سازی اتصال به عامل هوش مصنوعی..."
 connection.reconnecting: "در حال اتصال مجدد..."
+# Retiring old AI agent sessions for /restart, before the next connection phases.
+connection.restarting: "در حال راه‌اندازی مجدد عامل هوش مصنوعی..."
+# Connecting the pane to WTA's local coordinator process, not to an AI model.
+connection.coordinator: "در حال اتصال به هماهنگ‌کنندهٔ محلی..."
+# Initializing the helper/coordinator connection, including local preparation and AI agent initialization.
+connection.initializing: "در حال مقداردهی اولیهٔ اتصال به عامل هوش مصنوعی..."
+# Refreshing the user's authentication with the AI agent after login; not verifying the agent's identity.
+connection.authenticating: "در حال احراز هویت کاربر نزد عامل هوش مصنوعی..."
+# Reading the coordinator's registry snapshot, including existing history; not fetching history from the AI agent.
+connection.syncing_sessions: "در حال خواندن فهرست جلسه‌ها..."
+# Creating the AI agent session, including local registration; internal agent progress is unknown.
+connection.creating_session: "در حال ایجاد جلسهٔ عامل هوش مصنوعی..."
+# Applying the requested AI model before the connection is ready. Preserve %{model}.
+connection.selecting_model: "در حال تنظیم مدل جلسه: %{model}..."  # {Locked="%{model}"}
+# Activity row while connecting to restore a conversation. Keep the actual stage first so narrow panes show it; session_id is shortened to eight characters.
+connection.resuming_stage: "%{stage} (در حال ازسرگیری %{session_id})"  # {Locked="%{stage}","%{session_id}"}
 connection.connecting_activity: "در حال اتصال به عامل هوش مصنوعی…"
 connection.lost: "اتصال به عامل هوش مصنوعی قطع شد. برای اتصال مجدد، /restart را تایپ کنید."  # {Locked="/restart"}
 

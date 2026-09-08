@@ -136,8 +136,25 @@ agents.status.idle: "निष्क्रिय"
 layout.welcome_hint: "  (Ctrl+Shift+. एजेंट पेन दिखाएँ/छिपाएँ • Ctrl+Shift+/ एजेंट सत्र दिखाएँ/छिपाएँ)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}
 
 # ── कनेक्शन स्थिति ────────────────────────────────────────────────────────
-connection.starting: "एजेंट प्रारंभ हो रहा है..."
+# Preparing the AI agent connection, including preflight and reuse of a cached agent.
+connection.starting: "एजेंट कनेक्शन तैयार किया जा रहा है..."
 connection.reconnecting: "पुनः कनेक्ट हो रहा है..."
+# Retiring old AI agent sessions for /restart, before the next connection phases.
+connection.restarting: "एजेंट पुनः प्रारंभ किया जा रहा है..."
+# Connecting the pane to WTA's local coordinator process, not to an AI model.
+connection.coordinator: "स्थानीय समन्वयक से कनेक्ट हो रहा है..."
+# Initializing the helper/coordinator connection, including local preparation and AI agent initialization.
+connection.initializing: "एजेंट कनेक्शन का आरंभीकरण किया जा रहा है..."
+# Refreshing the user's authentication with the AI agent after login; not verifying the agent's identity.
+connection.authenticating: "एजेंट के साथ उपयोगकर्ता का प्रमाणीकरण किया जा रहा है..."
+# Reading the coordinator's registry snapshot, including existing history; not fetching history from the AI agent.
+connection.syncing_sessions: "सत्र सूची पढ़ी जा रही है..."
+# Creating the AI agent session, including local registration; internal agent progress is unknown.
+connection.creating_session: "एजेंट सत्र बनाया जा रहा है..."
+# Applying the requested AI model before the connection is ready. Preserve %{model}.
+connection.selecting_model: "सत्र का मॉडल सेट किया जा रहा है: %{model}..."  # {Locked="%{model}"}
+# Activity row while connecting to restore a conversation. Keep the actual stage first so narrow panes show it; session_id is shortened to eight characters.
+connection.resuming_stage: "%{stage} (%{session_id} जारी रखते हुए)"  # {Locked="%{stage}","%{session_id}"}
 connection.connecting_activity: "एजेंट से कनेक्ट हो रहा है…"
 connection.lost: "एजेंट से कनेक्शन टूट गया. फिर से कनेक्ट करने के लिए /restart टाइप करें."  # {Locked="/restart"}
 

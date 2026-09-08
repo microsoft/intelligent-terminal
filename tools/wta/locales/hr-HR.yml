@@ -132,8 +132,25 @@ agents.status.idle: "Neaktivno"
 layout.welcome_hint: "  (Ctrl+Shift+. prikaži/sakrij okno agenta • Ctrl+Shift+/ prikaži/sakrij sesiju agenta)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}
 
 # ── Connection state ────────────────────────────────────────────────────────
-connection.starting: "Pokretanje agenta..."
+# Preparing the AI agent connection, including preflight and reuse of a cached agent.
+connection.starting: "Priprema veze s agentom..."
 connection.reconnecting: "Ponovno povezivanje..."
+# Retiring old AI agent sessions for /restart, before the next connection phases.
+connection.restarting: "Ponovno pokretanje agenta..."
+# Connecting the pane to WTA's local coordinator process, not to an AI model.
+connection.coordinator: "Povezivanje s lokalnim koordinatorom..."
+# Initializing the helper/coordinator connection, including local preparation and AI agent initialization.
+connection.initializing: "Inicijalizacija veze s agentom..."
+# Refreshing the user's authentication with the AI agent after login; not verifying the agent's identity.
+connection.authenticating: "Provjera autentičnosti korisnika kod agenta..."
+# Reading the coordinator's registry snapshot, including existing history; not fetching history from the AI agent.
+connection.syncing_sessions: "Čitanje popisa sesija..."
+# Creating the AI agent session, including local registration; internal agent progress is unknown.
+connection.creating_session: "Stvaranje sesije agenta..."
+# Applying the requested AI model before the connection is ready. Preserve %{model}.
+connection.selecting_model: "Postavljanje modela sesije: %{model}..."  # {Locked="%{model}"}
+# Activity row while connecting to restore a conversation. Keep the actual stage first so narrow panes show it; session_id is shortened to eight characters.
+connection.resuming_stage: "%{stage} (nastavljanje %{session_id})"  # {Locked="%{stage}","%{session_id}"}
 connection.connecting_activity: "Povezivanje s agentom…"
 connection.lost: "Veza s agentom je izgubljena. Upišite /restart za ponovno povezivanje."  # {Locked="/restart"}
 

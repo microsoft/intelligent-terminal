@@ -148,10 +148,26 @@ agents.status.idle: "Անգործ"
 layout.welcome_hint: "  (Ctrl+Shift+. ագենտի վահանակը ցույց տալ/թաքցնել • Ctrl+Shift+/ ագենտի նիստը ցույց տալ/թաքցնել)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}
 
 # ── Connection state ────────────────────────────────────────────────────────────────────────
-# Status text shown while launching the agent process
-connection.starting: "Ագենտը գործարկվում է..."
+# Preparing the AI agent connection, including preflight and reuse of a cached agent.
+connection.starting: "Գործակալի հետ կապի նախապատրաստում..."
 # Status text shown while re-establishing agent connection
 connection.reconnecting: "Վերմիանում..."
+# Retiring old AI agent sessions for /restart, before the next connection phases.
+connection.restarting: "Գործակալի վերագործարկում..."
+# Connecting the pane to WTA's local coordinator process, not to an AI model.
+connection.coordinator: "Միացում տեղային համակարգողին..."
+# Initializing the helper/coordinator connection, including local preparation and AI agent initialization.
+connection.initializing: "Գործակալի հետ կապի սկզբնավորում..."
+# Refreshing the user's authentication with the AI agent after login; not verifying the agent's identity.
+connection.authenticating: "Օգտատիրոջ ինքնության հաստատում գործակալի մոտ..."
+# Reading the coordinator's registry snapshot, including existing history; not fetching history from the AI agent.
+connection.syncing_sessions: "Նիստերի ցանկի ընթերցում..."
+# Creating the AI agent session, including local registration; internal agent progress is unknown.
+connection.creating_session: "Գործակալի նիստի ստեղծում..."
+# Applying the requested AI model before the connection is ready. Preserve %{model}.
+connection.selecting_model: "Նիստի մոդելի սահմանում՝ %{model}..."  # {Locked="%{model}"}
+# Activity row while connecting to restore a conversation. Keep the actual stage first so narrow panes show it; session_id is shortened to eight characters.
+connection.resuming_stage: "%{stage} (վերսկսում՝ %{session_id})"  # {Locked="%{stage}","%{session_id}"}
 connection.connecting_activity: "Միանում է ագենտին…"
 connection.lost: "Ագենտի հետ կապը կորել է։ Մուտքագրեք /restart՝ նորից միանալու համար։"  # {Locked="/restart"}
 

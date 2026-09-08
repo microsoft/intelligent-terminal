@@ -137,8 +137,25 @@ agents.status.idle: "নিষ্ক্ৰিয়"
 layout.welcome_hint: "  (Ctrl+Shift+. এজেণ্ট পেন দেখুৱাওক/লুকুৱাওক • Ctrl+Shift+/ এজেণ্ট ছেশ্বন দেখুৱাওক/লুকুৱাওক)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}
 
 # ── সংযোগ স্থিতি ────────────────────────────────────────────────────────
-connection.starting: "এজেণ্ট আৰম্ভ হৈ আছে..."
+# Preparing the AI agent connection, including preflight and reuse of a cached agent.
+connection.starting: "এজেণ্টৰ সংযোগ প্ৰস্তুত কৰা হৈছে..."
 connection.reconnecting: "পুনৰ সংযোগ হৈ আছে..."
+# Retiring old AI agent sessions for /restart, before the next connection phases.
+connection.restarting: "এজেণ্ট পুনৰ আৰম্ভ কৰা হৈছে..."
+# Connecting the pane to WTA's local coordinator process, not to an AI model.
+connection.coordinator: "স্থানীয় সমন্বয়কৰ সৈতে সংযোগ কৰা হৈছে..."
+# Initializing the helper/coordinator connection, including local preparation and AI agent initialization.
+connection.initializing: "এজেণ্টৰ সংযোগ আৰম্ভ কৰা হৈছে..."
+# Refreshing the user's authentication with the AI agent after login; not verifying the agent's identity.
+connection.authenticating: "এজেণ্টৰ সৈতে ব্যৱহাৰকাৰীৰ প্ৰমাণীকৰণ কৰা হৈছে..."
+# Reading the coordinator's registry snapshot, including existing history; not fetching history from the AI agent.
+connection.syncing_sessions: "অধিবেশনৰ তালিকা পঢ়া হৈছে..."
+# Creating the AI agent session, including local registration; internal agent progress is unknown.
+connection.creating_session: "এজেণ্টৰ অধিবেশন সৃষ্টি কৰা হৈছে..."
+# Applying the requested AI model before the connection is ready. Preserve %{model}.
+connection.selecting_model: "অধিবেশনৰ মডেল নিৰ্ধাৰণ কৰা হৈছে: %{model}..."  # {Locked="%{model}"}
+# Activity row while connecting to restore a conversation. Keep the actual stage first so narrow panes show it; session_id is shortened to eight characters.
+connection.resuming_stage: "%{stage} (%{session_id} পুনৰ চলাই থকা হৈছে)"  # {Locked="%{stage}","%{session_id}"}
 connection.connecting_activity: "এজেণ্টলৈ সংযোগ হৈ আছে…"
 connection.lost: "এজেণ্টৰ সৈতে সংযোগ হেৰাই গ'ল। পুনৰ সংযোগ কৰিবলৈ /restart টাইপ কৰক।"  # {Locked="/restart"}
 

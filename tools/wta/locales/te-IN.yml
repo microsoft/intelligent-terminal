@@ -136,8 +136,25 @@ agents.status.idle: "నిష్క్రియం"
 layout.welcome_hint: "  (Ctrl+Shift+. ఏజెంట్ పేన్ చూపించు/దాచు • Ctrl+Shift+/ ఏజెంట్ సెషన్ చూపించు/దాచు)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}
 
 # ── కనెక్షన్ స్థితి ────────────────────────────────────────────────────────
-connection.starting: "ఏజెంట్ ప్రారంభమవుతోంది..."
+# Preparing the AI agent connection, including preflight and reuse of a cached agent.
+connection.starting: "ఏజెంట్ కనెక్షన్‌ను సిద్ధం చేస్తోంది..."
+# Retiring old AI agent sessions for /restart, before the next connection phases.
+connection.restarting: "ఏజెంట్‌ను పునఃప్రారంభిస్తోంది..."
 connection.reconnecting: "మళ్ళీ కనెక్ట్ అవుతోంది..."
+# Connecting the pane to WTA's local coordinator process, not to an AI model.
+connection.coordinator: "స్థానిక సమన్వయకర్తకు కనెక్ట్ అవుతోంది..."
+# Initializing the helper/coordinator connection, including local preparation and AI agent initialization.
+connection.initializing: "ఏజెంట్ కనెక్షన్‌ను ప్రారంభీకరిస్తోంది..."
+# Refreshing the user's authentication with the AI agent after login; not verifying the agent's identity.
+connection.authenticating: "ఏజెంట్‌తో వినియోగదారు లాగిన్‌ను ప్రామాణీకరిస్తోంది..."
+# Reading the coordinator's registry snapshot, including existing history; not fetching history from the AI agent.
+connection.syncing_sessions: "సెషన్‌ల జాబితాను చదువుతోంది..."
+# Creating the AI agent session, including local registration; internal agent progress is unknown.
+connection.creating_session: "ఏజెంట్ సెషన్‌ను సృష్టిస్తోంది..."
+# Applying the requested AI model before the connection is ready. Preserve %{model}.
+connection.selecting_model: "సెషన్ మోడల్‌ను సెట్ చేస్తోంది: %{model}..."  # {Locked="%{model}"}
+# Activity row while connecting to restore a conversation. Keep the actual stage first so narrow panes show it; session_id is shortened to eight characters.
+connection.resuming_stage: "%{stage} (%{session_id} కొనసాగిస్తోంది)"  # {Locked="%{stage}","%{session_id}"}
 connection.connecting_activity: "ఏజెంట్‌కు కనెక్ట్ అవుతోంది…"
 connection.lost: "ఏజెంట్‌తో కనెక్షన్ కోల్పోయింది. మళ్లీ కనెక్ట్ చేయడానికి /restart అని టైప్ చేయండి."  # {Locked="/restart"}
 

@@ -119,8 +119,25 @@ agents.status.idle: "유휴"
 layout.welcome_hint: "  (Ctrl+Shift+. 에이전트 창 표시/숨기기 • Ctrl+Shift+/ 에이전트 세션 표시/숨기기)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}
 
 # ── 연결 상태 ────────────────────────────────────────────────────────────
-connection.starting: "에이전트 시작 중..."
+# Preparing the AI agent connection, including preflight and reuse of a cached agent.
+connection.starting: "에이전트 연결 준비 중..."
 connection.reconnecting: "다시 연결 중..."
+# Retiring old AI agent sessions for /restart, before the next connection phases.
+connection.restarting: "에이전트 다시 시작 중..."
+# Connecting the pane to WTA's local coordinator process, not to an AI model.
+connection.coordinator: "로컬 코디네이터에 연결 중..."
+# Initializing the helper/coordinator connection, including local preparation and AI agent initialization.
+connection.initializing: "에이전트 연결 초기화 중..."
+# Refreshing the user's authentication with the AI agent after login; not verifying the agent's identity.
+connection.authenticating: "에이전트에서 사용자 인증 중..."
+# Reading the coordinator's registry snapshot, including existing history; not fetching history from the AI agent.
+connection.syncing_sessions: "세션 목록 읽는 중..."
+# Creating the AI agent session, including local registration; internal agent progress is unknown.
+connection.creating_session: "에이전트 세션 생성 중..."
+# Applying the requested AI model before the connection is ready. Preserve %{model}.
+connection.selecting_model: "세션 모델 설정 중: %{model}..."  # {Locked="%{model}"}
+# Activity row while connecting to restore a conversation. Keep the actual stage first so narrow panes show it; session_id is shortened to eight characters.
+connection.resuming_stage: "%{stage} (%{session_id} 재개 중)"  # {Locked="%{stage}","%{session_id}"}
 connection.connecting_activity: "에이전트에 연결 중…"
 connection.lost: "에이전트와의 연결이 끊어졌습니다. 다시 연결하려면 /restart 명령을 입력하세요."  # {Locked="/restart"}
 

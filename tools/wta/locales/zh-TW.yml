@@ -119,8 +119,25 @@ agents.status.idle: "閒置"
 layout.welcome_hint: "  (Ctrl+Shift+. 顯示/隱藏智能體窗格 • Ctrl+Shift+/ 顯示/隱藏智能體工作階段)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}
 
 # ── 連線狀態 ────────────────────────────────────────────────────────────
-connection.starting: "正在啟動智能體..."
+# Preparing the AI agent connection, including preflight and reuse of a cached agent.
+connection.starting: "正在準備智能體連線..."
+# Retiring old AI agent sessions for /restart, before the next connection phases.
+connection.restarting: "正在重新啟動智能體..."
 connection.reconnecting: "正在重新連線..."
+# Connecting the pane to WTA's local coordinator process, not to an AI model.
+connection.coordinator: "正在連線至本機協調處理程序..."
+# Initializing the helper/coordinator connection, including local preparation and AI agent initialization.
+connection.initializing: "正在初始化智能體連線..."
+# Refreshing the user's authentication with the AI agent after login; not verifying the agent's identity.
+connection.authenticating: "正在進行登入驗證..."
+# Reading the coordinator's registry snapshot, including existing history; not fetching history from the AI agent.
+connection.syncing_sessions: "正在讀取工作階段清單..."
+# Creating the AI agent session, including local registration; internal agent progress is unknown.
+connection.creating_session: "正在建立智能體工作階段..."
+# Applying the requested AI model before the connection is ready. Preserve %{model}.
+connection.selecting_model: "正在設定工作階段模型：%{model}..."  # {Locked="%{model}"}
+# Activity row while connecting to restore a conversation. Keep the actual stage first so narrow panes show it; session_id is shortened to eight characters.
+connection.resuming_stage: "%{stage}（繼續 %{session_id}）"  # {Locked="%{stage}","%{session_id}"}
 connection.connecting_activity: "正在連線到智能體…"
 connection.lost: "與智能體的連線已中斷。輸入 /restart 以重新連線。"  # {Locked="/restart"}
 

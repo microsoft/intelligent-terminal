@@ -124,8 +124,25 @@ agents.status.idle: "Ledig"
 layout.welcome_hint: "  (Ctrl+Shift+. om agentpaneel te wys/verberg • Ctrl+Shift+/ om agentsessie te wys/verberg)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}
 
 # ── Verbindingstoestand ────────────────────────────────────────────────────────
-connection.starting: "Agent word begin..."
+# Preparing the AI agent connection, including preflight and reuse of a cached agent.
+connection.starting: "Berei agentverbinding voor..."
 connection.reconnecting: "Herkoppel tans..."
+# Retiring old AI agent sessions for /restart, before the next connection phases.
+connection.restarting: "Herbegin agent..."
+# Connecting the pane to WTA's local coordinator process, not to an AI model.
+connection.coordinator: "Koppel tans aan plaaslike koördineerder..."
+# Initializing the helper/coordinator connection, including local preparation and AI agent initialization.
+connection.initializing: "Inisialiseer agentverbinding..."
+# Refreshing the user's authentication with the AI agent after login; not verifying the agent's identity.
+connection.authenticating: "Staaf tans die gebruiker by die agent..."
+# Reading the coordinator's registry snapshot, including existing history; not fetching history from the AI agent.
+connection.syncing_sessions: "Lees sessielys..."
+# Creating the AI agent session, including local registration; internal agent progress is unknown.
+connection.creating_session: "Skep agentsessie..."
+# Applying the requested AI model before the connection is ready. Preserve %{model}.
+connection.selecting_model: "Stel sessiemodel: %{model}..."  # {Locked="%{model}"}
+# Activity row while connecting to restore a conversation. Keep the actual stage first so narrow panes show it; session_id is shortened to eight characters.
+connection.resuming_stage: "%{stage} (hervat %{session_id})"  # {Locked="%{stage}","%{session_id}"}
 connection.connecting_activity: "Koppel tans aan agent…"
 connection.lost: "Verbinding met die agent is verloor. Tik /restart om weer te koppel."  # {Locked="/restart"}
 

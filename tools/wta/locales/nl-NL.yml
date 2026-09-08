@@ -123,8 +123,25 @@ agents.status.idle: "Inactief"
 layout.welcome_hint: "  (Ctrl+Shift+. om het agentdeelvenster te tonen/verbergen • Ctrl+Shift+/ om de agentsessie te tonen/verbergen)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}
 
 # ── Verbindingsstatus ────────────────────────────────────────────────────────────
-connection.starting: "Agent starten..."
+# Preparing the AI agent connection, including preflight and reuse of a cached agent.
+connection.starting: "Verbinding met de agent voorbereiden..."
+# Retiring old AI agent sessions for /restart, before the next connection phases.
+connection.restarting: "Agent opnieuw starten..."
 connection.reconnecting: "Opnieuw verbinden..."
+# Connecting the pane to WTA's local coordinator process, not to an AI model.
+connection.coordinator: "Verbinding maken met de lokale coördinator..."
+# Initializing the helper/coordinator connection, including local preparation and AI agent initialization.
+connection.initializing: "Verbinding met de agent initialiseren..."
+# Refreshing the user's authentication with the AI agent after login; not verifying the agent's identity.
+connection.authenticating: "Gebruiker bij de agent verifiëren..."
+# Reading the coordinator's registry snapshot, including existing history; not fetching history from the AI agent.
+connection.syncing_sessions: "Sessielijst lezen..."
+# Creating the AI agent session, including local registration; internal agent progress is unknown.
+connection.creating_session: "Agentsessie maken..."
+# Applying the requested AI model before the connection is ready. Preserve %{model}.
+connection.selecting_model: "Sessiemodel instellen: %{model}..."  # {Locked="%{model}"}
+# Activity row while connecting to restore a conversation. Keep the actual stage first so narrow panes show it; session_id is shortened to eight characters.
+connection.resuming_stage: "%{stage} (%{session_id} hervatten)"  # {Locked="%{stage}","%{session_id}"}
 connection.connecting_activity: "Verbinding maken met agent…"
 connection.lost: "De verbinding met de agent is verbroken. Typ /restart om opnieuw verbinding te maken."  # {Locked="/restart"}
 

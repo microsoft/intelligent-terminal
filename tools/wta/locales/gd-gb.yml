@@ -123,8 +123,25 @@ agents.status.idle: "Na thàmh"
 layout.welcome_hint: "  (Ctrl+Shift+. gus panail àidseant a shealltainn/fhalach • Ctrl+Shift+/ gus seisean àidseant a shealltainn/fhalach)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}
 
 # ── Staid ceangail ────────────────────────────────────────────────────────
-connection.starting: "A' tòiseachadh an àidseant..."
+# Preparing the AI agent connection, including preflight and reuse of a cached agent.
+connection.starting: "Ag ullachadh a' cheangail ris an neach-gnìomha..."
 connection.reconnecting: "Ag ath-cheangal..."
+# Retiring old AI agent sessions for /restart, before the next connection phases.
+connection.restarting: "Ag ath-thòiseachadh an neach-gnìomha..."
+# Connecting the pane to WTA's local coordinator process, not to an AI model.
+connection.coordinator: "A' ceangal ris a' cho-òrdanaiche ionadail..."
+# Initializing the helper/coordinator connection, including local preparation and AI agent initialization.
+connection.initializing: "A' tòiseachadh a' cheangail ris an neach-gnìomha..."
+# Refreshing the user's authentication with the AI agent after login; not verifying the agent's identity.
+connection.authenticating: "A' dearbhadh an cleachdaiche leis an neach-gnìomha..."
+# Reading the coordinator's registry snapshot, including existing history; not fetching history from the AI agent.
+connection.syncing_sessions: "A' leughadh liosta nan seiseanan..."
+# Creating the AI agent session, including local registration; internal agent progress is unknown.
+connection.creating_session: "A' cruthachadh seisean an neach-gnìomha..."
+# Applying the requested AI model before the connection is ready. Preserve %{model}.
+connection.selecting_model: "A' suidheachadh modail an t-seisein: %{model}..."  # {Locked="%{model}"}
+# Activity row while connecting to restore a conversation. Keep the actual stage first so narrow panes show it; session_id is shortened to eight characters.
+connection.resuming_stage: "%{stage} (a' leantainn air %{session_id})"  # {Locked="%{stage}","%{session_id}"}
 connection.connecting_activity: "A' ceangal ris an àidseant…"
 connection.lost: "Chaidh an ceangal ris an àidseant a chall. Sgrìobh /restart gus ath-cheangal."  # {Locked="/restart"}
 

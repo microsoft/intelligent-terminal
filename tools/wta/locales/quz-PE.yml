@@ -123,8 +123,25 @@ agents.status.idle: "Samachkan"
 layout.welcome_hint: "  (Ctrl+Shift+. agente k'itita rikuchiy/pakay • Ctrl+Shift+/ agente hunt'ata rikuchiy/pakay)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}
 
 # ── Connection state ────────────────────────────────────────────────────────
-connection.starting: "Agente qallarichkan..."
+# Preparing the AI agent connection, including preflight and reuse of a cached agent.
+connection.starting: "Agenteman t'inkinata wakichispa..."
+# Retiring old AI agent sessions for /restart, before the next connection phases.
+connection.restarting: "Agenteta musuqmanta qallarichispa..."
 connection.reconnecting: "Watiqmanta t'inkichkan..."
+# Connecting the pane to WTA's local coordinator process, not to an AI model.
+connection.coordinator: "Kay computadorapi tinkuchiqman t'inkispa..."
+# Initializing the helper/coordinator connection, including local preparation and AI agent initialization.
+connection.initializing: "Agenteman t'inkinata qallarichispa..."
+# Refreshing the user's authentication with the AI agent after login; not verifying the agent's identity.
+connection.authenticating: "Agentepi haykuqpa kikin kayninta chiqaqchaspa..."
+# Reading the coordinator's registry snapshot, including existing history; not fetching history from the AI agent.
+connection.syncing_sessions: "Sesión listata ñawirispa..."
+# Creating the AI agent session, including local registration; internal agent progress is unknown.
+connection.creating_session: "Agente sesiónta ruwaspa..."
+# Applying the requested AI model before the connection is ready. Preserve %{model}.
+connection.selecting_model: "Sesión modelota churaspa: %{model}..."  # {Locked="%{model}"}
+# Activity row while connecting to restore a conversation. Keep the actual stage first so narrow panes show it; session_id is shortened to eight characters.
+connection.resuming_stage: "%{stage} (%{session_id} nisqata qatispa)"  # {Locked="%{stage}","%{session_id}"}
 connection.connecting_activity: "Agente-man t'inkichkan…"
 connection.lost: "Agente-man t'inkiy chinkarun. Watiqmanta t'inkinapaq /restart qillqay."  # {Locked="/restart"}
 

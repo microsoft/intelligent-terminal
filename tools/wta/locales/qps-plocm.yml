@@ -123,8 +123,25 @@ agents.status.idle: "[!! Idl_e !!]"
 layout.welcome_hint: "[!!   (C_trl+Shift+. to show/hide agent pane • Ctrl+Shift+/ to show/hide agent session) !!]"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}
 
 # ── Connection state ────────────────────────────────────────────────────────
-connection.starting: "[!! Sta_rting agent... !!]"
+# Preparing the AI agent connection, including preflight and reuse of a cached agent.
+connection.starting: "\u202e[!! Pre_paring agent connection... !!]\u202c"
+# Retiring old AI agent sessions for /restart, before the next connection phases.
+connection.restarting: "\u202e[!! Res_tarting agent... !!]\u202c"
 connection.reconnecting: "[!! Rec_onnecting... !!]"
+# Connecting the pane to WTA's local coordinator process, not to an AI model.
+connection.coordinator: "\u202e[!! Conn_ecting to local coordinator... !!]\u202c"
+# Initializing the helper/coordinator connection, including local preparation and AI agent initialization.
+connection.initializing: "\u202e[!! Ini_tializing agent connection... !!]\u202c"
+# Refreshing the user's authentication with the AI agent after login; not verifying the agent's identity.
+connection.authenticating: "\u202e[!! Auth_enticating with agent... !!]\u202c"
+# Reading the coordinator's registry snapshot, including existing history; not fetching history from the AI agent.
+connection.syncing_sessions: "\u202e[!! Rea_ding session list... !!]\u202c"
+# Creating the AI agent session, including local registration; internal agent progress is unknown.
+connection.creating_session: "\u202e[!! Cre_ating agent session... !!]\u202c"
+# Applying the requested AI model before the connection is ready. Preserve %{model}.
+connection.selecting_model: "\u202e[!! Set_ting session model: \u202c%{model}\u202e... !!]\u202c"  # {Locked="%{model}"}
+# Activity row while connecting to restore a conversation. Keep the actual stage first so narrow panes show it; session_id is shortened to eight characters.
+connection.resuming_stage: "%{stage} \u202e(res_uming \u202c%{session_id}\u202e)\u202c"  # {Locked="%{stage}","%{session_id}"}
 connection.connecting_activity: "[!! Conn_ecting to agent… !!]"
 connection.lost: "[!! Conn_ection to the agent was lost. Type /restart to reconnect. !!]"  # {Locked="/restart"}
 

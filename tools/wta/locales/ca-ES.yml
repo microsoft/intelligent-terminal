@@ -124,8 +124,25 @@ agents.status.idle: "Inactiu"
 layout.welcome_hint: "  (Ctrl+Shift+. per mostrar/amagar el tauler d'agent • Ctrl+Shift+/ per mostrar/amagar la sessió d'agent)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}
 
 # ── Estat de la connexió ────────────────────────────────────────────────────────
-connection.starting: "S'està iniciant l'agent..."
+# Preparing the AI agent connection, including preflight and reuse of a cached agent.
+connection.starting: "S'està preparant la connexió amb l'agent..."
 connection.reconnecting: "S'està reconnectant..."
+# Retiring old AI agent sessions for /restart, before the next connection phases.
+connection.restarting: "S'està reiniciant l'agent..."
+# Connecting the pane to WTA's local coordinator process, not to an AI model.
+connection.coordinator: "S'està connectant amb el coordinador local..."
+# Initializing the helper/coordinator connection, including local preparation and AI agent initialization.
+connection.initializing: "S'està inicialitzant la connexió amb l'agent..."
+# Refreshing the user's authentication with the AI agent after login; not verifying the agent's identity.
+connection.authenticating: "S'està autenticant l'usuari davant de l'agent..."
+# Reading the coordinator's registry snapshot, including existing history; not fetching history from the AI agent.
+connection.syncing_sessions: "S'està llegint la llista de sessions..."
+# Creating the AI agent session, including local registration; internal agent progress is unknown.
+connection.creating_session: "S'està creant la sessió de l'agent..."
+# Applying the requested AI model before the connection is ready. Preserve %{model}.
+connection.selecting_model: "S'està establint el model de la sessió: %{model}..."  # {Locked="%{model}"}
+# Activity row while connecting to restore a conversation. Keep the actual stage first so narrow panes show it; session_id is shortened to eight characters.
+connection.resuming_stage: "%{stage} (s'està reprenent %{session_id})"  # {Locked="%{stage}","%{session_id}"}
 connection.connecting_activity: "S'està connectant a l'agent…"
 connection.lost: "S'ha perdut la connexió amb l'agent. Escriviu /restart per tornar-vos a connectar."  # {Locked="/restart"}
 

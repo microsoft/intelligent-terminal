@@ -137,8 +137,25 @@ agents.status.idle: "Boş"
 layout.welcome_hint: "  (Ctrl+Shift+. agent panelini göstər/gizlə • Ctrl+Shift+/ agent sessiyasını göstər/gizlə)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}
 
 # ── Connection state ────────────────────────────────────────────────────────
-connection.starting: "Agent başladılır..."
+# Preparing the AI agent connection, including preflight and reuse of a cached agent.
+connection.starting: "Agent bağlantısı hazırlanır..."
 connection.reconnecting: "Yenidən qoşulur..."
+# Retiring old AI agent sessions for /restart, before the next connection phases.
+connection.restarting: "Agent yenidən başladılır..."
+# Connecting the pane to WTA's local coordinator process, not to an AI model.
+connection.coordinator: "Yerli koordinatora qoşulur..."
+# Initializing the helper/coordinator connection, including local preparation and AI agent initialization.
+connection.initializing: "Agent bağlantısı ilkin sazlanır..."
+# Refreshing the user's authentication with the AI agent after login; not verifying the agent's identity.
+connection.authenticating: "Agentdə istifadəçinin kimliyi doğrulanır..."
+# Reading the coordinator's registry snapshot, including existing history; not fetching history from the AI agent.
+connection.syncing_sessions: "Sessiya siyahısı oxunur..."
+# Creating the AI agent session, including local registration; internal agent progress is unknown.
+connection.creating_session: "Agent sessiyası yaradılır..."
+# Applying the requested AI model before the connection is ready. Preserve %{model}.
+connection.selecting_model: "Sessiya modeli təyin edilir: %{model}..."  # {Locked="%{model}"}
+# Activity row while connecting to restore a conversation. Keep the actual stage first so narrow panes show it; session_id is shortened to eight characters.
+connection.resuming_stage: "%{stage} (%{session_id} davam etdirilir)"  # {Locked="%{stage}","%{session_id}"}
 connection.connecting_activity: "Agentə qoşulur…"
 connection.lost: "Agentlə bağlantı itdi. Yenidən qoşulmaq üçün /restart yazın."  # {Locked="/restart"}
 

@@ -136,8 +136,25 @@ agents.status.idle: "निष्क्रिय"
 layout.welcome_hint: "  (Ctrl+Shift+. एजंट पेन दाखवा/लपवा • Ctrl+Shift+/ एजंट सत्र दाखवा/लपवा)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}
 
 # ── कनेक्शन स्थिती ────────────────────────────────────────────────────────
-connection.starting: "एजंट सुरू होत आहे..."
+# Preparing the AI agent connection, including preflight and reuse of a cached agent.
+connection.starting: "एजंट कनेक्शनची तयारी करत आहे..."
+# Retiring old AI agent sessions for /restart, before the next connection phases.
+connection.restarting: "एजंट रीस्टार्ट करत आहे..."
 connection.reconnecting: "पुन्हा कनेक्ट होत आहे..."
+# Connecting the pane to WTA's local coordinator process, not to an AI model.
+connection.coordinator: "स्थानिक समन्वयकाशी कनेक्ट होत आहे..."
+# Initializing the helper/coordinator connection, including local preparation and AI agent initialization.
+connection.initializing: "एजंट कनेक्शनचे आरंभीकरण करत आहे..."
+# Refreshing the user's authentication with the AI agent after login; not verifying the agent's identity.
+connection.authenticating: "एजंटकडे वापरकर्त्याच्या लॉगिनचे प्रमाणीकरण करत आहे..."
+# Reading the coordinator's registry snapshot, including existing history; not fetching history from the AI agent.
+connection.syncing_sessions: "सत्रांची यादी वाचत आहे..."
+# Creating the AI agent session, including local registration; internal agent progress is unknown.
+connection.creating_session: "एजंट सत्र तयार करत आहे..."
+# Applying the requested AI model before the connection is ready. Preserve %{model}.
+connection.selecting_model: "सत्राचे मॉडेल सेट करत आहे: %{model}..."  # {Locked="%{model}"}
+# Activity row while connecting to restore a conversation. Keep the actual stage first so narrow panes show it; session_id is shortened to eight characters.
+connection.resuming_stage: "%{stage} (%{session_id} पुन्हा सुरू करत आहे)"  # {Locked="%{stage}","%{session_id}"}
 connection.connecting_activity: "एजंटशी कनेक्ट होत आहे…"
 connection.lost: "एजंटशी कनेक्शन तुटले. पुन्हा कनेक्ट करण्यासाठी /restart टाइप करा."  # {Locked="/restart"}
 

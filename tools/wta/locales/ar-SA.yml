@@ -137,8 +137,25 @@ agents.status.idle: "خامل"
 layout.welcome_hint: "  (Ctrl+Shift+. لإظهار/إخفاء لوحة عامل الذكاء الاصطناعي • Ctrl+Shift+/ لإظهار/إخفاء جلسة عامل الذكاء الاصطناعي)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}
 
 # ── حالة الاتصال ────────────────────────────────────────────────────────
-connection.starting: "جارٍ تشغيل عامل الذكاء الاصطناعي..."
+# Preparing the AI agent connection, including preflight and reuse of a cached agent.
+connection.starting: "جارٍ إعداد الاتصال بوكيل الذكاء الاصطناعي..."
 connection.reconnecting: "جارٍ إعادة الاتصال..."
+# Retiring old AI agent sessions for /restart, before the next connection phases.
+connection.restarting: "جارٍ إعادة تشغيل وكيل الذكاء الاصطناعي..."
+# Connecting the pane to WTA's local coordinator process, not to an AI model.
+connection.coordinator: "جارٍ الاتصال بالمنسق المحلي..."
+# Initializing the helper/coordinator connection, including local preparation and AI agent initialization.
+connection.initializing: "جارٍ تهيئة الاتصال بوكيل الذكاء الاصطناعي..."
+# Refreshing the user's authentication with the AI agent after login; not verifying the agent's identity.
+connection.authenticating: "جارٍ مصادقة المستخدم لدى وكيل الذكاء الاصطناعي..."
+# Reading the coordinator's registry snapshot, including existing history; not fetching history from the AI agent.
+connection.syncing_sessions: "جارٍ قراءة قائمة الجلسات..."
+# Creating the AI agent session, including local registration; internal agent progress is unknown.
+connection.creating_session: "جارٍ إنشاء جلسة وكيل الذكاء الاصطناعي..."
+# Applying the requested AI model before the connection is ready. Preserve %{model}.
+connection.selecting_model: "جارٍ تعيين نموذج الجلسة: %{model}..."  # {Locked="%{model}"}
+# Activity row while connecting to restore a conversation. Keep the actual stage first so narrow panes show it; session_id is shortened to eight characters.
+connection.resuming_stage: "%{stage} (جارٍ استئناف %{session_id})"  # {Locked="%{stage}","%{session_id}"}
 connection.connecting_activity: "جارٍ الاتصال بعامل الذكاء الاصطناعي…"
 connection.lost: "فُقد الاتصال بعامل الذكاء الاصطناعي. اكتب /restart لإعادة الاتصال."  # {Locked="/restart"}
 

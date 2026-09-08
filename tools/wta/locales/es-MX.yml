@@ -123,8 +123,25 @@ agents.status.idle: "Inactivo"
 layout.welcome_hint: "  (Ctrl+Shift+. para mostrar/ocultar el panel del agente • Ctrl+Shift+/ para mostrar/ocultar la sesión del agente)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}
 
 # ── Estado de conexión ────────────────────────────────────────────────────────────
-connection.starting: "Iniciando agente..."
+# Preparing the AI agent connection, including preflight and reuse of a cached agent.
+connection.starting: "Preparando la conexión con el agente..."
 connection.reconnecting: "Reconectando..."
+# Retiring old AI agent sessions for /restart, before the next connection phases.
+connection.restarting: "Reiniciando el agente..."
+# Connecting the pane to WTA's local coordinator process, not to an AI model.
+connection.coordinator: "Conectando con el coordinador local..."
+# Initializing the helper/coordinator connection, including local preparation and AI agent initialization.
+connection.initializing: "Inicializando la conexión con el agente..."
+# Refreshing the user's authentication with the AI agent after login; not verifying the agent's identity.
+connection.authenticating: "Autenticando al usuario ante el agente..."
+# Reading the coordinator's registry snapshot, including existing history; not fetching history from the AI agent.
+connection.syncing_sessions: "Leyendo la lista de sesiones..."
+# Creating the AI agent session, including local registration; internal agent progress is unknown.
+connection.creating_session: "Creando la sesión del agente..."
+# Applying the requested AI model before the connection is ready. Preserve %{model}.
+connection.selecting_model: "Estableciendo el modelo de la sesión: %{model}..."  # {Locked="%{model}"}
+# Activity row while connecting to restore a conversation. Keep the actual stage first so narrow panes show it; session_id is shortened to eight characters.
+connection.resuming_stage: "%{stage} (reanudando %{session_id})"  # {Locked="%{stage}","%{session_id}"}
 connection.connecting_activity: "Conectando con el agente…"
 connection.lost: "Se perdió la conexión con el agente. Escribe /restart para volver a conectar."  # {Locked="/restart"}
 

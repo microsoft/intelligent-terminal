@@ -132,8 +132,25 @@ agents.status.idle: "Neaktivan"
 layout.welcome_hint: "  (Ctrl+Shift+. za prikaz/skrivanje panela agenta • Ctrl+Shift+/ za prikaz/skrivanje sesije agenta)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}
 
 # ── Connection state ────────────────────────────────────────────────────────
-connection.starting: "Pokretanje agenta..."
+# Preparing the AI agent connection, including preflight and reuse of a cached agent.
+connection.starting: "Priprema veze sa agentom..."
+# Retiring old AI agent sessions for /restart, before the next connection phases.
+connection.restarting: "Ponovno pokretanje agenta..."
 connection.reconnecting: "Ponovno povezivanje..."
+# Connecting the pane to WTA's local coordinator process, not to an AI model.
+connection.coordinator: "Povezivanje sa lokalnim koordinatorom..."
+# Initializing the helper/coordinator connection, including local preparation and AI agent initialization.
+connection.initializing: "Inicijalizacija veze sa agentom..."
+# Refreshing the user's authentication with the AI agent after login; not verifying the agent's identity.
+connection.authenticating: "Provera prijave korisnika kod agenta..."
+# Reading the coordinator's registry snapshot, including existing history; not fetching history from the AI agent.
+connection.syncing_sessions: "Čitanje liste sesija..."
+# Creating the AI agent session, including local registration; internal agent progress is unknown.
+connection.creating_session: "Pravljenje sesije agenta..."
+# Applying the requested AI model before the connection is ready. Preserve %{model}.
+connection.selecting_model: "Postavljanje modela sesije: %{model}..."  # {Locked="%{model}"}
+# Activity row while connecting to restore a conversation. Keep the actual stage first so narrow panes show it; session_id is shortened to eight characters.
+connection.resuming_stage: "%{stage} (nastavljanje %{session_id})"  # {Locked="%{stage}","%{session_id}"}
 connection.connecting_activity: "Povezivanje sa agentom…"
 connection.lost: "Veza sa agentom je izgubljena. Unesite /restart da biste se ponovo povezali."  # {Locked="/restart"}
 

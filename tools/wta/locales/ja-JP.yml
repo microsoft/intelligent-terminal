@@ -119,8 +119,25 @@ agents.status.idle: "アイドル"
 layout.welcome_hint: "  (Ctrl+Shift+. エージェント ペインの表示/非表示 • Ctrl+Shift+/ エージェント セッションの表示/非表示)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}
 
 # ── 接続状態 ────────────────────────────────────────────────────────────
-connection.starting: "エージェントを起動中..."
+# Preparing the AI agent connection, including preflight and reuse of a cached agent.
+connection.starting: "エージェントへの接続を準備中..."
 connection.reconnecting: "再接続中..."
+# Retiring old AI agent sessions for /restart, before the next connection phases.
+connection.restarting: "エージェントを再起動中..."
+# Connecting the pane to WTA's local coordinator process, not to an AI model.
+connection.coordinator: "ローカル コーディネーターに接続中..."
+# Initializing the helper/coordinator connection, including local preparation and AI agent initialization.
+connection.initializing: "エージェントへの接続を初期化中..."
+# Refreshing the user's authentication with the AI agent after login; not verifying the agent's identity.
+connection.authenticating: "エージェントでユーザー認証中..."
+# Reading the coordinator's registry snapshot, including existing history; not fetching history from the AI agent.
+connection.syncing_sessions: "セッション一覧を読み取り中..."
+# Creating the AI agent session, including local registration; internal agent progress is unknown.
+connection.creating_session: "エージェント セッションを作成中..."
+# Applying the requested AI model before the connection is ready. Preserve %{model}.
+connection.selecting_model: "セッションのモデルを設定中: %{model}..."  # {Locked="%{model}"}
+# Activity row while connecting to restore a conversation. Keep the actual stage first so narrow panes show it; session_id is shortened to eight characters.
+connection.resuming_stage: "%{stage} (%{session_id} を再開中)"  # {Locked="%{stage}","%{session_id}"}
 connection.connecting_activity: "エージェントに接続中…"
 connection.lost: "エージェントへの接続が失われました。再接続するには /restart と入力してください。"  # {Locked="/restart"}
 

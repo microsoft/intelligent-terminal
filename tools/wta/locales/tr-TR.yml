@@ -136,8 +136,25 @@ agents.status.idle: "Boşta"
 layout.welcome_hint: "  (Ctrl+Shift+. aracı panelini göster/gizle • Ctrl+Shift+/ aracı oturumunu göster/gizle)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}
 
 # ── Connection state ────────────────────────────────────────────────────────
-connection.starting: "Aracı başlatılıyor..."
+# Preparing the AI agent connection, including preflight and reuse of a cached agent.
+connection.starting: "Aracı bağlantısı hazırlanıyor..."
+# Retiring old AI agent sessions for /restart, before the next connection phases.
+connection.restarting: "Aracı yeniden başlatılıyor..."
 connection.reconnecting: "Yeniden bağlanılıyor..."
+# Connecting the pane to WTA's local coordinator process, not to an AI model.
+connection.coordinator: "Yerel koordinatöre bağlanılıyor..."
+# Initializing the helper/coordinator connection, including local preparation and AI agent initialization.
+connection.initializing: "Aracı bağlantısı başlatılıyor..."
+# Refreshing the user's authentication with the AI agent after login; not verifying the agent's identity.
+connection.authenticating: "Aracıda kullanıcı oturumu doğrulanıyor..."
+# Reading the coordinator's registry snapshot, including existing history; not fetching history from the AI agent.
+connection.syncing_sessions: "Oturum listesi okunuyor..."
+# Creating the AI agent session, including local registration; internal agent progress is unknown.
+connection.creating_session: "Aracı oturumu oluşturuluyor..."
+# Applying the requested AI model before the connection is ready. Preserve %{model}.
+connection.selecting_model: "Oturum modeli ayarlanıyor: %{model}..."  # {Locked="%{model}"}
+# Activity row while connecting to restore a conversation. Keep the actual stage first so narrow panes show it; session_id is shortened to eight characters.
+connection.resuming_stage: "%{stage} (%{session_id} sürdürülüyor)"  # {Locked="%{stage}","%{session_id}"}
 connection.connecting_activity: "Aracıya bağlanılıyor…"
 connection.lost: "Aracı bağlantısı kesildi. Yeniden bağlanmak için /restart yazın."  # {Locked="/restart"}
 

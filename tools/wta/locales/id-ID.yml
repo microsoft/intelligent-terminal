@@ -123,8 +123,25 @@ agents.status.idle: "Menganggur"
 layout.welcome_hint: "  (Ctrl+Shift+. untuk menampilkan/menyembunyikan panel agen AI • Ctrl+Shift+/ untuk menampilkan/menyembunyikan sesi agen AI)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}
 
 # ── Connection state ────────────────────────────────────────────────────────
-connection.starting: "Memulai agen AI..."
+# Preparing the AI agent connection, including preflight and reuse of a cached agent.
+connection.starting: "Menyiapkan koneksi agen AI..."
 connection.reconnecting: "Menyambungkan kembali..."
+# Retiring old AI agent sessions for /restart, before the next connection phases.
+connection.restarting: "Memulai ulang agen AI..."
+# Connecting the pane to WTA's local coordinator process, not to an AI model.
+connection.coordinator: "Menyambungkan ke koordinator lokal..."
+# Initializing the helper/coordinator connection, including local preparation and AI agent initialization.
+connection.initializing: "Menginisialisasi koneksi agen AI..."
+# Refreshing the user's authentication with the AI agent after login; not verifying the agent's identity.
+connection.authenticating: "Mengautentikasi pengguna dengan agen AI..."
+# Reading the coordinator's registry snapshot, including existing history; not fetching history from the AI agent.
+connection.syncing_sessions: "Membaca daftar sesi..."
+# Creating the AI agent session, including local registration; internal agent progress is unknown.
+connection.creating_session: "Membuat sesi agen AI..."
+# Applying the requested AI model before the connection is ready. Preserve %{model}.
+connection.selecting_model: "Mengatur model sesi: %{model}..."  # {Locked="%{model}"}
+# Activity row while connecting to restore a conversation. Keep the actual stage first so narrow panes show it; session_id is shortened to eight characters.
+connection.resuming_stage: "%{stage} (melanjutkan %{session_id})"  # {Locked="%{stage}","%{session_id}"}
 connection.connecting_activity: "Menyambungkan ke agen AI…"
 connection.lost: "Koneksi ke agen AI terputus. Ketik /restart untuk menyambungkan kembali."  # {Locked="/restart"}
 

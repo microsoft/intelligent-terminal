@@ -132,8 +132,25 @@ agents.status.idle: "Nečinný"
 layout.welcome_hint: "  (Ctrl+Shift+. zobraziť/skryť panel agenta • Ctrl+Shift+/ zobraziť/skryť reláciu agenta)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}
 
 # ── Connection state ────────────────────────────────────────────────────────
-connection.starting: "Spúšťanie agenta..."
+# Preparing the AI agent connection, including preflight and reuse of a cached agent.
+connection.starting: "Príprava pripojenia k agentovi..."
+# Retiring old AI agent sessions for /restart, before the next connection phases.
+connection.restarting: "Reštartovanie agenta..."
 connection.reconnecting: "Opätovné pripájanie..."
+# Connecting the pane to WTA's local coordinator process, not to an AI model.
+connection.coordinator: "Pripájanie k lokálnemu koordinátorovi..."
+# Initializing the helper/coordinator connection, including local preparation and AI agent initialization.
+connection.initializing: "Inicializácia pripojenia k agentovi..."
+# Refreshing the user's authentication with the AI agent after login; not verifying the agent's identity.
+connection.authenticating: "Overovanie prihlásenia používateľa k agentovi..."
+# Reading the coordinator's registry snapshot, including existing history; not fetching history from the AI agent.
+connection.syncing_sessions: "Čítanie zoznamu relácií..."
+# Creating the AI agent session, including local registration; internal agent progress is unknown.
+connection.creating_session: "Vytváranie relácie agenta..."
+# Applying the requested AI model before the connection is ready. Preserve %{model}.
+connection.selecting_model: "Nastavovanie modelu relácie: %{model}..."  # {Locked="%{model}"}
+# Activity row while connecting to restore a conversation. Keep the actual stage first so narrow panes show it; session_id is shortened to eight characters.
+connection.resuming_stage: "%{stage} (obnovovanie %{session_id})"  # {Locked="%{stage}","%{session_id}"}
 connection.connecting_activity: "Pripájanie k agentovi…"
 connection.lost: "Pripojenie k agentovi sa stratilo. Zadaním /restart sa znova pripojíte."  # {Locked="/restart"}
 

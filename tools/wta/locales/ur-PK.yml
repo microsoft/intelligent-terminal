@@ -136,8 +136,25 @@ agents.status.idle: "غیر فعال"
 layout.welcome_hint: "  (Ctrl+Shift+. ایجنٹ پین دکھائیں/چھپائیں • Ctrl+Shift+/ ایجنٹ سیشن دکھائیں/چھپائیں)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}
 
 # ── کنیکشن حالت ────────────────────────────────────────────────────────
-connection.starting: "ایجنٹ شروع ہو رہا ہے..."
+# Preparing the AI agent connection, including preflight and reuse of a cached agent.
+connection.starting: "ایجنٹ سے کنکشن کی تیاری ہو رہی ہے..."
+# Retiring old AI agent sessions for /restart, before the next connection phases.
+connection.restarting: "ایجنٹ دوبارہ شروع ہو رہا ہے..."
 connection.reconnecting: "دوبارہ جڑ رہا ہے..."
+# Connecting the pane to WTA's local coordinator process, not to an AI model.
+connection.coordinator: "مقامی رابطہ کار سے جڑ رہا ہے..."
+# Initializing the helper/coordinator connection, including local preparation and AI agent initialization.
+connection.initializing: "ایجنٹ سے کنکشن کی ابتدائی ترتیب ہو رہی ہے..."
+# Refreshing the user's authentication with the AI agent after login; not verifying the agent's identity.
+connection.authenticating: "ایجنٹ کے ساتھ صارف کے لاگ ان کی توثیق ہو رہی ہے..."
+# Reading the coordinator's registry snapshot, including existing history; not fetching history from the AI agent.
+connection.syncing_sessions: "سیشنز کی فہرست پڑھی جا رہی ہے..."
+# Creating the AI agent session, including local registration; internal agent progress is unknown.
+connection.creating_session: "ایجنٹ کا سیشن بنایا جا رہا ہے..."
+# Applying the requested AI model before the connection is ready. Preserve %{model}.
+connection.selecting_model: "سیشن کا ماڈل سیٹ ہو رہا ہے: %{model}..."  # {Locked="%{model}"}
+# Activity row while connecting to restore a conversation. Keep the actual stage first so narrow panes show it; session_id is shortened to eight characters.
+connection.resuming_stage: "%{stage} (%{session_id} بحال ہو رہا ہے)"  # {Locked="%{stage}","%{session_id}"}
 connection.connecting_activity: "ایجنٹ سے جڑ رہا ہے…"
 connection.lost: "ایجنٹ سے کنیکشن ختم ہو گیا۔ دوبارہ جڑنے کے لیے /restart ٹائپ کریں۔"  # {Locked="/restart"}
 

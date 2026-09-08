@@ -123,8 +123,25 @@ agents.status.idle: "Idle"
 layout.welcome_hint: "  (Ctrl+Shift+. to show/hide agent pane • Ctrl+Shift+/ to show/hide agent session)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}
 
 # ── Connection state ────────────────────────────────────────────────────────
-connection.starting: "Starting agent..."
+# Preparing the AI agent connection, including preflight and reuse of a cached agent.
+connection.starting: "Preparing agent connection..."
 connection.reconnecting: "Reconnecting..."
+# Retiring old AI agent sessions for /restart, before the next connection phases.
+connection.restarting: "Restarting agent..."
+# Connecting the pane to WTA's local coordinator process, not to an AI model.
+connection.coordinator: "Connecting to local coordinator..."
+# Initializing the helper/coordinator connection, including local preparation and AI agent initialization.
+connection.initializing: "Initialising agent connection..."
+# Refreshing the user's authentication with the AI agent after login; not verifying the agent's identity.
+connection.authenticating: "Authenticating with agent..."
+# Reading the coordinator's registry snapshot, including existing history; not fetching history from the AI agent.
+connection.syncing_sessions: "Reading session list..."
+# Creating the AI agent session, including local registration; internal agent progress is unknown.
+connection.creating_session: "Creating agent session..."
+# Applying the requested AI model before the connection is ready. Preserve %{model}.
+connection.selecting_model: "Setting session model: %{model}..."  # {Locked="%{model}"}
+# Activity row while connecting to restore a conversation. Keep the actual stage first so narrow panes show it; session_id is shortened to eight characters.
+connection.resuming_stage: "%{stage} (resuming %{session_id})"  # {Locked="%{stage}","%{session_id}"}
 connection.connecting_activity: "Connecting to agent…"
 connection.lost: "Connection to the agent was lost. Type /restart to reconnect."  # {Locked="/restart"}
 

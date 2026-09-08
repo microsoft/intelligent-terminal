@@ -143,10 +143,26 @@ agents.status.idle: "بوش"
 layout.welcome_hint: "  (Ctrl+Shift+. AI ئاگېنتى تاختىسىنى كۆرسەت/يوشۇرۇش • Ctrl+Shift+/ AI ئاگېنتى ئوتتۇرىسىنى كۆرسەت/يوشۇرۇش)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}
 
 # ── Connection state ────────────────────────────────────────────────────────────────────────
-# Status text shown while launching the agent process
-connection.starting: "AI ئاگېنتى ئىشقا چۈشۈرۈلۈۋاتىدۇ..."
+# Preparing the AI agent connection, including preflight and reuse of a cached agent.
+connection.starting: "AI ئاگېنتىغا ئۇلىنىش تەييارلىنىۋاتىدۇ..."
+# Retiring old AI agent sessions for /restart, before the next connection phases.
+connection.restarting: "AI ئاگېنتى قايتا قوزغىتىلىۋاتىدۇ..."
 # Status text shown while re-establishing agent connection
 connection.reconnecting: "قايتا باغلىنىۋاتىدۇ..."
+# Connecting the pane to WTA's local coordinator process, not to an AI model.
+connection.coordinator: "يەرلىك ماسلاشتۇرغۇچىغا ئۇلىنىۋاتىدۇ..."
+# Initializing the helper/coordinator connection, including local preparation and AI agent initialization.
+connection.initializing: "AI ئاگېنتىغا ئۇلىنىش دەسلەپلەشتۈرۈلۈۋاتىدۇ..."
+# Refreshing the user's authentication with the AI agent after login; not verifying the agent's identity.
+connection.authenticating: "AI ئاگېنتىغا كىرگەن ئىشلەتكۈچىنىڭ سالاھىيىتى دەلىللىنىۋاتىدۇ..."
+# Reading the coordinator's registry snapshot, including existing history; not fetching history from the AI agent.
+connection.syncing_sessions: "ئولتۇرۇش تىزىملىكى ئوقۇلۇۋاتىدۇ..."
+# Creating the AI agent session, including local registration; internal agent progress is unknown.
+connection.creating_session: "AI ئاگېنتى ئولتۇرۇشى قۇرۇلۇۋاتىدۇ..."
+# Applying the requested AI model before the connection is ready. Preserve %{model}.
+connection.selecting_model: "ئولتۇرۇش مودېلى تەڭشىلىۋاتىدۇ: %{model}..."  # {Locked="%{model}"}
+# Activity row while connecting to restore a conversation. Keep the actual stage first so narrow panes show it; session_id is shortened to eight characters.
+connection.resuming_stage: "%{stage} (%{session_id} داۋاملاشتۇرۇلۇۋاتىدۇ)"  # {Locked="%{stage}","%{session_id}"}
 connection.connecting_activity: "AI ئاگېنتىغا باغلىنىۋاتىدۇ…"
 connection.lost: "AI ئاگېنتى بىلەن بولغان باغلىنىش ئۈزۈلدى. قايتا باغلىنىش ئۈچۈن /restart دەپ كىرگۈزۈڭ."  # {Locked="/restart"}
 

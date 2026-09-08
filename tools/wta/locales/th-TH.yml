@@ -123,8 +123,25 @@ agents.status.idle: "ว่าง"
 layout.welcome_hint: "  (Ctrl+Shift+. แสดง/ซ่อนแผงเอเจนต์ • Ctrl+Shift+/ แสดง/ซ่อนเซสชันเอเจนต์)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}
 
 # ── Connection state ────────────────────────────────────────────────────────
-connection.starting: "กำลังเริ่มเอเจนต์..."
+# Preparing the AI agent connection, including preflight and reuse of a cached agent.
+connection.starting: "กำลังเตรียมการเชื่อมต่อกับเอเจนต์..."
+# Retiring old AI agent sessions for /restart, before the next connection phases.
+connection.restarting: "กำลังเริ่มเอเจนต์ใหม่..."
 connection.reconnecting: "กำลังเชื่อมต่อใหม่..."
+# Connecting the pane to WTA's local coordinator process, not to an AI model.
+connection.coordinator: "กำลังเชื่อมต่อกับตัวประสานงานภายในเครื่อง..."
+# Initializing the helper/coordinator connection, including local preparation and AI agent initialization.
+connection.initializing: "กำลังเตรียมใช้งานการเชื่อมต่อกับเอเจนต์..."
+# Refreshing the user's authentication with the AI agent after login; not verifying the agent's identity.
+connection.authenticating: "กำลังรับรองความถูกต้องของการลงชื่อเข้าใช้กับเอเจนต์..."
+# Reading the coordinator's registry snapshot, including existing history; not fetching history from the AI agent.
+connection.syncing_sessions: "กำลังอ่านรายการเซสชัน..."
+# Creating the AI agent session, including local registration; internal agent progress is unknown.
+connection.creating_session: "กำลังสร้างเซสชันของเอเจนต์..."
+# Applying the requested AI model before the connection is ready. Preserve %{model}.
+connection.selecting_model: "กำลังตั้งค่าโมเดลของเซสชัน: %{model}..."  # {Locked="%{model}"}
+# Activity row while connecting to restore a conversation. Keep the actual stage first so narrow panes show it; session_id is shortened to eight characters.
+connection.resuming_stage: "%{stage} (กำลังกลับเข้าสู่ %{session_id})"  # {Locked="%{stage}","%{session_id}"}
 connection.connecting_activity: "กำลังเชื่อมต่อกับเอเจนต์…"
 connection.lost: "การเชื่อมต่อกับเอเจนต์ขาดหายไป พิมพ์ /restart เพื่อเชื่อมต่อใหม่"  # {Locked="/restart"}
 

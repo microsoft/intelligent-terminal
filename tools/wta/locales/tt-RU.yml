@@ -136,8 +136,25 @@ agents.status.idle: "Буш"
 layout.welcome_hint: "  (Ctrl+Shift+. агент панелен күрсәтү/яшерү • Ctrl+Shift+/ агент сеансын күрсәтү/яшерү)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}
 
 # ── Connection state ────────────────────────────────────────────────────────
-connection.starting: "Агент эшкә кушыла..."
+# Preparing the AI agent connection, including preflight and reuse of a cached agent.
+connection.starting: "Агентка тоташу әзерләнә..."
+# Retiring old AI agent sessions for /restart, before the next connection phases.
+connection.restarting: "Агент яңадан эшкә кушыла..."
 connection.reconnecting: "Яңадан тоташу..."
+# Connecting the pane to WTA's local coordinator process, not to an AI model.
+connection.coordinator: "Җирле координаторга тоташу..."
+# Initializing the helper/coordinator connection, including local preparation and AI agent initialization.
+connection.initializing: "Агентка тоташуны башлангыч көйләү..."
+# Refreshing the user's authentication with the AI agent after login; not verifying the agent's identity.
+connection.authenticating: "Агентка кергән кулланучының чынлыгын тикшерү..."
+# Reading the coordinator's registry snapshot, including existing history; not fetching history from the AI agent.
+connection.syncing_sessions: "Сеанслар исемлеген уку..."
+# Creating the AI agent session, including local registration; internal agent progress is unknown.
+connection.creating_session: "Агент сеансын булдыру..."
+# Applying the requested AI model before the connection is ready. Preserve %{model}.
+connection.selecting_model: "Сеанс моделен көйләү: %{model}..."  # {Locked="%{model}"}
+# Activity row while connecting to restore a conversation. Keep the actual stage first so narrow panes show it; session_id is shortened to eight characters.
+connection.resuming_stage: "%{stage} (%{session_id} дәвам ителә)"  # {Locked="%{stage}","%{session_id}"}
 connection.connecting_activity: "Агентка тоташу…"
 connection.lost: "Агент белән тоташу югалды. Яңадан тоташу өчен /restart дип языгыз."  # {Locked="/restart"}
 

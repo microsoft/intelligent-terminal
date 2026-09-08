@@ -123,8 +123,25 @@ agents.status.idle: "Ocioso"
 layout.welcome_hint: "  (Ctrl+Shift+. para mostrar/ocultar o painel do agente • Ctrl+Shift+/ para mostrar/ocultar a sessão do agente)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}
 
 # ── Estado da conexão ────────────────────────────────────────────────────────────
-connection.starting: "Iniciando agente..."
+# Preparing the AI agent connection, including preflight and reuse of a cached agent.
+connection.starting: "Preparando a conexão com o agente..."
+# Retiring old AI agent sessions for /restart, before the next connection phases.
+connection.restarting: "Reiniciando o agente..."
 connection.reconnecting: "Reconectando..."
+# Connecting the pane to WTA's local coordinator process, not to an AI model.
+connection.coordinator: "Conectando ao coordenador local..."
+# Initializing the helper/coordinator connection, including local preparation and AI agent initialization.
+connection.initializing: "Inicializando a conexão com o agente..."
+# Refreshing the user's authentication with the AI agent after login; not verifying the agent's identity.
+connection.authenticating: "Autenticando o usuário com o agente..."
+# Reading the coordinator's registry snapshot, including existing history; not fetching history from the AI agent.
+connection.syncing_sessions: "Lendo a lista de sessões..."
+# Creating the AI agent session, including local registration; internal agent progress is unknown.
+connection.creating_session: "Criando a sessão do agente..."
+# Applying the requested AI model before the connection is ready. Preserve %{model}.
+connection.selecting_model: "Definindo o modelo da sessão: %{model}..."  # {Locked="%{model}"}
+# Activity row while connecting to restore a conversation. Keep the actual stage first so narrow panes show it; session_id is shortened to eight characters.
+connection.resuming_stage: "%{stage} (retomando %{session_id})"  # {Locked="%{stage}","%{session_id}"}
 connection.connecting_activity: "Conectando ao agente…"
 connection.lost: "A conexão com o agente foi perdida. Digite /restart para reconectar."  # {Locked="/restart"}
 

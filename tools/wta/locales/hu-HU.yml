@@ -123,8 +123,25 @@ agents.status.idle: "Tétlen"
 layout.welcome_hint: "  (Ctrl+Shift+. ügynökpanel megjelenítése/elrejtése • Ctrl+Shift+/ ügynökmunkamenet megjelenítése/elrejtése)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}
 
 # ── Connection state ────────────────────────────────────────────────────────
-connection.starting: "Ügynök indítása..."
+# Preparing the AI agent connection, including preflight and reuse of a cached agent.
+connection.starting: "Ügynökkapcsolat előkészítése..."
 connection.reconnecting: "Újrakapcsolódás..."
+# Retiring old AI agent sessions for /restart, before the next connection phases.
+connection.restarting: "Ügynök újraindítása..."
+# Connecting the pane to WTA's local coordinator process, not to an AI model.
+connection.coordinator: "Kapcsolódás a helyi koordinátorhoz..."
+# Initializing the helper/coordinator connection, including local preparation and AI agent initialization.
+connection.initializing: "Ügynökkapcsolat inicializálása..."
+# Refreshing the user's authentication with the AI agent after login; not verifying the agent's identity.
+connection.authenticating: "Felhasználó hitelesítése az ügynöknél..."
+# Reading the coordinator's registry snapshot, including existing history; not fetching history from the AI agent.
+connection.syncing_sessions: "Munkamenetlista olvasása..."
+# Creating the AI agent session, including local registration; internal agent progress is unknown.
+connection.creating_session: "Ügynöki munkamenet létrehozása..."
+# Applying the requested AI model before the connection is ready. Preserve %{model}.
+connection.selecting_model: "Munkamenet modelljének beállítása: %{model}..."  # {Locked="%{model}"}
+# Activity row while connecting to restore a conversation. Keep the actual stage first so narrow panes show it; session_id is shortened to eight characters.
+connection.resuming_stage: "%{stage} (%{session_id} folytatása)"  # {Locked="%{stage}","%{session_id}"}
 connection.connecting_activity: "Kapcsolódás az ügynökhöz…"
 connection.lost: "Megszakadt a kapcsolat az ügynökkel. Az újrakapcsolódáshoz írja be: /restart."  # {Locked="/restart"}
 

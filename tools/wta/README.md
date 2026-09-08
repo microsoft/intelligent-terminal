@@ -253,6 +253,20 @@ the CLI helpers directly with the packaged `wta` app execution alias.
 5. Interact with the agent -- watch requests/responses flow in real time
 6. Use `wta list-panes`, `wta capture-pane` etc. in another pane for debugging
 
+While connecting, the chat activity row shows WTA's current operation: preparing
+the agent connection, connecting to the local coordinator, initializing the
+connection, refreshing user authentication after login (when supported), reading
+the coordinator's session registry snapshot, creating a session, or setting its
+model (when requested). Initialization and creation include local preparation
+and registration, not just waiting on the agent. `/restart` first shows
+"Restarting agent" while old sessions retire. These are local operation
+boundaries, not agent-reported progress: they do not expose internal MCP or
+model-catalog loading, and reading the registry does not fetch agent history.
+A queued session restore shows the actual connection stage first, followed by
+short resume context; once connected, it shows only "Resuming session" until
+the load completes. The pane does not become connected earlier, and these labels
+do not reduce startup time.
+
 ### Adding a new WT protocol method
 
 1. Declare the method in `src/cascadia/TerminalProtocol/TerminalProtocol.idl`

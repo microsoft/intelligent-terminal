@@ -136,8 +136,25 @@ agents.status.idle: "செயலற்றது"
 layout.welcome_hint: "  (Ctrl+Shift+. ஏஜெண்ட் பலகத்தைக் காட்டு/மறை • Ctrl+Shift+/ ஏஜெண்ட் அமர்வைக் காட்டு/மறை)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}
 
 # ── இணைப்பு நிலை ────────────────────────────────────────────────────────
-connection.starting: "ஏஜெண்ட் தொடங்கப்படுகிறது..."
+# Preparing the AI agent connection, including preflight and reuse of a cached agent.
+connection.starting: "ஏஜெண்ட் இணைப்பு தயாராகிறது..."
+# Retiring old AI agent sessions for /restart, before the next connection phases.
+connection.restarting: "ஏஜெண்ட் மறுதொடக்கம் செய்யப்படுகிறது..."
 connection.reconnecting: "மீண்டும் இணைக்கப்படுகிறது..."
+# Connecting the pane to WTA's local coordinator process, not to an AI model.
+connection.coordinator: "உள்ளூர் ஒருங்கிணைப்பியுடன் இணைக்கப்படுகிறது..."
+# Initializing the helper/coordinator connection, including local preparation and AI agent initialization.
+connection.initializing: "ஏஜெண்ட் இணைப்பின் தொடக்க அமைவு செய்யப்படுகிறது..."
+# Refreshing the user's authentication with the AI agent after login; not verifying the agent's identity.
+connection.authenticating: "ஏஜெண்டில் பயனரின் உள்நுழைவு அங்கீகரிக்கப்படுகிறது..."
+# Reading the coordinator's registry snapshot, including existing history; not fetching history from the AI agent.
+connection.syncing_sessions: "அமர்வுப் பட்டியல் படிக்கப்படுகிறது..."
+# Creating the AI agent session, including local registration; internal agent progress is unknown.
+connection.creating_session: "ஏஜெண்ட் அமர்வு உருவாக்கப்படுகிறது..."
+# Applying the requested AI model before the connection is ready. Preserve %{model}.
+connection.selecting_model: "அமர்வு மாதிரி அமைக்கப்படுகிறது: %{model}..."  # {Locked="%{model}"}
+# Activity row while connecting to restore a conversation. Keep the actual stage first so narrow panes show it; session_id is shortened to eight characters.
+connection.resuming_stage: "%{stage} (%{session_id} தொடரப்படுகிறது)"  # {Locked="%{stage}","%{session_id}"}
 connection.connecting_activity: "ஏஜெண்டுடன் இணைக்கப்படுகிறது…"
 connection.lost: "ஏஜெண்டுடனான இணைப்பு துண்டிக்கப்பட்டது. மீண்டும் இணைக்க /restart என தட்டச்சு செய்யவும்."  # {Locked="/restart"}
 

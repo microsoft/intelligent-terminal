@@ -123,8 +123,25 @@ agents.status.idle: "Inaktiv"
 layout.welcome_hint: "  (Ctrl+Shift+. for å vise/skjule agentpanelet • Ctrl+Shift+/ for å vise/skjule agentøkten)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}
 
 # ── Connection state ────────────────────────────────────────────────────────
-connection.starting: "Starter agenten..."
+# Preparing the AI agent connection, including preflight and reuse of a cached agent.
+connection.starting: "Forbereder tilkobling til agenten..."
+# Retiring old AI agent sessions for /restart, before the next connection phases.
+connection.restarting: "Starter agenten på nytt..."
 connection.reconnecting: "Kobler til på nytt..."
+# Connecting the pane to WTA's local coordinator process, not to an AI model.
+connection.coordinator: "Kobler til den lokale koordinatoren..."
+# Initializing the helper/coordinator connection, including local preparation and AI agent initialization.
+connection.initializing: "Initialiserer tilkoblingen til agenten..."
+# Refreshing the user's authentication with the AI agent after login; not verifying the agent's identity.
+connection.authenticating: "Autentiserer brukeren hos agenten..."
+# Reading the coordinator's registry snapshot, including existing history; not fetching history from the AI agent.
+connection.syncing_sessions: "Leser øktlisten..."
+# Creating the AI agent session, including local registration; internal agent progress is unknown.
+connection.creating_session: "Oppretter agentøkt..."
+# Applying the requested AI model before the connection is ready. Preserve %{model}.
+connection.selecting_model: "Angir øktmodell: %{model}..."  # {Locked="%{model}"}
+# Activity row while connecting to restore a conversation. Keep the actual stage first so narrow panes show it; session_id is shortened to eight characters.
+connection.resuming_stage: "%{stage} (gjenopptar %{session_id})"  # {Locked="%{stage}","%{session_id}"}
 connection.connecting_activity: "Kobler til agenten…"
 connection.lost: "Tilkoblingen til agenten gikk tapt. Skriv /restart for å koble til på nytt."  # {Locked="/restart"}
 

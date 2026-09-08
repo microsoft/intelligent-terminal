@@ -124,8 +124,25 @@ agents.status.idle: "Αδρανής"
 layout.welcome_hint: "  (Ctrl+Shift+. για εμφάνιση/απόκρυψη πλαισίου παράγοντα • Ctrl+Shift+/ για εμφάνιση/απόκρυψη συνεδρίας παράγοντα)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}
 
 # ── Connection state ────────────────────────────────────────────────────────
-connection.starting: "Εκκίνηση παράγοντα..."
+# Preparing the AI agent connection, including preflight and reuse of a cached agent.
+connection.starting: "Προετοιμασία σύνδεσης με τον πράκτορα τεχνητής νοημοσύνης..."
 connection.reconnecting: "Επανασύνδεση..."
+# Retiring old AI agent sessions for /restart, before the next connection phases.
+connection.restarting: "Επανεκκίνηση του πράκτορα τεχνητής νοημοσύνης..."
+# Connecting the pane to WTA's local coordinator process, not to an AI model.
+connection.coordinator: "Σύνδεση με τον τοπικό συντονιστή..."
+# Initializing the helper/coordinator connection, including local preparation and AI agent initialization.
+connection.initializing: "Αρχικοποίηση σύνδεσης με τον πράκτορα τεχνητής νοημοσύνης..."
+# Refreshing the user's authentication with the AI agent after login; not verifying the agent's identity.
+connection.authenticating: "Έλεγχος ταυτότητας χρήστη στον πράκτορα τεχνητής νοημοσύνης..."
+# Reading the coordinator's registry snapshot, including existing history; not fetching history from the AI agent.
+connection.syncing_sessions: "Ανάγνωση της λίστας συνεδριών..."
+# Creating the AI agent session, including local registration; internal agent progress is unknown.
+connection.creating_session: "Δημιουργία συνεδρίας του πράκτορα τεχνητής νοημοσύνης..."
+# Applying the requested AI model before the connection is ready. Preserve %{model}.
+connection.selecting_model: "Ορισμός μοντέλου συνεδρίας: %{model}..."  # {Locked="%{model}"}
+# Activity row while connecting to restore a conversation. Keep the actual stage first so narrow panes show it; session_id is shortened to eight characters.
+connection.resuming_stage: "%{stage} (συνέχιση %{session_id})"  # {Locked="%{stage}","%{session_id}"}
 connection.connecting_activity: "Σύνδεση με τον παράγοντα…"
 connection.lost: "Η σύνδεση με τον παράγοντα χάθηκε. Πληκτρολογήστε /restart για επανασύνδεση."  # {Locked="/restart"}
 

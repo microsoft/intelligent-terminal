@@ -2822,7 +2822,7 @@ pub async fn run_acp_client_over_pipe(
     // pipe. Retry-with-backoff until master is ready or we give up
     // (spec Z-R6).
     let _ = event_tx.send(AppEvent::ConnectionStage(
-        "Connecting to wta-master...".to_string(),
+        t!("connection.coordinator").into_owned(),
     ));
     startup_probe.log(&format!("opening master pipe: {}", pipe_name));
     const ERROR_FILE_NOT_FOUND: i32 = 2;
@@ -3052,7 +3052,9 @@ pub async fn run_acp_client_over_pipe(
     // npx adapter cold start). Clean cloud discovery runs asynchronously
     // after that initialize and is delivered later, so it never consumes
     // this timeout budget. Subsequent inits are cached replays.
-    let _ = event_tx.send(AppEvent::ConnectionStage("Initializing ACP...".to_string()));
+    let _ = event_tx.send(AppEvent::ConnectionStage(
+        t!("connection.initializing").into_owned(),
+    ));
     startup_probe.log("Initializing ACP (over pipe)");
     let init_started = std::time::Instant::now();
     let supplied_cloud_models = if matches!(&agent_source, crate::agent_source::AgentSource::Host) {
@@ -3206,6 +3208,9 @@ pub async fn run_acp_client_over_pipe(
     if post_login_reconnect {
         let auth_method_id = init_resp.auth_methods.first().map(|m| m.id().clone());
         if let Some(method_id) = auth_method_id {
+            let _ = event_tx.send(AppEvent::ConnectionStage(
+                t!("connection.authenticating").into_owned(),
+            ));
             tracing::info!(
                 target: "helper",
                 method_id = %method_id.0,
@@ -3283,6 +3288,9 @@ pub async fn run_acp_client_over_pipe(
     // older master without `unstable_session_list`) the alive mirror
     // just stays empty and `alive_loaded` stays false, which keeps
     // session management routing on the legacy path.
+    let _ = event_tx.send(AppEvent::ConnectionStage(
+        t!("connection.syncing_sessions").into_owned(),
+    ));
     match conn
         .list_sessions(acp::schema::v1::ListSessionsRequest::new())
         .await
@@ -3347,10 +3355,11 @@ pub async fn run_acp_client_over_pipe(
                 "skipping bootstrap session/new (initial_load_session_id={} set)",
                 load_sid,
             ));
-            // The connection stage stays neutral; the pane's own
-            // "Resuming session …" indicator (driven by `loading_session`)
-            // is what tells the user a conversation is being restored.
-            let _ = event_tx.send(AppEvent::ConnectionStage("Connecting...".to_string()));
+            // No session/new runs here. Use a neutral connection stage until
+            // AgentConnected; the activity row retains the queued resume context.
+            let _ = event_tx.send(AppEvent::ConnectionStage(
+                t!("connection.connecting_activity").into_owned(),
+            ));
             (
                 acp::schema::v1::SessionId::new(load_sid.to_string()),
                 Vec::<AcpModelInfo>::new(),
@@ -3359,7 +3368,9 @@ pub async fn run_acp_client_over_pipe(
                 false,
             )
         } else {
-            let _ = event_tx.send(AppEvent::ConnectionStage("Creating session...".to_string()));
+            let _ = event_tx.send(AppEvent::ConnectionStage(
+                t!("connection.creating_session").into_owned(),
+            ));
             startup_probe.log("Creating session (over pipe)");
             let mut new_session_req = acp::schema::v1::NewSessionRequest::new(cwd.clone());
             inject_wta_pane_meta(&mut new_session_req.meta, proposal_commands_supported);
@@ -3456,10 +3467,13 @@ pub async fn run_acp_client_over_pipe(
     // it before the load completes would race the load itself.
     if has_bootstrap {
         if let Some(requested_model) = acp_model_override.filter(|s| !s.trim().is_empty()) {
-            let _ = event_tx.send(AppEvent::ConnectionStage(format!(
-                "Selecting model {}...",
-                requested_model
-            )));
+            let _ = event_tx.send(AppEvent::ConnectionStage(
+                t!(
+                    "connection.selecting_model",
+                    model = requested_model.as_str()
+                )
+                .into_owned(),
+            ));
             startup_probe.log(&format!(
                 "Setting ACP session model to {} (over pipe)",
                 requested_model

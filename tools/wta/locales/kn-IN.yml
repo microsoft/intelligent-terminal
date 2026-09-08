@@ -136,8 +136,25 @@ agents.status.idle: "ನಿಷ್ಕ್ರಿಯ"
 layout.welcome_hint: "  (Ctrl+Shift+. ಏಜೆಂಟ್ ಪೇನ್ ತೋರಿಸು/ಮರೆಮಾಡು • Ctrl+Shift+/ ಏಜೆಂಟ್ ಸೆಶನ್ ತೋರಿಸು/ಮರೆಮಾಡು)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}
 
 # ── ಸಂಪರ್ಕ ಸ್ಥಿತಿ ────────────────────────────────────────────────────────
-connection.starting: "ಏಜೆಂಟ್ ಪ್ರಾರಂಭವಾಗುತ್ತಿದೆ..."
+# Preparing the AI agent connection, including preflight and reuse of a cached agent.
+connection.starting: "ಏಜೆಂಟ್ ಸಂಪರ್ಕವನ್ನು ಸಿದ್ಧಪಡಿಸಲಾಗುತ್ತಿದೆ..."
 connection.reconnecting: "ಮರುಸಂಪರ್ಕಗೊಳ್ಳುತ್ತಿದೆ..."
+# Retiring old AI agent sessions for /restart, before the next connection phases.
+connection.restarting: "ಏಜೆಂಟ್ ಅನ್ನು ಮರುಪ್ರಾರಂಭಿಸಲಾಗುತ್ತಿದೆ..."
+# Connecting the pane to WTA's local coordinator process, not to an AI model.
+connection.coordinator: "ಸ್ಥಳೀಯ ಸಂಯೋಜಕಕ್ಕೆ ಸಂಪರ್ಕಗೊಳ್ಳುತ್ತಿದೆ..."
+# Initializing the helper/coordinator connection, including local preparation and AI agent initialization.
+connection.initializing: "ಏಜೆಂಟ್ ಸಂಪರ್ಕವನ್ನು ಆರಂಭಿಸಲಾಗುತ್ತಿದೆ..."
+# Refreshing the user's authentication with the AI agent after login; not verifying the agent's identity.
+connection.authenticating: "ಏಜೆಂಟ್‌ನೊಂದಿಗೆ ಬಳಕೆದಾರರ ಗುರುತನ್ನು ದೃಢೀಕರಿಸಲಾಗುತ್ತಿದೆ..."
+# Reading the coordinator's registry snapshot, including existing history; not fetching history from the AI agent.
+connection.syncing_sessions: "ಸೆಶನ್‌ಗಳ ಪಟ್ಟಿಯನ್ನು ಓದಲಾಗುತ್ತಿದೆ..."
+# Creating the AI agent session, including local registration; internal agent progress is unknown.
+connection.creating_session: "ಏಜೆಂಟ್ ಸೆಶನ್ ರಚಿಸಲಾಗುತ್ತಿದೆ..."
+# Applying the requested AI model before the connection is ready. Preserve %{model}.
+connection.selecting_model: "ಸೆಶನ್‌ನ ಮಾದರಿಯನ್ನು ಹೊಂದಿಸಲಾಗುತ್ತಿದೆ: %{model}..."  # {Locked="%{model}"}
+# Activity row while connecting to restore a conversation. Keep the actual stage first so narrow panes show it; session_id is shortened to eight characters.
+connection.resuming_stage: "%{stage} (%{session_id} ಮುಂದುವರಿಸಲಾಗುತ್ತಿದೆ)"  # {Locked="%{stage}","%{session_id}"}
 connection.connecting_activity: "ಏಜೆಂಟ್‌ಗೆ ಸಂಪರ್ಕಗೊಳ್ಳುತ್ತಿದೆ…"
 connection.lost: "ಏಜೆಂಟ್‌ಗೆ ಸಂಪರ್ಕ ಕಳೆದುಹೋಯಿತು. ಮರುಸಂಪರ್ಕಿಸಲು /restart ಟೈಪ್ ಮಾಡಿ."  # {Locked="/restart"}
 

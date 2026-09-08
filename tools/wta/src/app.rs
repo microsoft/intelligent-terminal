@@ -5881,7 +5881,7 @@ impl App {
     /// CLI pool. Viable panes, ConPTYs, and helpers stay alive and reconnect
     /// over the stable master pipe with clean ACP sessions.
     fn cmd_restart(&mut self) {
-        self.state = ConnectionState::Connecting("Restarting agent...".to_string());
+        self.state = ConnectionState::Connecting(t!("connection.restarting").into_owned());
         self.pending_session_load = None;
         self.session_to_tab.clear();
         self.session_model_configs.clear();

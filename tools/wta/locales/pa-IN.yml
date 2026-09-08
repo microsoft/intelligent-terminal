@@ -136,8 +136,25 @@ agents.status.idle: "ਵਿਹਲਾ"
 layout.welcome_hint: "  (Ctrl+Shift+. ਏਜੰਟ ਪੈਨ ਦਿਖਾਓ/ਲੁਕਾਓ • Ctrl+Shift+/ ਏਜੰਟ ਸੈਸ਼ਨ ਦਿਖਾਓ/ਲੁਕਾਓ)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}
 
 # ── ਕਨੈਕਸ਼ਨ ਸਥਿਤੀ ────────────────────────────────────────────────────────
-connection.starting: "ਏਜੰਟ ਸ਼ੁਰੂ ਹੋ ਰਿਹਾ ਹੈ..."
+# Preparing the AI agent connection, including preflight and reuse of a cached agent.
+connection.starting: "ਏਜੰਟ ਕਨੈਕਸ਼ਨ ਦੀ ਤਿਆਰੀ ਕਰ ਰਿਹਾ ਹੈ..."
+# Retiring old AI agent sessions for /restart, before the next connection phases.
+connection.restarting: "ਏਜੰਟ ਨੂੰ ਮੁੜ ਚਾਲੂ ਕਰ ਰਿਹਾ ਹੈ..."
 connection.reconnecting: "ਮੁੜ-ਕਨੈਕਟ ਹੋ ਰਿਹਾ ਹੈ..."
+# Connecting the pane to WTA's local coordinator process, not to an AI model.
+connection.coordinator: "ਸਥਾਨਕ ਕੋਆਰਡੀਨੇਟਰ ਨਾਲ ਕਨੈਕਟ ਹੋ ਰਿਹਾ ਹੈ..."
+# Initializing the helper/coordinator connection, including local preparation and AI agent initialization.
+connection.initializing: "ਏਜੰਟ ਕਨੈਕਸ਼ਨ ਦੀ ਸ਼ੁਰੂਆਤੀ ਸੰਰਚਨਾ ਕਰ ਰਿਹਾ ਹੈ..."
+# Refreshing the user's authentication with the AI agent after login; not verifying the agent's identity.
+connection.authenticating: "ਏਜੰਟ ਨਾਲ ਵਰਤੋਂਕਾਰ ਦਾ ਲਾਗਇਨ ਪ੍ਰਮਾਣਿਤ ਕਰ ਰਿਹਾ ਹੈ..."
+# Reading the coordinator's registry snapshot, including existing history; not fetching history from the AI agent.
+connection.syncing_sessions: "ਸੈਸ਼ਨਾਂ ਦੀ ਸੂਚੀ ਪੜ੍ਹ ਰਿਹਾ ਹੈ..."
+# Creating the AI agent session, including local registration; internal agent progress is unknown.
+connection.creating_session: "ਏਜੰਟ ਸੈਸ਼ਨ ਬਣਾ ਰਿਹਾ ਹੈ..."
+# Applying the requested AI model before the connection is ready. Preserve %{model}.
+connection.selecting_model: "ਸੈਸ਼ਨ ਦਾ ਮਾਡਲ ਸੈੱਟ ਕਰ ਰਿਹਾ ਹੈ: %{model}..."  # {Locked="%{model}"}
+# Activity row while connecting to restore a conversation. Keep the actual stage first so narrow panes show it; session_id is shortened to eight characters.
+connection.resuming_stage: "%{stage} (%{session_id} ਮੁੜ ਜਾਰੀ ਕਰ ਰਿਹਾ ਹੈ)"  # {Locked="%{stage}","%{session_id}"}
 connection.connecting_activity: "ਏਜੰਟ ਨਾਲ ਕਨੈਕਟ ਹੋ ਰਿਹਾ ਹੈ…"
 connection.lost: "ਏਜੰਟ ਨਾਲ ਕਨੈਕਸ਼ਨ ਟੁੱਟ ਗਿਆ। ਮੁੜ ਕਨੈਕਟ ਕਰਨ ਲਈ /restart ਟਾਈਪ ਕਰੋ।"  # {Locked="/restart"}
 

@@ -132,8 +132,25 @@ agents.status.idle: "Неактивен"
 layout.welcome_hint: "  (Ctrl+Shift+. прикажи/скриј панел на агентот • Ctrl+Shift+/ прикажи/скриј сесија на агентот)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}
 
 # ── Connection state ────────────────────────────────────────────────────────
-connection.starting: "Стартување на агентот..."
+# Preparing the AI agent connection, including preflight and reuse of a cached agent.
+connection.starting: "Подготовка на врската со агентот..."
+# Retiring old AI agent sessions for /restart, before the next connection phases.
+connection.restarting: "Рестартирање на агентот..."
 connection.reconnecting: "Повторно поврзување..."
+# Connecting the pane to WTA's local coordinator process, not to an AI model.
+connection.coordinator: "Поврзување со локалниот координатор..."
+# Initializing the helper/coordinator connection, including local preparation and AI agent initialization.
+connection.initializing: "Иницијализација на врската со агентот..."
+# Refreshing the user's authentication with the AI agent after login; not verifying the agent's identity.
+connection.authenticating: "Автентикација на корисникот кај агентот..."
+# Reading the coordinator's registry snapshot, including existing history; not fetching history from the AI agent.
+connection.syncing_sessions: "Читање на списокот со сесии..."
+# Creating the AI agent session, including local registration; internal agent progress is unknown.
+connection.creating_session: "Создавање сесија на агентот..."
+# Applying the requested AI model before the connection is ready. Preserve %{model}.
+connection.selecting_model: "Поставување модел за сесијата: %{model}..."  # {Locked="%{model}"}
+# Activity row while connecting to restore a conversation. Keep the actual stage first so narrow panes show it; session_id is shortened to eight characters.
+connection.resuming_stage: "%{stage} (продолжување на %{session_id})"  # {Locked="%{stage}","%{session_id}"}
 connection.connecting_activity: "Поврзување со агентот…"
 connection.lost: "Врската со агентот беше изгубена. Внесете /restart за повторно поврзување."  # {Locked="/restart"}
 

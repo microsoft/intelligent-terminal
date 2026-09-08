@@ -136,8 +136,25 @@ agents.status.idle: "निश्क्रिय"
 layout.welcome_hint: "  (Ctrl+Shift+. एजेंट पेन दाखयात/लिपयात • Ctrl+Shift+/ एजेंट सत्र दाखयात/लिपयात)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}
 
 # ── कनेक्शन स्थिती ────────────────────────────────────────────────────────
-connection.starting: "एजेंट सुरू जाता..."
+# Preparing the AI agent connection, including preflight and reuse of a cached agent.
+connection.starting: "एजेंटाक जोडपाची तयारी करता..."
 connection.reconnecting: "परतून जोडता..."
+# Retiring old AI agent sessions for /restart, before the next connection phases.
+connection.restarting: "एजेंट परत सुरू करता..."
+# Connecting the pane to WTA's local coordinator process, not to an AI model.
+connection.coordinator: "थळाव्या समन्वयकाक जोडता..."
+# Initializing the helper/coordinator connection, including local preparation and AI agent initialization.
+connection.initializing: "एजेंटा कडेन जोडणी सुरू करता..."
+# Refreshing the user's authentication with the AI agent after login; not verifying the agent's identity.
+connection.authenticating: "एजेंटा कडेन वापरप्याची वळख प्रमाणीत करता..."
+# Reading the coordinator's registry snapshot, including existing history; not fetching history from the AI agent.
+connection.syncing_sessions: "सत्रांची वळेरी वाचता..."
+# Creating the AI agent session, including local registration; internal agent progress is unknown.
+connection.creating_session: "एजेंटाचें सत्र तयार करता..."
+# Applying the requested AI model before the connection is ready. Preserve %{model}.
+connection.selecting_model: "सत्राचें मॉडेल सेट करता: %{model}..."  # {Locked="%{model}"}
+# Activity row while connecting to restore a conversation. Keep the actual stage first so narrow panes show it; session_id is shortened to eight characters.
+connection.resuming_stage: "%{stage} (%{session_id} फुडें चालू करता)"  # {Locked="%{stage}","%{session_id}"}
 connection.connecting_activity: "एजेंटाक जोडटा…"
 connection.lost: "एजेंटाशी जोडणी तुटली. परतून जोडपाक /restart टायप करात."  # {Locked="/restart"}
 

@@ -136,8 +136,25 @@ agents.status.idle: "നിഷ്ക്രിയം"
 layout.welcome_hint: "  (Ctrl+Shift+. ഏജന്റ് പേന്‍ കാണിക്കുക/മറയ്ക്കുക • Ctrl+Shift+/ ഏജന്റ് സെഷന്‍ കാണിക്കുക/മറയ്ക്കുക)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}
 
 # ── കണക്ഷന്‍ നില ────────────────────────────────────────────────────────
-connection.starting: "ഏജന്റ് ആരംഭിക്കുന്നു..."
+# Preparing the AI agent connection, including preflight and reuse of a cached agent.
+connection.starting: "ഏജന്റുമായുള്ള കണക്ഷൻ തയ്യാറാക്കുന്നു..."
+# Retiring old AI agent sessions for /restart, before the next connection phases.
+connection.restarting: "ഏജന്റ് പുനരാരംഭിക്കുന്നു..."
 connection.reconnecting: "വീണ്ടും കണക്ട് ചെയ്യുന്നു..."
+# Connecting the pane to WTA's local coordinator process, not to an AI model.
+connection.coordinator: "ലോക്കൽ കോർഡിനേറ്ററുമായി ബന്ധിപ്പിക്കുന്നു..."
+# Initializing the helper/coordinator connection, including local preparation and AI agent initialization.
+connection.initializing: "ഏജന്റുമായുള്ള കണക്ഷന്റെ പ്രാരംഭ സജ്ജീകരണം നടത്തുന്നു..."
+# Refreshing the user's authentication with the AI agent after login; not verifying the agent's identity.
+connection.authenticating: "ഏജന്റിലേക്കുള്ള ലോഗിൻ പ്രാമാണീകരിക്കുന്നു..."
+# Reading the coordinator's registry snapshot, including existing history; not fetching history from the AI agent.
+connection.syncing_sessions: "സെഷൻ പട്ടിക വായിക്കുന്നു..."
+# Creating the AI agent session, including local registration; internal agent progress is unknown.
+connection.creating_session: "ഏജന്റ് സെഷൻ സൃഷ്ടിക്കുന്നു..."
+# Applying the requested AI model before the connection is ready. Preserve %{model}.
+connection.selecting_model: "സെഷൻ മോഡൽ സജ്ജമാക്കുന്നു: %{model}..."  # {Locked="%{model}"}
+# Activity row while connecting to restore a conversation. Keep the actual stage first so narrow panes show it; session_id is shortened to eight characters.
+connection.resuming_stage: "%{stage} (%{session_id} തുടരുന്നു)"  # {Locked="%{stage}","%{session_id}"}
 connection.connecting_activity: "ഏജന്റുമായി കണക്റ്റ് ചെയ്യുന്നു…"
 connection.lost: "ഏജന്റുമായുള്ള കണക്ഷൻ നഷ്ടപ്പെട്ടു. വീണ്ടും കണക്റ്റ് ചെയ്യാൻ /restart ടൈപ്പ് ചെയ്യുക."  # {Locked="/restart"}
 

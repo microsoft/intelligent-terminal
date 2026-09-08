@@ -12534,20 +12534,135 @@ fn pending_tool_in_completed_turn_keeps_clickable_status_marker() {
     assert_eq!(rendered_marker, Some('●'));
 }
 
-/// Render: while the helper is still connecting, the fixed activity row must
-/// paint the animated "Connecting…" label.
 #[test]
-fn render_chat_connecting_activity_line() {
+fn render_chat_connection_stage_transitions() {
+    let _locale = crate::test_support::lock_locale();
+    rust_i18n::set_locale("en-US");
     let mut app = test_app();
-    app.state = ConnectionState::Connecting("starting".into());
+    let stages = [
+        t!("connection.starting").into_owned(),
+        t!("connection.coordinator").into_owned(),
+        t!("connection.initializing").into_owned(),
+        t!("connection.authenticating").into_owned(),
+        t!("connection.syncing_sessions").into_owned(),
+        t!("connection.creating_session").into_owned(),
+        t!("connection.selecting_model", model = "test-model").into_owned(),
+        t!("connection.restarting").into_owned(),
+        t!("connection.reconnecting").into_owned(),
+    ];
+    let generic = t!("connection.connecting_activity").into_owned();
+    let mut previous: Option<String> = None;
+    for stage in stages {
+        app.handle_event(AppEvent::ConnectionStage(stage.clone()));
+        let text = render_to_text(&mut app, 80, 24);
+        assert!(
+            text.contains(&stage),
+            "the activity row must show {stage:?}; rendered:\n{text}"
+        );
+        assert!(!text.contains(&generic));
+        if let Some(previous) = previous {
+            assert!(!text.contains(&previous));
+        }
+        assert!(matches!(app.state, ConnectionState::Connecting(_)));
+        assert!(app.session_id.is_empty());
+        previous = Some(stage);
+    }
+}
 
+#[test]
+fn render_chat_connection_stage_preserves_draft() {
+    let _locale = crate::test_support::lock_locale();
+    rust_i18n::set_locale("en-US");
+    let mut app = test_app();
+    app.current_tab_mut().input = "keep this draft".into();
+    let stage = t!("connection.creating_session").into_owned();
+    app.handle_event(AppEvent::ConnectionStage(stage.clone()));
     let text = render_to_text(&mut app, 80, 24);
-    let label = t!("connection.connecting_activity").into_owned();
-    let probe: String = label.chars().take(6).collect();
-    assert!(
-        !probe.trim().is_empty() && text.contains(&probe),
-        "chat must paint the connecting activity line ({label:?}); rendered:\n{text}"
-    );
+    assert!(text.contains(&stage));
+    assert!(text.contains("keep this draft"));
+    assert_eq!(app.current_tab().input, "keep this draft");
+}
+
+#[test]
+fn render_chat_connection_stage_disappears_when_not_connecting() {
+    let _locale = crate::test_support::lock_locale();
+    rust_i18n::set_locale("en-US");
+    let mut app = test_app();
+    let stage = t!("connection.creating_session").into_owned();
+    app.handle_event(AppEvent::ConnectionStage(stage.clone()));
+    assert!(render_to_text(&mut app, 80, 24).contains(&stage));
+    for state in [
+        ConnectionState::Connected,
+        ConnectionState::Disconnected,
+        ConnectionState::Failed("startup failed".into()),
+    ] {
+        app.state = state;
+        assert!(!crate::ui::chat::should_show_activity(&app));
+        assert!(!render_to_text(&mut app, 80, 24).contains(&stage));
+    }
+}
+
+#[test]
+fn render_chat_connection_stage_fits_narrow_activity_row() {
+    let _locale = crate::test_support::lock_locale();
+    rust_i18n::set_locale("en-US");
+    let mut app = test_app();
+    for (stage, prefix) in [
+        (t!("connection.initializing").into_owned(), "Initializing"),
+        (t!("connection.creating_session").into_owned(), "Creating"),
+        (
+            t!(
+                "connection.selecting_model",
+                model = "a-very-long-model-identifier"
+            )
+            .into_owned(),
+            "Setting session",
+        ),
+    ] {
+        for resuming in [false, true] {
+            app.state = ConnectionState::Connecting(stage.clone());
+            app.current_tab_mut().loading_session = resuming;
+            app.current_tab_mut().loading_target_session_id =
+                Some("aaaaaaaa-long-session-id".into());
+            let text = buffer_to_text(&render_to_buffer(&mut app, 18, 24));
+            assert!(
+                text.lines()
+                    .any(|line| line.trim_start().starts_with(prefix)),
+                "the stage must remain identifiable even during resume in a narrow pane: {text:?}"
+            );
+        }
+    }
+}
+
+#[test]
+fn restart_connection_stage_is_localized_and_preserves_draft() {
+    let _locale = crate::test_support::lock_locale();
+    for (locale, expected) in [
+        ("en-US", "Restarting agent..."),
+        ("zh-CN", "正在重启智能体..."),
+    ] {
+        rust_i18n::set_locale(locale);
+        let (mut app, mut restart_rx) = test_app_with_restart_rx();
+        app.current_tab_mut().input = "keep this draft".into();
+        app.cmd_restart();
+        assert_eq!(app.state, ConnectionState::Connecting(expected.into()));
+        assert!(matches!(
+            restart_rx.try_recv().unwrap(),
+            AgentLifecycleRequest::RestartMaster
+        ));
+        // The text harness includes the empty trailing cells of wide glyphs.
+        let text = render_to_text(&mut app, 80, 24).replace(' ', "");
+        assert!(
+            text.contains(&expected.replace(' ', "")),
+            "{locale}: {text}"
+        );
+        assert_eq!(app.current_tab().input, "keep this draft");
+        let stage = t!("connection.coordinator").into_owned();
+        app.handle_event(AppEvent::ConnectionStage(stage.clone()));
+        let text = render_to_text(&mut app, 80, 24).replace(' ', "");
+        assert!(text.contains(&stage.replace(' ', "")));
+        assert!(!text.contains(&expected.replace(' ', "")));
+    }
 }
 
 /// Render: the first-run welcome hint must paint its title when connected
@@ -12569,29 +12684,91 @@ fn render_chat_welcome_hint() {
 }
 
 #[test]
-fn resuming_pane_paints_resuming_not_connecting() {
-    // A resume runs `session/load` while the helper is still `Connecting`, so
-    // the activity line has to prefer the resume. Testing the connection first
-    // reported "Connecting to agent…" for the whole restore and the resuming
-    // label was unreachable on the one path it exists for.
-    let mut app = test_app();
-    app.state = ConnectionState::Connecting("Connecting...".to_string());
-    app.current_tab_mut().loading_session = true;
-    app.current_tab_mut().loading_target_session_id =
-        Some("aaaaaaaa-1111-2222-3333-444444444444".to_string());
-
-    let text = render_to_text(&mut app, 80, 24);
-    assert!(
-        text.contains("aaaaaaaa"),
-        "the resuming line must name the session being restored; rendered:\n{text}"
-    );
-
-    let connecting = t!("connection.connecting_activity").into_owned();
-    let probe: String = connecting.chars().take(8).collect();
-    assert!(
-        !probe.trim().is_empty() && !text.contains(&probe),
-        "a resuming pane must not fall back to the connecting line ({connecting:?}); rendered:\n{text}"
-    );
+fn resuming_pane_shows_connection_stage_then_resume_until_load_completes() {
+    let _locale = crate::test_support::lock_locale();
+    for locale in ["en-US", "zh-CN"] {
+        rust_i18n::set_locale(locale);
+        for load_succeeds in [true, false] {
+            let (mut app, mut load_rx) = make_app_with_load_session_channel();
+            app.owner_tab_id = Some("OWNER-TAB".into());
+            app.tab_id = Some("OWNER-TAB".into());
+            app.tab_sessions
+                .insert("OWNER-TAB".into(), TabSession::default());
+            let session_id = "aaaaaaaa-1111-2222-3333-444444444444";
+            app.handle_event(AppEvent::WtEvent {
+                method: "load_session".into(),
+                pane_id: String::new(),
+                tab_id: None,
+                params: json!({ "tab_id": "OWNER-TAB", "session_id": session_id }),
+            });
+            assert_eq!(load_rx.try_recv().unwrap().session_id, session_id);
+            app.current_tab_mut().input = "keep this draft".into();
+            let stages = [
+                t!("connection.coordinator").into_owned(),
+                t!("connection.initializing").into_owned(),
+                t!("connection.syncing_sessions").into_owned(),
+                t!("connection.connecting_activity").into_owned(),
+            ];
+            for stage in &stages {
+                app.handle_event(AppEvent::ConnectionStage(stage.clone()));
+                let combined = t!(
+                    "connection.resuming_stage",
+                    stage = stage.as_str(),
+                    session_id = "aaaaaaaa"
+                )
+                .into_owned();
+                assert!(combined.starts_with(stage));
+                let text = render_to_text(&mut app, 100, 24).replace(' ', "");
+                assert!(
+                    text.contains(&combined.replace(' ', "")),
+                    "{locale}: {text}"
+                );
+                assert!(matches!(app.state, ConnectionState::Connecting(_)));
+                assert!(app.current_tab().loading_session);
+                assert!(!text.contains(&t!("connection.creating_session").replace(' ', "")));
+            }
+            app.handle_event(AppEvent::AgentConnected {
+                name: "Copilot".into(),
+                model: None,
+                version: None,
+                session_id: session_id.into(),
+                available_models: Vec::new(),
+                current_model_id: None,
+                load_session_supported: true,
+                image_supported: false,
+                session_capabilities_ready: false,
+            });
+            let resume = t!("system.resuming_session", session_id = "aaaaaaaa").into_owned();
+            assert_eq!(app.state, ConnectionState::Connected);
+            assert!(app.current_tab().loading_session);
+            let text = render_to_text(&mut app, 100, 24).replace(' ', "");
+            assert!(text.contains(&resume.replace(' ', "")));
+            for stage in &stages {
+                assert!(!text.contains(&stage.replace(' ', "")));
+            }
+            if load_succeeds {
+                app.handle_event(AppEvent::SessionAttached {
+                    tab_id: "OWNER-TAB".into(),
+                    session_id: session_id.into(),
+                    prompt_id: None,
+                    available_models: Vec::new(),
+                    current_model_id: None,
+                });
+            } else {
+                app.handle_event(AppEvent::TabError {
+                    tab_id: "OWNER-TAB".into(),
+                    message: "restore failed".into(),
+                });
+            }
+            assert!(!app.current_tab().loading_session);
+            let text = render_to_text(&mut app, 100, 24).replace(' ', "");
+            assert!(!text.contains(&resume.replace(' ', "")));
+            for stage in &stages {
+                assert!(!text.contains(&stage.replace(' ', "")));
+            }
+            assert_eq!(app.current_tab().input, "keep this draft");
+        }
+    }
 }
 
 #[test]

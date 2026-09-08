@@ -124,8 +124,25 @@ agents.status.idle: "Segur"
 layout.welcome_hint: "  (Ctrl+Shift+. i ddangos/cuddio'r paen asiant • Ctrl+Shift+/ i ddangos/cuddio'r sesiwn asiant)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}
 
 # ── Cyflwr cysylltiad ────────────────────────────────────────────────────────
-connection.starting: "Yn cychwyn yr asiant..."
+# Preparing the AI agent connection, including preflight and reuse of a cached agent.
+connection.starting: "Yn paratoi'r cysylltiad â'r asiant..."
 connection.reconnecting: "Yn ailgysylltu..."
+# Retiring old AI agent sessions for /restart, before the next connection phases.
+connection.restarting: "Yn ailgychwyn yr asiant..."
+# Connecting the pane to WTA's local coordinator process, not to an AI model.
+connection.coordinator: "Yn cysylltu â'r cydlynydd lleol..."
+# Initializing the helper/coordinator connection, including local preparation and AI agent initialization.
+connection.initializing: "Yn ymgychwyn y cysylltiad â'r asiant..."
+# Refreshing the user's authentication with the AI agent after login; not verifying the agent's identity.
+connection.authenticating: "Yn dilysu'r defnyddiwr gyda'r asiant..."
+# Reading the coordinator's registry snapshot, including existing history; not fetching history from the AI agent.
+connection.syncing_sessions: "Yn darllen y rhestr sesiynau..."
+# Creating the AI agent session, including local registration; internal agent progress is unknown.
+connection.creating_session: "Yn creu sesiwn yr asiant..."
+# Applying the requested AI model before the connection is ready. Preserve %{model}.
+connection.selecting_model: "Yn gosod model y sesiwn: %{model}..."  # {Locked="%{model}"}
+# Activity row while connecting to restore a conversation. Keep the actual stage first so narrow panes show it; session_id is shortened to eight characters.
+connection.resuming_stage: "%{stage} (yn ailddechrau %{session_id})"  # {Locked="%{stage}","%{session_id}"}
 connection.connecting_activity: "Yn cysylltu â'r asiant…"
 connection.lost: "Collwyd y cysylltiad â'r asiant. Teipiwch /restart i ailgysylltu."  # {Locked="/restart"}
 
