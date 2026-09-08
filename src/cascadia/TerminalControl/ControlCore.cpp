@@ -9,6 +9,7 @@
 #include <dsound.h>
 
 #include <DefaultSettings.h>
+#include <til/unicode.h>
 #include <unicode.hpp>
 
 #include "EventArgs.h"
@@ -1632,6 +1633,12 @@ namespace winrt::Microsoft::Terminal::Control::implementation
         return _terminal->GetViewport().Height();
     }
 
+    int ControlCore::ViewWidth() const
+    {
+        const auto lock = _terminal->LockForReading();
+        return _terminal->GetViewport().Width();
+    }
+
     // Function Description:
     // - Gets the height of the terminal in lines of text. This includes the
     //   history AND the viewport.
@@ -2453,6 +2460,68 @@ namespace winrt::Microsoft::Terminal::Control::implementation
         return hstring{ str };
     }
 
+    hstring ControlCore::ReadBufferTail(const int32_t maxLogicalLines, const int32_t maxCharacters) const
+    {
+        THROW_HR_IF(E_INVALIDARG, maxLogicalLines <= 0 || maxCharacters <= 0);
+
+        const auto lock = _terminal->LockForReading();
+        const auto& textBuffer = _terminal->GetTextBuffer();
+        const auto lastRow = textBuffer.GetLastNonSpaceCharacter().y;
+
+        std::vector<std::wstring> chunks;
+        auto remainingCharacters = static_cast<size_t>(maxCharacters);
+        int32_t logicalLines = 1;
+
+        for (auto rowIndex = lastRow;; --rowIndex)
+        {
+            const auto& row = textBuffer.GetRowByOffset(rowIndex);
+            const auto rowText = row.GetText();
+            const auto strEnd = rowText.find_last_not_of(UNICODE_SPACE);
+
+            std::wstring chunk;
+            if (strEnd != decltype(rowText)::npos)
+            {
+                chunk.assign(rowText.substr(0, strEnd + 1));
+            }
+            if (!row.WasWrapForced())
+            {
+                chunk.append(L"\r\n");
+            }
+
+            auto start = chunk.size();
+            size_t selectedCharacters = 0;
+            while (start > 0 && selectedCharacters < remainingCharacters)
+            {
+                start = til::utf16_iterate_prev(chunk, start);
+                ++selectedCharacters;
+            }
+            chunks.emplace_back(chunk.substr(start));
+            remainingCharacters -= selectedCharacters;
+
+            if (remainingCharacters == 0 || rowIndex == 0)
+            {
+                break;
+            }
+
+            const auto previousRow = rowIndex - 1;
+            if (!textBuffer.GetRowByOffset(previousRow).WasWrapForced())
+            {
+                if (logicalLines >= maxLogicalLines)
+                {
+                    break;
+                }
+                ++logicalLines;
+            }
+        }
+
+        std::wstring result;
+        for (auto it = chunks.rbegin(); it != chunks.rend(); ++it)
+        {
+            result.append(*it);
+        }
+        return hstring{ result };
+    }
+
     // Returns the most recent *finished* shell prompt — the command typed
     // at an OSC 133;B mark plus its output, sliced exactly between the
     // command-start and command-end markers. Used by external agents
@@ -2512,6 +2581,69 @@ namespace winrt::Microsoft::Terminal::Control::implementation
             // command text only.
             const auto endPoint = it->outputEnd.value_or(*it->commandEnd);
             return hstring{ textBuffer.GetPlainText(it->end, endPoint) };
+        }
+
+        return {};
+    }
+
+    hstring ControlCore::ReadLastPromptBounded(const int32_t maxLogicalLines, const int32_t maxCharacters) const
+    {
+        THROW_HR_IF(E_INVALIDARG, maxLogicalLines <= 0 || maxCharacters <= 0);
+
+        const auto lock = _terminal->LockForReading();
+        const auto& marks = _terminal->GetMarkExtents();
+        const auto& textBuffer = _terminal->GetTextBuffer();
+
+        for (auto it = marks.rbegin(); it != marks.rend(); ++it)
+        {
+            if (!it->HasCommand() || !it->data.exitCode.has_value())
+            {
+                continue;
+            }
+
+            const auto startPoint = it->end;
+            const auto endPoint = it->outputEnd.value_or(*it->commandEnd);
+            std::wstring result;
+            auto remainingCharacters = static_cast<size_t>(maxCharacters);
+            int32_t logicalLines = 1;
+
+            for (auto rowIndex = startPoint.y; rowIndex <= endPoint.y && remainingCharacters > 0; ++rowIndex)
+            {
+                const auto& row = textBuffer.GetRowByOffset(rowIndex);
+                auto rowBegin = rowIndex == startPoint.y ? startPoint.x : 0;
+                auto rowEnd = rowIndex == endPoint.y ? endPoint.x : row.GetReadableColumnCount();
+                rowBegin = row.AdjustToGlyphStart(rowBegin);
+                rowEnd = row.AdjustToGlyphEnd(rowEnd);
+                const auto rowText = row.GetText(rowBegin, rowEnd);
+
+                size_t textEnd = 0;
+                size_t selectedCharacters = 0;
+                while (textEnd < rowText.size() && selectedCharacters < remainingCharacters)
+                {
+                    textEnd = til::utf16_iterate_next(rowText, textEnd);
+                    ++selectedCharacters;
+                }
+                result.append(rowText.substr(0, textEnd));
+                remainingCharacters -= selectedCharacters;
+
+                if (textEnd < rowText.size() || rowIndex == endPoint.y)
+                {
+                    break;
+                }
+
+                if (!row.WasWrapForced())
+                {
+                    if (logicalLines >= maxLogicalLines || remainingCharacters == 0)
+                    {
+                        break;
+                    }
+                    result.push_back(L'\n');
+                    --remainingCharacters;
+                    ++logicalLines;
+                }
+            }
+
+            return hstring{ result };
         }
 
         return {};

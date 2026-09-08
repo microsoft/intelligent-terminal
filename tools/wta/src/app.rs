@@ -5378,6 +5378,7 @@ impl App {
                 if candidate.completion_behavior().prepares_free_text() {
                     let tab = self.current_tab_mut();
                     tab.input = format!("/{name} ");
+                    tab.input_all_selected = false;
                     tab.cursor_pos = tab.input.len();
                     tab.refresh_command_popup();
                     return true;
@@ -5385,6 +5386,7 @@ impl App {
                 if matches!(candidate, crate::ui::CommandCandidate::Agent(_)) {
                     let tab = self.current_tab_mut();
                     tab.input = format!("/{name}");
+                    tab.input_all_selected = false;
                     tab.cursor_pos = tab.input.len();
                     tab.refresh_command_popup();
                     return false;

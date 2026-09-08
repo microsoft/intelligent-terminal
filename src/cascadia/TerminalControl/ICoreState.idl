@@ -66,5 +66,6 @@ namespace Microsoft.Terminal.Control
         void SelectOutput(Boolean goUp);
         IVector<ScrollMark> ScrollMarks { get; };
 
+        Int32 ViewWidth { get; };
     };
 }
