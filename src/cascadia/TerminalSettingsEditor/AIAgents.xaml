@@ -57,6 +57,12 @@
                 <TextBlock Text="{x:Bind DisplayName}" />
             </DataTemplate>
 
+            <Style x:Key="CustomModelProviderRowStyle"
+                   TargetType="Border">
+                <Setter Property="MinHeight" Value="64" />
+                <Setter Property="Padding" Value="0,12" />
+            </Style>
+
             <Style x:Key="AutoErrorHandlingSettingContainerStyle"
                    TargetType="local:SettingContainer">
                 <Setter Property="Margin" Value="0,4,0,0" />
@@ -214,6 +220,7 @@
 
             <muxc:Expander x:Name="CustomModelProvidersExpander"
                            Margin="0,4,0,0"
+                           Padding="16,0"
                            HorizontalAlignment="Stretch"
                            HorizontalContentAlignment="Stretch"
                            IsExpanded="{x:Bind ViewModel.IsCustomModelProvidersExpanded, Mode=TwoWay}">
@@ -232,7 +239,7 @@
                     </Grid>
                 </muxc:Expander.Header>
                 <StackPanel>
-                    <TextBlock Margin="0,0,0,8"
+                    <TextBlock Margin="0,12,0,0"
                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                Text="{x:Bind ViewModel.CustomModelProviderUnsupportedMessage, Mode=OneWay}"
                                TextWrapping="Wrap"
@@ -240,10 +247,10 @@
                     <ItemsControl ItemsSource="{x:Bind ViewModel.CustomModelProviders, Mode=OneWay}">
                         <ItemsControl.ItemTemplate>
                             <DataTemplate x:DataType="local:CustomModelProviderEntry">
-                                <Border Padding="0,4"
-                                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                                        BorderThickness="0,0,0,1">
-                                    <Grid>
+                                <Border BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                        BorderThickness="0,0,0,1"
+                                        Style="{StaticResource CustomModelProviderRowStyle}">
+                                    <Grid VerticalAlignment="Center">
                                         <Grid.RowDefinitions>
                                             <RowDefinition Height="Auto" />
                                             <RowDefinition Height="Auto" />
@@ -290,8 +297,9 @@
                         </ItemsControl.ItemTemplate>
                     </ItemsControl>
 
-                    <Border Visibility="{x:Bind mtu:Converters.InvertedBooleanToVisibility(ViewModel.IsAddingCustomModelProvider), Mode=OneWay}">
-                        <Grid>
+                    <Border Style="{StaticResource CustomModelProviderRowStyle}"
+                            Visibility="{x:Bind mtu:Converters.InvertedBooleanToVisibility(ViewModel.IsAddingCustomModelProvider), Mode=OneWay}">
+                        <Grid VerticalAlignment="Center">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*" />
                                 <ColumnDefinition Width="Auto" />
@@ -304,7 +312,8 @@
                         </Grid>
                     </Border>
 
-                    <Border Visibility="{x:Bind ViewModel.IsAddingCustomModelProvider, Mode=OneWay}">
+                    <Border Padding="0,16"
+                            Visibility="{x:Bind ViewModel.IsAddingCustomModelProvider, Mode=OneWay}">
                         <StackPanel Spacing="12">
                             <TextBlock x:Uid="AIAgents_CustomProviderAddHeader"
                                        FontWeight="SemiBold"
