@@ -11791,18 +11791,22 @@ fn input_selection_copy_and_cut_preserve_exact_source_text() {
         KeyCode::Char('a'),
         KeyModifiers::CONTROL,
     )));
+    app.close_pane_armed_at = Some(std::time::Instant::now());
     assert!(app.copy_input_selection(false, |text| {
         assert_eq!(text, draft);
         Ok(())
     }));
     assert_eq!(app.current_tab().input, draft);
     assert!(app.current_tab().input_all_selected);
+    assert!(app.close_pane_armed_at.is_none());
+    app.close_pane_armed_at = Some(std::time::Instant::now());
     assert!(app.copy_input_selection(true, |text| {
         assert_eq!(text, draft);
         Ok(())
     }));
     assert!(app.current_tab().input.is_empty());
     assert!(!app.current_tab().input_all_selected);
+    assert!(app.close_pane_armed_at.is_none());
 }
 
 #[test]
@@ -11815,10 +11819,29 @@ fn input_selection_clipboard_failure_keeps_draft_and_consumes_copy() {
             KeyCode::Char('a'),
             KeyModifiers::CONTROL,
         )));
+        // The helper must disarm independently of the key dispatcher.
+        app.close_pane_armed_at = Some(std::time::Instant::now());
         assert!(app.copy_input_selection(cut, |_| Err(std::io::Error::other("clipboard busy"))));
         assert_eq!(app.current_tab().input, "do not lose this");
         assert!(app.current_tab().input_all_selected);
         assert!(app.close_pane_armed_at.is_none());
+    }
+}
+
+#[test]
+fn input_selection_unhandled_copy_preserves_close_arm() {
+    for cut in [false, true] {
+        let mut app = test_app();
+        app.handle_event(AppEvent::Key(KeyEvent::new(
+            KeyCode::Char('c'),
+            KeyModifiers::CONTROL,
+        )));
+        let armed = app.close_pane_armed_at;
+        assert!(armed.is_some());
+        assert!(!app.copy_input_selection(cut, |_| {
+            panic!("an unhandled event must not access the clipboard")
+        }));
+        assert_eq!(app.close_pane_armed_at, armed);
     }
 }
 

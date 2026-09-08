@@ -272,7 +272,6 @@ impl App {
                 if cut {
                     self.current_tab_mut().delete_input_selection();
                 }
-                self.close_pane_armed_at = None;
                 self.transient_hint = Some((
                     t!("system.selection_copied").into_owned(),
                     std::time::Instant::now() + SELECTION_COPIED_HINT_WINDOW,
@@ -283,6 +282,7 @@ impl App {
                 tracing::warn!(target: "clipboard", error = %error, cut, "failed to copy selected input");
             }
         }
+        self.close_pane_armed_at = None;
         true
     }
 
