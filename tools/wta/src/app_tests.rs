@@ -11700,29 +11700,29 @@ fn input_selection_escape_dismisses_selection_without_clearing_draft() {
     )));
     assert_eq!(app.current_tab().input, "keep draft");
     app.handle_event(AppEvent::Key(KeyEvent::new(
-        KeyCode::Char('x'),
-        KeyModifiers::NONE,
+        KeyCode::Char('!'),
+        KeyModifiers::SHIFT,
     )));
-    assert_eq!(app.current_tab().input, "keep draftx");
+    assert_eq!(app.current_tab().input, "keep draft!");
 }
 
 #[test]
 fn input_selection_cursor_keys_collapse_to_start_or_end() {
     for (key, expected) in [
-        (KeyEvent::new(KeyCode::Left, KeyModifiers::NONE), "Xone two"),
+        (KeyEvent::new(KeyCode::Left, KeyModifiers::NONE), "!one two"),
         (
             KeyEvent::new(KeyCode::Right, KeyModifiers::NONE),
-            "one twoX",
+            "one two!",
         ),
-        (KeyEvent::new(KeyCode::Home, KeyModifiers::NONE), "Xone two"),
-        (KeyEvent::new(KeyCode::End, KeyModifiers::NONE), "one twoX"),
+        (KeyEvent::new(KeyCode::Home, KeyModifiers::NONE), "!one two"),
+        (KeyEvent::new(KeyCode::End, KeyModifiers::NONE), "one two!"),
         (
             KeyEvent::new(KeyCode::Left, KeyModifiers::CONTROL),
-            "Xone two",
+            "!one two",
         ),
         (
             KeyEvent::new(KeyCode::Right, KeyModifiers::CONTROL),
-            "one twoX",
+            "one two!",
         ),
     ] {
         let mut app = test_app();
@@ -11735,7 +11735,7 @@ fn input_selection_cursor_keys_collapse_to_start_or_end() {
         )));
         app.handle_event(AppEvent::Key(key));
         app.handle_event(AppEvent::Key(KeyEvent::new(
-            KeyCode::Char('X'),
+            KeyCode::Char('!'),
             KeyModifiers::SHIFT,
         )));
         assert_eq!(app.current_tab().input, expected, "collapse with {key:?}");
@@ -11817,6 +11817,34 @@ fn input_selection_clipboard_failure_keeps_draft_and_consumes_copy() {
         )));
         assert!(app.copy_input_selection(cut, |_| Err(std::io::Error::other("clipboard busy"))));
         assert_eq!(app.current_tab().input, "do not lose this");
+        assert!(app.current_tab().input_all_selected);
+        assert!(app.close_pane_armed_at.is_none());
+    }
+}
+
+#[test]
+fn input_selection_copy_failure_cannot_retain_an_earlier_close_arm() {
+    for cut in [false, true] {
+        let mut app = test_app();
+        app.handle_event(AppEvent::Key(KeyEvent::new(
+            KeyCode::Char('c'),
+            KeyModifiers::CONTROL,
+        )));
+        assert!(app.close_pane_armed_at.is_some());
+        for character in "clipboard draft".chars() {
+            app.handle_event(AppEvent::Key(KeyEvent::new(
+                KeyCode::Char(character),
+                KeyModifiers::NONE,
+            )));
+        }
+        app.handle_event(AppEvent::Key(KeyEvent::new(
+            KeyCode::Char('a'),
+            KeyModifiers::CONTROL,
+        )));
+        assert!(app.current_tab().input_all_selected);
+        assert!(app.close_pane_armed_at.is_none());
+        assert!(app.copy_input_selection(cut, |_| { Err(std::io::Error::other("clipboard busy")) }));
+        assert_eq!(app.current_tab().input, "clipboard draft");
         assert!(app.current_tab().input_all_selected);
         assert!(app.close_pane_armed_at.is_none());
     }
