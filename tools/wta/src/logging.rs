@@ -2,7 +2,10 @@ use std::path::Path;
 use std::sync::{Mutex, OnceLock};
 use tracing_appender::non_blocking::WorkerGuard;
 use tracing_appender::rolling;
-use tracing_subscriber::{fmt, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
+use tracing_subscriber::{
+    filter::filter_fn, fmt, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter, Layer,
+    Registry,
+};
 
 /// Per-PID helper log file prefix. The `main_helper-{pid}` process label
 /// (see `main::process_label`) lands here, e.g. `wta-main_helper-12345.log`.
@@ -50,6 +53,46 @@ pub(crate) fn default_filter_directive(debug_assertions: bool) -> &'static str {
         // Users can still opt into more via `WTA_LOG=debug|trace` / `RUST_LOG`.
         "info"
     }
+}
+
+fn explicitly_configures_acp_dependency(directives: &str) -> bool {
+    directives.split(',').map(str::trim).any(|directive| {
+        directive
+            .strip_prefix("agent_client_protocol")
+            .is_some_and(|suffix| {
+                suffix.is_empty()
+                    || suffix.starts_with('=')
+                    || suffix.starts_with('[')
+                    || suffix.starts_with("::")
+            })
+    })
+}
+
+fn apply_dependency_privacy_cap(
+    filter: EnvFilter,
+    directives: Option<&str>,
+) -> impl Layer<Registry> {
+    let explicit = directives.is_some_and(explicitly_configures_acp_dependency);
+    // Intersect with the original filter instead of adding a directive: an
+    // ACP=info override would enable logs even for `off` or `warn,wta=trace`.
+    filter.and_then(filter_fn(move |metadata| {
+        explicit
+            || *metadata.level() <= tracing::Level::INFO
+            || !(metadata.target() == "agent_client_protocol"
+                || metadata.target().starts_with("agent_client_protocol::"))
+    }))
+}
+
+fn configured_filter(default_directives: &str) -> impl Layer<Registry> {
+    for variable in ["WTA_LOG", "RUST_LOG"] {
+        if let Ok(directives) = std::env::var(variable) {
+            if let Ok(filter) = EnvFilter::try_new(&directives) {
+                return apply_dependency_privacy_cap(filter, Some(&directives));
+            }
+        }
+    }
+
+    apply_dependency_privacy_cap(EnvFilter::new(default_directives), None)
 }
 
 /// Root of the WTA log tree: `<local_root>/logs` (or a temp-dir fallback).
@@ -120,9 +163,7 @@ pub fn init(process: &str) {
 
     let default_level = default_filter_directive(cfg!(debug_assertions));
 
-    let filter = EnvFilter::try_from_env("WTA_LOG")
-        .or_else(|_| EnvFilter::try_from_default_env())
-        .unwrap_or_else(|_| EnvFilter::new(default_level));
+    let filter = configured_filter(default_level);
 
     tracing_subscriber::registry()
         .with(filter)
@@ -449,7 +490,229 @@ fn prune_stale_helper_logs(log_dir: &Path) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::io::Write;
+    use std::sync::Arc;
     use tracing_subscriber::filter::LevelFilter;
+
+    #[derive(Clone)]
+    struct SharedWriter(Arc<Mutex<Vec<u8>>>);
+
+    impl Write for SharedWriter {
+        fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+            self.0.lock().unwrap().extend_from_slice(buf);
+            Ok(buf.len())
+        }
+
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+
+    fn capture_dependency_logs(filter: impl Layer<Registry> + Send + Sync + 'static) -> String {
+        let output = Arc::new(Mutex::new(Vec::new()));
+        let writer = output.clone();
+        let subscriber = tracing_subscriber::registry().with(filter).with(
+            fmt::layer()
+                .without_time()
+                .with_ansi(false)
+                .with_writer(move || SharedWriter(writer.clone())),
+        );
+
+        tracing::subscriber::with_default(subscriber, || {
+            macro_rules! emit_levels {
+                ($target:expr) => {
+                    tracing::error!(target: $target, concat!($target, ":ERROR"));
+                    tracing::warn!(target: $target, concat!($target, ":WARN"));
+                    tracing::info!(target: $target, concat!($target, ":INFO"));
+                    tracing::debug!(target: $target, concat!($target, ":DEBUG"));
+                    tracing::trace!(target: $target, concat!($target, ":TRACE"));
+                };
+            }
+            emit_levels!("agent_client_protocol");
+            emit_levels!("agent_client_protocol::jsonrpc");
+            emit_levels!("wta");
+            emit_levels!("wta::logging");
+            emit_levels!("unrelated");
+            emit_levels!("agent_client_protocol_extra");
+            emit_levels!("agent_client_protocol_extra::jsonrpc");
+            emit_levels!(concat!("agent_client_protocol", "x"));
+            let connection =
+                tracing::info_span!(target: "agent_client_protocol::util", "connection");
+            let _entered = connection.enter();
+            emit_levels!("agent_client_protocol::jsonrpc");
+            emit_levels!("wta");
+        });
+
+        let bytes = output.lock().unwrap().clone();
+        String::from_utf8(bytes).unwrap()
+    }
+
+    fn assert_logged_levels(log: &str, target: &str, expected: LevelFilter, directives: &str) {
+        for level in [
+            LevelFilter::ERROR,
+            LevelFilter::WARN,
+            LevelFilter::INFO,
+            LevelFilter::DEBUG,
+            LevelFilter::TRACE,
+        ] {
+            assert_eq!(
+                log.contains(&format!(
+                    "{target}:{}",
+                    level.to_string().to_ascii_uppercase()
+                )),
+                level <= expected,
+                "directives={directives}, target={target}, level={level}"
+            );
+        }
+    }
+
+    #[test]
+    fn dependency_privacy_cap_preserves_global_verbosity() {
+        for level in [
+            LevelFilter::OFF,
+            LevelFilter::ERROR,
+            LevelFilter::WARN,
+            LevelFilter::INFO,
+            LevelFilter::DEBUG,
+            LevelFilter::TRACE,
+        ] {
+            let directives = level.to_string();
+            let log = capture_dependency_logs(apply_dependency_privacy_cap(
+                EnvFilter::new(&directives),
+                Some(&directives),
+            ));
+            for target in ["agent_client_protocol", "agent_client_protocol::jsonrpc"] {
+                assert_logged_levels(&log, target, level.min(LevelFilter::INFO), &directives);
+            }
+            for target in ["wta", "wta::logging", "unrelated"] {
+                assert_logged_levels(&log, target, level, &directives);
+            }
+        }
+    }
+
+    #[test]
+    fn dependency_privacy_cap_preserves_scoped_verbosity() {
+        for (directives, global, wta) in [
+            ("off,wta=debug", LevelFilter::OFF, LevelFilter::DEBUG),
+            ("off,wta=trace", LevelFilter::OFF, LevelFilter::TRACE),
+            ("error,wta=debug", LevelFilter::ERROR, LevelFilter::DEBUG),
+            ("warn,wta=debug", LevelFilter::WARN, LevelFilter::DEBUG),
+            ("warn,wta=trace", LevelFilter::WARN, LevelFilter::TRACE),
+            ("trace,wta=off", LevelFilter::TRACE, LevelFilter::OFF),
+        ] {
+            let log = capture_dependency_logs(apply_dependency_privacy_cap(
+                EnvFilter::new(directives),
+                Some(directives),
+            ));
+            for target in ["agent_client_protocol", "agent_client_protocol::jsonrpc"] {
+                assert_logged_levels(&log, target, global.min(LevelFilter::INFO), directives);
+            }
+            for target in ["wta", "wta::logging"] {
+                assert_logged_levels(&log, target, wta, directives);
+            }
+            assert_logged_levels(&log, "unrelated", global, directives);
+        }
+    }
+
+    #[test]
+    fn dependency_privacy_cap_preserves_explicit_overrides() {
+        for directives in [
+            "off,agent_client_protocol=debug",
+            "warn,agent_client_protocol=trace",
+            "info,agent_client_protocol",
+            "debug,agent_client_protocol=off",
+            "trace,agent_client_protocol=error",
+            "trace,agent_client_protocol=warn",
+            "trace,agent_client_protocol=info",
+            "off,agent_client_protocol::jsonrpc=trace",
+            "trace,agent_client_protocol::jsonrpc=warn",
+            "debug,agent_client_protocol=off,agent_client_protocol::jsonrpc=trace",
+        ] {
+            assert!(explicitly_configures_acp_dependency(directives));
+            let original = capture_dependency_logs(EnvFilter::new(directives));
+            let capped = capture_dependency_logs(apply_dependency_privacy_cap(
+                EnvFilter::new(directives),
+                Some(directives),
+            ));
+            assert_eq!(capped, original, "directives={directives}");
+        }
+    }
+
+    #[test]
+    fn dependency_privacy_cap_preserves_span_scoped_overrides() {
+        for (directives, level) in [
+            (
+                "off,agent_client_protocol[connection]=trace",
+                LevelFilter::TRACE,
+            ),
+            (
+                "off,agent_client_protocol::util[connection]=debug",
+                LevelFilter::DEBUG,
+            ),
+            (
+                "off,agent_client_protocol[connection]=info",
+                LevelFilter::INFO,
+            ),
+            (
+                "trace,agent_client_protocol=warn,agent_client_protocol[connection]=error",
+                LevelFilter::WARN,
+            ),
+            (
+                "trace,agent_client_protocol=error,agent_client_protocol[connection]=off",
+                LevelFilter::ERROR,
+            ),
+            (
+                "trace,agent_client_protocol=off,agent_client_protocol[connection]=off",
+                LevelFilter::OFF,
+            ),
+        ] {
+            let original = capture_dependency_logs(EnvFilter::try_new(directives).unwrap());
+            assert_logged_levels(
+                &original,
+                "agent_client_protocol::jsonrpc",
+                level,
+                directives,
+            );
+            let capped = capture_dependency_logs(apply_dependency_privacy_cap(
+                EnvFilter::try_new(directives).unwrap(),
+                Some(directives),
+            ));
+            if directives.starts_with("off,") {
+                assert!(original.contains("connection: agent_client_protocol::jsonrpc:"));
+                assert!(capped.contains("connection: agent_client_protocol::jsonrpc:"));
+            }
+            // Concurrent subscribers can change whether EnvFilter's lower-level
+            // span directives retain the INFO span. Compare every synthetic
+            // event (target, level, order and duplicates), not span decoration.
+            let original_events: Vec<_> = original
+                .lines()
+                .map(|line| line.rsplit_once(": ").expect("formatted event message").1)
+                .collect();
+            let capped_events: Vec<_> = capped
+                .lines()
+                .map(|line| line.rsplit_once(": ").expect("formatted event message").1)
+                .collect();
+            assert_eq!(capped_events, original_events, "directives={directives}");
+        }
+        for directives in [
+            "trace,agent_client_protocol_extra[connection]=trace",
+            "trace,agent_client_protocol_extra::util[connection]=trace",
+            concat!("trace,agent_client_protocol", "x[connection]=trace"),
+        ] {
+            assert!(!explicitly_configures_acp_dependency(directives));
+            let capped = capture_dependency_logs(apply_dependency_privacy_cap(
+                EnvFilter::try_new(directives).unwrap(),
+                Some(directives),
+            ));
+            assert_logged_levels(
+                &capped,
+                "agent_client_protocol::jsonrpc",
+                LevelFilter::INFO,
+                directives,
+            );
+            assert_logged_levels(&capped, "wta", LevelFilter::TRACE, directives);
+        }
+    }
 
     #[test]
     fn debug_build_default_is_debug() {
@@ -486,6 +749,120 @@ mod tests {
     fn debug_default_filter_enables_debug() {
         let filter = EnvFilter::new(default_filter_directive(true));
         assert_eq!(filter.max_level_hint(), Some(LevelFilter::DEBUG));
+    }
+
+    #[test]
+    fn global_debug_does_not_explicitly_enable_acp_dependency_payloads() {
+        assert!(!explicitly_configures_acp_dependency("debug"));
+        assert!(!explicitly_configures_acp_dependency(
+            "debug,wta=trace,acp.content=trace"
+        ));
+
+        let filter = apply_dependency_privacy_cap(EnvFilter::new("debug"), Some("debug"));
+        let log = capture_dependency_logs(filter);
+        assert_logged_levels(&log, "agent_client_protocol", LevelFilter::INFO, "debug");
+    }
+
+    #[test]
+    fn acp_dependency_payload_logging_requires_an_explicit_target() {
+        assert!(explicitly_configures_acp_dependency(
+            "debug, agent_client_protocol "
+        ));
+        assert!(explicitly_configures_acp_dependency(
+            "debug,agent_client_protocol=debug"
+        ));
+        assert!(explicitly_configures_acp_dependency(
+            "info,agent_client_protocol::jsonrpc=trace"
+        ));
+
+        let filter = apply_dependency_privacy_cap(
+            EnvFilter::new("debug,agent_client_protocol=debug"),
+            Some("debug,agent_client_protocol=debug"),
+        );
+        let log = capture_dependency_logs(filter);
+        assert_logged_levels(
+            &log,
+            "agent_client_protocol",
+            LevelFilter::DEBUG,
+            "debug,agent_client_protocol=debug",
+        );
+    }
+
+    #[test]
+    fn dependency_privacy_cap_preserves_similar_targets() {
+        for (directives, target) in [
+            (
+                "off,agent_client_protocol_extra=trace",
+                "agent_client_protocol_extra",
+            ),
+            (
+                "warn,agent_client_protocol_extra::jsonrpc=trace",
+                "agent_client_protocol_extra::jsonrpc",
+            ),
+            (
+                concat!("debug,agent_client_protocol", "x=trace"),
+                concat!("agent_client_protocol", "x"),
+            ),
+        ] {
+            assert!(!explicitly_configures_acp_dependency(directives));
+            let original = capture_dependency_logs(EnvFilter::new(directives));
+            let capped = capture_dependency_logs(apply_dependency_privacy_cap(
+                EnvFilter::new(directives),
+                Some(directives),
+            ));
+            assert_logged_levels(&capped, target, LevelFilter::TRACE, directives);
+            for line in original.lines() {
+                if line.contains("agent_client_protocol:DEBUG")
+                    || line.contains("agent_client_protocol:TRACE")
+                    || line.contains("agent_client_protocol::jsonrpc:DEBUG")
+                    || line.contains("agent_client_protocol::jsonrpc:TRACE")
+                {
+                    assert!(!capped.contains(line), "directives={directives}");
+                } else {
+                    assert!(capped.contains(line), "directives={directives}");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn global_debug_filter_drops_acp_dependency_payload_bodies() {
+        for directives in [
+            "debug",
+            "debug,agent_client_protocol_extra=debug",
+            "debug,agent_client_protocol_extra::jsonrpc=trace",
+            &format!("debug,agent_client_protocol{}=debug", 'x'),
+        ] {
+            assert!(!explicitly_configures_acp_dependency(directives));
+            let output = Arc::new(Mutex::new(Vec::new()));
+            let writer = output.clone();
+            let subscriber = tracing_subscriber::registry()
+                .with(apply_dependency_privacy_cap(
+                    EnvFilter::new(directives),
+                    Some(directives),
+                ))
+                .with(
+                    fmt::layer()
+                        .without_time()
+                        .with_ansi(false)
+                        .with_writer(move || SharedWriter(writer.clone())),
+                );
+
+            tracing::subscriber::with_default(subscriber, || {
+                tracing::debug!(
+                    target: "agent_client_protocol::jsonrpc::outgoing_actor",
+                    prompt = "secret-prompt",
+                    "outgoing request"
+                );
+                tracing::debug!(target: "wta_test", "visible WTA diagnostic");
+            });
+
+            let bytes = output.lock().unwrap().clone();
+            let log = String::from_utf8(bytes).unwrap();
+            assert!(log.contains("visible WTA diagnostic"));
+            assert!(!log.contains("secret-prompt"));
+            assert!(!log.contains("outgoing request"));
+        }
     }
 
     #[test]

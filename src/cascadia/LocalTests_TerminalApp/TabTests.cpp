@@ -195,6 +195,7 @@ namespace TerminalAppLocalTests
         TEST_METHOD(CreateTerminalMuxXamlType);
 
         TEST_METHOD(CreateTerminalPage);
+        TEST_METHOD(PaneContextPropagatesCaptureFailure);
         TEST_METHOD(AgentSessionRestoreRequiresPersistedBufferPath);
         TEST_METHOD(AgentPaneRestoreRecordRoundTrips);
         TEST_METHOD(PersistedLayoutAgentSessionsReceiveRestorePaths);
@@ -204,6 +205,7 @@ namespace TerminalAppLocalTests
         TEST_METHOD(ContentIdAttachedPaneEmitsEndStateForItsConnection);
         TEST_METHOD(GetWindowLayoutIncludesAgentRestoreMetadata);
         TEST_METHOD(RestoredSessionBindingsWaitForTheirHelperSubscription);
+        TEST_METHOD(LateRestoredSessionBindingNotifiesAfterPaneAttachment);
         TEST_METHOD(EndedRestoredSessionDoesNotReplayItsBinding);
         TEST_METHOD(AgentRestoreRecordOutlivesTheAgentPane);
         TEST_METHOD(KilledCliKeepsAgentBindingUntilPaneCloses);
@@ -262,9 +264,11 @@ namespace TerminalAppLocalTests
                                                                winrt::TerminalApp::implementation::AgentPaneDragStash::AttachDisposition expectedDisposition,
                                                                const winrt::guid& sourceProfileGuid);
         void _initializeTerminalPage(winrt::com_ptr<winrt::TerminalApp::implementation::TerminalPage>& page,
-                                     CascadiaSettings initialSettings);
+                                     CascadiaSettings initialSettings,
+                                     winrt::Microsoft::Terminal::TerminalConnection::ITerminalConnection connection = nullptr);
         void _createContentManager();
-        winrt::com_ptr<winrt::TerminalApp::implementation::TerminalPage> _commonSetup();
+        winrt::com_ptr<winrt::TerminalApp::implementation::TerminalPage> _commonSetup(
+            winrt::Microsoft::Terminal::TerminalConnection::ITerminalConnection connection = nullptr);
         winrt::com_ptr<winrt::TerminalApp::implementation::TerminalPage> _restoreBindingsSetup();
         winrt::com_ptr<winrt::TerminalApp::implementation::WindowProperties> _windowProperties;
         winrt::com_ptr<winrt::TerminalApp::implementation::ContentManager> _contentManager;
@@ -476,6 +480,46 @@ namespace TerminalAppLocalTests
         VERIFY_ARE_EQUAL(fields.view, parsed.view);
         VERIFY_ARE_EQUAL(fields.agentIdentity, parsed.agentIdentity);
         VERIFY_ARE_EQUAL(fields.customCommand, parsed.customCommand);
+    }
+
+    void TabTests::PaneContextPropagatesCaptureFailure()
+    {
+        const auto connection = winrt::make_self<TestConnection>(
+            winrt::guid{ L"{62a75f00-aaaa-bbbb-cccc-dddddddddddd}" },
+            winrt::Microsoft::Terminal::TerminalConnection::ConnectionState::Connected);
+        auto page = _commonSetup(*connection);
+        VERIFY_IS_NOT_NULL(page);
+
+        winrt::guid sessionId{};
+        winrt::TerminalApp::TerminalPage projectedPage{ nullptr };
+        TestOnUIThread([&]() {
+            projectedPage = *page;
+            const auto tab = page->_GetFocusedTabImpl();
+            VERIFY_IS_NOT_NULL(tab);
+            const auto control = tab->GetActivePane()->GetTerminalControl();
+            VERIFY_IS_NOT_NULL(control);
+            sessionId = control.Connection().SessionId();
+            VERIFY_ARE_NOT_EQUAL(winrt::guid{}, sessionId);
+        });
+
+        for (const auto explicitSource : { true, false })
+        {
+            winrt::Windows::Foundation::IAsyncOperation<winrt::Microsoft::Terminal::Protocol::PaneContext> operation{ nullptr };
+            TestOnUIThread([&]() {
+                operation = projectedPage.GetProtocolPaneContext(explicitSource ? sessionId : winrt::guid{}, explicitSource, 0, 100);
+            });
+            VERIFY_ARE_EQUAL(sessionId, operation.get().Pane.SessionId);
+
+            // Bypass COM's argument validation to make both bounded readers reject
+            // their zero-line budget. A read failure must not become "pane not found".
+            TestOnUIThread([&]() {
+                operation = projectedPage.GetProtocolPaneContext(explicitSource ? sessionId : winrt::guid{}, explicitSource, -1, 100);
+            });
+            VERIFY_THROWS_SPECIFIC(
+                operation.get(),
+                winrt::hresult_error,
+                [](const winrt::hresult_error& error) { return error.code() == E_INVALIDARG; });
+        }
     }
 
     void TabTests::PaneAgentSessionBindingRequiresPaneIdentity()
@@ -790,6 +834,10 @@ namespace TerminalAppLocalTests
                 }
             });
             const auto revoke = wil::scope_exit([&]() { page->ProtocolVtSequenceReceived(token); });
+            // Availability before subscription must not consume either binding.
+            page->_NotifyRestoredSessionBindings(firstTab);
+            page->_NotifyRestoredSessionBindings(secondTab);
+            VERIFY_IS_TRUE(births.empty());
             const auto request = [&](const auto& tab, const std::string& windowId) {
                 Json::Value event;
                 event["method"] = "pane_agent_session_changed";
@@ -803,10 +851,13 @@ namespace TerminalAppLocalTests
             VERIFY_IS_TRUE(births.empty());
             VERIFY_ARE_EQUAL(2u, static_cast<unsigned int>(page->_pendingRestoredSessionBindings.size()));
 
-            page->_startupActionReplayDepth = 1;
+            page->_startupActionReplayDepth = 2;
             request(firstTab, windowId);
             VERIFY_IS_TRUE(births.empty());
             VERIFY_IS_TRUE(page->_tabsAwaitingRestoredBindings.contains(firstTab->StableId()));
+            page->_startupActionReplayDepth = 1;
+            page->ProcessStartupActions({});
+            VERIFY_IS_TRUE(births.empty());
             page->_startupActionReplayDepth = 0;
             page->ProcessStartupActions({});
             VERIFY_ARE_EQUAL(1u, static_cast<unsigned int>(births.size()));
@@ -822,6 +873,72 @@ namespace TerminalAppLocalTests
             VERIFY_ARE_EQUAL(2u, static_cast<unsigned int>(births.size()));
             VERIFY_ARE_EQUAL(std::string{ "restored-second" }, births[1]["agent_session_id"].asString());
             VERIFY_IS_TRUE(page->_pendingRestoredSessionBindings.empty());
+        });
+    }
+
+    void TabTests::LateRestoredSessionBindingNotifiesAfterPaneAttachment()
+    {
+        auto page = _restoreBindingsSetup();
+        TestOnUIThread([&]() {
+            const auto tab = page->_GetTabImpl(page->_tabs.GetAt(0));
+            const auto otherTab = page->_GetTabImpl(page->_tabs.GetAt(1));
+            const auto windowId = std::to_string(page->_WindowProperties.WindowId());
+            const auto request = [&]() {
+                Json::Value event;
+                event["params"]["event"] = "restore_bindings_requested";
+                event["params"]["tab_id"] = winrt::to_string(tab->StableId());
+                event["params"]["window_id"] = windowId;
+                page->OnPaneAgentSessionChanged(winrt::to_hstring(Json::writeString(Json::StreamWriterBuilder{}, event)));
+            };
+            // The listener's initial handshake has already completed without
+            // any bindings. There will be no second listener-ready event.
+            request();
+            const auto settings = winrt::make_self<ControlUnitTests::MockControlSettings>();
+            const auto paneId = ::Microsoft::Console::Utils::CreateGuid();
+            const auto connection = winrt::make_self<TestConnection>(
+                paneId, winrt::Microsoft::Terminal::TerminalConnection::ConnectionState::Connected);
+            const winrt::Microsoft::Terminal::Control::TermControl control{ *settings, *settings, *connection };
+            const auto content = winrt::make<winrt::TerminalApp::implementation::TerminalPaneContent>(
+                Profile{}, std::shared_ptr<winrt::TerminalApp::implementation::TerminalSettingsCache>{}, control);
+            const auto pane = std::make_shared<Pane>(content);
+            page->_pendingRestoredSessionBindings[paneId] = { L"late-session", L"copilot", L"C:\\repo" };
+            unsigned int available = 0;
+            unsigned int births = 0;
+            const auto token = page->ProtocolVtSequenceReceived([&](auto&&, const winrt::hstring& payload) {
+                Json::Value event;
+                Json::CharReaderBuilder reader;
+                std::string errors;
+                std::istringstream stream{ winrt::to_string(payload) };
+                VERIFY_IS_TRUE(Json::parseFromStream(reader, stream, &event, &errors));
+                if (event["method"] == "restore_bindings_available")
+                {
+                    ++available;
+                    VERIFY_ARE_EQUAL(winrt::to_string(tab->StableId()), event["params"]["tab_id"].asString());
+                    VERIFY_ARE_EQUAL(windowId, event["params"]["window_id"].asString());
+                    VERIFY_IS_TRUE(tab->GetRootPane()->FindPaneBySessionId(paneId) != nullptr);
+                    request();
+                }
+                else if (event["method"] == "session_born_bound")
+                {
+                    ++births;
+                    VERIFY_ARE_EQUAL(std::string{ "late-session" }, event["params"]["agent_session_id"].asString());
+                }
+            });
+            const auto revoke = wil::scope_exit([&]() { page->ProtocolVtSequenceReceived(token); });
+            page->_NotifyRestoredSessionBindings(tab);
+            page->_NotifyRestoredSessionBindings(otherTab);
+            VERIFY_ARE_EQUAL(0u, available);
+            page->_tabContent = winrt::WUX::Controls::Grid{};
+            page->_tabContent.Measure({ 1000, 1000 });
+            page->_tabContent.Arrange({ 0, 0, 1000, 1000 });
+            page->_SplitPane(tab, SplitDirection::Right, 0.5f, pane, false);
+            VERIFY_ARE_EQUAL(1u, available);
+            VERIFY_ARE_EQUAL(1u, births);
+            VERIFY_IS_TRUE(page->_pendingRestoredSessionBindings.empty());
+            request();
+            page->_NotifyRestoredSessionBindings(tab);
+            VERIFY_ARE_EQUAL(1u, available);
+            VERIFY_ARE_EQUAL(1u, births);
         });
     }
 
@@ -1315,10 +1432,12 @@ namespace TerminalAppLocalTests
     // Arguments:
     // - page: a TerminalPage implementation ptr that will receive the new TerminalPage instance
     // - initialSettings: a CascadiaSettings to initialize the TerminalPage with.
+    // - connection: optional in-process connection for protocol tests that do not need window layout.
     // Return Value:
     // - <none>
     void TabTests::_initializeTerminalPage(winrt::com_ptr<winrt::TerminalApp::implementation::TerminalPage>& page,
-                                           CascadiaSettings initialSettings)
+                                           CascadiaSettings initialSettings,
+                                           winrt::Microsoft::Terminal::TerminalConnection::ITerminalConnection connection)
     {
         // This is super wacky, but we can't just initialize the
         // com_ptr<impl::TerminalPage> in the lambda and assign it back out of
@@ -1350,13 +1469,16 @@ namespace TerminalAppLocalTests
         {
             VERIFY_SUCCEEDED(HRESULT_FROM_WIN32(::GetLastError()));
         }
-        page->Initialized([&waitForInitEvent](auto&&, auto&&) {
-            waitForInitEvent.Set();
-        });
+        if (!connection)
+        {
+            page->Initialized([&waitForInitEvent](auto&&, auto&&) {
+                waitForInitEvent.Set();
+            });
+        }
 
         Log::Comment(L"Create() the TerminalPage");
 
-        result = RunOnUIThread([&page]() {
+        result = RunOnUIThread([&page, connection, this]() {
             VERIFY_IS_NOT_NULL(page);
             VERIFY_IS_NOT_NULL(page->_settings);
             page->Create();
@@ -1365,11 +1487,27 @@ namespace TerminalAppLocalTests
             // Build a NewTab action, to make sure we start with one. The real
             // Terminal will always get one from AppCommandlineArgs.
             NewTerminalArgs newTerminalArgs{};
-            NewTabArgs args{ newTerminalArgs };
-            ActionAndArgs newTabAction{ ShortcutAction::NewTab, args };
-            // push the arg onto the front
-            page->_startupActions.push_back(std::move(newTabAction));
+            if (connection)
+            {
+                const auto settings = winrt::make_self<ControlUnitTests::MockControlSettings>();
+                const auto content = _contentManager->CreateCore(*settings, *settings, connection);
+                newTerminalArgs.ContentId(content.Id());
+                VERIFY_SUCCEEDED(page->_OpenNewTab(newTerminalArgs));
+            }
+            else
+            {
+                NewTabArgs args{ newTerminalArgs };
+                ActionAndArgs newTabAction{ ShortcutAction::NewTab, args };
+                // push the arg onto the front
+                page->_startupActions.push_back(std::move(newTabAction));
+            }
             Log::Comment(L"Added a single newTab action");
+
+            if (connection)
+            {
+                // Protocol queries need a real tab/control, but not rendered-window startup.
+                return;
+            }
 
             auto app = ::winrt::Windows::UI::Xaml::Application::Current();
 
@@ -1379,9 +1517,12 @@ namespace TerminalAppLocalTests
         });
         VERIFY_SUCCEEDED(result);
 
-        Log::Comment(L"Wait for the page to finish initializing...");
-        VERIFY_SUCCEEDED(waitForInitEvent.Wait());
-        Log::Comment(L"...Done");
+        if (!connection)
+        {
+            Log::Comment(L"Wait for the page to finish initializing...");
+            VERIFY_SUCCEEDED(waitForInitEvent.Wait());
+            Log::Comment(L"...Done");
+        }
 
         result = RunOnUIThread([&page]() {
             // In the real app, this isn't a problem, but doesn't happen
@@ -1659,7 +1800,8 @@ namespace TerminalAppLocalTests
     // - <none>
     // Return Value:
     // - The initialized TerminalPage, ready to use.
-    winrt::com_ptr<winrt::TerminalApp::implementation::TerminalPage> TabTests::_commonSetup()
+    winrt::com_ptr<winrt::TerminalApp::implementation::TerminalPage> TabTests::_commonSetup(
+        winrt::Microsoft::Terminal::TerminalConnection::ITerminalConnection connection)
     {
         static constexpr std::wstring_view settingsJson0{ LR"(
         {
@@ -1781,7 +1923,7 @@ namespace TerminalAppLocalTests
         // implementation _from_ the winrt object. This seems to work, even if
         // it's weird.
         winrt::com_ptr<winrt::TerminalApp::implementation::TerminalPage> page{ nullptr };
-        _initializeTerminalPage(page, settings0);
+        _initializeTerminalPage(page, settings0, connection);
 
         auto result = RunOnUIThread([&page]() {
             VERIFY_ARE_EQUAL(1u, page->_tabs.Size());

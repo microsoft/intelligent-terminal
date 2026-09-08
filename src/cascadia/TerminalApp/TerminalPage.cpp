@@ -7670,6 +7670,26 @@ namespace winrt::TerminalApp::implementation
         _RequestAgentStateForTab(newTab, std::nullopt, /*pane_open*/ true);
     }
 
+    void TerminalPage::_NotifyRestoredSessionBindings(const winrt::com_ptr<Tab>& tab)
+    {
+        // Call only after attachment: a subscribed helper may immediately
+        // request replay, which resolves the binding through this tab's tree.
+        if (const auto root = tab->GetRootPane())
+        {
+            for (const auto& [paneId, binding] : _pendingRestoredSessionBindings)
+            {
+                if (root->FindPaneBySessionId(paneId))
+                {
+                    Json::Value params;
+                    params["tab_id"] = winrt::to_string(tab->StableId());
+                    params["window_id"] = std::to_string(_WindowProperties.WindowId());
+                    _RaiseProtocolEvent("restore_bindings_available", params);
+                    return;
+                }
+            }
+        }
+    }
+
     void TerminalPage::_ReplayRestoredSessionBindings(const winrt::com_ptr<Tab>& tab)
     {
         // Startup yields between panes. A restored helper can subscribe before
@@ -9038,6 +9058,7 @@ namespace winrt::TerminalApp::implementation
             }
             auto pane = focusedTab->DetachPane();
             targetTab->AttachPane(pane);
+            _NotifyRestoredSessionBindings(targetTab);
             _SetFocusedTab(*targetTab);
 
             if (auto autoPeer = Automation::Peers::FrameworkElementAutomationPeer::FromElement(*this))
@@ -9349,6 +9370,7 @@ namespace winrt::TerminalApp::implementation
 
         _UnZoomIfNeeded();
         auto [original, newGuy] = activeTab->SplitPane(*realSplitType, splitSize, newPane);
+        _NotifyRestoredSessionBindings(activeTab);
 
         // After GH#6586, the control will no longer focus itself
         // automatically when it's finished being laid out. Manually focus

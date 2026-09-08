@@ -126,6 +126,11 @@ before WTA's COM listeners subscribe, so the page retains each restored binding
 in memory instead of broadcasting it immediately. On an actual listener-ready
 acknowledgement (including a successful background reconnect), the owning helper
 requests its tab's pending bindings through `pane_agent_session_changed`.
+When a resumed pane joins a tab after its helper already subscribed, the page
+emits a tab/window-scoped `restore_bindings_available` notification after tree
+attachment. Only the owning helper requests replay; no listener-readiness cache
+is retained. If that notification precedes subscription, the listener-ready
+handshake still requests the pending bindings.
 If layout replay is still in progress, the response waits for its outermost
 batch to finish so that later panes in the same tab are included.
 The page emits scoped `session_born_bound` events once, and only that helper

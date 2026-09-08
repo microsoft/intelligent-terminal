@@ -78,4 +78,11 @@ import "unknwn.idl";
     HRESULT Subscribe([in] ITerminalProtocolEventSink* sink);
     HRESULT Unsubscribe();
     HRESULT SendEvent([in] BSTR eventJson);
+
+    // Appended in protocol 2.3. Existing methods must never be reordered.
+    HRESULT GetPaneContext([in] GUID sourceSessionId,
+                           [in] boolean hasExplicitSource,
+                           [in] long maxLines,
+                           [in] long maxCharacters,
+                           [out, retval] BSTR* json);
 };
