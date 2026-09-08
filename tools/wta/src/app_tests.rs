@@ -2670,7 +2670,7 @@ get time"#
     assert_eq!(
         turn.details,
         vec![ChatMessage::Agent(
-            "Suggested 1 option:\n  ✓ 1. Run: Get-Date -Format 'HH:mm:ss'".to_string()
+            "Run: Get-Date -Format 'HH:mm:ss'".to_string()
         )]
     );
 }
@@ -15644,7 +15644,7 @@ fn direct_proposal_confirm_resolves_waiting_cli() {
 }
 
 #[test]
-fn executing_committed_recommendation_replaces_verbose_summary() {
+fn executing_committed_recommendation_keeps_compact_summary() {
     let _locale = crate::test_support::lock_locale();
     rust_i18n::set_locale("en-US");
     let mut app = test_app();
@@ -15670,7 +15670,7 @@ fn executing_committed_recommendation_replaces_verbose_summary() {
     });
     assert!(matches!(
         app.session_tab(session_id).completed_turns[0].details.last(),
-        Some(ChatMessage::Agent(text)) if text.starts_with("Suggested 1 option:")
+        Some(ChatMessage::Agent(text)) if text == "Run: Restart-Service foo"
     ));
 
     app.turn_execute_card(session_id);
@@ -15752,6 +15752,104 @@ fn direct_proposal_history_distinguishes_localized_insert_and_run() {
                 assert!(!rendered.contains("executed:"));
             }
         }
+    }
+}
+
+#[test]
+fn direct_proposal_cancel_history_keeps_only_status_and_transcript() {
+    let _locale = crate::test_support::lock_locale();
+    for (locale, canceled) in [("en-US", "(canceled)"), ("zh-CN", "(已取消)")] {
+        rust_i18n::set_locale(locale);
+        for end_before_cancel in [false, true] {
+            for has_prose in [false, true] {
+                let mut app = test_app();
+                let (recommendation_tx, mut recommendation_rx) =
+                    tokio::sync::mpsc::unbounded_channel();
+                app.recommendation_tx = recommendation_tx;
+                let manager = std::sync::Arc::new(
+                    crate::agent_tools::action_proposal::channel::ProposalChannelManager::new(),
+                );
+                app.set_proposal_channels(std::sync::Arc::clone(&manager));
+                let session_id = "compact-cancel";
+                stage_proposal_session(&mut app, session_id);
+                submit_proposal_prompt(&mut app, session_id);
+                let (proposal_id, final_rx) = stage_direct_proposal(&mut app, &manager, session_id);
+                let (commit_tx, commit_rx) = tokio::sync::oneshot::channel();
+                app.handle_event(AppEvent::DirectTerminalActionProposalCommit {
+                    proposal_id,
+                    responder: commit_tx,
+                });
+                assert!(commit_rx.blocking_recv().unwrap());
+                if has_prose {
+                    app.handle_event(AppEvent::AgentMessageChunk {
+                        session_id: session_id.into(),
+                        text: "Service explanation.".into(),
+                    });
+                }
+                if end_before_cancel {
+                    app.turn_close(session_id);
+                }
+                app.turn_cancel(session_id);
+                assert_eq!(
+                    final_rx.blocking_recv().unwrap(),
+                    crate::agent_tools::action_proposal::channel::ProposalFinalStatus::Cancelled
+                );
+                assert!(recommendation_rx.try_recv().is_err());
+                app.handle_event(AppEvent::PromptCancellationSettled {
+                    prompt_id: 99,
+                    started: true,
+                });
+                app.turn_cancel(session_id);
+
+                let turns = &app.session_tab(session_id).completed_turns;
+                assert_eq!(turns.len(), 1);
+                let expected_details = if has_prose {
+                    vec![ChatMessage::Agent("Service explanation.".into())]
+                } else {
+                    Vec::new()
+                };
+                assert_eq!(turns[0].details, expected_details);
+                assert_eq!(turns[0].trailing_marker.as_deref(), Some(canceled));
+                let rendered = render_to_text(&mut app, 100, 30);
+                let compact: String = rendered.chars().filter(|c| !c.is_whitespace()).collect();
+                assert!(compact.contains(canceled), "{locale}: {rendered}");
+                assert!(!rendered.contains("Suggested"));
+                assert!(!rendered.contains("Restart-Service"));
+                assert!(!rendered.contains("1. Run:"));
+                assert!(!rendered.contains('✓'));
+            }
+        }
+    }
+}
+
+#[test]
+fn replayed_recommendations_have_plain_localized_action_lines() {
+    let _locale = crate::test_support::lock_locale();
+    for (locale, run) in [("en-US", "Run"), ("zh-CN", "运行")] {
+        rust_i18n::set_locale(locale);
+        let mut tab = TabSession::default();
+        tab.messages = vec![
+            ChatMessage::User("show dates".into()),
+            ChatMessage::Agent(
+                serde_json::json!({
+                    "recommended_choice": 2,
+                    "choices": [
+                        {"choice": 1, "title": "Local date", "rationale": "",
+                         "actions": [{"type": "send", "parent": "", "input": "Get-Date"}]},
+                        {"choice": 2, "title": "UTC date", "rationale": "",
+                         "actions": [{"type": "send", "parent": "", "input": "Get-Date -AsUTC"}]}
+                    ]
+                })
+                .to_string(),
+            ),
+        ];
+        tab.pack_replayed_messages_into_turns();
+        assert_eq!(
+            tab.completed_turns[0].details,
+            vec![ChatMessage::Agent(format!(
+                "{run}: Get-Date\n{run}: Get-Date -AsUTC"
+            ))]
+        );
     }
 }
 

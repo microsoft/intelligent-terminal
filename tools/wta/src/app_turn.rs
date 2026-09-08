@@ -913,8 +913,8 @@ impl App {
         //   - Submitted / Streaming → commit a fresh completed_turn (prompt +
         //     whatever streamed + canceled marker) so the user always sees
         //     that this turn happened and that they cancelled it.
-        //   - Surfaced{Recommendation}: commit now if AgentMessageEnd is still
-        //     pending; otherwise annotate the history committed at turn end.
+        //   - Surfaced{Recommendation}: retain the transcript and cancellation
+        //     status, but remove the unexecuted action summary.
         //   - Other states (Idle / Surfaced{Empty / ChatTurn}) → no-op.
         let new_turn_data: Option<(String, Option<String>, Option<String>)> = match &tab.turn {
             TurnState::Submitted(prompt) => {
@@ -933,18 +933,14 @@ impl App {
             }
             TurnState::Surfaced {
                 prompt,
-                outcome: TurnOutcome::Recommendation(recommendations),
+                outcome: TurnOutcome::Recommendation(_),
                 end_pending: true,
             } => {
                 let label = match prompt.autofix.as_ref() {
                     Some(_) => t!("chat.autofix_prompt_label").into_owned(),
                     None => prompt.text.clone(),
                 };
-                Some((
-                    label,
-                    Some(format_recommendations_for_chat(recommendations)),
-                    Some(canceled_marker.clone()),
-                ))
+                Some((label, None, Some(canceled_marker.clone())))
             }
             TurnState::Surfaced {
                 prompt,
@@ -959,14 +955,14 @@ impl App {
             }
             _ => None,
         };
-        let annotate_card = matches!(
-            &tab.turn,
+        let canceled_card_summary = match &tab.turn {
             TurnState::Surfaced {
-                outcome: TurnOutcome::Recommendation(_),
+                outcome: TurnOutcome::Recommendation(recommendations),
                 end_pending: false,
                 ..
-            }
-        );
+            } => Some(format_recommendations_for_chat(recommendations)),
+            _ => None,
+        };
         if let Some((prompt_label, summary, trailing_marker)) = new_turn_data {
             let mut details = tab.take_current_turn_details();
             if let Some(summary) = summary {
@@ -979,8 +975,12 @@ impl App {
                 trailing_marker,
             });
             tab.scroll_to_bottom();
-        } else if annotate_card {
+        } else if let Some(summary) = canceled_card_summary {
             if let Some((index, last)) = tab.completed_turns.iter_mut().enumerate().next_back() {
+                if matches!(last.details.last(), Some(ChatMessage::Agent(text)) if text == &summary)
+                {
+                    last.details.pop();
+                }
                 last.trailing_marker = Some(canceled_marker);
                 tab.invalidate_completed_turn_height(index);
             }

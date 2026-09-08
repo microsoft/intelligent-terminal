@@ -6620,33 +6620,13 @@ fn format_recommendation_choice_for_chat(
         .unwrap_or_else(|| choice.title.clone())
 }
 
-/// Render a parsed `RecommendationSet` as the agent's "reply" text in chat.
-///
-/// Recommendation responses arrive as JSON; storing the raw JSON in a completed
-/// turn means re-expanding the prompt header reveals raw JSON instead of a
-/// CLI-style answer. This builds a single line per choice that mirrors what the
-/// recommendation cards show, prefixed with `✓` for the recommended one.
+/// Render pending or replayed recommendations as plain action lines, not raw JSON.
 fn format_recommendations_for_chat(set: &RecommendationSet) -> String {
-    let header = if set.choices.len() == 1 {
-        "Suggested 1 option:".to_string()
-    } else {
-        format!("Suggested {} options:", set.choices.len())
-    };
-    let mut out = header;
-
-    for choice in &set.choices {
-        let action_text = format_recommendation_choice_for_chat(choice, false);
-
-        let marker = if set.recommended_choice == Some(choice.choice) {
-            "✓"
-        } else {
-            " "
-        };
-        out.push('\n');
-        out.push_str(&format!("  {} {}. {}", marker, choice.choice, action_text));
-    }
-
-    out
+    set.choices
+        .iter()
+        .map(|choice| format_recommendation_choice_for_chat(choice, false))
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 #[path = "app_status_projection.rs"]

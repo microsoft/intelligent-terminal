@@ -158,6 +158,12 @@ Terminal actions still require their action-card confirmation, and
 **Allow once** option keep the normal permission dialog. WTA does not grant
 persistent approval automatically.
 
+Terminal-action history uses plain localized action lines such as `Run: <command>`
+or `Insert: <command>`, without suggestion counts, numbering, or recommendation
+checkmarks. Cancelling a pending action removes its unexecuted summary and keeps
+the localized cancellation status alongside any conversation text. Replayed
+recommendations use the same plain action-line format.
+
 ## Debug Panel
 
 Press **F12** to open a side panel showing all JSON-RPC messages between WTA and Windows Terminal in real time.
