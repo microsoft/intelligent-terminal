@@ -19,6 +19,7 @@ namespace TerminalAppUnitTests
         TEST_METHOD(RestartRequestIdentityIsStampedOnce);
         TEST_METHOD(BoundedCommandPreservesUtf8Characters);
         TEST_METHOD(BoundedBufferTailAppliesLineAndCharacterLimits);
+        TEST_METHOD(BoundedBufferTailPreservesBlankLines);
         TEST_METHOD(CapabilitySupportDistinguishesUnsupportedFromMalformed);
     };
 
@@ -155,5 +156,48 @@ namespace TerminalAppUnitTests
                          exact.content);
         VERIFY_ARE_EQUAL(2, exact.lineCount);
         VERIFY_IS_FALSE(exact.truncated);
+    }
+
+    void ProtocolParsingTests::BoundedBufferTailPreservesBlankLines()
+    {
+        const auto leading = BuildBoundedBufferTail("\r\n\r\n"
+                                                   "error\r\n",
+                                                   3,
+                                                   100);
+        VERIFY_ARE_EQUAL("\n\n"
+                         "error",
+                         leading.content);
+        VERIFY_ARE_EQUAL(3, leading.lineCount);
+        VERIFY_IS_FALSE(leading.truncated);
+
+        const auto selectedTail = BuildBoundedBufferTail("older\r\n\r\n\r\n"
+                                                        "error\r\n",
+                                                        3,
+                                                        100);
+        VERIFY_ARE_EQUAL("\n\n"
+                         "error",
+                         selectedTail.content);
+        VERIFY_ARE_EQUAL(3, selectedTail.lineCount);
+        VERIFY_IS_TRUE(selectedTail.truncated);
+
+        const auto interior = BuildBoundedBufferTail("first\r\n\r\n"
+                                                    "error\r\n",
+                                                    3,
+                                                    100);
+        VERIFY_ARE_EQUAL("first\n\n"
+                         "error",
+                         interior.content);
+        VERIFY_ARE_EQUAL(3, interior.lineCount);
+        VERIFY_IS_FALSE(interior.truncated);
+
+        const auto trailing = BuildBoundedBufferTail("error\r\n\r\n", 3, 100);
+        VERIFY_ARE_EQUAL("error\n", trailing.content);
+        VERIFY_ARE_EQUAL(2, trailing.lineCount);
+        VERIFY_IS_FALSE(trailing.truncated);
+
+        const auto terminated = BuildBoundedBufferTail("error\r\n", 3, 100);
+        VERIFY_ARE_EQUAL("error", terminated.content);
+        VERIFY_ARE_EQUAL(1, terminated.lineCount);
+        VERIFY_IS_FALSE(terminated.truncated);
     }
 }

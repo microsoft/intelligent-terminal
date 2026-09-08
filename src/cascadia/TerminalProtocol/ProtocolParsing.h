@@ -369,7 +369,7 @@ namespace Microsoft::Terminal::Protocol::Parsing
         std::string content;
         for (auto index = startLine; index < lines.size(); ++index)
         {
-            if (!content.empty())
+            if (index != startLine)
             {
                 content.push_back('\n');
             }

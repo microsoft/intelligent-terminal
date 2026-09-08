@@ -77,6 +77,29 @@ Describe 'Feature: consolidated pane context' -Tag 'Feature' -Skip:(-not $script
         $context.content | Should -Not -Match 'pc-line-000'
         $context.line_count | Should -BeLessOrEqual 10
         $context.truncated | Should -BeTrue
+
+        $blankPane = $null
+        try {
+            $marker = "pc-blank-$([guid]::NewGuid().ToString('N'))"
+            # Clear startup text and wait for input so no shell prompt changes the tail.
+            $outputScript = "[Console]::Write([string][char]27 + '[2J' + [char]27 + '[3J' + [char]27 + '[H' + [Environment]::NewLine + [Environment]::NewLine + '$marker'); [void][Console]::ReadLine()"
+            $encoded = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($outputScript))
+            $blankPane = New-WtTab -App $script:app -Command "pwsh.exe -NoLogo -NoProfile -NoExit -EncodedCommand $encoded"
+            Wait-Until -TimeoutSec 30 -Because 'blank-line fixture reached its input wait' -Condition {
+                (Read-TestPaneContext -SessionId $blankPane.session_id).content.EndsWith($marker)
+            } | Out-Null
+            $blankContext = Read-TestPaneContext -SessionId $blankPane.session_id -Lines 3 -Characters 100
+            $blankContext.content | Should -Be ("`n`n" + $marker)
+            $blankContext.line_count | Should -Be 3
+            $blankContext.truncated | Should -BeFalse
+            $blankContext.output_source | Should -Be 'buffer_tail'
+            $blankContext.has_marks | Should -BeFalse
+            $oneLine = Read-TestPaneContext -SessionId $blankPane.session_id -Lines 1 -Characters 100
+            $oneLine.content | Should -Be $marker
+            $oneLine.line_count | Should -Be 1
+            $oneLine.truncated | Should -BeTrue
+        }
+        finally { if ($blankPane) { Close-WtPane -App $script:app -SessionId $blankPane.session_id } }
     }
 
     It 'Explicit pane context stays isolated from the focused tab and split' {
@@ -89,7 +112,16 @@ Describe 'Feature: consolidated pane context' -Tag 'Feature' -Skip:(-not $script
             $context.pane.session_id | Should -Be $script:plain.session_id
             $context.content | Should -Match ([regex]::Escape($script:tailMarker))
             (Read-TestPaneContext -SessionId $script:shell.session_id).pane.tab_id | Should -Be $script:shell.tab_id
-            (Read-TestPaneContext -Lines 0).pane.session_id | Should -Be $split.session_id
+            $focusedContext = Read-TestPaneContext -Lines 0
+            $focusedContext.pane.session_id | Should -Be $split.session_id
+            $active = Get-ActivePane -App $script:app
+            $listed = @(Get-WtPanes -App $script:app -TabId $active.tab_id -WindowId $active.window_id |
+                Where-Object session_id -eq $split.session_id)
+            $listed.Count | Should -Be 1
+            foreach ($field in @('session_id', 'tab_id', 'pid', 'cwd', 'shell', 'title', 'is_agent_pane')) {
+                $focusedContext.pane.$field | Should -Be $active.$field
+                $focusedContext.pane.$field | Should -Be $listed[0].$field
+            }
         }
         finally { if ($split) { Close-WtPane -App $script:app -SessionId $split.session_id } }
     }

@@ -236,7 +236,7 @@ Net effect: UT shrinks the manual matrix to "did the wiring and UI connect", not
 
 - [ ] `C299` `[new]` `[E2E]` **Detected Autofix clicks remain isolated between tabs:** With errors detected in two tabs, clicking one tab's diagnostics button submits exactly one prompt for that tab and preserves the other tab's pending opt-in. _(E2E: `Feature.AutofixRouting`.)_
 - [ ] `C300` `[new]` `[E2E]` **Pane context captures the completed marked command:** A single context request returns the source pane metadata together with the completed command and its error output. _(#838; E2E: `Feature.PaneContext`.)_
-- [ ] `C301` `[new]` `[E2E]` **Pane context falls back to the newest unmarked output:** Shells without command marks return a bounded recent buffer tail with an explicit fallback reason. _(#838; E2E: `Feature.PaneContext`.)_
+- [ ] `C301` `[new]` `[E2E]` **Pane context falls back to the newest unmarked output:** Shells without command marks return a bounded recent buffer tail with an explicit fallback reason, preserving leading blank lines within the requested budget. _(#838; E2E: `Feature.PaneContext`.)_
 - [ ] `C302` `[new]` `[E2E]` **Explicit pane context stays isolated from the focused tab and split:** Explicit context requests read the requested pane even while a different tab or split is focused. _(#838; E2E: `Feature.PaneContext`.)_
 - [ ] `C303` `[new]` `[E2E]` **Missing and closed pane context fails without active-pane fallback:** Stale or unknown pane IDs fail instead of leaking another pane's context. _(#838; E2E: `Feature.PaneContext`.)_
 - [ ] `C304` `[new]` `[E2E]` **Pane context metadata-only requests omit terminal content:** A zero line or character budget returns only pane metadata. _(#838; E2E: `Feature.PaneContext`.)_

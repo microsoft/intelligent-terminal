@@ -60,7 +60,10 @@ fn explicitly_configures_acp_dependency(directives: &str) -> bool {
         directive
             .strip_prefix("agent_client_protocol")
             .is_some_and(|suffix| {
-                suffix.is_empty() || suffix.starts_with('=') || suffix.starts_with("::")
+                suffix.is_empty()
+                    || suffix.starts_with('=')
+                    || suffix.starts_with('[')
+                    || suffix.starts_with("::")
             })
     })
 }
@@ -533,6 +536,11 @@ mod tests {
             emit_levels!("agent_client_protocol_extra");
             emit_levels!("agent_client_protocol_extra::jsonrpc");
             emit_levels!(concat!("agent_client_protocol", "x"));
+            let connection =
+                tracing::info_span!(target: "agent_client_protocol::util", "connection");
+            let _entered = connection.enter();
+            emit_levels!("agent_client_protocol::jsonrpc");
+            emit_levels!("wta");
         });
 
         let bytes = output.lock().unwrap().clone();
@@ -627,6 +635,82 @@ mod tests {
                 Some(directives),
             ));
             assert_eq!(capped, original, "directives={directives}");
+        }
+    }
+
+    #[test]
+    fn dependency_privacy_cap_preserves_span_scoped_overrides() {
+        for (directives, level) in [
+            (
+                "off,agent_client_protocol[connection]=trace",
+                LevelFilter::TRACE,
+            ),
+            (
+                "off,agent_client_protocol::util[connection]=debug",
+                LevelFilter::DEBUG,
+            ),
+            (
+                "off,agent_client_protocol[connection]=info",
+                LevelFilter::INFO,
+            ),
+            (
+                "trace,agent_client_protocol=warn,agent_client_protocol[connection]=error",
+                LevelFilter::WARN,
+            ),
+            (
+                "trace,agent_client_protocol=error,agent_client_protocol[connection]=off",
+                LevelFilter::ERROR,
+            ),
+            (
+                "trace,agent_client_protocol=off,agent_client_protocol[connection]=off",
+                LevelFilter::OFF,
+            ),
+        ] {
+            let original = capture_dependency_logs(EnvFilter::try_new(directives).unwrap());
+            assert_logged_levels(
+                &original,
+                "agent_client_protocol::jsonrpc",
+                level,
+                directives,
+            );
+            let capped = capture_dependency_logs(apply_dependency_privacy_cap(
+                EnvFilter::try_new(directives).unwrap(),
+                Some(directives),
+            ));
+            if directives.starts_with("off,") {
+                assert!(original.contains("connection: agent_client_protocol::jsonrpc:"));
+                assert!(capped.contains("connection: agent_client_protocol::jsonrpc:"));
+            }
+            // Concurrent subscribers can change whether EnvFilter's lower-level
+            // span directives retain the INFO span. Compare every synthetic
+            // event (target, level, order and duplicates), not span decoration.
+            let original_events: Vec<_> = original
+                .lines()
+                .map(|line| line.rsplit_once(": ").expect("formatted event message").1)
+                .collect();
+            let capped_events: Vec<_> = capped
+                .lines()
+                .map(|line| line.rsplit_once(": ").expect("formatted event message").1)
+                .collect();
+            assert_eq!(capped_events, original_events, "directives={directives}");
+        }
+        for directives in [
+            "trace,agent_client_protocol_extra[connection]=trace",
+            "trace,agent_client_protocol_extra::util[connection]=trace",
+            concat!("trace,agent_client_protocol", "x[connection]=trace"),
+        ] {
+            assert!(!explicitly_configures_acp_dependency(directives));
+            let capped = capture_dependency_logs(apply_dependency_privacy_cap(
+                EnvFilter::try_new(directives).unwrap(),
+                Some(directives),
+            ));
+            assert_logged_levels(
+                &capped,
+                "agent_client_protocol::jsonrpc",
+                LevelFilter::INFO,
+                directives,
+            );
+            assert_logged_levels(&capped, "wta", LevelFilter::TRACE, directives);
         }
     }
 

@@ -363,7 +363,7 @@ async fn capture_pane_context(
     max_chars: usize,
 ) -> Option<CapturedPaneContext> {
     let started = std::time::Instant::now();
-    match shell_mgr
+    let (pane, response) = match shell_mgr
         .wt_get_pane_context(explicit_source, max_lines, max_chars)
         .await
     {
@@ -381,31 +381,7 @@ async fn capture_pane_context(
                     return None;
                 }
             };
-            let protocol_truncated = value
-                .get("truncated")
-                .and_then(serde_json::Value::as_bool)
-                .unwrap_or(false);
-            let output = value
-                .get("content")
-                .and_then(serde_json::Value::as_str)
-                .filter(|content| !content.is_empty())
-                .map(|content| {
-                    preserve_protocol_truncation(content, max_chars, protocol_truncated)
-                });
-            tracing::debug!(
-                target: "acp.terminal_context",
-                explicit_source = explicit_source.is_some(),
-                rpc_ms = started.elapsed().as_millis() as u64,
-                output_source = value
-                    .get("output_source")
-                    .and_then(serde_json::Value::as_str),
-                fallback_reason = value
-                    .get("fallback_reason")
-                    .and_then(serde_json::Value::as_str),
-                truncated = value.get("truncated").and_then(serde_json::Value::as_bool),
-                "pane_context_request_complete"
-            );
-            Some(CapturedPaneContext { pane, output })
+            (pane, Some(value))
         }
         Err(error) if format!("{error:#}").contains("WT_PROTOCOL_UNSUPPORTED_PANE_CONTEXT") => {
             tracing::warn!(
@@ -417,17 +393,7 @@ async fn capture_pane_context(
                 Some(source) => resolve_pane_by_session_id(shell_mgr, source).await?,
                 None => shell_mgr.wt_get_active_pane().await.ok()?,
             };
-            let is_agent = pane
-                .get("is_agent_pane")
-                .and_then(serde_json::Value::as_bool)
-                .unwrap_or(false);
-            if is_agent {
-                return None;
-            }
-            let pane_id = json_str_or_num(pane.get("session_id"))?;
-            let output =
-                read_pane_last_message_legacy(shell_mgr, &pane_id, max_lines, max_chars).await;
-            Some(CapturedPaneContext { pane, output })
+            (pane, None)
         }
         Err(error) => {
             tracing::debug!(
@@ -437,9 +403,46 @@ async fn capture_pane_context(
                 error = %error,
                 "pane_context_request_failed"
             );
-            None
+            return None;
         }
+    };
+    if pane
+        .get("is_agent_pane")
+        .and_then(serde_json::Value::as_bool)
+        .unwrap_or(false)
+    {
+        return None;
     }
+
+    let output = if let Some(value) = response {
+        let protocol_truncated = value
+            .get("truncated")
+            .and_then(serde_json::Value::as_bool)
+            .unwrap_or(false);
+        let output = value
+            .get("content")
+            .and_then(serde_json::Value::as_str)
+            .filter(|content| !content.is_empty())
+            .map(|content| preserve_protocol_truncation(content, max_chars, protocol_truncated));
+        tracing::debug!(
+            target: "acp.terminal_context",
+            explicit_source = explicit_source.is_some(),
+            rpc_ms = started.elapsed().as_millis() as u64,
+            output_source = value
+                .get("output_source")
+                .and_then(serde_json::Value::as_str),
+            fallback_reason = value
+                .get("fallback_reason")
+                .and_then(serde_json::Value::as_str),
+            truncated = value.get("truncated").and_then(serde_json::Value::as_bool),
+            "pane_context_request_complete"
+        );
+        output
+    } else {
+        let pane_id = json_str_or_num(pane.get("session_id"))?;
+        read_pane_last_message_legacy(shell_mgr, &pane_id, max_lines, max_chars).await
+    };
+    Some(CapturedPaneContext { pane, output })
 }
 
 struct PlannerTerminalContext {
@@ -460,14 +463,6 @@ async fn build_terminal_context(
     )
     .await?;
     let active = captured.pane;
-
-    let is_agent = active
-        .get("is_agent_pane")
-        .and_then(|v| v.as_bool())
-        .unwrap_or(false);
-    if is_agent {
-        return None;
-    }
 
     let target_pane_id = json_str_or_num(active.get("session_id"))?;
     let target_window_title = active
@@ -573,15 +568,6 @@ pub(super) async fn resolve_provider_context(
     else {
         return resolved;
     };
-
-    let is_agent = captured
-        .pane
-        .get("is_agent_pane")
-        .and_then(serde_json::Value::as_bool)
-        .unwrap_or(false);
-    if is_agent {
-        return resolved;
-    }
 
     let source_pane_id = json_str_or_num(captured.pane.get("session_id"));
     if explicit_source.is_none() {
@@ -1332,6 +1318,7 @@ mod tests {
 
     struct LegacyPaneContextChannel {
         methods: Mutex<Vec<String>>,
+        pane: serde_json::Value,
     }
 
     #[async_trait::async_trait]
@@ -1339,7 +1326,7 @@ mod tests {
         async fn request(
             &self,
             method: &str,
-            _params: serde_json::Value,
+            params: serde_json::Value,
         ) -> anyhow::Result<serde_json::Value> {
             self.methods.lock().unwrap().push(method.to_string());
             match method {
@@ -1352,16 +1339,18 @@ mod tests {
                 "list_tabs" => Ok(serde_json::json!({
                     "tabs": [{ "tab_id": 2 }]
                 })),
-                "list_panes" => Ok(serde_json::json!({
-                    "panes": [{
-                        "session_id": "pane-legacy",
-                        "is_agent_pane": false,
-                    }]
-                })),
-                "read_pane_output" => Ok(serde_json::json!({
-                    "content": "legacy output",
-                    "has_marks": true,
-                })),
+                "get_active_pane" => Ok(self.pane.clone()),
+                "list_panes" => Ok(serde_json::json!({ "panes": [self.pane] })),
+                "read_pane_output" => {
+                    assert_eq!(
+                        params["session_id"].as_str(),
+                        json_str_or_num(self.pane.get("session_id")).as_deref()
+                    );
+                    Ok(serde_json::json!({
+                        "content": "legacy output",
+                        "has_marks": true,
+                    }))
+                }
                 other => Err(anyhow::anyhow!("unexpected legacy method {other}")),
             }
         }
@@ -1375,6 +1364,10 @@ mod tests {
     async fn unsupported_server_uses_observable_legacy_path() {
         let channel = Arc::new(LegacyPaneContextChannel {
             methods: Mutex::new(Vec::new()),
+            pane: serde_json::json!({
+                "session_id": "pane-legacy",
+                "is_agent_pane": false,
+            }),
         });
         let mgr = ShellManager::new().with_wt_channel(channel.clone());
 
@@ -1394,6 +1387,56 @@ mod tests {
                 "read_pane_output".to_string(),
             ]
         );
+    }
+
+    #[tokio::test]
+    async fn legacy_capture_preserves_numeric_ids_and_skips_agent_output() {
+        for is_agent in [false, true] {
+            for source in [None, Some("42")] {
+                let channel = Arc::new(LegacyPaneContextChannel {
+                    methods: Mutex::new(Vec::new()),
+                    pane: serde_json::json!({
+                        "session_id": 42,
+                        "is_agent_pane": is_agent,
+                    }),
+                });
+                let mgr = ShellManager::new().with_wt_channel(channel.clone());
+                let captured = capture_pane_context(&mgr, source, 30, 4000).await;
+                if is_agent {
+                    assert!(captured.is_none());
+                } else {
+                    let captured = captured.expect("legacy numeric pane IDs remain supported");
+                    assert_eq!(captured.pane["session_id"], 42);
+                    assert_eq!(captured.output.as_deref(), Some("legacy output"));
+                }
+                assert_eq!(
+                    channel
+                        .methods
+                        .lock()
+                        .unwrap()
+                        .iter()
+                        .any(|method| method == "read_pane_output"),
+                    !is_agent,
+                );
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn consolidated_capture_skips_agent_panes_before_providers() {
+        let mut response = pane_context_response();
+        response["pane"]["is_agent_pane"] = serde_json::json!(true);
+        let channel = Arc::new(RecordingPaneContextChannel {
+            requests: AtomicUsize::new(0),
+            params: Mutex::new(None),
+            error: None,
+            response: Some(response),
+        });
+        let mgr = ShellManager::new().with_wt_channel(channel.clone());
+        for source in [None, Some("pane-explicit")] {
+            assert!(capture_pane_context(&mgr, source, 30, 4000).await.is_none());
+        }
+        assert_eq!(channel.requests.load(Ordering::Relaxed), 2);
     }
 
     #[tokio::test]
