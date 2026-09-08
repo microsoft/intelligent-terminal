@@ -1002,7 +1002,7 @@ impl WtChannel for CliChannel {
                     &max_chars_owned,
                 ];
                 if let Some(pane_id) = pane_id {
-                    if pane_id.is_empty() {
+                    if pane_id.trim().is_empty() {
                         bail!("get_pane_context: 'session_id' must not be empty");
                     }
                     args.extend(["--target", pane_id]);
@@ -1204,6 +1204,10 @@ mod tests {
             serde_json::json!({}),
             serde_json::json!([]),
             serde_json::json!(""),
+            serde_json::json!(" "),
+            serde_json::json!("\t"),
+            serde_json::json!("\r\n"),
+            serde_json::json!("\u{2003}"),
         ] {
             let error = channel
                 .request(
@@ -1216,7 +1220,7 @@ mod tests {
                 )
                 .await
                 .expect_err("invalid source must fail before invoking wtcli");
-            let expected = if session_id == "" {
+            let expected = if session_id.as_str().is_some_and(|id| id.trim().is_empty()) {
                 "get_pane_context: 'session_id' must not be empty"
             } else {
                 "get_pane_context: 'session_id' must be a string"

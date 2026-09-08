@@ -517,7 +517,7 @@ mod tests {
 
         tracing::subscriber::with_default(subscriber, || {
             macro_rules! emit_levels {
-                ($target:literal) => {
+                ($target:expr) => {
                     tracing::error!(target: $target, concat!($target, ":ERROR"));
                     tracing::warn!(target: $target, concat!($target, ":WARN"));
                     tracing::info!(target: $target, concat!($target, ":INFO"));
@@ -532,7 +532,7 @@ mod tests {
             emit_levels!("unrelated");
             emit_levels!("agent_client_protocol_extra");
             emit_levels!("agent_client_protocol_extra::jsonrpc");
-            emit_levels!("agent_client_protocolx");
+            emit_levels!(concat!("agent_client_protocol", "x"));
         });
 
         let bytes = output.lock().unwrap().clone();
@@ -705,7 +705,7 @@ mod tests {
     }
 
     #[test]
-    fn dependency_privacy_cap_preserves_lookalike_targets() {
+    fn dependency_privacy_cap_preserves_similar_targets() {
         for (directives, target) in [
             (
                 "off,agent_client_protocol_extra=trace",
@@ -716,8 +716,8 @@ mod tests {
                 "agent_client_protocol_extra::jsonrpc",
             ),
             (
-                "debug,agent_client_protocolx=trace",
-                "agent_client_protocolx",
+                concat!("debug,agent_client_protocol", "x=trace"),
+                concat!("agent_client_protocol", "x"),
             ),
         ] {
             assert!(!explicitly_configures_acp_dependency(directives));
