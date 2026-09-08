@@ -122,6 +122,9 @@ namespace winrt::TerminalApp::implementation
         // original orientation.
         bool RestoreStashedAgentPane(winrt::Microsoft::Terminal::Settings::Model::SplitDirection direction);
         bool HasStashedAgentPane() const;
+        void SuppressAgentPrewarm() noexcept { _agentPrewarmSuppressed = true; }
+        void AllowAgentPrewarm() noexcept { _agentPrewarmSuppressed = false; }
+        bool AgentPrewarmSuppressed() const noexcept { return _agentPrewarmSuppressed; }
 
         // Runtime-only position selected by `/move`. A missing override means
         // this tab follows the global AgentPanePosition setting.
@@ -308,6 +311,7 @@ namespace winrt::TerminalApp::implementation
         bool _receivedKeyDown{ false };
         bool _iconHidden{ false };
         bool _changingActivePane{ false };
+        bool _agentPrewarmSuppressed{ false };
 
         winrt::hstring _stableId{};
 

@@ -172,8 +172,10 @@ listed under "What changes."
   - Pre-pivot: that child is `wta.exe --headless` (the original M3
     singleton).
   - Post-pivot: that child will be `wta.exe --master <pipe>`.
-- Refcount via `AcquirePane` / `ReleasePane`. Spawn lazily on first
-  acquire; tear down on last release.
+- `AcquirePane` returns a move-only `SharedWtaLease`. `AgentPaneContent`
+  owns it through `AgentPaneLifetime`, which follows content rather than
+  pane-tree nodes. Creation rollback releases immediately; normal close
+  retires the lease for the bounded session-close grace period.
 - Job Object with `KILL_ON_JOB_CLOSE` binds the child's lifetime to
   Terminal.
 - `RegisterWaitForSingleObject` for crash detection; child exit
@@ -405,14 +407,36 @@ User closes the pane (Ctrl+W, tab close, window close):
  │   └─ master cleans up SessionId → helper mapping
  │   └─ optionally informs agent CLI to release the session
  │
- └─ SharedWta::ReleasePane (in WT-side Closed handler)
-     └─ refcount -= 1
-     └─ if refcount == 0:
+ └─ AgentPaneContent::Close retires its AgentPaneLifetime
+     └─ active master demand decreases immediately
+     └─ the same lease retains the master through the session-close grace
+     └─ when the final lease releases:
          └─ KILL_ON_JOB_CLOSE on the Job Object closes master cleanly
          └─ master's shutdown drops the agent CLI subprocess
 ```
 
 #### Tab drag between windows
+
+Serialization has no lifetime side effects. On detach, the source moves
+its `AgentPaneLifetime` into `AgentPaneDragStash`. The entry owns the agile
+terminal core and master lease, not the source window's XAML objects.
+The serialized `__content` and internal `__agentPaneTransfer` generation
+identify one specific handoff. A destination must claim both before
+attaching; stale or duplicate receives cannot claim a later move of the
+same content or fall back to launching the helper as an ordinary terminal.
+
+Claiming atomically removes the entry from the registry. The receiving
+scope owns cleanup until the new content adopts the lifetime. Failed
+attach retires that lifetime. Unclaimed entries expire after two minutes;
+expiry matches the transfer generation and cannot close claimed content.
+Cancellation before detach leaves ownership at the source. This deadline
+applies only to detached transfers, never to hidden or prewarmed panes.
+
+Abandoned content is retired on a worker without depending on the source
+window's dispatcher remaining alive. This requires exclusive lifetime
+ownership: the content cannot still be attached or concurrently claimed.
+Core closure publishes its closing flag atomically for queued callbacks;
+this does not make normal core operations or XAML access free-threaded.
 
 The drag triggers existing WT mechanics: `ContentId` lookup,
 `AttachContent → _MakePane`, reparent of the existing TermControl into
@@ -436,12 +460,11 @@ rekeys its per-tab map and pointers under the new id:
   `rename_session_tx` channel (otherwise the next prompt on the dragged
   tab can't find its SessionId).
 
-The C++ side emits this event **synchronously** from
-`_MakeTerminalPane` on the destination page during drop-in (not from
-the deferred `_InitializeTab` walk), so the rename lands before the
-target window's own `tab_changed` for the new id and the helper's
-per-tab state isn't clobbered by a fresh default. See "Per-tab +
-per-window event routing" below for the full model.
+When attaching to an existing tab, C++ emits this event synchronously
+from `_MakeTerminalPane`. If the incoming pane is the first content of
+a new tab, the wrapper carries pending routing metadata until
+`_InitializeTab` can bind it to the new tab. See "Per-tab + per-window
+event routing" below for the full model.
 
 Master keeps the SessionId ↔ helper-connection mapping intact (the helper
 process identity does not change) while rekeying tab ownership, pending
@@ -451,14 +474,13 @@ no process restarts and no ACP `session/load` occurs.
 
 #### Master crash
 
-`SharedWta::_OnProcessExited` (existing wait-callback) fires. State is
-cleared so the next `AcquirePane` respawns the master. All existing
-helpers' pipe connections drop:
-- Each helper detects pipe EOF, ends its TUI, and exits.
-- The Agent Pane profile's `closeOnExit:"always"` closes each pane.
-- No helper reconnects and crash handling never calls `session/load`.
-- A later user-initiated pane open calls `AcquirePane`, which creates a
-  fresh master, helper, and ACP session.
+`SharedWta::_OnProcessExited` claims the current process generation and
+permits one automatic replacement while active pane/transfer leases
+remain. Cleanup-only leases do not cause a respawn. Retained helpers
+with deferred bindings reconnect over the stable pipe after their old
+transport retires; this is not transparent recovery of an active
+conversation. Helper and ACP session recovery semantics are unchanged
+by lease ownership.
 
 #### Helper crash
 
@@ -588,9 +610,12 @@ its stored view — which is whatever the pane was in when it got stashed
 sessions view would re-open in sessions view.
 
 The pane is only truly destroyed when:
-- The tab itself closes (Tab destructor releases the stash), or
+- The tab itself closes (`Tab::Shutdown` closes its content), or
 - The user presses Ctrl+C×2 inside the TUI (helper sends
   `close_agent_pane { tab_id }`, C++ calls `_TeardownAgentPane`).
+
+An explicit close suppresses queued prewarm work for that tab. A later
+explicit creation can enable normal prewarming/recreation again.
 
 `OnAgentStateChanged`'s `pane_open` path drives stash/restore: `false`
 calls `Tab::StashAgentPane()`, `true` calls `Tab::RestoreStashedAgentPane`

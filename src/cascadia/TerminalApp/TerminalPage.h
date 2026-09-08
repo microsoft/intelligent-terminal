@@ -1142,7 +1142,7 @@ namespace winrt::TerminalApp::implementation
         void _OnTabStripDroppedOutside(const winrt::Windows::Foundation::IInspectable& sender, const TerminalApp::TabStripDroppedOutsideEventArgs& e);
         void _OnTabDroppedOutsideCore();
 
-        void _DetachPaneFromWindow(std::shared_ptr<Pane> pane);
+        void _DetachPaneFromWindow(std::shared_ptr<Pane> pane, const winrt::com_ptr<Tab>& sourceTab, uint64_t firstPaneContentId = 0);
         void _DetachTabFromWindow(const winrt::com_ptr<Tab>& tabImpl);
         void _MoveContent(std::vector<winrt::Microsoft::Terminal::Settings::Model::ActionAndArgs>&& actions,
                           const winrt::hstring& windowName,

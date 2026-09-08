@@ -296,7 +296,7 @@ namespace winrt::TerminalApp::implementation
             // re-checked against policy rather than taken from saved state.
             // Hand it to the spawn path, which does its own split.
             if (const auto& terminalArgs{ realArgs.ContentArgs().try_as<NewTerminalArgs>() };
-                terminalArgs && ::Microsoft::Terminal::AgentPaneRestore::IsPaneType(terminalArgs.Type()))
+                terminalArgs && !terminalArgs.ContentId() && ::Microsoft::Terminal::AgentPaneRestore::IsPaneType(terminalArgs.Type()))
             {
                 _RestoreAgentPaneFromLayout(activeTab, terminalArgs, realArgs.SplitDirection(), realArgs.SplitSize());
                 args.Handled(true);
@@ -522,7 +522,7 @@ namespace winrt::TerminalApp::implementation
             // runnable. Strip it and open an ordinary tab rather than executing
             // the record.
             if (const auto& terminalArgs{ realArgs.ContentArgs().try_as<NewTerminalArgs>() };
-                terminalArgs && ::Microsoft::Terminal::AgentPaneRestore::IsPaneType(terminalArgs.Type()))
+                terminalArgs && !terminalArgs.ContentId() && ::Microsoft::Terminal::AgentPaneRestore::IsPaneType(terminalArgs.Type()))
             {
                 terminalArgs.Commandline({});
                 terminalArgs.SetContentType({});

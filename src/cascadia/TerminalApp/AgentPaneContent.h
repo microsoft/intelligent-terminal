@@ -11,6 +11,7 @@
 #include "BasicPaneEvents.h"
 
 #include "AutofixState.h"
+#include "AgentPaneLifetime.h"
 
 namespace winrt::TerminalApp::implementation
 {
@@ -118,7 +119,14 @@ namespace winrt::TerminalApp::implementation
             _pendingAgentSourceProfileGuid.reset();
             return value;
         }
-        void PrepareForCrossWindowTransfer() noexcept { _helperTransferredForDrag = true; }
+        void AdoptLifetime(AgentPaneLifetime lifetime) noexcept { _lifetime = std::move(lifetime); }
+        AgentPaneLifetime TakeLifetime() noexcept { return std::move(_lifetime); }
+        bool HasLifetime() const noexcept { return static_cast<bool>(_lifetime); }
+        uint64_t TransferId() const noexcept { return _transferId; }
+        void RestoreHiddenAfterTransfer(bool hidden) noexcept { _restoreHiddenAfterTransfer = hidden; }
+        bool TakeHiddenAfterTransfer() noexcept { return std::exchange(_restoreHiddenAfterTransfer, false); }
+        void AwaitingTransferredTabContent(bool awaiting) noexcept { _awaitingTransferredTabContent = awaiting; }
+        bool AwaitingTransferredTabContent() const noexcept { return _awaitingTransferredTabContent; }
 
         // Apply the provided background and foreground brushes to the
         // agent-pane top bar (#348). Internal-only (not on IDL).
@@ -216,7 +224,12 @@ namespace winrt::TerminalApp::implementation
         // wrapper recovers the helper's first post-transfer status.
         winrt::hstring _transferSourceTabId{};
         std::optional<winrt::guid> _pendingAgentSourceProfileGuid;
-        bool _helperTransferredForDrag{ false };
+        AgentPaneLifetime _lifetime;
+        inline static std::atomic<uint64_t> _nextTransferId{ 0 };
+        const uint64_t _transferId{ ++_nextTransferId };
+        bool _closed{ false };
+        bool _restoreHiddenAfterTransfer{ false };
+        bool _awaitingTransferredTabContent{ false };
 
         // Inner content event tokens — forwarded to our own BasicPaneEvents.
         winrt::event_token _innerCloseRequested{};

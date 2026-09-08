@@ -5,7 +5,6 @@
 #include "ColorPickupFlyout.h"
 #include "Tab.h"
 #include "AgentPaneContent.h"
-#include "AgentPaneDragStash.h"
 #include "SettingsPaneContent.h"
 #include "Tab.g.cpp"
 #include "Utils.h"
@@ -581,65 +580,6 @@ namespace winrt::TerminalApp::implementation
         // 1 for the child after the first split.
         auto state = _rootPane->BuildStartupActions(0, 1, kind);
 
-        // Content serialization is a live cross-window move. Preserve the
-        // helper and record enough identity for the destination to restore
-        // AgentPaneContent and rekey the existing WTA session.
-        if (kind == BuildStartupKind::Content && _rootPane)
-        {
-            uint64_t firstPaneContentId = 0;
-            if (state.firstPane)
-            {
-                const auto firstPaneArgs = state.firstPane->GetTerminalArgsForPane(BuildStartupKind::Content).try_as<NewTerminalArgs>();
-                if (firstPaneArgs)
-                {
-                    firstPaneContentId = firstPaneArgs.ContentId();
-                }
-            }
-
-            const auto& stableId = _stableId;
-            const auto sourceProfileGuid = _agentSourceProfileGuid;
-            _rootPane->WalkTree([&stableId, &sourceProfileGuid, firstPaneContentId](const auto& pane) {
-                if (!pane->_IsLeaf())
-                {
-                    return false;
-                }
-
-                const auto& content = pane->GetContent();
-                const auto agentContent = content ? content.try_as<winrt::TerminalApp::AgentPaneContent>() : nullptr;
-                if (!agentContent)
-                {
-                    return false;
-                }
-
-                const auto args = content.GetNewTerminalArgs(BuildStartupKind::Content);
-                const auto terminalArgs = args.try_as<winrt::Microsoft::Terminal::Settings::Model::NewTerminalArgs>();
-                if (!terminalArgs)
-                {
-                    return false;
-                }
-
-                const auto contentId = terminalArgs.ContentId();
-                if (contentId == 0)
-                {
-                    return false;
-                }
-
-                const auto attachDisposition = contentId == firstPaneContentId ?
-                                                   winrt::TerminalApp::implementation::AgentPaneDragStash::AttachDisposition::FirstPaneOfNewTab :
-                                                   winrt::TerminalApp::implementation::AgentPaneDragStash::AttachDisposition::ExistingTabSplit;
-                winrt::TerminalApp::implementation::AgentPaneDragStash::Stash(
-                    contentId,
-                    stableId,
-                    sourceProfileGuid,
-                    attachDisposition);
-                if (const auto impl = winrt::get_self<implementation::AgentPaneContent>(agentContent))
-                {
-                    impl->PrepareForCrossWindowTransfer();
-                }
-                return false;
-            });
-        }
-
         {
             ActionAndArgs newTabAction{};
             INewContentArgs newContentArgs{ state.firstPane->GetTerminalArgsForPane(kind) };
@@ -747,7 +687,15 @@ namespace winrt::TerminalApp::implementation
         // Depending on which direction will be split, the new pane can be
         // either the first or second child, but this will always return the
         // original pane first.
-        auto [original, newPane] = _activePane->Split(splitType, splitSize, pane);
+        const auto agentContent = _activePane->GetContent().try_as<winrt::TerminalApp::AgentPaneContent>();
+        const bool completingTransfer = _activePane == _rootPane &&
+                                        agentContent &&
+                                        winrt::get_self<implementation::AgentPaneContent>(agentContent)->AwaitingTransferredTabContent() &&
+                                        !pane->IsAgentPane();
+        auto [original, newPane] = completingTransfer ?
+                                       _activePane->_Split(splitType, splitSize, pane) :
+                                       _activePane->Split(splitType, splitSize, pane);
+        THROW_HR_IF(E_ILLEGAL_METHOD_CALL, !original || !newPane);
 
         // After split, Close Pane Menu Item should be visible
         _closePaneMenuItem.Visibility(WUX::Visibility::Visible);
