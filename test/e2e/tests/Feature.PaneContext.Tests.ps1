@@ -118,6 +118,9 @@ Describe 'Feature: consolidated pane context' -Tag 'Feature' -Skip:(-not $script
             $listed = @(Get-WtPanes -App $script:app -TabId $active.tab_id -WindowId $active.window_id |
                 Where-Object session_id -eq $split.session_id)
             $listed.Count | Should -Be 1
+            $listed[0].size.columns | Should -BeGreaterThan 0
+            $listed[0].size.columns | Should -Be $focusedContext.pane.size.columns
+            $listed[0].size.rows | Should -Be $focusedContext.pane.size.rows
             foreach ($field in @('session_id', 'tab_id', 'pid', 'cwd', 'shell', 'title', 'is_agent_pane')) {
                 $focusedContext.pane.$field | Should -Be $active.$field
                 $focusedContext.pane.$field | Should -Be $listed[0].$field

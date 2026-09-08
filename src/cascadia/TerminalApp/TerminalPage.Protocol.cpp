@@ -399,7 +399,7 @@ namespace winrt::TerminalApp::implementation
                 if (const auto termControl = pane->GetTerminalControl())
                 {
                     info.Rows = termControl.ViewHeight();
-                    info.Columns = 0;
+                    info.Columns = termControl.ViewWidth();
                 }
 
                 panes.Append(info);
