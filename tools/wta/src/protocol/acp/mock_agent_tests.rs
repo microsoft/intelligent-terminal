@@ -5603,7 +5603,7 @@ async fn session_notification_hides_proposal_tool_call_before_permission() {
 #[tokio::test]
 async fn session_notification_hides_only_bound_session_mcp_tool_call() {
     let own_server = "intellterm_0123456789abcdef";
-    for server_name in [None, Some(own_server), Some("intellterm_fedcba9876543210")] {
+    for server_name in [None, Some(own_server), Some("intellterm_9876543210987654")] {
         let (client, mut rx) = bare_client();
         let mut notification = notif(
             "s1",

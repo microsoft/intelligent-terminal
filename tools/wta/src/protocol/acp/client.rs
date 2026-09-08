@@ -6483,30 +6483,34 @@ mod tests {
         events: &mut mpsc::UnboundedReceiver<AppEvent>,
         request: acp::schema::v1::RequestPermissionRequest,
     ) {
-        let selected_id = request.options[0].option_id.to_string();
-        let permission = client.request_permission(request);
-        tokio::pin!(permission);
-        loop {
-            tokio::select! {
-                biased;
-                _ = &mut permission => panic!("permission resolved without user selection"),
-                event = events.recv() => match event {
-                    Some(AppEvent::HideToolCall { .. }) => {}
-                    Some(AppEvent::PermissionRequest { responder, .. }) => {
-                        responder.send(selected_id.clone()).unwrap();
-                        break;
+        tokio::time::timeout(Duration::from_secs(1), async {
+            let selected_id = request.options[0].option_id.to_string();
+            let permission = client.request_permission(request);
+            tokio::pin!(permission);
+            loop {
+                tokio::select! {
+                    biased;
+                    _ = &mut permission => panic!("permission resolved without user selection"),
+                    event = events.recv() => match event {
+                        Some(AppEvent::HideToolCall { .. }) => {}
+                        Some(AppEvent::PermissionRequest { responder, .. }) => {
+                            responder.send(selected_id.clone()).unwrap();
+                            break;
+                        }
+                        _ => panic!("expected interactive permission request"),
                     }
-                    _ => panic!("expected interactive permission request"),
                 }
             }
-        }
-        let response = permission.await.unwrap();
-        assert!(matches!(
-            response.outcome,
-            acp::schema::v1::RequestPermissionOutcome::Selected(selected)
-                if selected.option_id.to_string() == selected_id
-        ));
-        assert!(events.try_recv().is_err());
+            let response = permission.await.unwrap();
+            assert!(matches!(
+                response.outcome,
+                acp::schema::v1::RequestPermissionOutcome::Selected(selected)
+                    if selected.option_id.to_string() == selected_id
+            ));
+            assert!(events.try_recv().is_err());
+        })
+        .await
+        .expect("interactive permission exchange timed out");
     }
 
     pub(crate) async fn assert_session_mcp_permission_contract(
@@ -6628,11 +6632,11 @@ mod tests {
                     "missing" => request.meta = None,
                     "replaced" => stamp_server_identity(
                         &mut request.meta,
-                        Some("intellterm_fedcba9876543210"),
+                        Some("intellterm_9876543210987654"),
                     ),
                     "foreign-title" => {
                         request.tool_call.fields.title =
-                            Some("intellterm_fedcba9876543210/run_command_in_current_shell".into())
+                            Some("intellterm_9876543210987654/run_command_in_current_shell".into())
                     }
                     "different-tool" => {
                         request.tool_call.fields.title = Some("request_user_input".into())
@@ -6644,7 +6648,7 @@ mod tests {
                                 SessionUpdate::ToolCallUpdate(ToolCallUpdate::new(
                                     "proposal-mcp-tool",
                                     ToolCallUpdateFields::new().title(
-                                        "intellterm_fedcba9876543210/run_command_in_current_shell",
+                                        "intellterm_9876543210987654/run_command_in_current_shell",
                                     ),
                                 )),
                             ))
@@ -6671,8 +6675,8 @@ mod tests {
             "Use MCP tool: other/run_command_in_current_shell",
             "mcp__other__request_user_input",
             "intellterm_0123456789abcde/run_command_in_current_shell",
-            "intellterm_fedcba9876543210/run_command_in_current_shell",
-            "mcp__intellterm_fedcba9876543210__request_user_input",
+            "intellterm_9876543210987654/run_command_in_current_shell",
+            "mcp__intellterm_9876543210987654__request_user_input",
             "intellterm_0123456789abcdef/unknown_tool",
         ] {
             let manager = Arc::new(
