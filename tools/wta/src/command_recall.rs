@@ -981,8 +981,8 @@ mod integration_tests {
         // `wtdeployt` is the script name with one character dropped — a genuine
         // not-found whose closest existing command is the script itself.
         let result = powershell_near_matches(&shell, "wtdeployt").await;
-        let renamed = std::fs::rename(dir.join("wtdeployit.ps1"), dir.join("wtdeployme.ps1"));
-        let refreshed = powershell_near_matches(&shell, "wtdeploym").await;
+        let renamed = std::fs::rename(dir.join("wtdeployit.ps1"), dir.join("wtdeployit-new.ps1"));
+        let refreshed = powershell_near_matches(&shell, "wtdeployt-new").await;
 
         // Always restore PATH and remove the temp dir *before* asserting, so a
         // failed assertion can never leak state into other tests.
@@ -1000,7 +1000,9 @@ mod integration_tests {
         );
         let matches = refreshed.expect("expected fresh near-matches after renaming the script");
         assert!(
-            matches.iter().any(|m| m.eq_ignore_ascii_case("wtdeployme")),
+            matches
+                .iter()
+                .any(|m| m.eq_ignore_ascii_case("wtdeployit-new")),
             "expected the renamed script among near-matches, got {matches:?}"
         );
         assert!(
