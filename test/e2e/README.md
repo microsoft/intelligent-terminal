@@ -36,6 +36,7 @@ authenticated ACP agents. Current status (run on the Store package):
 | `Feature.AutofixRouting.Tests.ps1` | Two Detected tabs: real diagnostics clicks submit only to the selected tab's ACP session and preserve the other tab's opt-in | 1 |
 | `Feature.PaneContext.Tests.ps1` | issue #838: packaged pane-context capture, marked/unmarked output, explicit routing, missing panes, metadata-only mode, Unicode bounds, and agent-focus source resolution | 7 |
 | `Feature.CommandResolution.Tests.ps1` | PR #418: packaged WTA resolves PowerShell profile-only aliases to their real targets | 1 |
+| `Feature.AutofixCommandResolution.Tests.ps1` | Issue #844: Debug Dev, deterministic ACP fixture; no startup/tab-selection probes, first/later Autofix contracts without enumeration, and explicit local-candidate lookup | 3 |
 | `Feature.SessionList.Tests.ps1` | session view (button + `/sessions` slash), session states, view switching (incl. draft-preservation), focus/restore | 13 (+1 skip) |
 | `Feature.NonAsciiCwd.Tests.ps1` | issue #641: a non-ASCII starting directory survives `wtcli` argv → COM → `CreateProcessW`, so the resume launch path connects and starts in that directory | 2 |
 | `Feature.AgentPaneCwd.Tests.ps1` | agent-pane source workspace reaches ACP `session/new` and remains stable across `/new` without a model prompt | 1 |
@@ -80,6 +81,14 @@ injectable via UIA/send-keys in this harness); and manual release-sign-off gates
 Token-consuming simulated-real-user tests are deliberately excluded from this publishable suite
 and from CI. They live only in the feature's dev-only local validation harness and run manually
 against an exact deployed publish package with explicitly available provider quota.
+
+`Feature.AutofixCommandResolution` requires a Debug Dev build so its negative
+probe assertions have enabled diagnostic evidence. Set
+`ITE2E_EXPECTED_WTA_SHA256` to the SHA-256 of the feature-branch build when
+validating a change; the suite rejects a mismatched deployed binary. Its unique
+artifact directory records the package hash, received ACP contracts, query
+results, and scoped helper logs. The fixture uses disposable command files and
+does not modify the user's PowerShell profile or consume model quota.
 
 ## What it gives you
 

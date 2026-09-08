@@ -331,6 +331,21 @@ mod tests {
     }
 
     #[test]
+    fn autofix_advertises_on_demand_resolution_without_assuming_near_matches() {
+        assert!(
+            EMBEDDED_AUTOFIX_PROMPT.contains("available on demand through `wta resolve-command`")
+        );
+        assert!(EMBEDDED_AUTOFIX_PROMPT.contains("do not call it routinely for every Autofix"));
+        assert!(
+            EMBEDDED_AUTOFIX_PROMPT.contains("preserve the failing pane's `--shell` and `--cwd`")
+        );
+        assert!(
+            EMBEDDED_AUTOFIX_PROMPT.contains("a failed query do not prove a command is missing")
+        );
+        assert!(!EMBEDDED_AUTOFIX_PROMPT.contains("Near Matches"));
+    }
+
+    #[test]
     fn loader_seeds_prompt_files_and_prefers_user_prompt() {
         let prompt_root = temp_prompt_root("prefers-user");
         let embedded = "embedded prompt";

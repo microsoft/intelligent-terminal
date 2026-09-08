@@ -1,5 +1,6 @@
 param(
-    [Parameter(Mandatory)][string]$LogPath
+    [Parameter(Mandatory)][string]$LogPath,
+    [string]$ResolverFixturePath
 )
 
 $ErrorActionPreference = 'Stop'
@@ -7,6 +8,77 @@ $ErrorActionPreference = 'Stop'
 $sessionCounter = 0
 $currentMode = 'ask'
 $sessionMcpServers = @{}
+$resolverFixture = if ($ResolverFixturePath) {
+    Get-Content -LiteralPath $ResolverFixturePath -Raw | ConvertFrom-Json
+}
+
+function Write-ResolverEvidence {
+    param([Parameter(Mandatory)][hashtable]$Record)
+    $Record.pid = $PID
+    Add-Content -LiteralPath $resolverFixture.evidencePath -Encoding utf8 -Value ($Record | ConvertTo-Json -Depth 30 -Compress)
+}
+
+function Invoke-ResolverFixtureTurn {
+    param([Parameter(Mandatory)][string]$SessionId, [Parameter(Mandatory)][string]$PromptText)
+
+    $case = @($resolverFixture.cases | Where-Object {
+        $PromptText.Contains([string]$_.marker)
+    })
+    if ($case.Count -ne 1) { throw "Expected one resolver fixture case, found $($case.Count)" }
+    $case = $case[0]
+    $contractMatch = [regex]::Match($PromptText, '(?ms)^### Command Resolver Invocation\r?\n.*?```json\r?\n(?<json>.*?)\r?\n```')
+    if (-not $contractMatch.Success) { throw 'Autofix did not advertise Command Resolver Invocation' }
+    $contract = $contractMatch.Groups['json'].Value | ConvertFrom-Json
+    Write-ResolverEvidence @{
+        event = 'prompt-received'; sessionId = $SessionId; marker = $case.marker
+        prompt = $PromptText; contract = $contract
+    }
+
+    if ($case.query) {
+        if ($contract.executable -ne 'wta.exe' -or $contract.arguments[0] -ne 'resolve-command' -or
+            $contract.arguments[1] -ne '<name>') {
+            throw 'Unexpected command resolver invocation contract'
+        }
+        $executable = (Get-Command $contract.executable -CommandType Application -ErrorAction Stop | Select-Object -First 1).Source
+        $psi = [System.Diagnostics.ProcessStartInfo]::new()
+        $psi.FileName = $executable
+        $psi.UseShellExecute = $false
+        $psi.CreateNoWindow = $true
+        $psi.RedirectStandardOutput = $true
+        $psi.RedirectStandardError = $true
+        $psi.Environment['WTA_LOG'] = 'debug'
+        $psi.Environment['PATH'] = "$($resolverFixture.commandDirectory);$($psi.Environment['PATH'])"
+        foreach ($argument in $contract.arguments) {
+            $psi.ArgumentList.Add($(if ($argument -eq '<name>') { [string]$case.token } else { [string]$argument }))
+        }
+        Write-ResolverEvidence @{
+            event = 'query-started'; sessionId = $SessionId; marker = $case.marker
+            executable = $executable; arguments = @($psi.ArgumentList)
+        }
+        $process = [System.Diagnostics.Process]::new()
+        $process.StartInfo = $psi
+        try {
+            if (-not $process.Start()) { throw 'Resolver process did not start' }
+            $stdout = $process.StandardOutput.ReadToEndAsync()
+            $stderr = $process.StandardError.ReadToEndAsync()
+            if (-not $process.WaitForExit(20000)) {
+                $process.Kill($true)
+                $process.WaitForExit()
+                throw 'Agent-initiated command lookup exceeded 20 seconds'
+            }
+            $output = $stdout.GetAwaiter().GetResult()
+            $errorOutput = $stderr.GetAwaiter().GetResult()
+            if ($process.ExitCode -ne 0) { throw "Resolver failed ($($process.ExitCode)): $errorOutput" }
+            Write-ResolverEvidence @{
+                event = 'query-result'; sessionId = $SessionId; marker = $case.marker
+                result = ($output | ConvertFrom-Json); stderr = $errorOutput
+            }
+        }
+        finally { $process.Dispose() }
+    }
+    Write-ResolverEvidence @{ event = 'turn-completed'; sessionId = $SessionId; marker = $case.marker }
+    Send-TextUpdate -SessionId $SessionId -Text "RESOLVER_FIXTURE_DONE:$($case.marker)"
+}
 
 function Send-AcpMessage {
     param([Parameter(Mandatory)][hashtable]$Message)
@@ -206,7 +278,25 @@ while ($null -ne ($line = [Console]::In.ReadLine())) {
             $promptText = (@($request.params.prompt) | ForEach-Object text) -join "`n"
             Write-FixtureLog -Message "session/prompt|$sessionId|$promptText"
 
-            if ($promptText -match 'TOOL_FLOW') {
+            if ($resolverFixture) {
+                try {
+                    Invoke-ResolverFixtureTurn -SessionId $sessionId -PromptText $promptText
+                    Send-AcpMessage @{
+                        jsonrpc = '2.0'
+                        id = $request.id
+                        result = @{ stopReason = 'end_turn' }
+                    }
+                }
+                catch {
+                    Write-ResolverEvidence @{ event = 'fixture-error'; sessionId = $sessionId; message = $_.Exception.Message }
+                    Send-AcpMessage @{
+                        jsonrpc = '2.0'
+                        id = $request.id
+                        error = @{ code = -32603; message = $_.Exception.Message }
+                    }
+                }
+            }
+            elseif ($promptText -match 'TOOL_FLOW') {
                 Send-TextUpdate -SessionId $sessionId -Text 'BEFORE_TOOL_MARKER'
                 Send-AcpMessage @{
                     jsonrpc = '2.0'
