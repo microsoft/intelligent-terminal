@@ -37,6 +37,7 @@ Describe 'Feature: agent pane select all' -Tag 'Feature' -Skip:(-not $script:Rea
         $script:originalClipboard = Get-ClipboardSnapshot
         $script:clipboardSaved = $true
         $script:evidenceIndex = 0
+        $script:keyboardLayoutChanged = $false
 
         $script:app = Start-Terminal -Package (Get-ItTestPackage) -PassFre $true -Settings @{
             acpAgent = 'custom:chat-fixture'
@@ -50,6 +51,35 @@ Describe 'Feature: agent pane select all' -Tag 'Feature' -Skip:(-not $script:Rea
         $script:agentPane = (Wait-NewAgentPaneSession -App $script:app -OwnerPaneSessionId $shell.session_id -TimeoutSec 30).PaneSessionId
         Wait-AgentReady -App $script:app -PaneSessionId $script:agentPane -TimeoutSec 60 |
             Should -BeTrue -Because 'the deterministic ACP fixture must connect before select-all input'
+        if (-not ('ItE2E.SelectAllKeyboardLayout' -as [type])) {
+            Add-Type -Namespace ItE2E -Name SelectAllKeyboardLayout -MemberDefinition @'
+    [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr window, out uint processId);
+    [DllImport("user32.dll")] public static extern IntPtr GetKeyboardLayout(uint threadId);
+    [DllImport("user32.dll")] public static extern int GetKeyboardLayoutList(int count, [Out] IntPtr[] layouts);
+    [DllImport("user32.dll", SetLastError = true)] public static extern bool PostMessage(IntPtr window, uint message, IntPtr wParam, IntPtr lParam);
+'@
+        }
+        $script:keyboardWindow = [IntPtr][int64]$script:app.Hwnd
+        [uint32]$keyboardPid = 0
+        $script:keyboardThread = [ItE2E.SelectAllKeyboardLayout]::GetWindowThreadProcessId($script:keyboardWindow, [ref]$keyboardPid)
+        if ($keyboardPid -ne $script:app.Pid) { throw 'Keyboard-layout target does not belong to the test window.' }
+        $script:previousKeyboardLayout = [ItE2E.SelectAllKeyboardLayout]::GetKeyboardLayout($script:keyboardThread)
+        $layoutCount = [ItE2E.SelectAllKeyboardLayout]::GetKeyboardLayoutList(0, $null)
+        $layouts = [IntPtr[]]::new($layoutCount)
+        [void][ItE2E.SelectAllKeyboardLayout]::GetKeyboardLayoutList($layoutCount, $layouts)
+        $script:testKeyboardLayout = @($layouts | Where-Object { $_.ToInt64() -eq 0x04090409 } | Select-Object -First 1)
+        if ($script:testKeyboardLayout.Count -ne 1) { throw 'Physical letter-key assertions require an already loaded English (US) keyboard layout.' }
+        $script:testKeyboardLayout = $script:testKeyboardLayout[0]
+        # Letter-key assertions must commit text, not leave it in an IME composition.
+        if ($script:previousKeyboardLayout -ne $script:testKeyboardLayout) {
+            if (-not [ItE2E.SelectAllKeyboardLayout]::PostMessage($script:keyboardWindow, 0x0050, [IntPtr]::Zero, $script:testKeyboardLayout)) {
+                throw [ComponentModel.Win32Exception]::new([Runtime.InteropServices.Marshal]::GetLastWin32Error())
+            }
+            $script:keyboardLayoutChanged = $true
+            Wait-Until -TimeoutSec 5 -Because 'the test window to activate its deterministic keyboard layout' -Condition {
+                [ItE2E.SelectAllKeyboardLayout]::GetKeyboardLayout($script:keyboardThread) -eq $script:testKeyboardLayout
+            } | Out-Null
+        }
         $script:readyPattern = Get-WtaLocalizedTextRegex -Key 'input.placeholder.connected'
         if (-not $script:readyPattern) { $script:readyPattern = '(?i)Ask anything.*for commands' }
         @{
@@ -58,6 +88,9 @@ Describe 'Feature: agent pane select all' -Tag 'Feature' -Skip:(-not $script:Rea
             Hwnd = $script:app.Hwnd
             WindowId = $script:app.WindowId
             PaneSessionId = $script:agentPane
+            PreviousKeyboardLayout = ('0x{0:X}' -f $script:previousKeyboardLayout.ToInt64())
+            TestKeyboardLayout = ('0x{0:X}' -f $script:testKeyboardLayout.ToInt64())
+            KeyboardLayoutChanged = $script:keyboardLayoutChanged
             StartedUtc = [DateTime]::UtcNow.ToString('o')
         } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $script:evidenceDir 'target.json') -Encoding utf8NoBOM
 
@@ -158,7 +191,24 @@ Describe 'Feature: agent pane select all' -Tag 'Feature' -Skip:(-not $script:Rea
 
     AfterAll {
         try {
-            if ($script:app) { Stop-Terminal -App $script:app }
+            try {
+                if ($script:keyboardLayoutChanged) {
+                    [uint32]$keyboardPid = 0
+                    $thread = [ItE2E.SelectAllKeyboardLayout]::GetWindowThreadProcessId($script:keyboardWindow, [ref]$keyboardPid)
+                    if ($thread -ne $script:keyboardThread -or $keyboardPid -ne $script:app.Pid) {
+                        throw 'Keyboard-layout restoration target no longer belongs to the test window.'
+                    }
+                    if (-not [ItE2E.SelectAllKeyboardLayout]::PostMessage($script:keyboardWindow, 0x0050, [IntPtr]::Zero, $script:previousKeyboardLayout)) {
+                        throw [ComponentModel.Win32Exception]::new([Runtime.InteropServices.Marshal]::GetLastWin32Error())
+                    }
+                    Wait-Until -TimeoutSec 5 -Because 'the test window to restore its original keyboard layout' -Condition {
+                        [ItE2E.SelectAllKeyboardLayout]::GetKeyboardLayout($script:keyboardThread) -eq $script:previousKeyboardLayout
+                    } | Out-Null
+                }
+            }
+            finally {
+                if ($script:app) { Stop-Terminal -App $script:app }
+            }
         }
         finally {
             try {

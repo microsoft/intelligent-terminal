@@ -101,6 +101,9 @@ Three planes, all built on self-verifying primitives:
 - **Pester 5**: `Install-Module Pester -MinimumVersion 5.5.0 -Scope CurrentUser`
 - A deployed Intelligent Terminal package (Store `Microsoft.IntelligentTerminal_8wekyb3d8bbwe`
   or Dev `IntelligentTerminal_rd9vj3e6a2mbr`).
+- `Feature.AgentSelectAll` physical letter-key cases require an already loaded English (US)
+  keyboard layout. The suite activates it only for its own window and restores the previous
+  layout before closing, so an active IME cannot retain the probe text as a composition.
 
 One-shot setup + verify:
 
