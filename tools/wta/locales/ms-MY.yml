@@ -122,6 +122,24 @@ agents.status.idle: "Menganggur"
 # ── Layout welcome hint (src/ui/layout.rs) ──────────────────────────────────
 layout.welcome_hint: "  (Ctrl+Shift+. untuk tunjuk/sembunyikan anak tetingkap ejen AI • Ctrl+Shift+/ untuk tunjuk/sembunyikan sesi ejen AI)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}
 
+# ── Prompt queue (agent pane) ───────────────────────────────────────────────
+# Pending input has not been sent to the AI agent.
+queue.header: "Mesej dalam baris gilir: %{count}"  # Automatic pinned list above input: total pending user and automatic requests; hidden when empty
+queue.full: "Baris gilir penuh. Input anda telah disimpan."
+queue.enqueued: "Mesej ditambahkan ke baris gilir."  # Info notification when a user message must wait before being sent to the AI agent
+queue.cancelled: "%{count} mesej dalam baris gilir dibatalkan. Anda boleh menghantar mesej baharu."  # Info notification when waiting requests are discarded after cancellation, failure, or session reset
+queue.session_busy: "Mesej dalam baris gilir adalah milik perbualan ini. Gunakan /stop untuk membatalkannya sebelum menukar sesi atau konfigurasi."  # {Locked="/stop"}
+queue.capture_failed: "Tidak dapat menyimpan konteks ralat: %{error}"
+queue.auto: "Pembaikan automatik"  # Label for a queued, automatically requested analysis of a failed shell command
+# Auto-fix diagnostic capture errors for the source terminal pane, shown through queue.capture_failed.
+# Capture collects shell context, working directory and output, not a screenshot. %{pane} is a pane ID.
+queue.snapshot_source_required: "Pengumpulan data untuk pembaikan automatik memerlukan anak tetingkap sumber yang dinyatakan secara jelas."
+queue.snapshot_source_unavailable: "Anak tetingkap sumber %{pane} untuk pembaikan automatik tidak tersedia."
+queue.snapshot_shell_unavailable: "Anak tetingkap sumber %{pane} untuk pembaikan automatik tiada konteks shell."
+queue.snapshot_cwd_unavailable: "Anak tetingkap sumber %{pane} untuk pembaikan automatik tiada direktori kerja."
+queue.snapshot_output_unavailable: "Anak tetingkap sumber %{pane} untuk pembaikan automatik tiada output yang boleh dibaca."
+queue.snapshot_context_changed: "Perintah dalam anak tetingkap sumber %{pane} berubah sebelum konteks ralatnya dapat disimpan."
+
 # ── Connection state ────────────────────────────────────────────────────────
 # Preparing the AI agent connection, including preflight and reuse of a cached agent.
 connection.starting: "Menyediakan sambungan ejen AI..."

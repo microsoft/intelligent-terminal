@@ -118,6 +118,24 @@ agents.status.idle: "空闲"
 # ── 布局欢迎提示 (src/ui/layout.rs) ──────────────────────────────────────
 layout.welcome_hint: "  (Ctrl+Shift+. 显示/隐藏智能体窗格 • Ctrl+Shift+/ 显示/隐藏智能体会话)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}
 
+# ── Prompt queue (agent pane) ───────────────────────────────────────────────
+# Pending input has not been sent to the AI agent.
+queue.header: "队列中的消息：%{count}"  # Automatic pinned list above input: total pending user and automatic requests; hidden when empty
+queue.full: "队列已满。已保留你的输入。"
+queue.enqueued: "消息已加入队列。"  # Info notification when a user message must wait before being sent to the AI agent
+queue.cancelled: "已取消队列中的 %{count} 条消息。你可以发送新消息。"  # Info notification when waiting requests are discarded after cancellation, failure, or session reset
+queue.session_busy: "队列中的消息属于当前对话。更改会话或配置前，请使用 /stop 取消这些消息。"  # {Locked="/stop"}
+queue.capture_failed: "无法保留错误上下文：%{error}"
+queue.auto: "自动修复"  # Label for a queued, automatically requested analysis of a failed shell command
+# Auto-fix diagnostic capture errors for the source terminal pane, shown through queue.capture_failed.
+# Capture collects shell context, working directory and output, not a screenshot. %{pane} is a pane ID.
+queue.snapshot_source_required: "采集自动修复所需的信息时，必须明确指定源窗格。"
+queue.snapshot_source_unavailable: "自动修复的源窗格 %{pane} 不可用。"
+queue.snapshot_shell_unavailable: "自动修复的源窗格 %{pane} 没有 Shell 上下文。"
+queue.snapshot_cwd_unavailable: "自动修复的源窗格 %{pane} 没有工作目录。"
+queue.snapshot_output_unavailable: "自动修复的源窗格 %{pane} 没有可读取的输出。"
+queue.snapshot_context_changed: "源窗格 %{pane} 中的命令在其错误上下文得以保留之前已发生变化。"
+
 # ── 连接状态 ────────────────────────────────────────────────────────────
 # Preparing the AI agent connection, including preflight and reuse of a cached agent.
 connection.starting: "正在准备智能体连接..."

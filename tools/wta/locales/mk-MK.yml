@@ -131,6 +131,24 @@ agents.status.idle: "Неактивен"
 # ── Layout welcome hint (src/ui/layout.rs) ──────────────────────────────────
 layout.welcome_hint: "  (Ctrl+Shift+. прикажи/скриј панел на агентот • Ctrl+Shift+/ прикажи/скриј сесија на агентот)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}
 
+# ── Prompt queue (agent pane) ───────────────────────────────────────────────
+# Pending input has not been sent to the AI agent.
+queue.header: "Пораки во редицата: %{count}"  # Automatic pinned list above input: total pending user and automatic requests; hidden when empty
+queue.full: "Редицата е полна. Вашиот внес е зачуван."
+queue.enqueued: "Пораката е додадена во редицата."  # Info notification when a user message must wait before being sent to the AI agent
+queue.cancelled: "Откажани се %{count} пораки во редицата. Можете да испратите нова порака."  # Info notification when waiting requests are discarded after cancellation, failure, or session reset
+queue.session_busy: "Пораките во редицата припаѓаат на овој разговор. Користете /stop за да ги откажете пред да ја промените сесијата или конфигурацијата."  # {Locked="/stop"}
+queue.capture_failed: "Не можеше да се зачува контекстот на грешката: %{error}"
+queue.auto: "Автоматска поправка"  # Label for a queued, automatically requested analysis of a failed shell command
+# Auto-fix diagnostic capture errors for the source terminal pane, shown through queue.capture_failed.
+# Capture collects shell context, working directory and output, not a screenshot. %{pane} is a pane ID.
+queue.snapshot_source_required: "За собирање податоци за автоматска поправка мора експлицитно да се наведе изворен панел."
+queue.snapshot_source_unavailable: "Изворниот панел %{pane} за автоматска поправка е недостапен."
+queue.snapshot_shell_unavailable: "Изворниот панел %{pane} за автоматска поправка нема контекст на командната обвивка."
+queue.snapshot_cwd_unavailable: "Изворниот панел %{pane} за автоматска поправка нема работен директориум."
+queue.snapshot_output_unavailable: "Изворниот панел %{pane} за автоматска поправка нема излез што може да се прочита."
+queue.snapshot_context_changed: "Командата во изворниот панел %{pane} се промени пред да може да се зачува контекстот на нејзината грешка."
+
 # ── Connection state ────────────────────────────────────────────────────────
 # Preparing the AI agent connection, including preflight and reuse of a cached agent.
 connection.starting: "Подготовка на врската со агентот..."

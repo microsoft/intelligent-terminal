@@ -27,6 +27,7 @@ pub(crate) struct ActionPanelLayout {
     pub hint_height: u16,
     pub recommendation_hint_height: u16,
     pub activity_height: u16,
+    pub queued_prompt_height: u16,
     pub input_height: u16,
 }
 
@@ -34,6 +35,7 @@ pub(crate) struct LayoutRequest {
     pub available_rows: u16,
     pub input_height: u16,
     pub chat_natural_height: u16,
+    pub queued_prompt_height: u16,
     pub hint_requested: bool,
     pub activity_requested: bool,
     pub recommendation_natural_height: Option<u16>,
@@ -57,6 +59,7 @@ pub(crate) fn plan(request: LayoutRequest) -> ActionPanelLayout {
         hint_height: 0,
         recommendation_hint_height: 0,
         activity_height: 0,
+        queued_prompt_height: 0,
         input_height: super::input::INPUT_MIN_HEIGHT,
     };
 
@@ -130,7 +133,12 @@ pub(crate) fn plan(request: LayoutRequest) -> ActionPanelLayout {
         .saturating_sub(result.input_height)
         .saturating_sub(allocated_status_height)
         .saturating_sub(action_rows);
-    result.chat_height = request.chat_natural_height.min(chat_capacity);
+    result.queued_prompt_height = request
+        .queued_prompt_height
+        .min(chat_capacity.saturating_sub(CHAT_MIN_HEIGHT));
+    result.chat_height = request
+        .chat_natural_height
+        .min(chat_capacity.saturating_sub(result.queued_prompt_height));
     result
 }
 
@@ -221,6 +229,7 @@ mod tests {
             available_rows: rows,
             input_height: 3,
             chat_natural_height: 4,
+            queued_prompt_height: 0,
             hint_requested: true,
             activity_requested: false,
             recommendation_natural_height: Some(6),
@@ -236,6 +245,7 @@ mod tests {
             layout.hint_height,
             layout.recommendation_hint_height,
             layout.activity_height,
+            layout.queued_prompt_height,
             layout.input_height,
         ]
         .into_iter()
@@ -262,6 +272,7 @@ mod tests {
                     available_rows: rows,
                     input_height: 8,
                     chat_natural_height: 20,
+                    queued_prompt_height: 32,
                     hint_requested: true,
                     activity_requested: true,
                     recommendation_natural_height: None,
@@ -271,6 +282,7 @@ mod tests {
                     available_rows: rows,
                     input_height: 8,
                     chat_natural_height: 20,
+                    queued_prompt_height: 32,
                     hint_requested: true,
                     activity_requested: true,
                     recommendation_natural_height: None,
@@ -334,11 +346,31 @@ mod tests {
     }
 
     #[test]
+    fn queued_prompts_preserve_input_actions_and_a_chat_row() {
+        for rows in 0..=40 {
+            let mut request = recommendation_request(rows);
+            let without_queue = plan(recommendation_request(rows));
+            request.queued_prompt_height = 32;
+            let layout = plan(request);
+            assert_eq!(layout.input_height, without_queue.input_height);
+            assert_eq!(
+                layout.recommendation_height,
+                without_queue.recommendation_height
+            );
+            assert!(allocated_height(layout) <= u32::from(rows));
+            if layout.queued_prompt_height > 0 {
+                assert!(layout.chat_height > 0);
+            }
+        }
+    }
+
+    #[test]
     fn permission_is_modal_and_uses_compact_until_full_card_fits() {
         let request = |rows| LayoutRequest {
             available_rows: rows,
             input_height: 3,
             chat_natural_height: 4,
+            queued_prompt_height: 0,
             hint_requested: true,
             activity_requested: false,
             recommendation_natural_height: Some(6),
@@ -362,6 +394,7 @@ mod tests {
             available_rows: 7,
             input_height: 8,
             chat_natural_height: 4,
+            queued_prompt_height: 0,
             hint_requested: false,
             activity_requested: false,
             recommendation_natural_height: Some(6),

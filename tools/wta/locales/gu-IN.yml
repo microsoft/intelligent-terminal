@@ -135,6 +135,24 @@ agents.status.idle: "નિષ્ક્રિય"
 # ── લેઆઉટ સ્વાગત સંકેત (src/ui/layout.rs) ──────────────────────────────────
 layout.welcome_hint: "  (Ctrl+Shift+. એજન્ટ પેન બતાવો/છુપાવો • Ctrl+Shift+/ એજન્ટ સત્ર બતાવો/છુપાવો)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}
 
+# ── Prompt queue (agent pane) ───────────────────────────────────────────────
+# Pending input has not been sent to the AI agent.
+queue.header: "કતારમાં રહેલા સંદેશાઓ: %{count}"  # Automatic pinned list above input: total pending user and automatic requests; hidden when empty
+queue.full: "કતાર ભરેલી છે. તમારું ઇનપુટ સાચવવામાં આવ્યું છે."
+queue.enqueued: "સંદેશ કતારમાં ઉમેરાયો છે."  # Info notification when a user message must wait before being sent to the AI agent
+queue.cancelled: "કતારમાં રહેલા %{count} સંદેશાઓ રદ કર્યા. તમે નવો સંદેશ મોકલી શકો છો."  # Info notification when waiting requests are discarded after cancellation, failure, or session reset
+queue.session_busy: "કતારમાં રહેલા સંદેશાઓ આ વાતચીતના છે. સત્ર અથવા ગોઠવણી બદલતાં પહેલાં તેમને રદ કરવા માટે /stop વાપરો."  # {Locked="/stop"}
+queue.capture_failed: "ભૂલનો સંદર્ભ સાચવી શકાયો નહીં: %{error}"
+queue.auto: "આપમેળે સુધારો"  # Label for a queued, automatically requested analysis of a failed shell command
+# Auto-fix diagnostic capture errors for the source terminal pane, shown through queue.capture_failed.
+# Capture collects shell context, working directory and output, not a screenshot. %{pane} is a pane ID.
+queue.snapshot_source_required: "આપમેળે સુધારા માટે સંદર્ભ એકત્રિત કરવા સ્રોત પેન સ્પષ્ટ રીતે નિર્દિષ્ટ કરવો જરૂરી છે."
+queue.snapshot_source_unavailable: "આપમેળે સુધારા માટેનો સ્રોત પેન %{pane} ઉપલબ્ધ નથી."
+queue.snapshot_shell_unavailable: "આપમેળે સુધારા માટેના સ્રોત પેન %{pane} માં shell સંદર્ભ નથી."
+queue.snapshot_cwd_unavailable: "આપમેળે સુધારા માટેના સ્રોત પેન %{pane} માં કાર્યકારી ડિરેક્ટરી નથી."
+queue.snapshot_output_unavailable: "આપમેળે સુધારા માટેના સ્રોત પેન %{pane} માં વાંચી શકાય તેવું આઉટપુટ નથી."
+queue.snapshot_context_changed: "સ્રોત પેન %{pane} માંનો આદેશ તેનો ભૂલ સંદર્ભ સાચવી શકાય તે પહેલાં બદલાઈ ગયો."
+
 # ── જોડાણ સ્થિતિ ────────────────────────────────────────────────────────
 # Preparing the AI agent connection, including preflight and reuse of a cached agent.
 connection.starting: "એજન્ટ સાથેનું જોડાણ તૈયાર કરવામાં આવી રહ્યું છે..."

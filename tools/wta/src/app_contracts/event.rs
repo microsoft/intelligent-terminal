@@ -9,6 +9,15 @@ pub enum AppEvent {
     Key(KeyEvent),
     Mouse(MouseEvent),
     Tick,
+    AutofixSnapshotReady {
+        request_id: u64,
+        result: Result<crate::protocol::acp::client::AutofixSnapshot, String>,
+    },
+    RecommendationExecutionSettled {
+        tab_id: String,
+        prompt_id: u64,
+        success: bool,
+    },
     RevealTick,
     Resize(u16, u16),
     FocusChanged(bool),

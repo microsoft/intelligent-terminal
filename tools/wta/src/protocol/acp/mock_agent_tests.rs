@@ -1056,6 +1056,7 @@ fn test_prompt(id: u64, text: &str, is_autofix: bool) -> PromptSubmission {
         pane_context: None,
         submitted_at_unix_s: 0.0,
         autofix_text_kind: is_autofix.then_some(AutofixTextKind::UserRequest),
+        autofix_snapshot: None,
         agent_command: false,
         images: Vec::new(),
         is_byok: false,

@@ -135,6 +135,24 @@ agents.status.idle: "నిష్క్రియం"
 # ── లేఔట్ స్వాగత సూచన (src/ui/layout.rs) ──────────────────────────────────
 layout.welcome_hint: "  (Ctrl+Shift+. ఏజెంట్ పేన్ చూపించు/దాచు • Ctrl+Shift+/ ఏజెంట్ సెషన్ చూపించు/దాచు)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}
 
+# ── Prompt queue (agent pane) ───────────────────────────────────────────────
+# Pending input has not been sent to the AI agent.
+queue.header: "క్యూలోని సందేశాలు: %{count}"  # Automatic pinned list above input: total pending user and automatic requests; hidden when empty
+queue.full: "క్యూ నిండిపోయింది. మీ ఇన్‌పుట్ భద్రపరచబడింది."
+queue.enqueued: "సందేశం క్యూలో చేర్చబడింది."  # Info notification when a user message must wait before being sent to the AI agent
+queue.cancelled: "క్యూలోని %{count} సందేశాలు రద్దు చేయబడ్డాయి. మీరు కొత్త సందేశాన్ని పంపవచ్చు."  # Info notification when waiting requests are discarded after cancellation, failure, or session reset
+queue.session_busy: "క్యూలోని సందేశాలు ఈ సంభాషణకు చెందినవి. సెషన్‌లు లేదా కాన్ఫిగరేషన్‌ను మార్చే ముందు వాటిని రద్దు చేయడానికి /stop ఉపయోగించండి."  # {Locked="/stop"}
+queue.capture_failed: "లోపం సందర్భాన్ని భద్రపరచలేకపోయింది: %{error}"
+queue.auto: "స్వయంచాలక పరిష్కారం"  # Label for a queued, automatically requested analysis of a failed shell command
+# Auto-fix diagnostic capture errors for the source terminal pane, shown through queue.capture_failed.
+# Capture collects shell context, working directory and output, not a screenshot. %{pane} is a pane ID.
+queue.snapshot_source_required: "స్వయంచాలక పరిష్కారం కోసం డేటాను సేకరించడానికి మూల పేన్‌ను స్పష్టంగా పేర్కొనాలి."
+queue.snapshot_source_unavailable: "స్వయంచాలక పరిష్కారం కోసం మూల పేన్ %{pane} అందుబాటులో లేదు."
+queue.snapshot_shell_unavailable: "స్వయంచాలక పరిష్కారం కోసం మూల పేన్ %{pane}లో షెల్ సందర్భం లేదు."
+queue.snapshot_cwd_unavailable: "స్వయంచాలక పరిష్కారం కోసం మూల పేన్ %{pane}లో పని డైరెక్టరీ లేదు."
+queue.snapshot_output_unavailable: "స్వయంచాలక పరిష్కారం కోసం మూల పేన్ %{pane}లో చదవగల అవుట్‌పుట్ లేదు."
+queue.snapshot_context_changed: "మూల పేన్ %{pane}లోని ఆదేశం దాని లోపం సందర్భాన్ని భద్రపరచడానికి ముందే మారిపోయింది."
+
 # ── కనెక్షన్ స్థితి ────────────────────────────────────────────────────────
 # Preparing the AI agent connection, including preflight and reuse of a cached agent.
 connection.starting: "ఏజెంట్ కనెక్షన్‌ను సిద్ధం చేస్తోంది..."

@@ -122,6 +122,24 @@ agents.status.idle: "Dīkstāvē"
 # ── Layout welcome hint (src/ui/layout.rs) ──────────────────────────────────
 layout.welcome_hint: "  (Ctrl+Shift+. lai rādītu/paslēptu aģenta paneli • Ctrl+Shift+/ lai rādītu/paslēptu aģenta sesiju)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}
 
+# ── Prompt queue (agent pane) ───────────────────────────────────────────────
+# Pending input has not been sent to the AI agent.
+queue.header: "Ziņojumi rindā: %{count}"  # Automatic pinned list above input: total pending user and automatic requests; hidden when empty
+queue.full: "Rinda ir pilna. Jūsu ievade ir saglabāta."
+queue.enqueued: "Ziņojums pievienots rindai."  # Info notification when a user message must wait before being sent to the AI agent
+queue.cancelled: "Atceltie ziņojumi rindā: %{count}. Varat nosūtīt jaunu ziņojumu."  # Info notification when waiting requests are discarded after cancellation, failure, or session reset
+queue.session_busy: "Rindā esošie ziņojumi pieder šai sarunai. Pirms sesijas vai konfigurācijas maiņas izmantojiet /stop, lai tos atceltu."  # {Locked="/stop"}
+queue.capture_failed: "Neizdevās saglabāt kļūdas kontekstu: %{error}"
+queue.auto: "Automātiska labošana"  # Label for a queued, automatically requested analysis of a failed shell command
+# Auto-fix diagnostic capture errors for the source terminal pane, shown through queue.capture_failed.
+# Capture collects shell context, working directory and output, not a screenshot. %{pane} is a pane ID.
+queue.snapshot_source_required: "Lai iegūtu datus automātiskai labošanai, ir skaidri jānorāda avota panelis."
+queue.snapshot_source_unavailable: "Automātiskās labošanas avota panelis %{pane} nav pieejams."
+queue.snapshot_shell_unavailable: "Automātiskās labošanas avota panelim %{pane} nav čaulas konteksta."
+queue.snapshot_cwd_unavailable: "Automātiskās labošanas avota panelim %{pane} nav darba direktorija."
+queue.snapshot_output_unavailable: "Automātiskās labošanas avota panelim %{pane} nav lasāmas izvades."
+queue.snapshot_context_changed: "Komanda avota panelī %{pane} mainījās, pirms varēja saglabāt tās kļūdas kontekstu."
+
 # ── Connection state ────────────────────────────────────────────────────────
 # Preparing the AI agent connection, including preflight and reuse of a cached agent.
 connection.starting: "Sagatavo savienojumu ar aģentu..."

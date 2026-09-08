@@ -131,6 +131,24 @@ agents.status.idle: "Бездіяльний"
 # ── Підказка привітання макету (src/ui/layout.rs) ──────────────────────────────────────
 layout.welcome_hint: "  (Ctrl+Shift+. — показати/сховати панель агента • Ctrl+Shift+/ — показати/сховати сеанс агента)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}
 
+# ── Prompt queue (agent pane) ───────────────────────────────────────────────
+# Pending input has not been sent to the AI agent.
+queue.header: "Повідомлень у черзі: %{count}"  # Automatic pinned list above input: total pending user and automatic requests; hidden when empty
+queue.full: "Чергу заповнено. Введений текст збережено."
+queue.enqueued: "Повідомлення додано до черги."  # Info notification when a user message must wait before being sent to the AI agent
+queue.cancelled: "Скасовано повідомлень у черзі: %{count}. Ви можете надіслати нове повідомлення."  # Info notification when waiting requests are discarded after cancellation, failure, or session reset
+queue.session_busy: "Повідомлення в черзі належать до цієї розмови. Скористайтеся /stop, щоб скасувати їх, перш ніж змінювати сеанс чи конфігурацію."  # {Locked="/stop"}
+queue.capture_failed: "Не вдалося зберегти контекст помилки: %{error}"
+queue.auto: "Автоматичне виправлення"  # Label for a queued, automatically requested analysis of a failed shell command
+# Auto-fix diagnostic capture errors for the source terminal pane, shown through queue.capture_failed.
+# Capture collects shell context, working directory and output, not a screenshot. %{pane} is a pane ID.
+queue.snapshot_source_required: "Для збирання даних автоматичного виправлення потрібно явно вказати вихідну панель."
+queue.snapshot_source_unavailable: "Вихідна панель %{pane} для автоматичного виправлення недоступна."
+queue.snapshot_shell_unavailable: "Вихідна панель %{pane} для автоматичного виправлення не має контексту оболонки."
+queue.snapshot_cwd_unavailable: "Вихідна панель %{pane} для автоматичного виправлення не має робочого каталогу."
+queue.snapshot_output_unavailable: "Вихідна панель %{pane} для автоматичного виправлення не має доступних для читання вихідних даних."
+queue.snapshot_context_changed: "Команда у вихідній панелі %{pane} змінилася, перш ніж вдалося зберегти контекст її помилки."
+
 # ── Стан підключення ────────────────────────────────────────────────────────────
 # Preparing the AI agent connection, including preflight and reuse of a cached agent.
 connection.starting: "Підготовка підключення до агента..."

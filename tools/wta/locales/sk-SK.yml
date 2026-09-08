@@ -131,6 +131,24 @@ agents.status.idle: "Nečinný"
 # ── Layout welcome hint (src/ui/layout.rs) ──────────────────────────────────
 layout.welcome_hint: "  (Ctrl+Shift+. zobraziť/skryť panel agenta • Ctrl+Shift+/ zobraziť/skryť reláciu agenta)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}
 
+# ── Prompt queue (agent pane) ───────────────────────────────────────────────
+# Pending input has not been sent to the AI agent.
+queue.header: "Správy v rade: %{count}"  # Automatic pinned list above input: total pending user and automatic requests; hidden when empty
+queue.full: "Rad je plný. Zadaný text sa zachoval."
+queue.enqueued: "Správa bola pridaná do radu."  # Info notification when a user message must wait before being sent to the AI agent
+queue.cancelled: "Zrušené správy v rade: %{count}. Môžete odoslať novú správu."  # Info notification when waiting requests are discarded after cancellation, failure, or session reset
+queue.session_busy: "Správy v rade patria do tejto konverzácie. Pred zmenou relácie alebo konfigurácie ich zrušte pomocou /stop."  # {Locked="/stop"}
+queue.capture_failed: "Nepodarilo sa zachovať kontext chyby: %{error}"
+queue.auto: "Automatická oprava"  # Label for a queued, automatically requested analysis of a failed shell command
+# Auto-fix diagnostic capture errors for the source terminal pane, shown through queue.capture_failed.
+# Capture collects shell context, working directory and output, not a screenshot. %{pane} is a pane ID.
+queue.snapshot_source_required: "Zhromažďovanie údajov pre automatickú opravu vyžaduje explicitne určený zdrojový panel."
+queue.snapshot_source_unavailable: "Zdrojový panel %{pane} pre automatickú opravu nie je dostupný."
+queue.snapshot_shell_unavailable: "Zdrojový panel %{pane} pre automatickú opravu nemá kontext prostredia shell."
+queue.snapshot_cwd_unavailable: "Zdrojový panel %{pane} pre automatickú opravu nemá pracovný adresár."
+queue.snapshot_output_unavailable: "Zdrojový panel %{pane} pre automatickú opravu nemá čitateľný výstup."
+queue.snapshot_context_changed: "Príkaz v zdrojovom paneli %{pane} sa zmenil skôr, než bolo možné zachovať kontext jeho chyby."
+
 # ── Connection state ────────────────────────────────────────────────────────
 # Preparing the AI agent connection, including preflight and reuse of a cached agent.
 connection.starting: "Príprava pripojenia k agentovi..."

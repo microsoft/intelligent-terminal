@@ -129,6 +129,7 @@ pub fn render(frame: &mut Frame, app: &mut App) {
     // permission/recommendation content between full and compact forms.
     let chat_content_width = main_area.width.saturating_sub(2); // h_chat 1+1 padding
     let chat_estimate = chat::estimated_block_height(app, chat_content_width, main_area.height);
+    let queued_previews: Vec<_> = app.pending_input_previews().collect();
     let recommendation_natural_height =
         app.current_tab()
             .turn
@@ -169,6 +170,14 @@ pub fn render(frame: &mut Frame, app: &mut App) {
         available_rows: main_area.height,
         input_height,
         chat_natural_height: chat_estimate,
+        queued_prompt_height: if queued_previews.is_empty() {
+            0
+        } else {
+            queued_previews
+                .len()
+                .saturating_add(1)
+                .min(u16::MAX as usize) as u16
+        },
         hint_requested,
         activity_requested: chat::should_show_activity(app),
         recommendation_natural_height,
@@ -184,6 +193,7 @@ pub fn render(frame: &mut Frame, app: &mut App) {
             Constraint::Length(panel_layout.hint_height),
             Constraint::Length(panel_layout.recommendation_hint_height),
             Constraint::Length(panel_layout.activity_height),
+            Constraint::Length(panel_layout.queued_prompt_height),
             Constraint::Length(panel_layout.input_height),
         ])
         .split(main_area);
@@ -260,44 +270,73 @@ pub fn render(frame: &mut Frame, app: &mut App) {
         );
     }
     chat::render_activity(frame, app, h_activity[1]);
-    app.input_dialog_area = Some(chunks[7]);
-    input::render(frame, app, chunks[7]);
+    render_queued_inputs(frame, &queued_previews, chunks[7].inner(Margin::new(1, 0)));
+    let input_area = chunks[8];
+    app.input_dialog_area = Some(input_area);
+    input::render(frame, app, input_area);
 
     if let Some(debug_area) = debug_area {
         debug_panel::render(frame, app, debug_area);
     }
 
     // Slash-command autocomplete: pinned directly above the input box
-    // (`chunks[7]`). Anchoring to the input box rather than the filler row
+    // Anchoring to the input box rather than the filler row
     // keeps the popup glued to the input regardless of how much empty space
     // sits above it — otherwise a short chat leaves a tall filler and the
     // popup floats far up the pane (worst in side-by-side layouts).
     if let Some(popup_state) = app.command_popup_state() {
-        command_popup::render_popup(frame, popup_state, chunks[7]);
+        command_popup::render_popup(frame, popup_state, input_area);
     }
 
     // `/model` picker modal: same anchor as the autocomplete popup. The two
     // are mutually exclusive — opening the picker clears the input, so the
     // command popup isn't visible while it's up.
     if let Some(model_state) = app.model_popup_state() {
-        model_popup::render_popup(frame, model_state, chunks[7]);
+        model_popup::render_popup(frame, model_state, input_area);
     }
 
     if let Some(config_state) = app.config_popup_state() {
-        config_popup::render_popup(frame, config_state, chunks[7]);
+        config_popup::render_popup(frame, config_state, input_area);
     }
 
     if let Some(agent_state) = app.agent_popup_state() {
-        agent_popup::render_popup(frame, agent_state, chunks[7]);
+        agent_popup::render_popup(frame, agent_state, input_area);
     }
 
     if let Some(request) = app.current_tab().user_input.front() {
-        user_input::render(frame, request, chunks[7]);
+        user_input::render(frame, request, input_area);
     }
 
     // `/help` overlay sits on top of everything so the user can always
     // dismiss it with Esc.
     command_popup::render_help_overlay(frame, app, area);
+}
+
+fn render_queued_inputs(frame: &mut Frame, previews: &[String], area: Rect) {
+    if previews.is_empty() || area.is_empty() {
+        return;
+    }
+    let rows = std::iter::once(t!("queue.header", count = previews.len()).into_owned())
+        .chain(previews.iter().cloned());
+    let visible = (previews.len() + 1).min(area.height as usize);
+    let hidden = (previews.len() + 1).saturating_sub(visible);
+    for (index, preview) in rows.take(visible).enumerate() {
+        let text = if index > 0 && index + 1 == visible && hidden > 0 {
+            let suffix = format!(" +{hidden}");
+            let width = (area.width as usize).saturating_sub(suffix.len());
+            format!("{}{suffix}", truncate_to_width(&preview, width))
+        } else {
+            preview
+        };
+        let line = Line::styled(
+            truncate_to_width(&text, area.width as usize),
+            Style::default().fg(Color::DarkGray),
+        );
+        frame.render_widget(
+            line,
+            Rect::new(area.x, area.y + index as u16, area.width, 1),
+        );
+    }
 }
 
 /// Truncate `s` so its rendered (display-cell) width fits in `max` columns,

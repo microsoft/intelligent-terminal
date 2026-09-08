@@ -135,6 +135,24 @@ agents.status.idle: "നിഷ്ക്രിയം"
 # ── ലേഔട്ട് സ്വാഗത സൂചന (src/ui/layout.rs) ──────────────────────────────────
 layout.welcome_hint: "  (Ctrl+Shift+. ഏജന്റ് പേന്‍ കാണിക്കുക/മറയ്ക്കുക • Ctrl+Shift+/ ഏജന്റ് സെഷന്‍ കാണിക്കുക/മറയ്ക്കുക)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}
 
+# ── Prompt queue (agent pane) ───────────────────────────────────────────────
+# Pending input has not been sent to the AI agent.
+queue.header: "ക്യൂവിലുള്ള സന്ദേശങ്ങൾ: %{count}"  # Automatic pinned list above input: total pending user and automatic requests; hidden when empty
+queue.full: "ക്യൂ നിറഞ്ഞിരിക്കുന്നു. നിങ്ങളുടെ ഇൻപുട്ട് സൂക്ഷിച്ചിട്ടുണ്ട്."
+queue.enqueued: "സന്ദേശം ക്യൂവിൽ ചേർത്തു."  # Info notification when a user message must wait before being sent to the AI agent
+queue.cancelled: "ക്യൂവിലുള്ള %{count} സന്ദേശങ്ങൾ റദ്ദാക്കി. നിങ്ങൾക്ക് ഒരു പുതിയ സന്ദേശം അയയ്ക്കാം."  # Info notification when waiting requests are discarded after cancellation, failure, or session reset
+queue.session_busy: "ക്യൂവിലുള്ള സന്ദേശങ്ങൾ ഈ സംഭാഷണത്തിന്റേതാണ്. സെഷനോ കോൺഫിഗറേഷനോ മാറ്റുന്നതിനുമുമ്പ് അവ റദ്ദാക്കാൻ /stop ഉപയോഗിക്കുക."  # {Locked="/stop"}
+queue.capture_failed: "പിശകിന്റെ പശ്ചാത്തല വിവരങ്ങൾ സൂക്ഷിക്കാനായില്ല: %{error}"
+queue.auto: "സ്വയമേവയുള്ള പരിഹാരം"  # Label for a queued, automatically requested analysis of a failed shell command
+# Auto-fix diagnostic capture errors for the source terminal pane, shown through queue.capture_failed.
+# Capture collects shell context, working directory and output, not a screenshot. %{pane} is a pane ID.
+queue.snapshot_source_required: "സ്വയമേവയുള്ള പരിഹാരത്തിനായി വിവരങ്ങൾ ശേഖരിക്കാൻ ഉറവിട പേൻ വ്യക്തമായി വ്യക്തമാക്കണം."
+queue.snapshot_source_unavailable: "സ്വയമേവയുള്ള പരിഹാരത്തിനുള്ള ഉറവിട പേൻ %{pane} ലഭ്യമല്ല."
+queue.snapshot_shell_unavailable: "സ്വയമേവയുള്ള പരിഹാരത്തിനുള്ള ഉറവിട പേൻ %{pane}-ന് ഷെൽ പശ്ചാത്തല വിവരങ്ങളില്ല."
+queue.snapshot_cwd_unavailable: "സ്വയമേവയുള്ള പരിഹാരത്തിനുള്ള ഉറവിട പേൻ %{pane}-ന് പ്രവർത്തന ഡയറക്ടറിയില്ല."
+queue.snapshot_output_unavailable: "സ്വയമേവയുള്ള പരിഹാരത്തിനുള്ള ഉറവിട പേൻ %{pane}-ന് വായിക്കാവുന്ന ഔട്ട്പുട്ടില്ല."
+queue.snapshot_context_changed: "പിശകിന്റെ പശ്ചാത്തല വിവരങ്ങൾ സൂക്ഷിക്കുന്നതിന് മുമ്പ് ഉറവിട പേൻ %{pane}-ലെ കമാൻഡ് മാറി."
+
 # ── കണക്ഷന്‍ നില ────────────────────────────────────────────────────────
 # Preparing the AI agent connection, including preflight and reuse of a cached agent.
 connection.starting: "ഏജന്റുമായുള്ള കണക്ഷൻ തയ്യാറാക്കുന്നു..."

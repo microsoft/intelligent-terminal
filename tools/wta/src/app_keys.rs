@@ -16,6 +16,8 @@ fn modifiers_allow_text_input(modifiers: KeyModifiers) -> bool {
 
 impl App {
     fn handle_global_ctrl_c(&mut self) {
+        let had_pending = !self.current_tab().prompt_queue.entries.is_empty();
+        self.current_tab_mut().cancel_pending_prompts();
         let tab = self.current_tab();
         let cancelling = tab.turn.is_cancelling();
         let has_active_request =
@@ -29,6 +31,8 @@ impl App {
                     .push(ChatMessage::success(t!("system.cancelled").into_owned()));
                 tab.scroll_to_bottom();
             }
+            self.close_pane_armed_at = None;
+        } else if had_pending {
             self.close_pane_armed_at = None;
         } else if !self.current_tab().input.is_empty() || !self.current_tab().attachments.is_empty()
         {
@@ -858,94 +862,10 @@ impl App {
                 }
                 let _tab = self.current_tab();
                 tracing::debug!(target: "autofix", input_empty = _tab.input.is_empty(), state = ?self.state, has_recs = _tab.turn.recommendations().is_some(), autofix_pane = ?_tab.autofix.pane_id, selected_idx = _tab.selected_recommendation, "Enter");
-                if (!self.current_tab().input.is_empty()
-                    || !self.current_tab().attachments.is_empty())
-                    && self.state == ConnectionState::Connected
+                if !self.current_tab().input.is_empty()
+                    || !self.current_tab().attachments.is_empty()
                 {
-                    // Same-tab single-flight: refuse a new prompt if the
-                    // turn isn't accepting one. The ACP transport rejects
-                    // too, but bouncing here keeps the user's input intact.
-                    if !self.current_tab().turn.accepts_new_prompt() {
-                        // Cancellation has already produced its own status
-                        // line. Keep the draft intact and wait for the real
-                        // terminal boundary instead of claiming the agent is
-                        // busy or accidentally submitting into the old turn.
-                        if !self.current_tab().turn.is_cancelling() {
-                            let tab = self.current_tab_mut();
-                            tab.messages
-                                .push(ChatMessage::warning(t!("system.agent_busy").into_owned()));
-                            tab.scroll_to_bottom();
-                        }
-                        return;
-                    }
-                    if self.prompt_reconfiguration_pending_for_tab(self.active_tab_key()) {
-                        let tab = self.current_tab_mut();
-                        tab.messages
-                            .push(ChatMessage::warning(t!("system.agent_busy").into_owned()));
-                        tab.scroll_to_bottom();
-                        return;
-                    }
-                    let is_agent_command = self
-                        .agent_command_for_input(&self.current_tab().input)
-                        .is_some();
-                    let is_byok = self.current_model_is_byok();
-                    let agent_id = self.current_agent_id.clone();
-                    let tab = self.current_tab_mut();
-                    let display_text = std::mem::take(&mut tab.input);
-                    let (text, images) = tab.attachments.take_for_submission(display_text.clone());
-                    tab.record_input_history(&text);
-                    tab.cursor_pos = 0;
-                    tab.refresh_command_popup();
-                    // `session_id` may be None on a brand-new tab whose ACP
-                    // session is created lazily by `dispatch_prompt_body`.
-                    // Fall back to a key that `session_tab_mut`'s
-                    // `tab_for_session` resolves to the active tab — same
-                    // trick as `maybe_trigger_autofix` — so the state
-                    // machine still installs the turn on this tab. When
-                    // `SessionAttached` later writes the real session id,
-                    // subsequent chunks route here correctly.
-                    let session_id = tab
-                        .session_id
-                        .clone()
-                        .unwrap_or_else(|| DEFAULT_TAB_ID.to_string());
-                    let pane_context = PaneContext {
-                        pane_id: self.pane_id.clone(),
-                        tab_id: self.tab_id.clone(),
-                        window_id: self.window_id.clone(),
-                        cwd: self.source_cwd.clone(),
-                        source_pane_id: self.source_session_id.clone(),
-                    };
-                    let prompt = if is_agent_command {
-                        PromptSubmission::new_agent_command(text.clone(), Some(pane_context))
-                    } else {
-                        PromptSubmission::new(text.clone(), Some(pane_context))
-                    }
-                    .with_images(images)
-                    .with_byok(is_byok)
-                    .with_agent_id(agent_id);
-                    prompt_timing_log(
-                        prompt.id,
-                        prompt.submitted_at_unix_s,
-                        "ui_submit",
-                        &format!("preview={:?}", prompt.preview()),
-                    );
-                    if self.show_welcome_hint {
-                        self.show_welcome_hint = false;
-                        set_welcome_shown_in_state();
-                    }
-                    let submitted = SubmittedPrompt {
-                        id: prompt.id,
-                        text: display_text,
-                        submitted_at_unix_s: prompt.submitted_at_unix_s,
-                        context: TurnContext::default(),
-                        autofix: None,
-                    };
-                    self.turn_submit_prompt_with_cancellation(
-                        &session_id,
-                        submitted,
-                        prompt.cancellation_token(),
-                    );
-                    let _ = self.prompt_tx.send(prompt);
+                    self.enqueue_input(None);
                 }
             }
             KeyCode::Backspace if key.modifiers.contains(KeyModifiers::CONTROL) => {

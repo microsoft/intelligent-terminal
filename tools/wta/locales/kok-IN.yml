@@ -135,6 +135,24 @@ agents.status.idle: "निश्क्रिय"
 # ── लेआउट स्वागत संकेत (src/ui/layout.rs) ──────────────────────────────────
 layout.welcome_hint: "  (Ctrl+Shift+. एजेंट पेन दाखयात/लिपयात • Ctrl+Shift+/ एजेंट सत्र दाखयात/लिपयात)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}
 
+# ── Prompt queue (agent pane) ───────────────────────────────────────────────
+# Pending input has not been sent to the AI agent.
+queue.header: "रांगेंतले संदेश: %{count}"  # Automatic pinned list above input: total pending user and automatic requests; hidden when empty
+queue.full: "रांग भरल्या. तुमचो इनपुट सांबाळून दवरला."
+queue.enqueued: "संदेश रांगेंत घातला."  # Info notification when a user message must wait before being sent to the AI agent
+queue.cancelled: "रांगेंतले %{count} संदेश रद्द केले. तुमी नवो संदेश धाडूंक शकतात."  # Info notification when waiting requests are discarded after cancellation, failure, or session reset
+queue.session_busy: "रांगेंतले संदेश ह्या संभाशणाचे आसात. सत्र वा संरचना बदलचे पयलीं ते रद्द करपाक /stop वापरात."  # {Locked="/stop"}
+queue.capture_failed: "चुकीचो संदर्भ सांबाळूंक शकले ना: %{error}"
+queue.auto: "आपशीं दुरुस्ती"  # Label for a queued, automatically requested analysis of a failed shell command
+# Auto-fix diagnostic capture errors for the source terminal pane, shown through queue.capture_failed.
+# Capture collects shell context, working directory and output, not a screenshot. %{pane} is a pane ID.
+queue.snapshot_source_required: "आपशीं दुरुस्ती खातीर निदानाची म्हायती एकठांय करपाक स्रोत पेन स्पश्टपणान नमूद करप गरजेचें आसा."
+queue.snapshot_source_unavailable: "आपशीं दुरुस्तीचो स्रोत पेन %{pane} उपलब्ध ना."
+queue.snapshot_shell_unavailable: "आपशीं दुरुस्तीच्या स्रोत पेन %{pane} क शेल संदर्भ ना."
+queue.snapshot_cwd_unavailable: "आपशीं दुरुस्तीच्या स्रोत पेन %{pane} क कार्य निर्देशिका ना."
+queue.snapshot_output_unavailable: "आपशीं दुरुस्तीच्या स्रोत पेन %{pane} त वाचपाक येवपी आउटपुट ना."
+queue.snapshot_context_changed: "स्रोत पेन %{pane} तलो आदेश ताचो त्रुटी संदर्भ जतन करपापयलींच बदललो."
+
 # ── कनेक्शन स्थिती ────────────────────────────────────────────────────────
 # Preparing the AI agent connection, including preflight and reuse of a cached agent.
 connection.starting: "एजेंटाक जोडपाची तयारी करता..."

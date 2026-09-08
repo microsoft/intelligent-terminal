@@ -135,6 +135,24 @@ agents.status.idle: "निष्क्रिय"
 # ── लेआउट स्वागत संकेत (src/ui/layout.rs) ──────────────────────────────────
 layout.welcome_hint: "  (Ctrl+Shift+. एजेंट पेन दिखाएँ/छिपाएँ • Ctrl+Shift+/ एजेंट सत्र दिखाएँ/छिपाएँ)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}
 
+# ── Prompt queue (agent pane) ───────────────────────────────────────────────
+# Pending input has not been sent to the AI agent.
+queue.header: "कतार में मौजूद संदेश: %{count}"  # Automatic pinned list above input: total pending user and automatic requests; hidden when empty
+queue.full: "कतार भर गई है। आपका इनपुट सुरक्षित रखा गया है।"
+queue.enqueued: "संदेश कतार में जोड़ दिया गया है।"  # Info notification when a user message must wait before being sent to the AI agent
+queue.cancelled: "कतार में मौजूद %{count} संदेश रद्द कर दिए गए हैं। आप नया संदेश भेज सकते हैं।"  # Info notification when waiting requests are discarded after cancellation, failure, or session reset
+queue.session_busy: "कतार में मौजूद संदेश इस बातचीत से जुड़े हैं। सत्र या कॉन्फ़िगरेशन बदलने से पहले उन्हें रद्द करने के लिए /stop का उपयोग करें।"  # {Locked="/stop"}
+queue.capture_failed: "त्रुटि का संदर्भ सुरक्षित नहीं रखा जा सका: %{error}"
+queue.auto: "स्वचालित सुधार"  # Label for a queued, automatically requested analysis of a failed shell command
+# Auto-fix diagnostic capture errors for the source terminal pane, shown through queue.capture_failed.
+# Capture collects shell context, working directory and output, not a screenshot. %{pane} is a pane ID.
+queue.snapshot_source_required: "स्वचालित सुधार के लिए निदान जानकारी एकत्र करने हेतु स्रोत पेन स्पष्ट रूप से निर्दिष्ट करना आवश्यक है।"
+queue.snapshot_source_unavailable: "स्वचालित सुधार का स्रोत पेन %{pane} उपलब्ध नहीं है।"
+queue.snapshot_shell_unavailable: "स्वचालित सुधार के स्रोत पेन %{pane} में कोई शेल संदर्भ नहीं है।"
+queue.snapshot_cwd_unavailable: "स्वचालित सुधार के स्रोत पेन %{pane} में कोई कार्यशील निर्देशिका नहीं है।"
+queue.snapshot_output_unavailable: "स्वचालित सुधार के स्रोत पेन %{pane} में कोई पढ़ने योग्य आउटपुट नहीं है।"
+queue.snapshot_context_changed: "स्रोत पेन %{pane} में कमांड का त्रुटि संदर्भ सहेजे जाने से पहले ही कमांड बदल गई।"
+
 # ── कनेक्शन स्थिति ────────────────────────────────────────────────────────
 # Preparing the AI agent connection, including preflight and reuse of a cached agent.
 connection.starting: "एजेंट कनेक्शन तैयार किया जा रहा है..."

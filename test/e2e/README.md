@@ -20,6 +20,7 @@ authenticated ACP agents. Current status (run on the Store package):
 | `Feature.FreExecutionPolicy.Tests.ps1` | §0 FRE execution-policy verdict (deterministic via registry; **Dev**, auto-skips) | 3 (1 conditional skip) |
 | `Feature.AgentPaneInteraction.Tests.ps1` | open/hide/focus, input/rendering, slash, Copilot chat | 14 |
 | `Feature.AgentProtocolExperience.Tests.ps1` | PRs #599/#601/#606/#610/#611/#612/#616/#634/#683: intent-based terminal actions (including empty workspaces and configured delegation), ACP tool/transcript rendering, clarification input, session configuration, model title, and replacement cleanup across the deployed helper/master boundary | 8 |
+| `Feature.PromptQueue.Tests.ps1` | C095, C300-C309: gated local ACP fixture covering startup Autofix, idempotent diagnostics, independently held FIFO turns and pinned inputs during actual scrolling, automatic pending-list updates, stop/failure recovery, typed `/fix` snapshots, source-pane priority, and redraw versus command invalidation (no LLM) | 11 |
 | `Feature.AgentImageAttachmentEditing.Tests.ps1` | PR #536: inline image tokens move and delete atomically while preserving adjacent prompt text | 1 |
 | `Feature.AgentModelSync.Tests.ps1` | PR #538: ACP config-option updates replace stale session model state in the active picker | 1 |
 | `Feature.AgentModelLifecycle.Tests.ps1` | PR #554: `/model` hot-apply and Settings-driven model restart/reconnect lifecycle | 2 |
@@ -156,6 +157,48 @@ Invoke-Pester test/e2e/selftests              # everything (30 tests)
 The self-tests are the framework's own proof: every primitive is exercised against a
 running terminal (`selftests/ItE2E.Live.Tests.ps1`) and the core helpers are unit-tested
 in `selftests/ItE2E.Unit.Tests.ps1` (hermetic, no terminal needed).
+
+### Deterministic Queue regressions
+
+`Feature.PromptQueue.Tests.ps1` uses `fixtures/Mock-AcpQueueAgent.ps1`, not an
+authenticated agent or an LLM. Every case crosses the deployed WT/ConPTY →
+helper → master → ACP boundary. The fixture records ordered prompt/completion
+JSON under `artifacts/prompt-queue-fixtures/<run-id>/`; its ten
+hermetic cases in `selftests/ItE2E.QueueFixture.Tests.ps1` cover gate polling,
+cancellation settlement, same-session overlap rejection, and recovery.
+
+| Exact checklist/test title | Trigger and deterministic oracle | Negative control / existing protection |
+|---|---|---|
+| Queued user messages run once in submission order | Hold A, enqueue B/C, release A while independently holding B; C must remain absent until B is released, with intact request content and completion-before-next-prompt sequence numbers. A viewport-sized active transcript proves chat moves to its hidden top while content-located queue rows stay fixed. | Immediate A has no queued notice; any same-session overlap is a fixture error. |
+| Pending queue appears automatically and updates above input | Hold A, trigger automatic Autofix, then enqueue held B. The current viewport automatically shows counts 1/2 and numbered user/automatic previews. Release A and B separately to observe count 1 with renumbering, then no header or panel. | Idle/active-only states have no queue header; automatic requests have no queued Info notice; rendering never submits an ACP prompt. |
+| Typed fix preserves captured evidence while waiting | Type `/fix` behind a held turn, wait for accepted snapshot diagnostics, then run a different shell command; the eventual ACP request must retain the old failure, hint, shell and cwd. | Automatic suggestions are off; new output/cwd must not replace the captured evidence. |
+| Repeated diagnostics activation submits one fix per failure | Click the same real diagnostics button three times with `session/new` held; one pending entry becomes exactly one ACP prompt after release. | A fresh later failure still needs a click and then runs once; `Feature.AutofixRouting` separately protects two-tab routing. |
+| Prompt redraws preserve queued Autofix until a real command starts | Bind Ctrl+L to PSReadLine `InvokePrompt` in the test shell, redraw twice, and observe real OSC 133 A/B without C; the queued request survives and its evidence reaches ACP once. | A subsequent real shell command invalidates a fresh queued automatic fix; `New shell commands invalidate obsolete queued Autofix` also protects later failure recovery. |
+
+Queue-count assertions poll the owning helper's current alternate-screen viewport
+for the automatic pinned header, or its absence when no requests remain. They
+never type an inspection command, consult diagnostics, or scroll chat history to
+find a count. The list includes automatic requests and remains outside chat
+scrolling, bounded by available height with an overflow suffix. Existing
+startup, actionable-detection, pending-list, cancellation, failure, source-pane,
+and invalidation cases remain in the same suite.
+
+After building the combined changes into the explicitly selected **Dev** package:
+
+```powershell
+$env:ITE2E_PACKAGE = 'Dev'
+pwsh -NoProfile -File test\e2e\bootstrap.ps1 -Check
+pwsh -NoProfile -File test\e2e\Invoke-ItE2EReport.ps1 `
+    -Path test\e2e\tests\Feature.PromptQueue.Tests.ps1 -UpdateReport
+```
+
+Run `Feature.AutofixRouting`, `Feature.AutofixParser`, and
+`Feature.AgentPanePadding` as related regression suites. These unshipped Queue
+cases are not credited by the historical Store totals above; only a matching
+Dev run can check C095 and C300-C309 in the generated report. Queue-only local
+ID collisions were reallocated with `Set-ChecklistIds.ps1`; upstream IDs and
+titles, including the pre-existing duplicate C295, were preserved.
+
 ## Reports (HTML + precise per-failure diagnostics)
 
 `Invoke-ItE2EReport.ps1` wraps Pester and, by default, writes the report to the **fixed

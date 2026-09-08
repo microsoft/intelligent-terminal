@@ -1776,8 +1776,7 @@ namespace winrt::TerminalApp::implementation
         using AS = winrt::TerminalApp::implementation::AgentPaneContent::AutofixState;
         const auto state = impl->GetAutofixState();
         // Open or focus the active tab's agent pane (shared by Detected and
-        // Review). Opening it makes the helper observe pane_open=true and
-        // flip the bar to Idle on its own.
+        // Review). Opening the pane dismisses Review, not Detected.
         const auto openAgentPaneForReview = [&]() {
             const auto agentPane = activeTab->FindAgentPane();
             if (agentPane && !agentPane->IsHidden())

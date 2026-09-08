@@ -134,7 +134,7 @@ snapshots.
 
 | Key | Action |
 |-----|--------|
-| Type + Enter | Send prompt to agent |
+| Type + Enter | Send a prompt, or queue it while the agent is busy or connecting |
 | Ctrl+C | Copy selected text; otherwise cancel streaming / quit |
 | Up / Down | Browse prompt input history |
 | Mouse wheel | Scroll chat (hold Alt to scroll one line) |
@@ -147,6 +147,65 @@ snapshots.
 | Shift+PageUp/Down | Scroll debug panel |
 | Y / N | Quick allow/reject on permission dialog |
 | Up / Down / Enter | Navigate permission options |
+
+### Pending prompts
+
+Each agent pane keeps an in-memory queue for its current conversation. You can
+submit another prompt while a reply is streaming without interrupting that reply.
+User requests run in submission order, one ACP turn at a time; separate messages
+are not merged or injected into an active turn. Text and image attachments belong
+to the request that was submitted, not to the next draft.
+
+Pending requests automatically appear directly above the input box, independently
+of chat scrolling. The pinned list shows a pending-count header and numbered,
+sanitized previews, including automatic Autofix requests labelled "Automatic fix".
+Entries leave the list when dispatched or cancelled; an empty queue has no header
+or panel. Narrow panes shorten previews, and a `+N` suffix accounts for requests
+that do not fit the available height. A user message that must wait receives an
+Info notification confirming it was queued. Immediate sends and automatic
+Autofix warm-up do not produce this notification. The list has no extra controls
+or built-in slash command to inspect, edit, remove, reorder, pause, or resume requests.
+
+Error detection and its clickable diagnostics hint do not wait for ACP to
+connect. With automatic suggestion off, detection alone does not enqueue work;
+activating the hint queues the requested fix until the agent is ready.
+Repeated activation of the same detected failure does not add another request,
+including while the session is still connecting. A later fresh failure remains
+eligible for its own activation.
+
+Item numbers refer to the pending queue, not the chat history. Queue capacity is
+bounded; when a request does not fit, its draft remains in the editor.
+`/stop` and user cancellation discard waiting requests as well as cancelling the
+active turn. Request failures also discard waiting requests so dependent
+follow-ups do not run after a failed task. Discarding pending work produces an
+Info notification; new input can be submitted normally without a resume command.
+
+Permissions, clarification questions, and unresolved action cards still need
+your response before another prompt starts. They are not queued prompts.
+Session and configuration changes must not silently send pending input to a
+different conversation; use `/stop` to cancel waiting work before switching.
+Session resets discard waiting work rather than replaying it in a new conversation.
+An interrupted request whose delivery is uncertain is never automatically retried.
+
+With automatic error suggestions enabled, shell failures received while the
+helper is running can wait for the agent to connect or finish its current turn.
+Automatic requests run after explicit user requests. Repeated pending failures
+from the same source pane are coalesced, and shell progress or pane closure
+invalidates obsolete requests. Prompt redraw markers alone do not represent new
+shell work and do not discard a waiting fix. Diagnostic evidence is captured
+before dispatch rather than substituted with a later command's output. A typed
+`/fix` also captures the current source pane's output, shell, and working directory
+while it waits behind an active turn. Once that capture completes, later commands
+do not replace its evidence or discard the explicit request. If the source changes
+before capture completes, the request fails visibly instead of diagnosing the wrong
+command. Disabling automatic suggestions leaves detected errors available for
+manual analysis.
+
+Hiding the agent pane or dragging its tab between windows preserves the queue.
+The queue is not persisted across helper/app exit or crashes, and it cannot
+recover shell events emitted before the helper subscribed. Concurrent side
+questions are not supported: additional prompts are follow-up turns in the main
+conversation.
 
 ## Debug Panel
 
@@ -193,6 +252,7 @@ tools/wta/src/
 +-- helper/mod.rs             wta-helper: per-pane entry (reuses the TUI over a pipe)
 +-- app.rs                     TUI state machine, event loop, per-tab sessions
 |   +-- app/autofix.rs         Autofix detection + suggestion
+|   +-- app/prompt_queue.rs    Pending prompts, Autofix snapshots and dispatch gates
 |   +-- app/turn_state.rs      Per-turn state machine
 +-- event.rs                   Crossterm event reader
 +-- coordinator.rs             Delegate (?<prompt>) execution

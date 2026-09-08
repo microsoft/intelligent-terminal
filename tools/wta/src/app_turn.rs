@@ -743,11 +743,13 @@ impl App {
         let tab = self.session_tab(session_id);
         let TurnState::Surfaced {
             outcome: TurnOutcome::Recommendation(recommendations),
+            prompt,
             ..
         } = &tab.turn
         else {
             return;
         };
+        let prompt_id = prompt.id;
         let summary = format_recommendations_for_chat(recommendations);
         // Snapshot the title before `choice` is moved into ChoiceExecution,
         // so we can stamp the chat history with an "executed" marker after
@@ -775,14 +777,23 @@ impl App {
         } else {
             None
         };
+        self.session_tab_mut(session_id).pending_queue_action = Some(prompt_id);
         let dispatched = self
             .recommendation_tx
             .send(crate::coordinator::ChoiceExecution {
                 choice,
                 insert_only,
                 context,
+                completion: Some((target_tab.clone(), prompt_id)),
             })
             .is_ok();
+        if !dispatched {
+            let tab = self.session_tab_mut(session_id);
+            tab.pending_queue_action = None;
+            tab.cancel_pending_prompts();
+            tab.messages
+                .push(ChatMessage::Error(t!("connection.lost").into_owned()));
+        }
         if let Some(claim) = confirmation_claim {
             let status = if dispatched {
                 crate::agent_tools::action_proposal::channel::ProposalFinalStatus::Confirmed
@@ -790,10 +801,10 @@ impl App {
                 crate::agent_tools::action_proposal::channel::ProposalFinalStatus::Unavailable
             };
             self.proposal_channels.finalize_confirmation(claim, status);
-            if !dispatched {
-                self.turn_cancel(session_id);
-                return;
-            }
+        }
+        if !dispatched {
+            self.turn_cancel(session_id);
+            return;
         }
         if self
             .session_tab(session_id)
@@ -856,6 +867,13 @@ impl App {
     }
 
     pub(super) fn request_turn_cancel_for_tab(&mut self, target_tab: &str) {
+        if let Some(tab) = self.tab_sessions.get_mut(target_tab) {
+            tab.cancel_pending_prompts();
+        }
+        self.request_background_turn_cancel_for_tab(target_tab);
+    }
+
+    pub(super) fn request_background_turn_cancel_for_tab(&mut self, target_tab: &str) {
         self.turn_cancel_for_tab(target_tab);
     }
 

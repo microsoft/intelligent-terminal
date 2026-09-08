@@ -123,6 +123,24 @@ agents.status.idle: "Segur"
 # ── Awgrym croeso cynllun (src/ui/layout.rs) ──────────────────────────────
 layout.welcome_hint: "  (Ctrl+Shift+. i ddangos/cuddio'r paen asiant • Ctrl+Shift+/ i ddangos/cuddio'r sesiwn asiant)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}
 
+# ── Prompt queue (agent pane) ───────────────────────────────────────────────
+# Pending input has not been sent to the AI agent.
+queue.header: "Negeseuon yn y ciw: %{count}"  # Automatic pinned list above input: total pending user and automatic requests; hidden when empty
+queue.full: "Mae'r ciw yn llawn. Mae eich mewnbwn wedi'i gadw."
+queue.enqueued: "Ychwanegwyd y neges at y ciw."  # Info notification when a user message must wait before being sent to the AI agent
+queue.cancelled: "Canslwyd %{count} o negeseuon yn y ciw. Gallwch anfon neges newydd."  # Info notification when waiting requests are discarded after cancellation, failure, or session reset
+queue.session_busy: "Mae'r negeseuon yn y ciw yn perthyn i'r sgwrs hon. Defnyddiwch /stop i'w canslo cyn newid sesiynau neu'r ffurfweddiad."  # {Locked="/stop"}
+queue.capture_failed: "Methu cadw cyd-destun y gwall: %{error}"
+queue.auto: "Trwsio awtomatig"  # Label for a queued, automatically requested analysis of a failed shell command
+# Auto-fix diagnostic capture errors for the source terminal pane, shown through queue.capture_failed.
+# Capture collects shell context, working directory and output, not a screenshot. %{pane} is a pane ID.
+queue.snapshot_source_required: "Mae casglu cyd-destun y gwall ar gyfer trwsio awtomatig yn gofyn am baen ffynhonnell wedi'i nodi'n benodol."
+queue.snapshot_source_unavailable: "Nid yw'r paen ffynhonnell %{pane} ar gyfer trwsio awtomatig ar gael."
+queue.snapshot_shell_unavailable: "Nid oes gan y paen ffynhonnell %{pane} ar gyfer trwsio awtomatig gyd-destun plisgyn."
+queue.snapshot_cwd_unavailable: "Nid oes gan y paen ffynhonnell %{pane} ar gyfer trwsio awtomatig gyfeiriadur gweithio."
+queue.snapshot_output_unavailable: "Nid oes gan y paen ffynhonnell %{pane} ar gyfer trwsio awtomatig allbwn darllenadwy."
+queue.snapshot_context_changed: "Newidiodd y gorchymyn yn y paen ffynhonnell %{pane} cyn y gellid cadw cyd-destun ei wall."
+
 # ── Cyflwr cysylltiad ────────────────────────────────────────────────────────
 # Preparing the AI agent connection, including preflight and reuse of a cached agent.
 connection.starting: "Yn paratoi'r cysylltiad â'r asiant..."

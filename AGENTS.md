@@ -83,8 +83,9 @@ Important invariants:
   ACP session, or chat history.
 - Per-tab events carry tab and window identity. Route responses to the owning
   tab instead of broadcasting across panes or windows.
-- Autofix requires a connected helper session. Failures received before the
-  session connects are not replayed later.
+- Autofix detection and its actionable hint do not wait for ACP readiness.
+  The running helper captures failures and queues fix requests until connected;
+  events missed before the helper subscribed are not recovered.
 - Terminal mutation requested by an agent goes through the confirmation-gated
   session MCP action path. Agent-owned shell tools are a separate execution
   path.

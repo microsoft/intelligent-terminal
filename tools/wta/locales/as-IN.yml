@@ -136,6 +136,24 @@ agents.status.idle: "নিষ্ক্ৰিয়"
 # ── লেআউট স্বাগতম সংকেত (src/ui/layout.rs) ──────────────────────────────────
 layout.welcome_hint: "  (Ctrl+Shift+. এজেণ্ট পেন দেখুৱাওক/লুকুৱাওক • Ctrl+Shift+/ এজেণ্ট ছেশ্বন দেখুৱাওক/লুকুৱাওক)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}
 
+# ── Prompt queue (agent pane) ───────────────────────────────────────────────
+# Pending input has not been sent to the AI agent.
+queue.header: "অপেক্ষা শাৰীত থকা বাৰ্তা: %{count}"  # Automatic pinned list above input: total pending user and automatic requests; hidden when empty
+queue.full: "অপেক্ষা শাৰী পূৰ্ণ হৈছে। আপোনাৰ ইনপুট সংৰক্ষণ কৰা হৈছে।"
+queue.enqueued: "বাৰ্তাটো অপেক্ষা শাৰীত যোগ কৰা হৈছে।"  # Info notification when a user message must wait before being sent to the AI agent
+queue.cancelled: "অপেক্ষা শাৰীত থকা %{count}টা বাৰ্তা বাতিল কৰা হৈছে। আপুনি নতুন বাৰ্তা পঠিয়াব পাৰে।"  # Info notification when waiting requests are discarded after cancellation, failure, or session reset
+queue.session_busy: "অপেক্ষা শাৰীত থকা বাৰ্তাসমূহ এই কথোপকথনৰ অন্তৰ্গত। অধিৱেশন বা কনফিগাৰেশ্বন সলনি কৰাৰ আগতে সেইবোৰ বাতিল কৰিবলৈ /stop ব্যৱহাৰ কৰক।"  # {Locked="/stop"}
+queue.capture_failed: "ত্ৰুটিৰ প্ৰসংগ সংৰক্ষণ কৰিব পৰা নগ'ল: %{error}"
+queue.auto: "স্বয়ংক্ৰিয় সংশোধন"  # Label for a queued, automatically requested analysis of a failed shell command
+# Auto-fix diagnostic capture errors for the source terminal pane, shown through queue.capture_failed.
+# Capture collects shell context, working directory and output, not a screenshot. %{pane} is a pane ID.
+queue.snapshot_source_required: "স্বয়ংক্ৰিয় সংশোধনৰ বাবে ত্ৰুটিৰ প্ৰসংগ সংগ্ৰহ কৰিবলৈ এটা স্পষ্টভাৱে নিৰ্দিষ্ট কৰা উৎস পেনৰ প্ৰয়োজন।"
+queue.snapshot_source_unavailable: "স্বয়ংক্ৰিয় সংশোধনৰ উৎস পেন %{pane} উপলব্ধ নহয়।"
+queue.snapshot_shell_unavailable: "স্বয়ংক্ৰিয় সংশোধনৰ উৎস পেন %{pane}-ত শ্বেল প্ৰসংগ নাই।"
+queue.snapshot_cwd_unavailable: "স্বয়ংক্ৰিয় সংশোধনৰ উৎস পেন %{pane}-ত কাৰ্যকৰী ডাইৰেক্টৰী নাই।"
+queue.snapshot_output_unavailable: "স্বয়ংক্ৰিয় সংশোধনৰ উৎস পেন %{pane}-ত পঢ়িব পৰা আউটপুট নাই।"
+queue.snapshot_context_changed: "উৎস পেন %{pane}-ত থকা কমাণ্ডটোৰ ত্ৰুটিৰ প্ৰসংগ সংৰক্ষণ কৰাৰ আগতেই কমাণ্ডটো সলনি হ'ল।"
+
 # ── সংযোগ স্থিতি ────────────────────────────────────────────────────────
 # Preparing the AI agent connection, including preflight and reuse of a cached agent.
 connection.starting: "এজেণ্টৰ সংযোগ প্ৰস্তুত কৰা হৈছে..."

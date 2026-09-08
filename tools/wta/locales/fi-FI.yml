@@ -122,6 +122,24 @@ agents.status.idle: "Vapaa"
 # ── Layout welcome hint (src/ui/layout.rs) ──────────────────────────────────
 layout.welcome_hint: "  (Ctrl+Shift+. näyttää/piilottaa agenttipaneelin • Ctrl+Shift+/ näyttää/piilottaa agenttiistunnon)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}
 
+# ── Prompt queue (agent pane) ───────────────────────────────────────────────
+# Pending input has not been sent to the AI agent.
+queue.header: "Jonossa olevat viestit: %{count}"  # Automatic pinned list above input: total pending user and automatic requests; hidden when empty
+queue.full: "Jono on täynnä. Syötteesi on säilytetty."
+queue.enqueued: "Viesti lisättiin jonoon."  # Info notification when a user message must wait before being sent to the AI agent
+queue.cancelled: "Peruutettiin %{count} jonossa olevaa viestiä. Voit lähettää uuden viestin."  # Info notification when waiting requests are discarded after cancellation, failure, or session reset
+queue.session_busy: "Jonossa olevat viestit kuuluvat tähän keskusteluun. Peruuta ne komennolla /stop ennen istunnon tai määritysten vaihtamista."  # {Locked="/stop"}
+queue.capture_failed: "Virheen kontekstia ei voitu säilyttää: %{error}"
+queue.auto: "Automaattinen korjaus"  # Label for a queued, automatically requested analysis of a failed shell command
+# Auto-fix diagnostic capture errors for the source terminal pane, shown through queue.capture_failed.
+# Capture collects shell context, working directory and output, not a screenshot. %{pane} is a pane ID.
+queue.snapshot_source_required: "Kontekstin kerääminen automaattista korjausta varten edellyttää lähdepaneelin nimenomaista määrittämistä."
+queue.snapshot_source_unavailable: "Automaattisen korjauksen lähdepaneeli %{pane} ei ole käytettävissä."
+queue.snapshot_shell_unavailable: "Automaattisen korjauksen lähdepaneelilla %{pane} ei ole shell-kontekstia."
+queue.snapshot_cwd_unavailable: "Automaattisen korjauksen lähdepaneelilla %{pane} ei ole työhakemistoa."
+queue.snapshot_output_unavailable: "Automaattisen korjauksen lähdepaneelilla %{pane} ei ole luettavaa tulostetta."
+queue.snapshot_context_changed: "Lähdepaneelin %{pane} komento vaihtui ennen kuin sen virhekonteksti voitiin tallentaa."
+
 # ── Connection state ────────────────────────────────────────────────────────
 # Preparing the AI agent connection, including preflight and reuse of a cached agent.
 connection.starting: "Valmistellaan agenttiyhteyttä..."

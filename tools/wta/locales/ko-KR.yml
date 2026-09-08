@@ -118,6 +118,24 @@ agents.status.idle: "유휴"
 # ── 레이아웃 환영 힌트 (src/ui/layout.rs) ──────────────────────────────────────
 layout.welcome_hint: "  (Ctrl+Shift+. 에이전트 창 표시/숨기기 • Ctrl+Shift+/ 에이전트 세션 표시/숨기기)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}
 
+# ── Prompt queue (agent pane) ───────────────────────────────────────────────
+# Pending input has not been sent to the AI agent.
+queue.header: "대기열의 메시지: %{count}"  # Automatic pinned list above input: total pending user and automatic requests; hidden when empty
+queue.full: "대기열이 가득 찼습니다. 입력 내용은 유지되었습니다."
+queue.enqueued: "메시지가 대기열에 추가되었습니다."  # Info notification when a user message must wait before being sent to the AI agent
+queue.cancelled: "대기열의 메시지 %{count}개가 취소되었습니다. 새 메시지를 보낼 수 있습니다."  # Info notification when waiting requests are discarded after cancellation, failure, or session reset
+queue.session_busy: "대기열의 메시지는 이 대화에 속합니다. 세션이나 구성을 변경하기 전에 /stop을 사용하여 취소하세요."  # {Locked="/stop"}
+queue.capture_failed: "오류 컨텍스트를 보존할 수 없습니다: %{error}"
+queue.auto: "자동 수정"  # Label for a queued, automatically requested analysis of a failed shell command
+# Auto-fix diagnostic capture errors for the source terminal pane, shown through queue.capture_failed.
+# Capture collects shell context, working directory and output, not a screenshot. %{pane} is a pane ID.
+queue.snapshot_source_required: "자동 수정을 위한 진단 정보를 수집하려면 원본 창을 명시적으로 지정해야 합니다."
+queue.snapshot_source_unavailable: "자동 수정 원본 창 %{pane}을(를) 사용할 수 없습니다."
+queue.snapshot_shell_unavailable: "자동 수정 원본 창 %{pane}에 셸 컨텍스트가 없습니다."
+queue.snapshot_cwd_unavailable: "자동 수정 원본 창 %{pane}에 작업 디렉터리가 없습니다."
+queue.snapshot_output_unavailable: "자동 수정 원본 창 %{pane}에 읽을 수 있는 출력이 없습니다."
+queue.snapshot_context_changed: "오류 컨텍스트를 보존하기 전에 원본 창 %{pane}의 명령이 바뀌었습니다."
+
 # ── 연결 상태 ────────────────────────────────────────────────────────────
 # Preparing the AI agent connection, including preflight and reuse of a cached agent.
 connection.starting: "에이전트 연결 준비 중..."

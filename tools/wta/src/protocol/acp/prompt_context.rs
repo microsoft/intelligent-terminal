@@ -21,6 +21,7 @@
 
 use async_trait::async_trait;
 
+use super::client::AutofixTextKind;
 use crate::coordinator::default_supported_delegate_agents;
 use crate::pane_context::PaneContext;
 use crate::shell::ShellManager;
@@ -388,6 +389,113 @@ fn user_locale_tag() -> String {
     rust_i18n::locale().to_string()
 }
 
+/// Immutable source context captured when an autofix request is accepted.
+/// Provider policy and permission state deliberately are not part of this value.
+#[derive(Debug, Clone)]
+pub(crate) struct AutofixSnapshot {
+    source_pane_id: String,
+    context_pane: serde_json::Value,
+    shell_exe: String,
+    terminal_output: Option<String>,
+}
+
+impl AutofixSnapshot {
+    pub(crate) fn source_pane_id(&self) -> &str {
+        &self.source_pane_id
+    }
+
+    #[cfg(test)]
+    pub(crate) fn for_test(source_pane_id: &str) -> Self {
+        Self {
+            source_pane_id: source_pane_id.to_string(),
+            context_pane: serde_json::json!({
+                "session_id": source_pane_id,
+                "shell": "cmd.exe",
+                "cwd": "C:\\test",
+                "is_agent_pane": false,
+            }),
+            shell_exe: "cmd.exe".to_string(),
+            terminal_output: Some("failing-command\r\nCommand failed with exit code 1".to_string()),
+        }
+    }
+
+    /// UTF-8 payload size for queue budgets, excluding allocator/struct overhead.
+    pub(crate) fn payload_bytes(&self) -> usize {
+        self.source_pane_id.len()
+            + self.shell_exe.len()
+            + self.terminal_output.as_ref().map_or(0, String::len)
+            + self.context_pane.to_string().len()
+    }
+
+    pub(super) fn resolved_context(&self) -> ResolvedProviderContext {
+        ResolvedProviderContext {
+            context_pane: Some(self.context_pane.clone()),
+            shell_exe: Some(self.shell_exe.clone()),
+            terminal_output: self.terminal_output.clone(),
+            resolved_fix_pane: Some(self.source_pane_id.clone()),
+            planner_terminal_context: None,
+            resolved_planner_pane: None,
+            command_resolver_invocation: None,
+        }
+    }
+}
+
+pub(crate) async fn capture_autofix_snapshot(
+    shell_mgr: &ShellManager,
+    pane_context: &PaneContext,
+    text_kind: AutofixTextKind,
+) -> Result<AutofixSnapshot, String> {
+    let explicit_source = pane_context.source_pane_id.as_deref();
+    if explicit_source.is_some_and(|source| source.trim().is_empty())
+        || (text_kind == AutofixTextKind::FailureSummary && explicit_source.is_none())
+    {
+        return Err(rust_i18n::t!("queue.snapshot_source_required").to_string());
+    }
+    let resolved = resolve_provider_context(true, true, shell_mgr, Some(pane_context)).await;
+    let source_pane_id = explicit_source
+        .map(str::to_owned)
+        .or_else(|| resolved.resolved_fix_pane.clone())
+        .ok_or_else(|| rust_i18n::t!("queue.snapshot_source_required").to_string())?;
+    let context_pane = resolved
+        .context_pane
+        .filter(|pane| {
+            json_str_or_num(pane.get("session_id")).as_deref() == Some(source_pane_id.as_str())
+                && pane.get("is_agent_pane").and_then(|v| v.as_bool()) != Some(true)
+        })
+        .ok_or_else(|| {
+            rust_i18n::t!("queue.snapshot_source_unavailable", pane = source_pane_id).to_string()
+        })?;
+    let shell_exe = resolved.shell_exe.ok_or_else(|| {
+        rust_i18n::t!("queue.snapshot_shell_unavailable", pane = source_pane_id).to_string()
+    })?;
+    if context_pane
+        .get("cwd")
+        .and_then(|v| v.as_str())
+        .is_none_or(|cwd| cwd.trim().is_empty())
+    {
+        return Err(
+            rust_i18n::t!("queue.snapshot_cwd_unavailable", pane = source_pane_id).to_string(),
+        );
+    }
+    // An empty successful read is valid for user intent on a fresh/cleared
+    // pane. Freeze that absence; a failed read must never become empty evidence.
+    let terminal_output = resolved.terminal_output.ok_or_else(|| {
+        rust_i18n::t!("queue.snapshot_output_unavailable", pane = source_pane_id).to_string()
+    })?;
+    let terminal_output = (!terminal_output.trim().is_empty()).then_some(terminal_output);
+    if text_kind == AutofixTextKind::FailureSummary && terminal_output.is_none() {
+        return Err(
+            rust_i18n::t!("queue.snapshot_output_unavailable", pane = source_pane_id).to_string(),
+        );
+    }
+    Ok(AutofixSnapshot {
+        source_pane_id: source_pane_id.to_string(),
+        context_pane,
+        shell_exe,
+        terminal_output,
+    })
+}
+
 pub(super) struct ResolvedProviderContext {
     pub(super) context_pane: Option<serde_json::Value>,
     pub(super) shell_exe: Option<String>,
@@ -426,12 +534,15 @@ pub(super) async fn resolve_provider_context(
         return resolved;
     }
 
-    let active = shell_mgr.wt_get_active_pane().await.ok();
-
     // Explicit source pane (error-triggered autofix) wins; otherwise fall
     // back to the resolved active working pane (`/fix`). An active pane that
     // is itself an agent pane is skipped — there's no terminal output there.
     let explicit_source = pane_context.and_then(|ctx| ctx.source_pane_id.clone());
+    let active = if explicit_source.is_none() {
+        shell_mgr.wt_get_active_pane().await.ok()
+    } else {
+        None
+    };
     let source_pane_id = explicit_source.clone().or_else(|| {
         active.as_ref().and_then(|a| {
             let is_agent = a

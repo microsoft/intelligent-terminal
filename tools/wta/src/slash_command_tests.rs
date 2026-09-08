@@ -6,7 +6,9 @@
 //! of the crate root, so it can reach `App`'s private dispatch methods —
 //! exactly like the inline `app::tests` module it borrows `test_app` from.
 
-use super::tests::{test_app, test_app_with_master_rx, test_app_with_new_session_rx};
+use super::tests::{
+    complete_autofix_capture, test_app, test_app_with_master_rx, test_app_with_new_session_rx,
+};
 use super::*;
 use crate::protocol::acp::client::MasterExtRequest;
 
@@ -308,8 +310,11 @@ fn agent_prefix_match_ranks_before_client_substring_match() {
 
 #[test]
 fn optional_fix_completion_prepares_then_second_enter_runs() {
+    let _locale = crate::test_support::lock_locale();
     let mut app = test_app();
     app.state = ConnectionState::Connected;
+    app.source_session_id = Some("source".into());
+    let tab_id = app.active_tab_key().to_owned();
     type_input(&mut app, "/fi");
 
     app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
@@ -321,6 +326,8 @@ fn optional_fix_completion_prepares_then_second_enter_runs() {
     app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
 
     assert!(app.current_tab().input.is_empty());
+    assert!(app.current_tab().turn.is_idle());
+    complete_autofix_capture(&mut app, &tab_id);
     assert!(!app.current_tab().turn.is_idle());
 }
 
@@ -638,12 +645,17 @@ fn slash_restart_resets_connection_and_clears_sessions() {
 
 #[test]
 fn slash_fix_when_idle_submits_autofix_turn() {
+    let _locale = crate::test_support::lock_locale();
     let mut app = test_app();
     app.state = ConnectionState::Connected;
+    app.source_session_id = Some("source".into());
+    let tab_id = app.active_tab_key().to_owned();
     let gen_before = app.current_tab().autofix.generation;
     assert!(app.current_tab().turn.is_idle());
 
     run_slash(&mut app, "fix");
+    assert!(app.current_tab().turn.is_idle());
+    complete_autofix_capture(&mut app, &tab_id);
 
     assert!(
         !app.current_tab().turn.is_idle(),
@@ -657,22 +669,26 @@ fn slash_fix_when_idle_submits_autofix_turn() {
 }
 
 #[test]
-fn slash_fix_while_busy_does_not_resubmit() {
+fn slash_fix_while_busy_queues_without_replacing_active_turn() {
+    let _locale = crate::test_support::lock_locale();
     let mut app = test_app();
     app.state = ConnectionState::Connected;
-    // First /fix arms an in-flight turn.
+    app.source_session_id = Some("source".into());
+    let tab_id = app.active_tab_key().to_owned();
     run_slash(&mut app, "fix");
+    complete_autofix_capture(&mut app, &tab_id);
     assert!(!app.current_tab().turn.is_idle());
     let gen_after_first = app.current_tab().autofix.generation;
 
-    // Second /fix while busy must be refused (busy advisory), not resubmitted.
+    // Second /fix is queued without replacing the active turn.
     run_slash(&mut app, "fix");
+    complete_autofix_capture(&mut app, &tab_id);
     assert_eq!(
         app.current_tab().autofix.generation,
         gen_after_first,
         "/fix while a turn is in flight must not bump generation / resubmit"
     );
-    assert_eq!(last_notice(&app).0, NoticeKind::Warning);
+    assert_eq!(app.current_tab().prompt_queue.entries.len(), 1);
 }
 
 #[test]

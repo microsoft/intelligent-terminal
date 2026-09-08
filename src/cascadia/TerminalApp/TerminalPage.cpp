@@ -3858,8 +3858,8 @@ namespace winrt::TerminalApp::implementation
         const auto paneId = impl->GetLastErrorPaneId();
         // Open or focus the active tab's agent pane so the user can read the
         // analysis / result in chat. Shared by Detected ("ask") and Review.
-        // Opening the pane makes the helper observe pane_open=true and flip
-        // the bar to Idle on its own — no explicit dismiss needed.
+        // Opening the pane dismisses Review; Detected remains actionable
+        // until the requested analysis starts.
         const auto openAgentPaneForReview = [&]() {
             const auto agentPane = activeTab->FindAgentPane();
             if (agentPane && !agentPane->IsHidden())
@@ -4033,15 +4033,11 @@ namespace winrt::TerminalApp::implementation
         AS autofixState = AS::Idle;
         winrt::hstring hotkeyHint;
         winrt::hstring detectedSummary;
-        // Whether the active tab's helper ACP session is Connected. Drives
-        // the diagnostics-group connection gate below. No agent pane (or a
-        // not-yet/never-connected one) reads false → group hidden.
-        bool agentConnected = false;
         // Autofix-state read must NOT be gated on pane visibility. The
         // helper keeps running and detecting command failures even when
         // the agent pane is stashed (pre-warm path: helper is spawned
-        // and connected from the moment the tab opens, with the pane
-        // hidden). `OnAutofixStateChanged` writes the latest state into
+        // and observing from the moment the tab opens, even while ACP
+        // connects). `OnAutofixStateChanged` writes the latest state into
         // AgentPaneContent's cache regardless of stash, so the bar
         // should reflect it regardless of stash too. (The toggle-button
         // highlights above DO gate on `paneOpen` — that's correct, they
@@ -4055,7 +4051,6 @@ namespace winrt::TerminalApp::implementation
                 autofixState = impl->GetAutofixState();
                 hotkeyHint = impl->GetHotkeyHint();
                 detectedSummary = impl->GetDetectedSummary();
-                agentConnected = impl->IsAgentConnected();
             }
         }
 
@@ -4093,24 +4088,12 @@ namespace winrt::TerminalApp::implementation
 
         if (auto diagBtn = DiagnosticsButton())
         {
-            // Show gate — the diagnostics group appears only when ALL:
-            //   * error detection is enabled (detect OFF = the user opted
-            //     out of shell observation: no pill, no pipeline), AND
-            //   * the active tab's helper ACP session is Connected (before
-            //     connect / after a failure-disconnect there's no autofix
-            //     capability), AND
-            //   * an error is detected, being analyzed, or ready for review.
-            // Otherwise hide the whole group rather than show a dead,
-            // faded button. Event-driven, not polled: runs from the
-            // AgentPaneContent::StateChanged handler (agent_status flips
-            // connected/disconnected) and on settings changes. Detection is
-            // a pure C++ setting; the autofix business states
-            // (Detected/Pending/Review) all live in the helper and arrive
-            // via `autofix_state`.
+            // Detection remains actionable while ACP connects. The helper
+            // owns the diagnostic state and queues requests until ready;
+            // connection readiness gates dispatch, not this affordance.
             const bool detectionEnabled =
                 _settings && _settings.GlobalSettings().EffectiveAutoErrorDetectionEnabled();
-            const bool hasDiagnostics = ::TerminalApp::Autofix::HasDiagnostics(autofixState);
-            const bool showGroup = detectionEnabled && agentConnected && hasDiagnostics;
+            const bool showGroup = ::TerminalApp::Autofix::ShouldShowDiagnostics(autofixState, detectionEnabled);
             if (const auto group = DiagnosticsGroup())
             {
                 group.Visibility(showGroup ? Visibility::Visible : Visibility::Collapsed);

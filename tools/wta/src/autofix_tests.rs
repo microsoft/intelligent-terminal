@@ -7,17 +7,16 @@
 //! These cover the gating decisions that have no UI and are pure per-tab state
 //! transitions:
 //!
-//!   * cold-start drop (`state != Connected`),
+//!   * cold-start capture without dispatch (`state != Connected`),
 //!   * missing-`tab_id` drop,
 //!   * suggest-mode (auto-suggest off) surfaces a Detected pill but submits no
 //!     LLM turn,
-//!   * busy single-flight: same-pane re-trigger re-emits without resubmitting,
-//!     different-pane re-trigger is dropped.
+//!   * busy single-flight: new failures queue without replacing active work.
 //!
 //! The osc:133 echo-gate / dismiss lifecycle and the agent-pane suppression
 //! edge cases are covered by the sibling tests in `app::tests`.
 
-use super::tests::test_app;
+use super::tests::{complete_autofix_capture, test_app};
 use super::*;
 
 /// Build an Actionable command-failure notification for `pane` owned by `tab`.
@@ -32,28 +31,171 @@ fn failure_notification(pane: &str, tab: Option<&str>) -> WtNotification {
     }
 }
 
-/// Cold start: a failure that lands before the helper's ACP session reaches
-/// `Connected` must be dropped outright — no pill, no arm, no submit. This is
-/// the `trigger_autofix_inner` `state != Connected` early-return that the
-/// release checklist calls out as "cold-start behavior is acceptable".
+/// Startup failures retain captured evidence but do not start an ACP turn.
 #[test]
-fn cold_start_drops_autofix_when_not_connected() {
+fn cold_start_captures_autofix_without_dispatch_before_connected() {
     let mut app = test_app();
     app.state = ConnectionState::Connecting("Initializing ACP...".to_string());
     app.autofix_enabled = true;
 
     app.maybe_trigger_autofix(&failure_notification("pane-cold", Some("tab-cold")));
+    assert_eq!(app.tab_sessions["tab-cold"].prompt_queue.entries.len(), 1);
+    complete_autofix_capture(&mut app, "tab-cold");
 
     assert!(
         app.tab_sessions
             .values()
             .all(|t| t.autofix.pane_id.is_none()),
-        "a failure before Connected must not arm autofix on any tab"
+        "a failure before Connected must not mark analysis as started on any tab"
     );
     assert!(
         app.tab_sessions.values().all(|t| t.turn.is_idle()),
         "a failure before Connected must not submit an autofix turn"
     );
+    assert!(matches!(
+        &app.tab_sessions["tab-cold"].autofix.bar_snapshot,
+        AutofixBarSnapshot::Detected { pane_id, .. } if pane_id == "pane-cold"
+    ));
+}
+
+#[test]
+fn detected_autofix_is_actionable_while_connecting_and_queues_until_ready() {
+    let mut app = test_app();
+    let tab = "connecting-tab";
+    let pane = "failed-shell";
+    app.tab_id = Some(tab.into());
+    app.state = ConnectionState::Connecting("Initializing ACP...".into());
+    app.autofix_enabled = false;
+
+    app.maybe_trigger_autofix(&failure_notification(pane, Some(tab)));
+    assert!(matches!(
+        &app.current_tab().autofix.bar_snapshot,
+        AutofixBarSnapshot::Detected { pane_id, .. } if pane_id == pane
+    ));
+    assert!(app.current_tab().prompt_queue.entries.is_empty());
+    assert!(app.current_tab().turn.is_idle());
+
+    app.handle_autofix_execute_from_detected(pane, Some(tab));
+    assert_eq!(app.current_tab().prompt_queue.entries.len(), 1);
+    complete_autofix_capture(&mut app, tab);
+    assert!(app.current_tab().turn.is_idle());
+    assert!(app.current_tab().autofix.pane_id.is_none());
+
+    app.state = ConnectionState::Connected;
+    app.dispatch_prompt_queues();
+    assert!(app.current_tab().prompt_queue.entries.is_empty());
+    assert!(app.current_tab().turn.is_in_flight());
+    assert_eq!(app.current_tab().autofix.pane_id.as_deref(), Some(pane));
+    assert!(matches!(
+        &app.current_tab().autofix.bar_snapshot,
+        AutofixBarSnapshot::Pending { pane_id, .. } if pane_id == pane
+    ));
+}
+
+#[test]
+fn detected_activation_is_idempotent_while_capturing_connecting_or_busy() {
+    let _locale = crate::test_support::lock_locale();
+    for gate in ["capturing", "connecting", "busy"] {
+        let mut app = test_app();
+        app.tab_id = Some("tab".into());
+        app.autofix_enabled = false;
+        app.state = ConnectionState::Connected;
+        if gate == "connecting" {
+            app.state = ConnectionState::Connecting("startup".into());
+        } else if gate == "busy" {
+            app.current_tab_mut().input = "active human request".into();
+            app.enqueue_input(None);
+            assert!(app.current_tab().turn.is_in_flight());
+        }
+        app.maybe_trigger_autofix(&failure_notification("pane", Some("tab")));
+        app.handle_autofix_execute_from_detected("pane", Some("tab"));
+        let id = app.current_tab().prompt_queue.entries[0].submission.id;
+        let token = app.current_tab().prompt_queue.entries[0]
+            .submission
+            .cancellation_token();
+        let generation = app.current_tab().autofix.generation;
+        for _ in 0..3 {
+            app.handle_autofix_execute_from_detected("pane", Some("tab"));
+        }
+        assert_eq!(app.current_tab().prompt_queue.entries.len(), 1, "{gate}");
+        assert_eq!(app.current_tab().prompt_queue.entries[0].submission.id, id);
+        assert!(!token.is_cancelled());
+        assert_eq!(app.current_tab().autofix.generation, generation);
+        complete_autofix_capture(&mut app, "tab");
+        for _ in 0..3 {
+            app.handle_autofix_execute_from_detected("pane", Some("tab"));
+        }
+        if gate == "capturing" {
+            assert!(app.current_tab().prompt_queue.entries.is_empty());
+            assert_eq!(app.current_tab().turn.prompt_id(), Some(id));
+        } else {
+            assert_eq!(app.current_tab().prompt_queue.entries.len(), 1, "{gate}");
+            assert_eq!(app.current_tab().prompt_queue.entries[0].submission.id, id);
+        }
+    }
+}
+
+#[test]
+fn distinct_identical_diagnostics_can_each_be_activated_once_after_tab_rename() {
+    let _locale = crate::test_support::lock_locale();
+    let mut app = test_app();
+    app.owner_tab_id = Some("tab".into());
+    app.tab_id = Some("tab".into());
+    app.autofix_enabled = false;
+    app.state = ConnectionState::Connecting("startup".into());
+    app.maybe_trigger_autofix(&failure_notification("pane", Some("tab")));
+    app.handle_autofix_execute_from_detected("pane", Some("tab"));
+    complete_autofix_capture(&mut app, "tab");
+    let first_id = app.current_tab().prompt_queue.entries[0].submission.id;
+    app.emit_autofix_state_detected("tab", "pane", "Command failed (exit 1)");
+    app.handle_autofix_execute_from_detected("pane", Some("tab"));
+    assert_eq!(app.current_tab().prompt_queue.entries.len(), 1);
+    app.rename_tab_session("tab", "renamed", Some("new-window"));
+    app.handle_autofix_execute_from_detected("pane", Some("renamed"));
+    assert_eq!(app.current_tab().prompt_queue.entries.len(), 1);
+
+    app.maybe_trigger_autofix(&failure_notification("pane", Some("renamed")));
+    app.handle_autofix_execute_from_detected("pane", Some("renamed"));
+    app.handle_autofix_execute_from_detected("pane", Some("renamed"));
+    assert_eq!(app.current_tab().prompt_queue.entries.len(), 2);
+    let entries = &app.current_tab().prompt_queue.entries;
+    assert_eq!(entries[0].submission.id, first_id);
+    assert_ne!(entries[1].submission.id, first_id);
+    assert_eq!(entries[0].submission.text, entries[1].submission.text);
+    assert!(!entries[0].submission.cancellation_token().is_cancelled());
+    assert_eq!(app.current_tab().autofix.generation, 0);
+}
+
+#[test]
+fn cancelled_or_failed_detected_capture_allows_retry_without_accepting_late_completion() {
+    let _locale = crate::test_support::lock_locale();
+    for failed in [false, true] {
+        let mut app = test_app();
+        app.tab_id = Some("tab".into());
+        app.autofix_enabled = false;
+        app.state = ConnectionState::Connecting("startup".into());
+        app.maybe_trigger_autofix(&failure_notification("pane", Some("tab")));
+        app.handle_autofix_execute_from_detected("pane", Some("tab"));
+        let stale_id = app.current_tab().prompt_queue.entries[0].submission.id;
+        if failed {
+            app.autofix_snapshot_ready(stale_id, Err("capture failed".into()));
+        } else {
+            app.current_tab_mut().cancel_pending_prompts();
+        }
+        app.handle_autofix_execute_from_detected("pane", Some("tab"));
+        let id = app.current_tab().prompt_queue.entries[0].submission.id;
+        assert_ne!(id, stale_id);
+        app.autofix_snapshot_ready(
+            stale_id,
+            Ok(crate::protocol::acp::client::AutofixSnapshot::for_test(
+                "pane",
+            )),
+        );
+        app.handle_autofix_execute_from_detected("pane", Some("tab"));
+        assert_eq!(app.current_tab().prompt_queue.entries.len(), 1);
+        assert_eq!(app.current_tab().prompt_queue.entries[0].submission.id, id);
+        assert!(app.current_tab().prompt_queue.entries[0].capturing);
+    }
 }
 
 /// A notification with no `tab_id` (older WT build, or an event with no tab
@@ -143,6 +285,9 @@ fn detected_action_only_submits_on_the_target_helper() {
         a.current_tab().autofix.bar_snapshot,
         AutofixBarSnapshot::Detected { .. }
     ));
+    assert!(a.current_tab().prompt_queue.entries.is_empty());
+    assert_eq!(b.current_tab().prompt_queue.entries.len(), 1);
+    complete_autofix_capture(&mut b, "tab-b");
     assert!(!b.current_tab().turn.is_idle());
     assert_eq!(b.current_tab().autofix.pane_id.as_deref(), Some("pane-b"));
     let generation = b.current_tab().autofix.generation;
@@ -162,6 +307,7 @@ fn detected_action_rejects_missing_stale_and_cross_tab_targets() {
         let mut app = detected_helper("tab-a", "pane-a");
         app.handle_event(detected_action(pane, tab));
         assert!(app.current_tab().turn.is_idle(), "{pane:?} {tab:?}");
+        assert!(app.current_tab().prompt_queue.entries.is_empty());
         assert!(matches!(
             app.current_tab().autofix.bar_snapshot,
             AutofixBarSnapshot::Detected { .. }
@@ -176,6 +322,8 @@ fn legacy_detected_action_without_tab_still_requires_matching_pane() {
     a.handle_event(detected_action("pane-b", None));
     b.handle_event(detected_action("pane-b", None));
     assert!(a.current_tab().turn.is_idle());
+    assert!(a.current_tab().prompt_queue.entries.is_empty());
+    complete_autofix_capture(&mut b, "tab-b");
     assert!(!b.current_tab().turn.is_idle());
 }
 
@@ -191,12 +339,9 @@ fn detected_action_does_not_replay_after_source_pane_closes() {
     ));
 }
 
-/// Single-flight, same pane: re-triggering autofix for the *same* failing pane
-/// while a turn is already in flight must re-emit the bar state only — it must
-/// not bump the generation or submit a second turn (the agent is already
-/// working on it).
+/// A same-pane failure queues the latest diagnostic without changing the active generation.
 #[test]
-fn busy_same_pane_reemit_does_not_resubmit() {
+fn busy_same_pane_queues_latest_without_replacing_active_turn() {
     let mut app = test_app();
     app.state = ConnectionState::Connected;
     app.autofix_enabled = true;
@@ -205,6 +350,7 @@ fn busy_same_pane_reemit_does_not_resubmit() {
 
     // First trigger arms the pane and submits a turn.
     app.maybe_trigger_autofix(&failure_notification(pane, Some(tab)));
+    complete_autofix_capture(&mut app, tab);
     assert_eq!(
         app.tab_mut(tab).autofix.pane_id.as_deref(),
         Some(pane),
@@ -216,8 +362,9 @@ fn busy_same_pane_reemit_does_not_resubmit() {
     );
     let gen_after_first = app.tab_mut(tab).autofix.generation;
 
-    // Same pane, still busy: re-emit only — no generation bump, no resubmit.
+    // Same pane, still busy: queue without changing the active generation.
     app.maybe_trigger_autofix(&failure_notification(pane, Some(tab)));
+    assert_eq!(app.tab_sessions[tab].prompt_queue.entries.len(), 1);
     assert_eq!(
         app.tab_mut(tab).autofix.generation,
         gen_after_first,
@@ -230,11 +377,9 @@ fn busy_same_pane_reemit_does_not_resubmit() {
     );
 }
 
-/// Single-flight, different pane: a failure in a *different* pane while the
-/// tab already has an autofix turn in flight is dropped — the originally armed
-/// pane stays armed and the new pane is not adopted.
+/// A different-pane failure waits without stealing the active turn.
 #[test]
-fn busy_different_pane_is_dropped() {
+fn busy_different_pane_is_queued_without_replacing_active_turn() {
     let mut app = test_app();
     app.state = ConnectionState::Connected;
     app.autofix_enabled = true;
@@ -243,6 +388,7 @@ fn busy_different_pane_is_dropped() {
     let pane_b = "pane-busy-b";
 
     app.maybe_trigger_autofix(&failure_notification(pane_a, Some(tab)));
+    complete_autofix_capture(&mut app, tab);
     assert_eq!(
         app.tab_mut(tab).autofix.pane_id.as_deref(),
         Some(pane_a),
@@ -250,8 +396,9 @@ fn busy_different_pane_is_dropped() {
     );
     let gen_after_first = app.tab_mut(tab).autofix.generation;
 
-    // Different pane while A's turn is in flight → dropped.
+    // Different pane while A's turn is in flight waits in the queue.
     app.maybe_trigger_autofix(&failure_notification(pane_b, Some(tab)));
+    assert_eq!(app.tab_sessions[tab].prompt_queue.entries.len(), 1);
     assert_eq!(
         app.tab_mut(tab).autofix.pane_id.as_deref(),
         Some(pane_a),
@@ -349,6 +496,7 @@ fn closing_source_pane_cancels_pending_autofix() {
     let tab = "tab-pending";
 
     app.maybe_trigger_autofix(&failure_notification(pane, Some(tab)));
+    complete_autofix_capture(&mut app, tab);
     let generation = app.tab_mut(tab).autofix.generation;
     // UI-initiated pane close currently races tab lookup in C++ and commonly
     // arrives without tab_id. The pane ID is globally unique and must still

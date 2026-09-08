@@ -9,30 +9,31 @@
 
 use super::*;
 
-/// Per-tab autofix state machine. Each tab tracks its own pending /
-/// armed / suggested autofix independently so a failure in a background
-/// tab doesn't clobber an armed fix in the active tab and vice versa.
+/// Per-tab autofix state machine. Each tab tracks its own diagnostic,
+/// analysis, and result independently so a background failure cannot
+/// overwrite another tab's work.
 /// The bottom-bar projection is per-tab too: WTA only emits
 /// `autofix_state` events to C++ when the target tab is currently
 /// active, and re-emits the active tab's snapshot on tab_changed.
 #[derive(Debug, Clone, Default)]
 pub struct TabAutofixState {
-    /// Failing pane for Pending/Armed. Cleared when the user dismisses
+    /// Failing pane for an active analysis. Cleared when the user dismisses
     /// (Esc), the error resolves (exit 0 on the same pane), or the fix
     /// is executed.
     pub pane_id: Option<String>,
     /// Monotonic timestamp captured when `pane_id` is armed, used for
     /// ErrorFixResolved telemetry elapsed time.
     pub armed_at: Option<std::time::Instant>,
-    /// Failing pane for the Suggested terminal state (a non-actionable
-    /// explanation in chat — distinct from `pane_id` so the two
-    /// kinds of "the bar is showing something" can be reasoned about
-    /// independently).
+    /// Failing pane whose completed result is available for review.
     pub suggested_pane_id: Option<String>,
-    /// Bumped on every new trigger / cancel. Snapshotted into
-    /// `AutofixContext.generation` at submit time; chunks whose
+    /// Bumped when an autofix turn starts or is cancelled. Snapshotted into
+    /// `AutofixContext.generation` at dispatch time; chunks whose
     /// snapshot diverges are dropped as stale.
     pub generation: u64,
+    /// Accepted activation of the current Detected diagnostic. New failure
+    /// notifications reset this identity even when their pane and text are identical.
+    /// Independent of `generation`, which fences output from the active turn.
+    pub detected_request_id: Option<u64>,
     /// Last bottom-bar state we emitted (or would have emitted, if the
     /// tab wasn't active). Used to re-emit on tab_changed so the bar
     /// shows the right state when the user comes back to this tab.
@@ -69,9 +70,8 @@ pub enum AutofixBarSnapshot {
     /// the agent pane chat. Surfaced ONLY when the pane is not open — the
     /// bar invites the user to open the pane and review. Once the pane
     /// opens, the snapshot flips to `Idle` (the result is already visible
-    /// there, so the bar goes quiet). Replaces the old Armed/Suggested
-    /// split: autofix no longer auto-executes, so a fix and an explanation
-    /// surface identically (open pane → review → act manually).
+    /// there, so the bar goes quiet). A fix and an explanation surface
+    /// identically (open pane → review → act manually).
     Review {
         pane_id: String,
         hotkey_hint: String,
@@ -80,7 +80,9 @@ pub enum AutofixBarSnapshot {
 
 fn autofix_pane_matches(tab: &TabSession, pane_id: &str) -> (bool, bool) {
     let turn_matches = tab.turn.prompt().is_some_and(|prompt| {
-        prompt.autofix.is_some() && prompt.context.target_pane_id() == Some(pane_id)
+        tab.prompt_queue.active_automatic_id == Some(prompt.id)
+            && prompt.autofix.is_some()
+            && prompt.context.target_pane_id() == Some(pane_id)
     });
     let snapshot_matches = match &tab.autofix.bar_snapshot {
         AutofixBarSnapshot::Detected {
@@ -113,10 +115,6 @@ impl App {
     /// auto-suggest setting is off, this just emits the Detected
     /// snapshot — the LLM is not invoked.
     pub(super) fn trigger_autofix_inner(&mut self, notification: &WtNotification, forced: bool) {
-        if self.state != ConnectionState::Connected {
-            return;
-        }
-
         // No `is_agent_pane` suppression here. This path is reached only
         // for `vt_sequence` notifications (see the dispatcher in
         // `handle_event`), and `vt_sequence` Actionable events come from
@@ -131,13 +129,8 @@ impl App {
         // the registry (e.g. left by a hook that misreported `pane_id`)
         // must not be allowed to eat a real shell command failure.
 
-        // Resolve the target tab: the tab that owns the failing pane.
-        // Without it we can't route the autofix to the right ACP session
-        // (the prior code fell back to `self.tab_id` and would land the
-        // fix in whichever tab WTA happened to be focused on — see
-        // comment block at `maybe_trigger_autofix` head). In release
-        // builds we drop the event with a warn instead of panicking,
-        // per Step 2 decision #4.
+        // Only the tab owning the failing pane can supply its ACP session.
+        // Missing routing identity must never fall back to the focused tab.
         let target_tab_id = match notification.tab_id.clone() {
             Some(t) => t,
             None => {
@@ -152,10 +145,10 @@ impl App {
 
         // Suggest-mode: when auto-suggest is off AND this isn't a user-
         // forced activation, just surface the Detected pill and let the
-        // user decide whether to call the LLM. Skips the busy / generation
-        // / submit logic below — none of that machinery applies until the
-        // user activates the pill.
+        // user decide whether to call the LLM. No request is accepted until
+        // the user activates this diagnostic.
         if !self.autofix_enabled && !forced {
+            self.tab_mut(&target_tab_id).autofix.detected_request_id = None;
             tracing::info!(
                 target: "autofix",
                 pane_id = %notification.pane_id,
@@ -175,144 +168,11 @@ impl App {
             return;
         }
 
-        if self.prompt_reconfiguration_pending_for_tab(&target_tab_id) {
-            tracing::info!(
-                target: "autofix",
-                tab_id = %target_tab_id,
-                "skipping autofix while provider-native Yolo reconciliation is pending",
-            );
-            return;
-        }
-
-        // Latest event always wins — but only if we can actually act on it.
-        // The ACP transport single-flights at the tab level, so if the
-        // target tab already has a prompt in flight, submitting another
-        // one results in `tab.turn = Submitted(new)` + ACP `AgentBusy`
-        // rejection — the buffer and the wire diverge, and old chunks
-        // corrupt the new turn's state. Defer instead.
-        let (same_pane, already_busy, armed_pane_dbg) = {
-            let tab = self.tab_mut(&target_tab_id);
-            let same = tab.autofix.pane_id.as_deref() == Some(notification.pane_id.as_str());
-            let busy = !tab.turn.is_idle()
-                && !matches!(
-                    tab.turn,
-                    TurnState::Surfaced {
-                        end_pending: false,
-                        ..
-                    }
-                );
-            (same, busy, tab.autofix.pane_id.clone())
-        };
-
-        if already_busy {
-            if same_pane {
-                // Same pane re-trigger: refresh the bar's summary text but
-                // don't re-submit — the agent is already working on it.
-                tracing::info!(
-                    target: "autofix",
-                    pane_id = %notification.pane_id,
-                    tab_id = %target_tab_id,
-                    "autofix re-trigger same pane while pending — re-emit only",
-                );
-                // This branch is only reached on a fresh D event (the
-                // dispatcher routes vt_sequence here); arm the echo gate.
-                self.tab_mut(&target_tab_id).autofix.trigger_echo_pane =
-                    Some(notification.pane_id.clone());
-                self.emit_autofix_state_pending(
-                    &target_tab_id,
-                    &notification.pane_id,
-                    &notification.summary,
-                );
-            } else {
-                // Different pane while busy: drop. The user can Esc the
-                // current autofix to free the slot if they want this one.
-                tracing::info!(
-                    target: "autofix",
-                    pane_id = %notification.pane_id,
-                    tab_id = %target_tab_id,
-                    armed_pane = ?armed_pane_dbg,
-                    "skipping autofix: previous turn still in-flight",
-                );
-            }
-            return;
-        }
-
-        // For all other cases (different pane, or Armed state, or Idle):
-        // bump the target tab's generation to stale any in-flight response,
-        // then submit a new autofix turn via the state machine.
-        let new_gen = {
-            let tab = self.tab_mut(&target_tab_id);
-            tab.autofix.generation = tab.autofix.generation.wrapping_add(1);
-            // A new analysis supersedes any leftover suggestion. The C++ side
-            // will swap to Pending on the new pending event below; emitting an
-            // explicit cleared first would create a flicker.
-            tab.autofix.suggested_pane_id = None;
-            tab.autofix.generation
-        };
-
-        // Route through the target tab's ACP session. `tab_id` carries the
-        // failing tab's StableId so the ACP layer's `tab_to_session` map
-        // routes (or lazy-creates) to the right session even when the
-        // failing tab isn't currently focused. `source_pane_id` points at
-        // the failing pane so the agent can read its buffer.
-        let pane_context = PaneContext {
-            pane_id: self.pane_id.clone(),
-            tab_id: Some(target_tab_id.clone()),
-            window_id: self.window_id.clone(),
-            cwd: None,
-            source_pane_id: Some(notification.pane_id.clone()),
-        };
-
-        // Store the failing pane ID on the target tab so the Esc dismiss
-        // path can find it (legacy; the new state machine carries it via
-        // AutofixContext), and arm telemetry timing for resolution.
-        {
-            let tab = self.tab_mut(&target_tab_id);
-            tab.autofix.pane_id = Some(notification.pane_id.clone());
-            tab.autofix.armed_at = Some(std::time::Instant::now());
-        }
-
-        let prompt =
-            PromptSubmission::new_autofix_failure(notification.summary.clone(), Some(pane_context))
-                .with_byok(self.current_model_is_byok())
-                .with_agent_id(self.current_agent_id.clone());
-        let submitted = SubmittedPrompt {
-            id: prompt.id,
-            text: prompt.text.clone(),
-            submitted_at_unix_s: prompt.submitted_at_unix_s,
-            context: TurnContext::with_target_pane(notification.pane_id.clone()),
-            autofix: Some(AutofixContext {
-                generation: new_gen,
-            }),
-        };
-        // Install the turn on the target tab — bypasses session_to_tab
-        // lookup so a tab with no ACP session yet still gets the prompt
-        // queued correctly (the ACP layer creates the session lazily when
-        // it processes the prompt).
-        self.turn_submit_prompt_for_tab_with_cancellation(
-            &target_tab_id,
-            submitted,
-            prompt.cancellation_token(),
-        );
-        tracing::info!(target: "autofix", pane_id = %notification.pane_id, tab_id = %target_tab_id, generation = new_gen, "sending auto-fix prompt");
-        let _ = self.prompt_tx.send(prompt);
-
-        // Light up the bottom-bar diagnostic icon in "Pending" state — the
-        // user knows something went wrong even before the agent responds.
-        // Arm the echo gate ONLY for D-driven entries (forced=false).
-        // The `execute_from_detected` path (forced=true) fires this on a
-        // stable prompt — no echo A is in flight, and arming would eat
-        // the user's first Enter as a fake echo. Bug repro: typo →
-        // Detected pill → click pill → Pending → Armed → press Enter
-        // (consumed as echo) → press Enter again (finally dismisses).
-        if !forced {
-            self.tab_mut(&target_tab_id).autofix.trigger_echo_pane =
-                Some(notification.pane_id.clone());
-        }
-        self.emit_autofix_state_pending(
+        self.enqueue_autofix(
             &target_tab_id,
             &notification.pane_id,
             &notification.summary,
+            forced,
         );
     }
 
@@ -356,6 +216,7 @@ impl App {
         pane_id: &str,
         summary: &str,
     ) {
+        self.tab_mut(target_tab_id).autofix.suggested_pane_id = None;
         let snapshot = AutofixBarSnapshot::Detected {
             pane_id: pane_id.to_string(),
             summary: summary.to_string(),
@@ -389,10 +250,6 @@ impl App {
         self.set_bar_snapshot(target_tab_id, snapshot);
     }
 
-    /// Execute the currently armed autofix on behalf of the user (they
-    /// clicked the bottom-bar button or pressed Ctrl+. in the terminal
-    /// window). Mirrors the Enter-key path in the recommendations handler
-    /// but without requiring the agent pane to be focused.
     /// User activated the Detected pill (click or hotkey). Read the
     /// active tab's cached snapshot, synthesize a `WtNotification` from
     /// it, and replay through `trigger_autofix_inner` with `forced=true`
@@ -434,6 +291,19 @@ impl App {
                 return;
             }
         };
+        let tab = self.current_tab();
+        if tab.autofix.detected_request_id.is_some_and(|request_id| {
+            tab.turn.prompt_id() == Some(request_id)
+                || tab
+                    .prompt_queue
+                    .entries
+                    .iter()
+                    .any(|entry| entry.submission.id == request_id)
+        }) {
+            tracing::debug!(target: "autofix", request_id = ?tab.autofix.detected_request_id,
+                requested_pane_id, "diagnostic activation already accepted");
+            return;
+        }
         let notification = WtNotification {
             severity: WtEventSeverity::Actionable,
             pane_id,
@@ -515,17 +385,32 @@ impl App {
         };
         let choice_label = choice.choice;
         if !routed {
+            let Some(prompt_id) = self.current_tab().turn.prompt_id() else {
+                return;
+            };
+            self.current_tab_mut().pending_queue_action = Some(prompt_id);
             let autofix = &mut self.current_tab_mut().autofix;
             autofix.pane_id = None;
             autofix.armed_at = None;
             self.clear_recommendations();
-            let _ = self
+            if self
                 .recommendation_tx
                 .send(crate::coordinator::ChoiceExecution {
                     choice,
                     insert_only: false,
                     context: TurnContext::with_target_pane(armed_pane),
-                });
+                    completion: Some((active_tab.clone(), prompt_id)),
+                })
+                .is_err()
+            {
+                let tab = self.current_tab_mut();
+                tab.pending_queue_action = None;
+                tab.cancel_pending_prompts();
+                tab.messages
+                    .push(ChatMessage::Error(t!("connection.lost").into_owned()));
+                self.emit_autofix_state_cleared(&active_tab);
+                return;
+            }
         }
         self.push_execution_info(format!("Auto-executing choice {}.", choice_label));
         self.emit_autofix_state_cleared(&active_tab);
@@ -539,6 +424,13 @@ impl App {
     /// turn also advances its generation so late agent output cannot restore
     /// a result for a pane that no longer exists.
     pub(super) fn handle_autofix_pane_closed(&mut self, event_tab_id: Option<&str>, pane_id: &str) {
+        if let Some(tab_id) = event_tab_id {
+            self.invalidate_pending_autofix(tab_id, pane_id);
+        } else {
+            for tab_id in self.tab_sessions.keys().cloned().collect::<Vec<_>>() {
+                self.invalidate_pending_autofix(&tab_id, pane_id);
+            }
+        }
         let target_tab_id = event_tab_id.map(str::to_string).or_else(|| {
             self.tab_sessions.iter().find_map(|(tab_id, tab)| {
                 let (turn_matches, state_matches) = autofix_pane_matches(tab, pane_id);
@@ -554,10 +446,9 @@ impl App {
         let (turn_matches, state_matches) = autofix_pane_matches(tab, pane_id);
 
         if turn_matches {
-            self.request_turn_cancel_for_tab(&target_tab_id);
+            self.request_background_turn_cancel_for_tab(&target_tab_id);
         } else if state_matches {
             let tab = self.tab_mut(&target_tab_id);
-            tab.autofix.generation = tab.autofix.generation.wrapping_add(1);
             if tab.autofix.pane_id.as_deref() == Some(pane_id) {
                 tab.autofix.pane_id = None;
                 tab.autofix.armed_at = None;

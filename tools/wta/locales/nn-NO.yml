@@ -122,6 +122,24 @@ agents.status.idle: "Inaktiv"
 # ── Layout welcome hint (src/ui/layout.rs) ──────────────────────────────────
 layout.welcome_hint: "  (Ctrl+Shift+. for å vise/gøyme agentpanelet • Ctrl+Shift+/ for å vise/gøyme agentøkta)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}
 
+# ── Prompt queue (agent pane) ───────────────────────────────────────────────
+# Pending input has not been sent to the AI agent.
+queue.header: "Meldingar i kø: %{count}"  # Automatic pinned list above input: total pending user and automatic requests; hidden when empty
+queue.full: "Køen er full. Inndata er tekne vare på."
+queue.enqueued: "Meldinga er lagd i kø."  # Info notification when a user message must wait before being sent to the AI agent
+queue.cancelled: "Avbraut %{count} meldingar i køen. Du kan sende ei ny melding."  # Info notification when waiting requests are discarded after cancellation, failure, or session reset
+queue.session_busy: "Meldingar i køen høyrer til denne samtalen. Bruk /stop for å avbryte dei før du byter økt eller konfigurasjon."  # {Locked="/stop"}
+queue.capture_failed: "Kunne ikkje ta vare på feilkonteksten: %{error}"
+queue.auto: "Automatisk retting"  # Label for a queued, automatically requested analysis of a failed shell command
+# Auto-fix diagnostic capture errors for the source terminal pane, shown through queue.capture_failed.
+# Capture collects shell context, working directory and output, not a screenshot. %{pane} is a pane ID.
+queue.snapshot_source_required: "Innsamling av data for automatisk retting krev eit eksplisitt oppgjeve kjeldepanel."
+queue.snapshot_source_unavailable: "Kjeldepanelet %{pane} for automatisk retting er utilgjengeleg."
+queue.snapshot_shell_unavailable: "Kjeldepanelet %{pane} for automatisk retting har ingen skalkontekst."
+queue.snapshot_cwd_unavailable: "Kjeldepanelet %{pane} for automatisk retting har inga arbeidsmappe."
+queue.snapshot_output_unavailable: "Kjeldepanelet %{pane} for automatisk retting har ingen lesbare utdata."
+queue.snapshot_context_changed: "Kommandoen i kjeldepanelet %{pane} vart endra før feilkonteksten kunne takast vare på."
+
 # ── Connection state ────────────────────────────────────────────────────────
 # Preparing the AI agent connection, including preflight and reuse of a cached agent.
 connection.starting: "Førebur tilkopling til agenten..."
