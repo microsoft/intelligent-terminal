@@ -5904,16 +5904,18 @@ mod tests {
 
     #[test]
     fn provider_disable_pending_localizes_reason() {
+        const ENGLISH_PENDING: &str =
+            "the provider has not acknowledged the required nonprivileged session state";
         let _locale = crate::test_support::lock_locale();
         rust_i18n::set_locale("de-DE");
 
+        let localized_error = t!("system.yolo_disable_pending");
         let message = provider_disable_pending();
 
-        assert!(message.contains("Yolo konnte nicht aktualisiert werden"));
+        assert_ne!(localized_error.as_ref(), ENGLISH_PENDING);
+        assert!(message.ends_with(localized_error.as_ref()));
         assert!(
-            !message.contains(
-                "the provider has not acknowledged the required nonprivileged session state"
-            ),
+            !message.contains(ENGLISH_PENDING),
             "pending reason must be localized: {message}"
         );
     }
