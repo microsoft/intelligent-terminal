@@ -792,7 +792,7 @@ impl App {
         if !dispatched {
             let tab = self.session_tab_mut(session_id);
             tab.pending_queue_action = None;
-            tab.cancel_pending_prompts();
+            tab.pause_pending_prompts();
             tab.messages
                 .push(ChatMessage::Error(t!("connection.lost").into_owned()));
         }
@@ -873,7 +873,7 @@ impl App {
 
     pub(super) fn request_turn_cancel_for_tab(&mut self, target_tab: &str) {
         if let Some(tab) = self.tab_sessions.get_mut(target_tab) {
-            tab.cancel_pending_prompts();
+            tab.pause_pending_prompts();
         }
         self.request_background_turn_cancel_for_tab(target_tab);
     }

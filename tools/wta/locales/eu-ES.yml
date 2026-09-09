@@ -129,7 +129,16 @@ queue.header: "Ilarako mezuak: %{count}"  # Automatic pinned list above input: t
 queue.full: "Ilara beteta dago. Zure sarrera gorde da."
 queue.enqueued: "Mezua ilaran jarri da."  # Info notification when a user message must wait before being sent to the AI agent
 queue.cancelled: "Ilarako %{count} mezu bertan behera utzi dira. Mezu berri bat bidal dezakezu."  # Info notification when waiting requests are discarded after cancellation, failure, or session reset
-queue.session_busy: "Ilarako mezuak elkarrizketa honetakoak dira. Erabili /stop mezuak bertan behera uzteko saioa edo konfigurazioa aldatu aurretik."  # {Locked="/stop"}
+queue.session_busy: "Ilarako mezuak elkarrizketa honetakoak dira. Bidali edo baztertu mezuak saioa edo konfigurazioa aldatu aurretik."
+queue.paused_header: "Pausatuta: %{count} zain; ez dira automatikoki bidaltzen"  # Pinned heading: automatic sending is stopped
+queue.recall: "Berreskuratu azkena"  # Button: restore the newest pending request to the editor
+queue.send_remaining: "Bidali gainerakoak"  # Button: resume sending pending requests
+queue.discard: "Baztertu gainerakoak"  # Button: discard pending requests, not the draft or active task
+queue.draft_busy: "Bidali edo garbitu uneko zirriborroa ilarako eskaera bat berreskuratu aurretik."
+queue.enqueued_paused: "Gelditutako ilarara gehitu da. Hautatu Bidali gainerakoak abiarazteko."
+queue.resubmit: "Berriro bidali behar da"  # Prefix: fix evidence expired; recall and submit again
+queue.resume_blocked: "Zain dauden eskaerak ezin dira bidali oraindik. Konpondu konexio-arazoa edo amaitu interakzio aktiboa; berreskuratu iraungitako zuzenketa-eskaerak eta bidali berriro."
+queue.stopped: "Bidalketa automatikoa gelditu da. Zain zeuden erabiltzaile-eskaerak gorde dira."
 queue.capture_failed: "Ezin izan da errorearen testuingurua gorde: %{error}"
 queue.auto: "Zuzenketa automatikoa"  # Label for a queued, automatically requested analysis of a failed shell command
 # Auto-fix diagnostic capture errors for the source terminal pane, shown through queue.capture_failed.

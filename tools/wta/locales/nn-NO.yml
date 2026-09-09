@@ -129,7 +129,16 @@ queue.header: "Meldingar i kø: %{count}"  # Automatic pinned list above input: 
 queue.full: "Køen er full. Inndata er tekne vare på."
 queue.enqueued: "Meldinga er lagd i kø."  # Info notification when a user message must wait before being sent to the AI agent
 queue.cancelled: "Avbraut %{count} meldingar i køen. Du kan sende ei ny melding."  # Info notification when waiting requests are discarded after cancellation, failure, or session reset
-queue.session_busy: "Meldingar i køen høyrer til denne samtalen. Bruk /stop for å avbryte dei før du byter økt eller konfigurasjon."  # {Locked="/stop"}
+queue.session_busy: "Meldingar i køen høyrer til denne samtalen. Send eller forkast dei før du byter økt eller konfigurasjon."
+queue.paused_header: "Sett på pause: %{count} ventar; blir ikkje sende automatisk"  # Pinned heading: automatic sending is stopped
+queue.recall: "Hent tilbake siste"  # Button: restore the newest pending request to the editor
+queue.send_remaining: "Send resten"  # Button: resume sending pending requests
+queue.discard: "Forkast resten"  # Button: discard pending requests, not the draft or active task
+queue.draft_busy: "Send eller tøm det gjeldande utkastet før du hentar tilbake ein førespurnad frå køen."
+queue.enqueued_paused: "Lagt til i den stoppa køen. Vel Send resten for å starte han."
+queue.resubmit: "Må sendast på nytt"  # Prefix: fix evidence expired; recall and submit again
+queue.resume_blocked: "Ventande førespurnader kan ikkje sendast enno. Løys tilkoplingsproblemet eller fullfør den aktive samhandlinga; hent tilbake utgåtte rettingsførespurnader og send dei på nytt."
+queue.stopped: "Automatisk sending stoppa. Ventande brukarførespurnader er tekne vare på."
 queue.capture_failed: "Kunne ikkje ta vare på feilkonteksten: %{error}"
 queue.auto: "Automatisk retting"  # Label for a queued, automatically requested analysis of a failed shell command
 # Auto-fix diagnostic capture errors for the source terminal pane, shown through queue.capture_failed.

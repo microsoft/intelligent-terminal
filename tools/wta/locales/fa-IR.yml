@@ -142,7 +142,16 @@ queue.header: "پیام‌های در صف: %{count}"  # Automatic pinned list a
 queue.full: "صف پر است. ورودی شما حفظ شده است."
 queue.enqueued: "پیام به صف اضافه شد."  # Info notification when a user message must wait before being sent to the AI agent
 queue.cancelled: "%{count} پیام در صف لغو شد. می‌توانید پیام جدیدی ارسال کنید."  # Info notification when waiting requests are discarded after cancellation, failure, or session reset
-queue.session_busy: "پیام‌های در صف متعلق به این گفتگو هستند. پیش از تغییر نشست یا پیکربندی، برای لغو آن‌ها از /stop استفاده کنید."  # {Locked="/stop"}
+queue.session_busy: "پیام‌های در صف متعلق به این گفتگو هستند. پیش از تغییر نشست یا پیکربندی، آن‌ها را ارسال یا حذف کنید."
+queue.paused_header: "موقتاً متوقف: %{count} در انتظار؛ خودکار ارسال نمی‌شوند"  # Pinned heading: automatic sending is stopped
+queue.recall: "بازیابی آخرین درخواست"  # Button: restore the newest pending request to the editor
+queue.send_remaining: "ارسال باقی‌مانده"  # Button: resume sending pending requests
+queue.discard: "حذف باقی‌مانده"  # Button: discard pending requests, not the draft or active task
+queue.draft_busy: "پیش از بازیابی یک درخواست از صف، پیش‌نویس فعلی را ارسال یا پاک کنید."
+queue.enqueued_paused: "به صف متوقف‌شده اضافه شد. برای شروع، ارسال باقی‌مانده را انتخاب کنید."
+queue.resubmit: "نیاز به ارسال مجدد"  # Prefix: fix evidence expired; recall and submit again
+queue.resume_blocked: "درخواست‌های منتظر هنوز قابل ارسال نیستند. مشکل اتصال را برطرف کنید یا تعامل فعال را به پایان برسانید؛ درخواست‌های رفع اشکال منقضی‌شده را بازیابی و دوباره ارسال کنید."
+queue.stopped: "ارسال خودکار متوقف شد. درخواست‌های در انتظار کاربر حفظ شدند."
 queue.capture_failed: "حفظ زمینهٔ خطا ممکن نشد: %{error}"
 queue.auto: "رفع خودکار"  # Label for a queued, automatically requested analysis of a failed shell command
 # Auto-fix diagnostic capture errors for the source terminal pane, shown through queue.capture_failed.

@@ -142,7 +142,16 @@ queue.header: "Kuyruktaki iletiler: %{count}"  # Automatic pinned list above inp
 queue.full: "Kuyruk dolu. Girdiniz korundu."
 queue.enqueued: "İleti kuyruğa eklendi."  # Info notification when a user message must wait before being sent to the AI agent
 queue.cancelled: "Kuyruktaki %{count} ileti iptal edildi. Yeni bir ileti gönderebilirsiniz."  # Info notification when waiting requests are discarded after cancellation, failure, or session reset
-queue.session_busy: "Kuyruktaki iletiler bu konuşmaya aittir. Oturumları veya yapılandırmayı değiştirmeden önce iletileri iptal etmek için /stop kullanın."  # {Locked="/stop"}
+queue.session_busy: "Kuyruktaki iletiler bu konuşmaya aittir. Oturumları veya yapılandırmayı değiştirmeden önce iletileri gönderin ya da atın."
+queue.paused_header: "Duraklatıldı: %{count} bekliyor; otomatik olarak gönderilmez"  # Pinned heading: automatic sending is stopped
+queue.recall: "Sonuncuyu geri al"  # Button: restore the newest pending request to the editor
+queue.send_remaining: "Kalanları gönder"  # Button: resume sending pending requests
+queue.discard: "Kalanları at"  # Button: discard pending requests, not the draft or active task
+queue.draft_busy: "Kuyruktaki bir isteği geri almadan önce geçerli taslağı gönderin veya temizleyin."
+queue.enqueued_paused: "Durdurulan kuyruğa eklendi. Başlatmak için Kalanları gönder'i seçin."
+queue.resubmit: "Yeniden gönderilmeli"  # Prefix: fix evidence expired; recall and submit again
+queue.resume_blocked: "Bekleyen istekler henüz gönderilemiyor. Bağlantı sorununu giderin veya etkin etkileşimi tamamlayın; süresi dolmuş düzeltme isteklerini geri alıp yeniden gönderin."
+queue.stopped: "Otomatik gönderim durduruldu. Bekleyen kullanıcı istekleri korundu."
 queue.capture_failed: "Hata bağlamı korunamadı: %{error}"
 queue.auto: "Otomatik düzeltme"  # Label for a queued, automatically requested analysis of a failed shell command
 # Auto-fix diagnostic capture errors for the source terminal pane, shown through queue.capture_failed.

@@ -125,7 +125,16 @@ queue.header: "佇列中的訊息：%{count}"  # Automatic pinned list above inp
 queue.full: "佇列已滿。已保留您的輸入。"
 queue.enqueued: "訊息已加入佇列。"  # Info notification when a user message must wait before being sent to the AI agent
 queue.cancelled: "已取消佇列中的 %{count} 則訊息。您可以傳送新訊息。"  # Info notification when waiting requests are discarded after cancellation, failure, or session reset
-queue.session_busy: "佇列中的訊息屬於此對話。變更工作階段或設定前，請使用 /stop 取消這些訊息。"  # {Locked="/stop"}
+queue.session_busy: "佇列中的訊息屬於此對話。變更工作階段或設定前，請傳送或捨棄這些訊息。"
+queue.paused_header: "已暫停：%{count} 則待傳送，不會自動傳送"  # Pinned heading: automatic sending is stopped
+queue.recall: "取回最後一則"  # Button: restore the newest pending request to the editor
+queue.send_remaining: "傳送剩餘項目"  # Button: resume sending pending requests
+queue.discard: "捨棄剩餘項目"  # Button: discard pending requests, not the draft or active task
+queue.draft_busy: "取回佇列中的要求前，請先提交或清空目前的草稿。"
+queue.enqueued_paused: "已加入停止傳送的佇列。選擇「傳送剩餘項目」以開始傳送。"
+queue.resubmit: "需要重新提交"  # Prefix: fix evidence expired; recall and submit again
+queue.resume_blocked: "暫時無法傳送等待中的要求。請解決連線問題或完成目前的互動；取回已過期的修復要求並重新提交。"
+queue.stopped: "已停止自動傳送。待傳送的使用者要求已保留。"
 queue.capture_failed: "無法保留錯誤內容：%{error}"
 queue.auto: "自動修復"  # Label for a queued, automatically requested analysis of a failed shell command
 # Auto-fix diagnostic capture errors for the source terminal pane, shown through queue.capture_failed.

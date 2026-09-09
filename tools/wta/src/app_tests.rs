@@ -9877,7 +9877,7 @@ async fn plan_surfaces_card_in_chat() {
 /// Render a driven `App` to a ratatui `TestBackend` and return the visible
 /// buffer as text (rows joined by `\n`). Lets scenarios assert on what is
 /// actually painted, not just on `App` state.
-fn render_to_text(app: &mut App, width: u16, height: u16) -> String {
+pub(super) fn render_to_text(app: &mut App, width: u16, height: u16) -> String {
     use ratatui::{backend::TestBackend, Terminal};
     let backend = TestBackend::new(width, height);
     let mut terminal = Terminal::new(backend).expect("test terminal");
@@ -9890,7 +9890,7 @@ fn render_to_text(app: &mut App, width: u16, height: u16) -> String {
     buffer_to_text(terminal.backend().buffer())
 }
 
-fn render_to_buffer(app: &mut App, width: u16, height: u16) -> ratatui::buffer::Buffer {
+pub(super) fn render_to_buffer(app: &mut App, width: u16, height: u16) -> ratatui::buffer::Buffer {
     use ratatui::{backend::TestBackend, Terminal};
     let backend = TestBackend::new(width, height);
     let mut terminal = Terminal::new(backend).expect("test terminal");
@@ -10096,17 +10096,22 @@ fn render_prompt_queue_automatically_shows_count_and_preserves_active_output() {
     let input_row = app.input_dialog_area.unwrap().y as usize;
     assert!(rendered
         .lines()
-        .nth(input_row - 2)
+        .nth(input_row - 3)
         .unwrap()
         .contains(header.as_ref()));
     assert!(
         rendered
             .lines()
-            .nth(input_row - 1)
+            .nth(input_row - 2)
             .unwrap()
             .contains("QUEUED_REQUEST_XYZ"),
-        "waiting input must be pinned directly above the composer:\n{rendered}"
+        "waiting input must be pinned above its controls and the composer:\n{rendered}"
     );
+    assert!(rendered
+        .lines()
+        .nth(input_row - 1)
+        .unwrap()
+        .contains("Alt+R"));
     assert_eq!(app.current_tab().turn.prompt_id(), active_prompt_id);
 
     let (responder, _response) = tokio::sync::oneshot::channel();
@@ -10162,7 +10167,7 @@ fn render_prompt_queue_stays_pinned_while_chat_scrolls() {
     app.current_tab_mut().cursor_pos = "draft stays editable".len();
     let before = render_to_text(&mut app, 80, 16);
     let input_area = app.input_dialog_area.unwrap();
-    let queue_start = input_area.y as usize - 3;
+    let queue_start = input_area.y as usize - 4;
     assert!(before
         .lines()
         .nth(queue_start)
@@ -10178,6 +10183,11 @@ fn render_prompt_queue_stays_pinned_while_chat_scrolls() {
         .nth(queue_start + 2)
         .unwrap()
         .contains("PINNED_SECOND"));
+    assert!(before
+        .lines()
+        .nth(queue_start + 3)
+        .unwrap()
+        .contains("Alt+R"));
     for _ in 0..5 {
         app.handle_event(AppEvent::Mouse(MouseEvent {
             kind: MouseEventKind::ScrollUp,
@@ -10203,7 +10213,7 @@ fn render_prompt_queue_stays_pinned_while_chat_scrolls() {
 }
 
 #[test]
-fn render_prompt_queue_removes_dispatched_and_cancelled_inputs() {
+fn render_prompt_queue_retains_stopped_inputs_until_explicit_discard() {
     let _locale = crate::test_support::lock_locale();
     let mut app = test_app();
     app.state = ConnectionState::Connected;
@@ -10230,19 +10240,64 @@ fn render_prompt_queue_removes_dispatched_and_cancelled_inputs() {
     let input_row = app.input_dialog_area.unwrap().y as usize;
     assert!(rendered
         .lines()
-        .nth(input_row - 1)
+        .nth(input_row - 2)
         .unwrap()
         .contains("WAITING_THIRD"));
+    assert!(rendered
+        .lines()
+        .nth(input_row - 1)
+        .unwrap()
+        .contains("Alt+R"));
     app.current_tab_mut().input = "/stop".into();
     app.handle_event(AppEvent::Key(KeyEvent::new(
         KeyCode::Enter,
         KeyModifiers::NONE,
     )));
-    assert_eq!(app.pending_input_previews().count(), 0);
+    assert_eq!(app.pending_input_previews().count(), 1);
     let stopped = render_to_text(&mut app, 80, 16);
-    assert!(!stopped.contains("WAITING_THIRD"));
-    assert!(!stopped.contains(t!("queue.header", count = 0).as_ref()));
+    assert!(stopped.contains("WAITING_THIRD"));
+    assert!(stopped.contains(t!("queue.paused_header", count = 1).as_ref()));
+    assert!(stopped.contains(&format!("[Alt+S {}]", t!("queue.send_remaining"))));
+    assert!(stopped.contains(&format!("[Alt+D {}]", t!("queue.discard"))));
     assert!(!stopped.contains(t!("queue.header", count = 1).as_ref()));
+    app.discard_pending_inputs();
+    assert_eq!(app.pending_input_previews().count(), 0);
+    let discarded = render_to_text(&mut app, 80, 16);
+    assert!(!discarded.contains("WAITING_THIRD"));
+}
+
+#[test]
+fn render_prompt_queue_excludes_unblocked_autofix_preparation() {
+    let _locale = crate::test_support::lock_locale();
+    for typed in [false, true] {
+        let mut app = test_app();
+        app.state = ConnectionState::Connected;
+        app.show_welcome_hint = false;
+        app.source_session_id = Some("failed-source".into());
+        if typed {
+            app.current_tab_mut()
+                .replace_input("/fix investigate".into());
+            app.handle_event(AppEvent::Key(KeyEvent::new(
+                KeyCode::Enter,
+                KeyModifiers::NONE,
+            )));
+        } else {
+            app.enqueue_autofix(DEFAULT_TAB_ID, "failed-source", "AUTOMATIC_FAILURE", false);
+        }
+        let preparing = render_to_text(&mut app, 100, 20);
+        assert!(!preparing.contains(t!("queue.header", count = 1).as_ref()));
+        assert!(!preparing.contains(t!("queue.enqueued").as_ref()));
+        complete_autofix_capture(&mut app, DEFAULT_TAB_ID);
+        app.current_tab_mut()
+            .replace_input("WAITING_FOLLOWER".into());
+        app.handle_event(AppEvent::Key(KeyEvent::new(
+            KeyCode::Enter,
+            KeyModifiers::NONE,
+        )));
+        let waiting = render_to_text(&mut app, 100, 20);
+        assert!(waiting.contains(t!("queue.header", count = 1).as_ref()));
+        assert!(waiting.contains("1. WAITING_FOLLOWER"));
+    }
 }
 
 #[test]
@@ -10265,19 +10320,20 @@ fn render_prompt_queue_includes_automatic_requests_while_connecting() {
     let input_row = app.input_dialog_area.unwrap().y as usize;
     assert!(mixed
         .lines()
-        .nth(input_row - 3)
+        .nth(input_row - 4)
         .unwrap()
         .contains(t!("queue.header", count = 2).as_ref()));
     assert!(mixed
         .lines()
-        .nth(input_row - 2)
+        .nth(input_row - 3)
         .unwrap()
         .contains("1. MANUAL_REQUEST"));
     assert!(mixed
         .lines()
-        .nth(input_row - 1)
+        .nth(input_row - 2)
         .unwrap()
         .contains(&format!("2. {} · AUTOMATIC_FAILURE", t!("queue.auto"))));
+    assert!(mixed.lines().nth(input_row - 1).unwrap().contains("Alt+R"));
     assert!(app.current_tab().turn.is_idle());
 }
 
@@ -17929,7 +17985,7 @@ fn recommendation_action_handoff_blocks_queue_until_correlated_completion() {
 }
 
 #[test]
-fn recommendation_action_failure_cancels_queue_and_retired_completion_is_ignored() {
+fn recommendation_action_failure_pauses_queue_and_retired_completion_is_ignored() {
     let _locale = crate::test_support::lock_locale();
     let mut app = test_app();
     app.state = ConnectionState::Connected;
@@ -17944,8 +18000,10 @@ fn recommendation_action_failure_cancels_queue_and_retired_completion_is_ignored
         success: false,
     });
     assert!(app.current_tab().pending_queue_action.is_none());
-    assert!(app.current_tab().prompt_queue.entries.is_empty());
+    assert_eq!(app.current_tab().prompt_queue.entries.len(), 1);
+    assert!(app.pending_queue_paused());
     assert!(prompt_rx.try_recv().is_err());
+    app.discard_pending_inputs();
     app.current_tab_mut().input = "fresh request after failure".into();
     app.enqueue_input(None);
     let fresh = prompt_rx.try_recv().unwrap();
@@ -17998,7 +18056,8 @@ fn recommendation_action_rejected_locally_is_not_marked_executed() {
     app.turn_execute_card(DEFAULT_TAB_ID);
     assert!(app.current_tab().pending_queue_action.is_none());
     assert!(app.current_tab().turn.is_idle());
-    assert!(app.current_tab().prompt_queue.entries.is_empty());
+    assert_eq!(app.current_tab().prompt_queue.entries.len(), 1);
+    assert!(app.pending_queue_paused());
     assert!(app.current_tab().messages.iter().any(|message| {
         matches!(message, ChatMessage::Error(text) if text == t!("connection.lost").as_ref())
     }));
@@ -18024,7 +18083,7 @@ fn queue_preserves_new_input_when_an_earlier_cancellation_settles_as_an_error() 
     app.current_tab_mut().input = "old pending request".into();
     app.enqueue_input(None);
     app.cmd_stop(true, false);
-    assert!(app.current_tab().prompt_queue.entries.is_empty());
+    assert_eq!(app.current_tab().prompt_queue.entries.len(), 1);
     app.current_tab_mut().input = "new request after stop".into();
     app.enqueue_input(None);
     assert!(prompt_rx.try_recv().is_err());
@@ -18032,6 +18091,13 @@ fn queue_preserves_new_input_when_an_earlier_cancellation_settles_as_an_error() 
         session_id: Some("queue-cancel-session".into()),
         failure: crate::protocol::acp::failure::AgentFailure::Cancelled,
         message: "cancelled".into(),
+    });
+    assert!(prompt_rx.try_recv().is_err());
+    assert!(app.pending_queue_paused());
+    app.resume_pending_inputs();
+    assert_eq!(prompt_rx.try_recv().unwrap().text, "old pending request");
+    app.handle_event(AppEvent::AgentMessageEnd {
+        session_id: "queue-cancel-session".into(),
     });
     assert_eq!(prompt_rx.try_recv().unwrap().text, "new request after stop");
 }

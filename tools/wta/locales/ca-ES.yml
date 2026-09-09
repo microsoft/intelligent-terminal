@@ -130,7 +130,16 @@ queue.header: "Missatges a la cua: %{count}"  # Automatic pinned list above inpu
 queue.full: "La cua és plena. S'ha conservat el text introduït."
 queue.enqueued: "S'ha afegit el missatge a la cua."  # Info notification when a user message must wait before being sent to the AI agent
 queue.cancelled: "S'han cancel·lat %{count} missatges de la cua. Podeu enviar un missatge nou."  # Info notification when waiting requests are discarded after cancellation, failure, or session reset
-queue.session_busy: "Els missatges de la cua pertanyen a aquesta conversa. Feu servir /stop per cancel·lar-los abans de canviar de sessió o de configuració."  # {Locked="/stop"}
+queue.session_busy: "Els missatges de la cua pertanyen a aquesta conversa. Envieu-los o descarteu-los abans de canviar de sessió o de configuració."
+queue.paused_header: "En pausa: %{count} pendents; no s'envien automàticament"  # Pinned heading: automatic sending is stopped
+queue.recall: "Recupera l'última"  # Button: restore the newest pending request to the editor
+queue.send_remaining: "Envia les restants"  # Button: resume sending pending requests
+queue.discard: "Descarta les restants"  # Button: discard pending requests, not the draft or active task
+queue.draft_busy: "Envieu o esborreu l'esborrany actual abans de recuperar una sol·licitud de la cua."
+queue.enqueued_paused: "S'ha afegit a la cua aturada. Trieu Envia les restants per iniciar-la."
+queue.resubmit: "Cal tornar a enviar"  # Prefix: fix evidence expired; recall and submit again
+queue.resume_blocked: "Les sol·licituds pendents encara no es poden enviar. Resoleu el problema de connexió o completeu la interacció activa; recupereu les sol·licituds de correcció caducades i torneu-les a enviar."
+queue.stopped: "S'ha aturat l'enviament automàtic. S'han conservat les sol·licituds pendents de l'usuari."
 queue.capture_failed: "No s'ha pogut conservar el context de l'error: %{error}"
 queue.auto: "Correcció automàtica"  # Label for a queued, automatically requested analysis of a failed shell command
 # Auto-fix diagnostic capture errors for the source terminal pane, shown through queue.capture_failed.

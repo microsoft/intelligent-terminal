@@ -129,7 +129,16 @@ queue.header: "Messages en attente : %{count}"  # Automatic pinned list above in
 queue.full: "La file d'attente est pleine. Votre saisie a été conservée."
 queue.enqueued: "Message ajouté à la file d'attente."  # Info notification when a user message must wait before being sent to the AI agent
 queue.cancelled: "%{count} messages en attente ont été annulés. Vous pouvez envoyer un nouveau message."  # Info notification when waiting requests are discarded after cancellation, failure, or session reset
-queue.session_busy: "Les messages en attente appartiennent à cette conversation. Utilisez /stop pour les annuler avant de changer de session ou de configuration."  # {Locked="/stop"}
+queue.session_busy: "Les messages en attente appartiennent à cette conversation. Envoyez-les ou supprimez-les avant de changer de session ou de configuration."
+queue.paused_header: "En pause : %{count} en attente; aucun envoi automatique"  # Pinned heading: automatic sending is stopped
+queue.recall: "Récupérer la dernière"  # Button: restore the newest pending request to the editor
+queue.send_remaining: "Envoyer le reste"  # Button: resume sending pending requests
+queue.discard: "Supprimer le reste"  # Button: discard pending requests, not the draft or active task
+queue.draft_busy: "Envoyez ou effacez le brouillon actuel avant de récupérer une demande en attente."
+queue.enqueued_paused: "Ajouté à la file d'attente arrêtée. Choisissez Envoyer le reste pour la démarrer."
+queue.resubmit: "À envoyer de nouveau"  # Prefix: fix evidence expired; recall and submit again
+queue.resume_blocked: "Les demandes en attente ne peuvent pas encore être envoyées. Résolvez le problème de connexion ou terminez l'interaction active; récupérez et renvoyez les demandes de correction expirées."
+queue.stopped: "L'envoi automatique est arrêté. Les demandes en attente de l'utilisateur ont été conservées."
 queue.capture_failed: "Impossible de conserver le contexte de l'erreur : %{error}"
 queue.auto: "Correction automatique"  # Label for a queued, automatically requested analysis of a failed shell command
 # Auto-fix diagnostic capture errors for the source terminal pane, shown through queue.capture_failed.

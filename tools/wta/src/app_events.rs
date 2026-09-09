@@ -226,7 +226,7 @@ impl App {
             && row < area.y.saturating_add(area.height)
     }
 
-    fn cancel_completed_turn_click(&mut self) {
+    pub(super) fn cancel_completed_turn_click(&mut self) {
         self.pressed_completed_turn = None;
         self.last_completed_turn_click = None;
         self.pressed_input_dialog_tab = None;
@@ -407,7 +407,7 @@ impl App {
                 let tab = self.tab_mut(&target);
                 tab.pending_queue_action = None;
                 if !success {
-                    tab.cancel_pending_prompts();
+                    tab.pause_pending_prompts();
                 }
             }
             AppEvent::Key(key) => {
@@ -456,6 +456,7 @@ impl App {
                     self.current_tab_mut().input_all_selected = false;
                 }
             }
+            AppEvent::Mouse(mouse) if self.handle_pending_queue_mouse(mouse) => {}
             AppEvent::Mouse(mouse) => match mouse.kind {
                 crossterm::event::MouseEventKind::ScrollUp
                 | crossterm::event::MouseEventKind::ScrollDown
@@ -662,6 +663,8 @@ impl App {
             AppEvent::Resize(w, h) => {
                 self.cancel_completed_turn_click();
                 self.text_selection.clear();
+                self.queue_control_hits.clear();
+                self.pressed_queue_control = None;
                 self.terminal_cols = w;
                 self.terminal_rows = h;
             }
@@ -670,6 +673,7 @@ impl App {
             }
             AppEvent::FocusChanged(focused) => {
                 self.cancel_completed_turn_click();
+                self.pressed_queue_control = None;
                 self.pane_focused = focused;
                 if !focused {
                     self.current_tab_mut().input_all_selected = false;
@@ -790,7 +794,7 @@ impl App {
                 if tab.session_id.as_deref() != Some(session_id.as_str()) {
                     if tab.session_id.is_some() {
                         tab.pending_queue_action = None;
-                        tab.cancel_pending_prompts();
+                        tab.invalidate_pending_prompt_session();
                     }
                     tab.usage = None;
                     tab.usage_staleness = crate::usage::UsageStaleness::default();
@@ -879,7 +883,7 @@ impl App {
                 if tab.session_id.as_deref() != Some(session_id.as_str()) {
                     if tab.session_id.is_some() {
                         tab.pending_queue_action = None;
-                        tab.cancel_pending_prompts();
+                        tab.invalidate_pending_prompt_session();
                     }
                     tab.config_picker = ConfigPickerState::Closed;
                     tab.config_pending_id = None;
@@ -1200,7 +1204,7 @@ impl App {
                 }
             }
             AppEvent::TabError { tab_id, message } => {
-                self.tab_mut(&tab_id).cancel_pending_prompts();
+                self.tab_mut(&tab_id).pause_pending_prompts();
                 self.pending_yolo_session_tabs.remove(&tab_id);
                 if self
                     .pending_session_load
@@ -1240,16 +1244,25 @@ impl App {
                 prompt_id,
                 message,
             } => {
-                let prompt_is_current = self
+                let target_tab = self
                     .tab_sessions
                     .get(&tab_id)
-                    .is_some_and(|tab| tab.turn.prompt_id() == Some(prompt_id));
-                if !prompt_is_current {
+                    .filter(|tab| tab.turn.prompt_id() == Some(prompt_id))
+                    .map(|_| tab_id.clone())
+                    .or_else(|| {
+                        self.tab_sessions.iter().find_map(|(key, tab)| {
+                            (tab.turn.prompt_id() == Some(prompt_id)).then(|| key.clone())
+                        })
+                    });
+                let Some(tab_id) = target_tab else {
                     return;
-                }
+                };
                 let tab = self.tab_mut(&tab_id);
+                let was_cancelling = tab.turn.is_cancelling();
                 tab.finish_active_prompt(prompt_id);
-                tab.cancel_pending_prompts();
+                if !was_cancelling {
+                    tab.pause_pending_prompts();
+                }
                 tab.turn = TurnState::Idle;
                 tab.timing_note = None;
                 tab.messages.push(ChatMessage::Error(message));
@@ -1373,7 +1386,9 @@ impl App {
                 }
 
                 if let Some((target_tab, _)) = terminal_target.as_ref() {
-                    self.tab_mut(target_tab).cancel_pending_prompts();
+                    if !self.tab_mut(target_tab).turn.is_cancelling() {
+                        self.tab_mut(target_tab).pause_pending_prompts();
+                    }
                 } else {
                     self.invalidate_prompt_queue_sessions();
                 }
@@ -1666,7 +1681,7 @@ impl App {
                     return;
                 }
                 tab.messages.push(ChatMessage::warning(msg.into_owned()));
-                tab.cancel_pending_prompts();
+                tab.pause_pending_prompts();
                 tab.scroll_to_bottom();
             }
             AppEvent::ExecutionInfo(message) => {

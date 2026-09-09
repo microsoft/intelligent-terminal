@@ -129,7 +129,16 @@ queue.header: "[!!_Queued messages: %{count}_!!]"  # Automatic pinned list above
 queue.full: "[!!_Queue is full. Your input has been kept._!!]"
 queue.enqueued: "[!!_Message queued._!!]"  # Info notification when a user message must wait before being sent to the AI agent
 queue.cancelled: "[!!_Cancelled %{count} queued messages. You can send a new message._!!]"  # Info notification when waiting requests are discarded after cancellation, failure, or session reset
-queue.session_busy: "[!!_Queued messages belong to this conversation. Use /stop to cancel them before changing sessions or configuration._!!]"  # {Locked="/stop"}
+queue.session_busy: "[!!_Queued messages belong to this conversation. Send or discard them before changing sessions or configuration._!!]"
+queue.paused_header: "[!!_Paused: %{count} pending; not sent automatically_!!]"  # Pinned heading: automatic sending is stopped
+queue.recall: "[!!_Recall last_!!]"  # Button: restore the newest pending request to the editor
+queue.send_remaining: "[!!_Send remaining_!!]"  # Button: resume sending pending requests
+queue.discard: "[!!_Discard remaining_!!]"  # Button: discard pending requests, not the draft or active task
+queue.draft_busy: "[!!_Submit or clear the current draft before recalling a queued request._!!]"
+queue.enqueued_paused: "[!!_Added to the stopped queue. Choose Send remaining to start it._!!]"
+queue.resubmit: "[!!_Needs resubmission_!!]"  # Prefix: fix evidence expired; recall and submit again
+queue.resume_blocked: "[!!_Waiting requests cannot be sent yet. Resolve the connection or active interaction; recall and resubmit any expired fix requests._!!]"
+queue.stopped: "[!!_Stopped automatic sending. Pending user requests have been kept._!!]"
 queue.capture_failed: "[!!_Could not preserve the error context: %{error}_!!]"
 queue.auto: "[!!_Automatic fix_!!]"  # Label for a queued, automatically requested analysis of a failed shell command
 # Auto-fix diagnostic capture errors for the source terminal pane, shown through queue.capture_failed.

@@ -142,7 +142,16 @@ queue.header: "క్యూలోని సందేశాలు: %{count}"  # A
 queue.full: "క్యూ నిండిపోయింది. మీ ఇన్‌పుట్ భద్రపరచబడింది."
 queue.enqueued: "సందేశం క్యూలో చేర్చబడింది."  # Info notification when a user message must wait before being sent to the AI agent
 queue.cancelled: "క్యూలోని %{count} సందేశాలు రద్దు చేయబడ్డాయి. మీరు కొత్త సందేశాన్ని పంపవచ్చు."  # Info notification when waiting requests are discarded after cancellation, failure, or session reset
-queue.session_busy: "క్యూలోని సందేశాలు ఈ సంభాషణకు చెందినవి. సెషన్‌లు లేదా కాన్ఫిగరేషన్‌ను మార్చే ముందు వాటిని రద్దు చేయడానికి /stop ఉపయోగించండి."  # {Locked="/stop"}
+queue.session_busy: "క్యూలోని సందేశాలు ఈ సంభాషణకు చెందినవి. సెషన్‌లు లేదా కాన్ఫిగరేషన్‌ను మార్చే ముందు వాటిని పంపండి లేదా తీసివేయండి."
+queue.paused_header: "తాత్కాలికంగా ఆపివేయబడింది: %{count} పెండింగ్‌లో; స్వయంచాలకంగా పంపబడవు"  # Pinned heading: automatic sending is stopped
+queue.recall: "చివరిదాన్ని తిరిగి తీసుకురా"  # Button: restore the newest pending request to the editor
+queue.send_remaining: "మిగిలినవి పంపు"  # Button: resume sending pending requests
+queue.discard: "మిగిలినవి తీసివేయి"  # Button: discard pending requests, not the draft or active task
+queue.draft_busy: "క్యూలోని అభ్యర్థనను తిరిగి తీసుకురావడానికి ముందు ప్రస్తుత చిత్తుప్రతిని సమర్పించండి లేదా క్లియర్ చేయండి."
+queue.enqueued_paused: "ఆపివేసిన క్యూకు జోడించబడింది. ప్రారంభించడానికి మిగిలినవి పంపు ఎంచుకోండి."
+queue.resubmit: "మళ్లీ సమర్పించాలి"  # Prefix: fix evidence expired; recall and submit again
+queue.resume_blocked: "వేచి ఉన్న అభ్యర్థనలను ఇంకా పంపలేము. కనెక్షన్ సమస్యను పరిష్కరించండి లేదా క్రియాశీల పరస్పర చర్యను పూర్తి చేయండి; గడువు ముగిసిన పరిష్కార అభ్యర్థనలను తిరిగి తీసుకువచ్చి మళ్లీ సమర్పించండి."
+queue.stopped: "స్వయంచాలకంగా పంపడం ఆపివేయబడింది. వినియోగదారు పెండింగ్ అభ్యర్థనలు భద్రపరచబడ్డాయి."
 queue.capture_failed: "లోపం సందర్భాన్ని భద్రపరచలేకపోయింది: %{error}"
 queue.auto: "స్వయంచాలక పరిష్కారం"  # Label for a queued, automatically requested analysis of a failed shell command
 # Auto-fix diagnostic capture errors for the source terminal pane, shown through queue.capture_failed.

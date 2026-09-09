@@ -143,7 +143,16 @@ queue.header: "Növbədəki mesajlar: %{count}"  # Automatic pinned list above i
 queue.full: "Növbə doludur. Daxil etdiyiniz mətn saxlanılıb."
 queue.enqueued: "Mesaj növbəyə əlavə edildi."  # Info notification when a user message must wait before being sent to the AI agent
 queue.cancelled: "Növbədəki %{count} mesaj ləğv edildi. Yeni mesaj göndərə bilərsiniz."  # Info notification when waiting requests are discarded after cancellation, failure, or session reset
-queue.session_busy: "Növbədəki mesajlar bu söhbətə aiddir. Seansları və ya konfiqurasiyanı dəyişməzdən əvvəl onları ləğv etmək üçün /stop istifadə edin."  # {Locked="/stop"}
+queue.session_busy: "Növbədəki mesajlar bu söhbətə aiddir. Seansları və ya konfiqurasiyanı dəyişməzdən əvvəl onları göndərin və ya silin."
+queue.paused_header: "Fasilə verilib: %{count} gözləyir; avtomatik göndərilmir"  # Pinned heading: automatic sending is stopped
+queue.recall: "Sonuncunu geri qaytar"  # Button: restore the newest pending request to the editor
+queue.send_remaining: "Qalanları göndər"  # Button: resume sending pending requests
+queue.discard: "Qalanları sil"  # Button: discard pending requests, not the draft or active task
+queue.draft_busy: "Növbədəki sorğunu geri qaytarmazdan əvvəl cari qaralamanı göndərin və ya təmizləyin."
+queue.enqueued_paused: "Dayandırılmış növbəyə əlavə edildi. Başlatmaq üçün Qalanları göndər seçin."
+queue.resubmit: "Yenidən göndərilməlidir"  # Prefix: fix evidence expired; recall and submit again
+queue.resume_blocked: "Gözləyən sorğuları hələ göndərmək mümkün deyil. Bağlantını düzəldin və ya aktiv qarşılıqlı əlaqəni tamamlayın; vaxtı keçmiş düzəliş sorğularını geri qaytarıb yenidən göndərin."
+queue.stopped: "Avtomatik göndərmə dayandırıldı. Gözləyən istifadəçi sorğuları saxlanıldı."
 queue.capture_failed: "Xəta kontekstini saxlamaq mümkün olmadı: %{error}"
 queue.auto: "Avtomatik düzəliş"  # Label for a queued, automatically requested analysis of a failed shell command
 # Auto-fix diagnostic capture errors for the source terminal pane, shown through queue.capture_failed.

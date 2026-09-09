@@ -4,7 +4,7 @@ use ratatui::prelude::*;
 use super::config_popup;
 use super::{
     action_panel, agent_popup, agents_view, auth, chat, command_popup, debug_panel, input,
-    model_popup, permission, recommendations, setup, user_input,
+    model_popup, pending_queue, permission, recommendations, setup, user_input,
 };
 
 pub fn render(frame: &mut Frame, app: &mut App) {
@@ -12,6 +12,7 @@ pub fn render(frame: &mut Frame, app: &mut App) {
     app.completed_turn_hits.clear();
     app.completed_turn_action_links.clear();
     app.input_dialog_area = None;
+    app.queue_control_hits.clear();
 
     // Auth mode: show auth screen above the input box
     if app.mode == AppMode::Auth {
@@ -170,14 +171,11 @@ pub fn render(frame: &mut Frame, app: &mut App) {
         available_rows: main_area.height,
         input_height,
         chat_natural_height: chat_estimate,
-        queued_prompt_height: if queued_previews.is_empty() {
-            0
-        } else {
-            queued_previews
-                .len()
-                .saturating_add(1)
-                .min(u16::MAX as usize) as u16
-        },
+        queued_prompt_height: pending_queue::natural_height(
+            app,
+            queued_previews.len(),
+            main_area.width.saturating_sub(2),
+        ),
         hint_requested,
         activity_requested: chat::should_show_activity(app),
         recommendation_natural_height,
@@ -270,7 +268,12 @@ pub fn render(frame: &mut Frame, app: &mut App) {
         );
     }
     chat::render_activity(frame, app, h_activity[1]);
-    render_queued_inputs(frame, &queued_previews, chunks[7].inner(Margin::new(1, 0)));
+    pending_queue::render(
+        frame,
+        app,
+        &queued_previews,
+        chunks[7].inner(Margin::new(1, 0)),
+    );
     let input_area = chunks[8];
     app.input_dialog_area = Some(input_area);
     input::render(frame, app, input_area);
@@ -312,39 +315,12 @@ pub fn render(frame: &mut Frame, app: &mut App) {
     command_popup::render_help_overlay(frame, app, area);
 }
 
-fn render_queued_inputs(frame: &mut Frame, previews: &[String], area: Rect) {
-    if previews.is_empty() || area.is_empty() {
-        return;
-    }
-    let rows = std::iter::once(t!("queue.header", count = previews.len()).into_owned())
-        .chain(previews.iter().cloned());
-    let visible = (previews.len() + 1).min(area.height as usize);
-    let hidden = (previews.len() + 1).saturating_sub(visible);
-    for (index, preview) in rows.take(visible).enumerate() {
-        let text = if index > 0 && index + 1 == visible && hidden > 0 {
-            let suffix = format!(" +{hidden}");
-            let width = (area.width as usize).saturating_sub(suffix.len());
-            format!("{}{suffix}", truncate_to_width(&preview, width))
-        } else {
-            preview
-        };
-        let line = Line::styled(
-            truncate_to_width(&text, area.width as usize),
-            Style::default().fg(Color::DarkGray),
-        );
-        frame.render_widget(
-            line,
-            Rect::new(area.x, area.y + index as u16, area.width, 1),
-        );
-    }
-}
-
 /// Truncate `s` so its rendered (display-cell) width fits in `max` columns,
 /// appending a single-cell ellipsis when anything was dropped. Width-aware
 /// (not char-count) so localized hints containing wide CJK glyphs are clipped
 /// at the right column instead of overrunning the pane. The returned string is
 /// guaranteed to have a display width of at most `max`.
-fn truncate_to_width(s: &str, max: usize) -> String {
+pub(super) fn truncate_to_width(s: &str, max: usize) -> String {
     use unicode_width::UnicodeWidthChar;
 
     let total: usize = s

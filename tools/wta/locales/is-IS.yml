@@ -129,7 +129,16 @@ queue.header: "Skilaboð í biðröð: %{count}"  # Automatic pinned list above 
 queue.full: "Biðröðin er full. Innslátturinn þinn hefur verið varðveittur."
 queue.enqueued: "Skilaboðin voru sett í biðröð."  # Info notification when a user message must wait before being sent to the AI agent
 queue.cancelled: "Hætt var við %{count} skilaboð í biðröð. Þú getur sent ný skilaboð."  # Info notification when waiting requests are discarded after cancellation, failure, or session reset
-queue.session_busy: "Skilaboð í biðröð tilheyra þessu samtali. Notaðu /stop til að hætta við þau áður en þú skiptir um lotu eða stillingar."  # {Locked="/stop"}
+queue.session_busy: "Skilaboð í biðröð tilheyra þessu samtali. Sendu þau eða fleygðu þeim áður en þú skiptir um lotu eða stillingar."
+queue.paused_header: "Gert hlé: %{count} í bið; ekki sent sjálfkrafa"  # Pinned heading: automatic sending is stopped
+queue.recall: "Endurheimta síðustu"  # Button: restore the newest pending request to the editor
+queue.send_remaining: "Senda það sem eftir er"  # Button: resume sending pending requests
+queue.discard: "Fleygja því sem eftir er"  # Button: discard pending requests, not the draft or active task
+queue.draft_busy: "Sendu eða hreinsaðu núverandi drög áður en þú endurheimtir beiðni úr biðröðinni."
+queue.enqueued_paused: "Bætt við stöðvaða biðröð. Veldu Senda það sem eftir er til að ræsa hana."
+queue.resubmit: "Þarf að senda aftur"  # Prefix: fix evidence expired; recall and submit again
+queue.resume_blocked: "Ekki er enn hægt að senda beiðnir í bið. Leystu tengivandann eða ljúktu virkum samskiptum; endurheimtu útrunnar viðgerðarbeiðnir og sendu þær aftur."
+queue.stopped: "Sjálfvirk sending stöðvuð. Beiðnir notanda í bið hafa verið varðveittar."
 queue.capture_failed: "Ekki tókst að varðveita samhengi villunnar: %{error}"
 queue.auto: "Sjálfvirk lagfæring"  # Label for a queued, automatically requested analysis of a failed shell command
 # Auto-fix diagnostic capture errors for the source terminal pane, shown through queue.capture_failed.

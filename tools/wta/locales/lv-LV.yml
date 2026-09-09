@@ -129,7 +129,16 @@ queue.header: "Ziņojumi rindā: %{count}"  # Automatic pinned list above input:
 queue.full: "Rinda ir pilna. Jūsu ievade ir saglabāta."
 queue.enqueued: "Ziņojums pievienots rindai."  # Info notification when a user message must wait before being sent to the AI agent
 queue.cancelled: "Atceltie ziņojumi rindā: %{count}. Varat nosūtīt jaunu ziņojumu."  # Info notification when waiting requests are discarded after cancellation, failure, or session reset
-queue.session_busy: "Rindā esošie ziņojumi pieder šai sarunai. Pirms sesijas vai konfigurācijas maiņas izmantojiet /stop, lai tos atceltu."  # {Locked="/stop"}
+queue.session_busy: "Rindā esošie ziņojumi pieder šai sarunai. Pirms sesijas vai konfigurācijas maiņas nosūtiet vai atmetiet tos."
+queue.paused_header: "Pauzēts: %{count} gaida; netiek sūtīti automātiski"  # Pinned heading: automatic sending is stopped
+queue.recall: "Atgūt pēdējo"  # Button: restore the newest pending request to the editor
+queue.send_remaining: "Sūtīt atlikušos"  # Button: resume sending pending requests
+queue.discard: "Atmest atlikušos"  # Button: discard pending requests, not the draft or active task
+queue.draft_busy: "Pirms pieprasījuma atgūšanas no rindas iesniedziet vai notīriet pašreizējo melnrakstu."
+queue.enqueued_paused: "Pievienots apturētajai rindai. Lai to palaistu, izvēlieties Sūtīt atlikušos."
+queue.resubmit: "Jāiesniedz atkārtoti"  # Prefix: fix evidence expired; recall and submit again
+queue.resume_blocked: "Gaidošos pieprasījumus vēl nevar nosūtīt. Atrisiniet savienojuma problēmu vai pabeidziet aktīvo mijiedarbību; atgūstiet labošanas pieprasījumus ar beigušos derīgumu un iesniedziet tos atkārtoti."
+queue.stopped: "Automātiskā sūtīšana apturēta. Gaidošie lietotāja pieprasījumi ir saglabāti."
 queue.capture_failed: "Neizdevās saglabāt kļūdas kontekstu: %{error}"
 queue.auto: "Automātiska labošana"  # Label for a queued, automatically requested analysis of a failed shell command
 # Auto-fix diagnostic capture errors for the source terminal pane, shown through queue.capture_failed.

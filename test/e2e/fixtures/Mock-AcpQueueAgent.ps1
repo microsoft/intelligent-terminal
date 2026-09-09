@@ -133,8 +133,22 @@ function Receive-AcpRequest {
                 sessionId = $sessionId; requestId = $Request.id
                 marker = $marker; cancelled = $false
             }
+            $images = @($Request.params.prompt | Where-Object type -eq image | ForEach-Object {
+                $image = $_
+                $bytes = $null
+                $decodeError = $null
+                try { $bytes = [Convert]::FromBase64String([string]$image.data) }
+                catch [System.FormatException] { $decodeError = 'Invalid base64 image data' }
+                @{
+                    mimeType = $image.mimeType
+                    decodeError = $decodeError
+                    byteCount = $(if ($bytes) { $bytes.Length } else { 0 })
+                    signature = $(if ($bytes.Length -ge 8) { [Convert]::ToHexString([byte[]]$bytes[0..7]) } else { '' })
+                }
+            })
             Write-FixtureRecord -Kind prompt -Fields @{
                 sessionId = $sessionId; requestId = $Request.id; marker = $marker; text = $text
+                images = $images
             }
             if ($heldPrompts.ContainsKey($sessionId)) {
                 Write-FixtureRecord -Kind overlap -Fields @{
@@ -173,6 +187,7 @@ try {
                         protocolVersion = 1
                         agentInfo = @{ name = 'Queue Fixture'; version = '1.0.0' }
                         agentCapabilities = @{
+                            promptCapabilities = @{ image = $true }
                             mcpCapabilities = @{ http = $true }
                             sessionCapabilities = @{ close = @{} }
                         }

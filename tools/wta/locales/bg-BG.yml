@@ -139,7 +139,16 @@ queue.header: "Съобщения в опашката: %{count}"  # Automatic pi
 queue.full: "Опашката е пълна. Въведеният текст е запазен."
 queue.enqueued: "Съобщението е добавено в опашката."  # Info notification when a user message must wait before being sent to the AI agent
 queue.cancelled: "Отменени са %{count} съобщения в опашката. Можете да изпратите ново съобщение."  # Info notification when waiting requests are discarded after cancellation, failure, or session reset
-queue.session_busy: "Съобщенията в опашката принадлежат на този разговор. Използвайте /stop, за да ги отмените, преди да сменяте сесиите или конфигурацията."  # {Locked="/stop"}
+queue.session_busy: "Съобщенията в опашката принадлежат на този разговор. Изпратете ги или ги изхвърлете, преди да сменяте сесиите или конфигурацията."
+queue.paused_header: "На пауза: %{count} чакащи; не се изпращат автоматично"  # Pinned heading: automatic sending is stopped
+queue.recall: "Връщане на последната"  # Button: restore the newest pending request to the editor
+queue.send_remaining: "Изпращане на останалите"  # Button: resume sending pending requests
+queue.discard: "Изхвърляне на останалите"  # Button: discard pending requests, not the draft or active task
+queue.draft_busy: "Изпратете или изчистете текущата чернова, преди да върнете заявка от опашката."
+queue.enqueued_paused: "Добавено в спряната опашка. Изберете Изпращане на останалите, за да я стартирате."
+queue.resubmit: "Необходимо е повторно изпращане"  # Prefix: fix evidence expired; recall and submit again
+queue.resume_blocked: "Чакащите заявки все още не могат да бъдат изпратени. Отстранете проблема с връзката или завършете активното взаимодействие; върнете и изпратете повторно заявките за поправка с изтекъл срок."
+queue.stopped: "Автоматичното изпращане е спряно. Чакащите потребителски заявки са запазени."
 queue.capture_failed: "Контекстът на грешката не можа да бъде запазен: %{error}"
 queue.auto: "Автоматична поправка"  # Label for a queued, automatically requested analysis of a failed shell command
 # Auto-fix diagnostic capture errors for the source terminal pane, shown through queue.capture_failed.

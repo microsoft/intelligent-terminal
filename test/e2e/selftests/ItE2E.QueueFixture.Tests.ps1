@@ -243,6 +243,8 @@ Describe 'ACP queue fixture' -Tag 'Unit' {
             $prompt = Wait-QueueRecord $fixture prompt QUEUE_ERROR_FIRST
             $prompt.text | Should -BeExactly "Autofix QUEUE_ERROR_FIRST`nQUEUE_SUCCESS_SECOND"
             $prompt.requestId | Should -Be 2
+            $prompt.images | Should -HaveCount 1
+            $prompt.images[0].decodeError | Should -BeExactly 'Invalid base64 image data'
             (Wait-QueueRecord $fixture session).cwd | Should -BeExactly 'C:\queue-work space'
             (Wait-QueueRecord $fixture completion QUEUE_ERROR_FIRST).reason | Should -Be 'end_turn'
 

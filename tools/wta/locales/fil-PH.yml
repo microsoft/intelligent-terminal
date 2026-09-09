@@ -129,7 +129,16 @@ queue.header: "Mga mensahe sa pila: %{count}"  # Automatic pinned list above inp
 queue.full: "Puno na ang pila. Napanatili ang iyong input."
 queue.enqueued: "Naidagdag sa pila ang mensahe."  # Info notification when a user message must wait before being sent to the AI agent
 queue.cancelled: "Kinansela ang %{count} mensahe sa pila. Maaari kang magpadala ng bagong mensahe."  # Info notification when waiting requests are discarded after cancellation, failure, or session reset
-queue.session_busy: "Ang mga mensahe sa pila ay para sa pag-uusap na ito. Gamitin ang /stop para kanselahin ang mga ito bago magpalit ng session o configuration."  # {Locked="/stop"}
+queue.session_busy: "Ang mga mensahe sa pila ay para sa pag-uusap na ito. Ipadala o itapon ang mga ito bago magpalit ng session o configuration."
+queue.paused_header: "Pansamantalang nakahinto: %{count} naghihintay; hindi awtomatikong ipapadala"  # Pinned heading: automatic sending is stopped
+queue.recall: "Ibalik ang huli"  # Button: restore the newest pending request to the editor
+queue.send_remaining: "Ipadala ang natitira"  # Button: resume sending pending requests
+queue.discard: "Itapon ang natitira"  # Button: discard pending requests, not the draft or active task
+queue.draft_busy: "Isumite o burahin ang kasalukuyang draft bago ibalik ang isang kahilingan mula sa pila."
+queue.enqueued_paused: "Idinagdag sa nakahintong pila. Piliin ang Ipadala ang natitira para simulan ito."
+queue.resubmit: "Kailangang isumite muli"  # Prefix: fix evidence expired; recall and submit again
+queue.resume_blocked: "Hindi pa maipadala ang mga naghihintay na kahilingan. Ayusin ang koneksyon o tapusin ang aktibong pakikipag-ugnayan; ibalik at isumite muli ang mga nag-expire na kahilingan sa pag-aayos."
+queue.stopped: "Itinigil ang awtomatikong pagpapadala. Pinanatili ang mga naghihintay na kahilingan ng user."
 queue.capture_failed: "Hindi mapanatili ang konteksto ng error: %{error}"
 queue.auto: "Awtomatikong pag-aayos"  # Label for a queued, automatically requested analysis of a failed shell command
 # Auto-fix diagnostic capture errors for the source terminal pane, shown through queue.capture_failed.

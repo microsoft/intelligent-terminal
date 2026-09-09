@@ -20,7 +20,7 @@ authenticated ACP agents. Current status (run on the Store package):
 | `Feature.FreExecutionPolicy.Tests.ps1` | §0 FRE execution-policy verdict (deterministic via registry; **Dev**, auto-skips) | 3 (1 conditional skip) |
 | `Feature.AgentPaneInteraction.Tests.ps1` | open/hide/focus, input/rendering, slash, Copilot chat | 14 |
 | `Feature.AgentProtocolExperience.Tests.ps1` | PRs #599/#601/#606/#610/#611/#612/#616/#634/#683: intent-based terminal actions (including empty workspaces and configured delegation), ACP tool/transcript rendering, clarification input, session configuration, model title, and replacement cleanup across the deployed helper/master boundary | 8 |
-| `Feature.PromptQueue.Tests.ps1` | C095, C300-C309: gated local ACP fixture covering startup Autofix, idempotent diagnostics, independently held FIFO turns and pinned inputs during actual scrolling, automatic pending-list updates, stop/failure recovery, typed `/fix` snapshots, source-pane priority, and redraw versus command invalidation (no LLM) | 11 |
+| `Feature.PromptQueue.Tests.ps1` | C095, C307-C318: gated local ACP fixture covering startup Autofix, idempotent diagnostics, independently held FIFO turns and pinned inputs during scrolling, recall with attachments, stopped send/discard keyboard and click controls, failure recovery, typed `/fix` snapshots, source-pane priority, and redraw versus command invalidation (no LLM) | 14 |
 | `Feature.AgentImageAttachmentEditing.Tests.ps1` | PR #536: inline image tokens move and delete atomically while preserving adjacent prompt text | 1 |
 | `Feature.AgentModelSync.Tests.ps1` | PR #538: ACP config-option updates replace stale session model state in the active picker | 1 |
 | `Feature.AgentModelLifecycle.Tests.ps1` | PR #554: `/model` hot-apply and Settings-driven model restart/reconnect lifecycle | 2 |
@@ -169,12 +169,19 @@ authenticated agent or an LLM. Every case crosses the deployed WT/ConPTY →
 helper → master → ACP boundary. The fixture records ordered prompt/completion
 JSON under `artifacts/prompt-queue-fixtures/<run-id>/`; its ten
 hermetic cases in `selftests/ItE2E.QueueFixture.Tests.ps1` cover gate polling,
-cancellation settlement, same-session overlap rejection, and recovery.
+cancellation settlement, same-session overlap rejection, and recovery. The
+fixture advertises image input and records ACP image metadata (MIME type, decoded
+byte count, and signature), never raw image data or MCP credentials. Recall is
+checked through the received PNG payload, not only a rendered attachment token.
 
 | Exact checklist/test title | Trigger and deterministic oracle | Negative control / existing protection |
 |---|---|---|
 | Queued user messages run once in submission order | Hold A, enqueue B/C, release A while independently holding B; C must remain absent until B is released, with intact request content and completion-before-next-prompt sequence numbers. A viewport-sized active transcript proves chat moves to its hidden top while content-located queue rows stay fixed. | Immediate A has no queued notice; any same-session overlap is a fixture error. |
 | Pending queue appears automatically and updates above input | Hold A, trigger automatic Autofix, then enqueue held B. The current viewport automatically shows counts 1/2 and numbered user/automatic previews. Release A and B separately to observe count 1 with renumbering, then no header or panel. | Idle/active-only states have no queue header; automatic requests have no queued Info notice; rendering never submits an ACP prompt. |
+| Recall restores the last pending request without duplicate submission | Hold A, enqueue B and image-bearing C; physical Alt+R removes C from pending and restores its editor text and attachment. Edit/re-enter C, release A, and assert ACP order A/B/C with exactly one PNG block. | A nonempty draft rejects recall without changing the draft or queue. Running controls show Recall last and Discard remaining, not the paused-only Send remaining button. |
+| Stopping a turn keeps explicit requests paused until Send remaining | Hold A and cancellation settlement; queue explicit B/C plus automatic Autofix. `/stop` + keyboard resume and unselected Ctrl+C + content-located mouse resume each retain B/C, discard Autofix, and accept D while stopped. A premature resume and subsequent settlement send nothing; explicit ready-state resume produces A/B/C/D exactly once. | No automatic replay, no cancelled-turn retry, no same-session overlap; completion sequence precedes each next prompt. |
+| Failed turns keep explicit requests paused until explicitly discarded | Fail held A with explicit and automatic pending requests. Only explicit requests remain stopped; another Enter joins them without submitting. Physical Alt+D discards them while preserving an editor draft, whose later Enter reaches ACP. | Neither failure nor new input implicitly resumes old work; discarded requests never appear in the ACP record. |
+| Discard remaining preserves the draft and never cancels active work | Click the rendered stopped-queue Discard remaining button before cancellation settles; queue disappears but the draft remains. Start fresh held work, enqueue another request, and physical Alt+D with a draft present. The active turn ends normally and the draft later submits exactly once. | Discard does not add a cancellation, bypass settlement, clear the editor, or send pending/draft content. |
 | Typed fix preserves captured evidence while waiting | Type `/fix` behind a held turn, wait for accepted snapshot diagnostics, then run a different shell command; the eventual ACP request must retain the old failure, hint, shell and cwd. | Automatic suggestions are off; new output/cwd must not replace the captured evidence. |
 | Repeated diagnostics activation submits one fix per failure | Click the same real diagnostics button three times with `session/new` held; one pending entry becomes exactly one ACP prompt after release. | A fresh later failure still needs a click and then runs once; `Feature.AutofixRouting` separately protects two-tab routing. |
 | Prompt redraws preserve queued Autofix until a real command starts | Bind Ctrl+L to PSReadLine `InvokePrompt` in the test shell, redraw twice, and observe real OSC 133 A/B without C; the queued request survives and its evidence reaches ACP once. | A subsequent real shell command invalidates a fresh queued automatic fix; `New shell commands invalidate obsolete queued Autofix` also protects later failure recovery. |
@@ -187,20 +194,65 @@ scrolling, bounded by available height with an overflow suffix. Existing
 startup, actionable-detection, pending-list, cancellation, failure, source-pane,
 and invalidation cases remain in the same suite.
 
-After building the combined changes into the explicitly selected **Dev** package:
+Enter always admits an independent FIFO request. Stopped requests are only
+in-memory: there is no cross-restart persistence. The en-US headings are
+`Queued messages: N` and `Paused: N pending; not sent automatically`. Alt+R recalls only explicit
+pending requests into an empty editor; Alt+S sends remaining requests only
+when cancellation, connection, permission, and configuration barriers permit;
+Alt+D discards pending work without stopping the active task or clearing
+the editor. Nonempty queues expose contextual recall/discard controls; only paused
+queues add Send remaining. Empty queues have no persistent buttons. Compact layouts
+preserve status and actions before previews, shortening buttons to shortcuts when needed.
+Completed `/fix` captures survive waiting or stopping; incomplete/invalid
+captures require resubmission, and recall/re-enter captures fresh context.
+Detailed soft-stop, snapshot lifecycle, readiness, and stale-click cases are
+unit-tested; this suite adds real packaged input/render/ACP boundaries, not
+claims of E2E coverage for every lifecycle branch.
+
+Queue shortcuts and unselected Ctrl+C use `Send-WtWindowKey` with required
+foreground ownership after focusing the known helper pane. They traverse the
+real Terminal keybinding layer before reaching ConPTY; raw `wtcli send-keys`
+would bypass that layer and could falsely pass a conflicting shortcut. Alt+R,
+Alt+S, and Alt+D deliberately avoid Terminal's default Alt+Up pane-focus and
+Alt+Enter fullscreen bindings. Mouse controls remain content-located ConPTY
+clicks. Run physical shortcut cases with an English (US) input layout active.
+
+**Safe-run prerequisite:** the user must save their work and close all existing
+Dev windows before running this suite. `Start-Terminal` closes stale instances
+of the selected package and temporarily replaces its settings; it is not a
+non-disruptive test against an already open window. Do not run these live cases
+while the user is testing or working in Dev. Discovery-only checks and the
+hermetic queue-fixture self-tests do not launch Terminal or change its settings.
+
+After the user has closed Dev, and the combined changes have been built and
+deployed into the explicitly selected **Dev** package:
 
 ```powershell
 $env:ITE2E_PACKAGE = 'Dev'
 pwsh -NoProfile -File test\e2e\bootstrap.ps1 -Check
-pwsh -NoProfile -File test\e2e\Invoke-ItE2EReport.ps1 `
-    -Path test\e2e\tests\Feature.PromptQueue.Tests.ps1 -UpdateReport
+$paths = @(
+    'test\e2e\tests\Feature.PromptQueue.Tests.ps1'
+    'test\e2e\tests\Feature.AgentSelectAll.Tests.ps1'
+    'test\e2e\tests\Feature.AutofixRouting.Tests.ps1'
+    'test\e2e\tests\Feature.AutofixParser.Tests.ps1'
+    'test\e2e\tests\Feature.AgentPanePadding.Tests.ps1'
+)
+& .\test\e2e\Invoke-ItE2EReport.ps1 -Path $paths `
+    -OutDir test\e2e\artifacts\pending-queue-dev
 ```
 
-Run `Feature.AutofixRouting`, `Feature.AutofixParser`, and
-`Feature.AgentPanePadding` as related regression suites. These unshipped Queue
-cases are not credited by the historical Store totals above; only a matching
-Dev run can check C095 and C307-C316 in the generated report. Upstream checklist
-entries retain their existing IDs.
+Use just the first path for the smallest queue-only live run. The related
+SelectAll suite protects selected Ctrl+C from becoming Stop; the Autofix and
+padding suites protect routing, failure producers, and the shared pinned layout.
+The first report run above regenerates from the current checklist in a dedicated
+output directory. Later focused reruns can add `-UpdateReport` with the same
+`-OutDir` to preserve unrelated results. An old report with obsolete Stop/failure
+titles or missing new IDs must first be regenerated via `New-ReleaseReport.ps1`
+using retained applicable results XML; incremental overlay cannot add or rename
+checklist rows. Verify C095 and C307-C318 are `[x]` after a passing run; failures
+must show `AUTOMATION FAILED`, and skipped-only overlays must preserve prior
+checkboxes. These unshipped cases are not credited by the historical Store
+totals above. Existing checklist IDs are not renumbered.
 
 ## Pane-context performance benchmark
 

@@ -129,7 +129,16 @@ queue.header: "Mesaje în coadă: %{count}"  # Automatic pinned list above input
 queue.full: "Coada este plină. Textul introdus a fost păstrat."
 queue.enqueued: "Mesaj adăugat în coadă."  # Info notification when a user message must wait before being sent to the AI agent
 queue.cancelled: "S-au anulat %{count} mesaje din coadă. Puteți trimite un mesaj nou."  # Info notification when waiting requests are discarded after cancellation, failure, or session reset
-queue.session_busy: "Mesajele din coadă aparțin acestei conversații. Folosiți /stop pentru a le anula înainte de a schimba sesiunea sau configurația."  # {Locked="/stop"}
+queue.session_busy: "Mesajele din coadă aparțin acestei conversații. Trimiteți-le sau eliminați-le înainte de a schimba sesiunea sau configurația."
+queue.paused_header: "În pauză: %{count} în așteptare; nu se trimit automat"  # Pinned heading: automatic sending is stopped
+queue.recall: "Recuperați ultima"  # Button: restore the newest pending request to the editor
+queue.send_remaining: "Trimiteți restul"  # Button: resume sending pending requests
+queue.discard: "Eliminați restul"  # Button: discard pending requests, not the draft or active task
+queue.draft_busy: "Trimiteți sau goliți schița curentă înainte de a recupera o solicitare din coadă."
+queue.enqueued_paused: "Adăugat în coada oprită. Alegeți Trimiteți restul pentru a o porni."
+queue.resubmit: "Necesită retrimitere"  # Prefix: fix evidence expired; recall and submit again
+queue.resume_blocked: "Solicitările în așteptare nu pot fi trimise încă. Rezolvați problema de conexiune sau finalizați interacțiunea activă; recuperați și retrimiteți solicitările de remediere expirate."
+queue.stopped: "Trimiterea automată a fost oprită. Solicitările în așteptare ale utilizatorului au fost păstrate."
 queue.capture_failed: "Nu s-a putut păstra contextul erorii: %{error}"
 queue.auto: "Remediere automată"  # Label for a queued, automatically requested analysis of a failed shell command
 # Auto-fix diagnostic capture errors for the source terminal pane, shown through queue.capture_failed.

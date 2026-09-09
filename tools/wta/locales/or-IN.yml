@@ -142,7 +142,16 @@ queue.header: "ଧାଡ଼ିରେ ଥିବା ବାର୍ତ୍ତାଗୁ
 queue.full: "ଧାଡ଼ି ପୂର୍ଣ୍ଣ ହୋଇଛି। ଆପଣଙ୍କ ଇନପୁଟ୍ ସଂରକ୍ଷିତ ଅଛି।"
 queue.enqueued: "ବାର୍ତ୍ତା ଧାଡ଼ିରେ ଯୋଡ଼ାଯାଇଛି।"  # Info notification when a user message must wait before being sent to the AI agent
 queue.cancelled: "ଧାଡ଼ିରେ ଥିବା %{count} ବାର୍ତ୍ତା ବାତିଲ କରାଯାଇଛି। ଆପଣ ଏକ ନୂଆ ବାର୍ତ୍ତା ପଠାଇପାରିବେ।"  # Info notification when waiting requests are discarded after cancellation, failure, or session reset
-queue.session_busy: "ଧାଡ଼ିରେ ଥିବା ବାର୍ତ୍ତାଗୁଡ଼ିକ ଏହି ବାର୍ତ୍ତାଳାପର ଅଟେ। ସେସନ୍ କିମ୍ବା ବିନ୍ୟାସ ବଦଳାଇବା ପୂର୍ବରୁ ସେଗୁଡ଼ିକୁ ବାତିଲ କରିବାକୁ /stop ବ୍ୟବହାର କରନ୍ତୁ।"  # {Locked="/stop"}
+queue.session_busy: "ଧାଡ଼ିରେ ଥିବା ବାର୍ତ୍ତାଗୁଡ଼ିକ ଏହି ବାର୍ତ୍ତାଳାପର ଅଟେ। ସେସନ୍ କିମ୍ବା ବିନ୍ୟାସ ବଦଳାଇବା ପୂର୍ବରୁ ସେଗୁଡ଼ିକୁ ପଠାନ୍ତୁ କିମ୍ବା ବାଦ୍ ଦିଅନ୍ତୁ।"
+queue.paused_header: "ସାମୟିକ ଭାବେ ବନ୍ଦ: %{count} ଅପେକ୍ଷାରତ; ସ୍ୱୟଂଚାଳିତ ଭାବେ ପଠାଯିବ ନାହିଁ"  # Pinned heading: automatic sending is stopped
+queue.recall: "ଶେଷଟି ଫେରାଇ ଆଣନ୍ତୁ"  # Button: restore the newest pending request to the editor
+queue.send_remaining: "ବାକିଗୁଡ଼ିକ ପଠାନ୍ତୁ"  # Button: resume sending pending requests
+queue.discard: "ବାକିଗୁଡ଼ିକ ବାଦ୍ ଦିଅନ୍ତୁ"  # Button: discard pending requests, not the draft or active task
+queue.draft_busy: "ଧାଡ଼ିରୁ ଅନୁରୋଧ ଫେରାଇ ଆଣିବା ପୂର୍ବରୁ ବର୍ତ୍ତମାନର ଡ୍ରାଫ୍ଟ ଦାଖଲ କରନ୍ତୁ କିମ୍ବା ସଫା କରନ୍ତୁ।"
+queue.enqueued_paused: "ବନ୍ଦ ହୋଇଥିବା ଧାଡ଼ିରେ ଯୋଡ଼ାଗଲା। ଆରମ୍ଭ କରିବାକୁ ବାକିଗୁଡ଼ିକ ପଠାନ୍ତୁ ବାଛନ୍ତୁ।"
+queue.resubmit: "ପୁଣି ଦାଖଲ କରିବା ଆବଶ୍ୟକ"  # Prefix: fix evidence expired; recall and submit again
+queue.resume_blocked: "ଅପେକ୍ଷାରତ ଅନୁରୋଧଗୁଡ଼ିକ ଏପର୍ଯ୍ୟନ୍ତ ପଠାଯାଇପାରିବ ନାହିଁ। ସଂଯୋଗ ସମସ୍ୟା ସମାଧାନ କରନ୍ତୁ କିମ୍ବା ସକ୍ରିୟ ଆଦାନପ୍ରଦାନ ସମ୍ପୂର୍ଣ୍ଣ କରନ୍ତୁ; ମିଆଦ ସରିଯାଇଥିବା ସମାଧାନ ଅନୁରୋଧଗୁଡ଼ିକ ଫେରାଇ ଆଣି ପୁଣି ଦାଖଲ କରନ୍ତୁ।"
+queue.stopped: "ସ୍ୱୟଂଚାଳିତ ପଠାଇବା ବନ୍ଦ ହୋଇଛି। ବ୍ୟବହାରକାରୀଙ୍କ ଅପେକ୍ଷାରତ ଅନୁରୋଧଗୁଡ଼ିକ ରଖାଯାଇଛି।"
 queue.capture_failed: "ତ୍ରୁଟିର ପ୍ରସଙ୍ଗ ସଂରକ୍ଷଣ କରିହେଲା ନାହିଁ: %{error}"
 queue.auto: "ସ୍ୱୟଂଚାଳିତ ସମାଧାନ"  # Label for a queued, automatically requested analysis of a failed shell command
 # Auto-fix diagnostic capture errors for the source terminal pane, shown through queue.capture_failed.

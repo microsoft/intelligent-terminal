@@ -142,7 +142,16 @@ queue.header: "Кезектегі хабарлар: %{count}"  # Automatic pinne
 queue.full: "Кезек толы. Енгізген мәтініңіз сақталды."
 queue.enqueued: "Хабар кезекке қосылды."  # Info notification when a user message must wait before being sent to the AI agent
 queue.cancelled: "Кезектегі %{count} хабардан бас тартылды. Жаңа хабар жібере аласыз."  # Info notification when waiting requests are discarded after cancellation, failure, or session reset
-queue.session_busy: "Кезектегі хабарлар осы әңгімеге тиесілі. Сеансты немесе конфигурацияны өзгертпес бұрын олардан бас тарту үшін /stop пайдаланыңыз."  # {Locked="/stop"}
+queue.session_busy: "Кезектегі хабарлар осы әңгімеге тиесілі. Сеансты немесе конфигурацияны өзгертпес бұрын оларды жіберіңіз немесе алып тастаңыз."
+queue.paused_header: "Кідіртілді: %{count} күтуде; автоматты түрде жіберілмейді"  # Pinned heading: automatic sending is stopped
+queue.recall: "Соңғысын қайтару"  # Button: restore the newest pending request to the editor
+queue.send_remaining: "Қалғандарын жіберу"  # Button: resume sending pending requests
+queue.discard: "Қалғандарын алып тастау"  # Button: discard pending requests, not the draft or active task
+queue.draft_busy: "Кезектегі сұрауды қайтармас бұрын ағымдағы нобайды жіберіңіз немесе тазалаңыз."
+queue.enqueued_paused: "Тоқтатылған кезекке қосылды. Бастау үшін Қалғандарын жіберу пәрменін таңдаңыз."
+queue.resubmit: "Қайта жіберу қажет"  # Prefix: fix evidence expired; recall and submit again
+queue.resume_blocked: "Күтудегі сұрауларды әлі жіберу мүмкін емес. Қосылым мәселесін шешіңіз немесе белсенді өзара әрекеттесуді аяқтаңыз; мерзімі өткен түзету сұрауларын қайтарып, қайта жіберіңіз."
+queue.stopped: "Автоматты жіберу тоқтатылды. Пайдаланушының күтудегі сұраулары сақталды."
 queue.capture_failed: "Қате контекстін сақтау мүмкін болмады: %{error}"
 queue.auto: "Автоматты түзету"  # Label for a queued, automatically requested analysis of a failed shell command
 # Auto-fix diagnostic capture errors for the source terminal pane, shown through queue.capture_failed.

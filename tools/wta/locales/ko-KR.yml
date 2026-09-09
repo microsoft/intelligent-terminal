@@ -125,7 +125,16 @@ queue.header: "대기열의 메시지: %{count}"  # Automatic pinned list above 
 queue.full: "대기열이 가득 찼습니다. 입력 내용은 유지되었습니다."
 queue.enqueued: "메시지가 대기열에 추가되었습니다."  # Info notification when a user message must wait before being sent to the AI agent
 queue.cancelled: "대기열의 메시지 %{count}개가 취소되었습니다. 새 메시지를 보낼 수 있습니다."  # Info notification when waiting requests are discarded after cancellation, failure, or session reset
-queue.session_busy: "대기열의 메시지는 이 대화에 속합니다. 세션이나 구성을 변경하기 전에 /stop을 사용하여 취소하세요."  # {Locked="/stop"}
+queue.session_busy: "대기열의 메시지는 이 대화에 속합니다. 세션이나 구성을 변경하기 전에 보내거나 삭제하세요."
+queue.paused_header: "일시 중지됨: %{count}개 대기 중; 자동으로 전송되지 않음"  # Pinned heading: automatic sending is stopped
+queue.recall: "마지막 요청 가져오기"  # Button: restore the newest pending request to the editor
+queue.send_remaining: "나머지 보내기"  # Button: resume sending pending requests
+queue.discard: "나머지 삭제"  # Button: discard pending requests, not the draft or active task
+queue.draft_busy: "대기열의 요청을 입력란으로 가져오기 전에 현재 초안을 제출하거나 지우세요."
+queue.enqueued_paused: "중지된 대기열에 추가했습니다. 시작하려면 나머지 보내기를 선택하세요."
+queue.resubmit: "다시 제출해야 함"  # Prefix: fix evidence expired; recall and submit again
+queue.resume_blocked: "대기 중인 요청을 아직 보낼 수 없습니다. 연결 문제를 해결하거나 진행 중인 상호 작용을 완료하세요. 만료된 수정 요청은 입력란으로 가져와 다시 제출하세요."
+queue.stopped: "자동 전송을 중지했습니다. 대기 중인 사용자 요청은 유지됩니다."
 queue.capture_failed: "오류 컨텍스트를 보존할 수 없습니다: %{error}"
 queue.auto: "자동 수정"  # Label for a queued, automatically requested analysis of a failed shell command
 # Auto-fix diagnostic capture errors for the source terminal pane, shown through queue.capture_failed.

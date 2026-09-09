@@ -49,6 +49,8 @@ pub(crate) struct LayoutRequest {
 /// two-row summary until a five-row card shell fits. Activity and navigation
 /// hints share one status row, with activity taking precedence. Chat and the
 /// status row yield first if the host reports fewer than seven rows.
+/// Pending queue status and controls precede expanded input, recommendation
+/// details, and optional status hints, without displacing the active action.
 pub(crate) fn plan(request: LayoutRequest) -> ActionPanelLayout {
     let mut result = ActionPanelLayout {
         chat_height: 0,
@@ -67,6 +69,7 @@ pub(crate) fn plan(request: LayoutRequest) -> ActionPanelLayout {
         .saturating_add(ACTIVITY_HEIGHT)
         .saturating_add(CHAT_MIN_HEIGHT);
     let preferred_action_budget = request.available_rows.saturating_sub(preferred_base);
+    let queue_min_height = request.queued_prompt_height.min(2);
     let emergency_action_budget = request
         .available_rows
         .saturating_sub(super::input::INPUT_MIN_HEIGHT);
@@ -80,10 +83,10 @@ pub(crate) fn plan(request: LayoutRequest) -> ActionPanelLayout {
             result.permission_mode = PanelMode::Compact;
         }
     } else if let Some(natural_height) = request.recommendation_natural_height {
-        if preferred_action_budget >= CARD_MIN_SIZE {
-            result.recommendation_height = natural_height
-                .min(preferred_action_budget)
-                .max(CARD_MIN_SIZE);
+        let recommendation_budget = preferred_action_budget.saturating_sub(queue_min_height);
+        if recommendation_budget >= CARD_MIN_SIZE {
+            result.recommendation_height =
+                natural_height.min(recommendation_budget).max(CARD_MIN_SIZE);
             result.recommendation_mode = PanelMode::Full;
         } else if emergency_action_budget >= COMPACT_RECOMMENDATION_HEIGHT {
             result.recommendation_height = COMPACT_RECOMMENDATION_HEIGHT;
@@ -108,7 +111,10 @@ pub(crate) fn plan(request: LayoutRequest) -> ActionPanelLayout {
         .saturating_sub(action_rows)
         .saturating_sub(super::input::INPUT_MIN_HEIGHT);
     result.chat_height = CHAT_MIN_HEIGHT.min(base_remaining);
-    let status_height = ACTIVITY_HEIGHT.min(base_remaining.saturating_sub(result.chat_height));
+    let reserved_queue_height =
+        queue_min_height.min(base_remaining.saturating_sub(result.chat_height));
+    let status_height = ACTIVITY_HEIGHT
+        .min(base_remaining.saturating_sub(result.chat_height + reserved_queue_height));
     if request.activity_requested {
         result.activity_height = status_height;
     } else if result.recommendation_mode == PanelMode::Full {
@@ -125,7 +131,8 @@ pub(crate) fn plan(request: LayoutRequest) -> ActionPanelLayout {
         .available_rows
         .saturating_sub(allocated_status_height)
         .saturating_sub(action_rows)
-        .saturating_sub(result.chat_height);
+        .saturating_sub(result.chat_height)
+        .saturating_sub(reserved_queue_height);
     result.input_height = request.input_height.min(input_capacity);
 
     let chat_capacity = request
@@ -353,15 +360,29 @@ mod tests {
             request.queued_prompt_height = 32;
             let layout = plan(request);
             assert_eq!(layout.input_height, without_queue.input_height);
-            assert_eq!(
-                layout.recommendation_height,
-                without_queue.recommendation_height
-            );
+            if without_queue.recommendation_height > 0 {
+                assert!(layout.recommendation_height >= COMPACT_RECOMMENDATION_HEIGHT);
+            }
             assert!(allocated_height(layout) <= u32::from(rows));
             if layout.queued_prompt_height > 0 {
                 assert!(layout.chat_height > 0);
             }
         }
+    }
+
+    #[test]
+    fn queued_controls_take_space_before_expanded_input_and_recommendation_details() {
+        let mut request = recommendation_request(10);
+        request.input_height = 8;
+        request.queued_prompt_height = 5;
+        request.activity_requested = true;
+        let layout = plan(request);
+        assert_eq!(layout.recommendation_mode, PanelMode::Compact);
+        assert_eq!(layout.recommendation_height, COMPACT_RECOMMENDATION_HEIGHT);
+        assert!(layout.queued_prompt_height >= 2);
+        assert!(layout.input_height >= super::super::input::INPUT_MIN_HEIGHT);
+        assert!(layout.chat_height >= CHAT_MIN_HEIGHT);
+        assert_eq!(allocated_height(layout), 10);
     }
 
     #[test]

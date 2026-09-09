@@ -143,7 +143,16 @@ queue.header: "الرسائل في قائمة الانتظار: %{count}"  # Aut
 queue.full: "قائمة الانتظار ممتلئة. تم الاحتفاظ بإدخالك."
 queue.enqueued: "تمت إضافة الرسالة إلى قائمة الانتظار."  # Info notification when a user message must wait before being sent to the AI agent
 queue.cancelled: "تم إلغاء %{count} من الرسائل في قائمة الانتظار. يمكنك إرسال رسالة جديدة."  # Info notification when waiting requests are discarded after cancellation, failure, or session reset
-queue.session_busy: "الرسائل في قائمة الانتظار تخص هذه المحادثة. استخدم /stop لإلغائها قبل تغيير الجلسات أو التكوين."  # {Locked="/stop"}
+queue.session_busy: "الرسائل في قائمة الانتظار تخص هذه المحادثة. أرسلها أو تجاهلها قبل تغيير الجلسات أو التكوين."
+queue.paused_header: "متوقف مؤقتًا: %{count} قيد الانتظار؛ لن تُرسل تلقائيًا"  # Pinned heading: automatic sending is stopped
+queue.recall: "استرجاع الطلب الأخير"  # Button: restore the newest pending request to the editor
+queue.send_remaining: "إرسال المتبقي"  # Button: resume sending pending requests
+queue.discard: "تجاهل المتبقي"  # Button: discard pending requests, not the draft or active task
+queue.draft_busy: "أرسل المسودة الحالية أو امسحها قبل استرجاع طلب من قائمة الانتظار."
+queue.enqueued_paused: "تمت الإضافة إلى قائمة الانتظار المتوقفة. اختر إرسال المتبقي لبدء الإرسال."
+queue.resubmit: "يتطلب إعادة الإرسال"  # Prefix: fix evidence expired; recall and submit again
+queue.resume_blocked: "لا يمكن إرسال الطلبات المنتظرة بعد. عالج مشكلة الاتصال أو أكمل التفاعل النشط؛ واسترجع طلبات الإصلاح المنتهية الصلاحية وأعد إرسالها."
+queue.stopped: "توقف الإرسال التلقائي. تم الاحتفاظ بطلبات المستخدم المعلقة."
 queue.capture_failed: "تعذر الاحتفاظ بسياق الخطأ: %{error}"
 queue.auto: "إصلاح تلقائي"  # Label for a queued, automatically requested analysis of a failed shell command
 # Auto-fix diagnostic capture errors for the source terminal pane, shown through queue.capture_failed.

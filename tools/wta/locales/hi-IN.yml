@@ -142,7 +142,16 @@ queue.header: "कतार में मौजूद संदेश: %{count}"
 queue.full: "कतार भर गई है। आपका इनपुट सुरक्षित रखा गया है।"
 queue.enqueued: "संदेश कतार में जोड़ दिया गया है।"  # Info notification when a user message must wait before being sent to the AI agent
 queue.cancelled: "कतार में मौजूद %{count} संदेश रद्द कर दिए गए हैं। आप नया संदेश भेज सकते हैं।"  # Info notification when waiting requests are discarded after cancellation, failure, or session reset
-queue.session_busy: "कतार में मौजूद संदेश इस बातचीत से जुड़े हैं। सत्र या कॉन्फ़िगरेशन बदलने से पहले उन्हें रद्द करने के लिए /stop का उपयोग करें।"  # {Locked="/stop"}
+queue.session_busy: "कतार में मौजूद संदेश इस बातचीत से जुड़े हैं। सत्र या कॉन्फ़िगरेशन बदलने से पहले उन्हें भेजें या हटा दें।"
+queue.paused_header: "विराम दिया गया: %{count} लंबित; अपने आप नहीं भेजे जाएँगे"  # Pinned heading: automatic sending is stopped
+queue.recall: "आखिरी अनुरोध वापस लाएँ"  # Button: restore the newest pending request to the editor
+queue.send_remaining: "शेष भेजें"  # Button: resume sending pending requests
+queue.discard: "शेष हटाएँ"  # Button: discard pending requests, not the draft or active task
+queue.draft_busy: "कतार से कोई अनुरोध वापस लाने से पहले वर्तमान ड्राफ़्ट सबमिट करें या साफ़ करें।"
+queue.enqueued_paused: "रुकी हुई कतार में जोड़ा गया। इसे शुरू करने के लिए शेष भेजें चुनें।"
+queue.resubmit: "फिर से सबमिट करना ज़रूरी है"  # Prefix: fix evidence expired; recall and submit again
+queue.resume_blocked: "प्रतीक्षारत अनुरोध अभी नहीं भेजे जा सकते। कनेक्शन की समस्या सुलझाएँ या सक्रिय संवाद पूरा करें; समय-सीमा समाप्त हो चुके सुधार अनुरोध वापस लाकर फिर से सबमिट करें।"
+queue.stopped: "स्वचालित रूप से भेजना रोक दिया गया। उपयोगकर्ता के लंबित अनुरोध सुरक्षित रखे गए हैं।"
 queue.capture_failed: "त्रुटि का संदर्भ सुरक्षित नहीं रखा जा सका: %{error}"
 queue.auto: "स्वचालित सुधार"  # Label for a queued, automatically requested analysis of a failed shell command
 # Auto-fix diagnostic capture errors for the source terminal pane, shown through queue.capture_failed.

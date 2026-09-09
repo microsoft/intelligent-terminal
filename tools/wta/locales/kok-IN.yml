@@ -142,7 +142,16 @@ queue.header: "रांगेंतले संदेश: %{count}"  # Automat
 queue.full: "रांग भरल्या. तुमचो इनपुट सांबाळून दवरला."
 queue.enqueued: "संदेश रांगेंत घातला."  # Info notification when a user message must wait before being sent to the AI agent
 queue.cancelled: "रांगेंतले %{count} संदेश रद्द केले. तुमी नवो संदेश धाडूंक शकतात."  # Info notification when waiting requests are discarded after cancellation, failure, or session reset
-queue.session_busy: "रांगेंतले संदेश ह्या संभाशणाचे आसात. सत्र वा संरचना बदलचे पयलीं ते रद्द करपाक /stop वापरात."  # {Locked="/stop"}
+queue.session_busy: "रांगेंतले संदेश ह्या संभाशणाचे आसात. सत्र वा संरचना बदलचे पयलीं ते धाडात वा काडून उडयात."
+queue.paused_header: "तात्पुरतें थांबयलां: %{count} प्रतीक्षेंत; आपशीं धाडच्यो नात"  # Pinned heading: automatic sending is stopped
+queue.recall: "निमाणी विनंती परत हाडात"  # Button: restore the newest pending request to the editor
+queue.send_remaining: "उरिल्ल्यो धाडात"  # Button: resume sending pending requests
+queue.discard: "उरिल्ल्यो काडून उडयात"  # Button: discard pending requests, not the draft or active task
+queue.draft_busy: "रांगेंतली विनंती परत हाडचे पयलीं सद्याचो मसुदो सादर करात वा पुसात."
+queue.enqueued_paused: "थांबयल्ल्या रांगेंत जोडला. सुरू करपाक उरिल्ल्यो धाडात निवडात."
+queue.resubmit: "परत सादर करप गरजेचें"  # Prefix: fix evidence expired; recall and submit again
+queue.resume_blocked: "प्रतीक्षेंतल्यो विनंत्यो अजून धाडूंक मेळनात. जोडणेची अडचण सोडयात वा चालू संवाद पुराय करात; मुदत सोंपिल्ल्यो दुरुस्ती विनंत्यो परत हाडून परत सादर करात."
+queue.stopped: "आपशीं धाडप थांबयलां. वापरप्याच्यो प्रतीक्षेंतल्यो विनंत्यो सांबाळून दवरल्यात."
 queue.capture_failed: "चुकीचो संदर्भ सांबाळूंक शकले ना: %{error}"
 queue.auto: "आपशीं दुरुस्ती"  # Label for a queued, automatically requested analysis of a failed shell command
 # Auto-fix diagnostic capture errors for the source terminal pane, shown through queue.capture_failed.

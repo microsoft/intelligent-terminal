@@ -130,7 +130,16 @@ queue.header: "Negeseuon yn y ciw: %{count}"  # Automatic pinned list above inpu
 queue.full: "Mae'r ciw yn llawn. Mae eich mewnbwn wedi'i gadw."
 queue.enqueued: "Ychwanegwyd y neges at y ciw."  # Info notification when a user message must wait before being sent to the AI agent
 queue.cancelled: "Canslwyd %{count} o negeseuon yn y ciw. Gallwch anfon neges newydd."  # Info notification when waiting requests are discarded after cancellation, failure, or session reset
-queue.session_busy: "Mae'r negeseuon yn y ciw yn perthyn i'r sgwrs hon. Defnyddiwch /stop i'w canslo cyn newid sesiynau neu'r ffurfweddiad."  # {Locked="/stop"}
+queue.session_busy: "Mae'r negeseuon yn y ciw yn perthyn i'r sgwrs hon. Anfonwch nhw neu eu gwaredu cyn newid sesiynau neu'r ffurfweddiad."
+queue.paused_header: "Wedi oedi: %{count} yn aros; ni chânt eu hanfon yn awtomatig"  # Pinned heading: automatic sending is stopped
+queue.recall: "Adfer yr olaf"  # Button: restore the newest pending request to the editor
+queue.send_remaining: "Anfon y gweddill"  # Button: resume sending pending requests
+queue.discard: "Gwaredu'r gweddill"  # Button: discard pending requests, not the draft or active task
+queue.draft_busy: "Cyflwynwch neu gliriwch y drafft presennol cyn adfer cais o'r ciw."
+queue.enqueued_paused: "Wedi ychwanegu at y ciw sydd wedi stopio. Dewiswch Anfon y gweddill i'w gychwyn."
+queue.resubmit: "Angen ailgyflwyno"  # Prefix: fix evidence expired; recall and submit again
+queue.resume_blocked: "Ni ellir anfon ceisiadau sy'n aros eto. Datryswch y broblem cysylltu neu gwblhewch y rhyngweithiad gweithredol; adferwch ac ailgyflwynwch unrhyw geisiadau trwsio sydd wedi dod i ben."
+queue.stopped: "Wedi stopio anfon yn awtomatig. Mae ceisiadau defnyddwyr sy'n aros wedi'u cadw."
 queue.capture_failed: "Methu cadw cyd-destun y gwall: %{error}"
 queue.auto: "Trwsio awtomatig"  # Label for a queued, automatically requested analysis of a failed shell command
 # Auto-fix diagnostic capture errors for the source terminal pane, shown through queue.capture_failed.

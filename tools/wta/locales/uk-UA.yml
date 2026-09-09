@@ -138,7 +138,16 @@ queue.header: "Повідомлень у черзі: %{count}"  # Automatic pinn
 queue.full: "Чергу заповнено. Введений текст збережено."
 queue.enqueued: "Повідомлення додано до черги."  # Info notification when a user message must wait before being sent to the AI agent
 queue.cancelled: "Скасовано повідомлень у черзі: %{count}. Ви можете надіслати нове повідомлення."  # Info notification when waiting requests are discarded after cancellation, failure, or session reset
-queue.session_busy: "Повідомлення в черзі належать до цієї розмови. Скористайтеся /stop, щоб скасувати їх, перш ніж змінювати сеанс чи конфігурацію."  # {Locked="/stop"}
+queue.session_busy: "Повідомлення в черзі належать до цієї розмови. Надішліть або видаліть їх, перш ніж змінювати сеанс чи конфігурацію."
+queue.paused_header: "Призупинено: %{count} в очікуванні; не надсилаються автоматично"  # Pinned heading: automatic sending is stopped
+queue.recall: "Повернути останній"  # Button: restore the newest pending request to the editor
+queue.send_remaining: "Надіслати решту"  # Button: resume sending pending requests
+queue.discard: "Видалити решту"  # Button: discard pending requests, not the draft or active task
+queue.draft_busy: "Надішліть або очистьте поточну чернетку, перш ніж повертати запит із черги."
+queue.enqueued_paused: "Додано до зупиненої черги. Виберіть «Надіслати решту», щоб запустити її."
+queue.resubmit: "Потрібне повторне надсилання"  # Prefix: fix evidence expired; recall and submit again
+queue.resume_blocked: "Запити в очікуванні поки що не можна надіслати. Усуньте проблему з підключенням або завершіть активну взаємодію; поверніть прострочені запити на виправлення й надішліть їх повторно."
+queue.stopped: "Автоматичне надсилання зупинено. Запити користувача в очікуванні збережено."
 queue.capture_failed: "Не вдалося зберегти контекст помилки: %{error}"
 queue.auto: "Автоматичне виправлення"  # Label for a queued, automatically requested analysis of a failed shell command
 # Auto-fix diagnostic capture errors for the source terminal pane, shown through queue.capture_failed.

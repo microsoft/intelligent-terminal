@@ -147,7 +147,13 @@ impl App {
         // forced activation, just surface the Detected pill and let the
         // user decide whether to call the LLM. No request is accepted until
         // the user activates this diagnostic.
-        if !self.autofix_enabled && !forced {
+        if !forced
+            && (!self.autofix_enabled
+                || self
+                    .tab_sessions
+                    .get(&target_tab_id)
+                    .is_some_and(|tab| tab.prompt_queue.paused))
+        {
             self.tab_mut(&target_tab_id).autofix.detected_request_id = None;
             tracing::info!(
                 target: "autofix",
@@ -405,7 +411,7 @@ impl App {
             {
                 let tab = self.current_tab_mut();
                 tab.pending_queue_action = None;
-                tab.cancel_pending_prompts();
+                tab.pause_pending_prompts();
                 tab.messages
                     .push(ChatMessage::Error(t!("connection.lost").into_owned()));
                 self.emit_autofix_state_cleared(&active_tab);
@@ -425,10 +431,10 @@ impl App {
     /// a result for a pane that no longer exists.
     pub(super) fn handle_autofix_pane_closed(&mut self, event_tab_id: Option<&str>, pane_id: &str) {
         if let Some(tab_id) = event_tab_id {
-            self.invalidate_pending_autofix(tab_id, pane_id);
+            self.invalidate_pending_autofix_source(tab_id, pane_id, true);
         } else {
             for tab_id in self.tab_sessions.keys().cloned().collect::<Vec<_>>() {
-                self.invalidate_pending_autofix(&tab_id, pane_id);
+                self.invalidate_pending_autofix_source(&tab_id, pane_id, true);
             }
         }
         let target_tab_id = event_tab_id.map(str::to_string).or_else(|| {

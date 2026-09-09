@@ -129,7 +129,16 @@ queue.header: "Messaġġi fil-kju: %{count}"  # Automatic pinned list above inpu
 queue.full: "Il-kju mimli. L-input tiegħek inżamm."
 queue.enqueued: "Il-messaġġ żdied mal-kju."  # Info notification when a user message must wait before being sent to the AI agent
 queue.cancelled: "Ġew ikkanċellati %{count} messaġġi fil-kju. Tista' tibgħat messaġġ ġdid."  # Info notification when waiting requests are discarded after cancellation, failure, or session reset
-queue.session_busy: "Il-messaġġi fil-kju jappartjenu għal din il-konverżazzjoni. Uża /stop biex tikkanċellahom qabel tibdel is-sessjoni jew il-konfigurazzjoni."  # {Locked="/stop"}
+queue.session_busy: "Il-messaġġi fil-kju jappartjenu għal din il-konverżazzjoni. Ibgħathom jew armihom qabel tibdel is-sessjoni jew il-konfigurazzjoni."
+queue.paused_header: "Sospiż: %{count} pendenti; ma jintbagħtux awtomatikament"  # Pinned heading: automatic sending is stopped
+queue.recall: "Irkupra l-aħħar waħda"  # Button: restore the newest pending request to the editor
+queue.send_remaining: "Ibgħat il-bqija"  # Button: resume sending pending requests
+queue.discard: "Armi l-bqija"  # Button: discard pending requests, not the draft or active task
+queue.draft_busy: "Ibgħat jew ħassar l-abbozz attwali qabel tirkupra talba mill-kju."
+queue.enqueued_paused: "Miżjud mal-kju mwaqqaf. Agħżel Ibgħat il-bqija biex tibdieh."
+queue.resubmit: "Jeħtieġ li terġa' tintbagħat"  # Prefix: fix evidence expired; recall and submit again
+queue.resume_blocked: "It-talbiet li qed jistennew għadhom ma jistgħux jintbagħtu. Solvi l-problema tal-konnessjoni jew temm l-interazzjoni attiva; irkupra u erġa' ibgħat kwalunkwe talba għal tiswija li skadiet."
+queue.stopped: "Il-bgħit awtomatiku twaqqaf. It-talbiet pendenti tal-utent inżammu."
 queue.capture_failed: "Ma setax jinżamm il-kuntest tal-iżball: %{error}"
 queue.auto: "Tiswija awtomatika"  # Label for a queued, automatically requested analysis of a failed shell command
 # Auto-fix diagnostic capture errors for the source terminal pane, shown through queue.capture_failed.

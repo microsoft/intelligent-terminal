@@ -129,7 +129,16 @@ queue.header: "ຂໍ້ຄວາມໃນຄິວ: %{count}"  # Automatic pinn
 queue.full: "ຄິວເຕັມແລ້ວ. ຂໍ້ຄວາມທີ່ທ່ານປ້ອນໄດ້ຖືກເກັບໄວ້."
 queue.enqueued: "ເພີ່ມຂໍ້ຄວາມເຂົ້າຄິວແລ້ວ."  # Info notification when a user message must wait before being sent to the AI agent
 queue.cancelled: "ຍົກເລີກ %{count} ຂໍ້ຄວາມໃນຄິວແລ້ວ. ທ່ານສາມາດສົ່ງຂໍ້ຄວາມໃໝ່ໄດ້."  # Info notification when waiting requests are discarded after cancellation, failure, or session reset
-queue.session_busy: "ຂໍ້ຄວາມໃນຄິວເປັນຂອງການສົນທະນານີ້. ໃຊ້ /stop ເພື່ອຍົກເລີກຂໍ້ຄວາມເຫຼົ່ານັ້ນກ່ອນປ່ຽນເຊດຊັນ ຫຼື ການຕັ້ງຄ່າ."  # {Locked="/stop"}
+queue.session_busy: "ຂໍ້ຄວາມໃນຄິວເປັນຂອງການສົນທະນານີ້. ສົ່ງ ຫຼື ລຶບຂໍ້ຄວາມເຫຼົ່ານັ້ນກ່ອນປ່ຽນເຊດຊັນ ຫຼື ການຕັ້ງຄ່າ."
+queue.paused_header: "ຢຸດຊົ່ວຄາວ: %{count} ລໍຖ້າ; ຈະບໍ່ສົ່ງອັດຕະໂນມັດ"  # Pinned heading: automatic sending is stopped
+queue.recall: "ນຳຄຳຮ້ອງຂໍສຸດທ້າຍກັບຄືນ"  # Button: restore the newest pending request to the editor
+queue.send_remaining: "ສົ່ງທີ່ເຫຼືອ"  # Button: resume sending pending requests
+queue.discard: "ລຶບທີ່ເຫຼືອ"  # Button: discard pending requests, not the draft or active task
+queue.draft_busy: "ສົ່ງ ຫຼື ລ້າງສະບັບຮ່າງປັດຈຸບັນກ່ອນນຳຄຳຮ້ອງຂໍໃນຄິວກັບຄືນ."
+queue.enqueued_paused: "ເພີ່ມໃສ່ຄິວທີ່ຢຸດແລ້ວ. ເລືອກ ສົ່ງທີ່ເຫຼືອ ເພື່ອເລີ່ມ."
+queue.resubmit: "ຕ້ອງສົ່ງໃໝ່"  # Prefix: fix evidence expired; recall and submit again
+queue.resume_blocked: "ຍັງສົ່ງຄຳຮ້ອງຂໍທີ່ລໍຖ້າບໍ່ໄດ້. ແກ້ໄຂບັນຫາການເຊື່ອມຕໍ່ ຫຼື ດຳເນີນການໂຕ້ຕອບທີ່ໃຊ້ງານຢູ່ໃຫ້ສຳເລັດ; ນຳຄຳຮ້ອງຂໍແກ້ໄຂທີ່ໝົດອາຍຸກັບຄືນແລ້ວສົ່ງໃໝ່."
+queue.stopped: "ຢຸດການສົ່ງອັດຕະໂນມັດແລ້ວ. ຄຳຮ້ອງຂໍຂອງຜູ້ໃຊ້ທີ່ລໍຖ້າໄດ້ຖືກເກັບໄວ້."
 queue.capture_failed: "ບໍ່ສາມາດເກັບຂໍ້ມູນປະກອບຂໍ້ຜິດພາດໄວ້ໄດ້: %{error}"
 queue.auto: "ແກ້ໄຂອັດຕະໂນມັດ"  # Label for a queued, automatically requested analysis of a failed shell command
 # Auto-fix diagnostic capture errors for the source terminal pane, shown through queue.capture_failed.

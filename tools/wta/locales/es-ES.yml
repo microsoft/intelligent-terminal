@@ -129,7 +129,16 @@ queue.header: "Mensajes en cola: %{count}"  # Automatic pinned list above input:
 queue.full: "La cola está llena. Se ha conservado su entrada."
 queue.enqueued: "Mensaje añadido a la cola."  # Info notification when a user message must wait before being sent to the AI agent
 queue.cancelled: "Se han cancelado %{count} mensajes en cola. Puede enviar un mensaje nuevo."  # Info notification when waiting requests are discarded after cancellation, failure, or session reset
-queue.session_busy: "Los mensajes en cola pertenecen a esta conversación. Use /stop para cancelarlos antes de cambiar de sesión o la configuración."  # {Locked="/stop"}
+queue.session_busy: "Los mensajes en cola pertenecen a esta conversación. Envíelos o descártelos antes de cambiar de sesión o la configuración."
+queue.paused_header: "En pausa: %{count} pendientes; no se envían automáticamente"  # Pinned heading: automatic sending is stopped
+queue.recall: "Recuperar última"  # Button: restore the newest pending request to the editor
+queue.send_remaining: "Enviar restantes"  # Button: resume sending pending requests
+queue.discard: "Descartar restantes"  # Button: discard pending requests, not the draft or active task
+queue.draft_busy: "Envíe o borre el borrador actual antes de recuperar una solicitud de la cola."
+queue.enqueued_paused: "Se ha añadido a la cola detenida. Elija Enviar restantes para iniciarla."
+queue.resubmit: "Requiere reenvío"  # Prefix: fix evidence expired; recall and submit again
+queue.resume_blocked: "Las solicitudes pendientes aún no se pueden enviar. Resuelva el problema de conexión o complete la interacción activa; recupere y vuelva a enviar las solicitudes de corrección caducadas."
+queue.stopped: "Se ha detenido el envío automático. Se han conservado las solicitudes pendientes del usuario."
 queue.capture_failed: "No se pudo conservar el contexto del error: %{error}"
 queue.auto: "Corrección automática"  # Label for a queued, automatically requested analysis of a failed shell command
 # Auto-fix diagnostic capture errors for the source terminal pane, shown through queue.capture_failed.

@@ -138,7 +138,16 @@ queue.header: "Správy v rade: %{count}"  # Automatic pinned list above input: t
 queue.full: "Rad je plný. Zadaný text sa zachoval."
 queue.enqueued: "Správa bola pridaná do radu."  # Info notification when a user message must wait before being sent to the AI agent
 queue.cancelled: "Zrušené správy v rade: %{count}. Môžete odoslať novú správu."  # Info notification when waiting requests are discarded after cancellation, failure, or session reset
-queue.session_busy: "Správy v rade patria do tejto konverzácie. Pred zmenou relácie alebo konfigurácie ich zrušte pomocou /stop."  # {Locked="/stop"}
+queue.session_busy: "Správy v rade patria do tejto konverzácie. Pred zmenou relácie alebo konfigurácie ich odošlite alebo zahoďte."
+queue.paused_header: "Pozastavené: %{count} čakajúcich; neodosielajú sa automaticky"  # Pinned heading: automatic sending is stopped
+queue.recall: "Vrátiť poslednú"  # Button: restore the newest pending request to the editor
+queue.send_remaining: "Odoslať zostávajúce"  # Button: resume sending pending requests
+queue.discard: "Zahodiť zostávajúce"  # Button: discard pending requests, not the draft or active task
+queue.draft_busy: "Pred vrátením požiadavky z radu odošlite alebo vymažte aktuálny koncept."
+queue.enqueued_paused: "Pridané do zastaveného radu. Spustite ho voľbou Odoslať zostávajúce."
+queue.resubmit: "Vyžaduje opätovné odoslanie"  # Prefix: fix evidence expired; recall and submit again
+queue.resume_blocked: "Čakajúce požiadavky sa zatiaľ nedajú odoslať. Vyriešte problém s pripojením alebo dokončite aktívnu interakciu; vráťte požiadavky na opravu s uplynutou platnosťou a znova ich odošlite."
+queue.stopped: "Automatické odosielanie bolo zastavené. Čakajúce požiadavky používateľa boli zachované."
 queue.capture_failed: "Nepodarilo sa zachovať kontext chyby: %{error}"
 queue.auto: "Automatická oprava"  # Label for a queued, automatically requested analysis of a failed shell command
 # Auto-fix diagnostic capture errors for the source terminal pane, shown through queue.capture_failed.

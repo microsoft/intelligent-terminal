@@ -154,7 +154,16 @@ queue.header: "Հերթում գտնվող հաղորդագրություննե�
 queue.full: "Հերթը լիքն է։ Ձեր մուտքագրածը պահպանվել է։"
 queue.enqueued: "Հաղորդագրությունն ավելացվել է հերթին։"  # Info notification when a user message must wait before being sent to the AI agent
 queue.cancelled: "Չեղարկվել է հերթում գտնվող %{count} հաղորդագրություն։ Կարող եք նոր հաղորդագրություն ուղարկել։"  # Info notification when waiting requests are discarded after cancellation, failure, or session reset
-queue.session_busy: "Հերթում գտնվող հաղորդագրությունները պատկանում են այս զրույցին։ Նստաշրջանը կամ կազմաձևումը փոխելուց առաջ օգտագործեք /stop՝ դրանք չեղարկելու համար։"  # {Locked="/stop"}
+queue.session_busy: "Հերթում գտնվող հաղորդագրությունները պատկանում են այս զրույցին։ Նստաշրջանը կամ կազմաձևումը փոխելուց առաջ ուղարկեք կամ հեռացրեք դրանք։"
+queue.paused_header: "Դադարեցված է․ %{count} սպասող․ ինքնաշխատ չեն ուղարկվում"  # Pinned heading: automatic sending is stopped
+queue.recall: "Վերադարձնել վերջինը"  # Button: restore the newest pending request to the editor
+queue.send_remaining: "Ուղարկել մնացածը"  # Button: resume sending pending requests
+queue.discard: "Հեռացնել մնացածը"  # Button: discard pending requests, not the draft or active task
+queue.draft_busy: "Հերթից հարցումը վերադարձնելուց առաջ ուղարկեք կամ մաքրեք ընթացիկ սևագիրը։"
+queue.enqueued_paused: "Ավելացվել է կանգնեցված հերթին։ Այն գործարկելու համար ընտրեք Ուղարկել մնացածը։"
+queue.resubmit: "Պետք է կրկին ուղարկել"  # Prefix: fix evidence expired; recall and submit again
+queue.resume_blocked: "Սպասող հարցումները դեռ հնարավոր չէ ուղարկել։ Լուծեք կապի խնդիրը կամ ավարտեք ընթացիկ փոխգործակցությունը․ վերադարձրեք ժամկետանց ուղղման հարցումները խմբագրիչ և կրկին ուղարկեք դրանք։"
+queue.stopped: "Ինքնաշխատ ուղարկումը կանգնեցվել է։ Օգտվողի սպասող հարցումները պահպանվել են։"
 queue.capture_failed: "Չհաջողվեց պահպանել սխալի համատեքստը՝ %{error}"
 queue.auto: "Ինքնաշխատ ուղղում"  # Label for a queued, automatically requested analysis of a failed shell command
 # Auto-fix diagnostic capture errors for the source terminal pane, shown through queue.capture_failed.

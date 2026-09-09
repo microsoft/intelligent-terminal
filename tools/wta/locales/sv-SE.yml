@@ -129,7 +129,16 @@ queue.header: "Köade meddelanden: %{count}"  # Automatic pinned list above inpu
 queue.full: "Kön är full. Din inmatning har behållits."
 queue.enqueued: "Meddelandet har köats."  # Info notification when a user message must wait before being sent to the AI agent
 queue.cancelled: "%{count} köade meddelanden avbröts. Du kan skicka ett nytt meddelande."  # Info notification when waiting requests are discarded after cancellation, failure, or session reset
-queue.session_busy: "Köade meddelanden hör till den här konversationen. Använd /stop för att avbryta dem innan du byter session eller konfiguration."  # {Locked="/stop"}
+queue.session_busy: "Köade meddelanden hör till den här konversationen. Skicka eller kasta dem innan du byter session eller konfiguration."
+queue.paused_header: "Pausat: %{count} väntar; skickas inte automatiskt"  # Pinned heading: automatic sending is stopped
+queue.recall: "Hämta tillbaka senaste"  # Button: restore the newest pending request to the editor
+queue.send_remaining: "Skicka återstående"  # Button: resume sending pending requests
+queue.discard: "Kasta återstående"  # Button: discard pending requests, not the draft or active task
+queue.draft_busy: "Skicka eller rensa det aktuella utkastet innan du hämtar tillbaka en begäran från kön."
+queue.enqueued_paused: "Tillagt i den stoppade kön. Välj Skicka återstående för att starta den."
+queue.resubmit: "Behöver skickas igen"  # Prefix: fix evidence expired; recall and submit again
+queue.resume_blocked: "Väntande begäranden kan inte skickas ännu. Lös anslutningsproblemet eller slutför den aktiva interaktionen; hämta tillbaka utgångna korrigeringsbegäranden och skicka dem igen."
+queue.stopped: "Automatisk sändning stoppad. Väntande användarbegäranden har behållits."
 queue.capture_failed: "Det gick inte att bevara felkontexten: %{error}"
 queue.auto: "Automatisk korrigering"  # Label for a queued, automatically requested analysis of a failed shell command
 # Auto-fix diagnostic capture errors for the source terminal pane, shown through queue.capture_failed.

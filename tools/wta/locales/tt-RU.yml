@@ -142,7 +142,16 @@ queue.header: "Чираттагы хәбәрләр: %{count}"  # Automatic pinne
 queue.full: "Чират тулы. Кертелгән мәгълүмат сакланды."
 queue.enqueued: "Хәбәр чиратка куелды."  # Info notification when a user message must wait before being sent to the AI agent
 queue.cancelled: "Чираттагы %{count} хәбәр юкка чыгарылды. Яңа хәбәр җибәрә аласыз."  # Info notification when waiting requests are discarded after cancellation, failure, or session reset
-queue.session_busy: "Чираттагы хәбәрләр бу әңгәмәгә карый. Сеансны яки конфигурацияне үзгәрткәнче аларны юкка чыгару өчен /stop кулланыгыз."  # {Locked="/stop"}
+queue.session_busy: "Чираттагы хәбәрләр бу әңгәмәгә карый. Сеансны яки конфигурацияне үзгәрткәнче аларны җибәрегез яки бетерегез."
+queue.paused_header: "Вакытлыча туктатылды: %{count} көтә; автоматик рәвештә җибәрелми"  # Pinned heading: automatic sending is stopped
+queue.recall: "Соңгысын кире кайтару"  # Button: restore the newest pending request to the editor
+queue.send_remaining: "Калганнарын җибәрү"  # Button: resume sending pending requests
+queue.discard: "Калганнарын бетерү"  # Button: discard pending requests, not the draft or active task
+queue.draft_busy: "Чираттагы сорауны кире кайтарганчы, агымдагы караламаны җибәрегез яки чистартыгыз."
+queue.enqueued_paused: "Туктатылган чиратка өстәлде. Башлау өчен Калганнарын җибәрүне сайлагыз."
+queue.resubmit: "Яңадан җибәрергә кирәк"  # Prefix: fix evidence expired; recall and submit again
+queue.resume_blocked: "Көтүче сорауларны әлегә җибәреп булмый. Тоташу проблемасын хәл итегез яки актив аралашуны тәмамлагыз; вакыты чыккан төзәтү сорауларын кире кайтарып яңадан җибәрегез."
+queue.stopped: "Автоматик җибәрү туктатылды. Көтүче кулланучы сораулары сакланды."
 queue.capture_failed: "Хата контекстын саклап булмады: %{error}"
 queue.auto: "Автоматик төзәтү"  # Label for a queued, automatically requested analysis of a failed shell command
 # Auto-fix diagnostic capture errors for the source terminal pane, shown through queue.capture_failed.

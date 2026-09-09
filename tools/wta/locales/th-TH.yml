@@ -129,7 +129,16 @@ queue.header: "ข้อความในคิว: %{count}"  # Automatic pinn
 queue.full: "คิวเต็มแล้ว ระบบเก็บข้อมูลที่คุณป้อนไว้แล้ว"
 queue.enqueued: "เพิ่มข้อความเข้าคิวแล้ว"  # Info notification when a user message must wait before being sent to the AI agent
 queue.cancelled: "ยกเลิกข้อความในคิวแล้ว %{count} ข้อความ คุณสามารถส่งข้อความใหม่ได้"  # Info notification when waiting requests are discarded after cancellation, failure, or session reset
-queue.session_busy: "ข้อความในคิวเป็นของการสนทนานี้ ใช้ /stop เพื่อยกเลิกข้อความเหล่านี้ก่อนเปลี่ยนเซสชันหรือการกำหนดค่า"  # {Locked="/stop"}
+queue.session_busy: "ข้อความในคิวเป็นของการสนทนานี้ ส่งหรือทิ้งข้อความเหล่านี้ก่อนเปลี่ยนเซสชันหรือการกำหนดค่า"
+queue.paused_header: "หยุดชั่วคราว: รอส่ง %{count} รายการ; จะไม่ส่งโดยอัตโนมัติ"  # Pinned heading: automatic sending is stopped
+queue.recall: "เรียกคำขอล่าสุดกลับ"  # Button: restore the newest pending request to the editor
+queue.send_remaining: "ส่งที่เหลือ"  # Button: resume sending pending requests
+queue.discard: "ทิ้งที่เหลือ"  # Button: discard pending requests, not the draft or active task
+queue.draft_busy: "ส่งหรือล้างฉบับร่างปัจจุบันก่อนเรียกคำขอในคิวกลับมาแก้ไข"
+queue.enqueued_paused: "เพิ่มลงในคิวที่หยุดแล้ว เลือก ส่งที่เหลือ เพื่อเริ่มส่ง"
+queue.resubmit: "ต้องส่งใหม่"  # Prefix: fix evidence expired; recall and submit again
+queue.resume_blocked: "ยังไม่สามารถส่งคำขอที่รออยู่ได้ แก้ไขปัญหาการเชื่อมต่อหรือดำเนินการโต้ตอบที่ค้างอยู่ให้เสร็จ เรียกคำขอแก้ไขที่หมดอายุกลับมาแล้วส่งใหม่"
+queue.stopped: "หยุดการส่งอัตโนมัติแล้ว คำขอของผู้ใช้ที่รอส่งยังคงเก็บไว้"
 queue.capture_failed: "ไม่สามารถเก็บบริบทข้อผิดพลาดได้: %{error}"
 queue.auto: "แก้ไขอัตโนมัติ"  # Label for a queued, automatically requested analysis of a failed shell command
 # Auto-fix diagnostic capture errors for the source terminal pane, shown through queue.capture_failed.

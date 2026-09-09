@@ -72,9 +72,11 @@ mod attachments;
 mod autofix;
 mod input_edit;
 mod prompt_queue;
+mod queue_controls;
 mod tab_state;
 mod turn_state;
 use autofix::*;
+pub(crate) use queue_controls::{QueueControl, QueueControlHit};
 
 pub use crate::turn_context::TurnContext;
 #[cfg(test)]
@@ -1158,6 +1160,8 @@ pub struct App {
     pub(crate) pressed_completed_turn: Option<PressedCompletedTurn>,
     pub(crate) last_completed_turn_click: Option<CompletedTurnClickRecord>,
     pub(crate) input_dialog_area: Option<Rect>,
+    pub(crate) queue_control_hits: Vec<QueueControlHit>,
+    pub(crate) pressed_queue_control: Option<(QueueControlHit, bool)>,
     pub(crate) pressed_input_dialog_tab: Option<String>,
     pub(crate) completed_turn_action_links: Vec<crate::action_links::CompletedTurnActionLink>,
     pub(crate) painted_completed_turn_action_links:
@@ -1487,6 +1491,8 @@ impl App {
             pressed_completed_turn: None,
             last_completed_turn_click: None,
             input_dialog_area: None,
+            queue_control_hits: Vec::new(),
+            pressed_queue_control: None,
             pressed_input_dialog_tab: None,
             completed_turn_action_links: Vec::new(),
             painted_completed_turn_action_links: Vec::new(),
@@ -3689,6 +3695,7 @@ impl App {
         let active_tab_id = self.active_tab_key().to_string();
         for tab in self.tab_sessions.values_mut() {
             tab.clear_chat_history();
+            tab.cancel_pending_prompts();
             tab.invalidate_active_prompt_attachment();
             tab.usage = None;
             tab.usage_staleness = crate::usage::UsageStaleness::default();
@@ -5538,12 +5545,12 @@ impl App {
         tab.scroll_to_bottom();
     }
 
-    /// `/stop` — cancel the in-flight turn and waiting requests, or note that there is nothing to
+    /// `/stop` — cancel the in-flight turn and pause waiting user requests, or note that there is nothing to
     /// stop. `in_flight` is the active tab's turn state, captured by the
     /// dispatcher before any mutation.
     fn cmd_stop(&mut self, in_flight: bool, cancelling: bool) {
         let had_pending = !self.current_tab().prompt_queue.entries.is_empty();
-        self.current_tab_mut().cancel_pending_prompts();
+        self.current_tab_mut().pause_pending_prompts();
         if in_flight || cancelling {
             let tab_id = self
                 .tab_id
@@ -5864,9 +5871,14 @@ impl App {
     /// CLI pool. Viable panes, ConPTYs, and helpers stay alive and reconnect
     /// over the stable master pipe with clean ACP sessions.
     fn cmd_restart(&mut self) {
-        if self.queue_blocks_session_change() {
+        let recovering = matches!(
+            self.state,
+            ConnectionState::Failed(_) | ConnectionState::Disconnected
+        );
+        if !recovering && self.queue_blocks_session_change() {
             return;
         }
+        self.invalidate_prompt_queue_sessions();
         self.state = ConnectionState::Connecting(t!("connection.restarting").into_owned());
         self.pending_session_load = None;
         self.session_to_tab.clear();

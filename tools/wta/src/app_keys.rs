@@ -17,7 +17,7 @@ fn modifiers_allow_text_input(modifiers: KeyModifiers) -> bool {
 impl App {
     fn handle_global_ctrl_c(&mut self) {
         let had_pending = !self.current_tab().prompt_queue.entries.is_empty();
-        self.current_tab_mut().cancel_pending_prompts();
+        self.current_tab_mut().pause_pending_prompts();
         let tab = self.current_tab();
         let cancelling = tab.turn.is_cancelling();
         let has_active_request =
@@ -420,6 +420,10 @@ impl App {
                 }
                 _ => {}
             }
+            return;
+        }
+
+        if self.handle_pending_queue_key(key) {
             return;
         }
 

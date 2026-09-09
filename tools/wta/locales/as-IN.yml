@@ -143,7 +143,16 @@ queue.header: "অপেক্ষা শাৰীত থকা বাৰ্ত�
 queue.full: "অপেক্ষা শাৰী পূৰ্ণ হৈছে। আপোনাৰ ইনপুট সংৰক্ষণ কৰা হৈছে।"
 queue.enqueued: "বাৰ্তাটো অপেক্ষা শাৰীত যোগ কৰা হৈছে।"  # Info notification when a user message must wait before being sent to the AI agent
 queue.cancelled: "অপেক্ষা শাৰীত থকা %{count}টা বাৰ্তা বাতিল কৰা হৈছে। আপুনি নতুন বাৰ্তা পঠিয়াব পাৰে।"  # Info notification when waiting requests are discarded after cancellation, failure, or session reset
-queue.session_busy: "অপেক্ষা শাৰীত থকা বাৰ্তাসমূহ এই কথোপকথনৰ অন্তৰ্গত। অধিৱেশন বা কনফিগাৰেশ্বন সলনি কৰাৰ আগতে সেইবোৰ বাতিল কৰিবলৈ /stop ব্যৱহাৰ কৰক।"  # {Locked="/stop"}
+queue.session_busy: "অপেক্ষা শাৰীত থকা বাৰ্তাসমূহ এই কথোপকথনৰ অন্তৰ্গত। অধিৱেশন বা কনফিগাৰেশ্বন সলনি কৰাৰ আগতে সেইবোৰ পঠাওক বা বাদ দিয়ক।"
+queue.paused_header: "সাময়িকভাৱে বন্ধ: %{count}টা অপেক্ষাৰত; স্বয়ংক্ৰিয়ভাৱে পঠোৱা নহ’ব"  # Pinned heading: automatic sending is stopped
+queue.recall: "শেষৰটো ঘূৰাই আনক"  # Button: restore the newest pending request to the editor
+queue.send_remaining: "বাকীবোৰ পঠাওক"  # Button: resume sending pending requests
+queue.discard: "বাকীবোৰ বাদ দিয়ক"  # Button: discard pending requests, not the draft or active task
+queue.draft_busy: "অপেক্ষা শাৰীৰ অনুৰোধ ঘূৰাই অনাৰ আগতে বৰ্তমানৰ খচৰাটো দাখিল কৰক বা মচক।"
+queue.enqueued_paused: "বন্ধ হৈ থকা অপেক্ষা শাৰীত যোগ কৰা হৈছে। আৰম্ভ কৰিবলৈ বাকীবোৰ পঠাওক বাছনি কৰক।"
+queue.resubmit: "পুনৰ দাখিল কৰিব লাগিব"  # Prefix: fix evidence expired; recall and submit again
+queue.resume_blocked: "অপেক্ষাৰত অনুৰোধসমূহ এতিয়াও পঠাব নোৱাৰি। সংযোগৰ সমস্যা সমাধান কৰক বা সক্ৰিয় আদান-প্ৰদান সম্পূৰ্ণ কৰক; ম্যাদ উকলি যোৱা সংশোধনৰ অনুৰোধসমূহ ঘূৰাই আনি পুনৰ দাখিল কৰক।"
+queue.stopped: "স্বয়ংক্ৰিয়ভাৱে পঠোৱা বন্ধ হৈছে। অপেক্ষাৰত ব্যৱহাৰকাৰীৰ অনুৰোধসমূহ সংৰক্ষণ কৰা হৈছে।"
 queue.capture_failed: "ত্ৰুটিৰ প্ৰসংগ সংৰক্ষণ কৰিব পৰা নগ'ল: %{error}"
 queue.auto: "স্বয়ংক্ৰিয় সংশোধন"  # Label for a queued, automatically requested analysis of a failed shell command
 # Auto-fix diagnostic capture errors for the source terminal pane, shown through queue.capture_failed.

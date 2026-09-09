@@ -142,7 +142,16 @@ queue.header: "ക്യൂവിലുള്ള സന്ദേശങ്ങൾ:
 queue.full: "ക്യൂ നിറഞ്ഞിരിക്കുന്നു. നിങ്ങളുടെ ഇൻപുട്ട് സൂക്ഷിച്ചിട്ടുണ്ട്."
 queue.enqueued: "സന്ദേശം ക്യൂവിൽ ചേർത്തു."  # Info notification when a user message must wait before being sent to the AI agent
 queue.cancelled: "ക്യൂവിലുള്ള %{count} സന്ദേശങ്ങൾ റദ്ദാക്കി. നിങ്ങൾക്ക് ഒരു പുതിയ സന്ദേശം അയയ്ക്കാം."  # Info notification when waiting requests are discarded after cancellation, failure, or session reset
-queue.session_busy: "ക്യൂവിലുള്ള സന്ദേശങ്ങൾ ഈ സംഭാഷണത്തിന്റേതാണ്. സെഷനോ കോൺഫിഗറേഷനോ മാറ്റുന്നതിനുമുമ്പ് അവ റദ്ദാക്കാൻ /stop ഉപയോഗിക്കുക."  # {Locked="/stop"}
+queue.session_busy: "ക്യൂവിലുള്ള സന്ദേശങ്ങൾ ഈ സംഭാഷണത്തിന്റേതാണ്. സെഷനോ കോൺഫിഗറേഷനോ മാറ്റുന്നതിനുമുമ്പ് അവ അയയ്ക്കുകയോ ഒഴിവാക്കുകയോ ചെയ്യുക."
+queue.paused_header: "താൽക്കാലികമായി നിർത്തി: %{count} കാത്തിരിക്കുന്നു; സ്വയമേവ അയയ്ക്കില്ല"  # Pinned heading: automatic sending is stopped
+queue.recall: "അവസാനത്തേത് തിരികെയെടുക്കുക"  # Button: restore the newest pending request to the editor
+queue.send_remaining: "ബാക്കിയുള്ളവ അയയ്ക്കുക"  # Button: resume sending pending requests
+queue.discard: "ബാക്കിയുള്ളവ ഒഴിവാക്കുക"  # Button: discard pending requests, not the draft or active task
+queue.draft_busy: "ക്യൂവിലുള്ള അഭ്യർത്ഥന തിരികെയെടുക്കുന്നതിനുമുമ്പ് നിലവിലെ കരട് സമർപ്പിക്കുകയോ മായ്ക്കുകയോ ചെയ്യുക."
+queue.enqueued_paused: "നിർത്തിയ ക്യൂവിലേക്ക് ചേർത്തു. ആരംഭിക്കാൻ ബാക്കിയുള്ളവ അയയ്ക്കുക തിരഞ്ഞെടുക്കുക."
+queue.resubmit: "വീണ്ടും സമർപ്പിക്കണം"  # Prefix: fix evidence expired; recall and submit again
+queue.resume_blocked: "കാത്തിരിക്കുന്ന അഭ്യർത്ഥനകൾ ഇപ്പോഴും അയയ്ക്കാനാകില്ല. കണക്ഷൻ പ്രശ്നം പരിഹരിക്കുക അല്ലെങ്കിൽ സജീവമായ ആശയവിനിമയം പൂർത്തിയാക്കുക; കാലഹരണപ്പെട്ട പരിഹാര അഭ്യർത്ഥനകൾ തിരികെയെടുത്ത് വീണ്ടും സമർപ്പിക്കുക."
+queue.stopped: "സ്വയമേവ അയയ്ക്കുന്നത് നിർത്തി. ഉപയോക്താവിന്റെ കാത്തിരിക്കുന്ന അഭ്യർത്ഥനകൾ സൂക്ഷിച്ചിട്ടുണ്ട്."
 queue.capture_failed: "പിശകിന്റെ പശ്ചാത്തല വിവരങ്ങൾ സൂക്ഷിക്കാനായില്ല: %{error}"
 queue.auto: "സ്വയമേവയുള്ള പരിഹാരം"  # Label for a queued, automatically requested analysis of a failed shell command
 # Auto-fix diagnostic capture errors for the source terminal pane, shown through queue.capture_failed.

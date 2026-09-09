@@ -142,7 +142,16 @@ queue.header: "Navbatdagi xabarlar: %{count}"  # Automatic pinned list above inp
 queue.full: "Navbat toʻlgan. Kiritgan matningiz saqlandi."
 queue.enqueued: "Xabar navbatga qoʻshildi."  # Info notification when a user message must wait before being sent to the AI agent
 queue.cancelled: "Navbatdagi %{count} ta xabar bekor qilindi. Yangi xabar yuborishingiz mumkin."  # Info notification when waiting requests are discarded after cancellation, failure, or session reset
-queue.session_busy: "Navbatdagi xabarlar shu suhbatga tegishli. Seanslar yoki konfiguratsiyani oʻzgartirishdan oldin ularni bekor qilish uchun /stop buyrugʻidan foydalaning."  # {Locked="/stop"}
+queue.session_busy: "Navbatdagi xabarlar shu suhbatga tegishli. Seanslar yoki konfiguratsiyani oʻzgartirishdan oldin ularni yuboring yoki oʻchirib tashlang."
+queue.paused_header: "Pauza qilingan: %{count} kutilmoqda; avtomatik yuborilmaydi"  # Pinned heading: automatic sending is stopped
+queue.recall: "Oxirgisini qaytarish"  # Button: restore the newest pending request to the editor
+queue.send_remaining: "Qolganlarini yuborish"  # Button: resume sending pending requests
+queue.discard: "Qolganlarini oʻchirish"  # Button: discard pending requests, not the draft or active task
+queue.draft_busy: "Navbatdagi soʻrovni qaytarishdan oldin joriy qoralamani yuboring yoki tozalang."
+queue.enqueued_paused: "Toʻxtatilgan navbatga qoʻshildi. Boshlash uchun Qolganlarini yuborishni tanlang."
+queue.resubmit: "Qayta yuborish kerak"  # Prefix: fix evidence expired; recall and submit again
+queue.resume_blocked: "Kutilayotgan soʻrovlarni hali yuborib boʻlmaydi. Ulanish muammosini hal qiling yoki faol muloqotni yakunlang; muddati oʻtgan tuzatish soʻrovlarini qaytarib, qayta yuboring."
+queue.stopped: "Avtomatik yuborish toʻxtatildi. Foydalanuvchining kutilayotgan soʻrovlari saqlab qolindi."
 queue.capture_failed: "Xato kontekstini saqlab boʻlmadi: %{error}"
 queue.auto: "Avtomatik tuzatish"  # Label for a queued, automatically requested analysis of a failed shell command
 # Auto-fix diagnostic capture errors for the source terminal pane, shown through queue.capture_failed.

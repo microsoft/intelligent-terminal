@@ -179,6 +179,9 @@ fn cancelled_or_failed_detected_capture_allows_retry_without_accepting_late_comp
         let stale_id = app.current_tab().prompt_queue.entries[0].submission.id;
         if failed {
             app.autofix_snapshot_ready(stale_id, Err("capture failed".into()));
+            app.recall_last_pending_input();
+            assert_eq!(app.current_tab().input, "/fix Command failed (exit 1)");
+            app.current_tab_mut().clear_input();
         } else {
             app.current_tab_mut().cancel_pending_prompts();
         }

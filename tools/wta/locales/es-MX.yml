@@ -129,7 +129,16 @@ queue.header: "Mensajes en cola: %{count}"  # Automatic pinned list above input:
 queue.full: "La cola está llena. Se conservó tu entrada."
 queue.enqueued: "Mensaje agregado a la cola."  # Info notification when a user message must wait before being sent to the AI agent
 queue.cancelled: "Se cancelaron %{count} mensajes en cola. Puedes enviar un mensaje nuevo."  # Info notification when waiting requests are discarded after cancellation, failure, or session reset
-queue.session_busy: "Los mensajes en cola pertenecen a esta conversación. Usa /stop para cancelarlos antes de cambiar de sesión o la configuración."  # {Locked="/stop"}
+queue.session_busy: "Los mensajes en cola pertenecen a esta conversación. Envíalos o descártalos antes de cambiar de sesión o la configuración."
+queue.paused_header: "En pausa: %{count} pendientes; no se envían automáticamente"  # Pinned heading: automatic sending is stopped
+queue.recall: "Recuperar última"  # Button: restore the newest pending request to the editor
+queue.send_remaining: "Enviar restantes"  # Button: resume sending pending requests
+queue.discard: "Descartar restantes"  # Button: discard pending requests, not the draft or active task
+queue.draft_busy: "Envía o borra el borrador actual antes de recuperar una solicitud de la cola."
+queue.enqueued_paused: "Se agregó a la cola detenida. Elige Enviar restantes para iniciarla."
+queue.resubmit: "Requiere reenvío"  # Prefix: fix evidence expired; recall and submit again
+queue.resume_blocked: "Las solicitudes pendientes aún no se pueden enviar. Resuelve el problema de conexión o completa la interacción activa; recupera y vuelve a enviar las solicitudes de corrección vencidas."
+queue.stopped: "Se detuvo el envío automático. Se conservaron las solicitudes pendientes del usuario."
 queue.capture_failed: "No se pudo conservar el contexto del error: %{error}"
 queue.auto: "Corrección automática"  # Label for a queued, automatically requested analysis of a failed shell command
 # Auto-fix diagnostic capture errors for the source terminal pane, shown through queue.capture_failed.

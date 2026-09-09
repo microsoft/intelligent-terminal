@@ -142,7 +142,16 @@ queue.header: "रांगेतील संदेश: %{count}"  # Automatic 
 queue.full: "रांग भरली आहे. तुमचा इनपुट जतन केला आहे."
 queue.enqueued: "संदेश रांगेत जोडला आहे."  # Info notification when a user message must wait before being sent to the AI agent
 queue.cancelled: "रांगेतील %{count} संदेश रद्द केले. तुम्ही नवीन संदेश पाठवू शकता."  # Info notification when waiting requests are discarded after cancellation, failure, or session reset
-queue.session_busy: "रांगेतील संदेश या संभाषणाचे आहेत. सत्र किंवा कॉन्फिगरेशन बदलण्यापूर्वी ते रद्द करण्यासाठी /stop वापरा."  # {Locked="/stop"}
+queue.session_busy: "रांगेतील संदेश या संभाषणाचे आहेत. सत्र किंवा कॉन्फिगरेशन बदलण्यापूर्वी ते पाठवा किंवा काढून टाका."
+queue.paused_header: "विराम दिला: %{count} प्रलंबित; आपोआप पाठवले जाणार नाहीत"  # Pinned heading: automatic sending is stopped
+queue.recall: "शेवटची विनंती परत आणा"  # Button: restore the newest pending request to the editor
+queue.send_remaining: "उर्वरित पाठवा"  # Button: resume sending pending requests
+queue.discard: "उर्वरित काढून टाका"  # Button: discard pending requests, not the draft or active task
+queue.draft_busy: "रांगेतील विनंती परत आणण्यापूर्वी सध्याचा मसुदा सबमिट करा किंवा साफ करा."
+queue.enqueued_paused: "थांबवलेल्या रांगेत जोडले. सुरू करण्यासाठी उर्वरित पाठवा निवडा."
+queue.resubmit: "पुन्हा सबमिट करणे आवश्यक"  # Prefix: fix evidence expired; recall and submit again
+queue.resume_blocked: "प्रतीक्षेत असलेल्या विनंत्या अद्याप पाठवता येत नाहीत. कनेक्शनची समस्या सोडवा किंवा सक्रिय संवाद पूर्ण करा; कालबाह्य झालेल्या निराकरण विनंत्या परत आणून पुन्हा सबमिट करा."
+queue.stopped: "स्वयंचलित पाठवणे थांबवले. वापरकर्त्याच्या प्रलंबित विनंत्या जतन केल्या आहेत."
 queue.capture_failed: "त्रुटीचा संदर्भ जतन करता आला नाही: %{error}"
 queue.auto: "स्वयंचलित निराकरण"  # Label for a queued, automatically requested analysis of a failed shell command
 # Auto-fix diagnostic capture errors for the source terminal pane, shown through queue.capture_failed.

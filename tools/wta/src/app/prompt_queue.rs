@@ -20,6 +20,9 @@ pub(super) struct QueuedRequest {
     pub kind: RequestKind,
     pub queued_at: std::time::Instant,
     pub capturing: bool,
+    pub needs_resubmission: bool,
+    restore_text: Option<String>,
+    image_token_ranges: Vec<std::ops::Range<usize>>,
 }
 
 impl QueuedRequest {
@@ -39,7 +42,9 @@ impl QueuedRequest {
             })
             .take(120)
             .collect();
-        let marker = if self.kind == RequestKind::AutomaticFix {
+        let marker = if self.needs_resubmission {
+            format!("{} · ", t!("queue.resubmit"))
+        } else if self.kind == RequestKind::AutomaticFix {
             format!("{} · ", t!("queue.auto"))
         } else {
             String::new()
@@ -50,6 +55,8 @@ impl QueuedRequest {
     fn bytes(&self) -> usize {
         self.submission.text.len()
             + self.display_text.len()
+            + self.restore_text.as_ref().map_or(0, String::len)
+            + self.image_token_ranges.len() * std::mem::size_of::<std::ops::Range<usize>>()
             + self
                 .submission
                 .pane_context
@@ -94,6 +101,12 @@ impl QueuedRequest {
             .as_deref()
     }
 
+    fn require_resubmission(&mut self) {
+        self.submission.cancellation_token().cancel();
+        self.capturing = false;
+        self.needs_resubmission = true;
+    }
+
     /// Admission and insertion exclude exactly the same automatic request.
     /// A diagnostic activation promotes it; a typed /fix remains independent FIFO work.
     fn replaces_automatic(&self, entry: &Self) -> bool {
@@ -111,6 +124,7 @@ pub(super) struct PromptQueue {
     pub entries: VecDeque<QueuedRequest>,
     pub echoes: HashSet<String>,
     pub active_automatic_id: Option<u64>,
+    pub paused: bool,
 }
 
 impl PromptQueue {
@@ -133,7 +147,23 @@ impl PromptQueue {
             entry.submission.cancellation_token().cancel();
         }
         self.echoes.clear();
+        self.paused = false;
         discarded
+    }
+
+    fn pause(&mut self) {
+        self.entries.retain_mut(|entry| {
+            if entry.kind == RequestKind::AutomaticFix {
+                entry.submission.cancellation_token().cancel();
+                return false;
+            }
+            if entry.capturing {
+                entry.require_resubmission();
+            }
+            true
+        });
+        self.echoes.clear();
+        self.paused = !self.entries.is_empty();
     }
 
     fn invalidate_automatic(&mut self, pane: &str) {
@@ -211,6 +241,25 @@ impl Drop for PromptQueue {
 }
 
 impl TabSession {
+    pub(super) fn pause_pending_prompts(&mut self) {
+        let was_paused = self.prompt_queue.paused;
+        self.prompt_queue.pause();
+        if self.prompt_queue.paused && !was_paused {
+            self.messages
+                .push(ChatMessage::info(t!("queue.stopped").into_owned()));
+            self.scroll_to_bottom();
+        }
+    }
+
+    pub(super) fn invalidate_pending_prompt_session(&mut self) {
+        self.pause_pending_prompts();
+        for entry in &mut self.prompt_queue.entries {
+            if entry.kind == RequestKind::ManualFix {
+                entry.require_resubmission();
+            }
+        }
+    }
+
     /// Discard only pending requests. The active turn, action barrier, and draft
     /// belong to their existing lifecycle owners and remain untouched.
     pub(super) fn cancel_pending_prompts(&mut self) {
@@ -225,13 +274,118 @@ impl TabSession {
 }
 
 impl App {
-    pub(crate) fn pending_input_previews(&self) -> impl Iterator<Item = String> + '_ {
-        self.current_tab()
+    pub(crate) fn pending_queue_paused(&self) -> bool {
+        self.current_tab().prompt_queue.paused
+    }
+
+    pub(crate) fn pending_queue_can_recall(&self) -> bool {
+        self.waiting_requests_for_tab(self.active_tab_key())
+            .any(|entry| entry.kind != RequestKind::AutomaticFix)
+    }
+
+    pub(crate) fn pending_queue_can_resume(&self) -> bool {
+        let queue = &self.current_tab().prompt_queue;
+        queue.paused
+            && !queue.entries.is_empty()
+            && !self.prompt_tx.is_closed()
+            && !queue.entries.iter().any(|entry| entry.needs_resubmission)
+            && self.queue_dispatch_barriers_settled(self.active_tab_key())
+    }
+
+    pub(crate) fn resume_pending_inputs(&mut self) {
+        if !self.pending_queue_can_resume() {
+            self.queue_notice(t!("queue.resume_blocked").into_owned());
+            return;
+        }
+        self.current_tab_mut().prompt_queue.paused = false;
+        self.dispatch_prompt_queues();
+    }
+
+    pub(crate) fn discard_pending_inputs(&mut self) {
+        self.current_tab_mut().cancel_pending_prompts();
+    }
+
+    pub(crate) fn recall_last_pending_input(&mut self) {
+        let tab = self.current_tab();
+        if !tab.input.is_empty() || !tab.attachments.is_empty() {
+            self.queue_notice(t!("queue.draft_busy").into_owned());
+            return;
+        }
+        let Some(request_id) = self
+            .waiting_requests_for_tab(self.active_tab_key())
+            .filter(|entry| entry.kind != RequestKind::AutomaticFix)
+            .last()
+            .map(|entry| entry.submission.id)
+        else {
+            return;
+        };
+        let tab = self.current_tab_mut();
+        let Some(index) = tab
             .prompt_queue
             .entries
             .iter()
+            .position(|entry| entry.submission.id == request_id)
+        else {
+            return;
+        };
+        let Some(mut item) = tab.prompt_queue.entries.remove(index) else {
+            return;
+        };
+        item.submission.cancellation_token().cancel();
+        let mut input = item.restore_text.take().unwrap_or_else(|| {
+            if item.kind == RequestKind::ManualFix {
+                format!("/fix {}", item.submission.text)
+            } else {
+                std::mem::take(&mut item.display_text)
+            }
+        });
+        // Remove old editor tokens, then move (never clone) images into fresh
+        // attachment tokens at the same text boundaries.
+        for range in item.image_token_ranges.iter().rev() {
+            input.replace_range(range.clone(), "");
+        }
+        let mut removed_bytes = 0;
+        let mut inserted_bytes = 0;
+        for (image, range) in item
+            .submission
+            .images
+            .into_iter()
+            .zip(item.image_token_ranges)
+        {
+            let mut cursor = range.start - removed_bytes + inserted_bytes;
+            let before = input.len();
+            tab.attachments.insert_image(&mut input, &mut cursor, image);
+            removed_bytes += range.len();
+            inserted_bytes += input.len() - before;
+        }
+        tab.input = input;
+        tab.cursor_pos = tab.input.len();
+        tab.input_all_selected = false;
+        tab.refresh_command_popup();
+        if tab.prompt_queue.entries.is_empty() {
+            tab.prompt_queue.paused = false;
+        }
+    }
+
+    pub(crate) fn pending_input_previews(&self) -> impl Iterator<Item = String> + '_ {
+        self.waiting_requests_for_tab(self.active_tab_key())
             .enumerate()
             .map(|(index, item)| item.preview(index))
+    }
+
+    fn waiting_requests_for_tab(&self, tab_id: &str) -> impl Iterator<Item = &QueuedRequest> + '_ {
+        let preparing = self.queue_dispatch_ready(tab_id)
+            && self
+                .tab_sessions
+                .get(tab_id)
+                .and_then(|tab| tab.prompt_queue.entries.front())
+                .is_some_and(|item| item.capturing);
+        // An otherwise runnable head is preparing its own context, not waiting
+        // for execution capacity. Later entries still wait behind it.
+        self.tab_sessions
+            .get(tab_id)
+            .into_iter()
+            .flat_map(move |tab| tab.prompt_queue.entries.iter().skip(usize::from(preparing)))
     }
 
     pub(super) fn queue_notice(&mut self, message: String) {
@@ -241,6 +395,13 @@ impl App {
     }
 
     fn queue_dispatch_ready(&self, tab_id: &str) -> bool {
+        self.tab_sessions
+            .get(tab_id)
+            .is_some_and(|tab| !tab.prompt_queue.paused)
+            && self.queue_dispatch_barriers_settled(tab_id)
+    }
+
+    fn queue_dispatch_barriers_settled(&self, tab_id: &str) -> bool {
         let Some(tab) = self.tab_sessions.get(tab_id) else {
             return false;
         };
@@ -277,7 +438,11 @@ impl App {
                 continue;
             }
             let queue = &mut self.tab_mut(&tab_id).prompt_queue;
-            if queue.entries.front().is_none_or(|item| item.capturing) {
+            if queue
+                .entries
+                .front()
+                .is_none_or(|item| item.capturing || item.needs_resubmission)
+            {
                 continue;
             }
             let Some(mut item) = queue.entries.pop_front() else {
@@ -298,16 +463,16 @@ impl App {
             let failure_summary = item.submission.autofix_text_kind
                 == Some(crate::protocol::acp::client::AutofixTextKind::FailureSummary);
             if let Err(error) = self.prompt_tx.send(item.submission) {
-                // Definitely unsent: include this request in the discard count,
-                // without installing a turn or replacing the previous transcript.
+                // Definitely unsent: retain it without installing a turn or
+                // replacing the previous transcript.
                 item.submission = error.0;
                 let tab = self.tab_mut(&tab_id);
                 tab.prompt_queue.entries.push_front(item);
                 tab.messages
                     .push(ChatMessage::Error(t!("connection.lost").into_owned()));
-                tab.cancel_pending_prompts();
+                tab.pause_pending_prompts();
                 tracing::warn!(target: "prompt_queue", prompt_id,
-                    "prompt channel closed; discarding pending requests");
+                    "prompt channel closed; pausing pending requests");
                 continue;
             }
             self.tab_mut(&tab_id).prompt_queue.active_automatic_id =
@@ -418,6 +583,10 @@ impl App {
             kind,
             queued_at: std::time::Instant::now(),
             capturing: kind == RequestKind::ManualFix,
+            needs_resubmission: false,
+            restore_text: (kind == RequestKind::ManualFix && !tab.input.is_empty())
+                .then(|| tab.input.clone()),
+            image_token_ranges: tab.attachments.token_ranges().collect(),
         };
         if !self
             .current_tab()
@@ -447,15 +616,17 @@ impl App {
             set_welcome_shown_in_state();
         }
         self.dispatch_prompt_queues();
-        let tab = self.current_tab_mut();
-        if tab
-            .prompt_queue
-            .entries
-            .iter()
-            .any(|entry| entry.submission.id == request_id)
-        {
+        let waiting = self
+            .waiting_requests_for_tab(&tab_id)
+            .any(|entry| entry.submission.id == request_id);
+        if waiting {
+            let tab = self.current_tab_mut();
             tab.messages
-                .push(ChatMessage::info(t!("queue.enqueued").into_owned()));
+                .push(ChatMessage::info(if tab.prompt_queue.paused {
+                    t!("queue.enqueued_paused").into_owned()
+                } else {
+                    t!("queue.enqueued").into_owned()
+                }));
             tab.scroll_to_bottom();
         }
     }
@@ -475,7 +646,7 @@ impl App {
 
     pub(super) fn invalidate_prompt_queue_sessions(&mut self) {
         for tab in self.tab_sessions.values_mut() {
-            tab.cancel_pending_prompts();
+            tab.invalidate_pending_prompt_session();
             tab.pending_queue_action = None;
         }
     }
@@ -487,6 +658,14 @@ impl App {
         summary: &str,
         forced: bool,
     ) {
+        if !forced
+            && self
+                .tab_sessions
+                .get(tab_id)
+                .is_some_and(|tab| tab.prompt_queue.paused)
+        {
+            return;
+        }
         if !self.ensure_prompt_connection_for_tab(tab_id) {
             return;
         }
@@ -511,6 +690,9 @@ impl App {
             },
             queued_at: std::time::Instant::now(),
             capturing: true,
+            needs_resubmission: false,
+            restore_text: None,
+            image_token_ranges: Vec::new(),
         };
         if !self.tab_mut(tab_id).prompt_queue.can_fit(&item, 0) {
             self.tab_mut(tab_id)
@@ -522,6 +704,12 @@ impl App {
             self.tab_mut(tab_id).autofix.detected_request_id = Some(request_id);
         }
         self.tab_mut(tab_id).prompt_queue.insert(item);
+        if forced && self.tab_mut(tab_id).prompt_queue.paused {
+            let tab = self.tab_mut(tab_id);
+            tab.messages
+                .push(ChatMessage::info(t!("queue.enqueued_paused").into_owned()));
+            tab.scroll_to_bottom();
+        }
         if !forced {
             self.tab_mut(tab_id).autofix.detected_request_id = None;
             self.tab_mut(tab_id)
@@ -628,18 +816,27 @@ impl App {
                     }
                     tab.scroll_to_bottom();
                 } else {
-                    tab.cancel_pending_prompts();
+                    tab.pause_pending_prompts();
                 }
             }
         }
     }
 
     pub(super) fn invalidate_pending_autofix(&mut self, tab_id: &str, pane: &str) {
+        self.invalidate_pending_autofix_source(tab_id, pane, false);
+    }
+
+    pub(super) fn invalidate_pending_autofix_source(
+        &mut self,
+        tab_id: &str,
+        pane: &str,
+        closed: bool,
+    ) {
         if let Some(tab) = self.tab_sessions.get_mut(tab_id) {
             let explicit_capture_invalidated = tab.prompt_queue.entries.iter().any(|entry| {
                 entry.source().is_none_or(|source| source == pane)
-                    && entry.capturing
-                    && entry.kind != RequestKind::AutomaticFix
+                    && entry.kind == RequestKind::ManualFix
+                    && (closed || entry.capturing)
             });
             if explicit_capture_invalidated {
                 tab.messages.push(ChatMessage::warning(
@@ -649,7 +846,15 @@ impl App {
                     )
                     .into_owned(),
                 ));
-                tab.cancel_pending_prompts();
+                for entry in &mut tab.prompt_queue.entries {
+                    if entry.kind == RequestKind::ManualFix
+                        && entry.source().is_none_or(|source| source == pane)
+                        && (closed || entry.capturing)
+                    {
+                        entry.require_resubmission();
+                    }
+                }
+                tab.pause_pending_prompts();
                 return;
             }
             tab.prompt_queue.invalidate_automatic(pane);
@@ -799,6 +1004,85 @@ mod tests {
             assert!(app.current_tab().input.is_empty());
             assert!(rx.try_recv().is_err());
         }
+    }
+
+    #[test]
+    fn autofix_preparation_is_only_visible_when_execution_is_blocked() {
+        let _locale = crate::test_support::lock_locale();
+        for gate in ["ready", "connecting", "busy", "configuration", "action"] {
+            for kind in [RequestKind::ManualFix, RequestKind::AutomaticFix] {
+                for typed in [false, true] {
+                    if typed && kind == RequestKind::AutomaticFix {
+                        continue;
+                    }
+                    let (mut app, mut rx) = app();
+                    app.show_welcome_hint = false;
+                    app.source_session_id = Some("source".into());
+                    match gate {
+                        "connecting" => app.state = ConnectionState::Connecting("startup".into()),
+                        "busy" => {
+                            enter(&mut app, "active");
+                            rx.try_recv().unwrap();
+                        }
+                        "configuration" => hold(&mut app),
+                        "action" => app.current_tab_mut().pending_queue_action = Some(42),
+                        _ => {}
+                    }
+                    if typed {
+                        enter(&mut app, "/fix investigate");
+                    } else {
+                        app.enqueue_autofix(
+                            "queue-tab",
+                            "source",
+                            "failure",
+                            kind == RequestKind::ManualFix,
+                        );
+                    }
+                    let blocked = gate != "ready";
+                    assert_eq!(app.pending_input_previews().count(), usize::from(blocked));
+                    assert_eq!(queued_info_count(&app), usize::from(typed && blocked));
+                    assert_eq!(app.current_tab().prompt_queue.entries.len(), 1);
+                    assert!(app.current_tab().prompt_queue.entries[0].capturing);
+                    assert!(rx.try_recv().is_err());
+                    super::super::tests::complete_autofix_capture(&mut app, "queue-tab");
+                    assert_eq!(app.pending_input_previews().count(), usize::from(blocked));
+                    assert_eq!(rx.try_recv().is_ok(), !blocked);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn preparation_preserves_followers_and_tracks_dispatch_barriers() {
+        let _locale = crate::test_support::lock_locale();
+        let (mut app, mut rx) = app();
+        app.show_welcome_hint = false;
+        app.source_session_id = Some("source".into());
+        enter(&mut app, "/fix investigate");
+        assert_eq!(queued_info_count(&app), 0);
+        enter(&mut app, "follow up");
+        assert_eq!(
+            app.pending_input_previews().collect::<Vec<_>>(),
+            ["1. follow up"]
+        );
+        assert_eq!(queued_info_count(&app), 1);
+        hold(&mut app);
+        assert_eq!(app.pending_input_previews().count(), 2);
+        release(&mut app);
+        assert_eq!(
+            app.pending_input_previews().collect::<Vec<_>>(),
+            ["1. follow up"]
+        );
+        assert!(rx.try_recv().is_err());
+        super::super::tests::complete_autofix_capture(&mut app, "queue-tab");
+        assert_eq!(rx.try_recv().unwrap().text, "investigate");
+        assert_eq!(
+            app.pending_input_previews().collect::<Vec<_>>(),
+            ["1. follow up"]
+        );
+        end(&mut app);
+        assert_eq!(rx.try_recv().unwrap().text, "follow up");
+        assert_eq!(app.pending_input_previews().count(), 0);
     }
 
     #[test]
@@ -1056,6 +1340,12 @@ mod tests {
                         end(&mut app);
                     } else {
                         enter(&mut app, "/stop");
+                        let retained = &app.current_tab().prompt_queue.entries[0];
+                        assert!(retained.needs_resubmission);
+                        assert!(!retained.capturing);
+                        assert_eq!(retained.submission.images.len(), usize::from(with_image));
+                        assert!(app.pending_queue_paused());
+                        app.discard_pending_inputs();
                     }
                     app.source_session_id = Some("retry-source".into());
                     app.handle_event(AppEvent::Key(KeyEvent::new(
@@ -1236,22 +1526,32 @@ mod tests {
     }
 
     #[test]
-    fn stop_discards_pending_requests_and_future_input_works_without_recovery_command() {
+    fn stop_retains_pending_requests_and_requires_explicit_resume() {
         let _locale = crate::test_support::lock_locale();
         let (mut app, mut rx) = app();
         enter(&mut app, "active");
         rx.try_recv().unwrap();
-        enter(&mut app, "discard me");
+        enter(&mut app, "retain me");
         let token = app.current_tab().prompt_queue.entries[0]
             .submission
             .cancellation_token();
         enter(&mut app, "/stop");
-        assert!(token.is_cancelled());
-        assert!(app.current_tab().prompt_queue.entries.is_empty());
-        assert!(has_cancelled_notice(&app, 1));
+        assert!(!token.is_cancelled());
+        assert_eq!(app.current_tab().prompt_queue.entries.len(), 1);
+        assert!(app.pending_queue_paused());
+        assert!(!app.pending_queue_can_resume());
+        app.resume_pending_inputs();
+        assert!(rx.try_recv().is_err());
         end(&mut app);
         assert!(rx.try_recv().is_err());
         enter(&mut app, "new explicit request");
+        assert!(rx.try_recv().is_err());
+        assert!(app.current_tab().messages.iter().any(|message| {
+            matches!(message, ChatMessage::Notice { text, .. } if text == t!("queue.enqueued_paused").as_ref())
+        }));
+        app.resume_pending_inputs();
+        assert_eq!(rx.try_recv().unwrap().text, "retain me");
+        end(&mut app);
         assert_eq!(rx.try_recv().unwrap().text, "new explicit request");
     }
 
@@ -1266,7 +1566,7 @@ mod tests {
     }
 
     #[test]
-    fn ctrl_c_cancels_waiting_input_without_arming_pane_close() {
+    fn ctrl_c_pauses_waiting_input_without_arming_pane_close() {
         let _locale = crate::test_support::lock_locale();
         let (mut app, mut rx) = app();
         hold(&mut app);
@@ -1278,14 +1578,18 @@ mod tests {
             KeyCode::Char('c'),
             KeyModifiers::CONTROL,
         )));
-        assert!(token.is_cancelled());
-        assert!(app.current_tab().prompt_queue.entries.is_empty());
-        assert!(has_cancelled_notice(&app, 1));
+        assert!(!token.is_cancelled());
+        assert_eq!(app.current_tab().prompt_queue.entries.len(), 1);
+        assert!(app.pending_queue_paused());
         assert!(app.close_pane_armed_at.is_none());
         assert!(!app.should_quit);
         release(&mut app);
         assert!(rx.try_recv().is_err());
         enter(&mut app, "new request");
+        assert!(rx.try_recv().is_err());
+        app.resume_pending_inputs();
+        assert_eq!(rx.try_recv().unwrap().text, "waiting for configuration");
+        end(&mut app);
         assert_eq!(rx.try_recv().unwrap().text, "new request");
     }
 
@@ -1303,10 +1607,7 @@ mod tests {
         assert_eq!(queued_info_count(&app), 0);
         assert_eq!(
             app.pending_input_previews().collect::<Vec<_>>(),
-            [
-                format!("1. {} · new error", t!("queue.auto")),
-                format!("2. {} · other error", t!("queue.auto")),
-            ]
+            [format!("1. {} · other error", t!("queue.auto"))]
         );
         assert!(old_token.is_cancelled());
         assert_eq!(app.current_tab().prompt_queue.entries.len(), 2);
@@ -1600,9 +1901,19 @@ mod tests {
                     result,
                 });
             }
-            assert!(app.current_tab().prompt_queue.entries.is_empty());
+            if invalidation == "cancel" {
+                assert!(app.current_tab().prompt_queue.entries.is_empty());
+            } else {
+                assert_eq!(app.current_tab().prompt_queue.entries.len(), 1);
+                assert!(app.current_tab().prompt_queue.entries[0].needs_resubmission);
+                assert!(app.current_tab().prompt_queue.entries[0]
+                    .submission
+                    .autofix_snapshot
+                    .is_none());
+            }
             assert!(app.current_tab().turn.is_idle());
             assert!(rx.try_recv().is_err());
+            app.discard_pending_inputs();
             enter(&mut app, "fresh");
             assert_eq!(rx.try_recv().unwrap().text, "fresh");
         }
@@ -1744,7 +2055,7 @@ mod tests {
     }
 
     #[test]
-    fn session_changes_block_and_session_invalidation_discards_pending_work() {
+    fn session_changes_block_and_session_invalidation_pauses_explicit_work() {
         let _locale = crate::test_support::lock_locale();
         let (mut app, mut rx) = app();
         hold(&mut app);
@@ -1756,14 +2067,19 @@ mod tests {
         let tokens = pending_tokens(&app);
         app.current_tab_mut().pending_queue_action = Some(71);
         app.invalidate_prompt_queue_sessions();
-        assert!(app.current_tab().prompt_queue.entries.is_empty());
+        assert_eq!(app.current_tab().prompt_queue.entries.len(), 1);
         assert!(app.current_tab().pending_queue_action.is_none());
-        assert!(tokens.iter().all(|token| token.is_cancelled()));
-        assert!(has_cancelled_notice(&app, 2));
-        assert!(!app.queue_blocks_session_change());
+        assert!(!tokens[0].is_cancelled());
+        assert!(tokens[1].is_cancelled());
+        assert!(app.pending_queue_paused());
+        assert!(app.queue_blocks_session_change());
         release(&mut app);
         assert!(rx.try_recv().is_err());
         enter(&mut app, "new session request");
+        assert!(rx.try_recv().is_err());
+        app.resume_pending_inputs();
+        assert_eq!(rx.try_recv().unwrap().text, "manual");
+        end(&mut app);
         assert_eq!(rx.try_recv().unwrap().text, "new session request");
     }
 
@@ -1856,7 +2172,7 @@ mod tests {
     }
 
     #[test]
-    fn explicit_capture_failure_discards_pending_work_and_allows_fresh_input() {
+    fn explicit_capture_failure_retains_work_and_requires_resubmission() {
         let _locale = crate::test_support::lock_locale();
         let (mut app, mut rx) = app();
         hold(&mut app);
@@ -1868,17 +2184,23 @@ mod tests {
             request_id: id,
             result: Err("capture failed".into()),
         });
-        assert!(tokens.iter().all(|token| token.is_cancelled()));
-        assert!(app.current_tab().prompt_queue.entries.is_empty());
-        assert!(has_cancelled_notice(&app, 2));
+        assert!(tokens[0].is_cancelled());
+        assert!(!tokens[1].is_cancelled());
+        assert_eq!(app.current_tab().prompt_queue.entries.len(), 2);
+        assert!(app.current_tab().prompt_queue.entries[0].needs_resubmission);
         release(&mut app);
         assert!(rx.try_recv().is_err());
-        enter(&mut app, "fresh");
-        assert_eq!(rx.try_recv().unwrap().text, "fresh");
+        assert!(!app.pending_queue_can_resume());
+        app.recall_last_pending_input();
+        assert_eq!(app.current_tab().input, "queued next");
+        app.current_tab_mut().clear_input();
+        app.recall_last_pending_input();
+        assert_eq!(app.current_tab().input, "/fix explicit error");
+        assert!(!app.pending_queue_paused());
     }
 
     #[test]
-    fn explicit_capture_context_expiry_discards_pending_and_ignores_late_snapshot() {
+    fn explicit_capture_context_expiry_retains_pending_and_ignores_late_snapshot() {
         let _locale = crate::test_support::lock_locale();
         let (mut app, mut rx) = app();
         hold(&mut app);
@@ -1886,14 +2208,19 @@ mod tests {
         let id = app.current_tab().prompt_queue.entries[0].submission.id;
         enter(&mut app, "queued next");
         app.invalidate_pending_autofix("queue-tab", "source");
-        assert!(has_cancelled_notice(&app, 2));
+        assert!(app.pending_queue_paused());
         app.handle_event(AppEvent::AutofixSnapshotReady {
             request_id: id,
             result: Ok(crate::protocol::acp::client::AutofixSnapshot::for_test(
                 "source",
             )),
         });
-        assert!(app.current_tab().prompt_queue.entries.is_empty());
+        assert_eq!(app.current_tab().prompt_queue.entries.len(), 2);
+        assert!(app.current_tab().prompt_queue.entries[0].needs_resubmission);
+        assert!(app.current_tab().prompt_queue.entries[0]
+            .submission
+            .autofix_snapshot
+            .is_none());
         let changed = t!("queue.snapshot_context_changed", pane = "source");
         assert!(app.current_tab().messages.iter().any(|message| {
             matches!(message, ChatMessage::Notice { text, .. } if text.contains(changed.as_ref()))
@@ -1901,7 +2228,8 @@ mod tests {
         release(&mut app);
         assert!(rx.try_recv().is_err());
         enter(&mut app, "fresh request");
-        assert_eq!(rx.try_recv().unwrap().text, "fresh request");
+        assert!(rx.try_recv().is_err());
+        assert_eq!(app.current_tab().prompt_queue.entries.len(), 3);
     }
 
     #[test]
@@ -2008,7 +2336,7 @@ mod tests {
     }
 
     #[test]
-    fn errors_and_soft_stops_discard_pending_without_replaying_active_work() {
+    fn errors_and_soft_stops_pause_pending_without_replaying_active_work() {
         let _locale = crate::test_support::lock_locale();
         let (mut app, mut rx) = app();
         enter(&mut app, "first");
@@ -2017,15 +2345,15 @@ mod tests {
             session_id: "queue-session".into(),
             text: "partial answer".into(),
         });
-        enter(&mut app, "discard after soft stop");
+        enter(&mut app, "retain after soft stop");
         app.handle_event(AppEvent::AgentSoftStop {
             session_id: "queue-session".into(),
             reason: crate::protocol::acp::soft_stop::SoftStopReason::MaxTokens,
         });
-        assert!(has_cancelled_notice(&app, 1));
+        assert!(app.pending_queue_paused());
         end(&mut app);
         assert!(rx.try_recv().is_err());
-        assert!(app.current_tab().prompt_queue.entries.is_empty());
+        assert_eq!(app.current_tab().prompt_queue.entries.len(), 1);
         assert!(app.current_tab().completed_turns[0]
             .details
             .iter()
@@ -2034,22 +2362,31 @@ mod tests {
                 if text == t!("system.stopped_max_tokens").as_ref())
             }));
         enter(&mut app, "fresh after soft stop");
+        assert!(rx.try_recv().is_err());
+        app.resume_pending_inputs();
+        assert_eq!(rx.try_recv().unwrap().text, "retain after soft stop");
+        end(&mut app);
         let second = rx.try_recv().unwrap();
         assert_ne!(first.id, second.id);
-        enter(&mut app, "discard after error");
+        enter(&mut app, "retain after error");
         app.handle_event(AppEvent::PromptError {
             tab_id: "queue-tab".into(),
             prompt_id: second.id,
             message: "transport failed".into(),
         });
-        assert!(app.current_tab().prompt_queue.entries.is_empty());
+        assert_eq!(app.current_tab().prompt_queue.entries.len(), 1);
+        assert!(app.pending_queue_paused());
         assert!(rx.try_recv().is_err());
         enter(&mut app, "fresh after failure");
+        assert!(rx.try_recv().is_err());
+        app.resume_pending_inputs();
+        assert_eq!(rx.try_recv().unwrap().text, "retain after error");
+        end(&mut app);
         assert_eq!(rx.try_recv().unwrap().text, "fresh after failure");
     }
 
     #[test]
-    fn closed_local_channel_discards_unsent_work_and_preserves_history_and_draft() {
+    fn closed_local_channel_retains_unsent_work_and_preserves_history_and_draft() {
         let _locale = crate::test_support::lock_locale();
         let (mut app, mut rx) = app();
         enter(&mut app, "completed request");
@@ -2071,7 +2408,7 @@ mod tests {
         app.current_tab_mut().input = "preserved draft".into();
         drop(rx);
         release(&mut app);
-        assert!(tokens.iter().all(|token| token.is_cancelled()));
+        assert!(tokens.iter().all(|token| !token.is_cancelled()));
         assert_eq!(app.current_tab().completed_turns, history);
         assert_eq!(app.current_tab().turn.prompt_id(), turn_id);
         assert!(app.current_tab().turn.accepts_new_prompt());
@@ -2079,21 +2416,23 @@ mod tests {
             matches!(message, ChatMessage::Agent(text) if text == "prior transcript")
         }));
         assert_eq!(app.current_tab().input, "preserved draft");
-        assert!(app.current_tab().prompt_queue.entries.is_empty());
-        assert!(has_cancelled_notice(&app, 2));
+        assert_eq!(app.current_tab().prompt_queue.entries.len(), 2);
+        assert!(app.pending_queue_paused());
         let notices = queued_info_count(&app);
         enter(&mut app, "also unsent");
         assert_eq!(queued_info_count(&app), notices);
         assert!(app.current_tab().turn.accepts_new_prompt());
-        assert!(app.current_tab().prompt_queue.entries.is_empty());
+        assert_eq!(app.current_tab().prompt_queue.entries.len(), 3);
         let (tx, mut rx) = mpsc::unbounded_channel();
         app.prompt_tx = tx;
         enter(&mut app, "fresh after reconnect");
+        assert!(rx.try_recv().is_err());
+        app.resume_pending_inputs();
         let request = rx.try_recv().unwrap();
-        assert_eq!(request.text, "fresh after reconnect");
+        assert_eq!(request.text, "unsent first");
         assert!(
             rx.try_recv().is_err(),
-            "discarded requests must not be retried"
+            "only the first retained request should dispatch"
         );
     }
 }

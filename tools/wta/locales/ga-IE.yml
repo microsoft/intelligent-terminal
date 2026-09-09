@@ -129,7 +129,16 @@ queue.header: "Teachtaireachtaí sa scuaine: %{count}"  # Automatic pinned list 
 queue.full: "Tá an scuaine lán. Coinníodh d'ionchur."
 queue.enqueued: "Cuireadh an teachtaireacht sa scuaine."  # Info notification when a user message must wait before being sent to the AI agent
 queue.cancelled: "Cealaíodh %{count} teachtaireacht sa scuaine. Is féidir leat teachtaireacht nua a sheoladh."  # Info notification when waiting requests are discarded after cancellation, failure, or session reset
-queue.session_busy: "Baineann na teachtaireachtaí sa scuaine leis an gcomhrá seo. Úsáid /stop chun iad a chealú sula n-athróidh tú seisiún nó cumraíocht."  # {Locked="/stop"}
+queue.session_busy: "Baineann na teachtaireachtaí sa scuaine leis an gcomhrá seo. Seol nó scrios iad sula n-athróidh tú seisiún nó cumraíocht."
+queue.paused_header: "Ar sos: %{count} ar feitheamh; ní sheoltar go huathoibríoch iad"  # Pinned heading: automatic sending is stopped
+queue.recall: "Aisghabh an ceann deireanach"  # Button: restore the newest pending request to the editor
+queue.send_remaining: "Seol an chuid eile"  # Button: resume sending pending requests
+queue.discard: "Scrios an chuid eile"  # Button: discard pending requests, not the draft or active task
+queue.draft_busy: "Cuir isteach nó glan an dréacht reatha sula n-aisghabhfaidh tú iarratas ón scuaine."
+queue.enqueued_paused: "Cuireadh leis an scuaine stoptha é. Roghnaigh Seol an chuid eile chun í a thosú."
+queue.resubmit: "Is gá é a chur isteach arís"  # Prefix: fix evidence expired; recall and submit again
+queue.resume_blocked: "Ní féidir iarratais ar feitheamh a sheoladh fós. Réitigh fadhb an naisc nó críochnaigh an idirghníomhaíocht ghníomhach; aisghabh agus cuir isteach arís aon iarratais cheartúcháin atá imithe in éag."
+queue.stopped: "Stopadh seoladh uathoibríoch. Coinníodh iarratais úsáideora ar feitheamh."
 queue.capture_failed: "Níorbh fhéidir comhthéacs na hearráide a choinneáil: %{error}"
 queue.auto: "Ceartú uathoibríoch"  # Label for a queued, automatically requested analysis of a failed shell command
 # Auto-fix diagnostic capture errors for the source terminal pane, shown through queue.capture_failed.

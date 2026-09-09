@@ -138,7 +138,16 @@ queue.header: "Поруке у реду: %{count}"  # Automatic pinned list abov
 queue.full: "Ред је пун. Ваш унос је сачуван."
 queue.enqueued: "Порука је додата у ред."  # Info notification when a user message must wait before being sent to the AI agent
 queue.cancelled: "Отказане поруке у реду: %{count}. Можете послати нову поруку."  # Info notification when waiting requests are discarded after cancellation, failure, or session reset
-queue.session_busy: "Поруке у реду припадају овом разговору. Користите /stop да их откажете пре промене сесије или конфигурације."  # {Locked="/stop"}
+queue.session_busy: "Поруке у реду припадају овом разговору. Пошаљите их или одбаците пре промене сесије или конфигурације."
+queue.paused_header: "Паузирано: %{count} на чекању; не шаљу се аутоматски"  # Pinned heading: automatic sending is stopped
+queue.recall: "Врати последњи"  # Button: restore the newest pending request to the editor
+queue.send_remaining: "Пошаљи преостале"  # Button: resume sending pending requests
+queue.discard: "Одбаци преостале"  # Button: discard pending requests, not the draft or active task
+queue.draft_busy: "Пошаљите или обришите тренутни нацрт пре враћања захтева из реда."
+queue.enqueued_paused: "Додато у заустављени ред. Изаберите Пошаљи преостале да га покренете."
+queue.resubmit: "Потребно је поновно слање"  # Prefix: fix evidence expired; recall and submit again
+queue.resume_blocked: "Захтеви на чекању још не могу да се пошаљу. Решите проблем са везом или довршите активну интеракцију; вратите истекле захтеве за исправку и пошаљите их поново."
+queue.stopped: "Аутоматско слање је заустављено. Кориснички захтеви на чекању су сачувани."
 queue.capture_failed: "Није могуће сачувати контекст грешке: %{error}"
 queue.auto: "Аутоматска исправка"  # Label for a queued, automatically requested analysis of a failed shell command
 # Auto-fix diagnostic capture errors for the source terminal pane, shown through queue.capture_failed.

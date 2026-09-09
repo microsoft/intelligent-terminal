@@ -129,7 +129,16 @@ queue.header: "Queued messages: %{count}"  # Automatic pinned list above input: 
 queue.full: "Queue is full. Your input has been kept."
 queue.enqueued: "Message queued."  # Info notification when a user message must wait before being sent to the AI agent
 queue.cancelled: "Cancelled %{count} queued messages. You can send a new message."  # Info notification when waiting requests are discarded after cancellation, failure, or session reset
-queue.session_busy: "Queued messages belong to this conversation. Use /stop to cancel them before changing sessions or configuration."  # {Locked="/stop"}
+queue.session_busy: "Queued messages belong to this conversation. Send or discard them before changing sessions or configuration."
+queue.paused_header: "Paused: %{count} pending; not sent automatically"  # Pinned heading: automatic sending is stopped
+queue.recall: "Recall last"  # Button: restore the newest pending request to the editor
+queue.send_remaining: "Send remaining"  # Button: resume sending pending requests
+queue.discard: "Discard remaining"  # Button: discard pending requests, not the draft or active task
+queue.draft_busy: "Submit or clear the current draft before recalling a queued request."
+queue.enqueued_paused: "Added to the stopped queue. Choose Send remaining to start it."
+queue.resubmit: "Needs resubmission"  # Prefix: fix evidence expired; recall and submit again
+queue.resume_blocked: "Waiting requests cannot be sent yet. Resolve the connection or active interaction; recall and resubmit any expired fix requests."
+queue.stopped: "Stopped automatic sending. Pending user requests have been kept."
 queue.capture_failed: "Could not preserve the error context: %{error}"
 queue.auto: "Automatic fix"  # Label for a queued, automatically requested analysis of a failed shell command
 # Auto-fix diagnostic capture errors for the source terminal pane, shown through queue.capture_failed.

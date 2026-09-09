@@ -131,7 +131,16 @@ queue.header: "[Qûéûéď ḿéśśåĝéś: %{count}!!!!]"  # Automatic pinne
 queue.full: "[Qûéûé ïś ƒûļļ. Ýöûŕ ïñṗûţ ĥåś ɓééñ ķéṗţ.!!!! !!!!]"
 queue.enqueued: "[Ḿéśśåĝé qûéûéď.!!!!]"  # Info notification when a user message must wait before being sent to the AI agent
 queue.cancelled: "[Çåñçéļļéď %{count} qûéûéď ḿéśśåĝéś. Ýöû çåñ śéñď å ñéŵ ḿéśśåĝé.!!!! !!!! !!!!]"  # Info notification when waiting requests are discarded after cancellation, failure, or session reset
-queue.session_busy: "[Qûéûéď ḿéśśåĝéś ɓéļöñğ ţö ţĥïś çöñṽéŕśåţïöñ. Ûśé /stop ţö çåñçéļ ţĥéḿ ɓéƒöŕé çĥåñğïñğ śéśśïöñś öŕ çöñƒïğûŕåţïöñ.!!!! !!!! !!!! !!!!]"  # {Locked="/stop"}
+queue.session_busy: "[Qûéûéď ḿéśśåĝéś ɓéļöñğ ţö ţĥïś çöñṽéŕśåţïöñ. Śéñď öŕ ďïśçåŕď ţĥéḿ ɓéƒöŕé çĥåñğïñğ śéśśïöñś öŕ çöñƒïğûŕåţïöñ.!!!! !!!! !!!! !!!!]"
+queue.paused_header: "[Ṕåûśéď: %{count} ṗéñďïñğ; ñöţ śéñţ åûţöḿåţïçåļļÿ!!!! !!!!]"  # Pinned heading: automatic sending is stopped
+queue.recall: "[Ŕéçåļļ ļåśţ!!]"  # Button: restore the newest pending request to the editor
+queue.send_remaining: "[Śéñď ŕéḿåïñïñğ!!!!]"  # Button: resume sending pending requests
+queue.discard: "[Ďïśçåŕď ŕéḿåïñïñğ!!!!]"  # Button: discard pending requests, not the draft or active task
+queue.draft_busy: "[Śûɓḿïţ öŕ çļéåŕ ţĥé çûŕŕéñţ ďŕåƒţ ɓéƒöŕé ŕéçåļļïñğ å qûéûéď ŕéqûéśţ.!!!! !!!! !!!!]"
+queue.enqueued_paused: "[Àďďéď ţö ţĥé śţöṗṗéď qûéûé. Çĥööśé Śéñď ŕéḿåïñïñğ ţö śţåŕţ ïţ.!!!! !!!! !!!!]"
+queue.resubmit: "[Ñééďś ŕéśûɓḿïśśïöñ!!!!]"  # Prefix: fix evidence expired; recall and submit again
+queue.resume_blocked: "[Ŵåïţïñğ ŕéqûéśţś çåññöţ ɓé śéñţ ÿéţ. Ŕéśöļṽé ţĥé çöññéçţïöñ öŕ åçţïṽé ïñţéŕåçţïöñ; ŕéçåļļ åñď ŕéśûɓḿïţ åñÿ éẋṗïŕéď ƒïẋ ŕéqûéśţś.!!!! !!!! !!!! !!!! !!!!]"
+queue.stopped: "[Śţöṗṗéď åûţöḿåţïç śéñďïñğ. Ṕéñďïñğ ûśéŕ ŕéqûéśţś ĥåṽé ɓééñ ķéṗţ.!!!! !!!! !!!!]"
 queue.capture_failed: "[Çöûļď ñöţ ṗŕéśéŕṽé ţĥé éŕŕöŕ çöñţéẋţ: %{error}!!!! !!!!]"
 queue.auto: "[Àûţöḿåţïç ƒïẋ!!]"  # Label for a queued, automatically requested analysis of a failed shell command
 # Auto-fix diagnostic capture errors for the source terminal pane, shown through queue.capture_failed.

@@ -129,7 +129,16 @@ queue.header: "Teachdaireachdan sa chiudha: %{count}"  # Automatic pinned list a
 queue.full: "Tha an ciudha làn. Chaidh an t-ion-chur agad a ghleidheadh."
 queue.enqueued: "Chaidh an teachdaireachd a chur sa chiudha."  # Info notification when a user message must wait before being sent to the AI agent
 queue.cancelled: "Chaidh %{count} teachdaireachd sa chiudha a chur dheth. Faodaidh tu teachdaireachd ùr a chur."  # Info notification when waiting requests are discarded after cancellation, failure, or session reset
-queue.session_busy: "Buinidh na teachdaireachdan sa chiudha dhan chòmhradh seo. Cleachd /stop gus an cur dheth mus atharraich thu seisean no rèiteachadh."  # {Locked="/stop"}
+queue.session_busy: "Buinidh na teachdaireachdan sa chiudha dhan chòmhradh seo. Cuir air falbh no sguab às iad mus atharraich thu seisean no rèiteachadh."
+queue.paused_header: "Air stad sealach: %{count} a' feitheamh; cha tèid an cur air falbh gu fèin-obrachail"  # Pinned heading: automatic sending is stopped
+queue.recall: "Faigh am fear mu dheireadh air ais"  # Button: restore the newest pending request to the editor
+queue.send_remaining: "Cuir an còrr air falbh"  # Button: resume sending pending requests
+queue.discard: "Sguab às an còrr"  # Button: discard pending requests, not the draft or active task
+queue.draft_busy: "Cuir a-steach no falamhaich an dreachd làithreach mus faigh thu iarrtas bhon chiudha air ais."
+queue.enqueued_paused: "Chaidh a chur ris a' chiudha a tha air stad. Tagh Cuir an còrr air falbh gus a thòiseachadh."
+queue.resubmit: "Feumar a chur a-steach a-rithist"  # Prefix: fix evidence expired; recall and submit again
+queue.resume_blocked: "Chan urrainnear iarrtasan a tha a' feitheamh a chur air falbh fhathast. Càraich an ceangal no cuir crìoch air an eadar-obrachadh ghnìomhach; faigh iarrtasan càraidh a dh'fhalbh an ùine orra air ais agus cuir a-steach a-rithist iad."
+queue.stopped: "Chaidh cur air falbh fèin-obrachail a stad. Chaidh iarrtasan cleachdaiche a tha a' feitheamh a ghleidheadh."
 queue.capture_failed: "Cha b' urrainn dhuinn co-theacs na mearachd a ghleidheadh: %{error}"
 queue.auto: "Càradh fèin-obrachail"  # Label for a queued, automatically requested analysis of a failed shell command
 # Auto-fix diagnostic capture errors for the source terminal pane, shown through queue.capture_failed.

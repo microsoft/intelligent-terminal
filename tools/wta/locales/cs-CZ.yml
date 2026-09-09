@@ -139,7 +139,16 @@ queue.header: "Zprávy ve frontě: %{count}"  # Automatic pinned list above inpu
 queue.full: "Fronta je plná. Váš vstup byl zachován."
 queue.enqueued: "Zpráva byla přidána do fronty."  # Info notification when a user message must wait before being sent to the AI agent
 queue.cancelled: "Počet zrušených zpráv ve frontě: %{count}. Můžete odeslat novou zprávu."  # Info notification when waiting requests are discarded after cancellation, failure, or session reset
-queue.session_busy: "Zprávy ve frontě patří k této konverzaci. Před změnou relace nebo konfigurace je zrušte pomocí /stop."  # {Locked="/stop"}
+queue.session_busy: "Zprávy ve frontě patří k této konverzaci. Před změnou relace nebo konfigurace je odešlete nebo zahoďte."
+queue.paused_header: "Pozastaveno: %{count} čekajících; neodesílají se automaticky"  # Pinned heading: automatic sending is stopped
+queue.recall: "Vrátit poslední"  # Button: restore the newest pending request to the editor
+queue.send_remaining: "Odeslat zbývající"  # Button: resume sending pending requests
+queue.discard: "Zahodit zbývající"  # Button: discard pending requests, not the draft or active task
+queue.draft_busy: "Před vrácením požadavku z fronty odešlete nebo vymažte aktuální koncept."
+queue.enqueued_paused: "Přidáno do zastavené fronty. Spusťte ji volbou Odeslat zbývající."
+queue.resubmit: "Nutné opětovné odeslání"  # Prefix: fix evidence expired; recall and submit again
+queue.resume_blocked: "Čekající požadavky zatím nelze odeslat. Vyřešte problém s připojením nebo dokončete aktivní interakci; vraťte požadavky na opravu s vypršenou platností a znovu je odešlete."
+queue.stopped: "Automatické odesílání bylo zastaveno. Čekající požadavky uživatele byly zachovány."
 queue.capture_failed: "Nepodařilo se zachovat kontext chyby: %{error}"
 queue.auto: "Automatická oprava"  # Label for a queued, automatically requested analysis of a failed shell command
 # Auto-fix diagnostic capture errors for the source terminal pane, shown through queue.capture_failed.

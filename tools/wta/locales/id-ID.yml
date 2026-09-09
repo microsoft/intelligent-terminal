@@ -129,7 +129,16 @@ queue.header: "Pesan dalam antrean: %{count}"  # Automatic pinned list above inp
 queue.full: "Antrean penuh. Masukan Anda telah disimpan."
 queue.enqueued: "Pesan ditambahkan ke antrean."  # Info notification when a user message must wait before being sent to the AI agent
 queue.cancelled: "%{count} pesan dalam antrean dibatalkan. Anda dapat mengirim pesan baru."  # Info notification when waiting requests are discarded after cancellation, failure, or session reset
-queue.session_busy: "Pesan dalam antrean terkait dengan percakapan ini. Gunakan /stop untuk membatalkannya sebelum mengubah sesi atau konfigurasi."  # {Locked="/stop"}
+queue.session_busy: "Pesan dalam antrean terkait dengan percakapan ini. Kirim atau buang pesan tersebut sebelum mengubah sesi atau konfigurasi."
+queue.paused_header: "Dijeda: %{count} tertunda; tidak dikirim otomatis"  # Pinned heading: automatic sending is stopped
+queue.recall: "Kembalikan yang terakhir"  # Button: restore the newest pending request to the editor
+queue.send_remaining: "Kirim sisanya"  # Button: resume sending pending requests
+queue.discard: "Buang sisanya"  # Button: discard pending requests, not the draft or active task
+queue.draft_busy: "Kirim atau hapus draf saat ini sebelum mengembalikan permintaan dari antrean."
+queue.enqueued_paused: "Ditambahkan ke antrean yang dihentikan. Pilih Kirim sisanya untuk memulainya."
+queue.resubmit: "Perlu dikirim ulang"  # Prefix: fix evidence expired; recall and submit again
+queue.resume_blocked: "Permintaan yang menunggu belum dapat dikirim. Atasi masalah koneksi atau selesaikan interaksi aktif; kembalikan dan kirim ulang permintaan perbaikan yang kedaluwarsa."
+queue.stopped: "Pengiriman otomatis dihentikan. Permintaan pengguna yang tertunda tetap disimpan."
 queue.capture_failed: "Tidak dapat menyimpan konteks kesalahan: %{error}"
 queue.auto: "Perbaikan otomatis"  # Label for a queued, automatically requested analysis of a failed shell command
 # Auto-fix diagnostic capture errors for the source terminal pane, shown through queue.capture_failed.

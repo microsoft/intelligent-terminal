@@ -142,7 +142,16 @@ queue.header: "ਕਤਾਰ ਵਿੱਚ ਮੌਜੂਦ ਸੁਨੇਹੇ: %{c
 queue.full: "ਕਤਾਰ ਭਰੀ ਹੋਈ ਹੈ। ਤੁਹਾਡਾ ਇਨਪੁੱਟ ਸੰਭਾਲਿਆ ਗਿਆ ਹੈ।"
 queue.enqueued: "ਸੁਨੇਹਾ ਕਤਾਰ ਵਿੱਚ ਜੋੜਿਆ ਗਿਆ ਹੈ।"  # Info notification when a user message must wait before being sent to the AI agent
 queue.cancelled: "ਕਤਾਰ ਵਿੱਚ ਮੌਜੂਦ %{count} ਸੁਨੇਹੇ ਰੱਦ ਕੀਤੇ ਗਏ ਹਨ। ਤੁਸੀਂ ਨਵਾਂ ਸੁਨੇਹਾ ਭੇਜ ਸਕਦੇ ਹੋ।"  # Info notification when waiting requests are discarded after cancellation, failure, or session reset
-queue.session_busy: "ਕਤਾਰ ਵਿੱਚ ਮੌਜੂਦ ਸੁਨੇਹੇ ਇਸ ਗੱਲਬਾਤ ਨਾਲ ਸਬੰਧਤ ਹਨ। ਸੈਸ਼ਨ ਜਾਂ ਸੰਰਚਨਾ ਬਦਲਣ ਤੋਂ ਪਹਿਲਾਂ ਉਹਨਾਂ ਨੂੰ ਰੱਦ ਕਰਨ ਲਈ /stop ਵਰਤੋ।"  # {Locked="/stop"}
+queue.session_busy: "ਕਤਾਰ ਵਿੱਚ ਮੌਜੂਦ ਸੁਨੇਹੇ ਇਸ ਗੱਲਬਾਤ ਨਾਲ ਸਬੰਧਤ ਹਨ। ਸੈਸ਼ਨ ਜਾਂ ਸੰਰਚਨਾ ਬਦਲਣ ਤੋਂ ਪਹਿਲਾਂ ਉਹਨਾਂ ਨੂੰ ਭੇਜੋ ਜਾਂ ਹਟਾਓ।"
+queue.paused_header: "ਅਸਥਾਈ ਤੌਰ ’ਤੇ ਰੋਕਿਆ: %{count} ਬਕਾਇਆ; ਆਪਣੇ ਆਪ ਨਹੀਂ ਭੇਜੇ ਜਾਣਗੇ"  # Pinned heading: automatic sending is stopped
+queue.recall: "ਆਖਰੀ ਬੇਨਤੀ ਵਾਪਸ ਲਿਆਓ"  # Button: restore the newest pending request to the editor
+queue.send_remaining: "ਬਾਕੀ ਭੇਜੋ"  # Button: resume sending pending requests
+queue.discard: "ਬਾਕੀ ਹਟਾਓ"  # Button: discard pending requests, not the draft or active task
+queue.draft_busy: "ਕਤਾਰ ਵਿੱਚੋਂ ਬੇਨਤੀ ਵਾਪਸ ਲਿਆਉਣ ਤੋਂ ਪਹਿਲਾਂ ਮੌਜੂਦਾ ਡਰਾਫਟ ਜਮ੍ਹਾਂ ਕਰੋ ਜਾਂ ਸਾਫ਼ ਕਰੋ।"
+queue.enqueued_paused: "ਰੁਕੀ ਹੋਈ ਕਤਾਰ ਵਿੱਚ ਜੋੜਿਆ ਗਿਆ। ਸ਼ੁਰੂ ਕਰਨ ਲਈ ਬਾਕੀ ਭੇਜੋ ਚੁਣੋ।"
+queue.resubmit: "ਦੁਬਾਰਾ ਜਮ੍ਹਾਂ ਕਰਨ ਦੀ ਲੋੜ ਹੈ"  # Prefix: fix evidence expired; recall and submit again
+queue.resume_blocked: "ਉਡੀਕ ਕਰ ਰਹੀਆਂ ਬੇਨਤੀਆਂ ਅਜੇ ਨਹੀਂ ਭੇਜੀਆਂ ਜਾ ਸਕਦੀਆਂ। ਕਨੈਕਸ਼ਨ ਦੀ ਸਮੱਸਿਆ ਹੱਲ ਕਰੋ ਜਾਂ ਸਰਗਰਮ ਗੱਲਬਾਤ ਪੂਰੀ ਕਰੋ; ਮਿਆਦ ਪੁੱਗੀਆਂ ਹੱਲ ਦੀਆਂ ਬੇਨਤੀਆਂ ਵਾਪਸ ਲਿਆ ਕੇ ਦੁਬਾਰਾ ਜਮ੍ਹਾਂ ਕਰੋ।"
+queue.stopped: "ਆਟੋਮੈਟਿਕ ਭੇਜਣਾ ਰੋਕ ਦਿੱਤਾ ਗਿਆ। ਵਰਤੋਂਕਾਰ ਦੀਆਂ ਬਕਾਇਆ ਬੇਨਤੀਆਂ ਸੰਭਾਲੀਆਂ ਗਈਆਂ ਹਨ।"
 queue.capture_failed: "ਗਲਤੀ ਦਾ ਸੰਦਰਭ ਸੰਭਾਲਿਆ ਨਹੀਂ ਜਾ ਸਕਿਆ: %{error}"
 queue.auto: "ਆਟੋਮੈਟਿਕ ਹੱਲ"  # Label for a queued, automatically requested analysis of a failed shell command
 # Auto-fix diagnostic capture errors for the source terminal pane, shown through queue.capture_failed.

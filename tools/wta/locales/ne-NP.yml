@@ -142,7 +142,16 @@ queue.header: "पङ्क्तिमा रहेका सन्देशह
 queue.full: "पङ्क्ति भरिएको छ। तपाईंको इनपुट सुरक्षित राखिएको छ।"
 queue.enqueued: "सन्देश पङ्क्तिमा थपिएको छ।"  # Info notification when a user message must wait before being sent to the AI agent
 queue.cancelled: "पङ्क्तिमा रहेका %{count} सन्देशहरू रद्द गरियो। तपाईँ नयाँ सन्देश पठाउन सक्नुहुन्छ।"  # Info notification when waiting requests are discarded after cancellation, failure, or session reset
-queue.session_busy: "पङ्क्तिमा रहेका सन्देशहरू यस कुराकानीका हुन्। सत्र वा कन्फिगरेसन परिवर्तन गर्नुअघि तिनलाई रद्द गर्न /stop प्रयोग गर्नुहोस्।"  # {Locked="/stop"}
+queue.session_busy: "पङ्क्तिमा रहेका सन्देशहरू यस कुराकानीका हुन्। सत्र वा कन्फिगरेसन परिवर्तन गर्नुअघि तिनलाई पठाउनुहोस् वा हटाउनुहोस्।"
+queue.paused_header: "अस्थायी रूपमा रोकिएको: %{count} प्रतीक्षारत; स्वचालित रूपमा पठाइँदैन"  # Pinned heading: automatic sending is stopped
+queue.recall: "अन्तिम अनुरोध फिर्ता ल्याउनुहोस्"  # Button: restore the newest pending request to the editor
+queue.send_remaining: "बाँकी पठाउनुहोस्"  # Button: resume sending pending requests
+queue.discard: "बाँकी हटाउनुहोस्"  # Button: discard pending requests, not the draft or active task
+queue.draft_busy: "पङ्क्तिको अनुरोध फिर्ता ल्याउनुअघि हालको मस्यौदा पेस गर्नुहोस् वा खाली गर्नुहोस्।"
+queue.enqueued_paused: "रोकिएको पङ्क्तिमा थपियो। सुरु गर्न बाँकी पठाउनुहोस् छान्नुहोस्।"
+queue.resubmit: "फेरि पेस गर्नुपर्छ"  # Prefix: fix evidence expired; recall and submit again
+queue.resume_blocked: "प्रतीक्षारत अनुरोधहरू अझै पठाउन सकिँदैन। जडानको समस्या समाधान गर्नुहोस् वा सक्रिय अन्तरक्रिया पूरा गर्नुहोस्; म्याद सकिएका सुधार अनुरोधहरू फिर्ता ल्याएर फेरि पेस गर्नुहोस्।"
+queue.stopped: "स्वचालित पठाउने कार्य रोकियो। प्रयोगकर्ताका प्रतीक्षारत अनुरोधहरू सुरक्षित राखिएका छन्।"
 queue.capture_failed: "त्रुटिको सन्दर्भ सुरक्षित राख्न सकिएन: %{error}"
 queue.auto: "स्वचालित सुधार"  # Label for a queued, automatically requested analysis of a failed shell command
 # Auto-fix diagnostic capture errors for the source terminal pane, shown through queue.capture_failed.

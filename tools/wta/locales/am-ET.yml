@@ -130,7 +130,16 @@ queue.header: "በወረፋ ላይ ያሉ መልእክቶች፦ %{count}"  # Aut
 queue.full: "ወረፋው ሞልቷል። ያስገቡት ጽሑፍ ተጠብቋል።"
 queue.enqueued: "መልእክቱ ወደ ወረፋ ተጨምሯል።"  # Info notification when a user message must wait before being sent to the AI agent
 queue.cancelled: "በወረፋ ላይ ያሉ %{count} መልእክቶች ተሰርዘዋል። አዲስ መልእክት መላክ ይችላሉ።"  # Info notification when waiting requests are discarded after cancellation, failure, or session reset
-queue.session_busy: "በወረፋ ላይ ያሉ መልእክቶች የዚህ ውይይት ናቸው። ክፍለ ጊዜዎችን ወይም ውቅረትን ከመቀየርዎ በፊት ለመሰረዝ /stop ይጠቀሙ።"  # {Locked="/stop"}
+queue.session_busy: "በወረፋ ላይ ያሉ መልእክቶች የዚህ ውይይት ናቸው። ክፍለ ጊዜዎችን ወይም ውቅረትን ከመቀየርዎ በፊት ይላኳቸው ወይም ይሰርዟቸው።"
+queue.paused_header: "ለጊዜው ቆሟል፦ %{count} በመጠባበቅ ላይ፤ በራስ-ሰር አይላኩም"  # Pinned heading: automatic sending is stopped
+queue.recall: "የመጨረሻውን መልስ"  # Button: restore the newest pending request to the editor
+queue.send_remaining: "የቀሩትን ላክ"  # Button: resume sending pending requests
+queue.discard: "የቀሩትን ሰርዝ"  # Button: discard pending requests, not the draft or active task
+queue.draft_busy: "በወረፋ ላይ ያለ ጥያቄ ከመመለስዎ በፊት የአሁኑን ረቂቅ ያስገቡ ወይም ያጽዱ።"
+queue.enqueued_paused: "ወደ ቆመው ወረፋ ተጨምሯል። ለማስጀመር የቀሩትን ላክ የሚለውን ይምረጡ።"
+queue.resubmit: "እንደገና ማስገባት ያስፈልጋል"  # Prefix: fix evidence expired; recall and submit again
+queue.resume_blocked: "በመጠባበቅ ላይ ያሉ ጥያቄዎች ገና መላክ አይቻልም። ግንኙነቱን ያስተካክሉ ወይም ንቁውን መስተጋብር ያጠናቅቁ፤ ጊዜያቸው ያለፈባቸውን የማስተካከያ ጥያቄዎች መልሰው እንደገና ያስገቡ።"
+queue.stopped: "ራስ-ሰር መላክ ቆሟል። በመጠባበቅ ላይ ያሉ የተጠቃሚ ጥያቄዎች ተጠብቀዋል።"
 queue.capture_failed: "የስህተት አውዱን ማስቀመጥ አልተቻለም፦ %{error}"
 queue.auto: "ራስ-ሰር ማስተካከያ"  # Label for a queued, automatically requested analysis of a failed shell command
 # Auto-fix diagnostic capture errors for the source terminal pane, shown through queue.capture_failed.

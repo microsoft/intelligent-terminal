@@ -73,17 +73,64 @@ Describe 'Feature Prompt Queue' -Tag 'Feature', 'PromptQueue' -Skip:(-not $scrip
         }
 
         function Assert-QueueSize {
-            param([Parameter(Mandatory)][int]$Count)
-            $header = Get-QueueTextRegex -Key 'queue.header'
-            $anyCount = $header.Replace([regex]::Escape('%{count}'), '\d+')
+            param([Parameter(Mandatory)][int]$Count, [switch]$Paused)
+            $key = if ($Paused) { 'queue.paused_header' } else { 'queue.header' }
+            $header = Get-QueueTextRegex -Key $key
+            $anyCount = ((Get-QueueTextRegex -Key 'queue.header') + '|' +
+                (Get-QueueTextRegex -Key 'queue.paused_header')).Replace([regex]::Escape('%{count}'), '\d+')
             $expectedCount = $header.Replace([regex]::Escape('%{count}'), "$Count(?!\d)")
-            Wait-Until -TimeoutSec 20 -IntervalSec 0.2 -Because "the current pinned queue contains $Count pending requests" -Condition {
+            Wait-Until -TimeoutSec 20 -IntervalSec 0.2 -Because "the pinned queue contains $Count requests (paused=$Paused)" -Condition {
                 $viewport = Get-QueueText
                 if ([string]::IsNullOrWhiteSpace($viewport)) { return $false }
                 $headers = [regex]::Matches($viewport, $anyCount)
                 if ($Count -eq 0) { return $headers.Count -eq 0 }
                 $headers.Count -eq 1 -and $headers[0].Value -match $expectedCount
             } | Out-Null
+        }
+
+        function Send-QueueWindowKey {
+            param([Parameter(Mandatory)][int]$Vk, [switch]$Alt, [switch]$Ctrl)
+            # active-pane resolves the source shell even while the helper owns focus,
+            # so Set-WtPaneFocus's active-pane poll cannot verify helper focus.
+            Invoke-WtCli -App $script:app -Arguments @('focus-pane', '-t', $script:agentPaneId) | Out-Null
+            Send-WtWindowKey -App $script:app -Vk $Vk -Alt:$Alt -Ctrl:$Ctrl -RequireForeground | Out-Null
+        }
+
+        function Invoke-QueueControl {
+            param(
+                [Parameter(Mandatory)][ValidateSet('Recall', 'Send', 'Discard')][string]$Action,
+                [switch]$Click
+            )
+            $control = switch ($Action) {
+                'Recall' { @{ Key = 'R'; Vk = 0x52; Label = 'queue.recall' } }
+                'Send' { @{ Key = 'S'; Vk = 0x53; Label = 'queue.send_remaining' } }
+                'Discard' { @{ Key = 'D'; Vk = 0x44; Label = 'queue.discard' } }
+            }
+            if ($Click) {
+                $pattern = '\[Alt\+' + $control.Key + '\s+' + (Get-QueueTextRegex -Key $control.Label) + '\]'
+                Wait-QueueText $pattern
+                $lines = (Get-QueueText) -split '\r?\n'
+                $hits = @(
+                    for ($row = 0; $row -lt $lines.Count; $row++) {
+                        foreach ($match in [regex]::Matches($lines[$row], $pattern)) {
+                            # A preceding translated button can contain double-width glyphs.
+                            $prefix = $lines[$row].Substring(0, $match.Index)
+                            [pscustomobject]@{ Row = $row; Column = $Host.UI.RawUI.LengthInBufferCells($prefix) + 1 }
+                        }
+                    }
+                )
+                $hits | Should -HaveCount 1 -Because 'click only the current rendered queue control, never guessed coordinates'
+                Send-AgentMouseClick -App $script:app -PaneSessionId $script:agentPaneId `
+                    -Column $hits[0].Column -Row $hits[0].Row | Out-Null
+            }
+            else {
+                Send-QueueWindowKey -Vk $control.Vk -Alt
+            }
+        }
+
+        function Wait-QueueDraft {
+            param([Parameter(Mandatory)][string]$Pattern)
+            Wait-QueueText ('(?m)^\s*[│║|]\s*>\s*' + $Pattern)
         }
 
         function Start-QueueScenario {
@@ -458,49 +505,184 @@ Describe 'Feature Prompt Queue' -Tag 'Feature', 'PromptQueue' -Skip:(-not $scrip
         Assert-QueuePromptCountStable 2 -Seconds 2
     }
 
-    It 'Stopping a turn cancels queued messages and accepts new input' {
+    It 'Recall restores the last pending request without duplicate submission' {
+        Start-QueueScenario -AutomaticFix $false
+        $first = "QUEUE_HOLD_$script:token"
+        $second = "QUEUE_SECOND_$script:token"
+        $last = "QUEUE_LAST_$script:token"
+        Start-HeldQueuePrompt $first
+        Send-QueueInput $second
+        $clipboard = Get-ClipboardSnapshot
+        try {
+            Send-WtInput -App $script:app -SessionId $script:agentPaneId -Text "$last "
+            Set-ClipboardImage
+            Send-AgentAltV -App $script:app -PaneSessionId $script:agentPaneId | Out-Null
+            Wait-QueueDraft ([regex]::Escape($last) + '\s+\[image:\s+image-\d+\.png\]')
+            $imageToken = [regex]::Match((Get-QueueText), '\[image:\s+image-\d+\.png\]').Value
+            Send-WtKeys -App $script:app -SessionId $script:agentPaneId -Keys @('Enter')
+        }
+        finally { Restore-ClipboardSnapshot -Snapshot $clipboard }
+        Assert-QueueSize 2
+        Wait-QueueText ('\[Alt\+R\s+' + (Get-QueueTextRegex -Key 'queue.recall') + '\]')
+        Wait-QueueText ('\[Alt\+D\s+' + (Get-QueueTextRegex -Key 'queue.discard') + '\]')
+        (Get-QueueText) | Should -Not -Match '\[Alt\+S\s'
+
+        $draft = 'KEEP_DRAFT'
+        Send-WtInput -App $script:app -SessionId $script:agentPaneId -Text $draft
+        Wait-QueueDraft ([regex]::Escape($draft))
+        Invoke-QueueControl Recall
+        Wait-QueueText (Get-QueueTextRegex -Key 'queue.draft_busy')
+        Assert-QueueSize 2
+        Wait-QueueDraft ([regex]::Escape($draft))
+        Send-AgentKey -App $script:app -PaneSessionId $script:agentPaneId -Key BSpace -Count $draft.Length | Out-Null
+        Invoke-QueueControl Recall
+        Assert-QueueSize 1
+        Wait-QueueDraft ([regex]::Escape("$last $imageToken"))
+        Assert-QueuePromptCountStable 1
+        Send-QueueInput ' EDITED'
+        Assert-QueueSize 2
+
+        Open-QueueGate "$first.release"
+        Wait-QueueRecordCount -Count 3
+        Wait-QueueRecordCount -Kind completion -Count 3
+        $prompts = @(Get-QueueRecords -Kind prompt)
+        ($prompts.marker -join '|') | Should -Be "$first|$second|$last"
+        $prompts[2].text | Should -Match ([regex]::Escape($last))
+        $prompts[2].text | Should -Match 'EDITED'
+        $images = @($prompts[2].images)
+        $images | Should -HaveCount 1
+        $images[0].mimeType | Should -Be 'image/png'
+        $images[0].byteCount | Should -BeGreaterThan 8
+        $images[0].signature | Should -Be '89504E470D0A1A0A'
+        Assert-QueueSize 0
+        Assert-QueuePromptCountStable 3 -Seconds 2
+    }
+
+    It 'Stopping a turn keeps explicit requests paused until Send remaining (<StopMethod>, <ResumeMethod>)' -ForEach @(
+        @{ StopMethod = '/stop'; ResumeMethod = 'keyboard' }
+        @{ StopMethod = 'Ctrl+C'; ResumeMethod = 'click' }
+    ) {
         Open-QueueGate 'hold-cancel'
         Start-QueueScenario
         $first = "QUEUE_HOLD_$script:token"
+        $second = "QUEUE_SECOND_$script:token"
+        $third = "QUEUE_THIRD_$script:token"
         $fresh = "QUEUE_FRESH_$script:token"
         Start-HeldQueuePrompt $first
-        Send-QueueInput "QUEUE_SECOND_$script:token"
-        Send-QueueInput "QUEUE_THIRD_$script:token"
-        Assert-QueueSize 2
-        Send-QueueInput '/stop'
-        Wait-QueueText (Get-QueueTextRegex -Key 'queue.cancelled' -Count 2)
-        Wait-QueueRecordCount -Kind cancel -Count 1
-        Assert-QueueSize 0
-        Send-QueueInput $fresh
+        Invoke-QueueShellCommand "QUEUE_ERROR_DISCARDED_$script:token" -Failure
         Assert-QueueSize 1
-        Assert-QueuePromptCountStable 1 -Seconds 0.5
+        Send-QueueInput $second
+        Send-QueueInput $third
+        Assert-QueueSize 3
+        if ($StopMethod -eq '/stop') { Send-QueueInput '/stop' }
+        else { Send-QueueWindowKey -Vk 0x43 -Ctrl }
+        Wait-QueueRecordCount -Kind cancel -Count 1
+        Assert-QueueSize 2 -Paused
+        Wait-QueueText ("1\.\s+" + [regex]::Escape($second))
+        Wait-QueueText ("2\.\s+" + [regex]::Escape($third))
+        Send-QueueInput $fresh
+        Assert-QueueSize 3 -Paused
+        Invoke-QueueControl Send
+        Assert-QueueSize 3 -Paused
+        Assert-QueuePromptCountStable 1
+        @(Get-QueueRecords -Kind completion) | Should -HaveCount 0
 
         Open-QueueGate 'release-cancel'
-        Wait-QueueRecordCount -Count 2
-        (@(Get-QueueRecords -Kind prompt).marker -join '|') | Should -Be "$first|$fresh"
-        Wait-QueueRecordCount -Kind completion -Count 2
+        Wait-QueueRecordCount -Kind completion -Count 1
+        Assert-QueueSize 3 -Paused
+        Assert-QueuePromptCountStable 1 -Seconds 2
+        Invoke-QueueControl Send -Click:($ResumeMethod -eq 'click')
+        Wait-QueueRecordCount -Count 4
+        Wait-QueueRecordCount -Kind completion -Count 4
+        (@(Get-QueueRecords -Kind prompt).marker -join '|') | Should -Be "$first|$second|$third|$fresh"
+        $completions = @(Get-QueueRecords -Kind completion)
+        $completions[0].reason | Should -Be 'cancelled'
+        $prompts = @(Get-QueueRecords -Kind prompt)
+        foreach ($index in 0..2) {
+            $completions[$index].sequence | Should -BeLessThan $prompts[$index + 1].sequence
+        }
         Wait-QueueText ([regex]::Escape("ACK_$fresh"))
         Assert-QueueSize 0
-        Assert-QueuePromptCountStable 2
+        Assert-QueuePromptCountStable 4 -Seconds 2
     }
 
-    It 'Failed turns discard queued messages and accept new input' {
+    It 'Discard remaining preserves the draft and never cancels active work' {
+        Open-QueueGate 'hold-cancel'
+        Start-QueueScenario -AutomaticFix $false
+        $first = "QUEUE_HOLD_$script:token"
+        $fresh = "QUEUE_HOLD_FRESH_$script:token"
+        $draft = "QUEUE_DRAFT_$script:token"
+        Start-HeldQueuePrompt $first
+        Send-QueueInput "QUEUE_DISCARDED_$script:token"
+        Send-QueueInput '/stop'
+        Wait-QueueRecordCount -Kind cancel -Count 1
+        Assert-QueueSize 1 -Paused
+        Send-WtInput -App $script:app -SessionId $script:agentPaneId -Text $fresh
+        Wait-QueueDraft ([regex]::Escape($fresh))
+        Invoke-QueueControl Discard -Click
+        Assert-QueueSize 0
+        Wait-QueueDraft ([regex]::Escape($fresh))
+        Assert-QueuePromptCountStable 1
+        Open-QueueGate 'release-cancel'
+        Wait-QueueRecordCount -Kind completion -Count 1
+        Assert-QueuePromptCountStable 1
+        Send-WtKeys -App $script:app -SessionId $script:agentPaneId -Keys @('Enter')
+        Wait-QueueRecordCount -Count 2
+        Wait-QueueText ([regex]::Escape("START_$fresh"))
+        Send-QueueInput "QUEUE_DISCARDED_ACTIVE_$script:token"
+        Assert-QueueSize 1
+        Send-WtInput -App $script:app -SessionId $script:agentPaneId -Text $draft
+        Wait-QueueDraft ([regex]::Escape($draft))
+        Invoke-QueueControl Discard
+        Assert-QueueSize 0
+        Wait-QueueDraft ([regex]::Escape($draft))
+        Assert-QueuePromptCountStable 2
+        @(Get-QueueRecords -Kind cancel) | Should -HaveCount 1
+        @(Get-QueueRecords -Kind completion) | Should -HaveCount 1
+        Open-QueueGate "$fresh.release"
+        Wait-QueueRecordCount -Kind completion -Count 2
+        @(Get-QueueRecords -Kind completion)[1].reason | Should -Be 'end_turn'
+        Wait-QueueDraft ([regex]::Escape($draft))
+        Send-WtKeys -App $script:app -SessionId $script:agentPaneId -Keys @('Enter')
+        Wait-QueueRecordCount -Count 3
+        Wait-QueueRecordCount -Kind completion -Count 3
+        (@(Get-QueueRecords -Kind prompt).marker -join '|') | Should -Be "$first|$fresh|$draft"
+        Assert-QueuePromptCountStable 3 -Seconds 2
+        @(Get-QueueRecords -Kind cancel) | Should -HaveCount 1
+    }
+
+    It 'Failed turns keep explicit requests paused until explicitly discarded' {
         Start-QueueScenario
         $first = "QUEUE_HOLD_$script:token"
         $fresh = "QUEUE_FRESH_$script:token"
+        $draft = "QUEUE_DRAFT_$script:token"
         Start-HeldQueuePrompt $first
-        Send-QueueInput "QUEUE_SECOND_$script:token"
+        Invoke-QueueShellCommand "QUEUE_ERROR_DISCARDED_$script:token" -Failure
         Assert-QueueSize 1
+        Send-QueueInput "QUEUE_SECOND_$script:token"
+        Assert-QueueSize 2
         Open-QueueGate "$first.fail"
-        Wait-QueueText (Get-QueueTextRegex -Key 'queue.cancelled' -Count 1)
+        Wait-QueueRecordCount -Kind completion -Count 1
         Wait-QueueText 'QUEUE_FIXTURE_FAILURE'
-        Assert-QueueSize 0
+        Assert-QueueSize 1 -Paused
         Assert-QueuePromptCountStable 1
         Send-QueueInput $fresh
+        Assert-QueueSize 2 -Paused
+        Assert-QueuePromptCountStable 1 -Seconds 2
+        Send-WtInput -App $script:app -SessionId $script:agentPaneId -Text $draft
+        Wait-QueueDraft ([regex]::Escape($draft))
+        Invoke-QueueControl Discard
+        Assert-QueueSize 0
+        Wait-QueueDraft ([regex]::Escape($draft))
+        Assert-QueuePromptCountStable 1
+        Send-WtKeys -App $script:app -SessionId $script:agentPaneId -Keys @('Enter')
         Wait-QueueRecordCount -Count 2
-        (@(Get-QueueRecords -Kind prompt).marker -join '|') | Should -Be "$first|$fresh"
-        Wait-QueueText ([regex]::Escape("ACK_$fresh"))
-        Assert-QueuePromptCountStable 2
+        Wait-QueueRecordCount -Kind completion -Count 2
+        (@(Get-QueueRecords -Kind prompt).marker -join '|') | Should -Be "$first|$draft"
+        Wait-QueueText ([regex]::Escape("ACK_$draft"))
+        Assert-QueueSize 0
+        Assert-QueuePromptCountStable 2 -Seconds 2
+        @(Get-QueueRecords -Kind cancel) | Should -HaveCount 0
     }
 
     It 'Queued Autofix stays pinned to its failed source pane' {
