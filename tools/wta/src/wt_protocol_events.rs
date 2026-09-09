@@ -3,6 +3,31 @@ pub fn send(json_payload: String) {
     let _ = publisher_sender().send(json_payload);
 }
 
+pub(crate) fn resumed_pane_binding_event(
+    agent_id: &str,
+    session_id: &str,
+    pane_id: &str,
+    location: &crate::agent_sessions::SessionLocation,
+) -> Option<String> {
+    // The native binding map currently rebuilds host resume invocations.
+    // Do not turn an existing WSL launch into a host command on persistence.
+    if location.is_wsl() {
+        return None;
+    }
+    Some(
+        serde_json::json!({
+            "type": "event",
+            "method": "pane_agent_session_changed",
+            "params": {
+                "agent": agent_id,
+                "agent_session_id": session_id,
+                "pane_id": pane_id,
+            },
+        })
+        .to_string(),
+    )
+}
+
 pub(crate) fn restart_agent_stack_event() -> String {
     restart_agent_stack_event_with_id(&uuid::Uuid::new_v4().to_string())
 }
@@ -146,6 +171,47 @@ fn publish_blocking(json_payload: &str) {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn resumed_pane_binding_uses_explicit_session_and_created_pane_identity() {
+        for agent in ["copilot", "claude", "codex", "gemini", "opencode"] {
+            let event: serde_json::Value = serde_json::from_str(
+                &super::resumed_pane_binding_event(
+                    agent,
+                    "known-session",
+                    "new-pane",
+                    &crate::agent_sessions::SessionLocation::Host,
+                )
+                .unwrap(),
+            )
+            .unwrap();
+            assert_eq!(
+                event,
+                serde_json::json!({
+                    "type": "event",
+                    "method": "pane_agent_session_changed",
+                    "params": {
+                        "agent": agent,
+                        "agent_session_id": "known-session",
+                        "pane_id": "new-pane",
+                    },
+                })
+            );
+        }
+    }
+
+    #[test]
+    fn resumed_pane_binding_does_not_rewrite_wsl_resumes_as_host_commands() {
+        assert!(super::resumed_pane_binding_event(
+            "copilot",
+            "known-session",
+            "new-pane",
+            &crate::agent_sessions::SessionLocation::Wsl {
+                distro: "Ubuntu".into(),
+            },
+        )
+        .is_none());
+    }
+
     #[test]
     fn restart_event_has_unique_shared_request_id() {
         let first: serde_json::Value =

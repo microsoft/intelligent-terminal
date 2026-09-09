@@ -745,6 +745,14 @@ impl CliChannel {
                                                     parent_pid,
                                                     "WT protocol event listener subscribed"
                                                 );
+                                                // Notify on every successful subscription, including
+                                                // recovery after start_reader's initial timeout.
+                                                if let Some(tx) = this.event_tx.lock().unwrap().as_ref() {
+                                                    let _ = tx.send(serde_json::json!({
+                                                        "method": "wt_listener_ready",
+                                                        "params": {}
+                                                    }));
+                                                }
                                             }
                                             if let Some(tx) = ready_tx.take() {
                                                 let _ = tx.send(());

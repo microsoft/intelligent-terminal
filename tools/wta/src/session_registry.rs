@@ -1496,7 +1496,7 @@ fn now_ms() -> u64 {
 }
 
 fn pane_key(pane_session_id: &str) -> String {
-    pane_session_id.to_ascii_lowercase()
+    crate::agent_sessions::pane_key(pane_session_id)
 }
 
 fn upsert_locked(state: &mut RegistryState, info: SessionInfo) {

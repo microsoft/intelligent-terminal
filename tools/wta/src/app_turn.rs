@@ -74,7 +74,7 @@ impl App {
         // these orthogonal fields rather than relying on side effects from a
         // grab-bag helper.
         tab.messages.clear();
-        tab.clear_streaming_thought();
+        tab.streaming_thought = None;
         // Dropping any in-flight responders signals Cancelled back to
         // the agent — appropriate when the user starts a new turn.
         tab.permission.clear();
@@ -162,7 +162,7 @@ impl App {
             }
             (TurnState::Streaming { .. }, ChunkKind::Message) => {
                 if tab.streaming_thought_text().is_some() {
-                    tab.clear_streaming_thought();
+                    tab.finish_thought();
                 }
                 tab.append_agent_chunk(text);
                 true
@@ -730,7 +730,7 @@ impl App {
     fn turn_clear_agent_activity(&mut self, session_id: &str) {
         let tab = self.session_tab_mut(session_id);
         tab.activity_frame = 0;
-        tab.clear_streaming_thought();
+        tab.finish_thought();
     }
 
     /// User pressed Enter while a card was visible — dispatch the selected
@@ -1011,7 +1011,7 @@ impl App {
         tab.recommendation_focus = RecommendationFocus::Button;
         tab.rec_scroll.reset();
         tab.activity_frame = 0;
-        tab.clear_streaming_thought();
+        tab.finish_thought();
         // Cancel pending session-MCP clarification responders. The user's
         // next prompt draft lives in `input` and is intentionally preserved.
         tab.permission.clear();
@@ -1127,7 +1127,7 @@ impl App {
         tab.selection_visible_pending = true;
         tab.clear_completed_turn_selection();
         tab.activity_frame = 0;
-        tab.clear_streaming_thought();
+        tab.finish_thought();
         tab.turn = TurnState::Surfaced {
             prompt,
             outcome: TurnOutcome::Recommendation(recommendations),
@@ -1191,7 +1191,7 @@ impl App {
         tab.recommendation_focus = RecommendationFocus::Button;
         tab.selection_visible_pending = true;
         tab.activity_frame = 0;
-        tab.clear_streaming_thought();
+        tab.finish_thought();
         tab.turn = TurnState::Surfaced {
             prompt,
             outcome: TurnOutcome::Recommendation(recommendations),
@@ -1265,7 +1265,7 @@ impl App {
         tab.recommendation_focus = RecommendationFocus::Button;
         tab.rec_scroll.reset();
         tab.activity_frame = 0;
-        tab.clear_streaming_thought();
+        tab.finish_thought();
         tab.turn = TurnState::Surfaced {
             prompt,
             outcome: TurnOutcome::ChatTurn,

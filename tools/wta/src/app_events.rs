@@ -28,6 +28,32 @@ struct AgentReconnectWire {
 }
 
 impl App {
+    pub(super) fn owns_restored_bindings_notification(
+        &self,
+        tab_id: Option<&str>,
+        params: &serde_json::Value,
+    ) -> bool {
+        self.owner_tab_id.is_some()
+            && self.window_id.is_some()
+            && tab_id == self.owner_tab_id.as_deref()
+            && params.get("window_id").and_then(|v| v.as_str()) == self.window_id.as_deref()
+    }
+
+    pub(super) fn restored_session_bindings_request(&self) -> Option<String> {
+        Some(
+            serde_json::json!({
+                "type": "event",
+                "method": "pane_agent_session_changed",
+                "params": {
+                    "event": "restore_bindings_requested",
+                    "tab_id": self.owner_tab_id.as_deref()?,
+                    "window_id": self.window_id.as_deref()?
+                }
+            })
+            .to_string(),
+        )
+    }
+
     fn arm_auth_recovery_timeout(
         &self,
         agent_id: String,
@@ -533,22 +559,46 @@ impl App {
                     let pressed = self.pressed_completed_turn.take();
                     let released = self.completed_turn_hit_at(mouse.column, mouse.row);
                     self.text_selection.handle_mouse(mouse);
-                    if let Some(pressed) = pressed.filter(|pressed| {
-                        pressed.tab_id == active_tab_id
-                            && pressed.active_tool_ids == self.active_tool_hit_ids(pressed.hit)
-                            && released.is_some_and(|hit| {
-                                hit.turn_index == pressed.hit.turn_index
-                                    && hit.kind == pressed.hit.kind
-                            })
+                    if let Some(hit) = released.filter(|hit| {
+                        pressed.as_ref().is_some_and(|pressed| {
+                            pressed.tab_id == active_tab_id
+                                && hit.turn_index == pressed.hit.turn_index
+                                && match (hit.kind, pressed.hit.kind) {
+                                    (
+                                        CompletedTurnHitKind::Thought { id, active, .. },
+                                        CompletedTurnHitKind::Thought {
+                                            id: pressed_id,
+                                            active: pressed_active,
+                                            ..
+                                        },
+                                    ) => id == pressed_id && active == pressed_active,
+                                    (
+                                        CompletedTurnHitKind::ActiveToolCall { .. },
+                                        CompletedTurnHitKind::ActiveToolCall { .. },
+                                    )
+                                    | (
+                                        CompletedTurnHitKind::ActiveToolGroup { .. },
+                                        CompletedTurnHitKind::ActiveToolGroup { .. },
+                                    ) => {
+                                        !pressed.active_tool_ids.is_empty()
+                                            && pressed.active_tool_ids
+                                                == self.active_tool_hit_ids(*hit)
+                                    }
+                                    _ => hit.kind == pressed.hit.kind,
+                                }
+                        })
                     }) {
+                        let active_tool_anchor = pressed.as_ref().and_then(|pressed| {
+                            pressed
+                                .active_tool_ids
+                                .first()
+                                .map(|id| (id.clone(), pressed.hit.row))
+                        });
                         let tab = self.current_tab_mut();
-                        match pressed.hit.kind {
+                        match hit.kind {
                             CompletedTurnHitKind::ActiveToolCall { detail_index } => {
                                 if tab.toggle_active_tool_group(detail_index, 1) {
-                                    tab.active_tool_viewport_anchor = pressed
-                                        .active_tool_ids
-                                        .first()
-                                        .map(|id| (id.clone(), pressed.hit.row));
+                                    tab.active_tool_viewport_anchor = active_tool_anchor;
                                 }
                                 return;
                             }
@@ -557,18 +607,31 @@ impl App {
                                 detail_count,
                             } => {
                                 if tab.toggle_active_tool_group(first_detail_index, detail_count) {
-                                    tab.active_tool_viewport_anchor = pressed
-                                        .active_tool_ids
-                                        .first()
-                                        .map(|id| (id.clone(), pressed.hit.row));
+                                    tab.active_tool_viewport_anchor = active_tool_anchor;
+                                }
+                                return;
+                            }
+                            CompletedTurnHitKind::Thought {
+                                id,
+                                detail_index,
+                                active,
+                            } => {
+                                // The transcript may have changed again since the last render.
+                                let message = if active {
+                                    tab.messages.get(detail_index)
+                                } else {
+                                    tab.completed_turns
+                                        .get(hit.turn_index)
+                                        .and_then(|turn| turn.details.get(detail_index))
+                                };
+                                if matches!(message, Some(ChatMessage::Thought { id: current_id, .. }) if *current_id == id)
+                                {
+                                    tab.toggle_thought(hit.turn_index, detail_index, active);
                                 }
                                 return;
                             }
                             CompletedTurnHitKind::ToolCall { detail_index } => {
-                                tab.toggle_completed_tool_call(
-                                    pressed.hit.turn_index,
-                                    detail_index,
-                                );
+                                tab.toggle_completed_tool_call(hit.turn_index, detail_index);
                                 return;
                             }
                             CompletedTurnHitKind::ToolGroup {
@@ -576,7 +639,7 @@ impl App {
                                 detail_count,
                             } => {
                                 tab.toggle_completed_tool_group(
-                                    pressed.hit.turn_index,
+                                    hit.turn_index,
                                     first_detail_index,
                                     detail_count,
                                 );
@@ -587,17 +650,16 @@ impl App {
                         let previous_selected_index = tab.selected_completed_turn_idx;
                         let previous_selection_pending =
                             tab.completed_turn_selection_visible_pending;
-                        let previous_expanded =
-                            tab.completed_turns[pressed.hit.turn_index].expanded;
-                        if tab.select_completed_turn(pressed.hit.turn_index)
-                            && tab.toggle_completed_turn(pressed.hit.turn_index)
-                            && pressed.hit.kind == CompletedTurnHitKind::UserInput
+                        let previous_expanded = tab.completed_turns[hit.turn_index].expanded;
+                        if tab.select_completed_turn(hit.turn_index)
+                            && tab.toggle_completed_turn(hit.turn_index)
+                            && hit.kind == CompletedTurnHitKind::UserInput
                         {
                             self.last_completed_turn_click = Some(CompletedTurnClickRecord {
                                 tab_id: active_tab_id,
                                 column: mouse.column,
                                 row: mouse.row,
-                                turn_index: pressed.hit.turn_index,
+                                turn_index: hit.turn_index,
                                 previous_selected_index,
                                 previous_selection_pending,
                                 previous_expanded,
@@ -1216,6 +1278,7 @@ impl App {
                 // AgentError because the error is local to one tab's
                 // session-load attempt, not the whole connection.
                 let tab = self.tab_mut(&tab_id);
+                tab.finish_thought();
                 tab.loading_session = false;
                 tab.loading_target_session_id = None;
                 tab.replay_agent_buffer.clear();
@@ -1664,6 +1727,13 @@ impl App {
                 self.current_tab_mut().scroll_to_bottom();
             }
             AppEvent::AgentThoughtChunk { session_id, text } => {
+                if let Some(tab) = self.session_tab_mut_if_current(&session_id) {
+                    if tab.loading_session {
+                        tab.flush_load_replay_pending();
+                        tab.append_thought_chunk(&text);
+                        return;
+                    }
+                }
                 // Late chunk after cancel / completion is dropped by
                 // `turn_observe_chunk` (state isn't Submitted/Streaming).
                 self.turn_observe_chunk(&session_id, ChunkKind::Thought, &text);
@@ -1686,6 +1756,7 @@ impl App {
                 // as a ChatMessage::User so the chat stays in turn
                 // order.
                 if tab.loading_session {
+                    tab.finish_thought();
                     tab.flush_replay_user_buffer();
                     tab.replay_agent_buffer.push_str(&text);
                     return;
@@ -1711,6 +1782,7 @@ impl App {
                 if !tab.loading_session {
                     return;
                 }
+                tab.finish_thought();
                 if !tab.replay_agent_buffer.is_empty() {
                     let prev = std::mem::take(&mut tab.replay_agent_buffer);
                     tab.messages.push(ChatMessage::Agent(prev));
@@ -1771,6 +1843,7 @@ impl App {
                 // follows ACP event order instead of drawing the streaming
                 // buffer after every eagerly inserted tool card.
                 if tab.loading_session {
+                    tab.finish_thought();
                     tab.flush_replay_user_buffer();
                     if !tab.replay_agent_buffer.is_empty() {
                         let text = std::mem::take(&mut tab.replay_agent_buffer);
@@ -1815,6 +1888,7 @@ impl App {
                     return;
                 }
                 // Update in-place in messages
+                tab.finish_thought();
                 for msg in &mut tab.messages {
                     if let ChatMessage::ToolCall {
                         id: ref mid,
@@ -1966,6 +2040,7 @@ impl App {
                     .get_mut(&target_tab)
                     .expect("current session tab exists");
                 if tab.loading_session {
+                    tab.finish_thought();
                     tab.flush_replay_user_buffer();
                     if !tab.replay_agent_buffer.is_empty() {
                         let text = std::mem::take(&mut tab.replay_agent_buffer);
@@ -1999,6 +2074,7 @@ impl App {
                 // user sees them one at a time (front of the queue is the
                 // one rendered + key-handled); resolving the front pops
                 // it and exposes the next.
+                tab.finish_thought();
                 tab.permission.push_back(PermissionState {
                     tool_call_id,
                     description,
@@ -2023,6 +2099,7 @@ impl App {
                 if !tab.turn.can_service_agent_request() && !tab.loading_session {
                     return;
                 }
+                tab.finish_thought();
                 tab.user_input.push_back(UserInputState {
                     request_id,
                     request,
@@ -2314,6 +2391,25 @@ impl App {
                 // (`wt_event_rx: received event`).
                 tracing::trace!(target: "autofix", method = %method, pane_id = %pane_id, tab_id = ?tab_id, self_pane_id = ?self.pane_id, "WtEvent");
 
+                if method == "wt_listener_ready" || method == "restore_bindings_available" {
+                    // Availability is scoped to the owning helper. A missed
+                    // notification is covered by the next real subscription.
+                    if method == "restore_bindings_available"
+                        && !self.owns_restored_bindings_notification(tab_id.as_deref(), &params)
+                    {
+                        return;
+                    }
+                    if let Some(request) = self.restored_session_bindings_request() {
+                        send_wt_protocol_event(request);
+                    } else {
+                        tracing::warn!(
+                            target: "session_hook",
+                            "cannot request restored bindings without helper tab and window identity"
+                        );
+                    }
+                    return;
+                }
+
                 // Hook bridge events: fire-and-forget into the agent registry
                 // so the agent session view stays current. Unrelated to autofix /
                 // tab routing; runs before the same-pane skip because we want
@@ -2344,6 +2440,18 @@ impl App {
                 }
 
                 if method == "session_born_bound" {
+                    // Restored births are delivered to the one helper whose
+                    // subscription was acknowledged, not forwarded by every tab.
+                    if tab_id
+                        .as_deref()
+                        .is_some_and(|tab| self.owner_tab_id.as_deref() != Some(tab))
+                        || params
+                            .get("window_id")
+                            .and_then(|v| v.as_str())
+                            .is_some_and(|window| self.window_id.as_deref() != Some(window))
+                    {
+                        return;
+                    }
                     let agent_session_id = params
                         .get("agent_session_id")
                         .and_then(|value| value.as_str())
@@ -2924,6 +3032,7 @@ impl App {
                         self.pending_session_load = None;
                         self.pending_yolo_session_tabs.remove(tab_id);
                         let tab = self.tab_mut(tab_id);
+                        tab.finish_thought();
                         tab.loading_session = false;
                         tab.loading_target_session_id = None;
                         tab.replay_agent_buffer.clear();

@@ -870,6 +870,18 @@ namespace winrt::TerminalApp::implementation
         // relaunch it; removed only when the pane itself closes or a new
         // binding replaces it.
         std::unordered_map<winrt::guid, _PaneAgentSession> _paneAgentSessions;
+        struct _PendingRestoredSessionBinding
+        {
+            winrt::hstring sessionId;
+            winrt::hstring agent;
+            winrt::hstring cwd;
+        };
+        // Layout replay precedes WTA startup. Keep births until the owning
+        // helper acknowledges its COM subscription, not merely ACP readiness.
+        std::unordered_map<winrt::guid, _PendingRestoredSessionBinding> _pendingRestoredSessionBindings;
+        std::unordered_set<winrt::hstring> _tabsAwaitingRestoredBindings;
+        void _NotifyRestoredSessionBindings(const winrt::com_ptr<Tab>& tab);
+        void _ReplayRestoredSessionBindings(const winrt::com_ptr<Tab>& tab);
 
         winrt::Windows::Foundation::IAsyncAction _HandleCloseTabRequested(winrt::TerminalApp::Tab tab, bool skipConfirmClose = false);
         void _CloseTabAtIndex(uint32_t index);
