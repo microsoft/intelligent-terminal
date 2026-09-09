@@ -1442,8 +1442,8 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         _GlobalSettings.AcpCustomCommands(commands);
         _RebuildCustomEntries(_acpAgentList, commands, true);
 
-        _isAddingCustomAcpAgent = true;
-        _editingCustomAcpAgentId = settingsId;
+        _isAddingCustomAcpAgent = false;
+        _editingCustomAcpAgentId = L"";
         _GlobalSettings.AcpAgent(settingsId);
         _GlobalSettings.AcpModel(L"");
         Model::AcpRuntimeState::Current().SetAvailableModels(
@@ -1472,8 +1472,8 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         _GlobalSettings.DelegateCustomCommands(commands);
         _RebuildCustomEntries(_delegateAgentList, commands, false);
 
-        _isAddingCustomDelegateAgent = true;
-        _editingCustomDelegateAgentId = settingsId;
+        _isAddingCustomDelegateAgent = false;
+        _editingCustomDelegateAgentId = L"";
         _GlobalSettings.DelegateAgent(settingsId);
         _NotifyChanges(L"CurrentDelegateAgent", L"IsAddingCustomDelegateAgent", L"IsCustomDelegateAgentSelected", L"ShowDelegateModel", L"CustomDelegateCommandPreview");
     }

@@ -741,11 +741,11 @@
     <value>Изаберите модел који овај агент користи.</value>
     <comment>Supplementary description for the model setting.</comment>
   </data><data name="AIAgents_DelegateAgent.Header" xml:space="preserve">
-    <value>Агент</value>
-    <comment>Header for the setting that specifies which agent CLI handles command palette / on-demand requests.</comment>
+    <value>CLI агент</value>
+    <comment>{Locked="CLI"} Header for the agent CLI selector in Settings &gt; Agents &gt; Command palette. Here "agent" means an AI intelligent agent (e.g. Copilot, Claude, Gemini), not a proxy or human agent. CLI means command-line interface.</comment>
   </data><data name="AIAgents_DelegateAgent.HelpText" xml:space="preserve">
-    <value>Изаберите агента који се користи за брзе радње у палети команди.</value>
-    <comment>Supplementary description for the command palette agent setting.</comment>
+    <value>Отворите нову картицу у којој ће се покренути ваш жељени CLI агент, уз упит и било који контекст из текуће картице. Притисните Alt+Shift+/ да отворите палету команди директно у режиму упита.</value>
+    <comment>{Locked="CLI","Alt+Shift+/"} Help text for the agent CLI selector in Settings &gt; Agents &gt; Command palette. The selected AI agent CLI opens in a new tab with a prompt and any context from the current tab. Here "agent" means an AI intelligent agent, not a proxy or human agent. Keep CLI and Alt+Shift+/ unchanged.</comment>
   </data><data name="AIAgents_AutoFix.Header" xml:space="preserve">
     <value>Аутоматски предложи исправке за неуспеле команде</value>
     <comment>Header for the toggle that enables automatic fix suggestions when commands fail.</comment>

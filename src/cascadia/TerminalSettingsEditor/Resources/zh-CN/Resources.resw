@@ -2857,12 +2857,12 @@
     <comment>Supplementary description for the model setting.</comment>
   </data>
   <data name="AIAgents_DelegateAgent.Header" xml:space="preserve">
-    <value>智能体</value>
-    <comment>Header for the setting that specifies which agent CLI handles command palette / on-demand requests.</comment>
+    <value>智能体 CLI</value>
+    <comment>{Locked="CLI"} Header for the agent CLI selector in Settings &gt; Agents &gt; Command palette. Here "agent" means an AI intelligent agent (e.g. Copilot, Claude, Gemini), not a proxy or human agent. CLI means command-line interface.</comment>
   </data>
   <data name="AIAgents_DelegateAgent.HelpText" xml:space="preserve">
-    <value>选择用于命令面板快速操作的智能体。</value>
-    <comment>Supplementary description for the command palette agent setting.</comment>
+    <value>使用你首选的智能体 CLI、提示词以及当前选项卡中的任何上下文来创建新选项卡。按 Alt+Shift+/ 可直接打开命令面板并进入智能体提示模式。</value>
+    <comment>{Locked="CLI","Alt+Shift+/"} Help text for the agent CLI selector in Settings &gt; Agents &gt; Command palette. The selected AI agent CLI opens in a new tab with a prompt and any context from the current tab. Here "agent" means an AI intelligent agent, not a proxy or human agent. Keep CLI and Alt+Shift+/ unchanged.</comment>
   </data>
   <data name="AIAgents_AutoFix.Header" xml:space="preserve">
     <value>自动为失败的命令建议修复方案</value>

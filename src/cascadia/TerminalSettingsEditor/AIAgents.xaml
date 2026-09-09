@@ -63,6 +63,15 @@
                 <Setter Property="Padding" Value="0,12" />
             </Style>
 
+            <Style x:Key="InlineSettingsLinkStyle"
+                   BasedOn="{StaticResource DefaultHyperlinkButtonStyle}"
+                   TargetType="HyperlinkButton">
+                <Setter Property="MinWidth" Value="0" />
+                <Setter Property="MinHeight" Value="0" />
+                <Setter Property="Padding" Value="0" />
+                <Setter Property="HorizontalAlignment" Value="Left" />
+            </Style>
+
             <Style x:Key="AutoErrorHandlingSettingContainerStyle"
                    TargetType="local:SettingContainer">
                 <Setter Property="Margin" Value="0,4,0,0" />
@@ -93,23 +102,22 @@
     <StackPanel>
         <StackPanel Style="{StaticResource SettingsStackStyle}">
 
-            <!--  Page subtitle. The page title itself is rendered by the
-                  Settings BreadcrumbBar from Nav_AIAgents.Content, so we only
-                  add the subtitle below it here. The inline Run/Hyperlink
-                  text is populated from the ResourceLoader in code-behind
-                  (x:Uid on inline Run is not honored in this codebase).
-                  The muted "secondary" foreground is applied only to the
-                  non-link Runs so the Hyperlink keeps its full theme
-                  accent contrast (and its hover/pressed affordance).  -->
-            <TextBlock Margin="0,0,0,16"
-                       TextWrapping="Wrap">
-                <Run x:Name="PageSubtitlePrefix"
-                     Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                     Text="" /><Run Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                    Text=" " /><Hyperlink NavigateUri="https://aka.ms/intelligent-terminal-privacy">
-                    <Run x:Name="PageSubtitlePrivacyLink" Text="" />
-                </Hyperlink>
-            </TextBlock>
+            <!--  Explicit inline controls restrict link hit testing to the link text.  -->
+            <RichTextBlock Margin="0,0,0,16"
+                           IsTextSelectionEnabled="False"
+                           TextWrapping="Wrap">
+                <Paragraph>
+                    <Run x:Name="PageSubtitlePrefix"
+                         Foreground="{ThemeResource TextFillColorSecondaryBrush}" /><Run Text=" " /><InlineUIContainer>
+                        <HyperlinkButton x:Name="PageSubtitlePrivacyLinkButton"
+                                         NavigateUri="https://aka.ms/intelligent-terminal-privacy"
+                                         Style="{StaticResource InlineSettingsLinkStyle}">
+                            <TextBlock x:Name="PageSubtitlePrivacyLink"
+                                       TextDecorations="Underline" />
+                        </HyperlinkButton>
+                    </InlineUIContainer>
+                </Paragraph>
+            </RichTextBlock>
 
             <!--  ═══ Agent pane group ═══
                   First sub-header on the page: override the style's 32px
@@ -150,7 +158,8 @@
                             HorizontalAlignment="Right"
                             VerticalAlignment="Center"
                             Margin="0,12,0,12">
-                    <ComboBox AutomationProperties.AccessibilityView="Content"
+                    <ComboBox x:Name="AcpAgentComboBox"
+                              AutomationProperties.AccessibilityView="Content"
                               ItemTemplate="{StaticResource AgentEntryTemplate}"
                               ItemsSource="{x:Bind ViewModel.AcpAgentList, Mode=OneWay}"
                               SelectedItem="{x:Bind ViewModel.CurrentAcpAgent, Mode=TwoWay}"
@@ -171,7 +180,7 @@
                         <StackPanel Orientation="Horizontal"
                                     HorizontalAlignment="Right"
                                     Spacing="8">
-                            <Button Content="Edit" Click="{x:Bind ViewModel.EditCustomAcpAgent}" />
+                            <Button x:Name="CustomAcpAgentEditButton" Content="Edit" Click="{x:Bind ViewModel.EditCustomAcpAgent}" />
                         </StackPanel>
                     </StackPanel>
                     <!--  Editable panel (adding new or editing existing)  -->
@@ -179,15 +188,16 @@
                                 Visibility="{x:Bind ViewModel.IsAddingCustomAcpAgent, Mode=OneWay}"
                                 Margin="0,8,0,0"
                                 Spacing="8">
-                        <TextBox Text="{x:Bind ViewModel.CustomAcpCommand, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                        <TextBox x:Name="CustomAcpCommandBox"
+                                 Text="{x:Bind ViewModel.CustomAcpCommand, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                                  PlaceholderForeground="{ThemeResource TextFillColorTertiaryBrush}"
                                  PlaceholderText="my-agent --acp --stdio"
                                  Style="{StaticResource TextBoxSettingStyle}" />
                         <StackPanel Orientation="Horizontal"
                                     HorizontalAlignment="Right"
                                     Spacing="8">
-                            <Button Content="Save" Click="{x:Bind ViewModel.SaveCustomAcpAgent}" Style="{StaticResource AccentButtonStyle}" />
-                            <Button Content="Cancel" Click="{x:Bind ViewModel.CancelCustomAcpAgent}" />
+                            <Button x:Name="CustomAcpAgentSaveButton" Content="Save" Click="{x:Bind ViewModel.SaveCustomAcpAgent}" Style="{StaticResource AccentButtonStyle}" />
+                            <Button x:Name="CustomAcpAgentCancelButton" Content="Cancel" Click="{x:Bind ViewModel.CancelCustomAcpAgent}" />
                         </StackPanel>
                     </StackPanel>
                 </StackPanel>
@@ -229,12 +239,25 @@
                         <StackPanel Style="{StaticResource StackPanelInExpanderStyle}">
                             <TextBlock x:Name="CustomModelsHeaderText"
                                        Style="{StaticResource SettingsPageItemHeaderStyle}" />
-                            <TextBlock Style="{StaticResource SettingsPageItemDescriptionStyle}">
-                                <Run x:Name="CustomModelsCaptionPrefix"
-                                     Foreground="{ThemeResource TextFillColorSecondaryBrush}" /><Hyperlink NavigateUri="https://github.com/microsoft/intelligent-terminal#custom-providers-byok">
-                                    <Run x:Name="CustomModelsCaptionLink" />
-                                </Hyperlink>
-                            </TextBlock>
+                            <RichTextBlock Margin="0,0,24,0"
+                                           FontFamily="Segoe UI, Segoe Fluent Icons, Segoe MDL2 Assets"
+                                           FontSize="12"
+                                           Foreground="{ThemeResource SubgroupHeaderBrush}"
+                                           IsTextSelectionEnabled="False"
+                                           LineHeight="16"
+                                           TextWrapping="WrapWholeWords">
+                                <Paragraph>
+                                    <Run x:Name="CustomModelsCaptionPrefix" /><InlineUIContainer>
+                                        <HyperlinkButton x:Name="CustomModelsLearnMoreButton"
+                                                         FontSize="12"
+                                                         NavigateUri="https://github.com/microsoft/intelligent-terminal#custom-providers-byok"
+                                                         Style="{StaticResource InlineSettingsLinkStyle}">
+                                            <TextBlock x:Name="CustomModelsCaptionLink"
+                                                       TextDecorations="Underline" />
+                                        </HyperlinkButton>
+                                    </InlineUIContainer>
+                                </Paragraph>
+                            </RichTextBlock>
                         </StackPanel>
                     </Grid>
                 </muxc:Expander.Header>
@@ -304,7 +327,8 @@
                                 <ColumnDefinition Width="*" />
                                 <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
-                            <Button Grid.Column="1"
+                            <Button x:Name="CustomProviderAddButton"
+                                    Grid.Column="1"
                                     x:Uid="AIAgents_CustomProviderAdd"
                                     Click="{x:Bind ViewModel.AddCustomModelProvider}"
                                     MinWidth="120"
@@ -319,7 +343,9 @@
                                        FontWeight="SemiBold"
                                        Style="{StaticResource SettingsPageItemHeaderStyle}" />
                             <StackPanel Spacing="4">
-                                <TextBox x:Uid="AIAgents_CustomProviderBaseUrl"
+                                <TextBox x:Name="CustomProviderBaseUrlBox"
+                                         x:Uid="AIAgents_CustomProviderBaseUrl"
+                                         Width="{StaticResource StandardBoxMinWidth}"
                                          AutomationProperties.HelpText="{Binding Text, ElementName=CustomProviderBaseUrlHint}"
                                          PlaceholderForeground="{ThemeResource TextFillColorTertiaryBrush}"
                                          Style="{StaticResource TextBoxSettingStyle}"
@@ -331,7 +357,9 @@
                                            TextWrapping="Wrap" />
                             </StackPanel>
                             <StackPanel Spacing="4">
-                                <TextBox x:Uid="AIAgents_CustomModelId"
+                                <TextBox x:Name="CustomProviderModelIdBox"
+                                         x:Uid="AIAgents_CustomModelId"
+                                         Width="{StaticResource StandardBoxMinWidth}"
                                          AutomationProperties.HelpText="{Binding Text, ElementName=CustomModelIdHint}"
                                          PlaceholderForeground="{ThemeResource TextFillColorTertiaryBrush}"
                                          Style="{StaticResource TextBoxSettingStyle}"
@@ -343,9 +371,9 @@
                                            TextWrapping="Wrap" />
                             </StackPanel>
                             <StackPanel Spacing="4">
-                                <PasswordBox x:Uid="AIAgents_CustomProviderApiKey"
-                                             MinWidth="{StaticResource StandardBoxMinWidth}"
-                                             MaxWidth="400"
+                                <PasswordBox x:Name="CustomProviderApiKeyBox"
+                                             x:Uid="AIAgents_CustomProviderApiKey"
+                                             Width="{StaticResource StandardBoxMinWidth}"
                                              HorizontalAlignment="Left"
                                              AutomationProperties.HelpText="{Binding Text, ElementName=CustomProviderApiKeyHint}"
                                              Password="{x:Bind ViewModel.NewCustomModelProviderApiKey, Mode=TwoWay}" />
@@ -367,7 +395,8 @@
                                             IsEnabled="{x:Bind ViewModel.CanSaveCustomModelProvider, Mode=OneWay}"
                                             Click="{x:Bind ViewModel.SaveCustomModelProvider}"
                                             Style="{StaticResource AccentButtonStyle}" />
-                                    <Button x:Uid="AIAgents_CustomProviderCancel"
+                                    <Button x:Name="CustomProviderCancelButton"
+                                            x:Uid="AIAgents_CustomProviderCancel"
                                             Click="{x:Bind ViewModel.CancelCustomModelProvider}" />
                                 </StackPanel>
                             </StackPanel>
@@ -378,7 +407,7 @@
 
             <!--  Pane position  -->
             <local:SettingContainer x:Name="AgentPanePosition"
-                                    x:Uid="AIAgents_PanePosition">
+                                x:Uid="AIAgents_PanePosition">
                 <ComboBox AutomationProperties.AccessibilityView="Content"
                           ItemTemplate="{StaticResource EnumComboBoxTemplate}"
                           ItemsSource="{x:Bind ViewModel.AgentPanePositionList, Mode=OneWay}"
@@ -482,7 +511,8 @@
                       selected the content grows past the SettingContainer's
                       MinHeight=64 and would otherwise hug the card edges.  -->
                 <StackPanel Margin="0,12,0,12">
-                    <ComboBox AutomationProperties.AccessibilityView="Content"
+                    <ComboBox x:Name="DelegateAgentComboBox"
+                              AutomationProperties.AccessibilityView="Content"
                               ItemTemplate="{StaticResource AgentEntryTemplate}"
                               ItemsSource="{x:Bind ViewModel.DelegateAgentList, Mode=OneWay}"
                               SelectedItem="{x:Bind ViewModel.CurrentDelegateAgent, Mode=TwoWay}"
@@ -502,22 +532,23 @@
                         <StackPanel Orientation="Horizontal"
                                     HorizontalAlignment="Right"
                                     Spacing="8">
-                            <Button Content="Edit" Click="{x:Bind ViewModel.EditCustomDelegateAgent}" />
+                            <Button x:Name="CustomDelegateAgentEditButton" Content="Edit" Click="{x:Bind ViewModel.EditCustomDelegateAgent}" />
                         </StackPanel>
                     </StackPanel>
                     <StackPanel Orientation="Vertical"
                                 Visibility="{x:Bind ViewModel.IsAddingCustomDelegateAgent, Mode=OneWay}"
                                 Margin="0,8,0,0"
                                 Spacing="8">
-                        <TextBox Text="{x:Bind ViewModel.CustomDelegateCommand, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                        <TextBox x:Name="CustomDelegateCommandBox"
+                                 Text="{x:Bind ViewModel.CustomDelegateCommand, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                                  PlaceholderForeground="{ThemeResource TextFillColorTertiaryBrush}"
                                  PlaceholderText="my-cli --flag"
                                  Style="{StaticResource TextBoxSettingStyle}" />
                         <StackPanel Orientation="Horizontal"
                                     HorizontalAlignment="Right"
                                     Spacing="8">
-                            <Button Content="Save" Click="{x:Bind ViewModel.SaveCustomDelegateAgent}" Style="{StaticResource AccentButtonStyle}" />
-                            <Button Content="Cancel" Click="{x:Bind ViewModel.CancelCustomDelegateAgent}" />
+                            <Button x:Name="CustomDelegateAgentSaveButton" Content="Save" Click="{x:Bind ViewModel.SaveCustomDelegateAgent}" Style="{StaticResource AccentButtonStyle}" />
+                            <Button x:Name="CustomDelegateAgentCancelButton" Content="Cancel" Click="{x:Bind ViewModel.CancelCustomDelegateAgent}" />
                         </StackPanel>
                     </StackPanel>
                 </StackPanel>

@@ -769,14 +769,12 @@ In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), n
     <comment>Supplementary description for the model setting.</comment>
   </data>
   <data name="AIAgents_DelegateAgent.Header" xml:space="preserve">
-    <value>Agent</value>
-    <comment>Header for the setting that specifies which agent handles command palette / on-demand requests.
-In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+    <value>Agent CLI</value>
+    <comment>{Locked="CLI"} Header for the agent CLI selector in Settings &gt; Agents &gt; Command palette. Here "agent" means an AI intelligent agent (e.g. Copilot, Claude, Gemini), not a proxy or human agent. CLI means command-line interface.</comment>
   </data>
   <data name="AIAgents_DelegateAgent.HelpText" xml:space="preserve">
-    <value>Choose the agent used for quick actions in the command palette.</value>
-    <comment>Supplementary description for the command palette agent setting. 
-In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+    <value>Create a new tab with your preferred agent CLI, a prompt, and any context from your current tab. Press Alt+Shift+/ to launch the command palette directly in prompt mode.</value>
+    <comment>{Locked="CLI","Alt+Shift+/"} Help text for the agent CLI selector in Settings &gt; Agents &gt; Command palette. The selected AI agent CLI opens in a new tab with a prompt and any context from the current tab. Here "agent" means an AI intelligent agent, not a proxy or human agent. Keep CLI and Alt+Shift+/ unchanged.</comment>
   </data>
   <data name="AIAgents_AutoErrorHandlingTitle.Text" xml:space="preserve">
     <value>Error detection</value>

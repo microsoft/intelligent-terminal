@@ -2850,10 +2850,12 @@
     <value>Выберите модель, которую использует этот агент.</value>
   </data>
   <data name="AIAgents_DelegateAgent.Header" xml:space="preserve">
-    <value>Агент</value>
+    <value>CLI агента</value>
+    <comment>{Locked="CLI"} Header for the agent CLI selector in Settings &gt; Agents &gt; Command palette. Here "agent" means an AI intelligent agent (e.g. Copilot, Claude, Gemini), not a proxy or human agent. CLI means command-line interface.</comment>
   </data>
   <data name="AIAgents_DelegateAgent.HelpText" xml:space="preserve">
-    <value>Выберите агента, используемого для быстрых действий в палитре команд.</value>
+    <value>Создайте новую вкладку с CLI агента по вашему выбору, запросом и любым контекстом из текущей вкладки. Нажмите Alt+Shift+/, чтобы открыть палитру команд прямо в режиме запроса.</value>
+    <comment>{Locked="CLI","Alt+Shift+/"} Help text for the agent CLI selector in Settings &gt; Agents &gt; Command palette. The selected AI agent CLI opens in a new tab with a prompt and any context from the current tab. Here "agent" means an AI intelligent agent, not a proxy or human agent. Keep CLI and Alt+Shift+/ unchanged.</comment>
   </data>
   <data name="AIAgents_AutoFix.Header" xml:space="preserve">
     <value>Автоматически предлагать исправления для команд с ошибками</value>

@@ -96,6 +96,10 @@ Net effect: UT shrinks the manual matrix to "did the wiring and UI connect", not
 - [ ] `C046` `[UT✓]` `[E2E]` **Session management enable reconciles hooks:** Changing Sessions from off to on asynchronously installs missing hooks and upgrades stale hooks. _(UT: `TestAgentHooksReconciliationClassification` + reconciliation planner tests.)_
 - [ ] `C047` `[UT✓]` `[E2E]` **Agent switch reconciles hooks:** Selecting a different built-in agent asynchronously reconciles hooks for that agent only; custom agents do not invoke built-in hook installation. _(UT: `TestAgentHooksReconciliationClassification`.)_
 - [ ] `C048` `[UT~]` `[E2E]` **Policy lock UI works:** Locked controls are disabled and show the policy message. _(UT: Effective*/IsLocked gates.)_
+- [ ] `C307` `[new]` `[E2E]` **Agent CLI settings explain prompt delegation:** The Command palette section labels the picker Agent CLI and explains new-tab prompts, current-tab context, and Alt+Shift+/. _(E2E: `Feature.AgentsSettingsFeedback`.)_
+- [ ] `C308` `[new]` `[E2E]` **Custom agent Save closes the editor:** Saving a new or edited ACP/delegate command selects it and hides the command textbox and Save/Cancel actions; Edit and Cancel remain usable. _(E2E: `Feature.AgentsSettingsFeedback`.)_
+- [ ] `C309` `[new]` `[E2E]` **Custom model inputs stay equal width:** Base URL, model ID, and API key inputs have equal widths with empty or long values. _(E2E: `Feature.AgentsSettingsFeedback`.)_
+- [ ] `C310` `[new]` `[E2E]` **Agents help links only target their text:** Privacy and custom-model help links are only clickable on their own text, not the neighboring description or whitespace; the custom-model expander still opens and closes. _(E2E: `Feature.AgentsSettingsFeedback`.)_
 
 ### Profile Agent pane agent
 

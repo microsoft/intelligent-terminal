@@ -2857,12 +2857,12 @@
     <comment>Supplementary description for the model setting.</comment>
   </data>
   <data name="AIAgents_DelegateAgent.Header" xml:space="preserve">
-    <value>에이전트</value>
-    <comment>Header for the setting that specifies which agent CLI handles command palette / on-demand requests.</comment>
+    <value>에이전트 CLI</value>
+    <comment>{Locked="CLI"} Header for the agent CLI selector in Settings &gt; Agents &gt; Command palette. Here "agent" means an AI intelligent agent (e.g. Copilot, Claude, Gemini), not a proxy or human agent. CLI means command-line interface.</comment>
   </data>
   <data name="AIAgents_DelegateAgent.HelpText" xml:space="preserve">
-    <value>명령 팔레트의 빠른 작업에 사용할 에이전트를 선택하세요.</value>
-    <comment>Supplementary description for the command palette agent setting.</comment>
+    <value>선택한 에이전트 CLI와 프롬프트, 그리고 현재 탭의 컨텍스트를 사용해 새 탭을 만듭니다. Alt+Shift+/를 누르면 명령 팔레트를 에이전트 프롬프트 모드로 바로 엽니다.</value>
+    <comment>{Locked="CLI","Alt+Shift+/"} Help text for the agent CLI selector in Settings &gt; Agents &gt; Command palette. The selected AI agent CLI opens in a new tab with a prompt and any context from the current tab. Here "agent" means an AI intelligent agent, not a proxy or human agent. Keep CLI and Alt+Shift+/ unchanged.</comment>
   </data>
   <data name="AIAgents_AutoFix.Header" xml:space="preserve">
     <value>실패한 명령에 대한 수정 사항 자동 제안</value>
