@@ -71,6 +71,7 @@ load:
 |---|---|
 | `AutoErrorDetection` | `true` or `false` |
 | `AutoFix` | `true` or `false` |
+| `AgentSessionManagement` | Effective `true` or `false` value after policy is applied |
 | `AgentPanePosition` | The controlled pane-position setting value |
 | `QuotaUsage` | `true` or `false` |
 | `VerticalTabs` | `true` or `false` |

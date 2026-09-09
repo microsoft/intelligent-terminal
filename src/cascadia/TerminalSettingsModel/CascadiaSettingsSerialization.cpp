@@ -2040,6 +2040,9 @@ void CascadiaSettings::LogSettingChanges(bool isJsonLoad) const
         {
             emitIntelligentFeatureConfigured("AutoErrorDetection", _globals->AutoErrorDetectionEnabled() ? L"true" : L"false");
             emitIntelligentFeatureConfigured("AutoFix", _globals->AutoFixEnabled() ? L"true" : L"false");
+            emitIntelligentFeatureConfigured(
+                "AgentSessionManagement",
+                _globals->EffectiveAgentSessionManagementEnabled() ? L"true" : L"false");
             if (const auto agentPanePosition = _globals->AgentPanePosition(); !agentPanePosition.empty())
             {
                 emitIntelligentFeatureConfigured("AgentPanePosition", agentPanePosition.c_str());
