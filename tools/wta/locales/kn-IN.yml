@@ -136,6 +136,33 @@ agents.status.idle: "ನಿಷ್ಕ್ರಿಯ"
 # ── ಲೇಔಟ್ ಸ್ವಾಗತ ಸೂಚನೆ (src/ui/layout.rs) ──────────────────────────────────
 layout.welcome_hint: "  (Ctrl+Shift+. ಏಜೆಂಟ್ ಪೇನ್ ತೋರಿಸು/ಮರೆಮಾಡು • Ctrl+Shift+/ ಏಜೆಂಟ್ ಸೆಶನ್ ತೋರಿಸು/ಮರೆಮಾಡು)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}
 
+# ── Prompt queue (agent pane) ───────────────────────────────────────────────
+# Pending input has not been sent to the AI agent.
+queue.header: "ಸರದಿಯಲ್ಲಿರುವ ಸಂದೇಶಗಳು: %{count}"  # Automatic pinned list above input: total pending user and automatic requests; hidden when empty
+queue.full: "ಸರದಿ ತುಂಬಿದೆ. ನಿಮ್ಮ ಇನ್‌ಪುಟ್ ಅನ್ನು ಉಳಿಸಲಾಗಿದೆ."
+queue.enqueued: "ಸಂದೇಶವನ್ನು ಸರದಿಗೆ ಸೇರಿಸಲಾಗಿದೆ."  # Info notification when a user message must wait before being sent to the AI agent
+queue.cancelled: "ಸರದಿಯಲ್ಲಿರುವ %{count} ಸಂದೇಶಗಳನ್ನು ರದ್ದುಗೊಳಿಸಲಾಗಿದೆ. ನೀವು ಹೊಸ ಸಂದೇಶವನ್ನು ಕಳುಹಿಸಬಹುದು."  # Info notification when waiting requests are discarded after cancellation, failure, or session reset
+queue.session_busy: "ಸರದಿಯಲ್ಲಿರುವ ಸಂದೇಶಗಳು ಈ ಸಂಭಾಷಣೆಗೆ ಸೇರಿವೆ. ಸೆಷನ್ ಅಥವಾ ಸಂರಚನೆಯನ್ನು ಬದಲಾಯಿಸುವ ಮೊದಲು ಅವುಗಳನ್ನು ಕಳುಹಿಸಿ ಅಥವಾ ತೆಗೆದುಹಾಕಿ."
+queue.paused_header: "ವಿರಾಮಗೊಳಿಸಲಾಗಿದೆ: %{count} ಬಾಕಿ; ಸ್ವಯಂಚಾಲಿತವಾಗಿ ಕಳುಹಿಸಲಾಗುವುದಿಲ್ಲ"  # Pinned heading: automatic sending is stopped
+queue.recall: "ಕೊನೆಯದನ್ನು ಮರಳಿ ತರು"  # Button: restore the newest pending request to the editor
+queue.send_remaining: "ಉಳಿದವುಗಳನ್ನು ಕಳುಹಿಸು"  # Button: resume sending pending requests
+queue.discard: "ಉಳಿದವುಗಳನ್ನು ತೆಗೆದುಹಾಕು"  # Button: discard pending requests, not the draft or active task
+queue.draft_busy: "ಸರದಿಯಲ್ಲಿರುವ ವಿನಂತಿಯನ್ನು ಮರಳಿ ತರುವ ಮೊದಲು ಪ್ರಸ್ತುತ ಕರಡನ್ನು ಸಲ್ಲಿಸಿ ಅಥವಾ ತೆರವುಗೊಳಿಸಿ."
+queue.enqueued_paused: "ನಿಲ್ಲಿಸಲಾದ ಸರದಿಗೆ ಸೇರಿಸಲಾಗಿದೆ. ಪ್ರಾರಂಭಿಸಲು ಉಳಿದವುಗಳನ್ನು ಕಳುಹಿಸು ಆಯ್ಕೆಮಾಡಿ."
+queue.resubmit: "ಮತ್ತೆ ಸಲ್ಲಿಸಬೇಕಾಗಿದೆ"  # Prefix: fix evidence expired; recall and submit again
+queue.resume_blocked: "ಕಾಯುತ್ತಿರುವ ವಿನಂತಿಗಳನ್ನು ಇನ್ನೂ ಕಳುಹಿಸಲಾಗುವುದಿಲ್ಲ. ಸಂಪರ್ಕದ ಸಮಸ್ಯೆಯನ್ನು ಪರಿಹರಿಸಿ ಅಥವಾ ಸಕ್ರಿಯ ಸಂವಾದವನ್ನು ಪೂರ್ಣಗೊಳಿಸಿ; ಅವಧಿ ಮೀರಿದ ಸರಿಪಡಿಸುವಿಕೆ ವಿನಂತಿಗಳನ್ನು ಮರಳಿ ತಂದು ಮತ್ತೆ ಸಲ್ಲಿಸಿ."
+queue.stopped: "ಸ್ವಯಂಚಾಲಿತ ಕಳುಹಿಸುವಿಕೆಯನ್ನು ನಿಲ್ಲಿಸಲಾಗಿದೆ. ಬಳಕೆದಾರರ ಬಾಕಿ ವಿನಂತಿಗಳನ್ನು ಉಳಿಸಿಕೊಳ್ಳಲಾಗಿದೆ."
+queue.capture_failed: "ದೋಷದ ಸಂದರ್ಭವನ್ನು ಉಳಿಸಲು ಸಾಧ್ಯವಾಗಲಿಲ್ಲ: %{error}"
+queue.auto: "ಸ್ವಯಂಚಾಲಿತ ಸರಿಪಡಿಸುವಿಕೆ"  # Label for a queued, automatically requested analysis of a failed shell command
+# Auto-fix diagnostic capture errors for the source terminal pane, shown through queue.capture_failed.
+# Capture collects shell context, working directory and output, not a screenshot. %{pane} is a pane ID.
+queue.snapshot_source_required: "ಸ್ವಯಂಚಾಲಿತ ಸರಿಪಡಿಸುವಿಕೆಗಾಗಿ ರೋಗನಿರ್ಣಯದ ಮಾಹಿತಿಯನ್ನು ಸಂಗ್ರಹಿಸಲು ಮೂಲ ಪೇನ್ ಅನ್ನು ಸ್ಪಷ್ಟವಾಗಿ ನಿರ್ದಿಷ್ಟಪಡಿಸಬೇಕು."
+queue.snapshot_source_unavailable: "ಸ್ವಯಂಚಾಲಿತ ಸರಿಪಡಿಸುವಿಕೆಯ ಮೂಲ ಪೇನ್ %{pane} ಲಭ್ಯವಿಲ್ಲ."
+queue.snapshot_shell_unavailable: "ಸ್ವಯಂಚಾಲಿತ ಸರಿಪಡಿಸುವಿಕೆಯ ಮೂಲ ಪೇನ್ %{pane} ನಲ್ಲಿ ಶೆಲ್ ಸಂದರ್ಭವಿಲ್ಲ."
+queue.snapshot_cwd_unavailable: "ಸ್ವಯಂಚಾಲಿತ ಸರಿಪಡಿಸುವಿಕೆಯ ಮೂಲ ಪೇನ್ %{pane} ನಲ್ಲಿ ಕಾರ್ಯನಿರ್ವಹಣೆಯ ಡೈರೆಕ್ಟರಿ ಇಲ್ಲ."
+queue.snapshot_output_unavailable: "ಸ್ವಯಂಚಾಲಿತ ಸರಿಪಡಿಸುವಿಕೆಯ ಮೂಲ ಪೇನ್ %{pane} ನಲ್ಲಿ ಓದಬಹುದಾದ ಔಟ್‌ಪುಟ್ ಇಲ್ಲ."
+queue.snapshot_context_changed: "ಮೂಲ ಪೇನ್ %{pane} ನಲ್ಲಿನ ಆಜ್ಞೆಯ ದೋಷ ಸಂದರ್ಭವನ್ನು ಉಳಿಸುವ ಮೊದಲೇ ಆಜ್ಞೆ ಬದಲಾಯಿತು."
+
 # ── ಸಂಪರ್ಕ ಸ್ಥಿತಿ ────────────────────────────────────────────────────────
 # Preparing the AI agent connection, including preflight and reuse of a cached agent.
 connection.starting: "ಏಜೆಂಟ್ ಸಂಪರ್ಕವನ್ನು ಸಿದ್ಧಪಡಿಸಲಾಗುತ್ತಿದೆ..."

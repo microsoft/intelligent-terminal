@@ -124,6 +124,33 @@ agents.status.idle: "Inaktiv"
 # ── Layout-Willkommenshinweis (src/ui/layout.rs) ──────────────────────────────────────
 layout.welcome_hint: "  (Ctrl+Shift+. zum Ein-/Ausblenden des Agentbereichs • Ctrl+Shift+/ zum Ein-/Ausblenden der Agentsitzung)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}
 
+# ── Prompt queue (agent pane) ───────────────────────────────────────────────
+# Pending input has not been sent to the AI agent.
+queue.header: "Nachrichten in der Warteschlange: %{count}"  # Automatic pinned list above input: total pending user and automatic requests; hidden when empty
+queue.full: "Die Warteschlange ist voll. Ihre Eingabe wurde beibehalten."
+queue.enqueued: "Nachricht zur Warteschlange hinzugefügt."  # Info notification when a user message must wait before being sent to the AI agent
+queue.cancelled: "%{count} Nachrichten in der Warteschlange wurden abgebrochen. Sie können eine neue Nachricht senden."  # Info notification when waiting requests are discarded after cancellation, failure, or session reset
+queue.session_busy: "Nachrichten in der Warteschlange gehören zu dieser Unterhaltung. Senden oder verwerfen Sie sie, bevor Sie die Sitzung oder Konfiguration wechseln."
+queue.paused_header: "Pausiert: %{count} ausstehend; werden nicht automatisch gesendet"  # Pinned heading: automatic sending is stopped
+queue.recall: "Letzte zurückholen"  # Button: restore the newest pending request to the editor
+queue.send_remaining: "Verbleibende senden"  # Button: resume sending pending requests
+queue.discard: "Verbleibende verwerfen"  # Button: discard pending requests, not the draft or active task
+queue.draft_busy: "Senden oder leeren Sie den aktuellen Entwurf, bevor Sie eine Anfrage aus der Warteschlange zurückholen."
+queue.enqueued_paused: "Zur angehaltenen Warteschlange hinzugefügt. Wählen Sie „Verbleibende senden“, um sie zu starten."
+queue.resubmit: "Erneutes Senden erforderlich"  # Prefix: fix evidence expired; recall and submit again
+queue.resume_blocked: "Ausstehende Anfragen können noch nicht gesendet werden. Beheben Sie das Verbindungsproblem oder schließen Sie die aktive Interaktion ab; holen Sie abgelaufene Korrekturanfragen zurück und senden Sie sie erneut."
+queue.stopped: "Automatisches Senden angehalten. Ausstehende Benutzeranfragen wurden beibehalten."
+queue.capture_failed: "Der Fehlerkontext konnte nicht beibehalten werden: %{error}"
+queue.auto: "Automatische Korrektur"  # Label for a queued, automatically requested analysis of a failed shell command
+# Auto-fix diagnostic capture errors for the source terminal pane, shown through queue.capture_failed.
+# Capture collects shell context, working directory and output, not a screenshot. %{pane} is a pane ID.
+queue.snapshot_source_required: "Zum Erfassen des Fehlerkontexts für die automatische Korrektur muss ein Quellbereich explizit angegeben werden."
+queue.snapshot_source_unavailable: "Der Quellbereich %{pane} für die automatische Korrektur ist nicht verfügbar."
+queue.snapshot_shell_unavailable: "Der Quellbereich %{pane} für die automatische Korrektur hat keinen Shellkontext."
+queue.snapshot_cwd_unavailable: "Der Quellbereich %{pane} für die automatische Korrektur hat kein Arbeitsverzeichnis."
+queue.snapshot_output_unavailable: "Der Quellbereich %{pane} für die automatische Korrektur hat keine lesbare Ausgabe."
+queue.snapshot_context_changed: "Der Befehl im Quellbereich %{pane} hat sich geändert, bevor sein Fehlerkontext gespeichert werden konnte."
+
 # ── Verbindungsstatus ────────────────────────────────────────────────────────────
 # Preparing the AI agent connection, including preflight and reuse of a cached agent.
 connection.starting: "Verbindung mit dem Agenten wird vorbereitet..."

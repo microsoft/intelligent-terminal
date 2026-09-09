@@ -3,6 +3,7 @@ use super::failure::{AgentFailure, HandshakeStage};
 use super::prompt_builder::{
     acp_log_built_prompt, build_prompt_text, log_turn_trace, TemplateKind, TemplateMemo,
 };
+pub(crate) use super::prompt_context::{capture_autofix_snapshot, AutofixSnapshot};
 use super::soft_stop::SoftStopReason;
 use super::turn_metrics::{now_unix_s, prompt_preview, PromptTimingState};
 use agent_client_protocol as acp;
@@ -81,6 +82,7 @@ pub struct PromptSubmission {
     /// inputs. Automatic summaries are untrusted diagnostic context, while
     /// text supplied to `/fix` is user intent.
     pub autofix_text_kind: Option<AutofixTextKind>,
+    pub(crate) autofix_snapshot: Option<AutofixSnapshot>,
     /// Agent-advertised slash commands are sent verbatim, without planner
     /// templates or terminal context.
     agent_command: bool,
@@ -519,6 +521,7 @@ impl PromptSubmission {
             pane_context,
             submitted_at_unix_s: now_unix_s(),
             autofix_text_kind,
+            autofix_snapshot: None,
             agent_command: false,
             images: Vec::new(),
             is_byok: false,
@@ -598,17 +601,18 @@ async fn complete_prompt_request<T>(
             //
             // Once Copilot honors the spec, this delay can be removed.
             tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-            let _ = event_tx.send(AppEvent::AgentMessageEnd {
-                session_id: session_id.clone(),
-            });
             // A successful turn can still end on a soft stop (truncation /
             // request-budget / refusal). It is NOT a connection failure — the
-            // session stays Connected — so it rides its own event and only
-            // appends an informational line AFTER `AgentMessageEnd` has flushed
-            // the agent's streamed content.
+            // session stays Connected. Publish the outcome before the terminal
+            // boundary so dependent queued requests are discarded before End
+            // can dispatch another prompt. The warning joins that transcript.
             if let Some(reason) = soft_stop {
-                let _ = event_tx.send(AppEvent::AgentSoftStop { session_id, reason });
+                let _ = event_tx.send(AppEvent::AgentSoftStop {
+                    session_id: session_id.clone(),
+                    reason,
+                });
             }
+            let _ = event_tx.send(AppEvent::AgentMessageEnd { session_id });
         }
         Err(e) => {
             let error_message = e.to_string();
@@ -5778,6 +5782,7 @@ async fn dispatch_prompt_body(
             &shell_mgr_task,
             wt_connected,
             prompt.pane_context.as_ref(),
+            prompt.autofix_snapshot.as_ref(),
         )
         .await;
         let _ = event_tx_task.send(AppEvent::PromptTemplateLoaded { name });
@@ -7698,7 +7703,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn soft_stop_emits_message_end_then_soft_stop() {
+    async fn soft_stop_prompt_completion_emits_outcome_before_message_end() {
         let (event_tx, mut event_rx) = mpsc::unbounded_channel();
         let prompt_timing = PromptTimingState::default();
 
@@ -7711,22 +7716,21 @@ mod tests {
         )
         .await;
 
-        // Order matters: the turn-closing AgentMessageEnd must land first so the
-        // soft-stop notice appends after the agent's streamed content.
-        match event_rx.try_recv() {
-            Ok(AppEvent::AgentMessageEnd { session_id }) => {
-                assert_eq!(session_id, "test-session");
-            }
-            Ok(_) => panic!("expected AgentMessageEnd first"),
-            Err(err) => panic!("expected AgentMessageEnd first, got channel error: {err}"),
-        }
+        // The queue must observe the outcome before End releases the turn.
         match event_rx.try_recv() {
             Ok(AppEvent::AgentSoftStop { session_id, reason }) => {
                 assert_eq!(session_id, "test-session");
                 assert_eq!(reason, SoftStopReason::Refusal);
             }
-            Ok(_) => panic!("expected AgentSoftStop second"),
-            Err(err) => panic!("expected AgentSoftStop second, got channel error: {err}"),
+            Ok(_) => panic!("expected AgentSoftStop first"),
+            Err(err) => panic!("expected AgentSoftStop first, got channel error: {err}"),
+        }
+        match event_rx.try_recv() {
+            Ok(AppEvent::AgentMessageEnd { session_id }) => {
+                assert_eq!(session_id, "test-session");
+            }
+            Ok(_) => panic!("expected AgentMessageEnd second"),
+            Err(err) => panic!("expected AgentMessageEnd second, got channel error: {err}"),
         }
         assert!(event_rx.try_recv().is_err());
     }

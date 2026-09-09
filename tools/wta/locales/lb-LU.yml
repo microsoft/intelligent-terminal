@@ -123,6 +123,33 @@ agents.status.idle: "Onbeschäftegt"
 # ── Layout-Wëllkomm-Hiwäis (src/ui/layout.rs) ──────────────────────────────
 layout.welcome_hint: "  (Ctrl+Shift+. fir den Agent-Panell ze weisen/verstoppen • Ctrl+Shift+/ fir d'Agent-Sëtzung ze weisen/verstoppen)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}
 
+# ── Prompt queue (agent pane) ───────────────────────────────────────────────
+# Pending input has not been sent to the AI agent.
+queue.header: "Messagen an der Waardeschlaang: %{count}"  # Automatic pinned list above input: total pending user and automatic requests; hidden when empty
+queue.full: "D'Waardeschlaang ass voll. Är Agab gouf bäibehalen."
+queue.enqueued: "De Message gouf an d'Waardeschlaang gesat."  # Info notification when a user message must wait before being sent to the AI agent
+queue.cancelled: "%{count} Messagen an der Waardeschlaang goufen ofgebrach. Dir kënnt en neie Message schécken."  # Info notification when waiting requests are discarded after cancellation, failure, or session reset
+queue.session_busy: "D'Messagen an der Waardeschlaang gehéieren zu dësem Gespréich. Schéckt oder läscht se, ier Dir d'Sessioun oder d'Konfiguratioun wiesselt."
+queue.paused_header: "Pauséiert: %{count} waarden; ginn net automatesch geschéckt"  # Pinned heading: automatic sending is stopped
+queue.recall: "Lescht zeréckhuelen"  # Button: restore the newest pending request to the editor
+queue.send_remaining: "Rescht schécken"  # Button: resume sending pending requests
+queue.discard: "Rescht läschen"  # Button: discard pending requests, not the draft or active task
+queue.draft_busy: "Schéckt oder läscht den aktuellen Entworf, ier Dir eng Ufro aus der Waardeschlaang zeréckhuelt."
+queue.enqueued_paused: "An déi gestoppte Waardeschlaang bäigefüügt. Wielt Rescht schécken, fir se ze starten."
+queue.resubmit: "Muss nei geschéckt ginn"  # Prefix: fix evidence expired; recall and submit again
+queue.resume_blocked: "Waardend Ufroe kënnen nach net geschéckt ginn. Léist de Verbindungsproblem oder schléisst déi aktiv Interaktioun of; huelt ofgelafe Korrekturufroen zeréck a schéckt se nei."
+queue.stopped: "Automatescht Schécke gestoppt. Waardend Benotzerufroe goufe bäibehalen."
+queue.capture_failed: "De Feelerkontext konnt net bäibehale ginn: %{error}"
+queue.auto: "Automatesch Korrektur"  # Label for a queued, automatically requested analysis of a failed shell command
+# Auto-fix diagnostic capture errors for the source terminal pane, shown through queue.capture_failed.
+# Capture collects shell context, working directory and output, not a screenshot. %{pane} is a pane ID.
+queue.snapshot_source_required: "D'Sammele vun Diagnosdate fir déi automatesch Korrektur erfuerdert en explizitt uginnene Quellpanell."
+queue.snapshot_source_unavailable: "De Quellpanell %{pane} fir déi automatesch Korrektur ass net verfügbar."
+queue.snapshot_shell_unavailable: "De Quellpanell %{pane} fir déi automatesch Korrektur huet kee Shell-Kontext."
+queue.snapshot_cwd_unavailable: "De Quellpanell %{pane} fir déi automatesch Korrektur huet keen Aarbechtsverzeechnes."
+queue.snapshot_output_unavailable: "De Quellpanell %{pane} fir déi automatesch Korrektur huet keng liesbar Ausgab."
+queue.snapshot_context_changed: "De Befeel am Quellpanell %{pane} huet sech geännert, éier säi Feelerkontext konnt gespäichert ginn."
+
 # ── Verbindungszoustand ────────────────────────────────────────────────────────
 # Preparing the AI agent connection, including preflight and reuse of a cached agent.
 connection.starting: "Verbindung mam Agent gëtt virbereet..."

@@ -119,6 +119,33 @@ agents.status.idle: "アイドル"
 # ── レイアウト ウェルカム ヒント (src/ui/layout.rs) ──────────────────────────────────────
 layout.welcome_hint: "  (Ctrl+Shift+. エージェント ペインの表示/非表示 • Ctrl+Shift+/ エージェント セッションの表示/非表示)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}
 
+# ── Prompt queue (agent pane) ───────────────────────────────────────────────
+# Pending input has not been sent to the AI agent.
+queue.header: "キュー内のメッセージ: %{count}"  # Automatic pinned list above input: total pending user and automatic requests; hidden when empty
+queue.full: "キューがいっぱいです。入力内容は保持されています。"
+queue.enqueued: "メッセージをキューに追加しました。"  # Info notification when a user message must wait before being sent to the AI agent
+queue.cancelled: "キュー内の %{count} 件のメッセージをキャンセルしました。新しいメッセージを送信できます。"  # Info notification when waiting requests are discarded after cancellation, failure, or session reset
+queue.session_busy: "キュー内のメッセージはこの会話に属しています。セッションや構成を変更する前に、送信するか破棄してください。"
+queue.paused_header: "一時停止中: %{count} 件が送信待ち。自動送信されません"  # Pinned heading: automatic sending is stopped
+queue.recall: "最後の要求を取り戻す"  # Button: restore the newest pending request to the editor
+queue.send_remaining: "残りを送信"  # Button: resume sending pending requests
+queue.discard: "残りを破棄"  # Button: discard pending requests, not the draft or active task
+queue.draft_busy: "キュー内の要求を入力欄に戻す前に、現在の下書きを送信するか消去してください。"
+queue.enqueued_paused: "停止中のキューに追加しました。「残りを送信」を選択すると送信が始まります。"
+queue.resubmit: "再送信が必要"  # Prefix: fix evidence expired; recall and submit again
+queue.resume_blocked: "待機中の要求はまだ送信できません。接続の問題を解決するか、進行中のやり取りを完了してください。期限切れの修正要求は入力欄に戻して再送信してください。"
+queue.stopped: "自動送信を停止しました。送信待ちのユーザー要求は保持されています。"
+queue.capture_failed: "エラーのコンテキストを保持できませんでした: %{error}"
+queue.auto: "自動修正"  # Label for a queued, automatically requested analysis of a failed shell command
+# Auto-fix diagnostic capture errors for the source terminal pane, shown through queue.capture_failed.
+# Capture collects shell context, working directory and output, not a screenshot. %{pane} is a pane ID.
+queue.snapshot_source_required: "自動修正の診断情報を収集するには、ソース ペインを明示的に指定する必要があります。"
+queue.snapshot_source_unavailable: "自動修正のソース ペイン %{pane} は利用できません。"
+queue.snapshot_shell_unavailable: "自動修正のソース ペイン %{pane} にシェル コンテキストがありません。"
+queue.snapshot_cwd_unavailable: "自動修正のソース ペイン %{pane} に作業ディレクトリがありません。"
+queue.snapshot_output_unavailable: "自動修正のソース ペイン %{pane} に読み取り可能な出力がありません。"
+queue.snapshot_context_changed: "エラー コンテキストを保存する前に、ソース ペイン %{pane} のコマンドが変わりました。"
+
 # ── 接続状態 ────────────────────────────────────────────────────────────
 # Preparing the AI agent connection, including preflight and reuse of a cached agent.
 connection.starting: "エージェントへの接続を準備中..."

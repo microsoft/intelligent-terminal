@@ -119,6 +119,33 @@ agents.status.idle: "空闲"
 # ── 布局欢迎提示 (src/ui/layout.rs) ──────────────────────────────────────
 layout.welcome_hint: "  (Ctrl+Shift+. 显示/隐藏智能体窗格 • Ctrl+Shift+/ 显示/隐藏智能体会话)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}
 
+# ── Prompt queue (agent pane) ───────────────────────────────────────────────
+# Pending input has not been sent to the AI agent.
+queue.header: "队列中的消息：%{count}"  # Automatic pinned list above input: total pending user and automatic requests; hidden when empty
+queue.full: "队列已满。已保留你的输入。"
+queue.enqueued: "消息已加入队列。"  # Info notification when a user message must wait before being sent to the AI agent
+queue.cancelled: "已取消队列中的 %{count} 条消息。你可以发送新消息。"  # Info notification when waiting requests are discarded after cancellation, failure, or session reset
+queue.session_busy: "队列中的消息属于当前对话。更改会话或配置前，请发送或丢弃这些消息。"
+queue.paused_header: "已暂停：%{count} 条待发送，不会自动发送"  # Pinned heading: automatic sending is stopped
+queue.recall: "取回最后一条"  # Button: restore the newest pending request to the editor
+queue.send_remaining: "发送剩余"  # Button: resume sending pending requests
+queue.discard: "丢弃剩余"  # Button: discard pending requests, not the draft or active task
+queue.draft_busy: "取回队列中的请求前，请先提交或清空当前草稿。"
+queue.enqueued_paused: "已加入停止发送的队列。选择“发送剩余”以开始发送。"
+queue.resubmit: "需要重新提交"  # Prefix: fix evidence expired; recall and submit again
+queue.resume_blocked: "暂时无法发送等待中的请求。请解决连接问题或完成当前交互；取回已过期的修复请求并重新提交。"
+queue.stopped: "已停止自动发送。待发送的用户请求已保留。"
+queue.capture_failed: "无法保留错误上下文：%{error}"
+queue.auto: "自动修复"  # Label for a queued, automatically requested analysis of a failed shell command
+# Auto-fix diagnostic capture errors for the source terminal pane, shown through queue.capture_failed.
+# Capture collects shell context, working directory and output, not a screenshot. %{pane} is a pane ID.
+queue.snapshot_source_required: "采集自动修复所需的信息时，必须明确指定源窗格。"
+queue.snapshot_source_unavailable: "自动修复的源窗格 %{pane} 不可用。"
+queue.snapshot_shell_unavailable: "自动修复的源窗格 %{pane} 没有 Shell 上下文。"
+queue.snapshot_cwd_unavailable: "自动修复的源窗格 %{pane} 没有工作目录。"
+queue.snapshot_output_unavailable: "自动修复的源窗格 %{pane} 没有可读取的输出。"
+queue.snapshot_context_changed: "源窗格 %{pane} 中的命令在其错误上下文得以保留之前已发生变化。"
+
 # ── 连接状态 ────────────────────────────────────────────────────────────
 # Preparing the AI agent connection, including preflight and reuse of a cached agent.
 connection.starting: "正在准备智能体连接..."

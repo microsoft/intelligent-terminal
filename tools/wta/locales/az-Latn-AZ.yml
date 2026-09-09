@@ -137,6 +137,33 @@ agents.status.idle: "Boş"
 # ── Layout welcome hint (src/ui/layout.rs) ──────────────────────────────────
 layout.welcome_hint: "  (Ctrl+Shift+. agent panelini göstər/gizlə • Ctrl+Shift+/ agent sessiyasını göstər/gizlə)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}
 
+# ── Prompt queue (agent pane) ───────────────────────────────────────────────
+# Pending input has not been sent to the AI agent.
+queue.header: "Növbədəki mesajlar: %{count}"  # Automatic pinned list above input: total pending user and automatic requests; hidden when empty
+queue.full: "Növbə doludur. Daxil etdiyiniz mətn saxlanılıb."
+queue.enqueued: "Mesaj növbəyə əlavə edildi."  # Info notification when a user message must wait before being sent to the AI agent
+queue.cancelled: "Növbədəki %{count} mesaj ləğv edildi. Yeni mesaj göndərə bilərsiniz."  # Info notification when waiting requests are discarded after cancellation, failure, or session reset
+queue.session_busy: "Növbədəki mesajlar bu söhbətə aiddir. Seansları və ya konfiqurasiyanı dəyişməzdən əvvəl onları göndərin və ya silin."
+queue.paused_header: "Fasilə verilib: %{count} gözləyir; avtomatik göndərilmir"  # Pinned heading: automatic sending is stopped
+queue.recall: "Sonuncunu geri qaytar"  # Button: restore the newest pending request to the editor
+queue.send_remaining: "Qalanları göndər"  # Button: resume sending pending requests
+queue.discard: "Qalanları sil"  # Button: discard pending requests, not the draft or active task
+queue.draft_busy: "Növbədəki sorğunu geri qaytarmazdan əvvəl cari qaralamanı göndərin və ya təmizləyin."
+queue.enqueued_paused: "Dayandırılmış növbəyə əlavə edildi. Başlatmaq üçün Qalanları göndər seçin."
+queue.resubmit: "Yenidən göndərilməlidir"  # Prefix: fix evidence expired; recall and submit again
+queue.resume_blocked: "Gözləyən sorğuları hələ göndərmək mümkün deyil. Bağlantını düzəldin və ya aktiv qarşılıqlı əlaqəni tamamlayın; vaxtı keçmiş düzəliş sorğularını geri qaytarıb yenidən göndərin."
+queue.stopped: "Avtomatik göndərmə dayandırıldı. Gözləyən istifadəçi sorğuları saxlanıldı."
+queue.capture_failed: "Xəta kontekstini saxlamaq mümkün olmadı: %{error}"
+queue.auto: "Avtomatik düzəliş"  # Label for a queued, automatically requested analysis of a failed shell command
+# Auto-fix diagnostic capture errors for the source terminal pane, shown through queue.capture_failed.
+# Capture collects shell context, working directory and output, not a screenshot. %{pane} is a pane ID.
+queue.snapshot_source_required: "Avtomatik düzəliş üçün xəta kontekstinin toplanması mənbə panelinin açıq şəkildə göstərilməsini tələb edir."
+queue.snapshot_source_unavailable: "Avtomatik düzəliş üçün %{pane} mənbə paneli əlçatan deyil."
+queue.snapshot_shell_unavailable: "Avtomatik düzəliş üçün %{pane} mənbə panelində shell konteksti yoxdur."
+queue.snapshot_cwd_unavailable: "Avtomatik düzəliş üçün %{pane} mənbə panelində iş qovluğu yoxdur."
+queue.snapshot_output_unavailable: "Avtomatik düzəliş üçün %{pane} mənbə panelində oxuna bilən çıxış yoxdur."
+queue.snapshot_context_changed: "%{pane} mənbə panelindəki əmr xəta konteksti saxlanıla bilmədən dəyişdi."
+
 # ── Connection state ────────────────────────────────────────────────────────
 # Preparing the AI agent connection, including preflight and reuse of a cached agent.
 connection.starting: "Agent bağlantısı hazırlanır..."

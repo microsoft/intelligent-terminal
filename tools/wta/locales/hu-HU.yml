@@ -123,6 +123,33 @@ agents.status.idle: "Tétlen"
 # ── Layout welcome hint (src/ui/layout.rs) ──────────────────────────────────
 layout.welcome_hint: "  (Ctrl+Shift+. ügynökpanel megjelenítése/elrejtése • Ctrl+Shift+/ ügynökmunkamenet megjelenítése/elrejtése)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}
 
+# ── Prompt queue (agent pane) ───────────────────────────────────────────────
+# Pending input has not been sent to the AI agent.
+queue.header: "Várólistán lévő üzenetek: %{count}"  # Automatic pinned list above input: total pending user and automatic requests; hidden when empty
+queue.full: "A várólista megtelt. A bevitt szöveg megmaradt."
+queue.enqueued: "Az üzenet várólistára került."  # Info notification when a user message must wait before being sent to the AI agent
+queue.cancelled: "%{count} várólistán lévő üzenet küldése megszakítva. Küldhet új üzenetet."  # Info notification when waiting requests are discarded after cancellation, failure, or session reset
+queue.session_busy: "A várólistán lévő üzenetek ehhez a beszélgetéshez tartoznak. A munkamenet vagy a konfiguráció módosítása előtt küldje el vagy vesse el őket."
+queue.paused_header: "Szüneteltetve: %{count} függőben; nem lesznek automatikusan elküldve"  # Pinned heading: automatic sending is stopped
+queue.recall: "Legutóbbi visszaállítása"  # Button: restore the newest pending request to the editor
+queue.send_remaining: "Többi elküldése"  # Button: resume sending pending requests
+queue.discard: "Többi elvetése"  # Button: discard pending requests, not the draft or active task
+queue.draft_busy: "A várólistán lévő kérés visszaállítása előtt küldje el vagy törölje az aktuális piszkozatot."
+queue.enqueued_paused: "Hozzáadva a leállított várólistához. Az indításhoz válassza a Többi elküldése lehetőséget."
+queue.resubmit: "Újra el kell küldeni"  # Prefix: fix evidence expired; recall and submit again
+queue.resume_blocked: "A várakozó kérések még nem küldhetők el. Oldja meg a kapcsolati problémát vagy fejezze be az aktív interakciót; állítsa vissza és küldje el újra a lejárt javítási kéréseket."
+queue.stopped: "Az automatikus küldés leállt. A függőben lévő felhasználói kérések megmaradtak."
+queue.capture_failed: "Nem sikerült megőrizni a hiba környezetét: %{error}"
+queue.auto: "Automatikus javítás"  # Label for a queued, automatically requested analysis of a failed shell command
+# Auto-fix diagnostic capture errors for the source terminal pane, shown through queue.capture_failed.
+# Capture collects shell context, working directory and output, not a screenshot. %{pane} is a pane ID.
+queue.snapshot_source_required: "Az automatikus javításhoz szükséges diagnosztikai adatok gyűjtéséhez kifejezetten meg kell adni a forráspanelt."
+queue.snapshot_source_unavailable: "Az automatikus javítás %{pane} forráspanelje nem érhető el."
+queue.snapshot_shell_unavailable: "Az automatikus javítás %{pane} forráspaneljének nincs shellkörnyezete."
+queue.snapshot_cwd_unavailable: "Az automatikus javítás %{pane} forráspaneljének nincs munkakönyvtára."
+queue.snapshot_output_unavailable: "Az automatikus javítás %{pane} forráspaneljének nincs olvasható kimenete."
+queue.snapshot_context_changed: "A(z) %{pane} forráspanelen lévő parancs megváltozott, mielőtt a hibához kapcsolódó diagnosztikai adatokat meg lehetett volna őrizni."
+
 # ── Connection state ────────────────────────────────────────────────────────
 # Preparing the AI agent connection, including preflight and reuse of a cached agent.
 connection.starting: "Ügynökkapcsolat előkészítése..."

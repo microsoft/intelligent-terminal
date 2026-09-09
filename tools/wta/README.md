@@ -156,9 +156,12 @@ into completed history.
 
 | Key | Action |
 |-----|--------|
-| Type + Enter | Send prompt to agent |
+| Type + Enter | Send a prompt, or queue it while the agent is busy or connecting |
 | Ctrl+C | Copy selected text; otherwise cancel streaming / quit |
 | Up / Down | Browse prompt input history |
+| Alt+R | Recall the last waiting user request into an empty input box, including its images |
+| Alt+S | Send remaining requests from a stopped queue once the connection and active interaction are ready |
+| Alt+D | Discard waiting requests without cancelling the active turn or clearing the draft |
 | Mouse wheel | Scroll chat (hold Alt to scroll one line) |
 | Click a tool header | Expand or collapse that tool's details, live or completed |
 | Click a thinking header | Expand or collapse that block, live or completed |
@@ -170,6 +173,101 @@ into completed history.
 | Shift+PageUp/Down | Scroll debug panel |
 | Y / N | Quick allow/reject on permission dialog |
 | Up / Down / Enter | Navigate permission options |
+
+### Pending prompts
+
+Each agent pane keeps an in-memory queue for its current conversation. You can
+submit another prompt while a reply is streaming without interrupting that reply.
+User requests run in submission order, one ACP turn at a time; separate messages
+are not merged or injected into an active turn. Text and image attachments belong
+to the request that was submitted, not to the next draft.
+Disconnected or failed agents do not accept new requests: the draft and its
+attachments stay in the editor with a connection error. Automatic Autofix and
+diagnostics activation also reject requests in these states, reporting the error
+in the owning tab rather than leaving work queued that would block `/restart`.
+Requests can be accepted again once the agent is connecting.
+
+Pending requests automatically appear directly above the input box, independently
+of chat scrolling. The pinned list shows a pending-count header and numbered,
+sanitized previews, including automatic Autofix requests labelled "Automatic fix".
+Entries leave the list when dispatched or cancelled; an empty queue has no header
+or panel. Narrow panes shorten previews, and a `+N` suffix accounts for requests
+that do not fit the available height. Queue status and controls take priority over
+previews, expanded input, and recommendation details in short panes; compact
+layouts shorten buttons to their shortcuts rather than dropping later actions.
+The input and active permission/action remain usable. A user message that must wait receives an
+Info notification confirming it was queued. Immediate sends and automatic
+Autofix warm-up do not produce this notification.
+
+Use **Recall last** (Alt+R) to remove the newest waiting user request from the
+queue and restore it to the input box, with its image attachments. Existing draft
+text or attachments are never overwritten: submit or clear them first. Editing
+and submitting the recalled request places a new request at the end of the user
+queue; clearing the restored draft discards it. Automatic Autofix requests cannot
+be recalled. Ordinary Up/Down history navigation does not remove a queued request.
+**Discard remaining** (Alt+D) is available beside the queue while a turn is running
+as well as when paused. Queue controls disappear entirely when no messages are waiting.
+
+When the agent is ready and idle, capturing context for the first Autofix request
+is preparation, not queueing: it produces neither a pinned entry nor an enqueue
+notification. Later requests still appear as waiting. Connection, active-turn,
+and interaction barriers make the first request appear as waiting too.
+
+Error detection and its clickable diagnostics hint do not wait for ACP to
+connect. With automatic suggestion off, detection alone does not enqueue work;
+activating the hint queues the requested fix until the agent is ready.
+Repeated activation of the same detected failure does not add another request,
+including while the session is still connecting. A later fresh failure remains
+eligible for its own activation.
+
+Item numbers refer to the pending queue, not the chat history. Queue capacity is
+bounded; when a request does not fit, its draft remains in the editor.
+`/stop` and user cancellation cancel the active turn but keep unsent user requests
+in a stopped queue. Request failures also stop automatic sending so dependent
+follow-ups do not run after a failed task. Waiting automatic Autofix requests are
+discarded. The paused header explicitly states that pending messages will not be
+sent automatically. Only a stopped queue offers clickable **Send remaining** (Alt+S);
+both running and stopped queues offer
+**Discard remaining** (Alt+D) controls. Send remaining starts with the first
+unsent request; it never retries the cancelled or failed active turn. Discard
+remaining removes only waiting work, preserving the active turn and editor draft.
+New input can join a stopped queue without restarting automatic sending.
+
+Permissions, clarification questions, and unresolved action cards still need
+your response before another prompt starts. They are not queued prompts.
+Session and configuration changes must not silently send pending input to a
+different conversation; send or discard waiting work before switching.
+Connection recovery keeps retained input stopped until explicitly sent.
+An interrupted request whose delivery is uncertain is never automatically retried.
+
+With automatic error suggestions enabled, shell failures received while the
+helper is running can wait for the agent to connect or finish its current turn.
+Automatic requests run after explicit user requests. While the queue is stopped,
+new failures can show diagnostics but do not automatically start analysis.
+Repeated pending failures
+from the same source pane are coalesced, and shell progress or pane closure
+invalidates obsolete requests. Prompt redraw markers alone do not represent new
+shell work and do not discard a waiting fix. Diagnostic evidence is captured
+before dispatch rather than substituted with a later command's output. A typed
+`/fix` also captures the current source pane's output, shell, and working directory
+while it waits behind an active turn. Once that capture completes, later commands
+do not replace its evidence or discard the explicit request. If the source changes
+before capture completes, the request fails visibly instead of diagnosing the wrong
+command. A stopped or invalidated manual capture is retained as **Needs
+resubmission**: recall it and submit it again before sending the remaining queue.
+Disabling automatic suggestions leaves detected errors available for manual analysis.
+
+Input history preserves the `/fix` command prefix but does not retain image
+attachments. Resubmitting a recalled `/fix` captures the current source context
+again, rather than reusing evidence from the earlier request.
+
+Hiding the agent pane or dragging its tab between windows preserves the queue.
+The queue is not persisted across helper/app exit or crashes, and it cannot
+recover shell events emitted before the helper subscribed. Concurrent side
+questions are not supported: additional prompts are follow-up turns in the main
+conversation.
+
+### Session MCP approvals and action history
 
 WTA automatically selects **Allow once** only when the tool matches the exact MCP
 server currently bound to that ACP session by master. Master overwrites provider
@@ -232,6 +330,7 @@ tools/wta/src/
 +-- helper/mod.rs             wta-helper: per-pane entry (reuses the TUI over a pipe)
 +-- app.rs                     TUI state machine, event loop, per-tab sessions
 |   +-- app/autofix.rs         Autofix detection + suggestion
+|   +-- app/prompt_queue.rs    Pending prompts, Autofix snapshots and dispatch gates
 |   +-- app/turn_state.rs      Per-turn state machine
 +-- event.rs                   Crossterm event reader
 +-- coordinator.rs             Delegate (?<prompt>) execution

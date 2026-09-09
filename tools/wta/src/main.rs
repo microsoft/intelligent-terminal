@@ -57,7 +57,26 @@ use cli::args::{Cli, Command, HooksAction, InitialView};
 #[cfg(test)]
 use cli::args::{HooksCliFilter, SessionsAction, SessionsOriginArg};
 
-i18n!("locales", fallback = "en-US");
+include!(concat!(env!("OUT_DIR"), "\\locale_codegen.rs"));
+
+#[cfg(test)]
+#[test]
+fn locale_initialization_fits_small_worker_stack() {
+    std::thread::Builder::new()
+        .stack_size(256 * 1024)
+        .spawn(|| {
+            for locale in _rust_i18n_available_locales() {
+                assert!(
+                    rust_i18n::Backend::translate(&ShardedLocaleBackend, locale, "queue.recall")
+                        .is_some(),
+                    "missing queue translation for {locale}"
+                );
+            }
+        })
+        .expect("spawn localization regression thread")
+        .join()
+        .expect("localization initialization fits a small worker stack");
+}
 
 /// Normalize a detected OS locale to the closest available locale file.
 /// Mimics Windows MRT behavior with script-aware affinity matching.

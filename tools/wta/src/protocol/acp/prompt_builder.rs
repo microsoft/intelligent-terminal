@@ -1,6 +1,6 @@
 use super::client::AutofixTextKind;
 use super::prompt;
-use super::prompt_context::{self, ContextRequest};
+use super::prompt_context::{self, AutofixSnapshot, ContextRequest};
 use super::turn_metrics::prompt_timing_log;
 use crate::pane_context::PaneContext;
 use crate::shell::ShellManager;
@@ -72,6 +72,7 @@ pub(crate) async fn build_prompt_text(
     shell_mgr: &ShellManager,
     wt_connected: bool,
     pane_context: Option<&PaneContext>,
+    autofix_snapshot: Option<&AutofixSnapshot>,
 ) -> (String, String, String, Option<String>) {
     let is_autofix = autofix_text_kind.is_some();
     let total_started = std::time::Instant::now();
@@ -97,9 +98,24 @@ pub(crate) async fn build_prompt_text(
     // the resulting terminal context and resolver invocation, while the App
     // binds the same target pane to the matching turn before recommendations
     // can execute.
-    let resolved_context =
-        prompt_context::resolve_provider_context(is_autofix, wt_connected, shell_mgr, pane_context)
-            .await;
+    let resolved_context = match autofix_snapshot.filter(|_| is_autofix) {
+        Some(snapshot) => snapshot.resolved_context(),
+        None => {
+            // Automatic failures without their pinned source must never borrow
+            // the active pane, even for callers without a queued snapshot.
+            let can_resolve = autofix_text_kind != Some(AutofixTextKind::FailureSummary)
+                || pane_context
+                    .and_then(|context| context.source_pane_id.as_deref())
+                    .is_some_and(|source| !source.trim().is_empty());
+            prompt_context::resolve_provider_context(
+                is_autofix,
+                wt_connected && can_resolve,
+                shell_mgr,
+                pane_context,
+            )
+            .await
+        }
+    };
 
     // ── Provider-driven section assembly ────────────────────────────────────
     // Each `### …` context source is a `ContextProvider`; the chain self-gates
@@ -345,8 +361,7 @@ mod tests {
     /// pane context from canned active or explicit-source pane metadata.
     struct MockWtChannel {
         active_pane: serde_json::Value,
-        /// Optional enumeration topology for `resolve_pane_by_session_id`:
-        /// `{ "windows": […] }`, `{ "tabs": […] }`, `{ "panes": […] }`.
+        /// Optional topology for the unsupported-server compatibility path.
         windows: Option<serde_json::Value>,
         tabs: Option<serde_json::Value>,
         panes: Option<serde_json::Value>,
@@ -413,9 +428,7 @@ mod tests {
         }))
     }
 
-    /// Shell manager whose enumeration (`list_windows`→`list_tabs`→`list_panes`)
-    /// resolves to a single window/tab containing `source_pane`, so
-    /// `resolve_pane_by_session_id` can find the failing pane.
+    /// Shell manager whose consolidated context selects the explicit source.
     fn shell_mgr_with_source_pane(
         active: serde_json::Value,
         source_pane: serde_json::Value,
@@ -426,6 +439,457 @@ mod tests {
             tabs: Some(serde_json::json!({ "tabs": [{ "tab_id": 0 }] })),
             panes: Some(serde_json::json!({ "panes": [source_pane] })),
         }))
+    }
+
+    struct SnapshotWtChannel {
+        sealed: std::sync::atomic::AtomicBool,
+        reads: std::sync::atomic::AtomicUsize,
+        output: &'static str,
+    }
+
+    #[async_trait::async_trait]
+    impl crate::shell::wt_channel::WtChannel for SnapshotWtChannel {
+        async fn request(
+            &self,
+            method: &str,
+            params: serde_json::Value,
+        ) -> anyhow::Result<serde_json::Value> {
+            use std::sync::atomic::Ordering;
+            assert!(
+                !self.sealed.load(Ordering::SeqCst),
+                "queued autofix reread live pane context: {method}"
+            );
+            self.reads.fetch_add(1, Ordering::SeqCst);
+            match method {
+                "get_pane_context" => {
+                    if let Some(source) = params.get("session_id") {
+                        assert_eq!(source, "failed-pane");
+                    }
+                    assert_eq!(params["max_lines"], 30);
+                    assert_eq!(params["max_chars"], 4000);
+                    Ok(serde_json::json!({
+                        "pane": {
+                            "session_id": "failed-pane",
+                            "shell": "bash",
+                            "cwd": "C:\\frozen",
+                            "is_agent_pane": false
+                        },
+                        "content": self.output,
+                        "output_source": "last_command",
+                        "fallback_reason": "",
+                        "line_count": 2,
+                        "truncated": false,
+                        "has_marks": true,
+                    }))
+                }
+                other => panic!("unexpected snapshot request: {other}"),
+            }
+        }
+
+        fn is_available(&self) -> bool {
+            true
+        }
+    }
+
+    struct UnavailableLegacyOutputChannel;
+
+    #[async_trait::async_trait]
+    impl crate::shell::wt_channel::WtChannel for UnavailableLegacyOutputChannel {
+        async fn request(
+            &self,
+            method: &str,
+            params: serde_json::Value,
+        ) -> anyhow::Result<serde_json::Value> {
+            match method {
+                "get_pane_context" => {
+                    assert_eq!(params["session_id"], "failed-pane");
+                    anyhow::bail!("WT_PROTOCOL_UNSUPPORTED_PANE_CONTEXT")
+                }
+                "list_windows" => Ok(serde_json::json!({"windows": [{"window_id": 1}]})),
+                "list_tabs" => Ok(serde_json::json!({"tabs": [{"tab_id": 0}]})),
+                "list_panes" => Ok(serde_json::json!({"panes": [{
+                    "session_id": "failed-pane",
+                    "shell": "bash",
+                    "cwd": "C:\\frozen",
+                    "is_agent_pane": false
+                }]})),
+                "read_pane_output" => {
+                    assert_eq!(params["session_id"], "failed-pane");
+                    anyhow::bail!("terminal output unavailable")
+                }
+                other => panic!("unexpected legacy snapshot request: {other}"),
+            }
+        }
+
+        fn is_available(&self) -> bool {
+            true
+        }
+    }
+
+    #[tokio::test]
+    async fn autofix_snapshot_test_fixture_builds_without_live_context() {
+        let snapshot = AutofixSnapshot::for_test("fixture-source");
+        let (built_prompt, _, _, target) = build_prompt_text(
+            22,
+            0.0,
+            "failure summary",
+            Some(AutofixTextKind::FailureSummary),
+            false,
+            &ShellManager::new(),
+            false,
+            None,
+            Some(&snapshot),
+        )
+        .await;
+        assert_eq!(target.as_deref(), Some("fixture-source"));
+        assert!(built_prompt.contains("\"shell\":\"cmd.exe\""));
+        assert!(built_prompt.contains(r#""cwd":"C:\\test""#));
+        assert!(built_prompt.contains("Command failed with exit code 1"));
+        assert!(snapshot.payload_bytes() > 0);
+    }
+
+    #[tokio::test]
+    async fn autofix_snapshot_freezes_evidence_and_target_without_dispatch_reads() {
+        use std::sync::atomic::Ordering;
+        let channel = Arc::new(SnapshotWtChannel {
+            sealed: false.into(),
+            reads: 0.into(),
+            output: concat!("failing-command\n", "original failure evidence"),
+        });
+        let mgr = ShellManager::new().with_wt_channel(channel.clone());
+        let ctx = PaneContext {
+            source_pane_id: Some("failed-pane".to_string()),
+            ..Default::default()
+        };
+        let snapshot =
+            prompt_context::capture_autofix_snapshot(&mgr, &ctx, AutofixTextKind::FailureSummary)
+                .await
+                .expect("capture source evidence");
+        let expected_payload = "failed-pane".len()
+            + "bash".len()
+            + channel.output.len()
+            + serde_json::json!({
+                "session_id": "failed-pane",
+                "shell": "bash",
+                "cwd": "C:\\frozen",
+                "is_agent_pane": false
+            })
+            .to_string()
+            .len();
+        assert_eq!(snapshot.payload_bytes(), expected_payload);
+        assert_eq!(snapshot.clone().payload_bytes(), expected_payload);
+        assert_eq!(channel.reads.load(Ordering::SeqCst), 1);
+        channel.sealed.store(true, Ordering::SeqCst);
+        let moved_context = PaneContext {
+            source_pane_id: Some("newly-focused-pane".to_string()),
+            ..Default::default()
+        };
+        for wt_connected in [true, false] {
+            let (built_prompt, _, _, target) = build_prompt_text(
+                20,
+                0.0,
+                "failure summary",
+                Some(AutofixTextKind::FailureSummary),
+                false,
+                &mgr,
+                wt_connected,
+                Some(&moved_context),
+                Some(&snapshot.clone()),
+            )
+            .await;
+            assert!(built_prompt.contains("\"shell\":\"bash\""));
+            assert!(built_prompt.contains(r#""cwd":"C:\\frozen""#));
+            assert!(built_prompt.contains(channel.output));
+            assert_eq!(target.as_deref(), Some("failed-pane"));
+            assert!(!built_prompt.contains("newly-focused-pane"));
+        }
+        let live_mgr = shell_mgr_with_pane(serde_json::json!({
+            "session_id": "live-pane", "shell": "cmd.exe", "cwd": "C:\\live",
+            "is_agent_pane": false
+        }));
+        let (planner_prompt, _, _, target) = build_prompt_text(
+            21,
+            0.0,
+            "inspect",
+            None,
+            false,
+            &live_mgr,
+            true,
+            None,
+            Some(&snapshot),
+        )
+        .await;
+        assert!(planner_prompt.contains(r#""cwd":"C:\\live""#));
+        assert!(!planner_prompt.contains("original failure evidence"));
+        assert_eq!(target.as_deref(), Some("live-pane"));
+    }
+
+    #[tokio::test]
+    async fn manual_fix_resolves_the_working_pane_during_capture_not_dispatch() {
+        use std::sync::atomic::Ordering;
+        let channel = Arc::new(SnapshotWtChannel {
+            sealed: false.into(),
+            reads: 0.into(),
+            output: "original failure",
+        });
+        let mgr = ShellManager::new().with_wt_channel(channel.clone());
+        let context = PaneContext {
+            pane_id: Some("helper-pane".into()),
+            ..Default::default()
+        };
+        let snapshot =
+            prompt_context::capture_autofix_snapshot(&mgr, &context, AutofixTextKind::UserRequest)
+                .await
+                .unwrap();
+        assert_eq!(snapshot.source_pane_id(), "failed-pane");
+        assert_eq!(channel.reads.load(Ordering::SeqCst), 1);
+        channel.sealed.store(true, Ordering::SeqCst);
+        let (prompt, _, _, target) = build_prompt_text(
+            23,
+            0.0,
+            "explain the failure",
+            Some(AutofixTextKind::UserRequest),
+            false,
+            &mgr,
+            true,
+            Some(&context),
+            Some(&snapshot),
+        )
+        .await;
+        assert_eq!(target.as_deref(), Some("failed-pane"));
+        assert!(prompt.contains("original failure"));
+        assert!(prompt.contains("explain the failure"));
+    }
+
+    #[tokio::test]
+    async fn autofix_snapshot_requires_explicit_source_before_any_query() {
+        let _locale = crate::test_support::lock_locale();
+        let mgr = ShellManager::new().with_wt_channel(Arc::new(SnapshotWtChannel {
+            sealed: true.into(),
+            reads: 0.into(),
+            output: "",
+        }));
+        for source_pane_id in [None, Some(String::new()), Some("  ".to_string())] {
+            let ctx = PaneContext {
+                pane_id: Some("agent-pane".to_string()),
+                source_pane_id,
+                ..Default::default()
+            };
+            let error = prompt_context::capture_autofix_snapshot(
+                &mgr,
+                &ctx,
+                AutofixTextKind::FailureSummary,
+            )
+            .await
+            .unwrap_err();
+            assert_eq!(error, rust_i18n::t!("queue.snapshot_source_required"));
+        }
+    }
+
+    #[tokio::test]
+    async fn failure_summary_without_snapshot_or_source_never_queries_active_pane() {
+        let mgr = ShellManager::new().with_wt_channel(Arc::new(SnapshotWtChannel {
+            sealed: true.into(),
+            reads: 0.into(),
+            output: "",
+        }));
+        for source_pane_id in [None, Some(String::new()), Some("  ".to_string())] {
+            let context = PaneContext {
+                source_pane_id,
+                ..Default::default()
+            };
+            let (built, _, _, target) = build_prompt_text(
+                24,
+                0.0,
+                "Command failed",
+                Some(AutofixTextKind::FailureSummary),
+                false,
+                &mgr,
+                true,
+                Some(&context),
+                None,
+            )
+            .await;
+            assert!(target.is_none());
+            assert!(!built.contains("### Shell Context"));
+            assert!(!built.contains("### Terminal Output"));
+            assert!(built.contains("## Failure Summary\nCommand failed"));
+        }
+    }
+
+    #[tokio::test]
+    async fn autofix_snapshot_reports_unavailable_source_or_output() {
+        let _locale = crate::test_support::lock_locale();
+        let ctx = PaneContext {
+            source_pane_id: Some("failed-pane".to_string()),
+            ..Default::default()
+        };
+        let active = serde_json::json!({
+            "session_id": "focused-pane", "shell": "cmd.exe", "cwd": "C:\\live"
+        });
+        let mgr = shell_mgr_with_pane(active.clone());
+        let error =
+            prompt_context::capture_autofix_snapshot(&mgr, &ctx, AutofixTextKind::FailureSummary)
+                .await
+                .unwrap_err();
+        assert_eq!(
+            error,
+            rust_i18n::t!("queue.snapshot_source_unavailable", pane = "failed-pane")
+        );
+
+        let source = serde_json::json!({
+            "session_id": "failed-pane", "shell": "bash", "cwd": "C:\\frozen",
+            "is_agent_pane": false
+        });
+        let mgr = shell_mgr_with_source_pane(active.clone(), source.clone());
+        let error =
+            prompt_context::capture_autofix_snapshot(&mgr, &ctx, AutofixTextKind::FailureSummary)
+                .await
+                .unwrap_err();
+        assert_eq!(
+            error,
+            rust_i18n::t!("queue.snapshot_output_unavailable", pane = "failed-pane")
+        );
+        for (field, value, expected) in [
+            (
+                "shell",
+                serde_json::Value::Null,
+                rust_i18n::t!("queue.snapshot_shell_unavailable", pane = "failed-pane"),
+            ),
+            (
+                "cwd",
+                serde_json::Value::Null,
+                rust_i18n::t!("queue.snapshot_cwd_unavailable", pane = "failed-pane"),
+            ),
+            (
+                "is_agent_pane",
+                serde_json::json!(true),
+                rust_i18n::t!("queue.snapshot_source_unavailable", pane = "failed-pane"),
+            ),
+        ] {
+            let mut invalid_source = source.clone();
+            invalid_source[field] = value;
+            let mgr = shell_mgr_with_source_pane(active.clone(), invalid_source);
+            assert_eq!(
+                prompt_context::capture_autofix_snapshot(
+                    &mgr,
+                    &ctx,
+                    AutofixTextKind::FailureSummary
+                )
+                .await
+                .unwrap_err(),
+                expected
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn autofix_snapshot_rejects_empty_evidence() {
+        let _locale = crate::test_support::lock_locale();
+        for output in ["", " \r\n"] {
+            let mgr = ShellManager::new().with_wt_channel(Arc::new(SnapshotWtChannel {
+                sealed: false.into(),
+                reads: 0.into(),
+                output,
+            }));
+            let ctx = PaneContext {
+                source_pane_id: Some("failed-pane".to_string()),
+                ..Default::default()
+            };
+            assert_eq!(
+                prompt_context::capture_autofix_snapshot(
+                    &mgr,
+                    &ctx,
+                    AutofixTextKind::FailureSummary
+                )
+                .await
+                .unwrap_err(),
+                rust_i18n::t!("queue.snapshot_output_unavailable", pane = "failed-pane")
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn manual_autofix_snapshot_freezes_empty_output_without_later_context_reads() {
+        use std::sync::atomic::Ordering;
+        for output in ["", " \r\n"] {
+            let channel = Arc::new(SnapshotWtChannel {
+                sealed: false.into(),
+                reads: 0.into(),
+                output,
+            });
+            let mgr = ShellManager::new().with_wt_channel(channel.clone());
+            let context = PaneContext {
+                source_pane_id: Some("failed-pane".into()),
+                ..Default::default()
+            };
+            let snapshot = prompt_context::capture_autofix_snapshot(
+                &mgr,
+                &context,
+                AutofixTextKind::UserRequest,
+            )
+            .await
+            .expect("user intent does not require previous command output");
+            assert!(snapshot.resolved_context().terminal_output.is_none());
+            let reads = channel.reads.load(Ordering::SeqCst);
+            channel.sealed.store(true, Ordering::SeqCst);
+            let later_context = PaneContext {
+                source_pane_id: Some("newly-focused-pane".into()),
+                ..Default::default()
+            };
+            let (built, _, _, target) = build_prompt_text(
+                23,
+                0.0,
+                "help configure this fresh shell",
+                Some(AutofixTextKind::UserRequest),
+                false,
+                &mgr,
+                true,
+                Some(&later_context),
+                Some(&snapshot),
+            )
+            .await;
+            assert_eq!(target.as_deref(), Some("failed-pane"));
+            assert!(built.contains("help configure this fresh shell"));
+            assert!(built.contains("## User Request"));
+            assert!(built.contains(r#""cwd":"C:\\frozen""#));
+            assert!(!built.contains("### Terminal Output"));
+            assert!(!built.contains("newly-focused-pane"));
+            assert_eq!(channel.reads.load(Ordering::SeqCst), reads);
+        }
+    }
+
+    #[tokio::test]
+    async fn manual_autofix_snapshot_does_not_hide_unavailable_source_or_output() {
+        let _locale = crate::test_support::lock_locale();
+        let active = serde_json::json!({
+            "session_id": "other-pane", "shell": "cmd.exe", "cwd": "C:\\other"
+        });
+        let context = PaneContext {
+            source_pane_id: Some("failed-pane".into()),
+            ..Default::default()
+        };
+        for (mgr, expected) in [
+            (
+                shell_mgr_with_pane(active.clone()),
+                rust_i18n::t!("queue.snapshot_source_unavailable", pane = "failed-pane"),
+            ),
+            (
+                ShellManager::new().with_wt_channel(Arc::new(UnavailableLegacyOutputChannel)),
+                rust_i18n::t!("queue.snapshot_output_unavailable", pane = "failed-pane"),
+            ),
+        ] {
+            assert_eq!(
+                prompt_context::capture_autofix_snapshot(
+                    &mgr,
+                    &context,
+                    AutofixTextKind::UserRequest,
+                )
+                .await
+                .unwrap_err(),
+                expected
+            );
+        }
     }
 
     #[tokio::test]
@@ -447,8 +911,18 @@ mod tests {
                 source_pane_id: Some(source.to_string()),
                 ..Default::default()
             };
-            let (built_prompt, _, _, target) =
-                build_prompt_text(1, 0.0, "inspect", None, false, &mgr, true, Some(&context)).await;
+            let (built_prompt, _, _, target) = build_prompt_text(
+                1,
+                0.0,
+                "inspect",
+                None,
+                false,
+                &mgr,
+                true,
+                Some(&context),
+                None,
+            )
+            .await;
             if source == "pane-missing" {
                 assert!(target.is_none());
                 assert!(!built_prompt.contains("### Terminal Context JSON"));
@@ -467,7 +941,7 @@ mod tests {
         let mgr = ShellManager::new();
         let expected = prompt::load_planner_prompt_template();
         let (built_prompt, _source, display_name, target_pane) =
-            build_prompt_text(1, 0.0, "list files", None, true, &mgr, false, None).await;
+            build_prompt_text(1, 0.0, "list files", None, true, &mgr, false, None, None).await;
         assert_eq!(display_name, expected.display_name);
         assert!(
             built_prompt.contains("### Supported Delegate Agents"),
@@ -505,8 +979,18 @@ mod tests {
             "is_agent_pane": false,
         }));
 
-        let (built_prompt, _source, _display_name, target_pane) =
-            build_prompt_text(8, 0.0, "check port 8000", None, true, &mgr, true, None).await;
+        let (built_prompt, _source, _display_name, target_pane) = build_prompt_text(
+            8,
+            0.0,
+            "check port 8000",
+            None,
+            true,
+            &mgr,
+            true,
+            None,
+            None,
+        )
+        .await;
 
         assert!(built_prompt.contains("\"activeTarget\":\"real-pane-guid\""));
         assert_eq!(target_pane.as_deref(), Some("real-pane-guid"));
@@ -541,6 +1025,7 @@ mod tests {
             &mgr,
             true,
             Some(&pane_context),
+            None,
         )
         .await;
 
@@ -559,8 +1044,18 @@ mod tests {
             "is_agent_pane": false,
         }));
 
-        let (built_prompt, _source, _display_name, target_pane) =
-            build_prompt_text(8, 0.0, "inspect local-tool", None, true, &mgr, true, None).await;
+        let (built_prompt, _source, _display_name, target_pane) = build_prompt_text(
+            8,
+            0.0,
+            "inspect local-tool",
+            None,
+            true,
+            &mgr,
+            true,
+            None,
+            None,
+        )
+        .await;
 
         assert!(built_prompt.contains(r#""--cwd""#));
         assert!(built_prompt.contains(r#""C:\\workspace""#));
@@ -582,6 +1077,7 @@ mod tests {
             true,
             &mgr,
             false,
+            None,
             None,
         )
         .await;
@@ -668,6 +1164,7 @@ mod tests {
             &mgr,
             false,
             None,
+            None,
         )
         .await;
         assert!(
@@ -687,6 +1184,7 @@ mod tests {
             true,
             &mgr,
             false,
+            None,
             None,
         )
         .await;
@@ -709,7 +1207,7 @@ mod tests {
             "test precondition: planner template body is non-empty"
         );
         let (built_prompt, _s, _d, _f) =
-            build_prompt_text(4, 0.0, "hi", None, false, &mgr, false, None).await;
+            build_prompt_text(4, 0.0, "hi", None, false, &mgr, false, None, None).await;
         assert!(
             !built_prompt.contains(planner.content.trim()),
             "include_base_prompt=false must omit the base prompt body"
@@ -730,6 +1228,7 @@ mod tests {
             false,
             &mgr,
             false,
+            None,
             None,
         )
         .await;
@@ -760,6 +1259,7 @@ mod tests {
             true,
             &mgr,
             true,
+            None,
             None,
         )
         .await;
@@ -803,6 +1303,7 @@ mod tests {
             &mgr,
             true,
             Some(&ctx),
+            None,
         )
         .await;
         assert!(
@@ -848,6 +1349,7 @@ mod tests {
             &mgr,
             true,
             Some(&ctx),
+            None,
         )
         .await;
         assert!(

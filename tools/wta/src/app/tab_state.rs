@@ -560,6 +560,8 @@ impl ConfigPickerState {
 /// mutating shared `App` fields.
 #[derive(Default)]
 pub struct TabSession {
+    pub(crate) pending_queue_action: Option<u64>,
+    pub(super) prompt_queue: super::prompt_queue::PromptQueue,
     /// Per-tab autofix state machine (see `TabAutofixState`).
     pub autofix: TabAutofixState,
     pub(crate) pending_terminal_action_proposal: Option<PendingTerminalActionProposal>,

@@ -123,6 +123,33 @@ agents.status.idle: "Jõude"
 # ── Layout welcome hint (src/ui/layout.rs) ──────────────────────────────────
 layout.welcome_hint: "  (Ctrl+Shift+. agendipaneeli kuvamiseks/peitmiseks • Ctrl+Shift+/ agendiseansi kuvamiseks/peitmiseks)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}
 
+# ── Prompt queue (agent pane) ───────────────────────────────────────────────
+# Pending input has not been sent to the AI agent.
+queue.header: "Järjekorras olevad sõnumid: %{count}"  # Automatic pinned list above input: total pending user and automatic requests; hidden when empty
+queue.full: "Järjekord on täis. Teie sisend on säilitatud."
+queue.enqueued: "Sõnum on lisatud järjekorda."  # Info notification when a user message must wait before being sent to the AI agent
+queue.cancelled: "Tühistati %{count} järjekorras olevat sõnumit. Saate saata uue sõnumi."  # Info notification when waiting requests are discarded after cancellation, failure, or session reset
+queue.session_busy: "Järjekorras olevad sõnumid kuuluvad sellesse vestlusse. Enne seansi või konfiguratsiooni muutmist saatke need või eemaldage need järjekorrast."
+queue.paused_header: "Peatatud: %{count} ootel; ei saadeta automaatselt"  # Pinned heading: automatic sending is stopped
+queue.recall: "Too viimane tagasi"  # Button: restore the newest pending request to the editor
+queue.send_remaining: "Saada ülejäänud"  # Button: resume sending pending requests
+queue.discard: "Eemalda ülejäänud"  # Button: discard pending requests, not the draft or active task
+queue.draft_busy: "Enne järjekorras oleva taotluse tagasitoomist saatke või tühjendage praegune mustand."
+queue.enqueued_paused: "Lisatud peatatud järjekorda. Käivitamiseks valige Saada ülejäänud."
+queue.resubmit: "Vajab uuesti esitamist"  # Prefix: fix evidence expired; recall and submit again
+queue.resume_blocked: "Ootel taotlusi ei saa veel saata. Lahendage ühendusprobleem või lõpetage aktiivne suhtlus; tooge aegunud parandustaotlused tagasi ja esitage need uuesti."
+queue.stopped: "Automaatne saatmine peatatud. Ootel kasutajataotlused on säilitatud."
+queue.capture_failed: "Vea konteksti ei saanud säilitada: %{error}"
+queue.auto: "Automaatne parandus"  # Label for a queued, automatically requested analysis of a failed shell command
+# Auto-fix diagnostic capture errors for the source terminal pane, shown through queue.capture_failed.
+# Capture collects shell context, working directory and output, not a screenshot. %{pane} is a pane ID.
+queue.snapshot_source_required: "Automaatse paranduse jaoks konteksti kogumine nõuab lähtepaneeli selgesõnalist määramist."
+queue.snapshot_source_unavailable: "Automaatse paranduse lähtepaneel %{pane} pole saadaval."
+queue.snapshot_shell_unavailable: "Automaatse paranduse lähtepaneelil %{pane} puudub shelli kontekst."
+queue.snapshot_cwd_unavailable: "Automaatse paranduse lähtepaneelil %{pane} puudub töökataloog."
+queue.snapshot_output_unavailable: "Automaatse paranduse lähtepaneelil %{pane} puudub loetav väljund."
+queue.snapshot_context_changed: "Lähtepaneeli %{pane} käsk muutus enne, kui selle veakonteksti sai salvestada."
+
 # ── Connection state ────────────────────────────────────────────────────────
 # Preparing the AI agent connection, including preflight and reuse of a cached agent.
 connection.starting: "Agendiühenduse ettevalmistamine..."

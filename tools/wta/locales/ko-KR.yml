@@ -119,6 +119,33 @@ agents.status.idle: "유휴"
 # ── 레이아웃 환영 힌트 (src/ui/layout.rs) ──────────────────────────────────────
 layout.welcome_hint: "  (Ctrl+Shift+. 에이전트 창 표시/숨기기 • Ctrl+Shift+/ 에이전트 세션 표시/숨기기)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}
 
+# ── Prompt queue (agent pane) ───────────────────────────────────────────────
+# Pending input has not been sent to the AI agent.
+queue.header: "대기열의 메시지: %{count}"  # Automatic pinned list above input: total pending user and automatic requests; hidden when empty
+queue.full: "대기열이 가득 찼습니다. 입력 내용은 유지되었습니다."
+queue.enqueued: "메시지가 대기열에 추가되었습니다."  # Info notification when a user message must wait before being sent to the AI agent
+queue.cancelled: "대기열의 메시지 %{count}개가 취소되었습니다. 새 메시지를 보낼 수 있습니다."  # Info notification when waiting requests are discarded after cancellation, failure, or session reset
+queue.session_busy: "대기열의 메시지는 이 대화에 속합니다. 세션이나 구성을 변경하기 전에 보내거나 삭제하세요."
+queue.paused_header: "일시 중지됨: %{count}개 대기 중; 자동으로 전송되지 않음"  # Pinned heading: automatic sending is stopped
+queue.recall: "마지막 요청 가져오기"  # Button: restore the newest pending request to the editor
+queue.send_remaining: "나머지 보내기"  # Button: resume sending pending requests
+queue.discard: "나머지 삭제"  # Button: discard pending requests, not the draft or active task
+queue.draft_busy: "대기열의 요청을 입력란으로 가져오기 전에 현재 초안을 제출하거나 지우세요."
+queue.enqueued_paused: "중지된 대기열에 추가했습니다. 시작하려면 나머지 보내기를 선택하세요."
+queue.resubmit: "다시 제출해야 함"  # Prefix: fix evidence expired; recall and submit again
+queue.resume_blocked: "대기 중인 요청을 아직 보낼 수 없습니다. 연결 문제를 해결하거나 진행 중인 상호 작용을 완료하세요. 만료된 수정 요청은 입력란으로 가져와 다시 제출하세요."
+queue.stopped: "자동 전송을 중지했습니다. 대기 중인 사용자 요청은 유지됩니다."
+queue.capture_failed: "오류 컨텍스트를 보존할 수 없습니다: %{error}"
+queue.auto: "자동 수정"  # Label for a queued, automatically requested analysis of a failed shell command
+# Auto-fix diagnostic capture errors for the source terminal pane, shown through queue.capture_failed.
+# Capture collects shell context, working directory and output, not a screenshot. %{pane} is a pane ID.
+queue.snapshot_source_required: "자동 수정을 위한 진단 정보를 수집하려면 원본 창을 명시적으로 지정해야 합니다."
+queue.snapshot_source_unavailable: "자동 수정 원본 창 %{pane}을(를) 사용할 수 없습니다."
+queue.snapshot_shell_unavailable: "자동 수정 원본 창 %{pane}에 셸 컨텍스트가 없습니다."
+queue.snapshot_cwd_unavailable: "자동 수정 원본 창 %{pane}에 작업 디렉터리가 없습니다."
+queue.snapshot_output_unavailable: "자동 수정 원본 창 %{pane}에 읽을 수 있는 출력이 없습니다."
+queue.snapshot_context_changed: "오류 컨텍스트를 보존하기 전에 원본 창 %{pane}의 명령이 바뀌었습니다."
+
 # ── 연결 상태 ────────────────────────────────────────────────────────────
 # Preparing the AI agent connection, including preflight and reuse of a cached agent.
 connection.starting: "에이전트 연결 준비 중..."

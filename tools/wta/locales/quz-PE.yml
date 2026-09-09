@@ -123,6 +123,33 @@ agents.status.idle: "Samachkan"
 # ── Layout welcome hint (src/ui/layout.rs) ──────────────────────────────────
 layout.welcome_hint: "  (Ctrl+Shift+. agente k'itita rikuchiy/pakay • Ctrl+Shift+/ agente hunt'ata rikuchiy/pakay)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}
 
+# ── Prompt queue (agent pane) ───────────────────────────────────────────────
+# Pending input has not been sent to the AI agent.
+queue.header: "Suyana sinripi willakuykuna: %{count}"  # Automatic pinned list above input: total pending user and automatic requests; hidden when empty
+queue.full: "Suyana sinriqa hunt'asqañam. Qillqasqaykiqa waqaychasqam."
+queue.enqueued: "Willakuyqa suyana sinriman yapasqañam."  # Info notification when a user message must wait before being sent to the AI agent
+queue.cancelled: "Suyana sinripi %{count} willakuykuna chinkachisqañam. Musuq willakuyta apachiyta atinki."  # Info notification when waiting requests are discarded after cancellation, failure, or session reset
+queue.session_busy: "Suyana sinripi willakuykunaqa kay rimanakuypam. Sesionta utaq wakichiyta manaraq tikraspa, chaykunata kachay utaq chinkachiy."
+queue.paused_header: "Kunanlla sayachisqa: %{count} suyaspa; manam kikinmanta kachasqachu kanqa"  # Pinned heading: automatic sending is stopped
+queue.recall: "Qhipa mañakuyta kutichiy"  # Button: restore the newest pending request to the editor
+queue.send_remaining: "Puchuqkunata kachay"  # Button: resume sending pending requests
+queue.discard: "Puchuqkunata chinkachiy"  # Button: discard pending requests, not the draft or active task
+queue.draft_busy: "Sinrimanta mañakuyta manaraq kutichispa, kunan ñawpaq qillqasqata kachay utaq pichay."
+queue.enqueued_paused: "Sayachisqa sinriman yapasqa. Qallarinapaq Puchuqkunata kachay nisqata akllay."
+queue.resubmit: "Wataqmanta kachana"  # Prefix: fix evidence expired; recall and submit again
+queue.resume_blocked: "Suyasqa mañakuykunataqa manaraq kachayta atikunmanchu. T'inkiy sasachakuyta allichay utaq kunan rimanakuyta tukuy; pachan tukusqa allichay mañakuykunata kutichiy hinaspa wataqmanta kachay."
+queue.stopped: "Kikinmanta kachay sayachisqa. Ruwaqpa suyasqa mañakuykuna waqaychasqa kachkan."
+queue.capture_failed: "Pantaypa muyuriq willakuyninta mana waqaychayta atikurqanchu: %{error}"
+queue.auto: "Kikinmanta allichay"  # Label for a queued, automatically requested analysis of a failed shell command
+# Auto-fix diagnostic capture errors for the source terminal pane, shown through queue.capture_failed.
+# Capture collects shell context, working directory and output, not a screenshot. %{pane} is a pane ID.
+queue.snapshot_source_required: "Kikinmanta allichanapaq willakuy huñuyqa mayqin k'itimanta hamusqanta sut'ita rikuchinata munan."
+queue.snapshot_source_unavailable: "Kikinmanta allichanapaq willakuy hamuq %{pane} k'itiqa mana llamk'achiy atikuqchu."
+queue.snapshot_shell_unavailable: "Kikinmanta allichanapaq willakuy hamuq %{pane} k'itipiqa mana shell muyuriq willakuy kanchu."
+queue.snapshot_cwd_unavailable: "Kikinmanta allichanapaq willakuy hamuq %{pane} k'itipiqa mana llamk'ana qillqana waqaychana kanchu."
+queue.snapshot_output_unavailable: "Kikinmanta allichanapaq willakuy hamuq %{pane} k'itipiqa mana ñawirina atikuq lluqsiq willakuy kanchu."
+queue.snapshot_context_changed: "Willakuy hamuq %{pane} k'itipi kamachiyqa pantaypa muyuriq willakuynin manaraq waqaychasqa kachkaptin hukyarqurqan."
+
 # ── Connection state ────────────────────────────────────────────────────────
 # Preparing the AI agent connection, including preflight and reuse of a cached agent.
 connection.starting: "Agenteman t'inkinata wakichispa..."

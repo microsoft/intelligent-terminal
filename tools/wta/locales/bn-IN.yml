@@ -137,6 +137,33 @@ agents.status.idle: "নিষ্ক্রিয়"
 # ── লেআউট স্বাগত সংকেত (src/ui/layout.rs) ──────────────────────────────────
 layout.welcome_hint: "  (Ctrl+Shift+. এজেন্ট পেন দেখান/লুকান • Ctrl+Shift+/ এজেন্ট সেশন দেখান/লুকান)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}
 
+# ── Prompt queue (agent pane) ───────────────────────────────────────────────
+# Pending input has not been sent to the AI agent.
+queue.header: "অপেক্ষার সারিতে থাকা বার্তা: %{count}"  # Automatic pinned list above input: total pending user and automatic requests; hidden when empty
+queue.full: "অপেক্ষার সারি পূর্ণ। আপনার ইনপুট সংরক্ষণ করা হয়েছে।"
+queue.enqueued: "বার্তাটি অপেক্ষার সারিতে যোগ করা হয়েছে।"  # Info notification when a user message must wait before being sent to the AI agent
+queue.cancelled: "অপেক্ষার সারিতে থাকা %{count}টি বার্তা বাতিল করা হয়েছে। আপনি একটি নতুন বার্তা পাঠাতে পারেন।"  # Info notification when waiting requests are discarded after cancellation, failure, or session reset
+queue.session_busy: "অপেক্ষার সারিতে থাকা বার্তাগুলি এই কথোপকথনের অংশ। সেশন বা কনফিগারেশন পরিবর্তন করার আগে সেগুলি পাঠান বা বাদ দিন।"
+queue.paused_header: "সাময়িকভাবে বন্ধ: %{count}টি অপেক্ষারত; স্বয়ংক্রিয়ভাবে পাঠানো হবে না"  # Pinned heading: automatic sending is stopped
+queue.recall: "শেষটি ফিরিয়ে আনুন"  # Button: restore the newest pending request to the editor
+queue.send_remaining: "বাকিগুলি পাঠান"  # Button: resume sending pending requests
+queue.discard: "বাকিগুলি বাদ দিন"  # Button: discard pending requests, not the draft or active task
+queue.draft_busy: "সারিতে থাকা অনুরোধ ফিরিয়ে আনার আগে বর্তমান খসড়াটি জমা দিন বা মুছুন।"
+queue.enqueued_paused: "বন্ধ থাকা সারিতে যোগ করা হয়েছে। শুরু করতে বাকিগুলি পাঠান বেছে নিন।"
+queue.resubmit: "আবার জমা দিতে হবে"  # Prefix: fix evidence expired; recall and submit again
+queue.resume_blocked: "অপেক্ষারত অনুরোধগুলি এখনও পাঠানো যাবে না। সংযোগের সমস্যা সমাধান করুন বা সক্রিয় আদানপ্রদান সম্পূর্ণ করুন; মেয়াদোত্তীর্ণ সংশোধনের অনুরোধগুলি ফিরিয়ে এনে আবার জমা দিন।"
+queue.stopped: "স্বয়ংক্রিয়ভাবে পাঠানো বন্ধ হয়েছে। অপেক্ষারত ব্যবহারকারীর অনুরোধগুলি রাখা হয়েছে।"
+queue.capture_failed: "ত্রুটির প্রসঙ্গ সংরক্ষণ করা যায়নি: %{error}"
+queue.auto: "স্বয়ংক্রিয় সংশোধন"  # Label for a queued, automatically requested analysis of a failed shell command
+# Auto-fix diagnostic capture errors for the source terminal pane, shown through queue.capture_failed.
+# Capture collects shell context, working directory and output, not a screenshot. %{pane} is a pane ID.
+queue.snapshot_source_required: "স্বয়ংক্রিয় সংশোধনের জন্য ত্রুটির প্রসঙ্গ সংগ্রহ করতে একটি স্পষ্টভাবে নির্দিষ্ট করা উৎস পেন প্রয়োজন।"
+queue.snapshot_source_unavailable: "স্বয়ংক্রিয় সংশোধনের উৎস পেন %{pane} উপলব্ধ নেই।"
+queue.snapshot_shell_unavailable: "স্বয়ংক্রিয় সংশোধনের উৎস পেন %{pane}-এ কোনো শেল প্রসঙ্গ নেই।"
+queue.snapshot_cwd_unavailable: "স্বয়ংক্রিয় সংশোধনের উৎস পেন %{pane}-এ কোনো কার্যকরী ডিরেক্টরি নেই।"
+queue.snapshot_output_unavailable: "স্বয়ংক্রিয় সংশোধনের উৎস পেন %{pane}-এ কোনো পাঠযোগ্য আউটপুট নেই।"
+queue.snapshot_context_changed: "উৎস পেন %{pane}-এ থাকা কমান্ডটির ত্রুটির প্রসঙ্গ সংরক্ষণ করার আগেই কমান্ডটি বদলে গেছে।"
+
 # ── সংযোগ অবস্থা ────────────────────────────────────────────────────────
 # Preparing the AI agent connection, including preflight and reuse of a cached agent.
 connection.starting: "এজেন্টের সংযোগ প্রস্তুত করা হচ্ছে..."

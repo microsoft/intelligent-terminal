@@ -50,8 +50,8 @@ fn passed_for_custom_agent_falls_back_when_no_custom_suffix() {
 // `pub(super)` so the sibling `slash_command_tests` module (see the
 // `#[path]` mod in app.rs) can reuse it instead of duplicating App::new.
 pub(super) fn test_app() -> App {
-    let (prompt_tx, _prompt_rx) = tokio::sync::mpsc::unbounded_channel();
-    let (recommendation_tx, _recommendation_rx) = tokio::sync::mpsc::unbounded_channel();
+    let (prompt_tx, prompt_rx) = tokio::sync::mpsc::unbounded_channel();
+    let (recommendation_tx, recommendation_rx) = tokio::sync::mpsc::unbounded_channel();
     let (permission_tx, _permission_rx) = tokio::sync::mpsc::unbounded_channel();
     let (new_session_tx, _new_session_rx) = tokio::sync::mpsc::unbounded_channel();
     let (load_session_tx, _load_session_rx) = tokio::sync::mpsc::unbounded_channel();
@@ -60,7 +60,7 @@ pub(super) fn test_app() -> App {
     let (restart_tx, _restart_rx) = tokio::sync::mpsc::unbounded_channel();
     let debug_capture = Arc::new(AtomicBool::new(false));
     let (master_tx, _master_rx) = tokio::sync::mpsc::unbounded_channel();
-    App::new(
+    let mut app = App::new(
         prompt_tx,
         recommendation_tx,
         permission_tx,
@@ -77,7 +77,33 @@ pub(super) fn test_app() -> App {
         Arc::new(Mutex::new(crate::app_contracts::YoloState::new(
             false, false,
         ))),
-    )
+    );
+    app.test_prompt_rx = Some(prompt_rx);
+    app.test_recommendation_rx = Some(recommendation_rx);
+    app
+}
+
+pub(super) fn complete_autofix_capture(app: &mut App, tab_id: &str) {
+    let entry = app.tab_sessions[tab_id]
+        .prompt_queue
+        .entries
+        .iter()
+        .find(|entry| entry.capturing)
+        .expect("a capture is pending");
+    let request_id = entry.submission.id;
+    let source = entry
+        .submission
+        .pane_context
+        .as_ref()
+        .unwrap()
+        .source_pane_id
+        .as_deref()
+        .unwrap();
+    let snapshot = crate::protocol::acp::client::AutofixSnapshot::for_test(source);
+    app.handle_event(AppEvent::AutofixSnapshotReady {
+        request_id,
+        result: Ok(snapshot),
+    });
 }
 
 pub(super) fn test_app_with_new_session_rx() -> (
@@ -3891,7 +3917,10 @@ fn runtime_policy_reconcile_gates_prompt_until_native_off_acknowledges() {
     app.apply_runtime_yolo_config(Some(false), Some(true));
     app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
 
-    assert_eq!(app.current_tab().input, "must wait for native off");
+    assert_eq!(
+        app.current_tab().prompt_queue.entries[0].submission.text,
+        "must wait for native off"
+    );
     assert!(prompt_rx.try_recv().is_err());
 
     let reconcile_id = *app.pending_yolo_reconciles.keys().next().unwrap();
@@ -3936,7 +3965,10 @@ fn global_on_session_attach_gates_prompt_until_native_yolo_enable_acknowledges()
     app.current_tab_mut().input = "wait for native on".into();
     app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
 
-    assert_eq!(app.current_tab().input, "wait for native on");
+    assert_eq!(
+        app.current_tab().prompt_queue.entries[0].submission.text,
+        "wait for native on"
+    );
     assert!(prompt_rx.try_recv().is_err());
 
     app.handle_event(AppEvent::RuntimeYoloReconcileCompleted {
@@ -3970,7 +4002,10 @@ fn new_session_creation_gates_prompt_before_yolo_reconcile_can_start() {
     app.current_tab_mut().input = "wait for replacement mode".into();
     app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
 
-    assert_eq!(app.current_tab().input, "wait for replacement mode");
+    assert_eq!(
+        app.current_tab().prompt_queue.entries[0].submission.text,
+        "wait for replacement mode"
+    );
     assert!(prompt_rx.try_recv().is_err());
 }
 
@@ -4100,6 +4135,7 @@ fn pending_yolo_reconcile_blocks_manual_and_automatic_autofix_prompts() {
     let (manual_tx, mut manual_rx) = tokio::sync::mpsc::unbounded_channel();
     manual.prompt_tx = manual_tx;
     manual.state = ConnectionState::Connected;
+    manual.source_session_id = Some("manual-source".into());
     manual.current_tab_mut().session_id = Some("manual-fix-session".into());
     manual.pending_yolo_reconciles.insert(
         29,
@@ -4107,6 +4143,8 @@ fn pending_yolo_reconcile_blocks_manual_and_automatic_autofix_prompts() {
     );
 
     manual.cmd_fix(false, String::new());
+    let tab_id = manual.active_tab_key().to_owned();
+    complete_autofix_capture(&mut manual, &tab_id);
 
     assert!(manual_rx.try_recv().is_err());
     assert!(manual.current_tab().turn.is_idle());
@@ -4150,18 +4188,24 @@ fn pending_config_update_blocks_normal_manual_and_automatic_prompts() {
     normal.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
 
     assert!(normal_rx.try_recv().is_err());
-    assert_eq!(normal.current_tab().input, "wait for native mode");
+    assert_eq!(
+        normal.current_tab().prompt_queue.entries[0].submission.text,
+        "wait for native mode"
+    );
     assert!(normal.current_tab().turn.is_idle());
 
     let mut manual = test_app();
     let (manual_tx, mut manual_rx) = tokio::sync::mpsc::unbounded_channel();
     manual.prompt_tx = manual_tx;
     manual.state = ConnectionState::Connected;
+    manual.source_session_id = Some("manual-source".into());
     manual.current_tab_mut().session_id = Some("manual-config-session".into());
     manual.current_tab_mut().config_pending_id = Some("mode".into());
     manual.current_tab_mut().native_yolo_config_pending = true;
 
     manual.cmd_fix(false, String::new());
+    let tab_id = manual.active_tab_key().to_owned();
+    complete_autofix_capture(&mut manual, &tab_id);
 
     assert!(manual_rx.try_recv().is_err());
     assert!(manual.current_tab().turn.is_idle());
@@ -4191,7 +4235,7 @@ fn pending_config_update_blocks_normal_manual_and_automatic_prompts() {
 }
 
 #[test]
-fn pending_non_yolo_config_does_not_block_normal_prompts() {
+fn pending_non_yolo_config_queues_normal_prompts_until_acknowledged() {
     let mut app = test_app();
     let (prompt_tx, mut prompt_rx) = tokio::sync::mpsc::unbounded_channel();
     app.prompt_tx = prompt_tx;
@@ -4202,8 +4246,11 @@ fn pending_non_yolo_config_does_not_block_normal_prompts() {
 
     app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
 
+    assert!(prompt_rx.try_recv().is_err());
+    app.current_tab_mut().config_pending_id = None;
+    app.dispatch_prompt_queues();
     assert_eq!(
-        prompt_rx.try_recv().expect("ordinary prompt").text,
+        prompt_rx.try_recv().unwrap().text,
         "continue while model config is pending"
     );
 }
@@ -4237,7 +4284,10 @@ fn initial_load_placeholder_agent_connected_skips_yolo_reconcile() {
     );
     app.current_tab_mut().input = "wait for loaded capabilities".into();
     app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
-    assert_eq!(app.current_tab().input, "wait for loaded capabilities");
+    assert_eq!(
+        app.current_tab().prompt_queue.entries[0].submission.text,
+        "wait for loaded capabilities"
+    );
     assert!(prompt_rx.try_recv().is_err());
 
     app.handle_event(AppEvent::SessionAttached {
@@ -7075,6 +7125,7 @@ fn autofix_still_triggers_for_non_agent_pane() {
     };
     app.maybe_trigger_autofix(&notification);
 
+    complete_autofix_capture(&mut app, "test-tab");
     assert_eq!(
         app.tab_mut("test-tab").autofix.pane_id.as_deref(),
         Some(pane),
@@ -7978,6 +8029,7 @@ fn ghost_agent_binding_does_not_suppress_shell_failure() {
         }),
     });
 
+    complete_autofix_capture(&mut app, "test-tab");
     assert_eq!(
         app.tab_mut("test-tab").autofix.pane_id.as_deref(),
         Some(pane),
@@ -8005,6 +8057,7 @@ fn vt_sequence_failure_in_normal_pane_still_triggers_autofix() {
         }),
     });
 
+    complete_autofix_capture(&mut app, "test-tab");
     assert_eq!(
         app.tab_mut("test-tab").autofix.pane_id.as_deref(),
         Some(pane),
@@ -8042,6 +8095,7 @@ fn hookless_shell_errors_submit_one_correctly_routed_autofix_prompt() {
     );
 
     app.handle_event(vt_event(pane, "test-tab", "osc:133;D;1"));
+    complete_autofix_capture(&mut app, "test-tab");
     let prompt = prompts
         .try_recv()
         .expect("shell error must reach the ACP prompt queue");
@@ -8055,7 +8109,7 @@ fn hookless_shell_errors_submit_one_correctly_routed_autofix_prompt() {
     app.handle_event(vt_event(pane, "test-tab", "osc:133;D;1"));
     assert!(
         prompts.try_recv().is_err(),
-        "echo/repeated failure must not double-submit"
+        "echo/repeated failure must not overlap the active turn"
     );
     assert_eq!(
         app.tab_mut("test-tab").autofix.pane_id.as_deref(),
@@ -8073,9 +8127,12 @@ fn hookless_manual_fix_still_submits_when_auto_suggest_is_disabled() {
     app.state = ConnectionState::Connected;
     app.autofix_enabled = false;
     app.show_welcome_hint = false;
+    app.source_session_id = Some("hookless-shell".into());
     bind_test_session(&mut app, "chat-without-hooks");
 
     app.cmd_fix(false, "explain the last failure".into());
+    let tab_id = app.active_tab_key().to_owned();
+    complete_autofix_capture(&mut app, &tab_id);
 
     let prompt = prompts
         .try_recv()
@@ -8287,6 +8344,7 @@ exit /b 0
         tab_id: Some(params["tab_id"].as_str().unwrap().into()),
         params,
     });
+    complete_autofix_capture(&mut app, "test-tab");
     let prompt = prompts
         .try_recv()
         .expect("recovered event must submit Autofix, not just update a flag");
@@ -8366,6 +8424,7 @@ fn pending_survives_trigger_echo_dismisses_on_next_prompt_start() {
     let tab = "tab-B";
 
     app.handle_event(vt_event(pane, tab, "osc:133;D;1"));
+    complete_autofix_capture(&mut app, tab);
     assert_eq!(
         app.tab_mut(tab).autofix.pane_id.as_deref(),
         Some(pane),
@@ -10007,7 +10066,7 @@ async fn plan_surfaces_card_in_chat() {
 /// Render a driven `App` to a ratatui `TestBackend` and return the visible
 /// buffer as text (rows joined by `\n`). Lets scenarios assert on what is
 /// actually painted, not just on `App` state.
-fn render_to_text(app: &mut App, width: u16, height: u16) -> String {
+pub(super) fn render_to_text(app: &mut App, width: u16, height: u16) -> String {
     use ratatui::{backend::TestBackend, Terminal};
     let backend = TestBackend::new(width, height);
     let mut terminal = Terminal::new(backend).expect("test terminal");
@@ -10020,7 +10079,7 @@ fn render_to_text(app: &mut App, width: u16, height: u16) -> String {
     buffer_to_text(terminal.backend().buffer())
 }
 
-fn render_to_buffer(app: &mut App, width: u16, height: u16) -> ratatui::buffer::Buffer {
+pub(super) fn render_to_buffer(app: &mut App, width: u16, height: u16) -> ratatui::buffer::Buffer {
     use ratatui::{backend::TestBackend, Terminal};
     let backend = TestBackend::new(width, height);
     let mut terminal = Terminal::new(backend).expect("test terminal");
@@ -10182,6 +10241,328 @@ fn render_chat_shows_agent_message() {
         text.contains("VISIBLE_REPLY_XYZ"),
         "the chat view must paint the agent message; rendered:\n{text}"
     );
+}
+
+#[test]
+fn render_prompt_queue_automatically_shows_count_and_preserves_active_output() {
+    let _locale = crate::test_support::lock_locale();
+    let mut app = test_app();
+    app.state = ConnectionState::Connected;
+    app.current_tab_mut().session_id = Some(DEFAULT_TAB_ID.into());
+    app.session_to_tab
+        .insert(DEFAULT_TAB_ID.into(), DEFAULT_TAB_ID.into());
+    app.current_tab_mut().input = "active request".into();
+    app.handle_event(AppEvent::Key(KeyEvent::new(
+        KeyCode::Enter,
+        KeyModifiers::NONE,
+    )));
+    let active_prompt_id = app.current_tab().turn.prompt_id();
+    app.handle_event(AppEvent::AgentMessageChunk {
+        session_id: DEFAULT_TAB_ID.into(),
+        text: "ACTIVE_QUEUE_REPLY_XYZ".into(),
+    });
+    app.current_tab_mut().reveal_chars = "ACTIVE_QUEUE_REPLY_XYZ".chars().count();
+    app.current_tab_mut().input = "QUEUED_REQUEST_XYZ".into();
+    app.handle_event(AppEvent::Key(KeyEvent::new(
+        KeyCode::Enter,
+        KeyModifiers::NONE,
+    )));
+
+    let header = t!("queue.header", count = 1);
+    let rendered = render_to_text(&mut app, 120, 24);
+    assert!(
+        rendered.contains(header.as_ref()),
+        "pending work must appear without a command:\n{rendered}"
+    );
+    assert!(
+        rendered.contains("ACTIVE_QUEUE_REPLY_XYZ"),
+        "active output was hidden:\n{rendered}"
+    );
+    assert!(!rendered.contains("Enter: queue"));
+    assert!(!rendered.contains("/queue"));
+    assert!(rendered.contains(t!("queue.enqueued").as_ref()));
+    assert!(rendered.contains("QUEUED_REQUEST_XYZ"));
+    let input_row = app.input_dialog_area.unwrap().y as usize;
+    assert!(rendered
+        .lines()
+        .nth(input_row - 3)
+        .unwrap()
+        .contains(header.as_ref()));
+    assert!(
+        rendered
+            .lines()
+            .nth(input_row - 2)
+            .unwrap()
+            .contains("QUEUED_REQUEST_XYZ"),
+        "waiting input must be pinned above its controls and the composer:\n{rendered}"
+    );
+    assert!(rendered
+        .lines()
+        .nth(input_row - 1)
+        .unwrap()
+        .contains("Alt+R"));
+    assert_eq!(app.current_tab().turn.prompt_id(), active_prompt_id);
+
+    let (responder, _response) = tokio::sync::oneshot::channel();
+    app.handle_event(AppEvent::PermissionRequest {
+        session_id: DEFAULT_TAB_ID.into(),
+        tool_call_id: "queue-permission".into(),
+        description: "QUEUE_PERMISSION_XYZ".into(),
+        title: "QUEUE_PERMISSION_XYZ".into(),
+        kind_label: None,
+        target: None,
+        target_is_command: false,
+        options: vec![PermOption {
+            id: "allow-once".into(),
+            name: "Allow once".into(),
+            kind: "AllowOnce".into(),
+        }],
+        responder,
+    });
+    let modal = render_to_text(&mut app, 120, 24);
+    assert!(
+        modal.contains("QUEUE_PERMISSION_XYZ"),
+        "permission card must remain visible:\n{modal}"
+    );
+    assert!(
+        !modal.contains("Enter: queue"),
+        "modal must not advertise Enter to queue:\n{modal}"
+    );
+    assert_eq!(app.current_tab().prompt_queue.entries.len(), 1);
+    assert_eq!(app.current_tab().turn.prompt_id(), active_prompt_id);
+}
+
+#[test]
+fn render_prompt_queue_stays_pinned_while_chat_scrolls() {
+    use crossterm::event::{MouseEvent, MouseEventKind};
+
+    let _locale = crate::test_support::lock_locale();
+    let mut app = test_app();
+    app.state = ConnectionState::Connected;
+    app.current_tab_mut().config_pending_id = Some("mode".into());
+    for index in 0..60 {
+        app.current_tab_mut()
+            .messages
+            .push(ChatMessage::Agent(format!("SCROLL_HISTORY_{index:02}")));
+    }
+    for text in ["PINNED_FIRST", "PINNED_SECOND"] {
+        app.current_tab_mut().input = text.into();
+        app.handle_event(AppEvent::Key(KeyEvent::new(
+            KeyCode::Enter,
+            KeyModifiers::NONE,
+        )));
+    }
+    app.current_tab_mut().input = "draft stays editable".into();
+    app.current_tab_mut().cursor_pos = "draft stays editable".len();
+    let before = render_to_text(&mut app, 80, 16);
+    let input_area = app.input_dialog_area.unwrap();
+    let queue_start = input_area.y as usize - 4;
+    assert!(before
+        .lines()
+        .nth(queue_start)
+        .unwrap()
+        .contains(t!("queue.header", count = 2).as_ref()));
+    assert!(before
+        .lines()
+        .nth(queue_start + 1)
+        .unwrap()
+        .contains("PINNED_FIRST"));
+    assert!(before
+        .lines()
+        .nth(queue_start + 2)
+        .unwrap()
+        .contains("PINNED_SECOND"));
+    assert!(before
+        .lines()
+        .nth(queue_start + 3)
+        .unwrap()
+        .contains("Alt+R"));
+    for _ in 0..5 {
+        app.handle_event(AppEvent::Mouse(MouseEvent {
+            kind: MouseEventKind::ScrollUp,
+            column: 0,
+            row: 0,
+            modifiers: KeyModifiers::NONE,
+        }));
+    }
+    let after = render_to_text(&mut app, 80, 16);
+    assert!(app.current_tab().chat_scroll.offset > 0);
+    assert_eq!(app.input_dialog_area, Some(input_area));
+    assert_ne!(
+        before.lines().take(queue_start).collect::<Vec<_>>(),
+        after.lines().take(queue_start).collect::<Vec<_>>(),
+    );
+    assert_eq!(
+        before.lines().skip(queue_start).collect::<Vec<_>>(),
+        after.lines().skip(queue_start).collect::<Vec<_>>(),
+    );
+    assert_eq!(after.matches("PINNED_FIRST").count(), 1);
+    assert_eq!(after.matches("PINNED_SECOND").count(), 1);
+    assert_eq!(app.current_tab().input, "draft stays editable");
+}
+
+#[test]
+fn render_prompt_queue_retains_stopped_inputs_until_explicit_discard() {
+    let _locale = crate::test_support::lock_locale();
+    let mut app = test_app();
+    app.state = ConnectionState::Connected;
+    app.current_tab_mut().session_id = Some(DEFAULT_TAB_ID.into());
+    app.session_to_tab
+        .insert(DEFAULT_TAB_ID.into(), DEFAULT_TAB_ID.into());
+    for text in ["ACTIVE_FIRST", "WAITING_SECOND", "WAITING_THIRD"] {
+        app.current_tab_mut().input = text.into();
+        app.handle_event(AppEvent::Key(KeyEvent::new(
+            KeyCode::Enter,
+            KeyModifiers::NONE,
+        )));
+    }
+    assert_eq!(app.pending_input_previews().count(), 2);
+    app.handle_event(AppEvent::AgentMessageEnd {
+        session_id: DEFAULT_TAB_ID.into(),
+    });
+    assert_eq!(
+        app.pending_input_previews().collect::<Vec<_>>(),
+        ["1. WAITING_THIRD"]
+    );
+    let rendered = render_to_text(&mut app, 80, 16);
+    assert!(rendered.contains(t!("queue.header", count = 1).as_ref()));
+    let input_row = app.input_dialog_area.unwrap().y as usize;
+    assert!(rendered
+        .lines()
+        .nth(input_row - 2)
+        .unwrap()
+        .contains("WAITING_THIRD"));
+    assert!(rendered
+        .lines()
+        .nth(input_row - 1)
+        .unwrap()
+        .contains("Alt+R"));
+    app.current_tab_mut().input = "/stop".into();
+    app.handle_event(AppEvent::Key(KeyEvent::new(
+        KeyCode::Enter,
+        KeyModifiers::NONE,
+    )));
+    assert_eq!(app.pending_input_previews().count(), 1);
+    let stopped = render_to_text(&mut app, 80, 16);
+    assert!(stopped.contains("WAITING_THIRD"));
+    assert!(stopped.contains(t!("queue.paused_header", count = 1).as_ref()));
+    assert!(stopped.contains(&format!("[Alt+S {}]", t!("queue.send_remaining"))));
+    assert!(stopped.contains(&format!("[Alt+D {}]", t!("queue.discard"))));
+    assert!(!stopped.contains(t!("queue.header", count = 1).as_ref()));
+    app.discard_pending_inputs();
+    assert_eq!(app.pending_input_previews().count(), 0);
+    let discarded = render_to_text(&mut app, 80, 16);
+    assert!(!discarded.contains("WAITING_THIRD"));
+}
+
+#[test]
+fn render_prompt_queue_excludes_unblocked_autofix_preparation() {
+    let _locale = crate::test_support::lock_locale();
+    for typed in [false, true] {
+        let mut app = test_app();
+        app.state = ConnectionState::Connected;
+        app.show_welcome_hint = false;
+        app.source_session_id = Some("failed-source".into());
+        if typed {
+            app.current_tab_mut()
+                .replace_input("/fix investigate".into());
+            app.handle_event(AppEvent::Key(KeyEvent::new(
+                KeyCode::Enter,
+                KeyModifiers::NONE,
+            )));
+        } else {
+            app.enqueue_autofix(DEFAULT_TAB_ID, "failed-source", "AUTOMATIC_FAILURE", false);
+        }
+        let preparing = render_to_text(&mut app, 100, 20);
+        assert!(!preparing.contains(t!("queue.header", count = 1).as_ref()));
+        assert!(!preparing.contains(t!("queue.enqueued").as_ref()));
+        complete_autofix_capture(&mut app, DEFAULT_TAB_ID);
+        app.current_tab_mut()
+            .replace_input("WAITING_FOLLOWER".into());
+        app.handle_event(AppEvent::Key(KeyEvent::new(
+            KeyCode::Enter,
+            KeyModifiers::NONE,
+        )));
+        let waiting = render_to_text(&mut app, 100, 20);
+        assert!(waiting.contains(t!("queue.header", count = 1).as_ref()));
+        assert!(waiting.contains("1. WAITING_FOLLOWER"));
+    }
+}
+
+#[test]
+fn render_prompt_queue_includes_automatic_requests_while_connecting() {
+    let _locale = crate::test_support::lock_locale();
+    let mut app = test_app();
+    app.state = ConnectionState::Connecting("copilot".into());
+    app.enqueue_autofix(DEFAULT_TAB_ID, "failed-source", "AUTOMATIC_FAILURE", false);
+    let automatic = render_to_text(&mut app, 100, 20);
+    assert!(automatic.contains(t!("queue.header", count = 1).as_ref()));
+    assert!(automatic.contains(&format!("1. {} · AUTOMATIC_FAILURE", t!("queue.auto"))));
+    assert!(!automatic.contains(t!("queue.enqueued").as_ref()));
+
+    app.current_tab_mut().input = "MANUAL_REQUEST".into();
+    app.handle_event(AppEvent::Key(KeyEvent::new(
+        KeyCode::Enter,
+        KeyModifiers::NONE,
+    )));
+    let mixed = render_to_text(&mut app, 100, 20);
+    let input_row = app.input_dialog_area.unwrap().y as usize;
+    assert!(mixed
+        .lines()
+        .nth(input_row - 4)
+        .unwrap()
+        .contains(t!("queue.header", count = 2).as_ref()));
+    assert!(mixed
+        .lines()
+        .nth(input_row - 3)
+        .unwrap()
+        .contains("1. MANUAL_REQUEST"));
+    assert!(mixed
+        .lines()
+        .nth(input_row - 2)
+        .unwrap()
+        .contains(&format!("2. {} · AUTOMATIC_FAILURE", t!("queue.auto"))));
+    assert!(mixed.lines().nth(input_row - 1).unwrap().contains("Alt+R"));
+    assert!(app.current_tab().turn.is_idle());
+}
+
+#[test]
+fn render_prompt_queue_fits_small_panes_and_sanitizes_previews() {
+    let _locale = crate::test_support::lock_locale();
+    let mut app = test_app();
+    app.state = ConnectionState::Connected;
+    app.current_tab_mut().config_pending_id = Some("mode".into());
+    for index in 0..32 {
+        app.current_tab_mut().input = format!("PINNED_{index}\n\u{202e}long preview");
+        app.handle_event(AppEvent::Key(KeyEvent::new(
+            KeyCode::Enter,
+            KeyModifiers::NONE,
+        )));
+    }
+    for width in [1, 2, 8, 16, 80] {
+        for height in [1, 2, 3, 4, 6, 8, 16] {
+            let rendered = render_to_text(&mut app, width, height);
+            assert!(!rendered.contains('\u{202e}'));
+            let input = app.input_dialog_area.unwrap();
+            assert!(input.bottom() <= height);
+            assert_eq!(app.current_tab().prompt_queue.entries.len(), 32);
+        }
+    }
+    let rendered = render_to_text(&mut app, 40, 8);
+    let input_row = app.input_dialog_area.unwrap().y as usize;
+    assert!(rendered.lines().nth(input_row - 1).unwrap().contains('+'));
+    let compact = render_to_text(&mut app, 60, 5);
+    assert!(compact.contains(t!("queue.header", count = 32).as_ref()));
+}
+
+#[test]
+fn render_connecting_input_has_no_queue_hint() {
+    let _locale = crate::test_support::lock_locale();
+    let mut app = test_app();
+    app.state = ConnectionState::Connecting("copilot".into());
+    let rendered = render_to_text(&mut app, 120, 24);
+    assert!(!rendered.contains("Enter: queue"));
+    assert!(!rendered.contains(t!("queue.header", count = 0).as_ref()));
 }
 
 /// Render (C134 "Hooks off behavior is safe"): with session management OFF — no tracked
@@ -11811,6 +12192,55 @@ fn double_click_in_input_dialog_preserves_word_selection() {
         app.text_selection.selected_text().as_deref(),
         Some("INPUT_DOUBLE_CLICK_MARKER")
     );
+}
+
+#[test]
+fn input_selection_during_queued_turn_edits_only_the_next_draft() {
+    let _locale = crate::test_support::lock_locale();
+    let mut app = test_app();
+    app.state = ConnectionState::Connected;
+    app.current_tab_mut().session_id = Some(DEFAULT_TAB_ID.into());
+    app.session_to_tab
+        .insert(DEFAULT_TAB_ID.into(), DEFAULT_TAB_ID.into());
+    let (tx, mut rx) = mpsc::unbounded_channel();
+    app.prompt_tx = tx;
+    for text in ["active request", "waiting request"] {
+        app.current_tab_mut().replace_input(text.into());
+        app.enqueue_input(None);
+    }
+    let active = rx.try_recv().unwrap();
+    let queued = app.current_tab().prompt_queue.entries[0].submission.id;
+    app.current_tab_mut().replace_input("next draft".into());
+    app.handle_event(AppEvent::Key(KeyEvent::new(
+        KeyCode::Char('a'),
+        KeyModifiers::CONTROL,
+    )));
+    assert!(app.current_tab().input_all_selected);
+    app.handle_event(AppEvent::Key(KeyEvent::new(
+        KeyCode::Char('x'),
+        KeyModifiers::NONE,
+    )));
+    assert_eq!(app.current_tab().input, "x");
+    assert_eq!(app.current_tab().turn.prompt_id(), Some(active.id));
+    assert_eq!(
+        app.current_tab().prompt_queue.entries[0].submission.id,
+        queued
+    );
+    assert_eq!(
+        app.pending_input_previews().collect::<Vec<_>>(),
+        ["1. waiting request"]
+    );
+    app.handle_event(AppEvent::Key(KeyEvent::new(
+        KeyCode::Enter,
+        KeyModifiers::NONE,
+    )));
+    assert!(!app.current_tab().input_all_selected);
+    assert!(app.current_tab().input.is_empty());
+    assert_eq!(
+        app.pending_input_previews().collect::<Vec<_>>(),
+        ["1. waiting request", "2. x"]
+    );
+    assert!(rx.try_recv().is_err());
 }
 
 #[test]
@@ -14315,9 +14745,12 @@ fn fix_target_pane_is_late_bound_by_prompt_id() {
 #[test]
 fn manual_fix_uses_the_helpers_captured_source_target() {
     let mut app = test_app();
+    app.state = ConnectionState::Connected;
     app.source_session_id = Some("captured-source-pane".into());
 
     app.cmd_fix(false, String::new());
+    let tab_id = app.active_tab_key().to_owned();
+    complete_autofix_capture(&mut app, &tab_id);
 
     let prompt = app.current_tab().turn.prompt().unwrap();
     assert_eq!(
@@ -16151,6 +16584,7 @@ fn completed_tool_disclosures_anchor_visible_headers_below_clipped_prompts() {
 
 #[test]
 fn thinking_is_pinned_one_row_above_input() {
+    let _locale = crate::test_support::lock_locale();
     const WIDTH: u16 = 80;
     const HEIGHT: u16 = 24;
 
@@ -16168,7 +16602,7 @@ fn thinking_is_pinned_one_row_above_input() {
     let row = text
         .lines()
         .position(|line| line.contains(&label))
-        .expect("Thinking row must render");
+        .unwrap_or_else(|| panic!("Thinking row must render:\n{text}"));
     let expected_row = usize::from(HEIGHT - input_height - 1);
 
     assert_eq!(
@@ -16537,7 +16971,10 @@ fn reset_keeps_cancellation_barrier_and_preserves_next_draft() {
     assert_eq!(app.current_tab().input, "keep next draft");
 
     app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
-    assert_eq!(app.current_tab().input, "keep next draft");
+    assert_eq!(
+        app.current_tab().prompt_queue.entries[0].submission.text,
+        "keep next draft"
+    );
     assert_eq!(
         prompt_rx.try_recv().expect("old prompt remains queued").id,
         prompt_id
@@ -18473,7 +18910,7 @@ fn recommendation_card_enter_wins_over_draft_input() {
 }
 
 #[test]
-fn recommendation_input_focus_submits_draft_instead_of_executing_card() {
+fn recommendation_input_focus_queues_draft_without_dismissing_card() {
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
     let mut app = test_app();
     app.state = ConnectionState::Connected;
@@ -18489,12 +18926,12 @@ fn recommendation_input_focus_submits_draft_instead_of_executing_card() {
 
     assert!(app.current_tab().input.is_empty());
     assert!(
-        app.current_tab().turn.recommendations().is_none(),
-        "submitting from the input must dismiss the old recommendation",
+        app.current_tab().turn.recommendations().is_some(),
+        "queued input must preserve the unresolved recommendation",
     );
     assert!(
-        matches!(app.current_tab().turn, TurnState::Submitted(_)),
-        "Enter must submit the draft instead of executing the selected card",
+        app.current_tab().prompt_queue.entries.len() == 1,
+        "Enter must queue the draft without executing the selected card",
     );
 }
 
@@ -18641,6 +19078,254 @@ fn send_choice(parent: &str, input: &str) -> crate::coordinator::RecommendationC
             input: input.into(),
         }],
     }
+}
+
+#[test]
+fn recommendation_history_preserves_queue_barrier_for_both_end_timings() {
+    let _locale = crate::test_support::lock_locale();
+    for insert_only in [false, true] {
+        for ended_before_click in [false, true] {
+            let mut app = test_app();
+            app.state = ConnectionState::Connected;
+            app.current_tab_mut().session_id = Some(DEFAULT_TAB_ID.into());
+            app.session_to_tab
+                .insert(DEFAULT_TAB_ID.into(), DEFAULT_TAB_ID.into());
+            let (tx, mut rx) = mpsc::unbounded_channel();
+            app.prompt_tx = tx;
+            let (action_tx, mut action_rx) = mpsc::unbounded_channel();
+            app.recommendation_tx = action_tx;
+            stage_surfaced_recommendation(
+                &mut app,
+                vec![send_choice("pane", "echo merged")],
+                0,
+                Some("pane"),
+            );
+            if let TurnState::Surfaced { end_pending, .. } = &mut app.current_tab_mut().turn {
+                *end_pending = true;
+            }
+            let prompt_id = app.current_tab().turn.prompt_id().unwrap();
+            app.current_tab_mut().selected_button = usize::from(insert_only);
+            app.current_tab_mut().replace_input("follow-up".into());
+            app.enqueue_input(None);
+            if ended_before_click {
+                app.handle_event(AppEvent::AgentMessageEnd {
+                    session_id: DEFAULT_TAB_ID.into(),
+                });
+            }
+            app.turn_execute_card(DEFAULT_TAB_ID);
+            assert_eq!(
+                action_rx.try_recv().unwrap().completion,
+                Some((DEFAULT_TAB_ID.into(), prompt_id))
+            );
+            if !ended_before_click {
+                app.handle_event(AppEvent::AgentMessageEnd {
+                    session_id: DEFAULT_TAB_ID.into(),
+                });
+            }
+            let label = if insert_only {
+                t!("chat.tool_kind.insert")
+            } else {
+                t!("chat.tool_kind.run")
+            };
+            let completed = app.current_tab().completed_turns.last().unwrap();
+            assert!(completed.details.iter().any(|message| matches!(message,
+                ChatMessage::Agent(text) if text == &format!("{label}: echo merged"))));
+            assert!(completed.trailing_marker.is_none());
+            assert_eq!(app.current_tab().pending_queue_action, Some(prompt_id));
+            assert!(rx.try_recv().is_err());
+            app.handle_event(AppEvent::RecommendationExecutionSettled {
+                tab_id: DEFAULT_TAB_ID.into(),
+                prompt_id,
+                success: true,
+            });
+            assert_eq!(rx.try_recv().unwrap().text, "follow-up");
+        }
+    }
+}
+
+#[test]
+fn recommendation_action_handoff_blocks_queue_until_correlated_completion() {
+    let _locale = crate::test_support::lock_locale();
+    let mut app = test_app();
+    app.state = ConnectionState::Connected;
+    app.tab_id = Some(DEFAULT_TAB_ID.into());
+    app.current_tab_mut().session_id = Some(DEFAULT_TAB_ID.into());
+    app.session_to_tab
+        .insert(DEFAULT_TAB_ID.into(), DEFAULT_TAB_ID.into());
+    let (recommendation_tx, mut recommendation_rx) = mpsc::unbounded_channel();
+    app.recommendation_tx = recommendation_tx;
+    let (prompt_tx, mut prompt_rx) = mpsc::unbounded_channel();
+    app.prompt_tx = prompt_tx;
+    stage_surfaced_recommendation(
+        &mut app,
+        vec![send_choice("pane", "echo test")],
+        0,
+        Some("pane"),
+    );
+    let card_id = PromptSubmission::new("card".into(), None).id;
+    if let TurnState::Surfaced { prompt, .. } = &mut app.current_tab_mut().turn {
+        prompt.id = card_id;
+    }
+    app.current_tab_mut().input = "next queued request".into();
+    app.enqueue_input(None);
+    app.turn_execute_card(DEFAULT_TAB_ID);
+    let execution = recommendation_rx
+        .try_recv()
+        .expect("confirmed action dispatch");
+    assert_eq!(execution.completion, Some((DEFAULT_TAB_ID.into(), card_id)));
+    assert!(app.current_tab().turn.recommendations().is_none());
+    assert_eq!(app.current_tab().pending_queue_action, Some(card_id));
+
+    app.handle_event(AppEvent::Tick);
+    assert!(
+        prompt_rx.try_recv().is_err(),
+        "resolving a card must not release the action barrier"
+    );
+    app.cmd_clear();
+    assert_eq!(
+        app.current_tab().pending_queue_action,
+        Some(card_id),
+        "/clear must retain the action handoff"
+    );
+    app.handle_event(AppEvent::RecommendationExecutionSettled {
+        tab_id: DEFAULT_TAB_ID.into(),
+        prompt_id: card_id.wrapping_add(1),
+        success: false,
+    });
+    assert_eq!(app.current_tab().pending_queue_action, Some(card_id));
+    assert_eq!(
+        app.current_tab().prompt_queue.entries.len(),
+        1,
+        "stale failure must not discard the owning queue"
+    );
+    assert!(prompt_rx.try_recv().is_err());
+
+    app.rename_tab_session(DEFAULT_TAB_ID, "renamed-action-tab", Some("window"));
+    app.handle_event(AppEvent::RecommendationExecutionSettled {
+        tab_id: DEFAULT_TAB_ID.into(),
+        prompt_id: card_id,
+        success: true,
+    });
+    assert!(app.current_tab().pending_queue_action.is_none());
+    assert_eq!(prompt_rx.try_recv().unwrap().text, "next queued request");
+}
+
+#[test]
+fn recommendation_action_failure_pauses_queue_and_retired_completion_is_ignored() {
+    let _locale = crate::test_support::lock_locale();
+    let mut app = test_app();
+    app.state = ConnectionState::Connected;
+    let (prompt_tx, mut prompt_rx) = mpsc::unbounded_channel();
+    app.prompt_tx = prompt_tx;
+    app.current_tab_mut().pending_queue_action = Some(701);
+    app.current_tab_mut().input = "wait for action".into();
+    app.enqueue_input(None);
+    app.handle_event(AppEvent::RecommendationExecutionSettled {
+        tab_id: DEFAULT_TAB_ID.into(),
+        prompt_id: 701,
+        success: false,
+    });
+    assert!(app.current_tab().pending_queue_action.is_none());
+    assert_eq!(app.current_tab().prompt_queue.entries.len(), 1);
+    assert!(app.pending_queue_paused());
+    assert!(prompt_rx.try_recv().is_err());
+    app.discard_pending_inputs();
+    app.current_tab_mut().input = "fresh request after failure".into();
+    app.enqueue_input(None);
+    let fresh = prompt_rx.try_recv().unwrap();
+    assert_eq!(fresh.text, "fresh request after failure");
+    app.current_tab_mut().pending_queue_action = Some(702);
+    app.reset_tab_session_for(DEFAULT_TAB_ID);
+    assert!(app.current_tab().pending_queue_action.is_none());
+    app.current_tab_mut().pending_queue_action = Some(703);
+    app.current_tab_mut().input = "survives retired failure".into();
+    app.enqueue_input(None);
+    app.handle_event(AppEvent::RecommendationExecutionSettled {
+        tab_id: DEFAULT_TAB_ID.into(),
+        prompt_id: 702,
+        success: false,
+    });
+    assert_eq!(app.current_tab().pending_queue_action, Some(703));
+    assert_eq!(app.current_tab().prompt_queue.entries.len(), 1);
+    assert!(prompt_rx.try_recv().is_err());
+    app.handle_event(AppEvent::RecommendationExecutionSettled {
+        tab_id: DEFAULT_TAB_ID.into(),
+        prompt_id: 703,
+        success: true,
+    });
+    assert!(prompt_rx.try_recv().is_err());
+    assert!(app.current_tab().turn.is_cancelling());
+    app.handle_event(AppEvent::PromptCancellationSettled {
+        prompt_id: fresh.id,
+        started: false,
+    });
+    assert_eq!(
+        prompt_rx.try_recv().unwrap().text,
+        "survives retired failure"
+    );
+}
+
+#[test]
+fn recommendation_action_rejected_locally_is_not_marked_executed() {
+    let _locale = crate::test_support::lock_locale();
+    let mut app = test_app();
+    app.state = ConnectionState::Connected;
+    app.test_recommendation_rx.take();
+    stage_surfaced_recommendation(
+        &mut app,
+        vec![send_choice("pane", "echo test")],
+        0,
+        Some("pane"),
+    );
+    app.current_tab_mut().input = "wait for confirmed action".into();
+    app.enqueue_input(None);
+    app.turn_execute_card(DEFAULT_TAB_ID);
+    assert!(app.current_tab().pending_queue_action.is_none());
+    assert!(app.current_tab().turn.is_idle());
+    assert_eq!(app.current_tab().prompt_queue.entries.len(), 1);
+    assert!(app.pending_queue_paused());
+    assert!(app.current_tab().messages.iter().any(|message| {
+        matches!(message, ChatMessage::Error(text) if text == t!("connection.lost").as_ref())
+    }));
+}
+
+#[test]
+fn queue_preserves_new_input_when_an_earlier_cancellation_settles_as_an_error() {
+    let _locale = crate::test_support::lock_locale();
+    let mut app = test_app();
+    app.state = ConnectionState::Connected;
+    app.current_tab_mut().session_id = Some("queue-cancel-session".into());
+    app.session_to_tab
+        .insert("queue-cancel-session".into(), DEFAULT_TAB_ID.into());
+    let (prompt_tx, mut prompt_rx) = mpsc::unbounded_channel();
+    app.prompt_tx = prompt_tx;
+    app.current_tab_mut().input = "active request".into();
+    app.enqueue_input(None);
+    prompt_rx.try_recv().unwrap();
+    app.handle_event(AppEvent::AgentMessageChunk {
+        session_id: "queue-cancel-session".into(),
+        text: "started".into(),
+    });
+    app.current_tab_mut().input = "old pending request".into();
+    app.enqueue_input(None);
+    app.cmd_stop(true, false);
+    assert_eq!(app.current_tab().prompt_queue.entries.len(), 1);
+    app.current_tab_mut().input = "new request after stop".into();
+    app.enqueue_input(None);
+    assert!(prompt_rx.try_recv().is_err());
+    app.handle_event(AppEvent::AgentError {
+        session_id: Some("queue-cancel-session".into()),
+        failure: crate::protocol::acp::failure::AgentFailure::Cancelled,
+        message: "cancelled".into(),
+    });
+    assert!(prompt_rx.try_recv().is_err());
+    assert!(app.pending_queue_paused());
+    app.resume_pending_inputs();
+    assert_eq!(prompt_rx.try_recv().unwrap().text, "old pending request");
+    app.handle_event(AppEvent::AgentMessageEnd {
+        session_id: "queue-cancel-session".into(),
+    });
+    assert_eq!(prompt_rx.try_recv().unwrap().text, "new request after stop");
 }
 
 fn open_choice() -> crate::coordinator::RecommendationChoice {

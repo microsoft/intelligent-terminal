@@ -123,6 +123,33 @@ agents.status.idle: "Rảnh"
 # ── Layout welcome hint (src/ui/layout.rs) ──────────────────────────────────
 layout.welcome_hint: "  (Ctrl+Shift+. để hiện/ẩn bảng tác nhân AI • Ctrl+Shift+/ để hiện/ẩn phiên tác nhân AI)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}
 
+# ── Prompt queue (agent pane) ───────────────────────────────────────────────
+# Pending input has not been sent to the AI agent.
+queue.header: "Tin nhắn trong hàng đợi: %{count}"  # Automatic pinned list above input: total pending user and automatic requests; hidden when empty
+queue.full: "Hàng đợi đã đầy. Nội dung bạn nhập đã được giữ lại."
+queue.enqueued: "Tin nhắn đã được thêm vào hàng đợi."  # Info notification when a user message must wait before being sent to the AI agent
+queue.cancelled: "Đã hủy %{count} tin nhắn trong hàng đợi. Bạn có thể gửi tin nhắn mới."  # Info notification when waiting requests are discarded after cancellation, failure, or session reset
+queue.session_busy: "Các tin nhắn trong hàng đợi thuộc về cuộc hội thoại này. Gửi hoặc loại bỏ chúng trước khi đổi phiên hoặc cấu hình."
+queue.paused_header: "Đã tạm dừng: %{count} đang chờ; không được gửi tự động"  # Pinned heading: automatic sending is stopped
+queue.recall: "Lấy lại yêu cầu cuối"  # Button: restore the newest pending request to the editor
+queue.send_remaining: "Gửi phần còn lại"  # Button: resume sending pending requests
+queue.discard: "Loại bỏ phần còn lại"  # Button: discard pending requests, not the draft or active task
+queue.draft_busy: "Gửi hoặc xóa bản nháp hiện tại trước khi lấy lại một yêu cầu từ hàng đợi."
+queue.enqueued_paused: "Đã thêm vào hàng đợi đã dừng. Chọn Gửi phần còn lại để bắt đầu."
+queue.resubmit: "Cần gửi lại"  # Prefix: fix evidence expired; recall and submit again
+queue.resume_blocked: "Chưa thể gửi các yêu cầu đang chờ. Khắc phục sự cố kết nối hoặc hoàn tất tương tác hiện tại; lấy lại và gửi lại các yêu cầu sửa lỗi đã hết hạn."
+queue.stopped: "Đã dừng gửi tự động. Các yêu cầu đang chờ của người dùng đã được giữ lại."
+queue.capture_failed: "Không thể lưu giữ ngữ cảnh lỗi: %{error}"
+queue.auto: "Sửa lỗi tự động"  # Label for a queued, automatically requested analysis of a failed shell command
+# Auto-fix diagnostic capture errors for the source terminal pane, shown through queue.capture_failed.
+# Capture collects shell context, working directory and output, not a screenshot. %{pane} is a pane ID.
+queue.snapshot_source_required: "Việc thu thập dữ liệu để sửa lỗi tự động yêu cầu chỉ định rõ ngăn nguồn."
+queue.snapshot_source_unavailable: "Ngăn nguồn %{pane} để sửa lỗi tự động không khả dụng."
+queue.snapshot_shell_unavailable: "Ngăn nguồn %{pane} để sửa lỗi tự động không có ngữ cảnh shell."
+queue.snapshot_cwd_unavailable: "Ngăn nguồn %{pane} để sửa lỗi tự động không có thư mục làm việc."
+queue.snapshot_output_unavailable: "Ngăn nguồn %{pane} để sửa lỗi tự động không có đầu ra đọc được."
+queue.snapshot_context_changed: "Lệnh trong ngăn nguồn %{pane} đã thay đổi trước khi có thể lưu giữ ngữ cảnh lỗi của lệnh đó."
+
 # ── Connection state ────────────────────────────────────────────────────────
 # Preparing the AI agent connection, including preflight and reuse of a cached agent.
 connection.starting: "Đang chuẩn bị kết nối với tác nhân AI..."

@@ -136,6 +136,33 @@ agents.status.idle: "செயலற்றது"
 # ── தளவமைப்பு வரவேற்பு குறிப்பு (src/ui/layout.rs) ──────────────────────────────────
 layout.welcome_hint: "  (Ctrl+Shift+. ஏஜெண்ட் பலகத்தைக் காட்டு/மறை • Ctrl+Shift+/ ஏஜெண்ட் அமர்வைக் காட்டு/மறை)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}
 
+# ── Prompt queue (agent pane) ───────────────────────────────────────────────
+# Pending input has not been sent to the AI agent.
+queue.header: "வரிசையிலுள்ள செய்திகள்: %{count}"  # Automatic pinned list above input: total pending user and automatic requests; hidden when empty
+queue.full: "வரிசை நிரம்பியுள்ளது. உங்கள் உள்ளீடு தக்கவைக்கப்பட்டுள்ளது."
+queue.enqueued: "செய்தி வரிசையில் சேர்க்கப்பட்டது."  # Info notification when a user message must wait before being sent to the AI agent
+queue.cancelled: "வரிசையிலுள்ள %{count} செய்திகள் ரத்து செய்யப்பட்டன. நீங்கள் புதிய செய்தியை அனுப்பலாம்."  # Info notification when waiting requests are discarded after cancellation, failure, or session reset
+queue.session_busy: "வரிசையிலுள்ள செய்திகள் இந்த உரையாடலைச் சேர்ந்தவை. அமர்வு அல்லது உள்ளமைவை மாற்றும் முன் அவற்றை அனுப்பவும் அல்லது நீக்கவும்."
+queue.paused_header: "இடைநிறுத்தப்பட்டது: %{count} நிலுவையில்; தானாக அனுப்பப்படாது"  # Pinned heading: automatic sending is stopped
+queue.recall: "கடைசியை மீட்டெடு"  # Button: restore the newest pending request to the editor
+queue.send_remaining: "மீதமுள்ளவற்றை அனுப்பு"  # Button: resume sending pending requests
+queue.discard: "மீதமுள்ளவற்றை நீக்கு"  # Button: discard pending requests, not the draft or active task
+queue.draft_busy: "வரிசையிலுள்ள கோரிக்கையை மீட்டெடுக்கும் முன் தற்போதைய வரைவைச் சமர்ப்பிக்கவும் அல்லது அழிக்கவும்."
+queue.enqueued_paused: "நிறுத்தப்பட்ட வரிசையில் சேர்க்கப்பட்டது. தொடங்க மீதமுள்ளவற்றை அனுப்பு என்பதைத் தேர்ந்தெடுக்கவும்."
+queue.resubmit: "மீண்டும் சமர்ப்பிக்க வேண்டும்"  # Prefix: fix evidence expired; recall and submit again
+queue.resume_blocked: "காத்திருக்கும் கோரிக்கைகளை இன்னும் அனுப்ப முடியாது. இணைப்புச் சிக்கலைத் தீர்க்கவும் அல்லது செயலில் உள்ள உரையாடலை முடிக்கவும்; காலாவதியான திருத்தக் கோரிக்கைகளை மீட்டெடுத்து மீண்டும் சமர்ப்பிக்கவும்."
+queue.stopped: "தானியங்கி அனுப்புதல் நிறுத்தப்பட்டது. பயனரின் நிலுவைக் கோரிக்கைகள் பாதுகாக்கப்பட்டுள்ளன."
+queue.capture_failed: "பிழைச் சூழலைப் பாதுகாக்க முடியவில்லை: %{error}"
+queue.auto: "தானியங்கித் திருத்தம்"  # Label for a queued, automatically requested analysis of a failed shell command
+# Auto-fix diagnostic capture errors for the source terminal pane, shown through queue.capture_failed.
+# Capture collects shell context, working directory and output, not a screenshot. %{pane} is a pane ID.
+queue.snapshot_source_required: "தானியங்கித் திருத்தத்திற்கான தரவு சேகரிப்புக்கு மூலப் பலகம் வெளிப்படையாகக் குறிப்பிடப்பட வேண்டும்."
+queue.snapshot_source_unavailable: "தானியங்கித் திருத்தத்திற்கான மூலப் பலகம் %{pane} கிடைக்கவில்லை."
+queue.snapshot_shell_unavailable: "தானியங்கித் திருத்தத்திற்கான மூலப் பலகம் %{pane} இல் ஷெல் சூழல் இல்லை."
+queue.snapshot_cwd_unavailable: "தானியங்கித் திருத்தத்திற்கான மூலப் பலகம் %{pane} இல் பணிக் கோப்பகம் இல்லை."
+queue.snapshot_output_unavailable: "தானியங்கித் திருத்தத்திற்கான மூலப் பலகம் %{pane} இல் படிக்கக்கூடிய வெளியீடு இல்லை."
+queue.snapshot_context_changed: "மூலப் பலகம் %{pane} இல் உள்ள கட்டளையின் பிழைச் சூழலைப் பாதுகாக்கும் முன் அந்தக் கட்டளை மாறிவிட்டது."
+
 # ── இணைப்பு நிலை ────────────────────────────────────────────────────────
 # Preparing the AI agent connection, including preflight and reuse of a cached agent.
 connection.starting: "ஏஜெண்ட் இணைப்பு தயாராகிறது..."

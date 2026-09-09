@@ -123,6 +123,33 @@ agents.status.idle: "Inactivo"
 # ── Suxestión de benvida do deseño (src/ui/layout.rs) ──────────────────────────────
 layout.welcome_hint: "  (Ctrl+Shift+. para mostrar/ocultar o panel de axente • Ctrl+Shift+/ para mostrar/ocultar a sesión de axente)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}
 
+# ── Prompt queue (agent pane) ───────────────────────────────────────────────
+# Pending input has not been sent to the AI agent.
+queue.header: "Mensaxes na cola: %{count}"  # Automatic pinned list above input: total pending user and automatic requests; hidden when empty
+queue.full: "A cola está chea. Conservouse a súa entrada."
+queue.enqueued: "Engadiuse a mensaxe á cola."  # Info notification when a user message must wait before being sent to the AI agent
+queue.cancelled: "Canceláronse %{count} mensaxes da cola. Pode enviar unha nova mensaxe."  # Info notification when waiting requests are discarded after cancellation, failure, or session reset
+queue.session_busy: "As mensaxes da cola pertencen a esta conversa. Envíeas ou descárteas antes de cambiar de sesión ou a configuración."
+queue.paused_header: "En pausa: %{count} pendentes; non se envían automaticamente"  # Pinned heading: automatic sending is stopped
+queue.recall: "Recuperar a última"  # Button: restore the newest pending request to the editor
+queue.send_remaining: "Enviar as restantes"  # Button: resume sending pending requests
+queue.discard: "Descartar as restantes"  # Button: discard pending requests, not the draft or active task
+queue.draft_busy: "Envíe ou borre o borrador actual antes de recuperar unha solicitude da cola."
+queue.enqueued_paused: "Engadiuse á cola detida. Escolla Enviar as restantes para iniciala."
+queue.resubmit: "Cómpre volver enviar"  # Prefix: fix evidence expired; recall and submit again
+queue.resume_blocked: "As solicitudes pendentes aínda non se poden enviar. Resolva o problema de conexión ou complete a interacción activa; recupere e volva enviar as solicitudes de corrección caducadas."
+queue.stopped: "Detívose o envío automático. Conserváronse as solicitudes pendentes do usuario."
+queue.capture_failed: "Non se puido conservar o contexto do erro: %{error}"
+queue.auto: "Corrección automática"  # Label for a queued, automatically requested analysis of a failed shell command
+# Auto-fix diagnostic capture errors for the source terminal pane, shown through queue.capture_failed.
+# Capture collects shell context, working directory and output, not a screenshot. %{pane} is a pane ID.
+queue.snapshot_source_required: "A captura do contexto para a corrección automática require un panel de orixe explícito."
+queue.snapshot_source_unavailable: "O panel de orixe %{pane} para a corrección automática non está dispoñible."
+queue.snapshot_shell_unavailable: "O panel de orixe %{pane} para a corrección automática non ten contexto do shell."
+queue.snapshot_cwd_unavailable: "O panel de orixe %{pane} para a corrección automática non ten directorio de traballo."
+queue.snapshot_output_unavailable: "O panel de orixe %{pane} para a corrección automática non ten saída lexible."
+queue.snapshot_context_changed: "O comando no panel de orixe %{pane} cambiou antes de que se puidese conservar o seu contexto de erro."
+
 # ── Estado da conexión ────────────────────────────────────────────────────────
 # Preparing the AI agent connection, including preflight and reuse of a cached agent.
 connection.starting: "Preparando a conexión co axente..."

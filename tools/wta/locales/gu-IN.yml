@@ -136,6 +136,33 @@ agents.status.idle: "નિષ્ક્રિય"
 # ── લેઆઉટ સ્વાગત સંકેત (src/ui/layout.rs) ──────────────────────────────────
 layout.welcome_hint: "  (Ctrl+Shift+. એજન્ટ પેન બતાવો/છુપાવો • Ctrl+Shift+/ એજન્ટ સત્ર બતાવો/છુપાવો)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}
 
+# ── Prompt queue (agent pane) ───────────────────────────────────────────────
+# Pending input has not been sent to the AI agent.
+queue.header: "કતારમાં રહેલા સંદેશાઓ: %{count}"  # Automatic pinned list above input: total pending user and automatic requests; hidden when empty
+queue.full: "કતાર ભરેલી છે. તમારું ઇનપુટ સાચવવામાં આવ્યું છે."
+queue.enqueued: "સંદેશ કતારમાં ઉમેરાયો છે."  # Info notification when a user message must wait before being sent to the AI agent
+queue.cancelled: "કતારમાં રહેલા %{count} સંદેશાઓ રદ કર્યા. તમે નવો સંદેશ મોકલી શકો છો."  # Info notification when waiting requests are discarded after cancellation, failure, or session reset
+queue.session_busy: "કતારમાં રહેલા સંદેશાઓ આ વાતચીતના છે. સત્ર અથવા ગોઠવણી બદલતાં પહેલાં તેમને મોકલો અથવા કાઢી નાખો."
+queue.paused_header: "થોભાવેલું: %{count} બાકી; આપમેળે મોકલવામાં આવશે નહીં"  # Pinned heading: automatic sending is stopped
+queue.recall: "છેલ્લી પાછી લાવો"  # Button: restore the newest pending request to the editor
+queue.send_remaining: "બાકીની મોકલો"  # Button: resume sending pending requests
+queue.discard: "બાકીની કાઢી નાખો"  # Button: discard pending requests, not the draft or active task
+queue.draft_busy: "કતારમાંની વિનંતી પાછી લાવતાં પહેલાં વર્તમાન ડ્રાફ્ટ સબમિટ કરો અથવા સાફ કરો."
+queue.enqueued_paused: "બંધ કરેલી કતારમાં ઉમેર્યું. શરૂ કરવા માટે બાકીની મોકલો પસંદ કરો."
+queue.resubmit: "ફરી સબમિટ કરવાની જરૂર છે"  # Prefix: fix evidence expired; recall and submit again
+queue.resume_blocked: "પ્રતીક્ષામાં રહેલી વિનંતીઓ હજી મોકલી શકાતી નથી. કનેક્શનની સમસ્યા ઉકેલો અથવા સક્રિય ક્રિયાપ્રતિક્રિયા પૂર્ણ કરો; સમયસીમા સમાપ્ત થયેલી સુધારાની વિનંતીઓ પાછી લાવીને ફરી સબમિટ કરો."
+queue.stopped: "આપમેળે મોકલવાનું બંધ કર્યું. વપરાશકર્તાની બાકી વિનંતીઓ જાળવી રાખવામાં આવી છે."
+queue.capture_failed: "ભૂલનો સંદર્ભ સાચવી શકાયો નહીં: %{error}"
+queue.auto: "આપમેળે સુધારો"  # Label for a queued, automatically requested analysis of a failed shell command
+# Auto-fix diagnostic capture errors for the source terminal pane, shown through queue.capture_failed.
+# Capture collects shell context, working directory and output, not a screenshot. %{pane} is a pane ID.
+queue.snapshot_source_required: "આપમેળે સુધારા માટે સંદર્ભ એકત્રિત કરવા સ્રોત પેન સ્પષ્ટ રીતે નિર્દિષ્ટ કરવો જરૂરી છે."
+queue.snapshot_source_unavailable: "આપમેળે સુધારા માટેનો સ્રોત પેન %{pane} ઉપલબ્ધ નથી."
+queue.snapshot_shell_unavailable: "આપમેળે સુધારા માટેના સ્રોત પેન %{pane} માં shell સંદર્ભ નથી."
+queue.snapshot_cwd_unavailable: "આપમેળે સુધારા માટેના સ્રોત પેન %{pane} માં કાર્યકારી ડિરેક્ટરી નથી."
+queue.snapshot_output_unavailable: "આપમેળે સુધારા માટેના સ્રોત પેન %{pane} માં વાંચી શકાય તેવું આઉટપુટ નથી."
+queue.snapshot_context_changed: "સ્રોત પેન %{pane} માંનો આદેશ તેનો ભૂલ સંદર્ભ સાચવી શકાય તે પહેલાં બદલાઈ ગયો."
+
 # ── જોડાણ સ્થિતિ ────────────────────────────────────────────────────────
 # Preparing the AI agent connection, including preflight and reuse of a cached agent.
 connection.starting: "એજન્ટ સાથેનું જોડાણ તૈયાર કરવામાં આવી રહ્યું છે..."

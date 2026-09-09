@@ -123,6 +123,33 @@ agents.status.idle: "Noho noa"
 # ── Layout welcome hint (src/ui/layout.rs) ──────────────────────────────────
 layout.welcome_hint: "  (Ctrl+Shift+. ki te whakaatu/huna i te papa agent • Ctrl+Shift+/ ki te whakaatu/huna i te wahanga agent)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}
 
+# ── Prompt queue (agent pane) ───────────────────────────────────────────────
+# Pending input has not been sent to the AI agent.
+queue.header: "Ngā karere kei te tūtira: %{count}"  # Automatic pinned list above input: total pending user and automatic requests; hidden when empty
+queue.full: "Kua kī te tūtira. Kua puritia tō tāurunga."
+queue.enqueued: "Kua tāpirihia te karere ki te tūtira."  # Info notification when a user message must wait before being sent to the AI agent
+queue.cancelled: "Kua whakakorea ngā karere %{count} kei te tūtira. Ka taea e koe te tuku karere hōu."  # Info notification when waiting requests are discarded after cancellation, failure, or session reset
+queue.session_busy: "Nō tēnei kōrerorero ngā karere kei te tūtira. Tukuna, mukua rānei aua karere i mua i te huri i te wātū, i te whirihoranga rānei."
+queue.paused_header: "Kua whakatārewatia: %{count} e tatari ana; kāore e tukuna aunoatia"  # Pinned heading: automatic sending is stopped
+queue.recall: "Whakahokia te mea whakamutunga"  # Button: restore the newest pending request to the editor
+queue.send_remaining: "Tukua ngā mea e toe ana"  # Button: resume sending pending requests
+queue.discard: "Mukua ngā mea e toe ana"  # Button: discard pending requests, not the draft or active task
+queue.draft_busy: "Tukuna, whakawāteatia rānei te hukihuki o nāianei i mua i te whakahoki i tētahi tono mai i te tūtira."
+queue.enqueued_paused: "Kua tāpirihia ki te tūtira kua tū. Kōwhiria Tukua ngā mea e toe ana hei tīmata."
+queue.resubmit: "Me tuku anō"  # Prefix: fix evidence expired; recall and submit again
+queue.resume_blocked: "Kāore anō e taea te tuku i ngā tono e tatari ana. Whakatikahia te hononga, whakaotia rānei te pāhekoheko hohe; whakahokia ngā tono whakatika kua mōnehu, ka tuku anō."
+queue.stopped: "Kua whakamutua te tuku aunoa. Kua puritia ngā tono kaiwhakamahi e tatari ana."
+queue.capture_failed: "Kāore i taea te tiaki i te horopaki hapa: %{error}"
+queue.auto: "Whakatika aunoa"  # Label for a queued, automatically requested analysis of a failed shell command
+# Auto-fix diagnostic capture errors for the source terminal pane, shown through queue.capture_failed.
+# Capture collects shell context, working directory and output, not a screenshot. %{pane} is a pane ID.
+queue.snapshot_source_required: "Me āta tohu he papa pūtake hei kohikohi raraunga mō te whakatika aunoa."
+queue.snapshot_source_unavailable: "Kāore te papa pūtake %{pane} mō te whakatika aunoa i te wātea."
+queue.snapshot_shell_unavailable: "Kāore he horopaki anga o te papa pūtake %{pane} mō te whakatika aunoa."
+queue.snapshot_cwd_unavailable: "Kāore he whaiaronga mahi o te papa pūtake %{pane} mō te whakatika aunoa."
+queue.snapshot_output_unavailable: "Kāore he putanga ka taea te pānui o te papa pūtake %{pane} mō te whakatika aunoa."
+queue.snapshot_context_changed: "I huri te whakahau i te papa pūtake %{pane} i mua i te rokirokitanga o tōna horopaki hapa."
+
 # ── Connection state ────────────────────────────────────────────────────────
 # Preparing the AI agent connection, including preflight and reuse of a cached agent.
 connection.starting: "E whakarite ana i te hononga ki te agent..."

@@ -124,6 +124,33 @@ agents.status.idle: "Inactiu"
 # ── Consell de benvinguda del disseny (src/ui/layout.rs) ──────────────────────────────
 layout.welcome_hint: "  (Ctrl+Shift+. per mostrar/amagar el tauler d'agent • Ctrl+Shift+/ per mostrar/amagar la sessió d'agent)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}
 
+# ── Prompt queue (agent pane) ───────────────────────────────────────────────
+# Pending input has not been sent to the AI agent.
+queue.header: "Missatges a la cua: %{count}"  # Automatic pinned list above input: total pending user and automatic requests; hidden when empty
+queue.full: "La cua és plena. S'ha conservat el text introduït."
+queue.enqueued: "S'ha afegit el missatge a la cua."  # Info notification when a user message must wait before being sent to the AI agent
+queue.cancelled: "S'han cancel·lat %{count} missatges de la cua. Podeu enviar un missatge nou."  # Info notification when waiting requests are discarded after cancellation, failure, or session reset
+queue.session_busy: "Els missatges de la cua pertanyen a aquesta conversa. Envieu-los o descarteu-los abans de canviar de sessió o de configuració."
+queue.paused_header: "En pausa: %{count} pendents; no s'envien automàticament"  # Pinned heading: automatic sending is stopped
+queue.recall: "Recupera l'última"  # Button: restore the newest pending request to the editor
+queue.send_remaining: "Envia les restants"  # Button: resume sending pending requests
+queue.discard: "Descarta les restants"  # Button: discard pending requests, not the draft or active task
+queue.draft_busy: "Envieu o esborreu l'esborrany actual abans de recuperar una sol·licitud de la cua."
+queue.enqueued_paused: "S'ha afegit a la cua aturada. Trieu Envia les restants per iniciar-la."
+queue.resubmit: "Cal tornar a enviar"  # Prefix: fix evidence expired; recall and submit again
+queue.resume_blocked: "Les sol·licituds pendents encara no es poden enviar. Resoleu el problema de connexió o completeu la interacció activa; recupereu les sol·licituds de correcció caducades i torneu-les a enviar."
+queue.stopped: "S'ha aturat l'enviament automàtic. S'han conservat les sol·licituds pendents de l'usuari."
+queue.capture_failed: "No s'ha pogut conservar el context de l'error: %{error}"
+queue.auto: "Correcció automàtica"  # Label for a queued, automatically requested analysis of a failed shell command
+# Auto-fix diagnostic capture errors for the source terminal pane, shown through queue.capture_failed.
+# Capture collects shell context, working directory and output, not a screenshot. %{pane} is a pane ID.
+queue.snapshot_source_required: "La recollida del context de l'error per a la correcció automàtica requereix un tauler d'origen indicat explícitament."
+queue.snapshot_source_unavailable: "El tauler d'origen %{pane} per a la correcció automàtica no està disponible."
+queue.snapshot_shell_unavailable: "El tauler d'origen %{pane} per a la correcció automàtica no té context de l'intèrpret d'ordres."
+queue.snapshot_cwd_unavailable: "El tauler d'origen %{pane} per a la correcció automàtica no té directori de treball."
+queue.snapshot_output_unavailable: "El tauler d'origen %{pane} per a la correcció automàtica no té cap sortida llegible."
+queue.snapshot_context_changed: "L'ordre del tauler d'origen %{pane} ha canviat abans que se'n pogués conservar el context de l'error."
+
 # ── Estat de la connexió ────────────────────────────────────────────────────────
 # Preparing the AI agent connection, including preflight and reuse of a cached agent.
 connection.starting: "S'està preparant la connexió amb l'agent..."

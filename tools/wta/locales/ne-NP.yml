@@ -136,6 +136,33 @@ agents.status.idle: "निष्क्रिय"
 # ── लेआउट स्वागत सङ्केत (src/ui/layout.rs) ──────────────────────────────────
 layout.welcome_hint: "  (Ctrl+Shift+. एजेन्ट पेन देखाउनुहोस्/लुकाउनुहोस् • Ctrl+Shift+/ एजेन्ट सत्र देखाउनुहोस्/लुकाउनुहोस्)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}
 
+# ── Prompt queue (agent pane) ───────────────────────────────────────────────
+# Pending input has not been sent to the AI agent.
+queue.header: "पङ्क्तिमा रहेका सन्देशहरू: %{count}"  # Automatic pinned list above input: total pending user and automatic requests; hidden when empty
+queue.full: "पङ्क्ति भरिएको छ। तपाईंको इनपुट सुरक्षित राखिएको छ।"
+queue.enqueued: "सन्देश पङ्क्तिमा थपिएको छ।"  # Info notification when a user message must wait before being sent to the AI agent
+queue.cancelled: "पङ्क्तिमा रहेका %{count} सन्देशहरू रद्द गरियो। तपाईँ नयाँ सन्देश पठाउन सक्नुहुन्छ।"  # Info notification when waiting requests are discarded after cancellation, failure, or session reset
+queue.session_busy: "पङ्क्तिमा रहेका सन्देशहरू यस कुराकानीका हुन्। सत्र वा कन्फिगरेसन परिवर्तन गर्नुअघि तिनलाई पठाउनुहोस् वा हटाउनुहोस्।"
+queue.paused_header: "अस्थायी रूपमा रोकिएको: %{count} प्रतीक्षारत; स्वचालित रूपमा पठाइँदैन"  # Pinned heading: automatic sending is stopped
+queue.recall: "अन्तिम अनुरोध फिर्ता ल्याउनुहोस्"  # Button: restore the newest pending request to the editor
+queue.send_remaining: "बाँकी पठाउनुहोस्"  # Button: resume sending pending requests
+queue.discard: "बाँकी हटाउनुहोस्"  # Button: discard pending requests, not the draft or active task
+queue.draft_busy: "पङ्क्तिको अनुरोध फिर्ता ल्याउनुअघि हालको मस्यौदा पेस गर्नुहोस् वा खाली गर्नुहोस्।"
+queue.enqueued_paused: "रोकिएको पङ्क्तिमा थपियो। सुरु गर्न बाँकी पठाउनुहोस् छान्नुहोस्।"
+queue.resubmit: "फेरि पेस गर्नुपर्छ"  # Prefix: fix evidence expired; recall and submit again
+queue.resume_blocked: "प्रतीक्षारत अनुरोधहरू अझै पठाउन सकिँदैन। जडानको समस्या समाधान गर्नुहोस् वा सक्रिय अन्तरक्रिया पूरा गर्नुहोस्; म्याद सकिएका सुधार अनुरोधहरू फिर्ता ल्याएर फेरि पेस गर्नुहोस्।"
+queue.stopped: "स्वचालित पठाउने कार्य रोकियो। प्रयोगकर्ताका प्रतीक्षारत अनुरोधहरू सुरक्षित राखिएका छन्।"
+queue.capture_failed: "त्रुटिको सन्दर्भ सुरक्षित राख्न सकिएन: %{error}"
+queue.auto: "स्वचालित सुधार"  # Label for a queued, automatically requested analysis of a failed shell command
+# Auto-fix diagnostic capture errors for the source terminal pane, shown through queue.capture_failed.
+# Capture collects shell context, working directory and output, not a screenshot. %{pane} is a pane ID.
+queue.snapshot_source_required: "स्वचालित सुधारका लागि जानकारी सङ्कलन गर्न स्रोत पेन स्पष्ट रूपमा निर्दिष्ट गर्नुपर्छ।"
+queue.snapshot_source_unavailable: "स्वचालित सुधारको स्रोत पेन %{pane} उपलब्ध छैन।"
+queue.snapshot_shell_unavailable: "स्वचालित सुधारको स्रोत पेन %{pane} मा शेल सन्दर्भ छैन।"
+queue.snapshot_cwd_unavailable: "स्वचालित सुधारको स्रोत पेन %{pane} मा कार्य डाइरेक्टरी छैन।"
+queue.snapshot_output_unavailable: "स्वचालित सुधारको स्रोत पेन %{pane} मा पढ्न मिल्ने आउटपुट छैन।"
+queue.snapshot_context_changed: "त्रुटिको सन्दर्भ सुरक्षित राख्न सकिनुअघि स्रोत पेन %{pane} मा रहेको आदेश बदलियो।"
+
 # ── जडान स्थिति ────────────────────────────────────────────────────────
 # Preparing the AI agent connection, including preflight and reuse of a cached agent.
 connection.starting: "एजेन्ट जडानको तयारी गर्दै..."

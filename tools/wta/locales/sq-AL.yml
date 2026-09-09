@@ -123,6 +123,33 @@ agents.status.idle: "Joaktiv"
 # ── Layout welcome hint (src/ui/layout.rs) ──────────────────────────────────
 layout.welcome_hint: "  (Ctrl+Shift+. shfaq/fshih panelin e agjentit • Ctrl+Shift+/ shfaq/fshih seancën e agjentit)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}
 
+# ── Prompt queue (agent pane) ───────────────────────────────────────────────
+# Pending input has not been sent to the AI agent.
+queue.header: "Mesazhe në radhë: %{count}"  # Automatic pinned list above input: total pending user and automatic requests; hidden when empty
+queue.full: "Radha është plot. Teksti i futur është ruajtur."
+queue.enqueued: "Mesazhi u shtua në radhë."  # Info notification when a user message must wait before being sent to the AI agent
+queue.cancelled: "U anuluan %{count} mesazhe në radhë. Mund të dërgoni një mesazh të ri."  # Info notification when waiting requests are discarded after cancellation, failure, or session reset
+queue.session_busy: "Mesazhet në radhë i përkasin kësaj bisede. Dërgojini ose hiqini përpara se të ndryshoni seancën ose konfigurimin."
+queue.paused_header: "Në pauzë: %{count} në pritje; nuk dërgohen automatikisht"  # Pinned heading: automatic sending is stopped
+queue.recall: "Rikthe të fundit"  # Button: restore the newest pending request to the editor
+queue.send_remaining: "Dërgo të mbeturat"  # Button: resume sending pending requests
+queue.discard: "Hiq të mbeturat"  # Button: discard pending requests, not the draft or active task
+queue.draft_busy: "Dërgoni ose pastroni draftin aktual përpara se të riktheni një kërkesë nga radha."
+queue.enqueued_paused: "U shtua në radhën e ndaluar. Zgjidhni Dërgo të mbeturat për ta nisur."
+queue.resubmit: "Duhet ridërguar"  # Prefix: fix evidence expired; recall and submit again
+queue.resume_blocked: "Kërkesat në pritje nuk mund të dërgohen ende. Zgjidhni problemin e lidhjes ose përfundoni ndërveprimin aktiv; riktheni dhe ridërgoni kërkesat e skaduara për rregullim."
+queue.stopped: "Dërgimi automatik u ndalua. Kërkesat në pritje të përdoruesit u ruajtën."
+queue.capture_failed: "Konteksti i gabimit nuk mund të ruhej: %{error}"
+queue.auto: "Rregullim automatik"  # Label for a queued, automatically requested analysis of a failed shell command
+# Auto-fix diagnostic capture errors for the source terminal pane, shown through queue.capture_failed.
+# Capture collects shell context, working directory and output, not a screenshot. %{pane} is a pane ID.
+queue.snapshot_source_required: "Mbledhja e të dhënave për rregullimin automatik kërkon një panel burimor të përcaktuar shprehimisht."
+queue.snapshot_source_unavailable: "Paneli burimor %{pane} për rregullimin automatik nuk është i disponueshëm."
+queue.snapshot_shell_unavailable: "Paneli burimor %{pane} për rregullimin automatik nuk ka kontekst të shell-it."
+queue.snapshot_cwd_unavailable: "Paneli burimor %{pane} për rregullimin automatik nuk ka direktori pune."
+queue.snapshot_output_unavailable: "Paneli burimor %{pane} për rregullimin automatik nuk ka dalje të lexueshme."
+queue.snapshot_context_changed: "Komanda në panelin burimor %{pane} ndryshoi para se të mund të ruhej konteksti i gabimit të saj."
+
 # ── Connection state ────────────────────────────────────────────────────────
 # Preparing the AI agent connection, including preflight and reuse of a cached agent.
 connection.starting: "Po përgatitet lidhja me agjentin..."

@@ -19,6 +19,7 @@
 
 use async_trait::async_trait;
 
+use super::client::AutofixTextKind;
 use crate::coordinator::default_supported_delegate_agents;
 use crate::pane_context::PaneContext;
 use crate::shell::ShellManager;
@@ -308,6 +309,9 @@ async fn resolve_pane_by_session_id(
 struct CapturedPaneContext {
     pane: serde_json::Value,
     output: Option<String>,
+    // A successful consolidated response may have no output. Legacy read
+    // failures must remain distinguishable from that valid empty capture.
+    output_available: bool,
 }
 
 fn validate_pane_context(value: &serde_json::Value) -> Result<&serde_json::Value, &'static str> {
@@ -412,7 +416,7 @@ async fn capture_pane_context(
         return None;
     }
 
-    let output = if let Some(value) = response {
+    let (output, output_available) = if let Some(value) = response {
         let protocol_truncated = value
             .get("truncated")
             .and_then(serde_json::Value::as_bool)
@@ -435,12 +439,18 @@ async fn capture_pane_context(
             truncated = value.get("truncated").and_then(serde_json::Value::as_bool),
             "pane_context_request_complete"
         );
-        output
+        (output, true)
     } else {
         let pane_id = json_str_or_num(pane.get("session_id"))?;
-        read_pane_last_message_legacy(shell_mgr, &pane_id, max_lines, max_chars).await
+        let output = read_pane_last_message_legacy(shell_mgr, &pane_id, max_lines, max_chars).await;
+        let output_available = output.is_some();
+        (output, output_available)
     };
-    Some(CapturedPaneContext { pane, output })
+    Some(CapturedPaneContext {
+        pane,
+        output,
+        output_available,
+    })
 }
 
 struct PlannerTerminalContext {
@@ -514,6 +524,122 @@ async fn build_terminal_context(
 /// honest: it reflects exactly what the user picked in the UI.
 fn user_locale_tag() -> String {
     rust_i18n::locale().to_string()
+}
+
+/// Immutable source context captured when an autofix request is accepted.
+/// Provider policy and permission state deliberately are not part of this value.
+#[derive(Debug, Clone)]
+pub(crate) struct AutofixSnapshot {
+    source_pane_id: String,
+    context_pane: serde_json::Value,
+    shell_exe: String,
+    terminal_output: Option<String>,
+}
+
+impl AutofixSnapshot {
+    pub(crate) fn source_pane_id(&self) -> &str {
+        &self.source_pane_id
+    }
+
+    #[cfg(test)]
+    pub(crate) fn for_test(source_pane_id: &str) -> Self {
+        Self {
+            source_pane_id: source_pane_id.to_string(),
+            context_pane: serde_json::json!({
+                "session_id": source_pane_id,
+                "shell": "cmd.exe",
+                "cwd": "C:\\test",
+                "is_agent_pane": false,
+            }),
+            shell_exe: "cmd.exe".to_string(),
+            terminal_output: Some("failing-command\r\nCommand failed with exit code 1".to_string()),
+        }
+    }
+
+    /// UTF-8 payload size for queue budgets, excluding allocator/struct overhead.
+    pub(crate) fn payload_bytes(&self) -> usize {
+        self.source_pane_id.len()
+            + self.shell_exe.len()
+            + self.terminal_output.as_ref().map_or(0, String::len)
+            + self.context_pane.to_string().len()
+    }
+
+    pub(super) fn resolved_context(&self) -> ResolvedProviderContext {
+        ResolvedProviderContext {
+            context_pane: Some(self.context_pane.clone()),
+            shell_exe: Some(self.shell_exe.clone()),
+            terminal_output: self.terminal_output.clone(),
+            resolved_fix_pane: Some(self.source_pane_id.clone()),
+            planner_terminal_context: None,
+            resolved_planner_pane: None,
+            command_resolver_invocation: None,
+        }
+    }
+}
+
+pub(crate) async fn capture_autofix_snapshot(
+    shell_mgr: &ShellManager,
+    pane_context: &PaneContext,
+    text_kind: AutofixTextKind,
+) -> Result<AutofixSnapshot, String> {
+    let explicit_source = pane_context.source_pane_id.as_deref();
+    if explicit_source.is_some_and(|source| source.trim().is_empty())
+        || (text_kind == AutofixTextKind::FailureSummary && explicit_source.is_none())
+    {
+        return Err(rust_i18n::t!("queue.snapshot_source_required").to_string());
+    }
+    let captured = capture_pane_context(
+        shell_mgr,
+        explicit_source,
+        30,
+        ACTIVE_PANE_CONTEXT_MAX_CHARS,
+    )
+    .await
+    .ok_or_else(|| match explicit_source {
+        Some(source) => {
+            rust_i18n::t!("queue.snapshot_source_unavailable", pane = source).to_string()
+        }
+        None => rust_i18n::t!("queue.snapshot_source_required").to_string(),
+    })?;
+    let context_pane = captured.pane;
+    let source_pane_id = json_str_or_num(context_pane.get("session_id"))
+        .filter(|source| !source.trim().is_empty())
+        .ok_or_else(|| rust_i18n::t!("queue.snapshot_source_required").to_string())?;
+    if let Some(source) = explicit_source {
+        if source != source_pane_id {
+            return Err(
+                rust_i18n::t!("queue.snapshot_source_unavailable", pane = source).to_string(),
+            );
+        }
+    }
+    let shell_exe = shell_from_active(&context_pane).ok_or_else(|| {
+        rust_i18n::t!("queue.snapshot_shell_unavailable", pane = source_pane_id).to_string()
+    })?;
+    if context_pane
+        .get("cwd")
+        .and_then(|v| v.as_str())
+        .is_none_or(|cwd| cwd.trim().is_empty())
+    {
+        return Err(
+            rust_i18n::t!("queue.snapshot_cwd_unavailable", pane = source_pane_id).to_string(),
+        );
+    }
+    // An empty successful read is valid for user intent on a fresh/cleared
+    // pane. Freeze that absence; a failed read must never become empty evidence.
+    let terminal_output = captured.output.filter(|output| !output.trim().is_empty());
+    if !captured.output_available
+        || (text_kind == AutofixTextKind::FailureSummary && terminal_output.is_none())
+    {
+        return Err(
+            rust_i18n::t!("queue.snapshot_output_unavailable", pane = source_pane_id).to_string(),
+        );
+    }
+    Ok(AutofixSnapshot {
+        source_pane_id: source_pane_id.to_string(),
+        context_pane,
+        shell_exe,
+        terminal_output,
+    })
 }
 
 pub(super) struct ResolvedProviderContext {
@@ -1076,6 +1202,132 @@ pub(super) mod tests {
         assert_eq!(captured.pane["session_id"], "pane-explicit");
         assert!(captured.output.is_none());
         assert_eq!(channel.requests.load(Ordering::Relaxed), 1);
+    }
+
+    #[tokio::test]
+    async fn autofix_snapshot_preserves_consolidated_bounds_and_protocol_truncation() {
+        for (content, protocol_truncated, expected) in [
+            (
+                "界".repeat(ACTIVE_PANE_CONTEXT_MAX_CHARS + 1),
+                false,
+                format!(
+                    "{}\n...<truncated>",
+                    "界".repeat(ACTIVE_PANE_CONTEXT_MAX_CHARS)
+                ),
+            ),
+            (
+                "bounded command output".to_string(),
+                true,
+                "bounded command output\n...<truncated>".to_string(),
+            ),
+        ] {
+            let mut response = pane_context_response();
+            response["pane"]["shell"] = serde_json::json!("bash");
+            response["pane"]["cwd"] = serde_json::json!("C:\\frozen");
+            response["content"] = serde_json::json!(content);
+            response["truncated"] = serde_json::json!(protocol_truncated);
+            let channel = Arc::new(RecordingPaneContextChannel {
+                requests: AtomicUsize::new(0),
+                params: Mutex::new(None),
+                error: None,
+                response: Some(response),
+            });
+            let mgr = ShellManager::new().with_wt_channel(channel.clone());
+            let context = PaneContext {
+                source_pane_id: Some("pane-explicit".to_string()),
+                ..Default::default()
+            };
+            let snapshot =
+                capture_autofix_snapshot(&mgr, &context, AutofixTextKind::FailureSummary)
+                    .await
+                    .expect("snapshot must retain the bounded consolidated capture");
+
+            assert_eq!(snapshot.source_pane_id(), "pane-explicit");
+            assert_eq!(snapshot.terminal_output.as_deref(), Some(expected.as_str()));
+            assert_eq!(channel.requests.load(Ordering::Relaxed), 1);
+            let params = channel.params.lock().unwrap().clone().unwrap();
+            assert_eq!(params["session_id"], "pane-explicit");
+            assert_eq!(params["max_lines"], 30);
+            assert_eq!(params["max_chars"], ACTIVE_PANE_CONTEXT_MAX_CHARS);
+        }
+    }
+
+    #[tokio::test]
+    async fn autofix_snapshot_rejects_failed_malformed_or_mismatched_capture_without_retry() {
+        let _locale = crate::test_support::lock_locale();
+        let mut mismatched = pane_context_response();
+        mismatched["pane"]["session_id"] = serde_json::json!("wrong-pane");
+        let mut malformed = pane_context_response();
+        malformed["content"] = serde_json::Value::Null;
+        for text_kind in [
+            AutofixTextKind::UserRequest,
+            AutofixTextKind::FailureSummary,
+        ] {
+            for (error, response) in [
+                (Some("GetPaneContext failed: 0x80070490"), None),
+                (None, Some(malformed.clone())),
+                (None, Some(mismatched.clone())),
+            ] {
+                let channel = Arc::new(RecordingPaneContextChannel {
+                    requests: AtomicUsize::new(0),
+                    params: Mutex::new(None),
+                    error,
+                    response,
+                });
+                let mgr = ShellManager::new().with_wt_channel(channel.clone());
+                let context = PaneContext {
+                    source_pane_id: Some("pane-explicit".to_string()),
+                    ..Default::default()
+                };
+                assert_eq!(
+                    capture_autofix_snapshot(&mgr, &context, text_kind)
+                        .await
+                        .unwrap_err(),
+                    rust_i18n::t!("queue.snapshot_source_unavailable", pane = "pane-explicit"),
+                );
+                assert_eq!(channel.requests.load(Ordering::Relaxed), 1);
+                let params = channel.params.lock().unwrap().clone().unwrap();
+                assert_eq!(params["session_id"], "pane-explicit");
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn manual_autofix_snapshot_accepts_empty_consolidated_context() {
+        for explicit_source in [None, Some("pane-explicit")] {
+            for output_source in ["metadata_only", "buffer_tail"] {
+                let mut response = pane_context_response();
+                response["pane"]["shell"] = serde_json::json!("bash");
+                response["pane"]["cwd"] = serde_json::json!("C:\\frozen");
+                response["content"] = serde_json::json!("");
+                response["output_source"] = serde_json::json!(output_source);
+                response["line_count"] = serde_json::json!(0);
+                response["has_marks"] = serde_json::json!(false);
+                let channel = Arc::new(RecordingPaneContextChannel {
+                    requests: AtomicUsize::new(0),
+                    params: Mutex::new(None),
+                    error: None,
+                    response: Some(response),
+                });
+                let mgr = ShellManager::new().with_wt_channel(channel.clone());
+                let context = PaneContext {
+                    source_pane_id: explicit_source.map(str::to_string),
+                    ..Default::default()
+                };
+                let snapshot =
+                    capture_autofix_snapshot(&mgr, &context, AutofixTextKind::UserRequest)
+                        .await
+                        .expect("successful empty capture is valid for manual /fix");
+                assert_eq!(snapshot.source_pane_id(), "pane-explicit");
+                assert!(snapshot.terminal_output.is_none());
+                assert_eq!(channel.requests.load(Ordering::Relaxed), 1);
+                let params = channel.params.lock().unwrap().clone().unwrap();
+                assert_eq!(
+                    params.get("session_id").and_then(serde_json::Value::as_str),
+                    explicit_source,
+                );
+            }
+        }
     }
 
     #[tokio::test]

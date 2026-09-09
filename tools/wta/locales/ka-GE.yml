@@ -136,6 +136,33 @@ agents.status.idle: "უმოქმედო"
 # ── განლაგების მისასალმი მინიშნება (src/ui/layout.rs) ──────────────────────────────
 layout.welcome_hint: "  (Ctrl+Shift+. აგენტის პანელის ჩვენება/დამალვა • Ctrl+Shift+/ აგენტის სესიის ჩვენება/დამალვა)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}
 
+# ── Prompt queue (agent pane) ───────────────────────────────────────────────
+# Pending input has not been sent to the AI agent.
+queue.header: "რიგში მყოფი შეტყობინებები: %{count}"  # Automatic pinned list above input: total pending user and automatic requests; hidden when empty
+queue.full: "რიგი სავსეა. თქვენ მიერ შეყვანილი ტექსტი შენარჩუნებულია."
+queue.enqueued: "შეტყობინება რიგში დაემატა."  # Info notification when a user message must wait before being sent to the AI agent
+queue.cancelled: "რიგში მყოფი %{count} შეტყობინება გაუქმდა. შეგიძლიათ ახალი შეტყობინების გაგზავნა."  # Info notification when waiting requests are discarded after cancellation, failure, or session reset
+queue.session_busy: "რიგში მყოფი შეტყობინებები ამ საუბარს ეკუთვნის. სესიის ან კონფიგურაციის შეცვლამდე გაგზავნეთ ან წაშალეთ ისინი."
+queue.paused_header: "დროებით შეჩერებულია: %{count} მოლოდინში; ავტომატურად არ იგზავნება"  # Pinned heading: automatic sending is stopped
+queue.recall: "ბოლო მოთხოვნის დაბრუნება"  # Button: restore the newest pending request to the editor
+queue.send_remaining: "დარჩენილების გაგზავნა"  # Button: resume sending pending requests
+queue.discard: "დარჩენილების წაშლა"  # Button: discard pending requests, not the draft or active task
+queue.draft_busy: "რიგიდან მოთხოვნის დაბრუნებამდე გაგზავნეთ ან გაასუფთავეთ მიმდინარე მონახაზი."
+queue.enqueued_paused: "დაემატა შეჩერებულ რიგს. მის გასაშვებად აირჩიეთ დარჩენილების გაგზავნა."
+queue.resubmit: "საჭიროა ხელახლა გაგზავნა"  # Prefix: fix evidence expired; recall and submit again
+queue.resume_blocked: "მომლოდინე მოთხოვნების გაგზავნა ჯერ შეუძლებელია. მოაგვარეთ კავშირის პრობლემა ან დაასრულეთ აქტიური ინტერაქცია; დააბრუნეთ და ხელახლა გაგზავნეთ ვადაგასული გამოსწორების მოთხოვნები."
+queue.stopped: "ავტომატური გაგზავნა შეჩერდა. მომხმარებლის მომლოდინე მოთხოვნები შენარჩუნებულია."
+queue.capture_failed: "შეცდომის კონტექსტის შენარჩუნება ვერ მოხერხდა: %{error}"
+queue.auto: "ავტომატური გამოსწორება"  # Label for a queued, automatically requested analysis of a failed shell command
+# Auto-fix diagnostic capture errors for the source terminal pane, shown through queue.capture_failed.
+# Capture collects shell context, working directory and output, not a screenshot. %{pane} is a pane ID.
+queue.snapshot_source_required: "ავტომატური გამოსწორებისთვის დიაგნოსტიკური მონაცემების შეგროვება მოითხოვს წყაროს პანელის ცალსახად მითითებას."
+queue.snapshot_source_unavailable: "ავტომატური გამოსწორების წყაროს პანელი %{pane} მიუწვდომელია."
+queue.snapshot_shell_unavailable: "ავტომატური გამოსწორების წყაროს პანელს %{pane} არ აქვს გარსის კონტექსტი."
+queue.snapshot_cwd_unavailable: "ავტომატური გამოსწორების წყაროს პანელს %{pane} არ აქვს სამუშაო საქაღალდე."
+queue.snapshot_output_unavailable: "ავტომატური გამოსწორების წყაროს პანელს %{pane} არ აქვს წაკითხვადი გამოტანა."
+queue.snapshot_context_changed: "წყაროს პანელში %{pane} ბრძანება შეიცვალა, სანამ მისი შეცდომის კონტექსტის შენახვა მოხერხდებოდა."
+
 # ── კავშირის მდგომარეობა ────────────────────────────────────────────────────────
 # Preparing the AI agent connection, including preflight and reuse of a cached agent.
 connection.starting: "აგენტთან კავშირის მომზადება..."

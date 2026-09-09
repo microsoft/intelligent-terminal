@@ -132,6 +132,33 @@ agents.status.idle: "Неактиван"
 # ── Layout welcome hint (src/ui/layout.rs) ──────────────────────────────────
 layout.welcome_hint: "  (Ctrl+Shift+. за приказ/скривање панела агента • Ctrl+Shift+/ за приказ/скривање сесије агента)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}
 
+# ── Prompt queue (agent pane) ───────────────────────────────────────────────
+# Pending input has not been sent to the AI agent.
+queue.header: "Поруке у реду: %{count}"  # Automatic pinned list above input: total pending user and automatic requests; hidden when empty
+queue.full: "Ред је пун. Ваш унос је сачуван."
+queue.enqueued: "Порука је додата у ред."  # Info notification when a user message must wait before being sent to the AI agent
+queue.cancelled: "Отказане поруке у реду: %{count}. Можете послати нову поруку."  # Info notification when waiting requests are discarded after cancellation, failure, or session reset
+queue.session_busy: "Поруке у реду припадају овом разговору. Пошаљите их или одбаците прије промјене сесије или конфигурације."
+queue.paused_header: "Паузирано: %{count} на чекању; не шаљу се аутоматски"  # Pinned heading: automatic sending is stopped
+queue.recall: "Врати посљедњи"  # Button: restore the newest pending request to the editor
+queue.send_remaining: "Пошаљи преостале"  # Button: resume sending pending requests
+queue.discard: "Одбаци преостале"  # Button: discard pending requests, not the draft or active task
+queue.draft_busy: "Пошаљите или обришите тренутни нацрт прије враћања захтјева из реда."
+queue.enqueued_paused: "Додато у заустављени ред. Изаберите Пошаљи преостале да га покренете."
+queue.resubmit: "Потребно је поновно слање"  # Prefix: fix evidence expired; recall and submit again
+queue.resume_blocked: "Захтјеви на чекању још не могу да се пошаљу. Ријешите проблем са везом или довршите активну интеракцију; вратите истекле захтјеве за исправку и пошаљите их поново."
+queue.stopped: "Аутоматско слање је заустављено. Кориснички захтјеви на чекању су сачувани."
+queue.capture_failed: "Није могуће сачувати контекст грешке: %{error}"
+queue.auto: "Аутоматска исправка"  # Label for a queued, automatically requested analysis of a failed shell command
+# Auto-fix diagnostic capture errors for the source terminal pane, shown through queue.capture_failed.
+# Capture collects shell context, working directory and output, not a screenshot. %{pane} is a pane ID.
+queue.snapshot_source_required: "Прикупљање података за аутоматску исправку захтијева изричито наведен изворни панел."
+queue.snapshot_source_unavailable: "Изворни панел %{pane} за аутоматску исправку није доступан."
+queue.snapshot_shell_unavailable: "Изворни панел %{pane} за аутоматску исправку нема контекст љуске."
+queue.snapshot_cwd_unavailable: "Изворни панел %{pane} за аутоматску исправку нема радни директоријум."
+queue.snapshot_output_unavailable: "Изворни панел %{pane} за аутоматску исправку нема читљив излаз."
+queue.snapshot_context_changed: "Команда у изворном панелу %{pane} промијенила се прије него што је било могуће сачувати контекст њене грешке."
+
 # ── Connection state ────────────────────────────────────────────────────────
 # Preparing the AI agent connection, including preflight and reuse of a cached agent.
 connection.starting: "Припрема везе са агентом..."

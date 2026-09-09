@@ -110,6 +110,8 @@ pub struct ChoiceExecution {
     pub insert_only: bool,
     /// Host-owned context associated with the turn that produced this choice.
     pub context: TurnContext,
+    /// Owning tab and prompt identity for the helper's action handoff barrier.
+    pub completion: Option<(String, u64)>,
 }
 
 pub fn default_supported_delegate_agents() -> Vec<SupportedDelegateAgent> {
@@ -310,6 +312,7 @@ pub async fn run_recommendation_executor(
                 }
                 Err(err) => Err(err),
             };
+        let success = result.is_ok();
         match result {
             Ok(()) => {}
             Err(err) => {
@@ -323,6 +326,13 @@ pub async fn run_recommendation_executor(
                     .into_owned(),
                 ));
             }
+        }
+        if let Some((tab_id, prompt_id)) = exec.completion {
+            let _ = event_tx.send(AppEvent::RecommendationExecutionSettled {
+                tab_id,
+                prompt_id,
+                success,
+            });
         }
     }
 }
@@ -1797,6 +1807,93 @@ mod tests {
 
         fn is_available(&self) -> bool {
             true
+        }
+    }
+
+    #[derive(Default)]
+    struct GatedActionChannel {
+        entered: tokio::sync::Notify,
+        release: tokio::sync::Notify,
+        fail: bool,
+    }
+
+    #[async_trait::async_trait]
+    impl WtChannel for GatedActionChannel {
+        async fn request(
+            &self,
+            method: &str,
+            _params: serde_json::Value,
+        ) -> anyhow::Result<serde_json::Value> {
+            if method == "send_input" {
+                self.entered.notify_one();
+                self.release.notified().await;
+                if self.fail {
+                    anyhow::bail!("deterministic action failure");
+                }
+            }
+            Ok(json!({}))
+        }
+
+        fn is_available(&self) -> bool {
+            true
+        }
+    }
+
+    #[tokio::test]
+    async fn recommendation_action_completion_waits_for_execute_choice_result() {
+        for fail in [false, true] {
+            let channel = Arc::new(GatedActionChannel {
+                fail,
+                ..Default::default()
+            });
+            let shell = Arc::new(
+                ShellManager::new().with_wt_channel(channel.clone() as Arc<dyn WtChannel>),
+            );
+            let (tx, rx) = mpsc::unbounded_channel();
+            let (event_tx, mut events) = mpsc::unbounded_channel();
+            let task = tokio::spawn(super::run_recommendation_executor(
+                rx,
+                event_tx,
+                shell,
+                Arc::new(Mutex::new(Vec::new())),
+            ));
+            tx.send(super::ChoiceExecution {
+                choice: RecommendationChoice {
+                    choice: 1,
+                    title: "Insert".into(),
+                    rationale: String::new(),
+                    actions: vec![RecommendedAction::Send {
+                        parent: "pane".into(),
+                        input: "echo test".into(),
+                    }],
+                },
+                insert_only: true,
+                context: crate::turn_context::TurnContext::with_target_pane("pane"),
+                completion: Some(("tab".into(), 42)),
+            })
+            .unwrap();
+            drop(tx);
+            channel.entered.notified().await;
+            while let Ok(event) = events.try_recv() {
+                assert!(!matches!(
+                    event,
+                    crate::app_contracts::AppEvent::RecommendationExecutionSettled { .. }
+                ));
+            }
+            channel.release.notify_one();
+            task.await.unwrap();
+            let mut settled = Vec::new();
+            while let Ok(event) = events.try_recv() {
+                if let crate::app_contracts::AppEvent::RecommendationExecutionSettled {
+                    tab_id,
+                    prompt_id,
+                    success,
+                } = event
+                {
+                    settled.push((tab_id, prompt_id, success));
+                }
+            }
+            assert_eq!(settled, vec![("tab".into(), 42, !fail)]);
         }
     }
 

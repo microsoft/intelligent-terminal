@@ -135,6 +135,33 @@ agents.status.idle: "ទំនេរ"
 # ── Layout welcome hint (src/ui/layout.rs) ──────────────────────────────────────────────────────────────
 layout.welcome_hint: "  (Ctrl+Shift+. បង្ហាញ/លាក់ផ្តាំង AI អេជេន្ត់ • Ctrl+Shift+/ បង្ហាញ/លាក់វគ្គ AI អេជេន្ត់)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}
 
+# ── Prompt queue (agent pane) ───────────────────────────────────────────────
+# Pending input has not been sent to the AI agent.
+queue.header: "សារក្នុងជួររង់ចាំ៖ %{count}"  # Automatic pinned list above input: total pending user and automatic requests; hidden when empty
+queue.full: "ជួររង់ចាំពេញហើយ។ អត្ថបទដែលអ្នកបានបញ្ចូលត្រូវបានរក្សាទុក។"
+queue.enqueued: "សារត្រូវបានបន្ថែមទៅជួររង់ចាំ។"  # Info notification when a user message must wait before being sent to the AI agent
+queue.cancelled: "បានបោះបង់សារចំនួន %{count} ក្នុងជួររង់ចាំ។ អ្នកអាចផ្ញើសារថ្មីបាន។"  # Info notification when waiting requests are discarded after cancellation, failure, or session reset
+queue.session_busy: "សារក្នុងជួររង់ចាំជារបស់ការសន្ទនានេះ។ ផ្ញើ ឬបោះបង់សារទាំងនោះ មុនពេលប្តូរវគ្គ ឬការកំណត់រចនាសម្ព័ន្ធ។"
+queue.paused_header: "បានផ្អាក៖ %{count} កំពុងរង់ចាំ; មិនផ្ញើដោយស្វ័យប្រវត្តិទេ"  # Pinned heading: automatic sending is stopped
+queue.recall: "យកសំណើចុងក្រោយមកវិញ"  # Button: restore the newest pending request to the editor
+queue.send_remaining: "ផ្ញើសំណើដែលនៅសល់"  # Button: resume sending pending requests
+queue.discard: "បោះបង់សំណើដែលនៅសល់"  # Button: discard pending requests, not the draft or active task
+queue.draft_busy: "ដាក់ស្នើ ឬសម្អាតសេចក្តីព្រាងបច្ចុប្បន្ន មុនពេលយកសំណើពីជួររង់ចាំមកវិញ។"
+queue.enqueued_paused: "បានបន្ថែមទៅជួររង់ចាំដែលបានបញ្ឈប់។ ជ្រើសរើស ផ្ញើសំណើដែលនៅសល់ ដើម្បីចាប់ផ្តើមវា។"
+queue.resubmit: "ត្រូវដាក់ស្នើម្តងទៀត"  # Prefix: fix evidence expired; recall and submit again
+queue.resume_blocked: "មិនទាន់អាចផ្ញើសំណើដែលកំពុងរង់ចាំបានទេ។ ដោះស្រាយបញ្ហាការតភ្ជាប់ ឬបញ្ចប់អន្តរកម្មសកម្ម; យកសំណើកែតម្រូវដែលផុតកំណត់មកវិញ ហើយដាក់ស្នើម្តងទៀត។"
+queue.stopped: "បានបញ្ឈប់ការផ្ញើដោយស្វ័យប្រវត្តិ។ សំណើរបស់អ្នកប្រើដែលកំពុងរង់ចាំត្រូវបានរក្សាទុក។"
+queue.capture_failed: "មិនអាចរក្សាទុកបរិបទកំហុសបានទេ៖ %{error}"
+queue.auto: "ការកែតម្រូវដោយស្វ័យប្រវត្តិ"  # Label for a queued, automatically requested analysis of a failed shell command
+# Auto-fix diagnostic capture errors for the source terminal pane, shown through queue.capture_failed.
+# Capture collects shell context, working directory and output, not a screenshot. %{pane} is a pane ID.
+queue.snapshot_source_required: "ការប្រមូលទិន្នន័យវិនិច្ឆ័យសម្រាប់ការកែតម្រូវដោយស្វ័យប្រវត្តិតម្រូវឱ្យបញ្ជាក់ផ្ទាំងប្រភពឱ្យបានច្បាស់លាស់។"
+queue.snapshot_source_unavailable: "ផ្ទាំងប្រភព %{pane} សម្រាប់ការកែតម្រូវដោយស្វ័យប្រវត្តិមិនអាចប្រើបានទេ។"
+queue.snapshot_shell_unavailable: "ផ្ទាំងប្រភព %{pane} សម្រាប់ការកែតម្រូវដោយស្វ័យប្រវត្តិមិនមានបរិបទ shell ទេ។"
+queue.snapshot_cwd_unavailable: "ផ្ទាំងប្រភព %{pane} សម្រាប់ការកែតម្រូវដោយស្វ័យប្រវត្តិមិនមានថតការងារទេ។"
+queue.snapshot_output_unavailable: "ផ្ទាំងប្រភព %{pane} សម្រាប់ការកែតម្រូវដោយស្វ័យប្រវត្តិមិនមានលទ្ធផលដែលអាចអានបានទេ។"
+queue.snapshot_context_changed: "ពាក្យបញ្ជានៅក្នុងផ្ទាំងប្រភព %{pane} បានផ្លាស់ប្តូរ មុនពេលអាចរក្សាទុកបរិបទកំហុសរបស់វាបាន។"
+
 # ── Connection state ────────────────────────────────────────────────────────────────────────
 # Preparing the AI agent connection, including preflight and reuse of a cached agent.
 connection.starting: "កំពុងរៀបចំការតភ្ជាប់ទៅភ្នាក់ងារ AI..."

@@ -123,6 +123,33 @@ agents.status.idle: "Inactief"
 # ── Welkomsthint voor indeling (src/ui/layout.rs) ──────────────────────────────────────
 layout.welcome_hint: "  (Ctrl+Shift+. om het agentdeelvenster te tonen/verbergen • Ctrl+Shift+/ om de agentsessie te tonen/verbergen)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}
 
+# ── Prompt queue (agent pane) ───────────────────────────────────────────────
+# Pending input has not been sent to the AI agent.
+queue.header: "Berichten in de wachtrij: %{count}"  # Automatic pinned list above input: total pending user and automatic requests; hidden when empty
+queue.full: "De wachtrij is vol. Uw invoer is bewaard."
+queue.enqueued: "Bericht in de wachtrij geplaatst."  # Info notification when a user message must wait before being sent to the AI agent
+queue.cancelled: "%{count} berichten in de wachtrij geannuleerd. U kunt een nieuw bericht verzenden."  # Info notification when waiting requests are discarded after cancellation, failure, or session reset
+queue.session_busy: "Berichten in de wachtrij horen bij dit gesprek. Verzend of verwijder ze voordat u van sessie of configuratie wisselt."
+queue.paused_header: "Gepauzeerd: %{count} in afwachting; worden niet automatisch verzonden"  # Pinned heading: automatic sending is stopped
+queue.recall: "Laatste terughalen"  # Button: restore the newest pending request to the editor
+queue.send_remaining: "Resterende verzenden"  # Button: resume sending pending requests
+queue.discard: "Resterende verwijderen"  # Button: discard pending requests, not the draft or active task
+queue.draft_busy: "Verzend of wis het huidige concept voordat u een verzoek uit de wachtrij terughaalt."
+queue.enqueued_paused: "Toegevoegd aan de gestopte wachtrij. Kies Resterende verzenden om deze te starten."
+queue.resubmit: "Opnieuw indienen vereist"  # Prefix: fix evidence expired; recall and submit again
+queue.resume_blocked: "Wachtende verzoeken kunnen nog niet worden verzonden. Los het verbindingsprobleem op of rond de actieve interactie af; haal verlopen correctieverzoeken terug en dien ze opnieuw in."
+queue.stopped: "Automatisch verzenden gestopt. Wachtende gebruikersverzoeken zijn behouden."
+queue.capture_failed: "De foutcontext kon niet worden bewaard: %{error}"
+queue.auto: "Automatische correctie"  # Label for a queued, automatically requested analysis of a failed shell command
+# Auto-fix diagnostic capture errors for the source terminal pane, shown through queue.capture_failed.
+# Capture collects shell context, working directory and output, not a screenshot. %{pane} is a pane ID.
+queue.snapshot_source_required: "Voor het vastleggen van gegevens voor automatische correctie moet expliciet een brondeelvenster worden opgegeven."
+queue.snapshot_source_unavailable: "Brondeelvenster %{pane} voor automatische correctie is niet beschikbaar."
+queue.snapshot_shell_unavailable: "Brondeelvenster %{pane} voor automatische correctie heeft geen shellcontext."
+queue.snapshot_cwd_unavailable: "Brondeelvenster %{pane} voor automatische correctie heeft geen werkmap."
+queue.snapshot_output_unavailable: "Brondeelvenster %{pane} voor automatische correctie heeft geen leesbare uitvoer."
+queue.snapshot_context_changed: "De opdracht in brondeelvenster %{pane} is gewijzigd voordat de foutcontext ervan kon worden bewaard."
+
 # ── Verbindingsstatus ────────────────────────────────────────────────────────────
 # Preparing the AI agent connection, including preflight and reuse of a cached agent.
 connection.starting: "Verbinding met de agent voorbereiden..."

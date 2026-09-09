@@ -143,6 +143,33 @@ agents.status.idle: "بوش"
 # ── Layout welcome hint (src/ui/layout.rs) ────────────────────────────────────────────────────────────────
 layout.welcome_hint: "  (Ctrl+Shift+. AI ئاگېنتى تاختىسىنى كۆرسەت/يوشۇرۇش • Ctrl+Shift+/ AI ئاگېنتى ئوتتۇرىسىنى كۆرسەت/يوشۇرۇش)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}
 
+# ── Prompt queue (agent pane) ───────────────────────────────────────────────
+# Pending input has not been sent to the AI agent.
+queue.header: "ئۆچرەتتىكى ئۇچۇرلار: %{count}"  # Automatic pinned list above input: total pending user and automatic requests; hidden when empty
+queue.full: "ئۆچرەت توشتى. كىرگۈزگەن مەزمۇنىڭىز ساقلاپ قېلىندى."
+queue.enqueued: "ئۇچۇر ئۆچرەتكە قوشۇلدى."  # Info notification when a user message must wait before being sent to the AI agent
+queue.cancelled: "ئۆچرەتتىكى %{count} ئۇچۇر بىكار قىلىندى. يېڭى ئۇچۇر ئەۋەتسىڭىز بولىدۇ."  # Info notification when waiting requests are discarded after cancellation, failure, or session reset
+queue.session_busy: "ئۆچرەتتىكى ئۇچۇرلار بۇ سۆھبەتكە تەۋە. سۆھبەت ياكى سەپلىمىنى ئۆزگەرتىشتىن بۇرۇن ئۇلارنى ئەۋەتىڭ ياكى ئۆچۈرۈڭ."
+queue.paused_header: "ۋاقىتلىق توختىتىلدى: %{count} كۈتۈۋاتىدۇ؛ ئاپتوماتىك ئەۋەتىلمەيدۇ"  # Pinned heading: automatic sending is stopped
+queue.recall: "ئاخىرقىسىنى قايتۇرۇڭ"  # Button: restore the newest pending request to the editor
+queue.send_remaining: "قالغانلىرىنى ئەۋەتىڭ"  # Button: resume sending pending requests
+queue.discard: "قالغانلىرىنى ئۆچۈرۈڭ"  # Button: discard pending requests, not the draft or active task
+queue.draft_busy: "ئۆچرەتتىكى تەلەپنى قايتۇرۇشتىن بۇرۇن نۆۋەتتىكى دەسلەپكى نۇسخىنى يوللاڭ ياكى تازىلاڭ."
+queue.enqueued_paused: "توختىتىلغان ئۆچرەتكە قوشۇلدى. باشلاش ئۈچۈن قالغانلىرىنى ئەۋەتىڭ نى تاللاڭ."
+queue.resubmit: "قايتا يوللاش كېرەك"  # Prefix: fix evidence expired; recall and submit again
+queue.resume_blocked: "كۈتۈۋاتقان تەلەپلەرنى تېخى ئەۋەتكىلى بولمايدۇ. ئۇلىنىش مەسىلىسىنى ھەل قىلىڭ ياكى ئاكتىپ ئۆزئارا تەسىرلىشىشنى تاماملاڭ؛ ۋاقتى ئۆتكەن تۈزىتىش تەلەپلىرىنى قايتۇرۇپ قايتا يوللاڭ."
+queue.stopped: "ئاپتوماتىك ئەۋەتىش توختىتىلدى. كۈتۈۋاتقان ئىشلەتكۈچى تەلەپلىرى ساقلاپ قېلىندى."
+queue.capture_failed: "خاتالىق مەزمۇنىنى ساقلىغىلى بولمىدى: %{error}"
+queue.auto: "ئاپتوماتىك تۈزىتىش"  # Label for a queued, automatically requested analysis of a failed shell command
+# Auto-fix diagnostic capture errors for the source terminal pane, shown through queue.capture_failed.
+# Capture collects shell context, working directory and output, not a screenshot. %{pane} is a pane ID.
+queue.snapshot_source_required: "ئاپتوماتىك تۈزىتىش ئۈچۈن ئۇچۇر توپلاشتا مەنبە تاختىسى ئېنىق كۆرسىتىلىشى كېرەك."
+queue.snapshot_source_unavailable: "ئاپتوماتىك تۈزىتىشنىڭ %{pane} مەنبە تاختىسىنى ئىشلەتكىلى بولمايدۇ."
+queue.snapshot_shell_unavailable: "ئاپتوماتىك تۈزىتىشنىڭ %{pane} مەنبە تاختىسىدا shell مۇھىتى يوق."
+queue.snapshot_cwd_unavailable: "ئاپتوماتىك تۈزىتىشنىڭ %{pane} مەنبە تاختىسىدا خىزمەت مۇندەرىجىسى يوق."
+queue.snapshot_output_unavailable: "ئاپتوماتىك تۈزىتىشنىڭ %{pane} مەنبە تاختىسىدا ئوقۇغىلى بولىدىغان چىقىرىش يوق."
+queue.snapshot_context_changed: "%{pane} مەنبە تاختىسىدىكى بۇيرۇق ئۇنىڭ خاتالىق مەزمۇنىنى ساقلاشتىن بۇرۇن ئۆزگىرىپ كەتتى."
+
 # ── Connection state ────────────────────────────────────────────────────────────────────────
 # Preparing the AI agent connection, including preflight and reuse of a cached agent.
 connection.starting: "AI ئاگېنتىغا ئۇلىنىش تەييارلىنىۋاتىدۇ..."

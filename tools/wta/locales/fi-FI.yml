@@ -123,6 +123,33 @@ agents.status.idle: "Vapaa"
 # ── Layout welcome hint (src/ui/layout.rs) ──────────────────────────────────
 layout.welcome_hint: "  (Ctrl+Shift+. näyttää/piilottaa agenttipaneelin • Ctrl+Shift+/ näyttää/piilottaa agenttiistunnon)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}
 
+# ── Prompt queue (agent pane) ───────────────────────────────────────────────
+# Pending input has not been sent to the AI agent.
+queue.header: "Jonossa olevat viestit: %{count}"  # Automatic pinned list above input: total pending user and automatic requests; hidden when empty
+queue.full: "Jono on täynnä. Syötteesi on säilytetty."
+queue.enqueued: "Viesti lisättiin jonoon."  # Info notification when a user message must wait before being sent to the AI agent
+queue.cancelled: "Peruutettiin %{count} jonossa olevaa viestiä. Voit lähettää uuden viestin."  # Info notification when waiting requests are discarded after cancellation, failure, or session reset
+queue.session_busy: "Jonossa olevat viestit kuuluvat tähän keskusteluun. Lähetä tai hylkää ne ennen istunnon tai määritysten vaihtamista."
+queue.paused_header: "Keskeytetty: %{count} odottaa; ei lähetetä automaattisesti"  # Pinned heading: automatic sending is stopped
+queue.recall: "Palauta viimeisin"  # Button: restore the newest pending request to the editor
+queue.send_remaining: "Lähetä loput"  # Button: resume sending pending requests
+queue.discard: "Hylkää loput"  # Button: discard pending requests, not the draft or active task
+queue.draft_busy: "Lähetä tai tyhjennä nykyinen luonnos ennen jonossa olevan pyynnön palauttamista."
+queue.enqueued_paused: "Lisätty pysäytettyyn jonoon. Käynnistä se valitsemalla Lähetä loput."
+queue.resubmit: "Lähetettävä uudelleen"  # Prefix: fix evidence expired; recall and submit again
+queue.resume_blocked: "Odottavia pyyntöjä ei voi vielä lähettää. Korjaa yhteysongelma tai viimeistele aktiivinen vuorovaikutus; palauta vanhentuneet korjauspyynnöt ja lähetä ne uudelleen."
+queue.stopped: "Automaattinen lähetys pysäytetty. Odottavat käyttäjän pyynnöt on säilytetty."
+queue.capture_failed: "Virheen kontekstia ei voitu säilyttää: %{error}"
+queue.auto: "Automaattinen korjaus"  # Label for a queued, automatically requested analysis of a failed shell command
+# Auto-fix diagnostic capture errors for the source terminal pane, shown through queue.capture_failed.
+# Capture collects shell context, working directory and output, not a screenshot. %{pane} is a pane ID.
+queue.snapshot_source_required: "Kontekstin kerääminen automaattista korjausta varten edellyttää lähdepaneelin nimenomaista määrittämistä."
+queue.snapshot_source_unavailable: "Automaattisen korjauksen lähdepaneeli %{pane} ei ole käytettävissä."
+queue.snapshot_shell_unavailable: "Automaattisen korjauksen lähdepaneelilla %{pane} ei ole shell-kontekstia."
+queue.snapshot_cwd_unavailable: "Automaattisen korjauksen lähdepaneelilla %{pane} ei ole työhakemistoa."
+queue.snapshot_output_unavailable: "Automaattisen korjauksen lähdepaneelilla %{pane} ei ole luettavaa tulostetta."
+queue.snapshot_context_changed: "Lähdepaneelin %{pane} komento vaihtui ennen kuin sen virhekonteksti voitiin tallentaa."
+
 # ── Connection state ────────────────────────────────────────────────────────
 # Preparing the AI agent connection, including preflight and reuse of a cached agent.
 connection.starting: "Valmistellaan agenttiyhteyttä..."
