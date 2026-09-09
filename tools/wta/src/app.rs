@@ -3869,9 +3869,7 @@ impl App {
         {
             let mut rows: Vec<_> = snapshot.iter().map(session_info_to_agent_session).collect();
             rows.sort_by(|a, b| b.last_activity_at.cmp(&a.last_activity_at));
-            if let Some(want) = filter.as_ref() {
-                rows.retain(|s| &s.cli_source == want || matches!(&s.cli_source, crate::agent_sessions::CliSource::Unknown(v) if v.is_empty()));
-            }
+            rows.retain(|s| crate::ui::agents_view::matches_cli(s, filter.as_ref()));
             // Apply the MVP origin filter on top of the cli filter.
             // Snapshot rows come from master via SessionInfo where origin
             // is Option<SessionOrigin>; session_info_to_agent_session
@@ -3884,9 +3882,7 @@ impl App {
             rows
         } else {
             let mut rows = self.local_agent_rows();
-            if let Some(want) = filter.as_ref() {
-                rows.retain(|s| &s.cli_source == want);
-            }
+            rows.retain(|s| crate::ui::agents_view::matches_cli(s, filter.as_ref()));
             rows.retain(|s| origin.matches(&s.origin));
             rows.retain(|s| crate::ui::agents_view::matches_source(s, &source));
             rows.retain(|s| crate::ui::agents_view::matches_folded_query(s, &folded_query));

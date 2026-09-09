@@ -156,12 +156,7 @@ pub(crate) fn render(
                 .collect();
             rows.sort_by(|a, b| b.last_activity_at.cmp(&a.last_activity_at));
             let total = rows.len();
-            if let Some(want) = cli_filter {
-                rows.retain(|s| {
-                    &s.cli_source == want
-                        || matches!(&s.cli_source, CliSource::Unknown(v) if v.is_empty())
-                });
-            }
+            rows.retain(|s| matches_cli(s, cli_filter));
             // MVP origin filter. Stays in sync with the same retain inside
             // `App::agents_rows_for_tab` (which feeds the cursor / Enter
             // dispatch); both call sites read `app.sessions_origin_filter`.
@@ -176,7 +171,7 @@ pub(crate) fn render(
             let rows: Vec<AgentSession> = local_rows
                 .iter()
                 .cloned()
-                .filter(|s| cli_filter.is_none_or(|want| &s.cli_source == want))
+                .filter(|s| matches_cli(s, cli_filter))
                 .filter(|s| origin_filter.matches(&s.origin))
                 .filter(|s| matches_source(s, source_filter))
                 .collect();
@@ -525,6 +520,13 @@ fn row_for(
 /// execution source exactly.
 pub(crate) fn matches_source(session: &AgentSession, pane_location: &SessionLocation) -> bool {
     &session.location == pane_location
+}
+
+pub(crate) fn matches_cli(session: &AgentSession, cli_filter: Option<&CliSource>) -> bool {
+    cli_filter.is_none_or(|want| {
+        &session.cli_source == want
+            || matches!(&session.cli_source, CliSource::Unknown(value) if value.is_empty())
+    })
 }
 
 pub(crate) fn matches_folded_query(session: &AgentSession, folded_query: &str) -> bool {

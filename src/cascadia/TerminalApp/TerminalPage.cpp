@@ -4419,7 +4419,7 @@ namespace winrt::TerminalApp::implementation
         }
         if (changeKind == AgentSettingsChangeKind::None)
         {
-            // Runtime-only changes still advance the baseline. Otherwise an
+            // Runtime-only changes still advance the baseline. Otherwise, an
             // On -> Off -> On toggle loses the hook reconciliation on re-enable.
             _lastAgentSettings = current;
             _agentPaneLog("_ReconcileAgentSettings: no change");

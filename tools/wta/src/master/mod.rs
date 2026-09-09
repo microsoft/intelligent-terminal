@@ -8397,7 +8397,7 @@ async fn refresh_session_management_enabled(state: &MasterStateInner) {
         return;
     };
     // Invalidate missed activity even if a newer host event supersedes the
-    // asynchronous settings read. Otherwise helpers could wait forever for
+    // asynchronous settings read. Otherwise, helpers could wait forever for
     // transitions that this listener never observed.
     reconcile_session_management_enabled(state, None, None).await;
     let revision = state.session_tracking.read().await.configuration_revision;

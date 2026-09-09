@@ -3698,7 +3698,7 @@ fn session_tracking_hook(session_id: &str, event: &str) -> AppEvent {
             "cli_source": "claude",
             "agent_session_id": session_id,
             "payload": {
-                "cwd": r"C:\repo",
+                "cwd": "C:\\repo",
                 "tool_name": "edit",
                 "notification_type": "permission_prompt"
             }
@@ -8507,6 +8507,70 @@ fn f5_in_session_view_refetches_sessions() {
     }
     assert_eq!(app.current_tab().agents_view.search_query, "active search");
     assert!(app.current_tab().agents_view.search_focused);
+}
+
+#[test]
+fn session_cli_filter_keeps_local_snapshot_and_rendered_rows_in_sync() {
+    use crate::agent_sessions::{CliSource, OriginFilter, SessionEvent};
+    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+
+    let _locale = crate::test_support::lock_locale();
+    let mut app = test_app();
+    app.state = ConnectionState::Connected;
+    app.sessions_origin_filter = OriginFilter::All;
+    for (key, cli_source) in [
+        ("matching-session", CliSource::Claude),
+        ("unknown-session", CliSource::Unknown(String::new())),
+        ("other-session", CliSource::Copilot),
+        ("custom-session", CliSource::Unknown("custom".into())),
+    ] {
+        app.agent_sessions.apply(SessionEvent::SessionStarted {
+            key: key.into(),
+            cli_source,
+            pane_session_id: format!("pane-{key}"),
+            cwd: std::path::PathBuf::from("C:\\repo"),
+            title: key.into(),
+        });
+    }
+    let snapshot: Vec<_> = app
+        .local_agent_rows()
+        .iter()
+        .map(crate::session_registry::agent_session_to_session_info)
+        .collect();
+
+    for use_snapshot in [false, true] {
+        app.current_agent_id = "claude".into();
+        app.current_tab_mut().current_view = View::Agents;
+        app.current_tab_mut().pane_open = true;
+        app.current_tab_mut().agents_view.snapshot = use_snapshot.then(|| snapshot.clone());
+        let rows = app.agents_rows_for_tab(DEFAULT_TAB_ID);
+        let mut keys: Vec<_> = rows.iter().map(|row| row.key.as_str()).collect();
+        keys.sort_unstable();
+        assert_eq!(keys, ["matching-session", "unknown-session"]);
+        let text = render_to_text(&mut app, 100, 24);
+        assert!(text.contains("matching-session"), "{text}");
+        assert!(text.contains("unknown-session"), "{text}");
+        assert!(!text.contains("other-session"), "{text}");
+        assert!(!text.contains("custom-session"), "{text}");
+
+        let selected = rows.iter().position(|row| row.key == "unknown-session");
+        app.current_tab_mut().agents_list_state.select(selected);
+        app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+        let command = app
+            .last_dispatched_command_for_test()
+            .expect("the visible unknown-source row must remain actionable");
+        assert_eq!(command.kind, DispatchedCommandKind::FocusPane);
+        assert_eq!(command.session_id.as_deref(), Some("unknown-session"));
+
+        app.current_agent_id.clear();
+        app.current_tab_mut().current_view = View::Agents;
+        app.current_tab_mut().pane_open = true;
+        assert_eq!(app.agents_rows_for_tab(DEFAULT_TAB_ID).len(), 4);
+        let text = render_to_text(&mut app, 100, 24);
+        for row in &snapshot {
+            assert!(text.contains(row.session_id.0.as_ref()), "{text}");
+        }
+    }
 }
 
 #[test]
