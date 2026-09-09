@@ -361,7 +361,7 @@ void WindowEmperor::CreateNewWindow(winrt::TerminalApp::WindowRequestedArgs args
         }
     }
 
-    // Startup layout can run reentrantly in Initialize. Do not acknowledge
+    // Startup layout can run before Initialize returns. Do not acknowledge
     // a transfer until this host is counted, registered, and in COM fan-out.
     addedHost->Logic().ContentTransferReceiverReady();
 }

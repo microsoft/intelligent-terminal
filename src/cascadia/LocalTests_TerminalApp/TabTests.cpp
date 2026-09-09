@@ -315,6 +315,7 @@ namespace TerminalAppLocalTests
         TEST_METHOD(ContentTransferAgentLaterLaterSplitFailureRollsBack);
         TEST_METHOD(ContentTransferFirstLayoutWaitsForReceiver);
         TEST_METHOD(ContentTransferReceiverWaitsForFirstLayout);
+        TEST_METHOD(ContentTransferExpiredStartupClosesEmptyReceiver);
         TEST_METHOD(ContentTransferMissingMoveHandlerPreservesSource);
         TEST_METHOD(ContentTransferRejectedWindowPreservesSource);
         TEST_METHOD(ClosingAgentPaneSuppressesPrewarm);
@@ -3205,6 +3206,69 @@ namespace TerminalAppLocalTests
     void TabTests::ContentTransferReceiverWaitsForFirstLayout()
     {
         _verifyContentTransferStartupGate(false);
+    }
+
+    void TabTests::ContentTransferExpiredStartupClosesEmptyReceiver()
+    {
+        auto fixture = _createContentTransferFixture(true, true, true);
+        const auto cleanup = wil::scope_exit([&]() {
+            RunOnUIThread([&]() {
+                _closeContentTransferFixture(*fixture, false);
+                fixture.reset();
+            });
+        });
+        TestOnUIThread([&]() {
+            const auto applicationState = ApplicationState::SharedInstance();
+            const auto freCompleted = applicationState.AgentFreCompleted();
+            const auto restoreFreCompleted = wil::scope_exit([&]() {
+                applicationState.AgentFreCompleted(freCompleted);
+            });
+            applicationState.AgentFreCompleted(true);
+
+            const auto request = _requestContentTransfer(*fixture);
+            const auto& destination = fixture->destination;
+            const auto actions = ActionAndArgs::Deserialize(request.Content());
+            destination->SetStartupActions({ actions.begin(), actions.end() });
+            destination->SetStartupTransfer(request.TransferId());
+
+            unsigned int closeRequests = 0;
+            const auto closeToken = destination->CloseWindowRequested([&](auto&&, auto&&) {
+                ++closeRequests;
+            });
+            const auto revokeClose = wil::scope_exit([&]() {
+                destination->CloseWindowRequested(closeToken);
+            });
+            unsigned int receiveAttempts = 0;
+            destination->_contentTransferTestHook = [&](TransferStage stage, uint64_t, uint32_t) {
+                if (stage == TransferStage::BeforeClaim)
+                {
+                    ++receiveAttempts;
+                    winrt::TerminalApp::implementation::ContentTransfer::Expire(request.TransferId());
+                }
+            };
+            const auto clearHook = wil::scope_exit([&]() { destination->_contentTransferTestHook = {}; });
+
+            destination->_OnFirstLayout(nullptr, nullptr);
+            VERIFY_IS_TRUE(destination->_startupState == winrt::TerminalApp::implementation::StartupState::InStartup);
+            VERIFY_ARE_EQUAL(0u, receiveAttempts);
+            VERIFY_ARE_EQUAL(0u, closeRequests);
+            _verifyTransferRollback(*fixture);
+
+            destination->ContentTransferReceiverReady();
+            VERIFY_ARE_EQUAL(1u, receiveAttempts);
+            VERIFY_ARE_EQUAL(1u, closeRequests);
+            VERIFY_ARE_EQUAL(0u, destination->_tabs.Size());
+            VERIFY_ARE_EQUAL(uint64_t{ 0 }, destination->_startupTransferId);
+            VERIFY_IS_TRUE(destination->_startupState == winrt::TerminalApp::implementation::StartupState::Initialized);
+            _verifyTransferRollback(*fixture);
+
+            destination->ContentTransferReceiverReady();
+            destination->_OnFirstLayout(nullptr, nullptr);
+            VERIFY_ARE_EQUAL(1u, receiveAttempts);
+            VERIFY_ARE_EQUAL(1u, closeRequests);
+            _verifyTransferRollback(*fixture);
+            _closeContentTransferFixture(*fixture, true);
+        });
     }
 
     void TabTests::_verifyContentTransferSourceRejection(bool rejectWindow)

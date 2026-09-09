@@ -423,7 +423,7 @@ and cross-window pane moves register a whole-batch `ContentTransfer`.
 forwarded through `WindowRequestedArgs` to a new window's first layout.
 Creating an AppHost is not an acknowledgement. Both first layout and
 registration in the window manager/COM fan-out must finish before the
-receiver can commit, even if layout runs reentrantly during initialization.
+receiver can commit, even if layout runs before initialization returns.
 
 Pending requests retain only weak references to the source. The original
 tab, controls, pane tree, hidden state, helper, and `AgentPaneLifetime`
