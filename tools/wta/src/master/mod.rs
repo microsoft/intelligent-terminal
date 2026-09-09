@@ -8376,6 +8376,9 @@ async fn reconcile_session_management_enabled(
                 tracing::warn!(target: "session_tracking", %error, enabled, "failed to update file observation");
             }
         }
+        // Keep tracking -> registry lock order and hold this guard through clearing:
+        // snapshots must not pair a new generation with old activity, nor may this
+        // clear erase observations already accepted for the new generation.
         // Discard observed status, not the internal Resume/ACP baseline.
         state.registry.clear_observed_activity().await;
         tracing::info!(
