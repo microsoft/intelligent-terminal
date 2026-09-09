@@ -619,20 +619,20 @@ namespace winrt::Microsoft::Terminal::Control::implementation
         // * we're already not closing
         // * caller already checked weak ptr to make sure we're still alive
 
-        _isInternalScrollBarUpdate = true;
-
         auto scrollBar = ScrollBar();
-        if (update.newValue)
         {
-            scrollBar.Value(*update.newValue);
+            const auto wasInternal = std::exchange(_isInternalScrollBarUpdate, true);
+            const auto restoreInternal = wil::scope_exit([&]() { _isInternalScrollBarUpdate = wasInternal; });
+            scrollBar.Maximum(update.newMaximum);
+            scrollBar.Minimum(update.newMinimum);
+            if (update.newValue)
+            {
+                scrollBar.Value(*update.newValue);
+            }
+            scrollBar.ViewportSize(update.newViewportSize);
+            // scroll one full screen worth at a time when the scroll bar is clicked
+            scrollBar.LargeChange(std::max(update.newViewportSize - 1, 0.));
         }
-        scrollBar.Maximum(update.newMaximum);
-        scrollBar.Minimum(update.newMinimum);
-        scrollBar.ViewportSize(update.newViewportSize);
-        // scroll one full screen worth at a time when the scroll bar is clicked
-        scrollBar.LargeChange(std::max(update.newViewportSize - 1, 0.));
-
-        _isInternalScrollBarUpdate = false;
 
         if (_showMarksInScrollbar)
         {
@@ -1486,18 +1486,17 @@ namespace winrt::Microsoft::Terminal::Control::implementation
 
         _core.EnablePainting();
 
-        auto bufferHeight = _core.BufferHeight();
-
-        ScrollBar().Maximum(0);
-        ScrollBar().Minimum(0);
-        ScrollBar().Value(0);
-        ScrollBar().ViewportSize(bufferHeight);
-        ScrollBar().LargeChange(bufferHeight); // scroll one "screenful" at a time when the scroll bar is clicked
-
         // Now that the renderer is set up, update the appearance for initialization
         _UpdateAppearanceFromUIThread(_core.FocusedAppearance());
 
         _initializedTerminal = true;
+        // Reattachment must not turn scrollbar initialization into user input
+        // that changes the existing core's viewport.
+        _throttledUpdateScrollbar(ScrollBarUpdate{
+            static_cast<double>(_core.ScrollOffset()),
+            static_cast<double>(_core.BufferHeight() - _core.ViewHeight()),
+            0,
+            static_cast<double>(_core.ViewHeight()) });
 
         // MSFT 33353327: If the AutomationPeer was created before we were done initializing,
         // make sure it's properly set up now.

@@ -448,11 +448,18 @@ opens it. The original source remains the event owner during preparation.
 Commit transfers the move-only agent lifetimes and ordinary control
 ownership before removing the source. Session restore metadata and per-tab
 agent overrides survive immediately, without waiting for helper status replay.
+Whole-tab moves also preserve explicit agent-close prewarm suppression before
+deferred initialization runs. Moving a single pane does not overwrite the
+destination tab's own suppression state.
 Failure detaches all prepared
 controls and resumes the original controls, including their renderer,
-owning HWND, automation peer, and focus state. It does not create replacement
+owning HWND, automation peer, focus state, and viewport scroll offset. Scrollbar
+initialization reads the core's current state without generating user scroll input.
+It does not create replacement
 sessions or start a master-lease drain. Hidden agent panes defer stashing until
-the entire layout is rebuilt, including nested splits that revisit the agent leaf.
+the entire pane tree is rebuilt, including nested splits that revisit the agent leaf.
+The receiver then restores hidden state before applying final focus and zoom;
+deferred stash focus cannot override the final focused pane.
 
 The request registry serializes claims and expiry, but normal core and XAML
 operations remain UI-thread-affine. Atomic core closure remains the final

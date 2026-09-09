@@ -9481,6 +9481,20 @@ namespace winrt::TerminalApp::implementation
         }
         const auto firstSplit = actions.GetAt(0).Args().try_as<SplitPaneArgs>();
         const auto targetTab = firstSplit && tabIndex < _tabs.Size() ? _GetTabImpl(_tabs.GetAt(tabIndex)) : nullptr;
+        auto layoutActionCount = actions.Size();
+        if (!firstSplit)
+        {
+            // Keep navigation used by splits in place, but restore the tab's
+            // final focus and zoom only after its hidden panes are restored.
+            if (layoutActionCount > 1 && actions.GetAt(layoutActionCount - 1).Action() == ShortcutAction::TogglePaneZoom)
+            {
+                --layoutActionCount;
+            }
+            if (layoutActionCount > 1 && actions.GetAt(layoutActionCount - 1).Action() == ShortcutAction::FocusPane)
+            {
+                --layoutActionCount;
+            }
+        }
         if (firstSplit)
         {
             actions.SetAt(0, ActionAndArgs{ ShortcutAction::NewTab, NewTabArgs{ firstSplit.ContentArgs() } });
@@ -9532,8 +9546,7 @@ namespace winrt::TerminalApp::implementation
                 ++suspended;
                 control.SuspendContentTransfer();
             }
-            for (uint32_t i = 0; i < actions.Size(); ++i)
-            {
+            const auto dispatchAction = [&](uint32_t i) {
                 // Never let a rejected first action redirect subsequent splits
                 // or tab metadata into whichever unrelated tab has focus.
                 THROW_HR_IF(E_ABORT, i && (!destinationTab || _GetFocusedTab() != *destinationTab));
@@ -9545,12 +9558,16 @@ namespace winrt::TerminalApp::implementation
                     destinationTab = transfer.tabs.front();
                     THROW_HR_IF(E_ABORT, _GetFocusedTab() != *destinationTab);
                 }
+            };
+            for (uint32_t i = 0; i < layoutActionCount; ++i)
+            {
+                dispatchAction(i);
             }
             THROW_HR_IF(E_ABORT, transfer.controls.size() != sourceControls.size() ||
                                     transfer.agents.size() != transfer.sourceAgents.size() ||
                                     !source._GetTabIndex(*sourceTab));
-            // Rebuilding nested splits can revisit the agent leaf. Hide it only
-            // after every serialized split and focus action has completed.
+            // Hiding reparents the shell sibling, so it must precede zooming.
+            // Nested splits must still finish before the agent leaf is hidden.
             for (const auto& [oldAgent, newAgent] : transfer.agents)
             {
                 const auto impl = winrt::get_self<implementation::AgentPaneContent>(newAgent);
@@ -9560,6 +9577,10 @@ namespace winrt::TerminalApp::implementation
                     destinationTab->StashAgentPane();
                     THROW_HR_IF(E_ABORT, !destinationTab->FindAgentPane()->IsHidden());
                 }
+            }
+            for (uint32_t i = layoutActionCount; i < actions.Size(); ++i)
+            {
+                dispatchAction(i);
             }
             if (targetTab)
             {
@@ -9666,6 +9687,17 @@ namespace winrt::TerminalApp::implementation
         for (const auto& control : sourceControls)
         {
             control.CommitContentDetach();
+        }
+        if (!firstSplit)
+        {
+            if (sourceTab->AgentPrewarmSuppressed())
+            {
+                destinationTab->SuppressAgentPrewarm();
+            }
+            else
+            {
+                destinationTab->AllowAgentPrewarm();
+            }
         }
         try
         {

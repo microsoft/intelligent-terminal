@@ -2596,8 +2596,11 @@ namespace winrt::TerminalApp::implementation
                     if (dispatcher)
                     {
                         auto weakControl = winrt::make_weak(termControl);
-                        dispatcher.TryEnqueue(DispatcherQueuePriority::Low, [weakControl]() {
-                            if (const auto ctrl = weakControl.get())
+                        dispatcher.TryEnqueue(DispatcherQueuePriority::Low, [weakControl, weakThis = get_weak()]() {
+                            const auto tab = weakThis.get();
+                            const auto ctrl = weakControl.get();
+                            // A transferred layout may restore a different final focus.
+                            if (tab && ctrl && tab->GetActiveTerminalControl() == ctrl)
                             {
                                 ctrl.Focus(winrt::Windows::UI::Xaml::FocusState::Programmatic);
                             }
