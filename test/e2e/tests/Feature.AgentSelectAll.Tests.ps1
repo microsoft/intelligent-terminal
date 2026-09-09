@@ -117,9 +117,8 @@ Describe 'Feature: agent pane select all' -Tag 'Feature' -Skip:(-not $script:Rea
         $script:pasteText = {
             param([string]$Text)
             Set-Clipboard -Value $Text
-            $listener = Start-WtEventListener -App $script:app
+            $listener = Start-WtEventListener -App $script:app -WaitForReady
             try {
-                Start-Sleep -Milliseconds 400
                 & $script:sendKey -Vk 0x56 -Ctrl
                 $event = Wait-WtEvent -Listener $listener -TimeoutSec 5 -Predicate {
                     $_.method -eq 'agent_paste_text' -and

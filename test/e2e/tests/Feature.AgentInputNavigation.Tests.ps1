@@ -90,9 +90,8 @@ Describe 'Feature: agent input visual-row navigation' -Tag 'Feature' -Skip:(-not
             $tail = @($Text -split "`r?`n" | Where-Object { $_.Length -gt 0 })[-1]
             $script:navigationPasteTail = $tail.Substring([Math]::Max(0, $tail.Length - 8))
             Set-Clipboard -Value $Text
-            $listener = Start-WtEventListener -App $script:app
+            $listener = Start-WtEventListener -App $script:app -WaitForReady
             try {
-                Start-Sleep -Milliseconds 300
                 & $script:sendPhysicalKey -Vk 0x56 -Ctrl
                 $event = Wait-WtEvent -Listener $listener -TimeoutSec 5 -Predicate {
                     $_.method -eq 'agent_paste_text' -and

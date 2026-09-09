@@ -439,6 +439,7 @@ impl App {
                 self.cancel_completed_turn_click();
                 if !self.chat_input_has_edit_focus() && !self.current_tab().paste_pending {
                     self.current_tab_mut().input_all_selected = false;
+                    self.current_tab_mut().input_vertical_goal = None;
                 }
                 let is_select_all = matches!(key.code, KeyCode::Char('a'))
                     && key.modifiers == KeyModifiers::CONTROL;
@@ -479,6 +480,7 @@ impl App {
                 self.handle_key(key);
                 if !self.chat_input_has_edit_focus() && !self.current_tab().paste_pending {
                     self.current_tab_mut().input_all_selected = false;
+                    self.current_tab_mut().input_vertical_goal = None;
                 }
             }
             AppEvent::Mouse(mouse) => match mouse.kind {

@@ -307,8 +307,14 @@ pub(crate) fn adjacent_input_cursor(
 ) -> Option<(usize, usize)> {
     let width = usize::from(input_text_width(total_width));
     let cursor_pos = clamp_cursor_to_boundary(input, cursor_pos);
-    // Include the terminal's trailing caret row even while the caret is elsewhere.
-    let wrapped = wrap_input(input, input.len(), width);
+    // Keep a trailing caret row reachable during an established vertical sequence,
+    // without inventing an initial Down target for a full-width single visible row.
+    let layout_cursor = if preferred_column.is_some() {
+        input.len()
+    } else {
+        cursor_pos
+    };
+    let wrapped = wrap_input(input, layout_cursor, width);
     let row = wrapped
         .line_starts
         .partition_point(|start| *start <= cursor_pos)

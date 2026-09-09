@@ -69,6 +69,16 @@ Describe 'ItE2E live primitives' -Tag 'Live' -Skip:(-not $script:HasPackage) {
     }
 
     Context 'Observation' {
+        It 'confirms event subscription before returning to the caller' -Tag 'ListenerReady' {
+            $listener = Start-WtEventListener -App $script:app -WaitForReady
+            try {
+                $listener.SubscriptionReady | Should -BeTrue
+                @(Get-WtEvents -Listener $listener | Where-Object {
+                    $_.PSObject.Properties.Name -contains '_wtcli'
+                }).Count | Should -Be 0 -Because 'the internal readiness marker must not reach event consumers'
+            }
+            finally { Stop-WtEventListener -Listener $listener }
+        }
         It 'resolves a versioned log directory' {
             Get-ItLogDir -App $script:app | Should -Not -BeNullOrEmpty
         }

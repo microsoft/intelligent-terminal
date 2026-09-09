@@ -135,6 +135,10 @@ Three planes, all built on self-verifying primitives:
   verified window/thread and restores the previous layout before closing, so an active IME
   cannot retain the probe text as a composition.
 
+When an action's event is the oracle, start its listener with
+`Start-WtEventListener -WaitForReady` before triggering the action. This uses the
+subscription handshake rather than a fixed startup delay.
+
 One-shot setup + verify:
 
 ```powershell

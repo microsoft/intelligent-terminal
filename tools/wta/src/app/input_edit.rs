@@ -305,7 +305,6 @@ impl TabSession {
             upward,
             preferred,
         ) else {
-            self.input_vertical_goal = None;
             return false;
         };
         self.cursor_pos = if upward {

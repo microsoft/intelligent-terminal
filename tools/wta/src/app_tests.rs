@@ -12472,6 +12472,27 @@ fn input_vertical_explicit_rows_preserve_the_edit_position() {
 }
 
 #[test]
+fn input_vertical_noop_boundary_keeps_the_preferred_column() {
+    let mut app = test_app();
+    app.current_tab_mut()
+        .replace_input(concat!("x", "\n", "bravo").into());
+    render_to_text(&mut app, 80, 16);
+    app.handle_event(AppEvent::Key(KeyEvent::new(
+        KeyCode::Up,
+        KeyModifiers::NONE,
+    )));
+    app.handle_event(AppEvent::Key(KeyEvent::new(
+        KeyCode::Up,
+        KeyModifiers::NONE,
+    )));
+    app.handle_event(AppEvent::Key(KeyEvent::new(
+        KeyCode::Down,
+        KeyModifiers::NONE,
+    )));
+    assert_eq!(app.current_tab().cursor_pos, app.current_tab().input.len());
+}
+
+#[test]
 fn input_vertical_keeps_preferred_column_across_short_rows() {
     let mut app = test_app();
     app.current_tab_mut()
@@ -12526,6 +12547,19 @@ fn input_vertical_soft_wrap_start_stays_on_the_requested_row() {
         KeyModifiers::NONE,
     )));
     assert_eq!(app.current_tab().cursor_pos, 6);
+}
+
+#[test]
+fn input_vertical_full_single_row_does_not_create_a_down_target() {
+    let mut app = test_app();
+    app.current_tab_mut().replace_input("alpha one".into());
+    app.current_tab_mut().cursor_pos = 3;
+    render_to_text(&mut app, 14, 16);
+    app.handle_event(AppEvent::Key(KeyEvent::new(
+        KeyCode::Down,
+        KeyModifiers::NONE,
+    )));
+    assert_eq!(app.current_tab().cursor_pos, 3);
 }
 
 #[test]
