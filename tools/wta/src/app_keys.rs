@@ -713,6 +713,7 @@ impl App {
                 // slash-command popup cannot edit the input behind a card.
             }
             KeyCode::Char('o') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                self.current_tab_mut().toggle_thinking_details();
                 self.current_tab_mut().toggle_all_completed_tool_calls();
             }
             KeyCode::F(12) => {

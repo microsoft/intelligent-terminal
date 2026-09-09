@@ -16,6 +16,81 @@ pub const SERVER_ID_HEX_LEN: usize = 16;
 pub const HELPER_REQUEST_METHOD: &str = "_intellterm.wta/request_terminal_actions";
 pub const USER_INPUT_HELPER_REQUEST_METHOD: &str = "_intellterm.wta/request_user_input";
 pub const CANCEL_USER_INPUT_HELPER_REQUEST_METHOD: &str = "_intellterm.wta/cancel_user_input";
+const SERVER_IDENTITY_META_KEY: &str = "_intellterm/session_mcp_server";
+
+/// Written by master after removing any provider-supplied value.
+pub(crate) fn stamp_server_identity(
+    meta: &mut Option<agent_client_protocol::schema::v1::Meta>,
+    server_name: Option<&str>,
+) {
+    if let Some(meta) = meta {
+        meta.remove(SERVER_IDENTITY_META_KEY);
+    }
+    if let Some(server_name) = server_name {
+        meta.get_or_insert_with(Default::default)
+            .insert(SERVER_IDENTITY_META_KEY.into(), json!(server_name));
+    }
+}
+
+pub(crate) fn server_identity(
+    meta: Option<&agent_client_protocol::schema::v1::Meta>,
+) -> Option<&str> {
+    meta?.get(SERVER_IDENTITY_META_KEY)?.as_str()
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum SessionMcpTool {
+    TerminalAction(super::action_proposal::schema::McpActionTool),
+    UserInput,
+}
+
+impl SessionMcpTool {
+    #[cfg(test)]
+    pub(crate) const ALL: [Self; 4] = [
+        Self::TerminalAction(
+            super::action_proposal::schema::McpActionTool::RunCommandInCurrentShell,
+        ),
+        Self::TerminalAction(super::action_proposal::schema::McpActionTool::CreateWorkspace),
+        Self::TerminalAction(
+            super::action_proposal::schema::McpActionTool::DelegateTaskInNewWorkspace,
+        ),
+        Self::UserInput,
+    ];
+
+    pub(crate) fn name(self) -> &'static str {
+        match self {
+            Self::TerminalAction(tool) => tool.tool_name(),
+            Self::UserInput => USER_INPUT_TOOL_NAME,
+        }
+    }
+
+    pub(crate) fn from_title(title: Option<&str>, server_name: &str) -> Option<Self> {
+        if server_name.is_empty() {
+            return None;
+        }
+        let title = title?.trim();
+        let title = title.strip_prefix("Use MCP tool: ").unwrap_or(title);
+        let name = title
+            .strip_prefix(server_name)
+            .and_then(|suffix| {
+                suffix
+                    .strip_prefix('/')
+                    .or_else(|| suffix.strip_prefix('-'))
+            })
+            .or_else(|| {
+                title
+                    .strip_prefix("mcp__")?
+                    .strip_prefix(server_name)?
+                    .strip_prefix("__")
+            })?;
+        if name == USER_INPUT_TOOL_NAME {
+            Some(Self::UserInput)
+        } else {
+            super::action_proposal::schema::McpActionTool::from_tool_name(name)
+                .map(Self::TerminalAction)
+        }
+    }
+}
 
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -57,19 +132,6 @@ pub fn user_input_helper_method_matches(method: &str) -> bool {
 pub fn cancel_user_input_helper_method_matches(method: &str) -> bool {
     method.trim_start_matches('_')
         == CANCEL_USER_INPUT_HELPER_REQUEST_METHOD.trim_start_matches('_')
-}
-
-pub fn server_name_matches(name: &str) -> bool {
-    if name == "intelligent_terminal" {
-        return true;
-    }
-    name.strip_prefix(SERVER_NAME_PREFIX)
-        .is_some_and(|server_id| {
-            server_id.len() == SERVER_ID_HEX_LEN
-                && server_id
-                    .chars()
-                    .all(|ch| ch.is_ascii_digit() || ('a'..='f').contains(&ch))
-        })
 }
 
 pub async fn dispatch<A, ActionFuture, U, UserInputFuture>(

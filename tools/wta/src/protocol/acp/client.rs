@@ -16,6 +16,7 @@ use tokio::sync::mpsc;
 use tokio_util::compat::{TokioAsyncReadCompatExt, TokioAsyncWriteCompatExt};
 use tokio_util::sync::CancellationToken;
 
+use crate::agent_tools::session_mcp::{server_identity, SessionMcpTool};
 use crate::app_contracts::{AcpModelInfo, AppEvent, PermOption, PlanEntry, PlanEntryStatus};
 use crate::pane_context::PaneContext;
 use crate::shell::{ShellManager, TerminalConfig};
@@ -680,7 +681,7 @@ struct ClientState {
     provider_probe_capture: ProviderProbeCapture,
     standard_usage_sessions: Mutex<HashSet<String>>,
     proposal_channels: Arc<crate::agent_tools::action_proposal::channel::ProposalChannelManager>,
-    hidden_tool_calls: std::sync::Mutex<HashMap<(String, String), SessionMcpTool>>,
+    hidden_tool_calls: std::sync::Mutex<HashMap<(String, String), HiddenToolCall>>,
 }
 
 #[derive(Default)]
@@ -1185,75 +1186,14 @@ fn proposal_command_candidate(raw_input: Option<&serde_json::Value>) -> Option<&
     raw_input?.as_object()?.get("command")?.as_str()
 }
 
-fn is_session_mcp_server_name(name: &str) -> bool {
-    crate::agent_tools::session_mcp::server_name_matches(name)
-}
-
-fn is_dynamic_session_mcp_server_name(name: &str) -> bool {
-    name != "intelligent_terminal" && is_session_mcp_server_name(name)
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum SessionMcpTool {
-    TerminalAction(crate::agent_tools::action_proposal::schema::McpActionTool),
-    UserInput,
-}
-
-impl SessionMcpTool {
-    const ALL: [Self; 4] = [
-        Self::TerminalAction(
-            crate::agent_tools::action_proposal::schema::McpActionTool::RunCommandInCurrentShell,
-        ),
-        Self::TerminalAction(
-            crate::agent_tools::action_proposal::schema::McpActionTool::CreateWorkspace,
-        ),
-        Self::TerminalAction(
-            crate::agent_tools::action_proposal::schema::McpActionTool::DelegateTaskInNewWorkspace,
-        ),
-        Self::UserInput,
-    ];
-
-    fn name(self) -> &'static str {
-        match self {
-            Self::TerminalAction(tool) => tool.tool_name(),
-            Self::UserInput => "request_user_input",
-        }
-    }
-}
-
-fn session_mcp_tool_from_title_matching(
-    title: Option<&str>,
-    server_name_matches: fn(&str) -> bool,
-) -> Option<SessionMcpTool> {
-    let Some(title) = title.map(str::trim) else {
-        return None;
-    };
-    let title = title.strip_prefix("Use MCP tool: ").unwrap_or(title);
-    for tool in SessionMcpTool::ALL {
-        for separator in ["/", "-"] {
-            if let Some(server_name) = title.strip_suffix(&format!("{separator}{}", tool.name())) {
-                if server_name_matches(server_name) {
-                    return Some(tool);
-                }
-            }
-        }
-        if title
-            .strip_prefix("mcp__")
-            .and_then(|title| title.strip_suffix(&format!("__{}", tool.name())))
-            .is_some_and(server_name_matches)
-        {
-            return Some(tool);
-        }
-    }
-    None
-}
-
-fn session_mcp_tool_from_title(title: Option<&str>) -> Option<SessionMcpTool> {
-    session_mcp_tool_from_title_matching(title, is_session_mcp_server_name)
-}
-
-fn session_mcp_tool_from_dynamic_title(title: Option<&str>) -> Option<SessionMcpTool> {
-    session_mcp_tool_from_title_matching(title, is_dynamic_session_mcp_server_name)
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum HiddenToolCall {
+    SessionMcp {
+        tool: SessionMcpTool,
+        server_name: String,
+    },
+    // Hiding legacy proposal commands is not proof of Session MCP identity.
+    Other,
 }
 
 fn looks_like_proposal_command(command: &str) -> bool {
@@ -1337,34 +1277,59 @@ impl WtaClient {
         }
     }
 
-    fn hide_session_mcp_tool_call(
-        &self,
-        session_id: &str,
-        tool_call_id: &str,
-        tool: SessionMcpTool,
-    ) {
-        self.state
-            .hidden_tool_calls
-            .lock()
-            .unwrap()
-            .insert((session_id.to_string(), tool_call_id.to_string()), tool);
+    fn hide_tool_call(&self, session_id: &str, tool_call_id: &str, tool: HiddenToolCall) {
+        let previous = self.state.hidden_tool_calls.lock().unwrap().insert(
+            (session_id.to_string(), tool_call_id.to_string()),
+            tool.clone(),
+        );
+        if previous.as_ref() == Some(&tool) {
+            return;
+        }
         let _ = self.state.event_tx.send(AppEvent::HideToolCall {
             session_id: session_id.to_string(),
             id: tool_call_id.to_string(),
         });
     }
 
-    fn hidden_session_mcp_tool(
-        &self,
-        session_id: &str,
-        tool_call_id: &str,
-    ) -> Option<SessionMcpTool> {
+    fn hidden_tool_call(&self, session_id: &str, tool_call_id: &str) -> Option<HiddenToolCall> {
         self.state
             .hidden_tool_calls
             .lock()
             .unwrap()
             .get(&(session_id.to_string(), tool_call_id.to_string()))
-            .copied()
+            .cloned()
+    }
+
+    fn session_mcp_tool(
+        &self,
+        session_id: &str,
+        tool_call_id: &str,
+        title: Option<&str>,
+        server_name: Option<&str>,
+    ) -> Option<SessionMcpTool> {
+        // Master overwrites this identity on every forwarded permission/update.
+        // Correlation is valid only for that exact, currently bound server.
+        server_name
+            .and_then(|name| SessionMcpTool::from_title(title, name))
+            .or_else(|| {
+                let key = (session_id.to_string(), tool_call_id.to_string());
+                let mut calls = self.state.hidden_tool_calls.lock().unwrap();
+                match calls.get(&key) {
+                    Some(HiddenToolCall::SessionMcp {
+                        tool,
+                        server_name: previous,
+                    }) if Some(previous.as_str()) == server_name
+                        && title.is_none_or(|title| title.trim() == tool.name()) =>
+                    {
+                        Some(*tool)
+                    }
+                    Some(HiddenToolCall::SessionMcp { .. }) => {
+                        calls.remove(&key);
+                        None
+                    }
+                    _ => None,
+                }
+            })
     }
 
     async fn request_permission(
@@ -1380,25 +1345,24 @@ impl WtaClient {
         let session_id = args.session_id.0.to_string();
         let tool_call_id = args.tool_call.tool_call_id.to_string();
         let proposal_candidate = proposal_permission_command_candidate(&args);
-        // Permission titles are agent-authored. Only a title carrying the
-        // validated per-session MCP server name, or a tool call already
-        // correlated through the hidden-call map, is trusted for silent
-        // approval. The public action names are intentionally generic and a
-        // bare `run_command_in_current_shell` from an unrelated provider tool must not bypass
-        // the normal permission UI merely because its payload has the same
-        // shape.
-        let session_mcp_tool = session_mcp_tool_from_title(args.tool_call.fields.title.as_deref())
-            .or_else(|| self.hidden_session_mcp_tool(&session_id, &tool_call_id));
-        if let Some(tool) = session_mcp_tool {
-            self.hide_session_mcp_tool_call(&session_id, &tool_call_id, tool);
-        } else if proposal_candidate.is_some_and(looks_like_proposal_command) {
-            self.hide_session_mcp_tool_call(
+        let server_name = server_identity(args.meta.as_ref());
+        let session_mcp_tool = self.session_mcp_tool(
+            &session_id,
+            &tool_call_id,
+            args.tool_call.fields.title.as_deref(),
+            server_name,
+        );
+        if let Some((tool, server_name)) = session_mcp_tool.zip(server_name) {
+            self.hide_tool_call(
                 &session_id,
                 &tool_call_id,
-                SessionMcpTool::TerminalAction(
-                    crate::agent_tools::action_proposal::schema::McpActionTool::RunCommandInCurrentShell,
-                ),
+                HiddenToolCall::SessionMcp {
+                    tool,
+                    server_name: server_name.to_string(),
+                },
             );
+        } else if proposal_candidate.is_some_and(looks_like_proposal_command) {
+            self.hide_tool_call(&session_id, &tool_call_id, HiddenToolCall::Other);
         }
         let title = args
             .tool_call
@@ -1441,7 +1405,7 @@ impl WtaClient {
                 tool = tool.name(),
                 validated = permission_result.is_ok(),
                 status = ?permission_result.as_ref().err().map(|failure| failure.status),
-                "validating session MCP permission before user selection"
+                "validating session MCP permission"
             );
             if permission_result.is_err() {
                 self.state
@@ -1501,6 +1465,38 @@ impl WtaClient {
             ));
         }
 
+        if let Some(tool) = session_mcp_tool {
+            // The MCP handler still validates the request and presents the action
+            // card or question. Only skip this duplicate, invocation-scoped prompt.
+            if let Some(option) = args.options.iter().find(|option| {
+                matches!(
+                    option.kind,
+                    acp::schema::v1::PermissionOptionKind::AllowOnce
+                )
+            }) {
+                tracing::info!(
+                    target: "session_mcp_permission",
+                    session_id = %session_id,
+                    tool = tool.name(),
+                    "auto-approved Session MCP invocation; helper confirmation still required"
+                );
+                self.state
+                    .prompt_timing
+                    .permission_resolved(&session_id, "session_mcp_auto_approved");
+                return Ok(acp::schema::v1::RequestPermissionResponse::new(
+                    acp::schema::v1::RequestPermissionOutcome::Selected(
+                        acp::schema::v1::SelectedPermissionOutcome::new(option.option_id.clone()),
+                    ),
+                ));
+            }
+            tracing::info!(
+                target: "session_mcp_permission",
+                session_id = %session_id,
+                tool = tool.name(),
+                "Session MCP permission has no AllowOnce option; awaiting user selection"
+            );
+        }
+
         let options: Vec<PermOption> = args
             .options
             .iter()
@@ -1556,6 +1552,7 @@ impl WtaClient {
         &self,
         args: acp::schema::v1::SessionNotification,
     ) -> acp::Result<()> {
+        let server_name = server_identity(args.meta.as_ref());
         let kind = session_update_kind(&args.update);
         let session_id = args.session_id.clone();
         let sid = args.session_id.0.to_string();
@@ -1625,23 +1622,30 @@ impl WtaClient {
             }
             acp::schema::v1::SessionUpdate::ToolCall(tool_call) => {
                 let tool_call_id = tool_call.tool_call_id.to_string();
-                if let Some(tool) = session_mcp_tool_from_dynamic_title(Some(&tool_call.title)) {
-                    self.hide_session_mcp_tool_call(&sid, &tool_call_id, tool);
+                if let Some((tool, server_name)) = self
+                    .session_mcp_tool(&sid, &tool_call_id, Some(&tool_call.title), server_name)
+                    .zip(server_name)
+                {
+                    self.hide_tool_call(
+                        &sid,
+                        &tool_call_id,
+                        HiddenToolCall::SessionMcp {
+                            tool,
+                            server_name: server_name.to_string(),
+                        },
+                    );
                     return Ok(());
                 }
                 if proposal_command_candidate(tool_call.raw_input.as_ref())
                     .is_some_and(looks_like_proposal_command)
                 {
-                    self.hide_session_mcp_tool_call(
-                        &sid,
-                        &tool_call_id,
-                        SessionMcpTool::TerminalAction(
-                            crate::agent_tools::action_proposal::schema::McpActionTool::RunCommandInCurrentShell,
-                        ),
-                    );
+                    self.hide_tool_call(&sid, &tool_call_id, HiddenToolCall::Other);
                     return Ok(());
                 }
-                if self.hidden_session_mcp_tool(&sid, &tool_call_id).is_some() {
+                if matches!(
+                    self.hidden_tool_call(&sid, &tool_call_id),
+                    Some(HiddenToolCall::Other)
+                ) {
                     return Ok(());
                 }
                 self.state
@@ -1673,25 +1677,35 @@ impl WtaClient {
             }
             acp::schema::v1::SessionUpdate::ToolCallUpdate(update) => {
                 let tool_call_id = update.tool_call_id.to_string();
-                if let Some(tool) =
-                    session_mcp_tool_from_dynamic_title(update.fields.title.as_deref())
+                if let Some((tool, server_name)) = self
+                    .session_mcp_tool(
+                        &sid,
+                        &tool_call_id,
+                        update.fields.title.as_deref(),
+                        server_name,
+                    )
+                    .zip(server_name)
                 {
-                    self.hide_session_mcp_tool_call(&sid, &tool_call_id, tool);
+                    self.hide_tool_call(
+                        &sid,
+                        &tool_call_id,
+                        HiddenToolCall::SessionMcp {
+                            tool,
+                            server_name: server_name.to_string(),
+                        },
+                    );
                     return Ok(());
                 }
                 if proposal_command_candidate(update.fields.raw_input.as_ref())
                     .is_some_and(looks_like_proposal_command)
                 {
-                    self.hide_session_mcp_tool_call(
-                        &sid,
-                        &tool_call_id,
-                        SessionMcpTool::TerminalAction(
-                            crate::agent_tools::action_proposal::schema::McpActionTool::RunCommandInCurrentShell,
-                        ),
-                    );
+                    self.hide_tool_call(&sid, &tool_call_id, HiddenToolCall::Other);
                     return Ok(());
                 }
-                if self.hidden_session_mcp_tool(&sid, &tool_call_id).is_some() {
+                if matches!(
+                    self.hidden_tool_call(&sid, &tool_call_id),
+                    Some(HiddenToolCall::Other)
+                ) {
                     return Ok(());
                 }
                 // Failed updates frequently carry a `raw_output.message`
@@ -2575,9 +2589,8 @@ fn provider_permission_contract_blocked(error: &str) -> String {
 }
 
 fn provider_disable_pending() -> String {
-    provider_permission_contract_blocked(
-        "the provider has not acknowledged the required nonprivileged session state",
-    )
+    let error = t!("system.yolo_disable_pending");
+    provider_permission_contract_blocked(error.as_ref())
 }
 
 fn publish_retryable_lazy_yolo_error(event_tx: &mpsc::UnboundedSender<AppEvent>, session_id: &str) {
@@ -5883,25 +5896,48 @@ async fn dispatch_prompt_body(
 }
 
 #[cfg(test)]
+pub(crate) use tests::assert_session_mcp_permission_contract;
+
+#[cfg(test)]
 mod tests {
     use super::acp;
     use super::{
         acp_error_detail, acp_result_failure_fields, bounded_tool_output_parts,
         claim_unexpected_transport_loss, complete_prompt_request, complete_transport_shutdown,
         inject_wta_pane_meta, is_redundant_startup_model_error, post_login_authenticate_error,
-        retire_queued_prompt_submissions, session_mcp_tool_from_title, stop_prompt_tasks,
+        provider_disable_pending, retire_queued_prompt_submissions, stop_prompt_tasks,
         timeout_result_failure_fields, tool_call_exit_code, tool_call_kind_label,
         tool_call_location_hint, tool_call_target, AcpClientExit, ClientState,
         PromptDispatchCleanup, PromptSubmission, PromptTask, PromptTimingState,
         PromptUsageIdentity, SessionMcpTool, SoftStopReason, WtaClient,
     };
+    use crate::agent_tools::session_mcp::stamp_server_identity;
     use crate::app_contracts::AppEvent;
     use crate::protocol::acp::failure::{AgentFailure, HandshakeStage};
     use crate::shell::ShellManager;
     use std::collections::{HashMap, HashSet};
     use std::sync::{Arc, Mutex};
+    use std::time::Duration;
     use tokio::sync::mpsc;
     use tokio_util::sync::CancellationToken;
+
+    #[test]
+    fn provider_disable_pending_localizes_reason() {
+        const ENGLISH_PENDING: &str =
+            "the provider has not acknowledged the required nonprivileged session state";
+        let _locale = crate::test_support::lock_locale();
+        rust_i18n::set_locale("de-DE");
+
+        let localized_error = t!("system.yolo_disable_pending");
+        let message = provider_disable_pending();
+
+        assert_ne!(localized_error.as_ref(), ENGLISH_PENDING);
+        assert!(message.ends_with(localized_error.as_ref()));
+        assert!(
+            !message.contains(ENGLISH_PENDING),
+            "pending reason must be localized: {message}"
+        );
+    }
 
     #[test]
     fn prompt_dispatch_cleanup_finds_rekeyed_identity() {
@@ -6191,7 +6227,7 @@ mod tests {
             ToolCallUpdate, ToolCallUpdateFields,
         };
 
-        RequestPermissionRequest::new(
+        let mut request = RequestPermissionRequest::new(
             acp::schema::v1::SessionId::new("proposal-session"),
             ToolCallUpdate::new(
                 ToolCallId::new("proposal-mcp-tool"),
@@ -6207,7 +6243,21 @@ mod tests {
                 "Allow once",
                 PermissionOptionKind::AllowOnce,
             )],
-        )
+        );
+        stamp_server_identity(&mut request.meta, Some("intellterm_0123456789abcdef"));
+        request
+    }
+
+    fn session_mcp_notification(
+        session_id: &str,
+        update: acp::schema::v1::SessionUpdate,
+    ) -> acp::schema::v1::SessionNotification {
+        let mut notification = acp::schema::v1::SessionNotification::new(
+            acp::schema::v1::SessionId::new(session_id),
+            update,
+        );
+        stamp_server_identity(&mut notification.meta, Some("intellterm_0123456789abcdef"));
+        notification
     }
 
     fn proposal_test_client(
@@ -6304,7 +6354,7 @@ mod tests {
     }
 
     #[tokio::test(flavor = "current_thread")]
-    async fn proposal_mcp_permission_requires_user_selection() {
+    async fn proposal_mcp_permission_auto_approves_once_without_consuming_proposal() {
         tokio::task::LocalSet::new()
             .run_until(async {
                 let manager = Arc::new(
@@ -6325,23 +6375,24 @@ mod tests {
                     Some(AppEvent::HideToolCall { session_id, id })
                         if session_id == "proposal-session" && id == "proposal-mcp-tool"
                 ));
-                match event_rx.recv().await {
-                    Some(AppEvent::PermissionRequest { responder, .. }) => {
-                        responder.send("allow-once".to_string()).unwrap();
-                    }
-                    other => panic!(
-                        "expected PermissionRequest, got is_some={}",
-                        other.is_some()
-                    ),
-                }
-                assert!(handle.await.unwrap().is_ok());
+                let response = tokio::time::timeout(Duration::from_secs(1), handle)
+                    .await
+                    .expect("Session MCP permission must not wait for user input")
+                    .unwrap()
+                    .unwrap();
+                assert!(matches!(
+                    response.outcome,
+                    acp::schema::v1::RequestPermissionOutcome::Selected(selected)
+                        if selected.option_id.to_string() == "allow-once"
+                ));
+                assert!(event_rx.try_recv().is_err());
                 assert!(manager.begin_mcp_validation("proposal-session").is_ok());
             })
             .await;
     }
 
     #[tokio::test(flavor = "current_thread")]
-    async fn user_input_mcp_permission_requires_user_selection() {
+    async fn user_input_mcp_permission_auto_approves_once() {
         use acp::schema::v1::{
             PermissionOption, PermissionOptionKind, RequestPermissionRequest, ToolCallId,
             ToolCallUpdate, ToolCallUpdateFields,
@@ -6354,25 +6405,25 @@ mod tests {
                 );
                 let (client, mut event_rx) = proposal_test_client(manager);
                 let handle = tokio::task::spawn_local(async move {
-                    client
-                        .request_permission(RequestPermissionRequest::new(
-                            acp::schema::v1::SessionId::new("input-session"),
-                            ToolCallUpdate::new(
-                                ToolCallId::new("input-tool"),
-                                ToolCallUpdateFields::new()
-                                    .title("intellterm_0123456789abcdef/request_user_input")
-                                    .raw_input(serde_json::json!({
-                                        "question": "Choose",
-                                        "choices": ["A", "B"]
-                                    })),
-                            ),
-                            vec![PermissionOption::new(
-                                "allow-once",
-                                "Allow once",
-                                PermissionOptionKind::AllowOnce,
-                            )],
-                        ))
-                        .await
+                    let mut request = RequestPermissionRequest::new(
+                        acp::schema::v1::SessionId::new("input-session"),
+                        ToolCallUpdate::new(
+                            ToolCallId::new("input-tool"),
+                            ToolCallUpdateFields::new()
+                                .title("intellterm_0123456789abcdef/request_user_input")
+                                .raw_input(serde_json::json!({
+                                    "question": "Choose",
+                                    "choices": ["A", "B"]
+                                })),
+                        ),
+                        vec![PermissionOption::new(
+                            "allow-once",
+                            "Allow once",
+                            PermissionOptionKind::AllowOnce,
+                        )],
+                    );
+                    stamp_server_identity(&mut request.meta, Some("intellterm_0123456789abcdef"));
+                    client.request_permission(request).await
                 });
 
                 assert!(matches!(
@@ -6380,18 +6431,427 @@ mod tests {
                     Some(AppEvent::HideToolCall { session_id, id })
                         if session_id == "input-session" && id == "input-tool"
                 ));
-                match event_rx.recv().await {
-                    Some(AppEvent::PermissionRequest { responder, .. }) => {
-                        responder.send("allow-once".to_string()).unwrap();
-                    }
-                    other => panic!(
-                        "expected PermissionRequest, got is_some={}",
-                        other.is_some()
-                    ),
-                }
-                assert!(handle.await.unwrap().is_ok());
+                let response = tokio::time::timeout(Duration::from_secs(1), handle)
+                    .await
+                    .expect("Session MCP permission must not wait for user input")
+                    .unwrap()
+                    .unwrap();
+                assert!(matches!(
+                    response.outcome,
+                    acp::schema::v1::RequestPermissionOutcome::Selected(selected)
+                        if selected.option_id.to_string() == "allow-once"
+                ));
+                assert!(event_rx.try_recv().is_err());
             })
             .await;
+    }
+
+    #[tokio::test]
+    async fn session_mcp_permission_auto_approves_supported_tools_and_title_shapes() {
+        use acp::schema::v1::{PermissionOption, PermissionOptionKind};
+
+        for tool in SessionMcpTool::ALL {
+            for title in [
+                format!("intellterm_0123456789abcdef/{}", tool.name()),
+                format!("Use MCP tool: intellterm_0123456789abcdef/{}", tool.name()),
+                format!("intellterm_0123456789abcdef-{}", tool.name()),
+                format!("mcp__intellterm_0123456789abcdef__{}", tool.name()),
+            ] {
+                let manager = Arc::new(
+                    crate::agent_tools::action_proposal::channel::ProposalChannelManager::new(),
+                );
+                manager
+                    .issue("proposal-session".into(), 1, None, false)
+                    .unwrap();
+                let (client, mut events) = proposal_test_client(Arc::clone(&manager));
+                let mut request = proposal_mcp_permission_request();
+                request.tool_call.fields.title = Some(title.clone());
+                request.options = vec![
+                    PermissionOption::new("deny", "Deny", PermissionOptionKind::RejectOnce),
+                    PermissionOption::new("always", "Always", PermissionOptionKind::AllowAlways),
+                    PermissionOption::new("this-call", "Once", PermissionOptionKind::AllowOnce),
+                ];
+                let response = tokio::time::timeout(
+                    Duration::from_secs(1),
+                    client.request_permission(request),
+                )
+                .await
+                .expect("own MCP tools must skip the duplicate permission dialog")
+                .unwrap();
+                assert!(
+                    matches!(
+                        response.outcome,
+                        acp::schema::v1::RequestPermissionOutcome::Selected(selected)
+                            if selected.option_id.to_string() == "this-call"
+                    ),
+                    "{title}"
+                );
+                assert!(matches!(
+                    events.try_recv(),
+                    Ok(AppEvent::HideToolCall { .. })
+                ));
+                assert!(events.try_recv().is_err());
+                assert!(manager.begin_mcp_validation("proposal-session").is_ok());
+            }
+        }
+    }
+
+    async fn assert_permission_waits_for_user(
+        client: &WtaClient,
+        events: &mut mpsc::UnboundedReceiver<AppEvent>,
+        request: acp::schema::v1::RequestPermissionRequest,
+    ) {
+        tokio::time::timeout(Duration::from_secs(1), async {
+            let selected_id = request.options[0].option_id.to_string();
+            let permission = client.request_permission(request);
+            tokio::pin!(permission);
+            loop {
+                tokio::select! {
+                    biased;
+                    _ = &mut permission => panic!("permission resolved without user selection"),
+                    event = events.recv() => match event {
+                        Some(AppEvent::HideToolCall { .. }) => {}
+                        Some(AppEvent::PermissionRequest { responder, .. }) => {
+                            responder.send(selected_id.clone()).unwrap();
+                            break;
+                        }
+                        _ => panic!("expected interactive permission request"),
+                    }
+                }
+            }
+            let response = permission.await.unwrap();
+            assert!(matches!(
+                response.outcome,
+                acp::schema::v1::RequestPermissionOutcome::Selected(selected)
+                    if selected.option_id.to_string() == selected_id
+            ));
+            assert!(events.try_recv().is_err());
+        })
+        .await
+        .expect("interactive permission exchange timed out");
+    }
+
+    pub(crate) async fn assert_session_mcp_permission_contract(
+        server_name: &str,
+        tool_names: &[String],
+        meta: Option<acp::schema::v1::Meta>,
+        auto_approve: bool,
+    ) {
+        use acp::schema::v1::{SessionUpdate, ToolCall, ToolCallUpdate, ToolCallUpdateFields};
+
+        for name in tool_names {
+            for title in [
+                format!("{server_name}/{name}"),
+                format!("Use MCP tool: {server_name}/{name}"),
+                format!("{server_name}-{name}"),
+                format!("mcp__{server_name}__{name}"),
+            ] {
+                for source in ["permission", "tool-call", "tool-call-update"] {
+                    let manager = Arc::new(
+                        crate::agent_tools::action_proposal::channel::ProposalChannelManager::new(),
+                    );
+                    manager
+                        .issue("proposal-session".into(), 1, None, false)
+                        .unwrap();
+                    let (client, mut events) = proposal_test_client(manager);
+                    let mut request = proposal_mcp_permission_request();
+                    request.meta = meta.clone();
+                    request.tool_call.fields.title = Some(title.clone());
+                    if source != "permission" {
+                        let update = if source == "tool-call" {
+                            SessionUpdate::ToolCall(ToolCall::new("proposal-mcp-tool", &title))
+                        } else {
+                            SessionUpdate::ToolCallUpdate(ToolCallUpdate::new(
+                                "proposal-mcp-tool",
+                                ToolCallUpdateFields::new().title(&title),
+                            ))
+                        };
+                        let mut notification = session_mcp_notification("proposal-session", update);
+                        notification.meta = meta.clone();
+                        client.session_notification(notification).await.unwrap();
+                        assert_eq!(
+                            matches!(events.try_recv().unwrap(), AppEvent::HideToolCall { .. }),
+                            auto_approve,
+                            "{source}: {title}",
+                        );
+                        assert!(events.try_recv().is_err());
+                        request.tool_call.fields.title = None;
+                    }
+                    if auto_approve {
+                        let response = tokio::time::timeout(
+                            Duration::from_secs(1),
+                            client.request_permission(request),
+                        )
+                        .await
+                        .expect("published Session MCP tool must auto-approve")
+                        .unwrap();
+                        assert!(
+                            matches!(
+                                response.outcome,
+                                acp::schema::v1::RequestPermissionOutcome::Selected(selected)
+                                    if selected.option_id.to_string() == "allow-once"
+                            ),
+                            "{source}: {title}"
+                        );
+                        if source == "permission" {
+                            assert!(matches!(
+                                events.try_recv(),
+                                Ok(AppEvent::HideToolCall { .. })
+                            ));
+                        }
+                        assert!(events.try_recv().is_err());
+                    } else {
+                        assert_permission_waits_for_user(&client, &mut events, request).await;
+                    }
+                }
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn session_mcp_permission_rejects_stale_or_conflicting_correlation() {
+        use acp::schema::v1::{SessionUpdate, ToolCall, ToolCallUpdate, ToolCallUpdateFields};
+
+        for source in ["tool-call", "tool-call-update"] {
+            for change in [
+                "missing",
+                "replaced",
+                "foreign-title",
+                "different-tool",
+                "foreign-update",
+            ] {
+                let manager = Arc::new(
+                    crate::agent_tools::action_proposal::channel::ProposalChannelManager::new(),
+                );
+                manager
+                    .issue("proposal-session".into(), 1, None, false)
+                    .unwrap();
+                let (client, mut events) = proposal_test_client(manager);
+                let title = "intellterm_0123456789abcdef/run_command_in_current_shell";
+                let update = if source == "tool-call" {
+                    SessionUpdate::ToolCall(ToolCall::new("proposal-mcp-tool", title))
+                } else {
+                    SessionUpdate::ToolCallUpdate(ToolCallUpdate::new(
+                        "proposal-mcp-tool",
+                        ToolCallUpdateFields::new().title(title),
+                    ))
+                };
+                client
+                    .session_notification(session_mcp_notification("proposal-session", update))
+                    .await
+                    .unwrap();
+                assert!(matches!(
+                    events.try_recv(),
+                    Ok(AppEvent::HideToolCall { .. })
+                ));
+                let mut request = proposal_mcp_permission_request();
+                request.tool_call.fields.title = None;
+                match change {
+                    "missing" => request.meta = None,
+                    "replaced" => stamp_server_identity(
+                        &mut request.meta,
+                        Some("intellterm_9876543210987654"),
+                    ),
+                    "foreign-title" => {
+                        request.tool_call.fields.title =
+                            Some("intellterm_9876543210987654/run_command_in_current_shell".into())
+                    }
+                    "different-tool" => {
+                        request.tool_call.fields.title = Some("request_user_input".into())
+                    }
+                    "foreign-update" => {
+                        client
+                            .session_notification(session_mcp_notification(
+                                "proposal-session",
+                                SessionUpdate::ToolCallUpdate(ToolCallUpdate::new(
+                                    "proposal-mcp-tool",
+                                    ToolCallUpdateFields::new().title(
+                                        "intellterm_9876543210987654/run_command_in_current_shell",
+                                    ),
+                                )),
+                            ))
+                            .await
+                            .unwrap();
+                        assert!(matches!(
+                            events.try_recv(),
+                            Ok(AppEvent::ToolCallUpdate { .. })
+                        ));
+                    }
+                    _ => unreachable!(),
+                }
+                assert_permission_waits_for_user(&client, &mut events, request).await;
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn session_mcp_permission_does_not_auto_approve_unqualified_or_foreign_tools() {
+        for title in [
+            "run_command_in_current_shell",
+            "request_user_input",
+            "intelligent_terminal/run_command_in_current_shell",
+            "Use MCP tool: other/run_command_in_current_shell",
+            "mcp__other__request_user_input",
+            "intellterm_0123456789abcde/run_command_in_current_shell",
+            "intellterm_9876543210987654/run_command_in_current_shell",
+            "mcp__intellterm_9876543210987654__request_user_input",
+            "intellterm_0123456789abcdef/unknown_tool",
+        ] {
+            let manager = Arc::new(
+                crate::agent_tools::action_proposal::channel::ProposalChannelManager::new(),
+            );
+            manager
+                .issue("proposal-session".into(), 1, None, false)
+                .unwrap();
+            let (client, mut events) = proposal_test_client(manager);
+            let mut request = proposal_mcp_permission_request();
+            request.tool_call.fields.title = Some(title.to_string());
+            assert_permission_waits_for_user(&client, &mut events, request).await;
+        }
+    }
+
+    #[tokio::test]
+    async fn session_mcp_permission_without_allow_once_keeps_user_selection() {
+        let manager =
+            Arc::new(crate::agent_tools::action_proposal::channel::ProposalChannelManager::new());
+        manager
+            .issue("proposal-session".into(), 1, None, false)
+            .unwrap();
+        let (client, mut events) = proposal_test_client(manager);
+        let mut request = proposal_mcp_permission_request();
+        request.options = vec![acp::schema::v1::PermissionOption::new(
+            "always",
+            "Always",
+            acp::schema::v1::PermissionOptionKind::AllowAlways,
+        )];
+        assert_permission_waits_for_user(&client, &mut events, request).await;
+    }
+
+    #[tokio::test]
+    async fn session_mcp_permission_rejects_invalid_turn_channels_before_auto_approval() {
+        for state in ["missing", "other-session", "awaiting-user", "unavailable"] {
+            let manager = Arc::new(
+                crate::agent_tools::action_proposal::channel::ProposalChannelManager::new(),
+            );
+            if state != "missing" {
+                let session = if state == "other-session" {
+                    "other-session"
+                } else {
+                    "proposal-session"
+                };
+                manager.issue(session.into(), 1, None, false).unwrap();
+            }
+            if state == "awaiting-user" {
+                let context = manager.begin_mcp_validation("proposal-session").unwrap();
+                assert!(manager.accept_validation_detached(&context.proposal_id));
+            }
+            if state == "unavailable" {
+                manager.set_agent_transport_available(false);
+            }
+            let (client, mut events) = proposal_test_client(manager);
+            let response = client
+                .request_permission(proposal_mcp_permission_request())
+                .await
+                .unwrap();
+            assert!(
+                matches!(
+                    response.outcome,
+                    acp::schema::v1::RequestPermissionOutcome::Cancelled
+                ),
+                "{state}"
+            );
+            assert!(matches!(
+                events.try_recv(),
+                Ok(AppEvent::HideToolCall { .. })
+            ));
+            assert!(events.try_recv().is_err());
+        }
+    }
+
+    #[tokio::test]
+    async fn session_mcp_permission_correlates_only_matching_session_and_call_id() {
+        use acp::schema::v1::{SessionUpdate, ToolCall};
+
+        for (session, call_id) in [
+            ("proposal-session", "proposal-mcp-tool"),
+            ("other-session", "proposal-mcp-tool"),
+            ("proposal-session", "other-tool"),
+        ] {
+            let manager = Arc::new(
+                crate::agent_tools::action_proposal::channel::ProposalChannelManager::new(),
+            );
+            manager
+                .issue("proposal-session".into(), 1, None, false)
+                .unwrap();
+            let (client, mut events) = proposal_test_client(manager);
+            client
+                .session_notification(session_mcp_notification(
+                    session,
+                    SessionUpdate::ToolCall(ToolCall::new(
+                        call_id,
+                        "intellterm_0123456789abcdef/run_command_in_current_shell",
+                    )),
+                ))
+                .await
+                .unwrap();
+            assert!(matches!(
+                events.try_recv(),
+                Ok(AppEvent::HideToolCall { .. })
+            ));
+            let mut request = proposal_mcp_permission_request();
+            request.tool_call.fields.title = None;
+            if session == "proposal-session" && call_id == "proposal-mcp-tool" {
+                let response = tokio::time::timeout(
+                    Duration::from_secs(1),
+                    client.request_permission(request),
+                )
+                .await
+                .expect("correlated permission must auto-approve")
+                .unwrap();
+                assert!(matches!(
+                    response.outcome,
+                    acp::schema::v1::RequestPermissionOutcome::Selected(_)
+                ));
+                assert!(events.try_recv().is_err());
+            } else {
+                assert_permission_waits_for_user(&client, &mut events, request).await;
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn session_mcp_permission_does_not_trust_hidden_legacy_proposal_commands() {
+        use acp::schema::v1::{SessionId, SessionNotification, SessionUpdate, ToolCall};
+
+        let manager =
+            Arc::new(crate::agent_tools::action_proposal::channel::ProposalChannelManager::new());
+        let channel = manager
+            .issue("proposal-session".into(), 1, None, false)
+            .unwrap();
+        let payload = r#"{"schema_version":1,"origin":"terminal_agent","choices":[{"choice":1,"title":"run test","rationale":"","actions":[{"type":"send","input":"cargo test"}]}]}"#;
+        let command =
+            crate::agent_tools::action_proposal::invocation::render(&channel, payload).unwrap();
+        let (client, mut events) = proposal_test_client(manager);
+        client
+            .session_notification(SessionNotification::new(
+                SessionId::new("proposal-session"),
+                SessionUpdate::ToolCall(
+                    ToolCall::new("proposal-tool", "Run proposal")
+                        .raw_input(Some(serde_json::json!({"command": command}))),
+                ),
+            ))
+            .await
+            .unwrap();
+        assert!(matches!(
+            events.try_recv(),
+            Ok(AppEvent::HideToolCall { .. })
+        ));
+        assert_permission_waits_for_user(
+            &client,
+            &mut events,
+            proposal_permission_request(&command),
+        )
+        .await;
     }
 
     #[tokio::test(flavor = "current_thread")]
@@ -6727,22 +7187,23 @@ mod tests {
         for tool in crate::agent_tools::action_proposal::schema::McpActionTool::ALL {
             let name = tool.tool_name();
             for title in [
-                format!("Use MCP tool: intelligent_terminal/{name}"),
-                format!("intelligent_terminal-{name}"),
+                format!("{dynamic}/{name}"),
+                format!("{dynamic}-{name}"),
                 format!("Use MCP tool: {dynamic}/{name}"),
                 format!("mcp__{dynamic}__{name}"),
             ] {
                 assert_eq!(
-                    session_mcp_tool_from_title(Some(&title)),
+                    SessionMcpTool::from_title(Some(&title), dynamic),
                     Some(SessionMcpTool::TerminalAction(tool)),
                     "{title}"
                 );
             }
         }
         assert_eq!(
-            session_mcp_tool_from_title(Some(&format!(
-                "Use MCP tool: {dynamic}/request_user_input"
-            ))),
+            SessionMcpTool::from_title(
+                Some(&format!("Use MCP tool: {dynamic}/request_user_input")),
+                dynamic
+            ),
             Some(SessionMcpTool::UserInput)
         );
         for title in [
@@ -6769,7 +7230,11 @@ mod tests {
             "Use MCP tool: intelligent_terminal/request_terminal_actions",
             "mcp__intellterm_0123456789abcdef__request_terminal_actions",
         ] {
-            assert_eq!(session_mcp_tool_from_title(Some(title)), None, "{title}");
+            assert_eq!(
+                SessionMcpTool::from_title(Some(title), dynamic),
+                None,
+                "{title}"
+            );
         }
     }
 
@@ -6838,8 +7303,8 @@ mod tests {
             Arc::new(crate::agent_tools::action_proposal::channel::ProposalChannelManager::new());
         let (client, mut event_rx) = proposal_test_client(manager);
         client
-            .session_notification(acp::schema::v1::SessionNotification::new(
-                acp::schema::v1::SessionId::new("proposal-session"),
+            .session_notification(session_mcp_notification(
+                "proposal-session",
                 acp::schema::v1::SessionUpdate::ToolCall(acp::schema::v1::ToolCall::new(
                     acp::schema::v1::ToolCallId::new("qualified-tool"),
                     "intellterm_0123456789abcdef/run_command_in_current_shell",
@@ -6920,21 +7385,19 @@ mod tests {
                     Some(AppEvent::HideToolCall { session_id, id })
                         if session_id == "proposal-session" && id == "proposal-mcp-tool"
                 ));
-                match event_rx.recv().await {
-                    Some(AppEvent::PermissionRequest { responder, .. }) => {
-                        responder.send("allow-once".to_string()).unwrap();
-                    }
-                    _ => panic!("expected PermissionRequest"),
-                }
-                let response = handle.await.unwrap().unwrap();
+                let response = tokio::time::timeout(Duration::from_secs(1), handle)
+                    .await
+                    .expect("Session MCP permission must not wait for user input")
+                    .unwrap()
+                    .unwrap();
                 assert!(matches!(
                     response.outcome,
                     acp::schema::v1::RequestPermissionOutcome::Selected(_)
                 ));
 
                 client
-                    .session_notification(acp::schema::v1::SessionNotification::new(
-                        acp::schema::v1::SessionId::new("proposal-session"),
+                    .session_notification(session_mcp_notification(
+                        "proposal-session",
                         acp::schema::v1::SessionUpdate::ToolCall(
                             acp::schema::v1::ToolCall::new(
                                 acp::schema::v1::ToolCallId::new("proposal-mcp-tool"),

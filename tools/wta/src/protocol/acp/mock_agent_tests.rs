@@ -5614,28 +5614,35 @@ async fn session_notification_hides_proposal_tool_call_before_permission() {
 }
 
 #[tokio::test]
-async fn session_notification_hides_proposal_mcp_tool_call() {
-    let (client, mut rx) = bare_client();
-    client
-        .session_notification(notif(
+async fn session_notification_hides_only_bound_session_mcp_tool_call() {
+    let own_server = "intellterm_0123456789abcdef";
+    for server_name in [None, Some(own_server), Some("intellterm_9876543210987654")] {
+        let (client, mut rx) = bare_client();
+        let mut notification = notif(
             "s1",
             acp::schema::v1::SessionUpdate::ToolCall(acp::schema::v1::ToolCall::new(
                 acp::schema::v1::ToolCallId::new("proposal-mcp-tool"),
                 "intellterm_0123456789abcdef/run_command_in_current_shell",
             )),
-        ))
-        .await
-        .unwrap();
+        );
+        crate::agent_tools::session_mcp::stamp_server_identity(&mut notification.meta, server_name);
+        client.session_notification(notification).await.unwrap();
 
-    assert!(matches!(
-        rx.try_recv(),
-        Ok(AppEvent::HideToolCall { session_id, id })
-            if session_id == "s1" && id == "proposal-mcp-tool"
-    ));
-    assert!(
-        rx.try_recv().is_err(),
-        "session MCP ToolCall must not reach the chat UI"
-    );
+        if server_name == Some(own_server) {
+            assert!(matches!(
+                rx.try_recv(),
+                Ok(AppEvent::HideToolCall { session_id, id })
+                    if session_id == "s1" && id == "proposal-mcp-tool"
+            ));
+        } else {
+            assert!(matches!(
+                rx.try_recv(),
+                Ok(AppEvent::ToolCall { session_id, id, .. })
+                    if session_id == "s1" && id == "proposal-mcp-tool"
+            ));
+        }
+        assert!(rx.try_recv().is_err());
+    }
 }
 
 /// When the agent's own `title` already embeds the location text (common

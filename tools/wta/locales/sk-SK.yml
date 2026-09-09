@@ -51,6 +51,7 @@ chat.turn_canceled: "(zrušené)"
 chat.turn_executed: "→ vykonané: %{title}"
 # Trvalé označenia kategórií nástrojov zobrazené za značkou stavu a pred predmetom.
 chat.tool_kind.run: "Spustenie"
+chat.tool_kind.insert: "Vložiť"
 chat.tool_kind.read: "Čítanie"
 chat.tool_kind.search: "Hľadanie"
 chat.tool_kind.edit: "Úprava"
@@ -256,5 +257,6 @@ config_picker.title: "Konfigurácia relácie (↑ ↓ • Enter • Esc)"
 system.no_config_options: "Pripojený agent nenabídol žiadne konfigurateľné možnosti relácie."
 # {option} is an Agent-provided option name; {error} is the ACP error.
 system.config_update_failed: "Obnovenie %{option} zlyhalo: %{error}"
+system.yolo_disable_pending: "poskytovateľ nepotvrdil požadovaný neprivilegovaný stav relácie"  # Shown after the localized failure prefix while prompts remain blocked until the AI agent provider confirms that its privileged session mode is off. Provider means an AI agent provider, not a network provider.
 system.provider_command_blocked_by_policy: "%{command}: Režim Yolo je zakázaný politikou vašej organizácie."  # {Locked="Yolo","%{command}"} Shown when AllowYoloMode blocks a provider-advertised privileged command.
 system.model_unknown: "Neznámy model %{model} — zadaním /model zobrazíte dostupný zoznam."  # {Locked="%{model}","/model"}

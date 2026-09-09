@@ -2865,8 +2865,8 @@
     <value>Gauche</value>
     <comment>Value shown in the agent pane position dropdown (selects which side of the terminal the agent pane opens on). Translation should match the existing FreOverlay_PanePositionLeft string used in the first-run experience.</comment>
   </data>
-  <data name="AIAgents_YoloMode.Header" xml:space="preserve"><value>Utiliser le mode Yolo du fournisseur</value><comment>{Locked=&quot;Yolo&quot;} Header for the global setting that asks each AI agent provider to enable its advertised ACP session Yolo capability.</comment></data>
-  <data name="AIAgents_YoloMode.HelpText" xml:space="preserve"><value>Utilise le mode de session ACP du fournisseur de l’agent pour réduire ou contourner les confirmations. Le fournisseur définit les autorisations, le bac à sable ainsi que l’accès aux fichiers et au réseau qui en résultent. Les fournisseurs ne disposant pas d’un mode pris en charge continuent de demander une autorisation.</value><comment>{Locked=&quot;ACP&quot;} Risk warning shown under the Yolo toggle. Here provider means the selected AI agent provider, not a network provider.</comment></data>
+  <data name="AIAgents_YoloMode.Header" xml:space="preserve"><value>Approbation automatique</value><comment>Header for the Settings toggle that enables automatic approval for the AI agent running in the agent pane.</comment></data>
+  <data name="AIAgents_YoloMode.HelpText" xml:space="preserve"><value>Votre agent dans le volet de l’agent s’exécute avec toutes les autorisations fournies par la CLI de l’agent</value><comment>{Locked="CLI"} Description shown under the automatic approval toggle. Agent means an AI intelligent agent in the agent pane, not a proxy or human representative. Full permissions are provided by the agent CLI.</comment></data>
   <data name="Settings_PortableModeInfoLink.NavigateUri" xml:space="preserve"><value>https://go.microsoft.com/fwlink/?linkid=2229086</value><comment>{Locked}</comment></data>
   <data name="AIAgents_PolicyLocked.Text" xml:space="preserve">
     <value>Ce paramètre est géré par votre organisation.</value>

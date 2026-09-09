@@ -57,6 +57,12 @@
                 <TextBlock Text="{x:Bind DisplayName}" />
             </DataTemplate>
 
+            <Style x:Key="CustomModelProviderRowStyle"
+                   TargetType="Border">
+                <Setter Property="MinHeight" Value="64" />
+                <Setter Property="Padding" Value="0,12" />
+            </Style>
+
             <Style x:Key="AutoErrorHandlingSettingContainerStyle"
                    TargetType="local:SettingContainer">
                 <Setter Property="Margin" Value="0,4,0,0" />
@@ -65,8 +71,7 @@
                 <Setter Property="Template">
                     <Setter.Value>
                         <ControlTemplate TargetType="local:SettingContainer">
-                            <Grid ColumnSpacing="24"
-                                  Style="{StaticResource NonExpanderGrid}">
+                            <Grid Style="{StaticResource NonExpanderGrid}">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="*" />
                                     <ColumnDefinition Width="Auto" />
@@ -120,23 +125,15 @@
             <!--  Agent (ACP CLI) — hand-built Grid mimicking the NonExpanderGrid chrome of
                   local:SettingContainer, so the description TextBlock can host an inline Hyperlink.  -->
             <Grid x:Name="AcpAgent"
-                  Background="{ThemeResource ExpanderHeaderBackground}"
-                  BorderThickness="{ThemeResource ExpanderHeaderBorderThickness}"
-                  BorderBrush="{ThemeResource ExpanderHeaderBorderBrush}"
-                  CornerRadius="{ThemeResource ControlCornerRadius}"
-                  MinHeight="64"
-                  MinWidth="{ThemeResource FlyoutThemeMinWidth}"
-                  MaxWidth="1000"
-                  HorizontalAlignment="Stretch"
-                  Padding="16,0,8,0"
+                  Style="{StaticResource NonExpanderGrid}"
+                  MaxWidth="{StaticResource StandardControlMaxWidth}"
                   Margin="0,4,0,0">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
                 <StackPanel Grid.Column="0"
-                            VerticalAlignment="Center"
-                            Padding="0,12,0,12">
+                            Style="{StaticResource StackPanelInExpanderStyle}">
                     <TextBlock x:Name="AcpAgentHeaderText"
                                Style="{StaticResource SettingsPageItemHeaderStyle}" />
                     <!--  Run.Text values populated from code-behind by splitting on "ACP".  -->
@@ -223,16 +220,16 @@
 
             <muxc:Expander x:Name="CustomModelProvidersExpander"
                            Margin="0,4,0,0"
+                           Padding="16,0"
                            HorizontalAlignment="Stretch"
                            HorizontalContentAlignment="Stretch"
                            IsExpanded="{x:Bind ViewModel.IsCustomModelProvidersExpanded, Mode=TwoWay}">
                 <muxc:Expander.Header>
                     <Grid MinHeight="64">
-                        <StackPanel VerticalAlignment="Center">
+                        <StackPanel Style="{StaticResource StackPanelInExpanderStyle}">
                             <TextBlock x:Name="CustomModelsHeaderText"
                                        Style="{StaticResource SettingsPageItemHeaderStyle}" />
-                            <TextBlock Style="{StaticResource CaptionTextBlockStyle}"
-                                       TextWrapping="Wrap">
+                            <TextBlock Style="{StaticResource SettingsPageItemDescriptionStyle}">
                                 <Run x:Name="CustomModelsCaptionPrefix"
                                      Foreground="{ThemeResource TextFillColorSecondaryBrush}" /><Hyperlink NavigateUri="https://github.com/microsoft/intelligent-terminal#custom-providers-byok">
                                     <Run x:Name="CustomModelsCaptionLink" />
@@ -241,9 +238,7 @@
                         </StackPanel>
                     </Grid>
                 </muxc:Expander.Header>
-                <!--  Offset WinUI's default vertical Expander content padding so each
-                      provider and Add New occupy one visually centered row.  -->
-                <StackPanel Margin="0,-16,0,-16">
+                <StackPanel>
                     <TextBlock Margin="0,12,0,0"
                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                Text="{x:Bind ViewModel.CustomModelProviderUnsupportedMessage, Mode=OneWay}"
@@ -252,10 +247,10 @@
                     <ItemsControl ItemsSource="{x:Bind ViewModel.CustomModelProviders, Mode=OneWay}">
                         <ItemsControl.ItemTemplate>
                             <DataTemplate x:DataType="local:CustomModelProviderEntry">
-                                <Border Padding="0,4"
-                                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                                        BorderThickness="0,0,0,1">
-                                    <Grid>
+                                <Border BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                        BorderThickness="0,0,0,1"
+                                        Style="{StaticResource CustomModelProviderRowStyle}">
+                                    <Grid VerticalAlignment="Center">
                                         <Grid.RowDefinitions>
                                             <RowDefinition Height="Auto" />
                                             <RowDefinition Height="Auto" />
@@ -287,7 +282,7 @@
                                                 x:Uid="AIAgents_CustomProviderRemove"
                                                 VerticalAlignment="Center"
                                                 Click="{x:Bind Remove}"
-                                                Width="120" />
+                                                MinWidth="120" />
                                         <muxc:InfoBar Grid.Row="1"
                                                       Grid.ColumnSpan="2"
                                                       Margin="0,12,0,0"
@@ -302,9 +297,9 @@
                         </ItemsControl.ItemTemplate>
                     </ItemsControl>
 
-                    <Border Padding="0,4"
+                    <Border Style="{StaticResource CustomModelProviderRowStyle}"
                             Visibility="{x:Bind mtu:Converters.InvertedBooleanToVisibility(ViewModel.IsAddingCustomModelProvider), Mode=OneWay}">
-                        <Grid>
+                        <Grid VerticalAlignment="Center">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*" />
                                 <ColumnDefinition Width="Auto" />
@@ -312,12 +307,12 @@
                             <Button Grid.Column="1"
                                     x:Uid="AIAgents_CustomProviderAdd"
                                     Click="{x:Bind ViewModel.AddCustomModelProvider}"
-                                    Width="120"
+                                    MinWidth="120"
                                     Style="{StaticResource AccentButtonStyle}" />
                         </Grid>
                     </Border>
 
-                    <Border Padding="0,8,0,16"
+                    <Border Padding="0,16"
                             Visibility="{x:Bind ViewModel.IsAddingCustomModelProvider, Mode=OneWay}">
                         <StackPanel Spacing="12">
                             <TextBlock x:Uid="AIAgents_CustomProviderAddHeader"
@@ -349,6 +344,9 @@
                             </StackPanel>
                             <StackPanel Spacing="4">
                                 <PasswordBox x:Uid="AIAgents_CustomProviderApiKey"
+                                             MinWidth="{StaticResource StandardBoxMinWidth}"
+                                             MaxWidth="400"
+                                             HorizontalAlignment="Left"
                                              AutomationProperties.HelpText="{Binding Text, ElementName=CustomProviderApiKeyHint}"
                                              Password="{x:Bind ViewModel.NewCustomModelProviderApiKey, Mode=TwoWay}" />
                                 <TextBlock x:Name="CustomProviderApiKeyHint"
@@ -393,12 +391,9 @@
                 <local:SettingContainer.Header>
                     <StackPanel>
                         <TextBlock x:Uid="AIAgents_AutoErrorHandlingTitle"
-                                   Style="{StaticResource SettingsPageItemHeaderStyle}"
-                                   TextWrapping="Wrap" />
+                                   Style="{StaticResource SettingsPageItemHeaderStyle}" />
                         <TextBlock x:Uid="AIAgents_AutoErrorHandlingDescription"
-                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                   Style="{StaticResource CaptionTextBlockStyle}"
-                                   TextWrapping="Wrap" />
+                                   Style="{StaticResource SettingsPageItemDescriptionStyle}" />
                         <TextBlock x:Uid="AIAgents_PolicyLocked"
                                    Visibility="{x:Bind ViewModel.IsAutoErrorHandlingPolicyRestricted, Mode=OneWay}"
                                    Opacity="0.6"
@@ -419,10 +414,10 @@
             <local:SettingContainer x:Name="AgentSessionManagement"
                                     x:Uid="AIAgents_SessionManagement">
                 <StackPanel>
-                    <ToggleSwitch MinWidth="0"
-                                  AutomationProperties.AccessibilityView="Content"
+                    <ToggleSwitch AutomationProperties.AccessibilityView="Content"
                                   IsOn="{x:Bind ViewModel.AgentSessionManagementEnabled, Mode=TwoWay}"
-                                  IsEnabled="{x:Bind ViewModel.CanConfigureAgentSessionManagement, Mode=OneWay}" />
+                                  IsEnabled="{x:Bind ViewModel.CanConfigureAgentSessionManagement, Mode=OneWay}"
+                                  Style="{StaticResource ToggleSwitchInExpanderStyle}" />
                     <TextBlock x:Uid="AIAgents_PolicyLocked"
                                Visibility="{x:Bind ViewModel.IsAgentSessionHooksPolicyLocked, Mode=OneWay}"
                                Opacity="0.6"
@@ -433,9 +428,9 @@
             <local:SettingContainer x:Name="ShowTokenUsageAndCost"
                                     x:Uid="AIAgents_ShowTokenUsageAndCost">
                 <ToggleSwitch x:Name="ShowTokenUsageAndCostToggle"
-                              MinWidth="0"
                               AutomationProperties.AccessibilityView="Content"
-                              IsOn="{x:Bind ViewModel.ShowTokenUsageAndCost, Mode=TwoWay}" />
+                              IsOn="{x:Bind ViewModel.ShowTokenUsageAndCost, Mode=TwoWay}"
+                              Style="{StaticResource ToggleSwitchInExpanderStyle}" />
             </local:SettingContainer>
 
             <!--  Global Yolo preference: asks supported providers to enable
@@ -447,9 +442,9 @@
                 <StackPanel>
                     <ToggleSwitch AutomationProperties.AutomationId="AgentPaneYoloModeToggle"
                                   AutomationProperties.AccessibilityView="Content"
-                                  MinWidth="0"
                                   IsOn="{x:Bind ViewModel.AgentPaneYoloMode, Mode=TwoWay}"
-                                  IsEnabled="{x:Bind mtu:Converters.InvertBoolean(ViewModel.IsYoloModePolicyLocked), Mode=OneWay}" />
+                                  IsEnabled="{x:Bind mtu:Converters.InvertBoolean(ViewModel.IsYoloModePolicyLocked), Mode=OneWay}"
+                                  Style="{StaticResource ToggleSwitchInExpanderStyle}" />
                     <TextBlock x:Uid="AIAgents_PolicyLocked"
                                Visibility="{x:Bind ViewModel.IsYoloModePolicyLocked, Mode=OneWay}"
                                Opacity="0.6"
