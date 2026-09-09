@@ -212,7 +212,9 @@ function Wait-TerminalActionProposal {
         `propose-terminal-actions`; the session-bound MCP path either renders the
         recommendation card directly or first presents the provider's normal permission
         UI. With -ReturnOnPermission, the latter returns Mode=Permission without selecting
-        an option; the caller must simulate an explicit user choice.
+        an option; the caller must simulate an explicit user choice. This also recognizes
+        the on-demand command resolver's permission before a proposal exists, but not
+        unrelated agent-owned tool permissions.
         Use -PaneSessionId to pin the rendered MCP card when several tabs have helpers.
     #>
     [CmdletBinding()] param(
@@ -235,8 +237,9 @@ function Wait-TerminalActionProposal {
             if ($paneText -match (Get-RecommendationCardRegex)) {
                 return [pscustomobject]@{ Mode = 'Mcp'; Ready = $true }
             }
-            if ($ReturnOnPermission -and
-                $log -match 'session_mcp_permission:.*validating session MCP permission before user selection' -and
+            $mcpPermission = $log -match 'session_mcp_permission:.*validating session MCP permission before user selection'
+            $lookupPermission = $log -match 'request_permission received' -and $paneText -match '\bresolve-command\b'
+            if ($ReturnOnPermission -and ($mcpPermission -or $lookupPermission) -and
                 $paneText -match '\[Y(?:\]|/)') {
                 return [pscustomobject]@{ Mode = 'Permission'; Ready = $false }
             }

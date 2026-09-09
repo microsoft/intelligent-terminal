@@ -52,11 +52,10 @@ Describe 'Feature: on-demand Autofix command resolution' -Tag 'Feature' {
         foreach ($label in @('source', 'other')) {
             $workspace = Join-Path $script:root $label
             New-Item -ItemType Directory -Path $workspace | Out-Null
-            $existing = @(Get-AgentPaneSessions -App $script:app | ForEach-Object PaneSessionId)
             $shell = New-WtTab -App $script:app -Command 'pwsh.exe -NoLogo -NoExit' -Cwd $workspace -Title "recall-$label"
             Set-WtPaneFocus -App $script:app -SessionId $shell.session_id
             Open-AgentPane -App $script:app | Out-Null
-            $agent = Wait-NewAgentPaneSession -App $script:app -ExcludePaneSessionId $existing -TimeoutSec 30
+            $agent = Wait-NewAgentPaneSession -App $script:app -OwnerPaneSessionId $shell.session_id -TimeoutSec 30
             Wait-AgentReady -App $script:app -PaneSessionId $agent.PaneSessionId -TimeoutSec 60 | Should -BeTrue
             $script:targets += [pscustomobject]@{ Shell = $shell; Agent = $agent; Cwd = $workspace }
         }

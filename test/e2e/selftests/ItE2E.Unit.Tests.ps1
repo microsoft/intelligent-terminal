@@ -104,6 +104,51 @@ Describe 'Localized WTA text matching' -Tag 'Unit' {
     }
 }
 
+Describe 'Terminal action proposal permission gates' -Tag 'Unit' {
+    BeforeAll {
+        Mock Wait-Until -ModuleName ItE2E { param($Condition) & $Condition }
+        Mock Get-ItLogText -ModuleName ItE2E { 'acp: request_permission received' }
+        Mock Get-AgentPaneText -ModuleName ItE2E { 'wta resolve-command gti --shell pwsh [Y] Allow [N] Deny' }
+        Mock Send-AgentKey -ModuleName ItE2E { throw 'Waiting must not select a permission option' }
+    }
+
+    It 'returns an explicit command lookup permission without approving it' {
+        $gate = Wait-TerminalActionProposal -App @{} -PaneSessionId 'source-pane' -ReturnOnPermission
+        $gate.Mode | Should -Be 'Permission'
+        $gate.Ready | Should -BeFalse
+        Should -Invoke Get-AgentPaneText -ModuleName ItE2E -Times 1 -Exactly -ParameterFilter { $PaneSessionId -eq 'source-pane' }
+        Should -Invoke Send-AgentKey -ModuleName ItE2E -Times 0
+    }
+
+    It 'does not return command lookup permissions without opt-in' {
+        Wait-TerminalActionProposal -App @{} | Should -BeNullOrEmpty
+    }
+
+    It 'does not treat unrelated tool permissions as proposals' {
+        Mock Get-AgentPaneText -ModuleName ItE2E { 'Another tool [Y] Allow [N] Deny' }
+        Wait-TerminalActionProposal -App @{} -ReturnOnPermission | Should -BeNullOrEmpty
+    }
+
+    It 'requires rendered permission choices rather than command text alone' {
+        Mock Get-AgentPaneText -ModuleName ItE2E { 'Completed wta resolve-command gti' }
+        Wait-TerminalActionProposal -App @{} -ReturnOnPermission | Should -BeNullOrEmpty
+    }
+
+    It 'still recognizes the session MCP permission gate' {
+        Mock Get-ItLogText -ModuleName ItE2E { 'session_mcp_permission: validating session MCP permission before user selection' }
+        Mock Get-AgentPaneText -ModuleName ItE2E { 'Run command in current shell [Y] Allow [N] Deny' }
+        (Wait-TerminalActionProposal -App @{} -ReturnOnPermission).Mode | Should -Be 'Permission'
+    }
+
+    It 'still recognizes a rendered recommendation without a permission request' {
+        Mock Get-ItLogText -ModuleName ItE2E { '' }
+        Mock Get-AgentPaneText -ModuleName ItE2E { 'Insert in Terminal' }
+        $gate = Wait-TerminalActionProposal -App @{}
+        $gate.Mode | Should -Be 'Mcp'
+        $gate.Ready | Should -BeTrue
+    }
+}
+
 Describe 'Agent settings cleanup' -Tag 'Unit' {
     It 'removes showTokenUsageAndCost while preserving profiles' {
         $settingsPath = Join-Path $TestDrive 'settings.json'
