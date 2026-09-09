@@ -134,9 +134,16 @@ in completed history. Ctrl+O toggles thinking in the selected history turn, or
 the active/latest turn when none is selected. Phase duration is measured locally;
 replayed thinking has no duration because ACP does not supply historical timing.
 Each block retains the latest 4,000 Unicode characters. No thought text is
-invented when a provider is silent; existing generic Thinking activity remains.
+invented when a provider is silent. Synthetic waiting feedback uses only the
+shimmering Thinking indicator above the input box, never a transcript row.
 Expanded Edit details show bounded line-level `+`/`-` hunks computed from ACP
-snapshots.
+snapshots. Tool headers and groups can be expanded during the active turn as well
+as in history. Expanded Search details wrap the provider's `rawInput.query`
+(or its title when no query is supplied) and any returned text results. WTA
+does not reconstruct queries or results omitted by the provider. Queries retain
+the first 4,000 Unicode characters, all scrollable when expanded. Text results show
+up to 12 wrapped lines, with `…` for omitted text. Expansion follows the tool
+into completed history.
 
 | Key | Action |
 |-----|--------|
@@ -144,9 +151,9 @@ snapshots.
 | Ctrl+C | Copy selected text; otherwise cancel streaming / quit |
 | Up / Down | Browse prompt input history |
 | Mouse wheel | Scroll chat (hold Alt to scroll one line) |
-| Click a completed tool header | Expand or collapse that tool's details |
+| Click a tool header | Expand or collapse that tool's details, live or completed |
 | Click a thinking header | Expand or collapse that block, live or completed |
-| Ctrl+O | Expand or collapse thinking in the selected/latest turn (or the active turn), and all completed tool details |
+| Ctrl+O | Expand or collapse thinking in the selected/latest turn (or the active turn), and all live and completed tool details |
 | Mouse drag | Select a continuous text range |
 | Double / triple click | Select a word / line |
 | PageUp / PageDown | Scroll chat |

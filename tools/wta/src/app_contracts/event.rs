@@ -179,6 +179,7 @@ pub enum AppEvent {
         title: String,
         status: String,
         kind: crate::app::ToolCallKind,
+        query: Option<crate::app::ToolCallOutput>,
         /// See `ChatMessage::ToolCall::location`.
         location: Option<String>,
         /// See `ChatMessage::ToolCall::location_is_command`.
@@ -195,6 +196,8 @@ pub enum AppEvent {
         title: Option<String>,
         status: Option<String>,
         kind: Option<crate::app::ToolCallKind>,
+        /// Omitted input leaves the retained query unchanged.
+        query: Option<crate::app::ToolCallOutput>,
         /// `Some` only when the agent's `tool_call_update` actually
         /// reported new `locations`/`raw_input` — `None` means "no
         /// change", so the existing card's location hint (if any) is

@@ -5614,6 +5614,137 @@ async fn session_notification_hides_proposal_tool_call_before_permission() {
 }
 
 #[tokio::test]
+async fn session_notification_tool_query_survives_abbreviated_title_and_deferred_kind() {
+    use acp::schema::v1::{
+        SessionUpdate, ToolCall, ToolCallId, ToolCallUpdate, ToolCallUpdateFields, ToolKind,
+    };
+    let (client, mut rx) = bare_client();
+    let query = format!(
+        "  As of September 9, 2026, {} 完整查询 END  ",
+        "search terms ".repeat(30)
+    );
+    client
+        .session_notification(notif(
+            "s1",
+            SessionUpdate::ToolCall(
+                ToolCall::new(ToolCallId::new("search"), "Searching for 'As of...'").raw_input(
+                    Some(serde_json::json!({"query": query, "unrelated": "DO_NOT_DISPLAY"})),
+                ),
+            ),
+        ))
+        .await
+        .unwrap();
+    assert!(matches!(rx.try_recv(), Ok(AppEvent::ToolCall {
+        kind: crate::app::ToolCallKind::Other,
+        query: Some(reported), location: None, output: None, ..
+    }) if reported.text == query && !reported.truncated));
+
+    let mut fields = ToolCallUpdateFields::new();
+    fields.kind = Some(ToolKind::Search);
+    client
+        .session_notification(notif(
+            "s1",
+            SessionUpdate::ToolCallUpdate(ToolCallUpdate::new(ToolCallId::new("search"), fields)),
+        ))
+        .await
+        .unwrap();
+    assert!(matches!(
+        rx.try_recv(),
+        Ok(AppEvent::ToolCallUpdate {
+            kind: Some(crate::app::ToolCallKind::Search),
+            query: None,
+            ..
+        })
+    ));
+
+    client
+        .session_notification(notif(
+            "s1",
+            SessionUpdate::ToolCallUpdate(ToolCallUpdate::new(
+                ToolCallId::new("search"),
+                ToolCallUpdateFields::new()
+                    .raw_input(Some(serde_json::json!({"query": "replacement query"}))),
+            )),
+        ))
+        .await
+        .unwrap();
+    assert!(matches!(rx.try_recv(), Ok(AppEvent::ToolCallUpdate {
+        kind: None, query: Some(reported), ..
+    }) if reported.text == "replacement query"));
+
+    client
+        .session_notification(notif(
+            "s1",
+            SessionUpdate::ToolCallUpdate(ToolCallUpdate::new(
+                ToolCallId::new("search"),
+                ToolCallUpdateFields::new().content(vec!["Provider search result".into()]),
+            )),
+        ))
+        .await
+        .unwrap();
+    assert!(matches!(rx.try_recv(), Ok(AppEvent::ToolCallUpdate {
+        query: None, output: Some(output), ..
+    }) if output.text == "Provider search result"));
+}
+
+#[tokio::test]
+async fn session_notification_tool_query_is_bounded_and_never_dumps_raw_input() {
+    use acp::schema::v1::{SessionUpdate, ToolCall, ToolCallId, ToolKind};
+    let (client, mut rx) = bare_client();
+    for (kind, input, expected) in [
+        (
+            ToolKind::Search,
+            serde_json::json!({"query": format!("START{}", "界".repeat(4100))}),
+            Some(true),
+        ),
+        (
+            ToolKind::Search,
+            serde_json::json!({"query": "  exact query  "}),
+            Some(false),
+        ),
+        (
+            ToolKind::Search,
+            serde_json::json!({"query": {"secret": "not text"}}),
+            None,
+        ),
+        (
+            ToolKind::Search,
+            serde_json::json!({"unrelated": "not a query"}),
+            None,
+        ),
+        (ToolKind::Search, serde_json::json!({"query": " \n "}), None),
+        (
+            ToolKind::Edit,
+            serde_json::json!({"query": "not search input"}),
+            None,
+        ),
+    ] {
+        client
+            .session_notification(notif(
+                "s1",
+                SessionUpdate::ToolCall(
+                    ToolCall::new(ToolCallId::new("search"), "Short title")
+                        .kind(kind)
+                        .raw_input(Some(input)),
+                ),
+            ))
+            .await
+            .unwrap();
+        let Ok(AppEvent::ToolCall { query, .. }) = rx.try_recv() else {
+            panic!("expected tool call");
+        };
+        assert_eq!(query.as_ref().map(|value| value.truncated), expected);
+        if expected == Some(true) {
+            let query = query.unwrap();
+            assert_eq!(query.text.chars().count(), 4000);
+            assert!(query.text.starts_with("START"));
+        } else if expected == Some(false) {
+            assert_eq!(query.unwrap().text, "  exact query  ");
+        }
+    }
+}
+
+#[tokio::test]
 async fn session_notification_hides_only_bound_session_mcp_tool_call() {
     let own_server = "intellterm_0123456789abcdef";
     for server_name in [None, Some(own_server), Some("intellterm_9876543210987654")] {

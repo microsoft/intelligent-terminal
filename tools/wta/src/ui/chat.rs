@@ -88,21 +88,26 @@ fn compact_group_kind(message: &ChatMessage, expanded: bool) -> Option<ToolCallK
     (groupable_kind && ToolPhase::from_status(status).is_successful()).then_some(*kind)
 }
 
+#[cfg(test)]
 fn previous_message_group_start(messages: &[ChatMessage], end: usize) -> usize {
+    previous_message_group_start_with_expansion(messages, end, |_| false)
+}
+
+fn previous_message_group_start_with_expansion(
+    messages: &[ChatMessage],
+    end: usize,
+    expanded: impl Fn(&str) -> bool,
+) -> usize {
+    let group_kind = |message: &ChatMessage| {
+        let is_expanded = matches!(message, ChatMessage::ToolCall { id, .. } if expanded(id));
+        compact_group_kind(message, is_expanded)
+    };
     let last = end.saturating_sub(1);
-    let Some(kind) = messages
-        .get(last)
-        .and_then(|message| compact_group_kind(message, false))
-    else {
+    let Some(kind) = messages.get(last).and_then(group_kind) else {
         return last;
     };
     let mut start = last;
-    while start > 0
-        && messages
-            .get(start - 1)
-            .and_then(|message| compact_group_kind(message, false))
-            == Some(kind)
-    {
+    while start > 0 && messages.get(start - 1).and_then(group_kind) == Some(kind) {
         start -= 1;
     }
     start
@@ -236,25 +241,43 @@ fn tool_output_lines(output: &ToolCallOutput) -> Vec<String> {
     lines
 }
 
-fn full_output_lines(output: &ToolCallOutput, prefix: &str) -> Vec<String> {
-    let mut source = output.text.lines().rev();
-    let mut lines: Vec<String> = source
-        .by_ref()
-        .take(MAX_TOOL_DETAIL_OUTPUT_LINES)
-        .map(|line| {
-            let mut chars = line.chars();
-            let head: String = chars.by_ref().take(MAX_TOOL_OUTPUT_LINE_CHARS).collect();
-            let suffix = if chars.next().is_some() { "…" } else { "" };
-            format!("{prefix}{head}{suffix}")
-        })
-        .collect();
-    let omitted = output.truncated || source.next().is_some();
-    lines.reverse();
+fn full_output_lines(output: &ToolCallOutput, prefix: &str, wrap_width: usize) -> Vec<String> {
+    let mut lines = wrapped_tool_text_lines(&output.text, prefix, wrap_width, usize::MAX, false);
+    let omitted = output.truncated || lines.len() > MAX_TOOL_DETAIL_OUTPUT_LINES;
+    if lines.len() > MAX_TOOL_DETAIL_OUTPUT_LINES {
+        lines.drain(..lines.len() - MAX_TOOL_DETAIL_OUTPUT_LINES);
+    }
     if omitted {
         lines.insert(0, format!("{prefix}…"));
     }
     if lines.is_empty() {
         lines.push(prefix.trim_end().to_string());
+    }
+    lines
+}
+
+fn wrapped_tool_text_lines(
+    text: &str,
+    prefix: &str,
+    wrap_width: usize,
+    max_lines: usize,
+    truncated: bool,
+) -> Vec<String> {
+    let width = wrap_width.saturating_sub(prefix.width()).max(1);
+    let mut lines = Vec::new();
+    let mut omitted = truncated;
+    'source: for paragraph in text.split('\n') {
+        let pieces = textwrap::wrap(paragraph, width);
+        for piece in pieces {
+            if lines.len() == max_lines {
+                omitted = true;
+                break 'source;
+            }
+            lines.push(format!("{prefix}{piece}"));
+        }
+    }
+    if omitted {
+        lines.push(format!("{prefix}…"));
     }
     lines
 }
@@ -357,10 +380,20 @@ fn diff_detail_lines(
     lines
 }
 
+#[cfg(test)]
 fn tool_detail_lines(
     content: &[ToolCallContent],
     locations: &[ToolCallLocation],
     detailed: bool,
+) -> Vec<ToolDetailLine> {
+    tool_detail_lines_with_width(content, locations, detailed, MAX_TOOL_OUTPUT_LINE_CHARS + 6)
+}
+
+fn tool_detail_lines_with_width<'a>(
+    content: impl IntoIterator<Item = &'a ToolCallContent>,
+    locations: &[ToolCallLocation],
+    detailed: bool,
+    wrap_width: usize,
 ) -> Vec<ToolDetailLine> {
     #[cfg(test)]
     TOOL_DETAIL_BUILD_COUNT.with(|count| count.set(count.get() + 1));
@@ -388,7 +421,7 @@ fn tool_detail_lines(
             ToolCallContent::Text(output) => {
                 if detailed {
                     lines.extend(
-                        full_output_lines(output, "    │ ")
+                        full_output_lines(output, "    │ ", wrap_width)
                             .into_iter()
                             .map(ToolDetailLine::dim),
                     );
@@ -423,7 +456,7 @@ fn tool_detail_lines(
                 if detailed {
                     if let Some(output) = output {
                         lines.extend(
-                            full_output_lines(output, "    │ ")
+                            full_output_lines(output, "    │ ", wrap_width)
                                 .into_iter()
                                 .map(ToolDetailLine::dim),
                         );
@@ -509,19 +542,11 @@ pub fn estimated_block_height(app: &App, area_width: u16, max_height: u16) -> u1
             end = index;
             continue;
         }
-        let start = previous_message_group_start(&tab.messages, end);
-        let message_lines = if end - start > 1 {
-            build_compact_tool_group_lines(&tab.messages[start..end])
-        } else {
-            build_message_lines(
-                &tab.messages[index],
-                end == tab.messages.len(),
-                tab.turn.is_streaming(),
-                permission_tool_call_id,
-                tab.activity_frame,
-                wrap_width,
-            )
-        };
+        let start = previous_message_group_start_with_expansion(&tab.messages, end, |id| {
+            tab.completed_tool_call_expanded(id)
+        });
+        let (message_lines, _) =
+            build_active_message_group(tab, start, end, permission_tool_call_id, wrap_width);
         height = height.saturating_add(rendered_lines_height(&message_lines, wrap_width));
         if height >= max_height {
             return max_height as u16;
@@ -671,6 +696,60 @@ struct ToolRowGeometry {
     header_width: usize,
     expanded: bool,
     marker: &'static str,
+}
+
+fn build_active_message_group<'a>(
+    tab: &'a crate::app::TabSession,
+    start: usize,
+    end: usize,
+    permission_tool_call_id: Option<&str>,
+    wrap_width: usize,
+) -> (Vec<Line<'a>>, Option<ToolRowGeometry>) {
+    let message = &tab.messages[start];
+    let expanded =
+        matches!(message, ChatMessage::ToolCall { id, .. } if tab.completed_tool_call_expanded(id));
+    let grouped = end - start > 1;
+    let lines = if grouped {
+        build_compact_tool_group_lines(&tab.messages[start..end])
+    } else {
+        build_message_lines_with_details(
+            message,
+            end == tab.messages.len(),
+            tab.turn.is_streaming(),
+            permission_tool_call_id,
+            tab.activity_frame,
+            wrap_width,
+            ToolDisplay::Completed { expanded },
+        )
+    };
+    let geometry = if let Some(presentation) = tool_presentation_from_message(message) {
+        Some(ToolRowGeometry {
+            hit_kind: if grouped {
+                crate::app::CompletedTurnHitKind::ActiveToolGroup {
+                    first_detail_index: start,
+                    detail_count: end - start,
+                }
+            } else {
+                crate::app::CompletedTurnHitKind::ActiveToolCall {
+                    detail_index: start,
+                }
+            },
+            row_offset: 0,
+            header_width: lines
+                .first()
+                .map_or(1, |line| line.width().min(wrap_width))
+                .max(1),
+            expanded,
+            marker: rendered_tool_call_marker(
+                presentation.phase,
+                matches!(message, ChatMessage::ToolCall { id, .. } if permission_tool_call_id == Some(id.as_str())),
+                tab.activity_frame,
+            ),
+        })
+    } else {
+        thought_row_geometry(message, start, true, 0, &lines, wrap_width)
+    };
+    (lines, geometry)
 }
 
 struct PlannedCompletedTurn {
@@ -833,6 +912,8 @@ pub fn render(frame: &mut Frame, app: &mut App, area: Rect, scrollbar_area: Rect
         .flatten()
         .filter(|index| *index < app.current_tab().completed_turns.len());
     let viewport_anchor = app.current_tab().completed_turn_viewport_anchor();
+    let active_anchor = app.current_tab_mut().active_tool_viewport_anchor.take();
+    let mut active_anchor_applied = false;
     let mut effective_offset = app.current_tab().chat_scroll.offset;
     let mut requested_rows = visible_height
         .saturating_add(effective_offset)
@@ -858,23 +939,25 @@ pub fn render(frame: &mut Frame, app: &mut App, area: Rect, scrollbar_area: Rect
             end = idx;
             continue;
         }
-        let start = previous_message_group_start(&tab.messages, end);
-        let mut message_lines = if end - start > 1 {
-            build_compact_tool_group_lines(&tab.messages[start..end])
-        } else {
-            build_message_lines(
-                &tab.messages[idx],
-                end == tab.messages.len(),
-                tab.turn.is_streaming(),
-                permission_tool_call_id,
-                tab.activity_frame,
-                wrap_width,
-            )
-        };
+        let start = previous_message_group_start_with_expansion(&tab.messages, end, |id| {
+            tab.completed_tool_call_expanded(id)
+        });
+        let (mut message_lines, geometry) =
+            build_active_message_group(tab, start, end, permission_tool_call_id, wrap_width);
         let message_height = rendered_lines_height(&message_lines, wrap_width);
-        if let Some(geometry) =
-            thought_row_geometry(&tab.messages[idx], idx, true, 0, &message_lines, wrap_width)
-        {
+        if let Some((id, row)) = &active_anchor {
+            if tab.messages[start..end].iter().any(|message| {
+                matches!(message, ChatMessage::ToolCall { id: tool_id, .. } if tool_id == id)
+            }) {
+                effective_offset = newer_rows.saturating_add(message_height)
+                    .saturating_add(row.saturating_sub(inner_area.y) as usize)
+                    .saturating_sub(visible_height);
+                requested_rows = visible_height.saturating_add(effective_offset)
+                    .saturating_add(CHAT_RENDER_MARGIN_ROWS);
+                active_anchor_applied = true;
+            }
+        }
+        if let Some(geometry) = geometry {
             turn_hit_offsets.push(CompletedTurnHitOffset {
                 turn_index: None,
                 rows_below: newer_rows,
@@ -889,6 +972,7 @@ pub fn render(frame: &mut Frame, app: &mut App, area: Rect, scrollbar_area: Rect
         if newer_rows >= requested_rows
             && selection_target_idx.is_none()
             && viewport_anchor.is_none()
+            && (active_anchor.is_none() || active_anchor_applied)
         {
             truncated = true;
             break;
@@ -1096,7 +1180,7 @@ pub fn render(frame: &mut Frame, app: &mut App, area: Rect, scrollbar_area: Rect
     app.current_tab_mut()
         .finish_completed_turn_layout(visible_completed_turn_anchors);
 
-    if selection_pending {
+    if selection_pending || active_anchor_applied {
         let tab = app.current_tab_mut();
         tab.chat_scroll.offset = effective_offset;
         tab.completed_turn_selection_visible_pending = false;
@@ -1417,9 +1501,15 @@ fn build_completed_turn_lines_with_geometry<'a>(
             }
 
             let tool_geometry = match msg {
-                ChatMessage::ToolCall { id, status, .. } => Some((
+                ChatMessage::ToolCall { id, .. } => Some((
                     tool_expanded(id),
-                    rendered_tool_call_marker(ToolPhase::from_status(status), false, 0),
+                    rendered_tool_call_marker(
+                        tool_presentation_from_message(msg)
+                            .expect("tool call presentation")
+                            .phase,
+                        false,
+                        0,
+                    ),
                 )),
                 _ => None,
             };
@@ -1532,10 +1622,6 @@ pub(crate) fn user_visible_stream_text(text: &str) -> Option<Cow<'_, str>> {
 pub(crate) fn pending_render_text(tab: &crate::app::TabSession) -> Option<Cow<'_, str>> {
     tab.streaming_agent_text()
         .and_then(user_visible_stream_text)
-        .or_else(|| {
-            (tab.should_show_inline_thinking() && tab.streaming_thought_text().is_none())
-                .then_some(Cow::Borrowed("…"))
-        })
 }
 
 fn build_pending_stream_lines<'a>(app: &App, wrap_width: usize) -> Vec<Line<'a>> {
@@ -1560,19 +1646,10 @@ fn build_pending_stream_lines<'a>(app: &App, wrap_width: usize) -> Vec<Line<'a>>
             theme::AGENT_TEXT,
         );
     }
-    if tab.should_show_inline_thinking() && tab.streaming_thought_text().is_none() {
-        let rendered = Cow::Owned(format!("{} · {}", t!("chat.tool_kind.think"), "…"));
-        push_dot_prefixed_lines(
-            &mut lines,
-            &rendered,
-            wrap_width,
-            theme::DOT_AGENT,
-            theme::DIM,
-        );
-    }
     lines
 }
 
+#[cfg(test)]
 fn build_message_lines<'a>(
     msg: &'a ChatMessage,
     is_last_message: bool,
@@ -1676,6 +1753,7 @@ fn build_message_lines_with_details<'a>(
             title,
             status,
             kind,
+            query,
             location,
             location_is_command,
             cwd,
@@ -1783,19 +1861,29 @@ fn build_message_lines_with_details<'a>(
                     }
                 }
             }
-            let has_text_content = content
-                .iter()
-                .any(|item| matches!(item, ToolCallContent::Text(_)));
+            // A raw-output-only update can supersede an earlier text progress block.
+            let prefer_search_output = *kind == ToolCallKind::Search && output.is_some();
+            let visible_content = || {
+                content.iter().filter(|item| {
+                    !prefer_search_output || !matches!(item, ToolCallContent::Text(_))
+                })
+            };
+            let has_text_content =
+                visible_content().any(|item| matches!(item, ToolCallContent::Text(_)));
             let mut detail_lines = match detail_level {
                 ToolDetailLevel::Compact => Vec::new(),
-                ToolDetailLevel::Preview => tool_detail_lines(content, locations, false),
-                ToolDetailLevel::Detailed => tool_detail_lines(content, locations, true),
+                ToolDetailLevel::Preview => {
+                    tool_detail_lines_with_width(visible_content(), locations, false, wrap_width)
+                }
+                ToolDetailLevel::Detailed => {
+                    tool_detail_lines_with_width(visible_content(), locations, true, wrap_width)
+                }
             };
             if !has_text_content && detail_level != ToolDetailLevel::Compact {
                 if let Some(output) = output {
                     if detail_level == ToolDetailLevel::Detailed {
                         detail_lines.extend(
-                            full_output_lines(output, "    │ ")
+                            full_output_lines(output, "    │ ", wrap_width)
                                 .into_iter()
                                 .map(ToolDetailLine::dim),
                         );
@@ -1809,6 +1897,25 @@ fn build_message_lines_with_details<'a>(
                 }
             }
             cap_tool_detail_lines(&mut detail_lines);
+            if detail_level == ToolDetailLevel::Detailed && *kind == ToolCallKind::Search {
+                // Queries are already bounded at ingestion. Keep every retained line scrollable.
+                let text = query.as_ref().map_or_else(
+                    || truncate_render_text(title),
+                    |query| Cow::Borrowed(query.text.as_str()),
+                );
+                let mut query_lines = wrapped_tool_text_lines(
+                    &text,
+                    "    │ ",
+                    wrap_width,
+                    usize::MAX,
+                    query.as_ref().is_some_and(|query| query.truncated),
+                )
+                .into_iter()
+                .map(ToolDetailLine::dim)
+                .collect::<Vec<_>>();
+                query_lines.append(&mut detail_lines);
+                detail_lines = query_lines;
+            }
             restyle_tool_detail_lines(&mut detail_lines, rendered_command || rendered_output);
             let rendered_details = !detail_lines.is_empty();
             for line in detail_lines {
@@ -2105,12 +2212,129 @@ mod tests {
     }
 
     #[test]
+    fn expanded_search_tool_wraps_exact_query_and_returned_result_instead_of_clipping() {
+        let query = format!("QUERY_START {} QUERY_END", "路径\\full/terms ".repeat(180));
+        let result = "RESULT_START returned text RESULT_END".to_string();
+        let mut message = ChatMessage::ToolCall {
+            id: "search".into(),
+            title: "Searching for 'QUERY_START...'".into(),
+            status: "Completed".into(),
+            kind: ToolCallKind::Search,
+            query: Some(ToolCallOutput {
+                text: query,
+                truncated: false,
+            }),
+            location: None,
+            location_is_command: false,
+            cwd: None,
+            output: None,
+            exit_code: None,
+            content: vec![ToolCallContent::Text(ToolCallOutput {
+                text: result,
+                truncated: false,
+            })],
+            locations: Vec::new(),
+        };
+        for status in ["InProgress", "Completed"] {
+            if let ChatMessage::ToolCall {
+                status: current, ..
+            } = &mut message
+            {
+                *current = status.into();
+            }
+            let compact = build_message_lines(&message, true, true, None, 0, 24);
+            assert!(!compact
+                .iter()
+                .any(|line| line.to_string().contains("QUERY_END")));
+            let lines = build_message_lines_with_details(
+                &message,
+                true,
+                true,
+                None,
+                0,
+                24,
+                ToolDisplay::Completed { expanded: true },
+            );
+            let text = lines
+                .iter()
+                .map(ToString::to_string)
+                .collect::<Vec<_>>()
+                .join("\n");
+            for expected in [
+                "QUERY_START",
+                "QUERY_END",
+                "RESULT_START",
+                "RESULT_END",
+                "full/terms",
+                "路",
+                "径",
+            ] {
+                assert!(text.contains(expected), "{text}");
+            }
+            assert!(lines.len() > MAX_TOOL_DETAIL_LINES);
+            assert!(lines.iter().skip(1).all(|line| line.width() <= 24));
+        }
+    }
+
+    #[test]
+    fn expanded_search_tool_falls_back_to_provider_title_without_inventing_results() {
+        let title = format!("Searching {} TITLE_END", "provider title ".repeat(20));
+        let message = ChatMessage::ToolCall {
+            id: "search".into(),
+            title: title.clone(),
+            status: "Completed".into(),
+            kind: ToolCallKind::Search,
+            query: None,
+            location: None,
+            location_is_command: false,
+            cwd: None,
+            output: None,
+            exit_code: None,
+            content: Vec::new(),
+            locations: Vec::new(),
+        };
+        let lines = build_message_lines_with_details(
+            &message,
+            false,
+            false,
+            None,
+            0,
+            48,
+            ToolDisplay::Completed { expanded: true },
+        );
+        let text = lines
+            .iter()
+            .skip(1)
+            .map(ToString::to_string)
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(text.contains("TITLE_END"));
+        assert!(!text.contains("result"));
+        assert!(lines.iter().skip(1).all(|line| line.width() <= 48));
+    }
+
+    #[test]
+    fn wrapped_tool_text_preserves_unicode_and_marks_both_input_and_visual_limits() {
+        let text = "界".repeat(4000);
+        let lines =
+            wrapped_tool_text_lines(&text, "    │ ", 30, MAX_TOOL_DETAIL_OUTPUT_LINES, false);
+        assert_eq!(lines.len(), MAX_TOOL_DETAIL_OUTPUT_LINES + 1);
+        assert_eq!(lines.last().unwrap(), "    │ …");
+        assert!(lines.iter().all(|line| line.width() <= 30));
+        assert_eq!(
+            wrapped_tool_text_lines("retained", "    │ ", 40, 12, true),
+            ["    │ retained", "    │ …"]
+        );
+    }
+
+    #[test]
     fn completed_tool_geometry_scans_rendered_lines_linearly() {
         let turn = CompletedTurn {
             prompt: "tools".into(),
             details: (0..100)
                 .map(|index| ChatMessage::ToolCall {
                     id: format!("tool-{index}"),
+                    query: None,
                     title: format!("Read file {index}"),
                     status: "Completed".into(),
                     kind: ToolCallKind::Read,
@@ -2198,6 +2422,7 @@ mod tests {
                 "compact tool call",
                 vec![ChatMessage::ToolCall {
                     id: "tool".into(),
+                    query: None,
                     title: "Read source".into(),
                     status: "Completed".into(),
                     kind: ToolCallKind::Read,
@@ -2214,6 +2439,7 @@ mod tests {
                 "command tool call",
                 vec![ChatMessage::ToolCall {
                     id: "tool".into(),
+                    query: None,
                     title: "Run tests".into(),
                     status: "Completed".into(),
                     kind: ToolCallKind::Execute,
@@ -2281,6 +2507,7 @@ mod tests {
     ) {
         let message = ChatMessage::ToolCall {
             id: "tool".into(),
+            query: None,
             title: "Run: cargo test".into(),
             status: status.into(),
             kind: ToolCallKind::Other,
@@ -2312,6 +2539,7 @@ mod tests {
     fn tool_call_renders_location_hint_between_title_and_status_detail() {
         let message = ChatMessage::ToolCall {
             id: "tool".into(),
+            query: None,
             title: "Access paths outside trusted directories".into(),
             status: "Pending".into(),
             kind: ToolCallKind::Other,
@@ -2346,6 +2574,7 @@ mod tests {
     fn tool_call_command_location_renders_as_separate_code_line() {
         let message = ChatMessage::ToolCall {
             id: "tool".into(),
+            query: None,
             title: "Run command".into(),
             status: "Pending".into(),
             kind: ToolCallKind::Execute,
@@ -2386,6 +2615,7 @@ mod tests {
     fn tool_call_multi_statement_command_renders_one_line_per_statement() {
         let message = ChatMessage::ToolCall {
             id: "tool".into(),
+            query: None,
             title: "Check installed PowerToys and Foundry Local packages".into(),
             status: "Running".into(),
             kind: ToolCallKind::Execute,
@@ -2427,6 +2657,7 @@ mod tests {
         let cwd = concat!("C:", "\\", "repo");
         let message = ChatMessage::ToolCall {
             id: "tool".into(),
+            query: None,
             title: "bash".into(),
             status: "Running".into(),
             kind: ToolCallKind::Execute,
@@ -2458,6 +2689,7 @@ mod tests {
         let cwd = concat!("C:", "\\", "repo");
         let message = ChatMessage::ToolCall {
             id: "tool".into(),
+            query: None,
             title: "Run tests".into(),
             status: "Completed".into(),
             kind: ToolCallKind::Execute,
@@ -2485,6 +2717,7 @@ mod tests {
     fn successful_long_command_stays_out_of_compact_header() {
         let message = ChatMessage::ToolCall {
             id: "tool".into(),
+            query: None,
             title: "Resolve cargo in active terminal context".into(),
             status: "Completed".into(),
             kind: ToolCallKind::Execute,
@@ -2515,6 +2748,7 @@ mod tests {
         let path = r"C:\Users\kaitao\codes\rust-app\src\main.rs";
         let message = ChatMessage::ToolCall {
             id: "tool".into(),
+            query: None,
             title: format!("Viewing {path}"),
             status: "Completed".into(),
             kind: ToolCallKind::Read,
@@ -2542,6 +2776,7 @@ mod tests {
     fn successful_search_compacts_workspace_subject() {
         let message = ChatMessage::ToolCall {
             id: "tool".into(),
+            query: None,
             title: "Finding files matching **/*.rs".into(),
             status: "Completed".into(),
             kind: ToolCallKind::Search,
@@ -2569,6 +2804,7 @@ mod tests {
     fn successful_edit_does_not_treat_snapshots_as_line_counts() {
         let message = ChatMessage::ToolCall {
             id: "tool".into(),
+            query: None,
             title: "Update source".into(),
             status: "Completed".into(),
             kind: ToolCallKind::Edit,
@@ -2627,6 +2863,7 @@ mod tests {
     fn failed_active_tool_call_keeps_diagnostic_preview() {
         let message = ChatMessage::ToolCall {
             id: "tool".into(),
+            query: None,
             title: "Run tests".into(),
             status: "Failed".into(),
             kind: ToolCallKind::Execute,
@@ -2656,6 +2893,7 @@ mod tests {
     fn nonzero_completed_command_keeps_output_preview() {
         let message = ChatMessage::ToolCall {
             id: "tool".into(),
+            query: None,
             title: "Run integration command".into(),
             status: "Completed".into(),
             kind: ToolCallKind::Execute,
@@ -2686,6 +2924,7 @@ mod tests {
     fn successful_truncated_tool_call_stays_compact_until_expanded() {
         let message = ChatMessage::ToolCall {
             id: "tool".into(),
+            query: None,
             title: "Locate project directory".into(),
             status: "Completed".into(),
             kind: ToolCallKind::Execute,
@@ -2738,6 +2977,7 @@ mod tests {
         let messages = (0..4)
             .map(|index| ChatMessage::ToolCall {
                 id: format!("read-{index}"),
+                query: None,
                 title: "Read project".into(),
                 status: "Completed".into(),
                 kind: ToolCallKind::Read,
@@ -2774,6 +3014,7 @@ mod tests {
             .enumerate()
             .map(|(index, (path, status))| ChatMessage::ToolCall {
                 id: format!("mutation-{index}"),
+                query: None,
                 title: "Mutate file".into(),
                 status: status.into(),
                 kind,
@@ -2803,6 +3044,7 @@ mod tests {
             .enumerate()
             .map(|(index, status)| ChatMessage::ToolCall {
                 id: format!("edit-{index}"),
+                query: None,
                 title: "Edit file".into(),
                 status: status.into(),
                 kind: ToolCallKind::Edit,
@@ -2824,6 +3066,7 @@ mod tests {
         let location = concat!("C:", "\\", "repo", "\\", "large.txt");
         let message = ChatMessage::ToolCall {
             id: "tool".into(),
+            query: None,
             title: "Read file".into(),
             status: "Running".into(),
             kind: ToolCallKind::Read,
@@ -3020,6 +3263,7 @@ mod tests {
             .collect::<Vec<_>>();
         let message = ChatMessage::ToolCall {
             id: "tool".into(),
+            query: None,
             title: "Update source".into(),
             status: "Completed".into(),
             kind: ToolCallKind::Edit,
@@ -3247,6 +3491,7 @@ mod tests {
     fn permission_animates_only_its_matching_tool_call() {
         let matching = ChatMessage::ToolCall {
             id: "tool-2".into(),
+            query: None,
             title: "Read Cargo.toml".into(),
             status: "Completed".into(),
             kind: ToolCallKind::Read,
@@ -3260,6 +3505,7 @@ mod tests {
         };
         let other = ChatMessage::ToolCall {
             id: "tool-1".into(),
+            query: None,
             title: "Find files".into(),
             status: "Completed".into(),
             kind: ToolCallKind::Search,
@@ -3284,6 +3530,7 @@ mod tests {
         for status in ["Pending", "InProgress", "running"] {
             let message = ChatMessage::ToolCall {
                 id: "tool".into(),
+                query: None,
                 title: "Find files".into(),
                 status: status.into(),
                 kind: ToolCallKind::Search,

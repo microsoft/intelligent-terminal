@@ -204,6 +204,27 @@ impl App {
             .find(|hit| hit.contains(column, row))
     }
 
+    fn active_tool_hit_ids(&self, hit: CompletedTurnHitRegion) -> Vec<String> {
+        let (start, count) = match hit.kind {
+            CompletedTurnHitKind::ActiveToolCall { detail_index } => (detail_index, 1),
+            CompletedTurnHitKind::ActiveToolGroup {
+                first_detail_index,
+                detail_count,
+            } => (first_detail_index, detail_count),
+            _ => return Vec::new(),
+        };
+        self.current_tab()
+            .messages
+            .iter()
+            .skip(start)
+            .take(count)
+            .filter_map(|message| match message {
+                ChatMessage::ToolCall { id, .. } => Some(id.clone()),
+                _ => None,
+            })
+            .collect()
+    }
+
     fn active_mouse_tab_id(&self) -> String {
         self.tab_id
             .clone()
@@ -489,6 +510,7 @@ impl App {
                         .completed_turn_hit_at(mouse.column, mouse.row)
                         .map(|hit| PressedCompletedTurn {
                             tab_id: self.active_mouse_tab_id(),
+                            active_tool_ids: self.active_tool_hit_ids(hit),
                             hit,
                         });
                 }
@@ -513,6 +535,7 @@ impl App {
                     self.text_selection.handle_mouse(mouse);
                     if let Some(pressed) = pressed.filter(|pressed| {
                         pressed.tab_id == active_tab_id
+                            && pressed.active_tool_ids == self.active_tool_hit_ids(pressed.hit)
                             && released.is_some_and(|hit| {
                                 hit.turn_index == pressed.hit.turn_index
                                     && hit.kind == pressed.hit.kind
@@ -520,6 +543,27 @@ impl App {
                     }) {
                         let tab = self.current_tab_mut();
                         match pressed.hit.kind {
+                            CompletedTurnHitKind::ActiveToolCall { detail_index } => {
+                                if tab.toggle_active_tool_group(detail_index, 1) {
+                                    tab.active_tool_viewport_anchor = pressed
+                                        .active_tool_ids
+                                        .first()
+                                        .map(|id| (id.clone(), pressed.hit.row));
+                                }
+                                return;
+                            }
+                            CompletedTurnHitKind::ActiveToolGroup {
+                                first_detail_index,
+                                detail_count,
+                            } => {
+                                if tab.toggle_active_tool_group(first_detail_index, detail_count) {
+                                    tab.active_tool_viewport_anchor = pressed
+                                        .active_tool_ids
+                                        .first()
+                                        .map(|id| (id.clone(), pressed.hit.row));
+                                }
+                                return;
+                            }
                             CompletedTurnHitKind::Thought {
                                 detail_index,
                                 active,
@@ -1717,6 +1761,7 @@ impl App {
                 title,
                 status,
                 kind,
+                query,
                 location,
                 location_is_command,
                 cwd,
@@ -1755,6 +1800,7 @@ impl App {
                     title,
                     status,
                     kind,
+                    query,
                     location,
                     location_is_command,
                     cwd,
@@ -1771,6 +1817,7 @@ impl App {
                 title,
                 status,
                 kind,
+                query,
                 location,
                 location_is_command,
                 output,
@@ -1793,6 +1840,7 @@ impl App {
                         title: ref mut current_title,
                         status: ref mut s,
                         kind: ref mut current_kind,
+                        query: ref mut current_query,
                         location: ref mut loc,
                         location_is_command: ref mut loc_is_cmd,
                         cwd: ref mut current_cwd,
@@ -1812,6 +1860,9 @@ impl App {
                             }
                             if let Some(kind) = kind {
                                 *current_kind = kind;
+                            }
+                            if let Some(query) = &query {
+                                *current_query = Some(query.clone());
                             }
                             // Only overwrite when the update actually carried
                             // a fresh location — `None` means "unchanged",
