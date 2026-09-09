@@ -12,6 +12,7 @@
 BeforeDiscovery {
     $script:Ready = [bool]((Get-AppxPackage | Where-Object { $_.Name -like '*IntelligentTerminal*' }) -and (Get-Command winapp -ErrorAction SilentlyContinue))
     $script:CopilotReady = [bool](Get-Command copilot -ErrorAction SilentlyContinue)
+    $script:OpenCodeReady = [bool](Get-Command opencode -ErrorAction SilentlyContinue)
     # Non-Copilot built-ins surface in the FRE picker only when their CLI is installed.
     $script:NonCopilot = @(
         @{ Cmd = 'claude'; Label = 'Claude' }
@@ -73,7 +74,10 @@ Describe 'Feature §0 FRE agent setup (overlay controls)' -Tag 'Feature' -Skip:(
         Test-UiElementExists -App $script:app -Selector 'AutoErrorToggle' -TimeoutSec 1 |
             Should -BeFalse -Because 'the subordinate automatic-error setting is removed'
 
-        Invoke-UiElement -App $script:app -Selector 'ErrorDetectionComboBox' | Out-Null
+        Send-WtWindowKey -App $script:app -Vk 0x1B -RequireForeground | Out-Null
+        (Test-Until -TimeoutSec 5 -IntervalSec 0.2 -Condition {
+            (Get-UiElement -App $script:app -Selector 'ErrorDetectionComboBox').expandState -eq 'collapsed'
+        }) | Should -BeTrue -Because 'the dropdown popup must be dismissed before later setting assertions'
     }
 
     It 'Token usage toggle is present and defaults off' {
@@ -81,6 +85,27 @@ Describe 'Feature §0 FRE agent setup (overlay controls)' -Tag 'Feature' -Skip:(
             Should -BeTrue -Because 'the FRE settings page must expose the token usage preference'
         (Get-UiElement -App $script:app -Selector 'ShowTokenUsageAndCostToggle').toggleState |
             Should -Be 'off' -Because 'token usage and cost must be hidden by default'
+    }
+
+    It 'FRE configures automatic approval' {
+        Test-UiElementExists -App $script:app -Selector 'AutomaticApprovalToggle' -TimeoutSec 8 |
+            Should -BeTrue -Because 'FRE must expose automatic approval for the supported default provider'
+        Test-UiElementEnabled -App $script:app -Selector 'AutomaticApprovalToggle' |
+            Should -BeTrue
+        (Get-UiElement -App $script:app -Selector 'AutomaticApprovalToggle').toggleState |
+            Should -Be 'off' -Because 'automatic approval defaults off'
+
+        foreach ($key in @('AIAgents_YoloMode.Header', 'AIAgents_YoloMode.HelpText')) {
+            $values = @(Get-WtReswTextValues -Key $key)
+            $element = Wait-Until -TimeoutSec 12 -Because "FRE to render the shared $key resource" -Condition {
+                foreach ($value in $values) {
+                    if ($match = Get-UiElement -App $script:app -Selector $value) {
+                        return $match
+                    }
+                }
+            }
+            $element.name | Should -BeIn $values
+        }
     }
 
     It 'Non-Copilot agents appear as installed in the FRE agent picker' -Skip:(-not $script:HasNonCopilot) {
@@ -92,5 +117,28 @@ Describe 'Feature §0 FRE agent setup (overlay controls)' -Tag 'Feature' -Skip:(
         foreach ($a in $script:NonCopilot) {
             $tree | Should -Match ("(?i)$($a.Label)[^\r\n]*" + $script:InstalledSfx) -Because "the installed $($a.Label) CLI must appear as a selectable installed agent in the FRE"
         }
+    }
+}
+
+Describe 'Feature §0 FRE unsupported automatic approval' -Tag 'Feature' -Skip:(-not ($script:Ready -and $script:OpenCodeReady)) {
+    BeforeAll {
+        Import-Module (Join-Path $PSScriptRoot '..\ItE2E\ItE2E.psd1') -Force
+        $script:app = Start-Terminal -Package (Get-ItTestPackage) -ShowFre -Settings @{
+            acpAgent = 'opencode'
+            'agentPane.yoloMode' = $true
+            autoErrorDetectionEnabled = $false
+            agentSessionManagementEnabled = $false
+        }
+        Invoke-UiElement -App $script:app -Selector 'NextButton' -TimeoutSec 10 | Out-Null
+    }
+    AfterAll { if ($script:app) { Stop-Terminal -App $script:app } }
+
+    It 'FRE hides unsupported automatic approval' {
+        Test-UiElementExists -App $script:app -Selector 'AutomaticApprovalToggle' -TimeoutSec 1 |
+            Should -BeFalse
+        Invoke-UiElement -App $script:app -Selector 'SaveButton' -TimeoutSec 20 | Out-Null
+        Wait-Until -TimeoutSec 30 -Because 'FRE to persist unsupported automatic approval off' -Condition {
+            (Get-WtSetting -App $script:app -Key 'agentPane.yoloMode') -eq $false
+        } | Out-Null
     }
 }

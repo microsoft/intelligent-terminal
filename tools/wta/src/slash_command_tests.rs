@@ -477,7 +477,13 @@ fn runtime_policy_block_forces_off_and_clears_session_override() {
 
     app.apply_runtime_yolo_config(Some(false), Some(true));
 
-    assert!(!app.yolo_state.lock().unwrap().effective("session"));
+    assert_eq!(
+        app.yolo_state
+            .lock()
+            .unwrap()
+            .automatic_directive("session"),
+        crate::app_contracts::AutomaticYoloDirective::Disable
+    );
     let request = master_rx.try_recv().expect("reconcile request");
     let MasterExtRequest::ReconcileSessionYolo {
         sessions,
@@ -492,8 +498,12 @@ fn runtime_policy_block_forces_off_and_clears_session_override() {
     assert!(!sessions[0].1);
 
     app.apply_runtime_yolo_config(Some(false), Some(false));
-    assert!(
-        !app.yolo_state.lock().unwrap().effective("session"),
+    assert_eq!(
+        app.yolo_state
+            .lock()
+            .unwrap()
+            .automatic_directive("session"),
+        crate::app_contracts::AutomaticYoloDirective::Disable,
         "policy removal must leave the current global default off"
     );
 }

@@ -51,8 +51,19 @@ namespace Microsoft::Terminal::AgentPaneRestore
     inline constexpr std::wstring_view ViewFlag{ L"--initial-view" };
     inline constexpr std::wstring_view AgentIdentityFlag{ L"--agent-backend" };
     inline constexpr std::wstring_view CustomCommandFlag{ L"--agent-custom-command" };
+    inline constexpr std::wstring_view YoloControlOwnerFlag{ L"--initial-yolo-control-owner" };
     inline constexpr std::wstring_view SessionsView{ L"sessions" };
     inline constexpr std::wstring_view ChatView{ L"chat" };
+    inline constexpr std::wstring_view AutomaticYoloOwner{ L"automatic" };
+    inline constexpr std::wstring_view ManualYoloOwner{ L"manual" };
+    inline constexpr std::wstring_view ProviderRestoredYoloOwner{ L"provider-restored" };
+
+    inline constexpr bool IsValidYoloControlOwner(const std::wstring_view value) noexcept
+    {
+        return value == AutomaticYoloOwner ||
+               value == ManualYoloOwner ||
+               value == ProviderRestoredYoloOwner;
+    }
 
     struct Fields
     {
@@ -60,6 +71,7 @@ namespace Microsoft::Terminal::AgentPaneRestore
         std::wstring view;
         std::wstring agentIdentity;
         std::wstring customCommand;
+        std::wstring yoloControlOwner;
     };
 
     // Quote a value so that `CommandLineToArgvW` — which is what
@@ -120,12 +132,17 @@ namespace Microsoft::Terminal::AgentPaneRestore
     inline std::wstring BuildPaneCommandline(const std::wstring_view executable, const Fields& fields)
     {
         std::wstring cmd;
-        cmd.reserve(executable.size() + fields.sessionId.size() + fields.customCommand.size() + 128);
+        cmd.reserve(executable.size() + fields.sessionId.size() + fields.customCommand.size() +
+                    fields.yoloControlOwner.size() + 128);
         AppendQuoted(cmd, executable);
         AppendFlag(cmd, SessionIdFlag, fields.sessionId);
         AppendFlag(cmd, ViewFlag, fields.view);
         AppendFlag(cmd, AgentIdentityFlag, fields.agentIdentity);
         AppendFlag(cmd, CustomCommandFlag, fields.customCommand);
+        if (!fields.sessionId.empty() && IsValidYoloControlOwner(fields.yoloControlOwner))
+        {
+            AppendFlag(cmd, YoloControlOwnerFlag, fields.yoloControlOwner);
+        }
         return cmd;
     }
 
@@ -160,6 +177,15 @@ namespace Microsoft::Terminal::AgentPaneRestore
             else if (token == CustomCommandFlag)
             {
                 fields.customCommand = next();
+                ++i;
+            }
+            else if (token == YoloControlOwnerFlag)
+            {
+                const auto value = next();
+                if (IsValidYoloControlOwner(value))
+                {
+                    fields.yoloControlOwner = value;
+                }
                 ++i;
             }
         }

@@ -9,8 +9,10 @@
 #include "AgentUsage.h"
 #include "TerminalPaneContent.h"
 #include "BasicPaneEvents.h"
+#include "../inc/AgentPaneRestore.h"
 
 #include "AutofixState.h"
+#include "AgentPaneLifetime.h"
 
 namespace winrt::TerminalApp::implementation
 {
@@ -37,7 +39,23 @@ namespace winrt::TerminalApp::implementation
         // into sessions view.
         bool IsSessionsView() const noexcept { return _isSessionsView; }
         winrt::hstring AgentSessionId() const noexcept { return _agentSessionId; }
-        void SetAgentSessionId(const winrt::hstring& sessionId) noexcept { _agentSessionId = sessionId; }
+        void SetAgentSessionId(const winrt::hstring& sessionId) noexcept
+        {
+            if (_agentSessionId != sessionId)
+            {
+                _yoloControlOwner = {};
+            }
+            _agentSessionId = sessionId;
+        }
+        const winrt::hstring& YoloControlOwner() const noexcept { return _yoloControlOwner; }
+        void SetYoloControlOwner(const winrt::hstring& owner) noexcept
+        {
+            _yoloControlOwner =
+                ::Microsoft::Terminal::AgentPaneRestore::IsValidYoloControlOwner(
+                    std::wstring_view{ owner }) ?
+                    owner :
+                    winrt::hstring{};
+        }
 
         // The agent identity this pane is currently running, as an
         // `AgentPaneBackend` token (`claude`, `wsl:Ubuntu:claude`, ...), plus
@@ -58,6 +76,7 @@ namespace winrt::TerminalApp::implementation
             {
                 _agentSessionId = {};
                 _agentSessionOwner = {};
+                _yoloControlOwner = {};
             }
 
             _agentRestoreIdentity = identity;
@@ -77,6 +96,16 @@ namespace winrt::TerminalApp::implementation
         void SetAgentRestoreExecutable(const winrt::hstring& executablePath) noexcept
         {
             _wtaExecutablePath = executablePath;
+        }
+
+        void CopyRestoreStateFrom(const AgentPaneContent& source) noexcept
+        {
+            // A save before helper status replay must retain the same resumable session.
+            _agentSessionId = source._agentSessionId;
+            _agentSessionOwner = source._agentSessionOwner;
+            _agentRestoreIdentity = source._agentRestoreIdentity;
+            _agentRestoreCustomCommand = source._agentRestoreCustomCommand;
+            _wtaExecutablePath = source._wtaExecutablePath;
         }
 
         // --- Per-pane autofix / diagnostics state ---
@@ -118,7 +147,14 @@ namespace winrt::TerminalApp::implementation
             _pendingAgentSourceProfileGuid.reset();
             return value;
         }
-        void PrepareForCrossWindowTransfer() noexcept { _helperTransferredForDrag = true; }
+        void AdoptLifetime(AgentPaneLifetime lifetime) noexcept { _lifetime = std::move(lifetime); }
+        AgentPaneLifetime TakeLifetime() noexcept { return std::move(_lifetime); }
+        bool HasLifetime() const noexcept { return static_cast<bool>(_lifetime); }
+        uint64_t TransferId() const noexcept { return _transferId; }
+        void RestoreHiddenAfterTransfer(bool hidden) noexcept { _restoreHiddenAfterTransfer = hidden; }
+        bool TakeHiddenAfterTransfer() noexcept { return std::exchange(_restoreHiddenAfterTransfer, false); }
+        void AwaitingTransferredTabContent(bool awaiting) noexcept { _awaitingTransferredTabContent = awaiting; }
+        bool AwaitingTransferredTabContent() const noexcept { return _awaitingTransferredTabContent; }
 
         // Apply the provided background and foreground brushes to the
         // agent-pane top bar (#348). Internal-only (not on IDL).
@@ -195,6 +231,7 @@ namespace winrt::TerminalApp::implementation
         bool _isSessionsView{ false };
         winrt::hstring _agentSessionId{};
         winrt::hstring _agentSessionOwner{};
+        winrt::hstring _yoloControlOwner{};
         winrt::hstring _agentRestoreIdentity{};
         winrt::hstring _agentRestoreCustomCommand{};
         winrt::hstring _wtaExecutablePath{};
@@ -216,7 +253,12 @@ namespace winrt::TerminalApp::implementation
         // wrapper recovers the helper's first post-transfer status.
         winrt::hstring _transferSourceTabId{};
         std::optional<winrt::guid> _pendingAgentSourceProfileGuid;
-        bool _helperTransferredForDrag{ false };
+        AgentPaneLifetime _lifetime;
+        inline static std::atomic<uint64_t> _nextTransferId{ 0 };
+        const uint64_t _transferId{ ++_nextTransferId };
+        bool _closed{ false };
+        bool _restoreHiddenAfterTransfer{ false };
+        bool _awaitingTransferredTabContent{ false };
 
         // Inner content event tokens — forwarded to our own BasicPaneEvents.
         winrt::event_token _innerCloseRequested{};

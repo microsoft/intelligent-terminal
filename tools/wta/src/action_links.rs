@@ -220,7 +220,7 @@ mod tests {
         let style = Style::default()
             .fg(Color::Cyan)
             .bg(Color::Black)
-            .add_modifier(Modifier::BOLD);
+            .add_modifier(Modifier::BOLD | Modifier::ITALIC);
         buffer.set_string(0, 0, "界 row", style);
         for column in 0..8 {
             buffer[(column, 1)].set_style(style);

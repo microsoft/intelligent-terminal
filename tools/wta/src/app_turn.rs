@@ -74,7 +74,7 @@ impl App {
         // these orthogonal fields rather than relying on side effects from a
         // grab-bag helper.
         tab.messages.clear();
-        tab.clear_streaming_thought();
+        tab.streaming_thought = None;
         // Dropping any in-flight responders signals Cancelled back to
         // the agent — appropriate when the user starts a new turn.
         tab.permission.clear();
@@ -162,7 +162,7 @@ impl App {
             }
             (TurnState::Streaming { .. }, ChunkKind::Message) => {
                 if tab.streaming_thought_text().is_some() {
-                    tab.clear_streaming_thought();
+                    tab.finish_thought();
                 }
                 tab.append_agent_chunk(text);
                 true
@@ -471,6 +471,14 @@ impl App {
         }
         self.turn_close(session_id);
         self.tab_mut(&target_tab).scroll_to_bottom();
+        if self
+            .tab_sessions
+            .get(&target_tab)
+            .and_then(TabSession::resumable_session_id)
+            == Some(session_id)
+        {
+            self.project_tab_state(&target_tab);
+        }
         self.schedule_input_queue_drain_for_tab(&target_tab);
     }
 
@@ -525,16 +533,16 @@ impl App {
                 outcome: TurnOutcome::Recommendation(recommendations),
                 end_pending: true,
                 ..
-            } => Some((format_recommendations_for_chat(recommendations), None)),
+            } => Some((
+                format_recommendations_for_chat(recommendations, None),
+                None,
+                true,
+            )),
             TurnState::Surfaced {
-                outcome:
-                    TurnOutcome::ResolvedRecommendation {
-                        summary,
-                        trailing_marker,
-                    },
+                outcome: TurnOutcome::ResolvedRecommendation { summary },
                 end_pending: true,
                 ..
-            } => Some((summary.clone(), Some(trailing_marker.clone()))),
+            } => Some((summary.clone(), None, false)),
             TurnState::Surfaced {
                 end_pending: true, ..
             } => {
@@ -544,8 +552,15 @@ impl App {
             }
             _ => None,
         };
-        if let Some((summary, trailing_marker)) = surfaced_commit {
+        if let Some((summary, trailing_marker, keep_card)) = surfaced_commit {
             self.turn_commit_recommendation_history(session_id, summary, trailing_marker);
+            if !keep_card {
+                if let TurnState::Surfaced { outcome, .. } =
+                    &mut self.session_tab_mut(session_id).turn
+                {
+                    *outcome = TurnOutcome::Empty;
+                }
+            }
             self.turn_release_end_pending_logged(session_id, "via=direct+end");
             self.turn_clear_agent_activity(session_id);
             return;
@@ -730,7 +745,7 @@ impl App {
     pub(super) fn turn_clear_agent_activity(&mut self, session_id: &str) {
         let tab = self.session_tab_mut(session_id);
         tab.activity_frame = 0;
-        tab.clear_streaming_thought();
+        tab.finish_thought();
     }
 
     /// User pressed Enter while a card was visible — dispatch the selected
@@ -748,17 +763,19 @@ impl App {
         else {
             return;
         };
-        let summary = format_recommendations_for_chat(recommendations);
-        // Snapshot the title before `choice` is moved into ChoiceExecution,
-        // so we can stamp the chat history with an "executed" marker after
-        // dispatch.
-        let executed_title = choice.title.clone();
+        let recommendation_summary = format_recommendations_for_chat(recommendations, None);
         let direct_proposal_id = self
             .session_tab(session_id)
             .active_direct_proposal_id
             .clone();
         let insert_only =
             self.session_tab(session_id).selected_button == 1 && self.is_send_choice(&choice);
+        let command_label = if insert_only {
+            t!("chat.tool_kind.insert")
+        } else {
+            t!("chat.tool_kind.run")
+        };
+        let executed_summary = format_recommendation_choice_for_chat(&choice, Some(&command_label));
         let target_tab = self.tab_for_session(session_id);
         let context = self
             .session_tab(session_id)
@@ -821,17 +838,20 @@ impl App {
         tab.recommendation_focus = RecommendationFocus::Button;
         tab.active_direct_proposal_id = None;
         tab.rec_scroll.reset();
-        let marker = t!("chat.turn_executed", title = &executed_title).into_owned();
         let outcome = if end_pending {
             TurnOutcome::ResolvedRecommendation {
-                summary,
-                trailing_marker: marker,
+                summary: executed_summary,
             }
         } else {
-            // AgentMessageEnd already committed this turn while the card was
-            // visible, so only annotate that existing history entry.
+            // AgentMessageEnd already committed the recommendation list while
+            // the card was visible. Replace it with only the selected action.
             if let Some((index, last)) = tab.completed_turns.iter_mut().enumerate().next_back() {
-                last.trailing_marker = Some(marker);
+                if let Some(ChatMessage::Agent(text)) = last.details.last_mut() {
+                    if text == &recommendation_summary {
+                        *text = executed_summary;
+                    }
+                }
+                last.trailing_marker = None;
                 tab.invalidate_completed_turn_height(index);
             }
             TurnOutcome::Empty
@@ -923,23 +943,23 @@ impl App {
         //   - Submitted / Streaming → commit a fresh completed_turn (prompt +
         //     whatever streamed + canceled marker) so the user always sees
         //     that this turn happened and that they cancelled it.
-        //   - Surfaced{Recommendation}: commit now if AgentMessageEnd is still
-        //     pending; otherwise annotate the history committed at turn end.
+        //   - Surfaced{Recommendation}: mark each proposed action as cancelled,
+        //     rather than marking the conversation title.
         //   - Other states (Idle / Surfaced{Empty / ChatTurn}) → no-op.
-        let new_turn_data: Option<(String, Option<String>, String)> = match &tab.turn {
+        let new_turn_data: Option<(String, Option<String>, Option<String>)> = match &tab.turn {
             TurnState::Submitted(prompt) => {
                 let label = match prompt.autofix.as_ref() {
                     Some(_) => t!("chat.autofix_prompt_label").into_owned(),
                     None => prompt.text.clone(),
                 };
-                Some((label, None, canceled_marker.clone()))
+                Some((label, None, Some(canceled_marker.clone())))
             }
             TurnState::Streaming { prompt } => {
                 let label = match prompt.autofix.as_ref() {
                     Some(_) => t!("chat.autofix_prompt_label").into_owned(),
                     None => prompt.text.clone(),
                 };
-                Some((label, None, canceled_marker.clone()))
+                Some((label, None, Some(canceled_marker.clone())))
             }
             TurnState::Surfaced {
                 prompt,
@@ -952,35 +972,37 @@ impl App {
                 };
                 Some((
                     label,
-                    Some(format_recommendations_for_chat(recommendations)),
-                    canceled_marker.clone(),
+                    Some(format_recommendations_for_chat(
+                        recommendations,
+                        Some(&canceled_marker),
+                    )),
+                    None,
                 ))
             }
             TurnState::Surfaced {
                 prompt,
-                outcome:
-                    TurnOutcome::ResolvedRecommendation {
-                        summary,
-                        trailing_marker,
-                    },
+                outcome: TurnOutcome::ResolvedRecommendation { summary },
                 end_pending: true,
             } => {
                 let label = match prompt.autofix.as_ref() {
                     Some(_) => t!("chat.autofix_prompt_label").into_owned(),
                     None => prompt.text.clone(),
                 };
-                Some((label, Some(summary.clone()), trailing_marker.clone()))
+                Some((label, Some(summary.clone()), None))
             }
             _ => None,
         };
-        let annotate_card = matches!(
-            &tab.turn,
+        let canceled_card_summary = match &tab.turn {
             TurnState::Surfaced {
-                outcome: TurnOutcome::Recommendation(_),
+                outcome: TurnOutcome::Recommendation(recommendations),
                 end_pending: false,
                 ..
-            }
-        );
+            } => Some((
+                format_recommendations_for_chat(recommendations, None),
+                format_recommendations_for_chat(recommendations, Some(&canceled_marker)),
+            )),
+            _ => None,
+        };
         if let Some((prompt_label, summary, trailing_marker)) = new_turn_data {
             let mut details = tab.take_current_turn_details();
             if let Some(summary) = summary {
@@ -990,12 +1012,17 @@ impl App {
                 prompt: prompt_label,
                 details,
                 expanded: true,
-                trailing_marker: Some(trailing_marker),
+                trailing_marker,
             });
             tab.scroll_to_bottom();
-        } else if annotate_card {
+        } else if let Some((summary, canceled_summary)) = canceled_card_summary {
             if let Some((index, last)) = tab.completed_turns.iter_mut().enumerate().next_back() {
-                last.trailing_marker = Some(canceled_marker);
+                if let Some(ChatMessage::Agent(text)) = last.details.last_mut() {
+                    if text == &summary {
+                        *text = canceled_summary;
+                    }
+                }
+                last.trailing_marker = None;
                 tab.invalidate_completed_turn_height(index);
             }
         }
@@ -1005,7 +1032,7 @@ impl App {
         tab.recommendation_focus = RecommendationFocus::Button;
         tab.rec_scroll.reset();
         tab.activity_frame = 0;
-        tab.clear_streaming_thought();
+        tab.finish_thought();
         // Cancel pending session-MCP clarification responders. The user's
         // next prompt draft lives in `input` and is intentionally preserved.
         tab.permission.clear();
@@ -1125,7 +1152,7 @@ impl App {
         tab.selection_visible_pending = true;
         tab.clear_completed_turn_selection();
         tab.activity_frame = 0;
-        tab.clear_streaming_thought();
+        tab.finish_thought();
         tab.turn = TurnState::Surfaced {
             prompt,
             outcome: TurnOutcome::Recommendation(recommendations),
@@ -1189,7 +1216,7 @@ impl App {
         tab.recommendation_focus = RecommendationFocus::Button;
         tab.selection_visible_pending = true;
         tab.activity_frame = 0;
-        tab.clear_streaming_thought();
+        tab.finish_thought();
         tab.turn = TurnState::Surfaced {
             prompt,
             outcome: TurnOutcome::Recommendation(recommendations),
@@ -1263,7 +1290,7 @@ impl App {
         tab.recommendation_focus = RecommendationFocus::Button;
         tab.rec_scroll.reset();
         tab.activity_frame = 0;
-        tab.clear_streaming_thought();
+        tab.finish_thought();
         tab.turn = TurnState::Surfaced {
             prompt,
             outcome: TurnOutcome::ChatTurn,
