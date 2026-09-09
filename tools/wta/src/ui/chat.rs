@@ -3855,12 +3855,14 @@ mod tests {
 
     #[test]
     fn thought_source_wrapping_matches_textwrap_after_every_utf8_head_cut() {
+        let repeated = ["repeated"; 2].join(" ");
+        let padded = format!("  {repeated}  repeated ");
         let text = [
-            "  repeated repeated  repeated ",
+            padded.as_str(),
             "",
             "界e\u{301} alpha-beta 界e\u{301} internationalization",
             "",
-            "repeated repeated",
+            repeated.as_str(),
             "",
         ]
         .join("\r\n");
@@ -3902,7 +3904,8 @@ mod tests {
             rows.iter().map(|(byte, _)| *byte).collect::<Vec<_>>(),
             [0, 6, 8, 14, 16, 22],
         );
-        let rows = wrap_thought_text("same same same", 7);
+        let repeated = ["same"; 3].join(" ");
+        let rows = wrap_thought_text(&repeated, 7);
         assert_eq!(
             rows,
             [
