@@ -130,7 +130,13 @@ click that row to inspect each call. While a turn is in flight, ACP thought
 chunks update a temporary **Think** row alongside visible answers; when the
 provider is silent, the row remains as `Think · …` until the turn ends.
 Expanded Edit details show bounded line-level `+`/`-` hunks computed from ACP
-snapshots.
+snapshots. Tool headers and groups can be expanded during the active turn as well
+as in history. Expanded Search details wrap the provider's `rawInput.query`
+(or its title when no query is supplied) and any returned text results. WTA
+does not reconstruct queries or results omitted by the provider. Queries retain
+the first 4,000 Unicode characters, all scrollable when expanded. Text results show
+up to 12 wrapped lines, with `…` for omitted text. Expansion follows the tool
+into completed history.
 
 | Key | Action |
 |-----|--------|
@@ -138,8 +144,8 @@ snapshots.
 | Ctrl+C | Copy selected text; otherwise cancel streaming / quit |
 | Up / Down | Browse prompt input history |
 | Mouse wheel | Scroll chat (hold Alt to scroll one line) |
-| Click a completed tool header | Expand or collapse that tool's details |
-| Ctrl+O | Expand or collapse all completed tool details |
+| Click a tool header | Expand or collapse that tool's details, live or completed |
+| Ctrl+O | Expand or collapse all live and completed tool details |
 | Mouse drag | Select a continuous text range |
 | Double / triple click | Select a word / line |
 | PageUp / PageDown | Scroll chat |

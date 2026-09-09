@@ -4820,6 +4820,13 @@ pub(crate) enum CompletedTurnHitKind {
     ToolCall {
         detail_index: usize,
     },
+    ActiveToolCall {
+        detail_index: usize,
+    },
+    ActiveToolGroup {
+        first_detail_index: usize,
+        detail_count: usize,
+    },
     ToolGroup {
         first_detail_index: usize,
         detail_count: usize,
@@ -4845,6 +4852,7 @@ impl CompletedTurnHitRegion {
 pub(crate) struct PressedCompletedTurn {
     pub(crate) tab_id: String,
     pub(crate) hit: CompletedTurnHitRegion,
+    pub(crate) active_tool_ids: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

@@ -959,6 +959,32 @@ fn tool_call_cwd(raw_input: Option<&serde_json::Value>) -> Option<String> {
         .map(str::to_string)
 }
 
+fn tool_call_query(
+    kind: Option<&acp::schema::v1::ToolKind>,
+    raw_input: Option<&serde_json::Value>,
+) -> Option<crate::app::ToolCallOutput> {
+    if kind.is_some_and(|kind| {
+        !matches!(
+            kind,
+            acp::schema::v1::ToolKind::Search | acp::schema::v1::ToolKind::Other
+        )
+    }) {
+        return None;
+    }
+    // Initial calls default to Other and updates can omit kind; Search may arrive later.
+    // Retain only the named query, never arbitrary input JSON.
+    let query = raw_input?.get("query")?.as_str()?;
+    if query.trim().is_empty() {
+        return None;
+    }
+    let mut chars = query.chars();
+    let text = chars.by_ref().take(TOOL_CALL_OUTPUT_MAX_CHARS).collect();
+    Some(crate::app::ToolCallOutput {
+        text,
+        truncated: chars.next().is_some(),
+    })
+}
+
 fn tool_call_exit_code(raw_output: Option<&serde_json::Value>) -> Option<i64> {
     let object = raw_output?.as_object()?;
     ["exitCode", "exit_code"]
@@ -1666,6 +1692,7 @@ impl WtaClient {
                     title: tool_call.title.clone(),
                     status: format!("{:?}", tool_call.status),
                     kind: tool_call_kind(tool_call.kind),
+                    query: tool_call_query(Some(&tool_call.kind), tool_call.raw_input.as_ref()),
                     location,
                     location_is_command,
                     cwd: tool_call_cwd(tool_call.raw_input.as_ref()),
@@ -1759,6 +1786,10 @@ impl WtaClient {
                         (None, false)
                     };
                 let cwd = tool_call_cwd(update.fields.raw_input.as_ref());
+                let query = tool_call_query(
+                    update.fields.kind.as_ref(),
+                    update.fields.raw_input.as_ref(),
+                );
                 let exit_code = tool_call_exit_code(update.fields.raw_output.as_ref());
                 let content = update.fields.content.as_deref().map(tool_call_content);
                 let locations = update.fields.locations.as_deref().map(tool_call_locations);
@@ -1771,6 +1802,7 @@ impl WtaClient {
                     || exit_code.is_some()
                     || content.is_some()
                     || locations.is_some()
+                    || query.is_some()
                 {
                     let _ = self.state.event_tx.send(AppEvent::ToolCallUpdate {
                         session_id: sid,
@@ -1778,6 +1810,7 @@ impl WtaClient {
                         title: update.fields.title,
                         status,
                         kind: update.fields.kind.map(tool_call_kind),
+                        query,
                         location,
                         location_is_command,
                         output,
@@ -1910,6 +1943,7 @@ impl WtaClient {
                     title,
                     status: "running".to_string(),
                     kind: crate::app::ToolCallKind::Execute,
+                    query: None,
                     location,
                     location_is_command: false,
                     cwd: None,
@@ -1972,6 +2006,7 @@ impl WtaClient {
                     title: None,
                     status: Some(format!("exited ({})", code)),
                     kind: None,
+                    query: None,
                     location: None,
                     location_is_command: false,
                     output: None,
