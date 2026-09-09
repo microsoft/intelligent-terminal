@@ -1002,14 +1002,20 @@ fn recoverable_prompt_error_drains_exactly_one_queued_input() {
     });
 
     assert!(prompt_rx.try_recv().is_err());
-    assert!(app.current_tab().messages.iter().any(|message| matches!(
-        message,
-        ChatMessage::Error(text) if text == "recoverable prompt failure"
-    )));
     handle_scheduled_drain(&mut app, &mut event_rx, "session-1");
     assert_eq!(prompt_rx.try_recv().unwrap().text, "B");
     assert!(prompt_rx.try_recv().is_err());
     assert_eq!(queued_texts(&app, DEFAULT_TAB_ID), ["C"]);
+    let failed_turn = app
+        .current_tab()
+        .completed_turns
+        .last()
+        .expect("A preserved");
+    assert_eq!(failed_turn.prompt, "A");
+    assert!(failed_turn.details.iter().any(|message| matches!(
+        message,
+        ChatMessage::Error(text) if text == "recoverable prompt failure"
+    )));
 }
 
 #[test]

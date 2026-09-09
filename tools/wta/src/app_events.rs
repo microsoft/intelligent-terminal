@@ -1613,6 +1613,10 @@ impl App {
                         }
                         _ => true,
                     };
+                    let failed_prompt =
+                        (session_survives && should_finish_turn && !tab.pending_inputs.is_empty())
+                            .then(|| tab.turn.prompt().cloned())
+                            .flatten();
                     if should_finish_turn {
                         if let Some(prompt_id) = tab.turn.prompt_id() {
                             tab.finish_active_prompt(prompt_id);
@@ -1627,6 +1631,21 @@ impl App {
                     );
                     if !is_duplicate {
                         tab.messages.push(ChatMessage::Error(message));
+                    }
+                    if let Some(prompt) = failed_prompt {
+                        tab.finish_thought();
+                        let prompt_label = if prompt.autofix.is_some() {
+                            t!("chat.autofix_prompt_label").into_owned()
+                        } else {
+                            prompt.text
+                        };
+                        let details = tab.take_current_turn_details();
+                        tab.completed_turns.push(CompletedTurn {
+                            prompt: prompt_label,
+                            details,
+                            expanded: true,
+                            trailing_marker: None,
+                        });
                     }
                     if let Some(target_tab) = target_tab {
                         if failed_autofix && should_finish_turn {
