@@ -112,6 +112,9 @@ agent.custom.auth_hint: "Kontroller at %{name} er installert og på din PATH."  
 
 # ── Agents view (src/ui/agents_view.rs) ─────────────────────────────────────
 agents.loading: "Laster..."
+# Passive guidance on the AI-agent Sessions page; navigation labels match the Settings UI.
+agents.tracking_off: "Sporing av øktstatus er slått av. Slå den på under Settings > Agents > Sessions."
+agents.tracking_policy_blocked: "Sporing av øktstatus er deaktivert av organisasjonen din."
 # {Locked="Enter","Esc","F5","↑","↓","/"} - key combinations, do not translate
 agents.footer_hint: "(↑ ↓ for å navigere • Enter for å starte økt • Esc for å avslutte • F5 for å oppdatere • / for å søke)"
 agents.status.active: "Aktiv"

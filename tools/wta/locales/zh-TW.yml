@@ -108,6 +108,9 @@ agent.custom.auth_hint: "請確認 %{name} 已安裝並位於 PATH 上。"  # {L
 
 # ── 智能體檢視 (src/ui/agents_view.rs) ─────────────────────────────────────
 agents.loading: "載入中..."
+# Passive session-status guidance; the path matches the localized Settings UI.
+agents.tracking_off: "工作階段狀態追蹤已關閉。請在「設定 > AI 代理 > 工作階段」中啟用。"
+agents.tracking_policy_blocked: "您的組織已停用工作階段狀態追蹤。"
 # {Locked="Enter","Esc","F5","↑","↓","/"} - 組合鍵，請勿翻譯
 agents.footer_hint: "(↑ ↓ 瀏覽 • Enter 啟動工作階段 • Esc 結束 • F5 重新整理 • / 搜尋)"
 agents.status.active: "使用中"

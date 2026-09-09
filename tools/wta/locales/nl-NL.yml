@@ -112,6 +112,9 @@ agent.custom.auth_hint: "Zorg dat %{name} is geïnstalleerd en in het PATH staat
 
 # ── Agentweergave (src/ui/agents_view.rs) ─────────────────────────────────────
 agents.loading: "Laden..."
+# Passive guidance on the AI-agent Sessions page; navigation labels match the Settings UI.
+agents.tracking_off: "Het bijhouden van de sessiestatus is uitgeschakeld. Schakel dit in via Settings > Agents > Sessions."
+agents.tracking_policy_blocked: "Het bijhouden van de sessiestatus is uitgeschakeld door uw organisatie."
 # {Locked="Enter","Esc","F5","↑","↓","/"} - toetscombinaties, niet vertalen
 agents.footer_hint: "(↑ ↓ navigeren • Enter sessie starten • Esc afsluiten • F5 vernieuwen • / zoeken)"
 agents.status.active: "Actief"

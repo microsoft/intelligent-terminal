@@ -125,6 +125,9 @@ agent.custom.auth_hint: "დარწმუნდით, რომ %{name} დ�
 
 # ── აგენტების ხედი (src/ui/agents_view.rs) ─────────────────────────────────
 agents.loading: "იტვირთება..."
+# Passive guidance in the AI-agent Sessions view when automatic status tracking is off; navigation labels match Settings UI.
+agents.tracking_off: "სესიების სტატუსის თვალყურის დევნება გამორთულია. ჩართეთ ის განყოფილებაში Settings > Agents > Sessions."
+agents.tracking_policy_blocked: "სესიების სტატუსის თვალყურის დევნება თქვენი ორგანიზაციის მიერ გამორთულია."
 # {Locked="Enter","Esc","F5","↑","↓","/"} - ღილაკების კომბინაციები, არ ითარგმნება
 agents.footer_hint: "(↑ ↓ ნავიგაციისთვის • Enter სესიის გასახსნელად • Esc გასასვლელად • F5 განახლებისთვის • / ძიებისთვის)"
 agents.status.active: "აქტიური"

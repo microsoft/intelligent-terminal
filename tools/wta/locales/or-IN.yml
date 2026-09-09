@@ -125,6 +125,9 @@ agent.custom.auth_hint: "%{name} ଇନ୍‌ଷ୍ଟଲ୍ ଅଛି ଏବଂ
 
 # ── ଏଜେଣ୍ଟ ଦୃଶ୍ୟ (src/ui/agents_view.rs) ─────────────────────────────────────
 agents.loading: "ଲୋଡ୍ ହେଉଛି..."
+# Passive guidance about AI-agent session status tracking only; chat, history, and Resume remain available.
+agents.tracking_off: "ସେସନ୍ ସ୍ଥିତିର ଟ୍ରାକିଂ ବନ୍ଦ ଅଛି। Settings > Agents > Sessions ରେ ଏହାକୁ ସକ୍ରିୟ କରନ୍ତୁ।"  # {Locked="Settings","Agents","Sessions"} Literal Settings UI labels.
+agents.tracking_policy_blocked: "ଆପଣଙ୍କ ସଂଗଠନ ଦ୍ୱାରା ସେସନ୍ ସ୍ଥିତିର ଟ୍ରାକିଂ ନିଷ୍କ୍ରିୟ କରାଯାଇଛି।"
 # {Locked="Enter","Esc","F5","↑","↓","/"} - କୀ ସଂଯୋଜନ, ଅନୁବାଦ କରନ୍ତୁ ନାହିଁ
 agents.footer_hint: "(↑ ↓ ନେଭିଗେଟ୍ କରନ୍ତୁ • Enter ସେସନ୍ ଆରମ୍ଭ କରନ୍ତୁ • Esc ବାହାରନ୍ତୁ • F5 ସତେଜ କରନ୍ତୁ • / ଖୋଜନ୍ତୁ)"
 agents.status.active: "ସକ୍ରିୟ"

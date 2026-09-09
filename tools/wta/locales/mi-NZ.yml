@@ -112,6 +112,9 @@ agent.custom.auth_hint: "Kia mohio kua tautahia a %{name} a kei runga i to PATH.
 
 # ── Agents view (src/ui/agents_view.rs) ─────────────────────────────────────
 agents.loading: "E uta ana..."
+# Passive guidance about automatic status tracking only; conversations, history, and Resume remain available.
+agents.tracking_off: "Kua monokia te aroturuki i te tūnga o ngā wātū. Whakahohea ki Settings > Agents > Sessions."
+agents.tracking_policy_blocked: "Kua monokia te aroturuki i te tūnga o ngā wātū e tō whakahaere."
 # {Locked="Enter","Esc","F5","↑","↓","/"} - key combinations, do not translate
 agents.footer_hint: "(↑ ↓ ki te whakatere • Enter ki te whakarewa wahanga • Esc ki te puta • F5 ki te whakahou • / ki te rapu)"
 agents.status.active: "Hohe"

@@ -113,6 +113,9 @@ agent.custom.auth_hint: "Make sure %{name} is installed and on your PATH."  # {L
 
 # ── Agents view (src/ui/agents_view.rs) ─────────────────────────────────────
 agents.loading: "Loading..."
+# Passive guidance about AI-agent session status tracking only; chat, history, and Resume remain available.
+agents.tracking_off: "የክፍለ ጊዜ ሁኔታ ክትትል ተሰናክሏል። በSettings > Agents > Sessions ውስጥ ያንቁት።"  # {Locked="Settings","Agents","Sessions"} Literal Settings UI labels.
+agents.tracking_policy_blocked: "የክፍለ ጊዜ ሁኔታ ክትትል በድርጅትዎ ተሰናክሏል።"
 # {Locked="Enter","Esc","F5","↑","↓","/"} - key combinations, do not translate
 agents.footer_hint: "(↑ ↓ to navigate • Enter to launch session • Esc to exit • F5 to refresh • / to search)"
 agents.status.active: "Active"

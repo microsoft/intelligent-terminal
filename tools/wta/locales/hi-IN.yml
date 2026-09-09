@@ -125,6 +125,9 @@ agent.custom.auth_hint: "सुनिश्चित करें कि %{name}
 
 # ── एजेंट दृश्य (src/ui/agents_view.rs) ─────────────────────────────────────
 agents.loading: "लोड हो रहा है..."
+# Passive guidance about AI-agent session status tracking only; chat, history, and Resume remain available.
+agents.tracking_off: "सत्र की स्थिति की ट्रैकिंग बंद है। इसे Settings > Agents > Sessions में सक्षम करें।"  # {Locked="Settings","Agents","Sessions"} Literal Settings UI labels.
+agents.tracking_policy_blocked: "आपके संगठन ने सत्र की स्थिति की ट्रैकिंग अक्षम कर दी है।"
 # {Locked="Enter","Esc","F5","↑","↓","/"} - कुंजी संयोजन, अनुवाद न करें
 agents.footer_hint: "(↑ ↓ नेविगेट करें • Enter सत्र शुरू करें • Esc बाहर निकलें • F5 रीफ़्रेश करें • / खोजें)"
 agents.status.active: "सक्रिय"

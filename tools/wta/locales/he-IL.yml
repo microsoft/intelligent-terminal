@@ -125,6 +125,9 @@ agent.custom.auth_hint: "ודא ש-%{name} מותקן ונמצא ב-PATH שלך.
 
 # ── תצוגת סוכנים (src/ui/agents_view.rs) ─────────────────────────────────────
 agents.loading: "טוען..."
+# Passive guidance about AI-agent session status tracking only; chat, history, and Resume remain available.
+agents.tracking_off: "המעקב אחר מצב ההפעלות כבוי. ניתן להפעיל אותו דרך Settings > Agents > Sessions."  # {Locked="Settings","Agents","Sessions"} Literal Settings UI labels.
+agents.tracking_policy_blocked: "המעקב אחר מצב ההפעלות מושבת על-ידי הארגון שלך."
 # {Locked="Enter","Esc","F5","↑","↓","/"} - צירופי מקשים, אין לתרגם
 agents.footer_hint: "(↑ ↓ לניווט • Enter להפעלת הפעלה • Esc ליציאה • F5 לרענון • / לחיפוש)"
 agents.status.active: "פעיל"

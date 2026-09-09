@@ -112,6 +112,9 @@ agent.custom.auth_hint: "Make sure %{name} is installed and on your PATH."  # {L
 
 # ── Agents view (src/ui/agents_view.rs) ─────────────────────────────────────
 agents.loading: "Loading..."
+# Passive guidance about automatic status tracking only; conversations, history, and Resume remain available.
+agents.tracking_off: "ການຕິດຕາມສະຖານະເຊດຊັນຖືກປິດຢູ່. ເປີດໃຊ້ໄດ້ໃນ Settings > Agents > Sessions."
+agents.tracking_policy_blocked: "ການຕິດຕາມສະຖານະເຊດຊັນຖືກປິດໂດຍອົງກອນຂອງທ່ານ."
 # {Locked="Enter","Esc","F5","↑","↓","/"} - key combinations, do not translate
 agents.footer_hint: "(↑ ↓ to navigate • Enter to launch session • Esc to exit • F5 to refresh • / to search)"
 agents.status.active: "Active"

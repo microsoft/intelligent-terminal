@@ -3399,7 +3399,7 @@ fn tracking_notice_only_off_across_empty_loading_search_and_populated_states() {
                     let buffer = render_to_buffer(&mut app, 90, 9);
                     let text = buffer_to_text(&buffer);
                     assert_eq!(
-                        text.contains("Go to Settings > Agents > Sessions to enable hooks."),
+                        text.contains("Session status tracking is off. Enable it in Settings > Agents > Sessions."),
                         !enabled
                     );
                     assert!(!text.contains("Turn on"));
@@ -3407,7 +3407,11 @@ fn tracking_notice_only_off_across_empty_loading_search_and_populated_states() {
                         let cell = buffer.cell((2, 0)).unwrap();
                         assert_eq!(cell.fg, Color::Reset);
                         assert!(cell.modifier.contains(Modifier::DIM));
-                        assert!(text.lines().next().unwrap().contains("Go to Settings"));
+                        assert!(text
+                            .lines()
+                            .next()
+                            .unwrap()
+                            .contains("Session status tracking is off."));
                         assert!((0..buffer.area.width).all(|x| !buffer
                             .cell((x, 0))
                             .unwrap()
@@ -3427,13 +3431,13 @@ fn tracking_notice_policy_uses_passive_explanation() {
     let mut app = tracking_notice_app(false);
     app.apply_session_management_policy(Some(true));
     let text = buffer_to_text(&render_to_buffer(&mut app, 90, 7));
-    assert!(text.contains("Session hooks are disabled by your organization."));
+    assert!(text.contains("Session status tracking is disabled by your organization."));
     assert!(!text.contains("Turn on"));
     app.session_management_enabled = true;
     app.session_management_policy_blocked = Some(true);
     let text = buffer_to_text(&render_to_buffer(&mut app, 90, 7));
-    assert!(!text.contains("Session hooks"));
-    assert!(!text.contains("Go to Settings"));
+    assert!(!text.contains("Session status tracking"));
+    assert!(!text.contains("Settings > Agents > Sessions"));
 }
 
 #[test]
@@ -3496,7 +3500,9 @@ fn tracking_notice_render_preview() {
         app.current_tab_mut().agents_list_state.select(Some(0));
         let buffer = render_to_buffer(&mut app, 90, 9);
         assert_eq!(
-            buffer_to_text(&buffer).contains("Go to Settings > Agents > Sessions to enable hooks."),
+            buffer_to_text(&buffer).contains(
+                "Session status tracking is off. Enable it in Settings > Agents > Sessions."
+            ),
             !enabled
         );
         if std::env::var_os("WTA_TRACKING_NOTICE_PREVIEW").is_some() {
@@ -4630,7 +4636,9 @@ fn session_tracking_off_born_bound_idle_survives_hooks_snapshots_and_toggles() {
         assert_eq!(app.local_agent_rows()[0].status, AgentStatus::Idle);
         let text = render_to_text(&mut app, 120, 24);
         assert!(text.contains("Idle"));
-        assert!(text.contains("Go to Settings > Agents > Sessions to enable hooks."));
+        assert!(text.contains(
+            "Session status tracking is off. Enable it in Settings > Agents > Sessions."
+        ));
         assert!(!text.contains("Active"));
         assert!(!text.contains("Waiting for input"));
     }

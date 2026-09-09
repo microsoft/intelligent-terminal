@@ -112,6 +112,9 @@ agent.custom.auth_hint: "Pastikan %{name} sudah diinstal dan ada di PATH Anda." 
 
 # ── Agents view (src/ui/agents_view.rs) ─────────────────────────────────────
 agents.loading: "Memuat..."
+# Passive guidance about automatic status tracking only; conversations, history, and Resume remain available.
+agents.tracking_off: "Pelacakan status sesi nonaktif. Aktifkan di Settings > Agents > Sessions."
+agents.tracking_policy_blocked: "Pelacakan status sesi dinonaktifkan oleh organisasi Anda."
 # {Locked="Enter","Esc","F5","↑","↓","/"} - key combinations, do not translate
 agents.footer_hint: "(↑ ↓ untuk navigasi • Enter untuk membuka sesi • Esc untuk keluar • F5 untuk menyegarkan • / untuk mencari)"
 agents.status.active: "Aktif"

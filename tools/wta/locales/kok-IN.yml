@@ -125,6 +125,9 @@ agent.custom.auth_hint: "%{name} इन्स्टॉल आसा आनी �
 
 # ── एजेंट दृश्य (src/ui/agents_view.rs) ─────────────────────────────────────
 agents.loading: "लोड जाता..."
+# Passive guidance about AI-agent session status tracking only; chat, history, and Resume remain available.
+agents.tracking_off: "सत्राच्या स्थितीचो मागोवो घेवप बंद आसा. Settings > Agents > Sessions हांगा तें चालू करात."  # {Locked="Settings","Agents","Sessions"} Literal Settings UI labels.
+agents.tracking_policy_blocked: "तुमच्या संघटनेन सत्राच्या स्थितीचो मागोवो घेवप बंद केलां."
 # {Locked="Enter","Esc","F5","↑","↓","/"} - की संयोजन, अणकार करूं नाका
 agents.footer_hint: "(↑ ↓ नेव्हिगेट करात • Enter सत्र सुरू करात • Esc भायर वचात • F5 रिफ्रेश करात • / सोदात)"
 agents.status.active: "सक्रिय"

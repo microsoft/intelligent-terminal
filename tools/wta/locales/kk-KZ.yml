@@ -125,6 +125,9 @@ agent.custom.auth_hint: "%{name} орнатылғанына және PATH-те �
 
 # ── Agents view (src/ui/agents_view.rs) ─────────────────────────────────────
 agents.loading: "Жүктелуде..."
+# Passive guidance in the AI-agent Sessions view when automatic status tracking is off; navigation labels match Settings UI.
+agents.tracking_off: "Сеанстардың күйін бақылау өшірілген. Оны Settings > Agents > Sessions бөлімінде қосыңыз."
+agents.tracking_policy_blocked: "Сеанстардың күйін бақылау ұйымыңыз тарапынан өшірілген."
 # {Locked="Enter","Esc","F5","↑","↓","/"} - key combinations, do not translate
 agents.footer_hint: "(↑ ↓ шарлау үшін • Enter сеанс ашу үшін • Esc шығу үшін • F5 жаңарту үшін • / іздеу үшін)"
 agents.status.active: "Белсенді"

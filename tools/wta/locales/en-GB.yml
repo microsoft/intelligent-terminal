@@ -112,6 +112,9 @@ agent.custom.auth_hint: "Make sure %{name} is installed and on your PATH."  # {L
 
 # ── Agents view (src/ui/agents_view.rs) ─────────────────────────────────────
 agents.loading: "Loading..."
+# Passive guidance on the AI-agent Sessions page; navigation labels match the Settings UI.
+agents.tracking_off: "Session status tracking is off. Enable it in Settings > Agents > Sessions."
+agents.tracking_policy_blocked: "Session status tracking is disabled by your organisation."
 # {Locked="Enter","Esc","F5","↑","↓","/"} - key combinations, do not translate
 agents.footer_hint: "(↑ ↓ to navigate • Enter to launch session • Esc to exit • F5 to refresh • / to search)"
 agents.status.active: "Active"

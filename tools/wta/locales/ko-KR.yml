@@ -108,6 +108,9 @@ agent.custom.auth_hint: "%{name}이(가) 설치되어 있고 PATH에 있는지 �
 
 # ── 에이전트 보기 (src/ui/agents_view.rs) ─────────────────────────────────────
 agents.loading: "로드 중..."
+# Passive guidance about automatic status tracking only; conversations, history, and Resume remain available.
+agents.tracking_off: "세션 상태 추적이 꺼져 있습니다. 설정 > 에이전트 > 세션에서 활성화하세요."
+agents.tracking_policy_blocked: "조직에서 세션 상태 추적을 비활성화했습니다."
 # {Locked="Enter","Esc","F5","↑","↓","/"} - 키 조합, 번역하지 마세요
 agents.footer_hint: "(↑ ↓ 탐색 • Enter 세션 시작 • Esc 종료 • F5 새로 고침 • / 검색)"
 agents.status.active: "활성"

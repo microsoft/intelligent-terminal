@@ -112,6 +112,9 @@ agent.custom.auth_hint: "ตรวจสอบว่า %{name} ถูกติ�
 
 # ── Agents view (src/ui/agents_view.rs) ─────────────────────────────────────
 agents.loading: "กำลังโหลด..."
+# Passive guidance about automatic status tracking only; conversations, history, and Resume remain available.
+agents.tracking_off: "การติดตามสถานะเซสชันปิดอยู่ เปิดใช้งานได้ที่ Settings > Agents > Sessions"
+agents.tracking_policy_blocked: "การติดตามสถานะเซสชันถูกปิดใช้งานโดยองค์กรของคุณ"
 # {Locked="Enter","Esc","F5","↑","↓","/"} - key combinations, do not translate
 agents.footer_hint: "(↑ ↓ เลื่อนเลือก • Enter เพื่อเปิดเซสชัน • Esc เพื่อออก • F5 เพื่อรีเฟรช • / เพื่อค้นหา)"
 agents.status.active: "ใช้งานอยู่"

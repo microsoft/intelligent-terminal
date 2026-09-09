@@ -121,6 +121,9 @@ agent.custom.auth_hint: "Проверите да је %{name} инсталира
 
 # ── Agents view (src/ui/agents_view.rs) ─────────────────────────────────────
 agents.loading: "Учитавање..."
+# Passive guidance in the AI-agent Sessions view when automatic status tracking is off; navigation labels match Settings UI.
+agents.tracking_off: "Праћење статуса сесија је искључено. Укључите га у одељку Подешавања > Агенти > Сесије."
+agents.tracking_policy_blocked: "Ваша организација је онемогућила праћење статуса сесија."
 # {Locked="Enter","Esc","F5","↑","↓","/"} - key combinations, do not translate
 agents.footer_hint: "(↑ ↓ за навигацију • Enter за отварање сесије • Esc за излаз • F5 за освежавање • / за претрагу)"
 agents.status.active: "Активан"

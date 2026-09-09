@@ -130,6 +130,9 @@ agent.custom.auth_hint: "%{name} نىڭ ئورنىتىلغانلىقى ۋە PATH
 
 # ── Agents view (src/ui/agents_view.rs) ─────────────────────────────────────────────────────────────────
 agents.loading: "يۈكلەنۋاتىدۇ..."
+# Passive guidance about AI-agent session status tracking only; chat, history, and Resume remain available.
+agents.tracking_off: "ئولتۇرۇش ھالىتىنى ئىز قوغلاش تاقالغان. ئۇنى Settings > Agents > Sessions دا قوزغىتىڭ."  # {Locked="Settings","Agents","Sessions"} Literal Settings UI labels.
+agents.tracking_policy_blocked: "ئولتۇرۇش ھالىتىنى ئىز قوغلاش تەشكىلاتىڭىز تەرىپىدىن چەكلەنگەن."
 # {Locked="Enter","Esc","F5","↑","↓","/"} - key combinations, do not translate
 agents.footer_hint: "(↑ ↓ يۆتكەش • Enter ئوتتۇرا ئېچىش • Esc چىقىش • F5 يېڭىلاش • / ئىزدەش)"
 agents.status.active: "ئاكتىۋ"

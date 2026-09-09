@@ -121,6 +121,9 @@ agent.custom.auth_hint: "សូមប្រាកដថា %{name} ត្រូ�
 
 # ── Agents view (src/ui/agents_view.rs) ───────────────────────────────────────────────────────────────
 agents.loading: "កំពុងផ្ទុក..."
+# Passive guidance about automatic status tracking only; conversations, history, and Resume remain available.
+agents.tracking_off: "ការតាមដានស្ថានភាពវគ្គត្រូវបានបិទ។ សូមបើកវានៅក្នុង Settings > Agents > Sessions។"
+agents.tracking_policy_blocked: "ការតាមដានស្ថានភាពវគ្គត្រូវបានបិទដោយស្ថាប័នរបស់អ្នក។"
 # {Locked="Enter","Esc","F5","↑","↓","/"} - key combinations, do not translate
 agents.footer_hint: "(↑ ↓ ដើម្បីរុករក • Enter ដើម្បីចាប់ផ្តើមវគ្គ • Esc ដើម្បីចាកចេញ • F5 ដើម្បីផ្ទុកឡើងវិញ • / ដើម្បីស្វែងរក)"
 # Status badge when agent session is actively processing

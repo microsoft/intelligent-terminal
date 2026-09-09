@@ -112,6 +112,9 @@ agent.custom.auth_hint: "Suergt dofir datt %{name} installéiert ass an op Ärem
 
 # ── Agenten-Vue (src/ui/agents_view.rs) ─────────────────────────────────
 agents.loading: "Gëtt gelueden..."
+# Passive guidance on the AI-agent Sessions page; navigation labels match the Settings UI.
+agents.tracking_off: "D'Verfollegung vum Sëtzungsstatus ass ausgeschalt. Aktivéiert se ënner Settings > Agents > Sessions."
+agents.tracking_policy_blocked: "D'Verfollegung vum Sëtzungsstatus ass vun Ärer Organisatioun deaktivéiert."
 # {Locked="Enter","Esc","F5","↑","↓","/"} - Tast-Kombinatiounen, net iwwersetzen
 agents.footer_hint: "(↑ ↓ fir ze navigéieren • Enter fir d'Sëtzung ze starten • Esc fir eraus • F5 fir z'aktualiséieren • / fir ze sichen)"
 agents.status.active: "Aktiv"

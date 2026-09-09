@@ -121,6 +121,9 @@ agent.custom.auth_hint: "Uistite sa, že %{name} je nainštalovaný a je v PATH.
 
 # ── Agents view (src/ui/agents_view.rs) ─────────────────────────────────────
 agents.loading: "Načítava sa..."
+# Passive guidance in the AI-agent Sessions view when automatic status tracking is off; navigation labels match Settings UI.
+agents.tracking_off: "Sledovanie stavu relácií je vypnuté. Zapnite ho v časti Settings > Agents > Sessions."
+agents.tracking_policy_blocked: "Vaša organizácia zakázala sledovanie stavu relácií."
 # {Locked="Enter","Esc","F5","↑","↓","/"} - key combinations, do not translate
 agents.footer_hint: "(↑ ↓ na navigáciu • Enter na spustenie relácie • Esc na ukončenie • F5 na obnovenie • / na vyhľadávanie)"
 agents.status.active: "Aktívny"

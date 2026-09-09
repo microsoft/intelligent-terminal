@@ -121,6 +121,9 @@ agent.custom.auth_hint: "Убедитесь, что %{name} установлен
 
 # ── Представление агентов (src/ui/agents_view.rs) ─────────────────────────────────────
 agents.loading: "Загрузка..."
+# Passive guidance in the AI-agent Sessions view when automatic status tracking is off; navigation labels match Settings UI.
+agents.tracking_off: "Отслеживание состояния сеансов отключено. Включите его в разделе Параметры > Агенты > Сеансы."
+agents.tracking_policy_blocked: "Отслеживание состояния сеансов отключено вашей организацией."
 # {Locked="Enter","Esc","F5","↑","↓","/"} - комбинации клавиш, не переводить
 agents.footer_hint: "(↑ ↓ навигация • Enter запустить сеанс • Esc выход • F5 обновить • / поиск)"
 agents.status.active: "Активен"

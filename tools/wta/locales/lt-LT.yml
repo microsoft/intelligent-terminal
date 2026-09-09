@@ -112,6 +112,9 @@ agent.custom.auth_hint: "Įsitikinkite, kad %{name} yra įdiegtas ir yra jūsų 
 
 # ── Agents view (src/ui/agents_view.rs) ─────────────────────────────────────
 agents.loading: "Įkeliama..."
+# Passive guidance in the AI-agent Sessions view when automatic status tracking is off; navigation labels match Settings UI.
+agents.tracking_off: "Seansų būsenos stebėjimas išjungtas. Įjunkite jį skiltyje Settings > Agents > Sessions."
+agents.tracking_policy_blocked: "Jūsų organizacija išjungė seansų būsenos stebėjimą."
 # {Locked="Enter","Esc","F5","↑","↓","/"} - key combinations, do not translate
 agents.footer_hint: "(↑ ↓ naršyti • Enter pradėti seansą • Esc išeiti • F5 atnaujinti • / ieškoti)"
 agents.status.active: "Aktyvus"

@@ -125,6 +125,9 @@ agent.custom.auth_hint: "%{name} ఇన్‌స్టాల్ చేయబడ�
 
 # ── ఏజెంట్‌ల వ్యూ (src/ui/agents_view.rs) ─────────────────────────────────────
 agents.loading: "లోడ్ అవుతోంది..."
+# Passive guidance about AI-agent session status tracking only; chat, history, and Resume remain available.
+agents.tracking_off: "సెషన్ స్థితి ట్రాకింగ్ నిలిపివేయబడింది. Settings > Agents > Sessions లో దాన్ని సక్రియం చేయండి."  # {Locked="Settings","Agents","Sessions"} Literal Settings UI labels.
+agents.tracking_policy_blocked: "మీ సంస్థ సెషన్ స్థితి ట్రాకింగ్‌ను నిలిపివేసింది."
 # {Locked="Enter","Esc","F5","↑","↓","/"} - కీ కాంబినేషన్‌లు, అనువదించవద్దు
 agents.footer_hint: "(↑ ↓ నావిగేట్ చేయండి • Enter సెషన్ ప్రారంభించండి • Esc నిష్క్రమించండి • F5 రిఫ్రెష్ చేయండి • / వెతకండి)"
 agents.status.active: "సక్రియం"

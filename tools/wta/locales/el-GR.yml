@@ -113,6 +113,9 @@ agent.custom.auth_hint: "Βεβαιωθείτε ότι το %{name} είναι �
 
 # ── Agents view (src/ui/agents_view.rs) ─────────────────────────────────────
 agents.loading: "Φόρτωση..."
+# Passive guidance in the AI-agent Sessions view when automatic status tracking is off; navigation labels match Settings UI.
+agents.tracking_off: "Η παρακολούθηση της κατάστασης των συνεδριών είναι απενεργοποιημένη. Ενεργοποιήστε την στην ενότητα Settings > Agents > Sessions."
+agents.tracking_policy_blocked: "Η παρακολούθηση της κατάστασης των συνεδριών έχει απενεργοποιηθεί από τον οργανισμό σας."
 # {Locked="Enter","Esc","F5","↑","↓","/"} - key combinations, do not translate
 agents.footer_hint: "(↑ ↓ για πλοήγηση • Enter για έναρξη συνεδρίας • Esc για έξοδο • F5 για ανανέωση • / για αναζήτηση)"
 agents.status.active: "Ενεργός"

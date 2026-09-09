@@ -121,6 +121,9 @@ agent.custom.auth_hint: "Prepričajte se, da je %{name} nameščen in v PATH."  
 
 # ── Agents view (src/ui/agents_view.rs) ─────────────────────────────────────
 agents.loading: "Nalaganje..."
+# Passive guidance in the AI-agent Sessions view when automatic status tracking is off; navigation labels match Settings UI.
+agents.tracking_off: "Spremljanje stanja sej je izklopljeno. Vklopite ga v razdelku Settings > Agents > Sessions."
+agents.tracking_policy_blocked: "Vaša organizacija je onemogočila spremljanje stanja sej."
 # {Locked="Enter","Esc","F5","↑","↓","/"} - key combinations, do not translate
 agents.footer_hint: "(↑ ↓ za krmarjenje • Enter za zagon seje • Esc za izhod • F5 za osvežitev • / za iskanje)"
 agents.status.active: "Aktivno"

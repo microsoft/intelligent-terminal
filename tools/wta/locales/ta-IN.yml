@@ -125,6 +125,9 @@ agent.custom.auth_hint: "%{name} நிறுவப்பட்டுள்ள�
 
 # ── ஏஜெண்ட்கள் காட்சி (src/ui/agents_view.rs) ─────────────────────────────────────
 agents.loading: "ஏற்றப்படுகிறது..."
+# Passive guidance about AI-agent session status tracking only; chat, history, and Resume remain available.
+agents.tracking_off: "அமர்வு நிலைக் கண்காணிப்பு முடக்கப்பட்டுள்ளது. Settings > Agents > Sessions பகுதியில் அதை இயக்கவும்."  # {Locked="Settings","Agents","Sessions"} Literal Settings UI labels.
+agents.tracking_policy_blocked: "உங்கள் நிறுவனத்தால் அமர்வு நிலைக் கண்காணிப்பு முடக்கப்பட்டுள்ளது."
 # {Locked="Enter","Esc","F5","↑","↓","/"} - விசைச் சேர்க்கைகள், மொழிபெயர்க்க வேண்டாம்
 agents.footer_hint: "(↑ ↓ வழிசெலுத்து • Enter அமர்வைத் தொடங்கு • Esc வெளியேறு • F5 புதுப்பி • / தேடு)"
 agents.status.active: "செயலில்"

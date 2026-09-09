@@ -112,6 +112,9 @@ agent.custom.auth_hint: "Győződjön meg róla, hogy a(z) %{name} telepítve va
 
 # ── Agents view (src/ui/agents_view.rs) ─────────────────────────────────────
 agents.loading: "Betöltés..."
+# Passive guidance in the AI-agent Sessions view when automatic status tracking is off; navigation labels match Settings UI.
+agents.tracking_off: "A munkamenetek állapotkövetése ki van kapcsolva. Kapcsolja be a Settings > Agents > Sessions menüpontban."
+agents.tracking_policy_blocked: "A szervezete letiltotta a munkamenetek állapotkövetését."
 # {Locked="Enter","Esc","F5","↑","↓","/"} - key combinations, do not translate
 agents.footer_hint: "(↑ ↓ navigáláshoz • Enter munkamenet indításához • Esc kilépéshez • F5 frissítéshez • / kereséshez)"
 agents.status.active: "Aktív"

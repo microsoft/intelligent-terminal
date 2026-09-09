@@ -125,6 +125,9 @@ agent.custom.auth_hint: "%{name} ഇന്‍സ്റ്റാള്‍ ചെ�
 
 # ── ഏജന്റുകളുടെ വ്യൂ (src/ui/agents_view.rs) ─────────────────────────────────────
 agents.loading: "ലോഡ് ചെയ്യുന്നു..."
+# Passive guidance about AI-agent session status tracking only; chat, history, and Resume remain available.
+agents.tracking_off: "സെഷന്റെ നില ട്രാക്ക് ചെയ്യുന്നത് ഓഫാക്കിയിരിക്കുന്നു. Settings > Agents > Sessions എന്നതിൽ ഇത് പ്രവർത്തനക്ഷമമാക്കുക."  # {Locked="Settings","Agents","Sessions"} Literal Settings UI labels.
+agents.tracking_policy_blocked: "നിങ്ങളുടെ സംഘടന സെഷന്റെ നില ട്രാക്ക് ചെയ്യുന്നത് പ്രവർത്തനരഹിതമാക്കിയിരിക്കുന്നു."
 # {Locked="Enter","Esc","F5","↑","↓","/"} - കീ കോമ്പിനേഷനുകള്‍, വിവര്‍ത്തനം ചെയ്യരുത്
 agents.footer_hint: "(↑ ↓ നാവിഗേറ്റ് ചെയ്യുക • Enter സെഷന്‍ ആരംഭിക്കുക • Esc പുറത്തുകടക്കുക • F5 പുതുക്കുക • / തിരയുക)"
 agents.status.active: "സജീവം"

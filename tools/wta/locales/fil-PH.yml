@@ -112,6 +112,9 @@ agent.custom.auth_hint: "Tiyaking naka-install ang %{name} at nasa iyong PATH." 
 
 # ── Agents view (src/ui/agents_view.rs) ─────────────────────────────────────
 agents.loading: "Naglo-load..."
+# Passive guidance about automatic status tracking only; conversations, history, and Resume remain available.
+agents.tracking_off: "Naka-off ang pagsubaybay sa status ng session. I-enable ito sa Settings > Agents > Sessions."
+agents.tracking_policy_blocked: "Na-disable ng iyong organisasyon ang pagsubaybay sa status ng session."
 # {Locked="Enter","Esc","F5","↑","↓","/"} - key combinations, do not translate
 agents.footer_hint: "(↑ ↓ para mag-navigate • Enter para magbukas ng session • Esc para lumabas • F5 para mag-refresh • / para maghanap)"
 agents.status.active: "Aktibo"

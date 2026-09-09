@@ -113,6 +113,9 @@ agent.custom.auth_hint: "Sørg for at %{name} er installeret og på din PATH."  
 
 # ── Agents view (src/ui/agents_view.rs) ─────────────────────────────────────
 agents.loading: "Indlæser..."
+# Passive guidance on the AI-agent Sessions page; navigation labels match the Settings UI.
+agents.tracking_off: "Sporing af sessionsstatus er slået fra. Slå den til under Settings > Agents > Sessions."
+agents.tracking_policy_blocked: "Sporing af sessionsstatus er deaktiveret af din organisation."
 # {Locked="Enter","Esc","F5","↑","↓","/"} - key combinations, do not translate
 agents.footer_hint: "(↑ ↓ for at navigere • Enter for at starte session • Esc for at afslutte • F5 for at opdatere • / for at søge)"
 agents.status.active: "Aktiv"

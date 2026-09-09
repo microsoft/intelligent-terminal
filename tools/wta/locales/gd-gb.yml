@@ -112,6 +112,9 @@ agent.custom.auth_hint: "Dèan cinnteach gu bheil %{name} air a stàladh agus ai
 
 # ── Sealladh àidseant (src/ui/agents_view.rs) ─────────────────────────────────
 agents.loading: "Ga luchdadh..."
+# Passive guidance on the AI-agent Sessions page; navigation labels match the Settings UI.
+agents.tracking_off: "Tha tracadh inbhe nan seiseanan dheth. Cuir an comas e ann an Settings > Agents > Sessions."
+agents.tracking_policy_blocked: "Tha tracadh inbhe nan seiseanan air a chur à comas leis a' bhuidheann agad."
 # {Locked="Enter","Esc","F5","↑","↓","/"} - co-mheasgaidhean iuchraichean, na eadar-theangaich
 agents.footer_hint: "(↑ ↓ gus seòladh • Enter gus seisean a chur air bhog • Esc gus fàgail • F5 gus ùrachadh • / gus lorg)"
 agents.status.active: "Gnìomhach"

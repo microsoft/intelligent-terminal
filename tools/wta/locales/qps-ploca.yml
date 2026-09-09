@@ -112,6 +112,9 @@ agent.custom.auth_hint: "[!!_Make sure %{name} is installed and on your PATH._!!
 
 # ── Agents view (src/ui/agents_view.rs) ─────────────────────────────────────
 agents.loading: "[!!_Loading..._!!]"
+# Passive session-status guidance; preserve the pseudo-localized Settings UI labels.
+agents.tracking_off: "[!!_Session status tracking is off. Enable it in Śêŧťіňğŝ !! > Agents > Sessions._!!]"
+agents.tracking_policy_blocked: "[!!_Session status tracking is disabled by your organization._!!]"
 # {Locked="Enter","Esc","F5","↑","↓","/"} - key combinations, do not translate
 agents.footer_hint: "[!!_(↑ ↓ to navigate • Enter to launch session • Esc to exit • F5 to refresh • / to search)_!!]"
 agents.status.active: "[!!_Active_!!]"
