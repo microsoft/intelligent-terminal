@@ -4737,7 +4737,7 @@ impl App {
             },
         });
         let tab = self.current_tab_mut();
-        tab.messages.retain(|m| !matches!(m, ChatMessage::Error(_)));
+        tab.retain_current_messages(|m| !matches!(m, ChatMessage::Error(_)));
     }
 
     fn handle_agent_paste_text(&mut self, params: &serde_json::Value) {

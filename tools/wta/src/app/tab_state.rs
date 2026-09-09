@@ -381,7 +381,7 @@ pub(crate) struct CompletedTurnViewportAnchor {
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct ChatReadingPosition {
     // The next completed-turn index denotes the active transcript. Message
-    // indices are remapped when tools are hidden or the transcript is captured.
+    // indices are remapped when messages are removed or the transcript is captured.
     pub turn_index: usize,
     pub message_index: Option<usize>,
     pub row_offset: usize,
@@ -1349,11 +1349,23 @@ impl TabSession {
     }
 
     pub(crate) fn hide_tool_call(&mut self, id: &str) {
+        self.retain_current_messages(
+            |message| !matches!(message, ChatMessage::ToolCall { id: message_id, .. } if message_id == id),
+        );
+    }
+
+    /// Remove active messages without rebinding a reading position to another
+    /// message. A deleted target falls forward, or back to the final survivor.
+    pub(crate) fn retain_current_messages(&mut self, mut keep: impl FnMut(&ChatMessage) -> bool) {
+        let streaming_thought_index = self.streaming_thought_message_index();
+        let mut original_index = 0;
         let mut index = 0;
         self.messages.retain(|message| {
-            let remove =
-                matches!(message, ChatMessage::ToolCall { id: message_id, .. } if message_id == id);
+            let remove = !keep(message);
             if remove {
+                if streaming_thought_index == Some(original_index) {
+                    self.streaming_thought = None;
+                }
                 if let Some(position) = &mut self.chat_reading_position {
                     if position.turn_index == self.completed_turns.len() {
                         if let Some(anchor_index) = &mut position.message_index {
@@ -1369,8 +1381,16 @@ impl TabSession {
             } else {
                 index += 1;
             }
+            original_index += 1;
             !remove
         });
+        if self.messages.is_empty()
+            && self
+                .chat_reading_position
+                .is_some_and(|position| position.turn_index == self.completed_turns.len())
+        {
+            self.chat_reading_position = None;
+        }
         if let Some(position) = &mut self.chat_reading_position {
             if position.turn_index == self.completed_turns.len() {
                 position.message_index = position.message_index.and_then(|index| {
@@ -1380,6 +1400,13 @@ impl TabSession {
                         .map(|last| index.min(last))
                 });
             }
+        }
+        if self.active_tool_viewport_anchor.as_ref().is_some_and(|(id, _)| {
+            !self.messages.iter().any(
+                |message| matches!(message, ChatMessage::ToolCall { id: message_id, .. } if message_id == id),
+            )
+        }) {
+            self.active_tool_viewport_anchor = None;
         }
     }
 

@@ -502,7 +502,7 @@ impl App {
                 if let Some(prompt_id) = tab.turn.prompt_id() {
                     tab.finish_active_prompt(prompt_id);
                 }
-                tab.messages.clear();
+                tab.retain_current_messages(|_| false);
                 tab.reveal_chars = 0;
                 tab.turn = TurnState::Idle;
                 return;

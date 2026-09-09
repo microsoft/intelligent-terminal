@@ -705,6 +705,7 @@ struct MessageRowGeometry {
     end: usize,
     row_offset: usize,
     height: usize,
+    thought_header_height: Option<usize>,
 }
 
 struct CompletedTurnLines<'a> {
@@ -719,6 +720,7 @@ struct ReadingRegion {
     message_index: Option<usize>,
     rows_below: usize,
     height: usize,
+    thought_header_height: Option<usize>,
 }
 
 impl ReadingRegion {
@@ -743,6 +745,7 @@ fn reading_position_row_offset(
     position: crate::app::ChatReadingPosition,
     message: &ChatMessage,
     wrap_width: usize,
+    thought_header_height: Option<usize>,
 ) -> usize {
     if let (
         Some((anchor_id, byte)),
@@ -752,7 +755,7 @@ fn reading_position_row_offset(
     ) = (position.thought_source, message)
     {
         if anchor_id == *id {
-            return thought_source_rows(message, wrap_width)
+            return thought_source_rows(message, wrap_width, thought_header_height)
                 .into_iter()
                 .take_while(|(start, _)| *start <= byte)
                 .last()
@@ -767,6 +770,7 @@ fn capture_thought_source(
     previous: Option<crate::app::ChatReadingPosition>,
     tab: &crate::app::TabSession,
     wrap_width: usize,
+    thought_header_height: Option<usize>,
 ) {
     let messages = if position.turn_index == tab.completed_turns.len() {
         &tab.messages
@@ -792,11 +796,12 @@ fn capture_thought_source(
             && previous
                 .thought_source
                 .is_some_and(|(anchor_id, _)| anchor_id == *id)
-            && reading_position_row_offset(*previous, message, wrap_width) == position.row_offset
+            && reading_position_row_offset(*previous, message, wrap_width, thought_header_height)
+                == position.row_offset
     }) {
         position.thought_source = previous.thought_source;
     } else {
-        position.thought_source = thought_source_rows(message, wrap_width)
+        position.thought_source = thought_source_rows(message, wrap_width, thought_header_height)
             .into_iter()
             .take_while(|(_, row)| *row <= position.row_offset)
             .last()
@@ -1065,6 +1070,7 @@ pub fn render(frame: &mut Frame, app: &mut App, area: Rect, scrollbar_area: Rect
             message_index: Some(index),
             rows_below: 0,
             height: newer_rows,
+            thought_header_height: None,
         });
     }
     let mut end = tab.messages.len();
@@ -1087,7 +1093,7 @@ pub fn render(frame: &mut Frame, app: &mut App, area: Rect, scrollbar_area: Rect
                     .is_some_and(|index| (start..end).contains(&index))
         }) {
             let row_offset =
-                reading_position_row_offset(position, &tab.messages[start], wrap_width);
+                reading_position_row_offset(position, &tab.messages[start], wrap_width, None);
             effective_offset = newer_rows
                 .saturating_add(message_height)
                 .saturating_sub(row_offset.min(message_height.saturating_sub(1)))
@@ -1102,6 +1108,7 @@ pub fn render(frame: &mut Frame, app: &mut App, area: Rect, scrollbar_area: Rect
             message_index: Some(start),
             rows_below: newer_rows,
             height: message_height,
+            thought_header_height: None,
         });
         if let Some((id, row)) = &active_anchor {
             if tab.messages[start..end].iter().any(|message| {
@@ -1168,6 +1175,7 @@ pub fn render(frame: &mut Frame, app: &mut App, area: Rect, scrollbar_area: Rect
                                 position,
                                 &tab.completed_turns[position.turn_index].details[row.start],
                                 wrap_width,
+                                row.thought_header_height,
                             );
                             row.row_offset
                                 .saturating_add(row_offset.min(row.height.saturating_sub(1)))
@@ -1227,6 +1235,7 @@ pub fn render(frame: &mut Frame, app: &mut App, area: Rect, scrollbar_area: Rect
                             .saturating_sub(row.row_offset.saturating_add(row.height)),
                     ),
                     height: row.height,
+                    thought_header_height: row.thought_header_height,
                 });
             }
             reading_regions.push(ReadingRegion {
@@ -1234,6 +1243,7 @@ pub fn render(frame: &mut Frame, app: &mut App, area: Rect, scrollbar_area: Rect
                 message_index: None,
                 rows_below: planned.rows_below,
                 height: planned.height,
+                thought_header_height: None,
             });
             turn_hit_offsets.push(CompletedTurnHitOffset {
                 turn_index: Some(planned.index),
@@ -1423,14 +1433,19 @@ pub fn render(frame: &mut Frame, app: &mut App, area: Rect, scrollbar_area: Rect
     app.current_tab_mut().chat_scroll.offset = effective_offset;
     app.current_tab_mut().chat_reading_position = reading_regions
         .iter()
-        .find_map(|region| region.position(local_offset, visible_height))
-        .map(|mut position| {
+        .find_map(|region| {
+            region
+                .position(local_offset, visible_height)
+                .map(|position| (position, region.thought_header_height))
+        })
+        .map(|(mut position, thought_header_height)| {
             position.scroll_offset = effective_offset;
             capture_thought_source(
                 &mut position,
                 reading_position,
                 app.current_tab(),
                 wrap_width,
+                thought_header_height,
             );
             position
         });
@@ -1520,6 +1535,43 @@ struct PromptRowGeometry {
     body_width: usize,
 }
 
+fn rendered_line_widths(line: &Line<'_>, wrap_width: usize) -> Vec<usize> {
+    if line.width() <= wrap_width {
+        return vec![line.width()];
+    }
+    // Overflowing headers (including inline markers) use Ratatui's greedy
+    // wrapping and whitespace handling, not textwrap's paragraph balancing.
+    let width = wrap_width.clamp(1, u16::MAX as usize) as u16;
+    // Two consecutive greedy rows consume at least one full row's width.
+    let height = (line.width().div_ceil(usize::from(width)) * 2 + 1).min(u16::MAX as usize) as u16;
+    let area = Rect::new(0, 0, width, height);
+    let mut buffer = ratatui::buffer::Buffer::empty(area);
+    ratatui::widgets::Widget::render(
+        Paragraph::new(line.clone()).wrap(Wrap { trim: false }),
+        area,
+        &mut buffer,
+    );
+    let mut widths = (0..height)
+        .map(|row| {
+            (0..width)
+                .rev()
+                .find_map(|column| {
+                    let symbol = buffer[(column, row)].symbol();
+                    (!symbol.trim().is_empty())
+                        .then(|| usize::from(column) + UnicodeWidthStr::width(symbol))
+                })
+                .unwrap_or(0)
+        })
+        .collect::<Vec<_>>();
+    widths.truncate(
+        widths
+            .iter()
+            .rposition(|width| *width > 0)
+            .map_or(1, |row| row + 1),
+    );
+    widths
+}
+
 fn completed_turn_prompt_rows(lines: &[Line<'_>], wrap_width: usize) -> Vec<PromptRowGeometry> {
     let width = wrap_width.max(1);
     let mut rows = Vec::new();
@@ -1545,17 +1597,7 @@ fn completed_turn_prompt_rows(lines: &[Line<'_>], wrap_width: usize) -> Vec<Prom
             continue;
         }
 
-        let text = line
-            .spans
-            .iter()
-            .map(|span| span.content.as_ref())
-            .collect::<String>();
-        let pieces = textwrap::wrap(&text, width);
-        if pieces.is_empty() {
-            continue;
-        }
-        for (piece_index, piece) in pieces.into_iter().enumerate() {
-            let line_width = UnicodeWidthStr::width(piece.as_ref()).min(width);
+        for (piece_index, line_width) in rendered_line_widths(line, width).into_iter().enumerate() {
             let body_start = if piece_index == 0 {
                 body_start.min(line_width)
             } else {
@@ -1609,6 +1651,16 @@ fn build_completed_turn_lines_for_tab<'a>(
     let turn = &tab.completed_turns[turn_index];
     build_completed_turn_lines_with_geometry(turn, is_selected, pane_focused, wrap_width, |id| {
         tab.completed_tool_call_expanded(id)
+    })
+}
+
+fn rendered_header_width(lines: &[Line<'_>], wrap_width: usize) -> usize {
+    lines.first().map_or(1, |line| {
+        rendered_line_widths(line, wrap_width)
+            .first()
+            .copied()
+            .unwrap_or(0)
+            .max(1)
     })
 }
 
@@ -1683,17 +1735,21 @@ fn build_completed_turn_lines_with_geometry<'a>(
         ])]
     };
 
-    let prompt_rows = completed_turn_prompt_rows(&lines, wrap_width);
-
-    // Index of the line that should receive an inline trailing marker (eg
-    // "(canceled)" / "→ executed: …"). Expanded turns attach it to the
-    // first detail row (after all expanded prompt rows); collapsed turns
-    // put it next to the prompt header.
-    let marker_target_idx = if turn.expanded && !turn.details.is_empty() {
-        Some(lines.len())
-    } else {
-        Some(0)
+    let prompt_line_count = lines.len();
+    let mut trailing_marker = turn.trailing_marker.as_deref();
+    // Apply the marker before measuring its line: it can wrap both detail
+    // headers and prompts. Empty details must not consume the pending marker.
+    let mut append_marker = |lines: &mut [Line<'a>]| {
+        if let Some(line) = lines.first_mut() {
+            if let Some(marker) = trailing_marker.take() {
+                line.spans.push(Span::raw("  "));
+                line.spans.push(Span::styled(marker, theme::DIM));
+            }
+        }
     };
+    if !turn.expanded || turn.details.is_empty() {
+        append_marker(&mut lines);
+    }
 
     let mut tool_rows = Vec::new();
     let mut message_rows = Vec::new();
@@ -1728,14 +1784,16 @@ fn build_completed_turn_lines_with_geometry<'a>(
             }
 
             if group_end - detail_index > 1 {
-                let message_lines =
+                let mut message_lines =
                     build_compact_tool_group_lines(&turn.details[detail_index..group_end]);
+                append_marker(&mut message_lines);
                 let message_height = rendered_lines_height(&message_lines, wrap_width);
                 message_rows.push(MessageRowGeometry {
                     start: detail_index,
                     end: group_end,
                     row_offset: rendered_height,
                     height: message_height,
+                    thought_header_height: None,
                 });
                 tool_rows.push(ToolRowGeometry {
                     hit_kind: crate::app::CompletedTurnHitKind::ToolGroup {
@@ -1743,10 +1801,7 @@ fn build_completed_turn_lines_with_geometry<'a>(
                         detail_count: group_end - detail_index,
                     },
                     row_offset: rendered_height,
-                    header_width: message_lines
-                        .first()
-                        .map_or(1, |line| line.width().min(wrap_width))
-                        .max(1),
+                    header_width: rendered_header_width(&message_lines, wrap_width),
                     expanded: false,
                     marker: "✓",
                 });
@@ -1772,16 +1827,24 @@ fn build_completed_turn_lines_with_geometry<'a>(
             let display = tool_geometry.map_or(ToolDisplay::ActiveTurn, |(expanded, _)| {
                 ToolDisplay::Completed { expanded }
             });
-            let message_lines =
+            let mut message_lines =
                 build_message_lines_with_details(msg, false, false, None, 0, wrap_width, display);
+            append_marker(&mut message_lines);
             let message_height = rendered_lines_height(&message_lines, wrap_width);
             message_rows.push(MessageRowGeometry {
                 start: detail_index,
                 end: detail_index + 1,
                 row_offset: rendered_height,
                 height: message_height,
+                thought_header_height: matches!(msg, ChatMessage::Thought { expanded: true, .. })
+                    .then(|| {
+                        rendered_lines_height(
+                            &message_lines[..message_lines.len().min(1)],
+                            wrap_width,
+                        )
+                    }),
             });
-            if let Some(geometry) = thought_row_geometry(
+            if let Some(mut geometry) = thought_row_geometry(
                 msg,
                 detail_index,
                 false,
@@ -1789,16 +1852,14 @@ fn build_completed_turn_lines_with_geometry<'a>(
                 &message_lines,
                 wrap_width,
             ) {
+                geometry.header_width = rendered_header_width(&message_lines, wrap_width);
                 tool_rows.push(geometry);
             }
             if let Some((expanded, marker)) = tool_geometry {
                 tool_rows.push(ToolRowGeometry {
                     hit_kind: crate::app::CompletedTurnHitKind::ToolCall { detail_index },
                     row_offset: rendered_height,
-                    header_width: message_lines
-                        .first()
-                        .map_or(1, |line| line.width().min(wrap_width))
-                        .max(1),
+                    header_width: rendered_header_width(&message_lines, wrap_width),
                     expanded,
                     marker,
                 });
@@ -1809,12 +1870,17 @@ fn build_completed_turn_lines_with_geometry<'a>(
         }
     }
 
-    if let (Some(marker), Some(idx)) = (turn.trailing_marker.as_deref(), marker_target_idx) {
-        if let Some(line) = lines.get_mut(idx) {
-            line.spans.push(Span::raw("  "));
-            line.spans.push(Span::styled(marker, theme::DIM));
+    if lines.len() == prompt_line_count {
+        // An expanded transcript can contain only nonrendering details.
+        append_marker(&mut lines);
+        if !message_rows.is_empty() {
+            let prompt_height = rendered_lines_height(&lines, wrap_width);
+            for row in &mut message_rows {
+                row.row_offset = prompt_height;
+            }
         }
     }
+    let prompt_rows = completed_turn_prompt_rows(&lines[..prompt_line_count], wrap_width);
 
     // Push a trailing blank only if the last detail (or the prompt header
     // for collapsed turns) didn't already supply one. Agent / Error /
@@ -1984,7 +2050,11 @@ fn wrap_thought_text(text: &str, wrap_width: usize) -> Vec<(usize, Cow<'_, str>)
     rows
 }
 
-fn thought_source_rows(message: &ChatMessage, wrap_width: usize) -> Vec<(usize, usize)> {
+fn thought_source_rows(
+    message: &ChatMessage,
+    wrap_width: usize,
+    thought_header_height: Option<usize>,
+) -> Vec<(usize, usize)> {
     let ChatMessage::Thought {
         text,
         expanded: true,
@@ -2005,7 +2075,9 @@ fn thought_source_rows(message: &ChatMessage, wrap_width: usize) -> Vec<(usize, 
         wrap_width,
         ToolDisplay::ActiveTurn,
     );
-    let mut row = rendered_lines_height(&lines[..1], wrap_width);
+    // Completed turns can wrap an inline marker onto extra header rows.
+    let mut row =
+        thought_header_height.unwrap_or_else(|| rendered_lines_height(&lines[..1], wrap_width));
     wrap_thought_text(text, wrap_width)
         .into_iter()
         .zip(&lines[1..])
@@ -2801,6 +2873,170 @@ mod tests {
             rendered_height_line_scan_count() <= 110,
             "tool geometry must measure the prompt once and each message once",
         );
+    }
+
+    #[test]
+    fn completed_marker_geometry_matches_final_buffer() {
+        let _locale = crate::test_support::lock_locale();
+        rust_i18n::set_locale("en-US");
+        let tool = |id: &str, kind| ChatMessage::ToolCall {
+            id: id.into(),
+            query: None,
+            title: format!("HEADER_{id}"),
+            status: "Completed".into(),
+            kind,
+            location: None,
+            location_is_command: false,
+            cwd: None,
+            output: None,
+            exit_code: None,
+            content: Vec::new(),
+            locations: Vec::new(),
+        };
+        let empty = ChatMessage::Thought {
+            id: Default::default(),
+            text: String::new(),
+            expanded: false,
+            duration_ms: None,
+        };
+        for first in [
+            vec![ChatMessage::System("界".repeat(18))],
+            vec![ChatMessage::System("short".into())],
+            vec![empty.clone(), ChatMessage::System("界".repeat(18))],
+            vec![
+                tool("one", ToolCallKind::Read),
+                tool("two", ToolCallKind::Read),
+            ],
+            vec![
+                empty.clone(),
+                tool("one", ToolCallKind::Read),
+                tool("two", ToolCallKind::Read),
+            ],
+            vec![tool("first", ToolCallKind::Other)],
+            vec![ChatMessage::Thought {
+                id: Default::default(),
+                text: "retained reasoning".into(),
+                expanded: false,
+                duration_ms: Some(12345),
+            }],
+        ] {
+            let later_index = first.len();
+            let mut details = first;
+            details.extend([
+                ChatMessage::System("LATER_MESSAGE".into()),
+                tool("later", ToolCallKind::Other),
+            ]);
+            let turn = CompletedTurn {
+                prompt: "history".into(),
+                details,
+                expanded: true,
+                trailing_marker: Some("MARKER".repeat(4)),
+            };
+            let built =
+                build_completed_turn_lines_with_geometry(&turn, false, false, 36, |_| false);
+            let mut terminal =
+                ratatui::Terminal::new(ratatui::backend::TestBackend::new(36, 30)).unwrap();
+            terminal
+                .draw(|frame| {
+                    frame.render_widget(
+                        Paragraph::new(built.lines.clone()).wrap(Wrap { trim: false }),
+                        frame.area(),
+                    );
+                })
+                .unwrap();
+            let buffer = terminal.backend().buffer();
+            let rows = (0..30)
+                .map(|y| (0..36).map(|x| buffer[(x, y)].symbol()).collect::<String>())
+                .collect::<Vec<_>>();
+            let later_row = rows
+                .iter()
+                .position(|row| row.contains("LATER_MESSAGE"))
+                .unwrap();
+            let tool_row = rows
+                .iter()
+                .position(|row| row.contains("HEADER_later"))
+                .unwrap();
+            let geometry = built
+                .message_rows
+                .iter()
+                .find(|row| row.start == later_index)
+                .unwrap();
+            assert_eq!(geometry.row_offset, later_row, "{rows:?}");
+            assert_eq!(geometry.height, tool_row - later_row);
+            let first_geometry = built
+                .message_rows
+                .iter()
+                .find(|row| row.height > 0)
+                .unwrap();
+            assert_eq!(first_geometry.row_offset + first_geometry.height, later_row);
+            let tool_geometry = built
+                .tool_rows
+                .iter()
+                .find(|row| {
+                    row.hit_kind
+                        == (crate::app::CompletedTurnHitKind::ToolCall {
+                            detail_index: later_index + 1,
+                        })
+                })
+                .unwrap();
+            assert_eq!(tool_geometry.row_offset, tool_row, "{rows:?}");
+            for geometry in &built.tool_rows {
+                assert_eq!(
+                    geometry.header_width,
+                    rows[geometry.row_offset].trim_end().width(),
+                    "{rows:?}"
+                );
+            }
+            assert!(line_text(&built.lines[1]).contains("MARKER"));
+            assert!(!line_text(&built.lines[0]).contains("MARKER"));
+        }
+        for (expanded, details) in [
+            (false, vec![tool("hidden", ToolCallKind::Other)]),
+            (true, vec![]),
+            (true, vec![empty]),
+        ] {
+            for prompt in ["short".into(), "界".repeat(16)] {
+                let turn = CompletedTurn {
+                    prompt,
+                    details: details.clone(),
+                    expanded,
+                    trailing_marker: Some("MARKER".into()),
+                };
+                let built =
+                    build_completed_turn_lines_with_geometry(&turn, false, false, 36, |_| false);
+                let mut terminal =
+                    ratatui::Terminal::new(ratatui::backend::TestBackend::new(36, 10)).unwrap();
+                terminal
+                    .draw(|frame| {
+                        frame.render_widget(
+                            Paragraph::new(built.lines.clone()).wrap(Wrap { trim: false }),
+                            frame.area(),
+                        );
+                    })
+                    .unwrap();
+                let buffer = terminal.backend().buffer();
+                let rows = (0..10)
+                    .map(|y| (0..36).map(|x| buffer[(x, y)].symbol()).collect::<String>())
+                    .collect::<Vec<_>>();
+                let nonempty_rows = rows.iter().take_while(|row| !row.trim().is_empty()).count();
+                assert!(rows.iter().any(|row| row.contains("MARKER")), "{rows:?}");
+                assert_eq!(built.prompt_rows.len(), nonempty_rows, "{rows:?}");
+                for geometry in &built.prompt_rows {
+                    let rendered_width = (0..36)
+                        .rev()
+                        .find_map(|x| {
+                            let symbol = buffer[(x, geometry.row_offset as u16)].symbol();
+                            (!symbol.trim().is_empty()).then(|| usize::from(x) + symbol.width())
+                        })
+                        .unwrap();
+                    assert_eq!(geometry.line_width, rendered_width, "{rows:?}");
+                    assert_eq!(
+                        geometry.body_start + geometry.body_width,
+                        geometry.line_width
+                    );
+                }
+            }
+        }
     }
 
     #[test]

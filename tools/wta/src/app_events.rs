@@ -1535,7 +1535,7 @@ impl App {
                     });
                     // Clear error messages
                     let tab = self.current_tab_mut();
-                    tab.messages.retain(|m| !matches!(m, ChatMessage::Error(_)));
+                    tab.retain_current_messages(|m| !matches!(m, ChatMessage::Error(_)));
                 } else {
                     if !session_survives {
                         self.state = ConnectionState::Failed(message.clone());
@@ -1673,7 +1673,7 @@ impl App {
                     ConnectionState::Connecting(t!("connection.reconnecting").into_owned());
                 {
                     let tab = self.current_tab_mut();
-                    tab.messages.retain(|m| !matches!(m, ChatMessage::Error(_)));
+                    tab.retain_current_messages(|m| !matches!(m, ChatMessage::Error(_)));
                 }
                 // (ii) Request a fresh master CLI. The long-lived shared CLI
                 // cached its unauthenticated state at spawn and `authenticate`
