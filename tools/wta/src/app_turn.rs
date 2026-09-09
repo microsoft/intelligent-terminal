@@ -30,17 +30,33 @@ impl App {
     /// `prompt_received`. Caller is responsible for actually dispatching the
     /// prompt over ACP (so this method stays free of async / channel
     /// concerns).
+    #[cfg(test)]
     pub fn turn_submit_prompt(&mut self, session_id: &str, prompt: SubmittedPrompt) {
-        let tab_key = self.tab_for_session(session_id);
-        self.turn_submit_prompt_for_tab(&tab_key, prompt);
+        self.turn_submit_prompt_with_cancellation(
+            session_id,
+            prompt,
+            tokio_util::sync::CancellationToken::new(),
+        );
     }
 
-    /// Identical to `turn_submit_prompt` but takes the target tab's id
-    /// directly, bypassing the `session_id → tab_id` lookup. Used by the
-    /// autofix path so a failure in a background tab installs the turn on
-    /// that tab even when its ACP session hasn't been created yet (the ACP
-    /// layer lazy-creates one when the prompt is dispatched).
-    pub fn turn_submit_prompt_for_tab(&mut self, tab_id: &str, prompt: SubmittedPrompt) {
+    pub fn turn_submit_prompt_with_cancellation(
+        &mut self,
+        session_id: &str,
+        prompt: SubmittedPrompt,
+        cancellation: tokio_util::sync::CancellationToken,
+    ) {
+        let tab_key = self.tab_for_session(session_id);
+        self.turn_submit_prompt_for_tab_with_cancellation(&tab_key, prompt, cancellation);
+    }
+
+    /// Install a prompt on a specific tab with the same cancellation token
+    /// carried by the queued [`PromptSubmission`].
+    pub fn turn_submit_prompt_for_tab_with_cancellation(
+        &mut self,
+        tab_id: &str,
+        prompt: SubmittedPrompt,
+        cancellation: tokio_util::sync::CancellationToken,
+    ) {
         prompt_timing_log(
             prompt.id,
             prompt.submitted_at_unix_s,
@@ -58,7 +74,7 @@ impl App {
         // these orthogonal fields rather than relying on side effects from a
         // grab-bag helper.
         tab.messages.clear();
-        tab.clear_streaming_thought();
+        tab.streaming_thought = None;
         // Dropping any in-flight responders signals Cancelled back to
         // the agent — appropriate when the user starts a new turn.
         tab.permission.clear();
@@ -82,6 +98,7 @@ impl App {
         tab.scroll_to_bottom();
         tab.activity_frame = 0;
         tab.timing_note = None;
+        tab.set_prompt_cancellation(prompt.id, cancellation);
         tab.turn = TurnState::Submitted(prompt);
         // NOTE: `has_meaningful_conversation` is deliberately NOT set here.
         // It gates `resumable_session_id`, i.e. the session id Terminal writes
@@ -110,7 +127,9 @@ impl App {
     pub fn turn_observe_chunk(&mut self, session_id: &str, kind: ChunkKind, text: &str) -> bool {
         // Stale-autofix check: if the chunk belongs to an autofix turn whose
         // generation no longer matches the tab's counter, drop it.
-        let tab = self.session_tab_mut(session_id);
+        let Some(tab) = self.session_tab_mut_if_current(session_id) else {
+            return false;
+        };
         let current_gen = tab.autofix.generation;
         if let Some(gen) = tab.turn.autofix_generation() {
             if gen != current_gen {
@@ -124,13 +143,7 @@ impl App {
             }
         }
 
-        // A chunk for this turn is proof the agent has taken the prompt, and
-        // therefore that it has written the session the chunk belongs to. That
-        // is the point from which the id is safe to persist — see the note in
-        // `turn_submit_prompt_for_tab`.
-        tab.has_meaningful_conversation = true;
-
-        match (&tab.turn, kind) {
+        let accepted = match (&tab.turn, kind) {
             (TurnState::Submitted(_), _) => {
                 let TurnState::Submitted(prompt) =
                     std::mem::replace(&mut tab.turn, TurnState::Idle)
@@ -149,7 +162,7 @@ impl App {
             }
             (TurnState::Streaming { .. }, ChunkKind::Message) => {
                 if tab.streaming_thought_text().is_some() {
-                    tab.clear_streaming_thought();
+                    tab.finish_thought();
                 }
                 tab.append_agent_chunk(text);
                 true
@@ -178,9 +191,15 @@ impl App {
                 true
             }
             (TurnState::Surfaced { .. }, _) => false,
-            // Chunks while Idle: shouldn't happen; defensive drop.
-            (TurnState::Idle, _) => false,
+            // Chunks while Idle or while cancellation is draining are stale.
+            (TurnState::Idle | TurnState::Cancelling { .. }, _) => false,
+        };
+        if accepted {
+            // Rejected late chunks must not make a replacement session
+            // resumable.
+            tab.has_meaningful_conversation = true;
         }
+        accepted
     }
 
     fn validate_and_stage_terminal_action_proposal(
@@ -208,7 +227,7 @@ impl App {
                     "a card is already showing for this turn".to_string(),
                 );
             }
-            TurnState::Idle => {
+            TurnState::Idle | TurnState::Cancelling { .. } => {
                 return DirectProposalEvaluation::Stale(
                     "no turn is in flight for this session".to_string(),
                 );
@@ -399,7 +418,69 @@ impl App {
     /// 2. A direct proposal already surfaced — release the UI gate.
     /// 3. `Submitted` with no chunks — model returned nothing.
     /// 4. `Streaming` with a buffer — commit it as assistant text.
+    pub(super) fn turn_close_terminal_event(&mut self, session_id: &str) {
+        let Some((target_tab, session_is_current)) =
+            self.terminal_event_tab_for_session(session_id)
+        else {
+            tracing::debug!(
+                target: "acp",
+                session_id,
+                "ignoring turn end for an unbound session"
+            );
+            return;
+        };
+
+        let cancelling_prompt_id =
+            self.tab_sessions
+                .get(&target_tab)
+                .and_then(|tab| match &tab.turn {
+                    TurnState::Cancelling { prompt_id } => Some(*prompt_id),
+                    _ => None,
+                });
+        if let Some(prompt_id) = cancelling_prompt_id {
+            let tab = self.tab_mut(&target_tab);
+            if !tab.active_prompt_matches_session(prompt_id, session_id) {
+                tracing::debug!(
+                    target: "acp",
+                    session_id,
+                    prompt_id,
+                    "ignoring turn end that does not own the cancellation barrier"
+                );
+                return;
+            }
+            // AgentMessageEnd proves that this exact prompt reached a terminal
+            // producer boundary. Only the still-current session may make the
+            // tab resumable; an old retired session may release the barrier
+            // but cannot bless its replacement.
+            if session_is_current {
+                tab.has_meaningful_conversation = true;
+            }
+            tab.finish_active_prompt(prompt_id);
+            tab.turn = TurnState::Idle;
+            tab.scroll_to_bottom();
+            self.project_tab_state(&target_tab);
+            return;
+        }
+
+        if !session_is_current {
+            return;
+        }
+        if let Some(summary) = self.session_completion_latency_summary(session_id) {
+            self.push_execution_info(summary);
+        }
+        self.turn_close(session_id);
+        self.tab_mut(&target_tab).scroll_to_bottom();
+    }
+
     pub fn turn_close(&mut self, session_id: &str) {
+        if self.session_tab(session_id).turn.is_cancelling() {
+            // Cancellation barriers require exact terminal-session routing.
+            // Production AgentMessageEnd events enter through
+            // turn_close_terminal_event, which can distinguish a current
+            // binding from a retired session.
+            return;
+        }
+
         // (1) Stale-autofix discard.
         let current_gen = self.session_tab(session_id).autofix.generation;
         if let Some(gen) = self.session_tab(session_id).turn.autofix_generation() {
@@ -412,6 +493,9 @@ impl App {
                 );
                 self.turn_clear_agent_activity(session_id);
                 let tab = self.session_tab_mut(session_id);
+                if let Some(prompt_id) = tab.turn.prompt_id() {
+                    tab.finish_active_prompt(prompt_id);
+                }
                 tab.messages.clear();
                 tab.reveal_chars = 0;
                 tab.turn = TurnState::Idle;
@@ -439,16 +523,16 @@ impl App {
                 outcome: TurnOutcome::Recommendation(recommendations),
                 end_pending: true,
                 ..
-            } => Some((format_recommendations_for_chat(recommendations), None, true)),
+            } => Some((
+                format_recommendations_for_chat(recommendations, None),
+                None,
+                true,
+            )),
             TurnState::Surfaced {
-                outcome:
-                    TurnOutcome::ResolvedRecommendation {
-                        summary,
-                        trailing_marker,
-                    },
+                outcome: TurnOutcome::ResolvedRecommendation { summary },
                 end_pending: true,
                 ..
-            } => Some((summary.clone(), Some(trailing_marker.clone()), false)),
+            } => Some((summary.clone(), None, false)),
             TurnState::Surfaced {
                 end_pending: true, ..
             } => {
@@ -554,6 +638,7 @@ impl App {
             });
         }
         tab.scroll_to_bottom();
+        tab.finish_active_prompt(prompt.id);
         tab.turn = TurnState::Surfaced {
             prompt,
             outcome: TurnOutcome::Empty,
@@ -620,6 +705,7 @@ impl App {
     /// distinguish.
     fn turn_release_end_pending_logged(&mut self, session_id: &str, via: &str) {
         let tab = self.session_tab_mut(session_id);
+        let mut completed_prompt_id = None;
         if let TurnState::Surfaced {
             end_pending,
             prompt,
@@ -631,7 +717,11 @@ impl App {
                 let prompt_id = prompt.id;
                 let submitted_at = prompt.submitted_at_unix_s;
                 prompt_timing_log(prompt_id, submitted_at, "prompt_complete", via);
+                completed_prompt_id = Some(prompt_id);
             }
+        }
+        if let Some(prompt_id) = completed_prompt_id {
+            tab.finish_active_prompt(prompt_id);
         }
     }
 
@@ -640,7 +730,7 @@ impl App {
     fn turn_clear_agent_activity(&mut self, session_id: &str) {
         let tab = self.session_tab_mut(session_id);
         tab.activity_frame = 0;
-        tab.clear_streaming_thought();
+        tab.finish_thought();
     }
 
     /// User pressed Enter while a card was visible — dispatch the selected
@@ -658,17 +748,19 @@ impl App {
         else {
             return;
         };
-        let summary = format_recommendations_for_chat(recommendations);
-        // Snapshot the title before `choice` is moved into ChoiceExecution,
-        // so we can stamp the chat history with an "executed" marker after
-        // dispatch.
-        let executed_title = choice.title.clone();
+        let recommendation_summary = format_recommendations_for_chat(recommendations, None);
         let direct_proposal_id = self
             .session_tab(session_id)
             .active_direct_proposal_id
             .clone();
         let insert_only =
             self.session_tab(session_id).selected_button == 1 && self.is_send_choice(&choice);
+        let command_label = if insert_only {
+            t!("chat.tool_kind.insert")
+        } else {
+            t!("chat.tool_kind.run")
+        };
+        let executed_summary = format_recommendation_choice_for_chat(&choice, Some(&command_label));
         let target_tab = self.tab_for_session(session_id);
         let context = self
             .session_tab(session_id)
@@ -731,17 +823,20 @@ impl App {
         tab.recommendation_focus = RecommendationFocus::Button;
         tab.active_direct_proposal_id = None;
         tab.rec_scroll.reset();
-        let marker = t!("chat.turn_executed", title = &executed_title).into_owned();
         let outcome = if end_pending {
             TurnOutcome::ResolvedRecommendation {
-                summary,
-                trailing_marker: marker,
+                summary: executed_summary,
             }
         } else {
-            // AgentMessageEnd already committed this turn while the card was
-            // visible, so only annotate that existing history entry.
+            // AgentMessageEnd already committed the recommendation list while
+            // the card was visible. Replace it with only the selected action.
             if let Some((index, last)) = tab.completed_turns.iter_mut().enumerate().next_back() {
-                last.trailing_marker = Some(marker);
+                if let Some(ChatMessage::Agent(text)) = last.details.last_mut() {
+                    if text == &recommendation_summary {
+                        *text = executed_summary;
+                    }
+                }
+                last.trailing_marker = None;
                 tab.invalidate_completed_turn_height(index);
             }
             TurnOutcome::Empty
@@ -758,17 +853,54 @@ impl App {
         self.recompute_chip_override(&target_tab);
     }
 
-    /// User pressed Esc — cancel the in-flight turn. Bumps
-    /// `autofix_generation` so any chunks that arrive after this point are
-    /// dropped by the stale-check in `turn_observe_chunk`.
+    /// Cancel the in-flight turn for a session and request cancellation from
+    /// the ACP client.
     pub fn turn_cancel(&mut self, session_id: &str) {
-        let direct_proposal_id = self
-            .session_tab(session_id)
-            .active_direct_proposal_id
-            .clone();
         let target_tab = self.tab_for_session(session_id);
+        self.request_turn_cancel_for_tab(&target_tab);
+    }
+
+    pub(super) fn request_turn_cancel_for_tab(&mut self, target_tab: &str) {
+        self.turn_cancel_for_tab(target_tab);
+    }
+
+    /// Cancel the in-flight turn owned by a tab. Pane lifecycle cleanup uses
+    /// this before a lazily-created ACP session necessarily has an ID.
+    pub(super) fn turn_cancel_for_tab(&mut self, target_tab: &str) {
+        let Some(tab) = self.tab_sessions.get(target_tab) else {
+            return;
+        };
+        if let TurnState::Cancelling { prompt_id } = &tab.turn {
+            tab.cancel_active_prompt(*prompt_id);
+        }
+        if self
+            .tab_sessions
+            .get(target_tab)
+            .is_some_and(|tab| tab.turn.is_cancelling())
+        {
+            let tab = self.tab_mut(target_tab);
+            tab.permission.clear();
+            tab.user_input.clear();
+            return;
+        }
+        let cancelled_prompt_id = self.tab_sessions.get(target_tab).and_then(|tab| {
+            if tab.turn.is_in_flight() {
+                tab.turn.prompt().map(|prompt| prompt.id)
+            } else {
+                None
+            }
+        });
+        if let Some(prompt_id) = cancelled_prompt_id {
+            if let Some(tab) = self.tab_sessions.get(target_tab) {
+                tab.cancel_active_prompt(prompt_id);
+            }
+        }
+        let direct_proposal_id = self
+            .tab_sessions
+            .get(target_tab)
+            .and_then(|tab| tab.active_direct_proposal_id.clone());
         let pane_id = {
-            let tab = self.session_tab_mut(session_id);
+            let tab = self.tab_mut(target_tab);
             tab.autofix.generation = tab.autofix.generation.wrapping_add(1);
             tab.turn
                 .prompt()
@@ -781,32 +913,32 @@ impl App {
                 .or_else(|| tab.autofix.pane_id.clone())
         };
         if pane_id.is_some() {
-            self.emit_autofix_state_cleared(&target_tab);
+            self.emit_autofix_state_cleared(target_tab);
         }
-        let tab = self.session_tab_mut(session_id);
+        let tab = self.tab_mut(target_tab);
         tab.autofix.armed_at = None;
         let canceled_marker = t!("chat.turn_canceled").into_owned();
         // Three paths into cancel:
         //   - Submitted / Streaming → commit a fresh completed_turn (prompt +
         //     whatever streamed + canceled marker) so the user always sees
         //     that this turn happened and that they cancelled it.
-        //   - Surfaced{Recommendation}: commit now if AgentMessageEnd is still
-        //     pending; otherwise annotate the history committed at turn end.
+        //   - Surfaced{Recommendation}: mark each proposed action as cancelled,
+        //     rather than marking the conversation title.
         //   - Other states (Idle / Surfaced{Empty / ChatTurn}) → no-op.
-        let new_turn_data: Option<(String, Option<String>, String)> = match &tab.turn {
+        let new_turn_data: Option<(String, Option<String>, Option<String>)> = match &tab.turn {
             TurnState::Submitted(prompt) => {
                 let label = match prompt.autofix.as_ref() {
                     Some(_) => t!("chat.autofix_prompt_label").into_owned(),
                     None => prompt.text.clone(),
                 };
-                Some((label, None, canceled_marker.clone()))
+                Some((label, None, Some(canceled_marker.clone())))
             }
             TurnState::Streaming { prompt } => {
                 let label = match prompt.autofix.as_ref() {
                     Some(_) => t!("chat.autofix_prompt_label").into_owned(),
                     None => prompt.text.clone(),
                 };
-                Some((label, None, canceled_marker.clone()))
+                Some((label, None, Some(canceled_marker.clone())))
             }
             TurnState::Surfaced {
                 prompt,
@@ -819,35 +951,37 @@ impl App {
                 };
                 Some((
                     label,
-                    Some(format_recommendations_for_chat(recommendations)),
-                    canceled_marker.clone(),
+                    Some(format_recommendations_for_chat(
+                        recommendations,
+                        Some(&canceled_marker),
+                    )),
+                    None,
                 ))
             }
             TurnState::Surfaced {
                 prompt,
-                outcome:
-                    TurnOutcome::ResolvedRecommendation {
-                        summary,
-                        trailing_marker,
-                    },
+                outcome: TurnOutcome::ResolvedRecommendation { summary },
                 end_pending: true,
             } => {
                 let label = match prompt.autofix.as_ref() {
                     Some(_) => t!("chat.autofix_prompt_label").into_owned(),
                     None => prompt.text.clone(),
                 };
-                Some((label, Some(summary.clone()), trailing_marker.clone()))
+                Some((label, Some(summary.clone()), None))
             }
             _ => None,
         };
-        let annotate_card = matches!(
-            &tab.turn,
+        let canceled_card_summary = match &tab.turn {
             TurnState::Surfaced {
-                outcome: TurnOutcome::Recommendation(_),
+                outcome: TurnOutcome::Recommendation(recommendations),
                 end_pending: false,
                 ..
-            }
-        );
+            } => Some((
+                format_recommendations_for_chat(recommendations, None),
+                format_recommendations_for_chat(recommendations, Some(&canceled_marker)),
+            )),
+            _ => None,
+        };
         if let Some((prompt_label, summary, trailing_marker)) = new_turn_data {
             let mut details = tab.take_current_turn_details();
             if let Some(summary) = summary {
@@ -857,12 +991,17 @@ impl App {
                 prompt: prompt_label,
                 details,
                 expanded: true,
-                trailing_marker: Some(trailing_marker),
+                trailing_marker,
             });
             tab.scroll_to_bottom();
-        } else if annotate_card {
+        } else if let Some((summary, canceled_summary)) = canceled_card_summary {
             if let Some((index, last)) = tab.completed_turns.iter_mut().enumerate().next_back() {
-                last.trailing_marker = Some(canceled_marker);
+                if let Some(ChatMessage::Agent(text)) = last.details.last_mut() {
+                    if text == &summary {
+                        *text = canceled_summary;
+                    }
+                }
+                last.trailing_marker = None;
                 tab.invalidate_completed_turn_height(index);
             }
         }
@@ -872,9 +1011,17 @@ impl App {
         tab.recommendation_focus = RecommendationFocus::Button;
         tab.rec_scroll.reset();
         tab.activity_frame = 0;
-        tab.clear_streaming_thought();
+        tab.finish_thought();
+        // Cancel pending session-MCP clarification responders. The user's
+        // next prompt draft lives in `input` and is intentionally preserved.
+        tab.permission.clear();
         tab.user_input.clear();
-        tab.turn = TurnState::Idle;
+        tab.turn = if let Some(prompt_id) = cancelled_prompt_id {
+            TurnState::Cancelling { prompt_id }
+        } else {
+            tab.active_prompt_cancellation = None;
+            TurnState::Idle
+        };
         tab.pending_terminal_action_proposal = None;
         tab.active_direct_proposal_id = None;
         if let Some(proposal_id) = direct_proposal_id.as_deref() {
@@ -887,7 +1034,67 @@ impl App {
         // Esc on a Send card or in-flight autofix exits the chip-override
         // state; release whatever the helper had pinned. C++ falls back to
         // source-of-agent driven rendering.
-        self.recompute_chip_override(&target_tab);
+        self.recompute_chip_override(target_tab);
+    }
+
+    pub(super) fn settle_prompt_cancellation(&mut self, prompt_id: u64, started: bool) {
+        let target_tab = self.tab_sessions.iter().find_map(|(tab_id, tab)| {
+            matches!(
+                tab.turn,
+                TurnState::Cancelling {
+                    prompt_id: cancelling_prompt_id
+                } if cancelling_prompt_id == prompt_id
+            )
+            .then(|| tab_id.clone())
+        });
+        let Some(target_tab) = target_tab else {
+            return;
+        };
+        {
+            let tab = self.tab_mut(&target_tab);
+            let started_on_current_session = started
+                && tab
+                    .active_prompt_cancellation
+                    .as_ref()
+                    .and_then(|active| active.session_id.as_deref())
+                    .is_some_and(|prompt_session_id| {
+                        tab.session_id.as_deref() == Some(prompt_session_id)
+                    });
+            if started_on_current_session {
+                tab.has_meaningful_conversation = true;
+            }
+            tab.finish_active_prompt(prompt_id);
+            tab.turn = TurnState::Idle;
+        }
+        self.project_tab_state(&target_tab);
+    }
+
+    pub(super) fn settle_retired_transport_prompts(&mut self) {
+        let tab_ids = self.tab_sessions.keys().cloned().collect::<Vec<_>>();
+        for tab_id in &tab_ids {
+            if self
+                .tab_sessions
+                .get(tab_id)
+                .is_some_and(|tab| tab.turn.is_in_flight())
+            {
+                self.turn_cancel_for_tab(tab_id);
+            }
+        }
+        for tab_id in &tab_ids {
+            let prompt_id = self
+                .tab_sessions
+                .get(tab_id)
+                .and_then(|tab| match &tab.turn {
+                    TurnState::Cancelling { prompt_id } => Some(*prompt_id),
+                    _ => None,
+                });
+            if let Some(prompt_id) = prompt_id {
+                let tab = self.tab_mut(tab_id);
+                tab.finish_active_prompt(prompt_id);
+                tab.turn = TurnState::Idle;
+            }
+            self.project_tab_state(tab_id);
+        }
     }
 
     // ── Internal surface helpers (shared between eager and end-of-turn). ──
@@ -920,7 +1127,7 @@ impl App {
         tab.selection_visible_pending = true;
         tab.clear_completed_turn_selection();
         tab.activity_frame = 0;
-        tab.clear_streaming_thought();
+        tab.finish_thought();
         tab.turn = TurnState::Surfaced {
             prompt,
             outcome: TurnOutcome::Recommendation(recommendations),
@@ -984,7 +1191,7 @@ impl App {
         tab.recommendation_focus = RecommendationFocus::Button;
         tab.selection_visible_pending = true;
         tab.activity_frame = 0;
-        tab.clear_streaming_thought();
+        tab.finish_thought();
         tab.turn = TurnState::Surfaced {
             prompt,
             outcome: TurnOutcome::Recommendation(recommendations),
@@ -1058,7 +1265,7 @@ impl App {
         tab.recommendation_focus = RecommendationFocus::Button;
         tab.rec_scroll.reset();
         tab.activity_frame = 0;
-        tab.clear_streaming_thought();
+        tab.finish_thought();
         tab.turn = TurnState::Surfaced {
             prompt,
             outcome: TurnOutcome::ChatTurn,
@@ -1070,6 +1277,7 @@ impl App {
     /// `prompt_complete` log used by the eager path.
     fn turn_release_end_pending(&mut self, session_id: &str) {
         let tab = self.session_tab_mut(session_id);
+        let mut completed_prompt_id = None;
         if let TurnState::Surfaced {
             end_pending,
             prompt,
@@ -1081,7 +1289,11 @@ impl App {
                 let prompt_id = prompt.id;
                 let submitted_at = prompt.submitted_at_unix_s;
                 prompt_timing_log(prompt_id, submitted_at, "prompt_complete", "via=end_only");
+                completed_prompt_id = Some(prompt_id);
             }
+        }
+        if let Some(prompt_id) = completed_prompt_id {
+            tab.finish_active_prompt(prompt_id);
         }
     }
 }

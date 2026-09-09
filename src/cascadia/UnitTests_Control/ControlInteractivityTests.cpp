@@ -42,6 +42,7 @@ namespace ControlUnitTests
         TEST_METHOD(IncrementCircularBufferWithSelection);
 
         TEST_METHOD(GetMouseEventsInTest);
+        TEST_METHOD(AgentPaneCtrlWheelZoomsBeforeVtMouse);
         TEST_METHOD(AltBufferClampMouse);
         TEST_METHOD(ParseCompletedTurnActionHyperlinks);
         TEST_METHOD(CompletedTurnActionHyperlinksSuppressUnderlines);
@@ -1007,6 +1008,58 @@ namespace ControlUnitTests
                                       0, // timestamp
                                       modifiers,
                                       cursorPosition0.to_core_point());
+    }
+
+    void ControlInteractivityTests::AgentPaneCtrlWheelZoomsBeforeVtMouse()
+    {
+        WEX::TestExecution::DisableVerifyExceptions disableVerifyExceptions{};
+
+        auto [settings, conn] = _createSettingsAndConnection();
+        settings->ScrollToZoom(true);
+        auto [core, interactivity] = _createCoreAndInteractivity(*settings, *conn);
+        _standardInit(core, interactivity);
+
+        std::deque<std::wstring> expectedOutput{};
+        auto validateDrained = _addInputCallback(conn, expectedOutput);
+
+        auto& term{ *core->_terminal };
+        term.Write(L"\x1b[?1000h\x1b[?1006h");
+
+        const auto modifiers = ControlKeyStates{ CTRL_PRESSED };
+        interactivity->MouseWheel(modifiers,
+                                  Core::Point{ 0, WHEEL_DELTA },
+                                  Core::Point{ 0, 0 },
+                                  {},
+                                  true);
+
+        VERIFY_ARE_EQUAL(1.0f, core->_accumulatedFontSizeDelta);
+        VERIFY_ARE_EQUAL(0u, expectedOutput.size());
+
+        expectedOutput.push_back(L"\x1b[<64;1;1M");
+        interactivity->MouseWheel({},
+                                  Core::Point{ 0, WHEEL_DELTA },
+                                  Core::Point{ 0, 0 },
+                                  {},
+                                  true);
+        VERIFY_ARE_EQUAL(0u, expectedOutput.size());
+        VERIFY_ARE_EQUAL(1.0f, core->_accumulatedFontSizeDelta);
+
+        expectedOutput.push_back(L"\x1b[<83;1;1M");
+        interactivity->MouseWheel(modifiers,
+                                  Core::Point{ WHEEL_DELTA, 0 },
+                                  Core::Point{ 0, 0 },
+                                  {},
+                                  true);
+        VERIFY_ARE_EQUAL(0u, expectedOutput.size());
+        VERIFY_ARE_EQUAL(1.0f, core->_accumulatedFontSizeDelta);
+
+        expectedOutput.push_back(L"\x1b[<80;1;1M");
+        interactivity->MouseWheel(modifiers,
+                                  Core::Point{ 0, WHEEL_DELTA },
+                                  Core::Point{ 0, 0 },
+                                  {});
+        VERIFY_ARE_EQUAL(0u, expectedOutput.size());
+        VERIFY_ARE_EQUAL(1.0f, core->_accumulatedFontSizeDelta);
     }
 
     void ControlInteractivityTests::AltBufferClampMouse()

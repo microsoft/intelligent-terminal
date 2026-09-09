@@ -1,13 +1,11 @@
 #Requires -Modules @{ ModuleName='Pester'; ModuleVersion='5.0.0' }
 # Release checklist §0 FRE — the FRE-overlay-specific agent-setup items that ARE automatable via
 # winapp UIA but were previously left manual. The FRE's SECOND page (reached via NextButton) hosts
-# the agent dropdown, the auto-error toggles, the session-management toggle + its install hint, and
+# the agent dropdown, the error-detection dropdown, the session-management toggle, and
 # the pane-position picker, all as named XAML controls. Deterministic: assert on those controls /
 # their rendered state — no agent/LLM involved.
 #
 # Not covered here (genuinely not cleanly UIA-observable, kept manual/UT):
-#   * detection→suggestion "disabled" dependency — the toggle tree exposes only [on]/[off], not the
-#     enabled/disabled state (the dependency itself is UT-locked: EffectiveAutoFixFalseWhenDetectionOff);
 #   * "Copilot without install" / "install failure messages" — need a destructive uninstalled/failed
 #     CLI state to induce.
 
@@ -27,7 +25,7 @@ Describe 'Feature §0 FRE agent setup (overlay controls)' -Tag 'Feature' -Skip:(
     BeforeAll {
         Import-Module (Join-Path $PSScriptRoot '..\ItE2E\ItE2E.psd1') -Force
         $script:app = Start-TerminalFre -Package (Get-ItTestPackage)
-        # Advance to the settings page (agent dropdown / toggles / hint / position live here).
+        # Advance to the settings page (agent dropdown / preferences / position live here).
         Invoke-UiElement -App $script:app -Selector 'NextButton' -TimeoutSec 10 | Out-Null
         Start-Sleep -Seconds 1
         # Locale-robust "(installed)" suffix from the FreOverlay_AgentStatusInstalled resource, so
@@ -46,44 +44,36 @@ Describe 'Feature §0 FRE agent setup (overlay controls)' -Tag 'Feature' -Skip:(
         $shown | Should -BeTrue -Because 'with the Copilot CLI installed, the FRE agent picker must list it as installed'
     }
 
-    It 'Session hook hints appear only when the session-management toggle is on' {
-        $tree = { Get-UiTree -App $script:app -Depth 18 }
-        $smOn = { (& $tree) -match 'SessionManagementToggle[^\r\n]*\[on\]' }
-        $hint = { [bool]((& $tree) -match 'SessionManagementHint') }
-
-        # Drive to a known ON state (default), then assert the install hint is shown.
-        if (-not (& $smOn)) { Invoke-UiElement -App $script:app -Selector 'SessionManagementToggle' | Out-Null; Start-Sleep -Milliseconds 800 }
-        (& $smOn) | Should -BeTrue -Because 'the session-management toggle should be enableable in the FRE'
-        (& $hint) | Should -BeTrue -Because 'the install-hooks hint row is shown while session management is enabled'
-
-        # Toggle OFF — the informational hint row must disappear.
-        Invoke-UiElement -App $script:app -Selector 'SessionManagementToggle' | Out-Null
-        Start-Sleep -Milliseconds 800
-        (& $smOn) | Should -BeFalse
-        Test-Until -TimeoutSec 8 -IntervalSec 1 -Condition { -not (& $hint) } |
-            Should -BeTrue -Because 'the install-hooks hint must be hidden when session management is off'
-
-        # Restore ON so the suite leaves the overlay in its default state.
-        Invoke-UiElement -App $script:app -Selector 'SessionManagementToggle' | Out-Null
+    It 'Setup hints are not rendered inside setting cards' {
+        foreach ($hint in @('AgentInstallHintRow', 'AutoDetectShellIntegrationHintRow', 'SessionManagementHintRow')) {
+            Test-UiElementExists -App $script:app -Selector $hint -TimeoutSec 1 |
+                Should -BeFalse -Because "the FRE should not render the $hint inline hint"
+        }
     }
 
-    It 'Detection/suggestion dependency (the suggestion toggle disables when detection is off)' {
-        $detectOn = { (Get-UiElement -App $script:app -Selector 'AutoDetectToggle').toggleState -eq 'on' }
-        # Drive detection ON — the suggestion toggle must then be ENABLED (user can flip it).
-        if (-not (& $detectOn)) { Invoke-UiElement -App $script:app -Selector 'AutoDetectToggle' | Out-Null; Start-Sleep -Milliseconds 800 }
-        (& $detectOn) | Should -BeTrue
-        Test-UiElementEnabled -App $script:app -Selector 'AutoErrorToggle' |
-            Should -BeTrue -Because 'with detection on, the suggestion toggle is user-settable'
+    It 'Error detection is a single dropdown with all three modes' {
+        Test-UiElementExists -App $script:app -Selector 'ErrorDetectionComboBox' -TimeoutSec 8 |
+            Should -BeTrue -Because 'the FRE settings page must expose one error-detection dropdown'
 
-        # Turn detection OFF — the suggestion toggle must become DISABLED (greyed / not settable).
-        Invoke-UiElement -App $script:app -Selector 'AutoDetectToggle' | Out-Null
-        $disabled = Test-Until -TimeoutSec 8 -IntervalSec 1 -Condition {
-            -not (Test-UiElementEnabled -App $script:app -Selector 'AutoErrorToggle')
+        Invoke-UiElement -App $script:app -Selector 'ErrorDetectionComboBox' | Out-Null
+        Start-Sleep -Milliseconds 800
+        $tree = Get-UiTree -App $script:app -Depth 18
+        foreach ($option in @(
+            @{ Key = 'FreOverlay_ErrorDetectionDetectOption.Content'; Fallback = 'Detect errors' }
+            @{ Key = 'FreOverlay_ErrorDetectionAutoFixOption.Content'; Fallback = 'Detect and fix errors' }
+            @{ Key = 'FreOverlay_ErrorDetectionOffOption.Content'; Fallback = 'Off' }
+        )) {
+            $rx = Get-WtReswTextRegex -Key $option.Key
+            if (-not $rx) { $rx = [regex]::Escape($option.Fallback) }
+            $tree | Should -Match $rx -Because "the error-detection dropdown must include '$($option.Fallback)'"
         }
-        $disabled | Should -BeTrue -Because 'suggestion cannot be enabled when detection is off (master-detail dependency)'
 
-        # Restore detection ON so the overlay is left in its default state.
-        Invoke-UiElement -App $script:app -Selector 'AutoDetectToggle' | Out-Null
+        Test-UiElementExists -App $script:app -Selector 'AutoDetectToggle' -TimeoutSec 1 |
+            Should -BeFalse -Because 'the former detection toggle is replaced by the dropdown'
+        Test-UiElementExists -App $script:app -Selector 'AutoErrorToggle' -TimeoutSec 1 |
+            Should -BeFalse -Because 'the subordinate automatic-error setting is removed'
+
+        Invoke-UiElement -App $script:app -Selector 'ErrorDetectionComboBox' | Out-Null
     }
 
     It 'Token usage toggle is present and defaults off' {

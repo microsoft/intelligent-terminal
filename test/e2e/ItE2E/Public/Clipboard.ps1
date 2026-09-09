@@ -8,6 +8,72 @@
 # (pwsh 7 defaults to MTA and has no -STA switch). The bitmap lands as CF_BITMAP/CF_DIB,
 # which `read_clipboard_image` picks up via its CF_DIBV5/CF_DIB path (label "screenshot").
 
+function Invoke-ClipboardSta {
+    param(
+        [Parameter(Mandatory)][scriptblock]$ScriptBlock,
+        [object[]]$ArgumentList = @()
+    )
+
+    $rs = [runspacefactory]::CreateRunspace()
+    $rs.ApartmentState = 'STA'
+    $rs.ThreadOptions = 'ReuseThread'
+    $rs.Open()
+    try {
+        $ps = [powershell]::Create()
+        try {
+            $ps.Runspace = $rs
+            $null = $ps.AddScript($ScriptBlock)
+            foreach ($argument in $ArgumentList) {
+                $null = $ps.AddArgument($argument)
+            }
+            $result = @($ps.Invoke())
+            if ($ps.Streams.Error.Count) { throw "Clipboard operation failed: $($ps.Streams.Error[0])" }
+            $result
+        }
+        finally { $ps.Dispose() }
+    }
+    finally { $rs.Close(); $rs.Dispose() }
+}
+
+function Get-ClipboardSnapshot {
+    <# Return a complete in-memory clipboard data object, or $null for an empty clipboard. #>
+    [CmdletBinding()] param()
+
+    Invoke-ClipboardSta -ScriptBlock {
+        Add-Type -AssemblyName System.Windows.Forms
+        $source = [System.Windows.Forms.Clipboard]::GetDataObject()
+        if ($null -eq $source) { return }
+        $snapshot = [System.Windows.Forms.DataObject]::new()
+        foreach ($format in $source.GetFormats($true)) {
+            try {
+                $data = $source.GetData($format, $true)
+                if ($null -ne $data) { $snapshot.SetData($format, $data) }
+            }
+            catch {
+                # Some application-private formats cannot be materialized outside their
+                # owner. Preserve every format that the clipboard can actually provide.
+            }
+        }
+        $snapshot
+    } | Select-Object -First 1
+}
+
+function Restore-ClipboardSnapshot {
+    <# Restore a snapshot from Get-ClipboardSnapshot, including the empty state. #>
+    [CmdletBinding()] param([AllowNull()]$Snapshot)
+
+    Invoke-ClipboardSta -ScriptBlock {
+        param($saved)
+        Add-Type -AssemblyName System.Windows.Forms
+        if ($null -eq $saved) {
+            [System.Windows.Forms.Clipboard]::Clear()
+        }
+        else {
+            [System.Windows.Forms.Clipboard]::SetDataObject($saved, $true)
+        }
+    } -ArgumentList @($Snapshot) | Out-Null
+}
+
 function Set-ClipboardImage {
     <#
     .SYNOPSIS
@@ -33,19 +99,5 @@ function Set-ClipboardImage {
         $bmp.Dispose()
     }
 
-    $rs = [runspacefactory]::CreateRunspace()
-    $rs.ApartmentState = 'STA'
-    $rs.ThreadOptions = 'ReuseThread'
-    $rs.Open()
-    try {
-        $ps = [powershell]::Create()
-        try {
-            $ps.Runspace = $rs
-            $null = $ps.AddScript($worker).AddArgument($Width).AddArgument($Height)
-            $ps.Invoke() | Out-Null
-            if ($ps.Streams.Error.Count) { throw "Set-ClipboardImage failed: $($ps.Streams.Error[0])" }
-        }
-        finally { $ps.Dispose() }
-    }
-    finally { $rs.Close(); $rs.Dispose() }
+    Invoke-ClipboardSta -ScriptBlock $worker -ArgumentList @($Width, $Height) | Out-Null
 }

@@ -41,6 +41,11 @@ Describe 'Feature: autofix card render + reject + AI correctness' -Tag 'Feature'
             Invoke-FailingCommand -App $script:app -SessionId $sid -Command 'gti status' | Out-Null
             Wait-Autofix -Listener $listener -TimeoutSec 45 | Out-Null
         } finally { Stop-WtEventListener -Listener $listener }
+        $proposalGate = Wait-TerminalActionProposal -App $script:app -TimeoutSec 45 -ReturnOnPermission
+        if ($proposalGate.Mode -eq 'Permission') {
+            # Explicit test-user selection of the provider's allow option.
+            Send-AgentKey -App $script:app -Key Y | Out-Null
+        }
         (Test-Until -TimeoutSec 60 -IntervalSec 1 -Condition { & $script:CardShown }) |
             Should -BeTrue -Because 'Autofix must submit a valid Direct Helper Proposal for an obvious typo'
     }
@@ -53,6 +58,10 @@ Describe 'Feature: autofix card render + reject + AI correctness' -Tag 'Feature'
             if (-not (& $script:CardShown)) { return $true }
             Send-AgentKey -App $script:app -Key Escape | Out-Null
             return $false
+        }
+        if (-not $dismissed) {
+            Write-ItLog -Level WARN -Message ("Recommendation card remained after Escape; rendered pane:`n" +
+                (Get-AgentPaneText -App $script:app -MaxLines 60))
         }
         $dismissed | Should -BeTrue -Because 'Esc must eventually dismiss the rendered recommendation card'
     }
@@ -83,6 +92,11 @@ Describe 'Feature: autofix Insert action' -Tag 'Feature' -Skip:(-not $script:Rea
             Invoke-FailingCommand -App $script:app -SessionId $sid -Command 'gti status' | Out-Null
             Wait-Autofix -Listener $listener -TimeoutSec 45 | Out-Null
         } finally { Stop-WtEventListener -Listener $listener }
+        $proposalGate = Wait-TerminalActionProposal -App $script:app -TimeoutSec 45 -ReturnOnPermission
+        if ($proposalGate.Mode -eq 'Permission') {
+            # Explicit test-user selection of the provider's allow option.
+            Send-AgentKey -App $script:app -Key Y | Out-Null
+        }
         (Test-Until -TimeoutSec 60 -IntervalSec 1 -Condition { (Get-AgentPaneText -App $script:app -MaxLines 60) -match (Get-RecommendationCardRegex) }) |
             Should -BeTrue -Because 'Autofix must submit a Direct Helper Proposal before Insert'
         Send-AgentKey -App $script:app -Key Right | Out-Null
@@ -111,6 +125,11 @@ Describe 'Feature: autofix Run action' -Tag 'Feature' -Skip:(-not $script:Ready)
             Invoke-FailingCommand -App $script:app -SessionId $sid -Command 'gti status' | Out-Null
             Wait-Autofix -Listener $listener -TimeoutSec 45 | Out-Null
         } finally { Stop-WtEventListener -Listener $listener }
+        $proposalGate = Wait-TerminalActionProposal -App $script:app -TimeoutSec 45 -ReturnOnPermission
+        if ($proposalGate.Mode -eq 'Permission') {
+            # Explicit test-user selection of the provider's allow option.
+            Send-AgentKey -App $script:app -Key Y | Out-Null
+        }
         (Test-Until -TimeoutSec 60 -IntervalSec 1 -Condition { (Get-AgentPaneText -App $script:app -MaxLines 60) -match (Get-RecommendationCardRegex) }) |
             Should -BeTrue -Because 'Autofix must submit a Direct Helper Proposal before Run'
         Send-AgentKey -App $script:app -Key Left | Out-Null
@@ -210,7 +229,10 @@ Describe 'Feature: autofix in a WSL pane (OSC 9001;ShellType end-to-end)' -Tag '
 
             # Agent pane on the (now active) WSL tab so autofix cards render here.
             Open-AgentPane -App $script:app | Out-Null
-            Wait-AgentReady -App $script:app -TimeoutSec 60 | Should -BeTrue -Because 'the agent pane must be connected for WSL autofix to render cards'
+            $script:wslAgent = Wait-Until -TimeoutSec 30 -Because 'the WSL tab helper identity' -Condition {
+                Get-AgentPaneSession -App $script:app -OwnerPaneSessionId $script:wslSid
+            }
+            Wait-AgentReady -App $script:app -PaneSessionId $script:wslAgent.PaneSessionId -TimeoutSec 60 | Should -BeTrue -Because 'the agent pane must be connected for WSL autofix to render cards'
         }
         catch {
             Write-ItLog -Level WARN -Message "WSL autofix setup failed (build without WSL-capable CreateTab / OSC 9001, or no WSL shell integration): $_"
@@ -242,8 +264,14 @@ Describe 'Feature: autofix in a WSL pane (OSC 9001;ShellType end-to-end)' -Tag '
             Invoke-FailingCommand -App $script:app -SessionId $script:wslSid -Command 'sl -la' | Out-Null
             Wait-Autofix -Listener $listener -TimeoutSec 45 | Out-Null
         } finally { Stop-WtEventListener -Listener $listener }
+        $pending = Wait-TerminalActionProposal -App $script:app -PaneSessionId $script:wslAgent.PaneSessionId -TimeoutSec 30 -ReturnOnPermission
+        $pending | Should -Not -BeNullOrEmpty -Because 'WSL Autofix must submit a Direct Helper Proposal'
+        if ($pending.Mode -eq 'Permission') {
+            # Explicit test-user selection of the provider's allow option.
+            Send-AgentKey -App $script:app -PaneSessionId $script:wslAgent.PaneSessionId -Key Y | Out-Null
+        }
         $cardText = Wait-Until -TimeoutSec 60 -IntervalSec 1 -Because 'a visible WSL Autofix recommendation card' -Condition {
-            $text = Get-AgentPaneText -App $script:app -MaxLines 60
+            $text = Get-AgentPaneText -App $script:app -PaneSessionId $script:wslAgent.PaneSessionId -MaxLines 60
             if ($text -match (Get-RecommendationCardRegex)) { $text }
         }
         Assert-AI -Claim 'The suggested fix command uses Linux/bash shell syntax (e.g. ls, grep, cat, forward-slash paths). It is NOT a Windows PowerShell command (no Get-ChildItem / Select-String / cmdlet-style Verb-Noun).' -Context $cardText

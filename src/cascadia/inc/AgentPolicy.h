@@ -16,6 +16,9 @@
 //   AllowCustomAgents  REG_DWORD     0 = blocked, 1 = allowed. Absent = allowed.
 //   AllowAutoFix       REG_DWORD     0 = blocked, 1 = allowed. Absent = allowed.
 //   AllowAgentSessionHooks REG_DWORD  0 = blocked, 1 = allowed. Absent = allowed.
+//   AllowYoloMode      REG_DWORD     0 = blocked, 1 = allowed. Absent = allowed.
+//                                    Gates the global agentPane.yoloMode setting
+//                                    and provider-native Yolo config changes.
 
 #pragma once
 
@@ -27,6 +30,7 @@
 #include <string_view>
 #include <mutex>
 #include <vector>
+#include <wil/registry.h>
 
 namespace Microsoft::Terminal::Settings::Model::AgentPolicy
 {
@@ -62,11 +66,74 @@ namespace Microsoft::Terminal::Settings::Model::AgentPolicy
         PolicyState customAgents{ PolicyState::NotConfigured };
         PolicyState autoFix{ PolicyState::NotConfigured };
         PolicyState agentSessionHooks{ PolicyState::NotConfigured };
+        PolicyState yoloMode{ PolicyState::NotConfigured };
     };
 
     // ── Private implementation details ──────────────────────────────────
 
     inline constexpr wchar_t PolicyRegKey[] = LR"(Software\Policies\Microsoft\IntelligentTerminal)";
+    inline constexpr std::wstring_view PolicyWatchRegKey{ PolicyRegKey };
+
+    namespace details
+    {
+        inline wil::unique_registry_watcher_nothrow CreatePolicyChangeWatcher(
+            wil::unique_hkey&& key,
+            const bool recursive,
+            wistd::function<void(wil::RegistryChangeKind)>&& callback) noexcept
+        {
+            return wil::make_registry_watcher_nothrow(
+                std::move(key),
+                recursive,
+                std::move(callback));
+        }
+
+        inline wil::unique_registry_watcher_nothrow CreatePolicyChangeWatcher(
+            wil::unique_hkey&& key,
+            wistd::function<void(wil::RegistryChangeKind)>&& callback) noexcept
+        {
+            return CreatePolicyChangeWatcher(std::move(key), true, std::move(callback));
+        }
+
+        inline wil::unique_registry_watcher_nothrow CreatePolicyChangeWatcher(
+            HKEY root,
+            const std::wstring_view targetPath,
+            wistd::function<void(wil::RegistryChangeKind)>&& callback) noexcept
+        {
+            std::wstring candidate{ targetPath };
+            for (;;)
+            {
+                wil::unique_hkey key;
+                if (RegOpenKeyExW(root, candidate.c_str(), 0, KEY_NOTIFY, &key) == ERROR_SUCCESS)
+                {
+                    return CreatePolicyChangeWatcher(
+                        std::move(key),
+                        candidate.size() == targetPath.size(),
+                        std::move(callback));
+                }
+                if (candidate.empty())
+                {
+                    return {};
+                }
+
+                const auto separator = candidate.find_last_of(L'\\');
+                if (separator == std::wstring::npos)
+                {
+                    candidate.clear();
+                }
+                else
+                {
+                    candidate.resize(separator);
+                }
+            }
+        }
+    }
+
+    inline wil::unique_registry_watcher_nothrow CreatePolicyChangeWatcher(
+        HKEY root,
+        wistd::function<void(wil::RegistryChangeKind)>&& callback) noexcept
+    {
+        return details::CreatePolicyChangeWatcher(root, PolicyWatchRegKey, std::move(callback));
+    }
 
     // Per-DLL cached snapshot, protected by a mutex.
     // Reload() builds a new snapshot and swaps it under the lock.
@@ -139,6 +206,7 @@ namespace Microsoft::Terminal::Settings::Model::AgentPolicy
         snap->customAgents = _DwordToPolicyState(_ReadDwordPolicy(L"AllowCustomAgents"));
         snap->autoFix = _DwordToPolicyState(_ReadDwordPolicy(L"AllowAutoFix"));
         snap->agentSessionHooks = _DwordToPolicyState(_ReadDwordPolicy(L"AllowAgentSessionHooks"));
+        snap->yoloMode = _DwordToPolicyState(_ReadDwordPolicy(L"AllowYoloMode"));
 
         {
             std::lock_guard lock{ s_policyMutex };
@@ -188,6 +256,11 @@ namespace Microsoft::Terminal::Settings::Model::AgentPolicy
         return _GetSnapshot()->agentSessionHooks != PolicyState::Blocked;
     }
 
+    inline bool IsYoloModeAllowed()
+    {
+        return _GetSnapshot()->yoloMode != PolicyState::Blocked;
+    }
+
     // Expose raw policy state for UI to distinguish "not configured" from "allowed".
     inline PolicyState GetCustomAgentPolicy()
     {
@@ -229,6 +302,11 @@ namespace Microsoft::Terminal::Settings::Model::AgentPolicy
     inline PolicyState GetAgentSessionHooksPolicy()
     {
         return _GetSnapshot()->agentSessionHooks;
+    }
+
+    inline PolicyState GetYoloModePolicy()
+    {
+        return _GetSnapshot()->yoloMode;
     }
 
     // Whether AllowedAgents policy is configured at all (for UI lock indicators).

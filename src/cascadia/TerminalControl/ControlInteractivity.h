@@ -77,6 +77,11 @@ namespace winrt::Microsoft::Terminal::Control::implementation
                         const Core::Point delta,
                         const Core::Point pixelPosition,
                         const Control::MouseButtonState state);
+        bool MouseWheel(const ::Microsoft::Terminal::Core::ControlKeyStates modifiers,
+                        const Core::Point delta,
+                        const Core::Point pixelPosition,
+                        const Control::MouseButtonState state,
+                        bool prioritizeZoom);
 
         void UpdateScrollbar(const float newValue);
 

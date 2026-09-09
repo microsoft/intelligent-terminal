@@ -15,6 +15,7 @@ fn empty_agent_cell() -> AgentCell {
 fn unbound_test_agent(key: &str) -> Arc<AgentCli> {
     Arc::new(AgentCli {
         instance_id: AgentInstanceId::new_v4(),
+        resolved_agent_id: "copilot".to_string(),
         conn: client_connection_to_model_agent(
             false,
             Arc::new(std::sync::atomic::AtomicBool::new(false)),
@@ -428,6 +429,7 @@ async fn delayed_clean_probe_does_not_block_initialize_and_notifies_bound_helper
             let legacy_hit = Arc::new(std::sync::atomic::AtomicBool::new(false));
             let agent = Arc::new(AgentCli {
                 instance_id: AgentInstanceId::new_v4(),
+                resolved_agent_id: "copilot".to_string(),
                 conn: client_connection_to_model_agent(false, config_hit, legacy_hit),
                 cached_init_resp: acp::schema::v1::InitializeResponse::new(
                     acp::schema::ProtocolVersion::V1,
@@ -465,6 +467,11 @@ async fn delayed_clean_probe_does_not_block_initialize_and_notifies_bound_helper
             assert!(
                 wta_meta.proposal_mcp.is_none(),
                 "unavailable session MCP must not be advertised"
+            );
+            assert_eq!(
+                wta_meta.resolved_agent_id.as_deref(),
+                Some("copilot"),
+                "the helper must receive the master-resolved Agent identity"
             );
 
             let mut response = initialize_response_for_agent(&agent, true)
@@ -511,6 +518,55 @@ async fn delayed_clean_probe_does_not_block_initialize_and_notifies_bound_helper
 }
 
 #[tokio::test(flavor = "current_thread")]
+async fn initialize_response_preserves_ready_cloud_catalog_with_identity_and_proposal_meta() {
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let config_hit = Arc::new(std::sync::atomic::AtomicBool::new(false));
+            let legacy_hit = Arc::new(std::sync::atomic::AtomicBool::new(false));
+            let agent = AgentCli {
+                instance_id: AgentInstanceId::new_v4(),
+                resolved_agent_id: "copilot".to_string(),
+                conn: client_connection_to_model_agent(false, config_hit, legacy_hit),
+                cached_init_resp: acp::schema::v1::InitializeResponse::new(
+                    acp::schema::ProtocolVersion::V1,
+                ),
+                cli_source: Some(crate::agent_sessions::CliSource::Copilot),
+                source: crate::agent_source::AgentSource::Host,
+                cmd_key: "ready-catalog-agent".to_string(),
+                cloud_catalog: Mutex::new(NativeCloudCatalogState::Ready(NativeCloudCatalog {
+                    models: vec![crate::app::AcpModelInfo {
+                        id: "cloud-ready".to_string(),
+                        name: "Cloud Ready".to_string(),
+                        description: None,
+                    }],
+                    source: CloudCatalogSource::Helper,
+                })),
+                bound_helpers: Mutex::new(HashSet::new()),
+                host_list_cache: Mutex::new(None),
+                listed_ever: Mutex::new(HashSet::new()),
+            };
+
+            let mut response = initialize_response_for_agent(&agent, true)
+                .await
+                .expect("initialize metadata serializes");
+            let wta_meta = crate::session_registry::extract_wta_meta(&mut response.meta);
+            let catalog =
+                crate::protocol::acp::model_select::cloud_catalog_from_wta_meta(&wta_meta);
+
+            assert_eq!(
+                catalog.models.len(),
+                1,
+                "identity metadata must preserve the catalog"
+            );
+            assert_eq!(catalog.models[0].id, "cloud-ready");
+            assert_eq!(catalog.source.as_deref(), Some("helper"));
+            assert_eq!(wta_meta.resolved_agent_id.as_deref(), Some("copilot"));
+            assert_eq!(wta_meta.proposal_mcp.as_deref(), Some("http-v1"));
+        })
+        .await;
+}
+
+#[tokio::test(flavor = "current_thread")]
 async fn failed_clean_probe_is_recorded_without_catalog_delivery() {
     tokio::task::LocalSet::new()
         .run_until(async {
@@ -525,6 +581,7 @@ async fn failed_clean_probe_is_recorded_without_catalog_delivery() {
 
             let agent = Arc::new(AgentCli {
                 instance_id: AgentInstanceId::new_v4(),
+                resolved_agent_id: "copilot".to_string(),
                 conn: client_connection_to_model_agent(
                     false,
                     Arc::new(std::sync::atomic::AtomicBool::new(false)),
@@ -748,6 +805,7 @@ async fn model_scoped_agent_retires_only_after_its_final_helper_unbinds() {
             let key = "model:test-agent".to_string();
             let agent = Arc::new(AgentCli {
                 instance_id: AgentInstanceId::new_v4(),
+                resolved_agent_id: "copilot".to_string(),
                 conn: client_connection_to_model_agent(
                     false,
                     Arc::new(std::sync::atomic::AtomicBool::new(false)),
@@ -797,6 +855,7 @@ async fn helper_claim_retries_when_captured_agent_cell_is_replaced() {
             let make_agent = || {
                 Arc::new(AgentCli {
                     instance_id: AgentInstanceId::new_v4(),
+                    resolved_agent_id: "copilot".to_string(),
                     conn: client_connection_to_model_agent(
                         false,
                         Arc::new(std::sync::atomic::AtomicBool::new(false)),
@@ -976,6 +1035,204 @@ async fn concurrent_helper_initialization_publishes_only_the_winning_agent() {
                 HashSet::from([helper_id])
             );
             assert!(unused.bound_helpers.lock().await.is_empty());
+        })
+        .await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn failed_pool_generation_wakes_waiters_into_a_fresh_cell() {
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            use std::sync::atomic::{AtomicUsize, Ordering};
+
+            let state = make_state();
+            let key = "model:failed-generation-retry".to_string();
+            let failed_instance = AgentInstanceId::new_v4();
+            let replacement = unbound_test_agent(&key);
+            let first_started = Arc::new(tokio::sync::Notify::new());
+            let release_first = Arc::new(tokio::sync::Notify::new());
+            let first_cell = Arc::new(Mutex::new(None::<AgentCell>));
+            let retry_cell = Arc::new(Mutex::new(None::<AgentCell>));
+            let retry_initializations = Arc::new(AtomicUsize::new(0));
+
+            let failed = acquire_agent_from_pool(&state, &key, {
+                let first_started = Arc::clone(&first_started);
+                let release_first = Arc::clone(&release_first);
+                let first_cell = Arc::clone(&first_cell);
+                move |cell| {
+                    let first_started = Arc::clone(&first_started);
+                    let release_first = Arc::clone(&release_first);
+                    let first_cell = Arc::clone(&first_cell);
+                    async move {
+                        *first_cell.lock().await = Some(cell);
+                        first_started.notify_one();
+                        release_first.notified().await;
+                        Err(anyhow!("expected initialization failure"))
+                    }
+                }
+            });
+            let retried = acquire_agent_from_pool(&state, &key, {
+                let replacement = Arc::clone(&replacement);
+                let retry_cell = Arc::clone(&retry_cell);
+                let retry_initializations = Arc::clone(&retry_initializations);
+                move |cell| {
+                    let replacement = Arc::clone(&replacement);
+                    let retry_cell = Arc::clone(&retry_cell);
+                    let retry_initializations = Arc::clone(&retry_initializations);
+                    async move {
+                        retry_initializations.fetch_add(1, Ordering::SeqCst);
+                        *retry_cell.lock().await = Some(cell);
+                        Ok(replacement)
+                    }
+                }
+            });
+            let release = async {
+                first_started.notified().await;
+                release_first.notify_one();
+            };
+
+            let (failed, retried, ()) = tokio::join!(biased; failed, retried, release);
+            assert!(failed.is_err());
+            let retried = retried.expect("waiting caller should initialize a fresh generation");
+            assert!(Arc::ptr_eq(&retried, &replacement));
+            assert_eq!(retry_initializations.load(Ordering::SeqCst), 1);
+
+            let first_cell = first_cell
+                .lock()
+                .await
+                .clone()
+                .expect("failed initializer should capture its cell");
+            let retry_cell = retry_cell
+                .lock()
+                .await
+                .clone()
+                .expect("retry initializer should capture its cell");
+            assert!(
+                !Arc::ptr_eq(&first_cell, &retry_cell),
+                "a failed generation must never be initialized again"
+            );
+            assert!(
+                state
+                    .agents
+                    .lock()
+                    .await
+                    .get(&key)
+                    .is_some_and(|cell| Arc::ptr_eq(cell, &retry_cell)),
+                "the replacement generation must remain published"
+            );
+
+            // Complete the original race: the failed provider's I/O/child
+            // reaper can arrive after the waiter publishes its replacement.
+            reap_agent(&state, &key, &first_cell, failed_instance).await;
+            assert!(
+                state
+                    .agents
+                    .lock()
+                    .await
+                    .get(&key)
+                    .is_some_and(|cell| Arc::ptr_eq(cell, &retry_cell)),
+                "the failed generation's delayed reaper must preserve its replacement"
+            );
+        })
+        .await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn cancelled_pool_initializer_wakes_waiters_into_a_fresh_cell() {
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let state = make_state();
+            let key = "model:cancelled-generation-retry".to_string();
+            let cancelled_instance = AgentInstanceId::new_v4();
+            let replacement = unbound_test_agent(&key);
+            let first_started = Arc::new(tokio::sync::Notify::new());
+            let waiter_started = Arc::new(tokio::sync::Notify::new());
+            let first_cell = Arc::new(Mutex::new(None::<AgentCell>));
+            let retry_cell = Arc::new(Mutex::new(None::<AgentCell>));
+
+            let cancelled = tokio::task::spawn_local({
+                let state = Arc::clone(&state);
+                let key = key.clone();
+                let first_started = Arc::clone(&first_started);
+                let first_cell = Arc::clone(&first_cell);
+                async move {
+                    acquire_agent_from_pool(&state, &key, move |cell| {
+                        let first_started = Arc::clone(&first_started);
+                        let first_cell = Arc::clone(&first_cell);
+                        async move {
+                            *first_cell.lock().await = Some(cell);
+                            first_started.notify_one();
+                            std::future::pending::<Result<Arc<AgentCli>>>().await
+                        }
+                    })
+                    .await
+                }
+            });
+            first_started.notified().await;
+
+            let retried = tokio::task::spawn_local({
+                let state = Arc::clone(&state);
+                let key = key.clone();
+                let replacement = Arc::clone(&replacement);
+                let retry_cell = Arc::clone(&retry_cell);
+                let waiter_started = Arc::clone(&waiter_started);
+                async move {
+                    waiter_started.notify_one();
+                    acquire_agent_from_pool(&state, &key, move |cell| {
+                        let replacement = Arc::clone(&replacement);
+                        let retry_cell = Arc::clone(&retry_cell);
+                        async move {
+                            *retry_cell.lock().await = Some(cell);
+                            Ok(replacement)
+                        }
+                    })
+                    .await
+                }
+            });
+            waiter_started.notified().await;
+            assert!(
+                !retried.is_finished(),
+                "the waiter must be queued behind the first initializer"
+            );
+
+            cancelled.abort();
+            let cancellation = match cancelled.await {
+                Ok(_) => panic!("the first initializer should be cancelled"),
+                Err(error) => error,
+            };
+            assert!(cancellation.is_cancelled());
+
+            let retried = retried
+                .await
+                .expect("waiting task should complete")
+                .expect("waiting caller should initialize a fresh generation");
+            assert!(Arc::ptr_eq(&retried, &replacement));
+
+            let first_cell = first_cell
+                .lock()
+                .await
+                .clone()
+                .expect("cancelled initializer should capture its cell");
+            let retry_cell = retry_cell
+                .lock()
+                .await
+                .clone()
+                .expect("retry initializer should capture its cell");
+            assert!(
+                !Arc::ptr_eq(&first_cell, &retry_cell),
+                "a cancelled generation must never be initialized again"
+            );
+
+            reap_agent(&state, &key, &first_cell, cancelled_instance).await;
+            assert!(
+                state
+                    .agents
+                    .lock()
+                    .await
+                    .get(&key)
+                    .is_some_and(|cell| Arc::ptr_eq(cell, &retry_cell)),
+                "the cancelled generation's delayed reaper must preserve its replacement"
+            );
         })
         .await;
 }
@@ -1220,10 +1477,12 @@ fn make_state_with_retirement_pending_timeout(
         retirement_completion_tx: Mutex::new(None),
         retirement_pending_timeout,
         disconnect_orphan_publication_pause: Mutex::new(None),
+        reap_agent_orphan_cleanup_pause: Mutex::new(None),
         deferred_retirement_cleanup_complete: tokio::sync::Notify::new(),
         hook_owned: Mutex::new(HashSet::new()),
         born_bound: Mutex::new(HashSet::new()),
         orphaned_sessions: Mutex::new(HashMap::new()),
+        retired_agent_cells: std::sync::Mutex::new(Vec::new()),
         orphaned_tabs: Mutex::new(HashMap::new()),
     })
 }
@@ -1974,6 +2233,7 @@ async fn pooled_agents_keep_model_switch_channels_isolated() {
             let a_legacy_hit = Arc::new(AtomicBool::new(false));
             let agent_a = Arc::new(AgentCli {
                 instance_id: AgentInstanceId::new_v4(),
+                resolved_agent_id: "copilot".to_string(),
                 conn: client_connection_to_model_agent(
                     true,
                     Arc::clone(&a_config_hit),
@@ -1995,6 +2255,7 @@ async fn pooled_agents_keep_model_switch_channels_isolated() {
             let b_legacy_hit = Arc::new(AtomicBool::new(false));
             let agent_b = Arc::new(AgentCli {
                 instance_id: AgentInstanceId::new_v4(),
+                resolved_agent_id: "copilot".to_string(),
                 conn: client_connection_to_model_agent(
                     false,
                     Arc::clone(&b_config_hit),
@@ -2056,6 +2317,7 @@ async fn direct_resume_updates_model_switch_channel_from_load_response() {
             let legacy_hit = Arc::new(AtomicBool::new(false));
             let agent = Arc::new(AgentCli {
                 instance_id: AgentInstanceId::new_v4(),
+                resolved_agent_id: "copilot".to_string(),
                 conn: client_connection_to_model_agent(
                     false,
                     Arc::clone(&config_hit),
@@ -2118,6 +2380,7 @@ async fn new_session_timeout_is_enforced_by_master_forwarder() {
             let agent = empty_agent_cell();
             let _ = agent.set(Arc::new(AgentCli {
                 instance_id: AgentInstanceId::new_v4(),
+                resolved_agent_id: "copilot".to_string(),
                 conn: client_connection_to_pending_new_session_agent(),
                 cached_init_resp: acp::schema::v1::InitializeResponse::new(
                     acp::schema::ProtocolVersion::V1,
@@ -2271,6 +2534,7 @@ async fn load_session_gate_timeout_does_not_reach_agent_or_mutate_state() {
             assert!(agent
                 .set(Arc::new(AgentCli {
                     instance_id: agent_instance,
+                    resolved_agent_id: "copilot".to_string(),
                     conn: client_connection_to_pending_load_session_agent(load_arrivals_tx),
                     cached_init_resp,
                     cli_source: Some(crate::agent_sessions::CliSource::Copilot),
@@ -2358,6 +2622,7 @@ async fn load_session_timeout_rolls_back_replacement_state_and_releases_gate() {
             assert!(agent
                 .set(Arc::new(AgentCli {
                     instance_id: agent_instance,
+                    resolved_agent_id: "copilot".to_string(),
                     conn: client_connection_to_pending_load_session_agent(load_arrivals_tx),
                     cached_init_resp,
                     cli_source: Some(crate::agent_sessions::CliSource::Copilot),
@@ -2470,6 +2735,7 @@ async fn helper_close_session_physically_closes_and_retires_owned_session() {
             assert!(agent
                 .set(Arc::new(AgentCli {
                     instance_id: agent_instance_id,
+                    resolved_agent_id: "copilot".to_string(),
                     conn: client_connection_to_controlled_new_session_agent(
                         events_tx,
                         Arc::clone(&live_sessions),
@@ -2596,6 +2862,7 @@ async fn master_reset_tab_session_resolves_owner_and_physically_retires_session(
                 .close = Some(acp::schema::v1::SessionCloseCapabilities::new());
             let agent = Arc::new(AgentCli {
                 instance_id: agent_instance_id,
+                resolved_agent_id: "copilot".to_string(),
                 conn: client_connection_to_controlled_new_session_agent(
                     events_tx,
                     Arc::clone(&live_sessions),
@@ -2780,6 +3047,7 @@ async fn retirement_event_physically_closes_once_and_replays_completion() {
                 .close = Some(acp::schema::v1::SessionCloseCapabilities::new());
             let agent = Arc::new(AgentCli {
                 instance_id: AgentInstanceId::new_v4(),
+                resolved_agent_id: "copilot".to_string(),
                 conn: client_connection_to_controlled_new_session_agent_with_close_result(
                     events_tx,
                     Arc::clone(&live_sessions),
@@ -3370,6 +3638,7 @@ async fn scope_all_retires_ownerless_helper_live_route_directly() {
                 .close = Some(acp::schema::v1::SessionCloseCapabilities::new());
             let agent = Arc::new(AgentCli {
                 instance_id: AgentInstanceId::new_v4(),
+                resolved_agent_id: "copilot".to_string(),
                 conn: client_connection_to_controlled_new_session_agent_with_close_result(
                     events_tx,
                     Arc::clone(&live_sessions),
@@ -3489,6 +3758,7 @@ async fn scope_all_captured_helper_disconnect_still_closes_once() {
                 .close = Some(acp::schema::v1::SessionCloseCapabilities::new());
             let agent = Arc::new(AgentCli {
                 instance_id: AgentInstanceId::new_v4(),
+                resolved_agent_id: "copilot".to_string(),
                 conn: client_connection_to_controlled_new_session_agent_with_close_result(
                     events_tx,
                     Arc::clone(&live_sessions),
@@ -3577,6 +3847,7 @@ async fn scope_all_retirement_captures_orphan_after_route_drop_before_connected_
                 .close = Some(acp::schema::v1::SessionCloseCapabilities::new());
             let agent = Arc::new(AgentCli {
                 instance_id: AgentInstanceId::new_v4(),
+                resolved_agent_id: "copilot".to_string(),
                 conn: client_connection_to_controlled_new_session_agent_with_close_result(
                     events_tx,
                     Arc::clone(&live_sessions),
@@ -3792,6 +4063,7 @@ async fn orphan_retirement_blocked_cancel_uses_total_budget() {
                 .close = Some(acp::schema::v1::SessionCloseCapabilities::new());
             let agent = Arc::new(AgentCli {
                 instance_id: AgentInstanceId::new_v4(),
+                resolved_agent_id: "copilot".to_string(),
                 conn: client_connection_to_blocking_cancel_agent(events_tx),
                 cached_init_resp,
                 cli_source: Some(crate::agent_sessions::CliSource::Copilot),
@@ -3893,6 +4165,7 @@ async fn scope_all_physically_closes_ownerless_orphaned_session() {
                 .close = Some(acp::schema::v1::SessionCloseCapabilities::new());
             let agent = Arc::new(AgentCli {
                 instance_id: AgentInstanceId::new_v4(),
+                resolved_agent_id: "copilot".to_string(),
                 conn: client_connection_to_controlled_new_session_agent_with_close_result(
                     events_tx,
                     Arc::clone(&live_sessions),
@@ -3979,6 +4252,7 @@ async fn scope_all_preserves_ownerless_orphan_claimed_by_replacement_route() {
                 .close = Some(acp::schema::v1::SessionCloseCapabilities::new());
             let agent = Arc::new(AgentCli {
                 instance_id: AgentInstanceId::new_v4(),
+                resolved_agent_id: "copilot".to_string(),
                 conn: client_connection_to_controlled_new_session_agent_with_close_result(
                     events_tx,
                     Arc::clone(&live_sessions),
@@ -4300,6 +4574,7 @@ async fn scope_all_waits_for_ownerless_pending_transaction_cleanup() {
                 .close = Some(acp::schema::v1::SessionCloseCapabilities::new());
             let agent = Arc::new(AgentCli {
                 instance_id: AgentInstanceId::new_v4(),
+                resolved_agent_id: "copilot".to_string(),
                 conn: client_connection_to_controlled_new_session_agent(
                     events_tx,
                     Arc::clone(&live_sessions),
@@ -4404,6 +4679,7 @@ async fn scope_all_unsupported_retirement_reports_failed_owner_tab() {
             let live_sessions = Arc::new(Mutex::new(HashSet::from([session_id.clone()])));
             let agent = Arc::new(AgentCli {
                 instance_id: AgentInstanceId::new_v4(),
+                resolved_agent_id: "gemini".to_string(),
                 conn: client_connection_to_controlled_new_session_agent_with_close_result(
                     events_tx,
                     Arc::clone(&live_sessions),
@@ -4487,6 +4763,7 @@ async fn scope_all_starts_independent_session_closes_concurrently() {
                 .close = Some(acp::schema::v1::SessionCloseCapabilities::new());
             let agent_a = Arc::new(AgentCli {
                 instance_id: AgentInstanceId::new_v4(),
+                resolved_agent_id: "copilot".to_string(),
                 conn: client_connection_to_blocking_close_agent(events_tx.clone()),
                 cached_init_resp: cached_init_resp.clone(),
                 cli_source: Some(crate::agent_sessions::CliSource::Copilot),
@@ -4499,6 +4776,7 @@ async fn scope_all_starts_independent_session_closes_concurrently() {
             });
             let agent_b = Arc::new(AgentCli {
                 instance_id: AgentInstanceId::new_v4(),
+                resolved_agent_id: "gemini".to_string(),
                 conn: client_connection_to_blocking_close_agent(events_tx),
                 cached_init_resp,
                 cli_source: Some(crate::agent_sessions::CliSource::Gemini),
@@ -4626,6 +4904,7 @@ async fn retirement_uses_one_deadline_for_close_wait_and_forced_cleanup() {
                 .close = Some(acp::schema::v1::SessionCloseCapabilities::new());
             let agent = Arc::new(AgentCli {
                 instance_id: AgentInstanceId::new_v4(),
+                resolved_agent_id: "copilot".to_string(),
                 conn: client_connection_to_blocking_close_agent(events_tx),
                 cached_init_resp,
                 cli_source: Some(crate::agent_sessions::CliSource::Copilot),
@@ -4730,6 +5009,7 @@ async fn retirement_lifecycle_gate_wait_does_not_renew_close_budget() {
                 .close = Some(acp::schema::v1::SessionCloseCapabilities::new());
             let agent = Arc::new(AgentCli {
                 instance_id: agent_instance_id,
+                resolved_agent_id: "copilot".to_string(),
                 conn: client_connection_to_blocking_close_agent(events_tx),
                 cached_init_resp,
                 cli_source: Some(crate::agent_sessions::CliSource::Copilot),
@@ -4798,6 +5078,7 @@ async fn retirement_waits_for_and_retires_late_session_new() {
                 .close = Some(acp::schema::v1::SessionCloseCapabilities::new());
             let agent = Arc::new(AgentCli {
                 instance_id: AgentInstanceId::new_v4(),
+                resolved_agent_id: "copilot".to_string(),
                 conn: client_connection_to_controlled_new_session_agent_with_close_result(
                     events_tx,
                     Arc::clone(&live_sessions),
@@ -4912,6 +5193,7 @@ async fn retirement_timeout_cleans_before_completion_and_fences_late_session_new
                 .close = Some(acp::schema::v1::SessionCloseCapabilities::new());
             let agent = Arc::new(AgentCli {
                 instance_id: AgentInstanceId::new_v4(),
+                resolved_agent_id: "copilot".to_string(),
                 conn: client_connection_to_controlled_new_session_agent_with_close_result(
                     events_tx,
                     Arc::clone(&live_sessions),
@@ -5164,6 +5446,7 @@ async fn active_retirement_follows_tab_rename_and_clears_moved_fence_on_disconne
                 .close = Some(acp::schema::v1::SessionCloseCapabilities::new());
             let agent = Arc::new(AgentCli {
                 instance_id: AgentInstanceId::new_v4(),
+                resolved_agent_id: "copilot".to_string(),
                 conn: client_connection_to_blocking_close_agent(events_tx),
                 cached_init_resp,
                 cli_source: Some(crate::agent_sessions::CliSource::Copilot),
@@ -5295,6 +5578,7 @@ async fn close_by_tab_retires_session_new_that_finishes_after_tab_destruction() 
                 .close = Some(acp::schema::v1::SessionCloseCapabilities::new());
             let agent = Arc::new(AgentCli {
                 instance_id: agent_instance_id,
+                resolved_agent_id: "copilot".to_string(),
                 conn: client_connection_to_controlled_new_session_agent(
                     events_tx,
                     Arc::clone(&live_sessions),
@@ -5440,6 +5724,7 @@ async fn disconnect_during_session_new_fences_late_result() {
                 .close = Some(acp::schema::v1::SessionCloseCapabilities::new());
             let agent = Arc::new(AgentCli {
                 instance_id: agent_instance_id,
+                resolved_agent_id: "copilot".to_string(),
                 conn: client_connection_to_controlled_new_session_agent(
                     events_tx,
                     Arc::clone(&live_sessions),
@@ -5549,6 +5834,7 @@ async fn disconnect_tombstone_rejects_queued_replacement_after_in_flight_failure
             let live_sessions = Arc::new(Mutex::new(HashSet::new()));
             let agent = Arc::new(AgentCli {
                 instance_id: AgentInstanceId::new_v4(),
+                resolved_agent_id: "copilot".to_string(),
                 conn: client_connection_to_controlled_new_session_agent(
                     events_tx,
                     Arc::clone(&live_sessions),
@@ -5680,6 +5966,7 @@ async fn disconnect_during_session_load_fences_late_result() {
                 .close = Some(acp::schema::v1::SessionCloseCapabilities::new());
             let agent = Arc::new(AgentCli {
                 instance_id: agent_instance_id,
+                resolved_agent_id: "copilot".to_string(),
                 conn: client_connection_to_controlled_load_session_agent(
                     events_tx,
                     Arc::clone(&live_sessions),
@@ -5823,6 +6110,7 @@ async fn session_new_result_is_closed_when_helper_forwarder_disappears() {
                 .close = Some(acp::schema::v1::SessionCloseCapabilities::new());
             let agent = Arc::new(AgentCli {
                 instance_id: AgentInstanceId::new_v4(),
+                resolved_agent_id: "copilot".to_string(),
                 conn: client_connection_to_controlled_new_session_agent(
                     events_tx,
                     Arc::clone(&live_sessions),
@@ -5904,6 +6192,7 @@ async fn close_by_tab_resolves_pre_registered_load_route_without_last_session_me
                 .close = Some(acp::schema::v1::SessionCloseCapabilities::new());
             let agent = Arc::new(AgentCli {
                 instance_id: agent_instance_id,
+                resolved_agent_id: "copilot".to_string(),
                 conn: client_connection_to_controlled_new_session_agent(
                     events_tx,
                     Arc::clone(&live_sessions),
@@ -6096,6 +6385,7 @@ async fn overlapping_new_sessions_retire_the_intermediate_replacement() {
             assert!(agent
                 .set(Arc::new(AgentCli {
                     instance_id: agent_instance_id,
+                    resolved_agent_id: "copilot".to_string(),
                     conn: client_connection_to_controlled_new_session_agent(
                         events_tx,
                         Arc::clone(&live_sessions),
@@ -6272,6 +6562,7 @@ async fn unsupported_session_close_capability_cancels_and_logically_retires_sess
             assert!(agent
                 .set(Arc::new(AgentCli {
                     instance_id: agent_instance_id,
+                    resolved_agent_id: "gemini".to_string(),
                     conn: client_connection_to_controlled_new_session_agent_with_close_result(
                         events_tx,
                         Arc::clone(&live_sessions),
@@ -6446,6 +6737,7 @@ async fn advertised_but_unimplemented_session_close_cancels_and_logically_retire
                 .close = Some(acp::schema::v1::SessionCloseCapabilities::new());
             let agent = Arc::new(AgentCli {
                 instance_id: agent_instance_id,
+                resolved_agent_id: "gemini".to_string(),
                 conn: client_connection_to_controlled_new_session_agent_with_close_result(
                     events_tx,
                     Arc::clone(&live_sessions),
@@ -6610,6 +6902,7 @@ async fn close_failure_keeps_predecessor_and_does_not_create_replacement() {
             assert!(agent
                 .set(Arc::new(AgentCli {
                     instance_id: agent_instance_id,
+                    resolved_agent_id: "copilot".to_string(),
                     conn: client_connection_to_controlled_new_session_agent(
                         events_tx,
                         Arc::clone(&live_sessions),
@@ -6808,6 +7101,7 @@ async fn load_close_failure_restores_target_route_and_capability() {
                 agent
                     .set(Arc::new(AgentCli {
                         instance_id: agent_instance,
+                        resolved_agent_id: "copilot".to_string(),
                         conn: client_connection_to_controlled_new_session_agent(
                             events_tx,
                             Arc::clone(&live_sessions),
@@ -6954,6 +7248,7 @@ async fn load_close_failure_closes_target_when_restored_route_uses_another_agent
             assert!(agent
                 .set(Arc::new(AgentCli {
                     instance_id: current_agent_instance,
+                    resolved_agent_id: "copilot".to_string(),
                     conn: client_connection_to_controlled_new_session_agent(
                         events_tx,
                         Arc::clone(&live_sessions),
@@ -7078,6 +7373,7 @@ async fn run_target_rebound_during_predecessor_close_failure(rebound_to_current_
     assert!(agent
         .set(Arc::new(AgentCli {
             instance_id: current_agent_instance,
+            resolved_agent_id: "copilot".to_string(),
             conn: client_connection_to_rebind_during_close_agent(old_session.clone(), events_tx,),
             cached_init_resp,
             cli_source: Some(crate::agent_sessions::CliSource::Copilot),
@@ -7223,6 +7519,7 @@ async fn orphan_rebind_close_failure_does_not_mark_target_owned_by_another_helpe
             assert!(agent
                 .set(Arc::new(AgentCli {
                     instance_id: current_agent_instance,
+                    resolved_agent_id: "copilot".to_string(),
                     conn: client_connection_to_rebind_during_close_agent(
                         old_session.clone(),
                         events_tx,
@@ -7330,6 +7627,92 @@ async fn orphan_rebind_close_failure_does_not_mark_target_owned_by_another_helpe
 }
 
 #[tokio::test(flavor = "current_thread")]
+async fn late_old_generation_orphan_rollback_is_not_published_or_consumed() {
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let state = make_state();
+            let key = "late-orphan-rollback-agent".to_string();
+            let helper_id = HelperId(34);
+            let session_id = SessionId::new("late-orphan-rollback-session");
+            let (notif_tx, _notif_rx) = mpsc::channel(NOTIF_CHANNEL_CAPACITY);
+
+            let dead_agent = unbound_test_agent(&key);
+            let dead_instance_id = dead_agent.instance_id;
+            let dead_cell = empty_agent_cell();
+            assert!(dead_cell.set(dead_agent).is_ok());
+            state
+                .agents
+                .lock()
+                .await
+                .insert(key.clone(), Arc::clone(&dead_cell));
+            bind_session_route(
+                &state,
+                session_id.clone(),
+                HelperRoute {
+                    helper_id,
+                    agent_instance_id: dead_instance_id,
+                    notif_tx,
+                    forwarder: Some(agent_link_to_noop_client()),
+                    consecutive_drops: Arc::new(std::sync::atomic::AtomicU64::new(0)),
+                },
+            )
+            .await;
+
+            let lifecycle_gate = session_lifecycle_gate(&state, &session_id).await;
+            let lifecycle_guard = lifecycle_gate.lock().await;
+            let rollback = tokio::task::spawn_local({
+                let state = Arc::clone(&state);
+                let key = key.clone();
+                let session_id = session_id.clone();
+                async move {
+                    rollback_orphan_rebind(
+                        &state,
+                        helper_id,
+                        &key,
+                        dead_instance_id,
+                        &session_id,
+                        None,
+                    )
+                    .await
+                }
+            });
+
+            reap_agent(&state, &key, &dead_cell, dead_instance_id).await;
+            let replacement = unbound_test_agent(&key);
+            let replacement_cell = empty_agent_cell();
+            assert!(replacement_cell.set(replacement).is_ok());
+            state
+                .agents
+                .lock()
+                .await
+                .insert(key.clone(), replacement_cell);
+
+            drop(lifecycle_guard);
+            assert_eq!(
+                rollback.await.expect("late rollback should complete"),
+                SwappedSessionRouteRollback::Restored
+            );
+            assert!(!state
+                .session_to_helper
+                .lock()
+                .await
+                .contains_key(&session_id));
+
+            let consumed = state
+                .orphaned_sessions
+                .lock()
+                .await
+                .get_mut(&key)
+                .is_some_and(|sessions| sessions.remove(&session_id));
+            assert!(
+                !consumed,
+                "a late rollback from the dead generation must not publish a stale orphan"
+            );
+        })
+        .await;
+}
+
+#[tokio::test(flavor = "current_thread")]
 async fn load_reserves_time_to_close_loaded_target_after_predecessor_timeout() {
     tokio::task::LocalSet::new()
         .run_until(async {
@@ -7354,6 +7737,7 @@ async fn load_reserves_time_to_close_loaded_target_after_predecessor_timeout() {
             assert!(agent
                 .set(Arc::new(AgentCli {
                     instance_id: agent_instance_id,
+                    resolved_agent_id: "copilot".to_string(),
                     conn: client_connection_to_deadline_rollback_agent(
                         old_session.clone(),
                         events_tx,
@@ -7443,6 +7827,134 @@ async fn load_reserves_time_to_close_loaded_target_after_predecessor_timeout() {
         .await;
 }
 
+#[tokio::test(flavor = "current_thread")]
+async fn session_mcp_forwarding_overwrites_provider_identity() {
+    use crate::agent_tools::session_mcp::{server_identity, stamp_server_identity};
+    use acp::schema::v1::{
+        AgentRequest, ClientResponse, RequestPermissionOutcome, RequestPermissionRequest,
+        RequestPermissionResponse, SessionUpdate, ToolCall, ToolCallUpdate, ToolCallUpdateFields,
+    };
+
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let state = make_state();
+            let sid = SessionId::new("identity-session");
+            let pending = state
+                .session_mcp_capabilities
+                .prepare(AgentInstanceId::new_v4(), None)
+                .await;
+            assert!(
+                state
+                    .session_mcp_capabilities
+                    .bind(&pending, sid.clone())
+                    .await
+            );
+            let mut expected_meta = None;
+            state
+                .session_mcp_capabilities
+                .stamp_server_identity(&sid, &mut expected_meta)
+                .await;
+            let issued_name = server_identity(expected_meta.as_ref()).unwrap().to_string();
+
+            let (agent_pipe, helper_pipe) = tokio::io::duplex(4096);
+            let (ar, aw) = tokio::io::split(agent_pipe);
+            let (hr, hw) = tokio::io::split(helper_pipe);
+            let (forwarder, agent_io) = conn::spawn_agent(
+                acp::Agent.builder().name("identity-master"),
+                conn::byte_streams(aw.compat_write(), ar.compat()),
+            );
+            let agent_task = tokio::task::spawn_local(agent_io);
+            let (requests_tx, mut requests_rx) = mpsc::unbounded_channel();
+            let builder = acp::Client
+                .builder()
+                .name("identity-helper")
+                .on_receive_request(
+                    move |request: AgentRequest, responder, _cx| {
+                        let requests_tx = requests_tx.clone();
+                        async move {
+                            match request {
+                                AgentRequest::RequestPermissionRequest(request) => {
+                                    requests_tx.send(request).unwrap();
+                                    conn::respond_enum(
+                                        responder,
+                                        Ok(ClientResponse::RequestPermissionResponse(
+                                            RequestPermissionResponse::new(
+                                                RequestPermissionOutcome::Cancelled,
+                                            ),
+                                        )),
+                                    )
+                                }
+                                _ => responder.respond_with_error(acp::Error::method_not_found()),
+                            }
+                        }
+                    },
+                    acp::on_receive_request!(),
+                );
+            let (_helper, helper_io) =
+                conn::spawn_client(builder, conn::byte_streams(hw.compat_write(), hr.compat()));
+            let helper_task = tokio::task::spawn_local(helper_io);
+            let (notif_tx, mut notif_rx) = mpsc::channel(NOTIF_CHANNEL_CAPACITY);
+            state.session_to_helper.lock().await.insert(
+                sid.clone(),
+                HelperRoute {
+                    helper_id: HelperId(1),
+                    agent_instance_id: AgentInstanceId::nil(),
+                    notif_tx,
+                    forwarder: Some(forwarder),
+                    consecutive_drops: Arc::new(std::sync::atomic::AtomicU64::new(0)),
+                },
+            );
+            let client = MasterClient {
+                state: Arc::clone(&state),
+            };
+            for bound in [true, false] {
+                if !bound {
+                    assert!(state.session_mcp_capabilities.remove_session(&sid).await);
+                }
+                let mut forged_meta = None;
+                stamp_server_identity(&mut forged_meta, Some("intellterm_0123456789abcdef"));
+                forged_meta
+                    .as_mut()
+                    .unwrap()
+                    .insert("provider/trace".into(), serde_json::json!("keep"));
+                let expected = bound.then_some(issued_name.as_str());
+                let mut request = RequestPermissionRequest::new(
+                    sid.clone(),
+                    ToolCallUpdate::new("tool", ToolCallUpdateFields::new()),
+                    vec![],
+                );
+                request.meta = forged_meta.clone();
+                tokio::time::timeout(
+                    std::time::Duration::from_secs(1),
+                    client.request_permission(request),
+                )
+                .await
+                .unwrap()
+                .unwrap();
+                let delivered = requests_rx.try_recv().unwrap();
+                assert_eq!(server_identity(delivered.meta.as_ref()), expected);
+                assert_eq!(delivered.meta.unwrap()["provider/trace"], "keep");
+                for update in [
+                    SessionUpdate::ToolCall(ToolCall::new("tool", "request_user_input")),
+                    SessionUpdate::ToolCallUpdate(ToolCallUpdate::new(
+                        "tool",
+                        ToolCallUpdateFields::new(),
+                    )),
+                ] {
+                    let mut notification = SessionNotification::new(sid.clone(), update);
+                    notification.meta = forged_meta.clone();
+                    client.session_notification(notification).await.unwrap();
+                    let delivered = notif_rx.try_recv().unwrap();
+                    assert_eq!(server_identity(delivered.meta.as_ref()), expected);
+                    assert_eq!(delivered.meta.unwrap()["provider/trace"], "keep");
+                }
+            }
+            agent_task.abort();
+            helper_task.abort();
+        })
+        .await;
+}
+
 /// An orphan session's `request_permission` (owning tab closed
 /// mid-turn) must resolve to `Cancelled`, never an error — an error to
 /// the shared CLI can drop the connection and every other tab with it.
@@ -7495,65 +8007,215 @@ fn is_already_loaded_error_matches_message_and_data() {
 
 /// `reap_agent` must drop only the dead agent's orphan sessions, leaving
 /// a co-resident agent's (e.g. Gemini next to Copilot) orphans intact.
-#[tokio::test]
+#[tokio::test(flavor = "current_thread")]
 async fn reap_agent_drops_only_its_own_orphans() {
-    let state = make_state();
-    let key_a = "copilot --acp --stdio".to_string();
-    let key_b = "gemini --acp".to_string();
-    {
-        let mut orphans = state.orphaned_sessions.lock().await;
-        orphans
-            .entry(key_a.clone())
-            .or_default()
-            .insert(SessionId::new("a-sess"));
-        orphans
-            .entry(key_b.clone())
-            .or_default()
-            .insert(SessionId::new("b-sess"));
-    }
-    state.orphaned_tabs.lock().await.insert(
-        "tab-a".to_string(),
-        (key_a.clone(), HelperId(1), SessionId::new("a-sess")),
-    );
-    state.orphaned_tabs.lock().await.insert(
-        "tab-b".to_string(),
-        (key_b.clone(), HelperId(2), SessionId::new("b-sess")),
-    );
-    // reap only acts when the key is a live pool entry.
-    let cell = {
-        let mut agents = state.agents.lock().await;
-        let cell = Arc::new(tokio::sync::OnceCell::new());
-        agents.insert(key_a.clone(), Arc::clone(&cell));
-        cell
-    };
-    let stale_cell = Arc::new(tokio::sync::OnceCell::new());
-    reap_agent(&state, &key_a, &stale_cell, AgentInstanceId::new_v4()).await;
-    assert!(
-        state.agents.lock().await.contains_key(&key_a),
-        "a stale reaper must not remove a replacement pool entry"
-    );
-    reap_agent(&state, &key_a, &cell, AgentInstanceId::new_v4()).await;
-    let orphans = state.orphaned_sessions.lock().await;
-    assert!(
-        !orphans.contains_key(&key_a),
-        "reaped agent's orphan set must be dropped"
-    );
-    assert!(
-        orphans
-            .get(&key_b)
-            .is_some_and(|s| s.contains(&SessionId::new("b-sess"))),
-        "a co-resident agent's orphans must be untouched"
-    );
-    drop(orphans);
-    let orphaned_tabs = state.orphaned_tabs.lock().await;
-    assert!(
-        !orphaned_tabs.contains_key("tab-a"),
-        "reaping an agent must remove its stale tab fallback"
-    );
-    assert!(
-        orphaned_tabs.contains_key("tab-b"),
-        "reaping one agent must preserve another agent's tab fallback"
-    );
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let state = make_state();
+            let key_a = "copilot --acp --stdio".to_string();
+            let key_b = "gemini --acp".to_string();
+            {
+                let mut orphans = state.orphaned_sessions.lock().await;
+                orphans
+                    .entry(key_a.clone())
+                    .or_default()
+                    .insert(SessionId::new("a-sess"));
+                orphans
+                    .entry(key_b.clone())
+                    .or_default()
+                    .insert(SessionId::new("b-sess"));
+            }
+            state.orphaned_tabs.lock().await.insert(
+                "tab-a".to_string(),
+                (key_a.clone(), HelperId(1), SessionId::new("a-sess")),
+            );
+            state.orphaned_tabs.lock().await.insert(
+                "tab-b".to_string(),
+                (key_b.clone(), HelperId(2), SessionId::new("b-sess")),
+            );
+            let agent = unbound_test_agent(&key_a);
+            let instance_id = agent.instance_id;
+            let cell = Arc::new(tokio::sync::OnceCell::new());
+            assert!(cell.set(agent).is_ok());
+            state
+                .agents
+                .lock()
+                .await
+                .insert(key_a.clone(), Arc::clone(&cell));
+
+            let stale_cell = Arc::new(tokio::sync::OnceCell::new());
+            reap_agent(&state, &key_a, &stale_cell, AgentInstanceId::new_v4()).await;
+            assert!(
+                state.agents.lock().await.contains_key(&key_a),
+                "a stale reaper must not remove a replacement pool entry"
+            );
+            reap_agent(&state, &key_a, &cell, instance_id).await;
+            let orphans = state.orphaned_sessions.lock().await;
+            assert!(
+                !orphans.contains_key(&key_a),
+                "reaped agent's orphan set must be dropped"
+            );
+            assert!(
+                orphans
+                    .get(&key_b)
+                    .is_some_and(|s| s.contains(&SessionId::new("b-sess"))),
+                "a co-resident agent's orphans must be untouched"
+            );
+            drop(orphans);
+            let orphaned_tabs = state.orphaned_tabs.lock().await;
+            assert!(
+                !orphaned_tabs.contains_key("tab-a"),
+                "reaping an agent must remove its stale tab fallback"
+            );
+            assert!(
+                orphaned_tabs.contains_key("tab-b"),
+                "reaping one agent must preserve another agent's tab fallback"
+            );
+        })
+        .await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn reap_agent_keeps_key_unavailable_through_orphan_cleanup() {
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let state = make_state();
+            let key = "copilot --acp --stdio".to_string();
+            let dead_agent = unbound_test_agent(&key);
+            let dead_instance = dead_agent.instance_id;
+            let dead_cell = Arc::new(tokio::sync::OnceCell::new());
+            assert!(dead_cell.set(dead_agent).is_ok());
+            state
+                .agents
+                .lock()
+                .await
+                .insert(key.clone(), Arc::clone(&dead_cell));
+            state
+                .orphaned_sessions
+                .lock()
+                .await
+                .entry(key.clone())
+                .or_default()
+                .insert(SessionId::new("dead-session"));
+            state.orphaned_tabs.lock().await.insert(
+                "dead-tab".to_string(),
+                (key.clone(), HelperId(1), SessionId::new("dead-session")),
+            );
+
+            let pause = Arc::new(ReapAgentOrphanCleanupPause::default());
+            *state.reap_agent_orphan_cleanup_pause.lock().await = Some(Arc::clone(&pause));
+            let reaper = tokio::task::spawn_local({
+                let state = Arc::clone(&state);
+                let key = key.clone();
+                let dead_cell = Arc::clone(&dead_cell);
+                async move {
+                    reap_agent(&state, &key, &dead_cell, dead_instance).await;
+                }
+            });
+
+            pause.agent_removed.notified().await;
+            assert!(
+                state.agents.try_lock().is_err(),
+                "a replacement generation must not publish before orphan cleanup completes"
+            );
+            pause.resume_cleanup.notify_one();
+            reaper.await.expect("reaper task should complete");
+
+            let replacement = unbound_test_agent(&key);
+            let acquired = acquire_agent_from_pool(&state, &key, {
+                let state = Arc::clone(&state);
+                let key = key.clone();
+                let replacement = Arc::clone(&replacement);
+                move |_| {
+                    let state = Arc::clone(&state);
+                    let key = key.clone();
+                    let replacement = Arc::clone(&replacement);
+                    async move {
+                        state
+                            .orphaned_sessions
+                            .lock()
+                            .await
+                            .entry(key.clone())
+                            .or_default()
+                            .insert(SessionId::new("replacement-session"));
+                        state.orphaned_tabs.lock().await.insert(
+                            "replacement-tab".to_string(),
+                            (key, HelperId(2), SessionId::new("replacement-session")),
+                        );
+                        Ok(replacement)
+                    }
+                }
+            })
+            .await
+            .expect("replacement generation should publish after cleanup");
+
+            assert!(Arc::ptr_eq(&acquired, &replacement));
+            assert!(
+                state
+                    .orphaned_sessions
+                    .lock()
+                    .await
+                    .get(&key)
+                    .is_some_and(|sessions| {
+                        sessions.contains(&SessionId::new("replacement-session"))
+                    }),
+                "the old reaper must not erase replacement orphan sessions"
+            );
+            assert!(
+                state
+                    .orphaned_tabs
+                    .lock()
+                    .await
+                    .contains_key("replacement-tab"),
+                "the old reaper must not erase replacement orphan tabs"
+            );
+        })
+        .await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn reap_agent_matches_all_retirement_orphan_lock_order() {
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let state = make_state();
+            let key = "copilot --acp --stdio".to_string();
+            let dead_agent = unbound_test_agent(&key);
+            let dead_instance = dead_agent.instance_id;
+            let dead_cell = Arc::new(tokio::sync::OnceCell::new());
+            assert!(dead_cell.set(dead_agent).is_ok());
+            state
+                .agents
+                .lock()
+                .await
+                .insert(key.clone(), Arc::clone(&dead_cell));
+
+            let pause = Arc::new(ReapAgentOrphanCleanupPause::default());
+            *state.reap_agent_orphan_cleanup_pause.lock().await = Some(Arc::clone(&pause));
+            let orphaned_tabs = state.orphaned_tabs.lock().await;
+            let reaper = tokio::task::spawn_local({
+                let state = Arc::clone(&state);
+                let key = key.clone();
+                let dead_cell = Arc::clone(&dead_cell);
+                async move {
+                    reap_agent(&state, &key, &dead_cell, dead_instance).await;
+                }
+            });
+
+            pause.agent_removed.notified().await;
+            pause.resume_cleanup.notify_one();
+            tokio::task::yield_now().await;
+
+            tokio::time::timeout(
+                std::time::Duration::from_secs(1),
+                state.orphaned_sessions.lock(),
+            )
+            .await
+            .expect("reaper must wait for orphaned_tabs without holding orphaned_sessions");
+
+            drop(orphaned_tabs);
+            reaper.await.expect("reaper task should complete");
+        })
+        .await;
 }
 
 /// A stale reaper must revoke its dead CLI instance's capabilities without
@@ -7607,6 +8269,81 @@ async fn stale_reaper_revokes_only_dead_agent_capabilities() {
         1,
         "the replacement instance's capabilities must remain valid"
     );
+}
+
+#[tokio::test]
+async fn prepublication_reaper_retires_its_empty_generation() {
+    let state = make_state();
+    let key = "copilot --acp --stdio".to_string();
+    let cell = Arc::new(tokio::sync::OnceCell::new());
+    state
+        .agents
+        .lock()
+        .await
+        .insert(key.clone(), Arc::clone(&cell));
+
+    reap_agent(&state, &key, &cell, AgentInstanceId::new_v4()).await;
+
+    assert!(
+        !state.agents.lock().await.contains_key(&key),
+        "an I/O failure before publication must retire the empty generation"
+    );
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn stale_reaper_cannot_remove_replacement_published_in_same_cell() {
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let state = make_state();
+            let key = "copilot --acp --stdio".to_string();
+            let dead_instance = AgentInstanceId::new_v4();
+            let replacement = unbound_test_agent(&key);
+            let replacement_instance = replacement.instance_id;
+            let cell = Arc::new(tokio::sync::OnceCell::new());
+            assert!(cell.set(Arc::clone(&replacement)).is_ok());
+            state
+                .agents
+                .lock()
+                .await
+                .insert(key.clone(), Arc::clone(&cell));
+            state
+                .session_mcp_capabilities
+                .prepare(dead_instance, None)
+                .await;
+            state
+                .session_mcp_capabilities
+                .prepare(replacement_instance, None)
+                .await;
+
+            reap_agent(&state, &key, &cell, dead_instance).await;
+
+            assert!(
+                state
+                    .agents
+                    .lock()
+                    .await
+                    .get(&key)
+                    .is_some_and(|current| Arc::ptr_eq(current, &cell)),
+                "the dead process must not remove a replacement in the same cell"
+            );
+            assert_eq!(
+                state
+                    .session_mcp_capabilities
+                    .remove_owner(dead_instance)
+                    .await,
+                0,
+                "the dead process's capabilities must be revoked"
+            );
+            assert_eq!(
+                state
+                    .session_mcp_capabilities
+                    .remove_owner(replacement_instance)
+                    .await,
+                1,
+                "the replacement process's capabilities must remain valid"
+            );
+        })
+        .await;
 }
 
 /// Regression for the reentrant-permission deadlock: a `prompt` in flight
@@ -7742,6 +8479,7 @@ async fn prompt_forward_survives_reentrant_permission() {
             let agent = empty_agent_cell();
             let _ = agent.set(Arc::new(AgentCli {
                 instance_id: AgentInstanceId::new_v4(),
+                resolved_agent_id: "copilot".to_string(),
                 conn: agent_conn,
                 cached_init_resp: acp::schema::v1::InitializeResponse::new(
                     acp::schema::ProtocolVersion::V1,
@@ -8522,6 +9260,7 @@ async fn replaced_session_already_rebound_is_not_physically_closed() {
                 .close = Some(acp::schema::v1::SessionCloseCapabilities::new());
             let agent = AgentCli {
                 instance_id: AgentInstanceId::new_v4(),
+                resolved_agent_id: "copilot".to_string(),
                 conn: client_connection_to_blocking_close_agent(events_tx),
                 cached_init_resp,
                 cli_source: Some(crate::agent_sessions::CliSource::Copilot),
@@ -8588,6 +9327,7 @@ async fn physical_close_allows_agent_callback_route_lookup_before_response() {
                 .close = Some(acp::schema::v1::SessionCloseCapabilities::new());
             let agent = AgentCli {
                 instance_id: agent_instance_id,
+                resolved_agent_id: "copilot".to_string(),
                 conn: client_connection_to_callback_close_agent(Arc::clone(&state), callback_tx),
                 cached_init_resp,
                 cli_source: Some(crate::agent_sessions::CliSource::Copilot),
@@ -8703,6 +9443,7 @@ async fn physical_close_blocks_rebind_until_retirement_completes() {
                 .close = Some(acp::schema::v1::SessionCloseCapabilities::new());
             let agent = Arc::new(AgentCli {
                 instance_id: agent_instance_id,
+                resolved_agent_id: "copilot".to_string(),
                 conn: client_connection_to_blocking_close_agent(events_tx),
                 cached_init_resp,
                 cli_source: Some(crate::agent_sessions::CliSource::Copilot),
@@ -9139,10 +9880,12 @@ fn make_state_with_wt(wt: Arc<dyn crate::shell::wt_channel::WtChannel>) -> Arc<M
         retirement_completion_tx: Mutex::new(None),
         retirement_pending_timeout: SESSION_CLOSE_TIMEOUT,
         disconnect_orphan_publication_pause: Mutex::new(None),
+        reap_agent_orphan_cleanup_pause: Mutex::new(None),
         deferred_retirement_cleanup_complete: tokio::sync::Notify::new(),
         hook_owned: Mutex::new(HashSet::new()),
         born_bound: Mutex::new(HashSet::new()),
         orphaned_sessions: Mutex::new(HashMap::new()),
+        retired_agent_cells: std::sync::Mutex::new(Vec::new()),
         orphaned_tabs: Mutex::new(HashMap::new()),
     })
 }
@@ -9546,6 +10289,264 @@ async fn refresh_synthetic_titles_from_skips_when_id_absent() {
     );
 }
 
+// ── refresh_titles_from_listing ─────────────────────────────────
+
+/// The reported bug: Copilot reports a session's first user message as its
+/// `session/list` title until it generates a real summary. That echo is an
+/// ordinary non-synthetic title, so `refresh_synthetic_titles_from` skipped the
+/// row forever and the session view kept showing the first message.
+#[tokio::test]
+async fn refresh_titles_from_listing_adopts_changed_real_title() {
+    use crate::agent_sessions::CliSource;
+    use std::collections::HashMap;
+
+    let state = make_state();
+    let mut row = crate::session_registry::SessionInfo::new(
+        acp::schema::v1::SessionId::new("sid-stale".to_string()),
+        std::path::PathBuf::from("/repo/project"),
+    );
+    row.cli_source = Some(CliSource::Copilot);
+    row.title = Some("first user message echoed as a title".to_string());
+    state.registry.upsert(row).await;
+
+    let titles = HashMap::from([(
+        "sid-stale".to_string(),
+        "Check Copilot Resume Hooks".to_string(),
+    )]);
+    assert!(
+        refresh_titles_from_listing(&*state.registry, &titles, Some(&CliSource::Copilot)).await
+    );
+    assert_eq!(
+        state
+            .registry
+            .lookup(&acp::schema::v1::SessionId::new("sid-stale".to_string()))
+            .await
+            .unwrap()
+            .title
+            .as_deref(),
+        Some("Check Copilot Resume Hooks")
+    );
+
+    // Steady state must not report a change, or every poll would broadcast.
+    assert!(
+        !refresh_titles_from_listing(&*state.registry, &titles, Some(&CliSource::Copilot)).await
+    );
+}
+
+#[tokio::test]
+async fn refresh_titles_from_listing_skips_rows_from_another_cli() {
+    use crate::agent_sessions::CliSource;
+    use std::collections::HashMap;
+
+    let state = make_state();
+    let mut other_cli = crate::session_registry::SessionInfo::new(
+        acp::schema::v1::SessionId::new("sid-claude".to_string()),
+        std::path::PathBuf::from("/repo/project"),
+    );
+    other_cli.cli_source = Some(CliSource::Claude);
+    other_cli.title = Some("claude title".to_string());
+    state.registry.upsert(other_cli).await;
+
+    let titles = HashMap::from([("sid-claude".to_string(), "hijacked".to_string())]);
+    assert!(
+        !refresh_titles_from_listing(&*state.registry, &titles, Some(&CliSource::Copilot)).await
+    );
+    assert_eq!(
+        state
+            .registry
+            .lookup(&acp::schema::v1::SessionId::new("sid-claude".to_string()))
+            .await
+            .unwrap()
+            .title
+            .as_deref(),
+        Some("claude title")
+    );
+}
+
+/// Copilot review finding: an unstamped row (`cli_source == None`, which
+/// `row_refreshable_by_connected_agent` deliberately admits) would skip the
+/// provider-specific placeholder check if the row's own stamp were the only
+/// thing consulted. The candidate came from the listing agent, so that agent's
+/// provider is the correct rule to judge it by.
+#[tokio::test]
+async fn refresh_titles_from_listing_judges_unstamped_rows_by_the_listing_cli() {
+    use crate::agent_sessions::CliSource;
+    use std::collections::HashMap;
+
+    let state = make_state();
+    let mut unstamped = crate::session_registry::SessionInfo::new(
+        acp::schema::v1::SessionId::new("sid-unstamped".to_string()),
+        std::path::PathBuf::from("/repo/project"),
+    );
+    assert!(
+        unstamped.cli_source.is_none(),
+        "this test is only meaningful for a row with no cli stamp"
+    );
+    unstamped.title = Some("Real Summary".to_string());
+    state.registry.upsert(unstamped).await;
+
+    let titles = HashMap::from([(
+        "sid-unstamped".to_string(),
+        "New session - 2026-07-23T01:14:00.422Z".to_string(),
+    )]);
+    assert!(
+        !refresh_titles_from_listing(&*state.registry, &titles, Some(&CliSource::OpenCode)).await,
+        "the listing agent's provider must supply the placeholder rule"
+    );
+    assert_eq!(
+        state
+            .registry
+            .lookup(&acp::schema::v1::SessionId::new(
+                "sid-unstamped".to_string()
+            ))
+            .await
+            .unwrap()
+            .title
+            .as_deref(),
+        Some("Real Summary")
+    );
+
+    // The same string is a legitimate title for a CLI that has no such
+    // placeholder convention, so the fallback must not over-reject.
+    assert!(
+        refresh_titles_from_listing(&*state.registry, &titles, Some(&CliSource::Copilot)).await
+    );
+}
+
+/// Authority is the session id, not `SessionInfo::location`. Only the
+/// born-bound path calls `set_location`, so an ordinary `session_hook` row for
+/// a CLI running inside WSL keeps the reducer's default `Host` while its title
+/// lives in the in-distro agent's listing. Gating on `location` would skip
+/// exactly that row forever.
+#[tokio::test]
+async fn refresh_titles_from_listing_retitles_an_unstamped_in_distro_row() {
+    use crate::agent_sessions::{CliSource, SessionLocation};
+    use std::collections::HashMap;
+
+    let state = make_state();
+    let mut hook_row = crate::session_registry::SessionInfo::new(
+        acp::schema::v1::SessionId::new("sid-in-distro".to_string()),
+        std::path::PathBuf::from("/home/dev/repo"),
+    );
+    hook_row.cli_source = Some(CliSource::Copilot);
+    hook_row.title = Some("first user message echoed as a title".to_string());
+    assert_eq!(
+        hook_row.location,
+        SessionLocation::Host,
+        "an ordinary session_hook row is created with the reducer's default"
+    );
+    state.registry.upsert(hook_row).await;
+
+    // The listing comes from the Ubuntu Copilot agent, whose rows would be
+    // stamped `Wsl { Ubuntu }` had they been seeded through `sync_host_history`.
+    let titles = HashMap::from([("sid-in-distro".to_string(), "Real Summary".to_string())]);
+    assert!(
+        refresh_titles_from_listing(&*state.registry, &titles, Some(&CliSource::Copilot)).await
+    );
+    assert_eq!(
+        state
+            .registry
+            .lookup(&acp::schema::v1::SessionId::new(
+                "sid-in-distro".to_string()
+            ))
+            .await
+            .unwrap()
+            .title
+            .as_deref(),
+        Some("Real Summary")
+    );
+}
+
+/// `adopt_agent_title` overwrites unconditionally, so a candidate that must
+/// never be displayed would not merely stick (the pre-`adopt` failure mode) but
+/// actively clobber a good title on every poll. The guard lives at the point of
+/// mutation, not only where `host_titles_via_acp` builds the map.
+#[tokio::test]
+async fn refresh_titles_from_listing_rejects_undisplayable_candidates() {
+    use crate::agent_sessions::CliSource;
+    use std::collections::HashMap;
+
+    let state = make_state();
+    for (id, cli) in [
+        ("sid-echo", CliSource::Copilot),
+        ("sid-placeholder", CliSource::OpenCode),
+        ("sid-empty", CliSource::Copilot),
+    ] {
+        let mut row = crate::session_registry::SessionInfo::new(
+            acp::schema::v1::SessionId::new(id.to_string()),
+            std::path::PathBuf::from("/repo/project"),
+        );
+        row.cli_source = Some(cli);
+        row.title = Some("Real Summary".to_string());
+        state.registry.upsert(row).await;
+    }
+
+    let titles = HashMap::from([
+        (
+            "sid-echo".to_string(),
+            format!(
+                "hi test\n\n{}8A9B4ABA-BEB4-4F94-B0D3-55569420B902)\n```\nPowerShell 7.6.3\n```",
+                crate::session_registry::TERMINAL_CONTEXT_TITLE_MARKER
+            ),
+        ),
+        (
+            "sid-placeholder".to_string(),
+            "New session - 2026-07-23T01:14:00.422Z".to_string(),
+        ),
+        ("sid-empty".to_string(), String::new()),
+    ]);
+
+    // A `None` listing cli is the lenient case that reaches every row, so this
+    // also proves the guard does not depend on the cli gate.
+    assert!(!refresh_titles_from_listing(&*state.registry, &titles, None).await);
+    for id in ["sid-echo", "sid-placeholder", "sid-empty"] {
+        assert_eq!(
+            state
+                .registry
+                .lookup(&acp::schema::v1::SessionId::new(id.to_string()))
+                .await
+                .unwrap()
+                .title
+                .as_deref(),
+            Some("Real Summary"),
+            "{id} must keep its real title"
+        );
+    }
+}
+
+#[tokio::test]
+async fn refresh_titles_from_listing_ignores_unlisted_rows() {
+    use crate::agent_sessions::CliSource;
+
+    let state = make_state();
+    let mut row = crate::session_registry::SessionInfo::new(
+        acp::schema::v1::SessionId::new("sid-unlisted".to_string()),
+        std::path::PathBuf::from("/repo/project"),
+    );
+    row.cli_source = Some(CliSource::Copilot);
+    row.title = Some("kept".to_string());
+    state.registry.upsert(row).await;
+
+    assert!(
+        !refresh_titles_from_listing(
+            &*state.registry,
+            &std::collections::HashMap::new(),
+            Some(&CliSource::Copilot),
+        )
+        .await
+    );
+    assert_eq!(
+        state
+            .registry
+            .lookup(&acp::schema::v1::SessionId::new("sid-unlisted".to_string()))
+            .await
+            .unwrap()
+            .title
+            .as_deref(),
+        Some("kept")
+    );
+}
+
 #[test]
 fn row_refreshable_skips_only_definitively_cross_cli() {
     use crate::agent_sessions::CliSource;
@@ -9656,6 +10657,15 @@ fn listing_agent_from(
     source: crate::agent_source::AgentSource,
     ids: &[&str],
 ) -> Arc<AgentCli> {
+    let resolved_agent_id = match cli.as_ref() {
+        Some(crate::agent_sessions::CliSource::Claude) => "claude".to_string(),
+        Some(crate::agent_sessions::CliSource::Codex) => "codex".to_string(),
+        Some(crate::agent_sessions::CliSource::Copilot) => "copilot".to_string(),
+        Some(crate::agent_sessions::CliSource::Gemini) => "gemini".to_string(),
+        Some(crate::agent_sessions::CliSource::OpenCode) => "opencode".to_string(),
+        Some(crate::agent_sessions::CliSource::Unknown(id)) => id.clone(),
+        None => "unknown".to_string(),
+    };
     let mut cached_init_resp =
         acp::schema::v1::InitializeResponse::new(acp::schema::ProtocolVersion::V1);
     cached_init_resp
@@ -9664,6 +10674,7 @@ fn listing_agent_from(
         .list = Some(acp::schema::v1::SessionListCapabilities::default());
     Arc::new(AgentCli {
         instance_id: AgentInstanceId::new_v4(),
+        resolved_agent_id,
         conn: client_connection_to_listing_agent(ids.iter().map(|s| s.to_string()).collect()),
         cached_init_resp,
         cli_source: cli.clone(),
@@ -10205,6 +11216,161 @@ async fn session_hook_marks_session_hook_owned_then_watcher_is_ignored() {
 }
 
 #[tokio::test]
+async fn restored_session_birth_initializes_idle_without_waiting_for_hooks() {
+    use crate::agent_sessions::{AgentStatus, CliSource, SessionEvent};
+    for initial_status in [None, Some(AgentStatus::Historical)] {
+        let state = make_state();
+        let sid = acp::schema::v1::SessionId::new("restored-session");
+        if let Some(status) = initial_status {
+            let mut row = crate::session_registry::SessionInfo::new(
+                sid.clone(),
+                std::path::PathBuf::from("C:\\repo"),
+            );
+            row.status = Some(status);
+            state.registry.upsert(row).await;
+        }
+        handle_session_born_bound(
+            &state,
+            SessionEvent::SessionStarted {
+                key: sid.0.to_string(),
+                cli_source: CliSource::Copilot,
+                pane_session_id: "restored-pane".into(),
+                cwd: std::path::PathBuf::from("C:\\repo"),
+                title: String::new(),
+            },
+            None,
+        )
+        .await
+        .unwrap();
+        let row = state.registry.lookup(&sid).await.unwrap();
+        assert_eq!(row.status, Some(AgentStatus::Idle));
+        assert_eq!(row.pane_session_id.as_deref(), Some("restored-pane"));
+        assert!(state.born_bound.lock().await.contains(&sid));
+        assert!(!state.hook_owned.lock().await.contains(&sid));
+    }
+}
+
+#[tokio::test]
+async fn restored_session_birth_preserves_an_earlier_live_hook() {
+    use crate::agent_sessions::{AgentStatus, CliSource, SessionEvent};
+    let state = make_state();
+    let sid = acp::schema::v1::SessionId::new("restored-session");
+    let birth = SessionEvent::SessionStarted {
+        key: sid.0.to_string(),
+        cli_source: CliSource::Copilot,
+        pane_session_id: "RESTORED-PANE".into(),
+        cwd: std::path::PathBuf::from("C:\\live"),
+        title: "Live conversation title".into(),
+    };
+    handle_session_hook(&state, birth.clone(), false)
+        .await
+        .unwrap();
+    handle_session_hook(
+        &state,
+        SessionEvent::ToolStarting {
+            key: sid.0.to_string(),
+            tool_name: "prompt".into(),
+        },
+        false,
+    )
+    .await
+    .unwrap();
+    let mut replay = birth;
+    if let SessionEvent::SessionStarted { cwd, title, .. } = &mut replay {
+        *cwd = std::path::PathBuf::from("C:\\old");
+        title.clear();
+    }
+    handle_session_born_bound(&state, replay, None)
+        .await
+        .unwrap();
+    let row = state.registry.lookup(&sid).await.unwrap();
+    assert_eq!(row.status, Some(AgentStatus::Working));
+    assert_eq!(row.cwd, std::path::PathBuf::from("C:\\live"));
+    assert_eq!(row.title.as_deref(), Some("Live conversation title"));
+    assert!(state.hook_owned.lock().await.contains(&sid));
+    assert!(!state.born_bound.lock().await.contains(&sid));
+}
+
+#[tokio::test]
+async fn restored_session_birth_normalizes_pane_identity_and_preserves_live_hooks() {
+    use crate::agent_sessions::{AgentStatus, CliSource, SessionEvent};
+    let plain = "abcdef01-2345-6789-abcd-ef0123456789";
+    let braced = "{ABCDEF01-2345-6789-ABCD-EF0123456789}";
+    for (hook_pane, restore_pane) in [(plain, braced), (braced, plain)] {
+        for attention in [false, true] {
+            let state = make_state();
+            let sid = acp::schema::v1::SessionId::new("restored-session");
+            let birth = SessionEvent::SessionStarted {
+                key: sid.0.to_string(),
+                cli_source: CliSource::Copilot,
+                pane_session_id: hook_pane.into(),
+                cwd: std::path::PathBuf::from("C:\\live"),
+                title: "Live title".into(),
+            };
+            handle_session_hook(&state, birth.clone(), false)
+                .await
+                .unwrap();
+            let activity = if attention {
+                SessionEvent::Notification {
+                    key: sid.0.to_string(),
+                    message: "Awaiting input".into(),
+                }
+            } else {
+                SessionEvent::ToolStarting {
+                    key: sid.0.to_string(),
+                    tool_name: "prompt".into(),
+                }
+            };
+            handle_session_hook(&state, activity, false).await.unwrap();
+            let before = state.registry.lookup(&sid).await.unwrap();
+            let mut replay = birth;
+            if let SessionEvent::SessionStarted {
+                pane_session_id,
+                cwd,
+                title,
+                ..
+            } = &mut replay
+            {
+                *pane_session_id = restore_pane.into();
+                *cwd = std::path::PathBuf::from("C:\\old");
+                title.clear();
+            }
+            handle_session_born_bound(&state, replay, None)
+                .await
+                .unwrap();
+            let row = state.registry.lookup(&sid).await.unwrap();
+            assert_eq!(
+                row.status,
+                Some(if attention {
+                    AgentStatus::Attention
+                } else {
+                    AgentStatus::Working
+                })
+            );
+            assert_eq!(row.cwd, before.cwd);
+            assert_eq!(row.title, before.title);
+            assert_eq!(row.current_tool, before.current_tool);
+            assert_eq!(row.attention_reason, before.attention_reason);
+            assert_eq!(row.pane_session_id.as_deref(), Some(plain));
+            assert!(state.hook_owned.lock().await.contains(&sid));
+            assert!(!state.born_bound.lock().await.contains(&sid));
+            assert!(
+                state
+                    .registry
+                    .apply_event(SessionEvent::PaneClosed {
+                        pane_session_id: restore_pane.into(),
+                    })
+                    .await
+            );
+            assert_eq!(
+                state.registry.lookup(&sid).await.unwrap().status,
+                Some(AgentStatus::Ended)
+            );
+        }
+    }
+}
+
+#[tokio::test]
 async fn session_born_bound_marks_born_bound_not_hook_owned() {
     // #266 born-bound (WTA-launched delegate/resume) is binding-only: it must
     // land in `born_bound`, NOT `hook_owned`, so the watcher can still supply
@@ -10467,4 +11633,290 @@ async fn born_bound_delegate_clears_a_stale_hook_ownership_claim() {
 
     assert!(!state.hook_owned.lock().await.contains(&sid));
     assert!(state.born_bound.lock().await.contains(&sid));
+}
+
+/// The authoritative hook path is the master's own COM subscription, not a
+/// helper's pipe. One `agent_event` for an unseen session must create the row,
+/// apply the reported transition, and claim hook ownership in one pass.
+#[tokio::test]
+async fn master_com_agent_event_routes_directly_into_the_registry() {
+    let state = make_state();
+    let sid = acp::schema::v1::SessionId::new("direct-hook".to_string());
+
+    handle_master_wt_event(
+        &state,
+        serde_json::json!({
+            "method": "agent_event",
+            "params": {
+                "event": "agent.tool.starting",
+                "cli_source": "copilot",
+                "agent_session_id": "direct-hook",
+                "pane_id": "pane-direct",
+                "payload": {
+                    "cwd": "C:\\repo",
+                    "tool_name": "edit"
+                }
+            }
+        }),
+    )
+    .await;
+
+    let row = state.registry.lookup(&sid).await.expect("row created");
+    assert_eq!(
+        row.status,
+        Some(crate::agent_sessions::AgentStatus::Working)
+    );
+    assert_eq!(row.pane_session_id.as_deref(), Some("pane-direct"));
+    assert!(
+        state.hook_owned.lock().await.contains(&sid),
+        "a real COM hook must suppress the hookless watcher just like the old \
+         helper-forwarded path did"
+    );
+}
+
+#[tokio::test]
+async fn master_com_shell_prompt_ends_session_when_helper_exit_overtook_start() {
+    use crate::agent_sessions::{AgentStatus, SessionEvent};
+
+    let state = make_state();
+    let sid = acp::schema::v1::SessionId::new("queued-shell-session");
+    let pane = "AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE";
+    let (tx, mut notifications) = mpsc::unbounded_channel();
+    state
+        .helper_ext_subscribers
+        .lock()
+        .await
+        .insert(HelperId(1), tx);
+
+    // The COM consumer was busy; the helper saw start + shell prompt and its
+    // independent pipe delivered the exit before master had a pane binding.
+    let response = handle_session_hook(
+        &state,
+        SessionEvent::PaneClosed {
+            pane_session_id: pane.into(),
+        },
+        false,
+    )
+    .await
+    .unwrap();
+    assert_eq!(response.0.get(), r#"{"applied":false}"#);
+    assert!(notifications.try_recv().is_err());
+
+    handle_master_wt_event(
+        &state,
+        serde_json::json!({
+            "method": "agent_event",
+            "params": {
+                "event": "agent.session.start",
+                "cli_source": "gemini",
+                "agent_session_id": "queued-shell-session",
+                "pane_id": pane,
+                "payload": {"cwd": "C:\\repo"}
+            }
+        }),
+    )
+    .await;
+    assert_eq!(
+        state.registry.lookup(&sid).await.unwrap().status,
+        Some(AgentStatus::Idle)
+    );
+    assert!(notifications.try_recv().is_ok());
+
+    // No agent.session.end arrives. The queued prompt on the same COM stream
+    // must still end the session, allowing /sessions to resume rather than focus.
+    let prompt = serde_json::json!({
+        "method": "vt_sequence",
+        "params": {"session_id": format!("{{{}}}", pane.to_ascii_lowercase()), "sequence": "osc:133;A"}
+    });
+    handle_master_wt_event(&state, prompt.clone()).await;
+    let row = state.registry.lookup(&sid).await.unwrap();
+    assert_eq!(row.status, Some(AgentStatus::Ended));
+    assert_eq!(row.pane_session_id, None);
+    assert!(notifications.try_recv().is_ok());
+
+    handle_master_wt_event(&state, prompt).await;
+    assert!(
+        notifications.try_recv().is_err(),
+        "duplicate prompt must not broadcast"
+    );
+}
+
+#[tokio::test]
+async fn master_com_shell_prompt_preserves_agent_panes_and_other_sequences() {
+    use crate::agent_sessions::{AgentStatus, SessionEvent, SessionOrigin};
+
+    let state = make_state();
+    let sid = acp::schema::v1::SessionId::new("protected-session");
+    state
+        .registry
+        .apply_event(SessionEvent::SessionStarted {
+            key: "protected-session".into(),
+            cli_source: crate::agent_sessions::CliSource::Gemini,
+            pane_session_id: "pane-protected".into(),
+            cwd: PathBuf::from("C:\\repo"),
+            title: "protected".into(),
+        })
+        .await;
+    state
+        .registry
+        .apply_event(SessionEvent::Notification {
+            key: "protected-session".into(),
+            message: "waiting for a choice".into(),
+        })
+        .await;
+
+    for (pane, sequence) in [
+        ("pane-protected", "osc:133;B"),
+        ("pane-protected", "osc:133;D;0"),
+        ("another-pane", "osc:133;A"),
+    ] {
+        handle_master_wt_event(
+            &state,
+            serde_json::json!({
+                "method": "vt_sequence",
+                "params": {"pane_id": pane, "sequence": sequence}
+            }),
+        )
+        .await;
+    }
+    assert_eq!(
+        state.registry.lookup(&sid).await.unwrap().status,
+        Some(AgentStatus::Attention)
+    );
+
+    state
+        .registry
+        .set_origin(&sid, SessionOrigin::AgentPane)
+        .await;
+    handle_master_wt_event(
+        &state,
+        serde_json::json!({
+            "method": "vt_sequence",
+            "params": {"pane_id": "pane-protected", "sequence": "osc:133;A"}
+        }),
+    )
+    .await;
+    let row = state.registry.lookup(&sid).await.unwrap();
+    assert_eq!(row.status, Some(AgentStatus::Attention));
+    assert_eq!(row.pane_session_id.as_deref(), Some("pane-protected"));
+}
+
+/// A direct COM SessionStarted can beat the helper callback that reports the
+/// pane assigned by resume. The callback is then a reducer no-op; it must not
+/// downgrade the current hook-owned generation to born-bound and re-enable the
+/// watcher against live hook state.
+#[tokio::test]
+async fn late_resume_pane_assignment_preserves_direct_hook_ownership() {
+    let state = make_state();
+    let sid = acp::schema::v1::SessionId::new("direct-resume-race".to_string());
+
+    handle_master_wt_event(
+        &state,
+        serde_json::json!({
+            "method": "agent_event",
+            "params": {
+                "event": "agent.session.start",
+                "cli_source": "copilot",
+                "agent_session_id": "direct-resume-race",
+                "pane_id": "pane-resume-race",
+                "payload": { "cwd": "C:\\repo" }
+            }
+        }),
+    )
+    .await;
+    assert!(state.hook_owned.lock().await.contains(&sid));
+
+    let response = handle_session_hook(
+        &state,
+        crate::agent_sessions::SessionEvent::ResumePaneAssigned {
+            key: "direct-resume-race".to_string(),
+            pane_session_id: "pane-resume-race".to_string(),
+        },
+        false,
+    )
+    .await
+    .expect("late binding callback accepted");
+    assert_eq!(
+        response.0.get(),
+        r#"{"applied":false}"#,
+        "the callback is a no-op because the hook already bound this pane"
+    );
+    assert!(
+        state.hook_owned.lock().await.contains(&sid),
+        "a no-op binding callback must not erase current hook ownership"
+    );
+    assert!(
+        !state.born_bound.lock().await.contains(&sid),
+        "the no-op callback must not reclassify the current generation"
+    );
+}
+
+/// Regression for the cwd-basename ghost: a terminal hook for a session master
+/// has never seen must not invent a SessionStarted before applying the end.
+#[tokio::test]
+async fn master_com_terminal_hook_for_unknown_session_creates_no_row() {
+    let state = make_state();
+    let sid = acp::schema::v1::SessionId::new("direct-ghost".to_string());
+
+    handle_master_wt_event(
+        &state,
+        serde_json::json!({
+            "method": "agent_event",
+            "params": {
+                "event": "agent.session.end",
+                "cli_source": "copilot",
+                "agent_session_id": "direct-ghost",
+                "pane_id": "pane-ghost",
+                "payload": {
+                    "cwd": "C:\\Users\\dev",
+                    "reason": "user_exit"
+                }
+            }
+        }),
+    )
+    .await;
+
+    assert!(
+        state.registry.lookup(&sid).await.is_none(),
+        "a session that only ever reported its end must not materialize"
+    );
+    assert!(
+        !state.hook_owned.lock().await.contains(&sid),
+        "a no-op terminal event must not claim watcher ownership"
+    );
+}
+
+/// False-positive control for terminal-event suppression. `agent.error`
+/// describes a live but failing session; its pane-keyed reducer needs the
+/// synthetic start to establish the binding before ConnectionFailed lands.
+#[tokio::test]
+async fn master_com_agent_error_for_unknown_session_records_the_failure() {
+    let state = make_state();
+    let sid = acp::schema::v1::SessionId::new("direct-error".to_string());
+
+    handle_master_wt_event(
+        &state,
+        serde_json::json!({
+            "method": "agent_event",
+            "params": {
+                "event": "agent.error",
+                "cli_source": "copilot",
+                "agent_session_id": "direct-error",
+                "pane_id": "pane-error",
+                "payload": {
+                    "cwd": "C:\\repo",
+                    "error": "agent CLI exited 1"
+                }
+            }
+        }),
+    )
+    .await;
+
+    let row = state
+        .registry
+        .lookup(&sid)
+        .await
+        .expect("failure row created");
+    assert_eq!(row.status, Some(crate::agent_sessions::AgentStatus::Error));
+    assert_eq!(row.last_error.as_deref(), Some("agent CLI exited 1"));
 }

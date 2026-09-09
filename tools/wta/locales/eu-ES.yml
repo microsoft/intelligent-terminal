@@ -51,6 +51,7 @@ chat.turn_canceled: "(bertan behera utzita)"
 chat.turn_executed: "→ exekutatuta: %{title}"
 # Persistent tool-category labels shown after a status marker and before a subject.
 chat.tool_kind.run: "Exekutatu"
+chat.tool_kind.insert: "Txertatu"
 chat.tool_kind.read: "Irakurri"
 chat.tool_kind.search: "Bilatu"
 chat.tool_kind.edit: "Editatu"
@@ -123,8 +124,25 @@ agents.status.idle: "Inaktibo"
 layout.welcome_hint: "  (Ctrl+Shift+. agente-panela erakusteko/ezkutatzeko • Ctrl+Shift+/ agente-saioa erakusteko/ezkutatzeko)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}
 
 # ── Konexio-egoera ────────────────────────────────────────────────────────
-connection.starting: "Agentea abiarazten..."
+# Preparing the AI agent connection, including preflight and reuse of a cached agent.
+connection.starting: "Agentearekiko konexioa prestatzen..."
 connection.reconnecting: "Birkonektatzen..."
+# Retiring old AI agent sessions for /restart, before the next connection phases.
+connection.restarting: "Agentea berrabiarazten..."
+# Connecting the pane to WTA's local coordinator process, not to an AI model.
+connection.coordinator: "Koordinatzaile lokalera konektatzen..."
+# Initializing the helper/coordinator connection, including local preparation and AI agent initialization.
+connection.initializing: "Agentearekiko konexioa hasieratzen..."
+# Refreshing the user's authentication with the AI agent after login; not verifying the agent's identity.
+connection.authenticating: "Erabiltzailea agentearekin autentifikatzen..."
+# Reading the coordinator's registry snapshot, including existing history; not fetching history from the AI agent.
+connection.syncing_sessions: "Saioen zerrenda irakurtzen..."
+# Creating the AI agent session, including local registration; internal agent progress is unknown.
+connection.creating_session: "Agentearen saioa sortzen..."
+# Applying the requested AI model before the connection is ready. Preserve %{model}.
+connection.selecting_model: "Saioaren modeloa ezartzen: %{model}..."  # {Locked="%{model}"}
+# Activity row while connecting to restore a conversation. Keep the actual stage first so narrow panes show it; session_id is shortened to eight characters.
+connection.resuming_stage: "%{stage} (%{session_id} berrekitzen)"  # {Locked="%{stage}","%{session_id}"}
 connection.connecting_activity: "Agentearekin konektatzen…"
 connection.lost: "Agentearekiko konexioa galdu da. Idatzi /restart berriro konektatzeko."  # {Locked="/restart"}
 
@@ -239,4 +257,6 @@ config_picker.title: "Saioaren konfigurazioa (↑ ↓ • Enter • Esc)"
 system.no_config_options: "Konektatutako agenteak ez du saio-aukera konfiguragarririk iragarri."
 # {option} is an Agent-provided option name; {error} is the ACP error.
 system.config_update_failed: "Ezin izan da %{option} eguneratu: %{error}"
+system.yolo_disable_pending: "hornitzaileak ez du berretsi saioa pribilegiorik gabeko beharrezko egoeran dagoela"  # Shown after the localized failure prefix while prompts remain blocked until the AI agent provider confirms that its privileged session mode is off. Provider means an AI agent provider, not a network provider.
+system.provider_command_blocked_by_policy: "%{command}: Yolo modua desgaituta dago zure erakundearen politikagatik."  # {Locked="Yolo","%{command}"} Shown when AllowYoloMode blocks a provider-advertised privileged command.
 system.model_unknown: "%{model} modelo ezezaguna — idatzi /model erabilgarri dagoen zerrenda ikusteko."  # {Locked="%{model}","/model"}

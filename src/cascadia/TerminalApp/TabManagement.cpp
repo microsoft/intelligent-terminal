@@ -125,6 +125,7 @@ namespace winrt::TerminalApp::implementation
         // Add the new tab to the list of our tabs.
         _tabs.InsertAt(insertPosition, *newTabImpl);
         _mruTabs.Append(*newTabImpl);
+        _NotifyRestoredSessionBindings(newTabImpl);
 
         newTabImpl->SetDispatch(*_actionDispatch);
         newTabImpl->SetActionMap(_settings.ActionMap());

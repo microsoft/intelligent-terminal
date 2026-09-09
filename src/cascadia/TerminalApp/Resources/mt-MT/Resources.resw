@@ -11,6 +11,7 @@
   </data>
   <data name="FreOverlay_WelcomeSubtitlePrefix" xml:space="preserve">
     <value>Issettja l-assistent integrat tiegħek biex jgħinek tispjega l-iżbalji, tfassal kmandijiet, u tħoll it-taskijiet eżatt fejn taħdem. </value>
+    <comment>Text shown immediately before the FreOverlay_WelcomeSubtitleLink hyperlink. Include any spacing needed to separate the prefix from the link in the target language.</comment>
   </data>
   <data name="FreOverlay_WelcomeSubtitleLink" xml:space="preserve">
     <value>Sir iktar dwar Terminal Intelliġenti</value>
@@ -35,12 +36,16 @@
     <value>Li jmiss</value>
   </data>
   <!-- ═══ FRE Settings Page ═══ -->
+  <data name="FreOverlay_PolicyLocked" xml:space="preserve">
+    <value>Dan l-issettjar huwa ġestit mill-organizzazzjoni tiegħek.</value>
+    <comment>Text shown below a first-run setting when Group Policy manages or restricts the feature. The associated control may be disabled or filtered to allowed choices. Standard Windows policy notice wording.</comment>
+  </data>
   <data name="FreOverlay_SettingsTitle.Text" xml:space="preserve">
-    <value>Merħba fl-Terminal Intelliġenti</value>
-    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
+    <value>Ikkonfigura t-terminal tiegħek</value>
   </data>
   <data name="FreOverlay_SettingsSubtitlePrefix" xml:space="preserve">
     <value>Agħżel x'trid tissettja issa. Tista' tibdel dawn fi kwalunkwe ħin. </value>
+    <comment>Text shown immediately before the FreOverlay_SettingsSubtitleLink hyperlink. Include any spacing needed to separate the prefix from the link in the target language.</comment>
   </data>
   <data name="FreOverlay_SettingsSubtitleLink" xml:space="preserve">
     <value>Tgħallem kif tintuża d-data</value>
@@ -51,48 +56,59 @@
   </data>
   <data name="FreOverlay_AgentDescription.Text" xml:space="preserve">
     <value>Agħżel l-aġent li jintuża fil-pannell tal-aġent u li jappoġġja ACP.</value>
-    <comment>{Locked="ACP"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+    <comment>{Locked="ACP"} Description for choosing an AI agent for the agent pane. The selected agent must support ACP. "ACP" is rendered as a hyperlink at runtime and must appear exactly once. In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
-  <data name="FreOverlay_AgentInstallHint.Text" xml:space="preserve">
-    <value>Dan l-aġent jeħtieġ Node.js u NPX, li se jiġu installati awtomatikament jekk għadhom mhumiex preżenti.</value>
-    <comment>{Locked="Node.js","NPX"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+  <data name="FreOverlay_ErrorDetectionLabel.Text" xml:space="preserve">
+    <value>Sejbien tal-iżbalji</value>
+    <comment>Header for the dropdown that configures how the terminal handles failed commands.</comment>
   </data>
-  <data name="FreOverlay_AutoErrorLabel.Text" xml:space="preserve">
-    <value>Suġġeriment awtomatiku tal-iżbalji</value>
+  <data name="FreOverlay_ErrorDetectionDescription.Text" xml:space="preserve">
+    <value>Identifika awtomatikament il-kmandi li fallew fil-qoxra u, b'mod fakultattiv, ibgħathom lill-aġent tiegħek għal tiswija awtomatika.</value>
+    <comment>Description for the error-detection dropdown in the first-run wizard. The dropdown includes detect-only, detect-and-fix, and off modes; the selected mode controls whether shell errors are detected and whether failed commands are automatically sent to the selected AI agent. In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
-  <data name="FreOverlay_AutoErrorDescription.Text" xml:space="preserve">
-    <value>Agħti permess lil Intelligent Terminal biex jibgħat l-iżbalji lill-aġent tiegħek biex jissuġġerixxi soluzzjonijiet awtomatikament.</value>
-    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
+  <data name="FreOverlay_ErrorDetectionDetectOption.Content" xml:space="preserve">
+    <value>Identifika l-iżbalji</value>
+    <comment>Dropdown option that detects shell errors without automatically sending failed commands to the selected AI agent.</comment>
+  </data>
+  <data name="FreOverlay_ErrorDetectionAutoFixOption.Content" xml:space="preserve">
+    <value>Identifika u sewwi l-iżbalji</value>
+    <comment>Dropdown option that detects shell errors and automatically sends failed commands to the selected AI agent. In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+  </data>
+  <data name="FreOverlay_ErrorDetectionOffOption.Content" xml:space="preserve">
+    <value>Mitfi</value>
+    <comment>Dropdown option that disables automatic shell error detection.</comment>
+  </data>
+  <data name="FreOverlay_ErrorDetectionAutoFixPolicyLocked" xml:space="preserve">
+    <value>L-għażla tat-tiswija awtomatika hija ġestita mill-organizzazzjoni tiegħek.</value>
+    <comment>Text shown below the error-detection dropdown when Group Policy disables its automatic-fix option.</comment>
   </data>
   <data name="FreOverlay_SessionLabel.Text" xml:space="preserve">
-    <value>Ġestjoni tas-sessjonijiet</value>
+    <value>Sessjonijiet</value>
   </data>
   <data name="FreOverlay_SessionDescription.Text" xml:space="preserve">
-    <value>Agħti lill-Terminal Intelliġenti permess biex isegwi l-istatus tal-aġenti tiegħek li qegħdin jaħdmu jew attivi.</value>
-    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
-  </data>
-  <data name="FreOverlay_SessionHint.Text" xml:space="preserve">
-    <value>L-attivazzjoni ta' dan se tinstalla hooks ta' integrazzjoni biex isegwu s-sessjonijiet madwar l-aġenti tiegħek.</value>
-    <comment>{Locked="hooks"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
-  </data>
-  <data name="FreOverlay_ShowTokenUsageAndCostLabel.Text" xml:space="preserve"><value>Uri l-użu tal-kuntest u l-ispiża tas-sessjoni</value><comment>Header for a first-run toggle that shows available context-window usage and session cost in the terminal bottom bar. Session cost is reported for the active AI session. Keep 'session cost' generic and do not add a specific unit. Either value may be unavailable.</comment></data>
-  <data name="FreOverlay_ShowTokenUsageAndCostDescription.Text" xml:space="preserve"><value>Meta disponibbli, uri l-użu tat-tieqa tal-kuntest u l-ispiża tas-sessjoni fil-bar tal-qiegħ tat-terminal.</value><comment>Description for the usage visibility toggle in the first-run wizard. Session cost is reported for the active AI session. Keep 'session cost' generic and do not add a specific unit. Either value may be unavailable.</comment></data>
-  <data name="FreOverlay_PanePositionLabel.Text" xml:space="preserve">
-    <value>Pożizzjoni tal-pannell</value>
-  </data>
-  <data name="FreOverlay_PanePositionDescription.Text" xml:space="preserve">
-    <value>Fejn jinfetaħ il-pannell tal-aġent relattiv għat-terminal tiegħek.</value>
+    <value>Segwi liema aġenti qed jaħdmu u liema jeħtieġu l-attenzjoni tiegħek.</value>
     <comment>In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
+  <data name="FreOverlay_ShowTokenUsageAndCostLabel.Text" xml:space="preserve"><value>Użu tat-tokens</value><comment>Header for a first-run toggle that shows remaining context and session cost in the terminal bottom bar.</comment></data>
+  <data name="FreOverlay_ShowTokenUsageAndCostDescription.Text" xml:space="preserve"><value>Uri l-kuntest li fadal u l-ispiża tas-sessjoni meta jkunu disponibbli.</value><comment>Description for the token-usage visibility toggle in the first-run wizard. Either value may be unavailable.</comment></data>
+  <data name="FreOverlay_PanePositionLabel.Text" xml:space="preserve">
+    <value>Pożizzjoni tal-aġent</value>
+  </data>
+  <data name="FreOverlay_PanePositionDescription.Text" xml:space="preserve">
+    <value>Fejn jinsab l-aġent tiegħek.</value>
+    <comment>Description for choosing where the AI agent pane appears within the terminal window. In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+  </data>
   <data name="FreOverlay_SaveButton.Content" xml:space="preserve">
-    <value>Salva</value>
+    <value>Ibda</value>
   </data>
   <!-- ═══ FRE Dynamic strings (used from C++ code-behind) ═══ -->
   <data name="FreOverlay_AgentStatusWillInstall" xml:space="preserve">
     <value> (se jiġi installat)</value>
+    <comment>Status suffix appended directly to an AI agent display name when setup will install that agent. Include any spacing and punctuation needed to separate the suffix from the agent name.</comment>
   </data>
   <data name="FreOverlay_AgentStatusInstalled" xml:space="preserve">
     <value> (installat)</value>
+    <comment>Status suffix appended directly to an AI agent display name when that agent is already installed. Include any spacing and punctuation needed to separate the suffix from the agent name.</comment>
   </data>
   <data name="FreOverlay_PanePositionBottom" xml:space="preserve">
     <value>Taħt</value>
@@ -110,39 +126,39 @@
     <value>Qed jiġi ssettjat...</value>
   </data>
   <data name="FreOverlay_InstallError_BlockedByPolicy" xml:space="preserve">
-    <value>⚠ L-installazzjoni ta' {0} ġiet imblukkata minn politika tal-Maniġer tal-Pakketti ta' Windows. Jekk qiegħed fuq apparat immaniġġjat, ikkuntattja lill-amministratur tal-IT tiegħek.</value>
-    <comment>FRE setup error. {0} is the package display name.</comment>
+    <value>L-installazzjoni ta' {0} ġiet imblukkata minn politika tal-Maniġer tal-Pakketti ta' Windows. Jekk qiegħed fuq apparat immaniġġjat, ikkuntattja lill-amministratur tal-IT tiegħek.</value>
+    <comment>FRE setup error. {0} is the package display name. Shown when winget reports BlockedByPolicy or an equivalent policy-related HRESULT.</comment>
   </data>
   <data name="FreOverlay_InstallError_Generic" xml:space="preserve">
-    <value>⚠ Ma setax jiġi installat {0} (kodiċi tal-iżball {1}). Ara l-log għad-dettalji, jew installa {0} manwalment.</value>
-    <comment>FRE setup error fallback. {0} is the package display name (appears twice). {1} is a pre-formatted HRESULT string.</comment>
+    <value>Ma setax jiġi installat {0} (kodiċi tal-iżball {1}). Ara l-log għad-dettalji, jew installa {0} manwalment.</value>
+    <comment>FRE setup error fallback. {0} is the package display name (appears twice). {1} is a pre-formatted HRESULT string like "0x80190194". Shown for failure causes we don't have a more specific message for.</comment>
   </data>
   <data name="FreOverlay_InstallError_GenericNoCode" xml:space="preserve">
-    <value>⚠ Ma setax jiġi installat {0}. Ara l-log għad-dettalji, jew installa {0} manwalment.</value>
-    <comment>FRE setup error fallback used when no actionable error code is available. {0} is the package display name (appears twice).</comment>
+    <value>Ma setax jiġi installat {0}. Ara l-log għad-dettalji, jew installa {0} manwalment.</value>
+    <comment>FRE setup error fallback used when no actionable error code is available (e.g. the catalog connect/search failed before an installer ever ran). {0} is the package display name (appears twice).</comment>
   </data>
   <data name="FreOverlay_InstallError_InstallerFailed" xml:space="preserve">
-    <value>⚠ L-installatur ta' {0} irrapporta żball (kodiċi {1}). Iċċekkja l-log għad-dettalji, jew installa {0} manwalment.</value>
-    <comment>FRE setup error. {0} is the package display name (appears twice). {1} is decimal error code.</comment>
+    <value>L-installatur ta' {0} irrapporta żball (kodiċi {1}). Iċċekkja l-log għad-dettalji, jew installa {0} manwalment.</value>
+    <comment>FRE setup error. {0} is the package display name (appears twice). {1} is the installer-reported error code as a decimal number (e.g. MSI 1603). Shown when winget reached the install phase but the installer itself failed.</comment>
   </data>
   <data name="FreOverlay_InstallError_Network" xml:space="preserve">
-    <value>⚠ Ma setax jintlaħaq il-Maniġer tal-Pakketti ta' Windows waqt l-installazzjoni ta' {0}. Iċċekkja l-konnessjoni tal-internet tiegħek (VPN, proxy jew firewall jistgħu jkunu qed jimblukkawha) u erġa' pprova.</value>
-    <comment>{Locked="VPN"} FRE setup error. {0} is the package display name.</comment>
+    <value>Ma setax jintlaħaq il-Maniġer tal-Pakketti ta' Windows waqt l-installazzjoni ta' {0}. Iċċekkja l-konnessjoni tal-internet tiegħek (VPN, proxy jew firewall jistgħu jkunu qed jimblukkawha) u erġa' pprova.</value>
+    <comment>{Locked="VPN"} FRE setup error. {0} is the package display name (FreOverlay_PackageDisplayName_Copilot or _Node). Shown when winget couldn't reach its catalog or the package download failed with a network-class HRESULT.</comment>
   </data>
   <data name="FreOverlay_InstallError_NoCompatibleInstaller" xml:space="preserve">
-    <value>⚠ L-ebda installatur kompatibbli għal {0} mhu disponibbli fuq din is-sistema (il-verżjoni tal-OS jew l-arkitettura jistgħu ma jkunux appoġġjati). Installa {0} manwalment.</value>
-    <comment>FRE setup error. {0} is the package display name (appears twice).</comment>
+    <value>L-ebda installatur kompatibbli għal {0} mhu disponibbli fuq din is-sistema (il-verżjoni tal-OS jew l-arkitettura jistgħu ma jkunux appoġġjati). Installa {0} manwalment.</value>
+    <comment>FRE setup error. {0} is the package display name (appears twice). Shown when winget returned NoApplicableInstallers — the manifest exists but no installer entry matches this OS/arch/scope.</comment>
   </data>
   <data name="FreOverlay_InstallError_PackageNotFound" xml:space="preserve">
-    <value>⚠ {0} ma nstabx fil-katalgu tal-Maniġer tal-Pakketti ta' Windows. Ipprova aġġorna s-sorsi ta' winget, jew installa {0} manwalment.</value>
-    <comment>{Locked="winget"} FRE setup error. {0} is the package display name (appears twice).</comment>
+    <value>{0} ma nstabx fil-katalgu tal-Maniġer tal-Pakketti ta' Windows. Ipprova aġġorna s-sorsi ta' winget, jew installa {0} manwalment.</value>
+    <comment>{Locked="winget"} FRE setup error. {0} is the package display name (appears twice). Shown when no manifest with the requested package ID was returned from the catalog search.</comment>
   </data>
   <data name="FreOverlay_InstallError_Timeout" xml:space="preserve">
-    <value>⚠ L-installazzjoni ta' {0} ħadet aktar minn 20 minuta. Intelligent Terminal waqaf jistenna, iżda l-installatur jista' jkun għadu għaddej fl-isfond. Iċċekkja Task Manager, jew erġa' pprova aktar tard.</value>
-    <comment>{Locked="Intelligent Terminal","Task Manager"} FRE setup error. {0} is the package display name.</comment>
+    <value>L-installazzjoni ta' {0} ħadet aktar minn 20 minuta. Intelligent Terminal waqaf jistenna, iżda l-installatur jista' jkun għadu għaddej fl-isfond. Iċċekkja Task Manager, jew erġa' pprova aktar tard.</value>
+    <comment>{Locked="Intelligent Terminal","Task Manager"} FRE setup error. {0} is the package display name. Shown when our 20-minute hard timeout expired before the install completed.</comment>
   </data>
   <data name="FreOverlay_InstallErrorWingetMissing" xml:space="preserve">
-    <value>⚠ Il-Maniġer tal-Pakketti ta' Windows (winget) mhuwiex installat jew mhux disponibbli. Installah l-ewwel, imbagħad erġa' pprova.</value>
+    <value>Il-Maniġer tal-Pakketti ta' Windows (winget) mhuwiex installat jew mhux disponibbli. Installah l-ewwel, imbagħad erġa' pprova.</value>
     <comment>{Locked="winget"} Error shown in the FRE setup overlay when a prerequisite install was attempted but winget itself is not available on this system.</comment>
   </data>
   <data name="FreOverlay_PackageDisplayName_Copilot" xml:space="preserve">
@@ -227,33 +243,23 @@
     <value>Terminal Protocol</value>
     <comment>Title for the teaching tip that displays Terminal Protocol connection information. {Locked="Terminal Protocol"}</comment>
   </data>
-  <data name="FreOverlay_AutoDetectLabel.Text" xml:space="preserve">
-    <value>Identifikazzjoni awtomatika tal-iżbalji</value>
-  </data>
-  <data name="FreOverlay_AutoDetectDescription.Text" xml:space="preserve">
-    <value>Agħti permess lil Intelligent Terminal biex jaċċessa l-qoxra tiegħek u jidentifika l-iżbalji awtomatikament.</value>
-  </data>
 <data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
-    <value>⚠ L-installazzjoni tal-integrazzjoni tal-qoxra falliet. Id-detezzjoni tal-iżbalji ġiet mitfija. Tista' terġa' tixgħelha u terġa' tipprova, jew issejvja biex tkompli mingħajrha.</value>
+    <value>L-installazzjoni tal-integrazzjoni tal-qoxra falliet. Id-detezzjoni tal-iżbalji ġiet mitfija. Tista' terġa' tixgħelha u terġa' tipprova, jew issejvja biex tkompli mingħajrha.</value>
+    <comment>FRE setup error shown when shell integration cannot be installed. Error detection is turned off so setup can continue, and the user may re-enable it to retry.</comment>
   </data><data name="FreOverlay_InstallErrorHooks" xml:space="preserve">
-    <value>⚠ L-installazzjoni tal-hooks tas-sessjoni falliet. Il-ġestjoni tas-sessjonijiet ġiet mitfija. Tista' terġa' tixgħelha u terġa' tipprova, jew issejvja biex tkompli mingħajrha.</value>
-    <comment>{Locked="hooks"}</comment>
+    <value>L-installazzjoni tal-hooks tas-sessjoni falliet. Il-ġestjoni tas-sessjonijiet ġiet mitfija. Tista' terġa' tixgħelha u terġa' tipprova, jew issejvja biex tkompli mingħajrha.</value>
+    <comment>{Locked="hooks"} FRE setup error shown when session hooks cannot be installed. Session management is turned off so setup can continue, and the user may re-enable it to retry.</comment>
   </data><data name="FreOverlay_ErrorHelpLink" xml:space="preserve">
     <value>Tgħallem kif issewwi dan manwalment</value>
     <comment>Hyperlink shown below an FRE setup error message. Opens step-by-step manual setup instructions in the browser.</comment>
-  </data>  <data name="FreOverlay_AutoDetectShellIntegrationHintPrefix" xml:space="preserve">
-    <value>L-attivazzjoni ta' dan se tinstalla integrazzjoni shell biex tiskopri fallimenti tal-kmandi. </value>
-  </data>
-  <data name="FreOverlay_AutoDetectShellIntegrationHintLink" xml:space="preserve">
-    <value>Sir iktar</value>
   </data>
   <data name="InitShellIntegrationExecutionPolicyErrorMessage" xml:space="preserve">
     <value>Il-politika tal-eżekuzzjoni ta' PowerShell qed timblokka l-iskripts.</value>
     <comment>Body of an error dialog shown after the user tries to install PowerShell shell integration but their PowerShell execution policy (Restricted or AllSigned) is blocking scripts. A separate "Learn how to fix this manually" hyperlink (FreOverlay_ErrorHelpLink) is rendered on its own line below this sentence. {Locked="PowerShell"}</comment>
   </data>
   <data name="FreOverlay_InstallErrorShellIntegrationExecutionPolicy" xml:space="preserve">
-    <value>⚠ Il-politika tal-eżekuzzjoni ta' PowerShell qed timblokka l-iskripts. Id-detezzjoni tal-iżbalji mitfija.</value>
-    <comment>{Locked="PowerShell"}</comment>
+    <value>Il-politika tal-eżekuzzjoni ta' PowerShell qed timblokka l-iskripts. Id-detezzjoni tal-iżbalji mitfija.</value>
+    <comment>{Locked="PowerShell"} FRE setup error shown when PowerShell execution policy prevents shell-integration scripts from running. Error detection is turned off so setup can continue.</comment>
   </data>
   <data name="UsageGroup/[using:Windows.UI.Xaml.Automation]AutomationProperties/Name" xml:space="preserve"><value>Użu</value><comment>Accessibility name for the session usage summary in the terminal bottom bar.</comment></data>
   <data name="Usage_TokensUnit" xml:space="preserve"><value>tokens</value><comment>Unit label for AI context-window token counts. Translate this term using the established AI/LLM terminology for the locale.</comment></data>

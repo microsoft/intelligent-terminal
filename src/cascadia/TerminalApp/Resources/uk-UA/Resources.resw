@@ -1016,6 +1016,7 @@
   </data>
   <data name="FreOverlay_WelcomeSubtitlePrefix" xml:space="preserve">
     <value>Налаштуйте вбудованого помічника, щоб він допомагав пояснювати помилки, складати команди та розблоковувати завдання саме там, де ви працюєте. </value>
+    <comment>Text shown immediately before the FreOverlay_WelcomeSubtitleLink hyperlink. Include any spacing needed to separate the prefix from the link in the target language.</comment>
   </data>
   <data name="FreOverlay_WelcomeSubtitleLink" xml:space="preserve">
     <value>Дізнатися більше про Інтелектуальний Термінал</value>
@@ -1041,11 +1042,11 @@
   </data>
   <!-- ═══ FRE Settings Page ═══ -->
   <data name="FreOverlay_SettingsTitle.Text" xml:space="preserve">
-    <value>Ласкаво просимо до Інтелектуальний Термінал</value>
-    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
+    <value>Налаштуйте термінал</value>
   </data>
   <data name="FreOverlay_SettingsSubtitlePrefix" xml:space="preserve">
     <value>Виберіть, що потрібно налаштувати зараз. Ви можете змінити ці параметри в будь-який час. </value>
+    <comment>Text shown immediately before the FreOverlay_SettingsSubtitleLink hyperlink. Include any spacing needed to separate the prefix from the link in the target language.</comment>
   </data>
   <data name="FreOverlay_SettingsSubtitleLink" xml:space="preserve">
     <value>Дізнайтеся, як використовуються дані</value>
@@ -1056,48 +1057,41 @@
   </data>
   <data name="FreOverlay_AgentDescription.Text" xml:space="preserve">
     <value>Оберіть агента, який використовується в панелі агента та підтримує ACP.</value>
-    <comment>{Locked="ACP"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+    <comment>{Locked="ACP"} Description for choosing an AI agent for the agent pane. The selected agent must support ACP. "ACP" is rendered as a hyperlink at runtime and must appear exactly once. In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
-  <data name="FreOverlay_AgentInstallHint.Text" xml:space="preserve">
-    <value>Цей агент потребує Node.js та NPX, які будуть встановлені автоматично, якщо ще не встановлені.</value>
-    <comment>{Locked="Node.js","NPX"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
-  </data>
-  <data name="FreOverlay_AutoErrorLabel.Text" xml:space="preserve">
-    <value>Автоматична пропозиція виправлень</value>
-  </data>
-  <data name="FreOverlay_AutoErrorDescription.Text" xml:space="preserve">
-    <value>Дозвольте Intelligent Terminal надсилати помилки вашому агенту для автоматичної пропозиції виправлень.</value>
-    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
-  </data>
+  <data name="FreOverlay_ErrorDetectionLabel.Text" xml:space="preserve"><value>Виявлення помилок</value><comment>Header for the dropdown that configures how the terminal handles failed commands.</comment></data>
+  <data name="FreOverlay_ErrorDetectionDescription.Text" xml:space="preserve"><value>Автоматично виявляйте в оболонці команди, що завершилися помилкою, і за бажанням надсилайте їх агенту для автоматичного виправлення.</value><comment>Description for the error-detection dropdown in the first-run wizard. The dropdown includes detect-only, detect-and-fix, and off modes; the selected mode controls whether shell errors are detected and whether failed commands are automatically sent to the selected AI agent. In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment></data>
+  <data name="FreOverlay_ErrorDetectionDetectOption.Content" xml:space="preserve"><value>Виявляти помилки</value><comment>Dropdown option that detects shell errors without automatically sending failed commands to the selected AI agent.</comment></data>
+  <data name="FreOverlay_ErrorDetectionAutoFixOption.Content" xml:space="preserve"><value>Виявляти й виправляти помилки</value><comment>Dropdown option that detects shell errors and automatically sends failed commands to the selected AI agent. In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment></data>
+  <data name="FreOverlay_ErrorDetectionOffOption.Content" xml:space="preserve"><value>Вимкнено</value><comment>Dropdown option that disables automatic shell error detection.</comment></data>
+  <data name="FreOverlay_ErrorDetectionAutoFixPolicyLocked" xml:space="preserve"><value>Параметр автоматичного виправлення керується вашою організацією.</value><comment>Text shown below the error-detection dropdown when Group Policy disables its automatic-fix option.</comment></data>
   <data name="FreOverlay_SessionLabel.Text" xml:space="preserve">
-    <value>Керування сеансами</value>
+    <value>Сеанси</value>
   </data>
   <data name="FreOverlay_SessionDescription.Text" xml:space="preserve">
-    <value>Надайте Інтелектуальний Термінал дозвіл відстежувати стан ваших запущених або активних агентів.</value>
-    <comment>{Locked=qps-ploc,qps-ploca,qps-plocm} "Intelligent Terminal" is the product name.</comment>
-  </data>
-  <data name="FreOverlay_SessionHint.Text" xml:space="preserve">
-    <value>Увімкнення цієї функції встановить інтеграційні hooks для відстеження сеансів у всіх ваших агентах.</value>
-    <comment>{Locked="hooks"} In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
-  </data>
-  <data name="FreOverlay_ShowTokenUsageAndCostLabel.Text" xml:space="preserve"><value>Показати використання контексту та вартість сеансу</value><comment>Header for a first-run toggle that shows available context-window usage and session cost in the terminal bottom bar. Session cost is reported for the active AI session. Keep 'session cost' generic and do not add a specific unit. Either value may be unavailable.</comment></data>
-  <data name="FreOverlay_ShowTokenUsageAndCostDescription.Text" xml:space="preserve"><value>Якщо доступно, показувати використання контекстного вікна та вартість сеансу на нижній панелі терміналу.</value><comment>Description for the usage visibility toggle in the first-run wizard. Session cost is reported for the active AI session. Keep 'session cost' generic and do not add a specific unit. Either value may be unavailable.</comment></data>
-  <data name="FreOverlay_PanePositionLabel.Text" xml:space="preserve">
-    <value>Положення панелі</value>
-  </data>
-  <data name="FreOverlay_PanePositionDescription.Text" xml:space="preserve">
-    <value>Де панель агента відкривається відносно вашого терміналу.</value>
+    <value>Відстежуйте, які агенти працюють і які потребують вашої уваги.</value>
     <comment>In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
   </data>
+  <data name="FreOverlay_ShowTokenUsageAndCostLabel.Text" xml:space="preserve"><value>Використання токенів</value><comment>Header for a first-run toggle that shows remaining context and session cost in the terminal bottom bar.</comment></data>
+  <data name="FreOverlay_ShowTokenUsageAndCostDescription.Text" xml:space="preserve"><value>Показувати залишок контексту та вартість сеансу, якщо вони доступні.</value><comment>Description for the token-usage visibility toggle in the first-run wizard. Either value may be unavailable.</comment></data>
+  <data name="FreOverlay_PanePositionLabel.Text" xml:space="preserve">
+    <value>Розташування агента</value>
+  </data>
+  <data name="FreOverlay_PanePositionDescription.Text" xml:space="preserve">
+    <value>Місце розташування вашого агента.</value>
+    <comment>Description for choosing where the AI agent pane appears within the terminal window. In this context, "agent" refers to an AI agent (e.g. Copilot, Claude, Gemini), not a human agent or representative.</comment>
+  </data>
   <data name="FreOverlay_SaveButton.Content" xml:space="preserve">
-    <value>Зберегти</value>
+    <value>Почати роботу</value>
   </data>
   <!-- ═══ FRE Dynamic strings (used from C++ code-behind) ═══ -->
   <data name="FreOverlay_AgentStatusWillInstall" xml:space="preserve">
     <value> (буде встановлено)</value>
+    <comment>Status suffix appended directly to an AI agent display name when setup will install that agent. Include any spacing and punctuation needed to separate the suffix from the agent name.</comment>
   </data>
   <data name="FreOverlay_AgentStatusInstalled" xml:space="preserve">
     <value> (встановлено)</value>
+    <comment>Status suffix appended directly to an AI agent display name when that agent is already installed. Include any spacing and punctuation needed to separate the suffix from the agent name.</comment>
   </data>
   <data name="FreOverlay_PanePositionBottom" xml:space="preserve">
     <value>Знизу</value>
@@ -1115,39 +1109,39 @@
     <value>Налаштування...</value>
   </data>
   <data name="FreOverlay_InstallError_BlockedByPolicy" xml:space="preserve">
-    <value>⚠ Інсталяцію {0} заблоковано політикою Диспетчера пакетів Windows. Якщо ви використовуєте керований пристрій, зверніться до ІТ-адміністратора.</value>
-    <comment>FRE setup error. {0} is the package display name. Shown when winget returned BlockedByPolicy.</comment>
+    <value>Інсталяцію {0} заблоковано політикою Диспетчера пакетів Windows. Якщо ви використовуєте керований пристрій, зверніться до ІТ-адміністратора.</value>
+    <comment>FRE setup error. {0} is the package display name. Shown when winget reports BlockedByPolicy or an equivalent policy-related HRESULT.</comment>
   </data>
   <data name="FreOverlay_InstallError_Generic" xml:space="preserve">
-    <value>⚠ Не вдалося інсталювати {0} (код помилки {1}). Перегляньте журнал, щоб дізнатися подробиці, або інсталюйте {0} вручну.</value>
-    <comment>FRE setup error fallback. {0} is the package display name (appears twice). {1} is a pre-formatted HRESULT string like "0x80190194".</comment>
+    <value>Не вдалося інсталювати {0} (код помилки {1}). Перегляньте журнал, щоб дізнатися подробиці, або інсталюйте {0} вручну.</value>
+    <comment>FRE setup error fallback. {0} is the package display name (appears twice). {1} is a pre-formatted HRESULT string like "0x80190194". Shown for failure causes we don't have a more specific message for.</comment>
   </data>
   <data name="FreOverlay_InstallError_GenericNoCode" xml:space="preserve">
-    <value>⚠ Не вдалося інсталювати {0}. Перегляньте журнал, щоб дізнатися подробиці, або інсталюйте {0} вручну.</value>
-    <comment>FRE setup error fallback used when no actionable error code is available. {0} is the package display name (appears twice).</comment>
+    <value>Не вдалося інсталювати {0}. Перегляньте журнал, щоб дізнатися подробиці, або інсталюйте {0} вручну.</value>
+    <comment>FRE setup error fallback used when no actionable error code is available (e.g. the catalog connect/search failed before an installer ever ran). {0} is the package display name (appears twice).</comment>
   </data>
   <data name="FreOverlay_InstallError_InstallerFailed" xml:space="preserve">
-    <value>⚠ Інсталятор {0} повідомив про помилку (код {1}). Перегляньте журнал, щоб дізнатися подробиці, або інсталюйте {0} вручну.</value>
-    <comment>FRE setup error. {0} is the package display name (appears twice). {1} is the installer-reported error code as a decimal number.</comment>
+    <value>Інсталятор {0} повідомив про помилку (код {1}). Перегляньте журнал, щоб дізнатися подробиці, або інсталюйте {0} вручну.</value>
+    <comment>FRE setup error. {0} is the package display name (appears twice). {1} is the installer-reported error code as a decimal number (e.g. MSI 1603). Shown when winget reached the install phase but the installer itself failed.</comment>
   </data>
   <data name="FreOverlay_InstallError_Network" xml:space="preserve">
-    <value>⚠ Не вдалося зв’язатися з Диспетчером пакетів Windows під час інсталяції {0}. Перевірте підключення до Інтернету (VPN, проксі або брандмауер можуть його блокувати) і спробуйте знову.</value>
-    <comment>{Locked="VPN"} FRE setup error. {0} is the package display name. Shown when winget couldn't reach its catalog or download failed with a network-class HRESULT.</comment>
+    <value>Не вдалося зв’язатися з Диспетчером пакетів Windows під час інсталяції {0}. Перевірте підключення до Інтернету (VPN, проксі або брандмауер можуть його блокувати) і спробуйте знову.</value>
+    <comment>{Locked="VPN"} FRE setup error. {0} is the package display name (FreOverlay_PackageDisplayName_Copilot or _Node). Shown when winget couldn't reach its catalog or the package download failed with a network-class HRESULT.</comment>
   </data>
   <data name="FreOverlay_InstallError_NoCompatibleInstaller" xml:space="preserve">
-    <value>⚠ У цій системі немає сумісного інсталятора для {0} (версія ОС або архітектура може не підтримуватися). Інсталюйте {0} вручну.</value>
-    <comment>FRE setup error. {0} is the package display name (appears twice).</comment>
+    <value>У цій системі немає сумісного інсталятора для {0} (версія ОС або архітектура може не підтримуватися). Інсталюйте {0} вручну.</value>
+    <comment>FRE setup error. {0} is the package display name (appears twice). Shown when winget returned NoApplicableInstallers — the manifest exists but no installer entry matches this OS/arch/scope.</comment>
   </data>
   <data name="FreOverlay_InstallError_PackageNotFound" xml:space="preserve">
-    <value>⚠ {0} не знайдено в каталозі Диспетчера пакетів Windows. Спробуйте оновити джерела winget або інсталюйте {0} вручну.</value>
-    <comment>{Locked="winget"} FRE setup error. {0} is the package display name (appears twice).</comment>
+    <value>{0} не знайдено в каталозі Диспетчера пакетів Windows. Спробуйте оновити джерела winget або інсталюйте {0} вручну.</value>
+    <comment>{Locked="winget"} FRE setup error. {0} is the package display name (appears twice). Shown when no manifest with the requested package ID was returned from the catalog search.</comment>
   </data>
   <data name="FreOverlay_InstallError_Timeout" xml:space="preserve">
-    <value>⚠ Інсталяція {0} тривала довше ніж 20 хвилин. Intelligent Terminal припинив очікування, але інсталятор може й досі працювати у фоновому режимі. Перевірте Task Manager або спробуйте знову пізніше.</value>
-    <comment>{Locked="Intelligent Terminal","Task Manager"} FRE setup error. {0} is the package display name.</comment>
+    <value>Інсталяція {0} тривала довше ніж 20 хвилин. Intelligent Terminal припинив очікування, але інсталятор може й досі працювати у фоновому режимі. Перевірте Task Manager або спробуйте знову пізніше.</value>
+    <comment>{Locked="Intelligent Terminal","Task Manager"} FRE setup error. {0} is the package display name. Shown when our 20-minute hard timeout expired before the install completed.</comment>
   </data>
   <data name="FreOverlay_InstallErrorWingetMissing" xml:space="preserve">
-    <value>⚠ Диспетчер пакетів Windows (winget) не інстальовано або він недоступний. Спочатку інсталюйте його, а потім спробуйте знову.</value>
+    <value>Диспетчер пакетів Windows (winget) не інстальовано або він недоступний. Спочатку інсталюйте його, а потім спробуйте знову.</value>
     <comment>{Locked="winget"} Error shown in the FRE setup overlay when a prerequisite install was attempted but winget itself is not available on this system.</comment>
   </data>
   <data name="FreOverlay_PackageDisplayName_Copilot" xml:space="preserve">
@@ -1174,8 +1168,8 @@
     <comment>Subtitle shown when Group Policy blocks all AI agents from running.</comment>
   </data>
   <data name="FreOverlay_PolicyLocked" xml:space="preserve">
-    <value>╨ª╨╡╨╣ ╨┐╨░╤Ç╨░╨╝╨╡╤é╤Ç ╨║╨╡╤Ç╤â╤ö╤é╤î╤ü╤Å ╨▓╨░╤ê╨╛╤Ä ╨╛╤Ç╨│╨░╨╜╤û╨╖╨░╤å╤û╤ö╤Ä.</value>
-    <comment>Text shown when Group Policy controls this feature. Standard Windows policy notice wording.</comment>
+    <value>Цей параметр керується вашою організацією.</value>
+    <comment>Text shown below a first-run setting when Group Policy manages or restricts the feature. The associated control may be disabled or filtered to allowed choices. Standard Windows policy notice wording.</comment>
   </data>
   <data name="Diagnostics_AnalyzingTooltip" xml:space="preserve">
     <value>Аналіз помилки…</value>
@@ -1245,33 +1239,23 @@
     <value>Terminal Protocol</value>
     <comment>Title for the teaching tip that displays Terminal Protocol connection information. {Locked="Terminal Protocol"}</comment>
   </data>
-  <data name="FreOverlay_AutoDetectLabel.Text" xml:space="preserve">
-    <value>Автоматичне виявлення помилок</value>
-  </data>
-  <data name="FreOverlay_AutoDetectDescription.Text" xml:space="preserve">
-    <value>Дозвольте Intelligent Terminal отримати доступ до оболонки та автоматично виявляти помилки.</value>
-  </data>
 <data name="FreOverlay_InstallErrorShellIntegration" xml:space="preserve">
-    <value>⚠ Не вдалося встановити інтеграцію оболонки. Виявлення помилок вимкнено. Ви можете повторно увімкнути його та спробувати знову, або зберегти, щоб продовжити без нього.</value>
+    <value>Не вдалося встановити інтеграцію оболонки. Виявлення помилок вимкнено. Ви можете повторно увімкнути його та спробувати знову, або зберегти, щоб продовжити без нього.</value>
+    <comment>FRE setup error shown when shell integration cannot be installed. Error detection is turned off so setup can continue, and the user may re-enable it to retry.</comment>
   </data><data name="FreOverlay_InstallErrorHooks" xml:space="preserve">
-    <value>⚠ Не вдалося встановити session hooks. Керування сеансами вимкнено. Ви можете повторно увімкнути його та спробувати знову, або зберегти, щоб продовжити без нього.</value>
-    <comment>{Locked="hooks"}</comment>
+    <value>Не вдалося встановити session hooks. Керування сеансами вимкнено. Ви можете повторно увімкнути його та спробувати знову, або зберегти, щоб продовжити без нього.</value>
+    <comment>{Locked="hooks"} FRE setup error shown when session hooks cannot be installed. Session management is turned off so setup can continue, and the user may re-enable it to retry.</comment>
   </data><data name="FreOverlay_ErrorHelpLink" xml:space="preserve">
     <value>Дізнайтеся, як виправити це вручну</value>
     <comment>Hyperlink shown below an FRE setup error message. Opens step-by-step manual setup instructions in the browser.</comment>
-  </data>  <data name="FreOverlay_AutoDetectShellIntegrationHintPrefix" xml:space="preserve">
-    <value>Увімкнення цієї функції встановить інтеграцію оболонки для виявлення збоїв команд. </value>
-  </data>
-  <data name="FreOverlay_AutoDetectShellIntegrationHintLink" xml:space="preserve">
-    <value>Дізнатися більше</value>
   </data>
   <data name="InitShellIntegrationExecutionPolicyErrorMessage" xml:space="preserve">
     <value>Політика виконання PowerShell блокує сценарії.</value>
     <comment>Body of an error dialog shown after the user tries to install PowerShell shell integration but their PowerShell execution policy (Restricted or AllSigned) is blocking scripts. A separate "Learn how to fix this manually" hyperlink (FreOverlay_ErrorHelpLink) is rendered on its own line below this sentence. {Locked="PowerShell"}</comment>
   </data>
   <data name="FreOverlay_InstallErrorShellIntegrationExecutionPolicy" xml:space="preserve">
-    <value>⚠ Політика виконання PowerShell блокує сценарії. Виявлення помилок вимкнено.</value>
-    <comment>{Locked="PowerShell"}</comment>
+    <value>Політика виконання PowerShell блокує сценарії. Виявлення помилок вимкнено.</value>
+    <comment>{Locked="PowerShell"} FRE setup error shown when PowerShell execution policy prevents shell-integration scripts from running. Error detection is turned off so setup can continue.</comment>
   </data>
   <data name="UsageGroup/[using:Windows.UI.Xaml.Automation]AutomationProperties/Name" xml:space="preserve"><value>Використання</value><comment>Accessibility name for the session usage summary in the terminal bottom bar.</comment></data>
   <data name="Usage_TokensUnit" xml:space="preserve"><value>токени</value><comment>Unit label for AI context-window token counts. Translate this term using the established AI/LLM terminology for the locale.</comment></data>

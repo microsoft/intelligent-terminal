@@ -51,6 +51,7 @@ chat.turn_canceled: "(hætt við)"
 chat.turn_executed: "→ keyrt: %{title}"
 # Varanleg merki verkfæraflokka sem birtast á eftir stöðumerki og á undan viðfangsefninu.
 chat.tool_kind.run: "Keyra"
+chat.tool_kind.insert: "Setja inn"
 chat.tool_kind.read: "Lesa"
 chat.tool_kind.search: "Leita"
 chat.tool_kind.edit: "Breyta"
@@ -123,8 +124,25 @@ agents.status.idle: "Aðgerðarlaus"
 layout.welcome_hint: "  (Ctrl+Shift+. til að sýna/fela agentspjald • Ctrl+Shift+/ til að sýna/fela agentlotu)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}
 
 # ── Connection state ────────────────────────────────────────────────────────
-connection.starting: "Ræsi agent..."
+# Preparing the AI agent connection, including preflight and reuse of a cached agent.
+connection.starting: "Undirbý tengingu við agent..."
 connection.reconnecting: "Endurtengi..."
+# Retiring old AI agent sessions for /restart, before the next connection phases.
+connection.restarting: "Endurræsi agent..."
+# Connecting the pane to WTA's local coordinator process, not to an AI model.
+connection.coordinator: "Tengist staðbundinni samræmingarþjónustu..."
+# Initializing the helper/coordinator connection, including local preparation and AI agent initialization.
+connection.initializing: "Frumstilli tengingu við agent..."
+# Refreshing the user's authentication with the AI agent after login; not verifying the agent's identity.
+connection.authenticating: "Auðkenni notanda hjá agent..."
+# Reading the coordinator's registry snapshot, including existing history; not fetching history from the AI agent.
+connection.syncing_sessions: "Les lotulista..."
+# Creating the AI agent session, including local registration; internal agent progress is unknown.
+connection.creating_session: "Bý til lotu fyrir agent..."
+# Applying the requested AI model before the connection is ready. Preserve %{model}.
+connection.selecting_model: "Stilli líkan lotunnar: %{model}..."  # {Locked="%{model}"}
+# Activity row while connecting to restore a conversation. Keep the actual stage first so narrow panes show it; session_id is shortened to eight characters.
+connection.resuming_stage: "%{stage} (held áfram með %{session_id})"  # {Locked="%{stage}","%{session_id}"}
 connection.connecting_activity: "Tengist agent…"
 connection.lost: "Tengingin við agent rofnaði. Sláðu inn /restart til að tengjast aftur."  # {Locked="/restart"}
 
@@ -239,4 +257,6 @@ config_picker.title: "Stilling lotu (↑ ↓ • Enter • Esc)"
 system.no_config_options: "Tengdi fulltrúinn auglýsti enga stillanlega lotuvalkosti."
 # {option} is an Agent-provided option name; {error} is the ACP error.
 system.config_update_failed: "Tókst ekki að uppfæra %{option}: %{error}"
+system.yolo_disable_pending: "veitandi agentsins hefur ekki staðfest að lotan sé í nauðsynlegri stöðu án aukinna réttinda"  # Shown after the localized failure prefix while prompts remain blocked until the AI agent provider confirms that its privileged session mode is off. Provider means an AI agent provider, not a network provider.
+system.provider_command_blocked_by_policy: "%{command}: Yolo-hamur er óvirkur samkvæmt stefnu fyrirtækis þíns."  # {Locked="Yolo","%{command}"} Shown when AllowYoloMode blocks a provider-advertised privileged command.
 system.model_unknown: "Óþekkt líkan %{model} — sláðu inn /model til að sjá tiltækan lista."  # {Locked="%{model}","/model"}

@@ -657,7 +657,7 @@ fn breathing_dot(frame: usize) -> &'static str {
 const CHAT_RENDER_MARGIN_ROWS: usize = 32;
 
 struct CompletedTurnHitOffset {
-    turn_index: usize,
+    turn_index: Option<usize>,
     rows_below: usize,
     turn_height: usize,
     expanded: bool,
@@ -871,7 +871,20 @@ pub fn render(frame: &mut Frame, app: &mut App, area: Rect, scrollbar_area: Rect
                 wrap_width,
             )
         };
-        newer_rows = newer_rows.saturating_add(rendered_lines_height(&message_lines, wrap_width));
+        let message_height = rendered_lines_height(&message_lines, wrap_width);
+        if let Some(geometry) =
+            thought_row_geometry(&tab.messages[idx], idx, true, 0, &message_lines, wrap_width)
+        {
+            turn_hit_offsets.push(CompletedTurnHitOffset {
+                turn_index: None,
+                rows_below: newer_rows,
+                turn_height: message_height,
+                expanded: false,
+                prompt_rows: Vec::new(),
+                tool_rows: vec![geometry],
+            });
+        }
+        newer_rows = newer_rows.saturating_add(message_height);
         reversed_lines.extend(message_lines.drain(..).rev());
         if newer_rows >= requested_rows
             && selection_target_idx.is_none()
@@ -895,6 +908,7 @@ pub fn render(frame: &mut Frame, app: &mut App, area: Rect, scrollbar_area: Rect
         );
         if plan.skip_base_lines {
             reversed_lines.clear();
+            turn_hit_offsets.clear();
         }
         let tab = app.current_tab();
         for planned in plan.turns {
@@ -907,7 +921,7 @@ pub fn render(frame: &mut Frame, app: &mut App, area: Rect, scrollbar_area: Rect
                 wrap_width,
             );
             turn_hit_offsets.push(CompletedTurnHitOffset {
-                turn_index: planned.index,
+                turn_index: Some(planned.index),
                 rows_below: planned.rows_below,
                 turn_height: planned.height,
                 expanded: turn.expanded,
@@ -963,11 +977,13 @@ pub fn render(frame: &mut Frame, app: &mut App, area: Rect, scrollbar_area: Rect
             prompt_rows,
             tool_rows,
         } = hit_offset;
+        let active = turn_index.is_none();
+        let turn_index = turn_index.unwrap_or(0);
         let header_from_top = total_lines.saturating_sub(rows_below.saturating_add(turn_height));
         let mut visible_anchor = None;
         if let Some(header_row) = header_from_top
             .checked_sub(scroll)
-            .filter(|row| *row < visible_height)
+            .filter(|row| !active && *row < visible_height)
         {
             visible_anchor = Some(crate::app::CompletedTurnViewportAnchor {
                 index: turn_index,
@@ -1072,7 +1088,7 @@ pub fn render(frame: &mut Frame, app: &mut App, area: Rect, scrollbar_area: Rect
                 );
             }
         }
-        if let Some(anchor) = visible_anchor {
+        if let Some(anchor) = visible_anchor.filter(|_| !active) {
             visible_completed_turn_anchors.push(anchor);
         }
     }
@@ -1412,6 +1428,16 @@ fn build_completed_turn_lines_with_geometry<'a>(
             });
             let message_lines =
                 build_message_lines_with_details(msg, false, false, None, 0, wrap_width, display);
+            if let Some(geometry) = thought_row_geometry(
+                msg,
+                detail_index,
+                false,
+                rendered_height,
+                &message_lines,
+                wrap_width,
+            ) {
+                tool_rows.push(geometry);
+            }
             if let Some((expanded, marker)) = tool_geometry {
                 tool_rows.push(ToolRowGeometry {
                     hit_kind: crate::app::CompletedTurnHitKind::ToolCall { detail_index },
@@ -1451,13 +1477,9 @@ fn build_completed_turn_lines_with_geometry<'a>(
 
 pub fn render_activity(frame: &mut Frame, app: &App, area: Rect) {
     let tab = app.current_tab();
-    // A resume outranks the connecting line. Restoring a pane runs
-    // `session/load` while the helper is still in `Connecting`, so testing
-    // the connection first would report "Connecting to agent…" for the whole
-    // resume and the user would never learn a conversation was coming back.
-    //
-    // Both shimmers read the app-level `activity_frame`: the per-tab counter
-    // only advances during a turn, and a resume has none in flight.
+    // A queued restore spans connection setup and session/load. Keep its
+    // context without hiding setup stages; put the stage first for narrow panes.
+    // Both shimmers use the app counter because no turn is in flight.
     if tab.loading_session {
         let short_id: String = tab
             .loading_target_session_id
@@ -1466,21 +1488,29 @@ pub fn render_activity(frame: &mut Frame, app: &App, area: Rect) {
             .chars()
             .take(8)
             .collect();
-        let label = t!("system.resuming_session", session_id = short_id).into_owned();
+        let label = if let crate::app::ConnectionState::Connecting(stage) = &app.state {
+            t!(
+                "connection.resuming_stage",
+                stage = stage.as_str(),
+                session_id = short_id.as_str()
+            )
+            .into_owned()
+        } else {
+            t!("system.resuming_session", session_id = short_id).into_owned()
+        };
         let line = Line::from(shimmer::shimmer_spans(&label, app.activity_frame as usize));
         frame.render_widget(Paragraph::new(line), area);
         return;
     }
     // While the helper is still establishing its connection to the agent,
-    // show an animated "Connecting to agent…" line (F7). The handshake
+    // show its current observable stage. The handshake
     // (pipe connect → ACP init → session/new) can take tens of seconds on a
     // cold start; without an animated indicator the pane looked frozen. Uses
     // the app-level `activity_frame`, which is advanced on Tick while the
     // state is `Connecting` (see handle_event). Takes precedence over the
     // turn spinner because no turn can be in flight before we're connected.
-    if matches!(app.state, crate::app::ConnectionState::Connecting(_)) {
-        let label = t!("connection.connecting_activity").into_owned();
-        let line = Line::from(shimmer::shimmer_spans(&label, app.activity_frame as usize));
+    if let crate::app::ConnectionState::Connecting(stage) = &app.state {
+        let line = Line::from(shimmer::shimmer_spans(stage, app.activity_frame as usize));
         frame.render_widget(Paragraph::new(line), area);
         return;
     }
@@ -1502,16 +1532,6 @@ pub(crate) fn user_visible_stream_text(text: &str) -> Option<Cow<'_, str>> {
 pub(crate) fn pending_render_text(tab: &crate::app::TabSession) -> Option<Cow<'_, str>> {
     tab.streaming_agent_text()
         .and_then(user_visible_stream_text)
-        .or_else(|| {
-            tab.should_show_inline_thinking()
-                .then(|| tab.streaming_thought_text())
-                .flatten()
-                .and_then(user_visible_stream_text)
-        })
-        .or_else(|| {
-            tab.should_show_inline_thinking()
-                .then_some(Cow::Borrowed("…"))
-        })
 }
 
 fn build_pending_stream_lines<'a>(app: &App, wrap_width: usize) -> Vec<Line<'a>> {
@@ -1534,35 +1554,6 @@ fn build_pending_stream_lines<'a>(app: &App, wrap_width: usize) -> Vec<Line<'a>>
             wrap_width,
             theme::DOT_AGENT,
             theme::AGENT_TEXT,
-        );
-    }
-    if tab.should_show_inline_thinking() {
-        let thought = tab
-            .streaming_thought_text()
-            .and_then(user_visible_stream_text)
-            .unwrap_or(Cow::Borrowed("…"));
-        let revealed = if agent_text.is_some() {
-            thought
-        } else {
-            let total = thought.chars().count();
-            let shown = tab.reveal_chars.max(1).min(total);
-            if shown >= total {
-                thought
-            } else {
-                Cow::Owned(thought.chars().take(shown).collect())
-            }
-        };
-        let rendered = Cow::Owned(format!(
-            "{} · {}",
-            t!("chat.tool_kind.think"),
-            revealed.as_ref()
-        ));
-        push_dot_prefixed_lines(
-            &mut lines,
-            &rendered,
-            wrap_width,
-            theme::DOT_AGENT,
-            theme::DIM,
         );
     }
     lines
@@ -1598,6 +1589,41 @@ fn build_message_lines_with_details<'a>(
 ) -> Vec<Line<'a>> {
     let mut lines = Vec::new();
     match msg {
+        ChatMessage::Thought {
+            text,
+            expanded,
+            duration_ms,
+            ..
+        } => {
+            if text.trim().is_empty() {
+                return lines;
+            }
+            let style = theme::DIM.add_modifier(Modifier::ITALIC);
+            let marker = if *expanded { "▼" } else { "▶" };
+            let duration = duration_ms
+                .map(|ms| format!(" · {:.1}s", ms as f64 / 1000.0))
+                .unwrap_or_default();
+            lines.push(Line::from(Span::styled(
+                format!("{marker} {}{duration}", t!("chat.tool_kind.think")),
+                style,
+            )));
+            if *expanded {
+                for paragraph in text.split('\n') {
+                    let paragraph = paragraph.strip_suffix('\r').unwrap_or(paragraph);
+                    let pieces = textwrap::wrap(paragraph, wrap_width.saturating_sub(2).max(1));
+                    if pieces.is_empty() {
+                        lines.push(Line::from(Span::styled("│", style)));
+                    } else {
+                        for piece in pieces {
+                            lines.push(Line::from(vec![
+                                Span::styled("│ ", style),
+                                Span::styled(piece.into_owned(), style),
+                            ]));
+                        }
+                    }
+                }
+            }
+        }
         ChatMessage::User(text) => {
             push_prompt_prefixed_lines(&mut lines, text, wrap_width);
             lines.push(Line::default());
@@ -1835,6 +1861,39 @@ fn build_message_lines_with_details<'a>(
         }
     }
     lines
+}
+
+fn thought_row_geometry(
+    message: &ChatMessage,
+    detail_index: usize,
+    active: bool,
+    row_offset: usize,
+    lines: &[Line<'_>],
+    wrap_width: usize,
+) -> Option<ToolRowGeometry> {
+    let ChatMessage::Thought {
+        id, text, expanded, ..
+    } = message
+    else {
+        return None;
+    };
+    if text.trim().is_empty() {
+        return None;
+    }
+    Some(ToolRowGeometry {
+        hit_kind: crate::app::CompletedTurnHitKind::Thought {
+            id: *id,
+            detail_index,
+            active,
+        },
+        row_offset,
+        header_width: lines
+            .first()
+            .map_or(1, |line| line.width().min(wrap_width))
+            .max(1),
+        expanded: *expanded,
+        marker: if *expanded { "▼" } else { "▶" },
+    })
 }
 
 // Render a multi-line text block with a colored dot prefix on the first
@@ -2586,6 +2645,36 @@ mod tests {
     }
 
     #[test]
+    fn nonzero_completed_command_keeps_output_preview() {
+        let message = ChatMessage::ToolCall {
+            id: "tool".into(),
+            title: "Run integration command".into(),
+            status: "Completed".into(),
+            kind: ToolCallKind::Execute,
+            location: Some("echo TOOL_DETAIL_MARKER".into()),
+            location_is_command: true,
+            cwd: None,
+            output: Some(ToolCallOutput {
+                text: "TOOL_OUTPUT_MARKER".into(),
+                truncated: false,
+            }),
+            exit_code: Some(7),
+            content: Vec::new(),
+            locations: Vec::new(),
+        };
+
+        let rendered: Vec<String> = build_message_lines(&message, false, false, None, 0, 120)
+            .iter()
+            .map(line_text)
+            .collect();
+
+        assert_eq!(rendered[0], "✗ Run · Run integration command · exit 7");
+        assert!(rendered
+            .iter()
+            .any(|line| line.contains("TOOL_OUTPUT_MARKER")));
+    }
+
+    #[test]
     fn successful_truncated_tool_call_stays_compact_until_expanded() {
         let message = ChatMessage::ToolCall {
             id: "tool".into(),
@@ -3067,6 +3156,85 @@ mod tests {
     #[test]
     fn stream_text_blank_is_none() {
         assert_eq!(user_visible_stream_text("   \n  "), None);
+    }
+
+    #[test]
+    fn thought_render_has_muted_italic_header_and_rule_on_every_body_row() {
+        let _locale = crate::test_support::lock_locale();
+        rust_i18n::set_locale("en-US");
+        let mut message = ChatMessage::Thought {
+            id: Default::default(),
+            text: ["思考 reasoning that wraps", "", "next"].join("\n"),
+            expanded: true,
+            duration_ms: Some(3000),
+        };
+        let lines = build_message_lines(&message, false, false, None, 0, 20);
+        assert_eq!(lines[0].to_string(), "▼ Think · 3.0s");
+        assert!(lines.len() > 3);
+        for (index, line) in lines.iter().enumerate() {
+            if index > 0 {
+                assert!(line.to_string().starts_with('│'));
+            }
+            assert!(line.width() <= 20);
+            for span in &line.spans {
+                assert_eq!(span.style.fg, theme::DIM.fg);
+                assert!(span.style.add_modifier.contains(Modifier::ITALIC));
+            }
+        }
+        let geometry = thought_row_geometry(&message, 2, false, 4, &lines, 20).unwrap();
+        assert_eq!(geometry.row_offset, 4);
+        assert_eq!(geometry.header_width, lines[0].width());
+        assert!(matches!(
+            geometry.hit_kind,
+            crate::app::CompletedTurnHitKind::Thought {
+                detail_index: 2,
+                active: false,
+                ..
+            }
+        ));
+        if let ChatMessage::Thought { expanded, .. } = &mut message {
+            *expanded = false;
+        }
+        let lines = build_message_lines(&message, false, false, None, 0, 20);
+        assert_eq!(lines.len(), 1);
+        assert_eq!(lines[0].to_string(), "▶ Think · 3.0s");
+    }
+
+    #[test]
+    fn thought_render_crlf_preserves_blank_lines_and_wrapping_without_control_characters() {
+        let _locale = crate::test_support::lock_locale();
+        rust_i18n::set_locale("en-US");
+        let paragraphs = ["", "思考 reasoning that wraps", "", "next", ""];
+        let render = |text| {
+            let message = ChatMessage::Thought {
+                id: Default::default(),
+                text,
+                expanded: true,
+                duration_ms: None,
+            };
+            build_message_lines(&message, false, false, None, 0, 20)
+                .iter()
+                .map(|line| {
+                    assert!(line.width() <= 20);
+                    assert!(line.spans.iter().all(|span| !span.content.contains('\r')));
+                    line.to_string()
+                })
+                .collect::<Vec<_>>()
+        };
+        let lines = render(paragraphs.join("\r\n"));
+        assert_eq!(lines, render(paragraphs.join("\n")));
+        assert_eq!(
+            lines,
+            [
+                "▼ Think",
+                "│ ",
+                "│ 思考 reasoning",
+                "│ that wraps",
+                "│ ",
+                "│ next",
+                "│ "
+            ]
+        );
     }
 
     fn streaming_tab(buf: &str, reveal_chars: usize) -> crate::app::TabSession {

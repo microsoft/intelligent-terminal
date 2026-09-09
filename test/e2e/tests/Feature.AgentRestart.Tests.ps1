@@ -15,7 +15,12 @@ BeforeDiscovery { $script:Ready = [bool]((Get-AppxPackage | Where-Object { $_.Na
 Describe 'Feature: agent restart' -Tag 'Feature' -Skip:(-not $script:Ready) {
     BeforeAll {
         Import-Module (Join-Path $PSScriptRoot '..\ItE2E\ItE2E.psd1') -Force
-        $script:app = Start-Terminal -Package (Get-ItTestPackage) -PassFre $true -Settings @{ acpAgent = 'copilot' }
+        $script:app = Start-Terminal -Package (Get-ItTestPackage) -PassFre $true -Settings @{
+            acpAgent = 'copilot'
+            # This suite tests restart/reconnect, not permission enforcement.
+            # Current Copilot CLI builds cannot submit ACP prompts with Yolo disabled.
+            'agentPane.yoloMode' = $true
+        }
         Open-AgentPane -App $script:app | Out-Null
         Wait-AgentReady -App $script:app -TimeoutSec 60 | Out-Null
     }

@@ -47,6 +47,7 @@ chat.turn_canceled: "(취소됨)"
 chat.turn_executed: "→ 실행됨: %{title}"
 # 상태 표시자 뒤와 대상 앞에 표시되는 영구적인 도구 범주 레이블입니다.
 chat.tool_kind.run: "실행"
+chat.tool_kind.insert: "삽입"
 chat.tool_kind.read: "읽기"
 chat.tool_kind.search: "검색"
 chat.tool_kind.edit: "편집"
@@ -119,8 +120,25 @@ agents.status.idle: "유휴"
 layout.welcome_hint: "  (Ctrl+Shift+. 에이전트 창 표시/숨기기 • Ctrl+Shift+/ 에이전트 세션 표시/숨기기)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}
 
 # ── 연결 상태 ────────────────────────────────────────────────────────────
-connection.starting: "에이전트 시작 중..."
+# Preparing the AI agent connection, including preflight and reuse of a cached agent.
+connection.starting: "에이전트 연결 준비 중..."
 connection.reconnecting: "다시 연결 중..."
+# Retiring old AI agent sessions for /restart, before the next connection phases.
+connection.restarting: "에이전트 다시 시작 중..."
+# Connecting the pane to WTA's local coordinator process, not to an AI model.
+connection.coordinator: "로컬 코디네이터에 연결 중..."
+# Initializing the helper/coordinator connection, including local preparation and AI agent initialization.
+connection.initializing: "에이전트 연결 초기화 중..."
+# Refreshing the user's authentication with the AI agent after login; not verifying the agent's identity.
+connection.authenticating: "에이전트에서 사용자 인증 중..."
+# Reading the coordinator's registry snapshot, including existing history; not fetching history from the AI agent.
+connection.syncing_sessions: "세션 목록 읽는 중..."
+# Creating the AI agent session, including local registration; internal agent progress is unknown.
+connection.creating_session: "에이전트 세션 생성 중..."
+# Applying the requested AI model before the connection is ready. Preserve %{model}.
+connection.selecting_model: "세션 모델 설정 중: %{model}..."  # {Locked="%{model}"}
+# Activity row while connecting to restore a conversation. Keep the actual stage first so narrow panes show it; session_id is shortened to eight characters.
+connection.resuming_stage: "%{stage} (%{session_id} 재개 중)"  # {Locked="%{stage}","%{session_id}"}
 connection.connecting_activity: "에이전트에 연결 중…"
 connection.lost: "에이전트와의 연결이 끊어졌습니다. 다시 연결하려면 /restart 명령을 입력하세요."  # {Locked="/restart"}
 
@@ -234,4 +252,6 @@ config_picker.title: "세션 구성 (↑ ↓ • Enter • Esc)"
 system.no_config_options: "연결된 에이전트가 구성 가능한 세션 옵션을 알리지 않았습니다."
 # {option} is an Agent-provided option name; {error} is the ACP error.
 system.config_update_failed: "%{option} 업데이트 실패: %{error}"
+system.yolo_disable_pending: "에이전트 공급자가 필요한 비특권 세션 상태를 아직 확인하지 않았습니다"  # Shown after the localized failure prefix while prompts remain blocked until the AI agent provider confirms that its privileged session mode is off. Provider means an AI agent provider, not a network provider.
+system.provider_command_blocked_by_policy: "%{command}: 조직의 정책으로 인해 Yolo 모드가 비활성화되어 있습니다."  # {Locked="Yolo","%{command}"} Shown when AllowYoloMode blocks a provider-advertised privileged command.
 system.model_unknown: "알 수 없는 모델 %{model} — 사용 가능한 목록을 보려면 /model을 입력하세요."  # {Locked="%{model}","/model"}

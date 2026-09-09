@@ -51,6 +51,7 @@ chat.turn_canceled: "(रद्द गरियो)"
 chat.turn_executed: "→ कार्यान्वयन गरियो: %{title}"
 # Persistent tool-category labels shown after a status marker and before a subject.
 chat.tool_kind.run: "चलाउनुहोस्"
+chat.tool_kind.insert: "सम्मिलित गर्नुहोस्"
 chat.tool_kind.read: "पढ्नुहोस्"
 chat.tool_kind.search: "खोज्नुहोस्"
 chat.tool_kind.edit: "सम्पादन गर्नुहोस्"
@@ -136,8 +137,25 @@ agents.status.idle: "निष्क्रिय"
 layout.welcome_hint: "  (Ctrl+Shift+. एजेन्ट पेन देखाउनुहोस्/लुकाउनुहोस् • Ctrl+Shift+/ एजेन्ट सत्र देखाउनुहोस्/लुकाउनुहोस्)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}
 
 # ── जडान स्थिति ────────────────────────────────────────────────────────
-connection.starting: "एजेन्ट सुरु हुँदैछ..."
+# Preparing the AI agent connection, including preflight and reuse of a cached agent.
+connection.starting: "एजेन्ट जडानको तयारी गर्दै..."
+# Retiring old AI agent sessions for /restart, before the next connection phases.
+connection.restarting: "एजेन्ट पुनः सुरु गर्दै..."
 connection.reconnecting: "पुनः जडान हुँदैछ..."
+# Connecting the pane to WTA's local coordinator process, not to an AI model.
+connection.coordinator: "स्थानीय समन्वयकसँग जडान गर्दै..."
+# Initializing the helper/coordinator connection, including local preparation and AI agent initialization.
+connection.initializing: "एजेन्ट जडानको प्रारम्भिक सेटअप गर्दै..."
+# Refreshing the user's authentication with the AI agent after login; not verifying the agent's identity.
+connection.authenticating: "एजेन्टसँग प्रयोगकर्ताको लगइन प्रमाणीकरण गर्दै..."
+# Reading the coordinator's registry snapshot, including existing history; not fetching history from the AI agent.
+connection.syncing_sessions: "सत्र सूची पढ्दै..."
+# Creating the AI agent session, including local registration; internal agent progress is unknown.
+connection.creating_session: "एजेन्ट सत्र सिर्जना गर्दै..."
+# Applying the requested AI model before the connection is ready. Preserve %{model}.
+connection.selecting_model: "सत्रको मोडेल सेट गर्दै: %{model}..."  # {Locked="%{model}"}
+# Activity row while connecting to restore a conversation. Keep the actual stage first so narrow panes show it; session_id is shortened to eight characters.
+connection.resuming_stage: "%{stage} (%{session_id} सुचारु गर्दै)"  # {Locked="%{stage}","%{session_id}"}
 connection.connecting_activity: "एजेन्टसँग जडान हुँदैछ…"
 connection.lost: "एजेन्टसँगको जडान हरायो। पुनः जडान गर्न /restart टाइप गर्नुहोस्।"  # {Locked="/restart"}
 
@@ -240,4 +258,6 @@ config_picker.title: "सत्र कन्फिगरेसन (↑ ↓ • E
 system.no_config_options: "जอดिएको एजेन्टले कुनै कन्फिगर योग्य सत्र विकल्पहरू विज्ञापन गरेन।"
 # {option} is an Agent-provided option name; {error} is the ACP error.
 system.config_update_failed: "%{option} अद्यावधिक गर्न असफल भयो: %{error}"
+system.yolo_disable_pending: "एजेन्ट प्रदायकले विशेषाधिकार मोड बन्द भएको आवश्यक सत्र अवस्थाको अझै पुष्टि गरेको छैन"  # Shown after the localized failure prefix while prompts remain blocked until the AI agent provider confirms that its privileged session mode is off. Provider means an AI agent provider, not a network provider.
+system.provider_command_blocked_by_policy: "%{command}: तपाईंको संस्थाको नीतिका कारण Yolo mode निष्क्रिय गरिएको छ।"  # {Locked="Yolo","%{command}"} Shown when AllowYoloMode blocks a provider-advertised privileged command.
 system.model_unknown: "अज्ञात मोडेल %{model} — उपलब्ध सूची हेर्न /model टाइप गर्नुहोस्।"  # {Locked="%{model}","/model"}

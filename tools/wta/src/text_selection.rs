@@ -14,6 +14,7 @@ struct Point {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum SelectionKind {
+    All,
     Linear,
     Word,
     Lines,
@@ -44,6 +45,50 @@ pub(crate) struct TextSelection {
 }
 
 impl TextSelection {
+    pub(crate) fn select_all(&mut self) {
+        let Some(buffer) = self.buffer.as_ref() else {
+            self.clear();
+            return;
+        };
+        let area = buffer.area;
+        let Some(focus_x) = area
+            .x
+            .checked_add(area.width)
+            .and_then(|right| right.checked_sub(1))
+        else {
+            self.clear();
+            return;
+        };
+        let Some(focus_y) = area
+            .y
+            .checked_add(area.height)
+            .and_then(|bottom| bottom.checked_sub(1))
+        else {
+            self.clear();
+            return;
+        };
+        let selection = Selection {
+            anchor: Point {
+                x: area.x,
+                y: area.y,
+            },
+            focus: Point {
+                x: focus_x,
+                y: focus_y,
+            },
+            kind: SelectionKind::All,
+            moved: true,
+            atomic: true,
+        };
+        if selected_text(buffer, selection).is_some_and(|text| !text.is_empty()) {
+            self.click_buffer = None;
+            self.selection = Some(selection);
+            self.last_click = None;
+        } else {
+            self.clear();
+        }
+    }
+
     pub(crate) fn handle_mouse(&mut self, mouse: MouseEvent) -> Option<String> {
         self.handle_mouse_at(mouse, Instant::now())
     }
@@ -215,13 +260,21 @@ fn normalize_wide_cell_x(buffer: &Buffer, x: u16, y: u16) -> u16 {
 
 fn selection_contains(selection: Selection, buffer: &Buffer, point: Point) -> bool {
     let area = buffer.area;
-    let min_y = selection.anchor.y.min(selection.focus.y);
-    let max_y = selection.anchor.y.max(selection.focus.y);
+    let (min_y, max_y) = if selection.kind == SelectionKind::All {
+        (area.y, area.y.saturating_add(area.height).saturating_sub(1))
+    } else {
+        (
+            selection.anchor.y.min(selection.focus.y),
+            selection.anchor.y.max(selection.focus.y),
+        )
+    };
     if point.y < min_y || point.y > max_y {
         return false;
     }
     match selection.kind {
-        SelectionKind::Lines => point.x >= area.x && point.x < area.x.saturating_add(area.width),
+        SelectionKind::All | SelectionKind::Lines => {
+            point.x >= area.x && point.x < area.x.saturating_add(area.width)
+        }
         SelectionKind::Word => {
             let min_x = selection.anchor.x.min(selection.focus.x);
             let max_x = selection.anchor.x.max(selection.focus.x);
@@ -247,12 +300,26 @@ fn selection_contains(selection: Selection, buffer: &Buffer, point: Point) -> bo
 fn selected_text(buffer: &Buffer, selection: Selection) -> Option<String> {
     let area = buffer.area;
     let right = area.x.checked_add(area.width)?.checked_sub(1)?;
-    let (start, end) = ordered_points(selection.anchor, selection.focus);
+    let bottom = area.y.checked_add(area.height)?.checked_sub(1)?;
+    let (start, end) = if selection.kind == SelectionKind::All {
+        (
+            Point {
+                x: area.x,
+                y: area.y,
+            },
+            Point {
+                x: right,
+                y: bottom,
+            },
+        )
+    } else {
+        ordered_points(selection.anchor, selection.focus)
+    };
 
     let mut rows = Vec::new();
     for y in start.y..=end.y {
         let (min_x, max_x) = match selection.kind {
-            SelectionKind::Lines => (area.x, right),
+            SelectionKind::All | SelectionKind::Lines => (area.x, right),
             SelectionKind::Word => (start.x, end.x),
             SelectionKind::Linear if start.y == end.y => (start.x, end.x),
             SelectionKind::Linear if y == start.y => (start.x, right),
@@ -272,6 +339,11 @@ fn selected_text(buffer: &Buffer, selection: Selection) -> Option<String> {
             }
         }
         rows.push(row.trim_end_matches(char::is_whitespace).to_string());
+    }
+    if selection.kind == SelectionKind::All {
+        while rows.last().is_some_and(String::is_empty) {
+            rows.pop();
+        }
     }
     Some(rows.join("\r\n"))
 }
@@ -357,7 +429,7 @@ fn cell_class(buffer: &Buffer, x: u16, y: u16) -> CellClass {
 mod tests {
     use super::*;
     use crossterm::event::KeyModifiers;
-    use ratatui::prelude::{Line, Rect};
+    use ratatui::prelude::{Line, Rect, Style};
 
     fn buffer() -> Buffer {
         Buffer::with_lines([
@@ -381,6 +453,68 @@ mod tests {
         let mut buffer = buffer();
         selection.snapshot_and_render(&mut buffer);
         selection
+    }
+
+    #[test]
+    fn select_all_extracts_and_highlights_the_current_frame() {
+        let mut state = seeded_selection();
+        state.select_all();
+
+        assert_eq!(
+            state.selected_text().as_deref(),
+            Some("alpha beta\r\ngamma delta\r\n宽字 ok")
+        );
+
+        let mut rendered = buffer();
+        state.snapshot_and_render(&mut rendered);
+        assert!(rendered
+            .content
+            .iter()
+            .all(|cell| cell.modifier.contains(Modifier::REVERSED)));
+    }
+
+    #[test]
+    fn select_all_omits_trailing_empty_rows() {
+        let mut state = TextSelection::default();
+        let mut frame = Buffer::empty(Rect::new(0, 0, 8, 3));
+        frame.set_string(0, 0, "visible", Style::default());
+        state.snapshot_and_render(&mut frame);
+
+        state.select_all();
+
+        assert_eq!(state.selected_text().as_deref(), Some("visible"));
+    }
+
+    #[test]
+    fn select_all_tracks_the_latest_frame_snapshot() {
+        let mut state = TextSelection::default();
+        let mut initial = Buffer::empty(Rect::new(0, 0, 4, 1));
+        initial.set_string(0, 0, "old", Style::default());
+        state.snapshot_and_render(&mut initial);
+        state.select_all();
+
+        let mut latest = Buffer::empty(Rect::new(0, 0, 8, 2));
+        latest.set_string(0, 0, "new row", Style::default());
+        latest.set_string(0, 1, "second", Style::default());
+        state.snapshot_and_render(&mut latest);
+
+        assert_eq!(state.selected_text().as_deref(), Some("new row\r\nsecond"));
+        assert!(latest
+            .content
+            .iter()
+            .all(|cell| cell.modifier.contains(Modifier::REVERSED)));
+    }
+
+    #[test]
+    fn select_all_rejects_an_empty_frame() {
+        let mut state = TextSelection::default();
+        let mut frame = Buffer::empty(Rect::new(0, 0, 4, 2));
+        state.snapshot_and_render(&mut frame);
+
+        state.select_all();
+
+        assert!(state.selection.is_none());
+        assert!(state.selected_text().is_none());
     }
 
     #[test]

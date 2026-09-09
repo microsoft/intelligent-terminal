@@ -15,14 +15,15 @@
 # Test-WtAgentPolicyControllable probes writability (and any HKLM override) so the GPO suite skips
 # cleanly on a machine that hasn't been provisioned.
 #
-# The snapshot is read at app startup (AgentPolicy::Reload), so ALWAYS set policy BEFORE
-# launching the terminal (Start-Terminal cold-starts, so it picks up a freshly-written value).
+# The snapshot is read at app startup and watched while the app runs. Tests may set policy before
+# launch for startup coverage or mutate it afterward to exercise hot settings reconciliation.
 #
 # Registry values (AgentPolicy.h:69, 55-65, 122-129):
 #   AllowedAgents          REG_MULTI_SZ  built-in agent-id allowlist (nullopt = all allowed)
 #   AllowCustomAgents      REG_DWORD     0 = Blocked, non-zero = Allowed
 #   AllowAutoFix           REG_DWORD     0 = Blocked, non-zero = Allowed
 #   AllowAgentSessionHooks REG_DWORD     0 = Blocked, non-zero = Allowed
+#   AllowYoloMode          REG_DWORD     0 = Blocked, non-zero = Allowed
 
 $script:WtAgentPolicyKey = 'HKCU:\SOFTWARE\Policies\Microsoft\IntelligentTerminal'
 
@@ -32,6 +33,7 @@ $script:WtAgentPolicyValues = [ordered]@{
     AllowCustomAgents      = 'DWord'
     AllowAutoFix           = 'DWord'
     AllowAgentSessionHooks = 'DWord'
+    AllowYoloMode          = 'DWord'
 }
 
 function Get-WtAgentPolicyState {
@@ -49,13 +51,14 @@ function Get-WtAgentPolicyState {
 function Set-WtAgentPolicy {
     <#
     .SYNOPSIS
-        Force IntelligentTerminal agent GPO values via the CurrentUser policy hive. Set BEFORE
-        launching the terminal — the policy snapshot is read at startup. Returns the prior state
-        object; pass it to Restore-WtAgentPolicy (ALWAYS restore in a finally). Requires the policy
-        hive to be writable (see Enable-WtAgentPolicyTesting.ps1 — grant once, then non-elevated).
+        Force IntelligentTerminal agent GPO values via the CurrentUser policy hive. Returns the
+        prior state object; pass it to Restore-WtAgentPolicy (ALWAYS restore in a finally). Values
+        set while Terminal is running are observed through the production policy watcher. Requires
+        the policy hive to be writable (see Enable-WtAgentPolicyTesting.ps1 — grant once, then
+        non-elevated).
     .PARAMETER Policy
         Hashtable keyed by registry value name:
-          AllowAutoFix / AllowCustomAgents / AllowAgentSessionHooks -> 'Allowed' | 'Blocked' | 0/1
+          AllowAutoFix / AllowCustomAgents / AllowAgentSessionHooks / AllowYoloMode -> 'Allowed' | 'Blocked' | 0/1
           AllowedAgents -> string[] of built-in agent ids (e.g. @('copilot'))
         A $null value clears (removes) that policy value.
     .EXAMPLE

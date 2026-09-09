@@ -51,6 +51,7 @@ chat.turn_canceled: "(ยกเลิกแล้ว)"
 chat.turn_executed: "→ ดำเนินการแล้ว: %{title}"
 # ป้ายหมวดหมู่เครื่องมือแบบถาวรที่แสดงหลังเครื่องหมายสถานะและก่อนหัวข้อ
 chat.tool_kind.run: "เรียกใช้"
+chat.tool_kind.insert: "แทรก"
 chat.tool_kind.read: "อ่าน"
 chat.tool_kind.search: "ค้นหา"
 chat.tool_kind.edit: "แก้ไข"
@@ -123,8 +124,25 @@ agents.status.idle: "ว่าง"
 layout.welcome_hint: "  (Ctrl+Shift+. แสดง/ซ่อนแผงเอเจนต์ • Ctrl+Shift+/ แสดง/ซ่อนเซสชันเอเจนต์)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}
 
 # ── Connection state ────────────────────────────────────────────────────────
-connection.starting: "กำลังเริ่มเอเจนต์..."
+# Preparing the AI agent connection, including preflight and reuse of a cached agent.
+connection.starting: "กำลังเตรียมการเชื่อมต่อกับเอเจนต์..."
+# Retiring old AI agent sessions for /restart, before the next connection phases.
+connection.restarting: "กำลังเริ่มเอเจนต์ใหม่..."
 connection.reconnecting: "กำลังเชื่อมต่อใหม่..."
+# Connecting the pane to WTA's local coordinator process, not to an AI model.
+connection.coordinator: "กำลังเชื่อมต่อกับตัวประสานงานภายในเครื่อง..."
+# Initializing the helper/coordinator connection, including local preparation and AI agent initialization.
+connection.initializing: "กำลังเตรียมใช้งานการเชื่อมต่อกับเอเจนต์..."
+# Refreshing the user's authentication with the AI agent after login; not verifying the agent's identity.
+connection.authenticating: "กำลังรับรองความถูกต้องของการลงชื่อเข้าใช้กับเอเจนต์..."
+# Reading the coordinator's registry snapshot, including existing history; not fetching history from the AI agent.
+connection.syncing_sessions: "กำลังอ่านรายการเซสชัน..."
+# Creating the AI agent session, including local registration; internal agent progress is unknown.
+connection.creating_session: "กำลังสร้างเซสชันของเอเจนต์..."
+# Applying the requested AI model before the connection is ready. Preserve %{model}.
+connection.selecting_model: "กำลังตั้งค่าโมเดลของเซสชัน: %{model}..."  # {Locked="%{model}"}
+# Activity row while connecting to restore a conversation. Keep the actual stage first so narrow panes show it; session_id is shortened to eight characters.
+connection.resuming_stage: "%{stage} (กำลังกลับเข้าสู่ %{session_id})"  # {Locked="%{stage}","%{session_id}"}
 connection.connecting_activity: "กำลังเชื่อมต่อกับเอเจนต์…"
 connection.lost: "การเชื่อมต่อกับเอเจนต์ขาดหายไป พิมพ์ /restart เพื่อเชื่อมต่อใหม่"  # {Locked="/restart"}
 
@@ -239,4 +257,6 @@ config_picker.title: "การกำหนดค่าเซสชัน (↑ �
 system.no_config_options: "ตัวแทนที่เชื่อมต่อไม่ได้โฆษณาตัวเลือกเซสชันที่กำหนดค่าได้"
 # {option} is an Agent-provided option name; {error} is the ACP error.
 system.config_update_failed: "อัปเดต %{option} ไม่สำเร็จ: %{error}"
+system.yolo_disable_pending: "ผู้ให้บริการเอเจนต์ AI ยังไม่ได้ยืนยันว่าเซสชันอยู่ในสถานะที่ไม่มีสิทธิ์พิเศษตามที่กำหนด"  # Shown after the localized failure prefix while prompts remain blocked until the AI agent provider confirms that its privileged session mode is off. Provider means an AI agent provider, not a network provider.
+system.provider_command_blocked_by_policy: "%{command}: โหมด Yolo ถูกปิดใช้งานโดยนโยบายขององค์กรคุณ"  # {Locked="Yolo","%{command}"} Shown when AllowYoloMode blocks a provider-advertised privileged command.
 system.model_unknown: "ไม่รู้จักโมเดล %{model} — พิมพ์ /model เพื่อดูรายการที่มีอยู่"  # {Locked="%{model}","/model"}

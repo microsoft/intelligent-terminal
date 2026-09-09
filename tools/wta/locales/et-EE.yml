@@ -51,6 +51,7 @@ chat.turn_canceled: "(tühistatud)"
 chat.turn_executed: "→ käivitatud: %{title}"
 # Persistent tool-category labels shown after a status marker and before a subject.
 chat.tool_kind.run: "Käivita"
+chat.tool_kind.insert: "Lisa"
 chat.tool_kind.read: "Loe"
 chat.tool_kind.search: "Otsi"
 chat.tool_kind.edit: "Muuda"
@@ -123,8 +124,25 @@ agents.status.idle: "Jõude"
 layout.welcome_hint: "  (Ctrl+Shift+. agendipaneeli kuvamiseks/peitmiseks • Ctrl+Shift+/ agendiseansi kuvamiseks/peitmiseks)"  # {Locked="Ctrl+Shift+.","Ctrl+Shift+/"}
 
 # ── Connection state ────────────────────────────────────────────────────────
-connection.starting: "Agendi käivitamine..."
+# Preparing the AI agent connection, including preflight and reuse of a cached agent.
+connection.starting: "Agendiühenduse ettevalmistamine..."
 connection.reconnecting: "Taasühendamine..."
+# Retiring old AI agent sessions for /restart, before the next connection phases.
+connection.restarting: "Agendi taaskäivitamine..."
+# Connecting the pane to WTA's local coordinator process, not to an AI model.
+connection.coordinator: "Ühendamine kohaliku koordinaatoriga..."
+# Initializing the helper/coordinator connection, including local preparation and AI agent initialization.
+connection.initializing: "Agendiühenduse algväärtustamine..."
+# Refreshing the user's authentication with the AI agent after login; not verifying the agent's identity.
+connection.authenticating: "Kasutaja autentimine agendi juures..."
+# Reading the coordinator's registry snapshot, including existing history; not fetching history from the AI agent.
+connection.syncing_sessions: "Seansiloendi lugemine..."
+# Creating the AI agent session, including local registration; internal agent progress is unknown.
+connection.creating_session: "Agendiseansi loomine..."
+# Applying the requested AI model before the connection is ready. Preserve %{model}.
+connection.selecting_model: "Seansimudeli määramine: %{model}..."  # {Locked="%{model}"}
+# Activity row while connecting to restore a conversation. Keep the actual stage first so narrow panes show it; session_id is shortened to eight characters.
+connection.resuming_stage: "%{stage} (%{session_id} jätkamine)"  # {Locked="%{stage}","%{session_id}"}
 connection.connecting_activity: "Agendiga ühenduse loomine…"
 connection.lost: "Ühendus agendiga katkes. Uuesti ühendamiseks tippige /restart."  # {Locked="/restart"}
 
@@ -239,4 +257,6 @@ config_picker.title: "Seansi konfigureerimine (↑ ↓ • Enter • Esc)"
 system.no_config_options: "Ühendatud agent ei teavitanud ühestki konfigureeritavast seansisuvandist."
 # {option} is an Agent-provided option name; {error} is the ACP error.
 system.config_update_failed: "Valiku %{option} värskendamine nurjus: %{error}"
+system.yolo_disable_pending: "AI-agendi pakkuja pole kinnitanud, et seanss on nõutud privilegeerimata olekus"  # Shown after the localized failure prefix while prompts remain blocked until the AI agent provider confirms that its privileged session mode is off. Provider means an AI agent provider, not a network provider.
+system.provider_command_blocked_by_policy: "%{command}: Yolo-režiim on teie asutuse poliitikaga keelatud."  # {Locked="Yolo","%{command}"} Shown when AllowYoloMode blocks a provider-advertised privileged command.
 system.model_unknown: "Tundmatu mudel %{model} — tippige /model saadaolevate mudelite loendi nägemiseks."  # {Locked="%{model}","/model"}

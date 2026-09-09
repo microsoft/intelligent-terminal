@@ -2171,12 +2171,16 @@ namespace winrt::Microsoft::Terminal::Control::implementation
 
         const auto point = args.GetCurrentPoint(*this);
         auto delta = point.Properties().MouseWheelDelta();
-        auto result = _interactivity.MouseWheel(ControlKeyStates{ args.KeyModifiers() },
-                                                point.Properties().IsHorizontalMouseWheel() ?
-                                                    Core::Point{ delta, 0 } :
-                                                    Core::Point{ 0, delta },
-                                                _toTerminalOrigin(point.Position()),
-                                                TermControl::GetPressedMouseButtons(point));
+        const auto modifiers = ControlKeyStates{ args.KeyModifiers() };
+        const auto wheelDelta = point.Properties().IsHorizontalMouseWheel() ?
+                                    Core::Point{ delta, 0 } :
+                                    Core::Point{ 0, delta };
+        const auto interactivity = winrt::get_self<implementation::ControlInteractivity>(_interactivity);
+        const auto result = interactivity->MouseWheel(modifiers,
+                                                      wheelDelta,
+                                                      _toTerminalOrigin(point.Position()),
+                                                      TermControl::GetPressedMouseButtons(point),
+                                                      _agentMouseWheelZoomEnabled);
         if (result)
         {
             args.Handled(true);
@@ -2206,7 +2210,8 @@ namespace winrt::Microsoft::Terminal::Control::implementation
         WI_SetFlagIf(state, Control::MouseButtonState::IsMiddleButtonDown, midButtonDown);
         WI_SetFlagIf(state, Control::MouseButtonState::IsRightButtonDown, rightButtonDown);
 
-        return _interactivity.MouseWheel(modifiers, delta, _toTerminalOrigin(location), state);
+        const auto interactivity = winrt::get_self<implementation::ControlInteractivity>(_interactivity);
+        return interactivity->MouseWheel(modifiers, delta, _toTerminalOrigin(location), state, _agentMouseWheelZoomEnabled);
     }
 
     // Method Description:
@@ -2740,6 +2745,11 @@ namespace winrt::Microsoft::Terminal::Control::implementation
     int TermControl::ViewHeight() const
     {
         return _core.ViewHeight();
+    }
+
+    int TermControl::ViewWidth() const
+    {
+        return _core.ViewWidth();
     }
 
     int TermControl::BufferHeight() const
@@ -3823,9 +3833,17 @@ namespace winrt::Microsoft::Terminal::Control::implementation
     {
         return _core.ReadEntireBuffer();
     }
+    hstring TermControl::ReadBufferTail(const int32_t maxLogicalLines, const int32_t maxCharacters) const
+    {
+        return _core.ReadBufferTail(maxLogicalLines, maxCharacters);
+    }
     hstring TermControl::ReadLastPrompt() const
     {
         return _core.ReadLastPrompt();
+    }
+    hstring TermControl::ReadLastPromptBounded(const int32_t maxLogicalLines, const int32_t maxCharacters) const
+    {
+        return _core.ReadLastPromptBounded(maxLogicalLines, maxCharacters);
     }
     Control::CommandHistoryContext TermControl::CommandHistory() const
     {

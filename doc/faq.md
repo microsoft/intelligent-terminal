@@ -19,18 +19,18 @@ The package manifest sets `MinVersion="10.0.19041.0"` (Windows 10, version 2004)
 
 ## 3. I installed a new agent CLI after the FRE — why isn't it tracked in agent session management?
 
-You completed the FRE with one agent (say, Copilot), then later installed Claude or Codex (or another bring-your-own ACP-compatible CLI) and switched the **agent pane** to it in Settings. The agent pane may not work, or **agent session management** doesn't track its sessions.
+You completed the FRE with one agent (say, Copilot), then later installed Claude or Codex and switched the **agent pane** to it in Settings.
 
-The FRE only sets up the session-tracking hooks for the agents you went through it with. Agents installed *after* the FRE need a one-time manual setup. (The ACP wrapper itself is auto-fetched on demand via `npx`, so there is no wrapper "install" to run — see [Step 3.2.3](./installing-dependencies.md#step-323--acp-wrapper-no-install-action-required) / [Step 3.3.3](./installing-dependencies.md#step-333--acp-wrapper-no-install-action-required) — but you do need to make sure the prerequisites the wrapper depends on are in place.)
+The FRE installs session-tracking hooks only for the agent selected there. With **Session management** enabled, Intelligent Terminal automatically installs or updates hooks for newly detected built-in agents when `wta-master` starts and when you select a different built-in agent.
 
-**Workaround:**
+If the new agent is not tracked:
 
 1. **Make sure the prerequisites are in place.** Follow the steps in [`installing-dependencies.md`](./installing-dependencies.md) that match your agent — install Node.js LTS and the agent's own CLI (via `npm install -g <package>`):
    - Claude: [Steps 3.2.1 – 3.2.3](./installing-dependencies.md#32-claude-code-bring-your-own) — Intelligent Terminal launches Claude through an ACP wrapper that is fetched automatically via `npx` on first launch.
    - Codex: [Steps 3.3.1 – 3.3.3](./installing-dependencies.md#33-openai-codex-bring-your-own) — same wrapper-via-`npx` pattern as Claude.
    - Gemini: [Section 3.4](./installing-dependencies.md#34-gemini-cli-bring-your-own) — Gemini speaks ACP natively, so no wrapper is needed; just install the CLI itself.
 
-2. **Re-install the session-tracking hooks.** Open Intelligent Terminal **Settings → Agent**, scroll to the **Agent session tracking (hooks)** row ("Track sessions across agents. Required for agent session management."), expand it, and click the **Install hooks** button next to *Install agent hook script*. This wires the newly installed CLI into agent session management so its sessions show up in the panel.
+2. Open a fresh Intelligent Terminal window so the new CLI is on `PATH`, confirm **Settings → Agent → Sessions** is on, and select the new built-in agent. Automatic reconciliation runs in the background. For manual repair, run `wta hooks install --cli <agent>`.
 
 ## 4. Can I use a custom ACP-compatible agent (Qwen, Cline, Goose, Cursor, …)?
 

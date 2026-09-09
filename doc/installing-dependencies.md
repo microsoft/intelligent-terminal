@@ -337,15 +337,18 @@ up the new credentials.
 parallel conversations on the same tab — is powered by a small bundle of
 **agent hooks** (`wt-agent-hooks`) that the agent CLI loads as a plugin /
 extension. The first-run experience installs these hooks for you the
-first time you save the FRE with **Session management** enabled.
+first time you save the FRE with **Session management** enabled. FRE installs
+only the selected agent's hooks. After FRE, Intelligent Terminal automatically
+reconciles hooks at `wta-master` startup, when Session management changes from
+off to on, and when you select a different built-in agent.
 
 You only need to follow this section if:
 
 - The FRE reported that hooks installation failed (for example because
   the agent CLI was not yet on `PATH`, or your network blocked the agent
   CLI's plugin store).
-- You installed the agent CLI **after** completing the FRE and now want
-  to enable session management.
+- Automatic reconciliation failed and you need to repair the installation
+  manually.
 
 #### Step 3.6.1 — Make sure the agent CLI is installed and on PATH
 
@@ -362,13 +365,17 @@ sub-section above before continuing:
 Verify the CLI you intend to use prints a version number, then close and
 reopen your terminal so any new install directory is on `PATH`.
 
-#### Step 3.6.2 — Run `wta hooks install`
+#### Step 3.6.2 — Let Intelligent Terminal reconcile hooks
 
-Intelligent Terminal ships a `wta hooks install` command that runs the
-same installer the FRE uses. Open a **new** Intelligent Terminal window
-(so `wta` and the agent CLI both pick up the current `PATH`) and run
-**one** of the following — whichever matches the agent you selected in
-the FRE:
+Open a **new** Intelligent Terminal window so `wta-master` and the agent CLI
+pick up the current `PATH`. In **Settings → AI Agents**, turn **Sessions** on
+and select the installed built-in agent. Intelligent Terminal
+checks the agent asynchronously and installs missing hooks or upgrades stale
+ones.
+
+If automatic reconciliation fails, `wta hooks install` remains the supported
+manual retry command. It applies the same smart reconciliation used by
+automatic triggers:
 
 ```powershell
 wta hooks install --cli copilot
@@ -384,8 +391,8 @@ Or install for every agent CLI that is currently on `PATH` in one go:
 wta hooks install
 ```
 
-Under the hood this runs each agent CLI's native plugin / extension
-command against the `wt-agent-hooks` bundle shipped inside the
+When reconciliation selects Install, it runs the agent CLI's native plugin /
+extension command against the `wt-agent-hooks` bundle shipped inside the
 Intelligent Terminal package:
 
 | Agent          | Native commands invoked by `wta hooks install`                                                                              |
@@ -406,6 +413,17 @@ You do not need to run these directly — `wta hooks install` is the
 supported entry point and handles bundle staging, idempotency, and
 diagnostic logging for you.
 
+If status looks healthy but the hooks still do not run, use the explicit
+force-recovery path:
+
+```powershell
+wta hooks install --force --cli codex
+```
+
+`--force` reruns the first-install flow even when the hook bridge already
+appears installed. Close running sessions for that agent first so its plugin
+manager cannot overwrite the registration while it is being repaired.
+
 > [!IMPORTANT]
 > **Codex needs a one-time `/hooks` trust step.** After
 > `wta hooks install --cli codex` succeeds, hook events will not fire
@@ -414,7 +432,7 @@ diagnostic logging for you.
 > requirement that no external installer can satisfy on your behalf;
 > the other four CLIs do not need this step.
 
-#### Step 3.6.3 — Verify the install and re-enable session management
+#### Step 3.6.3 — Verify the install
 
 Check the status report to confirm each agent CLI is wired up:
 
@@ -427,10 +445,7 @@ installed hook version (for example `v0.1.5`). When a CLI's hooks were
 registered by a different build, the row also names the version this
 Intelligent Terminal ships — `v0.1.4 (bundle v0.1.5)` means the CLI is
 loading older hooks and should be reinstalled with `wta hooks install`.
-Then, back in
-**Settings → AI Agents**, turn **Session management** back on (the FRE
-turns it off when hooks installation fails so you can save and continue
-without it) and restart Intelligent Terminal once.
+If Session management is off, turn it on to retry automatic reconciliation.
 
 > [!TIP]
 > If `wta hooks install` still fails, diagnostics are written to
@@ -451,9 +466,9 @@ without it) and restart Intelligent Terminal once.
 > [!WARNING]
 > If your organization disables agent session hooks through Group
 > Policy, the **Session management** toggle in the FRE and in
-> **Settings → AI Agents** is locked off and the FRE will not run the
-> hooks installer for you. Contact your IT administrator if you
-> believe this is in error.
+> **Settings → AI Agents** is locked off and neither FRE nor automatic
+> reconciliation will run the hooks installer. Contact your IT administrator
+> if you believe this is in error.
 
 ---
 
