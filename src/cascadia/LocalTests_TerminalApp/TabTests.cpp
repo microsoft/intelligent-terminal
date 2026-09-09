@@ -421,6 +421,7 @@ namespace TerminalAppLocalTests
         written.view = Restore::ChatView;
         written.agentIdentity = L"wsl:Ubuntu-22.04:claude";
         written.customCommand = LR"(C:\tools\my agent\agent.exe --acp --note "hi" --trailing C:\dir\)";
+        written.yoloControlOwner = L"manual";
 
         const auto commandline = Restore::BuildPaneCommandline(LR"(C:\Program Files\wta.exe)", written);
 
@@ -440,6 +441,7 @@ namespace TerminalAppLocalTests
         VERIFY_ARE_EQUAL(written.view, read.view);
         VERIFY_ARE_EQUAL(written.agentIdentity, read.agentIdentity);
         VERIFY_ARE_EQUAL(written.customCommand, read.customCommand);
+        VERIFY_ARE_EQUAL(written.yoloControlOwner, read.yoloControlOwner);
 
         // Empty fields are simply absent rather than round-tripping as `""`.
         Restore::Fields sparse;
@@ -447,6 +449,7 @@ namespace TerminalAppLocalTests
         const auto sparseCmd = Restore::BuildPaneCommandline(L"wta.exe", sparse);
         VERIFY_IS_TRUE(sparseCmd.find(Restore::ViewFlag) == std::wstring::npos);
         VERIFY_IS_TRUE(sparseCmd.find(Restore::CustomCommandFlag) == std::wstring::npos);
+        VERIFY_IS_TRUE(sparseCmd.find(Restore::YoloControlOwnerFlag) == std::wstring::npos);
     }
 
     void TabTests::PersistedLayoutAgentSessionsReceiveRestorePaths()
@@ -2874,6 +2877,11 @@ namespace TerminalAppLocalTests
             VERIFY_IS_TRUE(protocolEvents[1]["params"]["pane_open"].asBool());
             VERIFY_IS_TRUE(impl->TransferSourceTabId().empty());
 
+            impl->SetAgentSessionId(L"old-session");
+            impl->SetYoloControlOwner(L"manual");
+            impl->SetAgentSessionId(L"new-session");
+            VERIFY_IS_TRUE(impl->YoloControlOwner().empty());
+
             sendStatus(focusedTab->StableId(), "model-b");
 
             VERIFY_IS_TRUE(impl->GetAgentModel() == L"model-b");
@@ -2916,12 +2924,19 @@ namespace TerminalAppLocalTests
             stale["type"] = "event";
             stale["method"] = "agent_state_changed";
             stale["params"]["tab_id"] = winrt::to_string(focusedTab->StableId());
+            stale["params"]["agent_session_id"] = "agent-session-1";
+            stale["params"]["yolo_control_owner"] = "manual";
             stale["params"]["view"] = "chat";
             stale["params"]["pane_open"] = false;
             Json::StreamWriterBuilder writerBuilder;
             writerBuilder["indentation"] = "";
             page->OnAgentStateChanged(winrt::to_hstring(Json::writeString(writerBuilder, stale)));
             VERIFY_IS_FALSE(focusedTab->HasStashedAgentPane());
+            const auto agentContent = focusedTab->FindAgentPaneContent();
+            VERIFY_IS_NOT_NULL(agentContent);
+            const auto agentImpl = winrt::get_self<winrt::TerminalApp::implementation::AgentPaneContent>(agentContent);
+            VERIFY_IS_TRUE(agentImpl->AgentSessionId() == L"agent-session-1");
+            VERIFY_IS_TRUE(agentImpl->YoloControlOwner() == L"manual");
 
             Json::Value ready{ Json::objectValue };
             ready["type"] = "event";
@@ -3013,6 +3028,8 @@ namespace TerminalAppLocalTests
 
         VERIFY_ARE_EQUAL("tab-a", payload["tab_id"].asString());
         VERIFY_ARE_EQUAL("42", payload["window_id"].asString());
+        VERIFY_IS_TRUE(payload["automatic_yolo_target"].isBool());
+        VERIFY_IS_FALSE(payload["automatic_yolo_target"].asBool());
         VERIFY_IS_TRUE(payload["yolo_enabled"].isBool());
         VERIFY_IS_FALSE(payload["yolo_enabled"].asBool());
         VERIFY_IS_TRUE(payload["yolo_policy_blocked"].isBool());

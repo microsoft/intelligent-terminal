@@ -1136,6 +1136,7 @@ pub struct App {
     /// `--yolo-mode`. Helper-owned policy is shared with the ACP client and
     /// the global default is hot-updatable.
     yolo_state: crate::app_contracts::SharedYoloState,
+    initial_yolo_control_owner: Option<InitialYoloControlOwner>,
     next_yolo_reconcile_id: u64,
     pending_yolo_reconciles: HashMap<u64, (HashSet<String>, bool)>,
     pending_yolo_session_tabs: HashSet<String>,
@@ -1320,6 +1321,12 @@ pub struct App {
     pub alive_loaded: std::sync::Arc<std::sync::atomic::AtomicBool>,
     pub proposal_channels:
         Arc<crate::agent_tools::action_proposal::channel::ProposalChannelManager>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct InitialYoloControlOwner {
+    session_id: String,
+    owner: crate::app_contracts::YoloControlOwner,
 }
 
 /// How long the close-pane arm (localized via `system.close_pane_hint`) stays live. Long
@@ -1524,6 +1531,7 @@ impl App {
             ),
             shell_mgr,
             yolo_state,
+            initial_yolo_control_owner: None,
         }
     }
 
@@ -1889,6 +1897,21 @@ impl App {
         self.delegate_base_agent_cmd = base_agent_cmd;
         self.acp_model = acp_model.filter(|s| !s.trim().is_empty());
         self.follows_global_acp_model = follows_global_acp_model;
+    }
+
+    pub fn set_initial_yolo_control_owner(
+        &mut self,
+        session_id: Option<&str>,
+        owner: Option<crate::app_contracts::YoloControlOwner>,
+    ) {
+        self.initial_yolo_control_owner = session_id
+            .map(str::trim)
+            .filter(|session_id| !session_id.is_empty())
+            .zip(owner)
+            .map(|(session_id, owner)| InitialYoloControlOwner {
+                session_id: session_id.to_string(),
+                owner,
+            });
     }
 
     pub fn set_host_catalog_ready(&mut self, ready: bool) {
@@ -3643,6 +3666,7 @@ impl App {
         self.custom_model_selection
             .clone_from(&request.custom_model_selection);
         self.pending_session_load = None;
+        self.initial_yolo_control_owner = None;
         self.reset_agent_scoped_state();
     }
 
@@ -3721,25 +3745,50 @@ impl App {
         self.publish_agent_status();
     }
 
-    fn pending_session_load_for_reconnect(&self) -> Option<(LoadSessionForTab, Option<bool>)> {
+    fn pending_session_load_for_reconnect(
+        &self,
+    ) -> Option<(
+        LoadSessionForTab,
+        Option<bool>,
+        crate::app_contracts::YoloControlOwner,
+    )> {
         let pending = self.pending_session_load.as_ref()?;
         let tab = self.tab_sessions.get(&pending.tab_id)?;
         (tab.loading_session
             && tab.loading_target_session_id.as_deref() == Some(pending.session_id.as_str()))
-        .then(|| (pending.clone(), tab.meaningful_conversation_before_load))
+        .then(|| {
+            let owner = self
+                .yolo_state
+                .lock()
+                .unwrap()
+                .owner(&pending.session_id)
+                .unwrap_or(crate::app_contracts::YoloControlOwner::ProviderRestored);
+            (
+                pending.clone(),
+                tab.meaningful_conversation_before_load,
+                owner,
+            )
+        })
     }
 
     fn restore_pending_session_load(
         &mut self,
         pending: LoadSessionForTab,
         prior_meaningful: Option<bool>,
+        owner: crate::app_contracts::YoloControlOwner,
     ) {
         self.pending_session_load = Some(pending.clone());
-        let tab = self.tab_mut(&pending.tab_id);
-        tab.loading_session = true;
-        tab.loading_target_session_id = Some(pending.session_id);
-        tab.has_meaningful_conversation = true;
-        tab.meaningful_conversation_before_load = prior_meaningful;
+        {
+            let tab = self.tab_mut(&pending.tab_id);
+            tab.loading_session = true;
+            tab.loading_target_session_id = Some(pending.session_id.clone());
+            tab.has_meaningful_conversation = true;
+            tab.meaningful_conversation_before_load = prior_meaningful;
+        }
+        self.yolo_state
+            .lock()
+            .unwrap()
+            .mark_owner(pending.session_id, owner);
     }
 
     fn begin_pending_agent_reconnect_preflight(&mut self) -> Option<AgentReconnectRequest> {
@@ -3751,6 +3800,7 @@ impl App {
             }
         };
         self.pending_session_load = None;
+        self.initial_yolo_control_owner = None;
         self.reset_agent_scoped_state();
         self.agent_reconnect_state = AgentReconnectState::Preflighting(latest.clone());
         if let Some(tx) = self.event_tx.clone() {
@@ -4532,6 +4582,7 @@ impl App {
             AppEvent::UsageCleared { .. } => "usage_cleared",
             AppEvent::ModelConfigUpdated { .. } => "model_config_updated",
             AppEvent::RuntimeYoloReconcileCompleted { .. } => "runtime_yolo_reconcile_completed",
+            AppEvent::YoloControlOwnerChanged { .. } => "yolo_control_owner_changed",
             AppEvent::ModelSetCompleted { .. } => "model_set_completed",
             AppEvent::ModelSetFailed { .. } => "model_set_failed",
             AppEvent::SessionConfigUpdated { .. } => "session_config_updated",
@@ -5818,41 +5869,53 @@ impl App {
 
     pub(crate) fn apply_runtime_yolo_config(
         &mut self,
-        global_default: Option<bool>,
+        automatic_target: Option<bool>,
         policy_blocked: Option<bool>,
     ) {
-        if global_default.is_none() && policy_blocked.is_none() {
+        if automatic_target.is_none() && policy_blocked.is_none() {
             return;
         }
 
-        let (current_global, current_blocked) = {
+        let (current_target, current_blocked) = {
             let state = self.yolo_state.lock().unwrap();
-            (state.global_default(), state.policy_blocked())
+            (state.automatic_target(), state.policy_blocked())
         };
-        let global_default = global_default.unwrap_or(current_global);
+        let automatic_target = automatic_target.unwrap_or(current_target);
         let policy_blocked = policy_blocked.unwrap_or(current_blocked);
-        if global_default == current_global && policy_blocked == current_blocked {
+        if automatic_target == current_target && policy_blocked == current_blocked {
             return;
         }
 
         {
             let mut state = self.yolo_state.lock().unwrap();
-            state.update_runtime(global_default, policy_blocked);
+            state.update_runtime(automatic_target, policy_blocked);
         }
 
-        let sessions = {
-            let state = self.yolo_state.lock().unwrap();
-            self.session_to_tab
+        let (sessions, affected_tabs) = {
+            let mut state = self.yolo_state.lock().unwrap();
+            let mut affected_tabs = HashSet::new();
+            let sessions = self
+                .session_to_tab
                 .iter()
                 .filter(|(_, tab_id)| !self.pending_yolo_session_tabs.contains(*tab_id))
-                .map(|(session_id, _)| {
-                    (
+                .filter_map(|(session_id, tab_id)| {
+                    let enabled = state.automatic_directive(session_id).target()?;
+                    state.mark_automatic_if_unowned_or_automatic(session_id.clone());
+                    affected_tabs.insert(tab_id.clone());
+                    Some((
                         agent_client_protocol::schema::v1::SessionId::new(session_id.clone()),
-                        state.effective(session_id),
-                    )
+                        enabled,
+                    ))
                 })
-                .collect::<Vec<_>>()
+                .collect::<Vec<_>>();
+            (sessions, affected_tabs)
         };
+        if sessions.is_empty() {
+            return;
+        }
+        for tab_id in affected_tabs {
+            self.project_tab_state(&tab_id);
+        }
         let fail_closed = policy_blocked || sessions.iter().any(|(_, enabled)| !enabled);
         let reconcile_id = self.begin_yolo_reconcile(&sessions, fail_closed);
         let sent = self.master_request_tx.send(
@@ -5872,7 +5935,14 @@ impl App {
     }
 
     fn reconcile_session_yolo(&mut self, session_id: &str) {
-        let enabled = self.yolo_state.lock().unwrap().effective(session_id);
+        let enabled = {
+            let mut state = self.yolo_state.lock().unwrap();
+            let Some(enabled) = state.automatic_directive(session_id).target() else {
+                return;
+            };
+            state.mark_automatic_if_unowned_or_automatic(session_id);
+            enabled
+        };
         let fail_closed = !enabled;
         let sessions = vec![(
             agent_client_protocol::schema::v1::SessionId::new(session_id.to_string()),
@@ -5971,6 +6041,7 @@ impl App {
             self.project_tab_state(&tab_id);
         }
         self.yolo_state.lock().unwrap().clear_sessions();
+        self.initial_yolo_control_owner = None;
         self.pending_yolo_reconciles.clear();
         self.pending_yolo_session_tabs.clear();
         if self

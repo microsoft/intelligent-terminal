@@ -57,6 +57,12 @@ enum MockBehavior {
     StreamTwoChunks,
     /// Keep the prompt request in flight briefly so cancellation can race it.
     DelayedReply,
+    /// Reject the prompt before accepting the provider command.
+    RejectPrompt,
+    /// Return a provider-level refusal without accepting the command.
+    RefusePrompt,
+    /// Return a cancelled turn without accepting the command.
+    CancelPrompt,
 }
 
 /// Deterministic ACP agent. Implements only what the scenarios need; the rest
@@ -309,6 +315,19 @@ impl MockAgent {
     ) -> acp::Result<acp::schema::v1::PromptResponse> {
         let text = first_text(&args.prompt);
         self.seen_prompts.lock().unwrap().push(text.clone());
+        if matches!(self.behavior, MockBehavior::RejectPrompt) {
+            return Err(acp::Error::internal_error().data("mock prompt rejection"));
+        }
+        if matches!(self.behavior, MockBehavior::RefusePrompt) {
+            return Ok(acp::schema::v1::PromptResponse::new(
+                acp::schema::v1::StopReason::Refusal,
+            ));
+        }
+        if matches!(self.behavior, MockBehavior::CancelPrompt) {
+            return Ok(acp::schema::v1::PromptResponse::new(
+                acp::schema::v1::StopReason::Cancelled,
+            ));
+        }
         let images: Vec<(String, String)> = args
             .prompt
             .iter()
@@ -461,6 +480,11 @@ impl MockAgent {
                 }
                 MockBehavior::DelayedReply => {
                     tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+                }
+                MockBehavior::RejectPrompt
+                | MockBehavior::RefusePrompt
+                | MockBehavior::CancelPrompt => {
+                    unreachable!("prompt rejection returns above")
                 }
             }
         }
@@ -1358,6 +1382,15 @@ async fn manual_native_enable_with_global_off_allows_prompt_after_ack() {
             })
             .await
             .expect("manual Copilot enable must acknowledge before prompt dispatch");
+            assert_eq!(
+                h.client
+                    .state
+                    .yolo_state
+                    .lock()
+                    .unwrap()
+                    .automatic_directive(session_id.0.as_ref()),
+                crate::app_contracts::AutomaticYoloDirective::NoOpinion
+            );
 
             dispatch_prompt(
                 test_prompt(1, "manual enable may reach Copilot", false),
@@ -2320,6 +2353,425 @@ async fn dispatch_agent_command_reaches_agent_verbatim() {
                 h.seen_prompts.lock().unwrap().as_slice(),
                 ["/usage"],
                 "Agent commands must bypass terminal templates and runtime context"
+            );
+        })
+        .await;
+}
+
+#[tokio::test]
+async fn policy_allow_forwards_privileged_agent_command_to_provider() {
+    let local = tokio::task::LocalSet::new();
+    local
+        .run_until(async {
+            let mut h = connect_for_dispatch(MockBehavior::Reply);
+            h.conn
+                .initialize(acp::schema::v1::InitializeRequest::new(
+                    acp::schema::ProtocolVersion::LATEST,
+                ))
+                .await
+                .expect("initialize failed");
+            h.client
+                .state
+                .native_yolo
+                .set_resolved_agent_id(Some(crate::agent_registry::COPILOT_AGENT_ID));
+            h.client
+                .state
+                .yolo_state
+                .lock()
+                .unwrap()
+                .update_runtime(false, false);
+
+            let (tab_to_session, in_flight, memo) = fresh_dispatch_state();
+            let mut prompt = test_prompt(1, "/allow_all", false);
+            prompt.agent_command = true;
+
+            dispatch_prompt(
+                prompt,
+                &h.conn,
+                &tab_to_session,
+                &memo,
+                &in_flight,
+                &h.event_tx,
+                &h.shell_mgr,
+                &h.prompt_timing,
+                &h.client,
+                &PromptUsageIdentity::default(),
+                false,
+                false,
+                true,
+                &h.proposal_channels,
+            );
+
+            let mut saw_chunk = false;
+            let mut owner_session_id = None;
+            tokio::time::timeout(std::time::Duration::from_secs(5), async {
+                loop {
+                    match h.event_rx.recv().await {
+                        Some(AppEvent::AgentMessageChunk { .. }) => saw_chunk = true,
+                        Some(AppEvent::YoloControlOwnerChanged { session_id }) => {
+                            owner_session_id = Some(session_id)
+                        }
+                        Some(_) => {}
+                        None => panic!("event channel closed before command completion"),
+                    }
+                    if saw_chunk && owner_session_id.is_some() {
+                        break;
+                    }
+                }
+            })
+            .await
+            .expect("timed out waiting for command completion and owner update");
+            assert_eq!(
+                h.seen_prompts.lock().unwrap().as_slice(),
+                ["/allow_all"],
+                "policy-allowed privileged commands must reach the provider unchanged"
+            );
+            let session_id = owner_session_id.expect("manual owner event");
+            assert_eq!(
+                h.client
+                    .state
+                    .yolo_state
+                    .lock()
+                    .unwrap()
+                    .automatic_directive(&session_id),
+                crate::app_contracts::AutomaticYoloDirective::NoOpinion
+            );
+        })
+        .await;
+}
+
+#[tokio::test]
+async fn rejected_privileged_agent_command_keeps_automatic_owner() {
+    let local = tokio::task::LocalSet::new();
+    local
+        .run_until(async {
+            let mut h = connect_for_dispatch(MockBehavior::RejectPrompt);
+            h.client
+                .state
+                .native_yolo
+                .set_resolved_agent_id(Some(crate::agent_registry::COPILOT_AGENT_ID));
+            h.client
+                .state
+                .yolo_state
+                .lock()
+                .unwrap()
+                .update_runtime(true, false);
+            h.conn
+                .initialize(acp::schema::v1::InitializeRequest::new(
+                    acp::schema::ProtocolVersion::LATEST,
+                ))
+                .await
+                .expect("initialize failed");
+            let session_id =
+                record_copilot_yolo_state(&h, "rejected-privileged-command-session", "on");
+            h.client
+                .state
+                .yolo_state
+                .lock()
+                .unwrap()
+                .mark_automatic(session_id.to_string());
+            let (tab_to_session, in_flight, memo) = fresh_dispatch_state();
+            tab_to_session
+                .lock()
+                .await
+                .insert("0".to_string(), session_id.clone());
+            let mut prompt = test_prompt(1, "/allow_all", false);
+            prompt.agent_command = true;
+
+            dispatch_prompt(
+                prompt,
+                &h.conn,
+                &tab_to_session,
+                &memo,
+                &in_flight,
+                &h.event_tx,
+                &h.shell_mgr,
+                &h.prompt_timing,
+                &h.client,
+                &PromptUsageIdentity::default(),
+                false,
+                false,
+                true,
+                &h.proposal_channels,
+            );
+
+            let error = tokio::time::timeout(std::time::Duration::from_secs(5), async {
+                loop {
+                    match h.event_rx.recv().await {
+                        Some(AppEvent::AgentError { message, .. }) => break message,
+                        Some(_) => continue,
+                        None => panic!("event channel closed before prompt rejection"),
+                    }
+                }
+            })
+            .await
+            .expect("timed out waiting for prompt rejection");
+            assert!(error.contains("mock prompt rejection"));
+            assert_eq!(
+                h.client
+                    .state
+                    .yolo_state
+                    .lock()
+                    .unwrap()
+                    .automatic_directive(session_id.0.as_ref()),
+                crate::app_contracts::AutomaticYoloDirective::Enable
+            );
+        })
+        .await;
+}
+
+#[tokio::test]
+async fn refused_privileged_agent_command_keeps_automatic_owner() {
+    let local = tokio::task::LocalSet::new();
+    local
+        .run_until(async {
+            let mut h = connect_for_dispatch(MockBehavior::RefusePrompt);
+            h.client
+                .state
+                .native_yolo
+                .set_resolved_agent_id(Some(crate::agent_registry::COPILOT_AGENT_ID));
+            h.client
+                .state
+                .yolo_state
+                .lock()
+                .unwrap()
+                .update_runtime(true, false);
+            h.conn
+                .initialize(acp::schema::v1::InitializeRequest::new(
+                    acp::schema::ProtocolVersion::LATEST,
+                ))
+                .await
+                .expect("initialize failed");
+            let session_id =
+                record_copilot_yolo_state(&h, "refused-privileged-command-session", "on");
+            h.client
+                .state
+                .yolo_state
+                .lock()
+                .unwrap()
+                .mark_automatic(session_id.to_string());
+            let (tab_to_session, in_flight, memo) = fresh_dispatch_state();
+            tab_to_session
+                .lock()
+                .await
+                .insert("0".to_string(), session_id.clone());
+            let mut prompt = test_prompt(1, "/allow_all", false);
+            prompt.agent_command = true;
+
+            dispatch_prompt(
+                prompt,
+                &h.conn,
+                &tab_to_session,
+                &memo,
+                &in_flight,
+                &h.event_tx,
+                &h.shell_mgr,
+                &h.prompt_timing,
+                &h.client,
+                &PromptUsageIdentity::default(),
+                false,
+                false,
+                true,
+                &h.proposal_channels,
+            );
+
+            tokio::time::timeout(std::time::Duration::from_secs(5), async {
+                loop {
+                    match h.event_rx.recv().await {
+                        Some(AppEvent::AgentSoftStop { reason, .. })
+                            if reason
+                                == crate::protocol::acp::soft_stop::SoftStopReason::Refusal =>
+                        {
+                            break;
+                        }
+                        Some(_) => continue,
+                        None => panic!("event channel closed before refusal"),
+                    }
+                }
+            })
+            .await
+            .expect("timed out waiting for refusal");
+            assert_eq!(
+                h.client
+                    .state
+                    .yolo_state
+                    .lock()
+                    .unwrap()
+                    .automatic_directive(session_id.0.as_ref()),
+                crate::app_contracts::AutomaticYoloDirective::Enable
+            );
+        })
+        .await;
+}
+
+#[tokio::test]
+async fn cancelled_privileged_agent_command_keeps_automatic_owner() {
+    let local = tokio::task::LocalSet::new();
+    local
+        .run_until(async {
+            let mut h = connect_for_dispatch(MockBehavior::CancelPrompt);
+            h.client
+                .state
+                .native_yolo
+                .set_resolved_agent_id(Some(crate::agent_registry::COPILOT_AGENT_ID));
+            h.client
+                .state
+                .yolo_state
+                .lock()
+                .unwrap()
+                .update_runtime(true, false);
+            h.conn
+                .initialize(acp::schema::v1::InitializeRequest::new(
+                    acp::schema::ProtocolVersion::LATEST,
+                ))
+                .await
+                .expect("initialize failed");
+            let session_id =
+                record_copilot_yolo_state(&h, "cancelled-privileged-command-session", "on");
+            h.client
+                .state
+                .yolo_state
+                .lock()
+                .unwrap()
+                .mark_automatic(session_id.to_string());
+            let (tab_to_session, in_flight, memo) = fresh_dispatch_state();
+            tab_to_session
+                .lock()
+                .await
+                .insert("0".to_string(), session_id.clone());
+            let mut prompt = test_prompt(1, "/allow_all", false);
+            prompt.agent_command = true;
+
+            dispatch_prompt(
+                prompt,
+                &h.conn,
+                &tab_to_session,
+                &memo,
+                &in_flight,
+                &h.event_tx,
+                &h.shell_mgr,
+                &h.prompt_timing,
+                &h.client,
+                &PromptUsageIdentity::default(),
+                false,
+                false,
+                true,
+                &h.proposal_channels,
+            );
+
+            tokio::time::timeout(std::time::Duration::from_secs(5), async {
+                loop {
+                    match h.event_rx.recv().await {
+                        Some(AppEvent::YoloControlOwnerChanged { .. }) => {
+                            panic!("a cancelled provider command must not claim manual ownership")
+                        }
+                        Some(AppEvent::AgentMessageEnd { .. }) => break,
+                        Some(_) => continue,
+                        None => panic!("event channel closed before cancellation completed"),
+                    }
+                }
+            })
+            .await
+            .expect("timed out waiting for cancellation completion");
+            assert_eq!(
+                h.client
+                    .state
+                    .yolo_state
+                    .lock()
+                    .unwrap()
+                    .automatic_directive(session_id.0.as_ref()),
+                crate::app_contracts::AutomaticYoloDirective::Enable
+            );
+        })
+        .await;
+}
+
+#[tokio::test]
+async fn stale_privileged_command_completion_cannot_claim_reused_session_id() {
+    let local = tokio::task::LocalSet::new();
+    local
+        .run_until(async {
+            let mut h = connect_for_dispatch(MockBehavior::DelayedReply);
+            h.client
+                .state
+                .native_yolo
+                .set_resolved_agent_id(Some(crate::agent_registry::COPILOT_AGENT_ID));
+            h.client
+                .state
+                .yolo_state
+                .lock()
+                .unwrap()
+                .update_runtime(true, false);
+            h.conn
+                .initialize(acp::schema::v1::InitializeRequest::new(
+                    acp::schema::ProtocolVersion::LATEST,
+                ))
+                .await
+                .expect("initialize failed");
+            let session_id =
+                record_copilot_yolo_state(&h, "reused-privileged-command-session", "on");
+            h.client
+                .state
+                .yolo_state
+                .lock()
+                .unwrap()
+                .mark_automatic(session_id.to_string());
+            let (tab_to_session, in_flight, memo) = fresh_dispatch_state();
+            tab_to_session
+                .lock()
+                .await
+                .insert("0".to_string(), session_id.clone());
+            let mut prompt = test_prompt(1, "/allow_all", false);
+            prompt.agent_command = true;
+
+            dispatch_prompt(
+                prompt,
+                &h.conn,
+                &tab_to_session,
+                &memo,
+                &in_flight,
+                &h.event_tx,
+                &h.shell_mgr,
+                &h.prompt_timing,
+                &h.client,
+                &PromptUsageIdentity::default(),
+                false,
+                false,
+                true,
+                &h.proposal_channels,
+            );
+
+            tokio::time::timeout(std::time::Duration::from_secs(5), async {
+                while h.seen_prompts.lock().unwrap().is_empty() {
+                    tokio::task::yield_now().await;
+                }
+            })
+            .await
+            .expect("timed out waiting for provider command dispatch");
+            record_copilot_yolo_state(&h, session_id.0.as_ref(), "on");
+
+            tokio::time::timeout(std::time::Duration::from_secs(5), async {
+                loop {
+                    match h.event_rx.recv().await {
+                        Some(AppEvent::YoloControlOwnerChanged { .. }) => {
+                            panic!("a stale command completion must not claim the reused session")
+                        }
+                        Some(AppEvent::AgentMessageEnd { .. }) => break,
+                        Some(_) => continue,
+                        None => panic!("event channel closed before stale command completed"),
+                    }
+                }
+            })
+            .await
+            .expect("timed out waiting for stale command completion");
+            assert_eq!(
+                h.client
+                    .state
+                    .yolo_state
+                    .lock()
+                    .unwrap()
+                    .automatic_directive(session_id.0.as_ref()),
+                crate::app_contracts::AutomaticYoloDirective::Enable
             );
         })
         .await;

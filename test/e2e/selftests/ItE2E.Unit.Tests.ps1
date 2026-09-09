@@ -610,8 +610,8 @@ Describe 'Feature suite package selection' -Tag 'Unit' {
         $suite = Get-Content -LiteralPath $suitePath -Raw
 
         ([regex]::Matches($suite, '\bGet-ItTestPackage\b')).Count | Should -Be 1
-        ([regex]::Matches($suite, '(?m)^Describe ')).Count | Should -Be 4
-        ([regex]::Matches($suite, '(?m)^Describe .* -ForEach \$script:PackageCase\b')).Count | Should -Be 4
+        ([regex]::Matches($suite, '(?m)^Describe ')).Count | Should -Be 6
+        ([regex]::Matches($suite, '(?m)^Describe .* -ForEach \$script:PackageCase\b')).Count | Should -Be 6
         $suite | Should -Not -Match '-Package\s+Dev\b'
         $suite | Should -Not -Match 'Resolve-ItApp\s+-Package\s+(?!\$(?:script:Package|Package)\b)'
         $suite | Should -Not -Match 'Start-Terminal\s+-Package\s+(?!\$Package\b)'
@@ -620,6 +620,177 @@ Describe 'Feature suite package selection' -Tag 'Unit' {
         $suite | Should -Not -Match 'AgentYoloStatusText|/yolo (?:on|off)'
         $suite | Should -Not -Match 'requires whitespace-free test paths'
         $suite | Should -Match '-EncodedCommand\s+\$encodedInvocation'
+        $suite | Should -Match 'Profile automatic approval stays scoped to the Settings default provider'
+    }
+
+    It 'hides unavailable Settings controls and removes explanatory messages' {
+        $settingsXamlPath = Join-Path $PSScriptRoot '..\..\..\src\cascadia\TerminalSettingsEditor\AIAgents.xaml'
+        $settingsXaml = Get-Content -LiteralPath $settingsXamlPath -Raw
+        $setting = [regex]::Match(
+            $settingsXaml,
+            '(?s)<local:SettingContainer x:Name="AgentPaneYoloMode".*?</local:SettingContainer>').Value
+
+        $setting | Should -Match 'Visibility="\{x:Bind ViewModel\.AgentPaneYoloModeVisibility, Mode=OneWay\}"'
+        $setting | Should -Match 'IsEnabled="\{x:Bind ViewModel\.CanEnableAgentPaneYoloMode, Mode=OneWay\}"'
+        $setting | Should -Not -Match 'AIAgents_PolicyLocked'
+        $settingsXaml | Should -Not -Match 'OpenCodeYoloCompatibilityInfoBar'
+        $settingsXaml | Should -Match 'GeminiYoloCompatibilityInfoBar'
+
+        $viewModelIdlPath = Join-Path $PSScriptRoot '..\..\..\src\cascadia\TerminalSettingsEditor\AIAgentsViewModel.idl'
+        $viewModelIdl = Get-Content -LiteralPath $viewModelIdlPath -Raw
+        $viewModelIdl | Should -Match 'Windows\.UI\.Xaml\.Visibility AgentPaneYoloModeVisibility \{ get; \};'
+        $viewModelIdl | Should -Not -Match 'ShowOpenCodeYoloWarning'
+        $viewModelCppPath = Join-Path $PSScriptRoot '..\..\..\src\cascadia\TerminalSettingsEditor\AIAgentsViewModel.cpp'
+        $viewModelCpp = Get-Content -LiteralPath $viewModelCppPath -Raw
+        $viewModelCpp | Should -Match '!\(_isAddingCustomAcpAgent && _editingCustomAcpAgentId\.empty\(\)\)'
+        $sameCustomRestore = [regex]::Match(
+            $viewModelCpp,
+            '(?s)if \(_GlobalSettings\.AcpAgent\(\) == value\.Id\(\)\).*?(?=const bool agentChanged)').Value
+        $sameCustomRestore | Should -Match 'CanEnableAgentPaneYoloMode'
+        $sameCustomRestore | Should -Match 'AgentPaneYoloModeVisibility'
+
+        $resourceRoot = Join-Path $PSScriptRoot '..\..\..\src\cascadia\TerminalSettingsEditor\Resources'
+        $localeDirectories = @(Get-ChildItem -LiteralPath $resourceRoot -Directory)
+        foreach ($localeDirectory in $localeDirectories) {
+            [xml]$xml = Get-Content -LiteralPath (Join-Path $localeDirectory.FullName 'Resources.resw') -Raw
+            @($xml.root.data | Where-Object name -in @(
+                'AIAgents_YoloOpenCodeWarning.Title',
+                'AIAgents_YoloOpenCodeWarning.Message'
+            )) | Should -HaveCount 0 -Because "OpenCode has no message when automatic approval is hidden in $($localeDirectory.Name)"
+        }
+    }
+
+    It 'reuses Settings copy and model state in the first-run experience' {
+        $freXamlPath = Join-Path $PSScriptRoot '..\..\..\src\cascadia\TerminalApp\FreOverlay.xaml'
+        $freXaml = Get-Content -LiteralPath $freXamlPath -Raw
+        $freXaml | Should -Match 'x:Name="AutomaticApprovalSetting"'
+        $freXaml | Should -Match 'x:Name="AutomaticApprovalTitle"'
+        $freXaml | Should -Match 'x:Name="AutomaticApprovalDescription"'
+        $freXaml | Should -Match 'x:Name="AutomaticApprovalToggle"'
+        $freXaml | Should -Match 'SelectionChanged="_OnAgentSelectionChanged"'
+
+        $freCppPath = Join-Path $PSScriptRoot '..\..\..\src\cascadia\TerminalApp\FreOverlay.cpp'
+        $freCpp = Get-Content -LiteralPath $freCppPath -Raw
+        $freCpp | Should -Match 'ScopedResourceLoader\s+\w+\{\s*L"Microsoft\.Terminal\.Settings\.Editor/Resources"\s*\}'
+        $freCpp | Should -Match 'AIAgents_YoloMode/Header'
+        $freCpp | Should -Match 'AIAgents_YoloMode/HelpText'
+        $freCpp | Should -Match '_UpdateAutomaticApprovalState\(\)'
+        $freCpp | Should -Match '_refreshingAgentComboBox'
+        $freCpp | Should -Match '(?s)_PopulateAgentComboBox\(\).*?scope_exit.*?_UpdateAutomaticApprovalState\(\)'
+        $freCpp | Should -Match '(?s)_OnAgentSelectionChanged.*?!_refreshingAgentComboBox.*?_UpdateAutomaticApprovalState\(\)'
+        $freCpp | Should -Match 'CanEnableAgentPaneYoloModeForAgent'
+        $freCpp | Should -Match 'AgentPaneYoloMode\(AutomaticApprovalToggle\(\)\.IsOn\(\)\)'
+        $freCpp | Should -Match 'ClearAgentPaneYoloModeIfUnavailableDefault\(\)'
+        $freCpp | Should -Match 'ClearAgentPaneYoloModeIfPolicyBlocked\(\)'
+        $freHeaderPath = Join-Path $PSScriptRoot '..\..\..\src\cascadia\TerminalApp\FreOverlay.h'
+        $freHeader = Get-Content -LiteralPath $freHeaderPath -Raw
+        $freHeader | Should -Match 'void UpdateSettings\(.*CascadiaSettings'
+        $terminalPagePath = Join-Path $PSScriptRoot '..\..\..\src\cascadia\TerminalApp\TerminalPage.cpp'
+        $terminalPage = Get-Content -LiteralPath $terminalPagePath -Raw
+        $freRefresh = [regex]::Match(
+            $terminalPage,
+            '(?s)_settings = settings;(?<refresh>.*?)(?=        if \(!firstLoad && needRefreshUI\))').Groups['refresh'].Value
+        $freRefresh | Should -Match 'FreOverlayElement\(\)'
+        $freRefresh | Should -Match 'UpdateSettings\(_settings\)'
+        $freRefresh | Should -Not -Match '_IsFreRequired\(\)'
+
+        $terminalResourceRoot = Join-Path $PSScriptRoot '..\..\..\src\cascadia\TerminalApp\Resources'
+        foreach ($resource in Get-ChildItem -LiteralPath $terminalResourceRoot -Recurse -Filter Resources.resw) {
+            [xml]$xml = Get-Content -LiteralPath $resource.FullName -Raw
+            @($xml.root.data | Where-Object name -Like 'FreOverlay_AutomaticApproval*') |
+                Should -HaveCount 0 -Because 'FRE must reuse the SettingsEditor localized copy instead of duplicating it'
+        }
+
+        $freTestsPath = Join-Path $PSScriptRoot '..\tests\Feature.FreAgentSetup.Tests.ps1'
+        $freTests = Get-Content -LiteralPath $freTestsPath -Raw
+        $freTests | Should -Match 'Send-WtWindowKey\s+-App \$script:app\s+-Vk 0x1B'
+        $freTests | Should -Not -Match "Selector 'Light Dismiss'"
+    }
+
+    It 'round-trips Yolo control ownership across saved agent panes' {
+        $repoRoot = Join-Path $PSScriptRoot '..\..\..'
+
+        $restore = Get-Content -LiteralPath (Join-Path $repoRoot 'src\cascadia\inc\AgentPaneRestore.h') -Raw
+        $restore | Should -Match 'YoloControlOwnerFlag'
+        $restore | Should -Match 'std::wstring yoloControlOwner;'
+        $restore | Should -Match 'IsValidYoloControlOwner'
+
+        $contentHeader = Get-Content -LiteralPath (Join-Path $repoRoot 'src\cascadia\TerminalApp\AgentPaneContent.h') -Raw
+        $contentSource = Get-Content -LiteralPath (Join-Path $repoRoot 'src\cascadia\TerminalApp\AgentPaneContent.cpp') -Raw
+        $contentHeader | Should -Match 'SetYoloControlOwner'
+        $contentHeader | Should -Match '_yoloControlOwner'
+        $contentSource | Should -Match 'fields\.yoloControlOwner = _yoloControlOwner'
+        $ownerSetter = [regex]::Match(
+            $contentHeader,
+            '(?s)void SetYoloControlOwner\(.*?\n        \}').Value
+        $ownerSetter | Should -Match 'IsValidYoloControlOwner'
+        $ownerSetter | Should -Match '\?\s*owner\s*:\s*winrt::hstring\{\}' `
+            -Because 'empty or invalid owner projections must explicitly clear stale provenance'
+
+        $terminalPage = Get-Content -LiteralPath (Join-Path $repoRoot 'src\cascadia\TerminalApp\TerminalPage.cpp') -Raw
+        $terminalPage | Should -Match 'params\.isMember\("yolo_control_owner"\)'
+        $terminalPage | Should -Match 'SetYoloControlOwner\(\*yoloControlOwner\)'
+        $terminalPage | Should -Match '--initial-yolo-control-owner'
+        $terminalPage | Should -Match 'fields\.yoloControlOwner'
+        $ownerProjection = [regex]::Match(
+            $terminalPage,
+            '(?s)std::optional<winrt::hstring> yoloControlOwner;.*?(?=std::optional<bool> wantOpen;)').Value
+        $ownerProjection | Should -Not -Match 'isMember\("yolo_control_owner"\)\s*&&' `
+            -Because 'a present null or invalid field is an explicit clear, not an omitted update'
+        $ownerProjection | Should -Match ':\s*winrt::hstring\{\};'
+
+        $statusProjection = Get-Content -LiteralPath (Join-Path $repoRoot 'tools\wta\src\app_status_projection.rs') -Raw
+        $appEvents = Get-Content -LiteralPath (Join-Path $repoRoot 'tools\wta\src\app_events.rs') -Raw
+        $cliArgs = Get-Content -LiteralPath (Join-Path $repoRoot 'tools\wta\src\cli\args.rs') -Raw
+        $statusProjection | Should -Match '"yolo_control_owner"'
+        $statusProjection | Should -Match '\.owner\(session_id\)'
+        $appEvents | Should -Match 'initial_yolo_control_owner\s*\.take\(\)'
+        $cliArgs | Should -Match 'initial_yolo_control_owner'
+
+        $wtProtocolEvents = Get-Content -LiteralPath (Join-Path $repoRoot 'tools\wta\src\wt_protocol_events.rs') -Raw
+        $sendBody = [regex]::Match(
+            $wtProtocolEvents,
+            '(?s)pub fn send\(json_payload: String\).*?(?=\n\})').Value
+        $sendBody | Should -Match '#\[cfg\(test\)\]'
+        $sendBody | Should -Match '#\[cfg\(not\(test\)\)\]' `
+            -Because 'unit-test event capture must not launch the external wtcli publisher'
+    }
+}
+
+Describe 'Yolo Settings save normalization' -Tag 'Unit' {
+    It 'clears unavailable and policy-blocked Yolo before writing Settings' {
+        $mainPagePath = Join-Path $PSScriptRoot '..\..\..\src\cascadia\TerminalSettingsEditor\MainPage.cpp'
+        $source = Get-Content -LiteralPath $mainPagePath -Raw
+        $saveHandler = [regex]::Match(
+            $source,
+            '(?s)void MainPage::SaveButton_Click.*?(?=void MainPage::ResetButton_Click)').Value
+
+        $saveHandler | Should -Match 'ClearAgentPaneYoloModeIfUnavailableDefault\(\);'
+        $saveHandler | Should -Match 'ClearAgentPaneYoloModeIfPolicyBlocked\(\);'
+        $saveHandler | Should -Match '(?s)ClearAgentPaneYoloModeIfUnavailableDefault\(\);.*ClearAgentPaneYoloModeIfPolicyBlocked\(\);.*WriteSettingsToDisk\(\)'
+    }
+}
+
+Describe 'Agent provider identity ownership' -Tag 'Unit' {
+    It 'updates the current provider only from helper status' {
+        $terminalPagePath = Join-Path $PSScriptRoot '..\..\..\src\cascadia\TerminalApp\TerminalPage.cpp'
+        $source = Get-Content -LiteralPath $terminalPagePath -Raw
+        $rebindHandler = [regex]::Match(
+            $source,
+            '(?s)void TerminalPage::_RaiseAgentPaneRebindRequest.*?(?=TerminalPage::AgentRuntimeConfigSnapshot)').Value
+
+        $rebindHandler | Should -Match '_RaiseProtocolEvent\("rebind_agent", params\);'
+        $rebindHandler | Should -Not -Match 'AgentCurrentId\('
+        $statusHandler = [regex]::Match(
+            $source,
+            '(?s)void TerminalPage::OnAgentStatusChanged\(.*?(?=void TerminalPage::OnAgentStateChanged)').Value
+        $identityUpdate = [regex]::Match(
+            $statusHandler,
+            '(?s)const auto agentId = pickStr\("agent_id"\);.*?(?=const bool usesHostCatalog)').Value
+        $statusHandler | Should -Match 'const auto agentIdSpecified = params\.isMember\("agent_id"\);'
+        $identityUpdate | Should -Match 'statusTab->AgentCurrentId\(agentId\);'
+        $identityUpdate | Should -Not -Match '!agentId\.empty\(\)' `
+            -Because 'a present empty agent_id must clear stale per-tab provider identity'
     }
 }
 

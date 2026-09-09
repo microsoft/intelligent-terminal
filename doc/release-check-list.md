@@ -34,7 +34,7 @@ Net effect: UT shrinks the manual matrix to "did the wiring and UI connect", not
 
 ## 0. First-run experience (FRE)
 
-**Feature definition:** FRE guides first-time users through agent selection, pane position, automatic error detection, automatic error suggestion, and session-management hook setup.
+**Feature definition:** FRE guides first-time users through agent selection, automatic approval, pane position, automatic error detection, automatic error suggestion, and session-management hook setup.
 
 - [ ] `C007` `[E2E]` **FRE opens correctly:** A clean user profile launches the FRE instead of skipping directly to the terminal.
 - [ ] `C008` `[E2E]` **FRE can be completed:** The user can go through every page, save settings, and enter the main terminal window.
@@ -45,6 +45,9 @@ Net effect: UT shrinks the manual matrix to "did the wiring and UI connect", not
 - [ ] `C214` `[new]` `[UT~]` `[E2E]` **FRE execution-policy detection is correct:** FRE flags a genuinely blocking PowerShell execution policy but does **not** false-block when a load-induced execution-policy probe merely times out; an unknown/unreadable policy is treated conservatively (as blocking). _(#336/#338/#309; UT: execution-policy gate.)_
 - [ ] `C013` `[UT~]` `[E2E]` **FRE respects policy locks:** If agent, autofix, or session-management policy is locked, affected controls are disabled and explain why. _(UT: `IsAgentPolicyLocked`, Effective* gates.)_
 - [ ] `C014` `[UT~]` `[MANUAL]` **FRE RTL/localized layout is usable:** Layout mirrors correctly for RTL locales and text is not clipped in localized builds. _(UT: `IsRtlLocale`.)_
+- [ ] `C307` `[new]` `[UT✓]` `[E2E]` **FRE configures automatic approval:** The first-run settings page reuses the Settings title, description, setting key, provider/policy availability, and Off default. Unsupported or policy-blocked states are hidden and persist Off. _(UT: shared SettingsModel availability and source reuse checks; E2E: `Feature.FreAgentSetup` / `Feature.AgentPolicy`.)_
+- [ ] `C308` `[new]` `[UT✓]` `[E2E]` **FRE hides unsupported automatic approval:** Selecting OpenCode in first-run setup hides the disabled control and persists `agentPane.yoloMode=false`. _(UT: shared provider availability; E2E: `Feature.FreAgentSetup`.)_
+- [ ] `C309` `[new]` `[UT✓]` `[E2E]` **FRE hides policy-blocked automatic approval:** `AllowYoloMode=0` hides the disabled first-run control and startup normalization clears the stored preference. _(UT: policy availability/normalization; E2E: `Feature.AgentPolicy`.)_
 
 ### FRE agent selection
 
@@ -192,13 +195,16 @@ Net effect: UT shrinks the manual matrix to "did the wiring and UI connect", not
 
 ### Agent pane settings and slash commands
 
-- [ ] `C294` `[new]` `[UT✓]` `[E2E]` **Yolo setting persists:** The global `agentPane.yoloMode` setting round-trips and supplies the default for new sessions. _(PR #505; UT: SettingsModel round-trip and effective policy tests; E2E: `Feature.YoloMode`.)_
+- [ ] `C294` `[new]` `[UT✓]` `[E2E]` **Yolo setting persists:** `agentPane.yoloMode` round-trips and supplies the automatic preference for sessions using the Settings default provider. _(UT: SettingsModel round-trip and default-provider inheritance tests; E2E: `Feature.YoloMode`.)_
+- [ ] `C295` `[new]` `[UT✓]` `[E2E]` **/agent Yolo stays scoped to the default provider:** A provider selected with `/agent` is actively kept off unless its canonical ID matches the Settings default; switching back reapplies the persisted preference. _(UT: Terminal binding and WTA rebind tests; zero-token E2E: `Feature.YoloMode`.)_
+- [ ] `C310` `[new]` `[UT✓]` `[E2E]` **Profile automatic approval stays scoped to the Settings default provider:** A fresh profile-selected provider starts Off unless its canonical ID matches the Settings default, while policy-allowed manual enablement remains session-scoped. _(UT: strict Terminal automatic target; zero-token E2E: `Feature.YoloMode`.)_
+- [x] `C311` `[new]` `[UT✓]` **Manual and restored Yolo state survives automatic Settings changes:** Policy-allowed manual `/config` and provider-restored sessions receive `NoOpinion` from later automatic reconciliation; policy still forces every owner Off. _(UT: WTA tri-state owner and lifecycle tests.)_
 - [ ] `C288` `[new]` `[LOCAL]` **Yolo completes a real tool task:** With provider-native Yolo enabled, a real agent model completes a bounded write/read task in a disposable directory and restores its prior mode afterward. _(PR #505; token-consuming local acceptance only, intentionally excluded from publish and CI.)_
 - [ ] `C289` `[new]` `[LOCAL]` **Provider-native Yolo works across supported agents:** Claude, Codex, and Gemini each acknowledge their reviewed native ACP mode, complete a bounded real-model tool task, and restore the prior mode. _(PR #505; token-consuming local acceptance only, intentionally excluded from publish and CI.)_
 - [x] `C290` `[new]` `[UT✓]` **Yolo never answers ACP permissions:** After a supported provider acknowledges native Yolo, an ACP `session/request_permission` remains pending until the user explicitly selects a provider option. _(PR #505; deterministic mock-ACP coverage.)_
-- [ ] `C291` `[new]` `[UT✓]` `[E2E]` **Settings explains OpenCode Yolo compatibility:** Settings keeps the global preference editable and explains that OpenCode does not currently support native Yolo. _(PR #505; UT: provider notice matrix; zero-token E2E: `Feature.YoloMode`.)_
-- [ ] `C292` `[new]` `[UT✓]` `[E2E]` **AllowYoloMode policy blocks Yolo:** The policy gate overrides a stored global-on setting and reconciles live provider sessions to native Yolo off. _(PR #505; UT: effective policy and fail-closed reconciliation tests; E2E: `Feature.YoloMode`.)_
-- [ ] `C293` `[new]` `[UT✓]` `[E2E]` **Settings explains Gemini Yolo restrictions:** Settings keeps the global preference editable and explains that Gemini applies workspace trust and provider policy. _(PR #505; UT: provider notice matrix; zero-token E2E: `Feature.YoloMode`.)_
+- [ ] `C291` `[new]` `[UT✓]` `[E2E]` **Settings hides unsupported automatic approval and forces it off:** Selecting OpenCode as the default hides the disabled Settings row and persists `agentPane.yoloMode=false` without a separate warning. _(UT: shared availability/effective-state matrix; zero-token E2E: `Feature.YoloMode`.)_
+- [ ] `C292` `[new]` `[UT✓]` `[E2E]` **AllowYoloMode hides automatic approval and turns it off:** The policy gate hides the Settings row, persists `agentPane.yoloMode=false`, and reconciles every live provider session to native Yolo off. _(UT: stored-policy normalization and shared availability; E2E: `Feature.YoloMode`.)_
+- [ ] `C293` `[new]` `[UT✓]` `[E2E]` **Settings explains Gemini automatic approval restrictions:** Settings keeps automatic approval visible and editable for Gemini and explains that workspace trust and provider policy still apply. _(PR #505; UT: provider notice matrix; zero-token E2E: `Feature.YoloMode`.)_
 - [x] `C073` `[UT✓]` **`/help` works:** Shows available commands.
 - [x] `C074` `[UT✓]` **`/clear` works:** Clears chat view as expected without breaking the session.
 - [x] `C075` `[UT✓]` **`/new` works:** Starts a fresh session.

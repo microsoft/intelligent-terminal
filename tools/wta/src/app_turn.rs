@@ -468,6 +468,14 @@ impl App {
             self.push_execution_info(summary);
         }
         self.turn_close(session_id);
+        if self
+            .tab_sessions
+            .get(&target_tab)
+            .and_then(TabSession::resumable_session_id)
+            == Some(session_id)
+        {
+            self.project_tab_state(&target_tab);
+        }
     }
 
     pub fn turn_close(&mut self, session_id: &str) {

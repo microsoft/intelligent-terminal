@@ -510,6 +510,7 @@ namespace winrt::TerminalApp::implementation
             std::wstring customModelSelection;
             std::vector<::Microsoft::Terminal::CustomModels::CatalogEntry> customModels;
             bool autofixEnabled{ false };
+            std::wstring defaultAgentId;
             bool yoloEnabled{ false };
             bool yoloPolicyBlocked{ false };
         };
@@ -614,6 +615,11 @@ namespace winrt::TerminalApp::implementation
             bool helperEventReady) noexcept;
         static bool _CanRetainAgentPaneForMasterRestart(
             winrt::Microsoft::Terminal::TerminalConnection::ConnectionState connectionState) noexcept;
+        static bool _ResolveHotAutomaticYoloForAgentBinding(
+            const AgentRuntimeConfigSnapshot& previous,
+            const AgentRuntimeConfigSnapshot& current,
+            const AgentPaneSettingsBinding& binding,
+            std::wstring_view actualCurrentAgentId) noexcept;
         static AgentPaneRecreationOptions _GetAgentPaneRecreationOptions(
             bool wasStashed,
             bool isActiveTab) noexcept;
@@ -736,7 +742,8 @@ namespace winrt::TerminalApp::implementation
                                               std::string_view initialView = {},
                                               std::wstring_view initialPanePosition = {},
                                               float initialPaneSize = 0.0f,
-                                              bool focusPane = true);
+                                              bool focusPane = true,
+                                              std::wstring_view initialYoloControlOwner = {});
         winrt::hstring _GetAgentPaneIdentity(Tab* tab) const;
         winrt::hstring _GetAgentPaneCustomCommand(Tab* tab) const;
         void _PrewarmAgentPanesAfterStartup();

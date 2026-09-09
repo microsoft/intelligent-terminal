@@ -9,6 +9,7 @@
 #include "AgentUsage.h"
 #include "TerminalPaneContent.h"
 #include "BasicPaneEvents.h"
+#include "../inc/AgentPaneRestore.h"
 
 #include "AutofixState.h"
 
@@ -37,7 +38,23 @@ namespace winrt::TerminalApp::implementation
         // into sessions view.
         bool IsSessionsView() const noexcept { return _isSessionsView; }
         winrt::hstring AgentSessionId() const noexcept { return _agentSessionId; }
-        void SetAgentSessionId(const winrt::hstring& sessionId) noexcept { _agentSessionId = sessionId; }
+        void SetAgentSessionId(const winrt::hstring& sessionId) noexcept
+        {
+            if (_agentSessionId != sessionId)
+            {
+                _yoloControlOwner = {};
+            }
+            _agentSessionId = sessionId;
+        }
+        const winrt::hstring& YoloControlOwner() const noexcept { return _yoloControlOwner; }
+        void SetYoloControlOwner(const winrt::hstring& owner) noexcept
+        {
+            _yoloControlOwner =
+                ::Microsoft::Terminal::AgentPaneRestore::IsValidYoloControlOwner(
+                    std::wstring_view{ owner }) ?
+                    owner :
+                    winrt::hstring{};
+        }
 
         // The agent identity this pane is currently running, as an
         // `AgentPaneBackend` token (`claude`, `wsl:Ubuntu:claude`, ...), plus
@@ -58,6 +75,7 @@ namespace winrt::TerminalApp::implementation
             {
                 _agentSessionId = {};
                 _agentSessionOwner = {};
+                _yoloControlOwner = {};
             }
 
             _agentRestoreIdentity = identity;
@@ -195,6 +213,7 @@ namespace winrt::TerminalApp::implementation
         bool _isSessionsView{ false };
         winrt::hstring _agentSessionId{};
         winrt::hstring _agentSessionOwner{};
+        winrt::hstring _yoloControlOwner{};
         winrt::hstring _agentRestoreIdentity{};
         winrt::hstring _agentRestoreCustomCommand{};
         winrt::hstring _wtaExecutablePath{};
