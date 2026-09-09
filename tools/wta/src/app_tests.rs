@@ -12452,6 +12452,408 @@ fn double_click_in_input_dialog_preserves_word_selection() {
 }
 
 #[test]
+fn input_vertical_explicit_rows_preserve_the_edit_position() {
+    for (key, start) in [(KeyCode::Up, 27), (KeyCode::Down, 5)] {
+        let mut app = test_app();
+        app.current_tab_mut()
+            .replace_input("alpha line\nbravo line\ndelta line".into());
+        app.current_tab_mut().cursor_pos = start;
+        render_to_text(&mut app, 80, 16);
+        app.handle_event(AppEvent::Key(KeyEvent::new(key, KeyModifiers::NONE)));
+        app.handle_event(AppEvent::Key(KeyEvent::new(
+            KeyCode::Char('!'),
+            KeyModifiers::SHIFT,
+        )));
+        assert_eq!(
+            app.current_tab().input,
+            "alpha line\nbravo! line\ndelta line"
+        );
+    }
+}
+
+#[test]
+fn input_vertical_keeps_preferred_column_across_short_rows() {
+    let mut app = test_app();
+    app.current_tab_mut()
+        .replace_input("alpha long line\nx\nbravo long line".into());
+    app.current_tab_mut().cursor_pos = 23;
+    render_to_text(&mut app, 80, 16);
+    app.handle_event(AppEvent::Key(KeyEvent::new(
+        KeyCode::Up,
+        KeyModifiers::NONE,
+    )));
+    assert_eq!(app.current_tab().cursor_pos, 17);
+    app.handle_event(AppEvent::Key(KeyEvent::new(
+        KeyCode::Up,
+        KeyModifiers::NONE,
+    )));
+    app.handle_event(AppEvent::Key(KeyEvent::new(
+        KeyCode::Char('!'),
+        KeyModifiers::SHIFT,
+    )));
+    assert_eq!(
+        app.current_tab().input,
+        "alpha! long line\nx\nbravo long line"
+    );
+}
+
+#[test]
+fn input_vertical_moves_between_soft_wrapped_rows() {
+    for (key, start) in [(KeyCode::Up, 17), (KeyCode::Down, 5)] {
+        let mut app = test_app();
+        app.current_tab_mut()
+            .replace_input("alpha bravo delta echo".into());
+        app.current_tab_mut().cursor_pos = start;
+        render_to_text(&mut app, 11, 16);
+        app.handle_event(AppEvent::Key(KeyEvent::new(key, KeyModifiers::NONE)));
+        app.handle_event(AppEvent::Key(KeyEvent::new(
+            KeyCode::Char('!'),
+            KeyModifiers::SHIFT,
+        )));
+        assert_eq!(app.current_tab().input, "alpha bravo! delta echo");
+    }
+}
+
+#[test]
+fn input_vertical_soft_wrap_start_stays_on_the_requested_row() {
+    let mut app = test_app();
+    app.current_tab_mut()
+        .replace_input("alpha bravo delta echo".into());
+    app.current_tab_mut().cursor_pos = 12;
+    render_to_text(&mut app, 11, 16);
+    app.handle_event(AppEvent::Key(KeyEvent::new(
+        KeyCode::Up,
+        KeyModifiers::NONE,
+    )));
+    assert_eq!(app.current_tab().cursor_pos, 6);
+}
+
+#[test]
+fn input_vertical_can_return_to_the_trailing_caret_row() {
+    let mut app = test_app();
+    app.current_tab_mut().replace_input("alphabeta".into());
+    render_to_text(&mut app, 14, 16);
+    app.handle_event(AppEvent::Key(KeyEvent::new(
+        KeyCode::Up,
+        KeyModifiers::NONE,
+    )));
+    assert_eq!(app.current_tab().cursor_pos, 0);
+    render_to_text(&mut app, 14, 16);
+    app.handle_event(AppEvent::Key(KeyEvent::new(
+        KeyCode::Down,
+        KeyModifiers::NONE,
+    )));
+    assert_eq!(app.current_tab().cursor_pos, 9);
+}
+
+#[test]
+fn input_vertical_width_changes_reset_column_intent() {
+    let mut app = test_app();
+    app.current_tab_mut()
+        .replace_input("alpha line\nx\nbravo line".into());
+    app.current_tab_mut().cursor_pos = 18;
+    render_to_text(&mut app, 80, 16);
+    app.handle_event(AppEvent::Key(KeyEvent::new(
+        KeyCode::Up,
+        KeyModifiers::NONE,
+    )));
+    assert_eq!(app.current_tab().cursor_pos, 12);
+    render_to_text(&mut app, 11, 16);
+    app.handle_event(AppEvent::Key(KeyEvent::new(
+        KeyCode::Up,
+        KeyModifiers::NONE,
+    )));
+    assert_eq!(app.current_tab().cursor_pos, 7);
+}
+
+#[test]
+fn input_vertical_horizontal_movement_resets_column_intent() {
+    let mut app = test_app();
+    app.current_tab_mut()
+        .replace_input("alpha line\nx\nbravo line".into());
+    app.current_tab_mut().cursor_pos = 18;
+    render_to_text(&mut app, 80, 16);
+    app.handle_event(AppEvent::Key(KeyEvent::new(
+        KeyCode::Up,
+        KeyModifiers::NONE,
+    )));
+    app.handle_event(AppEvent::Key(KeyEvent::new(
+        KeyCode::Left,
+        KeyModifiers::NONE,
+    )));
+    app.handle_event(AppEvent::Key(KeyEvent::new(
+        KeyCode::Up,
+        KeyModifiers::NONE,
+    )));
+    assert_eq!(app.current_tab().cursor_pos, 0);
+}
+
+#[test]
+fn input_vertical_uses_display_columns_and_utf8_boundaries() {
+    let mut app = test_app();
+    app.current_tab_mut()
+        .replace_input("中文 line\nab\nalpha".into());
+    app.current_tab_mut().cursor_pos = app.current_tab().input.len() - 2;
+    render_to_text(&mut app, 80, 16);
+    app.handle_event(AppEvent::Key(KeyEvent::new(
+        KeyCode::Up,
+        KeyModifiers::NONE,
+    )));
+    app.handle_event(AppEvent::Key(KeyEvent::new(
+        KeyCode::Up,
+        KeyModifiers::NONE,
+    )));
+    assert_eq!(app.current_tab().cursor_pos, "中".len());
+    assert!(app
+        .current_tab()
+        .input
+        .is_char_boundary(app.current_tab().cursor_pos));
+}
+
+#[test]
+fn input_vertical_keeps_attachment_tokens_atomic() {
+    let mut app = test_app();
+    app.current_tab_mut().replace_input("start\n".into());
+    app.current_tab_mut()
+        .insert_image_attachment(crate::clipboard_image::PastedImage {
+            data_base64: "aW1hZ2U=".into(),
+            mime_type: "image/png".into(),
+            label: "photo.png".into(),
+        });
+    let token = app.current_tab().attachments.token_ranges().next().unwrap();
+    app.current_tab_mut().insert_input_str("\nend");
+    render_to_text(&mut app, 80, 16);
+    app.handle_event(AppEvent::Key(KeyEvent::new(
+        KeyCode::Up,
+        KeyModifiers::NONE,
+    )));
+    assert_eq!(app.current_tab().cursor_pos, token.start);
+    app.handle_event(AppEvent::Key(KeyEvent::new(
+        KeyCode::Down,
+        KeyModifiers::NONE,
+    )));
+    assert_eq!(app.current_tab().cursor_pos, app.current_tab().input.len());
+}
+
+#[test]
+fn input_vertical_boundaries_preserve_history_and_draft_restoration() {
+    let mut app = test_app();
+    app.current_tab_mut().record_input_history("old command");
+    app.current_tab_mut().replace_input("alpha\nbravo".into());
+    app.current_tab_mut().cursor_pos = 0;
+    render_to_text(&mut app, 80, 16);
+    app.handle_event(AppEvent::Key(KeyEvent::new(
+        KeyCode::Up,
+        KeyModifiers::NONE,
+    )));
+    assert_eq!(app.current_tab().input, "old command");
+    app.handle_event(AppEvent::Key(KeyEvent::new(
+        KeyCode::Down,
+        KeyModifiers::NONE,
+    )));
+    assert_eq!(app.current_tab().input, "alpha\nbravo");
+    assert_eq!(app.current_tab().cursor_pos, 0);
+    app.handle_event(AppEvent::Key(KeyEvent::new(
+        KeyCode::Down,
+        KeyModifiers::NONE,
+    )));
+    assert_eq!(app.current_tab().cursor_pos, 6);
+}
+
+#[test]
+fn input_vertical_preserves_existing_history_browsing_mode() {
+    let mut app = test_app();
+    app.current_tab_mut().record_input_history("older\ncommand");
+    app.current_tab_mut().record_input_history("newer\ncommand");
+    render_to_text(&mut app, 80, 16);
+    for expected in ["newer\ncommand", "older\ncommand"] {
+        app.handle_event(AppEvent::Key(KeyEvent::new(
+            KeyCode::Up,
+            KeyModifiers::NONE,
+        )));
+        assert_eq!(app.current_tab().input, expected);
+    }
+    app.handle_event(AppEvent::Key(KeyEvent::new(
+        KeyCode::Down,
+        KeyModifiers::NONE,
+    )));
+    app.handle_event(AppEvent::Key(KeyEvent::new(
+        KeyCode::Down,
+        KeyModifiers::NONE,
+    )));
+    assert!(app.current_tab().input.is_empty());
+}
+
+#[test]
+fn input_vertical_collapses_selection_before_boundary_navigation() {
+    for (key, expected) in [(KeyCode::Up, 0), (KeyCode::Down, 11)] {
+        let mut app = test_app();
+        app.current_tab_mut().record_input_history("old command");
+        app.current_tab_mut().replace_input("alpha\nbravo".into());
+        render_to_text(&mut app, 80, 16);
+        app.handle_event(AppEvent::Key(KeyEvent::new(
+            KeyCode::Char('a'),
+            KeyModifiers::CONTROL,
+        )));
+        app.handle_event(AppEvent::Key(KeyEvent::new(key, KeyModifiers::NONE)));
+        assert_eq!(app.current_tab().input, "alpha\nbravo");
+        assert_eq!(app.current_tab().cursor_pos, expected);
+        assert!(!app.current_tab().input_all_selected);
+    }
+}
+
+#[test]
+fn input_vertical_edits_card_input_before_boundary_focus_changes() {
+    let mut app = test_app();
+    stage_surfaced_recommendation(&mut app, vec![send_choice("pane-A", "ls")], 0, None);
+    app.current_tab_mut()
+        .replace_input("alpha line\nbravo line".into());
+    app.handle_event(AppEvent::Key(KeyEvent::new(
+        KeyCode::Up,
+        KeyModifiers::NONE,
+    )));
+    assert_eq!(
+        app.current_tab().recommendation_focus,
+        RecommendationFocus::Input
+    );
+    app.current_tab_mut().cursor_pos = 16;
+    render_to_text(&mut app, 80, 24);
+    app.handle_event(AppEvent::Key(KeyEvent::new(
+        KeyCode::Up,
+        KeyModifiers::NONE,
+    )));
+    assert_eq!(app.current_tab().cursor_pos, 5);
+    assert_eq!(
+        app.current_tab().recommendation_focus,
+        RecommendationFocus::Input
+    );
+    app.handle_event(AppEvent::Key(KeyEvent::new(
+        KeyCode::Home,
+        KeyModifiers::NONE,
+    )));
+    app.handle_event(AppEvent::Key(KeyEvent::new(
+        KeyCode::Up,
+        KeyModifiers::NONE,
+    )));
+    assert_eq!(
+        app.current_tab().recommendation_focus,
+        RecommendationFocus::Button
+    );
+}
+
+#[test]
+fn input_vertical_editing_resets_column_intent() {
+    let mut app = test_app();
+    app.current_tab_mut()
+        .replace_input("alpha line\nx\nbravo line".into());
+    app.current_tab_mut().cursor_pos = 18;
+    render_to_text(&mut app, 80, 16);
+    app.handle_event(AppEvent::Key(KeyEvent::new(
+        KeyCode::Up,
+        KeyModifiers::NONE,
+    )));
+    app.handle_event(AppEvent::Key(KeyEvent::new(
+        KeyCode::Char('!'),
+        KeyModifiers::SHIFT,
+    )));
+    app.handle_event(AppEvent::Key(KeyEvent::new(
+        KeyCode::Up,
+        KeyModifiers::NONE,
+    )));
+    assert_eq!(app.current_tab().cursor_pos, 2);
+}
+
+#[test]
+fn input_vertical_column_intent_is_per_tab() {
+    let mut first = TabSession::default();
+    first.replace_input("alpha\nx\nbravo".into());
+    first.cursor_pos = 12;
+    assert!(first.move_cursor_vertical(80, true));
+    let mut second = TabSession::default();
+    second.replace_input("delta\nz\nomega".into());
+    second.cursor_pos = 9;
+    assert!(second.move_cursor_vertical(80, true));
+    assert!(second.move_cursor_vertical(80, true));
+    assert_eq!(second.cursor_pos, 1);
+    assert!(first.move_cursor_vertical(80, true));
+    assert_eq!(first.cursor_pos, 4);
+}
+
+#[test]
+fn input_vertical_full_row_end_does_not_land_on_another_row() {
+    let mut app = test_app();
+    app.current_tab_mut()
+        .replace_input("abcdefgh\nbravo".into());
+    app.current_tab_mut().cursor_pos = 8;
+    render_to_text(&mut app, 9, 16);
+    app.handle_event(AppEvent::Key(KeyEvent::new(
+        KeyCode::Up,
+        KeyModifiers::NONE,
+    )));
+    assert_eq!(app.current_tab().cursor_pos, 3);
+}
+
+#[test]
+fn input_vertical_modified_arrows_keep_existing_routing() {
+    for modifiers in [
+        KeyModifiers::CONTROL,
+        KeyModifiers::SHIFT,
+        KeyModifiers::ALT,
+    ] {
+        let mut app = test_app();
+        app.current_tab_mut().replace_input("alpha\nbravo".into());
+        render_to_text(&mut app, 80, 16);
+        app.handle_event(AppEvent::Key(KeyEvent::new(KeyCode::Up, modifiers)));
+        assert_eq!(app.current_tab().cursor_pos, app.current_tab().input.len());
+    }
+}
+
+#[test]
+fn input_vertical_layout_changes_clear_inactive_goals_too() {
+    for debug_toggle in [false, true] {
+        let mut app = test_app();
+        app.terminal_cols = 80;
+        app.current_tab_mut()
+            .replace_input("alpha line\nx\nbravo line".into());
+        app.current_tab_mut().cursor_pos = 18;
+        render_to_text(&mut app, 80, 16);
+        app.handle_event(AppEvent::Key(KeyEvent::new(
+            KeyCode::Up,
+            KeyModifiers::NONE,
+        )));
+        {
+            let background = app.tab_mut("background");
+            background.replace_input("alpha line\nx\nbravo line".into());
+            background.cursor_pos = 18;
+            assert!(background.move_cursor_vertical(80, true));
+        }
+        if debug_toggle {
+            app.handle_event(AppEvent::Key(KeyEvent::new(
+                KeyCode::F(12),
+                KeyModifiers::NONE,
+            )));
+            app.handle_event(AppEvent::Key(KeyEvent::new(
+                KeyCode::F(12),
+                KeyModifiers::NONE,
+            )));
+        } else {
+            app.handle_event(AppEvent::Resize(40, 16));
+            render_to_text(&mut app, 40, 16);
+            app.handle_event(AppEvent::Resize(80, 16));
+        }
+        render_to_text(&mut app, 80, 16);
+        app.handle_event(AppEvent::Key(KeyEvent::new(
+            KeyCode::Up,
+            KeyModifiers::NONE,
+        )));
+        assert_eq!(app.current_tab().cursor_pos, 1);
+        let background = app.tab_mut("background");
+        assert!(background.move_cursor_vertical(80, true));
+        assert_eq!(background.cursor_pos, 1);
+    }
+}
+
+#[test]
 fn input_selection_deletes_entire_draft() {
     for key in [
         KeyEvent::new(KeyCode::Backspace, KeyModifiers::NONE),
@@ -12761,6 +13163,12 @@ fn input_selection_handles_slash_completion_and_history_without_stale_ranges() {
         KeyCode::Char('a'),
         KeyModifiers::CONTROL,
     )));
+    app.handle_event(AppEvent::Key(KeyEvent::new(
+        KeyCode::Up,
+        KeyModifiers::NONE,
+    )));
+    assert_eq!(app.current_tab().input, "x");
+    assert!(!app.current_tab().input_all_selected);
     app.handle_event(AppEvent::Key(KeyEvent::new(
         KeyCode::Up,
         KeyModifiers::NONE,

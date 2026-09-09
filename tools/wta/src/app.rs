@@ -5495,6 +5495,7 @@ impl App {
                     let tab = self.current_tab_mut();
                     tab.input = format!("/{name} ");
                     tab.input_all_selected = false;
+                    tab.input_vertical_goal = None;
                     tab.cursor_pos = tab.input.len();
                     tab.refresh_command_popup();
                     return true;
@@ -5503,6 +5504,7 @@ impl App {
                     let tab = self.current_tab_mut();
                     tab.input = format!("/{name}");
                     tab.input_all_selected = false;
+                    tab.input_vertical_goal = None;
                     tab.cursor_pos = tab.input.len();
                     tab.refresh_command_popup();
                     return false;
@@ -6057,6 +6059,13 @@ impl App {
             crate::wt_protocol_events::send(crate::wt_protocol_events::restart_agent_stack_event());
         }
         self.publish_agent_status();
+    }
+
+    fn invalidate_input_layout(&mut self) {
+        self.input_dialog_area = None;
+        for tab in self.tab_sessions.values_mut() {
+            tab.input_vertical_goal = None;
+        }
     }
 
     /// Width of the main area (chat / recs / perm / input) — matches the

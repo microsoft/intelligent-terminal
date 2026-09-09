@@ -524,6 +524,7 @@ impl App {
                 }
                 crossterm::event::MouseEventKind::Down(crossterm::event::MouseButton::Left) => {
                     self.current_tab_mut().input_all_selected = false;
+                    self.current_tab_mut().input_vertical_goal = None;
                     self.text_selection.handle_mouse(mouse);
                     let click_count = self.text_selection.click_count().unwrap_or(1);
                     if click_count > 1 {
@@ -746,6 +747,9 @@ impl App {
             AppEvent::Resize(w, h) => {
                 self.cancel_completed_turn_click();
                 self.text_selection.clear();
+                if w != self.terminal_cols {
+                    self.invalidate_input_layout();
+                }
                 self.terminal_cols = w;
                 self.terminal_rows = h;
             }
@@ -757,6 +761,7 @@ impl App {
                 self.pane_focused = focused;
                 if !focused {
                     self.current_tab_mut().input_all_selected = false;
+                    self.current_tab_mut().input_vertical_goal = None;
                 }
             }
             AppEvent::ConnectionStage(stage) => {

@@ -56,6 +56,9 @@ impl App {
     }
 
     pub(super) fn handle_key(&mut self, key: KeyEvent) {
+        if !key.modifiers.is_empty() || !matches!(key.code, KeyCode::Up | KeyCode::Down) {
+            self.current_tab_mut().input_vertical_goal = None;
+        }
         // Per-keystroke and carries the raw `KeyCode` (the typed character for
         // `Char` keys) — the user's prompt can be reconstructed from this
         // stream. Trace only so it never persists in shipping (info) or
@@ -611,6 +614,29 @@ impl App {
             return;
         }
 
+        if key.modifiers.is_empty()
+            && matches!(key.code, KeyCode::Up | KeyCode::Down)
+            && self.mode == AppMode::Chat
+            && self.current_tab().current_view == View::Chat
+            && self.pane_focused
+            && self.current_tab().input_has_nav_focus()
+            && !self.help_overlay_visible
+            && !self.command_popup_visible()
+            && (!self.current_tab().input_history_is_browsing()
+                || self.current_tab().input_all_selected)
+        {
+            let width = self
+                .input_dialog_area
+                .map(|area| area.width)
+                .unwrap_or_else(|| self.main_area_width());
+            if self
+                .current_tab_mut()
+                .move_cursor_vertical(width, key.code == KeyCode::Up)
+            {
+                return;
+            }
+        }
+
         match key.code {
             KeyCode::Up if self.current_tab().turn.recommendations().is_some() => {
                 if self.current_tab().recommendation_focus == RecommendationFocus::Input {
@@ -718,6 +744,7 @@ impl App {
             }
             KeyCode::F(12) => {
                 self.show_debug_panel = !self.show_debug_panel;
+                self.invalidate_input_layout();
                 self.debug_capture_enabled
                     .store(self.show_debug_panel, Ordering::Relaxed);
                 self.debug_scroll = 0;

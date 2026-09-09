@@ -23,6 +23,7 @@ mod user_input;
 pub use agent_popup::AgentPopupState;
 pub use command_popup::{CommandCandidate, PopupCandidates, PopupState};
 pub use config_popup::ConfigPopupState;
+pub(crate) use input::adjacent_input_cursor;
 #[cfg(test)]
 pub(crate) use input::input_height;
 pub use layout::render;

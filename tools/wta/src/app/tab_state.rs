@@ -651,6 +651,8 @@ pub struct TabSession {
     pub cursor_pos: usize,
     pub(super) input_history: InputHistory,
     pub(crate) input_all_selected: bool,
+    /// Preferred display column, valid only for the same input-box width.
+    pub(super) input_vertical_goal: Option<(u16, usize)>,
     pub(crate) attachments: super::attachments::PendingAttachments,
     /// True while a host-triggered text paste is reading the clipboard on a
     /// blocking worker.
@@ -1092,6 +1094,7 @@ impl TabSession {
             .map(|prompt_id| TurnState::Cancelling { prompt_id })
             .unwrap_or(TurnState::Idle);
         self.clear_recommendations();
+        self.input_vertical_goal = None;
         self.attachments
             .remove_tokens_from_input(&mut self.input, &mut self.cursor_pos);
         self.clear_history_draft_attachments();
