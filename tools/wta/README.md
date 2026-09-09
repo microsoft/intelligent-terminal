@@ -126,9 +126,16 @@ shell, so any pane-launched process — including wta and wtcli — inherits it.
 Tool rows keep a localized type label such as **Run**, **Read**, **Search**, or
 **Edit** visible across pending, running, and completed states. Consecutive
 successful Read, Search, Edit, and Delete calls collapse into one summary row;
-click that row to inspect each call. While a turn is in flight, ACP thought
-chunks update a temporary **Think** row alongside visible answers; when the
-provider is silent, the row remains as `Think · …` until the turn ends.
+click that row to inspect each call. ACP thought chunks appear in an expanded
+**Think** block with muted italic text and a left rule. Each thinking phase
+automatically collapses when an answer or tool activity starts, thinking ends,
+or the turn completes or is canceled. Click its header to reopen it, including
+in completed history. Ctrl+O toggles thinking in the selected history turn, or
+the active/latest turn when none is selected. Phase duration is measured locally;
+replayed thinking has no duration because ACP does not supply historical timing.
+Each block retains the latest 4,000 Unicode characters. No thought text is
+invented when a provider is silent. Synthetic waiting feedback uses only the
+shimmering Thinking indicator above the input box, never a transcript row.
 Expanded Edit details show bounded line-level `+`/`-` hunks computed from ACP
 snapshots.
 
@@ -139,7 +146,8 @@ snapshots.
 | Up / Down | Browse prompt input history |
 | Mouse wheel | Scroll chat (hold Alt to scroll one line) |
 | Click a completed tool header | Expand or collapse that tool's details |
-| Ctrl+O | Expand or collapse all completed tool details |
+| Click a thinking header | Expand or collapse that block, live or completed |
+| Ctrl+O | Expand or collapse thinking in the selected/latest turn (or the active turn), and all completed tool details |
 | Mouse drag | Select a continuous text range |
 | Double / triple click | Select a word / line |
 | PageUp / PageDown | Scroll chat |

@@ -31,6 +31,14 @@ use std::time::SystemTime;
 
 pub type AgentKey = String;
 
+/// Canonical pane identity across native GUIDs, WT_SESSION and registry keys.
+/// Preserve non-GUID identifiers used by synthetic panes, apart from case.
+pub(crate) fn pane_key(pane_session_id: &str) -> String {
+    uuid::Uuid::parse_str(pane_session_id)
+        .map(|guid| guid.hyphenated().to_string())
+        .unwrap_or_else(|_| pane_session_id.to_ascii_lowercase())
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum CliSource {
     Claude,
@@ -443,10 +451,8 @@ impl AgentSessionRegistry {
 
     pub fn apply(&mut self, ev: SessionEvent) {
         let now = SystemTime::now();
-        // Pane GUIDs (`pane_session_id`) arrive in mixed case — hooks emit
-        // lowercase (from the `WT_SESSION` env var), WT-native events emit
-        // uppercase (canonical Windows GUID). Normalise to lowercase here
-        // so `active_by_pane` lookups succeed regardless of source.
+        // Native events and hooks differ in GUID braces and case. Use the
+        // same canonical identity for stored rows and every pane-keyed lookup.
         let ev = match ev {
             SessionEvent::SessionStarted {
                 key,
@@ -463,7 +469,7 @@ impl AgentSessionRegistry {
                 SessionEvent::SessionStarted {
                     key,
                     cli_source,
-                    pane_session_id: pane_session_id.to_ascii_lowercase(),
+                    pane_session_id: pane_key(&pane_session_id),
                     cwd,
                     title,
                 }
@@ -472,18 +478,18 @@ impl AgentSessionRegistry {
                 pane_session_id,
                 reason,
             } => SessionEvent::ConnectionFailed {
-                pane_session_id: pane_session_id.to_ascii_lowercase(),
+                pane_session_id: pane_key(&pane_session_id),
                 reason,
             },
             SessionEvent::PaneClosed { pane_session_id } => SessionEvent::PaneClosed {
-                pane_session_id: pane_session_id.to_ascii_lowercase(),
+                pane_session_id: pane_key(&pane_session_id),
             },
             SessionEvent::ResumePaneAssigned {
                 key,
                 pane_session_id,
             } => SessionEvent::ResumePaneAssigned {
                 key,
-                pane_session_id: pane_session_id.to_ascii_lowercase(),
+                pane_session_id: pane_key(&pane_session_id),
             },
             other => other,
         };
@@ -903,7 +909,7 @@ impl AgentSessionRegistry {
         if !agent_session_id.is_empty() {
             return agent_session_id.to_string();
         }
-        let pane_lc = pane_session_id.to_ascii_lowercase();
+        let pane_lc = pane_key(pane_session_id);
         if let Some(existing) = self.active_by_pane.get(&pane_lc) {
             return existing.clone();
         }
@@ -979,11 +985,8 @@ impl AgentSessionRegistry {
     /// actually one of our managed agent CLIs exiting — Ctrl+C in Gemini is
     /// not a user command failure that needs auto-fix.
     pub fn is_agent_pane(&self, pane_session_id: &str) -> bool {
-        // Lowercase the lookup key — hooks emit lowercase pane GUIDs but
-        // WT-native vt_sequence/connection_state events emit uppercase.
-        // active_by_pane is keyed by lowercase via apply()'s normaliser.
-        self.active_by_pane
-            .contains_key(&pane_session_id.to_ascii_lowercase())
+        // Match the canonical keys stored by apply(), including legacy braces.
+        self.active_by_pane.contains_key(&pane_key(pane_session_id))
     }
 
     /// Look up the [`AgentKey`] currently bound to `pane_session_id`, if
@@ -992,9 +995,7 @@ impl AgentSessionRegistry {
     /// Callers that want to act on a key *just before* `PaneClosed`
     /// unbinds it must take this lookup before applying the event.
     pub fn key_for_pane(&self, pane_session_id: &str) -> Option<AgentKey> {
-        self.active_by_pane
-            .get(&pane_session_id.to_ascii_lowercase())
-            .cloned()
+        self.active_by_pane.get(&pane_key(pane_session_id)).cloned()
     }
 
     /// Look up the [`SessionOrigin`] of whatever session is currently
@@ -1008,9 +1009,7 @@ impl AgentSessionRegistry {
     /// OSC 133;A is spurious (likely a focus/window-switch artifact
     /// emitted by WT itself) and must NOT trigger PaneClosed".
     pub fn origin_for_pane(&self, pane_session_id: &str) -> Option<SessionOrigin> {
-        let key = self
-            .active_by_pane
-            .get(&pane_session_id.to_ascii_lowercase())?;
+        let key = self.active_by_pane.get(&pane_key(pane_session_id))?;
         self.sessions.get(key).map(|s| s.origin.clone())
     }
 
@@ -1049,12 +1048,8 @@ impl AgentSessionRegistry {
     /// snapshot will end every Class A row.
     pub fn apply_alive_pane_snapshot(&mut self, alive_panes: HashSet<String>) {
         let now = SystemTime::now();
-        // Normalise to lowercase to match the rest of the registry's
-        // pane-GUID handling (see `apply()`'s normaliser).
-        let alive_lc: HashSet<String> = alive_panes
-            .into_iter()
-            .map(|p| p.to_ascii_lowercase())
-            .collect();
+        // Match apply()'s canonical pane keys before diffing snapshots.
+        let alive_lc: HashSet<String> = alive_panes.into_iter().map(|p| pane_key(&p)).collect();
 
         // Compute panes we used to know about that are now gone.
         let removed: Vec<String> = self
@@ -1230,7 +1225,7 @@ impl AgentSessionRegistry {
                         continue;
                     }
                     let Some(pane) = pane_opt else { continue };
-                    let pane_lc = pane.to_ascii_lowercase();
+                    let pane_lc = pane_key(pane);
                     entry.pane_session_id = Some(pane_lc.clone());
                     self.active_by_pane.insert(pane_lc.clone(), sid.to_string());
                     self.known_alive_panes.insert(pane_lc);
@@ -1250,7 +1245,7 @@ impl AgentSessionRegistry {
                     entry.attention_reason = None;
                     entry.last_error = None;
                     if let Some(pane) = pane_opt {
-                        let pane_lc = pane.to_ascii_lowercase();
+                        let pane_lc = pane_key(pane);
                         // Drop any previous binding pointing elsewhere.
                         if let Some(old_pane) = entry.pane_session_id.take() {
                             if old_pane != pane_lc {
@@ -1279,7 +1274,7 @@ impl AgentSessionRegistry {
     /// Used when a real `agent.session.started` arrives to clean up the
     /// placeholder created by an earlier tool event with no agent_session_id.
     pub fn drop_synthetic_for_pane(&mut self, pane_session_id: &str) {
-        let pane_lc = pane_session_id.to_ascii_lowercase();
+        let pane_lc = pane_key(pane_session_id);
         if let Some(key) = self.active_by_pane.get(&pane_lc).cloned() {
             if key.starts_with("pane:") {
                 self.sessions.remove(&key);
@@ -3019,6 +3014,40 @@ mod tests {
             reg.sessions.get("sid").unwrap().liveness(),
             LivenessState::Ended
         );
+    }
+
+    #[test]
+    fn pane_identity_normalizes_registry_lookup_close_and_reconciliation() {
+        let plain = "abcdef01-2345-6789-abcd-ef0123456789";
+        let braced = "{ABCDEF01-2345-6789-ABCD-EF0123456789}";
+        assert_eq!(pane_key("Synthetic-Pane"), "synthetic-pane");
+        assert_eq!(pane_key("{Synthetic-Pane}"), "{synthetic-pane}");
+        for (birth_pane, other_pane) in [(plain, braced), (braced, plain)] {
+            for close_event in [false, true] {
+                let mut reg = AgentSessionRegistry::new();
+                reg.apply(SessionEvent::SessionStarted {
+                    key: "sid".into(),
+                    cli_source: CliSource::Copilot,
+                    pane_session_id: birth_pane.into(),
+                    cwd: PathBuf::from("C:\\repo"),
+                    title: "Live".into(),
+                });
+                assert_eq!(reg.key_for_pane(other_pane).as_deref(), Some("sid"));
+                assert!(reg.is_agent_pane(other_pane));
+                reg.apply_alive_pane_snapshot(HashSet::from([birth_pane.into()]));
+                reg.apply_alive_pane_snapshot(HashSet::from([other_pane.into()]));
+                assert_eq!(reg.sessions["sid"].liveness(), LivenessState::Live);
+                if close_event {
+                    reg.apply(SessionEvent::PaneClosed {
+                        pane_session_id: other_pane.into(),
+                    });
+                } else {
+                    reg.apply_alive_pane_snapshot(HashSet::new());
+                }
+                assert_eq!(reg.sessions["sid"].liveness(), LivenessState::Ended);
+                assert!(reg.key_for_pane(birth_pane).is_none());
+            }
+        }
     }
 
     // -------- B-9: history × alive-mirror join --------

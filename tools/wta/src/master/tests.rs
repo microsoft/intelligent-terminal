@@ -11216,6 +11216,161 @@ async fn session_hook_marks_session_hook_owned_then_watcher_is_ignored() {
 }
 
 #[tokio::test]
+async fn restored_session_birth_initializes_idle_without_waiting_for_hooks() {
+    use crate::agent_sessions::{AgentStatus, CliSource, SessionEvent};
+    for initial_status in [None, Some(AgentStatus::Historical)] {
+        let state = make_state();
+        let sid = acp::schema::v1::SessionId::new("restored-session");
+        if let Some(status) = initial_status {
+            let mut row = crate::session_registry::SessionInfo::new(
+                sid.clone(),
+                std::path::PathBuf::from("C:\\repo"),
+            );
+            row.status = Some(status);
+            state.registry.upsert(row).await;
+        }
+        handle_session_born_bound(
+            &state,
+            SessionEvent::SessionStarted {
+                key: sid.0.to_string(),
+                cli_source: CliSource::Copilot,
+                pane_session_id: "restored-pane".into(),
+                cwd: std::path::PathBuf::from("C:\\repo"),
+                title: String::new(),
+            },
+            None,
+        )
+        .await
+        .unwrap();
+        let row = state.registry.lookup(&sid).await.unwrap();
+        assert_eq!(row.status, Some(AgentStatus::Idle));
+        assert_eq!(row.pane_session_id.as_deref(), Some("restored-pane"));
+        assert!(state.born_bound.lock().await.contains(&sid));
+        assert!(!state.hook_owned.lock().await.contains(&sid));
+    }
+}
+
+#[tokio::test]
+async fn restored_session_birth_preserves_an_earlier_live_hook() {
+    use crate::agent_sessions::{AgentStatus, CliSource, SessionEvent};
+    let state = make_state();
+    let sid = acp::schema::v1::SessionId::new("restored-session");
+    let birth = SessionEvent::SessionStarted {
+        key: sid.0.to_string(),
+        cli_source: CliSource::Copilot,
+        pane_session_id: "RESTORED-PANE".into(),
+        cwd: std::path::PathBuf::from("C:\\live"),
+        title: "Live conversation title".into(),
+    };
+    handle_session_hook(&state, birth.clone(), false)
+        .await
+        .unwrap();
+    handle_session_hook(
+        &state,
+        SessionEvent::ToolStarting {
+            key: sid.0.to_string(),
+            tool_name: "prompt".into(),
+        },
+        false,
+    )
+    .await
+    .unwrap();
+    let mut replay = birth;
+    if let SessionEvent::SessionStarted { cwd, title, .. } = &mut replay {
+        *cwd = std::path::PathBuf::from("C:\\old");
+        title.clear();
+    }
+    handle_session_born_bound(&state, replay, None)
+        .await
+        .unwrap();
+    let row = state.registry.lookup(&sid).await.unwrap();
+    assert_eq!(row.status, Some(AgentStatus::Working));
+    assert_eq!(row.cwd, std::path::PathBuf::from("C:\\live"));
+    assert_eq!(row.title.as_deref(), Some("Live conversation title"));
+    assert!(state.hook_owned.lock().await.contains(&sid));
+    assert!(!state.born_bound.lock().await.contains(&sid));
+}
+
+#[tokio::test]
+async fn restored_session_birth_normalizes_pane_identity_and_preserves_live_hooks() {
+    use crate::agent_sessions::{AgentStatus, CliSource, SessionEvent};
+    let plain = "abcdef01-2345-6789-abcd-ef0123456789";
+    let braced = "{ABCDEF01-2345-6789-ABCD-EF0123456789}";
+    for (hook_pane, restore_pane) in [(plain, braced), (braced, plain)] {
+        for attention in [false, true] {
+            let state = make_state();
+            let sid = acp::schema::v1::SessionId::new("restored-session");
+            let birth = SessionEvent::SessionStarted {
+                key: sid.0.to_string(),
+                cli_source: CliSource::Copilot,
+                pane_session_id: hook_pane.into(),
+                cwd: std::path::PathBuf::from("C:\\live"),
+                title: "Live title".into(),
+            };
+            handle_session_hook(&state, birth.clone(), false)
+                .await
+                .unwrap();
+            let activity = if attention {
+                SessionEvent::Notification {
+                    key: sid.0.to_string(),
+                    message: "Awaiting input".into(),
+                }
+            } else {
+                SessionEvent::ToolStarting {
+                    key: sid.0.to_string(),
+                    tool_name: "prompt".into(),
+                }
+            };
+            handle_session_hook(&state, activity, false).await.unwrap();
+            let before = state.registry.lookup(&sid).await.unwrap();
+            let mut replay = birth;
+            if let SessionEvent::SessionStarted {
+                pane_session_id,
+                cwd,
+                title,
+                ..
+            } = &mut replay
+            {
+                *pane_session_id = restore_pane.into();
+                *cwd = std::path::PathBuf::from("C:\\old");
+                title.clear();
+            }
+            handle_session_born_bound(&state, replay, None)
+                .await
+                .unwrap();
+            let row = state.registry.lookup(&sid).await.unwrap();
+            assert_eq!(
+                row.status,
+                Some(if attention {
+                    AgentStatus::Attention
+                } else {
+                    AgentStatus::Working
+                })
+            );
+            assert_eq!(row.cwd, before.cwd);
+            assert_eq!(row.title, before.title);
+            assert_eq!(row.current_tool, before.current_tool);
+            assert_eq!(row.attention_reason, before.attention_reason);
+            assert_eq!(row.pane_session_id.as_deref(), Some(plain));
+            assert!(state.hook_owned.lock().await.contains(&sid));
+            assert!(!state.born_bound.lock().await.contains(&sid));
+            assert!(
+                state
+                    .registry
+                    .apply_event(SessionEvent::PaneClosed {
+                        pane_session_id: restore_pane.into(),
+                    })
+                    .await
+            );
+            assert_eq!(
+                state.registry.lookup(&sid).await.unwrap().status,
+                Some(AgentStatus::Ended)
+            );
+        }
+    }
+}
+
+#[tokio::test]
 async fn session_born_bound_marks_born_bound_not_hook_owned() {
     // #266 born-bound (WTA-launched delegate/resume) is binding-only: it must
     // land in `born_bound`, NOT `hook_owned`, so the watcher can still supply
@@ -11571,7 +11726,7 @@ async fn master_com_shell_prompt_ends_session_when_helper_exit_overtook_start() 
     // must still end the session, allowing /sessions to resume rather than focus.
     let prompt = serde_json::json!({
         "method": "vt_sequence",
-        "params": {"session_id": pane.to_ascii_lowercase(), "sequence": "osc:133;A"}
+        "params": {"session_id": format!("{{{}}}", pane.to_ascii_lowercase()), "sequence": "osc:133;A"}
     });
     handle_master_wt_event(&state, prompt.clone()).await;
     let row = state.registry.lookup(&sid).await.unwrap();
