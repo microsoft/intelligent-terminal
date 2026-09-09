@@ -15698,7 +15698,7 @@ fn chat_reading_position_preserves_viewport_height_changes_and_text_selection() 
     assert_eq!(app.text_selection.selected_text(), Some(selected));
     app.text_selection.clear();
 
-    app.current_tab_mut().input = "a draft\nwith several\ninput rows".into();
+    app.current_tab_mut().input = ["a draft", "with several", "input rows"].join("\n");
     assert_eq!(
         reading_rows(&render_to_text(&mut app, 48, 20), "READ_"),
         before
