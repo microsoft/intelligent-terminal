@@ -49,11 +49,11 @@ namespace winrt::TerminalApp::implementation
         const winrt::hstring& YoloControlOwner() const noexcept { return _yoloControlOwner; }
         void SetYoloControlOwner(const winrt::hstring& owner) noexcept
         {
-            if (::Microsoft::Terminal::AgentPaneRestore::IsValidYoloControlOwner(
-                    std::wstring_view{ owner }))
-            {
-                _yoloControlOwner = owner;
-            }
+            _yoloControlOwner =
+                ::Microsoft::Terminal::AgentPaneRestore::IsValidYoloControlOwner(
+                    std::wstring_view{ owner }) ?
+                    owner :
+                    winrt::hstring{};
         }
 
         // The agent identity this pane is currently running, as an

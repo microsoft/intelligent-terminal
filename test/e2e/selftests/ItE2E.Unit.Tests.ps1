@@ -582,12 +582,24 @@ Describe 'Feature suite package selection' -Tag 'Unit' {
         $contentHeader | Should -Match 'SetYoloControlOwner'
         $contentHeader | Should -Match '_yoloControlOwner'
         $contentSource | Should -Match 'fields\.yoloControlOwner = _yoloControlOwner'
+        $ownerSetter = [regex]::Match(
+            $contentHeader,
+            '(?s)void SetYoloControlOwner\(.*?\n        \}').Value
+        $ownerSetter | Should -Match 'IsValidYoloControlOwner'
+        $ownerSetter | Should -Match '\?\s*owner\s*:\s*winrt::hstring\{\}' `
+            -Because 'empty or invalid owner projections must explicitly clear stale provenance'
 
         $terminalPage = Get-Content -LiteralPath (Join-Path $repoRoot 'src\cascadia\TerminalApp\TerminalPage.cpp') -Raw
         $terminalPage | Should -Match 'params\.isMember\("yolo_control_owner"\)'
         $terminalPage | Should -Match 'SetYoloControlOwner\(\*yoloControlOwner\)'
         $terminalPage | Should -Match '--initial-yolo-control-owner'
         $terminalPage | Should -Match 'fields\.yoloControlOwner'
+        $ownerProjection = [regex]::Match(
+            $terminalPage,
+            '(?s)std::optional<winrt::hstring> yoloControlOwner;.*?(?=std::optional<bool> wantOpen;)').Value
+        $ownerProjection | Should -Not -Match 'isMember\("yolo_control_owner"\)\s*&&' `
+            -Because 'a present null or invalid field is an explicit clear, not an omitted update'
+        $ownerProjection | Should -Match ':\s*winrt::hstring\{\};'
 
         $statusProjection = Get-Content -LiteralPath (Join-Path $repoRoot 'tools\wta\src\app_status_projection.rs') -Raw
         $appEvents = Get-Content -LiteralPath (Join-Path $repoRoot 'tools\wta\src\app_events.rs') -Raw
@@ -596,6 +608,14 @@ Describe 'Feature suite package selection' -Tag 'Unit' {
         $statusProjection | Should -Match '\.owner\(session_id\)'
         $appEvents | Should -Match 'initial_yolo_control_owner\s*\.take\(\)'
         $cliArgs | Should -Match 'initial_yolo_control_owner'
+
+        $wtProtocolEvents = Get-Content -LiteralPath (Join-Path $repoRoot 'tools\wta\src\wt_protocol_events.rs') -Raw
+        $sendBody = [regex]::Match(
+            $wtProtocolEvents,
+            '(?s)pub fn send\(json_payload: String\).*?(?=\n\})').Value
+        $sendBody | Should -Match '#\[cfg\(test\)\]'
+        $sendBody | Should -Match '#\[cfg\(not\(test\)\)\]' `
+            -Because 'unit-test event capture must not launch the external wtcli publisher'
     }
 }
 

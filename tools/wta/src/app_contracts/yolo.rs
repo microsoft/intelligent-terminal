@@ -107,6 +107,10 @@ impl YoloState {
         if !self.can_user_request_enable() {
             return false;
         }
+        let session_id = session_id.into();
+        if self.owner(&session_id) == Some(YoloControlOwner::Manual) {
+            return false;
+        }
         self.mark_manual(session_id);
         true
     }
@@ -211,6 +215,11 @@ mod tests {
         assert_eq!(
             state.automatic_directive("restored-session"),
             AutomaticYoloDirective::NoOpinion
+        );
+        assert!(state.mark_manual_if_allowed("changed-owner"));
+        assert!(
+            !state.mark_manual_if_allowed("changed-owner"),
+            "an already-manual session must not report another owner change"
         );
         assert_eq!(
             state.automatic_directive("automatic-session"),

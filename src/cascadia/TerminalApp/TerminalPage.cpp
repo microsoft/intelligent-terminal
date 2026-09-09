@@ -6908,15 +6908,11 @@ namespace winrt::TerminalApp::implementation
                                  winrt::hstring{};
         }
         std::optional<winrt::hstring> yoloControlOwner;
-        if (params.isMember("yolo_control_owner") &&
-            params["yolo_control_owner"].isString())
+        if (params.isMember("yolo_control_owner"))
         {
-            const auto owner = winrt::to_hstring(params["yolo_control_owner"].asString());
-            if (::Microsoft::Terminal::AgentPaneRestore::IsValidYoloControlOwner(
-                    std::wstring_view{ owner }))
-            {
-                yoloControlOwner = owner;
-            }
+            yoloControlOwner = params["yolo_control_owner"].isString() ?
+                                   winrt::to_hstring(params["yolo_control_owner"].asString()) :
+                                   winrt::hstring{};
         }
 
         std::optional<bool> wantOpen;

@@ -2,9 +2,10 @@
 pub fn send(json_payload: String) {
     #[cfg(test)]
     {
-        TEST_PUBLISHED_EVENTS.with(|events| events.borrow_mut().push(json_payload.clone()));
+        TEST_PUBLISHED_EVENTS.with(|events| events.borrow_mut().push(json_payload));
     }
 
+    #[cfg(not(test))]
     let _ = publisher_sender().send(json_payload);
 }
 
@@ -59,6 +60,7 @@ pub(crate) fn restart_agent_stack_event_with_id(request_id: &str) -> String {
     .to_string()
 }
 
+#[cfg(not(test))]
 fn publisher_sender() -> &'static std::sync::mpsc::Sender<String> {
     static SENDER: std::sync::OnceLock<std::sync::mpsc::Sender<String>> =
         std::sync::OnceLock::new();
@@ -119,6 +121,7 @@ fn execute_publish(
     child.wait().map_err(PublishError::Wait)
 }
 
+#[cfg(not(test))]
 fn publish_blocking(json_payload: &str) {
     let exe = std::env::current_exe()
         .ok()
