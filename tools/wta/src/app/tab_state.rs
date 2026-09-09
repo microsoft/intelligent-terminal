@@ -378,6 +378,16 @@ pub(crate) struct CompletedTurnViewportAnchor {
     pub row_offset: usize,
 }
 
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct ChatReadingPosition {
+    // The next completed-turn index denotes the active transcript. Message
+    // indices are remapped when tools are hidden or the transcript is captured.
+    pub turn_index: usize,
+    pub message_index: Option<usize>,
+    pub row_offset: usize,
+    pub scroll_offset: usize,
+}
+
 #[derive(Debug, Default)]
 pub(crate) struct CompletedTurnLayoutState {
     height_cache: RefCell<CompletedTurnHeightCache>,
@@ -573,6 +583,7 @@ pub struct TabSession {
     /// UI-only disclosure state keyed by the ACP session's tool-call IDs.
     pub(crate) expanded_completed_tool_calls: HashSet<String>,
     pub(crate) active_tool_viewport_anchor: Option<(String, u16)>,
+    pub(crate) chat_reading_position: Option<ChatReadingPosition>,
     pub(crate) completed_turn_layout: CompletedTurnLayoutState,
     /// Latched after the first prompt or session/load. A pre-warmed session/new
     /// alone must not become resumable; `/clear` keeps the same session resumable.
@@ -839,6 +850,7 @@ impl TabSession {
         self.completed_turns.clear();
         self.expanded_completed_tool_calls.clear();
         self.active_tool_viewport_anchor = None;
+        self.chat_reading_position = None;
         self.completed_turn_layout = CompletedTurnLayoutState::default();
     }
 
@@ -981,6 +993,7 @@ impl TabSession {
 
     pub fn scroll_to_bottom(&mut self) {
         self.chat_scroll.offset = 0;
+        self.chat_reading_position = None;
     }
 
     fn can_show_turn_activity(&self) -> bool {
@@ -1085,6 +1098,7 @@ impl TabSession {
         self.replay_user_buffer.clear();
         self.replay_user_message_id = None;
         self.chat_scroll.reset();
+        self.chat_reading_position = None;
         self.timing_note = None;
         self.selection_visible_pending = false;
         self.clear_completed_turn_selection();
@@ -1296,10 +1310,60 @@ impl TabSession {
 
     pub fn take_current_turn_details(&mut self) -> Vec<ChatMessage> {
         self.finish_thought();
+        // Capturing a turn removes its user bubble and renders a prompt header
+        // instead. Keep the reading anchor on the same surviving detail.
+        if let Some(position) = &mut self.chat_reading_position {
+            if position.turn_index == self.completed_turns.len() {
+                if let Some(index) = position.message_index {
+                    position.message_index = self.messages.get(index).and_then(|message| {
+                        (!matches!(message, ChatMessage::User(_))).then(|| {
+                            self.messages[..index]
+                                .iter()
+                                .filter(|message| !matches!(message, ChatMessage::User(_)))
+                                .count()
+                        })
+                    });
+                }
+            }
+        }
         std::mem::take(&mut self.messages)
             .into_iter()
             .filter(|message| !matches!(message, ChatMessage::User(_)))
             .collect()
+    }
+
+    pub(crate) fn hide_tool_call(&mut self, id: &str) {
+        let mut index = 0;
+        self.messages.retain(|message| {
+            let remove =
+                matches!(message, ChatMessage::ToolCall { id: message_id, .. } if message_id == id);
+            if remove {
+                if let Some(position) = &mut self.chat_reading_position {
+                    if position.turn_index == self.completed_turns.len() {
+                        if let Some(anchor_index) = &mut position.message_index {
+                            if *anchor_index > index {
+                                *anchor_index -= 1;
+                            } else if *anchor_index == index {
+                                position.row_offset = 0;
+                            }
+                        }
+                    }
+                }
+            } else {
+                index += 1;
+            }
+            !remove
+        });
+        if let Some(position) = &mut self.chat_reading_position {
+            if position.turn_index == self.completed_turns.len() {
+                position.message_index = position.message_index.and_then(|index| {
+                    self.messages
+                        .len()
+                        .checked_sub(1)
+                        .map(|last| index.min(last))
+                });
+            }
+        }
     }
 
     pub fn pack_replayed_messages_into_turns(&mut self) {

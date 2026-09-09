@@ -1323,7 +1323,6 @@ impl App {
             AppEvent::TabSystemMessage { tab_id, message } => {
                 let tab = self.tab_mut(&tab_id);
                 tab.messages.push(ChatMessage::info(message));
-                tab.scroll_to_bottom();
             }
             AppEvent::PromptTemplateLoaded { name } => {
                 self.prompt_name = Some(name);
@@ -1339,7 +1338,6 @@ impl App {
                 let tab = self.tab_mut(&tab_id);
                 tab.messages
                     .push(ChatMessage::warning(t!("system.agent_busy").into_owned()));
-                tab.scroll_to_bottom();
             }
             AppEvent::TabRenamed {
                 old_tab_id,
@@ -1720,11 +1718,9 @@ impl App {
                     return;
                 };
                 tab.messages.push(ChatMessage::warning(msg.into_owned()));
-                tab.scroll_to_bottom();
             }
             AppEvent::ExecutionInfo(message) => {
                 self.push_execution_info(message);
-                self.current_tab_mut().scroll_to_bottom();
             }
             AppEvent::AgentThoughtChunk { session_id, text } => {
                 if let Some(tab) = self.session_tab_mut_if_current(&session_id) {
@@ -1864,7 +1860,6 @@ impl App {
                     content,
                     locations,
                 });
-                tab.scroll_to_bottom();
             }
             AppEvent::ToolCallUpdate {
                 session_id,
@@ -2017,9 +2012,7 @@ impl App {
                 if tab.loading_session {
                     tab.flush_replay_user_buffer();
                 }
-                tab.messages.retain(
-                    |message| !matches!(message, ChatMessage::ToolCall { id: message_id, .. } if message_id == &id),
-                );
+                tab.hide_tool_call(&id);
             }
             AppEvent::Plan {
                 session_id,
@@ -2048,7 +2041,6 @@ impl App {
                     }
                 }
                 tab.messages.push(ChatMessage::Plan(entries));
-                tab.scroll_to_bottom();
             }
             AppEvent::PermissionRequest {
                 session_id,

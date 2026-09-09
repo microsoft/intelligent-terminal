@@ -457,7 +457,6 @@ impl App {
             }
             tab.finish_active_prompt(prompt_id);
             tab.turn = TurnState::Idle;
-            tab.scroll_to_bottom();
             self.project_tab_state(&target_tab);
             return;
         }
@@ -469,7 +468,6 @@ impl App {
             self.push_execution_info(summary);
         }
         self.turn_close(session_id);
-        self.tab_mut(&target_tab).scroll_to_bottom();
     }
 
     pub fn turn_close(&mut self, session_id: &str) {
@@ -637,7 +635,6 @@ impl App {
                 trailing_marker: None,
             });
         }
-        tab.scroll_to_bottom();
         tab.finish_active_prompt(prompt.id);
         tab.turn = TurnState::Surfaced {
             prompt,
@@ -666,7 +663,6 @@ impl App {
             expanded: true,
             trailing_marker: None,
         });
-        tab.scroll_to_bottom();
         tab.turn = TurnState::Surfaced {
             prompt,
             outcome: TurnOutcome::ChatTurn,
@@ -696,7 +692,6 @@ impl App {
             expanded: true,
             trailing_marker,
         });
-        tab.scroll_to_bottom();
     }
 
     /// Variant of `turn_release_end_pending` with a custom `via=` log tag
@@ -1119,7 +1114,6 @@ impl App {
         );
         let tab = self.session_tab_mut(session_id);
         let prompt = tab.turn.prompt().cloned().expect("prompt set");
-        tab.scroll_to_bottom();
         tab.selected_recommendation = rec_idx;
         tab.selected_button = 0;
         tab.recommendation_focus = RecommendationFocus::Button;
@@ -1185,7 +1179,6 @@ impl App {
         let rec_idx = recommended_choice_index(&recommendations);
         let tab = self.session_tab_mut(session_id);
         let prompt = tab.turn.prompt().cloned().expect("prompt set");
-        tab.scroll_to_bottom();
         tab.selected_recommendation = rec_idx;
         tab.selected_button = 0;
         tab.recommendation_focus = RecommendationFocus::Button;
@@ -1241,7 +1234,6 @@ impl App {
                 expanded: true,
                 trailing_marker: None,
             });
-            tab.scroll_to_bottom();
         }
 
         let target_tab = self.tab_for_session(session_id);

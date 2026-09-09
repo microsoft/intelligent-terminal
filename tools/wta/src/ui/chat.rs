@@ -620,7 +620,7 @@ fn completed_turn_height(tab: &crate::app::TabSession, index: usize, wrap_width:
         return 0;
     }
     let height = rendered_lines_height(
-        &build_completed_turn_lines_for_tab(tab, index, false, false, wrap_width).0,
+        &build_completed_turn_lines_for_tab(tab, index, false, false, wrap_width).lines,
         wrap_width,
     );
     tab.cache_completed_turn_height(index, wrap_width, height);
@@ -698,6 +698,44 @@ struct ToolRowGeometry {
     header_width: usize,
     expanded: bool,
     marker: &'static str,
+}
+
+struct MessageRowGeometry {
+    start: usize,
+    end: usize,
+    row_offset: usize,
+    height: usize,
+}
+
+struct CompletedTurnLines<'a> {
+    lines: Vec<Line<'a>>,
+    prompt_rows: Vec<PromptRowGeometry>,
+    tool_rows: Vec<ToolRowGeometry>,
+    message_rows: Vec<MessageRowGeometry>,
+}
+
+struct ReadingRegion {
+    turn_index: usize,
+    message_index: Option<usize>,
+    rows_below: usize,
+    height: usize,
+}
+
+impl ReadingRegion {
+    fn position(
+        &self,
+        offset: usize,
+        visible_height: usize,
+    ) -> Option<crate::app::ChatReadingPosition> {
+        let top = offset.saturating_add(visible_height);
+        let end = self.rows_below.saturating_add(self.height);
+        (top > self.rows_below && top <= end).then(|| crate::app::ChatReadingPosition {
+            turn_index: self.turn_index,
+            message_index: self.message_index,
+            row_offset: end - top,
+            scroll_offset: offset,
+        })
+    }
 }
 
 fn build_active_message_group<'a>(
@@ -913,8 +951,16 @@ pub fn render(frame: &mut Frame, app: &mut App, area: Rect, scrollbar_area: Rect
         .then_some(app.current_tab().selected_completed_turn_idx)
         .flatten()
         .filter(|index| *index < app.current_tab().completed_turns.len());
-    let viewport_anchor = app.current_tab().completed_turn_viewport_anchor();
+    let mut viewport_anchor = app.current_tab().completed_turn_viewport_anchor();
     let active_anchor = app.current_tab_mut().active_tool_viewport_anchor.take();
+    let reading_position = app.current_tab().chat_reading_position.filter(|position| {
+        app.current_tab().chat_scroll.offset > 0
+            && position.scroll_offset == app.current_tab().chat_scroll.offset
+            && !selection_pending
+            && viewport_anchor.is_none()
+            && active_anchor.is_none()
+    });
+    let mut reading_position_applied = false;
     let mut active_anchor_applied = false;
     let mut effective_offset = app.current_tab().chat_scroll.offset;
     let mut requested_rows = visible_height
@@ -923,6 +969,7 @@ pub fn render(frame: &mut Frame, app: &mut App, area: Rect, scrollbar_area: Rect
 
     let mut reversed_lines: Vec<Line> = Vec::new();
     let mut turn_hit_offsets = Vec::new();
+    let mut reading_regions = Vec::new();
     let mut skipped_rows_below = 0;
 
     let mut pending_lines = build_pending_stream_lines(app, wrap_width);
@@ -934,6 +981,26 @@ pub fn render(frame: &mut Frame, app: &mut App, area: Rect, scrollbar_area: Rect
     let tab = app.current_tab();
     let permission_tool_call_id = permission_tool_call_id(tab);
     let streaming_index = tab.streaming_agent_message_index();
+    if let Some(index) = streaming_index {
+        if let Some(position) = reading_position.filter(|position| {
+            position.turn_index == tab.completed_turns.len()
+                && position.message_index == Some(index)
+        }) {
+            effective_offset = newer_rows
+                .saturating_sub(position.row_offset.min(newer_rows.saturating_sub(1)))
+                .saturating_sub(visible_height);
+            requested_rows = visible_height
+                .saturating_add(effective_offset)
+                .saturating_add(CHAT_RENDER_MARGIN_ROWS);
+            reading_position_applied = true;
+        }
+        reading_regions.push(ReadingRegion {
+            turn_index: tab.completed_turns.len(),
+            message_index: Some(index),
+            rows_below: 0,
+            height: newer_rows,
+        });
+    }
     let mut end = tab.messages.len();
     while end > 0 {
         let idx = end - 1;
@@ -947,6 +1014,27 @@ pub fn render(frame: &mut Frame, app: &mut App, area: Rect, scrollbar_area: Rect
         let (mut message_lines, geometry) =
             build_active_message_group(tab, start, end, permission_tool_call_id, wrap_width);
         let message_height = rendered_lines_height(&message_lines, wrap_width);
+        if let Some(position) = reading_position.filter(|position| {
+            position.turn_index == tab.completed_turns.len()
+                && position
+                    .message_index
+                    .is_some_and(|index| (start..end).contains(&index))
+        }) {
+            effective_offset = newer_rows
+                .saturating_add(message_height)
+                .saturating_sub(position.row_offset.min(message_height.saturating_sub(1)))
+                .saturating_sub(visible_height);
+            requested_rows = visible_height
+                .saturating_add(effective_offset)
+                .saturating_add(CHAT_RENDER_MARGIN_ROWS);
+            reading_position_applied = true;
+        }
+        reading_regions.push(ReadingRegion {
+            turn_index: tab.completed_turns.len(),
+            message_index: Some(start),
+            rows_below: newer_rows,
+            height: message_height,
+        });
         if let Some((id, row)) = &active_anchor {
             if tab.messages[start..end].iter().any(|message| {
                 matches!(message, ChatMessage::ToolCall { id: tool_id, .. } if tool_id == id)
@@ -975,6 +1063,7 @@ pub fn render(frame: &mut Frame, app: &mut App, area: Rect, scrollbar_area: Rect
             && selection_target_idx.is_none()
             && viewport_anchor.is_none()
             && (active_anchor.is_none() || active_anchor_applied)
+            && (reading_position.is_none() || reading_position_applied)
         {
             truncated = true;
             break;
@@ -983,6 +1072,43 @@ pub fn render(frame: &mut Frame, app: &mut App, area: Rect, scrollbar_area: Rect
     }
 
     if !truncated {
+        // Resolve the one anchored completed turn with the same geometry used
+        // to draw it. Other history still uses the cached-height lazy plan.
+        let mut anchored_turn = reading_position
+            .filter(|position| position.turn_index < tab.completed_turns.len())
+            .map(|position| {
+                let built = build_completed_turn_lines_for_tab(
+                    tab,
+                    position.turn_index,
+                    tab.selected_completed_turn_idx == Some(position.turn_index),
+                    app.pane_focused,
+                    wrap_width,
+                );
+                let height = rendered_lines_height(&built.lines, wrap_width);
+                let row_offset = position
+                    .message_index
+                    .and_then(|index| {
+                        built
+                            .message_rows
+                            .iter()
+                            .find(|row| (row.start..row.end).contains(&index))
+                    })
+                    .map_or_else(
+                        || position.row_offset.min(height.saturating_sub(1)),
+                        |row| {
+                            row.row_offset.saturating_add(
+                                position.row_offset.min(row.height.saturating_sub(1)),
+                            )
+                        },
+                    );
+                viewport_anchor = Some(crate::app::CompletedTurnViewportAnchor {
+                    index: position.turn_index,
+                    row: 0,
+                    row_offset,
+                });
+                tab.cache_completed_turn_height(position.turn_index, wrap_width, height);
+                (position.turn_index, built)
+            });
         let plan = plan_completed_turn_viewport(
             app.current_tab(),
             newer_rows,
@@ -995,17 +1121,48 @@ pub fn render(frame: &mut Frame, app: &mut App, area: Rect, scrollbar_area: Rect
         if plan.skip_base_lines {
             reversed_lines.clear();
             turn_hit_offsets.clear();
+            reading_regions.clear();
         }
         let tab = app.current_tab();
         for planned in plan.turns {
             let turn = &tab.completed_turns[planned.index];
-            let (mut turn_lines, prompt_rows, tool_rows) = build_completed_turn_lines_for_tab(
-                tab,
-                planned.index,
-                tab.selected_completed_turn_idx == Some(planned.index),
-                app.pane_focused,
-                wrap_width,
-            );
+            let CompletedTurnLines {
+                lines: mut turn_lines,
+                prompt_rows,
+                tool_rows,
+                message_rows,
+            } = if anchored_turn
+                .as_ref()
+                .is_some_and(|(index, _)| *index == planned.index)
+            {
+                anchored_turn.take().expect("anchored turn exists").1
+            } else {
+                build_completed_turn_lines_for_tab(
+                    tab,
+                    planned.index,
+                    tab.selected_completed_turn_idx == Some(planned.index),
+                    app.pane_focused,
+                    wrap_width,
+                )
+            };
+            for row in message_rows {
+                reading_regions.push(ReadingRegion {
+                    turn_index: planned.index,
+                    message_index: Some(row.start),
+                    rows_below: planned.rows_below.saturating_add(
+                        planned
+                            .height
+                            .saturating_sub(row.row_offset.saturating_add(row.height)),
+                    ),
+                    height: row.height,
+                });
+            }
+            reading_regions.push(ReadingRegion {
+                turn_index: planned.index,
+                message_index: None,
+                rows_below: planned.rows_below,
+                height: planned.height,
+            });
             turn_hit_offsets.push(CompletedTurnHitOffset {
                 turn_index: Some(planned.index),
                 rows_below: planned.rows_below,
@@ -1187,11 +1344,18 @@ pub fn render(frame: &mut Frame, app: &mut App, area: Rect, scrollbar_area: Rect
     app.current_tab_mut()
         .finish_completed_turn_layout(visible_completed_turn_anchors);
 
-    if selection_pending || active_anchor_applied {
+    if selection_pending {
         let tab = app.current_tab_mut();
-        tab.chat_scroll.offset = effective_offset;
         tab.completed_turn_selection_visible_pending = false;
     }
+    app.current_tab_mut().chat_scroll.offset = effective_offset;
+    app.current_tab_mut().chat_reading_position = reading_regions
+        .iter()
+        .find_map(|region| region.position(local_offset, visible_height))
+        .map(|mut position| {
+            position.scroll_offset = effective_offset;
+            position
+        });
 
     // Update the scroll bound only when the build saw all of history;
     // otherwise the true max is still unknown and the stored value (possibly
@@ -1347,14 +1511,14 @@ fn build_completed_turn_lines_with_prompt_rows<'a>(
     pane_focused: bool,
     wrap_width: usize,
 ) -> (Vec<Line<'a>>, Vec<PromptRowGeometry>) {
-    let (lines, prompt_rows, _) = build_completed_turn_lines_with_geometry(
+    let built = build_completed_turn_lines_with_geometry(
         turn,
         is_selected,
         pane_focused,
         wrap_width,
         |_| false,
     );
-    (lines, prompt_rows)
+    (built.lines, built.prompt_rows)
 }
 
 fn build_completed_turn_lines_for_tab<'a>(
@@ -1363,7 +1527,7 @@ fn build_completed_turn_lines_for_tab<'a>(
     is_selected: bool,
     pane_focused: bool,
     wrap_width: usize,
-) -> (Vec<Line<'a>>, Vec<PromptRowGeometry>, Vec<ToolRowGeometry>) {
+) -> CompletedTurnLines<'a> {
     let turn = &tab.completed_turns[turn_index];
     build_completed_turn_lines_with_geometry(turn, is_selected, pane_focused, wrap_width, |id| {
         tab.completed_tool_call_expanded(id)
@@ -1376,7 +1540,7 @@ fn build_completed_turn_lines_with_geometry<'a>(
     pane_focused: bool,
     wrap_width: usize,
     tool_expanded: impl Fn(&str) -> bool,
-) -> (Vec<Line<'a>>, Vec<PromptRowGeometry>, Vec<ToolRowGeometry>) {
+) -> CompletedTurnLines<'a> {
     #[cfg(test)]
     record_completed_turn_line_build();
 
@@ -1454,6 +1618,7 @@ fn build_completed_turn_lines_with_geometry<'a>(
     };
 
     let mut tool_rows = Vec::new();
+    let mut message_rows = Vec::new();
     if turn.expanded {
         // Render the captured details — the agent reply, tool calls,
         // plans, etc. — using the same builder as the active turn so the
@@ -1487,6 +1652,13 @@ fn build_completed_turn_lines_with_geometry<'a>(
             if group_end - detail_index > 1 {
                 let message_lines =
                     build_compact_tool_group_lines(&turn.details[detail_index..group_end]);
+                let message_height = rendered_lines_height(&message_lines, wrap_width);
+                message_rows.push(MessageRowGeometry {
+                    start: detail_index,
+                    end: group_end,
+                    row_offset: rendered_height,
+                    height: message_height,
+                });
                 tool_rows.push(ToolRowGeometry {
                     hit_kind: crate::app::CompletedTurnHitKind::ToolGroup {
                         first_detail_index: detail_index,
@@ -1500,8 +1672,7 @@ fn build_completed_turn_lines_with_geometry<'a>(
                     expanded: false,
                     marker: "✓",
                 });
-                rendered_height = rendered_height
-                    .saturating_add(rendered_lines_height(&message_lines, wrap_width));
+                rendered_height = rendered_height.saturating_add(message_height);
                 lines.extend(message_lines);
                 detail_index = group_end;
                 continue;
@@ -1525,6 +1696,13 @@ fn build_completed_turn_lines_with_geometry<'a>(
             });
             let message_lines =
                 build_message_lines_with_details(msg, false, false, None, 0, wrap_width, display);
+            let message_height = rendered_lines_height(&message_lines, wrap_width);
+            message_rows.push(MessageRowGeometry {
+                start: detail_index,
+                end: detail_index + 1,
+                row_offset: rendered_height,
+                height: message_height,
+            });
             if let Some(geometry) = thought_row_geometry(
                 msg,
                 detail_index,
@@ -1547,8 +1725,7 @@ fn build_completed_turn_lines_with_geometry<'a>(
                     marker,
                 });
             }
-            rendered_height =
-                rendered_height.saturating_add(rendered_lines_height(&message_lines, wrap_width));
+            rendered_height = rendered_height.saturating_add(message_height);
             lines.extend(message_lines);
             detail_index += 1;
         }
@@ -1569,7 +1746,12 @@ fn build_completed_turn_lines_with_geometry<'a>(
     if lines.last().map_or(true, |l| !l.spans.is_empty()) {
         lines.push(Line::default());
     }
-    (lines, prompt_rows, tool_rows)
+    CompletedTurnLines {
+        lines,
+        prompt_rows,
+        tool_rows,
+        message_rows,
+    }
 }
 
 pub fn render_activity(frame: &mut Frame, app: &App, area: Rect) {
