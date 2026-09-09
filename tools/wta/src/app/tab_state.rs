@@ -386,6 +386,8 @@ pub(crate) struct ChatReadingPosition {
     pub message_index: Option<usize>,
     pub row_offset: usize,
     pub scroll_offset: usize,
+    // UTF-8 source boundary in this thought, independent of wrapping or head retention.
+    pub thought_source: Option<(ThoughtId, usize)>,
 }
 
 #[derive(Debug, Default)]
@@ -1156,7 +1158,10 @@ impl TabSession {
             self.streaming_thought = Some(std::time::Instant::now());
             index
         };
-        let Some(ChatMessage::Thought { text: current, .. }) = self.messages.get_mut(index) else {
+        let Some(ChatMessage::Thought {
+            id, text: current, ..
+        }) = self.messages.get_mut(index)
+        else {
             return;
         };
         current.push_str(text);
@@ -1168,6 +1173,17 @@ impl TabSession {
                 .nth(remove_chars)
                 .map_or(current.len(), |(index, _)| index);
             current.drain(..cut_at);
+            if let Some(position) = &mut self.chat_reading_position {
+                if position.turn_index == self.completed_turns.len()
+                    && position.message_index == Some(index)
+                {
+                    if let Some((anchor_id, byte)) = &mut position.thought_source {
+                        if anchor_id == id {
+                            *byte = byte.saturating_sub(cut_at);
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -1345,6 +1361,7 @@ impl TabSession {
                                 *anchor_index -= 1;
                             } else if *anchor_index == index {
                                 position.row_offset = 0;
+                                position.thought_source = None;
                             }
                         }
                     }

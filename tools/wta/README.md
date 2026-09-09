@@ -157,8 +157,10 @@ into completed history.
 Chat follows new output while you are at the bottom. Scrolling up preserves your
 reading position as text streams, tools update, and turns finish; scrolling back
 to the bottom resumes following. Sending a prompt or clearing/loading a session
-still resets the view. If a thinking block collapses or content is removed, the
-view clamps to surviving content.
+still resets the view. Streaming thinking retains its latest 4,000 characters;
+your reading position follows the same retained text even when older text is
+trimmed. If the text you were reading is removed or a thinking block collapses,
+the view clamps to surviving content.
 
 | Key | Action |
 |-----|--------|

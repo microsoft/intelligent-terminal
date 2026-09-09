@@ -734,7 +734,73 @@ impl ReadingRegion {
             message_index: self.message_index,
             row_offset: end - top,
             scroll_offset: offset,
+            thought_source: None,
         })
+    }
+}
+
+fn reading_position_row_offset(
+    position: crate::app::ChatReadingPosition,
+    message: &ChatMessage,
+    wrap_width: usize,
+) -> usize {
+    if let (
+        Some((anchor_id, byte)),
+        ChatMessage::Thought {
+            id, expanded: true, ..
+        },
+    ) = (position.thought_source, message)
+    {
+        if anchor_id == *id {
+            return thought_source_rows(message, wrap_width)
+                .into_iter()
+                .take_while(|(start, _)| *start <= byte)
+                .last()
+                .map_or(position.row_offset, |(_, row)| row);
+        }
+    }
+    position.row_offset
+}
+
+fn capture_thought_source(
+    position: &mut crate::app::ChatReadingPosition,
+    previous: Option<crate::app::ChatReadingPosition>,
+    tab: &crate::app::TabSession,
+    wrap_width: usize,
+) {
+    let messages = if position.turn_index == tab.completed_turns.len() {
+        &tab.messages
+    } else if let Some(turn) = tab.completed_turns.get(position.turn_index) {
+        &turn.details
+    } else {
+        return;
+    };
+    let Some(message) = position.message_index.and_then(|index| messages.get(index)) else {
+        return;
+    };
+    let ChatMessage::Thought {
+        id, expanded: true, ..
+    } = message
+    else {
+        return;
+    };
+    // Rewrapping can move the source boundary into the middle of a row. Keep
+    // that boundary rather than repeatedly anchoring earlier text on each draw.
+    if let Some(previous) = previous.filter(|previous| {
+        previous.turn_index == position.turn_index
+            && previous.message_index == position.message_index
+            && previous
+                .thought_source
+                .is_some_and(|(anchor_id, _)| anchor_id == *id)
+            && reading_position_row_offset(*previous, message, wrap_width) == position.row_offset
+    }) {
+        position.thought_source = previous.thought_source;
+    } else {
+        position.thought_source = thought_source_rows(message, wrap_width)
+            .into_iter()
+            .take_while(|(_, row)| *row <= position.row_offset)
+            .last()
+            .map(|(byte, _)| (*id, byte));
     }
 }
 
@@ -1020,9 +1086,11 @@ pub fn render(frame: &mut Frame, app: &mut App, area: Rect, scrollbar_area: Rect
                     .message_index
                     .is_some_and(|index| (start..end).contains(&index))
         }) {
+            let row_offset =
+                reading_position_row_offset(position, &tab.messages[start], wrap_width);
             effective_offset = newer_rows
                 .saturating_add(message_height)
-                .saturating_sub(position.row_offset.min(message_height.saturating_sub(1)))
+                .saturating_sub(row_offset.min(message_height.saturating_sub(1)))
                 .saturating_sub(visible_height);
             requested_rows = visible_height
                 .saturating_add(effective_offset)
@@ -1096,9 +1164,13 @@ pub fn render(frame: &mut Frame, app: &mut App, area: Rect, scrollbar_area: Rect
                     .map_or_else(
                         || position.row_offset.min(height.saturating_sub(1)),
                         |row| {
-                            row.row_offset.saturating_add(
-                                position.row_offset.min(row.height.saturating_sub(1)),
-                            )
+                            let row_offset = reading_position_row_offset(
+                                position,
+                                &tab.completed_turns[position.turn_index].details[row.start],
+                                wrap_width,
+                            );
+                            row.row_offset
+                                .saturating_add(row_offset.min(row.height.saturating_sub(1)))
                         },
                     );
                 viewport_anchor = Some(crate::app::CompletedTurnViewportAnchor {
@@ -1354,6 +1426,12 @@ pub fn render(frame: &mut Frame, app: &mut App, area: Rect, scrollbar_area: Rect
         .find_map(|region| region.position(local_offset, visible_height))
         .map(|mut position| {
             position.scroll_offset = effective_offset;
+            capture_thought_source(
+                &mut position,
+                reading_position,
+                app.current_tab(),
+                wrap_width,
+            );
             position
         });
 
@@ -1858,6 +1936,87 @@ fn build_message_lines<'a>(
     )
 }
 
+/// Use textwrap's default word splitting and wrapping, retaining the source
+/// lengths that its string-only `wrap` result discards.
+fn wrap_thought_text(text: &str, wrap_width: usize) -> Vec<(usize, Cow<'_, str>)> {
+    let width = wrap_width.saturating_sub(2).max(1);
+    let options = textwrap::Options::new(width);
+    let mut rows = Vec::new();
+    let mut paragraph_start = 0;
+    for paragraph in text.split('\n') {
+        let content = paragraph.strip_suffix('\r').unwrap_or(paragraph);
+        if content.len() < width {
+            // Match textwrap's short-line path, including its whitespace handling.
+            rows.push((
+                paragraph_start,
+                Cow::Borrowed(content.trim_end_matches(' ')),
+            ));
+        } else {
+            let words = textwrap::core::break_words(
+                textwrap::word_splitters::split_words(
+                    options.word_separator.find_words(content),
+                    &options.word_splitter,
+                ),
+                width,
+            );
+            let mut byte = 0;
+            for line in options.wrap_algorithm.wrap(&words, &[width, width]) {
+                // textwrap's fragments partition the original UTF-8 source in
+                // order, including discarded whitespace. No text search is needed
+                // even for identical lines or empty wrapped rows.
+                let consumed = line
+                    .iter()
+                    .map(|word| word.len() + word.whitespace.len())
+                    .sum::<usize>();
+                let trailing = line.last().map_or(0, |word| word.whitespace.len());
+                let mut piece = Cow::Borrowed(&content[byte..byte + consumed - trailing]);
+                if let Some(last) = line.last() {
+                    if !last.penalty.is_empty() {
+                        piece.to_mut().push_str(last.penalty);
+                    }
+                }
+                rows.push((paragraph_start + byte, piece));
+                byte += consumed;
+            }
+        }
+        paragraph_start += paragraph.len() + 1;
+    }
+    rows
+}
+
+fn thought_source_rows(message: &ChatMessage, wrap_width: usize) -> Vec<(usize, usize)> {
+    let ChatMessage::Thought {
+        text,
+        expanded: true,
+        ..
+    } = message
+    else {
+        return Vec::new();
+    };
+    if text.trim().is_empty() {
+        return Vec::new();
+    }
+    let lines = build_message_lines_with_details(
+        message,
+        false,
+        false,
+        None,
+        0,
+        wrap_width,
+        ToolDisplay::ActiveTurn,
+    );
+    let mut row = rendered_lines_height(&lines[..1], wrap_width);
+    wrap_thought_text(text, wrap_width)
+        .into_iter()
+        .zip(&lines[1..])
+        .map(|((byte, _), line)| {
+            let start = row;
+            row += rendered_lines_height(std::slice::from_ref(line), wrap_width);
+            (byte, start)
+        })
+        .collect()
+}
+
 fn build_message_lines_with_details<'a>(
     msg: &'a ChatMessage,
     is_last_message: bool,
@@ -1888,19 +2047,11 @@ fn build_message_lines_with_details<'a>(
                 style,
             )));
             if *expanded {
-                for paragraph in text.split('\n') {
-                    let paragraph = paragraph.strip_suffix('\r').unwrap_or(paragraph);
-                    let pieces = textwrap::wrap(paragraph, wrap_width.saturating_sub(2).max(1));
-                    if pieces.is_empty() {
-                        lines.push(Line::from(Span::styled("│", style)));
-                    } else {
-                        for piece in pieces {
-                            lines.push(Line::from(vec![
-                                Span::styled("│ ", style),
-                                Span::styled(piece.into_owned(), style),
-                            ]));
-                        }
-                    }
+                for (_, piece) in wrap_thought_text(text, wrap_width) {
+                    lines.push(Line::from(vec![
+                        Span::styled("│ ", style),
+                        Span::styled(piece.into_owned(), style),
+                    ]));
                 }
             }
         }
@@ -3700,6 +3851,74 @@ mod tests {
     #[test]
     fn stream_text_blank_is_none() {
         assert_eq!(user_visible_stream_text("   \n  "), None);
+    }
+
+    #[test]
+    fn thought_source_wrapping_matches_textwrap_after_every_utf8_head_cut() {
+        let text = [
+            "  repeated repeated  repeated ",
+            "",
+            "界e\u{301} alpha-beta 界e\u{301} internationalization",
+            "",
+            "repeated repeated",
+            "",
+        ]
+        .join("\r\n");
+        for cut in text
+            .char_indices()
+            .map(|(byte, _)| byte)
+            .chain([text.len()])
+        {
+            let retained = &text[cut..];
+            for width in [1, 2, 3, 4, 7, 12, 20, 48] {
+                let actual = wrap_thought_text(retained, width);
+                let expected = retained
+                    .split('\n')
+                    .flat_map(|paragraph| {
+                        textwrap::wrap(
+                            paragraph.strip_suffix('\r').unwrap_or(paragraph),
+                            width.saturating_sub(2).max(1),
+                        )
+                    })
+                    .collect::<Vec<_>>();
+                assert_eq!(
+                    actual.iter().map(|(_, piece)| piece).collect::<Vec<_>>(),
+                    expected.iter().collect::<Vec<_>>(),
+                    "cut={cut}, width={width}",
+                );
+                assert!(actual
+                    .iter()
+                    .all(|(byte, _)| retained.is_char_boundary(*byte)));
+                assert!(actual.windows(2).all(|rows| rows[0].0 <= rows[1].0));
+            }
+        }
+    }
+
+    #[test]
+    fn thought_source_offsets_distinguish_repeated_and_empty_rows() {
+        let text = ["same", "", "same", "", "same", ""].join("\r\n");
+        let rows = wrap_thought_text(&text, 20);
+        assert_eq!(
+            rows.iter().map(|(byte, _)| *byte).collect::<Vec<_>>(),
+            [0, 6, 8, 14, 16, 22],
+        );
+        let rows = wrap_thought_text("same same same", 7);
+        assert_eq!(
+            rows,
+            [
+                (0, Cow::Borrowed("same")),
+                (5, Cow::Borrowed("same")),
+                (10, Cow::Borrowed("same"))
+            ]
+        );
+
+        // A CRLF can be split by the retention boundary. The empty first
+        // paragraph and the next identical line still have distinct positions.
+        let rows = wrap_thought_text(&text[5..], 20);
+        assert_eq!(
+            rows.iter().map(|(byte, _)| *byte).collect::<Vec<_>>(),
+            [0, 1, 3, 9, 11, 17],
+        );
     }
 
     #[test]

@@ -15508,6 +15508,254 @@ fn reading_test_app() -> App {
 }
 
 #[test]
+fn chat_reading_position_preserves_retained_streaming_thought_lines() {
+    let _locale = crate::test_support::lock_locale();
+    let mut app = test_app();
+    app.state = ConnectionState::Connected;
+    submit_test_prompt(&mut app, "thinking");
+    app.handle_event(AppEvent::AgentThoughtChunk {
+        session_id: DEFAULT_TAB_ID.into(),
+        text: (0..500)
+            .map(|index| format!("THINK_{index:03}\n"))
+            .collect(),
+    });
+    render_to_text(&mut app, 48, 20);
+    app.current_tab_mut().chat_scroll.by(130);
+    let before = reading_rows(&render_to_text(&mut app, 48, 20), "THINK_");
+    for start in [500, 510, 520] {
+        app.handle_event(AppEvent::AgentThoughtChunk {
+            session_id: DEFAULT_TAB_ID.into(),
+            text: (start..start + 10)
+                .map(|index| format!("THINK_{index:03}\n"))
+                .collect(),
+        });
+        for _ in 0..2 {
+            assert_eq!(
+                reading_rows(&render_to_text(&mut app, 48, 20), "THINK_"),
+                before,
+            );
+        }
+    }
+    for start in [530, 540] {
+        app.handle_event(AppEvent::AgentThoughtChunk {
+            session_id: DEFAULT_TAB_ID.into(),
+            text: (start..start + 10)
+                .map(|index| format!("THINK_{index:03}\n"))
+                .collect(),
+        });
+    }
+    assert_eq!(
+        reading_rows(&render_to_text(&mut app, 48, 20), "THINK_"),
+        before
+    );
+}
+
+#[test]
+fn chat_reading_position_thought_retention_preserves_duplicate_and_blank_rows() {
+    let _locale = crate::test_support::lock_locale();
+    let mut app = test_app();
+    app.state = ConnectionState::Connected;
+    submit_test_prompt(&mut app, "thinking");
+    app.handle_event(AppEvent::AgentThoughtChunk {
+        session_id: DEFAULT_TAB_ID.into(),
+        text: (0..300)
+            .map(|index| ["SAME", "", &format!("THINK_{index:03}"), ""].join("\r\n"))
+            .collect(),
+    });
+    render_to_text(&mut app, 48, 20);
+    app.current_tab_mut().chat_scroll.by(130);
+    let before = render_to_text(&mut app, 48, 20);
+    let before_rows = reading_rows(&before, "│");
+    let mut split_crlf = false;
+    for _ in 0..30 {
+        app.handle_event(AppEvent::AgentThoughtChunk {
+            session_id: DEFAULT_TAB_ID.into(),
+            text: "界".into(),
+        });
+        split_crlf |= app
+            .current_tab()
+            .streaming_thought_text()
+            .unwrap()
+            .starts_with('\n');
+        let rendered = render_to_text(&mut app, 48, 20);
+        assert_eq!(reading_rows(&rendered, "│"), before_rows);
+    }
+    assert!(
+        split_crlf,
+        "exercise a CRLF split by the retention boundary"
+    );
+}
+
+#[test]
+fn chat_reading_position_preserves_soft_wrapped_thought_source() {
+    let _locale = crate::test_support::lock_locale();
+    let mut app = test_app();
+    app.state = ConnectionState::Connected;
+    submit_test_prompt(&mut app, "thinking");
+    app.handle_event(AppEvent::AgentThoughtChunk {
+        session_id: DEFAULT_TAB_ID.into(),
+        text: (0..500)
+            .map(|index| format!("word{index:03} 界e\u{301} alpha-beta "))
+            .collect(),
+    });
+    render_to_text(&mut app, 48, 20);
+    app.current_tab_mut().chat_scroll.by(49);
+    let before = render_to_text(&mut app, 48, 20);
+    let (id, mut byte) = app
+        .current_tab()
+        .chat_reading_position
+        .unwrap()
+        .thought_source
+        .unwrap();
+    let retained = app.current_tab().streaming_thought_text().unwrap();
+    let anchor_word = retained[byte..]
+        .split_whitespace()
+        .next()
+        .unwrap()
+        .to_owned();
+    assert!(anchor_word.starts_with("word"), "{anchor_word}");
+    assert!(
+        before.lines().next().unwrap().contains(&anchor_word),
+        "{before}"
+    );
+    assert!(retained.len() > retained.chars().count());
+    // Each update crops a partial paragraph, sometimes inside a word or a
+    // combining sequence. The original source, not the new row start, survives.
+    for chunk in [
+        "界e\u{301} ",
+        "alpha-beta ",
+        "x",
+        "yz",
+        "more words 界 ",
+        "tail ",
+    ] {
+        let current = app.current_tab().streaming_thought_text().unwrap();
+        let cut_at = current.char_indices().nth(chunk.chars().count()).unwrap().0;
+        byte -= cut_at;
+        app.handle_event(AppEvent::AgentThoughtChunk {
+            session_id: DEFAULT_TAB_ID.into(),
+            text: chunk.into(),
+        });
+        for _ in 0..3 {
+            let rendered = render_to_text(&mut app, 48, 20);
+            assert!(
+                rendered.lines().next().unwrap().contains(&anchor_word),
+                "{rendered}"
+            );
+            assert_eq!(
+                app.current_tab()
+                    .chat_reading_position
+                    .unwrap()
+                    .thought_source,
+                Some((id, byte)),
+            );
+        }
+    }
+}
+
+#[test]
+fn chat_reading_position_thought_retention_clamps_deleted_source_and_follows_bottom() {
+    let _locale = crate::test_support::lock_locale();
+    let mut app = test_app();
+    app.state = ConnectionState::Connected;
+    submit_test_prompt(&mut app, "thinking");
+    app.handle_event(AppEvent::AgentThoughtChunk {
+        session_id: DEFAULT_TAB_ID.into(),
+        text: (0..500)
+            .map(|index| format!("THINK_{index:03}\n"))
+            .collect(),
+    });
+    render_to_text(&mut app, 48, 20);
+    app.current_tab_mut().chat_scroll.by(130);
+    render_to_text(&mut app, 48, 20);
+    app.handle_event(AppEvent::AgentThoughtChunk {
+        session_id: DEFAULT_TAB_ID.into(),
+        text: (500..900)
+            .map(|index| format!("THINK_{index:03}\n"))
+            .collect(),
+    });
+    let clamped = render_to_text(&mut app, 48, 20);
+    assert!(
+        clamped.lines().next().unwrap().contains("THINK_500"),
+        "{clamped}"
+    );
+    assert_eq!(render_to_text(&mut app, 48, 20), clamped);
+    assert_eq!(
+        app.current_tab()
+            .chat_reading_position
+            .unwrap()
+            .thought_source
+            .unwrap()
+            .1,
+        0,
+    );
+    app.current_tab_mut().scroll_to_bottom();
+    render_to_text(&mut app, 48, 20);
+    for start in [900, 910] {
+        app.handle_event(AppEvent::AgentThoughtChunk {
+            session_id: DEFAULT_TAB_ID.into(),
+            text: (start..start + 10)
+                .map(|index| format!("THINK_{index:03}\n"))
+                .collect(),
+        });
+        let bottom = render_to_text(&mut app, 48, 20);
+        assert!(
+            bottom.contains(&format!("THINK_{:03}", start + 9)),
+            "{bottom}"
+        );
+        assert_eq!(app.current_tab().chat_scroll.offset, 0);
+    }
+}
+
+#[test]
+fn chat_reading_position_thought_source_tracks_message_moves_and_capture() {
+    let _locale = crate::test_support::lock_locale();
+    let mut app = test_app();
+    app.state = ConnectionState::Connected;
+    submit_test_prompt(&mut app, "thinking");
+    app.current_tab_mut()
+        .messages
+        .push(search_tool_message("removed", "Completed", "query"));
+    app.handle_event(AppEvent::AgentThoughtChunk {
+        session_id: DEFAULT_TAB_ID.into(),
+        text: (0..500)
+            .map(|index| format!("THINK_{index:03}\n"))
+            .collect(),
+    });
+    render_to_text(&mut app, 48, 20);
+    app.current_tab_mut().chat_scroll.by(130);
+    let before = reading_rows(&render_to_text(&mut app, 48, 20), "THINK_");
+    app.handle_event(AppEvent::HideToolCall {
+        session_id: DEFAULT_TAB_ID.into(),
+        id: "removed".into(),
+    });
+    app.switch_tab_session("other".into());
+    app.switch_tab_session(DEFAULT_TAB_ID.into());
+    app.handle_event(AppEvent::AgentThoughtChunk {
+        session_id: DEFAULT_TAB_ID.into(),
+        text: (500..510)
+            .map(|index| format!("THINK_{index:03}\n"))
+            .collect(),
+    });
+    assert_eq!(
+        reading_rows(&render_to_text(&mut app, 48, 20), "THINK_"),
+        before
+    );
+    app.handle_event(AppEvent::AgentMessageEnd {
+        session_id: DEFAULT_TAB_ID.into(),
+    });
+    let collapsed = render_to_text(&mut app, 48, 20);
+    assert!(!collapsed.contains("THINK_"));
+    assert!(app
+        .current_tab()
+        .chat_reading_position
+        .unwrap()
+        .thought_source
+        .is_none());
+    assert_eq!(render_to_text(&mut app, 48, 20), collapsed);
+}
+
+#[test]
 fn chat_reading_position_survives_reveal_notices_and_turn_completion() {
     let _locale = crate::test_support::lock_locale();
     rust_i18n::set_locale("en-US");
