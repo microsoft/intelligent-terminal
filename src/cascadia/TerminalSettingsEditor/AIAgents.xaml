@@ -65,17 +65,6 @@
                 <Setter Property="Padding" Value="0,12" />
             </Style>
 
-            <Style x:Key="CustomAgentCommandPreviewStyle"
-                   TargetType="Border">
-                <Setter Property="MinWidth" Value="{StaticResource StandardBoxMinWidth}" />
-                <Setter Property="MaxWidth" Value="400" />
-                <Setter Property="MinHeight" Value="{ThemeResource TextControlThemeMinHeight}" />
-                <Setter Property="Padding" Value="{ThemeResource TextControlThemePadding}" />
-                <Setter Property="BorderThickness" Value="{ThemeResource TextControlBorderThemeThickness}" />
-                <Setter Property="BorderBrush" Value="Transparent" />
-                <Setter Property="HorizontalAlignment" Value="Left" />
-            </Style>
-
             <Style x:Key="InlineSettingsLinkStyle"
                    BasedOn="{StaticResource DefaultHyperlinkButtonStyle}"
                    TargetType="HyperlinkButton">
@@ -185,24 +174,12 @@
                                Visibility="{x:Bind ViewModel.IsAgentPolicyLocked, Mode=OneWay}"
                                Opacity="0.6"
                                Margin="0,4,0,0" />
-                    <!--  Read-only preview of the selected custom agent  -->
-                    <StackPanel Orientation="Vertical"
-                                Visibility="{x:Bind ViewModel.IsCustomAcpAgentSelected, Mode=OneWay}"
-                                Margin="0,8,0,0"
-                                Spacing="8">
-                        <Border Style="{StaticResource CustomAgentCommandPreviewStyle}">
-                            <TextBlock x:Name="CustomAcpCommandPreviewText"
-                                       Text="{x:Bind ViewModel.CustomAcpCommandPreview, Mode=OneWay}"
-                                       IsTextSelectionEnabled="True"
-                                       TextWrapping="Wrap"
-                                       Opacity="0.8" />
-                        </Border>
-                        <StackPanel Orientation="Horizontal"
-                                    HorizontalAlignment="Right"
-                                    Spacing="8">
-                            <Button x:Name="CustomAcpAgentEditButton" Content="Edit" Click="{x:Bind ViewModel.EditCustomAcpAgent}" />
-                        </StackPanel>
-                    </StackPanel>
+                    <Button x:Name="CustomAcpAgentEditButton"
+                            Margin="0,8,0,0"
+                            HorizontalAlignment="Right"
+                            Click="{x:Bind ViewModel.EditCustomAcpAgent}"
+                            Content="Edit"
+                            Visibility="{x:Bind ViewModel.IsCustomAcpAgentSelected, Mode=OneWay}" />
                     <!--  Editable panel (adding new or editing existing)  -->
                     <StackPanel Orientation="Vertical"
                                 Visibility="{x:Bind ViewModel.IsAddingCustomAcpAgent, Mode=OneWay}"
@@ -550,23 +527,12 @@
                                Visibility="{x:Bind ViewModel.IsAgentPolicyLocked, Mode=OneWay}"
                                Opacity="0.6"
                                Margin="0,4,0,0" />
-                    <StackPanel Orientation="Vertical"
-                                Visibility="{x:Bind ViewModel.IsCustomDelegateAgentSelected, Mode=OneWay}"
-                                Margin="0,8,0,0"
-                                Spacing="8">
-                        <Border Style="{StaticResource CustomAgentCommandPreviewStyle}">
-                            <TextBlock x:Name="CustomDelegateCommandPreviewText"
-                                       Text="{x:Bind ViewModel.CustomDelegateCommandPreview, Mode=OneWay}"
-                                       IsTextSelectionEnabled="True"
-                                       TextWrapping="Wrap"
-                                       Opacity="0.8" />
-                        </Border>
-                        <StackPanel Orientation="Horizontal"
-                                    HorizontalAlignment="Right"
-                                    Spacing="8">
-                            <Button x:Name="CustomDelegateAgentEditButton" Content="Edit" Click="{x:Bind ViewModel.EditCustomDelegateAgent}" />
-                        </StackPanel>
-                    </StackPanel>
+                    <Button x:Name="CustomDelegateAgentEditButton"
+                            Margin="0,8,0,0"
+                            HorizontalAlignment="Right"
+                            Click="{x:Bind ViewModel.EditCustomDelegateAgent}"
+                            Content="Edit"
+                            Visibility="{x:Bind ViewModel.IsCustomDelegateAgentSelected, Mode=OneWay}" />
                     <StackPanel Orientation="Vertical"
                                 Visibility="{x:Bind ViewModel.IsAddingCustomDelegateAgent, Mode=OneWay}"
                                 Margin="0,8,0,0"
