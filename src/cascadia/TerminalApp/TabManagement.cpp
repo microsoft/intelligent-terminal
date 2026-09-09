@@ -83,7 +83,7 @@ namespace winrt::TerminalApp::implementation
             const auto settings{ Settings::TerminalSettings::CreateWithNewTerminalArgs(_settings, newTerminalArgs) };
 
             // Try to handle auto-elevation
-            if (_maybeElevate(newTerminalArgs, settings, profile))
+            if (!newTerminalArgs.ContentId() && _maybeElevate(newTerminalArgs, settings, profile))
             {
                 return S_OK;
             }
@@ -94,8 +94,7 @@ namespace winrt::TerminalApp::implementation
 
         // This call to _MakePane won't return nullptr, we already checked that
         // case above with the _maybeElevate call.
-        _CreateNewTabFromPane(_MakePane(newContentArgs, nullptr), -1, openInBackground);
-        return S_OK;
+        return _CreateNewTabFromPane(_MakePane(newContentArgs, nullptr), -1, openInBackground) ? S_OK : S_FALSE;
     }
     CATCH_RETURN();
 
@@ -252,10 +251,10 @@ namespace winrt::TerminalApp::implementation
                 // batch, so recording there would miss them entirely.
                 _tabsAwaitingPrewarm.emplace_back(make_weak(newTabImpl));
             }
-            dispatcher.TryEnqueue(winrt::Windows::System::DispatcherQueuePriority::Low, [weakSelf, weakTab, deferPrewarm]() {
+            auto initializeDeferred = [weakSelf, weakTab, deferPrewarm]() {
                 const auto self = weakSelf.get();
                 const auto tabImplCom = weakTab.get();
-                if (!self || !tabImplCom)
+                if (!self || !tabImplCom || !self->_GetTabIndex(*tabImplCom))
                 {
                     return;
                 }
@@ -336,7 +335,15 @@ namespace winrt::TerminalApp::implementation
                 {
                     self->_UpdateBottomBarState();
                 }
-            });
+            };
+            if (_receivingContentTransfer)
+            {
+                _receivingContentTransfer->afterCommit.emplace_back(std::move(initializeDeferred));
+            }
+            else
+            {
+                dispatcher.TryEnqueue(winrt::Windows::System::DispatcherQueuePriority::Low, std::move(initializeDeferred));
+            }
         }
     }
 
@@ -360,6 +367,11 @@ namespace winrt::TerminalApp::implementation
                 }
             });
             auto newTabImpl = winrt::make_self<Tab>(pane);
+            if (_receivingContentTransfer)
+            {
+                _receivingContentTransfer->tabs.push_back(newTabImpl);
+                _CheckpointContentTransfer(ContentTransferStage::BeforeFirstPaneInsertion, _receivingContentTransfer->firstContentId);
+            }
             _InitializeTab(newTabImpl, insertPosition, openInBackground);
             closeOnFailure.release();
             return *newTabImpl;
@@ -819,7 +831,11 @@ namespace winrt::TerminalApp::implementation
         }
 
         _tabs.RemoveAt(tabIndex);
-        _tabItems().RemoveAt(tabIndex);
+        uint32_t itemIndex{};
+        if (_tabItems().IndexOf(tab.TabViewItem(), itemIndex))
+        {
+            _tabItems().RemoveAt(itemIndex);
+        }
         _UpdateTabIndices();
 
         // To close the window here, we need to close the hosting window.

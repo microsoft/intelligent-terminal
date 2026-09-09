@@ -12,6 +12,19 @@
 
 BeforeDiscovery { $script:Ready = [bool]((Get-AppxPackage | Where-Object { $_.Name -like '*IntelligentTerminal*' }) -and (Get-Command copilot -ErrorAction SilentlyContinue) -and (Get-Command winapp -ErrorAction SilentlyContinue)) }
 
+BeforeAll {
+    function Wait-MultiWindowSeedTurn {
+        param($App, [string]$AcpSessionId)
+        $pattern = 'forwarding prompt.*helper_id=HelperId\((\d+)\).*session_id=SessionId\("' +
+            [regex]::Escape($AcpSessionId) + '"\)'
+        Assert-Log -App $App -Name 'wta-main_master.log' -Pattern $pattern -TimeoutSec 20
+        $forwarded = [regex]::Match((Get-ItLogText -App $App -Name 'wta-main_master.log' -SinceStart), $pattern)
+        $forwarded.Success | Should -BeTrue -Because 'the seed turn must have reached the pinned ACP session'
+        Assert-Log -App $App -Name 'wta-main_master.log' `
+            -Pattern ('prompt completed.*helper_id=HelperId\(' + $forwarded.Groups[1].Value + '\)') -TimeoutSec 60
+    }
+}
+
 Describe 'Feature §7 multi-window: move agent tab to new window' -Tag 'Feature' -Skip:(-not $script:Ready) {
     BeforeAll {
         Import-Module (Join-Path $PSScriptRoot '..\ItE2E\ItE2E.psd1') -Force
@@ -95,14 +108,7 @@ Describe 'Feature §7 multi-window: move agent tab to new window' -Tag 'Feature'
         $sid = $script:agentSid
         # Moving can finish while the seed turn is still running. Enter during
         # that turn need not submit another prompt; this case tests routing, not queuing.
-        $forwarded = [regex]::Match(
-            (Get-ItLogText -App $script:app -Name 'wta-main_master.log' -SinceStart),
-            ('forwarding prompt.*helper_id=HelperId\((\d+)\).*session_id=SessionId\("' +
-                [regex]::Escape($script:agentSession.AcpSessionId) + '"\)')
-        )
-        $forwarded.Success | Should -BeTrue -Because 'the seed turn must have reached the pinned ACP session'
-        Assert-Log -App $script:app -Name 'wta-main_master.log' `
-            -Pattern ('prompt completed.*helper_id=HelperId\(' + $forwarded.Groups[1].Value + '\)') -TimeoutSec 60
+        Wait-MultiWindowSeedTurn -App $script:app -AcpSessionId $script:agentSession.AcpSessionId
         # Send a fresh prompt directly to the moved agent pane by its pinned session id (routing is
         # window-agnostic; the jsonl resolver would pick another tab's pre-warmed pane). If routing
         # survived the window move, the moved agent receives it and answers.
@@ -165,6 +171,7 @@ Describe 'Feature: agent tab undock and redock lifecycle' -Tag 'Feature' -Skip:(
         $agentSid | Should -Not -BeNullOrEmpty
         $originalSession.AcpSessionId | Should -Not -BeNullOrEmpty
         $marker = "REDOCK$(Get-Random -Maximum 999999)"
+        Initialize-LogOffsets -App $script:redockApp | Out-Null
         Send-AgentPrompt -App $script:redockApp -Text "Remember the token $marker. Reply OK." | Out-Null
         (Test-Until -TimeoutSec 20 -IntervalSec 1 -Condition {
             (Get-AgentPaneText -App $script:redockApp -PaneSessionId $agentSid -MaxLines 60) -match $marker
@@ -173,7 +180,6 @@ Describe 'Feature: agent tab undock and redock lifecycle' -Tag 'Feature' -Skip:(
         Send-WtWindowKey -App $script:redockApp -Vk 0x31 -Ctrl -Alt -RequireForeground | Out-Null
         Start-Sleep -Milliseconds 800
 
-        Initialize-LogOffsets -App $script:redockApp | Out-Null
         $sourceWindows = @(Get-WtWindows -App $script:redockApp).window_id
         $sourceHwnds = @(Get-WtWindowHwnds -App $script:redockApp |
             Where-Object { [int]$_.pid -eq [int]$script:redockApp.Pid } |
@@ -242,6 +248,8 @@ Describe 'Feature: agent tab undock and redock lifecycle' -Tag 'Feature' -Skip:(
         (Test-Until -TimeoutSec 15 -IntervalSec 1 -Condition {
             (Get-AgentPaneText -App $script:redockApp -PaneSessionId $agentSid -MaxLines 60) -match $marker
         }) | Should -BeTrue -Because 'the same chat history must survive redocking'
+        Wait-MultiWindowSeedTurn -App $script:redockApp -AcpSessionId $originalSession.AcpSessionId
+        Clear-AgentInput -App $script:redockApp -PaneSessionId $agentSid | Out-Null
         Send-AgentPrompt -App $script:redockApp -PaneSessionId $agentSid -Text 'What is 6 plus 7? Reply with only the number.' | Out-Null
         Assert-AgentPaneText -App $script:redockApp -PaneSessionId $agentSid -Pattern '\b13\b' -TimeoutSec 60
     }

@@ -57,18 +57,23 @@ Describe 'Feature: agent pane lifetime ownership' -Tag 'Feature', 'AgentPaneLife
             (Get-AgentPaneSession -App $script:app -PaneSessionId $Session.PaneSessionId) | Should -BeNullOrEmpty
         }
 
+        function Invoke-LifetimeAction {
+            param($App, [string]$Name)
+            Send-WtWindowKey -App $App -Vk 0x50 -Ctrl -Shift -RequireForeground | Out-Null
+            Wait-Until -TimeoutSec 10 -Because 'command palette to open' -Condition {
+                Test-CommandPaletteOpen -App $App
+            } | Out-Null
+            Set-UiValue -App $App -Selector '_searchBox' -Value $Name | Out-Null
+            Wait-UiElement -App $App -Selector $Name -TimeoutSec 10 | Out-Null
+            $env:WINAPP_CLI_TELEMETRY_OPTOUT = '1'
+            & winapp ui invoke $Name -w ([string]$App.Hwnd) 2>&1 | Out-Null
+            $LASTEXITCODE | Should -Be 0
+        }
+
         function Move-LifetimeTab {
             $oldWindows = @(Get-WtWindows -App $script:app).window_id
             $oldHwnds = @(Get-WtWindowHwnds -App $script:app | ForEach-Object { [string]$_.hwnd })
-            Send-WtWindowKey -App $script:app -Vk 0x50 -Ctrl -Shift -RequireForeground | Out-Null
-            Wait-Until -TimeoutSec 10 -Because 'command palette to open' -Condition {
-                Test-CommandPaletteOpen -App $script:app
-            } | Out-Null
-            Set-UiValue -App $script:app -Selector '_searchBox' -Value 'IT E2E move lifetime tab' | Out-Null
-            Wait-UiElement -App $script:app -Selector 'IT E2E move lifetime tab' -TimeoutSec 10 | Out-Null
-            $env:WINAPP_CLI_TELEMETRY_OPTOUT = '1'
-            & winapp ui invoke 'IT E2E move lifetime tab' -w ([string]$script:app.Hwnd) 2>&1 | Out-Null
-            $LASTEXITCODE | Should -Be 0
+            Invoke-LifetimeAction -App $script:app -Name 'IT E2E move lifetime tab'
             $windowId = Wait-Until -TimeoutSec 20 -Because 'the transferred tab to create its destination window' -Condition {
                 @(Get-WtWindows -App $script:app).window_id |
                     Where-Object { $_ -notin $oldWindows } | Select-Object -First 1
@@ -200,6 +205,50 @@ Describe 'Feature: agent pane lifetime ownership' -Tag 'Feature', 'AgentPaneLife
         (Get-WtPaneStatus -App $script:app -SessionId $script:shell.session_id).state | Should -Match 'run'
     }
 
+    It 'Rejected cross-window pane moves preserve both tabs' -Tag 'TransferRollback' {
+        Open-AgentPane -App $script:app | Out-Null
+        Assert-LifetimeReply -App $script:app -Session $script:session | Out-Null
+        $targetShell = New-WtTab -App $script:app -Title 'lifetime-reject-target'
+        $targetSession = Wait-NewAgentPaneSession -App $script:app -ExcludePaneSessionId $script:session.PaneSessionId -TimeoutSec 40
+        Set-WtPaneFocus -App $script:app -SessionId $targetShell.session_id
+        $destination = Move-LifetimeTab
+        @(Get-WtPanes -App $destination -WindowId $destination.WindowId).session_id | Should -Contain $targetShell.session_id
+        @(Get-WtPanes -App $script:app -WindowId $script:app.WindowId).session_id | Should -Contain $script:shell.session_id
+        Invoke-WtCli -App $destination -Arguments @('focus-pane', '-t', $targetSession.PaneSessionId) | Out-Null
+        Wait-UiElement -App $destination -Selector 'AgentLabelText' -TimeoutSec 15 | Out-Null
+        Set-WtSetting -App $script:app -Key 'actions' -Value @(
+            @{ name = 'IT E2E rejected pane move'; command = @{ action = 'movePane'; window = [string]$destination.WindowId; index = 0 } }
+        ) | Out-Null
+        # get-active-pane reports the working shell even when the agent has focus.
+        Invoke-WtCli -App $destination -Arguments @('focus-pane', '-t', $targetSession.PaneSessionId) | Out-Null
+        Stop-AgentPane -App $script:app | Out-Null
+        Set-WtPaneFocus -App $script:app -SessionId $script:shell.session_id
+        $sourceTab = @(Get-WtTabs -App $script:app -WindowId $script:app.WindowId).tab_id
+        $destinationTab = @(Get-WtTabs -App $destination -WindowId $destination.WindowId).tab_id
+        Initialize-LogOffsets -App $script:app | Out-Null
+
+        # A focused agent pane cannot be split. This rejects the final insertion
+        # after the receiver has already prepared the borrowed shell control.
+        Invoke-LifetimeAction -App $script:app -Name 'IT E2E rejected pane move'
+        Assert-Log -App $script:app -Name 'terminal-agent-pane.log' -Pattern 'content transfer rolled back' -TimeoutSec 15
+        @(Get-WtTabs -App $script:app -WindowId $script:app.WindowId).tab_id | Should -Be $sourceTab
+        @(Get-WtTabs -App $destination -WindowId $destination.WindowId).tab_id | Should -Be $destinationTab
+        $sourcePanes = @(Get-WtPanes -App $script:app -WindowId $script:app.WindowId)
+        $targetPanes = @(Get-WtPanes -App $destination -WindowId $destination.WindowId)
+        $sourcePanes.Count | Should -Be 1
+        $targetPanes.Count | Should -Be 1
+        $sourcePanes[0].session_id | Should -Be $script:shell.session_id
+        $targetPanes[0].session_id | Should -Be $targetShell.session_id
+        (Get-WtPaneStatus -App $script:app -SessionId $script:shell.session_id).state | Should -Match 'run'
+        $shellMarker = 'ROLLBACK_' + [guid]::NewGuid().ToString('N').Substring(0, 12)
+        Invoke-RunCommand -App $script:app -SessionId $script:shell.session_id -Command "echo $shellMarker" | Out-Null
+        Assert-Pane -App $script:app -SessionId $script:shell.session_id -Match "(?m)^\s*$shellMarker\s*$" -TimeoutSec 15
+        Assert-LifetimeSession -Session $script:session -MasterId $script:masterId
+        Assert-LifetimeSession -Session $targetSession -MasterId $script:masterId
+        Assert-LifetimeReply -App $script:app -Session $script:session | Out-Null
+        Assert-LifetimeReply -App $destination -Session $targetSession | Out-Null
+    }
+
     It 'Cross-window transfer preserves content ownership and hidden state (<Position>, <Hidden>)' -Tag 'CrossWindowLifetime' -ForEach @(
         @{ Position = 'left'; Hidden = $false },
         @{ Position = 'left'; Hidden = $true },
@@ -208,6 +257,7 @@ Describe 'Feature: agent pane lifetime ownership' -Tag 'Feature', 'AgentPaneLife
     ) {
         Open-AgentPane -App $script:app | Out-Null
         $marker = Assert-LifetimeReply -App $script:app -Session $script:session
+        $extraShell = Split-WtPane -App $script:app -SessionId $script:shell.session_id -Direction right
         if ($Hidden) { Stop-AgentPane -App $script:app | Out-Null }
         $survivorShell = New-WtTab -App $script:app -Title 'lifetime-source-survivor'
         $null = Wait-NewAgentPaneSession -App $script:app -ExcludePaneSessionId $script:session.PaneSessionId -TimeoutSec 40
@@ -215,6 +265,8 @@ Describe 'Feature: agent pane lifetime ownership' -Tag 'Feature', 'AgentPaneLife
         Initialize-LogOffsets -App $script:app | Out-Null
         $destination = Move-LifetimeTab
         @(Get-WtPanes -App $destination -WindowId $destination.WindowId).session_id | Should -Contain $script:shell.session_id
+        @(Get-WtPanes -App $destination -WindowId $destination.WindowId).session_id | Should -Contain $extraShell.session_id
+        @(Get-WtPanes -App $destination -WindowId $destination.WindowId).Count | Should -Be 2
         (Test-UiElementExists -App $destination -Selector 'AgentLabelText') | Should -Be (-not $Hidden)
         Assert-LifetimeSession -Session $script:session -MasterId $script:masterId
         Close-WtPane -App $script:app -SessionId $survivorShell.session_id

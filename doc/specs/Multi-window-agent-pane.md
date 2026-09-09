@@ -417,26 +417,46 @@ User closes the pane (Ctrl+W, tab close, window close):
 
 #### Tab drag between windows
 
-Serialization has no lifetime side effects. On detach, the source moves
-its `AgentPaneLifetime` into `AgentPaneDragStash`. The entry owns the agile
-terminal core and master lease, not the source window's XAML objects.
-The serialized `__content` and internal `__agentPaneTransfer` generation
-identify one specific handoff. A destination must claim both before
-attaching; stale or duplicate receives cannot claim a later move of the
-same content or fall back to launching the helper as an ordinary terminal.
+Serialization has no lifetime side effects. Tab moves, native tab drags,
+and cross-window pane moves register a whole-batch `ContentTransfer`.
+`RequestMoveContentArgs.TransferId` identifies one request, including when
+forwarded through `WindowRequestedArgs` to a new window's first layout.
+Creating an AppHost is not an acknowledgement. Both first layout and
+registration in the window manager/COM fan-out must finish before the
+receiver can commit, even if layout runs reentrantly during initialization.
 
-Claiming atomically removes the entry from the registry. The receiving
-scope owns cleanup until the new content adopts the lifetime. Failed
-attach retires that lifetime. Unclaimed entries expire after two minutes;
-expiry matches the transfer generation and cannot close claimed content.
-Cancellation before detach leaves ownership at the source. This deadline
-applies only to detached transfers, never to hidden or prewarmed panes.
+Pending requests retain only weak references to the source. The original
+tab, controls, pane tree, hidden state, helper, and `AgentPaneLifetime`
+remain owned by the source until a receiver is ready. Requests expire after
+two minutes without closing any content. A closed source cannot be revived;
+a source changed while the request was pending rejects the stale snapshot.
 
-Abandoned content is retired on a worker without depending on the source
-window's dispatcher remaining alive. This requires exclusive lifetime
-ownership: the content cannot still be attached or concurrently claimed.
-Core closure publishes its closing flag atomically for queued callbacks;
-this does not make normal core operations or XAML access free-threaded.
+All AppHosts currently share the main UI thread. A receiver claims its
+request once, checks that thread, and prepares the entire batch synchronously.
+Original controls are suspended but recoverable.
+Prepared controls borrow the existing content and cannot close its core.
+The receiver builds a separate tab and stops on the first rejected action;
+later splits and tab metadata cannot spill into an unrelated focused tab.
+A pane move merges the prepared subtree only after the batch succeeds.
+
+Prepared tabs have no external routing identity. Their selection, rekey,
+and close notifications are suppressed, and deferred tab initialization
+is queued only after commit. Borrowed receiver controls carry an atomic
+publication gate for background VT/connection callbacks; rollback never
+opens it. The original source remains the event owner during preparation.
+
+Commit transfers the move-only agent lifetimes and ordinary control
+ownership before removing the source. Session restore metadata and per-tab
+agent overrides survive immediately, without waiting for helper status replay.
+Failure detaches all prepared
+controls and resumes the original controls, including their renderer,
+owning HWND, automation peer, and focus state. It does not create replacement
+sessions or start a master-lease drain. Hidden agent panes defer stashing until
+the entire layout is rebuilt, including nested splits that revisit the agent leaf.
+
+The request registry serializes claims and expiry, but normal core and XAML
+operations remain UI-thread-affine. Atomic core closure remains the final
+cleanup mechanism for an actual user close, not transfer rollback.
 
 The drag triggers existing WT mechanics: `ContentId` lookup,
 `AttachContent → _MakePane`, reparent of the existing TermControl into

@@ -80,6 +80,16 @@ namespace winrt::TerminalApp::implementation
             _wtaExecutablePath = executablePath;
         }
 
+        void CopyRestoreStateFrom(const AgentPaneContent& source) noexcept
+        {
+            // A save before helper status replay must retain the same resumable session.
+            _agentSessionId = source._agentSessionId;
+            _agentSessionOwner = source._agentSessionOwner;
+            _agentRestoreIdentity = source._agentRestoreIdentity;
+            _agentRestoreCustomCommand = source._agentRestoreCustomCommand;
+            _wtaExecutablePath = source._wtaExecutablePath;
+        }
+
         // --- Per-pane autofix / diagnostics state ---
         // Driven by inbound `autofix_state_changed` events for this pane's
         // owning tab. The window-level bottom bar reads these accessors

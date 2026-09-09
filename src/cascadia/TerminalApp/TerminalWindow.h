@@ -78,7 +78,7 @@ namespace winrt::TerminalApp::implementation
         bool HasCommandlineArguments() const noexcept;
 
         int32_t SetStartupCommandline(TerminalApp::CommandlineArgs args);
-        void SetStartupContent(const winrt::hstring& content, const Windows::Foundation::IReference<Windows::Foundation::Rect>& contentBounds);
+        void SetStartupContent(const winrt::hstring& content, const Windows::Foundation::IReference<Windows::Foundation::Rect>& contentBounds, uint64_t transferId);
         void SetStartupActions(const Windows::Foundation::Collections::IVector<winrt::Microsoft::Terminal::Settings::Model::ActionAndArgs>& actions);
         void SetPersistedLayout(const winrt::Microsoft::Terminal::Settings::Model::WindowLayout& layout);
         int32_t ExecuteCommandline(TerminalApp::CommandlineArgs args);
@@ -145,7 +145,8 @@ namespace winrt::TerminalApp::implementation
         bool IsQuakeWindow() const noexcept { return _WindowProperties->IsQuakeWindow(); }
         TerminalApp::WindowProperties WindowProperties() { return *_WindowProperties; }
 
-        void AttachContent(winrt::hstring content, uint32_t tabIndex);
+        bool AttachContent(winrt::hstring content, uint32_t tabIndex, uint64_t transferId);
+        void ContentTransferReceiverReady();
         void SendContentToOther(winrt::TerminalApp::RequestReceiveContentArgs args);
 
         // Protocol bridge
@@ -192,6 +193,7 @@ namespace winrt::TerminalApp::implementation
 
         TerminalApp::ContentManager _manager{ nullptr };
         std::vector<Microsoft::Terminal::Settings::Model::ActionAndArgs> _initialContentArgs;
+        uint64_t _initialTransferId{ 0 };
 
         void _ShowLoadErrorsDialog(const winrt::hstring& titleKey,
                                    const winrt::hstring& contentKey,

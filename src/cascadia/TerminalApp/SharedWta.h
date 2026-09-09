@@ -43,6 +43,11 @@ namespace TerminalAppUnitTests
     class SharedWtaTests;
 }
 
+namespace TerminalAppLocalTests
+{
+    class TabTests;
+}
+
 namespace winrt::TerminalApp::implementation
 {
     namespace details
@@ -357,6 +362,7 @@ namespace winrt::TerminalApp::implementation
     private:
         friend class SharedWtaLease;
         friend class ::TerminalAppUnitTests::SharedWtaTests;
+        friend class ::TerminalAppLocalTests::TabTests;
 
         SharedWta() = default;
         ~SharedWta();

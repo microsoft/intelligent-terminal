@@ -688,8 +688,7 @@ namespace winrt::TerminalApp::implementation
         // either the first or second child, but this will always return the
         // original pane first.
         const auto agentContent = _activePane->GetContent().try_as<winrt::TerminalApp::AgentPaneContent>();
-        const bool completingTransfer = _activePane == _rootPane &&
-                                        agentContent &&
+        const bool completingTransfer = agentContent &&
                                         winrt::get_self<implementation::AgentPaneContent>(agentContent)->AwaitingTransferredTabContent() &&
                                         !pane->IsAgentPane();
         auto [original, newPane] = completingTransfer ?
@@ -806,17 +805,22 @@ namespace winrt::TerminalApp::implementation
     // - The removed pane, if the remove succeeded.
     std::shared_ptr<Pane> Tab::DetachPane()
     {
+        return DetachPane(_activePane);
+    }
+
+    std::shared_ptr<Pane> Tab::DetachPane(const std::shared_ptr<Pane>& selectedPane)
+    {
         ASSERT_UI_THREAD();
 
         // if we only have one pane, or the focused pane is the root, remove it
         // entirely and close this tab
-        if (_rootPane == _activePane)
+        if (_rootPane == selectedPane)
         {
             return DetachRoot();
         }
 
         // Attempt to remove the active pane from the tree
-        if (const auto pane = _rootPane->DetachPane(_activePane))
+        if (const auto pane = _rootPane->DetachPane(selectedPane))
         {
             // Just make sure that the remaining pane is marked active
             _UpdateActivePane(_rootPane->GetActivePane());
@@ -835,6 +839,13 @@ namespace winrt::TerminalApp::implementation
     // - The root pane.
     std::shared_ptr<Pane> Tab::DetachRoot()
     {
+        auto pane = TakeRootForTransfer();
+        Closed.raise(nullptr, nullptr);
+        return pane;
+    }
+
+    std::shared_ptr<Pane> Tab::TakeRootForTransfer()
+    {
         ASSERT_UI_THREAD();
 
         // remove the closed event handler since we are closing the tab
@@ -849,8 +860,6 @@ namespace winrt::TerminalApp::implementation
         _rootPane = nullptr;
         _activePane = nullptr;
         Content(nullptr);
-        Closed.raise(nullptr, nullptr);
-
         return p;
     }
 

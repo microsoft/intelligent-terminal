@@ -32,7 +32,9 @@ namespace winrt::TerminalApp::implementation
         void Scroll(const int delta);
 
         std::shared_ptr<Pane> DetachRoot();
+        std::shared_ptr<Pane> TakeRootForTransfer();
         std::shared_ptr<Pane> DetachPane();
+        std::shared_ptr<Pane> DetachPane(const std::shared_ptr<Pane>& pane);
         void AttachPane(std::shared_ptr<Pane> pane);
 
         void AttachColorPicker(winrt::TerminalApp::ColorPickupFlyout& colorPicker);
