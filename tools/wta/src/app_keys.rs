@@ -750,7 +750,11 @@ impl App {
                 // `turn_cancel` bumps generation, emits autofix_state_cleared,
                 // and resets the state machine to Idle.
                 let tab_id = self.active_tab_key().to_string();
+                let completed_turn_count = self.current_tab().completed_turns.len();
                 self.request_turn_cancel_for_tab(&tab_id);
+                if self.current_tab().completed_turns.len() > completed_turn_count {
+                    self.current_tab_mut().scroll_to_bottom();
+                }
             }
             // Dismiss the bottom-bar Suggested indicator (autofix produced an
             // explanation, not an executable fix). Reachable only when the user

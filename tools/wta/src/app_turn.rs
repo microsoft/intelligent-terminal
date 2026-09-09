@@ -996,7 +996,6 @@ impl App {
                 expanded: true,
                 trailing_marker,
             });
-            tab.scroll_to_bottom();
         } else if let Some((summary, canceled_summary)) = canceled_card_summary {
             if let Some((index, last)) = tab.completed_turns.iter_mut().enumerate().next_back() {
                 if let Some(ChatMessage::Agent(text)) = last.details.last_mut() {

@@ -1871,7 +1871,7 @@ fn build_completed_turn_lines_with_geometry<'a>(
     }
 
     if lines.len() == prompt_line_count {
-        // An expanded transcript can contain only nonrendering details.
+        // An expanded transcript can contain only empty details.
         append_marker(&mut lines);
         if !message_rows.is_empty() {
             let prompt_height = rendered_lines_height(&lines, wrap_width);
