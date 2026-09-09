@@ -1203,23 +1203,56 @@ fn is_command_lookup_permission(command: &str) -> bool {
         .strip_prefix('&')
         .unwrap_or(command.trim())
         .trim();
-    // Fail closed on compound shell expressions rather than treating a lookup
-    // followed by an unrelated operation as a resolver-only permission.
-    if command.contains([';', '|', '&', '\n', '\r', '>', '<', '`']) || command.contains("$(") {
+    // Quoted paths can contain shell metacharacters. Reject operators outside
+    // quotes and command substitution inside double quotes, not single-quoted literals.
+    let mut quote = None;
+    let mut executable_end = None;
+    let mut chars = command.char_indices().peekable();
+    while let Some((index, ch)) = chars.next() {
+        if matches!(ch, '\n' | '\r')
+            || (quote != Some('\'')
+                && (ch == '`' || (ch == '$' && chars.peek().is_some_and(|(_, next)| *next == '('))))
+        {
+            return false;
+        }
+        if let Some(delimiter) = quote {
+            if ch == delimiter {
+                if chars.peek().is_some_and(|(_, next)| *next == delimiter) {
+                    chars.next();
+                } else {
+                    quote = None;
+                }
+            }
+            continue;
+        }
+        match ch {
+            '\'' | '"' => quote = Some(ch),
+            ';' | '|' | '&' | '>' | '<' | '(' | ')' | '{' | '}' => return false,
+            ch if ch.is_whitespace() => {
+                executable_end.get_or_insert(index);
+            }
+            _ => {}
+        }
+    }
+    if quote.is_some() {
         return false;
     }
-    let (executable, rest) =
-        if let Some(quote) = command.chars().next().filter(|c| *c == '"' || *c == '\'') {
-            let Some(end) = command[1..].find(quote).map(|offset| offset + 1) else {
-                return false;
-            };
-            (&command[1..end], &command[end + 1..])
-        } else {
-            let Some((executable, rest)) = command.split_once(char::is_whitespace) else {
-                return false;
-            };
-            (executable, rest)
+    let Some(end) = executable_end else {
+        return false;
+    };
+    let (executable, rest) = command.split_at(end);
+    let executable = if let Some(quote) = executable
+        .chars()
+        .next()
+        .filter(|c| *c == '"' || *c == '\'')
+    {
+        let Some(executable) = executable[1..].strip_suffix(quote) else {
+            return false;
         };
+        executable
+    } else {
+        executable
+    };
     let executable = executable.rsplit(['\\', '/']).next().unwrap_or(executable);
     (executable.eq_ignore_ascii_case("wta")
         || executable.eq_ignore_ascii_case("wta.exe")
@@ -1246,6 +1279,39 @@ fn command_lookup_permission_diagnostic_requires_an_invocation() {
         "wta resolve-command $(unrelated-command)",
         "wta resolve-command gti | unrelated-command",
         "'unterminated",
+    ] {
+        assert!(!is_command_lookup_permission(command), "{command}");
+    }
+}
+
+#[test]
+fn command_lookup_permission_preserves_quoted_path_literals() {
+    for command in [
+        r#"& 'wta.exe' resolve-command gti --cwd 'C:\R&D\src' --json"#,
+        r#"& "C:\R&D tools\wta.exe" resolve-command gti --cwd "C:\R&D\src""#,
+        r#"& 'wta.exe' resolve-command gti --cwd 'C:\src;archive' --json"#,
+        r#"& 'C:\owner''s\R&D\wta.exe' resolve-command gti --cwd 'C:\owner''s\src'"#,
+        r#"& 'wta.exe' resolve-command gti --cwd "C:\owner's\R&D""#,
+        r#"& 'wta.exe' resolve-command gti --cwd 'C:\$(archive)&src' --json"#,
+        r#"& 'wta.exe' resolve-command gti --cwd 'C:\src`archive' --json"#,
+    ] {
+        assert!(is_command_lookup_permission(command), "{command}");
+    }
+}
+
+#[test]
+fn command_lookup_permission_rejects_expressions_and_unbalanced_quotes() {
+    for command in [
+        r#"& 'wta.exe' resolve-command gti --cwd 'C:\R&D' & unrelated-command"#,
+        r#"& 'wta.exe' resolve-command gti --cwd "C:\R&D"; unrelated-command"#,
+        r#"& 'wta.exe' resolve-command gti --cwd 'C:\R&D' | unrelated-command"#,
+        r#"& 'wta.exe' resolve-command gti --cwd "$(unrelated-command)""#,
+        r#"& 'wta.exe' resolve-command (unrelated-command)"#,
+        r#"& 'wta.exe' resolve-command gti --cwd 'C:\owner''s"#,
+        r#"& 'wta.exe' resolve-command gti --cwd "C:\R&D"#,
+        r#"& 'wta.exe'resolve-command gti"#,
+        "wta resolve-command gti\nunrelated-command",
+        "wta resolve-command gti > output.txt",
     ] {
         assert!(!is_command_lookup_permission(command), "{command}");
     }
