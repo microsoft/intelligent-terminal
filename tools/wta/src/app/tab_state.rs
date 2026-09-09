@@ -71,12 +71,24 @@ pub enum ToolCallContent {
     },
 }
 
+/// Stable across transcript moves and cache round trips, independent of text and position.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ThoughtId([u8; 16]);
+
+impl Default for ThoughtId {
+    fn default() -> Self {
+        Self(*uuid::Uuid::new_v4().as_bytes())
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum ChatMessage {
     User(String),
     Agent(String),
     /// ACP-provided reasoning, retained in transcript order independently of answers.
     Thought {
+        #[serde(default)]
+        id: ThoughtId,
         text: String,
         #[serde(default)]
         expanded: bool,
@@ -1091,6 +1103,7 @@ impl TabSession {
         } else {
             let index = self.messages.len();
             self.messages.push(ChatMessage::Thought {
+                id: ThoughtId::default(),
                 text: String::new(),
                 expanded: !self.loading_session,
                 duration_ms: None,

@@ -511,27 +511,46 @@ impl App {
                     let pressed = self.pressed_completed_turn.take();
                     let released = self.completed_turn_hit_at(mouse.column, mouse.row);
                     self.text_selection.handle_mouse(mouse);
-                    if let Some(pressed) = pressed.filter(|pressed| {
-                        pressed.tab_id == active_tab_id
-                            && released.is_some_and(|hit| {
-                                hit.turn_index == pressed.hit.turn_index
-                                    && hit.kind == pressed.hit.kind
-                            })
+                    if let Some(hit) = released.filter(|hit| {
+                        pressed.as_ref().is_some_and(|pressed| {
+                            pressed.tab_id == active_tab_id
+                                && hit.turn_index == pressed.hit.turn_index
+                                && match (hit.kind, pressed.hit.kind) {
+                                    (
+                                        CompletedTurnHitKind::Thought { id, active, .. },
+                                        CompletedTurnHitKind::Thought {
+                                            id: pressed_id,
+                                            active: pressed_active,
+                                            ..
+                                        },
+                                    ) => id == pressed_id && active == pressed_active,
+                                    _ => hit.kind == pressed.hit.kind,
+                                }
+                        })
                     }) {
                         let tab = self.current_tab_mut();
-                        match pressed.hit.kind {
+                        match hit.kind {
                             CompletedTurnHitKind::Thought {
+                                id,
                                 detail_index,
                                 active,
                             } => {
-                                tab.toggle_thought(pressed.hit.turn_index, detail_index, active);
+                                // The transcript may have changed again since the last render.
+                                let message = if active {
+                                    tab.messages.get(detail_index)
+                                } else {
+                                    tab.completed_turns
+                                        .get(hit.turn_index)
+                                        .and_then(|turn| turn.details.get(detail_index))
+                                };
+                                if matches!(message, Some(ChatMessage::Thought { id: current_id, .. }) if *current_id == id)
+                                {
+                                    tab.toggle_thought(hit.turn_index, detail_index, active);
+                                }
                                 return;
                             }
                             CompletedTurnHitKind::ToolCall { detail_index } => {
-                                tab.toggle_completed_tool_call(
-                                    pressed.hit.turn_index,
-                                    detail_index,
-                                );
+                                tab.toggle_completed_tool_call(hit.turn_index, detail_index);
                                 return;
                             }
                             CompletedTurnHitKind::ToolGroup {
@@ -539,7 +558,7 @@ impl App {
                                 detail_count,
                             } => {
                                 tab.toggle_completed_tool_group(
-                                    pressed.hit.turn_index,
+                                    hit.turn_index,
                                     first_detail_index,
                                     detail_count,
                                 );
@@ -550,17 +569,16 @@ impl App {
                         let previous_selected_index = tab.selected_completed_turn_idx;
                         let previous_selection_pending =
                             tab.completed_turn_selection_visible_pending;
-                        let previous_expanded =
-                            tab.completed_turns[pressed.hit.turn_index].expanded;
-                        if tab.select_completed_turn(pressed.hit.turn_index)
-                            && tab.toggle_completed_turn(pressed.hit.turn_index)
-                            && pressed.hit.kind == CompletedTurnHitKind::UserInput
+                        let previous_expanded = tab.completed_turns[hit.turn_index].expanded;
+                        if tab.select_completed_turn(hit.turn_index)
+                            && tab.toggle_completed_turn(hit.turn_index)
+                            && hit.kind == CompletedTurnHitKind::UserInput
                         {
                             self.last_completed_turn_click = Some(CompletedTurnClickRecord {
                                 tab_id: active_tab_id,
                                 column: mouse.column,
                                 row: mouse.row,
-                                turn_index: pressed.hit.turn_index,
+                                turn_index: hit.turn_index,
                                 previous_selected_index,
                                 previous_selection_pending,
                                 previous_expanded,

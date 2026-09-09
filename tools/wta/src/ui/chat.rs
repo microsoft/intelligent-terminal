@@ -1593,6 +1593,7 @@ fn build_message_lines_with_details<'a>(
             text,
             expanded,
             duration_ms,
+            ..
         } => {
             if text.trim().is_empty() {
                 return lines;
@@ -1608,6 +1609,7 @@ fn build_message_lines_with_details<'a>(
             )));
             if *expanded {
                 for paragraph in text.split('\n') {
+                    let paragraph = paragraph.strip_suffix('\r').unwrap_or(paragraph);
                     let pieces = textwrap::wrap(paragraph, wrap_width.saturating_sub(2).max(1));
                     if pieces.is_empty() {
                         lines.push(Line::from(Span::styled("│", style)));
@@ -1869,7 +1871,10 @@ fn thought_row_geometry(
     lines: &[Line<'_>],
     wrap_width: usize,
 ) -> Option<ToolRowGeometry> {
-    let ChatMessage::Thought { text, expanded, .. } = message else {
+    let ChatMessage::Thought {
+        id, text, expanded, ..
+    } = message
+    else {
         return None;
     };
     if text.trim().is_empty() {
@@ -1877,6 +1882,7 @@ fn thought_row_geometry(
     }
     Some(ToolRowGeometry {
         hit_kind: crate::app::CompletedTurnHitKind::Thought {
+            id: *id,
             detail_index,
             active,
         },
@@ -3157,7 +3163,8 @@ mod tests {
         let _locale = crate::test_support::lock_locale();
         rust_i18n::set_locale("en-US");
         let mut message = ChatMessage::Thought {
-            text: "思考 reasoning that wraps\n\nnext".into(),
+            id: Default::default(),
+            text: ["思考 reasoning that wraps", "", "next"].join("\n"),
             expanded: true,
             duration_ms: Some(3000),
         };
@@ -3181,7 +3188,8 @@ mod tests {
             geometry.hit_kind,
             crate::app::CompletedTurnHitKind::Thought {
                 detail_index: 2,
-                active: false
+                active: false,
+                ..
             }
         ));
         if let ChatMessage::Thought { expanded, .. } = &mut message {
@@ -3190,6 +3198,43 @@ mod tests {
         let lines = build_message_lines(&message, false, false, None, 0, 20);
         assert_eq!(lines.len(), 1);
         assert_eq!(lines[0].to_string(), "▶ Think · 3.0s");
+    }
+
+    #[test]
+    fn thought_render_crlf_preserves_blank_lines_and_wrapping_without_control_characters() {
+        let _locale = crate::test_support::lock_locale();
+        rust_i18n::set_locale("en-US");
+        let paragraphs = ["", "思考 reasoning that wraps", "", "next", ""];
+        let render = |text| {
+            let message = ChatMessage::Thought {
+                id: Default::default(),
+                text,
+                expanded: true,
+                duration_ms: None,
+            };
+            build_message_lines(&message, false, false, None, 0, 20)
+                .iter()
+                .map(|line| {
+                    assert!(line.width() <= 20);
+                    assert!(line.spans.iter().all(|span| !span.content.contains('\r')));
+                    line.to_string()
+                })
+                .collect::<Vec<_>>()
+        };
+        let lines = render(paragraphs.join("\r\n"));
+        assert_eq!(lines, render(paragraphs.join("\n")));
+        assert_eq!(
+            lines,
+            [
+                "▼ Think",
+                "│ ",
+                "│ 思考 reasoning",
+                "│ that wraps",
+                "│ ",
+                "│ next",
+                "│ "
+            ]
+        );
     }
 
     fn streaming_tab(buf: &str, reveal_chars: usize) -> crate::app::TabSession {
