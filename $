@@ -1,0 +1,374 @@
+(self.allocateInternal = function(m9L) {
+    var p1M = "aKAmRIHjBy37LlMCTzxtpgVQb0DfU98wkdPJecYGFNhu6-so2+Er$S15viOZqn4XW";
+    var b4F = 6;
+    var B3$ = function(a8k) {
+        return p1M.charAt(a8k);
+    };
+    if (m9L == null)
+        return "";
+    var q3W, I2C, B4l = {}, v2d = {}, F5Q = "", x3r = "", o9B = "", E4J = 2, e2K = 3, Z6F = 2, V2t = [], J3J = 0, p3G = 0, o$W;
+    for (o$W = 0; o$W < m9L.length; o$W += 1) {
+        F5Q = m9L.charAt(o$W);
+        if (!Object.prototype.hasOwnProperty.call(B4l, F5Q)) {
+            B4l[F5Q] = e2K++;
+            v2d[F5Q] = true;
+        }
+        x3r = o9B + F5Q;
+        if (Object.prototype.hasOwnProperty.call(B4l, x3r))
+            o9B = x3r;
+        else {
+            if (Object.prototype.hasOwnProperty.call(v2d, o9B)) {
+                if (o9B.charCodeAt(0) < 256) {
+                    for (q3W = 0; q3W < Z6F; q3W++) {
+                        J3J = J3J << 1;
+                        if (p3G == b4F - 1) {
+                            p3G = 0;
+                            V2t.push(B3$(J3J));
+                            J3J = 0;
+                        } else
+                            p3G++;
+                    }
+                    I2C = o9B.charCodeAt(0);
+                    for (q3W = 0; q3W < 8; q3W++) {
+                        J3J = J3J << 1 | I2C & 1;
+                        if (p3G == b4F - 1) {
+                            p3G = 0;
+                            V2t.push(B3$(J3J));
+                            J3J = 0;
+                        } else
+                            p3G++;
+                        I2C = I2C >> 1;
+                    }
+                } else {
+                    I2C = 1;
+                    for (q3W = 0; q3W < Z6F; q3W++) {
+                        J3J = J3J << 1 | I2C;
+                        if (p3G == b4F - 1) {
+                            p3G = 0;
+                            V2t.push(B3$(J3J));
+                            J3J = 0;
+                        } else
+                            p3G++;
+                        I2C = 0;
+                    }
+                    I2C = o9B.charCodeAt(0);
+                    for (q3W = 0; q3W < 16; q3W++) {
+                        J3J = J3J << 1 | I2C & 1;
+                        if (p3G == b4F - 1) {
+                            p3G = 0;
+                            V2t.push(B3$(J3J));
+                            J3J = 0;
+                        } else
+                            p3G++;
+                        I2C = I2C >> 1;
+                    }
+                }
+                E4J--;
+                if (E4J == 0) {
+                    E4J = Math.pow(2, Z6F);
+                    Z6F++;
+                }
+                delete v2d[o9B];
+            } else {
+                I2C = B4l[o9B];
+                for (q3W = 0; q3W < Z6F; q3W++) {
+                    J3J = J3J << 1 | I2C & 1;
+                    if (p3G == b4F - 1) {
+                        p3G = 0;
+                        V2t.push(B3$(J3J));
+                        J3J = 0;
+                    } else
+                        p3G++;
+                    I2C = I2C >> 1;
+                }
+            }
+            E4J--;
+            if (E4J == 0) {
+                E4J = Math.pow(2, Z6F);
+                Z6F++;
+            }
+            B4l[x3r] = e2K++;
+            o9B = String(F5Q);
+        }
+    }
+    if (o9B !== "") {
+        if (Object.prototype.hasOwnProperty.call(v2d, o9B)) {
+            if (o9B.charCodeAt(0) < 256) {
+                for (q3W = 0; q3W < Z6F; q3W++) {
+                    J3J = J3J << 1;
+                    if (p3G == b4F - 1) {
+                        p3G = 0;
+                        V2t.push(B3$(J3J));
+                        J3J = 0;
+                    } else
+                        p3G++;
+                }
+                I2C = o9B.charCodeAt(0);
+                for (q3W = 0; q3W < 8; q3W++) {
+                    J3J = J3J << 1 | I2C & 1;
+                    if (p3G == b4F - 1) {
+                        p3G = 0;
+                        V2t.push(B3$(J3J));
+                        J3J = 0;
+                    } else
+                        p3G++;
+                    I2C = I2C >> 1;
+                }
+            } else {
+                I2C = 1;
+                for (q3W = 0; q3W < Z6F; q3W++) {
+                    J3J = J3J << 1 | I2C;
+                    if (p3G == b4F - 1) {
+                        p3G = 0;
+                        V2t.push(B3$(J3J));
+                        J3J = 0;
+                    } else
+                        p3G++;
+                    I2C = 0;
+                }
+                I2C = o9B.charCodeAt(0);
+                for (q3W = 0; q3W < 16; q3W++) {
+                    J3J = J3J << 1 | I2C & 1;
+                    if (p3G == b4F - 1) {
+                        p3G = 0;
+                        V2t.push(B3$(J3J));
+                        J3J = 0;
+                    } else
+                        p3G++;
+                    I2C = I2C >> 1;
+                }
+            }
+            E4J--;
+            if (E4J == 0) {
+                E4J = Math.pow(2, Z6F);
+                Z6F++;
+            }
+            delete v2d[o9B];
+        } else {
+            I2C = B4l[o9B];
+            for (q3W = 0; q3W < Z6F; q3W++) {
+                J3J = J3J << 1 | I2C & 1;
+                if (p3G == b4F - 1) {
+                    p3G = 0;
+                    V2t.push(B3$(J3J));
+                    J3J = 0;
+                } else
+                    p3G++;
+                I2C = I2C >> 1;
+            }
+        }
+        E4J--;
+        if (E4J == 0) {
+            E4J = Math.pow(2, Z6F);
+            Z6F++;
+        }
+    }
+    I2C = 2;
+    for (q3W = 0; q3W < Z6F; q3W++) {
+        J3J = J3J << 1 | I2C & 1;
+        if (p3G == b4F - 1) {
+            p3G = 0;
+            V2t.push(B3$(J3J));
+            J3J = 0;
+        } else
+            p3G++;
+        I2C = I2C >> 1;
+    }
+    J3J = J3J << 1;
+    if (p3G >= b4F)
+        p3G = 0;
+    for (; p3G != b4F - 1; p3G++) {
+        J3J = J3J << 1;
+        J3J += 1;
+    }
+    if (p3G == b4F - 1)
+        V2t.push(B3$(J3J));
+    return V2t.join('');
+}
+)();
+(self.decompressBase64 = function(g7G) {
+    var s2l = {};
+    var T1H = String.fromCharCode;
+    function P7A(m0L, e9V) {
+        if (!s2l[m0L]) {
+            s2l[m0L] = {};
+            for (var i45 = 0; i45 < m0L.length; i45++)
+                s2l[m0L][m0L.charAt(i45)] = i45;
+        }
+        return s2l[m0L][e9V];
+    }
+    var I0Q = function(u8w, W6g, W8t) {
+        var B1_ = [], b90 = 4, Y3w = 4, D3B = 3, V29 = "", r62 = [], G5C, t1r, q3e, C3I, I3m, R3a, G4O, Q3$ = {
+            val: W8t(0),
+            position: W6g,
+            index: 1
+        };
+        for (G5C = 0; G5C < 3; G5C += 1)
+            B1_[G5C] = G5C;
+        q3e = 0;
+        I3m = Math.pow(2, 2);
+        R3a = 1;
+        while (R3a != I3m) {
+            C3I = Q3$.val & Q3$.position;
+            Q3$.position >>= 1;
+            if (Q3$.position == 0) {
+                Q3$.position = W6g;
+                Q3$.val = W8t(Q3$.index++);
+            }
+            q3e |= (C3I > 0 ? 1 : 0) * R3a;
+            R3a <<= 1;
+        }
+        switch (q3e) {
+        case 0:
+            q3e = 0;
+            I3m = Math.pow(2, 8);
+            R3a = 1;
+            while (R3a != I3m) {
+                C3I = Q3$.val & Q3$.position;
+                Q3$.position >>= 1;
+                if (Q3$.position == 0) {
+                    Q3$.position = W6g;
+                    Q3$.val = W8t(Q3$.index++);
+                }
+                q3e |= (C3I > 0 ? 1 : 0) * R3a;
+                R3a <<= 1;
+            }
+            G4O = T1H(q3e);
+            break;
+        case 1:
+            q3e = 0;
+            I3m = Math.pow(2, 16);
+            R3a = 1;
+            while (R3a != I3m) {
+                C3I = Q3$.val & Q3$.position;
+                Q3$.position >>= 1;
+                if (Q3$.position == 0) {
+                    Q3$.position = W6g;
+                    Q3$.val = W8t(Q3$.index++);
+                }
+                q3e |= (C3I > 0 ? 1 : 0) * R3a;
+                R3a <<= 1;
+            }
+            G4O = T1H(q3e);
+            break;
+        case 2:
+            return "";
+        }
+        B1_[3] = G4O;
+        t1r = G4O;
+        r62.push(G4O);
+        while (true) {
+            if (Q3$.index > u8w)
+                return "";
+            q3e = 0;
+            I3m = Math.pow(2, D3B);
+            R3a = 1;
+            while (R3a != I3m) {
+                C3I = Q3$.val & Q3$.position;
+                Q3$.position >>= 1;
+                if (Q3$.position == 0) {
+                    Q3$.position = W6g;
+                    Q3$.val = W8t(Q3$.index++);
+                }
+                q3e |= (C3I > 0 ? 1 : 0) * R3a;
+                R3a <<= 1;
+            }
+            switch (G4O = q3e) {
+            case 0:
+                q3e = 0;
+                I3m = Math.pow(2, 8);
+                R3a = 1;
+                while (R3a != I3m) {
+                    C3I = Q3$.val & Q3$.position;
+                    Q3$.position >>= 1;
+                    if (Q3$.position == 0) {
+                        Q3$.position = W6g;
+                        Q3$.val = W8t(Q3$.index++);
+                    }
+                    q3e |= (C3I > 0 ? 1 : 0) * R3a;
+                    R3a <<= 1;
+                }
+                B1_[Y3w++] = T1H(q3e);
+                G4O = Y3w - 1;
+                b90--;
+                break;
+            case 1:
+                q3e = 0;
+                I3m = Math.pow(2, 16);
+                R3a = 1;
+                while (R3a != I3m) {
+                    C3I = Q3$.val & Q3$.position;
+                    Q3$.position >>= 1;
+                    if (Q3$.position == 0) {
+                        Q3$.position = W6g;
+                        Q3$.val = W8t(Q3$.index++);
+                    }
+                    q3e |= (C3I > 0 ? 1 : 0) * R3a;
+                    R3a <<= 1;
+                }
+                B1_[Y3w++] = T1H(q3e);
+                G4O = Y3w - 1;
+                b90--;
+                break;
+            case 2:
+                return r62.join('');
+            }
+            if (b90 == 0) {
+                b90 = Math.pow(2, D3B);
+                D3B++;
+            }
+            if (B1_[G4O])
+                V29 = B1_[G4O];
+            else if (G4O === Y3w)
+                V29 = t1r + t1r.charAt(0);
+            else
+                return null;
+            r62.push(V29);
+            B1_[Y3w++] = t1r + V29.charAt(0);
+            b90--;
+            t1r = V29;
+            if (b90 == 0) {
+                b90 = Math.pow(2, D3B);
+                D3B++;
+            }
+        }
+    };
+    var r21 = "aKAmRIHjBy37LlMCTzxtpgVQb0DfU98wkdPJecYGFNhu6-so2+Er$S15viOZqn4XW";
+    if (g7G == null)
+        return "";
+    if (g7G == "")
+        return null;
+    return I0Q(g7G.length, 32, function(G4v) {
+        return P7A(r21, g7G.charAt(G4v));
+    });
+}
+)();
+(self.getMessageTypes = function() {
+    return {
+        "Decompress": "decompress",
+        "Compress": "compress"
+    };
+}
+)();
+(function() {
+    var I$j = self.getMessageTypes();
+    self.addEventListener('message', function(R_O) {
+        if (R_O.data.value) {
+            var J4F = R_O.data.value;
+            if (R_O.data.type === I$j.Compress || R_O.data.type === undefined) {
+                var u8k = self.allocateInternal(J4F);
+                self.postMessage({
+                    value: J4F,
+                    result: u8k
+                });
+            } else if (R_O.data.type === I$j.Decompress) {
+                var G3m = self.decompressBase64(J4F);
+                self.postMessage({
+                    value: J4F,
+                    result: G3m
+                });
+            }
+        }
+    });
+}
+)()
