@@ -82,6 +82,21 @@ Token-consuming simulated-real-user tests are deliberately excluded from this pu
 and from CI. They live only in the feature's dev-only local validation harness and run manually
 against an exact deployed publish package with explicitly available provider quota.
 
+`tools\AutofixPrompt.Local.Tests.ps1` is an opt-in, quota-consuming Dev validation
+of actual Copilot decisions, outside the default `tests`/`selftests` discovery.
+It runs three fresh-session samples each of an obvious Git typo and an unfamiliar
+local command typo. The oracle inspects session-scoped tool calls: the obvious
+typo must go directly to a correction card with no discovery tools, while the
+local command must be resolved and its corrected script must run in the source pane.
+Run it explicitly through `Invoke-ItE2EReport.ps1 -Path` with `ITE2E_PACKAGE=Dev`
+and `ITE2E_EXPECTED_WTA_SHA256` set to the deployed feature build.
+`ITE2E_COMMAND_FIXTURE_DIR` must name an existing writable user PATH directory;
+the test creates uniquely named scripts there and removes them afterward. This
+models an installed local command, rather than assuming a script in the current
+directory is on PowerShell's command search path. Set `ITE2E_AUTOFIX_MODEL` to
+pin the Copilot model being evaluated. Settings are preserved through ItE2E;
+the test does not modify PATH or profiles.
+
 `Feature.AutofixCommandResolution` requires a Debug Dev build so its negative
 probe assertions have enabled diagnostic evidence. Set
 `ITE2E_EXPECTED_WTA_SHA256` to the SHA-256 of the feature-branch build when

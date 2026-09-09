@@ -744,6 +744,11 @@ impl ContextProvider for CommandResolverProvider {
                 "This optional local CLI queries command existence and, for missing \
                  PowerShell commands, similar installed names. Invoke it only when \
                  diagnosis needs command resolution, not routinely on every failure. \
+                 Propose an obvious typo correction in a familiar command directly, \
+                 without querying merely to verify it. Query when an unfamiliar local \
+                 command or genuine ambiguity requires local evidence; do not invent \
+                 local command names. A command-not-found error alone does not require \
+                 a query. \
                  `exists` identifies a resolved command; `not_found` reports no \
                  resolution from an authoritative source; `indeterminate` and \
                  `unsupported` do not prove absence. It cannot observe aliases or \
@@ -1700,6 +1705,12 @@ pub(super) mod tests {
                     ]
                 );
                 assert!(sections[0].body.contains("not routinely on every failure"));
+                assert!(sections[0]
+                    .body
+                    .contains("without querying merely to verify it"));
+                assert!(sections[0]
+                    .body
+                    .contains("unfamiliar local command or genuine ambiguity"));
                 assert!(sections[0].body.contains("indeterminate"));
                 assert!(sections[0].body.contains("unsupported"));
                 assert!(sections[0].body.contains(r"C:\\failing-pane"));

@@ -282,6 +282,8 @@ Net effect: UT shrinks the manual matrix to "did the wiring and UI connect", not
 - [ ] `C307` `[new]` `[E2E]` **Tab selection does not prewarm command resolution:** Helper startup and repeated tab selection perform no command-resolution probes or agent prompts. _(#844; E2E: `Feature.AutofixCommandResolution`.)_
 - [ ] `C308` `[new]` `[E2E]` **Autofix sends first and later prompts without command enumeration:** Missing-command and ordinary cmdlet failures reach ACP with the failing pane's resolver contract and no precomputed candidates or command probes. _(#844; E2E: `Feature.AutofixCommandResolution`.)_
 - [ ] `C309` `[new]` `[E2E]` **Autofix agents can query local command candidates on demand:** An agent can execute the prompt's resolver invocation with the failing pane's shell/cwd and receive a real local spelling candidate only after explicitly requesting lookup. _(#844; E2E: `Feature.AutofixCommandResolution`.)_
+- [ ] `C310` `[new]` `[E2E]` **Obvious command typos bypass lookup:** A familiar, unambiguous typo such as `gti status` produces a `git status` correction card without command lookup or substitute discovery tools. _(Opt-in local model validation: `tools/AutofixPrompt.Local.Tests.ps1`.)_
+- [ ] `C311` `[new]` `[E2E]` **Unfamiliar local command typos use lookup:** A local command typo is resolved using the failing pane's environment, and the discovered correction runs in that pane. _(Opt-in local model validation: `tools/AutofixPrompt.Local.Tests.ps1`.)_
 
 ### Autofix across layout changes
 
