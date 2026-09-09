@@ -1504,6 +1504,15 @@ namespace TerminalAppLocalTests
                                            CascadiaSettings initialSettings,
                                            winrt::Microsoft::Terminal::TerminalConnection::ITerminalConnection connection)
     {
+        // These tests exercise normal tab behavior, not the first-run
+        // experience, which intentionally defers tab creation until completion.
+        const auto applicationState = ApplicationState::SharedInstance();
+        const auto agentFreCompleted = applicationState.AgentFreCompleted();
+        applicationState.AgentFreCompleted(true);
+        const auto restoreAgentFreCompleted = wil::scope_exit([&]() {
+            applicationState.AgentFreCompleted(agentFreCompleted);
+        });
+
         // This is super wacky, but we can't just initialize the
         // com_ptr<impl::TerminalPage> in the lambda and assign it back out of
         // the lambda. We'll crash trying to get a weak_ref to the TerminalPage
