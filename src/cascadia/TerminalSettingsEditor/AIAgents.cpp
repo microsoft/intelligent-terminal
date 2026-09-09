@@ -114,6 +114,14 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         _AlignInlineLinkText(sender.as<TextBlock>());
     }
 
+    void AIAgents::CustomProviderForm_SizeChanged(const IInspectable&, const SizeChangedEventArgs& args)
+    {
+        const auto width = args.NewSize().Width;
+        CustomProviderBaseUrlBox().MaxWidth(width);
+        CustomProviderModelIdBox().MaxWidth(width);
+        CustomProviderApiKeyBox().MaxWidth(width);
+    }
+
     void AIAgents::CustomAgentRemove_Loaded(
         const IInspectable& sender,
         const RoutedEventArgs&)

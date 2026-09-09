@@ -18,6 +18,8 @@
                 <ResourceDictionary Source="CommonResources.xaml" />
             </ResourceDictionary.MergedDictionaries>
 
+            <x:Double x:Key="CustomProviderInputWidth">496</x:Double>
+
             <DataTemplate x:Key="AgentEntryTemplate"
                           x:DataType="local:AgentEntry">
                 <Grid>
@@ -359,14 +361,17 @@
 
                     <Border Padding="0,16"
                             Visibility="{x:Bind ViewModel.IsAddingCustomModelProvider, Mode=OneWay}">
-                        <StackPanel Spacing="12">
+                        <StackPanel x:Name="CustomProviderForm"
+                                    SizeChanged="CustomProviderForm_SizeChanged"
+                                    Spacing="12">
                             <TextBlock x:Uid="AIAgents_CustomProviderAddHeader"
                                        FontWeight="SemiBold"
                                        Style="{StaticResource SettingsPageItemHeaderStyle}" />
                             <StackPanel Spacing="4">
                                 <TextBox x:Name="CustomProviderBaseUrlBox"
                                          x:Uid="AIAgents_CustomProviderBaseUrl"
-                                         Width="{StaticResource StandardBoxMinWidth}"
+                                         Width="{StaticResource CustomProviderInputWidth}"
+                                         MaxWidth="{StaticResource CustomProviderInputWidth}"
                                          AutomationProperties.HelpText="{Binding Text, ElementName=CustomProviderBaseUrlHint}"
                                          PlaceholderForeground="{ThemeResource TextFillColorTertiaryBrush}"
                                          Style="{StaticResource TextBoxSettingStyle}"
@@ -380,7 +385,8 @@
                             <StackPanel Spacing="4">
                                 <TextBox x:Name="CustomProviderModelIdBox"
                                          x:Uid="AIAgents_CustomModelId"
-                                         Width="{StaticResource StandardBoxMinWidth}"
+                                         Width="{StaticResource CustomProviderInputWidth}"
+                                         MaxWidth="{StaticResource CustomProviderInputWidth}"
                                          AutomationProperties.HelpText="{Binding Text, ElementName=CustomModelIdHint}"
                                          PlaceholderForeground="{ThemeResource TextFillColorTertiaryBrush}"
                                          Style="{StaticResource TextBoxSettingStyle}"
@@ -394,7 +400,9 @@
                             <StackPanel Spacing="4">
                                 <PasswordBox x:Name="CustomProviderApiKeyBox"
                                              x:Uid="AIAgents_CustomProviderApiKey"
-                                             Width="{StaticResource StandardBoxMinWidth}"
+                                             Width="{StaticResource CustomProviderInputWidth}"
+                                             MinWidth="{StaticResource StandardBoxMinWidth}"
+                                             MaxWidth="{StaticResource CustomProviderInputWidth}"
                                              HorizontalAlignment="Left"
                                              AutomationProperties.HelpText="{Binding Text, ElementName=CustomProviderApiKeyHint}"
                                              Password="{x:Bind ViewModel.NewCustomModelProviderApiKey, Mode=TwoWay}" />

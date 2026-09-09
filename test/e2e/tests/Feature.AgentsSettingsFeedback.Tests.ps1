@@ -7,8 +7,18 @@ BeforeDiscovery {
 Describe 'Feature Agents settings feedback' -Tag 'Feature' -Skip:(-not $script:Ready) {
     BeforeAll {
         Import-Module (Join-Path $PSScriptRoot '..\ItE2E\ItE2E.psd1') -Force
+        Add-Type -AssemblyName WindowsBase
         Add-Type -AssemblyName UIAutomationClient
         Add-Type -AssemblyName UIAutomationTypes
+        if (-not ('AgentsSettingsDisplay' -as [type])) {
+            Add-Type -TypeDefinition @'
+public static class AgentsSettingsDisplay
+{
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    public static extern uint GetDpiForWindow(System.IntPtr window);
+}
+'@
+        }
         $script:app = Start-Terminal -Package (Get-ItTestPackage) -PassFre $true -Settings @{
             language = 'en-US'
             agentSessionManagementEnabled = $false
@@ -220,29 +230,56 @@ Describe 'Feature Agents settings feedback' -Tag 'Feature' -Skip:(-not $script:R
         $expander = Require-Control 'CustomModelProvidersExpander'
         $expander.GetCurrentPattern([System.Windows.Automation.ExpandCollapsePattern]::Pattern).Expand()
         Invoke-Control 'CustomProviderAddButton'
+        $window = $script:root.GetCurrentPattern([System.Windows.Automation.WindowPattern]::Pattern)
+        $transform = $script:root.GetCurrentPattern([System.Windows.Automation.TransformPattern]::Pattern)
+        $originalState = $window.Current.WindowVisualState
+        $originalBounds = $script:root.Current.BoundingRectangle
+        $scale = [AgentsSettingsDisplay]::GetDpiForWindow([IntPtr]$script:app.Hwnd) / 96.0
+        $fieldIds = @('CustomProviderBaseUrlBox', 'CustomProviderModelIdBox', 'CustomProviderApiKeyBox')
         try {
-            foreach ($filled in @($false, $true)) {
-                if ($filled) {
-                    Set-ControlText 'CustomProviderBaseUrlBox' ('http://127.0.0.1:7771/' + ('long-path/' * 8) + 'v1')
-                    Set-ControlText 'CustomProviderModelIdBox' ('long-model-name-' * 8)
-                    Set-ControlText 'CustomProviderApiKeyBox' ('test-only-key-' * 10)
-                }
-                $widths = @('CustomProviderBaseUrlBox', 'CustomProviderModelIdBox', 'CustomProviderApiKeyBox') |
-                    ForEach-Object {
+            $window.SetWindowVisualState([System.Windows.Automation.WindowVisualState]::Normal)
+            Wait-Until -TimeoutSec 5 -Because 'the settings window to be resizable' -Condition {
+                $window.Current.WindowVisualState -eq [System.Windows.Automation.WindowVisualState]::Normal
+            } | Out-Null
+            foreach ($compact in @($false, $true)) {
+                $targetWidth = $(if ($compact) { 520 } else { 1320 }) * $scale
+                $transform.Resize($targetWidth, 800 * $scale)
+                Wait-Until -TimeoutSec 5 -Because 'the settings window to finish resizing' -Condition {
+                    [math]::Abs($script:root.Current.BoundingRectangle.Width - $targetWidth) -le 1
+                } | Out-Null
+                foreach ($id in $fieldIds) { Set-ControlText $id '' }
+                foreach ($filled in @($false, $true)) {
+                    if ($filled) {
+                        Set-ControlText 'CustomProviderBaseUrlBox' ('http://127.0.0.1:7771/' + ('long-path/' * 8) + 'v1')
+                        Set-ControlText 'CustomProviderModelIdBox' ('long-model-name-' * 8)
+                        Set-ControlText 'CustomProviderApiKeyBox' ('test-only-key-' * 10)
+                    }
+                    $widths = $fieldIds | ForEach-Object {
                         $control = Require-Control $_
                         $control.SetFocus()
                         Wait-Until -TimeoutSec 5 -Because "$_ to be visible for measurement" -Condition {
                             -not $control.Current.IsOffscreen -and $control.Current.BoundingRectangle.Width -gt 0
                         } | Out-Null
-                        $control.Current.BoundingRectangle.Width
+                        $bounds = $control.Current.BoundingRectangle
+                        $bounds.Right | Should -BeLessOrEqual ($expander.Current.BoundingRectangle.Right - 16 * $scale + 1)
+                        $bounds.Width
                     }
-                $widths[0] | Should -BeGreaterThan 0
-                $widths[1] | Should -Be $widths[0]
-                $widths[2] | Should -Be $widths[0]
+                    $widths[0] | Should -BeGreaterThan 0
+                    $widths[1] | Should -Be $widths[0]
+                    $widths[2] | Should -Be $widths[0]
+                    if ($compact) {
+                        $widths[0] | Should -BeLessThan (496 * $scale)
+                    }
+                    else {
+                        [math]::Abs($widths[0] - 496 * $scale) | Should -BeLessOrEqual 1
+                    }
+                }
             }
         }
         finally {
             Invoke-Control 'CustomProviderCancelButton'
+            $transform.Resize($originalBounds.Width, $originalBounds.Height)
+            $window.SetWindowVisualState($originalState)
         }
     }
 

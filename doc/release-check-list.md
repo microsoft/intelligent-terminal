@@ -98,7 +98,7 @@ Net effect: UT shrinks the manual matrix to "did the wiring and UI connect", not
 - [ ] `C048` `[UT~]` `[E2E]` **Policy lock UI works:** Locked controls are disabled and show the policy message. _(UT: Effective*/IsLocked gates.)_
 - [ ] `C307` `[new]` `[E2E]` **Agent CLI settings explain prompt delegation:** The Command palette section explains active-pane context, Alt+Shift+/ prompt mode, and Alt+Shift+B launch without an initial prompt. _(E2E: `Feature.AgentsSettingsFeedback`.)_
 - [ ] `C308` `[new]` `[E2E]` **Custom agent Save closes the editor:** Saving or reselecting an ACP/delegate custom command shows an aligned read-only preview; only Edit opens the command textbox and Save/Cancel actions. _(E2E: `Feature.AgentsSettingsFeedback`.)_
-- [ ] `C309` `[new]` `[E2E]` **Custom model inputs stay equal width:** Base URL, model ID, and API key inputs have equal widths with empty or long values. _(E2E: `Feature.AgentsSettingsFeedback`.)_
+- [ ] `C309` `[new]` `[E2E]` **Custom model inputs stay equal width:** Base URL, model ID, and API key inputs are 496 layout pixels wide when space permits, shrink together in narrow windows, and remain equal with empty or long values. _(E2E: `Feature.AgentsSettingsFeedback`.)_
 - [ ] `C310` `[new]` `[E2E]` **Agents help links only target their text:** Privacy and custom-model help links are only clickable on their own text, not the neighboring description or whitespace; the custom-model expander still opens and closes. _(E2E: `Feature.AgentsSettingsFeedback`.)_
 - [ ] `C311` `[new]` `[E2E]` **Agents help links share the description baseline:** Privacy and custom-model links align with the adjacent description text without per-font pixel offsets. _(E2E: `Feature.AgentsSettingsFeedback`.)_
 
