@@ -1979,11 +1979,21 @@ fn build_message_lines<'a>(
     )
 }
 
-/// Use textwrap's default word splitting and wrapping, retaining the source
-/// lengths that its string-only `wrap` result discards.
+fn thought_gutter(wrap_width: usize) -> &'static str {
+    if wrap_width <= 3 {
+        ""
+    } else {
+        "│ "
+    }
+}
+
+/// Retain source lengths and fit every piece on one rendered body row.
+/// Optimal fit can intentionally overflow, causing a second unanchored row.
 fn wrap_thought_text(text: &str, wrap_width: usize) -> Vec<(usize, Cow<'_, str>)> {
-    let width = wrap_width.saturating_sub(2).max(1);
-    let options = textwrap::Options::new(width);
+    let width = wrap_width
+        .saturating_sub(thought_gutter(wrap_width).width())
+        .max(1);
+    let options = textwrap::Options::new(width).wrap_algorithm(textwrap::WrapAlgorithm::FirstFit);
     let mut rows = Vec::new();
     let mut paragraph_start = 0;
     for paragraph in text.split('\n') {
@@ -1997,7 +2007,11 @@ fn wrap_thought_text(text: &str, wrap_width: usize) -> Vec<(usize, Cow<'_, str>)
         } else {
             let words = textwrap::core::break_words(
                 textwrap::word_splitters::split_words(
-                    options.word_separator.find_words(content),
+                    // Ratatui displays escape payloads as plain text. End a
+                    // fragment at ESC so textwrap cannot hide their width.
+                    content
+                        .split_inclusive('\x1b')
+                        .flat_map(|part| options.word_separator.find_words(part)),
                     &options.word_splitter,
                 ),
                 width,
@@ -2098,7 +2112,7 @@ fn build_message_lines_with_details<'a>(
             if *expanded {
                 for (_, piece) in wrap_thought_text(text, wrap_width) {
                     lines.push(Line::from(vec![
-                        Span::styled("│ ", style),
+                        Span::styled(thought_gutter(wrap_width), style),
                         Span::styled(piece.into_owned(), style),
                     ]));
                 }
@@ -4112,6 +4126,81 @@ mod tests {
     }
 
     #[test]
+    fn thought_source_rows_cover_actual_rendered_body_rows() {
+        let _locale = crate::test_support::lock_locale();
+        rust_i18n::set_locale("en-US");
+        let text = format!("a {}\ntail", "a".repeat(45));
+        let message = ChatMessage::Thought {
+            id: Default::default(),
+            text,
+            expanded: true,
+            duration_ms: None,
+        };
+        let width = 48;
+        let lines = build_message_lines(&message, false, false, None, 0, width);
+        let header = rendered_lines_height(&lines[..1], width);
+        let height = rendered_lines_height(&lines, width);
+        let area = Rect::new(0, 0, width as u16, height as u16);
+        let mut buffer = Buffer::empty(area);
+        Paragraph::new(lines)
+            .wrap(Wrap { trim: false })
+            .render(area, &mut buffer);
+        let rows = thought_source_rows(&message, width, None);
+        assert_eq!(
+            rows.iter().map(|(_, row)| *row).collect::<Vec<_>>(),
+            (header..height).collect::<Vec<_>>(),
+            "{buffer:?}",
+        );
+    }
+
+    #[test]
+    fn thought_first_fit_body_rows_match_ratatui_geometry() {
+        let _locale = crate::test_support::lock_locale();
+        rust_i18n::set_locale("en-US");
+        for text in [
+            format!("a {}\ntail", "a".repeat(45)),
+            "界e\u{301} alpha-beta 👩‍💻 🙂\r\n\r\nend\r\n".into(),
+            format!("  {}  \n\tvalue\tend", ["same"; 6].join(" ")),
+            "\u{1b}[31mcolored\u{1b}[0m text".into(),
+        ] {
+            for width in [1, 2, 3, 4, 7, 12, 20, 48] {
+                let message = ChatMessage::Thought {
+                    id: Default::default(),
+                    text: text.clone(),
+                    expanded: true,
+                    duration_ms: None,
+                };
+                let lines = build_message_lines(&message, false, false, None, 0, width);
+                let header = rendered_lines_height(&lines[..1], width);
+                let height = rendered_lines_height(&lines, width);
+                let area = Rect::new(0, 0, width as u16, height as u16);
+                let mut buffer = Buffer::empty(area);
+                Paragraph::new(lines.clone())
+                    .wrap(Wrap { trim: false })
+                    .render(area, &mut buffer);
+                let rows = thought_source_rows(&message, width, None);
+                assert_eq!(
+                    rows.iter().map(|(_, row)| *row).collect::<Vec<_>>(),
+                    (header..height).collect::<Vec<_>>(),
+                    "width={width}, text={text:?}, buffer={buffer:?}",
+                );
+                assert!(rows.iter().all(|(byte, _)| text.is_char_boundary(*byte)));
+                for (index, line) in lines[1..].iter().enumerate() {
+                    let area = Rect::new(0, 0, width as u16, 2);
+                    let mut single = Buffer::empty(area);
+                    Paragraph::new(line.clone())
+                        .wrap(Wrap { trim: false })
+                        .render(area, &mut single);
+                    for x in 0..width as u16 {
+                        assert_eq!(single[(x, 0)], buffer[(x, (header + index) as u16)]);
+                        assert_eq!(single[(x, 1)].symbol(), " ");
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
     fn thought_source_wrapping_matches_textwrap_after_every_utf8_head_cut() {
         let repeated = ["repeated"; 2].join(" ");
         let padded = format!("  {repeated}  repeated ");
@@ -4137,7 +4226,10 @@ mod tests {
                     .flat_map(|paragraph| {
                         textwrap::wrap(
                             paragraph.strip_suffix('\r').unwrap_or(paragraph),
-                            width.saturating_sub(2).max(1),
+                            textwrap::Options::new(
+                                width.saturating_sub(thought_gutter(width).width()).max(1),
+                            )
+                            .wrap_algorithm(textwrap::WrapAlgorithm::FirstFit),
                         )
                     })
                     .collect::<Vec<_>>();

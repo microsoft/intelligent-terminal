@@ -16710,6 +16710,66 @@ fn chat_reading_position_preserves_retained_streaming_thought_lines() {
 }
 
 #[test]
+fn chat_reading_position_near_width_thought_does_not_drift() {
+    let _locale = crate::test_support::lock_locale();
+    rust_i18n::set_locale("en-US");
+    let mut app = test_app();
+    app.state = ConnectionState::Connected;
+    submit_test_prompt(&mut app, "thinking");
+    let word = "a".repeat(45);
+    app.handle_event(AppEvent::AgentThoughtChunk {
+        session_id: DEFAULT_TAB_ID.into(),
+        text: (0..70).map(|_| format!("a {word}\n")).collect(),
+    });
+    render_to_text(&mut app, 50, 20);
+    app.current_tab_mut().chat_scroll.by(30);
+    let mut before = String::new();
+    for _ in 0..4 {
+        app.current_tab_mut().chat_scroll.by(1);
+        before = render_to_text(&mut app, 50, 20);
+        if before.lines().next().unwrap().contains(&word) {
+            break;
+        }
+    }
+    assert!(before.lines().next().unwrap().contains(&word), "{before}");
+    for _ in 0..3 {
+        assert_eq!(render_to_text(&mut app, 50, 20), before);
+    }
+    let (id, mut byte) = app
+        .current_tab()
+        .chat_reading_position
+        .unwrap()
+        .thought_source
+        .unwrap();
+    for chunk in ["\ntail\n".to_owned(), "界\n".repeat(400)] {
+        let current = app.current_tab().streaming_thought_text().unwrap();
+        let dropped_chars = (current.chars().count() + chunk.chars().count()).saturating_sub(4000);
+        let dropped_bytes = current.char_indices().nth(dropped_chars).unwrap().0;
+        byte -= dropped_bytes;
+        app.handle_event(AppEvent::AgentThoughtChunk {
+            session_id: DEFAULT_TAB_ID.into(),
+            text: chunk,
+        });
+        for width in [50, 52, 50, 52, 50] {
+            for _ in 0..2 {
+                let rendered = render_to_text(&mut app, width, 20);
+                assert!(
+                    rendered.lines().next().unwrap().contains(&word),
+                    "{rendered}"
+                );
+                assert_eq!(
+                    app.current_tab()
+                        .chat_reading_position
+                        .unwrap()
+                        .thought_source,
+                    Some((id, byte)),
+                );
+            }
+        }
+    }
+}
+
+#[test]
 fn chat_reading_position_thought_retention_preserves_duplicate_and_blank_rows() {
     let _locale = crate::test_support::lock_locale();
     let mut app = test_app();
