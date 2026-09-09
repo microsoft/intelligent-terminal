@@ -17,6 +17,28 @@ using namespace winrt::Microsoft::Terminal::Settings::Model;
 
 namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
 {
+    static void _AlignInlineLinkText(const TextBlock& text)
+    {
+        for (auto parent = VisualTreeHelper::GetParent(text);
+             parent;
+             parent = VisualTreeHelper::GetParent(parent))
+        {
+            if (const auto link = parent.try_as<HyperlinkButton>())
+            {
+                // InlineUIContainer puts the child's bottom on the text baseline.
+                // Let the measured font descent extend below it instead of using a pixel offset.
+                const auto bottom = std::min(0.0, text.BaselineOffset() - text.ActualHeight());
+                auto margin = link.Margin();
+                if (margin.Bottom != bottom)
+                {
+                    margin.Bottom = bottom;
+                    link.Margin(margin);
+                }
+                break;
+            }
+        }
+    }
+
     static void _UpdateCustomAgentRemoveVisibility(const Button& button)
     {
         const auto entry = button.DataContext().try_as<Editor::AgentEntry>();
@@ -80,6 +102,16 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         }
 
         Automation::AutomationProperties::SetName(AcpAgent(), agentHeader);
+    }
+
+    void AIAgents::InlineLinkText_Loaded(const IInspectable& sender, const RoutedEventArgs&)
+    {
+        _AlignInlineLinkText(sender.as<TextBlock>());
+    }
+
+    void AIAgents::InlineLinkText_SizeChanged(const IInspectable& sender, const SizeChangedEventArgs&)
+    {
+        _AlignInlineLinkText(sender.as<TextBlock>());
     }
 
     void AIAgents::CustomAgentRemove_Loaded(

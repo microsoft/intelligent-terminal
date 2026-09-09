@@ -2861,8 +2861,8 @@
     <comment>{Locked="CLI"} Header for the agent CLI selector in Settings &gt; Agents &gt; Command palette. Here "agent" means an AI intelligent agent (e.g. Copilot, Claude, Gemini), not a proxy or human agent. CLI means command-line interface.</comment>
   </data>
   <data name="AIAgents_DelegateAgent.HelpText" xml:space="preserve">
-    <value>使用你首选的智能体 CLI、提示词以及当前选项卡中的任何上下文来创建新选项卡。按 Alt+Shift+/ 可直接打开命令面板并进入智能体提示模式。</value>
-    <comment>{Locked="CLI","Alt+Shift+/"} Help text for the agent CLI selector in Settings &gt; Agents &gt; Command palette. The selected AI agent CLI opens in a new tab with a prompt and any context from the current tab. Here "agent" means an AI intelligent agent, not a proxy or human agent. Keep CLI and Alt+Shift+/ unchanged.</comment>
+    <value>使用你首选的智能体 CLI 创建新选项卡，并可选择附带提示词和活动窗格的上下文。按 Alt+Shift+/ 可在智能体提示模式下打开命令面板，或按 Alt+Shift+B 在不提供初始提示词的情况下启动交互式 CLI。</value>
+    <comment>{Locked="CLI","Alt+Shift+/","Alt+Shift+B"} Help text for the agent CLI selector in Settings &gt; Agents &gt; Command palette. "Agent" means an AI intelligent agent, not a proxy or human agent. "Active pane" is the currently focused terminal pane, not the entire tab; its output is included as context only when a nonempty initial prompt is supplied. Alt+Shift+/ opens the command palette in prompt mode. Alt+Shift+B launches the interactive CLI without an initial prompt or collected pane context; it still waits for user input. Keep CLI, Alt+Shift+/, and Alt+Shift+B unchanged.</comment>
   </data>
   <data name="AIAgents_AutoFix.Header" xml:space="preserve">
     <value>自动为失败的命令建议修复方案</value>

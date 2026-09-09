@@ -1231,7 +1231,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
             {
                 if (_isAddingCustomAcpAgent && _editingCustomAcpAgentId.empty())
                 {
-                    _editingCustomAcpAgentId = value.Id();
+                    _isAddingCustomAcpAgent = false;
                     _customAcpCommand = value.CustomCommand();
                     _GlobalSettings.AcpCustomCommand(_customAcpCommand);
                     _NotifyChanges(L"IsAddingCustomAcpAgent",
@@ -1244,8 +1244,8 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
                 return;
             }
             const bool agentChanged = _GlobalSettings.AcpAgent() != value.Id();
-            _isAddingCustomAcpAgent = true;
-            _editingCustomAcpAgentId = value.Id();
+            _isAddingCustomAcpAgent = false;
+            _editingCustomAcpAgentId = L"";
             _customAcpCommand = value.CustomCommand();
             _GlobalSettings.AcpCustomCommand(_customAcpCommand);
             _GlobalSettings.AcpAgent(value.Id());
@@ -1358,7 +1358,7 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
             {
                 if (_isAddingCustomDelegateAgent && _editingCustomDelegateAgentId.empty())
                 {
-                    _editingCustomDelegateAgentId = value.Id();
+                    _isAddingCustomDelegateAgent = false;
                     _customDelegateCommand = value.CustomCommand();
                     _GlobalSettings.DelegateCustomCommand(_customDelegateCommand);
                     _NotifyChanges(L"IsAddingCustomDelegateAgent",
@@ -1369,8 +1369,8 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
                 }
                 return;
             }
-            _isAddingCustomDelegateAgent = true;
-            _editingCustomDelegateAgentId = value.Id();
+            _isAddingCustomDelegateAgent = false;
+            _editingCustomDelegateAgentId = L"";
             _customDelegateCommand = value.CustomCommand();
             _GlobalSettings.DelegateCustomCommand(_customDelegateCommand);
             _GlobalSettings.DelegateAgent(value.Id());

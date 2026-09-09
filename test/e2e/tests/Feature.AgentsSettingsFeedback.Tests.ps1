@@ -57,33 +57,56 @@ Describe 'Feature Agents settings feedback' -Tag 'Feature' -Skip:(-not $script:R
             }
         }
 
-        function Select-AddAgent([string]$ComboId) {
+        function Select-AgentEntry([string]$ComboId, [string]$Label) {
             $combo = Require-Control $ComboId
             $combo.GetCurrentPattern([System.Windows.Automation.ExpandCollapsePattern]::Pattern).Expand()
             $condition = [System.Windows.Automation.PropertyCondition]::new(
                 [System.Windows.Automation.AutomationElement]::ControlTypeProperty,
                 [System.Windows.Automation.ControlType]::ListItem)
-            $addLabel = [System.Windows.Automation.PropertyCondition]::new(
-                [System.Windows.Automation.AutomationElement]::NameProperty, '+ Add New...')
-            $addItem = Wait-Until -TimeoutSec 8 -Because 'the expanded custom-agent add entry to render' -Condition {
+            $labelCondition = [System.Windows.Automation.PropertyCondition]::new(
+                [System.Windows.Automation.AutomationElement]::NameProperty, $Label)
+            $selectedItem = Wait-Until -TimeoutSec 8 -Because "the expanded '$Label' entry to render" -Condition {
                 foreach ($item in $combo.FindAll([System.Windows.Automation.TreeScope]::Descendants, $condition)) {
-                    if ($item.FindFirst([System.Windows.Automation.TreeScope]::Descendants, $addLabel)) {
+                    if ($item.FindFirst([System.Windows.Automation.TreeScope]::Descendants, $labelCondition)) {
                         return $item
                     }
                 }
             }
-            $addItem.GetCurrentPattern([System.Windows.Automation.SelectionItemPattern]::Pattern).Select()
+            $selectedItem.GetCurrentPattern([System.Windows.Automation.SelectionItemPattern]::Pattern).Select()
+            Wait-Until -TimeoutSec 8 -Because "'$Label' to become selected" -Condition {
+                (Get-SelectedAgentText $ComboId) -eq $Label
+            } | Out-Null
         }
 
-        function Get-SelectedAgentText([string]$ComboId) {
+        function Get-SelectedAgentLabel([string]$ComboId) {
             $selection = (Require-Control $ComboId).GetCurrentPattern(
                 [System.Windows.Automation.SelectionPattern]::Pattern).Current.GetSelection()
             $selection.Count | Should -Be 1
             $condition = [System.Windows.Automation.PropertyCondition]::new(
                 [System.Windows.Automation.AutomationElement]::ControlTypeProperty,
                 [System.Windows.Automation.ControlType]::Text)
-            (@($selection[0].FindAll([System.Windows.Automation.TreeScope]::Descendants, $condition)) |
-                ForEach-Object { $_.Current.Name }) -join ' '
+            $selection[0].FindFirst([System.Windows.Automation.TreeScope]::Descendants, $condition)
+        }
+
+        function Get-SelectedAgentText([string]$ComboId) {
+            (Get-SelectedAgentLabel $ComboId).Current.Name
+        }
+
+        function Get-TextRectangle([System.Windows.Automation.AutomationElement]$Control, [string]$Text) {
+            $document = $Control.GetCurrentPattern([System.Windows.Automation.TextPattern]::Pattern).DocumentRange
+            $index = $document.GetText(-1).IndexOf($Text, [StringComparison]::Ordinal)
+            if ($index -lt 0) { throw "Expected rendered text '$Text' was not found." }
+            # RichTextBlock's UIA provider does not implement FindText.
+            $range = $document.Clone()
+            $start = [System.Windows.Automation.Text.TextPatternRangeEndpoint]::Start
+            $end = [System.Windows.Automation.Text.TextPatternRangeEndpoint]::End
+            $range.MoveEndpointByRange($end, $range, $start)
+            $range.MoveEndpointByUnit($start, [System.Windows.Automation.Text.TextUnit]::Character, $index) | Out-Null
+            $range.MoveEndpointByRange($end, $range, $start)
+            $range.MoveEndpointByUnit($end, [System.Windows.Automation.Text.TextUnit]::Character, $Text.Length) | Out-Null
+            $rectangles = $range.GetBoundingRectangles()
+            if ($rectangles.Count -eq 0) { throw "Expected rendered text '$Text' is not visible." }
+            $rectangles[0]
         }
 
         function Click-SettingsPoint([double]$X, [double]$Y) {
@@ -133,7 +156,7 @@ Describe 'Feature Agents settings feedback' -Tag 'Feature' -Skip:(-not $script:R
             [System.Windows.Automation.Condition]::TrueCondition)) |
             Where-Object { $_.Current.AutomationId -eq 'HelpTextBlock' } |
             Select-Object -First 1
-        $help.Current.Name | Should -Be 'Create a new tab with your preferred agent CLI, a prompt, and any context from your current tab. Press Alt+Shift+/ to launch the command palette directly in prompt mode.'
+        $help.Current.Name | Should -Be 'Create a new tab with your preferred agent CLI, optionally including a prompt and context from the active pane. Press Alt+Shift+/ to open the command palette in prompt mode, or Alt+Shift+B to launch without an initial prompt.'
     }
 
     It 'Custom agent Save closes the editor' {
@@ -144,19 +167,28 @@ Describe 'Feature Agents settings feedback' -Tag 'Feature' -Skip:(-not $script:R
             $saveId = "Custom${kind}AgentSaveButton"
             $cancelId = "Custom${kind}AgentCancelButton"
             $editId = "Custom${kind}AgentEditButton"
+            $previewId = "Custom${kind}CommandPreviewText"
             $name = "settings-feedback-$($kind.ToLowerInvariant())"
-            Select-AddAgent $comboId
+            Select-AgentEntry $comboId '+ Add New...'
             Set-ControlText $boxId "$name --first"
             Invoke-Control $saveId
             Wait-Until -TimeoutSec 8 -Because "$kind Save to collapse its form" -Condition {
                 -not (Find-Control $boxId) -and -not (Find-Control $saveId) -and -not (Find-Control $cancelId)
             } | Out-Null
             Get-SelectedAgentText $comboId | Should -Be $name
-            Require-Control $editId | Should -Not -BeNullOrEmpty
+            (Require-Control $editId).SetFocus()
+            $previewOffset = (Require-Control $previewId).Current.BoundingRectangle.Left -
+                (Get-SelectedAgentLabel $comboId).Current.BoundingRectangle.Left
+            [math]::Abs($previewOffset) | Should -BeLessOrEqual 1 -Because 'preview and picker command text must share the same left inset'
 
             Invoke-Control $editId
-            (Require-Control $boxId).GetCurrentPattern(
+            $box = Require-Control $boxId
+            $box.SetFocus()
+            $box.GetCurrentPattern(
                 [System.Windows.Automation.ValuePattern]::Pattern).Current.Value | Should -Be "$name --first"
+            $text = Get-TextRectangle $box $name
+            [math]::Abs($text.X - (Get-SelectedAgentLabel $comboId).Current.BoundingRectangle.Left) |
+                Should -BeLessOrEqual 1 -Because 'editable and preview command text must align'
             Set-ControlText $boxId "$name --edited"
             Invoke-Control $saveId
             Wait-Until -TimeoutSec 8 -Because "$kind edited Save to collapse its form" -Condition {
@@ -164,7 +196,15 @@ Describe 'Feature Agents settings feedback' -Tag 'Feature' -Skip:(-not $script:R
             } | Out-Null
             Get-SelectedAgentText $comboId | Should -Be $name
 
-            Select-AddAgent $comboId
+            Select-AgentEntry $comboId 'settings-fixture'
+            Select-AgentEntry $comboId $name
+            Wait-Until -TimeoutSec 8 -Because "$kind re-selection to retain read-only preview" -Condition {
+                (Find-Control $previewId) -and (Find-Control $editId) -and
+                    -not (Find-Control $boxId) -and -not (Find-Control $saveId) -and -not (Find-Control $cancelId)
+            } | Out-Null
+            (Require-Control $previewId).Current.Name | Should -Be "$name --edited"
+
+            Select-AgentEntry $comboId '+ Add New...'
             Set-ControlText $boxId 'unsaved-agent --cancelled'
             Invoke-Control $cancelId
             Get-SelectedAgentText $comboId | Should -Be $name
@@ -233,5 +273,19 @@ Describe 'Feature Agents settings feedback' -Tag 'Feature' -Skip:(-not $script:R
         $pattern.Current.ExpandCollapseState | Should -Be ([System.Windows.Automation.ExpandCollapseState]::Expanded)
         $pattern.Collapse()
         $pattern.Current.ExpandCollapseState | Should -Be ([System.Windows.Automation.ExpandCollapseState]::Collapsed)
+    }
+
+    It 'Agents help links share the description baseline' {
+        Scroll-Settings $false
+        foreach ($case in @(
+            @{ Control = 'PageSubtitleText'; Prefix = 'experience.'; Link = 'PageSubtitlePrivacyLink' },
+            @{ Control = 'CustomModelsDescriptionText'; Prefix = 'endpoint.'; Link = 'CustomModelsCaptionLink' }
+        )) {
+            $control = Require-Control $case.Control
+            $prefix = Get-TextRectangle $control $case.Prefix
+            $link = (Require-Control $case.Link).Current.BoundingRectangle
+            [math]::Abs($prefix.Y - $link.Y) | Should -BeLessOrEqual 1
+            [math]::Abs($prefix.Height - $link.Height) | Should -BeLessOrEqual 1
+        }
     }
 }

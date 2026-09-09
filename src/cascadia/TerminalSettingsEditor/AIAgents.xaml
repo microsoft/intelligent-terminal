@@ -63,12 +63,24 @@
                 <Setter Property="Padding" Value="0,12" />
             </Style>
 
+            <Style x:Key="CustomAgentCommandPreviewStyle"
+                   TargetType="Border">
+                <Setter Property="MinWidth" Value="{StaticResource StandardBoxMinWidth}" />
+                <Setter Property="MaxWidth" Value="400" />
+                <Setter Property="MinHeight" Value="{ThemeResource TextControlThemeMinHeight}" />
+                <Setter Property="Padding" Value="{ThemeResource TextControlThemePadding}" />
+                <Setter Property="BorderThickness" Value="{ThemeResource TextControlBorderThemeThickness}" />
+                <Setter Property="BorderBrush" Value="Transparent" />
+                <Setter Property="HorizontalAlignment" Value="Left" />
+            </Style>
+
             <Style x:Key="InlineSettingsLinkStyle"
                    BasedOn="{StaticResource DefaultHyperlinkButtonStyle}"
                    TargetType="HyperlinkButton">
                 <Setter Property="MinWidth" Value="0" />
                 <Setter Property="MinHeight" Value="0" />
                 <Setter Property="Padding" Value="0" />
+                <Setter Property="BorderThickness" Value="0" />
                 <Setter Property="HorizontalAlignment" Value="Left" />
             </Style>
 
@@ -102,8 +114,9 @@
     <StackPanel>
         <StackPanel Style="{StaticResource SettingsStackStyle}">
 
-            <!--  Explicit inline controls restrict link hit testing to the link text.  -->
-            <RichTextBlock Margin="0,0,0,16"
+            <!--  Bounded inline controls avoid the text renderer's nearest-link hit testing.  -->
+            <RichTextBlock x:Name="PageSubtitleText"
+                           Margin="0,0,0,16"
                            IsTextSelectionEnabled="False"
                            TextWrapping="Wrap">
                 <Paragraph>
@@ -113,6 +126,8 @@
                                          NavigateUri="https://aka.ms/intelligent-terminal-privacy"
                                          Style="{StaticResource InlineSettingsLinkStyle}">
                             <TextBlock x:Name="PageSubtitlePrivacyLink"
+                                       Loaded="InlineLinkText_Loaded"
+                                       SizeChanged="InlineLinkText_SizeChanged"
                                        TextDecorations="Underline" />
                         </HyperlinkButton>
                     </InlineUIContainer>
@@ -168,15 +183,18 @@
                                Visibility="{x:Bind ViewModel.IsAgentPolicyLocked, Mode=OneWay}"
                                Opacity="0.6"
                                Margin="0,4,0,0" />
-                    <!--  Read-only preview when custom agent is selected on page load  -->
+                    <!--  Read-only preview of the selected custom agent  -->
                     <StackPanel Orientation="Vertical"
                                 Visibility="{x:Bind ViewModel.IsCustomAcpAgentSelected, Mode=OneWay}"
                                 Margin="0,8,0,0"
                                 Spacing="8">
-                        <TextBlock Text="{x:Bind ViewModel.CustomAcpCommandPreview, Mode=OneWay}"
-                                   IsTextSelectionEnabled="True"
-                                   TextWrapping="Wrap"
-                                   Opacity="0.8" />
+                        <Border Style="{StaticResource CustomAgentCommandPreviewStyle}">
+                            <TextBlock x:Name="CustomAcpCommandPreviewText"
+                                       Text="{x:Bind ViewModel.CustomAcpCommandPreview, Mode=OneWay}"
+                                       IsTextSelectionEnabled="True"
+                                       TextWrapping="Wrap"
+                                       Opacity="0.8" />
+                        </Border>
                         <StackPanel Orientation="Horizontal"
                                     HorizontalAlignment="Right"
                                     Spacing="8">
@@ -239,7 +257,8 @@
                         <StackPanel Style="{StaticResource StackPanelInExpanderStyle}">
                             <TextBlock x:Name="CustomModelsHeaderText"
                                        Style="{StaticResource SettingsPageItemHeaderStyle}" />
-                            <RichTextBlock Margin="0,0,24,0"
+                            <RichTextBlock x:Name="CustomModelsDescriptionText"
+                                           Margin="0,0,24,0"
                                            FontFamily="Segoe UI, Segoe Fluent Icons, Segoe MDL2 Assets"
                                            FontSize="12"
                                            Foreground="{ThemeResource SubgroupHeaderBrush}"
@@ -253,6 +272,8 @@
                                                          NavigateUri="https://github.com/microsoft/intelligent-terminal#custom-providers-byok"
                                                          Style="{StaticResource InlineSettingsLinkStyle}">
                                             <TextBlock x:Name="CustomModelsCaptionLink"
+                                                       Loaded="InlineLinkText_Loaded"
+                                                       SizeChanged="InlineLinkText_SizeChanged"
                                                        TextDecorations="Underline" />
                                         </HyperlinkButton>
                                     </InlineUIContainer>
@@ -525,10 +546,13 @@
                                 Visibility="{x:Bind ViewModel.IsCustomDelegateAgentSelected, Mode=OneWay}"
                                 Margin="0,8,0,0"
                                 Spacing="8">
-                        <TextBlock Text="{x:Bind ViewModel.CustomDelegateCommandPreview, Mode=OneWay}"
-                                   IsTextSelectionEnabled="True"
-                                   TextWrapping="Wrap"
-                                   Opacity="0.8" />
+                        <Border Style="{StaticResource CustomAgentCommandPreviewStyle}">
+                            <TextBlock x:Name="CustomDelegateCommandPreviewText"
+                                       Text="{x:Bind ViewModel.CustomDelegateCommandPreview, Mode=OneWay}"
+                                       IsTextSelectionEnabled="True"
+                                       TextWrapping="Wrap"
+                                       Opacity="0.8" />
+                        </Border>
                         <StackPanel Orientation="Horizontal"
                                     HorizontalAlignment="Right"
                                     Spacing="8">

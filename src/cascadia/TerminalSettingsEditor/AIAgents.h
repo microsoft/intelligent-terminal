@@ -16,6 +16,12 @@ namespace winrt::Microsoft::Terminal::Settings::Editor::implementation
         void CustomAgentRemove_Loaded(
             const winrt::Windows::Foundation::IInspectable& sender,
             const winrt::Windows::UI::Xaml::RoutedEventArgs& e);
+        void InlineLinkText_Loaded(
+            const winrt::Windows::Foundation::IInspectable& sender,
+            const winrt::Windows::UI::Xaml::RoutedEventArgs& e);
+        void InlineLinkText_SizeChanged(
+            const winrt::Windows::Foundation::IInspectable& sender,
+            const winrt::Windows::UI::Xaml::SizeChangedEventArgs& e);
 
         static double InstalledOpacity(bool isInstalled) { return isInstalled ? 1.0 : 0.4; }
         static bool NotBool(bool value) { return !value; }
