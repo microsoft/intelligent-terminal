@@ -242,16 +242,17 @@ fn tool_output_lines(output: &ToolCallOutput) -> Vec<String> {
 }
 
 fn full_output_lines(output: &ToolCallOutput, prefix: &str, wrap_width: usize) -> Vec<String> {
-    let mut lines = wrapped_tool_text_lines(&output.text, prefix, wrap_width, usize::MAX, false);
+    let mut lines = if output.text.is_empty() {
+        Vec::new()
+    } else {
+        wrapped_tool_text_lines(&output.text, prefix, wrap_width, usize::MAX, false)
+    };
     let omitted = output.truncated || lines.len() > MAX_TOOL_DETAIL_OUTPUT_LINES;
     if lines.len() > MAX_TOOL_DETAIL_OUTPUT_LINES {
         lines.drain(..lines.len() - MAX_TOOL_DETAIL_OUTPUT_LINES);
     }
     if omitted {
         lines.insert(0, format!("{prefix}…"));
-    }
-    if lines.is_empty() {
-        lines.push(prefix.trim_end().to_string());
     }
     lines
 }
@@ -2401,6 +2402,25 @@ mod tests {
         assert!(lines
             .iter()
             .all(|line| line.width() <= 12 && !line.contains('\r')));
+    }
+
+    #[test]
+    fn empty_expanded_tool_output_has_no_placeholder_but_preserves_truncation() {
+        let mut output = ToolCallOutput {
+            text: String::new(),
+            truncated: false,
+        };
+        assert!(full_output_lines(&output, "    │ ", 40).is_empty());
+        assert!(tool_detail_lines_with_width(
+            [ToolCallContent::Text(output.clone())].iter(),
+            &[],
+            true,
+            40
+        )
+        .is_empty());
+
+        output.truncated = true;
+        assert_eq!(full_output_lines(&output, "    │ ", 40), ["    │ …"]);
     }
 
     #[test]
