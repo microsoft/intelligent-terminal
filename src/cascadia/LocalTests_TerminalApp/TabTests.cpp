@@ -320,7 +320,7 @@ namespace TerminalAppLocalTests
         TEST_METHOD(ContentTransferRejectedWindowPreservesSource);
         TEST_METHOD(ContentTransferReviewHiddenZoomedTabMovesToExistingPage);
         TEST_METHOD(ContentTransferReviewHiddenZoomedTabMovesToFreshReceiver);
-        TEST_METHOD(ContentTransferReviewHiddenUnzoomedTabMoves);
+        TEST_METHOD(ContentTransferReviewHiddenTabMovesWithoutZoom);
         TEST_METHOD(ContentTransferReviewVisibleZoomedTabMoves);
         TEST_METHOD(ContentTransferReviewHiddenZoomedNestedTabKeepsFinalFocus);
         TEST_METHOD(ContentTransferReviewRollbackPreservesScrollOffset);
@@ -3494,7 +3494,7 @@ namespace TerminalAppLocalTests
         _verifyContentTransferReviewZoom(true, true, true);
     }
 
-    void TabTests::ContentTransferReviewHiddenUnzoomedTabMoves()
+    void TabTests::ContentTransferReviewHiddenTabMovesWithoutZoom()
     {
         _verifyContentTransferReviewZoom(true, false, false);
     }
