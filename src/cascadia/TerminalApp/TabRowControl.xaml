@@ -55,7 +55,7 @@
                           Glyph="&#xEA18;"
                           Visibility="{x:Bind ShowElevationShield, Mode=OneWay}" />
 
-                <!--  Keep the workspace entry point hidden until the feature is generally available.  -->
+                <!--  Keep this button collapsed regardless of showWorkspacesButton until the workspace feature is generally available.  -->
                 <Button x:Name="WorkspaceDropdown"
                         x:Uid="WorkspaceDropdown"
                         Margin="4,0,0,4"

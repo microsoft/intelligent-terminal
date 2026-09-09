@@ -2066,7 +2066,7 @@
           "$ref": "#/$defs/ThemeColor"
         },
         "showWorkspacesButton": {
-          "description": "Controls visibility of the workspaces button in the tab row. Currently ignored: the button is hidden until the workspace feature is generally available.",
+          "description": "Currently ignored. The workspaces button remains hidden until the workspace feature is generally available.",
           "type": "boolean",
           "default": true
         }
