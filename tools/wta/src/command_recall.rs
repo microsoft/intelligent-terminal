@@ -1,32 +1,15 @@
-//! Local command recall for autofix (issue #287).
+//! On-demand local command resolution and near-match recall.
 //!
 //! When a command fails with a "not found" error, the autofix agent used to
 //! give generic advice without knowing whether the command even exists on the
 //! user's machine — so it never suggested the *local* PowerShell scripts and
 //! programs on PATH that the user most likely mistyped.
 //!
-//! This module computes "did you mean" near-matches grounded in the user's
-//! real environment. The flow (PowerShell only in v1) is:
-//!
-//! 1. [`extract_command_token`] pulls the executable name out of the failing
-//!    command line (the first line of the captured `[command + output]`
-//!    buffer — see `ControlCore::ReadLastPrompt`, which starts at the FTCS
-//!    command mark, so there is no prompt prefix to strip).
-//! 2. A cheap in-process `which` pre-gate: if the token resolves as a plain
-//!    PATH program, the failure was *not* a not-found, so nothing is injected
-//!    and no subprocess is spawned (the common case — failed build/test/git).
-//! 3. Otherwise, enumerate the shell's real command list once
-//!    (`Get-Command …`) and, if the token still doesn't resolve, rank the
-//!    list by Damerau-Levenshtein ([`rank_near_matches`]) to surface the
-//!    closest existing commands.
-//!
-//! The gate is locale-independent: it asks the shell "does this command
-//! exist", never matches the (localized) error text. The `which` pre-gate
-//! skips the enumerate subprocess only for tokens that resolve as plain PATH
-//! programs; a failing cmdlet / alias / function token — which `which` can't
-//! see — still spawns the enumerate and then bails out via the existence
-//! gate. So the subprocess runs for any token that *looks* not-found to PATH,
-//! not only a genuine not-found.
+//! `wta resolve-command` calls this module when the agent requests local
+//! evidence. Prompt construction never invokes it. Near-match lookup checks
+//! PATH, then enumerates PowerShell commands and ranks missing names by
+//! Damerau-Levenshtein ([`rank_near_matches`]). Enumeration is uncached so
+//! each explicit query observes the current environment.
 //!
 //! Profile-defined aliases/functions (issue #286): the enumerate loads the
 //! user's interactive profile first, so an alias set only in `$PROFILE` (e.g.
@@ -66,6 +49,50 @@ const PROFILE_ENUMERATE_TIMEOUT: std::time::Duration = std::time::Duration::from
 /// for a command name. Unlikely to collide with any real command name.
 const ENUM_SENTINEL: &str = "__WTA_CMD_ENUM__";
 
+#[cfg(test)]
+pub(crate) mod probe_observer {
+    use std::cell::RefCell;
+    use std::marker::PhantomData;
+    use std::rc::Rc;
+
+    thread_local! {
+        static ATTEMPTS: RefCell<Option<Vec<(&'static str, bool)>>> = const { RefCell::new(None) };
+    }
+
+    /// Observe only this test thread. Async callers must use a current-thread
+    /// runtime (and LocalSet for spawned tasks), never spawn_blocking.
+    pub(crate) struct ProbeObserver(PhantomData<Rc<()>>);
+
+    impl ProbeObserver {
+        pub(crate) fn start() -> Self {
+            ATTEMPTS.with(|attempts| {
+                let mut attempts = attempts.borrow_mut();
+                assert!(attempts.is_none(), "probe observer scopes must not overlap");
+                *attempts = Some(Vec::new());
+            });
+            Self(PhantomData)
+        }
+
+        pub(crate) fn attempts(&self) -> Vec<(&'static str, bool)> {
+            ATTEMPTS.with(|attempts| attempts.borrow().as_ref().unwrap().clone())
+        }
+    }
+
+    impl Drop for ProbeObserver {
+        fn drop(&mut self) {
+            ATTEMPTS.with(|attempts| *attempts.borrow_mut() = None);
+        }
+    }
+
+    pub(super) fn record(operation: &'static str, load_profile: bool) {
+        ATTEMPTS.with(|attempts| {
+            if let Some(attempts) = attempts.borrow_mut().as_mut() {
+                attempts.push((operation, load_profile));
+            }
+        });
+    }
+}
+
 /// True when `shell` names a PowerShell host. v1 only recalls for PowerShell
 /// panes.
 ///
@@ -85,40 +112,6 @@ pub fn is_powershell(shell: &str) -> bool {
     leaf == "pwsh" || leaf == "powershell"
 }
 
-/// Extract the command token (executable name) from a captured
-/// `[command + output]` buffer.
-///
-/// Returns `None` when there is no usable token, or when the (post-`&`) token
-/// is an explicit path invocation (`.\x.ps1`, `C:\x.exe`) — a PATH-lookup
-/// near-match wouldn't apply to those. A leading PowerShell call operator
-/// (`& cmd`, `&cmd`) is peeled first, since `&` still performs normal command
-/// resolution on the command it invokes.
-pub fn extract_command_token(content: &str) -> Option<String> {
-    let first_line = content.lines().map(str::trim).find(|l| !l.is_empty())?;
-    let mut tokens = first_line.split_whitespace();
-    let mut token = tokens.next()?;
-    // PowerShell call operator: `& cmd ...` (or `&cmd`) still performs normal
-    // command resolution, so peel a leading `&` and look at the command it
-    // invokes — a not-found `& gti` is just as correctable as `gti`.
-    if token == "&" {
-        token = tokens.next()?;
-    } else if let Some(rest) = token.strip_prefix('&') {
-        token = rest;
-    }
-    let token = token.trim_matches(|c| c == '"' || c == '\'');
-    // A command chained without whitespace (`gti;git`, `gti|less`, `gti&&echo`)
-    // leaves the statement/pipeline separator stuck to the token. Keep only the
-    // command name so the existence gate and near-match ranking aren't thrown
-    // off by trailing punctuation (command names never contain `;` `|` `&`).
-    let token = token.split([';', '|', '&']).next().unwrap_or(token);
-    // After peeling `&`, an explicit / relative path is still not a bare PATH
-    // command, so a near-match suggestion wouldn't apply.
-    if token.is_empty() || token.starts_with('.') || token.contains('\\') || token.contains('/') {
-        return None;
-    }
-    Some(token.to_string())
-}
-
 /// Strip a trailing Windows executable extension (case-insensitive). Returns
 /// the input unchanged when it has no such extension.
 pub fn strip_exe_ext(name: &str) -> &str {
@@ -129,7 +122,7 @@ pub fn strip_exe_ext(name: &str) -> &str {
         let split = name.len() - ext.len();
         // `get` guards the slice boundary: a non-ASCII command name
         // (functions/aliases can be Unicode) could put `split` mid-char,
-        // and direct byte slicing would panic and crash prompt assembly.
+        // and direct byte slicing would panic and crash command resolution.
         if name
             .get(split..)
             .is_some_and(|tail| tail.eq_ignore_ascii_case(ext))
@@ -142,7 +135,7 @@ pub fn strip_exe_ext(name: &str) -> &str {
 
 /// True when `token` matches a known command `name` (case-insensitive, after
 /// extension stripping). Used as the existence gate: a hit means the failure
-/// wasn't a not-found, so no near-matches should be injected.
+/// wasn't a not-found, so no near-matches should be returned.
 ///
 /// The token is extension-stripped too, so an explicitly-typed extension
 /// (`deploy-it.ps1`) still matches the stripped candidate (`deploy-it`).
@@ -213,18 +206,16 @@ fn sorted_chars(s: &str) -> Vec<char> {
 /// least one close existing command was found; `None` otherwise (the token
 /// exists, or nothing is close enough).
 pub async fn powershell_near_matches(shell_exe: &str, token: &str) -> Option<Vec<String>> {
-    // Cheap in-process pre-gate: a plain PATH program resolves here without
-    // spawning anything, so the common autofix case (a failed build/test/git
-    // where the program exists) never pays the enumerate cost.
+    // A plain PATH program needs no enumeration.
     if which::which(token).is_ok() {
         return None;
     }
 
-    let names = cached_powershell_commands(shell_exe).await?;
+    let names = enumerate_powershell_commands(shell_exe).await?;
 
     // Full existence gate: the token may resolve as a cmdlet / function /
     // alias / external `.ps1` that `which` can't see. If so, it wasn't a
-    // not-found — inject nothing.
+    // not-found — return no suggestions.
     if command_exists(token, &names) {
         return None;
     }
@@ -328,6 +319,15 @@ pub async fn powershell_resolve(shell_exe: &str, token: &str) -> ResolveOutcome 
     // Bound the profile load; on timeout the child is reaped via kill_on_drop.
     // A timeout or spawn/IO error is Indeterminate — the shell may never have
     // reached `Get-Command`, so we cannot conclude the token is absent.
+    #[cfg(test)]
+    probe_observer::record("resolve", true);
+    tracing::debug!(
+        target: "wta.command_resolution",
+        operation = "resolve",
+        load_profile = true,
+        shell_exe = exe,
+        "powershell_command_probe_started"
+    );
     let output = match tokio::time::timeout(PROFILE_ENUMERATE_TIMEOUT, cmd.output()).await {
         Ok(Ok(output)) => output,
         _ => return ResolveOutcome::Indeterminate,
@@ -390,37 +390,6 @@ fn parse_resolve_output(stdout: &str) -> Option<Vec<CommandResolution>> {
         Some(resolutions)
     }
 }
-/// Process-lifetime cache of the enumerated command list, keyed by shell exe +
-/// current `PATH`. Enumerating the shell costs a profile-loading `pwsh`
-/// subprocess (the profile can take up to [`PROFILE_ENUMERATE_TIMEOUT`]); the
-/// command set is effectively static for the helper's lifetime, so cache it —
-/// the profile cost is paid once per pane, not per query. By design we do NOT
-/// detect mid-session installs — a newly added command shows up only after the
-/// tab/helper restarts. Keying on `PATH` keeps tests isolated (each sets its
-/// own `PATH` → fresh key).
-static COMMAND_CACHE: std::sync::OnceLock<
-    std::sync::Mutex<std::collections::HashMap<String, std::sync::Arc<Vec<String>>>>,
-> = std::sync::OnceLock::new();
-
-/// Cached wrapper over [`enumerate_powershell_commands`]; see [`COMMAND_CACHE`].
-async fn cached_powershell_commands(shell_exe: &str) -> Option<std::sync::Arc<Vec<String>>> {
-    let cache =
-        COMMAND_CACHE.get_or_init(|| std::sync::Mutex::new(std::collections::HashMap::new()));
-    let key = format!(
-        "{}|{}",
-        shell_exe.to_ascii_lowercase(),
-        std::env::var("PATH").unwrap_or_default()
-    );
-    if let Some(hit) = cache.lock().ok().and_then(|m| m.get(&key).cloned()) {
-        return Some(hit);
-    }
-    let names = std::sync::Arc::new(enumerate_powershell_commands(shell_exe).await?);
-    if let Ok(mut m) = cache.lock() {
-        m.insert(key, names.clone());
-    }
-    Some(names)
-}
-
 /// Enumerate the shell's command names (cmdlets, applications, external
 /// scripts, functions, aliases).
 ///
@@ -481,6 +450,15 @@ async fn run_enumerate(exe: &str, load_profile: bool) -> Option<Vec<String>> {
     #[cfg(windows)]
     cmd.creation_flags(CREATE_NO_WINDOW);
 
+    #[cfg(test)]
+    probe_observer::record("enumerate", load_profile);
+    tracing::debug!(
+        target: "wta.command_resolution",
+        operation = "enumerate",
+        load_profile,
+        shell_exe = exe,
+        "powershell_command_probe_started"
+    );
     let output = cmd.output().await.ok()?;
     parse_enumerate_output(&String::from_utf8_lossy(&output.stdout))
 }
@@ -518,6 +496,26 @@ fn parse_enumerate_output(stdout: &str) -> Option<Vec<String>> {
 mod tests {
     use super::*;
 
+    #[tokio::test(flavor = "current_thread")]
+    async fn autofix_probe_observer_detects_real_query_attempts() {
+        let observer = probe_observer::ProbeObserver::start();
+        // A child of an existing executable file cannot be a shell. Exercise
+        // actual spawn failures deterministically, without loading user profiles.
+        let missing_shell = std::env::current_exe().unwrap().join("not-a-shell.exe");
+        let shell = missing_shell.to_str().unwrap();
+        assert_eq!(
+            powershell_resolve(shell, "Get-Item").await,
+            ResolveOutcome::Indeterminate
+        );
+        assert!(enumerate_powershell_commands(shell).await.is_none());
+        assert_eq!(
+            observer.attempts(),
+            [("resolve", true), ("enumerate", true), ("enumerate", false)]
+        );
+        drop(observer);
+        assert!(probe_observer::ProbeObserver::start().attempts().is_empty());
+    }
+
     fn names(list: &[&str]) -> Vec<String> {
         list.iter().map(|s| s.to_string()).collect()
     }
@@ -540,75 +538,6 @@ mod tests {
         assert!(!is_powershell("wsl.exe"));
         assert!(!is_powershell("wsl:Ubuntu")); // OSC ShellType for a WSL pane
         assert!(!is_powershell(""));
-    }
-
-    #[test]
-    fn extract_token_takes_first_token_of_command_line() {
-        // Buffer is "command line\n<output>" — the first line is what the
-        // user typed; the rest is the (possibly localized) error.
-        let buf = "deploit -Target prod\ndeploit: The term 'deploit' is not recognized...";
-        assert_eq!(extract_command_token(buf).as_deref(), Some("deploit"));
-    }
-
-    #[test]
-    fn extract_token_strips_quotes_and_leading_blank_lines() {
-        assert_eq!(
-            extract_command_token("\n\n  gti status\n").as_deref(),
-            Some("gti")
-        );
-        // A surrounding quote the user typed is stripped from the token.
-        assert_eq!(extract_command_token("'gti' foo").as_deref(), Some("gti"));
-    }
-
-    #[test]
-    fn extract_token_rejects_explicit_paths() {
-        // Explicit / relative paths are not PATH lookups, so a near-match
-        // suggestion wouldn't apply.
-        assert_eq!(extract_command_token(r".\build.ps1"), None);
-        assert_eq!(extract_command_token(r"C:\tools\x.exe -a"), None);
-        assert_eq!(extract_command_token("/usr/bin/foo"), None);
-        assert_eq!(extract_command_token("   "), None);
-        assert_eq!(extract_command_token(""), None);
-    }
-
-    #[test]
-    fn extract_token_peels_powershell_call_operator() {
-        // `& cmd` (or `&cmd`) still performs normal command resolution, so a
-        // not-found `& gti` is just as correctable — extract the invoked name.
-        assert_eq!(
-            extract_command_token("& gti status").as_deref(),
-            Some("gti")
-        );
-        assert_eq!(extract_command_token("&gti").as_deref(), Some("gti"));
-        assert_eq!(extract_command_token("& 'gti'").as_deref(), Some("gti"));
-        // But after the operator, an explicit path is still not a PATH-style
-        // lookup → None.
-        assert_eq!(extract_command_token(r"& .\build.ps1"), None);
-        assert_eq!(extract_command_token(r"& C:\tools\x.exe"), None);
-        // A bare `&` with nothing after it is nothing to suggest.
-        assert_eq!(extract_command_token("&"), None);
-        assert_eq!(extract_command_token("& "), None);
-    }
-
-    #[test]
-    fn extract_token_strips_chained_separators() {
-        // A command chained without whitespace keeps the separator stuck to the
-        // token; only the command name should survive so the gate/ranking stay
-        // clean.
-        assert_eq!(
-            extract_command_token("gti;git status").as_deref(),
-            Some("gti")
-        );
-        assert_eq!(extract_command_token("gti| less").as_deref(), Some("gti"));
-        assert_eq!(extract_command_token("gti|less").as_deref(), Some("gti"));
-        assert_eq!(
-            extract_command_token("gti&&echo done").as_deref(),
-            Some("gti")
-        );
-        // Trailing separator with a space still resolves to the bare command.
-        assert_eq!(extract_command_token("gti ; git").as_deref(), Some("gti"));
-        // A leading separator leaves nothing to suggest.
-        assert_eq!(extract_command_token(";foo"), None);
     }
 
     #[test]
@@ -1026,7 +955,7 @@ mod integration_tests {
     }
 
     #[tokio::test]
-    async fn near_matches_suggests_a_local_script_typo_on_path() {
+    async fn near_matches_observes_script_changes_without_path_changes() {
         let Some(shell) = powershell_host() else {
             eprintln!("no PowerShell host installed; skipping");
             return;
@@ -1052,6 +981,8 @@ mod integration_tests {
         // `wtdeployt` is the script name with one character dropped — a genuine
         // not-found whose closest existing command is the script itself.
         let result = powershell_near_matches(&shell, "wtdeployt").await;
+        let renamed = std::fs::rename(dir.join("wtdeployit.ps1"), dir.join("wtdeployit-new.ps1"));
+        let refreshed = powershell_near_matches(&shell, "wtdeployt-new").await;
 
         // Always restore PATH and remove the temp dir *before* asserting, so a
         // failed assertion can never leak state into other tests.
@@ -1061,10 +992,22 @@ mod integration_tests {
         }
         let _ = std::fs::remove_dir_all(&dir);
 
+        renamed.expect("rename script without changing PATH");
         let matches = result.expect("expected near-matches for a local script typo");
         assert!(
             matches.iter().any(|m| m.eq_ignore_ascii_case("wtdeployit")),
             "expected the local script `wtdeployit` among near-matches, got {matches:?}"
+        );
+        let matches = refreshed.expect("expected fresh near-matches after renaming the script");
+        assert!(
+            matches
+                .iter()
+                .any(|m| m.eq_ignore_ascii_case("wtdeployit-new")),
+            "expected the renamed script among near-matches, got {matches:?}"
+        );
+        assert!(
+            !matches.iter().any(|m| m.eq_ignore_ascii_case("wtdeployit")),
+            "a removed script must not survive in cached results"
         );
     }
 }

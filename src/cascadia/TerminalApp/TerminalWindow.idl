@@ -55,7 +55,7 @@ namespace TerminalApp
         Boolean HasCommandlineArguments();
 
         Int32 SetStartupCommandline(CommandlineArgs args);
-        void SetStartupContent(String json, Windows.Foundation.IReference<Windows.Foundation.Rect> bounds);
+        void SetStartupContent(String json, Windows.Foundation.IReference<Windows.Foundation.Rect> bounds, UInt64 transferId);
         void SetStartupActions(Windows.Foundation.Collections.IVector<Microsoft.Terminal.Settings.Model.ActionAndArgs> actions);
         void SetPersistedLayout(Microsoft.Terminal.Settings.Model.WindowLayout layout);
         Int32 ExecuteCommandline(CommandlineArgs args);
@@ -148,7 +148,8 @@ namespace TerminalApp
         event Windows.Foundation.TypedEventHandler<Object, OpenWindowRequestedArgs> RequestOpenWindow;
         event Windows.Foundation.TypedEventHandler<Object, WindowRequestedArgs> RequestNewWindow;
 
-        void AttachContent(String content, UInt32 tabIndex);
+        Boolean AttachContent(String content, UInt32 tabIndex, UInt64 transferId);
+        void ContentTransferReceiverReady();
         void SendContentToOther(RequestReceiveContentArgs args);
 
         // Protocol bridge

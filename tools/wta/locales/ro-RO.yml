@@ -51,6 +51,7 @@ chat.turn_canceled: "(anulat)"
 chat.turn_executed: "→ executat: %{title}"
 # Etichete persistente pentru categoriile de instrumente, afișate după un marcator de stare și înaintea subiectului.
 chat.tool_kind.run: "Rulare"
+chat.tool_kind.insert: "Inserare"
 chat.tool_kind.read: "Citire"
 chat.tool_kind.search: "Căutare"
 chat.tool_kind.edit: "Editare"
@@ -258,5 +259,6 @@ config_picker.title: "Configurare sesiune (↑ ↓ • Enter • Esc)"
 system.no_config_options: "Agentul conectat nu a anunțat nicio opțiune de sesiune configurabilă."
 # {option} is an Agent-provided option name; {error} is the ACP error.
 system.config_update_failed: "Nu s-a putut actualiza %{option}: %{error}"
+system.yolo_disable_pending: "furnizorul nu a confirmat starea neprivilegiată necesară a sesiunii"  # Shown after the localized failure prefix while prompts remain blocked until the AI agent provider confirms that its privileged session mode is off. Provider means an AI agent provider, not a network provider.
 system.provider_command_blocked_by_policy: "%{command}: Modul Yolo este dezactivat de politica organizației dumneavoastră."  # {Locked="Yolo","%{command}"} Shown when AllowYoloMode blocks a provider-advertised privileged command.
 system.model_unknown: "Model necunoscut %{model} — tastați /model pentru a vedea lista disponibilă."  # {Locked="%{model}","/model"}

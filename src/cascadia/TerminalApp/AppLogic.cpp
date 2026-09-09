@@ -447,6 +447,16 @@ namespace winrt::TerminalApp::implementation
             _settings.LogSettingChanges(true);
         }
 
+        if (const auto globals = _settings.GlobalSettings();
+            globals.ClearAgentPaneYoloModeIfPolicyBlocked())
+        {
+            try
+            {
+                _settings.WriteSettingsToDisk();
+            }
+            CATCH_LOG()
+        }
+
         _ApplyLanguageSettingChange();
         _ProcessLazySettingsChanges();
 

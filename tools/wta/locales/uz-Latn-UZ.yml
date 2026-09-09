@@ -51,6 +51,7 @@ chat.turn_canceled: "(bekor qilindi)"
 chat.turn_executed: "→ bajarildi: %{title}"
 # Holat belgisidan keyin va mavzudan oldin ko‘rsatiladigan doimiy vosita turkumi yorliqlari.
 chat.tool_kind.run: "Ishga tushirish"
+chat.tool_kind.insert: "Kiritish"
 chat.tool_kind.read: "O‘qish"
 chat.tool_kind.search: "Qidirish"
 chat.tool_kind.edit: "Tahrirlash"
@@ -259,5 +260,6 @@ config_picker.title: "Seans konfiguratsiyasi (↑ ↓ • Enter • Esc)"
 system.no_config_options: "Ulanmagan agent hech qanday sozlanishi mumkin boʻlgan seans parametrlarini eʼlon qilmadi."
 # {option} is an Agent-provided option name; {error} is the ACP error.
 system.config_update_failed: "%{option} yangilanmadi: %{error}"
+system.yolo_disable_pending: "agent provayderi seansning talab etilgan imtiyozsiz holatini tasdiqlamadi"  # Shown after the localized failure prefix while prompts remain blocked until the AI agent provider confirms that its privileged session mode is off. Provider means an AI agent provider, not a network provider.
 system.provider_command_blocked_by_policy: "%{command}: Yolo rejimi tashkilotingiz siyosati tomonidan o‘chirib qo‘yilgan."  # {Locked="Yolo","%{command}"} Shown when AllowYoloMode blocks a provider-advertised privileged command.
 system.model_unknown: "Nomaʼlum model %{model} — mavjud roʻyxatni koʻrish uchun /model yozing."  # {Locked="%{model}","/model"}

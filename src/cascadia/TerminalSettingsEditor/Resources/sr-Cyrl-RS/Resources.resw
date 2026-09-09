@@ -784,8 +784,8 @@
   <data name="AIAgents_PanePosition_Left" xml:space="preserve">
     <value>Лево</value>
     <comment>Value shown in the agent pane position dropdown (selects which side of the terminal the agent pane opens on). Translation should match the existing FreOverlay_PanePositionLeft string used in the first-run experience.</comment>
-  </data><data name="AIAgents_YoloMode.Header" xml:space="preserve"><value>Користи Yolo режим добављача</value><comment>{Locked=&quot;Yolo&quot;} Header for the global setting that asks each AI agent provider to enable its advertised ACP session Yolo capability.</comment></data>
-<data name="AIAgents_YoloMode.HelpText" xml:space="preserve"><value>Користи ACP режим сесије добављача агента да би смањио број потврда или их заобишао. Добављач дефинише резултујуће дозволе, sandbox окружење и приступ датотекама и мрежи. Добављачи без подржаног режима и даље ће тражити дозволу.</value><comment>{Locked=&quot;ACP&quot;} Risk warning shown under the Yolo toggle. Here provider means the selected AI agent provider, not a network provider.</comment></data>
+  </data><data name="AIAgents_YoloMode.Header" xml:space="preserve"><value>Аутоматско одобравање</value><comment>Header for the Settings toggle that enables automatic approval for the AI agent running in the agent pane.</comment></data>
+<data name="AIAgents_YoloMode.HelpText" xml:space="preserve"><value>Ваш агент у панелу агента ради са пуним дозволама које обезбеђује CLI агента</value><comment>{Locked="CLI"} Description shown under the automatic approval toggle. Agent means an AI intelligent agent in the agent pane, not a proxy or human representative. Full permissions are provided by the agent CLI.</comment></data>
   
   
   
@@ -3034,8 +3034,6 @@
     <value>{} | {} | Компатибилно са OpenAI</value>
     <comment>{Locked="{}","OpenAI"} The first {} is replaced with the provider name; the second is replaced with its location.</comment>
   </data>
-  <data name="AIAgents_YoloOpenCodeWarning.Title" xml:space="preserve"><value>Yolo режим није доступан за OpenCode</value><comment>{Locked="Yolo","OpenCode"} InfoBar title shown on the AI Agents settings page when global Yolo mode is on and the installed selected default provider is OpenCode.</comment></data>
-  <data name="AIAgents_YoloOpenCodeWarning.Message" xml:space="preserve"><value>OpenCode не оглашава подржани изворни Yolo режим. Захтеви за дозволу остају интерактивни чак и када је ово подешавање укључено.</value><comment>{Locked="OpenCode","Yolo"} InfoBar message shown on the AI Agents settings page. "Advertise" means the provider reports a supported native ACP session capability. "Interactive" means the user must still choose permission options manually.</comment></data>
   <data name="AIAgents_YoloGeminiInfo.Title" xml:space="preserve"><value>Gemini Yolo режим зависи од поверења радног простора</value><comment>{Locked="Gemini","Yolo"} InfoBar title shown on the AI Agents settings page when global Yolo mode is on and the installed selected default provider is Gemini.</comment></data>
   <data name="AIAgents_YoloGeminiInfo.Message" xml:space="preserve"><value>Gemini омогућава Yolo режим само када то дозвољавају поверење радног простора и политика добављача.</value><comment>{Locked="Gemini","Yolo"} InfoBar message shown on the AI Agents settings page. Workspace trust and provider policy are owned by Gemini, not by Intelligent Terminal.</comment></data>
   <data name="AIAgents_CustomAgentRemove.[using:Windows.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">

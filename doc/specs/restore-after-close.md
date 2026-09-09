@@ -67,6 +67,13 @@ failed exit, so a save that happens later can still describe how to bring the CL
 back. The binding is dropped for good in `_NotifyPanesClosing`, when the pane
 itself goes away.
 
+Host sessions resumed from session management do not need a hook to establish
+this binding. After `wtcli new-tab` returns the created pane's ID, WTA publishes
+`pane_agent_session_changed` with that pane ID and the agent/session identity
+already selected for resume. The loading banner and launch command are
+presentation, not identity sources; changing or removing their text does not
+affect persistence.
+
 `_StampAgentResumeCommandlines` is the whole of the save-side work: for each
 persisted pane that has a binding, it replaces `commandline` with
 `AgentPaneRestore::BuildResumeCommandline`. That command is rebuilt from the
@@ -119,6 +126,25 @@ The CLI replays its own transcript, so seeding as well would show the
 conversation twice and compound it on every restart. Asking what the pane will
 run — rather than consulting a persisted marker — means a pane the user pointed
 at a resume command themselves behaves the same way.
+
+Restoring also registers the shell pane's conversation as a live, **Idle**
+session without waiting for an agent hook or a new prompt. Layout replay runs
+before WTA's COM listeners subscribe, so the page retains each restored binding
+in memory instead of broadcasting it immediately. On an actual listener-ready
+acknowledgement (including a successful background reconnect), the owning helper
+requests its tab's pending bindings through `pane_agent_session_changed`.
+When a resumed pane joins a tab after its helper already subscribed, the page
+emits a tab/window-scoped `restore_bindings_available` notification after tree
+attachment. Only the owning helper requests replay; no listener-readiness cache
+is retained. If that notification precedes subscription, the listener-ready
+handshake still requests the pending bindings.
+If layout replay is still in progress, the response waits for its outermost
+batch to finish so that later panes in the same tab are included.
+The page emits scoped `session_born_bound` events once, and only that helper
+forwards them to master. An already-arrived live hook keeps its activity,
+metadata and ownership; a pending binding is discarded if its session or
+connection ends before delivery. This handshake does not gate ACP startup,
+chat, Autofix, or session management on hook-listener availability.
 
 **The agent pane.** `_HandleSplitPane` sees the agent content type and hands the
 action to `_RestoreAgentPaneFromLayout` instead of `_MakePane`, because the pane

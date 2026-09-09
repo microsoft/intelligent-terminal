@@ -1154,6 +1154,7 @@ pub struct App {
     /// `--yolo-mode`. Helper-owned policy is shared with the ACP client and
     /// the global default is hot-updatable.
     yolo_state: crate::app_contracts::SharedYoloState,
+    initial_yolo_control_owner: Option<InitialYoloControlOwner>,
     next_yolo_reconcile_id: u64,
     pending_yolo_reconciles: HashMap<u64, (HashSet<String>, bool)>,
     pending_yolo_session_tabs: HashSet<String>,
@@ -1170,6 +1171,7 @@ pub struct App {
     pub(crate) completed_turn_hits: Vec<CompletedTurnHitRegion>,
     pub(crate) pressed_completed_turn: Option<PressedCompletedTurn>,
     pub(crate) last_completed_turn_click: Option<CompletedTurnClickRecord>,
+    last_permission_snapshot: Option<(String, Option<String>)>,
     pub(crate) input_dialog_area: Option<Rect>,
     pub(crate) pressed_input_dialog_tab: Option<String>,
     pub(crate) completed_turn_action_links: Vec<crate::action_links::CompletedTurnActionLink>,
@@ -1347,6 +1349,12 @@ pub struct App {
     pub alive_loaded: std::sync::Arc<std::sync::atomic::AtomicBool>,
     pub proposal_channels:
         Arc<crate::agent_tools::action_proposal::channel::ProposalChannelManager>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct InitialYoloControlOwner {
+    session_id: String,
+    owner: crate::app_contracts::YoloControlOwner,
 }
 
 /// How long the close-pane arm (localized via `system.close_pane_hint`) stays live. Long
@@ -1538,6 +1546,7 @@ impl App {
             completed_turn_hits: Vec::new(),
             pressed_completed_turn: None,
             last_completed_turn_click: None,
+            last_permission_snapshot: None,
             input_dialog_area: None,
             pressed_input_dialog_tab: None,
             completed_turn_action_links: Vec::new(),
@@ -1591,6 +1600,7 @@ impl App {
             ),
             shell_mgr,
             yolo_state,
+            initial_yolo_control_owner: None,
         }
     }
 
@@ -1964,6 +1974,21 @@ impl App {
         self.delegate_base_agent_cmd = base_agent_cmd;
         self.acp_model = acp_model.filter(|s| !s.trim().is_empty());
         self.follows_global_acp_model = follows_global_acp_model;
+    }
+
+    pub fn set_initial_yolo_control_owner(
+        &mut self,
+        session_id: Option<&str>,
+        owner: Option<crate::app_contracts::YoloControlOwner>,
+    ) {
+        self.initial_yolo_control_owner = session_id
+            .map(str::trim)
+            .filter(|session_id| !session_id.is_empty())
+            .zip(owner)
+            .map(|(session_id, owner)| InitialYoloControlOwner {
+                session_id: session_id.to_string(),
+                owner,
+            });
     }
 
     pub fn set_host_catalog_ready(&mut self, ready: bool) {
@@ -3052,6 +3077,8 @@ impl App {
     ///      tab's primary pane GUID to the row even for hook-less CLIs
     ///      (Gemini), allowing a later `PaneClosed` to transition the
     ///      row back to Ended.
+    ///      Host resumes also publish the known agent/session/pane identity to
+    ///      Terminal's persistence map, independently of CLI hooks or banners.
     fn dispatch_resume(&mut self, s: &crate::agent_sessions::AgentSession) {
         let cli_id = match known_cli_id(&s.cli_source) {
             Some(id) => id,
@@ -3194,18 +3221,35 @@ impl App {
         // tab's primary pane in the same shape as `split-pane --json`,
         // so the existing helper handles both.
         let cb_key = key.clone();
+        let cb_location = s.location.clone();
         let event_tx = self.agent_event_tx.clone();
-        let on_pane_id: Option<Box<dyn FnOnce(String) + Send + 'static>> = match event_tx {
-            Some(tx) => Some(Box::new(move |pane_session_id| {
-                let _ = tx.send(AppEvent::AgentSessionEvent(
-                    crate::agent_sessions::SessionEvent::ResumePaneAssigned {
-                        key: cb_key,
-                        pane_session_id,
-                    },
-                ));
-            })),
-            None => None,
-        };
+        let on_pane_id: Option<Box<dyn FnOnce(String) + Send + 'static>> =
+            Some(Box::new(move |pane_session_id| {
+                if let Some(binding) = crate::wt_protocol_events::resumed_pane_binding_event(
+                    cli_id,
+                    &cb_key,
+                    &pane_session_id,
+                    &cb_location,
+                ) {
+                    send_wt_protocol_event(binding);
+                }
+                if let Some(tx) = event_tx {
+                    if tx
+                        .send(AppEvent::AgentSessionEvent(
+                            crate::agent_sessions::SessionEvent::ResumePaneAssigned {
+                                key: cb_key,
+                                pane_session_id,
+                            },
+                        ))
+                        .is_err()
+                    {
+                        tracing::warn!(
+                            target: "agents_view",
+                            "resumed pane could not be reported to the helper event loop"
+                        );
+                    }
+                }
+            }));
         crate::shell::wt_channel::spawn_wtcli_split_then_focus_with_callback(&argv, on_pane_id);
 
         tracing::info!(
@@ -4060,6 +4104,7 @@ impl App {
         self.custom_model_selection
             .clone_from(&request.custom_model_selection);
         self.pending_session_load = None;
+        self.initial_yolo_control_owner = None;
         self.reset_agent_scoped_state();
     }
 
@@ -4138,25 +4183,50 @@ impl App {
         self.publish_agent_status();
     }
 
-    fn pending_session_load_for_reconnect(&self) -> Option<(LoadSessionForTab, Option<bool>)> {
+    fn pending_session_load_for_reconnect(
+        &self,
+    ) -> Option<(
+        LoadSessionForTab,
+        Option<bool>,
+        crate::app_contracts::YoloControlOwner,
+    )> {
         let pending = self.pending_session_load.as_ref()?;
         let tab = self.tab_sessions.get(&pending.tab_id)?;
         (tab.loading_session
             && tab.loading_target_session_id.as_deref() == Some(pending.session_id.as_str()))
-        .then(|| (pending.clone(), tab.meaningful_conversation_before_load))
+        .then(|| {
+            let owner = self
+                .yolo_state
+                .lock()
+                .unwrap()
+                .owner(&pending.session_id)
+                .unwrap_or(crate::app_contracts::YoloControlOwner::ProviderRestored);
+            (
+                pending.clone(),
+                tab.meaningful_conversation_before_load,
+                owner,
+            )
+        })
     }
 
     fn restore_pending_session_load(
         &mut self,
         pending: LoadSessionForTab,
         prior_meaningful: Option<bool>,
+        owner: crate::app_contracts::YoloControlOwner,
     ) {
         self.pending_session_load = Some(pending.clone());
-        let tab = self.tab_mut(&pending.tab_id);
-        tab.loading_session = true;
-        tab.loading_target_session_id = Some(pending.session_id);
-        tab.has_meaningful_conversation = true;
-        tab.meaningful_conversation_before_load = prior_meaningful;
+        {
+            let tab = self.tab_mut(&pending.tab_id);
+            tab.loading_session = true;
+            tab.loading_target_session_id = Some(pending.session_id.clone());
+            tab.has_meaningful_conversation = true;
+            tab.meaningful_conversation_before_load = prior_meaningful;
+        }
+        self.yolo_state
+            .lock()
+            .unwrap()
+            .mark_owner(pending.session_id, owner);
     }
 
     fn begin_pending_agent_reconnect_preflight(&mut self) -> Option<AgentReconnectRequest> {
@@ -4168,6 +4238,7 @@ impl App {
             }
         };
         self.pending_session_load = None;
+        self.initial_yolo_control_owner = None;
         self.reset_agent_scoped_state();
         self.agent_reconnect_state = AgentReconnectState::Preflighting(latest.clone());
         if let Some(tx) = self.event_tx.clone() {
@@ -4756,6 +4827,7 @@ impl App {
                     let should_redraw = self.event_requires_redraw(&event);
                     let handle_started = std::time::Instant::now();
                     self.handle_event(event);
+                    self.log_permission_snapshot();
                     ui_trace::log_slow("ui_event_handle", handle_started.elapsed(), || {
                         format!("event={} {}", event_name, self.trace_state())
                     });
@@ -4803,6 +4875,7 @@ impl App {
                         )
                     });
 
+                    self.log_permission_snapshot();
                     if should_redraw_now {
                         let draw_started = std::time::Instant::now();
                         self.draw_frame(terminal)?;
@@ -4852,6 +4925,7 @@ impl App {
     fn draw_frame(&mut self, terminal: &mut Terminal<CrosstermBackend<io::Stdout>>) -> Result<()> {
         let total_started = std::time::Instant::now();
 
+        self.log_permission_snapshot();
         let mut frame = terminal.get_frame();
 
         let render_started = std::time::Instant::now();
@@ -4901,6 +4975,34 @@ impl App {
         Ok(())
     }
 
+    fn log_permission_snapshot(&mut self) {
+        let tab = self.current_tab();
+        let snapshot = (
+            tab.session_id.clone().unwrap_or_default(),
+            tab.permission
+                .front()
+                .filter(|permission| {
+                    permission
+                        .responder
+                        .as_ref()
+                        .is_some_and(|sender| !sender.is_closed())
+                        && (tab.turn.can_service_agent_request() || tab.loading_session)
+                })
+                .map(|permission| permission.tool_call_id.clone()),
+        );
+        if self.last_permission_snapshot.as_ref() != Some(&snapshot) {
+            tracing::info!(
+                target: "permission_ui",
+                snapshot = %serde_json::json!({
+                    "session_id": snapshot.0,
+                    "tool_call_id": snapshot.1,
+                }),
+                "current permission"
+            );
+            self.last_permission_snapshot = Some(snapshot);
+        }
+    }
+
     fn event_name(event: &AppEvent) -> &'static str {
         match event {
             AppEvent::Key(_) => "key",
@@ -4918,6 +5020,7 @@ impl App {
             AppEvent::UsageCleared { .. } => "usage_cleared",
             AppEvent::ModelConfigUpdated { .. } => "model_config_updated",
             AppEvent::RuntimeYoloReconcileCompleted { .. } => "runtime_yolo_reconcile_completed",
+            AppEvent::YoloControlOwnerChanged { .. } => "yolo_control_owner_changed",
             AppEvent::ModelSetCompleted { .. } => "model_set_completed",
             AppEvent::ModelSetFailed { .. } => "model_set_failed",
             AppEvent::SessionConfigUpdated { .. } => "session_config_updated",
@@ -5259,8 +5362,20 @@ impl App {
 pub(crate) enum CompletedTurnHitKind {
     Triangle,
     UserInput,
+    Thought {
+        id: tab_state::ThoughtId,
+        detail_index: usize,
+        active: bool,
+    },
     ToolCall {
         detail_index: usize,
+    },
+    ActiveToolCall {
+        detail_index: usize,
+    },
+    ActiveToolGroup {
+        first_detail_index: usize,
+        detail_count: usize,
     },
     ToolGroup {
         first_detail_index: usize,
@@ -5287,6 +5402,7 @@ impl CompletedTurnHitRegion {
 pub(crate) struct PressedCompletedTurn {
     pub(crate) tab_id: String,
     pub(crate) hit: CompletedTurnHitRegion,
+    pub(crate) active_tool_ids: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -5820,6 +5936,7 @@ impl App {
                 if candidate.completion_behavior().prepares_free_text() {
                     let tab = self.current_tab_mut();
                     tab.input = format!("/{name} ");
+                    tab.input_all_selected = false;
                     tab.cursor_pos = tab.input.len();
                     tab.refresh_command_popup();
                     return true;
@@ -5827,6 +5944,7 @@ impl App {
                 if matches!(candidate, crate::ui::CommandCandidate::Agent(_)) {
                     let tab = self.current_tab_mut();
                     tab.input = format!("/{name}");
+                    tab.input_all_selected = false;
                     tab.cursor_pos = tab.input.len();
                     tab.refresh_command_popup();
                     return false;
@@ -6193,41 +6311,53 @@ impl App {
 
     pub(crate) fn apply_runtime_yolo_config(
         &mut self,
-        global_default: Option<bool>,
+        automatic_target: Option<bool>,
         policy_blocked: Option<bool>,
     ) {
-        if global_default.is_none() && policy_blocked.is_none() {
+        if automatic_target.is_none() && policy_blocked.is_none() {
             return;
         }
 
-        let (current_global, current_blocked) = {
+        let (current_target, current_blocked) = {
             let state = self.yolo_state.lock().unwrap();
-            (state.global_default(), state.policy_blocked())
+            (state.automatic_target(), state.policy_blocked())
         };
-        let global_default = global_default.unwrap_or(current_global);
+        let automatic_target = automatic_target.unwrap_or(current_target);
         let policy_blocked = policy_blocked.unwrap_or(current_blocked);
-        if global_default == current_global && policy_blocked == current_blocked {
+        if automatic_target == current_target && policy_blocked == current_blocked {
             return;
         }
 
         {
             let mut state = self.yolo_state.lock().unwrap();
-            state.update_runtime(global_default, policy_blocked);
+            state.update_runtime(automatic_target, policy_blocked);
         }
 
-        let sessions = {
-            let state = self.yolo_state.lock().unwrap();
-            self.session_to_tab
+        let (sessions, affected_tabs) = {
+            let mut state = self.yolo_state.lock().unwrap();
+            let mut affected_tabs = HashSet::new();
+            let sessions = self
+                .session_to_tab
                 .iter()
                 .filter(|(_, tab_id)| !self.pending_yolo_session_tabs.contains(*tab_id))
-                .map(|(session_id, _)| {
-                    (
+                .filter_map(|(session_id, tab_id)| {
+                    let enabled = state.automatic_directive(session_id).target()?;
+                    state.mark_automatic_if_unowned_or_automatic(session_id.clone());
+                    affected_tabs.insert(tab_id.clone());
+                    Some((
                         agent_client_protocol::schema::v1::SessionId::new(session_id.clone()),
-                        state.effective(session_id),
-                    )
+                        enabled,
+                    ))
                 })
-                .collect::<Vec<_>>()
+                .collect::<Vec<_>>();
+            (sessions, affected_tabs)
         };
+        if sessions.is_empty() {
+            return;
+        }
+        for tab_id in affected_tabs {
+            self.project_tab_state(&tab_id);
+        }
         let fail_closed = policy_blocked || sessions.iter().any(|(_, enabled)| !enabled);
         let reconcile_id = self.begin_yolo_reconcile(&sessions, fail_closed);
         let sent = self.master_request_tx.send(
@@ -6247,7 +6377,14 @@ impl App {
     }
 
     fn reconcile_session_yolo(&mut self, session_id: &str) {
-        let enabled = self.yolo_state.lock().unwrap().effective(session_id);
+        let enabled = {
+            let mut state = self.yolo_state.lock().unwrap();
+            let Some(enabled) = state.automatic_directive(session_id).target() else {
+                return;
+            };
+            state.mark_automatic_if_unowned_or_automatic(session_id);
+            enabled
+        };
         let fail_closed = !enabled;
         let sessions = vec![(
             agent_client_protocol::schema::v1::SessionId::new(session_id.to_string()),
@@ -6346,6 +6483,7 @@ impl App {
             self.project_tab_state(&tab_id);
         }
         self.yolo_state.lock().unwrap().clear_sessions();
+        self.initial_yolo_control_owner = None;
         self.pending_yolo_reconciles.clear();
         self.pending_yolo_session_tabs.clear();
         if self
@@ -7011,70 +7149,66 @@ fn linux_cwd_arg(cwd: &std::path::Path) -> Option<String> {
 #[path = "app_turn.rs"]
 mod app_turn;
 
-/// Render a parsed `RecommendationSet` as the agent's "reply" text in chat.
-///
-/// Recommendation responses arrive as JSON; storing the raw JSON in a completed
-/// turn means re-expanding the prompt header reveals raw JSON instead of a
-/// CLI-style answer. This builds a single line per choice that mirrors what the
-/// recommendation cards show, prefixed with `✓` for the recommended one.
-fn format_recommendations_for_chat(set: &RecommendationSet) -> String {
+fn format_recommendation_choice_for_chat(
+    choice: &RecommendationChoice,
+    command_label: Option<&str>,
+) -> String {
     use crate::coordinator::{OpenTarget, RecommendedAction};
 
-    let header = if set.choices.len() == 1 {
-        "Suggested 1 option:".to_string()
-    } else {
-        format!("Suggested {} options:", set.choices.len())
-    };
-    let mut out = header;
+    choice
+        .actions
+        .iter()
+        .find_map(|action| match action {
+            RecommendedAction::Send { input, .. } => Some(match command_label {
+                Some(label) => format!("{label}: {input}"),
+                None => input.clone(),
+            }),
+            RecommendedAction::OpenAndSend {
+                target,
+                input,
+                agent,
+                ..
+            } => {
+                let where_ = match target {
+                    OpenTarget::Tab => "new tab",
+                    OpenTarget::Panel => "new panel",
+                };
+                let label = agent.as_deref().unwrap_or("agent");
+                Some(format!("Open {} and run {}: {}", where_, label, input))
+            }
+            RecommendedAction::Open {
+                target, cwd, title, ..
+            } => {
+                let kind = match target {
+                    OpenTarget::Tab => "tab",
+                    OpenTarget::Panel => "panel",
+                };
+                Some(match (title.as_deref(), cwd.as_deref()) {
+                    (Some(t), Some(c)) if !t.is_empty() && !c.is_empty() => {
+                        format!("Open new {} ({}) in {}", kind, t, c)
+                    }
+                    (Some(t), _) if !t.is_empty() => format!("Open new {} ({})", kind, t),
+                    (_, Some(c)) if !c.is_empty() => format!("Open new {} in {}", kind, c),
+                    _ => format!("Open new empty {}", kind),
+                })
+            }
+        })
+        .unwrap_or_else(|| choice.title.clone())
+}
 
-    for choice in &set.choices {
-        let action_text = choice
-            .actions
-            .iter()
-            .find_map(|action| match action {
-                RecommendedAction::Send { input, .. } => Some(format!("Run: {}", input)),
-                RecommendedAction::OpenAndSend {
-                    target,
-                    input,
-                    agent,
-                    ..
-                } => {
-                    let where_ = match target {
-                        OpenTarget::Tab => "new tab",
-                        OpenTarget::Panel => "new panel",
-                    };
-                    let label = agent.as_deref().unwrap_or("agent");
-                    Some(format!("Open {} and run {}: {}", where_, label, input))
-                }
-                RecommendedAction::Open {
-                    target, cwd, title, ..
-                } => {
-                    let kind = match target {
-                        OpenTarget::Tab => "tab",
-                        OpenTarget::Panel => "panel",
-                    };
-                    Some(match (title.as_deref(), cwd.as_deref()) {
-                        (Some(t), Some(c)) if !t.is_empty() && !c.is_empty() => {
-                            format!("Open new {} ({}) in {}", kind, t, c)
-                        }
-                        (Some(t), _) if !t.is_empty() => format!("Open new {} ({})", kind, t),
-                        (_, Some(c)) if !c.is_empty() => format!("Open new {} in {}", kind, c),
-                        _ => format!("Open new empty {}", kind),
-                    })
-                }
-            })
-            .unwrap_or_else(|| choice.title.clone());
-
-        let marker = if set.recommended_choice == Some(choice.choice) {
-            "✓"
-        } else {
-            " "
-        };
-        out.push('\n');
-        out.push_str(&format!("  {} {}. {}", marker, choice.choice, action_text));
-    }
-
-    out
+/// Render pending or replayed recommendations as plain action lines, not raw JSON.
+fn format_recommendations_for_chat(set: &RecommendationSet, action_status: Option<&str>) -> String {
+    set.choices
+        .iter()
+        .map(|choice| {
+            let action = format_recommendation_choice_for_chat(choice, None);
+            match action_status {
+                Some(status) => format!("{action} {status}"),
+                None => action,
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 #[path = "app_status_projection.rs"]

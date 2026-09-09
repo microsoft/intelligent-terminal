@@ -880,6 +880,10 @@ async fn run_acp_app(
             app_state.set_proposal_channels(Arc::clone(&proposal_channels));
             app_state.apply_session_management_host_config(config.session_management_enabled);
             app_state.set_allowed_agent_ids(config.allowed_agent_ids.clone());
+            app_state.set_initial_yolo_control_owner(
+                config.initial_load_session_id.as_deref(),
+                config.initial_yolo_control_owner,
+            );
             // Seed the hot-updatable runtime agent config: the shared
             // delegate runtime table, the helper's own agent_cmd (needed to
             // re-derive the delegate commandline when only the delegate

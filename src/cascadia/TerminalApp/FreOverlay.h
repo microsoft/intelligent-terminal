@@ -30,6 +30,7 @@ namespace winrt::TerminalApp::implementation
 
         // Initialize with settings to populate controls.
         void Initialize(const winrt::Microsoft::Terminal::Settings::Model::CascadiaSettings& settings);
+        void UpdateSettings(const winrt::Microsoft::Terminal::Settings::Model::CascadiaSettings& settings);
 
         // Event — sender must be the WinRT projected type.
         til::typed_event<winrt::TerminalApp::FreOverlay, winrt::Windows::Foundation::IInspectable> Completed;
@@ -41,6 +42,8 @@ namespace winrt::TerminalApp::implementation
                                 const winrt::Windows::UI::Xaml::RoutedEventArgs& args);
         void _OnCloseButtonClick(const winrt::Windows::Foundation::IInspectable& sender,
                                  const winrt::Windows::UI::Xaml::RoutedEventArgs& args);
+        void _OnAgentSelectionChanged(const winrt::Windows::Foundation::IInspectable& sender,
+                                      const winrt::Windows::UI::Xaml::Controls::SelectionChangedEventArgs& args);
         void _OnSettingsFormScrollerSizeChanged(const winrt::Windows::Foundation::IInspectable& sender,
                                                 const winrt::Windows::UI::Xaml::SizeChangedEventArgs& args);
 
@@ -130,6 +133,9 @@ namespace winrt::TerminalApp::implementation
         // each entry with its live install state. Safe to call repeatedly (e.g.
         // after a save) and preserves the current selection.
         void _PopulateAgentComboBox();
+        winrt::hstring _SelectedAgentId();
+        void _UpdateAutomaticApprovalState();
+        bool _refreshingAgentComboBox{ false };
 
         // Detect whether a generic executable is on PATH. ACP agent choices
         // use WTA's authoritative Host availability probe instead.

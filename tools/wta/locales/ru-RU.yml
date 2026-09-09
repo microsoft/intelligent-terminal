@@ -51,6 +51,7 @@ chat.turn_canceled: "(отменено)"
 chat.turn_executed: "→ выполнено: %{title}"
 # Постоянные метки категорий инструментов, отображаемые после маркера состояния и перед объектом действия.
 chat.tool_kind.run: "Запуск"
+chat.tool_kind.insert: "Вставить"
 chat.tool_kind.read: "Чтение"
 chat.tool_kind.search: "Поиск"
 chat.tool_kind.edit: "Изменение"
@@ -259,5 +260,6 @@ config_picker.title: "Конфигурация сеанса (↑ ↓ • Enter �
 system.no_config_options: "Подключённый агент не объявил ни одного настраиваемого параметра сеанса."
 # {option} is an Agent-provided option name; {error} is the ACP error.
 system.config_update_failed: "Не удалось обновить %{option}: %{error}"
+system.yolo_disable_pending: "поставщик не подтвердил требуемое непривилегированное состояние сеанса"  # Shown after the localized failure prefix while prompts remain blocked until the AI agent provider confirms that its privileged session mode is off. Provider means an AI agent provider, not a network provider.
 system.provider_command_blocked_by_policy: "%{command}: Режим Yolo отключен политикой вашей организации."  # {Locked="Yolo","%{command}"} Shown when AllowYoloMode blocks a provider-advertised privileged command.
 system.model_unknown: "Неизвестная модель %{model} — введите /model, чтобы увидеть доступный список."  # {Locked="%{model}","/model"}

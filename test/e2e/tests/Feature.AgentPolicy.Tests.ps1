@@ -129,6 +129,7 @@ Describe 'Feature §0 agent Group Policy locks (AllowAgentSessionHooks, FRE)' -T
         $script:policyState = Set-WtAgentPolicy -Policy @{ AllowAgentSessionHooks = 'Blocked' }
         $script:app = Start-TerminalFre -Package (Get-ItTestPackage)
     }
+
     AfterAll {
         if ($script:app) { Stop-Terminal -App $script:app }
         if ($script:policyState) { Restore-WtAgentPolicy -State $script:policyState }
@@ -147,5 +148,30 @@ Describe 'Feature §0 agent Group Policy locks (AllowAgentSessionHooks, FRE)' -T
         #    controls are disabled" guarantee, read from winapp's UIA isEnabled.
         Test-UiElementEnabled -App $script:app -Selector 'SessionManagementToggle' |
             Should -BeFalse -Because 'a Blocked AllowAgentSessionHooks policy must DISABLE the session-management toggle'
+    }
+}
+
+Describe 'Feature §0 agent Group Policy locks (AllowYoloMode, FRE)' -Tag 'Feature' -Skip:(-not ($script:Ready -and $script:PolicyControllable)) {
+    BeforeAll {
+        Import-Module (Join-Path $PSScriptRoot '..\ItE2E\ItE2E.psd1') -Force
+        $script:policyState = Set-WtAgentPolicy -Policy @{ AllowYoloMode = 'Blocked' }
+        $script:app = Start-Terminal -Package (Get-ItTestPackage) -ShowFre -Settings @{
+            acpAgent = 'copilot'
+            'agentPane.yoloMode' = $true
+            autoErrorDetectionEnabled = $false
+            agentSessionManagementEnabled = $false
+        }
+        Invoke-UiElement -App $script:app -Selector 'NextButton' -TimeoutSec 10 | Out-Null
+    }
+    AfterAll {
+        if ($script:app) { Stop-Terminal -App $script:app }
+        if ($script:policyState) { Restore-WtAgentPolicy -State $script:policyState }
+    }
+
+    It 'FRE hides policy-blocked automatic approval' {
+        Test-UiElementExists -App $script:app -Selector 'AutomaticApprovalToggle' -TimeoutSec 1 |
+            Should -BeFalse
+        (Get-WtSetting -App $script:app -Key 'agentPane.yoloMode') |
+            Should -BeFalse -Because 'startup policy normalization must clear the stored preference'
     }
 }
