@@ -220,11 +220,15 @@
                                   and the right-side control. Without it, long
                                   wrapped descriptions visually butt up
                                   against the ComboBox / ToggleSwitch.  -->
-                            <Grid ColumnSpacing="24">
+                            <Grid ColumnSpacing="24" RowSpacing="8">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="*" />
                                     <ColumnDefinition Width="Auto" />
                                 </Grid.ColumnDefinitions>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                </Grid.RowDefinitions>
                                 <StackPanel Grid.Column="0" Spacing="2">
                                     <TextBlock x:Uid="FreOverlay_AgentLabel"
                                                FontSize="14" FontWeight="SemiBold"
@@ -248,13 +252,22 @@
                                 </StackPanel>
                                 <ComboBox x:Name="AgentComboBox" Grid.Column="1"
                                           MinWidth="220"
-                                          VerticalAlignment="Center">
+                                          VerticalAlignment="Center"
+                                          SelectionChanged="_OnAgentSelectionChanged">
                                     <ComboBox.ItemTemplate>
                                         <DataTemplate x:DataType="local:FreAgentEntry">
                                             <TextBlock Text="{x:Bind DisplayLabel}" />
                                         </DataTemplate>
                                     </ComboBox.ItemTemplate>
                                 </ComboBox>
+                                <mux:InfoBar x:Name="AgentProbeWarning"
+                                             Grid.Row="1"
+                                             Grid.ColumnSpan="2"
+                                             IsClosable="False"
+                                             IsIconVisible="True"
+                                             IsOpen="False"
+                                             Severity="Warning"
+                                             AutomationProperties.LiveSetting="Polite" />
                             </Grid>
                         </Border>
 

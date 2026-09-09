@@ -21,6 +21,8 @@ setup.option.retry_auth: "Yaykurqaniña — watiqmanta tinkiyta ruwasun"
 setup.status.installing: "Churachkan..."
 setup.status.install_failed: "Churay mana allinchu: "
 setup.status.installing_winget: " winget nisqawan churachkan..."
+setup.error.install_timed_out: "The installation timed out. Select \"Try again\" before starting another installation."
+setup.error.install_detection_timed_out: "Installation finished, but Copilot is not visible yet. Select \"Try again\" to check again."
 
 # ── Auth flow (src/ui/auth.rs) ──────────────────────────────────────────────
 # {Locked="CLI"} - acronym, common usage across Microsoft localizations

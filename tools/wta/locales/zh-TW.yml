@@ -18,6 +18,8 @@ setup.option.retry_auth: "我已登入 — 重試連線"
 setup.status.installing: "安裝中..."
 setup.status.install_failed: "安裝失敗："
 setup.status.installing_winget: " 正在透過 winget 安裝..."
+setup.error.install_timed_out: "The installation timed out. Select \"Try again\" before starting another installation."
+setup.error.install_detection_timed_out: "Installation finished, but Copilot is not visible yet. Select \"Try again\" to check again."
 
 # ── 驗證流程 (src/ui/auth.rs) ──────────────────────────────────────────────
 # {Locked="CLI"} - 縮寫，不翻譯

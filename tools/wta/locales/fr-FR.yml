@@ -21,6 +21,8 @@ setup.option.retry_auth: "Je me suis connecté — réessayer de se connecter"
 setup.status.installing: "Installation en cours..."
 setup.status.install_failed: "Échec de l'installation : "
 setup.status.installing_winget: " Installation via winget..."
+setup.error.install_timed_out: "The installation timed out. Select \"Try again\" before starting another installation."
+setup.error.install_detection_timed_out: "Installation finished, but Copilot is not visible yet. Select \"Try again\" to check again."
 
 # ── Flux d'authentification (src/ui/auth.rs) ──────────────────────────────────────────────
 # {Locked="CLI"} - abréviation, ne pas traduire

@@ -21,6 +21,8 @@ setup.option.retry_auth: "وارد شدم — دوباره اتصال را ام�
 setup.status.installing: "در حال نصب..."
 setup.status.install_failed: "نصب ناموفق بود: "
 setup.status.installing_winget: " در حال نصب از طریق winget..."
+setup.error.install_timed_out: "The installation timed out. Select \"Try again\" before starting another installation."
+setup.error.install_detection_timed_out: "Installation finished, but Copilot is not visible yet. Select \"Try again\" to check again."
 
 # ── جریان احراز هویت (src/ui/auth.rs) ──────────────────────────────────────────────
 # {Locked="CLI"} - مخفف، استفاده رایج در بومی‌سازی‌های Microsoft

@@ -21,6 +21,8 @@ setup.option.retry_auth: "Xa iniciei sesión — tentar conectar de novo"
 setup.status.installing: "Instalando..."
 setup.status.install_failed: "Erro na instalación: "
 setup.status.installing_winget: " Instalando mediante winget..."
+setup.error.install_timed_out: "The installation timed out. Select \"Try again\" before starting another installation."
+setup.error.install_detection_timed_out: "Installation finished, but Copilot is not visible yet. Select \"Try again\" to check again."
 
 # ── Fluxo de autenticación (src/ui/auth.rs) ──────────────────────────────────────────────
 # {Locked="CLI"} - acrónimo, uso común nas localizacións de Microsoft

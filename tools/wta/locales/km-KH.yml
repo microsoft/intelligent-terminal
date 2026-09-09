@@ -23,6 +23,8 @@ setup.option.retry_auth: "ខ្ញុំបានចូលហើយ — សា�
 setup.status.installing: "កំពុងតំឡើង..."
 setup.status.install_failed: "ការតំឡើងបរាជ័យ: "
 setup.status.installing_winget: " កំពុងតំឡើងតាមរយៈ winget..."
+setup.error.install_timed_out: "The installation timed out. Select \"Try again\" before starting another installation."
+setup.error.install_detection_timed_out: "Installation finished, but Copilot is not visible yet. Select \"Try again\" to check again."
 
 # ── Auth flow (src/ui/auth.rs) ────────────────────────────────────────────────────────────────────────
 # {Locked="CLI"} - acronym, common usage across Microsoft localizations

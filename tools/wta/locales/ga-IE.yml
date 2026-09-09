@@ -21,6 +21,8 @@ setup.option.retry_auth: "Tá mé sínithe isteach — bain triail eile as ceang
 setup.status.installing: "Á shuiteáil..."
 setup.status.install_failed: "Theip ar shuiteáil: "
 setup.status.installing_winget: " Á shuiteáil trí winget..."
+setup.error.install_timed_out: "The installation timed out. Select \"Try again\" before starting another installation."
+setup.error.install_detection_timed_out: "Installation finished, but Copilot is not visible yet. Select \"Try again\" to check again."
 
 # ── Sreabhadh fíordheimhnithe (src/ui/auth.rs) ──────────────────────────────────────────────
 # {Locked="CLI"} - acrainm, úsáid choitianta i logánú Microsoft

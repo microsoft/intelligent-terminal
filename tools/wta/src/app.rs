@@ -59,6 +59,14 @@ enum AuthRecoveryState {
     Connecting,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct PendingAgentInstall {
+    request_id: u64,
+    agent_id: String,
+    binding_generation: u64,
+    agent_source: crate::agent_source::AgentSource,
+}
+
 fn agent_command_on_enter(input: &str, selected: Option<&AvailableAgent>) -> Option<ParsedCommand> {
     commands::agent_id_prefix(input)?;
     Some(ParsedCommand {
@@ -282,11 +290,21 @@ pub fn build_setup_options(
     reason: &SetupReason,
     current_agent_status: Option<&crate::agent_check::AgentStatus>,
 ) -> Vec<SetupOption> {
+    let install_uncertain = current_agent_status
+        .is_some_and(|status| crate::agent_check::is_install_uncertain(&status.id));
+    build_setup_options_with_uncertainty(reason, current_agent_status, install_uncertain)
+}
+
+fn build_setup_options_with_uncertainty(
+    reason: &SetupReason,
+    current_agent_status: Option<&crate::agent_check::AgentStatus>,
+    install_uncertain: bool,
+) -> Vec<SetupOption> {
     let mut opts = Vec::new();
     if let Some(status) = current_agent_status {
         if !status.cli_found {
             // CLI not found — offer install options
-            if status.can_auto_install() {
+            if status.can_auto_install() && !install_uncertain {
                 opts.push(SetupOption::Install {
                     agent_id: status.id.clone(),
                     display_name: status.display_name.clone(),
@@ -992,7 +1010,8 @@ pub struct App {
     /// Channel for spawning background tasks from event handlers.
     event_tx: Option<mpsc::UnboundedSender<AppEvent>>,
     next_agent_install_request_id: u64,
-    pending_agent_install: Option<(u64, String)>,
+    pending_agent_install: Option<PendingAgentInstall>,
+    agent_binding_generation: u64,
     /// Set after login completes — consumed by main loop to spawn ACP client.
     pub pending_acp_start: bool,
     /// Set by LoginComplete success — consumed once by try_start_acp to pass
@@ -1379,6 +1398,7 @@ impl App {
             pending_acp_start: false,
             next_agent_install_request_id: 0,
             pending_agent_install: None,
+            agent_binding_generation: 0,
             needs_post_login_authenticate: false,
             auth_recovery_generation: 0,
             auth_recovery_state: AuthRecoveryState::Idle,
@@ -3561,7 +3581,32 @@ impl App {
         self.pending_agent_selection = Some(agent_id.to_string());
     }
 
+    fn reconnect_confirmed_available_agent(&mut self, agent_id: &str) {
+        if matches!(
+            self.current_agent_source,
+            crate::agent_source::AgentSource::Host
+        ) {
+            let tab_id = self.tab_id.as_deref().or_else(|| {
+                self.deferred_acp
+                    .as_ref()
+                    .and_then(|params| params.owner_tab_id.as_deref())
+            });
+            crate::wt_protocol_events::send(
+                crate::wt_protocol_events::agent_availability_changed_event(agent_id, tab_id),
+            );
+        }
+        self.update_deferred_acp_agent(agent_id);
+        self.state = ConnectionState::Connecting(t!("connection.reconnecting").into_owned());
+        self.preflight_setup_active = false;
+        if self.deferred_acp.is_some() {
+            self.pending_acp_start = true;
+        } else {
+            let _ = self.restart_tx.send(AgentLifecycleRequest::RestartMaster);
+        }
+    }
+
     fn prepare_agent_reconnect(&mut self, request: &AgentReconnectRequest) {
+        self.agent_binding_generation = self.agent_binding_generation.wrapping_add(1);
         self.auth_recovery_generation = self.auth_recovery_generation.wrapping_add(1);
         self.auth_recovery_state = AuthRecoveryState::Idle;
         let new_cmd = self.build_agent_cmd(&request.agent_id);
@@ -4059,7 +4104,12 @@ impl App {
                 self.next_agent_install_request_id =
                     self.next_agent_install_request_id.wrapping_add(1);
                 let request_id = self.next_agent_install_request_id;
-                self.pending_agent_install = Some((request_id, agent_id.clone()));
+                self.pending_agent_install = Some(PendingAgentInstall {
+                    request_id,
+                    agent_id: agent_id.clone(),
+                    binding_generation: self.agent_binding_generation,
+                    agent_source: self.current_agent_source.clone(),
+                });
                 // Spawn async winget install via agent_check
                 if let Some(ref tx) = self.event_tx {
                     let tx = tx.clone();
@@ -4123,18 +4173,11 @@ impl App {
                             // CLI found — try to connect (auth will be checked by ACP).
                             // Stay in Setup mode with "Connecting..." to avoid a flash
                             // of red error text in Chat if ACP fails immediately.
-                            self.update_deferred_acp_agent(&agent_id);
-                            self.state = ConnectionState::Connecting(
-                                t!("connection.reconnecting").into_owned(),
-                            );
-                            self.preflight_setup_active = false;
-                            if self.deferred_acp.is_some() {
-                                self.pending_acp_start = true;
-                            } else {
-                                let _ = self.restart_tx.send(AgentLifecycleRequest::RestartMaster);
-                            }
+                            self.reconnect_confirmed_available_agent(&agent_id);
                             // Don't clear setup yet — AgentConnected will transition to Chat,
                             // AgentError will update the Setup screen.
+                        } else if let Some(ref mut setup) = self.setup {
+                            setup.options = build_setup_options(&setup.reason, Some(&status));
                         }
                     }
                 }

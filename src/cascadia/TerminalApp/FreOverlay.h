@@ -42,6 +42,8 @@ namespace winrt::TerminalApp::implementation
                                  const winrt::Windows::UI::Xaml::RoutedEventArgs& args);
         void _OnSettingsFormScrollerSizeChanged(const winrt::Windows::Foundation::IInspectable& sender,
                                                 const winrt::Windows::UI::Xaml::SizeChangedEventArgs& args);
+        void _OnAgentSelectionChanged(const winrt::Windows::Foundation::IInspectable& sender,
+                                      const winrt::Windows::UI::Xaml::Controls::SelectionChangedEventArgs& args);
 
         // No-op kept for IDL compatibility.
         void ResetDragOffset();
@@ -49,6 +51,8 @@ namespace winrt::TerminalApp::implementation
     private:
         winrt::Microsoft::Terminal::Settings::Model::CascadiaSettings _settings{ nullptr };
         std::optional<::Microsoft::Terminal::AgentAvailability::HostAgentSnapshot> _hostAgentSnapshot;
+        bool _updatingAgentComboBox{ false };
+        bool _agentSelectionExplicitlyChanged{ false };
 
         // Things that can block FRE completion, in priority order (lower value
         // = higher priority). Only the highest-priority problem is surfaced in
@@ -110,9 +114,9 @@ namespace winrt::TerminalApp::implementation
 
         // Shared tail end of _ShowProblem / _ShowWingetProblem after the
         // caller has set ErrorText and computed the help URL: applies the
-        // URL to the help link, makes the panel visible, refreshes the
-        // agent dropdown, fires the Narrator notification, re-enables
-        // editing, and parks focus on the help link.
+        // URL to the help link, makes the panel visible, rebuilds the
+        // agent dropdown from cached availability, fires the Narrator
+        // notification, re-enables editing, and parks focus on the help link.
         void _FinalizeProblemDisplay(const std::wstring& url);
 
         enum class ErrorDetectionMode : int32_t
@@ -126,10 +130,10 @@ namespace winrt::TerminalApp::implementation
         void _SetErrorDetectionMode(ErrorDetectionMode mode);
         void _UpdateSettingsFormWidth();
 
-        // (Re)build the agent dropdown from the GPO-filtered registry, labeling
-        // each entry with its live install state. Safe to call repeatedly (e.g.
-        // after a save) and preserves the current selection.
-        void _PopulateAgentComboBox();
+        // Rebuild the dropdown from the cached probe result. This never runs a
+        // probe, so Save/error paths cannot block the UI on process startup.
+        void _PopulateAgentComboBox(bool preserveCurrentSelection);
+        void _UpdateAgentProbeWarning();
 
         static bool _IsWingetInstalled();
 

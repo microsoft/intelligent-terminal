@@ -21,6 +21,8 @@ setup.option.retry_auth: "મેં સાઇન ઇન કર્યું — �
 setup.status.installing: "ઇન્સ્ટોલ થઈ રહ્યું છે..."
 setup.status.install_failed: "ઇન્સ્ટોલ નિષ્ફળ: "
 setup.status.installing_winget: " winget દ્વારા ઇન્સ્ટોલ થઈ રહ્યું છે..."
+setup.error.install_timed_out: "The installation timed out. Select \"Try again\" before starting another installation."
+setup.error.install_detection_timed_out: "Installation finished, but Copilot is not visible yet. Select \"Try again\" to check again."
 
 # ── પ્રમાણીકરણ પ્રવાહ (src/ui/auth.rs) ──────────────────────────────────────────────
 # {Locked="CLI"} - ટૂંકાક્ષર, Microsoft સ્થાનિકીકરણોમાં સામાન્ય ઉપયોગ

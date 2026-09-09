@@ -21,6 +21,8 @@ setup.option.retry_auth: "Kua takiuru au — ngana anō ki te hono"
 setup.status.installing: "E tauta ana..."
 setup.status.install_failed: "I rahua te tauta: "
 setup.status.installing_winget: " E tauta ana ma winget..."
+setup.error.install_timed_out: "The installation timed out. Select \"Try again\" before starting another installation."
+setup.error.install_detection_timed_out: "Installation finished, but Copilot is not visible yet. Select \"Try again\" to check again."
 
 # ── Auth flow (src/ui/auth.rs) ──────────────────────────────────────────────
 # {Locked="CLI"} - acronym, common usage across Microsoft localizations

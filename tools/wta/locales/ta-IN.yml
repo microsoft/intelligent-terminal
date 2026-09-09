@@ -21,6 +21,8 @@ setup.option.retry_auth: "நான் உள்நுழைந்துவி�
 setup.status.installing: "நிறுவப்படுகிறது..."
 setup.status.install_failed: "நிறுவல் தோல்வி: "
 setup.status.installing_winget: " winget வழியாக நிறுவப்படுகிறது..."
+setup.error.install_timed_out: "The installation timed out. Select \"Try again\" before starting another installation."
+setup.error.install_detection_timed_out: "Installation finished, but Copilot is not visible yet. Select \"Try again\" to check again."
 
 # ── அங்கீகாரப் போக்கு (src/ui/auth.rs) ──────────────────────────────────────────────
 # {Locked="CLI"} - சுருக்கம், Microsoft உள்ளூர்மயமாக்கல்களில் பொதுவான பயன்பாடு

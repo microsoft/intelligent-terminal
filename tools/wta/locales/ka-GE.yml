@@ -21,6 +21,8 @@ setup.option.retry_auth: "შევედი — კავშირის ხე
 setup.status.installing: "ინსტალაცია..."
 setup.status.install_failed: "ინსტალაცია ვერ მოხერხდა: "
 setup.status.installing_winget: " winget-ით ინსტალაცია..."
+setup.error.install_timed_out: "The installation timed out. Select \"Try again\" before starting another installation."
+setup.error.install_detection_timed_out: "Installation finished, but Copilot is not visible yet. Select \"Try again\" to check again."
 
 # ── ავთენტიფიკაციის პროცესი (src/ui/auth.rs) ──────────────────────────────────────────────
 # {Locked="CLI"} - აბრევიატურა, Microsoft-ის ლოკალიზაციებში გავრცელებული გამოყენება

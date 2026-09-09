@@ -476,6 +476,26 @@ pub fn recheck_agent(agent_id: &str) -> AgentStatus {
     status
 }
 
+pub fn is_install_uncertain(agent_id: &str) -> bool {
+    const UNCERTAINTY_COOLDOWN: std::time::Duration = std::time::Duration::from_secs(2 * 60);
+
+    let Some(path) = install_uncertainty_path(agent_id) else {
+        return false;
+    };
+    let Ok(metadata) = std::fs::metadata(&path) else {
+        return false;
+    };
+    let still_active = metadata
+        .modified()
+        .ok()
+        .and_then(|modified| modified.elapsed().ok())
+        .is_none_or(|age| age < UNCERTAINTY_COOLDOWN);
+    if !still_active {
+        clear_install_uncertainty(agent_id);
+    }
+    still_active
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HostAgentAvailability {
     pub cli_path: Option<String>,
@@ -717,14 +737,8 @@ async fn acquire_copilot_install_mutex() -> Result<CopilotInstallMutex, String> 
 }
 
 fn install_uncertainty_path(agent_id: &str) -> Option<std::path::PathBuf> {
-    let local_app_data = std::env::var_os("LOCALAPPDATA")?;
-    Some(
-        std::path::PathBuf::from(local_app_data)
-            .join("Microsoft")
-            .join("Windows Terminal")
-            .join("wta")
-            .join(format!("{agent_id}-install-uncertain")),
-    )
+    crate::runtime_paths::intelligent_terminal_root()
+        .map(|root| root.join(format!("{agent_id}-install-uncertain")))
 }
 
 fn mark_install_uncertain(agent_id: &str) -> std::io::Result<()> {

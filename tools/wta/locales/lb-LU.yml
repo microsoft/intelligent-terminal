@@ -21,6 +21,8 @@ setup.option.retry_auth: "Ech hu mech ugemellt — probéiert nach eng Kéier ze
 setup.status.installing: "Gëtt installéiert..."
 setup.status.install_failed: "Installatioun gescheitert: "
 setup.status.installing_winget: " Gëtt iwwer winget installéiert..."
+setup.error.install_timed_out: "The installation timed out. Select \"Try again\" before starting another installation."
+setup.error.install_detection_timed_out: "Installation finished, but Copilot is not visible yet. Select \"Try again\" to check again."
 
 # ── Authentifizéierungs-Flux (src/ui/auth.rs) ──────────────────────────────────────────────
 # {Locked="CLI"} - Ofkierzung, allgemeng Benotzung an Microsoft-Lokaliséierungen

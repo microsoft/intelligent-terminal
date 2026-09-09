@@ -51,10 +51,10 @@ namespace winrt::TerminalApp::implementation
 
     // ── Agent ComboBox ──────────────────────────────────────────────────
 
-    // (Re)build the agent dropdown from the GPO-filtered registry. Each entry's
-    // status label reflects the live install state at call time. Preserves the
-    // currently selected agent across rebuilds.
-    void FreOverlay::_PopulateAgentComboBox()
+    // Rebuild the agent dropdown from the GPO-filtered registry and the cached
+    // probe result. Unknown availability deliberately produces only a minimal
+    // policy-safe fallback list and never claims installation state.
+    void FreOverlay::_PopulateAgentComboBox(const bool preserveCurrentSelection)
     {
         if (!_settings)
             return;
@@ -66,11 +66,14 @@ namespace winrt::TerminalApp::implementation
         // ComboBox selection, falling back to the effective settings value the
         // first time (when nothing is selected yet).
         winrt::hstring selectedId;
-        if (const auto selected = AgentComboBox().SelectedItem())
+        if (preserveCurrentSelection)
         {
-            if (const auto entry = selected.try_as<winrt::TerminalApp::FreAgentEntry>())
+            if (const auto selected = AgentComboBox().SelectedItem())
             {
-                selectedId = entry.Id();
+                if (const auto entry = selected.try_as<winrt::TerminalApp::FreAgentEntry>())
+                {
+                    selectedId = entry.Id();
+                }
             }
         }
         if (selectedId.empty())
@@ -79,36 +82,33 @@ namespace winrt::TerminalApp::implementation
         }
 
         const auto allowedAgents = Reg::FilteredAcpAgents();
-        _hostAgentSnapshot = ::Microsoft::Terminal::AgentAvailability::ProbeHostAgentSnapshot();
+        const auto candidates = ::Microsoft::Terminal::AgentAvailability::BuildFreAgentCandidates(
+            allowedAgents,
+            _hostAgentSnapshot,
+            selectedId,
+            globals.EffectiveAcpAgent());
+
+        _updatingAgentComboBox = true;
+        const auto resetUpdating = wil::scope_exit([&]() {
+            _updatingAgentComboBox = false;
+        });
         auto items = AgentComboBox().Items();
         items.Clear();
         int32_t selectedIndex = 0;
         int32_t idx = 0;
 
-        for (const auto& a : allowedAgents)
+        for (const auto& a : candidates)
         {
-            const auto id = std::wstring{ a.id };
             const ::Microsoft::Terminal::AgentAvailability::HostAgentAvailability* status = nullptr;
             if (_hostAgentSnapshot)
             {
-                if (const auto it = _hostAgentSnapshot->availability.find(id);
-                    it != _hostAgentSnapshot->availability.end())
-                {
-                    status = &it->second;
-                }
+                status = ::Microsoft::Terminal::AgentAvailability::FindHostAgentAvailability(
+                    *_hostAgentSnapshot,
+                    a.id);
             }
             const bool statusKnown = status != nullptr;
-            const bool nativeCliFound = statusKnown && status->nativeCliFound;
             const bool launchReady = statusKnown && status->launchReady;
-            const bool isCopilot = (a.id == L"copilot");
-
-            // On a successful probe, show Copilot plus agents whose native CLI
-            // exists. Claude/Codex remain selectable when only npx is missing
-            // so the Node bootstrap below stays reachable. If the probe itself
-            // failed, keep all policy-allowed choices visible without claiming
-            // an install state.
-            if (_hostAgentSnapshot && !isCopilot && !nativeCliFound)
-                continue;
+            const bool isCopilot = Reg::AgentIdEquals(a.id, L"copilot");
 
             auto entry = winrt::make<FreAgentEntry>();
             entry.Id(winrt::hstring{ a.id });
@@ -117,6 +117,10 @@ namespace winrt::TerminalApp::implementation
             {
                 entry.DisplayLabel(winrt::hstring{ std::wstring(a.displayName) + std::wstring(RS_(L"FreOverlay_AgentStatusInstalled")) });
             }
+            else if (statusKnown && isCopilot)
+            {
+                entry.DisplayLabel(winrt::hstring{ std::wstring(a.displayName) + std::wstring(RS_(L"FreOverlay_AgentStatusSetupRequired")) });
+            }
             else
             {
                 entry.DisplayLabel(winrt::hstring{ a.displayName });
@@ -124,7 +128,7 @@ namespace winrt::TerminalApp::implementation
 
             items.Append(entry);
 
-            if (a.id == selectedId)
+            if (Reg::AgentIdEquals(a.id, std::wstring_view{ selectedId }))
             {
                 selectedIndex = idx;
             }
@@ -135,6 +139,30 @@ namespace winrt::TerminalApp::implementation
         {
             AgentComboBox().SelectedIndex(selectedIndex);
         }
+        else
+        {
+            AgentComboBox().SelectedIndex(-1);
+        }
+
+        _UpdateAgentProbeWarning();
+    }
+
+    void FreOverlay::_UpdateAgentProbeWarning()
+    {
+        const bool shouldOpen =
+            SettingsPage().Visibility() == Visibility::Visible &&
+            !_hostAgentSnapshot &&
+            AgentComboBox().Items().Size() > 0;
+        AgentProbeWarning().IsOpen(shouldOpen);
+    }
+
+    void FreOverlay::_OnAgentSelectionChanged(const IInspectable& /*sender*/,
+                                              const SelectionChangedEventArgs& /*args*/)
+    {
+        if (!_updatingAgentComboBox)
+        {
+            _agentSelectionExplicitlyChanged = true;
+        }
     }
 
     // ── Initialize ──────────────────────────────────────────────────────
@@ -143,6 +171,8 @@ namespace winrt::TerminalApp::implementation
     {
         _settings = settings;
         const auto& globals = _settings.GlobalSettings();
+        _agentSelectionExplicitlyChanged = false;
+        _hostAgentSnapshot = ::Microsoft::Terminal::AgentAvailability::ProbeHostAgentSnapshot();
 
         // Honor RTL languages on the FRE root grid. XAML cascades
         // FlowDirection down the tree and auto-mirrors HorizontalAlignment,
@@ -209,7 +239,10 @@ namespace winrt::TerminalApp::implementation
         // Populate the agent ComboBox from the policy-filtered availability
         // snapshot. Native Claude/Codex installations remain visible when only
         // their shared npx prerequisite is missing.
-        _PopulateAgentComboBox();
+        AgentProbeWarning().Message(RS_(L"FreOverlay_AgentProbeUnavailable"));
+        Automation::AutomationProperties::SetName(
+            AgentProbeWarning(), RS_(L"FreOverlay_AgentProbeUnavailable"));
+        _PopulateAgentComboBox(false);
 
         // Agent dropdown — show policy notice if AllowedAgents GPO is active
         if (globals.IsAgentPolicyLocked())
@@ -432,6 +465,7 @@ namespace winrt::TerminalApp::implementation
                 if (auto self = weak.get())
                 {
                     self->_UpdateSettingsFormWidth();
+                    self->_UpdateAgentProbeWarning();
                     self->SaveButton().Focus(FocusState::Programmatic);
                 }
             });
@@ -1259,9 +1293,9 @@ namespace winrt::TerminalApp::implementation
         ErrorHelpLink().NavigateUri(Uri{ winrt::hstring{ url } });
         ErrorPanel().Visibility(Visibility::Visible);
 
-        // Refresh the agent dropdown so its status labels reflect any
-        // prerequisite changes that landed before a later step failed.
-        _PopulateAgentComboBox();
+        // Rebuild from cached availability so prerequisite changes already
+        // recorded by this FRE instance are reflected without another probe.
+        _PopulateAgentComboBox(true);
 
         // Narrator: order matters. Fire the error notification FIRST,
         // BEFORE any focus transitions, so the assertive announcement
@@ -1316,28 +1350,21 @@ namespace winrt::TerminalApp::implementation
         const auto dispatcher = Dispatcher();
 
         // 1. Read selections on the UI thread
-        winrt::hstring agentId;
+        winrt::hstring displayedAgentId;
         if (const auto selected = AgentComboBox().SelectedItem())
         {
             if (const auto entry = selected.try_as<winrt::TerminalApp::FreAgentEntry>())
             {
-                agentId = entry.Id();
+                displayedAgentId = entry.Id();
             }
         }
-        {
-            namespace Reg = ::Microsoft::Terminal::Settings::Model::AgentRegistry;
-            const auto allowedAgents = Reg::FilteredAcpAgents();
-            const bool selectedAgentAllowed = std::any_of(
-                allowedAgents.begin(),
-                allowedAgents.end(),
-                [&](const auto& agent) {
-                    return agent.id == std::wstring_view{ agentId };
-                });
-            if (!selectedAgentAllowed)
-            {
-                agentId.clear();
-            }
-        }
+        namespace Reg = ::Microsoft::Terminal::Settings::Model::AgentRegistry;
+        const auto allowedAgents = Reg::FilteredAcpAgents();
+        const auto agentDecision = ::Microsoft::Terminal::AgentAvailability::DecideFreAgentSelection(
+            allowedAgents,
+            std::wstring_view{ displayedAgentId },
+            std::wstring_view{ _settings.GlobalSettings().EffectiveAcpAgent() },
+            _agentSelectionExplicitlyChanged);
 
         const auto errorDetectionMode = _CurrentErrorDetectionMode();
         const bool errorDetectionEnabled = errorDetectionMode != ErrorDetectionMode::Off;
@@ -1346,10 +1373,10 @@ namespace winrt::TerminalApp::implementation
         if (_settings)
         {
             const auto& globals = _settings.GlobalSettings();
-            if (!agentId.empty())
+            if (agentDecision.persistSelection)
             {
-                globals.AcpAgent(agentId);
-                globals.DelegateAgent(agentId);
+                globals.AcpAgent(displayedAgentId);
+                globals.DelegateAgent(displayedAgentId);
             }
             globals.AutoErrorDetectionEnabled(errorDetectionEnabled);
             globals.AutoFixEnabled(autoFixEnabled);
@@ -1369,6 +1396,11 @@ namespace winrt::TerminalApp::implementation
             }
         }
 
+        // An automatically displayed fallback is not an implicit user choice.
+        // Use it for setup work only when it represents the effective built-in
+        // setting, or when the user explicitly selected it.
+        const winrt::hstring agentId{ agentDecision.setupAgentId };
+
         // 2. Enter the "saving" state: disable the form, raise the
         // SavingOverlay (with spinner + "Setting up..."), disable the
         // Save button. Hide any previous error.
@@ -1378,17 +1410,9 @@ namespace winrt::TerminalApp::implementation
         // 3. Install launch prerequisites that must exist before the first
         // terminal is created. Copilot installation is intentionally deferred
         // to WTA Setup so a missing agent cannot keep the user in FRE.
-        bool needsNode = false;
-        if (_hostAgentSnapshot && (agentId == L"claude" || agentId == L"codex"))
-        {
-            if (const auto status = _hostAgentSnapshot->availability.find(std::wstring{ agentId });
-                status != _hostAgentSnapshot->availability.end())
-            {
-                needsNode = status->second.nativeCliFound &&
-                            status->second.requiresNpx &&
-                            !_hostAgentSnapshot->npxFound;
-            }
-        }
+        const bool needsNode = ::Microsoft::Terminal::AgentAvailability::NeedsFreNodeBootstrap(
+            _hostAgentSnapshot,
+            std::wstring_view{ agentId });
 
         _agentPaneLog("[FRE] Save: agent=" + winrt::to_string(agentId)
             + " needsNode=" + (needsNode ? "y" : "n")
@@ -1441,6 +1465,21 @@ namespace winrt::TerminalApp::implementation
                                    _lastWingetHr,
                                    _lastWingetInstallerErrorCode);
                 co_return;
+            }
+
+            // The successful Node bootstrap is authoritative for this FRE
+            // instance. Update the cached snapshot so a later retry after an
+            // unrelated hooks/shell error does not reinstall Node.
+            if (_hostAgentSnapshot)
+            {
+                _hostAgentSnapshot->npxFound = true;
+                for (auto& [_, status] : _hostAgentSnapshot->availability)
+                {
+                    if (status.nativeCliFound && status.requiresNpx)
+                    {
+                        status.launchReady = true;
+                    }
+                }
             }
         }
 
@@ -1608,10 +1647,6 @@ namespace winrt::TerminalApp::implementation
         {
             auto self = weak.get();
             if (!self) co_return;
-
-            // Refresh the agent dropdown so a Node bootstrap updates the
-            // launch-readiness labels before the overlay is dismissed.
-            _PopulateAgentComboBox();
 
             _agentPaneLog("[FRE] Completed — raising Completed event");
             // Restore the editable state before raising Completed so that

@@ -3292,7 +3292,15 @@ impl App {
                 agent_id,
                 outcome,
             } => {
-                if self.pending_agent_install.as_ref() != Some(&(request_id, agent_id.clone())) {
+                let Some(pending) = self.pending_agent_install.as_ref() else {
+                    tracing::debug!(
+                        request_id,
+                        agent = %agent_id,
+                        "ignoring stale agent install completion"
+                    );
+                    return;
+                };
+                if pending.request_id != request_id || pending.agent_id != agent_id {
                     tracing::debug!(
                         request_id,
                         agent = %agent_id,
@@ -3300,7 +3308,19 @@ impl App {
                     );
                     return;
                 }
+                let binding_is_current = pending.binding_generation
+                    == self.agent_binding_generation
+                    && pending.agent_source == self.current_agent_source;
                 self.pending_agent_install = None;
+
+                if !binding_is_current {
+                    tracing::info!(
+                        request_id,
+                        agent = %agent_id,
+                        "installation completed after the Agent binding changed; leaving the current binding untouched"
+                    );
+                    return;
+                }
 
                 if let Some(ref mut setup) = self.setup {
                     setup.install_in_progress = false;
@@ -3314,25 +3334,7 @@ impl App {
                 if installed {
                     let status = crate::agent_check::recheck_agent(&agent_id);
                     if status.cli_found {
-                        let tab_id = self.tab_id.as_deref().or_else(|| {
-                            self.deferred_acp
-                                .as_ref()
-                                .and_then(|params| params.owner_tab_id.as_deref())
-                        });
-                        crate::wt_protocol_events::send(
-                            crate::wt_protocol_events::agent_availability_changed_event(
-                                &agent_id, tab_id,
-                            ),
-                        );
-                        self.update_deferred_acp_agent(&agent_id);
-                        self.state =
-                            ConnectionState::Connecting(t!("connection.reconnecting").into_owned());
-                        self.preflight_setup_active = false;
-                        if self.deferred_acp.is_some() {
-                            self.pending_acp_start = true;
-                        } else {
-                            let _ = self.restart_tx.send(AgentLifecycleRequest::RestartMaster);
-                        }
+                        self.reconnect_confirmed_available_agent(&agent_id);
                         return;
                     }
                 }
@@ -3343,12 +3345,10 @@ impl App {
                     setup.install_error = Some(match outcome {
                         crate::agent_check::AgentInstallOutcome::Failed(error) => error,
                         crate::agent_check::AgentInstallOutcome::TimedOut => {
-                            "The installation timed out. Select Recheck before trying again."
-                                .to_string()
+                            t!("setup.error.install_timed_out").into_owned()
                         }
                         crate::agent_check::AgentInstallOutcome::DetectionTimedOut => {
-                            "Installation finished, but Copilot is not visible yet. Select Recheck."
-                                .to_string()
+                            t!("setup.error.install_detection_timed_out").into_owned()
                         }
                         crate::agent_check::AgentInstallOutcome::Installed
                         | crate::agent_check::AgentInstallOutcome::AlreadyAvailable => {

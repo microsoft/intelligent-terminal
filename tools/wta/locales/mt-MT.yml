@@ -21,6 +21,8 @@ setup.option.retry_auth: "Dħalt — erġa' pprova tikkonnettja"
 setup.status.installing: "Qed jiġi installat..."
 setup.status.install_failed: "L-installazzjoni falliet: "
 setup.status.installing_winget: " Qed jiġi installat permezz ta' winget..."
+setup.error.install_timed_out: "The installation timed out. Select \"Try again\" before starting another installation."
+setup.error.install_detection_timed_out: "Installation finished, but Copilot is not visible yet. Select \"Try again\" to check again."
 
 # ── Fluss tal-awtentikazzjoni (src/ui/auth.rs) ──────────────────────────────────────────────
 # {Locked="CLI"} - akronimu, użu komuni fil-lokalizzazzjonijiet ta' Microsoft

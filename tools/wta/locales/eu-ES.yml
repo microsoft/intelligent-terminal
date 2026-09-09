@@ -21,6 +21,8 @@ setup.option.retry_auth: "Saioa hasi dut — saiatu konektatzen berriro"
 setup.status.installing: "Instalatzen..."
 setup.status.install_failed: "Instalazioak huts egin du: "
 setup.status.installing_winget: " winget bidez instalatzen..."
+setup.error.install_timed_out: "The installation timed out. Select \"Try again\" before starting another installation."
+setup.error.install_detection_timed_out: "Installation finished, but Copilot is not visible yet. Select \"Try again\" to check again."
 
 # ── Autentifikazio-fluxua (src/ui/auth.rs) ──────────────────────────────────────────────
 # {Locked="CLI"} - laburdura, Microsoften lokalizazioetan ohiko erabilera

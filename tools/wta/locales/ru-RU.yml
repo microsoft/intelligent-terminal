@@ -21,6 +21,8 @@ setup.option.retry_auth: "Я вошёл — попробовать подклю�
 setup.status.installing: "Установка..."
 setup.status.install_failed: "Ошибка установки: "
 setup.status.installing_winget: " Установка через winget..."
+setup.error.install_timed_out: "The installation timed out. Select \"Try again\" before starting another installation."
+setup.error.install_detection_timed_out: "Installation finished, but Copilot is not visible yet. Select \"Try again\" to check again."
 
 # ── Поток аутентификации (src/ui/auth.rs) ──────────────────────────────────────────────
 # {Locked="CLI"} - аббревиатура, не переводить

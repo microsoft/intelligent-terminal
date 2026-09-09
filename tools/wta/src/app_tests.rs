@@ -10271,7 +10271,11 @@ fn agent_status_for_test(
 #[test]
 fn diagnostic_setup_options_route_auth_by_agent() {
     let missing_copilot = agent_status_for_test("copilot", "GitHub Copilot", false);
-    let missing_options = build_setup_options(&SetupReason::AgentMissing, Some(&missing_copilot));
+    let missing_options = build_setup_options_with_uncertainty(
+        &SetupReason::AgentMissing,
+        Some(&missing_copilot),
+        false,
+    );
     assert!(
         matches!(
             missing_options.as_slice(),
@@ -10285,7 +10289,8 @@ fn diagnostic_setup_options_route_auth_by_agent() {
     );
 
     let copilot = agent_status_for_test("copilot", "GitHub Copilot", true);
-    let copilot_options = build_setup_options(&SetupReason::AgentError, Some(&copilot));
+    let copilot_options =
+        build_setup_options_with_uncertainty(&SetupReason::AgentError, Some(&copilot), false);
     assert!(
         matches!(
             copilot_options.as_slice(),
@@ -10296,7 +10301,8 @@ fn diagnostic_setup_options_route_auth_by_agent() {
     );
 
     let codex = agent_status_for_test("codex", "Codex", true);
-    let codex_options = build_setup_options(&SetupReason::AgentError, Some(&codex));
+    let codex_options =
+        build_setup_options_with_uncertainty(&SetupReason::AgentError, Some(&codex), false);
     assert!(
         matches!(
             codex_options.as_slice(),
@@ -10304,13 +10310,31 @@ fn diagnostic_setup_options_route_auth_by_agent() {
         ),
         "external-auth agents stay on the diagnostic Retry flow"
     );
+
+    let uncertain_options = build_setup_options_with_uncertainty(
+        &SetupReason::AgentMissing,
+        Some(&missing_copilot),
+        true,
+    );
+    assert!(
+        matches!(
+            uncertain_options.as_slice(),
+            [SetupOption::Recheck, SetupOption::ChooseAgentSource]
+        ),
+        "an uncertain prior install must be rechecked before another install starts"
+    );
 }
 
 #[test]
 fn stale_install_completion_does_not_mutate_current_setup() {
     let mut app = test_app();
     app.mode = AppMode::Setup;
-    app.pending_agent_install = Some((2, "copilot".into()));
+    app.pending_agent_install = Some(PendingAgentInstall {
+        request_id: 2,
+        agent_id: "copilot".into(),
+        binding_generation: app.agent_binding_generation,
+        agent_source: app.current_agent_source.clone(),
+    });
     app.setup = Some(SetupState {
         reason: SetupReason::AgentMissing,
         selected_index: 0,
@@ -10329,10 +10353,43 @@ fn stale_install_completion_does_not_mutate_current_setup() {
         outcome: crate::agent_check::AgentInstallOutcome::Failed("stale".into()),
     });
 
-    assert_eq!(app.pending_agent_install, Some((2, "copilot".into())));
+    assert_eq!(
+        app.pending_agent_install,
+        Some(PendingAgentInstall {
+            request_id: 2,
+            agent_id: "copilot".into(),
+            binding_generation: 0,
+            agent_source: crate::agent_source::AgentSource::Host,
+        })
+    );
     let setup = app.setup.as_ref().expect("setup remains active");
     assert!(setup.install_in_progress);
     assert!(setup.install_error.is_none());
+}
+
+#[test]
+fn install_completion_cannot_reconnect_after_binding_change() {
+    let mut app = test_app();
+    app.mode = AppMode::Setup;
+    app.current_agent_id = "copilot".into();
+    app.pending_agent_install = Some(PendingAgentInstall {
+        request_id: 1,
+        agent_id: "copilot".into(),
+        binding_generation: 0,
+        agent_source: crate::agent_source::AgentSource::Host,
+    });
+    app.agent_binding_generation = 1;
+    app.current_agent_id = "claude".into();
+
+    app.handle_event(AppEvent::AgentInstallComplete {
+        request_id: 1,
+        agent_id: "copilot".into(),
+        outcome: crate::agent_check::AgentInstallOutcome::AlreadyAvailable,
+    });
+
+    assert!(app.pending_agent_install.is_none());
+    assert_eq!(app.current_agent_id, "claude");
+    assert!(!app.pending_acp_start);
 }
 
 #[test]

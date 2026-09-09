@@ -21,6 +21,8 @@ setup.option.retry_auth: "Rwyf wedi mewngofnodi — ceisiwch gysylltu eto"
 setup.status.installing: "Yn gosod..."
 setup.status.install_failed: "Methodd y gosodiad: "
 setup.status.installing_winget: " Yn gosod drwy winget..."
+setup.error.install_timed_out: "The installation timed out. Select \"Try again\" before starting another installation."
+setup.error.install_detection_timed_out: "Installation finished, but Copilot is not visible yet. Select \"Try again\" to check again."
 
 # ── Llif dilysu (src/ui/auth.rs) ──────────────────────────────────────────────
 # {Locked="CLI"} - acronym, defnydd cyffredin ar draws lleoleiddiadau Microsoft

@@ -21,6 +21,8 @@ setup.option.retry_auth: "لقد سجّلت الدخول — حاول الاتص
 setup.status.installing: "جارٍ التثبيت..."
 setup.status.install_failed: "فشل التثبيت: "
 setup.status.installing_winget: " جارٍ التثبيت عبر winget..."
+setup.error.install_timed_out: "The installation timed out. Select \"Try again\" before starting another installation."
+setup.error.install_detection_timed_out: "Installation finished, but Copilot is not visible yet. Select \"Try again\" to check again."
 
 # ── تدفق المصادقة (src/ui/auth.rs) ──────────────────────────────────────────────
 # {Locked="CLI"} - اختصار، استخدام شائع في عمليات الترجمة من Microsoft
