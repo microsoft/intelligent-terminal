@@ -188,6 +188,14 @@ pub(crate) struct Cli {
     #[arg(long, hide = true, value_name = "PATH")]
     pub(crate) initial_load_cwd: Option<String>,
 
+    /// Saved Yolo ownership provenance paired with an initial loaded session.
+    #[arg(
+        long,
+        hide = true,
+        value_parser = ["automatic", "manual", "provider-restored"]
+    )]
+    pub(crate) initial_yolo_control_owner: Option<String>,
+
     /// Pre-warm mode: the helper is being spawned for a tab whose agent
     /// pane is *already stashed* on the C++ side (see TerminalPage::
     /// _AutoCreateHiddenAgentPaneShared autoStash path). Without this

@@ -1604,7 +1604,8 @@ namespace winrt::TerminalApp::implementation
                                                 winrt::to_string(fields.view),
                                                 std::wstring_view{ savedPosition },
                                                 splitSize,
-                                                /*focusPane*/ !stashed);
+                                                /*focusPane*/ !stashed,
+                                                std::wstring_view{ fields.yoloControlOwner });
     }
 
     // Resolve the effective delegate agent name from structured settings.
@@ -2153,8 +2154,7 @@ namespace winrt::TerminalApp::implementation
         const AgentRuntimeConfigSnapshot& previous,
         const AgentRuntimeConfigSnapshot& current,
         const AgentPaneSettingsBinding& binding,
-        const std::wstring_view actualCurrentAgentId,
-        const bool scopeToDefaultProvider) noexcept
+        const std::wstring_view actualCurrentAgentId) noexcept
     {
         const auto currentAgentId =
             !actualCurrentAgentId.empty() ?
@@ -2169,10 +2169,7 @@ namespace winrt::TerminalApp::implementation
             current.yoloEnabled,
             current.yoloPolicyBlocked,
             current.defaultAgentId,
-            currentAgentId,
-            AgentYoloPolicy::ResolveAutomaticScope(
-                binding.followsGlobalAcpModel,
-                scopeToDefaultProvider));
+            currentAgentId);
     }
 
     TerminalPage::AgentPaneRecreationOptions TerminalPage::_GetAgentPaneRecreationOptions(
@@ -2383,14 +2380,13 @@ namespace winrt::TerminalApp::implementation
 
         auto params = _BuildAgentPaneSettingsRebindPayload(binding);
         const auto runtimeConfig = _CaptureAgentRuntimeConfig();
-        params["yolo_enabled"] = AgentYoloPolicy::ShouldRequestAutomaticEnable(
+        const auto automaticYoloTarget = AgentYoloPolicy::ShouldRequestAutomaticEnable(
             runtimeConfig.yoloEnabled,
             runtimeConfig.yoloPolicyBlocked,
             runtimeConfig.defaultAgentId,
-            binding.agentId,
-            AgentYoloPolicy::ResolveAutomaticScope(
-                binding.followsGlobalAcpModel,
-                tab->AgentOverrideUsesDefaultYoloScope()));
+            binding.agentId);
+        params["automatic_yolo_target"] = automaticYoloTarget;
+        params["yolo_enabled"] = automaticYoloTarget;
         params["yolo_policy_blocked"] = runtimeConfig.yoloPolicyBlocked;
         params["operation_id"] = std::string{ operationId };
         params["generation"] = Json::UInt64{ generation };
@@ -2423,6 +2419,7 @@ namespace winrt::TerminalApp::implementation
         Json::Value params{ Json::objectValue };
         params["tab_id"] = std::string{ tabId };
         params["window_id"] = std::string{ windowId };
+        params["automatic_yolo_target"] = config.yoloEnabled;
         params["yolo_enabled"] = config.yoloEnabled;
         params["yolo_policy_blocked"] = config.yoloPolicyBlocked;
         return params;
@@ -2507,12 +2504,13 @@ namespace winrt::TerminalApp::implementation
                 Json::Value yoloParams{ Json::objectValue };
                 yoloParams["window_id"] = std::to_string(_WindowProperties.WindowId());
                 yoloParams["tab_id"] = winrt::to_string(tabImpl->StableId());
-                yoloParams["yolo_enabled"] = _ResolveHotAutomaticYoloForAgentBinding(
+                const auto automaticYoloTarget = _ResolveHotAutomaticYoloForAgentBinding(
                     last,
                     current,
                     binding,
-                    std::wstring_view{ tabImpl->AgentCurrentId() },
-                    tabImpl->AgentOverrideUsesDefaultYoloScope());
+                    std::wstring_view{ tabImpl->AgentCurrentId() });
+                yoloParams["automatic_yolo_target"] = automaticYoloTarget;
+                yoloParams["yolo_enabled"] = automaticYoloTarget;
                 yoloParams["yolo_policy_blocked"] = current.yoloPolicyBlocked;
                 _RaiseProtocolEvent("agent_config_changed", yoloParams);
             }
@@ -3248,7 +3246,8 @@ namespace winrt::TerminalApp::implementation
                                                         std::string_view initialView,
                                                         std::wstring_view initialPanePosition,
                                                         float initialPaneSize,
-                                                        bool focusPane)
+                                                        bool focusPane,
+                                                        std::wstring_view initialYoloControlOwner)
     {
         if (!tab || !tab->GetActiveTerminalControl())
         {
@@ -3525,10 +3524,7 @@ namespace winrt::TerminalApp::implementation
                 globals.AgentPaneYoloMode(),
                 globals.IsYoloModePolicyLocked(),
                 std::wstring_view{ globals.EffectiveAcpAgent() },
-                std::wstring_view{ effectiveAgentId },
-                AgentYoloPolicy::ResolveAutomaticScope(
-                    followsGlobalAcpModel,
-                    tab->AgentOverrideUsesDefaultYoloScope())))
+                std::wstring_view{ effectiveAgentId }))
         {
             helperCmd.append(L" --yolo-mode");
         }
@@ -3589,6 +3585,11 @@ namespace winrt::TerminalApp::implementation
             {
                 const auto cwdW = winrt::to_hstring(initialLoadCwd);
                 appendHelperFlagValue(L"--initial-load-cwd", std::wstring_view{ cwdW });
+            }
+            if (::Microsoft::Terminal::AgentPaneRestore::IsValidYoloControlOwner(
+                    initialYoloControlOwner))
+            {
+                appendHelperFlagValue(L"--initial-yolo-control-owner", initialYoloControlOwner);
             }
         }
 
@@ -6757,10 +6758,7 @@ namespace winrt::TerminalApp::implementation
                 runtimeConfig.yoloEnabled,
                 runtimeConfig.yoloPolicyBlocked,
                 runtimeConfig.defaultAgentId,
-                currentAgentId,
-                AgentYoloPolicy::ResolveAutomaticScope(
-                    binding.followsGlobalAcpModel,
-                    statusTab->AgentOverrideUsesDefaultYoloScope()));
+                currentAgentId);
             auto config = helperNeedsRuntimeConfig ?
                               _BuildAgentReadyRuntimeConfigPayload(
                                   winrt::to_string(effectiveStatusTabId),
@@ -6900,6 +6898,17 @@ namespace winrt::TerminalApp::implementation
                                  winrt::to_hstring(params["agent_session_id"].asString()) :
                                  winrt::hstring{};
         }
+        std::optional<winrt::hstring> yoloControlOwner;
+        if (params.isMember("yolo_control_owner") &&
+            params["yolo_control_owner"].isString())
+        {
+            const auto owner = winrt::to_hstring(params["yolo_control_owner"].asString());
+            if (::Microsoft::Terminal::AgentPaneRestore::IsValidYoloControlOwner(
+                    std::wstring_view{ owner }))
+            {
+                yoloControlOwner = owner;
+            }
+        }
 
         std::optional<bool> wantOpen;
         if (params.isMember("pane_open") && params["pane_open"].isBool())
@@ -6971,6 +6980,7 @@ namespace winrt::TerminalApp::implementation
         // Apply projected identity and view to the existing AgentPaneContent.
         if (const auto agentContent = targetTab->FindAgentPaneContent())
         {
+            const auto impl = winrt::get_self<implementation::AgentPaneContent>(agentContent);
             if (agentSessionId.has_value())
             {
                 agentContent.SetAgentSessionId(*agentSessionId);
@@ -6978,8 +6988,11 @@ namespace winrt::TerminalApp::implementation
                 // recorded. A save later compares it against the tab's current
                 // agent, so a session left behind by `/agent` is never paired
                 // with the agent that replaced it.
-                winrt::get_self<implementation::AgentPaneContent>(agentContent)
-                    ->SetAgentSessionOwner(_GetAgentPaneIdentity(targetTab.get()));
+                impl->SetAgentSessionOwner(_GetAgentPaneIdentity(targetTab.get()));
+            }
+            if (yoloControlOwner.has_value())
+            {
+                impl->SetYoloControlOwner(*yoloControlOwner);
             }
             if (view.has_value())
             {
@@ -7480,7 +7493,6 @@ namespace winrt::TerminalApp::implementation
         }
 
         tab->SetAgentOverride(agentId, winrt::hstring{}, winrt::hstring{}, source, wslDistro);
-        tab->AgentOverrideUsesDefaultYoloScope(true);
 
         // An ACP session belongs to the agent that created it — a codex thread
         // is meaningless to copilot and vice versa — so the recorded session

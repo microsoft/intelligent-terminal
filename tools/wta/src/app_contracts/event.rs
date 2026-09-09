@@ -61,6 +61,9 @@ pub enum AppEvent {
         restart_required: bool,
         result: Result<(), String>,
     },
+    YoloControlOwnerChanged {
+        session_id: String,
+    },
     ModelSetCompleted {
         session_id: String,
         model: String,

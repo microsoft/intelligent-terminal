@@ -1,6 +1,22 @@
 /// Publish raw JSON events to Windows Terminal in submission order.
 pub fn send(json_payload: String) {
+    #[cfg(test)]
+    {
+        TEST_PUBLISHED_EVENTS.with(|events| events.borrow_mut().push(json_payload.clone()));
+    }
+
     let _ = publisher_sender().send(json_payload);
+}
+
+#[cfg(test)]
+thread_local! {
+    static TEST_PUBLISHED_EVENTS: std::cell::RefCell<Vec<String>> =
+        const { std::cell::RefCell::new(Vec::new()) };
+}
+
+#[cfg(test)]
+pub(crate) fn take_test_published_events() -> Vec<String> {
+    TEST_PUBLISHED_EVENTS.with(|events| std::mem::take(&mut *events.borrow_mut()))
 }
 
 pub(crate) fn restart_agent_stack_event() -> String {

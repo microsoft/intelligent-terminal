@@ -15,8 +15,10 @@ per-agent-pane status badge.
 - Persist one default-provider preference in `agentPane.yoloMode`.
 - Reconcile supported ACP sessions that use the Settings default provider to
   that preference through an exact, provider-advertised capability.
-- Keep a provider selected through `/agent` off unless its canonical ID matches
-  the Settings default.
+- Apply the same default-provider comparison to global, profile, `/agent`, and
+  restored-layout bindings.
+- Preserve policy-allowed manual or provider-restored session state during
+  later automatic Settings reconciliation.
 - Keep provider identity and ACP session routing authoritative across tabs,
   windows, and shared Agent CLI processes.
 - Apply `AllowYoloMode` policy changes to live sessions and fail closed when a
@@ -116,6 +118,16 @@ Host/WSL execution source. Existing `/agent` override tabs retain their
 provider when the Settings default changes, but recompute whether the
 preference applies. Default-following tabs keep their existing rebind behavior.
 
+Profile `agentPaneBackend` selections and freshly-created panes restored from a
+saved layout use the same comparison. A non-default provider starts from a
+known-safe Off baseline, but the user may enable its reviewed provider-native
+mode manually while policy allows it.
+
+Loading an existing ACP session is different from creating a new session. Its
+provider-native state is treated as provider-restored and automatic Settings
+logic does not mutate it while policy allows. `AllowYoloMode=0` still forces
+the loaded session Off before prompts proceed.
+
 ### Commands and configuration
 
 WTA intentionally has no built-in `yolo` command. A provider command named
@@ -149,40 +161,54 @@ The runtime state has three relevant pieces:
 
 | State | Owner | Lifetime |
 |---|---|---|
-| Resolved automatic desired value and policy gate | `YoloState` | Helper process; initialized and hot-updated from Terminal settings and `/agent` rebinds |
+| Host automatic target and policy gate | `YoloState` | Helper process; initialized and hot-updated from Terminal settings and agent rebinds |
+| Per-session control owner (`Automatic`, `Manual`, or `ProviderRestored`) | `YoloState` | Exact ACP session; cleared on replacement/reset |
 | Native capability and captured restore value | `NativeYoloState` | Exact ACP session generation |
 | Pending reconciliation and config gates | `App` and `NativeYoloState` | Until acknowledgement, known enable failure, or agent reset; failed disables and unknown outcomes remain fail-closed until Agent CLI replacement |
 
-The effective desired state is:
+Terminal computes a strict host automatic target for every binding source:
 
 ```text
-automatic_yolo =
+automatic_target =
     configured_default &&
     !policy_blocked &&
     current_provider_id == settings_default_provider_id
 ```
 
-`YoloState` has no persisted session preference map. Terminal resolves whether
-the Settings preference applies to the helper's current provider, and each new
-session is reconciled to that value. A reviewed native value selected manually
-through `/config` changes only the current ACP session without changing the
-persisted setting, so that session can differ until a later Settings or policy
-reconciliation, session
-replacement, or reset reapplies the global value.
+WTA combines that target with the session owner to produce:
+
+```text
+policy blocked                         -> Disable
+owner Automatic or new session         -> Enable/Disable to automatic_target
+owner Manual or ProviderRestored       -> NoOpinion
+```
+
+`NoOpinion` creates no native operation and no prompt gate. A reviewed native
+value selected manually through `/config`, or a recognized provider command
+such as Copilot `/allow_all`, changes only the current ACP session and marks it
+manual without changing the persisted setting. Later ordinary Settings changes
+do not overwrite that manual state. Policy remains authoritative and can force
+every owner Off.
 
 The client-reconciled-session marker prevents `SessionAttached` from issuing a
 duplicate native operation after lazy first-prompt setup; it is not a user
-preference or persisted override.
+preference or owner.
 
-No Yolo runtime state is written to the session history index, hook data, or
-`state.json`.
+The owner map is runtime state, but a saved agent pane records the minimal
+`Automatic`, `Manual`, or `ProviderRestored` provenance beside its resumable
+ACP session ID. It never persists the actual Yolo value. Older or user-edited
+layouts without a valid owner restore as `ProviderRestored`. No Yolo value is
+written to the session history index or hook data.
 
 ## Session lifecycle and prompt gates
 
-A capability-ready bootstrap or attached session is reconciled to the latest
-effective global value. A lazy session establishes that value before its first
-prompt is sent. Session replacement, `/new`, tab reset/close, provider switch,
-and agent restart remove stale capability generations and pending gates.
+A capability-ready new session is reconciled to the current automatic target.
+A lazy session establishes that target before its first prompt is sent. A
+loaded session waits for its real `SessionAttached`, becomes
+`ProviderRestored`, and then keeps its provider state while policy allows.
+Session replacement, `/new`, tab reset/close, provider switch, and agent
+restart clear the old owner together with stale capability generations and
+pending gates.
 
 Normal prompts, manual autofix, and automatic autofix remain blocked while the
 session's provider-native reconciliation or privileged `/config` mutation is
@@ -194,6 +220,17 @@ replaced.
 Operations are serialized per session and fenced by lifecycle generation. A
 newer desired operation supersedes an older one; stale completions cannot
 commit state for a replaced or reused session ID.
+
+Terminal emits `automatic_yolo_target` on ready, hot-config, and rebind events.
+It also emits the prior `yolo_enabled` boolean with the same value during the
+compatibility period. New WTA builds prefer `automatic_yolo_target`; older
+hosts that omit it continue to work through `yolo_enabled`.
+
+WTA includes `yolo_control_owner` in the per-tab `agent_state_changed`
+snapshot. C++ applies that owner together with the projected agent session ID,
+then writes it into the saved agent-pane command line as
+`--initial-yolo-control-owner`. On restore, the helper returns the validated
+owner to WTA only for the paired initial loaded session.
 
 Both config-option and mode mutations have a bounded timeout. ACP cancellation
 is cooperative, so a timeout is treated as an unknown provider outcome and

@@ -619,8 +619,7 @@ namespace winrt::TerminalApp::implementation
             const AgentRuntimeConfigSnapshot& previous,
             const AgentRuntimeConfigSnapshot& current,
             const AgentPaneSettingsBinding& binding,
-            std::wstring_view actualCurrentAgentId,
-            bool scopeToDefaultProvider) noexcept;
+            std::wstring_view actualCurrentAgentId) noexcept;
         static AgentPaneRecreationOptions _GetAgentPaneRecreationOptions(
             bool wasStashed,
             bool isActiveTab) noexcept;
@@ -743,7 +742,8 @@ namespace winrt::TerminalApp::implementation
                                               std::string_view initialView = {},
                                               std::wstring_view initialPanePosition = {},
                                               float initialPaneSize = 0.0f,
-                                              bool focusPane = true);
+                                              bool focusPane = true,
+                                              std::wstring_view initialYoloControlOwner = {});
         winrt::hstring _GetAgentPaneIdentity(Tab* tab) const;
         winrt::hstring _GetAgentPaneCustomCommand(Tab* tab) const;
         void _PrewarmAgentPanesAfterStartup();

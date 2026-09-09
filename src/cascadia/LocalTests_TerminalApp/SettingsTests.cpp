@@ -2128,45 +2128,24 @@ namespace TerminalAppLocalTests
         VERIFY_IS_FALSE(Policy::IsAutomaticEnableAvailable(false, L"opencode"));
         VERIFY_IS_FALSE(Policy::IsAutomaticEnableAvailable(false, L""));
 
-        VERIFY_ARE_EQUAL(
-            Policy::AutomaticScope::DefaultProvider,
-            Policy::ResolveAutomaticScope(true, false));
-        VERIFY_ARE_EQUAL(
-            Policy::AutomaticScope::DefaultProvider,
-            Policy::ResolveAutomaticScope(false, true));
-        VERIFY_ARE_EQUAL(
-            Policy::AutomaticScope::LegacyGlobalPreference,
-            Policy::ResolveAutomaticScope(false, false));
-
         const auto automatic = [](const bool configuredEnabled,
                                   const bool policyBlocked,
                                   const std::wstring_view defaultAgentId,
-                                  const std::wstring_view currentAgentId,
-                                  const bool usesSettingsDefaultProvider,
-                                  const bool scopeToDefaultProvider) {
+                                  const std::wstring_view currentAgentId) {
             return Policy::ShouldRequestAutomaticEnable(
                 configuredEnabled,
                 policyBlocked,
                 defaultAgentId,
-                currentAgentId,
-                Policy::ResolveAutomaticScope(
-                    usesSettingsDefaultProvider,
-                    scopeToDefaultProvider));
+                currentAgentId);
         };
 
-        VERIFY_IS_TRUE(automatic(true, false, L"copilot", L"copilot", true, false));
-        VERIFY_IS_TRUE(automatic(true, false, L"CoPiLoT", L"copilot", false, true));
-        VERIFY_IS_FALSE(automatic(true, false, L"copilot", L"claude", false, true));
-        VERIFY_IS_FALSE(automatic(true, false, L"copilot", L"claude", true, false));
-        VERIFY_IS_FALSE(automatic(true, false, L"opencode", L"opencode", false, true));
-        VERIFY_IS_FALSE(automatic(true, false, L"", L"", false, true));
-        VERIFY_IS_FALSE(automatic(false, false, L"copilot", L"copilot", true, false));
-        VERIFY_IS_FALSE(automatic(true, true, L"copilot", L"copilot", true, false));
-        VERIFY_IS_FALSE(automatic(true, false, L"opencode", L"opencode", true, false));
-
-        // Overrides outside this PR's /agent scope retain the existing
-        // global behavior until their owning paths adopt this resolver.
-        VERIFY_IS_TRUE(automatic(true, false, L"opencode", L"claude", false, false));
+        VERIFY_IS_TRUE(automatic(true, false, L"copilot", L"copilot"));
+        VERIFY_IS_TRUE(automatic(true, false, L"CoPiLoT", L"copilot"));
+        VERIFY_IS_FALSE(automatic(true, false, L"copilot", L"claude"));
+        VERIFY_IS_FALSE(automatic(true, false, L"opencode", L"opencode"));
+        VERIFY_IS_FALSE(automatic(true, false, L"", L""));
+        VERIFY_IS_FALSE(automatic(false, false, L"copilot", L"copilot"));
+        VERIFY_IS_FALSE(automatic(true, true, L"copilot", L"copilot"));
     }
 
     void SettingsTests::TestHotDefaultProviderYoloUsesOutgoingBinding()
@@ -2185,16 +2164,16 @@ namespace TerminalAppLocalTests
         globalFollower.agentId = L"gemini";
         globalFollower.followsGlobalAcpModel = true;
         VERIFY_IS_FALSE(Page::_ResolveHotAutomaticYoloForAgentBinding(
-            previous, current, globalFollower, L"copilot", false));
+            previous, current, globalFollower, L"copilot"));
         VERIFY_IS_TRUE(Page::_ResolveHotAutomaticYoloForAgentBinding(
-            previous, current, globalFollower, L"gemini", false));
+            previous, current, globalFollower, L"gemini"));
         VERIFY_IS_FALSE(Page::_ResolveHotAutomaticYoloForAgentBinding(
-            previous, current, globalFollower, L"", false));
+            previous, current, globalFollower, L""));
 
         Page::AgentPaneSettingsBinding agentOverride;
         agentOverride.agentId = L"gemini";
         VERIFY_IS_TRUE(Page::_ResolveHotAutomaticYoloForAgentBinding(
-            previous, current, agentOverride, L"gemini", true));
+            previous, current, agentOverride, L"gemini"));
     }
 
     void SettingsTests::TestAgentPaneModelHotUpdateRouting()

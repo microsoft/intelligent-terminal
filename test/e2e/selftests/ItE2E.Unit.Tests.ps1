@@ -472,8 +472,8 @@ Describe 'Feature suite package selection' -Tag 'Unit' {
         $suite = Get-Content -LiteralPath $suitePath -Raw
 
         ([regex]::Matches($suite, '\bGet-ItTestPackage\b')).Count | Should -Be 1
-        ([regex]::Matches($suite, '(?m)^Describe ')).Count | Should -Be 5
-        ([regex]::Matches($suite, '(?m)^Describe .* -ForEach \$script:PackageCase\b')).Count | Should -Be 5
+        ([regex]::Matches($suite, '(?m)^Describe ')).Count | Should -Be 6
+        ([regex]::Matches($suite, '(?m)^Describe .* -ForEach \$script:PackageCase\b')).Count | Should -Be 6
         $suite | Should -Not -Match '-Package\s+Dev\b'
         $suite | Should -Not -Match 'Resolve-ItApp\s+-Package\s+(?!\$(?:script:Package|Package)\b)'
         $suite | Should -Not -Match 'Start-Terminal\s+-Package\s+(?!\$Package\b)'
@@ -482,6 +482,7 @@ Describe 'Feature suite package selection' -Tag 'Unit' {
         $suite | Should -Not -Match 'AgentYoloStatusText|/yolo (?:on|off)'
         $suite | Should -Not -Match 'requires whitespace-free test paths'
         $suite | Should -Match '-EncodedCommand\s+\$encodedInvocation'
+        $suite | Should -Match 'Profile automatic approval stays scoped to the Settings default provider'
     }
 
     It 'hides unavailable Settings controls and removes explanatory messages' {
@@ -566,6 +567,35 @@ Describe 'Feature suite package selection' -Tag 'Unit' {
         $freTests = Get-Content -LiteralPath $freTestsPath -Raw
         $freTests | Should -Match 'Send-WtWindowKey\s+-App \$script:app\s+-Vk 0x1B'
         $freTests | Should -Not -Match "Selector 'Light Dismiss'"
+    }
+
+    It 'round-trips Yolo control ownership across saved agent panes' {
+        $repoRoot = Join-Path $PSScriptRoot '..\..\..'
+
+        $restore = Get-Content -LiteralPath (Join-Path $repoRoot 'src\cascadia\inc\AgentPaneRestore.h') -Raw
+        $restore | Should -Match 'YoloControlOwnerFlag'
+        $restore | Should -Match 'std::wstring yoloControlOwner;'
+        $restore | Should -Match 'IsValidYoloControlOwner'
+
+        $contentHeader = Get-Content -LiteralPath (Join-Path $repoRoot 'src\cascadia\TerminalApp\AgentPaneContent.h') -Raw
+        $contentSource = Get-Content -LiteralPath (Join-Path $repoRoot 'src\cascadia\TerminalApp\AgentPaneContent.cpp') -Raw
+        $contentHeader | Should -Match 'SetYoloControlOwner'
+        $contentHeader | Should -Match '_yoloControlOwner'
+        $contentSource | Should -Match 'fields\.yoloControlOwner = _yoloControlOwner'
+
+        $terminalPage = Get-Content -LiteralPath (Join-Path $repoRoot 'src\cascadia\TerminalApp\TerminalPage.cpp') -Raw
+        $terminalPage | Should -Match 'params\.isMember\("yolo_control_owner"\)'
+        $terminalPage | Should -Match 'SetYoloControlOwner\(\*yoloControlOwner\)'
+        $terminalPage | Should -Match '--initial-yolo-control-owner'
+        $terminalPage | Should -Match 'fields\.yoloControlOwner'
+
+        $statusProjection = Get-Content -LiteralPath (Join-Path $repoRoot 'tools\wta\src\app_status_projection.rs') -Raw
+        $appEvents = Get-Content -LiteralPath (Join-Path $repoRoot 'tools\wta\src\app_events.rs') -Raw
+        $cliArgs = Get-Content -LiteralPath (Join-Path $repoRoot 'tools\wta\src\cli\args.rs') -Raw
+        $statusProjection | Should -Match '"yolo_control_owner"'
+        $statusProjection | Should -Match '\.owner\(session_id\)'
+        $appEvents | Should -Match 'initial_yolo_control_owner\s*\.take\(\)'
+        $cliArgs | Should -Match 'initial_yolo_control_owner'
     }
 }
 

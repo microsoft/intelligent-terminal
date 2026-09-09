@@ -378,6 +378,17 @@ impl NativeYoloState {
             .then_some(command_name)
     }
 
+    pub(crate) fn session_generation(
+        &self,
+        session_id: &acp::schema::v1::SessionId,
+    ) -> Option<u64> {
+        self.sessions
+            .read()
+            .unwrap()
+            .get(session_id)
+            .map(|session| session.generation)
+    }
+
     pub(super) async fn apply_native_config_reserved_with_policy_timeout(
         &self,
         conn: &crate::protocol::acp::conn::ClientLink,

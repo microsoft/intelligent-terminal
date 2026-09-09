@@ -224,6 +224,48 @@ Describe 'Feature default-provider Yolo through /agent' -ForEach $script:Package
     }
 }
 
+Describe 'Feature default-provider Yolo across profile bindings' -ForEach $script:PackageCase -Tag 'Feature' -Skip:(-not $script:Ready) {
+    BeforeAll {
+        Import-Module (Join-Path $PSScriptRoot '..\ItE2E\ItE2E.psd1') -Force
+    }
+
+    It 'Profile automatic approval stays scoped to the Settings default provider' -Skip:($script:copilotBlocked -or -not $GeminiInstalled) {
+        $profileGuid = '{' + [guid]::NewGuid().ToString() + '}'
+        $profiles = [pscustomobject][ordered]@{
+            defaults = [pscustomobject]@{}
+            list     = @(
+                [pscustomobject][ordered]@{
+                    guid             = $profileGuid
+                    name             = 'Automatic approval profile scope'
+                    commandline      = 'pwsh.exe'
+                    agentPaneBackend = 'host:copilot'
+                }
+            )
+        }
+        $app = Start-Terminal -Package $Package -PassFre $true -Settings @{
+            acpAgent             = 'gemini'
+            'agentPane.yoloMode' = $true
+            defaultProfile       = $profileGuid
+            profiles             = $profiles
+        }
+        try {
+            Open-AgentPane -App $app | Out-Null
+            Wait-AgentReady -App $app -TimeoutSec 90 | Should -BeTrue
+            $shellPane = Get-ActivePane -App $app
+            $profileSession = Wait-NewAgentPaneSession -App $app -OwnerPaneSessionId $shellPane.session_id -TimeoutSec 30
+
+            (Test-Until -TimeoutSec 30 -IntervalSec 0.5 -Condition {
+                Test-AgentNativeYoloUpdate -App $app -AcpSessionId $profileSession.AcpSessionId -Enabled $false
+            }) | Should -BeTrue -Because 'a non-default profile backend must start from the automatic Off baseline'
+            (Test-AgentNativeYoloUpdate -App $app -AcpSessionId $profileSession.AcpSessionId -Enabled $true) |
+                Should -BeFalse -Because 'the Settings default preference must not automatically enable the profile provider'
+        }
+        finally {
+            if ($app) { Stop-Terminal -App $app }
+        }
+    }
+}
+
 Describe 'Feature Settings automatic approval availability' -ForEach $script:PackageCase -Tag 'Feature' -Skip:(-not $script:Ready) {
     BeforeAll {
         Import-Module (Join-Path $PSScriptRoot '..\ItE2E\ItE2E.psd1') -Force
