@@ -1309,7 +1309,7 @@ fn command_lookup_permission_rejects_expressions_and_unbalanced_quotes() {
         r#"& 'wta.exe' resolve-command (unrelated-command)"#,
         r#"& 'wta.exe' resolve-command gti --cwd 'C:\owner''s"#,
         r#"& 'wta.exe' resolve-command gti --cwd "C:\R&D"#,
-        r#"& 'wta.exe'resolve-command gti"#,
+        concat!("& 'wta.exe'", "resolve-command gti"),
         "wta resolve-command gti\nunrelated-command",
         "wta resolve-command gti > output.txt",
     ] {
