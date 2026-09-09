@@ -115,7 +115,7 @@ pub(crate) struct Cli {
     #[arg(long)]
     pub(crate) no_autofix: bool,
 
-    /// Disable session hooks and automatic hook reconciliation.
+    /// Disable hook/log activity tracking and automatic hook reconciliation.
     #[arg(long, hide = true)]
     pub(crate) no_session_management: bool,
 

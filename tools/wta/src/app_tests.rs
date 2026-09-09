@@ -3604,7 +3604,7 @@ fn session_tracking_hook(session_id: &str, event: &str) -> AppEvent {
 
 fn hook_session_info_for_test(id: &str) -> crate::session_registry::SessionInfo {
     let mut info = session_info_for_test(id);
-    info.hook_activity = true;
+    info.observed_activity = true;
     info
 }
 
@@ -3681,7 +3681,7 @@ fn session_tracking_master_epoch_rebases_missed_toggles_but_rejects_older_epochs
     assert_eq!(app.master_session_tracking.unwrap().minimum_generation, 12);
 
     let mut unknown = row.clone();
-    unknown.clear_hook_activity();
+    unknown.clear_observed_activity();
     receive_tracking_snapshot(&mut app, &mut requests, unknown, true, 10, 4);
     assert_eq!(app.master_session_tracking.unwrap().minimum_generation, 10);
     assert_eq!(app.master_session_tracking.unwrap().epoch, 4);
@@ -4729,7 +4729,7 @@ fn session_tracking_late_born_bound_preserves_hook_overlay_until_off() {
             title: "Resumed session".into(),
         },
     });
-    assert!(app.current_tab().agents_view.snapshot.as_ref().unwrap()[0].hook_activity);
+    assert!(app.current_tab().agents_view.snapshot.as_ref().unwrap()[0].observed_activity);
     assert!(render_to_text(&mut app, 120, 24).contains("Active"));
     app.set_session_management_enabled(false);
     assert_eq!(
@@ -4748,12 +4748,12 @@ fn session_tracking_off_snapshots_preserve_independent_updates_and_resume_baseli
     let (mut app, mut requests) = test_app_with_master_rx();
     app.apply_session_management_host_config(false);
     app.open_agents_view_for_tab(DEFAULT_TAB_ID.into());
-    let mut row = session_info_for_test("hookless-watcher");
+    let mut row = session_info_for_test("internal-progress");
     row.status = Some(AgentStatus::Working);
     row.current_tool = Some("independent tool".into());
     row.pane_session_id = Some("shell-pane".into());
     app.untracked_external_sessions
-        .insert("hookless-watcher".into());
+        .insert("internal-progress".into());
     receive_tracking_snapshot(&mut app, &mut requests, row.clone(), false, 2, 1);
     assert!(render_to_text(&mut app, 120, 24).contains("Active"));
     app.handle_event(AppEvent::SessionsChanged);
@@ -4762,22 +4762,25 @@ fn session_tracking_off_snapshots_preserve_independent_updates_and_resume_baseli
     receive_tracking_snapshot(&mut app, &mut requests, row, false, 2, 1);
     assert!(render_to_text(&mut app, 120, 24).contains("Waiting for input"));
 
-    app.handle_event(AppEvent::SessionsChanged);
-    let mut overlay = hook_session_info_for_test("resumed");
-    overlay.status = Some(AgentStatus::Working);
-    overlay.current_tool = Some("hook tool".into());
-    overlay.pane_session_id = Some("resumed-pane".into());
-    overlay.non_hook_activity = Some(SessionActivity {
-        status: Some(AgentStatus::Idle),
-        last_activity_at_ms: Some(1),
-        ..Default::default()
-    });
-    receive_tracking_snapshot(&mut app, &mut requests, overlay, true, 1, 1);
-    let resumed = &app.current_tab().agents_view.snapshot.as_ref().unwrap()[0];
-    assert_eq!(resumed.status, Some(AgentStatus::Idle));
-    assert_eq!(resumed.current_tool, None);
-    assert_eq!(resumed.pane_session_id.as_deref(), Some("resumed-pane"));
-    assert!(render_to_text(&mut app, 120, 24).contains("Idle"));
+    for tool in ["hook tool", "log-observed tool"] {
+        app.handle_event(AppEvent::SessionsChanged);
+        let mut overlay = session_info_for_test("resumed");
+        overlay.observed_activity = true;
+        overlay.status = Some(AgentStatus::Working);
+        overlay.current_tool = Some(tool.into());
+        overlay.pane_session_id = Some("resumed-pane".into());
+        overlay.independent_activity = Some(SessionActivity {
+            status: Some(AgentStatus::Idle),
+            last_activity_at_ms: Some(1),
+            ..Default::default()
+        });
+        receive_tracking_snapshot(&mut app, &mut requests, overlay, true, 1, 1);
+        let resumed = &app.current_tab().agents_view.snapshot.as_ref().unwrap()[0];
+        assert_eq!(resumed.status, Some(AgentStatus::Idle));
+        assert_eq!(resumed.current_tool, None);
+        assert_eq!(resumed.pane_session_id.as_deref(), Some("resumed-pane"));
+        assert!(render_to_text(&mut app, 120, 24).contains("Idle"));
+    }
 
     app.handle_event(AppEvent::SessionsChanged);
     let mut acp = session_info_for_test("acp-chat");

@@ -1385,9 +1385,9 @@ pub(crate) fn known_cli_id(src: &crate::agent_sessions::CliSource) -> Option<&'s
     }
 }
 
-fn clear_hook_session_status(sessions: &mut [crate::session_registry::SessionInfo]) {
+fn clear_observed_session_status(sessions: &mut [crate::session_registry::SessionInfo]) {
     for session in sessions {
-        session.clear_hook_activity();
+        session.clear_observed_activity();
     }
 }
 
@@ -3444,7 +3444,7 @@ impl App {
             tab.agents_view.pending_rescan = false;
             tab.agents_view.dirty = false;
             if let Some(snapshot) = tab.agents_view.snapshot.as_mut() {
-                clear_hook_session_status(snapshot);
+                clear_observed_session_status(snapshot);
             }
         }
     }
@@ -3691,7 +3691,7 @@ impl App {
             self.set_session_management_enabled(session_management_enabled);
         }
         if !self.session_management_enabled || !session_management_enabled || !tracking_current {
-            clear_hook_session_status(&mut sessions);
+            clear_observed_session_status(&mut sessions);
         }
         for tab_id in tabs {
             let old_selected = self
@@ -3860,9 +3860,9 @@ impl App {
                     if let Some(baseline) = self.hook_tracked_sessions.get(&session.key) {
                         let mut info =
                             crate::session_registry::agent_session_to_session_info(session);
-                        info.hook_activity = true;
-                        info.non_hook_activity = baseline.clone();
-                        info.clear_hook_activity();
+                        info.observed_activity = true;
+                        info.independent_activity = baseline.clone();
+                        info.clear_observed_activity();
                         let activity = session_info_to_agent_session(&info);
                         row.status = activity.status;
                         row.current_tool = activity.current_tool;
@@ -3948,8 +3948,8 @@ impl App {
                 };
                 let mut local_info = crate::session_registry::agent_session_to_session_info(local);
                 if let Some(baseline) = self.hook_tracked_sessions.get(&key) {
-                    local_info.hook_activity = true;
-                    local_info.non_hook_activity = baseline.clone();
+                    local_info.observed_activity = true;
+                    local_info.independent_activity = baseline.clone();
                 }
                 for tab in self.tab_sessions.values_mut() {
                     if let Some(snapshot) = tab.agents_view.snapshot.as_mut() {
@@ -3957,8 +3957,8 @@ impl App {
                             .iter_mut()
                             .find(|info| info.session_id.0.as_ref() == key)
                         {
-                            if info.hook_activity && self.session_management_enabled {
-                                info.non_hook_activity.get_or_insert_with(|| {
+                            if info.observed_activity && self.session_management_enabled {
+                                info.independent_activity.get_or_insert_with(|| {
                                     crate::session_registry::SessionActivity {
                                         status: Some(AgentStatus::Idle),
                                         last_activity_at_ms: local_info.last_activity_at_ms,
@@ -3971,8 +3971,8 @@ impl App {
                                 info.attention_reason = local_info.attention_reason.clone();
                                 info.last_error = local_info.last_error.clone();
                                 info.last_activity_at_ms = local_info.last_activity_at_ms;
-                                info.hook_activity = local_info.hook_activity;
-                                info.non_hook_activity = local_info.non_hook_activity.clone();
+                                info.observed_activity = local_info.observed_activity;
+                                info.independent_activity = local_info.independent_activity.clone();
                             }
                             info.pane_session_id = local.pane_session_id.clone();
                         } else {

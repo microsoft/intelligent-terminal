@@ -151,9 +151,10 @@ snapshots.
 ## Session Tracking
 
 The **Sessions** toggle in Settings > Agents (`agentSessionManagementEnabled`)
-controls session hooks, not session management as a whole. Saving Off disables
-hook-driven tracking and automatic hook reconciliation without restarting the
-master, helpers, or agent CLIs. Existing hooks remain installed.
+controls automatic activity observation, not session management as a whole.
+Saving Off disables hook-driven tracking, the session-log file watcher, and
+automatic hook reconciliation without restarting the master, helpers, or agent
+CLIs. Existing hooks remain installed.
 
 While hooks are Off, the Sessions view shows one muted, non-interactive line
 directing users to **Settings > Agents > Sessions** to enable hooks. There is
@@ -161,14 +162,17 @@ no inline toggle or settings-writing action. Organization-managed disablement
 has an informational explanation instead. No Off notice is shown while hooks
 are On, including empty, loading, or searching views.
 
-Hook-independent behavior is unchanged: Resume and delegation already know
+Internally established state is unchanged: Resume and delegation already know
 their session IDs and still establish and display **Idle**, even while hooks
-are Off. File-based status monitoring, history polling, Focus/Resume, native
-pane lifecycle cleanup, ACP chat/progress/usage, and Autofix continue normally.
-Only hook-derived activity is discarded; any independently known status is
-preserved rather than hidden or replaced with an unknown state. Turning hooks
-back On accepts new hook events without replaying ignored ones or restarting
-the independent file watcher.
+are Off. History polling, Focus/Resume, native pane lifecycle cleanup, ACP
+chat/progress/usage, and Autofix continue normally. Hook/file-derived activity
+is discarded while the last internal status is preserved rather than hidden.
+
+The file watcher incrementally reads the agent CLI's own session logs to infer
+activity such as Working, Idle, and Attention for already-bound sessions. Off
+drops its filesystem subscriptions; On starts from existing files' current ends
+so records written while Off are not replayed. Watcher delivery is generation
+checked so queued observations cannot overwrite Resume Idle after disabling.
 
 ## Debug Panel
 

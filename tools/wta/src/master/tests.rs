@@ -10214,7 +10214,7 @@ async fn session_tracking_disabled_ignores_hook_discovery_but_keeps_native_lifec
         "an active CLI must focus instead of resuming twice"
     );
     assert_eq!(row.status, Some(crate::agent_sessions::AgentStatus::Idle));
-    assert!(!row.hook_activity);
+    assert!(!row.observed_activity);
     handle_master_wt_event(&state, event("agent.tool.starting")).await;
     assert_eq!(
         state.registry.lookup(&sid).await.unwrap().status,
@@ -10269,7 +10269,7 @@ async fn session_tracking_disabled_preserves_resume_and_pane_cleanup() {
     assert_eq!(listed.sessions.len(), 1);
     assert!(listed.sessions[0].has_live_binding());
     assert_eq!(listed.sessions[0].status, Some(AgentStatus::Idle));
-    assert!(!listed.sessions[0].hook_activity);
+    assert!(!listed.sessions[0].observed_activity);
     assert!(matches!(
         &listed.sessions[0].location,
         crate::agent_sessions::SessionLocation::Wsl { distro } if distro == "Ubuntu"
@@ -10293,7 +10293,7 @@ async fn session_tracking_disabled_preserves_resume_and_pane_cleanup() {
 }
 
 #[tokio::test]
-async fn session_tracking_toggle_keeps_hookless_watcher_running() {
+async fn session_tracking_toggle_pauses_watcher_without_losing_resume_idle() {
     use crate::agent_sessions::AgentStatus;
 
     let state = make_state();
@@ -10304,20 +10304,49 @@ async fn session_tracking_toggle_keeps_hookless_watcher_running() {
         generation: 0,
         emitted: codex_emitted("watched"),
     };
-    set_session_management_enabled(&state, false).await;
-    apply_observed_watcher_event(&state, old.clone()).await;
     let sid = SessionId::new("watched");
+    apply_observed_watcher_event(&state, old.clone()).await;
     assert_eq!(
         state.registry.lookup(&sid).await.unwrap().status,
         Some(AgentStatus::Working)
+    );
+    assert!(state.registry.lookup(&sid).await.unwrap().observed_activity);
+    set_session_management_enabled(&state, false).await;
+    apply_observed_watcher_event(&state, old.clone()).await;
+    assert_eq!(
+        state.registry.lookup(&sid).await.unwrap().status,
+        Some(AgentStatus::Idle)
     );
     set_session_management_enabled(&state, true).await;
     apply_observed_watcher_event(&state, old).await;
     assert_eq!(
         state.registry.lookup(&sid).await.unwrap().status,
+        Some(AgentStatus::Idle)
+    );
+    assert!(!state.registry.lookup(&sid).await.unwrap().observed_activity);
+    apply_observed_watcher_event(
+        &state,
+        crate::session_watcher::Observed {
+            generation: 2,
+            emitted: codex_emitted("watched"),
+        },
+    )
+    .await;
+    assert_eq!(
+        state.registry.lookup(&sid).await.unwrap().status,
         Some(AgentStatus::Working)
     );
-    assert!(!state.registry.lookup(&sid).await.unwrap().hook_activity);
+    set_session_management_enabled(&state, false).await;
+    assert_eq!(
+        state.registry.lookup(&sid).await.unwrap().status,
+        Some(AgentStatus::Idle)
+    );
+    assert!(state
+        .registry
+        .lookup(&sid)
+        .await
+        .unwrap()
+        .has_live_binding());
 }
 
 #[tokio::test]
@@ -10364,7 +10393,7 @@ async fn session_tracking_off_resume_still_establishes_idle_and_survives_toggle(
     }
     let row = state.registry.lookup(&sid).await.unwrap();
     assert_eq!(row.status, Some(AgentStatus::Idle));
-    assert!(!row.hook_activity);
+    assert!(!row.observed_activity);
     assert!(row.has_live_binding());
     set_session_management_enabled(&state, true).await;
     handle_session_hook(
@@ -10377,7 +10406,7 @@ async fn session_tracking_off_resume_still_establishes_idle_and_survives_toggle(
     )
     .await
     .unwrap();
-    assert!(state.registry.lookup(&sid).await.unwrap().hook_activity);
+    assert!(state.registry.lookup(&sid).await.unwrap().observed_activity);
     set_session_management_enabled(&state, false).await;
     let response = handle_sessions_list(&state, None, &Default::default())
         .await
@@ -10391,32 +10420,18 @@ async fn session_tracking_off_resume_still_establishes_idle_and_survives_toggle(
     assert_eq!(row.status, Some(AgentStatus::Idle));
     assert_eq!(row.current_tool, None);
     assert!(row.has_live_binding());
-    assert!(!row.hook_activity);
+    assert!(!row.observed_activity);
 }
 
 #[tokio::test]
-async fn session_tracking_off_keeps_watcher_status_after_hook_takeover() {
+async fn session_tracking_off_restores_internal_idle_beneath_file_and_hook_updates() {
     use crate::agent_sessions::{AgentStatus, SessionEvent};
     let state = make_state();
     let sid = SessionId::new("watcher-fallback");
     handle_session_born_bound(&state, tracking_session_start("watcher-fallback"), None)
         .await
         .unwrap();
-    handle_session_hook(
-        &state,
-        SessionEvent::ToolStarting {
-            key: sid.to_string(),
-            tool_name: "hook tool".into(),
-        },
-        false,
-    )
-    .await
-    .unwrap();
-    set_session_management_enabled(&state, false).await;
-    assert_eq!(
-        state.registry.lookup(&sid).await.unwrap().status,
-        Some(AgentStatus::Idle)
-    );
+    let independent = state.registry.lookup(&sid).await.unwrap();
     apply_observed_watcher_event(
         &state,
         crate::session_watcher::Observed {
@@ -10432,10 +10447,11 @@ async fn session_tracking_off_keeps_watcher_status_after_hook_takeover() {
         },
     )
     .await;
-    let independent = state.registry.lookup(&sid).await.unwrap();
-    assert_eq!(independent.status, Some(AgentStatus::Working));
-    assert!(!independent.hook_activity);
-    set_session_management_enabled(&state, true).await;
+    assert_eq!(
+        state.registry.lookup(&sid).await.unwrap().status,
+        Some(AgentStatus::Working)
+    );
+    assert!(state.registry.lookup(&sid).await.unwrap().observed_activity);
     handle_session_hook(
         &state,
         SessionEvent::Notification {
@@ -10455,7 +10471,7 @@ async fn session_tracking_off_keeps_watcher_status_after_hook_takeover() {
         independent.last_activity_at_ms
     );
     assert_eq!(restored.attention_reason, None);
-    assert!(!restored.hook_activity);
+    assert!(!restored.observed_activity);
 }
 
 #[tokio::test]
