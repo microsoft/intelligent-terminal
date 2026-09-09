@@ -250,6 +250,8 @@ namespace winrt::TerminalApp::implementation
         Windows::Foundation::IAsyncOperation<Microsoft::Terminal::Protocol::PaneOutput> ReadProtocolPaneOutput(winrt::guid sessionId, hstring source, int32_t maxLines);
         Windows::Foundation::IAsyncOperation<Microsoft::Terminal::Protocol::ProcessStatus> GetProtocolProcessStatus(winrt::guid sessionId);
         Windows::Foundation::IAsyncOperation<Microsoft::Terminal::Protocol::SessionVariable> GetProtocolSessionVariable(winrt::guid sessionId, hstring name);
+        Windows::Foundation::IAsyncOperation<bool> GetProtocolAgentSessionManagementEnabled();
+        Windows::Foundation::IAsyncOperation<bool> GetProtocolAgentSessionManagementPolicyBlocked();
         Windows::Foundation::IAsyncOperation<bool> SetProtocolSessionVariable(winrt::guid sessionId, hstring name, hstring value);
         Windows::Foundation::IAsyncOperation<Microsoft::Terminal::Protocol::TabCreationResult> CreateProtocolTab(Microsoft::Terminal::Settings::Model::NewTerminalArgs args, bool background);
         Windows::Foundation::IAsyncOperation<Microsoft::Terminal::Protocol::TabCreationResult> SplitProtocolPane(winrt::guid sessionId, Microsoft::Terminal::Settings::Model::SplitDirection direction, float size, Microsoft::Terminal::Settings::Model::NewTerminalArgs args, bool background);
@@ -258,6 +260,8 @@ namespace winrt::TerminalApp::implementation
         Windows::Foundation::IAsyncOperation<bool> FocusProtocolPane(winrt::guid sessionId);
         void OnAutofixStateChanged(hstring eventJson);
         void OnAgentStatusChanged(hstring eventJson);
+        void ReplayAgentSessionManagementConfig();
+        void OnEnableSessionTrackingRequested(hstring eventJson);
         void OnAgentSwitchRequested(hstring eventJson);
         void OnCloseAgentPaneRequested(hstring eventJson);
         void OnDefaultPasteRequested(hstring eventJson);
@@ -499,7 +503,7 @@ namespace winrt::TerminalApp::implementation
         // changes are reconciled separately so unready helpers can be
         // recreated before the settings snapshot advances. This remains the
         // unified dispatch point for the autofix gate, delegate agent/model,
-        // credential-free model catalogs, and YOLO default/policy.
+        // credential-free model catalogs, session tracking, and YOLO default/policy.
         // `delegateAgent` holds the resolved effective value (custom-command
         // ids already expanded).
         struct AgentRuntimeConfigSnapshot
@@ -511,6 +515,8 @@ namespace winrt::TerminalApp::implementation
             bool autofixEnabled{ false };
             bool yoloEnabled{ false };
             bool yoloPolicyBlocked{ false };
+            bool sessionManagementEnabled{ true };
+            bool sessionManagementPolicyBlocked{ false };
         };
         AgentRuntimeConfigSnapshot _lastAgentRuntimeConfig{};
         bool _agentRuntimeConfigInitialized{ false };
@@ -599,6 +605,7 @@ namespace winrt::TerminalApp::implementation
         winrt::fire_and_forget _ReconcileAgentHooksAsync(
             AgentHooksReconciliationScope scope,
             std::wstring agentId);
+        bool _PersistAgentSessionTrackingEnabled(const std::function<bool()>& writeSettings);
         static bool _ShouldDeferAgentSettingsChange(
             AgentSettingsChangeKind changeKind,
             bool canHostPane,

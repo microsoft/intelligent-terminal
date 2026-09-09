@@ -1445,6 +1445,7 @@ fn make_state_with_retirement_pending_timeout(
     retirement_pending_timeout: std::time::Duration,
 ) -> Arc<MasterStateInner> {
     Arc::new(MasterStateInner {
+        session_tracking: RwLock::new(SessionTracking::new(true)),
         session_lifecycle_gates: Mutex::new(HashMap::new()),
         session_to_helper: Mutex::new(HashMap::new()),
         session_mcp_endpoints: session_mcp::Endpoints::new("http://127.0.0.1:1/mcp".to_string()),
@@ -9720,6 +9721,7 @@ impl crate::shell::wt_channel::WtChannel for MockWtChannel {
 
 fn make_state_with_wt(wt: Arc<dyn crate::shell::wt_channel::WtChannel>) -> Arc<MasterStateInner> {
     Arc::new(MasterStateInner {
+        session_tracking: RwLock::new(SessionTracking::new(true)),
         session_lifecycle_gates: Mutex::new(HashMap::new()),
         session_to_helper: Mutex::new(HashMap::new()),
         session_mcp_endpoints: session_mcp::Endpoints::new("http://127.0.0.1:1/mcp".to_string()),
@@ -10043,6 +10045,315 @@ async fn session_hook_broadcasts_sessions_changed_after_valid_payload() {
         crate::session_registry::INTELLTERM_METHOD_SESSIONS_CHANGED
     );
     assert_eq!(notification.params.get(), "{}");
+}
+
+fn tracking_session_start(key: &str) -> crate::agent_sessions::SessionEvent {
+    crate::agent_sessions::SessionEvent::SessionStarted {
+        key: key.to_string(),
+        cli_source: crate::agent_sessions::CliSource::Codex,
+        pane_session_id: format!("pane-{key}"),
+        cwd: PathBuf::from(r"C:\repo"),
+        title: "Tracked shell session".to_string(),
+    }
+}
+
+#[tokio::test]
+async fn session_tracking_toggle_clears_activity_without_retiring_bindings_or_history() {
+    use crate::agent_sessions::{AgentStatus, SessionEvent, SessionOrigin};
+
+    let state = make_state();
+    let sid = SessionId::new("tracked");
+    handle_session_hook(&state, tracking_session_start("tracked"), false)
+        .await
+        .unwrap();
+    handle_session_hook(
+        &state,
+        SessionEvent::Notification {
+            key: "tracked".into(),
+            message: "Answer needed".into(),
+        },
+        false,
+    )
+    .await
+    .unwrap();
+    let mut history = crate::session_registry::SessionInfo::new(
+        SessionId::new("historical"),
+        PathBuf::from(r"C:\history"),
+    );
+    history.status = Some(AgentStatus::Historical);
+    history.title = Some("Historical session".into());
+    state.registry.upsert(history.clone()).await;
+    let mut chat = crate::session_registry::SessionInfo::new(
+        SessionId::new("chat"),
+        PathBuf::from(r"C:\chat"),
+    );
+    chat.origin = Some(SessionOrigin::AgentPane);
+    chat.status = Some(AgentStatus::Working);
+    chat.pane_session_id = Some("chat-pane".into());
+    state.registry.upsert(chat.clone()).await;
+    let (tx, mut rx) = mpsc::unbounded_channel();
+    state
+        .helper_ext_subscribers
+        .lock()
+        .await
+        .insert(HelperId(1), tx);
+
+    let config_event = |enabled| {
+        serde_json::json!({
+            "method": "agent_config_changed",
+            "params": { "session_management_enabled": enabled }
+        })
+    };
+    handle_master_wt_event(&state, config_event(false)).await;
+    assert!(!state.session_tracking.read().await.enabled);
+    assert!(
+        rx.try_recv().is_ok(),
+        "an open Sessions view must refresh immediately"
+    );
+    let row = state.registry.lookup(&sid).await.unwrap();
+    assert!(row.has_live_binding());
+    assert_eq!(row.pane_session_id.as_deref(), Some("pane-tracked"));
+    assert_eq!(row.status, None);
+    assert_eq!(row.attention_reason, None);
+    assert_eq!(row.current_tool, None);
+    assert_eq!(row.last_activity_at_ms, None);
+    assert_eq!(
+        state.registry.lookup(&history.session_id).await,
+        Some(history)
+    );
+    assert_eq!(state.registry.lookup(&chat.session_id).await, Some(chat));
+    assert!(state.active_retirement_helpers.lock().await.is_empty());
+
+    handle_master_wt_event(&state, config_event(false)).await;
+    assert!(
+        rx.try_recv().is_err(),
+        "duplicate settings replay must be idempotent"
+    );
+    handle_master_wt_event(&state, config_event(true)).await;
+    assert!(state.session_tracking.read().await.enabled);
+    assert_eq!(state.session_tracking.read().await.generation, 2);
+    assert_eq!(state.registry.lookup(&sid).await.unwrap().status, None);
+    handle_session_hook(
+        &state,
+        SessionEvent::ToolStarting {
+            key: "tracked".into(),
+            tool_name: "shell".into(),
+        },
+        false,
+    )
+    .await
+    .unwrap();
+    assert_eq!(
+        state.registry.lookup(&sid).await.unwrap().status,
+        Some(AgentStatus::Working)
+    );
+}
+
+#[tokio::test]
+async fn session_tracking_disabled_ignores_com_and_helper_activity_hooks() {
+    let state = make_state();
+    set_session_management_enabled(&state, false).await;
+    let response = handle_session_hook(
+        &state,
+        crate::agent_sessions::SessionEvent::ToolStarting {
+            key: "ignored".into(),
+            tool_name: "shell".into(),
+        },
+        false,
+    )
+    .await
+    .unwrap();
+    assert_eq!(response.0.get(), r#"{"applied":false}"#);
+    handle_master_wt_event(
+        &state,
+        serde_json::json!({
+            "method": "agent_event",
+            "params": {
+                "event": "agent.tool.starting",
+                "agent_session_id": "ignored-com",
+                "pane_id": "shell-pane",
+                "cli_source": "codex",
+                "payload": { "cwd": "C:\\repo" }
+            }
+        }),
+    )
+    .await;
+    assert!(state.registry.snapshot().await.is_empty());
+    assert!(state.hook_owned.lock().await.is_empty());
+}
+
+#[tokio::test]
+async fn session_tracking_disabled_preserves_hook_birth_and_end_bindings_without_activity() {
+    let state = make_state();
+    set_session_management_enabled(&state, false).await;
+    let event = |name| {
+        serde_json::json!({
+            "method": "agent_event",
+            "params": {
+                "event": name,
+                "agent_session_id": "shell-session",
+                "pane_id": "shell-pane",
+                "cli_source": "codex",
+                "payload": { "cwd": "C:\\repo" }
+            }
+        })
+    };
+    handle_master_wt_event(&state, event("agent.session.started")).await;
+    let sid = SessionId::new("shell-session");
+    let row = state.registry.lookup(&sid).await.unwrap();
+    assert!(
+        row.has_live_binding(),
+        "an active CLI must focus instead of resuming twice"
+    );
+    assert_eq!(row.status, None);
+    assert_eq!(row.last_activity_at_ms, None);
+    handle_master_wt_event(&state, event("agent.tool.starting")).await;
+    assert_eq!(state.registry.lookup(&sid).await.unwrap().status, None);
+    handle_master_wt_event(&state, event("agent.session.end")).await;
+    let ended = state.registry.lookup(&sid).await.unwrap();
+    assert_eq!(
+        ended.pane_session_id, None,
+        "an exited CLI must resume instead of focusing its shell"
+    );
+    assert_eq!(
+        ended.status,
+        Some(crate::agent_sessions::AgentStatus::Ended)
+    );
+}
+
+#[tokio::test]
+async fn session_tracking_disabled_preserves_resume_and_pane_cleanup() {
+    use crate::agent_sessions::{AgentStatus, SessionEvent};
+
+    let state = make_state();
+    set_session_management_enabled(&state, false).await;
+    handle_session_born_bound(
+        &state,
+        tracking_session_start("resumed"),
+        Some("Ubuntu".into()),
+    )
+    .await
+    .unwrap();
+    let response = handle_sessions_list(
+        &state,
+        None,
+        &crate::session_registry::SessionsListParams { rescan: true },
+    )
+    .await
+    .unwrap();
+    let listed = crate::session_registry::parse_sessions_list_response(&response.0).unwrap();
+    assert!(!listed.session_management_enabled);
+    assert_eq!(listed.sessions.len(), 1);
+    assert!(listed.sessions[0].has_live_binding());
+    assert_eq!(listed.sessions[0].status, None);
+    assert!(matches!(
+        &listed.sessions[0].location,
+        crate::agent_sessions::SessionLocation::Wsl { distro } if distro == "Ubuntu"
+    ));
+    handle_session_hook(
+        &state,
+        SessionEvent::PaneClosed {
+            pane_session_id: "pane-resumed".into(),
+        },
+        false,
+    )
+    .await
+    .unwrap();
+    let row = state
+        .registry
+        .lookup(&SessionId::new("resumed"))
+        .await
+        .unwrap();
+    assert_eq!(row.status, Some(AgentStatus::Ended));
+    assert_eq!(row.pane_session_id, None);
+}
+
+#[tokio::test]
+async fn session_tracking_toggle_rejects_buffered_watcher_generations() {
+    use crate::agent_sessions::AgentStatus;
+
+    let state = make_state();
+    handle_session_born_bound(&state, tracking_session_start("watched"), None)
+        .await
+        .unwrap();
+    let old = crate::session_watcher::Observed {
+        generation: 0,
+        emitted: codex_emitted("watched"),
+    };
+    set_session_management_enabled(&state, false).await;
+    apply_observed_watcher_event(&state, old.clone()).await;
+    set_session_management_enabled(&state, true).await;
+    apply_observed_watcher_event(&state, old).await;
+    let sid = SessionId::new("watched");
+    assert_eq!(state.registry.lookup(&sid).await.unwrap().status, None);
+    apply_observed_watcher_event(
+        &state,
+        crate::session_watcher::Observed {
+            generation: 2,
+            emitted: codex_emitted("watched"),
+        },
+    )
+    .await;
+    assert_eq!(
+        state.registry.lookup(&sid).await.unwrap().status,
+        Some(AgentStatus::Working)
+    );
+}
+
+#[tokio::test]
+async fn session_tracking_disabled_preserves_acp_chat_routing() {
+    let state = make_state();
+    let sid = SessionId::new("chat");
+    let (tx, mut rx) = mpsc::channel(NOTIF_CHANNEL_CAPACITY);
+    state.session_to_helper.lock().await.insert(
+        sid.clone(),
+        HelperRoute {
+            helper_id: HelperId(1),
+            agent_instance_id: AgentInstanceId::nil(),
+            notif_tx: tx,
+            forwarder: None,
+            consecutive_drops: Arc::new(std::sync::atomic::AtomicU64::new(0)),
+        },
+    );
+    set_session_management_enabled(&state, false).await;
+    route(&state, make_notif(&sid)).await;
+    assert_eq!(rx.recv().await.unwrap().session_id, sid);
+    assert!(state.session_to_helper.lock().await.contains_key(&sid));
+}
+
+#[tokio::test]
+async fn session_tracking_reconnect_reads_effective_setting_without_restarting_agents() {
+    let wt = Arc::new(MockWtChannel::responding(serde_json::json!({
+        "agentSessionManagementEnabled": true,
+        "effectiveAgentSessionManagementEnabled": false
+    })));
+    let state = make_state_with_wt(wt);
+    refresh_session_management_enabled(&state).await;
+    assert!(!state.session_tracking.read().await.enabled);
+    assert!(state.active_retirement_helpers.lock().await.is_empty());
+}
+
+#[tokio::test]
+async fn session_tracking_refresh_cannot_override_a_newer_unchanged_config_event() {
+    let state = make_state();
+    let revision = state.session_tracking.read().await.configuration_revision;
+    set_session_management_enabled(&state, true).await;
+    reconcile_session_management_enabled(&state, Some(false), Some(revision)).await;
+    assert!(state.session_tracking.read().await.enabled);
+    assert_eq!(state.session_tracking.read().await.generation, 0);
+}
+
+#[tokio::test]
+async fn session_tracking_reconnect_rebases_even_when_a_newer_host_event_wins() {
+    let state = make_state();
+    reconcile_session_management_enabled(&state, None, None).await;
+    let revision = state.session_tracking.read().await.configuration_revision;
+    set_session_management_enabled(&state, true).await;
+    reconcile_session_management_enabled(&state, Some(false), Some(revision)).await;
+    let tracking = state.session_tracking.read().await;
+    assert!(tracking.enabled);
+    assert_eq!(tracking.epoch, 1);
+    assert_eq!(tracking.generation, 1);
 }
 
 // ── refresh_synthetic_titles_from ───────────────────────────────
@@ -10992,6 +11303,18 @@ fn codex_emitted(key: &str) -> crate::session_watcher::Emitted {
             tool_name: String::new(),
         },
     }
+}
+
+async fn apply_watcher_event(state: &MasterStateInner, emitted: crate::session_watcher::Emitted) {
+    let generation = state.session_tracking.read().await.generation;
+    apply_observed_watcher_event(
+        state,
+        crate::session_watcher::Observed {
+            generation,
+            emitted,
+        },
+    )
+    .await;
 }
 
 // ── Hybrid event-dedup: hooks / born-bound win, watcher is fallback ──

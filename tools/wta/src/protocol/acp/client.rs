@@ -351,6 +351,9 @@ fn complete_transport_io_task(
 pub enum MasterExtRequest {
     SessionsList {
         request_id: u64,
+        /// Helper-local epoch, round-tripped with the result without sending
+        /// it to master. A toggle invalidates all prior snapshot work.
+        tracking_generation: u64,
         /// When true, master re-scans the on-disk historical session logs
         /// (`load_for_cli`) before answering — the F5 refresh path — instead of
         /// returning the cached registry snapshot.
@@ -3873,7 +3876,11 @@ fn dispatch_master_ext_request_with_yolo_timeout(
     let tab_to_session = Arc::clone(tab_to_session);
     tokio::task::spawn_local(async move {
         match req {
-            MasterExtRequest::SessionsList { request_id, rescan } => {
+            MasterExtRequest::SessionsList {
+                request_id,
+                rescan,
+                tracking_generation,
+            } => {
                 let wire = crate::session_registry::build_sessions_list_request(rescan);
                 // Bound the wait so a single dropped RPC response can't
                 // permanently strand the tab's `refetch_in_flight=true`.
@@ -3916,13 +3923,28 @@ fn dispatch_master_ext_request_with_yolo_timeout(
                     tokio::time::timeout(SESSIONS_LIST_TIMEOUT, conn.ext_method(wire)).await;
                 match result {
                     Ok(Ok(resp)) => {
-                        let sessions =
-                            crate::session_registry::parse_sessions_list_response(&resp.0)
-                                .map(|r| r.sessions)
-                                .unwrap_or_default();
+                        let (
+                            sessions,
+                            session_management_enabled,
+                            session_management_generation,
+                            session_management_epoch,
+                        ) = crate::session_registry::parse_sessions_list_response(&resp.0)
+                            .map(|r| {
+                                (
+                                    r.sessions,
+                                    r.session_management_enabled,
+                                    r.session_management_generation,
+                                    r.session_management_epoch,
+                                )
+                            })
+                            .unwrap_or_else(|_| (Vec::new(), true, 0, 0));
                         let _ = event_tx.send(AppEvent::AgentsSnapshotLoaded {
                             request_id,
                             sessions,
+                            session_management_enabled,
+                            tracking_generation,
+                            session_management_generation,
+                            session_management_epoch,
                         });
                     }
                     Ok(Err(err)) => {
@@ -3932,7 +3954,10 @@ fn dispatch_master_ext_request_with_yolo_timeout(
                             error = ?err,
                             "sessions/list ext-request failed"
                         );
-                        let _ = event_tx.send(AppEvent::AgentsSnapshotFailed { request_id });
+                        let _ = event_tx.send(AppEvent::AgentsSnapshotFailed {
+                            request_id,
+                            tracking_generation,
+                        });
                     }
                     Err(_elapsed) => {
                         tracing::warn!(
@@ -3943,7 +3968,10 @@ fn dispatch_master_ext_request_with_yolo_timeout(
                              cancellation-safety bug; unblocking refetch_in_flight \
                              so 5s tick can retry"
                         );
-                        let _ = event_tx.send(AppEvent::AgentsSnapshotFailed { request_id });
+                        let _ = event_tx.send(AppEvent::AgentsSnapshotFailed {
+                            request_id,
+                            tracking_generation,
+                        });
                     }
                 }
             }

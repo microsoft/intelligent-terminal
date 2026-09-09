@@ -3951,6 +3951,7 @@ async fn dispatch_master_ext_sessions_list_loads_snapshot() {
                 MasterExtRequest::SessionsList {
                     request_id: 7,
                     rescan: false,
+                    tracking_generation: 42,
                 },
                 &h.conn,
                 &h.event_tx,
@@ -3962,9 +3963,23 @@ async fn dispatch_master_ext_sessions_list_loads_snapshot() {
                 Ok(Some(AppEvent::AgentsSnapshotLoaded {
                     request_id,
                     sessions,
+                    session_management_enabled,
+                    tracking_generation,
+                    session_management_generation,
+                    session_management_epoch,
                 })) => {
                     assert_eq!(request_id, 7, "request_id must round-trip");
+                    assert_eq!(
+                        tracking_generation, 42,
+                        "tracking generation must round-trip"
+                    );
+                    assert_eq!(session_management_generation, 0);
+                    assert_eq!(session_management_epoch, 0);
                     assert!(sessions.is_empty(), "null ext response -> empty snapshot");
+                    assert!(
+                        session_management_enabled,
+                        "legacy master defaults to tracking"
+                    );
                 }
                 Ok(_) => panic!("expected AgentsSnapshotLoaded"),
                 _ => panic!("expected AgentsSnapshotLoaded, got nothing"),

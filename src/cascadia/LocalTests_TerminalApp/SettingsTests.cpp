@@ -1636,6 +1636,12 @@ namespace TerminalAppLocalTests
         };
         VERIFY_ARE_EQUAL(ChangeKind::None, Page::_ClassifyAgentSettingsChange(native, native));
 
+        auto trackingDisabled = native;
+        trackingDisabled.agentSessionManagementEnabled = false;
+        VERIFY_ARE_EQUAL(ChangeKind::None, Page::_ClassifyAgentSettingsChange(native, trackingDisabled));
+        VERIFY_ARE_EQUAL(ChangeKind::None, Page::_ClassifyAgentSettingsChange(trackingDisabled, native));
+        VERIFY_IS_FALSE(Page::_AgentSettingsChanged(native, trackingDisabled));
+
         auto nativeHotUpdate = native;
         nativeHotUpdate.acpModel = L"gpt-5.5";
         VERIFY_ARE_EQUAL(

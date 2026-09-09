@@ -485,6 +485,20 @@ namespace winrt::TerminalApp::implementation
         co_return result; // empty SessionId = not found
     }
 
+    IAsyncOperation<bool> TerminalPage::GetProtocolAgentSessionManagementEnabled()
+    {
+        auto strong = get_strong();
+        co_await wil::resume_foreground(Dispatcher());
+        co_return _settings.GlobalSettings().EffectiveAgentSessionManagementEnabled();
+    }
+
+    IAsyncOperation<bool> TerminalPage::GetProtocolAgentSessionManagementPolicyBlocked()
+    {
+        auto strong = get_strong();
+        co_await wil::resume_foreground(Dispatcher());
+        co_return _settings.GlobalSettings().IsAgentSessionHooksPolicyLocked();
+    }
+
     IAsyncOperation<Protocol::SessionVariable> TerminalPage::GetProtocolSessionVariable(winrt::guid sessionId, hstring name)
     {
         auto strong = get_strong();

@@ -3,7 +3,7 @@
 //!
 //! The per-CLI `classify_*` functions are the pure, testable core: they take
 //! one parsed record plus the session key and return zero or more
-//! `SessionEvent`s. The watch loop ([`watch`]) is the thin impure shell that
+//! `SessionEvent`s. The watch actor ([`start`]) is the thin impure shell that
 //! tails files (by byte offset — all four CLIs are append logs) and feeds
 //! records through them. Path → session identity lives in [`discover`].
 
@@ -16,6 +16,11 @@ pub mod discover;
 use std::collections::HashMap;
 use std::io::{Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::mpsc::{self, Sender};
+use std::sync::Arc;
+
+use anyhow::Context;
 
 /// Read the bytes appended to `path` since byte offset `from`, returning the
 /// decoded text and the new end offset. Used for the append-only CLIs.
@@ -39,6 +44,13 @@ pub struct Emitted {
     pub cli: CliSource,
     pub key: String,
     pub event: SessionEvent,
+}
+
+/// A watcher event scoped to the tracking generation that observed it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct Observed {
+    pub generation: u64,
+    pub emitted: Emitted,
 }
 
 /// Per-file progress so we only classify new records.
@@ -182,8 +194,6 @@ pub fn watched_roots() -> Vec<PathBuf> {
     ]
 }
 
-use std::sync::mpsc::Sender;
-
 /// Seed per-file progress to each existing session file's current end, so the
 /// watcher only processes content appended *after* it starts. Without this, the
 /// first `notify` event for a preexisting historical file (which the OS can
@@ -196,17 +206,31 @@ use std::sync::mpsc::Sender;
 /// Files created *after* the watcher starts are not seeded (not present here),
 /// so their first sighting is still read from offset 0 — correctly catching a
 /// new session's opening `session_meta` / `task_started` records.
+///
+/// Apart from paths removed during traversal, errors must abort installation:
+/// treating an unreadable old file as unseeded could replay it on a later event.
+/// Returns false if a tracking transition cancels the traversal.
 pub(crate) fn seed_existing_progress_in(
     roots: &[PathBuf],
     progress: &mut HashMap<PathBuf, Progress>,
-) {
+    is_current: impl Fn() -> bool,
+) -> std::io::Result<bool> {
     for root in roots {
         let mut stack = vec![root.clone()];
         while let Some(dir) = stack.pop() {
-            let Ok(entries) = std::fs::read_dir(&dir) else {
-                continue;
+            if !is_current() {
+                return Ok(false);
+            }
+            let entries = match std::fs::read_dir(&dir) {
+                Ok(entries) => entries,
+                Err(err) if err.kind() == std::io::ErrorKind::NotFound => continue,
+                Err(err) => return Err(err),
             };
-            for entry in entries.flatten() {
+            for entry in entries {
+                if !is_current() {
+                    return Ok(false);
+                }
+                let entry = entry?;
                 let path = entry.path();
                 match entry.file_type() {
                     Ok(ft) if ft.is_dir() => stack.push(path),
@@ -217,17 +241,24 @@ pub(crate) fn seed_existing_progress_in(
                         // All four CLIs are append logs — seed each file's
                         // progress to its current end so the watcher only
                         // processes content appended after it starts.
+                        let offset = match std::fs::metadata(&path) {
+                            Ok(metadata) => metadata.len(),
+                            Err(err) if err.kind() == std::io::ErrorKind::NotFound => continue,
+                            Err(err) => return Err(err),
+                        };
                         let prog = Progress {
-                            offset: std::fs::metadata(&path).map(|m| m.len()).unwrap_or(0),
+                            offset,
                             ..Default::default()
                         };
                         progress.insert(path, prog);
                     }
-                    _ => {}
+                    Err(err) if err.kind() == std::io::ErrorKind::NotFound => {}
+                    Err(err) => return Err(err),
                 }
             }
         }
     }
+    Ok(is_current())
 }
 
 /// Gemini's canonical session id, read from the file header's `sessionId`
@@ -244,66 +275,327 @@ fn read_gemini_session_id(path: &Path) -> Option<String> {
         .map(str::to_string)
 }
 
-/// Spawn a blocking `notify` watcher over the four roots. Each emitted event
-/// is sent on `tx`. Runs until `tx` is dropped or the watcher errors.
-///
-/// Recursive mode is required: session files live several levels below each
-/// root (e.g. `.codex/sessions/YYYY/MM/DD/...`).
-///
-/// Purely event-driven: a `notify` event for a file runs the incremental
-/// [`process_change`]. The watcher is a hookless **fallback** producer, so we
-/// deliberately do NOT add a periodic catch-up sweep — `notify`
-/// (ReadDirectoryChangesW) can coalesce/drop the event for a turn's final write
-/// (e.g. Codex `task_complete`), which may briefly leave a fallback row on its
-/// last status until the next file write; that imperfection is acceptable for a
-/// fallback. The watcher now only supplies STATUS to #266 born-bound rows (it
-/// no longer surfaces user-typed sessions); those rows end via their pane's
-/// `PaneClosed` event, not a pid poll.
-pub fn watch(tx: Sender<Emitted>) -> notify::Result<()> {
-    use notify::{RecursiveMode, Watcher};
+enum Message {
+    SetEnabled {
+        enabled: bool,
+        generation: u64,
+    },
+    Notify {
+        generation: u64,
+        event: notify::Result<notify::Event>,
+    },
+    Shutdown,
+}
 
-    let (raw_tx, raw_rx) = std::sync::mpsc::channel::<notify::Result<notify::Event>>();
-    let mut watcher = notify::recommended_watcher(move |res| {
-        let _ = raw_tx.send(res);
-    })?;
-    for root in watched_roots() {
-        // A missing root is fine (the user may not have that CLI) — log + skip.
-        if root.exists() {
-            if let Err(err) = watcher.watch(&root, RecursiveMode::Recursive) {
-                tracing::warn!(
-                    target: "session_watcher",
-                    root = %root.display(),
-                    error = %err,
-                    "watch failed"
-                );
-            }
+struct DesiredWatch {
+    enabled: AtomicBool,
+    generation: AtomicU64,
+}
+
+impl DesiredWatch {
+    fn new(enabled: bool, generation: u64) -> Self {
+        Self {
+            enabled: AtomicBool::new(enabled),
+            generation: AtomicU64::new(generation),
         }
     }
 
-    let mut progress: HashMap<PathBuf, Progress> = HashMap::new();
-    // Skip every record that already existed when we started watching — only
-    // track genuinely new activity. Startup-only (not polling); prevents a
-    // spurious notify on a preexisting file from replaying its whole history
-    // and flooding master with revive broadcasts. See `seed_existing_progress_in`.
-    seed_existing_progress_in(&watched_roots(), &mut progress);
+    fn set(&self, enabled: bool, generation: u64) {
+        if self.matches(enabled, generation) {
+            return;
+        }
+        // Publish cancellation before the new epoch. The master serializes
+        // transitions and advances generation on every toggle.
+        self.enabled.store(false, Ordering::SeqCst);
+        self.generation.store(generation, Ordering::SeqCst);
+        self.enabled.store(enabled, Ordering::SeqCst);
+    }
 
-    for res in raw_rx {
-        let event = match res {
-            Ok(event) => event,
-            Err(err) => {
-                tracing::warn!(target: "session_watcher", error = %err, "notify error");
-                continue;
+    fn matches(&self, enabled: bool, generation: u64) -> bool {
+        self.generation.load(Ordering::SeqCst) == generation
+            && self.enabled.load(Ordering::SeqCst) == enabled
+    }
+}
+
+/// Owns the watcher actor's lifetime. Dropping it explicitly stops observation.
+pub(crate) struct WatchControl {
+    inbox: Sender<Message>,
+    desired: Arc<DesiredWatch>,
+}
+
+impl WatchControl {
+    /// Queue a transition without blocking the caller on filesystem I/O.
+    ///
+    /// The owner advances `generation` whenever tracking changes and checks it
+    /// again when receiving [`Observed`]. Installation failures are logged by
+    /// the actor; a later enable request can retry them.
+    pub fn set_enabled(&self, enabled: bool, generation: u64) -> anyhow::Result<()> {
+        self.desired.set(enabled, generation);
+        self.inbox
+            .send(Message::SetEnabled {
+                enabled,
+                generation,
+            })
+            .map_err(|_| anyhow::anyhow!("session watcher actor has stopped"))
+    }
+}
+
+impl Drop for WatchControl {
+    fn drop(&mut self) {
+        self.desired.enabled.store(false, Ordering::SeqCst);
+        // notify itself retains an inbox sender, so channel disconnection
+        // cannot be used to shut down an enabled watcher.
+        let _ = self.inbox.send(Message::Shutdown);
+    }
+}
+
+struct ActiveWatch {
+    generation: u64,
+    _watcher: notify::RecommendedWatcher,
+    roots: Vec<PathBuf>,
+    progress: HashMap<PathBuf, Progress>,
+}
+
+struct WatchActor {
+    roots: Vec<PathBuf>,
+    inbox: Sender<Message>,
+    output: tokio::sync::mpsc::UnboundedSender<Observed>,
+    desired: Arc<DesiredWatch>,
+    active: Option<ActiveWatch>,
+}
+
+impl WatchActor {
+    fn discard_stale_watch(&mut self) {
+        if self
+            .active
+            .as_ref()
+            .is_some_and(|active| !self.desired.matches(true, active.generation))
+        {
+            self.active = None;
+        }
+    }
+
+    fn set_enabled(&mut self, enabled: bool, generation: u64) -> anyhow::Result<()> {
+        self.discard_stale_watch();
+        if !self.desired.matches(enabled, generation) {
+            return Ok(());
+        }
+        if enabled
+            && self
+                .active
+                .as_ref()
+                .is_some_and(|active| active.generation == generation)
+        {
+            return Ok(());
+        }
+
+        // Drop both subscriptions and offsets before handling any more events.
+        // While disabled, the actor only waits on its inbox and does no I/O.
+        self.active = None;
+        if !enabled {
+            return Ok(());
+        }
+
+        use notify::{RecursiveMode, Watcher};
+
+        let inbox = self.inbox.clone();
+        let desired = self.desired.clone();
+        let mut watcher = notify::recommended_watcher(move |event| {
+            if desired.matches(true, generation) {
+                // A callback racing with shutdown has nowhere left to deliver.
+                let _ = inbox.send(Message::Notify { generation, event });
             }
-        };
-        for path in event.paths {
-            for emitted in process_change(&path, &mut progress) {
-                if tx.send(emitted).is_err() {
-                    return Ok(()); // receiver gone
+        })
+        .context("creating session file watcher")?;
+        let mut progress = HashMap::new();
+        let mut roots = Vec::new();
+        let mut first_error = None;
+        for root in &self.roots {
+            if !self.desired.matches(true, generation) {
+                return Ok(());
+            }
+            let mut registered = false;
+            let install = (|| -> anyhow::Result<Option<HashMap<PathBuf, Progress>>> {
+                if !root
+                    .try_exists()
+                    .with_context(|| format!("checking session root {}", root.display()))?
+                {
+                    return Ok(None); // The user may not have this CLI installed.
+                }
+                watcher
+                    .watch(root, RecursiveMode::Recursive)
+                    .with_context(|| format!("watching session root {}", root.display()))?;
+                registered = true;
+                // Callbacks only enqueue until this root has a complete EOF
+                // baseline. A failed provider must not disable healthy ones.
+                let mut root_progress = HashMap::new();
+                if !seed_existing_progress_in(
+                    std::slice::from_ref(root),
+                    &mut root_progress,
+                    || self.desired.matches(true, generation),
+                )
+                .with_context(|| format!("seeding session root {}", root.display()))?
+                {
+                    return Ok(None);
+                }
+                Ok(Some(root_progress))
+            })();
+            match install {
+                Ok(Some(root_progress)) => {
+                    roots.push(root.clone());
+                    progress.extend(root_progress);
+                }
+                Ok(None) => {}
+                Err(error) => {
+                    tracing::warn!(
+                        target: "session_watcher",
+                        root = %root.display(),
+                        error = %format!("{error:#}"),
+                        "session root unavailable; other providers remain observed"
+                    );
+                    if registered {
+                        if let Err(error) = watcher.unwatch(root) {
+                            tracing::warn!(
+                                target: "session_watcher",
+                                root = %root.display(),
+                                %error,
+                                "could not unsubscribe unseeded root; its events will be ignored"
+                            );
+                        }
+                    }
+                    if first_error.is_none() {
+                        first_error = Some(error);
+                    }
                 }
             }
         }
+        if !self.desired.matches(true, generation) {
+            return Ok(());
+        }
+        if roots.is_empty() {
+            if let Some(error) = first_error {
+                return Err(error);
+            }
+        }
+        self.active = Some(ActiveWatch {
+            generation,
+            _watcher: watcher,
+            roots,
+            progress,
+        });
+        Ok(())
     }
-    Ok(())
+
+    fn observe(&mut self, generation: u64, event: notify::Result<notify::Event>) -> bool {
+        // Do not wait for SetEnabled behind a backlog of raw notifications:
+        // the first dispatch after a toggle drops the superseded subscription.
+        self.discard_stale_watch();
+        let Some(active) = self
+            .active
+            .as_mut()
+            .filter(|active| active.generation == generation)
+        else {
+            return true;
+        };
+        let event = match event {
+            Ok(event) => event,
+            Err(err) => {
+                tracing::warn!(
+                    target: "session_watcher",
+                    generation,
+                    error = %err,
+                    "notify error"
+                );
+                return true;
+            }
+        };
+        for path in event.paths {
+            if !active.roots.iter().any(|root| path.starts_with(root)) {
+                continue;
+            }
+            if !self.desired.matches(true, generation) {
+                self.active = None;
+                return true;
+            }
+            for emitted in process_change(&path, &mut active.progress) {
+                if !self.desired.matches(true, generation) {
+                    self.active = None;
+                    return true;
+                }
+                if self
+                    .output
+                    .send(Observed {
+                        generation,
+                        emitted,
+                    })
+                    .is_err()
+                {
+                    return false;
+                }
+            }
+        }
+        true
+    }
+
+    fn run(mut self, messages: mpsc::Receiver<Message>) {
+        for message in messages {
+            match message {
+                Message::SetEnabled {
+                    enabled,
+                    generation,
+                } => {
+                    if let Err(err) = self.set_enabled(enabled, generation) {
+                        tracing::error!(
+                            target: "session_watcher",
+                            generation,
+                            error = %format!("{err:#}"),
+                            "session file observation could not be enabled; a later enable can retry"
+                        );
+                    }
+                }
+                Message::Notify { generation, event } => {
+                    if !self.observe(generation, event) {
+                        break;
+                    }
+                }
+                Message::Shutdown => break,
+            }
+        }
+    }
+}
+
+/// Start the event-driven fallback watcher actor on a dedicated blocking thread.
+///
+/// Off retains only the waiting actor, without notify subscriptions or progress.
+/// Every enable seeds existing files to EOF, excluding activity while disabled.
+/// There are no periodic sweeps or timeout-based polls; pane lifecycle events
+/// remain responsible for ending fallback sessions.
+pub(crate) fn start(
+    tx: tokio::sync::mpsc::UnboundedSender<Observed>,
+    enabled: bool,
+    generation: u64,
+) -> std::io::Result<WatchControl> {
+    let (inbox, messages) = mpsc::channel();
+    let desired = Arc::new(DesiredWatch::new(enabled, generation));
+    let actor = WatchActor {
+        roots: watched_roots(),
+        inbox: inbox.clone(),
+        output: tx,
+        desired: desired.clone(),
+        active: None,
+    };
+    // Queue startup through the same path as later transitions, including its
+    // error reporting. No filesystem work runs on the caller's async thread.
+    inbox
+        .send(Message::SetEnabled {
+            enabled,
+            generation,
+        })
+        .map_err(|_| std::io::Error::other("session watcher inbox disconnected at startup"))?;
+    std::thread::Builder::new()
+        .name("session-watcher".into())
+        .spawn(move || actor.run(messages))?;
+    Ok(WatchControl { inbox, desired })
 }
 
 #[cfg(test)]
@@ -311,11 +603,332 @@ mod tests {
     use super::*;
     use std::io::Write;
 
+    struct TestDir(PathBuf);
+
+    impl TestDir {
+        fn new() -> Self {
+            let root = std::env::current_dir()
+                .unwrap()
+                .join("target")
+                .join("session-watcher-tests")
+                .join(uuid::Uuid::new_v4().to_string());
+            std::fs::create_dir_all(&root).unwrap();
+            Self(root)
+        }
+    }
+
+    impl Drop for TestDir {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
+    fn test_actor(
+        roots: Vec<PathBuf>,
+    ) -> (
+        WatchActor,
+        mpsc::Receiver<Message>,
+        tokio::sync::mpsc::UnboundedReceiver<Observed>,
+    ) {
+        let (inbox, messages) = mpsc::channel();
+        let (output, observed) = tokio::sync::mpsc::unbounded_channel();
+        (
+            WatchActor {
+                roots,
+                inbox,
+                output,
+                desired: Arc::new(DesiredWatch::new(false, 0)),
+                active: None,
+            },
+            messages,
+            observed,
+        )
+    }
+
+    fn changed(path: &Path) -> notify::Result<notify::Event> {
+        Ok(notify::Event::new(notify::EventKind::Any).add_path(path.to_path_buf()))
+    }
+
+    fn append(path: &Path, bytes: &[u8]) {
+        std::fs::OpenOptions::new()
+            .append(true)
+            .open(path)
+            .unwrap()
+            .write_all(bytes)
+            .unwrap();
+    }
+
+    fn transition(actor: &mut WatchActor, enabled: bool, generation: u64) -> anyhow::Result<()> {
+        actor.desired.set(enabled, generation);
+        actor.set_enabled(enabled, generation)
+    }
+
+    #[test]
+    fn watch_actor_off_has_no_subscriptions_or_progress() {
+        let dir = TestDir::new();
+        // This is deliberately not a directory: trying to seed it would fail.
+        let root = dir.0.join("session-state");
+        std::fs::write(&root, b"not a directory").unwrap();
+        let (mut actor, _messages, mut observed) = test_actor(vec![root.clone()]);
+
+        transition(&mut actor, false, 0).unwrap();
+        assert!(actor.active.is_none());
+        assert!(actor.observe(0, changed(&root)));
+        assert!(observed.try_recv().is_err());
+    }
+
+    #[test]
+    fn control_toggle_cancels_backlog_before_commands_are_received() {
+        for reenable in [false, true] {
+            let dir = TestDir::new();
+            let root = dir.0.join("session-state");
+            let session = root.join("backlog");
+            std::fs::create_dir_all(&session).unwrap();
+            let path = session.join("events.jsonl");
+            std::fs::write(&path, b"").unwrap();
+            let (mut actor, messages, mut observed) = test_actor(vec![root]);
+            transition(&mut actor, true, 1).unwrap();
+            let control = WatchControl {
+                inbox: actor.inbox.clone(),
+                desired: actor.desired.clone(),
+            };
+            append(
+                &path,
+                b"{\"type\":\"tool.execution_start\",\"data\":{\"toolName\":\"bash\"}}\n",
+            );
+            for _ in 0..128 {
+                actor
+                    .inbox
+                    .send(Message::Notify {
+                        generation: 1,
+                        event: changed(&path),
+                    })
+                    .unwrap();
+            }
+
+            control.set_enabled(false, 2).unwrap();
+            if reenable {
+                control.set_enabled(true, 3).unwrap();
+            }
+            // Retain control (and its desired state) while the actor drains
+            // notifications that precede the toggle commands in the inbox.
+            actor.inbox.send(Message::Shutdown).unwrap();
+            actor.run(messages);
+            assert!(
+                matches!(
+                    observed.try_recv(),
+                    Err(tokio::sync::mpsc::error::TryRecvError::Disconnected)
+                ),
+                "queued notifications must not read old bytes before Off or Off->On"
+            );
+        }
+    }
+
+    #[test]
+    fn control_supersedes_queued_enable_before_installation() {
+        let dir = TestDir::new();
+        let root = dir.0.join("session-state");
+        std::fs::write(&root, b"not a directory").unwrap();
+        let (mut actor, _messages, _observed) = test_actor(vec![root]);
+        let control = WatchControl {
+            inbox: actor.inbox.clone(),
+            desired: actor.desired.clone(),
+        };
+
+        control.set_enabled(true, 1).unwrap();
+        control.set_enabled(false, 2).unwrap();
+        // An attempted installation would fail on the invalid root; this old
+        // command must instead return without any filesystem observation.
+        actor.set_enabled(true, 1).unwrap();
+        assert!(actor.active.is_none());
+    }
+
+    #[test]
+    fn watch_actor_reenable_skips_disabled_history_and_stale_events() {
+        let dir = TestDir::new();
+        let root = dir.0.join("session-state");
+        let session = root.join("existing");
+        std::fs::create_dir_all(&session).unwrap();
+        let path = session.join("events.jsonl");
+        let record = b"{\"type\":\"tool.execution_start\",\"data\":{\"toolName\":\"bash\"}}\n";
+        std::fs::write(&path, record).unwrap();
+        let (mut actor, _messages, mut observed) = test_actor(vec![root.clone()]);
+
+        transition(&mut actor, true, 1).unwrap();
+        assert!(actor.observe(1, changed(&path)));
+        assert!(observed.try_recv().is_err(), "startup history is skipped");
+        append(&path, record);
+        assert!(actor.observe(1, changed(&path)));
+        assert_eq!(observed.try_recv().unwrap().generation, 1);
+
+        transition(&mut actor, false, 2).unwrap();
+        assert!(actor.active.is_none(), "Off drops watcher and progress");
+        append(&path, record);
+        let created_off = root.join("created-off").join("events.jsonl");
+        std::fs::create_dir_all(created_off.parent().unwrap()).unwrap();
+        std::fs::write(&created_off, record).unwrap();
+        assert!(actor.observe(1, changed(&path)));
+        assert!(actor.observe(1, changed(&created_off)));
+        assert!(observed.try_recv().is_err(), "Off ignores queued callbacks");
+
+        transition(&mut actor, true, 3).unwrap();
+        assert!(actor.observe(3, changed(&path)));
+        assert!(actor.observe(3, changed(&created_off)));
+        assert!(
+            observed.try_recv().is_err(),
+            "reenable skips appended history and files created while Off"
+        );
+
+        let seeded_offset = actor.active.as_ref().unwrap().progress[&path].offset;
+        append(&path, record);
+        assert!(actor.observe(1, changed(&path)));
+        assert_eq!(
+            actor.active.as_ref().unwrap().progress[&path].offset,
+            seeded_offset,
+            "stale callbacks must not read or advance progress"
+        );
+        assert!(observed.try_recv().is_err());
+        assert!(actor.observe(3, changed(&path)));
+        let fresh = observed.try_recv().unwrap();
+        assert_eq!(fresh.generation, 3);
+        assert_eq!(fresh.emitted.key, "existing");
+        assert!(matches!(
+            fresh.emitted.event,
+            SessionEvent::ToolStarting { .. }
+        ));
+        assert!(observed.try_recv().is_err(), "only fresh data is emitted");
+
+        append(&created_off, record);
+        assert!(actor.observe(3, changed(&created_off)));
+        let fresh = observed.try_recv().unwrap();
+        assert_eq!(fresh.generation, 3);
+        assert_eq!(fresh.emitted.key, "created-off");
+        assert!(observed.try_recv().is_err());
+    }
+
+    #[test]
+    fn watch_actor_duplicate_enable_does_not_discard_new_activity() {
+        let dir = TestDir::new();
+        let root = dir.0.join("session-state");
+        let session = root.join("duplicate-enable");
+        std::fs::create_dir_all(&session).unwrap();
+        let path = session.join("events.jsonl");
+        std::fs::write(&path, b"").unwrap();
+        let (mut actor, _messages, mut observed) = test_actor(vec![root]);
+
+        transition(&mut actor, true, 1).unwrap();
+        append(
+            &path,
+            b"{\"type\":\"tool.execution_start\",\"data\":{\"toolName\":\"bash\"}}\n",
+        );
+        transition(&mut actor, true, 1).unwrap();
+        assert!(actor.observe(1, changed(&path)));
+        assert_eq!(observed.try_recv().unwrap().generation, 1);
+        assert!(observed.try_recv().is_err());
+    }
+
+    #[test]
+    fn watch_actor_failed_install_stays_off_and_can_retry() {
+        let dir = TestDir::new();
+        let root = dir.0.join("session-state");
+        std::fs::write(&root, b"not a directory").unwrap();
+        let (mut actor, _messages, mut observed) = test_actor(vec![root.clone()]);
+
+        assert!(transition(&mut actor, true, 1).is_err());
+        assert!(actor.active.is_none(), "partial installation is dropped");
+        assert!(actor.observe(1, changed(&root)));
+        assert!(observed.try_recv().is_err());
+
+        std::fs::remove_file(&root).unwrap();
+        std::fs::create_dir_all(root.join("retry")).unwrap();
+        let path = root.join("retry").join("events.jsonl");
+        let record = b"{\"type\":\"tool.execution_start\",\"data\":{\"toolName\":\"bash\"}}\n";
+        std::fs::write(&path, record).unwrap();
+        transition(&mut actor, true, 1).unwrap();
+        assert!(actor.observe(1, changed(&path)));
+        assert!(observed.try_recv().is_err(), "retry still seeds to EOF");
+        append(&path, record);
+        assert!(actor.observe(1, changed(&path)));
+        assert_eq!(observed.try_recv().unwrap().generation, 1);
+    }
+
+    #[test]
+    fn watch_actor_failed_provider_does_not_disable_healthy_roots_or_replay_history() {
+        let dir = TestDir::new();
+        let healthy = dir.0.join("healthy").join("session-state");
+        let failing = dir.0.join("failing").join("session-state");
+        std::fs::create_dir_all(healthy.join("session")).unwrap();
+        std::fs::create_dir_all(failing.parent().unwrap()).unwrap();
+        std::fs::write(&failing, b"not a directory").unwrap();
+        let healthy_path = healthy.join("session").join("events.jsonl");
+        let record = b"{\"type\":\"tool.execution_start\",\"data\":{\"toolName\":\"bash\"}}\n";
+        std::fs::write(&healthy_path, record).unwrap();
+        let (mut actor, _messages, mut observed) = test_actor(vec![failing.clone(), healthy]);
+        transition(&mut actor, true, 1).unwrap();
+        assert_eq!(actor.active.as_ref().unwrap().roots.len(), 1);
+        assert!(actor.observe(1, changed(&healthy_path)));
+        assert!(observed.try_recv().is_err());
+        append(&healthy_path, record);
+        assert!(actor.observe(1, changed(&healthy_path)));
+        assert_eq!(observed.try_recv().unwrap().emitted.key, "session");
+
+        std::fs::remove_file(&failing).unwrap();
+        let recovered = failing.join("recovered").join("events.jsonl");
+        std::fs::create_dir_all(recovered.parent().unwrap()).unwrap();
+        std::fs::write(&recovered, record).unwrap();
+        assert!(actor.observe(1, changed(&recovered)));
+        assert!(
+            observed.try_recv().is_err(),
+            "unseeded provider callbacks must be ignored"
+        );
+        transition(&mut actor, false, 2).unwrap();
+        transition(&mut actor, true, 3).unwrap();
+        assert_eq!(actor.active.as_ref().unwrap().roots.len(), 2);
+        assert!(actor.observe(3, changed(&recovered)));
+        assert!(
+            observed.try_recv().is_err(),
+            "recovered provider must seed old records"
+        );
+        append(&recovered, record);
+        assert!(actor.observe(3, changed(&recovered)));
+        assert_eq!(observed.try_recv().unwrap().emitted.key, "recovered");
+    }
+
+    #[test]
+    fn control_drop_shuts_down_with_callback_sender_still_alive() {
+        let (mut actor, messages, mut observed) = test_actor(Vec::new());
+        transition(&mut actor, true, 1).unwrap();
+        let control = WatchControl {
+            inbox: actor.inbox.clone(),
+            desired: actor.desired.clone(),
+        };
+        let callback_sender = actor.inbox.clone();
+        let thread = std::thread::spawn(move || actor.run(messages));
+
+        drop(control);
+        thread.join().unwrap();
+        assert!(matches!(
+            observed.try_recv(),
+            Err(tokio::sync::mpsc::error::TryRecvError::Disconnected)
+        ));
+        drop(callback_sender);
+    }
+
+    #[test]
+    fn control_reports_a_stopped_actor() {
+        let (inbox, messages) = mpsc::channel();
+        drop(messages);
+        let control = WatchControl {
+            inbox,
+            desired: Arc::new(DesiredWatch::new(false, 0)),
+        };
+        assert!(control.set_enabled(true, 1).is_err());
+    }
+
     #[test]
     fn read_appended_returns_only_new_bytes() {
-        let dir = std::env::temp_dir().join(format!("wta-watch-{}", std::process::id()));
-        std::fs::create_dir_all(&dir).unwrap();
-        let path = dir.join("a.jsonl");
+        let dir = TestDir::new();
+        let path = dir.0.join("a.jsonl");
         std::fs::write(&path, b"line1\n").unwrap();
         let (first, off1) = read_appended(&path, 0).unwrap();
         assert_eq!(first, "line1\n");
@@ -334,10 +947,8 @@ mod tests {
 
     #[test]
     fn process_change_emits_copilot_events_incrementally() {
-        let dir = std::env::temp_dir()
-            .join(format!("wta-pc-{}", std::process::id()))
-            .join("session-state")
-            .join("sess-9");
+        let root = TestDir::new();
+        let dir = root.0.join("session-state").join("sess-9");
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join("events.jsonl");
         std::fs::write(
@@ -356,10 +967,8 @@ mod tests {
 
     #[test]
     fn process_change_does_not_lose_a_partial_line() {
-        let dir = std::env::temp_dir()
-            .join(format!("wta-partial-{}", std::process::id()))
-            .join("session-state")
-            .join("sess-partial");
+        let root = TestDir::new();
+        let dir = root.0.join("session-state").join("sess-partial");
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join("events.jsonl");
         // One complete record + a half-written second record (no newline yet).
@@ -397,7 +1006,8 @@ mod tests {
         // A preexisting Codex rollout (history) must be seeded to EOF so it is
         // NOT replayed from offset 0 — the bug that flooded master with revive
         // broadcasts. New content appended after seeding is still tracked.
-        let root = std::env::temp_dir().join(format!("wta-seed-{}", std::process::id()));
+        let dir = TestDir::new();
+        let root = &dir.0;
         let day = root.join("2026").join("06").join("10");
         std::fs::create_dir_all(&day).unwrap();
         let path =
@@ -410,7 +1020,9 @@ mod tests {
         .unwrap();
 
         let mut progress = HashMap::new();
-        seed_existing_progress_in(&[root.clone()], &mut progress);
+        assert!(
+            seed_existing_progress_in(std::slice::from_ref(root), &mut progress, || true).unwrap()
+        );
 
         // History is skipped — no replay on the first change.
         let replay = process_change(&path, &mut progress);
@@ -430,18 +1042,18 @@ mod tests {
         let fresh = process_change(&path, &mut progress);
         assert_eq!(fresh.len(), 1, "new appended record must be classified");
         assert!(matches!(fresh[0].event, SessionEvent::ToolCompleted { .. }));
-
-        let _ = std::fs::remove_dir_all(&root);
     }
 
     #[test]
     fn seed_does_not_skip_files_created_after_start() {
         // A file absent at seed time (new session created after the watcher
         // started) is not seeded, so it's read in full on first sight.
-        let root = std::env::temp_dir().join(format!("wta-seed-new-{}", std::process::id()));
-        std::fs::create_dir_all(&root).unwrap();
+        let dir = TestDir::new();
+        let root = &dir.0;
         let mut progress = HashMap::new();
-        seed_existing_progress_in(&[root.clone()], &mut progress); // empty root
+        assert!(
+            seed_existing_progress_in(std::slice::from_ref(root), &mut progress, || true).unwrap()
+        );
 
         let path =
             root.join("rollout-2026-06-10T00-00-00-aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee.jsonl");
@@ -453,8 +1065,59 @@ mod tests {
         let out = process_change(&path, &mut progress);
         assert_eq!(out.len(), 1, "a new file must be read from offset 0");
         assert!(matches!(out[0].event, SessionEvent::ToolStarting { .. }));
+    }
 
-        let _ = std::fs::remove_dir_all(&root);
+    #[test]
+    fn seed_skips_a_partial_record_written_before_enable() {
+        let dir = TestDir::new();
+        let session = dir.0.join("session-state").join("partial");
+        std::fs::create_dir_all(&session).unwrap();
+        let path = session.join("events.jsonl");
+        let prefix = b"{\"type\":\"assistant.turn";
+        std::fs::write(&path, prefix).unwrap();
+        let mut progress = HashMap::new();
+
+        assert!(
+            seed_existing_progress_in(std::slice::from_ref(&dir.0), &mut progress, || true)
+                .unwrap()
+        );
+        assert_eq!(progress[&path].offset, prefix.len() as u64);
+        append(
+            &path,
+            b"_end\",\"data\":{\"turnId\":\"0\"}}\n\
+              {\"type\":\"tool.execution_start\",\"data\":{\"toolName\":\"bash\"}}\n",
+        );
+        let fresh = process_change(&path, &mut progress);
+        assert_eq!(
+            fresh.len(),
+            1,
+            "the pre-enable partial record is not replayed"
+        );
+        assert!(matches!(fresh[0].event, SessionEvent::ToolStarting { .. }));
+    }
+
+    #[test]
+    fn seed_reports_invalid_roots_but_allows_missing_roots() {
+        let dir = TestDir::new();
+        let root = dir.0.join("not-a-directory");
+        let mut progress = HashMap::new();
+        assert!(
+            seed_existing_progress_in(std::slice::from_ref(&root), &mut progress, || true).unwrap()
+        );
+        std::fs::write(&root, b"not a directory").unwrap();
+        assert!(seed_existing_progress_in(&[root], &mut progress, || true).is_err());
+        assert!(progress.is_empty());
+    }
+
+    #[test]
+    fn seed_cancellation_does_not_read_roots() {
+        let dir = TestDir::new();
+        let root = dir.0.join("not-a-directory");
+        std::fs::write(&root, b"not a directory").unwrap();
+        let mut progress = HashMap::new();
+
+        assert!(!seed_existing_progress_in(&[root], &mut progress, || false).unwrap());
+        assert!(progress.is_empty());
     }
 
     #[test]
@@ -462,8 +1125,8 @@ mod tests {
         // Codex's multi_agent_v1/spawn_agent forks a child thread with its own
         // rollout (source.subagent) that inherits the parent's history — it must
         // never surface as its own (duplicate) row.
-        let root = std::env::temp_dir().join(format!("wta-subagent-{}", std::process::id()));
-        let dir = root.join("2026").join("06").join("10");
+        let root = TestDir::new();
+        let dir = root.0.join("2026").join("06").join("10");
         std::fs::create_dir_all(&dir).unwrap();
         let path =
             dir.join("rollout-2026-06-10T13-15-12-99999999-2222-3333-4444-555555555555.jsonl");
@@ -493,7 +1156,5 @@ mod tests {
             process_change(&path, &mut progress).is_empty(),
             "a file flagged as a subagent stays ignored on later reads"
         );
-
-        let _ = std::fs::remove_dir_all(&root);
     }
 }

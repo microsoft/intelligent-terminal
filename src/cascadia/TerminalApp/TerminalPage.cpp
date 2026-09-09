@@ -25,6 +25,7 @@
 #include "../inc/AgentSourceUtils.h"
 #include "../inc/WtaProcess.h"
 #include "../TerminalSettingsAppAdapterLib/TerminalSettings.h"
+#include "../TerminalProtocol/ProtocolParsing.h"
 #include "../inc/CustomModelProviderUtils.h"
 #include "AgentPaneContent.h"
 #include "AgentPaneDragStash.h"
@@ -2365,6 +2366,8 @@ namespace winrt::TerminalApp::implementation
             globals.EffectiveAutoFixEnabled(),
             globals.EffectiveAgentPaneYoloMode(),
             globals.IsYoloModePolicyLocked(),
+            globals.EffectiveAgentSessionManagementEnabled(),
+            globals.IsAgentSessionHooksPolicyLocked(),
         };
     }
 
@@ -2378,13 +2381,149 @@ namespace winrt::TerminalApp::implementation
         params["window_id"] = std::string{ windowId };
         params["yolo_enabled"] = config.yoloEnabled;
         params["yolo_policy_blocked"] = config.yoloPolicyBlocked;
+        params["session_management_enabled"] = config.sessionManagementEnabled;
+        params["session_management_policy_blocked"] = config.sessionManagementPolicyBlocked;
         return params;
+    }
+
+    void TerminalPage::ReplayAgentSessionManagementConfig()
+    {
+        const auto globals = _settings.GlobalSettings();
+        Json::Value params{ Json::objectValue };
+        params["window_id"] = std::to_string(_WindowProperties.WindowId());
+        params["session_management_enabled"] =
+            globals.EffectiveAgentSessionManagementEnabled();
+        params["session_management_policy_blocked"] =
+            globals.IsAgentSessionHooksPolicyLocked();
+        _RaiseProtocolEvent("agent_config_changed", params);
+    }
+
+    bool TerminalPage::_PersistAgentSessionTrackingEnabled(const std::function<bool()>& writeSettings)
+    {
+        const auto globals = _settings.GlobalSettings();
+        const auto hadPreference = globals.HasAgentSessionManagementEnabled();
+        const auto preference = globals.AgentSessionManagementEnabled();
+        bool saved = false;
+        try
+        {
+            globals.AgentSessionManagementEnabled(true);
+            saved = writeSettings();
+        }
+        CATCH_LOG()
+
+        if (!saved)
+        {
+            // Restore absence as well as value: an inherited/default preference
+            // must not become an explicit user override after a failed write.
+            if (hadPreference)
+            {
+                globals.AgentSessionManagementEnabled(preference);
+            }
+            else
+            {
+                globals.ClearAgentSessionManagementEnabled();
+            }
+            _agentPaneLog("enable_session_tracking: settings persistence failed");
+        }
+        return saved;
+    }
+
+    void TerminalPage::OnEnableSessionTrackingRequested(hstring eventJson)
+    {
+        namespace Parsing = ::Microsoft::Terminal::Protocol::Parsing;
+        Json::Value event;
+        if (!Parsing::ParseJson(winrt::to_string(eventJson), event) ||
+            !event.isObject() ||
+            event["method"] != "enable_session_tracking" ||
+            !Parsing::IsSessionTrackingEnableRequest(event["params"]))
+        {
+            _agentPaneLog("enable_session_tracking: malformed request");
+            return;
+        }
+        const auto& request = event["params"];
+        if (request["window_id"].asString() != std::to_string(_WindowProperties.WindowId()))
+        {
+            return;
+        }
+
+        Json::Value result{ Json::objectValue };
+        result["window_id"] = request["window_id"];
+        result["tab_id"] = request["tab_id"];
+        result["request_id"] = request["request_id"];
+        result["session_management_enabled"] = false;
+        result["session_management_policy_blocked"] = false;
+        result["error"] = "unavailable";
+        GlobalAppSettings globals{ nullptr };
+        try
+        {
+            globals = _settings ? _settings.GlobalSettings() : nullptr;
+            if (globals && _FindTabByStableId(winrt::to_hstring(request["tab_id"].asString())))
+            {
+                const auto action = Parsing::DecideSessionTrackingEnable(
+                    globals.IsAgentSessionHooksPolicyLocked(),
+                    globals.EffectiveAgentSessionManagementEnabled());
+                if (action == Parsing::SessionTrackingEnableAction::PolicyBlocked)
+                {
+                    result["error"] = "policy_blocked";
+                }
+                else if (action == Parsing::SessionTrackingEnableAction::Persist &&
+                         !_PersistAgentSessionTrackingEnabled([this]() { return _settings.WriteSettingsToDisk(); }))
+                {
+                    result["error"] = "save_failed";
+                }
+                else
+                {
+                    _EmitAgentRuntimeConfigIfChanged();
+                    // Also cover an unseeded runtime baseline or a helper that
+                    // missed the original update. This is global, not tab-scoped.
+                    ReplayAgentSessionManagementConfig();
+                    if (action == Parsing::SessionTrackingEnableAction::Persist)
+                    {
+                        _lastAgentSettings.agentSessionManagementEnabled =
+                            globals.EffectiveAgentSessionManagementEnabled();
+                        if (_lastAgentSettings.agentSessionManagementEnabled)
+                        {
+                            // Do not reconcile unrelated agent/model bindings:
+                            // this user action never retires panes or sessions.
+                            _ReconcileAgentHooksAsync(AgentHooksReconciliationScope::All, {});
+                        }
+                    }
+                    result["error"] = "";
+                }
+            }
+        }
+        CATCH_LOG()
+
+        try
+        {
+            if (globals)
+            {
+                result["session_management_enabled"] = globals.EffectiveAgentSessionManagementEnabled();
+                result["session_management_policy_blocked"] = globals.IsAgentSessionHooksPolicyLocked();
+                if (result["error"].asString().empty() &&
+                    !result["session_management_enabled"].asBool())
+                {
+                    result["error"] = result["session_management_policy_blocked"].asBool() ?
+                                          "policy_blocked" :
+                                          "unavailable";
+                }
+            }
+        }
+        catch (...)
+        {
+            LOG_CAUGHT_EXCEPTION();
+            result["error"] = "unavailable";
+        }
+        result["success"] = result["error"].asString().empty();
+        _RaiseProtocolEvent("session_tracking_enable_result", result);
     }
 
     // Hot-propagate runtime agent config to the running wta-helper(s) over the
     // protocol event channel. A single consolidated `agent_config_changed`
     // event carries only the fields that changed:
     //   - autofix_enabled : the auto-suggest gate (was its own event)
+    //   - session_management_enabled + session_management_policy_blocked :
+    //     external agent session tracking and its administrative gate
     //   - delegate_agent + delegate_model : the delegate-tab agent identity
     //   - cloud_models + custom_models + custom_model_selection :
     //     credential-free picker metadata and its selected entry.
@@ -2393,6 +2532,10 @@ namespace winrt::TerminalApp::implementation
     void TerminalPage::_EmitAgentRuntimeConfigIfChanged()
     {
         const auto current = _CaptureAgentRuntimeConfig();
+
+        // A later explicit restart or crash recovery must not replay the
+        // tracking flag from the master's original launch.
+        SharedWta::Instance().UpdateSessionManagementLaunchSetting(current.sessionManagementEnabled);
 
         // First call just seeds the baseline — there's no running helper to
         // notify yet. Each helper requests the full catalog after its ACP
@@ -2407,6 +2550,10 @@ namespace winrt::TerminalApp::implementation
 
         const auto& last = _lastAgentRuntimeConfig;
         const bool autofixChanged = last.autofixEnabled != current.autofixEnabled;
+        const bool sessionManagementChanged =
+            last.sessionManagementEnabled != current.sessionManagementEnabled;
+        const bool sessionManagementPolicyChanged =
+            last.sessionManagementPolicyBlocked != current.sessionManagementPolicyBlocked;
         const bool delegateChanged = last.delegateAgent != current.delegateAgent ||
                                      last.delegateModel != current.delegateModel;
         const bool customModelsChanged =
@@ -2415,7 +2562,8 @@ namespace winrt::TerminalApp::implementation
         const bool yoloChanged = last.yoloEnabled != current.yoloEnabled ||
                                  last.yoloPolicyBlocked != current.yoloPolicyBlocked;
 
-        if (!autofixChanged && !delegateChanged && !customModelsChanged && !yoloChanged)
+        if (!autofixChanged && !sessionManagementChanged && !sessionManagementPolicyChanged &&
+            !delegateChanged && !customModelsChanged && !yoloChanged)
         {
             _lastAgentRuntimeConfig = current;
             return;
@@ -2426,6 +2574,14 @@ namespace winrt::TerminalApp::implementation
         if (autofixChanged)
         {
             params["autofix_enabled"] = current.autofixEnabled;
+        }
+        if (sessionManagementChanged)
+        {
+            params["session_management_enabled"] = current.sessionManagementEnabled;
+        }
+        if (sessionManagementPolicyChanged)
+        {
+            params["session_management_policy_blocked"] = current.sessionManagementPolicyBlocked;
         }
         if (delegateChanged)
         {
@@ -3444,6 +3600,10 @@ namespace winrt::TerminalApp::implementation
         {
             helperCmd.append(L" --no-autofix");
         }
+        if (!globals.EffectiveAgentSessionManagementEnabled())
+        {
+            helperCmd.append(L" --no-session-management");
+        }
         // Global Yolo preference — ask supported providers to enable their
         // advertised ACP session mode. Policy-gated via
         // EffectiveAgentPaneYoloMode() (AgentPolicy::IsYoloModeAllowed()), so
@@ -4254,9 +4414,19 @@ namespace winrt::TerminalApp::implementation
         const auto changeKind = _ClassifyAgentSettingsChange(_lastAgentSettings, current);
         const auto hooksReconciliation =
             _ClassifyAgentHooksReconciliation(_lastAgentSettings, current);
-        if (changeKind == AgentSettingsChangeKind::None &&
-            hooksReconciliation == AgentHooksReconciliationScope::None)
+
+        // Tracking toggles do not retire sessions. Re-enable hooks even while
+        // an unrelated binding change is deferred or running.
+        _lastAgentSettings.agentSessionManagementEnabled = current.agentSessionManagementEnabled;
+        if (hooksReconciliation == AgentHooksReconciliationScope::All)
         {
+            _ReconcileAgentHooksAsync(hooksReconciliation, current.acpAgent);
+        }
+        if (changeKind == AgentSettingsChangeKind::None)
+        {
+            // Runtime-only changes still advance the baseline. Otherwise an
+            // On -> Off -> On toggle loses the hook reconciliation on re-enable.
+            _lastAgentSettings = current;
             _agentPaneLog("_ReconcileAgentSettings: no change");
             return;
         }
@@ -4349,16 +4519,9 @@ namespace winrt::TerminalApp::implementation
             return;
         }
 
-        if (hooksReconciliation != AgentHooksReconciliationScope::None)
+        if (hooksReconciliation == AgentHooksReconciliationScope::SelectedAgent)
         {
             _ReconcileAgentHooksAsync(hooksReconciliation, current.acpAgent);
-        }
-
-        if (changeKind == AgentSettingsChangeKind::None)
-        {
-            _lastAgentSettings = current;
-            _agentPaneLog("_ReconcileAgentSettings: hook reconciliation started");
-            return;
         }
 
         _agentLifecycleOperationInProgress = true;
@@ -6645,9 +6808,10 @@ namespace winrt::TerminalApp::implementation
         // Full model catalogs are intentionally not placed on the helper
         // command line. Once this specific helper reports Connected without a
         // host catalog, deliver the credential-free catalogs over the existing
-        // protocol event channel. Every Connected status resends the current
-        // Yolo default/policy in case this helper missed a one-shot hot update
-        // between argv capture and event subscription. Applying unchanged
+        // protocol event channel. The first status (even before ACP connects)
+        // and every Connected status resend the current tracking and Yolo
+        // settings in case this helper missed a hot update between argv capture
+        // and event subscription. Applying unchanged
         // values is idempotent and emits no follow-up status. The tab id scopes
         // the broadcast to the requesting helper; its follow-up status marks
         // the catalog ready and prevents a catalog response loop.
@@ -6655,11 +6819,14 @@ namespace winrt::TerminalApp::implementation
             params.isMember("host_catalog_ready") &&
             params["host_catalog_ready"].isBool() &&
             params["host_catalog_ready"].asBool();
-        const bool helperNeedsRuntimeConfig = state == L"connected";
+        const auto statusContent = statusTab ? statusTab->FindAgentPaneContent() : nullptr;
+        const bool helperNeedsRuntimeConfig =
+            state == L"connected" ||
+            (statusContent &&
+             !winrt::get_self<implementation::AgentPaneContent>(statusContent)->IsHelperEventReady());
         const bool helperNeedsHostCatalog =
-            usesHostCatalog && !hostCatalogReady && !agentId.empty();
-        if (state == L"connected" &&
-            !effectiveStatusTabId.empty() &&
+            state == L"connected" && usesHostCatalog && !hostCatalogReady && !agentId.empty();
+        if (!effectiveStatusTabId.empty() &&
             statusTab &&
             (helperNeedsRuntimeConfig || helperNeedsHostCatalog))
         {
@@ -8228,6 +8395,10 @@ namespace winrt::TerminalApp::implementation
                                         }
                                     }
 
+                                    // Lifecycle events also maintain routing
+                                    // and resume bindings while tracking is
+                                    // Off. WTA gates their status/attention
+                                    // effects with the runtime setting.
                                     if (autoFixPolicyLocked)
                                     {
                                         return;

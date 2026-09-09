@@ -146,6 +146,8 @@ namespace TerminalApp
         Windows.Foundation.IAsyncOperation<Microsoft.Terminal.Protocol.PaneOutput> ReadProtocolPaneOutput(Guid sessionId, String source, Int32 maxLines);
         Windows.Foundation.IAsyncOperation<Microsoft.Terminal.Protocol.ProcessStatus> GetProtocolProcessStatus(Guid sessionId);
         Windows.Foundation.IAsyncOperation<Microsoft.Terminal.Protocol.SessionVariable> GetProtocolSessionVariable(Guid sessionId, String name);
+        Windows.Foundation.IAsyncOperation<Boolean> GetProtocolAgentSessionManagementEnabled();
+        Windows.Foundation.IAsyncOperation<Boolean> GetProtocolAgentSessionManagementPolicyBlocked();
         Windows.Foundation.IAsyncOperation<Boolean> SetProtocolSessionVariable(Guid sessionId, String name, String value);
         Windows.Foundation.IAsyncOperation<Microsoft.Terminal.Protocol.TabCreationResult> CreateProtocolTab(Microsoft.Terminal.Settings.Model.NewTerminalArgs args, Boolean background);
         Windows.Foundation.IAsyncOperation<Microsoft.Terminal.Protocol.TabCreationResult> SplitProtocolPane(Guid sessionId, Microsoft.Terminal.Settings.Model.SplitDirection direction, Single size, Microsoft.Terminal.Settings.Model.NewTerminalArgs args, Boolean background);
@@ -153,6 +155,15 @@ namespace TerminalApp
         Windows.Foundation.IAsyncOperation<Boolean> SendProtocolInput(Guid sessionId, String text);
         Windows.Foundation.IAsyncOperation<Boolean> FocusProtocolPane(Guid sessionId);
         event Windows.Foundation.TypedEventHandler<Object, String> ProtocolVtSequenceReceived;
+
+        // Replays effective tracking and policy after a protocol subscription
+        // or reconnect, even when the settings have not changed.
+        void ReplayAgentSessionManagementConfig();
+
+        // User-clicked enable-only command:
+        // {method:"enable_session_tracking",params:{window_id,tab_id,request_id}}.
+        // Runs on the owning UI thread and acknowledges persistence without rebinding agents.
+        void OnEnableSessionTrackingRequested(String eventJson);
 
         // Inbound event from WTA carrying {method:"autofix_state",params:{state,pane_id,...}}
         // Called by the COM server on the UI thread after receiving a SendEvent from WTA.

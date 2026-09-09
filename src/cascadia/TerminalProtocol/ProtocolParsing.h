@@ -9,6 +9,7 @@
 
 #include <string>
 #include <sstream>
+#include <optional>
 
 #include <json/json.h>
 
@@ -26,6 +27,59 @@ namespace Microsoft::Terminal::Protocol::Parsing
         return Json::parseFromStream(rb, ss, &out, &errs);
     }
 
+    inline std::optional<Json::Value> BuildSettingsResponse(
+        const std::string& rawSettings,
+        const bool effectiveAgentSessionManagementEnabled,
+        const bool agentSessionManagementPolicyBlocked)
+    {
+        Json::Value settings{ Json::objectValue };
+        if (!rawSettings.empty() &&
+            (!ParseJson(rawSettings, settings) || !settings.isObject()))
+        {
+            return std::nullopt;
+        }
+
+        // Keep the user's raw preference separate from the effective model
+        // value. Never trust a similarly named field supplied in settings.json.
+        settings["effectiveAgentSessionManagementEnabled"] = effectiveAgentSessionManagementEnabled;
+        settings["agentSessionManagementPolicyBlocked"] = agentSessionManagementPolicyBlocked;
+        return settings;
+    }
+
+    inline bool IsSessionTrackingEnableRequest(const Json::Value& params)
+    {
+        if (!params.isObject())
+        {
+            return false;
+        }
+        for (const auto key : { "window_id", "tab_id", "request_id" })
+        {
+            if (!params[key].isString() || params[key].asString().empty())
+            {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    enum class SessionTrackingEnableAction
+    {
+        PolicyBlocked,
+        AlreadyEnabled,
+        Persist,
+    };
+
+    inline SessionTrackingEnableAction DecideSessionTrackingEnable(
+        const bool policyBlocked,
+        const bool enabled) noexcept
+    {
+        if (policyBlocked)
+        {
+            return SessionTrackingEnableAction::PolicyBlocked;
+        }
+        return enabled ? SessionTrackingEnableAction::AlreadyEnabled : SessionTrackingEnableAction::Persist;
+    }
+
     // ── SendEvent dispatch ──
 
     // The dispatch routes for IProtocolServer::SendEvent.
@@ -34,6 +88,8 @@ namespace Microsoft::Terminal::Protocol::Parsing
         AutofixState,         // Direct to TerminalPage, no broadcast
         AgentStatus,          // Direct to TerminalPage, no broadcast
         AgentSwitch,          // Direct to TerminalPage, no broadcast — `/agent` per-tab switch
+        // Direct to TerminalPage, no broadcast — user-clicked enable only.
+        EnableSessionTracking,
         CloseAgentPane,       // Direct to TerminalPage, no broadcast
         DefaultPaste,         // Direct to TerminalPage, no broadcast — WTA-owned right-click copy-or-paste
         AgentState,           // Direct to TerminalPage, no broadcast — unified per-tab agent-pane UI snapshot (view + pane_open + ...)
@@ -53,6 +109,7 @@ namespace Microsoft::Terminal::Protocol::Parsing
     //
     // Returns Invalid when:
     //   - JSON parsing fails
+    //   - An enable_session_tracking request has invalid identity fields
     //   - The broadcast path is selected but params.event is missing
     inline SendEventRoute ClassifySendEvent(const std::string& eventJson, Json::Value& outEvt)
     {
@@ -82,6 +139,12 @@ namespace Microsoft::Terminal::Protocol::Parsing
             if (method == "switch_agent")
             {
                 return SendEventRoute::AgentSwitch;
+            }
+            if (method == "enable_session_tracking")
+            {
+                return IsSessionTrackingEnableRequest(outEvt["params"]) ?
+                           SendEventRoute::EnableSessionTracking :
+                           SendEventRoute::Invalid;
             }
             if (method == "close_agent_pane")
             {

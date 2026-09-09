@@ -484,6 +484,19 @@ impl ShellManager {
             .ok_or_else(|| anyhow::anyhow!("No Windows Terminal channel available"))
     }
 
+    /// Read effective Terminal settings, including policy.
+    pub async fn wt_get_settings(&self) -> anyhow::Result<serde_json::Value> {
+        self.wt()?
+            .request("get_settings", serde_json::Value::Null)
+            .await
+    }
+
+    /// Publish a user-initiated UI event, reporting transport failures.
+    pub(crate) async fn wt_publish_event(&self, event: serde_json::Value) -> anyhow::Result<()> {
+        self.wt()?.request("publish_event", event).await?;
+        Ok(())
+    }
+
     /// List all WT windows.
     pub async fn wt_list_windows(&self) -> anyhow::Result<serde_json::Value> {
         self.wt()?

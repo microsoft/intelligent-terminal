@@ -314,6 +314,18 @@ pub struct SessionsListParams {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
 pub struct SessionsListResponse {
     pub sessions: Vec<SessionInfo>,
+    #[serde(default = "session_management_default")]
+    pub session_management_enabled: bool,
+    /// Advances when the master invalidates live activity.
+    #[serde(default)]
+    pub session_management_generation: u64,
+    /// Reconnect baseline for helpers whose WT stream saw different transitions.
+    #[serde(default)]
+    pub session_management_epoch: u64,
+}
+
+fn session_management_default() -> bool {
+    true
 }
 
 /// Build a `session_added` ExtNotification from a registry row.
@@ -386,8 +398,16 @@ pub fn parse_sessions_list_params(
 
 pub fn build_sessions_list_response(
     sessions: Vec<SessionInfo>,
+    session_management_enabled: bool,
+    session_management_generation: u64,
+    session_management_epoch: u64,
 ) -> Box<serde_json::value::RawValue> {
-    let response = SessionsListResponse { sessions };
+    let response = SessionsListResponse {
+        sessions,
+        session_management_enabled,
+        session_management_generation,
+        session_management_epoch,
+    };
     serde_json::value::to_raw_value(&response)
         .expect("SessionsListResponse serialization is infallible for owned data")
 }
@@ -1101,6 +1121,32 @@ impl SessionInfo {
         self.pane_session_id = Some(pane_session_id.into());
         self
     }
+
+    pub(crate) fn has_live_binding(&self) -> bool {
+        self.pane_session_id
+            .as_deref()
+            .is_some_and(|pane| !pane.is_empty())
+            && !matches!(
+                self.status,
+                Some(AgentStatus::Ended | AgentStatus::Historical)
+            )
+    }
+
+    pub(crate) fn clear_shell_activity(&mut self) {
+        if self.origin == Some(SessionOrigin::AgentPane)
+            || matches!(
+                self.status,
+                Some(AgentStatus::Ended | AgentStatus::Historical)
+            )
+        {
+            return;
+        }
+        self.status = None;
+        self.current_tool = None;
+        self.attention_reason = None;
+        self.last_error = None;
+        self.last_activity_at_ms = None;
+    }
 }
 
 /// Convert an `AgentSession` (the helper-side representation, also produced
@@ -1194,6 +1240,9 @@ pub trait SessionRegistry: Send + Sync {
 
     /// Apply a helper-observed session event to the master-side reducer state.
     async fn apply_event(&self, ev: SessionEvent) -> bool;
+
+    /// Forget observed shell activity without retiring sessions or their bindings.
+    async fn clear_shell_activity(&self);
 
     /// Update origin metadata on an existing row.
     async fn set_origin(&self, sid: &acp::schema::v1::SessionId, origin: SessionOrigin) -> bool;
@@ -1400,6 +1449,13 @@ impl SessionRegistry for InMemoryRegistry {
     async fn apply_event(&self, ev: SessionEvent) -> bool {
         let mut guard = self.inner.lock().await;
         apply_event_locked(&mut guard, ev)
+    }
+
+    async fn clear_shell_activity(&self) {
+        let mut guard = self.inner.lock().await;
+        for row in guard.sessions.values_mut() {
+            row.clear_shell_activity();
+        }
     }
 
     async fn set_origin(&self, sid: &acp::schema::v1::SessionId, origin: SessionOrigin) -> bool {
@@ -1662,7 +1718,9 @@ fn apply_event_locked(state: &mut RegistryState, ev: SessionEvent) -> bool {
                     owner.born_bound_pane
                         && matches!(
                             owner.status,
-                            Some(AgentStatus::Idle | AgentStatus::Working | AgentStatus::Attention)
+                            None | Some(
+                                AgentStatus::Idle | AgentStatus::Working | AgentStatus::Attention
+                            )
                         )
                 });
             let pane_known = pane_known && !pane_owned_by_other_born_bound;
@@ -1705,7 +1763,7 @@ fn apply_event_locked(state: &mut RegistryState, ev: SessionEvent) -> bool {
             if is_new_entry
                 || matches!(
                     entry.status,
-                    Some(AgentStatus::Ended | AgentStatus::Error | AgentStatus::Historical)
+                    None | Some(AgentStatus::Ended | AgentStatus::Error | AgentStatus::Historical)
                 )
             {
                 entry.status = Some(AgentStatus::Idle);
@@ -1769,7 +1827,7 @@ fn apply_event_locked(state: &mut RegistryState, ev: SessionEvent) -> bool {
             }
             if matches!(
                 entry.status,
-                Some(AgentStatus::Working | AgentStatus::Attention)
+                None | Some(AgentStatus::Working | AgentStatus::Attention)
             ) {
                 entry.status = Some(AgentStatus::Idle);
                 entry.attention_reason = None;
@@ -1996,6 +2054,69 @@ pub async fn apply_ext_notification(
 mod tests {
     use super::*;
 
+    #[test]
+    fn session_tracking_response_preserves_disabled_and_defaults_legacy_to_enabled() {
+        let disabled = build_sessions_list_response(Vec::new(), false, 2, 1);
+        assert!(
+            !parse_sessions_list_response(&disabled)
+                .unwrap()
+                .session_management_enabled
+        );
+        let legacy = serde_json::value::RawValue::from_string(r#"{"sessions":[]}"#.into()).unwrap();
+        assert!(
+            parse_sessions_list_response(&legacy)
+                .unwrap()
+                .session_management_enabled
+        );
+    }
+
+    #[tokio::test]
+    async fn session_tracking_clear_preserves_pane_index_and_accepts_fresh_completion() {
+        let registry = InMemoryRegistry::new();
+        let sid = acp::schema::v1::SessionId::new("tracking");
+        registry
+            .apply_event(SessionEvent::SessionStarted {
+                key: "tracking".into(),
+                cli_source: CliSource::Codex,
+                pane_session_id: "bound-pane".into(),
+                cwd: PathBuf::from(r"C:\repo"),
+                title: "Session title".into(),
+            })
+            .await;
+        registry
+            .apply_event(SessionEvent::ToolStarting {
+                key: "tracking".into(),
+                tool_name: "shell".into(),
+            })
+            .await;
+        registry.clear_shell_activity().await;
+        let row = registry.lookup(&sid).await.unwrap();
+        assert!(row.has_live_binding());
+        assert_eq!(row.status, None);
+        assert_eq!(row.current_tool, None);
+        assert_eq!(row.title.as_deref(), Some("Session title"));
+        registry
+            .apply_event(SessionEvent::ToolCompleted {
+                key: "tracking".into(),
+            })
+            .await;
+        assert_eq!(
+            registry.lookup(&sid).await.unwrap().status,
+            Some(AgentStatus::Idle)
+        );
+        registry.clear_shell_activity().await;
+        assert!(
+            registry
+                .apply_event(SessionEvent::PaneClosed {
+                    pane_session_id: "bound-pane".into(),
+                })
+                .await
+        );
+        let row = registry.lookup(&sid).await.unwrap();
+        assert_eq!(row.status, Some(AgentStatus::Ended));
+        assert!(!row.has_live_binding());
+    }
+
     fn info(id: &str, pane: Option<&str>) -> SessionInfo {
         let mut s = SessionInfo::new(
             acp::schema::v1::SessionId::new(id.to_string()),
@@ -2007,6 +2128,47 @@ mod tests {
         s
     }
 
+    #[tokio::test]
+    async fn session_tracking_clear_keeps_born_bound_resume_protection() {
+        let registry = InMemoryRegistry::new();
+        let resumed = acp::schema::v1::SessionId::new("resumed");
+        let mut row = SessionInfo::new(resumed.clone(), PathBuf::from(r"C:\repo"));
+        row.status = Some(AgentStatus::Historical);
+        registry.upsert(row).await;
+        registry
+            .apply_event(SessionEvent::ResumeDispatched {
+                key: "resumed".into(),
+            })
+            .await;
+        registry
+            .apply_event(SessionEvent::ResumePaneAssigned {
+                key: "resumed".into(),
+                pane_session_id: "resume-pane".into(),
+            })
+            .await;
+        registry.clear_shell_activity().await;
+        assert_eq!(registry.lookup(&resumed).await.unwrap().status, None);
+        registry
+            .apply_event(SessionEvent::SessionStarted {
+                key: "bootstrap".into(),
+                cli_source: CliSource::Copilot,
+                pane_session_id: "resume-pane".into(),
+                cwd: PathBuf::from(r"C:\repo"),
+                title: String::new(),
+            })
+            .await;
+        let row = registry.lookup(&resumed).await.unwrap();
+        assert!(row.has_live_binding());
+        assert_eq!(row.pane_session_id.as_deref(), Some("resume-pane"));
+        assert_eq!(
+            registry
+                .lookup(&acp::schema::v1::SessionId::new("bootstrap"))
+                .await
+                .unwrap()
+                .pane_session_id,
+            None
+        );
+    }
     #[tokio::test]
     async fn upsert_then_lookup_returns_clone() {
         let reg = InMemoryRegistry::new();
@@ -2807,7 +2969,7 @@ mod tests {
             bound_pid: None,
             born_bound_pane: false,
         };
-        let raw = build_sessions_list_response(vec![row.clone()]);
+        let raw = build_sessions_list_response(vec![row.clone()], true, 0, 0);
         let parsed = parse_sessions_list_response(&raw).expect("response parses");
         assert_eq!(parsed.sessions, vec![row]);
     }
@@ -3643,6 +3805,9 @@ mod tests {
         info.last_activity_at_ms = Some(42);
         let resp = SessionsListResponse {
             sessions: vec![info.clone()],
+            session_management_enabled: true,
+            session_management_generation: 0,
+            session_management_epoch: 0,
         };
         let raw = serde_json::value::to_raw_value(&resp).unwrap();
         let parsed = parse_sessions_list_response(&raw).unwrap();

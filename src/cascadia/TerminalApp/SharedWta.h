@@ -149,6 +149,8 @@ namespace winrt::TerminalApp::implementation
         std::optional<std::wstring> BuildEnvironmentBlock(
             std::span<const std::pair<std::wstring, std::wstring>> overrides) noexcept;
 
+        void UpdateSessionManagementArguments(std::vector<std::wstring>& arguments, bool enabled);
+
         struct SuspendedProcessOperations
         {
             DWORD(WINAPI* resumeThread)(HANDLE){ ::ResumeThread };
@@ -289,6 +291,10 @@ namespace winrt::TerminalApp::implementation
         bool Restart(const std::wstring_view wtaPath,
                      std::span<const std::wstring> extraArgs,
                      std::span<const std::pair<std::wstring, std::wstring>> environment = {});
+
+        // Refresh only the cached tracking flag; never restart the master or
+        // replace trusted agent launch arguments for a runtime-only toggle.
+        void UpdateSessionManagementLaunchSetting(bool enabled);
 
         std::string CreateRetirementRequestId();
         details::RetirementRegistration RegisterRetirement(

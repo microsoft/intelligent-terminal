@@ -328,6 +328,11 @@ impl App {
     }
 
     fn register_born_bound_session(&mut self, event: crate::agent_sessions::SessionEvent) {
+        if !self.session_management_enabled {
+            if let crate::agent_sessions::SessionEvent::SessionStarted { key, .. } = &event {
+                self.untracked_external_sessions.insert(key.clone());
+            }
+        }
         self.agent_sessions.apply(event.clone());
         if self
             .master_request_tx
@@ -401,6 +406,15 @@ impl App {
                     }
                 }
                 crossterm::event::MouseEventKind::Down(crossterm::event::MouseButton::Left) => {
+                    if self.session_tracking_enable_at(mouse.column, mouse.row) {
+                        self.cancel_completed_turn_click();
+                        self.text_selection.clear();
+                        self.pressed_session_tracking_enable = Some(self.active_mouse_tab_id());
+                        self.session_tracking_notice_focused = true;
+                        self.current_tab_mut().agents_view.search_focused = false;
+                        return;
+                    }
+                    self.pressed_session_tracking_enable = None;
                     self.text_selection.handle_mouse(mouse);
                     let click_count = self.text_selection.click_count().unwrap_or(1);
                     if click_count > 1 {
@@ -424,10 +438,19 @@ impl App {
                         });
                 }
                 crossterm::event::MouseEventKind::Drag(crossterm::event::MouseButton::Left) => {
+                    self.pressed_session_tracking_enable = None;
                     self.cancel_completed_turn_click();
                     self.text_selection.handle_mouse(mouse);
                 }
                 crossterm::event::MouseEventKind::Up(crossterm::event::MouseButton::Left) => {
+                    if let Some(tab_id) = self.pressed_session_tracking_enable.take() {
+                        if tab_id == self.active_mouse_tab_id()
+                            && self.session_tracking_enable_at(mouse.column, mouse.row)
+                        {
+                            self.request_enable_session_tracking();
+                        }
+                        return;
+                    }
                     let active_tab_id = self.active_mouse_tab_id();
                     let input_pressed = self.pressed_input_dialog_tab.take();
                     if input_pressed.as_deref() == Some(active_tab_id.as_str())
@@ -2133,7 +2156,38 @@ impl App {
                 self.agent_sessions.apply_alive_session_join(pairs);
             }
             AppEvent::SessionsChanged => {
-                self.schedule_agents_refetch_for_open_views();
+                if self.session_management_enabled {
+                    self.schedule_agents_refetch_for_open_views();
+                }
+            }
+            AppEvent::WtListenerReady => {
+                self.refresh_session_management_host_config();
+                self.refetch_empty_agents_views();
+                self.publish_agent_status();
+            }
+            AppEvent::SessionManagementSettingsLoaded {
+                configuration_revision,
+                enabled,
+                policy_blocked,
+            } => {
+                if configuration_revision == self.session_management_configuration_revision {
+                    self.apply_session_management_policy(policy_blocked);
+                    let changed = self.apply_session_management_host_config(enabled);
+                    if !changed {
+                        self.schedule_agents_refetch_for_open_views();
+                    }
+                }
+            }
+            AppEvent::SessionTrackingEnableFailed { request_id } => {
+                if self
+                    .session_tracking_enable_request
+                    .as_ref()
+                    .is_some_and(|request| request.id == request_id)
+                {
+                    tracing::warn!(target: "session_tracking", "session tracking enable request did not complete");
+                    self.session_tracking_enable_request = None;
+                    self.session_tracking_enable_error = true;
+                }
             }
             AppEvent::DirectTerminalActionProposal {
                 context,
@@ -2167,11 +2221,25 @@ impl App {
             AppEvent::AgentsSnapshotLoaded {
                 request_id,
                 sessions,
+                session_management_enabled,
+                tracking_generation,
+                session_management_generation,
+                session_management_epoch,
             } => {
-                self.handle_agents_snapshot_loaded(request_id, sessions);
+                self.handle_agents_snapshot_loaded(
+                    request_id,
+                    sessions,
+                    session_management_enabled,
+                    tracking_generation,
+                    session_management_generation,
+                    session_management_epoch,
+                );
             }
-            AppEvent::AgentsSnapshotFailed { request_id } => {
-                self.handle_agents_snapshot_failed(request_id);
+            AppEvent::AgentsSnapshotFailed {
+                request_id,
+                tracking_generation,
+            } => {
+                self.handle_agents_snapshot_failed(request_id, tracking_generation);
             }
             AppEvent::RegisterBornBoundSession { event } => {
                 self.register_born_bound_session(event);
@@ -2195,7 +2263,36 @@ impl App {
                 // so the agent session view stays current. Unrelated to autofix /
                 // tab routing; runs before the same-pane skip because we want
                 // to record events from our own pane too.
+                if method == "session_tracking_enable_result" {
+                    self.handle_session_tracking_enable_result(&params);
+                    return;
+                }
+
                 if method == "agent_event" {
+                    let session_id = params
+                        .get("agent_session_id")
+                        .and_then(|value| value.as_str())
+                        .unwrap_or("");
+                    let own_session = self.session_to_tab.contains_key(session_id)
+                        || self.agent_sessions.origin_for_pane(&pane_id)
+                            == Some(crate::agent_sessions::SessionOrigin::AgentPane);
+                    let event = params.get("event").and_then(|value| value.as_str());
+                    if !self.session_management_enabled && !own_session {
+                        // Keep lifecycle bindings for Focus and agent-exit
+                        // autofix exclusion, but never consume shell activity
+                        // or attention notifications while tracking is off.
+                        if !matches!(
+                            event,
+                            Some(
+                                "agent.session.started"
+                                    | "agent.session.start"
+                                    | "agent.session.stopped"
+                                    | "agent.session.end"
+                            )
+                        ) {
+                            return;
+                        }
+                    }
                     // Helper-local only. Master subscribes to the same COM
                     // broadcast and routes the hook into the authoritative
                     // registry itself (`handle_master_wt_event`), so forwarding
@@ -2207,10 +2304,19 @@ impl App {
                         pane_id.as_str(),
                         &params,
                     );
+                    if !own_session {
+                        if let Some(key) = self.agent_sessions.key_for_pane(&pane_id) {
+                            if self.session_management_enabled {
+                                self.untracked_external_sessions.remove(&key);
+                            } else {
+                                self.untracked_external_sessions.insert(key);
+                            }
+                        }
+                    }
                     // Diagnostics aid: surface the raw event payload in the
                     // active tab's chat so a developer can correlate hook
                     // wire-format with registry behavior. Off by default.
-                    if self.log_agent_events {
+                    if self.log_agent_events && (self.session_management_enabled || own_session) {
                         let detail = serde_json::to_string(&params)
                             .unwrap_or_else(|_| "<unserializable>".to_string());
                         self.current_tab_mut()
@@ -2400,6 +2506,25 @@ impl App {
                     // — all in place, with NO agent-pane teardown/restart.
                     // Agent identity and launch-time model changes use the
                     // separate same-helper rebind event.
+                    let target_tab = params
+                        .get("tab_id")
+                        .and_then(|value| value.as_str())
+                        .unwrap_or("");
+                    let tracking_enabled = params
+                        .get("session_management_enabled")
+                        .and_then(|value| value.as_bool());
+                    let tracking_policy_blocked = params
+                        .get("session_management_policy_blocked")
+                        .and_then(|value| value.as_bool());
+                    // Subscribe replay names its publishing window but has
+                    // no target tab: Sessions is a global setting, so every
+                    // helper must accept that field across window boundaries.
+                    if target_tab.is_empty() {
+                        self.apply_session_management_policy(tracking_policy_blocked);
+                        if let Some(enabled) = tracking_enabled {
+                            self.apply_session_management_host_config(enabled);
+                        }
+                    }
                     let target_window = params
                         .get("window_id")
                         .and_then(|value| value.as_str())
@@ -2411,13 +2536,16 @@ impl App {
                     {
                         return;
                     }
-                    let target_tab = params
-                        .get("tab_id")
-                        .and_then(|value| value.as_str())
-                        .unwrap_or("");
                     let owner_tab = self.owner_tab_id.as_deref().unwrap_or("");
                     if !target_tab.is_empty() && !owner_tab.is_empty() && target_tab != owner_tab {
                         return;
+                    }
+
+                    if !target_tab.is_empty() {
+                        self.apply_session_management_policy(tracking_policy_blocked);
+                        if let Some(enabled) = tracking_enabled {
+                            self.apply_session_management_host_config(enabled);
+                        }
                     }
 
                     if let Some(enabled) = params.get("autofix_enabled").and_then(|v| v.as_bool()) {

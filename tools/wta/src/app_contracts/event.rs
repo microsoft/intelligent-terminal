@@ -295,6 +295,15 @@ pub enum AppEvent {
     AliveSessionRemoved(agent_client_protocol::schema::v1::SessionId),
     AliveJoinUpgrade(Vec<(String, Option<String>)>),
     SessionsChanged,
+    WtListenerReady,
+    SessionManagementSettingsLoaded {
+        configuration_revision: u64,
+        enabled: bool,
+        policy_blocked: Option<bool>,
+    },
+    SessionTrackingEnableFailed {
+        request_id: String,
+    },
     DirectTerminalActionProposal {
         context: crate::agent_tools::action_proposal::channel::ValidationContext,
         payload: String,
@@ -314,9 +323,14 @@ pub enum AppEvent {
     AgentsSnapshotLoaded {
         request_id: u64,
         sessions: Vec<crate::session_registry::SessionInfo>,
+        session_management_enabled: bool,
+        tracking_generation: u64,
+        session_management_generation: u64,
+        session_management_epoch: u64,
     },
     AgentsSnapshotFailed {
         request_id: u64,
+        tracking_generation: u64,
     },
     RegisterBornBoundSession {
         event: crate::agent_sessions::SessionEvent,

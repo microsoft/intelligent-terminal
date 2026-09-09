@@ -22,6 +22,16 @@ namespace
 
 namespace winrt::TerminalApp::implementation::details
 {
+    void UpdateSessionManagementArguments(std::vector<std::wstring>& arguments, const bool enabled)
+    {
+        constexpr std::wstring_view flag{ L"--no-session-management" };
+        std::erase(arguments, flag);
+        if (!enabled)
+        {
+            arguments.emplace_back(flag);
+        }
+    }
+
     uint64_t LiveObjectGenerationTracker::Get(const winrt::Windows::Foundation::IInspectable& object)
     {
         std::lock_guard lock{ _mutex };
@@ -637,6 +647,15 @@ namespace winrt::TerminalApp::implementation
     {
         co_await winrt::resume_after(WtaSessionCloseGracePeriod);
         Instance().ReleasePane();
+    }
+
+    void SharedWta::UpdateSessionManagementLaunchSetting(const bool enabled)
+    {
+        std::lock_guard lock{ _mtx };
+        if (!_cachedWtaPath.empty())
+        {
+            details::UpdateSessionManagementArguments(_cachedExtraArgs, enabled);
+        }
     }
 
     bool SharedWta::Restart()

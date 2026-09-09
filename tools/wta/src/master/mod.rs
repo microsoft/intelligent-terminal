@@ -56,7 +56,7 @@ const MASTER_PIPE_DISCOVERY_FILE: &str = "master-pipe.txt";
 use agent_client_protocol as acp;
 use anyhow::{anyhow, Context, Result};
 use tokio::net::windows::named_pipe::{NamedPipeServer, ServerOptions};
-use tokio::sync::{mpsc, watch, Mutex, OnceCell};
+use tokio::sync::{mpsc, watch, Mutex, OnceCell, RwLock};
 use tokio::task::LocalSet;
 use tokio_util::compat::{TokioAsyncReadCompatExt, TokioAsyncWriteCompatExt};
 
@@ -249,10 +249,34 @@ struct HelperRoute {
     consecutive_drops: Arc<std::sync::atomic::AtomicU64>,
 }
 
+struct SessionTracking {
+    enabled: bool,
+    // Fence buffered watcher events and snapshots across tracking transitions.
+    generation: u64,
+    // Rebase helpers when this listener may have missed settings transitions.
+    epoch: u64,
+    // Even an unchanged host event supersedes an in-flight get_settings reply.
+    configuration_revision: u64,
+    watcher: Option<crate::session_watcher::WatchControl>,
+}
+
+impl SessionTracking {
+    fn new(enabled: bool) -> Self {
+        Self {
+            enabled,
+            generation: 0,
+            epoch: 0,
+            configuration_revision: 0,
+            watcher: None,
+        }
+    }
+}
+
 /// State shared between the master's `acp::Client` impl (receives
 /// notifications from the agent CLI) and each helper's `acp::Agent`
 /// impl (receives requests from one helper).
 struct MasterStateInner {
+    session_tracking: RwLock<SessionTracking>,
     /// Weak cache of per-SessionId lifecycle gates. Route mutations take the
     /// corresponding gate before `session_to_helper`; physical close holds it
     /// across the ACP round-trip without blocking unrelated SessionIds.
@@ -4242,6 +4266,9 @@ async fn run_master_loop(config: MasterConfig, pipe_name: String) -> Result<()> 
     // retrying after its initial readiness timeout, so master must retain the
     // channel but must not wait up to 15 seconds before accepting helpers.
     let wt_event_rx = wt_cli.as_ref().map(|channel| channel.subscribe_events());
+    let wt_ready_rx = wt_cli
+        .as_ref()
+        .map(|channel| channel.subscribe_listener_ready());
     if let Some(channel) = wt_cli.as_ref() {
         let channel = Arc::clone(channel);
         tokio::task::spawn_local(async move {
@@ -4284,6 +4311,7 @@ async fn run_master_loop(config: MasterConfig, pipe_name: String) -> Result<()> 
             .context("read master session MCP HTTP endpoint")?
     );
     let inner = Arc::new(MasterStateInner {
+        session_tracking: RwLock::new(SessionTracking::new(config.session_management_enabled)),
         session_lifecycle_gates: Mutex::new(HashMap::new()),
         session_to_helper: Mutex::new(HashMap::new()),
         session_mcp_endpoints: session_mcp::Endpoints::new(session_mcp_endpoint),
@@ -4343,49 +4371,33 @@ async fn run_master_loop(config: MasterConfig, pipe_name: String) -> Result<()> 
     }
 
     // ── Hookless Class-B session watcher ──────────────────────────────
-    // A blocking `notify` watcher runs on its own OS thread; a bridge thread
-    // forwards emitted events into this LocalSet via a tokio channel, where
-    // they're applied to master's registry (same reducer as session_hook).
+    // The control thread drops its filesystem subscriptions while tracking is
+    // off. Generations reject buffered events across an Off -> On transition.
     {
-        let (sync_tx, sync_rx) = std::sync::mpsc::channel::<crate::session_watcher::Emitted>();
-        if let Err(err) = std::thread::Builder::new()
-            .name("wta-session-watch".into())
-            .spawn(move || {
-                if let Err(err) = crate::session_watcher::watch(sync_tx) {
-                    tracing::warn!(target: "session_watcher", error = %err, "watcher exited");
-                }
-            })
-        {
-            tracing::warn!(
-                target: "session_watcher",
-                error = %err,
-                "failed to spawn session-watch thread; hookless fallback disabled"
-            );
-        }
-
         let (async_tx, mut async_rx) =
-            tokio::sync::mpsc::unbounded_channel::<crate::session_watcher::Emitted>();
-        if let Err(err) = std::thread::Builder::new()
-            .name("wta-session-watch-bridge".into())
-            .spawn(move || {
-                for emitted in sync_rx {
-                    if async_tx.send(emitted).is_err() {
-                        break;
-                    }
-                }
-            })
-        {
-            tracing::warn!(
+            tokio::sync::mpsc::unbounded_channel::<crate::session_watcher::Observed>();
+        match crate::session_watcher::start(async_tx, config.session_management_enabled, 0) {
+            Ok(control) => inner.session_tracking.write().await.watcher = Some(control),
+            Err(error) => tracing::warn!(
                 target: "session_watcher",
-                error = %err,
-                "failed to spawn session-watch bridge thread; watcher events will not reach master"
-            );
+                %error,
+                "failed to start session watcher; hookless fallback unavailable"
+            ),
         }
 
         let inner_for_watch = Arc::clone(&inner);
         tokio::task::spawn_local(async move {
-            while let Some(emitted) = async_rx.recv().await {
-                apply_watcher_event(&inner_for_watch, emitted).await;
+            while let Some(observed) = async_rx.recv().await {
+                apply_observed_watcher_event(&inner_for_watch, observed).await;
+            }
+        });
+    }
+
+    if let Some(mut rx) = wt_ready_rx {
+        let state = Arc::clone(&inner);
+        tokio::task::spawn_local(async move {
+            while rx.recv().await.is_some() {
+                refresh_session_management_enabled(&state).await;
             }
         });
     }
@@ -6386,23 +6398,31 @@ async fn handle_sessions_list(
         }
     }
 
-    let mut sessions = state.registry.snapshot().await;
+    let sessions = state.registry.snapshot().await;
     if let Some(agent) = agent {
         if sessions
             .iter()
             .any(crate::session_registry::title_is_synthetic)
         {
             let titles = host_titles_via_acp(agent).await;
-            // Re-snapshot only when a title actually changed; the common steady-state
-            // (no synthetic rows, or nothing to upgrade) reuses the first snapshot.
-            if refresh_synthetic_titles_from(&*state.registry, &titles).await {
-                sessions = state.registry.snapshot().await;
-            }
+            refresh_synthetic_titles_from(&*state.registry, &titles).await;
         }
     }
 
+    let tracking = state.session_tracking.read().await;
+    let mut sessions = state.registry.snapshot().await;
+    if !tracking.enabled {
+        for session in &mut sessions {
+            session.clear_shell_activity();
+        }
+    }
     sessions.sort_by(|l, r| l.session_id.0.cmp(&r.session_id.0));
-    let raw = crate::session_registry::build_sessions_list_response(sessions);
+    let raw = crate::session_registry::build_sessions_list_response(
+        sessions,
+        tracking.enabled,
+        tracking.generation,
+        tracking.epoch,
+    );
     Ok(acp::schema::v1::ExtResponse::new(raw.into()))
 }
 
@@ -6429,7 +6449,7 @@ async fn handle_session_hook(
     // high-frequency routine events (tool start/stop, notifications, resume
     // bookkeeping) go to debug. Keeps the load-bearing transitions visible
     // without the per-tool flood that dominated the info logs.
-    {
+    if state.session_tracking.read().await.enabled {
         use crate::agent_sessions::SessionEvent;
         // Match on a reference so the level decision borrows rather than
         // consumes `event` (it's used again below for the reducer).
@@ -6510,6 +6530,21 @@ async fn apply_master_session_event(
         // born-bound (which would let the watcher overwrite live hook state).
         let gate = session_lifecycle_gate(state, &sid).await;
         let _gate_guard = gate.lock().await;
+        let tracking = state.session_tracking.read().await;
+        // Birth/end bindings keep Focus and Resume correct while activity is
+        // disabled. In particular, a CLI can exit without closing its pane.
+        let lifecycle = matches!(
+            &event,
+            crate::agent_sessions::SessionEvent::SessionStarted { .. }
+                | crate::agent_sessions::SessionEvent::SessionStopped { .. }
+        );
+        if !tracking.enabled
+            && !binding_only
+            && !lifecycle
+            && !state.session_to_helper.lock().await.contains_key(&sid)
+        {
+            return (false, None);
+        }
 
         if binding_only {
             // A born-bound registration and ResumeDispatched explicitly mark a
@@ -6524,6 +6559,9 @@ async fn apply_master_session_event(
                     crate::agent_sessions::SessionEvent::ResumeDispatched { .. }
                 );
             let applied = state.registry.apply_event(event).await;
+            if !tracking.enabled {
+                state.registry.clear_shell_activity().await;
+            }
             if applied || starts_new_generation {
                 // A real binding transition starts a hook-free generation: the
                 // watcher may supply activity but may not re-bind the pane.
@@ -6548,6 +6586,9 @@ async fn apply_master_session_event(
                 state.born_bound.lock().await.remove(&sid);
             }
             let applied = state.registry.apply_event(event).await;
+            if !tracking.enabled {
+                state.registry.clear_shell_activity().await;
+            }
             return (applied, refresh_key);
         }
     }
@@ -6604,7 +6645,15 @@ async fn handle_session_born_bound(
 ///      without touching the pane binding; or
 ///   3. anything else (a user-typed CLI, or a machine-wide copilot/claude in
 ///      VS Code / another terminal) → drop — we can't bind it to an IT pane.
-async fn apply_watcher_event(state: &MasterStateInner, emitted: crate::session_watcher::Emitted) {
+async fn apply_observed_watcher_event(
+    state: &MasterStateInner,
+    observed: crate::session_watcher::Observed,
+) {
+    let tracking = state.session_tracking.read().await;
+    if !tracking.enabled || tracking.generation != observed.generation {
+        return;
+    }
+    let emitted = observed.emitted;
     let sid = acp::schema::v1::SessionId::new(emitted.key.clone());
 
     // Hybrid dedup — the watcher is a *fallback*. Coordinate with authoritative
@@ -6629,6 +6678,7 @@ async fn apply_watcher_event(state: &MasterStateInner, emitted: crate::session_w
     if state.born_bound.lock().await.contains(&sid) {
         let key = emitted.key.clone();
         let applied = state.registry.apply_event(emitted.event).await;
+        drop(tracking);
         let title_upgraded =
             try_refresh_title_via_acp(state, &acp::schema::v1::SessionId::new(key)).await;
         if applied || title_upgraded {
@@ -8089,6 +8139,17 @@ async fn handle_master_agent_event(state: &Arc<MasterStateInner>, params: &serde
     use crate::agent_sessions::CliSource;
 
     let event = params.get("event").and_then(|v| v.as_str()).unwrap_or("");
+    if !state.session_tracking.read().await.enabled
+        && !matches!(
+            event,
+            "agent.session.started"
+                | "agent.session.start"
+                | "agent.session.stopped"
+                | "agent.session.end"
+        )
+    {
+        return;
+    }
     if !event.starts_with("agent.") {
         return;
     }
@@ -8208,13 +8269,16 @@ async fn resolve_master_hook_key(
 
     let snapshot = state.registry.snapshot().await;
     let is_live = |s: &crate::session_registry::SessionInfo| {
-        matches!(
-            s.status,
-            Some(AgentStatus::Idle)
-                | Some(AgentStatus::Working)
-                | Some(AgentStatus::Attention)
-                | Some(AgentStatus::Error)
-        )
+        s.has_live_binding()
+            || matches!(
+                s.status,
+                Some(
+                    AgentStatus::Idle
+                        | AgentStatus::Working
+                        | AgentStatus::Attention
+                        | AgentStatus::Error
+                )
+            )
     };
 
     if !asid.is_empty() {
@@ -8263,6 +8327,89 @@ async fn resolve_master_hook_key(
     None
 }
 
+async fn set_session_management_enabled(state: &MasterStateInner, enabled: bool) {
+    reconcile_session_management_enabled(state, Some(enabled), None).await;
+}
+
+async fn reconcile_session_management_enabled(
+    state: &MasterStateInner,
+    enabled: Option<bool>,
+    expected_revision: Option<u64>,
+) {
+    {
+        let mut tracking = state.session_tracking.write().await;
+        if expected_revision.is_some_and(|revision| revision != tracking.configuration_revision) {
+            return;
+        }
+        tracking.configuration_revision += 1;
+        let reconnect = enabled.is_none();
+        let enabled = enabled.unwrap_or(tracking.enabled);
+        if tracking.enabled == enabled && !reconnect {
+            return;
+        }
+        if reconnect {
+            tracking.epoch += 1;
+        }
+        tracking.enabled = enabled;
+        tracking.generation += 1;
+        if let Some(watcher) = &tracking.watcher {
+            if let Err(error) = watcher.set_enabled(enabled, tracking.generation) {
+                tracing::warn!(
+                    target: "session_tracking",
+                    %error,
+                    enabled,
+                    "failed to update session watcher"
+                );
+            }
+        }
+        // Keep ownership for focus/resume and lifecycle cleanup, but never
+        // revive a pre-disable Working/Attention state when tracking resumes.
+        state.registry.clear_shell_activity().await;
+        tracing::info!(
+            target: "session_tracking",
+            enabled,
+            generation = tracking.generation,
+            "live session tracking changed without retiring agent sessions"
+        );
+    }
+    broadcast_ext_to_helpers(
+        state,
+        crate::session_registry::build_sessions_changed_notification(),
+    )
+    .await;
+}
+
+async fn refresh_session_management_enabled(state: &MasterStateInner) {
+    let Some(wt) = &state.wt else {
+        return;
+    };
+    // Invalidate missed activity even if a newer host event supersedes the
+    // asynchronous settings read. Otherwise helpers could wait forever for
+    // transitions that this listener never observed.
+    reconcile_session_management_enabled(state, None, None).await;
+    let revision = state.session_tracking.read().await.configuration_revision;
+    match wt.request("get_settings", serde_json::Value::Null).await {
+        Ok(settings) => {
+            if let Some(enabled) = settings
+                .get("effectiveAgentSessionManagementEnabled")
+                .and_then(serde_json::Value::as_bool)
+            {
+                reconcile_session_management_enabled(state, Some(enabled), Some(revision)).await;
+            } else {
+                tracing::debug!(
+                    target: "session_tracking",
+                    "Terminal did not return the effective session tracking setting"
+                );
+            }
+        }
+        Err(error) => tracing::warn!(
+            target: "session_tracking",
+            %error,
+            "could not refresh session tracking after WT event listener connected"
+        ),
+    }
+}
+
 /// Master-side WT event subscriber. Bridges `connection_state`
 /// notifications from the COM channel into the master's session
 /// registry so that closing a pane (Ctrl+Shift+W, close-tab, hard kill)
@@ -8283,6 +8430,20 @@ async fn handle_master_wt_event(state: &Arc<MasterStateInner>, event_json: serde
         .get("params")
         .cloned()
         .unwrap_or_else(|| serde_json::json!({}));
+
+    if method == "agent_config_changed" {
+        if let Some(value) = params.get("session_management_enabled") {
+            if let Some(enabled) = value.as_bool() {
+                set_session_management_enabled(state, enabled).await;
+            } else {
+                tracing::warn!(
+                    target: "session_tracking",
+                    "agent_config_changed has an invalid session_management_enabled value"
+                );
+            }
+        }
+        return;
+    }
 
     if method == "retire_agent_sessions" {
         handle_retire_agent_sessions_event(state, params).await;
@@ -8441,18 +8602,10 @@ async fn handle_master_wt_event(state: &Arc<MasterStateInner>, event_json: serde
         // on this COM stream. Reconcile the prompt here too, in broadcast order;
         // a duplicate PaneClosed is a no-op. Agent panes have no shell beneath
         // them, so only a bound shell session may be ended by this heuristic.
-        use crate::agent_sessions::{AgentStatus, OriginFilter};
+        use crate::agent_sessions::OriginFilter;
         let shell_session = state.registry.snapshot().await.into_iter().find(|row| {
             OriginFilter::ShellOnly.matches_opt(row.origin.as_ref())
-                && matches!(
-                    row.status,
-                    Some(
-                        AgentStatus::Idle
-                            | AgentStatus::Working
-                            | AgentStatus::Attention
-                            | AgentStatus::Error
-                    )
-                )
+                && row.has_live_binding()
                 && row
                     .pane_session_id
                     .as_deref()

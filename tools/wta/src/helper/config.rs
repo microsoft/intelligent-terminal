@@ -16,6 +16,7 @@ pub(crate) struct HelperConfig {
     pub(crate) delegate_agent: Option<String>,
     pub(crate) delegate_model: Option<String>,
     pub(crate) no_autofix: bool,
+    pub(crate) session_management_enabled: bool,
     pub(crate) yolo_mode: bool,
     pub(crate) yolo_policy_blocked: bool,
     pub(crate) setup: Option<String>,

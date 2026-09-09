@@ -297,6 +297,36 @@ impl App {
         if self.current_tab().current_view == View::Agents {
             let tab_id = self.active_tab_key().to_string();
 
+            if self.can_enable_session_tracking() && self.session_tracking_enable_hit.is_some() {
+                if matches!(key.code, KeyCode::Tab | KeyCode::BackTab)
+                    && !key
+                        .modifiers
+                        .intersects(KeyModifiers::CONTROL | KeyModifiers::ALT)
+                {
+                    self.session_tracking_notice_focused = !self.session_tracking_notice_focused;
+                    self.current_tab_mut().agents_view.search_focused = false;
+                    return;
+                }
+                if self.session_tracking_notice_focused {
+                    match key.code {
+                        KeyCode::Enter | KeyCode::Char(' ') if key.modifiers.is_empty() => {
+                            self.request_enable_session_tracking();
+                            return;
+                        }
+                        KeyCode::Esc => {
+                            self.session_tracking_notice_focused = false;
+                            return;
+                        }
+                        KeyCode::Up | KeyCode::Down | KeyCode::Char('/') => {
+                            self.session_tracking_notice_focused = false;
+                        }
+                        _ => {}
+                    }
+                }
+            } else {
+                self.session_tracking_notice_focused = false;
+            }
+
             if self.current_tab().agents_view.search_focused {
                 match &key.code {
                     KeyCode::Esc => {

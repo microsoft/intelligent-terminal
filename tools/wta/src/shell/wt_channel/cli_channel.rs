@@ -583,6 +583,7 @@ pub struct CliChannel {
     available: AtomicBool,
     debug_tx: Option<mpsc::UnboundedSender<DebugMessage>>,
     event_tx: std::sync::Mutex<Option<mpsc::UnboundedSender<serde_json::Value>>>,
+    listener_ready_tx: std::sync::Mutex<Option<mpsc::UnboundedSender<()>>>,
     listener_shutdown: std::sync::Mutex<Option<oneshot::Sender<()>>>,
     wtcli_path: String,
 }
@@ -604,6 +605,7 @@ impl CliChannel {
             available: AtomicBool::new(true),
             debug_tx: None,
             event_tx: std::sync::Mutex::new(None),
+            listener_ready_tx: std::sync::Mutex::new(None),
             listener_shutdown: std::sync::Mutex::new(None),
             wtcli_path,
         }
@@ -619,6 +621,7 @@ impl CliChannel {
             available: AtomicBool::new(true),
             debug_tx: None,
             event_tx: std::sync::Mutex::new(None),
+            listener_ready_tx: std::sync::Mutex::new(None),
             listener_shutdown: std::sync::Mutex::new(None),
             wtcli_path: resolve_wtcli_path(),
         })
@@ -632,6 +635,12 @@ impl CliChannel {
     pub fn subscribe_events(&self) -> mpsc::UnboundedReceiver<serde_json::Value> {
         let (tx, rx) = mpsc::unbounded_channel();
         *self.event_tx.lock().unwrap() = Some(tx);
+        rx
+    }
+
+    pub(crate) fn subscribe_listener_ready(&self) -> mpsc::UnboundedReceiver<()> {
+        let (tx, rx) = mpsc::unbounded_channel();
+        *self.listener_ready_tx.lock().unwrap() = Some(tx);
         rx
     }
 
@@ -745,6 +754,9 @@ impl CliChannel {
                                                     parent_pid,
                                                     "WT protocol event listener subscribed"
                                                 );
+                                                if let Some(tx) = this.listener_ready_tx.lock().unwrap().as_ref() {
+                                                    let _ = tx.send(());
+                                                }
                                             }
                                             if let Some(tx) = ready_tx.take() {
                                                 let _ = tx.send(());
@@ -962,6 +974,7 @@ impl WtChannel for CliChannel {
             }
             "get_active_pane" => self.run_wtcli(&["active-pane"]).await,
             "get_settings" => self.run_wtcli(&["get-settings"]).await,
+            "publish_event" => self.run_wtcli(&["publish", &params.to_string()]).await,
             "read_pane_output" => {
                 let pane_id = params
                     .get("session_id")

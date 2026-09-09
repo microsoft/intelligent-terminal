@@ -467,6 +467,15 @@ async fn run_acp_app(
             // only helper-local pane/session status may lag.
             // get_capabilities triggers _ensurePageEventsRegistered() on the WT server.
             if let Some(ref protocol_ch) = wt_protocol_channel {
+                let mut ready_rx = protocol_ch.subscribe_listener_ready();
+                let ready_event_tx = event_tx.clone();
+                tokio::task::spawn_local(async move {
+                    while ready_rx.recv().await.is_some() {
+                        if ready_event_tx.send(app::AppEvent::WtListenerReady).is_err() {
+                            break;
+                        }
+                    }
+                });
                 tracing::info!("start_reader: starting...");
                 let reader = Arc::clone(protocol_ch);
                 tokio::spawn(async move {
@@ -869,6 +878,7 @@ async fn run_acp_app(
             let autofix_enabled = !config.no_autofix;
             let mut app_state = app::App::new(prompt_tx, recommendation_tx, permission_tx, new_session_tx, load_session_tx, drop_session_tx, rename_session_tx, restart_tx, master_ext_tx, debug_capture_enabled, wt_connected, autofix_enabled, Arc::clone(&shell_mgr), Arc::clone(&yolo_state));
             app_state.set_proposal_channels(Arc::clone(&proposal_channels));
+            app_state.apply_session_management_host_config(config.session_management_enabled);
             app_state.set_allowed_agent_ids(config.allowed_agent_ids.clone());
             // Seed the hot-updatable runtime agent config: the shared
             // delegate runtime table, the helper's own agent_cmd (needed to

@@ -380,6 +380,44 @@ void TerminalProtocolComServer::_ensurePageEventsRegistered()
 void TerminalProtocolComServer::s_OnWindowAdded(AppHost* /*host*/)
 {
     _ensurePageEventsRegistered();
+    _replayAgentSessionManagementConfig();
+}
+
+void TerminalProtocolComServer::_replayAgentSessionManagementConfig()
+{
+    if (!s_emperor)
+    {
+        return;
+    }
+
+    // A master can reconnect without any helper reaching ACP Connected. Read
+    // the live setting on the owning UI thread after the sink is subscribed,
+    // rather than trusting the master's original command line. One window is
+    // sufficient: this setting is global, and the event deliberately has no
+    // tab_id so the master can consume it independently of helper routing.
+    for (const auto& host : s_emperor->GetWindows())
+    {
+        const auto page = _getPage(host.get());
+        if (!page)
+        {
+            continue;
+        }
+        const auto dispatcher = page.Dispatcher();
+        if (!dispatcher)
+        {
+            continue;
+        }
+        dispatcher.RunAsync(
+            winrt::Windows::UI::Core::CoreDispatcherPriority::Normal,
+            [page]() {
+                try
+                {
+                    page.ReplayAgentSessionManagementConfig();
+                }
+                CATCH_LOG()
+            });
+        return;
+    }
 }
 
 void TerminalProtocolComServer::s_NotifyEventToComClients(const std::string& eventJson)
@@ -769,12 +807,29 @@ try
 {
     RETURN_HR_IF_NULL(E_POINTER, json);
     *json = nullptr;
+    RETURN_HR_IF(E_NOT_VALID_STATE, !s_emperor);
 
     const std::filesystem::path settingsPath{
         std::wstring_view{ winrt::Microsoft::Terminal::Settings::Model::CascadiaSettings::SettingsPath() }
     };
-    *json = _bstr(til::io::read_file_as_utf8_string_if_exists(settingsPath));
-    return S_OK;
+    const auto rawSettings = til::io::read_file_as_utf8_string_if_exists(settingsPath);
+    for (const auto& host : s_emperor->GetWindows())
+    {
+        const auto page = _getPage(host.get());
+        if (!page)
+        {
+            continue;
+        }
+
+        const auto response = ProtocolParsing::BuildSettingsResponse(
+            rawSettings,
+            page.GetProtocolAgentSessionManagementEnabled().get(),
+            page.GetProtocolAgentSessionManagementPolicyBlocked().get());
+        RETURN_HR_IF(E_INVALIDARG, !response);
+        *json = _bstrFromJson(*response);
+        return S_OK;
+    }
+    return E_NOT_VALID_STATE;
 }
 CATCH_RETURN()
 
@@ -1044,6 +1099,7 @@ try
 
     // Ensure page events are wired up (one-time global init).
     _ensurePageEventsRegistered();
+    _replayAgentSessionManagementConfig();
     return S_OK;
 }
 CATCH_RETURN()
@@ -1096,6 +1152,9 @@ try
         return S_OK;
     case ProtocolParsing::SendEventRoute::AgentSwitch:
         _dispatchAgentSwitchToPage(eventH);
+        return S_OK;
+    case ProtocolParsing::SendEventRoute::EnableSessionTracking:
+        _dispatchEnableSessionTrackingToPage(eventH);
         return S_OK;
     case ProtocolParsing::SendEventRoute::CloseAgentPane:
         // User pressed Ctrl+C twice in the wta TUI. Marshal to the UI
@@ -1255,6 +1314,37 @@ void TerminalProtocolComServer::_dispatchAgentSwitchToPage(const winrt::hstring&
                 {
                     // Page may have been torn down during dispatch.
                 }
+            });
+    }
+}
+
+void TerminalProtocolComServer::_dispatchEnableSessionTrackingToPage(const winrt::hstring& eventJson)
+{
+    if (!s_emperor)
+    {
+        return;
+    }
+    // The page checks both window and tab identity on its owning UI thread.
+    for (const auto& host : s_emperor->GetWindows())
+    {
+        const auto page = _getPage(host.get());
+        if (!page)
+        {
+            continue;
+        }
+        const auto dispatcher = page.Dispatcher();
+        if (!dispatcher)
+        {
+            continue;
+        }
+        dispatcher.RunAsync(
+            winrt::Windows::UI::Core::CoreDispatcherPriority::Normal,
+            [page, eventJson]() {
+                try
+                {
+                    page.OnEnableSessionTrackingRequested(eventJson);
+                }
+                CATCH_LOG()
             });
     }
 }

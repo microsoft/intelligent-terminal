@@ -182,6 +182,12 @@ agent.custom.auth_hint: "Make sure %{name} is installed and on your PATH."  # {L
 
 # ── Agents view (src/ui/agents_view.rs) ─────────────────────────────────────
 agents.loading: "Loading..."
+# Notice in the AI-agent Sessions view; activity tracking is separate from chat and history.
+agents.tracking_off: "Session status tracking is off."
+agents.tracking_turn_on: "Turn on"  # Action link in Sessions that enables and saves global session status tracking.
+agents.tracking_turning_on: "Turning on..."  # Shown while the Sessions action is waiting for the setting to be saved.
+agents.tracking_policy_blocked: "Session status tracking is disabled by your organization."
+agents.tracking_enable_failed: "Couldn't turn on session status tracking."
 # {Locked="Enter","Esc","F5","↑","↓","/"} - key combinations, do not translate
 agents.footer_hint: "(↑ ↓ to navigate • Enter to launch session • Esc to exit • F5 to refresh • / to search)"
 # Status badge when agent session is actively processing

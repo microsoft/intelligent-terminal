@@ -148,6 +148,26 @@ snapshots.
 | Y / N | Quick allow/reject on permission dialog |
 | Up / Down / Enter | Navigate permission options |
 
+## Session Tracking
+
+The **Sessions** toggle in Settings > Agents (`agentSessionManagementEnabled`)
+controls live shell-agent session tracking. Saving Off takes effect without
+restarting the master, helpers, or agent CLIs: hook-driven status updates stop,
+filesystem watchers unsubscribe, and stale activity/attention indicators are
+cleared. Existing hooks remain installed, but automatic hook reconciliation is
+disabled.
+
+While tracking is Off, the Sessions view shows a muted notice with a **Turn on**
+action. The action saves the global preference; organization policy can disable
+it. No Off notice is shown while tracking is On, including empty, loading, or
+searching views.
+
+History browsing, manual refresh, focus/resume, agent-pane chat, Autofix, and
+delegation remain available. Pane bindings needed for routing and lifecycle
+cleanup are retained; an unknown activity state does not mean a session ended.
+Turning tracking back on resumes observation without replaying file records
+written while it was off.
+
 ## Debug Panel
 
 Press **F12** to open a side panel showing all JSON-RPC messages between WTA and Windows Terminal in real time.

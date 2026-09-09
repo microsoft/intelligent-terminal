@@ -1209,6 +1209,19 @@ pub struct App {
     /// session list itself is global; only the *picker view* (open state
     /// + selected row) lives per-tab on `TabSession`.
     pub agent_sessions: crate::agent_sessions::AgentSessionRegistry,
+    pub session_management_enabled: bool,
+    pub(crate) session_management_policy_blocked: Option<bool>,
+    pub(crate) session_tracking_enable_request: Option<SessionTrackingEnableRequest>,
+    pub(crate) session_tracking_enable_error: bool,
+    pub(crate) session_tracking_notice_focused: bool,
+    pub(crate) session_tracking_enable_hit: Option<ratatui::layout::Rect>,
+    pressed_session_tracking_enable: Option<String>,
+    session_management_generation: u64,
+    session_management_host_authoritative: bool,
+    session_management_configuration_revision: u64,
+    master_session_tracking: Option<MasterSessionTracking>,
+    /// Cached hook activity is not current again merely because tracking resumes.
+    pub untracked_external_sessions: HashSet<String>,
     /// Whether the connected ACP agent advertised the `loadSession`
     /// capability in its initialize response. Used by the
     /// session management view's Enter handler to short-circuit
@@ -1328,6 +1341,19 @@ pub const CLOSE_PANE_ARM_WINDOW: std::time::Duration = std::time::Duration::from
 pub const SELECTION_COPIED_HINT_WINDOW: std::time::Duration =
     std::time::Duration::from_millis(1500);
 
+#[derive(Clone, Copy, Debug)]
+struct MasterSessionTracking {
+    generation: u64,
+    epoch: u64,
+    enabled: bool,
+    minimum_generation: u64,
+}
+
+pub(crate) struct SessionTrackingEnableRequest {
+    id: String,
+    configuration_revision: u64,
+}
+
 // (Historical-session load-state tracking was removed: the helper no longer
 // scans on-disk history; the session view renders from master's `session/list`
 // snapshot. See doc/specs/per-cli-history-filtering.md.)
@@ -1349,10 +1375,19 @@ pub(crate) fn known_cli_id(src: &crate::agent_sessions::CliSource) -> Option<&'s
     }
 }
 
+fn clear_external_session_status(sessions: &mut [crate::session_registry::SessionInfo]) {
+    for session in sessions {
+        session.clear_shell_activity();
+    }
+}
+
 pub(crate) fn session_info_to_agent_session(
     info: &crate::session_registry::SessionInfo,
 ) -> crate::agent_sessions::AgentSession {
     use crate::agent_sessions::{AgentSession, AgentStatus, CliSource, SessionOrigin};
+    // AgentSession's legacy enum has no unknown-activity variant. Historical
+    // selects an empty badge only; Enter reads the original SessionInfo live
+    // binding below rather than interpreting this display fallback as liveness.
     let status = info.status.clone().unwrap_or(AgentStatus::Historical);
     let origin = info.origin.clone().unwrap_or(SessionOrigin::Unknown);
     let cli_source = info
@@ -1373,7 +1408,7 @@ pub(crate) fn session_info_to_agent_session(
     let last_activity_at = info
         .last_activity_at_ms
         .map(|ms| std::time::UNIX_EPOCH + std::time::Duration::from_millis(ms))
-        .unwrap_or_else(std::time::SystemTime::now);
+        .unwrap_or(std::time::UNIX_EPOCH);
     AgentSession {
         key: info.session_id.0.to_string(),
         cli_source,
@@ -1492,6 +1527,18 @@ impl App {
             pending_session_load: None,
             session_to_tab: HashMap::new(),
             agent_sessions: crate::agent_sessions::AgentSessionRegistry::new(),
+            session_management_enabled: true,
+            session_management_policy_blocked: None,
+            session_tracking_enable_request: None,
+            session_tracking_enable_error: false,
+            session_tracking_notice_focused: false,
+            session_tracking_enable_hit: None,
+            pressed_session_tracking_enable: None,
+            session_management_generation: 0,
+            session_management_host_authoritative: false,
+            session_management_configuration_revision: 0,
+            master_session_tracking: None,
+            untracked_external_sessions: HashSet::new(),
             agent_supports_load_session: false,
             agent_supports_image: false,
             sessions_origin_filter: resolve_sessions_origin_filter(),
@@ -1626,6 +1673,14 @@ impl App {
                     .is_some_and(|tab| tab.loading_session)
             })
             .cloned();
+        if self.event_tx.is_some()
+            && self
+                .deferred_acp
+                .as_ref()
+                .is_some_and(|params| params.prompt_rx.is_none())
+        {
+            self.reset_master_session_tracking();
+        }
         if let (Some(ref tx), Some(ref mut params)) = (&self.event_tx, &mut self.deferred_acp) {
             // If channels were consumed by a previous (failed) attempt, create fresh ones.
             // Also update all sender fields on self so the App routes to the new ACP client.
@@ -2818,7 +2873,26 @@ impl App {
         };
         let row = RowSnapshot {
             origin: s.origin.clone(),
-            liveness: liveness_from_status(&s.status, s.pane_session_id.clone()),
+            liveness: if self
+                .current_tab()
+                .agents_view
+                .snapshot
+                .as_ref()
+                .is_some_and(|snapshot| {
+                    snapshot.iter().any(|info| {
+                        info.session_id.0.as_ref() == s.key
+                            && info.status.is_none()
+                            && info.has_live_binding()
+                    })
+                }) {
+                // sessions/list omits unknown activity while retaining a live
+                // binding. Unknown display status must not turn Focus into Resume.
+                crate::session_mgmt::Liveness::Live {
+                    pane_session_id: s.pane_session_id.clone(),
+                }
+            } else {
+                liveness_from_status(&s.status, s.pane_session_id.clone())
+            },
             key: s.key.clone(),
             cli_source: s.cli_source.clone(),
             load_session_supported: self.agent_supports_load_session,
@@ -3308,6 +3382,276 @@ impl App {
         );
     }
 
+    pub(crate) fn set_session_management_enabled(&mut self, enabled: bool) {
+        if enabled {
+            self.session_tracking_enable_request = None;
+            self.session_tracking_enable_error = false;
+            self.session_tracking_notice_focused = false;
+            self.session_tracking_enable_hit = None;
+        }
+        if self.session_management_enabled == enabled {
+            return;
+        }
+        self.session_management_enabled = enabled;
+        self.invalidate_external_session_tracking();
+    }
+
+    fn apply_session_management_policy(&mut self, blocked: Option<bool>) {
+        if let Some(blocked) = blocked {
+            self.session_management_configuration_revision = self
+                .session_management_configuration_revision
+                .wrapping_add(1);
+            self.session_management_policy_blocked = Some(blocked);
+            if blocked {
+                self.session_tracking_enable_request = None;
+                self.session_tracking_enable_error = false;
+                self.session_tracking_notice_focused = false;
+                self.session_tracking_enable_hit = None;
+            }
+        }
+    }
+
+    fn can_enable_session_tracking(&self) -> bool {
+        !self.session_management_enabled
+            && self.session_management_policy_blocked == Some(false)
+            && self.session_tracking_enable_request.is_none()
+    }
+
+    fn session_tracking_enable_at(&self, column: u16, row: u16) -> bool {
+        self.current_tab().current_view == View::Agents
+            && self.can_enable_session_tracking()
+            && self
+                .session_tracking_enable_hit
+                .is_some_and(|rect| rect.contains(ratatui::layout::Position::new(column, row)))
+    }
+
+    fn request_enable_session_tracking(&mut self) {
+        if !self.can_enable_session_tracking() {
+            return;
+        }
+        let identity = self
+            .window_id
+            .as_deref()
+            .filter(|id| !id.is_empty())
+            .zip(self.owner_tab_id.as_deref().filter(|id| !id.is_empty()));
+        let (Some((window_id, tab_id)), Some(event_tx)) = (identity, self.event_tx.clone()) else {
+            tracing::warn!(target: "session_tracking", "cannot enable tracking without host identity and event channel");
+            self.session_tracking_enable_error = true;
+            return;
+        };
+        let request_id = uuid::Uuid::new_v4().to_string();
+        let event = serde_json::json!({
+            "type": "event",
+            "method": "enable_session_tracking",
+            "params": {
+                "window_id": window_id,
+                "tab_id": tab_id,
+                "request_id": request_id,
+            }
+        });
+        self.session_tracking_enable_error = false;
+        self.session_tracking_enable_request = Some(SessionTrackingEnableRequest {
+            id: request_id.clone(),
+            configuration_revision: self.session_management_configuration_revision,
+        });
+        let shell = Arc::clone(&self.shell_mgr);
+        tokio::spawn(async move {
+            match shell.wt_publish_event(event).await {
+                Ok(()) => tokio::time::sleep(std::time::Duration::from_secs(10)).await,
+                Err(error) => tracing::warn!(
+                    target: "session_tracking",
+                    %error,
+                    "failed to send user request to enable session tracking"
+                ),
+            }
+            let _ = event_tx.send(AppEvent::SessionTrackingEnableFailed { request_id });
+        });
+    }
+
+    fn handle_session_tracking_enable_result(&mut self, params: &serde_json::Value) {
+        if params.get("window_id").and_then(serde_json::Value::as_str) != self.window_id.as_deref()
+            || params.get("tab_id").and_then(serde_json::Value::as_str)
+                != self.owner_tab_id.as_deref()
+        {
+            return;
+        }
+        let Some(request) = self.session_tracking_enable_request.as_ref() else {
+            return;
+        };
+        if params.get("request_id").and_then(serde_json::Value::as_str) != Some(request.id.as_str())
+        {
+            return;
+        }
+        let (Some(success), Some(enabled), Some(blocked)) = (
+            params.get("success").and_then(serde_json::Value::as_bool),
+            params
+                .get("session_management_enabled")
+                .and_then(serde_json::Value::as_bool),
+            params
+                .get("session_management_policy_blocked")
+                .and_then(serde_json::Value::as_bool),
+        ) else {
+            tracing::warn!(target: "session_tracking", "invalid session tracking enable result");
+            self.session_tracking_enable_request = None;
+            self.session_tracking_enable_error = true;
+            return;
+        };
+        let revision = request.configuration_revision;
+        self.session_tracking_enable_request = None;
+        if revision == self.session_management_configuration_revision {
+            self.apply_session_management_policy(Some(blocked));
+            self.apply_session_management_host_config(enabled);
+        }
+        self.session_tracking_enable_error =
+            !success && self.session_management_policy_blocked != Some(true);
+        if !success {
+            tracing::warn!(target: "session_tracking", blocked, "Terminal could not enable session tracking");
+        }
+    }
+
+    fn invalidate_external_session_tracking(&mut self) {
+        self.session_management_generation = self.session_management_generation.wrapping_add(1);
+        self.untracked_external_sessions.extend(
+            self.agent_sessions
+                .iter_sorted()
+                .into_iter()
+                .filter(|session| session.origin != crate::agent_sessions::SessionOrigin::AgentPane)
+                .map(|session| session.key.clone()),
+        );
+        for tab in self.tab_sessions.values_mut() {
+            // Responses from before a toggle cannot restore old status or
+            // undo the current setting, including an On -> Off -> On sequence.
+            tab.agents_view.latest_request_id = None;
+            tab.agents_view.refetch_in_flight = false;
+            tab.agents_view.rescan_in_flight = false;
+            tab.agents_view.pending_rescan = false;
+            tab.agents_view.dirty = false;
+            if let Some(snapshot) = tab.agents_view.snapshot.as_mut() {
+                clear_external_session_status(snapshot);
+            }
+        }
+    }
+
+    pub(crate) fn apply_session_management_host_config(&mut self, enabled: bool) -> bool {
+        self.session_management_host_authoritative = true;
+        self.session_management_configuration_revision = self
+            .session_management_configuration_revision
+            .wrapping_add(1);
+        let changed = self.session_management_enabled != enabled;
+        if changed {
+            if let Some(master) = self.master_session_tracking.as_mut() {
+                // The master can observe a host update before this helper.
+                // Do not demand a second transition when it already reports
+                // the new value and no earlier local transition is pending.
+                if enabled != master.enabled || master.minimum_generation > master.generation {
+                    master.minimum_generation = master.minimum_generation.saturating_add(1);
+                }
+            }
+        }
+        self.set_session_management_enabled(enabled);
+        if changed && enabled {
+            self.schedule_agents_refetch_for_open_views();
+        } else {
+            // An unchanged replay can supersede the reconnect settings query.
+            // Preserve history-open intent after its first fetch was invalidated.
+            self.refetch_empty_agents_views();
+        }
+        changed
+    }
+
+    fn reset_master_session_tracking(&mut self) {
+        self.master_session_tracking = None;
+        self.invalidate_external_session_tracking();
+    }
+
+    fn observe_master_session_tracking(
+        &mut self,
+        enabled: bool,
+        generation: u64,
+        epoch: u64,
+    ) -> (bool, bool) {
+        match self.master_session_tracking {
+            Some(mut master) if epoch == master.epoch => {
+                let current = generation >= master.minimum_generation;
+                if generation >= master.generation {
+                    master.generation = generation;
+                    master.enabled = enabled;
+                    master.minimum_generation = master.minimum_generation.max(generation);
+                    self.master_session_tracking = Some(master);
+                }
+                (current, false)
+            }
+            Some(master) if epoch < master.epoch => (false, false),
+            previous => {
+                self.master_session_tracking = Some(MasterSessionTracking {
+                    generation,
+                    epoch,
+                    enabled,
+                    minimum_generation: generation,
+                });
+                (true, previous.is_some())
+            }
+        }
+    }
+
+    fn refresh_session_management_host_config(&mut self) {
+        // A reconnect may have missed both Off and On. Drop prior activity
+        // even when the eventual effective setting is unchanged.
+        self.invalidate_external_session_tracking();
+        self.session_management_configuration_revision = self
+            .session_management_configuration_revision
+            .wrapping_add(1);
+        let configuration_revision = self.session_management_configuration_revision;
+        let Some(event_tx) = self.event_tx.clone() else {
+            return;
+        };
+        let shell_mgr = Arc::clone(&self.shell_mgr);
+        tokio::spawn(async move {
+            match shell_mgr.wt_get_settings().await {
+                Ok(settings) => {
+                    if let Some(enabled) = settings
+                        .get("effectiveAgentSessionManagementEnabled")
+                        .and_then(serde_json::Value::as_bool)
+                    {
+                        let _ = event_tx.send(AppEvent::SessionManagementSettingsLoaded {
+                            configuration_revision,
+                            enabled,
+                            policy_blocked: settings
+                                .get("agentSessionManagementPolicyBlocked")
+                                .and_then(serde_json::Value::as_bool),
+                        });
+                    } else {
+                        tracing::debug!(
+                            target: "session_tracking",
+                            "Terminal did not return the effective session tracking setting"
+                        );
+                    }
+                }
+                Err(error) => tracing::warn!(
+                    target: "session_tracking",
+                    %error,
+                    "could not refresh helper session tracking after WT listener connected"
+                ),
+            }
+        });
+    }
+
+    fn refetch_empty_agents_views(&mut self) {
+        let loading_tabs: Vec<_> = self
+            .tab_sessions
+            .iter()
+            .filter(|(_, tab)| {
+                tab.agents_view.latest_request_id.is_none()
+                    && !tab.agents_view.refetch_in_flight
+                    && tab.agents_view.snapshot.as_ref().is_some_and(Vec::is_empty)
+            })
+            .map(|(id, _)| id.clone())
+            .collect();
+        for tab_id in loading_tabs {
+            self.schedule_agents_refetch_for_tab(&tab_id);
+        }
+    }
+
     pub(crate) fn open_agents_view_for_tab(&mut self, tab_id: String) {
         crate::telemetry::log_sessions_view_opened();
         {
@@ -3350,6 +3694,7 @@ impl App {
     }
 
     fn schedule_agents_refetch_for_tab(&mut self, tab_id: &str) {
+        let tracking_generation = self.session_management_generation;
         let request = {
             let tab = self.tab_mut(tab_id);
             if tab.agents_view.snapshot.is_none() {
@@ -3372,7 +3717,11 @@ impl App {
             // whole F5 refresh (a normal poll keeps this false). Cleared when
             // the response / failure lands.
             tab.agents_view.rescan_in_flight = rescan;
-            crate::protocol::acp::client::MasterExtRequest::SessionsList { request_id, rescan }
+            crate::protocol::acp::client::MasterExtRequest::SessionsList {
+                request_id,
+                rescan,
+                tracking_generation,
+            }
         };
         let _ = self.master_request_tx.send(request);
     }
@@ -3391,8 +3740,15 @@ impl App {
     fn handle_agents_snapshot_loaded(
         &mut self,
         request_id: u64,
-        sessions: Vec<crate::session_registry::SessionInfo>,
+        mut sessions: Vec<crate::session_registry::SessionInfo>,
+        session_management_enabled: bool,
+        tracking_generation: u64,
+        master_generation: u64,
+        master_epoch: u64,
     ) {
+        if tracking_generation != self.session_management_generation {
+            return;
+        }
         let tabs: Vec<String> = self
             .tab_sessions
             .iter()
@@ -3400,6 +3756,33 @@ impl App {
                 (tab.agents_view.latest_request_id == Some(request_id)).then(|| id.clone())
             })
             .collect();
+        if tabs.is_empty() {
+            return;
+        }
+        let (tracking_current, epoch_changed) = self.observe_master_session_tracking(
+            session_management_enabled,
+            master_generation,
+            master_epoch,
+        );
+        if epoch_changed {
+            self.invalidate_external_session_tracking();
+        }
+        let previous_enabled = self.session_management_enabled;
+        if !self.session_management_host_authoritative {
+            // Master's state is a bootstrap fallback only. Once host config
+            // arrives, independent ACP response ordering cannot override it.
+            self.set_session_management_enabled(session_management_enabled);
+        }
+        if !self.session_management_enabled || !session_management_enabled || !tracking_current {
+            clear_external_session_status(&mut sessions);
+        } else {
+            for session in &sessions {
+                if session.status.is_some() {
+                    self.untracked_external_sessions
+                        .remove(session.session_id.0.as_ref());
+                }
+            }
+        }
         for tab_id in tabs {
             let old_selected = self
                 .tab_sessions
@@ -3424,6 +3807,15 @@ impl App {
                 self.schedule_agents_refetch_for_tab(&tab_id);
             }
         }
+        if epoch_changed {
+            self.schedule_agents_refetch_for_open_views();
+        } else if previous_enabled != self.session_management_enabled {
+            if self.session_management_enabled {
+                self.schedule_agents_refetch_for_open_views();
+            } else {
+                self.refetch_empty_agents_views();
+            }
+        }
     }
 
     /// Counterpart to [`Self::handle_agents_snapshot_loaded`] for the
@@ -3435,7 +3827,10 @@ impl App {
     /// Drives the `dirty` trailing-refetch the same way the success
     /// path does: if pushes coalesced while this RPC was in flight,
     /// schedule one follow-up immediately rather than wait 5s.
-    fn handle_agents_snapshot_failed(&mut self, request_id: u64) {
+    fn handle_agents_snapshot_failed(&mut self, request_id: u64, tracking_generation: u64) {
+        if tracking_generation != self.session_management_generation {
+            return;
+        }
         let tabs: Vec<String> = self
             .tab_sessions
             .iter()
@@ -4533,6 +4928,11 @@ impl App {
             AppEvent::AliveSessionRemoved(_) => "alive_session_removed",
             AppEvent::AliveJoinUpgrade(_) => "alive_join_upgrade",
             AppEvent::SessionsChanged => "sessions_changed",
+            AppEvent::WtListenerReady => "wt_listener_ready",
+            AppEvent::SessionManagementSettingsLoaded { .. } => {
+                "session_management_settings_loaded"
+            }
+            AppEvent::SessionTrackingEnableFailed { .. } => "session_tracking_enable_failed",
             AppEvent::AgentsSnapshotLoaded { .. } => "agents_snapshot_loaded",
             AppEvent::AgentsSnapshotFailed { .. } => "agents_snapshot_failed",
             AppEvent::RegisterBornBoundSession { .. } => "register_born_bound_session",

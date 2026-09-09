@@ -27,7 +27,15 @@ const ACCENT_RED: Color = Color::Red; // Error
 const SOFT_WHITE: Color = Color::Rgb(0x8b, 0x8b, 0x8b); // Idle
 const MUTED_WHITE: Color = Color::Rgb(0x8b, 0x8b, 0x8b); // timestamp
 
-pub fn render(
+#[derive(Clone, Copy, Default)]
+pub(crate) struct TrackingNotice {
+    pub policy_blocked: Option<bool>,
+    pub pending: bool,
+    pub failed: bool,
+    pub focused: bool,
+}
+
+pub(crate) fn render(
     f: &mut Frame,
     area: Rect,
     reg: &AgentSessionRegistry,
@@ -56,11 +64,13 @@ pub fn render(
     search_query: &str,
     search_focused: bool,
     pane_focused: bool,
-) {
+    session_management_enabled: bool,
+    untracked_external_sessions: &std::collections::HashSet<String>,
+    tracking_notice: TrackingNotice,
+) -> Option<Rect> {
     // No in-TUI header: the "Agent sessions" title lives in the C++ agent
-    // bar above this pane (AgentPaneContent::SetSessionsView), so we render
-    // the list flush against the top of `area` and don't reserve any space
-    // for chrome there.
+    // bar above this pane (AgentPaneContent::SetSessionsView). Only tracking
+    // Off reserves a notice row above the search field and list.
     //
     // Layout (column 0 is the pane's left edge):
     //   col 0  → leftmost vertical separator (only over list rows; the
@@ -110,6 +120,26 @@ pub fn render(
     } else {
         (inner, None)
     };
+
+    let (tracking_action, content_area) = if !session_management_enabled && content_area.height > 0
+    {
+        let notice_area = Rect {
+            height: 1,
+            ..content_area
+        };
+        let hit = render_tracking_notice(f, notice_area, tracking_notice, pane_focused);
+        (
+            hit,
+            Rect {
+                y: content_area.y.saturating_add(1),
+                height: content_area.height.saturating_sub(1),
+                ..content_area
+            },
+        )
+    } else {
+        (None, content_area)
+    };
+    let pane_focused = pane_focused && !tracking_notice.focused;
 
     let search_visible = search_focused || !search_query.is_empty();
     let (search_area, list_area) = if search_visible && content_area.height > 0 {
@@ -224,7 +254,7 @@ pub fn render(
         if let Some(hint_area) = hint_area {
             render_footer_hint(f, hint_area);
         }
-        return;
+        return tracking_action;
     }
 
     let selected = list_state.selected();
@@ -233,12 +263,15 @@ pub fn render(
         .iter()
         .enumerate()
         .map(|(i, s)| {
+            let tracking_current = s.origin == SessionOrigin::AgentPane
+                || (session_management_enabled && !untracked_external_sessions.contains(&s.key));
             row_for(
                 s,
                 Some(i) == selected,
                 pane_focused,
                 row_width,
                 &folded_query,
+                tracking_current,
             )
         })
         .collect();
@@ -262,6 +295,97 @@ pub fn render(
     if let Some(hint_area) = hint_area {
         render_footer_hint(f, hint_area);
     }
+    tracking_action
+}
+
+fn render_tracking_notice(
+    f: &mut Frame,
+    area: Rect,
+    notice: TrackingNotice,
+    pane_focused: bool,
+) -> Option<Rect> {
+    if area.width == 0 || area.height == 0 {
+        return None;
+    }
+    let blocked = notice.policy_blocked == Some(true);
+    let message = if blocked {
+        t!("agents.tracking_policy_blocked")
+    } else if notice.failed {
+        t!("agents.tracking_enable_failed")
+    } else {
+        t!("agents.tracking_off")
+    };
+    let action = if notice.policy_blocked == Some(false) {
+        Some(if notice.pending {
+            t!("agents.tracking_turning_on")
+        } else {
+            t!("agents.tracking_turn_on")
+        })
+    } else {
+        None
+    };
+    let action_width = action.as_ref().map_or(0, |text| {
+        UnicodeWidthStr::width(text.as_ref()).min(u16::MAX as usize) as u16
+    });
+    let show_action = action_width > 0 && action_width <= area.width;
+    let label_width = if show_action {
+        area.width.saturating_sub(action_width.saturating_add(2))
+    } else {
+        area.width
+    };
+    let rtl = crate::rtl::text_alignment() == ratatui::layout::Alignment::Right;
+    let text_width = UnicodeWidthStr::width(message.as_ref()).min(label_width as usize) as u16;
+    let label_area = Rect {
+        x: if rtl {
+            area.right().saturating_sub(text_width)
+        } else {
+            area.x
+        },
+        width: text_width,
+        ..area
+    };
+    f.render_widget(
+        Paragraph::new(message.into_owned())
+            .style(theme::DISCLAIMER_TEXT)
+            .alignment(crate::rtl::text_alignment()),
+        label_area,
+    );
+    if let Some(action) = action.filter(|_| show_action) {
+        let action_area = Rect {
+            x: if rtl {
+                area.right()
+                    .saturating_sub(text_width.saturating_add(2).saturating_add(action_width))
+                    .max(area.x)
+            } else {
+                area.x
+                    .saturating_add(text_width.saturating_add(2))
+                    .min(area.right().saturating_sub(action_width))
+            },
+            width: action_width,
+            ..area
+        };
+        let style = if notice.pending {
+            theme::DISCLAIMER_TEXT
+        } else {
+            let style = if pane_focused {
+                theme::SELECTED
+            } else {
+                theme::SELECTED_INACTIVE
+            };
+            let style = style.add_modifier(Modifier::UNDERLINED);
+            if notice.focused {
+                style.add_modifier(Modifier::BOLD)
+            } else {
+                style
+            }
+        };
+        f.render_widget(
+            Paragraph::new(action.into_owned()).style(style),
+            action_area,
+        );
+        return (!notice.pending).then_some(action_area);
+    }
+    None
 }
 
 fn render_search(f: &mut Frame, area: Rect, query: &str, focused: bool, pane_focused: bool) {
@@ -355,6 +479,7 @@ fn row_for(
     pane_focused: bool,
     row_width: usize,
     folded_query: &str,
+    tracking_current: bool,
 ) -> ListItem<'static> {
     let origin_prefix = origin_prefix_for(s);
     let prefix_w = origin_prefix
@@ -362,9 +487,19 @@ fn row_for(
         .map(UnicodeWidthStr::width)
         .unwrap_or(0);
     let title_text = display_title(s, prefix_w);
-    let badge = status_badge(s);
+    let badge = if tracking_current {
+        status_badge(s)
+    } else {
+        String::new()
+    };
     let badge_style = badge_style(s);
-    let age = relative_age(s.last_activity_at);
+    let age = if s.last_activity_at == UNIX_EPOCH
+        || (!tracking_current && !matches!(s.status, AgentStatus::Ended | AgentStatus::Historical))
+    {
+        String::new()
+    } else {
+        relative_age(s.last_activity_at)
+    };
 
     // Unselected rows: no `.fg(...)` override — fall through to the
     // terminal's default foreground so titles match the surrounding pane
@@ -400,7 +535,11 @@ fn row_for(
         Span::raw("  ")
     };
 
-    let cli_suffix = cli_suffix_for(s, selected);
+    let cli_suffix = if tracking_current || selected {
+        cli_suffix_for(s, selected)
+    } else {
+        String::new()
+    };
 
     // Compose the row by measuring everything except trailing whitespace,
     // then padding to right-align the timestamp at row_width. The origin

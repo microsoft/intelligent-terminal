@@ -113,6 +113,7 @@ namespace TerminalAppUnitTests
         TEST_CLASS(SharedWtaTests);
 
         TEST_METHOD(EmptyEnvironmentOverridesInheritParent);
+        TEST_METHOD(SessionTrackingToggleUpdatesOnlyCachedTrackingFlag);
         TEST_METHOD(ValidEnvironmentOverridesCloneAndReplace);
         TEST_METHOD(MixedInvalidEnvironmentOverridesFail);
         TEST_METHOD(AcceptsValidEnvironmentOverride);
@@ -145,6 +146,30 @@ namespace TerminalAppUnitTests
         TEST_METHOD(RestartSuppressionClearsBeforeReopen);
         TEST_METHOD(RepeatedRestartRequestsAreCoalescedOnCompletion);
     };
+
+    void SharedWtaTests::SessionTrackingToggleUpdatesOnlyCachedTrackingFlag()
+    {
+        const std::vector<std::wstring> original{
+            L"--agent",
+            L"copilot --acp --stdio",
+            L"--no-autofix",
+            L"--acp-model",
+            L"gpt-5.4",
+        };
+        auto arguments = original;
+
+        details::UpdateSessionManagementArguments(arguments, false);
+        VERIFY_ARE_EQUAL(original.size() + 1, arguments.size());
+        VERIFY_ARE_EQUAL(L"--no-session-management", arguments.back());
+        VERIFY_IS_TRUE(std::equal(original.begin(), original.end(), arguments.begin()));
+
+        details::UpdateSessionManagementArguments(arguments, false);
+        VERIFY_ARE_EQUAL(original.size() + 1, arguments.size());
+        details::UpdateSessionManagementArguments(arguments, true);
+        VERIFY_IS_TRUE(original == arguments);
+        details::UpdateSessionManagementArguments(arguments, true);
+        VERIFY_IS_TRUE(original == arguments);
+    }
 
     void SharedWtaTests::EmptyEnvironmentOverridesInheritParent()
     {
