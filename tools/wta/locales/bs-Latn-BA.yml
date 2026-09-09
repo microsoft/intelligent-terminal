@@ -65,6 +65,10 @@ chat.tool_kind.other: "Alat"
 input.placeholder.connected: "Pitajte bilo šta, / za naredbe.."  # {Locked="/"}
 input.placeholder.connecting: "povezivanje..."
 input.placeholder.disconnected: "prekinuta veza"
+input.queue.status: "U redu čekanja [%{count}]: %{items}"
+input.queue.status_full: "Red čekanja je pun [%{count}/%{capacity}]: %{items}"
+input.queue.hint_with_draft: "Enter stavlja skicu u red čekanja · Esc prvo briše skicu"
+input.queue.hint_without_draft: "Esc uklanja najnoviji unos u redu čekanja"
 # Summary of attached images; keep 📎 and %{items} verbatim.
 input.image_attachments: "📎 Slike: %{items}"  # {Locked="📎","%{items}"}
 
@@ -165,6 +169,7 @@ system.stopped_max_tokens: "Odgovor je prekinut nakon dostizanja izlaznog ograni
 system.stopped_max_turn_requests: "Agent se zaustavio nakon dostizanja ograničenja zahtjeva za ovaj potez."
 system.stopped_refusal: "Agent je odbio nastaviti s ovim zahtjevom."
 system.agent_busy: "Agent je zauzet na ovoj kartici — sačekajte da se trenutni upit završi."
+system.input_queue_full: "Red čekanja je pun na ovoj kartici. Sačekajte slobodno mjesto ili obrišite skicu i pritisnite Esc da uklonite najnoviji unos u redu čekanja."
 # Image paste messages; "agent" refers to an AI agent. Keep Enter and %{label} verbatim.
 system.image_clipboard_empty: "Nema slike u međuspremniku za lijepljenje."
 system.image_not_supported: "Ovaj agent ne podržava unos slike."

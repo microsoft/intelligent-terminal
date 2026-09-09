@@ -65,6 +65,10 @@ chat.tool_kind.other: "Nástroj"
 input.placeholder.connected: "Opýtajte sa čokoľvek, / pre príkazy.."  # {Locked="/"}
 input.placeholder.connecting: "pripájanie..."
 input.placeholder.disconnected: "odpojené"
+input.queue.status: "Vo fronte [%{count}]: %{items}"
+input.queue.status_full: "Fronta je plná [%{count}/%{capacity}]: %{items}"
+input.queue.hint_with_draft: "Enter zaradí koncept do frontu · Esc najprv vymaže koncept"
+input.queue.hint_without_draft: "Esc odstráni najnovší vstup vo fronte"
 input.image_attachments: "📎 Obrázky: %{items}"  # {Locked="📎","%{items}"}
 
 # ── Command popup (src/ui/command_popup.rs) ─────────────────────────────────
@@ -164,6 +168,7 @@ system.stopped_max_tokens: "Odpoveď bola orezaná po dosiahnutí výstupného l
 system.stopped_max_turn_requests: "Agent sa zastavil po dosiahnutí limitu požiadaviek pre toto kolo."
 system.stopped_refusal: "Agent odmietol pokračovať v tejto požiadavke."
 system.agent_busy: "Agent je na tejto karte zaneprázdnený — počkajte, kým sa aktuálna výzva dokončí."
+system.input_queue_full: "Fronta na tejto karte je plná. Počkajte na voľné miesto alebo vymažte koncept a stlačte Esc, aby ste odstránili najnovší vstup vo fronte."
 system.image_clipboard_empty: "V schránke nie je žiadny obrázok na prilepenie."
 system.image_not_supported: "Tento agent nepodporuje vstup obrázkov."
 system.image_pasted: "Obrázok priložený (%{label}). Stlačte Enter na odoslanie."  # {Locked="%{label}","Enter"}

@@ -65,6 +65,10 @@ chat.tool_kind.other: "Uirlis"
 input.placeholder.connected: "Cuir ceist ar bith, / le haghaidh orduithe.."  # {Locked="/"}
 input.placeholder.connecting: "ag ceangal..."
 input.placeholder.disconnected: "dícheangailte"
+input.queue.status: "Sa scuaine [%{count}]: %{items}"
+input.queue.status_full: "Tá an scuaine lán [%{count}/%{capacity}]: %{items}"
+input.queue.hint_with_draft: "Cuireann Enter an dréacht sa scuaine · glanann Esc an dréacht ar dtús"
+input.queue.hint_without_draft: "Baineann Esc an t-ionchur is déanaí sa scuaine"
 input.image_attachments: "📎 Íomhánna: %{items}"  # {Locked="📎","%{items}"}
 
 # ── Aníos orduithe (src/ui/command_popup.rs) ─────────────────────────────────
@@ -155,6 +159,7 @@ system.stopped_max_tokens: "Gearradh an freagra tar éis teorainn aschuir an mh�
 system.stopped_max_turn_requests: "Stop an gníomhaire tar éis a theorainn iarratas don seal seo a bhaint amach."
 system.stopped_refusal: "Dhiúltaigh an gníomhaire leanúint ar aghaidh leis an iarratas seo."
 system.agent_busy: "Tá an gníomhaire gnóthach ar an gcluaisín seo — fan go gcríochnóidh an leid reatha."
+system.input_queue_full: "Tá an scuaine lán ar an táb seo. Fan go mbeidh spás ann, nó glan do dhréacht agus brúigh Esc chun an t-ionchur is déanaí sa scuaine a bhaint."
 system.image_clipboard_empty: "Níl aon íomhá ar an ngearrthaisce le greamú."
 system.image_not_supported: "Ní thacaíonn an gníomhaire seo le hionchur íomhá."
 system.image_pasted: "Íomhá ceangailte (%{label}). Brúigh Enter chun í a sheoladh."  # {Locked="%{label}","Enter"}

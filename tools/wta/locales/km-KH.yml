@@ -70,6 +70,10 @@ input.placeholder.connected: "សួរអ្វីក៏បាន, / សម្�
 input.placeholder.connecting: "កំពុងតភ្ជាប់..."
 # Input box placeholder when agent is disconnected
 input.placeholder.disconnected: "ផ្តាច់"
+input.queue.status: "បានដាក់ជាជួរ [%{count}]: %{items}"
+input.queue.status_full: "ជួរពេញហើយ [%{count}/%{capacity}]: %{items}"
+input.queue.hint_with_draft: "Enter ដាក់សេចក្តីព្រាងចូលជួរ · Esc សម្អាតសេចក្តីព្រាងជាមុន"
+input.queue.hint_without_draft: "Esc ដកការបញ្ចូលដែលបានដាក់ជាជួរថ្មីបំផុតចេញ"
 input.image_attachments: "📎 រូបភាព: %{items}"  # {Locked="📎","%{items}"}
 
 # ── Command popup (src/ui/command_popup.rs) ─────────────────────────────────────────────────────────────────
@@ -168,6 +172,7 @@ system.stopped_max_tokens: "ការឆ្លើយតបត្រូវបា�
 system.stopped_max_turn_requests: "ភ្នាក់ងារបានឈប់ បន្ទាប់ពីឈានដល់ដែនកំណត់សំណើសម្រាប់វេននេះ។"
 system.stopped_refusal: "ភ្នាក់ងារបានបដិសេធមិនបន្តសំណើនេះ។"
 system.agent_busy: "AI អេជេន្ត់កំពុងរវល់នៅលើផ្ទាំងនេះ — រង់ចាំឱ្យសំណើបច្ចុប្បន្នបញ្ចប់។"
+system.input_queue_full: "ជួរនៅលើផ្ទាំងនេះពេញហើយ។ រង់ចាំកន្លែងទំនេរ ឬសម្អាតសេចក្តីព្រាងរបស់អ្នក ហើយចុច Esc ដើម្បីដកការបញ្ចូលដែលបានដាក់ជាជួរថ្មីបំផុតចេញ។"
 system.image_clipboard_empty: "គ្មានរូបភាពនៅលើក្ដារតម្បៀតខ្ទាស់ដើម្បីបិទភ្ជាប់ទេ។"
 system.image_not_supported: "អេជេន្ត់នេះមិនគាំទ្រការបញ្ចូលរូបភាពទេ។"
 system.image_pasted: "បានភ្ជាប់រូបភាព (%{label})។ ចុច Enter ដើម្បីផ្ញើ។"  # {Locked="%{label}","Enter"}

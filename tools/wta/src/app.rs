@@ -82,6 +82,9 @@ use input_submission::*;
 pub use crate::turn_context::TurnContext;
 #[cfg(test)]
 use input_edit::{next_word_boundary, prev_word_boundary, INPUT_HISTORY_MAX_ENTRIES};
+pub(crate) use input_queue::PendingInputQueueSnapshot;
+#[cfg(test)]
+pub(crate) use input_queue::INPUT_QUEUE_CAPACITY;
 pub use tab_state::{
     ChatMessage, CompletedTurn, ConfigPickerState, NoticeKind, PermissionState,
     RecommendationFocus, TabSession, ToolCallContent, ToolCallKind, ToolCallLocation,

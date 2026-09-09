@@ -10934,6 +10934,377 @@ fn queue_test_image(app: &mut App, label: &str) {
 }
 
 #[test]
+fn queued_input_status_renders_and_tracks_escape_then_drain() {
+    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+
+    let _g = crate::test_support::lock_locale();
+    rust_i18n::set_locale("en-US");
+    let mut app = test_app();
+    let (prompt_tx, mut prompt_rx) = tokio::sync::mpsc::unbounded_channel();
+    let (event_tx, mut event_rx) = tokio::sync::mpsc::unbounded_channel();
+    app.prompt_tx = prompt_tx;
+    app.set_event_tx(event_tx);
+    app.state = ConnectionState::Connected;
+    bind_test_session(&mut app, "session-1");
+
+    for text in ["A", "B", "C"] {
+        app.current_tab_mut().insert_input_str(text);
+        app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+    }
+    assert_eq!(prompt_rx.try_recv().expect("A dispatch").text, "A");
+    app.current_tab_mut().insert_input_str("draft");
+
+    let queued = render_to_text(&mut app, 96, 12);
+    assert!(
+        queued.contains("Queued [2]: B • C"),
+        "queued status must preview the FIFO items; rendered:\n{queued}"
+    );
+    assert!(
+        queued.contains("Enter queues draft")
+            && queued.contains("Esc clears draft first")
+            && queued.contains("> draft"),
+        "queued status must explain Enter/Esc while the draft is still present; rendered:\n{queued}"
+    );
+
+    app.handle_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
+    let draft_cleared = render_to_text(&mut app, 96, 12);
+    assert!(
+        draft_cleared.contains("Queued [2]: B • C"),
+        "clearing the draft must keep the queued preview visible; rendered:\n{draft_cleared}"
+    );
+    assert!(
+        draft_cleared.contains("Esc removes newest queued input")
+            && !draft_cleared.contains("> draft"),
+        "after the first Esc, the queue row must switch to queued-item undo guidance; rendered:\n{draft_cleared}"
+    );
+
+    app.handle_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
+    let newest_removed = render_to_text(&mut app, 96, 12);
+    assert!(
+        newest_removed.contains("Queued [1]: B")
+            && !newest_removed.contains("Queued [2]: B • C"),
+        "the second Esc must remove the newest queued item, not the FIFO front; rendered:\n{newest_removed}"
+    );
+
+    app.handle_event(AppEvent::AgentMessageEnd {
+        session_id: "session-1".into(),
+    });
+    let drain = event_rx.try_recv().expect("queued input drain");
+    assert!(matches!(
+        drain,
+        AppEvent::DrainInputQueue { ref tab_id } if tab_id == DEFAULT_TAB_ID
+    ));
+    app.handle_event(drain);
+    assert_eq!(prompt_rx.try_recv().expect("B dispatch").text, "B");
+
+    let drained = render_to_text(&mut app, 96, 12);
+    assert!(
+        !drained.contains("Queued [1]: B"),
+        "once the queue drains, the queue row must disappear; rendered:\n{drained}"
+    );
+}
+
+#[test]
+fn queued_input_status_survives_narrow_short_layout() {
+    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+
+    let _g = crate::test_support::lock_locale();
+    rust_i18n::set_locale("en-US");
+    let mut app = test_app();
+    let (prompt_tx, mut prompt_rx) = tokio::sync::mpsc::unbounded_channel();
+    app.prompt_tx = prompt_tx;
+    app.state = ConnectionState::Connected;
+    bind_test_session(&mut app, "session-1");
+
+    for text in ["A", "B", "C"] {
+        app.current_tab_mut().insert_input_str(text);
+        app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+    }
+    prompt_rx.try_recv().expect("A dispatch");
+
+    let narrow = render_to_text(&mut app, 44, 7);
+    assert!(
+        narrow.contains("Queued [2]:") && narrow.contains("B") && narrow.contains("Esc"),
+        "short layouts must still expose count, preview, and Esc guidance; rendered:\n{narrow}"
+    );
+}
+
+#[test]
+fn queued_input_status_keeps_escape_guidance_visible_with_long_preview() {
+    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+
+    let _g = crate::test_support::lock_locale();
+    rust_i18n::set_locale("en-US");
+    let mut app = test_app();
+    let (prompt_tx, mut prompt_rx) = tokio::sync::mpsc::unbounded_channel();
+    app.prompt_tx = prompt_tx;
+    app.state = ConnectionState::Connected;
+    bind_test_session(&mut app, "session-1");
+
+    app.current_tab_mut().insert_input_str("A");
+    app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+    prompt_rx.try_recv().expect("A dispatch");
+
+    let long = format!(
+        "queued preview start {} GUIDANCE_TAIL_SHOULD_BE_TRIMMED",
+        "very ".repeat(28)
+    );
+    app.current_tab_mut().insert_input_str(&long);
+    app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+
+    let rendered = render_to_text(&mut app, 80, 12);
+    assert!(
+        rendered.contains("Queued [1]: queued preview start")
+            && rendered.contains("Esc removes newest queued input"),
+        "long previews must trim ahead of the Escape guidance; rendered:\n{rendered}"
+    );
+    assert!(
+        !rendered.contains("GUIDANCE_TAIL_SHOULD_BE_TRIMMED"),
+        "the preview tail should be trimmed before the Escape guidance; rendered:\n{rendered}"
+    );
+}
+
+#[test]
+fn queued_input_status_stays_passive_while_permission_modal_owns_escape() {
+    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+
+    let _g = crate::test_support::lock_locale();
+    rust_i18n::set_locale("en-US");
+    let mut app = test_app();
+    let (prompt_tx, mut prompt_rx) = tokio::sync::mpsc::unbounded_channel();
+    app.prompt_tx = prompt_tx;
+    app.state = ConnectionState::Connected;
+    bind_test_session(&mut app, "session-1");
+
+    for text in ["A", "B", "C"] {
+        app.current_tab_mut().insert_input_str(text);
+        app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+    }
+    prompt_rx.try_recv().expect("A dispatch");
+
+    app.current_tab_mut()
+        .permission
+        .push_back(perm_with("Allow tool?"));
+
+    let rendered = render_to_text(&mut app, 96, 12);
+    assert!(
+        rendered.contains("Queued [2]: B • C"),
+        "the passive queue preview must stay visible behind a permission modal; rendered:\n{rendered}"
+    );
+    assert!(
+        !rendered.contains("Enter queues draft")
+            && !rendered.contains("Esc clears draft first")
+            && !rendered.contains("Esc removes newest queued input"),
+        "modal-owned keys must suppress queue hotkey guidance; rendered:\n{rendered}"
+    );
+}
+
+#[test]
+fn queued_input_status_stays_passive_while_paste_is_pending() {
+    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+
+    let _g = crate::test_support::lock_locale();
+    rust_i18n::set_locale("en-US");
+    let mut app = test_app();
+    let (prompt_tx, mut prompt_rx) = tokio::sync::mpsc::unbounded_channel();
+    app.prompt_tx = prompt_tx;
+    app.state = ConnectionState::Connected;
+    bind_test_session(&mut app, "session-1");
+
+    for text in ["A", "B"] {
+        app.current_tab_mut().insert_input_str(text);
+        app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+    }
+    prompt_rx.try_recv().expect("A dispatch");
+    app.current_tab_mut().paste_pending = true;
+
+    let rendered = render_to_text(&mut app, 96, 12);
+    assert!(rendered.contains("Queued [1]: B"), "{rendered}");
+    assert!(
+        !rendered.contains("Esc removes newest queued input"),
+        "{rendered}"
+    );
+    app.handle_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
+    assert_eq!(app.current_tab().pending_inputs.len(), 1);
+
+    app.current_tab_mut().paste_pending = false;
+    let rendered = render_to_text(&mut app, 96, 12);
+    assert!(
+        rendered.contains("Esc removes newest queued input"),
+        "{rendered}"
+    );
+    app.handle_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
+    assert!(app.current_tab().pending_inputs.is_empty());
+}
+
+#[test]
+fn queued_input_status_stays_passive_while_command_popup_owns_enter() {
+    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+
+    let _g = crate::test_support::lock_locale();
+    rust_i18n::set_locale("en-US");
+    let mut app = test_app();
+    let (prompt_tx, mut prompt_rx) = tokio::sync::mpsc::unbounded_channel();
+    app.prompt_tx = prompt_tx;
+    app.state = ConnectionState::Connected;
+    bind_test_session(&mut app, "session-1");
+
+    for text in ["A", "B"] {
+        app.current_tab_mut().insert_input_str(text);
+        app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+    }
+    prompt_rx.try_recv().expect("A dispatch");
+
+    app.current_tab_mut().insert_input_str("/h");
+    app.current_tab_mut().refresh_command_popup();
+    assert!(
+        app.command_popup_visible(),
+        "test prerequisite: popup visible"
+    );
+
+    let rendered = render_to_text(&mut app, 96, 12);
+    assert!(
+        rendered.contains("Queued [1]: B") && rendered.contains("> /h"),
+        "the queue preview and draft should stay visible while the popup owns Enter; rendered:\n{rendered}"
+    );
+    assert!(
+        !rendered.contains("Enter queues draft") && !rendered.contains("Esc clears draft first"),
+        "popup-owned Enter must suppress the draft hotkey hint; rendered:\n{rendered}"
+    );
+}
+
+#[test]
+fn queued_input_status_stays_passive_while_recommendation_buttons_own_enter() {
+    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+
+    let _g = crate::test_support::lock_locale();
+    rust_i18n::set_locale("en-US");
+    let mut app = test_app();
+    let (prompt_tx, mut prompt_rx) = tokio::sync::mpsc::unbounded_channel();
+    app.prompt_tx = prompt_tx;
+    app.state = ConnectionState::Connected;
+    bind_test_session(&mut app, "session-1");
+
+    for text in ["A", "B"] {
+        app.current_tab_mut().insert_input_str(text);
+        app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+    }
+    prompt_rx.try_recv().expect("A dispatch");
+
+    stage_surfaced_recommendation(&mut app, vec![send_choice("pane-A", "ls")], 0, None);
+    app.current_tab_mut().input = "draft".into();
+    app.current_tab_mut().cursor_pos = "draft".len();
+    assert!(
+        !app.current_tab().input_has_nav_focus(),
+        "button focus should own Enter in this scenario"
+    );
+
+    let rendered = render_to_text(&mut app, 96, 12);
+    assert!(
+        rendered.contains("Queued [1]: B") && rendered.contains("> draft"),
+        "the queue preview and retained draft should stay visible behind the recommendation card; rendered:\n{rendered}"
+    );
+    assert!(
+        !rendered.contains("Enter queues draft") && !rendered.contains("Esc clears draft first"),
+        "card-owned Enter must suppress the draft hotkey hint; rendered:\n{rendered}"
+    );
+}
+
+#[test]
+fn queued_input_status_stays_passive_outside_chat_mode() {
+    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+
+    let _g = crate::test_support::lock_locale();
+    rust_i18n::set_locale("en-US");
+    let mut app = test_app();
+    let (prompt_tx, mut prompt_rx) = tokio::sync::mpsc::unbounded_channel();
+    app.prompt_tx = prompt_tx;
+    app.state = ConnectionState::Connected;
+    bind_test_session(&mut app, "session-1");
+
+    for text in ["A", "B"] {
+        app.current_tab_mut().insert_input_str(text);
+        app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+    }
+    prompt_rx.try_recv().expect("A dispatch");
+
+    app.mode = AppMode::Auth;
+    let rendered = render_to_text(&mut app, 96, 12);
+    assert!(
+        rendered.contains("Queued [1]: B"),
+        "the passive queue status should still render outside chat mode; rendered:\n{rendered}"
+    );
+    assert!(
+        !rendered.contains("Enter queues draft")
+            && !rendered.contains("Esc clears draft first")
+            && !rendered.contains("Esc removes newest queued input"),
+        "non-chat modes must suppress queue hotkey hints; rendered:\n{rendered}"
+    );
+}
+
+#[test]
+fn queued_image_only_input_appears_in_queue_status_preview() {
+    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+
+    let _g = crate::test_support::lock_locale();
+    rust_i18n::set_locale("en-US");
+    let mut app = test_app();
+    let (prompt_tx, mut prompt_rx) = tokio::sync::mpsc::unbounded_channel();
+    app.prompt_tx = prompt_tx;
+    app.state = ConnectionState::Connected;
+    bind_test_session(&mut app, "session-1");
+
+    app.current_tab_mut().insert_input_str("A");
+    app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+    prompt_rx.try_recv().expect("A dispatch");
+
+    queue_test_image(&mut app, "screenshot");
+    app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+
+    let rendered = render_to_text(&mut app, 96, 12);
+    assert!(
+        rendered.contains("Queued [1]: [image: image-1.png]"),
+        "image-only queued input must stay visible in the queue preview; rendered:\n{rendered}"
+    );
+}
+
+#[test]
+fn full_input_queue_surfaces_queue_full_copy_in_status_and_hint() {
+    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+
+    let _g = crate::test_support::lock_locale();
+    rust_i18n::set_locale("en-US");
+    let mut app = test_app();
+    let (prompt_tx, mut prompt_rx) = tokio::sync::mpsc::unbounded_channel();
+    app.prompt_tx = prompt_tx;
+    app.state = ConnectionState::Connected;
+    bind_test_session(&mut app, "session-1");
+
+    app.current_tab_mut().insert_input_str("A");
+    app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+    prompt_rx.try_recv().expect("A dispatch");
+
+    for index in 0..crate::app::INPUT_QUEUE_CAPACITY {
+        app.current_tab_mut()
+            .insert_input_str(&format!("queued {index}"));
+        app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+    }
+
+    let full = render_to_text(&mut app, 96, 12);
+    assert!(
+        full.contains("Queue full [20/20]"),
+        "a saturated FIFO must render queue-full status, not a generic busy message; rendered:\n{full}"
+    );
+
+    app.current_tab_mut().insert_input_str("draft");
+    app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+    assert_eq!(
+        app.transient_hint.as_ref().map(|(text, _)| text.as_str()),
+        Some(t!("system.input_queue_full").as_ref())
+    );
+}
+
+#[test]
 fn image_attachment_backspace_at_input_start_removes_last_image() {
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 

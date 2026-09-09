@@ -65,6 +65,10 @@ chat.tool_kind.other: "Herramienta"
 input.placeholder.connected: "Pregunte lo que sea, / para comandos.."  # {Locked="/"}
 input.placeholder.connecting: "Conectando..."
 input.placeholder.disconnected: "Desconectado"
+input.queue.status: "En cola [%{count}]: %{items}"
+input.queue.status_full: "Cola llena [%{count}/%{capacity}]: %{items}"
+input.queue.hint_with_draft: "Enter pone el borrador en cola · Esc primero borra el borrador"
+input.queue.hint_without_draft: "Esc quita la entrada en cola más reciente"
 input.image_attachments: "📎 Imágenes: %{items}"  # {Locked="📎","%{items}"}
 
 # ── Ventana emergente de comandos (src/ui/command_popup.rs) ─────────────────────────────────
@@ -155,6 +159,7 @@ system.stopped_max_tokens: "La respuesta se interrumpió al alcanzar el límite 
 system.stopped_max_turn_requests: "El agente se detuvo al alcanzar su límite de solicitudes para este turno."
 system.stopped_refusal: "El agente se negó a continuar con esta solicitud."
 system.agent_busy: "El agente está ocupado en esta pestaña — espere a que termine la indicación actual."
+system.input_queue_full: "La cola de esta pestaña está llena. Espere a que haya sitio, o borre el borrador y pulse Esc para quitar la entrada en cola más reciente."
 system.image_clipboard_empty: "No hay ninguna imagen en el portapapeles para pegar."
 system.image_not_supported: "Este agente no admite la entrada de imágenes."
 system.image_pasted: "Imagen adjunta (%{label}). Pulse Enter para enviar."  # {Locked="%{label}","Enter"}

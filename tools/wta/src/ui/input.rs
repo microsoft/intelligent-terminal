@@ -1,13 +1,15 @@
 use ratatui::prelude::*;
 use ratatui::widgets::{Block, Borders, Padding, Paragraph};
-use unicode_width::UnicodeWidthChar;
+use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
-use crate::app::{App, ConnectionState};
+use crate::app::{App, AppMode, ConnectionState, PendingInputQueueSnapshot};
 use crate::theme;
 
 pub(crate) const INPUT_MIN_HEIGHT: u16 = 3;
 pub(crate) const INPUT_MAX_HEIGHT: u16 = 8;
 const INPUT_LEFT_PAD: u16 = 1;
+const INPUT_QUEUE_STATUS_ROWS: usize = 1;
+const INPUT_QUEUE_PREVIEW: usize = 2;
 // Persistent prompt prefix: rendered in its own column at the very left of
 // every visible line so it stays put when the user types, and so the
 // placeholder, typed text and cursor all align under it. Width matches the
@@ -40,24 +42,29 @@ struct WrappedInput {
 
 pub fn render(frame: &mut Frame, app: &App, area: Rect) {
     let tab = app.current_tab();
+    let queue = app.current_tab_pending_input_queue_snapshot(INPUT_QUEUE_PREVIEW);
+    let inner_rows = area.height.saturating_sub(2) as usize;
+    let queue_status_visible = queue.count > 0 && inner_rows > INPUT_MIN_INNER_ROWS;
     let border_style = if app.pane_focused {
         theme::INPUT_BORDER_FOCUSED
     } else {
         theme::INPUT_BORDER
     };
-    let block = Block::default()
+    let mut block = Block::default()
         .borders(Borders::ALL)
         .border_style(border_style)
         .style(Style::new().bg(theme::INPUT_BG))
         .padding(Padding::new(INPUT_LEFT_PAD, 0, 0, 0));
-    let text_width = area
-        .width
-        .saturating_sub(INPUT_LEFT_PAD + 2 + INPUT_PROMPT_WIDTH);
+    let content_width = area.width.saturating_sub(INPUT_LEFT_PAD + 2) as usize;
+    let text_width = content_width.saturating_sub(INPUT_PROMPT_WIDTH as usize) as u16;
+    if queue.count > 0 && !queue_status_visible {
+        block = block.title(queue_status_text(app, &queue, content_width));
+    }
     let viewport = input_viewport_with_max_rows(
         &tab.input,
         tab.cursor_pos,
         text_width,
-        area.height.saturating_sub(2) as usize,
+        inner_rows.saturating_sub(usize::from(queue_status_visible)),
     );
     let attachment_ranges = tab.attachments.token_ranges().collect::<Vec<_>>();
     let prepared_command_range = app.prepared_command_range();
@@ -70,7 +77,20 @@ pub fn render(frame: &mut Frame, app: &App, area: Rect) {
     // TabSession::input_has_nav_focus.
     let input_active = app.pane_focused && tab.input_has_nav_focus();
 
-    let lines: Vec<Line> = if tab.input.is_empty() {
+    let mut lines = Vec::new();
+    if queue_status_visible {
+        let status_style = if queue.is_full {
+            theme::BADGE_ACTIONABLE
+        } else {
+            theme::DIM
+        };
+        lines.push(Line::from(Span::styled(
+            queue_status_text(app, &queue, content_width),
+            status_style,
+        )));
+    }
+
+    let input_lines: Vec<Line> = if tab.input.is_empty() {
         // Show a placeholder reflecting connection state. The "> " is its
         // own span so the placeholder/typed text/cursor all sit in the same
         // column regardless of whether the input is empty.
@@ -156,11 +176,29 @@ pub fn render(frame: &mut Frame, app: &App, area: Rect) {
             })
             .collect()
     };
+    lines.extend(input_lines);
 
     let paragraph = Paragraph::new(lines).block(block);
     frame.render_widget(paragraph, area);
 }
 
+pub(crate) fn input_height_for_app(app: &App, total_width: u16) -> u16 {
+    let tab = app.current_tab();
+    let queue_status_rows = usize::from(app.current_tab_pending_input_queue_snapshot(0).count > 0)
+        * INPUT_QUEUE_STATUS_ROWS;
+    let viewport = input_viewport_with_max_rows(
+        &tab.input,
+        tab.cursor_pos,
+        total_width.saturating_sub(INPUT_LEFT_PAD + 2 + INPUT_PROMPT_WIDTH),
+        INPUT_MAX_INNER_ROWS.saturating_sub(queue_status_rows),
+    );
+    (viewport.visible_lines.len() as u16 + 2 + queue_status_rows as u16).clamp(
+        INPUT_MIN_HEIGHT + queue_status_rows as u16,
+        INPUT_MAX_HEIGHT,
+    )
+}
+
+#[cfg(test)]
 pub(crate) fn input_height(input: &str, cursor_pos: usize, total_width: u16) -> u16 {
     let viewport = input_viewport(
         input,
@@ -281,6 +319,7 @@ fn push_styled_input(
     spans.push(Span::styled(run, run_style.unwrap_or(theme::INPUT_TEXT)));
 }
 
+#[cfg(test)]
 pub(crate) fn input_viewport(input: &str, cursor_pos: usize, total_width: u16) -> InputViewport {
     input_viewport_with_max_rows(input, cursor_pos, total_width, INPUT_MAX_INNER_ROWS)
 }
@@ -401,6 +440,252 @@ fn clamp_cursor_to_boundary(input: &str, cursor_pos: usize) -> usize {
         clamped -= 1;
     }
     clamped
+}
+
+fn queue_status_text(app: &App, queue: &PendingInputQueueSnapshot<'_>, max_width: usize) -> String {
+    if max_width == 0 {
+        return String::new();
+    }
+
+    let status_prefix = if queue.is_full {
+        t!(
+            "input.queue.status_full",
+            count = queue.count.to_string(),
+            capacity = queue.capacity.to_string(),
+            items = ""
+        )
+        .into_owned()
+    } else {
+        t!(
+            "input.queue.status",
+            count = queue.count.to_string(),
+            items = ""
+        )
+        .into_owned()
+    };
+    let hint = queue_status_hint(app, queue).map(|key| t!(key).into_owned());
+    format_queue_status(&status_prefix, queue, hint.as_deref(), max_width)
+}
+
+fn queue_status_hint(app: &App, queue: &PendingInputQueueSnapshot<'_>) -> Option<&'static str> {
+    if app.mode != AppMode::Chat || app.help_overlay_visible || app.show_notification_banner {
+        return None;
+    }
+
+    let tab = app.current_tab();
+    let has_draft = !tab.input.is_empty() || !tab.attachments.is_empty();
+    if has_draft {
+        let enter_queues_draft = !queue.is_full
+            && app.state == ConnectionState::Connected
+            && tab.input_has_nav_focus()
+            && app.command_popup_state().is_none()
+            && !matches!(
+                crate::commands::classify(&tab.input),
+                crate::commands::ParseOutcome::Command(_)
+            );
+        enter_queues_draft.then_some("input.queue.hint_with_draft")
+    } else {
+        let escape_removes_newest = tab.selected_completed_turn_idx.is_none()
+            && !tab.paste_pending
+            && tab.user_input.is_empty()
+            && tab.permission.is_empty()
+            && !tab.model_picker_open
+            && !tab.config_picker.is_open()
+            && !tab.agent_picker_open;
+        escape_removes_newest.then_some("input.queue.hint_without_draft")
+    }
+}
+
+fn format_queue_status(
+    status_prefix: &str,
+    queue: &PendingInputQueueSnapshot<'_>,
+    hint: Option<&str>,
+    max_width: usize,
+) -> String {
+    let bare_prefix = status_prefix.trim_end();
+    let bare_prefix_width = UnicodeWidthStr::width(bare_prefix);
+    if bare_prefix_width >= max_width {
+        return truncate_to_width(bare_prefix, max_width);
+    }
+
+    let Some(hint) = hint else {
+        let preview_budget = max_width.saturating_sub(UnicodeWidthStr::width(status_prefix));
+        let preview = queue_preview_list(queue, preview_budget);
+        if preview.is_empty() {
+            return bare_prefix.to_string();
+        }
+        return format!("{status_prefix}{preview}");
+    };
+
+    const HINT_SEPARATOR: &str = "  ";
+    let hint_width = UnicodeWidthStr::width(hint);
+    let separator_width = UnicodeWidthStr::width(HINT_SEPARATOR);
+    if bare_prefix_width + separator_width >= max_width {
+        return truncate_to_width(bare_prefix, max_width);
+    }
+
+    let status_prefix_width = UnicodeWidthStr::width(status_prefix);
+    let total_budget = max_width.saturating_sub(status_prefix_width + separator_width);
+    if total_budget == 0 {
+        return bare_prefix.to_string();
+    }
+
+    let full_preview = queue_preview_list(queue, total_budget);
+    if full_preview.is_empty() {
+        return format!(
+            "{bare_prefix}{HINT_SEPARATOR}{}",
+            truncate_to_width(
+                hint,
+                max_width.saturating_sub(bare_prefix_width + separator_width)
+            )
+        );
+    }
+
+    if hint_width <= total_budget {
+        let preview_budget = total_budget.saturating_sub(hint_width);
+        let preview = queue_preview_list(queue, preview_budget);
+        return if preview.is_empty() {
+            format!("{bare_prefix}{HINT_SEPARATOR}{hint}")
+        } else {
+            format!("{status_prefix}{preview}{HINT_SEPARATOR}{hint}")
+        };
+    }
+
+    let minimum_hint_width = hint_focus_width(hint).min(total_budget);
+    let max_preview_budget = total_budget.saturating_sub(minimum_hint_width);
+    if max_preview_budget == 0 {
+        return format!(
+            "{bare_prefix}{HINT_SEPARATOR}{}",
+            truncate_to_width(hint, total_budget)
+        );
+    }
+
+    let preferred_preview_budget = total_budget / 3;
+    let preview_budget = preview_width(&full_preview)
+        .min(max_preview_budget)
+        .min(preferred_preview_budget.max(1));
+    let preview_budget = preview_budget.max(1).min(max_preview_budget);
+    let preview = queue_preview_list(queue, preview_budget);
+    if preview.is_empty() {
+        return format!(
+            "{bare_prefix}{HINT_SEPARATOR}{}",
+            truncate_to_width(hint, total_budget)
+        );
+    }
+
+    let hint_budget = total_budget.saturating_sub(preview_width(&preview));
+    if hint_budget == 0 {
+        return format!("{status_prefix}{preview}");
+    }
+
+    format!(
+        "{status_prefix}{preview}{HINT_SEPARATOR}{}",
+        truncate_to_width(hint, hint_budget)
+    )
+}
+
+fn queue_preview_list(queue: &PendingInputQueueSnapshot<'_>, max_width: usize) -> String {
+    if max_width == 0 {
+        return String::new();
+    }
+
+    const SEPARATOR: &str = " • ";
+    let mut preview = String::new();
+    let mut remaining = max_width;
+    let mut has_any = false;
+
+    for display_text in &queue.display_texts {
+        let Some(item) = queued_preview(display_text) else {
+            continue;
+        };
+        if has_any && !push_if_fits(&mut preview, SEPARATOR, &mut remaining) {
+            return preview;
+        }
+        if !push_truncated(&mut preview, item, &mut remaining) {
+            return preview;
+        }
+        has_any = true;
+    }
+
+    if queue.hidden > 0 {
+        if has_any && !push_if_fits(&mut preview, SEPARATOR, &mut remaining) {
+            return preview;
+        }
+        let hidden = format!("+{}", queue.hidden);
+        let _ = push_truncated(&mut preview, &hidden, &mut remaining);
+    }
+
+    preview
+}
+
+fn queued_preview(display_text: &str) -> Option<&str> {
+    let preview = display_text
+        .lines()
+        .map(str::trim)
+        .find(|line| !line.is_empty())
+        .unwrap_or_else(|| display_text.trim());
+    (!preview.is_empty()).then_some(preview)
+}
+
+fn hint_focus_width(hint: &str) -> usize {
+    hint.split_whitespace()
+        .next()
+        .map(preview_width)
+        .unwrap_or_default()
+}
+
+fn preview_width(text: &str) -> usize {
+    UnicodeWidthStr::width(text)
+}
+
+fn push_if_fits(out: &mut String, text: &str, remaining: &mut usize) -> bool {
+    let width = preview_width(text);
+    if width > *remaining {
+        return false;
+    }
+    out.push_str(text);
+    *remaining -= width;
+    true
+}
+
+fn push_truncated(out: &mut String, text: &str, remaining: &mut usize) -> bool {
+    if *remaining == 0 {
+        return false;
+    }
+
+    let width = preview_width(text);
+    if width <= *remaining {
+        out.push_str(text);
+        *remaining -= width;
+        return true;
+    }
+
+    out.push_str(&truncate_to_width(text, *remaining));
+    *remaining = 0;
+    false
+}
+
+fn truncate_to_width(text: &str, max: usize) -> String {
+    if UnicodeWidthStr::width(text) <= max {
+        return text.to_string();
+    }
+    if max == 0 {
+        return String::new();
+    }
+
+    let budget = max.saturating_sub(1);
+    let mut width = 0usize;
+    let mut out = String::new();
+    for ch in text.chars() {
+        let ch_width = UnicodeWidthChar::width(ch).unwrap_or(0);
+        if width + ch_width > budget {
+            break;
+        }
+        out.push(ch);
+        width += ch_width;
+    }
+    out.push('…');
+    out
 }
 
 #[cfg(test)]

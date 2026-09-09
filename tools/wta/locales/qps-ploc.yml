@@ -67,6 +67,10 @@ chat.tool_kind.other: "[Ţööĺ!!]"
 input.placeholder.connected: "[Àśķ åñÿţĥïñğ, / ƒöŕ çöḿḿåñďś..!!!! !!!!]"  # {Locked="/"}
 input.placeholder.connecting: "[çöññéçţïñğ...!!]"
 input.placeholder.disconnected: "[ďïśçöññéçţéď!!]"
+input.queue.status: "[Qûéûéď [%{count}]: %{items}!!!!]"
+input.queue.status_full: "[Qûéûé ƒûĺĺ [%{count}/%{capacity}]: %{items}!!!!]"
+input.queue.hint_with_draft: "[Enter qûéûéś ďŕåƒţ · Esc çĺéåŕś ďŕåƒţ ƒïŕśţ!!!!]"
+input.queue.hint_without_draft: "[Esc ŕéḿöṽéś ñéŵéśţ qûéûéď ïñṗûţ!!!!]"
 input.image_attachments: "[📎 Îḿåğéś: %{items}!!!!]"  # {Locked="📎","%{items}"}
 
 # ── Command popup (src/ui/command_popup.rs) ─────────────────────────────────
@@ -157,6 +161,7 @@ system.stopped_max_tokens: "[Ţĥé ŕéśṗöñśé ŵåś çûţ öƒƒ åƒ�
 system.stopped_max_turn_requests: "[Ţĥé åǧéñţ śţöṗṗéď åƒţéŕ ŕéåçĥïñǧ ïţś ŕéqûéśţ ĺïḿïţ ƒöŕ ţĥïś ţûŕñ.!!!! !!!! !!!! !!!! !!!! !!!! !!!! !!!! !!!! !!!! !!!!]"
 system.stopped_refusal: "[Ţĥé åǧéñţ ďéçĺïñéď ţö çöñţïñûé ŵïţĥ ţĥïś ŕéqûéśţ.!!!! !!!! !!!! !!!! !!!! !!!! !!!! !!!! !!!!]"
 system.agent_busy: "[Àğéñţ ïś ƀûśÿ öñ ţĥïś ţåƀ — ŵåïţ ƒöŕ ţĥé çûŕŕéñţ ṗŕöḿṗţ ţö ƒïñïśĥ.!!!! !!!! !!!! !!!! !!!!]"
+system.input_queue_full: "[Qûéûé ƒûĺĺ öñ ţĥïś ţåƀ. Ŵåïţ ƒöŕ å śĺöţ, öŕ çĺéåŕ ÿöûŕ ďŕåƒţ åñď ṗŕéśś Esc ţö ŕéḿöṽé ţĥé ñéŵéśţ qûéûéď ïñṗûţ.!!!! !!!! !!!!]"
 system.image_clipboard_empty: "[Ñö ïḿåğé öñ ţĥé çĺïṗƀöåŕď ţö ṗåśţé.!!!! !!!!]"
 system.image_not_supported: "[Ţĥïś åğéñţ ďöéśñ'ţ śûṗṗöŕţ ïḿåğé ïñṗûţ.!!!! !!!!]"
 system.image_pasted: "[Îḿåğé åţţåçĥéď (%{label}). Ṗŕéśś Enter ţö śéñď.!!!! !!!!]"  # {Locked="%{label}","Enter"}

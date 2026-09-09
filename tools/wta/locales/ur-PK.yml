@@ -65,6 +65,10 @@ chat.tool_kind.other: "ٹول"
 input.placeholder.connected: "کچھ بھی پوچھیں، / کمانڈز کے لیے.."  # {Locked="/"}
 input.placeholder.connecting: "جڑ رہا ہے..."
 input.placeholder.disconnected: "منقطع"
+input.queue.status: "قطار میں [%{count}]: %{items}"
+input.queue.status_full: "قطار بھر گئی ہے [%{count}/%{capacity}]: %{items}"
+input.queue.hint_with_draft: "Enter مسودہ قطار میں رکھتا ہے · Esc پہلے مسودہ صاف کرتا ہے"
+input.queue.hint_without_draft: "Esc قطار میں شامل سب سے نیا ان پٹ ہٹا دیتا ہے"
 input.image_attachments: "📎 تصاویر: %{items}"  # {Locked="📎","%{items}"}
 
 # ── کمانڈ پاپ اپ (src/ui/command_popup.rs) ─────────────────────────────────
@@ -168,6 +172,7 @@ system.stopped_max_tokens: "ماڈل کی آؤٹ پٹ حد تک پہنچنے ک�
 system.stopped_max_turn_requests: "اس باری کے لیے اپنی درخواست کی حد تک پہنچنے کے بعد ایجنٹ رک گیا۔"
 system.stopped_refusal: "ایجنٹ نے اس درخواست کو جاری رکھنے سے انکار کر دیا۔"
 system.agent_busy: "اس ٹیب پر Agent مصروف ہے — موجودہ پرامپٹ ختم ہونے تک انتظار کریں۔"
+system.input_queue_full: "اس ٹیب پر قطار بھر گئی ہے۔ جگہ خالی ہونے کا انتظار کریں، یا اپنا مسودہ صاف کریں اور قطار میں شامل سب سے نیا ان پٹ ہٹانے کے لیے Esc دبائیں۔"
 system.image_clipboard_empty: "پیسٹ کرنے کے لیے کلپ بورڈ پر کوئی تصویر نہیں ہے۔"
 system.image_not_supported: "یہ ایجنٹ تصویری ان پٹ کی معاونت نہیں کرتا۔"
 system.image_pasted: "تصویر منسلک ہو گئی (%{label})۔ بھیجنے کے لیے Enter دبائیں۔"  # {Locked="%{label}","Enter"}

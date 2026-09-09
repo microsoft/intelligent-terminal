@@ -61,6 +61,10 @@ chat.tool_kind.other: "工具"
 input.placeholder.connected: "隨意提問，/ 查看命令.."  # {Locked="/"}
 input.placeholder.connecting: "連線中..."
 input.placeholder.disconnected: "已中斷連線"
+input.queue.status: "已排入佇列 [%{count}]: %{items}"
+input.queue.status_full: "佇列已滿 [%{count}/%{capacity}]: %{items}"
+input.queue.hint_with_draft: "Enter 會將草稿加入佇列 · Esc 會先清除草稿"
+input.queue.hint_without_draft: "Esc 會移除最新的佇列輸入"
 input.image_attachments: "📎 圖片: %{items}"  # {Locked="📎","%{items}"}
 
 # ── 命令快顯視窗 (src/ui/command_popup.rs) ─────────────────────────────────
@@ -151,6 +155,7 @@ system.stopped_max_tokens: "達到模型的輸出上限後，回覆遭到截斷�
 system.stopped_max_turn_requests: "達到本回合的要求上限後，智能體已停止。"
 system.stopped_refusal: "智能體拒絕繼續處理此要求。"
 system.agent_busy: "智能體正在此索引標籤上忙碌 — 請等待目前提示完成。"
+system.input_queue_full: "此分頁上的佇列已滿。請等待空位，或清除草稿後按 Esc 移除最新的佇列輸入。"
 system.image_clipboard_empty: "剪貼簿上沒有可貼上的圖片。"
 system.image_not_supported: "此智能體不支援影像輸入。"
 system.image_pasted: "已附加圖片（%{label}）。按 Enter 傳送。"  # {Locked="%{label}","Enter"}

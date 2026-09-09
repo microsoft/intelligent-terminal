@@ -65,6 +65,10 @@ chat.tool_kind.other: "Eszköz"
 input.placeholder.connected: "Kérdezzen bármit, / a parancsokhoz.."  # {Locked="/"}
 input.placeholder.connecting: "csatlakozás..."
 input.placeholder.disconnected: "lecsatlakozva"
+input.queue.status: "Sorban [%{count}]: %{items}"
+input.queue.status_full: "A sor megtelt [%{count}/%{capacity}]: %{items}"
+input.queue.hint_with_draft: "Az Enter sorba állítja a piszkozatot · az Esc először törli a piszkozatot"
+input.queue.hint_without_draft: "Az Esc eltávolítja a legújabb sorban álló bevitelt"
 input.image_attachments: "📎 Képek: %{items}"  # {Locked="📎","%{items}"}
 
 # ── Command popup (src/ui/command_popup.rs) ─────────────────────────────────
@@ -155,6 +159,7 @@ system.stopped_max_tokens: "A válasz megszakadt, miután elérte a modell kimen
 system.stopped_max_turn_requests: "Az ügynök leállt, miután elérte a kérési korlátját ehhez a fordulóhoz."
 system.stopped_refusal: "Az ügynök elutasította a kérés folytatását."
 system.agent_busy: "Az ügynök elfoglalt ezen a lapon — várja meg, amíg az aktuális kérés befejeződik."
+system.input_queue_full: "A sor ezen a lapon megtelt. Várjon egy szabad helyre, vagy törölje a piszkozatát, és nyomja meg az Esc billentyűt a legújabb sorban álló bevitel eltávolításához."
 system.image_clipboard_empty: "Nincs beilleszthető kép a vágólapon."
 system.image_not_supported: "Ez az ügynök nem támogatja a képbevitelt."
 system.image_pasted: "Kép csatolva (%{label}). A küldéshez nyomja meg az Enter billentyűt."  # {Locked="%{label}","Enter"}

@@ -65,6 +65,10 @@ chat.tool_kind.other: "Ferramenta"
 input.placeholder.connected: "Pregunte o que queira, / para comandos.."  # {Locked="/"}
 input.placeholder.connecting: "conectando..."
 input.placeholder.disconnected: "desconectado"
+input.queue.status: "Na cola [%{count}]: %{items}"
+input.queue.status_full: "Cola chea [%{count}/%{capacity}]: %{items}"
+input.queue.hint_with_draft: "Enter pon o borrador na cola · Esc borra primeiro o borrador"
+input.queue.hint_without_draft: "Esc elimina a entrada na cola máis recente"
 input.image_attachments: "📎 Imaxes: %{items}"  # {Locked="📎","%{items}"}
 
 # ── Ventá emerxente de comandos (src/ui/command_popup.rs) ─────────────────────────────────
@@ -155,6 +159,7 @@ system.stopped_max_tokens: "A resposta cortouse ao acadar o límite de saída do
 system.stopped_max_turn_requests: "O axente detívose ao acadar o seu límite de solicitudes para esta quenda."
 system.stopped_refusal: "O axente negouse a continuar con esta solicitude."
 system.agent_busy: "O axente está ocupado nesta lapela — agarde a que remate a solicitude actual."
+system.input_queue_full: "A cola desta lapela está chea. Agarde a que haxa sitio ou borre o borrador e prema Esc para eliminar a entrada na cola máis recente."
 system.image_clipboard_empty: "Non hai ningunha imaxe no portapapeis para pegar."
 system.image_not_supported: "Este axente non admite entrada de imaxes."
 system.image_pasted: "Imaxe anexada (%{label}). Prema Enter para enviar."  # {Locked="%{label}","Enter"}

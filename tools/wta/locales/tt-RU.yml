@@ -65,6 +65,10 @@ chat.tool_kind.other: "Корал"
 input.placeholder.connected: "Теләсә нәрсә сорагыз, / боерыклар өчен.."  # {Locked="/"}
 input.placeholder.connecting: "тоташа..."
 input.placeholder.disconnected: "аерылган"
+input.queue.status: "Чиратта [%{count}]: %{items}"
+input.queue.status_full: "Чират тулы [%{count}/%{capacity}]: %{items}"
+input.queue.hint_with_draft: "Enter караламаны чиратка куя · Esc башта караламаны чистарта"
+input.queue.hint_without_draft: "Esc чираттагы иң яңа кертүне бетерә"
 input.image_attachments: "📎 Рәсемнәр: %{items}"  # {Locked="📎","%{items}"}
 
 # ── Command popup (src/ui/command_popup.rs) ─────────────────────────────────
@@ -168,6 +172,7 @@ system.stopped_max_tokens: "Җавап модельнең чыгару чикл�
 system.stopped_max_turn_requests: "Агент бу чират өчен сорау чикләвенә җиткәч туктады."
 system.stopped_refusal: "Агент бу сорауны дәвам итүдән баш тартты."
 system.agent_busy: "Агент бу кыстыргычта мәшгуль — агымдагы сорау тәмамланганын көтегез."
+system.input_queue_full: "Бу кыстыргычтагы чират тулы. Буш урын көтегез яки караламагызны чистартып, чираттагы иң яңа кертүне бетерү өчен Esc басыгыз."
 system.image_clipboard_empty: "Кую өчен буферда рәсем юк."
 system.image_not_supported: "Бу агент рәсем кертүне хупламый."
 system.image_pasted: "Рәсем беркетелде (%{label}). Җибәрү өчен Enter басыгыз."  # {Locked="%{label}","Enter"}

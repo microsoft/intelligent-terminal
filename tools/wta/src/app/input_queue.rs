@@ -1,6 +1,15 @@
 use super::*;
 
-pub(super) const INPUT_QUEUE_CAPACITY: usize = 20;
+pub(crate) const INPUT_QUEUE_CAPACITY: usize = 20;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct PendingInputQueueSnapshot<'a> {
+    pub(crate) count: usize,
+    pub(crate) capacity: usize,
+    pub(crate) is_full: bool,
+    pub(crate) display_texts: Vec<&'a str>,
+    pub(crate) hidden: usize,
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum InputGateResult {
@@ -10,6 +19,28 @@ pub(super) enum InputGateResult {
 }
 
 impl App {
+    pub(crate) fn current_tab_pending_input_queue_snapshot(
+        &self,
+        preview_limit: usize,
+    ) -> PendingInputQueueSnapshot<'_> {
+        let tab = self.current_tab();
+        let count = tab.pending_inputs.len();
+        let display_texts = tab
+            .pending_inputs
+            .iter()
+            .take(preview_limit)
+            .map(|queued| queued.display_text.as_str())
+            .collect::<Vec<_>>();
+
+        PendingInputQueueSnapshot {
+            count,
+            capacity: INPUT_QUEUE_CAPACITY,
+            is_full: count >= INPUT_QUEUE_CAPACITY,
+            hidden: count.saturating_sub(display_texts.len()),
+            display_texts,
+        }
+    }
+
     pub(super) fn input_queue_is_full(&self, tab_id: &str) -> bool {
         self.tab_sessions
             .get(tab_id)

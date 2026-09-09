@@ -70,6 +70,10 @@ input.placeholder.connected: "Հարցրեք ցանկացած, / հրամանն�
 input.placeholder.connecting: "միանում..."
 # Input box placeholder when agent is disconnected
 input.placeholder.disconnected: "անջատված"
+input.queue.status: "Հերթագրված [%{count}]: %{items}"
+input.queue.status_full: "Հերթը լիքն է [%{count}/%{capacity}]: %{items}"
+input.queue.hint_with_draft: "Enter-ը սևագիրը հերթագրում է · Esc-ը նախ մաքրում է սևագիրը"
+input.queue.hint_without_draft: "Esc-ը հեռացնում է հերթագրված ամենավերջին մուտքագրումը"
 input.image_attachments: "📎 Պատկերներ: %{items}"  # {Locked="📎","%{items}"}
 
 # ── Command popup (src/ui/command_popup.rs) ─────────────────────────────────────────────────────────────────
@@ -181,6 +185,7 @@ system.stopped_max_tokens: "Պատասխանը կտրվեց՝ հասնելով �
 system.stopped_max_turn_requests: "Գործակալը կանգ առավ՝ հասնելով այս հերթի հարցումների սահմանաչափին։"
 system.stopped_refusal: "Գործակալը հրաժարվեց շարունակել այս հարցումը։"
 system.agent_busy: "Agent-ը զբաղված է այս ներդիրում — սպասեք, մինչև ընթացիկ հուշումն ավարտվի։"
+system.input_queue_full: "Այս ներդիրի հերթը լիքն է։ Սպասեք ազատ տեղ բացվելուն, կամ մաքրեք ձեր սևագիրը և սեղմեք Esc՝ հերթագրված ամենավերջին մուտքագրումը հեռացնելու համար։"
 system.image_clipboard_empty: "Սեղմատախտակի վրա տեղադրելու պատկեր չկա։"
 system.image_not_supported: "Այս ագենտը չի աջակցում պատկերի մուտքագրմանը։"
 system.image_pasted: "Պատկերը կցվեց (%{label})։ Ուղարկելու համար սեղմեք Enter։"  # {Locked="%{label}","Enter"}

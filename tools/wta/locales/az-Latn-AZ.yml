@@ -65,6 +65,10 @@ chat.tool_kind.other: "Alət"
 input.placeholder.connected: "Hər şeyi soruşun, / əmrlər üçün.."  # {Locked="/"}
 input.placeholder.connecting: "qoşulur..."
 input.placeholder.disconnected: "əlaqə kəsilib"
+input.queue.status: "Növbədə [%{count}]: %{items}"
+input.queue.status_full: "Növbə doludur [%{count}/%{capacity}]: %{items}"
+input.queue.hint_with_draft: "Enter qaralamanı növbəyə əlavə edir · Esc əvvəlcə qaralamanı təmizləyir"
+input.queue.hint_without_draft: "Esc növbədəki ən yeni daxiletməni silir"
 # Summary of attached images; keep 📎 and %{items} verbatim.
 input.image_attachments: "📎 Şəkillər: %{items}"  # {Locked="📎","%{items}"}
 
@@ -169,6 +173,7 @@ system.stopped_max_tokens: "Cavab modelin çıxış həddinə çatdıqdan sonra 
 system.stopped_max_turn_requests: "Agent bu növbə üçün sorğu həddinə çatdıqdan sonra dayandı."
 system.stopped_refusal: "Agent bu sorğunu davam etdirməkdən imtina etdi."
 system.agent_busy: "Agent bu tabda məşğuldur — cari sorğunun tamamlanmasını gözləyin."
+system.input_queue_full: "Bu tabda növbə doludur. Yer boşalmasını gözləyin və ya qaralamanızı təmizləyib növbədəki ən yeni daxiletməni silmək üçün Esc basın."
 # Image paste messages; "agent" refers to an AI agent. Keep Enter and %{label} verbatim.
 system.image_clipboard_empty: "Yapışdırmaq üçün mübadilə buferində şəkil yoxdur."
 system.image_not_supported: "Bu agent şəkil girişini dəstəkləmir."

@@ -65,6 +65,10 @@ chat.tool_kind.other: "Orodje"
 input.placeholder.connected: "Vprašajte karkoli, / za ukaze.."  # {Locked="/"}
 input.placeholder.connecting: "povezovanje..."
 input.placeholder.disconnected: "prekinjeno"
+input.queue.status: "V čakalni vrsti [%{count}]: %{items}"
+input.queue.status_full: "Čakalna vrsta je polna [%{count}/%{capacity}]: %{items}"
+input.queue.hint_with_draft: "Enter postavi osnutek v čakalno vrsto · Esc najprej počisti osnutek"
+input.queue.hint_without_draft: "Esc odstrani najnovejši vnos v čakalni vrsti"
 input.image_attachments: "📎 Slike: %{items}"  # {Locked="📎","%{items}"}
 
 # ── Command popup (src/ui/command_popup.rs) ─────────────────────────────────
@@ -164,6 +168,7 @@ system.stopped_max_tokens: "Odgovor je bil odrezan po dosegu izhodne omejitve mo
 system.stopped_max_turn_requests: "Agent se je ustavil po dosegu omejitve zahtev za to potezo."
 system.stopped_refusal: "Agent je zavrnil nadaljevanje te zahteve."
 system.agent_busy: "Agent je zaposlen na tem zavihku — počakajte, da se trenutni poziv dokonča."
+system.input_queue_full: "Čakalna vrsta na tem zavihku je polna. Počakajte na prosto mesto ali počistite osnutek in pritisnite Esc, da odstranite najnovejši vnos v čakalni vrsti."
 system.image_clipboard_empty: "V odložišču ni slike za lepljenje."
 system.image_not_supported: "Ta agent ne podpira vnosa slik."
 system.image_pasted: "Slika priložena (%{label}). Pritisnite Enter za pošiljanje."  # {Locked="%{label}","Enter"}

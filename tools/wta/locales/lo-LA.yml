@@ -65,6 +65,10 @@ chat.tool_kind.other: "ເຄື່ອງມື"
 input.placeholder.connected: "Ask anything, / for commands.."  # {Locked="/"}
 input.placeholder.connecting: "connecting..."
 input.placeholder.disconnected: "disconnected"
+input.queue.status: "ຢູ່ໃນຄິວ [%{count}]: %{items}"
+input.queue.status_full: "ຄິວເຕັມ [%{count}/%{capacity}]: %{items}"
+input.queue.hint_with_draft: "Enter ຈະນຳຮ່າງເຂົ້າຄິວ · Esc ຈະລ້າງຮ່າງກ່ອນ"
+input.queue.hint_without_draft: "Esc ຈະເອົາຂໍ້ປ້ອນທີ່ເຂົ້າຄິວຫຼ້າສຸດອອກ"
 input.image_attachments: "📎 ຮູບພາບ: %{items}"  # {Locked="%{items}"} {Locked="📎"}
 
 # ── Command popup (src/ui/command_popup.rs) ─────────────────────────────────
@@ -155,6 +159,7 @@ system.stopped_max_tokens: "ການຕອບໄດ້ຖືກຕັດອອ�
 system.stopped_max_turn_requests: "ຕົວແທນໄດ້ຢຸດຫຼັງຈາກບັນລຸຂີດຈຳກັດການຮ້ອງຂໍສຳລັບຮອບນີ້."
 system.stopped_refusal: "ຕົວແທນໄດ້ປະຕິເສດທີ່ຈະດຳເນີນການຮ້ອງຂໍນີ້ຕໍ່."
 system.agent_busy: "Agent ກຳລັງບໍ່ວ່າງໃນແຖບນີ້ — ລໍຖ້າໃຫ້ prompt ປັດຈຸບັນສຳເລັດ."
+system.input_queue_full: "ຄິວໃນແທັບນີ້ເຕັມແລ້ວ. ລໍຖ້າໃຫ້ມີຊ່ອງວ່າງ ຫຼືລ້າງຮ່າງຂອງທ່ານແລ້ວກົດ Esc ເພື່ອເອົາຂໍ້ປ້ອນທີ່ເຂົ້າຄິວຫຼ້າສຸດອອກ."
 system.image_clipboard_empty: "ບໍ່ມີຮູບພາບໃນ clipboard ເພື່ອວາງ."
 system.image_not_supported: "Agent ນີ້ບໍ່ຮອງຮັບການປ້ອນຮູບພາບ."
 system.image_pasted: "ແນບຮູບພາບແລ້ວ (%{label}). ກົດ Enter ເພື່ອສົ່ງ."  # {Locked="%{label}","Enter"}

@@ -58,7 +58,7 @@ impl App {
     pub(super) fn show_input_queue_full_hint(&mut self) {
         let now = std::time::Instant::now();
         self.transient_hint = Some((
-            t!("system.agent_busy").into_owned(),
+            t!("system.input_queue_full").into_owned(),
             now + CLOSE_PANE_ARM_WINDOW,
         ));
     }

@@ -65,6 +65,10 @@ chat.tool_kind.other: "Mjet"
 input.placeholder.connected: "Pyetni çfarëdo, / për komandat.."  # {Locked="/"}
 input.placeholder.connecting: "po lidhet..."
 input.placeholder.disconnected: "i shkëputur"
+input.queue.status: "Në radhë [%{count}]: %{items}"
+input.queue.status_full: "Radha është plot [%{count}/%{capacity}]: %{items}"
+input.queue.hint_with_draft: "Enter e vendos draftin në radhë · Esc së pari pastron draftin"
+input.queue.hint_without_draft: "Esc heq hyrjen më të re në radhë"
 input.image_attachments: "📎 Imazhet: %{items}"  # {Locked="📎","%{items}"}
 
 # ── Command popup (src/ui/command_popup.rs) ─────────────────────────────────
@@ -155,6 +159,7 @@ system.stopped_max_tokens: "Përgjigja u ndërpre pasi u arrit kufiri i daljes s
 system.stopped_max_turn_requests: "Agjenti ndaloi pasi arriti kufirin e kërkesave për këtë radhë."
 system.stopped_refusal: "Agjenti refuzoi të vazhdojë me këtë kërkesë."
 system.agent_busy: "Agjenti është i zënë në këtë skedë — prisni që kërkesa aktuale të përfundojë."
+system.input_queue_full: "Radha në këtë skedë është plot. Prisni për një vend të lirë ose pastroni draftin dhe shtypni Esc për të hequr hyrjen më të re në radhë."
 system.image_clipboard_empty: "Nuk ka imazh në clipboard për ta ngjitur."
 system.image_not_supported: "Ky agjent nuk mbështet hyrjen e imazheve."
 system.image_pasted: "Imazhi u bashkëngjit (%{label}). Shtypni Enter për ta dërguar."  # {Locked="%{label}","Enter"}

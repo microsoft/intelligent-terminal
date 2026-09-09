@@ -65,6 +65,10 @@ chat.tool_kind.other: "Алатка"
 input.placeholder.connected: "Прашајте што сакате, / за команди.."  # {Locked="/"}
 input.placeholder.connecting: "поврзување..."
 input.placeholder.disconnected: "исклучено"
+input.queue.status: "Во редица [%{count}]: %{items}"
+input.queue.status_full: "Редицата е полна [%{count}/%{capacity}]: %{items}"
+input.queue.hint_with_draft: "Enter го става нацртот во редица · Esc прво го чисти нацртот"
+input.queue.hint_without_draft: "Esc го отстранува најновиот внес во редицата"
 input.image_attachments: "📎 Слики: %{items}"  # {Locked="%{items}"} {Locked="📎"}
 
 # ── Command popup (src/ui/command_popup.rs) ─────────────────────────────────
@@ -164,6 +168,7 @@ system.stopped_max_tokens: "Одговорот беше отсечен по до
 system.stopped_max_turn_requests: "Агентот запре по достигнување на ограничувањето на барања за овој потег."
 system.stopped_refusal: "Агентот одби да продолжи со ова барање."
 system.agent_busy: "Агентот е зафатен на оваа картичка — почекајте тековното барање да заврши."
+system.input_queue_full: "Редицата на ова јазиче е полна. Почекајте слободно место или исчистете го нацртот и притиснете Esc за да го отстраните најновиот внес во редицата."
 system.image_clipboard_empty: "Нема слика во clipboard за лепење."
 system.image_not_supported: "Овој агент не поддржува внес на слики."
 system.image_pasted: "Сликата е прикачена (%{label}). Притиснете Enter за испраќање."  # {Locked="%{label}","Enter"}

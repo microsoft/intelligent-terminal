@@ -65,6 +65,10 @@ chat.tool_kind.other: "Tööriist"
 input.placeholder.connected: "Küsi mida iganes, / käskude jaoks.."  # {Locked="/"}
 input.placeholder.connecting: "ühendamine..."
 input.placeholder.disconnected: "ühendus katkestatud"
+input.queue.status: "Järjekorras [%{count}]: %{items}"
+input.queue.status_full: "Järjekord on täis [%{count}/%{capacity}]: %{items}"
+input.queue.hint_with_draft: "Enter lisab mustandi järjekorda · Esc tühjendab kõigepealt mustandi"
+input.queue.hint_without_draft: "Esc eemaldab uusima järjekorda pandud sisendi"
 input.image_attachments: "📎 Pildid: %{items}"  # {Locked="📎","%{items}"}
 
 # ── Command popup (src/ui/command_popup.rs) ─────────────────────────────────
@@ -155,6 +159,7 @@ system.stopped_max_tokens: "Vastus katkestati pärast mudeli väljundpiiri saavu
 system.stopped_max_turn_requests: "Agent peatus pärast selle vooru päringupiiri saavutamist."
 system.stopped_refusal: "Agent keeldus selle päringuga jätkamast."
 system.agent_busy: "Agent on sellel vahekaardil hõivatud — oodake, kuni praegune viip lõpeb."
+system.input_queue_full: "Selle vahekaardi järjekord on täis. Oodake vaba kohta või tühjendage oma mustand ja vajutage Esc, et eemaldada uusim järjekorda pandud sisend."
 system.image_clipboard_empty: "Lõikelaual pole kleepimiseks pilti."
 system.image_not_supported: "See agent ei toeta pildisisendit."
 system.image_pasted: "Pilt lisatud (%{label}). Vajutage Enter saatmiseks."  # {Locked="%{label}","Enter"}

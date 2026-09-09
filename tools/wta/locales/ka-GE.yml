@@ -65,6 +65,10 @@ chat.tool_kind.other: "ხელსაწყო"
 input.placeholder.connected: "იკითხეთ რაც გნებავთ, / ბრძანებებისთვის.."  # {Locked="/"}
 input.placeholder.connecting: "დაკავშირება..."
 input.placeholder.disconnected: "გათიშული"
+input.queue.status: "რიგშია [%{count}]: %{items}"
+input.queue.status_full: "რიგი სავსეა [%{count}/%{capacity}]: %{items}"
+input.queue.hint_with_draft: "Enter მონახაზს რიგში აყენებს · Esc ჯერ მონახაზს ასუფთავებს"
+input.queue.hint_without_draft: "Esc რიგში მდგომ უახლეს შეყვანას შლის"
 input.image_attachments: "📎 სურათები: %{items}"  # {Locked="📎","%{items}"}
 
 # ── ბრძანებების ამომხტარი (src/ui/command_popup.rs) ─────────────────────────────────
@@ -168,6 +172,7 @@ system.stopped_max_tokens: "პასუხი შეწყდა მოდე�
 system.stopped_max_turn_requests: "აგენტი გაჩერდა ამ რაუნდის მოთხოვნების ლიმიტის მიღწევის შემდეგ."
 system.stopped_refusal: "აგენტმა უარი თქვა ამ მოთხოვნის გაგრძელებაზე."
 system.agent_busy: "Agent ამ ჩანართზე დაკავებულია — დაელოდეთ მიმდინარე მოთხოვნის დასრულებას."
+system.input_queue_full: "ამ ჩანართზე რიგი სავსეა. დაელოდეთ თავისუფალ ადგილს, ან გაასუფთავეთ მონახაზი და დააჭირეთ Esc-ს, რომ რიგში მდგომი უახლესი შეყვანა წაიშალოს."
 system.image_clipboard_empty: "ჩასასმელად ბუფერში სურათი არ არის."
 system.image_not_supported: "ეს აგენტი სურათის შეყვანას არ უჭერს მხარს."
 system.image_pasted: "სურათი მიმაგრებულია (%{label}). გასაგზავნად დააჭირეთ Enter ღილაკს."  # {Locked="%{label}","Enter"}

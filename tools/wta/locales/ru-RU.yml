@@ -65,6 +65,10 @@ chat.tool_kind.other: "Инструмент"
 input.placeholder.connected: "Спросите что угодно, / для команд.."  # {Locked="/"}
 input.placeholder.connecting: "Подключение..."
 input.placeholder.disconnected: "Отключено"
+input.queue.status: "В очереди [%{count}]: %{items}"
+input.queue.status_full: "Очередь заполнена [%{count}/%{capacity}]: %{items}"
+input.queue.hint_with_draft: "Enter ставит черновик в очередь · Esc сначала очищает черновик"
+input.queue.hint_without_draft: "Esc удаляет самый новый элемент очереди"
 input.image_attachments: "📎 Изображения: %{items}"  # {Locked="📎","%{items}"}
 
 # ── Всплывающее окно команд (src/ui/command_popup.rs) ─────────────────────────────────
@@ -164,6 +168,7 @@ system.stopped_max_tokens: "Ответ был обрезан после дост
 system.stopped_max_turn_requests: "Агент остановился после достижения лимита запросов для этого хода."
 system.stopped_refusal: "Агент отказался продолжать выполнение этого запроса."
 system.agent_busy: "Агент занят на этой вкладке — дождитесь завершения текущего запроса."
+system.input_queue_full: "Очередь на этой вкладке заполнена. Подождите свободное место или очистите черновик и нажмите Esc, чтобы удалить самый новый элемент очереди."
 system.image_clipboard_empty: "В буфере обмена нет изображения для вставки."
 system.image_not_supported: "Этот агент не поддерживает ввод изображений."
 system.image_pasted: "Изображение прикреплено (%{label}). Нажмите Enter, чтобы отправить."  # {Locked="%{label}","Enter"}

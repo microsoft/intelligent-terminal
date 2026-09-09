@@ -65,6 +65,10 @@ chat.tool_kind.other: "Yanapakuy"
 input.placeholder.connected: "Imata tapukuy, / kamachiykunapaq.."  # {Locked="/"}
 input.placeholder.connecting: "t'inkichkan..."
 input.placeholder.disconnected: "t'inkisqa"
+input.queue.status: "Suyaypi [%{count}]: %{items}"
+input.queue.status_full: "Suyay hunt'asqa [%{count}/%{capacity}]: %{items}"
+input.queue.hint_with_draft: "Enter qillqasqa wakichiyta suyayman churayku · Esc ñawpaqta qillqasqa wakichiyta pichan"
+input.queue.hint_without_draft: "Esc qhipa suyaypi kaq yaykuyta hurqun"
 input.image_attachments: "📎 Imagenkuna: %{items}"  # {Locked="📎","%{items}"}
 
 # ── Command popup (src/ui/command_popup.rs) ─────────────────────────────────
@@ -155,6 +159,7 @@ system.stopped_max_tokens: "Kutichiyqa kuchurqakun modelopa lluqsiynin sayaynin 
 system.stopped_max_turn_requests: "Agenteqa sayarqan kay kutipi mañakuy sayaynin chayasqan qhipata."
 system.stopped_refusal: "Agenteqa kay mañakuyta qatiyta mana munarqanchu."
 system.agent_busy: "Kay tab nisqapi Agent llamk'achkan — kunan prompt tukukunankama suyay."
+system.input_queue_full: "Kay pestañapi suyay hunt'asqa kachkan. Huk chiqta suyay, utaq qillqasqa wakichiykiyta pichay hinaspa Esc ñit'iy qhipa suyaypi kaq yaykuyta hurqunapaq."
 system.image_clipboard_empty: "K'askachinapaq wich'amanpi mana imagen kanchu."
 system.image_not_supported: "Kay Agent mana imagen yaykuchiyta yanapanchu."
 system.image_pasted: "Imagen k'askachasqa (%{label}). Enter nit'iy apachinapaq."  # {Locked="%{label}","Enter"}

@@ -65,6 +65,10 @@ chat.tool_kind.other: "Werkzeug"
 input.placeholder.connected: "Frag etwas, / für Befehle.."  # {Locked="/"}
 input.placeholder.connecting: "Verbindung wird hergestellt..."
 input.placeholder.disconnected: "Getrennt"
+input.queue.status: "In Warteschlange [%{count}]: %{items}"
+input.queue.status_full: "Warteschlange voll [%{count}/%{capacity}]: %{items}"
+input.queue.hint_with_draft: "Enter stellt den Entwurf in die Warteschlange · Esc löscht zuerst den Entwurf"
+input.queue.hint_without_draft: "Esc entfernt die neueste Eingabe in der Warteschlange"
 # Summary of attached images; keep 📎 and %{items} verbatim.
 input.image_attachments: "📎 Bilder: %{items}"  # {Locked="📎","%{items}"}
 
@@ -156,6 +160,7 @@ system.stopped_max_tokens: "Die Antwort wurde abgeschnitten, nachdem das Ausgabe
 system.stopped_max_turn_requests: "Der Agent hat angehalten, nachdem sein Anfragelimit für diesen Zug erreicht wurde."
 system.stopped_refusal: "Der Agent hat es abgelehnt, mit dieser Anfrage fortzufahren."
 system.agent_busy: "Der Agent ist auf dieser Registerkarte beschäftigt — warten Sie, bis der aktuelle Prompt abgeschlossen ist."
+system.input_queue_full: "Die Warteschlange auf dieser Registerkarte ist voll. Warten Sie auf einen freien Platz, oder löschen Sie Ihren Entwurf und drücken Sie Esc, um die neueste Eingabe in der Warteschlange zu entfernen."
 # Image paste messages; "agent" refers to an AI agent. Keep Enter and %{label} verbatim.
 system.image_clipboard_empty: "Kein Bild in der Zwischenablage zum Einfügen."
 system.image_not_supported: "Dieser Agent unterstützt keine Bildeingabe."

@@ -65,6 +65,10 @@ chat.tool_kind.other: "Għodda"
 input.placeholder.connected: "Staqsi kull ħaġa, / għall-kmandat.."  # {Locked="/"}
 input.placeholder.connecting: "qed jikkonnettja..."
 input.placeholder.disconnected: "diskonnettjat"
+input.queue.status: "Fil-kju [%{count}]: %{items}"
+input.queue.status_full: "Il-kju mimli [%{count}/%{capacity}]: %{items}"
+input.queue.hint_with_draft: "Enter ipoġġi l-abbozz fil-kju · Esc l-ewwel iħassar l-abbozz"
+input.queue.hint_without_draft: "Esc ineħħi l-aktar input fil-kju reċenti"
 input.image_attachments: "📎 Stampi: %{items}"  # {Locked="%{items}"} {Locked="📎"}
 
 # ── Popup tal-kmandati (src/ui/command_popup.rs) ─────────────────────────────────
@@ -155,6 +159,7 @@ system.stopped_max_tokens: "It-tweġiba nqatgħet wara li ntlaħaq il-limitu tal
 system.stopped_max_turn_requests: "L-aġent waqaf wara li laħaq il-limitu tat-talbiet tiegħu għal din id-dawra."
 system.stopped_refusal: "L-aġent irrifjuta li jkompli b'din it-talba."
 system.agent_busy: "L-aġent huwa okkupat fuq din it-tab — stenna sakemm jintemm il-prompt kurrenti."
+system.input_queue_full: "Il-kju f'din it-tab huwa mimli. Stenna post vojta, jew naddaf l-abbozz tiegħek u agħfas Esc biex tneħħi l-aktar input fil-kju reċenti."
 system.image_clipboard_empty: "M'hemm l-ebda stampa fil-clipboard biex tippejstja."
 system.image_not_supported: "Dan l-aġent ma jappoġġjax input ta' stampi."
 system.image_pasted: "Stampa mehmuża (%{label}). Agħfas Enter biex tibgħat."  # {Locked="%{label}","Enter"}

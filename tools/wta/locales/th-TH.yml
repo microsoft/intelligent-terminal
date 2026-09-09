@@ -65,6 +65,10 @@ chat.tool_kind.other: "เครื่องมือ"
 input.placeholder.connected: "ถามอะไรก็ได้, / สำหรับคำสั่ง.."  # {Locked="/"}
 input.placeholder.connecting: "กำลังเชื่อมต่อ..."
 input.placeholder.disconnected: "ตัดการเชื่อมต่อ"
+input.queue.status: "อยู่ในคิว [%{count}]: %{items}"
+input.queue.status_full: "คิวเต็ม [%{count}/%{capacity}]: %{items}"
+input.queue.hint_with_draft: "Enter จัดคิวฉบับร่าง · Esc ล้างฉบับร่างก่อน"
+input.queue.hint_without_draft: "Esc เอาอินพุตที่เข้าคิวล่าสุดออก"
 input.image_attachments: "📎 รูปภาพ: %{items}"  # {Locked="📎","%{items}"}
 
 # ── Command popup (src/ui/command_popup.rs) ─────────────────────────────────
@@ -155,6 +159,7 @@ system.stopped_max_tokens: "การตอบกลับถูกตัดอ�
 system.stopped_max_turn_requests: "เอเจนต์หยุดลงหลังจากถึงขีดจำกัดคำขอสำหรับเทิร์นนี้"
 system.stopped_refusal: "เอเจนต์ปฏิเสธที่จะดำเนินการคำขอนี้ต่อ"
 system.agent_busy: "เอเจนต์กำลังทำงานอยู่ในแท็บนี้ — รอให้พรอมต์ปัจจุบันเสร็จก่อน"
+system.input_queue_full: "คิวในแท็บนี้เต็มแล้ว รอให้มีช่องว่าง หรือล้างฉบับร่างของคุณแล้วกด Esc เพื่อนำอินพุตที่เข้าคิวล่าสุดออก"
 system.image_clipboard_empty: "ไม่มีรูปภาพในคลิปบอร์ดให้วาง"
 system.image_not_supported: "เอเจนต์นี้ไม่รองรับการป้อนรูปภาพ"
 system.image_pasted: "แนบรูปภาพแล้ว (%{label}) กด Enter เพื่อส่ง"  # {Locked="%{label}","Enter"}

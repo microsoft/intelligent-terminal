@@ -65,6 +65,10 @@ chat.tool_kind.other: "[!!_Tool_!!]"
 input.placeholder.connected: "[!!_Ask anything, / for commands.._!!]"  # {Locked="/"}
 input.placeholder.connecting: "[!!_connecting..._!!]"
 input.placeholder.disconnected: "[!!_disconnected_!!]"
+input.queue.status: "[!!_Queued [%{count}]: %{items}_!!]"
+input.queue.status_full: "[!!_Queue full [%{count}/%{capacity}]: %{items}_!!]"
+input.queue.hint_with_draft: "[!!_Enter queues draft · Esc clears draft first_!!]"
+input.queue.hint_without_draft: "[!!_Esc removes newest queued input_!!]"
 input.image_attachments: "[!!_📎 Images: %{items}_!!]"  # {Locked="📎","%{items}"}
 
 # ── Command popup (src/ui/command_popup.rs) ─────────────────────────────────
@@ -155,6 +159,7 @@ system.stopped_max_tokens: "[!!_The response was cut off after reaching the mode
 system.stopped_max_turn_requests: "[!!_The agent stopped after reaching its request limit for this turn._!!]"
 system.stopped_refusal: "[!!_The agent declined to continue with this request._!!]"
 system.agent_busy: "[!!_Agent is busy on this tab — wait for the current prompt to finish._!!]"
+system.input_queue_full: "[!!_Queue full on this tab. Wait for a slot, or clear your draft and press Esc to remove the newest queued input._!!]"
 system.image_clipboard_empty: "[!!_No image on the clipboard to paste._!!]"
 system.image_not_supported: "[!!_This agent doesn't support image input._!!]"
 system.image_pasted: "[!!_Image attached (%{label}). Press Enter to send._!!]"  # {Locked="%{label}","Enter"}

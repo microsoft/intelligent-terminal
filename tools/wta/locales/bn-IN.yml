@@ -65,6 +65,10 @@ chat.tool_kind.other: "টুল"
 input.placeholder.connected: "যেকোনো কিছু জিজ্ঞাসা করুন, / কমান্ডের জন্য.."  # {Locked="/"}
 input.placeholder.connecting: "সংযোগ হচ্ছে..."
 input.placeholder.disconnected: "বিচ্ছিন্ন"
+input.queue.status: "সারিবদ্ধ [%{count}]: %{items}"
+input.queue.status_full: "সারি পূর্ণ [%{count}/%{capacity}]: %{items}"
+input.queue.hint_with_draft: "Enter খসড়াকে সারিবদ্ধ করে · Esc আগে খসড়া মুছে দেয়"
+input.queue.hint_without_draft: "Esc নতুনতম সারিবদ্ধ ইনপুট সরায়"
 # Summary of attached images; keep 📎 and %{items} verbatim.
 input.image_attachments: "📎 ছবিগুলি: %{items}"  # {Locked="📎","%{items}"}
 
@@ -169,6 +173,7 @@ system.stopped_max_tokens: "মডেলের আউটপুট সীমা�
 system.stopped_max_turn_requests: "এই দফার জন্য অনুরোধের সীমায় পৌঁছানোর পর এজেন্ট থেমে গেছে।"
 system.stopped_refusal: "এজেন্ট এই অনুরোধটি চালিয়ে যেতে অস্বীকার করেছে।"
 system.agent_busy: "এই ট্যাবে Agent ব্যস্ত — বর্তমান প্রম্পট শেষ হওয়া পর্যন্ত অপেক্ষা করুন।"
+system.input_queue_full: "এই ট্যাবে সারি পূর্ণ। একটি স্থান খালি হওয়া পর্যন্ত অপেক্ষা করুন, অথবা আপনার খসড়া মুছে নতুনতম সারিবদ্ধ ইনপুট সরাতে Esc চাপুন।"
 # Image paste messages; "agent" refers to an AI agent. Keep Enter and %{label} verbatim.
 system.image_clipboard_empty: "পেস্ট করার জন্য ক্লিপবোর্ডে কোনো ছবি নেই।"
 system.image_not_supported: "এই এজেন্ট ছবি ইনপুট সমর্থন করে না।"

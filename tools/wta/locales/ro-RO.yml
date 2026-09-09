@@ -65,6 +65,10 @@ chat.tool_kind.other: "Instrument"
 input.placeholder.connected: "Întrebați orice, / pentru comenzi.."  # {Locked="/"}
 input.placeholder.connecting: "se conectează..."
 input.placeholder.disconnected: "deconectat"
+input.queue.status: "În coadă [%{count}]: %{items}"
+input.queue.status_full: "Coada este plină [%{count}/%{capacity}]: %{items}"
+input.queue.hint_with_draft: "Enter pune schița în coadă · Esc șterge mai întâi schița"
+input.queue.hint_without_draft: "Esc elimină cea mai recentă intrare din coadă"
 input.image_attachments: "📎 Imagini: %{items}"  # {Locked="📎","%{items}"}
 
 # ── Command popup (src/ui/command_popup.rs) ─────────────────────────────────
@@ -155,6 +159,7 @@ system.stopped_max_tokens: "Răspunsul a fost întrerupt după atingerea limitei
 system.stopped_max_turn_requests: "Agentul s-a oprit după atingerea limitei de solicitări pentru această tură."
 system.stopped_refusal: "Agentul a refuzat să continue cu această solicitare."
 system.agent_busy: "Agentul este ocupat în această filă — așteptați finalizarea solicitării curente."
+system.input_queue_full: "Coada din această filă este plină. Așteptați să se elibereze un loc sau ștergeți schița și apăsați Esc pentru a elimina cea mai recentă intrare din coadă."
 system.image_clipboard_empty: "Nu există nicio imagine în clipboard de lipit."
 system.image_not_supported: "Acest agent nu acceptă introducerea imaginilor."
 system.image_pasted: "Imagine atașată (%{label}). Apăsați Enter pentru a trimite."  # {Locked="%{label}","Enter"}

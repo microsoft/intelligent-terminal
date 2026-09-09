@@ -65,6 +65,10 @@ chat.tool_kind.other: "Taputapu"
 input.placeholder.connected: "Patai i tetahi mea, / mo nga whakahau.."  # {Locked="/"}
 input.placeholder.connecting: "e hono ana..."
 input.placeholder.disconnected: "kua wetekina"
+input.queue.status: "Kei te rārangi [%{count}]: %{items}"
+input.queue.status_full: "Kua kī te rārangi [%{count}/%{capacity}]: %{items}"
+input.queue.hint_with_draft: "Ka tāpiri a Enter i te tauira ki te rārangi · Ka whakawātea tuatahitia e Esc te tauira"
+input.queue.hint_without_draft: "Ka tango a Esc i te tāurunga rārangi hōu rawa"
 input.image_attachments: "📎 Ngā atahanga: %{items}"  # {Locked="%{items}"} {Locked="📎"}
 
 # ── Command popup (src/ui/command_popup.rs) ─────────────────────────────────
@@ -155,6 +159,7 @@ system.stopped_max_tokens: "I tapahia te whakautu i muri i te tutukinga o te tep
 system.stopped_max_turn_requests: "I mutu te kaihoko i muri i te tutukinga o tana tepe tono mō tēnei huri."
 system.stopped_refusal: "I whakakāhore te kaihoko ki te haere tonu me tēnei tono."
 system.agent_busy: "Kei te pukumahi te agent i tēnei ripa — tatari kia mutu te prompt onāianei."
+system.input_queue_full: "Kua kī te rārangi i runga i tēnei ripa. Tatari kia wātea he tūranga, rānei whakawāteatia tō tauira ka pēhi i a Esc hei tango i te tāurunga rārangi hōu rawa."
 system.image_clipboard_empty: "Kāore he atahanga i te papatopenga hei whakapiri."
 system.image_not_supported: "Kāore tēnei agent e tautoko i te tauuru atahanga."
 system.image_pasted: "Kua āpitihia te atahanga (%{label}). Pēhia Enter ki te tuku."  # {Locked="%{label}","Enter"}

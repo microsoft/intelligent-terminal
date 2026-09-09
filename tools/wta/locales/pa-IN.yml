@@ -65,6 +65,10 @@ chat.tool_kind.other: "ਟੂਲ"
 input.placeholder.connected: "ਕੁਝ ਵੀ ਪੁੱਛੋ, / ਕਮਾਂਡਾਂ ਲਈ.."  # {Locked="/"}
 input.placeholder.connecting: "ਕਨੈਕਟ ਹੋ ਰਿਹਾ ਹੈ..."
 input.placeholder.disconnected: "ਡਿਸਕਨੈਕਟ"
+input.queue.status: "ਕਤਾਰ ਵਿੱਚ [%{count}]: %{items}"
+input.queue.status_full: "ਕਤਾਰ ਭਰੀ ਹੋਈ ਹੈ [%{count}/%{capacity}]: %{items}"
+input.queue.hint_with_draft: "Enter ਮਸੌਦੇ ਨੂੰ ਕਤਾਰ ਵਿੱਚ ਰੱਖਦਾ ਹੈ · Esc ਪਹਿਲਾਂ ਮਸੌਦਾ ਸਾਫ ਕਰਦਾ ਹੈ"
+input.queue.hint_without_draft: "Esc ਸਭ ਤੋਂ ਨਵਾਂ ਕਤਾਰਬੱਧ ਇਨਪੁੱਟ ਹਟਾਉਂਦਾ ਹੈ"
 input.image_attachments: "📎 ਤਸਵੀਰਾਂ: %{items}"  # {Locked="%{items}"} {Locked="📎"}
 
 # ── ਕਮਾਂਡ ਪੌਪਅੱਪ (src/ui/command_popup.rs) ─────────────────────────────────
@@ -168,6 +172,7 @@ system.stopped_max_tokens: "ਮਾਡਲ ਦੀ ਆਉਟਪੁੱਟ ਸੀਮ�
 system.stopped_max_turn_requests: "ਇਸ ਵਾਰੀ ਲਈ ਆਪਣੀ ਬੇਨਤੀ ਸੀਮਾ 'ਤੇ ਪਹੁੰਚਣ ਤੋਂ ਬਾਅਦ ਏਜੰਟ ਰੁਕ ਗਿਆ।"
 system.stopped_refusal: "ਏਜੰਟ ਨੇ ਇਸ ਬੇਨਤੀ ਨੂੰ ਜਾਰੀ ਰੱਖਣ ਤੋਂ ਇਨਕਾਰ ਕਰ ਦਿੱਤਾ।"
 system.agent_busy: "ਇਸ ਟੈਬ 'ਤੇ Agent ਰੁੱਝਿਆ ਹੈ — ਮੌਜੂਦਾ ਪ੍ਰੌਮਪਟ ਮੁਕਣ ਤੱਕ ਉਡੀਕ ਕਰੋ।"
+system.input_queue_full: "ਇਸ ਟੈਬ ਦੀ ਕਤਾਰ ਭਰੀ ਹੋਈ ਹੈ। ਖਾਲੀ ਥਾਂ ਦੀ ਉਡੀਕ ਕਰੋ, ਜਾਂ ਆਪਣਾ ਮਸੌਦਾ ਸਾਫ ਕਰਕੇ ਸਭ ਤੋਂ ਨਵਾਂ ਕਤਾਰਬੱਧ ਇਨਪੁੱਟ ਹਟਾਉਣ ਲਈ Esc ਦਬਾਓ।"
 system.image_clipboard_empty: "ਪੇਸਟ ਕਰਨ ਲਈ ਕਲਿੱਪਬੋਰਡ 'ਤੇ ਕੋਈ ਤਸਵੀਰ ਨਹੀਂ ਹੈ।"
 system.image_not_supported: "ਇਹ ਏਜੰਟ ਤਸਵੀਰ ਇਨਪੁਟ ਦਾ ਸਮਰਥਨ ਨਹੀਂ ਕਰਦਾ।"
 system.image_pasted: "ਤਸਵੀਰ ਜੋੜੀ ਗਈ (%{label})। ਭੇਜਣ ਲਈ Enter ਦਬਾਓ।"  # {Locked="%{label}","Enter"}

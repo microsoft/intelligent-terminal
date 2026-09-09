@@ -65,6 +65,10 @@ chat.tool_kind.other: "Įrankis"
 input.placeholder.connected: "Klauskite bet ko, / komandoms.."  # {Locked="/"}
 input.placeholder.connecting: "jungiamasi..."
 input.placeholder.disconnected: "atjungta"
+input.queue.status: "Eilėje [%{count}]: %{items}"
+input.queue.status_full: "Eilė pilna [%{count}/%{capacity}]: %{items}"
+input.queue.hint_with_draft: "Enter įtraukia juodraštį į eilę · Esc pirmiausia išvalo juodraštį"
+input.queue.hint_without_draft: "Esc pašalina naujausią į eilę įtrauktą įvestį"
 input.image_attachments: "📎 Vaizdai: %{items}"  # {Locked="%{items}"} {Locked="📎"}
 
 # ── Command popup (src/ui/command_popup.rs) ─────────────────────────────────
@@ -155,6 +159,7 @@ system.stopped_max_tokens: "Atsakymas buvo nutrauktas pasiekus modelio išvestie
 system.stopped_max_turn_requests: "Agentas sustojo pasiekęs šio ėjimo užklausų ribą."
 system.stopped_refusal: "Agentas atsisakė tęsti šią užklausą."
 system.agent_busy: "Agentas šiame skirtuke užimtas — palaukite, kol dabartinė užklausa bus baigta."
+system.input_queue_full: "Šio skirtuko eilė pilna. Palaukite laisvos vietos arba išvalykite juodraštį ir paspauskite Esc, kad pašalintumėte naujausią į eilę įtrauktą įvestį."
 system.image_clipboard_empty: "Iškarpinėje nėra vaizdo, kurį būtų galima įklijuoti."
 system.image_not_supported: "Šis agentas nepalaiko vaizdo įvesties."
 system.image_pasted: "Vaizdas pridėtas (%{label}). Paspauskite Enter, kad išsiųstumėte."  # {Locked="%{label}","Enter"}

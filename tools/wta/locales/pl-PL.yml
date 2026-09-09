@@ -65,6 +65,10 @@ chat.tool_kind.other: "Narzędzie"
 input.placeholder.connected: "Zapytaj o cokolwiek, / dla poleceń.."  # {Locked="/"}
 input.placeholder.connecting: "łączenie..."
 input.placeholder.disconnected: "rozłączono"
+input.queue.status: "W kolejce [%{count}]: %{items}"
+input.queue.status_full: "Kolejka pełna [%{count}/%{capacity}]: %{items}"
+input.queue.hint_with_draft: "Enter umieszcza wersję roboczą w kolejce · Esc najpierw czyści wersję roboczą"
+input.queue.hint_without_draft: "Esc usuwa najnowsze wejście z kolejki"
 input.image_attachments: "📎 Obrazy: %{items}"  # {Locked="📎","%{items}"}
 
 # ── Command popup (src/ui/command_popup.rs) ─────────────────────────────────
@@ -164,6 +168,7 @@ system.stopped_max_tokens: "Odpowiedź została obcięta po osiągnięciu limitu
 system.stopped_max_turn_requests: "Agent zatrzymał się po osiągnięciu limitu żądań dla tej tury."
 system.stopped_refusal: "Agent odmówił kontynuowania tego żądania."
 system.agent_busy: "Agent jest zajęty na tej karcie — poczekaj, aż bieżący monit się zakończy."
+system.input_queue_full: "Kolejka na tej karcie jest pełna. Poczekaj na wolne miejsce albo wyczyść wersję roboczą i naciśnij Esc, aby usunąć najnowsze wejście z kolejki."
 system.image_clipboard_empty: "Brak obrazu w schowku do wklejenia."
 system.image_not_supported: "Ten agent nie obsługuje wprowadzania obrazów."
 system.image_pasted: "Obraz załączony (%{label}). Naciśnij Enter, aby wysłać."  # {Locked="%{label}","Enter"}

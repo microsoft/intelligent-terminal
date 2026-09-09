@@ -65,6 +65,10 @@ chat.tool_kind.other: "ಉಪಕರಣ"
 input.placeholder.connected: "ಏನಾದರೂ ಕೇಳಿ, / ಕಮಾಂಡ್‌ಗಳಿಗಾಗಿ.."  # {Locked="/"}
 input.placeholder.connecting: "ಸಂಪರ್ಕಿಸಲಾಗುತ್ತಿದೆ..."
 input.placeholder.disconnected: "ಸಂಪರ್ಕ ಕಡಿತ"
+input.queue.status: "ಸರದಿಯಲ್ಲಿ [%{count}]: %{items}"
+input.queue.status_full: "ಸರದಿ ತುಂಬಿದೆ [%{count}/%{capacity}]: %{items}"
+input.queue.hint_with_draft: "Enter ಕರಡುವನ್ನು ಸರದಿಗೆ ಸೇರಿಸುತ್ತದೆ · Esc ಮೊದಲು ಕರಡುವನ್ನು ತೆರವುಗೊಳಿಸುತ್ತದೆ"
+input.queue.hint_without_draft: "Esc ಹೊಸದಾಗಿ ಸರದಿಗೇರಿಸಿದ ಇನ್‌ಪುಟ್ ಅನ್ನು ತೆಗೆದುಹಾಕುತ್ತದೆ"
 input.image_attachments: "📎 ಚಿತ್ರಗಳು: %{items}"  # {Locked="📎","%{items}"}
 
 # ── ಕಮಾಂಡ್ ಪಾಪ್‌ಅಪ್ (src/ui/command_popup.rs) ─────────────────────────────────
@@ -168,6 +172,7 @@ system.stopped_max_tokens: "ಮಾದರಿಯ ಔಟ್‌ಪುಟ್ ಮಿ�
 system.stopped_max_turn_requests: "ಈ ಸರದಿಗೆ ತನ್ನ ವಿನಂತಿ ಮಿತಿಯನ್ನು ತಲುಪಿದ ನಂತರ ಏಜೆಂಟ್ ನಿಂತಿತು."
 system.stopped_refusal: "ಏಜೆಂಟ್ ಈ ವಿನಂತಿಯನ್ನು ಮುಂದುವರಿಸಲು ನಿರಾಕರಿಸಿತು."
 system.agent_busy: "ಈ ಟ್ಯಾಬ್‌ನಲ್ಲಿ Agent ಕಾರ್ಯನಿರತವಾಗಿದೆ — ಪ್ರಸ್ತುತ ಪ್ರಾಂಪ್ಟ್ ಮುಗಿಯುವವರೆಗೆ ಕಾಯಿರಿ."
+system.input_queue_full: "ಈ ಟ್ಯಾಬ್‌ನ ಸರದಿ ತುಂಬಿದೆ. ಸ್ಥಳ ಖಾಲಿಯಾಗುವವರೆಗೆ ಕಾಯಿರಿ, ಅಥವಾ ನಿಮ್ಮ ಕರಡುವನ್ನು ತೆರವುಗೊಳಿಸಿ ಹೊಸದಾಗಿ ಸರದಿಗೇರಿಸಿದ ಇನ್‌ಪುಟ್ ಅನ್ನು ತೆಗೆದುಹಾಕಲು Esc ಒತ್ತಿರಿ."
 system.image_clipboard_empty: "ಅಂಟಿಸಲು ಕ್ಲಿಪ್‌ಬೋರ್ಡ್‌ನಲ್ಲಿ ಯಾವುದೇ ಚಿತ್ರ ಇಲ್ಲ."
 system.image_not_supported: "ಈ ಏಜೆಂಟ್ ಚಿತ್ರ ಇನ್‌ಪುಟ್ ಅನ್ನು ಬೆಂಬಲಿಸುವುದಿಲ್ಲ."
 system.image_pasted: "ಚಿತ್ರವನ್ನು ಲಗತ್ತಿಸಲಾಗಿದೆ (%{label}). ಕಳುಹಿಸಲು Enter ಒತ್ತಿರಿ."  # {Locked="%{label}","Enter"}

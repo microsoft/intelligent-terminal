@@ -65,6 +65,10 @@ chat.tool_kind.other: "Tool"
 input.placeholder.connected: "Froen eppes, / fir Kommandoen.."  # {Locked="/"}
 input.placeholder.connecting: "verbënnt..."
 input.placeholder.disconnected: "ofgeschalt"
+input.queue.status: "An der Schlaang [%{count}]: %{items}"
+input.queue.status_full: "Schlaang voll [%{count}/%{capacity}]: %{items}"
+input.queue.hint_with_draft: "Enter setzt den Entworf an d'Schlaang · Esc läscht fir d'éischt den Entworf"
+input.queue.hint_without_draft: "Esc läscht déi neist agereiht Agab"
 input.image_attachments: "📎 Biller: %{items}"  # {Locked="📎","%{items}"}
 
 # ── Kommando-Popup (src/ui/command_popup.rs) ─────────────────────────────────
@@ -155,6 +159,7 @@ system.stopped_max_tokens: "D'Äntwert gouf ofgeschnidden nodeems d'Ausgab-Limit
 system.stopped_max_turn_requests: "Den Agent huet gestoppt nodeems seng Ufro-Limit fir dës Ronn erreecht gouf."
 system.stopped_refusal: "Den Agent huet refuséiert mat dëser Ufro weiderzemaachen."
 system.agent_busy: "Den Agent ass op dësem Tab beschäftegt — waart bis den aktuelle Prompt fäerdeg ass."
+system.input_queue_full: "D'Schlaang op dësem Tab ass voll. Waart op eng fräi Plaz, oder läscht Ären Entworf a dréckt Esc, fir déi neist agereiht Agab ze läschen."
 system.image_clipboard_empty: "Kee Bild am Tëschespäicher fir anzefügen."
 system.image_not_supported: "Dësen Agent ënnerstëtzt keng Bildinput."
 system.image_pasted: "Bild ugehängt (%{label}). Dréckt Enter fir ze schécken."  # {Locked="%{label}","Enter"}

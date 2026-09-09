@@ -65,6 +65,10 @@ chat.tool_kind.other: "Alat"
 input.placeholder.connected: "Tanyakan apa saja, / untuk perintah.."  # {Locked="/"}
 input.placeholder.connecting: "menyambungkan..."
 input.placeholder.disconnected: "terputus"
+input.queue.status: "Dalam antrean [%{count}]: %{items}"
+input.queue.status_full: "Antrean penuh [%{count}/%{capacity}]: %{items}"
+input.queue.hint_with_draft: "Enter memasukkan draf ke antrean · Esc membersihkan draf terlebih dahulu"
+input.queue.hint_without_draft: "Esc menghapus input antrean terbaru"
 input.image_attachments: "📎 Gambar: %{items}"  # {Locked="📎","%{items}"}
 
 # ── Command popup (src/ui/command_popup.rs) ─────────────────────────────────
@@ -155,6 +159,7 @@ system.stopped_max_tokens: "Respons terpotong setelah mencapai batas keluaran mo
 system.stopped_max_turn_requests: "Agen berhenti setelah mencapai batas permintaannya untuk giliran ini."
 system.stopped_refusal: "Agen menolak untuk melanjutkan permintaan ini."
 system.agent_busy: "Agen sedang sibuk di tab ini — tunggu hingga prompt saat ini selesai."
+system.input_queue_full: "Antrean di tab ini penuh. Tunggu slot kosong, atau bersihkan draf Anda dan tekan Esc untuk menghapus input antrean terbaru."
 system.image_clipboard_empty: "Tidak ada gambar di clipboard untuk ditempel."
 system.image_not_supported: "Agen ini tidak mendukung input gambar."
 system.image_pasted: "Gambar dilampirkan (%{label}). Tekan Enter untuk mengirim."  # {Locked="%{label}","Enter"}
