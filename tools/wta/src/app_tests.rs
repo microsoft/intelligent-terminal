@@ -4694,6 +4694,7 @@ fn initial_yolo_owner_only_applies_to_matching_load_session() {
 #[test]
 fn no_output_turn_projects_resumable_session_with_manual_owner() {
     let mut app = test_app();
+    let _capture = crate::wt_protocol_events::capture_test_published_events();
     app.state = ConnectionState::Connected;
     app.current_tab_mut().session_id = Some("manual-session".into());
     app.session_to_tab

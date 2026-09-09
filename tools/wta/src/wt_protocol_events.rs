@@ -2,7 +2,14 @@
 pub fn send(json_payload: String) {
     #[cfg(test)]
     {
-        TEST_PUBLISHED_EVENTS.with(|events| events.borrow_mut().push(json_payload));
+        TEST_PUBLISHED_EVENTS.with(|capture| {
+            if let Some(events) = capture.borrow_mut().as_mut() {
+                if events.len() == TEST_PUBLISHED_EVENT_LIMIT {
+                    events.pop_front();
+                }
+                events.push_back(json_payload);
+            }
+        });
     }
 
     #[cfg(not(test))]
@@ -11,13 +18,44 @@ pub fn send(json_payload: String) {
 
 #[cfg(test)]
 thread_local! {
-    static TEST_PUBLISHED_EVENTS: std::cell::RefCell<Vec<String>> =
-        const { std::cell::RefCell::new(Vec::new()) };
+    static TEST_PUBLISHED_EVENTS:
+        std::cell::RefCell<Option<std::collections::VecDeque<String>>> =
+        const { std::cell::RefCell::new(None) };
+}
+
+#[cfg(test)]
+const TEST_PUBLISHED_EVENT_LIMIT: usize = 64;
+
+#[cfg(test)]
+pub(crate) struct TestPublishedEventCapture;
+
+#[cfg(test)]
+impl Drop for TestPublishedEventCapture {
+    fn drop(&mut self) {
+        TEST_PUBLISHED_EVENTS.with(|capture| *capture.borrow_mut() = None);
+    }
+}
+
+#[cfg(test)]
+pub(crate) fn capture_test_published_events() -> TestPublishedEventCapture {
+    TEST_PUBLISHED_EVENTS.with(|capture| {
+        let previous = capture
+            .borrow_mut()
+            .replace(std::collections::VecDeque::new());
+        assert!(previous.is_none(), "test event capture cannot be nested");
+    });
+    TestPublishedEventCapture
 }
 
 #[cfg(test)]
 pub(crate) fn take_test_published_events() -> Vec<String> {
-    TEST_PUBLISHED_EVENTS.with(|events| std::mem::take(&mut *events.borrow_mut()))
+    TEST_PUBLISHED_EVENTS.with(|capture| {
+        capture
+            .borrow_mut()
+            .as_mut()
+            .map(|events| events.drain(..).collect())
+            .unwrap_or_default()
+    })
 }
 
 pub(crate) fn resumed_pane_binding_event(
@@ -190,6 +228,34 @@ fn publish_blocking(json_payload: &str) {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn test_event_capture_is_opt_in() {
+        super::take_test_published_events();
+        super::send(r#"{"type":"event","method":"uncaptured"}"#.to_string());
+
+        assert!(
+            super::take_test_published_events().is_empty(),
+            "events sent outside an explicit capture scope must not leak into later tests"
+        );
+
+        {
+            let _capture = super::capture_test_published_events();
+            super::send(r#"{"type":"event","method":"captured"}"#.to_string());
+            assert_eq!(super::take_test_published_events().len(), 1);
+
+            for index in 0..=super::TEST_PUBLISHED_EVENT_LIMIT {
+                super::send(format!(r#"{{"type":"event","index":{index}}}"#));
+            }
+            let bounded = super::take_test_published_events();
+            assert_eq!(bounded.len(), super::TEST_PUBLISHED_EVENT_LIMIT);
+            assert!(bounded.first().unwrap().contains(r#""index":1"#));
+            assert!(bounded.last().unwrap().contains(r#""index":64"#));
+        }
+
+        super::send(r#"{"type":"event","method":"after-scope"}"#.to_string());
+        assert!(super::take_test_published_events().is_empty());
+    }
+
     #[test]
     fn resumed_pane_binding_uses_explicit_session_and_created_pane_identity() {
         for agent in ["copilot", "claude", "codex", "gemini", "opencode"] {
