@@ -1196,6 +1196,61 @@ enum HiddenToolCall {
     Other,
 }
 
+// Diagnostic classification only: never grants permission or logs command contents.
+fn is_command_lookup_permission(command: &str) -> bool {
+    let command = command
+        .trim()
+        .strip_prefix('&')
+        .unwrap_or(command.trim())
+        .trim();
+    // Fail closed on compound shell expressions rather than treating a lookup
+    // followed by an unrelated operation as a resolver-only permission.
+    if command.contains([';', '|', '&', '\n', '\r', '>', '<', '`']) || command.contains("$(") {
+        return false;
+    }
+    let (executable, rest) =
+        if let Some(quote) = command.chars().next().filter(|c| *c == '"' || *c == '\'') {
+            let Some(end) = command[1..].find(quote).map(|offset| offset + 1) else {
+                return false;
+            };
+            (&command[1..end], &command[end + 1..])
+        } else {
+            let Some((executable, rest)) = command.split_once(char::is_whitespace) else {
+                return false;
+            };
+            (executable, rest)
+        };
+    let executable = executable.rsplit(['\\', '/']).next().unwrap_or(executable);
+    (executable.eq_ignore_ascii_case("wta")
+        || executable.eq_ignore_ascii_case("wta.exe")
+        || executable.eq_ignore_ascii_case("$env:WTA_CLI_PATH")
+        || executable == "$WTA_CLI_PATH")
+        && rest.split_whitespace().next() == Some("resolve-command")
+}
+
+#[test]
+fn command_lookup_permission_diagnostic_requires_an_invocation() {
+    for command in [
+        "wta resolve-command gti",
+        "& \"$env:WTA_CLI_PATH\" resolve-command gti",
+        "\"C:\\Program Files\\IT\\wta.exe\" resolve-command gti",
+    ] {
+        assert!(is_command_lookup_permission(command), "{command}");
+    }
+    for command in [
+        "echo resolve-command",
+        "wta run-command resolve-command",
+        "other.exe resolve-command gti",
+        "wta resolve-command-history",
+        "wta resolve-command gti; unrelated-command",
+        "wta resolve-command $(unrelated-command)",
+        "wta resolve-command gti | unrelated-command",
+        "'unterminated",
+    ] {
+        assert!(!is_command_lookup_permission(command), "{command}");
+    }
+}
+
 fn looks_like_proposal_command(command: &str) -> bool {
     fn segment_invokes_proposal(segment: &str) -> bool {
         let segment = segment.trim_start();
@@ -1508,6 +1563,24 @@ impl WtaClient {
             .collect();
 
         let (resp_tx, resp_rx) = tokio::sync::oneshot::channel();
+
+        tracing::info!(
+            target: "permission_ui",
+            request = %serde_json::json!({
+                "session_id": session_id,
+                "tool_call_id": tool_call_id,
+                "kind": if matches!(session_mcp_tool, Some(SessionMcpTool::TerminalAction(_))) {
+                    "session_mcp"
+                } else if target_hint.as_ref().is_some_and(|(command, is_command)| {
+                    *is_command && is_command_lookup_permission(command)
+                }) {
+                    "command_lookup"
+                } else {
+                    "other"
+                },
+            }),
+            "permission queued for user selection"
+        );
 
         let (target, target_is_command) = match target_hint {
             Some((text, is_command)) => (Some(text), is_command),

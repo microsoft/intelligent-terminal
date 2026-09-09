@@ -339,9 +339,10 @@ mod tests {
         assert!(
             EMBEDDED_AUTOFIX_PROMPT.contains("preserve the failing pane's `--shell` and `--cwd`")
         );
-        assert!(
-            EMBEDDED_AUTOFIX_PROMPT.contains("a failed query do not prove a command is missing")
-        );
+        assert!(EMBEDDED_AUTOFIX_PROMPT.contains(
+            "An `indeterminate` or `unsupported` result, or a failed query, \
+             does not prove that a command is missing."
+        ));
         assert!(!EMBEDDED_AUTOFIX_PROMPT.contains("Near Matches"));
     }
 
