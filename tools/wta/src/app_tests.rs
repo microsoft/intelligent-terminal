@@ -16741,7 +16741,7 @@ fn chat_reading_position_near_width_thought_does_not_drift() {
         .unwrap()
         .thought_source
         .unwrap();
-    for chunk in ["\ntail\n".to_owned(), "界\n".repeat(400)] {
+    for chunk in [["", "tail", ""].join("\n"), "界\n".repeat(400)] {
         let current = app.current_tab().streaming_thought_text().unwrap();
         let dropped_chars = (current.chars().count() + chunk.chars().count()).saturating_sub(4000);
         let dropped_bytes = current.char_indices().nth(dropped_chars).unwrap().0;

@@ -4129,7 +4129,7 @@ mod tests {
     fn thought_source_rows_cover_actual_rendered_body_rows() {
         let _locale = crate::test_support::lock_locale();
         rust_i18n::set_locale("en-US");
-        let text = format!("a {}\ntail", "a".repeat(45));
+        let text = [format!("a {}", "a".repeat(45)), "tail".into()].join("\n");
         let message = ChatMessage::Thought {
             id: Default::default(),
             text,
@@ -4158,9 +4158,13 @@ mod tests {
         let _locale = crate::test_support::lock_locale();
         rust_i18n::set_locale("en-US");
         for text in [
-            format!("a {}\ntail", "a".repeat(45)),
+            [format!("a {}", "a".repeat(45)), "tail".into()].join("\n"),
             "界e\u{301} alpha-beta 👩‍💻 🙂\r\n\r\nend\r\n".into(),
-            format!("  {}  \n\tvalue\tend", ["same"; 6].join(" ")),
+            [
+                format!("  {}  ", ["same"; 6].join(" ")),
+                ["", "value", "end"].join("\t"),
+            ]
+            .join("\n"),
             "\u{1b}[31mcolored\u{1b}[0m text".into(),
         ] {
             for width in [1, 2, 3, 4, 7, 12, 20, 48] {
