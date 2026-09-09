@@ -4,6 +4,7 @@
 #include "pch.h"
 
 #include "../TerminalApp/TerminalPage.h"
+#include "../inc/AgentAvailability.h"
 #include "../UnitTests_SettingsModel/TestUtils.h"
 #include "../TerminalSettingsAppAdapterLib/TerminalSettings.h"
 
@@ -74,6 +75,8 @@ namespace TerminalAppLocalTests
         TEST_METHOD(TestElevateArg);
         TEST_METHOD(TestAgentSettingsChangeClassification);
         TEST_METHOD(TestAgentHooksReconciliationClassification);
+        TEST_METHOD(TestHostAgentSnapshotParsing);
+        TEST_METHOD(TestHostAgentSnapshotRejectsInvalidPayload);
         TEST_METHOD(TestAgentSettingsFocusGate);
         TEST_METHOD(TestAgentPaneRebindCapability);
         TEST_METHOD(TestAgentPaneSwitchCapability);
@@ -1751,6 +1754,72 @@ namespace TerminalAppLocalTests
         VERIFY_ARE_EQUAL(
             Scope::None,
             Page::_ClassifyAgentHooksReconciliation(turnedOff, switchedWhileDisabled));
+    }
+
+    void SettingsTests::TestHostAgentSnapshotParsing()
+    {
+        using namespace ::Microsoft::Terminal::AgentAvailability;
+
+        constexpr std::string_view payload = R"({
+            "agents": [
+                { "id": "copilot", "display_name": "GitHub Copilot" }
+            ],
+            "availability": [
+                {
+                    "id": "copilot",
+                    "display_name": "GitHub Copilot",
+                    "native_cli_found": true,
+                    "launch_ready": true,
+                    "requires_npx": false
+                },
+                {
+                    "id": "claude",
+                    "display_name": "Claude",
+                    "native_cli_found": true,
+                    "launch_ready": false,
+                    "requires_npx": true
+                }
+            ],
+            "npx_found": false
+        })";
+
+        const auto snapshot = ParseHostAgentSnapshot(payload);
+        VERIFY_IS_TRUE(snapshot.has_value());
+        VERIFY_IS_FALSE(snapshot->npxFound);
+        VERIFY_ARE_EQUAL(static_cast<size_t>(2), snapshot->availability.size());
+
+        const auto copilot = snapshot->availability.find(L"copilot");
+        VERIFY_IS_TRUE(copilot != snapshot->availability.end());
+        VERIFY_IS_TRUE(copilot->second.nativeCliFound);
+        VERIFY_IS_TRUE(copilot->second.launchReady);
+        VERIFY_IS_FALSE(copilot->second.requiresNpx);
+
+        const auto claude = snapshot->availability.find(L"claude");
+        VERIFY_IS_TRUE(claude != snapshot->availability.end());
+        VERIFY_IS_TRUE(claude->second.nativeCliFound);
+        VERIFY_IS_FALSE(claude->second.launchReady);
+        VERIFY_IS_TRUE(claude->second.requiresNpx);
+
+        const auto strictIds = ParseHostAgentIds(payload);
+        VERIFY_ARE_EQUAL(static_cast<size_t>(1), strictIds.size());
+        VERIFY_IS_TRUE(strictIds.contains(L"copilot"));
+    }
+
+    void SettingsTests::TestHostAgentSnapshotRejectsInvalidPayload()
+    {
+        using namespace ::Microsoft::Terminal::AgentAvailability;
+
+        VERIFY_IS_FALSE(ParseHostAgentSnapshot("{}").has_value());
+        VERIFY_IS_FALSE(ParseHostAgentSnapshot(R"({
+            "availability": [{
+                "id": "copilot",
+                "native_cli_found": "yes",
+                "launch_ready": true,
+                "requires_npx": false
+            }],
+            "npx_found": false
+        })")
+                            .has_value());
     }
 
     void SettingsTests::TestAgentSettingsFocusGate()

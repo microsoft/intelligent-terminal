@@ -17,7 +17,6 @@
 
 #include <winrt/Windows.UI.Xaml.Documents.h>
 #include <limits>
-#include <mutex>
 
 using namespace winrt::Windows::Foundation;
 using namespace winrt::Windows::UI::Xaml;
@@ -27,13 +26,6 @@ namespace Automation = winrt::Windows::UI::Xaml::Automation;
 
 namespace winrt::TerminalApp::implementation
 {
-    // ── Static prewarm state (single-flight per process) ────────────
-    // See FreOverlay.h for the design contract. Definitions live here
-    // because C++ requires out-of-line definitions for non-inline static
-    // class members.
-    std::mutex FreOverlay::s_prewarmMutex;
-    winrt::Windows::Foundation::IAsyncAction FreOverlay::s_prewarmAction{ nullptr };
-
     FreOverlay::FreOverlay()
     {
         InitializeComponent();
@@ -45,34 +37,6 @@ namespace winrt::TerminalApp::implementation
     }
 
     // ── Detection helpers ───────────────────────────────────────────────
-
-    bool FreOverlay::_IsAgentInstalled(const wchar_t* name)
-    {
-        wchar_t buf[MAX_PATH]{};
-        if (SearchPathW(nullptr, name, L".exe", MAX_PATH, buf, nullptr) > 0)
-        {
-            _agentPaneLog("[FRE] _IsAgentInstalled: " + winrt::to_string(winrt::hstring{ name }) + " found at " + winrt::to_string(winrt::hstring{ buf }));
-            return true;
-        }
-        const auto cmdName = std::wstring(name) + L".cmd";
-        if (SearchPathW(nullptr, cmdName.c_str(), nullptr, MAX_PATH, buf, nullptr) > 0)
-        {
-            _agentPaneLog("[FRE] _IsAgentInstalled: " + winrt::to_string(winrt::hstring{ name }) + " found at " + winrt::to_string(winrt::hstring{ buf }));
-            return true;
-        }
-        _agentPaneLog("[FRE] _IsAgentInstalled: " + winrt::to_string(winrt::hstring{ name }) + " NOT found on PATH");
-        return false;
-    }
-
-    bool FreOverlay::_IsNodeInstalled()
-    {
-        wchar_t buf[MAX_PATH];
-        if (SearchPathW(nullptr, L"npx", L".cmd", MAX_PATH, buf, nullptr) > 0)
-            return true;
-        if (SearchPathW(nullptr, L"npx", L".exe", MAX_PATH, buf, nullptr) > 0)
-            return true;
-        return false;
-    }
 
     // Detect whether winget itself is available on PATH. When winget is
     // missing (e.g. App Installer not installed, or stripped on LTSC/Server
@@ -88,10 +52,8 @@ namespace winrt::TerminalApp::implementation
     // ── Agent ComboBox ──────────────────────────────────────────────────
 
     // (Re)build the agent dropdown from the GPO-filtered registry. Each entry's
-    // status label reflects the live install state at call time, so calling this
-    // again after a save refreshes Copilot from "(will install)" to
-    // "(installed)" once the winget install has actually succeeded. Preserves
-    // the currently selected agent across rebuilds.
+    // status label reflects the live install state at call time. Preserves the
+    // currently selected agent across rebuilds.
     void FreOverlay::_PopulateAgentComboBox()
     {
         if (!_settings)
@@ -117,7 +79,7 @@ namespace winrt::TerminalApp::implementation
         }
 
         const auto allowedAgents = Reg::FilteredAcpAgents();
-        const auto availableAgents = ::Microsoft::Terminal::AgentAvailability::ProbeHostAgentIds();
+        _hostAgentSnapshot = ::Microsoft::Terminal::AgentAvailability::ProbeHostAgentSnapshot();
         auto items = AgentComboBox().Items();
         items.Clear();
         int32_t selectedIndex = 0;
@@ -125,23 +87,39 @@ namespace winrt::TerminalApp::implementation
 
         for (const auto& a : allowedAgents)
         {
-            const bool installed = availableAgents.contains(std::wstring{ a.id });
+            const auto id = std::wstring{ a.id };
+            const ::Microsoft::Terminal::AgentAvailability::HostAgentAvailability* status = nullptr;
+            if (_hostAgentSnapshot)
+            {
+                if (const auto it = _hostAgentSnapshot->availability.find(id);
+                    it != _hostAgentSnapshot->availability.end())
+                {
+                    status = &it->second;
+                }
+            }
+            const bool statusKnown = status != nullptr;
+            const bool nativeCliFound = statusKnown && status->nativeCliFound;
+            const bool launchReady = statusKnown && status->launchReady;
             const bool isCopilot = (a.id == L"copilot");
 
-            // Show Copilot always + detected agents only
-            if (!isCopilot && !installed)
+            // On a successful probe, show Copilot plus agents whose native CLI
+            // exists. Claude/Codex remain selectable when only npx is missing
+            // so the Node bootstrap below stays reachable. If the probe itself
+            // failed, keep all policy-allowed choices visible without claiming
+            // an install state.
+            if (_hostAgentSnapshot && !isCopilot && !nativeCliFound)
                 continue;
 
             auto entry = winrt::make<FreAgentEntry>();
             entry.Id(winrt::hstring{ a.id });
 
-            if (isCopilot && !installed)
+            if (launchReady)
             {
-                entry.DisplayLabel(winrt::hstring{ std::wstring(a.displayName) + std::wstring(RS_(L"FreOverlay_AgentStatusWillInstall")) });
+                entry.DisplayLabel(winrt::hstring{ std::wstring(a.displayName) + std::wstring(RS_(L"FreOverlay_AgentStatusInstalled")) });
             }
             else
             {
-                entry.DisplayLabel(winrt::hstring{ std::wstring(a.displayName) + std::wstring(RS_(L"FreOverlay_AgentStatusInstalled")) });
+                entry.DisplayLabel(winrt::hstring{ a.displayName });
             }
 
             items.Append(entry);
@@ -228,10 +206,9 @@ namespace winrt::TerminalApp::implementation
         SessionManagementToggle().OnContent(winrt::box_value(RS_(L"FreOverlay_ToggleOn")));
         SessionManagementToggle().OffContent(winrt::box_value(RS_(L"FreOverlay_ToggleOff")));
 
-        // Populate agent ComboBox using GPO-filtered list — only agents
-        // permitted by policy are shown. Each entry's status label reflects the
-        // live install state, so this is re-run after a save to flip Copilot
-        // from "(will install)" to "(installed)".
+        // Populate the agent ComboBox from the policy-filtered availability
+        // snapshot. Native Claude/Codex installations remain visible when only
+        // their shared npx prerequisite is missing.
         _PopulateAgentComboBox();
 
         // Agent dropdown — show policy notice if AllowedAgents GPO is active
@@ -325,15 +302,6 @@ namespace winrt::TerminalApp::implementation
         Automation::AutomationProperties::SetName(
             SavingProgressRing(), RS_(L"FreOverlay_SettingUp"));
 
-        // ── Pre-warm winget source cache ───────────────────────────────
-        // While the user reads the Welcome + Settings pages (typically
-        // 5-30s), pre-warm winget's source manifest cache so the on-Save
-        // install skips the slow refresh step. Best-effort, no error UI.
-        // Save will await any in-flight prewarm before its own winget call
-        // to keep the two operations serialised.
-        _MaybeStartPrewarm(
-            /*copilotMissing*/ !_IsAgentInstalled(L"copilot"),
-            /*nodeMissing*/ !_IsNodeInstalled());
     }
 
     // ── Error detection mode ────────────────────────────────────────────
@@ -467,105 +435,6 @@ namespace winrt::TerminalApp::implementation
                     self->SaveButton().Focus(FocusState::Programmatic);
                 }
             });
-    }
-
-    // ── WinGet source pre-warm ──────────────────────────────────────────
-    //
-    // Kick off `winget source update --name winget` in the background as
-    // soon as the FRE overlay is shown, so that the on-Save `winget install`
-    // sees a warm source manifest cache and skips the 3-20s refresh step.
-    // Gated on whether the install would actually run (Copilot or Node
-    // missing) AND winget being available. Single-flight per process —
-    // reentrant Initialize() calls and multi-window FRE coalesce onto
-    // one running prewarm. The Save handler awaits s_prewarmAction before
-    // its own winget call (see _SaveAndInstallAsync); in practice the
-    // two winget operations never run concurrently. Exception: if
-    // _RunPrewarmAsync hits its 120s timeout, it returns while the
-    // underlying `winget source update` may still be running in the
-    // background. We accept this tradeoff because killing winget
-    // mid-write risks corrupting its source DB, and 120s timeouts are
-    // very rare in practice. A future migration of the prewarm to the
-    // COM `RefreshPackageCatalogAsync` API would eliminate this race
-    // entirely.
-
-    void FreOverlay::_MaybeStartPrewarm(bool copilotMissing, bool nodeMissing)
-    {
-        // Gate: nothing to pre-warm if no winget install step will run.
-        if (!copilotMissing && !nodeMissing)
-        {
-            return;
-        }
-        if (!_IsWingetInstalled())
-        {
-            return;
-        }
-
-        // Single-flight: first caller wins; later callers find the
-        // existing IAsyncAction in the slot and bail out.
-        std::lock_guard<std::mutex> lock{ s_prewarmMutex };
-        if (s_prewarmAction)
-        {
-            return;
-        }
-        // _RunPrewarmAsync starts on the calling thread, hops to background
-        // at its first co_await, and returns the IAsyncAction handle here
-        // for storage and later co_await by Save.
-        s_prewarmAction = _RunPrewarmAsync();
-    }
-
-    winrt::Windows::Foundation::IAsyncAction FreOverlay::_RunPrewarmAsync()
-    {
-        // Hop to background — must never block the UI thread.
-        co_await winrt::resume_background();
-
-        try
-        {
-            _agentPaneLog("[FRE] Pre-warm: winget source update --name winget");
-
-            STARTUPINFOW si{};
-            si.cb = sizeof(si);
-            si.dwFlags = STARTF_USESHOWWINDOW;
-            si.wShowWindow = SW_HIDE;
-            PROCESS_INFORMATION pi{};
-
-            // CreateProcessW requires a *writable* cmdline buffer (it may
-            // mutate the string in-place when parsing). `--disable-interactivity`
-            // prevents any prompt (e.g. source first-run agreement) from
-            // hanging the hidden child process forever.
-            wchar_t cmdline[] = L"winget source update --name winget --disable-interactivity";
-            if (!CreateProcessW(nullptr, cmdline, nullptr, nullptr, FALSE,
-                                CREATE_NO_WINDOW, nullptr, nullptr, &si, &pi))
-            {
-                _agentPaneLog("[FRE] Pre-warm: CreateProcess failed err="
-                              + std::to_string(GetLastError()));
-                co_return;
-            }
-
-            // Wait up to 120s. Corporate proxies / cold caches can push
-            // honest cases past 30s, so we err on the side of patience.
-            // We deliberately do NOT TerminateProcess on timeout: killing
-            // winget mid-write can corrupt its source DB. The Save handler
-            // awaits this whole coroutine, which only completes after
-            // WaitForSingleObject returns, so even a slow prewarm cannot
-            // collide with the eventual install.
-            const DWORD wait = WaitForSingleObject(pi.hProcess, 120000);
-            DWORD exitCode = 0;
-            GetExitCodeProcess(pi.hProcess, &exitCode);
-            CloseHandle(pi.hProcess);
-            CloseHandle(pi.hThread);
-
-            _agentPaneLog(wait == WAIT_TIMEOUT
-                              ? "[FRE] Pre-warm: still running after 120s (proceeding)"
-                              : "[FRE] Pre-warm: completed exit=" + std::to_string(exitCode));
-        }
-        catch (...)
-        {
-            // Pre-warm is strictly best-effort; never let an exception
-            // escape into the IAsyncAction promise. Save's co_await on
-            // s_prewarmAction also has its own try/catch as belt-and-
-            // suspenders, but this is the primary guard.
-            LOG_CAUGHT_EXCEPTION();
-        }
     }
 
     // ── WinGet install helper ───────────────────────────────────────────
@@ -1213,8 +1082,8 @@ namespace winrt::TerminalApp::implementation
         namespace Wta = ::Microsoft::Terminal::WtaProcess;
 
         const auto wtaPath = Wta::ResolveWtaExePath();
-        // Extend PATH so freshly-installed CLIs (e.g. copilot via winget)
-        // are discoverable by the hooks installer.
+        // Extend PATH so CLIs installed after Terminal started are
+        // discoverable by the hooks installer.
         auto envBlock = Wta::BuildExtendedPathEnvBlock();
         auto args = L"hooks install --cli " + id;
         co_return Wta::RunWtaAndWait(wtaPath, args, 60'000,
@@ -1390,10 +1259,8 @@ namespace winrt::TerminalApp::implementation
         ErrorHelpLink().NavigateUri(Uri{ winrt::hstring{ url } });
         ErrorPanel().Visibility(Visibility::Visible);
 
-        // Refresh the agent dropdown so its status labels reflect what actually
-        // got installed during this attempt. A prerequisite may have succeeded
-        // before a later step failed (e.g. Copilot installed but hooks failed),
-        // so flip "(will install)" → "(installed)" for anything now on PATH.
+        // Refresh the agent dropdown so its status labels reflect any
+        // prerequisite changes that landed before a later step failed.
         _PopulateAgentComboBox();
 
         // Narrator: order matters. Fire the error notification FIRST,
@@ -1457,6 +1324,20 @@ namespace winrt::TerminalApp::implementation
                 agentId = entry.Id();
             }
         }
+        {
+            namespace Reg = ::Microsoft::Terminal::Settings::Model::AgentRegistry;
+            const auto allowedAgents = Reg::FilteredAcpAgents();
+            const bool selectedAgentAllowed = std::any_of(
+                allowedAgents.begin(),
+                allowedAgents.end(),
+                [&](const auto& agent) {
+                    return agent.id == std::wstring_view{ agentId };
+                });
+            if (!selectedAgentAllowed)
+            {
+                agentId.clear();
+            }
+        }
 
         const auto errorDetectionMode = _CurrentErrorDetectionMode();
         const bool errorDetectionEnabled = errorDetectionMode != ErrorDetectionMode::Off;
@@ -1465,8 +1346,11 @@ namespace winrt::TerminalApp::implementation
         if (_settings)
         {
             const auto& globals = _settings.GlobalSettings();
-            globals.AcpAgent(agentId);
-            globals.DelegateAgent(agentId);
+            if (!agentId.empty())
+            {
+                globals.AcpAgent(agentId);
+                globals.DelegateAgent(agentId);
+            }
             globals.AutoErrorDetectionEnabled(errorDetectionEnabled);
             globals.AutoFixEnabled(autoFixEnabled);
             if (!globals.IsAgentSessionHooksPolicyLocked())
@@ -1491,12 +1375,22 @@ namespace winrt::TerminalApp::implementation
         _SetSavingState(true);
         ErrorPanel().Visibility(Visibility::Collapsed);
 
-        // 3. Install prerequisites if needed (blocking — cannot proceed without these)
-        const bool needsCopilot = (agentId == L"copilot") && !_IsAgentInstalled(L"copilot");
-        const bool needsNode = (agentId == L"claude" || agentId == L"codex") && !_IsNodeInstalled();
+        // 3. Install launch prerequisites that must exist before the first
+        // terminal is created. Copilot installation is intentionally deferred
+        // to WTA Setup so a missing agent cannot keep the user in FRE.
+        bool needsNode = false;
+        if (_hostAgentSnapshot && (agentId == L"claude" || agentId == L"codex"))
+        {
+            if (const auto status = _hostAgentSnapshot->availability.find(std::wstring{ agentId });
+                status != _hostAgentSnapshot->availability.end())
+            {
+                needsNode = status->second.nativeCliFound &&
+                            status->second.requiresNpx &&
+                            !_hostAgentSnapshot->npxFound;
+            }
+        }
 
         _agentPaneLog("[FRE] Save: agent=" + winrt::to_string(agentId)
-            + " needsCopilot=" + (needsCopilot ? "y" : "n")
             + " needsNode=" + (needsNode ? "y" : "n")
             + " detect=" + (errorDetectionEnabled ? "on" : "off")
             + " autoFix=" + (autoFixEnabled ? "on" : "off")
@@ -1519,7 +1413,7 @@ namespace winrt::TerminalApp::implementation
         // The edge case (alias disabled while AppInstaller present) is
         // rare enough that incorrectly showing WingetMissing is
         // acceptable; the user docs still apply.
-        if (needsCopilot || needsNode)
+        if (needsNode)
         {
             if (!_IsWingetInstalled())
             {
@@ -1527,75 +1421,13 @@ namespace winrt::TerminalApp::implementation
                 _ShowProblem(FreProblemKind::WingetMissing);
                 co_return;
             }
-
-            // ── Await any in-flight pre-warm before kicking off install ──
-            // The Initialize() handler may have started a `winget source
-            // update` in the background. WinGet's intra-process
-            // coordination across concurrent operations is not a
-            // guaranteed contract — we serialise here to avoid two
-            // winget instances stepping on each other. Snapshot the
-            // action under the mutex (Initialize may still be racing to
-            // assign it), then co_await OUTSIDE the lock (holding a
-            // std::mutex across a suspension point is undefined behaviour).
-            winrt::Windows::Foundation::IAsyncAction pending{ nullptr };
-            {
-                std::lock_guard<std::mutex> lock{ s_prewarmMutex };
-                pending = s_prewarmAction;
-            }
-            if (pending &&
-                pending.Status() != winrt::Windows::Foundation::AsyncStatus::Completed)
-            {
-                _agentPaneLog("[FRE] Save: waiting for pre-warm to finish");
-                try
-                {
-                    co_await pending;
-                }
-                catch (...)
-                {
-                    // Pre-warm failure is non-fatal; install will just
-                    // pay the source-refresh cost itself.
-                    LOG_CAUGHT_EXCEPTION();
-                }
-                _agentPaneLog("[FRE] Save: pre-warm done, proceeding with install");
-            }
-        }
-
-        if (needsCopilot)
-        {
-            _agentPaneLog("[FRE] Installing GitHub.Copilot via winget");
-            const auto kindInt = co_await _WingetInstallAsync(L"GitHub.Copilot");
-            // Helper internally does co_await winrt::resume_background(),
-            // so the continuation may resume on a thread-pool thread.
-            // Hop back to the UI thread before any XAML access (the
-            // _ShowWingetProblem call below touches ErrorText / ErrorPanel
-            // / toggles); without this, RPC_E_WRONG_THREAD is thrown and
-            // silently swallowed by IAsyncAction, leaving the
-            // SavingOverlay stuck.
-            co_await winrt::resume_foreground(dispatcher);
-            auto self = weak.get();
-            if (!self) co_return;
-            const auto kind = static_cast<FreWingetFailureKind>(kindInt);
-            _agentPaneLog("[FRE] Copilot install: " +
-                          std::string(kind == FreWingetFailureKind::Success ? "ok" : "FAILED"));
-            if (kind != FreWingetFailureKind::Success)
-            {
-                // _lastWingetHr / _lastWingetInstallerErrorCode were
-                // populated by _WingetInstallAsync on this same instance;
-                // safe to read here because the Copilot install awaited
-                // above is the only writer in this sequential chain.
-                _ShowWingetProblem(FreWingetPackage::Copilot,
-                                   kind,
-                                   _lastWingetHr,
-                                   _lastWingetInstallerErrorCode);
-                co_return;
-            }
         }
         if (needsNode)
         {
             _agentPaneLog("[FRE] Installing Node.js via winget");
             const auto kindInt = co_await _WingetInstallAsync(L"OpenJS.NodeJS.LTS");
-            // See note above for the Copilot install — same threading
-            // concern applies here.
+            // The helper resumes on a background thread, so return to the UI
+            // thread before touching XAML state.
             co_await winrt::resume_foreground(dispatcher);
             auto self = weak.get();
             if (!self) co_return;
@@ -1615,7 +1447,7 @@ namespace winrt::TerminalApp::implementation
         // After installing prerequisites, refresh the current process's PATH
         // from the Windows registry so generic executable checks and child
         // processes can find freshly-installed CLIs without restarting.
-        if (needsCopilot || needsNode)
+        if (needsNode)
         {
             _agentPaneLog("[FRE] Refreshing process PATH from registry");
             try
@@ -1651,7 +1483,8 @@ namespace winrt::TerminalApp::implementation
         bool shellIntegEpBlocked = false;
 
         // 4. Hooks — skip if GPO blocks it or settings unavailable.
-        if (SessionManagementToggle().IsOn() &&
+        if (!agentId.empty() &&
+            SessionManagementToggle().IsOn() &&
             _settings &&
             !_settings.GlobalSettings().IsAgentSessionHooksPolicyLocked())
         {
@@ -1776,9 +1609,8 @@ namespace winrt::TerminalApp::implementation
             auto self = weak.get();
             if (!self) co_return;
 
-            // Refresh the agent dropdown so any agent we just installed (e.g.
-            // Copilot via winget) now shows "(installed)" instead of
-            // "(will install)" — confirms the install actually landed.
+            // Refresh the agent dropdown so a Node bootstrap updates the
+            // launch-readiness labels before the overlay is dismissed.
             _PopulateAgentComboBox();
 
             _agentPaneLog("[FRE] Completed — raising Completed event");
@@ -1786,12 +1618,7 @@ namespace winrt::TerminalApp::implementation
             // if anything keeps the overlay alive a moment longer, it
             // doesn't appear stuck in the "saving" visual.
             _SetSavingState(false);
-            winrt::Windows::Foundation::IInspectable completedArgs{ nullptr };
-            if (needsCopilot)
-            {
-                completedArgs = winrt::box_value(winrt::hstring{ L"copilot" });
-            }
-            Completed.raise(*this, completedArgs);
+            Completed.raise(*this, nullptr);
         }
     }
 

@@ -232,6 +232,8 @@ pub enum SetupOption {
         agent_id: String,
         display_name: String,
     },
+    /// Re-run executable/prerequisite discovery without starting an installer.
+    Recheck,
     /// Preflight: retry connection (custom agent)
     Retry,
 }
@@ -290,6 +292,7 @@ pub fn build_setup_options(
                     display_name: status.display_name.clone(),
                 });
             }
+            opts.push(SetupOption::Recheck);
         } else if *reason == SetupReason::AgentError {
             // CLI found but auth missing or known to have failed
             if status.id == "copilot" {
@@ -304,11 +307,15 @@ pub fn build_setup_options(
             }
         }
         // If custom/unknown agent, offer retry
-        if status.id == "unknown" || (!status.can_auto_install() && !status.cli_found) {
+        if status.id == "unknown" {
             opts.push(SetupOption::Retry);
         }
     } else {
-        opts.push(SetupOption::Retry);
+        opts.push(if *reason == SetupReason::AgentMissing {
+            SetupOption::Recheck
+        } else {
+            SetupOption::Retry
+        });
     }
     opts.push(SetupOption::ChooseAgentSource);
     opts
@@ -984,6 +991,8 @@ pub struct App {
     pub auth: Option<AuthState>,
     /// Channel for spawning background tasks from event handlers.
     event_tx: Option<mpsc::UnboundedSender<AppEvent>>,
+    next_agent_install_request_id: u64,
+    pending_agent_install: Option<(u64, String)>,
     /// Set after login completes — consumed by main loop to spawn ACP client.
     pub pending_acp_start: bool,
     /// Set by LoginComplete success — consumed once by try_start_acp to pass
@@ -1368,6 +1377,8 @@ impl App {
             auth: None,
             event_tx: None,
             pending_acp_start: false,
+            next_agent_install_request_id: 0,
+            pending_agent_install: None,
             needs_post_login_authenticate: false,
             auth_recovery_generation: 0,
             auth_recovery_state: AuthRecoveryState::Idle,
@@ -4045,6 +4056,10 @@ impl App {
                         agent_id
                     ));
                 }
+                self.next_agent_install_request_id =
+                    self.next_agent_install_request_id.wrapping_add(1);
+                let request_id = self.next_agent_install_request_id;
+                self.pending_agent_install = Some((request_id, agent_id.clone()));
                 // Spawn async winget install via agent_check
                 if let Some(ref tx) = self.event_tx {
                     let tx = tx.clone();
@@ -4054,16 +4069,20 @@ impl App {
                             // Could send log lines as events, but keep simple for now
                         })
                         .await;
-                        match result {
-                            Ok(()) => {
-                                tracing::info!("Install {} succeeded", id);
-                            }
-                            Err(e) => {
-                                tracing::warn!("Install {} failed: {}", id, e);
-                            }
-                        }
-                        let _ = tx.send(AppEvent::AgentInstallComplete);
+                        tracing::info!(agent = %id, ?result, "agent install completed");
+                        let _ = tx.send(AppEvent::AgentInstallComplete {
+                            request_id,
+                            agent_id: id,
+                            outcome: result,
+                        });
                     });
+                } else {
+                    self.pending_agent_install = None;
+                    if let Some(ref mut setup) = self.setup {
+                        setup.install_in_progress = false;
+                        setup.install_error =
+                            Some("The installer could not be started.".to_string());
+                    }
                 }
             }
             SetupOption::SignIn {
@@ -4080,7 +4099,7 @@ impl App {
                     );
                 }
             }
-            SetupOption::Retry => {
+            SetupOption::Recheck | SetupOption::Retry => {
                 // Re-run preflight detection and try to reconnect
                 if let Some(ref setup) = self.setup {
                     let agent_id = setup.preflight.agent_id.clone();
@@ -4099,7 +4118,7 @@ impl App {
                             }
                             return;
                         }
-                        let status = crate::agent_check::check_agent(&agent_id);
+                        let status = crate::agent_check::recheck_agent(&agent_id);
                         if status.cli_found {
                             // CLI found — try to connect (auth will be checked by ACP).
                             // Stay in Setup mode with "Connecting..." to avoid a flash
@@ -4467,7 +4486,7 @@ impl App {
             AppEvent::SystemMessage(_) => "system_message",
             AppEvent::DebugPipeMessage(_) => "debug_pipe_message",
             AppEvent::WtEvent { .. } => "wt_event",
-            AppEvent::AgentInstallComplete => "agent_install_complete",
+            AppEvent::AgentInstallComplete { .. } => "agent_install_complete",
             AppEvent::LoginProgress { .. } => "login_progress",
             AppEvent::LoginComplete { .. } => "login_complete",
             AppEvent::PostLoginAuthRecovery { .. } => "post_login_auth_recovery",

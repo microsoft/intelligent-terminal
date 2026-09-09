@@ -260,7 +260,11 @@ pub enum AppEvent {
         tab_id: Option<String>,
         params: serde_json::Value,
     },
-    AgentInstallComplete,
+    AgentInstallComplete {
+        request_id: u64,
+        agent_id: String,
+        outcome: crate::agent_check::AgentInstallOutcome,
+    },
     LoginProgress {
         device_code: String,
         verify_url: String,

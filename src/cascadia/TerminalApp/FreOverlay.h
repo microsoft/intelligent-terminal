@@ -5,8 +5,7 @@
 
 #include "FreAgentEntry.g.h"
 #include "FreOverlay.g.h"
-
-#include <mutex>
+#include "../inc/AgentAvailability.h"
 
 namespace winrt::TerminalApp::implementation
 {
@@ -49,6 +48,7 @@ namespace winrt::TerminalApp::implementation
 
     private:
         winrt::Microsoft::Terminal::Settings::Model::CascadiaSettings _settings{ nullptr };
+        std::optional<::Microsoft::Terminal::AgentAvailability::HostAgentSnapshot> _hostAgentSnapshot;
 
         // Things that can block FRE completion, in priority order (lower value
         // = higher priority). Only the highest-priority problem is surfaced in
@@ -131,26 +131,7 @@ namespace winrt::TerminalApp::implementation
         // after a save) and preserves the current selection.
         void _PopulateAgentComboBox();
 
-        // Detect whether a generic executable is on PATH. ACP agent choices
-        // use WTA's authoritative Host availability probe instead.
-        static bool _IsAgentInstalled(const wchar_t* name);
-        static bool _IsNodeInstalled();
         static bool _IsWingetInstalled();
-
-        // ── WinGet source pre-warm coordination ─────────────────────
-        // While the FRE overlay is on screen (Welcome + Settings pages),
-        // pre-warm winget's source manifest cache in the background so
-        // the on-Save `winget install` skips the 3-20s source refresh.
-        // Single-flight per process — reentrant Initialize() calls and
-        // multi-window FRE coalesce onto one running prewarm. The Save
-        // handler awaits s_prewarmAction before its own winget call to
-        // guarantee the two winget operations never run concurrently
-        // (winget's intra-process locking is not a guaranteed contract).
-        static std::mutex s_prewarmMutex;
-        static winrt::Windows::Foundation::IAsyncAction s_prewarmAction;
-
-        static void _MaybeStartPrewarm(bool copilotMissing, bool nodeMissing);
-        static winrt::Windows::Foundation::IAsyncAction _RunPrewarmAsync();
 
         // Run a winget install asynchronously on a background thread.
         // Returns FreWingetFailureKind cast to int32_t — Success (-1) on
@@ -161,8 +142,8 @@ namespace winrt::TerminalApp::implementation
         // Per-instance state, not static: each FreOverlay window has its
         // own _lastWinget* slot, so two FRE windows installing concurrently
         // (multi-window scenario) can't clobber each other's diagnostics.
-        // Within one instance, the caller (_SaveAndInstallAsync) awaits
-        // Copilot before kicking off Node, so no intra-instance race either.
+        // Within one instance, the caller awaits each prerequisite install
+        // before starting any later setup work.
         winrt::Windows::Foundation::IAsyncOperation<int32_t> _WingetInstallAsync(winrt::hstring packageId);
 
         // Diagnostic state from the last _WingetInstallAsync call — read by

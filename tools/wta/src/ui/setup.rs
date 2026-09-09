@@ -99,6 +99,10 @@ pub fn render(frame: &mut Frame, app: &App, area: Rect) {
                 t!("setup.option.signin", agent = display_name.as_str()).into_owned(),
                 String::new(),
             ),
+            SetupOption::Recheck => (
+                t!("setup.option.retry_detection").into_owned(),
+                String::new(),
+            ),
             SetupOption::Retry => {
                 let label = match setup.reason {
                     crate::app::SetupReason::AgentMissing => {

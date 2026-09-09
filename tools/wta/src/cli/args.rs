@@ -67,9 +67,10 @@ pub(crate) struct Cli {
     pub(crate) allowed_agent_ids: Vec<String>,
 
     /// Boot-time hint from Windows Terminal: start directly on the auth screen
-    /// for the given agent instead of attempting the initial ACP session. Used
-    /// when FRE just installed Copilot, where the next expected action is
-    /// signing in. Hidden — only Windows Terminal should pass it.
+    /// for the given agent instead of attempting the initial ACP session.
+    /// Retained for explicit host-driven auth entry; normal deferred installs
+    /// now reconnect through preflight. Hidden — only Windows Terminal should
+    /// pass it.
     #[arg(long, hide = true, value_name = "AGENT_ID")]
     pub(crate) initial_auth_agent: Option<String>,
 

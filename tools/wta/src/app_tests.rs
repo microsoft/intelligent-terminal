@@ -10270,6 +10270,20 @@ fn agent_status_for_test(
 
 #[test]
 fn diagnostic_setup_options_route_auth_by_agent() {
+    let missing_copilot = agent_status_for_test("copilot", "GitHub Copilot", false);
+    let missing_options = build_setup_options(&SetupReason::AgentMissing, Some(&missing_copilot));
+    assert!(
+        matches!(
+            missing_options.as_slice(),
+            [
+                SetupOption::Install { agent_id, .. },
+                SetupOption::Recheck,
+                SetupOption::ChooseAgentSource
+            ] if agent_id == "copilot"
+        ),
+        "missing Copilot must support both bounded install and manual Recheck"
+    );
+
     let copilot = agent_status_for_test("copilot", "GitHub Copilot", true);
     let copilot_options = build_setup_options(&SetupReason::AgentError, Some(&copilot));
     assert!(
@@ -10290,6 +10304,35 @@ fn diagnostic_setup_options_route_auth_by_agent() {
         ),
         "external-auth agents stay on the diagnostic Retry flow"
     );
+}
+
+#[test]
+fn stale_install_completion_does_not_mutate_current_setup() {
+    let mut app = test_app();
+    app.mode = AppMode::Setup;
+    app.pending_agent_install = Some((2, "copilot".into()));
+    app.setup = Some(SetupState {
+        reason: SetupReason::AgentMissing,
+        selected_index: 0,
+        preflight: PreflightResult::passed_for_custom_agent("copilot"),
+        install_in_progress: true,
+        install_log: Vec::new(),
+        install_error: None,
+        options: vec![SetupOption::Recheck],
+        title: "setup".into(),
+        subtitle: "sub".into(),
+    });
+
+    app.handle_event(AppEvent::AgentInstallComplete {
+        request_id: 1,
+        agent_id: "copilot".into(),
+        outcome: crate::agent_check::AgentInstallOutcome::Failed("stale".into()),
+    });
+
+    assert_eq!(app.pending_agent_install, Some((2, "copilot".into())));
+    let setup = app.setup.as_ref().expect("setup remains active");
+    assert!(setup.install_in_progress);
+    assert!(setup.install_error.is_none());
 }
 
 #[test]
@@ -10348,6 +10391,7 @@ fn render_setup_options_while_installing() {
                 agent_id: "copilot".into(),
                 display_name: "GitHub Copilot".into(),
             },
+            SetupOption::Recheck,
             SetupOption::Retry,
         ],
         title: "INSTALLING_TITLE_XYZ".into(),

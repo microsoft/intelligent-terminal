@@ -3287,73 +3287,74 @@ impl App {
                     self.wt_notifications.pop_front();
                 }
             }
-            AppEvent::AgentInstallComplete => {
-                // Check if the agent we were trying to install is now available.
-                let agent_id = self
-                    .setup
-                    .as_ref()
-                    .map(|s| s.preflight.agent_id.clone())
-                    .unwrap_or_default();
+            AppEvent::AgentInstallComplete {
+                request_id,
+                agent_id,
+                outcome,
+            } => {
+                if self.pending_agent_install.as_ref() != Some(&(request_id, agent_id.clone())) {
+                    tracing::debug!(
+                        request_id,
+                        agent = %agent_id,
+                        "ignoring stale agent install completion"
+                    );
+                    return;
+                }
+                self.pending_agent_install = None;
 
-                if !agent_id.is_empty() {
-                    let status = crate::agent_check::check_agent(&agent_id);
+                if let Some(ref mut setup) = self.setup {
+                    setup.install_in_progress = false;
+                }
+
+                let installed = matches!(
+                    outcome,
+                    crate::agent_check::AgentInstallOutcome::Installed
+                        | crate::agent_check::AgentInstallOutcome::AlreadyAvailable
+                );
+                if installed {
+                    let status = crate::agent_check::recheck_agent(&agent_id);
                     if status.cli_found {
-                        // Install succeeded → proceed to connect or auth
-                        let profile = crate::agent_registry::lookup_profile_by_id(&agent_id);
-
-                        if agent_id == "copilot" {
-                            // Copilot was just installed by IT. Route directly
-                            // to sign-in instead of probing local credentials or
-                            // paying for a doomed ACP auth roundtrip.
-                            self.show_copilot_auth_screen();
+                        let tab_id = self.tab_id.as_deref().or_else(|| {
+                            self.deferred_acp
+                                .as_ref()
+                                .and_then(|params| params.owner_tab_id.as_deref())
+                        });
+                        crate::wt_protocol_events::send(
+                            crate::wt_protocol_events::agent_availability_changed_event(
+                                &agent_id, tab_id,
+                            ),
+                        );
+                        self.update_deferred_acp_agent(&agent_id);
+                        self.state =
+                            ConnectionState::Connecting(t!("connection.reconnecting").into_owned());
+                        self.preflight_setup_active = false;
+                        if self.deferred_acp.is_some() {
+                            self.pending_acp_start = true;
                         } else {
-                            // Future-proofing: only Copilot has an in-app auth
-                            // screen. If another agent ever becomes
-                            // auto-installable, keep it on the diagnostic setup
-                            // retry path instead of entering Auth mode.
-                            let reason = SetupReason::AgentError;
-                            let options = build_setup_options(&reason, Some(&status));
-                            self.mode = AppMode::Setup;
-                            self.setup = Some(SetupState {
-                                reason,
-                                selected_index: 0,
-                                preflight: PreflightResult {
-                                    agent_id: agent_id.clone(),
-                                    display_name: status.display_name.clone(),
-                                    cli_status: CheckStatus::Passed,
-                                    cli_path: status.cli_path.clone(),
-                                    auth_status: CheckStatus::Failed(
-                                        t!("system.authentication_failed").into_owned(),
-                                    ),
-                                    install_hint: profile.install_hint.to_string(),
-                                    install_url: String::new(),
-                                    auth_hint: profile.auth_hint.to_string(),
-                                },
-                                install_in_progress: false,
-                                install_log: Vec::new(),
-                                install_error: None,
-                                options,
-                                title: t!("setup.title.sign_in").into_owned(),
-                                subtitle: t!(
-                                    "setup.subtitle.agent_auth",
-                                    agent = status.display_name.as_str()
-                                )
-                                .into_owned(),
-                            });
+                            let _ = self.restart_tx.send(AgentLifecycleRequest::RestartMaster);
                         }
                         return;
                     }
                 }
 
-                // Install didn't resolve the issue — stay on setup, refresh options
                 if let Some(ref mut setup) = self.setup {
-                    setup.install_in_progress = false;
-                    let current_status = if !agent_id.is_empty() {
-                        Some(crate::agent_check::check_agent(&agent_id))
-                    } else {
-                        None
-                    };
+                    let current_status = Some(crate::agent_check::recheck_agent(&agent_id));
                     setup.options = build_setup_options(&setup.reason, current_status.as_ref());
+                    setup.install_error = Some(match outcome {
+                        crate::agent_check::AgentInstallOutcome::Failed(error) => error,
+                        crate::agent_check::AgentInstallOutcome::TimedOut => {
+                            "The installation timed out. Select Recheck before trying again."
+                                .to_string()
+                        }
+                        crate::agent_check::AgentInstallOutcome::DetectionTimedOut => {
+                            "Installation finished, but Copilot is not visible yet. Select Recheck."
+                                .to_string()
+                        }
+                        crate::agent_check::AgentInstallOutcome::Installed
+                        | crate::agent_check::AgentInstallOutcome::AlreadyAvailable => {
+                            t!("setup.error.install_failed", agent = agent_id.as_str()).into_owned()
+                        }
+                    });
                 }
             }
             AppEvent::LoginProgress {

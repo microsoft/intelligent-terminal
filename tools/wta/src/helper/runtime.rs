@@ -715,8 +715,8 @@ async fn run_acp_app(
 
             // Spawn the ACP client. In helper mode (`--connect-master <pipe>`)
             // master owns the agent lifecycle, so normal panes spawn the
-            // pipe-attached variant immediately. FRE-installed Copilot is the
-            // exception: `--initial-auth-agent copilot` starts on Auth and lets
+            // pipe-attached variant immediately. An explicit legacy
+            // `--initial-auth-agent copilot` request starts on Auth and lets
             // `LoginComplete` spawn the first pipe client after sign-in.
             if start_in_initial_auth {
                 tracing::info!(

@@ -4,12 +4,12 @@ Frequently asked questions about the current release of Intelligent Terminal. So
 
 ## 1. Why is the first-run experience (FRE) taking so long, or failing?
 
-Depending on which agent you pick, the first-run setup may need to download dependencies — [`winget`](https://learn.microsoft.com/windows/package-manager/winget/) is used to install GitHub Copilot CLI and (when needed) Node.js LTS, `npm install -g` fetches the bring-your-own agent CLIs, and `npx` fetches the ACP wrapper for Claude and Codex on first launch. On slow, throttled, or unreliable networks any of these downloads can take **more than 10 minutes**, and on intermittent connections they can fail outright.
+Depending on which agent you pick, the first-run setup may need to download Node.js LTS, install session hooks, or configure shell integration. GitHub Copilot CLI installation is deferred to the agent pane so it cannot block FRE completion. On slow, throttled, or unreliable systems the remaining setup operations can still take time or fail.
 
 **Workaround:**
 
 - Make sure you're on a stable, unrestricted internet connection before running the FRE.
-- If the FRE fails or times out, you can install the missing dependencies manually by following [`installing-dependencies.md`](./installing-dependencies.md), then re-open Intelligent Terminal — the FRE will detect what's already installed and skip those steps.
+- If the FRE fails or times out, you can install the missing Node or integration dependencies manually by following [`installing-dependencies.md`](./installing-dependencies.md), then retry. If Copilot is missing, finish its setup from the agent pane after entering the terminal.
 
 ## 2. What Windows version does Intelligent Terminal require?
 

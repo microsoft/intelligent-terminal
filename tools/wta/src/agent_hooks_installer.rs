@@ -846,6 +846,20 @@ pub fn build_reconciliation_plan(
 /// install must not hide the others. `Skip` entries are accepted and ignored
 /// so callers may pass a full plan or a pre-filtered one.
 pub fn apply_install_plan(plan: &[(CliKind, InstallAction)]) -> Vec<InstallFailure> {
+    let _mutation_guard = match acquire_hook_mutation_mutex() {
+        Ok(guard) => guard,
+        Err(reason) => {
+            return plan
+                .iter()
+                .filter(|(_, action)| !matches!(action, InstallAction::Skip))
+                .map(|(cli, _)| InstallFailure {
+                    cli: cli.name(),
+                    reason: reason.clone(),
+                })
+                .collect();
+        }
+    };
+
     let Some(home) = home_dir() else {
         tracing::debug!(target: "agent_hooks", "no HOME/USERPROFILE; skipping");
         return Vec::new();
@@ -868,6 +882,41 @@ pub fn apply_install_plan(plan: &[(CliKind, InstallAction)]) -> Vec<InstallFailu
         }
     }
     failures
+}
+
+struct HookMutationMutex(windows_sys::Win32::Foundation::HANDLE);
+
+impl Drop for HookMutationMutex {
+    fn drop(&mut self) {
+        unsafe {
+            windows_sys::Win32::System::Threading::ReleaseMutex(self.0);
+            windows_sys::Win32::Foundation::CloseHandle(self.0);
+        }
+    }
+}
+
+fn acquire_hook_mutation_mutex() -> Result<HookMutationMutex, String> {
+    use windows_sys::Win32::Foundation::{WAIT_ABANDONED, WAIT_OBJECT_0};
+    use windows_sys::Win32::System::Threading::{CreateMutexW, WaitForSingleObject};
+
+    const HOOK_MUTATION_TIMEOUT_MS: u32 = 60_000;
+    let name: Vec<u16> = "Local\\Microsoft.WindowsTerminal.Wta.HookMutation\0"
+        .encode_utf16()
+        .collect();
+    let handle = unsafe { CreateMutexW(std::ptr::null(), 0, name.as_ptr()) };
+    if handle.is_null() {
+        return Err("failed to create the agent hook mutation lock".to_string());
+    }
+
+    let wait = unsafe { WaitForSingleObject(handle, HOOK_MUTATION_TIMEOUT_MS) };
+    if wait == WAIT_OBJECT_0 || wait == WAIT_ABANDONED {
+        Ok(HookMutationMutex(handle))
+    } else {
+        unsafe {
+            windows_sys::Win32::Foundation::CloseHandle(handle);
+        }
+        Err("timed out waiting for another agent hook update".to_string())
+    }
 }
 
 /// Ensure every installed CLI in `scope` has a complete, current hook bridge.
