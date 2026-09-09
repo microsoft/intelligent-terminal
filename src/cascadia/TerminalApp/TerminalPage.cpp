@@ -3516,11 +3516,10 @@ namespace winrt::TerminalApp::implementation
         {
             helperCmd.append(L" --no-autofix");
         }
-        // Global Yolo preference — ask supported providers to enable their
-        // advertised ACP session mode. Policy-gated via
-        // EffectiveAgentPaneYoloMode() (AgentPolicy::IsYoloModeAllowed()), so
-        // a GPO-blocked org never spawns a helper with this flag set even if
-        // the user's settings.json has agentPane.yoloMode: true.
+        // Settings-owned automatic approval for this binding. The shared
+        // ShouldRequestAutomaticEnable decision applies the stored preference,
+        // policy, provider support, and canonical default/current provider
+        // match before asking the helper to enable its advertised ACP mode.
         if (AgentYoloPolicy::ShouldRequestAutomaticEnable(
                 globals.AgentPaneYoloMode(),
                 globals.IsYoloModePolicyLocked(),
