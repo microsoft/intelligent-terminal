@@ -67,7 +67,7 @@ function Start-WtEventListener {
         Start a background `wtcli listen --json` and buffer parsed events into a
         synchronized list. Start this BEFORE the action you want to observe.
     .OUTPUTS
-        Listener object: @{ Process; Events; Reg; App }
+        Listener object: @{ Process; Events; Reg; SourceId; App; SubscriptionReady }
     .PARAMETER WaitForReady
         Wait for wtcli to confirm Subscribe before returning. The internal readiness
         marker is removed from the buffered events so callers see only product events.
