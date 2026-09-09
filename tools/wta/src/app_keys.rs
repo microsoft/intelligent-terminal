@@ -56,7 +56,17 @@ impl App {
     }
 
     pub(super) fn handle_key(&mut self, key: KeyEvent) {
-        if !key.modifiers.is_empty() || !matches!(key.code, KeyCode::Up | KeyCode::Down) {
+        let input_vertical_key = key.modifiers.is_empty()
+            && matches!(key.code, KeyCode::Up | KeyCode::Down)
+            && self.mode == AppMode::Chat
+            && self.current_tab().current_view == View::Chat
+            && self.pane_focused
+            && self.current_tab().input_has_nav_focus()
+            && !self.help_overlay_visible
+            && !self.command_popup_visible()
+            && (!self.current_tab().input_history_is_browsing()
+                || self.current_tab().input_all_selected);
+        if !input_vertical_key {
             self.current_tab_mut().input_vertical_goal = None;
         }
         // Per-keystroke and carries the raw `KeyCode` (the typed character for
@@ -614,17 +624,7 @@ impl App {
             return;
         }
 
-        if key.modifiers.is_empty()
-            && matches!(key.code, KeyCode::Up | KeyCode::Down)
-            && self.mode == AppMode::Chat
-            && self.current_tab().current_view == View::Chat
-            && self.pane_focused
-            && self.current_tab().input_has_nav_focus()
-            && !self.help_overlay_visible
-            && !self.command_popup_visible()
-            && (!self.current_tab().input_history_is_browsing()
-                || self.current_tab().input_all_selected)
-        {
+        if input_vertical_key {
             let width = self
                 .input_dialog_area
                 .map(|area| area.width)

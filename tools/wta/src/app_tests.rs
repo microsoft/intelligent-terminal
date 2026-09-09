@@ -12897,6 +12897,35 @@ fn input_vertical_layout_changes_clear_inactive_goals_too() {
 }
 
 #[test]
+fn input_vertical_non_input_scroll_resets_column_intent() {
+    use crossterm::event::{MouseEvent, MouseEventKind};
+    let (mut app, _master_rx) = test_app_with_master_rx();
+    app.current_tab_mut()
+        .replace_input(concat!("alpha line", "\n", "x", "\n", "bravo line").into());
+    app.current_tab_mut().cursor_pos = 18;
+    render_to_text(&mut app, 80, 16);
+    app.handle_event(AppEvent::Key(KeyEvent::new(
+        KeyCode::Up,
+        KeyModifiers::NONE,
+    )));
+    app.open_agents_view_for_tab(DEFAULT_TAB_ID.to_string());
+    render_to_text(&mut app, 80, 16);
+    app.handle_event(AppEvent::Mouse(MouseEvent {
+        kind: MouseEventKind::ScrollUp,
+        column: 1,
+        row: 1,
+        modifiers: KeyModifiers::NONE,
+    }));
+    app.close_agents_view_for_tab(DEFAULT_TAB_ID);
+    render_to_text(&mut app, 80, 16);
+    app.handle_event(AppEvent::Key(KeyEvent::new(
+        KeyCode::Up,
+        KeyModifiers::NONE,
+    )));
+    assert_eq!(app.current_tab().cursor_pos, 1);
+}
+
+#[test]
 fn input_selection_deletes_entire_draft() {
     for key in [
         KeyEvent::new(KeyCode::Backspace, KeyModifiers::NONE),
