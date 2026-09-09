@@ -98,7 +98,9 @@ pin the Copilot model being evaluated. Settings are preserved through ItE2E;
 the test does not modify PATH or profiles.
 
 `Feature.AutofixCommandResolution` requires a Debug Dev build so its negative
-probe assertions have enabled diagnostic evidence. Set
+probe assertions have enabled diagnostic evidence. Store selections (including
+the Store package family name) skip this suite during default discovery.
+Missing/invalid package selections and Dev build mismatches still fail. Set
 `ITE2E_EXPECTED_WTA_SHA256` to the SHA-256 of the feature-branch build when
 validating a change; the suite rejects a mismatched deployed binary. Its unique
 artifact directory records the package hash, received ACP contracts, query

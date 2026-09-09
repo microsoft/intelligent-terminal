@@ -3,7 +3,8 @@
 # records the received contract and invokes it only for explicitly selected cases.
 # No model quota or user-profile modifications are needed.
 
-Describe 'Feature: on-demand Autofix command resolution' -Tag 'Feature' {
+Describe 'Feature: on-demand Autofix command resolution' -Tag 'Feature' `
+    -Skip:($env:ITE2E_PACKAGE -in @('Store', 'Microsoft.IntelligentTerminal_8wekyb3d8bbwe')) {
     BeforeAll {
         Import-Module (Join-Path $PSScriptRoot '..\ItE2E\ItE2E.psd1') -Force
         $package = Get-ItTestPackage
