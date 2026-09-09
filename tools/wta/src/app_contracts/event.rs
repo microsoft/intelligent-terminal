@@ -301,9 +301,6 @@ pub enum AppEvent {
         enabled: bool,
         policy_blocked: Option<bool>,
     },
-    SessionTrackingEnableFailed {
-        request_id: String,
-    },
     DirectTerminalActionProposal {
         context: crate::agent_tools::action_proposal::channel::ValidationContext,
         payload: String,

@@ -11,7 +11,6 @@ pub fn render(frame: &mut Frame, app: &mut App) {
     let area = frame.area();
     app.completed_turn_hits.clear();
     app.completed_turn_action_links.clear();
-    app.session_tracking_enable_hit = None;
     app.input_dialog_area = None;
 
     // Auth mode: show auth screen above the input box
@@ -79,7 +78,7 @@ pub fn render(frame: &mut Frame, app: &mut App) {
                 .map(|s| s.is_empty())
                 .unwrap_or(false)
                 || tab.agents_view.rescan_in_flight);
-        app.session_tracking_enable_hit = agents_view::render(
+        agents_view::render(
             frame,
             area,
             &local_rows,
@@ -94,12 +93,7 @@ pub fn render(frame: &mut Frame, app: &mut App) {
             tab.agents_view.search_focused,
             pane_focused,
             app.session_management_enabled,
-            agents_view::TrackingNotice {
-                policy_blocked: app.session_management_policy_blocked,
-                pending: app.session_tracking_enable_request.is_some(),
-                failed: app.session_tracking_enable_error,
-                focused: app.session_tracking_notice_focused,
-            },
+            app.session_management_policy_blocked,
         );
         return;
     }

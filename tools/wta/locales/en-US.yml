@@ -182,12 +182,9 @@ agent.custom.auth_hint: "Make sure %{name} is installed and on your PATH."  # {L
 
 # ── Agents view (src/ui/agents_view.rs) ─────────────────────────────────────
 agents.loading: "Loading..."
-# Notice in the AI-agent Sessions view; CLI event hooks are separate from chat, history, and Resume.
-agents.tracking_off: "Session hooks are off."
-agents.tracking_turn_on: "Turn on"  # Action link in Sessions that enables and saves global CLI session hooks.
-agents.tracking_turning_on: "Turning on..."  # Shown while the Sessions action is waiting for the setting to be saved.
+# Passive Settings guidance shown in the AI-agent Sessions view only when session hooks are off.
+agents.tracking_off: "Go to Settings > Agents > Sessions to enable hooks."
 agents.tracking_policy_blocked: "Session hooks are disabled by your organization."
-agents.tracking_enable_failed: "Couldn't turn on session hooks."
 # {Locked="Enter","Esc","F5","↑","↓","/"} - key combinations, do not translate
 agents.footer_hint: "(↑ ↓ to navigate • Enter to launch session • Esc to exit • F5 to refresh • / to search)"
 # Status badge when agent session is actively processing

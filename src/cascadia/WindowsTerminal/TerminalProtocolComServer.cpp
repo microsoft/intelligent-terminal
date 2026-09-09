@@ -1153,9 +1153,6 @@ try
     case ProtocolParsing::SendEventRoute::AgentSwitch:
         _dispatchAgentSwitchToPage(eventH);
         return S_OK;
-    case ProtocolParsing::SendEventRoute::EnableSessionTracking:
-        _dispatchEnableSessionTrackingToPage(eventH);
-        return S_OK;
     case ProtocolParsing::SendEventRoute::CloseAgentPane:
         // User pressed Ctrl+C twice in the wta TUI. Marshal to the UI
         // thread; the page-side handler resolves the tab via `tab_id`
@@ -1314,37 +1311,6 @@ void TerminalProtocolComServer::_dispatchAgentSwitchToPage(const winrt::hstring&
                 {
                     // Page may have been torn down during dispatch.
                 }
-            });
-    }
-}
-
-void TerminalProtocolComServer::_dispatchEnableSessionTrackingToPage(const winrt::hstring& eventJson)
-{
-    if (!s_emperor)
-    {
-        return;
-    }
-    // The page checks both window and tab identity on its owning UI thread.
-    for (const auto& host : s_emperor->GetWindows())
-    {
-        const auto page = _getPage(host.get());
-        if (!page)
-        {
-            continue;
-        }
-        const auto dispatcher = page.Dispatcher();
-        if (!dispatcher)
-        {
-            continue;
-        }
-        dispatcher.RunAsync(
-            winrt::Windows::UI::Core::CoreDispatcherPriority::Normal,
-            [page, eventJson]() {
-                try
-                {
-                    page.OnEnableSessionTrackingRequested(eventJson);
-                }
-                CATCH_LOG()
             });
     }
 }

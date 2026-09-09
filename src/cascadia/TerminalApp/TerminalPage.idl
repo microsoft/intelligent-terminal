@@ -160,11 +160,6 @@ namespace TerminalApp
         // or reconnect, even when the settings have not changed.
         void ReplayAgentSessionManagementConfig();
 
-        // User-clicked enable-only command:
-        // {method:"enable_session_tracking",params:{window_id,tab_id,request_id}}.
-        // Runs on the owning UI thread and acknowledges persistence without rebinding agents.
-        void OnEnableSessionTrackingRequested(String eventJson);
-
         // Inbound event from WTA carrying {method:"autofix_state",params:{state,pane_id,...}}
         // Called by the COM server on the UI thread after receiving a SendEvent from WTA.
         void OnAutofixStateChanged(String eventJson);

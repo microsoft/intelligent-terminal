@@ -26,14 +26,6 @@ const ACCENT_RED: Color = Color::Red; // Error
 const SOFT_WHITE: Color = Color::Rgb(0x8b, 0x8b, 0x8b); // Idle
 const MUTED_WHITE: Color = Color::Rgb(0x8b, 0x8b, 0x8b); // timestamp
 
-#[derive(Clone, Copy, Default)]
-pub(crate) struct TrackingNotice {
-    pub policy_blocked: Option<bool>,
-    pub pending: bool,
-    pub failed: bool,
-    pub focused: bool,
-}
-
 pub(crate) fn render(
     f: &mut Frame,
     area: Rect,
@@ -64,8 +56,8 @@ pub(crate) fn render(
     search_focused: bool,
     pane_focused: bool,
     session_management_enabled: bool,
-    tracking_notice: TrackingNotice,
-) -> Option<Rect> {
+    session_management_policy_blocked: Option<bool>,
+) {
     // No in-TUI header: the "Agent sessions" title lives in the C++ agent
     // bar above this pane (AgentPaneContent::SetSessionsView). Only tracking
     // Off reserves a notice row above the search field and list.
@@ -119,25 +111,20 @@ pub(crate) fn render(
         (inner, None)
     };
 
-    let (tracking_action, content_area) = if !session_management_enabled && content_area.height > 0
-    {
+    let content_area = if !session_management_enabled && content_area.height > 0 {
         let notice_area = Rect {
             height: 1,
             ..content_area
         };
-        let hit = render_tracking_notice(f, notice_area, tracking_notice, pane_focused);
-        (
-            hit,
-            Rect {
-                y: content_area.y.saturating_add(1),
-                height: content_area.height.saturating_sub(1),
-                ..content_area
-            },
-        )
+        render_tracking_notice(f, notice_area, session_management_policy_blocked);
+        Rect {
+            y: content_area.y.saturating_add(1),
+            height: content_area.height.saturating_sub(1),
+            ..content_area
+        }
     } else {
-        (None, content_area)
+        content_area
     };
-    let pane_focused = pane_focused && !tracking_notice.focused;
 
     let search_visible = search_focused || !search_query.is_empty();
     let (search_area, list_area) = if search_visible && content_area.height > 0 {
@@ -253,7 +240,7 @@ pub(crate) fn render(
         if let Some(hint_area) = hint_area {
             render_footer_hint(f, hint_area);
         }
-        return tracking_action;
+        return;
     }
 
     let selected = list_state.selected();
@@ -291,97 +278,23 @@ pub(crate) fn render(
     if let Some(hint_area) = hint_area {
         render_footer_hint(f, hint_area);
     }
-    tracking_action
 }
 
-fn render_tracking_notice(
-    f: &mut Frame,
-    area: Rect,
-    notice: TrackingNotice,
-    pane_focused: bool,
-) -> Option<Rect> {
+fn render_tracking_notice(f: &mut Frame, area: Rect, policy_blocked: Option<bool>) {
     if area.width == 0 || area.height == 0 {
-        return None;
+        return;
     }
-    let blocked = notice.policy_blocked == Some(true);
-    let message = if blocked {
+    let message = if policy_blocked == Some(true) {
         t!("agents.tracking_policy_blocked")
-    } else if notice.failed {
-        t!("agents.tracking_enable_failed")
     } else {
         t!("agents.tracking_off")
     };
-    let action = if notice.policy_blocked == Some(false) {
-        Some(if notice.pending {
-            t!("agents.tracking_turning_on")
-        } else {
-            t!("agents.tracking_turn_on")
-        })
-    } else {
-        None
-    };
-    let action_width = action.as_ref().map_or(0, |text| {
-        UnicodeWidthStr::width(text.as_ref()).min(u16::MAX as usize) as u16
-    });
-    let show_action = action_width > 0 && action_width <= area.width;
-    let label_width = if show_action {
-        area.width.saturating_sub(action_width.saturating_add(2))
-    } else {
-        area.width
-    };
-    let rtl = crate::rtl::text_alignment() == ratatui::layout::Alignment::Right;
-    let text_width = UnicodeWidthStr::width(message.as_ref()).min(label_width as usize) as u16;
-    let label_area = Rect {
-        x: if rtl {
-            area.right().saturating_sub(text_width)
-        } else {
-            area.x
-        },
-        width: text_width,
-        ..area
-    };
     f.render_widget(
-        Paragraph::new(message.into_owned())
+        Paragraph::new(trunc(message.as_ref(), area.width as usize))
             .style(theme::DISCLAIMER_TEXT)
             .alignment(crate::rtl::text_alignment()),
-        label_area,
+        area,
     );
-    if let Some(action) = action.filter(|_| show_action) {
-        let action_area = Rect {
-            x: if rtl {
-                area.right()
-                    .saturating_sub(text_width.saturating_add(2).saturating_add(action_width))
-                    .max(area.x)
-            } else {
-                area.x
-                    .saturating_add(text_width.saturating_add(2))
-                    .min(area.right().saturating_sub(action_width))
-            },
-            width: action_width,
-            ..area
-        };
-        let style = if notice.pending {
-            theme::DISCLAIMER_TEXT
-        } else {
-            let style = if pane_focused {
-                theme::SELECTED
-            } else {
-                theme::SELECTED_INACTIVE
-            };
-            let style = style.add_modifier(Modifier::UNDERLINED);
-            if notice.focused {
-                style.add_modifier(Modifier::BOLD)
-            } else {
-                style
-            }
-        };
-        f.render_widget(
-            Paragraph::new(action.into_owned()).style(style),
-            action_area,
-        );
-        return (!notice.pending).then_some(action_area);
-    }
-    None
 }
 
 fn render_search(f: &mut Frame, area: Rect, query: &str, focused: bool, pane_focused: bool) {

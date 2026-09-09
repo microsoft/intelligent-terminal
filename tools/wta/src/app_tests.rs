@@ -3398,26 +3398,21 @@ fn tracking_notice_only_off_across_empty_loading_search_and_populated_states() {
                     };
                     let buffer = render_to_buffer(&mut app, 90, 9);
                     let text = buffer_to_text(&buffer);
-                    assert_eq!(text.contains("Session hooks are off."), !enabled);
-                    assert_eq!(text.contains("Turn on"), !enabled);
-                    assert!(!text.contains("[Turn on]"));
-                    assert_eq!(app.session_tracking_enable_hit.is_some(), !enabled);
+                    assert_eq!(
+                        text.contains("Go to Settings > Agents > Sessions to enable hooks."),
+                        !enabled
+                    );
+                    assert!(!text.contains("Turn on"));
                     if !enabled {
                         let cell = buffer.cell((2, 0)).unwrap();
                         assert_eq!(cell.fg, Color::Reset);
                         assert!(cell.modifier.contains(Modifier::DIM));
-                        let action = app.session_tracking_enable_hit.unwrap();
-                        assert_eq!(action.y, 0, "notice stays above the optional search field");
-                        assert!(buffer
-                            .cell((action.x, action.y))
+                        assert!(text.lines().next().unwrap().contains("Go to Settings"));
+                        assert!((0..buffer.area.width).all(|x| !buffer
+                            .cell((x, 0))
                             .unwrap()
                             .modifier
-                            .contains(Modifier::UNDERLINED));
-                        assert!(!buffer
-                            .cell((action.x, action.y))
-                            .unwrap()
-                            .modifier
-                            .contains(Modifier::DIM));
+                            .contains(Modifier::UNDERLINED)));
                     }
                 }
             }
@@ -3426,7 +3421,7 @@ fn tracking_notice_only_off_across_empty_loading_search_and_populated_states() {
 }
 
 #[test]
-fn tracking_notice_policy_and_pending_states_have_no_action() {
+fn tracking_notice_policy_uses_passive_explanation() {
     let _locale = crate::test_support::lock_locale();
     rust_i18n::set_locale("en-US");
     let mut app = tracking_notice_app(false);
@@ -3434,157 +3429,49 @@ fn tracking_notice_policy_and_pending_states_have_no_action() {
     let text = buffer_to_text(&render_to_buffer(&mut app, 90, 7));
     assert!(text.contains("Session hooks are disabled by your organization."));
     assert!(!text.contains("Turn on"));
-    assert!(app.session_tracking_enable_hit.is_none());
-
-    app.apply_session_management_policy(Some(false));
-    app.session_tracking_enable_request = Some(SessionTrackingEnableRequest {
-        id: "pending".into(),
-        configuration_revision: 0,
-    });
-    let text = buffer_to_text(&render_to_buffer(&mut app, 90, 7));
-    assert!(text.contains("Turning on..."));
-    assert!(app.session_tracking_enable_hit.is_none());
-
     app.session_management_enabled = true;
-    app.session_tracking_enable_error = true;
     app.session_management_policy_blocked = Some(true);
     let text = buffer_to_text(&render_to_buffer(&mut app, 90, 7));
     assert!(!text.contains("Session hooks"));
-    assert!(!text.contains("Turning on"));
-    assert!(app.session_tracking_enable_hit.is_none());
+    assert!(!text.contains("Go to Settings"));
 }
 
 #[test]
-fn tracking_notice_resizes_without_partial_click_targets() {
+fn tracking_notice_guidance_remains_one_line_when_resized() {
     let _locale = crate::test_support::lock_locale();
     rust_i18n::set_locale("en-US");
     for width in [1, 2, 8, 9, 15, 40, 80] {
         for height in [1, 2, 8] {
             let mut app = tracking_notice_app(false);
             let buffer = render_to_buffer(&mut app, width, height);
-            if let Some(hit) = app.session_tracking_enable_hit {
-                assert!(hit.right() <= width && hit.bottom() <= height);
-                let label: String = (hit.x..hit.right())
-                    .map(|x| buffer.cell((x, hit.y)).unwrap().symbol())
-                    .collect();
-                assert_eq!(label, "Turn on");
-            }
+            let text = buffer_to_text(&buffer);
+            assert!(!text.lines().skip(1).any(|line| line.contains("Settings")));
         }
     }
 }
 
-#[tokio::test]
-async fn tracking_notice_click_waits_for_persisted_scoped_acknowledgement() {
+#[test]
+fn tracking_notice_click_and_keys_do_not_change_settings() {
     use crossterm::event::{MouseButton, MouseEvent, MouseEventKind};
-    struct Publisher(tokio::sync::mpsc::UnboundedSender<serde_json::Value>);
-    #[async_trait::async_trait]
-    impl crate::shell::wt_channel::WtChannel for Publisher {
-        async fn request(
-            &self,
-            method: &str,
-            params: serde_json::Value,
-        ) -> anyhow::Result<serde_json::Value> {
-            assert_eq!(method, "publish_event");
-            self.0.send(params).unwrap();
-            Ok(serde_json::Value::Null)
-        }
-        fn is_available(&self) -> bool {
-            true
-        }
-    }
     let _locale = crate::test_support::lock_locale();
     rust_i18n::set_locale("en-US");
     let mut app = tracking_notice_app(false);
-    app.owner_tab_id = Some("owned-tab".into());
-    app.window_id = Some("owned-window".into());
-    let (sent, mut published) = tokio::sync::mpsc::unbounded_channel();
-    app.shell_mgr =
-        Arc::new(crate::shell::ShellManager::new().with_wt_channel(Arc::new(Publisher(sent))));
-    let (events, _received) = tokio::sync::mpsc::unbounded_channel();
-    app.set_event_tx(events);
     let _ = render_to_buffer(&mut app, 90, 8);
-    let hit = app.session_tracking_enable_hit.unwrap();
     for kind in [
         MouseEventKind::Down(MouseButton::Left),
         MouseEventKind::Up(MouseButton::Left),
     ] {
         app.handle_event(AppEvent::Mouse(MouseEvent {
             kind,
-            column: hit.x,
-            row: hit.y,
+            column: 8,
+            row: 0,
             modifiers: KeyModifiers::NONE,
         }));
     }
-    assert!(
-        !app.session_management_enabled,
-        "sending is not proof the setting was saved"
-    );
-    let event = published.recv().await.unwrap();
-    assert_eq!(event["type"], "event");
-    assert_eq!(event["method"], "enable_session_tracking");
-    assert_eq!(event["params"]["window_id"], "owned-window");
-    assert_eq!(event["params"]["tab_id"], "owned-tab");
-    let request_id = event["params"]["request_id"].as_str().unwrap();
-    app.request_enable_session_tracking();
-    assert!(
-        published.try_recv().is_err(),
-        "pending click must not submit twice"
-    );
-    let result = |tab_id| {
-        json!({
-            "window_id": "owned-window", "tab_id": tab_id, "request_id": request_id,
-            "success": true, "session_management_enabled": true, "session_management_policy_blocked": false,
-            "error": ""
-        })
-    };
-    app.handle_session_tracking_enable_result(&result("another-tab"));
-    assert!(!app.session_management_enabled);
-    app.handle_session_tracking_enable_result(&result("owned-tab"));
-    assert!(app.session_management_enabled);
-    assert!(app.session_tracking_enable_request.is_none());
-    assert!(!buffer_to_text(&render_to_buffer(&mut app, 90, 8)).contains("Session hooks"));
-}
-
-#[test]
-fn tracking_notice_failure_and_policy_denial_leave_tracking_off() {
-    let _locale = crate::test_support::lock_locale();
-    rust_i18n::set_locale("en-US");
-    let mut app = tracking_notice_app(false);
-    app.owner_tab_id = Some("tab".into());
-    app.window_id = Some("window".into());
-    app.session_tracking_enable_request = Some(SessionTrackingEnableRequest {
-        id: "request".into(),
-        configuration_revision: app.session_management_configuration_revision,
-    });
-    app.handle_session_tracking_enable_result(&json!({
-        "window_id": "window", "tab_id": "tab", "request_id": "request",
-        "success": false, "session_management_enabled": false, "session_management_policy_blocked": false,
-        "error": "save_failed"
-    }));
-    assert!(!app.session_management_enabled);
-    assert!(buffer_to_text(&render_to_buffer(&mut app, 90, 8))
-        .contains("Couldn't turn on session hooks."));
-    app.apply_session_management_policy(Some(true));
-    assert!(!app.can_enable_session_tracking());
-    assert!(!buffer_to_text(&render_to_buffer(&mut app, 90, 8)).contains("Turn on"));
-}
-
-#[test]
-fn tracking_notice_keyboard_focus_and_on_state_are_guarded() {
-    let _locale = crate::test_support::lock_locale();
-    rust_i18n::set_locale("en-US");
-    let mut app = tracking_notice_app(false);
-    let _ = render_to_buffer(&mut app, 90, 8);
     app.handle_key(KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE));
-    assert!(app.session_tracking_notice_focused);
-    app.handle_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
-    assert!(!app.session_tracking_notice_focused);
+    app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+    assert!(!app.session_management_enabled);
     assert_eq!(app.current_tab().current_view, View::Agents);
-    app.set_session_management_enabled(true);
-    let _ = render_to_buffer(&mut app, 90, 8);
-    app.handle_key(KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE));
-    assert!(!app.session_tracking_notice_focused);
-    assert!(app.session_tracking_enable_hit.is_none());
 }
 
 #[test]
@@ -3609,7 +3496,7 @@ fn tracking_notice_render_preview() {
         app.current_tab_mut().agents_list_state.select(Some(0));
         let buffer = render_to_buffer(&mut app, 90, 9);
         assert_eq!(
-            buffer_to_text(&buffer).contains("Session hooks are off."),
+            buffer_to_text(&buffer).contains("Go to Settings > Agents > Sessions to enable hooks."),
             !enabled
         );
         if std::env::var_os("WTA_TRACKING_NOTICE_PREVIEW").is_some() {
@@ -3638,44 +3525,6 @@ fn tracking_notice_render_preview() {
 }
 
 #[test]
-fn tracking_notice_late_ack_and_timeout_do_not_override_current_settings() {
-    let mut app = tracking_notice_app(false);
-    app.window_id = Some("window".into());
-    app.owner_tab_id = Some("tab".into());
-    app.session_tracking_enable_request = Some(SessionTrackingEnableRequest {
-        id: "old".into(),
-        configuration_revision: app.session_management_configuration_revision,
-    });
-    app.apply_session_management_host_config(false);
-    app.handle_session_tracking_enable_result(&json!({
-        "window_id": "window", "tab_id": "tab", "request_id": "old",
-        "success": true, "session_management_enabled": true, "session_management_policy_blocked": false,
-    }));
-    assert!(!app.session_management_enabled);
-    assert!(app.session_tracking_enable_request.is_none());
-    app.session_tracking_enable_request = Some(SessionTrackingEnableRequest {
-        id: "current".into(),
-        configuration_revision: app.session_management_configuration_revision,
-    });
-    app.handle_event(AppEvent::SessionTrackingEnableFailed {
-        request_id: "old".into(),
-    });
-    assert!(app.session_tracking_enable_request.is_some());
-    app.handle_event(AppEvent::SessionTrackingEnableFailed {
-        request_id: "current".into(),
-    });
-    assert!(app.session_tracking_enable_error);
-    assert!(app.session_tracking_enable_request.is_none());
-    assert!(!app.session_management_enabled);
-    app.set_session_management_enabled(true);
-    app.handle_event(AppEvent::SessionTrackingEnableFailed {
-        request_id: "current".into(),
-    });
-    assert!(!app.session_tracking_enable_error);
-    assert!(app.session_management_enabled);
-}
-
-#[test]
 fn tracking_notice_policy_only_update_supersedes_in_flight_settings_read() {
     let mut app = tracking_notice_app(false);
     let configuration_revision = app.session_management_configuration_revision;
@@ -3694,7 +3543,7 @@ fn tracking_notice_policy_only_update_supersedes_in_flight_settings_read() {
         policy_blocked: Some(false),
     });
     assert_eq!(app.session_management_policy_blocked, Some(true));
-    assert!(!app.can_enable_session_tracking());
+    assert!(!app.session_management_enabled);
 }
 
 #[test]
@@ -4781,7 +4630,7 @@ fn session_tracking_off_born_bound_idle_survives_hooks_snapshots_and_toggles() {
         assert_eq!(app.local_agent_rows()[0].status, AgentStatus::Idle);
         let text = render_to_text(&mut app, 120, 24);
         assert!(text.contains("Idle"));
-        assert!(text.contains("Session hooks are off."));
+        assert!(text.contains("Go to Settings > Agents > Sessions to enable hooks."));
         assert!(!text.contains("Active"));
         assert!(!text.contains("Waiting for input"));
     }

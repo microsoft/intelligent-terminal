@@ -25,7 +25,6 @@
 #include "../inc/AgentSourceUtils.h"
 #include "../inc/WtaProcess.h"
 #include "../TerminalSettingsAppAdapterLib/TerminalSettings.h"
-#include "../TerminalProtocol/ProtocolParsing.h"
 #include "../inc/CustomModelProviderUtils.h"
 #include "AgentPaneContent.h"
 #include "AgentPaneDragStash.h"
@@ -2396,126 +2395,6 @@ namespace winrt::TerminalApp::implementation
         params["session_management_policy_blocked"] =
             globals.IsAgentSessionHooksPolicyLocked();
         _RaiseProtocolEvent("agent_config_changed", params);
-    }
-
-    bool TerminalPage::_PersistAgentSessionTrackingEnabled(const std::function<bool()>& writeSettings)
-    {
-        const auto globals = _settings.GlobalSettings();
-        const auto hadPreference = globals.HasAgentSessionManagementEnabled();
-        const auto preference = globals.AgentSessionManagementEnabled();
-        bool saved = false;
-        try
-        {
-            globals.AgentSessionManagementEnabled(true);
-            saved = writeSettings();
-        }
-        CATCH_LOG()
-
-        if (!saved)
-        {
-            // Restore absence as well as value: an inherited/default preference
-            // must not become an explicit user override after a failed write.
-            if (hadPreference)
-            {
-                globals.AgentSessionManagementEnabled(preference);
-            }
-            else
-            {
-                globals.ClearAgentSessionManagementEnabled();
-            }
-            _agentPaneLog("enable_session_tracking: settings persistence failed");
-        }
-        return saved;
-    }
-
-    void TerminalPage::OnEnableSessionTrackingRequested(hstring eventJson)
-    {
-        namespace Parsing = ::Microsoft::Terminal::Protocol::Parsing;
-        Json::Value event;
-        if (!Parsing::ParseJson(winrt::to_string(eventJson), event) ||
-            !event.isObject() ||
-            event["method"] != "enable_session_tracking" ||
-            !Parsing::IsSessionTrackingEnableRequest(event["params"]))
-        {
-            _agentPaneLog("enable_session_tracking: malformed request");
-            return;
-        }
-        const auto& request = event["params"];
-        if (request["window_id"].asString() != std::to_string(_WindowProperties.WindowId()))
-        {
-            return;
-        }
-
-        Json::Value result{ Json::objectValue };
-        result["window_id"] = request["window_id"];
-        result["tab_id"] = request["tab_id"];
-        result["request_id"] = request["request_id"];
-        result["session_management_enabled"] = false;
-        result["session_management_policy_blocked"] = false;
-        result["error"] = "unavailable";
-        GlobalAppSettings globals{ nullptr };
-        try
-        {
-            globals = _settings ? _settings.GlobalSettings() : nullptr;
-            if (globals && _FindTabByStableId(winrt::to_hstring(request["tab_id"].asString())))
-            {
-                const auto action = Parsing::DecideSessionTrackingEnable(
-                    globals.IsAgentSessionHooksPolicyLocked(),
-                    globals.EffectiveAgentSessionManagementEnabled());
-                if (action == Parsing::SessionTrackingEnableAction::PolicyBlocked)
-                {
-                    result["error"] = "policy_blocked";
-                }
-                else if (action == Parsing::SessionTrackingEnableAction::Persist &&
-                         !_PersistAgentSessionTrackingEnabled([this]() { return _settings.WriteSettingsToDisk(); }))
-                {
-                    result["error"] = "save_failed";
-                }
-                else
-                {
-                    _EmitAgentRuntimeConfigIfChanged();
-                    // Also cover an unseeded runtime baseline or a helper that
-                    // missed the original update. This is global, not tab-scoped.
-                    ReplayAgentSessionManagementConfig();
-                    if (action == Parsing::SessionTrackingEnableAction::Persist)
-                    {
-                        _lastAgentSettings.agentSessionManagementEnabled =
-                            globals.EffectiveAgentSessionManagementEnabled();
-                        if (_lastAgentSettings.agentSessionManagementEnabled)
-                        {
-                            // Do not reconcile unrelated agent/model bindings:
-                            // this user action never retires panes or sessions.
-                            _ReconcileAgentHooksAsync(AgentHooksReconciliationScope::All, {});
-                        }
-                    }
-                    result["error"] = "";
-                }
-            }
-        }
-        CATCH_LOG()
-
-        try
-        {
-            if (globals)
-            {
-                result["session_management_enabled"] = globals.EffectiveAgentSessionManagementEnabled();
-                result["session_management_policy_blocked"] = globals.IsAgentSessionHooksPolicyLocked();
-                if (result["error"].asString().empty() &&
-                    !result["session_management_enabled"].asBool())
-                {
-                    result["error"] = result["session_management_policy_blocked"].asBool() ?
-                                          "policy_blocked" :
-                                          "unavailable";
-                }
-            }
-        }
-        catch (...)
-        {
-            LOG_CAUGHT_EXCEPTION();
-            result["error"] = "unavailable";
-        }
-        result["success"] = result["error"].asString().empty();
-        _RaiseProtocolEvent("session_tracking_enable_result", result);
     }
 
     // Hot-propagate runtime agent config to the running wta-helper(s) over the

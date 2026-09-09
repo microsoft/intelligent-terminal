@@ -1229,11 +1229,6 @@ pub struct App {
     pub agent_sessions: crate::agent_sessions::AgentSessionRegistry,
     pub session_management_enabled: bool,
     pub(crate) session_management_policy_blocked: Option<bool>,
-    pub(crate) session_tracking_enable_request: Option<SessionTrackingEnableRequest>,
-    pub(crate) session_tracking_enable_error: bool,
-    pub(crate) session_tracking_notice_focused: bool,
-    pub(crate) session_tracking_enable_hit: Option<ratatui::layout::Rect>,
-    pressed_session_tracking_enable: Option<String>,
     session_management_generation: u64,
     session_management_host_authoritative: bool,
     session_management_configuration_revision: u64,
@@ -1367,11 +1362,6 @@ struct MasterSessionTracking {
     epoch: u64,
     enabled: bool,
     minimum_generation: u64,
-}
-
-pub(crate) struct SessionTrackingEnableRequest {
-    id: String,
-    configuration_revision: u64,
 }
 
 // (Historical-session load-state tracking was removed: the helper no longer
@@ -1565,11 +1555,6 @@ impl App {
             agent_sessions: crate::agent_sessions::AgentSessionRegistry::new(),
             session_management_enabled: true,
             session_management_policy_blocked: None,
-            session_tracking_enable_request: None,
-            session_tracking_enable_error: false,
-            session_tracking_notice_focused: false,
-            session_tracking_enable_hit: None,
-            pressed_session_tracking_enable: None,
             session_management_generation: 0,
             session_management_host_authoritative: false,
             session_management_configuration_revision: 0,
@@ -3430,12 +3415,6 @@ impl App {
     }
 
     pub(crate) fn set_session_management_enabled(&mut self, enabled: bool) {
-        if enabled {
-            self.session_tracking_enable_request = None;
-            self.session_tracking_enable_error = false;
-            self.session_tracking_notice_focused = false;
-            self.session_tracking_enable_hit = None;
-        }
         if self.session_management_enabled == enabled {
             return;
         }
@@ -3449,110 +3428,6 @@ impl App {
                 .session_management_configuration_revision
                 .wrapping_add(1);
             self.session_management_policy_blocked = Some(blocked);
-            if blocked {
-                self.session_tracking_enable_request = None;
-                self.session_tracking_enable_error = false;
-                self.session_tracking_notice_focused = false;
-                self.session_tracking_enable_hit = None;
-            }
-        }
-    }
-
-    fn can_enable_session_tracking(&self) -> bool {
-        !self.session_management_enabled
-            && self.session_management_policy_blocked == Some(false)
-            && self.session_tracking_enable_request.is_none()
-    }
-
-    fn session_tracking_enable_at(&self, column: u16, row: u16) -> bool {
-        self.current_tab().current_view == View::Agents
-            && self.can_enable_session_tracking()
-            && self
-                .session_tracking_enable_hit
-                .is_some_and(|rect| rect.contains(ratatui::layout::Position::new(column, row)))
-    }
-
-    fn request_enable_session_tracking(&mut self) {
-        if !self.can_enable_session_tracking() {
-            return;
-        }
-        let identity = self
-            .window_id
-            .as_deref()
-            .filter(|id| !id.is_empty())
-            .zip(self.owner_tab_id.as_deref().filter(|id| !id.is_empty()));
-        let (Some((window_id, tab_id)), Some(event_tx)) = (identity, self.event_tx.clone()) else {
-            tracing::warn!(target: "session_tracking", "cannot enable tracking without host identity and event channel");
-            self.session_tracking_enable_error = true;
-            return;
-        };
-        let request_id = uuid::Uuid::new_v4().to_string();
-        let event = serde_json::json!({
-            "type": "event",
-            "method": "enable_session_tracking",
-            "params": {
-                "window_id": window_id,
-                "tab_id": tab_id,
-                "request_id": request_id,
-            }
-        });
-        self.session_tracking_enable_error = false;
-        self.session_tracking_enable_request = Some(SessionTrackingEnableRequest {
-            id: request_id.clone(),
-            configuration_revision: self.session_management_configuration_revision,
-        });
-        let shell = Arc::clone(&self.shell_mgr);
-        tokio::spawn(async move {
-            match shell.wt_publish_event(event).await {
-                Ok(()) => tokio::time::sleep(std::time::Duration::from_secs(10)).await,
-                Err(error) => tracing::warn!(
-                    target: "session_tracking",
-                    %error,
-                    "failed to send user request to enable session tracking"
-                ),
-            }
-            let _ = event_tx.send(AppEvent::SessionTrackingEnableFailed { request_id });
-        });
-    }
-
-    fn handle_session_tracking_enable_result(&mut self, params: &serde_json::Value) {
-        if params.get("window_id").and_then(serde_json::Value::as_str) != self.window_id.as_deref()
-            || params.get("tab_id").and_then(serde_json::Value::as_str)
-                != self.owner_tab_id.as_deref()
-        {
-            return;
-        }
-        let Some(request) = self.session_tracking_enable_request.as_ref() else {
-            return;
-        };
-        if params.get("request_id").and_then(serde_json::Value::as_str) != Some(request.id.as_str())
-        {
-            return;
-        }
-        let (Some(success), Some(enabled), Some(blocked)) = (
-            params.get("success").and_then(serde_json::Value::as_bool),
-            params
-                .get("session_management_enabled")
-                .and_then(serde_json::Value::as_bool),
-            params
-                .get("session_management_policy_blocked")
-                .and_then(serde_json::Value::as_bool),
-        ) else {
-            tracing::warn!(target: "session_tracking", "invalid session tracking enable result");
-            self.session_tracking_enable_request = None;
-            self.session_tracking_enable_error = true;
-            return;
-        };
-        let revision = request.configuration_revision;
-        self.session_tracking_enable_request = None;
-        if revision == self.session_management_configuration_revision {
-            self.apply_session_management_policy(Some(blocked));
-            self.apply_session_management_host_config(enabled);
-        }
-        self.session_tracking_enable_error =
-            !success && self.session_management_policy_blocked != Some(true);
-        if !success {
-            tracing::warn!(target: "session_tracking", blocked, "Terminal could not enable session tracking");
         }
     }
 
@@ -5100,7 +4975,6 @@ impl App {
             AppEvent::SessionManagementSettingsLoaded { .. } => {
                 "session_management_settings_loaded"
             }
-            AppEvent::SessionTrackingEnableFailed { .. } => "session_tracking_enable_failed",
             AppEvent::AgentsSnapshotLoaded { .. } => "agents_snapshot_loaded",
             AppEvent::AgentsSnapshotFailed { .. } => "agents_snapshot_failed",
             AppEvent::RegisterBornBoundSession { .. } => "register_born_bound_session",

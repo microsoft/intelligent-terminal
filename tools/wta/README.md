@@ -155,10 +155,11 @@ controls session hooks, not session management as a whole. Saving Off disables
 hook-driven tracking and automatic hook reconciliation without restarting the
 master, helpers, or agent CLIs. Existing hooks remain installed.
 
-While hooks are Off, the Sessions view shows a muted notice with a **Turn on**
-action. The action saves the global preference; organization policy can disable
-it. No Off notice is shown while hooks are On, including empty, loading, or
-searching views.
+While hooks are Off, the Sessions view shows one muted, non-interactive line
+directing users to **Settings > Agents > Sessions** to enable hooks. There is
+no inline toggle or settings-writing action. Organization-managed disablement
+has an informational explanation instead. No Off notice is shown while hooks
+are On, including empty, loading, or searching views.
 
 Hook-independent behavior is unchanged: Resume and delegation already know
 their session IDs and still establish and display **Idle**, even while hooks

@@ -261,7 +261,6 @@ namespace winrt::TerminalApp::implementation
         void OnAutofixStateChanged(hstring eventJson);
         void OnAgentStatusChanged(hstring eventJson);
         void ReplayAgentSessionManagementConfig();
-        void OnEnableSessionTrackingRequested(hstring eventJson);
         void OnAgentSwitchRequested(hstring eventJson);
         void OnCloseAgentPaneRequested(hstring eventJson);
         void OnDefaultPasteRequested(hstring eventJson);
@@ -605,7 +604,6 @@ namespace winrt::TerminalApp::implementation
         winrt::fire_and_forget _ReconcileAgentHooksAsync(
             AgentHooksReconciliationScope scope,
             std::wstring agentId);
-        bool _PersistAgentSessionTrackingEnabled(const std::function<bool()>& writeSettings);
         static bool _ShouldDeferAgentSettingsChange(
             AgentSettingsChangeKind changeKind,
             bool canHostPane,

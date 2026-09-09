@@ -16,8 +16,7 @@ namespace TerminalAppUnitTests
 
         TEST_METHOD(DefaultPasteRequestUsesDirectRoute);
         TEST_METHOD(AgentSessionsRetiredUsesDirectRoute);
-        TEST_METHOD(EnableSessionTrackingUsesValidatedDirectRoute);
-        TEST_METHOD(EnableSessionTrackingHonorsPolicyAndIsIdempotent);
+        TEST_METHOD(SessionTrackingShortcutIsNotDispatched);
         TEST_METHOD(RestartRequestIdentityIsStampedOnce);
         TEST_METHOD(SettingsResponseIncludesEffectiveSessionTracking);
         TEST_METHOD(SettingsResponseRejectsMalformedJson);
@@ -71,46 +70,14 @@ namespace TerminalAppUnitTests
         VERIFY_IS_FALSE(BuildSettingsResponse("null", false, false).has_value());
     }
 
-    void ProtocolParsingTests::EnableSessionTrackingUsesValidatedDirectRoute()
+    void ProtocolParsingTests::SessionTrackingShortcutIsNotDispatched()
     {
         Json::Value event;
         VERIFY_ARE_EQUAL(
-            SendEventRoute::EnableSessionTracking,
+            SendEventRoute::Invalid,
             ClassifySendEvent(
                 R"({"type":"event","method":"enable_session_tracking","params":{"window_id":"42","tab_id":"tab-a","request_id":"request-1"}})",
                 event));
-        VERIFY_ARE_EQUAL("enable_session_tracking", event["method"].asString());
-        VERIFY_ARE_EQUAL("request-1", event["params"]["request_id"].asString());
-
-        const auto valid = event;
-        for (const auto key : { "window_id", "tab_id", "request_id" })
-        {
-            for (const auto& invalid : { Json::Value{}, Json::Value{ "" }, Json::Value{ 42 }, Json::Value{ true } })
-            {
-                auto malformed = valid;
-                malformed["params"][key] = invalid;
-                VERIFY_ARE_EQUAL(
-                    SendEventRoute::Invalid,
-                    ClassifySendEvent(Json::writeString(Json::StreamWriterBuilder{}, malformed), event));
-            }
-            auto missing = valid;
-            missing["params"].removeMember(key);
-            VERIFY_ARE_EQUAL(
-                SendEventRoute::Invalid,
-                ClassifySendEvent(Json::writeString(Json::StreamWriterBuilder{}, missing), event));
-        }
-        VERIFY_ARE_EQUAL(SendEventRoute::Invalid,
-                         ClassifySendEvent(R"({"method":"enable_session_tracking","params":[]})", event));
-        VERIFY_ARE_EQUAL(SendEventRoute::Invalid,
-                         ClassifySendEvent(R"({"method":"enable_session_tracking"})", event));
-    }
-
-    void ProtocolParsingTests::EnableSessionTrackingHonorsPolicyAndIsIdempotent()
-    {
-        VERIFY_ARE_EQUAL(SessionTrackingEnableAction::PolicyBlocked, DecideSessionTrackingEnable(true, false));
-        VERIFY_ARE_EQUAL(SessionTrackingEnableAction::PolicyBlocked, DecideSessionTrackingEnable(true, true));
-        VERIFY_ARE_EQUAL(SessionTrackingEnableAction::AlreadyEnabled, DecideSessionTrackingEnable(false, true));
-        VERIFY_ARE_EQUAL(SessionTrackingEnableAction::Persist, DecideSessionTrackingEnable(false, false));
     }
 
     void ProtocolParsingTests::DefaultPasteRequestUsesDirectRoute()

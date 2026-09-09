@@ -401,15 +401,6 @@ impl App {
                     }
                 }
                 crossterm::event::MouseEventKind::Down(crossterm::event::MouseButton::Left) => {
-                    if self.session_tracking_enable_at(mouse.column, mouse.row) {
-                        self.cancel_completed_turn_click();
-                        self.text_selection.clear();
-                        self.pressed_session_tracking_enable = Some(self.active_mouse_tab_id());
-                        self.session_tracking_notice_focused = true;
-                        self.current_tab_mut().agents_view.search_focused = false;
-                        return;
-                    }
-                    self.pressed_session_tracking_enable = None;
                     self.text_selection.handle_mouse(mouse);
                     let click_count = self.text_selection.click_count().unwrap_or(1);
                     if click_count > 1 {
@@ -433,19 +424,10 @@ impl App {
                         });
                 }
                 crossterm::event::MouseEventKind::Drag(crossterm::event::MouseButton::Left) => {
-                    self.pressed_session_tracking_enable = None;
                     self.cancel_completed_turn_click();
                     self.text_selection.handle_mouse(mouse);
                 }
                 crossterm::event::MouseEventKind::Up(crossterm::event::MouseButton::Left) => {
-                    if let Some(tab_id) = self.pressed_session_tracking_enable.take() {
-                        if tab_id == self.active_mouse_tab_id()
-                            && self.session_tracking_enable_at(mouse.column, mouse.row)
-                        {
-                            self.request_enable_session_tracking();
-                        }
-                        return;
-                    }
                     let active_tab_id = self.active_mouse_tab_id();
                     let input_pressed = self.pressed_input_dialog_tab.take();
                     if input_pressed.as_deref() == Some(active_tab_id.as_str())
@@ -2179,17 +2161,6 @@ impl App {
                     }
                 }
             }
-            AppEvent::SessionTrackingEnableFailed { request_id } => {
-                if self
-                    .session_tracking_enable_request
-                    .as_ref()
-                    .is_some_and(|request| request.id == request_id)
-                {
-                    tracing::warn!(target: "session_tracking", "session tracking enable request did not complete");
-                    self.session_tracking_enable_request = None;
-                    self.session_tracking_enable_error = true;
-                }
-            }
             AppEvent::DirectTerminalActionProposal {
                 context,
                 payload,
@@ -2264,11 +2235,6 @@ impl App {
                 // so the agent session view stays current. Unrelated to autofix /
                 // tab routing; runs before the same-pane skip because we want
                 // to record events from our own pane too.
-                if method == "session_tracking_enable_result" {
-                    self.handle_session_tracking_enable_result(&params);
-                    return;
-                }
-
                 if method == "agent_event" {
                     // This is the raw hook boundary, not the independent ACP,
                     // Resume/born-bound, or native terminal lifecycle paths.

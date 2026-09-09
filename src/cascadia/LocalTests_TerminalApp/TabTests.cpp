@@ -232,7 +232,6 @@ namespace TerminalAppLocalTests
         TEST_METHOD(InitialSessionsViewSurvivesStartupProjection);
         TEST_METHOD(AgentReadyRuntimeConfigIncludesCurrentYoloState);
         TEST_METHOD(SessionTrackingToggleHotUpdatesWithoutRecreatingPane);
-        TEST_METHOD(SessionTrackingEnablePersistenceRestoresPreference);
 
         TEST_METHOD(NextMRUTab);
         TEST_METHOD(VerifyCommandPaletteTabSwitcherOrder);
@@ -2870,156 +2869,12 @@ namespace TerminalAppLocalTests
             VERIFY_ARE_EQUAL(1u, events.size());
             events.clear();
 
-            Json::Value enable;
-            enable["type"] = "event";
-            enable["method"] = "enable_session_tracking";
-            enable["params"]["window_id"] = "another-window";
-            enable["params"]["tab_id"] = winrt::to_string(tab->StableId());
-            enable["params"]["request_id"] = "enable-1";
-            const auto publishEnable = [&]() {
-                page->OnEnableSessionTrackingRequested(winrt::to_hstring(Json::writeString(writer, enable)));
-            };
-            publishEnable();
-            VERIFY_IS_TRUE(events.empty());
-            VERIFY_IS_FALSE(globals.AgentSessionManagementEnabled());
-
-            enable["params"]["window_id"] = std::to_string(props.WindowId());
-            enable["params"]["tab_id"] = "another-tab";
-            publishEnable();
-            VERIFY_ARE_EQUAL(1u, events.size());
-            VERIFY_ARE_EQUAL("session_tracking_enable_result", events[0]["method"].asString());
-            VERIFY_ARE_EQUAL("unavailable", events[0]["params"]["error"].asString());
-            VERIFY_IS_FALSE(events[0]["params"]["success"].asBool());
-            VERIFY_IS_FALSE(events[0]["params"]["session_management_enabled"].asBool());
-            VERIFY_IS_FALSE(globals.AgentSessionManagementEnabled());
-            events.clear();
-
-            enable["params"]["tab_id"] = winrt::to_string(tab->StableId());
-            enable["params"]["request_id"] = "";
-            publishEnable();
-            VERIFY_IS_TRUE(events.empty());
-            VERIFY_IS_FALSE(globals.AgentSessionManagementEnabled());
-
-            // Already enabled by the default: acknowledge retries without
-            // writing settings, installing hooks, or materializing an override.
-            globals.ClearAgentSessionManagementEnabled();
-            VERIFY_IS_FALSE(globals.HasAgentSessionManagementEnabled());
-            VERIFY_IS_TRUE(globals.EffectiveAgentSessionManagementEnabled());
-            page->_lastAgentRuntimeConfig = page->_CaptureAgentRuntimeConfig();
-            enable["params"]["request_id"] = "enable-1";
-            for (auto attempt = 0; attempt < 2; ++attempt)
-            {
-                publishEnable();
-                VERIFY_ARE_EQUAL(2u, events.size());
-                VERIFY_ARE_EQUAL("agent_config_changed", events[0]["method"].asString());
-                VERIFY_IS_FALSE(events[0]["params"].isMember("tab_id"));
-                VERIFY_ARE_EQUAL(enable["params"]["window_id"].asString(),
-                                 events[0]["params"]["window_id"].asString());
-                VERIFY_IS_TRUE(events[0]["params"]["session_management_enabled"].isBool());
-                VERIFY_IS_TRUE(events[0]["params"]["session_management_enabled"].asBool());
-                VERIFY_IS_TRUE(events[0]["params"]["session_management_policy_blocked"].isBool());
-                VERIFY_IS_FALSE(events[0]["params"]["session_management_policy_blocked"].asBool());
-                VERIFY_ARE_EQUAL("session_tracking_enable_result", events[1]["method"].asString());
-                const auto& result = events[1]["params"];
-                VERIFY_ARE_EQUAL(enable["params"]["window_id"].asString(), result["window_id"].asString());
-                VERIFY_ARE_EQUAL(enable["params"]["tab_id"].asString(), result["tab_id"].asString());
-                VERIFY_ARE_EQUAL("enable-1", result["request_id"].asString());
-                VERIFY_IS_TRUE(result["success"].isBool());
-                VERIFY_IS_TRUE(result["success"].asBool());
-                VERIFY_IS_TRUE(result["session_management_enabled"].asBool());
-                VERIFY_IS_TRUE(result["session_management_policy_blocked"].isBool());
-                VERIFY_IS_FALSE(result["session_management_policy_blocked"].asBool());
-                VERIFY_ARE_EQUAL("", result["error"].asString());
-                VERIFY_IS_FALSE(globals.HasAgentSessionManagementEnabled());
-                events.clear();
-            }
-            const auto savedSettings = page->_settings;
-            page->_settings = nullptr;
-            publishEnable();
-            page->_settings = savedSettings;
-            VERIFY_ARE_EQUAL(1u, events.size());
-            VERIFY_ARE_EQUAL("session_tracking_enable_result", events[0]["method"].asString());
-            VERIFY_ARE_EQUAL("enable-1", events[0]["params"]["request_id"].asString());
-            VERIFY_ARE_EQUAL("unavailable", events[0]["params"]["error"].asString());
-            VERIFY_IS_FALSE(events[0]["params"]["success"].asBool());
             VERIFY_IS_FALSE(page->_agentLifecycleOperationInProgress);
             VERIFY_IS_FALSE(page->_pendingAgentSettingsReconciliation);
             VERIFY_IS_TRUE(content == tab->FindAgentPaneContent());
             VERIFY_IS_TRUE(connection == content.GetTermControl().Connection());
             VERIFY_IS_TRUE(winrt::get_self<winrt::TerminalApp::implementation::AgentPaneContent>(content)->IsAgentConnected());
             page->ProtocolVtSequenceReceived(token);
-        });
-    }
-
-    void TabTests::SessionTrackingEnablePersistenceRestoresPreference()
-    {
-        TestOnUIThread([&]() {
-            using Page = winrt::TerminalApp::implementation::TerminalPage;
-            const auto props = winrt::make<winrt::TerminalApp::implementation::WindowProperties>();
-            const auto manager = winrt::make<winrt::TerminalApp::implementation::ContentManager>();
-            const winrt::TerminalApp::TerminalPage projectedPage{ props, manager };
-            const auto page = winrt::get_self<Page>(projectedPage);
-            const winrt::hstring userJson{
-                LR"({
-                    "defaultProfile": "{6239a42c-1111-49a3-80bd-e8fdd045185c}",
-                    "profiles": [{
-                        "name": "mock",
-                        "guid": "{6239a42c-1111-49a3-80bd-e8fdd045185c}"
-                    }]
-                })"
-            };
-            page->_settings = CascadiaSettings{ userJson, {} };
-            auto globals = page->_settings.GlobalSettings();
-            auto writes = 0;
-            const auto failedWrite = [&]() {
-                ++writes;
-                VERIFY_IS_TRUE(globals.AgentSessionManagementEnabled());
-                VERIFY_IS_TRUE(globals.HasAgentSessionManagementEnabled());
-                return false;
-            };
-
-            globals.AgentSessionManagementEnabled(false);
-            VERIFY_IS_FALSE(page->_PersistAgentSessionTrackingEnabled(failedWrite));
-            VERIFY_IS_TRUE(globals.HasAgentSessionManagementEnabled());
-            VERIFY_IS_FALSE(globals.AgentSessionManagementEnabled());
-            VERIFY_ARE_EQUAL(1, writes);
-
-            VERIFY_IS_FALSE(page->_PersistAgentSessionTrackingEnabled([&]() -> bool {
-                ++writes;
-                throw winrt::hresult_error(E_ACCESSDENIED);
-            }));
-            VERIFY_IS_TRUE(globals.HasAgentSessionManagementEnabled());
-            VERIFY_IS_FALSE(globals.AgentSessionManagementEnabled());
-            VERIFY_ARE_EQUAL(2, writes);
-
-            globals.AgentSessionManagementEnabled(true);
-            VERIFY_IS_FALSE(page->_PersistAgentSessionTrackingEnabled(failedWrite));
-            VERIFY_IS_TRUE(globals.HasAgentSessionManagementEnabled());
-            VERIFY_IS_TRUE(globals.AgentSessionManagementEnabled());
-
-            globals.ClearAgentSessionManagementEnabled();
-            VERIFY_IS_FALSE(page->_PersistAgentSessionTrackingEnabled(failedWrite));
-            VERIFY_IS_FALSE(globals.HasAgentSessionManagementEnabled());
-            VERIFY_IS_TRUE(globals.AgentSessionManagementEnabled());
-
-            page->_settings = CascadiaSettings{ userJson, LR"({"agentSessionManagementEnabled":false})" };
-            globals = page->_settings.GlobalSettings();
-            VERIFY_IS_FALSE(globals.HasAgentSessionManagementEnabled());
-            VERIFY_IS_FALSE(globals.AgentSessionManagementEnabled());
-            VERIFY_IS_FALSE(page->_PersistAgentSessionTrackingEnabled(failedWrite));
-            VERIFY_IS_FALSE(globals.HasAgentSessionManagementEnabled());
-            VERIFY_IS_FALSE(globals.AgentSessionManagementEnabled());
-
-            VERIFY_IS_TRUE(page->_PersistAgentSessionTrackingEnabled([&]() {
-                ++writes;
-                VERIFY_IS_TRUE(globals.AgentSessionManagementEnabled());
-                return true;
-            }));
-            VERIFY_ARE_EQUAL(6, writes);
-            VERIFY_IS_TRUE(globals.HasAgentSessionManagementEnabled());
-            VERIFY_IS_TRUE(globals.AgentSessionManagementEnabled());
-            VERIFY_IS_FALSE(page->_agentRuntimeConfigInitialized);
-            VERIFY_IS_FALSE(page->_agentLifecycleOperationInProgress);
         });
     }
 
