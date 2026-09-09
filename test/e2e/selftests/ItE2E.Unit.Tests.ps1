@@ -643,7 +643,16 @@ Describe 'Agent provider identity ownership' -Tag 'Unit' {
 
         $rebindHandler | Should -Match '_RaiseProtocolEvent\("rebind_agent", params\);'
         $rebindHandler | Should -Not -Match 'AgentCurrentId\('
-        $source | Should -Match 'statusTab->AgentCurrentId\(agentId\);'
+        $statusHandler = [regex]::Match(
+            $source,
+            '(?s)void TerminalPage::OnAgentStatusChanged\(.*?(?=void TerminalPage::OnAgentStateChanged)').Value
+        $identityUpdate = [regex]::Match(
+            $statusHandler,
+            '(?s)const auto agentId = pickStr\("agent_id"\);.*?(?=const bool usesHostCatalog)').Value
+        $statusHandler | Should -Match 'const auto agentIdSpecified = params\.isMember\("agent_id"\);'
+        $identityUpdate | Should -Match 'statusTab->AgentCurrentId\(agentId\);'
+        $identityUpdate | Should -Not -Match '!agentId\.empty\(\)' `
+            -Because 'a present empty agent_id must clear stale per-tab provider identity'
     }
 }
 

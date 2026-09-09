@@ -6695,8 +6695,9 @@ namespace winrt::TerminalApp::implementation
         // Sync this agent's process-wide model-list cache. The Settings UI's
         // AIAgentsViewModel reads from this on construction, so any new
         // dropdown opened after this point sees the freshest list.
+        const auto agentIdSpecified = params.isMember("agent_id");
         const auto agentId = pickStr("agent_id");
-        if (statusTab && !agentId.empty())
+        if (statusTab && agentIdSpecified)
         {
             statusTab->AgentCurrentId(agentId);
         }
