@@ -42,6 +42,15 @@ Terminal over the COM protocol; `resolve-command` inspects the user's real,
 shell-context-selected sources (active working directory, host PATH and, for
 PowerShell, the profile-loaded command environment).
 
+Autofix sends the failing command's context without pre-querying similar command
+names. Its prompt advertises `wta resolve-command` for agent-initiated diagnosis,
+using the failing pane's shell and working directory. Command enumeration is
+uncached and runs only when requested; there is no background refresh or
+startup/tab-selection prewarming. Query failures or unsupported shell contexts
+are not evidence that a command is missing. The prompt directs agents to propose
+obvious typos in familiar commands (such as `gti status` -> `git status`) without
+lookup, while using local evidence for unfamiliar commands or ambiguous corrections.
+
 The packaged app registers `wta.exe` as an App Execution Alias. Before spawning
 the host agent, WTA puts the current package family's alias directory first on
 `PATH`; unpackaged builds use the running binary's directory. Agent prompts can
@@ -137,7 +146,13 @@ Each block retains the latest 4,000 Unicode characters. No thought text is
 invented when a provider is silent. Synthetic waiting feedback uses only the
 shimmering Thinking indicator above the input box, never a transcript row.
 Expanded Edit details show bounded line-level `+`/`-` hunks computed from ACP
-snapshots.
+snapshots. Tool headers and groups can be expanded during the active turn as well
+as in history. Expanded Search details wrap the provider's `rawInput.query`
+(or its title when no query is supplied) and any returned text results. WTA
+does not reconstruct queries or results omitted by the provider. Queries retain
+the first 4,000 Unicode characters, all scrollable when expanded. Text results show
+up to 12 wrapped lines, with `…` for omitted text. Expansion follows the tool
+into completed history.
 
 | Key | Action |
 |-----|--------|
@@ -145,9 +160,9 @@ snapshots.
 | Ctrl+C | Copy selected text; otherwise cancel streaming / quit |
 | Up / Down | Browse prompt input history |
 | Mouse wheel | Scroll chat (hold Alt to scroll one line) |
-| Click a completed tool header | Expand or collapse that tool's details |
+| Click a tool header | Expand or collapse that tool's details, live or completed |
 | Click a thinking header | Expand or collapse that block, live or completed |
-| Ctrl+O | Expand or collapse thinking in the selected/latest turn (or the active turn), and all completed tool details |
+| Ctrl+O | Expand or collapse thinking in the selected/latest turn (or the active turn), and all live and completed tool details |
 | Mouse drag | Select a continuous text range |
 | Double / triple click | Select a word / line |
 | PageUp / PageDown | Scroll chat |

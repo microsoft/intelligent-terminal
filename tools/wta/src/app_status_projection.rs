@@ -123,7 +123,11 @@ impl App {
             );
             return;
         };
-        let evt = build_agent_state_changed_event(target_tab, tab);
+        let projected_session_id = tab.resumable_session_id();
+        let yolo_control_owner = projected_session_id
+            .as_deref()
+            .and_then(|session_id| self.yolo_state.lock().unwrap().owner(session_id));
+        let evt = build_agent_state_changed_event(target_tab, tab, yolo_control_owner);
         send_wt_protocol_event(evt.to_string());
 
         // Autofix bar is window-level (single bottom bar reflecting the
@@ -138,6 +142,7 @@ impl App {
 pub(super) fn build_agent_state_changed_event(
     target_tab: &str,
     tab: &TabSession,
+    yolo_control_owner: Option<crate::app_contracts::YoloControlOwner>,
 ) -> serde_json::Value {
     let view = match tab.current_view {
         View::Agents => "sessions",
@@ -153,6 +158,7 @@ pub(super) fn build_agent_state_changed_event(
         "params": {
             "tab_id": target_tab,
             "agent_session_id": projected_session_id,
+            "yolo_control_owner": yolo_control_owner.map(crate::app_contracts::YoloControlOwner::as_wire),
             "view": view,
             "pane_open": tab.pane_open,
             "pane_position": tab.agent_pane_position,

@@ -24,6 +24,7 @@ Abstract:
 --*/
 #pragma once
 
+#include <mutex>
 #include "ContentManager.g.h"
 
 #include <inc/cppwinrt_utils.h>
@@ -41,6 +42,7 @@ namespace winrt::TerminalApp::implementation
         void Detach(const Microsoft::Terminal::Control::TermControl& control);
 
     private:
+        std::mutex _mutex;
         std::unordered_map<uint64_t, Microsoft::Terminal::Control::ControlInteractivity> _content;
 
         void _closedHandler(const winrt::Windows::Foundation::IInspectable& sender,

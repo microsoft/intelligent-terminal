@@ -4,6 +4,7 @@
 #pragma once
 
 #include <ThrottledFunc.h>
+#include <atomic>
 #include <functional>
 #include <unordered_map>
 #include <unordered_set>
@@ -110,6 +111,7 @@ namespace winrt::TerminalApp::implementation
         WINRT_PROPERTY(winrt::hstring, Window);
         WINRT_PROPERTY(winrt::hstring, Content);
         WINRT_PROPERTY(uint32_t, TabIndex);
+        WINRT_PROPERTY(uint64_t, TransferId, 0);
         WINRT_PROPERTY(Windows::Foundation::IReference<Windows::Foundation::Point>, WindowPosition);
 
     public:
@@ -202,6 +204,8 @@ namespace winrt::TerminalApp::implementation
         void RequestSetMaximized(bool newMaximized);
 
         void SetStartupActions(std::vector<Microsoft::Terminal::Settings::Model::ActionAndArgs> actions);
+        void SetStartupTransfer(uint64_t transferId) noexcept { _startupTransferId = transferId; }
+        void ContentTransferReceiverReady();
         void SetStartupConnection(winrt::Microsoft::Terminal::TerminalConnection::ITerminalConnection connection);
 
         static std::vector<Microsoft::Terminal::Settings::Model::ActionAndArgs> ConvertExecuteCommandlineToActions(const Microsoft::Terminal::Settings::Model::ExecuteCommandlineArgs& args);
@@ -236,7 +240,7 @@ namespace winrt::TerminalApp::implementation
 
         bool OnDirectKeyEvent(const uint32_t vkey, const uint8_t scanCode, const bool down);
 
-        void AttachContent(Windows::Foundation::Collections::IVector<Microsoft::Terminal::Settings::Model::ActionAndArgs> args, uint32_t tabIndex);
+        bool AttachContent(Windows::Foundation::Collections::IVector<Microsoft::Terminal::Settings::Model::ActionAndArgs> args, uint32_t tabIndex, uint64_t transferId = 0);
         void SendContentToOther(winrt::TerminalApp::RequestReceiveContentArgs args);
 
         uint32_t NumberOfTabs() const;
@@ -380,6 +384,9 @@ namespace winrt::TerminalApp::implementation
 
         winrt::Windows::UI::Xaml::Controls::Grid::LayoutUpdated_revoker _layoutUpdatedRevoker;
         StartupState _startupState{ StartupState::NotInitialized };
+        uint64_t _startupTransferId{ 0 };
+        bool _transferReceiverReady{ false };
+        void _TryCompleteStartupTransfer();
 
         std::vector<Microsoft::Terminal::Settings::Model::ActionAndArgs> _startupActions;
         winrt::Microsoft::Terminal::TerminalConnection::ITerminalConnection _startupConnection{ nullptr };
@@ -510,6 +517,7 @@ namespace winrt::TerminalApp::implementation
             std::wstring customModelSelection;
             std::vector<::Microsoft::Terminal::CustomModels::CatalogEntry> customModels;
             bool autofixEnabled{ false };
+            std::wstring defaultAgentId;
             bool yoloEnabled{ false };
             bool yoloPolicyBlocked{ false };
         };
@@ -614,6 +622,11 @@ namespace winrt::TerminalApp::implementation
             bool helperEventReady) noexcept;
         static bool _CanRetainAgentPaneForMasterRestart(
             winrt::Microsoft::Terminal::TerminalConnection::ConnectionState connectionState) noexcept;
+        static bool _ResolveHotAutomaticYoloForAgentBinding(
+            const AgentRuntimeConfigSnapshot& previous,
+            const AgentRuntimeConfigSnapshot& current,
+            const AgentPaneSettingsBinding& binding,
+            std::wstring_view actualCurrentAgentId) noexcept;
         static AgentPaneRecreationOptions _GetAgentPaneRecreationOptions(
             bool wasStashed,
             bool isActiveTab) noexcept;
@@ -736,7 +749,8 @@ namespace winrt::TerminalApp::implementation
                                               std::string_view initialView = {},
                                               std::wstring_view initialPanePosition = {},
                                               float initialPaneSize = 0.0f,
-                                              bool focusPane = true);
+                                              bool focusPane = true,
+                                              std::wstring_view initialYoloControlOwner = {});
         winrt::hstring _GetAgentPaneIdentity(Tab* tab) const;
         winrt::hstring _GetAgentPaneCustomCommand(Tab* tab) const;
         void _PrewarmAgentPanesAfterStartup();
@@ -988,7 +1002,7 @@ namespace winrt::TerminalApp::implementation
 
         void _Scroll(ScrollDirection scrollDirection, const Windows::Foundation::IReference<uint32_t>& rowsToScroll);
 
-        void _SplitPane(const winrt::com_ptr<Tab>& tab,
+        bool _SplitPane(const winrt::com_ptr<Tab>& tab,
                         const Microsoft::Terminal::Settings::Model::SplitDirection splitType,
                         const float splitSize,
                         std::shared_ptr<Pane> newPane,
@@ -1181,12 +1195,41 @@ namespace winrt::TerminalApp::implementation
         void _OnTabStripDroppedOutside(const winrt::Windows::Foundation::IInspectable& sender, const TerminalApp::TabStripDroppedOutsideEventArgs& e);
         void _OnTabDroppedOutsideCore();
 
-        void _DetachPaneFromWindow(std::shared_ptr<Pane> pane);
+        void _DetachPaneFromWindow(std::shared_ptr<Pane> pane, const winrt::com_ptr<Tab>& sourceTab, uint64_t firstPaneContentId = 0);
         void _DetachTabFromWindow(const winrt::com_ptr<Tab>& tabImpl);
         void _MoveContent(std::vector<winrt::Microsoft::Terminal::Settings::Model::ActionAndArgs>&& actions,
                           const winrt::hstring& windowName,
                           const uint32_t tabIndex,
+                          const winrt::com_ptr<Tab>& sourceTab,
+                          const std::shared_ptr<Pane>& sourcePane,
                           const std::optional<winrt::Windows::Foundation::Point>& dragPoint = std::nullopt);
+        bool _AttachTransferredContent(TerminalPage& source, const winrt::com_ptr<Tab>& sourceTab, const std::shared_ptr<Pane>& sourcePane,
+                                       Windows::Foundation::Collections::IVector<Microsoft::Terminal::Settings::Model::ActionAndArgs> actions, uint32_t tabIndex);
+        struct ReceivingContentTransfer
+        {
+            winrt::com_ptr<Tab> sourceTab;
+            uint64_t firstContentId{ 0 };
+            uint32_t actionIndex{ 0 };
+            // Reader-thread callbacks may publish only after UI ownership commits.
+            std::shared_ptr<std::atomic<bool>> publication{ std::make_shared<std::atomic<bool>>(false) };
+            std::unordered_set<std::string> sessionIds;
+            std::vector<std::function<void()>> afterCommit;
+            std::unordered_map<uint64_t, winrt::TerminalApp::AgentPaneContent> sourceAgents;
+            std::vector<Microsoft::Terminal::Control::TermControl> controls;
+            std::vector<winrt::com_ptr<Tab>> tabs;
+            std::vector<std::pair<winrt::TerminalApp::AgentPaneContent, winrt::TerminalApp::AgentPaneContent>> agents;
+        };
+        ReceivingContentTransfer* _receivingContentTransfer{ nullptr };
+        enum class ContentTransferStage
+        {
+            BeforeClaim,
+            ControlAttached,
+            BeforeFirstPaneInsertion,
+            BeforeSplitInsertion,
+        };
+        // Friend-accessible deterministic failure injection; never configured by production.
+        std::function<void(ContentTransferStage, uint64_t, uint32_t)> _contentTransferTestHook;
+        void _CheckpointContentTransfer(ContentTransferStage stage, uint64_t contentId = 0);
         void _sendDraggedTabToWindow(const winrt::hstring& windowId, const uint32_t tabIndex, std::optional<winrt::Windows::Foundation::Point> dragPoint);
 
         void _PopulateContextMenu(const Microsoft::Terminal::Control::TermControl& control, const Microsoft::UI::Xaml::Controls::CommandBarFlyout& sender, const bool withSelection);

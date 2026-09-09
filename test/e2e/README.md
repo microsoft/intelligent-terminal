@@ -36,6 +36,7 @@ authenticated ACP agents. Current status (run on the Store package):
 | `Feature.AutofixRouting.Tests.ps1` | Two Detected tabs: real diagnostics clicks submit only to the selected tab's ACP session and preserve the other tab's opt-in | 1 |
 | `Feature.PaneContext.Tests.ps1` | issue #838: packaged pane-context capture, marked/unmarked output, explicit routing, missing panes, metadata-only mode, Unicode bounds, and agent-focus source resolution | 7 |
 | `Feature.CommandResolution.Tests.ps1` | PR #418: packaged WTA resolves PowerShell profile-only aliases to their real targets | 1 |
+| `Feature.AutofixCommandResolution.Tests.ps1` | Issue #844: Debug Dev, deterministic ACP fixture; no startup/tab-selection probes, first/later Autofix contracts without enumeration, and explicit local-candidate lookup | 3 |
 | `Feature.SessionList.Tests.ps1` | session view (button + `/sessions` slash), session states, view switching (incl. draft-preservation), focus/restore | 13 (+1 skip) |
 | `Feature.NonAsciiCwd.Tests.ps1` | issue #641: a non-ASCII starting directory survives `wtcli` argv → COM → `CreateProcessW`, so the resume launch path connects and starts in that directory | 2 |
 | `Feature.AgentPaneCwd.Tests.ps1` | agent-pane source workspace reaches ACP `session/new` and remains stable across `/new` without a model prompt | 1 |
@@ -43,7 +44,7 @@ authenticated ACP agents. Current status (run on the Store package):
 | `Feature.ShellIntegration.Tests.ps1` | §3 shell-integration OSC 133 marks (success/failure, ParserError dedup, handled errors, WinPS 5.1 errors) + non-integrated cmd.exe safety | 6 |
 | `Feature.BashPromptIntegration.Tests.ps1` | PR #468: Bash `PROMPT_COMMAND` PS1 rewrites preserve D/A/B boundaries; non-IT hosts remain gated | 1 (Git Bash-gated) |
 | `Feature.AgentProposedCommand.Tests.ps1` | §2 Direct Helper Proposal Insert/Run into the shell pane | 2 |
-| `Feature.YoloMode.Tests.ps1` | PR #505: zero-token global setting persistence, deterministic permission boundary, provider compatibility notices, and live policy reconciliation | 5 (OpenCode, Gemini, and policy gated) |
+| `Feature.YoloMode.Tests.ps1` | Default-provider-scoped automatic approval persistence across global, `/agent`, and profile bindings; deterministic permission boundary; hidden unsupported/policy states; retained Gemini guidance; and live policy reconciliation | 8 (OpenCode, Gemini, `/agent`, profile, and policy gated) |
 | `Feature.AgentProposalFocus.Tests.ps1` | PR #533: Insert returns real window keyboard focus to the target shell pane | 1 |
 | `Feature.AgentMatrix.Tests.ps1` | §2 non-Copilot built-in agents (Claude/Codex/Gemini) connect+chat through the ACP adapter — ONE consolidated case (Copilot is the in-depth suite); skips when none installed+authed | 1 |
 | `Feature.HookTrace.Tests.ps1` | C190 + PR #571 C267-C269, C272: every shipped bundle's guarded command still delivers, `tool_input` survives only for interactive prompts, shells outside Terminal are ignored, and the broadcast envelope stays inside its budget | 5 |
@@ -55,17 +56,18 @@ authenticated ACP agents. Current status (run on the Store package):
 | `Feature.OpenCodeSessionResume.Tests.ps1` | PR #464: OpenCode history discovery and `--session` resume restore the prior transcript | 1 (environment-gated) |
 | `Feature.OpenCodeHooks.Tests.ps1` | PR #476: packaged hook install, shell-session lifecycle routing, picker visibility, and ACP duplicate suppression | 1 (environment-gated) |
 | `Feature.SharedAgentLifecycle.Tests.ps1` | PR #425 + ACP cleanup: closing a tab mid-turn physically closes only its session without terminating the shared agent CLI or breaking sibling tabs | 1 |
+| `Feature.AgentPaneLifetime.Tests.ps1` | Issue #841: hidden retention, split-tab cleanup, lease retirement, draining-only crash suppression, agent-first/later cross-window moves, and rejected pane-move rollback preserving both tabs and sessions; deterministic stdio fixture | 10 |
 | `Feature.PerTabAgent.Tests.ps1` | C225-C228 + PR #487: `/agent` picker/direct selection, invalid-id safety, per-tab isolation/shared-master reuse, and global-default/override behavior | 7 |
 | `Feature.WslAgentBackend.Tests.ps1` | PR #481 profile-scoped WSL agent backend: settings hot reload, helper/master source routing, and authenticated chat | 2 (environment-gated) |
 | `Feature.DelegateSource.Tests.ps1` | PR #488 profile-scoped delegate source: strict host/WSL `wta delegate` routing with no fallback in either direction | 2 (environment-gated) |
 | `Feature.AgentChat.Tests.ps1` / `Feature.AgentPopup.Tests.ps1` | agent chat + `/` popup/menu interaction | 1 + 3 |
 | `Feature.AgentPaneMove.Tests.ps1` | PR #429: `/move` stays per-tab, preserves global position, and restores agent input focus | 1 |
 
-**Coverage: 149 of 151 automatable `[E2E]` checklist items are implemented.**
-**Test status: 129 baseline feature cases pass + 3 documented skips** (`wta sessions list` is
+**Coverage: 150 of 152 automatable `[E2E]` checklist items are implemented.**
+**Test status: 130 baseline feature cases pass + 3 documented skips** (`wta sessions list` is
 identity-gated — see `Feature.SessionList.Tests.ps1`), plus 2 PR #481 WSL-backend cases and 2
 PR #488 delegate-source cases that run only when a runnable distro (and, for the #481 chat
-case, an installed+authenticated native agent) is available. The 149 implemented checklist
+case, an installed+authenticated native agent) is available. The 150 implemented checklist
 items map to the baseline cases plus the deterministic settings/persistence assertions. The
 remaining new items are the two profile agent picker UIs; they stay explicit E2E work rather
 than being falsely credited by the JSON-level runtime tests. Other
@@ -80,6 +82,31 @@ injectable via UIA/send-keys in this harness); and manual release-sign-off gates
 Token-consuming simulated-real-user tests are deliberately excluded from this publishable suite
 and from CI. They live only in the feature's dev-only local validation harness and run manually
 against an exact deployed publish package with explicitly available provider quota.
+
+`tools\AutofixPrompt.Local.Tests.ps1` is an opt-in, quota-consuming Dev validation
+of actual Copilot decisions, outside the default `tests`/`selftests` discovery.
+It runs three fresh-session samples each of an obvious Git typo and an unfamiliar
+local command typo. The oracle inspects session-scoped tool calls: the obvious
+typo must go directly to a correction card with no discovery tools, while the
+local command must be resolved and its corrected script must run in the source pane.
+Run it explicitly through `Invoke-ItE2EReport.ps1 -Path` with `ITE2E_PACKAGE=Dev`
+and `ITE2E_EXPECTED_WTA_SHA256` set to the deployed feature build.
+`ITE2E_COMMAND_FIXTURE_DIR` must name an existing writable user PATH directory;
+the test creates uniquely named scripts there and removes them afterward. This
+models an installed local command, rather than assuming a script in the current
+directory is on PowerShell's command search path. Set `ITE2E_AUTOFIX_MODEL` to
+pin the Copilot model being evaluated. Settings are preserved through ItE2E;
+the test does not modify PATH or profiles.
+
+`Feature.AutofixCommandResolution` requires a Debug Dev build so its negative
+probe assertions have enabled diagnostic evidence. Store selections (including
+the Store package family name) skip this suite during default discovery.
+Missing/invalid package selections and Dev build mismatches still fail. Set
+`ITE2E_EXPECTED_WTA_SHA256` to the SHA-256 of the feature-branch build when
+validating a change; the suite rejects a mismatched deployed binary. Its unique
+artifact directory records the package hash, received ACP contracts, query
+results, and scoped helper logs. The fixture uses disposable command files and
+does not modify the user's PowerShell profile or consume model quota.
 
 ## What it gives you
 

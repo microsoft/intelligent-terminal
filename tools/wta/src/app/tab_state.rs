@@ -108,6 +108,9 @@ pub enum ChatMessage {
         status: String,
         #[serde(default)]
         kind: ToolCallKind,
+        /// Bounded, verbatim search input, independent of the provider's short title.
+        #[serde(default)]
+        query: Option<ToolCallOutput>,
         /// Concise path/command hint pulled from the ACP tool call's
         /// `locations` or summarized `raw_input`. `None` when no useful
         /// target was reported or the title already states it verbatim.
@@ -569,6 +572,7 @@ pub struct TabSession {
     pub completed_turns: Vec<CompletedTurn>,
     /// UI-only disclosure state keyed by the ACP session's tool-call IDs.
     pub(crate) expanded_completed_tool_calls: HashSet<String>,
+    pub(crate) active_tool_viewport_anchor: Option<(String, u16)>,
     pub(crate) completed_turn_layout: CompletedTurnLayoutState,
     /// Latched after the first prompt or session/load. A pre-warmed session/new
     /// alone must not become resumable; `/clear` keeps the same session resumable.
@@ -834,6 +838,7 @@ impl TabSession {
     pub(crate) fn clear_completed_turns(&mut self) {
         self.completed_turns.clear();
         self.expanded_completed_tool_calls.clear();
+        self.active_tool_viewport_anchor = None;
         self.completed_turn_layout = CompletedTurnLayoutState::default();
     }
 
@@ -915,6 +920,7 @@ impl TabSession {
             .completed_turns
             .iter()
             .flat_map(|turn| &turn.details)
+            .chain(&self.messages)
             .filter_map(|message| match message {
                 ChatMessage::ToolCall { id, .. } => Some(id.clone()),
                 _ => None,
@@ -940,6 +946,31 @@ impl TabSession {
             self.expanded_completed_tool_calls.clear();
         }
         self.completed_turn_layout.height_cache.get_mut().clear();
+        true
+    }
+
+    pub(crate) fn toggle_active_tool_group(&mut self, start: usize, count: usize) -> bool {
+        let ids = self
+            .messages
+            .iter()
+            .skip(start)
+            .take(count)
+            .filter_map(|message| match message {
+                ChatMessage::ToolCall { id, .. } => Some(id.clone()),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        if ids.is_empty() || ids.len() != count {
+            return false;
+        }
+        let expand = ids.iter().any(|id| !self.completed_tool_call_expanded(id));
+        for id in ids {
+            if expand {
+                self.expanded_completed_tool_calls.insert(id);
+            } else {
+                self.expanded_completed_tool_calls.remove(&id);
+            }
+        }
         true
     }
 

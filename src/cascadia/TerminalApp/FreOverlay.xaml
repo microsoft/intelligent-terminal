@@ -248,13 +248,51 @@
                                 </StackPanel>
                                 <ComboBox x:Name="AgentComboBox" Grid.Column="1"
                                           MinWidth="220"
-                                          VerticalAlignment="Center">
+                                          VerticalAlignment="Center"
+                                          SelectionChanged="_OnAgentSelectionChanged">
                                     <ComboBox.ItemTemplate>
                                         <DataTemplate x:DataType="local:FreAgentEntry">
                                             <TextBlock Text="{x:Bind DisplayLabel}" />
                                         </DataTemplate>
                                     </ComboBox.ItemTemplate>
                                 </ComboBox>
+                            </Grid>
+                        </Border>
+
+                        <!--  Automatic approval. Copy comes from the SettingsEditor
+                              resource scope so Settings and FRE cannot drift.  -->
+                        <Border x:Name="AutomaticApprovalSetting"
+                                AutomationProperties.AutomationId="AutomaticApprovalSetting"
+                                Background="{ThemeResource ExpanderHeaderBackground}"
+                                BorderBrush="{ThemeResource ExpanderHeaderBorderBrush}"
+                                BorderThickness="{ThemeResource ExpanderHeaderBorderThickness}"
+                                CornerRadius="{ThemeResource ControlCornerRadius}"
+                                MinHeight="64"
+                                Padding="16,12"
+                                Visibility="Collapsed">
+                            <Grid ColumnSpacing="24">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0" Spacing="2">
+                                    <TextBlock x:Name="AutomaticApprovalTitle"
+                                               FontSize="14"
+                                               FontWeight="SemiBold"
+                                               Foreground="White" />
+                                    <TextBlock x:Name="AutomaticApprovalDescription"
+                                               FontSize="12"
+                                               Foreground="#99FFFFFF"
+                                               TextWrapping="Wrap" />
+                                </StackPanel>
+                                <ToggleSwitch x:Name="AutomaticApprovalToggle"
+                                              Grid.Column="1"
+                                              AutomationProperties.AutomationId="AutomaticApprovalToggle"
+                                              HorizontalAlignment="Right"
+                                              IsEnabled="False"
+                                              IsOn="False"
+                                              MinWidth="0"
+                                              VerticalAlignment="Center" />
                             </Grid>
                         </Border>
 

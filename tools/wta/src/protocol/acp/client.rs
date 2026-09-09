@@ -985,6 +985,32 @@ fn tool_call_cwd(raw_input: Option<&serde_json::Value>) -> Option<String> {
         .map(str::to_string)
 }
 
+fn tool_call_query(
+    kind: Option<&acp::schema::v1::ToolKind>,
+    raw_input: Option<&serde_json::Value>,
+) -> Option<crate::app::ToolCallOutput> {
+    if kind.is_some_and(|kind| {
+        !matches!(
+            kind,
+            acp::schema::v1::ToolKind::Search | acp::schema::v1::ToolKind::Other
+        )
+    }) {
+        return None;
+    }
+    // Initial calls default to Other and updates can omit kind; Search may arrive later.
+    // Retain only the named query, never arbitrary input JSON.
+    let query = raw_input?.get("query")?.as_str()?;
+    if query.trim().is_empty() {
+        return None;
+    }
+    let mut chars = query.chars();
+    let text = chars.by_ref().take(TOOL_CALL_OUTPUT_MAX_CHARS).collect();
+    Some(crate::app::ToolCallOutput {
+        text,
+        truncated: chars.next().is_some(),
+    })
+}
+
 fn tool_call_exit_code(raw_output: Option<&serde_json::Value>) -> Option<i64> {
     let object = raw_output?.as_object()?;
     ["exitCode", "exit_code"]
@@ -1220,6 +1246,127 @@ enum HiddenToolCall {
     },
     // Hiding legacy proposal commands is not proof of Session MCP identity.
     Other,
+}
+
+// Diagnostic classification only: never grants permission or logs command contents.
+fn is_command_lookup_permission(command: &str) -> bool {
+    let command = command
+        .trim()
+        .strip_prefix('&')
+        .unwrap_or(command.trim())
+        .trim();
+    // Quoted paths can contain shell metacharacters. Reject operators outside
+    // quotes and command substitution inside double quotes, not single-quoted literals.
+    let mut quote = None;
+    let mut executable_end = None;
+    let mut chars = command.char_indices().peekable();
+    while let Some((index, ch)) = chars.next() {
+        if matches!(ch, '\n' | '\r')
+            || (quote != Some('\'')
+                && (ch == '`' || (ch == '$' && chars.peek().is_some_and(|(_, next)| *next == '('))))
+        {
+            return false;
+        }
+        if let Some(delimiter) = quote {
+            if ch == delimiter {
+                if chars.peek().is_some_and(|(_, next)| *next == delimiter) {
+                    chars.next();
+                } else {
+                    quote = None;
+                }
+            }
+            continue;
+        }
+        match ch {
+            '\'' | '"' => quote = Some(ch),
+            ';' | '|' | '&' | '>' | '<' | '(' | ')' | '{' | '}' => return false,
+            ch if ch.is_whitespace() => {
+                executable_end.get_or_insert(index);
+            }
+            _ => {}
+        }
+    }
+    if quote.is_some() {
+        return false;
+    }
+    let Some(end) = executable_end else {
+        return false;
+    };
+    let (executable, rest) = command.split_at(end);
+    let executable = if let Some(quote) = executable
+        .chars()
+        .next()
+        .filter(|c| *c == '"' || *c == '\'')
+    {
+        let Some(executable) = executable[1..].strip_suffix(quote) else {
+            return false;
+        };
+        executable
+    } else {
+        executable
+    };
+    let executable = executable.rsplit(['\\', '/']).next().unwrap_or(executable);
+    (executable.eq_ignore_ascii_case("wta")
+        || executable.eq_ignore_ascii_case("wta.exe")
+        || executable.eq_ignore_ascii_case("$env:WTA_CLI_PATH")
+        || executable == "$WTA_CLI_PATH")
+        && rest.split_whitespace().next() == Some("resolve-command")
+}
+
+#[test]
+fn command_lookup_permission_diagnostic_requires_an_invocation() {
+    for command in [
+        "wta resolve-command gti",
+        "& \"$env:WTA_CLI_PATH\" resolve-command gti",
+        "\"C:\\Program Files\\IT\\wta.exe\" resolve-command gti",
+    ] {
+        assert!(is_command_lookup_permission(command), "{command}");
+    }
+    for command in [
+        "echo resolve-command",
+        "wta run-command resolve-command",
+        "other.exe resolve-command gti",
+        "wta resolve-command-history",
+        "wta resolve-command gti; unrelated-command",
+        "wta resolve-command $(unrelated-command)",
+        "wta resolve-command gti | unrelated-command",
+        "'unterminated",
+    ] {
+        assert!(!is_command_lookup_permission(command), "{command}");
+    }
+}
+
+#[test]
+fn command_lookup_permission_preserves_quoted_path_literals() {
+    for command in [
+        r#"& 'wta.exe' resolve-command gti --cwd 'C:\R&D\src' --json"#,
+        r#"& "C:\R&D tools\wta.exe" resolve-command gti --cwd "C:\R&D\src""#,
+        r#"& 'wta.exe' resolve-command gti --cwd 'C:\src;archive' --json"#,
+        r#"& 'C:\owner''s\R&D\wta.exe' resolve-command gti --cwd 'C:\owner''s\src'"#,
+        r#"& 'wta.exe' resolve-command gti --cwd "C:\owner's\R&D""#,
+        r#"& 'wta.exe' resolve-command gti --cwd 'C:\$(archive)&src' --json"#,
+        r#"& 'wta.exe' resolve-command gti --cwd 'C:\src`archive' --json"#,
+    ] {
+        assert!(is_command_lookup_permission(command), "{command}");
+    }
+}
+
+#[test]
+fn command_lookup_permission_rejects_expressions_and_unbalanced_quotes() {
+    for command in [
+        r#"& 'wta.exe' resolve-command gti --cwd 'C:\R&D' & unrelated-command"#,
+        r#"& 'wta.exe' resolve-command gti --cwd "C:\R&D"; unrelated-command"#,
+        r#"& 'wta.exe' resolve-command gti --cwd 'C:\R&D' | unrelated-command"#,
+        r#"& 'wta.exe' resolve-command gti --cwd "$(unrelated-command)""#,
+        r#"& 'wta.exe' resolve-command (unrelated-command)"#,
+        r#"& 'wta.exe' resolve-command gti --cwd 'C:\owner''s"#,
+        r#"& 'wta.exe' resolve-command gti --cwd "C:\R&D"#,
+        concat!("& 'wta.exe'", "resolve-command gti"),
+        "wta resolve-command gti\nunrelated-command",
+        "wta resolve-command gti > output.txt",
+    ] {
+        assert!(!is_command_lookup_permission(command), "{command}");
+    }
 }
 
 fn looks_like_proposal_command(command: &str) -> bool {
@@ -1535,6 +1682,24 @@ impl WtaClient {
 
         let (resp_tx, resp_rx) = tokio::sync::oneshot::channel();
 
+        tracing::info!(
+            target: "permission_ui",
+            request = %serde_json::json!({
+                "session_id": session_id,
+                "tool_call_id": tool_call_id,
+                "kind": if matches!(session_mcp_tool, Some(SessionMcpTool::TerminalAction(_))) {
+                    "session_mcp"
+                } else if target_hint.as_ref().is_some_and(|(command, is_command)| {
+                    *is_command && is_command_lookup_permission(command)
+                }) {
+                    "command_lookup"
+                } else {
+                    "other"
+                },
+            }),
+            "permission queued for user selection"
+        );
+
         let (target, target_is_command) = match target_hint {
             Some((text, is_command)) => (Some(text), is_command),
             None => (None, false),
@@ -1692,6 +1857,7 @@ impl WtaClient {
                     title: tool_call.title.clone(),
                     status: format!("{:?}", tool_call.status),
                     kind: tool_call_kind(tool_call.kind),
+                    query: tool_call_query(Some(&tool_call.kind), tool_call.raw_input.as_ref()),
                     location,
                     location_is_command,
                     cwd: tool_call_cwd(tool_call.raw_input.as_ref()),
@@ -1785,6 +1951,10 @@ impl WtaClient {
                         (None, false)
                     };
                 let cwd = tool_call_cwd(update.fields.raw_input.as_ref());
+                let query = tool_call_query(
+                    update.fields.kind.as_ref(),
+                    update.fields.raw_input.as_ref(),
+                );
                 let exit_code = tool_call_exit_code(update.fields.raw_output.as_ref());
                 let content = update.fields.content.as_deref().map(tool_call_content);
                 let locations = update.fields.locations.as_deref().map(tool_call_locations);
@@ -1797,6 +1967,7 @@ impl WtaClient {
                     || exit_code.is_some()
                     || content.is_some()
                     || locations.is_some()
+                    || query.is_some()
                 {
                     let _ = self.state.event_tx.send(AppEvent::ToolCallUpdate {
                         session_id: sid,
@@ -1804,6 +1975,7 @@ impl WtaClient {
                         title: update.fields.title,
                         status,
                         kind: update.fields.kind.map(tool_call_kind),
+                        query,
                         location,
                         location_is_command,
                         output,
@@ -1936,6 +2108,7 @@ impl WtaClient {
                     title,
                     status: "running".to_string(),
                     kind: crate::app::ToolCallKind::Execute,
+                    query: None,
                     location,
                     location_is_command: false,
                     cwd: None,
@@ -1998,6 +2171,7 @@ impl WtaClient {
                     title: None,
                     status: Some(format!("exited ({})", code)),
                     kind: None,
+                    query: None,
                     location: None,
                     location_is_command: false,
                     output: None,
@@ -4312,6 +4486,16 @@ fn dispatch_master_ext_request_with_yolo_timeout(
                                     restart_required: false,
                                 });
                             } else {
+                                let owner_changed = client_state
+                                    .yolo_state
+                                    .lock()
+                                    .unwrap()
+                                    .mark_manual_if_allowed(session_id.to_string());
+                                if owner_changed {
+                                    let _ = event_tx.send(AppEvent::YoloControlOwnerChanged {
+                                        session_id: session_id.to_string(),
+                                    });
+                                }
                                 let _ = event_tx.send(AppEvent::SessionConfigSetCompleted {
                                     session_id: session_id.to_string(),
                                     config_id,
@@ -5478,22 +5662,20 @@ async fn dispatch_prompt_body(
             let (available_models, current_model_id) =
                 crate::protocol::acp::model_select::models_from_new_session(&new_session);
             record_native_yolo(&new_session, &client_task.state);
-            let enabled = client_task
-                .state
-                .yolo_state
-                .lock()
-                .unwrap()
-                .effective(new_sid.0.as_ref());
+            let enabled = {
+                let mut state = client_task.state.yolo_state.lock().unwrap();
+                state.remove_session(new_sid.0.as_ref());
+                let enabled = state
+                    .automatic_directive(new_sid.0.as_ref())
+                    .target()
+                    .expect("a freshly-created session must have an automatic target");
+                state.mark_client_reconciled(new_sid.to_string(), enabled);
+                enabled
+            };
             let yolo_operation = client_task
                 .state
                 .native_yolo
                 .reserve_operation(new_sid.clone(), enabled);
-            client_task
-                .state
-                .yolo_state
-                .lock()
-                .unwrap()
-                .mark_client_reconciled(new_sid.to_string(), enabled);
             tab_to_session_task
                 .lock()
                 .await
@@ -5533,12 +5715,12 @@ async fn dispatch_prompt_body(
                 // As with config/reconcile, an ordinary ACP rejection
                 // cannot attest that a requested disable left privileged mode.
                 let restart_required = !enabled || error.restart_required();
-                let policy_blocked = client_task
+                let policy_blocked = !client_task
                     .state
                     .yolo_state
                     .lock()
                     .unwrap()
-                    .policy_blocked();
+                    .can_user_request_enable();
                 let error = error.to_string();
                 tracing::warn!(
                     target: "yolo",
@@ -5585,12 +5767,12 @@ async fn dispatch_prompt_body(
         return;
     }
 
-    let policy_blocked = client_task
+    let policy_blocked = !client_task
         .state
         .yolo_state
         .lock()
         .unwrap()
-        .policy_blocked();
+        .can_user_request_enable();
     if client_task
         .state
         .native_yolo
@@ -5613,12 +5795,12 @@ async fn dispatch_prompt_body(
         return;
     }
 
-    if client_task
+    if !client_task
         .state
         .yolo_state
         .lock()
         .unwrap()
-        .policy_blocked()
+        .can_user_request_enable()
     {
         if let Some(command_name) = client_task
             .state
@@ -5742,6 +5924,10 @@ async fn dispatch_prompt_body(
         .native_yolo
         .privileged_agent_command(&prompt.text)
         .map(str::to_string);
+    let prompt_yolo_generation = client_task
+        .state
+        .native_yolo
+        .session_generation(&prompt_session_id);
     let yolo_state = Arc::clone(&client_task.state.yolo_state);
     let native_yolo = Arc::clone(&client_task.state.native_yolo);
     let final_yolo_safety_error = Arc::new(Mutex::new(None::<(String, &'static str)>));
@@ -5760,6 +5946,7 @@ async fn dispatch_prompt_body(
     let telemetry_is_agent_command = prompt.is_agent_command();
     let prompt_started = Arc::new(AtomicBool::new(false));
     let cancelled_at_send = Arc::new(AtomicBool::new(false));
+    let yolo_state_for_guard = Arc::clone(&yolo_state);
     let prompt_fut = conn_task.prompt_if(
         acp::schema::v1::PromptRequest::new(prompt_session_id.clone(), content),
         {
@@ -5774,8 +5961,13 @@ async fn dispatch_prompt_body(
                     cancelled_at_send.store(true, Ordering::Release);
                     return false;
                 }
-                let policy_blocked = yolo_state.lock().unwrap().policy_blocked();
-                let provider_command_blocked = privileged_agent_command.is_some() && policy_blocked;
+                let can_user_request_enable = yolo_state_for_guard
+                    .lock()
+                    .unwrap()
+                    .can_user_request_enable();
+                let policy_blocked = !can_user_request_enable;
+                let provider_command_blocked =
+                    privileged_agent_command.is_some() && !can_user_request_enable;
                 let yolo_safety_error = if provider_command_blocked {
                     None
                 } else if native_yolo
@@ -5914,6 +6106,34 @@ async fn dispatch_prompt_body(
                     let result = result.map(|response| {
                         response.expect("prompt guard returns None only when policy blocks")
                     });
+                    let accepted_privileged_command = privileged_agent_command.is_some()
+                        && result.as_ref().is_ok_and(|response| {
+                            response.stop_reason == acp::schema::v1::StopReason::EndTurn
+                        });
+                    if accepted_privileged_command {
+                        let session_is_current = {
+                            let sessions = tab_to_session_task.lock().await;
+                            let current_tab =
+                                resolve_tab_alias(&tab_aliases_task, &tab_key_task);
+                            sessions.get(&current_tab) == Some(&prompt_session_id)
+                        } && client_task
+                            .state
+                            .native_yolo
+                            .session_generation(&prompt_session_id)
+                            == prompt_yolo_generation;
+                        if session_is_current {
+                            let owner_changed = yolo_state
+                                .lock()
+                                .unwrap()
+                                .mark_manual_if_allowed(prompt_session_id_str.clone());
+                            if owner_changed {
+                                let _ =
+                                    event_tx_task.send(AppEvent::YoloControlOwnerChanged {
+                                        session_id: prompt_session_id_str.clone(),
+                                    });
+                            }
+                        }
+                    }
                     // Peek the successful turn's stop_reason (the response is consumed
                     // by `complete_prompt_request`). A soft stop is not an error; the
                     // Err arm is classified separately by `from_acp_error`.

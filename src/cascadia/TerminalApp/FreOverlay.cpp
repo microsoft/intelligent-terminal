@@ -15,6 +15,7 @@
 #include "ShellIntegrationSweep.h"
 #include "WindowsPackageManagerFactory.h"
 
+#include <ScopedResourceLoader.h>
 #include <winrt/Windows.UI.Xaml.Documents.h>
 #include <limits>
 #include <mutex>
@@ -118,48 +119,102 @@ namespace winrt::TerminalApp::implementation
 
         const auto allowedAgents = Reg::FilteredAcpAgents();
         const auto availableAgents = ::Microsoft::Terminal::AgentAvailability::ProbeHostAgentIds();
-        auto items = AgentComboBox().Items();
-        items.Clear();
-        int32_t selectedIndex = 0;
-        int32_t idx = 0;
-
-        for (const auto& a : allowedAgents)
         {
-            const bool installed = availableAgents.contains(std::wstring{ a.id });
-            const bool isCopilot = (a.id == L"copilot");
+            _refreshingAgentComboBox = true;
+            const auto resetRefreshing = wil::scope_exit([&]() noexcept {
+                _refreshingAgentComboBox = false;
+            });
+            auto items = AgentComboBox().Items();
+            items.Clear();
+            int32_t selectedIndex = 0;
+            int32_t idx = 0;
 
-            // Show Copilot always + detected agents only
-            if (!isCopilot && !installed)
-                continue;
-
-            auto entry = winrt::make<FreAgentEntry>();
-            entry.Id(winrt::hstring{ a.id });
-
-            if (isCopilot && !installed)
+            for (const auto& a : allowedAgents)
             {
-                entry.DisplayLabel(winrt::hstring{ std::wstring(a.displayName) + std::wstring(RS_(L"FreOverlay_AgentStatusWillInstall")) });
-            }
-            else
-            {
-                entry.DisplayLabel(winrt::hstring{ std::wstring(a.displayName) + std::wstring(RS_(L"FreOverlay_AgentStatusInstalled")) });
+                const bool installed = availableAgents.contains(std::wstring{ a.id });
+                const bool isCopilot = (a.id == L"copilot");
+
+                // Show Copilot always + detected agents only
+                if (!isCopilot && !installed)
+                    continue;
+
+                auto entry = winrt::make<FreAgentEntry>();
+                entry.Id(winrt::hstring{ a.id });
+
+                if (isCopilot && !installed)
+                {
+                    entry.DisplayLabel(winrt::hstring{ std::wstring(a.displayName) + std::wstring(RS_(L"FreOverlay_AgentStatusWillInstall")) });
+                }
+                else
+                {
+                    entry.DisplayLabel(winrt::hstring{ std::wstring(a.displayName) + std::wstring(RS_(L"FreOverlay_AgentStatusInstalled")) });
+                }
+
+                items.Append(entry);
+
+                if (a.id == selectedId)
+                {
+                    selectedIndex = idx;
+                }
+                idx++;
             }
 
-            items.Append(entry);
-
-            if (a.id == selectedId)
+            if (items.Size() > 0)
             {
-                selectedIndex = idx;
+                AgentComboBox().SelectedIndex(selectedIndex);
             }
-            idx++;
+        }
+        _UpdateAutomaticApprovalState();
+    }
+
+    winrt::hstring FreOverlay::_SelectedAgentId()
+    {
+        if (const auto selected = AgentComboBox().SelectedItem())
+        {
+            if (const auto entry = selected.try_as<winrt::TerminalApp::FreAgentEntry>())
+            {
+                return entry.Id();
+            }
+        }
+        return {};
+    }
+
+    void FreOverlay::_UpdateAutomaticApprovalState()
+    {
+        if (!_settings)
+        {
+            return;
         }
 
-        if (items.Size() > 0)
+        const auto canEnable = _settings.GlobalSettings().CanEnableAgentPaneYoloModeForAgent(
+            _SelectedAgentId());
+        const auto toggle = AutomaticApprovalToggle();
+        if (!canEnable)
         {
-            AgentComboBox().SelectedIndex(selectedIndex);
+            toggle.IsOn(false);
+        }
+        toggle.IsEnabled(canEnable);
+        AutomaticApprovalSetting().Visibility(
+            canEnable ? Visibility::Visible : Visibility::Collapsed);
+    }
+
+    void FreOverlay::_OnAgentSelectionChanged(
+        const IInspectable& /*sender*/,
+        const SelectionChangedEventArgs& /*args*/)
+    {
+        if (!_refreshingAgentComboBox)
+        {
+            _UpdateAutomaticApprovalState();
         }
     }
 
     // ── Initialize ──────────────────────────────────────────────────────
+
+    void FreOverlay::UpdateSettings(const winrt::Microsoft::Terminal::Settings::Model::CascadiaSettings& settings)
+    {
+        _settings = settings;
+        _UpdateAutomaticApprovalState();
+    }
 
     void FreOverlay::Initialize(const winrt::Microsoft::Terminal::Settings::Model::CascadiaSettings& settings)
     {
@@ -203,6 +258,15 @@ namespace winrt::TerminalApp::implementation
         WelcomeSubtitleLink().Text(RS_(L"FreOverlay_WelcomeSubtitleLink"));
         SettingsSubtitlePrefix().Text(RS_(L"FreOverlay_SettingsSubtitlePrefix"));
         SettingsSubtitleLink().Text(RS_(L"FreOverlay_SettingsSubtitleLink"));
+        {
+            const ScopedResourceLoader settingsResources{
+                L"Microsoft.Terminal.Settings.Editor/Resources"
+            };
+            AutomaticApprovalTitle().Text(
+                settingsResources.GetLocalizedString(L"AIAgents_YoloMode/Header"));
+            AutomaticApprovalDescription().Text(
+                settingsResources.GetLocalizedString(L"AIAgents_YoloMode/HelpText"));
+        }
         // Split the description on "ACP" (locked token) so it can be rendered as an inline Hyperlink.
         {
             const auto descStr = RS_(L"FreOverlay_AgentDescription/Text");
@@ -227,6 +291,9 @@ namespace winrt::TerminalApp::implementation
         ShowTokenUsageAndCostToggle().OffContent(winrt::box_value(RS_(L"FreOverlay_ToggleOff")));
         SessionManagementToggle().OnContent(winrt::box_value(RS_(L"FreOverlay_ToggleOn")));
         SessionManagementToggle().OffContent(winrt::box_value(RS_(L"FreOverlay_ToggleOff")));
+        AutomaticApprovalToggle().OnContent(winrt::box_value(RS_(L"FreOverlay_ToggleOn")));
+        AutomaticApprovalToggle().OffContent(winrt::box_value(RS_(L"FreOverlay_ToggleOff")));
+        AutomaticApprovalToggle().IsOn(globals.EffectiveAgentPaneYoloMode());
 
         // Populate agent ComboBox using GPO-filtered list — only agents
         // permitted by policy are shown. Each entry's status label reflects the
@@ -305,6 +372,8 @@ namespace winrt::TerminalApp::implementation
             ErrorDetectionComboBox(), RS_(L"FreOverlay_ErrorDetectionLabel/Text"));
         Automation::AutomationProperties::SetName(
             ShowTokenUsageAndCostToggle(), RS_(L"FreOverlay_ShowTokenUsageAndCostLabel/Text"));
+        Automation::AutomationProperties::SetName(
+            AutomaticApprovalToggle(), AutomaticApprovalTitle().Text());
         Automation::AutomationProperties::SetName(
             SessionManagementToggle(), RS_(L"FreOverlay_SessionLabel/Text"));
         Automation::AutomationProperties::SetName(
@@ -1466,6 +1535,9 @@ namespace winrt::TerminalApp::implementation
         {
             const auto& globals = _settings.GlobalSettings();
             globals.AcpAgent(agentId);
+            globals.AgentPaneYoloMode(AutomaticApprovalToggle().IsOn());
+            globals.ClearAgentPaneYoloModeIfUnavailableDefault();
+            globals.ClearAgentPaneYoloModeIfPolicyBlocked();
             globals.DelegateAgent(agentId);
             globals.AutoErrorDetectionEnabled(errorDetectionEnabled);
             globals.AutoFixEnabled(autoFixEnabled);
@@ -1500,6 +1572,7 @@ namespace winrt::TerminalApp::implementation
             + " needsNode=" + (needsNode ? "y" : "n")
             + " detect=" + (errorDetectionEnabled ? "on" : "off")
             + " autoFix=" + (autoFixEnabled ? "on" : "off")
+            + " automaticApproval=" + (AutomaticApprovalToggle().IsOn() ? "on" : "off")
             + " tokenUsageAndCost=" + (ShowTokenUsageAndCostToggle().IsOn() ? "on" : "off")
             + " hooks=" + (SessionManagementToggle().IsOn() ? "on" : "off"));
 
