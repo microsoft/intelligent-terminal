@@ -586,27 +586,16 @@ fn rendered_lines_height(lines: &[Line<'_>], wrap_width: usize) -> usize {
     #[cfg(test)]
     RENDERED_HEIGHT_LINE_SCAN_COUNT.with(|count| count.set(count.get() + lines.len()));
 
-    let width = wrap_width.max(1);
+    let width = wrap_width.clamp(1, u16::MAX as usize) as u16;
     lines
         .iter()
         .map(|line| {
-            let text = match line.spans.as_slice() {
-                [] => return 1,
-                [span] => Cow::Borrowed(span.content.as_ref()),
-                spans => Cow::Owned(
-                    spans
-                        .iter()
-                        .map(|span| span.content.as_ref())
-                        .collect::<String>(),
-                ),
-            };
-            let display_width = UnicodeWidthStr::width(text.as_ref());
-            if display_width == 0 {
-                1
-            } else if display_width <= width {
+            if line.width() <= usize::from(width) {
                 1
             } else {
-                textwrap::wrap(text.as_ref(), width).len().max(1)
+                Paragraph::new(line.clone())
+                    .wrap(Wrap { trim: false })
+                    .line_count(width)
             }
         })
         .sum()
@@ -1539,19 +1528,14 @@ fn rendered_line_widths(line: &Line<'_>, wrap_width: usize) -> Vec<usize> {
     if line.width() <= wrap_width {
         return vec![line.width()];
     }
-    // Overflowing headers (including inline markers) use Ratatui's greedy
-    // wrapping and whitespace handling, not textwrap's paragraph balancing.
+    // Use the renderer's row count, including rows containing only whitespace.
     let width = wrap_width.clamp(1, u16::MAX as usize) as u16;
-    // Two consecutive greedy rows consume at least one full row's width.
-    let height = (line.width().div_ceil(usize::from(width)) * 2 + 1).min(u16::MAX as usize) as u16;
+    let paragraph = Paragraph::new(line.clone()).wrap(Wrap { trim: false });
+    let height = paragraph.line_count(width).min(u16::MAX as usize) as u16;
     let area = Rect::new(0, 0, width, height);
     let mut buffer = ratatui::buffer::Buffer::empty(area);
-    ratatui::widgets::Widget::render(
-        Paragraph::new(line.clone()).wrap(Wrap { trim: false }),
-        area,
-        &mut buffer,
-    );
-    let mut widths = (0..height)
+    ratatui::widgets::Widget::render(paragraph, area, &mut buffer);
+    (0..height)
         .map(|row| {
             (0..width)
                 .rev()
@@ -1562,14 +1546,7 @@ fn rendered_line_widths(line: &Line<'_>, wrap_width: usize) -> Vec<usize> {
                 })
                 .unwrap_or(0)
         })
-        .collect::<Vec<_>>();
-    widths.truncate(
-        widths
-            .iter()
-            .rposition(|width| *width > 0)
-            .map_or(1, |row| row + 1),
-    );
-    widths
+        .collect()
 }
 
 fn completed_turn_prompt_rows(lines: &[Line<'_>], wrap_width: usize) -> Vec<PromptRowGeometry> {
@@ -2873,6 +2850,51 @@ mod tests {
             rendered_height_line_scan_count() <= 110,
             "tool geometry must measure the prompt once and each message once",
         );
+    }
+
+    #[test]
+    fn rendered_geometry_matches_paragraph_wrapping() {
+        for width in [48u16, 36, 12, 4] {
+            for text in [
+                format!("✓ {}", "a".repeat(usize::from(width) - 1)),
+                "word ".repeat(12),
+                "界".repeat(12),
+                " ".repeat(usize::from(width) * 3),
+                "word-with-hyphens ".repeat(4),
+                String::new(),
+            ] {
+                let line = Line::from(text.clone());
+                let mut terminal =
+                    ratatui::Terminal::new(ratatui::backend::TestBackend::new(width, 80)).unwrap();
+                terminal
+                    .draw(|frame| {
+                        frame.render_widget(
+                            Paragraph::new(vec![line.clone(), Line::from("NEXT")])
+                                .wrap(Wrap { trim: false }),
+                            frame.area(),
+                        );
+                    })
+                    .unwrap();
+                let buffer = terminal.backend().buffer();
+                let height = (0..80)
+                    .position(|row| {
+                        (0..width)
+                            .map(|column| buffer[(column, row)].symbol())
+                            .collect::<String>()
+                            .starts_with("NEXT")
+                    })
+                    .unwrap();
+                assert_eq!(
+                    rendered_lines_height(std::slice::from_ref(&line), usize::from(width)),
+                    height,
+                    "width={width}, text={text:?}"
+                );
+                assert_eq!(
+                    rendered_line_widths(&line, usize::from(width)).len(),
+                    height
+                );
+            }
+        }
     }
 
     #[test]
