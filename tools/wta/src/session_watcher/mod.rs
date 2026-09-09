@@ -300,6 +300,7 @@ impl DesiredWatch {
         }
     }
 
+    #[cfg(test)]
     fn set(&self, enabled: bool, generation: u64) {
         if self.matches(enabled, generation) {
             return;
@@ -329,6 +330,7 @@ impl WatchControl {
     /// The owner advances `generation` whenever tracking changes and checks it
     /// again when receiving [`Observed`]. Installation failures are logged by
     /// the actor; a later enable request can retry them.
+    #[cfg(test)]
     pub fn set_enabled(&self, enabled: bool, generation: u64) -> anyhow::Result<()> {
         self.desired.set(enabled, generation);
         self.inbox
@@ -565,6 +567,7 @@ impl WatchActor {
 }
 
 /// Start the event-driven fallback watcher actor on a dedicated blocking thread.
+/// This observer is independent of the Sessions hooks preference.
 ///
 /// Off retains only the waiting actor, without notify subscriptions or progress.
 /// Every enable seeds existing files to EOF, excluding activity while disabled.

@@ -2805,6 +2805,7 @@ namespace TerminalAppLocalTests
 
             const auto paneSessionId = connection.SessionId();
             Json::Value bindingEvent;
+            bindingEvent["method"] = "pane_agent_session_changed";
             bindingEvent["params"]["pane_id"] = winrt::to_string(::Microsoft::Console::Utils::GuidToString(paneSessionId));
             bindingEvent["params"]["agent_session_id"] = "resumed-while-tracking-off";
             bindingEvent["params"]["agent"] = "copilot";
@@ -2814,6 +2815,10 @@ namespace TerminalAppLocalTests
             page->OnPaneAgentSessionChanged(winrt::to_hstring(Json::writeString(writer, bindingEvent)));
             VERIFY_ARE_EQUAL(1u, page->_paneAgentSessions.count(paneSessionId));
             bindingEvent["params"]["event"] = "agent.session.end";
+            page->OnPaneAgentSessionChanged(winrt::to_hstring(Json::writeString(writer, bindingEvent)));
+            VERIFY_ARE_EQUAL(0u, page->_paneAgentSessions.count(paneSessionId));
+            bindingEvent["method"] = "agent_event";
+            bindingEvent["params"]["event"] = "agent.session.start";
             page->OnPaneAgentSessionChanged(winrt::to_hstring(Json::writeString(writer, bindingEvent)));
             VERIFY_ARE_EQUAL(0u, page->_paneAgentSessions.count(paneSessionId));
 

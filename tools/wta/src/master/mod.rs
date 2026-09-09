@@ -251,13 +251,12 @@ struct HelperRoute {
 
 struct SessionTracking {
     enabled: bool,
-    // Fence buffered watcher events and snapshots across tracking transitions.
+    // Fence hook-derived snapshots across hooks setting transitions.
     generation: u64,
     // Rebase helpers when this listener may have missed settings transitions.
     epoch: u64,
     // Even an unchanged host event supersedes an in-flight get_settings reply.
     configuration_revision: u64,
-    watcher: Option<crate::session_watcher::WatchControl>,
 }
 
 impl SessionTracking {
@@ -267,7 +266,6 @@ impl SessionTracking {
             generation: 0,
             epoch: 0,
             configuration_revision: 0,
-            watcher: None,
         }
     }
 }
@@ -474,14 +472,8 @@ struct MasterStateInner {
     /// Session ids claimed by an *authoritative* producer — a native agent hook
     /// (arrives via `intellterm.wta/session_hook`) or an ACP agent-pane
     /// session (driven by ACP `session/*`), both of which fully own binding and
-    /// activity. The hookless file watcher is a **fallback** only: once a session
-    /// id appears here, its watcher-emitted events are dropped in
-    /// [`apply_watcher_event`] so hooks and the watcher never double-track the
-    /// same session.
-    /// double-track the same session. This is what lets a CLI that ships hooks
-    /// (and the WTA-launched born-bound sessions) keep their exact, hook-sourced
-    /// pane binding while the watcher still covers user-typed CLIs that have no
-    /// hook installed (notably Codex's Restart-Manager fallback).
+    /// activity while hooks are enabled. The hookless file watcher is a
+    /// fallback: hook ownership takes precedence only while hooks are On.
     ///
     /// Grow-only for the master's lifetime: a dead session id costs a few bytes
     /// and re-adding is idempotent, so no eviction is needed. Independent lock —
@@ -516,9 +508,9 @@ struct MasterStateInner {
     /// #266 born-bound sessions (WTA-launched delegate/resume — copilot/claude/
     /// gemini). **Binding-only**: unlike `hook_owned`, the file watcher may
     /// still supply STATUS for these when no real hook is installed
-    /// (activity-only, never re-binding the pane). A subsequent real hook moves
-    /// the session into `hook_owned` and out of here, after which the watcher
-    /// fully backs off.
+    /// (activity-only, never re-binding the pane). This independent identity
+    /// remains recorded when hooks take activity ownership, so disabling hooks
+    /// does not prevent the file watcher from continuing to update it.
     born_bound: Mutex<HashSet<acp::schema::v1::SessionId>>,
 }
 
@@ -4371,19 +4363,22 @@ async fn run_master_loop(config: MasterConfig, pipe_name: String) -> Result<()> 
     }
 
     // ── Hookless Class-B session watcher ──────────────────────────────
-    // The control thread drops its filesystem subscriptions while tracking is
-    // off. Generations reject buffered events across an Off -> On transition.
-    {
+    // File observation is independent of hooks and must continue while hooks
+    // are Off, including activity for resumed/delegated sessions.
+    let _session_watcher = {
         let (async_tx, mut async_rx) =
             tokio::sync::mpsc::unbounded_channel::<crate::session_watcher::Observed>();
-        match crate::session_watcher::start(async_tx, config.session_management_enabled, 0) {
-            Ok(control) => inner.session_tracking.write().await.watcher = Some(control),
-            Err(error) => tracing::warn!(
-                target: "session_watcher",
-                %error,
-                "failed to start session watcher; hookless fallback unavailable"
-            ),
-        }
+        let control = match crate::session_watcher::start(async_tx, true, 0) {
+            Ok(control) => Some(control),
+            Err(error) => {
+                tracing::warn!(
+                    target: "session_watcher",
+                    %error,
+                    "failed to start session watcher; hookless fallback unavailable"
+                );
+                None
+            }
+        };
 
         let inner_for_watch = Arc::clone(&inner);
         tokio::task::spawn_local(async move {
@@ -4391,7 +4386,8 @@ async fn run_master_loop(config: MasterConfig, pipe_name: String) -> Result<()> 
                 apply_observed_watcher_event(&inner_for_watch, observed).await;
             }
         });
-    }
+        control
+    };
 
     if let Some(mut rx) = wt_ready_rx {
         let state = Arc::clone(&inner);
@@ -6413,7 +6409,7 @@ async fn handle_sessions_list(
     let mut sessions = state.registry.snapshot().await;
     if !tracking.enabled {
         for session in &mut sessions {
-            session.clear_shell_activity();
+            session.clear_hook_activity();
         }
     }
     sessions.sort_by(|l, r| l.session_id.0.cmp(&r.session_id.0));
@@ -6531,18 +6527,8 @@ async fn apply_master_session_event(
         let gate = session_lifecycle_gate(state, &sid).await;
         let _gate_guard = gate.lock().await;
         let tracking = state.session_tracking.read().await;
-        // Birth/end bindings keep Focus and Resume correct while activity is
-        // disabled. In particular, a CLI can exit without closing its pane.
-        let lifecycle = matches!(
-            &event,
-            crate::agent_sessions::SessionEvent::SessionStarted { .. }
-                | crate::agent_sessions::SessionEvent::SessionStopped { .. }
-        );
-        if !tracking.enabled
-            && !binding_only
-            && !lifecycle
-            && !state.session_to_helper.lock().await.contains_key(&sid)
-        {
+        let acp_session = state.session_to_helper.lock().await.contains_key(&sid);
+        if !tracking.enabled && !binding_only && !acp_session {
             return (false, None);
         }
 
@@ -6559,15 +6545,14 @@ async fn apply_master_session_event(
                     crate::agent_sessions::SessionEvent::ResumeDispatched { .. }
                 );
             let applied = state.registry.apply_event(event).await;
-            if !tracking.enabled {
-                state.registry.clear_shell_activity().await;
-            }
             if applied || starts_new_generation {
                 // A real binding transition starts a hook-free generation: the
                 // watcher may supply activity but may not re-bind the pane.
                 state.hook_owned.lock().await.remove(&sid);
-                state.born_bound.lock().await.insert(sid);
             }
+            // Retain the independently known binding even if a real hook won
+            // an earlier activity race. Off can then fall back to file events.
+            state.born_bound.lock().await.insert(sid);
             return (applied, refresh_key);
         } else {
             // Real hooks are authoritative for binding and activity. Claim
@@ -6583,11 +6568,14 @@ async fn apply_master_session_event(
             ) && state.registry.lookup(&sid).await.is_none();
             if !unseen_terminal {
                 state.hook_owned.lock().await.insert(sid.clone());
-                state.born_bound.lock().await.remove(&sid);
             }
-            let applied = state.registry.apply_event(event).await;
+            let applied = if acp_session {
+                state.registry.apply_event(event).await
+            } else {
+                state.registry.apply_hook_event(event).await
+            };
             if !tracking.enabled {
-                state.registry.clear_shell_activity().await;
+                state.registry.clear_hook_activity().await;
             }
             return (applied, refresh_key);
         }
@@ -6639,8 +6627,7 @@ async fn handle_session_born_bound(
 /// pane-binds user-typed shell-pane sessions — that path relied on reading a
 /// foreign process's PEB (`proc_bind`) to map a pid to its pane, which was
 /// removed. Events are routed as:
-///   1. `hook_owned` (a real hook / ACP agent-pane event owns binding AND
-///      activity) → drop; or
+///   1. `hook_owned` while hooks are enabled → drop; or
 ///   2. `born_bound` (WTA-launched, already pane-bound) → apply STATUS only,
 ///      without touching the pane binding; or
 ///   3. anything else (a user-typed CLI, or a machine-wide copilot/claude in
@@ -6650,7 +6637,7 @@ async fn apply_observed_watcher_event(
     observed: crate::session_watcher::Observed,
 ) {
     let tracking = state.session_tracking.read().await;
-    if !tracking.enabled || tracking.generation != observed.generation {
+    if observed.generation != 0 {
         return;
     }
     let emitted = observed.emitted;
@@ -6658,14 +6645,13 @@ async fn apply_observed_watcher_event(
 
     // Hybrid dedup — the watcher is a *fallback*. Coordinate with authoritative
     // producers:
-    //   1. a real hook / ACP agent-pane event recorded the session in
-    //      `hook_owned` → drop (the hook owns binding AND activity); or
+    //   1. enabled hooks own current activity → drop; or
     //   2. it's a #266 born-bound row (`born_bound`) → the watcher owns no
     //      binding here, but with no real hook it supplies STATUS only (handled
     //      just below); or
     //   3. anything else (a user-typed CLI, or a machine-wide copilot/claude in
     //      VS Code / another terminal) → drop below; we can't bind it to a pane.
-    if state.hook_owned.lock().await.contains(&sid) {
+    if tracking.enabled && state.hook_owned.lock().await.contains(&sid) {
         return;
     }
 
@@ -8139,15 +8125,7 @@ async fn handle_master_agent_event(state: &Arc<MasterStateInner>, params: &serde
     use crate::agent_sessions::CliSource;
 
     let event = params.get("event").and_then(|v| v.as_str()).unwrap_or("");
-    if !state.session_tracking.read().await.enabled
-        && !matches!(
-            event,
-            "agent.session.started"
-                | "agent.session.start"
-                | "agent.session.stopped"
-                | "agent.session.end"
-        )
-    {
+    if !state.session_tracking.read().await.enabled {
         return;
     }
     if !event.starts_with("agent.") {
@@ -8352,24 +8330,14 @@ async fn reconcile_session_management_enabled(
         }
         tracking.enabled = enabled;
         tracking.generation += 1;
-        if let Some(watcher) = &tracking.watcher {
-            if let Err(error) = watcher.set_enabled(enabled, tracking.generation) {
-                tracing::warn!(
-                    target: "session_tracking",
-                    %error,
-                    enabled,
-                    "failed to update session watcher"
-                );
-            }
-        }
-        // Keep ownership for focus/resume and lifecycle cleanup, but never
-        // revive a pre-disable Working/Attention state when tracking resumes.
-        state.registry.clear_shell_activity().await;
+        // Discard only hook-derived activity. Resume Idle, watcher updates,
+        // and ACP state retain their independent status and bindings.
+        state.registry.clear_hook_activity().await;
         tracing::info!(
             target: "session_tracking",
             enabled,
             generation = tracking.generation,
-            "live session tracking changed without retiring agent sessions"
+            "session hooks changed without affecting hook-independent state"
         );
     }
     broadcast_ext_to_helpers(

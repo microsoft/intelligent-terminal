@@ -10183,7 +10183,7 @@ async fn session_tracking_disabled_ignores_com_and_helper_activity_hooks() {
 }
 
 #[tokio::test]
-async fn session_tracking_disabled_preserves_hook_birth_and_end_bindings_without_activity() {
+async fn session_tracking_disabled_ignores_hook_discovery_but_keeps_native_lifecycle() {
     let state = make_state();
     set_session_management_enabled(&state, false).await;
     let event = |name| {
@@ -10200,16 +10200,39 @@ async fn session_tracking_disabled_preserves_hook_birth_and_end_bindings_without
     };
     handle_master_wt_event(&state, event("agent.session.started")).await;
     let sid = SessionId::new("shell-session");
+    assert!(state.registry.lookup(&sid).await.is_none());
+    let rejected = handle_session_hook(&state, tracking_session_start("hook-only"), false)
+        .await
+        .unwrap();
+    assert_eq!(rejected.0.get(), r#"{"applied":false}"#);
+    handle_session_born_bound(&state, tracking_session_start("shell-session"), None)
+        .await
+        .unwrap();
     let row = state.registry.lookup(&sid).await.unwrap();
     assert!(
         row.has_live_binding(),
         "an active CLI must focus instead of resuming twice"
     );
-    assert_eq!(row.status, None);
-    assert_eq!(row.last_activity_at_ms, None);
+    assert_eq!(row.status, Some(crate::agent_sessions::AgentStatus::Idle));
+    assert!(!row.hook_activity);
     handle_master_wt_event(&state, event("agent.tool.starting")).await;
-    assert_eq!(state.registry.lookup(&sid).await.unwrap().status, None);
+    assert_eq!(
+        state.registry.lookup(&sid).await.unwrap().status,
+        Some(crate::agent_sessions::AgentStatus::Idle)
+    );
     handle_master_wt_event(&state, event("agent.session.end")).await;
+    assert_eq!(
+        state.registry.lookup(&sid).await.unwrap().status,
+        Some(crate::agent_sessions::AgentStatus::Idle)
+    );
+    handle_master_wt_event(
+        &state,
+        serde_json::json!({
+            "method": "connection_state",
+            "params": { "pane_id": "pane-shell-session", "state": "closed" }
+        }),
+    )
+    .await;
     let ended = state.registry.lookup(&sid).await.unwrap();
     assert_eq!(
         ended.pane_session_id, None,
@@ -10245,7 +10268,8 @@ async fn session_tracking_disabled_preserves_resume_and_pane_cleanup() {
     assert!(!listed.session_management_enabled);
     assert_eq!(listed.sessions.len(), 1);
     assert!(listed.sessions[0].has_live_binding());
-    assert_eq!(listed.sessions[0].status, None);
+    assert_eq!(listed.sessions[0].status, Some(AgentStatus::Idle));
+    assert!(!listed.sessions[0].hook_activity);
     assert!(matches!(
         &listed.sessions[0].location,
         crate::agent_sessions::SessionLocation::Wsl { distro } if distro == "Ubuntu"
@@ -10269,7 +10293,7 @@ async fn session_tracking_disabled_preserves_resume_and_pane_cleanup() {
 }
 
 #[tokio::test]
-async fn session_tracking_toggle_rejects_buffered_watcher_generations() {
+async fn session_tracking_toggle_keeps_hookless_watcher_running() {
     use crate::agent_sessions::AgentStatus;
 
     let state = make_state();
@@ -10282,22 +10306,18 @@ async fn session_tracking_toggle_rejects_buffered_watcher_generations() {
     };
     set_session_management_enabled(&state, false).await;
     apply_observed_watcher_event(&state, old.clone()).await;
-    set_session_management_enabled(&state, true).await;
-    apply_observed_watcher_event(&state, old).await;
     let sid = SessionId::new("watched");
-    assert_eq!(state.registry.lookup(&sid).await.unwrap().status, None);
-    apply_observed_watcher_event(
-        &state,
-        crate::session_watcher::Observed {
-            generation: 2,
-            emitted: codex_emitted("watched"),
-        },
-    )
-    .await;
     assert_eq!(
         state.registry.lookup(&sid).await.unwrap().status,
         Some(AgentStatus::Working)
     );
+    set_session_management_enabled(&state, true).await;
+    apply_observed_watcher_event(&state, old).await;
+    assert_eq!(
+        state.registry.lookup(&sid).await.unwrap().status,
+        Some(AgentStatus::Working)
+    );
+    assert!(!state.registry.lookup(&sid).await.unwrap().hook_activity);
 }
 
 #[tokio::test]
@@ -10319,6 +10339,123 @@ async fn session_tracking_disabled_preserves_acp_chat_routing() {
     route(&state, make_notif(&sid)).await;
     assert_eq!(rx.recv().await.unwrap().session_id, sid);
     assert!(state.session_to_helper.lock().await.contains_key(&sid));
+}
+
+#[tokio::test]
+async fn session_tracking_off_resume_still_establishes_idle_and_survives_toggle() {
+    use crate::agent_sessions::{AgentStatus, SessionEvent};
+    let state = make_state();
+    let sid = SessionId::new("resume-without-hooks");
+    let mut history =
+        crate::session_registry::SessionInfo::new(sid.clone(), PathBuf::from(r"C:\repo"));
+    history.status = Some(AgentStatus::Historical);
+    state.registry.upsert(history).await;
+    set_session_management_enabled(&state, false).await;
+    for event in [
+        SessionEvent::ResumeDispatched {
+            key: sid.to_string(),
+        },
+        SessionEvent::ResumePaneAssigned {
+            key: sid.to_string(),
+            pane_session_id: "resume-pane".into(),
+        },
+    ] {
+        handle_session_hook(&state, event, false).await.unwrap();
+    }
+    let row = state.registry.lookup(&sid).await.unwrap();
+    assert_eq!(row.status, Some(AgentStatus::Idle));
+    assert!(!row.hook_activity);
+    assert!(row.has_live_binding());
+    set_session_management_enabled(&state, true).await;
+    handle_session_hook(
+        &state,
+        SessionEvent::ToolStarting {
+            key: sid.to_string(),
+            tool_name: "hook tool".into(),
+        },
+        false,
+    )
+    .await
+    .unwrap();
+    assert!(state.registry.lookup(&sid).await.unwrap().hook_activity);
+    set_session_management_enabled(&state, false).await;
+    let response = handle_sessions_list(&state, None, &Default::default())
+        .await
+        .unwrap();
+    let listed = crate::session_registry::parse_sessions_list_response(&response.0).unwrap();
+    let row = listed
+        .sessions
+        .iter()
+        .find(|row| row.session_id == sid)
+        .unwrap();
+    assert_eq!(row.status, Some(AgentStatus::Idle));
+    assert_eq!(row.current_tool, None);
+    assert!(row.has_live_binding());
+    assert!(!row.hook_activity);
+}
+
+#[tokio::test]
+async fn session_tracking_off_keeps_watcher_status_after_hook_takeover() {
+    use crate::agent_sessions::{AgentStatus, SessionEvent};
+    let state = make_state();
+    let sid = SessionId::new("watcher-fallback");
+    handle_session_born_bound(&state, tracking_session_start("watcher-fallback"), None)
+        .await
+        .unwrap();
+    handle_session_hook(
+        &state,
+        SessionEvent::ToolStarting {
+            key: sid.to_string(),
+            tool_name: "hook tool".into(),
+        },
+        false,
+    )
+    .await
+    .unwrap();
+    set_session_management_enabled(&state, false).await;
+    assert_eq!(
+        state.registry.lookup(&sid).await.unwrap().status,
+        Some(AgentStatus::Idle)
+    );
+    apply_observed_watcher_event(
+        &state,
+        crate::session_watcher::Observed {
+            generation: 0,
+            emitted: crate::session_watcher::Emitted {
+                cli: crate::agent_sessions::CliSource::Codex,
+                key: sid.to_string(),
+                event: SessionEvent::ToolStarting {
+                    key: sid.to_string(),
+                    tool_name: "file-observed tool".into(),
+                },
+            },
+        },
+    )
+    .await;
+    let independent = state.registry.lookup(&sid).await.unwrap();
+    assert_eq!(independent.status, Some(AgentStatus::Working));
+    assert!(!independent.hook_activity);
+    set_session_management_enabled(&state, true).await;
+    handle_session_hook(
+        &state,
+        SessionEvent::Notification {
+            key: sid.to_string(),
+            message: "hook attention".into(),
+        },
+        false,
+    )
+    .await
+    .unwrap();
+    set_session_management_enabled(&state, false).await;
+    let restored = state.registry.lookup(&sid).await.unwrap();
+    assert_eq!(restored.status, independent.status);
+    assert_eq!(restored.current_tool, independent.current_tool);
+    assert_eq!(
+        restored.last_activity_at_ms,
+        independent.last_activity_at_ms
+    );
+    assert_eq!(restored.attention_reason, None);
+    assert!(!restored.hook_activity);
 }
 
 #[tokio::test]
@@ -11306,11 +11443,10 @@ fn codex_emitted(key: &str) -> crate::session_watcher::Emitted {
 }
 
 async fn apply_watcher_event(state: &MasterStateInner, emitted: crate::session_watcher::Emitted) {
-    let generation = state.session_tracking.read().await.generation;
     apply_observed_watcher_event(
         state,
         crate::session_watcher::Observed {
-            generation,
+            generation: 0,
             emitted,
         },
     )
@@ -11559,8 +11695,8 @@ async fn real_hook_takes_over_born_bound_session() {
         "the real hook must take ownership"
     );
     assert!(
-        !state.born_bound.lock().await.contains(&sid),
-        "the real hook must remove the stale born-bound claim"
+        state.born_bound.lock().await.contains(&sid),
+        "hook ownership must retain the independent resume/delegate binding"
     );
 }
 
@@ -11886,8 +12022,8 @@ async fn late_resume_pane_assignment_preserves_direct_hook_ownership() {
         "a no-op binding callback must not erase current hook ownership"
     );
     assert!(
-        !state.born_bound.lock().await.contains(&sid),
-        "the no-op callback must not reclassify the current generation"
+        state.born_bound.lock().await.contains(&sid),
+        "the no-op callback still records an independently known binding"
     );
 }
 

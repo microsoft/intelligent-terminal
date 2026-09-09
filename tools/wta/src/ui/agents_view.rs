@@ -9,8 +9,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use unicode_width::UnicodeWidthStr;
 
 use crate::agent_sessions::{
-    AgentSession, AgentSessionRegistry, AgentStatus, CliSource, OriginFilter, SessionLocation,
-    SessionOrigin,
+    AgentSession, AgentStatus, CliSource, OriginFilter, SessionLocation, SessionOrigin,
 };
 use crate::session_registry::SessionInfo;
 use crate::theme;
@@ -38,7 +37,7 @@ pub(crate) struct TrackingNotice {
 pub(crate) fn render(
     f: &mut Frame,
     area: Rect,
-    reg: &AgentSessionRegistry,
+    local_rows: &[AgentSession],
     snapshot: Option<&[SessionInfo]>,
     list_state: &mut ListState,
     activity_frame: usize,
@@ -65,7 +64,6 @@ pub(crate) fn render(
     search_focused: bool,
     pane_focused: bool,
     session_management_enabled: bool,
-    untracked_external_sessions: &std::collections::HashSet<String>,
     tracking_notice: TrackingNotice,
 ) -> Option<Rect> {
     // No in-TUI header: the "Agent sessions" title lives in the C++ agent
@@ -187,11 +185,12 @@ pub(crate) fn render(
             rows.retain(|s| matches_source(s, source_filter));
             (rows, total)
         } else {
-            let total = reg.iter_sorted().len();
-            let rows: Vec<AgentSession> = reg
-                .iter_sorted_with_filters(cli_filter, origin_filter)
-                .into_iter()
+            let total = local_rows.len();
+            let rows: Vec<AgentSession> = local_rows
+                .iter()
                 .cloned()
+                .filter(|s| cli_filter.is_none_or(|want| &s.cli_source == want))
+                .filter(|s| origin_filter.matches(&s.origin))
                 .filter(|s| matches_source(s, source_filter))
                 .collect();
             (rows, total)
@@ -263,15 +262,12 @@ pub(crate) fn render(
         .iter()
         .enumerate()
         .map(|(i, s)| {
-            let tracking_current = s.origin == SessionOrigin::AgentPane
-                || (session_management_enabled && !untracked_external_sessions.contains(&s.key));
             row_for(
                 s,
                 Some(i) == selected,
                 pane_focused,
                 row_width,
                 &folded_query,
-                tracking_current,
             )
         })
         .collect();
@@ -479,7 +475,6 @@ fn row_for(
     pane_focused: bool,
     row_width: usize,
     folded_query: &str,
-    tracking_current: bool,
 ) -> ListItem<'static> {
     let origin_prefix = origin_prefix_for(s);
     let prefix_w = origin_prefix
@@ -487,15 +482,9 @@ fn row_for(
         .map(UnicodeWidthStr::width)
         .unwrap_or(0);
     let title_text = display_title(s, prefix_w);
-    let badge = if tracking_current {
-        status_badge(s)
-    } else {
-        String::new()
-    };
+    let badge = status_badge(s);
     let badge_style = badge_style(s);
-    let age = if s.last_activity_at == UNIX_EPOCH
-        || (!tracking_current && !matches!(s.status, AgentStatus::Ended | AgentStatus::Historical))
-    {
+    let age = if s.last_activity_at == UNIX_EPOCH {
         String::new()
     } else {
         relative_age(s.last_activity_at)
@@ -535,11 +524,7 @@ fn row_for(
         Span::raw("  ")
     };
 
-    let cli_suffix = if tracking_current || selected {
-        cli_suffix_for(s, selected)
-    } else {
-        String::new()
-    };
+    let cli_suffix = cli_suffix_for(s, selected);
 
     // Compose the row by measuring everything except trailing whitespace,
     // then padding to right-align the timestamp at row_width. The origin

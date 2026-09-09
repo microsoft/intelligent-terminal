@@ -60,6 +60,11 @@ pub fn render(frame: &mut Frame, app: &mut App) {
         let source_filter = app.current_location_filter();
         let origin_filter = app.sessions_origin_filter;
         let pane_focused = app.pane_focused;
+        let local_rows = if app.current_tab().agents_view.snapshot.is_none() {
+            app.local_agent_rows()
+        } else {
+            Vec::new()
+        };
         let tab = app.tab_sessions.entry(tab_id).or_default();
         // Show the loading shimmer while waiting on the very first
         // `session/list` response from master (empty placeholder snapshot +
@@ -77,7 +82,7 @@ pub fn render(frame: &mut Frame, app: &mut App) {
         app.session_tracking_enable_hit = agents_view::render(
             frame,
             area,
-            &app.agent_sessions,
+            &local_rows,
             tab.agents_view.snapshot.as_deref(),
             &mut tab.agents_list_state,
             activity_frame,
@@ -89,7 +94,6 @@ pub fn render(frame: &mut Frame, app: &mut App) {
             tab.agents_view.search_focused,
             pane_focused,
             app.session_management_enabled,
-            &app.untracked_external_sessions,
             agents_view::TrackingNotice {
                 policy_blocked: app.session_management_policy_blocked,
                 pending: app.session_tracking_enable_request.is_some(),

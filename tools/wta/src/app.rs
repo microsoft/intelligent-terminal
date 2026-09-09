@@ -664,6 +664,24 @@ pub fn route_agent_event_to_registry_with_hook_sink<F>(
 where
     F: FnMut(crate::agent_sessions::SessionEvent),
 {
+    route_agent_event_to_registry_with_activity_sink(reg, pane_session_id, params, |_, _, event| {
+        hook_sink(event.clone())
+    })
+}
+
+fn route_agent_event_to_registry_with_activity_sink<F>(
+    reg: &mut crate::agent_sessions::AgentSessionRegistry,
+    pane_session_id: &str,
+    params: &serde_json::Value,
+    mut activity_sink: F,
+) -> bool
+where
+    F: FnMut(
+        &str,
+        Option<&crate::agent_sessions::AgentSession>,
+        &crate::agent_sessions::SessionEvent,
+    ),
+{
     use crate::agent_sessions::CliSource;
 
     let event = params.get("event").and_then(|v| v.as_str()).unwrap_or("");
@@ -776,8 +794,8 @@ where
     }
 
     for ev in plan.events {
-        reg.apply(ev.clone());
-        hook_sink(ev);
+        activity_sink(&key_for_refresh, reg.get(&key_for_refresh), &ev);
+        reg.apply(ev);
     }
 
     // Stamp `AgentPane` origin on the live session if the agent-pane
@@ -1222,6 +1240,8 @@ pub struct App {
     master_session_tracking: Option<MasterSessionTracking>,
     /// Cached hook activity is not current again merely because tracking resumes.
     pub untracked_external_sessions: HashSet<String>,
+    /// Helper-local hooks overlay independent activity until the next invalidation.
+    hook_tracked_sessions: HashMap<String, Option<crate::session_registry::SessionActivity>>,
     /// Whether the connected ACP agent advertised the `loadSession`
     /// capability in its initialize response. Used by the
     /// session management view's Enter handler to short-circuit
@@ -1375,9 +1395,25 @@ pub(crate) fn known_cli_id(src: &crate::agent_sessions::CliSource) -> Option<&'s
     }
 }
 
-fn clear_external_session_status(sessions: &mut [crate::session_registry::SessionInfo]) {
+fn clear_hook_session_status(sessions: &mut [crate::session_registry::SessionInfo]) {
     for session in sessions {
-        session.clear_shell_activity();
+        session.clear_hook_activity();
+    }
+}
+
+fn independent_session_activity(
+    session: &crate::agent_sessions::AgentSession,
+) -> crate::session_registry::SessionActivity {
+    crate::session_registry::SessionActivity {
+        status: Some(session.status.clone()),
+        current_tool: session.current_tool.clone(),
+        attention_reason: session.attention_reason.clone(),
+        last_error: session.last_error.clone(),
+        last_activity_at_ms: session
+            .last_activity_at
+            .duration_since(std::time::UNIX_EPOCH)
+            .ok()
+            .map(|duration| duration.as_millis() as u64),
     }
 }
 
@@ -1539,6 +1575,7 @@ impl App {
             session_management_configuration_revision: 0,
             master_session_tracking: None,
             untracked_external_sessions: HashSet::new(),
+            hook_tracked_sessions: HashMap::new(),
             agent_supports_load_session: false,
             agent_supports_image: false,
             sessions_origin_filter: resolve_sessions_origin_filter(),
@@ -2878,11 +2915,21 @@ impl App {
                 .agents_view
                 .snapshot
                 .as_ref()
-                .is_some_and(|snapshot| {
+                .map(|snapshot| {
                     snapshot.iter().any(|info| {
                         info.session_id.0.as_ref() == s.key
                             && info.status.is_none()
                             && info.has_live_binding()
+                    })
+                })
+                .unwrap_or_else(|| {
+                    self.agent_sessions.get(&s.key).is_some_and(|local| {
+                        s.status == crate::agent_sessions::AgentStatus::Historical
+                            && !matches!(
+                                local.status,
+                                crate::agent_sessions::AgentStatus::Historical
+                                    | crate::agent_sessions::AgentStatus::Ended
+                            )
                     })
                 }) {
                 // sessions/list omits unknown activity while retaining a live
@@ -3152,7 +3199,7 @@ impl App {
         // rows). See `agent_sessions::SessionEvent::ResumeDispatched`.
         let resume_event =
             crate::agent_sessions::SessionEvent::ResumeDispatched { key: key.clone() };
-        self.agent_sessions.apply(resume_event.clone());
+        self.apply_independent_session_event(resume_event.clone());
         self.publish_session_hook(resume_event);
         self.dispatch_session_resume_dispatched_rpc(&key);
         // for hook-less CLIs (Gemini) so a future `PaneClosed` can
@@ -3289,7 +3336,7 @@ impl App {
         // double press doesn't double-dispatch.
         let resume_event =
             crate::agent_sessions::SessionEvent::ResumeDispatched { key: key.clone() };
-        self.agent_sessions.apply(resume_event.clone());
+        self.apply_independent_session_event(resume_event.clone());
         self.publish_session_hook(resume_event);
         self.dispatch_session_resume_dispatched_rpc(&key);
 
@@ -3511,15 +3558,10 @@ impl App {
 
     fn invalidate_external_session_tracking(&mut self) {
         self.session_management_generation = self.session_management_generation.wrapping_add(1);
-        self.untracked_external_sessions.extend(
-            self.agent_sessions
-                .iter_sorted()
-                .into_iter()
-                .filter(|session| session.origin != crate::agent_sessions::SessionOrigin::AgentPane)
-                .map(|session| session.key.clone()),
-        );
+        self.untracked_external_sessions
+            .extend(self.hook_tracked_sessions.keys().cloned());
         for tab in self.tab_sessions.values_mut() {
-            // Responses from before a toggle cannot restore old status or
+            // Responses from before a toggle cannot restore old hook status or
             // undo the current setting, including an On -> Off -> On sequence.
             tab.agents_view.latest_request_id = None;
             tab.agents_view.refetch_in_flight = false;
@@ -3527,7 +3569,7 @@ impl App {
             tab.agents_view.pending_rescan = false;
             tab.agents_view.dirty = false;
             if let Some(snapshot) = tab.agents_view.snapshot.as_mut() {
-                clear_external_session_status(snapshot);
+                clear_hook_session_status(snapshot);
             }
         }
     }
@@ -3595,7 +3637,7 @@ impl App {
     }
 
     fn refresh_session_management_host_config(&mut self) {
-        // A reconnect may have missed both Off and On. Drop prior activity
+        // A reconnect may have missed both Off and On. Drop prior hook activity
         // even when the eventual effective setting is unchanged.
         self.invalidate_external_session_tracking();
         self.session_management_configuration_revision = self
@@ -3774,14 +3816,7 @@ impl App {
             self.set_session_management_enabled(session_management_enabled);
         }
         if !self.session_management_enabled || !session_management_enabled || !tracking_current {
-            clear_external_session_status(&mut sessions);
-        } else {
-            for session in &sessions {
-                if session.status.is_some() {
-                    self.untracked_external_sessions
-                        .remove(session.session_id.0.as_ref());
-                }
-            }
+            clear_hook_session_status(&mut sessions);
         }
         for tab_id in tabs {
             let old_selected = self
@@ -3929,15 +3964,148 @@ impl App {
             rows.retain(|s| crate::ui::agents_view::matches_folded_query(s, &folded_query));
             rows
         } else {
-            let mut rows: Vec<_> = self
-                .agent_sessions
-                .iter_sorted_with_filters(filter.as_ref(), origin)
-                .into_iter()
-                .cloned()
-                .collect();
+            let mut rows = self.local_agent_rows();
+            if let Some(want) = filter.as_ref() {
+                rows.retain(|s| &s.cli_source == want);
+            }
+            rows.retain(|s| origin.matches(&s.origin));
             rows.retain(|s| crate::ui::agents_view::matches_source(s, &source));
             rows.retain(|s| crate::ui::agents_view::matches_folded_query(s, &folded_query));
             rows
+        }
+    }
+
+    pub(crate) fn local_agent_rows(&self) -> Vec<crate::agent_sessions::AgentSession> {
+        self.agent_sessions
+            .iter_sorted()
+            .into_iter()
+            .map(|session| {
+                let mut row = session.clone();
+                if self.untracked_external_sessions.contains(&session.key) {
+                    if let Some(baseline) = self.hook_tracked_sessions.get(&session.key) {
+                        let mut info =
+                            crate::session_registry::agent_session_to_session_info(session);
+                        info.hook_activity = true;
+                        info.non_hook_activity = baseline.clone();
+                        info.clear_hook_activity();
+                        let activity = session_info_to_agent_session(&info);
+                        row.status = activity.status;
+                        row.current_tool = activity.current_tool;
+                        row.attention_reason = activity.attention_reason;
+                        row.last_error = activity.last_error;
+                        row.last_activity_at = activity.last_activity_at;
+                    }
+                }
+                row
+            })
+            .collect()
+    }
+
+    fn apply_independent_session_event(&mut self, event: crate::agent_sessions::SessionEvent) {
+        use crate::agent_sessions::{AgentStatus, SessionEvent};
+        let establishes_session = matches!(
+            event,
+            SessionEvent::SessionStarted { .. }
+                | SessionEvent::ResumeDispatched { .. }
+                | SessionEvent::ResumePaneAssigned { .. }
+        );
+        let key = match &event {
+            SessionEvent::SessionStarted { key, .. }
+            | SessionEvent::ToolStarting { key, .. }
+            | SessionEvent::ToolCompleted { key, .. }
+            | SessionEvent::Notification { key, .. }
+            | SessionEvent::SessionStopped { key, .. }
+            | SessionEvent::ResumeDispatched { key }
+            | SessionEvent::ResumePaneAssigned { key, .. } => Some(key.clone()),
+            SessionEvent::PaneClosed { pane_session_id }
+            | SessionEvent::ConnectionFailed {
+                pane_session_id, ..
+            } => self.agent_sessions.key_for_pane(pane_session_id),
+        };
+        if let Some(key) = key.as_ref() {
+            let preserve_hook_activity = establishes_session
+                && self.session_management_enabled
+                && !self.untracked_external_sessions.contains(key);
+            let had_hook_activity = if preserve_hook_activity {
+                if let Some(baseline) = self.hook_tracked_sessions.get_mut(key) {
+                    baseline.get_or_insert_with(|| crate::session_registry::SessionActivity {
+                        status: Some(AgentStatus::Idle),
+                        ..Default::default()
+                    });
+                }
+                false
+            } else {
+                self.untracked_external_sessions.remove(key);
+                self.hook_tracked_sessions.remove(key).is_some()
+            };
+            if establishes_session {
+                // Snapshot-only history has no local row yet. Seed the binding
+                // registry before ResumePaneAssigned so hookless Focus works too.
+                let previous = self.agent_sessions.get(key).cloned().or_else(|| {
+                    self.tab_sessions.values().find_map(|tab| {
+                        tab.agents_view.snapshot.as_ref()?.iter().find_map(|info| {
+                            (info.session_id.0.as_ref() == key.as_str())
+                                .then(|| session_info_to_agent_session(info))
+                        })
+                    })
+                });
+                if had_hook_activity || !self.agent_sessions.has_session(key) {
+                    if let Some(previous) = previous {
+                        self.agent_sessions.remove(key);
+                        self.agent_sessions.apply(SessionEvent::SessionStarted {
+                            key: key.clone(),
+                            cli_source: previous.cli_source,
+                            pane_session_id: previous.pane_session_id.unwrap_or_default(),
+                            cwd: previous.cwd,
+                            title: previous.title,
+                        });
+                        self.agent_sessions.set_origin(key, previous.origin);
+                        self.agent_sessions.set_location(key, previous.location);
+                    }
+                }
+            }
+        }
+        self.agent_sessions.apply(event);
+        if establishes_session {
+            if let Some(key) = key {
+                let Some(local) = self.agent_sessions.get(&key) else {
+                    return;
+                };
+                let mut local_info = crate::session_registry::agent_session_to_session_info(local);
+                if let Some(baseline) = self.hook_tracked_sessions.get(&key) {
+                    local_info.hook_activity = true;
+                    local_info.non_hook_activity = baseline.clone();
+                }
+                for tab in self.tab_sessions.values_mut() {
+                    if let Some(snapshot) = tab.agents_view.snapshot.as_mut() {
+                        if let Some(info) = snapshot
+                            .iter_mut()
+                            .find(|info| info.session_id.0.as_ref() == key)
+                        {
+                            if info.hook_activity && self.session_management_enabled {
+                                info.non_hook_activity.get_or_insert_with(|| {
+                                    crate::session_registry::SessionActivity {
+                                        status: Some(AgentStatus::Idle),
+                                        last_activity_at_ms: local_info.last_activity_at_ms,
+                                        ..Default::default()
+                                    }
+                                });
+                            } else {
+                                info.status = local_info.status.clone();
+                                info.current_tool = local_info.current_tool.clone();
+                                info.attention_reason = local_info.attention_reason.clone();
+                                info.last_error = local_info.last_error.clone();
+                                info.last_activity_at_ms = local_info.last_activity_at_ms;
+                                info.hook_activity = local_info.hook_activity;
+                                info.non_hook_activity = local_info.non_hook_activity.clone();
+                            }
+                            info.pane_session_id = local.pane_session_id.clone();
+                        } else {
+                            snapshot.push(local_info.clone());
+                        }
+                    }
+                }
+            }
         }
     }
 

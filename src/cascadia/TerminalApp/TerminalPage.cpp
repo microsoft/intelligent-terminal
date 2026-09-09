@@ -7842,6 +7842,11 @@ namespace winrt::TerminalApp::implementation
         }
 
         const auto& params = evt["params"];
+        if (evt["method"] == "agent_event" &&
+            !_settings.GlobalSettings().EffectiveAgentSessionManagementEnabled())
+        {
+            return;
+        }
         const auto paneId = params.get("pane_id", "").asString();
         const auto agentSessionId = params.get("agent_session_id", "").asString();
         // An empty `pane_id` means "source pane unknown" — wtcli publishes that
@@ -8358,6 +8363,10 @@ namespace winrt::TerminalApp::implementation
 
                             if (isAgentEvent)
                             {
+                                if (!page->_settings.GlobalSettings().EffectiveAgentSessionManagementEnabled())
+                                {
+                                    return;
+                                }
                                 auto jsonPayload = seqStr.substr(agentPrefix.size());
                                 Json::Value agentParams;
                                 Json::CharReaderBuilder rb;
@@ -8395,10 +8404,6 @@ namespace winrt::TerminalApp::implementation
                                         }
                                     }
 
-                                    // Lifecycle events also maintain routing
-                                    // and resume bindings while tracking is
-                                    // Off. WTA gates their status/attention
-                                    // effects with the runtime setting.
                                     if (autoFixPolicyLocked)
                                     {
                                         return;

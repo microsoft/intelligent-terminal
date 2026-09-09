@@ -3296,6 +3296,7 @@ fn born_bound_registration_uses_current_master_request_sender() {
 #[test]
 fn restored_shell_agent_session_registers_as_born_bound() {
     let (mut app, mut master_rx) = test_app_with_master_rx();
+    app.apply_session_management_host_config(false);
     let agent_session_id = "8f924227-22df-4e54-aa18-3471107b567b";
     let pane_id = "F6BAB379-8942-4F5F-9E7F-078EA1AB9463";
 
@@ -3323,6 +3324,7 @@ fn restored_shell_agent_session_registers_as_born_bound() {
         session.cli_source,
         crate::agent_sessions::CliSource::Copilot
     );
+    assert!(!app.untracked_external_sessions.contains(agent_session_id));
 
     assert!(matches!(
         master_rx.try_recv(),
@@ -3396,7 +3398,7 @@ fn tracking_notice_only_off_across_empty_loading_search_and_populated_states() {
                     };
                     let buffer = render_to_buffer(&mut app, 90, 9);
                     let text = buffer_to_text(&buffer);
-                    assert_eq!(text.contains("Session status tracking is off."), !enabled);
+                    assert_eq!(text.contains("Session hooks are off."), !enabled);
                     assert_eq!(text.contains("Turn on"), !enabled);
                     assert!(!text.contains("[Turn on]"));
                     assert_eq!(app.session_tracking_enable_hit.is_some(), !enabled);
@@ -3430,7 +3432,7 @@ fn tracking_notice_policy_and_pending_states_have_no_action() {
     let mut app = tracking_notice_app(false);
     app.apply_session_management_policy(Some(true));
     let text = buffer_to_text(&render_to_buffer(&mut app, 90, 7));
-    assert!(text.contains("disabled by your organization"));
+    assert!(text.contains("Session hooks are disabled by your organization."));
     assert!(!text.contains("Turn on"));
     assert!(app.session_tracking_enable_hit.is_none());
 
@@ -3447,7 +3449,7 @@ fn tracking_notice_policy_and_pending_states_have_no_action() {
     app.session_tracking_enable_error = true;
     app.session_management_policy_blocked = Some(true);
     let text = buffer_to_text(&render_to_buffer(&mut app, 90, 7));
-    assert!(!text.contains("tracking"));
+    assert!(!text.contains("Session hooks"));
     assert!(!text.contains("Turning on"));
     assert!(app.session_tracking_enable_hit.is_none());
 }
@@ -3540,7 +3542,7 @@ async fn tracking_notice_click_waits_for_persisted_scoped_acknowledgement() {
     app.handle_session_tracking_enable_result(&result("owned-tab"));
     assert!(app.session_management_enabled);
     assert!(app.session_tracking_enable_request.is_none());
-    assert!(!buffer_to_text(&render_to_buffer(&mut app, 90, 8)).contains("tracking"));
+    assert!(!buffer_to_text(&render_to_buffer(&mut app, 90, 8)).contains("Session hooks"));
 }
 
 #[test]
@@ -3560,7 +3562,8 @@ fn tracking_notice_failure_and_policy_denial_leave_tracking_off() {
         "error": "save_failed"
     }));
     assert!(!app.session_management_enabled);
-    assert!(buffer_to_text(&render_to_buffer(&mut app, 90, 8)).contains("Couldn't turn on"));
+    assert!(buffer_to_text(&render_to_buffer(&mut app, 90, 8))
+        .contains("Couldn't turn on session hooks."));
     app.apply_session_management_policy(Some(true));
     assert!(!app.can_enable_session_tracking());
     assert!(!buffer_to_text(&render_to_buffer(&mut app, 90, 8)).contains("Turn on"));
@@ -3606,7 +3609,7 @@ fn tracking_notice_render_preview() {
         app.current_tab_mut().agents_list_state.select(Some(0));
         let buffer = render_to_buffer(&mut app, 90, 9);
         assert_eq!(
-            buffer_to_text(&buffer).contains("Session status tracking is off."),
+            buffer_to_text(&buffer).contains("Session hooks are off."),
             !enabled
         );
         if std::env::var_os("WTA_TRACKING_NOTICE_PREVIEW").is_some() {
@@ -3694,6 +3697,35 @@ fn tracking_notice_policy_only_update_supersedes_in_flight_settings_read() {
     assert!(!app.can_enable_session_tracking());
 }
 
+#[test]
+fn session_tracking_off_resume_preserves_wsl_location_without_hooks() {
+    let mut app = test_app();
+    app.apply_session_management_host_config(false);
+    let mut row = session_info_for_test("wsl-resume");
+    row.status = Some(crate::agent_sessions::AgentStatus::Historical);
+    row.location = crate::agent_sessions::SessionLocation::Wsl {
+        distro: "Ubuntu".into(),
+    };
+    app.current_tab_mut().agents_view.snapshot = Some(vec![row.clone()]);
+    app.apply_independent_session_event(crate::agent_sessions::SessionEvent::ResumeDispatched {
+        key: "wsl-resume".into(),
+    });
+    app.apply_independent_session_event(crate::agent_sessions::SessionEvent::ResumePaneAssigned {
+        key: "wsl-resume".into(),
+        pane_session_id: "wsl-pane".into(),
+    });
+    let local = app.agent_sessions.get(&"wsl-resume".to_string()).unwrap();
+    assert_eq!(local.status, crate::agent_sessions::AgentStatus::Idle);
+    assert_eq!(local.location, row.location);
+    assert_eq!(local.pane_session_id.as_deref(), Some("wsl-pane"));
+    let snapshot = &app.current_tab().agents_view.snapshot.as_ref().unwrap()[0];
+    assert_eq!(
+        snapshot.status,
+        Some(crate::agent_sessions::AgentStatus::Idle)
+    );
+    assert_eq!(snapshot.location, row.location);
+}
+
 fn session_tracking_setting(enabled: bool) -> AppEvent {
     AppEvent::WtEvent {
         method: "agent_config_changed".into(),
@@ -3719,6 +3751,12 @@ fn session_tracking_hook(session_id: &str, event: &str) -> AppEvent {
             }
         }),
     }
+}
+
+fn hook_session_info_for_test(id: &str) -> crate::session_registry::SessionInfo {
+    let mut info = session_info_for_test(id);
+    info.hook_activity = true;
+    info
 }
 
 fn receive_tracking_snapshot(
@@ -3755,7 +3793,7 @@ fn session_tracking_same_mode_master_snapshot_below_minimum_stays_unbadged() {
     let (mut app, mut requests) = test_app_with_master_rx();
     app.apply_session_management_host_config(true);
     app.open_agents_view_for_tab(DEFAULT_TAB_ID.into());
-    let mut row = session_info_for_test("live-session");
+    let mut row = hook_session_info_for_test("live-session");
     row.status = Some(crate::agent_sessions::AgentStatus::Working);
     row.pane_session_id = Some("shell-pane".into());
     receive_tracking_snapshot(&mut app, &mut requests, row.clone(), true, 10, 1);
@@ -3785,7 +3823,7 @@ fn session_tracking_master_epoch_rebases_missed_toggles_but_rejects_older_epochs
     let (mut app, mut requests) = test_app_with_master_rx();
     app.apply_session_management_host_config(true);
     app.open_agents_view_for_tab(DEFAULT_TAB_ID.into());
-    let mut row = session_info_for_test("live-session");
+    let mut row = hook_session_info_for_test("live-session");
     row.status = Some(crate::agent_sessions::AgentStatus::Working);
     row.pane_session_id = Some("shell-pane".into());
     receive_tracking_snapshot(&mut app, &mut requests, row.clone(), true, 10, 3);
@@ -3794,7 +3832,7 @@ fn session_tracking_master_epoch_rebases_missed_toggles_but_rejects_older_epochs
     assert_eq!(app.master_session_tracking.unwrap().minimum_generation, 12);
 
     let mut unknown = row.clone();
-    unknown.clear_shell_activity();
+    unknown.clear_hook_activity();
     receive_tracking_snapshot(&mut app, &mut requests, unknown, true, 10, 4);
     assert_eq!(app.master_session_tracking.unwrap().minimum_generation, 10);
     assert_eq!(app.master_session_tracking.unwrap().epoch, 4);
@@ -3863,7 +3901,7 @@ fn session_tracking_master_transport_replacement_rebases_reset_counters() {
 }
 
 #[test]
-fn session_tracking_disabled_startup_keeps_history_and_manual_refresh() {
+fn session_tracking_disabled_startup_keeps_history_and_background_refresh() {
     use crate::protocol::acp::client::MasterExtRequest;
     let (mut app, mut requests) = test_app_with_master_rx();
     app.apply_session_management_host_config(false);
@@ -3895,13 +3933,30 @@ fn session_tracking_disabled_startup_keeps_history_and_manual_refresh() {
         app.agents_rows_for_tab(DEFAULT_TAB_ID)[0].key,
         "saved-history"
     );
+    app.handle_event(AppEvent::SessionsChanged);
+    assert!(matches!(
+        requests.try_recv(),
+        Ok(MasterExtRequest::SessionsList { rescan: false, .. })
+    ));
     for _ in 0..10 {
         app.handle_event(AppEvent::SessionsChanged);
     }
-    assert!(requests.try_recv().is_err(), "background polls must stop");
-    assert!(!app.current_tab().agents_view.dirty);
+    assert!(
+        requests.try_recv().is_err(),
+        "background polls must coalesce"
+    );
+    assert!(app.current_tab().agents_view.dirty);
 
     app.handle_key(KeyEvent::new(KeyCode::F(5), KeyModifiers::NONE));
+    let request_id = app.current_tab().agents_view.latest_request_id.unwrap();
+    app.handle_event(AppEvent::AgentsSnapshotLoaded {
+        request_id,
+        sessions: vec![session_info_for_test("independent-update")],
+        session_management_enabled: false,
+        tracking_generation: app.session_management_generation,
+        session_management_generation: 0,
+        session_management_epoch: 0,
+    });
     assert!(matches!(
         requests.try_recv(),
         Ok(MasterExtRequest::SessionsList { rescan: true, .. })
@@ -3925,7 +3980,9 @@ fn session_tracking_disabled_startup_rejects_stale_master_enabled_flag() {
     app.handle_event(AppEvent::AgentsSnapshotLoaded {
         request_id,
         tracking_generation,
-        sessions: vec![session_info_for_test("history-before-master-catches-up")],
+        sessions: vec![hook_session_info_for_test(
+            "history-before-master-catches-up",
+        )],
         session_management_enabled: true,
         session_management_generation: 0,
         session_management_epoch: 0,
@@ -4025,7 +4082,7 @@ fn session_tracking_toggle_clears_badges_and_rejects_old_snapshots() {
     let _locale = crate::test_support::lock_locale();
     let (mut app, mut requests) = test_app_with_master_rx();
     app.current_tab_mut().current_view = View::Agents;
-    let mut row = session_info_for_test("retained-session");
+    let mut row = hook_session_info_for_test("retained-session");
     row.status = Some(AgentStatus::Attention);
     row.pane_session_id = Some("shell-pane".into());
     row.current_tool = Some("edit".into());
@@ -4112,7 +4169,7 @@ fn session_tracking_master_snapshot_conveys_authoritative_startup_setting() {
     };
     app.handle_event(AppEvent::AgentsSnapshotLoaded {
         request_id,
-        sessions: vec![session_info_for_test("retained-history")],
+        sessions: vec![hook_session_info_for_test("retained-history")],
         session_management_enabled: false,
         tracking_generation: app.session_management_generation,
         session_management_generation: 0,
@@ -4124,7 +4181,10 @@ fn session_tracking_master_snapshot_conveys_authoritative_startup_setting() {
         None
     );
     app.handle_event(AppEvent::SessionsChanged);
-    assert!(requests.try_recv().is_err());
+    assert!(matches!(
+        requests.try_recv(),
+        Ok(MasterExtRequest::SessionsList { .. })
+    ));
 }
 
 #[test]
@@ -4138,10 +4198,10 @@ fn session_tracking_off_during_history_open_keeps_loading_history() {
         panic!("an interrupted user history request must be retried");
     };
     // Master's WT listener has not received Off yet. Metadata is still
-    // useful, but the response cannot revive status or undo local Off.
+    // useful, but the response cannot revive hook status or undo local Off.
     app.handle_event(AppEvent::AgentsSnapshotLoaded {
         request_id,
-        sessions: vec![session_info_for_test("history-during-toggle")],
+        sessions: vec![hook_session_info_for_test("history-during-toggle")],
         session_management_enabled: true,
         tracking_generation: app.session_management_generation,
         session_management_generation: 0,
@@ -4153,7 +4213,10 @@ fn session_tracking_off_during_history_open_keeps_loading_history() {
     assert_eq!(snapshot[0].status, None);
     assert!(!app.current_tab().agents_view.refetch_in_flight);
     app.handle_event(AppEvent::SessionsChanged);
-    assert!(requests.try_recv().is_err());
+    assert!(matches!(
+        requests.try_recv(),
+        Ok(MasterExtRequest::SessionsList { .. })
+    ));
 }
 
 #[test]
@@ -4190,7 +4253,7 @@ fn session_tracking_host_setting_stays_authoritative_after_master_confirmation()
     app.handle_event(AppEvent::AgentsSnapshotLoaded {
         request_id,
         tracking_generation,
-        sessions: vec![session_info_for_test("stale-master-activity")],
+        sessions: vec![hook_session_info_for_test("stale-master-activity")],
         session_management_enabled: true,
         session_management_generation: 0,
         session_management_epoch: 0,
@@ -4216,7 +4279,7 @@ fn session_tracking_host_setting_stays_authoritative_after_master_confirmation()
     app.handle_event(AppEvent::AgentsSnapshotLoaded {
         request_id,
         tracking_generation,
-        sessions: vec![session_info_for_test("master-still-disabled")],
+        sessions: vec![hook_session_info_for_test("master-still-disabled")],
         session_management_enabled: false,
         session_management_generation: 0,
         session_management_epoch: 0,
@@ -4282,7 +4345,7 @@ fn session_tracking_reconnect_clears_cached_activity_even_when_enabled_is_unchan
     let (mut app, mut requests) = test_app_with_master_rx();
     app.handle_event(session_tracking_setting(true));
     app.current_tab_mut().current_view = View::Agents;
-    let mut row = session_info_for_test("shell-before-disconnect");
+    let mut row = hook_session_info_for_test("shell-before-disconnect");
     row.status = Some(AgentStatus::Working);
     row.pane_session_id = Some("shell-pane".into());
     app.current_tab_mut().agents_view.snapshot = Some(vec![row]);
@@ -4458,7 +4521,10 @@ fn session_tracking_unknown_activity_stays_unbadged_and_focusable_after_enable()
 #[test]
 fn session_tracking_off_suppresses_shell_activity_without_losing_bindings() {
     use crate::agent_sessions::AgentStatus;
+    let _locale = crate::test_support::lock_locale();
+    rust_i18n::set_locale("en-US");
     let mut app = test_app();
+    app.current_tab_mut().current_view = View::Agents;
     app.handle_event(session_tracking_hook("shell-sid", "agent.session.start"));
     app.handle_event(session_tracking_hook("shell-sid", "agent.tool.starting"));
     assert_eq!(
@@ -4476,6 +4542,13 @@ fn session_tracking_off_suppresses_shell_activity_without_losing_bindings() {
     assert!(app.agent_sessions.is_agent_pane("shell-pane"));
     assert!(app.untracked_external_sessions.contains("shell-sid"));
     assert!(app.wt_notifications.is_empty());
+    let rendered = render_to_text(&mut app, 120, 24);
+    for badge in ["Active", "Idle", "Waiting for input"] {
+        assert!(
+            !rendered.contains(badge),
+            "Off must suppress hook-only {badge}"
+        );
+    }
 
     app.handle_event(session_tracking_setting(true));
     assert!(
@@ -4486,15 +4559,79 @@ fn session_tracking_off_suppresses_shell_activity_without_losing_bindings() {
         app.agent_sessions.get(&"shell-sid".into()).unwrap().status,
         AgentStatus::Attention
     );
+    assert!(!render_to_text(&mut app, 120, 24).contains("Active"));
     app.handle_event(session_tracking_hook("shell-sid", "agent.tool.starting"));
     assert!(!app.untracked_external_sessions.contains("shell-sid"));
+    assert!(render_to_text(&mut app, 120, 24).contains("Active"));
 
     app.handle_event(session_tracking_setting(false));
     app.handle_event(session_tracking_hook("shell-sid", "agent.session.end"));
     assert!(
-        !app.agent_sessions.is_agent_pane("shell-pane"),
-        "ended CLI must release the autofix exclusion"
+        app.agent_sessions.is_agent_pane("shell-pane"),
+        "raw hook endings are ignored while Off"
     );
+    app.handle_event(AppEvent::AgentSessionEvent(
+        crate::agent_sessions::SessionEvent::SessionStopped {
+            key: "shell-sid".into(),
+            reason: "user_exit".into(),
+        },
+    ));
+    assert!(
+        !app.agent_sessions.is_agent_pane("shell-pane"),
+        "independent end cleanup must release the autofix exclusion"
+    );
+}
+
+#[test]
+fn session_tracking_off_rejects_raw_discovery_but_keeps_independent_session_events() {
+    use crate::agent_sessions::{AgentStatus, CliSource, SessionEvent};
+    let mut app = test_app();
+    app.set_session_management_enabled(false);
+    app.log_agent_events = true;
+    for event in [
+        "agent.session.start",
+        "agent.session.started",
+        "agent.session.stopped",
+        "agent.session.end",
+        "agent.tool.starting",
+        "agent.tool.completed",
+        "agent.notification",
+        "agent.error",
+    ] {
+        app.handle_event(session_tracking_hook("hook-only", event));
+    }
+    assert!(app.agent_sessions.iter_sorted().is_empty());
+    assert!(app.hook_tracked_sessions.is_empty());
+    assert!(app.untracked_external_sessions.is_empty());
+    assert!(app.current_tab().messages.is_empty());
+
+    app.handle_event(AppEvent::AgentSessionEvent(SessionEvent::SessionStarted {
+        key: "independent".into(),
+        cli_source: CliSource::Claude,
+        pane_session_id: "shell-pane".into(),
+        cwd: std::env::current_dir().unwrap(),
+        title: "Independent session".into(),
+    }));
+    app.session_to_tab
+        .insert("independent".into(), DEFAULT_TAB_ID.into());
+    app.handle_event(session_tracking_hook("independent", "agent.tool.starting"));
+    app.handle_event(session_tracking_hook("independent", "agent.notification"));
+    assert_eq!(app.local_agent_rows()[0].status, AgentStatus::Idle);
+    assert!(!app.untracked_external_sessions.contains("independent"));
+    assert!(app.current_tab().messages.is_empty());
+
+    app.handle_event(AppEvent::AgentSessionEvent(SessionEvent::ToolStarting {
+        key: "independent".into(),
+        tool_name: "ACP tool".into(),
+    }));
+    assert_eq!(app.local_agent_rows()[0].status, AgentStatus::Working);
+    app.handle_event(session_tracking_hook("independent", "agent.session.end"));
+    assert!(app.agent_sessions.is_agent_pane("shell-pane"));
+    app.handle_event(AppEvent::AgentSessionEvent(SessionEvent::PaneClosed {
+        pane_session_id: "shell-pane".into(),
+    }));
+    assert_eq!(app.local_agent_rows()[0].status, AgentStatus::Ended);
+    assert!(!app.agent_sessions.is_agent_pane("shell-pane"));
 }
 
 #[test]
@@ -4595,9 +4732,267 @@ fn session_tracking_off_keeps_delegated_session_registration() {
         Ok(MasterExtRequest::SessionBornBound { .. })
     ));
     assert!(app.agent_sessions.is_agent_pane("delegated-pane"));
-    assert!(app
+    assert!(!app
         .untracked_external_sessions
         .contains("delegated-session"));
+}
+
+#[test]
+fn session_tracking_off_born_bound_idle_survives_hooks_snapshots_and_toggles() {
+    use crate::agent_sessions::{AgentStatus, CliSource, SessionEvent};
+    use crate::protocol::acp::client::MasterExtRequest;
+    let _locale = crate::test_support::lock_locale();
+    rust_i18n::set_locale("en-US");
+    let (mut app, mut requests) = test_app_with_master_rx();
+    app.current_tab_mut().current_view = View::Agents;
+    app.handle_event(session_tracking_hook("resumed", "agent.session.start"));
+    app.apply_session_management_host_config(false);
+    assert!(app.untracked_external_sessions.contains("resumed"));
+    app.handle_event(AppEvent::RegisterBornBoundSession {
+        event: SessionEvent::SessionStarted {
+            key: "resumed".into(),
+            cli_source: CliSource::Claude,
+            pane_session_id: "shell-pane".into(),
+            cwd: std::env::current_dir().unwrap(),
+            title: "Resumed session".into(),
+        },
+    });
+    assert!(matches!(
+        requests.try_recv(),
+        Ok(MasterExtRequest::SessionBornBound { .. })
+    ));
+    assert!(!app.untracked_external_sessions.contains("resumed"));
+    assert!(!app.hook_tracked_sessions.contains_key("resumed"));
+    app.handle_event(session_tracking_hook("bootstrap-id", "agent.session.start"));
+    assert!(!app.agent_sessions.has_session(&"bootstrap-id".into()));
+    assert_eq!(
+        app.agent_sessions.key_for_pane("shell-pane").as_deref(),
+        Some("resumed")
+    );
+    for event in [
+        "agent.session.started",
+        "agent.tool.starting",
+        "agent.notification",
+        "agent.session.end",
+    ] {
+        app.handle_event(session_tracking_hook("resumed", event));
+        assert!(!app.untracked_external_sessions.contains("resumed"));
+        assert!(!app.hook_tracked_sessions.contains_key("resumed"));
+        assert_eq!(app.local_agent_rows()[0].status, AgentStatus::Idle);
+        let text = render_to_text(&mut app, 120, 24);
+        assert!(text.contains("Idle"));
+        assert!(text.contains("Session hooks are off."));
+        assert!(!text.contains("Active"));
+        assert!(!text.contains("Waiting for input"));
+    }
+
+    app.open_agents_view_for_tab(DEFAULT_TAB_ID.into());
+    let mut row = session_info_for_test("resumed");
+    row.pane_session_id = Some("shell-pane".into());
+    receive_tracking_snapshot(&mut app, &mut requests, row.clone(), false, 1, 1);
+    assert!(!app.untracked_external_sessions.contains("resumed"));
+    assert!(render_to_text(&mut app, 120, 24).contains("Idle"));
+    for enabled in [true, false] {
+        app.set_session_management_enabled(enabled);
+        assert_eq!(
+            app.current_tab().agents_view.snapshot.as_ref().unwrap()[0].status,
+            Some(AgentStatus::Idle)
+        );
+        assert!(render_to_text(&mut app, 120, 24).contains("Idle"));
+    }
+    app.handle_event(AppEvent::SessionsChanged);
+    receive_tracking_snapshot(&mut app, &mut requests, row, false, 3, 1);
+    assert!(render_to_text(&mut app, 120, 24).contains("Idle"));
+    app.current_tab_mut().agents_list_state.select(Some(0));
+    app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+    assert_eq!(
+        app.last_dispatched_command_for_test().unwrap().kind,
+        DispatchedCommandKind::FocusPane
+    );
+}
+
+#[test]
+fn session_tracking_hook_overlay_restores_local_resume_idle_and_preserves_native_errors() {
+    use crate::agent_sessions::{AgentStatus, CliSource, SessionEvent};
+    let _locale = crate::test_support::lock_locale();
+    rust_i18n::set_locale("en-US");
+    let (mut app, _requests) = test_app_with_master_rx();
+    app.current_tab_mut().current_view = View::Agents;
+    app.handle_event(AppEvent::RegisterBornBoundSession {
+        event: SessionEvent::SessionStarted {
+            key: "resumed".into(),
+            cli_source: CliSource::Claude,
+            pane_session_id: "shell-pane".into(),
+            cwd: std::env::current_dir().unwrap(),
+            title: "Resumed session".into(),
+        },
+    });
+    app.handle_event(session_tracking_hook("resumed", "agent.tool.starting"));
+    app.handle_event(AppEvent::AgentSessionEvent(
+        SessionEvent::ResumePaneAssigned {
+            key: "resumed".into(),
+            pane_session_id: "shell-pane".into(),
+        },
+    ));
+    assert!(render_to_text(&mut app, 120, 24).contains("Active"));
+    app.set_session_management_enabled(false);
+    assert!(render_to_text(&mut app, 120, 24).contains("Idle"));
+    app.handle_event(session_tracking_hook("resumed", "agent.notification"));
+    assert_eq!(app.local_agent_rows()[0].status, AgentStatus::Idle);
+    app.set_session_management_enabled(true);
+    assert!(render_to_text(&mut app, 120, 24).contains("Idle"));
+    app.handle_event(session_tracking_hook("resumed", "agent.tool.starting"));
+    assert!(render_to_text(&mut app, 120, 24).contains("Active"));
+    app.refresh_session_management_host_config();
+    assert!(render_to_text(&mut app, 120, 24).contains("Idle"));
+
+    app.set_session_management_enabled(false);
+    app.handle_event(AppEvent::AgentSessionEvent(
+        SessionEvent::ConnectionFailed {
+            pane_session_id: "shell-pane".into(),
+            reason: "native connection failed".into(),
+        },
+    ));
+    assert_eq!(app.local_agent_rows()[0].status, AgentStatus::Error);
+    assert!(render_to_text(&mut app, 120, 24).contains("Error"));
+    app.handle_event(AppEvent::AgentSessionEvent(SessionEvent::PaneClosed {
+        pane_session_id: "shell-pane".into(),
+    }));
+    assert_eq!(app.local_agent_rows()[0].status, AgentStatus::Ended);
+    assert!(!app.agent_sessions.is_agent_pane("shell-pane"));
+}
+
+#[test]
+fn session_tracking_late_born_bound_preserves_hook_overlay_until_off() {
+    use crate::agent_sessions::{AgentStatus, CliSource, SessionEvent};
+    let _locale = crate::test_support::lock_locale();
+    rust_i18n::set_locale("en-US");
+    let (mut app, _requests) = test_app_with_master_rx();
+    app.current_tab_mut().current_view = View::Agents;
+    app.current_tab_mut().agents_view.snapshot = Some(Vec::new());
+    app.handle_event(session_tracking_hook("resumed", "agent.tool.starting"));
+    app.handle_event(AppEvent::RegisterBornBoundSession {
+        event: SessionEvent::SessionStarted {
+            key: "resumed".into(),
+            cli_source: CliSource::Claude,
+            pane_session_id: "shell-pane".into(),
+            cwd: std::env::current_dir().unwrap(),
+            title: "Resumed session".into(),
+        },
+    });
+    assert!(app.current_tab().agents_view.snapshot.as_ref().unwrap()[0].hook_activity);
+    assert!(render_to_text(&mut app, 120, 24).contains("Active"));
+    app.set_session_management_enabled(false);
+    assert_eq!(
+        app.current_tab().agents_view.snapshot.as_ref().unwrap()[0].status,
+        Some(AgentStatus::Idle)
+    );
+    assert!(render_to_text(&mut app, 120, 24).contains("Idle"));
+}
+
+#[test]
+fn session_tracking_off_snapshots_preserve_independent_updates_and_resume_baselines() {
+    use crate::agent_sessions::{AgentStatus, OriginFilter, SessionOrigin};
+    use crate::session_registry::SessionActivity;
+    let _locale = crate::test_support::lock_locale();
+    rust_i18n::set_locale("en-US");
+    let (mut app, mut requests) = test_app_with_master_rx();
+    app.apply_session_management_host_config(false);
+    app.open_agents_view_for_tab(DEFAULT_TAB_ID.into());
+    let mut row = session_info_for_test("hookless-watcher");
+    row.status = Some(AgentStatus::Working);
+    row.current_tool = Some("independent tool".into());
+    row.pane_session_id = Some("shell-pane".into());
+    app.untracked_external_sessions
+        .insert("hookless-watcher".into());
+    receive_tracking_snapshot(&mut app, &mut requests, row.clone(), false, 2, 1);
+    assert!(render_to_text(&mut app, 120, 24).contains("Active"));
+    app.handle_event(AppEvent::SessionsChanged);
+    row.status = Some(AgentStatus::Attention);
+    row.attention_reason = Some("independent approval".into());
+    receive_tracking_snapshot(&mut app, &mut requests, row, false, 2, 1);
+    assert!(render_to_text(&mut app, 120, 24).contains("Waiting for input"));
+
+    app.handle_event(AppEvent::SessionsChanged);
+    let mut overlay = hook_session_info_for_test("resumed");
+    overlay.status = Some(AgentStatus::Working);
+    overlay.current_tool = Some("hook tool".into());
+    overlay.pane_session_id = Some("resumed-pane".into());
+    overlay.non_hook_activity = Some(SessionActivity {
+        status: Some(AgentStatus::Idle),
+        last_activity_at_ms: Some(1),
+        ..Default::default()
+    });
+    receive_tracking_snapshot(&mut app, &mut requests, overlay, true, 1, 1);
+    let resumed = &app.current_tab().agents_view.snapshot.as_ref().unwrap()[0];
+    assert_eq!(resumed.status, Some(AgentStatus::Idle));
+    assert_eq!(resumed.current_tool, None);
+    assert_eq!(resumed.pane_session_id.as_deref(), Some("resumed-pane"));
+    assert!(render_to_text(&mut app, 120, 24).contains("Idle"));
+
+    app.handle_event(AppEvent::SessionsChanged);
+    let mut acp = session_info_for_test("acp-chat");
+    acp.origin = Some(SessionOrigin::AgentPane);
+    acp.status = Some(AgentStatus::Working);
+    app.sessions_origin_filter = OriginFilter::All;
+    receive_tracking_snapshot(&mut app, &mut requests, acp, false, 2, 1);
+    assert!(render_to_text(&mut app, 120, 24).contains("Active"));
+}
+
+#[test]
+fn session_tracking_off_snapshot_resume_dispatch_and_pane_assignment_show_idle() {
+    use crate::agent_sessions::{AgentStatus, SessionEvent};
+    let _locale = crate::test_support::lock_locale();
+    rust_i18n::set_locale("en-US");
+    let (mut app, mut requests) = test_app_with_master_rx();
+    app.apply_session_management_host_config(false);
+    app.current_tab_mut().current_view = View::Agents;
+    let mut history = session_info_for_test("saved-history");
+    history.status = Some(AgentStatus::Historical);
+    history.cwd = std::env::current_dir().unwrap();
+    app.current_tab_mut().agents_view.snapshot = Some(vec![history]);
+    app.current_tab_mut().agents_list_state.select(Some(0));
+    app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+    assert_eq!(
+        app.last_dispatched_command_for_test().unwrap().kind,
+        DispatchedCommandKind::NewTabResume
+    );
+    assert_eq!(
+        app.current_tab().agents_view.snapshot.as_ref().unwrap()[0].status,
+        Some(AgentStatus::Idle)
+    );
+    assert!(render_to_text(&mut app, 120, 24).contains("Idle"));
+    app.handle_event(AppEvent::AgentSessionEvent(
+        SessionEvent::ResumePaneAssigned {
+            key: "saved-history".into(),
+            pane_session_id: "shell-pane".into(),
+        },
+    ));
+    app.handle_event(session_tracking_hook(
+        "saved-history",
+        "agent.session.start",
+    ));
+    app.handle_event(session_tracking_hook("saved-history", "agent.notification"));
+    app.set_session_management_enabled(true);
+    app.set_session_management_enabled(false);
+    assert!(render_to_text(&mut app, 120, 24).contains("Idle"));
+    assert_eq!(
+        app.current_tab().agents_view.snapshot.as_ref().unwrap()[0]
+            .pane_session_id
+            .as_deref(),
+        Some("shell-pane")
+    );
+    app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+    assert_eq!(
+        app.last_dispatched_command_for_test().unwrap().kind,
+        DispatchedCommandKind::FocusPane
+    );
+    while requests.try_recv().is_ok() {}
+    app.handle_event(AppEvent::SessionsChanged);
+    let mut resumed = session_info_for_test("saved-history");
+    resumed.pane_session_id = Some("shell-pane".into());
+    receive_tracking_snapshot(&mut app, &mut requests, resumed, false, 3, 1);
+    assert!(render_to_text(&mut app, 120, 24).contains("Idle"));
 }
 
 #[test]

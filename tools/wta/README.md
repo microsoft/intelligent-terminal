@@ -151,22 +151,23 @@ snapshots.
 ## Session Tracking
 
 The **Sessions** toggle in Settings > Agents (`agentSessionManagementEnabled`)
-controls live shell-agent session tracking. Saving Off takes effect without
-restarting the master, helpers, or agent CLIs: hook-driven status updates stop,
-filesystem watchers unsubscribe, and stale activity/attention indicators are
-cleared. Existing hooks remain installed, but automatic hook reconciliation is
-disabled.
+controls session hooks, not session management as a whole. Saving Off disables
+hook-driven tracking and automatic hook reconciliation without restarting the
+master, helpers, or agent CLIs. Existing hooks remain installed.
 
-While tracking is Off, the Sessions view shows a muted notice with a **Turn on**
+While hooks are Off, the Sessions view shows a muted notice with a **Turn on**
 action. The action saves the global preference; organization policy can disable
-it. No Off notice is shown while tracking is On, including empty, loading, or
+it. No Off notice is shown while hooks are On, including empty, loading, or
 searching views.
 
-History browsing, manual refresh, focus/resume, agent-pane chat, Autofix, and
-delegation remain available. Pane bindings needed for routing and lifecycle
-cleanup are retained; an unknown activity state does not mean a session ended.
-Turning tracking back on resumes observation without replaying file records
-written while it was off.
+Hook-independent behavior is unchanged: Resume and delegation already know
+their session IDs and still establish and display **Idle**, even while hooks
+are Off. File-based status monitoring, history polling, Focus/Resume, native
+pane lifecycle cleanup, ACP chat/progress/usage, and Autofix continue normally.
+Only hook-derived activity is discarded; any independently known status is
+preserved rather than hidden or replaced with an unknown state. Turning hooks
+back On accepts new hook events without replaying ignored ones or restarting
+the independent file watcher.
 
 ## Debug Panel
 

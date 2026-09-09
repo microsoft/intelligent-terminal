@@ -973,6 +973,15 @@ impl AgentSessionRegistry {
         }
     }
 
+    pub(crate) fn set_location(&mut self, key: &str, location: SessionLocation) {
+        if let Some(entry) = self.sessions.get_mut(key) {
+            if entry.location != location {
+                entry.location = location;
+                self.dirty = true;
+            }
+        }
+    }
+
     /// Returns true if the given pane GUID is currently bound to an agent
     /// CLI session (Copilot/Claude/Gemini/...). Used by the autofix path to
     /// suppress "command failed" classification when the failing process is

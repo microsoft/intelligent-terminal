@@ -328,12 +328,7 @@ impl App {
     }
 
     fn register_born_bound_session(&mut self, event: crate::agent_sessions::SessionEvent) {
-        if !self.session_management_enabled {
-            if let crate::agent_sessions::SessionEvent::SessionStarted { key, .. } = &event {
-                self.untracked_external_sessions.insert(key.clone());
-            }
-        }
-        self.agent_sessions.apply(event.clone());
+        self.apply_independent_session_event(event.clone());
         if self
             .master_request_tx
             .send(crate::protocol::acp::client::MasterExtRequest::SessionBornBound { event })
@@ -2066,7 +2061,7 @@ impl App {
                     "AgentSessionEvent posted from background callback"
                 );
                 let hook_event = ev.clone();
-                self.agent_sessions.apply(ev);
+                self.apply_independent_session_event(ev);
                 self.publish_session_hook(hook_event);
             }
             AppEvent::AliveSnapshotLoaded(items) => {
@@ -2104,6 +2099,8 @@ impl App {
             }
             AppEvent::AliveSessionAdded(info) => {
                 let sid = info.session_id.clone();
+                self.hook_tracked_sessions.remove(sid.0.as_ref());
+                self.untracked_external_sessions.remove(sid.0.as_ref());
                 tracing::debug!(
                     target: "alive_mirror",
                     session_id = %sid.0,
@@ -2124,6 +2121,8 @@ impl App {
                 });
             }
             AppEvent::AliveSessionRemoved(sid) => {
+                self.hook_tracked_sessions.remove(sid.0.as_ref());
+                self.untracked_external_sessions.remove(sid.0.as_ref());
                 tracing::debug!(
                     target: "alive_mirror",
                     session_id = %sid.0,
@@ -2153,12 +2152,14 @@ impl App {
                     .iter()
                     .map(|(s, p)| (s.as_str(), p.as_deref()))
                     .collect();
+                for (session_id, _) in &pairs {
+                    self.hook_tracked_sessions.remove(*session_id);
+                    self.untracked_external_sessions.remove(*session_id);
+                }
                 self.agent_sessions.apply_alive_session_join(pairs);
             }
             AppEvent::SessionsChanged => {
-                if self.session_management_enabled {
-                    self.schedule_agents_refetch_for_open_views();
-                }
+                self.schedule_agents_refetch_for_open_views();
             }
             AppEvent::WtListenerReady => {
                 self.refresh_session_management_host_config();
@@ -2269,6 +2270,11 @@ impl App {
                 }
 
                 if method == "agent_event" {
+                    // This is the raw hook boundary, not the independent ACP,
+                    // Resume/born-bound, or native terminal lifecycle paths.
+                    if !self.session_management_enabled {
+                        return;
+                    }
                     let session_id = params
                         .get("agent_session_id")
                         .and_then(|value| value.as_str())
@@ -2276,47 +2282,41 @@ impl App {
                     let own_session = self.session_to_tab.contains_key(session_id)
                         || self.agent_sessions.origin_for_pane(&pane_id)
                             == Some(crate::agent_sessions::SessionOrigin::AgentPane);
-                    let event = params.get("event").and_then(|value| value.as_str());
-                    if !self.session_management_enabled && !own_session {
-                        // Keep lifecycle bindings for Focus and agent-exit
-                        // autofix exclusion, but never consume shell activity
-                        // or attention notifications while tracking is off.
-                        if !matches!(
-                            event,
-                            Some(
-                                "agent.session.started"
-                                    | "agent.session.start"
-                                    | "agent.session.stopped"
-                                    | "agent.session.end"
-                            )
-                        ) {
-                            return;
-                        }
-                    }
                     // Helper-local only. Master subscribes to the same COM
                     // broadcast and routes the hook into the authoritative
                     // registry itself (`handle_master_wt_event`), so forwarding
                     // from here would apply one real hook once per live helper.
                     // What the helper still needs is the pane→session binding
                     // its OSC 133;A and autofix paths read synchronously.
-                    let _ = route_agent_event_to_registry(
+                    let hook_activity = &mut self.hook_tracked_sessions;
+                    let untracked = &mut self.untracked_external_sessions;
+                    let _ = route_agent_event_to_registry_with_activity_sink(
                         &mut self.agent_sessions,
                         pane_id.as_str(),
                         &params,
-                    );
-                    if !own_session {
-                        if let Some(key) = self.agent_sessions.key_for_pane(&pane_id) {
-                            if self.session_management_enabled {
-                                self.untracked_external_sessions.remove(&key);
-                            } else {
-                                self.untracked_external_sessions.insert(key);
+                        |key, previous, _| {
+                            if !own_session {
+                                hook_activity
+                                    .entry(key.to_string())
+                                    .or_insert_with(|| {
+                                        previous
+                                            .filter(|session| {
+                                                !matches!(
+                                                    session.status,
+                                                    crate::agent_sessions::AgentStatus::Ended
+                                                        | crate::agent_sessions::AgentStatus::Historical
+                                                )
+                                            })
+                                            .map(independent_session_activity)
+                                    });
+                                untracked.remove(key);
                             }
-                        }
-                    }
+                        },
+                    );
                     // Diagnostics aid: surface the raw event payload in the
                     // active tab's chat so a developer can correlate hook
                     // wire-format with registry behavior. Off by default.
-                    if self.log_agent_events && (self.session_management_enabled || own_session) {
+                    if self.log_agent_events {
                         let detail = serde_json::to_string(&params)
                             .unwrap_or_else(|_| "<unserializable>".to_string());
                         self.current_tab_mut()
@@ -3133,7 +3133,7 @@ impl App {
                             let event = crate::agent_sessions::SessionEvent::PaneClosed {
                                 pane_session_id: pane_id.clone(),
                             };
-                            self.agent_sessions.apply(event.clone());
+                            self.apply_independent_session_event(event.clone());
                             self.publish_session_hook(event);
                             tracing::info!(
                                 target: "helper_wt_event",
@@ -3152,7 +3152,7 @@ impl App {
                                 pane_session_id: pane_id.clone(),
                                 reason,
                             };
-                            self.agent_sessions.apply(event.clone());
+                            self.apply_independent_session_event(event.clone());
                             self.publish_session_hook(event);
                         }
                         _ => {}
@@ -3219,7 +3219,7 @@ impl App {
                         let event = crate::agent_sessions::SessionEvent::PaneClosed {
                             pane_session_id: pane_id.clone(),
                         };
-                        self.agent_sessions.apply(event.clone());
+                        self.apply_independent_session_event(event.clone());
                         self.publish_session_hook(event);
                     }
                 }

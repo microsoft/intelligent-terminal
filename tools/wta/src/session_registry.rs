@@ -1011,6 +1011,16 @@ pub fn build_session_hook_response(applied: bool) -> acp::schema::v1::ExtRespons
     acp::schema::v1::ExtResponse::new(raw.into())
 }
 
+/// Independently established activity retained beneath a hook-derived update.
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
+pub struct SessionActivity {
+    pub status: Option<AgentStatus>,
+    pub current_tool: Option<String>,
+    pub attention_reason: Option<String>,
+    pub last_error: Option<String>,
+    pub last_activity_at_ms: Option<u64>,
+}
+
 /// One row in the registry. Mirrors the fields the session management view needs:
 ///
 /// * `session_id` — the ACP session GUID (truth-source key).
@@ -1090,6 +1100,11 @@ pub struct SessionInfo {
     /// Master-internal — never serialized, exactly like [`Self::bound_pid`].
     #[serde(skip)]
     pub born_bound_pane: bool,
+    /// Hook overlays must not erase independently established Resume/ACP/file status.
+    #[serde(default)]
+    pub hook_activity: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub non_hook_activity: Option<SessionActivity>,
 }
 
 impl SessionInfo {
@@ -1112,6 +1127,8 @@ impl SessionInfo {
             location: crate::agent_sessions::SessionLocation::Host,
             bound_pid: None,
             born_bound_pane: false,
+            hook_activity: false,
+            non_hook_activity: None,
         }
     }
 
@@ -1132,8 +1149,19 @@ impl SessionInfo {
             )
     }
 
-    pub(crate) fn clear_shell_activity(&mut self) {
-        if self.origin == Some(SessionOrigin::AgentPane)
+    fn activity(&self) -> SessionActivity {
+        SessionActivity {
+            status: self.status.clone(),
+            current_tool: self.current_tool.clone(),
+            attention_reason: self.attention_reason.clone(),
+            last_error: self.last_error.clone(),
+            last_activity_at_ms: self.last_activity_at_ms,
+        }
+    }
+
+    pub(crate) fn clear_hook_activity(&mut self) {
+        if !self.hook_activity
+            || self.origin == Some(SessionOrigin::AgentPane)
             || matches!(
                 self.status,
                 Some(AgentStatus::Ended | AgentStatus::Historical)
@@ -1141,11 +1169,13 @@ impl SessionInfo {
         {
             return;
         }
-        self.status = None;
-        self.current_tool = None;
-        self.attention_reason = None;
-        self.last_error = None;
-        self.last_activity_at_ms = None;
+        let baseline = self.non_hook_activity.take().unwrap_or_default();
+        self.status = baseline.status;
+        self.current_tool = baseline.current_tool;
+        self.attention_reason = baseline.attention_reason;
+        self.last_error = baseline.last_error;
+        self.last_activity_at_ms = baseline.last_activity_at_ms;
+        self.hook_activity = false;
     }
 }
 
@@ -1187,6 +1217,8 @@ pub fn agent_session_to_session_info(s: &AgentSession) -> SessionInfo {
         // Master-internal: only master's own `ResumePaneAssigned` reducer
         // marks a pane binding as WTA-owned.
         born_bound_pane: false,
+        hook_activity: false,
+        non_hook_activity: None,
     }
 }
 
@@ -1241,8 +1273,10 @@ pub trait SessionRegistry: Send + Sync {
     /// Apply a helper-observed session event to the master-side reducer state.
     async fn apply_event(&self, ev: SessionEvent) -> bool;
 
-    /// Forget observed shell activity without retiring sessions or their bindings.
-    async fn clear_shell_activity(&self);
+    async fn apply_hook_event(&self, ev: SessionEvent) -> bool;
+
+    /// Discard hook activity while preserving independently established state.
+    async fn clear_hook_activity(&self);
 
     /// Update origin metadata on an existing row.
     async fn set_origin(&self, sid: &acp::schema::v1::SessionId, origin: SessionOrigin) -> bool;
@@ -1448,13 +1482,18 @@ impl SessionRegistry for InMemoryRegistry {
 
     async fn apply_event(&self, ev: SessionEvent) -> bool {
         let mut guard = self.inner.lock().await;
-        apply_event_locked(&mut guard, ev)
+        apply_sourced_event(&mut guard, ev, false)
     }
 
-    async fn clear_shell_activity(&self) {
+    async fn apply_hook_event(&self, ev: SessionEvent) -> bool {
+        let mut guard = self.inner.lock().await;
+        apply_sourced_event(&mut guard, ev, true)
+    }
+
+    async fn clear_hook_activity(&self) {
         let mut guard = self.inner.lock().await;
         for row in guard.sessions.values_mut() {
-            row.clear_shell_activity();
+            row.clear_hook_activity();
         }
     }
 
@@ -1601,6 +1640,88 @@ fn end_entry(state: &mut RegistryState, sid: &acp::schema::v1::SessionId, now: u
 }
 
 #[allow(dead_code)] // Task B calls this via SessionRegistry::apply_event.
+fn apply_sourced_event(state: &mut RegistryState, ev: SessionEvent, from_hooks: bool) -> bool {
+    let sid = match &ev {
+        SessionEvent::SessionStarted { key, .. }
+        | SessionEvent::ToolStarting { key, .. }
+        | SessionEvent::ToolCompleted { key }
+        | SessionEvent::Notification { key, .. }
+        | SessionEvent::SessionStopped { key, .. }
+        | SessionEvent::ResumeDispatched { key }
+        | SessionEvent::ResumePaneAssigned { key, .. } => {
+            Some(acp::schema::v1::SessionId::new(key.clone()))
+        }
+        SessionEvent::ConnectionFailed {
+            pane_session_id, ..
+        }
+        | SessionEvent::PaneClosed { pane_session_id } => state
+            .active_by_pane
+            .get(&pane_key(pane_session_id))
+            .cloned(),
+    };
+    let binding = matches!(
+        ev,
+        SessionEvent::SessionStarted { .. }
+            | SessionEvent::ResumeDispatched { .. }
+            | SessionEvent::ResumePaneAssigned { .. }
+    );
+    let baseline = sid
+        .as_ref()
+        .and_then(|sid| state.sessions.get(sid))
+        .and_then(|row| {
+            if row.hook_activity {
+                row.non_hook_activity.clone()
+            } else if matches!(
+                row.status,
+                Some(
+                    AgentStatus::Idle
+                        | AgentStatus::Working
+                        | AgentStatus::Attention
+                        | AgentStatus::Error
+                )
+            ) {
+                Some(row.activity())
+            } else {
+                None
+            }
+        });
+    let mut changed = apply_event_locked(state, ev);
+    let Some(row) = sid.as_ref().and_then(|sid| state.sessions.get_mut(sid)) else {
+        return changed;
+    };
+    if row.origin == Some(SessionOrigin::AgentPane)
+        || matches!(
+            row.status,
+            Some(AgentStatus::Ended | AgentStatus::Historical)
+        )
+    {
+        row.hook_activity = false;
+        row.non_hook_activity = None;
+    } else if from_hooks {
+        if changed {
+            row.hook_activity = true;
+            row.non_hook_activity = baseline;
+        }
+    } else if binding && row.hook_activity {
+        // A delayed resume binding must retain its independent Idle baseline
+        // without clobbering a newer hook update while hooks are enabled.
+        row.non_hook_activity
+            .get_or_insert_with(|| SessionActivity {
+                status: Some(AgentStatus::Idle),
+                last_activity_at_ms: Some(now_ms()),
+                ..Default::default()
+            });
+    } else if changed {
+        row.hook_activity = false;
+        row.non_hook_activity = None;
+    } else if binding && row.status.is_none() {
+        row.status = Some(AgentStatus::Idle);
+        row.last_activity_at_ms = Some(now_ms());
+        changed = true;
+    }
+    changed
+}
+
 fn apply_event_locked(state: &mut RegistryState, ev: SessionEvent) -> bool {
     let now = now_ms();
     let ev = match ev {
@@ -2071,7 +2192,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn session_tracking_clear_preserves_pane_index_and_accepts_fresh_completion() {
+    async fn session_tracking_clear_preserves_independent_idle_and_pane_index() {
         let registry = InMemoryRegistry::new();
         let sid = acp::schema::v1::SessionId::new("tracking");
         registry
@@ -2084,15 +2205,15 @@ mod tests {
             })
             .await;
         registry
-            .apply_event(SessionEvent::ToolStarting {
+            .apply_hook_event(SessionEvent::ToolStarting {
                 key: "tracking".into(),
                 tool_name: "shell".into(),
             })
             .await;
-        registry.clear_shell_activity().await;
+        registry.clear_hook_activity().await;
         let row = registry.lookup(&sid).await.unwrap();
         assert!(row.has_live_binding());
-        assert_eq!(row.status, None);
+        assert_eq!(row.status, Some(AgentStatus::Idle));
         assert_eq!(row.current_tool, None);
         assert_eq!(row.title.as_deref(), Some("Session title"));
         registry
@@ -2104,7 +2225,7 @@ mod tests {
             registry.lookup(&sid).await.unwrap().status,
             Some(AgentStatus::Idle)
         );
-        registry.clear_shell_activity().await;
+        registry.clear_hook_activity().await;
         assert!(
             registry
                 .apply_event(SessionEvent::PaneClosed {
@@ -2146,8 +2267,11 @@ mod tests {
                 pane_session_id: "resume-pane".into(),
             })
             .await;
-        registry.clear_shell_activity().await;
-        assert_eq!(registry.lookup(&resumed).await.unwrap().status, None);
+        registry.clear_hook_activity().await;
+        assert_eq!(
+            registry.lookup(&resumed).await.unwrap().status,
+            Some(AgentStatus::Idle)
+        );
         registry
             .apply_event(SessionEvent::SessionStarted {
                 key: "bootstrap".into(),
@@ -2179,6 +2303,38 @@ mod tests {
             .await
             .expect("session present");
         assert_eq!(found, original);
+    }
+
+    #[tokio::test]
+    async fn hook_activity_round_trip_restores_independent_resume_idle() {
+        let registry = InMemoryRegistry::new();
+        let sid = acp::schema::v1::SessionId::new("known-resume");
+        registry
+            .apply_event(SessionEvent::SessionStarted {
+                key: sid.to_string(),
+                cli_source: CliSource::Codex,
+                pane_session_id: "known-pane".into(),
+                cwd: PathBuf::from(r"C:\repo"),
+                title: "Known resume".into(),
+            })
+            .await;
+        let independent = registry.lookup(&sid).await.unwrap();
+        registry
+            .apply_hook_event(SessionEvent::Notification {
+                key: sid.to_string(),
+                message: "hook-only attention".into(),
+            })
+            .await;
+        let row = registry.lookup(&sid).await.unwrap();
+        assert!(row.hook_activity);
+        let mut wire: SessionInfo =
+            serde_json::from_str(&serde_json::to_string(&row).unwrap()).unwrap();
+        wire.clear_hook_activity();
+        assert_eq!(wire.status, Some(AgentStatus::Idle));
+        assert_eq!(wire.current_tool, independent.current_tool);
+        assert_eq!(wire.last_activity_at_ms, independent.last_activity_at_ms);
+        assert!(wire.has_live_binding());
+        assert!(!wire.hook_activity);
     }
 
     #[tokio::test]
@@ -2899,6 +3055,8 @@ mod tests {
             location: crate::agent_sessions::SessionLocation::Host,
             bound_pid: None,
             born_bound_pane: false,
+            hook_activity: false,
+            non_hook_activity: None,
         };
 
         let json = serde_json::to_string(&row).expect("serialize SessionInfo");
@@ -2968,6 +3126,8 @@ mod tests {
             location: crate::agent_sessions::SessionLocation::Host,
             bound_pid: None,
             born_bound_pane: false,
+            hook_activity: false,
+            non_hook_activity: None,
         };
         let raw = build_sessions_list_response(vec![row.clone()], true, 0, 0);
         let parsed = parse_sessions_list_response(&raw).expect("response parses");
@@ -3319,6 +3479,8 @@ mod tests {
             location: crate::agent_sessions::SessionLocation::Host,
             bound_pid: None,
             born_bound_pane: false,
+            hook_activity: false,
+            non_hook_activity: None,
         })
         .await;
         reg.apply_event(crate::agent_sessions::SessionEvent::ResumeDispatched {
