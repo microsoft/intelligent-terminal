@@ -3,7 +3,7 @@
 setup.title.agent_missing: "لم يتم العثور على عامل الذكاء الاصطناعي"
 setup.title.agent_error: "فشل الاتصال بعامل الذكاء الاصطناعي"
 setup.title.installing_copilot: "جارٍ تثبيت GitHub Copilot"
-setup.title.starting_copilot: "جارٍ بدء GitHub Copilot"
+setup.title.starting_agent: "جارٍ بدء %{agent}"
 setup.title.not_available: "عامل الذكاء الاصطناعي غير متوفر"
 setup.title.sign_in: "تسجيل الدخول مطلوب"
 

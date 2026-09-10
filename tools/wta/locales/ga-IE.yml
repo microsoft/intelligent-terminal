@@ -3,7 +3,7 @@
 setup.title.agent_missing: "Nír aimsíodh an gníomhaire"
 setup.title.agent_error: "Theip ar cheangal an ghníomhaire"
 setup.title.installing_copilot: "GitHub Copilot á shuiteáil"
-setup.title.starting_copilot: "GitHub Copilot á thosú"
+setup.title.starting_agent: "%{agent} á thosú"
 setup.title.not_available: "Níl an gníomhaire ar fáil"
 setup.title.sign_in: "Sínigh isteach riachtanach"
 

@@ -3,7 +3,7 @@
 setup.title.agent_missing: "Agente não encontrado"
 setup.title.agent_error: "Falha na ligação ao agente"
 setup.title.installing_copilot: "A instalar GitHub Copilot"
-setup.title.starting_copilot: "A iniciar GitHub Copilot"
+setup.title.starting_agent: "A iniciar %{agent}"
 setup.title.not_available: "Agente não disponível"
 setup.title.sign_in: "Início de sessão necessário"
 

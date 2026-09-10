@@ -3,7 +3,7 @@
 setup.title.agent_missing: "Kaore i kitea te agent"
 setup.title.agent_error: "I rahua te hononga agent"
 setup.title.installing_copilot: "Kei te tāuta i a GitHub Copilot"
-setup.title.starting_copilot: "Kei te tīmata i a GitHub Copilot"
+setup.title.starting_agent: "Kei te tīmata i a %{agent}"
 setup.title.not_available: "Kaore te agent e watea"
 setup.title.sign_in: "Me takiuru"
 

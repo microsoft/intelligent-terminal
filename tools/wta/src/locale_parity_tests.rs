@@ -209,7 +209,7 @@ mod tests {
                 locale_value(&path, "setup.subtitle.connection_failed").unwrap_or_default();
             let installing =
                 locale_value(&path, "setup.title.installing_copilot").unwrap_or_default();
-            let starting = locale_value(&path, "setup.title.starting_copilot").unwrap_or_default();
+            let starting = locale_value(&path, "setup.title.starting_agent").unwrap_or_default();
             let installing_cli =
                 locale_value(&path, "setup.status.installing_copilot_cli").unwrap_or_default();
             let detection_timed_out =
@@ -217,7 +217,9 @@ mod tests {
 
             if !connection_failed.contains("%{agent}")
                 || !installing.contains("GitHub Copilot")
-                || !starting.contains("GitHub Copilot")
+                || !starting.contains("%{agent}")
+                || starting.contains("...")
+                || starting.contains('…')
                 || !installing_cli.contains("GitHub Copilot")
                 || !installing_cli.contains("CLI")
                 || !detection_timed_out.contains("Copilot")

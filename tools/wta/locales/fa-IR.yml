@@ -3,7 +3,7 @@
 setup.title.agent_missing: "عامل هوش مصنوعی یافت نشد"
 setup.title.agent_error: "اتصال به عامل هوش مصنوعی ناموفق بود"
 setup.title.installing_copilot: "در حال نصب GitHub Copilot"
-setup.title.starting_copilot: "در حال راه‌اندازی GitHub Copilot"
+setup.title.starting_agent: "در حال راه‌اندازی %{agent}"
 setup.title.not_available: "عامل هوش مصنوعی در دسترس نیست"
 setup.title.sign_in: "ورود به سیستم لازم است"
 

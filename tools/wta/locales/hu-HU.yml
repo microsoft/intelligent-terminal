@@ -3,7 +3,7 @@
 setup.title.agent_missing: "Az ügynök nem található"
 setup.title.agent_error: "Az ügynökhöz való kapcsolódás sikertelen"
 setup.title.installing_copilot: "A GitHub Copilot telepítése"
-setup.title.starting_copilot: "A GitHub Copilot indítása"
+setup.title.starting_agent: "A %{agent} indítása"
 setup.title.not_available: "Az ügynök nem érhető el"
 setup.title.sign_in: "Bejelentkezés szükséges"
 

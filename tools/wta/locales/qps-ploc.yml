@@ -3,7 +3,7 @@
 setup.title.agent_missing: "[Àğéñţ ñöţ ƒöûñď!!]"
 setup.title.agent_error: "[Àğéñţ çöññéçţïöñ ƒåïĺéď!!]"
 setup.title.installing_copilot: "[Îñśţåĺĺïñğ GitHub Copilot!!!!]"
-setup.title.starting_copilot: "[Ŝţåŕţïñğ GitHub Copilot!!!!]"
+setup.title.starting_agent: "[Ŝţåŕţïñğ %{agent}!!!!]"
 setup.title.not_available: "[Àğéñţ ñöţ åṽåïĺåƀĺé!!]"
 setup.title.sign_in: "[Ŝïğñ ïñ ŕéqûïŕéď!!]"
 

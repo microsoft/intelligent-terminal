@@ -3,7 +3,7 @@
 setup.title.agent_missing: "Không tìm thấy tác nhân AI"
 setup.title.agent_error: "Kết nối tới tác nhân AI thất bại"
 setup.title.installing_copilot: "Đang cài đặt GitHub Copilot"
-setup.title.starting_copilot: "Đang khởi động GitHub Copilot"
+setup.title.starting_agent: "Đang khởi động %{agent}"
 setup.title.not_available: "Tác nhân AI không khả dụng"
 setup.title.sign_in: "Cần đăng nhập"
 

@@ -6,7 +6,7 @@
 setup.title.agent_missing: "Ագենտը չի գտնվել"
 setup.title.agent_error: "Ագենտին միանալը ձախողվել է"
 setup.title.installing_copilot: "GitHub Copilot ծրագրի տեղադրում"
-setup.title.starting_copilot: "GitHub Copilot ծրագրի գործարկում"
+setup.title.starting_agent: "%{agent} ծրագրի գործարկում"
 # Title when the configured AI agent is not available
 setup.title.not_available: "Ագենտը հասանելի չէ"
 # Title when authentication is required

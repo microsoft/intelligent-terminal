@@ -3,7 +3,7 @@
 setup.title.agent_missing: "Cha deach an àidseant a lorg"
 setup.title.agent_error: "Dh'fhàillig ceangal an àidseant"
 setup.title.installing_copilot: "A' stàladh GitHub Copilot"
-setup.title.starting_copilot: "A' tòiseachadh GitHub Copilot"
+setup.title.starting_agent: "A' tòiseachadh %{agent}"
 setup.title.not_available: "Chan eil an àidseant ri fhaighinn"
 setup.title.sign_in: "Feumaidh tu clàradh a-steach"
 

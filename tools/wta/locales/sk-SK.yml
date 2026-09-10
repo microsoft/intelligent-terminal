@@ -3,7 +3,7 @@
 setup.title.agent_missing: "Agenta sa nepodarilo nájsť"
 setup.title.agent_error: "Pripojenie k agentovi zlyhalo"
 setup.title.installing_copilot: "Inštalácia GitHub Copilot"
-setup.title.starting_copilot: "Spúšťanie GitHub Copilot"
+setup.title.starting_agent: "Spúšťanie %{agent}"
 setup.title.not_available: "Agent nie je k dispozícii"
 setup.title.sign_in: "Vyžaduje sa prihlásenie"
 

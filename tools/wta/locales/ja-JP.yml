@@ -2,7 +2,7 @@
 setup.title.agent_missing: "エージェントが見つかりません"
 setup.title.agent_error: "エージェントへの接続に失敗しました"
 setup.title.installing_copilot: "GitHub Copilot をインストールしています"
-setup.title.starting_copilot: "GitHub Copilot を起動しています"
+setup.title.starting_agent: "%{agent} を起動しています"
 setup.title.not_available: "エージェントを利用できません"
 setup.title.sign_in: "サインインが必要です"
 

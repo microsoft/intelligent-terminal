@@ -3,7 +3,7 @@
 setup.title.agent_missing: "Agenten ble ikke funnet"
 setup.title.agent_error: "Tilkoblingen til agenten mislyktes"
 setup.title.installing_copilot: "Installerer GitHub Copilot"
-setup.title.starting_copilot: "Starter GitHub Copilot"
+setup.title.starting_agent: "Starter %{agent}"
 setup.title.not_available: "Agenten er ikke tilgjengelig"
 setup.title.sign_in: "Pålogging kreves"
 

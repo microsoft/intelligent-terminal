@@ -3,7 +3,7 @@
 setup.title.agent_missing: "Agen AI tidak ditemukan"
 setup.title.agent_error: "Koneksi agen AI gagal"
 setup.title.installing_copilot: "Memasang GitHub Copilot"
-setup.title.starting_copilot: "Memulai GitHub Copilot"
+setup.title.starting_agent: "Memulai %{agent}"
 setup.title.not_available: "Agen AI tidak tersedia"
 setup.title.sign_in: "Perlu masuk"
 

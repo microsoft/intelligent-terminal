@@ -3,7 +3,7 @@
 setup.title.agent_missing: "הסוכן לא נמצא"
 setup.title.agent_error: "החיבור לסוכן נכשל"
 setup.title.installing_copilot: "מתקין את GitHub Copilot"
-setup.title.starting_copilot: "מפעיל את GitHub Copilot"
+setup.title.starting_agent: "מפעיל את %{agent}"
 setup.title.not_available: "הסוכן אינו זמין"
 setup.title.sign_in: "נדרשת כניסה"
 

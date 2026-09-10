@@ -3,7 +3,7 @@
 setup.title.agent_missing: "ኤጅንት አልተገኙም"
 setup.title.agent_error: "ኤጅንት ግንኙነት አልተሳካም"
 setup.title.installing_copilot: "GitHub Copilot በመጫን ላይ"
-setup.title.starting_copilot: "GitHub Copilot በማስጀመር ላይ"
+setup.title.starting_agent: "%{agent} በማስጀመር ላይ"
 setup.title.not_available: "ኤጅንት አይገኙም"
 setup.title.sign_in: "መግባት ያስፈልጋል"
 

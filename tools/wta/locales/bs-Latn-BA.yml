@@ -3,7 +3,7 @@
 setup.title.agent_missing: "Agent nije pronađen"
 setup.title.agent_error: "Povezivanje s agentom nije uspjelo"
 setup.title.installing_copilot: "Instaliranje GitHub Copilot"
-setup.title.starting_copilot: "Pokretanje GitHub Copilot"
+setup.title.starting_agent: "Pokretanje %{agent}"
 setup.title.not_available: "Agent nije dostupan"
 setup.title.sign_in: "Potrebna je prijava"
 

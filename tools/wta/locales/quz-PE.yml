@@ -3,7 +3,7 @@
 setup.title.agent_missing: "Mana agente tarikusqachu"
 setup.title.agent_error: "Agente t'inkiynin mana allinchu"
 setup.title.installing_copilot: "GitHub Copilot churachkan"
-setup.title.starting_copilot: "GitHub Copilot qallarisichkan"
+setup.title.starting_agent: "%{agent} qallarisichkan"
 setup.title.not_available: "Agente mana kanchu"
 setup.title.sign_in: "Qallariy yaykuna"
 

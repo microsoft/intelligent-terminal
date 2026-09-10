@@ -3,7 +3,7 @@
 setup.title.agent_missing: "Ejen AI tidak ditemui"
 setup.title.agent_error: "Sambungan ejen AI gagal"
 setup.title.installing_copilot: "Memasang GitHub Copilot"
-setup.title.starting_copilot: "Memulakan GitHub Copilot"
+setup.title.starting_agent: "Memulakan %{agent}"
 setup.title.not_available: "Ejen AI tidak tersedia"
 setup.title.sign_in: "Log masuk diperlukan"
 

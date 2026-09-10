@@ -3,7 +3,7 @@
 setup.title.agent_missing: "Aracı bulunamadı"
 setup.title.agent_error: "Aracı bağlantısı başarısız oldu"
 setup.title.installing_copilot: "GitHub Copilot yükleniyor"
-setup.title.starting_copilot: "GitHub Copilot başlatılıyor"
+setup.title.starting_agent: "%{agent} başlatılıyor"
 setup.title.not_available: "Aracı kullanılamıyor"
 setup.title.sign_in: "Oturum açma gerekli"
 

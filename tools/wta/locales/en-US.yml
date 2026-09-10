@@ -6,7 +6,7 @@
 setup.title.agent_missing: "Agent not found"
 setup.title.agent_error: "Agent connection failed"
 setup.title.installing_copilot: "Installing GitHub Copilot"  # Setup title shown while installing the Copilot CLI. {Locked="GitHub Copilot"}
-setup.title.starting_copilot: "Starting GitHub Copilot"  # Setup title shown while reconnecting after installation. {Locked="GitHub Copilot"}
+setup.title.starting_agent: "Starting %{agent}"  # Setup title shown while reconnecting to an AI agent. Keep the %{agent} placeholder.
 # Title when the configured AI agent is not available
 setup.title.not_available: "Agent not available"
 # Title when authentication is required

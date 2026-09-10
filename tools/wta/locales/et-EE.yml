@@ -3,7 +3,7 @@
 setup.title.agent_missing: "Agenti ei leitud"
 setup.title.agent_error: "Agendiga ühenduse loomine nurjus"
 setup.title.installing_copilot: "Rakenduse GitHub Copilot installimine"
-setup.title.starting_copilot: "Rakenduse GitHub Copilot käivitamine"
+setup.title.starting_agent: "Rakenduse %{agent} käivitamine"
 setup.title.not_available: "Agent pole saadaval"
 setup.title.sign_in: "Sisselogimine nõutav"
 
