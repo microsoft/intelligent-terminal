@@ -2,6 +2,8 @@
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 setup.title.agent_missing: "Agenta ni mogoče najti"
 setup.title.agent_error: "Povezava z agentom ni uspela"
+setup.title.installing_copilot: "Installing GitHub Copilot"
+setup.title.starting_copilot: "Starting GitHub Copilot"
 setup.title.not_available: "Agent ni na voljo"
 setup.title.sign_in: "Zahtevana je prijava"
 
@@ -10,6 +12,7 @@ setup.subtitle.copilot_missing: "Vaš agent \"%{agent}\" ni nameščen. Sledite 
 setup.subtitle.agent_missing: "Vaš agent \"%{agent}\" ni nameščen. Znova ga namestite ročno in nato poskusite znova. Za zamenjavo agenta pojdite v Inteligentni Terminal Settings > Agent."
 setup.subtitle.copilot_auth: "Vaš agent \"%{agent}\" zahteva preverjanje pristnosti. Sledite spodnjim korakom za prijavo. Za zamenjavo agenta pojdite v Inteligentni Terminal Settings > Agent."
 setup.subtitle.agent_auth: "Vaš agent \"%{agent}\" zahteva preverjanje pristnosti. Prijavite se prek agenta in nato spodaj izberite \"Prijavil/a sem se\". Za zamenjavo agenta pojdite v Inteligentni Terminal Settings > Agent."
+setup.subtitle.connection_failed: "We couldn't start %{agent}."
 
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 
@@ -18,7 +21,10 @@ setup.option.install_hint: "(Nameščen bo samodejno)"
 setup.option.signin: "Prijava v %{agent}"
 setup.option.retry_detection: "Poskusite znova"
 setup.option.retry_auth: "Prijavil/a sem se — poskusite se znova povezati"
+setup.option.retry_connection: "Try connecting again"
 setup.status.installing: "Nameščanje..."
+setup.status.installing_copilot_cli: "Installing GitHub Copilot CLI..."
+setup.status.connecting_agent: "Connecting to agent..."
 setup.status.install_failed: "Namestitev ni uspela: "
 setup.status.installing_winget: " Nameščanje prek winget..."
 setup.error.install_timed_out: "The installation timed out. Select \"Try again\" before starting another installation."

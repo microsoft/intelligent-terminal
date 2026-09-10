@@ -2,6 +2,8 @@
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 setup.title.agent_missing: "Agjenti nuk u gjet"
 setup.title.agent_error: "Lidhja me agjentin dështoi"
+setup.title.installing_copilot: "Installing GitHub Copilot"
+setup.title.starting_copilot: "Starting GitHub Copilot"
 setup.title.not_available: "Agjenti nuk është i disponueshëm"
 setup.title.sign_in: "Kërkohet identifikimi"
 
@@ -10,6 +12,7 @@ setup.subtitle.copilot_missing: "Agjenti juaj \"%{agent}\" nuk është i instalu
 setup.subtitle.agent_missing: "Agjenti juaj \"%{agent}\" nuk është i instaluar. Riinstalojeni manualisht dhe provoni përsëri. Për të ndryshuar agjentin, shkoni te Terminali inteligjent Settings > Agent."
 setup.subtitle.copilot_auth: "Agjenti juaj \"%{agent}\" kërkon vërtetim. Ndiqni hapat më poshtë për t'u identifikuar. Për të ndryshuar agjentin, shkoni te Terminali inteligjent Settings > Agent."
 setup.subtitle.agent_auth: "Agjenti juaj \"%{agent}\" kërkon vërtetim. Identifikohuni përmes agjentit dhe zgjidhni \"U identifikova\" më poshtë. Për të ndryshuar agjentin, shkoni te Terminali inteligjent Settings > Agent."
+setup.subtitle.connection_failed: "We couldn't start %{agent}."
 
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 
@@ -18,7 +21,10 @@ setup.option.install_hint: "(Do të instalohet automatikisht)"
 setup.option.signin: "Identifikohu te %{agent}"
 setup.option.retry_detection: "Provoni përsëri"
 setup.option.retry_auth: "U identifikova — provoni të lidheni përsëri"
+setup.option.retry_connection: "Try connecting again"
 setup.status.installing: "Po instalohet..."
+setup.status.installing_copilot_cli: "Installing GitHub Copilot CLI..."
+setup.status.connecting_agent: "Connecting to agent..."
 setup.status.install_failed: "Instalimi dështoi: "
 setup.status.installing_winget: " Po instalohet përmes winget..."
 setup.error.install_timed_out: "The installation timed out. Select \"Try again\" before starting another installation."

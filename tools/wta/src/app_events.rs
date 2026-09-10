@@ -630,6 +630,8 @@ impl App {
                 image_supported,
                 session_capabilities_ready,
             } => {
+                self.initial_startup_presentation_eligible = false;
+                self.reconnect_after_transport_retired = false;
                 self.pending_yolo_reconciles.clear();
                 self.agent_name = name;
                 self.agent_model = model;
@@ -1302,9 +1304,7 @@ impl App {
                             install_url: String::new(),
                             auth_hint: profile.auth_hint.to_string(),
                         },
-                        install_in_progress: false,
-                        install_log: Vec::new(),
-                        install_error: None,
+                        phase: SetupPhase::Ready,
                         options,
                         title: t!("setup.title.sign_in").into_owned(),
                         subtitle: if profile.id == "copilot" {
@@ -1319,6 +1319,15 @@ impl App {
                     let tab = self.current_tab_mut();
                     tab.messages.retain(|m| !matches!(m, ChatMessage::Error(_)));
                 } else {
+                    if session_id.is_none()
+                        && self
+                            .setup
+                            .as_ref()
+                            .is_some_and(|setup| setup.phase == SetupPhase::Reconnecting)
+                    {
+                        self.show_connection_failure_setup(message);
+                        return;
+                    }
                     if !session_survives {
                         self.state = ConnectionState::Failed(message.clone());
                         self.publish_agent_status();
@@ -1356,6 +1365,42 @@ impl App {
                     }
                 }
             }
+            AppEvent::InitialAgentStartupFailed { failure, message } => {
+                if !self.initial_startup_presentation_eligible {
+                    if !self.initial_transport_superseded
+                        && self.state == ConnectionState::Connected
+                    {
+                        self.state = ConnectionState::Failed(message.clone());
+                        self.publish_agent_status();
+                        let tab = self.current_tab_mut();
+                        let duplicate = matches!(
+                            tab.messages.last(),
+                            Some(ChatMessage::Error(previous)) if previous == &message
+                        );
+                        if !duplicate {
+                            tab.messages.push(ChatMessage::Error(message));
+                        }
+                        return;
+                    }
+                    tracing::debug!(
+                        target: "preflight",
+                        failure_class = failure.class(),
+                        "ignoring superseded initial startup failure"
+                    );
+                    return;
+                }
+                if self.preflight_setup_active
+                    || self.setup.as_ref().is_some_and(|setup| setup.is_busy())
+                {
+                    tracing::info!(
+                        target: "preflight",
+                        failure_class = failure.class(),
+                        "initial startup failure is covered by the active setup flow"
+                    );
+                    return;
+                }
+                self.show_connection_failure_setup(message);
+            }
             AppEvent::MasterDisconnected => {
                 let agent_rebind_pending = matches!(
                     &self.agent_reconnect_state,
@@ -1370,6 +1415,34 @@ impl App {
                             target: "helper",
                             "master disconnected during auth recovery; explicit restart barrier owns reconnect"
                         );
+                        return;
+                    }
+                    let preserve_setup = self.mode == AppMode::Setup
+                        && (self.preflight_setup_active
+                            || self
+                                .setup
+                                .as_ref()
+                                .is_some_and(SetupState::preserves_install_setup_on_disconnect));
+                    if preserve_setup {
+                        tracing::warn!(
+                            target: "helper",
+                            agent_id = %self.current_agent_id,
+                            source = %self.current_agent_source,
+                            "master disconnected during setup; preserving the active setup operation"
+                        );
+                        if self
+                            .setup
+                            .as_ref()
+                            .is_some_and(|setup| setup.phase == SetupPhase::Reconnecting)
+                        {
+                            self.reconnect_after_transport_retired = true;
+                            self.state = ConnectionState::Connecting(
+                                t!("connection.reconnecting").into_owned(),
+                            );
+                        } else {
+                            self.state = ConnectionState::Disconnected;
+                        }
+                        self.publish_agent_status();
                         return;
                     }
                     tracing::warn!(
@@ -1938,6 +2011,14 @@ impl App {
                 }
             }
             AppEvent::PreflightComplete(result) => {
+                if !self.initial_startup_presentation_eligible {
+                    tracing::debug!(
+                        target: "preflight",
+                        stale_agent = %result.agent_id,
+                        "ignoring superseded startup preflight result"
+                    );
+                    return;
+                }
                 if !matches!(&self.agent_reconnect_state, AgentReconnectState::Idle) {
                     tracing::debug!(
                         target: "preflight",
@@ -2012,6 +2093,9 @@ impl App {
                 mut wsl_sources,
             } => {
                 if generation != self.agent_source_probe_generation {
+                    return;
+                }
+                if self.setup.as_ref().is_some_and(SetupState::is_busy) {
                     return;
                 }
                 self.refresh_available_agents();
@@ -3322,10 +3406,6 @@ impl App {
                     return;
                 }
 
-                if let Some(ref mut setup) = self.setup {
-                    setup.install_in_progress = false;
-                }
-
                 let installed = matches!(
                     outcome,
                     crate::agent_check::AgentInstallOutcome::Installed
@@ -3334,27 +3414,43 @@ impl App {
                 if installed {
                     let status = crate::agent_check::recheck_agent(&agent_id);
                     if status.cli_found {
+                        if self.state == ConnectionState::Connected
+                            && self.current_agent_id.eq_ignore_ascii_case(&agent_id)
+                        {
+                            self.notify_confirmed_agent_available(&agent_id);
+                            return;
+                        }
                         self.reconnect_confirmed_available_agent(&agent_id);
                         return;
                     }
                 }
 
-                if let Some(ref mut setup) = self.setup {
+                if let Some(setup) = self.setup.as_mut() {
                     let current_status = Some(crate::agent_check::recheck_agent(&agent_id));
                     setup.options = build_setup_options(&setup.reason, current_status.as_ref());
-                    setup.install_error = Some(match outcome {
-                        crate::agent_check::AgentInstallOutcome::Failed(error) => error,
-                        crate::agent_check::AgentInstallOutcome::TimedOut => {
-                            t!("setup.error.install_timed_out").into_owned()
+                    setup.selected_index = setup
+                        .selected_index
+                        .min(setup.options.len().saturating_sub(1));
+                    let (kind, message) = match outcome {
+                        crate::agent_check::AgentInstallOutcome::Failed(error) => {
+                            (SetupFailureKind::Install, error)
                         }
-                        crate::agent_check::AgentInstallOutcome::DetectionTimedOut => {
-                            t!("setup.error.install_detection_timed_out").into_owned()
-                        }
+                        crate::agent_check::AgentInstallOutcome::TimedOut => (
+                            SetupFailureKind::Install,
+                            t!("setup.error.install_timed_out").into_owned(),
+                        ),
+                        crate::agent_check::AgentInstallOutcome::DetectionTimedOut => (
+                            SetupFailureKind::Detection,
+                            t!("setup.error.install_detection_timed_out").into_owned(),
+                        ),
                         crate::agent_check::AgentInstallOutcome::Installed
-                        | crate::agent_check::AgentInstallOutcome::AlreadyAvailable => {
-                            t!("setup.error.install_failed", agent = agent_id.as_str()).into_owned()
-                        }
-                    });
+                        | crate::agent_check::AgentInstallOutcome::AlreadyAvailable => (
+                            SetupFailureKind::Detection,
+                            t!("setup.error.install_failed", agent = agent_id.as_str())
+                                .into_owned(),
+                        ),
+                    };
+                    setup.phase = SetupPhase::Failed { kind, message };
                 }
             }
             AppEvent::LoginProgress {

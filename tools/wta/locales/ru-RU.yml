@@ -2,6 +2,8 @@
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 setup.title.agent_missing: "Агент не найден"
 setup.title.agent_error: "Сбой подключения к агенту"
+setup.title.installing_copilot: "Installing GitHub Copilot"
+setup.title.starting_copilot: "Starting GitHub Copilot"
 setup.title.not_available: "Агент недоступен"
 setup.title.sign_in: "Требуется вход"
 
@@ -10,6 +12,7 @@ setup.subtitle.copilot_missing: "Ваш агент \"%{agent}\" не устан�
 setup.subtitle.agent_missing: "Ваш агент \"%{agent}\" не установлен. Переустановите его вручную и повторите попытку. Чтобы сменить агента, перейдите в Интеллектуальный Терминал Settings > Agent."
 setup.subtitle.copilot_auth: "Ваш агент \"%{agent}\" требует аутентификации. Выполните указанные ниже шаги для входа. Чтобы сменить агента, перейдите в Интеллектуальный Терминал Settings > Agent."
 setup.subtitle.agent_auth: "Ваш агент \"%{agent}\" требует аутентификации. Войдите через агента, затем выберите \"Я вошёл\" ниже. Чтобы сменить агента, перейдите в Интеллектуальный Терминал Settings > Agent."
+setup.subtitle.connection_failed: "We couldn't start %{agent}."
 
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 
@@ -18,7 +21,10 @@ setup.option.install_hint: "(Будет установлен автоматич�
 setup.option.signin: "Войти в %{agent}"
 setup.option.retry_detection: "Повторить попытку"
 setup.option.retry_auth: "Я вошёл — попробовать подключиться снова"
+setup.option.retry_connection: "Try connecting again"
 setup.status.installing: "Установка..."
+setup.status.installing_copilot_cli: "Installing GitHub Copilot CLI..."
+setup.status.connecting_agent: "Connecting to agent..."
 setup.status.install_failed: "Ошибка установки: "
 setup.status.installing_winget: " Установка через winget..."
 setup.error.install_timed_out: "The installation timed out. Select \"Try again\" before starting another installation."

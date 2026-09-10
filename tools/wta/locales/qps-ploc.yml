@@ -2,6 +2,8 @@
 # {Locked="Intelligent Terminal"} - product name, do not translate
 setup.title.agent_missing: "[Àğéñţ ñöţ ƒöûñď!!]"
 setup.title.agent_error: "[Àğéñţ çöññéçţïöñ ƒåïĺéď!!]"
+setup.title.installing_copilot: "Installing GitHub Copilot"
+setup.title.starting_copilot: "Starting GitHub Copilot"
 setup.title.not_available: "[Àğéñţ ñöţ åṽåïĺåƀĺé!!]"
 setup.title.sign_in: "[Ŝïğñ ïñ ŕéqûïŕéď!!]"
 
@@ -11,6 +13,7 @@ setup.subtitle.copilot_missing: "[Ÿöûŕ åğéñţ \"%{agent}\" ïś ñöţ �
 setup.subtitle.agent_missing: "[Ÿöûŕ åğéñţ \"%{agent}\" ïś ñöţ ïñśţåĺĺéď. Ṗĺéåśé ïñśţåĺĺ ïţ ḿåñûåĺĺÿ, ţĥéñ ţŕÿ åğåïñ. Ţö śŵïţçĥ åğéñţś, ğö ţö Intelligent Terminal Settings > Agent.!!!! !!!! !!!! !!!! !!!!]"
 setup.subtitle.copilot_auth: "[Ÿöûŕ åğéñţ \"%{agent}\" ŕéqûïŕéś åûţĥéñţïçåţïöñ. Ƒöĺĺöŵ ţĥé śţéṗś ƀéĺöŵ ţö śïğñ ïñ. Ţö śŵïţçĥ åğéñţś, ğö ţö Intelligent Terminal Settings > Agent.!!!! !!!! !!!! !!!! !!!!]"
 setup.subtitle.agent_auth: "[Ÿöûŕ åğéñţ \"%{agent}\" ŕéqûïŕéś åûţĥéñţïçåţïöñ. Ṗĺéåśé śïğñ ïñ ṽïå ţĥé åğéñţ, ţĥéñ śéĺéçţ \"Ï'ṽé śïğñéð ïñ\" ɓéĺöŵ. Ţö śŵïţçĥ åğéñţś, ğö ţö Intelligent Terminal Settings > Agent.!!!! !!!! !!!! !!!! !!!!]"
+setup.subtitle.connection_failed: "We couldn't start %{agent}."
 
 # {Locked="Intelligent Terminal"}, {Locked="Settings"}
 
@@ -19,7 +22,10 @@ setup.option.install_hint: "[(Ŵïĺĺ ƀé ïñśţåĺĺéď åûţöḿåţï
 setup.option.signin: "[Ŝïğñ ïñ ţö %{agent}!!]"
 setup.option.retry_detection: "[Ţŕÿ åğåïñ!!]"
 setup.option.retry_auth: "[Ï'ṽé śïğñéð ïñ — ţŕÿ çöññéçţïñğ åğåïñ!!!! !!!! !!!!]"
+setup.option.retry_connection: "Try connecting again"
 setup.status.installing: "[Îñśţåĺĺïñğ...!!]"
+setup.status.installing_copilot_cli: "Installing GitHub Copilot CLI..."
+setup.status.connecting_agent: "Connecting to agent..."
 setup.status.install_failed: "[Îñśţåĺĺ ƒåïĺéď: !!]"
 setup.status.installing_winget: "[ Îñśţåĺĺïñğ ṽïå winget...!!!! !!!!]"
 setup.error.install_timed_out: "The installation timed out. Select \"Try again\" before starting another installation."

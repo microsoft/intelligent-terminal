@@ -2,6 +2,8 @@
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 setup.title.agent_missing: "Agenti ei leitud"
 setup.title.agent_error: "Agendiga ühenduse loomine nurjus"
+setup.title.installing_copilot: "Installing GitHub Copilot"
+setup.title.starting_copilot: "Starting GitHub Copilot"
 setup.title.not_available: "Agent pole saadaval"
 setup.title.sign_in: "Sisselogimine nõutav"
 
@@ -10,6 +12,7 @@ setup.subtitle.copilot_missing: "Teie agent \"%{agent}\" pole installitud. Järg
 setup.subtitle.agent_missing: "Teie agent \"%{agent}\" pole installitud. Installige see käsitsi uuesti ja proovige seejärel uuesti. Agendi vahetamiseks avage Nutikas Terminal Settings > Agent."
 setup.subtitle.copilot_auth: "Teie agent \"%{agent}\" nõuab autentimist. Järgige allolevaid juhiseid sisselogimiseks. Agendi vahetamiseks avage Nutikas Terminal Settings > Agent."
 setup.subtitle.agent_auth: "Teie agent \"%{agent}\" nõuab autentimist. Logige sisse agendi kaudu ja valige seejärel allpool \"Olen sisse loginud\". Agendi vahetamiseks avage Nutikas Terminal Settings > Agent."
+setup.subtitle.connection_failed: "We couldn't start %{agent}."
 
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 
@@ -18,7 +21,10 @@ setup.option.install_hint: "(Installitakse automaatselt)"
 setup.option.signin: "Logi sisse teenusesse %{agent}"
 setup.option.retry_detection: "Proovi uuesti"
 setup.option.retry_auth: "Olen sisse loginud — proovi uuesti ühendust luua"
+setup.option.retry_connection: "Try connecting again"
 setup.status.installing: "Installimine..."
+setup.status.installing_copilot_cli: "Installing GitHub Copilot CLI..."
+setup.status.connecting_agent: "Connecting to agent..."
 setup.status.install_failed: "Installimine nurjus: "
 setup.status.installing_winget: " Installimine winget kaudu..."
 setup.error.install_timed_out: "The installation timed out. Select \"Try again\" before starting another installation."

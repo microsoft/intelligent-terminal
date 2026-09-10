@@ -2,6 +2,8 @@
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 setup.title.agent_missing: "Cha deach an àidseant a lorg"
 setup.title.agent_error: "Dh'fhàillig ceangal an àidseant"
+setup.title.installing_copilot: "Installing GitHub Copilot"
+setup.title.starting_copilot: "Starting GitHub Copilot"
 setup.title.not_available: "Chan eil an àidseant ri fhaighinn"
 setup.title.sign_in: "Feumaidh tu clàradh a-steach"
 
@@ -10,6 +12,7 @@ setup.subtitle.copilot_missing: "Chan eil an àidseant agad \"%{agent}\" air a s
 setup.subtitle.agent_missing: "Chan eil an àidseant agad \"%{agent}\" air a stàladh. Ath-stàlaich e le làimh, an uair sin feuch a-rithist. Airson àidseant atharrachadh, rach gu Tèirmineal Glic Settings > Agent."
 setup.subtitle.copilot_auth: "Feumaidh an àidseant agad \"%{agent}\" dearbhadh. Lean na ceumannan gu h-ìosal gus clàradh a-steach. Airson àidseant atharrachadh, rach gu Tèirmineal Glic Settings > Agent."
 setup.subtitle.agent_auth: "Feumaidh an àidseant agad \"%{agent}\" dearbhadh. Clàraich a-steach tron àidseant, an uair sin tagh \"Chlàraich mi a-steach\" gu h-ìosal. Airson àidseant atharrachadh, rach gu Tèirmineal Glic Settings > Agent."
+setup.subtitle.connection_failed: "We couldn't start %{agent}."
 
 # {Locked=qps-ploc,qps-ploca,qps-plocm}, {Locked="Settings"}
 
@@ -18,7 +21,10 @@ setup.option.install_hint: "(Thèid a stàladh gu fèin-obrachail)"
 setup.option.signin: "Clàraich a-steach gu %{agent}"
 setup.option.retry_detection: "Feuch a-rithist"
 setup.option.retry_auth: "Chlàraich mi a-steach — feuch ceangal a-rithist"
+setup.option.retry_connection: "Try connecting again"
 setup.status.installing: "Ga stàladh..."
+setup.status.installing_copilot_cli: "Installing GitHub Copilot CLI..."
+setup.status.connecting_agent: "Connecting to agent..."
 setup.status.install_failed: "Dh'fhàillig an stàladh: "
 setup.status.installing_winget: " Ga stàladh tro winget..."
 setup.error.install_timed_out: "The installation timed out. Select \"Try again\" before starting another installation."

@@ -2,6 +2,8 @@
 # {Locked="Intelligent Terminal"} - product name, do not translate
 setup.title.agent_missing: "Agenten vart ikkje funnen"
 setup.title.agent_error: "Tilkoplinga til agenten mislukkast"
+setup.title.installing_copilot: "Installing GitHub Copilot"
+setup.title.starting_copilot: "Starting GitHub Copilot"
 setup.title.not_available: "Agenten er ikkje tilgjengeleg"
 setup.title.sign_in: "Pålogging er påkravd"
 
@@ -10,6 +12,7 @@ setup.subtitle.copilot_missing: "Agenten din \"%{agent}\" er ikkje installert. F
 setup.subtitle.agent_missing: "Agenten din \"%{agent}\" er ikkje installert. Installer han på nytt manuelt, og prøv deretter igjen. For å byte agent, gå til Intelligent Terminal Settings > Agent."
 setup.subtitle.copilot_auth: "Agenten din \"%{agent}\" krev autentisering. Følg stega nedanfor for å logge inn. For å byte agent, gå til Intelligent Terminal Settings > Agent."
 setup.subtitle.agent_auth: "Agenten din \"%{agent}\" krev autentisering. Logg inn via agenten, og vel deretter \"Eg har logga inn\" nedanfor. For å byte agent, gå til Intelligent Terminal Settings > Agent."
+setup.subtitle.connection_failed: "We couldn't start %{agent}."
 
 # {Locked="Intelligent Terminal"}
 
@@ -18,7 +21,10 @@ setup.option.install_hint: "(Vert installert automatisk)"
 setup.option.signin: "Logg inn på %{agent}"
 setup.option.retry_detection: "Prøv igjen"
 setup.option.retry_auth: "Eg har logga inn — prøv å kople til igjen"
+setup.option.retry_connection: "Try connecting again"
 setup.status.installing: "Installerer..."
+setup.status.installing_copilot_cli: "Installing GitHub Copilot CLI..."
+setup.status.connecting_agent: "Connecting to agent..."
 setup.status.install_failed: "Installasjonen mislukkast: "
 setup.status.installing_winget: " Installerer via winget..."
 setup.error.install_timed_out: "The installation timed out. Select \"Try again\" before starting another installation."

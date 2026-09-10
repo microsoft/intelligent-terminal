@@ -2,6 +2,8 @@
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 setup.title.agent_missing: "Δεν βρέθηκε ο παράγοντας"
 setup.title.agent_error: "Η σύνδεση με τον παράγοντα απέτυχε"
+setup.title.installing_copilot: "Installing GitHub Copilot"
+setup.title.starting_copilot: "Starting GitHub Copilot"
 setup.title.not_available: "Ο παράγοντας δεν είναι διαθέσιμος"
 setup.title.sign_in: "Απαιτείται σύνδεση"
 
@@ -10,6 +12,7 @@ setup.subtitle.copilot_missing: "Ο παράγοντάς σας \"%{agent}\" δ�
 setup.subtitle.agent_missing: "Ο παράγοντάς σας \"%{agent}\" δεν είναι εγκατεστημένος. Εγκαταστήστε τον ξανά χειροκίνητα και δοκιμάστε ξανά. Για αλλαγή παράγοντα, μεταβείτε στο Έξυπνο Τερματικό Settings > Agent."
 setup.subtitle.copilot_auth: "Ο παράγοντάς σας \"%{agent}\" απαιτεί έλεγχο ταυτότητας. Ακολουθήστε τα παρακάτω βήματα για να συνδεθείτε. Για αλλαγή παράγοντα, μεταβείτε στο Έξυπνο Τερματικό Settings > Agent."
 setup.subtitle.agent_auth: "Ο παράγοντάς σας \"%{agent}\" απαιτεί έλεγχο ταυτότητας. Συνδεθείτε μέσω του παράγοντα και επιλέξτε \"Έχω συνδεθεί\" παρακάτω. Για αλλαγή παράγοντα, μεταβείτε στο Έξυπνο Τερματικό Settings > Agent."
+setup.subtitle.connection_failed: "We couldn't start %{agent}."
 
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 
@@ -18,7 +21,10 @@ setup.option.install_hint: "(Θα εγκατασταθεί αυτόματα)"
 setup.option.signin: "Σύνδεση στο %{agent}"
 setup.option.retry_detection: "Δοκιμάστε ξανά"
 setup.option.retry_auth: "Έχω συνδεθεί — δοκιμάστε ξανά τη σύνδεση"
+setup.option.retry_connection: "Try connecting again"
 setup.status.installing: "Εγκατάσταση..."
+setup.status.installing_copilot_cli: "Installing GitHub Copilot CLI..."
+setup.status.connecting_agent: "Connecting to agent..."
 setup.status.install_failed: "Η εγκατάσταση απέτυχε: "
 setup.status.installing_winget: " Εγκατάσταση μέσω winget..."
 setup.error.install_timed_out: "The installation timed out. Select \"Try again\" before starting another installation."

@@ -2,6 +2,8 @@
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 setup.title.agent_missing: "Agent nicht gefunden"
 setup.title.agent_error: "Verbindung zum Agenten fehlgeschlagen"
+setup.title.installing_copilot: "Installing GitHub Copilot"
+setup.title.starting_copilot: "Starting GitHub Copilot"
 setup.title.not_available: "Agent nicht verfügbar"
 setup.title.sign_in: "Anmeldung erforderlich"
 
@@ -10,6 +12,7 @@ setup.subtitle.copilot_missing: "Ihr Agent \"%{agent}\" ist nicht installiert. F
 setup.subtitle.agent_missing: "Ihr Agent \"%{agent}\" ist nicht installiert. Bitte installieren Sie ihn manuell neu und versuchen Sie es erneut. Um den Agenten zu wechseln, gehen Sie zu Intelligentes Terminal-Einstellungen > Agent."
 setup.subtitle.copilot_auth: "Ihr Agent \"%{agent}\" erfordert eine Authentifizierung. Führen Sie die folgenden Schritte aus, um sich anzumelden. Um den Agenten zu wechseln, gehen Sie zu Intelligentes Terminal-Einstellungen > Agent."
 setup.subtitle.agent_auth: "Ihr Agent \"%{agent}\" erfordert eine Authentifizierung. Bitte melden Sie sich über den Agent an und wählen Sie dann unten \"Ich habe mich angemeldet\" aus. Um den Agenten zu wechseln, gehen Sie zu Intelligentes Terminal-Einstellungen > Agent."
+setup.subtitle.connection_failed: "We couldn't start %{agent}."
 
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 
@@ -18,7 +21,10 @@ setup.option.install_hint: "(Wird automatisch installiert)"
 setup.option.signin: "Bei %{agent} anmelden"
 setup.option.retry_detection: "Erneut versuchen"
 setup.option.retry_auth: "Ich habe mich angemeldet — erneut verbinden"
+setup.option.retry_connection: "Try connecting again"
 setup.status.installing: "Installation läuft..."
+setup.status.installing_copilot_cli: "Installing GitHub Copilot CLI..."
+setup.status.connecting_agent: "Connecting to agent..."
 setup.status.install_failed: "Installation fehlgeschlagen: "
 setup.status.installing_winget: " Installation über winget..."
 setup.error.install_timed_out: "The installation timed out. Select \"Try again\" before starting another installation."

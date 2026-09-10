@@ -799,10 +799,6 @@ async fn run_acp_app(
                                 error = %e,
                                 "run_acp_client_over_pipe failed"
                             );
-                            // Notify the App before the visible failure so a
-                            // queued Agent rebind can continue with its
-                            // latest target instead of becoming stranded.
-                            let _ = event_tx_for_pipe.send(app::AppEvent::AgentClientFailed);
                             // Recover the typed classification: an auth error
                             // attached at the handshake `new_session` site survives
                             // the `?`-collapse into `anyhow` via downcast, so it
@@ -820,11 +816,19 @@ async fn run_acp_app(
                                 } => detail.clone(),
                                 _ => format!("helper ACP transport failed: {e:#}"),
                             };
-                            let _ = event_tx_for_pipe.send(app::AppEvent::AgentError {
-                                session_id: None,
-                                failure,
-                                message,
-                            });
+                            if failure.is_auth() {
+                                let _ =
+                                    event_tx_for_pipe.send(app::AppEvent::AgentClientFailed);
+                                let _ = event_tx_for_pipe.send(app::AppEvent::AgentError {
+                                    session_id: None,
+                                    failure,
+                                    message,
+                                });
+                            } else {
+                                let _ = event_tx_for_pipe.send(
+                                    app::AppEvent::InitialAgentStartupFailed { failure, message },
+                                );
+                            }
                         }
                     }
                 });
@@ -1173,9 +1177,7 @@ async fn run_acp_app(
                         install_url: String::new(),
                         auth_hint: String::new(),
                     },
-                    install_in_progress: false,
-                    install_log: Vec::new(),
-                    install_error: None,
+                    phase: app::SetupPhase::Ready,
                     options,
                     title,
                     subtitle,

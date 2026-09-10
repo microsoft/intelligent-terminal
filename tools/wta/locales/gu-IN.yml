@@ -2,6 +2,8 @@
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 setup.title.agent_missing: "એજન્ટ મળ્યો નથી"
 setup.title.agent_error: "એજન્ટ જોડાણ નિષ્ફળ થયું"
+setup.title.installing_copilot: "Installing GitHub Copilot"
+setup.title.starting_copilot: "Starting GitHub Copilot"
 setup.title.not_available: "એજન્ટ ઉપલબ્ધ નથી"
 setup.title.sign_in: "સાઇન ઇન જરૂરી છે"
 
@@ -10,6 +12,7 @@ setup.subtitle.copilot_missing: "તમારો એજન્ટ \"%{agent}\" �
 setup.subtitle.agent_missing: "તમારો એજન્ટ \"%{agent}\" ઇન્સ્ટોલ થયેલો નથી. કૃપા કરીને જાતે ફરીથી ઇન્સ્ટોલ કરો, પછી ફરી પ્રયાસ કરો. એજન્ટ બદલવા ઇન્ટેલિજન્ટ ટર્મિનલ Settings > Agent પર જાઓ."
 setup.subtitle.copilot_auth: "તમારા એજન્ટ \"%{agent}\" ને પ્રમાણીકરણ જરૂરી છે. સાઇન ઇન કરવા નીચેના પગલાં અનુસરો. એજન્ટ બદલવા ઇન્ટેલિજન્ટ ટર્મિનલ Settings > Agent પર જાઓ."
 setup.subtitle.agent_auth: "તમારા એજન્ટ \"%{agent}\" ને પ્રમાણીકરણની જરૂર છે. કૃપા કરીને એજન્ટ દ્વારા સાઇન ઇન કરો, પછી નીચે \"મેં સાઇન ઇન કર્યું\" પસંદ કરો. એજન્ટ બદલવા માટે ઇન્ટેલિજન્ટ ટર્મિનલ Settings > Agent પર જાઓ."
+setup.subtitle.connection_failed: "We couldn't start %{agent}."
 
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 
@@ -18,7 +21,10 @@ setup.option.install_hint: "(આપોઆપ ઇન્સ્ટોલ થશે)
 setup.option.signin: "%{agent} માં સાઇન ઇન કરો"
 setup.option.retry_detection: "ફરી પ્રયાસ કરો"
 setup.option.retry_auth: "મેં સાઇન ઇન કર્યું — ફરી કનેક્ટ કરવાનો પ્રયાસ કરો"
+setup.option.retry_connection: "Try connecting again"
 setup.status.installing: "ઇન્સ્ટોલ થઈ રહ્યું છે..."
+setup.status.installing_copilot_cli: "Installing GitHub Copilot CLI..."
+setup.status.connecting_agent: "Connecting to agent..."
 setup.status.install_failed: "ઇન્સ્ટોલ નિષ્ફળ: "
 setup.status.installing_winget: " winget દ્વારા ઇન્સ્ટોલ થઈ રહ્યું છે..."
 setup.error.install_timed_out: "The installation timed out. Select \"Try again\" before starting another installation."

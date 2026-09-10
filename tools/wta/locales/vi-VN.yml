@@ -2,6 +2,8 @@
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 setup.title.agent_missing: "Không tìm thấy tác nhân AI"
 setup.title.agent_error: "Kết nối tới tác nhân AI thất bại"
+setup.title.installing_copilot: "Installing GitHub Copilot"
+setup.title.starting_copilot: "Starting GitHub Copilot"
 setup.title.not_available: "Tác nhân AI không khả dụng"
 setup.title.sign_in: "Cần đăng nhập"
 
@@ -10,6 +12,7 @@ setup.subtitle.copilot_missing: "Tác nhân AI \"%{agent}\" của bạn chưa đ
 setup.subtitle.agent_missing: "Tác nhân AI \"%{agent}\" của bạn chưa được cài đặt. Vui lòng cài đặt lại thủ công, sau đó thử lại. Để chuyển tác nhân AI, hãy đi tới Đầu cuối thông minh Settings > Agent."
 setup.subtitle.copilot_auth: "Tác nhân AI \"%{agent}\" của bạn yêu cầu xác thực. Thực hiện theo các bước bên dưới để đăng nhập. Để chuyển tác nhân AI, hãy đi tới Đầu cuối thông minh Settings > Agent."
 setup.subtitle.agent_auth: "Tác nhân AI \"%{agent}\" của bạn yêu cầu xác thực. Vui lòng đăng nhập qua tác nhân AI, sau đó chọn \"Tôi đã đăng nhập\" bên dưới. Để chuyển tác nhân AI, hãy đi tới Đầu cuối thông minh Settings > Agent."
+setup.subtitle.connection_failed: "We couldn't start %{agent}."
 
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 
@@ -18,7 +21,10 @@ setup.option.install_hint: "(Sẽ được cài đặt tự động)"
 setup.option.signin: "Đăng nhập vào %{agent}"
 setup.option.retry_detection: "Thử lại"
 setup.option.retry_auth: "Tôi đã đăng nhập — thử kết nối lại"
+setup.option.retry_connection: "Try connecting again"
 setup.status.installing: "Đang cài đặt..."
+setup.status.installing_copilot_cli: "Installing GitHub Copilot CLI..."
+setup.status.connecting_agent: "Connecting to agent..."
 setup.status.install_failed: "Cài đặt thất bại: "
 setup.status.installing_winget: " Đang cài đặt qua winget..."
 setup.error.install_timed_out: "The installation timed out. Select \"Try again\" before starting another installation."

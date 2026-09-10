@@ -2,6 +2,8 @@
 # {Locked="Intelligent Terminal"} - product name, do not translate
 setup.title.agent_missing: "[!! Age_nt not found !!]"
 setup.title.agent_error: "[!! Age_nt connection failed !!]"
+setup.title.installing_copilot: "Installing GitHub Copilot"
+setup.title.starting_copilot: "Starting GitHub Copilot"
 setup.title.not_available: "[!! Age_nt not available !!]"
 setup.title.sign_in: "[!! Sig_n in required !!]"
 
@@ -10,6 +12,7 @@ setup.subtitle.copilot_missing: "[!! You_r agent \"%{agent}\" is not installed. 
 setup.subtitle.agent_missing: "[!! You_r agent \"%{agent}\" is not installed. Please install it manually, then try again. To switch agents, go to Intelligent Terminal Settings > Agent. !!]"
 setup.subtitle.copilot_auth: "[!! You_r agent \"%{agent}\" requires authentication. Follow the steps below to sign in. To switch agents, go to Intelligent Terminal Settings > Agent. !!]"
 setup.subtitle.agent_auth: "[!! You_r agent \"%{agent}\" requires authentication. Please sign in via the agent, then select \"I've_ signed in\" below. To switch agents, go to Intelligent Terminal Settings > Agent. !!]"
+setup.subtitle.connection_failed: "We couldn't start %{agent}."
 
 # {Locked="Intelligent Terminal"}, {Locked="Settings"}
 
@@ -18,7 +21,10 @@ setup.option.install_hint: "[!! (Wi_ll be installed automatically) !!]"
 setup.option.signin: "[!! Sig_n in to %{agent} !!]"
 setup.option.retry_detection: "[!! Try_ again !!]"
 setup.option.retry_auth: "[!! I've_ signed in — try connecting again !!]"
+setup.option.retry_connection: "Try connecting again"
 setup.status.installing: "[!! Ins_talling... !!]"
+setup.status.installing_copilot_cli: "Installing GitHub Copilot CLI..."
+setup.status.connecting_agent: "Connecting to agent..."
 setup.status.install_failed: "[!! Ins_tall failed:  !!]"
 setup.status.installing_winget: "[!!  In_stalling via winget... !!]"
 setup.error.install_timed_out: "The installation timed out. Select \"Try again\" before starting another installation."

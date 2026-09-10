@@ -2,6 +2,8 @@
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 setup.title.agent_missing: "ບໍ່ພົບ agent"
 setup.title.agent_error: "ການເຊື່ອມຕໍ່ agent ລົ້ມເຫລວ"
+setup.title.installing_copilot: "Installing GitHub Copilot"
+setup.title.starting_copilot: "Starting GitHub Copilot"
 setup.title.not_available: "Agent ບໍ່ພ້ອມໃຊ້ງານ"
 setup.title.sign_in: "ຕ້ອງການເຂົ້າສູ່ລະບົບ"
 
@@ -10,6 +12,7 @@ setup.subtitle.copilot_missing: "Agent ຂອງທ່ານ \"%{agent}\" ບໍ
 setup.subtitle.agent_missing: "Agent ຂອງທ່ານ \"%{agent}\" ບໍ່ໄດ້ຕິດຕັ້ງຢູ່། ກະລຸນາຕິດຕັ້ງໃໝ່ດ້ວຍມື ແລ້ວລອງໃໝ່། ເພື່ອປ່ຽນ agent, ໄປທີ່ ເທອຮ໌ມິນັລອັດຊະລິຍະ Settings > Agent།"
 setup.subtitle.copilot_auth: "Agent ຂອງທ່ານ \"%{agent}\" ຕ້ອງການການຢືນຢັນຕົວຕົນ། ໃຫ້ເຮັດຕາມຂັ້ນຕອນຂ້າງລຸ່ມເພື່ອເຂົ້າສູ່ລະບົບ། ເພື່ອປ່ຽນ agent, ໄປທີ່ ເທອຮ໌ມິນັລອັດຊະລິຍະ Settings > Agent།"
 setup.subtitle.agent_auth: "Agent ຂອງທ່ານ \"%{agent}\" ຕ້ອງການການຢືນຢັນຕົວຕົນ། ກະລຸນາເຂົ້າສູ່ລະບົບຜ່ານ agent, ຈາກນັ້ນເລືອກ \"ຂ້ອຍໄດ້ເຂົ້າສູ່ລະບົບແລ້ວ\" ຂ້າງລຸ່ມ། ເພື່ອປ່ຽນ agent, ໄປທີ່ ເທອຮ໌ມິນັລອັດຊະລິຍະ Settings > Agent།"
+setup.subtitle.connection_failed: "We couldn't start %{agent}."
 
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 
@@ -18,7 +21,10 @@ setup.option.install_hint: "(ຈະຕິດຕັ້ງໂດຍອັດຕະ
 setup.option.signin: "ເຂົ້າສູ່ລະບົບ %{agent}"
 setup.option.retry_detection: "ລອງໃໝ່"
 setup.option.retry_auth: "ຂ້ອຍໄດ້ເຂົ້າສູ່ລະບົບແລ້ວ — ລອງເຊື່ອມຕໍ່ອີກຄັ້ງ"
+setup.option.retry_connection: "Try connecting again"
 setup.status.installing: "ກຳລັງຕິດຕັ້ງ..."
+setup.status.installing_copilot_cli: "Installing GitHub Copilot CLI..."
+setup.status.connecting_agent: "Connecting to agent..."
 setup.status.install_failed: "ການຕິດຕັ້ງລົ້ມເຫລວ: "
 setup.status.installing_winget: " ກຳລັງຕິດຕັ້ງຜ່ານ winget..."
 setup.error.install_timed_out: "The installation timed out. Select \"Try again\" before starting another installation."

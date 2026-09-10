@@ -2,6 +2,8 @@
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 setup.title.agent_missing: "एजेंट मेळलो ना"
 setup.title.agent_error: "एजेंट कनेक्शन अपेशी जालें"
+setup.title.installing_copilot: "Installing GitHub Copilot"
+setup.title.starting_copilot: "Starting GitHub Copilot"
 setup.title.not_available: "एजेंट उपलब्ध ना"
 setup.title.sign_in: "साइन इन आवश्यक"
 
@@ -10,6 +12,7 @@ setup.subtitle.copilot_missing: "तुमचो एजेंट \"%{agent}\" �
 setup.subtitle.agent_missing: "तुमचो एजेंट \"%{agent}\" इन्स्टॉल जावंक ना. उपकार करून ताका हातान परतून इन्स्टॉल करात, मागीर परतून यत्न करात. एजेंट बदलपाक इंटेलिजंट टर्मिनल Settings > Agent कडेन वचात."
 setup.subtitle.copilot_auth: "तुमच्या एजेंट \"%{agent}\" क प्रमाणीकरण जाय. साइन इन करपाक सकयल दिल्ल्या पावलांक अनुसरण करात. एजेंट बदलपाक इंटेलिजंट टर्मिनल Settings > Agent कडेन वचात."
 setup.subtitle.agent_auth: "तुमच्या एजंट \"%{agent}\" खातीर प्रमाणीकरण जाय. उपकार करून एजंट वरवीं सायन इन करात, मागीर सकल \"म्हणें सायन इन केलां\" वेंचात. एजंट बदलपाक इंटेलिजंट टर्मिनल Settings > Agent कडेन वचात."
+setup.subtitle.connection_failed: "We couldn't start %{agent}."
 
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 
@@ -18,7 +21,10 @@ setup.option.install_hint: "(आपशींच इन्स्टॉल जा�
 setup.option.signin: "%{agent} ंत साइन इन करात"
 setup.option.retry_detection: "परत यत्न करात"
 setup.option.retry_auth: "म्हणें सायन इन केलां — परत जोडपाक यत्न करात"
+setup.option.retry_connection: "Try connecting again"
 setup.status.installing: "इन्स्टॉल जाता..."
+setup.status.installing_copilot_cli: "Installing GitHub Copilot CLI..."
+setup.status.connecting_agent: "Connecting to agent..."
 setup.status.install_failed: "इन्स्टॉल अपेशी: "
 setup.status.installing_winget: " winget वरवीं इन्स्टॉल जाता..."
 setup.error.install_timed_out: "The installation timed out. Select \"Try again\" before starting another installation."

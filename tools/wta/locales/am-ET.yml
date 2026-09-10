@@ -2,6 +2,8 @@
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 setup.title.agent_missing: "ኤጅንት አልተገኙም"
 setup.title.agent_error: "ኤጅንት ግንኙነት አልተሳካም"
+setup.title.installing_copilot: "Installing GitHub Copilot"
+setup.title.starting_copilot: "Starting GitHub Copilot"
 setup.title.not_available: "ኤጅንት አይገኙም"
 setup.title.sign_in: "መግባት ያስፈልጋል"
 
@@ -10,6 +12,7 @@ setup.subtitle.copilot_missing: "ኤጅንትዎ \"%{agent}\" አልተጠቀመ
 setup.subtitle.agent_missing: "ኤጅንትዎ \"%{agent}\" አልተጠቀመም። እባክዎን በእጥ ይጠቅሙት እና እንደገና ይሞክሩ። ኤጅንትን ለመቀየር ብልህ ተርሚናል Settings > Agent ይሂዱ።"
 setup.subtitle.copilot_auth: "ኤጅንትዎ \"%{agent}\" ማረጋገጥ ያስፈልገወል። ለመግባት ከታች ያሉትን ደረጃዎች ይተግበሩ። ኤጅንትን ለመቀየር ብልህ ተርሚናል Settings > Agent ይሂዱ።"
 setup.subtitle.agent_auth: "ኤጅንትዎ \"%{agent}\" ማረጋገጥ ያስፈልገዋል። እባክዎን በኤጅንቱ በኩል ይግቡ እና ከዚያ በታች \"ገብቻለሁ\" ን ይምረጡ። ኤጅንትን ለመቀየር ብልህ ተርሚናል Settings > Agent ይሂዱ።"
+setup.subtitle.connection_failed: "We couldn't start %{agent}."
 
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 
@@ -18,7 +21,10 @@ setup.option.install_hint: "(በራሱ ይጠቀማል)"
 setup.option.signin: "ወደ %{agent} ይግቡ"
 setup.option.retry_detection: "እንደገና ሞክር"
 setup.option.retry_auth: "ገብቻለሁ — እንደገና ማገናኘት ሞክር"
+setup.option.retry_connection: "Try connecting again"
 setup.status.installing: "በመጠቀም ላይ..."
+setup.status.installing_copilot_cli: "Installing GitHub Copilot CLI..."
+setup.status.connecting_agent: "Connecting to agent..."
 setup.status.install_failed: "መጠቀም አልተሳካም፡ "
 setup.status.installing_winget: " በ winget በኩል በመጠቀም ላይ..."
 setup.error.install_timed_out: "The installation timed out. Select \"Try again\" before starting another installation."

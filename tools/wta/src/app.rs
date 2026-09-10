@@ -244,6 +244,8 @@ pub enum SetupOption {
     Recheck,
     /// Preflight: retry connection (custom agent)
     Retry,
+    /// Retry a non-authentication startup or reconnect failure.
+    RetryConnection,
 }
 
 #[derive(Debug, Clone)]
@@ -252,18 +254,46 @@ pub struct SetupState {
     pub selected_index: usize,
     /// Preflight result populated from `preflight::check_agent`.
     pub preflight: PreflightResult,
-    /// True while a `winget install` task is running.
-    pub install_in_progress: bool,
-    /// Tail of the install command's output (last ~6 lines).
-    pub install_log: Vec<String>,
-    /// Error message from the most recent install attempt (cleared on retry).
-    pub install_error: Option<String>,
+    /// Installation-specific presentation state. Authentication setup keeps
+    /// using `Ready` and the existing login flow.
+    pub phase: SetupPhase,
     /// Unified options list for the setup screen.
     pub options: Vec<SetupOption>,
     /// Dynamic title for the setup screen.
     pub title: String,
     /// Dynamic subtitle for the setup screen.
     pub subtitle: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SetupPhase {
+    Ready,
+    Installing,
+    Reconnecting,
+    Failed {
+        kind: SetupFailureKind,
+        message: String,
+    },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SetupFailureKind {
+    Install,
+    Detection,
+    Connection,
+}
+
+impl SetupState {
+    pub(crate) fn is_busy(&self) -> bool {
+        matches!(
+            &self.phase,
+            SetupPhase::Installing | SetupPhase::Reconnecting
+        )
+    }
+
+    pub(crate) fn preserves_install_setup_on_disconnect(&self) -> bool {
+        !matches!(&self.phase, SetupPhase::Ready) || self.reason == SetupReason::AgentMissing
+    }
 }
 
 /// Decide whether a failed post-login reconnect should respawn the shared
@@ -1055,6 +1085,12 @@ pub struct App {
     /// latest accepted Agent binding.
     agent_reconnect_state: AgentReconnectState,
     suppress_next_failed_client_error: bool,
+    /// Whether startup/preflight results from the original boot connection
+    /// may still affect presentation.
+    initial_startup_presentation_eligible: bool,
+    /// Set when a replacement/rebind/restart makes later terminal events from
+    /// the boot client stale rather than failures of the active connection.
+    initial_transport_superseded: bool,
     /// Execution source paired with `current_agent_id`.
     pub current_agent_source: crate::agent_source::AgentSource,
     /// Agent ids supplied by Windows Terminal after GPO filtering.
@@ -1414,6 +1450,8 @@ impl App {
             last_agent_rebind_window_id: None,
             agent_reconnect_state: AgentReconnectState::Idle,
             suppress_next_failed_client_error: false,
+            initial_startup_presentation_eligible: true,
+            initial_transport_superseded: false,
             current_agent_source: crate::agent_source::AgentSource::Host,
             allowed_agent_ids: Vec::new(),
             host_agent_allowlist_present: false,
@@ -3581,7 +3619,7 @@ impl App {
         self.pending_agent_selection = Some(agent_id.to_string());
     }
 
-    fn reconnect_confirmed_available_agent(&mut self, agent_id: &str) {
+    fn notify_confirmed_agent_available(&self, agent_id: &str) {
         if matches!(
             self.current_agent_source,
             crate::agent_source::AgentSource::Host
@@ -3595,17 +3633,32 @@ impl App {
                 crate::wt_protocol_events::agent_availability_changed_event(agent_id, tab_id),
             );
         }
+    }
+
+    fn reconnect_confirmed_available_agent(&mut self, agent_id: &str) {
+        self.notify_confirmed_agent_available(agent_id);
+        self.initial_startup_presentation_eligible = false;
+        self.initial_transport_superseded = true;
         self.update_deferred_acp_agent(agent_id);
         self.state = ConnectionState::Connecting(t!("connection.reconnecting").into_owned());
         self.preflight_setup_active = false;
+        if let Some(setup) = self.setup.as_mut() {
+            setup.phase = SetupPhase::Reconnecting;
+        }
         if self.deferred_acp.is_some() {
-            self.pending_acp_start = true;
+            if self.agent_transport_retirement_pending {
+                self.reconnect_after_transport_retired = true;
+            } else {
+                self.pending_acp_start = true;
+            }
         } else {
             let _ = self.restart_tx.send(AgentLifecycleRequest::RestartMaster);
         }
     }
 
     fn prepare_agent_reconnect(&mut self, request: &AgentReconnectRequest) {
+        self.initial_startup_presentation_eligible = false;
+        self.initial_transport_superseded = true;
         self.agent_binding_generation = self.agent_binding_generation.wrapping_add(1);
         self.auth_recovery_generation = self.auth_recovery_generation.wrapping_add(1);
         self.auth_recovery_state = AuthRecoveryState::Idle;
@@ -3730,10 +3783,9 @@ impl App {
     }
 
     fn begin_pending_agent_reconnect_preflight(&mut self) -> Option<AgentReconnectRequest> {
-        let AgentReconnectState::Disconnecting(latest) =
-            std::mem::take(&mut self.agent_reconnect_state)
-        else {
-            return None;
+        let latest = match &self.agent_reconnect_state {
+            AgentReconnectState::Disconnecting(latest) => latest.clone(),
+            _ => return None,
         };
         self.pending_session_load = None;
         self.reset_agent_scoped_state();
@@ -3793,12 +3845,48 @@ impl App {
             reason,
             preflight: result,
             selected_index: 0,
-            install_in_progress: false,
-            install_log: Vec::new(),
-            install_error: None,
+            phase: SetupPhase::Ready,
             options,
             title,
             subtitle,
+        });
+    }
+
+    fn show_connection_failure_setup(&mut self, message: String) {
+        let agent_id = if self.current_agent_id.is_empty() {
+            "copilot".to_string()
+        } else {
+            self.current_agent_id.clone()
+        };
+        let profile = crate::agent_registry::lookup_profile(&agent_id);
+        let reason = SetupReason::AgentError;
+        self.mode = AppMode::Setup;
+        self.state = ConnectionState::Disconnected;
+        self.auth = None;
+        self.setup = Some(SetupState {
+            reason: reason.clone(),
+            selected_index: 0,
+            preflight: PreflightResult {
+                agent_id: profile.id.to_string(),
+                display_name: profile.display_name.to_string(),
+                cli_status: CheckStatus::Passed,
+                cli_path: None,
+                auth_status: CheckStatus::Skipped,
+                install_hint: profile.install_hint.to_string(),
+                install_url: String::new(),
+                auth_hint: profile.auth_hint.to_string(),
+            },
+            phase: SetupPhase::Failed {
+                kind: SetupFailureKind::Connection,
+                message,
+            },
+            options: vec![SetupOption::RetryConnection, SetupOption::ChooseAgentSource],
+            title: reason.title(),
+            subtitle: t!(
+                "setup.subtitle.connection_failed",
+                agent = profile.display_name
+            )
+            .into_owned(),
         });
     }
 
@@ -4019,9 +4107,10 @@ impl App {
     /// Diagnostic setup-mode key handler. Covers install, sign-in, and retry
     /// actions via the `SetupOption` variants.
     fn handle_setup_key(&mut self, key: KeyEvent) {
-        // Block all input during install (except Ctrl+C / Esc to quit)
-        let is_installing = self.setup.as_ref().map_or(false, |s| s.install_in_progress);
-        tracing::debug!(target: "setup_key", code = ?key.code, is_installing, selected = ?self.setup.as_ref().map(|s| s.selected_index), options_count = ?self.setup.as_ref().map(|s| s.options.len()), "handle_setup_key");
+        // Block setup actions while install/reconnect work is active. The
+        // input box remains visible as a connection-state indicator.
+        let is_busy = self.setup.as_ref().is_some_and(SetupState::is_busy);
+        tracing::debug!(target: "setup_key", code = ?key.code, is_busy, selected = ?self.setup.as_ref().map(|s| s.selected_index), options_count = ?self.setup.as_ref().map(|s| s.options.len()), "handle_setup_key");
 
         match key.code {
             KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
@@ -4030,8 +4119,8 @@ impl App {
             KeyCode::Esc => {
                 self.should_quit = true;
             }
-            _ if is_installing => {
-                return; // block all other keys during install
+            _ if is_busy => {
+                return;
             }
             KeyCode::Up => {
                 if let Some(ref mut setup) = self.setup {
@@ -4086,21 +4175,17 @@ impl App {
                 self.request_agent_source_picker();
             }
             SetupOption::Install { agent_id, .. } => {
-                if let Some(ref setup) = self.setup {
-                    if setup.install_in_progress {
+                if let Some(setup) = self.setup.as_ref() {
+                    if setup.is_busy() {
                         return;
                     }
                 }
-                if let Some(ref mut setup) = self.setup {
-                    setup.install_in_progress = true;
-                    setup.install_error = None;
-                    setup.install_log.clear();
-                    setup.install_log.push(format!(
-                        "{} {}",
-                        t!("setup.status.installing"),
-                        agent_id
-                    ));
+                if let Some(setup) = self.setup.as_mut() {
+                    setup.phase = SetupPhase::Installing;
                 }
+                self.close_agent_picker();
+                self.agent_source_probe_generation =
+                    self.agent_source_probe_generation.wrapping_add(1);
                 self.next_agent_install_request_id =
                     self.next_agent_install_request_id.wrapping_add(1);
                 let request_id = self.next_agent_install_request_id;
@@ -4128,10 +4213,11 @@ impl App {
                     });
                 } else {
                     self.pending_agent_install = None;
-                    if let Some(ref mut setup) = self.setup {
-                        setup.install_in_progress = false;
-                        setup.install_error =
-                            Some("The installer could not be started.".to_string());
+                    if let Some(setup) = self.setup.as_mut() {
+                        setup.phase = SetupPhase::Failed {
+                            kind: SetupFailureKind::Install,
+                            message: "The installer could not be started.".to_string(),
+                        };
                     }
                 }
             }
@@ -4149,7 +4235,7 @@ impl App {
                     );
                 }
             }
-            SetupOption::Recheck | SetupOption::Retry => {
+            SetupOption::Recheck | SetupOption::Retry | SetupOption::RetryConnection => {
                 // Re-run preflight detection and try to reconnect
                 if let Some(ref setup) = self.setup {
                     let agent_id = setup.preflight.agent_id.clone();
@@ -4176,7 +4262,8 @@ impl App {
                             self.reconnect_confirmed_available_agent(&agent_id);
                             // Don't clear setup yet — AgentConnected will transition to Chat,
                             // AgentError will update the Setup screen.
-                        } else if let Some(ref mut setup) = self.setup {
+                        } else if let Some(setup) = self.setup.as_mut() {
+                            setup.phase = SetupPhase::Ready;
                             setup.options = build_setup_options(&setup.reason, Some(&status));
                         }
                     }
@@ -4506,6 +4593,7 @@ impl App {
             AppEvent::PromptTemplateLoaded { .. } => "prompt_template_loaded",
             AppEvent::PromptTargetResolved { .. } => "prompt_target_resolved",
             AppEvent::AgentError { .. } => "agent_error",
+            AppEvent::InitialAgentStartupFailed { .. } => "initial_agent_startup_failed",
             AppEvent::MasterDisconnected => "master_disconnected",
             AppEvent::AgentTransportRetired => "agent_transport_retired",
             AppEvent::AgentSoftStop { .. } => "agent_soft_stop",
@@ -4634,9 +4722,7 @@ impl App {
                 install_url: String::new(),
                 auth_hint: profile.auth_hint.to_string(),
             },
-            install_in_progress: false,
-            install_log: Vec::new(),
-            install_error: None,
+            phase: SetupPhase::Ready,
             options,
             title: t!("setup.title.sign_in").into_owned(),
             subtitle: if profile.id == "copilot" {
@@ -5893,6 +5979,8 @@ impl App {
     /// CLI pool. Viable panes, ConPTYs, and helpers stay alive and reconnect
     /// over the stable master pipe with clean ACP sessions.
     fn cmd_restart(&mut self) {
+        self.initial_startup_presentation_eligible = false;
+        self.initial_transport_superseded = true;
         self.state = ConnectionState::Connecting("Restarting agent...".to_string());
         self.pending_session_load = None;
         self.session_to_tab.clear();

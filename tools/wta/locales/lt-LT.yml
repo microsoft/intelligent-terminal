@@ -2,6 +2,8 @@
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 setup.title.agent_missing: "Agentas nerastas"
 setup.title.agent_error: "Nepavyko prisijungti prie agento"
+setup.title.installing_copilot: "Installing GitHub Copilot"
+setup.title.starting_copilot: "Starting GitHub Copilot"
 setup.title.not_available: "Agentas nepasiekiamas"
 setup.title.sign_in: "Reikia prisijungti"
 
@@ -10,6 +12,7 @@ setup.subtitle.copilot_missing: "Jūsų agentas \"%{agent}\" neįdiegtas. Norėd
 setup.subtitle.agent_missing: "Jūsų agentas \"%{agent}\" neįdiegtas. Įdiekite jį iš naujo rankiniu būdu, tada bandykite dar kartą. Norėdami pakeisti agentą, eikite į Išmanusis Terminalas Settings > Agent."
 setup.subtitle.copilot_auth: "Jūsų agentas \"%{agent}\" reikalauja autentifikavimo. Norėdami prisijungti, atlikite toliau nurodytus veiksmus. Norėdami pakeisti agentą, eikite į Išmanusis Terminalas Settings > Agent."
 setup.subtitle.agent_auth: "Jūsų agentas \"%{agent}\" reikalauja autentifikavimo. Prisijunkite per agentą, tada pasirinkite \"Prisijungiau\" žemiau. Norėdami pakeisti agentą, eikite į Išmanusis Terminalas Settings > Agent."
+setup.subtitle.connection_failed: "We couldn't start %{agent}."
 
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 
@@ -18,7 +21,10 @@ setup.option.install_hint: "(Bus įdiegta automatiškai)"
 setup.option.signin: "Prisijungti prie %{agent}"
 setup.option.retry_detection: "Bandyti dar kartą"
 setup.option.retry_auth: "Prisijungiau — bandyti prisijungti dar kartą"
+setup.option.retry_connection: "Try connecting again"
 setup.status.installing: "Diegiama..."
+setup.status.installing_copilot_cli: "Installing GitHub Copilot CLI..."
+setup.status.connecting_agent: "Connecting to agent..."
 setup.status.install_failed: "Diegimas nepavyko: "
 setup.status.installing_winget: " Diegiama per winget..."
 setup.error.install_timed_out: "The installation timed out. Select \"Try again\" before starting another installation."

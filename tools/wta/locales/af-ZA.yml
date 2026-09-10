@@ -2,6 +2,8 @@
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 setup.title.agent_missing: "Agent nie gevind nie"
 setup.title.agent_error: "Agentverbinding het misluk"
+setup.title.installing_copilot: "Installing GitHub Copilot"
+setup.title.starting_copilot: "Starting GitHub Copilot"
 setup.title.not_available: "Agent is nie beskikbaar nie"
 setup.title.sign_in: "Aanmelding vereis"
 
@@ -10,6 +12,7 @@ setup.subtitle.copilot_missing: "Jou agent \"%{agent}\" is nie geïnstalleer nie
 setup.subtitle.agent_missing: "Jou agent \"%{agent}\" is nie geïnstalleer nie. Herinstalleer dit handmatig en probeer weer. Om van agent te wissel, gaan na Intelligente Terminaal Settings > Agent."
 setup.subtitle.copilot_auth: "Jou agent \"%{agent}\" vereis stawing. Volg die stappe hieronder om aan te meld. Om van agent te wissel, gaan na Intelligente Terminaal Settings > Agent."
 setup.subtitle.agent_auth: "Jou agent \"%{agent}\" vereis stawing. Meld aan via die agent en kies dan \"Ek het aangemeld\" hieronder. Om van agent te wissel, gaan na Intelligente Terminaal Settings > Agent."
+setup.subtitle.connection_failed: "We couldn't start %{agent}."
 
 # {Locked=qps-ploc,qps-ploca,qps-plocm}, {Locked="Settings"}
 
@@ -18,7 +21,10 @@ setup.option.install_hint: "(Sal outomaties geïnstalleer word)"
 setup.option.signin: "Meld aan by %{agent}"
 setup.option.retry_detection: "Probeer weer"
 setup.option.retry_auth: "Ek het aangemeld — probeer weer koppel"
+setup.option.retry_connection: "Try connecting again"
 setup.status.installing: "Installeer tans..."
+setup.status.installing_copilot_cli: "Installing GitHub Copilot CLI..."
+setup.status.connecting_agent: "Connecting to agent..."
 setup.status.install_failed: "Installasie het misluk: "
 setup.status.installing_winget: " Installeer tans via winget..."
 setup.error.install_timed_out: "The installation timed out. Select \"Try again\" before starting another installation."

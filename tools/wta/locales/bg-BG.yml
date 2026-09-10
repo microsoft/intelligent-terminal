@@ -2,6 +2,8 @@
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 setup.title.agent_missing: "Агентът не е намерен"
 setup.title.agent_error: "Връзката с агента е неуспешна"
+setup.title.installing_copilot: "Installing GitHub Copilot"
+setup.title.starting_copilot: "Starting GitHub Copilot"
 setup.title.not_available: "Агентът не е наличен"
 setup.title.sign_in: "Изисква се влизане"
 
@@ -10,6 +12,7 @@ setup.subtitle.copilot_missing: "Вашият агент \"%{agent}\" не е и
 setup.subtitle.agent_missing: "Вашият агент \"%{agent}\" не е инсталиран. Преинсталирайте го ръчно и опитайте отново. За да смените агента, отидете в Интелигентен Терминал Settings > Agent."
 setup.subtitle.copilot_auth: "Вашият агент \"%{agent}\" изисква удостоверяване. Следвайте стъпките по-долу, за да влезете. За да смените агента, отидете в Интелигентен Терминал Settings > Agent."
 setup.subtitle.agent_auth: "Вашият агент \"%{agent}\" изисква удостоверяване. Влезте чрез агента и изберете \"Влязох\" по-долу. За да смените агента, отидете в Интелигентен Терминал Settings > Agent."
+setup.subtitle.connection_failed: "We couldn't start %{agent}."
 
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 
@@ -18,7 +21,10 @@ setup.option.install_hint: "(Ще бъде инсталиран автомати
 setup.option.signin: "Влизане в %{agent}"
 setup.option.retry_detection: "Опитай отново"
 setup.option.retry_auth: "Влязох — опитай да се свържеш отново"
+setup.option.retry_connection: "Try connecting again"
 setup.status.installing: "Инсталиране..."
+setup.status.installing_copilot_cli: "Installing GitHub Copilot CLI..."
+setup.status.connecting_agent: "Connecting to agent..."
 setup.status.install_failed: "Инсталирането е неуспешно: "
 setup.status.installing_winget: " Инсталиране чрез winget..."
 setup.error.install_timed_out: "The installation timed out. Select \"Try again\" before starting another installation."

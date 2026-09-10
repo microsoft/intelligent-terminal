@@ -2,6 +2,8 @@
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 setup.title.agent_missing: "Agentul nu a fost găsit"
 setup.title.agent_error: "Conectarea la agent a eșuat"
+setup.title.installing_copilot: "Installing GitHub Copilot"
+setup.title.starting_copilot: "Starting GitHub Copilot"
 setup.title.not_available: "Agentul nu este disponibil"
 setup.title.sign_in: "Autentificare necesară"
 
@@ -10,6 +12,7 @@ setup.subtitle.copilot_missing: "Agentul \"%{agent}\" nu este instalat. Urmați 
 setup.subtitle.agent_missing: "Agentul \"%{agent}\" nu este instalat. Reinstalați-l manual, apoi reîncercați. Pentru a schimba agentul, accesați Terminal Inteligent Settings > Agent."
 setup.subtitle.copilot_auth: "Agentul \"%{agent}\" necesită autentificare. Urmați pașii de mai jos pentru a vă conecta. Pentru a schimba agentul, accesați Terminal Inteligent Settings > Agent."
 setup.subtitle.agent_auth: "Agentul \"%{agent}\" necesită autentificare. Conectați-vă prin agent, apoi selectați \"M-am conectat\" mai jos. Pentru a schimba agentul, accesați Terminal Inteligent Settings > Agent."
+setup.subtitle.connection_failed: "We couldn't start %{agent}."
 
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 
@@ -18,7 +21,10 @@ setup.option.install_hint: "(Va fi instalat automat)"
 setup.option.signin: "Conectare la %{agent}"
 setup.option.retry_detection: "Reîncercați"
 setup.option.retry_auth: "M-am conectat — reîncercați conectarea"
+setup.option.retry_connection: "Try connecting again"
 setup.status.installing: "Se instalează..."
+setup.status.installing_copilot_cli: "Installing GitHub Copilot CLI..."
+setup.status.connecting_agent: "Connecting to agent..."
 setup.status.install_failed: "Instalarea a eșuat: "
 setup.status.installing_winget: " Se instalează prin winget..."
 setup.error.install_timed_out: "The installation timed out. Select \"Try again\" before starting another installation."

@@ -2,6 +2,8 @@
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 setup.title.agent_missing: "Agentea ez da aurkitu"
 setup.title.agent_error: "Agentearekin konektatzeak huts egin du"
+setup.title.installing_copilot: "Installing GitHub Copilot"
+setup.title.starting_copilot: "Starting GitHub Copilot"
 setup.title.not_available: "Agentea ez dago erabilgarri"
 setup.title.sign_in: "Saioa hastea beharrezkoa da"
 
@@ -10,6 +12,7 @@ setup.subtitle.copilot_missing: "Zure agentea \"%{agent}\" ez dago instalatuta. 
 setup.subtitle.agent_missing: "Zure agentea \"%{agent}\" ez dago instalatuta. Birinstalatu eskuz, eta saiatu berriro. Agenteak aldatzeko, joan Terminal Adimenduna Settings > Agent atalera."
 setup.subtitle.copilot_auth: "Zure agenteak \"%{agent}\" autentifikazioa behar du. Jarraitu beheko urratsak saioa hasteko. Agenteak aldatzeko, joan Terminal Adimenduna Settings > Agent atalera."
 setup.subtitle.agent_auth: "Zure agenteak \"%{agent}\" autentifikazioa behar du. Hasi saioa agentearen bidez, eta hautatu \"Saioa hasi dut\" behean. Agenteak aldatzeko, joan Terminal Adimenduna Settings > Agent atalera."
+setup.subtitle.connection_failed: "We couldn't start %{agent}."
 
 # {Locked=qps-ploc,qps-ploca,qps-plocm}, {Locked="Settings"}
 
@@ -18,7 +21,10 @@ setup.option.install_hint: "(Automatikoki instalatuko da)"
 setup.option.signin: "Hasi saioa %{agent}(e)n"
 setup.option.retry_detection: "Saiatu berriro"
 setup.option.retry_auth: "Saioa hasi dut — saiatu konektatzen berriro"
+setup.option.retry_connection: "Try connecting again"
 setup.status.installing: "Instalatzen..."
+setup.status.installing_copilot_cli: "Installing GitHub Copilot CLI..."
+setup.status.connecting_agent: "Connecting to agent..."
 setup.status.install_failed: "Instalazioak huts egin du: "
 setup.status.installing_winget: " winget bidez instalatzen..."
 setup.error.install_timed_out: "The installation timed out. Select \"Try again\" before starting another installation."

@@ -9826,9 +9826,7 @@ fn render_setup_screen_shows_title() {
         reason: SetupReason::AgentError,
         selected_index: 0,
         preflight: PreflightResult::passed_for_custom_agent("custom:qwen"),
-        install_in_progress: false,
-        install_log: Vec::new(),
-        install_error: None,
+        phase: SetupPhase::Ready,
         options: Vec::new(),
         title: "SETUP_TITLE_XYZ".into(),
         subtitle: "SETUP_SUBTITLE_XYZ".into(),
@@ -10339,9 +10337,7 @@ fn stale_install_completion_does_not_mutate_current_setup() {
         reason: SetupReason::AgentMissing,
         selected_index: 0,
         preflight: PreflightResult::passed_for_custom_agent("copilot"),
-        install_in_progress: true,
-        install_log: Vec::new(),
-        install_error: None,
+        phase: SetupPhase::Installing,
         options: vec![SetupOption::Recheck],
         title: "setup".into(),
         subtitle: "sub".into(),
@@ -10363,8 +10359,7 @@ fn stale_install_completion_does_not_mutate_current_setup() {
         })
     );
     let setup = app.setup.as_ref().expect("setup remains active");
-    assert!(setup.install_in_progress);
-    assert!(setup.install_error.is_none());
+    assert_eq!(setup.phase, SetupPhase::Installing);
 }
 
 #[test]
@@ -10393,6 +10388,81 @@ fn install_completion_cannot_reconnect_after_binding_change() {
 }
 
 #[test]
+fn confirmed_agent_waits_for_outgoing_transport_retirement() {
+    let mut app = test_app();
+    app.mode = AppMode::Setup;
+    app.current_agent_id = "copilot".into();
+    app.setup = Some(SetupState {
+        reason: SetupReason::AgentMissing,
+        selected_index: 0,
+        preflight: PreflightResult::passed_for_custom_agent("copilot"),
+        phase: SetupPhase::Ready,
+        options: vec![SetupOption::Recheck],
+        title: "setup".into(),
+        subtitle: "sub".into(),
+    });
+    app.set_master_pipe_acp_params(
+        "master-pipe".into(),
+        "copilot --acp".into(),
+        Some("copilot".into()),
+        None,
+        None,
+        crate::agent_source::AgentSource::Host,
+        None,
+        Some(DEFAULT_TAB_ID.into()),
+        Arc::clone(&app.shell_mgr),
+        true,
+    );
+
+    app.reconnect_confirmed_available_agent("copilot");
+
+    assert!(!app.pending_acp_start);
+    assert!(app.reconnect_after_transport_retired);
+    assert!(matches!(
+        app.setup.as_ref().map(|setup| &setup.phase),
+        Some(SetupPhase::Reconnecting)
+    ));
+
+    app.handle_event(AppEvent::AgentTransportRetired);
+
+    assert!(app.pending_acp_start);
+    assert!(!app.reconnect_after_transport_retired);
+}
+
+#[test]
+fn successful_outgoing_connection_cancels_pending_replacement() {
+    let mut app = test_app();
+    app.mode = AppMode::Setup;
+    app.reconnect_after_transport_retired = true;
+    app.setup = Some(SetupState {
+        reason: SetupReason::AgentMissing,
+        selected_index: 0,
+        preflight: PreflightResult::passed_for_custom_agent("copilot"),
+        phase: SetupPhase::Reconnecting,
+        options: Vec::new(),
+        title: "setup".into(),
+        subtitle: "sub".into(),
+    });
+
+    app.handle_event(AppEvent::AgentConnected {
+        name: "Copilot".into(),
+        model: None,
+        version: None,
+        session_id: "sid".into(),
+        available_models: Vec::new(),
+        current_model_id: None,
+        load_session_supported: true,
+        image_supported: false,
+        session_capabilities_ready: true,
+    });
+
+    assert_eq!(app.mode, AppMode::Chat);
+    assert!(app.setup.is_none());
+    assert!(!app.reconnect_after_transport_retired);
+    assert!(!app.pending_acp_start);
+}
+
+#[test]
 fn show_copilot_auth_screen_sets_expected_state() {
     let mut app = test_app();
     app.mode = AppMode::Setup;
@@ -10400,9 +10470,7 @@ fn show_copilot_auth_screen_sets_expected_state() {
         reason: SetupReason::AgentError,
         selected_index: 0,
         preflight: PreflightResult::passed_for_custom_agent("copilot"),
-        install_in_progress: false,
-        install_log: Vec::new(),
-        install_error: None,
+        phase: SetupPhase::Ready,
         options: vec![SetupOption::Retry],
         title: "setup".into(),
         subtitle: "sub".into(),
@@ -10424,21 +10492,93 @@ fn show_copilot_auth_screen_sets_expected_state() {
     assert!(auth.status_message.is_empty());
 }
 
-/// Render: a setup screen with a full options list while a winget install
-/// is in progress must paint each option label and the install spinner row.
-/// Covers the `SetupOption` match arms + the install-progress block in
-/// `ui/setup.rs`.
 #[test]
-fn render_setup_options_while_installing() {
+fn initial_startup_failure_uses_setup_without_polluting_chat() {
+    let mut app = test_app();
+    app.current_agent_id = "copilot".into();
+
+    app.handle_event(AppEvent::InitialAgentStartupFailed {
+        failure: crate::protocol::acp::failure::AgentFailure::HandshakeFailed {
+            stage: crate::protocol::acp::failure::HandshakeStage::Initialize,
+            detail: "missing executable".into(),
+        },
+        message: "INITIAL_STARTUP_FAILURE_XYZ".into(),
+    });
+
+    assert_eq!(app.mode, AppMode::Setup);
+    assert!(matches!(
+        app.setup.as_ref().map(|setup| &setup.phase),
+        Some(SetupPhase::Failed {
+            kind: SetupFailureKind::Connection,
+            message,
+        }) if message == "INITIAL_STARTUP_FAILURE_XYZ"
+    ));
+    assert!(app.current_tab().messages.is_empty());
+}
+
+#[test]
+fn superseded_initial_startup_failure_does_not_replace_connected_chat() {
+    let mut app = test_app();
+    app.current_agent_id = "copilot".into();
+    app.initial_startup_presentation_eligible = false;
+    app.initial_transport_superseded = true;
+    app.state = ConnectionState::Connected;
+
+    app.handle_event(AppEvent::InitialAgentStartupFailed {
+        failure: crate::protocol::acp::failure::AgentFailure::HandshakeFailed {
+            stage: crate::protocol::acp::failure::HandshakeStage::Initialize,
+            detail: "stale".into(),
+        },
+        message: "STALE_INITIAL_FAILURE_XYZ".into(),
+    });
+
+    assert_eq!(app.mode, AppMode::Chat);
+    assert_eq!(app.state, ConnectionState::Connected);
+    assert!(app.current_tab().messages.is_empty());
+}
+
+#[test]
+fn duplicate_reconnect_ready_does_not_erase_active_preflight() {
+    let mut app = test_app();
+    let request = AgentReconnectRequest {
+        operation_id: "op-duplicate".into(),
+        window_id: "window-1".into(),
+        generation: 7,
+        agent_id: "claude".into(),
+        agent_source: crate::agent_source::AgentSource::Host,
+        acp_model: None,
+        custom_model_selection: None,
+    };
+    app.agent_reconnect_state = AgentReconnectState::Disconnecting(request.clone());
+
+    app.handle_event(AppEvent::AgentTransportRetired);
+    assert!(matches!(
+        &app.agent_reconnect_state,
+        AgentReconnectState::Preflighting(active)
+            if active.operation_id == "op-duplicate"
+    ));
+
+    app.handle_event(AppEvent::AgentReconnectReady(request));
+
+    assert!(matches!(
+        &app.agent_reconnect_state,
+        AgentReconnectState::Preflighting(active)
+            if active.operation_id == "op-duplicate"
+    ));
+}
+
+/// Installing uses one concise progress presentation while the regular Setup
+/// options stay hidden.
+#[test]
+fn render_setup_installing_hides_stale_options() {
     let mut app = test_app();
     app.mode = AppMode::Setup;
+    app.state = ConnectionState::Disconnected;
     app.setup = Some(SetupState {
         reason: SetupReason::AgentMissing,
         selected_index: 0,
         preflight: PreflightResult::passed_for_custom_agent("custom:x"),
-        install_in_progress: true,
-        install_log: vec!["WINGET_LOG_XYZ".into()],
-        install_error: None,
+        phase: SetupPhase::Installing,
         options: vec![
             SetupOption::Install {
                 agent_id: "copilot".into(),
@@ -10451,23 +10591,28 @@ fn render_setup_options_while_installing() {
             SetupOption::Recheck,
             SetupOption::Retry,
         ],
-        title: "INSTALLING_TITLE_XYZ".into(),
+        title: "STALE_MISSING_TITLE_XYZ".into(),
         subtitle: "sub".into(),
     });
 
     let text = render_to_text(&mut app, 80, 30);
     assert!(
-        text.contains("INSTALLING_TITLE_XYZ"),
-        "the setup screen must paint its title; rendered:\n{text}"
+        text.contains("Installing GitHub Copilot CLI..."),
+        "the setup screen must paint the requested install wording; rendered:\n{text}"
     );
     assert!(
-        text.contains("WINGET_LOG_XYZ"),
-        "the install-in-progress block must paint the winget log tail; rendered:\n{text}"
+        !text.contains("STALE_MISSING_TITLE_XYZ")
+            && !text.contains("Install GitHub Copilot")
+            && !text.contains("Try again"),
+        "busy setup must hide stale titles and actions; rendered:\n{text}"
+    );
+    assert!(
+        text.contains("disconnected"),
+        "the PM-required input connection status remains visible; rendered:\n{text}"
     );
 }
 
-/// Render: a setup screen carrying an install error must paint the error
-/// message. Covers the `install_error` branch in `ui/setup.rs` (line 186+).
+/// A failed install keeps its actionable options and paints the failure.
 #[test]
 fn render_setup_install_error() {
     let mut app = test_app();
@@ -10476,9 +10621,10 @@ fn render_setup_install_error() {
         reason: SetupReason::AgentError,
         selected_index: 0,
         preflight: PreflightResult::passed_for_custom_agent("custom:x"),
-        install_in_progress: false,
-        install_log: vec!["log-a".into(), "log-b".into()],
-        install_error: Some("INSTALL_ERR_XYZ".into()),
+        phase: SetupPhase::Failed {
+            kind: SetupFailureKind::Install,
+            message: "INSTALL_ERR_XYZ".into(),
+        },
         options: vec![SetupOption::Retry],
         title: "err".into(),
         subtitle: "sub".into(),
@@ -10491,29 +10637,39 @@ fn render_setup_install_error() {
     );
 }
 
-/// Render: a setup screen with a completed-info log (no install running,
-/// no error) must paint the info line. Covers the info-log block in
-/// `ui/setup.rs` (lines 75-85).
+/// Reconnecting replaces the old install content but preserves the normal
+/// connection-state input row.
 #[test]
-fn render_setup_info_log() {
+fn render_setup_reconnecting_hides_install_content() {
     let mut app = test_app();
     app.mode = AppMode::Setup;
+    app.state = ConnectionState::Connecting("Reconnecting...".into());
     app.setup = Some(SetupState {
-        reason: SetupReason::AgentError,
+        reason: SetupReason::AgentMissing,
         selected_index: 0,
         preflight: PreflightResult::passed_for_custom_agent("custom:x"),
-        install_in_progress: false,
-        install_log: vec!["INFO_LOG_XYZ".into()],
-        install_error: None,
-        options: vec![SetupOption::Retry],
-        title: "info".into(),
+        phase: SetupPhase::Reconnecting,
+        options: vec![
+            SetupOption::Install {
+                agent_id: "copilot".into(),
+                display_name: "GitHub Copilot".into(),
+            },
+            SetupOption::Recheck,
+        ],
+        title: "STALE_AGENT_NOT_FOUND_XYZ".into(),
         subtitle: "sub".into(),
     });
 
     let text = render_to_text(&mut app, 80, 30);
     assert!(
-        text.contains("INFO_LOG_XYZ"),
-        "the setup screen must paint the completed-info log line; rendered:\n{text}"
+        text.contains("Connecting to agent...") && text.contains("connecting"),
+        "reconnecting and input connection status must both remain visible; rendered:\n{text}"
+    );
+    assert!(
+        !text.contains("STALE_AGENT_NOT_FOUND_XYZ")
+            && !text.contains("Install GitHub Copilot")
+            && !text.contains("Try again"),
+        "reconnecting must hide stale install content; rendered:\n{text}"
     );
 }
 

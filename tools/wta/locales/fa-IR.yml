@@ -2,6 +2,8 @@
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 setup.title.agent_missing: "عامل هوش مصنوعی یافت نشد"
 setup.title.agent_error: "اتصال به عامل هوش مصنوعی ناموفق بود"
+setup.title.installing_copilot: "Installing GitHub Copilot"
+setup.title.starting_copilot: "Starting GitHub Copilot"
 setup.title.not_available: "عامل هوش مصنوعی در دسترس نیست"
 setup.title.sign_in: "ورود به سیستم لازم است"
 
@@ -10,6 +12,7 @@ setup.subtitle.copilot_missing: "عامل هوش مصنوعی \"%{agent}\" نص�
 setup.subtitle.agent_missing: "عامل هوش مصنوعی \"%{agent}\" نصب نشده است. لطفاً آن را به صورت دستی دوباره نصب کنید، سپس دوباره تلاش کنید. برای تغییر عامل‌های هوش مصنوعی، به پایانه هوشمند Settings > Agent بروید."
 setup.subtitle.copilot_auth: "عامل هوش مصنوعی \"%{agent}\" نیاز به احراز هویت دارد. مراحل زیر را برای ورود دنبال کنید. برای تغییر عامل‌های هوش مصنوعی، به پایانه هوشمند Settings > Agent بروید."
 setup.subtitle.agent_auth: "عامل هوش مصنوعی \"%{agent}\" نیاز به احراز هویت دارد. لطفاً از طریق عامل هوش مصنوعی وارد شوید، سپس \"وارد شدم\" را در زیر انتخاب کنید. برای تغییر عامل‌های هوش مصنوعی، به پایانه هوشمند Settings > Agent بروید."
+setup.subtitle.connection_failed: "We couldn't start %{agent}."
 
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 
@@ -18,7 +21,10 @@ setup.option.install_hint: "(به صورت خودکار نصب خواهد شد)"
 setup.option.signin: "ورود به %{agent}"
 setup.option.retry_detection: "دوباره تلاش کنید"
 setup.option.retry_auth: "وارد شدم — دوباره اتصال را امتحان کنید"
+setup.option.retry_connection: "Try connecting again"
 setup.status.installing: "در حال نصب..."
+setup.status.installing_copilot_cli: "Installing GitHub Copilot CLI..."
+setup.status.connecting_agent: "Connecting to agent..."
 setup.status.install_failed: "نصب ناموفق بود: "
 setup.status.installing_winget: " در حال نصب از طریق winget..."
 setup.error.install_timed_out: "The installation timed out. Select \"Try again\" before starting another installation."

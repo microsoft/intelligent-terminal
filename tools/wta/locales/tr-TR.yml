@@ -2,6 +2,8 @@
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 setup.title.agent_missing: "Aracı bulunamadı"
 setup.title.agent_error: "Aracı bağlantısı başarısız oldu"
+setup.title.installing_copilot: "Installing GitHub Copilot"
+setup.title.starting_copilot: "Starting GitHub Copilot"
 setup.title.not_available: "Aracı kullanılamıyor"
 setup.title.sign_in: "Oturum açma gerekli"
 
@@ -10,6 +12,7 @@ setup.subtitle.copilot_missing: "Aracınız \"%{agent}\" yüklü değil. Yüklem
 setup.subtitle.agent_missing: "Aracınız \"%{agent}\" yüklü değil. Lütfen elle yeniden yükleyin, ardından tekrar deneyin. Aracı değiştirmek için Akıllı Terminal Settings > Agent'e gidin."
 setup.subtitle.copilot_auth: "Aracınız \"%{agent}\" kimlik doğrulama gerektiriyor. Oturum açmak için aşağıdaki adımları izleyin. Aracı değiştirmek için Akıllı Terminal Settings > Agent'e gidin."
 setup.subtitle.agent_auth: "Aracınız \"%{agent}\" kimlik doğrulama gerektiriyor. Lütfen aracı üzerinden oturum açın, ardından aşağıda \"Oturum açtım\" seçeneğini belirleyin. Aracı değiştirmek için Akıllı Terminal Settings > Agent'e gidin."
+setup.subtitle.connection_failed: "We couldn't start %{agent}."
 
 # {Locked=qps-ploc,qps-ploca,qps-plocm}
 
@@ -18,7 +21,10 @@ setup.option.install_hint: "(Otomatik olarak yüklenecek)"
 setup.option.signin: "%{agent} oturumu aç"
 setup.option.retry_detection: "Tekrar dene"
 setup.option.retry_auth: "Oturum açtım — tekrar bağlanmayı dene"
+setup.option.retry_connection: "Try connecting again"
 setup.status.installing: "Yükleniyor..."
+setup.status.installing_copilot_cli: "Installing GitHub Copilot CLI..."
+setup.status.connecting_agent: "Connecting to agent..."
 setup.status.install_failed: "Yükleme başarısız: "
 setup.status.installing_winget: " winget üzerinden yükleniyor..."
 setup.error.install_timed_out: "The installation timed out. Select \"Try again\" before starting another installation."
