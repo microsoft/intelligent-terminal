@@ -32,6 +32,13 @@ If the new agent is not tracked:
 
 2. Open a fresh Intelligent Terminal window so the new CLI is on `PATH`, confirm **Settings → Agent → Sessions** is on, and select the new built-in agent. Automatic reconciliation runs in the background. For manual repair, run `wta hooks install --cli <agent>`.
 
+Saving **Sessions** as **Off** pauses hook event forwarding immediately, including
+for already-running CLIs, without uninstalling plugins or changing their
+configuration. Saving **On** resumes forwarding and automatic reconciliation.
+Existing session history and ACP agent-pane sessions are retained. The CLI may
+still invoke its installed hook command, but the native bridge returns without
+reading the payload or connecting to Terminal while paused.
+
 ## 4. Can I use a custom ACP-compatible agent (Qwen, Cline, Goose, Cursor, …)?
 
 Yes. Intelligent Terminal can drive any agent CLI that implements the [Agent Client Protocol (ACP)](https://agentclientprotocol.com/get-started/agents) — the [linked list](https://agentclientprotocol.com/get-started/agents) on that page covers Qwen Code, Cline, Goose, Cursor, Kimi CLI, Kiro CLI, OpenHands, and many more, in addition to the ones Intelligent Terminal sets up for you (Copilot, Claude, Codex, Gemini, OpenCode).

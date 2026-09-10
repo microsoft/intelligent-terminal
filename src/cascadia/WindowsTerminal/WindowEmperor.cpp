@@ -649,6 +649,8 @@ void WindowEmperor::HandleCommandlineArgs(int nCmdShow)
         if (SUCCEEDED(args.Result()))
         {
             _assertIsMainThread();
+            TerminalProtocolComServer::s_SetAgentSessionHooksEnabled(
+                args.NewSettings().GlobalSettings().EffectiveAgentSessionManagementEnabled());
             _setupGlobalHotkeys();
             _checkWindowsForNotificationIcon();
             _setupSessionPersistence(args.NewSettings().GlobalSettings().ShouldUsePersistedLayout());
@@ -1863,6 +1865,8 @@ void WindowEmperor::_checkWindowsForNotificationIcon()
 
 void WindowEmperor::_initializeProtocolServer()
 {
+    TerminalProtocolComServer::s_SetAgentSessionHooksEnabled(
+        _app.Logic().Settings().GlobalSettings().EffectiveAgentSessionManagementEnabled());
     // Register COM class factory for cross-process access (runs on MTA thread).
     TerminalProtocolComServer::s_setEmperor(this);
     if (SUCCEEDED_LOG(TerminalProtocolComServer::s_StartListening()))

@@ -4257,6 +4257,9 @@ namespace winrt::TerminalApp::implementation
         if (changeKind == AgentSettingsChangeKind::None &&
             hooksReconciliation == AgentHooksReconciliationScope::None)
         {
+            // Off needs no installer operation, but must advance the snapshot
+            // so the next Off -> On transition reconciles missing/stale hooks.
+            _lastAgentSettings = current;
             _agentPaneLog("_ReconcileAgentSettings: no change");
             return;
         }

@@ -10,8 +10,10 @@
 #include <json/json.h>
 #include <til/io.h>
 #include "../TerminalProtocol/ProtocolParsing.h"
+#include "../inc/AgentSessionHooks.h"
 
 #include <algorithm>
+#include <atomic>
 #include <thread>
 #include <vector>
 
@@ -31,6 +33,8 @@ static DWORD g_comRegistration = 0;
 static std::shared_mutex g_mtx;
 static std::thread g_comMtaThread;
 static wil::unique_event g_comMtaStop;
+static wil::unique_event g_agentSessionHooksDisabled;
+static std::atomic<bool> g_agentSessionHooksEnabled{ true };
 
 // Static instance tracking for event delivery to COM clients
 std::mutex TerminalProtocolComServer::s_instancesMutex;
@@ -39,6 +43,13 @@ std::vector<TerminalProtocolComServer*> TerminalProtocolComServer::s_instances;
 void TerminalProtocolComServer::s_setEmperor(WindowEmperor* emperor) noexcept
 {
     s_emperor = emperor;
+}
+
+void TerminalProtocolComServer::s_SetAgentSessionHooksEnabled(const bool enabled) noexcept
+{
+    g_agentSessionHooksEnabled.store(enabled, std::memory_order_release);
+    LOG_IF_FAILED(Microsoft::Terminal::AgentSessionHooks::SetEnabled(
+        g_agentSessionHooksDisabled, __uuidof(TerminalProtocolComServer), enabled));
 }
 
 HRESULT TerminalProtocolComServer::s_StartListening()
@@ -1083,11 +1094,14 @@ try
     const auto eventH = _hstr(eventJson);
     auto jsonStr = winrt::to_string(eventH);
     Json::Value evt;
-    const auto route = ProtocolParsing::ClassifySendEvent(jsonStr, evt);
+    const auto route = ProtocolParsing::ClassifySendEvent(
+        jsonStr, evt, g_agentSessionHooksEnabled.load(std::memory_order_acquire));
     RETURN_HR_IF(E_INVALIDARG, route == ProtocolParsing::SendEventRoute::Invalid);
 
     switch (route)
     {
+    case ProtocolParsing::SendEventRoute::Ignored:
+        return S_OK;
     case ProtocolParsing::SendEventRoute::AutofixState:
         _dispatchAutofixStateToPage(eventH);
         return S_OK;

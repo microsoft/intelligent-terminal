@@ -6,6 +6,7 @@
 
 #include "Formatting.h"
 #include "wtcli_functions.h"
+#include "../../cascadia/inc/AgentSessionHooks.h"
 
 // Classic-COM Terminal protocol. Generated from
 // src/host/proxy/ITerminalProtocol.idl; found via the OpenConsoleProxy IntDir
@@ -952,7 +953,12 @@ int wmain(int argc, wchar_t** argv)
             // dropping it here also prevents events from binding to the active
             // user pane.
             const auto paneGuid = GuidFromString(EnvironmentValue(L"WT_SESSION"), true);
-            if (EnvironmentValue(L"WT_COM_CLSID").empty() || IsEqualGUID(paneGuid, GUID{}))
+            const auto serverGuid = GuidFromString(EnvironmentValue(L"WT_COM_CLSID"), true);
+            if (IsEqualGUID(serverGuid, GUID{}) || IsEqualGUID(paneGuid, GUID{}))
+            {
+                return;
+            }
+            if (!Microsoft::Terminal::AgentSessionHooks::IsEnabled(serverGuid))
             {
                 return;
             }

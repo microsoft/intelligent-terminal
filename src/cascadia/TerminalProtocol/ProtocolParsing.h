@@ -43,6 +43,7 @@ namespace Microsoft::Terminal::Protocol::Parsing
         RestartAgentStack,    // Direct to TerminalPage, no broadcast — `/restart` from any agent pane TUI
         AgentSessionsRetired, // Direct to TerminalPage, no broadcast — destructive retirement transaction completed
         Broadcast,            // Normalize envelope + broadcast to all subscribers
+        Ignored,              // Session hooks are paused; acknowledge without delivery
         Invalid               // Failed validation
     };
 
@@ -54,7 +55,7 @@ namespace Microsoft::Terminal::Protocol::Parsing
     // Returns Invalid when:
     //   - JSON parsing fails
     //   - The broadcast path is selected but params.event is missing
-    inline SendEventRoute ClassifySendEvent(const std::string& eventJson, Json::Value& outEvt)
+    inline SendEventRoute ClassifySendEvent(const std::string& eventJson, Json::Value& outEvt, const bool agentSessionHooksEnabled = true)
     {
         if (!ParseJson(eventJson, outEvt))
         {
@@ -122,6 +123,13 @@ namespace Microsoft::Terminal::Protocol::Parsing
             !outEvt["params"].isMember("event"))
         {
             return SendEventRoute::Invalid;
+        }
+
+        if (!agentSessionHooksEnabled &&
+            outEvt["params"]["event"].isString() &&
+            outEvt["params"]["event"].asString().starts_with("agent."))
+        {
+            return SendEventRoute::Ignored;
         }
 
         // Normalize the envelope

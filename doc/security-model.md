@@ -231,6 +231,13 @@ None of these helper categories grants a new authorization boundary. Direct shel
 
 For supported CLI sessions where hooks are installed, manifest-driven hook systems launch `wtcli agent-hook` for lifecycle, prompt, tool, notification, and error events. The launcher requires both `WT_COM_CLSID` and `WT_SESSION`, so shared ACP processes without a pane identity return before starting `wtcli.exe`; it also forces exit code 0 if the native binary is unavailable. OpenCode performs the same environment checks in its managed JavaScript plugin and spawns the native command directly. `wtcli agent-hook` reads hook JSON from stdin, wraps it with `cli_source`, `agent_session_id`, and `payload`, and publishes directly through COM `SendEvent`. WT normalizes accepted messages to legacy `agent_event` and broadcasts them to all subscribers. WTA consumes the broadcast through `wtcli --json listen` and updates its `AgentSessionRegistry` / agent session view. This path is useful telemetry and state synchronization; it is not an authorization path for shell input.
 
+Saving **Sessions** as **Off**, or a policy that blocks session hooks, pauses
+hook forwarding without uninstalling or modifying plugins. A per-COM-server
+named event lets the native bridge return before reading stdin or activating
+COM; the server also suppresses `agent.*` broadcasts from older bridges.
+Saving **On** resumes forwarding. This is a runtime preference, not an
+authorization boundary, and does not disable ACP tracking or other COM actions.
+
 ---
 
 ## 3. Trust Boundaries and Assets

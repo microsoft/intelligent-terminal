@@ -170,6 +170,16 @@ always exits successfully. The shared ACP process has no `WT_SESSION`, so its
 redundant hooks are dropped and cannot be incorrectly attributed to the active
 shell pane.
 
+Saving **Settings -> Agents -> Sessions** as **Off** pauses this bridge without
+uninstalling hooks or modifying any agent's plugin configuration. Terminal
+publishes a live, per-COM-server disabled signal that `wtcli agent-hook` checks
+before reading stdin or activating COM. This also affects already-running CLIs;
+the CLI may still spawn its hook command, but the bridge returns immediately.
+The COM server independently drops `agent.*` hook broadcasts while paused,
+including those from older bridges. Saving **On** resumes forwarding and hook
+reconciliation. Startup applies the saved setting and its policy restriction.
+Existing history and ACP tracking are not removed or disabled by this gate.
+
 **The `command` field must stay shell-agnostic.** Each CLI decides for itself
 which shell interprets that string. That choice is undocumented, differs per
 CLI, and we guessed it wrong twice — so the bundle assumes nothing and ships one

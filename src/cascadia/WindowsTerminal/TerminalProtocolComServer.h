@@ -65,6 +65,9 @@ TerminalProtocolComServer : public Microsoft::WRL::RuntimeClass<
     // Static setup — must be called before s_StartListening().
     static void s_setEmperor(WindowEmperor* emperor) noexcept;
 
+    // Called on the emperor thread at startup and after settings reload.
+    static void s_SetAgentSessionHooksEnabled(bool enabled) noexcept;
+
     static HRESULT s_StartListening();
     static HRESULT s_StopListening();
 
