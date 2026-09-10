@@ -78,9 +78,9 @@ formedness
 FTCS
 gantt
 gfm
+GHAW
 ghe
 Ghostty
-GHAW
 github
 githubnext
 godbolt
