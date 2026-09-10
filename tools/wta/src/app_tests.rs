@@ -8075,7 +8075,6 @@ fn master_disconnect_preserves_in_flight_session_load_for_reconnect() {
         tab_id: DEFAULT_TAB_ID.into(),
         session_id: "historical-session".into(),
         cwd: Some("C:\\work".into()),
-        route: Default::default(),
     };
     app.pending_session_load = Some(pending.clone());
     app.current_tab_mut().loading_session = true;
@@ -8124,7 +8123,6 @@ fn master_disconnect_does_not_resurrect_abandoned_session_load() {
         tab_id: DEFAULT_TAB_ID.into(),
         session_id: "abandoned-session".into(),
         cwd: None,
-        route: Default::default(),
     });
 
     app.handle_event(AppEvent::MasterDisconnected);
@@ -8201,7 +8199,6 @@ fn tab_rename_updates_all_persisted_reconnect_identity() {
         tab_id: DEFAULT_TAB_ID.into(),
         session_id: "historical-session".into(),
         cwd: None,
-        route: Default::default(),
     });
 
     app.handle_event(AppEvent::TabRenamed {

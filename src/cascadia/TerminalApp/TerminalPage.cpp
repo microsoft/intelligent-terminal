@@ -1196,41 +1196,6 @@ namespace winrt::TerminalApp::implementation
         return winrt::to_string(id).starts_with("custom:");
     }
 
-    // Reduce an agent name to the closed set the telemetry schema allows.
-    // Hook-reported names arrive from outside Terminal, so anything
-    // unrecognised is bucketed rather than reported verbatim — matching
-    // `sanitize_agent_id` on the WTA side.
-    static const char* _SanitizeAgentIdForTelemetry(const std::string_view agent)
-    {
-        for (const auto known : { "copilot", "claude", "codex", "gemini", "opencode" })
-        {
-            if (agent == known)
-            {
-                return known;
-            }
-        }
-        return agent.empty() ? "unknown" : "custom";
-    }
-
-    // A shell pane gained or lost the agent session that makes it
-    // resumable. Without this, a pane failing to bind is invisible — and
-    // an unbound pane can never persist a resume command line, so this is
-    // the upstream gate on every shell-pane restore.
-    static void _LogAgentSessionBindingChanged(const char* source,
-                                               const std::string_view agent,
-                                               const bool bound)
-    {
-        TraceLoggingWrite(
-            g_hTerminalAppProvider,
-            "AgentSessionBindingChanged",
-            TraceLoggingDescription("Event emitted when a shell pane is bound to or unbound from a resumable agent session"),
-            TraceLoggingValue(source, "Source"),
-            TraceLoggingValue(_SanitizeAgentIdForTelemetry(agent), "Agent"),
-            TraceLoggingBoolean(bound, "Bound"),
-            TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
-            TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage));
-    }
-
     using SelectedCustomModel = std::pair<
         winrt::Microsoft::Terminal::Settings::Model::CustomModelProvider,
         winrt::Microsoft::Terminal::Settings::Model::CustomModel>;
@@ -1614,24 +1579,6 @@ namespace winrt::TerminalApp::implementation
         const auto intoSessionsView = fields.view == ::Microsoft::Terminal::AgentPaneRestore::SessionsView;
         const auto stashed = ::Microsoft::Terminal::AgentPaneRestore::StashedPaneType == std::wstring_view{ contentArgs.Type() };
 
-        // Whether the saved agent is one policy still permits. This only
-        // observes the decision for telemetry — the gate that actually
-        // enforces it lives in `_AutoCreateHiddenAgentPaneShared`, which
-        // re-resolves the CLI from the id below. A custom agent is never
-        // in the built-in table, so it is not measurable this way and is
-        // reported through `IsCustomAgent` instead.
-        const auto agentId = tab->HasAgentOverride() ? tab->AgentIdOverride() : winrt::hstring{};
-        const auto isCustomAgent = _IsCustomAgentId(agentId);
-        auto blockedByPolicy = false;
-        if (!agentId.empty() && !isCustomAgent)
-        {
-            namespace Registry = ::Microsoft::Terminal::Settings::Model::AgentRegistry;
-            const auto allowed = Registry::FilteredAcpAgents();
-            blockedByPolicy = std::none_of(allowed.begin(), allowed.end(), [&](const auto& agent) {
-                return agent.id == std::wstring_view{ agentId };
-            });
-        }
-
         // The saved split geometry is the pane's own, not the configured
         // default: the user may have dragged the splitter, or moved this one
         // pane with `>Move agent pane`. An empty position (a split direction
@@ -1660,22 +1607,14 @@ namespace winrt::TerminalApp::implementation
                                                                splitSize,
                                                                /*focusPane*/ !stashed,
                                                                std::wstring_view{ fields.yoloControlOwner });
-
-        const auto result = restored ? "Restored" : (blockedByPolicy ? "BlockedByPolicy" : "Failed");
         TraceLoggingWrite(
             g_hTerminalAppProvider,
-            "AgentPaneRestoreCompleted",
-            TraceLoggingDescription("Event emitted when an agent pane described by a saved layout is rebuilt"),
-            TraceLoggingValue(result, "Result"),
-            TraceLoggingBoolean(!fields.sessionId.empty(), "HasSessionId"),
-            TraceLoggingBoolean(!fields.agentIdentity.empty(), "HasAgentIdentity"),
-            TraceLoggingBoolean(isCustomAgent, "IsCustomAgent"),
-            TraceLoggingBoolean(stashed, "Stashed"),
-            TraceLoggingValue(intoSessionsView ? "sessions" : "chat", "View"),
-            TraceLoggingBoolean(!savedPosition.empty(), "HasSavedPosition"),
+            "DurableSessionRestore",
+            TraceLoggingDescription("Event emitted when Terminal restores an agent-bearing pane from a saved layout"),
+            TraceLoggingValue("AgentPane", "Route"),
+            TraceLoggingBoolean(restored, "Success"),
             TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
             TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage));
-
         return restored;
     }
 
@@ -8050,12 +7989,7 @@ namespace winrt::TerminalApp::implementation
                             (agentSessionId.empty() ||
                              binding->second.sessionId == winrt::to_hstring(agentSessionId)))
                         {
-                            const auto boundAgent = winrt::to_string(binding->second.agent);
                             _paneAgentSessions.erase(binding);
-                            // The recorded agent, not the one on the event:
-                            // a session-end notification often carries no
-                            // agent name at all.
-                            _LogAgentSessionBindingChanged("HookProtocol", boundAgent, /*bound*/ false);
                         }
                     }
                     else
@@ -8066,7 +8000,6 @@ namespace winrt::TerminalApp::implementation
                                 winrt::to_hstring(agentSessionId),
                                 winrt::to_hstring(agent),
                                 winrt::to_hstring(resumeCommandline) });
-                        _LogAgentSessionBindingChanged("HookProtocol", agent, /*bound*/ true);
                     }
                     return;
                 }
@@ -8558,10 +8491,6 @@ namespace winrt::TerminalApp::implementation
                                                         winrt::to_hstring(agentSessionId),
                                                         winrt::to_hstring(agentParams.get("cli_source", "").asString()),
                                                         resumeCommandline });
-                                                _LogAgentSessionBindingChanged(
-                                                    "VtInBand",
-                                                    agentParams.get("cli_source", "").asString(),
-                                                    /*bound*/ true);
                                             }
                                         }
                                     }
@@ -8989,6 +8918,7 @@ namespace winrt::TerminalApp::implementation
         {
             return nullptr;
         }
+
         std::vector<ActionAndArgs> actions;
 
         for (auto tab : _tabs)
@@ -9251,7 +9181,8 @@ namespace winrt::TerminalApp::implementation
         auto state = pane->BuildStartupActions(0, 1, BuildStartupKind::Content);
         state.args.insert(state.args.begin(),
                           ActionAndArgs{ ShortcutAction::SplitPane,
-                                         SplitPaneArgs{ SplitType::Manual, SplitDirection::Right, 0.5f, state.firstPane->GetTerminalArgsForPane(BuildStartupKind::Content) } });
+                                         SplitPaneArgs{ SplitType::Manual, SplitDirection::Right, 0.5f,
+                                                        state.firstPane->GetTerminalArgsForPane(BuildStartupKind::Content) } });
         return std::move(state.args);
     }
 
@@ -9430,7 +9361,7 @@ namespace winrt::TerminalApp::implementation
                     return false;
                 }
                 auto current = wholeTab ? tab->BuildStartupActions(BuildStartupKind::Content) :
-                                          _buildPaneTransferActions(pane);
+                                         _buildPaneTransferActions(pane);
                 if (ActionAndArgs::Serialize(winrt::single_threaded_vector<ActionAndArgs>(std::move(current))) != str)
                 {
                     return false;
@@ -9685,7 +9616,7 @@ namespace winrt::TerminalApp::implementation
         }
         THROW_HR_IF(E_INVALIDARG, !movingSettings && actions.GetAt(0).Action() != ShortcutAction::NewTab);
         const auto firstArgs = movingSettings ? NewTerminalArgs{ nullptr } :
-                                                actions.GetAt(0).Args().as<NewTabArgs>().ContentArgs().as<NewTerminalArgs>();
+                                               actions.GetAt(0).Args().as<NewTabArgs>().ContentArgs().as<NewTerminalArgs>();
         ReceivingContentTransfer transfer;
         transfer.sourceTab = sourceTab;
         transfer.firstContentId = firstArgs ? firstArgs.ContentId() : 0;
@@ -9708,7 +9639,8 @@ namespace winrt::TerminalApp::implementation
         THROW_HR_IF(E_INVALIDARG, sourceControls.empty() && !movingSettings);
         if (targetTab)
         {
-            THROW_HR_IF(E_ILLEGAL_METHOD_CALL, *targetTab == _settingsTab || (!transfer.sourceAgents.empty() && targetTab->FindAgentPane()));
+            THROW_HR_IF(E_ILLEGAL_METHOD_CALL, *targetTab == _settingsTab ||
+                                                (!transfer.sourceAgents.empty() && targetTab->FindAgentPane()));
         }
 
         _receivingContentTransfer = &transfer;
@@ -9746,7 +9678,9 @@ namespace winrt::TerminalApp::implementation
             {
                 dispatchAction(i);
             }
-            THROW_HR_IF(E_ABORT, transfer.controls.size() != sourceControls.size() || transfer.agents.size() != transfer.sourceAgents.size() || !source._GetTabIndex(*sourceTab));
+            THROW_HR_IF(E_ABORT, transfer.controls.size() != sourceControls.size() ||
+                                    transfer.agents.size() != transfer.sourceAgents.size() ||
+                                    !source._GetTabIndex(*sourceTab));
             // Hiding reparents the shell sibling, so it must precede zooming.
             // Nested splits must still finish before the agent leaf is hidden.
             for (const auto& [oldAgent, newAgent] : transfer.agents)
@@ -11138,7 +11072,7 @@ namespace winrt::TerminalApp::implementation
 
                 closeOnFailure.release();
                 _agentPaneLog(_receivingContentTransfer ? "_MakeTerminalPane: prepared transferred agent pane" :
-                                                          "_MakeTerminalPane: adopted transferred agent pane");
+                                                         "_MakeTerminalPane: adopted transferred agent pane");
                 return wrapped;
             }
 
@@ -11262,16 +11196,12 @@ namespace winrt::TerminalApp::implementation
                 _pendingRestoredSessionBindings.insert_or_assign(
                     sessionId,
                     _PendingRestoredSessionBinding{ winrt::hstring{ target.sessionId }, winrt::hstring{ target.agent }, newTerminalArgs.StartingDirectory() });
-
                 TraceLoggingWrite(
                     g_hTerminalAppProvider,
-                    "AgentShellPaneResumed",
-                    TraceLoggingDescription("Event emitted when a restored shell pane relaunches its agent CLI to resume a conversation"),
-                    TraceLoggingValue(_SanitizeAgentIdForTelemetry(winrt::to_string(target.agent)), "Agent"),
-                    // Seeding the saved scrollback on top of the transcript
-                    // the CLI replays itself would show the conversation
-                    // twice, so this must always be true here.
-                    TraceLoggingBoolean(replaysItsOwnHistory, "BufferRestoreSuppressed"),
+                    "DurableSessionRestore",
+                    TraceLoggingDescription("Event emitted when Terminal restores an agent-bearing pane from a saved layout"),
+                    TraceLoggingValue("ShellPane", "Route"),
+                    TraceLoggingBoolean(true, "Success"),
                     TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
                     TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage));
             }

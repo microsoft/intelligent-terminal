@@ -1176,7 +1176,8 @@ namespace winrt::TerminalApp::implementation
                           const winrt::com_ptr<Tab>& sourceTab,
                           const std::shared_ptr<Pane>& sourcePane,
                           const std::optional<winrt::Windows::Foundation::Point>& dragPoint = std::nullopt);
-        bool _AttachTransferredContent(TerminalPage& source, const winrt::com_ptr<Tab>& sourceTab, const std::shared_ptr<Pane>& sourcePane, Windows::Foundation::Collections::IVector<Microsoft::Terminal::Settings::Model::ActionAndArgs> actions, uint32_t tabIndex);
+        bool _AttachTransferredContent(TerminalPage& source, const winrt::com_ptr<Tab>& sourceTab, const std::shared_ptr<Pane>& sourcePane,
+                                       Windows::Foundation::Collections::IVector<Microsoft::Terminal::Settings::Model::ActionAndArgs> actions, uint32_t tabIndex);
         struct ReceivingContentTransfer
         {
             winrt::com_ptr<Tab> sourceTab;
