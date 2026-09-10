@@ -846,6 +846,7 @@ kazum
 kernelbase
 kernelbasestaging
 KEYBDINPUT
+keycap
 keychord
 keydowns
 KEYFIRST
